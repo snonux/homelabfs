@@ -1,5 +1,7 @@
 # HomelabFS platform interfaces
 
+**Live prerequisite check:** the current f3 Rocky kernel lacks 9p support. See [f3 / Rocky PoC findings](PoC-f3-rocky.md). The selected guest path needs a kernel change before end-to-end testing.
+
 [Architecture overview](Architecture.md)
 
 Shared implementation boundaries, FreeBSD and Linux FUSE adapters, and the selected bhyve virtio-9p path.

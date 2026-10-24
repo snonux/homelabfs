@@ -59,6 +59,7 @@ Start with the [architecture overview](docs/Architecture.md).
 
 | Document | Topic |
 |---|---|
+| [f3 / Rocky PoC findings](docs/PoC-f3-rocky.md) | Live compatibility check and the guest kernel blocker |
 | [Motivation and goals](docs/Motivation-and-goals.md) | Why the project exists and what it aims to provide |
 | [Cluster and ownership](docs/Cluster-and-ownership.md) | Membership, placement, and coordination |
 | [Replication](docs/Replication.md) | Write path, journals, and failover continuity |

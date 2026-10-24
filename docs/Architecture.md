@@ -1,5 +1,7 @@
 # HomelabFS architecture
 
+**Live prerequisite check:** the current f3 Rocky kernel lacks 9p support. See [f3 / Rocky PoC findings](PoC-f3-rocky.md). The selected guest path needs a kernel change before end-to-end testing.
+
 HomelabFS is a distributed filesystem for the f3s homelab, primarily on FreeBSD. Its purpose is to retire NFS from f3s by replacing NFS-backed workload storage with local HomelabFS access, replication, and automatic failover. The default cluster has three nodes, each providing local ZFS storage and running workloads. Additional nodes can be admitted, including a fourth node. This is an initial design, not an implemented or proven protocol.
 
 
