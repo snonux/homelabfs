@@ -3,6 +3,8 @@
 HomelabFS is a distributed filesystem for the f3s homelab, primarily on FreeBSD. Its purpose is to retire NFS from f3s by replacing NFS-backed workload storage with local HomelabFS access, replication, and automatic failover. The default cluster has three nodes, each providing local ZFS storage and running workloads. Additional nodes can be admitted, including a fourth node. This is an initial design, not an implemented or proven protocol.
 
 
+See [Motivation and goals](Motivation-and-goals.md) for the problem HomelabFS aims to solve.
+
 ## Agreed direction
 
 - Implement HomelabFS in Go, with a shared core and explicit FreeBSD/Linux platform adapters.

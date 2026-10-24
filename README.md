@@ -6,6 +6,10 @@ HomelabFS is a planned distributed filesystem for the f3s homelab, designed to r
 
 Each workload owns an independent directory/persistent volume. Its reads and writes normally happen on one primary node, while other nodes hold replicas. Different nodes can be primary for different workloads at the same time.
 
+## Why HomelabFS?
+
+The goal is highly available file storage for my home lab, built on FreeBSD and ZFS, with the POSIX-style file access my Kubernetes workloads require. Read [why HomelabFS exists and its design goals](docs/Motivation-and-goals.md), including why GlusterFS, Ceph, and S3 object storage do not fit this setup.
+
 ## Architecture
 
 ![HomelabFS architecture](docs/HomelabFS-architecture.svg)
@@ -55,6 +59,7 @@ Start with the [architecture overview](docs/Architecture.md).
 
 | Document | Topic |
 |---|---|
+| [Motivation and goals](docs/Motivation-and-goals.md) | Why the project exists and what it aims to provide |
 | [Cluster and ownership](docs/Cluster-and-ownership.md) | Membership, placement, and coordination |
 | [Replication](docs/Replication.md) | Write path, journals, and failover continuity |
 | [Journal storage](docs/Journal-storage.md) | Dataset layout, checkpoints, and housekeeping |
