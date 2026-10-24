@@ -76,7 +76,7 @@ References: [bhyve device and 9p backend documentation](https://github.com/freeb
 
 ### Validation and implementation order
 
-Build the smallest real mount on both OSes before substantial replication implementation. Run the same behavioral suite on real FreeBSD and Linux kernels: permissions and multiple users; create/read/write/truncate; append and exclusive create; rename and hard links; unlink with open handles; locks; fsync and directory durability; mmap; cache invalidation; interrupt/unmount; daemon crashes and reconnect. Then run the shared replication fault scenarios through both adapters and the Linux-guest-to-FreeBSD path. Include SQLite/PostgreSQL recovery and actual f3s workloads before declaring compatibility.
+Build the smallest real mount on both OSes before substantial replication implementation. Run the same behavioral suite on real FreeBSD and Linux kernels: permissions and multiple users; create/read/write/truncate; append and exclusive create; rename and hard links; unlink with open handles; locks; fsync and directory durability; mmap; cache invalidation; interrupt/unmount; daemon crashes and reconnect. Run native replication fault scenarios in the disposable FreeBSD VM suite, with Linux-adapter portability tests separately. After deployment, use the separately approved Rocky-to-FreeBSD live smoke suite for end-to-end checks. Include SQLite/PostgreSQL recovery and actual f3s workloads before declaring compatibility.
 
 A portable backend unit test is insufficient for kernel semantics. Maintain FreeBSD VM/host CI and Linux CI from the first working prototype. Keep performance benchmarks separate from correctness tests and measure the guest transport overhead.
 
@@ -118,3 +118,5 @@ Keep backing files and the journal in a private ZFS location outside the exporte
 Evaluate a FUSE library for actual FreeBSD support before choosing a language or binding. Start with explicit caching behavior, then test read coherence, fsync, rename, open-file deletion, permissions, mmap, and application locking against the intended workloads. A custom kernel implementation can be reconsidered if measured performance or missing semantics justify it.
 
 References: [FreeBSD filesystem handbook](https://docs.freebsd.org/en/books/handbook/filesystems/), [mount_fusefs manual](https://man.freebsd.org/cgi/man.cgi?query=mount_fusefs&sektion=8).
+
+The [native FreeBSD lab](FreeBSD-test-lab.md) deliberately excludes 9p; [live smoke tests](Live-smoke-tests.md) validate that additional layer after deployment. Both stages require [explicit approval](Test-automation.md) and scripted execution.

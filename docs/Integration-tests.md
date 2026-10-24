@@ -4,25 +4,25 @@
 
 Planned fault-injection and application tests. No distributed HomelabFS implementation or protocol fault tests have been run; the expected outcomes are acceptance requirements. Initial [9p/FUSE passthrough tests](PoC-fuse-and-benchmarks.md) now provide limited transport evidence and do not satisfy the whole matrix.
 
+**Execution requires explicit approval for each run.** Both stages are script-driven; see [Test automation](Test-automation.md). This plan does not authorize starting VMs or tests.
+
+## Scope and two-stage validation
+
+**Stage 1 tests HomelabFS itself:** three disposable FreeBSD bhyve VMs, each running its own real FreeBSD kernel, ZFS storage, and HomelabFS FUSE daemon. Test programs run inside those VMs and access their local FUSE mounts directly. No Rocky guest, 9p export, Kubernetes, or nested virtualization is required for this suite.
+
+After Stage 1 passes, deploy the same validated artifacts to the real f3s hosts. **Stage 2 runs bounded live end-to-end smoke tests from the Rocky VMs**, described in [Live smoke tests](Live-smoke-tests.md). A passing Stage 1 run does not establish that the deployed guest transport is configured correctly.
+
+See [Disposable FreeBSD test lab](FreeBSD-test-lab.md) for provisioning, memory admission, maintenance of f3's existing Rocky VM, evidence capture, cleanup, and shutdown.
+
 ## Early compatibility gates
 
-Before implementing extensive replication, validate the selected FreeBSD FUSE → bhyve virtio-9p → Rocky → pod path on the actual supported versions.
-
-- Confirm guest 9p modules, protocol dialect, mount lifecycle, UID/GID handling, and application-visible errors.
-- Verify write acknowledgement and sync propagation at the syscall boundary. A normal buffered write and a writable mmap store are different operations; define the promised persistence boundary for each. Kernel buffering must not silently contradict the chosen write contract.
-- Verify locking in one guest/mount, across pods using that mount, through duplicate guest mounts, and between independently connected clients. Preserve correct local application locking; enforce exclusive volume serving against other clients.
-- Verify cache behavior for data, metadata, permissions, negative lookups, and existing mmap pages through failover and daemon restart.
-- Verify recovery of the 9p share after FUSE restart. A fresh host mount need not repair already-open bhyve file handles automatically. Determine whether remount, workload restart, or VM restart is required and automate the smallest safe action.
-
-Two concrete findings make these gates essential. Linux's 9p documentation describes the no-cache mode as disabling mmap, while its mmap mode includes writeback behavior; disabling every cache is therefore not automatically a solution for database compatibility. The FreeBSD main-branch lib9p backend inspected during this review returns lock success without acquiring a host lock and reports regions unlocked. This does not establish the behavior of the deployed release or prove same-guest locking fails, since the guest kernel can also maintain locks. It does mean host locking cannot be assumed to protect independent clients. Sources: [Linux 9p cache modes](https://docs.kernel.org/filesystems/9p.html), [FreeBSD lib9p backend](https://github.com/freebsd/freebsd-src/blob/main/contrib/lib9p/backend/fs.c).
-
-If a required property fails, stop migration and revise or repair the selected transport explicitly. Do not hide missing semantics behind a successful mount or filesystem benchmark.
+The native FUSE gate covers permissions, locking, mmap, sync, cache invalidation, and mount loss on actual FreeBSD kernels. Run small single-node cases before distributed fault injection. Existing 9p PoCs remain useful deployment evidence; their additional compatibility requirements are separate from this suite, in [Deployment compatibility tests](Deployment-tests.md#early-compatibility-gates).
 
 ## Test environment and evidence
 
-Use disposable FreeBSD hosts/VMs with separate ZFS pools, three independently killable storage daemons, an independent coordinator for the test harness, and a separate three-member etcd deployment. Use real Rocky bhyve guests for end-to-end tests; nested virtualization or physical test hosts may be needed. Add an optional fourth storage node. Run the same core scenarios on the Linux FUSE frontend separately. Fault tests must not target live f3s data.
+Use three independently stoppable FreeBSD VMs with separate test disks and guest ZFS pools, an external test harness, and a private three-member etcd cluster. Each VM may host one etcd member on local storage outside HomelabFS. Add an optional fourth VM for membership cases only when memory admission permits it. Test-cluster credentials, networking, and membership must be separate from production. Run Linux FUSE portability tests separately when that adapter is available.
 
-Control failures at each boundary: pod/process, guest, bhyve process, storage daemon, host, replication link, coordination link, and disk. `kill -9` tests process failure, not power loss. Include abrupt host/VM loss that removes volatile state; account for buffering in the outer hypervisor/storage when interpreting persistence results.
+Control failures at the test-process, FUSE-daemon, FreeBSD-VM, replication-link, coordination-link, and disposable-disk boundaries. `kill -9` tests process failure, not power loss. Terminating one bhyve test VM removes that guest's volatile state without stopping its physical host. Account for buffering in the outer hypervisor/storage when interpreting persistence results. Three VMs on f3 do not demonstrate independent physical-host failure or power-loss durability.
 
 Instrument explicit failpoints around operation admission, journal append, local sync completion, partner receipt, partner ACK transmission, commit/visibility decisions, application, client reply, epoch persistence, checkpoint publication, and journal trimming. Deterministic failpoints make timing-sensitive failures reproducible. Network faults must include one-way loss, delay, duplication, connection reset, and reconnection; application-level reordering/gaps should also be injected even when the transport normally orders bytes.
 
@@ -32,7 +32,7 @@ For every test, assert safety while faults are active and eventual progress afte
 
 ## Integration test matrix
 
-Each row is a scenario family. Repeat relevant cases with every physical node in each role and with A/B/C volumes active on different primaries. “Automatic” assumes the named sources, authority, and fencing remain available.
+The 36 rows below are native filesystem scenario families. The five Kubernetes-specific K01–K05 cases live in [Deployment compatibility tests](Deployment-tests.md), outside Stage 1. Each row is a scenario family. Repeat relevant cases with every test VM in each role and with A/B/C volumes active on different primaries. “Automatic” assumes the named sources, authority, and fencing remain available.
 
 | ID | Fault or action | Required result |
 |---|---|---|
@@ -41,33 +41,28 @@ Each row is a scenario family. Repeat relevant cases with every physical node in
 | R03 | Restart synchronous partner, clearing its RAM, while owner stays healthy | Partner rejoins recovering; owner backfills missing state before treating it as ready; no false progress from old incarnation |
 | R04 | Select lagging async replica as new primary | All destination workload I/O remains blocked until authoritative history is fetched/applied and a ready partner is established |
 | R05 | Disconnect async replica through sustained writes and an owner change | New owner retains delivery obligations; every required change arrives after reconnect or valid baseline recovery |
-| R06 | Fail one physical node while three volumes have different primaries | Handle lost primary, lost sync, and lost async roles independently; avoid unrelated global stalls |
+| R06 | Fail one test VM while three volumes have different primaries | Handle lost primary, lost sync, and lost async roles independently; avoid unrelated global stalls |
 | R07 | Return former primary with a divergent uncommitted suffix | No automatic failback or stale serving; preserve/reconcile suffix and catch up from current authority |
 | R08 | Owner disk lost plus partner RAM lost before persistence | Detect missing/uncertain history and block; explicit loss acceptance only, never silently promote stale async state |
 | R09 | Abruptly reboot all nodes; vary restart order and delay original owner | Reconstruct valid durable history; do not promote merely by maximum sequence or first two nodes online |
 | R10 | Crash each participant during every takeover step | Resume or reconcile idempotently; no double activation, lost history, or permanent restart loop |
-| F01 | Partition old primary from peer pair but keep its guest alive | Replacement activates only with fencing; old guest cannot successfully read stale data or acknowledge writes after transfer |
-| F02 | Pause daemon, guest, or host past authority expiry; resume with old messages | Old epoch/session cannot revive access; include preexisting descriptors and cached mmap reads |
+| F01 | Partition old primary from peer pair but keep its local test process alive | Replacement activates only with fencing; old process cannot successfully read stale data or acknowledge writes after transfer |
+| F02 | Pause daemon or test VM past authority expiry; resume with old messages | Old epoch/session cannot revive access; include preexisting descriptors and cached mmap reads |
 | F03 | Partition etcd traffic only, then replication traffic only | Independently enforce authority and data readiness; no assumption that one implies the other |
 | F04 | Lose etcd leader, then quorum; recover network | Leader loss recovers; quorum loss respects serving deadlines; safe revalidation resumes automatically after restoration |
-| F05 | Race promotion, partner replacement, pod relocation, and fourth-node admission | One valid configuration/history; no two arbitrary replicas forming an unauthorized write pair |
+| F05 | Race promotion, partner replacement, workload relocation, and fourth-node admission | One valid configuration/history; no two arbitrary replicas forming an unauthorized write pair |
 | D01 | Inject short write, ENOSPC, EIO, journal sync failure, or stalled ZFS pool | No false success; quarantine/fail affected path or recover from peers; preserve diagnostics and bounded queues |
 | D02 | Corrupt/torn journal tail versus corruption inside a previously valid prefix | Detect both; only discard a tail when proven safe, otherwise repair from verified history or stop |
 | D03 | Crash between checkpoint creation, publication, and log trimming | At least one complete valid baseline plus needed suffix remains; orphan checkpoints can be reconciled |
 | D04 | Receiver behind retention; interrupt snapshot install repeatedly | Resume/restart staging safely; never expose partial snapshot; catch up its suffix before serving |
 | D05 | Slow async disk, fill memory queue, exhaust retention reserve | Backpressure/retention policy is enforced; no dropped updates or unbounded RAM growth |
-| K01 | Crash only pod, Rocky guest, bhyve process, or FUSE daemon in separate runs | Use the appropriate restart/remount/recovery path; no unnecessary cluster-wide promotion |
-| K02 | Delete/recreate pod while old process survives a partition | New volume publication waits for actual fencing; API deletion is not evidence of old process death |
-| K03 | Repeat or interrupt CSI publish/unpublish, including stale requests after promotion | Requests are idempotent and scoped to volume/session/generation; stale unpublish cannot revoke a newer valid mount |
-| K04 | Remove FUSE mount or guest 9p mount; leave ordinary directory underneath | No workload writes to an empty/raw fallback directory; readiness fails clearly |
-| K05 | Pod uses multiple persistent volumes; destinations reach readiness at different times | Start only when all required mounts are ready; no deadlocked ownership transfer; no implied cross-volume transaction guarantee |
 | P01 | Concurrent append, exclusive create, rename replacement, hard links, unlink-open, truncate | Preserve defined syscall semantics and handle identity through replay and failover |
-| P02 | Multiple users/groups, umask, chmod/chown, sticky directory; cache permission results | Correct authorization on both kernels and full guest path; no daemon-credential bypass |
-| P03 | fcntl/flock contention, process exit, duplicate mounts, separate guests | Correct supported lock domain and exclusive serving; no fake lock success for conflicting permitted clients |
+| P02 | Multiple users/groups, umask, chmod/chown, sticky directory; cache permission results | Correct authorization through the FreeBSD kernel and local FUSE mount; no daemon-credential bypass |
+| P03 | fcntl/flock contention, process exit, duplicate local mounts, separate test VMs | Correct supported lock domain and exclusive serving; no fake lock success for conflicting permitted clients |
 | P04 | Buffered I/O, synchronous opens, fsync/fdatasync, directory sync, mmap/msync under crash | Defined persistence/ordering holds at each supported boundary; required mmap behavior works with chosen caches |
 | P05 | Snapshot restore or promotion while old descriptors, negative dentries, and mmap exist | Stale handles/caches are invalidated, fenced, or fail explicitly; never return a different object under an old identity |
 | A01 | SQLite writes/checkpoints and PostgreSQL transactions during injected failures | Application recovery and integrity checks pass; acknowledged durable transactions retained except declared loss mode |
-| A02 | Actual Forgejo, Keybr, Immich/Miniflux DB, Syncthing, and shared media workload patterns | Workload-specific integrity and access checks pass; discovery of incompatible shared access blocks that migration |
+| A02 | Native file-service clients and file-access patterns representative of the f3s workloads | Workload-specific integrity and access checks pass; discovery of incompatible shared access blocks that migration |
 | E01 | Activate emergency mode without proven exclusion of old members | Refuse activation; losing quorum alone never enables local-only writes |
 | E02 | Valid emergency activation, survivor reboot, other peers boot old state | Mode/generation persists; old peers cannot join or serve; survivor replays its durable emergency writes |
 | E03 | Manual admit one peer, interrupt replay and emergency exit at every step | Peer remains recovery-only until ready; explicit exit restores synchronous ACKs before writes resume |
@@ -84,29 +79,28 @@ Specify and test invariants: one active write history; no stale successful read;
 
 ## Success criteria and rollout gates
 
-1. **Transport gate:** the actual virtio-9p/FUSE stack passes required file, permission, lock, mmap, sync, and fencing tests. Resolve any guest-kernel support gap first.
+1. **Native FUSE gate:** direct mounts inside the FreeBSD test VMs pass file, permission, lock, mmap, sync, and fencing tests. The VM harness proves that test I/O traverses HomelabFS, not a missing mountpoint or raw backing directory.
 2. **Protocol gate:** deterministic failure schedules satisfy single-history, correct acknowledgement, replay, and fencing invariants; include crashes at all commit boundaries. A quorum-intersection argument alone is not a tested commit protocol.
 3. **Recovery gate:** normal single-node failures, reconnects, and known-member rejoin complete without manual edits when authority and recoverable history remain. Emergency mode and ambiguous-history tests deliberately stop for operator decisions.
-4. **Application gate:** realistic database and file-service tests survive failover through the real Kubernetes mount path. Shared-volume exceptions are explicitly resolved.
-5. **Operations gate:** snapshot restoration, emergency exit, restart dependency order, and monitoring are exercised before migration. Start with disposable data, then a low-risk workload with rollback, then broader migration; retire NFS only after validation.
+4. **Application gate:** native SQLite/PostgreSQL and filesystem clients survive failures through the local FreeBSD FUSE mount. Linux-only applications and Kubernetes lifecycle tests belong to the separate deployment suite; representative access patterns do not certify those applications.
+5. **Operations gate:** snapshot restoration, emergency exit, restart dependency order, and monitoring pass in the disposable cluster. Evidence is collected, test data cleaned, test VMs shut down, and any temporarily stopped Rocky VM restored. Deploy the validated artifacts, then pass Stage 2 live smoke tests before migrating workloads or retiring NFS.
 
-Choose measurable timeouts and targets after initial measurements. Record detection, fencing, replay, partner readiness, volume publication, and application recovery separately. A long async backlog makes failover slower; time-to-ready must be judged against available catch-up bandwidth, not a fixed promise independent of backlog. Random fault runs supplement deterministic tests and should preserve seeds and minimized failing histories. Run deterministic protocol tests frequently, real-kernel integration in CI, and full stack crash/recovery suites at release gates.
+Choose measurable timeouts and targets after initial measurements. Record detection, fencing, replay, partner readiness, volume publication, and application recovery separately. A long async backlog makes failover slower; time-to-ready must be judged against available catch-up bandwidth, not a fixed promise independent of backlog. Random fault runs supplement deterministic tests and should preserve seeds and minimized failing histories. Run deterministic protocol tests frequently, real-kernel integration in CI, and native FreeBSD crash/recovery suites at release gates.
 
 ## Security coverage
 
-The additional [security integration tests](Security.md#security-integration-tests) cover network identity, admission, revocation, emergency exclusion, API privileges, resource bounds, and encryption-key recovery. They supplement the 41 failure and filesystem scenario families above.
+The additional [security integration tests](Security.md#security-integration-tests) cover network identity, admission, revocation, emergency exclusion, API privileges, resource bounds, and encryption-key recovery. They supplement the 36 native failure and filesystem scenario families above.
 
 ## Concurrency and journal housekeeping coverage
 
-Additional [performance scenarios](Performance.md#measurement-and-tests) exercise connection scaling, mixed workloads, overload, and fairness. [Journal housekeeping scenarios](Journal-storage.md#integration-tests) cover checkpoint/cleanup crashes, offline replicas, quotas, snapshot-held space, and independent snapshot restores. These supplement the 41 core scenario families.
+Additional [performance scenarios](Performance.md#measurement-and-tests) exercise connection scaling, mixed workloads, overload, and fairness. [Journal housekeeping scenarios](Journal-storage.md#integration-tests) cover checkpoint/cleanup crashes, offline replicas, quotas, snapshot-held space, and independent snapshot restores. These supplement the 36 native scenario families.
 
 ## Regression coverage from f3s experience
 
-The [motivation document](Motivation-and-goals.md#lessons-from-the-f3s-blog-series) connects these requirements to the existing cluster's storage history. Extend the existing scenario families:
+The [motivation document](Motivation-and-goals.md#lessons-from-the-f3s-blog-series) connects these requirements to the existing cluster's storage history:
 
-- **K01/K04:** leave a mount present and metadata readable while writes or sync calls stall. The end-to-end health probe must detect the failure within its configured deadline, distinguish recovery gating, and avoid overlapping repair loops.
-- **R10/P05:** interrupt takeover during active writes and reopen application data through the guest mount after recovery. Validate local pool health, application integrity, and stale-handle behavior before releasing workload access.
-- **A02:** include Prometheus, Grafana, Loki, and Tempo state recovery in the workload inventory, using the deployed configurations. Verify stored data after restart and failover, not just pod readiness.
-- **K03/K05:** apply volume and workload manifests in deployment order while storage is still catching up. Applications must wait for real volume readiness even when PV/PVC objects already exist.
+- **D01/P04:** leave a FUSE mount present and metadata readable while writes or sync calls stall. The direct filesystem probe must detect failure within its deadline, distinguish recovery gating, and avoid overlapping repair loops.
+- **R10/P05:** interrupt takeover during active writes and reopen data through the new owner's native FUSE mount. Validate pool health, application integrity, and stale-handle behavior before releasing access.
+- **A02:** exercise representative metrics/log/file-service access patterns with native clients. Verify persisted state, not just process readiness. Actual Prometheus/Grafana/Loki/Tempo deployment checks remain separate.
 
-These extend the existing tests; they do not assert that the proposed FUSE/9p path has already solved the old stack's recovery problems.
+Kubernetes publication, pod lifecycle, and 9p restart regressions are tracked in the [deployment suite](Deployment-tests.md), not run by the Stage 1 harness.

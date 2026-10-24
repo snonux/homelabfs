@@ -77,9 +77,13 @@ Start with the [architecture overview](docs/Architecture.md).
 | [Platform interfaces](docs/Platform-interfaces.md) | Shared Go core, FUSE adapters, and virtio-9p |
 | [Security](docs/Security.md) | Encryption, admission, and authorization |
 | [Snapshots and restore](docs/Snapshots-and-restore.md) | External snapshots and coordinated restore |
+| [Test approval and automation](docs/Test-automation.md) | Per-run approval and unattended script execution |
+| [Disposable FreeBSD lab](docs/FreeBSD-test-lab.md) | Three 2 GiB VMs, memory admission, cleanup, and Rocky restoration |
+| [Live smoke tests](docs/Live-smoke-tests.md) | Stage 2 end-to-end checks from real Rocky guests |
+| [Deployment compatibility](docs/Deployment-tests.md) | Separate 9p and Kubernetes lifecycle checks |
 | [Integration tests](docs/Integration-tests.md) | Failure scenarios and acceptance gates |
 
-The next steps are transport prototypes, a specified and tested replication/fencing state machine, and the integration tests described in these documents. No benchmark results or successful fault-test runs are claimed.
+Transport PoCs and initial benchmarks are recorded above. The distributed protocol and its fault-injection suite remain to be implemented. Validation has two separately approved, script-driven stages: native HomelabFS FUSE integration in disposable FreeBSD VMs, followed by live end-to-end smoke tests from Rocky after deployment. No distributed fault-test success is claimed.
 
 ## License
 

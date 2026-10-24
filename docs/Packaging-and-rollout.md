@@ -31,10 +31,11 @@ These details come from the f3s skill's package-repository architecture and clie
 ## Release and rollout procedure to implement
 
 1. Build or import one candidate artifact set on a designated builder, verify provenance, and retain it in staging.
-2. Test boot, module load, 9p/FUSE semantics, workload behavior, and recovery on f3/rocky. Re-run relevant tests for every kernel/library update; an unchanged package name is not compatibility evidence.
+2. Prepare and obtain explicit approval for native HomelabFS integration in the disposable FreeBSD lab. Validate guest-kernel/9p compatibility separately when those artifacts change. Re-run relevant approved tests for kernel/library updates; an unchanged package name is not compatibility evidence.
 3. Publish immutable artifacts with generated DNF metadata and checksums through the existing package service. Promote only validated versions; retain a known-good rollback set. Verify client download and signature behavior before rollout.
 4. Install the pinned validated version on one eligible guest, retain its old kernel, and select a controlled test boot. Confirm health and rollback before updating additional nodes. Do not reboot enough nodes together to violate storage or Kubernetes quorum.
-5. Automate this through the f3s configuration repository after the package and signing flow is ready. Avoid silently advancing the storage kernel through an untested general upgrade. Track upstream security fixes and rebuild/revalidate centrally when required.
+5. After deployment, prepare a separate approved [live smoke run](Live-smoke-tests.md) from the real Rocky VMs before migrating workloads. Deployment completion does not trigger tests automatically.
+6. Automate this through the f3s configuration repository after the package and signing flow is ready. Avoid silently advancing the storage kernel through an untested general upgrade. Track upstream security fixes and rebuild/revalidate centrally when required.
 
 ## Bootstrap and recovery
 
@@ -43,3 +44,5 @@ The package service currently depends on Kubernetes and NFS; eventually it may d
 ## Status
 
 Planning only: no kernel/module RPMs were published to pkgrepo, no repository metadata or signing configuration was changed, and no r0/r1/r2 kernel rollout was performed. f3/rocky remains the validation environment.
+
+Both test stages follow the [approval and automation contract](Test-automation.md). Builds and plans may run in CI; integration and live smoke execution require separate per-run human approval.

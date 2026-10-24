@@ -45,3 +45,7 @@ Retiring NFS from f3s is an explicit project goal. Existing NFS mounts, hostPath
 Inventory all f3s NFS consumers and migrate their data and volume mappings. Preserve application-visible paths where useful, but do not infer the transport from a legacy path name. Validate ownership/permissions, application recovery, normal operation, and failover for each workload before retiring its old storage path. Coordinate cutover so old NFS clients and HomelabFS cannot write independent copies of the same workload data.
 
 After migration and restore validation, remove NFS exports and client mounts and retire NFS-specific stunnel services, mount monitors, and storage failover configuration that have no remaining consumers. Review shared infrastructure before removal: CARP and other services may also serve unrelated traffic. Keep external ZFS snapshots and backups. A migration runbook and rollback procedure remain to be written; no deployment or NFS configuration has been changed.
+
+## Post-deployment acceptance
+
+After native FreeBSD integration tests pass and HomelabFS is deployed under the rollout plan, obtain separate approval for [live smoke tests](Live-smoke-tests.md) from the real Rocky VMs. Scripts exercise dedicated test volumes through the deployed end-to-end path before workload migration. No deployment event automatically authorizes smoke execution.

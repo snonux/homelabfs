@@ -13,8 +13,13 @@ See [the transport and filesystem compatibility gates](Integration-tests.md#earl
 
 ## Integration test matrix
 
-See [the 41 scenario families](Integration-tests.md#integration-test-matrix).
+See [the 36 native scenario families](Integration-tests.md#integration-test-matrix).
 
 ## Success criteria and rollout gates
 
 See [the acceptance and rollout gates](Integration-tests.md#success-criteria-and-rollout-gates).
+
+- [Approval and script automation](Test-automation.md)
+- [Disposable FreeBSD lab lifecycle](FreeBSD-test-lab.md)
+- [Stage 2 live smoke tests](Live-smoke-tests.md)
+- [Separate deployment compatibility tests](Deployment-tests.md)

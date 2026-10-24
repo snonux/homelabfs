@@ -52,7 +52,7 @@ See [Motivation and goals](Motivation-and-goals.md) for the problem HomelabFS ai
 | [Platform interfaces](Platform-interfaces.md) | Shared core, two FUSE adapters, and bhyve virtio-9p |
 | [Security](Security.md) | Proposed WireGuard transport, node identity, authorization, and encryption |
 | [Snapshots and restore](Snapshots-and-restore.md) | External ZFS snapshots and coordinated restore |
-| [Integration tests](Integration-tests.md) | 41 scenario families, test harness, assertions, and rollout gates |
+| [Integration tests](Integration-tests.md) | 36 native FreeBSD scenario families, assertions, and rollout gates |
 
 Diagrams live with the topics they illustrate: placement in Cluster and ownership; writes and failover in Replication; emergency recovery in Emergency mode; platform and guest paths in Platform interfaces.
 
@@ -69,3 +69,12 @@ Suggested development order: validate the selected guest transport and both FUSE
 ## Packaging and validation
 
 Distribute validated kernel/module RPMs through `pkgrepo.f3s.buetow.org`, building once per supported target and reusing the same artifacts across nodes. See [Packaging and rollout](Packaging-and-rollout.md) and the [PoC runbook](PoC-runbook.md). This is planned distribution, not a completed cluster rollout.
+
+## Two-stage validation
+
+Every run requires explicit user approval; scripts handle execution, evidence, and cleanup without an LLM control loop. See [Test automation](Test-automation.md).
+
+1. [Native integration](Integration-tests.md): provision three disposable FreeBSD bhyve VMs, install HomelabFS, and test direct FUSE access with fault injection. Initial placement is three 2 GiB VMs on f3, subject to memory admission and an approved temporary clean shutdown/restoration of its existing Rocky VM. Pausing Rocky does not free its RAM. [Lab lifecycle](FreeBSD-test-lab.md).
+2. After separately authorized deployment to real f3s hosts, [live smoke tests](Live-smoke-tests.md): exercise the actual guest-to-host path from the Rocky VMs using dedicated test volumes and bounded I/O. No routine destructive production fault injection.
+
+9p and Kubernetes lifecycle tests are tracked separately in [Deployment compatibility](Deployment-tests.md); they are not dependencies of the native FreeBSD integration harness.
