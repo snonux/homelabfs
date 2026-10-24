@@ -80,3 +80,7 @@ Start with the [architecture overview](docs/Architecture.md).
 | [Integration tests](docs/Integration-tests.md) | Failure scenarios and acceptance gates |
 
 The next steps are transport prototypes, a specified and tested replication/fencing state machine, and the integration tests described in these documents. No benchmark results or successful fault-test runs are claimed.
+
+## License
+
+HomelabFS is licensed under the [BSD 3-Clause License](LICENSE). See [third-party notices](THIRD_PARTY_NOTICES.md) for dependency licenses.
