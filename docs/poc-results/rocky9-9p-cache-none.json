@@ -1,0 +1,37 @@
+[
+  {
+    "test": "write-fsync-rename-hardlink-unlink-open-directory-fsync",
+    "passed": true,
+    "detail": null
+  },
+  {
+    "test": "uid-gid-mode-and-denied-read",
+    "passed": true,
+    "detail": null
+  },
+  {
+    "test": "mmap-flush-fsync",
+    "passed": false,
+    "error": "OSError(22, 'Invalid argument')"
+  },
+  {
+    "test": "flock-contention",
+    "passed": true,
+    "detail": null
+  },
+  {
+    "test": "fcntl-contention",
+    "passed": true,
+    "detail": null
+  },
+  {
+    "test": "sqlite-delete-full-sync",
+    "passed": true,
+    "detail": null
+  },
+  {
+    "test": "sqlite-wal-full-sync",
+    "passed": false,
+    "error": "OperationalError('disk I/O error')"
+  }
+]

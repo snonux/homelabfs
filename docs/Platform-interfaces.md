@@ -1,6 +1,6 @@
 # HomelabFS platform interfaces
 
-**Live prerequisite check:** the current f3 Rocky kernel lacks 9p support. See [f3 / Rocky PoC findings](PoC-f3-rocky.md). The selected guest path needs a kernel change before end-to-end testing.
+**Live PoC:** stock Rocky 9 lacks 9p support and the matching-source module build failed. A one-time boot of ELRepo kernel-lt enabled 9p; basic I/O and SQLite WAL passed with cache=mmap. The FUSE layer remains untested. See [f3 / Rocky PoC findings](PoC-f3-rocky.md).
 
 [Architecture overview](Architecture.md)
 

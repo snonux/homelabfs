@@ -1,0 +1,69 @@
+make: Entering directory '/usr/src/kernels/5.14.0-687.59.1.el9_8.x86_64'
+  CC [M]  /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/net/9p/mod.o
+  CC [M]  /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_super.o
+  CC [M]  /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_inode.o
+  CC [M]  /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/net/9p/client.o
+  CC [M]  /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_inode_dotl.o
+  CC [M]  /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_addr.o
+  CC [M]  /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/net/9p/error.o
+/var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_addr.c:357:10: error: ‘const struct address_space_operations’ has no member named ‘set_page_dirty’
+  357 |         .set_page_dirty = v9fs_set_page_dirty,
+      |          ^~~~~~~~~~~~~~
+/var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_addr.c:351:29: error: initialization of ‘int (*)(struct file *, struct address_space *, loff_t,  unsigned int,  struct page **, void **)’ {aka ‘int (*)(struct file *, struct address_space *, long long int,  unsigned int,  struct page **, void **)’} from incompatible pointer type ‘int (*)(struct page *)’ [-Werror=incompatible-pointer-types]
+  351 | #define v9fs_set_page_dirty __set_page_dirty_nobuffers
+      |                             ^~~~~~~~~~~~~~~~~~~~~~~~~~
+/var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_addr.c:357:27: note: in expansion of macro ‘v9fs_set_page_dirty’
+  357 |         .set_page_dirty = v9fs_set_page_dirty,
+      |                           ^~~~~~~~~~~~~~~~~~~
+/var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_addr.c:351:29: note: (near initialization for ‘v9fs_addr_operations.write_begin’)
+  351 | #define v9fs_set_page_dirty __set_page_dirty_nobuffers
+      |                             ^~~~~~~~~~~~~~~~~~~~~~~~~~
+/var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_addr.c:357:27: note: in expansion of macro ‘v9fs_set_page_dirty’
+  357 |         .set_page_dirty = v9fs_set_page_dirty,
+      |                           ^~~~~~~~~~~~~~~~~~~
+/var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_addr.c:361:10: error: ‘const struct address_space_operations’ has no member named ‘releasepage’
+  361 |         .releasepage = v9fs_release_page,
+      |          ^~~~~~~~~~~
+/var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_addr.c:361:24: error: initialization of ‘sector_t (*)(struct address_space *, sector_t)’ {aka ‘long long unsigned int (*)(struct address_space *, long long unsigned int)’} from incompatible pointer type ‘int (*)(struct page *, gfp_t)’ {aka ‘int (*)(struct page *, unsigned int)’} [-Werror=incompatible-pointer-types]
+  361 |         .releasepage = v9fs_release_page,
+      |                        ^~~~~~~~~~~~~~~~~
+/var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_addr.c:361:24: note: (near initialization for ‘v9fs_addr_operations.bmap’)
+/var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_addr.c:362:10: error: ‘const struct address_space_operations’ has no member named ‘invalidatepage’; did you mean ‘invalidate_folio’?
+  362 |         .invalidatepage = v9fs_invalidate_page,
+      |          ^~~~~~~~~~~~~~
+      |          invalidate_folio
+/var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_addr.c:362:27: error: initialization of ‘void (*)(struct folio *, size_t,  size_t)’ {aka ‘void (*)(struct folio *, long unsigned int,  long unsigned int)’} from incompatible pointer type ‘void (*)(struct page *, unsigned int,  unsigned int)’ [-Werror=incompatible-pointer-types]
+  362 |         .invalidatepage = v9fs_invalidate_page,
+      |                           ^~~~~~~~~~~~~~~~~~~~
+/var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_addr.c:362:27: note: (near initialization for ‘v9fs_addr_operations.invalidate_folio’)
+/var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_addr.c:363:10: error: ‘const struct address_space_operations’ has no member named ‘launder_page’
+  363 |         .launder_page = v9fs_launder_page,
+      |          ^~~~~~~~~~~~
+/var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_addr.c:363:25: error: initialization of ‘bool (*)(struct folio *, gfp_t)’ {aka ‘_Bool (*)(struct folio *, unsigned int)’} from incompatible pointer type ‘int (*)(struct page *)’ [-Werror=incompatible-pointer-types]
+  363 |         .launder_page = v9fs_launder_page,
+      |                         ^~~~~~~~~~~~~~~~~
+/var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_addr.c:363:25: note: (near initialization for ‘v9fs_addr_operations.release_folio’)
+cc1: some warnings being treated as errors
+make[2]: *** [scripts/Makefile.build:250: /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p/vfs_addr.o] Error 1
+make[1]: *** [scripts/Makefile.build:480: /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/fs/9p] Error 2
+make[1]: *** Waiting for unfinished jobs....
+  CC [M]  /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/net/9p/protocol.o
+  CC [M]  /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/net/9p/trans_fd.o
+  CC [M]  /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/net/9p/trans_common.o
+  CC [M]  /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/net/9p/trans_virtio.o
+  LD [M]  /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/net/9p/9pnet.o
+/var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/net/9p/trans_virtio.c: In function ‘p9_get_mapped_pages’:
+/var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/net/9p/trans_virtio.c:334:21: error: too few arguments to function ‘iov_iter_get_pages_alloc’
+  334 |                 n = iov_iter_get_pages_alloc(data, pages, count, offs);
+      |                     ^~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ./include/linux/socket.h:8,
+                 from ./include/uapi/linux/in.h:25,
+                 from ./include/linux/in.h:19,
+                 from /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/net/9p/trans_virtio.c:16:
+./include/linux/uio.h:306:9: note: declared here
+  306 | ssize_t iov_iter_get_pages_alloc(struct iov_iter *i,
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~
+make[2]: *** [scripts/Makefile.build:250: /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/net/9p/trans_virtio.o] Error 1
+make[1]: *** [scripts/Makefile.build:480: /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8/net/9p] Error 2
+make: *** [Makefile:1968: /var/tmp/homelabfs-9p-build/linux-5.14.0-687.59.1.el9_8] Error 2
+make: Leaving directory '/usr/src/kernels/5.14.0-687.59.1.el9_8.x86_64'
