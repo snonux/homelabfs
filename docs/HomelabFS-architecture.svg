@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1260" viewBox="0 0 1600 1260" role="img" aria-labelledby="title desc">
+<title id="title">HomelabFS architecture</title>
+<desc id="desc">Three FreeBSD hosts each run a Rocky Linux bhyve worker. Pods access their local HomelabFS mount through kernel 9p and virtio-9p. Each host is primary for a different workload. Normal writes require a durable local journal and a synchronous replica memory acknowledgement. A third replica receives all updates asynchronously. etcd coordinates ownership outside the normal I/O path.</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/></marker>
+<marker id="bluearrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/></marker>
+<style>text{font-family:DejaVu Sans,sans-serif;fill:#14263d}.title{font-size:36px;font-weight:700}.section{font-size:23px;font-weight:700}.label{font-size:20px;font-weight:700}.body{font-size:18px}.small{font-size:16px}.muted{fill:#52647a}.white{fill:white}</style>
+</defs>
+<rect width="1600" height="1260" fill="#f3f6fa"/>
+
+<text x="50" y="58" class="title" text-anchor="start">HomelabFS</text>
+<text x="50" y="91" class="body muted" text-anchor="start">Local workload I/O • replicated ZFS storage • automatic volume failover</text>
+<text x="1550" y="57" class="small muted" text-anchor="end">ARCHITECTURE DESIGN</text>
+<rect x="50" y="118" width="1500" height="74" rx="12" fill="#e9e6fa" stroke="#c8bfe9"/>
+<text x="75" y="148" class="label" text-anchor="start">etcd · ownership and replica configuration</text>
+<text x="75" y="175" class="body" text-anchor="start">Background authority and failover coordination; no etcd request for each normal read or write.</text>
+<text x="1524" y="148" class="label" text-anchor="end">Go implementation</text>
+<text x="1524" y="175" class="small" text-anchor="end">Default: 3 hosts · expandable</text>
+<rect x="50" y="215" width="480" height="490" rx="12" fill="white" stroke="#cdd8e5"/>
+<text x="74" y="249" class="section" text-anchor="start">node0 / f0 · FreeBSD + ZFS</text>
+<rect x="70" y="270" width="440" height="143" rx="12" fill="#eef4ff" stroke="#c9d9f2"/>
+<text x="90" y="299" class="label" text-anchor="start">Rocky VM r0 · bhyve · Kubernetes</text>
+<text x="90" y="330" class="body" text-anchor="start">Workload A pod → persistent volume</text>
+<text x="90" y="362" class="body" text-anchor="start">Linux kernel 9p client</text>
+<text x="90" y="392" class="small muted" text-anchor="start">No Linux FUSE daemon in the f3s path</text>
+<path d="M290,413 L290,462" fill="none" stroke="#334155" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="306" y="445" class="small" text-anchor="start">virtio-9p</text>
+<rect x="70" y="468" width="440" height="84" rx="12" fill="#e8f5f0" stroke="#b2d7c9"/>
+<text x="290" y="500" class="label" text-anchor="middle">FreeBSD FUSE mount</text>
+<text x="290" y="531" class="body" text-anchor="middle">HomelabFS daemon · shared Go core</text>
+<path d="M290,552 L290,575" fill="none" stroke="#334155" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="70" y="581" width="440" height="60" rx="12" fill="#f1f5f9" stroke="#cdd8e5"/>
+<text x="290" y="606" class="label" text-anchor="middle">Local ZFS · data + durable journal</text>
+<text x="290" y="629" class="small muted" text-anchor="middle">External tools manage periodic snapshots</text>
+<text x="290" y="680" class="body" text-anchor="middle">A primary  |  B async  |  C sync</text>
+<rect x="560" y="215" width="480" height="490" rx="12" fill="white" stroke="#cdd8e5"/>
+<text x="584" y="249" class="section" text-anchor="start">node1 / f1 · FreeBSD + ZFS</text>
+<rect x="580" y="270" width="440" height="143" rx="12" fill="#eef4ff" stroke="#c9d9f2"/>
+<text x="600" y="299" class="label" text-anchor="start">Rocky VM r1 · bhyve · Kubernetes</text>
+<text x="600" y="330" class="body" text-anchor="start">Workload B pod → persistent volume</text>
+<text x="600" y="362" class="body" text-anchor="start">Linux kernel 9p client</text>
+<text x="600" y="392" class="small muted" text-anchor="start">No Linux FUSE daemon in the f3s path</text>
+<path d="M800,413 L800,462" fill="none" stroke="#334155" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="816" y="445" class="small" text-anchor="start">virtio-9p</text>
+<rect x="580" y="468" width="440" height="84" rx="12" fill="#e8f5f0" stroke="#b2d7c9"/>
+<text x="800" y="500" class="label" text-anchor="middle">FreeBSD FUSE mount</text>
+<text x="800" y="531" class="body" text-anchor="middle">HomelabFS daemon · shared Go core</text>
+<path d="M800,552 L800,575" fill="none" stroke="#334155" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="580" y="581" width="440" height="60" rx="12" fill="#f1f5f9" stroke="#cdd8e5"/>
+<text x="800" y="606" class="label" text-anchor="middle">Local ZFS · data + durable journal</text>
+<text x="800" y="629" class="small muted" text-anchor="middle">External tools manage periodic snapshots</text>
+<text x="800" y="680" class="body" text-anchor="middle">A sync  |  B primary  |  C async</text>
+<rect x="1070" y="215" width="480" height="490" rx="12" fill="white" stroke="#cdd8e5"/>
+<text x="1094" y="249" class="section" text-anchor="start">node2 / f2 · FreeBSD + ZFS</text>
+<rect x="1090" y="270" width="440" height="143" rx="12" fill="#eef4ff" stroke="#c9d9f2"/>
+<text x="1110" y="299" class="label" text-anchor="start">Rocky VM r2 · bhyve · Kubernetes</text>
+<text x="1110" y="330" class="body" text-anchor="start">Workload C pod → persistent volume</text>
+<text x="1110" y="362" class="body" text-anchor="start">Linux kernel 9p client</text>
+<text x="1110" y="392" class="small muted" text-anchor="start">No Linux FUSE daemon in the f3s path</text>
+<path d="M1310,413 L1310,462" fill="none" stroke="#334155" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="1326" y="445" class="small" text-anchor="start">virtio-9p</text>
+<rect x="1090" y="468" width="440" height="84" rx="12" fill="#e8f5f0" stroke="#b2d7c9"/>
+<text x="1310" y="500" class="label" text-anchor="middle">FreeBSD FUSE mount</text>
+<text x="1310" y="531" class="body" text-anchor="middle">HomelabFS daemon · shared Go core</text>
+<path d="M1310,552 L1310,575" fill="none" stroke="#334155" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="1090" y="581" width="440" height="60" rx="12" fill="#f1f5f9" stroke="#cdd8e5"/>
+<text x="1310" y="606" class="label" text-anchor="middle">Local ZFS · data + durable journal</text>
+<text x="1310" y="629" class="small muted" text-anchor="middle">External tools manage periodic snapshots</text>
+<text x="1310" y="680" class="body" text-anchor="middle">A async  |  B sync  |  C primary</text>
+<text x="50" y="746" class="section" text-anchor="start">Independent ownership per workload directory</text>
+<text x="50" y="774" class="body muted" text-anchor="start">Every host can be a primary and a replica at the same time. Replica assignments above are illustrative.</text>
+<rect x="50" y="800" width="1500" height="255" rx="12" fill="white" stroke="#cdd8e5"/>
+<text x="75" y="835" class="section" text-anchor="start">Normal write · workload A example</text>
+<rect x="80" y="863" width="400" height="99" rx="12" fill="#e8f5f0" stroke="#cdd8e5"/>
+<text x="280" y="894" class="label" text-anchor="middle">node0 · primary</text>
+<text x="280" y="922" class="small" text-anchor="middle">Local journal becomes durable</text>
+<text x="280" y="946" class="small" text-anchor="middle">before workload acknowledgement</text>
+<rect x="600" y="863" width="400" height="99" rx="12" fill="#e8f0ff" stroke="#cdd8e5"/>
+<text x="800" y="894" class="label" text-anchor="middle">node1 · synchronous</text>
+<text x="800" y="922" class="small" text-anchor="middle">Retain complete operation in RAM</text>
+<text x="800" y="946" class="small" text-anchor="middle">Persist and apply afterward</text>
+<rect x="1120" y="863" width="400" height="99" rx="12" fill="#f4edff" stroke="#cdd8e5"/>
+<text x="1320" y="894" class="label" text-anchor="middle">node2 · asynchronous</text>
+<text x="1320" y="922" class="small" text-anchor="middle">Receive every update; replay gaps</text>
+<text x="1320" y="946" class="small" text-anchor="middle">Persist and apply independently</text>
+<path d="M480,900 L600,900" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#bluearrow)"/>
+<text x="540" y="884" class="small" text-anchor="middle">data</text>
+<path d="M600,935 L480,935" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#bluearrow)"/>
+<text x="540" y="958" class="small" text-anchor="middle">RAM ACK</text>
+<path d="M280,963 V990 H1320 V963" fill="none" stroke="#334155" stroke-width="2.5" stroke-dasharray="8 6" marker-end="url(#arrow)"/>
+<text x="800" y="1016" class="small" text-anchor="middle">Async stream + retained backlog · delivery survives disconnects and owner changes</text>
+<text x="800" y="1041" class="small muted" text-anchor="middle">ACK gate: local durability + synchronous receipt + commit/visibility rules. Local sync and transmission run in parallel.</text>
+<rect x="50" y="1077" width="735" height="126" rx="12" fill="#e8f0ff" stroke="#c9d9f2"/>
+<text x="74" y="1109" class="section" text-anchor="start">Failover and return</text>
+<text x="74" y="1138" class="small" text-anchor="start">Either replica may take over; I/O waits for catch-up and fencing.</text>
+<text x="74" y="1163" class="small" text-anchor="start">Establish a ready sync partner before normal writes resume.</text>
+<text x="74" y="1188" class="small" text-anchor="start">Returning old primary follows the new owner and replays its log.</text>
+<rect x="805" y="1077" width="745" height="126" rx="12" fill="#fff4df" stroke="#e9d4a8"/>
+<text x="829" y="1109" class="section" text-anchor="start">Normal operation: at least 2 ready replicas</text>
+<text x="829" y="1138" class="small" text-anchor="start">Emergency: one designated node; explicit activation and fencing.</text>
+<text x="829" y="1163" class="small" text-anchor="start">Other nodes stay excluded; manual admission and replay to recover.</text>
+<text x="829" y="1188" class="small" text-anchor="start">In-memory partner ACK intentionally permits a multi-failure loss gap.</text>
+<text x="50" y="1236" class="small muted" text-anchor="start">NFS retirement: Pod → kernel 9p → bhyve → HomelabFS → ZFS. Share the HomelabFS mount, never its raw backing directory.</text>
+</svg>
