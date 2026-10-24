@@ -125,7 +125,7 @@ timeout 120 python3 /var/tmp/homelabfs-9p-build/check-io.py /mnt/homelabfs-9p-po
 
 Each script creates and removes its own temporary subdirectory. Run the same scripts on the raw 9p root for comparison. Record exit codes and JSON; do not treat a timeout or missing output as success. These checks do not simulate power loss or prove production compatibility.
 
-For fio, install `fio` with `doas pkg install fio` on FreeBSD and `dnf install fio` on Rocky. Copy `tools/poc/compare.fio` to both. Use the same job file with `fio --directory=TEST_DIRECTORY --output-format=json --output=RESULT.json compare.fio` on three distinct directories: direct f3/ZFS, guest raw 9p, and guest 9p/FUSE. Run paths sequentially, preserve version information, check every job's `error`, and remove only `sequential.bin` and `random.bin` created by the jobs. See the results document for timings and limits.
+For fio, install `fio` with `doas pkg install fio` on FreeBSD and `dnf install fio` on Rocky. Copy `tools/poc/compare.fio` to both. Use the same job file with `fio --directory=TEST_DIRECTORY --output-format=json --output=RESULT.json compare.fio` on four distinct directories: direct f3/ZFS, f3 through the host FUSE mount, guest raw 9p, and guest 9p/FUSE. For the host-only FUSE run, use a fresh directory under `/var/tmp/homelabfs-9p-poc/share/fuse/`, not the raw backing directory. Run paths sequentially, preserve version information, check every job's `error`, and remove only `sequential.bin` and `random.bin` created by the jobs. See the results document for timings and limits.
 
 ## 6. Cleanup and rollback
 

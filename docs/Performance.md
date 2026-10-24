@@ -48,4 +48,4 @@ Additional integration scenarios: change pool size under load; kill one data con
 
 ## Initial transport measurements
 
-The [f3 / Rocky fio comparison](PoC-fuse-and-benchmarks.md) measures direct host ZFS, 9p, and 9p plus Go FUSE using identical buffered jobs. These results establish a preliminary transport baseline; they contain no replication or journal overhead and are not production targets.
+The [f3 / Rocky fio comparison](PoC-fuse-and-benchmarks.md) measures direct host ZFS, host Go FUSE, 9p, and 9p plus Go FUSE using identical buffered jobs. These results establish a preliminary transport baseline; they contain no replication or journal overhead and are not production targets.

@@ -40,17 +40,18 @@ An additional 16 MiB file written through the guest's FUSE-backed path produced 
 
 Used fio as the benchmark available on both operating systems: FreeBSD **3.43**, Rocky **3.35**. These are different packaged versions, so this is an initial comparison rather than a controlled version-identical benchmark.
 
-All paths used the same [job file](../tools/poc/compare.fio): synchronous engine, one job, queue depth one, buffered I/O, 256 MiB sequential writes in 1 MiB blocks with a final fsync, sequential read-back with CRC32C verification, then ten seconds of random 4 KiB writes in a 64 MiB file with fsync after each write. Buffers are refilled. Paths ran sequentially; three repetitions were collected, rotating path order after the initial run. All 27 jobs reported `error=0`.
+All paths used the same [job file](../tools/poc/compare.fio): synchronous engine, one job, queue depth one, buffered I/O, 256 MiB sequential writes in 1 MiB blocks with a final fsync, sequential read-back with CRC32C verification, then ten seconds of random 4 KiB writes in a 64 MiB file with fsync after each write. Buffers are refilled. Paths ran sequentially; three repetitions were collected, rotating path order after the initial run. The FreeBSD → FUSE → ZFS path was added afterward as three consecutive runs with the same job file and host fio version, using `/var/tmp/homelabfs-9p-poc/share/fuse/fio-host`. All 36 jobs across the four paths reported `error=0`.
 
 Values below are the median of three runs, with the observed minimum–maximum in parentheses. Random-write IOPS cover the write-plus-sync loop; fsync p95 is the median of the three per-run fsync p95 values and excludes the preceding write syscall.
 
 | Path | Sequential write MiB/s | Read/verify MiB/s | Random write + fsync IOPS | fsync p95 ms |
 |---|---:|---:|---:|---:|
 | FreeBSD directly on ZFS | 405.7 (265.0–407.0) | 3657.1 (1333.3–3938.5) | 1427.1 (1264.8–1452.7) | 0.668 |
+| FreeBSD → FUSE → ZFS | 303.3 (299.1–343.6) | 1168.9 (1032.3–1219.0) | 1278.9 (1267.1–1405.9) | 0.750 |
 | Rocky → 9p → ZFS | 190.8 (181.8–291.9) | 1000.0 (588.5–1855.1) | 990.9 (966.7–1089.9) | 0.938 |
 | Rocky → 9p → FUSE → ZFS | 241.7 (235.3–246.2) | 755.2 (719.1–775.8) | 867.8 (855.0–933.0) | 0.954 |
 
-The layered path had lower random write-and-sync throughput in this sample. Its higher sequential-write result than raw 9p is not evidence that adding FUSE improves performance: the short buffered workload, differing cache behavior, and run-to-run variation prevent that conclusion. Read results include cache effects and must not be described as physical disk throughput. Caches were not globally flushed, the host was not otherwise isolated, and the test set fits in memory. fio's own cache invalidation behavior may also differ by OS.
+The host-only FUSE row isolates the additional filesystem layer without involving bhyve or 9p, although it was measured later rather than interleaved with the original baselines. It uses the same FreeBSD fio binary and ZFS dataset as the direct-host baseline. The layered path had lower random write-and-sync throughput in this sample. Its higher sequential-write result than raw 9p is not evidence that adding FUSE improves performance: the short buffered workload, differing cache behavior, and run-to-run variation prevent that conclusion. Read results include cache effects and must not be described as physical disk throughput. Caches were not globally flushed, the host was not otherwise isolated, and the test set fits in memory. fio's own cache invalidation behavior may also differ by OS.
 
 No replication or application journal was involved. These results are not a latency SLA, power-loss durability test, or estimate of final HomelabFS throughput.
 
@@ -59,6 +60,7 @@ Raw evidence:
 | Path | Run 1 | Run 2 | Run 3 |
 |---|---|---|---|
 | FreeBSD ZFS | [JSON](poc-results/fio-freebsd-zfs.json) | [JSON](poc-results/fio-freebsd-zfs-2.json) | [JSON](poc-results/fio-freebsd-zfs-3.json) |
+| FreeBSD FUSE/ZFS | [JSON](poc-results/fio-freebsd-fuse-zfs-1.json) | [JSON](poc-results/fio-freebsd-fuse-zfs-2.json) | [JSON](poc-results/fio-freebsd-fuse-zfs-3.json) |
 | Rocky 9p | [JSON](poc-results/fio-rocky-9p.json) | [JSON](poc-results/fio-rocky-9p-2.json) | [JSON](poc-results/fio-rocky-9p-3.json) |
 | Rocky 9p/FUSE | [JSON](poc-results/fio-rocky-9p-fuse.json) | [JSON](poc-results/fio-rocky-9p-fuse-2.json) | [JSON](poc-results/fio-rocky-9p-fuse-3.json) |
 
