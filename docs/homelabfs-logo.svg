@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">HomelabFS — Sync weave</title>
+  <desc id="desc">Three rose-colored angular paths interlock around a central hexagonal volume, forming a geometric knot that represents replication.</desc>
+  <g fill="none" stroke="#db4d6d" stroke-width="17" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M52 122 30 84l33-57h54l20 35"/>
+    <path d="m70 38 44 0 34 58-27 47H81"/>
+    <path d="m139 109-22 38H50L23 100l20-35"/>
+  </g>
+  <path d="m90 69 23 13v27l-23 13-23-13V82Z" fill="#db4d6d"/>
+</svg>

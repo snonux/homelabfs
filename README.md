@@ -1,5 +1,7 @@
 # HomelabFS
 
+<img src="docs/homelabfs-logo.png" alt="HomelabFS logo: three rose-colored angular paths interlock around a central hexagonal volume, forming a geometric knot that represents replication." width="180" height="180">
+
 **Concept phase — architecture notes and experimental compatibility probes. No distributed HomelabFS implementation is available yet.**
 
 HomelabFS is a planned distributed filesystem for the f3s homelab, designed to retire NFS. It will use local ZFS storage on FreeBSD hosts, with replication and workload failover implemented in Go.
