@@ -1,10 +1,10 @@
 # f3 / Rocky compatibility check
 
-Live inspection and transport PoC on 2026-10-24. The 9p transport now works on an alternative kernel; the full HomelabFS FUSE path remains untested.
+Live inspection and transport PoC on 2026-10-24. The 9p transport now works on an alternative kernel. Follow-up [FUSE and benchmark results](PoC-fuse-and-benchmarks.md) cover the passthrough layer; distributed HomelabFS remains unimplemented.
 
 ## Initial stock-kernel result
 
-**The proposed virtio-9p path cannot run with the inspected guest kernel.** Its configuration disables NET_9P, and the required modules are absent. The guest also has no configured virtio-9p share. This blocks full-path permission, locking, mmap, sync, database, and recovery tests.
+**The proposed virtio-9p path cannot run with the inspected guest kernel.** Its configuration disables NET_9P, and the required modules are absent. At initial inspection the guest also had no configured virtio-9p share. The later experiment below overcame these prerequisites with an alternative kernel and an isolated share.
 
 ## Evidence
 
@@ -25,7 +25,7 @@ Inspection used SSH, kernel configuration and module inventory, vm-bhyve configu
 
 `kernel-modules-extra` is not installed, but the explicit disabled kernel configuration means this must not be treated as merely a missing mount helper. A kernel/module build with 9p support is needed; compatibility and maintenance of any replacement must be evaluated.
 
-## Next experiment
+## Initial experiment plan
 
 1. Prepare a disposable Rocky test guest with a kernel that enables the 9p filesystem and virtio transport. Alternatively, explicitly schedule the kernel change and restart of the existing development VM.
 2. Configure a dedicated bhyve virtio-9p share backed only by disposable test data. First test ordinary ZFS directory access to isolate transport problems.
@@ -99,4 +99,4 @@ These are short buffered smoke measurements, including Python, data-generation a
 
 ## Remaining gates
 
-The working path is Rocky → virtio-9p → ordinary host ZFS files. It does **not** yet include the Go FUSE daemon. No host power-loss, bhyve crash, replication, fencing, PostgreSQL, or Kubernetes test has run. A successful fsync syscall and a process-crash SQLite check do not prove power-loss durability. The next experiment inserts FUSE and checks propagation, restart behavior, cache fencing, and real workload compatibility.
+The working path is Rocky → virtio-9p → ordinary host ZFS files. It does **not** yet include the Go FUSE daemon. No host power-loss, bhyve crash, replication, fencing, PostgreSQL, or Kubernetes test has run. A successful fsync syscall and a process-crash SQLite check do not prove power-loss durability. The subsequent [FUSE experiment](PoC-fuse-and-benchmarks.md) inserts a Go passthrough and runs functional/I/O checks. Propagation under failure, cache fencing, and full workload compatibility remain acceptance gates. See the [reproduction runbook](PoC-runbook.md) and [package-distribution plan](Packaging-and-rollout.md).

@@ -1,6 +1,6 @@
 # HomelabFS architecture
 
-**Live PoC:** stock Rocky 9 lacks 9p support and the matching-source module build failed. A one-time boot of ELRepo kernel-lt enabled 9p; basic I/O and SQLite WAL passed with cache=mmap. The FUSE layer remains untested. See [f3 / Rocky PoC findings](PoC-f3-rocky.md).
+**Live PoC:** stock Rocky 9 lacks 9p support and the matching-source module build failed. A one-time boot of ELRepo kernel-lt enabled 9p; basic I/O and SQLite WAL passed with cache=mmap. The combined 9p/FUSE path also passes initial functional checks; see [FUSE and benchmark results](PoC-fuse-and-benchmarks.md). See [f3 / Rocky PoC findings](PoC-f3-rocky.md).
 
 HomelabFS is a distributed filesystem for the f3s homelab, primarily on FreeBSD. Its purpose is to retire NFS from f3s by replacing NFS-backed workload storage with local HomelabFS access, replication, and automatic failover. The default cluster has three nodes, each providing local ZFS storage and running workloads. Additional nodes can be admitted, including a fourth node. This is an initial design, not an implemented or proven protocol.
 
@@ -65,3 +65,7 @@ Diagrams live with the topics they illustrate: placement in Cluster and ownershi
 5. Choose a Go FUSE library supporting both platform adapters, prototype mounts on both real kernels, and validate the selected bhyve virtio-9p to FreeBSD FUSE path and f3s application semantics.
 
 Suggested development order: validate the selected guest transport and both FUSE frontends; specify and exercise the commit/fencing state machine; local filesystem and journal replay; replication with fixed ownership; bounded queues and restart recovery; then automatic ownership transfer with partition/crash tests and Kubernetes integration. Follow the [integration-test matrix and rollout gates](Integration-tests.md#integration-test-matrix) before migrating real data.
+
+## Packaging and validation
+
+Distribute validated kernel/module RPMs through `pkgrepo.f3s.buetow.org`, building once per supported target and reusing the same artifacts across nodes. See [Packaging and rollout](Packaging-and-rollout.md) and the [PoC runbook](PoC-runbook.md). This is planned distribution, not a completed cluster rollout.

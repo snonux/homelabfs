@@ -2,7 +2,7 @@
 
 [Architecture overview](Architecture.md)
 
-Planned fault-injection and application tests. No HomelabFS implementation or fault tests have been run; the expected outcomes are acceptance requirements.
+Planned fault-injection and application tests. No distributed HomelabFS implementation or protocol fault tests have been run; the expected outcomes are acceptance requirements. Initial [9p/FUSE passthrough tests](PoC-fuse-and-benchmarks.md) now provide limited transport evidence and do not satisfy the whole matrix.
 
 ## Early compatibility gates
 

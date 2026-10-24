@@ -45,3 +45,7 @@ Measure p50/p95/p99 latency, throughput, queue wait, local sync time, partner re
 Benchmark one and many volumes; small sync writes, metadata operations, sequential transfers, and database workloads; healthy and slow peers; and live traffic during snapshot catch-up. Compare baseline versus extra connections while holding durability, cache settings, workloads, and resource budgets constant. A throughput gain that makes tail latency or catch-up unacceptable is not automatically an improvement.
 
 Additional integration scenarios: change pool size under load; kill one data connection while its control connection survives; deliver ACKs before local processing sees the matching data; reconnect with duplicate frames; pause one volume while others progress; overload the receiver; and scale down with accepted work in flight. Require bounded resources, preserved ordering, fair progress, and no loss of acknowledged operations outside the established durability gap.
+
+## Initial transport measurements
+
+The [f3 / Rocky fio comparison](PoC-fuse-and-benchmarks.md) measures direct host ZFS, 9p, and 9p plus Go FUSE using identical buffered jobs. These results establish a preliminary transport baseline; they contain no replication or journal overhead and are not production targets.

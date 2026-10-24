@@ -1,6 +1,6 @@
 # HomelabFS platform interfaces
 
-**Live PoC:** stock Rocky 9 lacks 9p support and the matching-source module build failed. A one-time boot of ELRepo kernel-lt enabled 9p; basic I/O and SQLite WAL passed with cache=mmap. The FUSE layer remains untested. See [f3 / Rocky PoC findings](PoC-f3-rocky.md).
+**Live PoC:** stock Rocky 9 lacks 9p support and the matching-source module build failed. A one-time boot of ELRepo kernel-lt enabled 9p; basic I/O and SQLite WAL passed with cache=mmap. A minimal Go FUSE loopback now passes the initial 9p/FUSE functional suite; [results and remaining gates](PoC-fuse-and-benchmarks.md) distinguish this from production validation. See [f3 / Rocky PoC findings](PoC-f3-rocky.md).
 
 [Architecture overview](Architecture.md)
 
@@ -64,7 +64,7 @@ flowchart LR
     D --> R[Replica daemons]
 ```
 
-Export the HomelabFS mount, not its raw ZFS backing directory: otherwise writes bypass journaling, ownership, and replication. This layered path is selected architecturally but has not yet been implemented or validated on the deployed hosts. Verify the installed bhyve release and Rocky kernel support for CONFIG_9P_FS, CONFIG_NET_9P, and CONFIG_NET_9P_VIRTIO; generic Linux support does not establish that the deployed Rocky kernel includes those drivers.
+Export the HomelabFS mount, not its raw ZFS backing directory: otherwise writes bypass journaling, ownership, and replication. A minimal Go passthrough has now exercised this layered path on f3/rocky; the distributed HomelabFS implementation and full workload/failure semantics remain unvalidated. Verify the installed bhyve release and Rocky kernel support for CONFIG_9P_FS, CONFIG_NET_9P, and CONFIG_NET_9P_VIRTIO; generic Linux support does not establish that the deployed Rocky kernel includes those drivers.
 
 Prototype permissions/UID mapping, fsync propagation, locking, mmap, caching, file identity, and host-daemon restart behavior through the complete 9p-to-FUSE stack. Confirm loss of HomelabFS cannot expose the underlying mountpoint directory as an accidental writable fallback. Treat these checks as acceptance gates for the selected transport; any failure requires an explicit design revision rather than silently changing the guest access path. Do not assume virtio-9p is virtio-fs; they are different interfaces.
 

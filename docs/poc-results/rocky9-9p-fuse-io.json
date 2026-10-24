@@ -1,0 +1,57 @@
+{
+  "sequential": {
+    "bytes": 134217728,
+    "sha256": "4d46fd372c28ccd8ff5fa911a5b74432f9ddf6ca0710b0e61bbeed618e297080",
+    "verified": true,
+    "write_MiB_s": 94.92,
+    "read_MiB_s": 383.2,
+    "write_seconds": 1.348,
+    "read_seconds": 0.334
+  },
+  "random_4KiB_write_fsync": {
+    "operations": 256,
+    "verified_blocks": 251,
+    "p50_ms": 0.86,
+    "p95_ms": 0.972,
+    "max_ms": 1.837,
+    "verified": true
+  },
+  "four_parallel_files": [
+    {
+      "bytes": 16777216,
+      "sha256": "bc73b5d890b5653b14a3c73ab2b27c0de27943cbe5793a2b222b5e5566808746",
+      "verified": true,
+      "write_MiB_s": 81.35,
+      "read_MiB_s": 578.93,
+      "write_seconds": 0.197,
+      "read_seconds": 0.028
+    },
+    {
+      "bytes": 16777216,
+      "sha256": "7be1c17f80d008ea8b9b4342e1497b6e237b961b01237f22c83932aa46e73588",
+      "verified": true,
+      "write_MiB_s": 119.83,
+      "read_MiB_s": 478.17,
+      "write_seconds": 0.134,
+      "read_seconds": 0.033
+    },
+    {
+      "bytes": 16777216,
+      "sha256": "2425ee50f3a3b4f294a800673134894fe753dfcb993db95c08ac71522d9d1031",
+      "verified": true,
+      "write_MiB_s": 70.75,
+      "read_MiB_s": 575.45,
+      "write_seconds": 0.226,
+      "read_seconds": 0.028
+    },
+    {
+      "bytes": 16777216,
+      "sha256": "c9105585653bff2d3dd08e6e2791cd99fd7182e5f3560ecf8b85da20c240aba3",
+      "verified": true,
+      "write_MiB_s": 97.95,
+      "read_MiB_s": 553.05,
+      "write_seconds": 0.163,
+      "read_seconds": 0.029
+    }
+  ]
+}

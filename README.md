@@ -1,6 +1,6 @@
 # HomelabFS
 
-**Concept phase — architecture and design notes only. No filesystem implementation is available yet.**
+**Concept phase — architecture notes and experimental compatibility probes. No distributed HomelabFS implementation is available yet.**
 
 HomelabFS is a planned distributed filesystem for the f3s homelab, designed to retire NFS. It will use local ZFS storage on FreeBSD hosts, with replication and workload failover implemented in Go.
 
@@ -59,6 +59,9 @@ Start with the [architecture overview](docs/Architecture.md).
 
 | Document | Topic |
 |---|---|
+| [PoC setup runbook](docs/PoC-runbook.md) | Reproduce the kernel, bhyve, FUSE, and test setup |
+| [FUSE and benchmark results](docs/PoC-fuse-and-benchmarks.md) | Combined-path checks and fio comparison |
+| [Package distribution](docs/Packaging-and-rollout.md) | Build once and serve validated artifacts through pkgrepo |
 | [f3 / Rocky PoC findings](docs/PoC-f3-rocky.md) | Stock-kernel blocker, working ELRepo/9p experiment, and I/O results |
 | [Motivation and goals](docs/Motivation-and-goals.md) | Why the project exists and what it aims to provide |
 | [Cluster and ownership](docs/Cluster-and-ownership.md) | Membership, placement, and coordination |
