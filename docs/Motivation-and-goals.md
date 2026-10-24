@@ -4,9 +4,25 @@
 
 The goal is simple: highly available file storage for my home lab, built on the FreeBSD and ZFS foundations I already use.
 
+I also want to learn about distributed filesystems by building one, and have fun doing it. Exploring replication, consistency, failure recovery, and filesystem interfaces is part of the purpose of HomelabFS, even where an existing product might be the more practical choice.
+
 My f3s setup runs Kubernetes inside Rocky Linux bhyve VMs on FreeBSD hosts. The pod workloads need ordinary persistent files: directories, permissions, locking, renames, and reliable sync behavior. When a workload moves to another node, its storage should follow and recover automatically. HomelabFS is intended to provide that while retiring NFS from f3s.
 
 I have not found an existing solution that fits this combination of platform, filesystem semantics, and operational scope well enough. That is the motivation for exploring HomelabFS.
+
+## Lessons from the f3s blog series
+
+[Part 1: Setting the stage](https://foo.zone/gemfeed/2024-11-17-f3s-kubernetes-with-freebsd-part-1.html) explains the foundations: affordable self-hosting, control over the infrastructure, learning, and FreeBSD's ZFS integration. It initially proposed HAST-backed NFS. HomelabFS continues those goals with a different storage design.
+
+[Part 6: Storage](https://foo.zone/gemfeed/2025-07-14-f3s-kubernetes-with-freebsd-part-6.html) records the practical constraints:
+
+- **HAST:** an automatic failover left a ZFS pool unmountable in my setup; I suspected misconfiguration. I chose zrepl for snapshot-based recovery. This experience is not proof that HAST inherently corrupts ZFS.
+- **zrepl with CARP/NFS:** minute-interval replication was an acceptable compromise, but automatic takeover was read-only. Enabling writes required manual intervention to avoid divergent datasets. Moving an IP did not solve data ownership.
+- **NFS integration:** native FreeBSD/Linux NFS-over-TLS did not work in that setup, leading to stunnel. Stale mounts needed recovery automation; a later incident escaped mountpoint/stat checks and prompted write probes and escalation.
+- **Shared storage:** the post avoided a single shared iSCSI dependency as a failure point; this is not a claim that every iSCSI design lacks redundancy.
+- **Other candidates:** MinIO and MooseFS were future explorations. MooseFS was described positively for FreeBSD and POSIX support, not rejected. Its suitability remains an open comparison.
+
+These are historical observations, not universal product limitations. HomelabFS must demonstrate safer ownership transfer and usable application recovery before replacing the existing system.
 
 ## Why the existing options do not fit this setup
 
@@ -23,6 +39,16 @@ I have not found an existing solution that fits this combination of platform, fi
 5. **Keep operation manageable.** Start with three nodes, allow expansion, reuse WireGuard, and keep coordination out of normal reads and writes.
 6. **Make recovery explicit.** Preserve replayable journals, test external snapshot restores, and provide a controlled single-node emergency mode when manual intervention is necessary.
 7. **Make tradeoffs visible.** The synchronous partner may acknowledge in memory for speed. That deliberately accepts a documented multi-failure data-loss window; it does not relax conflict prevention or permit silent stale recovery.
+
+8. **Learn and enjoy building it.** Use the project to understand distributed storage through implementation, experiments, and failure testing.
+
+## Workload and operational fit
+
+[Part 8: Observability](https://foo.zone/gemfeed/2025-12-07-f3s-kubernetes-with-freebsd-part-8.html) describes persistent filesystem paths for Prometheus, Grafana, Loki, and Tempo. These belong in the application test inventory alongside databases and file services. Mount success alone is insufficient: workloads must recover their stored state.
+
+[Part 9: GitOps with ArgoCD](https://foo.zone/gemfeed/2026-04-02-f3s-kubernetes-with-freebsd-part-9.html) describes ordering persistent volumes before dependent applications. HomelabFS migration must preserve that deployment discipline and add actual storage-readiness checks; a Kubernetes object existing does not prove a volume is safe to serve.
+
+[Part 10: A New Home](https://foo.zone/gemfeed/2026-09-01-f3s-kubernetes-with-freebsd-part-10.html) describes separate local, offsite, and encrypted cloud backups. HomelabFS replication complements that recovery strategy. It does not replace backups or external ZFS snapshots.
 
 ## Current scope
 

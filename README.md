@@ -8,7 +8,7 @@ Each workload owns an independent directory/persistent volume. Its reads and wri
 
 ## Why HomelabFS?
 
-The goal is highly available file storage for my home lab, built on FreeBSD and ZFS, with the POSIX-style file access my Kubernetes workloads require. Read [why HomelabFS exists and its design goals](docs/Motivation-and-goals.md), including why GlusterFS, Ceph, and S3 object storage do not fit this setup.
+The goal is highly available file storage for my home lab, built on FreeBSD and ZFS, with the POSIX-style file access my Kubernetes workloads require. Learning about distributed filesystems and having fun building one are also goals in their own right. Read [why HomelabFS exists and its design goals](docs/Motivation-and-goals.md), including why GlusterFS, Ceph, and S3 object storage do not fit this setup.
 
 ## Architecture
 

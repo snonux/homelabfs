@@ -38,6 +38,8 @@ Compatibility testing must cover the full path from a Linux pod through the gues
 
 ## NFS retirement and migration
 
+The [f3s storage history](Motivation-and-goals.md#lessons-from-the-f3s-blog-series) explains why replacing the existing stack must improve recovery as well as remove NFS. Require an end-to-end write/sync/read probe in a dedicated health-check directory on an active volume, with a deadline and cleanup. Run it through the pod's actual mount path. Report intentional catch-up or fencing stalls separately from unexpected failures; probes must never bypass the ownership gate. A failed probe alone must not authorize promotion or destructive recovery.
+
 Retiring NFS from f3s is an explicit project goal. Existing NFS mounts, hostPath PVs, and paths such as `/data/nfs/k3svolumes` describe the current system, not a requirement of the new architecture. The replacement path is pod → Rocky kernel 9p client → colocated bhyve virtio-9p share → FreeBSD HomelabFS mount → local ZFS and peer replication. NFS is not a fallback in the intended final deployment.
 
 Inventory all f3s NFS consumers and migrate their data and volume mappings. Preserve application-visible paths where useful, but do not infer the transport from a legacy path name. Validate ownership/permissions, application recovery, normal operation, and failover for each workload before retiring its old storage path. Coordinate cutover so old NFS clients and HomelabFS cannot write independent copies of the same workload data.

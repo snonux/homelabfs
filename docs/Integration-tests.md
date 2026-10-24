@@ -99,3 +99,14 @@ The additional [security integration tests](Security.md#security-integration-tes
 ## Concurrency and journal housekeeping coverage
 
 Additional [performance scenarios](Performance.md#measurement-and-tests) exercise connection scaling, mixed workloads, overload, and fairness. [Journal housekeeping scenarios](Journal-storage.md#integration-tests) cover checkpoint/cleanup crashes, offline replicas, quotas, snapshot-held space, and independent snapshot restores. These supplement the 41 core scenario families.
+
+## Regression coverage from f3s experience
+
+The [motivation document](Motivation-and-goals.md#lessons-from-the-f3s-blog-series) connects these requirements to the existing cluster's storage history. Extend the existing scenario families:
+
+- **K01/K04:** leave a mount present and metadata readable while writes or sync calls stall. The end-to-end health probe must detect the failure within its configured deadline, distinguish recovery gating, and avoid overlapping repair loops.
+- **R10/P05:** interrupt takeover during active writes and reopen application data through the guest mount after recovery. Validate local pool health, application integrity, and stale-handle behavior before releasing workload access.
+- **A02:** include Prometheus, Grafana, Loki, and Tempo state recovery in the workload inventory, using the deployed configurations. Verify stored data after restart and failover, not just pod readiness.
+- **K03/K05:** apply volume and workload manifests in deployment order while storage is still catching up. Applications must wait for real volume readiness even when PV/PVC objects already exist.
+
+These extend the existing tests; they do not assert that the proposed FUSE/9p path has already solved the old stack's recovery problems.
