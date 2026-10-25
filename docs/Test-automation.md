@@ -12,6 +12,8 @@ Read-only planning may inspect versions, available resources, and existing state
 
 Separately requested offline infrastructure preparation may create stopped VMs without authorizing a test run. The [f3 preparation](FreeBSD-lab-preparation.md) was explicitly requested and leaves the guests stopped. Its script does not authorize booting guests, stopping Rocky, or executing either test stage.
 
+The [initial PoC helpers](Lab-operations.md) now support explicit VM lifecycle actions and bounded compatibility checks. They were exercised during the separately approved 2026-10-25 run. They are not the complete plan-bound, crash-resumable runner specified below, and their flags do not grant approval for another run.
+
 ## Runner contract
 
 Implement the lifecycle as version-controlled scripts with explicit inputs and machine-readable outputs. The intended workflow is:

@@ -1,0 +1,3 @@
+Linux rocky 6.1.190-1.el9.elrepo.x86_64 #1 SMP PREEMPT_DYNAMIC Thu Oct 15 13:19:48 EDT 2026 x86_64 x86_64 x86_64 GNU/Linux
+Rocky Linux release 9.8 (Blue Onyx)
+Enforcing

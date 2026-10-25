@@ -1,5 +1,7 @@
 # Prepared FreeBSD lab on f3
 
+**Historical preparation record:** the guests were subsequently booted and validated in an approved run. See [current operations and results](Lab-operations.md). The stopped/never-booted statements below describe the end of preparation only.
+
 On 2026-10-25, f3 was powered on using the f3s skill's `f3sctl power f3 on` workflow. Three FreeBSD 15.1-RELEASE guests were prepared offline at the operator's request. **They are stopped and have never been booted. No integration or smoke tests were run.** Rocky remained running, with its configuration and `vm_list=rocky` unchanged.
 
 | VM | Private address | CPU | RAM | OS disk | ZFS data disk |

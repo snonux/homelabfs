@@ -4,7 +4,7 @@
 
 ## Preparation status
 
-Three stopped FreeBSD guests were prepared on f3 on 2026-10-25. See [inventory and reproduction instructions](FreeBSD-lab-preparation.md). They have never been booted; HomelabFS installation and test execution remain pending.
+Three stopped FreeBSD guests were prepared on f3 on 2026-10-25. See [inventory and reproduction instructions](FreeBSD-lab-preparation.md). They have since passed an approved native FUSE/ZFS PoC run; see [operations and results](Lab-operations.md). HomelabFS implementation/installation and the full integration matrix remain pending.
 
 ## Initial layout
 

@@ -1,0 +1,8 @@
+/dev/gpt/hfs-root2	/			ufs	rw,noatime 	1 1
+devfs			/dev			devfs	rw		0 0
+/dev/gpt/hfs-efi2	/boot/efi		msdosfs	rw		2 2
+hfsdata2		/var/db/homelabfs	zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata2/control	/var/db/homelabfs/control zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata2/journal	/var/db/homelabfs/journal zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata2/data		/var/db/homelabfs/data	zfs	rw,noatime,nfsv4acls 	0 0
+homelabfs-poc		/var/tmp/hfs-poc-20261025-initial-r4/mount fusefs.homelabf	rw		0 0

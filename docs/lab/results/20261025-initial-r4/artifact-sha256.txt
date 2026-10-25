@@ -1,0 +1,4 @@
+82e26cde9076ba4df0e30ebc6e76103bbf3aca01d1ef263135ef063c5dce895a  /tmp/homelabfs-fuse-poc
+e7044d7625e4d81ccee7dd54daa7dc6e22b899356e85dcf3b0e106577c1a2696  /tmp/hfs-lab-packages.tar
+155f52026f7713978d211010c0f42d2ce32e62bf3bba13516bf3837f9d23bef5  tools/poc/check-filesystem.py
+ba661748d0cbc6ae5e52bc028e9fe671215a05bdbef27f393a62ac4df00ea130  tools/poc/check-io.py

@@ -55,6 +55,10 @@ When a pod moves to another worker, the volume's primary can move with it. Eithe
 
 Routine failures should recover automatically when enough valid history and authority remain. Manual intervention is acceptable for emergency operation, ambiguous history, intentional rollback, or unavailable fencing.
 
+## Initial test infrastructure
+
+Three FreeBSD bhyve guests on f3 have passed the native FUSE/ZFS PoC checks. Each runs FUSE inside the guest. The separate Rocky 9p/FUSE regression also passed. See [lab operations, scripts, results, and current state](docs/Lab-operations.md); future test runs still require explicit approval.
+
 ## Design documents
 
 Start with the [architecture overview](docs/Architecture.md).

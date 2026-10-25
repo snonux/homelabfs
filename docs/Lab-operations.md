@@ -1,0 +1,137 @@
+# Initial lab: operations and agent handoff
+
+The infrastructure was booted and tested on **2026-10-25**, following explicit approval to start the guests, stop Rocky for RAM, and run the existing PoCs. See [preparation](FreeBSD-lab-preparation.md), [approval rules](Test-automation.md), and the future [integration matrix](Integration-tests.md).
+
+## Two distinct test paths
+
+```mermaid
+flowchart TB
+  Runner[Approved script runner on workstation] --> Jump[f3 SSH jump host]
+  Jump --> A
+  Jump --> B
+  Jump --> C
+  subgraph f3[Physical f3: bhyve]
+    subgraph A[hfs-test0: FreeBSD, 2 GiB]
+      Atest[Python probes] --> Afuse[Guest FUSE daemon] --> Azfs[Guest hfsdata0 ZFS pool]
+    end
+    subgraph B[hfs-test1: FreeBSD, 2 GiB]
+      Btest[Python probes] --> Bfuse[Guest FUSE daemon] --> Bzfs[Guest hfsdata1 ZFS pool]
+    end
+    subgraph C[hfs-test2: FreeBSD, 2 GiB]
+      Ctest[Python probes] --> Cfuse[Guest FUSE daemon] --> Czfs[Guest hfsdata2 ZFS pool]
+    end
+  end
+```
+
+Each native VM executes its **own** FUSE process and kernel module, using its **own** ZFS storage. f3 provides virtual hardware and outer disk storage. There is no host FUSE mount in this native data path. The guests can reach one another, but no replication or etcd service exists yet.
+
+A separate phase runs `Rocky → virtio-9p → f3 host FUSE → host ZFS`, using the earlier transport PoC. It requires stopping the three lab guests before starting Rocky. This is a regression check for eventual workload access, not part of the native three-VM integration test suite.
+
+## Inventory and access
+
+| Guest | Address | Storage |
+|---|---|---|
+| hfs-test0 | 172.31.253.11 | hfsdata0/{data,journal,control} |
+| hfs-test1 | 172.31.253.12 | hfsdata1/{data,journal,control} |
+| hfs-test2 | 172.31.253.13 | hfsdata2/{data,journal,control} |
+
+FreeBSD 15.1-RELEASE, two vCPUs, 2 GiB RAM, 20 GiB UFS OS disk and 16 GiB ZFS data disk per guest. Guest ARC limit: 256 MiB. The isolated `hfslab` bridge has host address 172.31.253.1, no uplink/NAT; guests have no default route. SSH uses Paul's public key and independently generated, pinned guest host keys:
+
+```sh
+ssh -o StrictHostKeyChecking=yes \
+  -o UserKnownHostsFile=docs/lab/f3-known_hosts \
+  -J paul@f3 root@172.31.253.11
+```
+
+Use `.12` or `.13` for the others. No private SSH keys are copied to f3 or the guests. Python 3.12.15 and its separately packaged SQLite module are installed in all guests. Their package inventories are in the result artifacts.
+
+## Approved native run
+
+Obtain approval for the run and any Rocky downtime first. From the repository root:
+
+```sh
+ssh f3 'doas -n vm list; swapinfo -h'
+tools/lab/vms.sh --approved-action stop-rocky
+tools/lab/vms.sh --approved-action start-lab
+```
+
+The lifecycle script waits for clean ACPI stops and never force-kills. Starting the lab rejects running Rocky/the other FreeBSD development VM, an insufficient physical-memory budget, active host swap use, or a changed guest RAM allocation. Still inspect other processes/VMs and memory pressure before approval: this small fixed-profile helper is not a general resource scheduler. Startup is asynchronous; wait for all three pinned SSH connections before running checks. No persistent autostart configuration is changed.
+
+Build once on a Go build machine:
+
+```sh
+(cd tools/poc/fuse-passthrough && \
+  GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 \
+  go build -o /tmp/homelabfs-fuse-poc .)
+```
+
+The initial run used Go 1.26.8 and go-fuse v2.9.0. The package bundle is cached on f3 as `/var/tmp/hfs-lab-packages.tar`; copy it locally:
+
+```sh
+scp f3:/var/tmp/hfs-lab-packages.tar /tmp/hfs-lab-packages.tar
+tools/lab/check-native-poc.sh --approved-run UNIQUE_RUN_ID \
+  /tmp/homelabfs-fuse-poc /tmp/hfs-lab-packages.tar
+```
+
+The script does not start/stop VMs. It refuses an existing run ID, stages dependencies over SSH, checks peer connectivity and guest ZFS, then mounts FUSE inside each guest. It runs the existing eight functional checks and bounded I/O probes against direct guest ZFS and guest FUSE sequentially. Functional invocations have 60-second limits; I/O invocations have 120-second limits. Payloads are confined to fresh directories; successful runs remove payloads and unmount FUSE. Scripts, binaries, package staging and logs remain under `/var/tmp/hfs-poc-RUN_ID` for inspection. Results are copied to `docs/lab/results/RUN_ID` on the workstation.
+
+The supplied flag acknowledges an already approved operator action; it is **not** an approval mechanism or authorization for unattended CI. The full plan-bound runner described in Test-automation remains future work. SSH transfer interruption may require manual inspection/cleanup; these helpers are not yet a durable, crash-resumable lifecycle system.
+
+### Recreate the offline dependency bundle
+
+On f3, with authorization to refresh test dependencies:
+
+```sh
+doas mkdir -p /var/tmp/hfs-lab-packages
+doas pkg fetch -y -d -o /var/tmp/hfs-lab-packages python312 py312-sqlite3
+doas pkg fetch -y -o /var/tmp/hfs-lab-packages pkg
+doas tar -cf /var/tmp/hfs-lab-packages.tar -C /var/tmp/hfs-lab-packages/All .
+doas chmod 644 /var/tmp/hfs-lab-packages.tar
+```
+
+The current archive contains `Hashed/*.pkg`; the runner discovers packages recursively. `pkg` must be upgraded in a separate invocation before the remaining packages, allowing the new process to migrate its local database. `pkg add` uses `ASSUME_ALWAYS_YES`, not `-y`. The cached bundle is a snapshot of the initial setup, not a permanent dependency update policy. A newly fetched bundle needs its versions/checksum recorded and validation again. Future distribution belongs in [pkgrepo](Packaging-and-rollout.md).
+
+## Approved 9p regression phase
+
+After native probes finish and remove their mounts:
+
+```sh
+tools/lab/vms.sh --approved-action stop-lab
+tools/lab/vms.sh --approved-action start-rocky
+```
+
+Wait for Rocky SSH. Its normal stock kernel lacks 9p. Follow the [PoC runbook](PoC-runbook.md) to select the installed ELRepo `6.1.190-1.el9.elrepo.x86_64` kernel with `grub2-reboot` for one boot, then reboot cleanly. Discover the entry ID locally; retain the stock default. Use `ssh root@rocky` for administration: Paul's account does not have general sudo permission. The stock default observed during this run was `5.14.0-687.60.1.el9_8.x86_64`.
+
+The existing Rocky bhyve config exports `homelabfs_poc=/var/tmp/homelabfs-9p-poc/share` at slot `0:7:0`. Do not add a duplicate device. Once `modinfo 9pnet_virtio` succeeds:
+
+```sh
+tools/lab/check-9p-poc.sh --approved-run UNIQUE_9P_RUN_ID \
+  /tmp/homelabfs-fuse-poc
+```
+
+This creates a fresh host FUSE mount beneath the existing export and a fresh guest 9p mount using `cache=mmap`. It runs the same functional/I/O probes on raw 9p and 9p/FUSE, collects evidence, then normally unmounts both layers and removes empty backing/mount directories. No fstab or service entry is added. If a connection or cleanup fails, inspect guest and host mounts before deleting any directory. Do not recursively delete through a live mount.
+
+To return to the lab arrangement:
+
+```sh
+tools/lab/vms.sh --approved-action stop-rocky
+tools/lab/vms.sh --approved-action start-lab
+```
+
+## Initial results and setup fixes
+
+The successful native run is [`20261025-initial-r4`](lab/results/20261025-initial-r4/): all **48 functional checks passed** (three guests × two paths × eight checks). All six bounded I/O invocations passed checksum/read-back verification for a 128 MiB sequential file, 256 random 4 KiB writes with per-write fsync, and four concurrent 16 MiB files. Each guest reached all three lab addresses. These are functional smoke checks, not a controlled performance benchmark.
+
+Earlier setup attempts are retained under `20261025-initial`, `-r2`, and `-r3`. They exposed package layout/CLI issues and a mount-readiness check that expected exactly `fusefs`. FreeBSD reports this named mount as `fusefs.homelabf`; the check now accepts the named subtype. A transient `pkg` schema error after updating pkg in the same process was fixed by using separate invocations; subsequent package queries succeeded. Those attempts are not filesystem test passes. No guest OS rebuild was needed.
+
+The native PoC still logs `Unimplemented opcode BMAP`, as in the earlier host experiment; the tested operations passed. No distributed journal, cross-node locks, ownership, failover, crash durability, or real application portfolio has been validated. These guests now provide the infrastructure on which that future implementation can be tested.
+
+The separate [`20261025-9p`](lab/results/20261025-9p/) regression passed all **16 functional checks** and both bounded I/O invocations for raw 9p and 9p/FUSE. Rocky ran ELRepo 6.1.190 for that phase, with SELinux enforcing and the stock kernel retained as its normal boot default. The three native guests were stopped throughout the Rocky phase. This run did not repeat fio; throughput from the Python smoke probe is not comparable to the prior controlled job settings.
+
+## Final state and next work
+
+At completion, all three lab guests are running, Rocky and the unrelated `freebsd` development VM are stopped, and guest ZFS pools import successfully after a clean stop/start. Final checks confirmed ping and TCP port 22 connectivity from every guest to every lab address; see [final state evidence](lab/results/20261025-final/). The temporary FUSE and 9p mounts are removed; no PoC daemon is configured to auto-start. Start a new approved check to create a fresh run-owned mount. Guest OS disks retain Python, package caches, the PoC binaries/scripts, and run logs. Successful probes removed their data payloads.
+
+`vm_list` still names only Rocky: a physical f3 restart will start Rocky and leave the lab guests stopped. Do not change that policy implicitly. Historical preparation manifests remain unchanged; inspect live state rather than treating them as current status.
+
+The next implementation work is HomelabFS itself and its plan-bound integration harness. Reuse the existing guests for bounded approved PoCs; do not confuse those reusable preparation assets with the eventual disposable per-run clone lifecycle. Before failure injection or replication testing, implement fencing, journals, role management, and test-cluster identity/credentials. Future runs still require fresh approval.

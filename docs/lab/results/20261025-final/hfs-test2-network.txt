@@ -1,0 +1,32 @@
+hfs-test2.test
+PING 172.31.253.11 (172.31.253.11): 56 data bytes
+64 bytes from 172.31.253.11: icmp_seq=0 ttl=64 time=0.502 ms
+64 bytes from 172.31.253.11: icmp_seq=1 ttl=64 time=0.436 ms
+
+--- 172.31.253.11 ping statistics ---
+2 packets transmitted, 2 packets received, 0.0% packet loss
+round-trip min/avg/max/stddev = 0.436/0.469/0.502/0.033 ms
+Connection to 172.31.253.11 22 port [tcp/ssh] succeeded!
+PING 172.31.253.12 (172.31.253.12): 56 data bytes
+64 bytes from 172.31.253.12: icmp_seq=0 ttl=64 time=0.208 ms
+64 bytes from 172.31.253.12: icmp_seq=1 ttl=64 time=0.413 ms
+
+--- 172.31.253.12 ping statistics ---
+2 packets transmitted, 2 packets received, 0.0% packet loss
+round-trip min/avg/max/stddev = 0.208/0.311/0.413/0.102 ms
+Connection to 172.31.253.12 22 port [tcp/ssh] succeeded!
+PING 172.31.253.13 (172.31.253.13): 56 data bytes
+64 bytes from 172.31.253.13: icmp_seq=0 ttl=64 time=0.161 ms
+64 bytes from 172.31.253.13: icmp_seq=1 ttl=64 time=0.147 ms
+
+--- 172.31.253.13 ping statistics ---
+2 packets transmitted, 2 packets received, 0.0% packet loss
+round-trip min/avg/max/stddev = 0.147/0.154/0.161/0.007 ms
+Connection to 172.31.253.13 22 port [tcp/ssh] succeeded!
+Routing tables
+
+Internet:
+Destination        Gateway            Flags         Netif Expire
+127.0.0.1          link#2             UH              lo0
+172.31.253.0/24    link#1             U            vtnet0
+172.31.253.13      link#2             UHS             lo0

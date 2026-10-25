@@ -1,0 +1,2 @@
+2026/10/25 11:23:50 READY pid=24494 mount=/var/tmp/homelabfs-9p-poc/share/20261025-9p backing=/var/tmp/homelabfs-fuse-poc/20261025-9p
+2026/10/25 11:23:55 Unimplemented opcode BMAP

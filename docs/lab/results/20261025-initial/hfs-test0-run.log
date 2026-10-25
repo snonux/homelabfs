@@ -1,0 +1,4 @@
+pkg: packages/*.pkg: No such file or directory
+pkg: Was 'pkg install packages/*.pkg' meant?
+
+Failed to install the following 1 package(s): packages/*.pkg

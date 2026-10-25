@@ -1,0 +1,48 @@
+FreeBSD hfs-test0.test 15.1-RELEASE FreeBSD 15.1-RELEASE releng/15.1-n283562-96841ea08dcf GENERIC amd64
+  pool: hfsdata0
+ state: ONLINE
+config:
+
+	NAME             STATE     READ WRITE CKSUM
+	hfsdata0         ONLINE       0     0     0
+	  gpt/hfs-data0  ONLINE       0     0     0
+
+errors: No known data errors
+NAME               USED  AVAIL  REFER  MOUNTPOINT
+hfsdata0           752K  15.0G   104K  /var/db/homelabfs
+hfsdata0/control    96K  15.0G    96K  /var/db/homelabfs/control
+hfsdata0/data       96K  15.0G    96K  /var/db/homelabfs/data
+hfsdata0/journal    96K  15.0G    96K  /var/db/homelabfs/journal
+Id Refs Address                Size Name
+ 1   12 0xffffffff80200000  2351bd0 kernel
+ 2    1 0xffffffff82e00000   3f2b98 zfs.ko
+ 3    1 0xffffffff82c11000    15ae0 fusefs.ko
+vfs.zfs.arc.max: 268435456
+/dev/gpt/hfs-root0	/			ufs	rw,noatime 	1 1
+devfs			/dev			devfs	rw		0 0
+/dev/gpt/hfs-efi0	/boot/efi		msdosfs	rw		2 2
+hfsdata0		/var/db/homelabfs	zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata0/data		/var/db/homelabfs/data	zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata0/control	/var/db/homelabfs/control zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata0/journal	/var/db/homelabfs/journal zfs	rw,noatime,nfsv4acls 	0 0
+PING 172.31.253.11 (172.31.253.11): 56 data bytes
+64 bytes from 172.31.253.11: icmp_seq=0 ttl=64 time=0.058 ms
+64 bytes from 172.31.253.11: icmp_seq=1 ttl=64 time=0.171 ms
+
+--- 172.31.253.11 ping statistics ---
+2 packets transmitted, 2 packets received, 0.0% packet loss
+round-trip min/avg/max/stddev = 0.058/0.114/0.171/0.056 ms
+PING 172.31.253.12 (172.31.253.12): 56 data bytes
+64 bytes from 172.31.253.12: icmp_seq=0 ttl=64 time=0.809 ms
+64 bytes from 172.31.253.12: icmp_seq=1 ttl=64 time=0.404 ms
+
+--- 172.31.253.12 ping statistics ---
+2 packets transmitted, 2 packets received, 0.0% packet loss
+round-trip min/avg/max/stddev = 0.404/0.607/0.809/0.202 ms
+PING 172.31.253.13 (172.31.253.13): 56 data bytes
+64 bytes from 172.31.253.13: icmp_seq=0 ttl=64 time=0.214 ms
+64 bytes from 172.31.253.13: icmp_seq=1 ttl=64 time=0.448 ms
+
+--- 172.31.253.13 ping statistics ---
+2 packets transmitted, 2 packets received, 0.0% packet loss
+round-trip min/avg/max/stddev = 0.214/0.331/0.448/0.117 ms

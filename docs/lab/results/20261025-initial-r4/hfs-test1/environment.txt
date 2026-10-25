@@ -1,0 +1,558 @@
+FreeBSD hfs-test1.test 15.1-RELEASE FreeBSD 15.1-RELEASE releng/15.1-n283562-96841ea08dcf GENERIC amd64
+  pool: hfsdata1
+ state: ONLINE
+config:
+
+	NAME             STATE     READ WRITE CKSUM
+	hfsdata1         ONLINE       0     0     0
+	  gpt/hfs-data1  ONLINE       0     0     0
+
+errors: No known data errors
+NAME               USED  AVAIL  REFER  MOUNTPOINT
+hfsdata1           740K  15.0G   104K  /var/db/homelabfs
+hfsdata1/control    96K  15.0G    96K  /var/db/homelabfs/control
+hfsdata1/data       96K  15.0G    96K  /var/db/homelabfs/data
+hfsdata1/journal    96K  15.0G    96K  /var/db/homelabfs/journal
+Id Refs Address                Size Name
+ 1   12 0xffffffff80200000  2351bd0 kernel
+ 2    1 0xffffffff82e00000   3f2b98 zfs.ko
+ 3    1 0xffffffff82c11000    15ae0 fusefs.ko
+vfs.zfs.arc.max: 268435456
+FreeBSD-acct-15.1              System resource accounting
+FreeBSD-acct-dbg-15.1          System resource accounting (debugging symbols)
+FreeBSD-acpi-15.1              Advanced Configuration and Power Interface (ACPI) utilities
+FreeBSD-acpi-dbg-15.1          Advanced Configuration and Power Interface (ACPI) utilities (debugging symbols)
+FreeBSD-apm-15.1               Intel / Microsoft APM BIOS utility
+FreeBSD-apm-dbg-15.1           Intel / Microsoft APM BIOS utility (debugging symbols)
+FreeBSD-at-15.1                Scheduled and batch command utilities
+FreeBSD-at-dbg-15.1            Scheduled and batch command utilities (debugging symbols)
+FreeBSD-atf-15.1               Automated Testing Framework
+FreeBSD-atf-dbg-15.1           Automated Testing Framework (debugging symbols)
+FreeBSD-atf-dev-15.1           Automated Testing Framework (development files)
+FreeBSD-atf-lib-15.1           Automated Testing Framework (libraries)
+FreeBSD-audit-15.1             OpenBSM auditing utilities
+FreeBSD-audit-dbg-15.1         OpenBSM auditing utilities (debugging symbols)
+FreeBSD-audit-dbg-lib32-15.1   OpenBSM auditing utilities (32-bit debugging symbols)
+FreeBSD-audit-dev-15.1         OpenBSM auditing utilities (development files)
+FreeBSD-audit-dev-lib32-15.1   OpenBSM auditing utilities (32-bit development files)
+FreeBSD-audit-lib-15.1         OpenBSM auditing utilities (libraries)
+FreeBSD-audit-lib32-15.1       OpenBSM auditing utilities (32-bit libraries)
+FreeBSD-autofs-15.1            File system automounter
+FreeBSD-autofs-dbg-15.1        File system automounter (debugging symbols)
+FreeBSD-bhyve-15.1             bhyve virtual machine hypervisor
+FreeBSD-bhyve-dbg-15.1         bhyve virtual machine hypervisor (debugging symbols)
+FreeBSD-blocklist-15.1         Network blocklist daemon
+FreeBSD-blocklist-dbg-15.1     Network blocklist daemon (debugging symbols)
+FreeBSD-blocklist-dbg-lib32-15.1 Network blocklist daemon (32-bit debugging symbols)
+FreeBSD-blocklist-dev-15.1     Network blocklist daemon (development files)
+FreeBSD-blocklist-dev-lib32-15.1 Network blocklist daemon (32-bit development files)
+FreeBSD-blocklist-lib32-15.1   Network blocklist daemon (32-bit libraries)
+FreeBSD-bluetooth-15.1         Bluetooth support
+FreeBSD-bluetooth-dbg-15.1     Bluetooth support (debugging symbols)
+FreeBSD-bluetooth-dbg-lib32-15.1 Bluetooth support (32-bit debugging symbols)
+FreeBSD-bluetooth-dev-15.1     Bluetooth support (development files)
+FreeBSD-bluetooth-dev-lib32-15.1 Bluetooth support (32-bit development files)
+FreeBSD-bluetooth-lib-15.1     Bluetooth support (libraries)
+FreeBSD-bluetooth-lib32-15.1   Bluetooth support (32-bit libraries)
+FreeBSD-bmake-15.1             Program maintenance utility
+FreeBSD-bmake-dbg-15.1         Program maintenance utility (debugging symbols)
+FreeBSD-bootloader-15.1        System boot loader
+FreeBSD-bootloader-dbg-15.1    System boot loader (debugging symbols)
+FreeBSD-bootloader-dev-15.1    System boot loader (development files)
+FreeBSD-bsdconfig-15.1         System configuration utility
+FreeBSD-bsdinstall-15.1        System installer
+FreeBSD-bsdinstall-dbg-15.1    System installer (debugging symbols)
+FreeBSD-bsnmp-15.1             Simple and extensible SNMP daemon
+FreeBSD-bsnmp-dbg-15.1         Simple and extensible SNMP daemon (debugging symbols)
+FreeBSD-bsnmp-dbg-lib32-15.1   Simple and extensible SNMP daemon (32-bit debugging symbols)
+FreeBSD-bsnmp-dev-15.1         Simple and extensible SNMP daemon (development files)
+FreeBSD-bsnmp-dev-lib32-15.1   Simple and extensible SNMP daemon (32-bit development files)
+FreeBSD-bsnmp-lib32-15.1       Simple and extensible SNMP daemon (32-bit libraries)
+FreeBSD-bzip2-15.1             A block-sorting data compressor
+FreeBSD-bzip2-dbg-15.1         A block-sorting data compressor (debugging symbols)
+FreeBSD-bzip2-dbg-lib32-15.1   A block-sorting data compressor (32-bit debugging symbols)
+FreeBSD-bzip2-dev-15.1         A block-sorting data compressor (development files)
+FreeBSD-bzip2-dev-lib32-15.1   A block-sorting data compressor (32-bit development files)
+FreeBSD-bzip2-lib-15.1         A block-sorting data compressor (libraries)
+FreeBSD-bzip2-lib32-15.1       A block-sorting data compressor (32-bit libraries)
+FreeBSD-caroot-15.1            Mozilla Root Store trusted TLS certificates
+FreeBSD-ccdconfig-15.1         Concatenated disk driver (ccd) configuration utility
+FreeBSD-ccdconfig-dbg-15.1     Concatenated disk driver (ccd) configuration utility (debugging symbols)
+FreeBSD-certctl-15.1           Tool for managing trusted and untrusted TLS certificates
+FreeBSD-certctl-dbg-15.1       Tool for managing trusted and untrusted TLS certificates (debugging symbols)
+FreeBSD-clang-15.1             The Clang C, C++, and Objective-C compiler
+FreeBSD-clang-dbg-15.1         The Clang C, C++, and Objective-C compiler (debugging symbols)
+FreeBSD-clang-dev-15.1         The Clang C, C++, and Objective-C compiler (development files)
+FreeBSD-clibs-15.1             Core runtime libraries
+FreeBSD-clibs-dbg-15.1         Core runtime libraries (debugging symbols)
+FreeBSD-clibs-dbg-lib32-15.1   Core runtime libraries (32-bit debugging symbols)
+FreeBSD-clibs-dev-15.1         Core runtime libraries (development files)
+FreeBSD-clibs-dev-lib32-15.1   Core runtime libraries (32-bit development files)
+FreeBSD-clibs-lib32-15.1       Core runtime libraries (32-bit libraries)
+FreeBSD-console-tools-15.1     Video console utilities
+FreeBSD-console-tools-dbg-15.1 Video console utilities (debugging symbols)
+FreeBSD-cron-15.1              Command scheduling facility
+FreeBSD-cron-dbg-15.1          Command scheduling facility (debugging symbols)
+FreeBSD-csh-15.1               C shell with file name completion and command line editing
+FreeBSD-csh-dbg-15.1           C shell with file name completion and command line editing (debugging symbols)
+FreeBSD-ctf-15.1               Compact C Type Format (CTF)
+FreeBSD-ctf-dbg-15.1           Compact C Type Format (CTF) (debugging symbols)
+FreeBSD-ctf-dbg-lib32-15.1     Compact C Type Format (CTF) (32-bit debugging symbols)
+FreeBSD-ctf-dev-15.1           Compact C Type Format (CTF) (development files)
+FreeBSD-ctf-dev-lib32-15.1     Compact C Type Format (CTF) (32-bit development files)
+FreeBSD-ctf-lib-15.1           Compact C Type Format (CTF) (libraries)
+FreeBSD-ctf-lib32-15.1         Compact C Type Format (CTF) (32-bit libraries)
+FreeBSD-ctl-15.1               CAM Target Layer / iSCSI target daemon
+FreeBSD-ctl-dbg-15.1           CAM Target Layer / iSCSI target daemon (debugging symbols)
+FreeBSD-cxgbe-tools-15.1       Configuration utility for Chelsio cxbge(4) network interfaces
+FreeBSD-cxgbe-tools-dbg-15.1   Configuration utility for Chelsio cxbge(4) network interfaces (debugging symbols)
+FreeBSD-devd-15.1              Kernel event handling daemon
+FreeBSD-devd-dbg-15.1          Kernel event handling daemon (debugging symbols)
+FreeBSD-devmatch-15.1          Automatically load kernel drivers for attached hardware
+FreeBSD-devmatch-dbg-15.1      Automatically load kernel drivers for attached hardware (debugging symbols)
+FreeBSD-devmatch-dbg-lib32-15.1 Automatically load kernel drivers for attached hardware (32-bit debugging symbols)
+FreeBSD-devmatch-dev-15.1      Automatically load kernel drivers for attached hardware (development files)
+FreeBSD-devmatch-dev-lib32-15.1 Automatically load kernel drivers for attached hardware (32-bit development files)
+FreeBSD-devmatch-lib32-15.1    Automatically load kernel drivers for attached hardware (32-bit libraries)
+FreeBSD-dhclient-15.1          Dynamic Host Configuration Protocol (DHCP) client
+FreeBSD-dhclient-dbg-15.1      Dynamic Host Configuration Protocol (DHCP) client (debugging symbols)
+FreeBSD-diff3-15.1             GNU 3-way file comparison and merge utility
+FreeBSD-diff3-dbg-15.1         GNU 3-way file comparison and merge utility (debugging symbols)
+FreeBSD-dma-15.1               DragonFly Mail Agent
+FreeBSD-dma-dbg-15.1           DragonFly Mail Agent (debugging symbols)
+FreeBSD-dtrace-15.1            DTrace dynamic tracing framework
+FreeBSD-dtrace-dbg-15.1        DTrace dynamic tracing framework (debugging symbols)
+FreeBSD-dtrace-dbg-lib32-15.1  DTrace dynamic tracing framework (32-bit debugging symbols)
+FreeBSD-dtrace-dev-15.1        DTrace dynamic tracing framework (development files)
+FreeBSD-dtrace-dev-lib32-15.1  DTrace dynamic tracing framework (32-bit development files)
+FreeBSD-dtrace-lib32-15.1      DTrace dynamic tracing framework (32-bit libraries)
+FreeBSD-dwatch-15.1            Watch processes as they trigger a particular DTrace probe
+FreeBSD-ee-15.1                Easy Editor
+FreeBSD-ee-dbg-15.1            Easy Editor (debugging symbols)
+FreeBSD-efi-tools-15.1         Utilities for the Unified Extensible Firmware Interface (UEFI)
+FreeBSD-efi-tools-dbg-15.1     Utilities for the Unified Extensible Firmware Interface (UEFI) (debugging symbols)
+FreeBSD-efi-tools-dev-15.1     Utilities for the Unified Extensible Firmware Interface (UEFI) (development files)
+FreeBSD-examples-15.1          System interface examples
+FreeBSD-fd-15.1                Floppy disk utilities
+FreeBSD-fd-dbg-15.1            Floppy disk utilities (debugging symbols)
+FreeBSD-fetch-15.1             Retrieve a file from a remote URL
+FreeBSD-fetch-dbg-15.1         Retrieve a file from a remote URL (debugging symbols)
+FreeBSD-fetch-dbg-lib32-15.1   Retrieve a file from a remote URL (32-bit debugging symbols)
+FreeBSD-fetch-dev-15.1         Retrieve a file from a remote URL (development files)
+FreeBSD-fetch-dev-lib32-15.1   Retrieve a file from a remote URL (32-bit development files)
+FreeBSD-fetch-lib32-15.1       Retrieve a file from a remote URL (32-bit libraries)
+FreeBSD-firmware-iwm-15.1      Firmware for iwm(4) Intel 802.11ac network interfaces
+FreeBSD-flua-15.1              Private Lua implementation
+FreeBSD-flua-dbg-15.1          Private Lua implementation (debugging symbols)
+FreeBSD-flua-dev-15.1          Private Lua implementation (development files)
+FreeBSD-ftp-15.1               File Transfer Protocol (FTP) client
+FreeBSD-ftp-dbg-15.1           File Transfer Protocol (FTP) client (debugging symbols)
+FreeBSD-fwget-15.1             Install firmware packages for the running system
+FreeBSD-games-15.1             Games
+FreeBSD-games-dbg-15.1         Games (debugging symbols)
+FreeBSD-geom-15.1              GEOM configuration utilities
+FreeBSD-geom-dbg-15.1          GEOM configuration utilities (debugging symbols)
+FreeBSD-geom-dbg-lib32-15.1    GEOM configuration utilities (32-bit debugging symbols)
+FreeBSD-geom-lib32-15.1        GEOM configuration utilities (32-bit libraries)
+FreeBSD-ggate-15.1             GEOM Gate client and server
+FreeBSD-ggate-dbg-15.1         GEOM Gate client and server (debugging symbols)
+FreeBSD-gssd-15.1              gssd(8) daemon for kernel GSS-API
+FreeBSD-gssd-dbg-15.1          gssd(8) daemon for kernel GSS-API (debugging symbols)
+FreeBSD-hast-15.1              Highly Available Storage daemon
+FreeBSD-hast-dbg-15.1          Highly Available Storage daemon (debugging symbols)
+FreeBSD-hostapd-15.1           IEEE Std 802.11 Access Point authentication daemon
+FreeBSD-hostapd-dbg-15.1       IEEE Std 802.11 Access Point authentication daemon (debugging symbols)
+FreeBSD-hyperv-tools-15.1      Microsoft Hyper-V utilities
+FreeBSD-hyperv-tools-dbg-15.1  Microsoft Hyper-V utilities (debugging symbols)
+FreeBSD-inetd-15.1             Internet super-server
+FreeBSD-inetd-dbg-15.1         Internet super-server (debugging symbols)
+FreeBSD-ipf-15.1               IP Filter (ipf) packet filter management tools
+FreeBSD-ipf-dbg-15.1           IP Filter (ipf) packet filter management tools (debugging symbols)
+FreeBSD-ipfw-15.1              ipfw (IP firewall) management utilities
+FreeBSD-ipfw-dbg-15.1          ipfw (IP firewall) management utilities (debugging symbols)
+FreeBSD-iscsi-15.1             iSCSI initiator
+FreeBSD-iscsi-dbg-15.1         iSCSI initiator (debugging symbols)
+FreeBSD-jail-15.1              Jail management tools
+FreeBSD-jail-dbg-15.1          Jail management tools (debugging symbols)
+FreeBSD-kerberos-15.1          Kerberos client
+FreeBSD-kerberos-dbg-15.1      Kerberos client (debugging symbols)
+FreeBSD-kerberos-dbg-lib32-15.1 Kerberos client (32-bit debugging symbols)
+FreeBSD-kerberos-dev-15.1      Kerberos client (development files)
+FreeBSD-kerberos-dev-lib32-15.1 Kerberos client (32-bit development files)
+FreeBSD-kerberos-kdc-15.1      Kerberos key distribution center
+FreeBSD-kerberos-kdc-dbg-15.1  Kerberos key distribution center (debugging symbols)
+FreeBSD-kerberos-lib-15.1      Kerberos client (libraries)
+FreeBSD-kerberos-lib32-15.1    Kerberos client (32-bit libraries)
+FreeBSD-kernel-generic-15.1    FreeBSD GENERIC Kernel 
+FreeBSD-kernel-generic-dbg-15.1 FreeBSD GENERIC Kernel -dbg (debugging symbols)
+FreeBSD-kernel-man-15.1        Kernel manual pages
+FreeBSD-kyua-15.1              Testing framework for infrastructure software
+FreeBSD-kyua-dbg-15.1          Testing framework for infrastructure software (debugging symbols)
+FreeBSD-lib9p-15.1             9P network protocol library
+FreeBSD-lib9p-dbg-15.1         9P network protocol library (debugging symbols)
+FreeBSD-lib9p-dbg-lib32-15.1   9P network protocol library (32-bit debugging symbols)
+FreeBSD-lib9p-dev-15.1         9P network protocol library (development files)
+FreeBSD-lib9p-dev-lib32-15.1   9P network protocol library (32-bit development files)
+FreeBSD-lib9p-lib32-15.1       9P network protocol library (32-bit libraries)
+FreeBSD-libarchive-15.1        Library for reading and writing streaming archives
+FreeBSD-libarchive-dbg-15.1    Library for reading and writing streaming archives (debugging symbols)
+FreeBSD-libarchive-dbg-lib32-15.1 Library for reading and writing streaming archives (32-bit debugging symbols)
+FreeBSD-libarchive-dev-15.1    Library for reading and writing streaming archives (development files)
+FreeBSD-libarchive-dev-lib32-15.1 Library for reading and writing streaming archives (32-bit development files)
+FreeBSD-libarchive-lib32-15.1  Library for reading and writing streaming archives (32-bit libraries)
+FreeBSD-libbegemot-15.1        rpoll(3) interface for event-driven I/O
+FreeBSD-libbegemot-dbg-15.1    rpoll(3) interface for event-driven I/O (debugging symbols)
+FreeBSD-libbegemot-dbg-lib32-15.1 rpoll(3) interface for event-driven I/O (32-bit debugging symbols)
+FreeBSD-libbegemot-dev-15.1    rpoll(3) interface for event-driven I/O (development files)
+FreeBSD-libbegemot-dev-lib32-15.1 rpoll(3) interface for event-driven I/O (32-bit development files)
+FreeBSD-libbegemot-lib32-15.1  rpoll(3) interface for event-driven I/O (32-bit libraries)
+FreeBSD-libblocksruntime-15.1  LLVM BlocksRuntime library
+FreeBSD-libblocksruntime-dbg-15.1 LLVM BlocksRuntime library (debugging symbols)
+FreeBSD-libblocksruntime-dbg-lib32-15.1 LLVM BlocksRuntime library (32-bit debugging symbols)
+FreeBSD-libblocksruntime-dev-15.1 LLVM BlocksRuntime library (development files)
+FreeBSD-libblocksruntime-dev-lib32-15.1 LLVM BlocksRuntime library (32-bit development files)
+FreeBSD-libblocksruntime-lib32-15.1 LLVM BlocksRuntime library (32-bit libraries)
+FreeBSD-libbsdstat-15.1        Periodic statistics library
+FreeBSD-libbsdstat-dbg-15.1    Periodic statistics library (debugging symbols)
+FreeBSD-libbsdstat-dbg-lib32-15.1 Periodic statistics library (32-bit debugging symbols)
+FreeBSD-libbsdstat-dev-15.1    Periodic statistics library (development files)
+FreeBSD-libbsdstat-dev-lib32-15.1 Periodic statistics library (32-bit development files)
+FreeBSD-libbsdstat-lib32-15.1  Periodic statistics library (32-bit libraries)
+FreeBSD-libcasper-15.1         Casper library
+FreeBSD-libcasper-dbg-15.1     Casper library (debugging symbols)
+FreeBSD-libcasper-dbg-lib32-15.1 Casper library (32-bit debugging symbols)
+FreeBSD-libcasper-dev-15.1     Casper library (development files)
+FreeBSD-libcasper-dev-lib32-15.1 Casper library (32-bit development files)
+FreeBSD-libcasper-lib32-15.1   Casper library (32-bit libraries)
+FreeBSD-libcompat-dev-15.1     Compatibility library (development files)
+FreeBSD-libcompat-dev-lib32-15.1 Compatibility library (32-bit development files)
+FreeBSD-libcompiler_rt-dev-15.1 LLVM compiler_rt library (development files)
+FreeBSD-libcompiler_rt-dev-lib32-15.1 LLVM compiler_rt library (32-bit development files)
+FreeBSD-libcuse-15.1           Userland character device library
+FreeBSD-libcuse-dbg-15.1       Userland character device library (debugging symbols)
+FreeBSD-libcuse-dbg-lib32-15.1 Userland character device library (32-bit debugging symbols)
+FreeBSD-libcuse-dev-15.1       Userland character device library (development files)
+FreeBSD-libcuse-dev-lib32-15.1 Userland character device library (32-bit development files)
+FreeBSD-libcuse-lib32-15.1     Userland character device library (32-bit libraries)
+FreeBSD-libdwarf-15.1          DWARF access library
+FreeBSD-libdwarf-dbg-15.1      DWARF access library (debugging symbols)
+FreeBSD-libdwarf-dbg-lib32-15.1 DWARF access library (32-bit debugging symbols)
+FreeBSD-libdwarf-dev-15.1      DWARF access library (development files)
+FreeBSD-libdwarf-dev-lib32-15.1 DWARF access library (32-bit development files)
+FreeBSD-libdwarf-lib32-15.1    DWARF access library (32-bit libraries)
+FreeBSD-libevent1-15.1         Private libevent1 library
+FreeBSD-libevent1-dbg-15.1     Private libevent1 library (debugging symbols)
+FreeBSD-libevent1-dbg-lib32-15.1 Private libevent1 library (32-bit debugging symbols)
+FreeBSD-libevent1-dev-15.1     Private libevent1 library (development files)
+FreeBSD-libevent1-dev-lib32-15.1 Private libevent1 library (32-bit development files)
+FreeBSD-libevent1-lib32-15.1   Private libevent1 library (32-bit libraries)
+FreeBSD-libexecinfo-15.1       NetBSD stack backtrace library
+FreeBSD-libexecinfo-dbg-15.1   NetBSD stack backtrace library (debugging symbols)
+FreeBSD-libexecinfo-dbg-lib32-15.1 NetBSD stack backtrace library (32-bit debugging symbols)
+FreeBSD-libexecinfo-dev-15.1   NetBSD stack backtrace library (development files)
+FreeBSD-libexecinfo-dev-lib32-15.1 NetBSD stack backtrace library (32-bit development files)
+FreeBSD-libexecinfo-lib32-15.1 NetBSD stack backtrace library (32-bit libraries)
+FreeBSD-libipt-15.1            Intel(R) Processor Trace decoder library
+FreeBSD-libipt-dbg-15.1        Intel(R) Processor Trace decoder library (debugging symbols)
+FreeBSD-libipt-dev-15.1        Intel(R) Processor Trace decoder library (development files)
+FreeBSD-libldns-15.1           Private LDNS library
+FreeBSD-libldns-dbg-15.1       Private LDNS library (debugging symbols)
+FreeBSD-libldns-dbg-lib32-15.1 Private LDNS library (32-bit debugging symbols)
+FreeBSD-libldns-dev-15.1       Private LDNS library (development files)
+FreeBSD-libldns-dev-lib32-15.1 Private LDNS library (32-bit development files)
+FreeBSD-libldns-lib32-15.1     Private LDNS library (32-bit libraries)
+FreeBSD-libmagic-15.1          Magic number recognition library
+FreeBSD-libmagic-dbg-15.1      Magic number recognition library (debugging symbols)
+FreeBSD-libmagic-dbg-lib32-15.1 Magic number recognition library (32-bit debugging symbols)
+FreeBSD-libmagic-dev-15.1      Magic number recognition library (development files)
+FreeBSD-libmagic-dev-lib32-15.1 Magic number recognition library (32-bit development files)
+FreeBSD-libmagic-lib32-15.1    Magic number recognition library (32-bit libraries)
+FreeBSD-libmilter-15.1         sendmail Mail Filter API library
+FreeBSD-libmilter-dbg-15.1     sendmail Mail Filter API library (debugging symbols)
+FreeBSD-libmilter-dbg-lib32-15.1 sendmail Mail Filter API library (32-bit debugging symbols)
+FreeBSD-libmilter-dev-15.1     sendmail Mail Filter API library (development files)
+FreeBSD-libmilter-dev-lib32-15.1 sendmail Mail Filter API library (32-bit development files)
+FreeBSD-libmilter-lib32-15.1   sendmail Mail Filter API library (32-bit libraries)
+FreeBSD-libpathconv-15.1       Library for handling relative and absolute pathnames
+FreeBSD-libpathconv-dbg-15.1   Library for handling relative and absolute pathnames (debugging symbols)
+FreeBSD-libpathconv-dbg-lib32-15.1 Library for handling relative and absolute pathnames (32-bit debugging symbols)
+FreeBSD-libpathconv-dev-15.1   Library for handling relative and absolute pathnames (development files)
+FreeBSD-libpathconv-dev-lib32-15.1 Library for handling relative and absolute pathnames (32-bit development files)
+FreeBSD-libpathconv-lib32-15.1 Library for handling relative and absolute pathnames (32-bit libraries)
+FreeBSD-librpcsec_gss-15.1     RPCSEC_GSS library
+FreeBSD-librpcsec_gss-dbg-15.1 RPCSEC_GSS library (debugging symbols)
+FreeBSD-librpcsec_gss-dbg-lib32-15.1 RPCSEC_GSS library (32-bit debugging symbols)
+FreeBSD-librpcsec_gss-dev-15.1 RPCSEC_GSS library (development files)
+FreeBSD-librpcsec_gss-dev-lib32-15.1 RPCSEC_GSS library (32-bit development files)
+FreeBSD-librpcsec_gss-lib32-15.1 RPCSEC_GSS library (32-bit libraries)
+FreeBSD-librss-15.1            Receive-side scaling library
+FreeBSD-librss-dbg-15.1        Receive-side scaling library (debugging symbols)
+FreeBSD-librss-dbg-lib32-15.1  Receive-side scaling library (32-bit debugging symbols)
+FreeBSD-librss-dev-15.1        Receive-side scaling library (development files)
+FreeBSD-librss-dev-lib32-15.1  Receive-side scaling library (32-bit development files)
+FreeBSD-librss-lib32-15.1      Receive-side scaling library (32-bit libraries)
+FreeBSD-libsqlite3-15.1        Private SQLite library
+FreeBSD-libsqlite3-dbg-15.1    Private SQLite library (debugging symbols)
+FreeBSD-libsqlite3-dbg-lib32-15.1 Private SQLite library (32-bit debugging symbols)
+FreeBSD-libsqlite3-dev-15.1    Private SQLite library (development files)
+FreeBSD-libsqlite3-dev-lib32-15.1 Private SQLite library (32-bit development files)
+FreeBSD-libsqlite3-lib32-15.1  Private SQLite library (32-bit libraries)
+FreeBSD-libthread_db-15.1      Library for interacting with threaded processes
+FreeBSD-libthread_db-dbg-15.1  Library for interacting with threaded processes (debugging symbols)
+FreeBSD-libthread_db-dbg-lib32-15.1 Library for interacting with threaded processes (32-bit debugging symbols)
+FreeBSD-libthread_db-dev-15.1  Library for interacting with threaded processes (development files)
+FreeBSD-libthread_db-dev-lib32-15.1 Library for interacting with threaded processes (32-bit development files)
+FreeBSD-libthread_db-lib32-15.1 Library for interacting with threaded processes (32-bit libraries)
+FreeBSD-libucl-15.1            Private Universal Configuration Library (UCL) library
+FreeBSD-libucl-dbg-15.1        Private Universal Configuration Library (UCL) library (debugging symbols)
+FreeBSD-libucl-dbg-lib32-15.1  Private Universal Configuration Library (UCL) library (32-bit debugging symbols)
+FreeBSD-libucl-dev-15.1        Private Universal Configuration Library (UCL) library (development files)
+FreeBSD-libucl-dev-lib32-15.1  Private Universal Configuration Library (UCL) library (32-bit development files)
+FreeBSD-libucl-lib32-15.1      Private Universal Configuration Library (UCL) library (32-bit libraries)
+FreeBSD-libvgl-15.1            Video Graphics Library
+FreeBSD-libvgl-dbg-15.1        Video Graphics Library (debugging symbols)
+FreeBSD-libvgl-dbg-lib32-15.1  Video Graphics Library (32-bit debugging symbols)
+FreeBSD-libvgl-dev-15.1        Video Graphics Library (development files)
+FreeBSD-libvgl-dev-lib32-15.1  Video Graphics Library (32-bit development files)
+FreeBSD-libvgl-lib32-15.1      Video Graphics Library (32-bit libraries)
+FreeBSD-libvmmapi-15.1         Front-end library for the vmm(4) virtualization driver
+FreeBSD-libvmmapi-dbg-15.1     Front-end library for the vmm(4) virtualization driver (debugging symbols)
+FreeBSD-libvmmapi-dev-15.1     Front-end library for the vmm(4) virtualization driver (development files)
+FreeBSD-libyaml-15.1           Private YAML library
+FreeBSD-libyaml-dbg-15.1       Private YAML library (debugging symbols)
+FreeBSD-libyaml-dbg-lib32-15.1 Private YAML library (32-bit debugging symbols)
+FreeBSD-libyaml-dev-15.1       Private YAML library (development files)
+FreeBSD-libyaml-dev-lib32-15.1 Private YAML library (32-bit development files)
+FreeBSD-libyaml-lib32-15.1     Private YAML library (32-bit libraries)
+FreeBSD-lld-15.1               LLVM ELF link loader
+FreeBSD-lld-dbg-15.1           LLVM ELF link loader (debugging symbols)
+FreeBSD-lldb-15.1              LLVM debugger
+FreeBSD-lldb-dbg-15.1          LLVM debugger (debugging symbols)
+FreeBSD-local-unbound-15.1     NLnet Labs Unbound DNS resolver
+FreeBSD-local-unbound-dbg-15.1 NLnet Labs Unbound DNS resolver (debugging symbols)
+FreeBSD-local-unbound-dbg-lib32-15.1 NLnet Labs Unbound DNS resolver (32-bit debugging symbols)
+FreeBSD-local-unbound-dev-15.1 NLnet Labs Unbound DNS resolver (development files)
+FreeBSD-local-unbound-dev-lib32-15.1 NLnet Labs Unbound DNS resolver (32-bit development files)
+FreeBSD-local-unbound-lib32-15.1 NLnet Labs Unbound DNS resolver (32-bit libraries)
+FreeBSD-locales-15.1           Locale definitions
+FreeBSD-lp-15.1                Print spooler
+FreeBSD-lp-dbg-15.1            Print spooler (debugging symbols)
+FreeBSD-mandoc-15.1            Online manual page reader
+FreeBSD-mandoc-dbg-15.1        Online manual page reader (debugging symbols)
+FreeBSD-mlx-tools-15.1         Utility for managing Connect-X 4/5/6 Mellanox network adapters
+FreeBSD-mlx-tools-dbg-15.1     Utility for managing Connect-X 4/5/6 Mellanox network adapters (debugging symbols)
+FreeBSD-mtree-15.1             Filesystem hierarchy management tool
+FreeBSD-mtree-dbg-15.1         Filesystem hierarchy management tool (debugging symbols)
+FreeBSD-natd-15.1              Userland Network Address Translation (NAT) for ipfw
+FreeBSD-natd-dbg-15.1          Userland Network Address Translation (NAT) for ipfw (debugging symbols)
+FreeBSD-natd-dbg-lib32-15.1    Userland Network Address Translation (NAT) for ipfw (32-bit debugging symbols)
+FreeBSD-natd-dev-15.1          Userland Network Address Translation (NAT) for ipfw (development files)
+FreeBSD-natd-dev-lib32-15.1    Userland Network Address Translation (NAT) for ipfw (32-bit development files)
+FreeBSD-natd-lib32-15.1        Userland Network Address Translation (NAT) for ipfw (32-bit libraries)
+FreeBSD-ncurses-15.1           ncurses terminal control library
+FreeBSD-ncurses-dbg-15.1       ncurses terminal control library (debugging symbols)
+FreeBSD-ncurses-dbg-lib32-15.1 ncurses terminal control library (32-bit debugging symbols)
+FreeBSD-ncurses-dev-15.1       ncurses terminal control library (development files)
+FreeBSD-ncurses-dev-lib32-15.1 ncurses terminal control library (32-bit development files)
+FreeBSD-ncurses-lib-15.1       ncurses terminal control library (libraries)
+FreeBSD-ncurses-lib32-15.1     ncurses terminal control library (32-bit libraries)
+FreeBSD-netmap-15.1            Userland netmap support
+FreeBSD-netmap-dbg-15.1        Userland netmap support (debugging symbols)
+FreeBSD-netmap-dbg-lib32-15.1  Userland netmap support (32-bit debugging symbols)
+FreeBSD-netmap-dev-15.1        Userland netmap support (development files)
+FreeBSD-netmap-dev-lib32-15.1  Userland netmap support (32-bit development files)
+FreeBSD-netmap-lib32-15.1      Userland netmap support (32-bit libraries)
+FreeBSD-newsyslog-15.1         Create and rotate system log files
+FreeBSD-newsyslog-dbg-15.1     Create and rotate system log files (debugging symbols)
+FreeBSD-nfs-15.1               NFS client and server utilities
+FreeBSD-nfs-dbg-15.1           NFS client and server utilities (debugging symbols)
+FreeBSD-ntp-15.1               Network Time Protocol (NTP) daemon
+FreeBSD-ntp-dbg-15.1           Network Time Protocol (NTP) daemon (debugging symbols)
+FreeBSD-nuageinit-15.1         cloud-init configuration support
+FreeBSD-nvme-tools-15.1        NVMe utilities
+FreeBSD-nvme-tools-dbg-15.1    NVMe utilities (debugging symbols)
+FreeBSD-openssl-15.1           OpenSSL Transport Layer Security (TLS) library
+FreeBSD-openssl-dbg-15.1       OpenSSL Transport Layer Security (TLS) library (debugging symbols)
+FreeBSD-openssl-dbg-lib32-15.1 OpenSSL Transport Layer Security (TLS) library (32-bit debugging symbols)
+FreeBSD-openssl-dev-15.1       OpenSSL Transport Layer Security (TLS) library (development files)
+FreeBSD-openssl-dev-lib32-15.1 OpenSSL Transport Layer Security (TLS) library (32-bit development files)
+FreeBSD-openssl-lib-15.1       OpenSSL Transport Layer Security (TLS) library (libraries)
+FreeBSD-openssl-lib32-15.1     OpenSSL Transport Layer Security (TLS) library (32-bit libraries)
+FreeBSD-pam-15.1               Modular user authentication facility
+FreeBSD-pam-dbg-15.1           Modular user authentication facility (debugging symbols)
+FreeBSD-pam-dbg-lib32-15.1     Modular user authentication facility (32-bit debugging symbols)
+FreeBSD-pam-dev-15.1           Modular user authentication facility (development files)
+FreeBSD-pam-dev-lib32-15.1     Modular user authentication facility (32-bit development files)
+FreeBSD-pam-lib-15.1           Modular user authentication facility (libraries)
+FreeBSD-pam-lib32-15.1         Modular user authentication facility (32-bit libraries)
+FreeBSD-periodic-15.1          Run periodic system functions
+FreeBSD-pf-15.1                OpenBSD packet filter
+FreeBSD-pf-dbg-15.1            OpenBSD packet filter (debugging symbols)
+FreeBSD-pf-dev-15.1            OpenBSD packet filter (development files)
+FreeBSD-pkg-bootstrap-15.1     pkg(7) bootstrap utility
+FreeBSD-pkg-bootstrap-dbg-15.1 pkg(7) bootstrap utility (debugging symbols)
+FreeBSD-pmc-15.1               Support for hardware performance counters
+FreeBSD-pmc-dbg-15.1           Support for hardware performance counters (debugging symbols)
+FreeBSD-pmc-dbg-lib32-15.1     Support for hardware performance counters (32-bit debugging symbols)
+FreeBSD-pmc-dev-15.1           Support for hardware performance counters (development files)
+FreeBSD-pmc-dev-lib32-15.1     Support for hardware performance counters (32-bit development files)
+FreeBSD-pmc-lib32-15.1         Support for hardware performance counters (32-bit libraries)
+FreeBSD-powerd-15.1            System power control utility
+FreeBSD-powerd-dbg-15.1        System power control utility (debugging symbols)
+FreeBSD-ppp-15.1               Point-to-Point Protocol (PPP) utilities
+FreeBSD-ppp-dbg-15.1           Point-to-Point Protocol (PPP) utilities (debugging symbols)
+FreeBSD-quotacheck-15.1        Filesystem quota consistency checker
+FreeBSD-quotacheck-dbg-15.1    Filesystem quota consistency checker (debugging symbols)
+FreeBSD-rc-15.1                rc(8) subsystem
+FreeBSD-rc-dbg-15.1            rc(8) subsystem (debugging symbols)
+FreeBSD-rcmds-15.1             BSD/SunOS remote status commands
+FreeBSD-rcmds-dbg-15.1         BSD/SunOS remote status commands (debugging symbols)
+FreeBSD-rdma-15.1              Remote Direct Memory Access (RDMA) and InfiniBand utilities
+FreeBSD-rdma-dbg-15.1          Remote Direct Memory Access (RDMA) and InfiniBand utilities (debugging symbols)
+FreeBSD-rescue-15.1            Rescue system
+FreeBSD-resolvconf-15.1        A framework for managing multiple DNS configurations
+FreeBSD-rip-15.1               RIP routing protocol
+FreeBSD-rip-dbg-15.1           RIP routing protocol (debugging symbols)
+FreeBSD-runtime-15.1           Core system
+FreeBSD-runtime-dbg-15.1       Core system (debugging symbols)
+FreeBSD-runtime-dbg-lib32-15.1 Core system (32-bit debugging symbols)
+FreeBSD-runtime-dev-15.1       Core system (development files)
+FreeBSD-runtime-dev-lib32-15.1 Core system (32-bit development files)
+FreeBSD-runtime-lib32-15.1     Core system (32-bit libraries)
+FreeBSD-sendmail-15.1          sendmail mail transport agent
+FreeBSD-sendmail-dbg-15.1      sendmail mail transport agent (debugging symbols)
+FreeBSD-set-base-15.1          Base system (metapackage)
+FreeBSD-set-base-dbg-15.1      Base system debug symbols (metapackage)
+FreeBSD-set-devel-15.1         Development tools (metapackage)
+FreeBSD-set-devel-dbg-15.1     Development tools debugging symbols (metapackage)
+FreeBSD-set-kernels-15.1       Base system kernels (metapackage)
+FreeBSD-set-kernels-dbg-15.1   Base system kernels debugging symbols (metapackage)
+FreeBSD-set-lib32-15.1         32-bit compatibility libraries (metapackage)
+FreeBSD-set-lib32-dbg-15.1     32-bit compatibility library debugging symbols (metapackage)
+FreeBSD-set-minimal-15.1       Basic multi-user system (metapackage)
+FreeBSD-set-minimal-dbg-15.1   Basic multi-user system debugging symbols (metapackage)
+FreeBSD-set-optional-15.1      Optional base system software (metapackage)
+FreeBSD-set-optional-dbg-15.1  Optional software debug symbols (metapackage)
+FreeBSD-set-tests-15.1         System test suite
+FreeBSD-smbutils-15.1          SMB network filesystem utilities
+FreeBSD-smbutils-dbg-15.1      SMB network filesystem utilities (debugging symbols)
+FreeBSD-smbutils-dbg-lib32-15.1 SMB network filesystem utilities (32-bit debugging symbols)
+FreeBSD-smbutils-dev-15.1      SMB network filesystem utilities (development files)
+FreeBSD-smbutils-dev-lib32-15.1 SMB network filesystem utilities (32-bit development files)
+FreeBSD-smbutils-lib32-15.1    SMB network filesystem utilities (32-bit libraries)
+FreeBSD-sound-15.1             Audio utilities
+FreeBSD-sound-dbg-15.1         Audio utilities (debugging symbols)
+FreeBSD-sound-dbg-lib32-15.1   Audio utilities (32-bit debugging symbols)
+FreeBSD-sound-dev-15.1         Audio utilities (development files)
+FreeBSD-sound-dev-lib32-15.1   Audio utilities (32-bit development files)
+FreeBSD-sound-lib32-15.1       Audio utilities (32-bit libraries)
+FreeBSD-ssh-15.1               OpenSSH Secure Shell client and server
+FreeBSD-ssh-dbg-15.1           OpenSSH Secure Shell client and server (debugging symbols)
+FreeBSD-ssh-dbg-lib32-15.1     OpenSSH Secure Shell client and server (32-bit debugging symbols)
+FreeBSD-ssh-dev-15.1           OpenSSH Secure Shell client and server (development files)
+FreeBSD-ssh-dev-lib32-15.1     OpenSSH Secure Shell client and server (32-bit development files)
+FreeBSD-ssh-lib32-15.1         OpenSSH Secure Shell client and server (32-bit libraries)
+FreeBSD-syscons-data-15.1      syscons(4) fonts and keymaps
+FreeBSD-syslogd-15.1           System logging daemon
+FreeBSD-syslogd-dbg-15.1       System logging daemon (debugging symbols)
+FreeBSD-tcpd-15.1              TCP Wrappers access control facility
+FreeBSD-tcpd-dbg-15.1          TCP Wrappers access control facility (debugging symbols)
+FreeBSD-tcpd-dbg-lib32-15.1    TCP Wrappers access control facility (32-bit debugging symbols)
+FreeBSD-tcpd-dev-15.1          TCP Wrappers access control facility (development files)
+FreeBSD-tcpd-dev-lib32-15.1    TCP Wrappers access control facility (32-bit development files)
+FreeBSD-tcpd-lib32-15.1        TCP Wrappers access control facility (32-bit libraries)
+FreeBSD-telnet-15.1            TELNET client
+FreeBSD-telnet-dbg-15.1        TELNET client (debugging symbols)
+FreeBSD-tests-15.1             Test suite
+FreeBSD-tests-dbg-15.1         Test suite (debugging symbols)
+FreeBSD-toolchain-15.1         Utilities for program development
+FreeBSD-toolchain-dbg-15.1     Utilities for program development (debugging symbols)
+FreeBSD-toolchain-dev-15.1     Utilities for program development (development files)
+FreeBSD-toolchain-dev-lib32-15.1 Utilities for program development (32-bit development files)
+FreeBSD-ufs-15.1               UFS filesystem support
+FreeBSD-ufs-dbg-15.1           UFS filesystem support (debugging symbols)
+FreeBSD-ufs-dbg-lib32-15.1     UFS filesystem support (32-bit debugging symbols)
+FreeBSD-ufs-dev-15.1           UFS filesystem support (development files)
+FreeBSD-ufs-dev-lib32-15.1     UFS filesystem support (32-bit development files)
+FreeBSD-ufs-lib-15.1           UFS filesystem support (libraries)
+FreeBSD-ufs-lib32-15.1         UFS filesystem support (32-bit libraries)
+FreeBSD-utilities-15.1         Non-vital programs and libraries
+FreeBSD-utilities-dbg-15.1     Non-vital programs and libraries (debugging symbols)
+FreeBSD-utilities-dbg-lib32-15.1 Non-vital programs and libraries (32-bit debugging symbols)
+FreeBSD-utilities-dev-15.1     Non-vital programs and libraries (development files)
+FreeBSD-utilities-dev-lib32-15.1 Non-vital programs and libraries (32-bit development files)
+FreeBSD-utilities-lib32-15.1   Non-vital programs and libraries (32-bit libraries)
+FreeBSD-vi-15.1                Text editor
+FreeBSD-vi-dbg-15.1            Text editor (debugging symbols)
+FreeBSD-vt-data-15.1           vt(4) fonts and keymaps
+FreeBSD-wpa-15.1               IEEE Std 802.11 WPA Supplicant
+FreeBSD-wpa-dbg-15.1           IEEE Std 802.11 WPA Supplicant (debugging symbols)
+FreeBSD-xz-15.1                LZMA2 data compression
+FreeBSD-xz-dbg-15.1            LZMA2 data compression (debugging symbols)
+FreeBSD-xz-dbg-lib32-15.1      LZMA2 data compression (32-bit debugging symbols)
+FreeBSD-xz-dev-15.1            LZMA2 data compression (development files)
+FreeBSD-xz-dev-lib32-15.1      LZMA2 data compression (32-bit development files)
+FreeBSD-xz-lib-15.1            LZMA2 data compression (libraries)
+FreeBSD-xz-lib32-15.1          LZMA2 data compression (32-bit libraries)
+FreeBSD-yp-15.1                Yellow Pages (YP) / Network Information Service (NIS)
+FreeBSD-yp-dbg-15.1            Yellow Pages (YP) / Network Information Service (NIS) (debugging symbols)
+FreeBSD-zfs-15.1               ZFS filesystem support
+FreeBSD-zfs-dbg-15.1           ZFS filesystem support (debugging symbols)
+FreeBSD-zfs-dbg-lib32-15.1     ZFS filesystem support (32-bit debugging symbols)
+FreeBSD-zfs-dev-15.1           ZFS filesystem support (development files)
+FreeBSD-zfs-dev-lib32-15.1     ZFS filesystem support (32-bit development files)
+FreeBSD-zfs-lib-15.1           ZFS filesystem support (libraries)
+FreeBSD-zfs-lib32-15.1         ZFS filesystem support (32-bit libraries)
+FreeBSD-zlib-15.1              DEFLATE (gzip) data compression library
+FreeBSD-zlib-dbg-15.1          DEFLATE (gzip) data compression library (debugging symbols)
+FreeBSD-zlib-dbg-lib32-15.1    DEFLATE (gzip) data compression library (32-bit debugging symbols)
+FreeBSD-zlib-dev-15.1          DEFLATE (gzip) data compression library (development files)
+FreeBSD-zlib-dev-lib32-15.1    DEFLATE (gzip) data compression library (32-bit development files)
+FreeBSD-zlib-lib32-15.1        DEFLATE (gzip) data compression library (32-bit libraries)
+FreeBSD-zoneinfo-15.1          Timezone database
+FreeBSD-zstd-15.1              Fast, lossless compression algorithm
+FreeBSD-zstd-dbg-15.1          Fast, lossless compression algorithm (debugging symbols)
+FreeBSD-zstd-dbg-lib32-15.1    Fast, lossless compression algorithm (32-bit debugging symbols)
+FreeBSD-zstd-dev-15.1          Fast, lossless compression algorithm (development files)
+FreeBSD-zstd-dev-lib32-15.1    Fast, lossless compression algorithm (32-bit development files)
+FreeBSD-zstd-lib-15.1          Fast, lossless compression algorithm (libraries)
+FreeBSD-zstd-lib32-15.1        Fast, lossless compression algorithm (32-bit libraries)
+expat-2.8.4                    XML 1.0 parser written in C
+gettext-runtime-1.0_1          GNU gettext runtime libraries and programs
+indexinfo-0.3.1_1              Utility to regenerate the GNU info page index
+libedit-3.1.20260512,1         Command line editor library
+libffi-3.8.0                   Foreign Function Interface
+mpdecimal-4.0.1                C/C++ arbitrary precision decimal floating point libraries
+pkg-2.8.4                      Package manager
+py312-sqlite3-3.12.15_10       Standard Python binding to the SQLite3 library (Python 3.12)
+python312-3.12.15              Interpreted object-oriented programming language
+readline-8.3.6                 Library for editing command lines as they are typed
+sqlite3-3.53.4,1               SQL database engine in a C library
+/dev/gpt/hfs-root1	/			ufs	rw,noatime 	1 1
+devfs			/dev			devfs	rw		0 0
+/dev/gpt/hfs-efi1	/boot/efi		msdosfs	rw		2 2
+hfsdata1		/var/db/homelabfs	zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata1/data		/var/db/homelabfs/data	zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata1/control	/var/db/homelabfs/control zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata1/journal	/var/db/homelabfs/journal zfs	rw,noatime,nfsv4acls 	0 0
+PING 172.31.253.11 (172.31.253.11): 56 data bytes
+64 bytes from 172.31.253.11: icmp_seq=0 ttl=64 time=0.163 ms
+64 bytes from 172.31.253.11: icmp_seq=1 ttl=64 time=0.532 ms
+
+--- 172.31.253.11 ping statistics ---
+2 packets transmitted, 2 packets received, 0.0% packet loss
+round-trip min/avg/max/stddev = 0.163/0.348/0.532/0.184 ms
+PING 172.31.253.12 (172.31.253.12): 56 data bytes
+64 bytes from 172.31.253.12: icmp_seq=0 ttl=64 time=0.052 ms
+64 bytes from 172.31.253.12: icmp_seq=1 ttl=64 time=0.151 ms
+
+--- 172.31.253.12 ping statistics ---
+2 packets transmitted, 2 packets received, 0.0% packet loss
+round-trip min/avg/max/stddev = 0.052/0.102/0.151/0.050 ms
+PING 172.31.253.13 (172.31.253.13): 56 data bytes
+64 bytes from 172.31.253.13: icmp_seq=0 ttl=64 time=0.775 ms
+64 bytes from 172.31.253.13: icmp_seq=1 ttl=64 time=0.455 ms
+
+--- 172.31.253.13 ping statistics ---
+2 packets transmitted, 2 packets received, 0.0% packet loss
+round-trip min/avg/max/stddev = 0.455/0.615/0.775/0.160 ms
