@@ -10,6 +10,8 @@ Each stage has its own approval. Finishing integration tests does not authorize 
 
 Read-only planning may inspect versions, available resources, and existing state. It must not provision or start test VMs, stop Rocky, change configuration, install packages, inject faults, create test volumes, or issue workload I/O. Those actions belong to approved execution.
 
+Separately requested offline infrastructure preparation may create stopped VMs without authorizing a test run. The [f3 preparation](FreeBSD-lab-preparation.md) was explicitly requested and leaves the guests stopped. Its script does not authorize booting guests, stopping Rocky, or executing either test stage.
+
 ## Runner contract
 
 Implement the lifecycle as version-controlled scripts with explicit inputs and machine-readable outputs. The intended workflow is:

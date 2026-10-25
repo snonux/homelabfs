@@ -2,6 +2,10 @@
 
 [Stage 1 test matrix](Integration-tests.md) · [Approval and automation](Test-automation.md) · [Stage 2 live smoke tests](Live-smoke-tests.md)
 
+## Preparation status
+
+Three stopped FreeBSD guests were prepared on f3 on 2026-10-25. See [inventory and reproduction instructions](FreeBSD-lab-preparation.md). They have never been booted; HomelabFS installation and test execution remain pending.
+
 ## Initial layout
 
 Run three temporary FreeBSD bhyve VMs on existing f3s hardware. The first proposed layout is all three on f3, each with **2 GiB RAM**, for 6 GiB of guest RAM in total. Each VM has its own FreeBSD kernel, disposable OS/data disks, guest ZFS pool, and installed HomelabFS daemon. Native test programs access HomelabFS FUSE mounts inside those VMs:
@@ -52,4 +56,4 @@ Cleanup is idempotent and uses a durable manifest. A script crash, timeout, or i
 
 These are real FreeBSD kernel and FUSE executions, not mocked filesystem tests. Independent bhyve processes allow guest crash, pause, restart, and network-partition experiments. Three guests on one physical host still share power, hardware, and outer storage caches. They do not prove independent physical-host failure tolerance or storage power-loss behavior. Stage 2 adds non-disruptive validation on the real deployed topology; destructive physical-host drills remain separate, explicitly approved exercises.
 
-The harness and VM templates are future implementation work. This document creates no VMs and executes no tests.
+The full test harness remains future implementation work. A separate stopped-VM preparation script now exists; it does not execute tests.
