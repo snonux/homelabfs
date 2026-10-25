@@ -13,7 +13,7 @@ flowchart TB
   subgraph f3[Physical f3: bhyve]
     subgraph A[hfs-test0: FreeBSD, 2 GiB]
       Atest[Python probes] --> Afuse[Guest FUSE daemon] --> Azfs[Guest hfsdata0 ZFS pool]
-    end
+   end
     subgraph B[hfs-test1: FreeBSD, 2 GiB]
       Btest[Python probes] --> Bfuse[Guest FUSE daemon] --> Bzfs[Guest hfsdata1 ZFS pool]
     end
@@ -135,3 +135,7 @@ At completion, all three lab guests are running, Rocky and the unrelated `freebs
 `vm_list` still names only Rocky: a physical f3 restart will start Rocky and leave the lab guests stopped. Do not change that policy implicitly. Historical preparation manifests remain unchanged; inspect live state rather than treating them as current status.
 
 The next implementation work is HomelabFS itself and its plan-bound integration harness. Reuse the existing guests for bounded approved PoCs; do not confuse those reusable preparation assets with the eventual disposable per-run clone lifecycle. Before failure injection or replication testing, implement fencing, journals, role management, and test-cluster identity/credentials. Future runs still require fresh approval.
+
+## Replication copy
+
+The lab now has an encrypted, periodic [replication copy on f2](Lab-replication.md), including recovery prerequisites and verification commands. This replaces the original preparation state where only local snapshots covered the lab.

@@ -1,0 +1,60 @@
+Job: f3_to_f2_freebsd
+Type: push
+
+Replication:
+   Attempt #1
+   Status: done
+   Last Run: 2026-10-25 11:53:21 +0200 EET (lasted 1m6s)
+     zroot/bhyve/freebsd                 DONE (step 1/1, 1.6 KiB/624 B) 
+     zroot/bhyve/homelabfs-lab           DONE (step 1/1, 40.3 KiB/123.1 KiB) 
+     zroot/bhyve/homelabfs-lab/hfs-test0 DONE (step 1/1, 2.2 GiB/2.2 GiB) 
+     zroot/bhyve/homelabfs-lab/hfs-test1 DONE (step 1/1, 1.9 GiB/1.9 GiB) 
+     zroot/bhyve/homelabfs-lab/hfs-test2 DONE (step 1/1, 1.9 GiB/1.9 GiB) 
+     zroot/bhyve/rocky                   DONE (step 1/1, 172.8 MiB/176.7 MiB) 
+   
+Pruning Sender:
+   Status: Done
+   zroot/bhyve/freebsd                 Completed  (destroy 2 of 31 snapshots)
+   zroot/bhyve/homelabfs-lab           Completed  (destroy 0 of 1 snapshots)
+   zroot/bhyve/homelabfs-lab/hfs-test0 Completed  (destroy 0 of 1 snapshots)
+   zroot/bhyve/homelabfs-lab/hfs-test1 Completed  (destroy 0 of 1 snapshots)
+   zroot/bhyve/homelabfs-lab/hfs-test2 Completed  (destroy 0 of 1 snapshots)
+   zroot/bhyve/rocky                   Completed  (destroy 1 of 30 snapshots)
+   
+Pruning Receiver:
+   Status: Done
+   zroot                               skipped: filesystem has no correspondence on sender
+   zroot/bhyve                         skipped: filesystem has no correspondence on sender
+   zroot/bhyve/freebsd                 Completed  (destroy 1 of 29 snapshots)
+   zroot/bhyve/homelabfs-lab           Completed  (destroy 0 of 1 snapshots)
+   zroot/bhyve/homelabfs-lab/hfs-test0 Completed  (destroy 0 of 1 snapshots)
+   zroot/bhyve/homelabfs-lab/hfs-test1 Completed  (destroy 0 of 1 snapshots)
+   zroot/bhyve/homelabfs-lab/hfs-test2 Completed  (destroy 0 of 1 snapshots)
+   zroot/bhyve/rocky                   Completed  (destroy 1 of 27 snapshots)
+   
+Snapshotting:
+   Type: periodic
+   Status: Waiting
+   Sleep until: 2026-10-25 12:02:15.010220462 +0200 EET
+   zroot/bhyve/freebsd                 SnapDone 0s snap name: "zrepl_20261025_095215_000"
+   zroot/bhyve/homelabfs-lab           SnapDone 0s snap name: "zrepl_20261025_095215_000"
+   zroot/bhyve/homelabfs-lab/hfs-test0 SnapDone 0s snap name: "zrepl_20261025_095215_000"
+   zroot/bhyve/homelabfs-lab/hfs-test1 SnapDone 0s snap name: "zrepl_20261025_095215_000"
+   zroot/bhyve/homelabfs-lab/hfs-test2 SnapDone 0s snap name: "zrepl_20261025_095215_000"
+   zroot/bhyve/rocky                   SnapDone 0s snap name: "zrepl_20261025_095215_000"
+   
+
+--------------------------------------------------------------------------------
+Job: local_zfs_snapshots
+Type: snap
+
+Pruning snapshots:
+   ...
+   
+Snapshotting:
+   Type: cron
+   State: waiting
+   Sleep until: 2026-10-25 12:00:00 +0200 EET (6m8s remaining)
+   
+
+--------------------------------------------------------------------------------

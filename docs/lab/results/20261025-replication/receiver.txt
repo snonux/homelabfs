@@ -1,0 +1,33 @@
+NAME                                               PROPERTY        VALUE                                              SOURCE
+zdata/sink/f3/zroot/bhyve/homelabfs-lab            encryption      aes-256-gcm                                        -
+zdata/sink/f3/zroot/bhyve/homelabfs-lab            encryptionroot  zdata/sink/f3/zroot/bhyve/homelabfs-lab            -
+zdata/sink/f3/zroot/bhyve/homelabfs-lab            keylocation     file:///keys/f3.lan.buetow.org:bhyve.key           local
+zdata/sink/f3/zroot/bhyve/homelabfs-lab            keystatus       unavailable                                        -
+zdata/sink/f3/zroot/bhyve/homelabfs-lab            mountpoint      none                                               inherited from zdata/sink/f3/zroot/bhyve
+zdata/sink/f3/zroot/bhyve/homelabfs-lab            mounted         no                                                 -
+zdata/sink/f3/zroot/bhyve/homelabfs-lab            quota           none                                               default
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test0  encryption      aes-256-gcm                                        -
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test0  encryptionroot  zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test0  -
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test0  keylocation     file:///keys/f3.lan.buetow.org:bhyve.key           local
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test0  keystatus       unavailable                                        -
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test0  mountpoint      none                                               inherited from zdata/sink/f3/zroot/bhyve
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test0  mounted         no                                                 -
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test0  quota           none                                               default
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test1  encryption      aes-256-gcm                                        -
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test1  encryptionroot  zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test1  -
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test1  keylocation     file:///keys/f3.lan.buetow.org:bhyve.key           local
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test1  keystatus       unavailable                                        -
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test1  mountpoint      none                                               inherited from zdata/sink/f3/zroot/bhyve
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test1  mounted         no                                                 -
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test1  quota           none                                               default
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test2  encryption      aes-256-gcm                                        -
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test2  encryptionroot  zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test2  -
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test2  keylocation     file:///keys/f3.lan.buetow.org:bhyve.key           local
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test2  keystatus       unavailable                                        -
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test2  mountpoint      none                                               inherited from zdata/sink/f3/zroot/bhyve
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test2  mounted         no                                                 -
+zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test2  quota           none                                               default
+NAME                                      USED  AVAIL
+zdata                                     230G   670G
+zdata/sink/f3/zroot/bhyve/homelabfs-lab  6.09G   670G
+zfskeys_datasets: zdata/enc zroot/bhyve zroot/garage zdata/sink/f3/zroot/bhyve/freebsd zdata/sink/f3/zroot/bhyve/rocky zdata/sink/f3/zroot/bhyve/homelabfs-lab zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test0 zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test1 zdata/sink/f3/zroot/bhyve/homelabfs-lab/hfs-test2

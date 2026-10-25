@@ -23,3 +23,7 @@ Before working on the lab, read `docs/Lab-operations.md` and
   force-kill Rocky or delete production data to make a test pass.
 - Initial results and setup limitations: `docs/Lab-operations.md`.
   Full replication/failover harness and HomelabFS itself remain unimplemented.
+
+The lab is replicated from f3 to f2 every 10 minutes. Read
+`docs/Lab-replication.md` before recovery or changing snapshot ownership.
+Never boot or modify the received sink directly.

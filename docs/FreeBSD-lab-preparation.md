@@ -27,7 +27,7 @@ ssh -o UserKnownHostsFile=docs/lab/f3-known_hosts \
 
 Use `.12` and `.13` for the other guests. Rebuilding a guest changes its host key; update the pinned file from trusted offline provisioning output.
 
-Existing local zrepl snapshots include the new lab subtree. Existing remote replication selections do not include it. Retained snapshots consume quota even after test files or disks are deleted; account for them during future cleanup and admission checks. No zrepl configuration was changed.
+At preparation time, existing local zrepl snapshots included the new lab subtree. **This has since changed: [f3 → f2 replication](Lab-replication.md) now owns new lab snapshots.** Existing remote replication selections do not include it. Retained snapshots consume quota even after test files or disks are deleted; account for them during future cleanup and admission checks. No zrepl configuration was changed.
 
 ## Reproducing preparation
 
