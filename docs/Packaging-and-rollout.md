@@ -22,6 +22,10 @@ These details come from the f3s skill's package-repository architecture and clie
 
 ## Canary kernel decision gate
 
+The [canary kernel policy](spec/Kernel-policy.md) defines the artifact matrix,
+target admission records, trust enforcement, pinning and offline rollback gates.
+It admits no future target until complete artifacts and matching evidence exist.
+
 On 2026-10-28 all three production r-nodes ran `5.14.0-687.60.1.el9_8.x86_64` and lacked `9pnet_virtio`; see [dated inspection](Deployment-readiness.md#observed-baseline-2026-10-28). The ELRepo PoC is not validation of the selected canary target. Specify the supported artifact matrix, enforced signature trust, pinning, security-update owner, revalidation triggers, offline rollback and fail-closed unsupported boots before the real-daemon guest compatibility gate. Validate SELinux and pod credential behavior with that artifact set. Kernel policy is an early task; publication and rolling installation remain separately gated operations.
 
 ## Artifact and compatibility contract
