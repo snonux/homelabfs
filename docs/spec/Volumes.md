@@ -21,8 +21,9 @@ The root is a logical namespace, not permission to export its raw backing
 directory. Use the [data/journal sibling layout](../Journal-storage.md), keyed
 by volume UUID; neither journal nor control storage is workload-visible.
 Backing paths and a human-readable name are administrative mappings to the
-UUID, not identities inferred from path text. An object's stable identity names
-its home volume; matching inode numbers on different mounts prove nothing.
+UUID, not identities inferred from path text. An object's
+[stable identity](Backing-store.md) names its home volume; matching inode numbers
+on different mounts prove nothing.
 [Cross-volume transactions](Transactions.md) introduce logical namespace references
 to home-owned objects, without merging volume UUIDs or linking ZFS datasets.
 

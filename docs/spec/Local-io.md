@@ -4,8 +4,9 @@ Task `kq3` supplies `internal/vfs`, the local persistence seam for future journa
 and backing-store code. It is separate from the workload-facing FUSE API and
 from the distributed acknowledgement contract in [Durability](Durability.md).
 No distributed filesystem, checkpoint publisher or replay engine is implemented
-by this package. `Backing-store.md` did not exist when this seam was added;
-xattrs have therefore not been added speculatively.
+by this package. The [backing-store contract](Backing-store.md) selects logical
+metadata and ID-keyed payload files without xattrs, and identifies the narrow
+discovery/GC seam additions required before store implementation.
 
 `FS` opens regular files, renames files or directories, unlinks regular files,
 creates directories and syncs directories. `File` offers offset reads and writes,
