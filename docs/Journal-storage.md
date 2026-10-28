@@ -74,3 +74,12 @@ Deleting journal files does not necessarily return space to the pool when ZFS sn
 Crash before/after data sync, checkpoint publication, segment rotation, retention-boundary advancement, unlink, and directory sync. Reboot and verify a valid checkpoint plus suffix remains. Replay partial rename/unlink/truncate application without modifying a replacement object incorrectly.
 
 Also test: an offline async replica blocking deletion; a memory-only ACK followed by partner restart; promotion while cleanup runs; fourth-node replacement and transfer pins; interrupted emergency rejoin; quota and pool exhaustion; space retained by snapshots; snapshot pruning during a pinned transfer; independently timed sibling snapshots; data-only rollback; and switching an offline peer to an approved baseline recovery policy. Compare recovered application data and metadata against the external acknowledgement oracle, not just replica equality.
+
+## Canary capacity prerequisite
+
+Apply the [canary resource budget](Deployment-readiness.md#capacity-and-resource-admission)
+before deployment and each run. Include canary snapshots retaining journal
+blocks, checkpoint staging, replica rebuild and cleanup/evidence reserves.
+Existing production data, backups and received sinks consume protected capacity;
+they are not candidates for deletion or migration. No duplicate production
+cutover copies or full-NFS-tree sizing are required in this project.

@@ -37,11 +37,24 @@ Implement a per-volume recovery controller with resumable steps. Persist operati
 
 Keep three distinct conditions: the daemon is alive; a replica can receive recovery data; the volume is allowed to serve workload I/O. CSI publication and workload readiness use the third. A long catch-up should not trigger liveness restarts that repeatedly discard progress or volatile data. Expose the reason for waiting, source replica, last progress time, bytes remaining, and whether operator action is needed.
 
-Before activation, verify current authority, old-owner fencing, a valid recovered prefix, local application, and synchronous-partner readiness. On loss of authority, block new I/O and enforce fencing across the entire guest path. Storage quorum protects new write acceptance; it does not invalidate cached Linux reads. Validate a mechanism that stops or revokes the old guest/workload and its cached access, including already-open descriptors and mmap. If this requires an automated VM/host fence, make that an explicit deployment prerequisite. Do not promise transparent cache revocation that virtio-9p does not provide.
+Before activation, verify current authority, old-owner fencing, a valid recovered prefix, local application, and synchronous-partner readiness. On loss of authority, block new I/O and enforce fencing across the entire guest path. Storage quorum protects new write acceptance; it does not invalidate cached Linux reads. Validate a mechanism that stops or revokes the old guest/workload and its cached access, including already-open descriptors and mmap. Choose the concrete fence and obtain Paul's decision on acceptable VM/host disruption during the takeover specification, before model checking and implementation; CSI consumes that decision. Define independently reachable management, positive completion proof and fail-closed behavior as deployment prerequisites. Do not promise transparent cache revocation that virtio-9p does not provide.
 
 Do not conflate client timeout, cancellation, and operation outcome. Once a mutation is accepted, failure to deliver its reply may leave an uncertain client result. Internal retries use stable operation identities; applications do not receive an invented exactly-once guarantee across process restarts.
 
 Boot in dependency order: local ZFS available and unlocked; durable identity/emergency policy loaded; authority reconciled; HomelabFS mount verified; bhyve share connected to that mount; guest/CSI publication; workload start. Guest root disks and coordination state must not require a ready workload volume. Verify mount and volume identity, not merely an existing directory. Never let a missing FUSE mount or failed 9p mount expose a writable empty directory to a pod.
+
+## Coordinated shutdown and cold start
+
+Implement and test the [power lifecycle contract](Deployment-readiness.md#fencing-and-coordinated-power-lifecycle)
+on isolated test clusters. Quiesce clients with quorum available, persist accepted
+work, stop guest access, then storage and hosts. Test bounded interrupted-step
+recovery and cold boot without dependency cycles. Never downgrade automatically
+to emergency writes to finish shutdown. Mounted-but-gated differs from serving.
+
+Existing f3sctl/NFS/CARP/monitor/UPS automation remains unchanged. Its parallel
+non-master shutdown is a future integration concern, not a mandate to change
+production power management. Live shared-host canaries do not authorize host
+shutdown or fencing production guests; exercise those behaviors in isolation.
 
 ## Automatic recovery requirements
 

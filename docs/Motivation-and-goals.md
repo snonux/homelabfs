@@ -6,7 +6,7 @@ The goal is simple: highly available file storage for my home lab, built on the 
 
 I also want to learn about distributed filesystems by building one, and have fun doing it. Exploring replication, consistency, failure recovery, and filesystem interfaces is part of the purpose of HomelabFS, even where an existing product might be the more practical choice.
 
-My f3s setup runs Kubernetes inside Rocky Linux bhyve VMs on FreeBSD hosts. The pod workloads need ordinary persistent files: directories, permissions, locking, renames, and reliable sync behavior. When a workload moves to another node, its storage should follow and recover automatically. HomelabFS is intended to provide that while retiring NFS from f3s.
+My f3s setup runs Kubernetes inside Rocky Linux bhyve VMs on FreeBSD hosts. The pod workloads need ordinary persistent files: directories, permissions, locking, renames, and reliable sync behavior. When a workload moves to another node, its storage should follow and recover automatically. HomelabFS explores those capabilities with isolated test workloads. Migrating production workloads and retiring NFS would be a separate future project.
 
 I have not found an existing solution that fits this combination of platform, filesystem semantics, and operational scope well enough. That is the motivation for exploring HomelabFS.
 
@@ -22,7 +22,7 @@ I have not found an existing solution that fits this combination of platform, fi
 - **Shared storage:** the post avoided a single shared iSCSI dependency as a failure point; this is not a claim that every iSCSI design lacks redundancy.
 - **Other candidates:** MinIO and MooseFS were future explorations. MooseFS was described positively for FreeBSD and POSIX support, not rejected. Its suitability remains an open comparison.
 
-These are historical observations, not universal product limitations. HomelabFS must demonstrate safer ownership transfer and usable application recovery before replacing the existing system.
+These are historical observations, not universal product limitations. HomelabFS uses these lessons to define canary tests for ownership transfer and application recovery. Replacing the existing system is outside the current project.
 
 ## Why the existing options do not fit this setup
 
@@ -46,10 +46,10 @@ These are historical observations, not universal product limitations. HomelabFS 
 
 [Part 8: Observability](https://foo.zone/gemfeed/2025-12-07-f3s-kubernetes-with-freebsd-part-8.html) describes persistent filesystem paths for Prometheus, Grafana, Loki, and Tempo. These belong in the application test inventory alongside databases and file services. Mount success alone is insufficient: workloads must recover their stored state.
 
-[Part 9: GitOps with ArgoCD](https://foo.zone/gemfeed/2026-04-02-f3s-kubernetes-with-freebsd-part-9.html) describes ordering persistent volumes before dependent applications. HomelabFS migration must preserve that deployment discipline and add actual storage-readiness checks; a Kubernetes object existing does not prove a volume is safe to serve.
+[Part 9: GitOps with ArgoCD](https://foo.zone/gemfeed/2026-04-02-f3s-kubernetes-with-freebsd-part-9.html) describes ordering persistent volumes before dependent applications. HomelabFS canary publication must preserve that deployment discipline and add actual storage-readiness checks; a Kubernetes object existing does not prove a volume is safe to serve.
 
 [Part 10: A New Home](https://foo.zone/gemfeed/2026-09-01-f3s-kubernetes-with-freebsd-part-10.html) describes separate local, offsite, and encrypted cloud backups. HomelabFS replication complements that recovery strategy. It does not replace backups or external ZFS snapshots.
 
 ## Current scope
 
-HomelabFS is in the concept phase. A focused design for my home lab still requires careful distributed-systems engineering and real application testing. POSIX compatibility, automatic failover, performance, and the selected virtio-9p/FUSE access path are goals to demonstrate before migrating real data.
+HomelabFS is in the concept phase. A focused design for my home lab still requires careful distributed-systems engineering and real application testing. POSIX compatibility, automatic failover, performance, and the selected virtio-9p/FUSE access path are goals to demonstrate using synthetic data and disposable canary volumes. The deliverable is tested implementation, canary evidence and documented limitations; no production cutover or NFS retirement is included.

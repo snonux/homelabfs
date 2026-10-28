@@ -100,5 +100,5 @@
 <text x="829" y="1138" class="small" text-anchor="start">Emergency: one designated node; explicit activation and fencing.</text>
 <text x="829" y="1163" class="small" text-anchor="start">Other nodes stay excluded; manual admission and replay to recover.</text>
 <text x="829" y="1188" class="small" text-anchor="start">In-memory partner ACK intentionally permits a multi-failure loss gap.</text>
-<text x="50" y="1236" class="small muted" text-anchor="start">NFS retirement: Pod → kernel 9p → bhyve → HomelabFS → ZFS. Share the HomelabFS mount, never its raw backing directory.</text>
+<text x="50" y="1236" class="small muted" text-anchor="start">Canary path: Pod → kernel 9p → bhyve → HomelabFS → ZFS. Share the HomelabFS mount, never its raw backing directory.</text>
 </svg>

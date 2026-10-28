@@ -2,7 +2,7 @@
 
 **Live PoC:** stock Rocky 9 lacks 9p support and the matching-source module build failed. A one-time boot of ELRepo kernel-lt enabled 9p; basic I/O and SQLite WAL passed with cache=mmap. The combined 9p/FUSE path also passes initial functional checks; see [FUSE and benchmark results](PoC-fuse-and-benchmarks.md). See [f3 / Rocky PoC findings](PoC-f3-rocky.md).
 
-HomelabFS is a distributed filesystem for the f3s homelab, primarily on FreeBSD. Its purpose is to retire NFS from f3s by replacing NFS-backed workload storage with local HomelabFS access, replication, and automatic failover. The default cluster has three nodes, each providing local ZFS storage and running workloads. Additional nodes can be admitted, including a fourth node. This is an initial design, not an implemented or proven protocol.
+HomelabFS is a distributed filesystem for the f3s homelab, primarily on FreeBSD. Its current purpose is to implement and validate local file access, replication and automatic failover using disposable lab and canary volumes. Production workload migration and NFS retirement belong to a separate future project. The default cluster has three nodes, each providing local ZFS storage and running workloads. Additional nodes can be admitted, including a fourth node. This is an initial design, not an implemented or proven protocol.
 
 
 See [Motivation and goals](Motivation-and-goals.md) for the problem HomelabFS aims to solve.
@@ -11,7 +11,7 @@ See [Motivation and goals](Motivation-and-goals.md) for the problem HomelabFS ai
 
 - Implement HomelabFS in Go, with a shared core and explicit FreeBSD/Linux platform adapters.
 
-- Retire NFS from f3s. The target HomelabFS storage path has no NFS dependency; virtio-9p provides host-to-guest file access.
+- Validate HomelabFS with isolated canary volumes. Its test data path has no NFS dependency; virtio-9p provides host-to-guest file access. Existing production NFS, consumers and PVs remain in place.
 - For a given data set, normal workload reads and writes occur together on one active node. On failure, both move to a replacement owner. Different data sets can be active on different nodes.
 - Support both FreeBSD and Linux FUSE from the start, using two platform adapters around shared filesystem and replication code.
 - For f3s, expose the FreeBSD HomelabFS mount to each colocated Rocky bhyve guest through virtio-9p. Rocky uses its kernel 9p client; no HomelabFS Linux FUSE daemon is deployed in this path.
@@ -47,7 +47,7 @@ See [Motivation and goals](Motivation-and-goals.md) for the problem HomelabFS ai
 | [Performance](Performance.md) | Bounded concurrency, connection pools, fairness, and measurement |
 | [Recovery](Recovery.md) | Automatic recovery, failures, fencing, and manual escalation |
 | [Emergency mode](Emergency-mode.md) | Single-node activation, exclusion, manual rejoin, and exit |
-| [Kubernetes and migration](Kubernetes-and-migration.md) | PV publication, pod relocation, guest access, and retiring NFS |
+| [Kubernetes canaries](Kubernetes-and-migration.md) | Canary PV publication, pod relocation, guest access and future scope |
 | [Filesystem semantics](Filesystem-semantics.md) | POSIX-style behavior, permissions, and f3s applications |
 | [Platform interfaces](Platform-interfaces.md) | Shared core, two FUSE adapters, and bhyve virtio-9p |
 | [Security](Security.md) | Proposed WireGuard transport, node identity, authorization, and encryption |
@@ -58,13 +58,13 @@ Diagrams live with the topics they illustrate: placement in Cluster and ownershi
 
 ## Decisions to make next
 
-1. Map workload directories/PVs to replication groups and identify shared-volume exceptions, including rename across boundaries.
+1. Select representative consumer patterns and synthetic sharing fixtures, then define canary replication groups. Budget the canary footprint and operational isolation in [Deployment readiness](Deployment-readiness.md); a full production migration inventory is outside this project.
 2. Confirm the local durability boundary, define write/fsync semantics, and specify the freshness barrier for reads that wait for catch-up.
 3. Specify takeover, fencing enforcement, and recovery of acknowledged operations.
 4. Specify emergency activation/fencing, manual admission and exit, retention limits, and safe group reconfiguration when adding nodes. Implement the failure policies above without automatic acknowledgement downgrades.
 5. Choose a Go FUSE library supporting both platform adapters, prototype mounts on both real kernels, and validate the selected bhyve virtio-9p to FreeBSD FUSE path and f3s application semantics.
 
-Suggested development order: validate the selected guest transport and both FUSE frontends; specify and exercise the commit/fencing state machine; local filesystem and journal replay; replication with fixed ownership; bounded queues and restart recovery; then automatic ownership transfer with partition/crash tests and Kubernetes integration. Follow the [integration-test matrix and rollout gates](Integration-tests.md#integration-test-matrix) before migrating real data.
+Suggested development order: validate the selected guest transport and both FUSE frontends; specify and exercise the commit/fencing state machine; local filesystem and journal replay; replication with fixed ownership; bounded queues and restart recovery; then automatic ownership transfer with partition/crash tests and Kubernetes integration. Follow the [integration-test matrix and rollout gates](Integration-tests.md#integration-test-matrix) before accepting canary results. No production workload migration is planned here.
 
 ## Packaging and validation
 
@@ -78,3 +78,16 @@ Every run requires explicit user approval; scripts handle execution, evidence, a
 2. After separately authorized deployment to real f3s hosts, [live smoke tests](Live-smoke-tests.md): exercise the actual guest-to-host path from the Rocky VMs using dedicated test volumes and bounded I/O. No routine destructive production fault injection.
 
 9p and Kubernetes lifecycle tests are tracked separately in [Deployment compatibility](Deployment-tests.md); they are not dependencies of the native FreeBSD integration harness.
+
+## Enforced planning and implementation gates
+
+Read [Deployment readiness](Deployment-readiness.md) before freezing the volume,
+fencing or deployment design. Representative test patterns feed volume policy; bounded canary
+capacity feeds fixture mapping and acceptance profiles. Guest/host fencing is chosen in
+the takeover spec, not postponed to CSI. Fixed-owner replication implementation
+waits for both the commit model check and the real-daemon guest compatibility
+gate. This is development ordering, not permission to add 9p to native Stage 1.
+Rollout planning may happen before test execution finishes; publication,
+canary deployment and test exercises retain their own prerequisites and explicit
+approvals. Disruptive exercises use isolated test infrastructure; production
+migration and NFS retirement have no execution tasks in this project.

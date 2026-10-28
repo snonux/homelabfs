@@ -6,7 +6,7 @@
 
 **Neither Stage 1 integration tests nor Stage 2 live smoke tests may start without Paul's explicit approval for that run.** Documentation changes, commits, package publication, deployment completion, CI success, and an earlier approved run do not authorize another test run. This applies to future automated executions; the completed PoCs remain historical evidence.
 
-Each stage has its own approval. Finishing integration tests does not authorize deployment or live smoke tests automatically. Deployment itself follows the separately authorized rollout plan.
+Each stage has its own approval. Finishing integration tests does not authorize deployment or live smoke tests automatically. Deployment itself follows a separately authorized canary installation plan. Current scope is synthetic data in disposable lab/canary volumes; no production workload migration or NFS retirement is included. Disruptive deployment profiles use isolated test infrastructure, while live shared-host smoke remains non-disruptive.
 
 Read-only planning may inspect versions, available resources, and existing state. It must not provision or start test VMs, stop Rocky, change configuration, install packages, inject faults, create test volumes, or issue workload I/O. Those actions belong to approved execution.
 

@@ -17,3 +17,13 @@ Periodically test snapshot restoration and application recovery. Local snapshots
 ## Journal dataset coordination
 
 [Journal-storage.md](Journal-storage.md) defines the recommended dataset hierarchy, recovery manifests, checkpoint barriers, and segment retention. Independent snapshot schedules may supplement paired recovery sets, but independently timed data and journal snapshots are not automatically compatible. External retention must account for snapshots retaining deleted journal blocks and for baselines pinned by active transfers.
+
+## Canary policy and restore acceptance
+
+Specify bounded snapshot/retention and restore profiles for disposable canary
+data/journal/control datasets. Use test keys and separate writable recovery
+resources; never modify existing backup policies or received sinks. Retain test
+artifacts, trust material and configuration outside the canary storage, and verify
+checksums, application integrity and recovery generations in approved isolated
+restore runs. Existing lab replication is not evidence that these canary restores
+passed. Production backup policy is outside this project. See [canary readiness](Deployment-readiness.md#release-acceptance-and-independent-recovery).

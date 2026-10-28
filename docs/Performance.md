@@ -2,7 +2,7 @@
 
 [Architecture overview](Architecture.md)
 
-Design for parallel independent workloads from the start, with bounded resources and configurable connection counts. Add concurrency when measured bottlenecks justify it; do not weaken ordering, durability, or fencing to improve throughput. No performance measurements have been made yet.
+Design for parallel independent workloads from the start, with bounded resources and configurable connection counts. Add concurrency when measured bottlenecks justify it; do not weaken ordering, durability, or fencing to improve throughput. No distributed HomelabFS performance measurements have been made yet; transport-only PoC measurements are listed below.
 
 ## Work scheduling and connections
 
@@ -49,3 +49,14 @@ Additional integration scenarios: change pool size under load; kill one data con
 ## Initial transport measurements
 
 The [f3 / Rocky fio comparison](PoC-fuse-and-benchmarks.md) measures direct host ZFS, host Go FUSE, 9p, and 9p plus Go FUSE using identical buffered jobs. These results establish a preliminary transport baseline; they contain no replication or journal overhead and are not production targets.
+
+## Canary acceptance profiles
+
+Before canary acceptance, establish Paul-approved numeric profiles following
+[deployment readiness](Deployment-readiness.md#release-acceptance-and-independent-recovery):
+healthy/degraded p95/p99 latency, throughput, lag, catch-up progress, recovery
+stages, and host RAM/CPU/I/O ceilings at a recorded workload size and backlog.
+Calibration requires separately approved bounded runs. Record RPO by failure
+mode, including the accepted volatile-partner loss window without inventing a
+finite bound. Missing targets or measurements block acceptance; a test timeout
+does not establish a production SLO. Use the same canary profile in runner assertions and test alert thresholds. Production RPO/RTO and full-workload sizing belong to the future project.

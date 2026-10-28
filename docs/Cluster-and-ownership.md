@@ -97,3 +97,10 @@ See [Security.md](Security.md) for the proposed persistent replication connectio
 FreeBSD Ports provides a native etcd 3.6 port at `devel/etcd36`, with package name `coreos-etcd36`. Binary package availability depends on the configured repository and target system. FreeBSD is not listed as an upstream-supported etcd platform; validate operation on the actual nodes.
 
 References: [FreeBSD etcd port](https://github.com/freebsd/freebsd-ports/blob/main/devel/etcd36/Makefile), [etcd supported platforms](https://etcd.io/docs/v3.6/op-guide/supported-platform/), [etcd API guarantees](https://etcd.io/docs/v3.5/learning/api_guarantees/), [etcd fencing example](https://github.com/etcd-io/etcd/blob/main/contrib/lock/README.md).
+
+## Canary placement prerequisite
+
+Use the [synthetic consumer/path fixtures and canary resource budget](Deployment-readiness.md).
+Aliased claims and nested roots must not create conflicting owners. Test grouped
+placement and its multi-volume constraints with disposable data. Do not alter
+production workload scheduling or require a production migration map.

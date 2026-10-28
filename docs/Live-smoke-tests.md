@@ -4,7 +4,7 @@
 
 ## Entry conditions
 
-Stage 1 must pass for the candidate release. Deploy the validated HomelabFS artifacts to the real FreeBSD f3s hosts under a separately authorized rollout. Then prepare a live smoke plan and obtain **explicit approval for Stage 2**. Deployment finishing does not start tests automatically. Run this stage through scripts, with no LLM in the execution loop.
+Stage 1 must pass for the candidate release. Deploy validated HomelabFS artifacts for dedicated canary volumes on the selected FreeBSD f3s hosts under a separately authorized installation plan. Preserve production workloads, PVs and NFS services; only synthetic canary data is allowed. Then prepare a live smoke plan and obtain **explicit approval for Stage 2**. Deployment finishing does not start tests automatically. Run this stage through scripts, with no LLM in the execution loop.
 
 Test from each participating Rocky VM using its actual deployed kernel, transport, permissions, and mount configuration:
 
@@ -43,8 +43,13 @@ Where Kubernetes publication is deployed, an optional explicitly selected smoke 
 
 ## Completion and escalation
 
-Scripts capture a per-guest/per-volume result, versions, checksums, operation history, replication positions, health before/after, and cleanup status. Success requires all selected checks and cleanup to pass. A failure stops migration to that path and preserves evidence; do not automatically repair live storage or restart workloads.
+Scripts capture a per-guest/per-volume result, versions, checksums, operation history, replication positions, health before/after, and cleanup status. Success requires all selected checks and cleanup to pass. A failure stops acceptance of that canary profile and preserves evidence; do not automatically repair live storage or restart workloads.
 
 Automatic failover under node crashes, stale-mount recovery, emergency mode, and destructive Kubernetes lifecycle scenarios belong to Stage 1 where applicable or to separately approved isolated deployment exercises. Routine live smoke tests demonstrate that the deployed end-to-end path works without proving every failure mode. A planned owner transfer on a smoke volume can be added later as an explicit profile, not silently included in the baseline.
+
+Passing this suite demonstrates only the selected canary profile. Report isolated
+[deployment exercises](Deployment-tests.md#deployment-and-physical-host-acceptance)
+separately, including untested physical failure properties. Production migration
+and NFS retirement are outside this project regardless of test results.
 
 No live deployment or smoke execution is performed by this plan. See [Packaging and rollout](Packaging-and-rollout.md) for distribution of the artifacts that both stages validate.

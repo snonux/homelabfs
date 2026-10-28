@@ -1,5 +1,11 @@
 # HomelabFS agent handoff
 
+Current scope: implement and validate HomelabFS using disposable lab and canary
+volumes only. Do not migrate production workloads, copy production data into
+canaries, retire NFS, or change production PVs/consumers. Production migration
+and NFS retirement belong to a separate future project. Existing workload
+patterns are compatibility examples, not a migration checklist.
+
 HomelabFS is in the concept phase. The Go FUSE code under `tools/poc/` is a
 loopback compatibility probe, not a distributed filesystem.
 

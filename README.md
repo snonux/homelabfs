@@ -4,7 +4,7 @@
 
 **Concept phase — architecture notes and experimental compatibility probes. No distributed HomelabFS implementation is available yet.**
 
-HomelabFS is a planned distributed filesystem for the f3s homelab, designed to retire NFS. It will use local ZFS storage on FreeBSD hosts, with replication and workload failover implemented in Go.
+HomelabFS is a planned distributed filesystem for the f3s homelab. This project implements and validates it using disposable lab and canary volumes only. Production workload migration and NFS retirement are possible future steps in a separate project. It will use local ZFS storage on FreeBSD hosts, with replication and workload failover implemented in Go.
 
 Each workload owns an independent directory/persistent volume. Its reads and writes normally happen on one primary node, while other nodes hold replicas. Different nodes can be primary for different workloads at the same time.
 
@@ -59,6 +59,8 @@ Routine failures should recover automatically when enough valid history and auth
 
 Three FreeBSD bhyve guests on f3 have passed the native FUSE/ZFS PoC checks. Each runs FUSE inside the guest. The separate Rocky 9p/FUSE regression also passed. See [lab operations, scripts, results, and current state](docs/Lab-operations.md); future test runs still require explicit approval.
 
+The [deployment readiness prerequisites](docs/Deployment-readiness.md) cover canary isolation, bounded resource budgets, fencing, kernel support, recovery and test acceptance. They do not authorize production migration or NFS retirement.
+
 ## Design documents
 
 Start with the [architecture overview](docs/Architecture.md).
@@ -76,7 +78,7 @@ Start with the [architecture overview](docs/Architecture.md).
 | [Performance](docs/Performance.md) | Bounded concurrency, connection pools, and measurement |
 | [Recovery](docs/Recovery.md) | Failure handling and automatic/manual recovery boundaries |
 | [Emergency mode](docs/Emergency-mode.md) | Single-node recovery and controlled rejoin |
-| [Kubernetes and migration](docs/Kubernetes-and-migration.md) | Volume publication and NFS retirement |
+| [Kubernetes canaries](docs/Kubernetes-and-migration.md) | Canary volume publication, placement and scope boundaries |
 | [Filesystem semantics](docs/Filesystem-semantics.md) | File operations, permissions, and workload compatibility |
 | [Platform interfaces](docs/Platform-interfaces.md) | Shared Go core, FUSE adapters, and virtio-9p |
 | [Security](docs/Security.md) | Encryption, admission, and authorization |

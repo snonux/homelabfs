@@ -1,12 +1,12 @@
-# HomelabFS Kubernetes integration and NFS migration
+# HomelabFS Kubernetes integration and canary volumes
 
 [Architecture overview](Architecture.md)
 
-Persistent-volume placement, the selected f3s guest access path, and retirement of the existing NFS storage.
+Canary persistent-volume placement and the selected f3s guest access path. The filename is retained for existing links; production migration and NFS retirement are outside this project.
 
 ## Kubernetes persistent volumes
 
-The primary use case is Kubernetes pods mounting persistent volumes on one worker, then being recreated on another worker after failure. Map each independent HomelabFS volume to a managed workload directory and replication group. Multiple volumes may be active on different workers simultaneously. Several pods on the same worker may share a volume when the application permits it; cross-worker access requires an explicit policy beyond the baseline.
+The validation use case is disposable Kubernetes test pods mounting dedicated canary persistent volumes on one worker, then being recreated on another worker after failure. Map each independent HomelabFS volume to a managed workload directory and replication group. Multiple volumes may be active on different workers simultaneously. Several pods on the same worker may share a volume when the application permits it; cross-worker access requires an explicit policy beyond the baseline.
 
 In f3s, worker r0 is colocated with storage host f0, r1 with f1, and r2 with f2. A pod scheduled on r1 must use the HomelabFS copy on f1 through bhyve virtio-9p and the Rocky kernel 9p client. Volume ownership follows placement dynamically; this does not require permanent node pinning.
 
@@ -36,16 +36,38 @@ Selected transport: share the FreeBSD HomelabFS mount through bhyve virtio-9p an
 
 Compatibility testing must cover the full path from a Linux pod through the guest transport to HomelabFS and ZFS, including credentials, locks, caching, sync, and workload rescheduling. Existing ReadWriteOnce hostPath declarations are not a replacement for storage-level fencing. Keep k3s and HomelabFS coordination storage independently bootstrappable.
 
-## NFS retirement and migration
+## Representative patterns and isolation
 
-The [f3s storage history](Motivation-and-goals.md#lessons-from-the-f3s-blog-series) explains why replacing the existing stack must improve recovery as well as remove NFS. Require an end-to-end write/sync/read probe in a dedicated health-check directory on an active volume, with a deadline and cleanup. Run it through the pod's actual mount path. Report intentional catch-up or fencing stalls separately from unexpected failures; probes must never bypass the ownership gate. A failed probe alone must not authorize promotion or destructive recovery.
+Use selected f3s workload patterns to design synthetic fixtures, not to map or
+move production data. Examples include a shared music reader/writer group,
+Player-like multi-volume readers, aliases to one video directory, and nested
+parent/child namespaces. Define supported placement or explicit rejection for
+each fixture. Test same-owner co-location and multi-volume publication without
+exposing passive replicas as current read-only copies. Remote earth access is
+context for future design, not a required replacement service in this project.
 
-Retiring NFS from f3s is an explicit project goal. Existing NFS mounts, hostPath PVs, and paths such as `/data/nfs/k3svolumes` describe the current system, not a requirement of the new architecture. The replacement path is pod → Rocky kernel 9p client → colocated bhyve virtio-9p share → FreeBSD HomelabFS mount → local ZFS and peer replication. NFS is not a fallback in the intended final deployment.
+Create fresh canary PVs/PVCs, test pods, namespaces or labels, volume UUIDs,
+datasets and mount/export paths. None may alias `/data/nfs/k3svolumes`, an
+existing workload PV, backing path or replication identity. Use synthetic test
+data only. Cleanup acts on a durable run-owned manifest and checks identities.
+Keep existing NFS, stunnel, CARP, mount monitors and workload mappings unchanged.
+Canary installation on shared hosts needs a separately approved plan that
+accounts for resources, kernel changes and possible effects on existing services.
 
-Inventory all f3s NFS consumers and migrate their data and volume mappings. Preserve application-visible paths where useful, but do not infer the transport from a legacy path name. Validate ownership/permissions, application recovery, normal operation, and failover for each workload before retiring its old storage path. Coordinate cutover so old NFS clients and HomelabFS cannot write independent copies of the same workload data.
+## Canary acceptance
 
-After migration and restore validation, remove NFS exports and client mounts and retire NFS-specific stunnel services, mount monitors, and storage failover configuration that have no remaining consumers. Review shared infrastructure before removal: CARP and other services may also serve unrelated traffic. Keep external ZFS snapshots and backups. A migration runbook and rollback procedure remain to be written; no deployment or NFS configuration has been changed.
+After native FreeBSD gates pass, deploy the selected canary artifacts under a
+separately authorized plan and obtain approval for [Stage 2 smoke tests](Live-smoke-tests.md).
+The baseline is bounded I/O on fresh canary volumes through the real Rocky path.
+Exercise CSI with disposable pods/PVCs when that profile is selected. Record
+versions, data integrity, replication progress, limits and cleanup results.
+Disruptive guest/host fencing, power and restore exercises belong to separately
+approved isolated infrastructure, not the live production workload hosts.
+Document untested properties honestly; a canary pass is not production readiness.
 
-## Post-deployment acceptance
+## Possible future project
 
-After native FreeBSD integration tests pass and HomelabFS is deployed under the rollout plan, obtain separate approval for [live smoke tests](Live-smoke-tests.md) from the real Rocky VMs. Scripts exercise dedicated test volumes through the deployed end-to-end path before workload migration. No deployment event automatically authorizes smoke execution.
+Production consumer inventory, data sizing, hardware expansion for full data,
+application changes, remote-client replacement, migration/cutover/rollback and
+NFS retirement belong to a separate project. Current evidence may inform it,
+but no canary result authorizes those actions. Existing NFS remains operational.

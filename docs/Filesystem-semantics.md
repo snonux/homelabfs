@@ -18,7 +18,7 @@ Support and test fsync/fdatasync or their platform equivalents, synchronous I/O,
 
 The local Argo CD manifests and their chart references were inspected on 2026-10-24. This is the configured portfolio, not a live cluster health or compatibility result. Files ending in `.yaml.disabled` are excluded.
 
-Services: anki-sync-server, bgtutor, beets-art, filebrowser, forgejo, goprecords, immich, ipv6test, keybr, kobo-sync-server, miniflux, navidrome, opodsync, player, protonbridge, radicale, shuriken, syncthing, wallabag, webdav, xplayer, and ychat. Infrastructure and monitoring include registry, pkgrepo, cert-manager, traefik-config, prometheus, pushgateway, and argo-rollouts. Test persistent-storage users and any shared data consumers within that portfolio; not every listed component needs a replicated volume.
+Services: anki-sync-server, bgtutor, beets-art, filebrowser, forgejo, goprecords, immich, ipv6test, keybr, kobo-sync-server, miniflux, navidrome, opodsync, player, protonbridge, radicale, shuriken, syncthing, wallabag, webdav, xplayer, and ychat. Infrastructure and monitoring include registry, pkgrepo, cert-manager, traefik-config, prometheus, pushgateway, and argo-rollouts. Use isolated instances and synthetic fixtures representative of persistent-storage users and shared data consumers in that portfolio; not every listed component needs a replicated volume.
 
 | Observed configuration | Compatibility focus |
 |---|---|
@@ -30,6 +30,8 @@ Services: anki-sync-server, bgtutor, beets-art, filebrowser, forgejo, goprecords
 SQLite WAL requires same-host shared-memory coordination; do not assume distributing its database files makes concurrent database processes on different hosts safe. Validate the actual journal mode and access transport for each SQLite workload. Application file notifications are an additional compatibility concern beyond POSIX and need testing if a workload relies on them.
 
 Sources: local `~/git/conf/f3s/argocd-apps/README.md`, active application manifests, and referenced chart templates; f3s skill `references/k3s/install.md` and `references/storage/backups.md`. External semantics: [SQLite WAL documentation](https://www.sqlite.org/wal.html), [PostgreSQL reliability](https://www.postgresql.org/docs/current/wal-reliability.html).
+
+The later [2026-10-28 deployment review](Deployment-readiness.md#inventory-before-volume-design) expands this baseline with Player/Syncthing sharing, Immich video aliases, Shuriken parent access and non-pod consumers. Use selected patterns for synthetic canary fixtures and volume design. This is not a production migration inventory; replacing remote access or changing production applications is outside this project.
 
 ## Unix ownership and permissions
 
