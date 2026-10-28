@@ -4,6 +4,13 @@
 
 A deliberately activated exception to normal replication: one node serves recovered volumes while all other nodes remain excluded until manual admission.
 
+The [emergency protocol specification](spec/Emergency.md) defines the plan-bound
+operator interface, independent durable authority, approved native VM-only fence,
+restart/admission rules, final durable pair barrier and retention policy. Its
+mandatory emergency format upgrade and controller remain unimplemented; the
+existing normal journal format cannot encode local-only protection. Policy/design
+approval authorizes no actual activation, loss selection or disruptive window.
+
 ## Explicit single-node emergency mode
 
 Emergency mode is a cluster-wide administrative recovery state with one designated serving node. That node may serve reads and writes for volumes it has recovered; other nodes must keep their HomelabFS serving mounts and automatic workload-volume activation disabled. This is not an automatic response to losing quorum and does not imply that Kubernetes itself can operate with only one surviving control-plane node.

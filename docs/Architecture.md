@@ -50,6 +50,7 @@ See [Motivation and goals](Motivation-and-goals.md) for the problem HomelabFS ai
 | [Takeover state machine](spec/Takeover.md) | Closure recovery, durable promises, serving gates and approved native VM-only fence policy; implementation and validation pending |
 | [Isolated power lifecycle](spec/Power-lifecycle.md) | Quorum-preserving drain, graceful native guest stops, cold start, interrupted steps and simulated deadlines; unimplemented |
 | [Emergency mode](Emergency-mode.md) | Single-node activation, exclusion, manual rejoin, and exit |
+| [Emergency protocol](spec/Emergency.md) | Independent generation/admission, approved native fence, restart, final pair barrier and retention; mandatory format upgrade and implementation pending |
 | [Kubernetes canaries](Kubernetes-and-migration.md) | Canary PV publication, pod relocation, guest access and future scope |
 | [Filesystem semantics](Filesystem-semantics.md) | POSIX-style behavior, permissions, and f3s applications |
 | [Platform interfaces](Platform-interfaces.md) | Shared core, two FUSE adapters, and bhyve virtio-9p |

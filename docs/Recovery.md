@@ -85,6 +85,10 @@ Fencing must cover the Linux guest's existing descriptors and cached/mapped page
 Available means configured for the affected replication group, mutually reachable and ready for the volume, with sufficient recovered history and valid coordination authority. Two powered-on hosts alone are not sufficient. In normal mode, after a second node returns, recover and fence the replication group and establish the synchronous pair before resuming write acknowledgements. Emergency mode instead requires the explicit admission and exit procedure in [Emergency-mode.md](Emergency-mode.md). An isolated survivor cannot simply assume normal serving authority.
 
 See [Emergency-mode.md](Emergency-mode.md) for the explicit single-node exception and manual rejoin procedure.
+The [emergency protocol](spec/Emergency.md) specifies independent persisted
+generation/admission, survivor restart, named recovery-only admission and the
+durable final barrier before restoring synchronous ACKs. It requires a future
+typed emergency format; normal recovery cannot weaken version 1 protection rules.
 
 ## Recovery state
 
