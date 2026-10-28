@@ -150,6 +150,7 @@ type Service struct {
 	state       atomic.Uint32
 	mu          sync.Mutex
 	closed      bool
+	frontend    bool
 	accepted    map[*fsapi.Request]bool
 	queue       chan command
 	done        chan struct{}

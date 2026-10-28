@@ -97,17 +97,21 @@ type Command struct {
 	Handle                      OpenHandle
 	Flags                       OpenFlags
 	NoReplace                   bool
-	Mode, Umask                 uint16
-	Data                        []byte
-	Offset, Size                int64
-	Count                       uint64
-	Limit                       int
-	After                       string
-	DirectoryRevision           uint64
-	Attributes                  Attributes
-	Durability                  DurabilityRequest
-	Lock                        Lock
-	Required                    Position
+	// DescriptionOnly on Release drains only the final open description. The
+	// adapter already delivered per-fd DescriptorClose events; repeating their
+	// process cleanup could erase locks reacquired on another description.
+	DescriptionOnly   bool
+	Mode, Umask       uint16
+	Data              []byte
+	Offset, Size      int64
+	Count             uint64
+	Limit             int
+	After             string
+	DirectoryRevision uint64
+	Attributes        Attributes
+	Durability        DurabilityRequest
+	Lock              Lock
+	Required          Position
 }
 
 // DirEntry owns a byte-preserving logical name and exact name revision.

@@ -34,7 +34,9 @@ COMMIT and lifetime records select local effects on restart; an unselected
 MUTATION remains invisible. It writes no fake ACCEPT, claims no external partner,
 implements no emergency protocol and supplies no normal durability evidence.
 Tests using an in-process protocol stub establish interface ordering only. This
-profile is not wired into any production daemon or adapter.
+profile is not wired into a production daemon. The restricted
+[FUSE adapter](FUSE-adapter.md) accepts only an explicitly matching disposable
+profile with the built-in Unix policy; normal publication remains gated.
 
 The caller owns and closes all filesystem roots after `Service.Close`, excludes
 administrative mutation/retention and concurrent writers, and admits real mount,
@@ -219,7 +221,9 @@ retained source/reservation identities; collision retries are finite.
 
 The local advisory locking and proof-gated orphan cleanup contract is specified
 in [Handles and local advisory locks](Handles-and-locks.md). `rq3` implements
-these service primitives; adapter/kernel compatibility remains unproven.
+these service primitives. The restricted FUSE adapter has bounded Linux local
+evidence; native FreeBSD, arbitrary identities and full kernel compatibility
+remain unproven.
 
 Default queue size is 64; I/O is capped at 1 MiB per request, open handles at
 1024, lookup references/reservations at 4096 and total logical bytes at 64 MiB.

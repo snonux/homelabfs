@@ -155,6 +155,16 @@ func (s *Service) closeProcessLocks(owner fsapi.LockOwner, object fsapi.ObjectID
 	return nil
 }
 func (s *Service) closeLocks(c fsapi.Command, object fsapi.ObjectID) error {
+	if c.DescriptionOnly {
+		s.locks = slices.DeleteFunc(s.locks, func(l heldLock) bool { return l.handle == c.Handle && l.lock.Domain == fsapi.FlockLock })
+		for id, cmd := range s.pending {
+			if cmd.value.Handle == c.Handle {
+				delete(s.pending, id)
+				s.finish(cmd, fsapi.Result{Code: fsapi.Interrupted})
+			}
+		}
+		return nil
+	}
 	o := c.Lock.Owner
 	if o.Valid() && o.Generation != s.config.Workspace.ID {
 		return fsapi.Stale

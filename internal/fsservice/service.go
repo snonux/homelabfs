@@ -87,6 +87,9 @@ func New(ctx context.Context, c Config) (*Service, error) {
 // Dispatch snapshots arguments before bounded admission. Cancellation affects
 // admission/waiting only; an accepted command runs using service-owned context.
 func (s *Service) Dispatch(ctx context.Context, r *fsapi.Request, c fsapi.Command) error {
+	if c.DescriptionOnly && c.Operation != fsapi.Release {
+		return fsapi.Invalid
+	}
 	if err := r.Validate(); err != nil {
 		return err
 	}

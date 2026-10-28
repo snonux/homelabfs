@@ -22,8 +22,11 @@ persists verified streams, [`internal/storage`](docs/spec/Storage-implementation
 supplies stable-ID backing primitives, and [`internal/apply`](docs/spec/Apply-engine.md)
 rebuilds an explicitly authorized genesis history into fresh roots.
 [`internal/fsservice`](docs/spec/Filesystem-service.md) implements a bounded local
-filesystem service with journal-first mutations, gated reads and explicit external
-commit/permission hooks; its disposable validation profile supplies local evidence only.
+filesystem service with journal-first mutations, gated reads, Unix permissions and
+local handles/advisory locks; normal commit authority remains external.
+[`internal/checkpoint`](docs/spec/Checkpoints.md) supplies immutable local checkpoint
+artifacts, and [`internal/fuseadapter`](docs/spec/FUSE-adapter.md) supplies a restricted
+disposable direct-I/O frontend. Their validation profiles supply local evidence only.
 `internal/failpoint` provides named
 fault injection, `internal/vfs` supplies rooted local I/O and a deterministic
 crash simulator, and `internal/labrunner` provides the external plan-bound test

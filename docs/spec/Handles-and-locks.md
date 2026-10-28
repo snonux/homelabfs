@@ -2,9 +2,11 @@
 
 Task `rq3` extends the local service from `pq3` and permission policy from `qq3`.
 The code and tests establish a bounded service contract on disposable local
-roots. Native FreeBSD FUSE P01/P03, Linux adapters, duplicate mounts and virtio-9p
-remain separate acceptance gates; this implementation provides no kernel or
-transport compatibility evidence.
+roots. The [restricted FUSE adapter](FUSE-adapter.md) adds bounded local Linux
+evidence and rejects duplicate publication. Native FreeBSD FUSE P01/P03,
+arbitrary workload identities, shared multi-mount sessions and virtio-9p remain
+separate acceptance gates; the service implementation alone supplies no kernel
+or transport compatibility evidence.
 
 ## Stable object lifetime
 
@@ -114,13 +116,17 @@ from admitted journaled mutations, which continue despite abandoned waits.
 DescriptorClose is the per-fd close/flush event: closing any fd for an inode
 drops that process's fcntl locks on that inode, even if another fd/dup/fork keeps
 the shared description alive. It cancels that owner's pending fcntl requests for
-the inode and preserves the handle, lookup counts and flock. Adapters later map
-this event from their native close/flush owner notification. Final Release ends
-the shared open description, releases its flock, cancels its pending requests,
-and also applies close-any-fd fcntl cleanup for the supplied owner. Release must
-supply the caller's LockOwner when process locks exist on the inode; missing
-identity fails explicitly (including when only fcntl waiters exist). The adapter tracks native duplicate/fork reference
-counts and sends Release only when the last description reference is closed.
+the inode and preserves the handle, lookup counts and flock. The FUSE adapter
+maps this event from credential-bound FLUSH and relies on the kernel's final
+RELEASE event for duplicate/fork description lifetime. Final Release ends the
+shared open description, releases its flock and cancels requests on that handle.
+The legacy combined Release also applies close-any-fd fcntl cleanup for the
+supplied owner; it requires that owner when process locks/waiters exist on the
+inode. `Release{DescriptionOnly:true}` explicitly selects only final description
+drain after separate DescriptorClose events. It needs no workload credentials
+and must not repeat POSIX cleanup: a process can have reacquired locks on another
+fd before an asynchronous final RELEASE arrives. DescriptionOnly is rejected
+on other operations. Native owner/descriptor behavior remains separately gated.
 
 ProcessExit retires one process identity, releases all its fcntl ranges and
 cancels its pending requests. SessionExit does this for every process in that

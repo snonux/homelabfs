@@ -53,7 +53,9 @@ See [Motivation and goals](Motivation-and-goals.md) for the problem HomelabFS ai
 | [Emergency protocol](spec/Emergency.md) | Independent generation/admission, approved native fence, restart, final pair barrier and retention; mandatory format upgrade and implementation pending |
 | [Kubernetes canaries](Kubernetes-and-migration.md) | Canary PV publication, pod relocation, guest access and future scope |
 | [Filesystem semantics](Filesystem-semantics.md) | POSIX-style behavior, permissions, and f3s applications |
-| [Local filesystem service](spec/Filesystem-service.md) | Implemented local namespace/data service and gated journal/apply contract; real normal commit/permission hooks and daemon/FUSE publication remain external |
+| [Local filesystem service](spec/Filesystem-service.md) | Implemented local namespace/data service, Unix permissions and local handles/locks; normal commit Protocol and daemon publication remain external |
+| [Restricted FUSE adapter](spec/FUSE-adapter.md) | Implemented disposable direct-I/O frontend; normal credential/traversal/cache/mmap and native FreeBSD gates remain open |
+| [Immutable checkpoints](spec/Checkpoints.md) | Local immutable checkpoint artifacts; distributed acceptance/retention and daemon source-trim integration remain external |
 | [Platform interfaces](Platform-interfaces.md) | Shared core, two FUSE adapters, and bhyve virtio-9p |
 | [Security](Security.md) | Proposed WireGuard transport, node identity, authorization, and encryption |
 | [Snapshots and restore](Snapshots-and-restore.md) | External ZFS snapshots and coordinated restore |
