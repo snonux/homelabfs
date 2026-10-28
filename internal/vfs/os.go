@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"sync"
 	"syscall"
 )
@@ -32,9 +33,31 @@ func NewOS(ctx context.Context, dir string) (*OS, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	dir = filepath.Clean(dir)
+	before, err := os.Lstat(dir)
+	if err != nil {
+		return nil, fmt.Errorf("inspect I/O root: %w", err)
+	}
+	if !before.IsDir() {
+		return nil, pathError("root", dir, syscall.ENOTDIR)
+	}
 	r, err := os.OpenRoot(dir)
 	if err != nil {
 		return nil, fmt.Errorf("open I/O root: %w", err)
+	}
+	rootFile, err := r.Open(".")
+	if err != nil {
+		_ = r.Close()
+		return nil, err
+	}
+	defer func() { _ = rootFile.Close() }()
+	after, err := rootFile.Stat()
+	if err != nil || !os.SameFile(before, after) {
+		_ = r.Close()
+		if err != nil {
+			return nil, err
+		}
+		return nil, pathError("root changed", dir, fs.ErrInvalid)
 	}
 	return &OS{root: r}, nil
 }
@@ -48,7 +71,7 @@ func (s *OS) Open(ctx context.Context, name string, flag int, perm fs.FileMode) 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := validName(name); err != nil {
+	if err := s.checkPath(name, true); err != nil {
 		return nil, err
 	}
 	if err := validOpen(flag, perm); err != nil {
@@ -78,11 +101,14 @@ func (s *OS) Rename(ctx context.Context, oldname, newname string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := validName(oldname); err != nil {
+	if err := s.checkPath(oldname, false); err != nil {
 		return err
 	}
-	if err := validName(newname); err != nil {
+	if err := s.checkPath(newname, true); err != nil {
 		return err
+	}
+	if oldname == "." || newname == "." {
+		return pathError("rename", oldname, fs.ErrInvalid)
 	}
 	return renameRoot(s.root, oldname, newname)
 }
@@ -94,7 +120,7 @@ func (s *OS) Unlink(ctx context.Context, name string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := validName(name); err != nil {
+	if err := s.checkPath(name, false); err != nil {
 		return err
 	}
 	if err := s.regular(name); err != nil {
@@ -110,8 +136,11 @@ func (s *OS) Mkdir(ctx context.Context, name string, perm fs.FileMode) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := validName(name); err != nil {
+	if err := s.checkPath(name, true); err != nil {
 		return err
+	}
+	if perm & ^fs.FileMode(0o777) != 0 {
+		return syscall.EINVAL
 	}
 	return s.root.Mkdir(name, perm)
 }
@@ -124,7 +153,7 @@ func (s *OS) SyncDir(ctx context.Context, name string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := validName(name); err != nil {
+	if err := s.checkPath(name, false); err != nil {
 		return err
 	}
 	f, err := s.root.Open(name)

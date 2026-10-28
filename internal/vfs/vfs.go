@@ -9,8 +9,8 @@ import (
 )
 
 // FS is the local persistence seam. Names are slash-separated, relative paths
-// accepted by fs.ValidPath; "." names the root for SyncDir. Open and Unlink
-// operate on regular files. Rename supports files and directories; Mkdir
+// accepted by fs.ValidPath; "." names the root for SyncDir and discovery. Open
+// and Unlink operate on regular files. Rename supports files and directories; Mkdir
 // creates one directory at a time.
 // File sync never substitutes for SyncDir on a modified parent directory.
 // Implementations are safe for concurrent use. A canceled context prevents an

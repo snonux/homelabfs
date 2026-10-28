@@ -57,6 +57,7 @@ type Simulator struct {
 type memNode struct {
 	id            int
 	dir           bool
+	mode          fs.FileMode
 	data          []byte
 	syncedData    []byte
 	entries       map[string]int
@@ -101,7 +102,7 @@ func NewSimulator(config Config) (*Simulator, error) {
 		return nil, fmt.Errorf("simulator file size limit: %w", fs.ErrInvalid)
 	}
 	s := &Simulator{config: config, rng: rand.New(rand.NewPCG(config.Seed, config.Seed^0x9e3779b97f4a7c15)), lastChange: make(map[int]int)}
-	s.nodes = []*memNode{{dir: true, entries: make(map[string]int), syncedEntries: make(map[string]int)}}
+	s.nodes = []*memNode{{dir: true, mode: fs.ModeDir | 0o700, entries: make(map[string]int), syncedEntries: make(map[string]int)}}
 	return s, nil
 }
 
@@ -134,7 +135,7 @@ func (s *Simulator) Open(ctx context.Context, name string, flag int, perm fs.Fil
 			return nil, pathError("open", name, fs.ErrNotExist)
 		}
 		id = len(s.nodes)
-		s.nodes = append(s.nodes, &memNode{id: id})
+		s.nodes = append(s.nodes, &memNode{id: id, mode: perm})
 		s.change([]entryChange{{parent.id, base, id}}, []int{parent.id, id})
 	}
 	if flag&os.O_TRUNC != 0 {
@@ -226,7 +227,7 @@ func (s *Simulator) Mkdir(ctx context.Context, name string, perm fs.FileMode) er
 		return pathError("mkdir", name, fs.ErrExist)
 	}
 	id := len(s.nodes)
-	s.nodes = append(s.nodes, &memNode{id: id, dir: true, entries: make(map[string]int), syncedEntries: make(map[string]int)})
+	s.nodes = append(s.nodes, &memNode{id: id, dir: true, mode: fs.ModeDir | perm, entries: make(map[string]int), syncedEntries: make(map[string]int)})
 	// A child barrier must not implicitly persist this directory's own name.
 	s.change([]entryChange{{parent.id, base, id}}, []int{parent.id})
 	return nil
