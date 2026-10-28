@@ -22,7 +22,13 @@ Implement the lifecycle as version-controlled scripts with explicit inputs and m
 prepare plan → operator reviews and approves run → execute scripts → collect evidence → cleanup/restore → report
 ```
 
-Entrypoints and their command syntax are still to be implemented. They must provide plan, execute-approved-run, status, and cleanup/recovery operations. The existing `tools/poc/` programs are individual experimental probes, not the future approved two-stage runner.
+The [lab runner](Lab-runner.md) provides `plan`, `execute`, `status` and
+`cleanup`/reconciliation commands. Its [Stage 2 profile](Live-smoke-runner.md)
+also provides `smoke-plan` and a pinned deployment-adapter protocol with bounded
+Rocky probes. Native scenario drivers and deployed management/inspection APIs
+remain separate implementation prerequisites. The existing `tools/poc/`
+programs are individual experimental probes and are never imported by the
+runner.
 
 A plan records a run ID, stage, immutable artifact versions/checksums, targets, directories/volumes, resource budgets, allowed disruptions, tests/seeds, runtime and I/O limits, evidence destinations, cleanup actions, and state-restoration requirements. Execution must verify the approval matches the exact plan and reject stale or changed plans. Approval is recorded explicitly by the operator; no default-yes prompt, elapsed-time approval, automatic CI approval, or LLM-generated approval token.
 

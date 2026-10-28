@@ -2,6 +2,11 @@
 
 [Stage 1 native integration](Integration-tests.md) · [Approval and automation](Test-automation.md) · [Deployment compatibility](Deployment-tests.md)
 
+The [Stage 2 runner](Live-smoke-runner.md) implements local planning, a pinned
+deployment-adapter protocol, bounded Rocky probes, evidence validation and
+failure preservation. Deployed management/inspection APIs and their adapter
+remain required inputs; no live execution is implied.
+
 ## Entry conditions
 
 Stage 1 must pass for the candidate release. Deploy validated HomelabFS artifacts for dedicated canary volumes on the selected FreeBSD f3s hosts under a separately authorized installation plan. Preserve production workloads, PVs and NFS services; only synthetic canary data is allowed. Then prepare a live smoke plan and obtain **explicit approval for Stage 2**. Deployment finishing does not start tests automatically. Run this stage through scripts, with no LLM in the execution loop.

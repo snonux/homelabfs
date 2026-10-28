@@ -13,7 +13,7 @@ import (
 // CLI parses local inputs. Approval files must be recorded by the operator.
 func CLI(ctx context.Context, args []string, out, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: hfs-lab {plan|execute|status|cleanup} [flags]")
+		return errors.New("usage: hfs-lab {plan|smoke-plan|execute|status|cleanup} [flags]")
 	}
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -22,6 +22,7 @@ func CLI(ctx context.Context, args []string, out, stderr io.Writer) error {
 	output := flags.String("out", "", "new canonical plan path (plan only)")
 	approvalPath := flags.String("approval", "", "operator-written approval JSON")
 	reconcilePath := flags.String("reconcile", "", "operator-written terminal outcome JSON")
+	stepSeconds := flags.Int("step-seconds", 0, "explicit per-step deadline (smoke-plan only)")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -29,12 +30,18 @@ func CLI(ctx context.Context, args []string, out, stderr io.Writer) error {
 		return errors.New("unexpected positional arguments")
 	}
 	var p Plan
-	if args[0] == "plan" {
+	if args[0] == "plan" || args[0] == "smoke-plan" {
 		if *input == "" || *output == "" {
 			return errors.New("plan requires --input and --out")
 		}
 		if err := ReadJSON(*input, &p); err != nil {
 			return err
+		}
+		if args[0] == "smoke-plan" {
+			if p.Stage != "stage2" || p.Live == nil || len(p.Steps) != 0 || *stepSeconds <= 0 {
+				return errors.New("smoke-plan requires stage2 inputs, empty steps and explicit positive --step-seconds")
+			}
+			p.Steps = SmokeSteps(p, *stepSeconds)
 		}
 		h, err := p.Hash()
 		if err != nil {
@@ -42,6 +49,11 @@ func CLI(ctx context.Context, args []string, out, stderr io.Writer) error {
 		}
 		if err := p.VerifyArtifacts(); err != nil {
 			return err
+		}
+		if p.Stage == "stage2" {
+			if err := verifyStage1(p); err != nil {
+				return err
+			}
 		}
 		if err := WriteJSON(*output, p); err != nil {
 			return err

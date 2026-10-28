@@ -18,6 +18,7 @@ import (
 // Plan contains every input reviewed by the operator. No defaults are applied
 // after hashing. Driver contracts implement scenario-specific safety checks.
 type Plan struct {
+	Live             *LivePlan   `json:"live,omitempty"`
 	Schema           int         `json:"schema"`
 	RunID            string      `json:"run_id"`
 	Stage            string      `json:"stage"`
@@ -144,6 +145,12 @@ func (p Plan) Hash() (string, error) {
 
 // Validate rejects incomplete plans and unsupported lifecycle operations.
 func (p Plan) Validate() error {
+	if p.Stage == "stage2" {
+		return p.validateLive()
+	}
+	if p.Live != nil {
+		return errors.New("live inputs require stage2")
+	}
 	if len(p.Steps) > 128 || len(p.Artifacts) > 128 || len(p.Resources) > 128 || len(p.Tests) > 128 {
 		return errors.New("plan collections are limited to 128 entries each")
 	}

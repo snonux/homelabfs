@@ -1,9 +1,14 @@
-# Plan-bound Stage 1 runner
+# Plan-bound lab runner
 
 `cmd/hfs-lab` implements the external approval, execution, recovery and reporting
 control plane described in [Test automation](Test-automation.md). It does not
 implement the native test matrix, deployment, guest provisioning, cloning, or
 the future scenario drivers. It never imports the throwaway PoC module.
+
+The separate [Stage 2 live smoke profile](Live-smoke-runner.md) reuses this
+control plane with dedicated volumes, a pinned adapter protocol and a bounded
+Rocky probe. It rejects all Stage 1 VM lifecycle actions and requires its own
+plan and approval. The prepared-guest details below describe Stage 1.
 
 The first profile reuses the prepared three guests on f3. Its supported initial
 state is all three lab guests and the unrelated `freebsd` VM stopped, with
