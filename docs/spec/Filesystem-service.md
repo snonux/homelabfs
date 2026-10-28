@@ -24,8 +24,8 @@ before access and before successful completion. `Protect` establishes the real
 commit/protection conditions and partner retention for an exact proposal and its
 complete prefix/dependencies; `Authorize` independently verifies the full exact
 history/selection proof before apply. Async delivery obligations are also its
-responsibility. No production implementation exists here. Missing hooks prevent
-normal construction; an unavailable hook blocks serving. Local durable COMMIT,
+responsibility. No production Protocol implementation exists here. Missing hooks
+prevent normal construction; an unavailable hook blocks serving. Local durable COMMIT,
 codec-valid authority fields or a caller flag cannot supply these guarantees.
 
 `ValidationProfile{Disposable: true, Name: ...}` explicitly chooses a local-only
@@ -136,13 +136,71 @@ unsupported before journal mutation: the current record codec requires exact
 requested mode and cannot also express induced set-ID clearing. Separate chmod
 and chown, and nonconflicting combined changes, remain supported.
 
-`PermissionPolicy` is mandatory in normal mode and receives fresh credentials,
-original command and involved object/parent/replacement attributes. Its view and
-policy revision are captured with exact credentials/object revisions in journal
-authorizations. Permission rules, privilege checks, sticky directories, creation
-special-bit authorization and lock semantics remain `qq3`/`rq3`; a privileged
-backing daemon grants no implicit normal access. An explicitly configured
-validation profile can omit the policy for synthetic local tests.
+`PermissionPolicy` is mandatory in normal mode. `NewUnixPermissions(view)` supplies
+version-one Unix enforcement for an explicitly admitted namespace view. The
+policy receives independently owned caller credentials and a `PermissionContext`:
+the original caller command, resolved object/source/replacement identities,
+verified handle status and fresh involved attributes. Handle resolution and
+append offset selection never overwrite the original command presented to the
+policy. Successful authorization records the exact pre-operation object revisions,
+view, policy revision, numeric UID/GID and sorted unique supplementary groups.
+The existing journal intent stores the actual selected operation (for example,
+an append's chosen offset or an open's induced truncate), not an added copy of
+the whole adapter command in each authorization. Permission changes and induced
+set-ID clearing use the ordinary protected mutation/apply/replay path. Replay
+installs selected metadata without reevaluating old callers against today's
+permissions. An explicitly configured validation profile can still omit the
+policy for synthetic local tests; it does not enable normal mode.
+
+Version one uses exactly one owner/group/other class, with primary and
+supplementary group membership. UID zero alone bypasses discretionary access and
+ownership restrictions; daemon UID, PID and account names grant no authority.
+Lookup checks parent search, namespace changes check parent write plus search,
+and rename checks both parents and sticky rules for source and replacement.
+Moving a directory between parents also requires write on that directory for
+its changed parent link. Readdir checks read; search is separately required to
+resolve its children. The component API does not resolve a full pathname or
+follow symlinks: adapters perform traversal with Lookup and retain the native
+node/descriptor boundary. Stable-ID Open has no chosen hard-link pathname or
+ancestor vector; the adapter/kernel must recheck search on every pathname walk,
+including cached dentries after chmod. Earlier lookup IDs never replace those
+fresh checks or grant permanent path access. Object-based stat and readlink
+impose no file mode check, just as existing resolved vnode operations do.
+
+Open and an existing Create check requested file access, including O_TRUNC.
+Create of an absent name requires parent write/search; opening an existing name
+requires parent search and file access. Access to a newly created file uses the
+successful creation, even when its requested final mode excludes the creator.
+Verified existing handles retain their granted read/write access after chmod
+or descriptor transfer; handle mode and serving generation are still checked.
+Handle-based truncate follows that descriptor access, while object-based
+truncate checks current write access. Setattr checks current owner/privilege
+even when supplied a handle. Release/Forget remain permitted for cleanup.
+
+Only owner or UID zero may chmod. Setting group set-ID requires membership in
+the file group unless privileged; sticky on a nondirectory requires privilege.
+Only UID zero may change UID to a different owner. An owner may retain their
+UID and change GID to a primary/supplementary group (or retain the current GID).
+Explicit timestamps require owner/privilege; timestamp-now also permits current
+write access. Non-root write/truncate clears both set-ID bits. Supplying UID/GID
+metadata clears both set-ID bits, including privileged changes. Creation takes
+the caller UID and always the parent GID, with or without parent setgid;
+directories additionally inherit parent setgid. Explicitly requesting setgid
+for a parent group outside caller membership is denied unless privileged, while
+inherited directory setgid remains allowed. Symlinks retain mode 0777 and
+chmod of a symlink is explicitly unsupported. ACLs, supplementary-group discovery,
+capabilities/jail privileges and identity mapping are outside this policy.
+
+These are explicit project rules, rather than a promise to reproduce every
+FreeBSD filesystem option. Conservative deviations from the reviewed
+[FreeBSD source at `96841ea08dcf`](https://github.com/freebsd/freebsd-src/blob/96841ea08dcf/sys/ufs/ufs/ufs_vnops.c)
+include clearing both set-ID bits on every UID/GID request (including root and
+unchanged ownership), and denying an explicit nonmember setgid creation instead
+of silently stripping that bit. Symlink chmod and the conflicting combined
+set-ID mode/ownership form remain unsupported as described above. The optional
+FreeBSD suiddir ownership policy is not enabled; creation always uses caller UID.
+These differences require explicit adapter behavior and compatibility tests,
+not a claim of complete native parity.
 
 ## Identity and resource bounds
 

@@ -53,4 +53,11 @@ Enforce access using the requesting workload's credentials, not the daemon's cre
 
 Metadata caches and replica freshness must not allow new access checks against obsolete permissions after a committed permission change. Existing open descriptors should follow the chosen FreeBSD semantics; chmod is not a blanket revocation of already-open access.
 
+The local service now implements version-one Unix checks and journaled metadata
+replay; [the service contract](spec/Filesystem-service.md) defines exact rules and
+explicit unsupported forms. [The platform boundary](Platform-interfaces.md#unix-permission-enforcement-boundary)
+selects supplementary kernel `default_permissions` checks and requires complete
+request-bound credentials. Native P02, replay across real replicas and guest
+credential transport remain separate validation gates.
+
 ACLs and extended permission models are outside the currently requested scope. Validate traditional permissions with multiple users and groups, denied operations, umask, directory traversal, sticky directories, ownership changes, replay, and failover.

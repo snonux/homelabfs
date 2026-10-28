@@ -13,6 +13,7 @@ import (
 )
 
 func (s *Service) execute(ctx context.Context, cred fsapi.Cred, c fsapi.Command) (fsapi.Result, error) {
+	original := c.Clone()
 	if err := s.check(ctx); err != nil {
 		return fsapi.Result{}, s.block(err)
 	}
@@ -70,7 +71,7 @@ func (s *Service) execute(ctx context.Context, cred fsapi.Cred, c fsapi.Command)
 	if !p.now.Valid() {
 		return fsapi.Result{}, fsapi.Invalid
 	}
-	if err = s.permissions(ctx, cred, c, p); err != nil {
+	if err = s.permissions(ctx, cred, original, c, p); err != nil {
 		return fsapi.Result{}, err
 	}
 	result := fsapi.Result{Position: s.selection.Through.Position}
@@ -250,22 +251,21 @@ func (s *Service) execute(ctx context.Context, cred fsapi.Cred, c fsapi.Command)
 	result.Position = s.selection.Through.Position
 	return result, nil
 }
-func (s *Service) permissions(ctx context.Context, cred fsapi.Cred, c fsapi.Command, p *plan) error {
+func (s *Service) permissions(ctx context.Context, cred fsapi.Cred, original, resolved fsapi.Command, p *plan) error {
 	if s.config.Permissions == nil {
 		return nil
 	} // Explicit validation profile only.
+	input := PermissionContext{Command: original.Clone(), Object: resolved.Object, Handle: resolved.Handle != 0}
+	if e := p.entry(original.Parent, original.Name); e.Target != nil {
+		input.Source = *e.Target
+	}
+	if e := p.entry(original.Destination, original.NewName); e.Target != nil {
+		input.Replacement = *e.Target
+	}
 	set := map[fsapi.ObjectID]bool{}
-	for _, id := range []fsapi.ObjectID{c.Object, c.Parent, c.Destination} {
+	for _, id := range []fsapi.ObjectID{input.Object, original.Parent, original.Destination, input.Source, input.Replacement} {
 		if id.Valid() {
 			set[id] = true
-		}
-	}
-	for _, n := range []struct {
-		parent fsapi.ObjectID
-		name   string
-	}{{c.Parent, c.Name}, {c.Destination, c.NewName}} {
-		if e := p.entry(n.parent, n.name); e.Target != nil {
-			set[*e.Target] = true
 		}
 	}
 	attrs := make([]fsapi.Attr, 0, len(set))
@@ -275,7 +275,8 @@ func (s *Service) permissions(ctx context.Context, cred fsapi.Cred, c fsapi.Comm
 		}
 	}
 	slices.SortFunc(attrs, func(a, b fsapi.Attr) int { return compareID(a.Object, b.Object) })
-	decision, err := s.config.Permissions.Check(ctx, cred, c.Clone(), slices.Clone(attrs))
+	input.Attributes = slices.Clone(attrs)
+	decision, err := s.config.Permissions.Check(ctx, cred.Clone(), input)
 	if err != nil {
 		return err
 	}

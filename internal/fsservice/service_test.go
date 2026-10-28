@@ -315,13 +315,13 @@ func (p *contractProtocol) Protect(_ context.Context, proposal Proposal) ([]byte
 	return []byte("contract-test-external-proof"), nil
 }
 
-type permissionFunc func(context.Context, fsapi.Cred, fsapi.Command, []fsapi.Attr) (PermissionDecision, error)
+type permissionFunc func(context.Context, fsapi.Cred, PermissionContext) (PermissionDecision, error)
 
-func (p permissionFunc) Check(ctx context.Context, c fsapi.Cred, v fsapi.Command, a []fsapi.Attr) (PermissionDecision, error) {
-	return p(ctx, c, v, a)
+func (p permissionFunc) Check(ctx context.Context, c fsapi.Cred, v PermissionContext) (PermissionDecision, error) {
+	return p(ctx, c, v)
 }
 func allowPolicy() PermissionPolicy {
-	return permissionFunc(func(context.Context, fsapi.Cred, fsapi.Command, []fsapi.Attr) (PermissionDecision, error) {
+	return permissionFunc(func(context.Context, fsapi.Cred, PermissionContext) (PermissionDecision, error) {
 		return PermissionDecision{View: uid(50), Revision: 1}, nil
 	})
 }
@@ -395,7 +395,7 @@ func TestValidationIsExplicitAndPermissionsFailClosed(t *testing.T) {
 		t.Fatal("normal mode lacks mandatory trust hooks", err)
 	}
 	f.c.Protocol = &contractProtocol{}
-	f.c.Permissions = permissionFunc(func(context.Context, fsapi.Cred, fsapi.Command, []fsapi.Attr) (PermissionDecision, error) {
+	f.c.Permissions = permissionFunc(func(context.Context, fsapi.Cred, PermissionContext) (PermissionDecision, error) {
 		return PermissionDecision{}, fsapi.Permission
 	})
 	f.start()

@@ -42,6 +42,49 @@ Negotiate supported kernel/library capabilities and maintain a tested matrix per
 
 Do not enable an optimization that lets the kernel acknowledge a write before HomelabFS's promised durability/replication boundary. Start with conservative verified cache settings; writable mmap and its writeback path need explicit tests. If required semantics cannot be provided by an adapter, reject the unsupported configuration or operation explicitly rather than silently weakening correctness. Match permissions using caller credentials, not the daemon's identity.
 
+### Unix permission enforcement boundary
+
+The service implements the shared version-one Unix policy described in
+[Filesystem service](spec/Filesystem-service.md). The adapter must construct each
+`fsapi.Request` from the requesting effective UID, primary GID and complete
+supplementary groups, never the daemon's identity or a PID-only account lookup.
+FUSE headers alone do not carry a supplementary-group vector: a platform adapter
+must obtain a trustworthy request-bound snapshot, or reject configurations whose
+required group credentials cannot be established. The 9p layer must preserve the
+same numeric identity; transport validation remains a separate acceptance gate.
+
+The selected initial mount policy is FreeBSD `default_permissions` enabled,
+with the service policy also mandatory. Kernel checks cover pathname traversal,
+execute permission and native vnode/descriptor checks; the service checks fresh
+logical modes, namespace changes, sticky restrictions, ownership, special bits,
+and timestamps before journaling. A kernel allow cannot replace service checks.
+The kernel's privilege, mount restrictions and descriptor behavior may further
+restrict access. The daemon treats only requesting UID zero as privileged;
+platform jail/capability restrictions must still be enforced at the adapter/kernel
+boundary. The Linux adapter must preserve the same shared rules and explicitly
+handle any native mismatch.
+
+Initially disable reusable entry/attribute permission caches and writeback paths
+that bypass per-request credential capture. A future cache optimization requires
+proven invalidation and group/credential scoping after committed chmod/chown.
+Every new open is checked against fresh applied file metadata. The object-ID
+Open API has no selected hard-link pathname or ancestor vector; the adapter must
+revalidate ancestor search during each pathname walk, including cached dentries
+and previously returned lookup IDs after directory chmod. An old lookup is not
+permanent path authorization. Kernel `default_permissions` must use fresh
+attributes or proven invalidation for those ancestor checks. These trusted
+in-process APIs must not expose caller-selected raw object IDs as an alternate
+unrestricted pathname interface. Already granted handle access survives chmod.
+The actual FreeBSD `default_permissions`, supplementary groups, exec, cache and
+descriptor behavior still require native P02 validation.
+These decisions and local service tests do not establish kernel, FUSE or 9p
+compatibility. The reviewed FreeBSD source is pinned to the recorded 15.1 lab
+revision `96841ea08dcf`: additional kernel checks are in
+[fuse_vnops.c](https://github.com/freebsd/freebsd-src/blob/96841ea08dcf/sys/fs/fuse/fuse_vnops.c),
+and traditional chmod/chown restrictions in
+[ufs_vnops.c](https://github.com/freebsd/freebsd-src/blob/96841ea08dcf/sys/ufs/ufs/ufs_vnops.c).
+This reference does not assert current guest state.
+
 ### f3s deployment consequence
 
 The chosen f3s deployment runs the HomelabFS FUSE frontend and storage daemon on FreeBSD. Rocky guests access that mount through bhyve virtio-9p using their kernel 9p client. No custom guest-to-host HomelabFS RPC protocol or Linux FUSE daemon is needed for this deployment. Validate credential propagation, sync, and fencing across the sharing layer.

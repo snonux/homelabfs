@@ -53,12 +53,24 @@ type Protocol interface {
 }
 
 // PermissionPolicy authorizes freshly applied logical metadata and credentials.
-// qq3 will implement the Unix permission policy. The service requires an explicit
-// policy in normal mode; a privileged daemon never implies workload permission.
-// attr contains all objects involved, including parents/replacement. Hooks must
-// not reenter the service or mutate command buffers concurrently.
+// The service requires an explicit policy in normal mode; a privileged daemon
+// never implies workload permission. PermissionContext includes involved objects
+// and resolved namespace roles. Hooks must not reenter the service.
 type PermissionPolicy interface {
-	Check(context.Context, fsapi.Cred, fsapi.Command, []fsapi.Attr) (PermissionDecision, error)
+	Check(context.Context, fsapi.Cred, PermissionContext) (PermissionDecision, error)
+}
+
+// PermissionContext preserves the original caller command and separately identifies
+// resolved objects. Attributes are fresh committed metadata, sorted by identity.
+// Handle is true only after generation, object and access-mode verification;
+// existing descriptor access survives chmod. Name-based traversal checks apply
+// to the named parent. Adapters must recheck ancestor search on each pathname
+// walk, even when cached dentries or earlier lookup IDs avoid another Lookup.
+type PermissionContext struct {
+	Command                     fsapi.Command
+	Object, Source, Replacement fsapi.ObjectID
+	Handle                      bool
+	Attributes                  []fsapi.Attr
 }
 
 // PermissionDecision binds successful permission checks to a view and policy
