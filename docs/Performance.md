@@ -52,6 +52,11 @@ The [f3 / Rocky fio comparison](PoC-fuse-and-benchmarks.md) measures direct host
 
 ## Canary acceptance profiles
 
+The [numeric calibration profiles](spec/Acceptance-profiles.md) define bounded
+synthetic latency, throughput, lag and recovery criteria with resource and
+evidence requirements. Paul approved these calibration criteria on 2026-10-28;
+no profile is calibrated, admitted or measured by that document.
+
 Before canary acceptance, establish Paul-approved numeric profiles following
 [deployment readiness](Deployment-readiness.md#release-acceptance-and-independent-recovery):
 healthy/degraded p95/p99 latency, throughput, lag, catch-up progress, recovery
