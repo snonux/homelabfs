@@ -1,0 +1,35 @@
+name: Root module checks
+
+# Every test run requires explicit approval. Manual dispatch approves this
+# workstation-style unit-test batch only; no lab or deployment stages run here.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Vet
+        run: go vet ./...
+      - name: Unit tests
+        run: go test ./...
+      - name: Linux build
+        run: go build ./...
+        env:
+          GOOS: linux
+          GOARCH: amd64
+          CGO_ENABLED: '0'
+      - name: FreeBSD cross build
+        run: go build ./...
+        env:
+          GOOS: freebsd
+          GOARCH: amd64
+          CGO_ENABLED: '0'

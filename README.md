@@ -14,6 +14,19 @@ The goal is highly available file storage for my home lab, built on FreeBSD and 
 
 ## Architecture
 
+The root Go module is the daemon scaffold, separate from the experimental
+`tools/poc/` module. It contains package boundaries and a version flag; starting
+the daemon currently exits with an unimplemented error.
+
+With Go 1.26.x and Mage installed, `mage build` writes Linux/amd64 and
+FreeBSD/amd64 binaries under `bin/`. `mage vet` and `mage lint` provide static
+checks (lint reports a skip if golangci-lint is absent). `mage test` runs root
+module unit tests; `mage fuzzShort` runs each available fuzz target for five
+seconds with one worker. Each test invocation requires explicit approval under
+[AGENTS.md](AGENTS.md). The manually dispatched CI workflow runs vet, unit tests
+and both cross builds; it never starts the lab. No unit or fuzz targets exist
+in the empty scaffold yet.
+
 ![HomelabFS architecture](docs/HomelabFS-architecture.svg)
 
 [Open the SVG diagram](docs/HomelabFS-architecture.svg).
