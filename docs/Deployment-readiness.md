@@ -54,6 +54,10 @@ as future context; replacement of remote NFS access is outside this project.
 
 ## Capacity and resource admission
 
+Use the proposed [bounded canary capacity plan](Capacity-plan.md) for numeric
+quotas, staging/reserve arithmetic and per-host admission equations. Its ceilings
+are not measured spare capacity or permission to deploy or run tests.
+
 Budget selected canary data, journals, snapshots, checkpoint staging and one
 canary replica rebuild, plus evidence and cleanup reserves. Use actual allocation
 and quotas, not summed PVC requests. Preserve headroom for current production
