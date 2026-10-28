@@ -391,6 +391,8 @@ opening any closure member:
 
 This is the decision-slot obligation that the normal commit/fencing model must
 implement and verify; naming a future commit protocol is not evidence it exists.
+The [normal replication protocol](Replication-protocol.md#streams-progress-and-decision-evidence)
+defines the shared protection/acceptance transport and acyclic evidence graph.
 The fixed common partner and single-writer-per-term restrictions simplify its
 intersection cases. The model must include a delayed old proposal racing the
 fencing promise, not just decisions whose replies were received. No new term

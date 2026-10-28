@@ -17,7 +17,9 @@ loopback PoC. Scope is disposable lab/canary volumes.
    ordered recovery evidence on the partner before a successful sync reply.
    The latter needs protocol, recovery, capability and failure-test work.
 
-The contract below uses A and the initial single-durable-copy sync scope.
+The [normal replication protocol](Replication-protocol.md) specifies the fixed-owner
+commit/visibility conditions and recovery evidence; model and implementation
+validation remain pending. The contract below uses A and the initial single-durable-copy sync scope.
 Option B and the two-durable-copy mode are out of scope. The remaining commit
 and recovery protocol decisions still need their own specifications.
 

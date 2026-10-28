@@ -43,6 +43,7 @@ See [Motivation and goals](Motivation-and-goals.md) for the problem HomelabFS ai
 |---|---|
 | [Cluster and ownership](Cluster-and-ownership.md) | Node admission, per-volume roles, ownership, and etcd |
 | [Replication](Replication.md) | Write path, journals, catch-up, and failover continuity |
+| [Normal replication protocol](spec/Replication-protocol.md) | Fixed-owner sessions, messages, commit/visibility gates and recovery evidence; unimplemented |
 | [Journal storage](Journal-storage.md) | Dataset layout, checkpoints, retention, and safe cleanup |
 | [Performance](Performance.md) | Bounded concurrency, connection pools, fairness, and measurement |
 | [Recovery](Recovery.md) | Automatic recovery, failures, fencing, and manual escalation |

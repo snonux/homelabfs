@@ -2,7 +2,7 @@
 
 [Architecture overview](Architecture.md)
 
-Normal read/write behavior, replication guarantees, and continuity across ownership changes. Emergency mode is described separately in [Emergency-mode.md](Emergency-mode.md).
+Normal read/write behavior, replication guarantees, and continuity across ownership changes. The [normal replication protocol](spec/Replication-protocol.md) specifies fixed-owner handshake, messages, acceptance, commitment, visibility and retry semantics. It is an unimplemented design awaiting model/runtime validation. Emergency mode is described separately in [Emergency-mode.md](Emergency-mode.md).
 
 ## Write path and durability
 
@@ -12,10 +12,10 @@ Paul confirmed on 2026-10-28 that ordinary mutations delivered to the daemon and
 2. Assign an operation identifier, ownership epoch, and sequence number within the owned unit.
 3. In parallel, append and sync the local journal entry and send the operation to the synchronous partner.
 4. The partner validates the ownership epoch and operation, retains the complete operation in memory, and acknowledges receipt.
-5. Complete the protocol's commit and visibility conditions, then acknowledge the operation. Local durability and partner receipt are necessary but are not by themselves a fully specified commit protocol.
+5. Verify the exact COMMIT candidate's partner ACCEPT and local durable prefix, protect the stable result, and satisfy the protocol's visibility conditions before reply. Plain receipt of a MUTATION alone cannot establish commitment.
 6. Persist and apply partner operations. Stream every operation to the asynchronous replica concurrently with the other work, without waiting for its ACK to complete the client request; retry and catch up from the retained journal.
 
-This is a proposed logical flow. The commit record, visibility point, error handling, and client retry behavior are not yet specified. Do not promise a single network round trip before specifying and testing those conditions. A complete journal entry must contain enough data and metadata to replay the operation. Reads must see committed changes even if application to backing files is deferred. Stage uncommitted mutations or gate access so passthrough cannot expose them early.
+This is a proposed logical flow; the precise records, gates and uncertain-outcome behavior are in the [protocol contract](spec/Replication-protocol.md#owner-and-partner-execution). Later result protection adds a covering receipt/wait; no single network round trip is promised. A complete journal entry must contain enough data and metadata to replay the operation. Reads must see committed changes even if application to backing files is deferred. Stage uncommitted mutations or gate access so passthrough cannot expose them early.
 
 An in-memory acknowledgement is not a second durable copy. If the owner is lost and the partner restarts before persistence, acknowledged writes can be lost unless another surviving copy contains them. If the owner's disk is recoverable, those writes may instead be temporarily unavailable. This risk is accepted; silent conflicts between owners are not.
 
@@ -23,7 +23,7 @@ Define separately what an ordinary write, fsync, and synchronous open promise. K
 
 ## Normal write path for one volume
 
-The commit/visibility gate is deliberately explicit: receipt alone does not specify the entire recovery protocol. Async delivery begins concurrently and retries from retained history.
+The commit/visibility gate verifies the [candidate, acceptance and result evidence](spec/Replication-protocol.md#streams-progress-and-decision-evidence): receipt alone is insufficient. Async delivery begins concurrently and retries from retained history.
 
 ```mermaid
 flowchart TD
