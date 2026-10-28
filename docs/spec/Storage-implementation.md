@@ -7,6 +7,11 @@ journal replay engine, distributed transaction coordinator, permission checks,
 FUSE cache barriers, fencing, replica coverage, snapshot administration or
 checkpoint acceptance. Those remain separate implementation gates.
 
+The bounded local replay adapter now exists in `internal/apply`; its
+[implementation contract](Apply-engine.md) requires an externally authorized
+complete selected owner history and fresh reconstruction roots. It does not
+relax `Open`'s clean-payload requirement or publish checkpoint acceptance.
+
 `Format` is explicit and requires two empty, distinct, private roots, the exact
 protected root object/metadata and an initial history. It does not upgrade or
 repair existing trees. `Open` requires an externally selected `Image`, validates

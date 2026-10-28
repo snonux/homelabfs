@@ -17,12 +17,15 @@ The goal is highly available file storage for my home lab, built on FreeBSD and 
 The root Go module contains the daemon scaffold and implemented local packages:
 [`internal/fsapi`](internal/fsapi) supplies shared filesystem types and lifetime
 primitives, [`internal/journal/record`](internal/journal/record/README.md) supplies
-the versioned journal codec, and [`internal/storage`](docs/spec/Storage-implementation.md)
-supplies stable-ID backing-store primitives. `internal/failpoint` provides named
+the versioned journal codec, [`internal/journal/segment`](docs/spec/Journal-segments.md)
+persists verified streams, [`internal/storage`](docs/spec/Storage-implementation.md)
+supplies stable-ID backing primitives, and [`internal/apply`](docs/spec/Apply-engine.md)
+rebuilds an explicitly authorized genesis history into fresh roots.
+`internal/failpoint` provides named
 fault injection, `internal/vfs` supplies rooted local I/O and a deterministic
 crash simulator, and `internal/labrunner` provides the external plan-bound test
-controller. The serving filesystem, ordered apply/replay, journal segment engine
-and distributed replication/recovery remain under development; starting
+controller. The serving filesystem and distributed replication/recovery remain
+under development; starting
 `homelabfs` without `-version` exits with an unimplemented error. The separate
 `tools/poc/` loopback module is a compatibility probe, not the distributed core.
 
@@ -34,8 +37,8 @@ FreeBSD/amd64 daemon binaries under `bin/`. Build the controllers separately wit
 for their implemented boundaries and missing drivers/adapters.
 
 `mage vet` and `mage lint` provide root-module static checks (lint reports a skip
-if golangci-lint is absent). `mage test` runs the real unit tests in `failpoint`,
-`vfs` and `labrunner`; `mage fuzzShort` runs each available fuzz target for five
+if golangci-lint is absent). `mage test` runs the root-module unit tests;
+`mage fuzzShort` runs each available fuzz target for five
 seconds with one worker, but no root-module fuzz targets exist yet. Each test
 invocation requires explicit approval under [AGENTS.md](AGENTS.md). The manually
 dispatched CI workflow runs vet, unit tests and both cross builds; it never

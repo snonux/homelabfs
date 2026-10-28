@@ -2,8 +2,9 @@
 
 Status: design contract for task `bq3`, selected under Paul's delegation of
 routine design choices on 2026-10-28. The local primitive backend now exists for
-disposable lab/canary volumes; apply/journal recovery, full checkpoint publication
-and replication authorization remain unimplemented. The loopback code in
+disposable lab/canary volumes. Bounded local [genesis replay](Apply-engine.md)
+now exists behind explicit external selection/authority; full checkpoint
+publication and replication authorization remain unimplemented. The loopback code in
 `tools/poc/` implements none of this contract and must not be imported into the daemon.
 
 The local primitive backend is implemented in `internal/storage`; see
