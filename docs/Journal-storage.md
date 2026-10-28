@@ -4,6 +4,8 @@
 
 Recommended layout: separate sibling ZFS datasets for each workload's data and journal under a common parent. HomelabFS owns journal checkpointing and segment deletion; external FreeBSD tools own ZFS snapshot scheduling and retention. This is a design recommendation, not deployed configuration.
 
+The [journal format](spec/Journal-format.md) defines portable record bytes, redo and recovery evidence, segment seals and corruption handling. It specifies representation; commit, fencing and checkpoint eligibility still require their protocol and platform gates.
+
 ## Dataset layout
 
 ```text
