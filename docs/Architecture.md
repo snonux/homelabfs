@@ -56,6 +56,7 @@ See [Motivation and goals](Motivation-and-goals.md) for the problem HomelabFS ai
 | [Local filesystem service](spec/Filesystem-service.md) | Implemented local namespace/data service, Unix permissions and local handles/locks; normal commit Protocol and daemon publication remain external |
 | [Restricted FUSE adapter](spec/FUSE-adapter.md) | Implemented disposable direct-I/O frontend; normal credential/traversal/cache/mmap and native FreeBSD gates remain open |
 | [Local daemon configuration](spec/Configuration.md) | Implemented private node/volume initialization, genesis replay and foreground controlled-client validation; normal publication remains closed |
+| [Local administration](spec/Administration.md) | Private peer-authenticated Unix status socket, control audit and explicit bounded test hook; no recovery authority |
 | [Immutable checkpoints](spec/Checkpoints.md) | Local immutable checkpoint artifacts; distributed acceptance/retention and daemon source-trim integration remain external |
 | [Platform interfaces](Platform-interfaces.md) | Shared core, two FUSE adapters, and bhyve virtio-9p |
 | [Security](Security.md) | Proposed WireGuard transport, node identity, authorization, and encryption |

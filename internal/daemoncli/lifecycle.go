@@ -21,6 +21,7 @@ type localService struct {
 	service *fsservice.Service
 	roots   []*vfs.OS
 	lock    *os.File
+	faults  *testFaults
 }
 
 type readyMessage struct {
@@ -37,7 +38,7 @@ func openLocal(ctx context.Context, c Config) (_ *localService, retErr error) {
 	if err != nil {
 		return nil, err
 	}
-	local := &localService{}
+	local := &localService{faults: &testFaults{}}
 	defer func() {
 		if retErr != nil {
 			retErr = errors.Join(retErr, local.close())
@@ -78,6 +79,9 @@ func openLocal(ctx context.Context, c Config) (_ *localService, retErr error) {
 	}
 	fc.Source, fc.Reservations = local.roots[0], local.roots[1]
 	fc.Workspace = fsservice.Workspace{ID: workspace, Data: local.roots[2], Journal: local.roots[3], Progress: local.roots[4]}
+	if c.EnableTestHooks {
+		fc.Segment.Failpoint = local.faults.journal
+	}
 	local.service, err = fsservice.New(ctx, fc)
 	if err != nil {
 		return nil, fmt.Errorf("recover genesis into retained workspace %s: %w", base, err)
@@ -121,17 +125,26 @@ func serve(ctx context.Context, c Config, selfTest bool, output io.Writer, logge
 	if err != nil {
 		return err
 	}
-	defer func() { retErr = errors.Join(retErr, local.close()) }()
+	lifetime := &mountLifetime{local: local}
+	defer func() { retErr = errors.Join(retErr, lifetime.close()) }()
+	administration, err := startAdmin(ctx, c, local)
+	if err != nil {
+		return err
+	}
+	lifetime.admin = administration
 	a, err := fuseadapter.New(fuseadapter.Config{Service: local.service, Validation: local.service.FrontendInfo().Validation, Credentials: credentials})
 	if err != nil {
 		return err
 	}
+	// The native adapter may retain admission even when Mount returns an error.
+	lifetime.retained = true
 	m, err := a.Mount(c.Mountpoint)
 	if err != nil {
-		return fmt.Errorf("mount failed; resources preserved at %s: %w", c.VolumeDir, err)
+		local.service.BlockAdmission("native-mount-uncertain")
+		return fmt.Errorf("mount failed; resources and admin status retained at %s until process exit/inspection: %w", c.VolumeDir, err)
 	}
 	defer func() {
-		if err := m.Unmount(); err != nil {
+		if err := lifetime.unmount(m.Unmount); err != nil {
 			logger.Error("normal unmount failed; preserve mount and volume for inspection", "mountpoint", c.Mountpoint, "volume_dir", c.VolumeDir, "error", err)
 			retErr = errors.Join(retErr, err)
 			return

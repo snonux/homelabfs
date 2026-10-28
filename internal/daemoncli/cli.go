@@ -9,6 +9,7 @@ import (
 	"log/slog"
 
 	"github.com/snonux/homelabfs/internal"
+	"github.com/snonux/homelabfs/internal/admin"
 )
 
 // Run parses a complete invocation and runs foreground until ctx is canceled.
@@ -19,7 +20,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if len(args) == 0 {
-		return fmt.Errorf("usage: homelabfs node-init --control DIR | volume-init|inspect|mount|serve --config FILE (see docs/spec/Configuration.md)")
+		return fmt.Errorf("usage: homelabfs node-init --control DIR | volume-init|inspect|status|mount|serve --config FILE (see docs/spec/Configuration.md)")
 	}
 	if args[0] == "node-init" {
 		return runNodeInit(ctx, args[1:], stdout, stderr)
@@ -47,7 +48,7 @@ func runNodeInit(ctx context.Context, args []string, output, stderr io.Writer) e
 func runVolumeCommand(ctx context.Context, args []string, output, stderr io.Writer) error {
 	command := args[0]
 	switch command {
-	case "volume-init", "inspect", "mount", "serve":
+	case "volume-init", "inspect", "status", "mount", "serve":
 	default:
 		return fmt.Errorf("unknown command %q", command)
 	}
@@ -63,14 +64,31 @@ func runVolumeCommand(ctx context.Context, args []string, output, stderr io.Writ
 	if *configPath == "" || f.NArg() != 0 {
 		return fmt.Errorf("%s requires --config FILE and no positional arguments", command)
 	}
-	if command == "inspect" && (*validation || *selfClient || *selfTest) {
-		return fmt.Errorf("inspect accepts only --config")
+	if (command == "inspect" || command == "status") && (*validation || *selfClient || *selfTest) {
+		return fmt.Errorf("%s accepts only --config", command)
 	}
 	if command == "volume-init" && (!*validation || *selfClient || *selfTest) {
 		return fmt.Errorf("volume-init requires --disposable-validation; normal volume initialization is not implemented")
 	}
 	if (command == "mount" || command == "serve") && (!*validation || !*selfClient) {
 		return fmt.Errorf("normal publication is unsupported: real Protocol and native credential/traversal/cache/mmap admission remain unimplemented; validation requires --disposable-validation --self-client")
+	}
+	if command == "status" {
+		c, err := loadStatusConfig(ctx, *configPath)
+		if err != nil {
+			return err
+		}
+		if err := checkNode(c); err != nil {
+			return err
+		}
+		response, err := admin.Call(ctx, socketPath(c), admin.Request{Version: 1, Operation: "status"})
+		if err != nil {
+			return err
+		}
+		if response.Status == nil || response.Status.NodeID != c.NodeID || len(response.Status.Volumes) != 1 || response.Status.Volumes[0].VolumeID != c.VolumeID {
+			return fmt.Errorf("admin status target mismatch")
+		}
+		return json.NewEncoder(output).Encode(response.Status)
 	}
 	c, err := loadConfig(ctx, *configPath)
 	if err != nil {

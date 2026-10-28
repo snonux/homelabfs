@@ -25,12 +25,13 @@ const formatVersion = 1
 // Config selects exact local identities and disjoint administrative paths.
 // Paths must be absolute, clean and contain no symlink components.
 type Config struct {
-	FormatVersion int    `json:"format_version"`
-	NodeID        string `json:"node_id"`
-	VolumeID      string `json:"volume_id"`
-	ControlDir    string `json:"control_dir"`
-	VolumeDir     string `json:"volume_dir"`
-	Mountpoint    string `json:"mountpoint"`
+	FormatVersion   int    `json:"format_version"`
+	NodeID          string `json:"node_id"`
+	VolumeID        string `json:"volume_id"`
+	ControlDir      string `json:"control_dir"`
+	VolumeDir       string `json:"volume_dir"`
+	Mountpoint      string `json:"mountpoint"`
+	EnableTestHooks bool   `json:"enable_test_hooks,omitempty"`
 }
 
 type nodeIdentity struct {
@@ -53,6 +54,15 @@ type volumeIdentity struct {
 }
 
 func loadConfig(ctx context.Context, name string) (Config, error) {
+	return loadConfigMode(ctx, name, false)
+}
+
+// Status admission must never traverse the active self-client FUSE mount.
+func loadStatusConfig(ctx context.Context, name string) (Config, error) {
+	return loadConfigMode(ctx, name, true)
+}
+
+func loadConfigMode(ctx context.Context, name string, statusOnly bool) (Config, error) {
 	var c Config
 	if err := ctx.Err(); err != nil {
 		return c, err
@@ -70,8 +80,13 @@ func loadConfig(ctx context.Context, name string) (Config, error) {
 	}
 	paths := []string{c.ControlDir, c.VolumeDir, c.Mountpoint}
 	for i, p := range paths {
-		if err := checkPath(p, true); err != nil {
-			return c, err
+		if !filepath.IsAbs(p) || filepath.Clean(p) != p || p == "/" {
+			return c, fmt.Errorf("path must be clean, absolute and below root: %q", p)
+		}
+		if !statusOnly || i == 0 {
+			if err := checkPath(p, true); err != nil {
+				return c, err
+			}
 		}
 		for _, other := range paths[:i] {
 			if containsPath(p, other) || containsPath(other, p) {
@@ -173,6 +188,9 @@ func readJSON(name string, dest any) error {
 		if err := d.Decode(&v); err != nil {
 			return err
 		}
+		if bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
+			return fmt.Errorf("null JSON field %q", key)
+		}
 	}
 	d = json.NewDecoder(bytes.NewReader(raw))
 	d.DisallowUnknownFields()
@@ -188,7 +206,7 @@ func readJSON(name string, dest any) error {
 func jsonFields(dest any) ([]string, error) {
 	switch dest.(type) {
 	case *Config:
-		return []string{"format_version", "node_id", "volume_id", "control_dir", "volume_dir", "mountpoint"}, nil
+		return []string{"format_version", "node_id", "volume_id", "control_dir", "volume_dir", "mountpoint", "enable_test_hooks"}, nil
 	case *nodeIdentity:
 		return []string{"format_version", "node_id"}, nil
 	case *volumeIdentity:

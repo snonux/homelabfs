@@ -8,7 +8,8 @@ The [FUSE adapter](FUSE-adapter.md) capability restrictions remain in force.
 
 ## Configuration version 1
 
-Use a private UTF-8 JSON file, at most 64 KiB, with exactly these fields:
+Use a private UTF-8 JSON file, at most 64 KiB, with these required fields and
+the optional `enable_test_hooks` boolean (default `false`):
 
 ```json
 {
@@ -30,7 +31,11 @@ must be regular, mode 0600, singly linked and owned by the daemon's effective UI
 Field names are exact and case-sensitive, including in node/volume identity files.
 Unknown/duplicate fields, trailing JSON, malformed UTF-8, unsupported versions,
 invalid UUID spelling and identity mismatches are errors. Values are read once
-per invocation; no hot reload exists.
+per invocation; no hot reload exists. `enable_test_hooks:true` explicitly enables
+the bounded administrative journal-failure toggle; see [local administration](Administration.md).
+Static normal-node membership and the durable node-lifetime API use a separate
+[static cluster configuration](Static-cluster.md); they are not wired into this
+disposable CLI profile.
 
 Control, volume and mount roots are mode 0700 and owned by that UID. The paths,
 their ancestors and contents are administratively exclusive, as required by the
@@ -60,6 +65,7 @@ Keep the configuration file mode 0600. Then:
 ```sh
 ./homelabfs volume-init --config /disposable/config.json --disposable-validation
 ./homelabfs inspect --config /disposable/config.json
+./homelabfs status --config /disposable/config.json # while foreground serving
 ./homelabfs mount --config /disposable/config.json --disposable-validation --self-client
 ```
 
@@ -90,8 +96,10 @@ volume admits at most 4 MiB of logical data; source replay, catalog, handles and
 reservations retain the service's independent finite limits. Without
 `--self-test`, the process waits for SIGINT/SIGTERM, normally unmounts, drains
 adapter references and closes the service and roots. It never force/lazy unmounts
-or removes resources after a failure. A failed normal unmount returns an error
-and retains the mount/backing state for inspection; no forced cleanup follows.
+or removes resources after a failure. An uncertain native mount or failed normal unmount returns an error, blocks
+workload admission and retains admin status, mount/backing resources and source
+writer ownership for inspection until process exit. This also applies when
+`daemoncli.Run` is embedded in a longer-lived process; no forced cleanup follows.
 
 Before reporting readiness, mounting requires an empty private mountpoint and
 successful native `CheckMount`: filesystem type and exact volume/generation/session
@@ -105,10 +113,20 @@ not certify normal workloads or authorize consumer/9p/Kubernetes publication.
 and prints the volume manifest. It is a metadata inspection, not journal replay,
 source repair, current serving-authority evidence or a mount-identity check.
 
+`status` uses the authenticated private Unix socket and an immutable service
+snapshot. It checks administrative config/control identity without traversing the
+active FUSE mountpoint or backing storage. It reports local state/wait reason,
+source/apply positions, separate backing slots and unknown replica positions;
+`normal_publication` remains false. Read/control authorization, bounded protocol,
+audit behavior and default-disabled test hooks are specified in
+[local administration](Administration.md).
+
 ## Persistent layout and restart
 
 ```text
 control/node.json
+control/admin-<volume_id>.sock
+control/admin-<volume_id>.audit.jsonl
 volume/volume.json
 volume/source/segments/<volume>/<history-generation>/<configuration>/e.../owner/...
 volume/reservations/allocation-<uuid>.hfr

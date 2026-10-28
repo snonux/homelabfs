@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/snonux/homelabfs/internal/admin"
 	"golang.org/x/sys/unix"
 )
 
@@ -32,7 +33,7 @@ func TestLinuxCLIIntegration(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Second)
 	defer cancel()
-	base, err := os.MkdirTemp("", "homelabfs-cli-validation-")
+	base, err := os.MkdirTemp("", "hfs-cli-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,6 +112,11 @@ func TestLinuxCLIIntegration(t *testing.T) {
 	line, err := bufio.NewReader(pipe).ReadString('\n')
 	if err != nil || !strings.Contains(line, `"normal_publication":false`) {
 		t.Fatal("missing checked validation readiness", err, line)
+	}
+	statusRaw := run("status", "--config", configPath)
+	var status admin.Status
+	if err := json.Unmarshal(statusRaw, &status); err != nil || len(status.Volumes) != 1 || status.Volumes[0].State != "SERVING" || status.Volumes[0].NormalPublication {
+		t.Fatal("admin status through active self-client mount", err, string(statusRaw))
 	}
 	// Even this same-account parent is outside the closed fixture. It cannot
 	// create a file through the mount by borrowing daemon credentials.

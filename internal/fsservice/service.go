@@ -24,7 +24,7 @@ func New(ctx context.Context, c Config) (*Service, error) {
 		return nil, err
 	}
 	s := &Service{config: c, accepted: make(map[*fsapi.Request]bool), queue: make(chan command, c.Limits.Queue), done: make(chan struct{}), ids: make(map[fsapi.UUID]bool), allocations: make(map[fsapi.ObjectID]bool), lifetimes: make(map[fsapi.ObjectID]*lifetime), handles: make(map[fsapi.OpenHandle]handle), pending: make(map[fsapi.UUID]command), waits: make(map[fsapi.UUID]fsapi.LockOwner), owners: make(map[fsapi.LockOwner]bool), sessions: make(map[fsapi.UUID]bool)}
-	s.state.Store(uint32(Recovering))
+	s.setState(Recovering, "replaying-local-history")
 	if err := s.checkRoots(ctx); err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func New(ctx context.Context, c Config) (*Service, error) {
 		_ = s.writer.Close()
 		return nil, err
 	}
-	s.state.Store(uint32(Serving))
+	s.setState(Serving, "")
 	go s.run()
 	return s, nil
 }
@@ -126,7 +126,12 @@ func (s *Service) Dispatch(ctx context.Context, r *fsapi.Request, c fsapi.Comman
 }
 
 // State returns the current serving gate, including uncertain failures.
-func (s *Service) State() State { return State(s.state.Load()) }
+func (s *Service) State() State {
+	if s.stopReason.Load() != nil {
+		return Blocked
+	}
+	return State(s.state.Load())
+}
 
 // Close closes admission and drains every accepted command. It adds no client
 // durability promise and retains conservative lookup/open pins across restart.
@@ -176,7 +181,7 @@ func (s *Service) run() {
 		delete(s.pending, id)
 	}
 	s.locks = nil
-	s.state.Store(uint32(Blocked))
+	s.setState(Blocked, "service-closed")
 }
 func (s *Service) evaluate(ctx context.Context, cmd command) fsapi.Result {
 	if s.State() != Serving {
@@ -188,14 +193,14 @@ func (s *Service) evaluate(ctx context.Context, cmd command) fsapi.Result {
 	}
 	result.Generation = s.config.Workspace.ID
 	if err = s.check(ctx); err != nil {
-		s.state.Store(uint32(Blocked))
+		s.setState(Blocked, "authority-check-failed")
 		return fsapi.Result{Code: errno(err)}
 	}
 	return result
 }
 func (s *Service) finish(cmd command, result fsapi.Result) {
 	if err := cmd.request.Completion().Complete(result); err != nil {
-		s.state.Store(uint32(Blocked))
+		s.setState(Blocked, "completion-failed")
 		_ = cmd.request.Completion().Complete(fsapi.Result{Code: fsapi.IO})
 	}
 	s.mu.Lock()
@@ -203,10 +208,18 @@ func (s *Service) finish(cmd command, result fsapi.Result) {
 	s.mu.Unlock()
 }
 func (s *Service) check(ctx context.Context) error {
+	if s.stopReason.Load() != nil {
+		return fsapi.Unavailable
+	}
 	if s.config.Validation != nil {
 		return nil
 	}
-	return s.config.Protocol.Check(ctx, s.selection.Through.Position)
+	s.publishStatus("authority-check")
+	err := s.config.Protocol.Check(ctx, s.selection.Through.Position)
+	if err == nil {
+		s.publishStatus("")
+	}
+	return err
 }
 func (s *Service) reader(ctx context.Context) (*segment.Reader, error) {
 	p := fsapi.Position{Volume: s.config.Stream.Volume, Generation: s.config.Stream.Generation, Configuration: s.config.Stream.Configuration, Epoch: s.config.Stream.Epoch, Sequence: 1}
@@ -259,6 +272,7 @@ func (s *Service) discover(ctx context.Context) error {
 	if len(selected.Effects) == 0 {
 		return fsapi.Invalid
 	}
+	s.observedSource = selected.Through.Position
 	if s.config.Validation != nil {
 		s.selection = selected
 	} else {
@@ -296,7 +310,11 @@ func (s *Service) protect(ctx context.Context, id fsapi.UUID, payloads ...any) e
 	} else {
 		ch <- answer{proof: []byte("disposable-local-validation-v1")}
 	}
+	s.publishStatus("local-journal-flush")
 	localErr := s.writer.Flush(ctx)
+	if s.config.Validation == nil {
+		s.publishStatus("partner-protection")
+	}
 	remote := <-ch
 	if localErr != nil {
 		return s.block(localErr)
@@ -315,6 +333,7 @@ func (s *Service) protect(ctx context.Context, id fsapi.UUID, payloads ...any) e
 	if err != nil {
 		return s.block(err)
 	}
+	s.publishStatus("local-apply")
 	err = s.applied.Advance(ctx, reader, proposal.Selection)
 	closeErr := reader.Close()
 	if err != nil {
@@ -324,6 +343,7 @@ func (s *Service) protect(ctx context.Context, id fsapi.UUID, payloads ...any) e
 		return s.block(closeErr)
 	}
 	s.selection = cloneSelection(proposal.Selection)
+	s.publishStatus("")
 	return nil
 }
 func (s *Service) append(ctx context.Context, id fsapi.UUID, p any) (segment.Entry, error) {
@@ -332,6 +352,7 @@ func (s *Service) append(ctx context.Context, id fsapi.UUID, p any) (segment.Ent
 	if err != nil {
 		return segment.Entry{}, err
 	}
+	s.observedSource = receipt.Reference.Position
 	r.Header.Sequence = receipt.Reference.Position.Sequence
 	raw, err := record.Encode(r)
 	if err != nil {
@@ -348,7 +369,10 @@ func (s *Service) append(ctx context.Context, id fsapi.UUID, p any) (segment.Ent
 func (s *Service) header(id fsapi.UUID) record.Header {
 	return record.Header{Volume: s.config.Stream.Volume, Generation: s.config.Stream.Generation, Configuration: s.config.Stream.Configuration, Epoch: s.config.Stream.Epoch, Operation: id, Incarnation: s.config.Authority.OwnerIncarnation, Observed: s.config.Clock.Now()}
 }
-func (s *Service) block(err error) error { s.state.Store(uint32(Blocked)); return err }
+func (s *Service) block(err error) error {
+	s.setState(Blocked, "operation-failed-preserve-state")
+	return err
+}
 func cloneSelection(v apply.Selection) apply.Selection {
 	v.Effects = slices.Clone(v.Effects)
 	v.Proof = slices.Clone(v.Proof)
