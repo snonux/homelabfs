@@ -47,9 +47,9 @@ The 36 rows below are native filesystem scenario families. The five Kubernetes-s
 | R09 | Abruptly reboot all nodes; vary restart order and delay original owner | Reconstruct valid durable history; do not promote merely by maximum sequence or first two nodes online |
 | R10 | Crash each participant during every takeover step | Resume or reconcile idempotently; no double activation, lost history, or permanent restart loop |
 | F01 | Partition old primary from peer pair but keep its local test process alive | Replacement activates only with fencing; old process cannot successfully read stale data or acknowledge writes after transfer |
-| F02 | Pause daemon or test VM past authority expiry; resume with old messages | Old epoch/session cannot revive access; include preexisting descriptors and cached mmap reads |
+| F02 | Pause daemon or test VM during attempted authority revocation; resume with old messages | Old epoch/session cannot revive access after completed transfer; include preexisting descriptors and cached mmap reads. Under the approved explicit native VM fence policy, a paused guest that cannot stop leaves the replacement gated; elapsed etcd TTL/pause time is never fence proof. |
 | F03 | Partition etcd traffic only, then replication traffic only | Independently enforce authority and data readiness; no assumption that one implies the other |
-| F04 | Lose etcd leader, then quorum; recover network | Leader loss recovers; quorum loss respects serving deadlines; safe revalidation resumes automatically after restoration |
+| F04 | Lose etcd leader, then quorum; recover network | Leader loss recovers; detected authority uncertainty gates daemon admissions/completions and requests the explicit fence. Record detection and positive cache-fence completion separately; no hard cached-read expiry is promised when management is unavailable. Promotion stays blocked until fencing and safe authority/history revalidation complete. |
 | F05 | Race promotion, partner replacement, workload relocation, and fourth-node admission | One valid configuration/history; no two arbitrary replicas forming an unauthorized write pair |
 | D01 | Inject short write, ENOSPC, EIO, journal sync failure, or stalled ZFS pool | No false success; quarantine/fail affected path or recover from peers; preserve diagnostics and bounded queues |
 | D02 | Corrupt/torn journal tail versus corruption inside a previously valid prefix | Detect both; only discard a tail when proven safe, otherwise repair from verified history or stop |
@@ -86,6 +86,13 @@ Specify and test invariants: one active write history; no stale successful read;
 5. **Operations gate:** snapshot restoration, emergency exit, restart dependency order, and monitoring pass in the disposable cluster. Evidence is collected, test data cleaned, test VMs shut down, and any temporarily stopped Rocky VM restored. Deploy validated artifacts for isolated canary volumes, then run separately approved Stage 2 smoke tests. Report isolated deployment/physical exercises separately, including not-run cases. Completion produces canary evidence, not authorization for production migration or NFS retirement.
 
 Choose measurable timeouts and targets after initial measurements. Record detection, fencing, replay, partner readiness, volume publication, and application recovery separately. A long async backlog makes failover slower; time-to-ready must be judged against available catch-up bandwidth, not a fixed promise independent of backlog. Random fault runs supplement deterministic tests and should preserve seeds and minimized failing histories. Run deterministic protocol tests frequently, real-kernel integration in CI, and native FreeBSD crash/recovery suites at release gates.
+
+The [approved takeover design](spec/Takeover.md) uses positive explicit fencing rather
+than a clock-based serving lease. F02/F04 therefore require blocked promotion
+when a paused/hung guest or unavailable management prevents confirmation. These
+are safety outcomes, not successful failover or proof of a hard cache-expiry
+deadline. Implementation and `lv3` evidence remain prerequisites; profiles that
+require bounded cached-read shutdown despite management failure are unsupported.
 
 ## Security coverage
 

@@ -4,6 +4,12 @@
 
 Ordinary failures should recover automatically when valid authority and sufficient history are available. Manual decisions are reserved for the exceptional cases documented below.
 
+The [takeover state-machine specification](spec/Takeover.md) supplies durable
+closure-wide steps, accepted-tail selection and serving predicates. Paul approved
+its native whole-VM cache-fence policy; implementation evidence remains required,
+and host/Rocky/9p fence profiles remain unsupported. No automatic takeover
+has been implemented or validated by that specification.
+
 ## Failure handling and recovery
 
 These are proposed operating rules. Prefer stopping affected I/O over creating conflicting history or reporting stale data as current. Loss under the accepted volatile-replica failure window must be explicit, not disguised as successful catch-up.
@@ -114,7 +120,7 @@ Use stable request identifiers for protocol retries and record enough results to
 2. Persist fencing promises on a storage majority, gathering prior journal state before enabling new writes. Preserve old logs and volatile tails.
 3. Revoke or safely expire prior read permissions, including access through caches.
 4. Recover a consistent authoritative prefix. An operation whose reply was lost may be completed. Preserve acknowledged operations whenever their required copies survive; if evidence is insufficient, remain unavailable rather than inventing a commit boundary.
-5. Persist recovered history on the prospective owner and, as a recommended takeover barrier, its new partner. Extra durability during recovery does not change ordinary in-memory partner ACKs.
+5. Persist the complete recovered history and dependencies durably on both the prospective owner and its new partner before activation, as required by the takeover specification. Extra durability during recovery does not change ordinary in-memory partner ACKs.
 6. Apply the prefix, restore metadata, and activate the configuration. Grant serving rights and resume workloads only after activation conditions hold.
 7. Catch up the remaining replica by replay or snapshot. Preserve diagnostic/recovery copies before discarding divergent suffixes.
 

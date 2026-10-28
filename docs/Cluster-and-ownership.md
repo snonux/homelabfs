@@ -88,6 +88,12 @@ Suggested deployment if etcd is retained: a dedicated three-member cluster, one 
 
 The safety rules above are design constraints, not a complete consensus or lease implementation. Specify and model-check the transition state machine before implementing automatic failover. Sources for the distinction between coordination and storage enforcement: [etcd API guarantees](https://etcd.io/docs/v3.6/learning/api_guarantees/), [etcd fencing example](https://github.com/etcd-io/etcd/blob/main/contrib/lock/README.md).
 
+The [takeover specification](spec/Takeover.md) specifies explicit positive cache
+fencing without a clock-based serving-expiry assumption, durable quorum promises
+and closure-wide history recovery. Paul approved its narrow native VM-only fence
+policy; implementation and validation remain pending. Neither policy approval
+nor etcd allocation grants serving authority.
+
 ## Transport and authorization
 
 See [Security.md](Security.md) for the proposed persistent replication connections over existing WireGuard links, explicit node admission, per-volume authorization, etcd service credentials, and emergency-mode exclusion. Authenticated membership does not itself grant volume ownership.

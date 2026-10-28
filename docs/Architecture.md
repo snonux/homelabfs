@@ -47,6 +47,7 @@ See [Motivation and goals](Motivation-and-goals.md) for the problem HomelabFS ai
 | [Journal storage](Journal-storage.md) | Dataset layout, checkpoints, retention, and safe cleanup |
 | [Performance](Performance.md) | Bounded concurrency, connection pools, fairness, and measurement |
 | [Recovery](Recovery.md) | Automatic recovery, failures, fencing, and manual escalation |
+| [Takeover state machine](spec/Takeover.md) | Closure recovery, durable promises, serving gates and approved native VM-only fence policy; implementation and validation pending |
 | [Emergency mode](Emergency-mode.md) | Single-node activation, exclusion, manual rejoin, and exit |
 | [Kubernetes canaries](Kubernetes-and-migration.md) | Canary PV publication, pod relocation, guest access and future scope |
 | [Filesystem semantics](Filesystem-semantics.md) | POSIX-style behavior, permissions, and f3s applications |
@@ -61,7 +62,7 @@ Diagrams live with the topics they illustrate: placement in Cluster and ownershi
 
 1. Use the [five representative synthetic canary patterns](Canary-patterns.md) and [volume and namespace policy](spec/Volumes.md). Paul selected per-volume mounts and cross-volume transaction design before implementation; an explicit transaction API preserves that topology. Ordinary cross-mount rename/link still returns EXDEV. The transaction protocol must be specified before freezing affected API/journal/service implementation. Budget the canary footprint and operational isolation in [Deployment readiness](Deployment-readiness.md); a full production migration inventory is outside this project.
 2. Implement the [durability and read-freshness contract](spec/Durability.md): Paul confirmed local durable journal plus partner memory receipt for ordinary daemon writes and fsync on 2026-10-28; two-durable-copy fsync is outside initial scope. Commit/recovery protocol details and actual adapter/9p validation remain open.
-3. Specify takeover, fencing enforcement, and recovery of acknowledged operations.
+3. Implement, model and validate the approved isolated fence policy in [takeover, fencing and recovery](spec/Takeover.md), including recovery of acknowledged operations. Policy approval alone authorizes no installation or disruptive VM operation.
 4. Specify emergency activation/fencing, manual admission and exit, retention limits, and safe group reconfiguration when adding nodes. Implement the failure policies above without automatic acknowledgement downgrades.
 5. Use [go-fuse v2.9.0 for the initial adapters](adr/0001-fuse-library.md), selected from source review and Linux/native PoC evidence. Complete the remaining native capability gates and validate the real daemon through bhyve virtio-9p and f3s application semantics.
 

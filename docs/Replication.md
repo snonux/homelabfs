@@ -4,6 +4,11 @@
 
 Normal read/write behavior, replication guarantees, and continuity across ownership changes. The [normal replication protocol](spec/Replication-protocol.md) specifies fixed-owner handshake, messages, acceptance, commitment, visibility and retry semantics. It is an unimplemented design awaiting model/runtime validation. Emergency mode is described separately in [Emergency-mode.md](Emergency-mode.md).
 
+The [takeover specification](spec/Takeover.md) defines closure-wide recovery,
+accepted-tail selection and promotion of either surviving role. Its explicit
+native VM-only cache-fence policy is approved, with implementation and validation pending;
+an etcd grant or lagging asynchronous copy never suffices for activation.
+
 ## Write path and durability
 
 Paul confirmed on 2026-10-28 that ordinary mutations delivered to the daemon and fsync require a durable local journal plus synchronous-partner memory receipt, together with the commit/visibility conditions. See the [durability and read-freshness contract](spec/Durability.md) for syscall promises and guest-buffering limitations. Two-durable-copy fsync is outside initial scope.
