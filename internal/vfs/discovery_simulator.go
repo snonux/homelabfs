@@ -32,7 +32,7 @@ func (s *Simulator) Stat(ctx context.Context, name string) (Info, error) {
 	if err != nil {
 		return Info{}, err
 	}
-	return node.info(), nil
+	return node.info(s.device), nil
 }
 
 // OpenDir binds a discovery handle to the directory's local identity.
@@ -84,7 +84,7 @@ func (f *memFile) Stat(ctx context.Context) (Info, error) {
 	if err := f.check(ctx); err != nil {
 		return Info{}, err
 	}
-	return f.sim.nodes[f.id].info(), nil
+	return f.sim.nodes[f.id].info(f.sim.device), nil
 }
 
 func (d *memDir) Stat(ctx context.Context) (Info, error) {
@@ -93,7 +93,7 @@ func (d *memDir) Stat(ctx context.Context) (Info, error) {
 	if err := d.check(ctx); err != nil {
 		return Info{}, err
 	}
-	return d.sim.nodes[d.id].info(), nil
+	return d.sim.nodes[d.id].info(d.sim.device), nil
 }
 
 func (d *memDir) ReadDir(ctx context.Context, n int) ([]Entry, error) {
@@ -122,7 +122,7 @@ func (d *memDir) ReadDir(ctx context.Context, n int) ([]Entry, error) {
 			return result, io.EOF
 		}
 		id := d.sim.nodes[d.id].entries[next]
-		result = append(result, Entry{Name: next, Info: d.sim.nodes[id].info()})
+		result = append(result, Entry{Name: next, Info: d.sim.nodes[id].info(d.sim.device)})
 		d.last = next
 	}
 	return result, nil
@@ -148,10 +148,10 @@ func (d *memDir) check(ctx context.Context) error {
 	return nil
 }
 
-func (node *memNode) info() Info {
+func (node *memNode) info(device uint64) Info {
 	size := int64(len(node.data))
 	if node.dir {
 		size = 0
 	}
-	return Info{Mode: node.mode, Size: size, Identity: Identity{Device: 1, File: uint64(node.id) + 1}}
+	return Info{Mode: node.mode, Size: size, Links: 1, Identity: Identity{Device: device, File: uint64(node.id) + 1}}
 }

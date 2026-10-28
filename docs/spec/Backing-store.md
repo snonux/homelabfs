@@ -1,9 +1,14 @@
 # Backing store and stable object identity
 
 Status: design contract for task `bq3`, selected under Paul's delegation of
-routine design choices on 2026-10-28. This describes an unimplemented store for
-disposable lab/canary volumes. The loopback code in `tools/poc/` implements none
-of this contract and must not be imported into the daemon.
+routine design choices on 2026-10-28. The local primitive backend now exists for
+disposable lab/canary volumes; apply/journal recovery, full checkpoint publication
+and replication authorization remain unimplemented. The loopback code in
+`tools/poc/` implements none of this contract and must not be imported into the daemon.
+
+The local primitive backend is implemented in `internal/storage`; see
+[implementation boundary](Storage-implementation.md) for its API, local tests and
+remaining replay/coordination gates. This does not implement the complete protocol.
 
 Use private, home-keyed regular payload files, an in-memory logical catalog
 reconstructed from an immutable catalog checkpoint and journal redo, and durable
@@ -445,11 +450,10 @@ checkpoint barriers; `storage` implements the format over `internal/vfs`.
 FUSE adapters translate capabilities/credentials and enforce invalidation; they
 do not expose backing paths or implement a second namespace authority.
 
-The current VFS has the offset I/O, truncate, file sync, mkdir, rename, unlink and
-directory sync needed for payloads and immutable checkpoint publication. Before
-store implementation, add narrowly scoped enumeration/stat and directory removal
-capabilities for validated recovery discovery, descriptor/type checking and
-bounded GC, with corresponding simulator semantics. A higher-level store should
+The current VFS supplies offset I/O, truncate, file sync, mkdir, rename, unlink,
+directory sync, bounded no-follow enumeration/stat and empty-directory removal.
+Discovery includes native regular-file link counts for rejecting host aliases;
+independent simulator instances have distinct ephemeral identity scopes. A higher-level store should
 supply strict codecs, exclusive identity creation, path-to-ID validation and
 publication helpers; do not hide logical redo/transaction policy in raw VFS.
 Replicated chmod/chown/timestamps, symlinks and logical links are catalog/journal

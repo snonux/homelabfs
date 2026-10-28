@@ -14,11 +14,15 @@ The goal is highly available file storage for my home lab, built on FreeBSD and 
 
 ## Architecture
 
-The root Go module contains the daemon scaffold and implemented support
-packages: `internal/failpoint` provides named test fault injection, `internal/vfs`
-provides rooted local I/O and a deterministic crash simulator, and
-`internal/labrunner` provides the external plan-bound test controller. The
-filesystem, journal, replication and recovery core remains scaffolded; starting
+The root Go module contains the daemon scaffold and implemented local packages:
+[`internal/fsapi`](internal/fsapi) supplies shared filesystem types and lifetime
+primitives, [`internal/journal/record`](internal/journal/record/README.md) supplies
+the versioned journal codec, and [`internal/storage`](docs/spec/Storage-implementation.md)
+supplies stable-ID backing-store primitives. `internal/failpoint` provides named
+fault injection, `internal/vfs` supplies rooted local I/O and a deterministic
+crash simulator, and `internal/labrunner` provides the external plan-bound test
+controller. The serving filesystem, ordered apply/replay, journal segment engine
+and distributed replication/recovery remain under development; starting
 `homelabfs` without `-version` exits with an unimplemented error. The separate
 `tools/poc/` loopback module is a compatibility probe, not the distributed core.
 

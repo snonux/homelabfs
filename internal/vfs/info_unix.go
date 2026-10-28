@@ -16,7 +16,7 @@ func physicalInfo(info fs.FileInfo) (Info, error) {
 	if !ok {
 		return Info{}, fs.ErrInvalid
 	}
-	return Info{Mode: info.Mode(), Size: info.Size(), UID: stat.Uid, GID: stat.Gid,
+	return Info{Mode: info.Mode(), Size: info.Size(), Links: uint64(stat.Nlink), UID: stat.Uid, GID: stat.Gid,
 		Identity: Identity{Device: uint64(stat.Dev), File: uint64(stat.Ino)}}, nil
 }
 
@@ -52,6 +52,6 @@ func statDirEntry(dir *os.File, name string) (Info, error) {
 	if stat.Mode&unix.S_ISVTX != 0 {
 		mode |= fs.ModeSticky
 	}
-	return Info{Mode: mode, Size: stat.Size, UID: stat.Uid, GID: stat.Gid,
+	return Info{Mode: mode, Size: stat.Size, Links: uint64(stat.Nlink), UID: stat.Uid, GID: stat.Gid,
 		Identity: Identity{Device: uint64(stat.Dev), File: uint64(stat.Ino)}}, nil
 }

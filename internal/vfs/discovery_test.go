@@ -448,3 +448,33 @@ func TestDiscoveryCancellationDuringPage(t *testing.T) {
 		}
 	})
 }
+
+func TestSimulatorIdentityScopes(t *testing.T) {
+	a, err := NewSimulator(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := NewSimulator(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := a.Stat(t.Context(), ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := b.Stat(t.Context(), ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Identity == other.Identity {
+		t.Fatal("independent simulator roots share identity scope")
+	}
+	a.Crash()
+	after, err := a.Stat(t.Context(), ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Identity != after.Identity {
+		t.Fatal("crash changed surviving root identity")
+	}
+}

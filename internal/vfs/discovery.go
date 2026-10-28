@@ -21,8 +21,11 @@ type Identity struct {
 // UID, GID, Mode and Identity provide evidence for private-root admission; the
 // caller must enforce its owner, permission, mount and overlap policy before use.
 type Info struct {
-	Mode     fs.FileMode
-	Size     int64
+	Mode fs.FileMode
+	Size int64
+	// Links is the native hard-link count for regular files. Private storage
+	// rejects counts other than one; it is never the logical catalog Nlink.
+	Links    uint64
 	UID      uint32
 	GID      uint32
 	Identity Identity

@@ -5,8 +5,10 @@ package vfs
 import (
 	"context"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"syscall"
 	"testing"
 )
@@ -107,5 +109,59 @@ func TestOSDescriptorRelativeEntryStat(t *testing.T) {
 	}
 	if _, err := statDirEntry(d.(*osDir).file, "missing"); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatal(err)
+	}
+}
+
+func TestOSDiscoveryNativeLinkCount(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "payload"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	backend, err := NewOS(t.Context(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = backend.Close() }()
+	info, err := backend.Stat(t.Context(), "payload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Links != 1 {
+		t.Fatalf("initial links %d", info.Links)
+	}
+	if err = os.Link(filepath.Join(root, "payload"), filepath.Join(t.TempDir(), "external-alias")); err != nil {
+		t.Fatal(err)
+	}
+	info, err = backend.Stat(t.Context(), "payload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Links != 2 {
+		t.Fatalf("external alias links %d", info.Links)
+	}
+	f, err := backend.Open(t.Context(), "payload", os.O_RDONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	statter, ok := f.(Statter)
+	if !ok {
+		t.Fatal("missing descriptor stat")
+	}
+	info, err = statter.Stat(t.Context())
+	if err != nil || info.Links != 2 {
+		t.Fatalf("descriptor links %d: %v", info.Links, err)
+	}
+	d, err := backend.OpenDir(t.Context(), ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = d.Close() }()
+	entries, err := d.ReadDir(t.Context(), 1)
+	if err != nil && !errors.Is(err, io.EOF) {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Info.Links != 2 {
+		t.Fatal("enumeration link count")
 	}
 }

@@ -11,8 +11,12 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 )
+
+// simulatorDevices separates ephemeral identity scopes across independent roots.
+var simulatorDevices atomic.Uint64
 
 // LossMode selects recovery of changes made after the most recent barrier.
 type LossMode uint8
@@ -45,6 +49,7 @@ type Config struct {
 // atomic with respect to other methods and Crash. The zero value is not usable;
 // construct it with NewSimulator. It must not be copied after first use.
 type Simulator struct {
+	device     uint64
 	mu         sync.Mutex
 	config     Config
 	rng        *rand.Rand
@@ -101,7 +106,7 @@ func NewSimulator(config Config) (*Simulator, error) {
 	if uint64(config.MaxFileSize) >= uint64(^uint(0)>>1) {
 		return nil, fmt.Errorf("simulator file size limit: %w", fs.ErrInvalid)
 	}
-	s := &Simulator{config: config, rng: rand.New(rand.NewPCG(config.Seed, config.Seed^0x9e3779b97f4a7c15)), lastChange: make(map[int]int)}
+	s := &Simulator{device: simulatorDevices.Add(1), config: config, rng: rand.New(rand.NewPCG(config.Seed, config.Seed^0x9e3779b97f4a7c15)), lastChange: make(map[int]int)}
 	s.nodes = []*memNode{{dir: true, mode: fs.ModeDir | 0o700, entries: make(map[string]int), syncedEntries: make(map[string]int)}}
 	return s, nil
 }
