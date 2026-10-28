@@ -69,7 +69,7 @@ Linux guest buffering is addressed separately below.
 | fdatasync(file) | As fsync for data and metadata necessary to retrieve it. A platform without a distinct primitive may use fsync. |
 | fsync(directory) | Prior namespace changes ordered before this directory's barrier, and their required dependencies, meet the boundary. A filesystem that cannot supply this must reject the capability rather than report false success. |
 | close / FUSE flush / release | No additional sync promise. Previously acknowledged mutations keep their guarantees; propagate available delayed errors through appropriate callbacks. Do not rely on release alone to report a late error to an application. |
-| rename | Atomic committed namespace change, including replaced name and both parent dependencies, meets the boundary before reply. Cross-volume rename fails explicitly (EXDEV). |
+| rename | Atomic committed namespace change, including replaced name and both parent dependencies, meets the boundary before reply. Ordinary POSIX cross-mount/cross-volume rename fails explicitly (EXDEV); the separate application transaction API is specified below. |
 | unlink / rmdir / create / link | Committed namespace change meets the boundary before reply. Open-unlinked handles retain object identity/lifetime until release; replay must preserve the chosen semantics. |
 | truncate / chmod / chown / timestamps and other supported metadata mutations | Their committed effects and dependencies meet the same boundary; no separate weaker metadata path. |
 
@@ -80,6 +80,20 @@ Sync success need not wait for every backing-file apply if replay is sufficient;
 subsequent reads and metadata queries still wait for the required applied state.
 Ordinary namespace replies are deliberately stronger than local-filesystem
 conventions that require a later directory fsync.
+
+The explicit [cross-volume transaction API](Transactions.md) preserves separate
+FUSE mounts while adding atomic rename/link across volume groups. Success requires
+every participant's complete redo/dependencies, the coordinator decision/result
+and participant installation evidence to meet the same local-durable plus partner
+retained-memory boundary, followed by one shared visibility barrier. It does not
+require a second durable copy. Foreign object homes create placement, recovery,
+barrier and retention dependencies; ordinary operations touching such dependencies
+must honor them too. A file/directory fsync is not an implicit application
+transaction or a cross-volume snapshot. Missing evidence after the accepted
+owner-storage/partner-memory loss window gates the whole affected closure rather
+than exposing a partial transaction. The transaction spec defines retries,
+uncertain results, decision retention and the prerequisite model/platform checks;
+no implementation or runtime evidence is implied.
 
 ## mmap and guest buffering
 

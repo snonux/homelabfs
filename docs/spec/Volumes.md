@@ -21,8 +21,10 @@ The root is a logical namespace, not permission to export its raw backing
 directory. Use the [data/journal sibling layout](../Journal-storage.md), keyed
 by volume UUID; neither journal nor control storage is workload-visible.
 Backing paths and a human-readable name are administrative mappings to the
-UUID, not identities inferred from path text. An object is identified within
-its volume/history; matching inode numbers on different volumes prove nothing.
+UUID, not identities inferred from path text. An object's stable identity names
+its home volume; matching inode numbers on different mounts prove nothing.
+[Cross-volume transactions](Transactions.md) introduce logical namespace references
+to home-owned objects, without merging volume UUIDs or linking ZFS datasets.
 
 Each canonical root is disjoint from every other canonical root. Reject duplicate
 backing roots, ancestor/descendant canonical roots and aliases disguised as new
@@ -89,28 +91,33 @@ rename or linking across those separate mounts.
 Symlinks are ordinary stored link text, not cross-group transactions or serving
 authority. Traversal succeeds only through already published authorized views
 on the active owner. Reject publication that requires cross-owner traversal;
-never fetch workload reads from a passive replica to resolve it. No transaction
-or atomic snapshot is promised across separate volumes.
+never fetch workload reads from a passive replica to resolve it. Ordinary symlink
+traversal supplies no transaction or atomic snapshot across separate volumes.
 
 **Decision record:** Paul selected B on 2026-10-28: add cross-volume transaction
 design before implementation. Paul subsequently delegated routine decisions;
 the selected interface is an explicit application transaction API, retaining
 the per-volume mounts he chose. Ordinary POSIX rename/link across these mounts
 still returns `EXDEV`; those syscalls cannot invoke the transaction API.
-Transaction design
-must specify coordinator authority, participant fencing, durable decisions,
-atomic visibility and recovery of interrupted rename/link operations before any
-such operation can be advertised or implemented. No distributed transaction
-protocol is supplied by this volume-boundary policy. A separate transaction
-specification must settle its request/result types, cross-volume object and link
-lifetime, participant/coordinator authority, dependency recovery and visibility
+The [transaction specification](Transactions.md) supplies coordinator authority,
+participant fencing, decisions, visibility, object lifetime and recovery semantics
 before filesystem API, journal, commit and service implementation are frozen.
-Do not silently omit transaction support or substitute copy-and-delete.
+Its protocol still requires modelling and implementation evidence before support
+can be advertised. Do not silently omit transactions or substitute copy-and-delete.
 
 Existing [Durability.md](Durability.md) and
 [canary patterns](../Canary-patterns.md) already require cross-volume rename
 `EXDEV`; those statements describe ordinary operations on separate mounts.
 They do not satisfy the separate explicit-API transaction-support requirement.
+The [transaction contract](Transactions.md) now defines the application API,
+regular-file/symlink/directory rename, regular-file hard links, replicated decision
+slot, shared visibility barrier and recovery obligations. Its initial placement
+rule requires a common owner, replica membership and synchronous partner across
+the dependency closure. Foreign object references retain their home groups and
+couple placement, recovery and retirement. Initially affinity only grows, so a
+transaction may permanently enlarge the availability unit; per-group journals
+and identities remain distinct. Incompatible placement is explicitly rejected
+before admission. This is specified behavior, not implemented support or proof.
 Initial parent aggregation remains proposed as unsupported; this does not
 authorize bypassing group boundaries to emulate transactions.
 
