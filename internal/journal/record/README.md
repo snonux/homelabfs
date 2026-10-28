@@ -23,10 +23,12 @@ contain OPEN, SEAL, or any record with another Evidence field, even an empty one
 Evidence frames are independently validated and sorted by their stream key.
 
 `Error.Kind` distinguishes `Torn`, `Corrupt`, and `Unsupported`; use `errors.As`.
-Torn describes incomplete framing only. The caller must determine whether this
-is the final frame of the final unsealed segment; a closed/interior truncation
-is a recovery gap. Unsupported versions/kinds require explicit handling that
-preserves their bytes. This package never scans ahead or truncates a stream.
+Torn describes incomplete outer framing only; incomplete embedded Evidence is
+Corrupt because the enclosing frame is complete. The caller must determine
+whether this is the final frame of the final unsealed segment; a closed/interior
+truncation is a recovery gap. Unsupported versions/kinds, including embedded
+ones, require explicit handling that preserves their bytes. This package never
+scans ahead or truncates a stream.
 
 Every mutation's local `Redo.Objects` must exactly equal its immutable global
 `Intent.SelectedMetadata` subset for the header volume. All requested creation

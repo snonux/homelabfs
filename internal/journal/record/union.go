@@ -1,6 +1,9 @@
 package record
 
-import "reflect"
+import (
+	"errors"
+	"reflect"
+)
 
 func argument(kind uint16) any {
 	switch kind {
@@ -266,7 +269,14 @@ func (w *wire) evidence(v reflect.Value) {
 		total += len(data)
 		rec, err := decode(data, true)
 		if err != nil {
-			w.err = err
+			var format *Error
+			if errors.As(err, &format) && format.Kind == Torn {
+				// Evidence blobs must contain complete frames. Incomplete embedded
+				// framing cannot describe a repairable physical outer tail.
+				w.bad("incomplete embedded evidence frame")
+			} else {
+				w.err = err
+			}
 			return
 		}
 		if kindOf(rec.Payload) == 67 || kindOf(rec.Payload) == 68 {
