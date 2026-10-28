@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 )
 
@@ -31,11 +32,16 @@ type Completion[T Reply[T]] struct {
 // define their own typed result alongside this contract as they are implemented.
 // A non-OK Code carries no success payload and never proves mutation rollback.
 type Result struct {
-	Code   Errno
-	Data   []byte
-	Count  int64
-	Attr   *Attr
-	Handle OpenHandle
+	Code              Errno
+	Data              []byte
+	Count             int64
+	Attr              *Attr
+	Handle            OpenHandle
+	Entries           []DirEntry
+	DirectoryRevision uint64
+	Capacity          *Capacity
+	Position          Position
+	Generation        UUID
 }
 
 // Request owns caller credentials and completion state for one adapter request.
@@ -55,6 +61,15 @@ func NewCompletion[T Reply[T]]() *Completion[T] {
 // NewRequest captures caller credentials for asynchronous service dispatch.
 func NewRequest(credentials Cred) *Request {
 	return &Request{credentials: credentials.Clone(), completion: NewCompletion[Result]()}
+}
+
+// Validate rejects a request not constructed by NewRequest or credentials beyond
+// the bounded supplementary-group contract. It does not authorize the caller.
+func (r *Request) Validate() error {
+	if r == nil || r.completion == nil || len(r.credentials.Groups) > 1024 {
+		return fmt.Errorf("%w: request construction or credential limit", Invalid)
+	}
+	return nil
 }
 
 // Complete validates and snapshots result, then publishes it exactly once.
@@ -121,8 +136,25 @@ func (r Result) validate() error {
 	if !r.Code.Valid() || r.Count < 0 {
 		return fmt.Errorf("%w: filesystem result", Invalid)
 	}
-	if r.Code != OK && (len(r.Data) != 0 || r.Count != 0 || r.Attr != nil || r.Handle != 0) {
+	if r.Code != OK && (len(r.Data) != 0 || r.Count != 0 || r.Attr != nil || r.Handle != 0 || len(r.Entries) != 0 || r.DirectoryRevision != 0 || r.Capacity != nil || r.Position != (Position{}) || r.Generation.Valid()) {
 		return fmt.Errorf("%w: error with success payload", Invalid)
+	}
+	if (r.Handle != 0 || r.DirectoryRevision != 0) && !r.Generation.Valid() {
+		return fmt.Errorf("%w: result serving generation", Invalid)
+	}
+	if r.Position != (Position{}) && !r.Position.Valid() {
+		return fmt.Errorf("%w: result position", Invalid)
+	}
+	if r.Capacity != nil && (r.Capacity.ObjectsFree > r.Capacity.Objects || r.Capacity.BytesFree > r.Capacity.Bytes) {
+		return fmt.Errorf("%w: capacity counters", Invalid)
+	}
+	for _, e := range r.Entries {
+		if !validResultName(e.Name) || !e.Object.Valid() || e.Revision == 0 || e.Kind < Regular || e.Kind > Symlink {
+			return fmt.Errorf("%w: directory entry", Invalid)
+		}
+	}
+	if len(r.Entries) > 0 && r.DirectoryRevision == 0 {
+		return fmt.Errorf("%w: directory revision", Invalid)
 	}
 	if r.Attr != nil {
 		return r.Attr.Validate()
@@ -132,9 +164,18 @@ func (r Result) validate() error {
 
 func (r Result) clone() Result {
 	r.Data = slices.Clone(r.Data)
+	r.Entries = slices.Clone(r.Entries)
+	if r.Capacity != nil {
+		v := *r.Capacity
+		r.Capacity = &v
+	}
 	if r.Attr != nil {
 		a := *r.Attr
 		r.Attr = &a
 	}
 	return r
+}
+
+func validResultName(n string) bool {
+	return n != "" && n != "." && n != ".." && len(n) <= 255 && !strings.ContainsAny(n, "/\x00")
 }

@@ -77,10 +77,19 @@ type Config struct {
 
 // Result is a locally installed view, still behind the caller's external gates.
 // Applied is a source journal position; Store uses separate contiguous redo slots.
+// Once returned, do not copy Result or call Advance concurrently; its Store is
+// borrowed under the caller's read/apply/authority gates.
 type Result struct {
 	Store   *storage.Store
 	Applied record.FrameRef
 	Slots   uint64
+
+	selection Selection
+	history   history
+	config    Config
+	progress  storage.Filesystem
+	used      int64
+	blocked   bool
 }
 
 type history struct {
@@ -202,6 +211,7 @@ func Replay(ctx context.Context, data, journal, progress storage.Filesystem, sou
 		}
 		result.Applied = entry.Reference
 	}
+	result.selection, result.history, result.config, result.progress, result.used = selection, h, config, progress, used
 	return result, nil
 }
 

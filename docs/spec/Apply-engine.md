@@ -148,3 +148,20 @@ unselected candidates stay unapplied; malformed/torn source suffixes gate withou
 unauthorized repair. Separate durability checks reopen the exact published image
 only at the publication cut after simulated loss. These are local model tests,
 not storage hardware power-loss, FUSE, distributed recovery or lab VM tests.
+
+## Incremental service application
+
+`Result.Advance` extends a successful Replay result in the same workspace behind
+caller-owned read/apply/authority gates. It rereads the complete bounded genesis
+history, rejects any changed old source bytes or selected effect prefix, obtains
+fresh exact-history authorization and applies only newly selected effects with
+the same deduplication, payload, image and APPLIED barriers. Progress budget is
+cumulative across the result lifetime. Source reads must finish before appends
+resume. Do not copy or concurrently use the mutable Result/Store.
+
+Any extension failure poisons the result for further Advance calls. The service
+closes its serving gate and recovers using Replay into fresh roots. This seam
+adds no dirty-baseline reuse, checkpoint acceptance, retention permission,
+follower, production authorizer or normal acknowledgement policy. See the
+[single-volume service contract](Filesystem-service.md) for command ordering,
+proof/permission hooks and the explicit disposable local validation profile.

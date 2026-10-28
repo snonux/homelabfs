@@ -21,10 +21,13 @@ the versioned journal codec, [`internal/journal/segment`](docs/spec/Journal-segm
 persists verified streams, [`internal/storage`](docs/spec/Storage-implementation.md)
 supplies stable-ID backing primitives, and [`internal/apply`](docs/spec/Apply-engine.md)
 rebuilds an explicitly authorized genesis history into fresh roots.
+[`internal/fsservice`](docs/spec/Filesystem-service.md) implements a bounded local
+filesystem service with journal-first mutations, gated reads and explicit external
+commit/permission hooks; its disposable validation profile supplies local evidence only.
 `internal/failpoint` provides named
 fault injection, `internal/vfs` supplies rooted local I/O and a deterministic
 crash simulator, and `internal/labrunner` provides the external plan-bound test
-controller. The serving filesystem and distributed replication/recovery remain
+controller. Daemon/FUSE serving and distributed replication/recovery remain
 under development; starting
 `homelabfs` without `-version` exits with an unimplemented error. The separate
 `tools/poc/` loopback module is a compatibility probe, not the distributed core.
