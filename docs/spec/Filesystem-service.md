@@ -110,7 +110,9 @@ returns one lookup reference; Forget drops its explicit count. Readdir is plain
 readdir and does not silently acquire lookup references. Open and lookup first
 protect a conservative home HANDLE_PIN using a separate internal operation UUID.
 The pin drains only after all local lookup/open obligations have drained. Old
-incarnation pins survive restart; this service does not infer fencing or reclaim.
+incarnation pins survive restart. Optional authenticated retirement, fencing and
+retention verification permits protected reclamation; absence of the verifier
+conservatively preserves objects. A fresh workspace is never fence evidence.
 Replacement and unlink retain original payloads and handle identities.
 
 `Command.Generation` is mandatory for a handle or resumed directory cursor;
@@ -122,8 +124,8 @@ capacity counters are independently owned by each Completion waiter.
 
 Ordinary rename/link require identical mount UUIDs and return EXDEV otherwise.
 Foreign-home operations fail closed. No internal transaction coordinator,
-foreign-home closure, application Execute API or advisory lock implementation is
-supplied. Those belong to `8w3`/`rq3`; the service never substitutes copies or
+foreign-home closure or application Execute API is supplied. Those belong to
+`8w3`; the service never substitutes copies or
 independent local commits for their shared visibility protocol.
 
 Logical times use one owner sample per planned effect; reads preserve atime.
@@ -215,8 +217,15 @@ creations, and all reservations participate in collision checks. Neither new
 workspaces nor selected catalog absence permits reuse. Command UUIDs also check
 retained source/reservation identities; collision retries are finite.
 
+The local advisory locking and proof-gated orphan cleanup contract is specified
+in [Handles and local advisory locks](Handles-and-locks.md). `rq3` implements
+these service primitives; adapter/kernel compatibility remains unproven.
+
 Default queue size is 64; I/O is capped at 1 MiB per request, open handles at
 1024, lookup references/reservations at 4096 and total logical bytes at 64 MiB.
+Lock ranges, pending/completed wait tokens, process identities and retired
+sessions each have a separate bound of `Limits.Locks` (default 4096) per serving
+generation. Retired identities and wait tokens are not reused within that generation.
 Source/apply defaults retain their 4096-frame/64 MiB history and 256 MiB progress
 budgets; backing catalog/receipt/pin limits also apply. Explicit finite settings
 can adjust these caps. Statfs reports admitted logical object/data capacity,

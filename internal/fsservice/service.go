@@ -23,7 +23,7 @@ func New(ctx context.Context, c Config) (*Service, error) {
 	if err := configure(&c); err != nil {
 		return nil, err
 	}
-	s := &Service{config: c, accepted: make(map[*fsapi.Request]bool), queue: make(chan command, c.Limits.Queue), done: make(chan struct{}), ids: make(map[fsapi.UUID]bool), allocations: make(map[fsapi.ObjectID]bool), lifetimes: make(map[fsapi.ObjectID]*lifetime), handles: make(map[fsapi.OpenHandle]handle)}
+	s := &Service{config: c, accepted: make(map[*fsapi.Request]bool), queue: make(chan command, c.Limits.Queue), done: make(chan struct{}), ids: make(map[fsapi.UUID]bool), allocations: make(map[fsapi.ObjectID]bool), lifetimes: make(map[fsapi.ObjectID]*lifetime), handles: make(map[fsapi.OpenHandle]handle), pending: make(map[fsapi.UUID]command), waits: make(map[fsapi.UUID]fsapi.LockOwner), owners: make(map[fsapi.LockOwner]bool), sessions: make(map[fsapi.UUID]bool)}
 	s.state.Store(uint32(Recovering))
 	if err := s.checkRoots(ctx); err != nil {
 		return nil, err
@@ -96,7 +96,7 @@ func (s *Service) Dispatch(ctx context.Context, r *fsapi.Request, c fsapi.Comman
 	if len(c.Name) > 255 || len(c.NewName) > 255 || len(c.After) > 255 {
 		return fsapi.NameTooLong
 	}
-	if len(c.Data) > s.config.Limits.IOBytes || c.Size < 0 || c.Operation < fsapi.Lookup || c.Operation > fsapi.Forget {
+	if len(c.Data) > s.config.Limits.IOBytes || c.Size < 0 || c.Operation < fsapi.Lookup || c.Operation > fsapi.Reap {
 		return fsapi.Invalid
 	}
 	c = c.Clone()
@@ -142,30 +142,62 @@ func (s *Service) run() {
 	defer close(s.done)
 	ctx := context.Background()
 	for cmd := range s.queue {
-		result := fsapi.Result{Code: fsapi.Unavailable}
-		if s.State() == Serving {
-			var err error
-			result, err = s.execute(ctx, cmd.request.Credentials(), cmd.value)
-			if err != nil {
-				result = fsapi.Result{Code: errno(err)}
-			}
-			if result.Code == fsapi.OK {
-				result.Generation = s.config.Workspace.ID
-				if err = s.check(ctx); err != nil {
-					s.state.Store(uint32(Blocked))
-					result = fsapi.Result{Code: errno(err)}
-				}
-			}
+		if s.State() != Serving {
+			s.finish(cmd, fsapi.Result{Code: fsapi.Unavailable})
+			s.retryLocks(ctx)
+			continue
 		}
-		if err := cmd.request.Completion().Complete(result); err != nil {
-			s.state.Store(uint32(Blocked))
-			_ = cmd.request.Completion().Complete(fsapi.Result{Code: fsapi.IO})
+		if cmd.value.Operation == fsapi.WaitLock {
+			id := cmd.value.Lock.WaitID
+			_, used := s.waits[id]
+			if !id.Valid() || used {
+				s.finish(cmd, fsapi.Result{Code: fsapi.Invalid})
+				continue
+			}
+			if len(s.waits) >= s.config.Limits.Locks {
+				s.finish(cmd, fsapi.Result{Code: fsapi.NoSpace})
+				continue
+			}
+			s.waits[id] = cmd.value.Lock.Owner
 		}
-		s.mu.Lock()
-		delete(s.accepted, cmd.request)
-		s.mu.Unlock()
+		result := s.evaluate(ctx, cmd)
+		if cmd.value.Operation == fsapi.WaitLock && result.Code == fsapi.WouldBlock {
+			s.pending[cmd.value.Lock.WaitID] = cmd
+		} else {
+			s.finish(cmd, result)
+		}
+		s.retryLocks(ctx)
 	}
+	for id, cmd := range s.pending {
+		s.finish(cmd, fsapi.Result{Code: fsapi.Unavailable})
+		delete(s.pending, id)
+	}
+	s.locks = nil
 	s.state.Store(uint32(Blocked))
+}
+func (s *Service) evaluate(ctx context.Context, cmd command) fsapi.Result {
+	if s.State() != Serving {
+		return fsapi.Result{Code: fsapi.Unavailable}
+	}
+	result, err := s.execute(ctx, cmd.request.Credentials(), cmd.value)
+	if err != nil {
+		return fsapi.Result{Code: errno(err)}
+	}
+	result.Generation = s.config.Workspace.ID
+	if err = s.check(ctx); err != nil {
+		s.state.Store(uint32(Blocked))
+		return fsapi.Result{Code: errno(err)}
+	}
+	return result
+}
+func (s *Service) finish(cmd command, result fsapi.Result) {
+	if err := cmd.request.Completion().Complete(result); err != nil {
+		s.state.Store(uint32(Blocked))
+		_ = cmd.request.Completion().Complete(fsapi.Result{Code: fsapi.IO})
+	}
+	s.mu.Lock()
+	delete(s.accepted, cmd.request)
+	s.mu.Unlock()
 }
 func (s *Service) check(ctx context.Context) error {
 	if s.config.Validation != nil {
@@ -371,6 +403,12 @@ func configure(c *Config) error {
 	}
 	if l.Handles == 0 {
 		l.Handles = 1024
+	}
+	if l.Locks == 0 {
+		l.Locks = 4096
+	}
+	if l.Locks < 1 || l.Locks > 1<<20 {
+		return fsapi.Invalid
 	}
 	if l.Lookups == 0 {
 		l.Lookups = 4096

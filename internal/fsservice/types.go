@@ -99,8 +99,8 @@ type Workspace struct {
 // Limits bounds queued immutable commands, I/O, handles, lookup references,
 // admitted logical bytes and retained reservation discovery. Zero uses defaults.
 type Limits struct {
-	Queue, IOBytes, Handles, Lookups, Reservations int
-	LogicalBytes                                   int64
+	Queue, IOBytes, Handles, Lookups, Reservations, Locks int
+	LogicalBytes                                          int64
 }
 
 // Config transfers exclusive source writer ownership for one volume to Service.
@@ -118,6 +118,7 @@ type Config struct {
 	Selection            apply.Selection
 	Protocol             Protocol
 	Permissions          PermissionPolicy
+	Reclamation          ReclamationPolicy
 	Validation           *ValidationProfile
 	Clock                fsapi.Clock
 	Random               io.Reader
@@ -161,6 +162,11 @@ type Service struct {
 	handles     map[fsapi.OpenHandle]handle
 	nextHandle  fsapi.OpenHandle
 	lookupCount uint64
+	locks       []heldLock
+	pending     map[fsapi.UUID]command
+	waits       map[fsapi.UUID]fsapi.LockOwner
+	owners      map[fsapi.LockOwner]bool
+	sessions    map[fsapi.UUID]bool
 }
 
 var _ fsapi.Filesystem = (*Service)(nil)

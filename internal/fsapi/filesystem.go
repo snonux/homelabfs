@@ -5,8 +5,7 @@ import (
 	"slices"
 )
 
-// Operation identifies one ordinary filesystem command. Transaction and lock
-// protocols have separate interfaces; ordinary cross-mount rename/link fails.
+// Operation identifies one filesystem command; cross-mount rename/link fails.
 type Operation uint8
 
 const (
@@ -50,6 +49,25 @@ const (
 	Release
 	// Forget drops the specified number of lookup references.
 	Forget
+	// TryLock acquires or converts an advisory lock without waiting.
+	TryLock
+	// GetLock reports one conflicting lock without acquiring it.
+	GetLock
+	// Unlock removes the caller's specified range (or whole-file flock).
+	Unlock
+	// WaitLock waits asynchronously; CancelLock must cancel an abandoned attempt.
+	WaitLock
+	// CancelLock cancels the matching WaitID, or observes its prior completion.
+	CancelLock
+	// ProcessExit retires Owner and releases its fcntl locks and waiters.
+	ProcessExit
+	// SessionExit retires all process identities in Owner.Session.
+	SessionExit
+	// DescriptorClose drops process fcntl locks for any closed fd, keeping the
+	// shared open description, flock and lookup references alive.
+	DescriptorClose
+	// Reap requests a policy-authorized orphan reclamation sweep.
+	Reap
 )
 
 // Attributes selects explicit metadata fields; nil preserves a field. Now uses
@@ -88,6 +106,7 @@ type Command struct {
 	DirectoryRevision           uint64
 	Attributes                  Attributes
 	Durability                  DurabilityRequest
+	Lock                        Lock
 	Required                    Position
 }
 

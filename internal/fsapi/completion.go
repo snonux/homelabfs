@@ -42,6 +42,7 @@ type Result struct {
 	Capacity          *Capacity
 	Position          Position
 	Generation        UUID
+	Conflict          *LockConflict
 }
 
 // Request owns caller credentials and completion state for one adapter request.
@@ -136,7 +137,7 @@ func (r Result) validate() error {
 	if !r.Code.Valid() || r.Count < 0 {
 		return fmt.Errorf("%w: filesystem result", Invalid)
 	}
-	if r.Code != OK && (len(r.Data) != 0 || r.Count != 0 || r.Attr != nil || r.Handle != 0 || len(r.Entries) != 0 || r.DirectoryRevision != 0 || r.Capacity != nil || r.Position != (Position{}) || r.Generation.Valid()) {
+	if r.Code != OK && (len(r.Data) != 0 || r.Count != 0 || r.Attr != nil || r.Handle != 0 || len(r.Entries) != 0 || r.DirectoryRevision != 0 || r.Capacity != nil || r.Position != (Position{}) || r.Generation.Valid() || r.Conflict != nil) {
 		return fmt.Errorf("%w: error with success payload", Invalid)
 	}
 	if (r.Handle != 0 || r.DirectoryRevision != 0) && !r.Generation.Valid() {
@@ -144,6 +145,9 @@ func (r Result) validate() error {
 	}
 	if r.Position != (Position{}) && !r.Position.Valid() {
 		return fmt.Errorf("%w: result position", Invalid)
+	}
+	if r.Conflict != nil && (r.Conflict.Lock.Validate() != nil || r.Conflict.Lock.Owner.Generation != r.Generation || r.Conflict.Lock.Domain == FlockLock && r.Conflict.Handle == 0 || r.Conflict.Lock.Domain == POSIXLock && r.Conflict.Handle != 0) {
+		return fmt.Errorf("%w: lock conflict", Invalid)
 	}
 	if r.Capacity != nil && (r.Capacity.ObjectsFree > r.Capacity.Objects || r.Capacity.BytesFree > r.Capacity.Bytes) {
 		return fmt.Errorf("%w: capacity counters", Invalid)
@@ -163,6 +167,10 @@ func (r Result) validate() error {
 }
 
 func (r Result) clone() Result {
+	if r.Conflict != nil {
+		v := *r.Conflict
+		r.Conflict = &v
+	}
 	r.Data = slices.Clone(r.Data)
 	r.Entries = slices.Clone(r.Entries)
 	if r.Capacity != nil {

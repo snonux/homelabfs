@@ -126,7 +126,12 @@ func (u unixCheck) command() error {
 	case fsapi.Getattr, fsapi.Readlink, fsapi.Sync:
 		_, err := u.object(u.input.Object)
 		return err
-	case fsapi.Release, fsapi.Forget, fsapi.Statfs:
+	case fsapi.TryLock, fsapi.WaitLock, fsapi.GetLock, fsapi.Unlock:
+		if !u.input.Handle {
+			return fsapi.Stale
+		}
+		return nil
+	case fsapi.DescriptorClose, fsapi.CancelLock, fsapi.ProcessExit, fsapi.SessionExit, fsapi.Reap, fsapi.Release, fsapi.Forget, fsapi.Statfs:
 		return nil // Lifetime cleanup is not revocable by chmod or credential changes.
 	default:
 		return fsapi.Unsupported

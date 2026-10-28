@@ -232,17 +232,32 @@ func (s *Service) execute(ctx context.Context, cred fsapi.Cred, c fsapi.Command)
 		if err = s.writer.Flush(ctx); err != nil {
 			return result, s.block(err)
 		}
+	case fsapi.TryLock, fsapi.WaitLock, fsapi.GetLock, fsapi.Unlock, fsapi.CancelLock, fsapi.DescriptorClose, fsapi.ProcessExit, fsapi.SessionExit:
+		return s.lockCommand(c)
+	case fsapi.Reap:
+		if err = s.reap(ctx); err != nil {
+			return result, err
+		}
 	case fsapi.Release:
 		h, ok := s.handles[c.Handle]
 		if !ok {
 			return result, fsapi.Stale
 		}
+		if err = s.closeLocks(c, h.object); err != nil {
+			return result, err
+		}
 		if err = s.drop(ctx, h.object, false, 1); err != nil {
 			return result, err
 		}
 		delete(s.handles, c.Handle)
+		if err = s.reap(ctx); err != nil {
+			return result, err
+		}
 	case fsapi.Forget:
 		if err = s.drop(ctx, c.Object, true, c.Count); err != nil {
+			return result, err
+		}
+		if err = s.reap(ctx); err != nil {
 			return result, err
 		}
 	default:

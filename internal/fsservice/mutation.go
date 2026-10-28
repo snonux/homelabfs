@@ -292,6 +292,11 @@ func (s *Service) mutate(ctx context.Context, cred fsapi.Cred, c fsapi.Command, 
 		}
 		result.Attr = &o.Attr
 	}
+	if c.Operation == fsapi.Unlink || c.Operation == fsapi.Rmdir || c.Operation == fsapi.RenameOp {
+		if err = s.reap(ctx); err != nil {
+			return result, err
+		}
+	}
 	result.Position = s.selection.Through.Position
 	return result, nil
 }
