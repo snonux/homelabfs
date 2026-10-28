@@ -30,10 +30,12 @@ disposable direct-I/O frontend. Their validation profiles supply local evidence 
 `internal/failpoint` provides named
 fault injection, `internal/vfs` supplies rooted local I/O and a deterministic
 crash simulator, and `internal/labrunner` provides the external plan-bound test
-controller. Daemon/FUSE serving and distributed replication/recovery remain
-under development; starting
-`homelabfs` without `-version` exits with an unimplemented error. The separate
-`tools/poc/` loopback module is a compatibility probe, not the distributed core.
+controller. The [local daemon CLI](docs/spec/Configuration.md) implements node/volume
+initialization, inspection and restricted foreground FUSE validation with its
+controlled self-client. Normal distributed publication and replication/recovery
+remain unavailable; starting `homelabfs` without arguments returns a usage error.
+The separate `tools/poc/` loopback module is a compatibility probe, not the
+distributed core.
 
 With Go 1.26.x and Mage installed, `mage build` writes Linux/amd64 and
 FreeBSD/amd64 daemon binaries under `bin/`. Build the controllers separately with

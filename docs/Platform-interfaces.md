@@ -154,7 +154,11 @@ sysrc kld_list+=fusefs
 mkdir -p /mnt/homelabfs
 ```
 
-A future CLI might be `homelabfs mount --volume example /mnt/homelabfs`; this command does not exist yet. The chosen FUSE library would handle mounting through FreeBSD's FUSE interface and mount helper.
+The implemented local CLI uses `homelabfs mount --config FILE
+--disposable-validation --self-client`; see [configuration and lifecycle](spec/Configuration.md).
+It admits only the executable's controlled disposable client. Normal workload
+publication remains unsupported, and native FreeBSD mounting remains a validation
+gate. The selected FUSE library handles the native interface and mount helper.
 
 Keep backing files and the journal in a private ZFS location outside the exported mount, for example `/var/db/homelabfs`. Workloads must not bypass HomelabFS by modifying those files directly.
 
