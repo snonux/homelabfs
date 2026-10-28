@@ -1,0 +1,38 @@
+{
+  "open": {
+    "bytes": 184,
+    "sha256": "34086338f38533b6d9ccf1fb9a63d3a5e8ae58f6e7975e9eb66db356ee71af54"
+  },
+  "seal": {
+    "bytes": 228,
+    "sha256": "d36d3b3c12a92db25ac5aa726cf02ef48fdb95e1c2ce75044e86ff6bdbb8dfc5"
+  },
+  "write_args": {
+    "bytes": 47,
+    "sha256": "4a65d955f43e0e28259fe9754dda8cdbaba378b63a168c9d38d9d8092da9052a"
+  },
+  "write_candidate": {
+    "bytes": 599,
+    "sha256": "ad305048c619b7bb8323e0b5fb2dbaca281532dbbe3adf92687ed0bb255d3204"
+  },
+  "original_link": {
+    "bytes": 153,
+    "sha256": "93d01dd563af238c52b3a3aadfd52d3611ad939505f5fc6b275a7389f1832cc7"
+  },
+  "internal_create_0600": {
+    "bytes": 407,
+    "sha256": "151e3b8a14be12c37043564e35ec04e86f5ba4934cb29a2767882be62ad95985"
+  },
+  "internal_create_0644": {
+    "bytes": 407,
+    "sha256": "90ef217b2a173aae2703a1c2b24248ea56a7f5cdb242642e623b7c2db571d69e"
+  },
+  "internal_setattr_uid1000": {
+    "bytes": 254,
+    "sha256": "0d201801c11837a3e9f7c2cfaf3d5806cef5715a2c90b5354a972e88cf7ee8f1"
+  },
+  "internal_setattr_uid1001": {
+    "bytes": 254,
+    "sha256": "59965fac92dc63ed8370df4d92b85ac11082af0d84fd477688f75945722ab282"
+  }
+}
