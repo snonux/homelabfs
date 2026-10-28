@@ -81,7 +81,8 @@ explicitly approved isolated targets; shared-host canaries must not gain authori
 to fence production guests or hosts. If full fencing cannot be demonstrated on
 a live canary target, report that limitation and use the isolated profile.
 
-Design and test quorum-preserving drain/shutdown and cold-start behavior on the
+Implement and test the [isolated lifecycle specification](spec/Power-lifecycle.md)
+for quorum-preserving drain/shutdown and cold-start behavior on the
 isolated cluster: quiesce clients while quorum exists, persist accepted work,
 stop guest access, then storage/coordination. Distinguish mounted-but-gated from
 serving readiness and prevent boot dependency cycles. Test interruption and

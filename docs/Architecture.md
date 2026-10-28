@@ -48,6 +48,7 @@ See [Motivation and goals](Motivation-and-goals.md) for the problem HomelabFS ai
 | [Performance](Performance.md) | Bounded concurrency, connection pools, fairness, and measurement |
 | [Recovery](Recovery.md) | Automatic recovery, failures, fencing, and manual escalation |
 | [Takeover state machine](spec/Takeover.md) | Closure recovery, durable promises, serving gates and approved native VM-only fence policy; implementation and validation pending |
+| [Isolated power lifecycle](spec/Power-lifecycle.md) | Quorum-preserving drain, graceful native guest stops, cold start, interrupted steps and simulated deadlines; unimplemented |
 | [Emergency mode](Emergency-mode.md) | Single-node activation, exclusion, manual rejoin, and exit |
 | [Kubernetes canaries](Kubernetes-and-migration.md) | Canary PV publication, pod relocation, guest access and future scope |
 | [Filesystem semantics](Filesystem-semantics.md) | POSIX-style behavior, permissions, and f3s applications |

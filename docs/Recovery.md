@@ -51,11 +51,14 @@ Boot in dependency order: local ZFS available and unlocked; durable identity/eme
 
 ## Coordinated shutdown and cold start
 
-Implement and test the [power lifecycle contract](Deployment-readiness.md#fencing-and-coordinated-power-lifecycle)
-on isolated test clusters. Quiesce clients with quorum available, persist accepted
-work, stop guest access, then storage and hosts. Test bounded interrupted-step
-recovery and cold boot without dependency cycles. Never downgrade automatically
-to emergency writes to finish shutdown. Mounted-but-gated differs from serving.
+Implement and test the [isolated power lifecycle contract](spec/Power-lifecycle.md),
+subject to [deployment readiness](Deployment-readiness.md#fencing-and-coordinated-power-lifecycle).
+Quiesce clients with quorum available, durably drain accepted work, close access,
+then stop storage/coordination and enrolled guests using the approved graceful
+native VM fence. Physical-host power remains outside that policy. Test bounded
+interrupted-step recovery and cold boot without dependency cycles. Never stop
+the only surviving volatile accepted tail before safe persistence/transfer or
+downgrade automatically to emergency writes. Mounted-but-gated differs from serving.
 
 Existing f3sctl/NFS/CARP/monitor/UPS automation remains unchanged. Its parallel
 non-master shutdown is a future integration concern, not a mandate to change
