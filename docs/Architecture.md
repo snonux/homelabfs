@@ -42,7 +42,10 @@ See [Motivation and goals](Motivation-and-goals.md) for the problem HomelabFS ai
 | Document | Contents |
 |---|---|
 | [Cluster and ownership](Cluster-and-ownership.md) | Node admission, per-volume roles, ownership, and etcd |
+| [Static cluster](spec/Static-cluster.md) | Implemented immutable membership and durable exclusive node lifetimes; no serving grant |
+| [Coordination](spec/Coordination.md) | Implemented etcd and memory backends for policy and takeover allocation; activation and fencing remain separate |
 | [Replication](Replication.md) | Write path, journals, catch-up, and failover continuity |
+| [Replication transport](spec/Transport.md) | Implemented bounded authenticated sessions and normal-node startup ordering; stream protocol and serving remain external |
 | [Normal replication protocol](spec/Replication-protocol.md) | Fixed-owner sessions, messages, commit/visibility gates and recovery evidence; unimplemented |
 | [Journal storage](Journal-storage.md) | Dataset layout, checkpoints, retention, and safe cleanup |
 | [Performance](Performance.md) | Bounded concurrency, connection pools, fairness, and measurement |
