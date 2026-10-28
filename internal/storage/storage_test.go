@@ -113,13 +113,19 @@ func edit(o Object) ObjectChange {
 	return ObjectChange{Before: o.Attr.Revision, After: after}
 }
 func (f *fixture) entry(name string, target *fsapi.ObjectID) EntryChange {
-	before, ok := f.store.entries[entryKey{f.config.Root, name}]
+	return f.entryAt(f.config.Root, name, target)
+}
+func (f *fixture) entryAt(parent fsapi.ObjectID, name string, target *fsapi.ObjectID) EntryChange {
+	before, ok := f.store.entries[entryKey{parent, name}]
 	if !ok {
-		before = Entry{Parent: f.config.Root, Name: name}
+		before = Entry{Parent: parent, Name: name}
 	}
-	return EntryChange{Before: cloneEntry(before), After: Entry{Parent: f.config.Root, Name: name, Revision: before.Revision + 1, Target: target}}
+	return EntryChange{Before: cloneEntry(before), After: Entry{Parent: parent, Name: name, Revision: before.Revision + 1, Target: target}}
 }
 func (f *fixture) create(name string, kind fsapi.Kind, id fsapi.ObjectID) Operation {
+	return f.createAt(f.config.Root, name, kind, id)
+}
+func (f *fixture) createAt(parentID fsapi.ObjectID, name string, kind fsapi.Kind, id fsapi.ObjectID) Operation {
 	op := f.op(Create, id)
 	if kind == fsapi.Directory {
 		op.Kind = Mkdir
@@ -127,14 +133,13 @@ func (f *fixture) create(name string, kind fsapi.Kind, id fsapi.ObjectID) Operat
 	if kind == fsapi.Symlink {
 		op.Kind = Symlink
 	}
-	e := f.entry(name, &id)
-	parent := edit(f.get(f.config.Root))
-	child := Object{Descriptor: Descriptor{id, kind, op.ID}, Attr: attrs(id, kind, 1), LedgerRevision: 1, References: []Reference{{f.config.Root, name, e.After.Revision}}}
+	e := f.entryAt(parentID, name, &id)
+	parent := edit(f.get(parentID))
+	child := Object{Descriptor: Descriptor{id, kind, op.ID}, Attr: attrs(id, kind, 1), LedgerRevision: 1, References: []Reference{{parentID, name, e.After.Revision}}}
 	if kind == fsapi.Directory {
 		child.Attr.Nlink = 2
-		child.Parent = &Parent{Revision: 1, Object: f.config.Root, EntryRevision: e.After.Revision}
+		child.Parent = &Parent{Revision: 1, Object: parentID, EntryRevision: e.After.Revision}
 		parent.After.Attr.Nlink++
-		parent.After.LedgerRevision++
 	}
 	if kind == fsapi.Symlink {
 		child.Text = []byte{0xff, '/', '.', '.', '/', 'x'}
@@ -184,50 +189,64 @@ func (f *fixture) link(id fsapi.ObjectID, name string) Operation {
 	return op
 }
 func (f *fixture) unlink(name string) Operation {
-	e := f.store.entries[entryKey{f.config.Root, name}]
+	return f.unlinkAt(f.config.Root, name)
+}
+func (f *fixture) unlinkAt(parentID fsapi.ObjectID, name string) Operation {
+	e := f.store.entries[entryKey{parentID, name}]
 	id := *e.Target
 	c := edit(f.get(id))
 	op := f.op(Unlink, id)
-	c.After.References = slices.DeleteFunc(c.After.References, func(r Reference) bool { return r.Parent == f.config.Root && r.Name == name })
+	c.After.References = slices.DeleteFunc(c.After.References, func(r Reference) bool { return r.Parent == parentID && r.Name == name })
 	c.After.LedgerRevision++
 	c.After.Attr.Nlink--
-	parent := edit(f.get(f.config.Root))
+	parent := edit(f.get(parentID))
 	if c.After.Attr.Kind == fsapi.Directory {
 		op.Kind = Rmdir
 		c.After.Attr.Nlink = 0
 		parent.After.Attr.Nlink--
-		parent.After.LedgerRevision++
 	}
 	op.Objects = []ObjectChange{parent, c}
-	op.Entries = []EntryChange{f.entry(name, nil)}
+	op.Entries = []EntryChange{f.entryAt(parentID, name, nil)}
 	return op
 }
 func (f *fixture) rename(old, new string) Operation {
-	source := f.store.entries[entryKey{f.config.Root, old}]
+	return f.renameBetween(f.config.Root, old, f.config.Root, new)
+}
+func (f *fixture) renameBetween(oldParent fsapi.ObjectID, old string, newParent fsapi.ObjectID, new string) Operation {
+	source := f.store.entries[entryKey{oldParent, old}]
 	id := *source.Target
 	op := f.op(Rename, id)
-	from := f.entry(old, nil)
-	to := f.entry(new, &id)
+	from := f.entryAt(oldParent, old, nil)
+	to := f.entryAt(newParent, new, &id)
 	c := edit(f.get(id))
-	c.After.References = slices.DeleteFunc(c.After.References, func(r Reference) bool { return r.Name == old && r.Parent == f.config.Root })
-	c.After.References = append(c.After.References, Reference{f.config.Root, new, to.After.Revision})
+	c.After.References = slices.DeleteFunc(c.After.References, func(r Reference) bool { return r.Name == old && r.Parent == oldParent })
+	c.After.References = append(c.After.References, Reference{newParent, new, to.After.Revision})
 	slices.SortFunc(c.After.References, compareRef)
 	c.After.LedgerRevision++
 	if c.After.Parent != nil {
 		c.After.Parent.Revision++
+		c.After.Parent.Object = newParent
 		c.After.Parent.EntryRevision = to.After.Revision
 	}
-	parent := edit(f.get(f.config.Root))
+	parent := edit(f.get(oldParent))
 	op.Objects = []ObjectChange{parent, c}
+	destinationParent := 0
+	if oldParent != newParent {
+		op.Objects = append(op.Objects, edit(f.get(newParent)))
+		destinationParent = 2
+		if c.After.Attr.Kind == fsapi.Directory {
+			op.Objects[0].After.Attr.Nlink--
+			op.Objects[destinationParent].After.Attr.Nlink++
+		}
+	}
 	if to.Before.Target != nil {
 		replaced := edit(f.get(*to.Before.Target))
-		replaced.After.References = slices.DeleteFunc(replaced.After.References, func(r Reference) bool { return r.Parent == f.config.Root && r.Name == new })
+		replaced.After.References = slices.DeleteFunc(replaced.After.References, func(r Reference) bool { return r.Parent == newParent && r.Name == new })
 		replaced.After.LedgerRevision++
 		replaced.After.Attr.Nlink--
 		if replaced.After.Attr.Kind == fsapi.Directory {
 			replaced.After.Attr.Nlink = 0
-			op.Objects[0].After.Attr.Nlink--
-			op.Objects[0].After.LedgerRevision++
+			op.Objects[destinationParent].After.Attr.Nlink--
 		}
 		op.Objects = append(op.Objects, replaced)
 	}

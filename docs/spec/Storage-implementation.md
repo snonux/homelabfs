@@ -40,6 +40,10 @@ reference ledger revision, complete sorted `(parent ID, raw name, entry revision
 reference set, and a directory's exact parent relation. Namespace entry revisions
 remain after removal. Updates require the exact old object revision and next
 result revision, with independent revision checks for ledger and parent changes.
+Changing a directory's logical link count alone does not advance its namespace
+reference ledger revision: child directory additions/removals change metadata,
+while changing the directory's own namespace references requires the next ledger
+revision. Regular-file and symlink link counts remain tied to their reference sets.
 Directory ancestry, local alias/ledger consistency, logical link accounting,
 empty-directory removal, immutable symlink bytes and regular payload sizes are
 validated before physical modification. The service chooses exact owner times,

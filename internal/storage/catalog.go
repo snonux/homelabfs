@@ -279,7 +279,7 @@ func (s *Store) installCatalog(op Operation) error {
 				if old.LedgerRevision == math.MaxUint64 || c.After.LedgerRevision != old.LedgerRevision+1 {
 					return fsapi.Stale
 				}
-			} else if !reflect.DeepEqual(c.After.References, old.References) || c.After.Attr.Nlink != old.Attr.Nlink {
+			} else if !reflect.DeepEqual(c.After.References, old.References) || old.Attr.Kind != fsapi.Directory && c.After.Attr.Nlink != old.Attr.Nlink {
 				return fsapi.Stale
 			}
 			if !reflect.DeepEqual(c.After.Parent, old.Parent) && (c.After.Parent == nil || old.Parent == nil || old.Parent.Revision == math.MaxUint64 || c.After.Parent.Revision != old.Parent.Revision+1) {
