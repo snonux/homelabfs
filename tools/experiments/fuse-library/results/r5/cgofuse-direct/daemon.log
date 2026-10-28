@@ -1,0 +1,18 @@
+2026/10/28 19:50:06 event=binding abi=FUSE2 direct=true
+2026/10/28 19:50:06 event=ready
+2026/10/28 19:50:06 event=credentials name=credentials uid=1001 gid=1001 pid=1163987 proc_groups="Groups:\t10 965 967 975 1001 1003 "
+2026/10/28 19:50:06 event=credentials name=credentials uid=1001 gid=1001 pid=1163987 proc_groups="Groups:\t10 965 967 975 1001 1003 "
+2026/10/28 19:50:06 event=credentials name=data uid=1001 gid=1001 pid=1163987 proc_groups="Groups:\t10 965 967 975 1001 1003 "
+2026/10/28 19:50:06 event=credentials name=data uid=1001 gid=1001 pid=1163987 proc_groups="Groups:\t10 965 967 975 1001 1003 "
+2026/10/28 19:50:06 event=credentials name=delayed uid=1001 gid=1001 pid=1163987 proc_groups="Groups:\t10 965 967 975 1001 1003 "
+2026/10/28 19:50:06 event=read_wait name=delayed
+2026/10/28 19:50:06 event=worker_reply name=delayed
+2026/10/28 19:50:06 event=credentials name=delayed uid=1001 gid=1001 pid=1163987 proc_groups="Groups:\t10 965 967 975 1001 1003 "
+2026/10/28 19:50:06 event=read_wait name=delayed
+2026/10/28 19:50:07 event=worker_reply name=delayed
+2026/10/28 19:50:07 event=credentials name=cancel uid=1001 gid=1001 pid=1163992 proc_groups="Groups:\t10 965 967 975 1001 1003 "
+2026/10/28 19:50:07 event=read_wait name=cancel
+2026/10/28 19:50:10 event=worker_reply name=cancel
+2026/10/28 19:50:10 event=invalidate notify=false
+2026/10/28 19:50:10 event=credentials name=data uid=1001 gid=1001 pid=1163997 proc_groups="Groups:\t10 965 967 975 1001 1003 "
+2026/10/28 19:50:10 event=credentials name=data uid=1001 gid=1001 pid=1163997 proc_groups="Groups:\t10 965 967 975 1001 1003 "

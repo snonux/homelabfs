@@ -1,0 +1,14 @@
+2026/10/28 19:41:11 event=ready
+2026/10/28 19:41:11 event=lookup name=.Trash
+2026/10/28 19:41:11 event=lookup name=.Trash-1001
+2026/10/28 19:41:11 event=lookup name=credentials
+2026/10/28 19:41:11 event=credentials name=credentials uid=1001 gid=1001 pid=1158473 proc_groups="Groups:\t10 965 967 975 1001 1003 "
+2026/10/28 19:41:11 event=lookup name=data
+2026/10/28 19:41:11 event=credentials name=data uid=1001 gid=1001 pid=1158473 proc_groups="Groups:\t10 965 967 975 1001 1003 "
+2026/10/28 19:41:11 event=lookup name=delayed
+2026/10/28 19:41:11 event=credentials name=delayed uid=1001 gid=1001 pid=1158473 proc_groups="Groups:\t10 965 967 975 1001 1003 "
+2026/10/28 19:41:11 event=read_wait name=delayed
+2026/10/28 19:41:12 event=worker_reply name=delayed
+2026/10/28 19:41:12 event=lookup name=lock
+2026/10/28 19:41:12 event=setlk flags=1 type=1 error=<nil>
+2026/10/28 19:41:12 event=setlk flags=1 type=1 error=resource temporarily unavailable

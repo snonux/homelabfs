@@ -1,0 +1,7 @@
+panic: cgofuse: cannot find FUSE
+
+goroutine 1 [running]:
+github.com/winfsp/cgofuse/fuse.(*FileSystemHost).Mount(0x4834b9ee140, {0x4834b9d0340, 0x40}, {0x4834ba27ef0, 0x2, 0x2})
+	/home/paul/go/pkg/mod/github.com/winfsp/cgofuse@v1.6.0/fuse/host.go:719 +0x6dd
+main.main()
+	/home/paul/git/homelabfs/tools/experiments/fuse-library/cmd/cgofuse/main.go:44 +0x312

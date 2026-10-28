@@ -62,7 +62,7 @@ Diagrams live with the topics they illustrate: placement in Cluster and ownershi
 2. Implement the [durability and read-freshness contract](spec/Durability.md): Paul confirmed local durable journal plus partner memory receipt for ordinary daemon writes and fsync on 2026-10-28; two-durable-copy fsync is outside initial scope. Commit/recovery protocol details and actual adapter/9p validation remain open.
 3. Specify takeover, fencing enforcement, and recovery of acknowledged operations.
 4. Specify emergency activation/fencing, manual admission and exit, retention limits, and safe group reconfiguration when adding nodes. Implement the failure policies above without automatic acknowledgement downgrades.
-5. Choose a Go FUSE library supporting both platform adapters, prototype mounts on both real kernels, and validate the selected bhyve virtio-9p to FreeBSD FUSE path and f3s application semantics.
+5. Use [go-fuse v2.9.0 for the initial adapters](adr/0001-fuse-library.md), selected from source review and Linux/native PoC evidence. Complete the remaining native capability gates and validate the real daemon through bhyve virtio-9p and f3s application semantics.
 
 Suggested development order: validate the selected guest transport and both FUSE frontends; specify and exercise the commit/fencing state machine; local filesystem and journal replay; replication with fixed ownership; bounded queues and restart recovery; then automatic ownership transfer with partition/crash tests and Kubernetes integration. Follow the [integration-test matrix and rollout gates](Integration-tests.md#integration-test-matrix) before accepting canary results. No production workload migration is planned here.
 
