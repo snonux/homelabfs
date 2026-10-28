@@ -38,6 +38,11 @@ Compatibility testing must cover the full path from a Linux pod through the gues
 
 ## Representative patterns and isolation
 
+The [canary volume mapping](Canary-volumes.md) assigns seven bounded canonical
+volumes, their RW/RO views and complete placement sets to P1–P4. It records P5
+parent aggregation as unsupported and defines fresh run identities, collision
+preflight and manifest-bound cleanup. It creates no volumes and admits no profile.
+
 Use selected f3s workload patterns to design synthetic fixtures, not to map or
 move production data. Examples include a shared music reader/writer group,
 Player-like multi-volume readers, aliases to one video directory, and nested
