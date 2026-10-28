@@ -35,7 +35,14 @@ Recommended checkpoint protocol:
 3. Persist a manifest tying volume identity, history generation, checkpoint position, commit/configuration evidence, and required journal suffix together. Make publication crash-safe before allowing garbage collection to rely on it.
 4. Compute retention dependencies and advance the reclaimable boundary only when all obligations have valid durable replacements. On restart, revalidate manifests and dependencies before deleting anything.
 
-Exact publication mechanics and recovery from torn updates remain implementation work. A checkpoint position must not be inferred merely from the highest journal record or a file timestamp.
+The bounded local implementation and exact publication/recovery mechanics are
+documented in [Immutable checkpoints](spec/Checkpoints.md). It preserves an
+independent payload baseline and every original prefix frame, requires explicit
+trusted authority and retention leases, and reclaims closed source segments only.
+The existing filesystem service still requires genesis and must never have its
+source trimmed. Replica retention, service integration and semantic-history
+compaction remain future work. A checkpoint position must not be inferred merely
+from the highest journal record or a file timestamp.
 
 ## When segments may be deleted
 

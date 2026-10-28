@@ -90,6 +90,7 @@ type Result struct {
 	progress  storage.Filesystem
 	used      int64
 	blocked   bool
+	archive   []segment.Entry
 }
 
 type history struct {
@@ -215,7 +216,11 @@ func Replay(ctx context.Context, data, journal, progress storage.Filesystem, sou
 	return result, nil
 }
 
-func readHistory(ctx context.Context, r *segment.Reader, selection Selection, c Config) (history, error) {
+type entryReader interface {
+	Next(context.Context) (segment.Entry, error)
+}
+
+func readHistory(ctx context.Context, r entryReader, selection Selection, c Config) (history, error) {
 	var h history
 	maxFrames, maxBytes := c.MaxFrames, c.MaxBytes
 	if maxFrames == 0 {

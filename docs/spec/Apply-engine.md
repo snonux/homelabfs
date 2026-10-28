@@ -60,9 +60,10 @@ feeds a dirty payload tree to `storage.Open`. In particular, a partial later
 write or shrink cannot contaminate recovery of an older catalog. Selecting a
 history incompatible with existing APPLIED fails closed; a separately authorized
 loss-generation transition and its progress namespace are future recovery work.
-Checkpoint/suffix-only startup and efficient reuse of clean payload snapshots
-remain follow-on integration with the checkpoint engine. No compaction or
-automatic deletion exists in this implementation.
+A separate explicit `Capture`/`Resume` path now supports independently preserved
+immutable payloads and exact archived source evidence; see [Checkpoints](Checkpoints.md).
+Ordinary Replay and current filesystem-service startup still require genesis.
+Replay/APPLIED alone never grants compaction or deletion authority.
 
 A selected ordinary COMMIT must resolve the exact earlier MUTATION. INSTALL
 resolves the exact earlier local PREPARED and checks its binding, request/digest,
@@ -126,8 +127,9 @@ APPLIED provides neither distributed checkpoint acceptance nor GC permission.
 The returned Applied reference conservatively names the last selected backing
 effect; trailing control/structural/candidate frames are scanned but do not
 advance it. The selected `Through` remains the independently authorized source
-horizon. Future checkpoint work must pair complete dependency evidence and
-preserved payload state before publishing CURRENT or advancing retention.
+horizon. The separate checkpoint controller pairs complete prefix evidence and independent
+payload copies with explicit authority/retention gates before advancing retention.
+It never treats these progress images as a clean payload baseline.
 
 ## Local verification
 
@@ -165,3 +167,15 @@ adds no dirty-baseline reuse, checkpoint acceptance, retention permission,
 follower, production authorizer or normal acknowledgement policy. See the
 [single-volume service contract](Filesystem-service.md) for command ordering,
 proof/permission hooks and the explicit disposable local validation profile.
+
+## Immutable baseline and selected suffix
+
+`Result.Capture` freezes a verified sealed source horizon, independent catalog and
+payload bytes, and every exact prefix frame. `Resume` requires an authenticated
+baseline, fresh private data/journal/progress roots and an explicitly authorized
+archive-plus-suffix selection. It restores the clean baseline before applying only
+new selected effects. Permanent source frames retain earlier dependencies and
+operation identity deduplication. A resumed Result.Advance accepts a verified
+checkpoint suffix reader and combines the archived prefix internally. See the
+[checkpoint contract](Checkpoints.md) for publication, bounded storage, lifetime
+and allocation evidence, authority/dependency leases and ordered segment trim.

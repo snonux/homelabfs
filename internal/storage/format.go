@@ -58,31 +58,8 @@ func Format(ctx context.Context, data, journal Filesystem, config Config, root O
 	if err = s.validateCatalog(); err != nil {
 		return nil, err
 	}
-	for _, role := range []struct {
-		fs   Filesystem
-		name string
-	}{{data, "data"}, {journal, "journal"}} {
-		m := marker{"HOMELABFS-STORE", 1, 0, role.name, config.Volume.String(), toID(config.Root)}
-		raw, e := jsonBytes(m)
-		if e != nil {
-			return nil, e
-		}
-		if e = writeExclusive(ctx, role.fs, "format.json", raw); e != nil {
-			return nil, e
-		}
-		for _, dir := range []string{"checkpoints", "staging"} {
-			if e = role.fs.Mkdir(ctx, dir, 0o700); e != nil {
-				return nil, e
-			}
-		}
-		if role.name == "data" {
-			if e = role.fs.Mkdir(ctx, "objects", 0o700); e != nil {
-				return nil, e
-			}
-		}
-		if e = role.fs.SyncDir(ctx, "."); e != nil {
-			return nil, e
-		}
+	if err = s.initialize(ctx); err != nil {
+		return nil, err
 	}
 	if err = s.ensureObject(ctx, root.Descriptor, false); err != nil {
 		return nil, err
@@ -423,4 +400,34 @@ func cloneObject(o Object) Object {
 		o.Parent = &v
 	}
 	return o
+}
+
+func (s *Store) initialize(ctx context.Context) error {
+	for _, role := range []struct {
+		fs   Filesystem
+		name string
+	}{{s.data, "data"}, {s.journal, "journal"}} {
+		m := marker{"HOMELABFS-STORE", 1, 0, role.name, s.config.Volume.String(), toID(s.config.Root)}
+		raw, e := jsonBytes(m)
+		if e != nil {
+			return e
+		}
+		if e = writeExclusive(ctx, role.fs, "format.json", raw); e != nil {
+			return e
+		}
+		for _, dir := range []string{"checkpoints", "staging"} {
+			if e = role.fs.Mkdir(ctx, dir, 0o700); e != nil {
+				return e
+			}
+		}
+		if role.name == "data" {
+			if e = role.fs.Mkdir(ctx, "objects", 0o700); e != nil {
+				return e
+			}
+		}
+		if e = role.fs.SyncDir(ctx, "."); e != nil {
+			return e
+		}
+	}
+	return nil
 }

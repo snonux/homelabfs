@@ -14,10 +14,22 @@ import (
 // only newly selected effects into the same workspace. The caller must exclude
 // reads, journal mutation and all other use of Result/Store throughout this call,
 // retaining external authority/closure gates. Any failure poisons this result;
-// recovery then requires Replay with fresh roots, never storage.Open on its image.
-// This deliberately scans the complete bounded genesis stream; it is not a
-// checkpoint, tail follower, retention decision or normal acknowledgement policy.
-func (r *Result) Advance(ctx context.Context, source *segment.Reader, selection Selection) (err error) {
+// recovery then requires Replay or Resume with fresh roots. A Replay result
+// requires a complete bounded genesis reader; a Resume result requires its
+// verified checkpoint suffix reader and retains the archive internally. This
+// grants no checkpoint, retention or normal acknowledgement authority.
+func (r *Result) Advance(ctx context.Context, source *segment.Reader, selection Selection) error {
+	if source == nil {
+		r.blocked = true
+		return fsapi.Unavailable
+	}
+	if len(r.archive) != 0 {
+		return r.advance(ctx, &baselineReader{entries: r.archive, suffix: source}, selection)
+	}
+	return r.advance(ctx, source, selection)
+}
+
+func (r *Result) advance(ctx context.Context, source entryReader, selection Selection) (err error) {
 	if r.blocked || r.Store == nil || len(r.selection.Effects) == 0 || source == nil {
 		r.blocked = true
 		return fsapi.Unavailable
