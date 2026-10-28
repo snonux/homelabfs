@@ -6,7 +6,7 @@ Normal read/write behavior, replication guarantees, and continuity across owners
 
 ## Write path and durability
 
-The working assumption is that the local journal becomes durable before HomelabFS acknowledges a write. That local durability boundary still needs explicit confirmation.
+Paul confirmed on 2026-10-28 that ordinary mutations delivered to the daemon and fsync require a durable local journal plus synchronous-partner memory receipt, together with the commit/visibility conditions. See the [durability and read-freshness contract](spec/Durability.md) for syscall promises and guest-buffering limitations. Two-durable-copy fsync is outside initial scope.
 
 1. Verify exclusive ownership and readiness of the local replica.
 2. Assign an operation identifier, ownership epoch, and sequence number within the owned unit.
