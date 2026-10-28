@@ -58,7 +58,7 @@ Diagrams live with the topics they illustrate: placement in Cluster and ownershi
 
 ## Decisions to make next
 
-1. Select representative consumer patterns and synthetic sharing fixtures, then define canary replication groups. Budget the canary footprint and operational isolation in [Deployment readiness](Deployment-readiness.md); a full production migration inventory is outside this project.
+1. Use the [five representative synthetic canary patterns](Canary-patterns.md) and [volume and namespace policy](spec/Volumes.md). Paul selected per-volume mounts and cross-volume transaction design before implementation; an explicit transaction API preserves that topology. Ordinary cross-mount rename/link still returns EXDEV. The transaction protocol must be specified before freezing affected API/journal/service implementation. Budget the canary footprint and operational isolation in [Deployment readiness](Deployment-readiness.md); a full production migration inventory is outside this project.
 2. Implement the [durability and read-freshness contract](spec/Durability.md): Paul confirmed local durable journal plus partner memory receipt for ordinary daemon writes and fsync on 2026-10-28; two-durable-copy fsync is outside initial scope. Commit/recovery protocol details and actual adapter/9p validation remain open.
 3. Specify takeover, fencing enforcement, and recovery of acknowledged operations.
 4. Specify emergency activation/fencing, manual admission and exit, retention limits, and safe group reconfiguration when adding nodes. Implement the failure policies above without automatic acknowledgement downgrades.
