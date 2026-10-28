@@ -461,7 +461,8 @@ layer's proof from a successful RPC or status bit. Implementation tasks must cov
 the versioned schema/upgrade, emergency controller/admin API, broker integration,
 retention/archive verification and approved scenario evidence before publication.
 
-Task `qw3` specifies those exact schemas and loss-identity rules. Task `rr3`
+Task `qw3` specifies those exact schemas and loss-identity rules in
+[Emergency-capable format 2.0](Emergency-format.md). Task `rr3`
 supplies version/compatibility foundations; `rw3` implements the emergency codecs
 and reader/upgrade gates before `lr3` activation can be implemented. Existing
 `mr3` covers named admission, exit and archive/stop-writes behavior, and `sr3`
