@@ -1,0 +1,9 @@
+2026-10-29T20:03:41Z
+rocky
+5.14.0-687.61.1.el9_8.x86_64
+0
+Rocky Linux release 9.8 (Blue Onyx)
+system_state=running
+sshd_state=active
+boot_id=937812af-962d-45f2-9f82-dfdb25c47fe6
+boot_time=2026-10-29 21:58:07

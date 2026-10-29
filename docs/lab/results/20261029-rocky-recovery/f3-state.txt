@@ -1,0 +1,51 @@
+2026-10-29T20:04:17Z
+f3.lan.buetow.org
+15.1-RELEASE-p2
+NAME       DATASTORE  LOADER     CPU  MEMORY  VNC             AUTO     STATE
+freebsd    default    bhyveload  4    1G      -               No       Stopped
+rocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (6412)
+hfs-test0  hfslab     bhyveload  2    2G      -               No       Stopped
+hfs-test1  hfslab     bhyveload  2    2G      -               No       Stopped
+hfs-test2  hfslab     bhyveload  2    2G      -               No       Stopped
+Device          1K-blocks     Used    Avail Capacity
+/dev/ada0p3       2097152        0  2097152     0%
+16879837184
+4
+4096
+3470110
+16611
+85679
+0
+0
+{ 0.15 0.17 0.09 }
+zroot/ROOT/default	/			zfs	rw,noatime,nfsv4acls 	0 0
+devfs			/dev			devfs	rw		0 0
+/dev/gpt/efiboot0	/boot/efi		msdosfs	rw		2 2
+/dev/ufs/F3S_KEYS	/keys			ufs	ro		2 2
+zroot/tmp		/tmp			zfs	rw,nosuid,noatime,nfsv4acls 	0 0
+zroot/usr/ports		/usr/ports		zfs	rw,nosuid,noatime,nfsv4acls 	0 0
+zroot/ROOT		/mnt			zfs	rw,noatime,nfsv4acls 	0 0
+zroot/home		/home			zfs	rw,noatime,nfsv4acls 	0 0
+zroot			/zroot			zfs	rw,noatime,nfsv4acls 	0 0
+zroot/var/log		/var/log		zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+zroot/var/audit		/var/audit		zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+zroot/usr/src		/usr/src		zfs	rw,noatime,nfsv4acls 	0 0
+zroot/var/tmp		/var/tmp		zfs	rw,nosuid,noatime,nfsv4acls 	0 0
+zroot/var/crash		/var/crash		zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+zroot/var/mail		/var/mail		zfs	rw,nfsv4acls 	0 0
+zroot/home/paul		/home/paul		zfs	rw,noatime,nfsv4acls 	0 0
+zroot/bhyve		/zroot/bhyve		zfs	rw,noatime,nfsv4acls 	0 0
+zroot/bhyve/rocky	/zroot/bhyve/rocky	zfs	rw,noatime,nfsv4acls 	0 0
+zroot/bhyve/homelabfs-lab /zroot/bhyve/homelabfs-lab zfs	rw,noatime,nfsv4acls 	0 0
+zroot/bhyve/freebsd	/zroot/bhyve/freebsd	zfs	rw,noatime,nfsv4acls 	0 0
+zroot/bhyve/homelabfs-lab/hfs-test1 /zroot/bhyve/homelabfs-lab/hfs-test1 zfs	rw,noatime,nfsv4acls 	0 0
+zroot/bhyve/homelabfs-lab/hfs-test2 /zroot/bhyve/homelabfs-lab/hfs-test2 zfs	rw,noatime,nfsv4acls 	0 0
+zroot/bhyve/homelabfs-lab/hfs-test0 /zroot/bhyve/homelabfs-lab/hfs-test0 zfs	rw,noatime,nfsv4acls 	0 0
+zroot/bhyve/homelabfs-lab/hfs-test0@zrepl_20261029_050719_000	guid	14388507739344148174
+zroot/bhyve/homelabfs-lab/hfs-test0	written@zrepl_20261029_050719_000	8192
+zroot/bhyve/homelabfs-lab/hfs-test1@zrepl_20261029_050719_000	guid	9737728028877794446
+zroot/bhyve/homelabfs-lab/hfs-test1	written@zrepl_20261029_050719_000	8192
+zroot/bhyve/homelabfs-lab/hfs-test2@zrepl_20261029_050719_000	guid	4568858839465585795
+zroot/bhyve/homelabfs-lab/hfs-test2	written@zrepl_20261029_050719_000	8192
+zroot/bhyve/freebsd@zrepl_20261029_050719_000	guid	4954571563450218120
+zroot/bhyve/freebsd	written@zrepl_20261029_050719_000	8192

@@ -1,0 +1,93 @@
+{
+  "observed_utc": "2026-10-29T20:03:41Z",
+  "scope": "bounded read-only recovery verification; no test run",
+  "rocky": {
+    "pinned_root_ssh": true,
+    "ssh_attempts": 1,
+    "kernel": "5.14.0-687.61.1.el9_8.x86_64",
+    "release": "Rocky Linux release 9.8 (Blue Onyx)",
+    "uid": 0,
+    "system_state": "running",
+    "sshd_state": "active",
+    "failed_units": [],
+    "packages_count": 1109,
+    "canonical_packages_sha256": "4b689f7e8bb5d66bdabaffe285c49a87a103325266dda6424f8003ee59dcb4e3",
+    "boot_id": "937812af-962d-45f2-9f82-dfdb25c47fe6"
+  },
+  "f3": {
+    "observed_utc": "2026-10-29T20:04:17Z",
+    "hostname": "f3.lan.buetow.org",
+    "kernel": "15.1-RELEASE-p2",
+    "rocky_pid": 6412,
+    "rocky_memory": "12G",
+    "stopped": [
+      "freebsd",
+      "hfs-test0",
+      "hfs-test1",
+      "hfs-test2"
+    ],
+    "swap_used_kib": 0,
+    "md_attachments": [],
+    "snapshot_mounts": []
+  },
+  "source_attestation": {
+    "proof": [
+      {
+        "target": "hfs-test0",
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test0@zrepl_20261029_050719_000",
+        "guid": "14388507739344148174",
+        "guid_matches_previous": true,
+        "written_since_snapshot_bytes": 8192,
+        "previous_written_bytes": 0
+      },
+      {
+        "target": "hfs-test1",
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test1@zrepl_20261029_050719_000",
+        "guid": "9737728028877794446",
+        "guid_matches_previous": true,
+        "written_since_snapshot_bytes": 8192,
+        "previous_written_bytes": 0
+      },
+      {
+        "target": "hfs-test2",
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test2@zrepl_20261029_050719_000",
+        "guid": "4568858839465585795",
+        "guid_matches_previous": true,
+        "written_since_snapshot_bytes": 8192,
+        "previous_written_bytes": 0
+      },
+      {
+        "target": "freebsd",
+        "snapshot": "zroot/bhyve/freebsd@zrepl_20261029_050719_000",
+        "guid": "4954571563450218120",
+        "guid_matches_previous": true,
+        "written_since_snapshot_bytes": 8192,
+        "previous_written_bytes": 0
+      }
+    ],
+    "zero_written_requirement_satisfied": false,
+    "meaning": "snapshot identity retained; current datasets differ according to ZFS written accounting, so existing snapshot cannot attest unchanged live images"
+  },
+  "existing_preflight_incompatibility": {
+    "file": "tools/lab/prepared-lab-preflight.py",
+    "function": "package_hash",
+    "actual_rpm_rows_rejected_by_current_regex": [
+      "gpg-pubkey-1883fff9-656ea603.(none)",
+      "gpg-pubkey-3228467c-613798eb.(none)",
+      "gpg-pubkey-350d275d-6279464b.(none)",
+      "gpg-pubkey-baadae52-49beffa4.(none)",
+      "gpg-pubkey-eaa31d4a-677ad425.(none)",
+      "passt-0^20251210.gd04c480-7.el9_8.x86_64",
+      "passt-selinux-0^20251210.gd04c480-7.el9_8.noarch"
+    ],
+    "status": "observed by comparing actual inventory with existing pattern; runner not executed"
+  },
+  "limitations": [
+    "Restart cause and operator unknown; prior stalled Rocky PID was 6435.",
+    "Previously approved graceful ACPI stop timed out; clean-stop ability was not retested.",
+    "No native/9p tests or VM lifecycle actions executed.",
+    "Source written accounting increased from zero to 8192 bytes on each stopped source; cause and changed objects not investigated.",
+    "Two initial f3 read commands failed on csh parsing; final explicit /bin/sh -s command succeeded. Failed command diagnostics retained locally."
+  ],
+  "retained_local_diagnostics": "/home/paul/tmp/codex/hfs-native-planning-20261029/rocky-recovery-20261029T2005Z"
+}
