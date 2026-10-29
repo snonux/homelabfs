@@ -220,7 +220,8 @@ this model **does not establish**:
 - Higher-term promises, accept-versus-promise races, majority recovery selection,
   positive fencing, owner storage loss, or safe ownership/partner changes. The
   fixed owner may restart, but no alternate owner is activated. The `gq3` takeover
-  model and the separate policy/physical-fence validation remain future work.
+  model below checks a bounded subset separately; wider protocol obligations
+  and policy/physical-fence validation remain open.
 - Loss-free recovery after owner-storage loss plus B volatile-tail loss. Such
   storage loss is excluded from liveness, not turned into successful recovery.
 - Transactions, cross-volume visibility, immutable cross-group anchors/bindings,
@@ -241,3 +242,182 @@ this model **does not establish**:
 Consequently the larger negative schedules in Replication-protocol remain runtime
 and future model obligations. Passing this single-volume normal model cannot
 close the takeover, transaction, storage or kernel capability gates.
+
+## Bounded ownership transfer model
+
+`Takeover.tla` is the `gq3` single-volume ordinary-operation model of
+[Takeover.md](../../docs/spec/Takeover.md). It is separate from `Replication.tla`:
+the fixed-owner model and its recorded nine-hour Ordered check are unchanged.
+Run only the takeover profiles with:
+
+```sh
+mage tlaTakeover
+mage tlaTakeoverNegative
+mage tlaTakeoverCoverage
+```
+
+The takeover runner uses one checker at a time, one CPU/worker and a 512 MiB
+maximum heap. The original replication targets retain their 2 GiB cap. There are
+no state constraints, depth cutoffs, symmetry reductions or simulation-only
+passes. Fault bounds are maxima; every shorter and fault-free schedule remains
+in the state graph. Every positive check requires Java exit zero. Deliberate
+protocol mutations require `Safety` violation and exit 12. Coverage controls
+instead require `WitnessAbsent` violation and exit 12; an unrelated safety
+failure cannot satisfy a coverage control.
+
+The finite scope is one already discovered independent closure member, fixed
+admitted membership A/B/C, one immutable old candidate and one successor
+mutation. A initially owns the volume; B is its synchronous partner; C starts
+without the old bundle and may become owner only through the same B/C recovery
+barrier. Either B or C may be selected as successor, with the other as partner.
+There is at most one B RAM-loss restart before activation and one controller
+crash/restart. The controller crash can occur before allocation or after any
+durable step, including activation. An incarnation mismatch abandons the old
+allocation and requires a higher allocated epoch, repeated promises and a new
+attestation binding. Two epochs suffice for this one-restart bound. The selected
+old outcome survives controller restart and abandoned attempts.
+
+Each candidate denotes a complete verified immutable redo/result/dependency
+bundle. Old proposals may be delivered repeatedly, after arbitrary delay,
+after B restarts and after promises. A proposal accepted before B's promise is
+captured and persisted by that promise; one arriving afterward is rejected.
+Promise floors survive every modeled restart. An emitted ACK remains deliverable
+after B loses RAM, and A is **not** atomically notified of that loss. Its durable
+local bundle protects any historical successful completion; this model does not
+prove instantaneous knowledge of remote retention or fresh sessions after an
+unobserved crash. An empty restarted B has unknown continuity and cannot prove
+absence. Explicit recovery of complete closed A history can restore continuity;
+an unreachable intact A is distinct from permanent loss of its storage.
+
+The **native-vm-stop-v1 assumption** is explicit: an authorized external broker
+controls all launches of the enrolled native cache domain, persists inhibition
+before signaling a graceful stop, positively observes the exact launch's exit
+and attests continuing inhibition for the allocated attempt. `GracefulStop` is
+disabled while the guest is paused or management is unreachable. The old cache
+domain survives daemon gating, coordination/data partitions and arbitrarily long
+pauses; no lease expiry, timestamp, timeout or UUID revokes it. No action resumes
+an inhibited old launch. A fresh former-owner return remains recovery-only and
+cannot reclaim ownership, including after passive catch-up. This is an assumed
+broker contract, not proof that bhyve, launch guards or kernel caches implement it.
+
+Selection follows B/C durable promises and a verified fence. It adopts actual
+complete history or proves absence from a continuous captured tail. Recovery
+only reads immutable durable owner history after `ReturnFormerOwner` establishes
+a fresh recovery-only launch. `old.running` always refers to the revoked old
+launch/cache domain; return cannot set it true. `ownerReachable` is source
+availability, not evidence that a stopped old guest can answer SSH or resume its
+cached workload. Before voluntarily stopping a
+source, its unique proposed bundle must be durable on A or B. Selected bytes,
+results and dependencies become durable on **both** prospective nodes in
+`ProtectPair`; `pairDurable` abstracts that complete two-node transfer/persistence
+barrier. It is not a per-frame transport or reporter-graph proof. C's lag is
+represented by the missing pair barrier until this step; owner labels B/C share
+the same pair, selection and publication rules.
+
+Configuration install, apply/view freshness and activation authorization are
+separate steps. A controller crash preserves their durable evidence and gates
+further controller work until restart. A successor read observes the selected
+cut; a successor mutation abstracts the already specified owner-durable plus
+partner-retained ordinary commit and view barrier. Old cached reads bypass the
+daemon admission flag and are checked independently. The safety invariant checks
+activation exclusion, stale reads/epochs, preservation of acknowledged and
+retained accepted values, pair readiness and no failback. The temporal safety
+property `DurableStateNeverRegresses` checks monotonic promises/epochs, immutable
+selection and persistent stop/inhibition/acknowledgement facts across every step.
+
+`DeclaredGap` requires permanent A storage loss **and** loss of B's accepted RAM
+tail before persistence. A timeout or reachability change cannot set it. Even
+this gap does not permit an older automatic selection: incomplete evidence
+leaves selection and activation blocked. Explicit authorized LOSS_RECOVERY into
+a new generation is outside the model. Old excluded owner-only candidates stay
+quarantined rather than being imported by continuity restoration.
+
+Liveness profiles check eventual activation and passive former-owner catch-up.
+They retain the same transition system and assume eventual stable coordination,
+management and source access with an unpaused stoppable target; finite faults;
+intact A durable storage; and weak fairness of concrete enabled allocation,
+restart, promise, fence, owner-sync, recovery, install, apply and catch-up workers.
+They assume neither eventual activation nor a successful selected outcome.
+Safety profiles make no fairness or eventual-availability assumption. There is
+no liveness claim for permanent source loss, a permanently paused VM or missing
+management. Fault+environment liveness together remains outside the separate
+temporal profiles; combined schedules are checked for safety.
+
+### Takeover verification and counterexamples
+
+On 29 October 2026, local exhaustive checks completed with zero queued states,
+no reported errors and explicit Java exit zero for every positive profile:
+
+| Profile | Generated | Distinct | Depth | Fault scope |
+| --- | ---: | ---: | ---: | --- |
+| `TakeoverPreflight` | 4,458 | 1,081 | 22 | One epoch, no faults |
+| `TakeoverFaults` | 211,048 | 41,247 | 29 | Two epochs, controller crash, B RAM loss, A storage loss |
+| `TakeoverEnvironment` | 1,222,405 | 63,264 | 25 | Controller crash; all coordination/source/management/pause combinations |
+| `TakeoverCombined` | 15,157,649 | 744,528 | 30 | All bounded faults and environment changes together |
+| `TakeoverLiveness` | 113,996 | 23,946 | 28 | Two epochs, controller crash and B RAM loss; intact A |
+| `TakeoverLivenessEnvironment` | 400,061 | 21,088 | 23 | Arbitrary environment changes followed by stable availability |
+
+All runs used 512 MiB maximum heap, one CPU/worker and final-only temporal
+checking; the combined safety graph completed in 101 seconds. The checked
+`Takeover.tla` SHA-256 is
+`86f634a164e01a7fd4dde968aed552e21af6f7082cb837cb617db048d25d2002`.
+The evidence directories below `.cache/tla/` contain `output.log`,
+`java.exit`, exact source/config copies, SHA-256 hashes and command arguments:
+`TakeoverPreflight-_qsp9ahn`, `TakeoverFaults-pzspk3vn`,
+`TakeoverEnvironment-s93kxpxz`, `TakeoverCombined-qmr2vzhp`,
+`TakeoverLiveness-6736dtg9` and
+`TakeoverLivenessEnvironment-ygqxta18`.
+
+All three protocol mutations produced the required `Safety` counterexample and
+exit 12: `TakeoverNegativeFence` allows publication without positive VM exclusion
+(double activation), `TakeoverNegativeEpoch` accepts an old proposal after a
+promise/restart, and `TakeoverNegativeAbsence` treats a restarted empty tail as
+absence (discards acknowledged old history). Their evidence directories are
+`TakeoverNegativeFence-1vp2mdo3`, `TakeoverNegativeEpoch-moj5itl7` and
+`TakeoverNegativeAbsence-565oplsf`. These are intentional mutations, not defects
+discovered in the approved written protocol.
+
+Four additional coverage profiles refuted `WitnessAbsent` while `Safety` held:
+
+- `TakeoverWitnessSync`: actual old successful reply, B RAM loss, adoption of that
+  old committed bundle, B promotion, successor write/read and former-owner catch-up.
+- `TakeoverWitnessAsync`: actual old successful reply, adoption of that bundle,
+  lagging C promotion through the durable pair barrier, successor write/read and
+  former-owner catch-up.
+- `TakeoverWitnessGap`: successful old reply precedes B volatile-tail loss and
+  permanent A storage loss; even with fence and promises complete, no source or
+  continuity exists and selection remains blocked.
+- `TakeoverWitnessIntactWait`: successful old reply precedes B volatile-tail loss;
+  A's durable storage survives but its recovery source is unreachable, so a
+  complete fence/quorum still cannot authorize stale selection.
+
+The four concrete traces are retained in `TakeoverWitnessSync-wjmqxxp4`,
+`TakeoverWitnessAsync-wbusi78b`, `TakeoverWitnessGap-0wfrebhn` and
+`TakeoverWitnessIntactWait-4q8f1qis`. They establish reachability of useful and
+deliberately unavailable schedules; their truncated searches are not exhaustive
+positive safety passes.
+
+An earlier liveness run found a missing model action: after B restarted empty,
+the model could not reconcile even a fully available, closed, intact A history.
+`RecoverFromOwner` now models the equivalent-complete-history recovery already
+required by the protocol. The original temporal counterexample is preserved in
+`TakeoverLiveness-ftosyblc`; it was model undercoverage, not a written-protocol
+defect, and is not counted as a pass.
+
+Tagged Mage compilation (`go test -p 1 -tags mage -run '^$' .`), tagged `go vet`
+and `errcheck`, `mage -l`, `mage tlaTakeoverNegative` and
+`mage tlaTakeoverCoverage` also passed. Their logs and explicit exit receipts
+are in `.cache/tla/takeover-mage-checks-doi4y1cb/`. Positive verification above
+consists of the completed individual profiles; it does not claim a separate
+one-shot `mage tlaTakeover` invocation or rerun the normal replication profiles.
+
+This bounded model does not prove the entire Takeover.md contract. In particular
+it excludes multi-volume closure discovery/partial joins, transactions and bound
+anchors, competing overlapping allocations, multiple active transfers,
+highest-term conflicting values, arbitrary B/C link failures or partial pair
+barriers, membership replacement, retaining A as owner while replacing its
+partner, prospective-node faults after activation, all-node
+reboots, storage snapshot rollback, broker/host crashes or lost guard continuity,
+attestation authentication/wrong-target coverage, streaming holes/partial payloads,
+request deduplication and retention/GC. Actual broker enrollment/launcher guard,
+kernel/cache/FUSE and VM validation remain separate gates with per-run approval.

@@ -3,11 +3,17 @@
 Status: design contract for `eq3`, 2026-10-28. Paul approved the narrow graceful
 native VM-only `native-vm-stop-v1` fence policy below. Policy approval does not
 authorize installation, a VM lifecycle window or a disruptive test run.
-The controller, fence broker and its attestations are unimplemented;
-`gq3` takeover model checking (`fq3` covers normal commitment) and `lv3`
-implementation/validation remain gates. This
+The controller, fence broker and its attestations are unimplemented. The bounded
+`gq3` model below complements `fq3` normal commitment; wider unmodeled protocol
+obligations and `lv3` implementation/validation remain gates. This
 document establishes no working automatic failover or production fence authority.
 Scope is disposable lab/canary volumes with synthetic data.
+
+The [bounded takeover model](../../spec/tla/README.md#bounded-ownership-transfer-model)
+now checks ordinary single-volume transfer, positive native fencing, durable
+promises, recovery and conditional progress. Its documented bounds and omitted
+multi-volume, competing-allocation, term-conflict and physical-fence obligations
+remain explicit; passing it does not complete every obligation below.
 
 [Replication protocol](Replication-protocol.md) defines normal acceptance and
 commitment; [Transactions](Transactions.md) defines immutable request anchors,
@@ -489,6 +495,7 @@ the volume waits; a deadline does not supply authority or data.
 
 Native FUSE evidence cannot certify Rocky/9p, independent physical-host loss or
 power control. Such unsupported profiles must remain explicitly not run/blocked.
-This specification was reviewed against the local contracts; no model, daemon,
-fence, kernel/cache, VM or fault test was executed to produce it. Every future
+This specification was drafted against the local contracts. Subsequent bounded
+model evidence is recorded above; no daemon, fence, kernel/cache, VM or runtime
+fault test was executed to produce this specification. Every future
 runtime exercise remains subject to [the per-run approval boundary](../Test-automation.md).

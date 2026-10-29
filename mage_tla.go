@@ -32,6 +32,23 @@ func TLANegative(ctx context.Context) error {
 	return runTLAConfigs(ctx, true, "NegativeGap", "NegativeSession", "NegativeDedup")
 }
 
+// TLATakeover checks the bounded positive-fence ownership transfer profiles.
+func TLATakeover(ctx context.Context) error {
+	return runTLAConfigs(ctx, false, "TakeoverPreflight", "TakeoverFaults", "TakeoverEnvironment", "TakeoverCombined",
+		"TakeoverLiveness", "TakeoverLivenessEnvironment")
+}
+
+// TLATakeoverNegative requires counterexamples for deliberately broken takeover gates.
+func TLATakeoverNegative(ctx context.Context) error {
+	return runTLAConfigs(ctx, true, "TakeoverNegativeFence", "TakeoverNegativeEpoch", "TakeoverNegativeAbsence")
+}
+
+// TLATakeoverCoverage requires concrete successful and safely blocked takeover traces.
+func TLATakeoverCoverage(ctx context.Context) error {
+	return runTLAConfigs(ctx, true, "TakeoverWitnessSync", "TakeoverWitnessAsync",
+		"TakeoverWitnessGap", "TakeoverWitnessIntactWait")
+}
+
 func runTLAConfigs(ctx context.Context, negative bool, configs ...string) error {
 	jar, err := tlaJar(ctx)
 	if err != nil {
@@ -58,11 +75,17 @@ func runTLC(ctx context.Context, jar, config string, negative bool) error {
 	}
 	defer func() { _ = log.Close() }()
 	fmt.Printf("TLC %s; evidence: %s\n", config, dir)
-	cmd := exec.CommandContext(ctx, "java", "-Xmx2048m", "-XX:ActiveProcessorCount=1", "-XX:+UseParallelGC",
+	module := "Replication.tla"
+	heap := "-Xmx2048m"
+	if strings.HasPrefix(config, "Takeover") {
+		module = "Takeover.tla"
+		heap = "-Xmx512m"
+	}
+	cmd := exec.CommandContext(ctx, "java", heap, "-XX:ActiveProcessorCount=1", "-XX:+UseParallelGC",
 		"-cp", jar, "tlc2.TLC", "-workers", "1", "-noGenerateSpecTE",
 		"-lncheck", "final",
 		"-metadir", dir, "-config", filepath.Join("spec", "tla", config+".cfg"),
-		filepath.Join("spec", "tla", "Replication.tla"))
+		filepath.Join("spec", "tla", module))
 	cmd.Stdout = io.MultiWriter(os.Stdout, log)
 	cmd.Stderr = cmd.Stdout
 	runErr := cmd.Run()
@@ -87,8 +110,12 @@ func checkTLCCounterexample(config, path string, runErr error) error {
 	if err != nil {
 		return fmt.Errorf("read negative TLC evidence: %w", err)
 	}
-	if !strings.Contains(string(output), "Invariant Safety is violated") {
-		return fmt.Errorf("TLC %s failed without the expected Safety counterexample", config)
+	invariant := "Safety"
+	if strings.HasPrefix(config, "TakeoverWitness") {
+		invariant = "WitnessAbsent"
+	}
+	if !strings.Contains(string(output), "Invariant "+invariant+" is violated") {
+		return fmt.Errorf("TLC %s failed without the expected %s counterexample", config, invariant)
 	}
 	return nil
 }
