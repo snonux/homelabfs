@@ -170,6 +170,22 @@ case "$action" in
         # Fixed profile: 6 GiB guests plus at least 4 GiB host/overhead.
         test "$(sysctl -n hw.physmem)" -ge 10737418240
         test "$(swapinfo -k | awk 'NR>1 {used+=$3} END {print used+0}')" -eq 0
+        # Preflight may inspect Rocky while it still occupies RAM. Actual
+        # guest-start admission must use available memory after its clean stop.
+        memory_pagesize=$(sysctl -n hw.pagesize)
+        memory_free=$(sysctl -n vm.stats.vm.v_free_count)
+        memory_inactive=$(sysctl -n vm.stats.vm.v_inactive_count)
+        for memory_value in "$memory_pagesize" "$memory_free" "$memory_inactive"; do
+            case "$memory_value" in
+                ''|*[!0-9]*) echo 'Unavailable current memory evidence.' >&2; exit 1 ;;
+            esac
+        done
+        test "$memory_pagesize" -gt 0
+        memory_available=$(( (memory_free + memory_inactive) * memory_pagesize ))
+        test "$memory_available" -ge 10737418240 || {
+            echo 'Insufficient current free+inactive memory for 6 GiB lab + 4 GiB host.' >&2
+            exit 1
+        }
         for i in 0 1 2; do
             config="/zroot/bhyve/homelabfs-lab/hfs-test$i/hfs-test$i.conf"
             test "$(sysrc -f "$config" -n memory)" = 2G
