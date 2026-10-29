@@ -143,7 +143,8 @@ func (s *Server) dispatch(ctx context.Context, peer Peer, r Request) Response {
 	s.control.Lock()
 	defer s.control.Unlock()
 	outcome := "denied"
-	if authorized && level == Control && s.config.EnableTestHooks && s.config.ToggleFault != nil {
+	targetMatches := r.ExpectedNode == "" || r.ExpectedNode == s.config.NodeID && r.ExpectedVolume == s.config.VolumeID && r.ExpectedGeneration == s.config.Generation
+	if authorized && targetMatches && level == Control && s.config.EnableTestHooks && s.config.ToggleFault != nil {
 		outcome = "requested"
 	}
 	if err := s.audit(ctx, peer, r, outcome); err != nil {
@@ -166,5 +167,5 @@ func (s *Server) dispatch(ctx context.Context, peer Peer, r Request) Response {
 	return response
 }
 func (s *Server) audit(ctx context.Context, p Peer, r Request, outcome string) error {
-	return s.config.Audit(ctx, Event{Time: time.Now().UTC(), Peer: p, NodeID: s.config.NodeID, VolumeID: s.config.VolumeID, Generation: s.config.Generation, Operation: r.Operation, Fault: r.Fault, Enabled: r.Enabled, Outcome: outcome})
+	return s.config.Audit(ctx, Event{Time: time.Now().UTC(), Peer: p, NodeID: s.config.NodeID, VolumeID: s.config.VolumeID, Generation: s.config.Generation, Operation: r.Operation, Fault: r.Fault, Enabled: r.Enabled, Outcome: outcome, ExpectedNode: r.ExpectedNode, ExpectedVolume: r.ExpectedVolume, ExpectedGeneration: r.ExpectedGeneration})
 }

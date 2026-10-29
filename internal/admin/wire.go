@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -19,6 +20,21 @@ import (
 
 // Call verifies the private socket and its kernel peer before exchanging one request.
 func Call(ctx context.Context, path string, request Request) (Response, error) {
+	return callProcess(ctx, path, request, 0)
+}
+
+// CallProcess additionally requires the actual connected server's kernel PID.
+// Callers must retain the unreaped child throughout this call so its PID cannot
+// be reused. Unsupported credential ABIs and absent/mismatched PIDs fail closed
+// before any request is sent; same UID and matching status are not substitutes.
+func CallProcess(ctx context.Context, path string, request Request, pid int) (Response, error) {
+	if pid <= 1 {
+		return Response{}, fmt.Errorf("expected owned server PID must exceed one")
+	}
+	return callProcess(ctx, path, request, pid)
+}
+
+func callProcess(ctx context.Context, path string, request Request, expectedPID int) (Response, error) {
 	var response Response
 	if err := privateSocket(path); err != nil {
 		return response, err
@@ -35,6 +51,9 @@ func Call(ctx context.Context, path string, request Request) (Response, error) {
 	}
 	if peer.UID != uint32(os.Geteuid()) {
 		return response, fmt.Errorf("admin server uid mismatch")
+	}
+	if expectedPID != 0 && (peer.PID == nil || int(*peer.PID) != expectedPID) {
+		return response, fmt.Errorf("admin server process mismatch or unsupported PID credentials")
 	}
 	deadline := time.Now().Add(ioTimeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
@@ -68,17 +87,20 @@ func Call(ctx context.Context, path string, request Request) (Response, error) {
 // including false, while status carries no control fields.
 func (r Request) MarshalJSON() ([]byte, error) {
 	type wire struct {
-		Version   int    `json:"version"`
-		Operation string `json:"operation"`
-		Fault     string `json:"fault,omitempty"`
-		Enabled   *bool  `json:"enabled,omitempty"`
+		Version            int    `json:"version"`
+		Operation          string `json:"operation"`
+		Fault              string `json:"fault,omitempty"`
+		Enabled            *bool  `json:"enabled,omitempty"`
+		ExpectedNode       string `json:"expected_node,omitempty"`
+		ExpectedVolume     string `json:"expected_volume,omitempty"`
+		ExpectedGeneration string `json:"expected_generation,omitempty"`
 	}
 	var enabled *bool
 	if r.Operation == "test-fault" {
 		value := r.Enabled
 		enabled = &value
 	}
-	return json.Marshal(wire{Version: r.Version, Operation: r.Operation, Fault: r.Fault, Enabled: enabled})
+	return json.Marshal(wire{Version: r.Version, Operation: r.Operation, Fault: r.Fault, Enabled: enabled, ExpectedNode: r.ExpectedNode, ExpectedVolume: r.ExpectedVolume, ExpectedGeneration: r.ExpectedGeneration})
 }
 
 func readFrame(r io.Reader) ([]byte, error) {
@@ -119,7 +141,7 @@ func decodeRequest(raw []byte) (Request, error) {
 			return request, err
 		}
 		k, ok := t.(string)
-		if !ok || seen[k] || k != "version" && k != "operation" && k != "fault" && k != "enabled" {
+		if !ok || seen[k] || k != "version" && k != "operation" && k != "fault" && k != "enabled" && k != "expected_node" && k != "expected_volume" && k != "expected_generation" {
 			return request, fmt.Errorf("unknown/duplicate request field")
 		}
 		seen[k] = true
@@ -142,11 +164,20 @@ func decodeRequest(raw []byte) (Request, error) {
 	if request.Version != protocolVersion || request.Operation == "" || len(request.Operation) > 64 || len(request.Fault) > 64 {
 		return request, fmt.Errorf("invalid request version/operation")
 	}
-	if request.Operation == "status" && (seen["fault"] || seen["enabled"]) {
+	if request.Operation == "status" && (seen["fault"] || seen["enabled"] || seen["expected_node"] || seen["expected_volume"] || seen["expected_generation"]) {
 		return request, fmt.Errorf("status has no control fields")
 	}
 	if request.Operation == "test-fault" && (!seen["fault"] || !seen["enabled"] || request.Fault == "") {
 		return request, fmt.Errorf("test-fault requires fault and enabled")
+	}
+	expected := seen["expected_node"] || seen["expected_volume"] || seen["expected_generation"]
+	if expected && (!seen["expected_node"] || !seen["expected_volume"] || !seen["expected_generation"] || request.ExpectedNode == "" || request.ExpectedVolume == "" || request.ExpectedGeneration == "") {
+		return request, fmt.Errorf("expected target requires all three nonempty identity fields")
+	}
+	for _, value := range []string{request.ExpectedNode, request.ExpectedVolume, request.ExpectedGeneration} {
+		if len(value) > 64 || strings.IndexFunc(value, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+			return request, fmt.Errorf("expected target identity is invalid or oversized")
+		}
 	}
 	return request, nil
 }

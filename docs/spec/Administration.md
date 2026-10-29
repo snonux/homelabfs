@@ -23,7 +23,15 @@ Linux uses `SO_PEERCRED` (UID, GID and PID); FreeBSD uses
 `SOL_LOCAL/LOCAL_PEERCRED`, verifies the credential version and reads UID/GID.
 This is the same kernel operation used by
 [FreeBSD libc getpeereid](https://raw.githubusercontent.com/freebsd/freebsd-src/main/lib/libc/gen/getpeereid.c),
-without requiring cgo. FreeBSD PID is absent rather than guessed. A JSON caller
+without requiring cgo. For the supported native FreeBSD amd64 14.4/15.0/15.1
+ABI, the adapter also reads the actual kernel `cr_pid` union from an exactly
+88-byte version-0 xucred, at byte 80. It checks returned size, group bounds and
+positive PID; other releases/architectures/layouts fail closed. The official
+[FreeBSD header](https://raw.githubusercontent.com/freebsd/freebsd-src/releng/15.1/sys/sys/ucred.h)
+defines this process field, which x/sys's public struct hides. `CallProcess`
+requires the connected server PID before sending a request. The native fault
+supervisor uses it while retaining its child unreaped, binding readiness to the
+actual child rather than a same-UID server claiming the same target. A JSON caller
 identity, process name, requested volume or filesystem UID is never trusted as
 administrative authentication. Only the daemon's effective UID is admitted;
 root is not an implicit alternate identity for a nonroot daemon.
@@ -40,9 +48,10 @@ same-UID clients, while its authenticated same-UID status command is allowed.
 
 One connection carries one UTF-8, newline-terminated JSON request and one JSON
 reply. Protocol version is 1; a frame is at most 16 KiB. Exact case-sensitive
-field names are `version`, `operation`, `fault` and `enabled`. Duplicate/unknown
+field names are `version`, `operation`, `fault`, `enabled`, and the optional
+`expected_node`, `expected_volume`, `expected_generation` target binding. Duplicate/unknown
 fields, null values, unsupported versions, trailing JSON and malformed inputs
-are refused. Status accepts no control fields. A fault toggle requires both a
+are refused. Status accepts no control or expected-target fields. A fault toggle requires both a
 fault name and an explicit boolean, including `false` when disabling it.
 
 The listener permits at most 16 concurrent requests and applies two-second
@@ -90,6 +99,16 @@ retry or source ownership release follows uncertainty. Admission stop is not a
 drain or fence: already running work and parked lock waits can retain their
 resources until the worker wakes; it does not cancel or resolve them. An embedded
 `Run` caller must preserve the process for inspection or explicitly end it.
+
+Control clients may include all three expected-target strings together. Each is
+nonempty, at most 64 UTF-8 bytes, and contains no control characters. Partial,
+null, duplicate, unknown-case or oversized target fields are refused. The server
+compares them with its immutable actual node, volume and generation before any
+effect; a mismatch is denied and audited with both requested and actual targets.
+This closes the restart race between a status connection and a later control
+connection. Legacy clients may omit all three fields. The native fault runner
+always sends them, including to its dedicated child supervisor. It never treats
+a prior status observation as authority for controlling a replacement daemon.
 
 ## Status semantics
 

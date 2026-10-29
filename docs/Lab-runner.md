@@ -200,3 +200,8 @@ recovered teardown does not erase a failed test or manufacture a suite pass.
 Unit verification uses only fake executors and temporary controller files.
 Live inventory checks, VM lifecycle, driver execution and tests still require
 their own fresh explicit approval under [AGENTS.md](../AGENTS.md).
+
+The [native fault primitives](Native-fault-runner.md) add exact plan-bound fault
+requests, private owned-child supervision, guest quota/PF/admin operations and
+structured bounded receipts. They require reviewed runtime enrollment and a
+pinned scenario transport; they do not install one or authorize a test run.

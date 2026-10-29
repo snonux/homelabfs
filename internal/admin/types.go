@@ -23,7 +23,8 @@ const (
 	Recovery
 )
 
-// Peer is a kernel-observed local process identity. PID is absent on FreeBSD.
+// Peer is a kernel-observed local process identity. Supported Linux and native
+// FreeBSD amd64 credential ABIs include the kernel PID; unknown ABIs fail closed.
 type Peer struct {
 	UID uint32 `json:"uid"`
 	GID uint32 `json:"gid"`
@@ -64,10 +65,13 @@ type Status struct {
 
 // Request is one bounded versioned JSON line. No caller-supplied identity is used.
 type Request struct {
-	Version   int    `json:"version"`
-	Operation string `json:"operation"`
-	Fault     string `json:"fault,omitempty"`
-	Enabled   bool   `json:"enabled,omitempty"`
+	Version            int    `json:"version"`
+	Operation          string `json:"operation"`
+	Fault              string `json:"fault,omitempty"`
+	Enabled            bool   `json:"enabled,omitempty"`
+	ExpectedNode       string `json:"expected_node,omitempty"`
+	ExpectedVolume     string `json:"expected_volume,omitempty"`
+	ExpectedGeneration string `json:"expected_generation,omitempty"`
 }
 
 // Response is a single bounded reply; status is present only on successful reads.
@@ -79,15 +83,18 @@ type Response struct {
 
 // Event records the peer and exact target before and after control requests.
 type Event struct {
-	Time       time.Time `json:"time"`
-	Peer       Peer      `json:"peer"`
-	NodeID     string    `json:"node_id"`
-	VolumeID   string    `json:"volume_id"`
-	Generation string    `json:"generation"`
-	Operation  string    `json:"operation"`
-	Fault      string    `json:"fault,omitempty"`
-	Enabled    bool      `json:"enabled"`
-	Outcome    string    `json:"outcome"`
+	Time               time.Time `json:"time"`
+	Peer               Peer      `json:"peer"`
+	NodeID             string    `json:"node_id"`
+	VolumeID           string    `json:"volume_id"`
+	Generation         string    `json:"generation"`
+	Operation          string    `json:"operation"`
+	Fault              string    `json:"fault,omitempty"`
+	Enabled            bool      `json:"enabled"`
+	Outcome            string    `json:"outcome"`
+	ExpectedNode       string    `json:"expected_node,omitempty"`
+	ExpectedVolume     string    `json:"expected_volume,omitempty"`
+	ExpectedGeneration string    `json:"expected_generation,omitempty"`
 }
 
 // Config supplies observations and narrowly scoped hooks. Recovery is always denied.

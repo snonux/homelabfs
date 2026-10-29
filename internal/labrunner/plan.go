@@ -18,6 +18,7 @@ import (
 // Plan contains every input reviewed by the operator. No defaults are applied
 // after hashing. Driver contracts implement scenario-specific safety checks.
 type Plan struct {
+	Faults           []Fault     `json:"faults,omitempty"`
 	Live             *LivePlan   `json:"live,omitempty"`
 	Schema           int         `json:"schema"`
 	RunID            string      `json:"run_id"`
@@ -146,6 +147,9 @@ func (p Plan) Hash() (string, error) {
 // Validate rejects incomplete plans and unsupported lifecycle operations.
 func (p Plan) Validate() error {
 	if p.Stage == "stage2" {
+		if len(p.Faults) > 0 {
+			return errors.New("native fault primitives are stage1 only")
+		}
 		return p.validateLive()
 	}
 	if p.Live != nil {
@@ -223,6 +227,9 @@ func (p Plan) Validate() error {
 			return errors.New("test names must be unique explicit bounded identifiers")
 		}
 		testNames[t.Name] = true
+	}
+	if err := p.validateFaults(); err != nil {
+		return err
 	}
 	return p.validateSteps(artifacts)
 }
