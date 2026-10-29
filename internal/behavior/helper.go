@@ -117,7 +117,7 @@ func (h *helper) execute(c Command, reply *Reply) error {
 			return fmt.Errorf("lock fd already open")
 		}
 		var err error
-		h.lock, err = unix.Openat(fd, "locks", unix.O_CREAT|unix.O_RDWR|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0600)
+		h.lock, err = openAt(fd, "locks", unix.O_CREAT|unix.O_RDWR|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0600)
 		return err
 	case "fcntl-try", "fcntl-unlock", "fcntl-wait":
 		if h.lock < 0 {

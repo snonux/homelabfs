@@ -6,13 +6,17 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// Tests replace openat only serially to inject no-effect interruptions before
+// delegating to the real syscall.
+var openat = unix.Openat
+
 // Ordinary Unix callers retry an EINTR with no completed effect. The controlled
 // adapter additionally proves this boundary with TestLinuxBehaviorEINTRBoundary:
 // rejected admission gives EINTR and zero bytes; admitted cancellation returns
 // the definitive successful result. Three attempts remain a driver bound.
 // Never put close(2) through retryInterrupted: the fd may already be released.
 func openAt(dir int, name string, flags int, mode uint32) (fd int, err error) {
-	err = retryInterrupted(func() error { var e error; fd, e = unix.Openat(dir, name, flags, mode); return e })
+	err = retryInterrupted(func() error { var e error; fd, e = openat(dir, name, flags, mode); return e })
 	if err != nil {
 		err = fmt.Errorf("openat %s flags=%#x: %w", name, flags, err)
 	}
