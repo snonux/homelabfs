@@ -122,4 +122,8 @@ synthetic multiuser case is separate and skips when unprivileged. This does not
 complete P01–P04: native FreeBSD, multiple guests, failover, duplicate independent
 mounts, arbitrary mutable credentials and normal cached publication remain
 unverified or deliberately unsupported. The portable JSON/JUnit harness is `vq3`,
-not supplied by this fixture.
+not supplied by this fixture. The implemented [portable behavior runner and
+owned two-profile fixture](Portable-behavior.md) now provide explicit JSON/JUnit
+local Linux evidence for these single-node syscall checks. Direct and buffered
+reports must be assessed together; native FreeBSD and full matrix acceptance
+remain separate gates.
