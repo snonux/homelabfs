@@ -23,6 +23,8 @@ import (
 // The binary must not daemonize, fork a replacement or exec a different image.
 // Daemon launch argv is reviewed as part of the pinned scenario driver.
 type SupervisorConfig struct {
+	Role                                  string
+	TerminateIntent                       func(FaultProcess) error
 	RunID, Target, Node, Volume, PlanHash string
 	Directory, Executable, SHA256, Handle string
 	Args                                  []string
@@ -60,6 +62,12 @@ type supervisorLog struct {
 // Stage 1 approval and local guest identity. On partial failure a nonnil result
 // retains its child for explicit inspection and Close, never a detached repair.
 func StartFaultSupervisor(ctx context.Context, c SupervisorConfig) (*FaultSupervisor, error) {
+	if c.Role != "" && c.Role != "private-etcd" {
+		return nil, errors.New("unknown supervised process role")
+	}
+	if c.Role == "private-etcd" && (c.Node != c.Target || c.Volume != "private-etcd" || c.Handle != "etcd") {
+		return nil, errors.New("private etcd process role requires exact member identity")
+	}
 	if !validID(c.RunID) || !nativeGuest(c.Target) || !validID(c.Handle) || c.Node == "" || c.Volume == "" || !sha256Text(c.PlanHash) || c.MaxLogBytes <= 0 || !sha256Text(c.SHA256) || !cleanAbsolute(c.Directory) || !stringsWithin(c.Directory, "/var/tmp/hfs-run-"+c.RunID) || !stringsWithin(c.Executable, "/var/tmp/hfs-run-"+c.RunID) {
 		return nil, errors.New("supervisor requires explicit run-owned identities and bounds")
 	}
@@ -91,6 +99,9 @@ func StartFaultSupervisor(ctx context.Context, c SupervisorConfig) (*FaultSuperv
 	s.server = server
 	child := exec.Command(c.Executable, c.Args...)
 	child.Env = []string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/usr/local/sbin"}
+	if c.Role == "private-etcd" {
+		child.Env = append(child.Env, "GOMAXPROCS=1", "GOMEMLIMIT=128MiB")
+	}
 	child.Stdin = nil
 	output := &supervisorLog{log: boundedLog{file: log, remaining: c.MaxLogBytes}}
 	child.Stdout = output
@@ -111,6 +122,13 @@ func StartFaultSupervisor(ctx context.Context, c SupervisorConfig) (*FaultSuperv
 	s.closeObservation = closeObservation
 	if err := WriteJSON(s.Manifest(), s.process); err != nil {
 		return s, err
+	}
+	// etcd has no HomelabFS workspace socket. Its direct-child identity is
+	// sufficient only for process control, never HFS serving readiness.
+	if c.Role == "private-etcd" {
+		s.mu.Lock()
+		s.admission = true
+		s.mu.Unlock()
 	}
 	return s, nil
 }
@@ -174,6 +192,14 @@ func (s *FaultSupervisor) toggle(ctx context.Context, name string, enabled bool)
 			signal = candidate.signal
 		}
 	}
+	if s.config.Role == "private-etcd" && name == signalToken("etcd-terminate", s.process) {
+		if s.config.TerminateIntent != nil {
+			if err := s.config.TerminateIntent(s.process); err != nil {
+				return err
+			}
+		}
+		signal = syscall.SIGTERM
+	}
 	if signal == 0 {
 		return errors.New("signal target identity mismatch")
 	}
@@ -194,7 +220,11 @@ func (s *FaultSupervisor) status(ctx context.Context) (admin.Status, error) {
 	if err := ctx.Err(); err != nil {
 		return admin.Status{}, err
 	}
-	return admin.Status{NodeID: s.config.Node, TestHooksEnabled: s.admission, Volumes: []admin.VolumeStatus{{VolumeID: s.config.Volume, Generation: s.launchGeneration, State: "SUPERVISED", Profile: "native-run-supervisor", NormalPublication: false}}}, nil
+	profile := "native-run-supervisor"
+	if s.config.Role == "private-etcd" {
+		profile = "private-etcd-process"
+	}
+	return admin.Status{NodeID: s.config.Node, TestHooksEnabled: s.admission, Volumes: []admin.VolumeStatus{{VolumeID: s.config.Volume, Generation: s.launchGeneration, State: "SUPERVISED", Profile: profile, NormalPublication: false}}}, nil
 }
 func (w *supervisorLog) Write(data []byte) (int, error) {
 	w.mu.Lock()

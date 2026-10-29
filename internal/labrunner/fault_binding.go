@@ -33,6 +33,9 @@ type ServingBinding struct {
 func (s *FaultSupervisor) BindWorkspace(ctx context.Context) (ServingBinding, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.config.Role == "private-etcd" {
+		return ServingBinding{}, errors.New("private etcd cannot bind a HomelabFS workspace")
+	}
 	if s.closed || s.admission || s.child == nil || s.exited == nil {
 		return ServingBinding{}, errors.New("workspace binding requires a new supervised child")
 	}

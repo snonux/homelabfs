@@ -7,11 +7,15 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 )
 
 // CLI parses local inputs. Approval files must be recorded by the operator.
 func CLI(ctx context.Context, args []string, out, stderr io.Writer) error {
+	if len(args) > 0 && strings.HasPrefix(args[0], "private-etcd-") {
+		return PrivateEtcdCLI(ctx, args, out, stderr)
+	}
 	if len(args) > 0 && (args[0] == "fault-request" || args[0] == "native-fault") {
 		return FaultCLI(ctx, args, out, stderr)
 	}

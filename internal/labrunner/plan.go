@@ -18,25 +18,26 @@ import (
 // Plan contains every input reviewed by the operator. No defaults are applied
 // after hashing. Driver contracts implement scenario-specific safety checks.
 type Plan struct {
-	Faults           []Fault     `json:"faults,omitempty"`
-	Live             *LivePlan   `json:"live,omitempty"`
-	Schema           int         `json:"schema"`
-	RunID            string      `json:"run_id"`
-	Stage            string      `json:"stage"`
-	Created          time.Time   `json:"created"`
-	Expires          time.Time   `json:"expires"`
-	Profile          string      `json:"profile"`
-	PreparedGuests   bool        `json:"prepared_guests"`
-	Targets          []Target    `json:"targets"`
-	Artifacts        []Artifact  `json:"artifacts"`
-	Resources        []Resource  `json:"resources"`
-	Budget           Budget      `json:"budget"`
-	Disruptions      []string    `json:"disruptions"`
-	Tests            []Selection `json:"tests"`
-	StateDir         string      `json:"state_dir"`
-	EvidenceDir      string      `json:"evidence_dir"`
-	PreserveFailures bool        `json:"preserve_failures"`
-	Steps            []Step      `json:"steps"`
+	PrivateEtcd      *PrivateEtcd `json:"private_etcd,omitempty"`
+	Faults           []Fault      `json:"faults,omitempty"`
+	Live             *LivePlan    `json:"live,omitempty"`
+	Schema           int          `json:"schema"`
+	RunID            string       `json:"run_id"`
+	Stage            string       `json:"stage"`
+	Created          time.Time    `json:"created"`
+	Expires          time.Time    `json:"expires"`
+	Profile          string       `json:"profile"`
+	PreparedGuests   bool         `json:"prepared_guests"`
+	Targets          []Target     `json:"targets"`
+	Artifacts        []Artifact   `json:"artifacts"`
+	Resources        []Resource   `json:"resources"`
+	Budget           Budget       `json:"budget"`
+	Disruptions      []string     `json:"disruptions"`
+	Tests            []Selection  `json:"tests"`
+	StateDir         string       `json:"state_dir"`
+	EvidenceDir      string       `json:"evidence_dir"`
+	PreserveFailures bool         `json:"preserve_failures"`
+	Steps            []Step       `json:"steps"`
 }
 
 // Target records reviewed inventory, including initial state and version evidence.
@@ -147,6 +148,9 @@ func (p Plan) Hash() (string, error) {
 // Validate rejects incomplete plans and unsupported lifecycle operations.
 func (p Plan) Validate() error {
 	if p.Stage == "stage2" {
+		if p.PrivateEtcd != nil {
+			return errors.New("private etcd is stage1 only")
+		}
 		if len(p.Faults) > 0 {
 			return errors.New("native fault primitives are stage1 only")
 		}
@@ -216,7 +220,7 @@ func (p Plan) Validate() error {
 			return errors.New("resource sizes exceed disk budget")
 		}
 		resourceBytes += r.MaxBytes
-		if !validID(r.Name) || resourceNames[r.Name] || !names[r.Target] || r.MaxBytes <= 0 || (r.Kind != "directory" && r.Kind != "dataset") || !p.validResource(r) {
+		if !validID(r.Name) || resourceNames[r.Name] || (!names[r.Target] && !isEtcdControllerResource(p, r)) || r.MaxBytes <= 0 || (r.Kind != "directory" && r.Kind != "dataset") || !p.validResource(r) {
 			return errors.New("resources must name bounded disposable run-owned directories/datasets")
 		}
 		resourceNames[r.Name] = true
@@ -229,6 +233,9 @@ func (p Plan) Validate() error {
 		testNames[t.Name] = true
 	}
 	if err := p.validateFaults(); err != nil {
+		return err
+	}
+	if err := ValidatePrivateEtcd(p); err != nil {
 		return err
 	}
 	return p.validateSteps(artifacts)
