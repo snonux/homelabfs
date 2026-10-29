@@ -175,3 +175,15 @@ releasing the lock. Such a node requires process exit/inspection; retrying Close
 does not release an uncertain lifetime. Failed listener startup closes transport
 before releasing local exclusivity. The local fixture CLI does not use this
 normal-cluster startup path or fabricate normal membership/fencing evidence.
+
+## Simulation dependencies
+
+`Config.Clock` supplies every transport timer and bounded context, including
+handshake/dial, socket read/write deadlines, dispatch handoff and reconnect
+backoff. Nil retains real-time behavior. An injected Network must interpret
+socket deadlines on the same time source. `Config.Random` supplies connection,
+correlation and session UUID entropy; nil retains cryptographic randomness.
+Fixture readers must be concurrency safe and deterministic under their documented
+caller ordering. Neither dependency grants identity or protocol authority.
+The explicitly controlled in-process fixture and its limitations are documented
+in [Simulation](Simulation.md).

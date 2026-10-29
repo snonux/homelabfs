@@ -36,7 +36,7 @@ func (e *Endpoint) Reconnect(ctx context.Context, peer fsapi.UUID, address netip
 		if i+1 == b.Attempts {
 			break
 		}
-		timer := time.NewTimer(delay)
+		timer := e.cfg.Clock.NewTimer(delay)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -44,7 +44,7 @@ func (e *Endpoint) Reconnect(ctx context.Context, peer fsapi.UUID, address netip
 		case <-e.done:
 			timer.Stop()
 			return nil, fmt.Errorf("endpoint closed")
-		case <-timer.C:
+		case <-timer.C():
 		}
 		delay = min(delay*2, b.Maximum)
 	}

@@ -46,6 +46,7 @@ See [Motivation and goals](Motivation-and-goals.md) for the problem HomelabFS ai
 | [Coordination](spec/Coordination.md) | Implemented etcd and memory backends for policy and takeover allocation; activation and fencing remain separate |
 | [Replication](Replication.md) | Write path, journals, catch-up, and failover continuity |
 | [Replication transport](spec/Transport.md) | Implemented bounded authenticated sessions and normal-node startup ordering; stream protocol and serving remain external |
+| [Core simulation](spec/Simulation.md) | Implemented controlled seeded network, virtual clocks and crashable core fixtures; history oracle and distributed protocol remain external |
 | [Normal replication protocol](spec/Replication-protocol.md) | Fixed-owner sessions, messages, commit/visibility gates and recovery evidence; unimplemented |
 | [Journal storage](Journal-storage.md) | Dataset layout, checkpoints, retention, and safe cleanup |
 | [Performance](Performance.md) | Bounded concurrency, connection pools, fairness, and measurement |

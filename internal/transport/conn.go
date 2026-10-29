@@ -176,7 +176,7 @@ func (c *Conn) writeLoop() {
 				req.result <- net.ErrClosed
 				return
 			}
-			err := c.raw.SetWriteDeadline(time.Now().Add(c.timeout))
+			err := c.raw.SetWriteDeadline(c.endpoint.cfg.Clock.Now().Add(c.timeout))
 			if err == nil {
 				err = writeAll(c.raw, req.data)
 			}
@@ -192,7 +192,7 @@ func (c *Conn) readFrame(ctx context.Context, limit uint32) (Frame, error) {
 	if err := ctx.Err(); err != nil {
 		return Frame{}, err
 	}
-	deadline := time.Now().Add(c.timeout)
+	deadline := c.endpoint.cfg.Clock.Now().Add(c.timeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
 		deadline = d
 	}
@@ -200,7 +200,7 @@ func (c *Conn) readFrame(ctx context.Context, limit uint32) (Frame, error) {
 		return Frame{}, err
 	}
 	finished := make(chan struct{})
-	stop := context.AfterFunc(ctx, func() { _ = c.raw.SetReadDeadline(time.Now()); close(finished) })
+	stop := context.AfterFunc(ctx, func() { _ = c.raw.SetReadDeadline(c.endpoint.cfg.Clock.Now()); close(finished) })
 	defer func() {
 		if !stop() {
 			<-finished
@@ -253,14 +253,14 @@ func (c *Conn) readLoop() {
 		if err := c.endpoint.authorize(c, f, Incoming); err != nil {
 			return
 		}
-		deliveryDeadline := time.NewTimer(c.timeout)
+		deliveryDeadline := c.endpoint.cfg.Clock.NewTimer(c.timeout)
 		select {
 		case c.incoming <- f:
 			deliveryDeadline.Stop()
 		case <-c.done:
 			deliveryDeadline.Stop()
 			return
-		case <-deliveryDeadline.C:
+		case <-deliveryDeadline.C():
 			return
 		}
 	}

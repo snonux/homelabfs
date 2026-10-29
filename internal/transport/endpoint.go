@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"sync"
@@ -40,6 +41,10 @@ type Config struct {
 	MaxConnections int
 	Timeout        time.Duration
 	Authorizer     Authorizer
+	// Clock and Random are injectable deterministic fixture dependencies. Nil uses
+	// wall time and cryptographic randomness respectively.
+	Clock  Clock
+	Random io.Reader
 }
 
 // Endpoint owns sockets, not retained replication evidence or serving rights.
@@ -75,6 +80,9 @@ type session struct {
 
 // New validates all policy before opening any socket. It starts no listener.
 func New(cfg Config) (*Endpoint, error) {
+	if cfg.Clock == nil {
+		cfg.Clock = wallClock{}
+	}
 	if cfg.Registry == nil || cfg.Network == nil || !cfg.Identity.Incarnation.Valid() || cfg.Identity.Cluster != cfg.Registry.Cluster() || !validAddress(cfg.Local, true) || !cfg.Limits.valid() || cfg.MaxConnections < 1 || cfg.MaxConnections > 128 || uint64(cfg.MaxConnections)*cfg.Limits.Bytes > 128<<20 || cfg.Timeout <= 0 || cfg.Timeout > time.Minute {
 		return nil, fmt.Errorf("invalid transport configuration")
 	}
@@ -92,7 +100,7 @@ func (e *Endpoint) Listen(ctx context.Context) error {
 	if e.closed || e.listener != nil {
 		return fmt.Errorf("endpoint closed or already listening")
 	}
-	listenCtx, cancel := context.WithTimeout(ctx, e.cfg.Timeout)
+	listenCtx, cancel := e.cfg.Clock.WithTimeout(ctx, e.cfg.Timeout)
 	defer cancel()
 	l, err := e.cfg.Network.Listen(listenCtx, e.cfg.Local)
 	if err != nil {
@@ -155,7 +163,7 @@ func (e *Endpoint) Dial(ctx context.Context, peer fsapi.UUID, remote netip.AddrP
 		e.mu.Unlock()
 		return nil, fmt.Errorf("connection capacity")
 	}
-	dialCtx, cancel := context.WithTimeout(ctx, e.cfg.Timeout)
+	dialCtx, cancel := e.cfg.Clock.WithTimeout(ctx, e.cfg.Timeout)
 	attempt := &dialAttempt{peer, cancel}
 	e.dials[attempt] = true
 	e.pendingDials++
@@ -293,7 +301,7 @@ func (e *Endpoint) acceptLoop(l net.Listener) {
 		e.mu.Unlock()
 		go func() {
 			defer e.workers.Done()
-			ctx, cancel := context.WithTimeout(context.Background(), e.cfg.Timeout)
+			ctx, cancel := e.cfg.Clock.WithTimeout(context.Background(), e.cfg.Timeout)
 			defer cancel()
 			if err := e.handshake(ctx, c, fsapi.UUID{}, 0, false); err != nil {
 				_ = c.Close()

@@ -60,7 +60,7 @@ func (e *Endpoint) handshake(ctx context.Context, c *Conn, peer fsapi.UUID, clas
 	} else {
 		sessionID := local.Session
 		if local.Class == Control {
-			sessionID, err = newUUID()
+			sessionID, err = e.newUUID()
 			if err != nil {
 				return err
 			}
@@ -108,11 +108,11 @@ func (e *Endpoint) handshake(ctx context.Context, c *Conn, peer fsapi.UUID, clas
 	return nil
 }
 func (e *Endpoint) initial(c *Conn, peer fsapi.UUID, class Class) (Frame, error) {
-	connection, err := newUUID()
+	connection, err := e.newUUID()
 	if err != nil {
 		return Frame{}, err
 	}
-	correlation, err := newUUID()
+	correlation, err := e.newUUID()
 	if err != nil {
 		return Frame{}, err
 	}

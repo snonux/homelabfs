@@ -49,6 +49,7 @@ type Rule struct {
 // disabled and cannot be controlled. A Registry must not be copied after use.
 type Registry struct {
 	enabled atomic.Bool
+	scope   atomic.Uint64
 	mu      sync.RWMutex
 	active  map[Name]*Activation
 }
@@ -70,6 +71,8 @@ type Activation struct {
 	done        chan struct{}
 	triggerOnce sync.Once
 	releaseOnce sync.Once
+	blockMu     sync.Mutex
+	waiters     map[*blockWaiter]bool
 }
 
 // New creates a permanently disabled registry for normal application use.
@@ -111,6 +114,9 @@ func (r *Registry) Hit(ctx context.Context, name Name) error {
 	}
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if a.rule.Action == Block {
+		return a.runBlock(ctx, r.scope.Load())
 	}
 	a.triggerOnce.Do(func() { close(a.triggered) })
 	return a.run(ctx)
@@ -223,13 +229,7 @@ func (a *Activation) run(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-	case Block:
-		select {
-		case <-a.done:
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+
 	}
 	return nil // Enable rejects unknown actions; Crash does not return.
 }

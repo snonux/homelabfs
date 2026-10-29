@@ -26,9 +26,9 @@ type greeting struct {
 	cluster  fsapi.UUID
 }
 
-func newUUID() (fsapi.UUID, error) {
+func (e *Endpoint) newUUID() (fsapi.UUID, error) {
 	var id fsapi.UUID
-	if _, err := io.ReadFull(rand.Reader, id[:]); err != nil {
+	if _, err := io.ReadFull(e.random(), id[:]); err != nil {
 		return id, err
 	}
 	id[6], id[8] = id[6]&15|64, id[8]&63|128
@@ -63,4 +63,11 @@ func decodeGreeting(b []byte) (g greeting, err error) {
 		return greeting{}, fmt.Errorf("invalid greeting limits or registry revision")
 	}
 	return g, nil
+}
+
+func (e *Endpoint) random() io.Reader {
+	if e.cfg.Random != nil {
+		return e.cfg.Random
+	}
+	return rand.Reader
 }
