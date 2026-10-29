@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -240,7 +241,19 @@ func TestObservedHostAndClaimMismatch(t *testing.T) {
 func TestStaleEnvelopeRejected(t *testing.T) {
 	for _, field := range []string{"session", "connection", "source incarnation", "destination incarnation", "class", "binding"} {
 		t.Run(field, func(t *testing.T) {
-			_, _, c, d := pair(t)
+			acfg, bcfg := config(t, 2), config(t, 3)
+			// Idle expiry must not satisfy the shorter rejection deadline.
+			acfg.Timeout, bcfg.Timeout = 30*time.Second, 30*time.Second
+			a, b := endpoint(t, acfg), endpoint(t, bcfg)
+			c, d := connect(t, a, b, Control)
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			if err := c.Send(ctx, Ping, fsapi.UUID{}, uid(39), nil); err != nil {
+				t.Fatalf("healthy send: %v", err)
+			}
+			if healthy, err := d.Receive(ctx); err != nil || healthy.Kind != Ping || healthy.Correlation != uid(39) {
+				t.Fatalf("healthy exchange: frame=%+v err=%v", healthy, err)
+			}
 			f := Frame{Kind: Ping, Class: Control, Session: c.session, Connection: c.connection, Source: c.endpoint.cfg.Identity.Node, SourceIncarnation: c.endpoint.cfg.Identity.Incarnation, Destination: c.peer, DestinationIncarnation: c.peerInc, Correlation: uid(40)}
 			switch field {
 			case "session":
@@ -256,11 +269,21 @@ func TestStaleEnvelopeRejected(t *testing.T) {
 			case "binding":
 				f.Kind = HelloOK
 			}
-			if err := c.sendFrame(context.Background(), f); err != nil {
-				t.Fatal(err)
+			// Rejection may close the sender before its writer reports completion.
+			if err := c.sendFrame(ctx, f); err != nil && !errors.Is(err, net.ErrClosed) {
+				t.Fatalf("stale send: %v", err)
 			}
-			if _, err := d.Receive(context.Background()); err == nil {
-				t.Fatal("stale envelope accepted")
+			if received, err := d.Receive(ctx); !errors.Is(err, net.ErrClosed) {
+				t.Fatalf("stale envelope was not rejected by closure: frame=%+v err=%v", received, err)
+			}
+			// The writer detaches the control connection before writerDone closes.
+			select {
+			case <-d.writerDone:
+			case <-ctx.Done():
+				t.Fatalf("session invalidation: %v", ctx.Err())
+			}
+			if err := ctx.Err(); err != nil || b.currentSession(c.endpoint.cfg.Identity.Node) {
+				t.Fatalf("stale session remains valid or rejection deadline expired: %v", err)
 			}
 		})
 	}
