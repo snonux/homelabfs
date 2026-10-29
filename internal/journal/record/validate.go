@@ -150,9 +150,9 @@ func validate(value any) error {
 			valid = valid && Hash(sha256.Sum256(redo)) == v.Prepare.RedoSHA256
 		}
 	case Complete:
-		valid = v.Request == v.Decision.ID.Request && v.Result.Decision != nil && reflect.DeepEqual(*v.Result.Decision, v.Decision) && equalEncoding(v.Result.Committed, v.Installed)
+		valid = v.Request == v.Decision.ID.Request && v.Result.Decision != nil && reflect.DeepEqual(*v.Result.Decision, v.Decision)
 		if v.Result.Status == 1 {
-			valid = valid && v.Result.Visibility != nil && *v.Result.Visibility == v.Visibility
+			valid = valid && equalEncoding(v.Result.Committed, v.Installed) && v.Result.Visibility != nil && *v.Result.Visibility == v.Visibility
 		}
 	case Accept:
 		valid = (v.SlotKind == 2) == (v.Request != nil) && ownerRef(v.Candidate)
