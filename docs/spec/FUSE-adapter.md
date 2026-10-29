@@ -29,13 +29,14 @@ drain and reference cleanup. An uncertain mount/cleanup error retains admission
 and resources for inspection/recovery. Shared multi-mount process identities are
 not implemented.
 
-The profile uses direct I/O for regular files, zero entry/attribute/negative
+The default profile uses direct I/O for regular files, zero entry/attribute/negative
 TTLs, `default_permissions`, `nosuid` and `nodev`. It enables neither writeback,
 keep-cache, symlink caching, ACLs, ID mapping nor `allow_other`. READDIRPLUS is
 disabled. `Capabilities` explicitly reports mmap, writeback, arbitrary workload
 credentials, verified cached-ancestor search and normal publication as unsupported.
-The Linux integration verifies mmap rejection; FreeBSD behavior is still a gate.
-This is not the mmap-compatible canary profile required by Durability.md.
+The Linux default-profile integration verifies mmap rejection; FreeBSD behavior is still a gate.
+The separately admitted buffered disposable profile below supplies restricted local
+validation, not the mmap-compatible normal canary profile required by Durability.md.
 
 Future normal publication needs a reviewed native admission contract and actual
 credential/traversal/cache/mmap evidence, as well as a service constructed with
@@ -184,3 +185,101 @@ exclusive publication lease, rejection while mounted and successful admission
 after normal unmount; its resources were removed. These are restricted local
 service results, not native FreeBSD, arbitrary
 multiuser credentials, writable mmap, replicated durability, failover or 9p evidence.
+
+## Controlled buffered validation (`xw3`)
+
+An embedding disposable harness may select `Config.BufferedValidation` with a
+matching real service and `*Participants`. This removes `FOPEN_DIRECT_IO` only
+for this explicit profile; normal publication remains denied. The CLI continues
+to admit only its existing direct-I/O self-client. No writeback-cache capability,
+keep-cache, positive TTL, external mutation or owner-change/cache-fencing
+contract is added. All mutations use one service and the same FUSE connection.
+FreeBSD runtime validation and the complete portable `vq3` report harness remain
+separate work.
+
+A successful authenticated CREATE/OPEN retains the exact issuing credentials on
+its service description, object and generation. Only kernel `WRITE_CACHE`
+requests may use that issued writable grant without current workload credentials;
+ordinary reads/writes still require an authenticated participant. Missing,
+read-only, released, wrong-node or wrong-generation descriptions fail closed.
+The service's current admission, handle, permission and completion gates still
+run; daemon credentials and guessed groups never substitute for authorization.
+Dirty mmap stores alone have no journal guarantee. Successful `MS_SYNC` causes
+actual cache writes through the service; successful fsync supplies its explicit
+local durability barrier. Close alone adds none. The disposable service still
+claims no partner protection or power-loss/failover durability.
+
+Linux may choose a writable description other than the mapping's source fd for
+cache writeback. Therefore one object may have only one writer authorization set
+(UID, GID and complete supplementary groups) for the entire connection, including
+after all descriptions close. Different enrolled processes with the same set are
+allowed; mixed sets return unsupported. Such OPEN requests are rejected before
+truncate; buffered nonexclusive CREATE with truncation is unsupported. These are
+explicit restrictions, not general multiuser cached-I/O compatibility.
+Buffered OPEN/CREATE with `O_APPEND` is unsupported, including `O_TRUNC` opens
+and exclusive creates; rejection occurs before any service dispatch. Otherwise
+Linux could select an append description for an mmap cache write and the service
+would incorrectly move its page offset to EOF. The default direct-I/O profile
+retains its append semantics. Existing
+stable-ID handles continue to authorize I/O after chmod/unlink. The kernel may
+retain a description and its flock through a live mapping after all fds close.
+
+`Participants` binds once to the exact volume/generation/session. It registers
+only its own fixed credentials and trusted helpers it directly spawns, retains
+each child unreaped, and reads task credentials through retained process
+directories. Every request must match all real/effective/saved/filesystem IDs
+and the exact group set; unknown, retired or mutated identities are denied.
+Process tokens never reuse, and at most 64 process incarnations are admitted.
+Helpers must never change credentials, exec again, share file tables or transfer
+fds outside this fixture. This trust requirement is why proc snapshots suffice
+here; it does not solve arbitrary mutable workload credential races.
+
+All helpers must be spawned idle **before mounting**. Publication seals further
+spawning: pre-exec inherited-FUSE-fd cleanup can otherwise issue a child FLUSH
+before `exec.Cmd.Start` returns a PID. Helpers use private pipes for ordinary
+fixture commands, without an HFS daemon readiness protocol. `Wait` observes child
+exit with `WNOWAIT`, revokes it, then performs the sole reap. Helpers open the
+exact mount identity with `OpenMount` and use `openat` through the returned pinned
+directory fd. An absent/unmounted mount is refused; no raw-backing/empty-directory
+fallback exists. Mmap accesses run in helpers, because a Go daemon accessing its
+own FUSE mmap can deadlock its runtime GC while waiting for its own page-fault
+callback.
+
+`MultiuserValidation` additionally requires root on Linux and explicitly enables
+`allow_other` for synthetic fixed numeric users/groups. Each backing root remains
+private; no package, account or FUSE system configuration is changed. Unprivileged
+runs skip that separate case with a reason. Native FreeBSD multiuser admission is
+unsupported. A skipped case is not evidence of permission compatibility.
+
+The opt-in focused command is:
+
+```
+GOMAXPROCS=2 HOMELABFS_FUSE_INTEGRATION=1 go test ./internal/fuseadapter -run '^TestLinux(BufferedIntegration|Integration|MultiuserBufferedIntegration)$' -v -count=1 -timeout 35s
+```
+
+It requires authorization, uses fresh private run-owned roots and at most 4 MiB
+of logical synthetic file data. The buffered case checks actual shared writable
+mmap/MS_SYNC/fsync, fresh-root/generation replay, alias read/write and truncate
+cache coherence, separate-process fcntl/flock, kernel cancellation after process
+interruption, close-any-fd POSIX cleanup, dup/mapping flock lifetime and mmap
+writes after fd close. It also refuses an empty fallback after normal unmount.
+Default direct-I/O mmap rejection and normal-publication denial remain regression
+checks. This is local Linux service evidence only; native FreeBSD, arbitrary
+credentials, external mutation, fencing, replication and failover remain gates.
+
+During development, run `1158590810` deadlocked on pre-exec inherited-fd cleanup.
+Its exact run-owned connection 84 was positively verified, explicitly aborted
+for failed-run recovery and then normally unmounted. This was **not** a passing
+normal lifecycle. Run `2924589301` exposed daemon-self-mmap/GC deadlock and was
+terminated for diagnostics, then normally unmounted. Run `3701936258` failed an
+incorrect flock-lifetime assertion and was normally unmounted. All three retain
+their disk evidence beneath `/home/paul/tmp/codex/homelabfs-buffered-validation-*`.
+The corrected buffered run passed in 0.638 seconds. A combined non-race focused
+run passed buffered validation in 0.64 seconds and default direct-I/O regression
+in 0.53 seconds (1.167 seconds total); root-only multiuser validation explicitly
+skipped under UID 1001. Successful resources were removed after normal unmount.
+Focused race/unit, vet, errcheck and FreeBSD amd64 test compilation passed. The
+final real-kernel run with the race detector also passed: buffered 4.81 seconds,
+default direct I/O 3.08 seconds, total 8.895 seconds; multiuser again explicitly
+skipped. All successful resources were removed; no HomelabFS mounts remain. No lab, VM, infrastructure or production action
+was involved.

@@ -178,3 +178,12 @@ passed in 1.38 seconds on local Linux; a final run with an explicit post-shutdow
 native non-FUSE statfs assertion passed in 0.98 seconds. Native FreeBSD/ZFS, mmap, 9p, arbitrary
 credentials, replication/failover and real consumer publication remain separate
 unverified gates. No lab, VM, production or host lifecycle operation ran here.
+
+
+The embedded `internal/fuseadapter` API separately admits an explicit controlled
+buffered disposable profile; see [FUSE adapter](FUSE-adapter.md#controlled-buffered-validation-xw3).
+It does not add a CLI flag or broaden the self-client daemon profile. Helpers
+are enrolled before publication, bound to the exact connection, and access only
+the identity-verified mount. Direct I/O and normal-publication denial remain the
+defaults. Root-only synthetic multiuser validation is separately opt-in and
+unprivileged runs report a skip.

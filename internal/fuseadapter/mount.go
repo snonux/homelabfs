@@ -38,7 +38,8 @@ type Mount struct {
 }
 
 // Mount starts a restricted disposable mount at an existing empty directory.
-// No allow_other, writeback, keep-cache, symlink cache or ID mapping is enabled.
+// Writeback-cache negotiation, keep-cache, symlink cache and ID mapping stay
+// disabled. Only explicit root-only MultiuserValidation enables allow_other.
 func (a *Adapter) Mount(path string) (*Mount, error) {
 	a.mu.Lock()
 	if a.mountStarted {
@@ -72,7 +73,12 @@ func (a *Adapter) Mount(path string) (*Mount, error) {
 	if err != nil {
 		return nil, fmt.Errorf("attach frontend: %w", err)
 	}
-	server, err := fuse.NewServer(a, full, mountOptions())
+	if participants, ok := a.credentials.(interface{ seal() }); ok {
+		participants.seal()
+	}
+	options := mountOptions()
+	options.AllowOther = a.multiuser
+	server, err := fuse.NewServer(a, full, options)
 	if err != nil {
 		// Preserve publication admission after an uncertain native mount error;
 		// the owner must inspect/restart this service before trying again.
@@ -92,10 +98,10 @@ func (a *Adapter) Identity() MountIdentity {
 	return MountIdentity{Volume: a.info.Volume, Generation: a.info.Generation, Session: a.session}
 }
 
-// Capabilities reports supported contracts; mmap-compatible/native publication
-// requires separate platform validation and a future admitted mount profile.
+// Capabilities reports the selected disposable contract. Normal publication and
+// cache fencing remain unsupported, including when buffered mmap is admitted.
 func (a *Adapter) Capabilities() Capabilities {
-	return Capabilities{DirectIO: true, DefaultPermissions: true, LocalLocks: true, FileSync: true, DirectorySync: true}
+	return Capabilities{DirectIO: !a.buffered, Mmap: a.buffered, DefaultPermissions: true, LocalLocks: true, FileSync: true, DirectorySync: true}
 }
 
 // Unmount requests a normal unmount. Failure preserves the mount/resources and
@@ -172,19 +178,33 @@ func CheckMount(path string, expected MountIdentity) error {
 	if !expected.Volume.Valid() || !expected.Generation.Valid() || !expected.Session.Valid() {
 		return fsapi.Invalid
 	}
+	root, err := OpenMount(path, expected)
+	if err != nil {
+		return err
+	}
+	return root.Close()
+}
+
+// OpenMount returns a directory fd pinned to the verified FUSE connection.
+// Controlled helpers must access children with openat on this fd, so later
+// unmount cannot redirect a path lookup into an empty backing directory.
+func OpenMount(path string, expected MountIdentity) (*os.File, error) {
+	if !expected.Volume.Valid() || !expected.Generation.Valid() || !expected.Session.Valid() {
+		return nil, fsapi.Invalid
+	}
 	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
-		return fmt.Errorf("open mounted root: %w", err)
+		return nil, fmt.Errorf("open mounted root: %w", err)
 	}
-	defer func() { _ = unix.Close(fd) }()
+	root := os.NewFile(uintptr(fd), "verified HomelabFS mount")
 	data, err := mountedIdentity(fd)
+	if err == nil && !bytes.Equal(data, expected.bytes()) {
+		err = fmt.Errorf("%w: mounted volume/generation/session mismatch", fsapi.Stale)
+	}
 	if err != nil {
-		return fmt.Errorf("mount identity: %w", err)
+		return nil, errors.Join(fmt.Errorf("mount identity: %w", err), root.Close())
 	}
-	if !bytes.Equal(data, expected.bytes()) {
-		return fmt.Errorf("%w: mounted volume/generation/session mismatch", fsapi.Stale)
-	}
-	return nil
+	return root, nil
 }
 
 func (id MountIdentity) bytes() []byte {

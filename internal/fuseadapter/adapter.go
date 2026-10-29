@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -49,6 +50,12 @@ type Config struct {
 	Service     *fsservice.Service
 	Validation  fsservice.ValidationProfile
 	Credentials Credentials
+	// BufferedValidation admits same-connection buffered I/O and mmap only for
+	// disposable fixtures. Kernel writeback-cache negotiation remains disabled.
+	BufferedValidation bool
+	// MultiuserValidation admits allow_other solely for root-owned synthetic
+	// fixed-credential participants; it requires BufferedValidation.
+	MultiuserValidation bool
 	// MaxNodes bounds each retained per-generation node/process/owner identity
 	// map, including forgotten objects and exited processes; it is not active-only.
 	MaxNodes, MaxHandles, MaxRequests int
@@ -64,6 +71,8 @@ type description struct {
 	handle     fsapi.OpenHandle
 	generation fsapi.UUID
 	directory  bool
+	grant      fsapi.Cred
+	writable   bool
 	// Directory cookies retain raw exclusive cursors, never lookup references.
 	revision uint64
 	cursors  []string
@@ -79,9 +88,11 @@ type Adapter struct {
 	info                 fsservice.FrontendInfo
 	session              fsapi.UUID
 	mu                   sync.Mutex
+	openMu               sync.Mutex
 	nodes                map[uint64]*node
 	objects              map[fsapi.ObjectID]uint64
 	handles              map[uint64]*description
+	writers              map[fsapi.ObjectID]fsapi.Cred
 	processes            map[uint64]uint32
 	nativeOwners         map[uint64]uint64
 	processOwners        map[uint64]uint64
@@ -91,6 +102,8 @@ type Adapter struct {
 	blocked              atomic.Bool
 	failure              error
 	mountStarted         bool
+	buffered             bool
+	multiuser            bool
 }
 
 var _ fuse.RawFileSystem = (*Adapter)(nil)
@@ -99,6 +112,9 @@ var _ fuse.RawFileSystem = (*Adapter)(nil)
 // Adding normal mounts requires verified credential/traversal/cache admission,
 // plus the real Protocol already required by fsservice normal construction.
 func New(c Config) (*Adapter, error) {
+	if c.MultiuserValidation && (!c.BufferedValidation || !multiuserAvailable()) {
+		return nil, fmt.Errorf("%w: multiuser validation requires root and buffered validation", fsapi.Unsupported)
+	}
 	if c.Service == nil || c.Credentials == nil {
 		return nil, fmt.Errorf("%w: service and credentials required", fsapi.Invalid)
 	}
@@ -112,6 +128,18 @@ func New(c Config) (*Adapter, error) {
 	a, err := newAdapter(c, c.Service, info)
 	if err != nil {
 		return nil, err
+	}
+	if c.BufferedValidation {
+		binder, ok := c.Credentials.(interface {
+			BindMount(MountIdentity) error
+			seal()
+		})
+		if !ok {
+			return nil, fmt.Errorf("%w: buffered validation requires connection-bound controlled participants", fsapi.Unsupported)
+		}
+		if err := binder.BindMount(a.Identity()); err != nil {
+			return nil, err
+		}
 	}
 	a.publication = c.Service
 	return a, nil
@@ -130,7 +158,7 @@ func newAdapter(c Config, service fsapi.Filesystem, info fsservice.FrontendInfo)
 	if c.MaxNodes < 1 || c.MaxHandles < 1 || c.MaxRequests < 1 || c.MaxNodes > 65536 || c.MaxHandles > 65536 || c.MaxRequests > 256 {
 		return nil, fsapi.Invalid
 	}
-	a := &Adapter{RawFileSystem: fuse.NewDefaultRawFileSystem(), service: service, credentials: c.Credentials, info: info, nodes: map[uint64]*node{1: {object: info.Root}}, objects: map[fsapi.ObjectID]uint64{info.Root: 1}, handles: make(map[uint64]*description), processes: make(map[uint64]uint32), nativeOwners: make(map[uint64]uint64), processOwners: make(map[uint64]uint64), nextNode: 1, maxNodes: c.MaxNodes, maxHandles: c.MaxHandles, slots: make(chan struct{}, c.MaxRequests)}
+	a := &Adapter{buffered: c.BufferedValidation, multiuser: c.MultiuserValidation, RawFileSystem: fuse.NewDefaultRawFileSystem(), service: service, credentials: c.Credentials, info: info, nodes: map[uint64]*node{1: {object: info.Root}}, objects: map[fsapi.ObjectID]uint64{info.Root: 1}, handles: make(map[uint64]*description), writers: make(map[fsapi.ObjectID]fsapi.Cred), processes: make(map[uint64]uint32), nativeOwners: make(map[uint64]uint64), processOwners: make(map[uint64]uint64), nextNode: 1, maxNodes: c.MaxNodes, maxHandles: c.MaxHandles, slots: make(chan struct{}, c.MaxRequests)}
 	if _, err := rand.Read(a.session[:]); err != nil {
 		return nil, fmt.Errorf("mount session: %w", err)
 	}
@@ -173,6 +201,42 @@ func (a *Adapter) identity(ctx context.Context, h *fuse.InHeader) (Identity, err
 }
 
 func (a *Adapter) call(cancel <-chan struct{}, h *fuse.InHeader, c fsapi.Command) (fsapi.Result, fuse.Status) {
+	r, code, _ := a.callIssued(cancel, h, c)
+	return r, code
+}
+
+// callIssued returns the exact identity used at open admission, so a later
+// cache write can use only the authorization of that issued description.
+func (a *Adapter) callIssued(cancel <-chan struct{}, h *fuse.InHeader, c fsapi.Command) (fsapi.Result, fuse.Status, Identity) {
+	if a.blocked.Load() {
+		return fsapi.Result{}, status(fsapi.Unavailable), Identity{}
+	}
+	select {
+	case a.slots <- struct{}{}:
+		defer func() { <-a.slots }()
+	default:
+		return fsapi.Result{}, status(fsapi.WouldBlock), Identity{}
+	}
+	ctx := &fuse.Context{Caller: h.Caller, Cancel: cancel}
+	i, err := a.identity(ctx, h)
+	if err != nil {
+		return fsapi.Result{}, errorStatus(err), Identity{}
+	}
+	if a.buffered && c.Operation == fsapi.Open && c.Flags.Access != fsapi.ReadOnly {
+		a.mu.Lock()
+		previous, exists := a.writers[c.Object]
+		a.mu.Unlock()
+		groups := slices.Clone(i.Credentials.Groups)
+		slices.Sort(groups)
+		if exists && (previous.UID != i.Credentials.UID || previous.GID != i.Credentials.GID || !slices.Equal(previous.Groups, groups)) {
+			return fsapi.Result{}, status(fsapi.Unsupported), Identity{}
+		}
+	}
+	r, code := a.submit(ctx, i.Credentials, c)
+	return r, code, i
+}
+
+func (a *Adapter) callAuthorized(ctx context.Context, cred fsapi.Cred, c fsapi.Command) (fsapi.Result, fuse.Status) {
 	if a.blocked.Load() {
 		return fsapi.Result{}, status(fsapi.Unavailable)
 	}
@@ -182,17 +246,15 @@ func (a *Adapter) call(cancel <-chan struct{}, h *fuse.InHeader, c fsapi.Command
 	default:
 		return fsapi.Result{}, status(fsapi.WouldBlock)
 	}
-	ctx := &fuse.Context{Caller: h.Caller, Cancel: cancel}
-	i, err := a.identity(ctx, h)
+	return a.submit(ctx, cred, c)
+}
+
+func (a *Adapter) submit(ctx context.Context, cred fsapi.Cred, c fsapi.Command) (fsapi.Result, fuse.Status) {
+	r, err := a.dispatch(ctx, cred, c)
 	if err != nil {
 		return fsapi.Result{}, errorStatus(err)
 	}
-	r, err := a.dispatch(ctx, i.Credentials, c)
-	if err != nil {
-		return fsapi.Result{}, errorStatus(err)
-	}
-	// Admission owns all effects, including newly acquired references. Await it
-	// even after interruption; abandoning this wait would leak handles/lookups.
+	// Never abandon references or an admitted mutation on interruption.
 	result, err := r.Completion().Wait(context.Background())
 	if err != nil {
 		return fsapi.Result{}, errorStatus(err)
@@ -269,7 +331,7 @@ func (a *Adapter) entry(r fsapi.Result, out *fuse.EntryOut) fuse.Status {
 	return fuse.OK
 }
 
-func (a *Adapter) addHandle(r fsapi.Result, directory bool, out *fuse.OpenOut) fuse.Status {
+func (a *Adapter) addHandle(r fsapi.Result, directory bool, identity Identity, flags fsapi.OpenFlags, out *fuse.OpenOut) fuse.Status {
 	if r.Attr == nil || r.Handle == 0 || r.Generation != a.info.Generation {
 		a.fail(fsapi.IO)
 		return fuse.EIO
@@ -282,12 +344,28 @@ func (a *Adapter) addHandle(r fsapi.Result, directory bool, out *fuse.OpenOut) f
 		}
 		return status(fsapi.NoSpace)
 	}
+	// Linux selects a writable description from the inode, not necessarily
+	// the fd that created a dirty mapping. Never mix distinct writer credentials
+	// for one object during this connection, even after the first fd closes.
+	if a.buffered && !directory && flags.Access != fsapi.ReadOnly {
+		cred := identity.Credentials.Clone()
+		slices.Sort(cred.Groups)
+		previous, exists := a.writers[r.Attr.Object]
+		if exists && (previous.UID != cred.UID || previous.GID != cred.GID || !slices.Equal(previous.Groups, cred.Groups)) || !exists && len(a.writers) >= a.maxNodes {
+			a.mu.Unlock()
+			if err := a.cleanup(fsapi.Command{Operation: fsapi.Release, Handle: r.Handle, DescriptionOnly: true}); err != nil {
+				a.fail(err)
+			}
+			return status(fsapi.Unsupported)
+		}
+		a.writers[r.Attr.Object] = cred
+	}
 	a.nextHandle++
 	id := a.nextHandle
-	a.handles[id] = &description{object: r.Attr.Object, handle: r.Handle, generation: r.Generation, directory: directory, cursors: []string{""}}
+	a.handles[id] = &description{object: r.Attr.Object, handle: r.Handle, generation: r.Generation, directory: directory, grant: identity.Credentials.Clone(), writable: flags.Access != fsapi.ReadOnly, cursors: []string{""}}
 	a.mu.Unlock()
 	*out = fuse.OpenOut{Fh: id}
-	if !directory {
+	if !directory && !a.buffered {
 		out.OpenFlags = fuse.FOPEN_DIRECT_IO
 	}
 	return fuse.OK

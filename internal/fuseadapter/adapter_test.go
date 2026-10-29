@@ -55,6 +55,10 @@ func serviceFixture(t *testing.T, disk string, credentials Credentials) (*Adapte
 }
 
 func serviceWithIO(t *testing.T, disk string, ioBytes int) *fsservice.Service {
+	return startService(t, serviceConfiguration(t, disk, ioBytes))
+}
+
+func serviceConfiguration(t *testing.T, disk string, ioBytes int) fsservice.Config {
 	t.Helper()
 	ctx := t.Context()
 	volume := testID(1)
@@ -124,7 +128,12 @@ func serviceWithIO(t *testing.T, disk string, ioBytes int) *fsservice.Service {
 		t.Fatal(err)
 	}
 	c.Selection = apply.Selection{Through: receipt.Reference, Effects: []record.FrameRef{receipt.Reference}, Proof: []byte("explicit local validation selection")}
-	s, err := fsservice.New(ctx, c)
+	return c
+}
+
+func startService(t *testing.T, c fsservice.Config) *fsservice.Service {
+	t.Helper()
+	s, err := fsservice.New(t.Context(), c)
 	if err != nil {
 		t.Fatal(err)
 	}

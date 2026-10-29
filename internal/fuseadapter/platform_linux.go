@@ -24,3 +24,5 @@ func mountedIdentity(fd int) ([]byte, error) {
 	}
 	return buf[:n], nil
 }
+
+func multiuserAvailable() bool { return unix.Geteuid() == 0 }

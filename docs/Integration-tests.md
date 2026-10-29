@@ -111,3 +111,15 @@ The [motivation document](Motivation-and-goals.md#lessons-from-the-f3s-blog-seri
 - **A02:** exercise representative metrics/log/file-service access patterns with native clients. Verify persisted state, not just process readiness. Actual Prometheus/Grafana/Loki/Tempo deployment checks remain separate.
 
 Kubernetes publication, pod lifecycle, and 9p restart regressions are tracked in the [deployment suite](Deployment-tests.md), not run by the Stage 1 harness.
+
+
+For local development, `internal/fuseadapter` now has an explicitly admitted
+controlled buffered/multiprocess disposable fixture for a subset of P01–P04.
+Its [contract and focused command](spec/FUSE-adapter.md#controlled-buffered-validation-xw3)
+cover real Linux mmap/msync/fsync plus fresh replay, same-connection cache
+coherence and separate-process lock/interruption/close lifetime. The root-only
+synthetic multiuser case is separate and skips when unprivileged. This does not
+complete P01–P04: native FreeBSD, multiple guests, failover, duplicate independent
+mounts, arbitrary mutable credentials and normal cached publication remain
+unverified or deliberately unsupported. The portable JSON/JUnit harness is `vq3`,
+not supplied by this fixture.

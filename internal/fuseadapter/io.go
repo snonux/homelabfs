@@ -3,6 +3,7 @@
 package fuseadapter
 
 import (
+	"context"
 	"math"
 
 	"github.com/hanwen/go-fuse/v2/fuse"
@@ -11,6 +12,10 @@ import (
 
 // Create returns distinct kernel lookup and open-description references.
 func (a *Adapter) Create(cancel <-chan struct{}, in *fuse.CreateIn, name string, out *fuse.CreateOut) fuse.Status {
+	if a.buffered {
+		a.openMu.Lock()
+		defer a.openMu.Unlock()
+	}
 	p, ok := a.object(in.NodeId)
 	if !ok {
 		return status(fsapi.Stale)
@@ -19,11 +24,17 @@ func (a *Adapter) Create(cancel <-chan struct{}, in *fuse.CreateIn, name string,
 	if s != fuse.OK {
 		return s
 	}
-	r, s := a.call(cancel, &in.InHeader, fsapi.Command{Operation: fsapi.Create, Parent: p, Name: name, Flags: f, Mode: uint16(in.Mode & 07777), Umask: uint16(in.Umask & 0777)})
+	// Linux can select any writable description for mmap cache writes. An
+	// append description would make the service move the supplied page offset
+	// to EOF, so buffered append is unsupported even for exclusive creates.
+	if a.buffered && (f.Append || f.Truncate && !f.Exclusive) {
+		return status(fsapi.Unsupported)
+	}
+	r, s, identity := a.callIssued(cancel, &in.InHeader, fsapi.Command{Operation: fsapi.Create, Parent: p, Name: name, Flags: f, Mode: uint16(in.Mode & 07777), Umask: uint16(in.Umask & 0777)})
 	if s != fuse.OK {
 		return s
 	}
-	if s = a.addHandle(r, false, &out.OpenOut); s != fuse.OK {
+	if s = a.addHandle(r, false, identity, f, &out.OpenOut); s != fuse.OK {
 		if r.Attr != nil {
 			if err := a.cleanup(fsapi.Command{Operation: fsapi.Forget, Object: r.Attr.Object, Count: 1}); err != nil {
 				a.fail(err)
@@ -38,7 +49,7 @@ func (a *Adapter) Create(cancel <-chan struct{}, in *fuse.CreateIn, name string,
 	return fuse.OK
 }
 
-// Open checks fresh logical access and disables data caching for this profile.
+// Open checks fresh logical access; the default profile disables data caching.
 func (a *Adapter) Open(cancel <-chan struct{}, in *fuse.OpenIn, out *fuse.OpenOut) fuse.Status {
 	return a.open(cancel, in, out, false)
 }
@@ -49,6 +60,10 @@ func (a *Adapter) OpenDir(cancel <-chan struct{}, in *fuse.OpenIn, out *fuse.Ope
 }
 
 func (a *Adapter) open(cancel <-chan struct{}, in *fuse.OpenIn, out *fuse.OpenOut, directory bool) fuse.Status {
+	if a.buffered {
+		a.openMu.Lock()
+		defer a.openMu.Unlock()
+	}
 	id, ok := a.object(in.NodeId)
 	if !ok {
 		return status(fsapi.Stale)
@@ -57,7 +72,12 @@ func (a *Adapter) open(cancel <-chan struct{}, in *fuse.OpenIn, out *fuse.OpenOu
 	if s != fuse.OK {
 		return s
 	}
-	r, s := a.call(cancel, &in.InHeader, fsapi.Command{Operation: fsapi.Open, Object: id, Flags: f})
+	// Reject before dispatch: O_APPEND|O_TRUNC must not truncate a file while
+	// admitting a description that cannot safely supply mmap page offsets.
+	if a.buffered && f.Append {
+		return status(fsapi.Unsupported)
+	}
+	r, s, identity := a.callIssued(cancel, &in.InHeader, fsapi.Command{Operation: fsapi.Open, Object: id, Flags: f})
 	if s != fuse.OK {
 		return s
 	}
@@ -70,7 +90,7 @@ func (a *Adapter) open(cancel <-chan struct{}, in *fuse.OpenIn, out *fuse.OpenOu
 		}
 		return fuse.EISDIR
 	}
-	return a.addHandle(r, directory, out)
+	return a.addHandle(r, directory, identity, f, out)
 }
 
 // Read returns completion-owned bytes; no kernel input buffer escapes.
@@ -98,7 +118,20 @@ func (a *Adapter) Write(cancel <-chan struct{}, in *fuse.WriteIn, data []byte) (
 	if in.Offset > math.MaxInt64 || len(data) != int(in.Size) {
 		return 0, fuse.EINVAL
 	}
-	r, s := a.call(cancel, &in.InHeader, fsapi.Command{Operation: fsapi.Write, Object: d.object, Handle: d.handle, Offset: int64(in.Offset), Data: data})
+	command := fsapi.Command{Operation: fsapi.Write, Object: d.object, Handle: d.handle, Offset: int64(in.Offset), Data: data}
+	var r fsapi.Result
+	var s fuse.Status
+	if in.WriteFlags&fuse.WRITE_CACHE != 0 {
+		// Native cache writes have no trustworthy current workload identity. The
+		// kernel names an existing writable description, possibly a different one
+		// from the mapping's original fd. Use only its retained issued grant.
+		if !a.buffered || !d.writable || d.grant.PID == 0 {
+			return 0, fuse.EACCES
+		}
+		r, s = a.callAuthorized(context.Background(), d.grant, command)
+	} else {
+		r, s = a.call(cancel, &in.InHeader, command)
+	}
 	if s != fuse.OK {
 		return 0, s
 	}

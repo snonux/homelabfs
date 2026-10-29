@@ -29,3 +29,6 @@ func mountedIdentity(fd int) ([]byte, error) {
 	}
 	return buf[:n], nil
 }
+
+// Native multiuser/cache-grant behavior awaits FreeBSD runtime validation.
+func multiuserAvailable() bool { return false }
