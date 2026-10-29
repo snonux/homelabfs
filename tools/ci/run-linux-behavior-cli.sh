@@ -17,9 +17,9 @@ test ! -e "$reports/cli-test-events.jsonl"
 go_binary=$(command -v go)
 module_cache=$(go env GOMODCACHE)
 test -d "$module_cache"
-fixture_root=$(mktemp -d /tmp/hfs-behavior-cli-ci.XXXXXXXX)
+fixture_root=$(mktemp -d /tmp/hbc.XXXXXXXX)
 chmod 0711 "$fixture_root"
-mkdir -m 0711 "$fixture_root/fixtures"
+mkdir -m 0711 "$fixture_root/f"
 
 _collect() {
     local status=$?
@@ -48,7 +48,7 @@ trap _collect EXIT
 # root-owned build cache and traversable run parent for numeric UID helpers.
 # pipefail preserves any go/sudo/tee failure before validating exact test events.
 sudo -n -- env "PATH=$PATH" "GOMODCACHE=$module_cache" \
-    "GOCACHE=$fixture_root/go-cache" "TMPDIR=$fixture_root/fixtures" \
+    "GOCACHE=$fixture_root/go-cache" "TMPDIR=$fixture_root/f" \
     GOMAXPROCS=2 CGO_ENABLED=0 HOMELABFS_BEHAVIOR_CLI_INTEGRATION=1 \
     "$go_binary" test -json ./internal/daemoncli \
     -run '^TestLinuxBehaviorCLIIntegration$' -v -count=1 -timeout=8m \

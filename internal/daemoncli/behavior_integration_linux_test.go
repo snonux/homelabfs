@@ -29,7 +29,7 @@ func TestLinuxBehaviorCLIIntegration(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("approved behavior CLI counterpart requires root")
 	}
-	base, err := os.MkdirTemp("", "hfs-behavior-cli-")
+	base, err := os.MkdirTemp("", "b-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,6 +46,11 @@ func TestLinuxBehaviorCLIIntegration(t *testing.T) {
 	})
 	if err := os.Chmod(base, 0711); err != nil {
 		t.Fatal(err)
+	}
+	for _, roleDir := range []string{"r", "u"} {
+		if err := validateBehaviorSocketPath(filepath.Join(base, roleDir, "control")); err != nil {
+			t.Fatal(err)
+		}
 	}
 	binary, helper := filepath.Join(base, "homelabfs"), filepath.Join(base, "hfs-behavior")
 	for _, entry := range []struct{ path, pkg string }{{binary, "./cmd/homelabfs"}, {helper, "./cmd/hfs-behavior"}} {
@@ -65,7 +70,11 @@ func TestLinuxBehaviorCLIIntegration(t *testing.T) {
 	hash := sha256.Sum256(data)
 	digest := hex.EncodeToString(hash[:])
 	for _, role := range []string{"root", "unprivileged"} {
-		root := filepath.Join(base, role)
+		roleDir := "r"
+		if role == "unprivileged" {
+			roleDir = "u"
+		}
+		root := filepath.Join(base, roleDir)
 		if err := os.Mkdir(root, 0711); err != nil {
 			t.Fatal(err)
 		}

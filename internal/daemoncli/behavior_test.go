@@ -7,8 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/snonux/homelabfs/internal/behavior"
-	"github.com/snonux/homelabfs/internal/fuseadapter"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,12 +15,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/snonux/homelabfs/internal/behavior"
 	"github.com/snonux/homelabfs/internal/fsapi"
+	"github.com/snonux/homelabfs/internal/fuseadapter"
+	"golang.org/x/sys/unix"
 )
 
 func behaviorFixture(t *testing.T) (behaviorLayout, string) {
 	t.Helper()
-	base := t.TempDir()
+	base, err := os.MkdirTemp("/tmp", "hb-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(base); err != nil {
+			t.Error(err)
+		}
+	})
 	l := behaviorLayout{DataRoot: filepath.Join(base, "data"), JournalRoot: filepath.Join(base, "journal"), ControlRoot: filepath.Join(base, "control")}
 	mount := filepath.Join(base, "mount")
 	for _, p := range append(l.roots(), mount) {
@@ -342,5 +351,66 @@ func TestBehaviorNormalUnmountBoundedAndPreserved(t *testing.T) {
 	<-finished
 	if !lifetime.retained {
 		t.Fatal("late normal completion released uncertain resources")
+	}
+}
+
+func TestBehaviorSocketPathNativeBudget(t *testing.T) {
+	var address unix.RawSockaddrUnix
+	suffix := socketPath(Config{ControlDir: "/node", VolumeID: "11111111-1111-4111-8111-111111111111"})
+	// Joining below a control root adds this suffix unchanged. Byte length,
+	// including NUL, must fit actual native sun_path (108 Linux,104 FreeBSD).
+	budget := len(address.Path) - 1 - len(suffix)
+	for _, c := range []struct {
+		name, root string
+		bad        bool
+	}{
+		{name: "prior failing CI layout", root: "/tmp/hfs-behavior-cli-ci.ZXpQZiE4/fixtures/hfs-behavior-cli-3878509850/root/control", bad: true},
+		{name: "compact CI root role", root: "/tmp/hbc.12345678/f/b-4294967295/r/control"},
+		{name: "compact CI unprivileged role", root: "/tmp/hbc.12345678/f/b-4294967295/u/control"},
+		{name: "boundary", root: "/" + strings.Repeat("a", budget-1)},
+		{name: "overlong", root: "/" + strings.Repeat("a", budget), bad: true},
+		{name: "unicode byte boundary", root: "/" + strings.Repeat("é", (budget-1)/2) + strings.Repeat("a", (budget-1)%2)},
+		{name: "unicode overlong", root: "/" + strings.Repeat("é", (budget-1)/2) + strings.Repeat("a", (budget-1)%2) + "a", bad: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			err := validateBehaviorSocketPath(c.root)
+			if (err != nil) != c.bad {
+				t.Fatal(len(c.root), len(address.Path), err)
+			}
+		})
+	}
+}
+func TestBehaviorSocketPreflightPreservesRootsAndReports(t *testing.T) {
+	l, mount := behaviorFixture(t)
+	var address unix.RawSockaddrUnix
+	extra := len(address.Path) - len(socketPath(Config{ControlDir: filepath.Join(l.ControlRoot, "node"), VolumeID: "11111111-1111-4111-8111-111111111111"}))
+	if extra < 1 {
+		t.Fatal("fixture itself exceeded native socket budget")
+	}
+	oldControl := l.ControlRoot
+	l.ControlRoot = filepath.Join(oldControl, strings.Repeat("c", extra))
+	if err := os.Mkdir(l.ControlRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(filepath.Dir(l.DataRoot), "helper")
+	payload := []byte("pinned synthetic helper; never executed")
+	if err := os.WriteFile(binary, payload, 0500); err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256(payload)
+	o := behaviorOptions{layout: l, mountpoint: mount, binary: binary, digest: hex.EncodeToString(hash[:]), profile: "hfs-direct", role: "root", jsonPath: filepath.Join(filepath.Dir(binary), "report.json"), xmlPath: filepath.Join(filepath.Dir(binary), "report.xml"), initialize: true}
+	if err := o.validateInputs(); err == nil || !strings.Contains(err.Error(), "admin socket path") {
+		t.Fatal("long socket path reached initialization", err)
+	}
+	for _, root := range l.roots() {
+		entries, err := os.ReadDir(root)
+		if err != nil || len(entries) != 0 {
+			t.Fatal("socket refusal changed root", root, entries, err)
+		}
+	}
+	for _, path := range []string{o.jsonPath, o.xmlPath} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatal("socket refusal created evidence", path, err)
+		}
 	}
 }

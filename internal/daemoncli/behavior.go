@@ -122,6 +122,9 @@ func (o behaviorOptions) validateInputs() error {
 		return fmt.Errorf("explicit hfs-direct or hfs-buffered profile required")
 	}
 
+	if err := validateBehaviorSocketPath(o.layout.ControlRoot); err != nil {
+		return err
+	}
 	if err := o.layout.validate(o.mountpoint, o.initialize); err != nil {
 		return err
 	}
@@ -371,4 +374,17 @@ func boundedBehaviorUnmount(ctx context.Context, normal func() error) error {
 	case <-ctx.Done():
 		return fmt.Errorf("normal unmount uncertain: %w", ctx.Err())
 	}
+}
+
+// Fresh and reopened fixtures use canonical 36-byte UUIDs. Budget the exact
+// enrolled control/node socket path before reports or initialization; the native
+// sockaddr capacity includes the required trailing NUL byte.
+func validateBehaviorSocketPath(controlRoot string) error {
+	const volumeID = "11111111-1111-4111-8111-111111111111"
+	path := socketPath(Config{ControlDir: filepath.Join(controlRoot, "node"), VolumeID: volumeID})
+	var address unix.RawSockaddrUnix
+	if len(path) >= len(address.Path) {
+		return fmt.Errorf("admin socket path needs %d bytes including NUL, native capacity is %d: choose a shorter --control-root (%q)", len(path)+1, len(address.Path), controlRoot)
+	}
+	return nil
 }

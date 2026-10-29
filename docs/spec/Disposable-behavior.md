@@ -13,6 +13,11 @@ still needs the separate approval described in [Test automation](../Test-automat
 An approved run supplies three existing, empty, administratively exclusive roots,
 mode 0700 and owned by the invoking root UID, plus an empty mountpoint with the
 same ownership/mode. All paths are absolute, clean, symlink-free and disjoint.
+The complete `control/node/admin-<36-byte-volume-UUID>.sock` path must also fit
+native `RawSockaddrUnix.Path` including its trailing NUL (108 bytes on Linux,
+104 on FreeBSD). The command predicts this exact path and rejects an overlong
+`--control-root` before report creation or root initialization; it never relocates
+the socket outside the enrolled control root. Use compact approved root paths.
 The native script provisions distinct run-owned ZFS datasets first; the daemon
 never provisions, imports, overlays or destroys datasets. Workload and helper
 access to backing roots is prohibited. For one role/profile invocation:
