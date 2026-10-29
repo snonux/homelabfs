@@ -3,10 +3,15 @@ package behavior
 import (
 	"bytes"
 	"fmt"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
+
+func executableCredential(c *syscall.Credential) (*syscall.Credential, error) {
+	return freeBSDExecutableCredential(c, syscall.SYS_SETGROUPS)
+}
 
 func mountIdentity(fd int) (string, error) {
 	var stat unix.Statfs_t

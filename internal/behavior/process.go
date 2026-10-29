@@ -75,12 +75,18 @@ func Start(ctx context.Context, spawn Spawn, credential *syscall.Credential) (*C
 }
 
 // ExecutableSpawner runs the given executable with its trusted helper arguments.
+// Credentials use supplementary-only Groups; a private exec copy accounts for
+// the platform syscall ABI. Nil and NoSetGroups retain group inheritance.
 func ExecutableSpawner(executable string, args ...string) Spawn {
 	return func(ctx context.Context, in io.Reader, out io.Writer, credential *syscall.Credential) (Process, error) {
+		native, err := executableCredential(credential)
+		if err != nil {
+			return nil, err
+		}
 		c := exec.CommandContext(ctx, executable, args...)
 		c.Stdin, c.Stdout, c.Stderr = in, out, os.Stderr
-		if credential != nil {
-			c.SysProcAttr = &syscall.SysProcAttr{Credential: credential}
+		if native != nil {
+			c.SysProcAttr = &syscall.SysProcAttr{Credential: native}
 		}
 		if err := c.Start(); err != nil {
 			return nil, err

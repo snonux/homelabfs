@@ -2,9 +2,14 @@ package behavior
 
 import (
 	"fmt"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 )
+
+func executableCredential(c *syscall.Credential) (*syscall.Credential, error) {
+	return copyExecutableCredential(c), nil
+}
 
 func mountIdentity(fd int) (string, error) {
 	var stat unix.Statfs_t
