@@ -142,3 +142,7 @@ These commands use bounded local process memory, no host sockets, SSH, VM,
 native FUSE mount, ZFS pool, production data or installation. Lab/native test
 runs and disruptive lifecycle windows retain their separate explicit approval
 requirements in `AGENTS.md` and the lab runbooks.
+
+Cross-volume transactions use the separate [transaction simulation oracle](Transaction-simulation.md),
+which checks the real record-oriented engine with synthetic private namespace and
+recovery capabilities. The existing local-service oracle above remains unchanged.

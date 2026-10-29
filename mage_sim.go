@@ -10,3 +10,10 @@ import "github.com/magefile/mage/sh"
 func SimHistory() error {
 	return sh.RunWithV(map[string]string{"GOMAXPROCS": "2"}, "go", "test", "./internal/sim", "-run", "^(TestHistory.*|TestScenario.*|TestSeededLocalHistoryScenarios|TestLocalHistory.*)$", "-count=1", "-timeout=120s", "-v")
 }
+
+// SimTransactions checks the real transaction ledger against an external namespace
+// oracle on three disposable simulator nodes. Seed/count select 1..32 bounded
+// scenarios; this target opens no OS sockets, lab, VM or FUSE mount.
+func SimTransactions() error {
+	return sh.RunWithV(map[string]string{"GOMAXPROCS": "2"}, "go", "test", "./internal/sim", "-run", "^TestTransaction", "-count=1", "-timeout=120s", "-v")
+}
