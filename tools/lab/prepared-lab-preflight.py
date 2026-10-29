@@ -354,8 +354,10 @@ PKG_LINUX = "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'"
 
 
 def package_hash(text):
-    rows = text.splitlines()
-    require(rows and all(re.fullmatch(r"[A-Za-z0-9_+.,:~%-]+", row) for row in rows),
+    # Only LF separates rows; other controls must not be silently normalized.
+    rows = text.removesuffix("\n").split("\n")
+    # RPM caret versions and the (none) architecture are literal package data.
+    require(rows and all(re.fullmatch(r"[A-Za-z0-9_+.,:~%()^-]+", row) for row in rows),
             "nonempty complete package manifest required")
     canonical = "\n".join(sorted(rows)) + "\n"
     return "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()

@@ -25,6 +25,10 @@ SPEC.loader.exec_module(p)
 
 PACKAGES = "python312-3.12.15\npkg-2.4.2\n"
 PKG_HASH = p.package_hash(PACKAGES)
+ROCKY_PACKAGES = ("gpg-pubkey-1883fff9-656ea603.(none)\n"
+                  "passt-0^20251210.gd04c480-7.el9_8.x86_64\n"
+                  "passt-selinux-0^20251210.gd04c480-7.el9_8.noarch\n")
+ROCKY_PKG_HASH = "sha256:d18d6185ee22d8e011756eb98968a5ecd318e8c28e8a45217fee8782df9aed86"
 CONFIG = 'memory="2G"\ncpu=2\ndisk0_name="disk0.img"\n'
 HEADER = "NAME DATASTORE LOADER CPU MEMORY VNC AUTO STATE\n"
 # Exact retained FreeBSD 15.1 df -kP planning sample supplied by the root agent
@@ -175,6 +179,46 @@ class FakeTransport:
         raise AssertionError(f"unexpected transport command: {destination}: {script}")
 
 
+class PackageHashTests(unittest.TestCase):
+    def test_rpm_caret_and_no_architecture_rows_preserve_canonical_hash(self):
+        self.assertEqual(p.package_hash(ROCKY_PACKAGES), ROCKY_PKG_HASH)
+        reversed_rows = "\n".join(reversed(ROCKY_PACKAGES.splitlines()))
+        self.assertEqual(p.package_hash(reversed_rows), ROCKY_PKG_HASH)
+        self.assertEqual(p.package_hash(reversed_rows + "\n"), ROCKY_PKG_HASH)
+        for changed in (ROCKY_PACKAGES.replace("0^20251210", "0^20251211"),
+                        "\n".join(ROCKY_PACKAGES.splitlines()[1:]) + "\n",
+                        ROCKY_PACKAGES + "pkg-1.noarch\n",
+                        ROCKY_PACKAGES + ROCKY_PACKAGES.splitlines()[0] + "\n"):
+            with self.subTest(changed=changed):
+                self.assertNotEqual(p.package_hash(changed), ROCKY_PKG_HASH)
+
+    def test_freebsd_manifest_canonical_hash_is_unchanged(self):
+        expected = "sha256:023390b231b2f4a59e4ea9be5e31c71762d312a0de76a20c05540df7c7d68b17"
+        self.assertEqual(p.package_hash(PACKAGES), expected)
+        self.assertEqual(p.package_hash("pkg-2.4.2\npython312-3.12.15"), expected)
+
+    def test_retained_complete_rocky_manifest(self):
+        path = HERE.parents[1] / "docs/lab/results/20261029-rocky-recovery/rocky-packages.txt"
+        manifest = path.read_bytes().decode("ascii")
+        self.assertEqual(len(manifest.splitlines()), 1109)
+        self.assertEqual(p.package_hash(manifest),
+                         "sha256:4b689f7e8bb5d66bdabaffe285c49a87a103325266dda6424f8003ee59dcb4e3")
+
+    def test_empty_whitespace_control_and_shell_like_output_is_rejected(self):
+        invalid = ["", "\n", "\n\n", ROCKY_PACKAGES + "\n", "\n" + ROCKY_PACKAGES,
+                   " pkg-1\n", "pkg-1 \n", "pkg 1\n", "pkg\t1\n",
+                   "pkg-1;id\n", "pkg-$(id)\n", "pkg-`id`\n", "pkg-1|id\n",
+                   "pkg-1&&id\n", "pkg-1>file\n", "pkg-'1'\n", 'pkg-"1"\n',
+                   "pkg-1\\nother-2\n", "pkg-1/other\n", "pkg-1\u00a0\n"]
+        invalid += ["pkg-1" + chr(control) + "other-2\n"
+                    for control in range(32) if control != 10]
+        invalid += ["pkg-1\r\n", "pkg-1\x7f\n", "pkg-1\x85other-2\n",
+                    "pkg-1\u2028other-2\n", "pkg-1\u2029other-2\n"]
+        for manifest in invalid:
+            with self.subTest(manifest=manifest), self.assertRaisesRegex(p.Blocked, "package manifest"):
+                p.package_hash(manifest)
+
+
 class PreflightTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="hfs-preflight-offline-")
@@ -209,6 +253,23 @@ class PreflightTests(unittest.TestCase):
         report = p.execute("preflight-policy", env, lambda *args: fake)
         self.assertEqual(report["version_evidence"]["rocky"]["kind"], "live-pinned-ssh")
         self.assertEqual({d for d, _ in fake.calls}, {"host", "rocky.test"})
+
+    def test_running_rocky_rpm_manifest_requires_exact_reviewed_hash(self):
+        directory = self.root / "rpm-manifest"
+        directory.mkdir()
+        plan, policy, env, configs = fixture(directory, True)
+        next(t for t in plan["targets"] if t["name"] == "rocky")["packages"] = ROCKY_PKG_HASH
+        json_file(Path(env["HFS_LAB_PLAN"]), plan)
+        env["HFS_LAB_PLAN_HASH"] = p.canonical_hash(plan)
+        fake = FakeTransport(plan, policy, configs)
+        fake.overrides["rocky.test", p.PKG_LINUX] = ROCKY_PACKAGES
+        self.assertEqual(p.execute("preflight-policy", env, lambda *args: fake)["status"], "admitted")
+        for changed in (ROCKY_PACKAGES.replace("0^20251210", "0^20251211"),
+                        "\n".join(ROCKY_PACKAGES.splitlines()[1:]) + "\n",
+                        ROCKY_PACKAGES + "pkg-1.noarch\n"):
+            fake.overrides["rocky.test", p.PKG_LINUX] = changed
+            with self.subTest(changed=changed), self.assertRaisesRegex(p.Blocked, "live guest package manifest changed"):
+                p.execute("preflight-policy", env, lambda *args: fake)
 
     def test_inventory_parser_rejects_unknown_missing_duplicate_and_transitional(self):
         valid = self.fake("host", "vm list")
