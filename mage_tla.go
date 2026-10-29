@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -49,6 +50,25 @@ func TLATakeoverCoverage(ctx context.Context) error {
 		"TakeoverWitnessGap", "TakeoverWitnessIntactWait")
 }
 
+// TLATransactions checks bounded request authority, transaction and namespace safety.
+func TLATransactions(ctx context.Context) error {
+	return runTLAConfigs(ctx, false, "TransactionsAuthority", "TransactionsProtocol",
+		"TransactionsNamespace", "TransactionsLiveness", "TransactionsRecoveryLiveness")
+}
+
+// TLATransactionsNegative requires counterexamples for removed transaction and home-coverage guards.
+func TLATransactionsNegative(ctx context.Context) error {
+	return runTLAConfigs(ctx, true, "TransactionsNegativePrepare", "TransactionsNegativeFence",
+		"TransactionsNegativeDedup", "TransactionsNegativeVisibility", "TransactionsNegativeRetention", "TransactionsNegativeHomeCoverage")
+}
+
+// TLATransactionsCoverage requires integrated, recovery, gap and namespace witness traces.
+func TLATransactionsCoverage(ctx context.Context) error {
+	return runTLAConfigs(ctx, true, "TransactionsWitnessIntegrated", "TransactionsWitnessRecovery",
+		"TransactionsWitnessGap", "TransactionsWitnessPartial", "TransactionsWitnessLifetime",
+		"TransactionsWitnessStaleCoverage", "TransactionsWitnessReclaim")
+}
+
 func runTLAConfigs(ctx context.Context, negative bool, configs ...string) error {
 	jar, err := tlaJar(ctx)
 	if err != nil {
@@ -81,14 +101,33 @@ func runTLC(ctx context.Context, jar, config string, negative bool) error {
 		module = "Takeover.tla"
 		heap = "-Xmx512m"
 	}
+	modulePath := filepath.Join("spec", "tla", module)
+	configPath := filepath.Join("spec", "tla", config+".cfg")
+	transactions := strings.HasPrefix(config, "Transactions")
+	if transactions {
+		heap = "-Xmx512m"
+		modulePath, configPath, err = snapshotTransactionModel(dir, config)
+		if err != nil {
+			return err
+		}
+	}
 	cmd := exec.CommandContext(ctx, "java", heap, "-XX:ActiveProcessorCount=1", "-XX:+UseParallelGC",
 		"-cp", jar, "tlc2.TLC", "-workers", "1", "-noGenerateSpecTE",
 		"-lncheck", "final",
-		"-metadir", dir, "-config", filepath.Join("spec", "tla", config+".cfg"),
-		filepath.Join("spec", "tla", module))
+		"-metadir", dir, "-config", configPath, modulePath)
 	cmd.Stdout = io.MultiWriter(os.Stdout, log)
 	cmd.Stderr = cmd.Stdout
+	if transactions {
+		if err := os.WriteFile(filepath.Join(dir, "argv.txt"), []byte(strings.Join(cmd.Args, "\n")+"\n"), 0o600); err != nil {
+			return fmt.Errorf("write TLC command: %w", err)
+		}
+	}
 	runErr := cmd.Run()
+	if transactions {
+		if err := recordTLCExit(dir, runErr); err != nil {
+			return err
+		}
+	}
 	if err := log.Close(); err != nil {
 		return fmt.Errorf("close TLC log: %w", err)
 	}
@@ -111,11 +150,48 @@ func checkTLCCounterexample(config, path string, runErr error) error {
 		return fmt.Errorf("read negative TLC evidence: %w", err)
 	}
 	invariant := "Safety"
-	if strings.HasPrefix(config, "TakeoverWitness") {
+	if strings.HasPrefix(config, "TakeoverWitness") || strings.HasPrefix(config, "TransactionsWitness") {
 		invariant = "WitnessAbsent"
 	}
 	if !strings.Contains(string(output), "Invariant "+invariant+" is violated") {
 		return fmt.Errorf("TLC %s failed without the expected %s counterexample", config, invariant)
+	}
+	return nil
+}
+
+func snapshotTransactionModel(dir, config string) (string, string, error) {
+	modulePath := filepath.Join(dir, "Transactions.tla")
+	configPath := filepath.Join(dir, config+".cfg")
+	var hashes strings.Builder
+	for _, name := range []string{"Transactions.tla", config + ".cfg"} {
+		data, err := os.ReadFile(filepath.Join("spec", "tla", name))
+		if err != nil {
+			return "", "", fmt.Errorf("read TLC source: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			return "", "", fmt.Errorf("snapshot TLC source: %w", err)
+		}
+		_, _ = fmt.Fprintf(&hashes, "%x  %s\n", sha256.Sum256(data), name)
+	}
+	_, _ = fmt.Fprintf(&hashes, "%s  tla2tools-%s.jar\n", tlaSHA256, tlaVersion)
+	if err := os.WriteFile(filepath.Join(dir, "sha256.txt"), []byte(hashes.String()), 0o600); err != nil {
+		return "", "", fmt.Errorf("write TLC source hashes: %w", err)
+	}
+	return modulePath, configPath, nil
+}
+
+func recordTLCExit(dir string, runErr error) error {
+	status := "0"
+	if runErr != nil {
+		var exitErr *exec.ExitError
+		if errors.As(runErr, &exitErr) {
+			status = strconv.Itoa(exitErr.ExitCode())
+		} else {
+			status = "launch-error: " + runErr.Error()
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "exit.txt"), []byte(status+"\n"), 0o600); err != nil {
+		return fmt.Errorf("write TLC exit receipt: %w", err)
 	}
 	return nil
 }

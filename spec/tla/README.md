@@ -421,3 +421,293 @@ reboots, storage snapshot rollback, broker/host crashes or lost guard continuity
 attestation authentication/wrong-target coverage, streaming holes/partial payloads,
 request deduplication and retention/GC. Actual broker enrollment/launcher guard,
 kernel/cache/FUSE and VM validation remain separate gates with per-run approval.
+
+## Bounded cross-volume transactions
+
+`Transactions.tla` implements task `5w3` as separate finite projections of
+[Transactions.md](../../docs/spec/Transactions.md). Existing replication and
+takeover sources/configurations are unchanged. Run only these profiles with:
+
+```sh
+mage tlaTransactions
+mage tlaTransactionsNegative
+mage tlaTransactionsCoverage
+```
+
+The runner checks sequentially with one CPU, one worker and a 512 MiB JVM heap.
+Each transaction run executes a private copy of its source/configuration and
+retains those copies, SHA-256 hashes (including the pinned checker), exact
+argument vector, output, TLC metadata/counterexample and Java exit receipt below
+`.cache/tla/Transactions*/`. Positive profiles require exit zero; mutations
+require `Safety` violation and exit 12; reachability controls require
+`WitnessAbsent` violation and exit 12. A timeout, parse error, unrelated invariant
+failure or incomplete search cannot satisfy these controls. There are no state
+constraints, depth cutoffs, symmetry reductions or simulation-only passes.
+`CHECK_DEADLOCK FALSE` permits specified safely blocked states; it does not
+suppress the temporal properties.
+
+### Bounds and composition
+
+The profiles share the contract boundaries below, rather than multiplying every
+unrelated lifetime/retention/claim state by every protocol fault state:
+
+| Projection | Explicit finite state | Contract boundary |
+| --- | --- | --- |
+| `Authority` | Four groups; initially disjoint endpoint closures `{3,4}` and `{1,2}`; immutable anchor 3; one anchored request number; two different exact canonical requests; compatible, split-owner, split-partner or split-membership placement; one anchor restart | A protected claim precedes resolution; complete per-member affinity manifests precede immutable binding; binding includes the anchor. The integrated suffix uses that binding's participant vector for prepare, decision, install, apply, cache, publication and result. |
+| `Protocol` | Two participant groups, three replicas A/B/C; A/B normal pair; B/C recovery majority; one decision slot; terms 1 and 2; one B volatile-tail loss and one A storage loss, independently optional; six group/replica durable checkpoint bits | Starts with the protected claim/binding and compatible joined closure established. Prepares denote the exact bound participants' complete immutable graphs. A selected decision authorizes installation and the shared visibility generation. |
+| `Namespace` | Two directory nodes plus fixed roots; opposing move requests, one home-owned regular file, two names, one handle, one data update, home-version cuts 0..4, six current durable coverage bits and snapshot/catch-up pins | Moves hold closure serialization and revision/permission validation through prepare/decision/apply. Link/unlink denote already selected atomic logical redo; original home references and handle pins govern payload reclamation. |
+
+Groups have distinct positions and promises even though the common membership,
+owner and partner are shared. `JoinMember`, prepare sync/receipt, per-group
+promises, INSTALL and apply can complete in different orders. A partial join
+cannot bind; a partial install/apply cannot publish. Per-member affinity records
+are protected atomic records, not an implementation of distributed persistence.
+Later closure growth conservatively adds members and changes the current minimum
+UUID while preserving the original request's coordinator binding.
+
+The integrated witness is part of `Authority`'s exhaustive safety graph. It
+requires claim and immutable binding, **every** bound prepare, selected COMMIT,
+every install/apply, cache barrier, publication, protected anchor result, source
+removal, a merge that changes the current minimum UUID from 3 to 1, and a retry
+*after that merge* returning the original binding/result without a second effect.
+It checks these interfaces on one complete execution; the separate projections
+are not a refinement/composition proof for all combinations of their state.
+
+### Decision evidence, faults and observation
+
+A prepare bit represents complete exact immutable redo/payload/authorization and
+predecessor graph bytes for that group's distinct position. Owner sync and B
+owned retention are separate actions. Decisions have one designated old writer
+and one candidate per term. B accepts independently of A's sync. Old acceptance
+can race each group's durable higher promise; the coordinator promise captures
+its prior acceptance and complete graph before reporting success. Any B promise
+also preserves its retained dependencies. A delayed pre-promise candidate after
+the coordinator promise is rejected, as is its obsolete session after B restarts.
+
+Fenced recovery consults the B/C majority for **both** groups. This two-term bound
+contains at most one old accepted term, so highest-accepted selection reduces to
+preserving that old value; it does not explore three competing accepted terms.
+Complete captured B history, or the positively fenced A durable source, supports
+adoption. A continuous empty B tail can support absence ABORT. Restarted empty B
+has unknown continuity and cannot prove absence. Unavailable commit dependencies
+block selection. Re-protection installs the selected complete cut durably on both
+prospective nodes before recovery installation/publication; ordinary successful
+records retain the owner-durable plus B-memory boundary.
+
+`chosen` and prepare witnesses are external historical oracle state. They never
+supply a source or decision to recovery. Loss of A storage and B memory may remove
+all operational decision/dependency sources while the oracle remembers an old
+COMMIT; the gap witness demands precisely this safely blocked state, not a
+fabricated ABORT or a partially served namespace. Later valid replacement
+checkpoints supply the original decision and dependencies after source pruning.
+A result/reply lost on the wire is represented by stopping before the next action
+and retrying the anchor; there is no timeout-driven cancellation/rollback.
+
+Protected claim/bind/manifest/install/COMPLETE/result/checkpoint records are
+indivisible complete-record operations at their specified boundary. This model
+does not re-prove their per-frame transport/codec or local persistence. Their
+referenced graph is acyclic by construction: prepares precede decisions,
+acceptance precedes installs, installs/apply precede COMPLETE/publication, and
+anchor results follow visibility. Arbitrary graph corruption, torn bytes, hashes,
+reporter stream holes and a transport message queue are outside these bounds.
+Lost messages are arbitrary stuttering; duplicate exact installs/apply are
+idempotent set updates/stuttering. Independent group actions represent reordering.
+These abstractions do not establish transport retry implementation correctness.
+
+`Fence` assumes positive revocation of the entire old execution/cache domain and
+inhibition of its relaunch. It is the takeover contract's external fence
+assumption, not a lease, timeout or physical fence implementation. `CacheBarrier`
+is a separately schedulable successful invalidation/drain barrier. It may remain
+unavailable forever in safety; committed work then remains gated. There is no
+claim that FUSE, FreeBSD, Linux, mmap or Rocky/9p supplies that barrier. Success
+for real kernels/guest paths remains blocked by their independent capability and
+approved runtime tests.
+
+### Checked obligations and remaining limits
+
+| Obligation | Checked state/actions | Limit |
+| --- | --- | --- |
+| Conflicting same IDs on disjoint endpoint closures | Both digests meet at anchor 3 before resolution; immutable `everClaims` oracle permits one protected claim; placement rejection has no effects | One principal/session/request number; canonical byte equality is represented by distinct symbols, not a hash implementation |
+| Retry/source removal/coordinator change/floors | Integrated witness, immutable binding, unknown anchor-history restart gate, terminal-only retirement, compacted claims, closed tombstone and anchor retirement | One floor advance; durable registration/claim history itself is an atomic graph, not a checkpoint decoder |
+| Affinity joins and partial fan-out | Per-member manifest subsets, complete join before bind, anchor-inclusive members, incompatible placement outcomes | Complete four-group membership is fixed; reconfiguration and verified splitting are separate protocols |
+| Complete prepares and irreversible decisions | Separate owner/B prepare cuts, candidate/sync/ACCEPT, captured promises, selected pair, historical chosen values | Two coordinator terms; invalid/corrupt same-term candidates are excluded by exact single-writer input contract, not quarantined by an implemented parser |
+| Partial apply/visibility/cache failure | Separate participant INSTALL/apply, one publication flag/generation, delayed cache barrier, result/reply gates | One transaction visibility advance, no unsynchronized multi-call snapshot guarantee |
+| Directory cycles/authorization | Opposing moves serialized; ancestry test and revision/permission state locked through decision | Two directory nodes; fixed roots and one boolean permission version. Full Unix/sticky/view checks, replacement object IDs and symlink/path parsing remain simulator/runtime obligations |
+| Object homes/link counts/handles/data aliases | Names reference the same single payload, exact link count, source-name removal, open handle, immutable group affinity and home-reclaim pins | One regular file and one write. No independent per-alias caches, byte ranges, mmap/lock implementation, replacement race or directory-payload reclamation proof |
+| GC/checkpoints/snapshots/catch-up | Every group/replica replacement bit and snapshot release precede original graph GC; unresolved transactions cannot meet that barrier; namespace payload reclaim requires no names/handles/pins and complete coverage of the current home-version cut | Replacement bits mean verified compatible complete manifests, not independent snapshot timestamps. No external ZFS snapshot administration, volume split or received-sink modification |
+| Accepted multi-failure gap | Independent A storage loss+B RAM loss, missing graph/continuity blocking, concrete gap witness | Explicit operator data-loss recovery/new generations are deliberately not automatic model actions |
+
+Safety profiles include optional zero, one and combined declared faults; fault
+budgets are maxima, not obligations. The namespace home flag describes the
+regular-file payload, not the entire group or its directory objects. Reclaiming
+that dead file cannot forbid later unrelated directory transactions. An initial
+namespace oracle incorrectly required this and produced a counterexample; it
+was corrected to check actual file lifetime obligations. That failed run remains
+preserved as model-overconstraint evidence, not a protocol finding.
+
+### Conditional progress
+
+`Liveness` uses the same protocol transitions with faults disabled and retained
+history. Once a candidate exists it must eventually receive a reply. Weak
+fairness is assigned to concrete disk, partner, designated-decision, install/apply
+and publication worker unions. Each successful action consumes finite pending
+work; the unions cannot make infinitely many unrelated state changes to starve a
+required phase. Fairness is not assigned to `chosen`, visible, reply predicates or
+the eventual outcome. COMMIT and ABORT are both possible; neither candidate
+admission nor COMMIT is required by fairness.
+
+`RecoveryLiveness` includes both declared faults and adds a fair worker for the
+finite per-group promises, selection and recovered-pair protection. It checks:
+if complete history and positive fenced authority eventually remain continuously
+available, this single transaction eventually has a successful terminal reply.
+The accepted permanent multi-failure gap can violate that antecedent and remains
+explicitly blocked in safety. The concrete recovery witness separately establishes
+that successful COMMIT recovery is reachable; the property alone is conditional.
+
+Both temporal projections pin complete history (`RetainHistory = TRUE`), omitting
+checkpoint/GC actions while recovery is pending. Full checkpoint/GC interleavings
+remain in `Protocol` safety. Progress additionally assumes ready storage/capacity,
+working cache barriers, a ready pair and fair local workers. Those conditions are
+represented by enabled workers rather than an error/latency implementation. No
+finite completion latency, permanent-failure availability, automatic emergency
+mode or real cache-fence progress is proved.
+
+### Mutation and reachability controls
+
+`NegativePrepare` permits COMMIT proposal/acceptance with missing prepares;
+`NegativeFence` permits the delayed old acceptance after a durable coordinator
+promise; `NegativeDedup` permits both canonical requests to be protected at one
+anchor; `NegativeVisibility` opens visibility before install/apply/cache completion;
+`NegativeRetention` deletes the original graph while dependencies or snapshot
+obligations remain. Each removes an actual safety gate and must produce its own
+real `Safety` counterexample. `NegativeHomeCoverage` separately removes the
+namespace invalidation/catch-up update on a same-file mutation; its counterexample
+reclaims a newer file state using an older checkpoint cut.
+
+Coverage controls demand the integrated retry path, fully published recovered
+COMMIT after owner storage loss, the declared unresolvable gap, a safely hidden
+partial install/apply, and opposing directory moves with one cycle rejection plus
+foreign alias write/source-name removal/open-home retention. Two additional
+home-coverage controls require a stale checkpoint to lose reclamation authority
+after a file mutation and complete current-cut coverage to permit reclamation.
+They require
+`WitnessAbsent` counterexamples while retaining `Safety` first, so an unrelated
+safety failure cannot be mistaken for coverage.
+
+### Recorded transaction verification
+
+The initial fifteen-profile batch below completed locally on 29 October 2026
+against module
+SHA-256 `cfbd97b84e0a23fc88cfb58d2a914e08cd35bf1cb5ce440934c5daccca47c98e`,
+with the pinned TLC 1.8.0 jar, one CPU/worker and 512 MiB heap. The complete
+positive checks had zero queued states; expected negative/witness searches stop
+at the demonstrated counterexample. Full positive Protocol took approximately
+11 seconds; recovery coverage approximately 6 seconds. No profile timed out or
+required a heap increase.
+
+| Configuration suffix | Generated | Distinct | Depth | Java exit |
+| --- | ---: | ---: | ---: | ---: |
+| `Authority` | 3,720 | 1,430 | 30 | 0 |
+| `Protocol` | 2,554,533 | 436,166 | 40 | 0 |
+| `Namespace` | 136,744 | 27,363 | 19 | 0 |
+| `Liveness` | 324 | 190 | 17 | 0 |
+| `RecoveryLiveness` | 28,914 | 10,168 | 31 | 0 |
+| `NegativePrepare` | 412 | 218 | 5 | 12 |
+| `NegativeFence` | 2,992 | 1,122 | 9 | 12 |
+| `NegativeDedup` | 33 | 33 | 4 | 12 |
+| `NegativeVisibility` | 4,442 | 1,611 | 10 | 12 |
+| `NegativeRetention` | 930 | 413 | 7 | 12 |
+| `WitnessIntegrated` | 2,259 | 926 | 20 | 12 |
+| `WitnessRecovery` | 1,395,674 | 254,324 | 23 | 12 |
+| `WitnessGap` | 34,169 | 11,094 | 16 | 12 |
+| `WitnessPartial` | 6,236 | 2,232 | 11 | 12 |
+| `WitnessLifetime` | 40,346 | 11,463 | 10 | 12 |
+
+The receipt index `.cache/tla/transactions-5w3-receipts.json` gives every exact
+`Transactions*-verified-*` evidence directory. Positive directory suffixes are
+`Authority-verified-p5__48hg`, `Protocol-verified-z2ws1rb8`,
+`Namespace-verified-2louw4nj`, `Liveness-verified-bvqbqa2p` and
+`RecoveryLiveness-verified-z39spenl`, all prefixed by `Transactions` below
+`.cache/tla/`. Each contains the executed source/configuration, checker/source
+hashes, exact argument vector, output and explicit exit status. Initial preflight
+and superseded-source checks remain separately named; they are not substituted
+for final-source receipts. The initial overconstrained namespace failure is
+`TransactionsNamespace-final-o7ecfqvx` and remains available for inspection.
+
+Final mutation traces specifically demonstrate COMMIT without prepares, delayed
+old COMMIT accepted after a durable promise, two incompatible protected canonical
+claims, COMMIT visible with missing INSTALL/apply/cache barriers, and removal of
+unresolved COMMIT graph evidence while a snapshot pin remains. Earlier ABORT-first
+mutation traces remain preserved, but the table uses these stronger COMMIT cases.
+As with the other TLC checks, exhaustive results are conditional on finite
+fingerprinting without distinct-state collision; they are bounded model evidence,
+not a mathematical proof for arbitrary cluster/request bounds.
+
+Tagged Mage compilation (`go test -tags mage -run '^$' .`), tagged `go vet`,
+`errcheck`, Mage discovery and actual `tlaTransactionsNegative` /
+`tlaTransactionsCoverage` target invocations also passed sequentially with
+`GOMAXPROCS=2` / `GOFLAGS=-p=1`. Their outer logs/exit receipts are in
+`.cache/tla/Transactions-mage-checks-5cct1svv`; those target invocations additionally
+retain the runner's private snapshots, `argv.txt`, hashes and `exit.txt` for each
+child. No normal/takeover model rerun, broad runtime Go test suite, lab, VM, SSH,
+FUSE, snapshot or network operation was used for these checks. The positive
+target was discovered/compiled; its profiles were run directly with the same
+pinned TLC arguments and retained per-profile receipts above, rather than claimed
+as a second full Mage invocation.
+
+### Same-file coverage refinement
+
+Root self-review then identified an additional model defect: namespace checkpoint
+bits could survive Link/WriteAlias/Unlink and incorrectly authorize reclaim of a
+newer file state. This was model undercoverage of the GC/home-lifetime contract,
+not evidence that such stale checkpoints are safe. Every same-file mutation now
+increments a bounded home version, clears current coverage and restores the
+assigned-replica catch-up obligation. It preserves an already released snapshot
+hold as released. Unrelated directory operations do not invalidate this file's
+coverage or resurrect it. Once all six group/replica replacements cover the
+current cut, `replacementVersion` records that cut; reclamation's independent
+oracle requires it to equal `homeVersion`.
+
+The following impacted profiles were run against final namespace module SHA-256
+`c52858cddb7279ee0cfecbcc1b1d5274169c71cc90e3f08bde9de50dd6cf4433` with the
+same 512 MiB/one CPU/worker bound. They supersede the earlier Namespace and
+WitnessLifetime rows for this projection; the earlier executed source and
+receipts remain preserved without relabeling.
+
+| Configuration suffix | Generated | Distinct | Depth | Java exit |
+| --- | ---: | ---: | ---: | ---: |
+| `Namespace` | 543,043 | 115,500 | 26 | 0 |
+| `WitnessLifetime` | 39,012 | 11,468 | 10 | 12 |
+| `WitnessStaleCoverage` | 38,651 | 11,355 | 9 | 12 |
+| `WitnessReclaim` | 466,633 | 106,024 | 20 | 12 |
+| `NegativeHomeCoverage` | 56,110 | 15,288 | 10 | 12 |
+
+`WitnessStaleCoverage` completes a checkpoint and releases its pins, then links
+the file: snapshot stays released, while coverage becomes empty and catch-up is
+required again. `WitnessReclaim` reaches a file that has been linked, written and
+unlinked at both names, then reclaims it only after all six replacement bits
+cover home version 4. `NegativeHomeCoverage` actually deletes the home with
+home version 1 but replacement version 0. These controls make both blocked stale
+coverage and successful current-cut reclamation nonvacuous.
+
+Evidence directories are `TransactionsNamespace-home-fix-b8c2xsfv`,
+`TransactionsWitnessLifetime-home-fix-bprayypm`,
+`TransactionsWitnessStaleCoverage-home-fix-_gticqpe`,
+`TransactionsWitnessReclaim-home-fix-irq81bnj` and
+`TransactionsNegativeHomeCoverage-home-fix-_4vmyfu_`, below `.cache/tla/`.
+The receipt index retains these plus the initial full-batch source hashes.
+The Authority/Protocol prefix through `ProtocolWitness` is byte-for-byte unchanged
+(SHA-256 `8bd7ad0fc487d3d6a0dc9b3ea1dee0224e100272075b75b9bafcc5556f4a354d`),
+as is the common dispatch/fairness suffix beginning `Init == CASE Profile`
+(SHA-256 `4a25d42d5c7a5a23bfe3e768d6e104bb84ceaadf6b033b41261b79b1253764ab`).
+Their earlier positive/liveness receipts therefore apply to unchanged selected
+transition systems; they were executed against the explicitly listed initial
+module bytes, not falsely reported as runs of the final namespace source.
+
+After adding the three controls to the public target mappings, tagged Mage
+compilation/vet/errcheck/discovery and both actual negative/coverage targets were
+checked again sequentially with `GOMAXPROCS=2` / `GOFLAGS=-p=1`; all passed.
+Their outer receipts are in
+`.cache/tla/Transactions-home-mage-checks-14vzipiz`. The targets now require six
+negative counterexamples and seven distinct coverage witnesses. Each child run
+also retains the runner's exact final module/config snapshots and exit receipt.
