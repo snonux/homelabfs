@@ -3,7 +3,10 @@
 `internal/sim` composes the actual `transport.Endpoint`, static cluster registry,
 journal codecs, `fsservice.Service`, and `vfs.Simulator` inside one process. It is
 a disposable core fixture, not the distributed replication protocol. The normal
-replication/recovery state machines and their history oracle remain future work.
+replication/recovery state machines remain future work. The implemented
+[external history oracle](History-oracle.md) checks bounded serial workloads
+against real local service recovery; distributed acknowledgement/receipt
+scenarios still require the pending protocol engine.
 Passing this fixture does not grant workload readiness, fencing, native FUSE,
 WireGuard, VM, ZFS, deployment or production durability evidence.
 

@@ -35,7 +35,12 @@ func (allowFixture) Check(_ cluster.Identity, _ transport.Frame, _ transport.Dir
 }
 func newRig(t *testing.T, seed uint64, count int, factory Factory) *rig {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	return newRigWithTimeout(t, seed, count, factory, 5*time.Second)
+}
+
+func newRigWithTimeout(t *testing.T, seed uint64, count int, factory Factory, timeout time.Duration) *rig {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), timeout)
 	t.Cleanup(cancel)
 	s, err := NewScheduler(Limits{Steps: 10000, Pending: 256, Bytes: 4 << 20})
 	if err != nil {
