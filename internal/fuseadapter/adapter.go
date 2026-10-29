@@ -50,12 +50,19 @@ type Config struct {
 	Service     *fsservice.Service
 	Validation  fsservice.ValidationProfile
 	Credentials Credentials
+	// ValidationLockEvent observes successful local lock enqueue/cancellation.
+	// A controlled fixture callback must not block or call the adapter.
+	ValidationLockEvent func(fsapi.Operation)
 	// BufferedValidation admits same-connection buffered I/O and mmap only for
 	// disposable fixtures. Kernel writeback-cache negotiation remains disabled.
 	BufferedValidation bool
 	// MultiuserValidation admits allow_other solely for root-owned synthetic
 	// fixed-credential participants; it requires BufferedValidation.
 	MultiuserValidation bool
+	// UnprivilegedValidation admits only a root-owned disposable harness whose
+	// semantic helpers use fixed nonzero credentials. It requires Participants
+	// binding in both direct and buffered profiles before allow_other is enabled.
+	UnprivilegedValidation bool
 	// MaxNodes bounds each retained per-generation node/process/owner identity
 	// map, including forgotten objects and exited processes; it is not active-only.
 	MaxNodes, MaxHandles, MaxRequests int
@@ -85,6 +92,7 @@ type Adapter struct {
 	service              fsapi.Filesystem
 	publication          *fsservice.Service
 	credentials          Credentials
+	lockEvent            func(fsapi.Operation)
 	info                 fsservice.FrontendInfo
 	session              fsapi.UUID
 	mu                   sync.Mutex
@@ -112,6 +120,9 @@ var _ fuse.RawFileSystem = (*Adapter)(nil)
 // Adding normal mounts requires verified credential/traversal/cache admission,
 // plus the real Protocol already required by fsservice normal construction.
 func New(c Config) (*Adapter, error) {
+	if c.UnprivilegedValidation && (c.MultiuserValidation || !multiuserAvailable()) {
+		return nil, fmt.Errorf("%w: unprivileged fixture requires root and a distinct role", fsapi.Unsupported)
+	}
 	if c.MultiuserValidation && (!c.BufferedValidation || !multiuserAvailable()) {
 		return nil, fmt.Errorf("%w: multiuser validation requires root and buffered validation", fsapi.Unsupported)
 	}
@@ -129,13 +140,13 @@ func New(c Config) (*Adapter, error) {
 	if err != nil {
 		return nil, err
 	}
-	if c.BufferedValidation {
+	if c.BufferedValidation || c.UnprivilegedValidation {
 		binder, ok := c.Credentials.(interface {
 			BindMount(MountIdentity) error
 			seal()
 		})
 		if !ok {
-			return nil, fmt.Errorf("%w: buffered validation requires connection-bound controlled participants", fsapi.Unsupported)
+			return nil, fmt.Errorf("%w: buffered/unprivileged validation requires connection-bound controlled participants", fsapi.Unsupported)
 		}
 		if err := binder.BindMount(a.Identity()); err != nil {
 			return nil, err
@@ -158,7 +169,7 @@ func newAdapter(c Config, service fsapi.Filesystem, info fsservice.FrontendInfo)
 	if c.MaxNodes < 1 || c.MaxHandles < 1 || c.MaxRequests < 1 || c.MaxNodes > 65536 || c.MaxHandles > 65536 || c.MaxRequests > 256 {
 		return nil, fsapi.Invalid
 	}
-	a := &Adapter{buffered: c.BufferedValidation, multiuser: c.MultiuserValidation, RawFileSystem: fuse.NewDefaultRawFileSystem(), service: service, credentials: c.Credentials, info: info, nodes: map[uint64]*node{1: {object: info.Root}}, objects: map[fsapi.ObjectID]uint64{info.Root: 1}, handles: make(map[uint64]*description), writers: make(map[fsapi.ObjectID]fsapi.Cred), processes: make(map[uint64]uint32), nativeOwners: make(map[uint64]uint64), processOwners: make(map[uint64]uint64), nextNode: 1, maxNodes: c.MaxNodes, maxHandles: c.MaxHandles, slots: make(chan struct{}, c.MaxRequests)}
+	a := &Adapter{lockEvent: c.ValidationLockEvent, buffered: c.BufferedValidation, multiuser: c.MultiuserValidation || c.UnprivilegedValidation, RawFileSystem: fuse.NewDefaultRawFileSystem(), service: service, credentials: c.Credentials, info: info, nodes: map[uint64]*node{1: {object: info.Root}}, objects: map[fsapi.ObjectID]uint64{info.Root: 1}, handles: make(map[uint64]*description), writers: make(map[fsapi.ObjectID]fsapi.Cred), processes: make(map[uint64]uint32), nativeOwners: make(map[uint64]uint64), processOwners: make(map[uint64]uint64), nextNode: 1, maxNodes: c.MaxNodes, maxHandles: c.MaxHandles, slots: make(chan struct{}, c.MaxRequests)}
 	if _, err := rand.Read(a.session[:]); err != nil {
 		return nil, fmt.Errorf("mount session: %w", err)
 	}
@@ -272,6 +283,9 @@ func (a *Adapter) dispatch(ctx context.Context, cred fsapi.Cred, c fsapi.Command
 	r := fsapi.NewRequest(cred)
 	if err := a.service.Dispatch(ctx, r, c); err != nil {
 		return nil, err
+	}
+	if a.lockEvent != nil && (c.Operation == fsapi.WaitLock || c.Operation == fsapi.CancelLock) {
+		a.lockEvent(c.Operation)
 	}
 	return r, nil
 }

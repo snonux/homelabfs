@@ -231,3 +231,19 @@ func TestDefaultDirectProfileAppend(t *testing.T) {
 	}
 	a.OnUnmount()
 }
+
+func TestUnprivilegedValidationRequiresRootAndControlledBinding(t *testing.T) {
+	_, service := serviceFixture(t, "", credentialFunc(testCredentials))
+	c := Config{Service: service, Validation: service.FrontendInfo().Validation, Credentials: credentialFunc(testCredentials), UnprivilegedValidation: true}
+	if _, err := New(c); !errors.Is(err, fsapi.Unsupported) {
+		t.Fatal("unbound unprivileged direct profile admitted", err)
+	}
+	c.BufferedValidation = true
+	if _, err := New(c); !errors.Is(err, fsapi.Unsupported) {
+		t.Fatal("unbound unprivileged buffered profile admitted", err)
+	}
+	c.MultiuserValidation = true
+	if _, err := New(c); !errors.Is(err, fsapi.Unsupported) {
+		t.Fatal("mixed controlled roles admitted", err)
+	}
+}

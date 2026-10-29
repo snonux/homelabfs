@@ -61,12 +61,12 @@ func initVolume(ctx context.Context, c Config) (volumeIdentity, error) {
 	if err := createPrivate(c.VolumeDir); err != nil {
 		return v, err
 	}
-	for _, name := range []string{"source", "reservations", "workspaces"} {
-		if err := createPrivate(filepath.Join(c.VolumeDir, name)); err != nil {
+	for _, name := range volumePaths(c) {
+		if err := createPrivate(name); err != nil {
 			return v, err
 		}
 	}
-	source, err := vfs.NewOS(ctx, filepath.Join(c.VolumeDir, "source"))
+	source, err := vfs.NewOS(ctx, sourcePath(c))
 	if err != nil {
 		return v, err
 	}
@@ -98,8 +98,8 @@ func inspectVolume(c Config) (volumeIdentity, error) {
 	if err := checkNode(c); err != nil {
 		return v, err
 	}
-	for _, name := range []string{"", "source", "reservations", "workspaces"} {
-		if err := privateDir(filepath.Join(c.VolumeDir, name)); err != nil {
+	for _, name := range append([]string{c.VolumeDir}, volumePaths(c)...) {
+		if err := privateDir(name); err != nil {
 			return v, err
 		}
 	}

@@ -22,6 +22,9 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: homelabfs node-init --control DIR | volume-init|inspect|status|mount|serve --config FILE (see docs/spec/Configuration.md)")
 	}
+	if args[0] == "behavior" {
+		return runBehaviorCommand(ctx, args[1:], stdout, stderr)
+	}
 	if args[0] == "node-init" {
 		return runNodeInit(ctx, args[1:], stdout, stderr)
 	}

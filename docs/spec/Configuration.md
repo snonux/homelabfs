@@ -180,10 +180,10 @@ credentials, replication/failover and real consumer publication remain separate
 unverified gates. No lab, VM, production or host lifecycle operation ran here.
 
 
-The embedded `internal/fuseadapter` API separately admits an explicit controlled
-buffered disposable profile; see [FUSE adapter](FUSE-adapter.md#controlled-buffered-validation-xw3).
-It does not add a CLI flag or broaden the self-client daemon profile. Helpers
-are enrolled before publication, bound to the exact connection, and access only
-the identity-verified mount. Direct I/O and normal-publication denial remain the
-defaults. Root-only synthetic multiuser validation is separately opt-in and
-unprivileged runs report a skip.
+The explicit `homelabfs behavior` fixture composes the real initializer/service,
+pre-enrolled pinned `hfs-behavior` helpers and direct/buffered profiles. Its
+[disposable behavior contract](Disposable-behavior.md) defines separate actual
+data/journal/control roots, root-owned daemon with genuine fixed unprivileged
+helper credentials, evidence and restart. It does not change version 1 normal
+configuration or the direct self-client `mount`/`serve` commands above. Native
+runtime acceptance remains a separate approved gate.

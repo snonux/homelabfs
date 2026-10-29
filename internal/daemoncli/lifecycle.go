@@ -19,6 +19,7 @@ import (
 
 type localService struct {
 	service *fsservice.Service
+	paths   []string
 	roots   []*vfs.OS
 	lock    *os.File
 	faults  *testFaults
@@ -61,15 +62,18 @@ func openLocal(ctx context.Context, c Config) (_ *localService, retErr error) {
 		return nil, err
 	}
 	base := filepath.Join(c.VolumeDir, "workspaces", workspace.String())
-	if err := createPrivate(base); err != nil {
-		return nil, err
-	}
-	for _, name := range []string{"data", "journal", "progress"} {
-		if err := createPrivate(filepath.Join(base, name)); err != nil {
+	paths, parents := workspacePaths(c, workspace.String())
+	for _, name := range parents {
+		if err := createPrivate(name); err != nil {
 			return nil, err
 		}
 	}
-	paths := []string{filepath.Join(c.VolumeDir, "source"), filepath.Join(c.VolumeDir, "reservations"), filepath.Join(base, "data"), filepath.Join(base, "journal"), filepath.Join(base, "progress")}
+	for _, name := range paths[2:] {
+		if err := createPrivate(name); err != nil {
+			return nil, err
+		}
+	}
+	local.paths = paths
 	for _, name := range paths {
 		root, err := vfs.NewOS(ctx, name)
 		if err != nil {

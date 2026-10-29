@@ -190,12 +190,13 @@ multiuser credentials, writable mmap, replicated durability, failover or 9p evid
 
 An embedding disposable harness may select `Config.BufferedValidation` with a
 matching real service and `*Participants`. This removes `FOPEN_DIRECT_IO` only
-for this explicit profile; normal publication remains denied. The CLI continues
-to admit only its existing direct-I/O self-client. No writeback-cache capability,
+for this explicit profile; normal publication remains denied. The normal CLI `mount`/`serve` commands retain their existing direct-I/O
+self-client; the explicit [disposable behavior command](Disposable-behavior.md)
+composes these controlled profiles. No writeback-cache capability,
 keep-cache, positive TTL, external mutation or owner-change/cache-fencing
 contract is added. All mutations use one service and the same FUSE connection.
-FreeBSD runtime validation and the complete portable `vq3` report harness remain
-separate work.
+FreeBSD runtime validation remains a separate approved gate; the portable
+`vq3` report runner is shared by the disposable fixture.
 
 A successful authenticated CREATE/OPEN retains the exact issuing credentials on
 its service description, object and generation. Only kernel `WRITE_CACHE`
@@ -226,8 +227,10 @@ retain a description and its flock through a live mapping after all fds close.
 
 `Participants` binds once to the exact volume/generation/session. It registers
 only its own fixed credentials and trusted helpers it directly spawns, retains
-each child unreaped, and reads task credentials through retained process
-directories. Every request must match all real/effective/saved/filesystem IDs
+each child unreaped, and reads Linux task credentials through retained process
+directories. On supported FreeBSD 15.1 amd64 it verifies the pinned process-start
+and complete credential ABI described in the [fixture contract](Disposable-behavior.md).
+Every request must match all real/effective/saved/filesystem IDs
 and the exact group set; unknown, retired or mutated identities are denied.
 Process tokens never reuse, and at most 64 process incarnations are admitted.
 Helpers must never change credentials, exec again, share file tables or transfer
@@ -245,11 +248,14 @@ fallback exists. Mmap accesses run in helpers, because a Go daemon accessing its
 own FUSE mmap can deadlock its runtime GC while waiting for its own page-fault
 callback.
 
-`MultiuserValidation` additionally requires root on Linux and explicitly enables
+`MultiuserValidation` additionally requires root and buffered validation and explicitly enables
 `allow_other` for synthetic fixed numeric users/groups. Each backing root remains
 private; no package, account or FUSE system configuration is changed. Unprivileged
-runs skip that separate case with a reason. Native FreeBSD multiuser admission is
-unsupported. A skipped case is not evidence of permission compatibility.
+runs skip that separate case with a reason. `UnprivilegedValidation` separately
+allows root-owned fixed unprivileged helper fixtures on both direct and buffered
+profiles; it requires the same exact connection binding and publication seal.
+FreeBSD runtime multiuser compatibility remains unverified. A skipped case is not
+evidence of permission compatibility.
 
 The opt-in focused command is:
 

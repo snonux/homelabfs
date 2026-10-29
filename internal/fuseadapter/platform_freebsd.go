@@ -4,6 +4,7 @@ package fuseadapter
 
 import (
 	"bytes"
+	"os"
 	"unsafe"
 
 	"github.com/snonux/homelabfs/internal/fsapi"
@@ -30,5 +31,6 @@ func mountedIdentity(fd int) ([]byte, error) {
 	return buf[:n], nil
 }
 
-// Native multiuser/cache-grant behavior awaits FreeBSD runtime validation.
-func multiuserAvailable() bool { return false }
+// Explicit controlled participants supply fixed native credential evidence.
+// This admits only the disposable bound fixtures; native runtime is a gate.
+func multiuserAvailable() bool { return os.Geteuid() == 0 }

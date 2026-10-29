@@ -25,13 +25,14 @@ const formatVersion = 1
 // Config selects exact local identities and disjoint administrative paths.
 // Paths must be absolute, clean and contain no symlink components.
 type Config struct {
-	FormatVersion   int    `json:"format_version"`
-	NodeID          string `json:"node_id"`
-	VolumeID        string `json:"volume_id"`
-	ControlDir      string `json:"control_dir"`
-	VolumeDir       string `json:"volume_dir"`
-	Mountpoint      string `json:"mountpoint"`
-	EnableTestHooks bool   `json:"enable_test_hooks,omitempty"`
+	layout          *behaviorLayout // fixture-only; never decoded from normal configuration
+	FormatVersion   int             `json:"format_version"`
+	NodeID          string          `json:"node_id"`
+	VolumeID        string          `json:"volume_id"`
+	ControlDir      string          `json:"control_dir"`
+	VolumeDir       string          `json:"volume_dir"`
+	Mountpoint      string          `json:"mountpoint"`
+	EnableTestHooks bool            `json:"enable_test_hooks,omitempty"`
 }
 
 type nodeIdentity struct {
@@ -205,6 +206,8 @@ func readJSON(name string, dest any) error {
 
 func jsonFields(dest any) ([]string, error) {
 	switch dest.(type) {
+	case *behaviorLayout:
+		return []string{"format_version", "data_root", "journal_root", "control_root", "node_id", "volume_id"}, nil
 	case *Config:
 		return []string{"format_version", "node_id", "volume_id", "control_dir", "volume_dir", "mountpoint", "enable_test_hooks"}, nil
 	case *nodeIdentity:

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 	"syscall"
 	"testing"
 
@@ -102,5 +103,21 @@ func TestControlledParticipantsRejectFixedCredentialMutation(t *testing.T) {
 	p.processes[1].uid++
 	if _, err := p.Snapshot(context.Background(), Caller{UID: p.processes[1].uid, GID: p.processes[1].gid, Thread: uint32(os.Getpid())}); !errors.Is(err, fsapi.Permission) {
 		t.Fatal("changed process IDs accepted", err)
+	}
+}
+
+func TestLinuxParticipantCredentialGroupsUnchanged(t *testing.T) {
+	c := syscall.Credential{Uid: 20001, Gid: 20001, Groups: []uint32{20002}}
+	native := participantCredential(c)
+	if !slices.Equal(native.Groups, []uint32{20002}) {
+		t.Fatal("Linux gained compatibility prefix", native)
+	}
+	native.Groups[0] = 999
+	if !slices.Equal(c.Groups, []uint32{20002}) {
+		t.Fatal("Linux constructor aliases input")
+	}
+	got, err := participantGroups([]int{20002}, 20001)
+	if err != nil || !slices.Equal(got, []uint32{20002}) {
+		t.Fatal("Linux group normalization changed", got, err)
 	}
 }

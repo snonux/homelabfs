@@ -171,3 +171,10 @@ require the actual verifier to reject both. Append verification now consumes
 complete 32-byte records and checks every newline, including the final byte.
 Real-file regressions reject final/interior delimiter corruption, changed payload
 bytes and a duplicate record paired with a dropped record at the same total size.
+
+The [explicit disposable behavior command](spec/Disposable-behavior.md) now
+composes this same runner with the real daemon/service and the separately pinned
+helper binary. It supports distinct actual data/journal/control roots and root
+or genuine fixed unprivileged helpers under a root-owned daemon. Existing normal
+self-client publication remains closed; static FreeBSD builds do not supply the
+separately approved native runtime result.

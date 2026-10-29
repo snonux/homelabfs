@@ -39,7 +39,8 @@ type Mount struct {
 
 // Mount starts a restricted disposable mount at an existing empty directory.
 // Writeback-cache negotiation, keep-cache, symlink cache and ID mapping stay
-// disabled. Only explicit root-only MultiuserValidation enables allow_other.
+// disabled. Only explicit root-owned controlled multiuser/unprivileged
+// validation enables allow_other.
 func (a *Adapter) Mount(path string) (*Mount, error) {
 	a.mu.Lock()
 	if a.mountStarted {

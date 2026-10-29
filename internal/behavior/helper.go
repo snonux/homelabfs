@@ -58,6 +58,12 @@ func Helper(ctx context.Context, in io.Reader, out io.Writer) error {
 }
 
 func (h *helper) execute(c Command, reply *Reply) error {
+	if c.Op == "ready" {
+		if h.root != nil {
+			return fmt.Errorf("ready requires unpublished idle helper")
+		}
+		return nil
+	}
 	if c.Op == "bind" {
 		return h.bind(c)
 	}

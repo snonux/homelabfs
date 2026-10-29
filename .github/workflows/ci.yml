@@ -80,6 +80,11 @@ jobs:
         run: >-
           python3 tools/ci/validate-linux-behavior.py
           "$RUNNER_TEMP/$REPORTS_NAME" '${{ matrix.identity }}'
+      - name: Prove real behavior command with root and unprivileged helpers
+        if: ${{ matrix.identity == 'root' }}
+        run: >-
+          tools/ci/run-linux-behavior-cli.sh
+          "$RUNNER_TEMP/$REPORTS_NAME"
       - name: Publish behavioral evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@v4

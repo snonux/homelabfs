@@ -21,15 +21,17 @@ type Result struct {
 
 // Report describes exactly one target/profile; skips never count as passes.
 type Report struct {
-	Target       string          `json:"target"`
-	Profile      string          `json:"profile"`
-	Identity     string          `json:"expected_identity,omitempty"`
-	Capabilities map[string]bool `json:"declared_capabilities,omitempty"`
-	Platform     string          `json:"platform"`
-	RunDirectory string          `json:"run_directory"`
-	Started      time.Time       `json:"started"`
-	Scope        string          `json:"scope"`
-	Results      []Result        `json:"results"`
+	// Fixture records exact owning harness inputs; standalone targets omit it.
+	Fixture      map[string]string `json:"fixture,omitempty"`
+	Target       string            `json:"target"`
+	Profile      string            `json:"profile"`
+	Identity     string            `json:"expected_identity,omitempty"`
+	Capabilities map[string]bool   `json:"declared_capabilities,omitempty"`
+	Platform     string            `json:"platform"`
+	RunDirectory string            `json:"run_directory"`
+	Started      time.Time         `json:"started"`
+	Scope        string            `json:"scope"`
+	Results      []Result          `json:"results"`
 }
 
 type junitSuite struct {
@@ -72,11 +74,15 @@ func (r Report) JSON(w io.Writer) error {
 
 // JUnit writes a JUnit XML suite with explicit failures and skipped reasons.
 func (r Report) JUnit(w io.Writer) error {
+	fixture, err := json.Marshal(r.Fixture)
+	if err != nil {
+		return err
+	}
 	capabilities, err := json.Marshal(r.Capabilities)
 	if err != nil {
 		return err
 	}
-	s := junitSuite{Name: "homelabfs.behavior." + r.Profile, Tests: len(r.Results), Properties: []junitProperty{{"target", r.Target}, {"profile", r.Profile}, {"platform", r.Platform}, {"scope", r.Scope}, {"run_directory", r.RunDirectory}, {"expected_identity", r.Identity}, {"declared_capabilities", string(capabilities)}}}
+	s := junitSuite{Name: "homelabfs.behavior." + r.Profile, Tests: len(r.Results), Properties: []junitProperty{{"fixture", string(fixture)}, {"target", r.Target}, {"profile", r.Profile}, {"platform", r.Platform}, {"scope", r.Scope}, {"run_directory", r.RunDirectory}, {"expected_identity", r.Identity}, {"declared_capabilities", string(capabilities)}}}
 	for _, c := range r.Results {
 		item := junitCase{Name: c.Name, Class: c.Family, Time: c.Seconds}
 		switch c.Status {
