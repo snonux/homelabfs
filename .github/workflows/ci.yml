@@ -1,9 +1,12 @@
 name: Root module checks
 
-# Every test run requires explicit approval. Manual dispatch approves this
-# workstation-style unit-test batch only; no lab or deployment stages run here.
+# Routine isolated local/CI tests are authorized for the current implementation
+# work. This exact branch is the scoped zr3 verification target. Lab/deployment
+# stages retain their separate approval requirements and never run here.
 on:
   workflow_dispatch:
+  push:
+    branches: [codex/linux-fuse-ci-20261029]
 
 permissions:
   contents: read
@@ -11,6 +14,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -33,3 +37,54 @@ jobs:
           GOOS: freebsd
           GOARCH: amd64
           CGO_ENABLED: '0'
+
+  linux-fuse:
+    name: Linux FUSE (${{ matrix.identity }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        identity: [runner, root]
+    env:
+      CGO_ENABLED: '0'
+      GOMAXPROCS: '2'
+      REPORTS_NAME: linux-fuse-${{ matrix.identity }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FUSE on disposable runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends fuse3
+          sudo modprobe fuse
+          test -c /dev/fuse
+          test -r /dev/fuse && test -w /dev/fuse
+          command -v fusermount3
+      - name: Build daemon, behavior CLI and actual kernel fixture
+        run: |
+          mkdir -p "$RUNNER_TEMP/hfs-bin"
+          go build -o "$RUNNER_TEMP/hfs-bin/homelabfs" ./cmd/homelabfs
+          go build -o "$RUNNER_TEMP/hfs-bin/hfs-behavior" ./cmd/hfs-behavior
+          go test -c -o "$RUNNER_TEMP/hfs-bin/fuseadapter.test" ./internal/fuseadapter
+      - name: Run controlled direct and buffered kernel behavior
+        run: >-
+          tools/ci/run-linux-behavior.sh
+          "$RUNNER_TEMP/hfs-bin/fuseadapter.test" "$RUNNER_TEMP/$REPORTS_NAME"
+          '${{ matrix.identity }}'
+      - name: Require complete JSON, JUnit and kernel test evidence
+        if: ${{ always() }}
+        run: >-
+          python3 tools/ci/validate-linux-behavior.py
+          "$RUNNER_TEMP/$REPORTS_NAME" '${{ matrix.identity }}'
+      - name: Publish behavioral evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-fuse-${{ matrix.identity }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/${{ env.REPORTS_NAME }}/
+          if-no-files-found: error
+          retention-days: 14
