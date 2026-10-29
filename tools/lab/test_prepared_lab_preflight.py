@@ -462,13 +462,15 @@ class PreflightTests(unittest.TestCase):
                 children.append(child)
                 return child
             return fake_popen
-        cases = [("import sys; sys.stdin.read(); print('fixture')", None),
-                 ("import sys; sys.stdin.read(); sys.exit(255)", p.Uncertain),
-                 ("import sys; sys.stdin.read(); print('X'*300000)", p.Uncertain),
-                 ("import sys,time; sys.stdin.read(); time.sleep(2)", p.TimedOut)]
-        for code, error in cases:
-            transport = p.Transport(self.root / "host_keys", self.root / "guest_keys", 0.1,
-                                    time.monotonic() + 1, "192.0.2.133")
+        # Allow normal Python startup under scheduler delay; only the sleeping
+        # child intentionally exercises the short command timeout.
+        cases = [("import sys; sys.stdin.read(); print('fixture')", 2, None),
+                 ("import sys; sys.stdin.read(); sys.exit(255)", 2, p.Uncertain),
+                 ("import sys; sys.stdin.read(); print('X'*300000)", 2, p.Uncertain),
+                 ("import sys,time; sys.stdin.read(); time.sleep(2)", 0.1, p.TimedOut)]
+        for code, command_timeout, error in cases:
+            transport = p.Transport(self.root / "host_keys", self.root / "guest_keys", command_timeout,
+                                    time.monotonic() + command_timeout + 1, "192.0.2.133")
             with self.subTest(code=code), mock.patch.object(p.subprocess, "Popen", launch(code)):
                 if error:
                     with self.assertRaises(error):
@@ -492,20 +494,22 @@ class PreflightTests(unittest.TestCase):
 
     def test_main_preserves_transport_uncertainty_exit_classification(self):
         real_popen = subprocess.Popen
-        cases = [("import sys; sys.stdin.read(); print('fixture')", 0, "admitted"),
-                 ("import sys; sys.stdin.read(); sys.exit(2)", 20, "blocked"),
-                 ("import sys; sys.stdin.read(); sys.exit(255)", 1, "uncertain"),
-                 ("import sys; sys.stdin.read(); print('X'*300000)", 1, "uncertain"),
-                 ("import sys,time; sys.stdin.read(); time.sleep(2)", 1, "uncertain")]
-        for code, expected_exit, status in cases:
+        # Keep terminal/overflow outcomes distinct from the intentional timeout
+        # even when the local Python child takes longer to get scheduled.
+        cases = [("import sys; sys.stdin.read(); print('fixture')", 2, 0, "admitted"),
+                 ("import sys; sys.stdin.read(); sys.exit(2)", 2, 20, "blocked"),
+                 ("import sys; sys.stdin.read(); sys.exit(255)", 2, 1, "uncertain"),
+                 ("import sys; sys.stdin.read(); print('X'*300000)", 2, 1, "uncertain"),
+                 ("import sys,time; sys.stdin.read(); time.sleep(2)", 0.1, 1, "uncertain")]
+        for code, command_timeout, expected_exit, status in cases:
             children = []
             def launch(_argv, **kwargs):
                 child = real_popen([sys.executable, "-c", code], **kwargs)
                 children.append(child)
                 return child
             def inspect(*_args):
-                transport = p.Transport(self.root / "host_keys", self.root / "guest_keys", 0.1,
-                                        time.monotonic() + 1, "192.0.2.133")
+                transport = p.Transport(self.root / "host_keys", self.root / "guest_keys", command_timeout,
+                                        time.monotonic() + command_timeout + 1, "192.0.2.133")
                 transport("host", "vm list")
                 return {"status": "admitted"}
             stdout, stderr = io.StringIO(), io.StringIO()
