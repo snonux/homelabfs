@@ -1,0 +1,33 @@
+Native replacement 20261030-n9 / R11
+Canonical plan hash: 717199681ab3c7290a3c2752d57f07dd3aec2b8e633cf67c15d6d72044fa24ab
+Created 2026-10-30T12:55:11Z; expires 2026-10-31T12:55:11Z.
+
+Concrete offline packet for ROOT review and recording actual standing bounded
+nonproduction authorization. No worker remote action, approval/state/execution
+or tracked edit. ROOT retains publication and execution.
+
+N8 failed known readiness before setup/workloads; cleanup/restoration passed.
+Reviewed ey3 commit976c8b9 treats only exact local-host Locked inventory as
+bounded not-ready, retaining exclusions, strict final inventory and uncertainty.
+Readiness SHA2125b73048b097a16309c17a2579058eae46589a545b0de57b1a2637214cd943.
+
+Actual clean b032a53 FreeBSD amd64 CGO0 SUT binaries reused unchanged. Independent
+production Go cmd/internal diff excluding tests was empty; actual ELF, SHA, size,
+embedded VCS/modified=false and original clean-build receipt verified ddf628.
+No rebuild/relabel claim. R11 metadata7fa53b0 uses ordinary124854 source after N8
+clean stop, fresh reads and exact-owned normal cleanup/GUID/written0 proof.
+Pruning/drift still fails admission; no holds or zero-written waiver.
+
+Exact normalized N8 targets, budget, resources, tests and steps preserved. One
+outer driver executes12calls seed0:3guests x2roles x2profiles. Total5220s/87min
+(4260runtime+600cleanup+360restore), disk2.25GiB, logicalIO48MiB, evidence64MiB,
+retention168h,12caps2214592512B,max_attempts1,exact setup/test collection gate.
+Only disposable run-owned resources, normal cleanup and graceful restoration.
+
+ROOT actual planning-only survey9943/4afab9 exit0 at12:53:59UTC admitted expected
+VM states/0sessions; exact subset42ac2e4ee4b795ba90b475527e0aa2cffabab3f58b7cd5063507d9eb8dc3e233.
+Raw stdout2730B and stderr444B/receipt preserved; stderr exactly two known KEX
+warning triplets. Actual offline finalizer/Go planner/30pin validator all0.
+All30 artifact SHA/nonsymlink/scope checks passed. Exact command receipts in
+offline-gates-20261030-n9-r11.json; detail in canonical-plan-validation file.
+No native acceptance inferred. Authorization/state/execution remain ROOT-owned.

@@ -1,0 +1,74 @@
+{
+  "started_at": "2026-10-30T12:53:49.781395+00:00",
+  "finished_at": "2026-10-30T12:53:59.941696+00:00",
+  "scope": "planning-only bounded read-only live admission survey; not a Stage1 run or native acceptance",
+  "native_driver_or_lifecycle_or_workload_executed": false,
+  "preflight_sha256": "dee82ab9471edc39d8738495b32d4ae195c29ae8d854a87a3bb64645dacae761",
+  "input_subset_sha256": "42ac2e4ee4b795ba90b475527e0aa2cffabab3f58b7cd5063507d9eb8dc3e233",
+  "result": {
+    "contract": "prepared-lab-preflight-v1",
+    "run_id": "20261030-n9",
+    "status": "admitted",
+    "inventory": {
+      "freebsd": {
+        "state": "Stopped",
+        "cpus": 4,
+        "memory": 1073741824
+      },
+      "rocky": {
+        "state": "Running",
+        "cpus": 4,
+        "memory": 12884901888
+      },
+      "hfs-test0": {
+        "state": "Stopped",
+        "cpus": 2,
+        "memory": 2147483648
+      },
+      "hfs-test1": {
+        "state": "Stopped",
+        "cpus": 2,
+        "memory": 2147483648
+      },
+      "hfs-test2": {
+        "state": "Stopped",
+        "cpus": 2,
+        "memory": 2147483648
+      }
+    },
+    "active_sessions": 0,
+    "host_disk_available_bytes": 122230173696,
+    "version_evidence": {
+      "hfs-test0": {
+        "kind": "offline-inspected-zfs-snapshot-v1",
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test0@zrepl_20261030_124854_000",
+        "guid": "4108882329840978773",
+        "kernel_source": "reviewed offline image inspection; not a live guest kernel observation"
+      },
+      "hfs-test1": {
+        "kind": "offline-inspected-zfs-snapshot-v1",
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test1@zrepl_20261030_124854_000",
+        "guid": "13955910006948562724",
+        "kernel_source": "reviewed offline image inspection; not a live guest kernel observation"
+      },
+      "hfs-test2": {
+        "kind": "offline-inspected-zfs-snapshot-v1",
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test2@zrepl_20261030_124854_000",
+        "guid": "1987255844270328131",
+        "kernel_source": "reviewed offline image inspection; not a live guest kernel observation"
+      },
+      "rocky": {
+        "kind": "live-pinned-ssh",
+        "kernel": "5.14.0-687.61.1.el9_8.x86_64"
+      },
+      "freebsd": {
+        "kind": "offline-inspected-zfs-snapshot-v1",
+        "snapshot": "zroot/bhyve/freebsd@zrepl_20261030_124854_000",
+        "guid": "5317716860502164012",
+        "kernel_source": "reviewed offline image inspection; not a live guest kernel observation"
+      }
+    },
+    "memory_admission": "physical/current-pressure preflight; actual free+inactive checked again by pinned start-lab helper",
+    "scope": "read-only admission; not a native test pass"
+  }
+}

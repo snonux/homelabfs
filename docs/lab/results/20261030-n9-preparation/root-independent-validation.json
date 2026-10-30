@@ -1,0 +1,14 @@
+{
+  "checked_at": "2026-10-30T12:55:36.759202+00:00",
+  "root_independent_validation": "PASS",
+  "canonical_hash": "717199681ab3c7290a3c2752d57f07dd3aec2b8e633cf67c15d6d72044fa24ab",
+  "artifact_pins": 30,
+  "scope_vs_n8": "identical except new run paths, readiness/artifact/source pins",
+  "survey_subset_sha256": "42ac2e4ee4b795ba90b475527e0aa2cffabab3f58b7cd5063507d9eb8dc3e233",
+  "reused_candidate_source_commit": "b032a53ed840c76f1cb63b120ce88b79275aea82",
+  "binary_vcs_clean": true,
+  "production_cmd_internal_changes_since_binary_source": false,
+  "outer_test_selections": 1,
+  "native_behavior_calls": 12,
+  "state_execution_evidence_approval_absent": true
+}

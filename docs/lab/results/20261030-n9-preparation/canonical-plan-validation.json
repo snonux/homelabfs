@@ -1,0 +1,231 @@
+{
+  "scope": "OFFLINE final N9 packet only; ROOT performed actual planning-only survey; no worker remote/approval/state/execute/tracked edit",
+  "plan_hash": "717199681ab3c7290a3c2752d57f07dd3aec2b8e633cf67c15d6d72044fa24ab",
+  "created": "2026-10-30T12:55:11Z",
+  "expires": "2026-10-31T12:55:11Z",
+  "actual_gates": "All actual finalizer/cached Go planner/final30 offline validator exit0; exact argv/streams/receipts offline-gates-20261030-n9-r11.json",
+  "all_30_artifact_SHA_nonsymlink": "PASS",
+  "exact_normalized_N8_targets_budget_resources_tests_steps": "PASS",
+  "outer_tests": 1,
+  "actual_behavior_calls": 12,
+  "seed": 0,
+  "deadline_sums": {
+    "runtime": 4260,
+    "cleanup": 600,
+    "restoration": 360
+  },
+  "total_seconds": 5220,
+  "resource_caps_bytes": 2214592512,
+  "collection_gate": "exact setup/test applies_after; max_attempts1 every step",
+  "actual_binary_revision": "b032a53ed840c76f1cb63b120ce88b79275aea82",
+  "binary_reuse_proof": "actual ddf628 independently empty production Go cmd/internal diff excluding tests, source tree clean, unchanged SHA/size/ELF/VCS and actual clean receipt; no rebuild/relabel claim",
+  "readiness_commit": "976c8b9",
+  "readiness_sha256": "2125b73048b097a16309c17a2579058eae46589a545b0de57b1a2637214cd943",
+  "metadata_commit": "7fa53b0",
+  "planning_survey_actual_session": 9943,
+  "planning_survey_actual_terminal": "4afab9",
+  "planning_survey_receipt": {
+    "started_at": "2026-10-30T12:53:49.693498+00:00",
+    "finished_at": "2026-10-30T12:53:59.983174+00:00",
+    "elapsed_seconds": 10.28969398800109,
+    "returncode": 0,
+    "source_sha256": "1f87af6cb95a46d5389ea5c41f226eb382726dd1052d41be02503d940eaeeb23",
+    "scope": "actual planning-only read-only admission; no workload/lifecycle/state",
+    "stdout_bytes": 2730,
+    "stdout_sha256": "3d63985000e7bcc127a251c2d828223efbba05b86539bddba2e0158d0ad8b205",
+    "stderr_bytes": 444,
+    "stderr_sha256": "678f28a8b0c17d64f2aedf8f6361f8942a2c740d0d9fd985c9f9e3fcd8a2f6e2"
+  },
+  "planning_survey_exact_subset_sha256": "42ac2e4ee4b795ba90b475527e0aa2cffabab3f58b7cd5063507d9eb8dc3e233",
+  "state_evidence_approval_created": false,
+  "self_review": "PASS exact pins/scope/bounds/real contexts; source prune/drift fails closed; native runtime acceptance pending",
+  "artifact_checks": [
+    {
+      "id": "homelabfs",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-binaries-20261030-n8-r10/homelabfs",
+      "version": "sha256:881a1d6b066f397eec5e5c461439f67e30b94571cf8ff4ecbac06c2dcc99b66f",
+      "sha256": "881a1d6b066f397eec5e5c461439f67e30b94571cf8ff4ecbac06c2dcc99b66f"
+    },
+    {
+      "id": "hfs-behavior",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-binaries-20261030-n8-r10/hfs-behavior",
+      "version": "sha256:5757999ff22e93214ece688c3717987f20f9adea4689f5bee8f7d05816915916",
+      "sha256": "5757999ff22e93214ece688c3717987f20f9adea4689f5bee8f7d05816915916"
+    },
+    {
+      "id": "native-entry",
+      "path": "/home/paul/git/homelabfs/tools/lab/check-native-single-node.sh",
+      "version": "sha256:fc95ec798ad87c287dd24973ccc6b807170a1738bc3acb34b118bc3202199f59",
+      "sha256": "fc95ec798ad87c287dd24973ccc6b807170a1738bc3acb34b118bc3202199f59"
+    },
+    {
+      "id": "native-driver",
+      "path": "/home/paul/git/homelabfs/tools/lab/native-single-node.py",
+      "version": "sha256:0a9bda2daba22e4094b071e4993c33e08068c1e1671e648f3c9063e966a80322",
+      "sha256": "0a9bda2daba22e4094b071e4993c33e08068c1e1671e648f3c9063e966a80322"
+    },
+    {
+      "id": "native-guest",
+      "path": "/home/paul/git/homelabfs/tools/lab/native-single-node-guest.sh",
+      "version": "sha256:77e6ae7fc2cc2b24b1d18b483126a40a8f81f71bb40607e68a4973dd43f140fd",
+      "sha256": "77e6ae7fc2cc2b24b1d18b483126a40a8f81f71bb40607e68a4973dd43f140fd"
+    },
+    {
+      "id": "native-host-keys",
+      "path": "/home/paul/git/homelabfs/docs/lab/f3-known_hosts",
+      "version": "sha256:d2d831e861d6969dd79d3a61b0c0e3af74d4d5282f660d791f210cada4d4ab6f",
+      "sha256": "d2d831e861d6969dd79d3a61b0c0e3af74d4d5282f660d791f210cada4d4ab6f"
+    },
+    {
+      "id": "native-spec",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-spec-20261030-n9-r11.json",
+      "version": "native-single-node-v1",
+      "sha256": "11ccac24abf326fb497f8675b11f8aa18e1894e22ee5a3cec837c72deb65b549"
+    },
+    {
+      "id": "preflight",
+      "path": "/home/paul/git/homelabfs/tools/lab/prepared-lab-preflight.py",
+      "version": "sha256:dee82ab9471edc39d8738495b32d4ae195c29ae8d854a87a3bb64645dacae761",
+      "sha256": "dee82ab9471edc39d8738495b32d4ae195c29ae8d854a87a3bb64645dacae761"
+    },
+    {
+      "id": "vms",
+      "path": "/home/paul/git/homelabfs/tools/lab/vms.sh",
+      "version": "sha256:106dae1dd2730a729341e80b9c5204a1c51ce679ffcce3bd96b01f8d112a06e3",
+      "sha256": "106dae1dd2730a729341e80b9c5204a1c51ce679ffcce3bd96b01f8d112a06e3"
+    },
+    {
+      "id": "native-readiness",
+      "path": "/home/paul/git/homelabfs/tools/lab/wait-lab-ready.py",
+      "version": "sha256:2125b73048b097a16309c17a2579058eae46589a545b0de57b1a2637214cd943",
+      "sha256": "2125b73048b097a16309c17a2579058eae46589a545b0de57b1a2637214cd943"
+    },
+    {
+      "id": "host-known-keys",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/host-known_hosts",
+      "version": "sha256:84cd53571b39bbb29dfea020b95c3ff296bf09bce22587b860a37d239384ff8f",
+      "sha256": "84cd53571b39bbb29dfea020b95c3ff296bf09bce22587b860a37d239384ff8f"
+    },
+    {
+      "id": "all-guest-known-keys",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/guest-known_hosts",
+      "version": "sha256:e25a8ba415e9c882f44976bc61bcb5a7e3ad8901dea78a1e68b77db285e31a54",
+      "sha256": "e25a8ba415e9c882f44976bc61bcb5a7e3ad8901dea78a1e68b77db285e31a54"
+    },
+    {
+      "id": "preflight-policy",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/preflight-policy-20261030-n9-r11.json",
+      "version": "sha256:0e94150608a92696ed3befc02caf7e78914ab8c31a323aa21746d94819c561d7",
+      "sha256": "0e94150608a92696ed3befc02caf7e78914ab8c31a323aa21746d94819c561d7"
+    },
+    {
+      "id": "host-package-evidence",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r11-host-packages.txt",
+      "version": "sha256:9e84ff4f459c6388e4ad3f5d6575ec7132da75f1a49ac114cdd6b4a6ebe04285",
+      "sha256": "9e84ff4f459c6388e4ad3f5d6575ec7132da75f1a49ac114cdd6b4a6ebe04285"
+    },
+    {
+      "id": "planning-inventory",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r11-source-inventory-20261030-n9.stdout",
+      "version": "sha256:09397039c22bd999ad25156a1e979c039b4ecf00c9567fbe01cd43f8c3f54abe",
+      "sha256": "09397039c22bd999ad25156a1e979c039b4ecf00c9567fbe01cd43f8c3f54abe"
+    },
+    {
+      "id": "rocky-current-observation",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r11-rocky-current.json",
+      "version": "sha256:2e9a476954ab0e28c27cb78600ce9f41088c5d117f4a0736f4609b219f8a221c",
+      "sha256": "2e9a476954ab0e28c27cb78600ce9f41088c5d117f4a0736f4609b219f8a221c"
+    },
+    {
+      "id": "rocky-current-package-evidence",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r11-rocky-packages.txt",
+      "version": "sha256:4b4382416e417bea3b754c99c492e86b72257b67820aa751181420d8539533b7",
+      "sha256": "4b4382416e417bea3b754c99c492e86b72257b67820aa751181420d8539533b7"
+    },
+    {
+      "id": "metadata-before-resource-guard",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r11-before-execution-guard.json",
+      "version": "sha256:2096e0ca70823eb32d063b83b5ebf03cb7a35c3e0046a9ed8371b3fdbcd19cf5",
+      "sha256": "2096e0ca70823eb32d063b83b5ebf03cb7a35c3e0046a9ed8371b3fdbcd19cf5"
+    },
+    {
+      "id": "fresh-source-cleanup-proof",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n9-r11/complete.json",
+      "version": "sha256:380723d49a3c1f39d47c4194d07e652c8a008bae403a9ff7918932ac1bcb0f3b",
+      "sha256": "380723d49a3c1f39d47c4194d07e652c8a008bae403a9ff7918932ac1bcb0f3b"
+    },
+    {
+      "id": "fresh-source-receipts",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n9-r11/receipts.json",
+      "version": "sha256:0dd6c53a766a7747778f7fc53b94203d164e9be30c96ee89e74552429b5d0d49",
+      "sha256": "0dd6c53a766a7747778f7fc53b94203d164e9be30c96ee89e74552429b5d0d49"
+    },
+    {
+      "id": "hfs-test0-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n9-r11/hfs-test0-metadata.json",
+      "version": "sha256:5c54e7ff94c7b88ee5379139bd6f4fa31144fc022e4f81e25bbd8347b994cad2",
+      "sha256": "5c54e7ff94c7b88ee5379139bd6f4fa31144fc022e4f81e25bbd8347b994cad2"
+    },
+    {
+      "id": "hfs-test0-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n9-r11/hfs-test0-packages.txt",
+      "version": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "sha256": "0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "id": "hfs-test1-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n9-r11/hfs-test1-metadata.json",
+      "version": "sha256:533e0742e284c381f9e84f40924f14ff641ebd5c29d8dde4f402312c57fb0fbf",
+      "sha256": "533e0742e284c381f9e84f40924f14ff641ebd5c29d8dde4f402312c57fb0fbf"
+    },
+    {
+      "id": "hfs-test1-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n9-r11/hfs-test1-packages.txt",
+      "version": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "sha256": "0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "id": "hfs-test2-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n9-r11/hfs-test2-metadata.json",
+      "version": "sha256:c74ac79cebece09a2fd59ed29bda23f761414d210b818c61e4cda8c9297c4a7b",
+      "sha256": "c74ac79cebece09a2fd59ed29bda23f761414d210b818c61e4cda8c9297c4a7b"
+    },
+    {
+      "id": "hfs-test2-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n9-r11/hfs-test2-packages.txt",
+      "version": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "sha256": "0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "id": "freebsd-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n9-r11/freebsd-metadata.json",
+      "version": "sha256:90ac42a34339eb278d36b0bc4ddb49e50d9a6fe55ba4d578d9e3854d0de4bc94",
+      "sha256": "90ac42a34339eb278d36b0bc4ddb49e50d9a6fe55ba4d578d9e3854d0de4bc94"
+    },
+    {
+      "id": "freebsd-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n9-r11/freebsd-packages.txt",
+      "version": "sha256:247ccbbb465faa1a9be2c53cbd17466ec841a6e513c2331c005100e1db3659f8",
+      "sha256": "247ccbbb465faa1a9be2c53cbd17466ec841a6e513c2331c005100e1db3659f8"
+    },
+    {
+      "id": "continued-source-proof",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r11-metadata-size-and-cleanup-proof.json",
+      "version": "sha256:6bb59d1f88dc6cc4a69f17e84d49fc36c016cfacf10bbec4d4f87b9c15688a5a",
+      "sha256": "6bb59d1f88dc6cc4a69f17e84d49fc36c016cfacf10bbec4d4f87b9c15688a5a"
+    },
+    {
+      "id": "planning-admission-survey",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/planning-admission-survey-20261030-n9-r11.json",
+      "version": "sha256:3d63985000e7bcc127a251c2d828223efbba05b86539bddba2e0158d0ad8b205",
+      "sha256": "3d63985000e7bcc127a251c2d828223efbba05b86539bddba2e0158d0ad8b205"
+    }
+  ],
+  "files": {
+    "reviewed-plan-20261030-n9-r11.json": "bdffc14c326fde5d6a95ba1ab7368d4d8ec663c511b963b5b62a5db1eb7a35c6",
+    "plan-input-20261030-n9-r11.json": "92107948229698a8255f9d90bf5fff1e49f8f5d2f13dcf67bc9adb04eae8f3f9",
+    "native-spec-20261030-n9-r11.json": "11ccac24abf326fb497f8675b11f8aa18e1894e22ee5a3cec837c72deb65b549",
+    "native-fragment-20261030-n9-r11.json": "25a192238adb3a5e57ca1daded6252c83da66814703eb92c38b4093b6a89e121",
+    "preflight-policy-20261030-n9-r11.json": "0e94150608a92696ed3befc02caf7e78914ab8c31a323aa21746d94819c561d7"
+  }
+}

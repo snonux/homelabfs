@@ -45,3 +45,23 @@ private keys, approval and native run state are excluded.
 Source pruning, writes or another host restart can invalidate admission; the
 next native plan must retain its fail-closed source checks. These receipts
 are preparation evidence only.
+
+## Replacement plan
+
+The [reviewed plan](reviewed-plan.json) has canonical hash
+`717199681ab3c7290a3c2752d57f07dd3aec2b8e633cf67c15d6d72044fa24ab`.
+Created at 12:55:11 UTC, it expires 2026-10-31 at the same time. Actual
+read-only admission passed at 12:53:59 UTC, matching the final policy subset.
+All thirty hashes and unchanged targets, bounds and graceful lifecycle passed
+independent verification. The reviewed readiness script now waits for an
+exact local startup lock to clear before requiring all guests Running.
+
+The exact FreeBSD amd64/CGO-disabled binaries from clean source
+`b032a53ed840c76f1cb63b120ce88b79275aea82` are reused: production Go source
+under cmd/internal is unchanged, and actual hashes, ELF and embedded VCS
+metadata were rechecked. No rebuild or new binary revision is claimed.
+The twelve synthetic fixtures retain the 87-minute maximum, 2.25 GiB disk,
+48 MiB logical I/O and normal cleanup with graceful Rocky restoration.
+Execution uses Paul's recorded standing non-production test authorization;
+production, critical or dangerous operations remain excluded. Approval records,
+controller state and native execution evidence were absent at publication.
