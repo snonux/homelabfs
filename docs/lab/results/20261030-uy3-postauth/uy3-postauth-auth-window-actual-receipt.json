@@ -1,0 +1,20 @@
+{
+  "started_at": "2026-10-30T18:07:38.550326+00:00",
+  "finished_at": "2026-10-30T18:07:38.796311+00:00",
+  "elapsed_seconds": 0.24599759799821186,
+  "exit": 0,
+  "error": null,
+  "helper_sha256": "06ac8c1966574c840dc4d79c389fbd95f2e96c86b083657dd89d67ee535e3816",
+  "host_key_sha256": "84cd53571b39bbb29dfea020b95c3ff296bf09bce22587b860a37d239384ff8f",
+  "proposal_sha256": "3833d2d5118ae138b1c7aea1ebbfb319caeb7c107a913b82d588de00497fd6ce",
+  "outputs": {
+    "stdout": {
+      "bytes": 813,
+      "sha256": "db8e0f65f3a1b72047ed9fbd632dfd1e3d9f30a114f29060b4608b0b99988744"
+    },
+    "stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  }
+}

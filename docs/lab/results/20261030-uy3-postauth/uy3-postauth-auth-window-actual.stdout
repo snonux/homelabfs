@@ -1,0 +1,31 @@
+{
+  "observed_at_utc": "2026-10-30T18:07:38.785752+00:00",
+  "host_offset": "+0200",
+  "path": "/var/log/auth.log",
+  "tail_bytes_read": 801961,
+  "source": "192.168.1.246",
+  "requested_host_local_window": [
+    "2026-10-30 19:49:45",
+    "2026-10-30 19:50:15"
+  ],
+  "other_window_rows_count": 1,
+  "events": [
+    {
+      "local_time": "19:49:52",
+      "process": "sshd-session",
+      "pid": 94042,
+      "kind": "publickey accepted",
+      "client_port": 53412,
+      "preauth_marker": false
+    },
+    {
+      "local_time": "19:49:57",
+      "process": "sshd-session",
+      "pid": 94044,
+      "kind": "connection closed",
+      "client_port": 53412,
+      "preauth_marker": false
+    }
+  ],
+  "limit": "Only current auth.log tail up to1MiB; absent rows do not prove absent authentication or dispatch."
+}

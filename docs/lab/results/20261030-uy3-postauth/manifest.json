@@ -1,0 +1,45 @@
+{
+  "source_directory": "/home/paul/tmp/codex/hfs-9p-boundary-20261030",
+  "files": [
+    {
+      "file": "host-actual.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "host-actual.stderr",
+      "bytes": 47,
+      "sha256": "8e661dce78f35d2fa13a0c4afedd662de898ac417b60dbaec0401036bd2be1f4"
+    },
+    {
+      "file": "host-actual-receipt.json",
+      "bytes": 1303,
+      "sha256": "2e71a8bedca0b110ced9c31fd3a46cbfe0ade99a17b043f7211a5f587eb8d110"
+    },
+    {
+      "file": "uy3-postauth-auth-window.py",
+      "bytes": 2437,
+      "sha256": "06ac8c1966574c840dc4d79c389fbd95f2e96c86b083657dd89d67ee535e3816"
+    },
+    {
+      "file": "uy3-postauth-auth-window-proposal.json",
+      "bytes": 4151,
+      "sha256": "3833d2d5118ae138b1c7aea1ebbfb319caeb7c107a913b82d588de00497fd6ce"
+    },
+    {
+      "file": "uy3-postauth-auth-window-actual.stdout",
+      "bytes": 813,
+      "sha256": "db8e0f65f3a1b72047ed9fbd632dfd1e3d9f30a114f29060b4608b0b99988744"
+    },
+    {
+      "file": "uy3-postauth-auth-window-actual.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "uy3-postauth-auth-window-actual-receipt.json",
+      "bytes": 714,
+      "sha256": "533a47001e98698555b9643dfa68cf3a68ff842bbe81193783d751b6ea5e1e2a"
+    }
+  ]
+}

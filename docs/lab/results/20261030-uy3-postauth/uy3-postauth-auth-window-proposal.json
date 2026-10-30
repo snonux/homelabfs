@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "task": "uy3",
+  "purpose": "One read-only bounded historical authentication correlation for17:49:51\u201317:49:56UTC liveness failure. Root review/execution only.",
+  "argv": [
+    "/usr/bin/ssh",
+    "-F",
+    "/dev/null",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "StrictHostKeyChecking=yes",
+    "-o",
+    "GlobalKnownHostsFile=/dev/null",
+    "-o",
+    "UserKnownHostsFile=/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/host-known_hosts",
+    "-o",
+    "HostKeyAlias=f3",
+    "-o",
+    "HostName=192.168.1.133",
+    "-o",
+    "UpdateHostKeys=no",
+    "-o",
+    "ControlMaster=no",
+    "-o",
+    "ControlPath=none",
+    "-o",
+    "ConnectTimeout=5",
+    "-o",
+    "ServerAliveInterval=2",
+    "-o",
+    "ServerAliveCountMax=1",
+    "paul@f3",
+    "doas -n /usr/local/bin/python3.12 -"
+  ],
+  "stdin_helper": "/home/paul/tmp/codex/hfs-9p-boundary-20261030/uy3-postauth-auth-window.py",
+  "helper_sha256": "06ac8c1966574c840dc4d79c389fbd95f2e96c86b083657dd89d67ee535e3816",
+  "host_key_file": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/host-known_hosts",
+  "host_key_sha256": "84cd53571b39bbb29dfea020b95c3ff296bf09bce22587b860a37d239384ff8f",
+  "remote_helper_path": "/usr/local/bin/python3.12",
+  "outer_deadline_seconds": 15,
+  "combined_stdout_stderr_limit_bytes": 16384,
+  "max_attempts": 1,
+  "remote_read_scope": {
+    "path": "/var/log/auth.log",
+    "max_tail_bytes": 1048576,
+    "local_window": [
+      "2026-10-30 19:49:45",
+      "2026-10-30 19:50:15"
+    ],
+    "controller_source_address": "192.168.1.246",
+    "max_returned_events": 32,
+    "allowed_output_fields": [
+      "UTC timestamp",
+      "host UTC offset",
+      "source address",
+      "read byte count",
+      "event time",
+      "sshd process name",
+      "PID",
+      "sanitized event classification",
+      "client port",
+      "preauth boolean",
+      "coverage limitation"
+    ]
+  },
+  "outputs": {
+    "stdout": "/home/paul/tmp/codex/hfs-9p-boundary-20261030/uy3-postauth-auth-window-actual.stdout",
+    "stderr": "/home/paul/tmp/codex/hfs-9p-boundary-20261030/uy3-postauth-auth-window-actual.stderr"
+  },
+  "receipt": "/home/paul/tmp/codex/hfs-9p-boundary-20261030/uy3-postauth-auth-window-actual-receipt.json",
+  "output_creation": "Exclusive files mode0600; preserve exact stdout/stderr bytes and hashes on success or failure. No overwrite.",
+  "root_execution_contract": [
+    "Recheck helper and host-key hashes immediately before invocation.",
+    "Use reviewed argv exactly; feed exact helper bytes on stdin, not shell interpolation.",
+    "Read stdout and stderr concurrently under one combined16KiB limit and original15s outer deadline.",
+    "Own/reap the local SSH process on interruption/deadline/output overflow; never claim that local reaping proves remote completion.",
+    "Record UTC and monotonic start/end, actual returncode, stdout/stderr byte lengths andSHA256, helperSHA256 and hostkeySHA256.",
+    "Do not retry on transport failure/timeout. Preserve uncertainty until separate inspection establishes no outstanding read-only action if necessary."
+  ],
+  "interpretation": [
+    "Accepted-publickey row supports independent server-side correlation of authenticated failure and may identify client sourceport.",
+    "Authentication evidence cannot establish whether the remote Python command was requested, started or completed.",
+    "The helper outputs no publickey fingerprints, full message bodies, environment values, process arguments, or packet/user traffic.",
+    "No matches may mean current auth.log1MiB tail no longer covers window, source address differed, or no matching message was logged; it does not prove noauthentication.",
+    "Window assumes host local UTC+0200 at event; actual current offset is returned for review, not automatic time-window expansion."
+  ],
+  "excluded": [
+    "No live SSH handshake samples",
+    "No packet capture",
+    "No current users/process argv/env dump",
+    "No rotated logs",
+    "No VM/workload/mount/config/network/power change",
+    "No command retries",
+    "No native/research source changes",
+    "No tests run or new harness implemented"
+  ]
+}
