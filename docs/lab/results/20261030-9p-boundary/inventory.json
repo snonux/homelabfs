@@ -1,0 +1,1033 @@
+{
+  "scope": "Read-only diagnostics; no 9p/native/live test or artifact admission",
+  "host": {
+    "observed_at": "2026-10-30T17:54:29.452345+00:00",
+    "scope": "read-only boundary inventory; no live test or acceptance",
+    "rocky_pid": 91477,
+    "9p_config": {
+      "path": "/zroot/bhyve/rocky/rocky.conf",
+      "matches": [
+        "homelabfs_poc=/var/tmp/homelabfs-9p-poc/share"
+      ]
+    },
+    "newvers": {
+      "path": "/usr/src/sys/conf/newvers.sh",
+      "exists": false
+    },
+    "source_git": "/usr/src/.git absent",
+    "completed": true
+  },
+  "host_artifact_metadata": [
+    {
+      "path": "/zroot/bhyve/rocky/rocky.conf",
+      "size": 420,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o644",
+      "realpath": "/zroot/bhyve/rocky/rocky.conf",
+      "sha256": "c101adf10d58d8e021faaa1c3dd98ccb7777c2b78b7931f478e71b526814c581"
+    },
+    {
+      "path": "/usr/sbin/bhyve",
+      "size": 505672,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o555",
+      "realpath": "/usr/sbin/bhyve",
+      "sha256": "c54a63615edb12eca0a62bdadba97aa39641358302f6cdcee7362a858c709865"
+    },
+    {
+      "path": "/boot/kernel/kernel",
+      "size": 29370072,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/boot/kernel/kernel",
+      "sha256": "d5f201986fe8dc1fce893c847fd2db269221b97d850c2b453feed1048305abe2"
+    },
+    {
+      "path": "/boot/kernel/fusefs.ko",
+      "size": 216032,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/boot/kernel/fusefs.ko",
+      "sha256": "b207adf6383bee8e022fa6115044508b7c64da07e73865e5ea71594d524cc4bd"
+    },
+    {
+      "path": "/boot/kernel/zfs.ko",
+      "size": 5921096,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/boot/kernel/zfs.ko",
+      "sha256": "1f38c3e7c723a185c49cc4ce4b589d105e869e0d0740c349d9fb0dcbbdaadd1f"
+    },
+    {
+      "path": "/usr/lib/libvmmapi.so.7",
+      "size": 34824,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/usr/lib/libvmmapi.so.7",
+      "sha256": "df2926faf081e859d9edf29e220b437df7defd9e8ecfc51e85c5d08f29f738c5"
+    },
+    {
+      "path": "/lib/libmd.so.7",
+      "size": 121272,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/lib/libmd.so.7",
+      "sha256": "a148410513724837affd9d293b39d4815e76e98948e998e868819106fa43074c"
+    },
+    {
+      "path": "/lib/libnv.so.1",
+      "size": 94024,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/lib/libnv.so.1",
+      "sha256": "5be2a7582be621501310b599c6503e3016278ebd356ad2a141f1adabe3e0bcdf"
+    },
+    {
+      "path": "/usr/lib/libuvmem.so.1",
+      "size": 15080,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/usr/lib/libuvmem.so.1",
+      "sha256": "6cca136449d2b4483ac0a5cfa8216acdd7063de9706ee6b11ceb3001413c2bf9"
+    },
+    {
+      "path": "/lib/libz.so.6",
+      "size": 102728,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/lib/libz.so.6",
+      "sha256": "6cff47739a1ba1d179adf0eeb3756c28de135f6b3473d661b3bc1d94a8fa1c35"
+    },
+    {
+      "path": "/lib/libutil.so.10",
+      "size": 88832,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/lib/libutil.so.10",
+      "sha256": "b0ed07a0caf31a27667cde46899fd137f97bde1a4140559f164292840a759ce2"
+    },
+    {
+      "path": "/lib/libsbuf.so.6",
+      "size": 13080,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/lib/libsbuf.so.6",
+      "sha256": "dffebd982b37d0f3ac649c5b779abd37a27c693d5ac8c25fba4934f5e89a72f8"
+    },
+    {
+      "path": "/lib/libcam.so.7",
+      "size": 234944,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/lib/libcam.so.7",
+      "sha256": "7454c9917f3d96f16a951aee372a6a7bd3e1dc9a6867507f85b58df84f5afcb6"
+    },
+    {
+      "path": "/usr/lib/lib9p.so.1",
+      "size": 100928,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/usr/lib/lib9p.so.1",
+      "sha256": "589e8d0f9db4401f8a33274a5efe31d3cd742b18cedba87601c39617501c01ed"
+    },
+    {
+      "path": "/usr/lib/libnetgraph.so.4",
+      "size": 18192,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/usr/lib/libnetgraph.so.4",
+      "sha256": "81cc7cb195d3197829fd43b222d3106f847ea938ebf7ddfc2a6e1c47b37dd44c"
+    },
+    {
+      "path": "/lib/libcrypto.so.35",
+      "size": 6288480,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/lib/libcrypto.so.35",
+      "sha256": "beacc4542bde340aab83e8c3ed340b60e2da08cf45f275026afefeabb6b6d612"
+    },
+    {
+      "path": "/lib/libthr.so.3",
+      "size": 127768,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/lib/libthr.so.3",
+      "sha256": "0dec1f746d9415c86dff7d719e6b55208e5e007bc1543ddd17e1e8e810c05537"
+    },
+    {
+      "path": "/lib/libc.so.7",
+      "size": 2075224,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/lib/libc.so.7",
+      "sha256": "95b6597787b89cec982f44bee5e9af2cf0cd5e5258c1a20ae9cadf8f0421ea5b"
+    },
+    {
+      "path": "/lib/libcasper.so.1",
+      "size": 22688,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/lib/libcasper.so.1",
+      "sha256": "493db32ba722a854b8ffb5a5a63be3dd461426e8a973fe8fcb888da542eac98a"
+    },
+    {
+      "path": "/lib/libcap_pwd.so.1",
+      "size": 16824,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/lib/libcap_pwd.so.1",
+      "sha256": "2d58633eee7c8ab5a39502e397bbdc1fe88d3b27d361c6891c2dcca73da64b14"
+    },
+    {
+      "path": "/lib/libcap_grp.so.1",
+      "size": 16976,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/lib/libcap_grp.so.1",
+      "sha256": "e9dffcdac1671d619907d68c11bf3d11f1fff809820df7014d02a14701b77c03"
+    },
+    {
+      "path": "/lib/libsys.so.7",
+      "size": 111392,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/lib/libsys.so.7",
+      "sha256": "9f8b058e0acf4136efb54817ffc4403535c50d026d385c3209390b0ec9ceb239"
+    },
+    {
+      "path": "/usr/lib/lib9p.a",
+      "size": 472722,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o444",
+      "realpath": "/usr/lib/lib9p.a",
+      "sha256": "f37d8747b99a2823ee35a2556c4827f99e2e3b2b46f89e14ef8c9b6b48133aa7"
+    },
+    {
+      "path": "/usr/lib/debug/usr/sbin/bhyve.debug",
+      "error": "FileNotFoundError",
+      "errno": 2
+    },
+    {
+      "path": "/usr/src/contrib/lib9p/backend/fs.c",
+      "error": "FileNotFoundError",
+      "errno": 2
+    },
+    {
+      "path": "/usr/src/usr.sbin/bhyve/pci_virtio_9p.c",
+      "error": "FileNotFoundError",
+      "errno": 2
+    },
+    {
+      "path": "/usr/src/usr.sbin/bhyve/Makefile",
+      "error": "FileNotFoundError",
+      "errno": 2
+    },
+    {
+      "path": "/usr/src/sys/fs/fuse/fuse_ipc.c",
+      "error": "FileNotFoundError",
+      "errno": 2
+    },
+    {
+      "path": "/usr/src/sys/conf/newvers.sh",
+      "error": "FileNotFoundError",
+      "errno": 2
+    }
+  ],
+  "host_commands": [
+    {
+      "argv": [
+        "/usr/local/sbin/vm",
+        "list"
+      ],
+      "exit": 0,
+      "stdout": "NAME       DATASTORE  LOADER     CPU  MEMORY  VNC             AUTO     STATE\nfreebsd    default    bhyveload  4    1G      -               No       Stopped\nrocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (91477)\nhfs-test0  hfslab     bhyveload  2    2G      -               No       Stopped\nhfs-test1  hfslab     bhyveload  2    2G      -               No       Stopped\nhfs-test2  hfslab     bhyveload  2    2G      -               No       Stopped\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/bin/ps",
+        "-p",
+        "91477",
+        "-o",
+        "pid=,ppid=,uid=,gid=,comm=,lstart="
+      ],
+      "exit": 0,
+      "stdout": ",ppid=,uid=,gid=,comm=,lstart=\n                         91477\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/usr/bin/procstat",
+        "-b",
+        "91477"
+      ],
+      "exit": 0,
+      "stdout": "  PID COMM                OSREL PATH\n91477 bhyve             1501000 /usr/sbin/bhyve\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/usr/bin/procstat",
+        "-s",
+        "91477"
+      ],
+      "exit": 0,
+      "stdout": "  PID COMM              EUID  RUID SVUID  EGID  RGID SVGID UMASK FLAGS GROUPS         \n91477 bhyve                0     0     0     0     0     0   022 C     0,0,5\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/bin/freebsd-version",
+        "-kru"
+      ],
+      "exit": 0,
+      "stdout": "15.1-RELEASE-p2\n15.1-RELEASE-p2\n15.1-RELEASE-p2\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/usr/bin/uname",
+        "-a"
+      ],
+      "exit": 0,
+      "stdout": "FreeBSD f3.lan.buetow.org 15.1-RELEASE-p2 FreeBSD 15.1-RELEASE-p2 releng/15.1-n283596-aadd58dddcbc GENERIC amd64\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/sbin/sysctl",
+        "kern.osreldate",
+        "kern.version"
+      ],
+      "exit": 0,
+      "stdout": "kern.osreldate: 1501000\nkern.version: FreeBSD 15.1-RELEASE-p2 releng/15.1-n283596-aadd58dddcbc GENERIC\n\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/usr/bin/file",
+        "/usr/sbin/bhyve"
+      ],
+      "exit": 0,
+      "stdout": "/usr/sbin/bhyve: ELF 64-bit LSB pie executable, x86-64, version 1 (FreeBSD), dynamically linked, interpreter /libexec/ld-elf.so.1, for FreeBSD 15.1, FreeBSD-style, stripped\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/usr/bin/readelf",
+        "-n",
+        "/usr/sbin/bhyve"
+      ],
+      "exit": 0,
+      "stdout": "Displaying notes found in: .note.tag\n  Owner                Data size \tDescription\n  FreeBSD              0x00000004\tNT_FREEBSD_ABI_TAG (ABI version tag)\n    ABI tag: 1501000\n  FreeBSD              0x00000004\tNT_FREEBSD_FEATURE_CTL (FreeBSD feature control)\n    Feature flags: 0x0\n  FreeBSD              0x00000004\tNT_FREEBSD_NOINIT_TAG (no .init tag)\n   description data: 00 00 00 00\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/usr/bin/ldd",
+        "/usr/sbin/bhyve"
+      ],
+      "exit": 0,
+      "stdout": "/usr/sbin/bhyve:\n\tlibvmmapi.so.7 => /usr/lib/libvmmapi.so.7 (0x3dee34684000)\n\tlibmd.so.7 => /lib/libmd.so.7 (0x3dee3567d000)\n\tlibnv.so.1 => /lib/libnv.so.1 (0x3dee357f5000)\n\tlibuvmem.so.1 => /usr/lib/libuvmem.so.1 (0x3dee35d33000)\n\tlibz.so.6 => /lib/libz.so.6 (0x3dee3652a000)\n\tlibutil.so.10 => /lib/libutil.so.10 (0x3dee36a08000)\n\tlibsbuf.so.6 => /lib/libsbuf.so.6 (0x3dee37564000)\n\tlibcam.so.7 => /lib/libcam.so.7 (0x3dee37a30000)\n\tlib9p.so.1 => /usr/lib/lib9p.so.1 (0x3dee38718000)\n\tlibnetgraph.so.4 => /usr/lib/libnetgraph.so.4 (0x3dee38955000)\n\tlibcrypto.so.35 => /lib/libcrypto.so.35 (0x3dee39c00000)\n\tlibthr.so.3 => /lib/libthr.so.3 (0x3dee39650000)\n\tlibc.so.7 => /lib/libc.so.7 (0x3dee3ad4d000)\n\tlibcasper.so.1 => /lib/libcasper.so.1 (0x3dee3bf9e000)\n\tlibcap_pwd.so.1 => /lib/libcap_pwd.so.1 (0x3dee3c9be000)\n\tlibcap_grp.so.1 => /lib/libcap_grp.so.1 (0x3dee33040000)\n\tlibsys.so.7 => /lib/libsys.so.7 (0x3dee3cbe2000)\n\t[vdso] (0x3dee328ff000)\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/usr/local/sbin/pkg",
+        "which",
+        "/usr/sbin/bhyve"
+      ],
+      "exit": 1,
+      "stdout": "/usr/sbin/bhyve was not found in the database\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/usr/local/sbin/pkg",
+        "which",
+        "/usr/lib/lib9p.so.1"
+      ],
+      "exit": 1,
+      "stdout": "/usr/lib/lib9p.so.1 was not found in the database\n",
+      "stderr": ""
+    }
+  ],
+  "rocky": {
+    "observed_at": "2026-10-30T17:54:41.711194+00:00",
+    "scope": "read-only boundary inventory; no live test or acceptance",
+    "commands": [
+      {
+        "argv": [
+          "/usr/bin/uname",
+          "-r"
+        ],
+        "exit": 0,
+        "stdout": "5.14.0-687.61.1.el9_8.x86_64\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "/usr/bin/rpm",
+          "-q",
+          "--qf",
+          "%{NAME} %{VERSION}-%{RELEASE}.%{ARCH} source=%{SOURCERPM} vendor=%{VENDOR} signature=%{RSAHEADER:pgpsig}\n",
+          "kernel-core",
+          "kernel-lt-core",
+          "kernel-lt-modules",
+          "kernel-lt-modules-extra",
+          "kernel-ml-core"
+        ],
+        "exit": 0,
+        "stdout": "kernel-core 5.14.0-687.59.1.el9_8.x86_64 source=kernel-5.14.0-687.59.1.el9_8.src.rpm vendor=Rocky Enterprise Software Foundation signature=RSA/SHA256, Wed 21 Oct 2026 08:10:12 PM EEST, Key ID 702d426d350d275d\nkernel-core 5.14.0-687.60.1.el9_8.x86_64 source=kernel-5.14.0-687.60.1.el9_8.src.rpm vendor=Rocky Enterprise Software Foundation signature=RSA/SHA256, Fri 23 Oct 2026 09:44:37 PM EEST, Key ID 702d426d350d275d\nkernel-core 5.14.0-687.61.1.el9_8.x86_64 source=kernel-5.14.0-687.61.1.el9_8.src.rpm vendor=Rocky Enterprise Software Foundation signature=RSA/SHA256, Tue 27 Oct 2026 06:29:36 PM EET, Key ID 702d426d350d275d\nkernel-lt-core 6.1.190-1.el9.elrepo.x86_64 source=kernel-lt-6.1.190-1.el9.elrepo.nosrc.rpm vendor=The ELRepo Project (https://elrepo.org) signature=RSA/SHA256, Fri 16 Oct 2026 12:02:15 AM EEST, Key ID 51600989eaa31d4a\nkernel-lt-modules 6.1.190-1.el9.elrepo.x86_64 source=kernel-lt-6.1.190-1.el9.elrepo.nosrc.rpm vendor=The ELRepo Project (https://elrepo.org) signature=RSA/SHA256, Fri 16 Oct 2026 12:02:16 AM EEST, Key ID 51600989eaa31d4a\nkernel-lt-modules-extra 6.1.190-1.el9.elrepo.x86_64 source=kernel-lt-6.1.190-1.el9.elrepo.nosrc.rpm vendor=The ELRepo Project (https://elrepo.org) signature=RSA/SHA256, Fri 16 Oct 2026 12:02:17 AM EEST, Key ID 51600989eaa31d4a\nkernel-ml-core 7.0.3-1.el9.elrepo.x86_64 source=kernel-ml-7.0.3-1.el9.elrepo.nosrc.rpm vendor=The ELRepo Project (https://elrepo.org) signature=RSA/SHA256, Fri 01 May 2026 12:29:38 AM EEST, Key ID 51600989eaa31d4a\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "/usr/bin/rpm",
+          "-qf",
+          "/boot/vmlinuz-5.14.0-687.61.1.el9_8.x86_64"
+        ],
+        "exit": 0,
+        "stdout": "kernel-core-5.14.0-687.61.1.el9_8.x86_64\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "/usr/sbin/modinfo",
+          "/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/fs/9p/9p.ko.xz"
+        ],
+        "exit": 0,
+        "stdout": "filename:       /lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/fs/9p/9p.ko.xz\nalias:          fs-9p\nlicense:        GPL\nauthor:         Ron Minnich <rminnich@lanl.gov>\nauthor:         Eric Van Hensbergen <ericvh@gmail.com>\nauthor:         Latchesar Ionkov <lucho@ionkov.net>\nsrcversion:     046A4B405C30445434D9164\ndepends:        9pnet,fscache,netfs\nretpoline:      Y\nintree:         Y\nname:           9p\nvermagic:       6.1.190-1.el9.elrepo.x86_64 SMP preempt mod_unload modversions \n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "/usr/sbin/modinfo",
+          "/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet.ko.xz"
+        ],
+        "exit": 0,
+        "stdout": "filename:       /lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet.ko.xz\ndescription:    Plan 9 Resource Sharing Support (9P2000)\nlicense:        GPL\nauthor:         Ron Minnich <rminnich@lanl.gov>\nauthor:         Eric Van Hensbergen <ericvh@gmail.com>\nauthor:         Latchesar Ionkov <lucho@ionkov.net>\nsrcversion:     B398713FC125F8D4234BF54\ndepends:        \nretpoline:      Y\nintree:         Y\nname:           9pnet\nvermagic:       6.1.190-1.el9.elrepo.x86_64 SMP preempt mod_unload modversions \n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "/usr/sbin/modinfo",
+          "/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet_fd.ko.xz"
+        ],
+        "exit": 0,
+        "stdout": "filename:       /lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet_fd.ko.xz\nlicense:        GPL\ndescription:    Filedescriptor Transport for 9P\nauthor:         Eric Van Hensbergen <ericvh@gmail.com>\nalias:          9p-fd\nalias:          9p-unix\nalias:          9p-tcp\nsrcversion:     964491496969E28E47775C3\ndepends:        9pnet\nretpoline:      Y\nintree:         Y\nname:           9pnet_fd\nvermagic:       6.1.190-1.el9.elrepo.x86_64 SMP preempt mod_unload modversions \n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "/usr/sbin/modinfo",
+          "/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet_rdma.ko.xz"
+        ],
+        "exit": 0,
+        "stdout": "filename:       /lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet_rdma.ko.xz\nlicense:        Dual BSD/GPL\ndescription:    RDMA Transport for 9P\nauthor:         Tom Tucker <tom@opengridcomputing.com>\nalias:          9p-rdma\nsrcversion:     FC11CD9C3B3DDC596273941\ndepends:        9pnet,ib_core,rdma_cm\nretpoline:      Y\nintree:         Y\nname:           9pnet_rdma\nvermagic:       6.1.190-1.el9.elrepo.x86_64 SMP preempt mod_unload modversions \n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "/usr/sbin/modinfo",
+          "/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet_virtio.ko.xz"
+        ],
+        "exit": 0,
+        "stdout": "filename:       /lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet_virtio.ko.xz\nlicense:        GPL\ndescription:    Virtio 9p Transport\nauthor:         Eric Van Hensbergen <ericvh@gmail.com>\nalias:          9p-virtio\nsrcversion:     06966BB8FEE6BC5F354ACCF\nalias:          virtio:d00000009v*\ndepends:        9pnet\nretpoline:      Y\nintree:         Y\nname:           9pnet_virtio\nvermagic:       6.1.190-1.el9.elrepo.x86_64 SMP preempt mod_unload modversions \n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "/usr/sbin/modinfo",
+          "/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet_xen.ko.xz"
+        ],
+        "exit": 0,
+        "stdout": "filename:       /lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet_xen.ko.xz\nlicense:        GPL\ndescription:    Xen Transport for 9P\nauthor:         Stefano Stabellini <stefano@aporeto.com>\nalias:          xen:9pfs\nalias:          9p-xen\nsrcversion:     00978F93E2DF8BFB9150AE6\ndepends:        9pnet\nretpoline:      Y\nintree:         Y\nname:           9pnet_xen\nvermagic:       6.1.190-1.el9.elrepo.x86_64 SMP preempt mod_unload modversions \n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "/usr/bin/findmnt",
+          "-rn",
+          "-t",
+          "9p",
+          "-o",
+          "SOURCE,TARGET,FSTYPE,OPTIONS"
+        ],
+        "exit": 1,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "/usr/sbin/getenforce"
+        ],
+        "exit": 0,
+        "stdout": "Enforcing\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "/usr/bin/mokutil",
+          "--sb-state"
+        ],
+        "exit": 0,
+        "stdout": "SecureBoot disabled\nPlatform is in Setup Mode\n",
+        "stderr": ""
+      }
+    ],
+    "files": [
+      {
+        "path": "/boot/config-5.14.0-687.61.1.el9_8.x86_64",
+        "size": 239910,
+        "uid": 0,
+        "gid": 0,
+        "mode": "0o644",
+        "realpath": "/boot/config-5.14.0-687.61.1.el9_8.x86_64",
+        "sha256": "9e22fc919e619987828136256901488228ae136e4edc2ee00260445778081741"
+      },
+      {
+        "path": "/boot/vmlinuz-5.14.0-687.61.1.el9_8.x86_64",
+        "size": 15186760,
+        "uid": 0,
+        "gid": 0,
+        "mode": "0o755",
+        "realpath": "/boot/vmlinuz-5.14.0-687.61.1.el9_8.x86_64",
+        "sha256": "0d9b8bdb77ac9ff96a987c1cd2ef7a905824f210ee5de0b02b28fbc4dcfb67fd"
+      },
+      {
+        "path": "/lib/modules/5.14.0-687.61.1.el9_8.x86_64/modules.builtin",
+        "size": 9710,
+        "uid": 0,
+        "gid": 0,
+        "mode": "0o644",
+        "realpath": "/usr/lib/modules/5.14.0-687.61.1.el9_8.x86_64/modules.builtin",
+        "sha256": "161a895f16a1e33765691ca0cb8fdb65dd0843fe556f2538bcad67189e7e6b26"
+      },
+      {
+        "path": "/lib/modules/5.14.0-687.61.1.el9_8.x86_64/modules.dep",
+        "size": 346620,
+        "uid": 0,
+        "gid": 0,
+        "mode": "0o644",
+        "realpath": "/usr/lib/modules/5.14.0-687.61.1.el9_8.x86_64/modules.dep",
+        "sha256": "0f05925fc66248151bf6602a0797927ae7fbd5ad927da9b1d7d0dcf341bc5501"
+      },
+      {
+        "path": "/lib/modules/5.14.0-687.61.1.el9_8.x86_64/modules.order",
+        "size": 100283,
+        "uid": 0,
+        "gid": 0,
+        "mode": "0o644",
+        "realpath": "/usr/lib/modules/5.14.0-687.61.1.el9_8.x86_64/modules.order",
+        "sha256": "9270d6f8fd898181629676fb9226aae85d75527c9e98f868c06b57d0602271de"
+      },
+      {
+        "path": "/boot/config-6.1.190-1.el9.elrepo.x86_64",
+        "size": 249171,
+        "uid": 0,
+        "gid": 0,
+        "mode": "0o644",
+        "realpath": "/boot/config-6.1.190-1.el9.elrepo.x86_64",
+        "sha256": "077df8eea306cca266b2b6faa13039b516856dbef4b27ef9755d462f9936ead3"
+      },
+      {
+        "path": "/boot/vmlinuz-6.1.190-1.el9.elrepo.x86_64",
+        "size": 13079040,
+        "uid": 0,
+        "gid": 0,
+        "mode": "0o755",
+        "realpath": "/boot/vmlinuz-6.1.190-1.el9.elrepo.x86_64",
+        "sha256": "c9466216eedcdda1974ec6db17d253ab70628b565c3f9d4e8ea0977ea0fd791d"
+      },
+      {
+        "path": "/lib/modules/6.1.190-1.el9.elrepo.x86_64/modules.builtin",
+        "size": 10596,
+        "uid": 0,
+        "gid": 0,
+        "mode": "0o644",
+        "realpath": "/usr/lib/modules/6.1.190-1.el9.elrepo.x86_64/modules.builtin",
+        "sha256": "31547e53fd45cbc26d51ef24a9a624bad3a1044fe451d3bedd0206990c0b37c3"
+      },
+      {
+        "path": "/lib/modules/6.1.190-1.el9.elrepo.x86_64/modules.dep",
+        "size": 549994,
+        "uid": 0,
+        "gid": 0,
+        "mode": "0o644",
+        "realpath": "/usr/lib/modules/6.1.190-1.el9.elrepo.x86_64/modules.dep",
+        "sha256": "4295349f889bd3c9d99eff097bdc43ef63989611fcb09b1639cb24b0265c3011"
+      },
+      {
+        "path": "/lib/modules/6.1.190-1.el9.elrepo.x86_64/modules.order",
+        "size": 171325,
+        "uid": 0,
+        "gid": 0,
+        "mode": "0o644",
+        "realpath": "/usr/lib/modules/6.1.190-1.el9.elrepo.x86_64/modules.order",
+        "sha256": "000926d79232d38d9b37e0d931a02bffbb3e710ceb5998af37d47e54805177de"
+      },
+      {
+        "path": "/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/fs/9p/9p.ko.xz",
+        "size": 35516,
+        "uid": 0,
+        "gid": 0,
+        "mode": "0o744",
+        "realpath": "/usr/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/fs/9p/9p.ko.xz",
+        "sha256": "b6b4802fca8f0571ca1c3670bdfea2b0d8336dc62aed380ef4a8976c41828d1e"
+      },
+      {
+        "path": "/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet.ko.xz",
+        "size": 32788,
+        "uid": 0,
+        "gid": 0,
+        "mode": "0o744",
+        "realpath": "/usr/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet.ko.xz",
+        "sha256": "f869d414bbd9a8e80a6cf738775243d87b352be481d3067d7a8051f3a7d662fc"
+      },
+      {
+        "path": "/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet_fd.ko.xz",
+        "size": 8712,
+        "uid": 0,
+        "gid": 0,
+        "mode": "0o744",
+        "realpath": "/usr/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet_fd.ko.xz",
+        "sha256": "9cefd27b1b797e5816d0684e1aa3c2b3993d03c73891a70025fa3c19cf29e127"
+      },
+      {
+        "path": "/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet_rdma.ko.xz",
+        "size": 8472,
+        "uid": 0,
+        "gid": 0,
+        "mode": "0o744",
+        "realpath": "/usr/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet_rdma.ko.xz",
+        "sha256": "f5e60aac4515f92c98d2bb32f6ff18387ab9a318d65b73b2b9ed4845181bac4a"
+      },
+      {
+        "path": "/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet_virtio.ko.xz",
+        "size": 8388,
+        "uid": 0,
+        "gid": 0,
+        "mode": "0o744",
+        "realpath": "/usr/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet_virtio.ko.xz",
+        "sha256": "922d153f149f64f5814874539dbab499622022de9621885215b9ee53eaf468bc"
+      },
+      {
+        "path": "/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet_xen.ko.xz",
+        "size": 7756,
+        "uid": 0,
+        "gid": 0,
+        "mode": "0o744",
+        "realpath": "/usr/lib/modules/6.1.190-1.el9.elrepo.x86_64/kernel/net/9p/9pnet_xen.ko.xz",
+        "sha256": "5089c1311000abe08df46cf967c5d4efd2d8a411fa2526af9b6181910424c9bb"
+      }
+    ],
+    "running_kernel": "5.14.0-687.61.1.el9_8.x86_64",
+    "kernel_versions_inspected": [
+      "5.14.0-687.61.1.el9_8.x86_64",
+      "6.1.190-1.el9.elrepo.x86_64"
+    ],
+    "configs": [
+      {
+        "path": "/boot/config-5.14.0-687.61.1.el9_8.x86_64",
+        "lines": [
+          "CONFIG_USER_NS=y",
+          "CONFIG_EFI=y",
+          "CONFIG_EFI_STUB=y",
+          "CONFIG_EFI_HANDOVER_PROTOCOL=y",
+          "CONFIG_EFI_MIXED=y",
+          "# CONFIG_EFI_FAKE_MEMMAP is not set",
+          "CONFIG_EFI_RUNTIME_MAP=y",
+          "CONFIG_MODULE_SIG_FORMAT=y",
+          "CONFIG_MODULE_SIG=y",
+          "# CONFIG_MODULE_SIG_FORCE is not set",
+          "CONFIG_MODULE_SIG_ALL=y",
+          "# CONFIG_MODULE_SIG_SHA1 is not set",
+          "# CONFIG_MODULE_SIG_SHA224 is not set",
+          "# CONFIG_MODULE_SIG_SHA256 is not set",
+          "# CONFIG_MODULE_SIG_SHA384 is not set",
+          "CONFIG_MODULE_SIG_SHA512=y",
+          "CONFIG_MODULE_SIG_HASH=\"sha512\"",
+          "CONFIG_EFI_PARTITION=y",
+          "# CONFIG_NET_9P is not set",
+          "CONFIG_EFI_VARS=y",
+          "CONFIG_EFI_ESRT=y",
+          "CONFIG_EFI_VARS_PSTORE=y",
+          "CONFIG_EFI_VARS_PSTORE_DEFAULT_DISABLE=y",
+          "CONFIG_EFI_SOFT_RESERVE=y",
+          "CONFIG_EFI_DXE_MEM_ATTRIBUTES=y",
+          "CONFIG_EFI_RUNTIME_WRAPPERS=y",
+          "# CONFIG_EFI_BOOTLOADER_CONTROL is not set",
+          "# CONFIG_EFI_CAPSULE_LOADER is not set",
+          "# CONFIG_EFI_TEST is not set",
+          "CONFIG_EFI_DEV_PATH_PARSER=y",
+          "CONFIG_EFI_RCI2_TABLE=y",
+          "# CONFIG_EFI_DISABLE_PCI_DMA is not set",
+          "CONFIG_EFI_EARLYCON=y",
+          "CONFIG_EFI_CUSTOM_SSDT_OVERLAYS=y",
+          "# CONFIG_EFI_DISABLE_RUNTIME is not set",
+          "CONFIG_EFI_COCO_SECRET=y",
+          "CONFIG_EFI_SBAT=y",
+          "CONFIG_EFI_SBAT_FILE=\"kernel.sbat\"",
+          "CONFIG_EFI_SECRET=m",
+          "CONFIG_EFIVAR_FS=y",
+          "CONFIG_SECURITY_SELINUX=y",
+          "CONFIG_SECURITY_SELINUX_BOOTPARAM=y",
+          "CONFIG_SECURITY_SELINUX_DEVELOP=y",
+          "CONFIG_SECURITY_SELINUX_AVC_STATS=y",
+          "CONFIG_SECURITY_SELINUX_CHECKREQPROT_VALUE=0",
+          "CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=9",
+          "CONFIG_SECURITY_SELINUX_SID2STR_CACHE_SIZE=256",
+          "CONFIG_LOCK_DOWN_IN_EFI_SECURE_BOOT=y",
+          "CONFIG_LOCK_DOWN_KERNEL_FORCE_NONE=y",
+          "# CONFIG_LOCK_DOWN_KERNEL_FORCE_INTEGRITY is not set",
+          "# CONFIG_LOCK_DOWN_KERNEL_FORCE_CONFIDENTIALITY is not set",
+          "CONFIG_IMA=y",
+          "CONFIG_IMA_KEXEC=y",
+          "CONFIG_IMA_MEASURE_PCR_IDX=10",
+          "CONFIG_IMA_LSM_RULES=y",
+          "# CONFIG_IMA_TEMPLATE is not set",
+          "# CONFIG_IMA_NG_TEMPLATE is not set",
+          "CONFIG_IMA_SIG_TEMPLATE=y",
+          "CONFIG_IMA_DEFAULT_TEMPLATE=\"ima-sig\"",
+          "# CONFIG_IMA_DEFAULT_HASH_SHA1 is not set",
+          "CONFIG_IMA_DEFAULT_HASH_SHA256=y",
+          "# CONFIG_IMA_DEFAULT_HASH_SHA512 is not set",
+          "CONFIG_IMA_DEFAULT_HASH=\"sha256\"",
+          "CONFIG_IMA_WRITE_POLICY=y",
+          "CONFIG_IMA_READ_POLICY=y",
+          "CONFIG_IMA_APPRAISE=y",
+          "CONFIG_IMA_ARCH_POLICY=y",
+          "# CONFIG_IMA_APPRAISE_BUILD_POLICY is not set",
+          "CONFIG_IMA_APPRAISE_BOOTPARAM=y",
+          "CONFIG_IMA_APPRAISE_MODSIG=y",
+          "CONFIG_IMA_TRUSTED_KEYRING=y",
+          "CONFIG_IMA_KEYRINGS_PERMIT_SIGNED_BY_BUILTIN_OR_SECONDARY=y",
+          "# CONFIG_IMA_BLACKLIST_KEYRING is not set",
+          "# CONFIG_IMA_LOAD_X509 is not set",
+          "CONFIG_IMA_MEASURE_ASYMMETRIC_KEYS=y",
+          "CONFIG_IMA_QUEUE_EARLY_BOOT_KEYS=y",
+          "CONFIG_IMA_SECURE_AND_OR_TRUSTED_BOOT=y",
+          "# CONFIG_IMA_DISABLE_HTABLE is not set",
+          "CONFIG_MODULE_SIG_KEY=\"certs/signing_key.pem\"",
+          "CONFIG_MODULE_SIG_KEY_TYPE_RSA=y",
+          "# CONFIG_MODULE_SIG_KEY_TYPE_ECDSA is not set",
+          "CONFIG_SYSTEM_TRUSTED_KEYS=\"certs/rhel.pem\"",
+          "CONFIG_SECONDARY_TRUSTED_KEYRING=y",
+          "# CONFIG_EFI_PGT_DUMP is not set"
+        ]
+      },
+      {
+        "path": "/boot/config-6.1.190-1.el9.elrepo.x86_64",
+        "lines": [
+          "CONFIG_USER_NS=y",
+          "CONFIG_EFI=y",
+          "CONFIG_EFI_STUB=y",
+          "CONFIG_EFI_HANDOVER_PROTOCOL=y",
+          "CONFIG_EFI_MIXED=y",
+          "CONFIG_MODULE_SIG_FORMAT=y",
+          "CONFIG_MODULE_SIG=y",
+          "# CONFIG_MODULE_SIG_FORCE is not set",
+          "CONFIG_MODULE_SIG_ALL=y",
+          "# CONFIG_MODULE_SIG_SHA1 is not set",
+          "# CONFIG_MODULE_SIG_SHA224 is not set",
+          "# CONFIG_MODULE_SIG_SHA256 is not set",
+          "# CONFIG_MODULE_SIG_SHA384 is not set",
+          "CONFIG_MODULE_SIG_SHA512=y",
+          "CONFIG_MODULE_SIG_HASH=\"sha512\"",
+          "CONFIG_EFI_PARTITION=y",
+          "CONFIG_NET_9P=m",
+          "CONFIG_NET_9P_FD=m",
+          "CONFIG_NET_9P_VIRTIO=m",
+          "CONFIG_NET_9P_XEN=m",
+          "CONFIG_NET_9P_RDMA=m",
+          "# CONFIG_NET_9P_DEBUG is not set",
+          "CONFIG_EFI_ESRT=y",
+          "CONFIG_EFI_VARS_PSTORE=y",
+          "CONFIG_EFI_VARS_PSTORE_DEFAULT_DISABLE=y",
+          "CONFIG_EFI_RUNTIME_MAP=y",
+          "# CONFIG_EFI_FAKE_MEMMAP is not set",
+          "CONFIG_EFI_SOFT_RESERVE=y",
+          "CONFIG_EFI_DXE_MEM_ATTRIBUTES=y",
+          "CONFIG_EFI_RUNTIME_WRAPPERS=y",
+          "CONFIG_EFI_GENERIC_STUB_INITRD_CMDLINE_LOADER=y",
+          "# CONFIG_EFI_BOOTLOADER_CONTROL is not set",
+          "# CONFIG_EFI_CAPSULE_LOADER is not set",
+          "# CONFIG_EFI_TEST is not set",
+          "CONFIG_EFI_DEV_PATH_PARSER=y",
+          "CONFIG_EFI_RCI2_TABLE=y",
+          "# CONFIG_EFI_DISABLE_PCI_DMA is not set",
+          "CONFIG_EFI_EARLYCON=y",
+          "CONFIG_EFI_CUSTOM_SSDT_OVERLAYS=y",
+          "# CONFIG_EFI_DISABLE_RUNTIME is not set",
+          "# CONFIG_EFI_COCO_SECRET is not set",
+          "# CONFIG_EFI_SECRET is not set",
+          "CONFIG_EFIVAR_FS=y",
+          "CONFIG_9P_FS=m",
+          "CONFIG_9P_FSCACHE=y",
+          "CONFIG_9P_FS_POSIX_ACL=y",
+          "# CONFIG_9P_FS_SECURITY is not set",
+          "CONFIG_SECURITY_SELINUX=y",
+          "CONFIG_SECURITY_SELINUX_BOOTPARAM=y",
+          "# CONFIG_SECURITY_SELINUX_DISABLE is not set",
+          "CONFIG_SECURITY_SELINUX_DEVELOP=y",
+          "CONFIG_SECURITY_SELINUX_AVC_STATS=y",
+          "CONFIG_SECURITY_SELINUX_CHECKREQPROT_VALUE=0",
+          "CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=9",
+          "CONFIG_SECURITY_SELINUX_SID2STR_CACHE_SIZE=256",
+          "CONFIG_LOCK_DOWN_KERNEL_FORCE_NONE=y",
+          "# CONFIG_LOCK_DOWN_KERNEL_FORCE_INTEGRITY is not set",
+          "# CONFIG_LOCK_DOWN_KERNEL_FORCE_CONFIDENTIALITY is not set",
+          "CONFIG_IMA=y",
+          "# CONFIG_IMA_KEXEC is not set",
+          "CONFIG_IMA_MEASURE_PCR_IDX=10",
+          "CONFIG_IMA_LSM_RULES=y",
+          "# CONFIG_IMA_NG_TEMPLATE is not set",
+          "CONFIG_IMA_SIG_TEMPLATE=y",
+          "CONFIG_IMA_DEFAULT_TEMPLATE=\"ima-sig\"",
+          "# CONFIG_IMA_DEFAULT_HASH_SHA1 is not set",
+          "CONFIG_IMA_DEFAULT_HASH_SHA256=y",
+          "# CONFIG_IMA_DEFAULT_HASH_SHA512 is not set",
+          "CONFIG_IMA_DEFAULT_HASH=\"sha256\"",
+          "CONFIG_IMA_WRITE_POLICY=y",
+          "CONFIG_IMA_READ_POLICY=y",
+          "CONFIG_IMA_APPRAISE=y",
+          "CONFIG_IMA_ARCH_POLICY=y",
+          "# CONFIG_IMA_APPRAISE_BUILD_POLICY is not set",
+          "CONFIG_IMA_APPRAISE_BOOTPARAM=y",
+          "CONFIG_IMA_APPRAISE_MODSIG=y",
+          "# CONFIG_IMA_BLACKLIST_KEYRING is not set",
+          "# CONFIG_IMA_LOAD_X509 is not set",
+          "CONFIG_IMA_MEASURE_ASYMMETRIC_KEYS=y",
+          "CONFIG_IMA_QUEUE_EARLY_BOOT_KEYS=y",
+          "CONFIG_IMA_SECURE_AND_OR_TRUSTED_BOOT=y",
+          "# CONFIG_IMA_DISABLE_HTABLE is not set",
+          "CONFIG_MODULE_SIG_KEY=\"certs/signing_key.pem\"",
+          "CONFIG_MODULE_SIG_KEY_TYPE_RSA=y",
+          "# CONFIG_MODULE_SIG_KEY_TYPE_ECDSA is not set",
+          "CONFIG_SYSTEM_TRUSTED_KEYS=\"\"",
+          "# CONFIG_SECONDARY_TRUSTED_KEYRING is not set",
+          "# CONFIG_EFI_PGT_DUMP is not set"
+        ]
+      }
+    ],
+    "missing_module_directories": [
+      "/lib/modules/5.14.0-687.61.1.el9_8.x86_64/kernel/fs/9p",
+      "/lib/modules/5.14.0-687.61.1.el9_8.x86_64/kernel/net/9p"
+    ],
+    "kernel_tainted": {
+      "path": "/proc/sys/kernel/tainted",
+      "lines": [
+        "65536"
+      ]
+    },
+    "kernel_lockdown": {
+      "path": "/sys/kernel/security/lockdown",
+      "lines": [
+        "[none] integrity confidentiality"
+      ]
+    },
+    "namespace_metadata": {
+      "self_user_ns": "user:[4026531837]",
+      "init_user_ns": "user:[4026531837]",
+      "uid_map": {
+        "path": "/proc/self/uid_map",
+        "lines": [
+          "         0          0 4294967295"
+        ]
+      },
+      "gid_map": {
+        "path": "/proc/self/gid_map",
+        "lines": [
+          "         0          0 4294967295"
+        ]
+      }
+    },
+    "runtime_executable_presence": {
+      "podman": "/usr/bin/podman",
+      "docker": "/usr/bin/docker",
+      "containerd": null,
+      "crictl": null,
+      "k3s": null,
+      "kubectl": null
+    },
+    "completed": true
+  },
+  "retrieval_commands": [
+    {
+      "argv": [
+        "/usr/local/sbin/vm",
+        "list"
+      ],
+      "exit": 0,
+      "stdout": "NAME       DATASTORE  LOADER     CPU  MEMORY  VNC             AUTO     STATE\nfreebsd    default    bhyveload  4    1G      -               No       Stopped\nrocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (91477)\nhfs-test0  hfslab     bhyveload  2    2G      -               No       Stopped\nhfs-test1  hfslab     bhyveload  2    2G      -               No       Stopped\nhfs-test2  hfslab     bhyveload  2    2G      -               No       Stopped\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/bin/ps",
+        "-p",
+        "91477",
+        "-o",
+        "pid=",
+        "-o",
+        "ppid=",
+        "-o",
+        "uid=",
+        "-o",
+        "gid=",
+        "-o",
+        "comm=",
+        "-o",
+        "lstart="
+      ],
+      "exit": 0,
+      "stdout": "91477 91140 0 0 bhyve Fri Oct 30 19:23:39 2026\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/usr/bin/procstat",
+        "-b",
+        "91477"
+      ],
+      "exit": 0,
+      "stdout": "  PID COMM                OSREL PATH\n91477 bhyve             1501000 /usr/sbin/bhyve\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/usr/bin/procstat",
+        "-v",
+        "91477"
+      ],
+      "exit": 0,
+      "filtered_only_path": "/usr/lib/lib9p.so.1",
+      "matching_map_rows": 4,
+      "raw_output_discarded": true
+    }
+  ],
+  "receipts": [
+    {
+      "name": "host-actual",
+      "receipt_sha256": "2e71a8bedca0b110ced9c31fd3a46cbfe0ade99a17b043f7211a5f587eb8d110",
+      "started_at": "2026-10-30T17:49:51.134980+00:00",
+      "finished_at": "2026-10-30T17:49:56.470986+00:00",
+      "elapsed_seconds": 5.336012321000453,
+      "returncode": 255,
+      "proposal_sha256": "36f02070fe5cc65f229070c855995797a625b45356480d018fe5faea8ec0aea9",
+      "helper_sha256": "f4ed1a5ce42143b31ae7541a76113a5f4cd5cbd8973d9fbfd097b7a602946d61",
+      "scope": "ROOT executed reviewed read-only deployed-boundary inventory; no live test/VM/mount/config action",
+      "stdout_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 47,
+      "stderr_sha256": "8e661dce78f35d2fa13a0c4afedd662de898ac417b60dbaec0401036bd2be1f4"
+    },
+    {
+      "name": "host-independent-state",
+      "receipt_sha256": "1a5bf57d40f2935f77d78eb00e73953d25585111e33edf104ad45f59f921b65f",
+      "started_at": "2026-10-30T17:52:35.494580+00:00",
+      "finished_at": "2026-10-30T17:52:35.972447+00:00",
+      "returncode": 0,
+      "stdout_sha256": "033d44157328f5278620513d1690583c23b5b0948c9c4482d981ea542a33c435",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "host-actual-r2",
+      "receipt_sha256": "43fb8f4f311317b09996350316826e50c4d83fcd5c9857af5eee94a3475a6651",
+      "started_at": "2026-10-30T17:54:29.195265+00:00",
+      "finished_at": "2026-10-30T17:54:29.711226+00:00",
+      "elapsed_seconds": 0.5159706320009718,
+      "returncode": 0,
+      "proposal_sha256": "36f02070fe5cc65f229070c855995797a625b45356480d018fe5faea8ec0aea9",
+      "helper_sha256": "f4ed1a5ce42143b31ae7541a76113a5f4cd5cbd8973d9fbfd097b7a602946d61",
+      "scope": "Fresh ROOT read-only inventory after completed independent state/process inspection; first failed transport receipt preserved; no live test/VM/mount/config action",
+      "stdout_bytes": 11540,
+      "stdout_sha256": "1db383cbf8172120a33ef177368c74fa5b26c78c55acbcfccf89726389634666",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "rocky-r2-actual",
+      "receipt_sha256": "7dd27b9694c9ab6303e10fb9ea3c9e22cb58a2fcb0ddb0d2cb37f992868ed7be",
+      "started_at": "2026-10-30T17:54:40.907214+00:00",
+      "finished_at": "2026-10-30T17:54:42.075270+00:00",
+      "elapsed_seconds": 1.1680606449990591,
+      "returncode": 0,
+      "proposal_sha256": "cf7aab42be8d1c787c113e6970f5f934b5ac72e49517dd6a8bafaa834704edae",
+      "helper_sha256": "5c12e8156b0512f3062e5bb6486440ce7332016f53d344932665a77ae4e061cd",
+      "scope": "ROOT reviewed read-only Rocky boundary inventory after positive hostRunning receipt; no boot/module/mount/install/test/config action",
+      "stdout_bytes": 21192,
+      "stdout_sha256": "5c9b7e65433faf9c9868dd797e4eec890d053a1f7fa2d47dcff41c9333fef908",
+      "stderr_bytes": 222,
+      "stderr_sha256": "048e2ba89ae430962e02f5341cf60c694fb7e131cb417790075a56b32ca09992"
+    },
+    {
+      "name": "host-public-binary-bytes-r2-actual",
+      "receipt_sha256": "c743e63dbc06cfde2090562cd17aaed4242e7c85fcc1314f78a2ad2ad3ce4b6b",
+      "started_at": "2026-10-30T18:02:51.529725+00:00",
+      "finished_at": "2026-10-30T18:02:52.204611+00:00",
+      "elapsed_seconds": 0.6748870040028123,
+      "exit": 0,
+      "proposal_sha256": "2b790fd5ce7a76d5672eb4e147931437788384e1b42ea440eef9eb6a6af184ec",
+      "helper_sha256": "45dbbbf98d075ccd2916c24be9a6f4c1b01b2e89a2bd225a22af1ef322c7ace6",
+      "outputs": {
+        "stdout": {
+          "bytes": 1441268,
+          "sha256": "3931b37cc2c02d724e67d02ab0653368bb7baf383b5ed36accae6cf28061edfd"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    }
+  ],
+  "first_failed_stderr": "Timeout, server 192.168.1.133 not responding.\r\n",
+  "first_failed_cause": "Authenticated-session ServerAlive liveness timeout, established from observed local OpenSSH10.2p1 and matching official source; remote command dispatch/completion and root cause unknown. Buffered stdout0 does not establish no execution. Independent inspection proved helper absent before fresh inventory. Historical connect/banner failures remain distinct; no filesystem acceptance.",
+  "rocky_stderr_classification": "222 bytes OpenSSH post-quantum key exchange warning; preserved separately from diagnostic stdout; no transport configuration changed",
+  "metadata_modes": "Earlier metadata files initially0644 inside0700 parent; ROOT later corrected0600 with bytes unchanged. Public binary retrieval streams/blobs0600 from creation.",
+  "mode_correction_receipt_sha256": "acb9860384e78ce9526c458027882d688e45efda022c570efc946c3425c85bf4",
+  "postauth_finding": {
+    "sha256": "47e15c65248e300e9937d056d593664720789ec337fa84edce7bda2600b16710",
+    "task": "uy3",
+    "status": "investigation open; actual cause unknown",
+    "new_fact": "This failure is an authenticated-session ServerAlive liveness timeout, not evidence of initial SYN/connect or banner failure.",
+    "exact_stderr": "Timeout, server 192.168.1.133 not responding.\n",
+    "client_version_observed_locally": "OpenSSH_10.2p1, OpenSSL 3.5.8 25 Aug 2026",
+    "primary_source": "https://github.com/openssh/openssh-portable/blob/V_10_2_P1/clientloop.c#L470-L485",
+    "phase_order_source": "https://github.com/openssh/openssh-portable/blob/V_10_2_P1/ssh.c#L1739-L1773",
+    "phase_call_source": "https://github.com/openssh/openssh-portable/blob/V_10_2_P1/ssh.c#L2250-L2251",
+    "receipt_sha256": "2e71a8bedca0b110ced9c31fd3a46cbfe0ade99a17b043f7211a5f587eb8d110",
+    "stderr_sha256": "8e661dce78f35d2fa13a0c4afedd662de898ac417b60dbaec0401036bd2be1f4",
+    "remote_completion": "unknown at failure; buffered helper stdout0 does not prove no dispatch/execution",
+    "subsequent_reconciliation": "Root independent state inspection17:52:35 proved prior helper absent before fresh17:54:29 inventory. Fresh command was not retry of an outstanding uncertain action.",
+    "earlier_failures": "Keep N14 initial connection timeout and N15 banner timeout distinct; one cause is not established.",
+    "fix_claimed": false,
+    "tests_or_remote_operations_by_worker": false,
+    "next_proposal": "uy3-postauth-diagnostic-proposal.json"
+  }
+}

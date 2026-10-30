@@ -1,0 +1,573 @@
+Named archive fs_lock
+
+fs.o:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+00000000000028f0 <fs_lock>:
+    28f0:	55                   	push   %rbp
+    28f1:	48 89 e5             	mov    %rsp,%rbp
+    28f4:	b8 16 00 00 00       	mov    $0x16,%eax
+    28f9:	80 be 58 10 00 00 02 	cmpb   $0x2,0x1058(%rsi)
+    2900:	77 09                	ja     290b <fs_lock+0x1b>
+    2902:	c6 86 68 20 00 00 00 	movb   $0x0,0x2068(%rsi)
+    2909:	31 c0                	xor    %eax,%eax
+    290b:	5d                   	pop    %rbp
+    290c:	c3                   	ret
+
+
+Installed .so backend initialization
+
+lib9p.so.1:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+0000000000011760 <l9p_backend_fs_init@@Base>:
+   11760:	55                   	push   %rbp
+   11761:	48 89 e5             	mov    %rsp,%rbp
+   11764:	41 57                	push   %r15
+   11766:	41 56                	push   %r14
+   11768:	41 55                	push   %r13
+   1176a:	41 54                	push   %r12
+   1176c:	53                   	push   %rbx
+   1176d:	50                   	push   %rax
+   1176e:	41 89 d7             	mov    %edx,%r15d
+   11771:	41 89 f4             	mov    %esi,%r12d
+   11774:	48 89 fb             	mov    %rdi,%rbx
+   11777:	80 3d ba 99 00 00 00 	cmpb   $0x0,0x99ba(%rip)        # 1b138 <read@plt+0x3c98>
+   1177e:	75 2f                	jne    117af <l9p_backend_fs_init@@Base+0x4f>
+   11780:	48 8d 3d b9 99 00 00 	lea    0x99b9(%rip),%rdi        # 1b140 <read@plt+0x3ca0>
+   11787:	31 f6                	xor    %esi,%esi
+   11789:	e8 32 58 00 00       	call   16fc0 <pthread_mutex_init@plt>
+   1178e:	85 c0                	test   %eax,%eax
+   11790:	74 16                	je     117a8 <l9p_backend_fs_init@@Base+0x48>
+   11792:	41 89 c6             	mov    %eax,%r14d
+   11795:	e8 56 56 00 00       	call   16df0 <__error@plt>
+   1179a:	44 89 30             	mov    %r14d,(%rax)
+   1179d:	41 bc ff ff ff ff    	mov    $0xffffffff,%r12d
+   117a3:	e9 21 02 00 00       	jmp    119c9 <l9p_backend_fs_init@@Base+0x269>
+   117a8:	c6 05 89 99 00 00 01 	movb   $0x1,0x9989(%rip)        # 1b138 <read@plt+0x3c98>
+   117af:	bf 10 01 00 00       	mov    $0x110,%edi
+   117b4:	e8 57 55 00 00       	call   16d10 <malloc@plt>
+   117b9:	48 85 c0             	test   %rax,%rax
+   117bc:	0f 84 19 02 00 00    	je     119db <l9p_backend_fs_init@@Base+0x27b>
+   117c2:	49 89 c6             	mov    %rax,%r14
+   117c5:	48 8d 05 54 02 00 00 	lea    0x254(%rip),%rax        # 11a20 <l9p_backend_fs_init@@Base+0x2c0>
+   117cc:	49 89 46 10          	mov    %rax,0x10(%r14)
+   117d0:	48 8d 05 f9 04 00 00 	lea    0x4f9(%rip),%rax        # 11cd0 <l9p_backend_fs_init@@Base+0x570>
+   117d7:	49 89 46 18          	mov    %rax,0x18(%r14)
+   117db:	48 8d 05 4e 05 00 00 	lea    0x54e(%rip),%rax        # 11d30 <l9p_backend_fs_init@@Base+0x5d0>
+   117e2:	49 89 46 20          	mov    %rax,0x20(%r14)
+   117e6:	48 8d 05 23 08 00 00 	lea    0x823(%rip),%rax        # 12010 <l9p_backend_fs_init@@Base+0x8b0>
+   117ed:	49 89 46 28          	mov    %rax,0x28(%r14)
+   117f1:	48 8d 05 18 09 00 00 	lea    0x918(%rip),%rax        # 12110 <l9p_backend_fs_init@@Base+0x9b0>
+   117f8:	49 89 46 30          	mov    %rax,0x30(%r14)
+   117fc:	48 8d 05 fd 0a 00 00 	lea    0xafd(%rip),%rax        # 12300 <l9p_backend_fs_init@@Base+0xba0>
+   11803:	49 89 46 38          	mov    %rax,0x38(%r14)
+   11807:	48 8d 05 42 0d 00 00 	lea    0xd42(%rip),%rax        # 12550 <l9p_backend_fs_init@@Base+0xdf0>
+   1180e:	49 89 46 40          	mov    %rax,0x40(%r14)
+   11812:	48 8d 05 17 0e 00 00 	lea    0xe17(%rip),%rax        # 12630 <l9p_backend_fs_init@@Base+0xed0>
+   11819:	49 89 46 48          	mov    %rax,0x48(%r14)
+   1181d:	48 8d 05 ec 13 00 00 	lea    0x13ec(%rip),%rax        # 12c10 <l9p_backend_fs_init@@Base+0x14b0>
+   11824:	49 89 46 50          	mov    %rax,0x50(%r14)
+   11828:	48 8d 05 81 14 00 00 	lea    0x1481(%rip),%rax        # 12cb0 <l9p_backend_fs_init@@Base+0x1550>
+   1182f:	49 89 46 58          	mov    %rax,0x58(%r14)
+   11833:	48 8d 05 26 17 00 00 	lea    0x1726(%rip),%rax        # 12f60 <l9p_backend_fs_init@@Base+0x1800>
+   1183a:	49 89 46 60          	mov    %rax,0x60(%r14)
+   1183e:	48 8d 05 0b 19 00 00 	lea    0x190b(%rip),%rax        # 13150 <l9p_backend_fs_init@@Base+0x19f0>
+   11845:	49 89 46 68          	mov    %rax,0x68(%r14)
+   11849:	48 8d 05 60 1a 00 00 	lea    0x1a60(%rip),%rax        # 132b0 <l9p_backend_fs_init@@Base+0x1b50>
+   11850:	49 89 46 70          	mov    %rax,0x70(%r14)
+   11854:	48 8d 05 c5 1b 00 00 	lea    0x1bc5(%rip),%rax        # 13420 <l9p_backend_fs_init@@Base+0x1cc0>
+   1185b:	49 89 46 78          	mov    %rax,0x78(%r14)
+   1185f:	48 8d 05 6a 1c 00 00 	lea    0x1c6a(%rip),%rax        # 134d0 <l9p_backend_fs_init@@Base+0x1d70>
+   11866:	49 89 86 80 00 00 00 	mov    %rax,0x80(%r14)
+   1186d:	48 8d 05 dc 1d 00 00 	lea    0x1ddc(%rip),%rax        # 13650 <l9p_backend_fs_init@@Base+0x1ef0>
+   11874:	49 89 86 88 00 00 00 	mov    %rax,0x88(%r14)
+   1187b:	48 8d 05 8e 21 00 00 	lea    0x218e(%rip),%rax        # 13a10 <l9p_backend_fs_init@@Base+0x22b0>
+   11882:	49 89 86 90 00 00 00 	mov    %rax,0x90(%r14)
+   11889:	48 8d 05 40 22 00 00 	lea    0x2240(%rip),%rax        # 13ad0 <l9p_backend_fs_init@@Base+0x2370>
+   11890:	49 89 86 98 00 00 00 	mov    %rax,0x98(%r14)
+   11897:	48 8d 05 d2 24 00 00 	lea    0x24d2(%rip),%rax        # 13d70 <l9p_backend_fs_init@@Base+0x2610>
+   1189e:	49 89 86 a0 00 00 00 	mov    %rax,0xa0(%r14)
+   118a5:	48 8d 05 04 27 00 00 	lea    0x2704(%rip),%rax        # 13fb0 <l9p_backend_fs_init@@Base+0x2850>
+   118ac:	49 89 86 a8 00 00 00 	mov    %rax,0xa8(%r14)
+   118b3:	48 8d 05 06 27 00 00 	lea    0x2706(%rip),%rax        # 13fc0 <l9p_backend_fs_init@@Base+0x2860>
+   118ba:	49 89 86 b0 00 00 00 	mov    %rax,0xb0(%r14)
+   118c1:	48 8d 05 08 27 00 00 	lea    0x2708(%rip),%rax        # 13fd0 <l9p_backend_fs_init@@Base+0x2870>
+   118c8:	49 89 86 d0 00 00 00 	mov    %rax,0xd0(%r14)
+   118cf:	48 8d 05 ca 28 00 00 	lea    0x28ca(%rip),%rax        # 141a0 <l9p_backend_fs_init@@Base+0x2a40>
+   118d6:	49 89 86 d8 00 00 00 	mov    %rax,0xd8(%r14)
+   118dd:	48 8d 05 1c 29 00 00 	lea    0x291c(%rip),%rax        # 14200 <l9p_backend_fs_init@@Base+0x2aa0>
+   118e4:	49 89 86 e0 00 00 00 	mov    %rax,0xe0(%r14)
+   118eb:	48 8d 05 2e 29 00 00 	lea    0x292e(%rip),%rax        # 14220 <l9p_backend_fs_init@@Base+0x2ac0>
+   118f2:	49 89 86 e8 00 00 00 	mov    %rax,0xe8(%r14)
+   118f9:	48 8d 05 90 29 00 00 	lea    0x2990(%rip),%rax        # 14290 <l9p_backend_fs_init@@Base+0x2b30>
+   11900:	49 89 86 f0 00 00 00 	mov    %rax,0xf0(%r14)
+   11907:	48 8d 05 02 2c 00 00 	lea    0x2c02(%rip),%rax        # 14510 <l9p_backend_fs_init@@Base+0x2db0>
+   1190e:	49 89 86 f8 00 00 00 	mov    %rax,0xf8(%r14)
+   11915:	48 8d 05 a4 2c 00 00 	lea    0x2ca4(%rip),%rax        # 145c0 <l9p_backend_fs_init@@Base+0x2e60>
+   1191c:	49 89 86 00 01 00 00 	mov    %rax,0x100(%r14)
+   11923:	48 8d 05 56 30 00 00 	lea    0x3056(%rip),%rax        # 14980 <l9p_backend_fs_init@@Base+0x3220>
+   1192a:	49 89 86 08 01 00 00 	mov    %rax,0x108(%r14)
+   11931:	48 8d 05 d8 32 00 00 	lea    0x32d8(%rip),%rax        # 14c10 <l9p_backend_fs_init@@Base+0x34b0>
+   11938:	49 89 46 08          	mov    %rax,0x8(%r14)
+   1193c:	bf 18 00 00 00       	mov    $0x18,%edi
+   11941:	e8 ca 53 00 00       	call   16d10 <malloc@plt>
+   11946:	48 85 c0             	test   %rax,%rax
+   11949:	0f 84 a4 00 00 00    	je     119f3 <l9p_backend_fs_init@@Base+0x293>
+   1194f:	49 89 c5             	mov    %rax,%r13
+   11952:	44 89 20             	mov    %r12d,(%rax)
+   11955:	44 88 78 04          	mov    %r15b,0x4(%rax)
+   11959:	49 89 06             	mov    %rax,(%r14)
+   1195c:	e8 9f 57 00 00       	call   17100 <cap_init@plt>
+   11961:	41 bc ff ff ff ff    	mov    $0xffffffff,%r12d
+   11967:	48 85 c0             	test   %rax,%rax
+   1196a:	74 5d                	je     119c9 <l9p_backend_fs_init@@Base+0x269>
+   1196c:	49 89 c7             	mov    %rax,%r15
+   1196f:	48 8d 35 71 49 ff ff 	lea    -0xb68f(%rip),%rsi        # 62e7 <l9p_server_init@@Base-0x3cf9>
+   11976:	48 89 c7             	mov    %rax,%rdi
+   11979:	e8 92 57 00 00       	call   17110 <cap_service_open@plt>
+   1197e:	49 89 45 08          	mov    %rax,0x8(%r13)
+   11982:	48 85 c0             	test   %rax,%rax
+   11985:	74 42                	je     119c9 <l9p_backend_fs_init@@Base+0x269>
+   11987:	48 8d 35 64 49 ff ff 	lea    -0xb69c(%rip),%rsi        # 62f2 <l9p_server_init@@Base-0x3cee>
+   1198e:	4c 89 ff             	mov    %r15,%rdi
+   11991:	e8 7a 57 00 00       	call   17110 <cap_service_open@plt>
+   11996:	49 89 45 10          	mov    %rax,0x10(%r13)
+   1199a:	48 85 c0             	test   %rax,%rax
+   1199d:	74 2a                	je     119c9 <l9p_backend_fs_init@@Base+0x269>
+   1199f:	49 8b 7d 08          	mov    0x8(%r13),%rdi
+   119a3:	be 01 00 00 00       	mov    $0x1,%esi
+   119a8:	e8 73 57 00 00       	call   17120 <cap_setpassent@plt>
+   119ad:	49 8b 7d 10          	mov    0x10(%r13),%rdi
+   119b1:	be 01 00 00 00       	mov    $0x1,%esi
+   119b6:	e8 75 57 00 00       	call   17130 <cap_setgroupent@plt>
+   119bb:	4c 89 ff             	mov    %r15,%rdi
+   119be:	e8 7d 57 00 00       	call   17140 <cap_close@plt>
+   119c3:	4c 89 33             	mov    %r14,(%rbx)
+   119c6:	45 31 e4             	xor    %r12d,%r12d
+   119c9:	44 89 e0             	mov    %r12d,%eax
+   119cc:	48 83 c4 08          	add    $0x8,%rsp
+   119d0:	5b                   	pop    %rbx
+   119d1:	41 5c                	pop    %r12
+   119d3:	41 5d                	pop    %r13
+   119d5:	41 5e                	pop    %r14
+   119d7:	41 5f                	pop    %r15
+   119d9:	5d                   	pop    %rbp
+   119da:	c3                   	ret
+   119db:	48 8b 05 16 82 00 00 	mov    0x8216(%rip),%rax        # 19bf8 <read@plt+0x2758>
+   119e2:	48 8b 38             	mov    (%rax),%rdi
+   119e5:	48 8d 35 3b 48 ff ff 	lea    -0xb7c5(%rip),%rsi        # 6227 <l9p_server_init@@Base-0x3db9>
+   119ec:	ba 10 01 00 00       	mov    $0x110,%edx
+   119f1:	eb 16                	jmp    11a09 <l9p_backend_fs_init@@Base+0x2a9>
+   119f3:	48 8b 05 fe 81 00 00 	mov    0x81fe(%rip),%rax        # 19bf8 <read@plt+0x2758>
+   119fa:	48 8b 38             	mov    (%rax),%rdi
+   119fd:	48 8d 35 23 48 ff ff 	lea    -0xb7dd(%rip),%rsi        # 6227 <l9p_server_init@@Base-0x3db9>
+   11a04:	ba 18 00 00 00       	mov    $0x18,%edx
+   11a09:	31 c0                	xor    %eax,%eax
+   11a0b:	e8 40 51 00 00       	call   16b50 <fprintf@plt>
+   11a10:	e8 4b 51 00 00       	call   16b60 <abort@plt>
+
+Disassembly of section .init:
+
+Disassembly of section .fini:
+
+Disassembly of section .plt:
+
+
+Installed .so fsync, lock, getlock
+
+lib9p.so.1:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+00000000000141a0 <l9p_backend_fs_init@@Base+0x2a40>:
+   141a0:	55                   	push   %rbp
+   141a1:	48 89 e5             	mov    %rsp,%rbp
+   141a4:	48 8b 86 70 30 00 00 	mov    0x3070(%rsi),%rax
+   141ab:	48 8b 00             	mov    (%rax),%rax
+   141ae:	48 85 c0             	test   %rax,%rax
+   141b1:	74 2a                	je     141dd <l9p_backend_fs_init@@Base+0x2a7d>
+   141b3:	48 8b 38             	mov    (%rax),%rdi
+   141b6:	48 85 ff             	test   %rdi,%rdi
+   141b9:	74 09                	je     141c4 <l9p_backend_fs_init@@Base+0x2a64>
+   141bb:	e8 00 30 00 00       	call   171c0 <dirfd@plt>
+   141c0:	89 c7                	mov    %eax,%edi
+   141c2:	eb 03                	jmp    141c7 <l9p_backend_fs_init@@Base+0x2a67>
+   141c4:	8b 78 0c             	mov    0xc(%rax),%edi
+   141c7:	e8 54 31 00 00       	call   17320 <fsync@plt>
+   141cc:	85 c0                	test   %eax,%eax
+   141ce:	74 09                	je     141d9 <l9p_backend_fs_init@@Base+0x2a79>
+   141d0:	e8 1b 2c 00 00       	call   16df0 <__error@plt>
+   141d5:	8b 00                	mov    (%rax),%eax
+   141d7:	5d                   	pop    %rbp
+   141d8:	c3                   	ret
+   141d9:	31 c0                	xor    %eax,%eax
+   141db:	5d                   	pop    %rbp
+   141dc:	c3                   	ret
+   141dd:	48 8d 3d 18 1b ff ff 	lea    -0xe4e8(%rip),%rdi        # 5cfc <l9p_server_init@@Base-0x42e4>
+   141e4:	48 8d 35 31 15 ff ff 	lea    -0xeacf(%rip),%rsi        # 571c <l9p_server_init@@Base-0x48c4>
+   141eb:	48 8d 0d f0 22 ff ff 	lea    -0xdd10(%rip),%rcx        # 64e2 <l9p_server_init@@Base-0x3afe>
+   141f2:	ba 96 0a 00 00       	mov    $0xa96,%edx
+   141f7:	e8 b4 29 00 00       	call   16bb0 <__assert@plt>
+   141fc:	0f 1f 40 00          	nopl   0x0(%rax)
+   14200:	55                   	push   %rbp
+   14201:	48 89 e5             	mov    %rsp,%rbp
+   14204:	b8 16 00 00 00       	mov    $0x16,%eax
+   14209:	80 be 58 10 00 00 02 	cmpb   $0x2,0x1058(%rsi)
+   14210:	77 09                	ja     1421b <l9p_backend_fs_init@@Base+0x2abb>
+   14212:	c6 86 68 20 00 00 00 	movb   $0x0,0x2068(%rsi)
+   14219:	31 c0                	xor    %eax,%eax
+   1421b:	5d                   	pop    %rbp
+   1421c:	c3                   	ret
+   1421d:	0f 1f 00             	nopl   (%rax)
+   14220:	b8 16 00 00 00       	mov    $0x16,%eax
+   14225:	80 be 58 10 00 00 02 	cmpb   $0x2,0x1058(%rsi)
+   1422c:	77 55                	ja     14283 <l9p_backend_fs_init@@Base+0x2b23>
+   1422e:	55                   	push   %rbp
+   1422f:	48 89 e5             	mov    %rsp,%rbp
+   14232:	53                   	push   %rbx
+   14233:	50                   	push   %rax
+   14234:	0f 10 86 50 10 00 00 	movups 0x1050(%rsi),%xmm0
+   1423b:	0f 10 8e 60 10 00 00 	movups 0x1060(%rsi),%xmm1
+   14242:	0f 11 86 60 20 00 00 	movups %xmm0,0x2060(%rsi)
+   14249:	48 8b 86 70 10 00 00 	mov    0x1070(%rsi),%rax
+   14250:	48 89 86 80 20 00 00 	mov    %rax,0x2080(%rsi)
+   14257:	0f 11 8e 70 20 00 00 	movups %xmm1,0x2070(%rsi)
+   1425e:	c6 86 68 20 00 00 02 	movb   $0x2,0x2068(%rsi)
+   14265:	48 8d 3d ab 10 ff ff 	lea    -0xef55(%rip),%rdi        # 5317 <l9p_server_init@@Base-0x4cc9>
+   1426c:	48 89 f3             	mov    %rsi,%rbx
+   1426f:	e8 8c 2c 00 00       	call   16f00 <strdup@plt>
+   14274:	48 89 83 88 20 00 00 	mov    %rax,0x2088(%rbx)
+   1427b:	31 c0                	xor    %eax,%eax
+   1427d:	48 83 c4 08          	add    $0x8,%rsp
+   14281:	5b                   	pop    %rbx
+   14282:	5d                   	pop    %rbp
+   14283:	c3                   	ret
+
+
+Installed .so attach host account/group lookups
+
+lib9p.so.1:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+0000000000011a20 <l9p_backend_fs_init@@Base+0x2c0>:
+   11a20:	55                   	push   %rbp
+   11a21:	48 89 e5             	mov    %rsp,%rbp
+   11a24:	41 57                	push   %r15
+   11a26:	41 56                	push   %r14
+   11a28:	41 55                	push   %r13
+   11a2a:	41 54                	push   %r12
+   11a2c:	53                   	push   %rbx
+   11a2d:	48 81 ec 58 01 00 00 	sub    $0x158,%rsp
+   11a34:	48 8b 05 c5 81 00 00 	mov    0x81c5(%rip),%rax        # 19c00 <read@plt+0x2760>
+   11a3b:	48 8b 00             	mov    (%rax),%rax
+   11a3e:	48 89 45 d0          	mov    %rax,-0x30(%rbp)
+   11a42:	48 83 be 70 30 00 00 	cmpq   $0x0,0x3070(%rsi)
+   11a49:	00
+   11a4a:	0f 84 55 02 00 00    	je     11ca5 <l9p_backend_fs_init@@Base+0x545>
+   11a50:	48 89 f3             	mov    %rsi,%rbx
+   11a53:	49 89 fd             	mov    %rdi,%r13
+   11a56:	48 8d 3d e3 96 00 00 	lea    0x96e3(%rip),%rdi        # 1b140 <read@plt+0x3ca0>
+   11a5d:	e8 de 55 00 00       	call   17040 <pthread_mutex_lock@plt>
+   11a62:	44 8b bb 70 10 00 00 	mov    0x1070(%rbx),%r15d
+   11a69:	49 8b 7d 08          	mov    0x8(%r13),%rdi
+   11a6d:	41 83 ff ff          	cmp    $0xffffffff,%r15d
+   11a71:	74 48                	je     11abb <l9p_backend_fs_init@@Base+0x35b>
+   11a73:	4c 89 ad 80 fe ff ff 	mov    %r13,-0x180(%rbp)
+   11a7a:	48 8d 95 90 fe ff ff 	lea    -0x170(%rbp),%rdx
+   11a81:	44 89 fe             	mov    %r15d,%esi
+   11a84:	e8 f7 54 00 00       	call   16f80 <r_cap_getpwuid@plt>
+   11a89:	49 89 c4             	mov    %rax,%r12
+   11a8c:	48 85 c0             	test   %rax,%rax
+   11a8f:	41 0f 95 c5          	setne  %r13b
+   11a93:	48 8b 85 80 fe ff ff 	mov    -0x180(%rbp),%rax
+   11a9a:	8b 38                	mov    (%rax),%edi
+   11a9c:	48 8d b5 f0 fe ff ff 	lea    -0x110(%rbp),%rsi
+   11aa3:	e8 a8 56 00 00       	call   17150 <fstat@plt>
+   11aa8:	85 c0                	test   %eax,%eax
+   11aaa:	74 3f                	je     11aeb <l9p_backend_fs_init@@Base+0x38b>
+   11aac:	e8 3f 53 00 00       	call   16df0 <__error@plt>
+   11ab1:	44 8b 30             	mov    (%rax),%r14d
+   11ab4:	45 85 f6             	test   %r14d,%r14d
+   11ab7:	75 6a                	jne    11b23 <l9p_backend_fs_init@@Base+0x3c3>
+   11ab9:	eb 49                	jmp    11b04 <l9p_backend_fs_init@@Base+0x3a4>
+   11abb:	48 8b b3 60 10 00 00 	mov    0x1060(%rbx),%rsi
+   11ac2:	e8 99 56 00 00       	call   17160 <cap_getpwnam@plt>
+   11ac7:	41 be 01 00 00 00    	mov    $0x1,%r14d
+   11acd:	48 85 c0             	test   %rax,%rax
+   11ad0:	74 51                	je     11b23 <l9p_backend_fs_init@@Base+0x3c3>
+   11ad2:	49 89 c4             	mov    %rax,%r12
+   11ad5:	4c 89 ad 80 fe ff ff 	mov    %r13,-0x180(%rbp)
+   11adc:	44 8b 78 10          	mov    0x10(%rax),%r15d
+   11ae0:	41 b5 01             	mov    $0x1,%r13b
+   11ae3:	41 83 ff ff          	cmp    $0xffffffff,%r15d
+   11ae7:	75 aa                	jne    11a93 <l9p_backend_fs_init@@Base+0x333>
+   11ae9:	eb 38                	jmp    11b23 <l9p_backend_fs_init@@Base+0x3c3>
+   11aeb:	0f b7 85 08 ff ff ff 	movzwl -0xf8(%rbp),%eax
+   11af2:	25 00 f0 00 00       	and    $0xf000,%eax
+   11af7:	41 be 14 00 00 00    	mov    $0x14,%r14d
+   11afd:	3d 00 40 00 00       	cmp    $0x4000,%eax
+   11b02:	75 1f                	jne    11b23 <l9p_backend_fs_init@@Base+0x3c3>
+   11b04:	45 84 ed             	test   %r13b,%r13b
+   11b07:	74 65                	je     11b6e <l9p_backend_fs_init@@Base+0x40e>
+   11b09:	49 8b 3c 24          	mov    (%r12),%rdi
+   11b0d:	41 8b 74 24 14       	mov    0x14(%r12),%esi
+   11b12:	48 8d 95 8c fe ff ff 	lea    -0x174(%rbp),%rdx
+   11b19:	e8 82 55 00 00       	call   170a0 <l9p_getgrlist@plt>
+   11b1e:	49 89 c6             	mov    %rax,%r14
+   11b21:	eb 58                	jmp    11b7b <l9p_backend_fs_init@@Base+0x41b>
+   11b23:	48 8d 3d 16 96 00 00 	lea    0x9616(%rip),%rdi        # 1b140 <read@plt+0x3ca0>
+   11b2a:	e8 01 55 00 00       	call   17030 <pthread_mutex_unlock@plt>
+   11b2f:	41 83 fe 14          	cmp    $0x14,%r14d
+   11b33:	41 bd 01 00 00 00    	mov    $0x1,%r13d
+   11b39:	45 0f 44 ee          	cmove  %r14d,%r13d
+   11b3d:	41 83 fe 02          	cmp    $0x2,%r14d
+   11b41:	45 0f 44 ee          	cmove  %r14d,%r13d
+   11b45:	48 8b 0d b4 80 00 00 	mov    0x80b4(%rip),%rcx        # 19c00 <read@plt+0x2760>
+   11b4c:	48 8b 01             	mov    (%rcx),%rax
+   11b4f:	48 3b 45 d0          	cmp    -0x30(%rbp),%rax
+   11b53:	0f 85 6b 01 00 00    	jne    11cc4 <l9p_backend_fs_init@@Base+0x564>
+   11b59:	44 89 e8             	mov    %r13d,%eax
+   11b5c:	48 81 c4 58 01 00 00 	add    $0x158,%rsp
+   11b63:	5b                   	pop    %rbx
+   11b64:	41 5c                	pop    %r12
+   11b66:	41 5d                	pop    %r13
+   11b68:	41 5e                	pop    %r14
+   11b6a:	41 5f                	pop    %r15
+   11b6c:	5d                   	pop    %rbp
+   11b6d:	c3                   	ret
+   11b6e:	c7 85 8c fe ff ff 00 	movl   $0x0,-0x174(%rbp)
+   11b75:	00 00 00
+   11b78:	45 31 f6             	xor    %r14d,%r14d
+   11b7b:	48 8d 3d be 95 00 00 	lea    0x95be(%rip),%rdi        # 1b140 <read@plt+0x3ca0>
+   11b82:	e8 a9 54 00 00       	call   17030 <pthread_mutex_unlock@plt>
+   11b87:	48 63 85 8c fe ff ff 	movslq -0x174(%rbp),%rax
+   11b8e:	48 8d 3c 85 18 00 00 	lea    0x18(,%rax,4),%rdi
+   11b95:	00
+   11b96:	e8 75 51 00 00       	call   16d10 <malloc@plt>
+   11b9b:	48 85 c0             	test   %rax,%rax
+   11b9e:	74 29                	je     11bc9 <l9p_backend_fs_init@@Base+0x469>
+   11ba0:	49 89 c4             	mov    %rax,%r12
+   11ba3:	48 89 c7             	mov    %rax,%rdi
+   11ba6:	31 f6                	xor    %esi,%esi
+   11ba8:	e8 13 54 00 00       	call   16fc0 <pthread_mutex_init@plt>
+   11bad:	85 c0                	test   %eax,%eax
+   11baf:	74 2b                	je     11bdc <l9p_backend_fs_init@@Base+0x47c>
+   11bb1:	41 89 c5             	mov    %eax,%r13d
+   11bb4:	4c 89 f7             	mov    %r14,%rdi
+   11bb7:	e8 d4 4f 00 00       	call   16b90 <free@plt>
+   11bbc:	4c 89 e7             	mov    %r12,%rdi
+   11bbf:	e8 cc 4f 00 00       	call   16b90 <free@plt>
+   11bc4:	e9 7c ff ff ff       	jmp    11b45 <l9p_backend_fs_init@@Base+0x3e5>
+   11bc9:	4c 89 f7             	mov    %r14,%rdi
+   11bcc:	e8 bf 4f 00 00       	call   16b90 <free@plt>
+   11bd1:	41 bd 0c 00 00 00    	mov    $0xc,%r13d
+   11bd7:	e9 69 ff ff ff       	jmp    11b45 <l9p_backend_fs_init@@Base+0x3e5>
+   11bdc:	49 c7 44 24 08 00 00 	movq   $0x0,0x8(%r12)
+   11be3:	00 00
+   11be5:	45 89 7c 24 10       	mov    %r15d,0x10(%r12)
+   11bea:	48 63 95 8c fe ff ff 	movslq -0x174(%rbp),%rdx
+   11bf1:	41 89 54 24 14       	mov    %edx,0x14(%r12)
+   11bf6:	4c 89 e7             	mov    %r12,%rdi
+   11bf9:	48 83 c7 18          	add    $0x18,%rdi
+   11bfd:	48 c1 e2 02          	shl    $0x2,%rdx
+   11c01:	4c 89 f6             	mov    %r14,%rsi
+   11c04:	e8 c7 4f 00 00       	call   16bd0 <memcpy@plt>
+   11c09:	4c 89 f7             	mov    %r14,%rdi
+   11c0c:	e8 7f 4f 00 00       	call   16b90 <free@plt>
+   11c11:	48 8b 85 80 fe ff ff 	mov    -0x180(%rbp),%rax
+   11c18:	8b 38                	mov    (%rax),%edi
+   11c1a:	48 8d 35 f4 36 ff ff 	lea    -0xc90c(%rip),%rsi        # 5315 <l9p_server_init@@Base-0x4ccb>
+   11c21:	4c 89 e2             	mov    %r12,%rdx
+   11c24:	b9 01 00 00 00       	mov    $0x1,%ecx
+   11c29:	e8 72 30 00 00       	call   14ca0 <l9p_backend_fs_init@@Base+0x3540>
+   11c2e:	48 85 c0             	test   %rax,%rax
+   11c31:	74 4e                	je     11c81 <l9p_backend_fs_init@@Base+0x521>
+   11c33:	48 8b 8b 70 30 00 00 	mov    0x3070(%rbx),%rcx
+   11c3a:	48 89 01             	mov    %rax,(%rcx)
+   11c3d:	48 8b 85 f8 fe ff ff 	mov    -0x108(%rbp),%rax
+   11c44:	48 89 83 70 20 00 00 	mov    %rax,0x2070(%rbx)
+   11c4b:	c7 83 6c 20 00 00 00 	movl   $0x0,0x206c(%rbx)
+   11c52:	00 00 00
+   11c55:	0f b7 85 08 ff ff ff 	movzwl -0xf8(%rbp),%eax
+   11c5c:	25 00 f0 00 00       	and    $0xf000,%eax
+   11c61:	45 31 ed             	xor    %r13d,%r13d
+   11c64:	3d 00 40 00 00       	cmp    $0x4000,%eax
+   11c69:	74 26                	je     11c91 <l9p_backend_fs_init@@Base+0x531>
+   11c6b:	3d 00 a0 00 00       	cmp    $0xa000,%eax
+   11c70:	48 8b 0d 89 7f 00 00 	mov    0x7f89(%rip),%rcx        # 19c00 <read@plt+0x2760>
+   11c77:	0f 85 cf fe ff ff    	jne    11b4c <l9p_backend_fs_init@@Base+0x3ec>
+   11c7d:	b0 02                	mov    $0x2,%al
+   11c7f:	eb 19                	jmp    11c9a <l9p_backend_fs_init@@Base+0x53a>
+   11c81:	4c 89 e7             	mov    %r12,%rdi
+   11c84:	e8 67 53 00 00       	call   16ff0 <pthread_mutex_destroy@plt>
+   11c89:	4c 89 e7             	mov    %r12,%rdi
+   11c8c:	e9 3b ff ff ff       	jmp    11bcc <l9p_backend_fs_init@@Base+0x46c>
+   11c91:	b0 80                	mov    $0x80,%al
+   11c93:	48 8b 0d 66 7f 00 00 	mov    0x7f66(%rip),%rcx        # 19c00 <read@plt+0x2760>
+   11c9a:	08 83 68 20 00 00    	or     %al,0x2068(%rbx)
+   11ca0:	e9 a7 fe ff ff       	jmp    11b4c <l9p_backend_fs_init@@Base+0x3ec>
+   11ca5:	48 8d 3d 53 3f ff ff 	lea    -0xc0ad(%rip),%rdi        # 5bff <l9p_server_init@@Base-0x43e1>
+   11cac:	48 8d 35 69 3a ff ff 	lea    -0xc597(%rip),%rsi        # 571c <l9p_server_init@@Base-0x48c4>
+   11cb3:	48 8d 0d 43 46 ff ff 	lea    -0xb9bd(%rip),%rcx        # 62fd <l9p_server_init@@Base-0x3ce3>
+   11cba:	ba 5a 03 00 00       	mov    $0x35a,%edx
+   11cbf:	e8 ec 4e 00 00       	call   16bb0 <__assert@plt>
+   11cc4:	e8 d7 4f 00 00       	call   16ca0 <__stack_chk_fail@plt>
+   11cc9:	0f 1f 80 00 00 00 00 	nopl   0x0(%rax)
+
+
+Installed .so write
+
+lib9p.so.1:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+0000000000012c10 <l9p_backend_fs_init@@Base+0x14b0>:
+   12c10:	55                   	push   %rbp
+   12c11:	48 89 e5             	mov    %rsp,%rbp
+   12c14:	41 57                	push   %r15
+   12c16:	41 56                	push   %r14
+   12c18:	53                   	push   %rbx
+   12c19:	50                   	push   %rax
+   12c1a:	48 8b 86 70 30 00 00 	mov    0x3070(%rsi),%rax
+   12c21:	4c 8b 38             	mov    (%rax),%r15
+   12c24:	4d 85 ff             	test   %r15,%r15
+   12c27:	74 60                	je     12c89 <l9p_backend_fs_init@@Base+0x1529>
+   12c29:	b8 1e 00 00 00       	mov    $0x1e,%eax
+   12c2e:	80 7f 04 00          	cmpb   $0x0,0x4(%rdi)
+   12c32:	75 4a                	jne    12c7e <l9p_backend_fs_init@@Base+0x151e>
+   12c34:	48 89 f3             	mov    %rsi,%rbx
+   12c37:	4c 8d b6 98 30 00 00 	lea    0x3098(%rsi),%r14
+   12c3e:	48 8b b6 98 38 00 00 	mov    0x3898(%rsi),%rsi
+   12c45:	8b 93 60 10 00 00    	mov    0x1060(%rbx),%edx
+   12c4b:	4c 89 f7             	mov    %r14,%rdi
+   12c4e:	e8 3d 44 00 00       	call   17090 <l9p_truncate_iov@plt>
+   12c53:	41 8b 7f 0c          	mov    0xc(%r15),%edi
+   12c57:	48 8b 8b 58 10 00 00 	mov    0x1058(%rbx),%rcx
+   12c5e:	4c 89 f6             	mov    %r14,%rsi
+   12c61:	89 c2                	mov    %eax,%edx
+   12c63:	e8 e8 45 00 00       	call   17250 <pwritev@plt>
+   12c68:	48 85 c0             	test   %rax,%rax
+   12c6b:	78 0a                	js     12c77 <l9p_backend_fs_init@@Base+0x1517>
+   12c6d:	89 83 70 20 00 00    	mov    %eax,0x2070(%rbx)
+   12c73:	31 c0                	xor    %eax,%eax
+   12c75:	eb 07                	jmp    12c7e <l9p_backend_fs_init@@Base+0x151e>
+   12c77:	e8 74 41 00 00       	call   16df0 <__error@plt>
+   12c7c:	8b 00                	mov    (%rax),%eax
+   12c7e:	48 83 c4 08          	add    $0x8,%rsp
+   12c82:	5b                   	pop    %rbx
+   12c83:	41 5e                	pop    %r14
+   12c85:	41 5f                	pop    %r15
+   12c87:	5d                   	pop    %rbp
+   12c88:	c3                   	ret
+   12c89:	48 8d 3d 63 30 ff ff 	lea    -0xcf9d(%rip),%rdi        # 5cf3 <l9p_server_init@@Base-0x42ed>
+   12c90:	48 8d 35 85 2a ff ff 	lea    -0xd57b(%rip),%rsi        # 571c <l9p_server_init@@Base-0x48c4>
+   12c97:	48 8d 0d ce 36 ff ff 	lea    -0xc932(%rip),%rcx        # 636c <l9p_server_init@@Base-0x3c74>
+   12c9e:	ba c2 07 00 00       	mov    $0x7c2,%edx
+   12ca3:	e8 08 3f 00 00       	call   16bb0 <__assert@plt>
+   12ca8:	0f 1f 84 00 00 00 00 	nopl   0x0(%rax,%rax,1)
+   12caf:	00
+
+
+Installed .so Linux open flag conversion
+
+lib9p.so.1:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+0000000000013150 <l9p_backend_fs_init@@Base+0x19f0>:
+   13150:	55                   	push   %rbp
+   13151:	48 89 e5             	mov    %rsp,%rbp
+   13154:	41 56                	push   %r14
+   13156:	53                   	push   %rbx
+   13157:	48 81 ec f0 00 00 00 	sub    $0xf0,%rsp
+   1315e:	48 8b 1d 9b 6a 00 00 	mov    0x6a9b(%rip),%rbx        # 19c00 <read@plt+0x2760>
+   13165:	48 8b 03             	mov    (%rbx),%rax
+   13168:	48 89 45 e8          	mov    %rax,-0x18(%rbp)
+   1316c:	8b 8e 60 10 00 00    	mov    0x1060(%rsi),%ecx
+   13172:	41 89 c8             	mov    %ecx,%r8d
+   13175:	41 83 e0 03          	and    $0x3,%r8d
+   13179:	b8 16 00 00 00       	mov    $0x16,%eax
+   1317e:	41 83 f8 03          	cmp    $0x3,%r8d
+   13182:	0f 84 0e 01 00 00    	je     13296 <l9p_backend_fs_init@@Base+0x1b36>
+   13188:	41 89 c9             	mov    %ecx,%r9d
+   1318b:	41 81 e1 00 00 22 00 	and    $0x220000,%r9d
+   13192:	41 81 f9 00 00 22 00 	cmp    $0x220000,%r9d
+   13199:	ba 3c ff dd ff       	mov    $0xffddff3c,%edx
+   1319e:	41 bb 3c ff ff ff    	mov    $0xffffff3c,%r11d
+   131a4:	44 0f 44 da          	cmove  %edx,%r11d
+   131a8:	41 21 cb             	and    %ecx,%r11d
+   131ab:	44 89 da             	mov    %r11d,%edx
+   131ae:	81 e2 3c fd ff ff    	and    $0xfffffd3c,%edx
+   131b4:	41 89 ca             	mov    %ecx,%r10d
+   131b7:	41 81 e2 00 02 00 00 	and    $0x200,%r10d
+   131be:	41 0f 44 d3          	cmove  %r11d,%edx
+   131c2:	f7 c2 3c 02 e0 ff    	test   $0xffe0023c,%edx
+   131c8:	0f 85 c8 00 00 00    	jne    13296 <l9p_backend_fs_init@@Base+0x1b36>
+   131ce:	89 c8                	mov    %ecx,%eax
+   131d0:	c0 e8 07             	shr    $0x7,%al
+   131d3:	0f b6 c0             	movzbl %al,%eax
+   131d6:	c1 e0 0b             	shl    $0xb,%eax
+   131d9:	42 8d 04 50          	lea    (%rax,%r10,2),%eax
+   131dd:	41 89 d2             	mov    %edx,%r10d
+   131e0:	41 81 e2 00 00 01 00 	and    $0x10000,%r10d
+   131e7:	42 8d 04 50          	lea    (%rax,%r10,2),%eax
+   131eb:	41 89 d2             	mov    %edx,%r10d
+   131ee:	41 c1 ea 07          	shr    $0x7,%r10d
+   131f2:	41 83 e2 08          	and    $0x8,%r10d
+   131f6:	41 09 c2             	or     %eax,%r10d
+   131f9:	c1 ea 09             	shr    $0x9,%edx
+   131fc:	83 e2 04             	and    $0x4,%edx
+   131ff:	44 09 c2             	or     %r8d,%edx
+   13202:	44 09 d2             	or     %r10d,%edx
+   13205:	81 ca 00 81 00 00    	or     $0x8100,%edx
+   1320b:	41 81 f9 00 00 22 00 	cmp    $0x220000,%r9d
+   13212:	41 b9 03 00 00 00    	mov    $0x3,%r9d
+   13218:	45 0f 45 c8          	cmovne %r8d,%r9d
+   1321c:	48 8b 86 70 30 00 00 	mov    0x3070(%rsi),%rax
+   13223:	c1 e9 05             	shr    $0x5,%ecx
+   13226:	83 e1 10             	and    $0x10,%ecx
+   13229:	44 09 c9             	or     %r9d,%ecx
+   1322c:	4c 8d 85 08 ff ff ff 	lea    -0xf8(%rbp),%r8
+   13233:	49 89 f6             	mov    %rsi,%r14
+   13236:	48 89 c6             	mov    %rax,%rsi
+   13239:	e8 52 2b 00 00       	call   15d90 <l9p_backend_fs_init@@Base+0x4630>
+   1323e:	85 c0                	test   %eax,%eax
+   13240:	75 54                	jne    13296 <l9p_backend_fs_init@@Base+0x1b36>
+   13242:	4c 89 f1             	mov    %r14,%rcx
+   13245:	48 8b 85 10 ff ff ff 	mov    -0xf0(%rbp),%rax
+   1324c:	49 89 86 70 20 00 00 	mov    %rax,0x2070(%r14)
+   13253:	41 c7 86 6c 20 00 00 	movl   $0x0,0x206c(%r14)
+   1325a:	00 00 00 00
+   1325e:	0f b7 85 20 ff ff ff 	movzwl -0xe0(%rbp),%eax
+   13265:	25 00 f0 00 00       	and    $0xf000,%eax
+   1326a:	3d 00 40 00 00       	cmp    $0x4000,%eax
+   1326f:	74 0b                	je     1327c <l9p_backend_fs_init@@Base+0x1b1c>
+   13271:	3d 00 a0 00 00       	cmp    $0xa000,%eax
+   13276:	75 0c                	jne    13284 <l9p_backend_fs_init@@Base+0x1b24>
+   13278:	b0 02                	mov    $0x2,%al
+   1327a:	eb 02                	jmp    1327e <l9p_backend_fs_init@@Base+0x1b1e>
+   1327c:	b0 80                	mov    $0x80,%al
+   1327e:	08 81 68 20 00 00    	or     %al,0x2068(%rcx)
+   13284:	48 8b 81 88 30 00 00 	mov    0x3088(%rcx),%rax
+   1328b:	8b 40 78             	mov    0x78(%rax),%eax
+   1328e:	89 81 78 20 00 00    	mov    %eax,0x2078(%rcx)
+   13294:	31 c0                	xor    %eax,%eax
+   13296:	48 8b 0b             	mov    (%rbx),%rcx
+   13299:	48 3b 4d e8          	cmp    -0x18(%rbp),%rcx
+   1329d:	75 0c                	jne    132ab <l9p_backend_fs_init@@Base+0x1b4b>
+   1329f:	48 81 c4 f0 00 00 00 	add    $0xf0,%rsp
+   132a6:	5b                   	pop    %rbx
+   132a7:	41 5e                	pop    %r14
+   132a9:	5d                   	pop    %rbp
+   132aa:	c3                   	ret
+   132ab:	e8 f0 39 00 00       	call   16ca0 <__stack_chk_fail@plt>

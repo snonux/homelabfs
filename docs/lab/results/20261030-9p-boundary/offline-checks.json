@@ -1,0 +1,47 @@
+{
+  "method": "Offline ELF section parsing and GNU nm/objdump only; no artifact executed; no target workload or 9p boot",
+  "artifacts": {
+    "bhyve": {
+      "size": 505672,
+      "sha256": "c54a63615edb12eca0a62bdadba97aa39641358302f6cdcee7362a858c709865"
+    },
+    "lib9p.so.1": {
+      "size": 100928,
+      "sha256": "589e8d0f9db4401f8a33274a5efe31d3cd742b18cedba87601c39617501c01ed"
+    },
+    "lib9p.a": {
+      "size": 472722,
+      "sha256": "f37d8747b99a2823ee35a2556c4827f99e2e3b2b46f89e14ef8c9b6b48133aa7"
+    }
+  },
+  "fs_lock": {
+    "archive_member": "fs.o",
+    "archive_text_offset": "0x28f0",
+    "shared_virtual_address": "0x14200",
+    "length_bytes": 29,
+    "shared_and_named_archive_function_bytes_identical": true,
+    "code_sha256": "0bd0c5c1a9eba82f27bb7325ab7b56fd64d6965d9d0c78b202c96471a30fc033",
+    "no_calls_or_syscalls": true,
+    "effect": "types0..2 return0 with response status0; invalidtypes returnEINVAL22"
+  },
+  "backend_slots": {
+    "fsync": {
+      "offset": "0xd8",
+      "function": "0x141a0"
+    },
+    "lock": {
+      "offset": "0xe0",
+      "function": "0x14200"
+    },
+    "getlock": {
+      "offset": "0xe8",
+      "function": "0x14220"
+    }
+  },
+  "provenance_limitations": [
+    "procstat-v proves current process maps library pathname, not an in-memory byte attestation",
+    "Retrieved stable root-owned on-disk bytes match fresh inventory digests; no unexpected replacement evidence",
+    "No installed source/debug symbols; exact kernel-revision source agrees with inspected machine-code semantics, not a reproducible-build attestation",
+    "ELRepo6.1.190 installed only; upstream and official recipe source trace is not running-kernel/live compatibility evidence"
+  ]
+}
