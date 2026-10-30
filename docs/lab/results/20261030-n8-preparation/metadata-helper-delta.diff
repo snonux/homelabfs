@@ -1,0 +1,172 @@
+--- /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-inspect-native.py
++++ /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r10-inspect-native.py
+@@ -1,5 +1,5 @@
+ #!/usr/local/bin/python3.12
+-"""R9 PROPOSAL ONLY: trusted host-side metadata inspection; root release required.
++"""R10 PROPOSAL ONLY: trusted host-side metadata inspection; root release required.
+ 
+ Run on f3 as root, capture stdout to a private controller file, never print its
+ database payload. Host changes: private evidence/mount directories, one readonly
+@@ -15,12 +15,12 @@
+ import subprocess
+ import time
+ 
+-ROOT = Path('/var/tmp/hfs-image-inspect-yq3-20261030-n7-r9')
+-TAG = 'zrepl_20261030_111853_000'
++ROOT = Path('/var/tmp/hfs-image-inspect-yq3-20261030-n8-r10')
++TAG = 'zrepl_20261030_115854_000'
+ TARGETS = [
+-    ('hfs-test0', 'zroot/bhyve/homelabfs-lab/hfs-test0', '7321413065330358558'),
+-    ('hfs-test1', 'zroot/bhyve/homelabfs-lab/hfs-test1', '16941164421458250475'),
+-    ('hfs-test2', 'zroot/bhyve/homelabfs-lab/hfs-test2', '1170743081760444823'),
++    ('hfs-test0', 'zroot/bhyve/homelabfs-lab/hfs-test0', '1023918318750240633'),
++    ('hfs-test1', 'zroot/bhyve/homelabfs-lab/hfs-test1', '18065527238898504310'),
++    ('hfs-test2', 'zroot/bhyve/homelabfs-lab/hfs-test2', '7221185584808690995'),
+ ]
+ DEADLINE = time.monotonic() + 240
+ DB_CAP = 32 << 20
+@@ -44,7 +44,7 @@
+         if len(rows) != 1 or rows[0].split()[-1] != 'Stopped':
+             raise RuntimeError('target must remain stopped: ' + name)
+     rows = [r for r in listing.splitlines() if r.split() and r.split()[0] == 'rocky']
+-    if len(rows) != 1 or rows[0].split()[-2:] != ['Running', '(51221)']:
++    if len(rows) != 1 or rows[0].split()[-2:] != ['Running', '(64854)']:
+         raise RuntimeError('Rocky initial state changed; stop metadata preparation')
+     for config, expected in CONFIGS.items():
+         if command('/sbin/sha256', '-q', config).strip() != expected:
+--- /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-inspect-freebsd-zfs.py
++++ /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r10-inspect-freebsd-zfs.py
+@@ -1,5 +1,5 @@
+ #!/usr/local/bin/python3.12
+-"""R9 PROPOSAL ONLY: fresh source metadata, isolated readonly zdb, no import."""
++"""R10 PROPOSAL ONLY: fresh source metadata, isolated readonly zdb, no import."""
+ import base64
+ import hashlib
+ import json
+@@ -11,10 +11,10 @@
+ import subprocess
+ import time
+ 
+-ROOT = Path('/var/tmp/hfs-image-inspect-yq3-20261030-n7-r9')
++ROOT = Path('/var/tmp/hfs-image-inspect-yq3-20261030-n8-r10')
+ DATASET = 'zroot/bhyve/freebsd'
+-TAG = 'zrepl_20261030_111853_000'
+-GUID = '9096158960180844239'
++TAG = 'zrepl_20261030_115854_000'
++GUID = '12436959759460181717'
+ DEADLINE = time.monotonic() + 240
+ CONFIGS = {'/zroot/bhyve/homelabfs-lab/hfs-test0/hfs-test0.conf': 'b0c5df58a6912f4ae357e3317c57d692e846d8559ca9190ff7b333648b66343a', '/zroot/bhyve/homelabfs-lab/hfs-test1/hfs-test1.conf': '4cf239157c81c911b96be23f387a6a8057f4ff120f65be68ee3f45fd261d5c55', '/zroot/bhyve/homelabfs-lab/hfs-test2/hfs-test2.conf': 'fccbdfb1d9e3e9141eb8865daeedeaf4b933d87f03ca0b9053d086603350107a', '/zroot/bhyve/freebsd/freebsd.conf': '67eae4a09d672c435eca712cd41d186935749dbad0c0a34ab512077b1e8059cf', '/zroot/bhyve/rocky/rocky.conf': 'c101adf10d58d8e021faaa1c3dd98ccb7777c2b78b7931f478e71b526814c581'}
+ PATHS = ('boot/kernel/kernel', 'bin/freebsd-version', 'boot/defaults/loader.conf',
+@@ -50,7 +50,7 @@
+     assert command(['/sbin/zfs', 'get', '-Hp', '-o', 'value', 'guid', DATASET+'@'+TAG]).strip() == GUID
+     assert command(['/sbin/zfs', 'get', '-Hp', '-o', 'value', 'written@'+TAG, DATASET]).strip() == '0'
+     rows = [row for row in inventory.splitlines() if row.split() and row.split()[0] == 'rocky']
+-    assert len(rows) == 1 and rows[0].split()[-2:] == ['Running', '(51221)']
++    assert len(rows) == 1 and rows[0].split()[-2:] == ['Running', '(64854)']
+     for config, expected in CONFIGS.items():
+         assert command(['/sbin/sha256', '-q', config]).strip() == expected
+     assert command(['/sbin/zfs','get','-Hp','-o','value','mountpoint',DATASET]).strip() == '/'+DATASET
+--- /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-cleanup.py
++++ /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r10-cleanup.py
+@@ -1,8 +1,8 @@
+ import json,subprocess
+ from pathlib import Path
+-root=Path('/var/tmp/hfs-image-inspect-yq3-20261030-n7-r9')
+-checks=[('zroot/bhyve/homelabfs-lab/hfs-test0','7321413065330358558'),('zroot/bhyve/homelabfs-lab/hfs-test1','16941164421458250475'),('zroot/bhyve/homelabfs-lab/hfs-test2','1170743081760444823'),('zroot/bhyve/freebsd','9096158960180844239')]
+-tag='zrepl_20261030_111853_000'
++root=Path('/var/tmp/hfs-image-inspect-yq3-20261030-n8-r10')
++checks=[('zroot/bhyve/homelabfs-lab/hfs-test0','1023918318750240633'),('zroot/bhyve/homelabfs-lab/hfs-test1','18065527238898504310'),('zroot/bhyve/homelabfs-lab/hfs-test2','7221185584808690995'),('zroot/bhyve/freebsd','12436959759460181717')]
++tag='zrepl_20261030_115854_000'
+ def command(argv):
+  r=subprocess.run(argv,capture_output=True,text=True,check=True,timeout=10)
+  assert len(r.stdout)+len(r.stderr)<=65536
+@@ -44,7 +44,7 @@
+ listing=command(['/usr/local/sbin/vm','list'])
+ for name in ['hfs-test0','hfs-test1','hfs-test2','freebsd']:
+  assert any(row.split()[0]==name and row.split()[-1]=='Stopped' for row in listing.splitlines() if row.split())
+-assert any(row.split()[0]=='rocky' and row.split()[-2:]==['Running','(51221)'] for row in listing.splitlines() if row.split())
+-proof={'no_md_attachments':True,'snapshot_automounts_normally_unmounted':receipts,'baseline_snapshot_mounts_preserved':baseline_preserved,'no_owned_ufs_mounts':not any(len(r.split())>1 and r.split()[1].startswith(str(root)+'/') for r in after.splitlines()),'before_mount_inventory':before,'after_mount_inventory':after,'vm_inventory':listing,'remaining_resources':{'host_metadata_directory':str(root),'controller_metadata_directory':'/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n7-r9','retention_hours':168},'source_guids_unchanged_and_written_zero':True}
++assert any(row.split()[0]=='rocky' and row.split()[-2:]==['Running','(64854)'] for row in listing.splitlines() if row.split())
++proof={'no_md_attachments':True,'snapshot_automounts_normally_unmounted':receipts,'baseline_snapshot_mounts_preserved':baseline_preserved,'no_owned_ufs_mounts':not any(len(r.split())>1 and r.split()[1].startswith(str(root)+'/') for r in after.splitlines()),'before_mount_inventory':before,'after_mount_inventory':after,'vm_inventory':listing,'remaining_resources':{'host_metadata_directory':str(root),'controller_metadata_directory':'/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n8-r10','retention_hours':168},'source_guids_unchanged_and_written_zero':True}
+ (root/'complete.json').write_text(json.dumps(proof,indent=2)+'\n')
+ print(json.dumps(proof,indent=2))
+--- /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-before-execution-guard.py
++++ /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r10-before-execution-guard.py
+@@ -1,5 +1,5 @@
+ import json,subprocess,re,datetime
+-checks=[('zroot/bhyve/homelabfs-lab/hfs-test0','7321413065330358558'),('zroot/bhyve/homelabfs-lab/hfs-test1','16941164421458250475'),('zroot/bhyve/homelabfs-lab/hfs-test2','1170743081760444823'),('zroot/bhyve/freebsd','9096158960180844239')]
++checks=[('zroot/bhyve/homelabfs-lab/hfs-test0','1023918318750240633'),('zroot/bhyve/homelabfs-lab/hfs-test1','18065527238898504310'),('zroot/bhyve/homelabfs-lab/hfs-test2','7221185584808690995'),('zroot/bhyve/freebsd','12436959759460181717')]
+ def cmd(argv):
+  r=subprocess.run(argv,check=True,capture_output=True,text=True,timeout=8)
+  assert len(r.stdout)+len(r.stderr)<=65536
+@@ -7,7 +7,7 @@
+ inventory=cmd(['/usr/local/sbin/vm','list'])
+ for name in ['hfs-test0','hfs-test1','hfs-test2','freebsd']:
+  assert any(row.split()[0]==name and row.split()[-1]=='Stopped' for row in inventory.splitlines() if row.split())
+-assert any(row.split()[0]=='rocky' and row.split()[-2:]==['Running','(51221)'] for row in inventory.splitlines() if row.split())
++assert any(row.split()[0]=='rocky' and row.split()[-2:]==['Running','(64854)'] for row in inventory.splitlines() if row.split())
+ rows=cmd(['/sbin/sysctl','-n','hw.physmem','hw.pagesize','vm.stats.vm.v_free_count','vm.stats.vm.v_inactive_count','vm.stats.vm.v_free_target','vm.loadavg']).splitlines()
+ physical,page,free,inactive,target=map(int,rows[:5]);load=float(rows[5].split()[1])
+ assert physical>=10737418240 and free>=target and load<=4
+@@ -18,8 +18,8 @@
+ assert int(disk.splitlines()[1].split()[3])*1024 >= (4<<30)+(2304<<20)
+ proof=[]
+ for dataset,guid in checks:
+- assert cmd(['/sbin/zfs','get','-Hp','-o','value','guid',dataset+'@zrepl_20261030_111853_000']).strip()==guid
+- written=cmd(['/sbin/zfs','get','-Hp','-o','value','written@zrepl_20261030_111853_000',dataset]).strip()
++ assert cmd(['/sbin/zfs','get','-Hp','-o','value','guid',dataset+'@zrepl_20261030_115854_000']).strip()==guid
++ written=cmd(['/sbin/zfs','get','-Hp','-o','value','written@zrepl_20261030_115854_000',dataset]).strip()
+  proof.append({'dataset':dataset,'guid':guid,'written':written})
+  assert written=='0'
+ print(json.dumps({'observed_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'inventory':inventory,'metrics':rows,'swap':swap,'disk':disk,'source_proof':proof},indent=2))
+--- /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-harvest-receipts.py
++++ /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r10-harvest-receipts.py
+@@ -1,7 +1,7 @@
+ from pathlib import Path
+ import json,stat,subprocess,time
+ end=time.monotonic()+20
+-root=Path('/var/tmp/hfs-image-inspect-yq3-20261030-n7-r9')
++root=Path('/var/tmp/hfs-image-inspect-yq3-20261030-n8-r10')
+ paths=['intent.json', 'native-complete.json', 'complete.json', 'hfs-test0/attach-intent.json', 'hfs-test0/owned-md.json', 'hfs-test0/cleanup.json', 'hfs-test0/mount-intent.json', 'hfs-test1/attach-intent.json', 'hfs-test1/owned-md.json', 'hfs-test1/cleanup.json', 'hfs-test1/mount-intent.json', 'hfs-test2/attach-intent.json', 'hfs-test2/owned-md.json', 'hfs-test2/cleanup.json', 'hfs-test2/mount-intent.json', 'freebsd/attach-intent.json', 'freebsd/owned-md.json', 'freebsd/cleanup.json', 'freebsd/boot-selection.json', 'freebsd/objects.json']
+ assert root.is_dir() and not root.is_symlink()
+ out={}
+--- /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-collect-metadata.py
++++ /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r10-collect-metadata.py
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env python3
+-"""R9 PROPOSAL ONLY: root release required; metadata collection, no native test."""
++"""R10 PROPOSAL ONLY: root release required; metadata collection, no native test."""
+ import base64
+ from datetime import datetime, timezone
+ import hashlib
+@@ -14,11 +14,11 @@
+ import time
+ 
+ HERE = Path(__file__).resolve().parent
+-DEST = HERE/'offline-images-20261030-n7-r9'
++DEST = HERE/'offline-images-20261030-n8-r10'
+ REMOTE_PINS = {
+-    'r9-inspect-native.py': 'c5a7c369de03562a6ceb6673fc32e95afaf74fc25031d6cd309917a96b95c7b5',
+-    'r9-inspect-freebsd-zfs.py': '7096cc306c797ebd7e3eb0f907ea1743e582762392c29c88792c80c2b01d0969',
+-    'r9-cleanup.py': 'f56cb1d88f9d2963582e9d6b41ebb0919181d2f37175ea41962a0162ee882227',
++    'r10-inspect-native.py': '44109b9b1a2d0baf7e04506774bc209b6354c989304e43d46cab8d854229e241',
++    'r10-inspect-freebsd-zfs.py': '8715823cb0b960984b6e1dac76fea6dc13b9d5b4e07d818cc77ccaeb649f66d4',
++    'r10-cleanup.py': '8528ff69d383474eaaa7c2428da5c48aed1eac501f6b03e8595c8b5c7255b826',
+ }
+ SEEN = set()
+ 
+@@ -104,11 +104,11 @@
+         assert hashlib.sha256((HERE/name).read_bytes()).hexdigest()==digest
+     os.umask(0o077)
+     DEST.mkdir(mode=0o700)
+-    phase('r9-inspect-native.py',270,True)
++    phase('r10-inspect-native.py',270,True)
+     assert SEEN=={'hfs-test0','hfs-test1','hfs-test2'}
+-    phase('r9-inspect-freebsd-zfs.py',270,True)
++    phase('r10-inspect-freebsd-zfs.py',270,True)
+     assert SEEN=={'hfs-test0','hfs-test1','hfs-test2','freebsd'}
+-    phase('r9-cleanup.py',60,False)
++    phase('r10-cleanup.py',60,False)
+     proof=json.loads((DEST/'complete.json').read_text())
+     assert proof['source_guids_unchanged_and_written_zero'] and proof['no_md_attachments'] and proof['no_owned_ufs_mounts']
+     for name in sorted(SEEN):
