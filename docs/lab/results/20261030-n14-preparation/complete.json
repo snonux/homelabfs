@@ -1,0 +1,40 @@
+{
+  "no_md_attachments": true,
+  "snapshot_automounts_normally_unmounted": [
+    {
+      "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test0@zrepl_20261030_152854_000",
+      "mountpoint": "/zroot/bhyve/homelabfs-lab/hfs-test0/.zfs/snapshot/zrepl_20261030_152854_000",
+      "guid": "6178559045492273450",
+      "normal_unmount": true
+    },
+    {
+      "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test1@zrepl_20261030_152854_000",
+      "mountpoint": "/zroot/bhyve/homelabfs-lab/hfs-test1/.zfs/snapshot/zrepl_20261030_152854_000",
+      "guid": "14219409504835396140",
+      "normal_unmount": true
+    },
+    {
+      "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test2@zrepl_20261030_152854_000",
+      "mountpoint": "/zroot/bhyve/homelabfs-lab/hfs-test2/.zfs/snapshot/zrepl_20261030_152854_000",
+      "guid": "12390698720690486157",
+      "normal_unmount": true
+    },
+    {
+      "snapshot": "zroot/bhyve/freebsd@zrepl_20261030_152854_000",
+      "mountpoint": "/zroot/bhyve/freebsd/.zfs/snapshot/zrepl_20261030_152854_000",
+      "guid": "8803671306399806747",
+      "normal_unmount": true
+    }
+  ],
+  "baseline_snapshot_mounts_preserved": [],
+  "no_owned_ufs_mounts": true,
+  "before_mount_inventory": "zroot/ROOT/default\t/\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\ndevfs\t\t\t/dev\t\t\tdevfs\trw\t\t0 0\n/dev/gpt/efiboot0\t/boot/efi\t\tmsdosfs\trw\t\t2 2\n/dev/ufs/F3S_KEYS\t/keys\t\t\tufs\tro\t\t2 2\nzroot/tmp\t\t/tmp\t\t\tzfs\trw,nosuid,noatime,nfsv4acls \t0 0\nzroot/home\t\t/home\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/var/log\t\t/var/log\t\tzfs\trw,noexec,nosuid,noatime,nfsv4acls \t0 0\nzroot/usr/src\t\t/usr/src\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/ROOT\t\t/mnt\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot\t\t\t/zroot\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/var/audit\t\t/var/audit\t\tzfs\trw,noexec,nosuid,noatime,nfsv4acls \t0 0\nzroot/var/mail\t\t/var/mail\t\tzfs\trw,nfsv4acls \t0 0\nzroot/var/tmp\t\t/var/tmp\t\tzfs\trw,nosuid,noatime,nfsv4acls \t0 0\nzroot/var/crash\t\t/var/crash\t\tzfs\trw,noexec,nosuid,noatime,nfsv4acls \t0 0\nzroot/usr/ports\t\t/usr/ports\t\tzfs\trw,nosuid,noatime,nfsv4acls \t0 0\nzroot/home/paul\t\t/home/paul\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve\t\t/zroot/bhyve\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/rocky\t/zroot/bhyve/rocky\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab /zroot/bhyve/homelabfs-lab zfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/freebsd\t/zroot/bhyve/freebsd\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test1 /zroot/bhyve/homelabfs-lab/hfs-test1 zfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test0 /zroot/bhyve/homelabfs-lab/hfs-test0 zfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test2 /zroot/bhyve/homelabfs-lab/hfs-test2 zfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test0@zrepl_20261030_152854_000 /zroot/bhyve/homelabfs-lab/hfs-test0/.zfs/snapshot/zrepl_20261030_152854_000 zfs\tro,nosuid,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test1@zrepl_20261030_152854_000 /zroot/bhyve/homelabfs-lab/hfs-test1/.zfs/snapshot/zrepl_20261030_152854_000 zfs\tro,nosuid,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test2@zrepl_20261030_152854_000 /zroot/bhyve/homelabfs-lab/hfs-test2/.zfs/snapshot/zrepl_20261030_152854_000 zfs\tro,nosuid,noatime,nfsv4acls \t0 0\nzroot/bhyve/freebsd@zrepl_20261030_152854_000 /zroot/bhyve/freebsd/.zfs/snapshot/zrepl_20261030_152854_000 zfs\tro,nosuid,noatime,nfsv4acls \t0 0\n",
+  "after_mount_inventory": "zroot/ROOT/default\t/\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\ndevfs\t\t\t/dev\t\t\tdevfs\trw\t\t0 0\n/dev/gpt/efiboot0\t/boot/efi\t\tmsdosfs\trw\t\t2 2\n/dev/ufs/F3S_KEYS\t/keys\t\t\tufs\tro\t\t2 2\nzroot/tmp\t\t/tmp\t\t\tzfs\trw,nosuid,noatime,nfsv4acls \t0 0\nzroot/home\t\t/home\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/var/log\t\t/var/log\t\tzfs\trw,noexec,nosuid,noatime,nfsv4acls \t0 0\nzroot/usr/src\t\t/usr/src\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/ROOT\t\t/mnt\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot\t\t\t/zroot\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/var/audit\t\t/var/audit\t\tzfs\trw,noexec,nosuid,noatime,nfsv4acls \t0 0\nzroot/var/mail\t\t/var/mail\t\tzfs\trw,nfsv4acls \t0 0\nzroot/var/tmp\t\t/var/tmp\t\tzfs\trw,nosuid,noatime,nfsv4acls \t0 0\nzroot/var/crash\t\t/var/crash\t\tzfs\trw,noexec,nosuid,noatime,nfsv4acls \t0 0\nzroot/usr/ports\t\t/usr/ports\t\tzfs\trw,nosuid,noatime,nfsv4acls \t0 0\nzroot/home/paul\t\t/home/paul\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve\t\t/zroot/bhyve\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/rocky\t/zroot/bhyve/rocky\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab /zroot/bhyve/homelabfs-lab zfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/freebsd\t/zroot/bhyve/freebsd\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test1 /zroot/bhyve/homelabfs-lab/hfs-test1 zfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test0 /zroot/bhyve/homelabfs-lab/hfs-test0 zfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test2 /zroot/bhyve/homelabfs-lab/hfs-test2 zfs\trw,noatime,nfsv4acls \t0 0\n",
+  "vm_inventory": "NAME       DATASTORE  LOADER     CPU  MEMORY  VNC             AUTO     STATE\nfreebsd    default    bhyveload  4    1G      -               No       Stopped\nrocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (37004)\nhfs-test0  hfslab     bhyveload  2    2G      -               No       Stopped\nhfs-test1  hfslab     bhyveload  2    2G      -               No       Stopped\nhfs-test2  hfslab     bhyveload  2    2G      -               No       Stopped\n",
+  "remaining_resources": {
+    "host_metadata_directory": "/var/tmp/hfs-image-inspect-yq3-20261030-n14-r15",
+    "controller_metadata_directory": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n14-r15",
+    "retention_hours": 168
+  },
+  "source_guids_unchanged_and_written_zero": true
+}
