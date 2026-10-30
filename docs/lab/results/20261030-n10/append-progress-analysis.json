@@ -1,0 +1,175 @@
+{
+  "run_id": "20261030-n10",
+  "scope": "Local analysis of captured stderr progress only; no underlying latency or deadlock diagnosis",
+  "analyzed_at": "2026-10-30T13:23:44.980718+00:00",
+  "fixtures": {
+    "root-hfs-direct": {
+      "stderr_sha256": "b28e7bc4f59c45f9f995e4d6e1ecb2a7e1119142db95bb0a132a5aa98615c8a2",
+      "event_count": 76,
+      "writers": {
+        "A": {
+          "pid": 1528,
+          "uid": 0,
+          "events": 38,
+          "completed_write_records": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ],
+          "write_wrappers_seconds": {
+            "minimum": 0.059511063,
+            "median": 0.143256618,
+            "maximum": 0.179342025
+          },
+          "last_observed_event": {
+            "event": "behavior-append",
+            "time": "2026-10-30T13:20:36.825125004Z",
+            "pid": 1528,
+            "uid": 0,
+            "marker": "A",
+            "phase": "close.end",
+            "record": -1,
+            "elapsed_ns": 2549580899
+          },
+          "returned_error_events": []
+        },
+        "B": {
+          "pid": 1529,
+          "uid": 0,
+          "events": 38,
+          "completed_write_records": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ],
+          "write_wrappers_seconds": {
+            "minimum": 0.103905092,
+            "median": 0.147502198,
+            "maximum": 0.18165263
+          },
+          "last_observed_event": {
+            "event": "behavior-append",
+            "time": "2026-10-30T13:20:36.844257662Z",
+            "pid": 1529,
+            "uid": 0,
+            "marker": "B",
+            "phase": "close.end",
+            "record": -1,
+            "elapsed_ns": 2568699480
+          },
+          "returned_error_events": []
+        }
+      }
+    },
+    "root-hfs-buffered": {
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "event_count": 0,
+      "writers": {}
+    },
+    "unprivileged-hfs-direct": {
+      "stderr_sha256": "9dbe1040ae951dae408179542c986d0f7f4e507ce093aaa82ba882c445891a11",
+      "event_count": 60,
+      "writers": {
+        "A": {
+          "pid": 1912,
+          "uid": 20001,
+          "events": 29,
+          "completed_write_records": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "write_wrappers_seconds": {
+            "minimum": 0.283986165,
+            "median": 0.560034099,
+            "maximum": 0.868933607
+          },
+          "last_observed_event": {
+            "event": "behavior-append",
+            "time": "2026-10-30T13:21:14.506289357Z",
+            "pid": 1912,
+            "uid": 20001,
+            "marker": "A",
+            "phase": "write.begin",
+            "record": 13,
+            "elapsed_ns": 7931227763
+          },
+          "returned_error_events": []
+        },
+        "B": {
+          "pid": 1913,
+          "uid": 20001,
+          "events": 31,
+          "completed_write_records": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13
+          ],
+          "write_wrappers_seconds": {
+            "minimum": 0.27925233,
+            "median": 0.5578844275,
+            "maximum": 0.610835113
+          },
+          "last_observed_event": {
+            "event": "behavior-append",
+            "time": "2026-10-30T13:21:14.813880093Z",
+            "pid": 1913,
+            "uid": 20001,
+            "marker": "B",
+            "phase": "write.begin",
+            "record": 14,
+            "elapsed_ns": 8238667866
+          },
+          "returned_error_events": []
+        }
+      }
+    }
+  }
+}

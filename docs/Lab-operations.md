@@ -273,3 +273,15 @@ cleanup. All guest shutdown and Rocky restoration/readiness steps passed.
 The final report is `complete=true`, `success=false`, with original ambiguous
 reports retained. Task `iy3` makes native SSH configuration explicit without
 claiming the connection failure's unknown cause was established.
+
+The standing-authorized [n10 attempt](lab/results/20261030-n10/) again passed
+both root fixtures on hfs-test0, then failed unprivileged/direct append at the
+unchanged eight-second bound. Bounded helper diagnostics show continuing write
+progress with completed write-wrapper medians around 0.56 seconds, versus
+0.14–0.15 seconds for root. No underlying latency or deadlock cause is established.
+Task `ky3` records that investigation; the remaining nine fixtures did not run.
+Collection and every normal cleanup/shutdown/Rocky restoration step passed in
+the original invocation. Final report: `complete=true`, `success=false`, with
+Rocky PID 3774 running and all four FreeBSD guests stopped in a final pinned
+13:25:23 UTC inventory. The native gate remains pending. Work paused on Paul's
+explicit request after recording this attempt; no next run was started.

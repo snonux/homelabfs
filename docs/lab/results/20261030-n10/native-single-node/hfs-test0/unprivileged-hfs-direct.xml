@@ -1,0 +1,34 @@
+<testsuite name="homelabfs.behavior.hfs-direct" tests="12" failures="3" skipped="2">
+  <properties>
+    <property name="fixture" value="{&#34;behavior_sha256&#34;:&#34;bc3d3ac90edd5dc0d02b9a258bc95f9bec1f965141f5c6ce3c2641f40dc8bff4&#34;,&#34;client_gid&#34;:&#34;20001&#34;,&#34;client_groups&#34;:&#34;[20002]&#34;,&#34;client_uid&#34;:&#34;20001&#34;,&#34;control_root&#34;:&#34;/var/tmp/hfs-run-20261030-n10/c&#34;,&#34;daemon_uid&#34;:&#34;0&#34;,&#34;data_root&#34;:&#34;/var/tmp/hfs-run-20261030-n10/d&#34;,&#34;journal_root&#34;:&#34;/var/tmp/hfs-run-20261030-n10/j&#34;,&#34;reservations&#34;:&#34;/var/tmp/hfs-run-20261030-n10/d/volume/reservations&#34;,&#34;role&#34;:&#34;unprivileged&#34;,&#34;source&#34;:&#34;/var/tmp/hfs-run-20261030-n10/j/volume/source&#34;,&#34;workspace_data&#34;:&#34;/var/tmp/hfs-run-20261030-n10/d/volume/workspaces/9921626a-2b75-48e1-81d3-ac765926ba86/data&#34;,&#34;workspace_journal&#34;:&#34;/var/tmp/hfs-run-20261030-n10/j/volume/workspaces/9921626a-2b75-48e1-81d3-ac765926ba86/journal&#34;,&#34;workspace_progress&#34;:&#34;/var/tmp/hfs-run-20261030-n10/c/workspaces/9921626a-2b75-48e1-81d3-ac765926ba86/progress&#34;}"></property>
+    <property name="target" value="/var/tmp/hfs-run-20261030-n10/m"></property>
+    <property name="profile" value="hfs-direct"></property>
+    <property name="platform" value="freebsd/amd64"></property>
+    <property name="scope" value="single-node local syscall semantics; no power-loss, replication, failover, arbitrary-client or native FreeBSD acceptance claim"></property>
+    <property name="run_directory" value="/var/tmp/hfs-run-20261030-n10/m/hfs-behavior-534b49355343564649333537"></property>
+    <property name="expected_identity" value="homelabfs-validation-v1&#xA;b94289c0-6a71-4df1-b5a9-359123d01296&#xA;9921626a-2b75-48e1-81d3-ac765926ba86&#xA;5143f09b-e653-1078-5446-19afec694abb&#xA;"></property>
+    <property name="declared_capabilities" value="{&#34;arbitrary_credentials&#34;:false,&#34;default_permissions&#34;:true,&#34;direct_io&#34;:true,&#34;directory_sync&#34;:true,&#34;file_sync&#34;:true,&#34;local_locks&#34;:true,&#34;mmap&#34;:false,&#34;normal_publication&#34;:false,&#34;writeback&#34;:false}"></property>
+  </properties>
+  <testcase name="bind" classname="infrastructure" time="0.887152486"></testcase>
+  <testcase name="create-exclusive-rename-replace-hardlink-unlink-open-truncate" classname="P01" time="3.475248607"></testcase>
+  <testcase name="umask-chmod-chown-setgid" classname="P02" time="2.577145809"></testcase>
+  <testcase name="sync-open-fsync-fdatasync-directory-sync" classname="P04" time="0.863462476"></testcase>
+  <testcase name="concurrent-append" classname="P01" time="8.000329141">
+    <failure>append helper 0 receive: helper response: read |0: i/o timeout</failure>
+  </testcase>
+  <testcase name="mmap-msync-readback" classname="P04" time="0">
+    <skipped>direct profile rejects mmap; required mmap runs separately on hfs-buffered</skipped>
+  </testcase>
+  <testcase name="multiuser-groups-sticky-permission-cache" classname="P02" time="0">
+    <skipped>root-only synthetic multiuser coverage requires root hfs-buffered companion</skipped>
+  </testcase>
+  <testcase name="process-fcntl-flock-contention-exit" classname="P03" time="4.85e-07">
+    <failure>helper response: read |0: i/o timeout</failure>
+  </testcase>
+  <testcase name="stop-owned-helpers" classname="infrastructure" time="0"></testcase>
+  <testcase name="normal-unmount" classname="lifecycle" time="2.739072697"></testcase>
+  <testcase name="mount-loss-no-fallback" classname="lifecycle" time="0.000167873"></testcase>
+  <testcase name="fixture-lifecycle" classname="infrastructure" time="0">
+    <failure>portable behavior failed; preserve roots and evidence</failure>
+  </testcase>
+</testsuite>

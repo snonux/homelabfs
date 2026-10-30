@@ -1,0 +1,7 @@
+Sending ACPI shutdown to rocky
+NAME       DATASTORE  LOADER     CPU  MEMORY  VNC  AUTO     STATE
+freebsd    default    bhyveload  4    1G      -    No       Stopped
+rocky      default    uefi       4    12G     -    Yes [1]  Stopped
+hfs-test0  hfslab     bhyveload  2    2G      -    No       Stopped
+hfs-test1  hfslab     bhyveload  2    2G      -    No       Stopped
+hfs-test2  hfslab     bhyveload  2    2G      -    No       Stopped

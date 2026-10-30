@@ -1,0 +1,11 @@
+{
+  "started_at": "2026-10-30T13:25:22.809328+00:00",
+  "finished_at": "2026-10-30T13:25:23.192163+00:00",
+  "elapsed_seconds": 0.38284917199962365,
+  "returncode": 0,
+  "scope": "Final pinned read-only VM inventory after completed N10 restoration; no new test or lifecycle action",
+  "stdout_bytes": 479,
+  "stdout_sha256": "0a8f3cfb61d5f1f4c59e8bf663ab6b878ae82576ed165d065a41c850f71420ea",
+  "stderr_bytes": 0,
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
