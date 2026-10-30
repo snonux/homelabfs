@@ -1,0 +1,28 @@
+Native run 20261030-n15 / HONEST R15 evidence and N14 binary reuse
+Canonical hash: cd09c81a06b7b2eb88dc738ea8ce74aa5fc41118f9b23b81f2d0273a28bd0c5f
+Created 2026-10-30T15:59:18Z; expires 2026-10-31T15:59:18Z.
+
+This is a separate fresh run after N14 initial admission failed, before VM or
+workload actions. N14 remains a completed failure; its cleanup/restoration
+steps were skipped and unattempted setup/test/collect remained pending.
+ROOT owns authorization and execution. Worker prepared offline only: no remote,
+approval/state/run/tracked edit. Original N14 files remain unchanged.
+
+SAME R15 metadata collected for n14, and SAME actual clean c946ac5 FreeBSD amd64
+CGO0 binaries built for n14 reused without relabeling or new extraction/build.
+Original sourcechoices.run_id n14 retained with explicit N15 reuse guard.
+Exact binary artifact objects, SHA/size/clean receipt verified. sy3 local fix
+still needs native validation; no kernel callback cause or native acceptance.
+
+Exact normalized N14 targets/profile/budget/resources/tests/steps/disruptions
+unchanged:12calls,seed0,5220s/87min,disk2.25GiB,logicalIO48MiB,evidence64MiB,
+retention168h,max_attempts1,setup/test collection gate,normal restoration.
+Fresh source pruning/drift/GUID/written0 admission guards remain unchanged.
+
+First planning-only survey failed at hostSSH banner exchange; original streams
+and receipt preserved. ROOT independently established no outstanding read-only
+action. Actual fresh survey58467/6298ae rc0 completed15:58:59.027522UTC admitted
+n15 with matching subset3bacd8e647413ba8231bf050626f4f022b09cd0db333d65db3a94db5f81e1f6a.
+Actual -r2 receipt/source/stdout2732B/stderr444B hashes verified before finalizing.
+Finalizer/cached Go planner/30pin validator/exact scope passed. Detailed receipts:
+offline-gates-20261030-n15-r15.json; canonical-plan-validation-20261030-n15-r15.json.

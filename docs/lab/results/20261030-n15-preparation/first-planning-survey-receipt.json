@@ -1,0 +1,12 @@
+{
+  "started_at": "2026-10-30T15:58:01.527027+00:00",
+  "finished_at": "2026-10-30T15:58:11.270760+00:00",
+  "elapsed_seconds": 9.743384399000206,
+  "returncode": 1,
+  "source_sha256": "07ca653a0f834a6e6aa58cef5352e40af63f69e82e5bb61ac7fbd1efcee09e7c",
+  "scope": "actual planning-only read-only admission; no workload/lifecycle/state",
+  "stdout_bytes": 0,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_bytes": 1253,
+  "stderr_sha256": "94343a866c88dcd133f57933e1d1ee4bad153f73f82af297279e752adef4923c"
+}

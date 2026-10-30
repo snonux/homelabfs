@@ -1,0 +1,17 @@
+Connection timed out during banner exchange
+Connection to 192.168.1.133 port 22 timed out
+Traceback (most recent call last):
+  File "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/planning-survey-20261030-n15-r15.py", line 49, in <module>
+    result = preflight.run_checks(plan, policy, call)
+  File "/home/paul/git/homelabfs/tools/lab/prepared-lab-preflight.py", line 475, in run_checks
+    versions[name] = inspect_stopped(name, policy["stopped"][name], allocation, call)
+                     ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/paul/git/homelabfs/tools/lab/prepared-lab-preflight.py", line 432, in inspect_stopped
+    mountpoint = call("host", f"zfs get -Hp -o value mountpoint {q(dataset)}").strip()
+                 ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/paul/git/homelabfs/tools/lab/prepared-lab-preflight.py", line 271, in __call__
+    raise Uncertain(f"{destination}: SSH transport lost ({code}); remote completion unknown; "
+                    + diagnostic())
+planning_preflight_n15.Uncertain: host: SSH transport lost (255); remote completion unknown; stderr: Connection timed out during banner exchange
+Connection to 192.168.1.133 port 22 timed out
+

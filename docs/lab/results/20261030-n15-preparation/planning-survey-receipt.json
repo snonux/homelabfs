@@ -1,0 +1,12 @@
+{
+  "started_at": "2026-10-30T15:58:49.935982+00:00",
+  "finished_at": "2026-10-30T15:58:59.027522+00:00",
+  "elapsed_seconds": 9.09154843700162,
+  "returncode": 0,
+  "source_sha256": "07ca653a0f834a6e6aa58cef5352e40af63f69e82e5bb61ac7fbd1efcee09e7c",
+  "scope": "fresh planning-only read-only survey after completed pinned1b7569 inspection proved no outstanding prioraction; firstfailedsurvey preserved, no lifecycle/workload/state",
+  "stdout_bytes": 2732,
+  "stdout_sha256": "4e522b3c4af6347fde9efd4a35ffc99adc72221971c3b0d6d02cf9dc49d6648f",
+  "stderr_bytes": 444,
+  "stderr_sha256": "678f28a8b0c17d64f2aedf8f6361f8942a2c740d0d9fd985c9f9e3fcd8a2f6e2"
+}
