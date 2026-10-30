@@ -1,0 +1,40 @@
+{
+  "source": "Projection of actual post-boot R6 source inventory, not an additional probe",
+  "source_sha256": "82b9da681f015167539071f148e474e70af5651a220a8397a8a40980ba023e64",
+  "observed_at": "2026-10-30T07:58:15.629196+00:00",
+  "inventory": "NAME       DATASTORE  LOADER     CPU  MEMORY  VNC             AUTO     STATE\nfreebsd    default    bhyveload  4    1G      -               No       Stopped\nrocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (6440)\nhfs-test0  hfslab     bhyveload  2    2G      -               No       Stopped\nhfs-test1  hfslab     bhyveload  2    2G      -               No       Stopped\nhfs-test2  hfslab     bhyveload  2    2G      -               No       Stopped\n",
+  "swap": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n",
+  "selected_postboot_source": {
+    "tag": "zrepl_20261030_074853_000",
+    "sources": [
+      {
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test0@zrepl_20261030_074853_000",
+        "guid": "10472259808719246128",
+        "creation": 1793346533,
+        "dataset": "zroot/bhyve/homelabfs-lab/hfs-test0",
+        "written_bytes": 0
+      },
+      {
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test1@zrepl_20261030_074853_000",
+        "guid": "1960383992397525192",
+        "creation": 1793346533,
+        "dataset": "zroot/bhyve/homelabfs-lab/hfs-test1",
+        "written_bytes": 0
+      },
+      {
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test2@zrepl_20261030_074853_000",
+        "guid": "11488365284089788578",
+        "creation": 1793346533,
+        "dataset": "zroot/bhyve/homelabfs-lab/hfs-test2",
+        "written_bytes": 0
+      },
+      {
+        "snapshot": "zroot/bhyve/freebsd@zrepl_20261030_074853_000",
+        "guid": "13042289373228191557",
+        "creation": 1793346533,
+        "dataset": "zroot/bhyve/freebsd",
+        "written_bytes": 0
+      }
+    ]
+  }
+}

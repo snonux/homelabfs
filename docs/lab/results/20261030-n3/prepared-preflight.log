@@ -1,0 +1,1 @@
+{"contract": "prepared-lab-preflight-v1", "status": "blocked", "error": "stopped snapshot no longer matches VM backing: hfs-test0", "scope": "read-only admission; no lifecycle or workload requested", "remote_completion": "terminal"}

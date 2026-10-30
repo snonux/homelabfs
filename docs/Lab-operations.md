@@ -178,3 +178,12 @@ collection and inapplicable teardown were skipped, and the run closed as a
 completed failure. Fresh host/source checks at 06:25:14 UTC retained Rocky PID
 6449, all four stopped FreeBSD VMs, zero swap and unchanged R4 source GUIDs with
 zero writes. Further actual native execution still needs its exact plan approval.
+
+After Paul instructed continuation and allowed f3 startup, the
+[n3 attempt](lab/results/20261030-n3/) found f3 unreachable. Cooling was enabled
+and one f3-only Wake-on-LAN packet was sent. Pinned SSH subsequently showed a
+new host boot with Rocky PID 6440 and all four FreeBSD VMs stopped. The approved
+runner then rejected the old image snapshot's zero-written check before any
+VM lifecycle or native workload step. The run closed as a completed failure
+with collection and inapplicable teardown skipped. Follow-up `dx3` refreshes
+the image evidence against the post-boot state; no identity check was relaxed.

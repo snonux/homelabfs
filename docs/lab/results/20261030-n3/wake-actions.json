@@ -1,0 +1,40 @@
+{
+  "kind": "Recorded action and pinned-SSH receipt summary",
+  "recorded_at": "2026-10-30T08:16:26.539403+00:00",
+  "authorization": "User: continue, feel free to power back on f3 if needed.",
+  "initial_state": "Pinned host SSH timed out; f3sctl reported all f-hosts unreachable, rack fans off, f-host AC on",
+  "actions": [
+    {
+      "command": "f3sctl fans on",
+      "exit": 0,
+      "result": "rack fans on",
+      "receipt": "4b0534"
+    },
+    {
+      "command": "f3sctl power f3 on",
+      "exit": 0,
+      "result": "one magic packet to f3 e8:ff:1e:d7:f3:d7",
+      "receipt": "c41069"
+    },
+    {
+      "command": "f3sctl --remote power f3 on",
+      "exit": 0,
+      "result": "request declined because power f3 on was unavailable with f3 already up; no remote wake job",
+      "receipt": "14c5eb"
+    }
+  ],
+  "verified_after_wake": {
+    "source": "Pinned SSH receipt580794",
+    "hostname": "f3.lan.buetow.org",
+    "uptime_display": "2 mins",
+    "rocky_pid": 6440,
+    "freebsd_vm_states": {
+      "freebsd": "Stopped",
+      "hfs-test0": "Stopped",
+      "hfs-test1": "Stopped",
+      "hfs-test2": "Stopped"
+    },
+    "swap_used_kib": 0
+  },
+  "no_host_power_cycle_or_forced_vm_action": true
+}
