@@ -1,0 +1,28 @@
+Native run 20261030-n10 / R12
+Canonical hash: 2f95f94955d11ac06b42c03e133a48e50fa955eb674acdace05fc0ac95903fa7
+Created 2026-10-30T13:19:04Z; expires 2026-10-31T13:19:04Z.
+
+ROOT records actual standing bounded nonproduction authorization after packet
+review. Worker performed offline preparation only; no remote/approval/state/run.
+Latest instruction: finish THIS N10 attempt/results/normal restoration, then
+pause. Do not select subsequent tasks or begin follow-up work afterward.
+
+New actual clean1b20621 FreeBSD amd64 CGO0 binaries; exact SHA/size/ELF/VCS
+modified=false/clean receipt independently checked95e05e. No old binary reuse.
+iy3 strict native SSH/unknown collection gating64714fd and hy3 bounded helper
+stderr diagnostics1f349da are reviewed and pinned. The unprivileged append
+timeout cause remains unresolved;8s deadline,16x32 workload and oracle unchanged.
+R12 metadata1b20621 uses actual130854 sources after N9 normal stop, fresh reads,
+exact-owned normal cleanup and GUID/written0 proof. Prune/drift fails closed.
+
+Exact normalized N9 targets/budget/resources/tests/steps preserved. One outer
+driver executes12calls seed0; total5220s/87min; disk2.25GiB; logicalIO48MiB;
+evidence64MiB; retention168h;12caps2214592512B;max_attempts1; collection gate
+exact setup/test. Disposable run-owned resources and normal graceful restoration.
+
+ROOT actual survey30775/166644 exit0 at13:18:08UTC; admitted exact subset
+f2c4f29f82ceab2a7a0796df0313d2966e3bc14d02096b98bcde3ea70447171b.
+Raw stdout2731B/stderr444B and receipt preserved; stderr two known KEX triplets.
+Actual offline finalizer/Go planner/30pin validator and exact scope/all SHA
+self-review passed. Receipts: offline-gates-20261030-n10-r12.json. Detailed pins:
+canonical-plan-validation-20261030-n10-r12.json. No native acceptance inferred.

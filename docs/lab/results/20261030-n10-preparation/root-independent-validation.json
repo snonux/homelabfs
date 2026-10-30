@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-10-30T13:19:36.348623+00:00",
+  "root_independent_validation": "PASS",
+  "canonical_hash": "2f95f94955d11ac06b42c03e133a48e50fa955eb674acdace05fc0ac95903fa7",
+  "artifact_pins": 30,
+  "scope_vs_n9": "identical except new run paths, binary/native-driver/artifact/source pins",
+  "survey_subset_sha256": "f2c4f29f82ceab2a7a0796df0313d2966e3bc14d02096b98bcde3ea70447171b",
+  "new_candidate_source_commit": "1b2062100c2524e9180e7f5271c5d4d0b3a4d3cc",
+  "binary_vcs_clean": true,
+  "outer_test_selections": 1,
+  "native_behavior_calls": 12,
+  "state_execution_evidence_approval_absent": true,
+  "helper_timeout_cause": "unresolved; bounded diagnostics added without changing workload, oracle or eight-second case limit",
+  "latest_user_direction": "pause after this N10 attempt, results and normal restoration"
+}

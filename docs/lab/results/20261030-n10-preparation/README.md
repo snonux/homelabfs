@@ -45,3 +45,28 @@ private keys, approval and native run state are excluded.
 Source pruning, writes or another host restart can invalidate admission; the
 next native plan must retain its fail-closed source checks. These receipts
 are preparation evidence only.
+
+## Replacement plan
+
+The [reviewed plan](reviewed-plan.json) has canonical hash
+`2f95f94955d11ac06b42c03e133a48e50fa955eb674acdace05fc0ac95903fa7`.
+Created at 13:19:04 UTC, it expires 2026-10-31 at the same time. Actual read-only
+admission passed at 13:18:08 UTC and matches the final policy subset. All thirty
+artifact hashes and unchanged targets, bounds and graceful lifecycle passed
+independent verification.
+
+Both new FreeBSD amd64/CGO-disabled binaries record actual clean source
+`1b2062100c2524e9180e7f5271c5d4d0b3a4d3cc`. They add bounded append syscall
+progress diagnostics; N9's timeout cause remains unresolved. The reviewed native
+SSH context is explicit and pinned, and uncertain outcomes block further
+commands. The workload, exact-content oracle and eight-second case bound remain
+unchanged. Local Go/Python checks and fresh reviews passed; native acceptance
+is still pending.
+
+The twelve synthetic fixtures retain the 87-minute maximum, 2.25 GiB disk,
+48 MiB logical I/O and normal cleanup with graceful Rocky restoration.
+Execution uses Paul's recorded standing non-production test authorization;
+production and critical or dangerous operations remain excluded. Approval,
+controller state and native execution evidence were absent at publication.
+Paul's latest direction is to finish this attempt, record results and restore
+the lab, then pause before follow-up work.
