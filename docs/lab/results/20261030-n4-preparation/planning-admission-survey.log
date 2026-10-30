@@ -1,0 +1,7 @@
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+{"finished_at": "2026-10-30T08:13:24.795251+00:00", "scope": "planning-only bounded read-only live admission survey; not a Stage1 run or native acceptance", "status": "admitted", "inventory": {"freebsd": {"state": "Stopped", "cpus": 4, "memory": 1073741824}, "rocky": {"state": "Running", "cpus": 4, "memory": 12884901888}, "hfs-test0": {"state": "Stopped", "cpus": 2, "memory": 2147483648}, "hfs-test1": {"state": "Stopped", "cpus": 2, "memory": 2147483648}, "hfs-test2": {"state": "Stopped", "cpus": 2, "memory": 2147483648}}}

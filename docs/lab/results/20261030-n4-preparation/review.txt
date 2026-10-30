@@ -1,0 +1,146 @@
+N4 replacement plan — new explicit approval required
+
+Run: 20261030-n4, Stage 1 / native-single-node-v1, seed 0.
+Canonical Plan: /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/reviewed-plan-20261030-n4-r6.json
+Canonical hash: b4503fabe5cb6670b0537fec2c33e4f9be7bc449a74d65dcab6f9b67b23b48f1
+Created: 2026-10-30T08:14:33Z. Expires: 2026-10-31T08:14:33Z.
+
+The Plan is concrete and has passed offline verification. It has no operator
+approval, controller state or execution evidence. Earlier n1/n2/n3 approvals do
+not authorize n4. Root owns final review, actual consent recording and execution.
+
+The actions and budgets remain the same as n3. Twelve sequential native calls
+cover three FreeBSD guests, root/unprivileged credentials and direct/buffered
+modes. Each guest uses its own FUSE process and ZFS pool. New run-owned paths are
+/var/tmp/hfs-run-20261030-n4 and hfsdataN/{data,journal,control}/hfs-run-20261030-n4.
+No 9p, replication, failover, production, NFS or received-sink work is included.
+Targets, budget and disruptions exactly equal n3; spec, resources, policy, state
+and evidence destinations are fresh n4 values.
+
+The total bound is 5,220 seconds (87 minutes): 240 seconds of read-only admission,
+then at most 4,980 seconds (83 minutes) of disruption. Forward work allows 4,260
+seconds, cleanup 600 and restoration 360. Individual deadlines in seconds are:
+preflight 240; clean Rocky stop 180; lab start 180; native readiness 180; native
+setup 900; native tests 2,400; collection 180; native cleanup 180; lab stop 420;
+Rocky start 180; Rocky restoration readiness 180. Every step has one attempt.
+
+The Plan requires normal owned-process/mount cleanup before stopping guests and
+positive Running state plus pinned root SSH/kernel/UID proof after restoring
+Rocky. Uncertain completion or surviving resources stops work for inspection.
+There is no forced kill, forced unmount or repair fallback. Actual clean stop,
+native behavior and restoration remain unproved by this preparation.
+
+The native allocation is 6 GiB / 6 vCPUs plus 4 GiB host headroom. Admission
+checks zero swap and current pressure; start-lab checks free plus inactive memory
+after Rocky stops. Rocky (12 GiB) and development FreeBSD (1 GiB) remain stopped
+through native work. The limits remain 2,304 MiB disk, 48 MiB logical I/O, 64 MiB
+execution evidence and 168 hours retention. Logical I/O is not a physical-device
+bandwidth quota.
+
+N4 needs fresh source evidence because the authorized f3 cold boot made the old
+055329 snapshot ineligible: exact n3 stopped at read-only admission when
+written@055329 was nonzero. No lifecycle, setup or native workload ran. Historical
+failure artifacts remain preserved, and root owns the original report/docs.
+No image equality was assumed and no GUID/written checks were weakened. No new
+snapshots, holds, retention/ownership changes or sink actions were performed.
+Ordinary pruning or writes can invalidate n4 before its 24-hour expiry; the
+approved runner must fail closed without substituting another source.
+
+Root's actual inventory and Rocky query (session 33623, terminal e1a803, exit 0)
+observed Rocky PID 6440 running, all four FreeBSD VMs stopped and zero swap at
+07:58 UTC. Host kernel 15.1-RELEASE-p2, all five config pins and the host package
+manifest remained unchanged. The existing common postboot snapshot selected with
+written=0 was zrepl_20261030_074853_000. Its source GUIDs are:
+
+  hfs-test0: 10472259808719246128
+  hfs-test1: 1960383992397525192
+  hfs-test2: 11488365284089788578
+  freebsd:   13042289373228191557
+
+The R6 family changes only R4 literal constants: tag, GUIDs, PID, private roots,
+helper labels and dependent SHA pins. Six AST structures match after normalizing
+literals, with the exact delta retained in r6-proposal-vs-r4.diff. Methods,
+deadlines, caps and cleanup remain unchanged. Native images use read-only vnode
+and UFS mounts. Development FreeBSD uses isolated userspace zdb -L against one
+private vdev to resolve default boot and version metadata. No guest code, pool
+import, guest-pool ZFS mount, repair or pool-health claim is involved. Host source
+snapshot automounts are accounted for below. Historical MOS
+diagnostics remain preserved.
+
+Root's guard (terminal ed40f4) passed at 08:00:03 UTC. The actual collector
+(session 42464, terminal 06843e) exited 0. The fixed 20-receipt harvest
+(terminal 08c7f0) exited 0 with 32,453 stdout bytes and no stderr. All four kernels,
+package databases and manifests were freshly derived; R4 image evidence was not
+reused as proof after the boot. All 20 receipts were correlated with complete.json,
+exact source/image/MD identities, normal detach receipts, three native UFS
+unmounts, nine dev metadata objects and the no-import receipt. Four new snapshot
+automounts were normally unmounted. No MD/UFS attachment remained, and all four
+source GUIDs/written=0 were checked after reads.
+
+Metadata remains under /var/tmp/hfs-image-inspect-yq3-20261030-n4-r6 on f3 and
+private controller offline-images-20261030-n4-r6, retained for 168 hours. The four
+0600 databases total 58,458,112 bytes, within 32 MiB each and 128 MiB aggregate.
+Host metadata occupies 22,908,928 bytes, within 160 MiB. The actual size/cleanup
+proof is pinned as continued-source-proof. Accepted policy attestations derive
+from actual R6 metadata and cleanup.
+
+Fresh metadata establishes native kernel 15.1-RELEASE and package manifest
+SHA256 0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb;
+dev kernel 15.0-RELEASE-p5 and package manifest
+SHA256 247ccbbb465faa1a9be2c53cbd17466ec841a6e513c2331c005100e1db3659f8.
+The fresh Rocky query establishes kernel 5.14.0-687.61.1.el9_8.x86_64, UID 0 and
+1,109 RPM rows, manifest
+SHA256 4b4382416e417bea3b754c99c492e86b72257b67820aa751181420d8539533b7.
+It matches R4 based on an actual new query. No package or service mutation was
+performed by these agents; stdout and SSH diagnostics were captured separately.
+
+Root's actual planning-only survey (session 8143, terminal dc23a8, exit 0) admitted
+n4 at 08:13:24 UTC against exactly the candidate targets, budget and policy. It
+observed four stopped FreeBSD VMs, Rocky running, zero active sessions and
+122,305,060,864 bytes available on the host disk. Source version evidence matched
+R6 and Rocky's live kernel was checked. SSH diagnostics remain separately in the
+survey log. No Driver, lifecycle, workload, native acceptance, controller state or
+execution evidence was created. The survey artifact has no full Plan hash,
+avoiding a hash cycle. The final input subset exactly matches its pinned SHA256:
+6bce9bb74ea5301ca3150efe786c356e23759f3a0f184c363484152cfabcf8f9.
+The actual approved runner repeats these checks and can reject future drift.
+
+Retained binaries were actually built clean from
+127ecc9cc612f6696c9710e6586a3761d57cac71, FreeBSD amd64, CGO disabled and
+vcs.modified=false. Actual git diff from that revision for cmd/internal is empty.
+No new build or newer full-tree provenance is claimed. Daemon SHA256 is
+dc21c188805608c0a7cbbb316f459cba619529379eebc0ca35a2f7116110b749;
+helper SHA256 is
+9271b1e819880e7cbb63674e8cc79a35980ee12a92de0fce8269f4156705c4f5.
+
+The current preflight retains exact stdout/stderr separation, its original
+combined 256 KiB cap, strict keys, deadlines and version checks. Its SHA256 is
+641adcc907fcd5429cc34003dcf81e6e7dce3abac9ca51907d66f107146b13a9.
+Collection remains gated on exactly native-setup and native-test.
+
+The finalizer (terminal 022ac9) and cached Go planner (terminal 79db97) exited 0.
+The offline verifier (terminal 7f8245) exited 0 and verified all 30 pins, matching
+Go/preflight/readiness canonical hashes, policy/context contracts, both readiness
+modes, four native outer phases, exact collection dependencies and budgets.
+Transport, Driver and command execution were blocked; only in-memory state-path
+read substitution was used. Independent final proof (terminal 9fa210) rechecked
+30 pins, exact survey inputs and absent state/evidence/approval. Details are in
+canonical-plan-validation-20261030-n4-r6.json; final delta is plan-r6-vs-r5.diff.
+
+The worker's candidate import generated one untracked preflight .pyc at 08:03:13
+UTC. Its exact source and timestamp were verified, then only that file and its
+empty cache directory were removed (terminal f27ce3). Subsequent commands use -B;
+cache absence was verified. r6-owned-pycache-cleanup.json records this cleanup.
+
+Controller state will be created only by an authorized execution at:
+/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/controller-state-20261030-n4
+Execution evidence will go to:
+/home/paul/git/homelabfs/docs/lab/results/20261030-n4
+
+Execute only after root review and new explicit Paul approval of the exact hash,
+with root recording actual consent. No approval file was generated by this worker:
+/home/paul/tmp/codex/hfs-cx3-gates-20261030-r1/hfs-lab execute --plan /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/reviewed-plan-20261030-n4-r6.json --approval /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/operator-approval-20261030-n4-r6.json
+
+No source edits, staging, commit, task completion or native execution by this
+worker. Root owns proof review/commit, dx3 completion and the new approval question.
+This final review supersedes the historical UNREADY handoff's pending survey.

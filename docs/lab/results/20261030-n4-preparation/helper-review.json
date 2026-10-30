@@ -1,0 +1,67 @@
+{
+  "status": "PROPOSAL ONLY; ROOT REVIEW/RELEASE REQUIRED; NOT EXECUTED",
+  "recorded_at": "2026-10-30T07:58:46.362656+00:00",
+  "run_id": "20261030-n4",
+  "files": {
+    "r6-inspect-native.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r6-inspect-native.py",
+      "sha256": "ee5b436b1eb57c28f563d481b333c0fe6e1e2b52e8f333efe2dbe6284a63bc74",
+      "baseline_sha256": "d5114a26686f1f622ccb3a0c9c41cf4abd4bc9e3792b38172476a48f899dadcc"
+    },
+    "r6-inspect-freebsd-zfs.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r6-inspect-freebsd-zfs.py",
+      "sha256": "f551b171f8892b55a3298eaea5ee67412e93d5181a4d37689d891e58de57b7a6",
+      "baseline_sha256": "ca77a4ca0c314cbbb9a15fbd2936cdfaefa1a270767709fc99a1ff73d1c75e77"
+    },
+    "r6-cleanup.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r6-cleanup.py",
+      "sha256": "99f832936f971a52130b24c1865640fbb100cb5565aaa74311317d61a3283b43",
+      "baseline_sha256": "b98ec627641e4d616863d902952c9323ac2ada7913e62ee199f776066016ea0b"
+    },
+    "r6-before-execution-guard.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r6-before-execution-guard.py",
+      "sha256": "f3c8a64c8512f368b0cd7bf8145efa96f045b67a9b3d918d7d5eb7f52d12e80c",
+      "baseline_sha256": "61ba1bdca5320b07362f208ae1a92ac583fccf47f9a3fe6007a05a68903d12fc"
+    },
+    "r6-harvest-receipts.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r6-harvest-receipts.py",
+      "sha256": "14a6443c928250597d8648dd3963e2ef428908a37f0604af54853343e8195358",
+      "baseline_sha256": "63cdcaa802700189b4703c0460d84b5c9461ffb5bcc4601caf5788298198b463"
+    },
+    "r6-collect-metadata.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r6-collect-metadata.py",
+      "sha256": "cb6daae332346a29d8191b7160f4caadeb084e1cfcd0d84726358b778b955e30",
+      "baseline_sha256": "0bb8f7dd2f56160ba13f1f0db5163121c6f7701fec6a16eec2655ab669fc5de7"
+    }
+  },
+  "constant_only_ast_audit": {
+    "inspect-native.py": "AST identical after normalizing literal constants; exact unified diff retained",
+    "inspect-freebsd-zfs.py": "AST identical after normalizing literal constants; exact unified diff retained",
+    "cleanup.py": "AST identical after normalizing literal constants; exact unified diff retained",
+    "before-execution-guard.py": "AST identical after normalizing literal constants; exact unified diff retained",
+    "harvest-receipts.py": "AST identical after normalizing literal constants; exact unified diff retained",
+    "collect-metadata.py": "AST identical after normalizing literal constants; exact unified diff retained"
+  },
+  "diff": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r6-proposal-vs-r4.diff",
+  "candidate_sources": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r6-source-choices.UNREADY.json",
+  "source_inventory_receipt": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r6-source-inventory-20261030-n4-receipt.json",
+  "new_remote_root": "/var/tmp/hfs-image-inspect-yq3-20261030-n4-r6",
+  "new_controller_destination": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n4-r6",
+  "collector_deadlines_seconds": {
+    "native_remote": 240,
+    "native_transport": 270,
+    "dev_remote": 240,
+    "dev_transport": 270,
+    "normal_cleanup_transport": 60
+  },
+  "metadata_database_cap_each": 33554432,
+  "controller_database_cap": 134217728,
+  "host_metadata_cap": 167772160,
+  "retention_hours": 168,
+  "proposed_command": [
+    "python3",
+    "-B",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r6-collect-metadata.py"
+  ],
+  "executed": false
+}
