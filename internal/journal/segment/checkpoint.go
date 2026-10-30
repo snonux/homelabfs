@@ -34,6 +34,15 @@ func checkpointSource(ctx context.Context, backend Backend, stream Stream, limit
 	if err != nil {
 		return Recovery{}, RecoveryOptions{}, err
 	}
+	// The retained suffix is scanned independently of the archive. Preserve the
+	// archive identity namespace as well: a trimmed segment must never become a
+	// fresh suffix segment merely because its original file is absent.
+	archivedIDs := make(map[record.UUID]uint64)
+	for _, entry := range entries {
+		if open, ok := entry.Record.Payload.(record.SegmentOpen); ok {
+			archivedIDs[open.Segment] = open.First
+		}
+	}
 	names, err := discover(ctx, backend, stream.Directory(), limits)
 	if err != nil {
 		return Recovery{}, RecoveryOptions{}, err
@@ -56,6 +65,11 @@ func checkpointSource(ctx context.Context, backend Backend, stream Stream, limit
 	recovery, err := Recover(ctx, backend, stream, options)
 	if err != nil {
 		return recovery, options, err
+	}
+	for _, segment := range recovery.Segments {
+		if archivedFirst, exists := archivedIDs[segment.Open.Segment]; exists && segment.Open.First != archivedFirst {
+			return recovery, options, corrupt("suffix reuses archived segment identity")
+		}
 	}
 	reader, err := OpenReader(ctx, backend, stream, options, stream.position(first))
 	if err != nil {

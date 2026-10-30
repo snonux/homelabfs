@@ -1074,3 +1074,165 @@ profiles were then rerun together against the same final module bytes above.
 This resource-bound projection adjustment is not a protocol finding. No genuine
 protocol defect was identified, and no `internal/coord` behavior was changed.
 No live etcd, lab, VM, SSH, FUSE, fence, snapshot or production operation occurred.
+
+## Immutable local checkpoints (`qx3`)
+
+`Checkpoints.tla` models the implemented local publication/reclamation contract in
+[Checkpoints.md](../../docs/spec/Checkpoints.md). It grants no service integration,
+retention authority or infrastructure permission. Run sequentially:
+
+```sh
+mage tlaCheckpoints
+mage tlaCheckpointsNegative
+mage tlaCheckpointsCoverage
+```
+
+Each invocation uses the pinned TLC 1.8.0 jar and preserves private executed
+module/configuration snapshots, hashes, exact arguments, resource bounds, output
+and actual Java exit receipts under `.cache/tla/`. Each profile uses one worker,
+one active CPU, 512 MiB heap and a three-minute wall limit. Positive profiles must
+exhaust the finite graph: no depth/state constraint, symmetry reduction or
+incomplete-search pass is used. Negative profiles require actual `Safety`
+violations with exit 12; witnesses keep `Safety` first and require only
+`WitnessAbsent` to fail with exit 12.
+
+The source has two closed segments and one open required suffix, with 17 exact
+symbolic frame bytes. The first cut ends at SEAL 11, the second at SEAL 15.
+VOLUME_INIT and INSTALL represent selected effects; allocation/create attempts,
+request/session claim, prepare/decision, configuration/authority and released
+lifetime evidence are independently named unselected bytes. Every frame,
+including both OPEN/SEAL chains, remains in the baseline's exact genesis prefix.
+UUID and payload symbols denote exact identities/bytes, without a hash collision
+or cryptographic implementation claim. The structural chain and SEAL verification
+are trusted input predicates here; the journal codec/chain scanner is not
+reimplemented. Source append, arbitrary corruption, payload I/O, cross-home
+closure and distributed replication are outside this model.
+
+The transition system permits at most two capture/publication attempts and two
+crashes. Capture, independent baseline durability, manifest durability, CURRENT
+rename, CURRENT parent sync, fresh retention acquisition, durable reclaim boundary,
+ordered unlink and each unlink directory sync are separate actions. A crash at
+any edge independently keeps or loses an unsynced CURRENT rename and the pending
+unlink, preserves completed barriers and drops the live lease. Retrying requires
+a fresh lease; CURRENT is re-synced before a reclaim boundary becomes durable.
+Immutable orphan/artifact bodies are abstracted to retained values and do not
+authorize reclamation. This is syscall barrier ordering, not FreeBSD/ZFS power
+loss evidence. No fairness, liveness or arbitrary repeated-checkpoint proof is
+claimed.
+
+`Safety` checks complete byte-identical sealed published archives and matching
+payload/catalog bytes, durable published coverage before even an unsynced unlink,
+ordered removal, independent allocation exclusion for archived segment IDs and
+permanent object reservations, accepted suffix identity uniqueness and genesis
+preservation for the separate `fsservice.New` startup mode. Complete retention
+and authority are trusted successful external lease actions; an unavailable or
+unknown provider has no acquisition transition. Selection authority, proof
+authentication, lease expiry/concurrency, resource admission and external evidence
+validation remain implementation obligations. The explicit genesis profile may
+publish checkpoints but cannot trim its original source stream.
+
+| Negative suffix | Deliberately removed requirement |
+| --- | --- |
+| `Coverage` | Unlink after capture, before durable publication/retention |
+| `Archive` | Preserve only selected effects, dropping original evidence bytes |
+| `Segment` | Allocate a segment ID after its original file was trimmed |
+| `Reservation` | Reuse an external or unselected creation-attempt reservation |
+| `Payload` | Accept independent payload bytes differing from the catalog |
+| `Seal` | Accept a Through cut ending on the open suffix's write |
+| `Genesis` | Trim a source still consumed by genesis-only startup |
+| `SourceIdentity` | Accept an imported suffix reusing an archived segment ID |
+
+Witnesses cover complete two-segment reclamation, restart after capture, restart
+at the unsynced CURRENT rename, restart at the first unsynced unlink followed by
+complete reclamation, two publications with an extending second cut, successful
+fresh allocation after trimming while archived/external collisions stay excluded,
+and checkpoint publication with genesis source intact. These searches establish
+concrete reachability, not positive exhaustion.
+
+### Confirmed implementation finding
+
+Code inspection and a real focused regression exposed a missing archive/suffix
+identity check in `segment.checkpointSource`. `VerifyFrames` rejected duplicate IDs
+inside the archive, and `Recover` rejected duplicates inside the surviving source,
+but after a trimmed file disappeared those independent scans could accept its ID
+again in a later suffix OPEN. A valid predecessor SEAL and unchanged overlapping
+bytes did not detect that reuse. `VerifyCheckpointSource` now compares each
+surviving OPEN's ID and first position against the archive before returning;
+`OpenCheckpointSuffix`, checkpoint Publish/Recover/Trim share this check. An
+identical surviving archived segment remains legal. The specification explicitly
+states the check. Allocators must still exclude archived IDs before writing.
+
+`TestCheckpointRejectsArchivedSegmentIdentityReuse` constructs a real sealed
+archive, durably unlinks its source segment, creates a valid predecessor-linked
+suffix with the same segment ID, and checks both public verification entry
+points. Against the original implementation it failed with exit 1 because
+verification returned nil; after the fix it passed with exit 0. Evidence is in
+`.cache/tla/Checkpoints-identity-baseline-1uh1_olg` and
+`.cache/tla/Checkpoints-identity-fixed-xuwmnjbk`. These commands used cached Go
+dependencies, `GOMAXPROCS=2`, `GOFLAGS=-p=1` and a fresh private `/tmp` TMPDIR.
+This bug is in checkpoint-aware local recovery, not the current genesis-only
+`fsservice.New` path; fresh-genesis native fixtures do not exercise it. There is
+no daemon checkpoint/trim integration added here. Intentional mutation controls
+are not additional protocol findings.
+
+All 18 final profiles completed locally on 30 October 2026 against module
+SHA-256 `ce73aa834eb3174e1e858a8e5903e048ff625130fe1eb34f8c7cb47ea51a644e`.
+Every private source/configuration snapshot matches the final checked source.
+The actual public negative, coverage and positive Mage targets exited zero,
+taking 8.23, 8.61 and 5.32 seconds respectively. The positive profiles exhausted
+their finite graphs with zero queued states and Java exit zero. Controls and
+witnesses stopped at their required counterexamples with Java exit 12.
+
+| Configuration suffix | Generated | Distinct | Depth | Java exit |
+| --- | ---: | ---: | ---: | ---: |
+| `NegativeCoverage` | 7 | 7 | 3 | 12 |
+| `NegativeArchive` | 34 | 21 | 5 | 12 |
+| `NegativeSegment` | 224 | 97 | 9 | 12 |
+| `NegativeReservation` | 5 | 5 | 2 | 12 |
+| `NegativePayload` | 34 | 21 | 5 | 12 |
+| `NegativeSeal` | 64 | 37 | 5 | 12 |
+| `NegativeGenesis` | 114 | 64 | 8 | 12 |
+| `NegativeSourceIdentity` | 188 | 99 | 9 | 12 |
+| `WitnessReclaim` | 2,147 | 879 | 11 | 12 |
+| `WitnessCaptureCrash` | 46 | 23 | 4 | 12 |
+| `WitnessRenameCrash` | 282 | 123 | 7 | 12 |
+| `WitnessUnlinkCrash` | 7,651 | 2,966 | 14 | 12 |
+| `WitnessSecond` | 15,094 | 5,522 | 17 | 12 |
+| `WitnessCollision` | 3,336 | 1,360 | 12 | 12 |
+| `WitnessGenesis` | 211 | 93 | 6 | 12 |
+| `Safety` | 2,957 | 1,036 | 22 | 0 |
+| `Faults` | 115,221 | 32,128 | 30 | 0 |
+| `Genesis` | 6,117 | 2,064 | 19 | 0 |
+
+The final receipt index is `.cache/tla/checkpoints-qx3-final-receipts.json`;
+the actual public target outer logs/exit receipts are in
+`.cache/tla/Checkpoints-tlc-final-0bprpl6m`. Each indexed child retains its exact
+executed source/configuration, jar/source hashes, arguments, resource bounds,
+output and actual Java exit. Earlier exploratory negative runs are preserved in
+`.cache/tla/checkpoints-qx3-development-history.json`. That first batch correctly
+failed when TLC rejected a model representation error: empty payload symbols were
+strings while populated payload symbols were tuples, causing exit 76 during set
+comparison. The corrected model uses tuples consistently. This was a model
+correction, not a protocol finding or successful negative control.
+
+The final owning-package tests (`internal/journal/segment`, `internal/checkpoint`,
+`internal/apply`), tagged Mage compilation, tagged vet, tagged errcheck and actual
+Mage discovery all passed; outer logs and exit receipts are in
+`.cache/tla/Checkpoints-final-commands-ennqf3h0` (commands 00–04; command 05 is the
+superseded failed negative batch). The updated segment regression additionally
+checks that an unchanged surviving archived segment is still accepted.
+Go/Mage commands ran sequentially with `GOMAXPROCS=2`, `GOFLAGS=-p=1` and a fresh
+private `/tmp` TMPDIR per command. `git diff --check` passed. No broad runtime Go
+suite, unrelated model, lab, VM, SSH, FUSE, snapshot, production-data or
+infrastructure operation ran. Exhaustive TLC evidence remains conditional on
+finite fingerprints, not a collision-free proof for arbitrary bounds.
+
+The merged checkpoint change also passed the full root-module Go suite
+(`go test -p 1 -count=1 -timeout=120s ./...`), Linux/FreeBSD Mage builds,
+whole-module FreeBSD cross-build, vet, errcheck, lint and tagged Mage checks.
+All nine command receipts record exit zero in
+`.cache/tla/Checkpoints-main-merge-gates-tok4u8k6`; the full Go suite completed
+in 190.85 seconds using private `/tmp` scratch directories. The checkpoint
+TLC/development/regression evidence was retained under the main `.cache/tla/`
+with its original directory names. These local checks confer no native mount
+or infrastructure acceptance.

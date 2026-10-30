@@ -122,7 +122,9 @@ is used. Open segments and every later frame remain.
 `VerifyCheckpointSource` handles obsolete segments that survived a crash. It
 locates the earliest remaining segment, derives its predecessor only from the
 fully verified immutable prefix, verifies the complete surviving OPEN/SEAL chain,
-compares every surviving archived frame byte-for-byte, and rejects an interior
+compares every surviving archived frame byte-for-byte, rejects a suffix OPEN
+that reuses any archived segment identity (even after its source file is gone),
+and rejects an interior
 gap, missing required suffix, changed prefix or torn/corrupt source. Ordered
 per-unlink sync permits only a missing leading portion of the archived prefix.
 It performs no repair/truncation. The caller must retain its outer recovery,
