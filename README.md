@@ -6,7 +6,9 @@
 
 HomelabFS is a planned distributed filesystem for the f3s homelab. This project implements and validates it using disposable lab and canary volumes only. Production workload migration and NFS retirement are possible future steps in a separate project. It will use local ZFS storage on FreeBSD hosts, with replication and workload failover implemented in Go.
 
-Each workload owns an independent directory/persistent volume. Its reads and writes normally happen on one primary node, while other nodes hold replicas. Different nodes can be primary for different workloads at the same time.
+Each workload owns an independent directory/persistent volume. In normal mode, any admitted HomelabFS node may accept reads and writes for any volume, regardless of ownership, subject to permissions, current authority and readiness. Writes originating on different hosts must share a consistent order and commit protocol. A preferred owner receives committed changes in memory and can serve them before its own disk persistence. Ownership is a placement preference, not an exclusive right to write.
+
+Periodically reconsolidate preferred ownership toward the FreeBSD host receiving the most requests for that volume. Pod relocation need not wait for an ownership move: non-owners remain able to accept reads and writes. See the [ownership reconsolidation policy](docs/Cluster-and-ownership.md#periodic-ownership-reconsolidation). These are design requirements; the distributed protocol is not implemented.
 
 ## Why HomelabFS?
 
@@ -63,11 +65,11 @@ The default deployment has three storage nodes and three replicas per workload. 
 
 For normal writes, the proposed acknowledgement rule is:
 
-- Persist the local journal and transmit the operation to the synchronous partner in parallel.
-- Require local durability and the partner's in-memory receipt, plus the protocol's commit/visibility conditions, before acknowledging the workload.
+- Persist the originating writer's local journal and transmit the complete ordered operation to the preferred owner in parallel.
+- Require originating-writer durability and the owner's retained in-memory copy, plus the protocol's commit/visibility conditions, before acknowledging the workload. An owner-originated write requires a distinct synchronous partner's retained memory; the owner cannot count itself twice.
 - Deliver every operation to the asynchronous replica, retaining and replaying backlog across disconnects and ownership changes.
 
-An in-memory partner ACK is an intentional durability tradeoff. Losing the primary and the partner's unpersisted memory can lose acknowledged writes. The precise commit, fencing, and recovery protocols still need specification and testing.
+An in-memory peer ACK is an intentional durability tradeoff. Losing the originating writer's durable storage together with the required peer's unpersisted memory can lose acknowledged writes. Receipt alone is not commitment. The multi-origin commit, fencing, read-coherence and recovery protocols still need specification and testing.
 
 ## Kubernetes and local access
 
@@ -83,7 +85,7 @@ Pod persistent volume
 
 The guest accesses the HomelabFS mount, never the raw backing directory. Linux FUSE remains a separate portability target around the shared Go core; it is not required inside Rocky for this deployment. The selected 9p/FUSE path still needs validation for the actual guest kernel, locking, mmap, caching, permissions, and durability semantics.
 
-When a pod moves to another worker, the volume's primary can move with it. Either replica may be promoted, but workload I/O remains blocked until fencing, authoritative recovery, local application, and synchronous-partner readiness complete. Returning nodes catch up as followers rather than automatically reclaiming ownership. Automatic failover means workload recovery with the same volume, not zero interruption or process-memory migration.
+When a pod moves to another worker, its requests may use that host before preferred ownership moves. Periodic request-based reconsolidation can later move the preferred owner through a coordinated handoff. Crash failover is a separate recovery operation: affected I/O must wait for valid authority, fencing, authoritative recovery and required peer readiness. Returning nodes do not automatically reclaim ownership. Automatic failover means workload recovery with the same volume, not zero interruption or process-memory migration.
 
 ## Operating model
 

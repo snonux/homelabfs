@@ -1,5 +1,13 @@
 # Retained 9p authorization proposal, 2026-10-30
 
+> Review status, 2026-10-30: this authorization proposal is not selected.
+> Its exclusive-client assumptions below are superseded by the required any-node,
+> any-volume multi-origin architecture. Retaining 9p accepts only guest-local
+> advisory-lock scope, not a blanket ban on concurrent filesystem clients.
+> Task jz3 must reconcile authorization, metadata and multi-client cache coherence
+> before publication; the proposal is not permission to change the trust boundary.
+
+
 **Decision input, not an admitted security model.** Retaining 9p and accepting
 [same-mount local advisory locks](../Platform-interfaces.md#accepted-9p-lock-scope-2026-10-30)
 does not authorize treating bhyve's host root identity as a guest user. The

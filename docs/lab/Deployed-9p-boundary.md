@@ -1,5 +1,13 @@
 # Deployed 9p boundary investigation, 2026-10-30
 
+> Current contract update, 2026-10-30: the dated evidence below is unchanged,
+> but any exclusive writable-client publication requirement is superseded.
+> Any admitted HomelabFS node must be able to accept writes for any volume;
+> guest-local advisory locks are distinct from filesystem ordering, commitment,
+> cache coherence and stale-client fencing. See [the current architecture](../Architecture.md)
+> and [review/task reconciliation](../reviews/20261030-multiwriter-review.md).
+
+
 The inspected f3 lib9p implements successful server lock replies without host
 locking. Its installed machine code establishes this directly. The current
 Rocky boot also has no 9p support. Neither the current boot nor the installed

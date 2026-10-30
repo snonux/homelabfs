@@ -1,5 +1,17 @@
 # Normal replication, commitment and visibility
 
+> **2026-10-30 architecture revision:** normal operation must allow any admitted
+> HomelabFS node to accept writes for any volume regardless of preferred ownership.
+> The originating writer durably journals locally; the preferred owner retains
+> the complete ordered committed memory view and can serve it before its own
+> disk persistence. Owner-originated writes require a distinct peer's memory
+> receipt. Receipt alone is not commitment. Preferred ownership is periodically
+> reconsolidated by request demand, without making non-owner access depend on
+> immediate owner relocation. See [Cluster and ownership](../Cluster-and-ownership.md#periodic-ownership-reconsolidation).
+> The fixed-owner mechanics below are an earlier design baseline awaiting
+> reconciliation, not an approved multi-origin protocol or its safety proof.
+
+
 Status: design contract for task `dq3`, 2026-10-28. This is an unimplemented
 protocol for disposable lab/canary volumes, awaiting the `fq3` model and runtime
 validation. It is neither a safety proof nor behavior of `tools/poc/`.

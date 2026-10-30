@@ -1,5 +1,13 @@
 # Real-daemon 9p gate: implementation prerequisites
 
+> Current contract update, 2026-10-30: the dated evidence below is unchanged,
+> but any exclusive writable-client publication requirement is superseded.
+> Any admitted HomelabFS node must be able to accept writes for any volume;
+> guest-local advisory locks are distinct from filesystem ordering, commitment,
+> cache coherence and stale-client fencing. See [the current architecture](../Architecture.md)
+> and [review/task reconciliation](../reviews/20261030-multiwriter-review.md).
+
+
 Assessment at source revision `801a3302659d4d2b92cfc5e55bfa4ed3d56ea01f`,
 2026-10-30. This is local source assessment and a proposed implementation order,
 not live compatibility evidence, artifact admission, or an execution plan.

@@ -8,7 +8,7 @@ Cluster membership, per-volume placement, and coordination authority.
 
 Three nodes is the default deployment, not a hard cluster-size limit. Support explicit admission of additional nodes. Recommended default replication factor remains three per workload directory: one primary, one synchronous replica, and one asynchronous replica on distinct physical hosts. A fourth node adds placement and workload capacity; it does not automatically become a fourth replica of every directory. Changing replication factor is a separate future configuration decision.
 
-Track cluster membership separately from each volume's replica membership. Newly admitted nodes begin with no authority to serve existing volumes. To place a replica there, copy a consistent checkpoint and journal suffix, verify readiness, then activate a fenced group configuration. Do not automatically rebalance existing owners merely because a node joins; use planned transfers and preserve workload locality.
+Track cluster membership, write-origin admission and each volume's replica placement separately. In normal mode any admitted HomelabFS node may accept writes for any volume regardless of preferred ownership, subject to permissions, valid authority and the commit protocol. A node need not become the preferred owner to originate a write. Admission alone does not make an empty node an up-to-date replica or authorize stale reads. Replica placement requires a verified checkpoint/suffix and safe configuration transition. Adding a node does not automatically redistribute replica sets; periodic preferred-owner reconsolidation is a separate policy.
 
 The earlier two-of-three reasoning applies to a volume's replica group. For membership changes, use a proven joint/overlapping configuration transition that preserves acknowledged history and fencing; two acknowledgements from arbitrary cluster members are not sufficient. A fourth empty node cannot substitute for an up-to-date partner until it has recovered the required state.
 
@@ -28,7 +28,7 @@ HomelabFS daemon
       +-- asynchronous replication ----------- third daemon
 ```
 
-Ownership is per independent workload directory, not per physical node or the whole filesystem. All cluster nodes can be primaries simultaneously for different workloads. Each workload has one active owner for reads and writes and two passive replicas; a node can be a primary for one directory and a replica for others.
+Preferred ownership is per volume, not per physical node or the whole filesystem. Any admitted node can originate writes for the same volume. The preferred owner retains the complete ordered committed memory view and may serve it before local disk persistence. The originating writer supplies local durable journal evidence; an owner-originated write instead requires a distinct synchronous partner's memory receipt. Replica placement, write origin and preferred ownership are distinct roles. Their multi-origin ordering, fencing and recovery protocol must be specified and validated before implementation; the earlier fixed-owner two-of-three reasoning below is not a proof for this revised model.
 
 Example placement (partner assignments are illustrative):
 
@@ -42,7 +42,7 @@ Each directory is an independent replication group with its own ownership epoch,
 
 For example, if node0 fails, workload a can move to node1 while workload b stays on node1 and workload c stays on node2. Workload b loses its asynchronous replica; workload c loses its synchronous replica and must establish a replacement before acknowledging further writes. Each group therefore handles the same physical failure according to its own roles. Catch-up of returning node0 is also tracked separately for each directory.
 
-The configured directory roots define group boundaries. Keep workload operations inside those roots; cross-group rename/hard-link semantics and management of the shared parent namespace still need an explicit policy. Do not infer support for atomic cross-group operations from local ZFS support. Concurrent read-sharing of the same directory is not the baseline.
+The configured directory roots define group boundaries. Keep workload operations inside those roots; cross-group rename/hard-link semantics and management of the shared parent namespace still need an explicit policy. Do not infer support for atomic cross-group operations from local ZFS support. Concurrent access from different admitted hosts is a requirement; its read coherence and commit rules must be validated.
 
 ## Independent workload placement
 
@@ -74,9 +74,45 @@ flowchart LR
     N3[Optional node 3] -.-> P[Explicit placement and catch-up]
 ```
 
+## Periodic ownership reconsolidation
+
+Decision recorded on 2026-10-30: periodically prefer the FreeBSD HomelabFS host
+receiving the most requests for a volume. Rocky Kubernetes pods may move between
+workers; requests reach the colocated FreeBSD daemon through 9p and FUSE.
+Ownership need not move immediately because non-owners may still accept reads
+and writes. This policy does not change the selected 9p deployment path.
+
+Measure original admitted frontend requests by volume and originating host over
+a bounded window. Exclude replication traffic, owner memory-copy receipts and
+retry duplication. Guest cache hits are not visible to the daemon, so these
+counts do not claim to count every application syscall. Choose the evaluation
+interval, window, meaningful demand advantage, minimum tenure and cooldown in
+the reviewed policy before implementation; no numeric defaults are selected here.
+Use fresh statistics and require destination eligibility, capacity and readiness.
+Avoid transfers for brief demand spikes or stale measurements.
+
+Use etcd to coordinate the transfer intent and configuration/term changes, with
+HomelabFS enforcing ordered handoff and fencing. An etcd lease or CAS alone is
+not a data or cache fence. Keep request counters local and publish summaries
+periodically rather than introducing a per-request etcd transaction.
+
+A handoff must preserve the complete committed memory view, ordered dependencies,
+in-flight operations, uncertain results and retry identities before the new
+owner serves. Read readiness may precede persistence to the new owner's own
+disk. Still-admitted origins retain their ability to accept reads and writes;
+coordinate or briefly gate affected operations when safety requires it. A routine
+placement change does not inherently require stopping the old owner's VM or
+revoking every writer. Preserve transaction affinity, aliased object homes and
+closure-wide ordering when selecting the transfer unit.
+
+Distinguish this planned handoff from crash takeover/fencing and from replica-set
+reconfiguration. Emergency single-survivor mode remains an explicitly authorized
+exception. This is the agreed target, not implemented or validated behavior;
+existing owner-only protocol text, diagrams and tests require reconciliation.
+
 ## Coordination without per-operation etcd access
 
-Recommended architecture: long-lived exclusive ownership of both reads and writes, direct daemon replication, and daemon-held replication progress. Do not put file dirtiness, per-write sequence updates, or per-read checks in etcd. Background ownership maintenance and infrequent transfers may use etcd, but normal I/O must not perform an etcd transaction.
+Target architecture: coordinated multi-origin reads and writes, one preferred owner for locality and the committed memory view, direct daemon replication, and daemon-held replication progress. Do not put file dirtiness, per-write sequence updates, or per-read checks in etcd. Background ownership maintenance and infrequent transfers may use etcd, but normal I/O must not perform an etcd transaction.
 
 Retain etcd for ownership allocation and configuration changes unless measurements or operational constraints justify removing it. Removing etcd entirely does not remove the need for agreement during failover: HomelabFS would need an established embedded consensus implementation or an external fencing authority. Designing a new election protocol merely to save occasional coordination latency is not the recommended starting point. No latency measurements have been made yet.
 

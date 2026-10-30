@@ -123,12 +123,13 @@ wire request. This is source evidence, not a live exact-target lock pass.
 The accepted advisory lock scope is cooperating processes using the **same 9p
 mount in the same guest, with the same kernel inode/lock domain**, including pods
 sharing that underlying mount through bind mounts. Separate 9p mounts even
-within one guest, separate guests and direct host access have no shared-lock guarantee. Do not publish a writable
-volume to two independent mounts/clients. Exclusive per-volume consumer
-publication and fencing of old consumers, including cached pages/mappings,
-remain mandatory; advisory locks cannot replace either control. This restriction
-applies only to the f3s 9p publication profile; native FreeBSD/Linux FUSE and
-the shared service retain their existing lock semantics.
+within one guest, separate guests and direct host access have no shared-lock
+guarantee. This application-lock limitation does not prohibit independent
+HomelabFS daemons from accepting writes to the same volume. HomelabFS must
+coordinate ordering, commitment, read coherence and stale-client fencing itself;
+flock on separate guest mounts cannot provide those controls. The earlier
+exclusive-consumer restriction was not the user's decision and is superseded.
+Native FreeBSD/Linux FUSE and the shared service retain their scoped lock semantics.
 
 [Deployment tests](Deployment-tests.md#early-compatibility-gates) must prove local
 contention and lifetimes in this scope. This lock-only concession does not waive

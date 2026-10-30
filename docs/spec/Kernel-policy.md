@@ -1,5 +1,12 @@
 # Canary kernel and artifact policy
 
+> 2026-10-30 revision: any admitted HomelabFS node must be able to accept writes
+> for any volume regardless of preferred ownership. The earlier exclusive
+> writable-client validation requirement below is superseded. Validate local
+> advisory locks separately from filesystem multi-origin ordering, cache coherence
+> and stale-authority fencing. See [the current policy](../Cluster-and-ownership.md).
+
+
 [Architecture](../Architecture.md) · [Packaging and rollout](../Packaging-and-rollout.md) · [Deployment compatibility](../Deployment-tests.md) · [Approval contract](../Test-automation.md)
 
 ## Scope and admission status

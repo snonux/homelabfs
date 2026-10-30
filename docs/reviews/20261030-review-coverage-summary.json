@@ -1,0 +1,22 @@
+{
+  "baseline": "26a588f60da3a352f8204b913d4de576769117b0",
+  "paths": 1959,
+  "duplicates": 0,
+  "missing": 0,
+  "lanes": {
+    "authority_models": 214,
+    "durable_storage": 105,
+    "service_transactions": 86,
+    "frontends": 96,
+    "harness_operations": 91,
+    "historical_evidence": 1353,
+    "root": 14
+  },
+  "classifications": {
+    "revise": 149,
+    "retain": 293,
+    "supersede": 1,
+    "history": 1516
+  },
+  "coverage_sha256": "4840f7c8586c33e37b995b5ef18f03d9b097f50739e828c9091fb0461d2af362"
+}

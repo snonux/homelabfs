@@ -10,7 +10,7 @@ Target normal file access for every configured f3s application without applicati
 
 HomelabFS must coordinate all mutations, not only write calls: creation and exclusive creation, append, truncate, rename, unlink, mkdir/rmdir, links, ownership, permissions, and explicit timestamp changes. Define automatic timestamp behavior too. Preserve atomic namespace changes, open-file lifetime after unlink, inode identity for hard links, and ordering needed by application recovery. Cross-directory rename may require coordination over multiple objects.
 
-Application-facing advisory locks (fcntl/flock) are distinct from HomelabFS's exclusive node write ownership. Concurrent processes on the same owner must retain ordinary application locking behavior. Separate local ZFS replicas cannot by themselves enforce a shared lock domain. Specify lock handling across node changes, process exits, and failures before claiming compatibility.
+Application-facing advisory locks (fcntl/flock) are distinct from HomelabFS's multi-origin ordering and preferred-owner role. Concurrent processes in the same supported lock domain must retain ordinary application locking behavior. Separate local ZFS replicas cannot by themselves enforce a shared lock domain. Specify lock handling across node changes, process exits, and failures before claiming compatibility.
 
 Support and test fsync/fdatasync or their platform equivalents, synchronous I/O, directory persistence, and writable mmap/msync through the complete access path. Memory-mapped modifications must enter the same replication protocol. Keep database files, journals, WAL files, and namespace operations in a recovery-consistent order. Accepted loss of the last acknowledged writes under the chosen multi-failure scenario must not become arbitrary reordering or inconsistent recovery.
 
@@ -43,7 +43,7 @@ HomelabFS must expose traditional Unix ownership and permissions through the mou
 - Creation permissions honoring the caller's umask, with FreeBSD-compatible group inheritance.
 - Directory search and modification checks, supplementary group membership, sticky directories, and setuid/setgid semantics subject to mount policy.
 
-Unix ownership identifies users and groups. It is separate from the exclusive node write ownership managed through etcd.
+Unix ownership identifies users and groups. It is separate from the preferred node ownership coordinated through etcd; ownership does not exclude admitted non-owner writers.
 
 Store ownership and mode bits as replicated filesystem metadata. Permission and ownership changes use the same journal, ordering, fencing, and acknowledgement rules as data changes. Snapshot recovery must preserve them. Hard links, if supported, share the same inode metadata.
 

@@ -34,7 +34,7 @@ These are historical observations, not universal product limitations. HomelabFS 
 
 1. **Build on FreeBSD and ZFS.** Keep local storage, encryption, and external snapshot tooling on the existing hosts.
 2. **Provide filesystem-compatible persistent volumes.** Support the POSIX-style operations and traditional Unix ownership/permissions required by the actual Kubernetes workloads.
-3. **Keep normal I/O local.** Each workload directory has one active primary; different nodes can serve different workloads simultaneously.
+3. **Keep normal I/O local.** Any admitted host can accept reads and writes for any volume. Periodically place the preferred owner at the FreeBSD host receiving the most requests, while preserving coordinated commits and non-owner access.
 4. **Recover automatically from routine failures.** Replicate continuously, let either replica become primary after safe catch-up, and bring returning nodes up to date without manual repair in the usual case.
 5. **Keep operation manageable.** Start with three nodes, allow expansion, reuse WireGuard, and keep coordination out of normal reads and writes.
 6. **Make recovery explicit.** Preserve replayable journals, test external snapshot restores, and provide a controlled single-node emergency mode when manual intervention is necessary.

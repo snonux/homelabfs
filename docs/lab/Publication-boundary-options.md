@@ -8,9 +8,10 @@ Paul retained FreeBSD FUSE → bhyve/lib9p → Rocky kernel 9p and accepted advi
 locks limited to cooperating consumers of the **same guest 9p mount and kernel
 inode/lock domain**, including pods bind-mounted from that underlying mount.
 Separate 9p mounts even in one guest, other guests and direct host access have
-no shared-lock guarantee. Independent writable mounts/clients must not share a
-volume; exclusive consumer publication and fencing of old clients, including
-cached access, remain required. See the [current contract](../Platform-interfaces.md#accepted-9p-lock-scope-2026-10-30)
+no shared-lock guarantee. Independent admitted HomelabFS nodes may accept writes for the same volume;
+the filesystem must supply ordering, commit, cache coherence and stale-client
+fencing independently of guest-local advisory locks. The earlier blanket ban
+on independent writable clients was an agent-imposed restriction, now superseded. See the [current contract](../Platform-interfaces.md#accepted-9p-lock-scope-2026-10-30)
 and [revised validation matrix](../Deployment-tests.md#early-compatibility-gates).
 
 The Linux frontend/remote-service recommendation and prototype below are

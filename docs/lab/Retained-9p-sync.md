@@ -1,5 +1,13 @@
 # Retained 9p: conservative synchronous-write admission
 
+> Current contract update, 2026-10-30: the dated evidence below is unchanged,
+> but any exclusive writable-client publication requirement is superseded.
+> Any admitted HomelabFS node must be able to accept writes for any volume;
+> guest-local advisory locks are distinct from filesystem ordering, commitment,
+> cache coherence and stale-client fencing. See [the current architecture](../Architecture.md)
+> and [review/task reconciliation](../reviews/20261030-multiwriter-review.md).
+
+
 Source assessment for task `2z3`, 2026-10-30, against HomelabFS `41c3135`.
 **A covering commit boundary on every daemon mutation can preserve regular
 O_SYNC/O_DSYNC write semantics without forwarding those flags.** The current
