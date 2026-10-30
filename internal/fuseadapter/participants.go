@@ -30,6 +30,8 @@ type Participants struct {
 	processes map[uint64]*participant
 	closed    bool
 	sealed    bool
+	exitMount MountIdentity
+	onExit    func(uint64) error
 }
 
 type participant struct {
@@ -93,7 +95,7 @@ func NewParticipants() (*Participants, error) {
 func (p *Participants) BindMount(id MountIdentity) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.closed || p.mount.Session.Valid() || !id.Volume.Valid() || !id.Generation.Valid() || !id.Session.Valid() {
+	if p.closed || p.mount.Session.Valid() || !id.Volume.Valid() || !id.Generation.Valid() || !id.Session.Valid() || p.onExit != nil && p.exitMount != id {
 		return fsapi.Stale
 	}
 	p.mount = id
@@ -199,8 +201,8 @@ func (p *Participant) PID() int { return p.command.Process.Pid }
 func (p *Participant) Signal(signal os.Signal) error { return p.command.Process.Signal(signal) }
 
 // Wait observes process exit without reaping, then revokes this process before
-// the sole reap. Previously issued service handles
-// retain their own kernel lifetime until FLUSH/RELEASE or session teardown.
+// the sole reap. Service process-lock retirement completes before Wait returns;
+// descriptions and their issued grants retain their kernel lifetime.
 func (p *Participant) Wait() error {
 	p.once.Do(func() {
 		// Observe exit without reaping: kernel close callbacks retain admission
@@ -212,13 +214,31 @@ func (p *Participant) Wait() error {
 		p.owner.mu.Lock()
 		entry := p.owner.processes[p.token]
 		delete(p.owner.processes, p.token)
+		notify := p.owner.onExit
 		p.owner.mu.Unlock()
+		// Reap and close before notifying: even a blocked service cannot retain
+		// a zombie. Retirement uses the non-reusable token, never the reaped PID.
 		p.waitErr = p.command.Wait()
 		if entry != nil {
 			p.waitErr = errors.Join(p.waitErr, entry.close())
 		}
+		if notify != nil {
+			p.waitErr = errors.Join(p.waitErr, notify(p.token))
+		}
 	})
 	return p.waitErr
+}
+
+// bindExit connects positive child-exit evidence to the exact service session.
+// It neither discovers processes nor changes retained description grants.
+func (p *Participants) bindExit(id MountIdentity, notify func(uint64) error) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed || p.onExit != nil || p.mount.Session.Valid() && p.mount != id {
+		return fsapi.Stale
+	}
+	p.exitMount, p.onExit = id, notify
+	return nil
 }
 
 // seal prevents fork/exec after native publication: inherited FUSE fds can

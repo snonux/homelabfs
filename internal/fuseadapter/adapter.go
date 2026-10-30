@@ -152,6 +152,11 @@ func New(c Config) (*Adapter, error) {
 			return nil, err
 		}
 	}
+	if participants, ok := c.Credentials.(*Participants); ok {
+		if err := participants.bindExit(a.Identity(), a.processExit); err != nil {
+			return nil, err
+		}
+	}
 	a.publication = c.Service
 	return a, nil
 }
@@ -185,6 +190,14 @@ func (a *Adapter) fail(err error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.failure = errors.Join(a.failure, err)
+}
+
+func (a *Adapter) processExit(token uint64) error {
+	err := a.control(fsapi.Cred{}, fsapi.Command{Operation: fsapi.ProcessExit, Lock: fsapi.Lock{Owner: fsapi.LockOwner{Session: a.session, Generation: a.info.Generation, Token: token}}})
+	if err != nil {
+		a.fail(err)
+	}
+	return err
 }
 
 func (a *Adapter) identity(ctx context.Context, h *fuse.InHeader) (Identity, error) {

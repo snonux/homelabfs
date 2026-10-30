@@ -163,13 +163,26 @@ func (c *Client) Stop(ctx context.Context) error {
 		case <-ctx.Done():
 			waitErr = fmt.Errorf("helper stop: %w", ctx.Err())
 		}
-		var exitErr *exec.ExitError
-		if errors.As(waitErr, &exitErr) {
-			if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() && status.Signal() == syscall.SIGTERM {
-				waitErr = nil
-			}
-		}
+		waitErr = stopWaitError(waitErr)
 		c.closeErr = errors.Join(signalErr, waitErr, c.output.Close())
 	})
 	return c.closeErr
+}
+
+// stopWaitError accepts only the expected signal exit, retaining independent
+// lifecycle failures returned alongside it by the process owner.
+func stopWaitError(err error) error {
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		var remaining []error
+		for _, child := range joined.Unwrap() {
+			remaining = append(remaining, stopWaitError(child))
+		}
+		return errors.Join(remaining...)
+	}
+	if exit, ok := err.(*exec.ExitError); ok {
+		if status, ok := exit.Sys().(syscall.WaitStatus); ok && status.Signaled() && status.Signal() == syscall.SIGTERM {
+			return nil
+		}
+	}
+	return err
 }

@@ -126,6 +126,17 @@ process cleanup. This matters when the process reacquires locks on another fd
 between FLUSH and the asynchronous final RELEASE. The legacy combined service
 Release remains available to callers that did not send a separate close event.
 
+Controlled `Participants` additionally reports positively observed child exit to
+the exact adapter session. `Wait` revokes that incarnation's request admission,
+performs the sole reap, and awaits `ProcessExit` before returning. This retires
+only its POSIX ranges and pending requests, including requests authenticated
+before exit but dispatched later. It preserves other processes' locks, shared
+descriptions, flock and retained cache-write grants. Notification failure closes
+adapter admission and remains an error even alongside expected SIGTERM exit;
+notification cannot prevent the child from being reaped. This supplements native
+close callbacks without assuming their scheduling or repeating POSIX cleanup on
+asynchronous RELEASE.
+
 FORGET, final RELEASE and connection SessionExit are kernel control events with
 no workload credentials. The private cleanup path permits only these operations;
 the Unix policy authorizes reference draining independently of UID. Its empty

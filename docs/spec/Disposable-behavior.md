@@ -166,6 +166,17 @@ process tests check stage/holder evidence, preserved contention and command
 counts; they do not identify the cause of N12's unlocalized EAGAIN or establish
 native process-exit cleanup. That diagnosis and the full native gate remain open.
 
+N13's first root/direct failure localized the unexpected conflict to helper 0's
+acquisition after helper 1's observed exit; the later `F_GETLK` snapshot still
+identified helper 1's PID as holder. Controlled participants now retire the exact
+service process owner before their `Wait` returns, independently of native close
+callback scheduling. Local real-child/adapter/service tests reproduce the stale
+range without that notification and verify retirement, pending and late-request
+rejection, other-owner preservation and retained description grants with it.
+This establishes the ownership-contract correction, not the native kernel
+reason a close callback failed to remove that range. Native validation of the
+correction and the full behavior matrix remain separate gates.
+
 ## FreeBSD credential ABI
 
 Controlled participants support only FreeBSD **15.1-RELEASE** (including patch
