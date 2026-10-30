@@ -1,0 +1,90 @@
+{
+  "status": "ACCEPTED-STOPPED-IMAGE-METADATA-AFTER-EXACT-R11-INSPECTION-AND-NORMAL-CLEANUP",
+  "run_id": "20261030-n9",
+  "observed_at": "2026-10-30T12:49:17.223845+00:00",
+  "selected": {
+    "tag": "zrepl_20261030_124854_000",
+    "sources": [
+      {
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test0@zrepl_20261030_124854_000",
+        "guid": "4108882329840978773",
+        "creation": 1793364534,
+        "dataset": "zroot/bhyve/homelabfs-lab/hfs-test0",
+        "written_bytes": 0
+      },
+      {
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test1@zrepl_20261030_124854_000",
+        "guid": "13955910006948562724",
+        "creation": 1793364534,
+        "dataset": "zroot/bhyve/homelabfs-lab/hfs-test1",
+        "written_bytes": 0
+      },
+      {
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test2@zrepl_20261030_124854_000",
+        "guid": "1987255844270328131",
+        "creation": 1793364534,
+        "dataset": "zroot/bhyve/homelabfs-lab/hfs-test2",
+        "written_bytes": 0
+      },
+      {
+        "snapshot": "zroot/bhyve/freebsd@zrepl_20261030_124854_000",
+        "guid": "5317716860502164012",
+        "creation": 1793364534,
+        "dataset": "zroot/bhyve/freebsd",
+        "written_bytes": 0
+      }
+    ]
+  },
+  "expected_rocky_pid": "79067",
+  "accepted_attestations": {
+    "hfs-test0": {
+      "kind": "offline-inspected-zfs-snapshot-v1",
+      "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test0@zrepl_20261030_124854_000",
+      "guid": "4108882329840978773",
+      "os_disk": "/zroot/bhyve/homelabfs-lab/hfs-test0/disk0.img",
+      "kernel": "15.1-RELEASE",
+      "packages": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "provenance": "2026-10-30 fresh exact source snapshot OS metadata reinspection; no assumption of unchanged prior image; readonly UFS or isolated user-space zdb -L metadata/default-boot selection; no guest code; immutable controller SQLite query; no pool-health conclusion; actual ROOT-released R11 collector session64840 terminalc39048 exit0; actual fixed20 private-root receipts harvested terminalaae528 exit0 and correlated with complete.json; normal exact-owned MD/UFS cleanup and four new source snapshot normal unmounts; source GUID/written0 verified after fresh reads; fresh post-N8 sources, no R10 metadata equality assumption"
+    },
+    "hfs-test1": {
+      "kind": "offline-inspected-zfs-snapshot-v1",
+      "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test1@zrepl_20261030_124854_000",
+      "guid": "13955910006948562724",
+      "os_disk": "/zroot/bhyve/homelabfs-lab/hfs-test1/disk0.img",
+      "kernel": "15.1-RELEASE",
+      "packages": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "provenance": "2026-10-30 fresh exact source snapshot OS metadata reinspection; no assumption of unchanged prior image; readonly UFS or isolated user-space zdb -L metadata/default-boot selection; no guest code; immutable controller SQLite query; no pool-health conclusion; actual ROOT-released R11 collector session64840 terminalc39048 exit0; actual fixed20 private-root receipts harvested terminalaae528 exit0 and correlated with complete.json; normal exact-owned MD/UFS cleanup and four new source snapshot normal unmounts; source GUID/written0 verified after fresh reads; fresh post-N8 sources, no R10 metadata equality assumption"
+    },
+    "hfs-test2": {
+      "kind": "offline-inspected-zfs-snapshot-v1",
+      "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test2@zrepl_20261030_124854_000",
+      "guid": "1987255844270328131",
+      "os_disk": "/zroot/bhyve/homelabfs-lab/hfs-test2/disk0.img",
+      "kernel": "15.1-RELEASE",
+      "packages": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "provenance": "2026-10-30 fresh exact source snapshot OS metadata reinspection; no assumption of unchanged prior image; readonly UFS or isolated user-space zdb -L metadata/default-boot selection; no guest code; immutable controller SQLite query; no pool-health conclusion; actual ROOT-released R11 collector session64840 terminalc39048 exit0; actual fixed20 private-root receipts harvested terminalaae528 exit0 and correlated with complete.json; normal exact-owned MD/UFS cleanup and four new source snapshot normal unmounts; source GUID/written0 verified after fresh reads; fresh post-N8 sources, no R10 metadata equality assumption"
+    },
+    "freebsd": {
+      "kind": "offline-inspected-zfs-snapshot-v1",
+      "snapshot": "zroot/bhyve/freebsd@zrepl_20261030_124854_000",
+      "guid": "5317716860502164012",
+      "os_disk": "/zroot/bhyve/freebsd/disk0.img",
+      "kernel": "15.0-RELEASE-p5",
+      "packages": "sha256:247ccbbb465faa1a9be2c53cbd17466ec841a6e513c2331c005100e1db3659f8",
+      "provenance": "2026-10-30 fresh exact source snapshot OS metadata reinspection; no assumption of unchanged prior image; readonly UFS or isolated user-space zdb -L metadata/default-boot selection; no guest code; immutable controller SQLite query; no pool-health conclusion; actual ROOT-released R11 collector session64840 terminalc39048 exit0; actual fixed20 private-root receipts harvested terminalaae528 exit0 and correlated with complete.json; normal exact-owned MD/UFS cleanup and four new source snapshot normal unmounts; source GUID/written0 verified after fresh reads; fresh post-N8 sources, no R10 metadata equality assumption"
+    }
+  },
+  "source_inventory": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r11-source-inventory-20261030-n9.stdout",
+  "new_metadata_root": "/var/tmp/hfs-image-inspect-yq3-20261030-n9-r11",
+  "new_controller_destination": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n9-r11",
+  "source_inventory_sha256": "09397039c22bd999ad25156a1e979c039b4ecf00c9567fbe01cd43f8c3f54abe",
+  "n8_actual_lab_stop_finished": "2026-10-30T14:41:04.045979787+02:00",
+  "source_inventory_receipt": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r11-source-inventory-20261030-n9-receipt.json",
+  "accepted_at": "2026-10-30T12:52:07.164021+00:00",
+  "cleanup_proof": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n9-r11/complete.json",
+  "actual_receipts": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n9-r11/receipts.json",
+  "metadata_size_and_cleanup_proof": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r11-metadata-size-and-cleanup-proof.json",
+  "rocky_fresh_observation_status": "Actual fresh ROOT query completed; kernel/UID-int0/RPM manifest read and verified from new stdout; actual package_count schema retained",
+  "rocky_fresh_observation": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r11-rocky-current.json",
+  "snapshot_policy": "Existing ordinary zrepl source snapshots only; no holds, retention or ownership changes; no sink. Exact GUID/written0/PID/config guards before and after fresh metadata inspection; prune/drift fails closed. N8 guest boot/clean-stop invalidated prior source-written evidence; no prior image equality assumption. This preparation creates no native plan or filesystem acceptance result."
+}
