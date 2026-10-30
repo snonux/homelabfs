@@ -10,8 +10,8 @@ import (
 func TestFilesystemCommandOwnsAllMutableArguments(t *testing.T) {
 	mode := uint16(0o640)
 	uid, gid := uint32(100), uint32(200)
-	at, mt := fsapi.Timestamp{Seconds: 1}, fsapi.Timestamp{Seconds: 2}
-	c := fsapi.Command{Data: []byte("owned"), Attributes: fsapi.Attributes{Mode: &mode, UID: &uid, GID: &gid, Atime: &at, Mtime: &mt}}
+	at, mt, ct := fsapi.Timestamp{Seconds: 1}, fsapi.Timestamp{Seconds: 2}, fsapi.Timestamp{Seconds: 3}
+	c := fsapi.Command{Data: []byte("owned"), Attributes: fsapi.Attributes{Mode: &mode, UID: &uid, GID: &gid, Atime: &at, Mtime: &mt}, TruncateTimes: fsapi.TruncateTimes{Atime: &at, Mtime: &mt, Ctime: &ct}}
 	clone := c.Clone()
 	c.Data[0] = 'x'
 	mode = 0
@@ -19,8 +19,12 @@ func TestFilesystemCommandOwnsAllMutableArguments(t *testing.T) {
 	gid = 0
 	at.Seconds = 0
 	mt.Seconds = 0
+	ct.Seconds = 0
 	if string(clone.Data) != "owned" || *clone.Attributes.Mode != 0o640 || *clone.Attributes.UID != 100 || *clone.Attributes.GID != 200 || clone.Attributes.Atime.Seconds != 1 || clone.Attributes.Mtime.Seconds != 2 {
 		t.Fatal("borrowed command buffers", clone)
+	}
+	if clone.TruncateTimes.Atime.Seconds != 1 || clone.TruncateTimes.Mtime.Seconds != 2 || clone.TruncateTimes.Ctime.Seconds != 3 {
+		t.Fatal("borrowed truncate timestamp arguments", clone)
 	}
 }
 func TestFilesystemResultValidationAndCopies(t *testing.T) {

@@ -79,6 +79,15 @@ type Attributes struct {
 	AtimeNow, MtimeNow bool
 }
 
+// TruncateTimes selects native timestamps carried with a size change. Nil
+// preserves atime and uses the service clock for mtime/ctime. These values are
+// part of the same exact TRUNCATE metadata afterimage, not a second mutation.
+// Timestamp selections share truncate's descriptor/current-write authorization.
+type TruncateTimes struct {
+	Atime, Mtime, Ctime *Timestamp
+	AtimeNow, MtimeNow  bool
+}
+
 // Command is the ordinary adapter dispatch contract. Mount identifies the
 // serving mount, Object/Parent/Destination are stable IDs, Name and NewName are
 // single raw-byte components. NoReplace selects rename without replacement. DestinationMount is required for Rename/Link,
@@ -109,6 +118,7 @@ type Command struct {
 	After             string
 	DirectoryRevision uint64
 	Attributes        Attributes
+	TruncateTimes     TruncateTimes
 	Durability        DurabilityRequest
 	Lock              Lock
 	Required          Position
@@ -162,5 +172,19 @@ func (c Command) Clone() Command {
 		a.Mtime = &v
 	}
 	c.Attributes = a
+	t := c.TruncateTimes
+	if t.Atime != nil {
+		v := *t.Atime
+		t.Atime = &v
+	}
+	if t.Mtime != nil {
+		v := *t.Mtime
+		t.Mtime = &v
+	}
+	if t.Ctime != nil {
+		v := *t.Ctime
+		t.Ctime = &v
+	}
+	c.TruncateTimes = t
 	return c
 }

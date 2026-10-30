@@ -158,8 +158,15 @@ func (s *Service) mutate(ctx context.Context, cred fsapi.Cred, c fsapi.Command, 
 			if c.Size < 0 {
 				return result, fsapi.Invalid
 			}
+			if c.Attributes != (fsapi.Attributes{}) {
+				return result, fsapi.Unsupported
+			}
 			o.Attr.Size = c.Size
 			o.Attr.Mtime = p.now
+			o, err = truncateTimes(o, c.TruncateTimes, p.now)
+			if err != nil {
+				return result, err
+			}
 			if cred.UID != 0 {
 				o.Attr.Mode &^= 0o6000
 			}
@@ -299,6 +306,23 @@ func (s *Service) mutate(ctx context.Context, cred fsapi.Cred, c fsapi.Command, 
 	}
 	result.Position = s.selection.Through.Position
 	return result, nil
+}
+func truncateTimes(o storage.Object, times fsapi.TruncateTimes, now fsapi.Timestamp) (storage.Object, error) {
+	for _, t := range []struct {
+		value *fsapi.Timestamp
+		now   bool
+		out   *fsapi.Timestamp
+	}{{times.Atime, times.AtimeNow, &o.Attr.Atime}, {times.Mtime, times.MtimeNow, &o.Attr.Mtime}, {times.Ctime, false, &o.Attr.Ctime}} {
+		if t.value != nil {
+			if t.now || !t.value.Valid() {
+				return o, fsapi.Invalid
+			}
+			*t.out = *t.value
+		} else if t.now {
+			*t.out = now
+		}
+	}
+	return o, nil
 }
 func (s *Service) rename(c fsapi.Command, p *plan) (record.Rename, fsapi.ObjectID, error) {
 	a := record.Rename{SourceParent: c.Parent, SourceName: c.Name, DestinationParent: c.Destination, DestinationName: c.NewName, Policy: 1}

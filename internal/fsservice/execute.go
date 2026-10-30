@@ -63,6 +63,9 @@ func (s *Service) execute(ctx context.Context, cred fsapi.Cred, c fsapi.Command)
 			c.Offset = o.Attr.Size
 		}
 	}
+	if c.Operation != fsapi.Truncate && c.TruncateTimes != (fsapi.TruncateTimes{}) {
+		return fsapi.Result{}, fsapi.Invalid
+	}
 	image, err := s.applied.Store.Export(ctx)
 	if err != nil {
 		return fsapi.Result{}, s.block(err)

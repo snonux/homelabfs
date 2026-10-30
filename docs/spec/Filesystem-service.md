@@ -140,6 +140,18 @@ unsupported before journal mutation: the current record codec requires exact
 requested mode and cannot also express induced set-ID clearing. Separate chmod
 and chown, and nonconflicting combined changes, remain supported.
 
+`TruncateTimes` optionally selects exact atime/mtime/ctime alongside `Truncate`;
+atime/mtime may instead select the command's one clock sample. With no selection,
+atime is preserved and mtime/ctime use that sample. The complete selected metadata
+is bound in the existing version-1.0 TRUNCATE intent and redo, and replay never
+resamples time. Zero `TruncateTimes` preserves the previous wire/request identity.
+The command snapshot owns all timestamp pointers. Invalid nanoseconds or both
+explicit/now for one time fail before journaling. Timestamp selections use the
+same writable-description grant (including after chmod/unlink) or current object
+write check as size; they grant no independent chmod/chown permission. `Attributes`
+combined with truncate remains unsupported; `TruncateTimes` on other operations
+is invalid. Standalone ctime mutation remains unsupported.
+
 `PermissionPolicy` is mandatory in normal mode. `NewUnixPermissions(view)` supplies
 version-one Unix enforcement for an explicitly admitted namespace view. The
 policy receives independently owned caller credentials and a `PermissionContext`:

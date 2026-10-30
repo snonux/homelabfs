@@ -150,15 +150,35 @@ writes cannot outlive borrowed kernel buffers. File/data/directory sync map to
 their service durability requests. Close/release adds no data barrier. Cache TTLs
 do not replace service authority or ancestor search checks.
 
-Native setattr maps size, mode, ownership and explicit/now timestamps. A combined
-size plus metadata request is rejected before any effect because the component
-API cannot atomically express it. Unsupported fields and rename exchange/whiteout
-are rejected explicitly. Ordinary Linux ftruncate shrink/extend and explicit
+Native setattr maps size, mode, ownership and explicit/now timestamps. Size with
+atime/mtime (explicit or now) and explicit ctime maps to one service `Truncate`
+with owned `TruncateTimes`, producing one exact size/metadata afterimage. Size
+combined with mode/UID/GID, ctime without size, unknown fields (including Linux
+`FATTR_KILL_SUIDGID`) and rename exchange/whiteout fail explicitly before effect.
+The service still clears set-ID bits on non-root truncation. Ordinary Linux
+ftruncate shrink/extend and explicit
 timestamps were exercised successfully. ACCESS is delegated to mandatory kernel
 `default_permissions`; if forwarded, it returns EOPNOTSUPP because the component
 API lacks one coherent atomic access-check command. Unsupported native operations
 retain the binding's ENOSYS behavior; no fake successful xattr, fallocate or ioctl
 implementation is provided.
+
+FreeBSD 15.1's
+[`fuse_internal_setattr`](https://github.com/freebsd/freebsd-src/blob/releng/15.1/sys/fs/fuse/fuse_internal.c#L1077)
+combines size and the writable handle with dirty cached atime/mtime and, at
+protocol 7.23 or newer, ctime. The
+[`fuse_vnode_update` path](https://github.com/freebsd/freebsd-src/blob/releng/15.1/sys/fs/fuse/fuse_node.c#L539)
+retains these kernel timestamps until a successful setattr clears them.
+Pinned go-fuse v2.9.0
+[negotiates 7.28 on FreeBSD](https://github.com/hanwen/go-fuse/blob/v2.9.0/fuse/request_freebsd.go)
+and [forwards the unchanged request](https://github.com/hanwen/go-fuse/blob/v2.9.0/fuse/opcode.go#L199).
+N7 reached the namespace case and failed at ftruncate after reading an open,
+unlinked file. The kernel source explains why that sequence can produce the
+previously rejected combined request; N7 captured no packet mask. Focused local
+callback tests reproduce both size/atime and size/atime/mtime/ctime requests,
+including open-unlink shrink/zero-filled extension, one service dispatch and
+rejection-before-effect. Exact metadata survives fresh-workspace service replay.
+These tests establish the local fix, not a successful native rerun.
 
 The mounted root exposes only the immutable `user.homelabfs.identity` xattr with
 volume, generation and connection session, behind a service authority check.

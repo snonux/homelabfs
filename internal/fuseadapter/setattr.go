@@ -9,19 +9,21 @@ import (
 	"github.com/snonux/homelabfs/internal/fsapi"
 )
 
-// SetAttr preserves metadata operation atomicity. The service's separate
-// Truncate and Setattr cannot atomically apply a combined size/metadata request,
-// so that form and unsupported native fields are rejected before any effect.
+// SetAttr applies size and native timestamps in one service mutation. Combined
+// size/mode/ownership and unsupported native fields fail before any effect.
 func (a *Adapter) SetAttr(cancel <-chan struct{}, in *fuse.SetAttrIn, out *fuse.AttrOut) fuse.Status {
 	id, ok := a.object(in.NodeId)
 	if !ok {
 		return status(fsapi.Stale)
 	}
 	allowed := uint32(fuse.FATTR_MODE | fuse.FATTR_UID | fuse.FATTR_GID | fuse.FATTR_SIZE | fuse.FATTR_ATIME | fuse.FATTR_MTIME | fuse.FATTR_FH | fuse.FATTR_ATIME_NOW | fuse.FATTR_MTIME_NOW | fuse.FATTR_LOCKOWNER)
+	if in.Valid&fuse.FATTR_SIZE != 0 {
+		allowed |= fuse.FATTR_CTIME
+	}
 	if in.Valid & ^allowed != 0 {
 		return status(fsapi.Unsupported)
 	}
-	metadata := in.Valid & uint32(fuse.FATTR_MODE|fuse.FATTR_UID|fuse.FATTR_GID|fuse.FATTR_ATIME|fuse.FATTR_MTIME|fuse.FATTR_ATIME_NOW|fuse.FATTR_MTIME_NOW)
+	metadata := in.Valid & uint32(fuse.FATTR_MODE|fuse.FATTR_UID|fuse.FATTR_GID)
 	if in.Valid&fuse.FATTR_SIZE != 0 && (metadata != 0 || in.Size > math.MaxInt64) {
 		return status(fsapi.Unsupported)
 	}
@@ -30,7 +32,7 @@ func (a *Adapter) SetAttr(cancel <-chan struct{}, in *fuse.SetAttrIn, out *fuse.
 		a.mu.Lock()
 		d := a.handles[in.Fh]
 		a.mu.Unlock()
-		if d == nil || d.object != id {
+		if d == nil || d.object != id || d.generation != a.info.Generation {
 			return status(fsapi.Stale)
 		}
 		c.Handle = d.handle
@@ -62,6 +64,14 @@ func (a *Adapter) SetAttr(cancel <-chan struct{}, in *fuse.SetAttrIn, out *fuse.
 	} else if in.Valid&fuse.FATTR_MTIME != 0 {
 		v := fsapi.Timestamp{Seconds: int64(in.Mtime), Nanoseconds: in.Mtimensec}
 		c.Attributes.Mtime = &v
+	}
+	if c.Operation == fsapi.Truncate {
+		c.TruncateTimes = fsapi.TruncateTimes{Atime: c.Attributes.Atime, Mtime: c.Attributes.Mtime, AtimeNow: c.Attributes.AtimeNow, MtimeNow: c.Attributes.MtimeNow}
+		if in.Valid&fuse.FATTR_CTIME != 0 {
+			v := fsapi.Timestamp{Seconds: int64(in.Ctime), Nanoseconds: in.Ctimensec}
+			c.TruncateTimes.Ctime = &v
+		}
+		c.Attributes = fsapi.Attributes{}
 	}
 	r, s := a.call(cancel, &in.InHeader, c)
 	if s != fuse.OK {
