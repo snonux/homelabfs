@@ -28,17 +28,25 @@ restoration action, with the same applicable forward-step dependencies. It
 requires initially running Rocky in the Plan. VM lifecycle remains the runner's
 responsibility; a successful VM start alone cannot establish SSH restoration.
 
-Before and after guest checks, completed host `vm list` output must show exactly
-all five targets: three native guests running and Rocky/development stopped for
-native boot, or native/development stopped and Rocky running for restoration.
-Each selected guest must then return its exact Plan kernel and UID 0 over pinned
+The driver polls completed host `vm list` output before guest checks. Every
+response must contain exactly all five targets with well-formed states and no
+duplicate rows. Only the guests being started may remain `Stopped` or show
+`Bootloader (PID)` during this bounded wait; unknown states or malformed PIDs
+fail immediately. Every excluded VM must be `Stopped` on every inventory poll,
+including while expected guests are booting. No guest TCP or SSH probe starts
+until all three native guests are `Running (PID)` for native boot, or Rocky is
+`Running (PID)` for restoration. The final inventory after guest checks must
+still show that exact running/stopped arrangement; it cannot resume boot polling.
+Each selected guest must return its exact Plan kernel and UID 0 over pinned
 SSH. Evidence is printed into the runner log; no separate evidence format or
 persistent driver state is introduced.
 
 The driver bounds each command to eight seconds and 16 KiB of combined output,
-with 170 seconds total. Only completed TCP probe exit 1 with empty stdout may
-retry. SSH exit 255, local signal termination, timeout, overflow or interruption
-returns uncertain exit 1 immediately. Local SSH children are killed/reaped when
+with 170 seconds total shared by boot-inventory polling and guest checks. Only
+the completed expected boot states above or completed TCP probe exit 1 with
+empty stdout permit another probe. SSH exit 255, local signal termination,
+timeout, overflow or interruption returns uncertain exit 1 immediately. Local
+SSH children are killed/reaped when
 necessary; this never proves remote completion. Confirmed terminal refusals use
 exit 20. Handled interruption is deferred across child creation and ownership
 handoff; the child restores the original signal mask before exec. Local fixtures

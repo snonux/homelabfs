@@ -33,18 +33,20 @@ def plan_hash(plan):
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def inventory(mode):
+def inventory(mode, states=None):
     running = {'hfs-test0', 'hfs-test1', 'hfs-test2'} if mode == 'native-boot' else {'rocky'}
     rows = ['NAME DATASTORE LOADER CPU MEMORY VNC AUTO STATE']
     for name in ('hfs-test0', 'hfs-test1', 'hfs-test2', 'rocky', 'freebsd'):
         state = 'Running (1234)' if name in running else 'Stopped'
+        if states and name in states:
+            state = states[name]
         rows.append(f'{name} lab uefi 2 2G - Yes [1] {state}')
     return '\n'.join(rows) + '\n'
 
 
 class ReadinessCLI(unittest.TestCase):
     def run_cli(self, mode='native-boot', behavior=None, mutate=None, env_mutate=None,
-                expire_after_round=False, spawn_signal=None, spawn_error=None):
+                expire_after_round=False, spawn_signal=None, spawn_error=None, sleep_advance=0):
         children, calls = [], []
         real_popen, real_monotonic, real_sleep = subprocess.Popen, time.monotonic, time.sleep
         offset = [0]
@@ -54,6 +56,7 @@ class ReadinessCLI(unittest.TestCase):
             if expire_after_round:
                 offset[0] += 200
             else:
+                offset[0] += sleep_advance
                 real_sleep(0.005)
         def success(argv, _count):
             if argv[-1] == 'doas -n vm list':
@@ -178,26 +181,84 @@ class ReadinessCLI(unittest.TestCase):
                 self.assertEqual(stdout.count('exact completed VM inventory verified'), 2)
                 self.assertEqual(sum(call[-1] == '/usr/bin/uname -r; /usr/bin/id -u' for call in calls), guests)
 
-    def test_inventory_mismatch_duplicate_missing_extra_transitional_fail_closed(self):
+    def test_expected_stopped_and_bootloader_inventories_wait_before_guest_probes(self):
+        for mode, names in (('native-boot', ('hfs-test0', 'hfs-test1', 'hfs-test2')),
+                            ('rocky-restore', ('rocky',))):
+            with self.subTest(mode=mode):
+                outputs = [inventory(mode, {name: 'Stopped' for name in names}),
+                           inventory(mode, {name: 'Bootloader (14489)' for name in names}),
+                           inventory(mode, {names[-1]: 'Bootloader (14490)'})]
+                if mode == 'native-boot':
+                    outputs.insert(1, inventory(mode, {'hfs-test0': 'Bootloader (14489)',
+                                                      'hfs-test1': 'Bootloader (14490)',
+                                                      'hfs-test2': 'Stopped'}))
+                boot_polls = len(outputs)
+                def behavior(argv, count, success):
+                    return ('print(' + repr(outputs[count - 1]) + ')'
+                            if count <= boot_polls else success(argv, count))
+                code, stdout, stderr, calls = self.run_cli(mode, behavior)
+                self.assertEqual(code, 0, stderr)
+                self.assertTrue(all(call[-1] == 'doas -n vm list' for call in calls[:boot_polls + 1]))
+                self.assertEqual(len(calls), boot_polls + 2 + len(names) * 2)
+                self.assertEqual(stdout.count('completed boot inventory not ready'), boot_polls)
+                self.assertEqual(stdout.count('exact completed VM inventory verified'), 2)
+                self.assertEqual(stdout.count('pinned root SSH ready'), len(names))
+
+    def test_forbidden_running_and_bootloader_vms_fail_each_boot_inventory(self):
+        for mode, expected, forbidden in (
+                ('native-boot', 'hfs-test0', ('rocky', 'freebsd')),
+                ('rocky-restore', 'rocky', ('hfs-test0', 'hfs-test1', 'hfs-test2', 'freebsd'))):
+            for name in forbidden:
+                for state in ('Running (4567)', 'Bootloader (4567)'):
+                    for position in (1, 2):
+                        with self.subTest(mode=mode, name=name, state=state, position=position):
+                            waiting = inventory(mode, {expected: 'Bootloader (14489)'})
+                            bad = inventory(mode, {expected: 'Bootloader (14489)', name: state})
+                            def behavior(argv, count, success):
+                                output = bad if count == position else waiting
+                                return 'print(' + repr(output) + ')'
+                            code, _, stderr, calls = self.run_cli(mode, behavior)
+                            self.assertEqual(code, 20, stderr)
+                            self.assertIn('forbidden active VM', json.loads(stderr)['error'])
+                            self.assertEqual(len(calls), position)
+
+    def test_inventory_mismatch_duplicate_missing_extra_malformed_fail_closed(self):
         for mode in ('native-boot', 'rocky-restore'):
             good = inventory(mode)
             bad_outputs = [inventory('rocky-restore' if mode == 'native-boot' else 'native-boot'),
                            good + good.splitlines()[1] + '\n', '\n'.join(good.splitlines()[:-1]),
                            good + 'other lab uefi 2 2G - No Stopped\n',
-                           good.replace('Running (1234)', 'Booting'), good.replace('Running (1234)', 'Running')]
+                           '', good.replace('NAME DATASTORE', 'NAME OTHER')]
+            bad_outputs += [good.replace('Running (1234)', state) for state in (
+                'Booting', 'Locked', 'Stopping (1234)', 'Running', 'Running (0)',
+                'Bootloader', 'Bootloader (-1)', 'Bootloader (0)', 'Bootloader (bad)',
+                'Stopped (1234)', 'Bootloader (1234) trailing')]
+            expected = 'hfs-test0' if mode == 'native-boot' else 'rocky'
+            waiting = inventory(mode, {expected: 'Bootloader (14489)'})
+            bad_outputs.append(waiting + waiting.splitlines()[1] + '\n')
             for output in bad_outputs:
-                with self.subTest(mode=mode, output=output):
-                    code, _, stderr, calls = self.run_cli(mode, lambda *_: 'print(' + repr(output) + ')')
-                    self.assertEqual(code, 20, stderr)
-                    self.assertEqual(len(calls), 1)
+                for position in (1, 2):
+                    with self.subTest(mode=mode, output=output, position=position):
+                        def behavior(argv, count, success):
+                            return 'print(' + repr(output if count == position else waiting) + ')'
+                        code, _, stderr, calls = self.run_cli(mode, behavior)
+                        self.assertEqual(code, 20, stderr)
+                        self.assertEqual(len(calls), position)
 
     def test_final_inventory_must_still_match(self):
-        for mode, final_call in (('native-boot', 8), ('rocky-restore', 4)):
-            def behavior(argv, count, success):
-                return "print('unavailable')" if count == final_call else success(argv, count)
-            code, _, stderr, calls = self.run_cli(mode, behavior)
-            self.assertEqual(code, 20, stderr)
-            self.assertEqual(len(calls), final_call)
+        for mode, expected, final_call in (('native-boot', 'hfs-test0', 9), ('rocky-restore', 'rocky', 5)):
+            waiting = inventory(mode, {expected: 'Bootloader (14489)'})
+            bad_outputs = ['unavailable', waiting, inventory(mode, {expected: 'Stopped'}),
+                           inventory(mode, {'freebsd': 'Bootloader (4567)'})]
+            for output in bad_outputs:
+                with self.subTest(mode=mode, output=output):
+                    def behavior(argv, count, success):
+                        if count == 1 or count == final_call:
+                            return 'print(' + repr(waiting if count == 1 else output) + ')'
+                        return success(argv, count)
+                    code, _, stderr, calls = self.run_cli(mode, behavior)
+                    self.assertEqual(code, 20, stderr)
+                    self.assertEqual(len(calls), final_call)
 
     def test_plan_context_contract_targets_and_key_negatives_before_ssh(self):
         changes = [lambda p, r: p.update(stage='stage2'),
@@ -253,6 +314,60 @@ class ReadinessCLI(unittest.TestCase):
         self.assertEqual(code, 20, stderr)
         self.assertEqual(len(calls), 4)
 
+    def test_completed_boot_inventory_exhaustion_is_terminal_without_guest_probes(self):
+        for mode, expected in (('native-boot', 'hfs-test0'), ('rocky-restore', 'rocky')):
+            for state in ('Stopped', 'Bootloader (14489)'):
+                with self.subTest(mode=mode, state=state):
+                    output = inventory(mode, {expected: state})
+                    code, _, stderr, calls = self.run_cli(
+                        mode, lambda *_: 'print(' + repr(output) + ')', expire_after_round=True)
+                    self.assertEqual(code, 20, stderr)
+                    self.assertIn('completed boot inventories exhausted deadline', json.loads(stderr)['error'])
+                    self.assertEqual(len(calls), 1)
+
+    def test_inventory_and_tcp_wait_share_the_original_total_deadline(self):
+        for mode, expected, probes in (('native-boot', 'hfs-test0', 3), ('rocky-restore', 'rocky', 1)):
+            with self.subTest(mode=mode):
+                waiting = inventory(mode, {expected: 'Bootloader (14489)'})
+                def behavior(argv, count, success):
+                    if count == 1:
+                        return 'print(' + repr(waiting) + ')'
+                    if argv[-1].startswith('exec /usr/bin/nc '):
+                        return 'import sys; sys.exit(1)'
+                    return success(argv, count)
+                code, _, stderr, calls = self.run_cli(mode, behavior, sleep_advance=95)
+                self.assertEqual(code, 20, stderr)
+                self.assertIn('completed not-ready probes exhausted deadline', json.loads(stderr)['error'])
+                self.assertEqual(len(calls), 2 + probes)
+
+    def test_uncertain_boot_inventory_never_retries_into_later_running_state(self):
+        failures = ['import sys; sys.exit(255)', 'import time; time.sleep(10)',
+                    "print('X'*17000)",
+                    'import os, signal, time; os.kill(os.getppid(), signal.SIGTERM); time.sleep(10)']
+        for mode, expected in (('native-boot', 'hfs-test0'), ('rocky-restore', 'rocky')):
+            for failure in failures:
+                with self.subTest(mode=mode, failure=failure):
+                    waiting = inventory(mode, {expected: 'Bootloader (14489)'})
+                    def behavior(argv, count, success):
+                        if count == 1:
+                            return 'print(' + repr(waiting) + ')'
+                        return failure if count == 2 else success(argv, count)
+                    code, _, stderr, calls = self.run_cli(mode, behavior)
+                    self.assertEqual(code, 1, stderr)
+                    self.assertEqual(json.loads(stderr)['status'], 'uncertain')
+                    self.assertEqual(len(calls), 2)
+
+    def test_completed_boot_inventory_command_failure_is_terminal(self):
+        for mode, expected in (('native-boot', 'hfs-test0'), ('rocky-restore', 'rocky')):
+            waiting = inventory(mode, {expected: 'Stopped'})
+            def behavior(argv, count, success):
+                if count == 1:
+                    return 'print(' + repr(waiting) + ')'
+                return 'import sys; sys.exit(1)' if count == 2 else success(argv, count)
+            code, _, stderr, calls = self.run_cli(mode, behavior)
+            self.assertEqual(code, 20, stderr)
+            self.assertEqual(len(calls), 2)
+
     def test_transport_timeout_overflow_signal_never_retry_into_success(self):
         failures = ['import sys; sys.exit(255)', 'import time; time.sleep(10)',
                     "print('X'*17000)",
@@ -304,6 +419,19 @@ class ReadinessCLI(unittest.TestCase):
                 code, _, stderr, calls = self.run_cli(mode, behavior)
                 self.assertEqual(code, 20, stderr)
                 self.assertEqual(len(calls), 3)
+
+    def test_identity_mismatch_after_boot_transition_is_still_terminal(self):
+        for mode, expected in (('native-boot', 'hfs-test0'), ('rocky-restore', 'rocky')):
+            for failure in ("print('wrong-kernel'); print('0')", "print('15.1-RELEASE'); print('1000')"):
+                with self.subTest(mode=mode, failure=failure):
+                    waiting = inventory(mode, {expected: 'Bootloader (14489)'})
+                    def behavior(argv, count, success):
+                        if count == 1:
+                            return 'print(' + repr(waiting) + ')'
+                        return failure if count == 4 else success(argv, count)
+                    code, _, stderr, calls = self.run_cli(mode, behavior)
+                    self.assertEqual(code, 20, stderr)
+                    self.assertEqual(len(calls), 4)
 
 
 if __name__ == '__main__':

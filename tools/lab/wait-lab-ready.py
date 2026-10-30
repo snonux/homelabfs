@@ -189,23 +189,34 @@ def load_context(mode, policy_id):
     return targets, policy, host_keys, guest_keys
 
 
-def check_inventory(stdout, mode):
+def check_inventory(stdout, mode, allow_booting=False):
     rows = stdout.decode().strip().splitlines()
     require(rows and rows[0].split() == ['NAME', 'DATASTORE', 'LOADER', 'CPU', 'MEMORY', 'VNC', 'AUTO', 'STATE'],
             'complete vm list header required')
     states = {}
     for row in rows[1:]:
         match = re.fullmatch(r'(\S+)\s+\S+\s+\S+\s+[0-9]+\s+\S+\s+\S+\s+'
-                             r'(?:No|Yes(?:\s+\[[0-9]+\])?)\s+(Stopped|Running)(?:\s+\(([0-9]+)\))?', row)
-        require(match is not None, 'unknown/transitional inventory row: ' + row)
+                             r'(?:No|Yes(?:\s+\[[0-9]+\])?)\s+(Stopped|Running|Bootloader)'
+                             r'(?:\s+\(([1-9][0-9]*)\))?', row)
+        require(match is not None, 'unknown/malformed inventory row: ' + row)
         name, state, pid = match.groups()
-        require(name not in states and ((state == 'Running') == (pid is not None)), 'ambiguous inventory: ' + name)
+        require(name not in states and ((state != 'Stopped') == (pid is not None)), 'ambiguous inventory: ' + name)
         states[name] = state
     require(set(states) == NAMES, 'exact completed five-VM inventory required')
     running = {'hfs-test0', 'hfs-test1', 'hfs-test2'} if mode == 'native-boot' else {'rocky'}
-    require(all(state == ('Running' if name in running else 'Stopped') for name, state in states.items()),
+    # A completed start request is asynchronous. Only expected targets may be
+    # stopped or in the known bootloader state while waiting; every other VM
+    # must already be stopped, even during this boot window.
+    require(all(states[name] == 'Stopped' for name in NAMES - running),
+            'forbidden active VM in completed inventory for ' + mode)
+    pending = sorted(name for name in running if states[name] != 'Running')
+    require(allow_booting or not pending,
             'completed VM inventory does not establish ' + mode)
+    if pending:
+        print(mode + ': completed boot inventory not ready: ' + ','.join(pending), flush=True)
+        return False
     print(mode + ': exact completed VM inventory verified', flush=True)
+    return True
 
 
 def execute(mode, policy_id):
@@ -219,11 +230,16 @@ def execute(mode, policy_id):
     host = base + ['-o', 'UserKnownHostsFile=' + str(host_keys), '-o',
                    'HostName=' + policy['host_address'], '-o', 'HostKeyAlias=f3']
     proxy = host + ['-W', '%h:%p', 'paul@f3']
-    def inventory():
+    def inventory(allow_booting=False):
         code, stdout, _ = command(host + ['paul@f3', 'doas -n vm list'], deadline)
         require(code == 0, 'completed inventory command failed')
-        check_inventory(stdout, mode)
-    inventory()
+        return check_inventory(stdout, mode, allow_booting)
+    ready = inventory(allow_booting=True)
+    while not ready and time.monotonic() < deadline:
+        time.sleep(min(2, max(0, deadline - time.monotonic())))
+        if time.monotonic() < deadline:
+            ready = inventory(allow_booting=True)
+    require(ready, 'completed boot inventories exhausted deadline')
     pending = {name: target for name, target in targets.items()
                if (name.startswith('hfs-test') if mode == 'native-boot' else name == 'rocky')}
     while pending and time.monotonic() < deadline:
