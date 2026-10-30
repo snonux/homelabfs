@@ -1274,5 +1274,8 @@ Required additional parser/graph/compatibility cases for `rw3`:
 The local generator checks bytes and specified predicate fragments only. It does
 not establish broker/launcher continuity, real sync, request service integration,
 cache fencing, pair durability or any Emergency scenario. No runtime, infrastructure
-or model evidence is claimed. Existing `native-vm-stop-v1` limits and per-action/
-per-window approval requirements remain unchanged.
+or model evidence is claimed by that generator. The separate
+[bounded Emergency model](../../spec/tla/README.md#emergency-activation-and-exit-nx3)
+checks abstract singleton/frontier and exit predicates; it does not verify this
+byte schema or a broker implementation. Existing `native-vm-stop-v1` limits and
+per-action/per-window approval requirements remain unchanged.

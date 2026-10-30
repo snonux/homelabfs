@@ -490,9 +490,11 @@ independent acknowledged-work/request oracle, including uncertain replies,
 object-home integrity and shared visibility. Native cases use guest-local FUSE
 only; Rocky/9p and physical-host power remain separately unsupported profiles.
 
-Extending the existing normal-commit TLA+ model is optional for this specification;
-that model does not prove emergency activation, local commit, exclusion, admission
-or exit. A future extension should model failed/unknown fences, durable control
-restart/rollback, loss-lineage boundaries, full dependencies, partial exit and
-retention. No model/checker or daemon/kernel/VM test was run to write this design.
-Every future critical infrastructure exercise or disruptive window needs its own approval.
+The existing normal-commit TLA+ model does not prove this protocol. The separate
+[bounded Emergency model](../../spec/tla/README.md#emergency-activation-and-exit-nx3)
+checks singleton intent, exact lineage, exclusion, protected identity/outcome
+preservation and explicit exit within its documented finite bounds. It does not
+establish loss selection, arbitrary dependency discovery/retention, broker or
+codec implementation, or daemon/kernel/VM behavior. Its local TLC checks confer
+no infrastructure authority. Every future critical infrastructure exercise or
+disruptive window needs its own approval.

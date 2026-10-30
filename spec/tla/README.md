@@ -711,3 +711,229 @@ Their outer receipts are in
 `.cache/tla/Transactions-home-mage-checks-14vzipiz`. The targets now require six
 negative counterexamples and seven distinct coverage witnesses. Each child run
 also retains the runner's exact final module/config snapshots and exit receipt.
+
+## Emergency activation and exit (`nx3`)
+
+`Emergency.tla` checks the single cluster-wide state in
+[Emergency.md](../../docs/spec/Emergency.md) and the singleton/frontier and exit
+contracts in [Emergency-format.md](../../docs/spec/Emergency-format.md). It is
+TLC-only evidence; it supplies no emergency implementation or infrastructure
+permission. Run these targets sequentially:
+
+```sh
+mage tlaEmergency
+mage tlaEmergencyNegative
+mage tlaEmergencyCoverage
+```
+
+Every emergency invocation verifies the pinned TLC 1.8.0 jar above and retains
+private module/configuration snapshots, hashes, `argv.txt`, `bounds.txt`, output,
+checker metadata and an explicit `exit.txt` below `.cache/tla/`. Each profile has
+one CPU/worker, 512 MiB heap and a three-minute wall limit. A killed, timed-out,
+syntax-failing or incompletely explored positive graph is a failure. There is no
+depth/state constraint or symmetry reduction hiding reachable boundary states.
+The finite model bounds, rather than an exploration cutoff, bound its state.
+
+### State, faults and assumptions
+
+The integrated graph contains three enrolled nodes A/B/C, two members x/y of one
+complete dependency closure, one initial normal generation/configuration/history
+vector, one emergency activation and its explicit exit. Two independently
+approved plans designate A or B and compete against the same exact predecessor.
+Three invalid plans separately carry a different predecessor history, reused
+generation/transition IDs, or mismatching approved canonical bytes. Identity and
+digest symbols stand for exact bytes, not ordered UUIDs, timestamps or a hash
+implementation. Exit retains the emergency generation and binds a distinct exit
+transition, exact predecessor, complete configuration/history and final-cut vector.
+There is no bound-independent proof of repeated generation allocation.
+
+`BeginCAS`, external frontier publication and host CURRENT publication are
+separately scheduled. A durable pending operation excludes a competing runner.
+Registry crash can occur between any of them; a restored genesis CURRENT cannot
+lower the independent enrolled frontier. Exact reconciliation can resume its
+published candidate. Losing that independent continuity permanently blocks all
+fresh registry/launch/publication authority in this graph; it is not repaired by
+restarting a process, resetting an etcd revision or making another registry copy.
+The model assumes one authenticated enrolled registry/lock and independently
+retained frontier. It does not implement their storage isolation, signatures,
+OS credentials, approval windows or byte codec. Rejection observations retain
+only invalid-versus-conflicting categories; the exact per-plan comparisons are
+still evaluated separately on every attempted CAS.
+
+Old launches initially retain real read/cache rights, one normal writer/owner,
+and normal rejoin eligibility. Intent alone does not atomically revoke them.
+Each launch independently progresses through durable inhibition, positively
+supervised stop, durable exact-launch attestation and controller receipt. All
+three old domains, including the designated survivor's previous domain, must be
+excluded. Historical inhibition/stop/acknowledgement oracles check that restart
+and restored CURRENT never remove facts. Stop represents the successful
+`native-vm-stop-v1` contract; failed/hung/unreachable stop is arbitrary stuttering,
+not timeout-based exclusion. Its ACPI/broker/kernel implementation is unproved.
+
+Fresh launches separately bind the winning intent, designated versus
+recovery-only role, exact registry pointers/continuity, incarnation and every
+prior launch's retained stop/inhibition evidence. Gates for reads, writes,
+ownership and rejoin are actual per-node state. A named peer can copy/replay and
+report recovery receipts while remaining barred from workload/normal roles.
+Its initial grant binds the prospective incarnation. After a crash, durable
+old-grant revocation and a separate manual fresh grant precede relaunch; changing
+a handshake incarnation cannot inherit or edit the old grant. Grant creation
+and revocation each abstract one successful authenticated durable registry CAS;
+their internal record/pointer writes are not separately refined here.
+The third node stays barred and its offline obligation stays pinned after exit.
+There is no membership removal, fourth-node replacement or automatic failback.
+
+`EmergencySafety` permits zero crashes. `EmergencyFaults` permits **at most one**
+optional fault in total: registry crash (optionally restoring genesis CURRENT),
+controller crash, crash of either freshly launched node, or permanent loss of
+registry continuity. Each can occur at every enabled transition edge. A crashed
+launch can receive a positive stopped-domain attestation and a fresh recovery
+launch; each node's incarnation is bounded by old 0 and fresh 1/2. Durable graphs,
+mode requirements and historical facts survive, while live installation/cache
+readiness and receipts are invalidated. Controller receipt loss is separate from
+retained host attestations. Multiple independent crash combinations, storage
+loss and continuity reconstruction are outside these checked bounds. Crash or
+maintenance after completed exit is outside this transition system.
+
+The old graph contains a protected ordinary COMMIT, transaction COMMIT, exact
+claim/binding/result, retirement/rejection mappings and foreign home. Selection
+must preserve all of it; no missing-partner ABORT is invented. Symbolic complete
+graphs stand for verified payload/redo/anchor/home dependencies; this model does
+not re-prove transaction consensus, dependency discovery, directory operations,
+loss selection/identity namespaces, checksums or arbitrary graph corruption.
+One new emergency request progresses separately through protected claim, local
+COMMIT sync, acknowledged durable result and optional terminal retirement. Its
+historical chosen/acknowledged/retired oracles cannot be used as recovery sources.
+Retries consult retained operational identity state before any new execution.
+
+Each x/y copy, installation and per-node cache barrier is independently
+scheduled. Activation needs the complete survivor vector. This bound schedules
+peer catch-up at the frozen final cut, and survivor replay after restart; it
+abstracts background streaming of intermediate cuts while writes continue.
+The survivor's finite accepted work must finish before that cut is captured.
+Both actual prospective nodes durably copy/install the complete cut, report
+incarnation-bound receipts and independently install `NORMAL_REQUIRED` before
+exit CAS. Coordination reconstruction is a separate required action; its one bit
+means successful exact new-lineage validation, not trust in an old etcd quorum.
+
+Immutable exit receipts survive a subsequent crash; live readiness does not.
+A published durable exit certificate is not an assertion that both processes
+remain running forever. Actual gate release revalidates the entire pair's fresh
+readiness/receipts, normal requirement, coordination and registry continuity.
+A crash after partial `NORMAL_REQUIRED` can leave this bound permanently gated;
+there is no automatic local-only fallback. The model checks safety and concrete
+reachability, with no fairness, eventual-exit or finite-latency claim. Capacity,
+archive verification, arbitrary GC/checkpoint replacement, normal operations
+after exit, FUSE/cache capabilities and runtime fence progress remain separate
+implementation/model/runtime obligations.
+
+### Invariants, mutations and witnesses
+
+`RegistrySafety` checks one authorized emergency intent, exact predecessor and
+fresh identities/approved bytes, role/designation/registry binding at each fresh
+launch, and permanent prior-launch exclusion. `DurableFacts` checks independent
+historical inhibition/stop/attestation facts. `Preservation` checks selected old
+COMMIT/claim/result/retirement/home evidence, new protected/acknowledged outcomes,
+terminal retirement and absence of duplicate retry execution. `AdmissionSafety`
+checks every node's read/write/ownership/rejoin gates, no normal role before exit,
+and no regression from `NORMAL_REQUIRED`. `ExitSafety` checks the retained
+normal successor lineage, complete pair cut, durable graph, mode vector,
+coordination and exact immutable exit receipts.
+
+| Negative configuration suffix | Removed gate and required real `Safety` violation |
+| --- | --- |
+| `Registry` | A restored old host pointer allocates a second intent despite the current independent frontier |
+| `Lineage` / `Fresh` / `Approval` | CAS accepts the wrong predecessor history, reused generation/transition, or unapproved canonical plan bytes |
+| `Launch` | A fresh launch accepts stale/mismatching registry continuity/pointers |
+| `Facts` | Restoring old control erases durable inhibition/stop/acknowledgement facts |
+| `Fence` | Emergency activation asserts readiness without complete old-domain exclusion |
+| `Commit` / `Claim` / `Retirement` | Selection drops protected decision, exact identity/result, or retirement/rejection graph evidence |
+| `Peer` | A recovery-only launch escalates to read/write/ownership/rejoin privileges |
+| `Regrant` | A restarted peer launches using the previous incarnation's grant |
+| `Exit` | Exit CAS proceeds without its complete pair/normal-mode/coordination barrier |
+| `Failback` | An excluded node reacquires workload/ownership/rejoin rights before explicit exit |
+
+Each witness keeps `Safety` first and must fail only `WitnessAbsent` with Java
+exit 12. `Exit` reaches acknowledged and retired emergency work, an old-ID retry,
+completed exit and both normal read gates. `Restore` requires acknowledged work
+**before** old-CURRENT restore and then a complete exit preserving that work.
+`Restart` requires acknowledged work **before** survivor crash, a positively
+excluded previous launch, fresh incarnation 2, replay and emergency publication.
+`PeerRestart` reaches an explicitly revoked old recovery grant, a separately
+authorized new grant and fresh peer incarnation 2 with every workload/rejoin
+permission still closed. `Partial` reaches one durable `NORMAL_REQUIRED` installation with all workload
+gates closed. `Conflict` reaches active service with rejected incompatible and
+invalid plans. `Ambiguous` reaches external publication followed by registry
+crash before CURRENT or any fresh launch. `Continuity` reaches acknowledged work
+followed by lost registry continuity, retaining the old outcome and no fresh
+exit authority. These are reachability searches, not exhaustive positive checks
+or additional genuine protocol findings.
+
+### Recorded emergency verification
+
+Exploratory receipts preserve initial parse/type errors, two 90-second wall-capped
+positive searches and a failed fault invariant that incorrectly equated a
+durable exit certificate with processes remaining alive. None is a positive
+pass or a protocol finding. The corrected model separates immutable receipts
+from fresh publication readiness. Self-review also found that peer relaunch had
+folded fresh grant authorization into launch; the final graph requires separate
+revocation/regrant and has independent negative/reachability controls. These are
+model corrections to existing specification requirements, not new protocol
+requirements. No genuine protocol defect was found by these bounded checks.
+
+All 24 final profiles completed locally on 30 October 2026 against module
+SHA-256 `ebfbbef8c7c188c2b4f511a35fb2721cee6296cac66838411a0b15a63b4819d5`.
+Every private module/configuration snapshot was checked against the final source;
+no model/configuration edit occurred during this final batch. The actual public
+`mage tlaEmergencyNegative`, `mage tlaEmergencyCoverage` and `mage tlaEmergency`
+invocations all exited zero, taking 25.18, 143.26 and 113.49 seconds respectively.
+Each Java child used the pinned jar, one CPU/worker and 512 MiB heap. The complete
+fault-positive child took approximately 108 seconds, within its three-minute cap.
+Both positives exhausted their finite graph with zero queued states and Java
+exit zero; negative/witness searches stop at their required real counterexample.
+
+| Configuration suffix | Generated | Distinct | Depth | Java exit |
+| --- | ---: | ---: | ---: | ---: |
+| `Safety` | 75,962 | 11,318 | 56 | 0 |
+| `Faults` | 3,528,138 | 461,540 | 63 | 0 |
+| `NegativeRegistry` | 817 | 262 | 7 | 12 |
+| `NegativeLineage` | 21 | 11 | 3 | 12 |
+| `NegativeFresh` | 26 | 11 | 3 | 12 |
+| `NegativeApproval` | 26 | 11 | 3 | 12 |
+| `NegativeLaunch` | 46,230 | 7,595 | 19 | 12 |
+| `NegativeFacts` | 667 | 234 | 7 | 12 |
+| `NegativeFence` | 134 | 47 | 6 | 12 |
+| `NegativeCommit` | 5,892 | 1,008 | 17 | 12 |
+| `NegativeClaim` | 5,892 | 1,008 | 17 | 12 |
+| `NegativeRetirement` | 5,892 | 1,008 | 17 | 12 |
+| `NegativePeer` | 6,533 | 1,147 | 27 | 12 |
+| `NegativeRegrant` | 68,270 | 12,052 | 31 | 12 |
+| `NegativeExit` | 8,191 | 1,521 | 31 | 12 |
+| `NegativeFailback` | 6,388 | 1,108 | 25 | 12 |
+| `WitnessExit` | 75,699 | 11,289 | 54 | 12 |
+| `WitnessRestore` | 3,463,714 | 452,667 | 52 | 12 |
+| `WitnessRestart` | 517,384 | 90,976 | 39 | 12 |
+| `WitnessPeerRestart` | 91,012 | 16,659 | 33 | 12 |
+| `WitnessPartial` | 21,600 | 3,901 | 37 | 12 |
+| `WitnessConflict` | 6,469 | 1,131 | 27 | 12 |
+| `WitnessAmbiguous` | 50 | 29 | 4 | 12 |
+| `WitnessContinuity` | 58,400 | 9,979 | 29 | 12 |
+
+The receipt index `.cache/tla/emergency-nx3-final-receipts.json` records all 24
+exact private evidence directories, source/configuration hashes, counts and exit
+codes. Outer command logs/exit receipts are in
+`.cache/tla/Emergency-mage-final-fsk0m7j9`; each listed child also contains the
+executed source/configuration, jar/source hashes, exact argument vector, resource
+bounds, output and explicit exit receipt. Exploratory source/exit history is
+indexed separately in `.cache/tla/emergency-nx3-development-history.json`.
+Earlier development and the superseded public batch are preserved, not relabeled
+as final-source verification. As with the other models, exhaustive exploration
+uses finite fingerprints: the final fault graph reported collision-probability
+estimates `7.7E-8` calculated and `2.0E-8` based on actual fingerprints. This is
+conditional bounded checking, not a collision-free mathematical proof.
+
+Tagged Mage compilation (`go test -tags mage -run '^$' .`), tagged `go vet`,
+`errcheck`, Mage discovery and `git diff --check` passed. Go/Mage commands ran
+sequentially with `GOMAXPROCS=2`, `GOFLAGS=-p=1` and fresh private `/tmp` directories
+for each command. No broad runtime Go suite, unrelated TLC model, lab, VM, SSH,
+FUSE, power, snapshot, production-data or infrastructure operation was run.

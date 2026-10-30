@@ -69,6 +69,25 @@ func TLATransactionsCoverage(ctx context.Context) error {
 		"TransactionsWitnessStaleCoverage", "TransactionsWitnessReclaim")
 }
 
+// TLAEmergency checks bounded cluster-wide emergency activation and explicit exit.
+func TLAEmergency(ctx context.Context) error {
+	return runTLAConfigs(ctx, false, "EmergencySafety", "EmergencyFaults")
+}
+
+// TLAEmergencyNegative requires counterexamples for removed emergency safety gates.
+func TLAEmergencyNegative(ctx context.Context) error {
+	return runTLAConfigs(ctx, true, "EmergencyNegativeRegistry", "EmergencyNegativeLineage",
+		"EmergencyNegativeFresh", "EmergencyNegativeApproval", "EmergencyNegativeLaunch", "EmergencyNegativeFacts",
+		"EmergencyNegativeFence", "EmergencyNegativeCommit", "EmergencyNegativeClaim",
+		"EmergencyNegativeRetirement", "EmergencyNegativePeer", "EmergencyNegativeRegrant", "EmergencyNegativeExit", "EmergencyNegativeFailback")
+}
+
+// TLAEmergencyCoverage requires complete, interrupted, competing and blocked traces.
+func TLAEmergencyCoverage(ctx context.Context) error {
+	return runTLAConfigs(ctx, true, "EmergencyWitnessExit", "EmergencyWitnessRestore",
+		"EmergencyWitnessRestart", "EmergencyWitnessPeerRestart", "EmergencyWitnessPartial", "EmergencyWitnessConflict", "EmergencyWitnessAmbiguous", "EmergencyWitnessContinuity")
+}
+
 func runTLAConfigs(ctx context.Context, negative bool, configs ...string) error {
 	jar, err := tlaJar(ctx)
 	if err != nil {
@@ -104,11 +123,26 @@ func runTLC(ctx context.Context, jar, config string, negative bool) error {
 	modulePath := filepath.Join("spec", "tla", module)
 	configPath := filepath.Join("spec", "tla", config+".cfg")
 	transactions := strings.HasPrefix(config, "Transactions")
-	if transactions {
+	emergency := strings.HasPrefix(config, "Emergency")
+	if transactions || emergency {
 		heap = "-Xmx512m"
-		modulePath, configPath, err = snapshotTransactionModel(dir, config)
+		if emergency {
+			module = "Emergency.tla"
+		} else {
+			module = "Transactions.tla"
+		}
+		modulePath, configPath, err = snapshotTLCModel(dir, module, config)
 		if err != nil {
 			return err
+		}
+	}
+	if emergency {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 3*time.Minute)
+		defer cancel()
+		bounds := "heapMiB=512\nworkers=1\nactiveProcessors=1\nwallTimeout=3m\nstateSpace=finite configuration; no depth or state cutoff\n"
+		if err := os.WriteFile(filepath.Join(dir, "bounds.txt"), []byte(bounds), 0o600); err != nil {
+			return fmt.Errorf("write TLC bounds: %w", err)
 		}
 	}
 	cmd := exec.CommandContext(ctx, "java", heap, "-XX:ActiveProcessorCount=1", "-XX:+UseParallelGC",
@@ -117,13 +151,13 @@ func runTLC(ctx context.Context, jar, config string, negative bool) error {
 		"-metadir", dir, "-config", configPath, modulePath)
 	cmd.Stdout = io.MultiWriter(os.Stdout, log)
 	cmd.Stderr = cmd.Stdout
-	if transactions {
+	if transactions || emergency {
 		if err := os.WriteFile(filepath.Join(dir, "argv.txt"), []byte(strings.Join(cmd.Args, "\n")+"\n"), 0o600); err != nil {
 			return fmt.Errorf("write TLC command: %w", err)
 		}
 	}
 	runErr := cmd.Run()
-	if transactions {
+	if transactions || emergency {
 		if err := recordTLCExit(dir, runErr); err != nil {
 			return err
 		}
@@ -150,7 +184,7 @@ func checkTLCCounterexample(config, path string, runErr error) error {
 		return fmt.Errorf("read negative TLC evidence: %w", err)
 	}
 	invariant := "Safety"
-	if strings.HasPrefix(config, "TakeoverWitness") || strings.HasPrefix(config, "TransactionsWitness") {
+	if strings.HasPrefix(config, "TakeoverWitness") || strings.HasPrefix(config, "TransactionsWitness") || strings.HasPrefix(config, "EmergencyWitness") {
 		invariant = "WitnessAbsent"
 	}
 	if !strings.Contains(string(output), "Invariant "+invariant+" is violated") {
@@ -159,11 +193,11 @@ func checkTLCCounterexample(config, path string, runErr error) error {
 	return nil
 }
 
-func snapshotTransactionModel(dir, config string) (string, string, error) {
-	modulePath := filepath.Join(dir, "Transactions.tla")
+func snapshotTLCModel(dir, module, config string) (string, string, error) {
+	modulePath := filepath.Join(dir, module)
 	configPath := filepath.Join(dir, config+".cfg")
 	var hashes strings.Builder
-	for _, name := range []string{"Transactions.tla", config + ".cfg"} {
+	for _, name := range []string{module, config + ".cfg"} {
 		data, err := os.ReadFile(filepath.Join("spec", "tla", name))
 		if err != nil {
 			return "", "", fmt.Errorf("read TLC source: %w", err)
