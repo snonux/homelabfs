@@ -1,0 +1,2 @@
+mount_fusefs: -o dev: option not supported
+homelabfs: mount /var/tmp/hfs-run-20261030-n6/m: mount_fusefs: exited with status 1

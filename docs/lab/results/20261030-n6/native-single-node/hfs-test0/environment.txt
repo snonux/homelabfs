@@ -1,0 +1,37 @@
+FreeBSD hfs-test0.test 15.1-RELEASE FreeBSD 15.1-RELEASE releng/15.1-n283562-96841ea08dcf GENERIC amd64
+15.1-RELEASE
+15.1-RELEASE
+  pool: hfsdata0
+ state: ONLINE
+config:
+
+	NAME             STATE     READ WRITE CKSUM
+	hfsdata0         ONLINE       0     0     0
+	  gpt/hfs-data0  ONLINE       0     0     0
+
+errors: No known data errors
+NAME                                     USED        AVAIL   REFER  MOUNTPOINT
+hfsdata0                              1372160  16121532416  106496  /var/db/homelabfs
+hfsdata0/control                       196608  16121532416   98304  /var/db/homelabfs/control
+hfsdata0/control/hfs-run-20261030-n6    98304    134119424   98304  /var/tmp/hfs-run-20261030-n6/c
+hfsdata0/data                          196608  16121532416   98304  /var/db/homelabfs/data
+hfsdata0/data/hfs-run-20261030-n6       98304    134119424   98304  /var/tmp/hfs-run-20261030-n6/d
+hfsdata0/journal                       196608  16121532416   98304  /var/db/homelabfs/journal
+hfsdata0/journal/hfs-run-20261030-n6    98304    134119424   98304  /var/tmp/hfs-run-20261030-n6/j
+Id Refs Address                Size Name
+ 1   12 0xffffffff80200000  2351bd0 kernel
+ 2    1 0xffffffff82e00000   3f2b98 zfs.ko
+ 3    1 0xffffffff82c11000    15ae0 fusefs.ko
+vfs.zfs.arc.max: 268435456
+/dev/gpt/hfs-root0	/			ufs	rw,noatime 	1 1
+devfs			/dev			devfs	rw		0 0
+/dev/gpt/hfs-efi0	/boot/efi		msdosfs	rw		2 2
+hfsdata0		/var/db/homelabfs	zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata0/data		/var/db/homelabfs/data	zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata0/control	/var/db/homelabfs/control zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata0/journal	/var/db/homelabfs/journal zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata0/data/hfs-run-20261030-n6 /var/tmp/hfs-run-20261030-n6/d zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata0/journal/hfs-run-20261030-n6 /var/tmp/hfs-run-20261030-n6/j zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata0/control/hfs-run-20261030-n6 /var/tmp/hfs-run-20261030-n6/c zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+0.0.0-dev
+0.0.0-dev

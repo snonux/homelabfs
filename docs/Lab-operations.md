@@ -226,3 +226,16 @@ reconciled failed, and the report retains `complete=false`, `success=false`.
 Tasks `ix3`, `jx3`, `kx3` and `lx3` address the mode guards, corresponding fault
 fixtures, host connection wait and native diagnostic retention. No native
 behavior call ran; another exact-plan approval is required after preparation.
+
+The approved [n6 attempt](lab/results/20261030-n6/) passed admission, clean Rocky
+shutdown, all three guests' readiness and setup. Its first root/direct fixture
+failed during mounting because FreeBSD's `mount_fusefs` rejected the adapter's
+Linux `nodev` option. No filesystem behavior case ran; task `ay3` fixes the
+platform-specific options while retaining permission and device protections.
+Collection, normal cleanup, guest shutdown and Rocky restoration/readiness all
+passed in the original invocation. The final report is `complete=true`,
+`success=false`, with no uncertain step or reconciliation. Rocky was restored
+running and all four FreeBSD guests stopped; failed run resources remain for
+inspection. Paul also confirmed standing approval for bounded non-production
+tests and their planned graceful lab lifecycle. Critical or dangerous operations
+and production changes remain outside that authorization.

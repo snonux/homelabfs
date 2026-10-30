@@ -1,0 +1,33 @@
+{
+  "fixture": {
+    "behavior_sha256": "9271b1e819880e7cbb63674e8cc79a35980ee12a92de0fce8269f4156705c4f5",
+    "client_gid": "0",
+    "client_groups": "[]",
+    "client_uid": "0",
+    "control_root": "/var/tmp/hfs-run-20261030-n6/c",
+    "daemon_uid": "0",
+    "data_root": "/var/tmp/hfs-run-20261030-n6/d",
+    "journal_root": "/var/tmp/hfs-run-20261030-n6/j",
+    "reservations": "/var/tmp/hfs-run-20261030-n6/d/volume/reservations",
+    "role": "root",
+    "source": "/var/tmp/hfs-run-20261030-n6/j/volume/source",
+    "workspace_data": "/var/tmp/hfs-run-20261030-n6/d/volume/workspaces/1d538e7e-08e5-4e5b-a462-7c6ccc561e8e/data",
+    "workspace_journal": "/var/tmp/hfs-run-20261030-n6/j/volume/workspaces/1d538e7e-08e5-4e5b-a462-7c6ccc561e8e/journal",
+    "workspace_progress": "/var/tmp/hfs-run-20261030-n6/c/workspaces/1d538e7e-08e5-4e5b-a462-7c6ccc561e8e/progress"
+  },
+  "target": "/var/tmp/hfs-run-20261030-n6/m",
+  "profile": "hfs-direct",
+  "platform": "",
+  "run_directory": "",
+  "started": "2026-10-30T11:07:04.394930765Z",
+  "scope": "disposable fixture setup failed before behavior execution",
+  "results": [
+    {
+      "name": "fixture-lifecycle",
+      "family": "infrastructure",
+      "status": "fail",
+      "detail": "mount /var/tmp/hfs-run-20261030-n6/m: mount_fusefs: exited with status 1",
+      "seconds": 0
+    }
+  ]
+}

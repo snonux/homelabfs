@@ -1,0 +1,15 @@
+<testsuite name="homelabfs.behavior.hfs-direct" tests="1" failures="1" skipped="0">
+  <properties>
+    <property name="fixture" value="{&#34;behavior_sha256&#34;:&#34;9271b1e819880e7cbb63674e8cc79a35980ee12a92de0fce8269f4156705c4f5&#34;,&#34;client_gid&#34;:&#34;0&#34;,&#34;client_groups&#34;:&#34;[]&#34;,&#34;client_uid&#34;:&#34;0&#34;,&#34;control_root&#34;:&#34;/var/tmp/hfs-run-20261030-n6/c&#34;,&#34;daemon_uid&#34;:&#34;0&#34;,&#34;data_root&#34;:&#34;/var/tmp/hfs-run-20261030-n6/d&#34;,&#34;journal_root&#34;:&#34;/var/tmp/hfs-run-20261030-n6/j&#34;,&#34;reservations&#34;:&#34;/var/tmp/hfs-run-20261030-n6/d/volume/reservations&#34;,&#34;role&#34;:&#34;root&#34;,&#34;source&#34;:&#34;/var/tmp/hfs-run-20261030-n6/j/volume/source&#34;,&#34;workspace_data&#34;:&#34;/var/tmp/hfs-run-20261030-n6/d/volume/workspaces/1d538e7e-08e5-4e5b-a462-7c6ccc561e8e/data&#34;,&#34;workspace_journal&#34;:&#34;/var/tmp/hfs-run-20261030-n6/j/volume/workspaces/1d538e7e-08e5-4e5b-a462-7c6ccc561e8e/journal&#34;,&#34;workspace_progress&#34;:&#34;/var/tmp/hfs-run-20261030-n6/c/workspaces/1d538e7e-08e5-4e5b-a462-7c6ccc561e8e/progress&#34;}"></property>
+    <property name="target" value="/var/tmp/hfs-run-20261030-n6/m"></property>
+    <property name="profile" value="hfs-direct"></property>
+    <property name="platform" value=""></property>
+    <property name="scope" value="disposable fixture setup failed before behavior execution"></property>
+    <property name="run_directory" value=""></property>
+    <property name="expected_identity" value=""></property>
+    <property name="declared_capabilities" value="null"></property>
+  </properties>
+  <testcase name="fixture-lifecycle" classname="infrastructure" time="0">
+    <failure>mount /var/tmp/hfs-run-20261030-n6/m: mount_fusefs: exited with status 1</failure>
+  </testcase>
+</testsuite>
