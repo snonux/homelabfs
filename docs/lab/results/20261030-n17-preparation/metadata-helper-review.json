@@ -1,0 +1,294 @@
+{
+  "status": "PROPOSAL ONLY; ROOT REVIEW/RELEASE REQUIRED; NOT EXECUTED",
+  "recorded_at": "2026-10-30T16:29:35.114191+00:00",
+  "run_id": "20261030-n17",
+  "files": {
+    "r17-inspect-native.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r17-inspect-native.py",
+      "sha256": "f95f6f89dcb790354bceea34b6a78c91572ab24140edc3331099a0aeb4433f99",
+      "baseline_path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r16-inspect-native.py",
+      "baseline_sha256": "67c28914942427359d40e9f2c60d936b5b8e466f87c8d03a9da9ad4a951a5fc4"
+    },
+    "r17-inspect-freebsd-zfs.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r17-inspect-freebsd-zfs.py",
+      "sha256": "f87f29089f82e5cfb46cd61590098cacf5a3f3af716cf7c43ca8fc2427675329",
+      "baseline_path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r16-inspect-freebsd-zfs.py",
+      "baseline_sha256": "377bd48ef41124dcd1d1240658a93111693785d7d913c6fbb7f56b6ec2d50fdc"
+    },
+    "r17-cleanup.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r17-cleanup.py",
+      "sha256": "e2de3b6d2483ea31321c7e8b377e46a238a8036001d69acf454a964c6564c037",
+      "baseline_path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r16-cleanup.py",
+      "baseline_sha256": "da70e2b3e434ac40fa40e4620a2dc23eda625a246e36455b620c6277ab06915c"
+    },
+    "r17-before-execution-guard.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r17-before-execution-guard.py",
+      "sha256": "b12913bcd1c566f37bc94533ae64f8b73bf549796582245b48f4c7afc48366a9",
+      "baseline_path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r16-before-execution-guard.py",
+      "baseline_sha256": "46e5d4309bf07369982db49bd421ec08734205fb7d542a74c02b7a903da0d388"
+    },
+    "r17-harvest-receipts.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r17-harvest-receipts.py",
+      "sha256": "a940cdfe0031763d04c352a6cae68a9472c7813b80c4f1ffbf12e43a3401c7e9",
+      "baseline_path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r16-harvest-receipts.py",
+      "baseline_sha256": "e245961d677714d7e1da49fc0c7bd133fd8e7e97a6e7627d230582817226fa8f"
+    },
+    "r17-collect-metadata.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r17-collect-metadata.py",
+      "sha256": "e44d0339d759155008b5f50703f146298d7f667e9b345dff6012e401527c8eb1",
+      "baseline_path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r16-collect-metadata.py",
+      "baseline_sha256": "114a73fc10419bb497d176b8f38b51d4ce01ee58a451be86e7c974e207fde4e9"
+    }
+  },
+  "constant_only_ast_audit": {
+    "r17-inspect-native.py": {
+      "exact_substitutions": [
+        {
+          "old": "20261030-n16-r16",
+          "new": "20261030-n17-r17",
+          "count": 1
+        },
+        {
+          "old": "R16",
+          "new": "R17",
+          "count": 1
+        },
+        {
+          "old": "50724",
+          "new": "63146",
+          "count": 1
+        },
+        {
+          "old": "zrepl_20261030_160854_000",
+          "new": "zrepl_20261030_162854_000",
+          "count": 1
+        },
+        {
+          "old": "16584822489950843070",
+          "new": "11310477515460959183",
+          "count": 1
+        },
+        {
+          "old": "1955561998704853929",
+          "new": "3752998797439883868",
+          "count": 1
+        },
+        {
+          "old": "6731291481569853190",
+          "new": "7368215167142203989",
+          "count": 1
+        }
+      ],
+      "ast": "identical after literal normalization; syntax parsed only; no helper execution"
+    },
+    "r17-inspect-freebsd-zfs.py": {
+      "exact_substitutions": [
+        {
+          "old": "20261030-n16-r16",
+          "new": "20261030-n17-r17",
+          "count": 1
+        },
+        {
+          "old": "R16",
+          "new": "R17",
+          "count": 1
+        },
+        {
+          "old": "50724",
+          "new": "63146",
+          "count": 1
+        },
+        {
+          "old": "zrepl_20261030_160854_000",
+          "new": "zrepl_20261030_162854_000",
+          "count": 1
+        },
+        {
+          "old": "4433460958642192890",
+          "new": "5879791962059317116",
+          "count": 1
+        }
+      ],
+      "ast": "identical after literal normalization; syntax parsed only; no helper execution"
+    },
+    "r17-cleanup.py": {
+      "exact_substitutions": [
+        {
+          "old": "20261030-n16-r16",
+          "new": "20261030-n17-r17",
+          "count": 2
+        },
+        {
+          "old": "50724",
+          "new": "63146",
+          "count": 1
+        },
+        {
+          "old": "zrepl_20261030_160854_000",
+          "new": "zrepl_20261030_162854_000",
+          "count": 1
+        },
+        {
+          "old": "16584822489950843070",
+          "new": "11310477515460959183",
+          "count": 1
+        },
+        {
+          "old": "1955561998704853929",
+          "new": "3752998797439883868",
+          "count": 1
+        },
+        {
+          "old": "6731291481569853190",
+          "new": "7368215167142203989",
+          "count": 1
+        },
+        {
+          "old": "4433460958642192890",
+          "new": "5879791962059317116",
+          "count": 1
+        }
+      ],
+      "ast": "identical after literal normalization; syntax parsed only; no helper execution"
+    },
+    "r17-before-execution-guard.py": {
+      "exact_substitutions": [
+        {
+          "old": "50724",
+          "new": "63146",
+          "count": 1
+        },
+        {
+          "old": "zrepl_20261030_160854_000",
+          "new": "zrepl_20261030_162854_000",
+          "count": 2
+        },
+        {
+          "old": "16584822489950843070",
+          "new": "11310477515460959183",
+          "count": 1
+        },
+        {
+          "old": "1955561998704853929",
+          "new": "3752998797439883868",
+          "count": 1
+        },
+        {
+          "old": "6731291481569853190",
+          "new": "7368215167142203989",
+          "count": 1
+        },
+        {
+          "old": "4433460958642192890",
+          "new": "5879791962059317116",
+          "count": 1
+        }
+      ],
+      "ast": "identical after literal normalization; syntax parsed only; no helper execution"
+    },
+    "r17-harvest-receipts.py": {
+      "exact_substitutions": [
+        {
+          "old": "20261030-n16-r16",
+          "new": "20261030-n17-r17",
+          "count": 1
+        }
+      ],
+      "ast": "identical after literal normalization; syntax parsed only; no helper execution"
+    },
+    "r17-collect-metadata.py": {
+      "exact_substitutions": [
+        {
+          "old": "20261030-n16-r16",
+          "new": "20261030-n17-r17",
+          "count": 1
+        },
+        {
+          "old": "R16",
+          "new": "R17",
+          "count": 1
+        },
+        {
+          "old": "r16-",
+          "new": "r17-",
+          "count": 6
+        },
+        {
+          "old": "67c28914942427359d40e9f2c60d936b5b8e466f87c8d03a9da9ad4a951a5fc4",
+          "new": "f95f6f89dcb790354bceea34b6a78c91572ab24140edc3331099a0aeb4433f99",
+          "count": 1
+        },
+        {
+          "old": "377bd48ef41124dcd1d1240658a93111693785d7d913c6fbb7f56b6ec2d50fdc",
+          "new": "f87f29089f82e5cfb46cd61590098cacf5a3f3af716cf7c43ca8fc2427675329",
+          "count": 1
+        },
+        {
+          "old": "da70e2b3e434ac40fa40e4620a2dc23eda625a246e36455b620c6277ab06915c",
+          "new": "e2de3b6d2483ea31321c7e8b377e46a238a8036001d69acf454a964c6564c037",
+          "count": 1
+        }
+      ],
+      "ast": "identical after literal normalization; syntax parsed only; no helper execution"
+    }
+  },
+  "diff": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r17-proposal-vs-r16.diff",
+  "candidate_sources": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r17-source-choices.UNREADY.json",
+  "source_inventory_receipt": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r17-source-inventory-20261030-n17-receipt.json",
+  "new_remote_root": "/var/tmp/hfs-image-inspect-yq3-20261030-n17-r17",
+  "new_controller_destination": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n17-r17",
+  "collector_deadlines_seconds": {
+    "native_remote": 240,
+    "native_transport": 270,
+    "dev_remote": 240,
+    "dev_transport": 270,
+    "normal_cleanup_transport": 60
+  },
+  "metadata_database_cap_each": 33554432,
+  "controller_database_cap": 134217728,
+  "host_metadata_cap": 167772160,
+  "retention_hours": 168,
+  "proposed_command": [
+    "python3",
+    "-B",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r17-collect-metadata.py"
+  ],
+  "executed": false,
+  "scope": "Private metadata preparation only; ROOT executes every remote command after exact review/release; no native canonical plan/approval/test. Actual post-N16 source inventory is sole source for new GUID/tag constants.",
+  "baseline_review_sha256": "3db95d297051643874c6cede004f5fd0af5006b43ff57b94a78e5e95063fa827",
+  "source_inventory_sha256": "9049a52fa372179b12c33edb7270d944b2e96a483d096e71e92290bd23d5106a",
+  "source_selected": {
+    "tag": "zrepl_20261030_162854_000",
+    "sources": [
+      {
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test0@zrepl_20261030_162854_000",
+        "guid": "11310477515460959183",
+        "creation": 1793377734,
+        "dataset": "zroot/bhyve/homelabfs-lab/hfs-test0",
+        "written_bytes": 0
+      },
+      {
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test1@zrepl_20261030_162854_000",
+        "guid": "3752998797439883868",
+        "creation": 1793377734,
+        "dataset": "zroot/bhyve/homelabfs-lab/hfs-test1",
+        "written_bytes": 0
+      },
+      {
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test2@zrepl_20261030_162854_000",
+        "guid": "7368215167142203989",
+        "creation": 1793377734,
+        "dataset": "zroot/bhyve/homelabfs-lab/hfs-test2",
+        "written_bytes": 0
+      },
+      {
+        "snapshot": "zroot/bhyve/freebsd@zrepl_20261030_162854_000",
+        "guid": "5879791962059317116",
+        "creation": 1793377734,
+        "dataset": "zroot/bhyve/freebsd",
+        "written_bytes": 0
+      }
+    ]
+  },
+  "n16_actual_lab_stop_finished": "2026-10-30T16:20:34.490385939Z"
+}

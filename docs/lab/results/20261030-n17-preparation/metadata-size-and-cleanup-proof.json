@@ -1,0 +1,104 @@
+{
+  "verified_at": "2026-10-30T16:33:41.860493+00:00",
+  "scope": "Actual ROOT-collected R17 stopped-image metadata and exact-owned cleanup only; no native test or pool-health conclusion",
+  "actual_operation_receipts_verified": {
+    "r17-source-inventory-20261030-n17": {
+      "receipt_sha256": "77adbce1fb99e649dedea4cd9917011ab332e128c130f934f6db00a1dba7a8a6",
+      "started_at": "2026-10-30T16:29:07.298051+00:00",
+      "finished_at": "2026-10-30T16:29:07.864204+00:00",
+      "returncode": 0
+    },
+    "r17-before-execution-guard": {
+      "receipt_sha256": "3900a55cb7beb701cc697bbc8fef321fd636343fec895bc1af2e0dd4d4d52421",
+      "started_at": "2026-10-30T16:31:34.625237+00:00",
+      "finished_at": "2026-10-30T16:31:35.090405+00:00",
+      "returncode": 0
+    },
+    "r17-harvest-receipts": {
+      "receipt_sha256": "1ed50780513ccb5132364c7d9738463e116cd1bdef4b02d8769ec205799cf1a1",
+      "started_at": "2026-10-30T16:33:30.188678+00:00",
+      "finished_at": "2026-10-30T16:33:30.554377+00:00",
+      "returncode": 0
+    },
+    "r17-collect-metadata": {
+      "receipt_sha256": "b7c76eaade467ca7445b12f759bee076678374dc27997c980af35dbddeefc96e",
+      "started_at": "2026-10-30T16:32:08.448908+00:00",
+      "finished_at": "2026-10-30T16:32:38.780248+00:00",
+      "returncode": 0
+    },
+    "r17-rocky-current": {
+      "receipt_sha256": "b8641250eba57036ff930a8b19f5909d1c8b136fbf4b31d980753582175fa30f",
+      "started_at": "2026-10-30T16:31:32.753858+00:00",
+      "finished_at": "2026-10-30T16:31:34.624223+00:00",
+      "returncode": 0
+    }
+  },
+  "local_DB_verification": {
+    "hfs-test0": {
+      "bytes": 14749696,
+      "mode": "0o600",
+      "sha256": "2eb3739034c668f2a74c0b663b6cfa4ec421d44f5c4f727d174fdbe5df335f75",
+      "kernel": "15.1-RELEASE",
+      "packages": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "package_rows": 510,
+      "immutable_manifest_rederived": true
+    },
+    "hfs-test1": {
+      "bytes": 14639104,
+      "mode": "0o600",
+      "sha256": "f24350abed108e69d448f888781601fda858cfcdedea5f8f77f305c69063c47c",
+      "kernel": "15.1-RELEASE",
+      "packages": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "package_rows": 510,
+      "immutable_manifest_rederived": true
+    },
+    "hfs-test2": {
+      "bytes": 14639104,
+      "mode": "0o600",
+      "sha256": "c57b1d867bd6b193deea701fa643b75c75e4ae34de26bf98fb32bf16790d122b",
+      "kernel": "15.1-RELEASE",
+      "packages": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "package_rows": 510,
+      "immutable_manifest_rederived": true
+    },
+    "freebsd": {
+      "bytes": 14430208,
+      "mode": "0o600",
+      "sha256": "96fecbf2674222ccef8407f8d25d5a552c7f21fca4eb23e02c23808126589990",
+      "kernel": "15.0-RELEASE-p5",
+      "packages": "sha256:247ccbbb465faa1a9be2c53cbd17466ec841a6e513c2331c005100e1db3659f8",
+      "package_rows": 132,
+      "immutable_manifest_rederived": true
+    }
+  },
+  "controller_database_bytes": 58458112,
+  "controller_limit_bytes": 134217728,
+  "database_limit_each": 33554432,
+  "complete_json_verified": true,
+  "actual_private_receipts": 20,
+  "receipts_complete_matches": true,
+  "host_allocated_bytes": 22908928,
+  "host_limit_bytes": 167772160,
+  "retention_hours": 168,
+  "source_proof": "Actual ROOT-released R17 source GUID/written0 guards before/after fresh reads; no prior metadata equality assumption",
+  "cleanup_proof": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n17-r17/complete.json",
+  "actual_receipts": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n17-r17/receipts.json",
+  "remaining_resources": {
+    "host_metadata_directory": "/var/tmp/hfs-image-inspect-yq3-20261030-n17-r17",
+    "controller_metadata_directory": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n17-r17",
+    "retention_hours": 168
+  },
+  "proof_sha256": {
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n17-r17/complete.json": "12ebec9214c1718e27be59e180e135969313d1d3fc8691c99a334b55d3a2ac1c",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n17-r17/receipts.json": "3fc57c226782f1129d73add7bb683779882d8455ac9538c12d2fa03f48eb8b92",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r17-source-inventory-20261030-n17.stdout": "9049a52fa372179b12c33edb7270d944b2e96a483d096e71e92290bd23d5106a",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r17-before-execution-guard.json": "06294c37bf9075c64a7ed9cfa108e007fc8359bd1b7f8e652eb7b45804fb8819",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r17-rocky-current.json": "b0402f99e2be9dfe805c881021e976527d6b9a10ebec1f2397cbe095dc976895",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r17-rocky-packages.txt": "4b4382416e417bea3b754c99c492e86b72257b67820aa751181420d8539533b7"
+  },
+  "limitations": [
+    "Isolated userspace zdb -L metadata only; skips leak tracking and makes no guest pool-health claim.",
+    "Existing ordinary source snapshot may be pruned or drift after preparation; future admission must fail closed.",
+    "No native canonical plan or native test execution created by this preparation."
+  ]
+}
