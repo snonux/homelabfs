@@ -422,6 +422,216 @@ attestation authentication/wrong-target coverage, streaming holes/partial payloa
 request deduplication and retention/GC. Actual broker enrollment/launcher guard,
 kernel/cache/FUSE and VM validation remain separate gates with per-run approval.
 
+## Bounded takeover during transaction recovery
+
+`TakeoverTransactions.tla` is task `sx3`'s combined projection of
+[Takeover.md](../../docs/spec/Takeover.md) and
+[Transactions.md](../../docs/spec/Transactions.md). Unlike the separate models
+below, allocation, promises, decision recovery, participant replay and successor
+activation share one state graph. Its deliberately small first milestone fixes
+the already discovered closure to two volumes A/B and one protected immutable
+claim/binding, with node N0/N1 as the old pair and N1/N2 as the prospective pair.
+The anchor and bound coordinator are A. They remain unchanged across ownership
+transfer, as do the exact original request, result/object identity and positions.
+It models one old decision term and one successor transfer, with two controllers
+proposing from the same predecessor. It does not compose all the earlier models
+or establish a refinement proof.
+
+```sh
+mage tlaTakeoverTransactions
+mage tlaTakeoverTransactionsNegative
+mage tlaTakeoverTransactionsCoverage
+```
+
+Every profile uses the existing pinned TLC 1.8.0 runner with one worker/processor,
+a 512 MiB heap and a three-minute wall timeout. It executes private source/config
+snapshots and retains their hashes, exact argv, log, bounds and exit receipt under
+`.cache/tla/TakeoverTransactions*/`. Positive profiles require exhaustive exit
+zero; negative controls require `Safety` violation/exit 12; reachability controls
+require `WitnessAbsent` violation/exit 12 while `Safety` holds. No state/depth
+constraint, symmetry reduction or simulation cutoff supplies a passing result.
+
+The finite inputs start from a protected claim/binding with a pending decision,
+a synced COMMIT candidate awaiting ACCEPT, an old protected COMMIT with neither,
+only A or only B privately applied, or its complete terminal result. The pending
+profile explores separate owner prepare, partner retention,
+candidate, local sync and partner ACCEPT actions. Promise/ACCEPT ordering occurs
+at the coordinator replica; every volume has separate durable majority promises
+and reports. A promise captures prior acceptance and persists that volume's exact
+retained dependencies before reporting. Restart can remove unpersisted prepare
+or decision tails, without notifying the old owner or proving absence.
+Owner storage loss is independent. The historical protected-outcome oracle never
+supplies operational recovery bytes.
+
+The faulted inputs start with the older claim/binding prefix already durable on
+the common partner. Background ACCEPT persistence is independent of each
+volume's prepare persistence: a restarted node can retain an accepted decision's
+references while lacking a referenced prepare. It must then wait for the missing
+source. The pending-prefix input explores the earlier claim/binding memory
+retention and per-volume promise persistence, without faults in that prefix.
+The pending-prefix profile has no injected faults. Each faulted profile fixes
+its old private install/apply cut and freezes further old INSTALL/apply/COMPLETE
+work, while still interleaving old ACCEPT/protection with promises where enabled.
+This separates the old-prefix/fault product into explicit finite inputs; it does
+not check faults during every old-prefix phase. All profiles independently
+interleave the successor's complete recovery/installation/publication steps.
+Faulted inputs use COMMIT; ABORT recovery is explored by the pending no-fault
+graph and the valid-absence witness.
+
+Both controllers propose independently. Allocation reserves the entire fixed
+closure against their common predecessor; the loser records rejection. No
+allocation grants publication. Durable inhibition, positive old-domain stop,
+attempt-bound attestation, per-volume reports and selected decision precede
+separate per-volume/per-node durable graph copies. INSTALL, redo application,
+cache/drain barrier, COMPLETE/result reconstruction, every pair-member
+CONFIGURATION, activation registration and serving activation are separate
+actions. A controller crash preserves durable progress but disables its workers
+until restart. Allocation binds the prospective incarnation: a subsequent partner
+restart cannot silently edit it or activate that attempt. Reallocation after that
+restart is outside this one-transfer projection and remains safely blocked.
+
+Safety checks complete prepares at COMMIT selection, preservation of every known
+protected outcome, complete closure replay and pair durability before any member
+serves, immutable claim/binding/result identity, rejected delayed old acceptance,
+and at most one activated successor from competing proposals. Retries occur after
+an actual successor reply and return that same result/identity without admitting
+a second operation. Result reconstruction represents exact complete retained
+request/prepare/decision evidence; it grants no result from an unavailable graph.
+
+The intentional controls remove prepare completeness, continuous-tail absence,
+identity preservation, exact terminal result reconstruction, closure publication
+readiness, predecessor exclusivity at allocation, or old-term acceptance exclusion. They are controls,
+not protocol findings. Planned reachability obligations demand actual successful
+COMMIT recovery and retry, takeover while only A was privately applied, competing
+proposals with a rejected loser, controller/partner restart, preservation of an
+already protected terminal result, old accepted COMMIT followed by promise and
+late rejection, the accepted multi-failure gap remaining blocked, a durable
+accepted decision with missing prepare dependencies remaining blocked, and valid
+continuous-tail absence ABORT.
+
+Remaining bounds: fixed complete closure discovery and compatible placement;
+one request/decision and successor transfer; one partner restart before graph
+copying; one owner disk loss; one controller crash; no prospective storage faults
+after copying begins. An unlost old-owner disk is an available complete recovery
+source; read-only source launch, authentication and network availability are
+external. Full transitive discovery/partial affinity joins, closure
+growth and coordinator changes, faults during the earlier volatile claim/binding
+prefix, arbitrary competing higher terms, overlapping
+but unequal closures, later transfers/reallocation, membership changes, checkpoint
+replacement/GC, byte transport and physical broker/cache/kernel correctness
+remain separate obligations. Positive stop and cache-barrier actions assume the
+external mechanisms succeed; this projection does not assert their availability.
+There is no temporal/liveness claim. The independent Takeover model still checks
+management/pause environments and conditional progress.
+
+The current `internal/transactions` ledger checks immutable binding/operation,
+selected prepare and result preservation and complete same-ballot INSTALL/COMPLETE
+graphs. Its mandatory recovery verifier owns allocation, external fence and
+majority authenticity. `internal/coord` provides per-volume allocation CAS, not
+closure activation. The whole-closure controller, graph-copy durability barrier
+and serving publication represented here remain integration work; passing this
+model cannot make the existing per-volume API a closure allocator.
+
+### Recorded composition verification
+
+On 2026-10-30, all six final-source positive graphs exhausted with zero states
+left on their queues. Seven mutations produced actual `Safety` counterexamples;
+nine witnesses produced actual `WitnessAbsent` counterexamples while `Safety`
+held. The model SHA-256 is
+`a75047c0e732aef3a01bde5d5c58724f27f0516473ed2282ebebe8bd47886d92`.
+All profiles execute `TakeoverTransactions.tla`; table names omit the common
+`TakeoverTransactions` configuration prefix.
+
+| Profile | Generated | Distinct | Depth | Java exit |
+| --- | ---: | ---: | ---: | ---: |
+| `Safety` | 6,318,633 | 1,124,044 | 49 | 0 |
+| `Faults` | 1,877,933 | 445,904 | 43 | 0 |
+| `Partial` | 2,669,377 | 651,904 | 43 | 0 |
+| `PartialB` | 2,669,377 | 651,904 | 43 | 0 |
+| `Complete` | 1,877,933 | 445,904 | 43 | 0 |
+| `Race` | 4,872,957 | 1,147,120 | 45 | 0 |
+| `NegativePrepares` | 1,654,923 | 384,511 | 18 | 12 |
+| `NegativeAbsence` | 1,559,587 | 367,657 | 17 | 12 |
+| `NegativeIdentity` | 43,214 | 8,636 | 16 | 12 |
+| `NegativeResult` | 44,768 | 9,125 | 25 | 12 |
+| `NegativePublication` | 24,104 | 5,581 | 11 | 12 |
+| `NegativeReservation` | 143 | 82 | 5 | 12 |
+| `NegativeEpoch` | 2,421 | 991 | 6 | 12 |
+| `WitnessCommit` | 6,311,385 | 1,121,486 | 41 | 12 |
+| `WitnessPartial` | 45,931 | 9,508 | 33 | 12 |
+| `WitnessContention` | 46,014 | 9,546 | 35 | 12 |
+| `WitnessRestart` | 1,869,180 | 442,945 | 36 | 12 |
+| `WitnessResult` | 45,931 | 9,508 | 33 | 12 |
+| `WitnessAccept` | 4,835,935 | 1,135,046 | 36 | 12 |
+| `WitnessGap` | 1,590,526 | 373,343 | 18 | 12 |
+| `WitnessDependencies` | 1,556,657 | 367,186 | 17 | 12 |
+| `WitnessAbsence` | 6,215,103 | 1,089,959 | 31 | 12 |
+
+Actual public `mage tlaTakeoverTransactions`,
+`mage tlaTakeoverTransactionsNegative` and
+`mage tlaTakeoverTransactionsCoverage` returned zero in 268.593, 46.262 and
+290.077 seconds respectively. Their outer argv, environment, working directory,
+logs and terminal receipts are
+`.cache/tla/TakeoverTransactions-mage-checks-eek68_wa/`. The checked index
+`.cache/tla/takeover-transactions-sx3-receipts.json` maps every row to its private
+execution directory. Each contains the exact executed source/configuration,
+checker/source/configuration hashes, argv, bounds, Java exit and trace/log.
+All 22 snapshots and configurations match the final source/configuration bytes;
+the index verification independently checked their hashes and outcomes. Depths
+for deliberately stopped controls describe the searched prefix, rather than an
+exhausted graph. TLC fingerprint collision limits apply; these are finite model
+results, not an arbitrary-size proof.
+
+Trace inspection confirms both proposals precede the winning allocation in the
+contention witness; the loser is explicitly rejected. The partial witness still
+has only A privately applied on the old owner after full successor publication.
+The restart trace loses the partner's volatile tail before allocation, selects
+and persists the recovered pair, then actually crashes and restarts the controller
+before activation and retry. The ACCEPT trace delivers the old proposal before
+its coordinator promise, explicitly rejects it afterward, loses old-owner storage
+before selection, and copies the surviving partner's exact graph to both new
+replicas. The gap witness retains complete identity and prepare sources but loses
+the decision and tail continuity; the dependency witness retains a durable
+accepted decision but lacks its prepares. Both have complete allocation,
+promises/reports and positive fence evidence, and neither selects or activates.
+The terminal-result witness begins with an actual protected original result and
+returns that same identity/object/positions through the successor.
+
+Earlier runs remain evidence of model preparation, not substituted final passes:
+
+- `.cache/tla/TakeoverTransactions-mage-checks-_4fzugwn/` exposed a TLC evaluation
+  error (Java exit 76) when comparing a tuple result to a string sentinel. Uniform
+  result records corrected the representation.
+- `.cache/tla/TakeoverTransactions-mage-checks-nx5ktr6y/` contains the oversized
+  old-prefix/fault product. Its pending profile exhausted, but its fault profile
+  reached the real three-minute cap with 1,696,249 distinct states and 287,292
+  still queued at the last progress report; it was not a pass. The explicit
+  starting cuts above replaced that oversized product, without a state cutoff.
+- `.cache/tla/TakeoverTransactions-mage-checks-z5ce45cz/` exhausted all six refined
+  positives, but `NegativePrepares` exhausted with exit zero instead of finding
+  its required violation. Inspection exposed coupled older-anchor/prepare
+  persistence and missing independent background ACCEPT persistence. The model
+  now represents a durable decision with unavailable referenced prepares, and
+  both the negative control and safely blocked dependency witness reach it.
+- `.cache/tla/TakeoverTransactions-mage-checks-vhzwt57p/` passed its public targets,
+  but trace inspection found weaker restart and owner-loss witnesses: controller
+  crash could occur after completed retry, and owner loss after selection.
+  Separate observation fields now require resuming a selected still-gated
+  recovery and old-owner storage loss before selection. The final 22-profile
+  results above include those tightened conditions.
+
+These were representation, finite-input and witness-coverage issues, not protocol
+findings. Comparison with the actual transaction ledger's immutable-binding,
+selected-prepare, result and INSTALL/COMPLETE checks established no genuine
+protocol or implementation defect requiring an `internal/` change.
+
+Tagged Mage compilation (`go test -tags mage -run '^$' .`), tagged `go vet`,
+`errcheck` and Mage discovery passed under `GOMAXPROCS=2`, `GOFLAGS=-p=1` and
+private `/tmp` Go temporary roots. Their exact argv/environment and zero exits
+are in `.cache/tla/TakeoverTransactions-mage-checks-vhzwt57p/`; the Go runner
+bytes were unchanged by the final observation-only model refinement. No service
+runtime suite, unrelated model rerun, lab, VM, SSH, FUSE or power operation ran.
+
 ## Bounded cross-volume transactions
 
 `Transactions.tla` implements task `5w3` as separate finite projections of

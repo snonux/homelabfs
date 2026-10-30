@@ -398,6 +398,14 @@ intersection cases. The model must include a delayed old proposal racing the
 fencing promise, not just decisions whose replies were received. No new term
 may create a different outcome while a protected old decision remains possible.
 
+The [bounded takeover/transaction composition](../../spec/tla/README.md#bounded-takeover-during-transaction-recovery)
+checks allocation, promises, selection, per-member recovered-pair durability,
+installation and successor activation in one graph for a fixed two-volume
+closure and one request. It also checks exact claim/binding/result preservation
+and competing proposals from one predecessor. Its stated finite inputs and
+omissions remain limits; it is not a refinement proof or an implemented closure
+allocator, recovery controller or publication service.
+
 A prepared participant without complete coordinator evidence waits and requests
 recovery. It cannot infer abort from an etcd lease expiry, timeout, coordinator
 death or absence of COMPLETE. If the coordinator/home group is unavailable, the

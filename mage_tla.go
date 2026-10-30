@@ -69,6 +69,27 @@ func TLATransactionsCoverage(ctx context.Context) error {
 		"TransactionsWitnessStaleCoverage", "TransactionsWitnessReclaim")
 }
 
+// TLATakeoverTransactions checks the bounded shared takeover and recovery graph.
+func TLATakeoverTransactions(ctx context.Context) error {
+	return runTLAConfigs(ctx, false, "TakeoverTransactionsSafety", "TakeoverTransactionsFaults",
+		"TakeoverTransactionsPartial", "TakeoverTransactionsPartialB", "TakeoverTransactionsComplete", "TakeoverTransactionsRace")
+}
+
+// TLATakeoverTransactionsNegative requires concrete composition safety failures.
+func TLATakeoverTransactionsNegative(ctx context.Context) error {
+	return runTLAConfigs(ctx, true, "TakeoverTransactionsNegativePrepares", "TakeoverTransactionsNegativeAbsence",
+		"TakeoverTransactionsNegativeIdentity", "TakeoverTransactionsNegativeResult", "TakeoverTransactionsNegativePublication",
+		"TakeoverTransactionsNegativeReservation", "TakeoverTransactionsNegativeEpoch")
+}
+
+// TLATakeoverTransactionsCoverage requires successful, contended and blocked traces.
+func TLATakeoverTransactionsCoverage(ctx context.Context) error {
+	return runTLAConfigs(ctx, true, "TakeoverTransactionsWitnessCommit", "TakeoverTransactionsWitnessPartial",
+		"TakeoverTransactionsWitnessContention", "TakeoverTransactionsWitnessRestart",
+		"TakeoverTransactionsWitnessResult", "TakeoverTransactionsWitnessAccept",
+		"TakeoverTransactionsWitnessGap", "TakeoverTransactionsWitnessDependencies", "TakeoverTransactionsWitnessAbsence")
+}
+
 // TLAEmergency checks bounded cluster-wide emergency activation and explicit exit.
 func TLAEmergency(ctx context.Context) error {
 	return runTLAConfigs(ctx, false, "EmergencySafety", "EmergencyFaults")
@@ -206,7 +227,8 @@ func runTLC(ctx context.Context, jar, config string, negative bool) error {
 	checkpoints := strings.HasPrefix(config, "Checkpoints")
 	handles := strings.HasPrefix(config, "Handles")
 	transport := strings.HasPrefix(config, "Transport")
-	if transactions || emergency || coordination || checkpoints || handles || transport {
+	composition := strings.HasPrefix(config, "TakeoverTransactions")
+	if transactions || emergency || coordination || checkpoints || handles || transport || composition {
 		heap = "-Xmx512m"
 		if emergency {
 			module = "Emergency.tla"
@@ -218,6 +240,8 @@ func runTLC(ctx context.Context, jar, config string, negative bool) error {
 			module = "Handles.tla"
 		} else if transport {
 			module = "Transport.tla"
+		} else if composition {
+			module = "TakeoverTransactions.tla"
 		} else {
 			module = "Transactions.tla"
 		}
@@ -226,7 +250,7 @@ func runTLC(ctx context.Context, jar, config string, negative bool) error {
 			return err
 		}
 	}
-	if emergency || coordination || checkpoints || handles || transport {
+	if emergency || coordination || checkpoints || handles || transport || composition {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, 3*time.Minute)
 		defer cancel()
@@ -241,13 +265,13 @@ func runTLC(ctx context.Context, jar, config string, negative bool) error {
 		"-metadir", dir, "-config", configPath, modulePath)
 	cmd.Stdout = io.MultiWriter(os.Stdout, log)
 	cmd.Stderr = cmd.Stdout
-	if transactions || emergency || coordination || checkpoints || handles || transport {
+	if transactions || emergency || coordination || checkpoints || handles || transport || composition {
 		if err := os.WriteFile(filepath.Join(dir, "argv.txt"), []byte(strings.Join(cmd.Args, "\n")+"\n"), 0o600); err != nil {
 			return fmt.Errorf("write TLC command: %w", err)
 		}
 	}
 	runErr := cmd.Run()
-	if transactions || emergency || coordination || checkpoints || handles || transport {
+	if transactions || emergency || coordination || checkpoints || handles || transport || composition {
 		if err := recordTLCExit(dir, runErr); err != nil {
 			return err
 		}
@@ -274,7 +298,7 @@ func checkTLCCounterexample(config, path string, runErr error) error {
 		return fmt.Errorf("read negative TLC evidence: %w", err)
 	}
 	invariant := "Safety"
-	if strings.HasPrefix(config, "TakeoverWitness") || strings.HasPrefix(config, "TransactionsWitness") || strings.HasPrefix(config, "EmergencyWitness") || strings.HasPrefix(config, "CoordinationWitness") || strings.HasPrefix(config, "CheckpointsWitness") || strings.HasPrefix(config, "HandlesWitness") || strings.HasPrefix(config, "TransportWitness") {
+	if strings.HasPrefix(config, "TakeoverWitness") || strings.HasPrefix(config, "TransactionsWitness") || strings.HasPrefix(config, "EmergencyWitness") || strings.HasPrefix(config, "CoordinationWitness") || strings.HasPrefix(config, "CheckpointsWitness") || strings.HasPrefix(config, "HandlesWitness") || strings.HasPrefix(config, "TransportWitness") || strings.HasPrefix(config, "TakeoverTransactionsWitness") {
 		invariant = "WitnessAbsent"
 	}
 	if !strings.Contains(string(output), "Invariant "+invariant+" is violated") {

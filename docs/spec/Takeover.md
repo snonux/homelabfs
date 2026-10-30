@@ -15,6 +15,12 @@ promises, recovery and conditional progress. Its documented bounds and omitted
 multi-volume, competing-allocation, term-conflict and physical-fence obligations
 remain explicit; passing it does not complete every obligation below.
 
+The separate [takeover/transaction composition model](../../spec/tla/README.md#bounded-takeover-during-transaction-recovery)
+adds one already discovered two-volume closure, immutable transaction evidence,
+two competing proposals from one predecessor, and successor recovery/activation
+in the same graph. Its fixed closure, one-transfer and fault-input bounds do not
+discharge transitive discovery, later reallocation or controller implementation.
+
 [Replication protocol](Replication-protocol.md) defines normal acceptance and
 commitment; [Transactions](Transactions.md) defines immutable request anchors,
 affinity and closure visibility; [Journal format](Journal-format.md) defines
