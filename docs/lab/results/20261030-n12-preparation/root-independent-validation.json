@@ -1,0 +1,17 @@
+{
+  "checked_at": "2026-10-30T14:58:49.766110+00:00",
+  "root_independent_validation": "PASS",
+  "canonical_hash": "a682cb2bdeaae5c62b795c5340d15a0eec43eed5661b4719f4e0c29e6b84592b",
+  "artifact_pins": 30,
+  "scope_vs_n11": "identical except new run paths and planning survey",
+  "survey_subset_sha256": "861e3ba94a737a9ee3b781e995daa0363f11caf6f15005bd8267e58243760b61",
+  "reused_candidate_source_commit": "2e875e2faf217787cffc39e635e7ac0654070750",
+  "binary_vcs_clean": true,
+  "production_cmd_internal_changes_since_binary_source": false,
+  "metadata_reuse": "Actual R13 paths and bytes preserved; N11 had no VM/source changes, fresh N12 GUID/written0 checks passed",
+  "outer_test_selections": 1,
+  "native_behavior_calls": 12,
+  "state_execution_evidence_approval_absent": true,
+  "native_latency_cause": "pending native validation",
+  "latest_user_direction": "resume all tasks until none"
+}

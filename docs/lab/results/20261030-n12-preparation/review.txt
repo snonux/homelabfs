@@ -1,0 +1,28 @@
+Native run 20261030-n12 / unchanged R13 reuse
+Canonical hash: a682cb2bdeaae5c62b795c5340d15a0eec43eed5661b4719f4e0c29e6b84592b
+Created 2026-10-30T14:58:13Z; expires 2026-10-31T14:58:13Z.
+
+NEW exact plan after N11 admission SSH timeout failed before any lifecycle or
+workload. Reconciled failed and cleaned up; network cause unknown. No automatic
+preflight retry or waiver. ROOT owns standing authorization and execution.
+
+Actual R13 accepted/proof/inventory/offline-images-20261030-n11-r13 bytes remain
+unchanged. No fresh metadata extraction or R14 claim. Existing actual clean
+2e875e2 binaries in native-binaries-20261030-n11-r13 reused unchanged; independent
+source diff excluding tests empty, exact SHA/size/ELF/VCS/receipt verified3e8903.
+No new binary build or relabel. Fresh N12 survey verifies GUID/written0 now; any
+future pruning/drift fails closed. Native cause/acceptance still pending.
+
+Exact normalized N11 targets/budget/resources/tests/steps preserved. One driver
+executes12calls seed0;5220s/87min; disk2.25GiB; logicalIO48MiB; evidence64MiB;
+retention168h;12caps2214592512B;max_attempts1; exact setup/test collection gate;
+disposable run-owned resources and normal graceful restoration.
+
+ROOT fresh N12 survey26629/c5b1d9 exit0 at14:56:47UTC admitted run_idn12 and subset
+861e3ba94a737a9ee3b781e995daa0363f11caf6f15005bd8267e58243760b61.
+Same subset hash reflects unchanged actual inputs, not reused admission. Raw
+stdout2730B/stderr444B/receipt preserved; stderr two known KEX triplets. Actual
+finalizer/Go planner/30pin validator, all SHA/exact scope/self-review passed.
+Receipts: offline-gates-20261030-n12-r13.json. Detailed pins:
+canonical-plan-validation-20261030-n12-r13.json. No worker remote/approval/state/
+execution/tracked edit. Latest instruction continues all tasks; no pause.
