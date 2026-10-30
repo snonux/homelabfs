@@ -1,0 +1,36 @@
+{
+  "observed_at": "2026-10-30T08:48:30.908326+00:00",
+  "inventory": "NAME       DATASTORE  LOADER     CPU  MEMORY  VNC             AUTO     STATE\nfreebsd    default    bhyveload  4    1G      -               No       Stopped\nrocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (17368)\nhfs-test0  hfslab     bhyveload  2    2G      -               No       Stopped\nhfs-test1  hfslab     bhyveload  2    2G      -               No       Stopped\nhfs-test2  hfslab     bhyveload  2    2G      -               No       Stopped\n",
+  "metrics": [
+    "16879837184",
+    "4096",
+    "3418116",
+    "21489",
+    "85679",
+    "{ 0.26 0.19 0.17 }"
+  ],
+  "swap": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n",
+  "disk": "Filesystem                1024-blocks Used     Avail Capacity  Mounted on\nzroot/bhyve/homelabfs-lab   119438300  340 119437960     0%    /zroot/bhyve/homelabfs-lab\n",
+  "source_proof": [
+    {
+      "dataset": "zroot/bhyve/homelabfs-lab/hfs-test0",
+      "guid": "15144954143660049895",
+      "written": "0"
+    },
+    {
+      "dataset": "zroot/bhyve/homelabfs-lab/hfs-test1",
+      "guid": "6929390923319324709",
+      "written": "0"
+    },
+    {
+      "dataset": "zroot/bhyve/homelabfs-lab/hfs-test2",
+      "guid": "12876710294198921247",
+      "written": "0"
+    },
+    {
+      "dataset": "zroot/bhyve/freebsd",
+      "guid": "12511208780143335477",
+      "written": "0"
+    }
+  ]
+}

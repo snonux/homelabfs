@@ -1,0 +1,67 @@
+{
+  "status": "PROPOSAL ONLY; ROOT REVIEW/RELEASE REQUIRED; NOT EXECUTED",
+  "recorded_at": "2026-10-30T08:47:50.404902+00:00",
+  "run_id": "20261030-n5",
+  "files": {
+    "r7-inspect-native.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r7-inspect-native.py",
+      "sha256": "0b893b50b04a3137a0360d01884e59f1d6555bf605e0904703ea5f1e72cf75bb",
+      "baseline_sha256": "ee5b436b1eb57c28f563d481b333c0fe6e1e2b52e8f333efe2dbe6284a63bc74"
+    },
+    "r7-inspect-freebsd-zfs.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r7-inspect-freebsd-zfs.py",
+      "sha256": "7a9918ca4c0d2517549f9a5db77a84082473aa56f1a40c1cdbdf5553c66dcc79",
+      "baseline_sha256": "f551b171f8892b55a3298eaea5ee67412e93d5181a4d37689d891e58de57b7a6"
+    },
+    "r7-cleanup.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r7-cleanup.py",
+      "sha256": "935dbe3eb538734702354d3306050b856ec27e494a13c10617870b0ce9b443ab",
+      "baseline_sha256": "99f832936f971a52130b24c1865640fbb100cb5565aaa74311317d61a3283b43"
+    },
+    "r7-before-execution-guard.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r7-before-execution-guard.py",
+      "sha256": "767a6045bbfd56135c142bffc9858e461232d6b6e74b4f1ad3a6ce54a2f1fbdf",
+      "baseline_sha256": "f3c8a64c8512f368b0cd7bf8145efa96f045b67a9b3d918d7d5eb7f52d12e80c"
+    },
+    "r7-harvest-receipts.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r7-harvest-receipts.py",
+      "sha256": "20c5cbf4fc6a1346175ee114a675025efcd3c0bac1882f4d8709f72dc1460dec",
+      "baseline_sha256": "14a6443c928250597d8648dd3963e2ef428908a37f0604af54853343e8195358"
+    },
+    "r7-collect-metadata.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r7-collect-metadata.py",
+      "sha256": "9cabf4e031aeb3eddfe3f56905ebd6358db82fa76439bf4dffcc7a20d2b9ff54",
+      "baseline_sha256": "cb6daae332346a29d8191b7160f4caadeb084e1cfcd0d84726358b778b955e30"
+    }
+  },
+  "constant_only_ast_audit": {
+    "inspect-native.py": "AST identical after normalizing literal constants; exact unified diff retained; no helper execution",
+    "inspect-freebsd-zfs.py": "AST identical after normalizing literal constants; exact unified diff retained; no helper execution",
+    "cleanup.py": "AST identical after normalizing literal constants; exact unified diff retained; no helper execution",
+    "before-execution-guard.py": "AST identical after normalizing literal constants; exact unified diff retained; no helper execution",
+    "harvest-receipts.py": "AST identical after normalizing literal constants; exact unified diff retained; no helper execution",
+    "collect-metadata.py": "AST identical after normalizing literal constants; exact unified diff retained; no helper execution"
+  },
+  "diff": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r7-proposal-vs-r6.diff",
+  "candidate_sources": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r7-source-choices.UNREADY.json",
+  "source_inventory_receipt": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r7-source-inventory-20261030-n5-receipt.json",
+  "new_remote_root": "/var/tmp/hfs-image-inspect-yq3-20261030-n5-r7",
+  "new_controller_destination": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n5-r7",
+  "collector_deadlines_seconds": {
+    "native_remote": 240,
+    "native_transport": 270,
+    "dev_remote": 240,
+    "dev_transport": 270,
+    "normal_cleanup_transport": 60
+  },
+  "metadata_database_cap_each": 33554432,
+  "controller_database_cap": 134217728,
+  "host_metadata_cap": 167772160,
+  "retention_hours": 168,
+  "proposed_command": [
+    "python3",
+    "-B",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r7-collect-metadata.py"
+  ],
+  "executed": false
+}
