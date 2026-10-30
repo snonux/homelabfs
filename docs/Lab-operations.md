@@ -139,3 +139,32 @@ The next implementation work is HomelabFS itself and its plan-bound integration 
 ## Replication copy
 
 The lab now has an encrypted, periodic [replication copy on f2](Lab-replication.md), including recovery prerequisites and verification commands. This replaces the original preparation state where only local snapshots covered the lab.
+
+## Native Stage 1 admission attempt, 2026-10-30
+
+Paul approved run `20261029-n1`, exact canonical plan hash
+`c22be74e288f900b15ebd8852c079f3d51e5e6f6abe2a558dc45053491a16f88`.
+Pinned SSH found f3 already running, with Rocky PID 6449 running, all four
+FreeBSD VMs stopped and no host swap use; no host power operation was needed.
+
+The read-only admission step failed at 05:53:50 UTC because the pinned source
+snapshot `zrepl_20261029_212328_000` had been pruned. The plan was still within
+its validity period, but its source snapshot was unavailable. No lifecycle,
+native setup or workload step ran, so none of the twelve native behavior calls
+was executed. The snapshot/GUID/zero-written checks were preserved.
+
+The runner subsequently attempted guest evidence collection despite admission
+having failed before guest startup. Guest SSH timed out during banner exchange;
+collection was conservatively recorded as ambiguous. A fresh pinned-host
+inventory and local process check established that the guests remained stopped,
+Rocky retained PID 6449, and no guest SSH child remained. Explicit reconciliation
+recorded collection as failed. Cleanup skipped all inapplicable VM/resource
+actions and closed the run with `complete=true`, `success=false` and exit 1.
+The report's twelve potentially remaining resources are its conservative declared
+inventory; run-owned setup was never invoked.
+
+[Reports and logs](lab/results/20261029-n1/) preserve the failed admission,
+collection error, reconciliation history and final state. Follow-up tasks `ax3`
+and `bx3` cover collection admission gating and fresh offline source metadata.
+A replacement plan needs fresh exact-plan approval; this attempt provides no
+native filesystem acceptance result.

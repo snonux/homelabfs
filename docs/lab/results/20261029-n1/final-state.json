@@ -1,0 +1,10 @@
+{
+  "observed_at": "2026-10-30T05:59:27Z",
+  "host_exit": 0,
+  "host_stdout": "NAME       DATASTORE  LOADER     CPU  MEMORY  VNC             AUTO     STATE\nfreebsd    default    bhyveload  4    1G      -               No       Stopped\nrocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (6449)\nhfs-test0  hfslab     bhyveload  2    2G      -               No       Stopped\nhfs-test1  hfslab     bhyveload  2    2G      -               No       Stopped\nhfs-test2  hfslab     bhyveload  2    2G      -               No       Stopped\nDevice          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n",
+  "host_stderr": "",
+  "matching_local_guest_ssh_processes": [],
+  "run_driver_and_executor_terminal": true,
+  "preflight": "failed terminal20 before any lifecycle or native setup/test",
+  "collection": "guest SSH banner timeout before authentication; all guest VMs remain stopped; read-only collection could not execute"
+}

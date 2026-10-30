@@ -1,0 +1,1 @@
+{"contract": "prepared-lab-preflight-v1", "status": "blocked", "error": "host: confirmed remote inspection failure (1); cannot open 'zroot/bhyve/homelabfs-lab/hfs-test0@zrepl_20261029_212328_000': dataset does not exist\n", "scope": "read-only admission; no lifecycle or workload requested", "remote_completion": "terminal"}

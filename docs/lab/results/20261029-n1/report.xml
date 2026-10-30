@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="20261029-n1" tests="11" failures="7">
+  <testcase name="prepared-preflight" classname="setup" time="2.244307112">
+    <failure type="infrastructure">failed: exit status 20</failure>
+  </testcase>
+  <testcase name="rocky-stop" classname="setup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="lab-start" classname="setup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-readiness" classname="setup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-setup" classname="setup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-test" classname="test" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-collect" classname="collect" time="336.202790563">
+    <failure type="infrastructure">failed: /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/run-20261029-n1-no-outstanding-proof.json; native-collect.log proves timeout before guest SSH banner/authentication; preflight failed terminal20; journal proves no lifecycle/setup/test attempted; all four FreeBSD VMs still stopped/Rocky samePID6449; local executor/driver terminal and no guest SSH child remains. Collection failed, not passed.</failure>
+  </testcase>
+  <testcase name="native-cleanup" classname="cleanup" time="0">
+    <skipped>not applicable</skipped>
+  </testcase>
+  <testcase name="lab-stop" classname="cleanup" time="0">
+    <skipped>not applicable</skipped>
+  </testcase>
+  <testcase name="rocky-restore" classname="restore" time="0">
+    <skipped>not applicable</skipped>
+  </testcase>
+  <testcase name="rocky-restoration-readiness" classname="restore" time="0">
+    <skipped>not applicable</skipped>
+  </testcase>
+</testsuite>

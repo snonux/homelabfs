@@ -1,0 +1,439 @@
+{
+  "history": [
+    {
+      "id": "prepared-preflight",
+      "phase": "setup",
+      "status": "started",
+      "started": "2026-10-30T07:53:48.548695764+02:00",
+      "finished": "0001-01-01T00:00:00Z"
+    },
+    {
+      "id": "prepared-preflight",
+      "phase": "setup",
+      "status": "failed",
+      "category": "infrastructure",
+      "message": "exit status 20",
+      "started": "2026-10-30T07:53:48.548695764+02:00",
+      "finished": "2026-10-30T07:53:50.793002876+02:00"
+    },
+    {
+      "id": "native-collect",
+      "phase": "collect",
+      "status": "started",
+      "started": "2026-10-30T07:53:50.797209437+02:00",
+      "finished": "0001-01-01T00:00:00Z"
+    },
+    {
+      "id": "native-collect",
+      "phase": "collect",
+      "status": "ambiguous",
+      "category": "infrastructure",
+      "message": "exit status 1",
+      "started": "2026-10-30T07:53:50.797209437+02:00",
+      "finished": "2026-10-30T07:54:00.9150737+02:00"
+    },
+    {
+      "id": "native-collect",
+      "phase": "collect",
+      "status": "failed",
+      "category": "infrastructure",
+      "message": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/run-20261029-n1-no-outstanding-proof.json; native-collect.log proves timeout before guest SSH banner/authentication; preflight failed terminal20; journal proves no lifecycle/setup/test attempted; all four FreeBSD VMs still stopped/Rocky samePID6449; local executor/driver terminal and no guest SSH child remains. Collection failed, not passed.",
+      "started": "2026-10-30T07:53:50.797209437+02:00",
+      "finished": "2026-10-30T05:59:27Z",
+      "reconciled_by": "Codex acting under Paul's approved run and cleanup authority"
+    }
+  ],
+  "run_id": "20261029-n1",
+  "plan_hash": "c22be74e288f900b15ebd8852c079f3d51e5e6f6abe2a558dc45053491a16f88",
+  "complete": true,
+  "success": false,
+  "summary": "run 20261029-n1: complete=true success=false; 12 declared resources may remain; targets are reusable and never deleted",
+  "results": [
+    {
+      "id": "prepared-preflight",
+      "phase": "setup",
+      "status": "failed",
+      "category": "infrastructure",
+      "message": "exit status 20",
+      "started": "2026-10-30T07:53:48.548695764+02:00",
+      "finished": "2026-10-30T07:53:50.793002876+02:00"
+    },
+    {
+      "id": "rocky-stop",
+      "phase": "setup",
+      "status": "pending",
+      "started": "0001-01-01T00:00:00Z",
+      "finished": "0001-01-01T00:00:00Z"
+    },
+    {
+      "id": "lab-start",
+      "phase": "setup",
+      "status": "pending",
+      "started": "0001-01-01T00:00:00Z",
+      "finished": "0001-01-01T00:00:00Z"
+    },
+    {
+      "id": "native-readiness",
+      "phase": "setup",
+      "status": "pending",
+      "started": "0001-01-01T00:00:00Z",
+      "finished": "0001-01-01T00:00:00Z"
+    },
+    {
+      "id": "native-setup",
+      "phase": "setup",
+      "status": "pending",
+      "started": "0001-01-01T00:00:00Z",
+      "finished": "0001-01-01T00:00:00Z"
+    },
+    {
+      "id": "native-test",
+      "phase": "test",
+      "status": "pending",
+      "started": "0001-01-01T00:00:00Z",
+      "finished": "0001-01-01T00:00:00Z"
+    },
+    {
+      "id": "native-collect",
+      "phase": "collect",
+      "status": "failed",
+      "category": "infrastructure",
+      "message": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/run-20261029-n1-no-outstanding-proof.json; native-collect.log proves timeout before guest SSH banner/authentication; preflight failed terminal20; journal proves no lifecycle/setup/test attempted; all four FreeBSD VMs still stopped/Rocky samePID6449; local executor/driver terminal and no guest SSH child remains. Collection failed, not passed.",
+      "started": "2026-10-30T07:53:50.797209437+02:00",
+      "finished": "2026-10-30T05:59:27Z",
+      "reconciled_by": "Codex acting under Paul's approved run and cleanup authority"
+    },
+    {
+      "id": "native-cleanup",
+      "phase": "cleanup",
+      "status": "skipped",
+      "started": "0001-01-01T00:00:00Z",
+      "finished": "0001-01-01T00:00:00Z"
+    },
+    {
+      "id": "lab-stop",
+      "phase": "cleanup",
+      "status": "skipped",
+      "started": "0001-01-01T00:00:00Z",
+      "finished": "0001-01-01T00:00:00Z"
+    },
+    {
+      "id": "rocky-restore",
+      "phase": "restore",
+      "status": "skipped",
+      "started": "0001-01-01T00:00:00Z",
+      "finished": "0001-01-01T00:00:00Z"
+    },
+    {
+      "id": "rocky-restoration-readiness",
+      "phase": "restore",
+      "status": "skipped",
+      "started": "0001-01-01T00:00:00Z",
+      "finished": "0001-01-01T00:00:00Z"
+    }
+  ],
+  "remaining_resources": [
+    {
+      "name": "native-dir-0",
+      "kind": "directory",
+      "target": "hfs-test0",
+      "location": "/var/tmp/hfs-run-20261029-n1",
+      "max_bytes": 335544320
+    },
+    {
+      "name": "native-data-0",
+      "kind": "dataset",
+      "target": "hfs-test0",
+      "location": "hfsdata0/data/hfs-run-20261029-n1",
+      "max_bytes": 134217728
+    },
+    {
+      "name": "native-journal-0",
+      "kind": "dataset",
+      "target": "hfs-test0",
+      "location": "hfsdata0/journal/hfs-run-20261029-n1",
+      "max_bytes": 134217728
+    },
+    {
+      "name": "native-control-0",
+      "kind": "dataset",
+      "target": "hfs-test0",
+      "location": "hfsdata0/control/hfs-run-20261029-n1",
+      "max_bytes": 134217728
+    },
+    {
+      "name": "native-dir-1",
+      "kind": "directory",
+      "target": "hfs-test1",
+      "location": "/var/tmp/hfs-run-20261029-n1",
+      "max_bytes": 335544320
+    },
+    {
+      "name": "native-data-1",
+      "kind": "dataset",
+      "target": "hfs-test1",
+      "location": "hfsdata1/data/hfs-run-20261029-n1",
+      "max_bytes": 134217728
+    },
+    {
+      "name": "native-journal-1",
+      "kind": "dataset",
+      "target": "hfs-test1",
+      "location": "hfsdata1/journal/hfs-run-20261029-n1",
+      "max_bytes": 134217728
+    },
+    {
+      "name": "native-control-1",
+      "kind": "dataset",
+      "target": "hfs-test1",
+      "location": "hfsdata1/control/hfs-run-20261029-n1",
+      "max_bytes": 134217728
+    },
+    {
+      "name": "native-dir-2",
+      "kind": "directory",
+      "target": "hfs-test2",
+      "location": "/var/tmp/hfs-run-20261029-n1",
+      "max_bytes": 335544320
+    },
+    {
+      "name": "native-data-2",
+      "kind": "dataset",
+      "target": "hfs-test2",
+      "location": "hfsdata2/data/hfs-run-20261029-n1",
+      "max_bytes": 134217728
+    },
+    {
+      "name": "native-journal-2",
+      "kind": "dataset",
+      "target": "hfs-test2",
+      "location": "hfsdata2/journal/hfs-run-20261029-n1",
+      "max_bytes": 134217728
+    },
+    {
+      "name": "native-control-2",
+      "kind": "dataset",
+      "target": "hfs-test2",
+      "location": "hfsdata2/control/hfs-run-20261029-n1",
+      "max_bytes": 134217728
+    }
+  ],
+  "targets": [
+    {
+      "name": "hfs-test0",
+      "host": "f3",
+      "address": "172.31.253.11",
+      "initial_state": "Stopped",
+      "kernel": "15.1-RELEASE",
+      "packages": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "name": "hfs-test1",
+      "host": "f3",
+      "address": "172.31.253.12",
+      "initial_state": "Stopped",
+      "kernel": "15.1-RELEASE",
+      "packages": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "name": "hfs-test2",
+      "host": "f3",
+      "address": "172.31.253.13",
+      "initial_state": "Stopped",
+      "kernel": "15.1-RELEASE",
+      "packages": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "name": "rocky",
+      "host": "f3",
+      "address": "192.168.1.123",
+      "initial_state": "Running",
+      "kernel": "5.14.0-687.61.1.el9_8.x86_64",
+      "packages": "sha256:4b689f7e8bb5d66bdabaffe285c49a87a103325266dda6424f8003ee59dcb4e3"
+    },
+    {
+      "name": "freebsd",
+      "host": "f3",
+      "address": "192.168.1.139",
+      "initial_state": "Stopped",
+      "kernel": "15.0-RELEASE-p5",
+      "packages": "sha256:247ccbbb465faa1a9be2c53cbd17466ec841a6e513c2331c005100e1db3659f8"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "homelabfs",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/homelabfs",
+      "version": "sha256:78c60f6b680bc37cacc15e1b3eecc3cc146fe102e99e9fce943e37d0806059ab",
+      "sha256": "78c60f6b680bc37cacc15e1b3eecc3cc146fe102e99e9fce943e37d0806059ab"
+    },
+    {
+      "id": "hfs-behavior",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/hfs-behavior",
+      "version": "sha256:4acacbb1cd1828d636daa4e430509b295b9fc0b8362354624fe62ce2421279ca",
+      "sha256": "4acacbb1cd1828d636daa4e430509b295b9fc0b8362354624fe62ce2421279ca"
+    },
+    {
+      "id": "native-entry",
+      "path": "/home/paul/git/homelabfs/tools/lab/check-native-single-node.sh",
+      "version": "sha256:fc95ec798ad87c287dd24973ccc6b807170a1738bc3acb34b118bc3202199f59",
+      "sha256": "fc95ec798ad87c287dd24973ccc6b807170a1738bc3acb34b118bc3202199f59"
+    },
+    {
+      "id": "native-driver",
+      "path": "/home/paul/git/homelabfs/tools/lab/native-single-node.py",
+      "version": "sha256:ad945f5a4723bf874b9537668ae7862105e89d3d818dfa3ca3f3987649a73941",
+      "sha256": "ad945f5a4723bf874b9537668ae7862105e89d3d818dfa3ca3f3987649a73941"
+    },
+    {
+      "id": "native-guest",
+      "path": "/home/paul/git/homelabfs/tools/lab/native-single-node-guest.sh",
+      "version": "sha256:563ae8e198e250e3af9d1adfa10f3bb6761023049b92c0830e49ec5097ba6427",
+      "sha256": "563ae8e198e250e3af9d1adfa10f3bb6761023049b92c0830e49ec5097ba6427"
+    },
+    {
+      "id": "native-host-keys",
+      "path": "/home/paul/git/homelabfs/docs/lab/f3-known_hosts",
+      "version": "sha256:d2d831e861d6969dd79d3a61b0c0e3af74d4d5282f660d791f210cada4d4ab6f",
+      "sha256": "d2d831e861d6969dd79d3a61b0c0e3af74d4d5282f660d791f210cada4d4ab6f"
+    },
+    {
+      "id": "native-spec",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-spec.json",
+      "version": "native-single-node-v1",
+      "sha256": "4c839fd33dffe702545f0d29926f44b374652f41ce66f6e13d24bfb0659e2daa"
+    },
+    {
+      "id": "preflight",
+      "path": "/home/paul/git/homelabfs/tools/lab/prepared-lab-preflight.py",
+      "version": "sha256:7203c89903e5e13cc3b7cb1004ca35f409e0c42a9409643a508937436a3f9c75",
+      "sha256": "7203c89903e5e13cc3b7cb1004ca35f409e0c42a9409643a508937436a3f9c75"
+    },
+    {
+      "id": "vms",
+      "path": "/home/paul/git/homelabfs/tools/lab/vms.sh",
+      "version": "sha256:b71df8d9696a515bc3bf86bcdbc3ffaaef7f14156665a024511b150889f4c498",
+      "sha256": "b71df8d9696a515bc3bf86bcdbc3ffaaef7f14156665a024511b150889f4c498"
+    },
+    {
+      "id": "native-readiness",
+      "path": "/home/paul/git/homelabfs/tools/lab/wait-lab-ready.py",
+      "version": "sha256:0497ffb4d33d1ca1db06eb9f0c237a6ae9a1051e59c57dc6eb56095952a34068",
+      "sha256": "0497ffb4d33d1ca1db06eb9f0c237a6ae9a1051e59c57dc6eb56095952a34068"
+    },
+    {
+      "id": "host-known-keys",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/host-known_hosts",
+      "version": "sha256:84cd53571b39bbb29dfea020b95c3ff296bf09bce22587b860a37d239384ff8f",
+      "sha256": "84cd53571b39bbb29dfea020b95c3ff296bf09bce22587b860a37d239384ff8f"
+    },
+    {
+      "id": "all-guest-known-keys",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/guest-known_hosts",
+      "version": "sha256:e25a8ba415e9c882f44976bc61bcb5a7e3ad8901dea78a1e68b77db285e31a54",
+      "sha256": "e25a8ba415e9c882f44976bc61bcb5a7e3ad8901dea78a1e68b77db285e31a54"
+    },
+    {
+      "id": "preflight-policy",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/preflight-policy-20261029-n1-r3.json",
+      "version": "sha256:7654876cd97c3bcbd3ff5ddbb51f8bba5afff60127122c304222a3b2bc88e8d6",
+      "sha256": "7654876cd97c3bcbd3ff5ddbb51f8bba5afff60127122c304222a3b2bc88e8d6"
+    },
+    {
+      "id": "host-package-evidence",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r3-host-packages.txt",
+      "version": "sha256:9e84ff4f459c6388e4ad3f5d6575ec7132da75f1a49ac114cdd6b4a6ebe04285",
+      "sha256": "9e84ff4f459c6388e4ad3f5d6575ec7132da75f1a49ac114cdd6b4a6ebe04285"
+    },
+    {
+      "id": "planning-inventory",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r3-source-inventory-probe1.stdout",
+      "version": "sha256:80707a8e699ee639cbc047b9119bf96cf3129b4c36b930c50b0ba058da8cac15",
+      "sha256": "80707a8e699ee639cbc047b9119bf96cf3129b4c36b930c50b0ba058da8cac15"
+    },
+    {
+      "id": "rocky-current-observation",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r3-rocky-current.json",
+      "version": "sha256:feddad1dbe5a8a9f8297e6cd17751a07dbe18eb1916731dd3b5710cfba215241",
+      "sha256": "feddad1dbe5a8a9f8297e6cd17751a07dbe18eb1916731dd3b5710cfba215241"
+    },
+    {
+      "id": "rocky-current-package-evidence",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r3-rocky-packages.txt",
+      "version": "sha256:4b689f7e8bb5d66bdabaffe285c49a87a103325266dda6424f8003ee59dcb4e3",
+      "sha256": "4b689f7e8bb5d66bdabaffe285c49a87a103325266dda6424f8003ee59dcb4e3"
+    },
+    {
+      "id": "metadata-before-resource-guard",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r3-before-execution-guard.json",
+      "version": "sha256:0ae8ed74f52a199c169fe7bcf74288fe71ee3653ea55b1f85b0a05ca8a1400a7",
+      "sha256": "0ae8ed74f52a199c169fe7bcf74288fe71ee3653ea55b1f85b0a05ca8a1400a7"
+    },
+    {
+      "id": "fresh-source-cleanup-proof",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-r3/complete.json",
+      "version": "sha256:79e241901cf242df1336f2e44939901a3b9ebcc633b8c832b42d84339af44af5",
+      "sha256": "79e241901cf242df1336f2e44939901a3b9ebcc633b8c832b42d84339af44af5"
+    },
+    {
+      "id": "fresh-source-receipts",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-r3/receipts.json",
+      "version": "sha256:414496127cf6380adf1512e4bbf10ae0a9e6cfb23efc8b66379ba06e801c1a73",
+      "sha256": "414496127cf6380adf1512e4bbf10ae0a9e6cfb23efc8b66379ba06e801c1a73"
+    },
+    {
+      "id": "hfs-test0-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-r3/hfs-test0-metadata.json",
+      "version": "sha256:ea31f3dbd7dfaaee846658b72d1b74ac6ce87b4bcb71b5de53ae70fc78db5be4",
+      "sha256": "ea31f3dbd7dfaaee846658b72d1b74ac6ce87b4bcb71b5de53ae70fc78db5be4"
+    },
+    {
+      "id": "hfs-test0-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-r3/hfs-test0-packages.txt",
+      "version": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "sha256": "0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "id": "hfs-test1-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-r3/hfs-test1-metadata.json",
+      "version": "sha256:2a1b4a4b736b1a2e019bd2ec9c1427f3f58546fab33e58929d9f435e7e754eb4",
+      "sha256": "2a1b4a4b736b1a2e019bd2ec9c1427f3f58546fab33e58929d9f435e7e754eb4"
+    },
+    {
+      "id": "hfs-test1-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-r3/hfs-test1-packages.txt",
+      "version": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "sha256": "0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "id": "hfs-test2-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-r3/hfs-test2-metadata.json",
+      "version": "sha256:a0af03fae79779c2bc9c713f0689dfa7443a23c44ad30a64bc6ffe1280aab24b",
+      "sha256": "a0af03fae79779c2bc9c713f0689dfa7443a23c44ad30a64bc6ffe1280aab24b"
+    },
+    {
+      "id": "hfs-test2-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-r3/hfs-test2-packages.txt",
+      "version": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "sha256": "0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "id": "freebsd-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-r3/freebsd-metadata.json",
+      "version": "sha256:7ccec580e918ee8d3f6b12bb7b429091316c2d99ba87d21b6f5158dc4bbc47ea",
+      "sha256": "7ccec580e918ee8d3f6b12bb7b429091316c2d99ba87d21b6f5158dc4bbc47ea"
+    },
+    {
+      "id": "freebsd-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-r3/freebsd-packages.txt",
+      "version": "sha256:247ccbbb465faa1a9be2c53cbd17466ec841a6e513c2331c005100e1db3659f8",
+      "sha256": "247ccbbb465faa1a9be2c53cbd17466ec841a6e513c2331c005100e1db3659f8"
+    }
+  ],
+  "tests": [
+    {
+      "name": "native-single-node",
+      "seed": 0
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+native gate incomplete: remote/transport exit 255: Connection timed out during banner exchange
+; preserve resources; inspect guest run roots, processes, mounts and local evidence
