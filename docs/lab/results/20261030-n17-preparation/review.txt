@@ -1,0 +1,27 @@
+Native run 20261030-n17 / FRESH R17 metadata and NEW clean ceb19e8 binaries
+Canonical hash: 5ff915e650738e656cd7cc5ad21dad9f2a112083c351601c83c408aa4910afec
+Created 2026-10-30T16:37:47Z; expires 2026-10-31T16:37:47Z.
+
+ROOT owns authorization and execution. Worker prepared offline only: no remote,
+approval/state/run/tracked edit. Fresh R17 source162854 follows N16 normal stop
+16:20:34.490385939UTC; accepted/proof pins verified, R1 CLEAN committed5c21dce.
+Exact source GUID/written0 guards remain; pruning or drift fails closed.
+NEW actual clean ceb19e842d2f53d22ebfc64f7fdcc4c44a3b593b FreeBSD amd64 CGO0
+native-binaries-20261030-n17-r17 only; both ELF9/SHA/size/VCS modified=false and
+actual build receipt verified. No old c946 binary reuse.
+
+N16 root direct/buffered required cases passed, establishing sy3 validation;
+unprivileged append still timed out, remaining nine fixtures did not run.
+The new fixed-array optimization has local CPU evidence; native performance
+cause/fix remains unproven. uy3 SSH cause remains unknown with fail-closed
+handling unchanged; no new claim or artificial clean-matrix dependency.
+Exact normalized N16 targets/profile/budget/resources/tests/steps/disruptions
+unchanged:12calls,seed0,5220s/87min,disk2.25GiB,logicalIO48MiB,evidence64MiB,
+retention168h,max_attempts1,setup/test collection gate,normal restoration.
+
+ROOT actual survey21001/e786f6 rc0 completed16:36:37.500844UTC admitted n17 with
+subsetb7d919f3e7e4c06d4dea551c1a7b7d72481b0f2d319df350634e829a367d8528.
+Actual receipt/source/stdout2731B/stderr444B hashes verified before finalizing.
+Finalizer/cached Go planner/30pin validator/exact scope passed. Detailed receipts:
+offline-gates-20261030-n17-r17.json; canonical-plan-validation-20261030-n17-r17.json.
+No native acceptance inferred; ky3 acceptance remains pending.

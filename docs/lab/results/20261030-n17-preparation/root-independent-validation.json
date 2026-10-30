@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-10-30T16:38:15.937771+00:00",
+  "root_independent_validation": "PASS",
+  "canonical_hash": "5ff915e650738e656cd7cc5ad21dad9f2a112083c351601c83c408aa4910afec",
+  "artifact_pins": 30,
+  "scope_vs_n16": "identical bounds except fresh paths/source and binary pins; fresh R17 metadata and newly built clean ceb19e8 binaries",
+  "survey_subset_sha256": "b7d919f3e7e4c06d4dea551c1a7b7d72481b0f2d319df350634e829a367d8528",
+  "new_candidate_source_commit": "ceb19e842d2f53d22ebfc64f7fdcc4c44a3b593b",
+  "binary_vcs_clean": true,
+  "outer_test_selections": 1,
+  "native_behavior_calls": 12,
+  "state_execution_evidence_approval_absent": true,
+  "native_change": "fixed-width UUID/Hash bulk wire encoding; exact compatibility and local R1/full9 checks pass, native append acceptance pending",
+  "latest_user_direction": "continue all tasks"
+}

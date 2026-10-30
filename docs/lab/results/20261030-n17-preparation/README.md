@@ -40,3 +40,14 @@ payloads, binaries, keys, approval or native run state are included.
 Snapshot pruning or source writes can invalidate admission. A future native
 plan must retain fail-closed checks and requires its own applicable approval.
 No native plan or test was created by this preparation.
+
+## Reviewed replacement run
+
+Canonical plan `5ff915e650738e656cd7cc5ad21dad9f2a112083c351601c83c408aa4910afec`
+uses fresh R17 metadata and new actual clean ceb19e8 FreeBSD binaries. The
+UUID/hash encoding improvement preserves bytes, validation, full history checks
+and all I/O/barriers; local review and checks passed, but native append acceptance
+is pending. Actual read-only admission and all thirty artifact checks passed.
+Twelve fixtures, the eight-second case bound, 87-minute outer budget, 2.25 GiB
+disk, 48 MiB logical I/O and normal restoration remain unchanged. No native or
+SSH-cause conclusion follows from this preparation.
