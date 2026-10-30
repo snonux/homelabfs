@@ -39,3 +39,13 @@ binaries, keys, approval and native run state are excluded.
 Preparation gives no filesystem acceptance result. Snapshot pruning, writes or
 another host restart can invalidate admission; future native plans must retain
 fail-closed source checks.
+
+## Reviewed replacement run
+
+Canonical plan `da066e0fc5b4cb946aa9eba09ca01fd53436c82b055c71a32e2695217b279c1c`
+uses new clean c946ac5 FreeBSD binaries including the reviewed process-exit
+retirement fix. Actual read-only admission and offline plan checks passed.
+Twelve fixtures, seed zero, eight-second case bound, 87-minute outer budget,
+2.25 GiB disk, 48 MiB logical I/O and normal restoration are unchanged.
+Native lock and unprivileged append acceptance remain pending execution.
+See the plan, review and independent validation records in this directory.

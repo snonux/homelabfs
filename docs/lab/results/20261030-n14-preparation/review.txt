@@ -1,0 +1,25 @@
+Native run 20261030-n14 / FRESH R15
+Canonical hash: da066e0fc5b4cb946aa9eba09ca01fd53436c82b055c71a32e2695217b279c1c
+Created 2026-10-30T15:54:31Z; expires 2026-10-31T15:54:31Z.
+
+ROOT owns standing bounded nonproduction authorization and execution. Worker
+prepared offline only: no remote/approval/state/run/tracked edit.
+
+NEW actual clean c946ac511fb755ad6786b6e13d4d65688b3d52ea FreeBSD amd64 CGO0
+binaries and fresh R15 metadata only; binary SHA/size/ELF9/VCS modified=false
+and clean receipt verified. sy3 explicit owned-process retirement fix a36d4a4
+passed local checks; native acceptance remains pending. N13 holder PID evidence
+does not establish a kernel callback cause. ky3 unprivileged validation pending.
+
+Fresh R15 zrepl_20261030_152854_000 follows N13 normal lab stop. Accepted proof
+and normal cleanup verified; source pruning/drift still fails closed.
+Exact normalized N13 targets/budget/resources/tests/steps/disruptions unchanged:
+12 calls, seed0, 5220s/87min, disk2.25GiB, logicalIO48MiB, evidence64MiB,
+retention168h, max_attempts1, exact setup/test collection gate, normal restoration.
+
+ROOT actual survey10980/363d7a exit0 completed15:52:52.518UTC admitted n14;
+subset3bacd8e647413ba8231bf050626f4f022b09cd0db333d65db3a94db5f81e1f6a.
+Raw stdout2732B/stderr444B/receipt hashes verified. Actual offline finalizer,
+cached Go planner, 30pin validator and exact scope verification passed.
+Detailed pins: canonical-plan-validation-20261030-n14-r15.json.
+No native acceptance inferred; no approval file created by worker.

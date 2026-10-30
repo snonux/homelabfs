@@ -1,0 +1,24 @@
+{
+  "source": "Actual worker subprocess.run calls in exec chunk1d10fe; all returncodes asserted zero; per-command wall timestamps not captured",
+  "finalizer": {
+    "returncode": 0,
+    "stdout_path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/finalizer-20261030-n14-r15.stdout",
+    "stdout_sha256": "816329d5f709a5ffc0ed44b684d14fbd4016105d886d5a11420f099b1339745c",
+    "stderr_path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/finalizer-20261030-n14-r15.stderr",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "canonical-planner": {
+    "returncode": 0,
+    "stdout_path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/canonical-planner-20261030-n14-r15.stdout",
+    "stdout_sha256": "e5bb84631a850e093cfd2e39b39782487e219552dc31860cfa5f063541917bd7",
+    "stderr_path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/canonical-planner-20261030-n14-r15.stderr",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "offline-validator": {
+    "returncode": 0,
+    "stdout_path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-validator-20261030-n14-r15.stdout",
+    "stdout_sha256": "5efadc72e58e68b6fb27e6b8064c579c28fdc65684ebfe599179e7219bbbdc21",
+    "stderr_path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-validator-20261030-n14-r15.stderr",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}
