@@ -239,3 +239,14 @@ running and all four FreeBSD guests stopped; failed run resources remain for
 inspection. Paul also confirmed standing approval for bounded non-production
 tests and their planned graceful lab lifecycle. Critical or dangerous operations
 and production changes remain outside that authorization.
+
+The standing-authorized [n7 attempt](lab/results/20261030-n7/) mounted the new
+candidate and ran its first root/direct fixture. Nine checks passed, including
+permissions, sync, append, locking and normal unmount. The namespace case failed
+at `ftruncate` with EOPNOTSUPP; the remaining eleven fixtures were not started.
+Task `cy3` adds atomic native truncate/timestamp selection without changing the
+existing journal format. The exact N7 request mask was not captured; kernel
+source and local callback regressions explain the previously rejected forms.
+All original collection, cleanup, guest shutdown and Rocky restoration/readiness
+steps passed. The report retains `complete=true`, `success=false`; failed
+resources and raw evidence remain. This does not complete the native matrix.

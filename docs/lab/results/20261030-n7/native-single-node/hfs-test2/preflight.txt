@@ -1,0 +1,10 @@
+FreeBSD hfs-test2.test 15.1-RELEASE FreeBSD 15.1-RELEASE releng/15.1-n283562-96841ea08dcf GENERIC amd64
+  pool: hfsdata2
+ state: ONLINE
+config:
+
+	NAME             STATE     READ WRITE CKSUM
+	hfsdata2         ONLINE       0     0     0
+	  gpt/hfs-data2  ONLINE       0     0     0
+
+errors: No known data errors
