@@ -38,3 +38,14 @@ payloads, binaries, keys, approval or native run state are included.
 
 Snapshot pruning or source writes can invalidate admission. A future native
 plan must retain fail-closed checks and requires its own applicable approval.
+
+## Reviewed replacement run
+
+Canonical plan `20bb431fc9fba1ea3f7455ef815e2b7fd9deb04ddb486b70a47f4e9585e1f6f6`
+uses the fresh R16 metadata and the same actual clean c946ac5 FreeBSD binaries
+from N14. Runtime source files are unchanged; no new binary build is claimed.
+Actual read-only admission and all thirty artifact checks passed. The twelve
+fixtures, eight-second case bound, 87-minute outer budget, 2.25 GiB disk,
+48 MiB logical I/O and normal restoration remain unchanged. Native acceptance
+is pending. SSH cause remains unresolved; a separate bounded passive packet
+summary capture may observe transport timing without changing run operations.

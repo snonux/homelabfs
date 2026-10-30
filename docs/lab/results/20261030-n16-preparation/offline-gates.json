@@ -1,0 +1,42 @@
+{
+  "finalizer": {
+    "argv": [
+      "python3",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/finalize-plan-input-20261030-n16-r16.py",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/planning-admission-survey-20261030-n16-r16.json"
+    ],
+    "started_at": "2026-10-30T16:17:55.676457+00:00",
+    "finished_at": "2026-10-30T16:17:55.715626+00:00",
+    "returncode": 0,
+    "stdout_sha256": "c2c77aa78df292051062f478039a887dc07da6ec92e9a5dae11655403b8ff6c5",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "canonical-planner": {
+    "argv": [
+      "/home/paul/tmp/codex/hfs-cx3-gates-20261030-r1/hfs-lab",
+      "plan",
+      "--input",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/plan-input-20261030-n16-r16.json",
+      "--out",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/reviewed-plan-20261030-n16-r16.json"
+    ],
+    "started_at": "2026-10-30T16:17:55.715837+00:00",
+    "finished_at": "2026-10-30T16:17:55.734369+00:00",
+    "returncode": 0,
+    "stdout_sha256": "03caa359a54ae7d1d608bad79732f0d3f80365ff119cf7dcf643b79a36a35ea8",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "offline-validator": {
+    "argv": [
+      "python3",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/validate-plan-20261030-n16-r16.py",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/reviewed-plan-20261030-n16-r16.json",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-spec-20261030-n16-r16.json"
+    ],
+    "started_at": "2026-10-30T16:17:55.734560+00:00",
+    "finished_at": "2026-10-30T16:17:55.843252+00:00",
+    "returncode": 0,
+    "stdout_sha256": "f2af651edb78487cded60721fb3c0258860faad79a78210ecbc77234680ccac5",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

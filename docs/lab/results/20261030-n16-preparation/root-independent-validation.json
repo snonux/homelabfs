@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-10-30T16:18:20.362248+00:00",
+  "root_independent_validation": "PASS",
+  "canonical_hash": "20bb431fc9fba1ea3f7455ef815e2b7fd9deb04ddb486b70a47f4e9585e1f6f6",
+  "artifact_pins": 30,
+  "scope_vs_n15": "identical bounds except fresh paths/source artifact pins; fresh R16 metadata and same actual c946ac5 binaries without build relabeling",
+  "survey_subset_sha256": "d61d057409413404826952a8706197f43fa369acaaab553b9e85546e379c2f36",
+  "new_candidate_source_commit": "c946ac511fb755ad6786b6e13d4d65688b3d52ea",
+  "binary_vcs_clean": true,
+  "outer_test_selections": 1,
+  "native_behavior_calls": 12,
+  "state_execution_evidence_approval_absent": true,
+  "native_lock_fix": "explicit exact-session process-owner retirement; local reviewed regressions pass, native acceptance pending",
+  "latest_user_direction": "continue all tasks"
+}

@@ -1,0 +1,26 @@
+Native run 20261030-n16 / FRESH R16 metadata, HONEST N14 binary reuse
+Canonical hash: 20bb431fc9fba1ea3f7455ef815e2b7fd9deb04ddb486b70a47f4e9585e1f6f6
+Created 2026-10-30T16:17:55Z; expires 2026-10-31T16:17:55Z.
+
+ROOT owns authorization and execution. Worker prepared offline only: no remote,
+approval/state/run/tracked edit. Fresh R16 metadata source ordinary160854 follows
+N15 normal lab stop16:01:38.457909426UTC; accepted/proof pins verified. Metadata
+R1 CLEAN committed19649bc. Exact source GUID/written0 guards remain; pruning or
+drift fails closed. Native/SSH failure causes remain unknown; no fix claim.
+
+SAME actual clean c946ac5 FreeBSD amd64 CGO0 binaries built for N14 reused with
+exact artifact objects/SHA/size/cleanreceipt verified. ROOT confirms cmd/internal/
+go.mod/go.sum unchanged; no new build or extraction-by-planner claim.
+Exact normalized N15 targets/profile/budget/resources/tests/steps/disruptions
+unchanged:12calls,seed0,5220s/87min,disk2.25GiB,logicalIO48MiB,evidence64MiB,
+retention168h,max_attempts1,setup/test collection gate,normal restoration.
+
+ROOT actual survey36829/1a4fee rc0 completed16:17:27.430681UTC admitted n16 with
+subsetd61d057409413404826952a8706197f43fa369acaaab553b9e85546e379c2f36.
+Actual receipt/source/stdout2731B/stderr444B hashes verified before finalizing.
+Initial local prepare lacked host-manifest file and stopped before plan/policy
+writes; exact captured inventory packages field was rederived and SHA verified,
+firstfailure preserved, local-r2 prepare/validator passed. Finalizer/cached Go
+planner/30pin validator/exact scope passed. Detailed receipts: offline-gates-
+20261030-n16-r16.json; canonical-plan-validation-20261030-n16-r16.json.
+No native acceptance inferred; sy3/ky3 native validation pending.
