@@ -1,0 +1,92 @@
+Native replacement run 20261030-n7 / R9
+Canonical plan hash: 8d2b54e5e4935cb4201b4d79c299230ca5a67813169fc71fc6f8d76dda1cb01c
+Created 2026-10-30T11:44:20Z; expires 2026-10-31T11:44:20Z.
+
+Prepared concrete packet for ROOT review and recording the user's latest standing
+bounded nonproduction test authorization. No new per-run question is required
+within this unchanged profile. This worker created no approval, controller state
+or execution evidence and performed no remote operation. Critical/dangerous
+scope changes, production, forced lifecycle actions and sink changes remain
+excluded. ROOT owns recording actual authorization and all execution.
+
+N6 report remains complete=true/success=false. Its setup, collection, normal
+cleanup, guest shutdown, Rocky restoration and readiness passed. The first
+root/direct fixture failed at mount setup: mount_fusefs rejected the option
+reported as dev; no behavior case ran. Historical failures are preserved.
+
+N7 includes reviewed ay3 commit00861e9: platform-specific mount options retain
+mandatory default_permissions and nosuid; Linux retains nodev while FreeBSD
+omits the unsupported option. Device nodes remain unavailable through callbacks
+and validated metadata. Local regression/static/cross-build checks do not
+establish native compatibility. The actual new native run must supply that gate.
+
+Fresh binaries were built by ROOT from actual clean MAIN revision
+733d843b95a8680e118330e3ce3eef0b94447747 after by3 proof commit, including ay3
+and intervening production Go changes. These are new FreeBSD amd64 CGO0 builds,
+not reused127ecc9 or relabeled old artifacts. Independently verified1db931:
+ELF/command/platform, SHA/size and embedded vcs.revision exact733d843 with
+vcs.modified=false. Clean-build receipt SHA
+063fe76f068fc617eee446c294f45581987db8674fdf3d1e3ffff48addb63ec6.
+Daemon SHA64335153717a3d045380900bd2aa74714a6c55fc40d3ac0cda8ea3d4f3004cf8.
+Helper SHA1a11aa3939145b2e81a24d08f4c417e224897e72e3bd5738ac0c2f6695c3589d.
+Only native-binaries-20261030-n7-r9-r2 is used. The rejected first isolated
+worktree attempt lacked VCS metadata and is preserved in its separate no-vcs
+directory; it was rejected before helper build and is absent from the plan.
+
+Scope remains Stage1 native-single-node-v1 in the three existing FreeBSD guests
+on f3, FUSE inside each guest on its own ZFS. One outer test-driver selection
+executes12 sequential calls: root/unprivileged x direct/buffered x3, seed0.
+Exact targets/budget/tests/resources/steps match n3/R5 original scope and n6/R8
+when normalizing only new run/revision paths. No distributed failover, 9p,
+production consumer, package installation or replication-sink operation.
+
+Lifecycle: read-only admission; clean Rocky stop; guarded native guest start;
+strict inventory/pinned SSH/kernel readiness; setup/test; bounded collection;
+normal owning-daemon unmount/quiescence; normal guest stop; Rocky start and
+positive pinned SSH/kernel restoration. Unknown completion blocks dependent
+work/restoration; preserve resources. No force or uncertain retry to success.
+Every step max_attempts1; collection applies exactly after setup/test attempts.
+
+Maximum total5220s/87min = runtime4260 + cleanup600 + restoration360.
+Initial preflight240s is read-only; maximum subsequent disruption4980s/83min.
+Disk2304MiB/2.25GiB;12resourcecaps2214592512B;logicalIO48MiB;evidence64MiB;
+retention168h; native guests6GiB/6CPU plus hostheadroom4GiB.
+Root /var/tmp/hfs-run-20261030-n7; datasets only
+hfsdataN/{data,journal,control}/hfs-run-20261030-n7.
+State /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/controller-state-20261030-n7
+Evidence /home/paul/git/homelabfs/docs/lab/results/20261030-n7
+
+Actual fresh R9 metadata by3 uses ordinary source zrepl_20261030_111853_000,
+created after actual N6 clean lab stop11:07:32.549303428UTC. GUIDs native0/1/2/dev
+7321413065330358558/16941164421458250475/1170743081760444823/9096158960180844239.
+ROOT collector442a71/fixed20harvestf5e598 exit0; actual fresh reads plus normal
+exact-owned MD/UFS/four-source-automount cleanup and GUID/written0 rechecks.
+Accepted choices SHAf2467f94ac334810108747495b16e201a999d127ffd4dbe2deeba45dccadaa24.
+Size/cleanup proof SHA1f8f78f1573402a779808fe76aaa3c64c18dd82bc8eccd63afdd4903acac6fe6.
+All proof hashes and four DB hash/mode/size locally verified9deb73. No guest
+pool-health claim, holds or retention change. Native kernels15.1-RELEASE,
+dev15.0-RELEASE-p5; Rocky PID51221 with expected kernel/1109RPM manifest and
+actual integerUID0. A reboot, snapshot pruning or written drift invalidates
+admission; no equality inference or zero-written waiver.
+
+ROOT actual planning-only survey session54306 terminal3098e4 exit0 completed
+11:43:19UTC: admitted RockyRunning/all4FreeBSDStopped,0active sessions,
+122266988544bytes disk available. Final exact targets/budget/policy subsetSHA
+4f33f20c28b96569f837aae0c0ed530e1e13491fa09cf1f798b385d7278e62a1.
+Actual rawstdout2730B and stderr444B/receipt preserved separately; stderr is
+exactly two known OpenSSH KEX warning triplets. Worker independently verified
+stream hashes/admitted/subset6c6d5f. No VM/workload/controller-state operation.
+
+Actual local finalizer/cached Go hfs-lab plan/final offline verifier6680bf all0.
+Canonical hash agrees with actual Go output and real context validators. All30
+artifact hashes/nonsymlink files, phase sums,12caps and scope comparisons passed
+4c7f2d. Offline validator refuses Transport/Driver/command execution while
+checking policy/readiness and all four native outer phases. Exact argv/streams/
+returncodes in offline-gates-20261030-n7-r9.json; full validation/pins in
+canonical-plan-validation-20261030-n7-r9.json. Approval/state/evidence absent.
+
+Preparation correction: initial local comparator9b69d1 normalized run IDs but
+omitted revision suffixes in native spec paths. It failed before report creation;
+corrected comparator9deb73 passed with no plan mutation. All original files and
+failed first-build artifacts remain. Python -B/sys.dont_write_bytecode prevented
+repository caches; main clean at final offline verification.

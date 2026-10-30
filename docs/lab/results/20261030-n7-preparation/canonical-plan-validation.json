@@ -1,0 +1,231 @@
+{
+  "scope": "Final OFFLINE N7 packet; actual planning survey separately performed by ROOT; no approval/state/execution",
+  "plan_hash": "8d2b54e5e4935cb4201b4d79c299230ca5a67813169fc71fc6f8d76dda1cb01c",
+  "created": "2026-10-30T11:44:20Z",
+  "expires": "2026-10-31T11:44:20Z",
+  "actual_gates_terminal": "6680bf exit0; finalizer/GoPlan/offlinevalidator all0; exact argv/streams/hash/rc in offline-gates-20261030-n7-r9.json",
+  "all_30_artifact_SHA_nonsymlink": "PASS",
+  "scope_comparison": "PASS exact n3/R5 and n6/R8 targets,budget,tests,resources,steps after full run/revision path normalization",
+  "outer_tests": 1,
+  "actual_behavior_calls": 12,
+  "seed": 0,
+  "deadline_sums": {
+    "runtime": 4260,
+    "cleanup": 600,
+    "restoration": 360
+  },
+  "total_seconds": 5220,
+  "resources": 12,
+  "resource_caps_bytes": 2214592512,
+  "collection_gate": "exact setup/test applies_after; max_attempts1 every step",
+  "binary_build_revision": "733d843b95a8680e118330e3ce3eef0b94447747",
+  "binary_build_clean": true,
+  "independent_binary_SHA_size_ELF_VCS_verification": "actual1db931 exit0; fresh clean733d843 mandatory; old127/no-vcs attempt excluded",
+  "build_receipt_sha256": "063fe76f068fc617eee446c294f45581987db8674fdf3d1e3ffff48addb63ec6",
+  "R9_proofs_and_4DB_hash_mode_size": "PASS prior actual9deb73 candidate proof; source receipts preserved",
+  "planning_survey_actual_session": 54306,
+  "planning_survey_actual_terminal": "3098e4",
+  "planning_survey_exit": 0,
+  "planning_survey_exact_subset_sha256": "4f33f20c28b96569f837aae0c0ed530e1e13491fa09cf1f798b385d7278e62a1",
+  "planning_survey_streams": "independently verified6c6d5f; rawstdout2730B/stderr444B two known OpenSSH KEXwarning triplets",
+  "state_evidence_approval_created": false,
+  "authorization": "ROOT records latest actual standing user authorization for unchanged bounded disposable nonproduction profile; no new per-run question required within that scope",
+  "files": {
+    "native-spec-20261030-n7-r9.json": "e8b826bc5e60c9f00175a2adf1d67e064ac0ffe0107b670cd438e461d11144cd",
+    "native-fragment-20261030-n7-r9.json": "ee2a815df9b7d1dad2676622710fd252b4c7182815cee09dabcc03dfbeb2ef38",
+    "plan-input-20261030-n7-r9.UNREADY.json": "f9e44e6fdf7e6e0cff39bc9d015013f50a544dab0f158725982740870f105772",
+    "plan-input-20261030-n7-r9.json": "2a083b8c2d65d71a1b7323af920aa12ddd228c97b6addcd54fd40000e711f22c",
+    "reviewed-plan-20261030-n7-r9.json": "0d2bb2a7c805fcaea1e83edb1918a4133b055285bccb1565bf46cd38dd8120e3",
+    "preflight-policy-20261030-n7-r9.json": "de9aa2e2b9653548d8c8048c5f6598adf05452ccf0725fd5f9816bbf8ddc4b8b",
+    "prepare-plan-20261030-n7-r9.py": "f12b4da7ff78e149476372f2c05f6ac67e28c5c727b45e706735a466291d4af8",
+    "finalize-plan-input-20261030-n7-r9.py": "82b66aa6d72121d46b669a995de6c2b49445fef30530bf2f0b1b26bcb8e735f6",
+    "validate-plan-20261030-n7-r9.py": "6bb7a77deeb144ac5cd7f3fb1b7466c66bab304b6bb7851a69b5c3dd43cb9df1",
+    "planning-survey-20261030-n7-r9.py": "a5908e098bee6c61898cb26243365b81f2a367d1a9933a0737f8765311e7ddca"
+  },
+  "artifact_checks": [
+    {
+      "id": "homelabfs",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-binaries-20261030-n7-r9-r2/homelabfs",
+      "version": "sha256:64335153717a3d045380900bd2aa74714a6c55fc40d3ac0cda8ea3d4f3004cf8",
+      "sha256": "64335153717a3d045380900bd2aa74714a6c55fc40d3ac0cda8ea3d4f3004cf8"
+    },
+    {
+      "id": "hfs-behavior",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-binaries-20261030-n7-r9-r2/hfs-behavior",
+      "version": "sha256:1a11aa3939145b2e81a24d08f4c417e224897e72e3bd5738ac0c2f6695c3589d",
+      "sha256": "1a11aa3939145b2e81a24d08f4c417e224897e72e3bd5738ac0c2f6695c3589d"
+    },
+    {
+      "id": "native-entry",
+      "path": "/home/paul/git/homelabfs/tools/lab/check-native-single-node.sh",
+      "version": "sha256:fc95ec798ad87c287dd24973ccc6b807170a1738bc3acb34b118bc3202199f59",
+      "sha256": "fc95ec798ad87c287dd24973ccc6b807170a1738bc3acb34b118bc3202199f59"
+    },
+    {
+      "id": "native-driver",
+      "path": "/home/paul/git/homelabfs/tools/lab/native-single-node.py",
+      "version": "sha256:0a9bda2daba22e4094b071e4993c33e08068c1e1671e648f3c9063e966a80322",
+      "sha256": "0a9bda2daba22e4094b071e4993c33e08068c1e1671e648f3c9063e966a80322"
+    },
+    {
+      "id": "native-guest",
+      "path": "/home/paul/git/homelabfs/tools/lab/native-single-node-guest.sh",
+      "version": "sha256:77e6ae7fc2cc2b24b1d18b483126a40a8f81f71bb40607e68a4973dd43f140fd",
+      "sha256": "77e6ae7fc2cc2b24b1d18b483126a40a8f81f71bb40607e68a4973dd43f140fd"
+    },
+    {
+      "id": "native-host-keys",
+      "path": "/home/paul/git/homelabfs/docs/lab/f3-known_hosts",
+      "version": "sha256:d2d831e861d6969dd79d3a61b0c0e3af74d4d5282f660d791f210cada4d4ab6f",
+      "sha256": "d2d831e861d6969dd79d3a61b0c0e3af74d4d5282f660d791f210cada4d4ab6f"
+    },
+    {
+      "id": "native-spec",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-spec-20261030-n7-r9.json",
+      "version": "native-single-node-v1",
+      "sha256": "e8b826bc5e60c9f00175a2adf1d67e064ac0ffe0107b670cd438e461d11144cd"
+    },
+    {
+      "id": "preflight",
+      "path": "/home/paul/git/homelabfs/tools/lab/prepared-lab-preflight.py",
+      "version": "sha256:dee82ab9471edc39d8738495b32d4ae195c29ae8d854a87a3bb64645dacae761",
+      "sha256": "dee82ab9471edc39d8738495b32d4ae195c29ae8d854a87a3bb64645dacae761"
+    },
+    {
+      "id": "vms",
+      "path": "/home/paul/git/homelabfs/tools/lab/vms.sh",
+      "version": "sha256:106dae1dd2730a729341e80b9c5204a1c51ce679ffcce3bd96b01f8d112a06e3",
+      "sha256": "106dae1dd2730a729341e80b9c5204a1c51ce679ffcce3bd96b01f8d112a06e3"
+    },
+    {
+      "id": "native-readiness",
+      "path": "/home/paul/git/homelabfs/tools/lab/wait-lab-ready.py",
+      "version": "sha256:3dd2f4ef0f8794907f31a9a04f2eee57b83ca9d8efeccff5af1fa30e96757110",
+      "sha256": "3dd2f4ef0f8794907f31a9a04f2eee57b83ca9d8efeccff5af1fa30e96757110"
+    },
+    {
+      "id": "host-known-keys",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/host-known_hosts",
+      "version": "sha256:84cd53571b39bbb29dfea020b95c3ff296bf09bce22587b860a37d239384ff8f",
+      "sha256": "84cd53571b39bbb29dfea020b95c3ff296bf09bce22587b860a37d239384ff8f"
+    },
+    {
+      "id": "all-guest-known-keys",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/guest-known_hosts",
+      "version": "sha256:e25a8ba415e9c882f44976bc61bcb5a7e3ad8901dea78a1e68b77db285e31a54",
+      "sha256": "e25a8ba415e9c882f44976bc61bcb5a7e3ad8901dea78a1e68b77db285e31a54"
+    },
+    {
+      "id": "preflight-policy",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/preflight-policy-20261030-n7-r9.json",
+      "version": "sha256:de9aa2e2b9653548d8c8048c5f6598adf05452ccf0725fd5f9816bbf8ddc4b8b",
+      "sha256": "de9aa2e2b9653548d8c8048c5f6598adf05452ccf0725fd5f9816bbf8ddc4b8b"
+    },
+    {
+      "id": "host-package-evidence",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-host-packages.txt",
+      "version": "sha256:9e84ff4f459c6388e4ad3f5d6575ec7132da75f1a49ac114cdd6b4a6ebe04285",
+      "sha256": "9e84ff4f459c6388e4ad3f5d6575ec7132da75f1a49ac114cdd6b4a6ebe04285"
+    },
+    {
+      "id": "planning-inventory",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-source-inventory-20261030-n7.stdout",
+      "version": "sha256:83ccc5c03debb5ad8aa2440493d705991593a138256e1c3be6a2e0ce403b90da",
+      "sha256": "83ccc5c03debb5ad8aa2440493d705991593a138256e1c3be6a2e0ce403b90da"
+    },
+    {
+      "id": "rocky-current-observation",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-rocky-current.json",
+      "version": "sha256:da66c62dded4032af168a76188a789f5554ee8e95e5d6d5f83c00e8fa0970ca3",
+      "sha256": "da66c62dded4032af168a76188a789f5554ee8e95e5d6d5f83c00e8fa0970ca3"
+    },
+    {
+      "id": "rocky-current-package-evidence",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-rocky-packages.txt",
+      "version": "sha256:4b4382416e417bea3b754c99c492e86b72257b67820aa751181420d8539533b7",
+      "sha256": "4b4382416e417bea3b754c99c492e86b72257b67820aa751181420d8539533b7"
+    },
+    {
+      "id": "metadata-before-resource-guard",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-before-execution-guard.json",
+      "version": "sha256:7b6980021951883790caeeac5ab4fc6a7590ea7691b727b47206ef8f65b2d3ff",
+      "sha256": "7b6980021951883790caeeac5ab4fc6a7590ea7691b727b47206ef8f65b2d3ff"
+    },
+    {
+      "id": "fresh-source-cleanup-proof",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n7-r9/complete.json",
+      "version": "sha256:d098be7440ea69e1400b70c473fda1363706c16e9a31bff04cdca029bf692e41",
+      "sha256": "d098be7440ea69e1400b70c473fda1363706c16e9a31bff04cdca029bf692e41"
+    },
+    {
+      "id": "fresh-source-receipts",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n7-r9/receipts.json",
+      "version": "sha256:727cf15cc75c8051c8711f90c11f676930be32b858a5505129eea3310645590f",
+      "sha256": "727cf15cc75c8051c8711f90c11f676930be32b858a5505129eea3310645590f"
+    },
+    {
+      "id": "hfs-test0-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n7-r9/hfs-test0-metadata.json",
+      "version": "sha256:a075dbef660298a10580a39400a9e757dd7fe430e40ad889d32effb28c3e8831",
+      "sha256": "a075dbef660298a10580a39400a9e757dd7fe430e40ad889d32effb28c3e8831"
+    },
+    {
+      "id": "hfs-test0-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n7-r9/hfs-test0-packages.txt",
+      "version": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "sha256": "0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "id": "hfs-test1-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n7-r9/hfs-test1-metadata.json",
+      "version": "sha256:1d0b1017cb3d50778e5b5f4c2378b1dd0ea7c2df786bd70fac9c169baa006dcd",
+      "sha256": "1d0b1017cb3d50778e5b5f4c2378b1dd0ea7c2df786bd70fac9c169baa006dcd"
+    },
+    {
+      "id": "hfs-test1-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n7-r9/hfs-test1-packages.txt",
+      "version": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "sha256": "0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "id": "hfs-test2-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n7-r9/hfs-test2-metadata.json",
+      "version": "sha256:41db35cd3da0d5991bdc53e99cac932142a376aa66a30eda2801355769e57f3f",
+      "sha256": "41db35cd3da0d5991bdc53e99cac932142a376aa66a30eda2801355769e57f3f"
+    },
+    {
+      "id": "hfs-test2-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n7-r9/hfs-test2-packages.txt",
+      "version": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "sha256": "0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "id": "freebsd-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n7-r9/freebsd-metadata.json",
+      "version": "sha256:64549a993f62961afae57ac032b710a13419881ed00df6fab435f274799b6cdc",
+      "sha256": "64549a993f62961afae57ac032b710a13419881ed00df6fab435f274799b6cdc"
+    },
+    {
+      "id": "freebsd-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n7-r9/freebsd-packages.txt",
+      "version": "sha256:247ccbbb465faa1a9be2c53cbd17466ec841a6e513c2331c005100e1db3659f8",
+      "sha256": "247ccbbb465faa1a9be2c53cbd17466ec841a6e513c2331c005100e1db3659f8"
+    },
+    {
+      "id": "continued-source-proof",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-metadata-size-and-cleanup-proof.json",
+      "version": "sha256:1f8f78f1573402a779808fe76aaa3c64c18dd82bc8eccd63afdd4903acac6fe6",
+      "sha256": "1f8f78f1573402a779808fe76aaa3c64c18dd82bc8eccd63afdd4903acac6fe6"
+    },
+    {
+      "id": "planning-admission-survey",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/planning-admission-survey-20261030-n7-r9.json",
+      "version": "sha256:1f49406fbc5d3668c71c2fd846cf2789c05e9041e8a8f546a4752ee5650b13f4",
+      "sha256": "1f49406fbc5d3668c71c2fd846cf2789c05e9041e8a8f546a4752ee5650b13f4"
+    }
+  ],
+  "preparation_corrections": [
+    "First local comparison normalized run IDs but omitted revision suffixes on native spec paths; failed before report creation. Corrected comparator to normalize exact old/new run and revision paths; no plan mutations."
+  ],
+  "rejected_first_build": "native-binaries-20261030-n7-r9-no-vcs preserved by ROOT; absent VCS metadata rejected before helper; not used or relabeled"
+}

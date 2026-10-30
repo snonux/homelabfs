@@ -39,3 +39,28 @@ private keys, approval and native run state are excluded.
 These preparation receipts give no filesystem acceptance result. Source
 pruning, writes or another host restart can invalidate admission; the next
 native plan must retain its fail-closed source checks.
+
+## Replacement plan
+
+The finalized [plan](reviewed-plan.json) has canonical hash
+`8d2b54e5e4935cb4201b4d79c299230ca5a67813169fc71fc6f8d76dda1cb01c`.
+Created at 11:44:20 UTC, it expires 2026-10-31 at the same time. The actual
+read-only admission survey passed at 11:43:19 UTC and matches the final
+policy/targets/budget subset. Thirty artifact hashes, all real offline contexts,
+collection dependencies and unchanged scope/deadlines passed verification;
+root independently checked them again.
+
+Both new FreeBSD amd64/CGO-disabled binaries record actual clean source
+`733d843b95a8680e118330e3ce3eef0b94447747`, including the reviewed platform
+mount fix. An initial isolated-checkout build lacked required VCS metadata and
+was rejected; it is excluded from this plan. The old `127ecc9` binaries are
+also excluded.
+
+The [review](review.txt) retains twelve bounded synthetic fixture calls, the
+87-minute maximum, 2.25 GiB disk, 48 MiB logical I/O, normal cleanup and graceful
+Rocky restoration. Execution is covered by Paul's recorded standing approval
+for this bounded non-production profile. Critical or dangerous scope changes
+and production remain excluded. No n7 approval record, controller state or
+native execution evidence existed at packet publication; root records the
+standing authorization separately before execution. Source drift or pruning
+still fails closed at live admission.
