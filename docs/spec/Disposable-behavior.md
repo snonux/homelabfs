@@ -130,6 +130,28 @@ helper code; an approved supervising script must impose its own outer deadline
 and preserve/inspect remaining resources on failure. No success cleanup deletes
 the three roots. The script owns safe post-run collection and lifecycle work.
 
+The CLI helper emits bounded `behavior-append` JSON lines on stderr around the
+append case's open, each of sixteen 32-byte writes, fsync and close (at most 38
+lines per writer). Each includes the helper PID/UID, A/B marker, write index
+(`-1` for other operations), UTC timestamp, monotonic elapsed nanoseconds, phase
+and any returned errno/error. The native supervisor retains these in the
+fixture's `.stderr` evidence file independently of the reply pipe. A missing
+`.end` localizes the last observed boundary around the syscall wrapper, including
+its bounded EINTR retries; it does not prove the syscall remains blocked or
+distinguish kernel, daemon, storage, scheduling or diagnostic-output delay.
+Completed phases show whether progress continued across the case budget.
+Diagnostic output failure fails the case. Reply failures identify the helper
+index and whether send, receive or verification failed. The workload, oracle
+and eight-second bound are unchanged.
+
+This instrumentation follows N9's first unprivileged/direct append reply timeout
+at 8.0039 seconds. Root/direct append passed in 2.7686 seconds; unprivileged
+namespace and permission cases were already slower than their root counterparts.
+Those observations establish neither deadlock nor the timeout's cause. Local
+real-process FIFO checks distinguish blocked open from blocked write and retain
+both helpers' progress; successful append still passes the exact-content oracle.
+A new native run is required to diagnose N9 and validate any resulting fix.
+
 ## FreeBSD credential ABI
 
 Controlled participants support only FreeBSD **15.1-RELEASE** (including patch

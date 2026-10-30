@@ -142,19 +142,22 @@ func (r *run) cases(ctx context.Context) {
 func (r *run) append(ctx context.Context) error {
 	for i, marker := range []string{"A", "B"} {
 		if err := r.c.Clients[i].Send(ctx, Command{Op: "append", Data: marker}); err != nil {
-			return err
+			return fmt.Errorf("append helper %d marker %s send: %w", i, marker, err)
 		}
 	}
 	for i := range 2 {
 		reply, err := r.c.Clients[i].Receive(ctx)
 		if err != nil {
-			return err
+			return fmt.Errorf("append helper %d receive: %w", i, err)
 		}
 		if reply.Error != "" {
-			return fmt.Errorf("append helper: %s", reply.Error)
+			return fmt.Errorf("append helper %d: %s", i, reply.Error)
 		}
 	}
-	return r.call(ctx, 0, "verify-append")
+	if err := r.call(ctx, 0, "verify-append"); err != nil {
+		return fmt.Errorf("verify-append helper 0: %w", err)
+	}
+	return nil
 }
 
 func (r *run) locks(ctx context.Context) error {

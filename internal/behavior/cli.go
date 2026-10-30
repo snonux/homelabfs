@@ -37,7 +37,7 @@ func CLI(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	if *helper {
-		if err := Helper(ctx, os.Stdin, stdout); err != nil {
+		if err := serveHelper(ctx, os.Stdin, stdout, stderr); err != nil {
 			_, _ = fmt.Fprintln(stderr, err)
 			return 2
 		}

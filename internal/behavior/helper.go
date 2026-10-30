@@ -15,9 +15,10 @@ import (
 const pageBytes = 4096
 
 type helper struct {
-	root, work *os.File
-	lock       int
-	run        string
+	root, work  *os.File
+	lock        int
+	run         string
+	diagnostics io.Writer
 }
 
 // Helper serves trusted test requests with fixed credentials and no exec. Every
@@ -25,7 +26,11 @@ type helper struct {
 // that could resolve to a missing mount's underlying directory. Mmap runs here,
 // outside the daemon runtime. Payloads and names are restricted to synthetic data.
 func Helper(ctx context.Context, in io.Reader, out io.Writer) error {
-	h := &helper{lock: -1}
+	return serveHelper(ctx, in, out, nil)
+}
+
+func serveHelper(ctx context.Context, in io.Reader, out, diagnostics io.Writer) error {
+	h := &helper{lock: -1, diagnostics: diagnostics}
 	defer func() { _ = h.close() }()
 	decoder, encoder := json.NewDecoder(in), json.NewEncoder(out)
 	for {
@@ -103,7 +108,9 @@ func (h *helper) execute(c Command, reply *Reply) error {
 	case "mmap":
 		return mappedIO(fd)
 	case "append":
-		return appendRecords(fd, c.Data)
+		trace := newAppendDiagnostics(h.diagnostics, c.Data)
+		err := appendRecordsObserved(fd, c.Data, trace)
+		return errors.Join(err, trace.failure())
 	case "append-once":
 		return appendOnce(fd, c.Data)
 	case "verify-append":

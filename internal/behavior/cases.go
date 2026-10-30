@@ -277,25 +277,39 @@ func mappedIO(dir int) (err error) {
 }
 
 func appendRecords(dir int, marker string) (err error) {
+	return appendRecordsObserved(dir, marker, nil)
+}
+
+func appendRecordsObserved(dir int, marker string, trace *appendDiagnostics) (err error) {
 	if marker != "A" && marker != "B" {
 		return fmt.Errorf("unknown synthetic append marker")
 	}
+	trace.record("open.begin", -1, nil)
 	fd, err := openAt(dir, "append", unix.O_CREAT|unix.O_WRONLY|unix.O_APPEND|unix.O_NOFOLLOW, 0600)
+	trace.record("open.end", -1, err)
 	if err != nil {
 		return fmt.Errorf("open append: %w", err)
 	}
 	defer func() {
+		trace.record("close.begin", -1, nil)
 		closeErr := unix.Close(fd)
+		trace.record("close.end", -1, closeErr)
 		if closeErr != nil {
 			err = errors.Join(err, fmt.Errorf("close append: %w", closeErr))
 		}
 	}()
 	for i := range appendCount {
-		if err = writeFull(fd, []byte(appendRecord(marker, i)+"\n")); err != nil {
+		trace.record("write.begin", i, nil)
+		err = writeFull(fd, []byte(appendRecord(marker, i)+"\n"))
+		trace.record("write.end", i, err)
+		if err != nil {
 			return fmt.Errorf("append record %s/%d: %w", marker, i, err)
 		}
 	}
-	return syncFile(fd)
+	trace.record("fsync.begin", -1, nil)
+	err = syncFile(fd)
+	trace.record("fsync.end", -1, err)
+	return err
 }
 
 func verifyAppend(dir int) (err error) {
