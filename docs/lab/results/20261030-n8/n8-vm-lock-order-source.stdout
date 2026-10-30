@@ -1,0 +1,202 @@
+130-            _opts="${_opts} -u"
+131-        else
+132-            util::log "guest" "${_name}" "warning; utc time requested but not available pre FreeBSD 10.2"
+133-        fi
+134-    fi
+135-
+136-    # send bhyve output to bhyve.log if debug=yes
+137-    util::yesno "${_debug}" && _logpath="${VM_DS_PATH}/${_name}/bhyve.log"
+138-
+139-    # complete the boot disk path
+140-    [ -n "${_bootdisk}" ] && vm::get_disk_path "_bootdisk" "${_name}" "${_bootdisk}" "${_bootdisk_dev}"
+141-
+142-    # build bhyve device string
+143-    vm::bhyve_device_comports
+144-    vm::bhyve_device_basic
+145-    vm::bhyve_device_disks
+146-    vm::bhyve_device_networking
+147-    vm::bhyve_device_rand
+148-    vm::bhyve_device_passthru
+149-    vm::bhyve_device_fbuf
+150-    vm::bhyve_device_mouse
+151-    vm::bhyve_device_sound
+152-    vm::bhyve_device_console
+153-
+154:    vm::lock
+155-    util::log "guest" "${_name}" "booting"
+156-    cd /
+157-
+158-    while true; do
+159-
+160-        # destroy existing vmm
+161-        # freebsd seems happy to run a bhyveload/bhyve loop
+162-        # grub-bhyve doesn't seem to like it for a lot of users
+163-        # Peter says don't destroy in Windows instructions, so don't if in UEFI mode
+164-        if [ -e "/dev/vmm/${_name}" -a -z "${_uefi}" ]; then
+165-            bhyvectl --vm="${_name}" --destroy >/dev/null 2>&1
+166-            if [ $? -ne 0 ]; then
+167-                util::log "guest" "${_name}" "fatal; failed to destroy existing vmm device"
+168-                _exit=15
+169-                break
+170-            fi
+171-            sleep 1
+172-        fi
+173-
+174-        # run any prestart script while guest is fully down
+175-        vm::prestart
+176-
+177-        # add install iso or disk image
+178-        if [ -n "${_iso}" ]; then
+179-            if echo "${_iso}" | grep -iqs '.iso$'; then
+180-                _iso_dev="-s ${_install_slot}:0,ahci-cd,${_iso},ro,bootindex=1"
+181-            else
+182-                _iso_dev="-s ${_install_slot}:0,ahci-hd,${_iso},ro"
+183-            fi
+184-        fi
+185-
+186-        # use null.iso if not an install and uefi firmware
+187-        # old instructions but some windows versions apparently needed this present
+188-        [ -z "${_iso}" -a "${_loader}" = "uefi" ] && config::yesno "nulliso_fix" && \
+189-            _iso_dev="-s ${_install_slot}:0,ahci-cd,${vm_dir}/.config/null.iso"
+190-
+191-        # reasonably ugly hack to remove wait option after first run
+192-        [ "${_run}" -eq "2" ] && vm::bhyve_device_fbuf_clear_wait
+193-
+194-        # load guest
+--
+356-    # get relevant action from config, defaulting to the behaviour
+357-    # we'd normally expect. we don't currently allow overriding shutdown
+358-    # as it makes it impossible to actually stop a guest cleanly
+359-    #
+360-    case "${_code}" in
+361-        0) config::get "${_var}" "on_restart" "restart" ;;
+362-        1) ;&
+363-        2) if [ -e "${VM_DS_PATH}/${_name}/restart" ]; then
+364-               setvar "${_var}" "restart"
+365-               unlink "${VM_DS_PATH}/${_name}/restart" >/dev/null 2>&1
+366-           else
+367-               setvar "${_var}" "shutdown"
+368-           fi
+369-           ;;
+370-        *) config::get "${_var}" "on_fault" "shutdown" ;;
+371-    esac
+372-}
+373-
+374-# lock a vm
+375-# stop another instance being started on this or another host
+376-# we write hostname so vm-bhyve can inform user which host locked a vm
+377-#
+378-# @param string - the name of the guest to lock
+379-#
+380:vm::lock(){
+381-    hostname > "${VM_DS_PATH}/${_name}/run.lock"
+382-}
+383-
+384-# unlock a vm
+385-#
+386-# @param string - the name of the guest to unlock
+387-#
+388-vm::unlock(){
+389-    unlink "${VM_DS_PATH}/${_name}/run.lock" >/dev/null 2>&1
+390-    unlink "${VM_DS_PATH}/${_name}/suspending.lock" >/dev/null 2>&1
+391-    unlink "${VM_DS_PATH}/${_name}/console" >/dev/null 2>&1
+392-}
+393-
+394-# create string for guest com ports
+395-# this builds the '-l comX' part of the bhyve command into _comstring
+396-# _com is used by bhyveload|grub_bhyve so we set that to the first
+397-# com port we come across.
+398-# The nmdm devices are written to $vm_dir/{guest}/console so we can
+399-# read them back later for the 'vm console' command
+400-#
+401-# @modifies _com _comstring
+402-#
+403-vm::bhyve_device_comports(){
+404-    local _port _num=1 _tmux_name
+405-    local _port_name
+406-
+407-    unlink "${VM_DS_PATH}/${_name}/console" >/dev/null 2>&1
+408-
+409-    for _port in ${_comports}; do
+410-        if [ ${_num} -eq 1 ]; then
+411-            # if tmux mode, log this to the console data
+412-            if [ -n "${VM_OPT_TMUX}" ]; then
+413-                _tmux_name=$(echo "${_name}" | tr "." "~")
+414-                echo "${_port}=tmux/${_tmux_name}" >> "${VM_DS_PATH}/${_name}/console"
+415-            fi
+416-
+417-            # if foreground mode, we don't configure a serial port
+418-            if [ -n "${VM_OPT_FOREGROUND}" ]; then
+419-                _comstring="-l ${_port},stdio"
+420-                _num=$((_num + 1))
+925:vm::running_check(){
+926-    local _var="$1"
+927-    local _var2="$2"
+928-    local _name="$3"
+929-    local IFS=$'\n'
+930-    local _entry
+931-
+932-    for _entry in ${VM_RUN_BHYVE}; do
+933-        if [ "${_entry##* }" = "${_name}" ]; then
+934-            setvar "${_var}" "Running (${_entry%% *})"
+935-            setvar "${_var2}" "${_entry%% *}"
+936-            return 0
+937-        fi
+938-    done
+939-
+940-    for _entry in ${VM_RUN_LOAD}; do
+941-        if [ "${_entry##* }" = "${_name}" ]; then
+942-            setvar "${_var}" "Bootloader (${_entry%% *})"
+943-            setvar "${_var2}" "${_entry%% *}"
+944-            return 0
+945-        fi
+946-    done
+947-
+948-    datastore::get_guest "${_name}"
+949-
+950-    if vm::has_saved_state "${_name}"; then
+951-        setvar "${_var}" "Suspended"
+952-    else
+953-        setvar "${_var}" "Stopped"
+954-    fi
+955-
+956-    return 1
+957-}
+958-
+959-# make sure a virtual machine is not running
+960-# display warning if it is. up to caller to decide whether to continue.
+961-# on unclean shutdown, lock files may not be cleared up by vm-bhyve,
+962-# we now provide option to skip the lock file if it references this host,
+963-# and there is no /dev/vmm/{_name}.
+964-#
+965-# @param string _name the guest name
+966-# @param int _skip_lock skip local lock file if no /dev/vmm found
+967-# @return success if not running
+968-#
+969-vm::confirm_stopped(){
+970-    local _name="$1"
+971-    local _skip_lock="$2"
+972-    local _host _our_host
+973-
+974-    _our_host=$(hostname)
+975-
+976-    # check vm-bhyve lock
+977-    # this will err even if guest is running on another node
+978-    if [ -e "${VM_DS_PATH}/${_name}/run.lock" ]; then
+979-        _host=$(head -n 1 "${VM_DS_PATH}/${_name}/run.lock")
+980-
+981-        if [ "${_host}" != "${_our_host}" -o "${_skip_lock}" != "1" ]; then
+982-            util::warn "${_name} appears to be running on ${_host} (locked)"
+983-            return 2
+984-        fi
+985-    fi
+986-
+987-    # check local machine, just in case guest run manually
+988-    if [ -e "/dev/vmm/${_name}" ]; then
+989-        util::warn "${_name} appears to be running locally (vmm exists)"
+990-        return 1
+991-    fi
+992-
+993-    return 0
+994-}
+995-

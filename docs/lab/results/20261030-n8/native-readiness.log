@@ -1,0 +1,2 @@
+native-boot: completed boot inventory not ready: hfs-test0,hfs-test1,hfs-test2
+{"status": "blocked", "error": "unknown/malformed inventory row: hfs-test0  hfslab     bhyveload  2    2G      -    No       Locked (f3.lan.buetow.org)"}

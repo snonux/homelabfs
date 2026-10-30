@@ -250,3 +250,13 @@ source and local callback regressions explain the previously rejected forms.
 All original collection, cleanup, guest shutdown and Rocky restoration/readiness
 steps passed. The report retains `complete=true`, `success=false`; failed
 resources and raw evidence remain. This does not complete the native matrix.
+
+The standing-authorized [n8 attempt](lab/results/20261030-n8/) passed admission
+and graceful lifecycle startup but stopped at native readiness: vm-bhyve
+reported a local `Locked (f3.lan.buetow.org)` startup state before a bootloader
+process was visible. No native setup or workload ran. Task `ey3` preserves
+this as bounded not-ready while requiring all guests to reach Running before
+SSH or test dispatch. All original guest shutdown and Rocky restoration
+steps passed; the report is `complete=true`, `success=false`, with all four
+FreeBSD VMs stopped and Rocky restored. Fresh image attestations are required
+after the boot attempt; this run does not validate the truncate fix.

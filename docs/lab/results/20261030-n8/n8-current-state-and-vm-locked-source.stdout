@@ -1,0 +1,43 @@
+NAME       DATASTORE  LOADER     CPU  MEMORY  VNC             AUTO     STATE
+freebsd    default    bhyveload  4    1G      -               No       Stopped
+rocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (79067)
+hfs-test0  hfslab     bhyveload  2    2G      -               No       Stopped
+hfs-test1  hfslab     bhyveload  2    2G      -               No       Stopped
+hfs-test2  hfslab     bhyveload  2    2G      -               No       Stopped
+/usr/local/lib/vm-bhyve/vm-core-75-
+/usr/local/lib/vm-bhyve/vm-core-76-                        [ -n "${_rss}" ] && _rss=$(info::__bytes_human "${_rss}" 1 2)
+/usr/local/lib/vm-bhyve/vm-core-77-                        _uptime=$(echo "${_uptime}" |sed 's/\-/d /')
+/usr/local/lib/vm-bhyve/vm-core-78-                    fi
+/usr/local/lib/vm-bhyve/vm-core-79-                fi
+/usr/local/lib/vm-bhyve/vm-core-80-
+/usr/local/lib/vm-bhyve/vm-core-81-                _num=1
+/usr/local/lib/vm-bhyve/vm-core-82-                _auto="No"
+/usr/local/lib/vm-bhyve/vm-core-83-
+/usr/local/lib/vm-bhyve/vm-core-84-                # find out if we auto-start this vm, and get sequence number
+/usr/local/lib/vm-bhyve/vm-core-85-                for _vm in ${vm_list}; do
+/usr/local/lib/vm-bhyve/vm-core-86-                    [ "${_vm}" = "${_name}" ] && _auto="Yes [${_num}]"
+/usr/local/lib/vm-bhyve/vm-core-87-                    _num=$((_num + 1))
+/usr/local/lib/vm-bhyve/vm-core-88-                done
+/usr/local/lib/vm-bhyve/vm-core-89-
+/usr/local/lib/vm-bhyve/vm-core-90-                # if stopped, see if it's locked by another host
+/usr/local/lib/vm-bhyve/vm-core-91-                if [ "${_run}" = "Stopped" -a -e "${VM_DS_PATH}/${_name}/run.lock" ]; then
+/usr/local/lib/vm-bhyve/vm-core-92-                    _run=$(head -n1 "${VM_DS_PATH}/${_name}/run.lock")
+/usr/local/lib/vm-bhyve/vm-core:93:                    _run="Locked (${_run})"
+/usr/local/lib/vm-bhyve/vm-core-94-                fi
+/usr/local/lib/vm-bhyve/vm-core-95-
+/usr/local/lib/vm-bhyve/vm-core-96-                if [ -n "${_running_only}" ]; then
+/usr/local/lib/vm-bhyve/vm-core-97-                    if [ "${_run}" = "Stopped" -o "${_run}" = "Suspended" ]; then
+/usr/local/lib/vm-bhyve/vm-core-98-                        continue
+/usr/local/lib/vm-bhyve/vm-core-99-                    fi
+/usr/local/lib/vm-bhyve/vm-core-100-                fi
+/usr/local/lib/vm-bhyve/vm-core-101-
+/usr/local/lib/vm-bhyve/vm-core-102-                if [ -n "${VM_OPT_VERBOSE}" ]; then
+/usr/local/lib/vm-bhyve/vm-core-103-                    printf "${_format}" "${_name}" "${_ds}" "${_loader}" "${_cpu}" "${_memory}" "${_vnc}" "${_auto}" "${_pcpu}" "${_rss}" "${_uptime}" "${_run}"
+/usr/local/lib/vm-bhyve/vm-core-104-                else
+/usr/local/lib/vm-bhyve/vm-core-105-                    printf "${_format}" "${_name}" "${_ds}" "${_loader}" "${_cpu}" "${_memory}" "${_vnc}" "${_auto}" "${_run}"
+/usr/local/lib/vm-bhyve/vm-core-106-                fi
+/usr/local/lib/vm-bhyve/vm-core-107-            done
+/usr/local/lib/vm-bhyve/vm-core-108-        done
+/usr/local/lib/vm-bhyve/vm-core-109-    } | column -ts^
+/usr/local/lib/vm-bhyve/vm-core-110-}
+/usr/local/lib/vm-bhyve/vm-core-111-

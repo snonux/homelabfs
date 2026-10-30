@@ -1,0 +1,181 @@
+f3.lan.buetow.org
+vm-bhyve-1.7.5
+/usr/local/lib/vm-bhyve/vm-core-45-                config::get "_loader" "loader" "none"
+/usr/local/lib/vm-bhyve/vm-core-46-                config::get "_cpu" "cpu"
+/usr/local/lib/vm-bhyve/vm-core-47-                config::get "_memory" "memory"
+/usr/local/lib/vm-bhyve/vm-core-48-
+/usr/local/lib/vm-bhyve/vm-core-49-                # defaults
+/usr/local/lib/vm-bhyve/vm-core-50-                _vnc="-"
+/usr/local/lib/vm-bhyve/vm-core-51-                _pid=""
+/usr/local/lib/vm-bhyve/vm-core-52-                _state=""
+/usr/local/lib/vm-bhyve/vm-core-53-                _pcpu="-"
+/usr/local/lib/vm-bhyve/vm-core-54-                _rss="-"
+/usr/local/lib/vm-bhyve/vm-core-55-                _uptime="-"
+/usr/local/lib/vm-bhyve/vm-core-56-
+/usr/local/lib/vm-bhyve/vm-core-57-                # check if the guest is running
+/usr/local/lib/vm-bhyve/vm-core-58-                if vm::running_check "_run" "_pid" "${_name}" || \
+/usr/local/lib/vm-bhyve/vm-core:59:                    [ -e "${VM_DS_PATH}/${_name}/run.lock" -a "$(head -n1 ${VM_DS_PATH}/${_name}/run.lock 2>/dev/null)" = "${_our_host}" ]; then
+/usr/local/lib/vm-bhyve/vm-core-60-
+/usr/local/lib/vm-bhyve/vm-core-61-                    # if running and graphics, try to get vnc port
+/usr/local/lib/vm-bhyve/vm-core-62-                    if config::yesno "graphics"; then
+/usr/local/lib/vm-bhyve/vm-core-63-                        _vnc=$(grep ^vnc "${VM_DS_PATH}/${_name}/console" 2>/dev/null |cut -d= -f2)
+/usr/local/lib/vm-bhyve/vm-core-64-                        [ -z "${_vnc}" ] && _vnc="-"
+/usr/local/lib/vm-bhyve/vm-core-65-                    fi
+/usr/local/lib/vm-bhyve/vm-core-66-                fi
+/usr/local/lib/vm-bhyve/vm-core-67-
+/usr/local/lib/vm-bhyve/vm-core-68-                if [ -n "${_pid}" -a -n "${VM_OPT_VERBOSE}" ]; then
+/usr/local/lib/vm-bhyve/vm-core-69-                    _state=$(ps -o"%cpu"= -o"rss"= -o"etime"= -p "${_pid}")
+/usr/local/lib/vm-bhyve/vm-core-70-
+/usr/local/lib/vm-bhyve/vm-core-71-                    if [ -n "${_state}" ]; then
+/usr/local/lib/vm-bhyve/vm-core-72-                        util::get_part "_pcpu" "${_state}" 1
+/usr/local/lib/vm-bhyve/vm-core-73-                        util::get_part "_rss" "${_state}" 2
+/usr/local/lib/vm-bhyve/vm-core-74-                        util::get_part "_uptime" "${_state}" 3
+/usr/local/lib/vm-bhyve/vm-core-75-
+/usr/local/lib/vm-bhyve/vm-core-76-                        [ -n "${_rss}" ] && _rss=$(info::__bytes_human "${_rss}" 1 2)
+/usr/local/lib/vm-bhyve/vm-core-77-                        _uptime=$(echo "${_uptime}" |sed 's/\-/d /')
+/usr/local/lib/vm-bhyve/vm-core-78-                    fi
+/usr/local/lib/vm-bhyve/vm-core-79-                fi
+/usr/local/lib/vm-bhyve/vm-core-80-
+/usr/local/lib/vm-bhyve/vm-core-81-                _num=1
+/usr/local/lib/vm-bhyve/vm-core-82-                _auto="No"
+/usr/local/lib/vm-bhyve/vm-core-83-
+/usr/local/lib/vm-bhyve/vm-core-84-                # find out if we auto-start this vm, and get sequence number
+/usr/local/lib/vm-bhyve/vm-core-85-                for _vm in ${vm_list}; do
+/usr/local/lib/vm-bhyve/vm-core-86-                    [ "${_vm}" = "${_name}" ] && _auto="Yes [${_num}]"
+/usr/local/lib/vm-bhyve/vm-core-87-                    _num=$((_num + 1))
+/usr/local/lib/vm-bhyve/vm-core-88-                done
+/usr/local/lib/vm-bhyve/vm-core-89-
+/usr/local/lib/vm-bhyve/vm-core-90-                # if stopped, see if it's locked by another host
+/usr/local/lib/vm-bhyve/vm-core:91:                if [ "${_run}" = "Stopped" -a -e "${VM_DS_PATH}/${_name}/run.lock" ]; then
+/usr/local/lib/vm-bhyve/vm-core:92:                    _run=$(head -n1 "${VM_DS_PATH}/${_name}/run.lock")
+/usr/local/lib/vm-bhyve/vm-core-93-                    _run="Locked (${_run})"
+/usr/local/lib/vm-bhyve/vm-core-94-                fi
+/usr/local/lib/vm-bhyve/vm-core-95-
+/usr/local/lib/vm-bhyve/vm-core-96-                if [ -n "${_running_only}" ]; then
+/usr/local/lib/vm-bhyve/vm-core-97-                    if [ "${_run}" = "Stopped" -o "${_run}" = "Suspended" ]; then
+/usr/local/lib/vm-bhyve/vm-core-98-                        continue
+/usr/local/lib/vm-bhyve/vm-core-99-                    fi
+/usr/local/lib/vm-bhyve/vm-core-100-                fi
+/usr/local/lib/vm-bhyve/vm-core-101-
+/usr/local/lib/vm-bhyve/vm-core-102-                if [ -n "${VM_OPT_VERBOSE}" ]; then
+/usr/local/lib/vm-bhyve/vm-core-103-                    printf "${_format}" "${_name}" "${_ds}" "${_loader}" "${_cpu}" "${_memory}" "${_vnc}" "${_auto}" "${_pcpu}" "${_rss}" "${_uptime}" "${_run}"
+/usr/local/lib/vm-bhyve/vm-core-104-                else
+/usr/local/lib/vm-bhyve/vm-core-105-                    printf "${_format}" "${_name}" "${_ds}" "${_loader}" "${_cpu}" "${_memory}" "${_vnc}" "${_auto}" "${_run}"
+/usr/local/lib/vm-bhyve/vm-core-106-                fi
+/usr/local/lib/vm-bhyve/vm-core-107-            done
+/usr/local/lib/vm-bhyve/vm-core-108-        done
+/usr/local/lib/vm-bhyve/vm-core-109-    } | column -ts^
+/usr/local/lib/vm-bhyve/vm-core-110-}
+--
+/usr/local/lib/vm-bhyve/vm-run-367-               setvar "${_var}" "shutdown"
+/usr/local/lib/vm-bhyve/vm-run-368-           fi
+/usr/local/lib/vm-bhyve/vm-run-369-           ;;
+/usr/local/lib/vm-bhyve/vm-run-370-        *) config::get "${_var}" "on_fault" "shutdown" ;;
+/usr/local/lib/vm-bhyve/vm-run-371-    esac
+/usr/local/lib/vm-bhyve/vm-run-372-}
+/usr/local/lib/vm-bhyve/vm-run-373-
+/usr/local/lib/vm-bhyve/vm-run-374-# lock a vm
+/usr/local/lib/vm-bhyve/vm-run-375-# stop another instance being started on this or another host
+/usr/local/lib/vm-bhyve/vm-run-376-# we write hostname so vm-bhyve can inform user which host locked a vm
+/usr/local/lib/vm-bhyve/vm-run-377-#
+/usr/local/lib/vm-bhyve/vm-run-378-# @param string - the name of the guest to lock
+/usr/local/lib/vm-bhyve/vm-run-379-#
+/usr/local/lib/vm-bhyve/vm-run-380-vm::lock(){
+/usr/local/lib/vm-bhyve/vm-run:381:    hostname > "${VM_DS_PATH}/${_name}/run.lock"
+/usr/local/lib/vm-bhyve/vm-run-382-}
+/usr/local/lib/vm-bhyve/vm-run-383-
+/usr/local/lib/vm-bhyve/vm-run-384-# unlock a vm
+/usr/local/lib/vm-bhyve/vm-run-385-#
+/usr/local/lib/vm-bhyve/vm-run-386-# @param string - the name of the guest to unlock
+/usr/local/lib/vm-bhyve/vm-run-387-#
+/usr/local/lib/vm-bhyve/vm-run-388-vm::unlock(){
+/usr/local/lib/vm-bhyve/vm-run:389:    unlink "${VM_DS_PATH}/${_name}/run.lock" >/dev/null 2>&1
+/usr/local/lib/vm-bhyve/vm-run-390-    unlink "${VM_DS_PATH}/${_name}/suspending.lock" >/dev/null 2>&1
+/usr/local/lib/vm-bhyve/vm-run-391-    unlink "${VM_DS_PATH}/${_name}/console" >/dev/null 2>&1
+/usr/local/lib/vm-bhyve/vm-run-392-}
+/usr/local/lib/vm-bhyve/vm-run-393-
+/usr/local/lib/vm-bhyve/vm-run-394-# create string for guest com ports
+/usr/local/lib/vm-bhyve/vm-run-395-# this builds the '-l comX' part of the bhyve command into _comstring
+/usr/local/lib/vm-bhyve/vm-run-396-# _com is used by bhyveload|grub_bhyve so we set that to the first
+/usr/local/lib/vm-bhyve/vm-run-397-# com port we come across.
+/usr/local/lib/vm-bhyve/vm-run-398-# The nmdm devices are written to $vm_dir/{guest}/console so we can
+/usr/local/lib/vm-bhyve/vm-run-399-# read them back later for the 'vm console' command
+/usr/local/lib/vm-bhyve/vm-run-400-#
+/usr/local/lib/vm-bhyve/vm-run-401-# @modifies _com _comstring
+/usr/local/lib/vm-bhyve/vm-run-402-#
+/usr/local/lib/vm-bhyve/vm-run-403-vm::bhyve_device_comports(){
+/usr/local/lib/vm-bhyve/vm-run-404-    local _port _num=1 _tmux_name
+/usr/local/lib/vm-bhyve/vm-run-405-    local _port_name
+/usr/local/lib/vm-bhyve/vm-run-406-
+/usr/local/lib/vm-bhyve/vm-run-407-    unlink "${VM_DS_PATH}/${_name}/console" >/dev/null 2>&1
+--
+/usr/local/lib/vm-bhyve/vm-run-964-#
+/usr/local/lib/vm-bhyve/vm-run-965-# @param string _name the guest name
+/usr/local/lib/vm-bhyve/vm-run-966-# @param int _skip_lock skip local lock file if no /dev/vmm found
+/usr/local/lib/vm-bhyve/vm-run-967-# @return success if not running
+/usr/local/lib/vm-bhyve/vm-run-968-#
+/usr/local/lib/vm-bhyve/vm-run-969-vm::confirm_stopped(){
+/usr/local/lib/vm-bhyve/vm-run-970-    local _name="$1"
+/usr/local/lib/vm-bhyve/vm-run-971-    local _skip_lock="$2"
+/usr/local/lib/vm-bhyve/vm-run-972-    local _host _our_host
+/usr/local/lib/vm-bhyve/vm-run-973-
+/usr/local/lib/vm-bhyve/vm-run-974-    _our_host=$(hostname)
+/usr/local/lib/vm-bhyve/vm-run-975-
+/usr/local/lib/vm-bhyve/vm-run-976-    # check vm-bhyve lock
+/usr/local/lib/vm-bhyve/vm-run-977-    # this will err even if guest is running on another node
+/usr/local/lib/vm-bhyve/vm-run:978:    if [ -e "${VM_DS_PATH}/${_name}/run.lock" ]; then
+/usr/local/lib/vm-bhyve/vm-run:979:        _host=$(head -n 1 "${VM_DS_PATH}/${_name}/run.lock")
+/usr/local/lib/vm-bhyve/vm-run-980-
+/usr/local/lib/vm-bhyve/vm-run-981-        if [ "${_host}" != "${_our_host}" -o "${_skip_lock}" != "1" ]; then
+/usr/local/lib/vm-bhyve/vm-run-982-            util::warn "${_name} appears to be running on ${_host} (locked)"
+/usr/local/lib/vm-bhyve/vm-run-983-            return 2
+/usr/local/lib/vm-bhyve/vm-run-984-        fi
+/usr/local/lib/vm-bhyve/vm-run-985-    fi
+/usr/local/lib/vm-bhyve/vm-run-986-
+/usr/local/lib/vm-bhyve/vm-run-987-    # check local machine, just in case guest run manually
+/usr/local/lib/vm-bhyve/vm-run-988-    if [ -e "/dev/vmm/${_name}" ]; then
+/usr/local/lib/vm-bhyve/vm-run-989-        util::warn "${_name} appears to be running locally (vmm exists)"
+/usr/local/lib/vm-bhyve/vm-run-990-        return 1
+/usr/local/lib/vm-bhyve/vm-run-991-    fi
+/usr/local/lib/vm-bhyve/vm-run-992-
+/usr/local/lib/vm-bhyve/vm-run-993-    return 0
+/usr/local/lib/vm-bhyve/vm-run-994-}
+/usr/local/lib/vm-bhyve/vm-run-995-
+/usr/local/lib/vm-bhyve/vm-run-996-#
+/usr/local/lib/vm-bhyve/vm-run-997-# check if the virtual machine has saved state
+--
+/usr/local/lib/vm-bhyve/vm-zfs-436-    # remove the original snapshot
+/usr/local/lib/vm-bhyve/vm-zfs-437-    zfs destroy -r "${VM_DS_ZFS_DATASET}/${_name}@${_uuid%%-*}" >/dev/null 2>&1
+/usr/local/lib/vm-bhyve/vm-zfs-438-
+/usr/local/lib/vm-bhyve/vm-zfs-439-    # rename the guest configuration file
+/usr/local/lib/vm-bhyve/vm-zfs-440-    mv "${VM_DS_PATH}/${_name}/${_oldname}.conf" "${VM_DS_PATH}/${_name}/${_name}.conf" >/dev/null 2>&1
+/usr/local/lib/vm-bhyve/vm-zfs-441-    [ $? -eq 0 ] || util::err "unpackaged image but unable to update guest configuration file"
+/usr/local/lib/vm-bhyve/vm-zfs-442-
+/usr/local/lib/vm-bhyve/vm-zfs-443-    # update mac addresses and create a new uuid
+/usr/local/lib/vm-bhyve/vm-zfs-444-    _uuid=$(uuidgen)
+/usr/local/lib/vm-bhyve/vm-zfs-445-
+/usr/local/lib/vm-bhyve/vm-zfs-446-    # remove unique settings from new image
+/usr/local/lib/vm-bhyve/vm-zfs-447-    vm::generalise "${_name}"
+/usr/local/lib/vm-bhyve/vm-zfs-448-
+/usr/local/lib/vm-bhyve/vm-zfs-449-    # vm may be started when 'vm image create' is executed
+/usr/local/lib/vm-bhyve/vm-zfs:450:    rm -f "${VM_DS_PATH}/${_name}/run.lock" >/dev/null 2>&1
+/usr/local/lib/vm-bhyve/vm-zfs-451-    rm -f "${VM_DS_PATH}/${_name}/vm-bhyve.log*" >/dev/null 2>&1
+/usr/local/lib/vm-bhyve/vm-zfs-452-}
+/usr/local/lib/vm-bhyve/vm-zfs-453-
+/usr/local/lib/vm-bhyve/vm-zfs-454-# 'vm image list'
+/usr/local/lib/vm-bhyve/vm-zfs-455-# list available images
+/usr/local/lib/vm-bhyve/vm-zfs-456-#
+/usr/local/lib/vm-bhyve/vm-zfs-457-zfs::image_list(){
+/usr/local/lib/vm-bhyve/vm-zfs-458-    local _file _uuid _ext
+/usr/local/lib/vm-bhyve/vm-zfs-459-    local _format="%s^%s^%s^%s\n"
+/usr/local/lib/vm-bhyve/vm-zfs-460-
+/usr/local/lib/vm-bhyve/vm-zfs-461-    {
+/usr/local/lib/vm-bhyve/vm-zfs-462-        printf "${_format}" "UUID" "NAME" "CREATED" "DESCRIPTION"
+/usr/local/lib/vm-bhyve/vm-zfs-463-
+/usr/local/lib/vm-bhyve/vm-zfs-464-        [ ! -e "${vm_dir}/images" ] && exit
+/usr/local/lib/vm-bhyve/vm-zfs-465-
+/usr/local/lib/vm-bhyve/vm-zfs-466-        ls -1 ${vm_dir}/images/ | \
+/usr/local/lib/vm-bhyve/vm-zfs-467-        while read _file; do
+/usr/local/lib/vm-bhyve/vm-zfs-468-            if [ "${_file##*.}" = "manifest" ]; then
+SHA256 (/usr/local/lib/vm-bhyve/vm-core) = 3f914b65f17e4933141af70d6eaa4de0a30e79f393fd42f3197198dfe9d72054
+SHA256 (/usr/local/lib/vm-bhyve/vm-run) = 43753bc83263c26a25f49e7ccd3c1da79dca7a6361442b3c61a1831bd2782db0
