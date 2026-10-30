@@ -40,3 +40,16 @@ payloads, binaries, keys, approval or native run state are included.
 Snapshot pruning or source writes can invalidate admission. A future native
 plan must retain fail-closed checks and requires its own applicable approval.
 No native plan or test was created by this preparation.
+
+## Reviewed replacement run
+
+Canonical plan `62241f759525964371c7c83bc35bb2dc085c14168e3bc32593a258ec4e04ef5c`
+uses fresh R18 metadata and new actual clean f5d36fb FreeBSD binaries. The
+reviewed harness separates 256 KiB stdout/stderr capture from a 128 MiB child
+file soft limit within the existing dataset quota, preserving the inherited
+hard limit, 95+10-second supervision, single TERM and live-child preservation.
+The native specification records this correction explicitly. Twelve fixtures,
+eight-second case bound, 87-minute outer budget, 2.25 GiB disk, 48 MiB logical
+I/O and normal restoration remain unchanged. Actual admission and all thirty
+artifact checks passed. Native confirmation of the harness correction and the
+complete matrix remain pending; no N17 source-size observation is claimed.

@@ -1,0 +1,16 @@
+{
+  "supervisor_policy_change": "reviewed separate256KiBstdout/stderr cap and child soft128MiB; hard limit/timeouts/quotas intact",
+  "checked_at": "2026-10-30T17:19:50.108878+00:00",
+  "root_independent_validation": "PASS",
+  "canonical_hash": "62241f759525964371c7c83bc35bb2dc085c14168e3bc32593a258ec4e04ef5c",
+  "artifact_pins": 30,
+  "scope_vs_n17": "identical outer bounds except fresh paths/source and binary pins; fresh R18 metadata/new clean f5d36fb binaries, reviewed harness limit correction",
+  "survey_subset_sha256": "5f7a28d4431449d71aa9bc894489580de748196339842dc51b2ddea18191e97b",
+  "new_candidate_source_commit": "f5d36fb1f1af8e7e2373afc4f64dc564107fd7e3",
+  "binary_vcs_clean": true,
+  "outer_test_selections": 1,
+  "native_behavior_calls": 12,
+  "state_execution_evidence_approval_absent": true,
+  "native_change": "independent 256KiB evidence capture and child soft file limit128MiB within existing dataset quota; local R1/Python33/full9 pass, native acceptance pending",
+  "latest_user_direction": "continue all tasks"
+}

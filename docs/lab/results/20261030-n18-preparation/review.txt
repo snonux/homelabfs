@@ -1,0 +1,33 @@
+Native run 20261030-n18 / FRESH R18 metadata and NEW clean f5d36fb binaries
+Canonical hash: 62241f759525964371c7c83bc35bb2dc085c14168e3bc32593a258ec4e04ef5c
+Created 2026-10-30T17:19:12Z; expires 2026-10-31T17:19:12Z.
+
+ROOT owns authorization and execution. Worker prepared offline only: no remote,
+approval/state/run/tracked edit. Fresh R18 source165854 follows N17 normal stop
+16:45:17.057469378UTC; accepted/proof pins verified, metadata R1 CLEAN b731c1f.
+Exact source GUID/written0 guards remain; pruning or drift fails closed.
+NEW actual clean f5d36fb1f1af8e7e2373afc4f64dc564107fd7e3 FreeBSD amd64 CGO0
+native-binaries-20261030-n18-r18 only; both ELF9/SHA/size/VCS modified=false and
+actual clean build receipt verified. Harness R1/gates passed per ROOT receipt.
+
+Intentional native-spec supervisor policy change: old file_bytes262144 is
+replaced by evidence_file_bytes262144 plus child_file_soft_bytes134217728.
+Independent stdout/stderr capped drains preserve 256KiB each; child soft file
+limit128MiB matches existing dataset cap, hard limit unchanged. Supervisor95s,
+TERM-once10s, preserve/pipe guards and open-files512 unchanged. Other nonartifact
+native-spec fields match N17 after run-path normalization.
+Exact normalized N17 outer targets/profile/budget/resources/tests/steps/
+disruptions unchanged:12calls,seed0,5220s/87min,disk2.25GiB,logicalIO48MiB,
+evidence64MiB,retention168h,max_attempts1,setup/test collection gate,normalrestore.
+No added probe/workload/lifecycle or passive capture steps.
+
+N17 first three fixtures passed; fourth buffered fixture failed. Local controlled
+OS regression proves the prior low RLIMIT can poison journal writes, but actual
+N17 capstat/EFBIG observation and native fix acceptance are not yet established.
+No core filesystem/barrier/workload/oracle change; SSH cause remains unknown.
+ROOT actual survey4182/ef5c82 rc0 completed17:16:10.342221UTC admitted n18 with
+subset5f7a28d4431449d71aa9bc894489580de748196339842dc51b2ddea18191e97b.
+Receipt/source/stdout2732B/stderr444B hashes verified before finalizing.
+Finalizer/cached Go planner/30pin validator/exact outer scope passed. Receipts:
+offline-gates-20261030-n18-r18.json; canonical-plan-validation-20261030-n18-r18.json.
+No native acceptance inferred.
