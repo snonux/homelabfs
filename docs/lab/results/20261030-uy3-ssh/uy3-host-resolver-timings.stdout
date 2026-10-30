@@ -1,0 +1,5 @@
+UTC 2026-10-30T16:04:40.034972+00:00
+resolver_lines ['nameserver 192.168.1.1']
+{"iteration": 0, "operation": "reverse", "elapsed_seconds": 0.006131173999165185, "error": "herror(1, 'Unknown host')"}
+{"iteration": 1, "operation": "reverse", "elapsed_seconds": 0.003633044998423429, "error": "herror(1, 'Unknown host')"}
+{"iteration": 2, "operation": "reverse", "elapsed_seconds": 0.003929540001990972, "error": "herror(1, 'Unknown host')"}

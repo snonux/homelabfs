@@ -1,0 +1,115 @@
+UTC 2026-10-30T16:04:08Z
+Effective paul source fields
+logingracetime 120
+usedns yes
+persourcepenaltyexemptlist none
+loglevel INFO
+maxstartups 10:30:100
+persourcemaxstartups none
+persourcenetblocksize 32:128
+persourcepenalties crash:90 authfail:5 noauth:1 grace-exceeded:10 refuseconnection:10 max:600 min:15 max-sources4:65536 max-sources6:65536 overflow:permissive overflow6:permissive
+Recent controller auth records
+Oct 30 18:00:15 f3 sshd-session[44534]: Accepted publickey for paul from 192.168.1.246 port 50918 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:15 f3 sshd-session[44536]: Received disconnect from 192.168.1.246 port 50918:11: disconnected by user
+Oct 30 18:00:15 f3 sshd-session[44536]: Disconnected from user paul 192.168.1.246 port 50918
+Oct 30 18:00:15 f3 sshd-session[44541]: Accepted publickey for paul from 192.168.1.246 port 50922 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:15 f3 sshd-session[44543]: Received disconnect from 192.168.1.246 port 50922:11: disconnected by user
+Oct 30 18:00:15 f3 sshd-session[44543]: Disconnected from user paul 192.168.1.246 port 50922
+Oct 30 18:00:15 f3 sshd-session[44548]: Accepted publickey for paul from 192.168.1.246 port 50928 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:15 f3 sshd-session[44550]: Received disconnect from 192.168.1.246 port 50928:11: disconnected by user
+Oct 30 18:00:15 f3 sshd-session[44550]: Disconnected from user paul 192.168.1.246 port 50928
+Oct 30 18:00:16 f3 sshd-session[44555]: Accepted publickey for paul from 192.168.1.246 port 50944 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:16 f3 sshd-session[44557]: Received disconnect from 192.168.1.246 port 50944:11: disconnected by user
+Oct 30 18:00:16 f3 sshd-session[44557]: Disconnected from user paul 192.168.1.246 port 50944
+Oct 30 18:00:16 f3 sshd-session[44562]: Accepted publickey for paul from 192.168.1.246 port 50956 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:16 f3 sshd-session[44564]: Received disconnect from 192.168.1.246 port 50956:11: disconnected by user
+Oct 30 18:00:16 f3 sshd-session[44564]: Disconnected from user paul 192.168.1.246 port 50956
+Oct 30 18:00:16 f3 sshd-session[44569]: Accepted publickey for paul from 192.168.1.246 port 50960 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:16 f3 sshd-session[44571]: Received disconnect from 192.168.1.246 port 50960:11: disconnected by user
+Oct 30 18:00:16 f3 sshd-session[44571]: Disconnected from user paul 192.168.1.246 port 50960
+Oct 30 18:00:16 f3 sshd-session[44576]: Accepted publickey for paul from 192.168.1.246 port 50970 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:16 f3 sshd-session[44578]: Received disconnect from 192.168.1.246 port 50970:11: disconnected by user
+Oct 30 18:00:16 f3 sshd-session[44578]: Disconnected from user paul 192.168.1.246 port 50970
+Oct 30 18:00:16 f3 sshd-session[44583]: Accepted publickey for paul from 192.168.1.246 port 50978 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:17 f3 sshd-session[44585]: Received disconnect from 192.168.1.246 port 50978:11: disconnected by user
+Oct 30 18:00:17 f3 sshd-session[44585]: Disconnected from user paul 192.168.1.246 port 50978
+Oct 30 18:00:17 f3 sshd-session[44590]: Accepted publickey for paul from 192.168.1.246 port 50994 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:17 f3 sshd-session[44592]: Received disconnect from 192.168.1.246 port 50994:11: disconnected by user
+Oct 30 18:00:17 f3 sshd-session[44592]: Disconnected from user paul 192.168.1.246 port 50994
+Oct 30 18:00:18 f3 sshd-session[44593]: Accepted publickey for paul from 192.168.1.246 port 51002 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:18 f3 sshd-session[44595]: Received disconnect from 192.168.1.246 port 51002:11: disconnected by user
+Oct 30 18:00:18 f3 sshd-session[44595]: Disconnected from user paul 192.168.1.246 port 51002
+Oct 30 18:00:18 f3 sshd-session[44596]: Accepted publickey for paul from 192.168.1.246 port 51016 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:18 f3 sshd-session[44598]: Received disconnect from 192.168.1.246 port 51016:11: disconnected by user
+Oct 30 18:00:18 f3 sshd-session[44598]: Disconnected from user paul 192.168.1.246 port 51016
+Oct 30 18:00:19 f3 sshd-session[44603]: Accepted publickey for paul from 192.168.1.246 port 51018 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:19 f3 sshd-session[44605]: Received disconnect from 192.168.1.246 port 51018:11: disconnected by user
+Oct 30 18:00:19 f3 sshd-session[44605]: Disconnected from user paul 192.168.1.246 port 51018
+Oct 30 18:00:19 f3 sshd-session[44610]: Accepted publickey for paul from 192.168.1.246 port 51028 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:19 f3 sshd-session[44612]: Received disconnect from 192.168.1.246 port 51028:11: disconnected by user
+Oct 30 18:00:19 f3 sshd-session[44612]: Disconnected from user paul 192.168.1.246 port 51028
+Oct 30 18:00:19 f3 sshd-session[44617]: Accepted publickey for paul from 192.168.1.246 port 33294 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:19 f3 sshd-session[44619]: Received disconnect from 192.168.1.246 port 33294:11: disconnected by user
+Oct 30 18:00:19 f3 sshd-session[44619]: Disconnected from user paul 192.168.1.246 port 33294
+Oct 30 18:00:19 f3 sshd-session[44624]: Accepted publickey for paul from 192.168.1.246 port 33306 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:19 f3 sshd-session[44626]: Received disconnect from 192.168.1.246 port 33306:11: disconnected by user
+Oct 30 18:00:19 f3 sshd-session[44626]: Disconnected from user paul 192.168.1.246 port 33306
+Oct 30 18:00:19 f3 sshd-session[44631]: Accepted publickey for paul from 192.168.1.246 port 33322 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:20 f3 sshd-session[44633]: Received disconnect from 192.168.1.246 port 33322:11: disconnected by user
+Oct 30 18:00:20 f3 sshd-session[44633]: Disconnected from user paul 192.168.1.246 port 33322
+Oct 30 18:00:20 f3 sshd-session[44639]: Accepted publickey for paul from 192.168.1.246 port 33334 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:20 f3 sshd-session[44641]: Received disconnect from 192.168.1.246 port 33334:11: disconnected by user
+Oct 30 18:00:20 f3 sshd-session[44641]: Disconnected from user paul 192.168.1.246 port 33334
+Oct 30 18:00:20 f3 sshd-session[44646]: Accepted publickey for paul from 192.168.1.246 port 33340 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:20 f3 sshd-session[44648]: Received disconnect from 192.168.1.246 port 33340:11: disconnected by user
+Oct 30 18:00:20 f3 sshd-session[44648]: Disconnected from user paul 192.168.1.246 port 33340
+Oct 30 18:00:20 f3 sshd-session[44772]: Accepted publickey for paul from 192.168.1.246 port 33356 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:28 f3 sshd-session[44774]: Received disconnect from 192.168.1.246 port 33356:11: disconnected by user
+Oct 30 18:00:28 f3 sshd-session[44774]: Disconnected from user paul 192.168.1.246 port 33356
+Oct 30 18:00:28 f3 sshd-session[45403]: Accepted publickey for paul from 192.168.1.246 port 33360 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:29 f3 sshd-session[45405]: Received disconnect from 192.168.1.246 port 33360:11: disconnected by user
+Oct 30 18:00:29 f3 sshd-session[45405]: Disconnected from user paul 192.168.1.246 port 33360
+Oct 30 18:00:29 f3 sshd-session[47174]: Connection closed by 192.168.1.246 port 44318
+Oct 30 18:00:34 f3 sshd-session[47175]: Connection closed by 192.168.1.246 port 44328 [preauth]
+Oct 30 18:00:57 f3 sshd-session[47318]: Accepted publickey for paul from 192.168.1.246 port 46516 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:00:58 f3 sshd-session[47320]: Received disconnect from 192.168.1.246 port 46516:11: disconnected by user
+Oct 30 18:00:58 f3 sshd-session[47320]: Disconnected from user paul 192.168.1.246 port 46516
+Oct 30 18:01:13 f3 sshd-session[47502]: Accepted publickey for paul from 192.168.1.246 port 43762 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:01:38 f3 sshd-session[47504]: Received disconnect from 192.168.1.246 port 43762:11: disconnected by user
+Oct 30 18:01:38 f3 sshd-session[47504]: Disconnected from user paul 192.168.1.246 port 43762
+Oct 30 18:01:38 f3 sshd-session[49801]: Accepted publickey for paul from 192.168.1.246 port 40254 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:01:39 f3 sshd-session[49803]: Received disconnect from 192.168.1.246 port 40254:11: disconnected by user
+Oct 30 18:01:39 f3 sshd-session[49803]: Disconnected from user paul 192.168.1.246 port 40254
+Oct 30 18:01:43 f3 sshd-session[50917]: Connection closed by 192.168.1.246 port 46000
+Oct 30 18:01:43 f3 sshd-session[50918]: Accepted publickey for paul from 192.168.1.246 port 46004 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:01:43 f3 sshd-session[50920]: Received disconnect from 192.168.1.246 port 46004:11: disconnected by user
+Oct 30 18:01:43 f3 sshd-session[50920]: Disconnected from user paul 192.168.1.246 port 46004
+Oct 30 18:01:43 f3 sshd-session[51043]: Accepted publickey for paul from 192.168.1.246 port 46020 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:01:45 f3 sshd-session[51045]: Received disconnect from 192.168.1.246 port 46020:11: disconnected by user
+Oct 30 18:01:45 f3 sshd-session[51045]: Disconnected from user paul 192.168.1.246 port 46020
+Oct 30 18:01:47 f3 sshd-session[51048]: Accepted publickey for paul from 192.168.1.246 port 46036 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:01:48 f3 sshd-session[51050]: Received disconnect from 192.168.1.246 port 46036:11: disconnected by user
+Oct 30 18:01:48 f3 sshd-session[51050]: Disconnected from user paul 192.168.1.246 port 46036
+Oct 30 18:01:50 f3 sshd-session[51053]: Accepted publickey for paul from 192.168.1.246 port 56320 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:01:51 f3 sshd-session[51055]: Received disconnect from 192.168.1.246 port 56320:11: disconnected by user
+Oct 30 18:01:51 f3 sshd-session[51055]: Disconnected from user paul 192.168.1.246 port 56320
+Oct 30 18:01:53 f3 sshd-session[51058]: Accepted publickey for paul from 192.168.1.246 port 56322 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:01:53 f3 sshd-session[51060]: Received disconnect from 192.168.1.246 port 56322:11: disconnected by user
+Oct 30 18:01:53 f3 sshd-session[51060]: Disconnected from user paul 192.168.1.246 port 56322
+Oct 30 18:01:53 f3 sshd-session[51063]: Accepted publickey for paul from 192.168.1.246 port 56338 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:01:54 f3 sshd-session[51065]: Received disconnect from 192.168.1.246 port 56338:11: disconnected by user
+Oct 30 18:01:54 f3 sshd-session[51065]: Disconnected from user paul 192.168.1.246 port 56338
+Oct 30 18:01:54 f3 sshd-session[51066]: Accepted publickey for paul from 192.168.1.246 port 56348 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:01:54 f3 sshd-session[51068]: Received disconnect from 192.168.1.246 port 56348:11: disconnected by user
+Oct 30 18:01:54 f3 sshd-session[51068]: Disconnected from user paul 192.168.1.246 port 56348
+Oct 30 18:03:06 f3 sshd-session[51327]: Accepted publickey for paul from 192.168.1.246 port 50520 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:03:06 f3 sshd-session[51329]: Received disconnect from 192.168.1.246 port 50520:11: disconnected by user
+Oct 30 18:03:06 f3 sshd-session[51329]: Disconnected from user paul 192.168.1.246 port 50520
+Oct 30 18:03:18 f3 sshd-session[51334]: Accepted publickey for paul from 192.168.1.246 port 45130 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+Oct 30 18:03:18 f3 sshd-session[51336]: Received disconnect from 192.168.1.246 port 45130:11: disconnected by user
+Oct 30 18:03:18 f3 sshd-session[51336]: Disconnected from user paul 192.168.1.246 port 45130
+Oct 30 18:04:07 f3 sshd-session[51424]: Accepted publickey for paul from 192.168.1.246 port 52946 ssh2: RSA SHA256:rzvwz15PkOvKZWtqfwMuwoug+zNTSILwFnXpejrn/Zk
+SSH socket backlog
+tcp4      0/0/128                          *.22                   
+tcp6      0/0/128                          *.22                   
+Reverse lookup timing

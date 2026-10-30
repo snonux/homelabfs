@@ -1,0 +1,35 @@
+[
+  {
+    "sample": 0,
+    "source_file": "uy3-host-packet-diagnostic-r3-sample0.stderr",
+    "source_sha256": "f093e5243af4a16c32427697384cb90302cb98a611383d4e28ea85fcf9bf6855",
+    "phase_excerpts": [
+      "debug1: Connection established.",
+      "debug1: Remote protocol version 2.0, remote software version OpenSSH_10.0 FreeBSD-20250801",
+      "Authenticated to 192.168.1.133 ([192.168.1.133]:22) using \"publickey\".",
+      "debug1: Exit status 0"
+    ]
+  },
+  {
+    "sample": 1,
+    "source_file": "uy3-host-packet-diagnostic-r3-sample1.stderr",
+    "source_sha256": "b4a3eb9382df2661c8031ebf334891ca7b0cbf5b30684d3cd573716447f89cef",
+    "phase_excerpts": [
+      "debug1: Connection established.",
+      "debug1: Remote protocol version 2.0, remote software version OpenSSH_10.0 FreeBSD-20250801",
+      "Authenticated to 192.168.1.133 ([192.168.1.133]:22) using \"publickey\".",
+      "debug1: Exit status 0"
+    ]
+  },
+  {
+    "sample": 2,
+    "source_file": "uy3-host-packet-diagnostic-r3-sample2.stderr",
+    "source_sha256": "2778d41944fd7bce3c7cbf3fa6ec70bd7892156603f169e5b64b9f59d787bb5e",
+    "phase_excerpts": [
+      "debug1: Connection established.",
+      "debug1: Remote protocol version 2.0, remote software version OpenSSH_10.0 FreeBSD-20250801",
+      "Authenticated to 192.168.1.133 ([192.168.1.133]:22) using \"publickey\".",
+      "debug1: Exit status 0"
+    ]
+  }
+]

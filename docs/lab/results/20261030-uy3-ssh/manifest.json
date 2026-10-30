@@ -1,0 +1,55 @@
+{
+  "source_directory": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3",
+  "files": [
+    {
+      "file": "uy3-host-ssh-diagnostics-r2.stdout",
+      "sha256": "1479ba1442c54a947195ad15a2707783aa84dbf6e86620dae8b87b9edd7f8518",
+      "bytes": 810
+    },
+    {
+      "file": "uy3-host-ssh-diagnostics-r2-receipt.json",
+      "sha256": "67888bd13062f384ca04e0df6344dbd1f0730bfe07b0e479073379a0b1720c55",
+      "bytes": 1581
+    },
+    {
+      "file": "uy3-host-ssh-diagnostics-r3.stdout",
+      "sha256": "80c77f0adf633bf24f277609510a886954a0b2fabf2a4c2b938dff9c6afd6dfc",
+      "bytes": 12764
+    },
+    {
+      "file": "uy3-host-ssh-diagnostics-r3-receipt.json",
+      "sha256": "4c8e3442b59e3fee854cdd2480b56deb8b006ea1f836c4b19c70db1feb84747d",
+      "bytes": 1455
+    },
+    {
+      "file": "uy3-host-resolver-timings.stdout",
+      "sha256": "ceaf71a8c7f684afe6a917f874a995fe059312b6571a65b0b8fd616e61842b62",
+      "bytes": 439
+    },
+    {
+      "file": "uy3-host-resolver-timings-receipt.json",
+      "sha256": "e38a3e17dece6dfa47a5692e9aff3c38d90153cfea6fdcb72650cfaa2283cd85",
+      "bytes": 1766
+    },
+    {
+      "file": "uy3-host-packet-diagnostic-r3.stdout",
+      "sha256": "638a64203fe9c9ba81fd7fcb983b551a4470460bc906ddb245422f1ee53b3ddf",
+      "bytes": 21986
+    },
+    {
+      "file": "uy3-host-packet-diagnostic-r3.stderr",
+      "sha256": "6cdc0b2d0ab4a06c2816da77e85395110636c9278f9ce5b52709e95f2b628837",
+      "bytes": 228
+    },
+    {
+      "file": "uy3-host-packet-diagnostic-r3-receipt.json",
+      "sha256": "7c7be001bf056e5cbb30b3196d35d9dc4ee51f09bd39e2a90cfcec1f04cbaddb",
+      "bytes": 4877
+    },
+    {
+      "file": "authentication-excerpts.json",
+      "sha256": "33b4602157ff710b17e1d3886bfc665d8daf48cb39b696233f32f2d077d95bd7",
+      "bytes": 1398
+    }
+  ]
+}

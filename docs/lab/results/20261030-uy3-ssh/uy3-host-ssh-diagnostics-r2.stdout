@@ -1,0 +1,21 @@
+UTC 2026-10-30T16:03:18Z
+Version
+OpenSSH_10.0p2, OpenSSL 3.5.6 7 Apr 2026
+Effective bounded SSH fields
+logingracetime 120
+usedns yes
+persourcepenaltyexemptlist none
+loglevel INFO
+maxstartups 10:30:100
+persourcemaxstartups none
+persourcenetblocksize 32:128
+persourcepenalties crash:90 authfail:5 noauth:1 grace-exceeded:10 refuseconnection:10 max:600 min:15 max-sources4:65536 max-sources6:65536 overflow:permissive overflow6:permissive
+Load and memory
+ 6:03PM  up  8:15, 0 users, load averages: 0.34, 0.36, 0.23
+hw.physmem: 16879837184
+vm.stats.vm.v_free_count: 2871187
+Device          1K-blocks     Used    Avail Capacity
+/dev/ada0p3       2097152        0  2097152     0%
+Relevant auth messages
+Oct 30 18:00:34 f3 sshd-session[47175]: Connection closed by 192.168.1.246 port 44328 [preauth]
+Bounded PF rules
