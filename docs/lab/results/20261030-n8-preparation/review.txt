@@ -1,0 +1,88 @@
+Native replacement run 20261030-n8 / R10
+Canonical plan hash: 5dcec28f8314334b9c87d328d6a324d07fcc22af59b040186a2e1e19514a45bd
+Created 2026-10-30T12:37:44Z; expires 2026-10-31T12:37:44Z.
+
+Concrete packet prepared for ROOT review and recording the user's standing
+bounded nonproduction test authorization. No new per-run question is required
+within this unchanged profile. This worker created no approval, controller state
+or execution evidence and performed no remote operation. Critical/dangerous
+scope changes, production, forced lifecycle and sink changes remain excluded.
+ROOT owns recording actual authorization and all execution. The user's latest
+instruction revokes the earlier pause and requests subsequent task continuation.
+
+N7 remains complete=true/success=false. The platform mount fix worked and the
+first root/direct behavior invocation ran real cases: namespace failed at
+ftruncate with EOPNOTSUPP, nine other cases passed and two expected skips were
+recorded. Collection, normal cleanup, guest shutdown, Rocky restoration and
+readiness passed. This is not acceptance of the12-call matrix.
+
+N8 includes reviewed cy3 commit09f125a. Owned TruncateTimes carries selected
+atime/mtime/ctime with size in one existing record.Truncate afterimage. Journal
+version1.0 remains unchanged. Source-derived FreeBSD callback masks reproduce
+the old rejection and pass with the fix; exact metadata survives service replay.
+N7 captured no exact wire mask. These local checks establish the fix locally,
+not native acceptance. Size with mode/UID/GID remains unsupported before effect.
+
+New actual clean MAIN build b032a53ed840c76f1cb63b120ce88b79275aea82 includes
+cy3 and committed metadata/model/N7 evidence. Independently verified f864d7:
+FreeBSD amd64 ELF, CGO0, command/platform, exact SHA/size, embedded vcs.revision
+b032a53 and vcs.modified=false. No older native binaries are reused.
+Daemon SHA881a1d6b066f397eec5e5c461439f67e30b94571cf8ff4ecbac06c2dcc99b66f.
+Helper SHA5757999ff22e93214ece688c3717987f20f9adea4689f5bee8f7d05816915916.
+Build receipt SHA5d2ce8a5ebac1737dffab8551900f0291d247e8cdb6ac44e28f27731d10f4352.
+
+Scope is unchanged Stage1 native-single-node-v1 on three existing FreeBSD guests
+on f3, FUSE inside each guest on its own ZFS. One outer test selection executes
+12sequential calls: root/unprivileged x direct/buffered x3, seed0. Exact targets,
+budget/tests/resources/steps match original n3/R5 and n7/R9 after normalizing
+only new run/revision paths. No replication/failover, 9p, production consumers,
+package installation or sink operations.
+
+Lifecycle remains read-only admission, clean Rocky stop, guarded native guest
+start and pinned readiness, setup/test, bounded collection, normal owning-daemon
+unmount/quiescence, normal guest stop, Rocky start and positive pinned SSH/kernel
+restoration. Unknown completion blocks dependent work/restoration. Preserve
+resources. No force or uncertain retry to success. Every step max_attempts1;
+collection applies exactly after setup/test attempts.
+
+Maximum5220s/87min = runtime4260 + cleanup600 + restoration360. Initial240s
+preflight is read-only; maximum subsequent disruption4980s/83min. Disk2304MiB/
+2.25GiB,12resourcecaps2214592512B,logicalIO48MiB,evidence64MiB,retention168h;
+native guests6GiB/6CPU plus hostheadroom4GiB.
+Root /var/tmp/hfs-run-20261030-n8; datasets only
+hfsdataN/{data,journal,control}/hfs-run-20261030-n8.
+State /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/controller-state-20261030-n8
+Evidence /home/paul/git/homelabfs/docs/lab/results/20261030-n8
+
+Fresh R10 metadata dy3 uses ordinary zrepl_20261030_115854_000 after actual N7
+clean lab stop11:48:51.877729154UTC. GUIDs native0/1/2/dev1023918318750240633/
+18065527238898504310/7221185584808690995/12436959759460181717. ROOT actual
+collector192d28 and fixed20harvest34499e exit0, all5operation receipts0; normal
+exact-owned MD/UFS/four-source-automount cleanup and GUID/written0 rechecks.
+Accepted choices SHA445a2fd6a6d6109466e1eed3b18fb7c555d711f6c6030c74da958323ada79697.
+Size/cleanup proof SHA0f7d572059ff2dd1c0cccf732d430f6eaad5e217908af47cb59738ade570fc9d.
+All proof hashes and four DB hash/mode/size verified3d6e58. No pool-health claim,
+holds or retention change. Native15.1-RELEASE/dev15.0-RELEASE-p5; Rocky64854,
+integerUID0, expected kernel and1109RPM manifest. Pruning, written drift or reboot
+invalidates admission; no image equality inference or zero-written waiver.
+
+Actual ROOT planning-only survey completed12:33:21UTC exit0: admitted Rocky
+Running/all4FreeBSDStopped,0active sessions,122234281984B disk available.
+Exact final targets/budget/policy subsetSHA
+9817b5c5c0870a6b2c2acf8e30c2dd86279c94917afbebe712f5ded122d6326a.
+Raw stdout2731B and stderr444B/receipt preserved separately; stderr exactly two
+known OpenSSH KEX warning triplets. Worker independently checked receipt,
+admitted status, subset and stream hashes2a6db6. No VM/workload/state operation.
+
+Actual finalizer/cached Go planner/final30offlinevalidator494f10 all0. Exact
+argv/streams/hash/rc are in offline-gates-20261030-n8-r10.json. Canonical hash
+matches actual Go output and real context validators. Final all30 nonsymlink
+SHA/scope/attempt/cap checks passed; detailed receipt is
+canonical-plan-validation-20261030-n8-r10.json. Validator refuses Transport/
+Driver/command while checking policy/readiness and all4native outer phases.
+Approval/state/evidence absent. Main clean; Python-B prevents caches.
+
+Report-only correction: first final receipt construction4020a4 used an old R9
+clean-build key after all30/scope/absence checks passed. Actual N8 schema uses
+clean_before_after; read and corrected that key, with no report/plan/code
+mutation at failure. Corrected full verification3a3810 passed.

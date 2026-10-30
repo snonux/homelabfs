@@ -1,0 +1,13 @@
+{
+  "checked_at": "2026-10-30T12:38:04.459870+00:00",
+  "root_independent_validation": "PASS",
+  "canonical_hash": "5dcec28f8314334b9c87d328d6a324d07fcc22af59b040186a2e1e19514a45bd",
+  "artifact_pins": 30,
+  "scope_vs_n7": "identical except new run paths, binary/artifact/source pins",
+  "survey_subset_sha256": "9817b5c5c0870a6b2c2acf8e30c2dd86279c94917afbebe712f5ded122d6326a",
+  "new_candidate_source_commit": "b032a53ed840c76f1cb63b120ce88b79275aea82",
+  "binary_vcs_clean": true,
+  "outer_test_selections": 1,
+  "native_behavior_calls": 12,
+  "state_execution_evidence_approval_absent": true
+}
