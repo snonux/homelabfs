@@ -1,0 +1,13 @@
+{
+  "baseline_tasks": 36,
+  "applied": 36,
+  "new_finding_tasks": 15,
+  "closure": "mz3",
+  "marker": "nz3",
+  "dependency_cycle": false,
+  "all_superseding_annotations_present": true,
+  "all_required_edges_present": true,
+  "removed_late_budget_edge": true,
+  "review_commit": "c76839fdd01262c50a115313ac49c3f227e2e521",
+  "limitation": "Existing post-update task snapshots and fresh new-task reads; completed external dependencies are terminal vertices. ask also checked each mutation for cycles."
+}
