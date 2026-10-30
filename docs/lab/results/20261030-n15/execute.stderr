@@ -1,0 +1,4 @@
+run 20261030-n15: complete=false success=false; 12 declared resources may remain; targets are reusable and never deleted
+hfs-lab: exit status 1
+cleanup blocked by uncertain side effect
+run unsuccessful or incomplete

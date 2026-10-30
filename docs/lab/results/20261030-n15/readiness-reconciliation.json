@@ -1,0 +1,9 @@
+{
+  "plan_hash": "cd09c81a06b7b2eb88dc738ea8ce74aa5fc41118f9b23b81f2d0273a28bd0c5f",
+  "step_id": "native-readiness",
+  "outcome": "failed",
+  "operator": "Codex under Paul's standing nonproduction test authorization",
+  "observed_at": "2026-10-30T16:01:13.457738+00:00",
+  "evidence": "Readiness first host vm-list SSH255 banner timeout; no native setup/workload. Completed pinned222df8 rc0 at16:00:58UTC showsRockyStopped/all3labRunning and devStopped, no outstanding original SSH/vm-list/readiness action. Scoped local proc check empty. Original readonly readiness FAILED notpassed, preserve ambiguous reports. No run-owned mount/setup occurred; normal approved labstop+Rockyrestore may proceed.",
+  "no_outstanding_action": true
+}

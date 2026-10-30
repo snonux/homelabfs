@@ -324,3 +324,13 @@ reconciliation preserved the original ambiguous report and closed
 `complete=true`, `success=false`, with inapplicable cleanup/restoration skipped.
 The timeout cause is unknown. No native acceptance was obtained; unchanged R15
 metadata and c946ac5 binaries may be reused honestly with fresh admission.
+
+The standing-authorized [n15 attempt](lab/results/20261030-n15/) passed admission,
+graceful Rocky stop and lab startup, then stopped at a host SSH banner timeout
+during readiness. No native setup or filesystem fixture ran. Completed pinned
+process/state checks established no outstanding original command; explicit failed
+reconciliation preserved the ambiguous report. Normal lab shutdown, Rocky
+restoration and restoration readiness passed, closing `complete=true`,
+`success=false`. Task `uy3` investigates the repeated connection failures before
+another native attempt. Fresh post-shutdown image attestations are required;
+process-exit and unprivileged append native validation remain pending.
