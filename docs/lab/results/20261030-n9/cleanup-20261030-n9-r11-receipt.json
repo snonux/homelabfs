@@ -1,0 +1,13 @@
+{
+  "observed_at": "2026-10-30T13:01:06.466789+00:00",
+  "actual_tool_session": 21930,
+  "actual_tool_terminal": "b50817",
+  "returncode": 1,
+  "scope": "cleanup command applied explicit failed collection reconciliation then original approved normal cleanup/stop/restore; overall nonzero preserves failed native run",
+  "final_complete": true,
+  "final_success": false,
+  "stdout_bytes": 17786,
+  "stdout_sha256": "f65a56bd23c505fbc2070310f8a970d43ea4a8094905b48be0325824120699c3",
+  "stderr_bytes": 159,
+  "stderr_sha256": "c5d81f8dd881124db7a7059509fbc70997edc85de89ab9c284108686ce13a23d"
+}

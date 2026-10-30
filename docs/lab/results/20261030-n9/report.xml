@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="20261030-n9" tests="11" failures="2">
+  <testcase name="prepared-preflight" classname="setup" time="9.569072595"></testcase>
+  <testcase name="rocky-stop" classname="setup" time="7.506413009"></testcase>
+  <testcase name="lab-start" classname="setup" time="1.337085198"></testcase>
+  <testcase name="native-readiness" classname="setup" time="10.599507963"></testcase>
+  <testcase name="native-setup" classname="setup" time="11.363630463"></testcase>
+  <testcase name="native-test" classname="test" time="50.456749852">
+    <failure type="assertion">failed: exit status 10</failure>
+  </testcase>
+  <testcase name="native-collect" classname="collect" time="104.42507184">
+    <failure type="infrastructure">failed: Actual completed host fdab8d rc0 and guest0 20d85f rc0 inspections show no original collection SSH/proxy/helper processes or FUSE daemon/mount; scoped local process check shows none. Original255 banner exchange failed; not a collection pass. Partial evidence and original ambiguous reports retained; see n9-collection-terminal-proof.json. Unrelated ssh f0 untouched. Approved normal cleanup/restoration may continue.</failure>
+  </testcase>
+  <testcase name="native-cleanup" classname="cleanup" time="2.536271518"></testcase>
+  <testcase name="lab-stop" classname="cleanup" time="27.047168077"></testcase>
+  <testcase name="rocky-restore" classname="restore" time="1.087512965"></testcase>
+  <testcase name="rocky-restoration-readiness" classname="restore" time="15.368902288"></testcase>
+</testsuite>

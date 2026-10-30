@@ -1,0 +1,24 @@
+{
+  "observed_at": "2026-10-30T12:59:03.741945+00:00",
+  "local_outstanding_run_ssh_or_controller": [],
+  "unrelated_ssh_processes_untouched": true,
+  "host_and_guest_readonly_observations": {
+    "n9-collection-inspection-host.stdout": {
+      "bytes": 2631,
+      "sha256": "ebd73d086bf9969283f8a76c34cff57bb082a1c88abeb535c665b3d476a1a25b"
+    },
+    "n9-collection-inspection-host.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "n9-collection-inspection-guest0.stdout": {
+      "bytes": 3338,
+      "sha256": "632269c8b897e7bc3553f766d88288366b49af81ddefed256e8a46b8581f1924"
+    },
+    "n9-collection-inspection-guest0.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "conclusion": "Original collection transport255 banner-exchange failure is terminal failed, not a successful collection. No run SSH/proxy/helper/controller action remains. Guest0 has no HomelabFS process/FUSE mount; three declared N9 datasets remain preserved. Guest1/2 collection was never dispatched."
+}

@@ -260,3 +260,16 @@ SSH or test dispatch. All original guest shutdown and Rocky restoration
 steps passed; the report is `complete=true`, `success=false`, with all four
 FreeBSD VMs stopped and Rocky restored. Fresh image attestations are required
 after the boot attempt; this run does not validate the truncate fix.
+
+The standing-authorized [n9 attempt](lab/results/20261030-n9/) passed both
+root/direct and root/buffered fixtures on hfs-test0, including truncate, mmap
+and multiuser permission checks. Its unprivileged/direct append case timed out
+waiting for a helper response; later lock failure reused the broken client.
+Task `hy3` investigates the timeout. The remaining nine fixture calls did not run.
+Collection then lost SSH during banner exchange and correctly blocked cleanup.
+Completed host/guest/process inspections established no outstanding collection
+action; explicit failed reconciliation preserved that failure and allowed normal
+cleanup. All guest shutdown and Rocky restoration/readiness steps passed.
+The final report is `complete=true`, `success=false`, with original ambiguous
+reports retained. Task `iy3` makes native SSH configuration explicit without
+claiming the connection failure's unknown cause was established.

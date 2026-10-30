@@ -1,0 +1,60 @@
+0
+ PID PPID USER STAT COMMAND
+   0    0 root  DLs [kernel]
+   1    0 root  ILs /sbin/init
+   2    0 root   WL [clock]
+   3    0 root   DL [crypto]
+   4    0 root   DL [cam]
+   5    0 root   DL [busdma]
+   6    0 root   DL [rand_harvestq]
+   7    0 root   DL [pagedaemon]
+   8    0 root   DL [vmdaemon]
+   9    0 root   DL [bufdaemon]
+  10    0 root   DL [audit]
+  11    0 root  RNL [idle]
+  12    0 root   WL [intr]
+  13    0 root   DL [geom]
+  14    0 root   DL [vnlru]
+  15    0 root   DL [syncer]
+ 107    0 root   DL [zfskern]
+ 711    1 root   Ss /sbin/devd
+ 986    1 root  SCs /usr/sbin/syslogd -s
+ 989    1 root    I syslogd: syslogd.casper (syslogd)
+ 990    1 root   Is syslogd: system.net (syslogd)
+1179    1 root   Is /usr/sbin/cron -s
+1201    1 root   Ss sshd: /usr/sbin/sshd [listener] 0 of 10-100 startups (sshd)
+2021 1201 root   Ss sshd-session: root [priv] (sshd-session)
+2023 2021 root    S sshd-session: root@notty (sshd-session)
+2024 2023 root   Ss sh -s
+2026 2024 root    R ps -axo pid,ppid,user,stat,args
+1220    1 root  Is+ /usr/libexec/getty 3wire ttyu0
+/dev/gpt/hfs-root0	/			ufs	rw,noatime 	1 1
+devfs			/dev			devfs	rw		0 0
+/dev/gpt/hfs-efi0	/boot/efi		msdosfs	rw		2 2
+hfsdata0/control/hfs-run-20261030-n7 /var/tmp/hfs-run-20261030-n7/c zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata0/journal/hfs-run-20261030-n6 /var/tmp/hfs-run-20261030-n6/j zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata0		/var/db/homelabfs	zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata0/data/hfs-run-20261030-n7 /var/tmp/hfs-run-20261030-n7/d zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata0/control/hfs-run-20261030-n6 /var/tmp/hfs-run-20261030-n6/c zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata0/data/hfs-run-20261030-n6 /var/tmp/hfs-run-20261030-n6/d zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata0/journal/hfs-run-20261030-n7 /var/tmp/hfs-run-20261030-n7/j zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata0/control	/var/db/homelabfs/control zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata0/journal	/var/db/homelabfs/journal zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata0/data		/var/db/homelabfs/data	zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata0/data/hfs-run-20261030-n9 /var/tmp/hfs-run-20261030-n9/d zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata0/journal/hfs-run-20261030-n9 /var/tmp/hfs-run-20261030-n9/j zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata0/control/hfs-run-20261030-n9 /var/tmp/hfs-run-20261030-n9/c zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata0	/var/db/homelabfs	yes
+hfsdata0/control	/var/db/homelabfs/control	yes
+hfsdata0/control/hfs-run-20261030-n6	/var/tmp/hfs-run-20261030-n6/c	yes
+hfsdata0/control/hfs-run-20261030-n7	/var/tmp/hfs-run-20261030-n7/c	yes
+hfsdata0/control/hfs-run-20261030-n9	/var/tmp/hfs-run-20261030-n9/c	yes
+hfsdata0/data	/var/db/homelabfs/data	yes
+hfsdata0/data/hfs-run-20261030-n6	/var/tmp/hfs-run-20261030-n6/d	yes
+hfsdata0/data/hfs-run-20261030-n7	/var/tmp/hfs-run-20261030-n7/d	yes
+hfsdata0/data/hfs-run-20261030-n9	/var/tmp/hfs-run-20261030-n9/d	yes
+hfsdata0/journal	/var/db/homelabfs/journal	yes
+hfsdata0/journal/hfs-run-20261030-n6	/var/tmp/hfs-run-20261030-n6/j	yes
+hfsdata0/journal/hfs-run-20261030-n7	/var/tmp/hfs-run-20261030-n7/j	yes
+hfsdata0/journal/hfs-run-20261030-n9	/var/tmp/hfs-run-20261030-n9/j	yes
+drwx--x--x  8 root wheel 512 Oct 30 12:56 /var/tmp/hfs-run-20261030-n9

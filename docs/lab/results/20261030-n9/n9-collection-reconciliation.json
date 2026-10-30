@@ -1,0 +1,9 @@
+{
+  "plan_hash": "717199681ab3c7290a3c2752d57f07dd3aec2b8e633cf67c15d6d72044fa24ab",
+  "step_id": "native-collect",
+  "outcome": "failed",
+  "operator": "Codex under Paul's standing nonproduction test authorization",
+  "observed_at": "2026-10-30T12:59:03.741945+00:00",
+  "evidence": "Actual completed host fdab8d rc0 and guest0 20d85f rc0 inspections show no original collection SSH/proxy/helper processes or FUSE daemon/mount; scoped local process check shows none. Original255 banner exchange failed; not a collection pass. Partial evidence and original ambiguous reports retained; see n9-collection-terminal-proof.json. Unrelated ssh f0 untouched. Approved normal cleanup/restoration may continue.",
+  "no_outstanding_action": true
+}
