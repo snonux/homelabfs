@@ -149,6 +149,16 @@ server or an upstream FreeBSD support claim. Production `coord` builds separatel
 for Linux and FreeBSD. These are local tests, not native lab, VM, fence, canary or
 deployment evidence.
 
+The bounded `ox3` [coordination model](../../spec/tla/README.md#coordination-allocation-model)
+checks allocation/policy CAS, immutable reservations, supersession, uncertain
+outcomes, controller restart and the offline restore boundary. Its monotonicity
+and uniqueness checks apply within an uninterrupted etcd namespace lineage;
+a snapshot restore can roll back that coordination history. The modeled
+operator stops controllers and abandons pending requests before restore. Durable
+storage promises and existing cache rights survive independently, so a reused
+or reduced etcd revision/epoch grants no authority over them. This is a bounded
+contract model, not an implemented restoration or takeover workflow.
+
 The module pins etcd client/API/server packages to **v3.6.16**. The module proxy
 reports Go 1.26.0 compatibility, matching this project. The current patch was
 verified against the [official 3.6 changelog](https://github.com/etcd-io/etcd/blob/main/CHANGELOG/CHANGELOG-3.6.md).

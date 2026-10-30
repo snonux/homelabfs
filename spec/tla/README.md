@@ -937,3 +937,140 @@ Tagged Mage compilation (`go test -tags mage -run '^$' .`), tagged `go vet`,
 sequentially with `GOMAXPROCS=2`, `GOFLAGS=-p=1` and fresh private `/tmp` directories
 for each command. No broad runtime Go suite, unrelated TLC model, lab, VM, SSH,
 FUSE, power, snapshot, production-data or infrastructure operation was run.
+
+## Coordination allocation model
+
+Task `ox3` adds `Coordination.tla` for
+[Coordination.md](../../docs/spec/Coordination.md) and `internal/coord`. Run
+`mage tlaCoordination`, `mage tlaCoordinationNegative` and
+`mage tlaCoordinationCoverage`. Each profile uses the pinned TLC 1.8.0 jar above,
+one CPU/worker, 512 MiB heap and a three-minute wall deadline. Every invocation
+retains a private executed module/configuration, SHA-256 hashes, exact Java
+arguments, output and exit receipt in `.cache/tla/Coordination*-*/`. A killed,
+timed-out, parser-error or incomplete search is a failure, never evidence of a
+pass. Positive checks require exit zero; mutation and witness checks require
+exit 12 for `Safety` and `WitnessAbsent`, respectively. Witness configurations
+check `Safety` first.
+
+The finite profiles separate policy CAS, allocation interleavings, controller
+crashes and offline restore. There are two controllers, two volumes (one for
+restore), three configuration identities, epochs up to 4 and coordinator terms
+up to 5 from at most three allocations. Policy candidates use registry revisions
+1..3 and installed epoch floors 1..2. Expected modification revisions include
+zero and stale revisions 0..5; they are independent of registry revisions.
+`Safety` allows two allocations and one concurrent policy replacement; `Policy`
+allows two replacements; `Crash` permits two allocations and one crash/restart
+per controller. Restore profiles allow three allocations, one offline restore,
+and at most one policy creation after a fresh namespace is restored. Restore
+projections omit pre-restore policy replacements; the separate Safety/Policy
+profiles cover those interleavings. Budgets are maxima, not
+required faults. The state space has no fairness or liveness claim.
+
+A controller snapshots the exact policy and per-volume predecessor before an
+independently scheduled commit. The atomic transaction rechecks both revisions
+and reservation absence, then writes a latest grant and the same complete
+immutable reservation. Records include volume, candidate and incarnation;
+epoch and coordinator term each exceed the maximum of policy and predecessor
+floors. Two requests against one predecessor have at most one winner; a newer
+allocation supersedes the latest record without erasing its predecessor's
+reservation. Deliberately choosing a previously used configuration identity
+exercises collisions. Reply loss follows commit; a separate quorum-read action
+reconciles the actual current grant. Crash drops pending controller state and
+restart gets a new incarnation. Reads/commits assume a working linearizable
+store; unavailable requests and dropped messages have no state effect.
+
+Restore is deliberately different from normal CAS history: an operator stops
+both controllers, abandoning in-flight requests, before replacing etcd with the
+initial policy-only snapshot at revision 1 or a fresh revision-0 namespace.
+That offline controlled-recovery precondition comes from the coordination and
+takeover contracts; this model does not prove an implemented recovery tool or
+safe live restore with pending requests. etcd epochs, registry revisions,
+configuration reservations and modification revisions may roll back at this
+boundary. Their monotonicity/uniqueness invariants are scoped to each uninterrupted
+namespace lineage. Durable storage promises survive independently; an older
+post-restore allocation is only an attempted takeover and is rejected against a
+higher promise. Neither a fresh revision nor an arbitrarily large etcd revision
+can lower that floor. Serving stays closed and the old serving/cache domain
+stays present throughout: allocation never proves their exclusion or expiry.
+The separate Takeover model checks the additional positive fence/recovery gates.
+
+Safety checks exact policy CAS (including create-only zero), strictly increasing
+registry revisions, exact allocation-policy revision, one winner per volume and
+predecessor, epoch/term growth, configuration uniqueness, atomic matching
+reservation, immutable complete history, storage-floor preservation and no
+serving/cache authority. Eight negative controls independently remove policy
+CAS, registry monotonicity, allocation-policy compare, grant compare, reservation
+absence, predecessor epoch floor, the no-serving boundary, or restore's retention
+of storage promises. They are intentional mutations, not protocol findings.
+Six witness controls demand contention with a stale pending predecessor,
+committed-lost-reply reconciliation, an allocation after restart, both reduced
+and fresh restore with a lower allocation blocked by a higher storage promise,
+and a successful increasing policy replacement.
+
+These are bounded API/contract abstractions, not refinement evidence for etcd,
+Raft, TLS/RBAC, canonical bytes, UUID randomness, counter exhaustion, policy
+validation, watch/compaction behavior or real storage promise persistence. The
+installed configuration UUID lies outside the finite candidate pool. One
+fixed recovery generation and admitted placement are assumed. Storage promise
+handling is an external boundary with one scalar floor per volume, not a
+majority, exact-history conflict check or takeover implementation. Arbitrary
+snapshot contents, repeated restores, generations, dependent volume closures,
+policy emergency transitions and runtime cache/fence behavior remain outside
+these bounds. Exhaustive TLC results also rely on finite fingerprints without
+distinct-state collisions.
+
+### Recorded coordination verification
+
+All nineteen final profiles completed locally on 30 October 2026 against module
+SHA-256 `55be1c1a9b883a6e7f17db2b271ed5af8b8106baf0906c25d15a9f123d898d87`, using the pinned jar,
+512 MiB heap, one CPU/worker and three-minute per-profile deadline. All five
+positive graphs were exhausted with zero queued states. Their runtimes were
+30 s, less than 1 s, 15 s, 45 s and 61 s respectively; none timed out. Negative
+and witness runs stop at the required counterexample, so their queued states
+need not be zero. Depth means complete graph depth for positives and trace
+length for intentional counterexamples.
+
+| Configuration suffix | Generated | Distinct | Depth/trace | Java exit |
+| --- | ---: | ---: | ---: | ---: |
+| `Safety` | 1,846,073 | 431,309 | 10 | 0 |
+| `Policy` | 9 | 7 | 3 | 0 |
+| `Crash` | 903,109 | 217,161 | 13 | 0 |
+| `Restore` | 2,891,581 | 700,704 | 18 | 0 |
+| `FreshRestore` | 3,724,729 | 967,680 | 19 | 0 |
+| `NegativePolicyCAS` | 2 | 2 | 2 | 12 |
+| `NegativeRegistry` | 2 | 2 | 2 | 12 |
+| `NegativePolicyRace` | 780 | 480 | 4 | 12 |
+| `NegativeGrantCAS` | 894 | 432 | 5 | 12 |
+| `NegativeReservation` | 862 | 421 | 5 | 12 |
+| `NegativeEpoch` | 848 | 494 | 5 | 12 |
+| `NegativeAuthority` | 20 | 20 | 3 | 12 |
+| `NegativeRestore` | 53,333 | 21,450 | 9 | 12 |
+| `WitnessCompeting` | 9,462 | 4,638 | 7 | 12 |
+| `WitnessUnknown` | 160 | 124 | 4 | 12 |
+| `WitnessRestart` | 3,138 | 1,545 | 5 | 12 |
+| `WitnessRestore` | 1,110,597 | 344,441 | 13 | 12 |
+| `WitnessFreshRestore` | 1,731,235 | 496,958 | 14 | 12 |
+| `WitnessPolicy` | 2 | 2 | 2 | 12 |
+
+Actual `mage tlaCoordination`, `mage tlaCoordinationNegative` and
+`mage tlaCoordinationCoverage` invocations all exited zero. The mutation target
+verified all eight `Safety` violations; the coverage target verified all six
+`WitnessAbsent` violations with `Safety` retained first. Tagged Mage compilation,
+vet, errcheck and target discovery also passed sequentially using
+`GOMAXPROCS=2`, `GOFLAGS=-p=1` and a private `/tmp` directory. Their outer argument,
+log and exit receipts are in `.cache/tla/Coordination-mage-checks-6_imjq98`.
+`.cache/tla/coordination-ox3-receipts.json` indexes every exact final child
+snapshot/log/hash/argument/exit directory; the public target logs also list them.
+
+The initial public positive invocation is preserved separately in
+`.cache/tla/Coordination-mage-checks-zpf1j83h`. Its larger fresh-restore projection
+allowed an unrelated pre-restore policy replacement and hit the fixed 180-second
+wall deadline. `.cache/tla/CoordinationFreshRestore-2527002942` retains that exact
+source/configuration, state, log and Java exit `-1` (`signal: killed`), with no
+pass claimed. The last emitted progress showed 2,746,039 distinct states and
+1,381,458 queued states. The final restore projection omits that pre-restore
+policy-write cross-product; Safety/Policy still cover it. All nineteen final
+profiles were then rerun together against the same final module bytes above.
+This resource-bound projection adjustment is not a protocol finding. No genuine
+protocol defect was identified, and no `internal/coord` behavior was changed.
+No live etcd, lab, VM, SSH, FUSE, fence, snapshot or production operation occurred.

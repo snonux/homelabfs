@@ -88,6 +88,26 @@ func TLAEmergencyCoverage(ctx context.Context) error {
 		"EmergencyWitnessRestart", "EmergencyWitnessPeerRestart", "EmergencyWitnessPartial", "EmergencyWitnessConflict", "EmergencyWitnessAmbiguous", "EmergencyWitnessContinuity")
 }
 
+// TLACoordination checks bounded allocation CAS, crashes and offline restore boundaries.
+func TLACoordination(ctx context.Context) error {
+	return runTLAConfigs(ctx, false, "CoordinationSafety", "CoordinationPolicy",
+		"CoordinationCrash", "CoordinationRestore", "CoordinationFreshRestore")
+}
+
+// TLACoordinationNegative requires counterexamples for removed coordination guards.
+func TLACoordinationNegative(ctx context.Context) error {
+	return runTLAConfigs(ctx, true, "CoordinationNegativePolicyCAS", "CoordinationNegativeRegistry",
+		"CoordinationNegativePolicyRace", "CoordinationNegativeGrantCAS", "CoordinationNegativeReservation",
+		"CoordinationNegativeEpoch", "CoordinationNegativeAuthority", "CoordinationNegativeRestore")
+}
+
+// TLACoordinationCoverage requires concrete contention, uncertainty, restart and restore traces.
+func TLACoordinationCoverage(ctx context.Context) error {
+	return runTLAConfigs(ctx, true, "CoordinationWitnessCompeting", "CoordinationWitnessUnknown",
+		"CoordinationWitnessRestart", "CoordinationWitnessRestore", "CoordinationWitnessFreshRestore",
+		"CoordinationWitnessPolicy")
+}
+
 func runTLAConfigs(ctx context.Context, negative bool, configs ...string) error {
 	jar, err := tlaJar(ctx)
 	if err != nil {
@@ -124,10 +144,13 @@ func runTLC(ctx context.Context, jar, config string, negative bool) error {
 	configPath := filepath.Join("spec", "tla", config+".cfg")
 	transactions := strings.HasPrefix(config, "Transactions")
 	emergency := strings.HasPrefix(config, "Emergency")
-	if transactions || emergency {
+	coordination := strings.HasPrefix(config, "Coordination")
+	if transactions || emergency || coordination {
 		heap = "-Xmx512m"
 		if emergency {
 			module = "Emergency.tla"
+		} else if coordination {
+			module = "Coordination.tla"
 		} else {
 			module = "Transactions.tla"
 		}
@@ -136,7 +159,7 @@ func runTLC(ctx context.Context, jar, config string, negative bool) error {
 			return err
 		}
 	}
-	if emergency {
+	if emergency || coordination {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, 3*time.Minute)
 		defer cancel()
@@ -151,13 +174,13 @@ func runTLC(ctx context.Context, jar, config string, negative bool) error {
 		"-metadir", dir, "-config", configPath, modulePath)
 	cmd.Stdout = io.MultiWriter(os.Stdout, log)
 	cmd.Stderr = cmd.Stdout
-	if transactions || emergency {
+	if transactions || emergency || coordination {
 		if err := os.WriteFile(filepath.Join(dir, "argv.txt"), []byte(strings.Join(cmd.Args, "\n")+"\n"), 0o600); err != nil {
 			return fmt.Errorf("write TLC command: %w", err)
 		}
 	}
 	runErr := cmd.Run()
-	if transactions || emergency {
+	if transactions || emergency || coordination {
 		if err := recordTLCExit(dir, runErr); err != nil {
 			return err
 		}
@@ -184,7 +207,7 @@ func checkTLCCounterexample(config, path string, runErr error) error {
 		return fmt.Errorf("read negative TLC evidence: %w", err)
 	}
 	invariant := "Safety"
-	if strings.HasPrefix(config, "TakeoverWitness") || strings.HasPrefix(config, "TransactionsWitness") || strings.HasPrefix(config, "EmergencyWitness") {
+	if strings.HasPrefix(config, "TakeoverWitness") || strings.HasPrefix(config, "TransactionsWitness") || strings.HasPrefix(config, "EmergencyWitness") || strings.HasPrefix(config, "CoordinationWitness") {
 		invariant = "WitnessAbsent"
 	}
 	if !strings.Contains(string(output), "Invariant "+invariant+" is violated") {
