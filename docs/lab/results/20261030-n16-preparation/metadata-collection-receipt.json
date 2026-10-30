@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "python3",
+    "-B",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r16-collect-metadata.py"
+  ],
+  "started_at": "2026-10-30T16:12:48.381329+00:00",
+  "finished_at": "2026-10-30T16:13:19.780069+00:00",
+  "elapsed_seconds": 31.39874986200084,
+  "returncode": 0,
+  "source_sha256": "114a73fc10419bb497d176b8f38b51d4ce01ee58a451be86e7c974e207fde4e9",
+  "log_sha256": "1d6ac6142346ae2f0c5b518140474eab3e4f6b2f92243390558b9ff51d376f62"
+}
