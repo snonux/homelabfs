@@ -294,3 +294,13 @@ Explicit failed reconciliation preserved the original ambiguous reports;
 cleanup skipped inapplicable actions and closed `complete=true`, `success=false`.
 No host power/configuration change occurred. The connection-timeout cause is
 unknown; native validation of the journal read-window change remains pending.
+
+The standing-authorized [n12 attempt](lab/results/20261030-n12/) passed admission
+and setup, then stopped at its first root/direct fixture's process-lock case:
+a successful-acquisition `fcntl-try` returned EAGAIN after the interruption
+check had passed. Task `qy3` records stage/holder diagnosis; the exact cause
+is unestablished. Append passed, but the unprivileged fixture was not reached,
+so `ky3` native validation remains pending. Collection and all normal cleanup,
+shutdown and Rocky restoration/readiness steps passed. Final report is
+`complete=true`, `success=false`; a pinned 15:02:05 UTC inventory confirmed
+Rocky PID 24786 running and all FreeBSD guests stopped.

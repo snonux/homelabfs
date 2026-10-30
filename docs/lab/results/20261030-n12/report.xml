@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="20261030-n12" tests="11" failures="1">
+  <testcase name="prepared-preflight" classname="setup" time="8.655766585"></testcase>
+  <testcase name="rocky-stop" classname="setup" time="8.185203356"></testcase>
+  <testcase name="lab-start" classname="setup" time="1.266288418"></testcase>
+  <testcase name="native-readiness" classname="setup" time="11.622754186"></testcase>
+  <testcase name="native-setup" classname="setup" time="14.244609906"></testcase>
+  <testcase name="native-test" classname="test" time="7.052380403">
+    <failure type="assertion">failed: exit status 10</failure>
+  </testcase>
+  <testcase name="native-collect" classname="collect" time="1.4118278229999999"></testcase>
+  <testcase name="native-cleanup" classname="cleanup" time="1.690498727"></testcase>
+  <testcase name="lab-stop" classname="cleanup" time="29.176068329"></testcase>
+  <testcase name="rocky-restore" classname="restore" time="0.958695719"></testcase>
+  <testcase name="rocky-restoration-readiness" classname="restore" time="16.52234894"></testcase>
+</testsuite>
