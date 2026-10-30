@@ -10,11 +10,21 @@ Before implementing extensive replication, validate the selected FreeBSD FUSE â†
 
 - Confirm guest 9p modules, protocol dialect, mount lifecycle, UID/GID handling, and application-visible errors.
 - Verify write acknowledgement and sync propagation at the syscall boundary. A normal buffered write and a writable mmap store are different operations; define the promised persistence boundary for each. Kernel buffering must not silently contradict the chosen write contract.
-- Verify locking in one guest/mount, across pods using that mount, through duplicate guest mounts, and between independently connected clients. Preserve correct local application locking; enforce exclusive volume serving against other clients.
+- Apply the [2026-10-30 accepted lock scope](Platform-interfaces.md#accepted-9p-lock-scope-2026-10-30): prove real POSIX byte-range locks and flock contention between cooperating processes in the same guest 9p mount/kernel inode domain, including pods sharing that mount. Check blocking waits and wakeups, nonblocking conflicts, POSIX GETLK results, close/exit cleanup and the distinct POSIX process/flock open-description lifetimes.
+- Record duplicate/independent mounts (including within one guest), separate guests and direct host access as unsupported shared-lock domains, never as locking passes. Separately prove publication denies a second independent writable mount/client and fences old consumers, including cached access, before replacement publication.
 - Verify cache behavior for data, metadata, permissions, negative lookups, and existing mmap pages through failover and daemon restart.
 - Verify recovery of the 9p share after FUSE restart. A fresh host mount need not repair already-open bhyve file handles automatically. Determine whether remount, workload restart, or VM restart is required and automate the smallest safe action.
 
-Two concrete findings make these gates essential. Linux's 9p documentation describes the no-cache mode as disabling mmap, while its mmap mode includes writeback behavior; disabling every cache is therefore not automatically a solution for database compatibility. The FreeBSD main-branch lib9p backend inspected during this review returns lock success without acquiring a host lock and reports regions unlocked. This does not establish the behavior of the deployed release or prove same-guest locking fails, since the guest kernel can also maintain locks. It does mean host locking cannot be assumed to protect independent clients. Sources: [Linux 9p cache modes](https://docs.kernel.org/filesystems/9p.html), [FreeBSD lib9p backend](https://github.com/freebsd/freebsd-src/blob/main/contrib/lib9p/backend/fs.c).
+The [installed lib9p machine-code investigation](lab/Deployed-9p-boundary.md#installed-code-and-source-binding)
+proves lock success without host locks and getlock reporting unlocked. Pinned
+Linux candidate source supports local conflict handling; it is not a live
+exact-target pass. Paul retained 9p on 2026-10-30 with the single-mount advisory
+lock limitation above. This does not waive credentials/groups/process identity,
+O_SYNC/O_DSYNC and other sync propagation, cache/generation recovery, K04,
+fencing or normal-publication restrictions. `zq3` remains incomplete and `4r3`
+blocked. Linux's [9p cache documentation](https://docs.kernel.org/filesystems/9p.html)
+also makes clear that disabling caches is not automatically a solution for mmap;
+validate the selected version and its actual daemon barriers.
 
 If a required property fails, stop acceptance of the affected canary profile and revise or repair the selected transport explicitly. Do not hide missing semantics behind a successful mount or filesystem benchmark.
 

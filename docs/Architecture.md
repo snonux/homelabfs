@@ -15,6 +15,7 @@ See [Motivation and goals](Motivation-and-goals.md) for the problem HomelabFS ai
 - For a given data set, normal workload reads and writes occur together on one active node. On failure, both move to a replacement owner. Different data sets can be active on different nodes.
 - Support both FreeBSD and Linux FUSE from the start, using two platform adapters around shared filesystem and replication code.
 - For f3s, expose the FreeBSD HomelabFS mount to each colocated Rocky bhyve guest through virtio-9p. Rocky uses its kernel 9p client; no HomelabFS Linux FUSE daemon is deployed in this path.
+- On 2026-10-30 Paul retained 9p and accepted advisory locking limited to cooperating users of the same guest 9p mount and kernel inode/lock domain. Separate mounts (even in one guest), other guests and direct host access have no shared-lock guarantee. Require exclusive per-volume consumer publication and fencing of old clients, including cached access. This decision changes only lock scope; [remaining guest-publication gates](Platform-interfaces.md#accepted-9p-lock-scope-2026-10-30) remain open.
 - Files and directories support traditional Unix user/group ownership and permission bits.
 - Normal file access must support the f3s application portfolio with POSIX-style semantics. Compatibility is a requirement to validate, not a current certification.
 - Use ZFS-backed passthrough operations where possible, with HomelabFS coordinating mutations and read freshness. Reads wait when the required change has not yet been applied locally.

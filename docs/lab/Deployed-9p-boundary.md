@@ -5,7 +5,7 @@ locking. Its installed machine code establishes this directly. The current
 Rocky boot also has no 9p support. Neither the current boot nor the installed
 6.1.190 candidate is admitted for real-daemon publication. Task `zq3` and its
 replication dependency remain blocked; this investigation supplies a design
-decision, not a compatibility pass.
+decision input, not a compatibility pass.
 
 Scope: read-only target inventory and retrieval of three public OS artifacts,
 then offline source/disassembly analysis. No VM lifecycle, mount, workload,
@@ -14,6 +14,26 @@ The real daemon remains restricted to its existing disposable self/controlled
 child profiles. See [preparation prerequisites](Real-daemon-9p-preparation.md),
 [permission boundary](../Platform-interfaces.md#unix-permission-enforcement-boundary)
 and [required matrix](../Deployment-tests.md).
+
+## Accepted disposition, 2026-10-30
+
+Paul retained 9p and accepted cooperating advisory locks in the same guest
+**same 9p mount/kernel inode domain**, including pods sharing that underlying
+mount. Separate 9p mounts (even in one guest), other guests and direct host
+access have no shared-lock guarantee. The installed successful no-op callbacks
+below remain a proven fact. Linux local conflict handling is supported by the
+pinned candidate source, not a live exact-target pass. The
+[current lock contract](../Platform-interfaces.md#accepted-9p-lock-scope-2026-10-30)
+requires local contention/GETLK/blocking/nonblocking/close/exit validation and
+separate proof of exclusive writable-client publication and old-client fencing,
+including cached access.
+
+This supersedes the earlier architecture-choice request below and the
+[Linux frontend/RPC recommendation](Publication-boundary-options.md); that path
+is not selected. No other semantic waiver follows: guest credentials/groups and
+process identity, synchronous flags/barriers, cache/generation/K04/fencing and
+normal-publication prerequisites remain unresolved. `zq3` stays incomplete and
+`4r3` blocked. No runtime or artifact admission is changed by this decision.
 
 ## Actual target and evidence
 
@@ -113,7 +133,7 @@ verification of the installed RPM contents.
 | PID/process incarnation | Host FUSE headers use host thread credentials and process PID; ordinary requests originate from bhyve, not guest helpers. | No guest process incarnation/exit authentication reaches the existing Credentials provider. Enrolling bhyve would not recover it. |
 | Fid/open description | lib9p retains a host fd per opened fid; walk retains authinfo. Guest fid numbers do not become daemon descriptor identities. | Host handles exist, but guest dup/fork/transfer ownership cannot be inferred from their identity alone. |
 | Close/exit | Guest final file release drops its fid; lib9p clunk closes its host fd. No independent guest-process exit event is supplied to HomelabFS. | Guest close-any-fd POSIX cleanup and process retirement are not established by host close or bhyve lifetime. |
-| POSIX locks/client | Linux first enforces local locks, then sends TLOCK with proc_id/client_id; installed lib9p returns success without host locks. | Local exclusion can appear to work while independent clients do not share an enforced server lock domain. Required cross-client gate unsupported. |
+| POSIX locks/client | Linux first enforces local locks, then sends TLOCK with proc_id/client_id; installed lib9p returns success without host locks. | Local exclusion can appear to work while independent clients do not share an enforced server lock domain. Independent-client locking is unsupported and outside the accepted 9p lock contract; local behavior still requires live validation. |
 | flock | Candidate Linux source converts flock to POSIX locking for the wire request. | Do not infer independent flock/open-description lifetime semantics from local success. |
 | Ordinary write | In upstream 6.1.190, specifically `cache=mmap` write_iter calls protocol write directly; installed lib9p uses pwritev. | Current generic documentation about writeback is not version-specific proof. No daemon/journal barrier was traced here. |
 | O_SYNC/O_DSYNC | Reviewed lib9p flag conversion clears both flags; installed lopen conversion agrees. Candidate ordinary write_iter returns without generic_write_sync. | Synchronous-open propagation is an additional source-supported blocker/risk; no live durability claim. |
@@ -132,7 +152,11 @@ Primary source detail: candidate
 host [FUSE header construction](https://github.com/freebsd/freebsd-src/blob/aadd58dddcbc78f4d5594827b46b5633552b15ce/sys/fs/fuse/fuse_ipc.c)
 and [retained export root](https://github.com/freebsd/freebsd-src/blob/aadd58dddcbc78f4d5594827b46b5633552b15ce/usr.sbin/bhyve/pci_virtio_9p.c).
 
-## Concrete next decision
+## Historical next-decision request (superseded)
+
+The following request preceded the accepted lock-scope decision above; its
+comparison was recorded in [Publication boundary options](Publication-boundary-options.md).
+It is retained as historical rationale, not a current architecture request.
 
 There is no full-matrix disposable publication contract implementable by merely
 adding bhyve to the existing daemon provider. The identity transformation loses

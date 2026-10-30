@@ -186,7 +186,14 @@ Validation has separate evidence scopes:
    kernel → pod path before replication implementation. Include SELinux
    enforcing, UID/GID, supplementary groups, non-root denial, pod security
    contexts and supported namespace mappings; do not disable SELinux or replace
-   these checks with a root-only world-writable probe. Check locks, mmap/cache,
+   these checks with a root-only world-writable probe. Apply the
+   [2026-10-30 single-mount advisory lock scope](../Platform-interfaces.md#accepted-9p-lock-scope-2026-10-30):
+   prove POSIX/flock contention and cleanup within one guest 9p mount/kernel
+   inode domain, including pods sharing it. Independent/duplicate mounts,
+   other guests and host access have no shared-lock guarantee; record those
+   cases as unsupported and separately prove exclusive writable-client
+   publication and old-client cached-access fencing. This concession does not
+   waive any other gate or admit a target. Check mmap/cache,
    write/fsync/flush propagation against [durability](Durability.md), restart,
    mount disappearance and the smallest safe recovery path. A syscall returning
    success or SQLite process-crash check is not power-loss evidence.

@@ -111,7 +111,36 @@ Export the HomelabFS mount, not its raw ZFS backing directory: otherwise writes 
 
 Prototype permissions/UID mapping, fsync propagation, locking, mmap, caching, file identity, and host-daemon restart behavior through the complete 9p-to-FUSE stack. Confirm loss of HomelabFS cannot expose the underlying mountpoint directory as an accidental writable fallback. Treat these checks as acceptance gates for the selected transport; any failure requires an explicit design revision rather than silently changing the guest access path. Do not assume virtio-9p is virtio-fs; they are different interfaces.
 
-Early review identified two specific acceptance risks: the documented Linux 9p no-cache mode disables mmap, while its mmap mode includes writeback; and FreeBSD's main-branch lib9p backend reports successful locks without acquiring host locks. Guest-local locking may still work, so test the actual lock domain and deployed release rather than assuming either correctness or failure. The [test plan](Integration-tests.md#early-compatibility-gates) links the sources and defines the required checks. These findings do not change the selected transport automatically.
+### Accepted 9p lock scope, 2026-10-30
+
+Paul accepted the client-side locking tradeoff and retained the selected 9p path:
+“thats fine then, a fair tradeoff. but document it! we can continue to use 9p.”
+The [installed lib9p investigation](lab/Deployed-9p-boundary.md#installed-code-and-source-binding)
+proves successful no-op server lock replies; it supplies no server enforcement.
+Pinned Linux 6.1.190 source shows local POSIX/flock conflict handling before the
+wire request. This is source evidence, not a live exact-target lock pass.
+
+The accepted advisory lock scope is cooperating processes using the **same 9p
+mount in the same guest, with the same kernel inode/lock domain**, including pods
+sharing that underlying mount through bind mounts. Separate 9p mounts even
+within one guest, separate guests and direct host access have no shared-lock guarantee. Do not publish a writable
+volume to two independent mounts/clients. Exclusive per-volume consumer
+publication and fencing of old consumers, including cached pages/mappings,
+remain mandatory; advisory locks cannot replace either control. This restriction
+applies only to the f3s 9p publication profile; native FreeBSD/Linux FUSE and
+the shared service retain their existing lock semantics.
+
+[Deployment tests](Deployment-tests.md#early-compatibility-gates) must prove local
+contention and lifetimes in this scope. This lock-only concession does not waive
+request-bound UID/GID/groups or process identity, synchronous-open/sync semantics,
+cache/generation recovery, K04, fencing or normal-publication restrictions. Those
+prerequisites remain open; `zq3` is incomplete and `4r3` remains blocked. The
+[earlier Linux frontend/RPC recommendation](lab/Publication-boundary-options.md)
+is superseded and is not the selected f3s architecture.
+
+Linux 9p no-cache mode disables mmap, while documented mmap mode includes
+writeback. Exact-version cache behavior and daemon barriers still need proof;
+a successful local lock test would not close those gates.
 
 The two-platform FUSE architecture remains a portability requirement; f3s deploys the FreeBSD adapter and uses virtio-9p in its guests. Passing a ZFS zvol as a virtual disk is a separate block-storage design and does not expose the host's existing HomelabFS directory semantics.
 

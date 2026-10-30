@@ -14,6 +14,24 @@ Required contracts: [kernel policy](../spec/Kernel-policy.md),
 [lab operations](../Lab-operations.md), [replication safety](../Lab-replication.md)
 and [historical PoC runbook](../PoC-runbook.md).
 
+## Accepted 9p profile, 2026-10-30
+
+Paul retained the selected 9p path with advisory locking limited to cooperating
+processes on the same guest 9p mount/kernel inode domain, including pods sharing
+that underlying mount via bind mounts. Separate 9p mounts even in one guest,
+other guests and host access have no shared-lock guarantee. No two independent
+writable mounts/clients may share a volume. Exclusive consumer publication and
+fencing of old clients, including cached pages/mappings, remain prerequisites.
+See the [current lock contract](../Platform-interfaces.md#accepted-9p-lock-scope-2026-10-30)
+and [installed boundary proof](Deployed-9p-boundary.md).
+
+The earlier Linux frontend/RPC recommendation is superseded, not selected.
+The lock-only concession leaves credentials/groups/process identity,
+synchronous-open/sync, cache/generation/K04/fencing and normal-publication gates
+open. `zq3` is incomplete and `4r3` remains blocked. Local Linux lock behavior
+has source support, not a live exact-target pass. Native FUSE/shared-service
+lock semantics are unchanged.
+
 ## Why the existing daemon cannot run the required profile yet
 
 `internal/daemoncli/cli.go` rejects ordinary `mount`/`serve` publication and
@@ -29,9 +47,9 @@ process is not an enrolled helper.
 UID/GID/PID. These are host kernel requests; a guest helper PID cannot simply be
 inserted into this provider. Enrolling the bhyve PID or guessing groups by guest
 UID does not establish request-bound guest credentials, process-exit semantics,
-descriptor ownership, or independent lock owners. The actual deployed
-bhyve/lib9p credential behavior must be identified before selecting a solution.
-This assessment does not assert the behavior of an uninspected deployed release.
+descriptor ownership, or independent lock owners. The
+[deployed investigation](Deployed-9p-boundary.md) now identifies the installed boundary and its missing guest identity; a compatible solution remains
+unimplemented. Do not relax header checks or enroll bhyve/root as a substitute.
 
 `Adapter.Capabilities` explicitly leaves normal publication, arbitrary
 credentials and writeback unsupported. Buffered native validation supports
@@ -50,14 +68,17 @@ the daemon security contract. Keep it as historical PoC tooling.
 The IQ infrastructure index records plain `rocky` as a development VM outside
 the k3s cluster. This is planning context, not freshly inspected state. Pod
 tests need an explicitly selected isolated runtime/publication environment;
-existing production r-nodes cannot substitute. A duplicate mount in one guest
-is not an independently connected client. Any additional client needs a
-separately admitted target and memory budget.
+existing production r-nodes cannot substitute. A distinct 9p mount in the same
+guest is outside the shared-lock contract just as an independent guest is.
+Any additional target needs separate admission and a memory budget; it must not
+be concurrently published as another writable consumer of the volume.
 
 ## Small prerequisite task breakdown
 
 These are proposed task descriptions for the project owner to create and order.
-They neither change task state nor authorize transport changes.
+They neither change task state nor authorize transport changes. The deployed
+boundary investigation is recorded above; the retained 9p profile still needs
+the unresolved prerequisites below.
 
 1. **Specify the deployed 9p credential, lock and sync boundary.** References:
    kernel policy sections Complete artifact manifest and Validation ownership;
@@ -83,7 +104,9 @@ They neither change task state nor authorize transport changes.
    Deployment-tests / K04; Deployment-readiness / scope and completion.
    Acceptance: explicit validation-only CLI/configuration, exact exporter and
    volume/generation/session admission, request-bound credentials and distinct
-   lock domains, guest readiness guard and retained-descriptor behavior,
+   local lock owners within the accepted single-mount domain, exclusive
+   writable-client publication denial, guest readiness guard and retained
+   descriptor behavior,
    rejected plain-directory fallback, normal-publication denial preserved.
    Provide non-root UID/GID/supplementary-group and denial fixtures; explicit
    namespace mapping; an isolated pod runtime with pinned image and pod
@@ -125,15 +148,16 @@ installed ELRepo kernel is not proof of the current running kernel.
 |---|---|
 | Credentials | Numeric UID/GID, complete supplementary groups, same UID with different groups, root/non-root allow and denial, pod securityContext and supported namespace mapping under SELinux enforcing; correlate guest operations with host authorization |
 | Sync | Trace ordinary write, O_SYNC/O_DSYNC, fsync, fdatasync, directory fsync, writable mmap MS_SYNC and later fsync to covering daemon journal barriers; state the guest-visible buffering boundary and avoid power-loss claims |
-| Locks | Contended POSIX/flock operations in one mount, across pods sharing it, duplicate guest mounts and independently connected clients; positive local exclusion plus refusal of unauthorized concurrent volume serving; include close/exit and descriptor lifetime |
+| Locks | Real POSIX byte-range/flock contention within one guest 9p mount/kernel inode domain, including pods bind-mounted from it: blocking waits/wakeups, nonblocking conflict, POSIX GETLK, close/exit and process/open-description lifetimes. Duplicate/independent 9p mounts, other guests and host access are unsupported shared-lock cases, never passes. Separately prove denial of a second independent writable mount/client and old-client cached-access fencing |
 | Cache | Data, attributes, permissions and negative lookup freshness; already-open files and existing mmap pages across daemon restart and generation change; access revocation must not be inferred from readiness alone |
 | Restart/recovery | Preserve synthetic journal/oracle; restart daemon; inspect old bhyve handles; determine and automate smallest safe workload restart, normal remount or graceful VM restart; verify committed data and new identity |
 | K04 | Lose host FUSE and guest 9p mounts separately; ordinary directory remains; both new and retained consumer access must fail safely with no underlying fallback writes, then recover only after exact mount identity admission |
 
 Each case has an external sequence/reply oracle, bounded data sizes, fixed
 seeds and deadlines; preserve raw errno, kernel/module/daemon identities and
-timings. Record unsupported/not-run cases explicitly. A lock stub on upstream
-main does not establish installed behavior. Current upstream documentation
+timings. Record unsupported/not-run cases explicitly. The [installed lib9p proof](Deployed-9p-boundary.md#installed-code-and-source-binding)
+establishes successful no-op server locks; pinned Linux local-lock source does
+not establish live exact-target behavior. Current upstream documentation
 describes `cache=mmap` as read-ahead plus writeback and `cache=none` as disabling
 mmap; inspect the selected 6.1 kernel source and verify its actual behavior
 instead of applying current documentation as version-specific proof.

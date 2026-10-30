@@ -1,6 +1,30 @@
-# Guest publication boundary: decision proposal
+# Guest publication boundary: historical decision proposal
 
-2026-10-30 · task `0z3` · **proposal, no architecture change or admission**
+2026-10-30 · task `0z3` · **historical proposal, superseded recommendation**
+
+## Current disposition, 2026-10-30
+
+Paul retained FreeBSD FUSE → bhyve/lib9p → Rocky kernel 9p and accepted advisory
+locks limited to cooperating consumers of the **same guest 9p mount and kernel
+inode/lock domain**, including pods bind-mounted from that underlying mount.
+Separate 9p mounts even in one guest, other guests and direct host access have
+no shared-lock guarantee. Independent writable mounts/clients must not share a
+volume; exclusive consumer publication and fencing of old clients, including
+cached access, remain required. See the [current contract](../Platform-interfaces.md#accepted-9p-lock-scope-2026-10-30)
+and [revised validation matrix](../Deployment-tests.md#early-compatibility-gates).
+
+The Linux frontend/remote-service recommendation and prototype below are
+historical, superseded and **not selected or authorized**. Retaining 9p changes
+only lock scope: credentials/groups/process identity, synchronous-open/sync,
+cache/generation/K04/fencing and normal-publication prerequisites remain open.
+`zq3` is incomplete; `4r3` remains blocked. Installed server no-op proof is
+unchanged; local Linux lock handling is source evidence pending exact-target
+validation. Native FUSE/shared-service lock contracts are unchanged.
+
+## Historical assessment
+
+The following records the earlier recommendation and its rationale; references
+to a requested choice or subsequent prototype are not current instructions.
 
 Recommend designing a Linux FUSE frontend beside the guest consumers, with an
 explicit authenticated filesystem-service boundary to the FreeBSD storage owner.
@@ -17,7 +41,7 @@ The actual Rocky boot lacks 9p; the installed candidate was not booted/admitted.
 This comparison used local documents/source and public primary sources only;
 no installation, live test, VM operation or publication occurred.
 
-## Choices and disposition
+## Historical choices and disposition
 
 | Choice | Implementable starting point | Decision under existing requirements |
 |---|---|---|
@@ -77,7 +101,7 @@ POSIX locking. Those are useful controls, not proof of HomelabFS's full barrier,
 description or lock-owner contract ([Linux client](https://docs.kernel.org/admin-guide/cifs/usage.html),
 [Samba configuration](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html)).
 
-## Decision requested before implementation
+## Superseded decision request
 
 Choose **C: authorize specification of guest-side Linux FUSE plus an authenticated
 remote filesystem-service boundary, preserving the present semantics**. This
@@ -113,7 +137,7 @@ coherently before implementation. Keep `zq3`/`4r3` blocked until an explicitly
 revised equivalent end-to-end acceptance gate passes; do not label Linux results
 as a 9p pass. Native FreeBSD acceptance remains separate and unchanged.
 
-## Smallest subsequent disposable prototype
+## Historical unselected prototype
 
 First deliver a reviewed, bounded remote-service protocol/authorization spec and
 negative cases. Only then implement a validation-only experiment using the real
