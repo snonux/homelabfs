@@ -1,0 +1,63 @@
+{
+  "observed_at": "2026-10-30T06:07:47.778611+00:00",
+  "provenance": "Root executed exact reviewed bounded pinned root Rocky read-only uname/id/RPM query once; combined harvest/query terminalf42766 exit0. Fresh replacement-plan inventory; running kernel/UID unchanged but six grub2 packages genuinely differ from historical R3. We performed no package/service/lifecycle mutation; change cause unverified.",
+  "argv": [
+    "/usr/bin/ssh",
+    "-F",
+    "/dev/null",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "StrictHostKeyChecking=yes",
+    "-o",
+    "GlobalKnownHostsFile=/dev/null",
+    "-o",
+    "UpdateHostKeys=no",
+    "-o",
+    "ControlMaster=no",
+    "-o",
+    "ControlPath=none",
+    "-o",
+    "ConnectTimeout=4",
+    "-o",
+    "ServerAliveInterval=2",
+    "-o",
+    "ServerAliveCountMax=1",
+    "-o",
+    "UserKnownHostsFile=/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/guest-known_hosts",
+    "-o",
+    "ProxyCommand=/usr/bin/ssh -F /dev/null -o BatchMode=yes -o StrictHostKeyChecking=yes -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no -o ControlMaster=no -o ControlPath=none -o ConnectTimeout=4 -o ServerAliveInterval=2 -o ServerAliveCountMax=1 -o UserKnownHostsFile=/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/host-known_hosts -o HostName=192.168.1.133 -o HostKeyAlias=f3 -W %h:%p paul@f3",
+    "root@192.168.1.123",
+    "sh -s"
+  ],
+  "stdin": "set -eu\nuname -r\nid -u\nrpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'\n",
+  "exit": 0,
+  "kernel": "5.14.0-687.61.1.el9_8.x86_64",
+  "uid": "0",
+  "packages": "sha256:4b4382416e417bea3b754c99c492e86b72257b67820aa751181420d8539533b7",
+  "package_rows": 1109,
+  "status": "completed",
+  "stdout_file": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r4-rocky-current.stdout",
+  "stderr_file": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r4-rocky-current.stderr",
+  "historical_package_sha256": "4b689f7e8bb5d66bdabaffe285c49a87a103325266dda6424f8003ee59dcb4e3",
+  "package_delta": {
+    "removed": [
+      "grub2-common-2.06-126.el9_8.rocky.0.3.noarch",
+      "grub2-efi-x64-2.06-126.el9_8.rocky.0.3.x86_64",
+      "grub2-tools-2.06-126.el9_8.rocky.0.3.x86_64",
+      "grub2-tools-efi-2.06-126.el9_8.rocky.0.3.x86_64",
+      "grub2-tools-extra-2.06-126.el9_8.rocky.0.3.x86_64",
+      "grub2-tools-minimal-2.06-126.el9_8.rocky.0.3.x86_64"
+    ],
+    "added": [
+      "grub2-common-2.06-127.el9_8.rocky.0.1.noarch",
+      "grub2-efi-x64-2.06-127.el9_8.rocky.0.1.x86_64",
+      "grub2-tools-2.06-127.el9_8.rocky.0.1.x86_64",
+      "grub2-tools-efi-2.06-127.el9_8.rocky.0.1.x86_64",
+      "grub2-tools-extra-2.06-127.el9_8.rocky.0.1.x86_64",
+      "grub2-tools-minimal-2.06-127.el9_8.rocky.0.1.x86_64"
+    ],
+    "cause": "unverified"
+  },
+  "observed_at_source": "controller capture file mtime after completed root query; remote script emits no timestamp"
+}

@@ -1,0 +1,191 @@
+{
+  "intent.json": {
+    "targets": [
+      [
+        "hfs-test0",
+        "zroot/bhyve/homelabfs-lab/hfs-test0",
+        "10918531099539801920"
+      ],
+      [
+        "hfs-test1",
+        "zroot/bhyve/homelabfs-lab/hfs-test1",
+        "16665947213107414555"
+      ],
+      [
+        "hfs-test2",
+        "zroot/bhyve/homelabfs-lab/hfs-test2",
+        "1381746573395589937"
+      ]
+    ],
+    "tag": "zrepl_20261030_055329_000",
+    "database_cap_each": 33554432,
+    "baseline_mount_inventory": "zroot/ROOT/default\t/\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\ndevfs\t\t\t/dev\t\t\tdevfs\trw\t\t0 0\n/dev/gpt/efiboot0\t/boot/efi\t\tmsdosfs\trw\t\t2 2\n/dev/ufs/F3S_KEYS\t/keys\t\t\tufs\tro\t\t2 2\nzroot/tmp\t\t/tmp\t\t\tzfs\trw,nosuid,noatime,nfsv4acls \t0 0\nzroot/var/log\t\t/var/log\t\tzfs\trw,noexec,nosuid,noatime,nfsv4acls \t0 0\nzroot/home\t\t/home\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/ROOT\t\t/mnt\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot\t\t\t/zroot\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/var/crash\t\t/var/crash\t\tzfs\trw,noexec,nosuid,noatime,nfsv4acls \t0 0\nzroot/usr/src\t\t/usr/src\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/usr/ports\t\t/usr/ports\t\tzfs\trw,nosuid,noatime,nfsv4acls \t0 0\nzroot/var/audit\t\t/var/audit\t\tzfs\trw,noexec,nosuid,noatime,nfsv4acls \t0 0\nzroot/var/mail\t\t/var/mail\t\tzfs\trw,nfsv4acls \t0 0\nzroot/var/tmp\t\t/var/tmp\t\tzfs\trw,nosuid,noatime,nfsv4acls \t0 0\nzroot/home/paul\t\t/home/paul\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve\t\t/zroot/bhyve\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/rocky\t/zroot/bhyve/rocky\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab /zroot/bhyve/homelabfs-lab zfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/freebsd\t/zroot/bhyve/freebsd\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test1 /zroot/bhyve/homelabfs-lab/hfs-test1 zfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test2 /zroot/bhyve/homelabfs-lab/hfs-test2 zfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test0 /zroot/bhyve/homelabfs-lab/hfs-test0 zfs\trw,noatime,nfsv4acls \t0 0\n"
+  },
+  "native-complete.json": {
+    "status": "metadata-inspected; source images unchanged",
+    "retention_hours": 168
+  },
+  "complete.json": {
+    "no_md_attachments": true,
+    "snapshot_automounts_normally_unmounted": [
+      {
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test0@zrepl_20261030_055329_000",
+        "mountpoint": "/zroot/bhyve/homelabfs-lab/hfs-test0/.zfs/snapshot/zrepl_20261030_055329_000",
+        "guid": "10918531099539801920",
+        "normal_unmount": true
+      },
+      {
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test1@zrepl_20261030_055329_000",
+        "mountpoint": "/zroot/bhyve/homelabfs-lab/hfs-test1/.zfs/snapshot/zrepl_20261030_055329_000",
+        "guid": "16665947213107414555",
+        "normal_unmount": true
+      },
+      {
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test2@zrepl_20261030_055329_000",
+        "mountpoint": "/zroot/bhyve/homelabfs-lab/hfs-test2/.zfs/snapshot/zrepl_20261030_055329_000",
+        "guid": "1381746573395589937",
+        "normal_unmount": true
+      },
+      {
+        "snapshot": "zroot/bhyve/freebsd@zrepl_20261030_055329_000",
+        "mountpoint": "/zroot/bhyve/freebsd/.zfs/snapshot/zrepl_20261030_055329_000",
+        "guid": "16399257875439500698",
+        "normal_unmount": true
+      }
+    ],
+    "baseline_snapshot_mounts_preserved": [],
+    "no_owned_ufs_mounts": true,
+    "before_mount_inventory": "zroot/ROOT/default\t/\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\ndevfs\t\t\t/dev\t\t\tdevfs\trw\t\t0 0\n/dev/gpt/efiboot0\t/boot/efi\t\tmsdosfs\trw\t\t2 2\n/dev/ufs/F3S_KEYS\t/keys\t\t\tufs\tro\t\t2 2\nzroot/tmp\t\t/tmp\t\t\tzfs\trw,nosuid,noatime,nfsv4acls \t0 0\nzroot/var/log\t\t/var/log\t\tzfs\trw,noexec,nosuid,noatime,nfsv4acls \t0 0\nzroot/home\t\t/home\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/ROOT\t\t/mnt\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot\t\t\t/zroot\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/var/crash\t\t/var/crash\t\tzfs\trw,noexec,nosuid,noatime,nfsv4acls \t0 0\nzroot/usr/src\t\t/usr/src\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/usr/ports\t\t/usr/ports\t\tzfs\trw,nosuid,noatime,nfsv4acls \t0 0\nzroot/var/audit\t\t/var/audit\t\tzfs\trw,noexec,nosuid,noatime,nfsv4acls \t0 0\nzroot/var/mail\t\t/var/mail\t\tzfs\trw,nfsv4acls \t0 0\nzroot/var/tmp\t\t/var/tmp\t\tzfs\trw,nosuid,noatime,nfsv4acls \t0 0\nzroot/home/paul\t\t/home/paul\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve\t\t/zroot/bhyve\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/rocky\t/zroot/bhyve/rocky\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab /zroot/bhyve/homelabfs-lab zfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/freebsd\t/zroot/bhyve/freebsd\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test1 /zroot/bhyve/homelabfs-lab/hfs-test1 zfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test2 /zroot/bhyve/homelabfs-lab/hfs-test2 zfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test0 /zroot/bhyve/homelabfs-lab/hfs-test0 zfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test0@zrepl_20261030_055329_000 /zroot/bhyve/homelabfs-lab/hfs-test0/.zfs/snapshot/zrepl_20261030_055329_000 zfs\tro,nosuid,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test1@zrepl_20261030_055329_000 /zroot/bhyve/homelabfs-lab/hfs-test1/.zfs/snapshot/zrepl_20261030_055329_000 zfs\tro,nosuid,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test2@zrepl_20261030_055329_000 /zroot/bhyve/homelabfs-lab/hfs-test2/.zfs/snapshot/zrepl_20261030_055329_000 zfs\tro,nosuid,noatime,nfsv4acls \t0 0\nzroot/bhyve/freebsd@zrepl_20261030_055329_000 /zroot/bhyve/freebsd/.zfs/snapshot/zrepl_20261030_055329_000 zfs\tro,nosuid,noatime,nfsv4acls \t0 0\n",
+    "after_mount_inventory": "zroot/ROOT/default\t/\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\ndevfs\t\t\t/dev\t\t\tdevfs\trw\t\t0 0\n/dev/gpt/efiboot0\t/boot/efi\t\tmsdosfs\trw\t\t2 2\n/dev/ufs/F3S_KEYS\t/keys\t\t\tufs\tro\t\t2 2\nzroot/tmp\t\t/tmp\t\t\tzfs\trw,nosuid,noatime,nfsv4acls \t0 0\nzroot/var/log\t\t/var/log\t\tzfs\trw,noexec,nosuid,noatime,nfsv4acls \t0 0\nzroot/home\t\t/home\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/ROOT\t\t/mnt\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot\t\t\t/zroot\t\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/var/crash\t\t/var/crash\t\tzfs\trw,noexec,nosuid,noatime,nfsv4acls \t0 0\nzroot/usr/src\t\t/usr/src\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/usr/ports\t\t/usr/ports\t\tzfs\trw,nosuid,noatime,nfsv4acls \t0 0\nzroot/var/audit\t\t/var/audit\t\tzfs\trw,noexec,nosuid,noatime,nfsv4acls \t0 0\nzroot/var/mail\t\t/var/mail\t\tzfs\trw,nfsv4acls \t0 0\nzroot/var/tmp\t\t/var/tmp\t\tzfs\trw,nosuid,noatime,nfsv4acls \t0 0\nzroot/home/paul\t\t/home/paul\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve\t\t/zroot/bhyve\t\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/rocky\t/zroot/bhyve/rocky\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab /zroot/bhyve/homelabfs-lab zfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/freebsd\t/zroot/bhyve/freebsd\tzfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test1 /zroot/bhyve/homelabfs-lab/hfs-test1 zfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test2 /zroot/bhyve/homelabfs-lab/hfs-test2 zfs\trw,noatime,nfsv4acls \t0 0\nzroot/bhyve/homelabfs-lab/hfs-test0 /zroot/bhyve/homelabfs-lab/hfs-test0 zfs\trw,noatime,nfsv4acls \t0 0\n",
+    "vm_inventory": "NAME       DATASTORE  LOADER     CPU  MEMORY  VNC             AUTO     STATE\nfreebsd    default    bhyveload  4    1G      -               No       Stopped\nrocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (6449)\nhfs-test0  hfslab     bhyveload  2    2G      -               No       Stopped\nhfs-test1  hfslab     bhyveload  2    2G      -               No       Stopped\nhfs-test2  hfslab     bhyveload  2    2G      -               No       Stopped\n",
+    "remaining_resources": {
+      "host_metadata_directory": "/var/tmp/hfs-image-inspect-yq3-20261030-n2-r4",
+      "controller_metadata_directory": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n2-r4",
+      "retention_hours": 168
+    },
+    "source_guids_unchanged_and_written_zero": true
+  },
+  "hfs-test0/attach-intent.json": {
+    "image": "/zroot/bhyve/homelabfs-lab/hfs-test0/.zfs/snapshot/zrepl_20261030_055329_000/disk0.img",
+    "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test0@zrepl_20261030_055329_000",
+    "guid": "10918531099539801920"
+  },
+  "hfs-test0/owned-md.json": {
+    "md": "md0",
+    "identity": "md0\tvnode\t   20G\t/zroot/bhyve/homelabfs-lab/hfs-test0/.zfs/snapshot/zrepl_20261030_055329_000/disk0.img\t-\treadonly\n",
+    "image": "/zroot/bhyve/homelabfs-lab/hfs-test0/.zfs/snapshot/zrepl_20261030_055329_000/disk0.img"
+  },
+  "hfs-test0/cleanup.json": {
+    "normal_unmount": true,
+    "exact_owned_md_detached": "md0"
+  },
+  "hfs-test0/mount-intent.json": {
+    "source": "/dev/md0p4",
+    "mount": "/var/tmp/hfs-image-inspect-yq3-20261030-n2-r4/hfs-test0/mnt",
+    "options": "ro,noatime,noexec,nosuid",
+    "gpart": "=>      34  41942966    md0  GPT  (20G)\n        34       121  md0p1  freebsd-boot  (61K)\n       155     66584  md0p2  efi  (33M)\n     66739   2097152  md0p3  freebsd-swap  (1.0G)\n   2163891  39779109  md0p4  freebsd-ufs  (19G)\n\n"
+  },
+  "hfs-test1/attach-intent.json": {
+    "image": "/zroot/bhyve/homelabfs-lab/hfs-test1/.zfs/snapshot/zrepl_20261030_055329_000/disk0.img",
+    "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test1@zrepl_20261030_055329_000",
+    "guid": "16665947213107414555"
+  },
+  "hfs-test1/owned-md.json": {
+    "md": "md0",
+    "identity": "md0\tvnode\t   20G\t/zroot/bhyve/homelabfs-lab/hfs-test1/.zfs/snapshot/zrepl_20261030_055329_000/disk0.img\t-\treadonly\n",
+    "image": "/zroot/bhyve/homelabfs-lab/hfs-test1/.zfs/snapshot/zrepl_20261030_055329_000/disk0.img"
+  },
+  "hfs-test1/cleanup.json": {
+    "normal_unmount": true,
+    "exact_owned_md_detached": "md0"
+  },
+  "hfs-test1/mount-intent.json": {
+    "source": "/dev/md0p4",
+    "mount": "/var/tmp/hfs-image-inspect-yq3-20261030-n2-r4/hfs-test1/mnt",
+    "options": "ro,noatime,noexec,nosuid",
+    "gpart": "=>      34  41942966    md0  GPT  (20G)\n        34       121  md0p1  freebsd-boot  (61K)\n       155     66584  md0p2  efi  (33M)\n     66739   2097152  md0p3  freebsd-swap  (1.0G)\n   2163891  39779109  md0p4  freebsd-ufs  (19G)\n\n"
+  },
+  "hfs-test2/attach-intent.json": {
+    "image": "/zroot/bhyve/homelabfs-lab/hfs-test2/.zfs/snapshot/zrepl_20261030_055329_000/disk0.img",
+    "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test2@zrepl_20261030_055329_000",
+    "guid": "1381746573395589937"
+  },
+  "hfs-test2/owned-md.json": {
+    "md": "md0",
+    "identity": "md0\tvnode\t   20G\t/zroot/bhyve/homelabfs-lab/hfs-test2/.zfs/snapshot/zrepl_20261030_055329_000/disk0.img\t-\treadonly\n",
+    "image": "/zroot/bhyve/homelabfs-lab/hfs-test2/.zfs/snapshot/zrepl_20261030_055329_000/disk0.img"
+  },
+  "hfs-test2/cleanup.json": {
+    "normal_unmount": true,
+    "exact_owned_md_detached": "md0"
+  },
+  "hfs-test2/mount-intent.json": {
+    "source": "/dev/md0p4",
+    "mount": "/var/tmp/hfs-image-inspect-yq3-20261030-n2-r4/hfs-test2/mnt",
+    "options": "ro,noatime,noexec,nosuid",
+    "gpart": "=>      34  41942966    md0  GPT  (20G)\n        34       121  md0p1  freebsd-boot  (61K)\n       155     66584  md0p2  efi  (33M)\n     66739   2097152  md0p3  freebsd-swap  (1.0G)\n   2163891  39779109  md0p4  freebsd-ufs  (19G)\n\n"
+  },
+  "freebsd/attach-intent.json": {
+    "snapshot": "zroot/bhyve/freebsd@zrepl_20261030_055329_000",
+    "guid": "16399257875439500698",
+    "image": "/zroot/bhyve/freebsd/.zfs/snapshot/zrepl_20261030_055329_000/disk0.img"
+  },
+  "freebsd/owned-md.json": {
+    "md": "md0",
+    "identity": "md0\tvnode\t   20G\t/zroot/bhyve/freebsd/.zfs/snapshot/zrepl_20261030_055329_000/disk0.img\t-\treadonly\n",
+    "image": "/zroot/bhyve/freebsd/.zfs/snapshot/zrepl_20261030_055329_000/disk0.img"
+  },
+  "freebsd/cleanup.json": {
+    "exact_owned_md_detached": "md0",
+    "normal_detach": true,
+    "no_pool_import_or_mount": true
+  },
+  "freebsd/boot-selection.json": {
+    "gpart": "=>      40  41942960    md0  GPT  (20G)\n        40      1024  md0p1  freebsd-boot  (512K)\n      1064       984         - free -  (492K)\n      2048   4194304  md0p2  freebsd-swap  (2.0G)\n   4196352  37744640  md0p3  freebsd-zfs  (18G)\n  41940992      2008         - free -  (1004K)\n\n",
+    "labels": "------------------------------------\nLABEL 0 \n------------------------------------\n    version: 5000\n    name: 'zroot'\n    state: 0\n    txg: 60117\n    pool_guid: 15786031595836051950\n    errata: 0\n    min_alloc: 4096\n    max_alloc: 4096\n    hostname: ''\n    top_guid: 14949843785269052265\n    guid: 14949843785269052265\n    vdev_children: 1\n    vdev_tree:\n        type: 'disk'\n        id: 0\n        guid: 14949843785269052265\n        path: '/dev/nda0p3'\n        whole_disk: 1\n        metaslab_array: 68\n        metaslab_shift: 29\n        ashift: 12\n        asize: 19320537088\n        min_alloc: 4096\n        is_log: 0\n        create_txg: 4\n    features_for_read:\n        com.delphix:hole_birth\n        com.delphix:embedded_data\n        com.klarasystems:vdev_zaps_v2\n    labels = 0 1 2 3 \n",
+    "resolved_config": "\nConfiguration for import:\n        vdev_children: 1\n        version: 5000\n        pool_guid: 15786031595836051950\n        name: 'zroot'\n        state: 0\n        vdev_tree:\n            type: 'root'\n            id: 0\n            guid: 15786031595836051950\n            children[0]:\n                type: 'disk'\n                id: 0\n                guid: 14949843785269052265\n                whole_disk: 1\n                metaslab_array: 68\n                metaslab_shift: 29\n                ashift: 12\n                asize: 19320537088\n                min_alloc: 4096\n                is_log: 0\n                create_txg: 4\n                path: '/var/tmp/hfs-image-inspect-yq3-20261030-n2-r4/freebsd/vdev/only'\n        load-policy:\n            load-request-txg: 18446744073709551615\n            load-rewind-policy: 2\n\nMOS Configuration:\n        version: 5000\n        name: 'zroot'\n        state: 0\n        txg: 60117\n        pool_guid: 15786031595836051950\n        errata: 0\n        min_alloc: 4096\n        max_alloc: 4096\n        hostname: ''\n        com.delphix:has_per_vdev_zaps\n        vdev_children: 1\n        vdev_tree:\n            type: 'root'\n            id: 0\n            guid: 15786031595836051950\n            create_txg: 4\n            com.klarasystems:vdev_zap_root: 65\n            children[0]:\n                type: 'disk'\n                id: 0\n                guid: 14949843785269052265\n                path: '/dev/nda0p3'\n                whole_disk: 1\n                metaslab_array: 68\n                metaslab_shift: 29\n                ashift: 12\n                asize: 19320537088\n                min_alloc: 4096\n                is_log: 0\n                create_txg: 4\n                com.delphix:vdev_zap_leaf: 66\n                com.delphix:vdev_zap_top: 67\n        features_for_read:\n            com.delphix:hole_birth\n            com.delphix:embedded_data\n            com.klarasystems:vdev_zaps_v2\n",
+    "datasets": "Dataset mos [META], ID 0, cr_txg 4, 14.3M, 298 objects\nDataset zroot/var/mail [ZPL], ID 173, cr_txg 27, 108K, 10 objects\nDataset zroot/var/crash [ZPL], ID 157, cr_txg 23, 96K, 8 objects\nDataset zroot/var/audit [ZPL], ID 149, cr_txg 21, 96K, 9 objects\nDataset zroot/var/tmp [ZPL], ID 181, cr_txg 29, 96K, 8 objects\nDataset zroot/var/log [ZPL], ID 165, cr_txg 25, 264K, 26 objects\nDataset zroot/var [ZPL], ID 141, cr_txg 19, 96K, 7 objects\nDataset zroot/tmp [ZPL], ID 110, cr_txg 12, 260M, 4110 objects\nDataset zroot/ROOT/15.0-RELEASE-p1_2026-04-05_230822 [ZPL], ID 195, cr_txg 40217, 4.30G, 166484 objects\nDataset zroot/ROOT/14.2-RELEASE_2025-04-04_212702 [ZPL], ID 169, cr_txg 497, 834M, 18151 objects\nDataset zroot/ROOT/15.0-RELEASE-p1_2026-01-19_232646 [ZPL], ID 16761, cr_txg 21402, 3.17G, 95925 objects\nDataset zroot/ROOT/default@2026-01-19-22:57:44-0 [ZPL], ID 305, cr_txg 2152, 2.32G, 67438 objects\nDataset zroot/ROOT/default@2026-01-19-23:00:35-0 [ZPL], ID 392, cr_txg 4792, 2.74G, 85819 objects\nDataset zroot/ROOT/default@2026-01-19-23:17:39-0 [ZPL], ID 424, cr_txg 13017, 3.05G, 95593 objects\nDataset zroot/ROOT/default@2026-01-19-22:45:28-0 [ZPL], ID 390, cr_txg 1738, 1.76G, 60593 objects\nDataset zroot/ROOT/default@2026-04-05-23:08:22-0 [ZPL], ID 281, cr_txg 40216, 4.30G, 166484 objects\nDataset zroot/ROOT/default@2026-01-19-23:19:10-0 [ZPL], ID 387, cr_txg 15727, 3.04G, 95593 objects\nDataset zroot/ROOT/default@2025-04-04-21:27:02-0 [ZPL], ID 145, cr_txg 496, 834M, 18151 objects\nDataset zroot/ROOT/default@2026-01-19-23:26:46-0 [ZPL], ID 16755, cr_txg 21401, 3.17G, 95925 objects\nDataset zroot/ROOT/default [ZPL], ID 94, cr_txg 8, 4.34G, 165611 objects\nDataset zroot/ROOT/15.0-RELEASE_2026-01-19_231910 [ZPL], ID 260, cr_txg 15728, 3.04G, 95593 objects\nDataset zroot/ROOT/14.2-RELEASE-p7_2026-01-19_225744 [ZPL], ID 527, cr_txg 2153, 2.32G, 67438 objects\nDataset zroot/ROOT/14.3-RELEASE-p7_2026-01-19_231739 [ZPL], ID 297, cr_txg 13018, 3.05G, 95593 objects\nDataset zroot/ROOT/14.3-RELEASE-p7_2026-01-19_230035 [ZPL], ID 265, cr_txg 4793, 2.74G, 85819 objects\nDataset zroot/ROOT/14.2-RELEASE-p2_2026-01-19_224528 [ZPL], ID 113, cr_txg 1739, 1.76G, 60593 objects\nDataset zroot/ROOT [ZPL], ID 85, cr_txg 6, 96K, 7 objects\nDataset zroot/home/paul [ZPL], ID 583, cr_txg 446, 419M, 10397 objects\nDataset zroot/home [ZPL], ID 102, cr_txg 10, 96K, 8 objects\nDataset zroot/usr/src [ZPL], ID 134, cr_txg 18, 96K, 7 objects\nDataset zroot/usr/ports [ZPL], ID 126, cr_txg 16, 96K, 7 objects\nDataset zroot/usr [ZPL], ID 118, cr_txg 14, 96K, 7 objects\nDataset zroot [ZPL], ID 54, cr_txg 1, 96K, 7 objects\nVerified large_blocks feature refcount of 0 is correct\nVerified large_dnode feature refcount of 0 is correct\nVerified sha512 feature refcount of 0 is correct\nVerified skein feature refcount of 0 is correct\nVerified edonr feature refcount of 0 is correct\nVerified userobj_accounting feature refcount of 31 is correct\nVerified encryption feature refcount of 0 is correct\nVerified project_quota feature refcount of 31 is correct\nVerified redaction_bookmarks feature refcount of 0 is correct\nVerified redacted_datasets feature refcount of 0 is correct\nVerified bookmark_written feature refcount of 0 is correct\nVerified livelist feature refcount of 8 is correct\nVerified zstd_compress feature refcount of 0 is correct\nVerified zilsaxattr feature refcount of 21 is correct\nVerified blake3 feature refcount of 0 is correct\nVerified device_removal feature refcount of 0 is correct\nVerified indirect_refcount feature refcount of 0 is correct\n",
+    "mos_directory": "Dataset mos [META], ID 0, cr_txg 4, 14.3M, 298 objects, rootbp DVA[0]=<0:140e3c000:1000> DVA[1]=<0:18099a000:1000> DVA[2]=<0:1a03ce000:1000> [L0 DMU objset] fletcher4 uncompressed unencrypted LE contiguous unique triple size=1000L/1000P birth=60126L/60126P fill=298 cksum=0000000317f11c3b:00000bddcb863f8d:0016c88ac4103b1b:1d319a8ba70699f9\n\n    Object  lvl   iblk   dblk  dsize  dnsize  lsize   %full  type\n         1    1   128K    16K    48K     512    48K  100.00  object directory\n\tdnode flags: USED_BYTES \n\tdnode maxblkid: 2\n\tFat ZAP stats:\n\t\tPointer table:\n\t\t\t1024 elements\n\t\t\tzt_blk: 0\n\t\t\tzt_numblks: 0\n\t\t\tzt_shift: 10\n\t\t\tzt_blks_copied: 0\n\t\t\tzt_nextblk: 0\n\t\tZAP entries: 20\n\t\tLeaf blocks: 2\n\t\tTotal blocks: 3\n\t\tzap_block_type: 0x8000000000000001\n\t\tzap_magic: 0x2f52ab2ab\n\t\tzap_salt: 0xddad763\n\t\tLeafs with 2^n pointers:\n\t\t\t  9:      2 **\n\t\tBlocks with n*5 entries:\n\t\t\t  1:      1 *\n\t\t\t  2:      1 *\n\t\tBlocks n/10 full:\n\t\t\t  4:      1 *\n\t\t\t  5:      0 \n\t\t\t  6:      0 \n\t\t\t  7:      1 *\n\t\tEntries with n chunks:\n\t\t\t  3:     13 *************\n\t\t\t  4:      3 ***\n\t\t\t  5:      1 *\n\t\t\t  6:      0 \n\t\t\t  7:      0 \n\t\t\t  8:      0 \n\t\t\t  9:      3 ***\n\t\tBuckets with n entries:\n\t\t\t  0:   1004 ****************************************\n\t\t\t  1:     20 *\n\n\t\tcom.delphix:vdev_zap_map = 64 \n\t\tdeflate = 1 \n\t\tconfig = 61 \n\t\tcom.klarasystems:txg_log_time:months = 0 3 3 1768857533 15720 1773864318 39295 1776606622 50485 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 \n\t\tfree_bpobj = 41 \n\t\tfeature_descriptions = 53 \n\t\tcom.fudosecurity:brt:vdev:0 = 17051 \n\t\troot_dataset = 32 \n\t\tpool_props = 190 \n\t\tcom.klarasystems:txg_log_time:days = 0 12 12 1768858059 21412 1768944910 31439 1769803856 38806 1773864921 39419 1775419111 40094 1775632230 40337 1776195775 40656 1776319457 40920 1776607223 50608 1777039039 54818 1777488611 59463 1777578870 60003 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 \n\t\tcom.klarasystems:txg_log_time:minutes = 66 66 256 1776615057 52164 1776615659 52284 1776616262 52404 1776616865 52524 1776617468 52644 1776618072 52764 1776618675 52884 1776619279 53004 1776619880 53123 1776620480 53242 1776621082 53361 1776621684 53480 1776622284 53599 1776622888 53719 1776623491 53839 1776624091 53958 1776624696 54078 1776625299 54198 1776625902 54318 1776626506 54438 1776627109 54558 1776627712 54678 1776628313 54797 1777039643 54942 1777040247 55062 1777040850 55182 1777041454 55302 1777042058 55422 1777042662 55542 1777043264 55662 1777043868 55782 1777044472 55902 1777045077 56022 1777045681 56142 1777046284 56262 1777046887 56381 1777047488 56500 1777048089 56619 1777048692 56739 1777049295 56859 1777049895 56978 1777050495 57097 1777051095 57216 1777051696 57335 1777052297 57454 1777052901 57574 1777053505 57694 1777054109 57814 1777054711 57934 1777055311 58053 1777055915 58173 1777056518 58293 1777057118 58412 1777057719 58531 1777058319 58650 1777058919 58769 1777059521 58888 1777060122 59007 1777060726 59127 1777061330 59247 1777061930 59366 1777489211 59586 1777489815 59706 1777490417 59826 1777491021 59946 1777579949 60116 1768933892 29260 1768934494 29379 1768934677 29413 1768935277 29535 1768935879 29654 1768936480 29773 1768937082 29892 1768937683 30011 1768938285 30130 1768938886 30249 1768939487 30368 1768940089 30487 1768940692 30606 1768941295 30725 1768941898 30844 1768942499 30963 1768943103 31082 1768943706 31201 1768944306 31320 1768945513 31560 1768946115 31679 1768946746 31799 1768946871 31808 1768946924 31816 1768947525 31940 1768948129 32059 1768948732 32178 1768949334 32297 1768949936 32416 1768950538 32535 1768951141 32654 1768951743 32773 1768952346 32892 1768952948 33011 1768953552 33130 1768954153 33249 1768954755 33368 1768955356 33487 1768955958 33606 1768956560 33725 1768957162 33844 1768957762 33965 1768958363 34084 1768958965 34203 1768959567 34322 1768960167 34440 1768960769 34559 1768961371 34678 1768961974 34797 1768962577 34916 1768963179 35035 1768963782 35154 1768964383 35273 1768964984 35392 1768965586 35511 1768966188 35630 1768966790 35749 1768967393 35868 1768967995 35987 1768968596 36106 1768969198 36225 1768969799 36344 1768970402 36463 1768971005 36582 1768971607 36701 1768972209 36820 1768972812 36939 1768973414 37058 1768974015 37177 1768974617 37296 1768975220 37415 1768975821 37534 1768976423 37653 1768977027 37772 1768977628 37891 1768978231 38010 1768978833 38129 1768979436 38248 1768980038 38367 1768980641 38486 1768981243 38605 1768981844 38724 1769804457 38928 1769805060 39047 1769805661 39166 1769806264 39285 1773865524 39539 1773865719 39562 1773866322 39686 1773866924 39805 1773867524 39924 1773868127 40044 1775419711 40239 1775419911 40278 1775632830 40460 1775633431 40579 1776196376 40779 1776196976 40898 1776320058 41042 1776320659 41161 1776321259 41280 1776321862 41400 1776322465 41520 1776323069 41640 1776323669 41759 1776324273 41878 1776324874 41997 1776325474 42116 1776326075 42236 1776326679 42356 1776327280 42475 1776327880 42594 1776328483 42714 1776329087 42834 1776329687 42953 1776330289 43072 1776330892 43191 1776331495 43310 1776332095 43429 1776332699 43549 1776333299 43668 1776333899 43787 1776334501 43906 1776335103 44025 1776335703 44144 1776336306 44264 1776336910 44384 1776337513 44504 1776338116 44624 1776338717 44743 1776339320 44863 1776339923 44983 1776340525 45102 1776341126 45221 1776341726 45340 1776342330 45460 1776342930 45579 1776343530 45698 1776344135 45818 1776344735 45937 1776345337 46057 1776345941 46177 1776346544 46296 1776347145 46415 1776347749 46535 1776348351 46655 1776348955 46775 1776349558 46895 1776350158 47014 1776350761 47134 1776351365 47254 1776351967 47373 1776352567 47492 1776353170 47611 1776353774 47731 1776354378 47851 1776354980 47971 1776355581 48090 1776356183 48210 1776356786 48330 1776357388 48450 1776357991 48570 1776358592 48689 1776359194 48809 1776359795 48928 1776360398 49048 1776360999 49167 1776361603 49287 1776362207 49407 1776362810 49527 1776363411 49646 1776364013 49765 1776364614 49884 1776365218 50004 1776365818 50123 1776366420 50243 1776367023 50363 1776367626 50483 1776607823 50727 1776608427 50847 1776609027 50966 1776609630 51086 1776610231 51205 1776610834 51325 1776611438 51445 1776612041 51565 1776612645 51685 1776613249 51805 1776613850 51924 1776614454 52044 \n\t\tcreation_version = 5000 \n\t\tfeature_enabled_txg = 63 \n\t\tsync_bplist = 62 \n\t\torg.illumos:checksum_salt = 6a80ae1cb87dac215fc72d047320e8abe236766de78f7c332a7b405bc0685ed1\n\t\tempty_bpobj = 88 \n\t\tfeatures_for_write = 52 \n\t\tfeatures_for_read = 51 \n\t\thistory = 60 \n\t\tcom.delphix:log_spacemap_zap = 69 \n\n",
+    "pool_properties": "Dataset mos [META], ID 0, cr_txg 4, 14.3M, 298 objects, rootbp DVA[0]=<0:140e3c000:1000> DVA[1]=<0:18099a000:1000> DVA[2]=<0:1a03ce000:1000> [L0 DMU objset] fletcher4 uncompressed unencrypted LE contiguous unique triple size=1000L/1000P birth=60126L/60126P fill=298 cksum=0000000317f11c3b:00000bddcb863f8d:0016c88ac4103b1b:1d319a8ba70699f9\n\n    Object  lvl   iblk   dblk  dsize  dnsize  lsize   %full  type\n       190    1   128K    512      0     512    512  100.00  Pool properties\n\tdnode flags: USED_BYTES \n\tdnode maxblkid: 0\n\tmicrozap: 512 bytes, 1 entries\n\n\t\tbootfs = 94 \n\n",
+    "bootfs": 94,
+    "boot_dataset": "zroot/ROOT/default"
+  },
+  "freebsd/objects.json": [
+    {
+      "path": "boot/kernel/kernel",
+      "detail": "\n    Object  lvl   iblk   dblk  dsize  dnsize  lsize   %full  type\n    295082    2   128K   128K  15.5M     512    28M   91.96  ZFS plain file\n                                               176   bonus  System attributes\n\tdnode flags: USED_BYTES USERUSED_ACCOUNTED USEROBJUSED_ACCOUNTED \n\tdnode maxblkid: 223\n\tuid     0\n\tgid     0\n\tatime\tSun Apr  5 23:08:24 2026\n\tmtime\tSun Apr  5 23:08:24 2026\n\tctime\tSun Apr  5 23:08:24 2026\n\tcrtime\tSun Apr  5 23:08:24 2026\n\tgen\t40219\n\tmode\t100444\n\tsize\t29339192\n\tparent\t530\n\tlinks\t1\n\tpflags\t840800000004\n\tprojid\t0\n"
+    },
+    {
+      "path": "bin/freebsd-version",
+      "detail": "\n    Object  lvl   iblk   dblk  dsize  dnsize  lsize   %full  type\n    295088    1   128K     4K     4K     512     4K  100.00  ZFS plain file\n                                               176   bonus  System attributes\n\tdnode flags: USED_BYTES USERUSED_ACCOUNTED USEROBJUSED_ACCOUNTED \n\tdnode maxblkid: 0\n\tuid     0\n\tgid     0\n\tatime\tSun Apr  5 23:08:26 2026\n\tmtime\tSun Apr  5 23:08:26 2026\n\tctime\tSun Apr  5 23:08:26 2026\n\tcrtime\tSun Apr  5 23:08:26 2026\n\tgen\t40226\n\tmode\t100555\n\tsize\t3664\n\tparent\t26\n\tlinks\t1\n\tpflags\t840800000104\n\tprojid\t0\n"
+    },
+    {
+      "path": "boot/defaults/loader.conf",
+      "detail": "\n    Object  lvl   iblk   dblk  dsize  dnsize  lsize   %full  type\n    101864    1   128K    10K     8K     512    10K  100.00  ZFS plain file\n                                               168   bonus  System attributes\n\tdnode flags: USED_BYTES USERUSED_ACCOUNTED USEROBJUSED_ACCOUNTED \n\tdnode maxblkid: 0\n\tuid     0\n\tgid     0\n\tatime\tMon Jan 19 23:17:41 2026\n\tmtime\tMon Jan 19 23:17:41 2026\n\tctime\tMon Jan 19 23:17:41 2026\n\tcrtime\tMon Jan 19 23:17:41 2026\n\tgen\t13029\n\tmode\t100444\n\tsize\t9997\n\tparent\t576\n\tlinks\t1\n\tpflags\t40800000004\n"
+    },
+    {
+      "path": "boot/loader.conf",
+      "detail": "\n    Object  lvl   iblk   dblk  dsize  dnsize  lsize   %full  type\n     18070    1   128K    512      0     512    512  100.00  ZFS plain file\n                                               168   bonus  System attributes\n\tdnode flags: USED_BYTES USERUSED_ACCOUNTED USEROBJUSED_ACCOUNTED \n\tdnode maxblkid: 0\n\tuid     0\n\tgid     0\n\tatime\tFri Apr  4 21:25:34 2025\n\tmtime\tFri Apr  4 21:25:34 2025\n\tctime\tFri Apr  4 21:25:34 2025\n\tcrtime\tFri Apr  4 21:25:34 2025\n\tgen\t454\n\tmode\t100644\n\tsize\t107\n\tparent\t14\n\tlinks\t1\n\tpflags\t40800000004\n"
+    },
+    {
+      "path": "boot/loader.conf.local",
+      "detail": null
+    },
+    {
+      "path": "boot/nextboot.conf",
+      "detail": null
+    },
+    {
+      "path": "var/db/pkg/local.sqlite",
+      "detail": "\n    Object  lvl   iblk   dblk  dsize  dnsize  lsize   %full  type\n     32836    2   128K   128K  6.13M     512  13.9M  100.00  ZFS plain file\n                                               168   bonus  System attributes\n\tdnode flags: USED_BYTES USERUSED_ACCOUNTED USEROBJUSED_ACCOUNTED \n\tdnode maxblkid: 110\n\tuid     0\n\tgid     0\n\tatime\tFri Apr  4 21:27:47 2025\n\tmtime\tSun Apr  5 23:14:03 2026\n\tctime\tSun Apr  5 23:14:03 2026\n\tcrtime\tFri Apr  4 21:27:47 2025\n\tgen\t584\n\tmode\t100644\n\tsize\t14430208\n\tparent\t74\n\tlinks\t1\n\tpflags\t40800000004\n"
+    },
+    {
+      "path": "var/db/pkg/local.sqlite-wal",
+      "detail": null
+    },
+    {
+      "path": "var/db/pkg/local.sqlite-journal",
+      "detail": null
+    }
+  ]
+}

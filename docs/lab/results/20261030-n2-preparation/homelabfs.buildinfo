@@ -1,0 +1,16 @@
+/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-binaries-20261030-n2-r4/homelabfs: go1.26.8-X:nodwarf5
+	path	github.com/snonux/homelabfs/cmd/homelabfs
+	mod	github.com/snonux/homelabfs	v0.0.0-20261030060650-127ecc9cc612	
+	dep	github.com/hanwen/go-fuse/v2	v2.9.0	h1:0AOGUkHtbOVeyGLr0tXupiid1Vg7QB7M6YUcdmVdC58=
+	dep	golang.org/x/sys	v0.49.0	h1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	CGO_ENABLED=0
+	build	GOARCH=amd64
+	build	GOEXPERIMENT=nodwarf5
+	build	GOOS=freebsd
+	build	GOAMD64=v1
+	build	vcs=git
+	build	vcs.revision=127ecc9cc612f6696c9710e6586a3761d57cac71
+	build	vcs.time=2026-10-30T06:06:50Z
+	build	vcs.modified=false

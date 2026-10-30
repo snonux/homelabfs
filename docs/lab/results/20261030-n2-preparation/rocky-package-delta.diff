@@ -1,0 +1,21 @@
+--- r3-rocky-packages.txt
++++ r4-rocky-packages.txt
+@@ -242,12 +242,12 @@
+ graphviz-2.44.0-26.el9.x86_64
+ grep-3.6-5.el9.x86_64
+ groff-base-1.22.4-10.el9.0.1.x86_64
+-grub2-common-2.06-126.el9_8.rocky.0.3.noarch
+-grub2-efi-x64-2.06-126.el9_8.rocky.0.3.x86_64
+-grub2-tools-2.06-126.el9_8.rocky.0.3.x86_64
+-grub2-tools-efi-2.06-126.el9_8.rocky.0.3.x86_64
+-grub2-tools-extra-2.06-126.el9_8.rocky.0.3.x86_64
+-grub2-tools-minimal-2.06-126.el9_8.rocky.0.3.x86_64
++grub2-common-2.06-127.el9_8.rocky.0.1.noarch
++grub2-efi-x64-2.06-127.el9_8.rocky.0.1.x86_64
++grub2-tools-2.06-127.el9_8.rocky.0.1.x86_64
++grub2-tools-efi-2.06-127.el9_8.rocky.0.1.x86_64
++grub2-tools-extra-2.06-127.el9_8.rocky.0.1.x86_64
++grub2-tools-minimal-2.06-127.el9_8.rocky.0.1.x86_64
+ grubby-8.40-69.el9.x86_64
+ gsettings-desktop-schemas-40.0-8.el9_7.x86_64
+ gsm-1.0.19-6.el9.x86_64

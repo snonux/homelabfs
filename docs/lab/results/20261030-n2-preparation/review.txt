@@ -1,0 +1,77 @@
+YQ3 REPLACEMENT NATIVE PLAN — exact new Paul approval required
+
+Run20261030-n2, Stage1 native-single-node-v1, seed0.
+Canonical Plan: /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/reviewed-plan-20261030-n2-r4.json
+Exact canonical hash: 7bb7e24cadb27672ddb6f7a558d03433d250d37205a6ff35b2e1e037aea66ff5
+Created 2026-10-30T06:11:27Z; expires 2026-10-31T06:11:27Z.
+State: /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/controller-state-20261030-n2
+Evidence: /home/paul/git/homelabfs/docs/lab/results/20261030-n2
+State/evidence and operator-approval-20261030-n2-r4.json remain absent.
+Historical n1 plans, consent, failed results and original pinned artifacts remain
+preserved. Old c22be74... approval does not cover these new inputs.
+
+Scope/budget: twelve sequential calls, three FreeBSD guests x root/unprivileged
+x direct/buffered FUSE, each backed by its own ZFS. New run-owned roots
+/var/tmp/hfs-run-20261030-n2 and hfsdataN/{data,journal,control}/hfs-run-20261030-n2.
+No 9p, replication/failover, production migration, NFS or received-sink work.
+Total5220s/87min: read-only admission240s then maximum4980s/83min disruption;
+forward4260s, cleanup600s, restoration360s. Rocky clean-stop180s, lab-start180s,
+native-readiness180s, setup900s, test2400s, collect180s, native-cleanup180s,
+lab-stop420s, Rocky-start180s, Rocky-restoration-readiness180s.
+All steps one attempt; no forced kill/unmount or repair. Uncertain completion or
+surviving owned processes/mounts blocks restoration for inspection. Normal owning
+daemon cleanup precedes lab stop. Rocky must restore to Running with pinned root
+SSH proof; clean-stop success remains unproved until the actual approved run.
+Native resources6GiB/6vCPU, host headroom4GiB, no Rocky/dev overlap; zero swap and
+post-stop memory admission remain mandatory. Disk2304MiB, logical I/O48MiB,
+evidence64MiB, retention168h. Physical bandwidth is not bounded by logical caps.
+
+Changed inputs since failed n1 admission:
+* Corrected main127ecc9 collection gating: collect applies_after exactly native
+  setup/test; runner skips dependent collection when no mutation was admitted.
+  Driver SHAfac571c7bd932d7091a2f27c9eb2ebc99cb3f3367c381f6311b1276a59a6c0aa.
+* Fresh FreeBSDamd64 CGO0 binaries from clean127ecc9cc612f6696c9710e6586a3761d57cac71,
+  each embedded vcs.modified=false. They include current journal validation;
+  historical fe36898 binaries are not represented as current.
+  homelabfs SHA dc21c188805608c0a7cbbb316f459cba619529379eebc0ca35a2f7116110b749
+  hfs-behavior SHA9271b1e819880e7cbb63674e8cc79a35980ee12a92de0fce8269f4156705c4f5.
+* Fresh source tag zrepl_20261030_055329_000 with GUIDs
+  hfs0=10918531099539801920; hfs1=16665947213107414555;
+  hfs2=1381746573395589937; dev=16399257875439500698.
+  Root-released collector session6441 terminalcb82eb exit0 freshly derived four
+  kernel/package manifests using readonly UFS/isolated sole-vdev userspace zdb.
+  Actual20 private receipts and complete.json prove normal exact-owned cleanup,
+  four newly caused snapshot automounts normally unmounted, noMD/UFS, same VMstate,
+  GUID equality/written0. Receipt harvesting terminalf42766 exit0. DBtotal58458112
+  bytes/all0600 (cap128MiB), hostallocated22908928 bytes(cap160MiB), retention168h.
+  Native kernels15.1-RELEASE/packageSHA0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb;
+  dev15.0-RELEASE-p5/packageSHA247ccbbb465faa1a9be2c53cbd17466ec841a6e513c2331c005100e1db3659f8.
+  zdb -L is allowlisted version metadata only, with no pool-health conclusion.
+* Fresh Rocky root query: runningkernel5.14.0-687.61.1.el9_8.x86_64, UID0,
+  1109RPM rows, packageSHA4b4382416e417bea3b754c99c492e86b72257b67820aa751181420d8539533b7.
+  Exactly six grub2 packages differ from historical R3,126->127; cause unverified.
+  We performed no package/service mutation and do not claim package identity.
+* New native spec/fragment, preflight policy, target evidence and28exact pins.
+  No artifact path references an isolated temporary worktree.
+
+Actual offline Go plan command exited0 (terminald05712) and produced the hash
+above. Offline verifier exited0(terminalb2d829): all28SHA pins, Go/Python canonical
+hash equality, policy/preflight/readiness contexts and four native outer phase
+contracts pass. Verifier blocks Transport/Driver/command construction; only an
+in-memory snapshot-path read substitution satisfies controller context checks.
+No native acceptance, SSH or live VM operation was executed by that validation.
+Root full Go/build/vet/lint/errcheck/FreeBSD gates also passed separately.
+Exact detailed checks: canonical-plan-validation-20261030-n2-r4.json.
+Historical-to-new review delta: plan-r4-vs-r3.diff.
+
+Ordinary source snapshots have no new holds or retention/ownership changes.
+Their continued existence is not guaranteed by24h plan validity: pruning,
+GUID/written/config/version/state drift must still fail closed at admission.
+Do not substitute a new source, artifact or target under approval of this hash.
+
+Execution command ONLY AFTER fresh explicit Paul approval of this exact hash,
+and root records actual consent (no approval file generated here):
+GOMAXPROCS=2 GOPROXY=off GOSUMDB=off go run -p 1 ./cmd/hfs-lab execute --plan /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/reviewed-plan-20261030-n2-r4.json --approval /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/operator-approval-20261030-n2-r4.json
+
+No repository edits, staging, commit, askdone or actual new native run by this
+worker. Root owns final review, tracked proof commit and approval/execution.
