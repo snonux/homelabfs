@@ -252,17 +252,28 @@ def check_inventory(stdout, mode, allow_booting=False):
     states = {}
     for row in rows[1:]:
         match = re.fullmatch(r'(\S+)\s+\S+\s+\S+\s+[0-9]+\s+\S+\s+\S+\s+'
-                             r'(?:No|Yes(?:\s+\[[0-9]+\])?)\s+(Stopped|Running|Bootloader)'
-                             r'(?:\s+\(([1-9][0-9]*)\))?', row)
+                             r'(?:No|Yes(?:\s+\[[0-9]+\])?)\s+(Stopped|Running|Bootloader|Locked)'
+                             r'(?:\s+\(([^()\s]+)\))?', row)
         require(match is not None, 'unknown/malformed inventory row: ' + row)
-        name, state, pid = match.groups()
-        require(name not in states and ((state != 'Stopped') == (pid is not None)), 'ambiguous inventory: ' + name)
+        name, state, detail = match.groups()
+        require(name not in states, 'ambiguous inventory: ' + name)
+        if state == 'Locked':
+            # Installed vm-bhyve 1.7.5 writes hostname to run.lock before
+            # launching the loader. A local lock can also be stale: only wait,
+            # never infer readiness or remove the lock (see Lab-runner.md).
+            require(allow_booting and mode == 'native-boot'
+                    and name in {'hfs-test0', 'hfs-test1', 'hfs-test2'}
+                    and detail == 'f3.lan.buetow.org', 'unexpected inventory lock: ' + row)
+        else:
+            require((detail is None if state == 'Stopped' else
+                     detail is not None and re.fullmatch(r'[1-9][0-9]*', detail)),
+                    'ambiguous inventory: ' + name)
         states[name] = state
     require(set(states) == NAMES, 'exact completed five-VM inventory required')
     running = {'hfs-test0', 'hfs-test1', 'hfs-test2'} if mode == 'native-boot' else {'rocky'}
     # A completed start request is asynchronous. Only expected targets may be
-    # stopped or in the known bootloader state while waiting; every other VM
-    # must already be stopped, even during this boot window.
+    # stopped, in the known bootloader state, or (native only) locked by f3
+    # while waiting; every other VM must already be stopped.
     require(all(states[name] == 'Stopped' for name in NAMES - running),
             'forbidden active VM in completed inventory for ' + mode)
     pending = sorted(name for name in running if states[name] != 'Running')

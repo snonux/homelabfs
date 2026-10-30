@@ -470,6 +470,93 @@ class ReadinessCLI(unittest.TestCase):
                 self.assertEqual(stdout.count('exact completed VM inventory verified'), 2)
                 self.assertEqual(stdout.count('pinned root SSH ready'), len(names))
 
+    def test_native_local_locked_waits_for_all_running_before_any_guest_probe(self):
+        for name in ('hfs-test0', 'hfs-test1', 'hfs-test2'):
+            with self.subTest(name=name):
+                locked = inventory('native-boot', {name: 'Locked (f3.lan.buetow.org)'})
+                # Preserve the actual N8 rejected row, including its No autostart.
+                if name == 'hfs-test0':
+                    locked = locked.replace(
+                        'hfs-test0 lab uefi 2 2G - Yes [1] Locked (f3.lan.buetow.org)',
+                        'hfs-test0  hfslab     bhyveload  2    2G      -    No       Locked (f3.lan.buetow.org)')
+                outputs = [locked]
+                if name == 'hfs-test0':
+                    outputs += [inventory('native-boot', {'hfs-test0': 'Bootloader (14489)',
+                                                         'hfs-test1': 'Locked (f3.lan.buetow.org)',
+                                                         'hfs-test2': 'Stopped'}),
+                                inventory('native-boot', {'hfs-test2': 'Bootloader (14490)'})]
+                def behavior(argv, count, success):
+                    return ('print(' + repr(outputs[count - 1]) + ')'
+                            if count <= len(outputs) else success(argv, count))
+                code, stdout, stderr, calls = self.run_cli(behavior=behavior)
+                self.assertEqual(code, 0, stderr)
+                self.assertTrue(all(call[-1] == 'doas -n vm list' for call in calls[:len(outputs) + 1]))
+                self.assertEqual(len(calls), len(outputs) + 8)
+                self.assertEqual(stdout.count('completed boot inventory not ready'), len(outputs))
+                self.assertEqual(stdout.count('exact completed VM inventory verified'), 2)
+                self.assertEqual(stdout.count('pinned root SSH ready'), 3)
+
+    def test_native_local_locked_deadline_is_terminal_without_guest_probes(self):
+        output = inventory('native-boot', {f'hfs-test{i}': 'Locked (f3.lan.buetow.org)' for i in range(3)})
+        code, stdout, stderr, calls = self.run_cli(
+            behavior=lambda *_: 'print(' + repr(output) + ')', expire_after_round=True)
+        self.assertEqual(code, 20, stderr)
+        self.assertIn('completed boot inventories exhausted deadline', json.loads(stderr)['error'])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][-1], 'doas -n vm list')
+        self.assertNotIn('exact completed VM inventory verified', stdout)
+        self.assertNotIn('pinned root SSH ready', stdout)
+
+    def test_native_locked_inventory_failure_never_retries_into_running(self):
+        waiting = inventory('native-boot', {'hfs-test0': 'Locked (f3.lan.buetow.org)'})
+        failures = [(1, 'import sys; sys.exit(255)'), (1, 'import time; time.sleep(10)'),
+                    (1, "print('X'*17000)"),
+                    (1, 'import os, signal, time; os.kill(os.getppid(), signal.SIGTERM); time.sleep(10)'),
+                    (20, 'import sys; sys.exit(1)')]
+        for expected_code, failure in failures:
+            with self.subTest(failure=failure):
+                def behavior(argv, count, success):
+                    if count == 1:
+                        return 'print(' + repr(waiting) + ')'
+                    return failure if count == 2 else success(argv, count)
+                code, stdout, stderr, calls = self.run_cli(behavior=behavior)
+                self.assertEqual(code, expected_code, stderr)
+                self.assertEqual(json.loads(stderr)['status'], 'uncertain' if expected_code == 1 else 'blocked')
+                self.assertEqual(len(calls), 2)
+                self.assertTrue(all(call[-1] == 'doas -n vm list' for call in calls))
+                self.assertNotIn('exact completed VM inventory verified', stdout)
+                self.assertNotIn('pinned root SSH ready', stdout)
+
+    def test_locked_unexpected_guest_host_or_malformed_inventory_fails_before_guest_probes(self):
+        for mode in ('native-boot', 'rocky-restore'):
+            expected = 'hfs-test0' if mode == 'native-boot' else 'rocky'
+            forbidden = ('rocky', 'freebsd') if mode == 'native-boot' else (
+                'hfs-test0', 'hfs-test1', 'hfs-test2', 'rocky', 'freebsd')
+            bad_outputs = [inventory(mode, {name: 'Locked (f3.lan.buetow.org)'}) for name in forbidden]
+            bad_outputs += [inventory(mode, {expected: state}) for state in (
+                'Locked', 'Locked ()', 'Locked (1234)', 'Locked (f2.lan.buetow.org)',
+                'Locked (f3)', 'Locked (F3.lan.buetow.org)', 'Locked (f3.lan.buetow.org.)',
+                'Locked (f3.lan.buetow.org) trailing', 'Locked ((f3.lan.buetow.org))',
+                'Locked (f3.lan.buetow.org extra)',
+                'Running (f3.lan.buetow.org)', 'Bootloader (f3.lan.buetow.org)',
+                'Stopped (f3.lan.buetow.org)')]
+            locked = inventory(mode, {expected: 'Locked (f3.lan.buetow.org)'})
+            bad_outputs += [locked + locked.splitlines()[1] + '\n',
+                            '\n'.join(locked.splitlines()[:-1]),
+                            locked + 'other lab uefi 2 2G - No Locked (f3.lan.buetow.org)\n']
+            waiting = inventory(mode, {expected: 'Bootloader (14489)'})
+            for output in bad_outputs:
+                for position in (1, 2):
+                    with self.subTest(mode=mode, output=output, position=position):
+                        def behavior(argv, count, success):
+                            return 'print(' + repr(output if count == position else waiting) + ')'
+                        code, stdout, stderr, calls = self.run_cli(mode, behavior)
+                        self.assertEqual(code, 20, stderr)
+                        self.assertEqual(len(calls), position)
+                        self.assertTrue(all(call[-1] == 'doas -n vm list' for call in calls))
+                        self.assertNotIn('exact completed VM inventory verified', stdout)
+                        self.assertNotIn('pinned root SSH ready', stdout)
+
     def test_forbidden_running_and_bootloader_vms_fail_each_boot_inventory(self):
         for mode, expected, forbidden in (
                 ('native-boot', 'hfs-test0', ('rocky', 'freebsd')),
@@ -515,6 +602,7 @@ class ReadinessCLI(unittest.TestCase):
         for mode, expected, final_call in (('native-boot', 'hfs-test0', 9), ('rocky-restore', 'rocky', 5)):
             waiting = inventory(mode, {expected: 'Bootloader (14489)'})
             bad_outputs = ['unavailable', waiting, inventory(mode, {expected: 'Stopped'}),
+                           inventory(mode, {expected: 'Locked (f3.lan.buetow.org)'}),
                            inventory(mode, {'freebsd': 'Bootloader (4567)'})]
             for output in bad_outputs:
                 with self.subTest(mode=mode, output=output):

@@ -156,6 +156,23 @@ evidence; SSH diagnostic stderr is retained in the local driver log, including
 on successful inspections. Failure messages include bounded excerpts from both
 streams without weakening kernel, package or host-key verification.
 
+The readiness driver waits for a complete five-VM inventory with all expected
+guests `Running` and every other VM `Stopped` before dispatching any guest TCP
+or SSH probe. Completed `Stopped` and `Bootloader (PID)` states on expected
+guests may wait within the original deadline. During native boot only,
+`Locked (f3.lan.buetow.org)` on `hfs-test0`–`hfs-test2` may also wait. Foreign
+hostnames, malformed or incomplete inventories, locks on Rocky/development
+VMs, and any lock during Rocky restoration or final verification fail closed.
+
+This lock handling follows the installed f3 vm-bhyve 1.7.5 source inspected on
+2026-10-30: `/usr/local/lib/vm-bhyve/vm-run` writes `hostname` to `run.lock`
+(line 381) before loading the guest (lines 154–194); `vm-core` renders a lock
+when no running/bootloader process was observed (lines 91–93). A local lock
+can therefore represent a startup gap, but can also be stale. It establishes
+no execution readiness: persistent locks exhaust the same bounded deadline,
+and the driver never clears locks. Uncertain SSH completion remains terminal
+without retry.
+
 A driver owns and reaps every subprocess and remote operation it starts. Exit
 `0` means terminal success. These nonzero exits certify a **known terminal**
 failure with no outstanding child/remote action: `10` assertion, `20`
