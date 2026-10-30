@@ -213,5 +213,5 @@ func (id MountIdentity) bytes() []byte {
 }
 
 func mountOptions() *fuse.MountOptions {
-	return &fuse.MountOptions{FsName: "homelabfs", Name: "homelabfs", Options: []string{"default_permissions", "nosuid", "nodev"}, MaxWrite: nativeRequestBytes, MaxBackground: 16, EnableLocks: true, DisableReadDirPlus: true, DisableSplice: true}
+	return &fuse.MountOptions{FsName: "homelabfs", Name: "homelabfs", Options: platformMountOptions(), MaxWrite: nativeRequestBytes, MaxBackground: 16, EnableLocks: true, DisableReadDirPlus: true, DisableSplice: true}
 }

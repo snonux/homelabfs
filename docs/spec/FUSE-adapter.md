@@ -30,7 +30,20 @@ and resources for inspection/recovery. Shared multi-mount process identities are
 not implemented.
 
 The default profile uses direct I/O for regular files, zero entry/attribute/negative
-TTLs, `default_permissions`, `nosuid` and `nodev`. It enables neither writeback,
+TTLs, mandatory `default_permissions` and `nosuid`, plus `nodev` on Linux.
+FreeBSD's `mount_fusefs` rejects `nodev`; its
+[option table](https://github.com/freebsd/freebsd-src/blob/releng/15.1/sbin/mount_fusefs/mount_fusefs.c)
+accepts `default_permissions` and the
+[standard `nosuid` flag](https://github.com/freebsd/freebsd-src/blob/releng/15.1/lib/libutil/mntopts.h).
+Device nodes remain unavailable on both platforms: MKNOD returns ENOSYS without
+service dispatch, CREATE always creates a regular file, and validated service
+metadata supports only regular files, directories and symlinks, with no device
+number. Adding special-file support requires a new device-safety review.
+These source checks and local callback tests do not establish native runtime
+compatibility; the failed N6 fixture stopped during mount setup before behavior
+cases.
+
+The profile enables neither writeback,
 keep-cache, symlink caching, ACLs, ID mapping nor `allow_other`. READDIRPLUS is
 disabled. `Capabilities` explicitly reports mmap, writeback, arbitrary workload
 credentials, verified cached-ancestor search and normal publication as unsupported.

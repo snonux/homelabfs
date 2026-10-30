@@ -9,6 +9,10 @@ import (
 
 const dataSyncFlag = unix.O_DSYNC
 
+func platformMountOptions() []string {
+	return []string{"default_permissions", "nosuid", "nodev"}
+}
+
 func mountedIdentity(fd int) ([]byte, error) {
 	var st unix.Statfs_t
 	if err := unix.Fstatfs(fd, &st); err != nil {

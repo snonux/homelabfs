@@ -14,6 +14,13 @@ import (
 // FreeBSD has no distinct O_DSYNC in the selected Go syscall ABI.
 const dataSyncFlag = 0
 
+func platformMountOptions() []string {
+	// mount_fusefs rejects nodev. Device nodes remain unsupported: Mknod is
+	// ENOSYS and service metadata can only describe files, directories or links.
+	// Keep kernel permission checks and set-ID suppression mandatory.
+	return []string{"default_permissions", "nosuid"}
+}
+
 func mountedIdentity(fd int) ([]byte, error) {
 	var st unix.Statfs_t
 	if err := unix.Fstatfs(fd, &st); err != nil {
