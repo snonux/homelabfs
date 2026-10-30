@@ -4,7 +4,9 @@ set -eu
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin:/usr/local/sbin
 LC_ALL=C
 export PATH LC_ALL
-ulimit -f 2048
+# FreeBSD /bin/sh supports -S; preserve the inherited hard limit for the child.
+# shellcheck disable=SC3045
+ulimit -S -f 2048
 action=$1 run=$2 index=$3 plan=$4 daemon_hash=$5 helper_hash=$6
 case "$run" in ''|*[!a-zA-Z0-9_-]*) exit 2 ;; esac
 case "$index" in 0|1|2) ;; *) exit 2 ;; esac
@@ -167,12 +169,15 @@ case "$action" in
         /usr/local/bin/python3.12 - "$work" "$role" "$profile" \
             "$initialize" "$helper_hash" <<'SUPERVISOR' || status=$?
 import json
+import os
+import select
 from pathlib import Path
 import resource
 import signal
 import subprocess
 import sys
 import time
+import threading
 
 work, role, profile, initialize, digest = sys.argv[1:]
 prefix = Path(work) / "evidence" / (role + "-" + profile)
@@ -185,36 +190,122 @@ args = [work + "/bin/homelabfs", "behavior", "--disposable-validation",
 if initialize == "yes":
     args.append("--initialize")
 
+_, inherited_hard_file_limit = resource.getrlimit(resource.RLIMIT_FSIZE)
+if inherited_hard_file_limit != resource.RLIM_INFINITY and inherited_hard_file_limit < 134217728:
+    sys.exit("inherited hard file limit below disposable dataset budget")
+
 def limits():
-    resource.setrlimit(resource.RLIMIT_FSIZE, (262144, 262144))
+    # The shell's evidence-oriented soft limit must not constrain journal/data.
+    # Retain the inherited hard limit and the existing 128 MiB dataset ceiling.
+    _, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
+    if hard != resource.RLIM_INFINITY and hard < 134217728:
+        raise RuntimeError("inherited hard file limit below disposable dataset budget")
+    resource.setrlimit(resource.RLIMIT_FSIZE, (134217728, hard))
     resource.setrlimit(resource.RLIMIT_NOFILE, (512, 512))
 
 started = time.time()
+stop_drains = threading.Event()
+signal_lock = threading.Lock()
+signalled = False
+capture = {}
+
+def terminate_once():
+    global signalled
+    with signal_lock:
+        if not signalled:
+            signalled = True
+            try:
+                child.send_signal(signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+
+def drain(fd, output, name):
+    stored = 0
+    exceeded = False
+    failure = ""
+    final_reads = 0
+    try:
+        while True:
+            ready, _, _ = select.select([fd], [], [], 0.01)
+            if not ready:
+                if stop_drains.is_set():
+                    break
+                continue
+            data = os.read(fd, 65536)
+            if not data:
+                break
+            keep = min(len(data), 262144 - stored)
+            if keep:
+                output.write(data[:keep])
+                stored += keep
+            if keep < len(data):
+                exceeded = True
+                terminate_once()
+            if stop_drains.is_set():
+                # Drain bounded pending bytes even if a descendant retains a
+                # writer. Five reads cover a complete admitted evidence stream.
+                final_reads += 1
+                if final_reads >= 5:
+                    break
+    except OSError as error:
+        failure = str(error)
+        terminate_once()
+    finally:
+        capture[name] = {"stored_bytes": stored, "exceeded": exceeded, "error": failure}
+        os.close(fd)
+
 with open(str(prefix) + ".stdout", "xb") as stdout, \
         open(str(prefix) + ".stderr", "xb") as stderr:
-    child = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=stdout,
-                             stderr=stderr, start_new_session=True,
-                             preexec_fn=limits,
-                             env={"PATH": "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin", "GOMAXPROCS": "2"})
+    out_read, out_write = os.pipe()
+    err_read, err_write = os.pipe()
+    try:
+        child = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=out_write,
+                                 stderr=err_write, start_new_session=True,
+                                 # A live child keeps its own read guards. If it
+                                 # ignores TERM, supervisor exit cannot kill it
+                                 # indirectly through SIGPIPE; later output can
+                                 # only block in the bounded kernel pipes.
+                                 pass_fds=(out_read, err_read), preexec_fn=limits,
+                                 env={"PATH": "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin", "GOMAXPROCS": "2"})
+    except BaseException:
+        os.close(out_read)
+        os.close(err_read)
+        raise
+    finally:
+        os.close(out_write)
+        os.close(err_write)
     with open(str(prefix) + ".process.json", "x") as record:
-        json.dump({"pid": child.pid, "started": started, "args": args}, record)
+        json.dump({"pid": child.pid, "started": started, "args": args,
+                   "retained_pipe_read_fds": [out_read, err_read]}, record)
+    drains = [threading.Thread(target=drain, args=(out_read, stdout, "stdout")),
+              threading.Thread(target=drain, args=(err_read, stderr, "stderr"))]
+    for worker in drains:
+        worker.start()
     timed_out = False
     try:
         code = child.wait(timeout=95)
     except subprocess.TimeoutExpired:
         timed_out = True
-        child.send_signal(signal.SIGTERM)
+        terminate_once()
         try:
             code = child.wait(timeout=10)
         except subprocess.TimeoutExpired:
             code = None
+    # Never wait indefinitely for an inherited writer held by a descendant.
+    # A surviving child retains its read guards when these bounded drains stop.
+    stop_drains.set()
+    for worker in drains:
+        worker.join()
     with open(str(prefix) + ".exit.json", "x") as record:
         json.dump({"pid": child.pid, "exit_code": code, "timed_out": timed_out,
                    "seconds": time.time() - started,
-                   "preserved_live_process": code is None}, record)
-    if timed_out or code != 0:
+                   "preserved_live_process": code is None,
+                   "term_sent": signalled, "capture": capture,
+                   "retained_pipe_read_fds": [out_read, err_read] if code is None else []}, record)
+    if timed_out or code != 0 or any(item["exceeded"] or item["error"] for item in capture.values()):
         print("Failed fixture; preserve process/mount/datasets", file=sys.stderr)
         sys.exit(1 if code is None else (30 if timed_out else 10))
+
 SUPERVISOR
         _idle
         _datasets

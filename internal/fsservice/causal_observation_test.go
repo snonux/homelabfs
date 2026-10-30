@@ -62,7 +62,7 @@ func TestAppendCausalObservation(t *testing.T) {
 	for _, objects := range []int{1, 24} {
 		t.Run(fmt.Sprint(objects), func(t *testing.T) {
 			f := setup(t, "os")
-			// Use the actual CLI segment size rather than the small rotation stress fixture.
+			// Use a large segment so this observation is independent of rotation stress.
 			f.c.Segment.MaximumBytes = 16 << 20
 			data := &observedRoot{Filesystem: f.c.Workspace.Data}
 			source := &observedRoot{Filesystem: f.c.Source}

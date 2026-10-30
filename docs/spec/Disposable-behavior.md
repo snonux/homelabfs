@@ -130,6 +130,17 @@ helper code; an approved supervising script must impose its own outer deadline
 and preserve/inspect remaining resources on failure. No success cleanup deletes
 the three roots. The script owns safe post-run collection and lifecycle work.
 
+The native supervisor captures stdout and stderr independently, retaining at
+most 256 KiB per stream. Overflow sends the owned child TERM once and records a
+failure; the existing 95-second deadline and 10-second TERM grace remain bounded.
+The child uses a 128 MiB file soft limit within each existing 128 MiB dataset
+quota; evidence limits do not constrain its 1 MiB journal segments or 4 MiB
+logical data budget. A lower inherited hard limit is refused. A surviving child
+retains read guards for its two capture pipes, recorded with its PID, so stopping
+the bounded drains cannot kill it through SIGPIPE. These guards refer only to the
+fixture's own output streams. Later output can block in bounded kernel pipes
+until the retained process is inspected.
+
 The CLI helper emits bounded `behavior-append` JSON lines on stderr around the
 append case's open, each of sixteen 32-byte writes, fsync and close (at most 38
 lines per writer). Each includes the helper PID/UID, A/B marker, write index

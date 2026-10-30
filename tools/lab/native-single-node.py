@@ -153,7 +153,8 @@ def specification(run, daemon, helper, inspect=True):
         "evidence_bytes": 32 << 20, "logical_data_bytes_per_volume": 4 << 20,
         "retention_hours": 168,
         "supervisor": {"seconds": 95, "term_grace_seconds": 10,
-                       "file_bytes": 262144, "open_files": 512,
+                       "evidence_file_bytes": 262144, "child_file_soft_bytes": 128 << 20,
+                       "open_files": 512,
                        "on_failure": "TERM-owned-child-once; preserve; never KILL/abort/force-unmount"},
         "scope": "one local volume per guest; four sequential controlled roles/profiles; no replication/9p/production",
     }
