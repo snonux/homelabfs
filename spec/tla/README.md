@@ -1385,3 +1385,144 @@ normal/takeover model rerun, lab, VM, SSH, FUSE or kernel operation was performe
 Comparison with the existing service/storage/apply implementation established no
 genuine protocol or implementation finding requiring a change to
 `Handles-and-locks.md` or `internal/`.
+
+## Transport Endpoint incarnation model
+
+Task `rx3` adds `Transport.tla` for
+[Transport.md](../../docs/spec/Transport.md) and `internal/transport`. Run
+`mage tlaTransport`, `mage tlaTransportNegative` and
+`mage tlaTransportCoverage`. The runner uses the pinned TLC 1.8.0 jar and SHA-256
+above, one CPU/worker, 512 MiB heap and a three-minute wall deadline per profile.
+Private executed module/configuration snapshots, hashes, exact arguments,
+bounds, output and explicit exit receipts remain in `.cache/tla/Transport*-*/`.
+Positive graphs must finish with exit zero and no queued states. Negative
+controls require exit 12 for `Safety`; witnesses retain `Safety` first and
+require exit 12 for `WitnessAbsent`. Parser errors, timeout, launch failure and
+incomplete searches are not passes.
+
+The model has one local Endpoint, one admitted peer, two symbolic nonzero peer
+incarnation UUIDs, two concurrent incoming handshake slots, and control/live/bulk
+classes. UUIDs have no order. `CheckHello` and final `Install` are independently
+scheduled mutex-protected steps. A checked handshake can be abandoned before
+installation and has not yet pinned the peer. Each incoming data handshake names
+the exact control session it started with. Losing control closes all established
+classes and identified handshakes; losing live/bulk leaves control intact.
+Raw incoming sockets can remain unidentified across a peer-specific operation,
+then must pass current admission, incarnation and session checks. Registry
+replacement and a new Endpoint close every pending socket.
+
+`TransportSafety` permits at most two successful control installations, one
+expectation installation and one strictly newer same-cluster registry
+replacement, in any order; it does not restart the Endpoint.
+`TransportRestart` permits two successful control installations, one expectation
+installation and one new Endpoint, without registry replacement. These budgets
+bound the entire search rather than resetting on restart. Data sockets may be
+opened/lost repeatedly in the finite graph. One representative established
+socket per class projects class-wide closure; arbitrary counts of duplicate
+live/bulk sockets and interactions between different peers are outside the
+checked bounds. There is no depth/state cutoff, fairness or liveness claim.
+
+An independent reference pin changes only on first successful installation,
+explicit externally reconciled `ExpectIncarnation`, or a new Endpoint. Connect,
+disconnect and registry replacement must preserve it. Every open class must
+match that reference, the current control session and the latest expectation
+installation, including when the expected UUID is unchanged. Revocation must
+survive connect, disconnect and `ExpectIncarnation`. As explicitly allowed by
+`Endpoint.InstallRegistry` and Transport.md, a valid newer registry resets
+revocation; a new Endpoint also starts without in-memory revocations. Thus the
+revocation invariant is scoped to the registry/Endpoint authority context,
+not an assertion that administrative registry replacement preserves revocation.
+
+No transport operation grants serving rights. A separate modeled `Reconcile`
+action represents successful external protocol reconciliation, whose correctness
+is assumed here. A new Endpoint clears that result and remains RECOVERING even
+after a successful handshake until that separate action occurs. The restart
+witness deliberately accepts incarnation 1 after the previous Endpoint pinned
+incarnation 2: UUIDs are not ordered and the new Endpoint has no durable evidence
+of prior peer lifetimes. This demonstrates the in-memory pin's anti-rollback
+limit; it does not model durable promises, accepted history, fencing or safe
+protocol recovery.
+
+Seven deliberate mutations allow a connecting UUID to overwrite a known pin,
+forget a pin on disconnect or registry replacement, retain old classes across
+an expectation installation, clear revocation on expectation installation,
+grant serving on expectation installation, or grant serving on Endpoint restart.
+They must produce real safety counterexamples and are controls, not findings.
+Seven witnesses require: a fresh same-incarnation session after disconnect and
+rejection of a different UUID; registry replacement after revocation retaining
+the pin while resetting revocation; all three classes followed by a changed
+expectation, old-incarnation rejection and new control; all classes closed even
+for an unchanged expectation; revocation surviving expectation installation;
+new-Endpoint forgetting followed by authentication and separate protocol
+reconciliation; and an identified pending handshake invalidated before the new
+expected incarnation connects.
+
+Exact envelope parsing is intentionally left to the existing Go decoder,
+header/identity/class/length/trailing-byte tests and decoder fuzz target.
+A symbolic invalid-frame action would repeat those local tests without adding
+state-machine coverage. This model assumes validated static admission,
+addresses, cluster/registry greetings, finite limits and full handshake bytes;
+it does not prove encoding, sockets, cancellation/deadline scheduling, writers,
+queues, callbacks, cryptography, deployment WireGuard assumptions or arbitrary
+network faults. It abstracts a completed local socket closure as one transition.
+No socket, lab, VM, SSH, WireGuard, FUSE or production operation is involved.
+
+### Recorded transport verification
+
+All sixteen final profiles completed locally on 30 October 2026 against module
+SHA-256 `b6eebc97e3195dc7c5bcaeb1fff992b4ae27ae5c8edd7fabec0e43c1f51d1b6d`.
+Every executed module/configuration snapshot was compared with the final source;
+the source was frozen for this entire batch. Actual `mage tlaTransportNegative`,
+`mage tlaTransportCoverage` and `mage tlaTransport` invocations all exited zero,
+taking 7.28, 9.44 and 5.08 seconds respectively. Each child used the pinned jar,
+one CPU/worker and 512 MiB heap, with a three-minute wall deadline. Both positive
+graphs finished with zero queued states. Negative and witness profiles stop at
+the required counterexample; their queued states need not be zero. Depth is the
+complete graph depth for positives and trace length for controls.
+
+| Configuration suffix | Generated | Distinct | Depth/trace | Java exit |
+| --- | ---: | ---: | ---: | ---: |
+| `NegativeOverwrite` | 310 | 102 | 5 | 12 |
+| `NegativeDisconnect` | 131 | 48 | 5 | 12 |
+| `NegativeRegistry` | 186 | 68 | 5 | 12 |
+| `NegativeClasses` | 260 | 91 | 5 | 12 |
+| `NegativeRevocation` | 41 | 29 | 3 | 12 |
+| `NegativeAuthority` | 7 | 7 | 2 | 12 |
+| `NegativeRestart` | 7 | 7 | 2 | 12 |
+| `WitnessDisconnect` | 6,774 | 1,466 | 10 | 12 |
+| `WitnessRegistry` | 21,032 | 4,042 | 11 | 12 |
+| `WitnessExpect` | 100,343 | 13,833 | 16 | 12 |
+| `WitnessSame` | 21,095 | 3,434 | 11 | 12 |
+| `WitnessRevoked` | 272 | 100 | 5 | 12 |
+| `WitnessRestart` | 9,464 | 2,012 | 9 | 12 |
+| `WitnessPending` | 1,601 | 610 | 7 | 12 |
+| `Safety` | 214,047 | 23,560 | 20 | 0 |
+| `Restart` | 221,780 | 24,594 | 20 | 0 |
+
+The receipt index `.cache/tla/transport-rx3-final-receipts.json` records every
+exact final child directory, module/configuration hashes, counts and Java exit.
+Outer argument, environment, log and exit receipts are under
+`.cache/tla/Transport-mage-final-n8hq5wla/`; each indexed child retains executed
+source/configuration, jar/source hashes, arguments, bounds, output and exit.
+Tagged Mage compilation, tagged vet, errcheck, target discovery, gofmt and
+`git diff --check` passed. Go/Mage commands ran sequentially with
+`GOMAXPROCS=2`, `GOFLAGS=-p=1` and a fresh private `/tmp` directory per command.
+No runtime Go test or unrelated TLC model was run for this task.
+
+Development receipts are preserved separately. The first negative batch in
+`.cache/tla/Transport-mage-final-7fzv7_az/` stopped at an under-specified successor
+(Java exit 75) caused by a missing pair of parentheses in the serving mutation.
+It is not a passing batch. The corrected intermediate batch under
+`.cache/tla/Transport-mage-final-1uky4w07/` passed, then self-review strengthened
+the changed-expectation witness to require all three classes still belong to
+incarnation 1 immediately before expecting 2. The former event sequence could
+also witness an unchanged 2-to-2 installation. Likewise, the final pending and
+same-expectation witnesses require their relevant resources still present at the
+expectation call. These are model corrections/coverage improvements to existing
+requirements, not genuine protocol findings. All sixteen profiles were rerun
+against the final source after the last change. No transport implementation or
+normative specification behavior was changed because no actual defect was found.
+
+These are bounded contract checks, not a refinement proof of the Go code or a
+claim of distributed service readiness. As with the other TLC models, exhaustive
+exploration relies on finite fingerprints without distinct-state collisions.
