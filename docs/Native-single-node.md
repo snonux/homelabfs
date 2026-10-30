@@ -39,6 +39,13 @@ all other VMs stopped, 2 GiB/two CPUs per guest, sufficient physical memory and
 zero active swap. Inspect actual state rather than historical inventory.
 
 Keep exact fragment argv, contracts, artifacts and resource caps. The driver
+requires native collection to pair with exactly the native setup/test IDs via
+`applies_after`. If admission fails before either was attempted, the runner
+skips guest collection; it still reports the admission failure and skips
+inapplicable cleanup/restoration. A known partial native setup or test failure
+still collects diagnostics. Uncertain outcomes continue to block all actions
+pending reconciliation. Existing approved plans remain eligible for cleanup.
+The driver
 requires setup/test/collect/cleanup deadlines of at least 900/2400/180/180
 seconds; its own shorter internal limits remain fixed. Include their sums in
 the outer phase budgets along with the other drivers/lifecycle steps. Allocate

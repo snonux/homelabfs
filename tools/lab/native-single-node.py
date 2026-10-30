@@ -199,6 +199,12 @@ def validate_outer(spec_path, phase):
     if not {by_phase["setup"]["id"], by_phase["test"]["id"]}.issubset(
             by_phase["cleanup"]["applies_after"]):
         raise Refusal("outer cleanup must apply after both mutating driver steps")
+    # Cleanup must remain available for older approved plans. New forward
+    # execution requires the exact guest-collection admission boundary.
+    if phase != "cleanup" and (len(by_phase["collect"]["applies_after"]) != 2
+            or set(by_phase["collect"]["applies_after"]) != {
+                by_phase["setup"]["id"], by_phase["test"]["id"]}):
+        raise Refusal("outer collection must apply after exactly native setup/test")
     test = by_phase["test"]["test"]
     if test != "native-single-node" or not any(t["name"] == test for t in outer["tests"]):
         raise Refusal("outer plan must select native-single-node")
@@ -223,7 +229,7 @@ def outer_fragment(spec_path):
                       "contract": "native-single-node-v1:" + phase,
                       "effects": "run-owned" if phase in ("setup", "test") else "read-only",
                       "timeout_seconds": seconds, "max_attempts": 1,
-                      "applies_after": ["native-setup", "native-test"] if phase == "cleanup" else [],
+                      "applies_after": ["native-setup", "native-test"] if phase in ("collect", "cleanup") else [],
                       "idempotent": phase == "cleanup"})
     return {"artifacts": artifacts, "resources": spec["resources"],
             "tests": [{"name": "native-single-node", "seed": 0}], "steps": steps,

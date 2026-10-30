@@ -98,6 +98,9 @@ func TestPlanRejectsUnsafeShapes(t *testing.T) {
 		{"unselected test driver", func(p *Plan) { p.Steps[4].Test = "unselected" }},
 		{"non-test phase claims coverage", func(p *Plan) { p.Steps[3].Test = "synthetic" }},
 		{"duplicate selection", func(p *Plan) { p.Tests = append(p.Tests, p.Tests[0]) }},
+		{"unknown collection pair", func(p *Plan) { p.Steps[5].AppliesAfter = []string{"missing"} }},
+		{"self collection pair", func(p *Plan) { p.Steps[5].AppliesAfter = []string{"collect"} }},
+		{"future collection pair", func(p *Plan) { p.Steps[5].AppliesAfter = []string{"data-clean"} }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p, _, _ := fixture(t)

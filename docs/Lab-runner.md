@@ -139,7 +139,12 @@ are never copied into a guest or included in reports.
 Driver effects are `read-only` or `run-owned`; VM actions use `lifecycle`.
 Collection is read-only. Every mutating setup/test driver needs paired cleanup
 via `applies_after`. Cleanup/restoration must be idempotent and refer only to
-earlier forward step IDs. The driver contract must enforce approved resource
+earlier forward step IDs. Stage 1 collection may also use `applies_after`, with
+earlier setup/test IDs: collection runs only if at least one named step was
+attempted, including a known failed attempt. Otherwise it is recorded as
+skipped without invoking the driver. An empty collection pairing retains
+unconditional collection. This does not change the Stage 2 profile.
+The driver contract must enforce approved resource
 ownership, I/O/storage/retention bounds, pinned guest host keys, expected mounts,
 normal unmounting, diagnostic collection and failure preservation. The runner
 enforces process deadlines and per-step log caps; it cannot establish a remote

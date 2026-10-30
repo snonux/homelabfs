@@ -339,6 +339,13 @@ func (p Plan) validateSteps(artifacts map[string]Artifact) error {
 		if i == 0 && (s.Action != "driver" || s.Phase != "setup" || s.Contract != "prepared-lab-preflight-v1" || s.Effects != "read-only") {
 			return errors.New("first step must verify live inventory, initial states, memory/swap/disk, active users and pinned SSH keys using prepared-lab-preflight-v1")
 		}
+		if s.Phase == "collect" {
+			for _, id := range s.AppliesAfter {
+				if seen[id] != "setup" && seen[id] != "test" {
+					return errors.New("collection pairing must refer to earlier setup/test steps")
+				}
+			}
+		}
 		if s.Phase == "cleanup" || s.Phase == "restore" {
 			if !s.Idempotent || len(s.AppliesAfter) == 0 {
 				return errors.New("teardown requires idempotence and explicit paired step IDs")

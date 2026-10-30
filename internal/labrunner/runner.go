@@ -137,10 +137,19 @@ func (r Runner) forward(ctx context.Context, p Plan, j *journal) error {
 		if s.Phase == "cleanup" || s.Phase == "restore" {
 			break
 		}
-		if j.state.Results[i].Status == "passed" {
+		if j.state.Results[i].Status == "passed" || j.state.Results[i].Status == "skipped" {
 			continue
 		}
 		if failures != nil && s.Phase != "collect" {
+			continue
+		}
+		// Stage 1 guest-only collection may require a setup/test attempt.
+		// An empty pairing preserves unconditional read-only collection.
+		if p.Stage == "stage1" && s.Phase == "collect" && len(s.AppliesAfter) > 0 && !applicable(j.state, s) {
+			j.state.Results[i].Status = "skipped"
+			if err := j.save(); err != nil {
+				return errors.Join(failures, err)
+			}
 			continue
 		}
 		if ctx.Err() != nil {

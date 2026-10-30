@@ -360,7 +360,7 @@ class NativeDriverTests(unittest.TestCase):
         with patch.dict(os.environ, HFS_LAB_PLAN=str(plan), HFS_LAB_RUN_ID=self.spec["run_id"]):
             plan.write_text(json.dumps(outer))
             native.validate_outer(source, "setup")
-            for field in ("pin", "resource", "cleanup", "argv"):
+            for field in ("pin", "resource", "cleanup", "argv", "collection-missing", "collection-preflight", "collection-duplicate"):
                 changed = copy.deepcopy(outer)
                 if field == "pin":
                     changed["artifacts"].pop()
@@ -368,11 +368,22 @@ class NativeDriverTests(unittest.TestCase):
                     changed["resources"].pop()
                 elif field == "cleanup":
                     changed["steps"][-1]["applies_after"] = []
+                elif field.startswith("collection-"):
+                    changed["steps"][2]["applies_after"] = {
+                        "collection-missing": [],
+                        "collection-preflight": ["native-setup", "native-test", "preflight"],
+                        "collection-duplicate": ["native-setup", "native-setup"],
+                    }[field]
                 else:
                     changed["steps"][1]["args"][1] = "setup"
                 plan.write_text(json.dumps(changed))
                 with self.assertRaises(native.Refusal):
                     native.validate_outer(source, "setup")
+            # A legacy collection schedule must never strand approved cleanup.
+            legacy = copy.deepcopy(outer)
+            legacy["steps"][2]["applies_after"] = []
+            plan.write_text(json.dumps(legacy))
+            native.validate_outer(source, "cleanup")
 
 
 if __name__ == "__main__":
