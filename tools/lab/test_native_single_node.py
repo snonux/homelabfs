@@ -140,6 +140,145 @@ class NativeDriverTests(unittest.TestCase):
         driver.evidence = self.base / "evidence"
         return driver
 
+    def local_child(self, source, *args):
+        script = self.base / "local-child.py"
+        script.write_text(source)
+        return [sys.executable, str(script), *args]
+
+    def test_real_command_success_keeps_binary_stdout_and_logs_only_stderr(self):
+        argv = self.local_child(
+            "import sys\n"
+            "sys.stdout.buffer.write(sys.stdin.buffer.read())\n"
+            "sys.stderr.buffer.write(b'local warning\\n')\n", "success-context")
+        payload = b"DO-NOT-LOG-BINARY-OR-STDIN\x00\xff" + bytes(range(256))
+        driver = self.driver("collect", None)
+        stderr, stdout = io.StringIO(), io.StringIO()
+        with patch.dict(os.environ, PRIVATE_TEST_VALUE="DO-NOT-LOG-ENVIRONMENT"), \
+                contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(stdout):
+            result = driver.command(argv, payload, seconds=5)
+        self.assertEqual(result, payload)
+        self.assertEqual(stdout.getvalue(), "")
+        detail = json.loads(stderr.getvalue().split(": ", 1)[1])
+        self.assertEqual(detail["returncode"], 0)
+        self.assertIn("success-context", detail["argv"])
+        self.assertEqual(detail["stderr"]["tail"], "local warning\n")
+        self.assertNotIn("stdout", detail)
+        self.assertNotIn("DO-NOT-LOG", stderr.getvalue())
+
+    def test_real_command_failures_keep_exit_streams_and_terminal_policy(self):
+        driver = self.driver("test", None)
+        for code, terminal, error in ((1, False, native.Uncertain),
+                                      (10, False, native.Uncertain),
+                                      (30, False, native.Uncertain),
+                                      (10, True, native.Refusal),
+                                      (30, True, native.TerminalTimeout),
+                                      (255, True, native.Uncertain)):
+            with self.subTest(code=code, terminal=terminal):
+                argv = self.local_child(
+                    "import sys\n"
+                    "sys.stdout.buffer.write(b'failed stdout only\\n')\n"
+                    "sys.exit(int(sys.argv[1]))\n", str(code))
+                with self.assertRaises(error) as caught:
+                    driver.command(argv, b"DO-NOT-LOG-PRIVATE-STDIN", seconds=5,
+                                   terminal_assertion=terminal)
+                message = str(caught.exception)
+                self.assertNotIn("DO-NOT-LOG", message)
+                detail = json.loads(message.split(": ", 1)[1])
+                self.assertEqual(detail["returncode"], code)
+                self.assertEqual(detail["argv"], shlex.join(argv))
+                self.assertEqual(detail["stdout"]["tail"], "failed stdout only\n")
+                self.assertEqual(detail["stderr"]["tail"], "")
+
+    def test_real_command_signal_and_bounded_invalid_utf8_diagnostics(self):
+        argv = self.local_child(
+            "import os, signal\n"
+            "os.write(1, b'X' * 8192 + b'failed stdout tail\\n')\n"
+            "os.write(2, b'Y' * 8192 + b'\\xffstderr tail\\n')\n"
+            "os.kill(os.getpid(), signal.SIGTERM)\n", "A" * 8192, "end-context")
+        driver = self.driver("setup", None)
+        with self.assertRaises(native.Uncertain) as caught:
+            driver.command(argv, seconds=5)
+        message = str(caught.exception)
+        detail = json.loads(message.split(": ", 1)[1])
+        import signal
+        self.assertEqual(detail["returncode"], -signal.SIGTERM)
+        self.assertTrue(detail["stdout"]["tail"].endswith("failed stdout tail\n"))
+        self.assertTrue(detail["stderr"]["tail"].endswith("\ufffdstderr tail\n"))
+        for stream in ("stdout", "stderr"):
+            self.assertGreater(detail[stream]["omitted_bytes"], 0)
+            self.assertLessEqual(len(detail[stream]["tail"]), 4096)
+        self.assertGreater(detail["argv_omitted_chars"], 0)
+        self.assertTrue(detail["argv"].startswith(shlex.quote(sys.executable)))
+        self.assertTrue(detail["argv"].endswith("end-context"))
+        self.assertNotIn("\n", message)
+        self.assertLess(len(message), 3 * 4096 + 1024)
+
+    def test_real_command_timeout_preserves_partial_streams_without_retry(self):
+        ready = self.base / "child-ready"
+        argv = self.local_child(
+            "import os, pathlib, sys, time\n"
+            "os.write(1, b'partial stdout\\n')\n"
+            "os.write(2, b'partial stderr\\n')\n"
+            "pathlib.Path(sys.argv[1]).write_text('ready')\n"
+            "time.sleep(30)\n", str(ready))
+        with patch.object(native.subprocess, "run", wraps=subprocess.run) as execute:
+            driver = self.driver("test", None)
+            with self.assertRaises(native.Uncertain) as caught:
+                driver.command(argv, seconds=1, terminal_assertion=True)
+        self.assertTrue(ready.is_file())
+        self.assertEqual(execute.call_count, 1)
+        message = str(caught.exception)
+        self.assertIn("timeout after 1s", message)
+        self.assertIn("returncode unavailable", message)
+        detail = json.loads(message[message.index("{"):])
+        self.assertIsNone(detail["returncode"])
+        self.assertEqual(detail["argv"], shlex.join(argv))
+        self.assertEqual(detail["stdout"]["tail"], "partial stdout\n")
+        self.assertEqual(detail["stderr"]["tail"], "partial stderr\n")
+
+    def test_spawn_failure_and_elapsed_deadline_remain_uncertain(self):
+        driver = self.driver("setup", None)
+        argv = [str(self.base / "missing-child"), "spawn-context"]
+        with self.assertRaises(native.Uncertain) as caught:
+            driver.command(argv, seconds=5)
+        message = str(caught.exception)
+        self.assertIn("returncode unavailable", message)
+        detail = json.loads(message[message.index("{"):])
+        self.assertEqual(detail["argv"], shlex.join(argv))
+        self.assertIsNone(detail["returncode"])
+        self.assertIsNone(detail["stdout"])
+        self.assertIsNone(detail["stderr"])
+        fake = FakeExecutor(self.spec)
+        driver = self.driver("setup", fake)
+        driver.deadline = native.time.monotonic() - 1
+        with self.assertRaisesRegex(native.Uncertain, "phase deadline"):
+            driver.command(argv)
+        self.assertFalse(driver.contacted)
+        self.assertEqual(fake.calls, [])
+
+    def test_setup_cleanup_failures_keep_guest_context_and_stdout(self):
+        for phase, action in (("setup", "preflight"), ("cleanup", "cleanup")):
+            with self.subTest(phase=phase):
+                fake = FakeExecutor(self.spec)
+
+                def execute(argv, **kwargs):
+                    if argv[-2].startswith("root@"):
+                        fake.calls.append(argv)
+                        return subprocess.CompletedProcess(argv, 1, b"guest guard inventory\n", b"")
+                    return fake(argv, **kwargs)
+
+                driver = self.driver(phase, execute)
+                driver.evidence = self.base / ("failed-" + phase)
+                with self.assertRaises(native.Uncertain) as caught:
+                    driver.run()
+                detail = json.loads(str(caught.exception).split(": ", 1)[1])
+                self.assertIn("root@172.31.253.11", detail["argv"])
+                self.assertIn(action, detail["argv"])
+                self.assertEqual(detail["returncode"], 1)
+                self.assertEqual(detail["stdout"]["tail"], "guest guard inventory\n")
+                self.assertEqual(detail["stderr"]["tail"], "")
+                self.assertEqual(len(fake.calls), 2 if phase == "setup" else 1)
+
     def test_full_fixed_matrix_one_initialization_per_guest(self):
         self.assertEqual(native.CASE_NAMES, EXPECTED_CASES)
         self.assertEqual(len(EXPECTED_CASES), 15)

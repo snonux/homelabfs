@@ -117,6 +117,19 @@ bounded evidence directory; it never traverses the FUSE mount or copies backing
 payloads. Collection is attempted after a failed workload too. The outer runner
 owns durable orchestration state, categories and final JSON/JUnit summary.
 
+Controller command failures include bounded argv context, the actual child
+return code and separate stdout/stderr tails in the outer runner's driver log.
+Each stream retains at most its last 4096 bytes, with replacement decoding for
+invalid UTF-8 and an omitted-byte count; argv retains at most its first and last
+2048 characters plus a truncation marker. Control characters are JSON-escaped.
+Timeouts retain available partial streams and mark the return code unavailable;
+spawn errors mark both streams unavailable. Successful command stderr is logged
+with the same bounds, while successful stdout is returned byte-for-byte for
+machine parsing or archive collection and is never included in this diagnostic.
+These diagnostics do not record stdin, environment values or private-key
+contents. They do not change deadlines, evidence caps, failure categories or
+the requirement to reconcile uncertain outcomes before further actions.
+
 Cleanup is an idempotent quiescence check: it proves the run is normally
 unmounted and has no daemon/helper processes, then records remaining storage.
 Successful and failed run roots/datasets remain for evidence and inspection.

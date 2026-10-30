@@ -22,6 +22,7 @@ ENTRY = REPO / "tools/lab/check-native-single-node.sh"
 GUEST = REPO / "tools/lab/native-single-node-guest.sh"
 KEYS = REPO / "docs/lab/f3-known_hosts"
 PHASE_SECONDS = {"setup": 900, "test": 2400, "collect": 180, "cleanup": 180}
+DIAGNOSTIC_LIMIT = 4096
 MATRIX = [(role, profile) for role in ("root", "unprivileged")
           for profile in ("hfs-direct", "hfs-buffered")]
 CASE_NAMES = {
@@ -45,6 +46,28 @@ class TerminalTimeout(Exception):
 
 class Uncertain(Exception):
     """A remote resource/action needs inspection before lifecycle restoration."""
+
+
+def command_diagnostics(argv, returncode, **streams):
+    """Bound log context independently of the byte-exact command result."""
+    command = shlex.join(argv)
+    fields = {"argv": command, "returncode": returncode}
+    if len(command) > DIAGNOSTIC_LIMIT:
+        half = DIAGNOSTIC_LIMIT // 2
+        fields["argv"] = command[:half] + " [truncated] " + command[-half:]
+        fields["argv_omitted_chars"] = len(command) - DIAGNOSTIC_LIMIT
+    for name, data in streams.items():
+        if data is None:
+            fields[name] = None
+            continue
+        if isinstance(data, str):
+            data = data.encode()
+        fields[name] = {
+            "tail": data[-DIAGNOSTIC_LIMIT:].decode(errors="replace"),
+            "omitted_bytes": max(0, len(data) - DIAGNOSTIC_LIMIT),
+        }
+    # Escape control characters so child output cannot forge log lines.
+    return json.dumps(fields, ensure_ascii=True)
 
 
 def read_json(path):
@@ -274,16 +297,26 @@ class Driver:
         try:
             result = self.execute(argv, input=data, capture_output=True,
                                   timeout=min(seconds, remaining), check=False)
-        except (OSError, subprocess.TimeoutExpired) as error:
-            raise Uncertain(f"transport/deadline failure: {error}") from error
+        except subprocess.TimeoutExpired as error:
+            detail = command_diagnostics(argv, None, stdout=error.stdout, stderr=error.stderr)
+            raise Uncertain(f"transport/deadline failure: timeout after {error.timeout}s; "
+                            f"returncode unavailable; {detail}") from error
+        except OSError as error:
+            detail = command_diagnostics(argv, None, stdout=None, stderr=None)
+            raise Uncertain(f"transport/deadline failure: OS error {error.errno}; "
+                            f"returncode unavailable; {detail}") from error
         if result.returncode:
-            detail = result.stderr.decode(errors="replace")[-4096:]
+            detail = command_diagnostics(argv, result.returncode,
+                                         stdout=result.stdout, stderr=result.stderr)
             # A workload assertion with proven idle remote state is terminal.
             if terminal_assertion and result.returncode == 10:
                 raise Refusal(f"native behavior failed: {detail}")
             if terminal_assertion and result.returncode == 30:
                 raise TerminalTimeout(f"native behavior timed out after confirmed shutdown: {detail}")
             raise Uncertain(f"remote/transport exit {result.returncode}: {detail}")
+        if result.stderr:
+            print("native command stderr: " + command_diagnostics(
+                argv, result.returncode, stderr=result.stderr), file=sys.stderr)
         return result.stdout
 
     def guest(self, index, action, *args):
