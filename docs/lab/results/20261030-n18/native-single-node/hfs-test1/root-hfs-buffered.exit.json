@@ -1,0 +1,1 @@
+{"pid": 1721, "exit_code": 0, "timed_out": false, "seconds": 6.7472920417785645, "preserved_live_process": false, "term_sent": false, "capture": {"stdout": {"stored_bytes": 560, "exceeded": false, "error": ""}, "stderr": {"stored_bytes": 0, "exceeded": false, "error": ""}}, "retained_pipe_read_fds": []}

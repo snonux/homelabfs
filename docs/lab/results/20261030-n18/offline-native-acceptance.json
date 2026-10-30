@@ -1,0 +1,251 @@
+{
+  "verified_at": "2026-10-30T17:27:09.140568+00:00",
+  "result": "PASS",
+  "scope": "Offline revalidation of actual twelve native fixture reports and completed runner lifecycle; not another test run",
+  "canonical_plan_hash": "62241f759525964371c7c83bc35bb2dc085c14168e3bc32593a258ec4e04ef5c",
+  "fixture_count": 12,
+  "case_totals": {
+    "pass": 159,
+    "skip": 21,
+    "fail": 0
+  },
+  "all_runner_steps_passed": true,
+  "all_fixture_exit0_no_timeout_no_term_no_live_child": true,
+  "all_capture_bytes_match_under_caps_no_errors": true,
+  "fixtures": [
+    {
+      "guest": "hfs-test0",
+      "role": "root",
+      "profile": "hfs-direct",
+      "counts": {
+        "pass": 13,
+        "skip": 2,
+        "fail": 0
+      },
+      "seconds": 2.928961992263794,
+      "append": {
+        "name": "concurrent-append",
+        "family": "P01",
+        "status": "pass",
+        "seconds": 1.137748852
+      },
+      "volume": "bb48434e-1939-4357-b590-4ebcc740ddc4",
+      "node": "46b92641-69c5-41ae-8cfc-3318f1ef8c7d"
+    },
+    {
+      "guest": "hfs-test0",
+      "role": "root",
+      "profile": "hfs-buffered",
+      "counts": {
+        "pass": 14,
+        "skip": 1,
+        "fail": 0
+      },
+      "seconds": 7.045244455337524,
+      "append": {
+        "name": "concurrent-append",
+        "family": "P01",
+        "status": "skip",
+        "detail": "buffered profile rejects O_APPEND before effects; required append runs separately on hfs-direct",
+        "seconds": 0
+      },
+      "volume": "bb48434e-1939-4357-b590-4ebcc740ddc4",
+      "node": "46b92641-69c5-41ae-8cfc-3318f1ef8c7d"
+    },
+    {
+      "guest": "hfs-test0",
+      "role": "unprivileged",
+      "profile": "hfs-direct",
+      "counts": {
+        "pass": 13,
+        "skip": 2,
+        "fail": 0
+      },
+      "seconds": 12.213853597640991,
+      "append": {
+        "name": "concurrent-append",
+        "family": "P01",
+        "status": "pass",
+        "seconds": 4.378069091
+      },
+      "volume": "bb48434e-1939-4357-b590-4ebcc740ddc4",
+      "node": "46b92641-69c5-41ae-8cfc-3318f1ef8c7d"
+    },
+    {
+      "guest": "hfs-test0",
+      "role": "unprivileged",
+      "profile": "hfs-buffered",
+      "counts": {
+        "pass": 13,
+        "skip": 2,
+        "fail": 0
+      },
+      "seconds": 11.9706711769104,
+      "append": {
+        "name": "concurrent-append",
+        "family": "P01",
+        "status": "skip",
+        "detail": "buffered profile rejects O_APPEND before effects; required append runs separately on hfs-direct",
+        "seconds": 0
+      },
+      "volume": "bb48434e-1939-4357-b590-4ebcc740ddc4",
+      "node": "46b92641-69c5-41ae-8cfc-3318f1ef8c7d"
+    },
+    {
+      "guest": "hfs-test1",
+      "role": "root",
+      "profile": "hfs-direct",
+      "counts": {
+        "pass": 13,
+        "skip": 2,
+        "fail": 0
+      },
+      "seconds": 2.9283695220947266,
+      "append": {
+        "name": "concurrent-append",
+        "family": "P01",
+        "status": "pass",
+        "seconds": 1.127588586
+      },
+      "volume": "b09df5a6-5d03-48f4-9c91-615b6edc39ba",
+      "node": "dee3ecbf-b0e0-4a06-908a-bd3664b271f3"
+    },
+    {
+      "guest": "hfs-test1",
+      "role": "root",
+      "profile": "hfs-buffered",
+      "counts": {
+        "pass": 14,
+        "skip": 1,
+        "fail": 0
+      },
+      "seconds": 6.7472920417785645,
+      "append": {
+        "name": "concurrent-append",
+        "family": "P01",
+        "status": "skip",
+        "detail": "buffered profile rejects O_APPEND before effects; required append runs separately on hfs-direct",
+        "seconds": 0
+      },
+      "volume": "b09df5a6-5d03-48f4-9c91-615b6edc39ba",
+      "node": "dee3ecbf-b0e0-4a06-908a-bd3664b271f3"
+    },
+    {
+      "guest": "hfs-test1",
+      "role": "unprivileged",
+      "profile": "hfs-direct",
+      "counts": {
+        "pass": 13,
+        "skip": 2,
+        "fail": 0
+      },
+      "seconds": 12.20874285697937,
+      "append": {
+        "name": "concurrent-append",
+        "family": "P01",
+        "status": "pass",
+        "seconds": 4.191896704
+      },
+      "volume": "b09df5a6-5d03-48f4-9c91-615b6edc39ba",
+      "node": "dee3ecbf-b0e0-4a06-908a-bd3664b271f3"
+    },
+    {
+      "guest": "hfs-test1",
+      "role": "unprivileged",
+      "profile": "hfs-buffered",
+      "counts": {
+        "pass": 13,
+        "skip": 2,
+        "fail": 0
+      },
+      "seconds": 11.962879419326782,
+      "append": {
+        "name": "concurrent-append",
+        "family": "P01",
+        "status": "skip",
+        "detail": "buffered profile rejects O_APPEND before effects; required append runs separately on hfs-direct",
+        "seconds": 0
+      },
+      "volume": "b09df5a6-5d03-48f4-9c91-615b6edc39ba",
+      "node": "dee3ecbf-b0e0-4a06-908a-bd3664b271f3"
+    },
+    {
+      "guest": "hfs-test2",
+      "role": "root",
+      "profile": "hfs-direct",
+      "counts": {
+        "pass": 13,
+        "skip": 2,
+        "fail": 0
+      },
+      "seconds": 2.9281272888183594,
+      "append": {
+        "name": "concurrent-append",
+        "family": "P01",
+        "status": "pass",
+        "seconds": 1.126051575
+      },
+      "volume": "11226b11-e8bf-433d-b3dc-8bf498a3d2e0",
+      "node": "a1692a82-2e63-4741-b6b0-c8accfd128a5"
+    },
+    {
+      "guest": "hfs-test2",
+      "role": "root",
+      "profile": "hfs-buffered",
+      "counts": {
+        "pass": 14,
+        "skip": 1,
+        "fail": 0
+      },
+      "seconds": 6.946290731430054,
+      "append": {
+        "name": "concurrent-append",
+        "family": "P01",
+        "status": "skip",
+        "detail": "buffered profile rejects O_APPEND before effects; required append runs separately on hfs-direct",
+        "seconds": 0
+      },
+      "volume": "11226b11-e8bf-433d-b3dc-8bf498a3d2e0",
+      "node": "a1692a82-2e63-4741-b6b0-c8accfd128a5"
+    },
+    {
+      "guest": "hfs-test2",
+      "role": "unprivileged",
+      "profile": "hfs-direct",
+      "counts": {
+        "pass": 13,
+        "skip": 2,
+        "fail": 0
+      },
+      "seconds": 12.465256452560425,
+      "append": {
+        "name": "concurrent-append",
+        "family": "P01",
+        "status": "pass",
+        "seconds": 4.377753072
+      },
+      "volume": "11226b11-e8bf-433d-b3dc-8bf498a3d2e0",
+      "node": "a1692a82-2e63-4741-b6b0-c8accfd128a5"
+    },
+    {
+      "guest": "hfs-test2",
+      "role": "unprivileged",
+      "profile": "hfs-buffered",
+      "counts": {
+        "pass": 13,
+        "skip": 2,
+        "fail": 0
+      },
+      "seconds": 11.866891860961914,
+      "append": {
+        "name": "concurrent-append",
+        "family": "P01",
+        "status": "skip",
+        "detail": "buffered profile rejects O_APPEND before effects; required append runs separately on hfs-direct",
+        "seconds": 0
+      },
+      "volume": "11226b11-e8bf-433d-b3dc-8bf498a3d2e0",
+      "node": "a1692a82-2e63-4741-b6b0-c8accfd128a5"
+    }
+  ]
+}

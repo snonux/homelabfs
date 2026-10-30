@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="20261030-n18" tests="11" failures="0">
+  <testcase name="prepared-preflight" classname="setup" time="9.120424536"></testcase>
+  <testcase name="rocky-stop" classname="setup" time="8.897881626"></testcase>
+  <testcase name="lab-start" classname="setup" time="1.2294093130000001"></testcase>
+  <testcase name="native-readiness" classname="setup" time="11.588978257"></testcase>
+  <testcase name="native-setup" classname="setup" time="14.216074023000001"></testcase>
+  <testcase name="native-test" classname="test" time="122.925003791"></testcase>
+  <testcase name="native-collect" classname="collect" time="1.401030119"></testcase>
+  <testcase name="native-cleanup" classname="cleanup" time="2.136859853"></testcase>
+  <testcase name="lab-stop" classname="cleanup" time="29.680759237"></testcase>
+  <testcase name="rocky-restore" classname="restore" time="1.126971286"></testcase>
+  <testcase name="rocky-restoration-readiness" classname="restore" time="17.905290139999998"></testcase>
+</testsuite>

@@ -357,3 +357,23 @@ inspection and exact-owned normal unmount, explicit failed reconciliation
 preserved the uncertain report and allowed collection plus normal restoration.
 Final report is `complete=true`, `success=false`, with Rocky PID 76196 running
 and all four FreeBSD guests stopped. The complete native gate remains pending.
+
+## Native single-node gate passed, 2026-10-30
+
+The standing-authorized [n18 run](lab/results/20261030-n18/) passed all twelve
+fixtures on hfs-test0–2: root and unprivileged clients, direct and buffered
+profiles, 159 passed checks and 21 declared profile skips, with no failures.
+The original runner completed successfully, including every normal cleanup,
+guest shutdown and Rocky restoration/readiness step. No reconciliation or
+forced operation was needed. Final pinned state was Rocky PID 91477 running
+and all four FreeBSD VMs stopped; run-owned datasets remain for inspection.
+
+The corrected harness preserves separate 256 KiB evidence caps while allowing
+valid journal/data files within existing quotas. Local EFBIG reproduction and
+N17's retained journal near the former cap support the diagnosis; the corrected
+native run passes the prior failure and the rest of the matrix. Unprivileged
+append remains within the unchanged eight-second bound on all three guests.
+This completes native execution for the first half of single-node acceptance;
+`zq3` still must validate the real daemon through Rocky/9p before replication
+implementation. These results do not validate distributed behavior or authorize
+production migration or NFS retirement.

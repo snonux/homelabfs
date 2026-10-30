@@ -1,0 +1,130 @@
+{
+  "fixture": {
+    "behavior_sha256": "4705a19a6af5b5027b0f12474c15d8eed443aca81a59c76f5ae33db9a43c942d",
+    "client_gid": "20001",
+    "client_groups": "[20002]",
+    "client_uid": "20001",
+    "control_root": "/var/tmp/hfs-run-20261030-n18/c",
+    "daemon_uid": "0",
+    "data_root": "/var/tmp/hfs-run-20261030-n18/d",
+    "journal_root": "/var/tmp/hfs-run-20261030-n18/j",
+    "reservations": "/var/tmp/hfs-run-20261030-n18/d/volume/reservations",
+    "role": "unprivileged",
+    "source": "/var/tmp/hfs-run-20261030-n18/j/volume/source",
+    "workspace_data": "/var/tmp/hfs-run-20261030-n18/d/volume/workspaces/60abe82e-1653-46fc-8762-c8802172fea1/data",
+    "workspace_journal": "/var/tmp/hfs-run-20261030-n18/j/volume/workspaces/60abe82e-1653-46fc-8762-c8802172fea1/journal",
+    "workspace_progress": "/var/tmp/hfs-run-20261030-n18/c/workspaces/60abe82e-1653-46fc-8762-c8802172fea1/progress"
+  },
+  "target": "/var/tmp/hfs-run-20261030-n18/m",
+  "profile": "hfs-buffered",
+  "expected_identity": "homelabfs-validation-v1\nb09df5a6-5d03-48f4-9c91-615b6edc39ba\n60abe82e-1653-46fc-8762-c8802172fea1\n2d1e864d-57c1-6dc4-02aa-a3c61ccd3ef5\n",
+  "declared_capabilities": {
+    "arbitrary_credentials": false,
+    "default_permissions": true,
+    "direct_io": false,
+    "directory_sync": true,
+    "file_sync": true,
+    "local_locks": true,
+    "mmap": true,
+    "normal_publication": false,
+    "writeback": false
+  },
+  "platform": "freebsd/amd64",
+  "run_directory": "/var/tmp/hfs-run-20261030-n18/m/hfs-behavior-475844464f57444a35533356",
+  "started": "2026-10-30T17:22:13.074175227Z",
+  "scope": "single-node local syscall semantics; no power-loss, replication, failover, arbitrary-client or native FreeBSD acceptance claim",
+  "results": [
+    {
+      "name": "bind",
+      "family": "infrastructure",
+      "status": "pass",
+      "seconds": 0.636972748
+    },
+    {
+      "name": "create-exclusive-rename-replace-hardlink-unlink-open-truncate",
+      "family": "P01",
+      "status": "pass",
+      "seconds": 2.355137684
+    },
+    {
+      "name": "umask-chmod-chown-setgid",
+      "family": "P02",
+      "status": "pass",
+      "seconds": 1.60533813
+    },
+    {
+      "name": "sync-open-fsync-fdatasync-directory-sync",
+      "family": "P04",
+      "status": "pass",
+      "seconds": 0.579786063
+    },
+    {
+      "name": "concurrent-append",
+      "family": "P01",
+      "status": "skip",
+      "detail": "buffered profile rejects O_APPEND before effects; required append runs separately on hfs-direct",
+      "seconds": 0
+    },
+    {
+      "name": "mmap-msync-readback",
+      "family": "P04",
+      "status": "pass",
+      "seconds": 0.729126876
+    },
+    {
+      "name": "multiuser-groups-sticky-permission-cache",
+      "family": "P02",
+      "status": "skip",
+      "detail": "root-only synthetic multiuser coverage requires root hfs-buffered companion",
+      "seconds": 0
+    },
+    {
+      "name": "blocked-lock-process-interruption",
+      "family": "lifecycle",
+      "status": "pass",
+      "seconds": 0.082175405
+    },
+    {
+      "name": "process-fcntl-flock-contention-exit",
+      "family": "P03",
+      "status": "pass",
+      "seconds": 0.64741675
+    },
+    {
+      "name": "stop-mutating-peers",
+      "family": "infrastructure",
+      "status": "pass",
+      "seconds": 0
+    },
+    {
+      "name": "close-cleanup-lock",
+      "family": "infrastructure",
+      "status": "pass",
+      "seconds": 0.050698452
+    },
+    {
+      "name": "cleanup-data",
+      "family": "infrastructure",
+      "status": "pass",
+      "seconds": 1.6003970619999999
+    },
+    {
+      "name": "stop-owned-helpers",
+      "family": "infrastructure",
+      "status": "pass",
+      "seconds": 0
+    },
+    {
+      "name": "normal-unmount",
+      "family": "lifecycle",
+      "status": "pass",
+      "seconds": 1.23176407
+    },
+    {
+      "name": "mount-loss-no-fallback",
+      "family": "lifecycle",
+      "status": "pass",
+      "seconds": 0.00010853
+    }
+  ]
+}

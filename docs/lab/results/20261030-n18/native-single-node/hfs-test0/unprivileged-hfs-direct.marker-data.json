@@ -1,0 +1,8 @@
+{
+  "format_version": 1,
+  "data_root": "/var/tmp/hfs-run-20261030-n18/d",
+  "journal_root": "/var/tmp/hfs-run-20261030-n18/j",
+  "control_root": "/var/tmp/hfs-run-20261030-n18/c",
+  "node_id": "46b92641-69c5-41ae-8cfc-3318f1ef8c7d",
+  "volume_id": "bb48434e-1939-4357-b590-4ebcc740ddc4"
+}
