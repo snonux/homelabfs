@@ -1,0 +1,36 @@
+{
+  "finalizer": {
+    "argv": [
+      "/home/linuxbrew/.linuxbrew/opt/python@3.14/bin/python3.14",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/finalize-plan-input-20261030-n6-r8.py",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/planning-admission-survey-20261030-n6-r8.json"
+    ],
+    "returncode": 0,
+    "stdout_sha256": "0d613cdc1cd7693c4c4b5bbf7ebe3747523873a4c26a4243642c3dc90681d4f4",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "canonical-planner": {
+    "argv": [
+      "/home/paul/tmp/codex/hfs-cx3-gates-20261030-r1/hfs-lab",
+      "plan",
+      "--input",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/plan-input-20261030-n6-r8.json",
+      "--out",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/reviewed-plan-20261030-n6-r8.json"
+    ],
+    "returncode": 0,
+    "stdout_sha256": "bac6539400931f7ce999a6e8bfdd36822279272d5041da245f33fa27d87dd6e9",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "offline-validator": {
+    "argv": [
+      "/home/linuxbrew/.linuxbrew/opt/python@3.14/bin/python3.14",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/validate-plan-20261030-n6-r8.py",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/reviewed-plan-20261030-n6-r8.json",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-spec-20261030-n6-r8.json"
+    ],
+    "returncode": 0,
+    "stdout_sha256": "5bd86005f0b1287bf11243ffe71f10e8432ebdeff766b81c18ec973d777628e8",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

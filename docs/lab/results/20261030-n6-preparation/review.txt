@@ -1,0 +1,91 @@
+Native replacement run 20261030-n6 / R8
+Canonical plan hash: 7b3076c5025a192f99003a488ad31877d49102dd4c1fcbe00b5e9957cc449a94
+Created 2026-10-30T10:31:17Z; expires 2026-10-31T10:31:17Z.
+
+PENDING fresh explicit Paul approval. No approval/state/execution-evidence file
+exists. This is a new exact plan, not permission to replay failed n5. N5 remains
+complete=false/success=false after explicit failed-restoration reconciliation;
+its original uncertain-command history and failed reports remain preserved.
+No native behavior call ran in n5. This preparation supplies no native pass.
+
+Scope: Stage1 native-single-node-v1, three existing FreeBSD guests on f3,
+FUSE inside each guest backed by its own ZFS. Synthetic disposable resources.
+Twelve sequential behavior calls: root/unprivileged x direct/buffered x3,
+seed0. No replication/failover, 9p, production or replication-sink operation.
+Exact targets, budgets, tests, resource caps and step schedule match both n3/R5
+original scope and n5/R7 after normalizing only new run paths. Initially Rocky
+Running and all four FreeBSD VMs Stopped.
+
+Required approved disruption: clean Rocky stop; guarded three native-VM start;
+exact running inventory plus pinned root SSH/kernel readiness; setup/test;
+collect; owning-daemon normal unmount and cleanup; normal lab stop; Rocky start
+and positive pinned root SSH/kernel restoration. Failures are preserved; no
+forced Rocky stop/unmount, host reboot or power cycle.
+
+Maximum total5220s/87min = runtime4260 + cleanup600 + restoration360.
+The first240s preflight is read-only; subsequent maximum disruption4980s/83min.
+Disk2304MiB/2.25GiB; 12declared resourcecaps2214592512B; logicalIO48MiB;
+evidence64MiB; retention168h; nativeguest6GiB/6CPU plus hostheadroom4GiB.
+Root /var/tmp/hfs-run-20261030-n6. Datasets only
+hfsdataN/{data,journal,control}/hfs-run-20261030-n6.
+State /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/controller-state-20261030-n6
+Evidence /home/paul/git/homelabfs/docs/lab/results/20261030-n6
+Each step max_attempts1. Unknown completion blocks dependent work/restoration;
+no retry converts uncertainty into success. Normal cleanup preserves run data.
+
+New reviewed fixes included in exact current pins: ix3 reads full FreeBSD %Op
+permission bits and retains exact1777/0700/0600 guards; jx3 adds actual-inode
+special-bit regressions and corrects its vms fixture/preflight pin; kx3 waits
+boundedly for initial hostTCP before strictSSH; lx3 retains bounded native
+command argv/target/deadline/status/stdout/stderr and stopped setup diagnostics.
+No guest permission changes or weakened native identity/mount guards.
+Native-driver SHA0a9bda2daba22e4094b071e4993c33e08068c1e1671e648f3c9063e966a80322.
+Native-guest SHA77e6ae7fc2cc2b24b1d18b483126a40a8f81f71bb40607e68a4973dd43f140fd.
+Preflight SHAdee82ab9471edc39d8738495b32d4ae195c29ae8d854a87a3bb64645dacae761.
+Readiness SHA3dd2f4ef0f8794907f31a9a04f2eee57b83ca9d8efeccff5af1fa30e96757110.
+Vms SHA106dae1dd2730a729341e80b9c5204a1c51ce679ffcce3bd96b01f8d112a06e3.
+
+Native binaries remain actual clean127ecc9 FreeBSDamd64 CGO0 builds. Their
+production Go cmd/internal source diff since build is empty when excluding
+*_test.go; the actual whole diff includes internal/labrunner/fault_vms_test.go.
+They are not relabeled as builds of current HEADa9d4bd9. All actual binary
+hashes, embedded buildmetadata and paths remain in the pinned native spec.
+
+Fresh R8 metadata mx3: ordinary existing zrepl_20261030_093853_000 source tag;
+GUIDs native0/1/2/dev18278990498145836179/9135676689738659023/
+7565056389534066975/13904655261698074984. Actual fresh reads and exact-owned
+normal MD/UFS/four-source-automount cleanup plus GUID/written0 proofs retained.
+Accepted choices SHA6cb7113bb1411f3a50d9475a3a674b61e1411c0a744eff88fa18d5c0cccb78a8;
+cleanup/size proof SHA937046ffd45a98645b29d31a2f2e44bc130c0fafcb042dd375555cb81a266f2c.
+All proof artifact hashes and four immutable controller DB hash/mode/size checks
+passed locally. No pool-health claim, snapshot holds or retention changes.
+Native kernels15.1-RELEASE; dev15.0-RELEASE-p5. Fresh Rocky kernel and actual
+1109-row package manifest retained from09:39:45UTC with UID integer0.
+Any source prune/drift or reboot invalidates admission; no written0 waiver.
+
+Actual ROOT planning-only read-only survey session27227 terminalc8d29e exit0
+completed10:30:48UTC, admitted expected VM states,0active sessions and
+122295599104bytes host disk available. Exact final targets/budget/policy subset
+SHA72715ac41ab849b6013db93154f9b0bc29cbb128836b4c6d2fe2d209eef9d43d.
+No native Driver, VM lifecycle, workload, runner execution or state creation.
+Raw survey stderr444bytes contains exactly two ordinary OpenSSH KEX warning
+triplets; stdout2731bytes and separate stderr/receipt preserved without edits.
+
+Actual local finalizer, cached Go hfs-lab plan and final offline verifier all
+exit0 in terminal90bbdd. Exact argv/stdout/stderr/returncodes saved privately in
+offline-gates-20261030-n6-r8.json and named per-command files. Canonical hash
+matches actual Go output and independent real context verifiers; all30SHA match.
+Policy/readiness contexts and native setup/test/collect/cleanup contracts pass
+with Transport/Driver/command patched to refuse execution. Collection gate is
+exact setup/test. Final scope/proof comparison58ac22 exit0 recorded in
+canonical-plan-validation-20261030-n6-r8.json. No approval/state/evidence exists.
+
+Preparation correction: a local reporting assertion expected the wrong jx3 test
+filename runner_test.go; actual changed file is fault_vms_test.go. Corrected
+filename-independent tests-only check; no plan/code mutation. Three exact pyc
+files created by offline module imports were removed with their empty cache
+directory, leaving main clean. All subsequent Python commands use -B.
+
+Root retains review, any tracked packet copy/commit, approval presentation,
+recording actual consent and all execution/cleanup/lab operations. Previous
+approval or continuation during preparation does not authorize this new hash.

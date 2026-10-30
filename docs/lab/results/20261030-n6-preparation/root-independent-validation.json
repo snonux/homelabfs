@@ -1,0 +1,13 @@
+{
+  "checked_at": "2026-10-30T10:33:07.922195+00:00",
+  "actual_root_terminal": "736231 exit0",
+  "canonical_hash": "7b3076c5025a192f99003a488ad31877d49102dd4c1fcbe00b5e9957cc449a94",
+  "all_30_regular_nonsymlink_artifact_SHA256": "verified",
+  "n5_normalized_stage_targets_budget_resources_tests_steps": "identical except new run paths",
+  "actual_survey_terminal": "session27227 terminalc8d29e exit0",
+  "survey_subset_sha256": "72715ac41ab849b6013db93154f9b0bc29cbb128836b4c6d2fe2d209eef9d43d",
+  "outer_test_selections": 1,
+  "native_behavior_calls": 12,
+  "controller_state_execution_evidence_approval": "absent",
+  "native_execution": false
+}

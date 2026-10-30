@@ -1,0 +1,12 @@
+{
+  "started_at": "2026-10-30T10:30:38.907982+00:00",
+  "finished_at": "2026-10-30T10:30:48.098418+00:00",
+  "elapsed_seconds": 9.190431775999969,
+  "returncode": 0,
+  "source_sha256": "aa8e1ab01a01825b6ed97e31c2ffc8fbed276789086143c8be8edb251b5de912",
+  "scope": "actual planning-only bounded read-only admission survey; no VM lifecycle or workload",
+  "stdout_bytes": 2731,
+  "stdout_sha256": "cbe7c315e4b858842744c68338a9c0717e852fbf996e4f60d226b1865839bb54",
+  "stderr_bytes": 444,
+  "stderr_sha256": "678f28a8b0c17d64f2aedf8f6361f8942a2c740d0d9fd985c9f9e3fcd8a2f6e2"
+}
