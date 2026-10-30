@@ -105,8 +105,13 @@ prove a checkpoint or retention right.
 The writer enforces the same retained count/byte budget, reserving SEAL space,
 so it does not create a stream its configured recovery cannot admit. Increase
 limits explicitly only after capacity admission. No garbage collector exists.
-Frame reads allocate one bounded frame at a time; recovery retains summaries and
-incremental hash state rather than buffering entire segments.
+Frame reads allocate one bounded frame at a time plus a read window of at most
+64 KiB per active file; recovery retains summaries and incremental hash state
+rather than buffering entire segments. Windows are private to each recovery scan
+and reader, bounded by the discovered file size, and discarded on file changes.
+Read-ahead does not validate or skip frames: every header, payload, checksum and
+prefix hash is still checked. Any underlying read error stops the scan (possibly
+earlier due to read-ahead); cache hits still check cancellation.
 
 Only incomplete outer framing at the last verified boundary of the final open
 segment, after a complete OPEN, can return `*TornTail`. A complete fixed header

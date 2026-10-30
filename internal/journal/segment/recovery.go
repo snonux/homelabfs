@@ -18,6 +18,10 @@ import (
 	"github.com/snonux/homelabfs/internal/vfs"
 )
 
+type frameReader interface {
+	ReadAt(context.Context, []byte, int64) (int, error)
+}
+
 type scanState struct {
 	digest hash.Hash
 	count  uint64
@@ -166,8 +170,9 @@ func scanFile(ctx context.Context, backend Backend, stream Stream, name segmentN
 		return summary, state, nil, err
 	}
 	defer func() { _ = f.Close() }()
+	window := newScanWindow(f, name.size)
 	for state.offset < name.size {
-		data, r, err := readFrame(ctx, f, state.offset, name.size)
+		data, r, err := readFrame(ctx, window, state.offset, name.size)
 		if err != nil {
 			var frameErr *record.Error
 			if errors.As(err, &frameErr) && frameErr.Kind == record.Torn && state.count > 0 && name.open {
@@ -282,7 +287,7 @@ func defaultLimits(limits Limits) Limits {
 	return limits
 }
 
-func readFrame(ctx context.Context, f vfs.File, offset, size int64) ([]byte, record.Record, error) {
+func readFrame(ctx context.Context, f frameReader, offset, size int64) ([]byte, record.Record, error) {
 	var r record.Record
 	remaining := size - offset
 	header := make([]byte, min(remaining, 144))

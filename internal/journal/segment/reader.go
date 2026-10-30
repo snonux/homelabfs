@@ -22,13 +22,15 @@ type Entry struct {
 
 // Reader iterates a fixed, fully verified retained stream snapshot. Exclude
 // mutation and retention of its files for its lifetime. Memory is bounded by the
-// recovery directory budget and one decoded frame, never the complete stream.
+// recovery directory budget, one decoded frame and a 64 KiB read window, never
+// the complete stream.
 type Reader struct {
 	mu       sync.Mutex
 	fs       Backend
 	recovery Recovery
 	index    int
 	file     vfs.File
+	window   *scanWindow
 	state    scanState
 	summary  Summary
 	previous *record.FrameRef
@@ -59,7 +61,7 @@ func OpenReader(ctx context.Context, backend Backend, stream Stream, options Rec
 }
 
 // Next returns exact stored bytes and a stream-aware reference, or io.EOF.
-// Errors stop iteration; no scanning ahead, skipping or implicit repair occurs.
+// Errors stop iteration; frames are never skipped and no implicit repair occurs.
 func (r *Reader) Next(ctx context.Context) (Entry, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -105,6 +107,7 @@ func (r *Reader) next(ctx context.Context) (Entry, error) {
 				return Entry{}, err
 			}
 			r.file = nil
+			r.window = nil
 			r.previous = cloneReference(r.summary.Seal)
 		}
 		if r.index == len(r.recovery.Segments) {
@@ -117,12 +120,13 @@ func (r *Reader) next(ctx context.Context) (Entry, error) {
 			return Entry{}, err
 		}
 		r.file = f
+		r.window = newScanWindow(f, r.summary.Size)
 		r.state = scanState{digest: sha256.New()}
 		// Revalidate content as it is read, keeping recovered metadata separate.
 		r.summary.Open = record.SegmentOpen{}
 		r.summary.Seal = nil
 	}
-	data, frame, err := readFrame(ctx, r.file, r.state.offset, r.summary.Size)
+	data, frame, err := readFrame(ctx, r.window, r.state.offset, r.summary.Size)
 	if err != nil {
 		return Entry{}, err
 	}
