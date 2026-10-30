@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Pinned read-only boot readiness; no retry after uncertain SSH completion."""
 import argparse
+import errno
 import hashlib
 import ipaddress
 import json
@@ -10,6 +11,7 @@ import re
 import selectors
 import shlex
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -132,6 +134,30 @@ def command(argv, deadline):
 def require(condition, message):
     if not condition:
         raise Blocked(message)
+
+
+def wait_host_tcp(address, deadline):
+    # Use the reviewed literal IP directly, without DNS, SSH, or remote commands.
+    family = socket.AF_INET6 if ipaddress.ip_address(address).version == 6 else socket.AF_INET
+    not_ready = {errno.ECONNREFUSED, errno.ETIMEDOUT, errno.EHOSTUNREACH, errno.ENETUNREACH}
+    while time.monotonic() < deadline:
+        with socket.socket(family, socket.SOCK_STREAM) as connection:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                break
+            connection.settimeout(min(COMMAND_SECONDS, left))
+            try:
+                connection.connect((address, 22))
+            except OSError as error:
+                # Only a completed connect that did not establish TCP may wait.
+                # Other local failures propagate as terminal refusals, never retries.
+                if not isinstance(error, TimeoutError) and error.errno not in not_ready:
+                    raise
+                print('host TCP not ready: ' + address + ':22: ' + str(error), flush=True)
+            else:
+                return
+        time.sleep(min(2, max(0, deadline - time.monotonic())))
+    raise Blocked('completed host TCP not-ready probes exhausted deadline')
 
 
 def read_json(path):
@@ -264,6 +290,7 @@ def execute(mode, policy_id):
         code, stdout, _ = command(host + ['paul@f3', 'doas -n vm list'], deadline)
         require(code == 0, 'completed inventory command failed')
         return check_inventory(stdout, mode, allow_booting)
+    wait_host_tcp(policy['host_address'], deadline)
     ready = inventory(allow_booting=True)
     while not ready and time.monotonic() < deadline:
         time.sleep(min(2, max(0, deadline - time.monotonic())))

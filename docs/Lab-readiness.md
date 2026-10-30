@@ -1,8 +1,8 @@
 # Plan-bound boot and restoration readiness
 
 `tools/lab/wait-lab-ready.py` is a read-only driver of the existing
-[lab runner](Lab-runner.md). It has local subprocess fixture validation only;
-implementation does not establish native or Rocky runtime readiness. Running it
+[lab runner](Lab-runner.md). Its local socket/subprocess fixture validation
+does not establish native or Rocky runtime readiness. Running it
 against the lab still requires fresh approval of the complete concrete Plan.
 
 Pin this executable as an ordinary Plan artifact. It reuses the first
@@ -28,7 +28,17 @@ restoration action, with the same applicable forward-step dependencies. It
 requires initially running Rocky in the Plan. VM lifecycle remains the runner's
 responsibility; a successful VM start alone cannot establish SSH restoration.
 
-The driver polls completed host `vm list` output before guest checks. Every
+Before its first host SSH command in either mode, the controller waits for a
+local TCP connection to the policy's reviewed literal `host_address` on port 22.
+It uses that IP directly, without DNS or a remote command. Only completed
+connect refusal, timeout, host-unreachable or network-unreachable results may
+wait and retry. Unexpected socket errors fail immediately, and interruption
+remains uncertain. Each socket closes before another probe or SSH dispatch.
+TCP readiness establishes only connectivity: the original pinned SSH inventory
+and identity checks remain mandatory. Once SSH is dispatched, no SSH failure
+returns to this gate or receives a retry based on its error text.
+
+The driver then polls completed host `vm list` output before guest checks. Every
 response must contain exactly all five targets with well-formed states and no
 duplicate rows. Only the guests being started may remain `Stopped` or show
 `Bootloader (PID)` during this bounded wait; unknown states or malformed PIDs
@@ -41,10 +51,12 @@ Each selected guest must return its exact Plan kernel and UID 0 over pinned
 SSH. Evidence is printed into the runner log; no separate evidence format or
 persistent driver state is introduced.
 
-The driver bounds each command to eight seconds and 16 KiB of combined output,
-with 170 seconds total shared by boot-inventory polling and guest checks. Only
-the completed expected boot states above or completed TCP probe exit 1 with
-empty stdout permit another probe. SSH exit 255, local signal termination,
+The driver bounds each local TCP connect and SSH command to eight seconds;
+SSH output has a 16 KiB combined limit. One original 170-second deadline is
+shared by host TCP readiness, boot-inventory polling and guest checks. After
+host TCP readiness, only the completed expected boot states above or completed
+guest TCP probe exit 1 with empty stdout permit another probe.
+SSH exit 255, local signal termination,
 timeout, overflow or interruption returns uncertain exit 1 immediately. Local
 SSH children are killed/reaped when
 necessary; this never proves remote completion. Confirmed terminal refusals use
@@ -53,7 +65,11 @@ handoff; the child restores the original signal mask before exec. Local fixtures
 cover both signals arriving after child startup but before the spawn call returns,
 including driver reaping, no retry and parent/child signal-mask restoration.
 Routine checks are local: `python3 -B -m unittest discover -s tools/lab
--p 'test_wait_lab_ready.py'`; their fake SSH children never contact a host.
+-p 'test_wait_lab_ready.py'`. Fixtures redirect the asserted reviewed host IP
+and port to real loopback sockets, covering refusal then readiness and a bounded
+connect timeout against a full local accept queue. They also cover deadline
+exhaustion, unexpected network errors, interruption before SSH, and terminal SSH
+uncertainty after TCP readiness. Their fake SSH children never contact a host.
 
 The runner log retains JSON `ssh-command` records on driver stdout for uncertain
 commands, completed nonzero SSH exits, and successful commands with diagnostic

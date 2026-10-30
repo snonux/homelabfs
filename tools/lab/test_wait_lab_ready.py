@@ -1,5 +1,6 @@
 """Actual driver CLI with owned local fake SSH children; no host contact."""
 import contextlib
+import errno
 import hashlib
 import io
 import json
@@ -9,6 +10,7 @@ import runpy
 import select
 import shlex
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -51,9 +53,11 @@ def command_records(stdout):
 class ReadinessCLI(unittest.TestCase):
     def run_cli(self, mode='native-boot', behavior=None, mutate=None, env_mutate=None,
                 expire_after_round=False, spawn_signal=None, spawn_error=None, sleep_advance=0,
-                stdout_sink=None):
+                stdout_sink=None, host_tcp=None):
         children, calls = [], []
+        self.tcp_calls = []
         real_popen, real_monotonic, real_sleep = subprocess.Popen, time.monotonic, time.sleep
+        real_socket = socket.socket
         offset = [0]
         def clock():
             return real_monotonic() * 4 + offset[0]
@@ -100,7 +104,22 @@ class ReadinessCLI(unittest.TestCase):
                 # returned handle yet. Delivery must wait for that handoff.
                 os.kill(os.getpid(), spawn_signal)
             return child
-        with tempfile.TemporaryDirectory() as directory:
+        with real_socket(socket.AF_INET, socket.SOCK_STREAM) as listener, \
+                tempfile.TemporaryDirectory() as directory:
+            listener.bind(('127.0.0.1', 0))
+            local_address = listener.getsockname()
+            fixture = self
+            class LocalHostConnection(real_socket):
+                def connect(self, address):
+                    fixture.assertEqual(address, ('192.0.2.133', 22))
+                    fixture.assertEqual(self.family, socket.AF_INET)
+                    fixture.tcp_calls.append((address, self.gettimeout(), len(calls)))
+                    if host_tcp:
+                        host_tcp(len(fixture.tcp_calls), listener)
+                    else:
+                        listener.listen()
+                    # Exercise real connect/refusal and socket cleanup locally.
+                    return super().connect(local_address)
             root = Path(directory)
             host_keys, guest_keys = root / 'reviewed-host-keys', root / 'reviewed-guest-keys'
             key = NATIVE_KEYS.read_text().splitlines()[0].split()[2]
@@ -140,6 +159,7 @@ class ReadinessCLI(unittest.TestCase):
             original_mask = signal.pthread_sigmask(signal.SIG_BLOCK, set())
             try:
                 with mock.patch.dict(os.environ, env), mock.patch.object(subprocess, 'Popen', launch), \
+                        mock.patch.object(socket, 'socket', LocalHostConnection), \
                         mock.patch.object(time, 'monotonic', clock), mock.patch.object(time, 'sleep', sleep), \
                         mock.patch.object(sys, 'argv', [str(SCRIPT)] + args), \
                         contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
@@ -180,6 +200,118 @@ class ReadinessCLI(unittest.TestCase):
                     self.assertIn('HostName=192.0.2.133', call)
                     self.assertIn('HostKeyAlias=f3', call)
             return code, stdout.getvalue(), stderr.getvalue(), calls
+
+    def test_host_tcp_refusal_then_ready_precedes_any_ssh_in_both_modes(self):
+        for mode in ('native-boot', 'rocky-restore'):
+            with self.subTest(mode=mode):
+                def host_tcp(count, listener):
+                    if count == 2:
+                        listener.listen()
+                code, stdout, stderr, calls = self.run_cli(mode, host_tcp=host_tcp)
+                self.assertEqual(code, 0, stderr)
+                self.assertEqual(len(self.tcp_calls), 2)
+                self.assertTrue(all(address == ('192.0.2.133', 22) and 0 < timeout <= 8 and ssh == 0
+                                    for address, timeout, ssh in self.tcp_calls))
+                self.assertEqual(stdout.count('host TCP not ready:'), 1)
+                self.assertIn(os.strerror(errno.ECONNREFUSED), stdout)
+                self.assertEqual(calls[0][-1], 'doas -n vm list')
+                self.assertEqual(calls[-1][-1], 'doas -n vm list')
+
+    def test_host_tcp_refusal_deadline_never_dispatches_ssh(self):
+        for mode in ('native-boot', 'rocky-restore'):
+            code, stdout, stderr, calls = self.run_cli(
+                mode, host_tcp=lambda *_: None, expire_after_round=True)
+            self.assertEqual(code, 20, stderr)
+            self.assertIn('host TCP not-ready probes exhausted deadline', json.loads(stderr)['error'])
+            self.assertEqual(len(self.tcp_calls), 1)
+            self.assertEqual(calls, [])
+            self.assertEqual(stdout.count('host TCP not ready:'), 1)
+
+    def test_real_local_connect_timeout_is_bounded_by_remaining_deadline(self):
+        readiness = runpy.run_path(str(SCRIPT))
+        real_socket = socket.socket
+        with real_socket(socket.AF_INET, socket.SOCK_STREAM) as listener, \
+                real_socket(socket.AF_INET, socket.SOCK_STREAM) as queued:
+            listener.bind(('127.0.0.1', 0))
+            listener.listen(0)
+            local_address = listener.getsockname()
+            queued.settimeout(1)
+            queued.connect(local_address)  # Fill the local accept queue.
+            timeouts, connections = [], []
+            fixture = self
+            class LocalHostConnection(real_socket):
+                def connect(self, address):
+                    fixture.assertEqual(address, ('192.0.2.133', 22))
+                    timeouts.append(self.gettimeout())
+                    connections.append(self)
+                    return super().connect(local_address)
+            stdout = io.StringIO()
+            started = time.monotonic()
+            with mock.patch.object(socket, 'socket', LocalHostConnection), contextlib.redirect_stdout(stdout):
+                with self.assertRaisesRegex(readiness['Blocked'], 'host TCP not-ready probes exhausted deadline'):
+                    readiness['wait_host_tcp']('192.0.2.133', started + 0.05)
+            self.assertLess(time.monotonic() - started, 1)
+            self.assertEqual(len(timeouts), 1)
+            self.assertTrue(0 < timeouts[0] <= 0.05)
+            self.assertEqual(connections[0].fileno(), -1, 'timed-out socket must close')
+            self.assertIn('host TCP not ready:', stdout.getvalue())
+            self.assertNotIn('host TCP ready:', stdout.getvalue())
+
+    def test_signal_during_host_tcp_gate_never_retries_or_dispatches_ssh(self):
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            def host_tcp(*_):
+                os.kill(os.getpid(), sig)
+            code, _, stderr, calls = self.run_cli(host_tcp=host_tcp)
+            self.assertEqual(code, 1, stderr)
+            self.assertEqual(json.loads(stderr)['status'], 'uncertain')
+            self.assertEqual(len(self.tcp_calls), 1)
+            self.assertEqual(calls, [])
+
+    def test_unexpected_host_network_errors_never_retry_or_dispatch_ssh(self):
+        for number in (errno.EACCES, errno.EBADF, errno.EADDRNOTAVAIL, errno.EINTR):
+            with self.subTest(errno=number):
+                def host_tcp(*_):
+                    raise OSError(number, os.strerror(number))
+                code, stdout, stderr, calls = self.run_cli(host_tcp=host_tcp)
+                self.assertEqual(code, 20, stderr)
+                self.assertEqual(json.loads(stderr)['status'], 'blocked')
+                self.assertEqual(len(self.tcp_calls), 1)
+                self.assertEqual(calls, [])
+                self.assertNotIn('host TCP not ready:', stdout)
+
+    def test_only_known_not_established_host_tcp_errors_can_wait(self):
+        errors = [TimeoutError('local connect timeout')]
+        errors += [OSError(number, os.strerror(number)) for number in
+                   (errno.ETIMEDOUT, errno.EHOSTUNREACH, errno.ENETUNREACH)]
+        for error in errors:
+            with self.subTest(error=error):
+                def host_tcp(count, listener):
+                    if count == 1:
+                        raise error
+                    listener.listen()
+                code, stdout, stderr, calls = self.run_cli(host_tcp=host_tcp)
+                self.assertEqual(code, 0, stderr)
+                self.assertEqual(len(self.tcp_calls), 2)
+                self.assertTrue(all(ssh == 0 for _, _, ssh in self.tcp_calls))
+                self.assertEqual(stdout.count('host TCP not ready:'), 1)
+                self.assertEqual(calls[0][-1], 'doas -n vm list')
+
+    def test_host_tcp_wait_consumes_original_inventory_and_guest_deadline(self):
+        for mode in ('native-boot', 'rocky-restore'):
+            def host_tcp(count, listener):
+                if count == 2:
+                    listener.listen()
+            def behavior(argv, count, success):
+                if argv[-1] == 'doas -n vm list':
+                    name = 'hfs-test0' if mode == 'native-boot' else 'rocky'
+                    return 'print(' + repr(inventory(mode, {name: 'Stopped'})) + ')'
+                return success(argv, count)
+            code, _, stderr, calls = self.run_cli(
+                mode, behavior=behavior, host_tcp=host_tcp, sleep_advance=95)
+            self.assertEqual(code, 20, stderr)
+            self.assertIn('completed boot inventories exhausted deadline', json.loads(stderr)['error'])
+            self.assertEqual(len(self.tcp_calls), 2)
+            self.assertEqual(len(calls), 1, 'host wait must not reset the total deadline')
 
     def test_both_success_modes_prove_inventory_and_pinned_root_kernel_uid(self):
         for mode, guests in (('native-boot', 3), ('rocky-restore', 1)):
@@ -516,6 +648,7 @@ class ReadinessCLI(unittest.TestCase):
                         self.assertEqual(code, 1, stderr)
                         self.assertEqual(json.loads(stderr)['status'], 'uncertain')
                         self.assertEqual(len(calls), position)
+                        self.assertEqual(len(self.tcp_calls), 1, 'SSH uncertainty must not reopen the host gate')
 
     def test_spawn_boundary_interruption_owns_and_reaps_child_without_retry(self):
         for sig in (signal.SIGINT, signal.SIGTERM):
