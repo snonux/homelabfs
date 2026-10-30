@@ -1,0 +1,8 @@
+{
+  "observed_at": "2026-10-30T06:21:56.669314+00:00",
+  "expected_kernel": "5.14.0-687.61.1.el9_8.x86_64",
+  "transport_returned_text": "** WARNING: connection is not using a post-quantum key exchange algorithm.\r\n** This session may be vulnerable to \"store now, decrypt later\" attacks.\r\n** The server may need to be upgraded. See https://openssh.com/pq.html\r\n5.14.0-687.61.1.el9_8.x86_64\n",
+  "kernel_line_present": true,
+  "exact_kernel_comparison_passes": false,
+  "scope": "single pinned read-only uname query; no lifecycle/workload"
+}

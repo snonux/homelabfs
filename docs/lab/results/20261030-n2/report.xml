@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="20261030-n2" tests="11" failures="6">
+  <testcase name="prepared-preflight" classname="setup" time="6.627686635">
+    <failure type="infrastructure">failed: exit status 20</failure>
+  </testcase>
+  <testcase name="rocky-stop" classname="setup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="lab-start" classname="setup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-readiness" classname="setup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-setup" classname="setup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-test" classname="test" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-collect" classname="collect" time="0">
+    <skipped>not applicable</skipped>
+  </testcase>
+  <testcase name="native-cleanup" classname="cleanup" time="0">
+    <skipped>not applicable</skipped>
+  </testcase>
+  <testcase name="lab-stop" classname="cleanup" time="0">
+    <skipped>not applicable</skipped>
+  </testcase>
+  <testcase name="rocky-restore" classname="restore" time="0">
+    <skipped>not applicable</skipped>
+  </testcase>
+  <testcase name="rocky-restoration-readiness" classname="restore" time="0">
+    <skipped>not applicable</skipped>
+  </testcase>
+</testsuite>

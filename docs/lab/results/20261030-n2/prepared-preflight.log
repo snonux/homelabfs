@@ -1,0 +1,1 @@
+{"contract": "prepared-lab-preflight-v1", "status": "blocked", "error": "live guest kernel changed: rocky", "scope": "read-only admission; no lifecycle or workload requested", "remote_completion": "terminal"}

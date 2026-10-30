@@ -168,3 +168,13 @@ collection error, reconciliation history and final state. Follow-up tasks `ax3`
 and `bx3` cover collection admission gating and fresh offline source metadata.
 A replacement plan needs fresh exact-plan approval; this attempt provides no
 native filesystem acceptance result.
+
+The separately approved replacement `20261030-n2` also stopped at read-only
+admission. Its [reports and diagnostic](lab/results/20261030-n2/) establish a
+transport parsing defect: OpenSSH diagnostic stderr was merged into the correct
+Rocky kernel stdout. Task `cx3` separates those streams without relaxing version
+or host-key checks. No VM or workload step ran. The `ax3` collection gate worked:
+collection and inapplicable teardown were skipped, and the run closed as a
+completed failure. Fresh host/source checks at 06:25:14 UTC retained Rocky PID
+6449, all four stopped FreeBSD VMs, zero swap and unchanged R4 source GUIDs with
+zero writes. Further actual native execution still needs its exact plan approval.
