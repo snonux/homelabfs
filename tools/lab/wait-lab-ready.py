@@ -30,6 +30,23 @@ class Uncertain(Exception):
     """Remote completion is unproven; local SSH reaping is not proof."""
 
 
+def log_command(argv, code, output, truncated=False, error=None):
+    # All callers use reviewed read-only commands and public host-key paths.
+    # JSON escapes terminal controls; decoding is for logs only, never parsing.
+    record = {'event': 'ssh-command', 'argv': argv, 'returncode': code,
+              'stdout': bytes(output['stdout']).decode('utf-8', errors='replace'),
+              'stderr': bytes(output['stderr']).decode('utf-8', errors='replace'),
+              'output_truncated': truncated}
+    if error is not None:
+        record['error'] = str(error)
+    try:
+        print(json.dumps(record), flush=True)
+    except OSError:
+        # Best-effort diagnostics must not replace an existing uncertainty
+        # with a known-terminal local I/O refusal in main().
+        pass
+
+
 def command(argv, deadline):
     end = min(deadline, time.monotonic() + COMMAND_SECONDS)
     if end <= time.monotonic():
@@ -37,6 +54,7 @@ def command(argv, deadline):
     child = None
     completed = False
     output = {'stdout': bytearray(), 'stderr': bytearray()}
+    truncated = False
     # Own the child before pending handled signals can raise in the parent.
     # This CLI is single-threaded; restore the inherited mask before child exec
     # so SSH and its proxy retain ordinary signal delivery.
@@ -63,8 +81,10 @@ def command(argv, deadline):
                     if not block:
                         selector.unregister(key.fileobj)
                         continue
-                    output[key.data].extend(block)
-                    if sum(map(len, output.values())) > OUTPUT_LIMIT:
+                    available = OUTPUT_LIMIT - sum(map(len, output.values()))
+                    output[key.data].extend(block[:available])
+                    if len(block) > available:
+                        truncated = True
                         raise Uncertain('SSH output overflow; remote completion unproven')
         left = end - time.monotonic()
         if left <= 0:
@@ -76,8 +96,18 @@ def command(argv, deadline):
         completed = True
         if code == 255 or code < 0:
             raise Uncertain('SSH transport lost; remote completion unproven')
+        if code != 0 or output['stderr']:
+            log_command(argv, code, output)
         return code, bytes(output['stdout']), bytes(output['stderr'])
+    except Uncertain as error:
+        # Observe status before local cleanup; a cleanup SIGKILL is not the
+        # original SSH outcome. Unknown/not-yet-observed status remains null.
+        log_command(argv, child.returncode if child is not None else None,
+                    output, truncated, error)
+        raise
     except OSError as error:
+        log_command(argv, child.returncode if child is not None else None,
+                    output, truncated, error)
         raise Uncertain('SSH local I/O failure; remote completion unproven') from error
     finally:
         # Defer another handled interruption until the owned local child is

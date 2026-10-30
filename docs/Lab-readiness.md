@@ -54,3 +54,24 @@ cover both signals arriving after child startup but before the spawn call return
 including driver reaping, no retry and parent/child signal-mask restoration.
 Routine checks are local: `python3 -B -m unittest discover -s tools/lab
 -p 'test_wait_lab_ready.py'`; their fake SSH children never contact a host.
+
+The runner log retains JSON `ssh-command` records on driver stdout for uncertain
+commands, completed nonzero SSH exits, and successful commands with diagnostic
+stderr. Records include the reviewed argv, observed numeric `returncode`, and
+separate stdout/stderr excerpts sharing the existing 16 KiB collection cap.
+`output_truncated: true` marks overflow; overflow still stops immediately as
+uncertain. A null return code means no original SSH exit was observed before
+local cleanup. A negative observed code records signal termination; a later
+cleanup SIGKILL is not reported as the original outcome or proof of remote
+completion. Uncertain records also include the reason for stopping. The terminal
+status/error JSON remains on driver stderr.
+
+Only the fixed read-only command argv and public host-key file paths are logged;
+the driver does not dump environment variables or read private-key contents.
+JSON escapes terminal controls, and invalid UTF-8 is replaced in log excerpts
+only. Exact command stdout bytes still supply inventory, TCP and identity
+parsing; warnings on stdout are never filtered away, and diagnostic stderr does
+not affect those checks. Local fixtures cover actual child streams, successful
+warnings, completed nonzero exits, exit 255, signal termination, timeout, and
+the combined output boundary/overflow. These added diagnostics cannot recover
+the discarded streams or establish the original n4 restoration failure's cause.

@@ -44,15 +44,26 @@ def inventory(mode, states=None):
     return '\n'.join(rows) + '\n'
 
 
+def command_records(stdout):
+    return [json.loads(line) for line in stdout.splitlines() if line.startswith('{')]
+
+
 class ReadinessCLI(unittest.TestCase):
     def run_cli(self, mode='native-boot', behavior=None, mutate=None, env_mutate=None,
-                expire_after_round=False, spawn_signal=None, spawn_error=None, sleep_advance=0):
+                expire_after_round=False, spawn_signal=None, spawn_error=None, sleep_advance=0,
+                stdout_sink=None):
         children, calls = [], []
         real_popen, real_monotonic, real_sleep = subprocess.Popen, time.monotonic, time.sleep
         offset = [0]
         def clock():
             return real_monotonic() * 4 + offset[0]
         def sleep(_seconds):
+            # subprocess.wait() also uses time.sleep for short child-exit
+            # polls. Only the driver's two-second round wait advances the
+            # simulated readiness deadline.
+            if _seconds < 0.1:
+                real_sleep(_seconds)
+                return
             if expire_after_round:
                 offset[0] += 200
             else:
@@ -123,7 +134,8 @@ class ReadinessCLI(unittest.TestCase):
                    'HFS_LAB_RUN_ID': 'fake-readiness'}
             if env_mutate:
                 env_mutate(env)
-            stdout, stderr = io.StringIO(), io.StringIO()
+            stdout = stdout_sink if stdout_sink is not None else io.StringIO()
+            stderr = io.StringIO()
             handlers = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
             original_mask = signal.pthread_sigmask(signal.SIG_BLOCK, set())
             try:
@@ -180,6 +192,128 @@ class ReadinessCLI(unittest.TestCase):
                 self.assertEqual(stdout.count('pinned root SSH ready'), guests)
                 self.assertEqual(stdout.count('exact completed VM inventory verified'), 2)
                 self.assertEqual(sum(call[-1] == '/usr/bin/uname -r; /usr/bin/id -u' for call in calls), guests)
+                self.assertEqual(command_records(stdout), [])
+
+    def test_successful_stderr_is_logged_without_changing_exact_stdout_parsing(self):
+        warning = b'OpenSSH diagnostic\ncontrol:\x1b invalid:\xff\n'
+        for mode in ('native-boot', 'rocky-restore'):
+            with self.subTest(mode=mode):
+                def behavior(argv, count, success):
+                    return (success(argv, count) + '; import sys; '
+                            'sys.stderr.buffer.write(' + repr(warning) + ')')
+                code, stdout, stderr, calls = self.run_cli(mode, behavior)
+                self.assertEqual(code, 0, stderr)
+                self.assertEqual(stderr, '')
+                records = command_records(stdout)
+                self.assertEqual(len(records), len(calls))
+                for record, argv in zip(records, calls):
+                    self.assertEqual(record['event'], 'ssh-command')
+                    self.assertEqual(record['argv'], argv)
+                    self.assertEqual(record['returncode'], 0)
+                    self.assertEqual(record['stderr'], warning.decode(errors='replace'))
+                    self.assertFalse(record['output_truncated'])
+                    if argv[-1] == 'doas -n vm list':
+                        self.assertEqual(record['stdout'], inventory(mode))
+                    elif argv[-1].startswith('exec /usr/bin/nc '):
+                        self.assertEqual(record['stdout'], '')
+                    else:
+                        kernel = 'rocky-kernel' if mode == 'rocky-restore' else '15.1-RELEASE'
+                        self.assertEqual(record['stdout'], kernel + '\n0\n')
+                self.assertNotIn('\x1b', stdout, 'log must escape terminal controls')
+
+    def test_stdout_diagnostics_are_not_filtered_into_identity_success(self):
+        for mode in ('native-boot', 'rocky-restore'):
+            def behavior(argv, count, success):
+                extra = ('; print("unexpected stdout warning"); import sys; '
+                         'sys.stderr.write("retained diagnostic\\n")') if count == 3 else ''
+                return success(argv, count) + extra
+            code, stdout, stderr, calls = self.run_cli(mode, behavior)
+            self.assertEqual(code, 20, stderr)
+            self.assertEqual(len(calls), 3)
+            record, = command_records(stdout)
+            self.assertEqual(record['returncode'], 0)
+            self.assertIn('unexpected stdout warning\n', record['stdout'])
+            self.assertEqual(record['stderr'], 'retained diagnostic\n')
+
+    def test_uncertain_command_records_observed_status_and_bounded_streams(self):
+        streams = ('import sys; sys.stdout.write("partial stdout\\n"); sys.stdout.flush(); '
+                   'sys.stderr.write("transport diagnostic\\n"); sys.stderr.flush(); ')
+        failures = [('255', streams + 'sys.exit(255)', 255, 'transport lost'),
+                    ('signal', streams + 'import os, signal; os.kill(os.getpid(), signal.SIGTERM)',
+                     -signal.SIGTERM, 'transport lost'),
+                    ('timeout', streams + 'import time; time.sleep(10)', None, 'timeout'),
+                    ('overflow', 'import sys; sys.stdout.write("O" * 10240); sys.stdout.flush(); '
+                     'sys.stderr.write("E" * 10240); sys.stderr.flush()', None, 'overflow')]
+        for position in (1, 3):
+            for name, failure, expected_code, reason in failures:
+                with self.subTest(position=position, failure=name):
+                    def behavior(argv, count, success):
+                        return failure if count == position else success(argv, count)
+                    code, stdout, stderr, calls = self.run_cli('rocky-restore', behavior)
+                    self.assertEqual(code, 1, stderr)
+                    self.assertEqual(json.loads(stderr)['status'], 'uncertain')
+                    self.assertEqual(len(calls), position, 'uncertainty must never retry')
+                    record, = command_records(stdout)
+                    self.assertEqual(record['argv'], calls[-1])
+                    self.assertEqual(record['returncode'], expected_code)
+                    self.assertIn(reason, record['error'])
+                    self.assertLessEqual(len(record['stdout'].encode()) + len(record['stderr'].encode()), 16 << 10)
+                    self.assertEqual(record['output_truncated'], name == 'overflow')
+                    if name == 'overflow':
+                        self.assertEqual(len(record['stdout']) + len(record['stderr']), 16 << 10)
+                        self.assertEqual(set(record['stdout']), {'O'})
+                        self.assertEqual(set(record['stderr']), {'E'})
+                    else:
+                        self.assertEqual(record['stdout'], 'partial stdout\n')
+                        self.assertEqual(record['stderr'], 'transport diagnostic\n')
+
+    def test_exact_combined_output_limit_accepts_and_preserves_both_streams(self):
+        expected_stdout = inventory('rocky-restore')
+        expected_stderr = 'W' * ((16 << 10) - len(expected_stdout.encode()))
+        def behavior(argv, count, success):
+            extra = ('; import sys; sys.stderr.write(' + repr(expected_stderr) + ')') if count == 1 else ''
+            return success(argv, count) + extra
+        code, stdout, stderr, calls = self.run_cli('rocky-restore', behavior)
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(len(calls), 4)
+        record, = command_records(stdout)
+        self.assertEqual(record['stdout'], expected_stdout)
+        self.assertEqual(record['stderr'], expected_stderr)
+        self.assertEqual(record['returncode'], 0)
+        self.assertFalse(record['output_truncated'])
+
+    def test_completed_nonzero_records_context_without_changing_exit_policy(self):
+        for position, result, expected_cli, expected_calls in ((1, 2, 20, 1), (2, 1, 0, 5), (3, 2, 20, 3)):
+            with self.subTest(position=position, result=result):
+                def behavior(argv, count, success):
+                    if count == position:
+                        return ('import sys; sys.stderr.write("completed diagnostic\\n"); '
+                                'sys.exit(' + str(result) + ')')
+                    return success(argv, count)
+                code, stdout, stderr, calls = self.run_cli('rocky-restore', behavior)
+                self.assertEqual(code, expected_cli, stderr)
+                self.assertEqual(len(calls), expected_calls)
+                record, = command_records(stdout)
+                self.assertEqual(record['argv'], calls[position - 1])
+                self.assertEqual(record['returncode'], result)
+                self.assertEqual(record['stdout'], '')
+                self.assertEqual(record['stderr'], 'completed diagnostic\n')
+                self.assertFalse(record['output_truncated'])
+
+    def test_diagnostic_write_failure_preserves_original_uncertainty(self):
+        class FailedLog(io.StringIO):
+            def write(self, _text):
+                raise BrokenPipeError('fixture diagnostic sink closed')
+        for failure in ('import sys; sys.exit(255)',
+                        'import os, signal; os.kill(os.getpid(), signal.SIGTERM)'):
+            with self.subTest(failure=failure):
+                code, _, stderr, calls = self.run_cli(
+                    behavior=lambda *_: failure, stdout_sink=FailedLog())
+                self.assertEqual(code, 1, stderr)
+                result = json.loads(stderr)
+                self.assertEqual(result['status'], 'uncertain')
+                self.assertIn('SSH transport lost', result['error'])
+                self.assertEqual(len(calls), 1)
 
     def test_expected_stopped_and_bootloader_inventories_wait_before_guest_probes(self):
         for mode, names in (('native-boot', ('hfs-test0', 'hfs-test1', 'hfs-test2')),
