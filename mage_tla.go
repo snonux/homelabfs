@@ -127,6 +127,26 @@ func TLACheckpointsCoverage(ctx context.Context) error {
 		"CheckpointsWitnessCollision", "CheckpointsWitnessGenesis")
 }
 
+// TLAHandles checks bounded local lifetime, restart and namespace projections.
+func TLAHandles(ctx context.Context) error {
+	return runTLAConfigs(ctx, false, "HandlesLifetime", "HandlesRecovery", "HandlesNamespace", "HandlesNoVerifier")
+}
+
+// TLAHandlesNegative requires counterexamples for deliberately removed lifetime gates.
+func TLAHandlesNegative(ctx context.Context) error {
+	return runTLAConfigs(ctx, true, "HandlesNegativeDrain", "HandlesNegativeFence",
+		"HandlesNegativeProtection", "HandlesNegativeReleaseProof", "HandlesNegativeRetarget",
+		"HandlesNegativeReuse", "HandlesNegativeNameRevision", "HandlesNegativeFabrication")
+}
+
+// TLAHandlesCoverage requires concrete drain, retention, namespace and recovery traces.
+func TLAHandlesCoverage(ctx context.Context) error {
+	return runTLAConfigs(ctx, true, "HandlesWitnessDrains", "HandlesWitnessRetain", "HandlesWitnessNoVerifier",
+		"HandlesWitnessReplacement", "HandlesWitnessOldPin", "HandlesWitnessPriorNew",
+		"HandlesWitnessOrphan", "HandlesWitnessSweep", "HandlesWitnessBeforeRelease",
+		"HandlesWitnessBeforeReclaim", "HandlesWitnessAfterReclaim")
+}
+
 func runTLAConfigs(ctx context.Context, negative bool, configs ...string) error {
 	jar, err := tlaJar(ctx)
 	if err != nil {
@@ -165,7 +185,8 @@ func runTLC(ctx context.Context, jar, config string, negative bool) error {
 	emergency := strings.HasPrefix(config, "Emergency")
 	coordination := strings.HasPrefix(config, "Coordination")
 	checkpoints := strings.HasPrefix(config, "Checkpoints")
-	if transactions || emergency || coordination || checkpoints {
+	handles := strings.HasPrefix(config, "Handles")
+	if transactions || emergency || coordination || checkpoints || handles {
 		heap = "-Xmx512m"
 		if emergency {
 			module = "Emergency.tla"
@@ -173,6 +194,8 @@ func runTLC(ctx context.Context, jar, config string, negative bool) error {
 			module = "Coordination.tla"
 		} else if checkpoints {
 			module = "Checkpoints.tla"
+		} else if handles {
+			module = "Handles.tla"
 		} else {
 			module = "Transactions.tla"
 		}
@@ -181,7 +204,7 @@ func runTLC(ctx context.Context, jar, config string, negative bool) error {
 			return err
 		}
 	}
-	if emergency || coordination || checkpoints {
+	if emergency || coordination || checkpoints || handles {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, 3*time.Minute)
 		defer cancel()
@@ -196,13 +219,13 @@ func runTLC(ctx context.Context, jar, config string, negative bool) error {
 		"-metadir", dir, "-config", configPath, modulePath)
 	cmd.Stdout = io.MultiWriter(os.Stdout, log)
 	cmd.Stderr = cmd.Stdout
-	if transactions || emergency || coordination || checkpoints {
+	if transactions || emergency || coordination || checkpoints || handles {
 		if err := os.WriteFile(filepath.Join(dir, "argv.txt"), []byte(strings.Join(cmd.Args, "\n")+"\n"), 0o600); err != nil {
 			return fmt.Errorf("write TLC command: %w", err)
 		}
 	}
 	runErr := cmd.Run()
-	if transactions || emergency || coordination || checkpoints {
+	if transactions || emergency || coordination || checkpoints || handles {
 		if err := recordTLCExit(dir, runErr); err != nil {
 			return err
 		}
@@ -229,7 +252,7 @@ func checkTLCCounterexample(config, path string, runErr error) error {
 		return fmt.Errorf("read negative TLC evidence: %w", err)
 	}
 	invariant := "Safety"
-	if strings.HasPrefix(config, "TakeoverWitness") || strings.HasPrefix(config, "TransactionsWitness") || strings.HasPrefix(config, "EmergencyWitness") || strings.HasPrefix(config, "CoordinationWitness") || strings.HasPrefix(config, "CheckpointsWitness") {
+	if strings.HasPrefix(config, "TakeoverWitness") || strings.HasPrefix(config, "TransactionsWitness") || strings.HasPrefix(config, "EmergencyWitness") || strings.HasPrefix(config, "CoordinationWitness") || strings.HasPrefix(config, "CheckpointsWitness") || strings.HasPrefix(config, "HandlesWitness") {
 		invariant = "WitnessAbsent"
 	}
 	if !strings.Contains(string(output), "Invariant "+invariant+" is violated") {

@@ -1236,3 +1236,152 @@ in 190.85 seconds using private `/tmp` scratch directories. The checkpoint
 TLC/development/regression evidence was retained under the main `.cache/tla/`
 with its original directory names. These local checks confer no native mount
 or infrastructure acceptance.
+
+## Handle lifetime and reclamation model (`px3`)
+
+`Handles.tla` models the local service contract in
+[Handles-and-locks.md](../../docs/spec/Handles-and-locks.md). The projections run
+with `mage tlaHandles`, deliberate defects with `mage tlaHandlesNegative`, and
+reachability controls with `mage tlaHandlesCoverage`. Each handles profile has a
+three-minute wall limit, one worker/CPU and 512 MiB maximum heap. The runner
+retains the executed module/configuration snapshots, exact argv, source/checker
+hashes, log and exit receipt in a private `.cache/tla/Handles*` directory. It uses
+the pinned TLC 1.8.0 jar described above. A timeout is a failure.
+
+`Lifetime` checks one regular object with one independent lookup and open
+obligation, sharing a protected exact home pin. `Recovery` adds up to two crashes
+and three serving generations. `Namespace` checks two initial regular objects, a
+hard-link alias, rename replacement, unlink and creation of a fresh third object
+at the old name, without crash. `NoVerifier` separately fixes the policy to absent
+and checks that no sweep can obtain retirement authority. The root is separate
+and permanently retained.
+Acquisitions are bounded to one lookup/open per object/generation, and a drained
+pin cannot be acquired again in that generation. The `WitnessPriorNew` search
+uses the same three-generation bound to demonstrate selected prior release
+references together with a new positively fenced release in one RECLAIM. These
+are bounded projections, not an exhaustive combined namespace/two-crash model.
+
+Append, protection/selection and apply are separate release and reclaim states.
+A final combined drain retains its pin through protection; forgetting lookup
+references cannot close an open, and closing an open cannot forget a lookup.
+An unprotected append supplies no replay authority. Restart replays the exact
+selected records, retains active old pins and their external obligations, and
+changes the serving generation without fencing any old descriptor/cache path.
+Only independent positive exclusion clears those old obligations. The retirement
+lease serializes one cleanup against namespace/lifetime changes. Its proof binds
+the current generation and metadata revision; object and reference-ledger
+revision advances are represented by one shared counter in this projection.
+
+Namespace names retain revision history even when their targets are removed.
+Object allocation reservations and retirement tombstones survive payload deletion.
+The safety oracle requires the original allocation payload tag, immutable handle
+targets, nonreused IDs, unambiguous name revisions, complete selected release
+references, no remaining pins/lookup/open obligations, zero links and an empty
+reference ledger before reclamation. Here link counts and ledgers are derived
+from the same protected namespace image. Foreign-home ledgers, directory payload
+reclamation, real journal decoding and checkpoint/source trimming are outside
+this model.
+
+Busy and WouldBlock responses retain the payload and pins. With an absent
+verifier, authorization is disabled for the entire profile; a dedicated witness
+requires an old pin and payload to remain retained after a sweep request.
+Uncertain append/protection/apply failures block the service and preserve state;
+recovery uses a fresh image rather than synthesizing an empty payload. The model
+represents retirement authentication, retention coverage and old-cache fencing as
+trusted inputs, not implementations. It does not prove a production retirement
+verifier, distributed serving/fencing authority, real FUSE/9p/mmap/lock behavior,
+POSIX credentials, byte I/O, write/access-mode/chmod behavior, filesystem crash
+consistency, arbitrary reference counts or progress under failures. No liveness
+property is claimed.
+
+Mutation controls remove the combined-drain guard, old-generation fence,
+protection-before-release, prior-release inclusion, stable rename handle target,
+allocation tombstone, monotonic name revision or preservation on uncertain
+cleanup. They must produce `Safety` violations with exit 12. Witness controls
+retain `Safety` first and require `WitnessAbsent` violations for independent
+reference drains, retained Busy/WouldBlock/no-verifier resources, replacement
+with both old descriptors open, old pins after restart, prior plus new releases,
+release-only crash orphans, later authorized orphan cleanup and all four sides
+of release/reclaim protection. Intentional mutation failures are controls, not
+protocol findings.
+
+### Recorded handle verification
+
+All 23 final-source profiles completed locally on 30 October 2026 against module
+SHA-256 `7e94cff21444f53c3349f5c3358c5498a4d30aa0881a281203ecff23ca8e2d3c`,
+using the pinned TLC 1.8.0 jar and the 512 MiB/one CPU/worker bound. The four
+positive profiles exhausted their queues with no errors. Eight negative controls
+produced their expected `Safety` violation and eleven reachability controls
+produced their expected `WitnessAbsent` violation, all with Java exit 12. No
+profile timed out or required a heap increase.
+
+| Configuration suffix | Generated | Distinct | Depth | Java exit |
+| --- | ---: | ---: | ---: | ---: |
+| `Lifetime` | 281 | 250 | 14 | 0 |
+| `Recovery` | 490,022 | 365,437 | 34 | 0 |
+| `Namespace` | 114,811 | 79,470 | 31 | 0 |
+| `NoVerifier` | 3,403 | 2,493 | 16 | 0 |
+| `NegativeDrain` | 38 | 32 | 5 | 12 |
+| `NegativeFence` | 782 | 596 | 8 | 12 |
+| `NegativeProtection` | 17 | 14 | 4 | 12 |
+| `NegativeReleaseProof` | 170 | 147 | 9 | 12 |
+| `NegativeRetarget` | 24 | 21 | 3 | 12 |
+| `NegativeReuse` | 4,959 | 2,758 | 7 | 12 |
+| `NegativeNameRevision` | 46 | 32 | 3 | 12 |
+| `NegativeFabrication` | 17 | 14 | 4 | 12 |
+| `WitnessDrains` | 1,235 | 937 | 9 | 12 |
+| `WitnessRetain` | 358 | 292 | 7 | 12 |
+| `WitnessNoVerifier` | 130 | 111 | 6 | 12 |
+| `WitnessReplacement` | 1,066 | 575 | 6 | 12 |
+| `WitnessOldPin` | 162 | 140 | 6 | 12 |
+| `WitnessPriorNew` | 199,384 | 138,046 | 18 | 12 |
+| `WitnessOrphan` | 342 | 281 | 7 | 12 |
+| `WitnessSweep` | 3,710 | 2,810 | 11 | 12 |
+| `WitnessBeforeRelease` | 59 | 52 | 5 | 12 |
+| `WitnessBeforeReclaim` | 209 | 172 | 6 | 12 |
+| `WitnessAfterReclaim` | 440 | 347 | 7 | 12 |
+
+Actual public `mage tlaHandles`, `mage tlaHandlesNegative` and
+`mage tlaHandlesCoverage` invocations returned zero in 38.78, 9.19 and 25.43
+seconds respectively. Their outer command, environment, log and exit receipts
+are `.cache/tla/Handles-mage-checks-mtrihclx`; each child also retains its exact
+executed source/configuration, hashes, argv, log and explicit exit status. The
+index `.cache/tla/handles-px3-receipts.json` maps every table row to its private
+`Handles*` evidence directory. Depths for deliberately stopped controls describe
+the searched prefix, rather than an exhausted graph. TLC fingerprint collision
+limits apply as described above; these are bounded model results, not an
+arbitrary-size mathematical proof.
+
+The final retention witnesses acquire an open, unlink, crash/restart with its
+old pin intact, then receive Busy/WouldBlock or an absent-verifier response while
+the pin is actually present. The orphan witness unlinks before protecting the
+final release, crashes before RECLAIM and recovers the retained orphan. Its
+separate sweep witness then obtains new retirement authority and reclaims it.
+The prior/new witness reaches generation 3 with one previously selected release
+and a second active old pin, positively fences that pin, protects its release
+and includes both exact references in RECLAIM. The replacement witness keeps
+both source and replaced descriptors open while alias/rename/new-name creation
+preserve the original allocation targets and payloads.
+
+Initial verification against module SHA-256
+`9ae665c03360df5fa33703d76fcdd0548a6fa1f774c7a27afe1fce2e7c36ee40`
+also passed its public targets, but post-run trace inspection exposed witness
+undercoverage: retention responses could precede pin acquisition, and the orphan
+predicate permitted unlink after restart. Observations now record pins present
+at the response, and the orphan predicate requires an actual recovered orphan.
+Those historical snapshots and weaker traces remain in
+`.cache/tla/Handles-mage-checks-vz2c3d2o` and
+`.cache/tla/handles-px3-initial-receipts.json`; they are not substituted for the
+final-source results above. An earlier preparation refinement also separated the
+fixed absent-verifier profile from a nondeterministic response alongside enabled
+authorization. These were model coverage issues, not protocol findings.
+
+Tagged Mage compilation (`go test -tags mage -run '^$' .`), tagged `go vet`,
+`errcheck` and Mage discovery passed with `GOMAXPROCS=2`, `GOFLAGS=-p=1` and
+private `/tmp` Go temporary roots. Their exact commands and terminal zero exits
+are retained in `.cache/tla/Handles-mage-checks-vz2c3d2o`; the Go runner bytes were
+unchanged by the subsequent model-only refinement. No service runtime suite,
+normal/takeover model rerun, lab, VM, SSH, FUSE or kernel operation was performed.
+Comparison with the existing service/storage/apply implementation established no
+genuine protocol or implementation finding requiring a change to
+`Handles-and-locks.md` or `internal/`.
