@@ -14,13 +14,22 @@ test "$(id -u)" = 0
 test "$(hostname -s)" = "hfs-test$index"
 work="/var/tmp/hfs-run-$run"
 pool="hfsdata$index"
+
+_permissions() {
+    # FreeBSD %Lp omits sticky/setuid/setgid. %Op includes them and file type.
+    file_mode=$(stat -f '%Op' "$1") || return 1
+    case "$file_mode" in ''|*[!0-7]*) return 1 ;; esac
+    test "${#file_mode}" -le 6 || return 1
+    printf '%o\n' "$((0$file_mode & 07777))"
+}
+
 for directory in / /var /var/tmp; do
     test -d "$directory" && test ! -L "$directory"
     test "$(stat -f '%u' "$directory")" = 0
 done
-test "$(stat -f '%Lp' /var/tmp)" = 1777
+test "$(_permissions /var/tmp)" = 1777
 for directory in / /var; do
-    permissions=$(stat -f '%Lp' "$directory")
+    permissions=$(_permissions "$directory")
     test "$((0$permissions & 0022))" -eq 0
 done
 
@@ -47,15 +56,18 @@ _parents() {
 }
 _owned() {
     test -d "$work" && test ! -L "$work"
-    test "$(stat -f '%u:%Lp' "$work")" = 0:711
+    test "$(stat -f '%u' "$work")" = 0
+    test "$(_permissions "$work")" = 711
     test -f "$work/plan" && test ! -L "$work/plan"
-    test "$(stat -f '%u:%Lp:%l' "$work/plan")" = 0:600:1
+    test "$(stat -f '%u:%l' "$work/plan")" = 0:1
+    test "$(_permissions "$work/plan")" = 600
     test "$(cat "$work/plan")" = "$plan"
 }
 _datasets() {
     _owned
     test -f "$work/datasets" && test ! -L "$work/datasets"
-    test "$(stat -f '%u:%Lp:%l' "$work/datasets")" = 0:600:1
+    test "$(stat -f '%u:%l' "$work/datasets")" = 0:1
+    test "$(_permissions "$work/datasets")" = 600
     test "$(wc -l < "$work/datasets" | tr -d ' ')" = 3
     while read -r kind guid parent_guid; do
         case "$kind" in data) leaf=d ;; journal) leaf=j ;; control) leaf=c ;; *) exit 2 ;; esac
@@ -69,7 +81,8 @@ _datasets() {
         test "$(zfs get -H -o value mounted "$dataset")" = yes
         test "$(zfs get -H -o value readonly "$dataset")" = off
         test "$(zfs get -Hp -o value quota "$dataset")" = 134217728
-        test "$(stat -f '%u:%Lp' "$work/$leaf")" = 0:700
+        test "$(stat -f '%u' "$work/$leaf")" = 0
+        test "$(_permissions "$work/$leaf")" = 700
         test ! -L "$work/$leaf"
         actual=$(df -T "$work/$leaf" | awk 'NR==2 {print $1, $2}')
         test "$actual" = "$dataset zfs"
@@ -209,7 +222,8 @@ SUPERVISOR
             kind=${pair%:*} leaf=${pair#*:}
             marker="$work/$leaf/fixture.json"
             test -f "$marker" && test ! -L "$marker"
-            test "$(stat -f '%u:%Lp:%l' "$marker")" = 0:600:1
+            test "$(stat -f '%u:%l' "$marker")" = 0:1
+            test "$(_permissions "$marker")" = 600
             cp "$marker" "$work/evidence/$role-$profile.marker-$kind.json"
         done
         mount -p > "$work/evidence/$role-$profile.mounts.txt"

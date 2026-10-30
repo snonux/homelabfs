@@ -77,6 +77,14 @@ children of the run root. Parent/child GUIDs, local ownership properties,
 mountpoints, quotas, root ownership/modes and binary digests are checked before
 workload calls. Existing parent datasets are never initialized or overlaid.
 
+Guest permission guards read FreeBSD `stat -f %Op` and mask the file type to
+retain all `07777` permission bits. `%Lp` omits sticky/setuid/setgid: it reports
+`777` for a correct `1777` `/var/tmp`. The shared temporary parent still requires
+exact mode `1777`, and private run directories/files reject extra special bits.
+Local regressions in `tools/lab/test_native_guest_modes.py` execute the shipped
+guards against temporary inode modes with FreeBSD stat semantics; they provide
+no native runtime acceptance evidence.
+
 Each guest initializes exactly one node and volume through the real
 [`homelabfs behavior`](spec/Disposable-behavior.md) command, then sequentially
 reopens that same fixture for root/direct, root/buffered,
