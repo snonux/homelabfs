@@ -1,0 +1,129 @@
+{
+  "native_behavior_calls_attempted": 4,
+  "remaining_calls_not_run": 8,
+  "full_native_gate_pass": false,
+  "append_eight_second_gate": "passed under formerly failing unprivileged direct profile",
+  "fixtures": {
+    "root-hfs-direct": {
+      "pass": 13,
+      "skip": 2,
+      "fail": 0,
+      "cases": [
+        {
+          "name": "concurrent-append",
+          "family": "P01",
+          "status": "pass",
+          "seconds": 1.078878927
+        },
+        {
+          "name": "process-fcntl-flock-contention-exit",
+          "family": "P03",
+          "status": "pass",
+          "seconds": 0.162276797
+        }
+      ]
+    },
+    "root-hfs-buffered": {
+      "pass": 14,
+      "skip": 1,
+      "fail": 0,
+      "cases": [
+        {
+          "name": "concurrent-append",
+          "family": "P01",
+          "status": "skip",
+          "detail": "buffered profile rejects O_APPEND before effects; required append runs separately on hfs-direct",
+          "seconds": 0
+        },
+        {
+          "name": "process-fcntl-flock-contention-exit",
+          "family": "P03",
+          "status": "pass",
+          "seconds": 0.287681449
+        }
+      ]
+    },
+    "unprivileged-hfs-direct": {
+      "pass": 13,
+      "skip": 2,
+      "fail": 0,
+      "cases": [
+        {
+          "name": "concurrent-append",
+          "family": "P01",
+          "status": "pass",
+          "seconds": 4.304938606
+        },
+        {
+          "name": "process-fcntl-flock-contention-exit",
+          "family": "P03",
+          "status": "pass",
+          "seconds": 0.419174768
+        }
+      ]
+    },
+    "unprivileged-hfs-buffered": {
+      "pass": 1,
+      "skip": 2,
+      "fail": 7,
+      "cases": [
+        {
+          "name": "create-exclusive-rename-replace-hardlink-unlink-open-truncate",
+          "family": "P01",
+          "status": "fail",
+          "detail": "namespace: unlinkat replacement: input/output error\nhost is down\nhost is down",
+          "seconds": 1.797748814
+        },
+        {
+          "name": "umask-chmod-chown-setgid",
+          "family": "P02",
+          "status": "fail",
+          "detail": "permissions: openat mode flags=0xa02: permission denied",
+          "seconds": 0.000296511
+        },
+        {
+          "name": "sync-open-fsync-fdatasync-directory-sync",
+          "family": "P04",
+          "status": "fail",
+          "detail": "sync: open O_SYNC: openat sync flags=0xa82: permission denied",
+          "seconds": 0.000125104
+        },
+        {
+          "name": "concurrent-append",
+          "family": "P01",
+          "status": "skip",
+          "detail": "buffered profile rejects O_APPEND before effects; required append runs separately on hfs-direct",
+          "seconds": 0
+        },
+        {
+          "name": "mmap-msync-readback",
+          "family": "P04",
+          "status": "fail",
+          "detail": "mmap: openat mapped flags=0xa02: permission denied",
+          "seconds": 0.000152433
+        },
+        {
+          "name": "process-fcntl-flock-contention-exit",
+          "family": "P03",
+          "status": "fail",
+          "detail": "open-descriptors helper 0 open-lock: openat locks flags=0x100302: permission denied (errno 13)",
+          "seconds": 0.000106146
+        },
+        {
+          "name": "stop-owned-helpers",
+          "family": "infrastructure",
+          "status": "fail",
+          "detail": "UNAVAILABLE\nUNAVAILABLE\nUNAVAILABLE",
+          "seconds": 0
+        },
+        {
+          "name": "fixture-lifecycle",
+          "family": "infrastructure",
+          "status": "fail",
+          "detail": "portable behavior failed; preserve roots and evidence\nUNAVAILABLE\nUNAVAILABLE\nUNAVAILABLE",
+          "seconds": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,130 @@
+{
+  "fixture": {
+    "behavior_sha256": "2676473146cd8a3b91515f1813097d9fd7ebe9887c0d3cab546bba46b1b99545",
+    "client_gid": "20001",
+    "client_groups": "[20002]",
+    "client_uid": "20001",
+    "control_root": "/var/tmp/hfs-run-20261030-n17/c",
+    "daemon_uid": "0",
+    "data_root": "/var/tmp/hfs-run-20261030-n17/d",
+    "journal_root": "/var/tmp/hfs-run-20261030-n17/j",
+    "reservations": "/var/tmp/hfs-run-20261030-n17/d/volume/reservations",
+    "role": "unprivileged",
+    "source": "/var/tmp/hfs-run-20261030-n17/j/volume/source",
+    "workspace_data": "/var/tmp/hfs-run-20261030-n17/d/volume/workspaces/da895b58-1948-4629-9d65-0c13012ce001/data",
+    "workspace_journal": "/var/tmp/hfs-run-20261030-n17/j/volume/workspaces/da895b58-1948-4629-9d65-0c13012ce001/journal",
+    "workspace_progress": "/var/tmp/hfs-run-20261030-n17/c/workspaces/da895b58-1948-4629-9d65-0c13012ce001/progress"
+  },
+  "target": "/var/tmp/hfs-run-20261030-n17/m",
+  "profile": "hfs-direct",
+  "expected_identity": "homelabfs-validation-v1\n3232af3a-660a-455a-9b44-e36933e3c016\nda895b58-1948-4629-9d65-0c13012ce001\ncb0361a1-8522-17ac-7fb6-c66df3d4439d\n",
+  "declared_capabilities": {
+    "arbitrary_credentials": false,
+    "default_permissions": true,
+    "direct_io": true,
+    "directory_sync": true,
+    "file_sync": true,
+    "local_locks": true,
+    "mmap": false,
+    "normal_publication": false,
+    "writeback": false
+  },
+  "platform": "freebsd/amd64",
+  "run_directory": "/var/tmp/hfs-run-20261030-n17/m/hfs-behavior-415935505232365835453441",
+  "started": "2026-10-30T16:39:43.274807352Z",
+  "scope": "single-node local syscall semantics; no power-loss, replication, failover, arbitrary-client or native FreeBSD acceptance claim",
+  "results": [
+    {
+      "name": "bind",
+      "family": "infrastructure",
+      "status": "pass",
+      "seconds": 0.406824707
+    },
+    {
+      "name": "create-exclusive-rename-replace-hardlink-unlink-open-truncate",
+      "family": "P01",
+      "status": "pass",
+      "seconds": 1.5787117099999999
+    },
+    {
+      "name": "umask-chmod-chown-setgid",
+      "family": "P02",
+      "status": "pass",
+      "seconds": 1.099692175
+    },
+    {
+      "name": "sync-open-fsync-fdatasync-directory-sync",
+      "family": "P04",
+      "status": "pass",
+      "seconds": 0.360376292
+    },
+    {
+      "name": "concurrent-append",
+      "family": "P01",
+      "status": "pass",
+      "seconds": 4.304938606
+    },
+    {
+      "name": "mmap-msync-readback",
+      "family": "P04",
+      "status": "skip",
+      "detail": "direct profile rejects mmap; required mmap runs separately on hfs-buffered",
+      "seconds": 0
+    },
+    {
+      "name": "multiuser-groups-sticky-permission-cache",
+      "family": "P02",
+      "status": "skip",
+      "detail": "root-only synthetic multiuser coverage requires root hfs-buffered companion",
+      "seconds": 0
+    },
+    {
+      "name": "blocked-lock-process-interruption",
+      "family": "lifecycle",
+      "status": "pass",
+      "seconds": 0.06949143
+    },
+    {
+      "name": "process-fcntl-flock-contention-exit",
+      "family": "P03",
+      "status": "pass",
+      "seconds": 0.419174768
+    },
+    {
+      "name": "stop-mutating-peers",
+      "family": "infrastructure",
+      "status": "pass",
+      "seconds": 0
+    },
+    {
+      "name": "close-cleanup-lock",
+      "family": "infrastructure",
+      "status": "pass",
+      "seconds": 0.043290555
+    },
+    {
+      "name": "cleanup-data",
+      "family": "infrastructure",
+      "status": "pass",
+      "seconds": 1.445084761
+    },
+    {
+      "name": "stop-owned-helpers",
+      "family": "infrastructure",
+      "status": "pass",
+      "seconds": 0
+    },
+    {
+      "name": "normal-unmount",
+      "family": "lifecycle",
+      "status": "pass",
+      "seconds": 1.023766764
+    },
+    {
+      "name": "mount-loss-no-fallback",
+      "family": "lifecycle",
+      "status": "pass",
+      "seconds": 0.000130612
+    }
+  ]
+}

@@ -346,3 +346,14 @@ cleanup, guest shutdown and Rocky restoration/readiness steps passed, with
 `complete=true`, `success=false`. Final pinned inventory confirmed Rocky
 PID 63146 running and all four FreeBSD VMs stopped. No SSH failure occurred;
 passive transport observation did not resolve `uy3`'s unknown cause.
+
+The standing-authorized [n17 attempt](lab/results/20261030-n17/) passed both
+root fixtures and unprivileged/direct on hfs-test0. Unprivileged append passed
+its full oracle in 4.305 seconds under the unchanged eight-second bound, validating
+`ky3`'s codec improvement for that previously failing stage. The next buffered
+unprivileged namespace check failed with EIO and service unavailability; eight
+fixtures remained unrun. Task `xy3` investigates. After positive process/mount
+inspection and exact-owned normal unmount, explicit failed reconciliation
+preserved the uncertain report and allowed collection plus normal restoration.
+Final report is `complete=true`, `success=false`, with Rocky PID 76196 running
+and all four FreeBSD guests stopped. The complete native gate remains pending.

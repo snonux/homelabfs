@@ -1,0 +1,9 @@
+{
+  "plan_hash": "5ff915e650738e656cd7cc5ad21dad9f2a112083c351601c83c408aa4910afec",
+  "step_id": "native-test",
+  "outcome": "failed",
+  "operator": "Codex under Paul's standing nonproduction test authorization",
+  "observed_at": "2026-10-30T16:44:44.327056+00:00",
+  "evidence": "Fourthfixture unprivbuffered child2102 exited1/notimedout/notpreservedlive; readonlypinnedguestinspectiond8ed4erc0 at16:42:31UTC actualJSON showsnamespaceunlinkreplacementEIO/hostisdown thenunavailable. No owned process or outstanding testcommand; staleexactownedFUSEmountremained. Rootnormalownedunmount399355rc0 at16:44:15 afterroot711/enrollment0600/exactplan/mounttype/source/repeatednoprocessguards; aftermounttableFUSEabsent, threeownedZFSdatasetsretained. First3fixturespassedinclunprivappend; native-test FAILED notpassed. Preserve original ambiguous reports; forward resume may perform only pendingreadonlycollection then approvednormalcleanup/shutdown/Rockyrestore, neverretrytest.",
+  "no_outstanding_action": true
+}

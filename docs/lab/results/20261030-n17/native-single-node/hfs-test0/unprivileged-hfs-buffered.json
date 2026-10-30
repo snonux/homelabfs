@@ -1,0 +1,107 @@
+{
+  "fixture": {
+    "behavior_sha256": "2676473146cd8a3b91515f1813097d9fd7ebe9887c0d3cab546bba46b1b99545",
+    "client_gid": "20001",
+    "client_groups": "[20002]",
+    "client_uid": "20001",
+    "control_root": "/var/tmp/hfs-run-20261030-n17/c",
+    "daemon_uid": "0",
+    "data_root": "/var/tmp/hfs-run-20261030-n17/d",
+    "journal_root": "/var/tmp/hfs-run-20261030-n17/j",
+    "reservations": "/var/tmp/hfs-run-20261030-n17/d/volume/reservations",
+    "role": "unprivileged",
+    "source": "/var/tmp/hfs-run-20261030-n17/j/volume/source",
+    "workspace_data": "/var/tmp/hfs-run-20261030-n17/d/volume/workspaces/3b724694-6daf-46e9-8eb5-593f385b68f0/data",
+    "workspace_journal": "/var/tmp/hfs-run-20261030-n17/j/volume/workspaces/3b724694-6daf-46e9-8eb5-593f385b68f0/journal",
+    "workspace_progress": "/var/tmp/hfs-run-20261030-n17/c/workspaces/3b724694-6daf-46e9-8eb5-593f385b68f0/progress"
+  },
+  "target": "/var/tmp/hfs-run-20261030-n17/m",
+  "profile": "hfs-buffered",
+  "expected_identity": "homelabfs-validation-v1\n3232af3a-660a-455a-9b44-e36933e3c016\n3b724694-6daf-46e9-8eb5-593f385b68f0\n305fc54c-11f2-3c15-2def-eb74e74eb103\n",
+  "declared_capabilities": {
+    "arbitrary_credentials": false,
+    "default_permissions": true,
+    "direct_io": false,
+    "directory_sync": true,
+    "file_sync": true,
+    "local_locks": true,
+    "mmap": true,
+    "normal_publication": false,
+    "writeback": false
+  },
+  "platform": "freebsd/amd64",
+  "run_directory": "/var/tmp/hfs-run-20261030-n17/m/hfs-behavior-574448434c45324c595a4741",
+  "started": "2026-10-30T16:39:58.00429511Z",
+  "scope": "single-node local syscall semantics; no power-loss, replication, failover, arbitrary-client or native FreeBSD acceptance claim",
+  "results": [
+    {
+      "name": "bind",
+      "family": "infrastructure",
+      "status": "pass",
+      "seconds": 0.603136365
+    },
+    {
+      "name": "create-exclusive-rename-replace-hardlink-unlink-open-truncate",
+      "family": "P01",
+      "status": "fail",
+      "detail": "namespace: unlinkat replacement: input/output error\nhost is down\nhost is down",
+      "seconds": 1.797748814
+    },
+    {
+      "name": "umask-chmod-chown-setgid",
+      "family": "P02",
+      "status": "fail",
+      "detail": "permissions: openat mode flags=0xa02: permission denied",
+      "seconds": 0.000296511
+    },
+    {
+      "name": "sync-open-fsync-fdatasync-directory-sync",
+      "family": "P04",
+      "status": "fail",
+      "detail": "sync: open O_SYNC: openat sync flags=0xa82: permission denied",
+      "seconds": 0.000125104
+    },
+    {
+      "name": "concurrent-append",
+      "family": "P01",
+      "status": "skip",
+      "detail": "buffered profile rejects O_APPEND before effects; required append runs separately on hfs-direct",
+      "seconds": 0
+    },
+    {
+      "name": "mmap-msync-readback",
+      "family": "P04",
+      "status": "fail",
+      "detail": "mmap: openat mapped flags=0xa02: permission denied",
+      "seconds": 0.000152433
+    },
+    {
+      "name": "multiuser-groups-sticky-permission-cache",
+      "family": "P02",
+      "status": "skip",
+      "detail": "root-only synthetic multiuser coverage requires root hfs-buffered companion",
+      "seconds": 0
+    },
+    {
+      "name": "process-fcntl-flock-contention-exit",
+      "family": "P03",
+      "status": "fail",
+      "detail": "open-descriptors helper 0 open-lock: openat locks flags=0x100302: permission denied (errno 13)",
+      "seconds": 0.000106146
+    },
+    {
+      "name": "stop-owned-helpers",
+      "family": "infrastructure",
+      "status": "fail",
+      "detail": "UNAVAILABLE\nUNAVAILABLE\nUNAVAILABLE",
+      "seconds": 0
+    },
+    {
+      "name": "fixture-lifecycle",
+      "family": "infrastructure",
+      "status": "fail",
+      "detail": "portable behavior failed; preserve roots and evidence\nUNAVAILABLE\nUNAVAILABLE\nUNAVAILABLE",
+      "seconds": 0
+    }
+  ]
+}

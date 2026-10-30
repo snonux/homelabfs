@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="20261030-n17" tests="11" failures="6">
+  <testcase name="prepared-preflight" classname="setup" time="9.240612497"></testcase>
+  <testcase name="rocky-stop" classname="setup" time="10.574809789"></testcase>
+  <testcase name="lab-start" classname="setup" time="0.997301372"></testcase>
+  <testcase name="native-readiness" classname="setup" time="11.664466879"></testcase>
+  <testcase name="native-setup" classname="setup" time="15.805419711999999"></testcase>
+  <testcase name="native-test" classname="test" time="32.356321899">
+    <failure type="infrastructure">ambiguous: exit status 1</failure>
+  </testcase>
+  <testcase name="native-collect" classname="collect" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-cleanup" classname="cleanup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="lab-stop" classname="cleanup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="rocky-restore" classname="restore" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="rocky-restoration-readiness" classname="restore" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+</testsuite>

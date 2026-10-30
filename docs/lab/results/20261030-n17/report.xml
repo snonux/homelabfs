@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="20261030-n17" tests="11" failures="1">
+  <testcase name="prepared-preflight" classname="setup" time="9.240612484"></testcase>
+  <testcase name="rocky-stop" classname="setup" time="10.574809788"></testcase>
+  <testcase name="lab-start" classname="setup" time="0.997301373"></testcase>
+  <testcase name="native-readiness" classname="setup" time="11.664466879"></testcase>
+  <testcase name="native-setup" classname="setup" time="15.805419711999999"></testcase>
+  <testcase name="native-test" classname="test" time="315.832824563">
+    <failure type="infrastructure">failed: Fourthfixture unprivbuffered child2102 exited1/notimedout/notpreservedlive; readonlypinnedguestinspectiond8ed4erc0 at16:42:31UTC actualJSON showsnamespaceunlinkreplacementEIO/hostisdown thenunavailable. No owned process or outstanding testcommand; staleexactownedFUSEmountremained. Rootnormalownedunmount399355rc0 at16:44:15 afterroot711/enrollment0600/exactplan/mounttype/source/repeatednoprocessguards; aftermounttableFUSEabsent, threeownedZFSdatasetsretained. First3fixturespassedinclunprivappend; native-test FAILED notpassed. Preserve original ambiguous reports; forward resume may perform only pendingreadonlycollection then approvednormalcleanup/shutdown/Rockyrestore, neverretrytest.</failure>
+  </testcase>
+  <testcase name="native-collect" classname="collect" time="1.233711439"></testcase>
+  <testcase name="native-cleanup" classname="cleanup" time="1.916125945"></testcase>
+  <testcase name="lab-stop" classname="cleanup" time="29.533409952"></testcase>
+  <testcase name="rocky-restore" classname="restore" time="0.947319185"></testcase>
+  <testcase name="rocky-restoration-readiness" classname="restore" time="15.177061755"></testcase>
+</testsuite>
