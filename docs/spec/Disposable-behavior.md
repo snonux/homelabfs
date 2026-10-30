@@ -152,6 +152,20 @@ real-process FIFO checks distinguish blocked open from blocked write and retain
 both helpers' progress; successful append still passes the exact-content oracle.
 A new native run is required to diagnose N9 and validate any resulting fix.
 
+Lock failures identify the stage, helper index and operation, distinguishing
+initial acquisition, acquisition after helper 0's unlock, and acquisition after
+helper 1's observed exit. Only a completed helper reply reporting unexpected
+`fcntl-try` contention (native EAGAIN/EACCES) triggers one read-only `F_GETLK`
+diagnostic through the same helper and existing case deadline. The failure
+retains its original error/errno even if the query fails; no lock is retried,
+unlocked or waived. Unknown send/receive outcomes trigger no query. A successful
+query records the observer PID, native lock type, holder PID and range. This is
+a later snapshot: an unlocked result does not disprove a prior conflict or
+distinguish it from adapter request-capacity exhaustion. Controlled local
+process tests check stage/holder evidence, preserved contention and command
+counts; they do not identify the cause of N12's unlocalized EAGAIN or establish
+native process-exit cleanup. That diagnosis and the full native gate remain open.
+
 ## FreeBSD credential ABI
 
 Controlled participants support only FreeBSD **15.1-RELEASE** (including patch

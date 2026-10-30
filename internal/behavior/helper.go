@@ -145,6 +145,16 @@ func (h *helper) execute(c Command, reply *Reply) error {
 			op = unix.F_SETLKW
 		}
 		return unix.FcntlFlock(uintptr(h.lock), op, &lock)
+	case "fcntl-query":
+		if h.lock < 0 {
+			return unix.EBADF
+		}
+		lock := unix.Flock_t{Type: unix.F_WRLCK, Whence: unix.SEEK_SET}
+		if err := unix.FcntlFlock(uintptr(h.lock), unix.F_GETLK, &lock); err != nil {
+			return err
+		}
+		reply.Data = fmt.Sprintf("observer_pid=%d type=%d holder_pid=%d start=%d length=%d", os.Getpid(), lock.Type, lock.Pid, lock.Start, lock.Len)
+		return nil
 	case "flock-try":
 		return unix.Flock(h.lock, unix.LOCK_EX|unix.LOCK_NB)
 	case "flock-unlock":

@@ -162,57 +162,57 @@ func (r *run) append(ctx context.Context) error {
 
 func (r *run) locks(ctx context.Context) error {
 	for i := range 3 {
-		if err := r.call(ctx, i, "open-lock"); err != nil {
+		if err := r.lockStep(ctx, "open-descriptors", i, "open-lock"); err != nil {
 			return err
 		}
 	}
-	if err := r.call(ctx, 0, "flock-try"); err != nil {
+	if err := r.lockStep(ctx, "initial-acquisition", 0, "flock-try"); err != nil {
 		return err
 	}
-	if err := r.conflict(ctx, 1, "flock-try"); err != nil {
+	if err := r.lockConflict(ctx, "initial-contention", 1, "flock-try"); err != nil {
 		return err
 	}
-	if err := r.call(ctx, 0, "flock-unlock"); err != nil {
+	if err := r.lockStep(ctx, "release-initial-flock", 0, "flock-unlock"); err != nil {
 		return err
 	}
-	if err := r.call(ctx, 0, "fcntl-try"); err != nil {
+	if err := r.lockStep(ctx, "initial-acquisition", 0, "fcntl-try"); err != nil {
 		return err
 	}
-	if err := r.conflict(ctx, 1, "fcntl-try"); err != nil {
+	if err := r.lockConflict(ctx, "initial-contention", 1, "fcntl-try"); err != nil {
 		return err
 	}
 	r.check(ctx, "blocked-lock-process-interruption", "lifecycle", r.interrupt)
-	if err := r.call(ctx, 0, "fcntl-unlock"); err != nil {
+	if err := r.lockStep(ctx, "release-after-interruption", 0, "fcntl-unlock"); err != nil {
 		return err
 	}
-	if err := r.call(ctx, 1, "fcntl-try"); err != nil {
+	if err := r.lockStep(ctx, "acquire-after-unlock", 1, "fcntl-try"); err != nil {
 		return err
 	}
-	if err := r.call(ctx, 1, "flock-try"); err != nil {
+	if err := r.lockStep(ctx, "acquire-before-exit", 1, "flock-try"); err != nil {
 		return err
 	}
-	if err := r.conflict(ctx, 0, "fcntl-try"); err != nil {
+	if err := r.lockConflict(ctx, "contention-before-exit", 0, "fcntl-try"); err != nil {
 		return err
 	}
-	if err := r.conflict(ctx, 0, "flock-try"); err != nil {
+	if err := r.lockConflict(ctx, "contention-before-exit", 0, "flock-try"); err != nil {
 		return err
 	}
 	if err := r.c.Clients[1].Stop(ctx); err != nil {
+		return fmt.Errorf("exit-holder helper 1 stop: %w", err)
+	}
+	if err := r.lockStep(ctx, "acquire-after-exit", 0, "fcntl-try"); err != nil {
 		return err
 	}
-	if err := r.call(ctx, 0, "fcntl-try"); err != nil {
-		return err
-	}
-	return r.call(ctx, 0, "flock-try")
+	return r.lockStep(ctx, "acquire-after-exit", 0, "flock-try")
 }
 
 func (r *run) interrupt(ctx context.Context) error {
 	if err := r.c.Clients[2].Send(ctx, Command{Op: "fcntl-wait"}); err != nil {
-		return err
+		return fmt.Errorf("interrupt-waiter helper 2 fcntl-wait send: %w", err)
 	}
 	if r.c.LockBlocked != nil {
 		if err := r.c.LockBlocked(ctx); err != nil {
-			return err
+			return fmt.Errorf("interrupt-waiter helper 2 wait-admission: %w", err)
 		}
 	} else {
 		// Native ordinary targets supply no daemon admission hook. A helper
@@ -222,21 +222,21 @@ func (r *run) interrupt(ctx context.Context) error {
 		defer cancel()
 		reply, err := r.c.Clients[2].Receive(short)
 		if err == nil {
-			return fmt.Errorf("blocking lock returned under contention: %+v", reply)
+			return fmt.Errorf("interrupt-waiter helper 2 fcntl-wait returned under contention: %+v", reply)
 		}
 		if !errors.Is(err, os.ErrDeadlineExceeded) {
-			return err
+			return fmt.Errorf("interrupt-waiter helper 2 fcntl-wait receive: %w", err)
 		}
 	}
 	if err := r.c.Clients[2].Stop(ctx); err != nil {
-		return err
+		return fmt.Errorf("interrupt-waiter helper 2 stop: %w", err)
 	}
 	if r.c.LockCancelled != nil {
 		if err := r.c.LockCancelled(ctx); err != nil {
-			return err
+			return fmt.Errorf("interrupt-waiter helper 2 cancel-admission: %w", err)
 		}
 	}
-	return r.conflict(ctx, 1, "fcntl-try")
+	return r.lockConflict(ctx, "contention-after-interruption", 1, "fcntl-try")
 }
 
 func (r *run) conflict(ctx context.Context, i int, op string) error {
