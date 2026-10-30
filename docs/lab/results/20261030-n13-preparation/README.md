@@ -39,3 +39,25 @@ binaries, keys, approval and native run state are excluded.
 Preparation gives no filesystem acceptance result. Snapshot pruning, writes or
 another host restart can invalidate admission; future native plans must retain
 fail-closed source checks.
+
+## Replacement plan
+
+Canonical hash: `8615d1456af119f0e4d7c7e4a62deea577f3d7a722852080fb4ed770c3087c90`.
+Created 15:24:14 UTC; expires 2026-10-31 at the same time. Actual fresh read-only
+admission passed at 15:22:40 UTC and matches the final policy subset. Thirty
+artifact hashes and unchanged targets, bounds and lifecycle passed independent
+verification. New FreeBSD amd64/CGO-disabled binaries record actual clean source
+`a296dd8789e90d394cd1ca765b7f5a934710048f` and use the fresh R14 metadata.
+
+The lock changes add stage/helper context and one read-only holder snapshot only
+after a completed unexpected fcntl conflict. Original errors remain failures;
+no acquisition is retried and unknown pipe outcomes trigger no further operation.
+N12's lock cause remains unresolved. Local reviews and all nine Go gates passed;
+no native acceptance or process-exit lifecycle fix is claimed.
+
+The same twelve synthetic fixtures retain the exact-content oracle, eight-second
+case bound, 87-minute maximum, 2.25 GiB disk, 48 MiB logical I/O and normal cleanup
+with graceful Rocky restoration. Paul's standing bounded non-production test
+authorization applies; production and critical or dangerous operations remain
+excluded. Approval records, controller state and execution evidence were absent
+at publication. Work continues on all tasks; the prior pause is revoked.

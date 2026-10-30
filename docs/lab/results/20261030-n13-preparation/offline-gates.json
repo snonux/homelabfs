@@ -1,0 +1,44 @@
+{
+  "finalizer": {
+    "argv": [
+      "/home/linuxbrew/.linuxbrew/opt/python@3.14/bin/python3.14",
+      "-B",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/finalize-plan-input-20261030-n13-r14.py",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/planning-admission-survey-20261030-n13-r14.json"
+    ],
+    "started_at": "2026-10-30T15:24:14.113760+00:00",
+    "finished_at": "2026-10-30T15:24:14.149537+00:00",
+    "returncode": 0,
+    "stdout_sha256": "ab7a9681a75a990b7a9c46183fb04d96b80dc7622a18bfda8df37f9230c8ba43",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "canonical-planner": {
+    "argv": [
+      "/home/paul/tmp/codex/hfs-cx3-gates-20261030-r1/hfs-lab",
+      "plan",
+      "--input",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/plan-input-20261030-n13-r14.json",
+      "--out",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/reviewed-plan-20261030-n13-r14.json"
+    ],
+    "started_at": "2026-10-30T15:24:14.149558+00:00",
+    "finished_at": "2026-10-30T15:24:14.177013+00:00",
+    "returncode": 0,
+    "stdout_sha256": "1a3a71b2bfa46e36cd24d0a6512be5b2e236bdbb47aed7896b14c9e1f0fed531",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "offline-validator": {
+    "argv": [
+      "/home/linuxbrew/.linuxbrew/opt/python@3.14/bin/python3.14",
+      "-B",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/validate-plan-20261030-n13-r14.py",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/reviewed-plan-20261030-n13-r14.json",
+      "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-spec-20261030-n13-r14.json"
+    ],
+    "started_at": "2026-10-30T15:24:14.177038+00:00",
+    "finished_at": "2026-10-30T15:24:14.286908+00:00",
+    "returncode": 0,
+    "stdout_sha256": "a2d470a1427d75b5e3edead35f68ccc33069a5939baad2ee02f8e7c2777ae150",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

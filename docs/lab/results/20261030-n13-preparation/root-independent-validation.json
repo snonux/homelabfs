@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-10-30T15:25:09.297795+00:00",
+  "root_independent_validation": "PASS",
+  "canonical_hash": "8615d1456af119f0e4d7c7e4a62deea577f3d7a722852080fb4ed770c3087c90",
+  "artifact_pins": 30,
+  "scope_vs_n12": "identical except new run paths, binary/artifact/source pins",
+  "survey_subset_sha256": "a082c7f47bb8b448b3550a556c5dc9fa6c5f00440d8359f0801b5b903bc83762",
+  "new_candidate_source_commit": "a296dd8789e90d394cd1ca765b7f5a934710048f",
+  "binary_vcs_clean": true,
+  "outer_test_selections": 1,
+  "native_behavior_calls": 12,
+  "state_execution_evidence_approval_absent": true,
+  "native_lock_cause": "unresolved; stage/holder diagnostics only, no lifecycle fix claimed",
+  "latest_user_direction": "resume all tasks until none"
+}
