@@ -1,0 +1,27 @@
+Native run 20261030-n11 / R13
+Canonical hash: 1d1463266fa43da06062396d520caf841f6236f814592b5f5558968969b8ff22
+Created 2026-10-30T14:52:00Z; expires 2026-10-31T14:52:00Z.
+
+ROOT records standing bounded nonproduction authorization after packet review.
+Worker preparation is offline only; no remote/approval/state/execution/tracked
+edit. Latest user instruction resumes all tasks; previous pause is revoked.
+
+New actual clean2e875e2 FreeBSD amd64 CGO0 binaries; exact SHA/size/ELF/VCS
+modified=false/receipt verified e38db1. No old reuse. Reviewed my3 commit3bbb7f9
+buffers immutable segment scans in bounded64KiB windows while retaining full
+validation. Local same-byte1025-frame work reduced4100 to8 ReadAt calls. Native
+timeout cause and acceptance remain pending;8s deadline/workload/oracle unchanged.
+R13 metadata2e875e2 uses actual143854 sources after N10 normal stop, fresh reads,
+exact-owned normal cleanup and GUID/written0 proof. Prune/drift fails closed.
+
+Exact normalized N10 targets/budget/resources/tests/steps preserved. One driver
+executes12calls seed0;5220s/87min; disk2.25GiB; logicalIO48MiB; evidence64MiB;
+retention168h;12caps2214592512B;max_attempts1; exact setup/test collection gate;
+disposable run-owned resources and normal graceful restoration.
+
+ROOT survey7113/0575ca exit0 at14:50:55UTC; admitted exact subset
+861e3ba94a737a9ee3b781e995daa0363f11caf6f15005bd8267e58243760b61.
+Raw stdout2730B/stderr444B/receipt preserved; stderr two known KEX triplets.
+Actual finalizer/Go planner/30pin validator and all SHA/exact scope self-review
+passed. Receipts: offline-gates-20261030-n11-r13.json. Detailed pins:
+canonical-plan-validation-20261030-n11-r13.json. No native acceptance inferred.

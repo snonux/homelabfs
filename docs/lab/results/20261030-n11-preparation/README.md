@@ -44,3 +44,25 @@ private keys, approval and native run state are excluded.
 Source pruning, writes or another host restart can invalidate admission; the
 next native plan must retain its fail-closed source checks. These receipts
 are preparation evidence only.
+
+## Replacement plan
+
+The [reviewed plan](reviewed-plan.json) has canonical hash
+`1d1463266fa43da06062396d520caf841f6236f814592b5f5558968969b8ff22`.
+Created at 14:52:00 UTC, it expires 2026-10-31 at the same time. Actual read-only
+admission passed at 14:50:55 UTC and matches the final policy subset. All thirty
+artifact hashes and unchanged targets, bounds and graceful lifecycle passed
+independent verification.
+
+Both new FreeBSD amd64/CGO-disabled binaries record actual clean source
+`2e875e2faf217787cffc39e635e7ac0654070750`. The journal scan uses a bounded
+64 KiB window while preserving full validation. Local persisted-byte tests
+show fewer read calls with identical bytes read; native latency and acceptance
+remain unverified. The twelve synthetic fixtures, exact-content oracle and
+eight-second case limit are unchanged, with the same 87-minute maximum,
+2.25 GiB disk, 48 MiB logical I/O and normal cleanup/Rocky restoration.
+
+Execution uses Paul's standing bounded non-production test authorization.
+Production and critical or dangerous operations remain excluded. Approval,
+controller state and native execution evidence were absent at publication.
+Paul resumed work on all tasks; the preceding pause is revoked.

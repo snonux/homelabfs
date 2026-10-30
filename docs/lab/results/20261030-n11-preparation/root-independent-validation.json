@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-10-30T14:52:40.272788+00:00",
+  "root_independent_validation": "PASS",
+  "canonical_hash": "1d1463266fa43da06062396d520caf841f6236f814592b5f5558968969b8ff22",
+  "artifact_pins": 30,
+  "scope_vs_n10": "identical except new run paths, binary/artifact/source pins",
+  "survey_subset_sha256": "861e3ba94a737a9ee3b781e995daa0363f11caf6f15005bd8267e58243760b61",
+  "new_candidate_source_commit": "2e875e2faf217787cffc39e635e7ac0654070750",
+  "binary_vcs_clean": true,
+  "outer_test_selections": 1,
+  "native_behavior_calls": 12,
+  "state_execution_evidence_approval_absent": true,
+  "native_latency_cause": "pending; counted local read-call reduction proven, native acceptance not yet run",
+  "latest_user_direction": "resume all tasks until none; prior pause revoked"
+}
