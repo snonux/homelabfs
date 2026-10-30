@@ -119,6 +119,23 @@ func kindOf(v any) uint16 {
 }
 func (w *wire) special(v reflect.Value) bool {
 	switch v.Type() {
+	case reflect.TypeFor[UUID]():
+		id := v.Interface().(UUID)
+		w.raw(id[:])
+		if w.decoding && w.err == nil {
+			v.Set(reflect.ValueOf(id))
+		}
+		if id == (UUID{}) {
+			w.bad("zero UUID")
+		}
+		return true
+	case reflect.TypeFor[Hash]():
+		hash := v.Interface().(Hash)
+		w.raw(hash[:])
+		if w.decoding && w.err == nil {
+			v.Set(reflect.ValueOf(hash))
+		}
+		return true
 	case reflect.TypeFor[Intent]():
 		w.intent(v)
 		return true
