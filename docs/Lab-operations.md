@@ -205,3 +205,24 @@ No readiness or workload was replayed, and no pass was inferred from the later
 observations. The original ambiguous report and final failed report are both
 preserved. A replacement native run requires refreshed image evidence, the
 readiness fix and fresh approval of its exact plan.
+
+The separately approved [n5 attempt](lab/results/20261030-n5/) passed admission,
+clean Rocky shutdown and all three guests' pinned SSH/kernel readiness. Setup
+returned an uncertain exit before any saved guest preflight receipt, reservation
+or workload. A fresh traced read-only preflight reproduced a mode-format bug:
+`stat -f %Lp` emits `777` while the actual directory mode is correctly `1777`.
+No guest permission change is needed. Positive inventories established no
+run-owned guest resources or outstanding processes. Setup was reconciled failed;
+cleanup quiescence was independently verified after the same guard rejected the
+original cleanup command. The accepted cleanup reconciliation preserves that
+command's original ambiguous history and permits normal shutdown/restoration.
+
+All three native guests then stopped cleanly and Rocky started. Restoration
+readiness hit a host TCP connection timeout before its initial SSH inventory
+command; diagnostics now preserve the precise exit and stderr. Fresh pinned
+observations at 09:22 UTC verified Rocky PID 31349 running with working root SSH,
+all four FreeBSD VMs stopped and zero host swap. Original readiness remains
+reconciled failed, and the report retains `complete=false`, `success=false`.
+Tasks `ix3`, `jx3`, `kx3` and `lx3` address the mode guards, corresponding fault
+fixtures, host connection wait and native diagnostic retention. No native
+behavior call ran; another exact-plan approval is required after preparation.

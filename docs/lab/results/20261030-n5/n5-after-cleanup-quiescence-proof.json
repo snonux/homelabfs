@@ -1,0 +1,44 @@
+{
+  "scope": "post-cleanup-attempt successful pinned read-only quiescence and positive full ZFS inventory; original cleanup failed before action",
+  "observations": [
+    {
+      "target": "hfs-test0",
+      "observed_at": "2026-10-30T09:20:07.373403+00:00",
+      "returncode": 0,
+      "positive_dataset_inventory": [
+        "hfsdata0",
+        "hfsdata0/control",
+        "hfsdata0/data",
+        "hfsdata0/journal"
+      ],
+      "stdout": "15.1-RELEASE\n0\n0:777\nRUN_ROOT_ABSENT\n/dev/gpt/hfs-root0\t/\t\t\tufs\trw,noatime \t1 1\ndevfs\t\t\t/dev\t\t\tdevfs\trw\t\t0 0\n/dev/gpt/hfs-efi0\t/boot/efi\t\tmsdosfs\trw\t\t2 2\nhfsdata0\t\t/var/db/homelabfs\tzfs\trw,noatime,nfsv4acls \t0 0\nhfsdata0/control\t/var/db/homelabfs/control zfs\trw,noatime,nfsv4acls \t0 0\nhfsdata0/journal\t/var/db/homelabfs/journal zfs\trw,noatime,nfsv4acls \t0 0\nhfsdata0/data\t\t/var/db/homelabfs/data\tzfs\trw,noatime,nfsv4acls \t0 0\n{\"matching_run_processes\": []}\nRUN_DATASETS_ABSENT\nhfsdata0\nhfsdata0/control\nhfsdata0/data\nhfsdata0/journal\n",
+      "stderr": ""
+    },
+    {
+      "target": "hfs-test1",
+      "observed_at": "2026-10-30T09:20:07.882975+00:00",
+      "returncode": 0,
+      "positive_dataset_inventory": [
+        "hfsdata1",
+        "hfsdata1/control",
+        "hfsdata1/data",
+        "hfsdata1/journal"
+      ],
+      "stdout": "15.1-RELEASE\n0\n0:777\nRUN_ROOT_ABSENT\n/dev/gpt/hfs-root1\t/\t\t\tufs\trw,noatime \t1 1\ndevfs\t\t\t/dev\t\t\tdevfs\trw\t\t0 0\n/dev/gpt/hfs-efi1\t/boot/efi\t\tmsdosfs\trw\t\t2 2\nhfsdata1\t\t/var/db/homelabfs\tzfs\trw,noatime,nfsv4acls \t0 0\nhfsdata1/data\t\t/var/db/homelabfs/data\tzfs\trw,noatime,nfsv4acls \t0 0\nhfsdata1/journal\t/var/db/homelabfs/journal zfs\trw,noatime,nfsv4acls \t0 0\nhfsdata1/control\t/var/db/homelabfs/control zfs\trw,noatime,nfsv4acls \t0 0\n{\"matching_run_processes\": []}\nRUN_DATASETS_ABSENT\nhfsdata1\nhfsdata1/control\nhfsdata1/data\nhfsdata1/journal\n",
+      "stderr": ""
+    },
+    {
+      "target": "hfs-test2",
+      "observed_at": "2026-10-30T09:20:08.424174+00:00",
+      "returncode": 0,
+      "positive_dataset_inventory": [
+        "hfsdata2",
+        "hfsdata2/control",
+        "hfsdata2/data",
+        "hfsdata2/journal"
+      ],
+      "stdout": "15.1-RELEASE\n0\n0:777\nRUN_ROOT_ABSENT\n/dev/gpt/hfs-root2\t/\t\t\tufs\trw,noatime \t1 1\ndevfs\t\t\t/dev\t\t\tdevfs\trw\t\t0 0\n/dev/gpt/hfs-efi2\t/boot/efi\t\tmsdosfs\trw\t\t2 2\nhfsdata2\t\t/var/db/homelabfs\tzfs\trw,noatime,nfsv4acls \t0 0\nhfsdata2/control\t/var/db/homelabfs/control zfs\trw,noatime,nfsv4acls \t0 0\nhfsdata2/journal\t/var/db/homelabfs/journal zfs\trw,noatime,nfsv4acls \t0 0\nhfsdata2/data\t\t/var/db/homelabfs/data\tzfs\trw,noatime,nfsv4acls \t0 0\n{\"matching_run_processes\": []}\nRUN_DATASETS_ABSENT\nhfsdata2\nhfsdata2/control\nhfsdata2/data\nhfsdata2/journal\n",
+      "stderr": ""
+    }
+  ]
+}

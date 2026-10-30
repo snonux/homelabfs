@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="20261030-n5" tests="11" failures="4">
+  <testcase name="prepared-preflight" classname="setup" time="10.234595391"></testcase>
+  <testcase name="rocky-stop" classname="setup" time="9.836502725"></testcase>
+  <testcase name="lab-start" classname="setup" time="1.323985734"></testcase>
+  <testcase name="native-readiness" classname="setup" time="10.421162522"></testcase>
+  <testcase name="native-setup" classname="setup" time="320.660312044">
+    <failure type="infrastructure">failed: Original execute12886 terminal927435 exit1; native-setup returned1 before any saved guest preflight evidence, and reservation/setup occur only after all three preflights saved. Fresh exact host guard f001af succeeded. Fresh traced read-only guest0preflight f89571 failed at stat %Lp comparison777 versus1777. Later actual Pythonstat in positive pinned proof3d54cb shows actual1777 on all three guests: special-bit formatting guard defect, not missingstickybit. Positive successful ZFS inventory plus rootabsence/mount/process checks at09:18:42-44 show no n5resources on anyguest. Local proofc080a9 no original controller/driver/SSHchildren; original remote preflight is bounded read-only and no action remains outstanding. Preserve original failed setup; do not resume workload. Original30artifactbytes/reports/log archived.</failure>
+  </testcase>
+  <testcase name="native-test" classname="test" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-collect" classname="collect" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-cleanup" classname="cleanup" time="48.642686845"></testcase>
+  <testcase name="lab-stop" classname="cleanup" time="23.161872647"></testcase>
+  <testcase name="rocky-restore" classname="restore" time="0.867258094"></testcase>
+  <testcase name="rocky-restoration-readiness" classname="restore" time="147.236678866">
+    <failure type="infrastructure">failed: Original approved restoration cleanup94035 terminalb43730 exit1: lab-stop and Rocky-start passed, but readiness initial host vm-list SSH exited255 with connect to192.168.1.133port22 timedout, no TCP connection/remote command dispatch established. Exact newdiagnostics retained in rocky-restoration-readiness.log. Fresh independent pinned observations74511 terminale02c21 exit0 at09:22:35-37UTC establish all4FreeBSDStopped, Rocky31349Running, hostswap0, expectedRockykernel androotUID0 SSH; no old vm-list/nc/uname/id commands apart from current observation shells. Original readiness child/driver terminated, and connection failed before remote dispatch, so no outstanding action remains. Mark original planned readiness failed, not a later-observation pass; retain history and failed setup. No further VM action or workload rerun authorized/attempted.</failure>
+  </testcase>
+</testsuite>

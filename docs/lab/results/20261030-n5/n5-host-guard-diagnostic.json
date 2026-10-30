@@ -1,0 +1,33 @@
+{
+  "observed_at": "2026-10-30T09:15:43.084222+00:00",
+  "scope": "fresh read-only diagnostic of exact host guard with shell trace; not rerun of native setup/workload",
+  "argv": [
+    "ssh",
+    "-F",
+    "/dev/null",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "StrictHostKeyChecking=yes",
+    "-o",
+    "GlobalKnownHostsFile=/dev/null",
+    "-o",
+    "UserKnownHostsFile=/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/host-known_hosts",
+    "-o",
+    "HostName=192.168.1.133",
+    "-o",
+    "HostKeyAlias=f3",
+    "-o",
+    "ConnectTimeout=5",
+    "-o",
+    "ServerAliveInterval=2",
+    "-o",
+    "ServerAliveCountMax=1",
+    "paul@f3",
+    "sh -s"
+  ],
+  "stdin": "set -eux\ntest \"$(doas -n sysctl -n hw.physmem)\" -ge 10737418240\ntest \"$(doas -n swapinfo -k | awk 'NR>1 {used+=$3} END {print used+0}')\" -eq 0\ninventory=$(doas -n vm list)\nprintf '%s\\n' \"$inventory\"\nprintf '%s\\n' \"$inventory\" | awk '\nNR>1 && $1 ~ /^hfs-test[012]$/ {if (seen[$1]++ || $(NF-1)!=\"Running\" || $4!=2 || $5!=\"2G\") exit 1; count++; next}\nNR>1 && $NF!=\"Stopped\" {exit 1}\nEND {if (count!=3) exit 1}'\nfor i in 0 1 2; do\n  config=\"/zroot/bhyve/homelabfs-lab/hfs-test$i/hfs-test$i.conf\"\n  test \"$(doas -n sysrc -f \"$config\" -n memory)\" = 2G\ndone\n",
+  "returncode": 0,
+  "stdout": "NAME       DATASTORE  LOADER     CPU  MEMORY  VNC  AUTO     STATE\nfreebsd    default    bhyveload  4    1G      -    No       Stopped\nrocky      default    uefi       4    12G     -    Yes [1]  Stopped\nhfs-test0  hfslab     bhyveload  2    2G      -    No       Running (26850)\nhfs-test1  hfslab     bhyveload  2    2G      -    No       Running (26831)\nhfs-test2  hfslab     bhyveload  2    2G      -    No       Running (26825)\n",
+  "stderr": "+ doas -n sysctl -n hw.physmem\n+ test 16879837184 -ge 10737418240\n+ doas -n swapinfo -k\n+ awk 'NR>1 {used+=$3} END {print used+0}'\n+ test 0 -eq 0\n+ doas -n vm list\n+ inventory='NAME       DATASTORE  LOADER     CPU  MEMORY  VNC  AUTO     STATE\nfreebsd    default    bhyveload  4    1G      -    No       Stopped\nrocky      default    uefi       4    12G     -    Yes [1]  Stopped\nhfs-test0  hfslab     bhyveload  2    2G      -    No       Running (26850)\nhfs-test1  hfslab     bhyveload  2    2G      -    No       Running (26831)\nhfs-test2  hfslab     bhyveload  2    2G      -    No       Running (26825)'\n+ printf '%s\\n' 'NAME       DATASTORE  LOADER     CPU  MEMORY  VNC  AUTO     STATE\nfreebsd    default    bhyveload  4    1G      -    No       Stopped\nrocky      default    uefi       4    12G     -    Yes [1]  Stopped\nhfs-test0  hfslab     bhyveload  2    2G      -    No       Running (26850)\nhfs-test1  hfslab     bhyveload  2    2G      -    No       Running (26831)\nhfs-test2  hfslab     bhyveload  2    2G      -    No       Running (26825)'\n+ printf '%s\\n' 'NAME       DATASTORE  LOADER     CPU  MEMORY  VNC  AUTO     STATE\nfreebsd    default    bhyveload  4    1G      -    No       Stopped\nrocky      default    uefi       4    12G     -    Yes [1]  Stopped\nhfs-test0  hfslab     bhyveload  2    2G      -    No       Running (26850)\nhfs-test1  hfslab     bhyveload  2    2G      -    No       Running (26831)\nhfs-test2  hfslab     bhyveload  2    2G      -    No       Running (26825)'\n+ awk '\nNR>1 && $1 ~ /^hfs-test[012]$/ {if (seen[$1]++ || $(NF-1)!=\"Running\" || $4!=2 || $5!=\"2G\") exit 1; count++; next}\nNR>1 && $NF!=\"Stopped\" {exit 1}\nEND {if (count!=3) exit 1}'\n+ config=/zroot/bhyve/homelabfs-lab/hfs-test0/hfs-test0.conf\n+ doas -n sysrc -f /zroot/bhyve/homelabfs-lab/hfs-test0/hfs-test0.conf -n memory\n+ test 2G '=' 2G\n+ config=/zroot/bhyve/homelabfs-lab/hfs-test1/hfs-test1.conf\n+ doas -n sysrc -f /zroot/bhyve/homelabfs-lab/hfs-test1/hfs-test1.conf -n memory\n+ test 2G '=' 2G\n+ config=/zroot/bhyve/homelabfs-lab/hfs-test2/hfs-test2.conf\n+ doas -n sysrc -f /zroot/bhyve/homelabfs-lab/hfs-test2/hfs-test2.conf -n memory\n+ test 2G '=' 2G\n"
+}

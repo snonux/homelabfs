@@ -1,0 +1,9 @@
+{
+  "plan_hash": "fe727a549b3ddde47e13657ba566babc01be54063daadc5be06f81e86ae509fc",
+  "step_id": "native-cleanup",
+  "outcome": "passed",
+  "operator": "Codex observing Paul-approved n5 cleanup",
+  "observed_at": "2026-10-30T09:20:28Z",
+  "evidence": "Cleanup postcondition independently verified, not a claim that original driver returned0. Original approved cleanup terminal0b692d exit1; native-cleanup returned1 at global stat-mode guard before touching any resource. Original ambiguous history retained. Positive pinned post-attempt checks n5-after-cleanup-quiescence-proof.json on all3guests establish rootabsence, successful complete ZFS inventories containing only existing pool/threeparents with no runchild, no runmounts or processes. Earlier exact Pythonmode observation3d54cb shows actual1777 while stat %Lp emits777, identifying guardformat defect. Original setup failed before reserve/setup and no native test ran. Actual original driver and cleanup have terminated; fixed remote script has no child/background persistence before this guard. No outstanding action remains. No cleanup mutation is needed because no run-owned guest resource was created. Reconciliation accepts the externally observed quiescent cleanup state so original approved normal lab-stop and Rocky restoration may proceed; it preserves failed setup and unsuccessful run result.",
+  "no_outstanding_action": true
+}

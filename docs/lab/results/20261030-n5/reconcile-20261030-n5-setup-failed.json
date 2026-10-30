@@ -1,0 +1,9 @@
+{
+  "plan_hash": "fe727a549b3ddde47e13657ba566babc01be54063daadc5be06f81e86ae509fc",
+  "step_id": "native-setup",
+  "outcome": "failed",
+  "operator": "Paul via Codex observing approved run",
+  "observed_at": "2026-10-30T09:19:39Z",
+  "evidence": "Original execute12886 terminal927435 exit1; native-setup returned1 before any saved guest preflight evidence, and reservation/setup occur only after all three preflights saved. Fresh exact host guard f001af succeeded. Fresh traced read-only guest0preflight f89571 failed at stat %Lp comparison777 versus1777. Later actual Pythonstat in positive pinned proof3d54cb shows actual1777 on all three guests: special-bit formatting guard defect, not missingstickybit. Positive successful ZFS inventory plus rootabsence/mount/process checks at09:18:42-44 show no n5resources on anyguest. Local proofc080a9 no original controller/driver/SSHchildren; original remote preflight is bounded read-only and no action remains outstanding. Preserve original failed setup; do not resume workload. Original30artifactbytes/reports/log archived.",
+  "no_outstanding_action": true
+}

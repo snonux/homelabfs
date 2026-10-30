@@ -1,0 +1,9 @@
+{
+  "plan_hash": "fe727a549b3ddde47e13657ba566babc01be54063daadc5be06f81e86ae509fc",
+  "step_id": "rocky-restoration-readiness",
+  "outcome": "failed",
+  "operator": "Codex observing Paul-approved n5 restoration",
+  "observed_at": "2026-10-30T09:23:20Z",
+  "evidence": "Original approved restoration cleanup94035 terminalb43730 exit1: lab-stop and Rocky-start passed, but readiness initial host vm-list SSH exited255 with connect to192.168.1.133port22 timedout, no TCP connection/remote command dispatch established. Exact newdiagnostics retained in rocky-restoration-readiness.log. Fresh independent pinned observations74511 terminale02c21 exit0 at09:22:35-37UTC establish all4FreeBSDStopped, Rocky31349Running, hostswap0, expectedRockykernel androotUID0 SSH; no old vm-list/nc/uname/id commands apart from current observation shells. Original readiness child/driver terminated, and connection failed before remote dispatch, so no outstanding action remains. Mark original planned readiness failed, not a later-observation pass; retain history and failed setup. No further VM action or workload rerun authorized/attempted.",
+  "no_outstanding_action": true
+}
