@@ -150,6 +150,12 @@ normal unmounting, diagnostic collection and failure preservation. The runner
 enforces process deadlines and per-step log caps; it cannot establish a remote
 driver's I/O safety from an argv string. Review the pinned implementation.
 
+The prepared-lab preflight reads SSH stdout and stderr concurrently under one
+combined 256 KiB limit per inspection. Only stdout supplies machine-readable
+evidence; SSH diagnostic stderr is retained in the local driver log, including
+on successful inspections. Failure messages include bounded excerpts from both
+streams without weakening kernel, package or host-key verification.
+
 A driver owns and reaps every subprocess and remote operation it starts. Exit
 `0` means terminal success. These nonzero exits certify a **known terminal**
 failure with no outstanding child/remote action: `10` assertion, `20`

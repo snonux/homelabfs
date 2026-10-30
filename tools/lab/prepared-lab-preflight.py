@@ -231,40 +231,51 @@ class Transport:
         end = min(self.deadline, time.monotonic() + self.command_timeout)
         require(end > time.monotonic(), "preflight total deadline exhausted")
         with subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                              stderr=subprocess.STDOUT, start_new_session=True) as child:
+                              stderr=subprocess.PIPE, start_new_session=True) as child:
+            output = {"stdout": bytearray(), "stderr": bytearray()}
+            total = 0
+            def diagnostic():
+                return "; ".join(name + ": " + value[:1024].decode(errors="replace")
+                                 for name, value in output.items() if value)
             try:
                 child.stdin.write(("set -eu\nexport LC_ALL=C\n" + script + "\n").encode())
                 child.stdin.close()
-                result = bytearray()
                 with selectors.DefaultSelector() as selector:
-                    selector.register(child.stdout, selectors.EVENT_READ)
+                    selector.register(child.stdout, selectors.EVENT_READ, "stdout")
+                    selector.register(child.stderr, selectors.EVENT_READ, "stderr")
                     while selector.get_map():
                         left = end - time.monotonic()
                         if left <= 0:
-                            raise TimedOut(f"{destination}: read-only SSH timeout; evidence unavailable")
+                            raise TimedOut(f"{destination}: read-only SSH timeout; evidence unavailable; "
+                                           + diagnostic())
                         for key, _ in selector.select(min(left, 0.2)):
                             block = os.read(key.fd, 8192)
                             if not block:
                                 selector.unregister(key.fileobj)
                                 continue
-                            result.extend(block)
-                            if len(result) > LIMIT:
-                                raise Uncertain(f"{destination}: inspection output exceeds {LIMIT} bytes; remote completion unknown")
+                            # Both streams share the original inspection cap;
+                            # retain no bytes beyond it, even on overflow.
+                            output[key.data].extend(block[:LIMIT - total])
+                            total += len(block)
+                            if total > LIMIT:
+                                raise Uncertain(f"{destination}: inspection output exceeds {LIMIT} bytes; "
+                                                "remote completion unknown; " + diagnostic())
                 left = end - time.monotonic()
                 if left <= 0:
-                    raise TimedOut(f"{destination}: read-only SSH deadline")
+                    raise TimedOut(f"{destination}: read-only SSH deadline; " + diagnostic())
                 try:
                     code = child.wait(timeout=left)
                 except subprocess.TimeoutExpired as error:
-                    raise TimedOut(f"{destination}: read-only SSH deadline") from error
+                    raise TimedOut(f"{destination}: read-only SSH deadline; " + diagnostic()) from error
                 if code == 255 or code < 0:
                     raise Uncertain(f"{destination}: SSH transport lost ({code}); remote completion unknown; "
-                                    + result[:1024].decode(errors="replace"))
+                                    + diagnostic())
                 require(code == 0, f"{destination}: confirmed remote inspection failure ({code}); "
-                        + result[:1024].decode(errors="replace"))
-                return result.decode("utf-8", errors="strict")
+                        + diagnostic())
+                return output["stdout"].decode("utf-8", errors="strict")
             except OSError as error:
-                raise Uncertain(f"{destination}: local SSH I/O failed; remote completion unknown: {error}") from error
+                raise Uncertain(f"{destination}: local SSH I/O failed; remote completion unknown: {error}; "
+                                + diagnostic()) from error
             finally:
                 if child.poll() is None:
                     try:
@@ -272,8 +283,13 @@ class Transport:
                     except ProcessLookupError:
                         pass
                     except OSError as error:
-                        raise Uncertain(f"{destination}: local SSH cleanup failed; remote completion unknown: {error}") from error
+                        raise Uncertain(f"{destination}: local SSH cleanup failed; remote completion unknown: {error}; "
+                                        + diagnostic()) from error
                     child.wait()
+                # Preserve SSH warnings in the runner's log without making
+                # them part of machine-readable command output.
+                if output["stderr"]:
+                    print(output["stderr"].decode(errors="replace"), end="", file=sys.stderr, flush=True)
 
 
 def inventory(text):

@@ -567,5 +567,125 @@ class PreflightTests(unittest.TestCase):
             self.assertEqual(report["status"], "admitted")
 
 
+class TransportTests(unittest.TestCase):
+    """Exercise real local pipes/processes while substituting only SSH exec."""
+
+    def setUp(self):
+        self.children = []
+        self.stderr = io.StringIO()
+        self.real_popen = subprocess.Popen
+        self.addCleanup(self.reap_children)
+
+    def reap_children(self):
+        for child in self.children:
+            if child.poll() is None:
+                os.killpg(child.pid, p.signal.SIGKILL)
+                child.wait()
+
+    def run_transport(self, code, timeout=3, deadline=None, destination="host"):
+        def launch(argv, **kwargs):
+            self.assertEqual(argv[0], "/usr/bin/ssh")
+            self.assertEqual(kwargs["stdout"], subprocess.PIPE)
+            self.assertEqual(kwargs["stderr"], subprocess.PIPE)
+            self.assertTrue(kwargs["start_new_session"])
+            self.assertIn("StrictHostKeyChecking=yes", argv)
+            self.assertIn("UpdateHostKeys=no", argv)
+            child = self.real_popen([sys.executable, "-c", code], **kwargs)
+            self.children.append(child)
+            return child
+
+        transport = p.Transport("host_keys", "guest_keys", timeout,
+                                deadline if deadline is not None else time.monotonic() + timeout + 1,
+                                "192.0.2.133")
+        try:
+            with mock.patch.object(p.subprocess, "Popen", launch), \
+                    mock.patch.object(sys, "stderr", self.stderr):
+                return transport(destination, "uname -r")
+        finally:
+            if self.children:
+                self.assertIsNotNone(self.children[-1].poll(), "owned SSH child was not reaped")
+                self.assertTrue(self.children[-1].stdout.closed)
+                self.assertTrue(self.children[-1].stderr.closed)
+
+    def test_warning_is_logged_and_exact_utf8_stdout_is_returned(self):
+        expected = "  6.1.190-1.el9.elrepo.x86_64\r\n\tκέρνελ\x00\n\n"
+        warning = "** WARNING: connection is not using a post-quantum key exchange algorithm.\n"
+        for destination in ("host", "192.0.2.14"):
+            with self.subTest(destination=destination):
+                self.stderr.seek(0)
+                self.stderr.truncate()
+                result = self.run_transport(
+                    "import os,sys; sys.stdin.read(); "
+                    f"os.write(2, {warning.encode()!r}); os.write(1, {expected.encode()!r})",
+                    destination=destination)
+                self.assertEqual(result.encode(), expected.encode())
+                self.assertEqual(self.stderr.getvalue(), warning)
+
+    def test_stderr_larger_than_pipe_capacity_is_drained_before_stdout(self):
+        diagnostic = "W" * (200 << 10)
+        result = self.run_transport(
+            "import sys; sys.stdin.read(); "
+            f"sys.stderr.write('W'*{len(diagnostic)}); sys.stderr.flush(); "
+            "sys.stdout.write('kernel\\n')")
+        self.assertEqual(result, "kernel\n")
+        self.assertEqual(self.stderr.getvalue(), diagnostic)
+
+    def test_interleaved_streams_and_exact_combined_limit(self):
+        chunk = p.LIMIT // 32
+        code = ("import os,sys; sys.stdin.read()\n"
+                "for _ in range(16):\n"
+                f" os.write(1, b'O'*{chunk})\n"
+                f" os.write(2, b'E'*{chunk})\n")
+        self.assertEqual(self.run_transport(code), "O" * (p.LIMIT // 2))
+        self.assertEqual(self.stderr.getvalue(), "E" * (p.LIMIT // 2))
+
+    def test_combined_overflow_is_uncertain_and_reaps_child(self):
+        for stream in (1, 2):
+            with self.subTest(first_stream=stream):
+                self.stderr.seek(0)
+                self.stderr.truncate()
+                half = p.LIMIT // 2 + 1
+                code = ("import os,sys,time; sys.stdin.read(); "
+                        f"os.write({stream}, b'A'*{half}); "
+                        f"os.write({3 - stream}, b'B'*{half}); time.sleep(30)")
+                with self.assertRaisesRegex(p.Uncertain, f"exceeds {p.LIMIT} bytes"):
+                    self.run_transport(code)
+                self.assertLessEqual(len(self.stderr.getvalue()), p.LIMIT)
+
+    def test_exit_status_keeps_both_diagnostics_and_terminal_classification(self):
+        for code, expected in ((20, p.Blocked), (255, p.Uncertain)):
+            with self.subTest(code=code):
+                self.stderr.seek(0)
+                self.stderr.truncate()
+                with self.assertRaises(expected) as raised:
+                    self.run_transport("import os,sys; sys.stdin.read(); "
+                                       "os.write(1,b'partial evidence'); "
+                                       "os.write(2,b'SSH diagnostic\\n'); "
+                                       f"sys.exit({code})")
+                self.assertIs(type(raised.exception), expected)
+                self.assertIn("stdout: partial evidence", str(raised.exception))
+                self.assertIn("stderr: SSH diagnostic", str(raised.exception))
+                self.assertEqual(self.stderr.getvalue(), "SSH diagnostic\n")
+
+    def test_timeout_retains_stderr_and_reaps_child(self):
+        for overall_limit in (False, True):
+            with self.subTest(overall_limit=overall_limit):
+                self.stderr.seek(0)
+                self.stderr.truncate()
+                started = time.monotonic()
+                with self.assertRaisesRegex(p.TimedOut, "SSH timeout.*stderr: waiting"):
+                    self.run_transport("import os,sys,time; sys.stdin.read(); "
+                                       "os.write(2,b'waiting\\n'); time.sleep(30)",
+                                       timeout=30 if overall_limit else 1,
+                                       deadline=started + 1 if overall_limit else None)
+                self.assertEqual(self.stderr.getvalue(), "waiting\n")
+                self.assertLess(time.monotonic() - started, 5)
+
+    def test_total_deadline_blocks_dispatch(self):
+        with self.assertRaisesRegex(p.Blocked, "total deadline exhausted"):
+            self.run_transport("raise AssertionError('must not launch')", deadline=time.monotonic() - 1)
+        self.assertEqual(self.children, [])
+
+
 if __name__ == "__main__":
     unittest.main()
