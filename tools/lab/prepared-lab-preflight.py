@@ -28,7 +28,7 @@ REPO_KEYS = Path(__file__).resolve().parents[2] / "docs/lab/f3-known_hosts"
 LIMIT = 256 << 10
 VMS = Path(__file__).resolve().with_name("vms.sh")
 # Coupled deliberately: conditional pre-stop admission requires this exact guard.
-GUARDED_VMS_SHA256 = "b71df8d9696a515bc3bf86bcdbc3ffaaef7f14156665a024511b150889f4c498"
+GUARDED_VMS_SHA256 = "106dae1dd2730a729341e80b9c5204a1c51ce679ffcce3bd96b01f8d112a06e3"
 
 
 class Blocked(Exception):

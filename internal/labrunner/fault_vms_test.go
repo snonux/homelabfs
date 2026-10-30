@@ -76,7 +76,7 @@ func TestVMFaultHostAdmissionPrecedesLockAndRefusesUnsafeResources(t *testing.T)
 		t.Fatal("missing noncreating retained lock")
 	}
 	prefix := script[:index]
-	for _, guard := range []string{`test -d "$directory"`, `test ! -L "$directory"`, `test -f "$lock"`, `test ! -L "$lock"`, `test "$(stat -f '%u:%Lp:%l' "$lock")" = 0:600:1`, `test "$(stat -f '%u:%Lp' "$root")" = 0:700`} {
+	for _, guard := range []string{`test -d "$directory"`, `test ! -L "$directory"`, `test -f "$lock"`, `test ! -L "$lock"`, `test "$(stat -f '%u:%Op:%l' "$lock")" = 0:100600:1`, `test "$(stat -f '%u:%Op' "$root")" = 0:40700`} {
 		if !strings.Contains(prefix, guard) {
 			t.Fatalf("guard does not precede lock: %s", guard)
 		}
@@ -84,41 +84,85 @@ func TestVMFaultHostAdmissionPrecedesLockAndRefusesUnsafeResources(t *testing.T)
 	if strings.Index(script, `lease="$root/$target.vm-enrollment"`) < index {
 		t.Fatal("enrollment was not checked while holding lock")
 	}
-	// Execute only the read-only admission prefix with fake test/stat functions.
-	// The captured locked script, VM commands and actual filesystem paths are
-	// never evaluated. Every unsafe case must exit before the lock marker.
+	lockedStart := strings.Index(script, "<<'LOCKED_FAULT'\n")
+	lockedEnd := strings.Index(script, "# Fixed seven-line data format:")
+	if lockedStart < 0 || lockedEnd <= lockedStart {
+		t.Fatal("missing locked read-only admission")
+	}
+	lockedPrefix := script[lockedStart+len("<<'LOCKED_FAULT'\n") : lockedEnd]
+	// Execute only the read-only admissions before lock acquisition and inside
+	// the lock. VM commands, enrollment reads and real paths are never evaluated.
+	// FreeBSD %Op includes type/special bits; %Lp contains only the low 0777.
 	mocks := `
  test() {
   case "$1" in
    -d) case "$SCENARIO:$2" in root-missing:/var/tmp/hfs-run-run1) return 1;; esac; return 0;;
-   -f) case "$SCENARIO" in lock-missing) return 1;; esac; return 0;;
-   '!') case "$SCENARIO:$3" in lock-symlink:/var/tmp/hfs-run-run1/vm-launch.lock|ancestor-symlink:/var) return 1;; esac; return 0;;
+   -f) case "$SCENARIO:$2" in lock-missing:*/vm-launch.lock|lease-missing:*/hfs-test0.vm-enrollment) return 1;; esac; return 0;;
+   '!') case "$SCENARIO:$3" in lock-symlink:*/vm-launch.lock|lease-symlink:*/hfs-test0.vm-enrollment|ancestor-symlink:/var|tmp-symlink:/var/tmp) return 1;; esac; return 0;;
    *) command test "$@";;
   esac
  }
  stat() {
+  owner=0 links=1 identity=1:42
+  case "$3" in
+   /var/tmp) mode=41777;;
+   /var/tmp/hfs-run-run1) mode=40700;;
+   */vm-launch.lock|*/hfs-test0.vm-enrollment) mode=100600;;
+   *) mode=40755;;
+  esac
+  case "$SCENARIO:$3" in
+   root-unowned:/var/tmp/hfs-run-run1|tmp-unowned:/var/tmp|lock-unowned:*/vm-launch.lock|lease-unowned:*/hfs-test0.vm-enrollment) owner=1;;
+   ancestor-writable:/var) mode=40777;;
+   tmp-no-sticky:/var/tmp) mode=40777;;
+   tmp-setuid:/var/tmp) mode=45777;;
+   tmp-setgid:/var/tmp) mode=43777;;
+   root-open:/var/tmp/hfs-run-run1) mode=40755;;
+   root-setuid:/var/tmp/hfs-run-run1) mode=44700;;
+   root-setgid:/var/tmp/hfs-run-run1) mode=42700;;
+   root-sticky:/var/tmp/hfs-run-run1) mode=41700;;
+   lock-shared:*/vm-launch.lock|lease-shared:*/hfs-test0.vm-enrollment) links=2;;
+   lock-open:*/vm-launch.lock|lease-open:*/hfs-test0.vm-enrollment) mode=100644;;
+   lock-setuid:*/vm-launch.lock|lease-setuid:*/hfs-test0.vm-enrollment) mode=104600;;
+   lock-setgid:*/vm-launch.lock|lease-setgid:*/hfs-test0.vm-enrollment) mode=102600;;
+   lock-sticky:*/vm-launch.lock|lease-sticky:*/hfs-test0.vm-enrollment) mode=101600;;
+   lock-replaced:*/vm-launch.lock) identity=1:43;;
+  esac
+  low=$(printf '%o' "$((0$mode & 0777))")
   case "$2" in
-   '%u') case "$SCENARIO:$3" in root-unowned:/var/tmp/hfs-run-run1) printf '1';; *) printf '0';; esac;;
-   '%Lp') case "$SCENARIO" in ancestor-writable) printf '777';; *) printf '755';; esac;;
-   '%u:%Lp') case "$3" in /var/tmp) printf '0:1777';; *) printf '0:700';; esac;;
-   '%u:%Lp:%l') case "$SCENARIO" in lock-shared) printf '0:600:2';; lock-open) printf '0:644:1';; *) printf '0:600:1';; esac;;
-   '%d:%i') printf '1:42';;
+   '%u') printf '%s' "$owner";;
+   '%Lp') printf '%s' "$low";;
+   '%u:%Lp') printf '%s:%s' "$owner" "$low";;
+   '%u:%Lp:%l') printf '%s:%s:%s' "$owner" "$low" "$links";;
+   '%u:%Op') printf '%s:%s' "$owner" "$mode";;
+   '%u:%Op:%l') printf '%s:%s:%s' "$owner" "$mode" "$links";;
+   '%d:%i') printf '%s' "$identity";;
+   *) return 1;;
   esac
  }
  `
-	for _, scenario := range []string{"valid", "root-missing", "root-unowned", "ancestor-writable", "ancestor-symlink", "lock-missing", "lock-symlink", "lock-shared", "lock-open"} {
-		t.Run(scenario, func(t *testing.T) {
-			check := exec.Command("/bin/sh", "-s", "--", "run1", "hfs-test0", "clean", strings.Repeat("a", 64))
-			check.Env = []string{"SCENARIO=" + scenario, "PATH=/nonexistent"}
-			check.Stdin = strings.NewReader(mocks + "\n" + prefix + "\nprintf 'lock-reached'\n")
-			output, err := check.CombinedOutput()
-			if scenario == "valid" {
-				if err != nil || string(output) != "lock-reached" {
-					t.Fatalf("valid admission failed: %v %s", err, output)
+	scenarios := []string{"valid", "root-missing", "root-unowned", "root-open", "root-setuid", "root-setgid", "root-sticky", "ancestor-writable", "ancestor-symlink", "tmp-no-sticky", "tmp-setuid", "tmp-setgid", "tmp-unowned", "tmp-symlink", "lock-missing", "lock-symlink", "lock-unowned", "lock-shared", "lock-open", "lock-setuid", "lock-setgid", "lock-sticky"}
+	for _, phase := range []struct {
+		name, script string
+		locked       bool
+	}{{"before-lock", prefix, false}, {"inside-lock", lockedPrefix, true}} {
+		phaseScenarios := append([]string(nil), scenarios...)
+		if phase.locked {
+			phaseScenarios = append(phaseScenarios, "lock-replaced", "lease-missing", "lease-symlink", "lease-unowned", "lease-shared", "lease-open", "lease-setuid", "lease-setgid", "lease-sticky")
+		}
+		for _, scenario := range phaseScenarios {
+			t.Run(phase.name+"/"+scenario, func(t *testing.T) {
+				check := exec.Command("/bin/sh", "-s", "--", "run1", "hfs-test0", "clean", strings.Repeat("a", 64), "1:42")
+				check.Env = []string{"SCENARIO=" + scenario, "PATH=/nonexistent"}
+				check.Stdin = strings.NewReader(mocks + "\n" + phase.script + "\nprintf 'admitted'\n")
+				output, err := check.CombinedOutput()
+				if scenario == "valid" {
+					if err != nil || string(output) != "admitted" {
+						t.Fatalf("valid admission failed: %v %s", err, output)
+					}
+				} else if err == nil || strings.Contains(string(output), "admitted") {
+					t.Fatalf("unsafe admission passed: %v %s", err, output)
 				}
-			} else if err == nil || strings.Contains(string(output), "lock-reached") {
-				t.Fatalf("unsafe admission reached lock: %v %s", err, output)
-			}
-		})
+			})
+		}
 	}
 }

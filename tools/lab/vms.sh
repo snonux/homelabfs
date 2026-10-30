@@ -31,16 +31,17 @@ for directory in / /var /var/tmp "$root"; do
 done
 # /var/tmp is the root-owned system sticky temporary parent. The run root is
 # private; only the approved exclusive administrator may alter it in this window.
+# FreeBSD %Op preserves special mode bits; %Lp reports only the low permissions.
 for directory in / /var; do
     permissions=$(stat -f '%Lp' "$directory")
     test "$((0$permissions & 0022))" -eq 0
 done
-test "$(stat -f '%u:%Lp' /var/tmp)" = 0:1777
-test "$(stat -f '%u:%Lp' "$root")" = 0:700
+test "$(stat -f '%u:%Op' /var/tmp)" = 0:41777
+test "$(stat -f '%u:%Op' "$root")" = 0:40700
 lock="$root/vm-launch.lock"
 test -f "$lock"
 test ! -L "$lock"
-test "$(stat -f '%u:%Lp:%l' "$lock")" = 0:600:1
+test "$(stat -f '%u:%Op:%l' "$lock")" = 0:100600:1
 lock_identity=$(stat -f '%d:%i' "$lock")
 # -n refuses a missing file; -k preserves this setup-owned lock after use.
 # No run directory or lock is created by the fault path.
@@ -60,16 +61,16 @@ for directory in / /var; do
     permissions=$(stat -f '%Lp' "$directory")
     test "$((0$permissions & 0022))" -eq 0
 done
-test "$(stat -f '%u:%Lp' /var/tmp)" = 0:1777
-test "$(stat -f '%u:%Lp' "$root")" = 0:700
+test "$(stat -f '%u:%Op' /var/tmp)" = 0:41777
+test "$(stat -f '%u:%Op' "$root")" = 0:40700
 test -f "$lock"
 test ! -L "$lock"
-test "$(stat -f '%u:%Lp:%l' "$lock")" = 0:600:1
+test "$(stat -f '%u:%Op:%l' "$lock")" = 0:100600:1
 test "$(stat -f '%d:%i' "$lock")" = "$lock_identity"
 lease="$root/$target.vm-enrollment"
 test -f "$lease"
 test ! -L "$lease"
-test "$(stat -f '%u:%Lp:%l' "$lease")" = 0:600:1
+test "$(stat -f '%u:%Op:%l' "$lease")" = 0:100600:1
 # Fixed seven-line data format: run, target, plan hash, UUID, config digest,
 # launch PID, exact ps lstart. Additional/missing lines fail closed.
 test "$(wc -l < "$lease" | tr -d ' ')" = 7
