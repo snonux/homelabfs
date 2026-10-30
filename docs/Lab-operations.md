@@ -187,3 +187,21 @@ runner then rejected the old image snapshot's zero-written check before any
 VM lifecycle or native workload step. The run closed as a completed failure
 with collection and inapplicable teardown skipped. Follow-up `dx3` refreshes
 the image evidence against the post-boot state; no identity check was relaxed.
+
+The [n4 attempt](lab/results/20261030-n4/) passed fresh admission and cleanly
+stopped Rocky. After asynchronous guest startup, readiness rejected the normal
+`Bootloader` inventory state before native setup or workload execution. Normal
+`vm stop` ended the guest bootloaders, and Rocky was started again. Its original
+restoration readiness check lost SSH before establishing a completed host
+inventory; the transport cause is unknown because its diagnostic stderr was
+not retained. Tasks `ex3` and `fx3` track boot readiness and reconciliation.
+
+Fresh pinned observations at 08:27 UTC established Rocky PID 17368 running,
+all four FreeBSD VMs stopped, zero host swap, working Rocky root SSH with the
+expected kernel, and no outstanding readiness commands. Explicit reconciliation
+recorded the original restoration check as failed. The runner retained
+`complete=false`, `success=false`: its single restoration attempt was exhausted.
+No readiness or workload was replayed, and no pass was inferred from the later
+observations. The original ambiguous report and final failed report are both
+preserved. A replacement native run requires refreshed image evidence, the
+readiness fix and fresh approval of its exact plan.

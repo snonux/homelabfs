@@ -1,0 +1,9 @@
+{
+  "plan_hash": "b4503fabe5cb6670b0537fec2c33e4f9be7bc449a74d65dcab6f9b67b23b48f1",
+  "step_id": "rocky-restoration-readiness",
+  "outcome": "failed",
+  "operator": "Paul via Codex observing approved run",
+  "observed_at": "2026-10-30T08:29:12Z",
+  "evidence": "Original execute session58355 terminal16a02f exit1 and original restoration log show an uncertain SSH transport/signal failure, without a completed initial host inventory marker. No native setup/test ran. Fresh pinned observations n4-restoration-observation.json at08:27:22/24UTC (actual terminal94e216 exit0) show Rocky PID17368 Running, all four FreeBSD VMs Stopped, zero swap, no MD or run mounts, and later working Rocky root SSH with expected kernel/UID. Host and guest process inventories show no original vm-list/nc/uname/id action apart from observation shells; n4-local-process-observation.json terminal1bf127 exit0 confirms no controller/readiness/SSH children. All original commands were bounded read-only inventory/TCP/identity with no persistent/forked workload. Combined evidence establishes no outstanding action; later SSH success does not establish original step success. Original ambiguous reports/log and all30artifactbytes preserved. Mark original step failed only; do not rerun it or workload. Underlying transport cause is unknown because original stderr was not retained.",
+  "no_outstanding_action": true
+}

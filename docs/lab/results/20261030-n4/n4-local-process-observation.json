@@ -1,0 +1,5 @@
+{
+  "observed_at": "2026-10-30T08:28:21.405951+00:00",
+  "matching_outstanding_local_children": [],
+  "scope": "readiness CLI, n4 controller, exact SSH identity and nc command arguments; local absence alone is not remote completion proof"
+}
