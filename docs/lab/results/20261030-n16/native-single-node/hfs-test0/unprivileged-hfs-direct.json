@@ -1,0 +1,115 @@
+{
+  "fixture": {
+    "behavior_sha256": "e40996e8829f2be78492f9cd3fe55ba4464fa73326a0c13f1fd300f29126758d",
+    "client_gid": "20001",
+    "client_groups": "[20002]",
+    "client_uid": "20001",
+    "control_root": "/var/tmp/hfs-run-20261030-n16/c",
+    "daemon_uid": "0",
+    "data_root": "/var/tmp/hfs-run-20261030-n16/d",
+    "journal_root": "/var/tmp/hfs-run-20261030-n16/j",
+    "reservations": "/var/tmp/hfs-run-20261030-n16/d/volume/reservations",
+    "role": "unprivileged",
+    "source": "/var/tmp/hfs-run-20261030-n16/j/volume/source",
+    "workspace_data": "/var/tmp/hfs-run-20261030-n16/d/volume/workspaces/a8479dce-55c4-41ce-a8e0-5cad3e509583/data",
+    "workspace_journal": "/var/tmp/hfs-run-20261030-n16/j/volume/workspaces/a8479dce-55c4-41ce-a8e0-5cad3e509583/journal",
+    "workspace_progress": "/var/tmp/hfs-run-20261030-n16/c/workspaces/a8479dce-55c4-41ce-a8e0-5cad3e509583/progress"
+  },
+  "target": "/var/tmp/hfs-run-20261030-n16/m",
+  "profile": "hfs-direct",
+  "expected_identity": "homelabfs-validation-v1\n362ab045-06d6-4ce2-9ccf-75c29459f3d6\na8479dce-55c4-41ce-a8e0-5cad3e509583\n17ff186a-f9d2-0797-1081-0a3d5dbbd238\n",
+  "declared_capabilities": {
+    "arbitrary_credentials": false,
+    "default_permissions": true,
+    "direct_io": true,
+    "directory_sync": true,
+    "file_sync": true,
+    "local_locks": true,
+    "mmap": false,
+    "normal_publication": false,
+    "writeback": false
+  },
+  "platform": "freebsd/amd64",
+  "run_directory": "/var/tmp/hfs-run-20261030-n16/m/hfs-behavior-4a32414650434f5647545333",
+  "started": "2026-10-30T16:19:41.759133311Z",
+  "scope": "single-node local syscall semantics; no power-loss, replication, failover, arbitrary-client or native FreeBSD acceptance claim",
+  "results": [
+    {
+      "name": "bind",
+      "family": "infrastructure",
+      "status": "pass",
+      "seconds": 0.861783883
+    },
+    {
+      "name": "create-exclusive-rename-replace-hardlink-unlink-open-truncate",
+      "family": "P01",
+      "status": "pass",
+      "seconds": 3.354141624
+    },
+    {
+      "name": "umask-chmod-chown-setgid",
+      "family": "P02",
+      "status": "pass",
+      "seconds": 2.584851444
+    },
+    {
+      "name": "sync-open-fsync-fdatasync-directory-sync",
+      "family": "P04",
+      "status": "pass",
+      "seconds": 0.832916988
+    },
+    {
+      "name": "concurrent-append",
+      "family": "P01",
+      "status": "fail",
+      "detail": "append helper 0 receive: helper response: read |0: i/o timeout",
+      "seconds": 8.003309078
+    },
+    {
+      "name": "mmap-msync-readback",
+      "family": "P04",
+      "status": "skip",
+      "detail": "direct profile rejects mmap; required mmap runs separately on hfs-buffered",
+      "seconds": 0
+    },
+    {
+      "name": "multiuser-groups-sticky-permission-cache",
+      "family": "P02",
+      "status": "skip",
+      "detail": "root-only synthetic multiuser coverage requires root hfs-buffered companion",
+      "seconds": 0
+    },
+    {
+      "name": "process-fcntl-flock-contention-exit",
+      "family": "P03",
+      "status": "fail",
+      "detail": "open-descriptors helper 0 open-lock: helper response: read |0: i/o timeout",
+      "seconds": 0.000002221
+    },
+    {
+      "name": "stop-owned-helpers",
+      "family": "infrastructure",
+      "status": "pass",
+      "seconds": 0
+    },
+    {
+      "name": "normal-unmount",
+      "family": "lifecycle",
+      "status": "pass",
+      "seconds": 2.7183663989999998
+    },
+    {
+      "name": "mount-loss-no-fallback",
+      "family": "lifecycle",
+      "status": "pass",
+      "seconds": 0.000174503
+    },
+    {
+      "name": "fixture-lifecycle",
+      "family": "infrastructure",
+      "status": "fail",
+      "detail": "portable behavior failed; preserve roots and evidence",
+      "seconds": 0
+    }
+  ]
+}

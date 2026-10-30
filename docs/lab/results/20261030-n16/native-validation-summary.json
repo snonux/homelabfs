@@ -1,0 +1,69 @@
+{
+  "native_behavior_calls_completed": 3,
+  "remaining_calls_not_run": 9,
+  "full_native_gate_pass": false,
+  "process_exit_fix_relevant_root_profiles": "passed",
+  "append_eight_second_gate": "failed under unprivileged direct profile",
+  "fixtures": {
+    "root-hfs-direct": {
+      "pass": 13,
+      "fail": 0,
+      "skip": 2,
+      "relevant_cases": [
+        {
+          "name": "concurrent-append",
+          "family": "P01",
+          "status": "pass",
+          "seconds": 2.728568004
+        },
+        {
+          "name": "process-fcntl-flock-contention-exit",
+          "family": "P03",
+          "status": "pass",
+          "seconds": 0.308704338
+        }
+      ]
+    },
+    "root-hfs-buffered": {
+      "pass": 14,
+      "fail": 0,
+      "skip": 1,
+      "relevant_cases": [
+        {
+          "name": "concurrent-append",
+          "family": "P01",
+          "status": "skip",
+          "detail": "buffered profile rejects O_APPEND before effects; required append runs separately on hfs-direct",
+          "seconds": 0
+        },
+        {
+          "name": "process-fcntl-flock-contention-exit",
+          "family": "P03",
+          "status": "pass",
+          "seconds": 0.554448879
+        }
+      ]
+    },
+    "unprivileged-hfs-direct": {
+      "pass": 7,
+      "fail": 3,
+      "skip": 2,
+      "relevant_cases": [
+        {
+          "name": "concurrent-append",
+          "family": "P01",
+          "status": "fail",
+          "detail": "append helper 0 receive: helper response: read |0: i/o timeout",
+          "seconds": 8.003309078
+        },
+        {
+          "name": "process-fcntl-flock-contention-exit",
+          "family": "P03",
+          "status": "fail",
+          "detail": "open-descriptors helper 0 open-lock: helper response: read |0: i/o timeout",
+          "seconds": 2.221e-06
+        }
+      ]
+    }
+  }
+}

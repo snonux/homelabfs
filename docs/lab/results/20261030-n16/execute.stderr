@@ -1,0 +1,3 @@
+run 20261030-n16: complete=true success=false; 12 declared resources may remain; targets are reusable and never deleted
+hfs-lab: exit status 10
+run unsuccessful or incomplete

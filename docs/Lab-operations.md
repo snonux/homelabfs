@@ -334,3 +334,15 @@ restoration and restoration readiness passed, closing `complete=true`,
 `success=false`. Task `uy3` investigates the repeated connection failures before
 another native attempt. Fresh post-shutdown image attestations are required;
 process-exit and unprivileged append native validation remain pending.
+
+The standing-authorized [n16 attempt](lab/results/20261030-n16/) passed both
+root fixtures on hfs-test0, including process-lock contention and acquisition
+after helper exit. This validates `sy3`'s explicit owner-retirement fix for the
+previous root failure. Unprivileged/direct append still hit the unchanged
+eight-second bound; its later lock error reused the failed helper client.
+The remaining nine fixtures did not run. Task `ky3` continues latency diagnosis;
+`yq3`'s complete native gate remains pending. All original collection, normal
+cleanup, guest shutdown and Rocky restoration/readiness steps passed, with
+`complete=true`, `success=false`. Final pinned inventory confirmed Rocky
+PID 63146 running and all four FreeBSD VMs stopped. No SSH failure occurred;
+passive transport observation did not resolve `uy3`'s unknown cause.
