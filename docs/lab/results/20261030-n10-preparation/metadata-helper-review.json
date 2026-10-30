@@ -1,0 +1,104 @@
+{
+  "status": "PROPOSAL ONLY; ROOT REVIEW/RELEASE REQUIRED; NOT EXECUTED",
+  "recorded_at": "2026-10-30T13:10:05.664213+00:00",
+  "run_id": "20261030-n10",
+  "files": {
+    "r12-inspect-native.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r12-inspect-native.py",
+      "sha256": "ce960e059b1c0c9e19a02996d7e9f1adf2bebbcbe376412d8edf368633528f4d",
+      "baseline_sha256": "6225513c4d917fb139e3da5b6874b055c28eb5ba9339a8b01f50e73ddd893634"
+    },
+    "r12-inspect-freebsd-zfs.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r12-inspect-freebsd-zfs.py",
+      "sha256": "c4594a6b54dc0fecaee19eb272bcde5753e8cb7daa6f2bd192e84e71770a6342",
+      "baseline_sha256": "6ef568391d86b7b552c00c44920d2b43489596e663ba101f84070f01cae4ed8e"
+    },
+    "r12-cleanup.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r12-cleanup.py",
+      "sha256": "c58232f2bf1b796f73e978af7e1a564d660eb3acf89170f77e9034f1c1cbcce3",
+      "baseline_sha256": "5e1f7ece72785d89de514921cba143c96fa232015fa853bc20c1c95e9870b285"
+    },
+    "r12-before-execution-guard.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r12-before-execution-guard.py",
+      "sha256": "e679ec4d1450e08a0b9d7f9f46bcfb748ba60f027e31a3522432320a31514391",
+      "baseline_sha256": "2a4781b3f19ae111fb04c83415d5d58008baffc9f69fbbf640b535a1785bfe58"
+    },
+    "r12-harvest-receipts.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r12-harvest-receipts.py",
+      "sha256": "9c86b111bb8bcb0a07906faabbae57f8a1253470849edd2bac7c784fbba0bcd1",
+      "baseline_sha256": "3001f1a6e240d1128092105131188d4c053be796a3e9fe8465672c3da810eef7"
+    },
+    "r12-collect-metadata.py": {
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r12-collect-metadata.py",
+      "sha256": "084c2ec0344fc3eab40d27d8d6379b1e47be16d5afac37e9f72856778e1ddc4e",
+      "baseline_sha256": "5b0baea7b82c51a1e153acc12f8b26dfd89b96c606be792a97ae4c99c55455f9"
+    }
+  },
+  "constant_only_ast_audit": {
+    "r12-inspect-native.py": "AST identical after normalizing literal constants; exact unified diff retained; no helper execution",
+    "r12-inspect-freebsd-zfs.py": "AST identical after normalizing literal constants; exact unified diff retained; no helper execution",
+    "r12-cleanup.py": "AST identical after normalizing literal constants; exact unified diff retained; no helper execution",
+    "r12-before-execution-guard.py": "AST identical after normalizing literal constants; exact unified diff retained; no helper execution",
+    "r12-harvest-receipts.py": "AST identical after normalizing literal constants; exact unified diff retained; no helper execution",
+    "r12-collect-metadata.py": "AST identical after normalizing literal constants; exact unified diff retained; no helper execution"
+  },
+  "diff": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r12-proposal-vs-r11.diff",
+  "candidate_sources": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r12-source-choices.UNREADY.json",
+  "source_inventory_receipt": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r12-source-inventory-20261030-n10-receipt.json",
+  "new_remote_root": "/var/tmp/hfs-image-inspect-yq3-20261030-n10-r12",
+  "new_controller_destination": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n10-r12",
+  "collector_deadlines_seconds": {
+    "native_remote": 240,
+    "native_transport": 270,
+    "dev_remote": 240,
+    "dev_transport": 270,
+    "normal_cleanup_transport": 60
+  },
+  "metadata_database_cap_each": 33554432,
+  "controller_database_cap": 134217728,
+  "host_metadata_cap": 167772160,
+  "retention_hours": 168,
+  "proposed_command": [
+    "python3",
+    "-B",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r12-collect-metadata.py"
+  ],
+  "executed": false,
+  "scope": "Private metadata preparation only; ROOT executes every remote command after exact review/release; no native canonical plan/approval/test. Actual post-N9 source inventory is the sole source for new GUID/tag constants.",
+  "baseline_review_sha256": "9504488ec87d99b948b2a337fbfb4737388832f799707a7c0864d8e92f87a47a",
+  "source_inventory_sha256": "42d90ee87d426b0d1b56d80c3bff931df80e38557cbb1c12bf694935b1754f1d",
+  "source_selected": {
+    "tag": "zrepl_20261030_130854_000",
+    "sources": [
+      {
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test0@zrepl_20261030_130854_000",
+        "guid": "10888306007106071594",
+        "creation": 1793365734,
+        "dataset": "zroot/bhyve/homelabfs-lab/hfs-test0",
+        "written_bytes": 0
+      },
+      {
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test1@zrepl_20261030_130854_000",
+        "guid": "1095444452629163497",
+        "creation": 1793365734,
+        "dataset": "zroot/bhyve/homelabfs-lab/hfs-test1",
+        "written_bytes": 0
+      },
+      {
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test2@zrepl_20261030_130854_000",
+        "guid": "1956694619290180078",
+        "creation": 1793365734,
+        "dataset": "zroot/bhyve/homelabfs-lab/hfs-test2",
+        "written_bytes": 0
+      },
+      {
+        "snapshot": "zroot/bhyve/freebsd@zrepl_20261030_130854_000",
+        "guid": "9964536509794415212",
+        "creation": 1793365734,
+        "dataset": "zroot/bhyve/freebsd",
+        "written_bytes": 0
+      }
+    ]
+  },
+  "n9_actual_lab_stop_finished": "2026-10-30T14:59:33.384134734+02:00"
+}

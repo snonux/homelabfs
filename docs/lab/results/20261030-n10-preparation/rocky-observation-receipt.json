@@ -1,0 +1,11 @@
+{
+  "started_at": "2026-10-30T13:03:33.436101+00:00",
+  "finished_at": "2026-10-30T13:03:35.443395+00:00",
+  "elapsed_seconds": 2.007305818000532,
+  "returncode": 0,
+  "proposal_sha256": "d3e8c761843f282660195240d3d13efdc164066bbcb2f631a66c74190f8a0b69",
+  "stdout_bytes": 39053,
+  "stdout_sha256": "d3dd733c08a6add3ee77475abf38f653ff7af494fd91e492db27445342b07d63",
+  "stderr_bytes": 222,
+  "stderr_sha256": "048e2ba89ae430962e02f5341cf60c694fb7e131cb417790075a56b32ca09992"
+}
