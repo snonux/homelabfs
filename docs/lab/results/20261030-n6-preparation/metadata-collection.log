@@ -1,0 +1,5 @@
+freebsd kernel=15.0-RELEASE-p5 packages=sha256:247ccbbb465faa1a9be2c53cbd17466ec841a6e513c2331c005100e1db3659f8
+hfs-test0 kernel=15.1-RELEASE packages=sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb
+hfs-test1 kernel=15.1-RELEASE packages=sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb
+hfs-test2 kernel=15.1-RELEASE packages=sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb
+Four fresh immutable source images re-inspected; owned resources normally cleaned; metadata retained168h

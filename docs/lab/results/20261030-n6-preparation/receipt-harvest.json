@@ -1,0 +1,9 @@
+{
+  "started_at": "2026-10-30T09:44:22.498253+00:00",
+  "finished_at": "2026-10-30T09:44:25.435708+00:00",
+  "returncode": 0,
+  "stdout_bytes": 32451,
+  "stderr_bytes": 0,
+  "helper_sha256": "9505d40de89c01cbf5f5953d662f82585198589d88e8973c27e842a2a84b40d8",
+  "scope": "Read exactly fixed20 metadata/ownership JSON receipts within new private root and du allocated bytes; no source/image/guest operations; no writes"
+}

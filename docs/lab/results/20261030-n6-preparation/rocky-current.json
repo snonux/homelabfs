@@ -1,0 +1,8 @@
+{
+  "observed_at": "2026-10-30T09:39:45.956749+00:00",
+  "kernel": "5.14.0-687.61.1.el9_8.x86_64",
+  "uid": 0,
+  "package_rows": 1109,
+  "package_manifest_sha256": "4b4382416e417bea3b754c99c492e86b72257b67820aa751181420d8539533b7",
+  "scope": "fresh pinned read-only Rocky observation, not a native test"
+}
