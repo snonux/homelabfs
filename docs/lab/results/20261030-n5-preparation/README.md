@@ -33,3 +33,21 @@ These files preserve actual preparation receipts and metadata. A source snapshot
 may later be pruned or changed; execution must still fail closed on drift.
 Task `yq3` prepares the replacement plan after the readiness/diagnostic fixes.
 Actual native execution requires fresh approval of that exact plan.
+
+## Replacement plan
+
+The finalized [plan](reviewed-plan.json) has canonical hash
+`fe727a549b3ddde47e13657ba566babc01be54063daadc5be06f81e86ae509fc`.
+It was created at 09:07:47 UTC and expires 2026-10-31 at the same time. All thirty
+artifact hashes, policy/readiness/native contexts, collection applicability,
+phase deadlines and unchanged scope/budgets passed offline verification. The
+actual read-only planning survey passed at 09:07:17 UTC and matches the final
+targets/budget/policy subset. Its earlier wrapper assertion failed locally
+before transport creation; that log is preserved separately.
+
+The [review](review.txt) describes the clean Rocky downtime, twelve bounded
+synthetic calls, normal cleanup/restoration, 87-minute maximum, 2.25 GiB disk
+budget and 48 MiB logical I/O limit. It includes reviewed fixes `ex3` and `gx3`.
+No n5 approval, controller state, execution evidence or native test was created.
+Keep f3 running: a host restart or snapshot pruning/drift can invalidate these
+source pins before plan expiry.

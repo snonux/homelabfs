@@ -1,0 +1,80 @@
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+{
+  "started_at": "2026-10-30T09:07:05.393181+00:00",
+  "finished_at": "2026-10-30T09:07:17.320951+00:00",
+  "scope": "planning-only bounded read-only live admission survey; not a Stage1 run or native acceptance",
+  "native_driver_or_lifecycle_or_workload_executed": false,
+  "preflight_sha256": "641adcc907fcd5429cc34003dcf81e6e7dce3abac9ca51907d66f107146b13a9",
+  "input_subset_sha256": "ae9e3039cf22504c06bd52f0b2ab5ef293bcb8ed7fff0b285ceb800c82abc32e",
+  "result": {
+    "contract": "prepared-lab-preflight-v1",
+    "run_id": "20261030-n5",
+    "status": "admitted",
+    "inventory": {
+      "freebsd": {
+        "state": "Stopped",
+        "cpus": 4,
+        "memory": 1073741824
+      },
+      "rocky": {
+        "state": "Running",
+        "cpus": 4,
+        "memory": 12884901888
+      },
+      "hfs-test0": {
+        "state": "Stopped",
+        "cpus": 2,
+        "memory": 2147483648
+      },
+      "hfs-test1": {
+        "state": "Stopped",
+        "cpus": 2,
+        "memory": 2147483648
+      },
+      "hfs-test2": {
+        "state": "Stopped",
+        "cpus": 2,
+        "memory": 2147483648
+      }
+    },
+    "active_sessions": 0,
+    "host_disk_available_bytes": 122304471040,
+    "version_evidence": {
+      "hfs-test0": {
+        "kind": "offline-inspected-zfs-snapshot-v1",
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test0@zrepl_20261030_083853_000",
+        "guid": "15144954143660049895",
+        "kernel_source": "reviewed offline image inspection; not a live guest kernel observation"
+      },
+      "hfs-test1": {
+        "kind": "offline-inspected-zfs-snapshot-v1",
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test1@zrepl_20261030_083853_000",
+        "guid": "6929390923319324709",
+        "kernel_source": "reviewed offline image inspection; not a live guest kernel observation"
+      },
+      "hfs-test2": {
+        "kind": "offline-inspected-zfs-snapshot-v1",
+        "snapshot": "zroot/bhyve/homelabfs-lab/hfs-test2@zrepl_20261030_083853_000",
+        "guid": "12876710294198921247",
+        "kernel_source": "reviewed offline image inspection; not a live guest kernel observation"
+      },
+      "rocky": {
+        "kind": "live-pinned-ssh",
+        "kernel": "5.14.0-687.61.1.el9_8.x86_64"
+      },
+      "freebsd": {
+        "kind": "offline-inspected-zfs-snapshot-v1",
+        "snapshot": "zroot/bhyve/freebsd@zrepl_20261030_083853_000",
+        "guid": "12511208780143335477",
+        "kernel_source": "reviewed offline image inspection; not a live guest kernel observation"
+      }
+    },
+    "memory_admission": "physical/current-pressure preflight; actual free+inactive checked again by pinned start-lab helper",
+    "scope": "read-only admission; not a native test pass"
+  }
+}

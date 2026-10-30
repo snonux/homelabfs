@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/planning-survey-20261030-n5-r7.py", line 31, in <module>
+    assert preflight.key_present(guest_keys, target['address'])
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

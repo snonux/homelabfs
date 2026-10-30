@@ -1,0 +1,68 @@
+Native replacement run 20261030-n5 / R7
+Canonical plan hash: fe727a549b3ddde47e13657ba566babc01be54063daadc5be06f81e86ae509fc
+Created 2026-10-30T09:07:47Z; expires 2026-10-31T09:07:47Z.
+
+PENDING Paul approval; no approval/state/execution-evidence file exists.
+This is a new run, not resume/retry authority for failed n4. The n4 report
+remains complete=false/success=false after explicit failed reconciliation;
+its original history is preserved and no remote action remains outstanding.
+Fresh post-n4 source inspection and live planning survey are separate evidence.
+
+Scope: Stage1 native-single-node-v1, three existing FreeBSD guests on f3;
+FUSE inside each guest on its own ZFS, synthetic disposable resources only.
+Twelve sequential behavior calls: root/unprivileged x direct/buffered x3.
+Seed0. No distributed replication/failover, 9p, production or sink operations.
+Targets, selections, budgets, disruption and step schedule match n4 except
+new run paths. Initial Rocky Running, all four FreeBSD VMs Stopped.
+
+Required approved disruption: clean stop Rocky, guarded start three native
+VMs, wait for exact running inventory and pinned root SSH/kernel, setup/test,
+collect, normal owning-daemon unmount/cleanup, normal lab stop, Rocky start
+and pinned root SSH/kernel restoration proof. Preserve failures. No forced
+Rocky stop, forced unmount, host reboot or power cycle.
+
+Maximum total5220s/87min = runtime4260 + cleanup600 + restoration360;
+first preflight240s is read-only; following maximum disruption4980s/83min.
+Diskbudget2304MiB, declaredcaps2214592512bytes, logicalIO48MiB,
+evidence64MiB, retention168h; nativeguest6GiB/6CPU + hostheadroom4GiB.
+Run root /var/tmp/hfs-run-20261030-n5; datasets only
+hfsdataN/{data,journal,control}/hfs-run-20261030-n5.
+State /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/controller-state-20261030-n5
+Evidence /home/paul/git/homelabfs/docs/lab/results/20261030-n5
+Every step max_attempts1; no uncertain retry to success. Unknown completion
+or failed cleanup blocks dependent restoration; preserve resources.
+
+New reviewed readiness behavior: ex3 commit e1c606b permits only expected
+Stopped/Bootloader(PID) during bounded boot polling, exclusions strictly
+Stopped each poll, all desired guests Running before probing and strict
+final inventory. gx3 commit744b1f3 retains bounded command context/status/
+stdout/stderr without changing parsing, 8/170s deadlines, pins or uncertainty.
+Readiness SHA f1fe17ed89829af3c8ddb5ce20f0c0f4642514b458672a52ea54f81ddcdcad5d.
+Both fixes passed fresh R1 reviews; gx3 local25tests passed after correcting
+one test-clock fixture failure. No full Go or native acceptance implied.
+
+Native binaries remain actual clean127ecc9 FreeBSDamd64 CGO0 builds; cmd/internal
+source diff since build is empty. They are not relabeled as newer HEAD builds.
+Metadata refresh hx3 commit66eaad2 passed fresh independent R1 review.
+Source tag zrepl_20261030_083853_000, four GUIDs in accepted-sources/receipts;
+actual fresh reads, exact-owned normal cleanup and written0 proof. No holds
+or retention changes. f3 restart or source pruning/drift invalidates admission.
+
+Actual planning-only survey session97277 terminalf1d555 exit0 admitted
+09:07:17UTC. Exact targets/budget/policy subset SHA
+ ae9e3039cf22504c06bd52f0b2ab5ef293bcb8ed7fff0b285ceb800c82abc32e
+matches final inputs. Survey ran only bounded read-only run_checks/Transport;
+no hfs-lab execute, native Driver, VM action, workload or controller-state write.
+Offline finalizer e41f27 exit0; actual Go plan ae4af9 exit0; final offline
+validator e86feb exit0 plus root independent30hash/canonical/scope comparison
+1a074c exit0. All30 artifact bytes match, collection gate exact setup/test,
+all phase sums/resource caps verified. State/evidence/approval paths absent.
+
+The actual first survey wrapper failed a local unnecessary stopped-dev SSH-pin
+assertion before creating Transport. Its log is preserved. Wrapper corrected
+to exact existing preflight pin requirements; no host/guest key changed.
+Only the later successful survey is admission evidence. Original n4 transport
+cause remains unknown; the new diagnostics cannot recover discarded streams.
+
+User continuation during preparation does not approve this then-unknown hash.
+Actual native run still requires fresh explicit approval of this exact plan.

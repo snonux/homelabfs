@@ -1,0 +1,189 @@
+{
+  "actual_Go_plan_binary": "/home/paul/tmp/codex/hfs-cx3-gates-20261030-r1/hfs-lab",
+  "actual_Go_plan_exit": 0,
+  "actual_Go_plan_terminal": "ae4af9",
+  "finalizer_terminal": "e41f27",
+  "plan_hash": "fe727a549b3ddde47e13657ba566babc01be54063daadc5be06f81e86ae509fc",
+  "created": "2026-10-30T09:07:47Z",
+  "expires": "2026-10-31T09:07:47Z",
+  "offline_verifier_exit": 0,
+  "offline_verifier_terminal": "e86feb",
+  "all_30_artifact_SHA_match": true,
+  "canonical_hash_equal_Go": true,
+  "policy_readiness_and_native_outer_contexts": "PASS offline only; no Transport or Driver executed",
+  "planning_survey_actual_session": 97277,
+  "planning_survey_actual_terminal": "f1d555",
+  "planning_survey_exit": 0,
+  "planning_survey_scope": "Actual root planning-only read-only live admission, no lifecycle/native/workload/controller state/evidence",
+  "survey_exact_subset_sha256": "ae9e3039cf22504c06bd52f0b2ab5ef293bcb8ed7fff0b285ceb800c82abc32e",
+  "targets_budget_disruptions_tests_resources_steps_equal_n4_except_new_run_paths": true,
+  "runtime_binary_build_revision": "127ecc9cc612f6696c9710e6586a3761d57cac71",
+  "runtime_source_unchanged_since_build": true,
+  "readiness_fix_commit": "e1c606b",
+  "diagnostics_fix_commit": "744b1f3",
+  "metadata_refresh_commit": "66eaad2",
+  "state_evidence_approval_created": false,
+  "deadline_sums": {
+    "runtime": 4260,
+    "cleanup": 600,
+    "restoration": 360
+  },
+  "total_seconds": 5220,
+  "resource_cap_bytes": 2214592512,
+  "artifact_checks": [
+    {
+      "id": "homelabfs",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-binaries-20261030-n2-r4/homelabfs",
+      "sha256": "dc21c188805608c0a7cbbb316f459cba619529379eebc0ca35a2f7116110b749"
+    },
+    {
+      "id": "hfs-behavior",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-binaries-20261030-n2-r4/hfs-behavior",
+      "sha256": "9271b1e819880e7cbb63674e8cc79a35980ee12a92de0fce8269f4156705c4f5"
+    },
+    {
+      "id": "native-entry",
+      "path": "/home/paul/git/homelabfs/tools/lab/check-native-single-node.sh",
+      "sha256": "fc95ec798ad87c287dd24973ccc6b807170a1738bc3acb34b118bc3202199f59"
+    },
+    {
+      "id": "native-driver",
+      "path": "/home/paul/git/homelabfs/tools/lab/native-single-node.py",
+      "sha256": "fac571c7bd932d7091a2f27c9eb2ebc99cb3f3367c381f6311b1276a59a6c0aa"
+    },
+    {
+      "id": "native-guest",
+      "path": "/home/paul/git/homelabfs/tools/lab/native-single-node-guest.sh",
+      "sha256": "563ae8e198e250e3af9d1adfa10f3bb6761023049b92c0830e49ec5097ba6427"
+    },
+    {
+      "id": "native-host-keys",
+      "path": "/home/paul/git/homelabfs/docs/lab/f3-known_hosts",
+      "sha256": "d2d831e861d6969dd79d3a61b0c0e3af74d4d5282f660d791f210cada4d4ab6f"
+    },
+    {
+      "id": "native-spec",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-spec-20261030-n5-r7.json",
+      "sha256": "a3b2cb5723a376b2dcb6e536d8a6f8b3485b203d17f4a6a91592c79d1f723710"
+    },
+    {
+      "id": "preflight",
+      "path": "/home/paul/git/homelabfs/tools/lab/prepared-lab-preflight.py",
+      "sha256": "641adcc907fcd5429cc34003dcf81e6e7dce3abac9ca51907d66f107146b13a9"
+    },
+    {
+      "id": "vms",
+      "path": "/home/paul/git/homelabfs/tools/lab/vms.sh",
+      "sha256": "b71df8d9696a515bc3bf86bcdbc3ffaaef7f14156665a024511b150889f4c498"
+    },
+    {
+      "id": "native-readiness",
+      "path": "/home/paul/git/homelabfs/tools/lab/wait-lab-ready.py",
+      "sha256": "f1fe17ed89829af3c8ddb5ce20f0c0f4642514b458672a52ea54f81ddcdcad5d"
+    },
+    {
+      "id": "host-known-keys",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/host-known_hosts",
+      "sha256": "84cd53571b39bbb29dfea020b95c3ff296bf09bce22587b860a37d239384ff8f"
+    },
+    {
+      "id": "all-guest-known-keys",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/guest-known_hosts",
+      "sha256": "e25a8ba415e9c882f44976bc61bcb5a7e3ad8901dea78a1e68b77db285e31a54"
+    },
+    {
+      "id": "preflight-policy",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/preflight-policy-20261030-n5-r7.json",
+      "sha256": "03ea73b53d9633590dac068b678c0527aedfd09ad2db179e4dac44ffa32a368a"
+    },
+    {
+      "id": "host-package-evidence",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r7-host-packages.txt",
+      "sha256": "9e84ff4f459c6388e4ad3f5d6575ec7132da75f1a49ac114cdd6b4a6ebe04285"
+    },
+    {
+      "id": "planning-inventory",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r7-source-inventory-20261030-n5.stdout",
+      "sha256": "3376f5031e1ae2f818d4af7ca2ff078d28eee6baba628174a1a3faa91ad8b470"
+    },
+    {
+      "id": "rocky-current-observation",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r7-rocky-current.json",
+      "sha256": "b54f14a5c8fa44a8f6736eeb2c55ed3bb1bef81f03c9314c39da88f30fdae400"
+    },
+    {
+      "id": "rocky-current-package-evidence",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r7-rocky-packages.txt",
+      "sha256": "4b4382416e417bea3b754c99c492e86b72257b67820aa751181420d8539533b7"
+    },
+    {
+      "id": "metadata-before-resource-guard",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r7-before-execution-guard.json",
+      "sha256": "af6a655124f72745128fe3b818636165a275642f52ea806722aeef1a811cca6e"
+    },
+    {
+      "id": "fresh-source-cleanup-proof",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n5-r7/complete.json",
+      "sha256": "c1a785546c74a6fa60d3589702c2d4cbb8b03b7091b738b3fa1add6f41d42119"
+    },
+    {
+      "id": "fresh-source-receipts",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n5-r7/receipts.json",
+      "sha256": "d5d1ee631eb67b1cf5b9c37210ec2915fc2bc0d35c830e074d0de30e79345625"
+    },
+    {
+      "id": "hfs-test0-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n5-r7/hfs-test0-metadata.json",
+      "sha256": "1f75844c6d94486604187cafe77355463945899a9833158e0df94210481a75f3"
+    },
+    {
+      "id": "hfs-test0-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n5-r7/hfs-test0-packages.txt",
+      "sha256": "0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "id": "hfs-test1-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n5-r7/hfs-test1-metadata.json",
+      "sha256": "e06fef1f10872237b25a7536d847d93ed9ebfc661ddea8e67b665fe6da610125"
+    },
+    {
+      "id": "hfs-test1-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n5-r7/hfs-test1-packages.txt",
+      "sha256": "0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "id": "hfs-test2-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n5-r7/hfs-test2-metadata.json",
+      "sha256": "2ca9bf9eedfa1cf659f3752a7dac2259d0f2d28f527a55a05e71f9502aa84142"
+    },
+    {
+      "id": "hfs-test2-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n5-r7/hfs-test2-packages.txt",
+      "sha256": "0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "id": "freebsd-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n5-r7/freebsd-metadata.json",
+      "sha256": "24b4a08b24cef644943827804c7f95024dcc560b2e3f1a7e857d1b3ca3e294ba"
+    },
+    {
+      "id": "freebsd-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n5-r7/freebsd-packages.txt",
+      "sha256": "247ccbbb465faa1a9be2c53cbd17466ec841a6e513c2331c005100e1db3659f8"
+    },
+    {
+      "id": "continued-source-proof",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r7-metadata-size-and-cleanup-proof.json",
+      "sha256": "47dd98ff0355bb4b018961da3b8702d71cb036cd0c884aa8e1cdf849e5324f2b"
+    },
+    {
+      "id": "planning-admission-survey",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/planning-admission-survey-20261030-n5-r7.json",
+      "sha256": "16cab7a5687280849993802ab7966989ad7e777c8735afb9ed0b755e5e983e7a"
+    }
+  ],
+  "preparation_corrections": [
+    "Exclusive host-package create found existing worker file; preserved and byte/hash checked (4ee0b1), no generator execution at failure.",
+    "Initial survey wrapper asserted an unnecessary SSH pin for stopped dev VM and failed before Transport creation (cd3571); corrected to exact existing preflight pin requirements without changing pins. Preserved before-dispatch log; actual survey later passed once (f1d555)."
+  ]
+}
