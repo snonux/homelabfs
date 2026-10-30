@@ -66,8 +66,32 @@ are not consent; drivers execute only under the approved outer runner boundary.
 
 The driver pins its own Bash/Python/guest scripts, both FreeBSD binaries, the
 subplan and `docs/lab/f3-known_hosts` in the outer plan. Guest SSH uses strict
-pinned keys through `paul@f3`. No package, system account, FUSE rule, VM disk,
+pinned keys through `paul@f3`. Every native phase and binary transfer reads the
+exact artifact-pinned policy named by the first `prepared-lab-preflight-v1`
+step. Its literal `host_address` and `host_keys` artifact supply the f3 hop;
+its `guest_keys` artifact must match all three repository native guest pins.
+The historical subplan name `native-host-keys` still refers to those guest
+pins. Context files must have absolute nonsymlink paths containing only
+letters, digits, `_`, `.`, `/`, `+` or `-`, and their bytes are checked again
+before every command.
+
+Both SSH hops and SCP use `-F /dev/null`, strict host checking, explicit known
+hosts files, disabled global known hosts and key updates, and disabled
+connection sharing. The f3 hop uses the reviewed `HostName` and
+`HostKeyAlias=f3`; guest access uses an explicit pinned `ProxyCommand`.
+The native driver keeps its existing connection, liveness and phase limits.
+No package, system account, FUSE rule, VM disk,
 autostart setting, production consumer or replication sink is changed.
+
+N9 collection returned SSH exit 255 with `Connection timed out during banner
+exchange`. That observation did not identify which network hop or server
+condition caused the failure. The explicit transport removes a confirmed
+dependency on ambient SSH configuration; it does not establish that banner
+timeouts are resolved. SSH 255, command timeout and other uncertain outcomes
+stop immediately without retries or further diagnostic SSH commands. Only a
+successful or proven terminal workload outcome permits collection. A changed
+driver or transport policy requires a newly pinned and approved plan; archived
+approved artifacts remain the recovery path for older runs.
 
 Setup refuses existing local evidence, remote `/var/tmp/hfs-run-ID` and child
 datasets. It stages exact binaries under that fresh root and creates

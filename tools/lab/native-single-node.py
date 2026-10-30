@@ -2,8 +2,10 @@
 """Pinned Stage 1 driver; the existing hfs-lab runner owns approval/lifecycle."""
 
 import argparse
+import base64
 import hashlib
 import io
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -275,6 +277,61 @@ done
 '''
 
 
+def ssh_context(spec):
+    """Use the approved preflight's address and immutable pin artifacts."""
+    outer = read_json(os.environ["HFS_LAB_PLAN"])
+    first = outer["steps"][0]
+    if (first.get("contract") != "prepared-lab-preflight-v1"
+            or first.get("action") != "driver" or first.get("effects") != "read-only"
+            or len(first.get("args", [])) != 2 or first["args"][0] != "--policy-artifact"):
+        raise Refusal("native SSH requires the pinned prepared preflight policy")
+    pins = []
+
+    def artifact(identifier):
+        matches = [a for a in outer["artifacts"] if a["id"] == identifier]
+        if len(matches) != 1:
+            raise Refusal("exact SSH context artifact required: " + str(identifier))
+        item = matches[0]
+        path = Path(item["path"])
+        # OpenSSH expands tokens and splits known-hosts filenames itself.
+        if (not path.is_absolute() or not re.fullmatch(r"/[A-Za-z0-9_./+-]+", str(path))
+                or file_info(path, identifier)["sha256"] != item["sha256"]):
+            raise Refusal("invalid or changed SSH context artifact: " + str(identifier))
+        pins.append((path, item["sha256"]))
+        return path
+
+    policy = read_json(artifact(first["args"][1]))
+    if policy.get("schema") != 1:
+        raise Refusal("SSH context requires preflight policy schema 1")
+    address = str(ipaddress.ip_address(policy["host_address"]))
+    host_keys, guest_keys = (artifact(policy[name]) for name in ("host_keys", "guest_keys"))
+
+    def key_rows(path, host):
+        rows = [line.split()[1:] for line in path.read_text().splitlines()
+                if line.strip() and not line.lstrip().startswith("#")
+                and host in line.split()[0].split(",")]
+        if len(rows) != 1 or len(rows[0]) < 2 or rows[0][0] != "ssh-ed25519":
+            raise Refusal("exact pinned ed25519 SSH key required: " + host)
+        try:
+            wire = base64.b64decode(rows[0][1], validate=True)
+        except ValueError as error:
+            raise Refusal("invalid SSH host key: " + host) from error
+        if len(wire) != 51 or wire[:19] != b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20":
+            raise Refusal("invalid ed25519 SSH host key: " + host)
+        return rows[0][:2]
+
+    key_rows(host_keys, "f3")
+    native_keys = next(a for a in spec["artifacts"] if a["name"] == "native-host-keys")
+    if file_info(native_keys["path"], "native-host-keys")["sha256"] != native_keys["sha256"]:
+        raise Refusal("native guest SSH pins changed")
+    pins.append((Path(native_keys["path"]), native_keys["sha256"]))
+    for index in range(3):
+        guest = f"172.31.253.{11 + index}"
+        if key_rows(guest_keys, guest) != key_rows(Path(native_keys["path"]), guest):
+            raise Refusal("preflight guest SSH pin differs from native pin: " + guest)
+    return address, host_keys, guest_keys, pins
+
+
 class Driver:
     def __init__(self, spec, phase, execute=None):
         self.spec, self.phase = spec, phase
@@ -284,12 +341,21 @@ class Driver:
         self.execute = execute or subprocess.run
         self.deadline = time.monotonic() + PHASE_SECONDS[phase] - 10
         self.contacted = False
-        self.opts = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
-                     "-o", "StrictHostKeyChecking=yes", "-o", "ServerAliveInterval=5",
-                     "-o", "ServerAliveCountMax=2", "-o", f"UserKnownHostsFile={KEYS}",
-                     "-J", "paul@f3"]
+        address, host_keys, guest_keys, self.ssh_pins = ssh_context(spec)
+        base = ["-F", "/dev/null", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+                "-o", "StrictHostKeyChecking=yes", "-o", "GlobalKnownHostsFile=/dev/null",
+                "-o", "UpdateHostKeys=no", "-o", "ControlMaster=no", "-o", "ControlPath=none",
+                "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2"]
+        self.host_opts = base + ["-o", f"UserKnownHostsFile={host_keys}",
+                                 "-o", "HostName=" + address, "-o", "HostKeyAlias=f3"]
+        proxy = ["/usr/bin/ssh", *self.host_opts, "-W", "%h:%p", "paul@f3"]
+        self.opts = base + ["-o", f"UserKnownHostsFile={guest_keys}",
+                            "-o", "ProxyCommand=" + shlex.join(proxy)]
 
     def command(self, argv, data=None, seconds=130, terminal_assertion=False):
+        for path, expected in self.ssh_pins:
+            if path.is_symlink() or digest(path) != expected:
+                raise Uncertain("SSH context artifact changed before command: " + str(path))
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
             raise Uncertain("phase deadline reached; inspect remote state")
@@ -325,15 +391,14 @@ class Driver:
         command = shlex.join(["sh", "-s", "--", action, self.spec["run_id"], str(index),
                               self.hash, self.pins["homelabfs"]["sha256"],
                               self.pins["hfs-behavior"]["sha256"], *args])
-        return self.command(["ssh", *self.opts, f"root@172.31.253.{11+index}", command],
+        return self.command(["/usr/bin/ssh", *self.opts, f"root@172.31.253.{11+index}", command],
                             GUEST.read_bytes(),
                             {"preflight": 30, "reserve": 20, "setup": 60,
                              "run": 120, "collect": 30, "cleanup": 30}[action],
                             terminal_assertion=action == "run")
 
     def host(self):
-        return self.command(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
-                             "-o", "StrictHostKeyChecking=yes", "paul@f3", "sh -s"],
+        return self.command(["/usr/bin/ssh", *self.host_opts, "paul@f3", "sh -s"],
                             HOST_CHECK.encode(), 30)
 
     def save(self, index, name, data):
@@ -379,7 +444,7 @@ class Driver:
                     artifact = self.pins[name]
                     if digest(artifact["path"]) != artifact["sha256"]:
                         raise Uncertain("binary changed before transfer")
-                    self.command(["scp", *self.opts, artifact["path"],
+                    self.command(["/usr/bin/scp", *self.opts, artifact["path"],
                                   f"root@172.31.253.{11+i}:{self.spec['run_root']}/bin/{name}"], seconds=60)
                 self.guest(i, "setup")
         elif self.phase == "test":
@@ -387,13 +452,14 @@ class Driver:
                 seen = {"node": None, "volume": None, "generations": set(), "sessions": set()}
                 for n, (role, profile) in enumerate(MATRIX):
                     self.host()
-                    files = None
                     try:
                         self.guest(i, "run", role, profile, "yes" if n == 0 else "no")
-                    finally:
-                        # Best effort diagnostics even after a workload failure;
-                        # an uncertain transport remains uncertain.
-                        files = self.collect(i)
+                    except (Refusal, TerminalTimeout):
+                        # Only positively terminal failures permit diagnostics.
+                        # Unknown SSH outcomes block all subsequent actions.
+                        self.collect(i)
+                        raise
+                    files = self.collect(i)
                     validate_reports(files, self.spec, role, profile, seen)
         elif self.phase == "collect":
             for i in range(3):

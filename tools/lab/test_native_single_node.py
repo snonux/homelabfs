@@ -96,7 +96,7 @@ class FakeExecutor:
 
     def __call__(self, argv, **kwargs):
         self.calls.append(argv)
-        if argv[0] == "scp" or argv[-2] == "paul@f3":
+        if argv[0] == "/usr/bin/scp" or argv[-2] == "paul@f3":
             return subprocess.CompletedProcess(argv, 0, b"", b"")
         command = shlex.split(argv[-1])
         action, index = command[3], int(command[5])
@@ -131,7 +131,23 @@ class NativeDriverTests(unittest.TestCase):
             binary.write_bytes(header)
             binaries.append(binary)
         self.spec = native.specification("xq3-fake", *binaries, inspect=False)
-        self.env = patch.dict(os.environ, {"HFS_LAB_PLAN_HASH": "a" * 64})
+        self.host_keys = self.base / "host-known_hosts"
+        key = native.KEYS.read_text().splitlines()[0].split()[1:3]
+        self.host_keys.write_text("f3 " + " ".join(key) + "\n")
+        self.guest_keys = self.base / "guest-known_hosts"
+        self.guest_keys.write_bytes(native.KEYS.read_bytes())
+        self.policy = self.base / "policy.json"
+        self.policy.write_text(json.dumps({"schema": 1, "host_address": "192.0.2.133",
+                                           "host_keys": "host-pins", "guest_keys": "guest-pins"}))
+        self.outer = {"steps": [{"contract": "prepared-lab-preflight-v1", "action": "driver",
+                                  "effects": "read-only", "args": ["--policy-artifact", "policy"]}],
+                      "artifacts": [{"id": name, "path": str(path), "sha256": native.digest(path)}
+                                    for name, path in (("policy", self.policy), ("host-pins", self.host_keys),
+                                                       ("guest-pins", self.guest_keys))]}
+        self.outer_path = self.base / "transport-plan.json"
+        self.outer_path.write_text(json.dumps(self.outer))
+        self.env = patch.dict(os.environ, {"HFS_LAB_PLAN_HASH": "a" * 64,
+                                           "HFS_LAB_PLAN": str(self.outer_path)})
         self.env.start()
         self.addCleanup(self.env.stop)
 
@@ -145,12 +161,139 @@ class NativeDriverTests(unittest.TestCase):
         script.write_text(source)
         return [sys.executable, str(script), *args]
 
+    def test_generated_transport_uses_reviewed_context_for_both_hops_and_copy(self):
+        fake = FakeExecutor(self.spec)
+        driver = self.driver("setup", fake)
+        driver.run()
+        common = ["BatchMode=yes", "StrictHostKeyChecking=yes", "GlobalKnownHostsFile=/dev/null",
+                  "UpdateHostKeys=no", "ControlMaster=no", "ControlPath=none", "ConnectTimeout=10",
+                  "ServerAliveInterval=5", "ServerAliveCountMax=2"]
+        for call in fake.calls:
+            with self.subTest(argv=call):
+                self.assertEqual(call[1:3], ["-F", "/dev/null"])
+                self.assertNotIn("-J", call)
+                for option in common:
+                    self.assertIn(option, call)
+                if call[-2] == "paul@f3":
+                    self.assertIn("HostName=192.0.2.133", call)
+                    self.assertIn("HostKeyAlias=f3", call)
+                    self.assertIn("UserKnownHostsFile=" + str(self.host_keys), call)
+                else:
+                    self.assertIn("UserKnownHostsFile=" + str(self.guest_keys), call)
+                    proxy = shlex.split(next(arg.split("=", 1)[1] for arg in call if arg.startswith("ProxyCommand=")))
+                    self.assertEqual(proxy, ["/usr/bin/ssh", *driver.host_opts, "-W", "%h:%p", "paul@f3"])
+        # Have the real OpenSSH parser verify the generated options. -G exits
+        # after printing configuration, before any connection/proxy execution.
+        for opts, destination, expected_host, keys in (
+                (driver.host_opts, "paul@f3", "192.0.2.133", self.host_keys),
+                (driver.opts, "root@172.31.253.11", "172.31.253.11", self.guest_keys)):
+            result = subprocess.run(["/usr/bin/ssh", "-G", *opts, destination],
+                                    capture_output=True, check=True, text=True, timeout=5)
+            config = dict(line.split(" ", 1) for line in result.stdout.splitlines())
+            self.assertEqual(config["hostname"], expected_host)
+            self.assertEqual(config["userknownhostsfile"], str(keys))
+            self.assertEqual(config["globalknownhostsfile"], "/dev/null")
+            self.assertEqual(config["stricthostkeychecking"], "true")
+            self.assertEqual(config["controlmaster"], "false")
+            self.assertNotIn("controlpath", config)  # OpenSSH omits disabled paths.
+            self.assertEqual(config["updatehostkeys"], "false")
+
+    def test_context_requires_exact_policy_and_unmodified_artifacts_before_contact(self):
+        baseline = copy.deepcopy(self.outer)
+        symlink = self.base / "linked-host-pins"
+        symlink.symlink_to(self.host_keys)
+        for mutation in ("contract", "missing-policy", "duplicate-pin", "policy-bytes", "host-key-bytes",
+                         "token-path", "quoted-path", "symlink"):
+            with self.subTest(mutation=mutation):
+                changed = copy.deepcopy(baseline)
+                if mutation == "contract":
+                    changed["steps"][0]["contract"] = "another-policy"
+                elif mutation == "missing-policy":
+                    changed["artifacts"].pop(0)
+                elif mutation == "duplicate-pin":
+                    changed["artifacts"].append(copy.deepcopy(changed["artifacts"][1]))
+                elif mutation == "policy-bytes":
+                    changed["artifacts"][0]["sha256"] = "0" * 64
+                elif mutation in ("token-path", "quoted-path", "symlink"):
+                    changed["artifacts"][1]["path"] = str({
+                        "token-path": self.base / "host-%h-pins",
+                        "quoted-path": self.base / 'host-"pins', "symlink": symlink}[mutation])
+                else:
+                    changed["artifacts"][1]["sha256"] = "0" * 64
+                self.outer_path.write_text(json.dumps(changed))
+                fake = FakeExecutor(self.spec)
+                with self.assertRaises(native.Refusal):
+                    self.driver("collect", fake)
+                self.assertEqual(fake.calls, [])
+
+    def test_repinned_invalid_host_and_changed_guest_key_are_refused(self):
+        original = {path: path.read_bytes() for path in (self.host_keys, self.guest_keys, self.policy)}
+        for mutation in ("no-f3", "invalid-key", "duplicate-f3", "changed-guest", "bad-address"):
+            with self.subTest(mutation=mutation):
+                for path, content in original.items():
+                    path.write_bytes(content)
+                if mutation == "no-f3":
+                    self.host_keys.write_text(self.host_keys.read_text().replace("f3 ", "another-host "))
+                elif mutation == "invalid-key":
+                    self.host_keys.write_text("f3 ssh-ed25519 invalid-key!\n")
+                elif mutation == "duplicate-f3":
+                    self.host_keys.write_bytes(original[self.host_keys] * 2)
+                elif mutation == "changed-guest":
+                    rows = self.guest_keys.read_text().splitlines()
+                    rows[0] = rows[0].split()[0] + " " + " ".join(rows[1].split()[1:])
+                    self.guest_keys.write_text("\n".join(rows) + "\n")
+                else:
+                    policy = json.loads(self.policy.read_text())
+                    policy["host_address"] = "implicit-host-name"
+                    self.policy.write_text(json.dumps(policy))
+                changed = copy.deepcopy(self.outer)
+                for item in changed["artifacts"]:
+                    item["sha256"] = native.digest(item["path"])
+                self.outer_path.write_text(json.dumps(changed))
+                fake = FakeExecutor(self.spec)
+                with self.assertRaises((native.Refusal, ValueError)):
+                    self.driver("collect", fake)
+                self.assertEqual(fake.calls, [])
+
+    def test_context_change_between_commands_is_uncertain_without_dispatch(self):
+        for path in (self.host_keys, self.guest_keys, self.policy):
+            with self.subTest(path=path):
+                content = path.read_bytes()
+                fake = FakeExecutor(self.spec)
+                driver = self.driver("collect", fake)
+                path.write_bytes(content + b"\n")
+                with self.assertRaisesRegex(native.Uncertain, "SSH context artifact changed"):
+                    driver.collect(0)
+                self.assertEqual(fake.calls, [])
+                path.write_bytes(content)
+
+    def test_uncertain_collection_and_workload_timeout_dispatch_nothing_further(self):
+        for phase in ("test", "collect"):
+            with self.subTest(phase=phase):
+                fake = FakeExecutor(self.spec)
+
+                def execute(argv, **kwargs):
+                    if argv[-2].startswith("root@"):
+                        fake.calls.append(argv)
+                        if phase == "test":
+                            raise subprocess.TimeoutExpired(argv, kwargs["timeout"],
+                                                            b"partial stdout", b"partial stderr")
+                        return subprocess.CompletedProcess(argv, 255, b"", b"Connection timed out during banner exchange\r\n")
+                    return fake(argv, **kwargs)
+
+                driver = self.driver(phase, execute)
+                with self.assertRaises(native.Uncertain) as caught:
+                    driver.run()
+                self.assertEqual(len(fake.calls), 2 if phase == "test" else 1)
+                self.assertFalse(driver.evidence.exists())
+                self.assertIn("timeout" if phase == "test" else "banner exchange", str(caught.exception))
+
     def test_real_command_success_keeps_binary_stdout_and_logs_only_stderr(self):
         argv = self.local_child(
             "import sys\n"
             "sys.stdout.buffer.write(sys.stdin.buffer.read())\n"
-            "sys.stderr.buffer.write(b'local warning\\n')\n", "success-context")
-        payload = b"DO-NOT-LOG-BINARY-OR-STDIN\x00\xff" + bytes(range(256))
+            "sys.stderr.buffer.write(b'W' * 262144 + b'local warning\\n')\n", "success-context")
+        payload = b"DO-NOT-LOG-BINARY-OR-STDIN\x00\xff" + bytes(range(256)) * 1024
         driver = self.driver("collect", None)
         stderr, stdout = io.StringIO(), io.StringIO()
         with patch.dict(os.environ, PRIVATE_TEST_VALUE="DO-NOT-LOG-ENVIRONMENT"), \
@@ -161,7 +304,8 @@ class NativeDriverTests(unittest.TestCase):
         detail = json.loads(stderr.getvalue().split(": ", 1)[1])
         self.assertEqual(detail["returncode"], 0)
         self.assertIn("success-context", detail["argv"])
-        self.assertEqual(detail["stderr"]["tail"], "local warning\n")
+        self.assertTrue(detail["stderr"]["tail"].endswith("local warning\n"))
+        self.assertGreater(detail["stderr"]["omitted_bytes"], 0)
         self.assertNotIn("stdout", detail)
         self.assertNotIn("DO-NOT-LOG", stderr.getvalue())
 
@@ -285,17 +429,18 @@ class NativeDriverTests(unittest.TestCase):
         fake = FakeExecutor(self.spec)
         for phase in native.PHASE_SECONDS:
             self.driver(phase, fake).run()
-        runs = [shlex.split(c[-1]) for c in fake.calls if c[0] == "ssh" and c[-2].startswith("root@") and shlex.split(c[-1])[3] == "run"]
+        runs = [shlex.split(c[-1]) for c in fake.calls if c[0] == "/usr/bin/ssh" and c[-2].startswith("root@") and shlex.split(c[-1])[3] == "run"]
         self.assertEqual(len(runs), 12)
         for i in range(3):
             selected = [r for r in runs if r[5] == str(i)]
             self.assertEqual([r[-3:] for r in selected], [[r, p, "yes" if n == 0 else "no"] for n, (r, p) in enumerate(native.MATRIX)])
-        self.assertEqual(sum(c[0] == "scp" for c in fake.calls), 6)
+        self.assertEqual(sum(c[0] == "/usr/bin/scp" for c in fake.calls), 6)
         for call in fake.calls:
-            if call[0] == "ssh" and call[-2].startswith("root@"):
+            if call[0] == "/usr/bin/ssh" and call[-2].startswith("root@"):
                 self.assertIn("StrictHostKeyChecking=yes", call)
-                self.assertIn("paul@f3", call)
-                self.assertIn("UserKnownHostsFile=" + str(native.KEYS), call)
+                proxy = shlex.split(next(arg.split("=", 1)[1] for arg in call if arg.startswith("ProxyCommand=")))
+                self.assertIn("paul@f3", proxy)
+                self.assertIn("UserKnownHostsFile=" + str(self.guest_keys), call)
 
     def test_terminal_and_uncertain_remote_failures_stop_further_calls(self):
         for exit_code, error in ((10, native.Refusal), (30, native.TerminalTimeout), (255, native.Uncertain), (1, native.Uncertain)):
@@ -306,9 +451,11 @@ class NativeDriverTests(unittest.TestCase):
                 driver.evidence = self.base / f"failure-{exit_code}"
                 with self.assertRaises(error):
                     driver.run()
-                runs = [c for c in fake.calls if c[0] == "ssh" and c[-2].startswith("root@") and shlex.split(c[-1])[3] == "run"]
+                runs = [c for c in fake.calls if c[0] == "/usr/bin/ssh" and c[-2].startswith("root@") and shlex.split(c[-1])[3] == "run"]
                 self.assertEqual(len(runs), 1)
-                self.assertTrue((driver.evidence / "hfs-test0/root-hfs-direct.json").is_file())
+                terminal = exit_code in (10, 30)
+                self.assertEqual(len(fake.calls), 3 if terminal else 2)
+                self.assertEqual((driver.evidence / "hfs-test0/root-hfs-direct.json").is_file(), terminal)
 
     def test_socket_budget_and_wrong_elf_refused_offline(self):
         bins = [a["path"] for a in self.spec["artifacts"][:2]]
