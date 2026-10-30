@@ -1,0 +1,186 @@
+{
+  "actual_Go_plan_binary": "/home/paul/tmp/codex/hfs-cx3-gates-20261030-r1/hfs-lab",
+  "actual_Go_plan_exit": 0,
+  "actual_Go_plan_terminal_chunk": "29cbde",
+  "plan_hash": "344023e57345562905ba8aef837f89763afe9ffabbd8297b24119191b49573b3",
+  "offline_verifier_actual_command": [
+    "python3",
+    "-B",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/validate-plan-20261030-n3-r5.py",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/reviewed-plan-20261030-n3-r5.json",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-spec-20261030-n3-r5.json"
+  ],
+  "offline_verifier_exit": 0,
+  "offline_verifier_terminal_chunk": "5421f2",
+  "all_30_artifact_SHA_match": true,
+  "preflight_and_readiness_canonical_hash_equal_Go": true,
+  "preflight_policy_and_context": "PASS offline only",
+  "readiness_context_native_and_rocky": "PASS offline only; in-memory controller snapshot-path read substitution",
+  "native_outer_setup_test_collect_cleanup": "PASS offline only",
+  "native_collect_dependencies": [
+    "native-setup",
+    "native-test"
+  ],
+  "deadline_sums": {
+    "runtime": 4260,
+    "cleanup": 600,
+    "restoration": 360
+  },
+  "total_seconds": 5220,
+  "survey_exact_subset_sha256": "34d93af44e194ef17a2812bdde7c09d033de32375ebf53b1cf2539792e29eb09",
+  "planning_survey_scope": "Root separately executed actual read-only admission survey; attempt1 failed host SSH banner; attempt2 admitted at06:37:43UTC, not native acceptance",
+  "native_execution_by_worker": false,
+  "state_evidence_approval_created": false,
+  "artifact_checks": [
+    {
+      "id": "homelabfs",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-binaries-20261030-n2-r4/homelabfs",
+      "sha256": "dc21c188805608c0a7cbbb316f459cba619529379eebc0ca35a2f7116110b749"
+    },
+    {
+      "id": "hfs-behavior",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-binaries-20261030-n2-r4/hfs-behavior",
+      "sha256": "9271b1e819880e7cbb63674e8cc79a35980ee12a92de0fce8269f4156705c4f5"
+    },
+    {
+      "id": "native-entry",
+      "path": "/home/paul/git/homelabfs/tools/lab/check-native-single-node.sh",
+      "sha256": "fc95ec798ad87c287dd24973ccc6b807170a1738bc3acb34b118bc3202199f59"
+    },
+    {
+      "id": "native-driver",
+      "path": "/home/paul/git/homelabfs/tools/lab/native-single-node.py",
+      "sha256": "fac571c7bd932d7091a2f27c9eb2ebc99cb3f3367c381f6311b1276a59a6c0aa"
+    },
+    {
+      "id": "native-guest",
+      "path": "/home/paul/git/homelabfs/tools/lab/native-single-node-guest.sh",
+      "sha256": "563ae8e198e250e3af9d1adfa10f3bb6761023049b92c0830e49ec5097ba6427"
+    },
+    {
+      "id": "native-host-keys",
+      "path": "/home/paul/git/homelabfs/docs/lab/f3-known_hosts",
+      "sha256": "d2d831e861d6969dd79d3a61b0c0e3af74d4d5282f660d791f210cada4d4ab6f"
+    },
+    {
+      "id": "native-spec",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/native-spec-20261030-n3-r5.json",
+      "sha256": "458b4f3ba5faa0873d288cb0de4f29ca117356c3c4250a1fdfddf495a26582f1"
+    },
+    {
+      "id": "preflight",
+      "path": "/home/paul/git/homelabfs/tools/lab/prepared-lab-preflight.py",
+      "sha256": "641adcc907fcd5429cc34003dcf81e6e7dce3abac9ca51907d66f107146b13a9"
+    },
+    {
+      "id": "vms",
+      "path": "/home/paul/git/homelabfs/tools/lab/vms.sh",
+      "sha256": "b71df8d9696a515bc3bf86bcdbc3ffaaef7f14156665a024511b150889f4c498"
+    },
+    {
+      "id": "native-readiness",
+      "path": "/home/paul/git/homelabfs/tools/lab/wait-lab-ready.py",
+      "sha256": "0497ffb4d33d1ca1db06eb9f0c237a6ae9a1051e59c57dc6eb56095952a34068"
+    },
+    {
+      "id": "host-known-keys",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/host-known_hosts",
+      "sha256": "84cd53571b39bbb29dfea020b95c3ff296bf09bce22587b860a37d239384ff8f"
+    },
+    {
+      "id": "all-guest-known-keys",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/guest-known_hosts",
+      "sha256": "e25a8ba415e9c882f44976bc61bcb5a7e3ad8901dea78a1e68b77db285e31a54"
+    },
+    {
+      "id": "preflight-policy",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/preflight-policy-20261030-n3-r5.json",
+      "sha256": "7f0135c6e8e8ec832f57d6aa0629a69ac8013c959d727b6a9da6b7d3d5774c71"
+    },
+    {
+      "id": "host-package-evidence",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r4-host-packages.txt",
+      "sha256": "9e84ff4f459c6388e4ad3f5d6575ec7132da75f1a49ac114cdd6b4a6ebe04285"
+    },
+    {
+      "id": "planning-inventory",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r4-source-inventory-20261030-n2.stdout",
+      "sha256": "a4fcb28fa06d4231c0f24de9e9722e850c5b15c1ef4fa6cb309fd6a4996dbae8"
+    },
+    {
+      "id": "rocky-current-observation",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r4-rocky-current.json",
+      "sha256": "b4abc555e94b479e5cb3fed1a405a132e55acb72bfbb32f216310fc94aa84948"
+    },
+    {
+      "id": "rocky-current-package-evidence",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r4-rocky-packages.txt",
+      "sha256": "4b4382416e417bea3b754c99c492e86b72257b67820aa751181420d8539533b7"
+    },
+    {
+      "id": "metadata-before-resource-guard",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r4-before-execution-guard.json",
+      "sha256": "ec4b4d0214b6e6eac213db47baf6aa5e112d5e25b7aa385b8d64f67e139c39e2"
+    },
+    {
+      "id": "fresh-source-cleanup-proof",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n2-r4/complete.json",
+      "sha256": "5d433291a620f58ec306a5af20e489256b67fc5e6b80fd83c667119bd4cac23a"
+    },
+    {
+      "id": "fresh-source-receipts",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n2-r4/receipts.json",
+      "sha256": "1b2099aab00638eaba1d90e910d343507ea425f4cd329613da6337f8fb017c8e"
+    },
+    {
+      "id": "hfs-test0-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n2-r4/hfs-test0-metadata.json",
+      "sha256": "85abdfe7c5e3a2649f15d165f932ebe0313a9f36d76b21a6536c87c751ed5524"
+    },
+    {
+      "id": "hfs-test0-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n2-r4/hfs-test0-packages.txt",
+      "sha256": "0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "id": "hfs-test1-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n2-r4/hfs-test1-metadata.json",
+      "sha256": "a0f35d88ea96c4c741da2ad61177d8f9d8269949841a3120f6a28269706bc7c0"
+    },
+    {
+      "id": "hfs-test1-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n2-r4/hfs-test1-packages.txt",
+      "sha256": "0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "id": "hfs-test2-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n2-r4/hfs-test2-metadata.json",
+      "sha256": "1a3c79027d7250e2271acda977045c8f7bb28f117687ed17f6d3c70b40fab2ca"
+    },
+    {
+      "id": "hfs-test2-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n2-r4/hfs-test2-packages.txt",
+      "sha256": "0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb"
+    },
+    {
+      "id": "freebsd-fresh-metadata",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n2-r4/freebsd-metadata.json",
+      "sha256": "3303e951fcc0579a14c9134a4c8f8f7cde138d80247d58565588eca4083e2d53"
+    },
+    {
+      "id": "freebsd-fresh-packages",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n2-r4/freebsd-packages.txt",
+      "sha256": "247ccbbb465faa1a9be2c53cbd17466ec841a6e513c2331c005100e1db3659f8"
+    },
+    {
+      "id": "continued-source-proof",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/n2-final-state-and-source-proof.json",
+      "sha256": "047f06b6608990469fd20fccd6efad9766a7cc26becadccefc287428b4a98301"
+    },
+    {
+      "id": "planning-admission-survey",
+      "path": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/planning-admission-survey-20261030-n3-r5-r2.json",
+      "sha256": "659f1e3f38047f3cda7068dbba6562b2e441e471acac6357bba776c143bb66a7"
+    }
+  ]
+}

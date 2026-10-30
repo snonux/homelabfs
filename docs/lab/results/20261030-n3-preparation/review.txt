@@ -1,0 +1,99 @@
+YQ3 REPLACEMENT PLAN — fresh explicit Paul approval required
+
+Run20261030-n3; Stage1/native-single-node-v1; seed0.
+Canonical Plan: /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/reviewed-plan-20261030-n3-r5.json
+Exact canonical hash: 344023e57345562905ba8aef837f89763afe9ffabbd8297b24119191b49573b3
+Created 2026-10-30T06:39:02Z; expires 2026-10-31T06:39:02Z.
+Controller state: /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/controller-state-20261030-n3
+Evidence: /home/paul/git/homelabfs/docs/lab/results/20261030-n3
+State/evidence and operator-approval-20261030-n3-r5.json remain absent.
+Earlier n1/n2 approvals and failed-run evidence remain historical and preserved.
+They do not authorize this changed exact Plan.
+
+Budget and actions
+Twelve sequential native calls:3FreeBSD guests x root/unprivileged x direct/buffered.
+Each guest uses its own FUSE/ZFS and new run-owned roots
+/var/tmp/hfs-run-20261030-n3 and hfsdataN/{data,journal,control}/hfs-run-20261030-n3.
+No9p/replication/failover/production/NFS/received-sink work.
+Total5220s/87min: first240s read-only admission, then at most4980s/83min disruption.
+Forward4260s, cleanup600s, restoration360s. Step deadlines:preflight240,
+cleanRockyStop180,labStart180,nativeReadiness180,nativeSetup900,nativeTest2400,
+nativeCollect180,nativeCleanup180,labStop420,RockyStart180,RockyRestoreReadiness180.
+Each step one attempt; no forced kill/unmount/repair. Normal owned-daemon cleanup
+and no owned-process/mount proof precede VM stop. Uncertain completion or surviving
+resources stop restoration for inspection. Successful Rocky restoration requires
+Running state plus pinned root SSH/kernel/UID proof. Actual clean-stop success
+remains unproved until this separately approved native window.
+Native6GiB/6vCPU with4GiB hostheadroom; zero swap/current-pressure and post-stop
+free+inactive admission. Rocky12GiB and developmentFreeBSD1GiB must remain stopped
+during native work. Disk2304MiB/logicalIO48MiB/evidence64MiB/retention168h.
+LogicalIO limits are not physical-device bandwidth quotas.
+
+Changes after n2
+N2 failed read-only admission with liveguestkernelchangedrocky; no VM lifecycle or
+native workload ran, and corrected collection dependencies skipped collection and
+cleanup. The diagnostic cause was SSH stderr PQ warning prepended to valid stdout.
+Mainf79f2c0 fixes preflight SSH stdout/stderr separation, retaining the combined
+256KiB capture bound, strict SSH pins/deadlines and sanitized bounded diagnostics.
+Exact preflight SHA641adcc907fcd5429cc34003dcf81e6e7dce3abac9ca51907d66f107146b13a9.
+Native collection remains gated on exactly native-setup/native-test.
+New n3 resources/spec/fragment/policy/state/evidence and30artifact pins are bound.
+The two additional pins are continued-source-proof and planning-admission-survey.
+
+Actual planning survey, separate from native acceptance
+Root called reviewed preflight.run_checks using actual Transport over this exact
+candidate targets/budget/policy subset. First attempt62962/terminal4648b6 failed
+on final host SSH banner timeout; its log is retained and is not a pass.
+Root then verified same host uptime/Rocky6449/all4FreeBSDStopped/swap0 without WOL.
+One separately bounded planning retry69495/terminal0d24cc exited0; status admitted
+at2026-10-30T06:37:43Z. It ran no Driver, lifecycle, workload, native test, controller
+state or evidence creation. SSH diagnostics remain separately retained in its log.
+Pinned result: planning-admission-survey-20261030-n3-r5-r2.json.
+Final targets, budget and every policy field equal passing survey inputs:
+SHA256 34d93af44e194ef17a2812bdde7c09d033de32375ebf53b1cf2539792e29eb09.
+Survey contains no full Plan hash; adding its artifact introduces no hash cycle.
+This demonstrates read-only admission/parsing, not native acceptance or proof that
+actual lifecycle/test/restoration will pass. Actual approved runner admission still
+repeats all checks and must reject drift.
+
+Honest evidence reuse and source guard
+R4 metadata was actually inspected at06:04-06:05UTC from existing source tag
+zrepl_20261030_055329_000. It is reused here; no new image inspection is claimed.
+SourceGUIDs:hfs0=10918531099539801920,hfs1=16665947213107414555,
+hfs2=1381746573395589937,dev=16399257875439500698.
+R4 actual20private receipts/complete.json prove normal exact-owned MD/UFS cleanup
+and4new snapshotautomounts normally unmounted, noMD/UFS, same VMstate/written0.
+Root's pinned continued-source proof06:25:14UTC and successful planning survey
+rechecked exact source identity/written0/stopped state. No holds or snapshot/
+retention/ownership changes. Source pruning can precede24h Plan expiry; prune,
+GUID/written/config/version/state drift must fail closed, with no substitution.
+R4 kernels/packages remain native15.1-RELEASE/packageSHA0afe3e46...f3eb and
+dev15.0-RELEASE-p5/packageSHA247ccbbb...59f8; exact fullSHAs are in Plan/policy.
+Readonly UFS and isolated sole-vdev userspace zdb metadata were used; documented
+zdb-L establishes no pool-health claim. DB58458112bytes/all0600<=128MiB,
+hostallocated22908928<=160MiB, retention168h. No further extraction occurred.
+Rocky freshR4 runningkernel5.14.0-687.61.1.el9_8.x86_64,UID0,1109RPMrows,
+packageSHA4b4382416e417bea3b754c99c492e86b72257b67820aa751181420d8539533b7.
+Its six grub2 package changes from R3 remain recorded; cause unverified. We did
+not perform package/service mutations. Passing survey verified current evidence.
+
+Binaries and offline validation
+Retained binaries were actually built clean from127ecc9cc612f6696c9710e6586a3761d57cac71,
+FreeBSDamd64/CGO0/vcs.modified=false. Actual gitdiff127ecc9--cmd/internal atf79f2c0
+is empty; no relabeling them as a newer full-tree build.
+DaemonSHAdc21c188805608c0a7cbbb316f459cba619529379eebc0ca35a2f7116110b749;
+helperSHA9271b1e819880e7cbb63674e8cc79a35980ee12a92de0fce8269f4156705c4f5.
+Current supplied Go hfs-lab plan CLI exited0(terminal29cbde) and produced the hash
+above. Actual offline verifier exited0(terminal5421f2):all30SHA pins, matching
+Go/preflight/readiness canonical hashes, policy/context/native4phase contracts,
+exact collection gate and budgets PASS. It blocks Transport/Driver/command use;
+only in-memory controller snapshot-path read substitution satisfies contexts.
+No SSH/live action/native acceptance occurred in offline validation.
+Details: canonical-plan-validation-20261030-n3-r5.json; delta:plan-r5-vs-r4.diff.
+
+Execute ONLY AFTER new explicit Paul approval for this exact hash and root records
+actual consent; no approval file was generated by this worker:
+/home/paul/tmp/codex/hfs-cx3-gates-20261030-r1/hfs-lab execute --plan /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/reviewed-plan-20261030-n3-r5.json --approval /home/paul/tmp/codex/hfs-native-planning-20261029/yq3/operator-approval-20261030-n3-r5.json
+
+No repository edits/staging/commit/askdone/native execution by this worker.
+Root owns final review, consent recording and actual runner operation.

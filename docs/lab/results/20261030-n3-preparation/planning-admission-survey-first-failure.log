@@ -1,0 +1,19 @@
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+Connection timed out during banner exchange
+Connection to 192.168.1.133 port 22 timed out
+Traceback (most recent call last):
+  File "<stdin>", line 14, in <module>
+  File "/home/paul/git/homelabfs/tools/lab/prepared-lab-preflight.py", line 482, in run_checks
+    after = check_metrics(plan, policy, call("host", HOST_METRICS))
+                                        ~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/paul/git/homelabfs/tools/lab/prepared-lab-preflight.py", line 271, in __call__
+    raise Uncertain(f"{destination}: SSH transport lost ({code}); remote completion unknown; "
+                    + diagnostic())
+preflight.Uncertain: host: SSH transport lost (255); remote completion unknown; stderr: Connection timed out during banner exchange
+Connection to 192.168.1.133 port 22 timed out
+
