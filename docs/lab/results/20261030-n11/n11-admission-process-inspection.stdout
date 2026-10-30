@@ -1,0 +1,84 @@
+NAME       DATASTORE  LOADER     CPU  MEMORY  VNC             AUTO     STATE
+freebsd    default    bhyveload  4    1G      -               No       Stopped
+rocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (3774)
+hfs-test0  hfslab     bhyveload  2    2G      -               No       Stopped
+hfs-test1  hfslab     bhyveload  2    2G      -               No       Stopped
+hfs-test2  hfslab     bhyveload  2    2G      -               No       Stopped
+  PID  PPID USER    STAT COMMAND
+    0     0 root     DLs kernel
+    1     0 root     SLs init
+    2     0 root      WL clock
+    3     0 root      DL crypto
+    4     0 root      DL cam
+    5     0 root      DL busdma
+    6     0 root      DL zfskern
+    7     0 root      DL rand_harvestq
+    8     0 root      DL pagedaemon
+    9     0 root      DL vmdaemon
+   10     0 root      DL audit
+   11     0 root     RNL idle
+   12     0 root      WL intr
+   13     0 root      DL geom
+   14     0 root      DL usb
+   15     0 root      DL acpi_thermal
+   16     0 root      DL bufdaemon
+   17     0 root      DL vnlru
+   18     0 root      DL syncer
+ 3436     1 root       I sh
+ 3774  3436 root      SC bhyve
+ 3828     1 root      Is bhyve
+ 3829     1 root      Is bhyve
+ 4600     0 root      DL ng_queue
+ 5123     1 root      Ss devd
+ 5129     0 root      DL pf purge
+ 5154     1 root      Is pflogd
+ 5158  5154 _pflogd    S pflogd
+ 5851     1 root     SCs syslogd
+ 5854     1 root       I syslogd
+ 5855     1 root      Is syslogd
+ 5902     1 root      Is apcupsd
+ 5972     1 ntpd      Ss ntpd
+ 5977     1 root      Ss powerd
+ 6011     1 root      Ss uptimed
+ 6123     1 nobody    Is daemon
+ 6124  6123 nobody     I node_exporter
+ 6309     1 root      Is daemon
+ 6310  6309 root       I zrepl
+ 6323     1 root      Ss cron
+ 6443     1 root      Ss sshd
+ 6583     1 root      Ss daemon
+ 6585  6583 dserver    I dserver
+ 7927  6323 root       I cron
+ 7930  7927 root      Is sh
+ 7949  7930 root       I lockf
+ 7950  7949 root       I sh
+ 7976  7950 root       I sh
+ 7977  7950 root       I cat
+ 8172  7976 root       I sh
+ 8176  8172 root       I sh
+ 8180  8176 root       I lockf
+ 8181  8180 root       I sh
+ 8190  8181 root       I sh
+ 8191  8181 root       I cat
+ 8340  8190 root       I sh
+ 8360  8340 root      IC sleep
+ 9584     0 root      DL aiod1
+ 9585     0 root      DL aiod2
+ 9586     0 root      DL aiod3
+ 9587     0 root      DL aiod4
+15901  6443 root      Ss sshd-session
+15903 15901 paul       S sshd-session
+15904 15903 paul      Ss tcsh
+16026 15904 paul       R ps
+ 5685     1 root       I bash
+ 5690  5685 root       I sh
+ 5693  5690 root       S route
+ 5694  5690 root       S grep
+ 6616     1 root     Is+ getty
+ 6617     1 root     Is+ getty
+ 6618     1 root     Is+ getty
+ 6619     1 root     Is+ getty
+ 6620     1 root     Is+ getty
+ 6621     1 root     Is+ getty
+ 6622     1 root     Is+ getty
+ 6623     1 root     Is+ getty

@@ -285,3 +285,12 @@ the original invocation. Final report: `complete=true`, `success=false`, with
 Rocky PID 3774 running and all four FreeBSD guests stopped in a final pinned
 13:25:23 UTC inventory. The native gate remains pending. Work paused on Paul's
 explicit request after recording this attempt; no next run was started.
+
+The standing-authorized [n11 admission](lab/results/20261030-n11/) stopped at
+its first host SSH connection timeout, before any VM lifecycle or native test.
+Fresh completed pinned inventories/process inspection confirmed Rocky PID 3774
+running, all FreeBSD guests stopped and no outstanding admission command.
+Explicit failed reconciliation preserved the original ambiguous reports;
+cleanup skipped inapplicable actions and closed `complete=true`, `success=false`.
+No host power/configuration change occurred. The connection-timeout cause is
+unknown; native validation of the journal read-window change remains pending.

@@ -1,0 +1,9 @@
+{
+  "plan_hash": "1d1463266fa43da06062396d520caf841f6236f814592b5f5558968969b8ff22",
+  "step_id": "prepared-preflight",
+  "outcome": "failed",
+  "operator": "Codex under Paul's standing nonproduction test authorization",
+  "observed_at": "2026-10-30T14:54:29.523554+00:00",
+  "evidence": "Original initial host admission SSH255 connection timeout, no lifecycle/workload attempted. Completed pinned independent inspections928fad/36d6dd rc0 showRocky3774Running/all4FreeBSDStopped and no old SSH session/command; scoped local processcheck none. Unrelated cron/VM processes untouched. Treat original admission FAILED notpass; preserve raw ambiguous report. No outstanding action, safe cleanup may skip unattempted resources. See n11-admission-process-inspection.stdout/stderr.",
+  "no_outstanding_action": true
+}

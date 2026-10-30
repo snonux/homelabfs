@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "/home/paul/tmp/codex/hfs-cx3-gates-20261030-r1/hfs-lab",
+    "execute",
+    "--plan",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/reviewed-plan-20261030-n11-r13.json",
+    "--approval",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/operator-approval-20261030-n11-r13.json"
+  ],
+  "started_at": "2026-10-30T14:52:55.129709+00:00",
+  "finished_at": "2026-10-30T14:53:03.721215+00:00",
+  "elapsed_seconds": 8.591509529000177,
+  "returncode": 1,
+  "stdout_bytes": 13316,
+  "stdout_sha256": "712e4a4516cd72a59aed1a2217b8a5bd8fea0a50263151be776b013ef44fcac9",
+  "stderr_bytes": 216,
+  "stderr_sha256": "399b89ded7ec1093d8b4d50d1c488d4994ddff7cda87691fe2740e72fa731a9f"
+}

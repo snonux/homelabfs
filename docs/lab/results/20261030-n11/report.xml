@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="20261030-n11" tests="11" failures="7">
+  <testcase name="prepared-preflight" classname="setup" time="94.363881159">
+    <failure type="infrastructure">failed: Original initial host admission SSH255 connection timeout, no lifecycle/workload attempted. Completed pinned independent inspections928fad/36d6dd rc0 showRocky3774Running/all4FreeBSDStopped and no old SSH session/command; scoped local processcheck none. Unrelated cron/VM processes untouched. Treat original admission FAILED notpass; preserve raw ambiguous report. No outstanding action, safe cleanup may skip unattempted resources. See n11-admission-process-inspection.stdout/stderr.</failure>
+  </testcase>
+  <testcase name="rocky-stop" classname="setup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="lab-start" classname="setup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-readiness" classname="setup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-setup" classname="setup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-test" classname="test" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-collect" classname="collect" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-cleanup" classname="cleanup" time="0">
+    <skipped>not applicable</skipped>
+  </testcase>
+  <testcase name="lab-stop" classname="cleanup" time="0">
+    <skipped>not applicable</skipped>
+  </testcase>
+  <testcase name="rocky-restore" classname="restore" time="0">
+    <skipped>not applicable</skipped>
+  </testcase>
+  <testcase name="rocky-restoration-readiness" classname="restore" time="0">
+    <skipped>not applicable</skipped>
+  </testcase>
+</testsuite>
