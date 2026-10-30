@@ -1,0 +1,12 @@
+NAME       DATASTORE  LOADER     CPU  MEMORY  VNC             AUTO     STATE
+freebsd    default    bhyveload  4    1G      -               No       Stopped
+rocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (37004)
+hfs-test0  hfslab     bhyveload  2    2G      -               No       Stopped
+hfs-test1  hfslab     bhyveload  2    2G      -               No       Stopped
+hfs-test2  hfslab     bhyveload  2    2G      -               No       Stopped
+ 6443     1 Fri Oct 30 09:48:52 2026 sshd: /usr/sbin/sshd [listener] 0 of 10-100 startups (sshd)
+37004 36663 Fri Oct 30 17:26:51 2026 bhyve: rocky (bhyve)
+37057     1 Fri Oct 30 17:26:51 2026 bhyve: system.pwd (bhyve)
+37060     1 Fri Oct 30 17:26:51 2026 bhyve: system.grp (bhyve)
+42843 42842 Fri Oct 30 17:56:28 2026 tcsh -c doas -n vm list; doas -n ps -axo pid,ppid,lstart,command | egrep "sshd:|prepared-lab-preflight|20261030-n14|vm-bhyve|bhyve"
+42966 42843 Fri Oct 30 17:56:28 2026 egrep sshd:|prepared-lab-preflight|20261030-n14|vm-bhyve|bhyve

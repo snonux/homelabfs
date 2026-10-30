@@ -1,0 +1,2 @@
+Connection to 192.168.1.133 port 22 timed out
+{"contract": "prepared-lab-preflight-v1", "status": "uncertain", "error": "host: SSH transport lost (255); remote completion unknown; stderr: Connection to 192.168.1.133 port 22 timed out\r\n", "scope": "read-only admission; no lifecycle or workload requested", "remote_completion": "unknown; operator reconciliation required"}

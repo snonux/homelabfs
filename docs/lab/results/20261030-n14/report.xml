@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="20261030-n14" tests="11" failures="7">
+  <testcase name="prepared-preflight" classname="setup" time="75.864601402">
+    <failure type="infrastructure">failed: Original initial host admission SSH255 connection timeout before lifecycle/workload. Fresh completed pinned inspection304633 rc0 at15:56:28UTC showsRocky37004Running/all4FreeBSDStopped and no outstanding prior SSH/preflight/nativecommand; scopedlocalprocesscheck7f3d61 empty. Admission read-only. Original timeout cause unknown; no success inferred. Close original admission FAILED, preserve original ambiguous reports; safe cleanup may skip unattempted resources.</failure>
+  </testcase>
+  <testcase name="rocky-stop" classname="setup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="lab-start" classname="setup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-readiness" classname="setup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-setup" classname="setup" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-test" classname="test" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-collect" classname="collect" time="0">
+    <failure type="incomplete">pending: </failure>
+  </testcase>
+  <testcase name="native-cleanup" classname="cleanup" time="0">
+    <skipped>not applicable</skipped>
+  </testcase>
+  <testcase name="lab-stop" classname="cleanup" time="0">
+    <skipped>not applicable</skipped>
+  </testcase>
+  <testcase name="rocky-restore" classname="restore" time="0">
+    <skipped>not applicable</skipped>
+  </testcase>
+  <testcase name="rocky-restoration-readiness" classname="restore" time="0">
+    <skipped>not applicable</skipped>
+  </testcase>
+</testsuite>

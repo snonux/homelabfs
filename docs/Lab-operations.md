@@ -315,3 +315,12 @@ unprivileged append validation remains pending. Collection and all normal
 cleanup/shutdown/Rocky restoration steps passed; final report is
 `complete=true`, `success=false`. Final pinned inventory at 15:34:04 UTC showed
 Rocky PID 37004 running and all four FreeBSD guests stopped.
+
+The standing-authorized [n14 admission](lab/results/20261030-n14/) stopped at
+an initial host SSH connection timeout, before lifecycle or workload. Fresh
+completed pinned inventory/process checks confirmed Rocky PID 37004 running,
+all four FreeBSD guests stopped and no outstanding prior action. Explicit failed
+reconciliation preserved the original ambiguous report and closed
+`complete=true`, `success=false`, with inapplicable cleanup/restoration skipped.
+The timeout cause is unknown. No native acceptance was obtained; unchanged R15
+metadata and c946ac5 binaries may be reused honestly with fresh admission.

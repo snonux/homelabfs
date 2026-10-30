@@ -1,0 +1,9 @@
+{
+  "plan_hash": "da066e0fc5b4cb946aa9eba09ca01fd53436c82b055c71a32e2695217b279c1c",
+  "step_id": "prepared-preflight",
+  "outcome": "failed",
+  "operator": "Codex under Paul's standing nonproduction test authorization",
+  "observed_at": "2026-10-30T15:56:45.271383+00:00",
+  "evidence": "Original initial host admission SSH255 connection timeout before lifecycle/workload. Fresh completed pinned inspection304633 rc0 at15:56:28UTC showsRocky37004Running/all4FreeBSDStopped and no outstanding prior SSH/preflight/nativecommand; scopedlocalprocesscheck7f3d61 empty. Admission read-only. Original timeout cause unknown; no success inferred. Close original admission FAILED, preserve original ambiguous reports; safe cleanup may skip unattempted resources.",
+  "no_outstanding_action": true
+}
