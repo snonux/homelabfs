@@ -1,0 +1,88 @@
+{
+  "verified_at": "2026-10-30T11:35:17.940349+00:00",
+  "scope": "Actual ROOT-collected R9 stopped-image metadata and exact-owned cleanup only; no native test or pool-health conclusion",
+  "local_DB_verification": {
+    "hfs-test0": {
+      "bytes": 14749696,
+      "mode": "0o600",
+      "sha256": "2eb3739034c668f2a74c0b663b6cfa4ec421d44f5c4f727d174fdbe5df335f75",
+      "kernel": "15.1-RELEASE",
+      "packages": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "package_rows": 510,
+      "immutable_manifest_rederived": true
+    },
+    "hfs-test1": {
+      "bytes": 14639104,
+      "mode": "0o600",
+      "sha256": "f24350abed108e69d448f888781601fda858cfcdedea5f8f77f305c69063c47c",
+      "kernel": "15.1-RELEASE",
+      "packages": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "package_rows": 510,
+      "immutable_manifest_rederived": true
+    },
+    "hfs-test2": {
+      "bytes": 14639104,
+      "mode": "0o600",
+      "sha256": "c57b1d867bd6b193deea701fa643b75c75e4ae34de26bf98fb32bf16790d122b",
+      "kernel": "15.1-RELEASE",
+      "packages": "sha256:0afe3e46ba90833381fa473bd2f37148774c13fda117907d513c10eda967f3eb",
+      "package_rows": 510,
+      "immutable_manifest_rederived": true
+    },
+    "freebsd": {
+      "bytes": 14430208,
+      "mode": "0o600",
+      "sha256": "96fecbf2674222ccef8407f8d25d5a552c7f21fca4eb23e02c23808126589990",
+      "kernel": "15.0-RELEASE-p5",
+      "packages": "sha256:247ccbbb465faa1a9be2c53cbd17466ec841a6e513c2331c005100e1db3659f8",
+      "package_rows": 132,
+      "immutable_manifest_rederived": true
+    }
+  },
+  "controller_database_bytes": 58458112,
+  "controller_limit_bytes": 134217728,
+  "database_limit_each": 33554432,
+  "complete_json_verified": true,
+  "actual_private_receipts": 20,
+  "receipts_complete_matches": true,
+  "host_allocated_bytes": 22908928,
+  "host_limit_bytes": 167772160,
+  "retention_hours": 168,
+  "source_proof": "Actual ROOT-released R9 source GUID/written0 guards before/after fresh reads; no prior metadata equality assumption",
+  "cleanup_proof": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n7-r9/complete.json",
+  "actual_receipts": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n7-r9/receipts.json",
+  "remaining_resources": {
+    "host_metadata_directory": "/var/tmp/hfs-image-inspect-yq3-20261030-n7-r9",
+    "controller_metadata_directory": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n7-r9",
+    "retention_hours": 168
+  },
+  "proof_sha256": {
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n7-r9/complete.json": "d098be7440ea69e1400b70c473fda1363706c16e9a31bff04cdca029bf692e41",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/offline-images-20261030-n7-r9/receipts.json": "727cf15cc75c8051c8711f90c11f676930be32b858a5505129eea3310645590f",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-source-inventory-20261030-n7.stdout": "83ccc5c03debb5ad8aa2440493d705991593a138256e1c3be6a2e0ce403b90da",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-before-execution-guard.json": "7b6980021951883790caeeac5ab4fc6a7590ea7691b727b47206ef8f65b2d3ff",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-rocky-current.json": "da66c62dded4032af168a76188a789f5554ee8e95e5d6d5f83c00e8fa0970ca3",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-rocky-packages.txt": "4b4382416e417bea3b754c99c492e86b72257b67820aa751181420d8539533b7",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-collect-metadata.log": "1d6ac6142346ae2f0c5b518140474eab3e4f6b2f92243390558b9ff51d376f62",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-source-inventory-20261030-n7-receipt.json": "19ad2717d762c28f74b6a7762d05716b0acb9078c51b836a3e9a697b33211f00",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-before-execution-guard-receipt.json": "2f30cef9605b939673a12f8e85486af409fd6cf4170c728374999c1203e10ba3",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-rocky-current-receipt.json": "247b8ce461ad4536bf185157d20257ed5d4a411ccc045cee0482038591906f63",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-collect-metadata-receipt.json": "40d84cf9989d58b0a067cb54213a4ee197007556fe5618257573a62d3ed73880",
+    "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-harvest-receipts-receipt.json": "eac3e19755f27ff5ec32c6b57d279f0337ad5e55116745de9ed009401bddb7cb"
+  },
+  "limitations": [
+    "Isolated userspace zdb -L metadata only; skips leak tracking and makes no guest pool-health claim.",
+    "Existing ordinary source snapshot may be pruned or drift after preparation; future admission must fail closed.",
+    "No native canonical plan or native test execution created by this preparation."
+  ],
+  "host_receipts_not_yet_collected": false,
+  "collector_actual_session": 17934,
+  "collector_actual_terminal": "442a71",
+  "collector_exit": 0,
+  "harvest_actual_terminal": "f5e598",
+  "harvest_exit": 0,
+  "guard_exit": 0,
+  "collector_execution_receipt": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-collect-metadata-receipt.json",
+  "harvest_execution_receipt": "/home/paul/tmp/codex/hfs-native-planning-20261029/yq3/r9-harvest-receipts-receipt.json",
+  "actual_execution_provenance": "Actual session/terminal identifiers supplied by ROOT after completed operations; local operation receipts, helper hashes and captured output hashes independently checked by worker. Worker executed no remote operations."
+}
