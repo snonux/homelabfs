@@ -1,0 +1,8 @@
+{
+  "observed_at": "2026-10-30T15:34:04.394512+00:00",
+  "returncode": 0,
+  "stdout_sha256": "4d0df31441911621008e2501287b61e26ae6565398cd8a64e025f5a3ba0f3798",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stdout_bytes": 480,
+  "stderr_bytes": 0
+}

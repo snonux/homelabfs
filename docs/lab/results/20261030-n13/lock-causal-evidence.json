@@ -1,0 +1,9 @@
+{
+  "scope": "Correlates captured helper PIDs with native post-exit F_GETLK snapshot; kernel cleanup path not established",
+  "failure": "acquire-after-exit helper 0 fcntl-try: resource temporarily unavailable (errno 35); later F_GETLK snapshot: observer_pid=1528 type=3 holder_pid=1529 start=0 length=0",
+  "helper_pid_markers": {
+    "A": 1528,
+    "B": 1529
+  },
+  "conclusion": "After helper1 Stop/Wait completed, its PID1529 still appeared as POSIX holder blocking helper0 PID1528. Explicit service owner retirement is under investigation; no native fix claimed."
+}

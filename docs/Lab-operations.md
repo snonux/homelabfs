@@ -304,3 +304,14 @@ so `ky3` native validation remains pending. Collection and all normal cleanup,
 shutdown and Rocky restoration/readiness steps passed. Final report is
 `complete=true`, `success=false`; a pinned 15:02:05 UTC inventory confirmed
 Rocky PID 24786 running and all FreeBSD guests stopped.
+
+The standing-authorized [n13 attempt](lab/results/20261030-n13/) localized the
+lock failure: after helper 1's completed Stop/Wait, helper 0's acquisition
+failed and F_GETLK still reported helper 1's PID as the POSIX holder. Captured
+append PIDs corroborate the identity. Task `sy3` corrects explicit owned-process
+retirement using controlled regressions; no kernel callback cause or native fix
+is claimed yet. The remaining eleven fixture calls did not run, so `ky3`
+unprivileged append validation remains pending. Collection and all normal
+cleanup/shutdown/Rocky restoration steps passed; final report is
+`complete=true`, `success=false`. Final pinned inventory at 15:34:04 UTC showed
+Rocky PID 37004 running and all four FreeBSD guests stopped.

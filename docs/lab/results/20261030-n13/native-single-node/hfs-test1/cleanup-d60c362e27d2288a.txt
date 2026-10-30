@@ -1,0 +1,48 @@
+/dev/gpt/hfs-root1	/			ufs	rw,noatime 	1 1
+devfs			/dev			devfs	rw		0 0
+/dev/gpt/hfs-efi1	/boot/efi		msdosfs	rw		2 2
+hfsdata1/control/hfs-run-20261030-n10 /var/tmp/hfs-run-20261030-n10/c zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata1/control/hfs-run-20261030-n12 /var/tmp/hfs-run-20261030-n12/c zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata1		/var/db/homelabfs	zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata1/data/hfs-run-20261030-n10 /var/tmp/hfs-run-20261030-n10/d zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata1/journal/hfs-run-20261030-n10 /var/tmp/hfs-run-20261030-n10/j zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata1/data/hfs-run-20261030-n12 /var/tmp/hfs-run-20261030-n12/d zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata1/control/hfs-run-20261030-n9 /var/tmp/hfs-run-20261030-n9/c zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata1/journal	/var/db/homelabfs/journal zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata1/control	/var/db/homelabfs/control zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata1/control/hfs-run-20261030-n6 /var/tmp/hfs-run-20261030-n6/c zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata1/data/hfs-run-20261030-n9 /var/tmp/hfs-run-20261030-n9/d zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata1/journal/hfs-run-20261030-n7 /var/tmp/hfs-run-20261030-n7/j zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata1/journal/hfs-run-20261030-n9 /var/tmp/hfs-run-20261030-n9/j zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata1/data/hfs-run-20261030-n6 /var/tmp/hfs-run-20261030-n6/d zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata1/data		/var/db/homelabfs/data	zfs	rw,noatime,nfsv4acls 	0 0
+hfsdata1/journal/hfs-run-20261030-n12 /var/tmp/hfs-run-20261030-n12/j zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata1/journal/hfs-run-20261030-n6 /var/tmp/hfs-run-20261030-n6/j zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata1/data/hfs-run-20261030-n7 /var/tmp/hfs-run-20261030-n7/d zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata1/control/hfs-run-20261030-n7 /var/tmp/hfs-run-20261030-n7/c zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata1/data/hfs-run-20261030-n13 /var/tmp/hfs-run-20261030-n13/d zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata1/journal/hfs-run-20261030-n13 /var/tmp/hfs-run-20261030-n13/j zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+hfsdata1/control/hfs-run-20261030-n13 /var/tmp/hfs-run-20261030-n13/c zfs	rw,noexec,nosuid,noatime,nfsv4acls 	0 0
+NAME                                      USED        AVAIL   REFER  MOUNTPOINT
+hfsdata1                               3375104  16119529472  106496  /var/db/homelabfs
+hfsdata1/control                        688128  16119529472   98304  /var/db/homelabfs/control
+hfsdata1/control/hfs-run-20261030-n10    98304    134119424   98304  /var/tmp/hfs-run-20261030-n10/c
+hfsdata1/control/hfs-run-20261030-n12    98304    134119424   98304  /var/tmp/hfs-run-20261030-n12/c
+hfsdata1/control/hfs-run-20261030-n13    98304    134119424   98304  /var/tmp/hfs-run-20261030-n13/c
+hfsdata1/control/hfs-run-20261030-n6     98304    134119424   98304  /var/tmp/hfs-run-20261030-n6/c
+hfsdata1/control/hfs-run-20261030-n7     98304    134119424   98304  /var/tmp/hfs-run-20261030-n7/c
+hfsdata1/control/hfs-run-20261030-n9     98304    134119424   98304  /var/tmp/hfs-run-20261030-n9/c
+hfsdata1/data                           688128  16119529472   98304  /var/db/homelabfs/data
+hfsdata1/data/hfs-run-20261030-n10       98304    134119424   98304  /var/tmp/hfs-run-20261030-n10/d
+hfsdata1/data/hfs-run-20261030-n12       98304    134119424   98304  /var/tmp/hfs-run-20261030-n12/d
+hfsdata1/data/hfs-run-20261030-n13       98304    134119424   98304  /var/tmp/hfs-run-20261030-n13/d
+hfsdata1/data/hfs-run-20261030-n6        98304    134119424   98304  /var/tmp/hfs-run-20261030-n6/d
+hfsdata1/data/hfs-run-20261030-n7        98304    134119424   98304  /var/tmp/hfs-run-20261030-n7/d
+hfsdata1/data/hfs-run-20261030-n9        98304    134119424   98304  /var/tmp/hfs-run-20261030-n9/d
+hfsdata1/journal                        688128  16119529472   98304  /var/db/homelabfs/journal
+hfsdata1/journal/hfs-run-20261030-n10    98304    134119424   98304  /var/tmp/hfs-run-20261030-n10/j
+hfsdata1/journal/hfs-run-20261030-n12    98304    134119424   98304  /var/tmp/hfs-run-20261030-n12/j
+hfsdata1/journal/hfs-run-20261030-n13    98304    134119424   98304  /var/tmp/hfs-run-20261030-n13/j
+hfsdata1/journal/hfs-run-20261030-n6     98304    134119424   98304  /var/tmp/hfs-run-20261030-n6/j
+hfsdata1/journal/hfs-run-20261030-n7     98304    134119424   98304  /var/tmp/hfs-run-20261030-n7/j
+hfsdata1/journal/hfs-run-20261030-n9     98304    134119424   98304  /var/tmp/hfs-run-20261030-n9/j
