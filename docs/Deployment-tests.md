@@ -28,12 +28,13 @@ validate the selected version and its actual daemon barriers.
 
 If a required property fails, stop acceptance of the affected canary profile and revise or repair the selected transport explicitly. Do not hide missing semantics behind a successful mount or filesystem benchmark.
 
-The unselected [retained 9p repair design](lab/Retained-9p-compatibility.md)
+The selected [retained 9p repair design](lab/Retained-9p-compatibility.md)
 provides concrete prerequisites: negotiated per-request guest credentials,
 atomic metadata through an exporter-only FUSE control inode and acknowledged
 view-token recalls that stop mapped access and drain dirty data before a
-conflicting grant. Its guest-kernel trust and maintained kernel/lib9p changes
-require explicit decisions; stock cache options are not that implementation.
+conflicting grant. Paul approved its guest-kernel trust and maintained
+Linux 9p/lib9p implementation direction on 2026-10-31; stock cache options are
+not that implementation, and installation/run/publication gates remain.
 Base `zq3` covers the real-daemon single-node transport, dynamic Unix metadata,
 sync, mmap and K04 profile after those repairs. Distributed SAME-volume writers,
 owner RAM reads before disk apply and independent guest cache-domain barriers

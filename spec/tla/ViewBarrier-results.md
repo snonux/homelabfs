@@ -4,7 +4,9 @@ Completed exact-source local TLC checks on 31 October 2026. This records the fin
 scopes and component assumptions in [View-barriers.md](../../docs/spec/View-barriers.md).
 It is not a kernel/MM proof, distributed read-token implementation, machine-checked
 refinement/composition with AllOrigin, arbitrary-bound proof or readiness approval.
-The 9p credential/maintained-patch proposal remains unselected. Existing AllOrigin
+The 9p credential/maintained-patch proposal was unselected when these checks ran;
+the subsequent [design decision](../../docs/lab/Retained-9p-authorization.md)
+does not change their proof scope. Existing AllOrigin
 modules/configurations/results and their earlier scopes remain unchanged.
 
 Module SHA-256: `db02f81e83df96fe39900e50b4000df2ccdb5001e946db558abbb1d51a1a206f`.

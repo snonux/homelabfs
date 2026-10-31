@@ -1,8 +1,9 @@
 # Retained 9p compatibility repair design, 2026-10-31
 
-Status: **concrete, unselected implementation proposal for `jz3`**. Nothing
-below is implemented. The [authorization decision](Retained-9p-authorization.md)
-must be explicit before changing that boundary. Keep FreeBSD FUSE → bhyve/lib9p
+Status: **selected implementation design for `jz3`**, approved by Paul on
+2026-10-31. Nothing below is implemented. The
+[authorization decision](Retained-9p-authorization.md) selects the guest trust
+boundary and scoped implementation work. Keep FreeBSD FUSE → bhyve/lib9p
 → Rocky kernel 9p; introduce neither Linux FUSE nor a separate guest HomelabFS
 RPC/daemon. This profile needs a negotiated extension and refuses unmodified
 endpoints rather than falling back silently.
@@ -263,9 +264,9 @@ or a dead-FUSE host fsync never constitutes an attested live service barrier.
 ## Owned work packages and acceptance
 
 The work packages below are recorded tasks after fresh-context proposal review.
-`jz3` remains open pending the explicit guest-trust and maintenance decision.
-Only the generic all-frontend barrier model can proceed without selecting that
-guest profile. Task readiness grants no installation, runtime acceptance or
+Paul selected the guest-trust and maintenance direction on 2026-10-31, resolving
+the decision reserved by `jz3`. The scoped implementation packages may now
+proceed when their dependencies are ready. Task readiness grants no installation, runtime acceptance or
 permission to patch unrelated upstream/vendor trees. Maintain reviewed owned
 patches/build inputs in project integration artifacts rather than host edits.
 

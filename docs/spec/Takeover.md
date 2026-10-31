@@ -130,8 +130,9 @@ exact-launch execution-stop proof and durable restart inhibition. A hung/paused
 guest that does not stop blocks activation. No force/reset, f3 host, Rocky/9p,
 production or new guest target is authorized. An all-origin S/domain outside that
 policy needs separately decided enrollment/fence policy or proven cooperative
-closure; this specification does not silently expand the allowlist. Guest trust
-policy remains a separate unselected decision.
+closure; this specification does not silently expand the allowlist. The separate
+[guest trust design](../lab/Retained-9p-authorization.md), selected on 2026-10-31,
+does not expand this fence policy or establish runtime compatibility.
 
 ## Worked source-coverage checks
 

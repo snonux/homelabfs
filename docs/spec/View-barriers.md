@@ -11,8 +11,8 @@ The [normal replication contract](Replication-protocol.md) owns origin durabilit
 selection and protected results. [Durability](Durability.md#mmap-and-guest-buffering)
 owns syscall promises. This model refines their frontend sequencing independently
 of guest credential trust. The credential delegation and maintained patch
-proposal in [retained 9p compatibility](../lab/Retained-9p-compatibility.md) remains
-unselected pending the separate user decision (`jz3`). No policy, installation,
+design in [retained 9p compatibility](../lab/Retained-9p-compatibility.md) was
+selected separately by Paul on 2026-10-31 (`jz3`). No installation,
 mount, VM, lab operation or publication permission follows from this document.
 
 ## Interface and sequencing

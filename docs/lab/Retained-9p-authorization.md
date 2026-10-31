@@ -1,18 +1,22 @@
-# Retained 9p authorization decision proposal, 2026-10-31
+# Retained 9p authorization design selection, 2026-10-31
 
-**Unselected proposal for `jz3`; no security policy or publication changes.**
+**Selected design for `jz3`.** On 2026-10-31 Paul explicitly approved trusting
+admitted guest kernels/root to report application credentials within authorized
+volume sessions, including the maintained Linux 9p/lib9p implementation work.
+The implementation remains absent; selection enables the scoped work packages,
+not installation, disruptive operations or normal publication.
 Keep FreeBSD HomelabFS FUSE → bhyve/lib9p → Rocky kernel 9p. The accepted
 concession remains advisory locks between cooperating processes in the same
 guest, same 9p mount/kernel inode domain. Independent admitted nodes may write
 the same volume. The [all-origin contract](../spec/Replication-protocol.md)
 requires their common committed view, including owner RAM before owner disk.
 
-The proposed repair is **request-bound guest-kernel credential delegation**:
+The selected repair is **request-bound guest-kernel credential delegation**:
 a negotiated extension of this 9p path plus an exporter-only control endpoint
 on the real host FUSE connection. HomelabFS would authenticate the exporter,
 validate its explicit guest-credential assertion and enforce shared Unix policy
-against current committed logical metadata. This needs an explicit trust
-decision and owned integration work; neither the stock stack nor the existing
+against current committed logical metadata. The trust decision is now explicit;
+owned integration work remains. Neither the stock stack nor the existing
 `Credentials` provider implements it. The [compatibility design](Retained-9p-compatibility.md)
 specifies framing, atomic metadata, sync, cache/mmap recalls and work packages.
 
@@ -41,9 +45,9 @@ These support source assessment within the binding limits above. Current local
 rules are in [adapter identity](../../internal/fuseadapter/adapter.go) and
 [Unix authorization](../../internal/fsservice/permissions.go).
 
-## Exact choice for project-owner review
+## Selected trust boundary
 
-**Proposed choice: trust explicitly admitted guest kernels/root to attest guest
+**Selected choice: trust explicitly admitted guest kernels/root to attest guest
 credentials for authorized volume sessions; retain host service Unix
 authorization of those asserted users.** Authenticate exact VM/exporter
 incarnation, FUSE connection, volume/session, policy and serving generation.
@@ -63,13 +67,14 @@ would receive complete per-request assertions and recheck Unix policy. Both
 trust the guest kernel as an identity source; neither can derive guest identity
 from bhyve's host FUSE header. This choice also entails maintained Linux 9p and
 lib9p extensions and an explicit FUSE/service delegation interface. It is a
-security and maintenance decision, not implied by retaining 9p or accepting
-local advisory locks. Subsequent installation, VM changes, tests and normal
+security and maintenance decision explicitly approved on 2026-10-31, rather than
+inferred from retaining 9p or accepting local advisory locks. Subsequent
+installation, VM changes, tests and normal
 publication retain their own gates.
 
-If declined or deferred, keep current real-daemon publication refusal and
-prepare the work packages for later review. That does not select another
-transport or narrow the required final workload.
+Keep current real-daemon publication refusal until the selected work packages
+are implemented and their acceptance gates pass. Design selection does not
+select another transport or narrow the required final workload.
 
 ## Why the earlier workaround is superseded
 
@@ -86,5 +91,5 @@ The earlier proposal remains in git history; its group-ceiling mechanism,
 research subsets and exclusive-publication rules are superseded here. `zq3`
 remains the real-daemon single-node base gate after required repairs. Full
 distributed concurrent-client acceptance belongs to `ov3`/`pv3` after the core
-protocol, without a dependency cycle through `zq3`. No base-gate pass, trust
-selection, runtime compatibility or normal admission is claimed.
+protocol, without a dependency cycle through `zq3`. This records trust/design
+selection, not a base-gate pass, runtime compatibility or normal admission.
