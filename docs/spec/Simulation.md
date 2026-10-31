@@ -178,3 +178,14 @@ Focused local verification uses `GOMAXPROCS=2 go test -race ./internal/sim
 ./internal/transport` and static analysis. It uses only bounded process memory;
 it opens no VM, host socket, FUSE mount, production volume or remote service.
 The separate lab and canary execution approval requirements remain unchanged.
+
+## Successor all-origin protocol model
+
+The separate [AllOrigin TLA+ model](../../spec/tla/README.md#successor-all-origin-commitment-model-dz3)
+checks finite all-origin grant/choice/result/publication and source-survey graphs.
+Its two frontend-domain observations and independent backing apply expose the
+RAM-before-disk contract to a logical history oracle. Its delayed ACKs and
+unobserved RAM loss do not assume instantaneous remote crash knowledge.
+The model's abstract atomic publication, dependency bundles and positive fences
+are requirements on future runtime work, not behavior implemented by
+`internal/sim`, the local service fixture or the retained v1 codec goldens.

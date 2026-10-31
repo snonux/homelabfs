@@ -1736,3 +1736,184 @@ normative specification behavior was changed because no actual defect was found.
 These are bounded contract checks, not a refinement proof of the Go code or a
 claim of distributed service readiness. As with the other TLC models, exhaustive
 exploration relies on finite fingerprints without distinct-state collisions.
+
+## Successor all-origin commitment model (`dz3`)
+
+`AllOrigin.tla` is a separate bounded model of the coordinated all-origin
+contract in [Replication-protocol.md](../../docs/spec/Replication-protocol.md).
+The v1 modules, configurations, golden bytes and recorded results above keep
+exactly their old scope. This model supplies no implementation, lab, FUSE,
+production-readiness or arbitrary-bound proof.
+
+Run selected profiles, or one sequential group, from the repository root:
+
+```sh
+python -B spec/tla/check_all_origin.py AllOriginOverwrite AllOriginNegativePrepare
+python -B spec/tla/check_all_origin.py --seconds 1200 --group safety
+python -B spec/tla/check_all_origin.py --group negative
+python -B spec/tla/check_all_origin.py --group witness
+```
+
+The standard-library runner requires the existing SHA-256-pinned TLC 1.8.0 jar
+above; it does not download or install anything. Each process uses one worker,
+one active processor and a 1 GiB heap. Its default 180-second wall limit is a
+failure bound, never a state/depth cutoff or successful partial result. The
+recorded three-origin and staged-recovery graphs need larger wall caps on this
+host; the safety-group command above allows 1,200 seconds per profile. Sources,
+configuration, command, source/config hashes, tool pin, counts, elapsed time and
+actual process exit are saved together under `.cache/tla/AllOrigin-*`.
+A positive profile requires completed exploration, exit zero and an empty queue.
+A deliberate guard mutation requires a `Safety` counterexample and exit 12.
+A reachability control requires a `WitnessAbsent` counterexample and exit 12;
+that demonstrates one execution, not safety or fair eventual progress.
+
+The installed admitted set is exactly S={A,B,C,X}; replica placement is
+R={A,B,C}, so X is an outside origin. A is the sequencer, and B is the distinct
+memory recipient for A-origin writes. Normal two-operation profiles use B/X as
+origins; owner-origin profiles use A/X. `AllOriginThird` uses three origins
+B/C/X, each with its own local sequence one. Ordered slots are assigned
+independently of origin fragment identities. The local-position operators in
+the module are explanatory notation; transition state represents each complete
+origin fragment atomically. Per-frame contiguous append/sync, stream codecs and
+segment integrity are assumed component boundaries, not newly proved here. No current normal-I/O path requires
+remote-origin writes to become durable at A or B before publication.
+
+The normal profiles exhaust the finite transition graph for overlapping writes,
+two append orders and their fixed offsets, create/create, rename/unlink,
+overwrite/truncate/zero-extension, chmod/write, and one atomic foreign-home
+transaction bundle followed by a closure barrier/chmod. Most profiles contain
+exactly two immutable requests. Truncate and third-origin profiles contain
+exactly three; truncate fixes the causal overwrite/truncate/extend order.
+Requests can otherwise win either grant order. The byte-sequence symbol `"0"`
+denotes an abstract NUL byte for zero-fill. The model has one outstanding
+grant, durable COMMIT or DECLINE, candidate/commit/result retention, selected
+certificates, separately protected results, positive publication barriers and
+reply delivery. An unresolved grant has no deadline or implicit abort action.
+An exact request retry does not allocate a second identity/grant; conflicting
+intent is recorded as a rejected observation.
+
+The logical read oracle recomputes the selected prefix from the initial state
+and immutable request semantics. Planning uses the published RAM view; backing
+apply at old owner A and prospective owner C advances independently and may lag
+every published write. Passive B/X apply is outside this small graph; their
+frontends route reads to the owner. An optional async full-fragment copy to C
+supplies one independent durable replacement source.
+Observational flags are enabled only in witness configurations that need them;
+semantic read checks still execute in every safety/negative graph.
+Reads are observations from two admitted frontend domains, not reads from an
+origin's stale backing tree. Publication requires both positive domain barriers;
+the second domain additionally requires a positive writable-map exclusion.
+Read/cache and foreign-transaction actions are abstract complete barriers and
+complete bundles: this is not a proof of kernel invalidation, mmap exclusion,
+transaction prepare graphs, namespace syscall coverage or cross-volume runtime
+atomicity. Missing modeled foreign dependencies gates retention and recovery.
+
+`sent`, `emitted` and `learned` keep source durable assertions, ACK emission and
+ACK observation separate. Emission owns the exact candidate bytes; delivery may
+be delayed indefinitely, duplicated or never scheduled. Loss is represented by
+continued nondelivery, not a bounded reliable queue. Selected/result/publication
+and final replies may likewise remain unobserved indefinitely. RAM loss never
+atomically clears another node's learned receipts or network ACKs. Only the
+explicit later knowledge/pin checks reject discontinuous sessions. Remote A
+selects from its own retained commit; owner-origin selection uses B's historical
+ACK. An ACK does not establish current physical remote RAM after an unobserved
+crash. The lost-RAM-plus-origin-disk-loss control intentionally reaches a chosen
+history with no surviving source; safety does not falsely assert loss-free
+recovery in that accepted durability gap.
+
+`AllOriginOwner`, `AllOriginOwnerLoss`, `AllOriginRestart` and
+`AllOriginOutsideLoss` bound one
+configured RAM loss, at most one configured disk loss and one X-origin restart.
+Restart never makes a new UUID sufficient: X needs positive exclusion of its
+old lifetime, preserved disk, the still-running A ledger, reconciliation and an
+explicit new incarnation pin before normal participation. Replacing A or its
+bound B uses the closure transition instead. The fault budgets are maxima;
+all shorter and fault-free executions remain included.
+
+Crash recovery and cooperative handoff are separate bounded component graphs,
+with the following initial fixtures. Slot 1 is B-origin, COMMIT, selected,
+result-protected and published; slot 2 is X-origin. Source fragments remain at
+their original origins, A owns the RAM projection and both A/C backing cuts are
+zero. The published and replied fixtures also include slot 2 in that projection.
+
+| Seed / recovery profile suffix | X's durable choice/fragment | Selected cut | Visible cut | External reply history |
+| --- | --- | ---: | ---: | --- |
+| `staged` / `Staged` | Grant only; no durable choice | 1 | 1 | None |
+| `decline` / `Decline` | Durable DECLINE; result absent | 1 | 1 | None |
+| `pending` / `Pending` | Durable COMMIT; selection/result unknown | 1 | 1 | None |
+| `result` / `Result` | Durable COMMIT and protected result | 2 | 1 | None |
+| `published` / base `Recovery` | Complete COMMIT/result | 2 | 2 | Lost/unobserved |
+| `replied` / `Replied` | Complete COMMIT/result | 2 | 2 | Both replies completed |
+
+The result-protected-but-unpublished boundary is checked separately rather than
+assumed equivalent to either published or uncertain COMMIT. Witnesses require
+actual A RAM loss at each specified boundary, actual positive exclusion and A
+recovery-only reporter restart, followed by a read on the activated owner.
+Undecided absence resolves only after X's sealed report, while DECLINE preserves
+its exact irrevocable NO_EFFECT result. COMMIT is adopted and reprotected even
+when selection/result was unobserved. Historical chosen/replied state is an
+external oracle; it cannot supply replacement source coverage.
+
+These fixtures check only the displayed B-then-X incoming states and their full
+subsequent finite closure graphs. Normal and fault profiles separately explore
+the complete fresh grant-to-reply pipeline and phase-arbitrary configured losses.
+Their conjunction is **not a full ordinary-to-recovery composition proof** for
+all incoming states, all origin orders or arbitrary operation/dependency graphs.
+Establishing the mapping from every runtime incoming state to such boundary
+classes remains a refinement/composition obligation.
+
+The transition graphs use the same complete S inventory,
+positive old-domain exclusion and sealed reports. A missing report is replaceable
+only with a sealed complete issued-grant frontier plus exact surviving coverage
+of every grant/choice/dependency for that origin. Silence, a placement majority,
+a selected-cut maximum, new epoch or physical fence alone does not supply these
+facts. `archive` means a verified complete durable collector/source copy on B,
+separate from C's storage state. Sealed reports preserve their exact bytes and
+RAM obligations can be persisted there before a voluntary close. Reports are
+not empty-tail inferences from an unavailable host. After positive exclusion,
+an intact disk may be surveyed by an explicit fresh recovery-only reporter;
+that does not restore normal eligibility or A's lost RAM grant frontier.
+A missing origin's own unreported disk cannot count as its equivalent source. Recovery can conservatively adopt a durable COMMIT whose
+selection/result was unobserved, and resolve a closed proven unchosen grant to
+NO_EFFECT. New grants and owner publication stop when the sequencer acknowledges the
+transition gate (or is already physically down). Existing origin choices,
+receipts and old PUBLISHED replies can still complete until that origin's own
+positive close or known session revocation; a global flag does not stand in for
+remote crash knowledge. Crash activation materializes the recovered graph durably
+at distinct B/C. Cooperative handoff transfers the complete projection and preserves closed
+origin/source coverage; it can serve on C before C has persisted/applied the
+new suffix. This model stops issuing new grants after that one activation.
+Demand counters, policy hysteresis and continued new-authority operation belong
+to the later handoff/runtime tasks.
+
+There are no state constraints, symmetry reductions, depth cutoffs or
+simulation-only passes. No liveness, finite latency, failure detector, arbitrary
+membership, real codec/hash/credential validation, torn-write recovery,
+checkpoint/GC or unbounded workload proof is claimed. Complete finite TLC
+exploration remains conditional on fingerprint collisions not hiding a state.
+The `*Witness*` controls establish that the positive graph actually serves two
+origins from RAM before disk apply, preserves concrete append/permission/truncate
+results, permits protected decline, excludes staged data, retains uncertain
+retries, admits delayed ACKs after unobserved loss, blocks incomplete surveys,
+recovers complete distributed sources and permits handoff before new-owner disk.
+The `*Negative*` controls independently remove prepare/commit, result, barrier,
+read-cut, planning-cut, single-grant, distinct-host, dependency, positive-close
+and survey gates. The survey mutation requires actual A RAM loss, X disk loss
+and all physical exclusions before it tries to invent missing recovery data.
+
+`AllOriginBlockedRecovery` pairs the general blocked-survey reachability control
+with a complete safety graph for the published B/X seed, one possible A RAM
+loss, one possible X disk loss, crash exclusion/report/reporter-restart races,
+and `Bug="none"`. The fault bounds are maxima, so all fault-free/shorter paths
+are also included. `AllOriginWitnessBlocked` alone can show an incomplete survey
+before either configured fault occurs; it is not evidence that both faults
+actually happened or that all other reports had already arrived. The paired
+positive profile supplies exhaustive checking of that exact component fault
+scope, including missing X coverage and independently preserved equivalents.
+
+The [recorded final checks](AllOrigin-results.md) contain all 51 exact-source
+outcomes: 21 completed finite safety graphs, 11 expected `Safety` violations and
+19 expected `WitnessAbsent` reachability controls. Every successful safety row
+has actual exit zero and an empty queue. The results retain the incomplete
+180/600-second attempts and the successful larger wall caps without treating
+an incomplete search as evidence.
