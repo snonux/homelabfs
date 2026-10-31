@@ -2,6 +2,7 @@
 package labrunner
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -115,12 +116,20 @@ type Approval struct {
 
 // ReadJSON reads strict, bounded JSON and rejects trailing or unknown fields.
 func ReadJSON(path string, value any) error {
+	const maxBytes = 4 << 20
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = f.Close() }()
-	d := json.NewDecoder(io.LimitReader(f, 4<<20))
+	raw, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
+	if err != nil {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	if len(raw) > maxBytes {
+		return fmt.Errorf("%s: JSON exceeds %d bytes", path, maxBytes)
+	}
+	d := json.NewDecoder(bytes.NewReader(raw))
 	d.DisallowUnknownFields()
 	if err := d.Decode(value); err != nil {
 		return fmt.Errorf("read %s: %w", path, err)
