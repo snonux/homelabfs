@@ -155,7 +155,8 @@ Use explicit local-validation labels until real Protocol implementation and
 its independent replication validation exist. Any future pipelining/grouping
 must preserve the covering-prefix invariant before replies.
 
-The retained credential/authorization solution, exclusive consumer publication,
+The retained credential/authorization solution, admitted multi-client publication
+and positive cache-domain barriers,
 generation/cache invalidation, K04 and old-client fencing are separate mandatory
 prerequisites. In particular pinned
 [FreeBSD fuse_vnop_fsync](https://github.com/freebsd/freebsd-src/blob/aadd58dddcbc78f4d5594827b46b5633552b15ce/sys/fs/fuse/fuse_vnops.c#L1152-L1167)

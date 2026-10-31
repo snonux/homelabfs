@@ -28,6 +28,19 @@ validate the selected version and its actual daemon barriers.
 
 If a required property fails, stop acceptance of the affected canary profile and revise or repair the selected transport explicitly. Do not hide missing semantics behind a successful mount or filesystem benchmark.
 
+The unselected [retained 9p repair design](lab/Retained-9p-compatibility.md)
+provides concrete prerequisites: negotiated per-request guest credentials,
+atomic metadata through an exporter-only FUSE control inode and acknowledged
+view-token recalls that stop mapped access and drain dirty data before a
+conflicting grant. Its guest-kernel trust and maintained kernel/lib9p changes
+require explicit decisions; stock cache options are not that implementation.
+Base `zq3` covers the real-daemon single-node transport, dynamic Unix metadata,
+sync, mmap and K04 profile after those repairs. Distributed SAME-volume writers,
+owner RAM reads before disk apply and independent guest cache-domain barriers
+belong to `ov3`/`pv3` after the core protocol, not a prerequisite cycle through
+the base gate. Use the design's positive/negative matrix and bounded external
+oracle; no source assessment or native-only result is a guest acceptance pass.
+
 ## Kubernetes lifecycle scenario families
 
 Preserve these IDs for existing references. They are not part of the 36 native Stage 1 families and are not all routine live smoke tests.

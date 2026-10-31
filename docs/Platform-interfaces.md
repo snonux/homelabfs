@@ -139,6 +139,16 @@ prerequisites remain open; `zq3` is incomplete and `4r3` remains blocked. The
 [earlier Linux frontend/RPC recommendation](lab/Publication-boundary-options.md)
 is superseded and is not the selected f3s architecture.
 
+The [retained 9p repair proposal](lab/Retained-9p-compatibility.md) now specifies
+request-bound credential delegation, an exporter-only FUSE control endpoint,
+atomic metadata operations and acknowledged guest view-token recalls. It is
+unselected and unimplemented: guest-kernel/root trust and maintained kernel/lib9p
+integration need explicit project-owner decisions. It preserves concurrent
+admitted filesystem clients and the narrower advisory-lock concession above.
+Neither host-account group mirroring nor a root attach solves dynamic groups,
+atomic creator metadata or mmap coherence. Current real-daemon publication
+refusal remains; the proposal grants no installation, run or normal admission.
+
 Linux 9p no-cache mode disables mmap, while documented mmap mode includes
 writeback. Exact-version cache behavior and daemon barriers still need proof;
 a successful local lock test would not close those gates.
