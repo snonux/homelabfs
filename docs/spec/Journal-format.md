@@ -1,8 +1,18 @@
 # Journal records and segments
 
-Status: version 1.0 design contract for task `cq3`, 2026-10-28. No encoder,
-replication wire protocol, checkpoint codec or distributed commit implementation
-exists as a result of this document. The loopback PoC implements none of it.
+> **Version scope, `cz3` (2026-10-31):** the exact bytes, role rules and literal
+> vectors below remain v1 fixed-owner history, implemented by the bounded local
+> codec/segments. They are not the all-origin representation. The successor
+> [normal protocol](Replication-protocol.md#identities-journals-and-complete-coverage)
+> requires distinct origin stream identities, global slots/grants, durable source
+> vectors and selected/result evidence; `ez3` must version them explicitly before
+> writes/replay/transfer. Do not reuse reporter streams for origin redo, renumber
+> original bytes or regenerate old goldens. Unknown readers fail closed.
+
+Status: version 1.0 design contract for task `cq3`, 2026-10-28. Bounded local
+record/segment and checkpoint implementations now exist; no normal distributed
+commit implementation is supplied by this document. The loopback PoC implements
+none of it.
 Scope is disposable lab/canary volumes. This specifies representation; it does
 not establish that a received record is committed, a fence effective, or a
 checkpoint eligible for deletion.
@@ -622,7 +632,6 @@ are nonzero recognizable test values, not actual node/volume identities.
 import hashlib
 import struct
 
-
 def crc32c(data):
     crc = 0xffffffff
     for byte in data:
@@ -630,7 +639,6 @@ def crc32c(data):
         for _ in range(8):
             crc = (crc >> 1) ^ (0x82f63b78 if crc & 1 else 0)
     return crc ^ 0xffffffff
-
 
 def frame(kind, seq, payload):
     header = struct.pack(
@@ -641,7 +649,6 @@ def frame(kind, seq, payload):
     assert len(header) == 144
     body = header + payload
     return body + struct.pack('>I', crc32c(body))
-
 
 assert crc32c(b'123456789') == 0xe3069283
 # OPEN: segment UUID, owner kind, absent reporter/incarnation, first=1,
@@ -676,7 +683,6 @@ write_frame = frame(2, 2, write_payload)
 def blob(value):
     return struct.pack('>I', len(value)) + value
 
-
 original = (struct.pack('>H', 1) + b'\x11' * 16 + blob(b'u')
             + b'\x22' * 16 + b'\x33' * 16 + struct.pack('>Q', 1) + b'\x02'
             + b'\x44' * 16 + b'\x55' * 16 + struct.pack('>I', 1) + blob(b'a\xff')
@@ -689,15 +695,12 @@ request_id = (b'\x11' * 16 + blob(b'u') + b'\x22' * 16 + b'\x33' * 16
 internal_prefix = struct.pack('>H', 1) + request_id + b'\x44' * 16 + b'\x55' * 16
 parent_id = b'\x11' * 16 + bytes.fromhex('aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa')
 
-
 def meta(revision, kind, uid, mode, size, nlink):
     return (struct.pack('>QBIIHQQ', revision, kind, uid, 1000, mode, size, nlink)
             + struct.pack('>qI', -1, 123456789) * 3 + struct.pack('>I', 0))
 
-
 def edit(object_value, expected, after):
     return object_value + struct.pack('>Q', expected) + after
-
 
 def create_intent(mode):
     # umask0022, inherited uid/gid1000; exact selected parent/new metadata.
@@ -707,12 +710,10 @@ def create_intent(mode):
               + edit(parent_id, 2, meta(3, 2, 1000, 0o755, 0, 2)))
     return struct.pack('>H', 1) + args + chosen
 
-
 def setattr_intent(uid):
     args = object_id + struct.pack('>HI', 2, uid)  # bit1 UID, explicit value
     chosen = struct.pack('>I', 1) + edit(object_id, 3, meta(4, 1, uid, 0o644, 5, 1))
     return struct.pack('>H', 10) + args + chosen
-
 
 create_0600 = internal_prefix + create_intent(0o600)
 create_0644 = internal_prefix + create_intent(0o644)
@@ -737,7 +738,6 @@ def metadata_agrees(selected_objects, local_redo_objects):
     # These fixtures have one home; the production rule selects that home's
     # ObjectEdit subset before this exact-byte comparison.
     return selected_objects == local_redo_objects
-
 
 assert metadata_agrees(selected_create_0600, selected_create_0600)
 assert not metadata_agrees(selected_create_0600, selected_create_0644)

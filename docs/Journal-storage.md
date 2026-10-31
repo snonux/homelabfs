@@ -2,6 +2,16 @@
 
 [Architecture overview](Architecture.md)
 
+All-origin journal role (`cz3`): the [normal protocol](spec/Replication-protocol.md)
+uses origin-local durable streams plus an exact global slot/source manifest.
+A remote origin may lie outside replica placement; its new operation/COMMIT/result
+fragment can be the only durable copy while the owner serves the complete
+committed RAM view. Its journal is a pinned recovery source, not a disposable
+client log. Owner-origin work needs a distinct memory partner. Complete durable
+history may span several origins, so owner-disk or per-stream maxima are not
+closure checkpoints. The v1 local segment/checkpoint implementation remains
+scoped; all-origin distributed retention/restore integration is unimplemented.
+
 Recommended layout: separate sibling ZFS datasets for each workload's data and journal under a common parent. HomelabFS owns journal checkpointing and segment deletion; external FreeBSD tools own ZFS snapshot scheduling and retention. This is a design recommendation, not deployed configuration.
 
 The [journal format](spec/Journal-format.md) defines portable record bytes, redo and recovery evidence, segment seals and corruption handling. It specifies representation; commit, fencing and checkpoint eligibility still require their protocol and platform gates.
@@ -24,7 +34,7 @@ Keep encryption coverage for both siblings. Preserve synchronous-write semantics
 
 ## Segment and checkpoint lifecycle
 
-Use bounded append-only segments per volume stream, identified by volume UUID, recovery generation, epoch, and sequence range. Rotate by size, with age as an optional operational trigger. Seal segments with validated framing/checksums. Segment size and retention windows remain configurable choices to measure.
+Use bounded append-only segments per origin stream, identified by the full volume/generation/configuration/epoch/origin/incarnation identity and local sequence range. Global selected slots map to these exact source positions; they do not rename them. Rotate by size, with age as an optional operational trigger. Seal segments with validated framing/checksums. Segment size and retention windows remain configurable choices to measure.
 
 The journal serves both local crash recovery and remote catch-up. A successful memory ACK is not permission to delete its data. Neither file age, an empty send queue, nor application to files without a durable checkpoint proves the segment is unnecessary.
 
@@ -49,6 +59,9 @@ from the highest journal record or a file timestamp.
 Delete only closed segments wholly below a verified safe boundary. Check all of these dependencies:
 
 - Local recovery has a durable checkpoint covering their effects, and needed commit, epoch, configuration, deduplication, and uncertainty-resolution evidence survives outside the deleted segment.
+- Every origin source/choice/grant obligation has verified complete durable
+  replacement and protected release; an outside origin cannot be removed from
+  the inventory merely because it is not an assigned replica.
 - Every assigned replica that still relies on incremental replay has durable coverage of that prefix, through retained journal data or a recoverable applied checkpoint. Receipt in RAM is insufficient.
 - No active catch-up stream, snapshot installation, promotion, emergency admission, or checkpoint operation holds a reference to the segment.
 - Retained point-in-time recovery plans have a baseline plus required suffix; log deletion does not silently break an advertised recovery point.
@@ -70,9 +83,18 @@ Alert on oldest retained sequence/age, bytes awaiting each replica, reclaimable 
 
 ## Snapshots of separate datasets
 
-Independent snapshot schedules are useful, but restore compatibility must be explicit. Use an external recursive snapshot of the workload parent for the normal recovery set, capturing data and journal siblings together. OpenZFS documents recursive snapshots as occurring at the same time. This is a storage-level point-in-time capture, not automatically an application-consistent checkpoint. Source: [OpenZFS snapshots](https://openzfs.github.io/openzfs-docs/man/master/8/zfs-snapshot.8.html).
+Independent snapshot schedules are useful, but restore compatibility must be explicit. An external recursive snapshot of one local workload parent captures that host's data and journal siblings together, as one recovery component. OpenZFS documents recursive snapshots as occurring at the same time. This is a storage-level point-in-time capture, not automatically an application-consistent checkpoint. Source: [OpenZFS snapshots](https://openzfs.github.io/openzfs-docs/man/master/8/zfs-snapshot.8.html).
 
-For a clean HomelabFS recovery point, external tooling can request a checkpoint barrier, snapshot both siblings while the barrier is held, and then release it. Make that handshake bounded and restart-recoverable. Live recursive snapshots must instead be validated as crash-recoverable, including partial apply and pending journal operations. Application-aware quiescing is separate where needed.
+For a clean local HomelabFS recovery component, external tooling can request a checkpoint barrier, snapshot both siblings while the barrier is held, and then release it. Make that handshake bounded and restart-recoverable. Live recursive snapshots must instead be validated as crash-recoverable, including partial apply and pending journal operations. Application-aware quiescing is separate where needed.
+
+In the all-origin target, one host's recursive sibling snapshot is not the
+complete volume/closure recovery set. Bind the global barrier to every required
+origin dataset/source cut (including journals outside placement), authority,
+claim/result and dependency manifest, with pins across capture. Alternatively
+durably materialize all obligations in a verified selected backup set before
+capture. Owner RAM itself is not a backup component. Missing one source prevents
+advertising a complete clean recovery point; detailed successor backup/recovery
+integration remains pending.
 
 Independent data-only or journal-only snapshots may be retained additionally. Do not pair them solely by timestamp: restore requires a matching history and a complete replay suffix. Restore tooling validates the checkpoint/manifest before serving; never roll back only one live sibling beneath the daemon.
 

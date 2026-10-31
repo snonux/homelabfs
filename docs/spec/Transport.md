@@ -1,5 +1,13 @@
 # Replication transport 1.0
 
+All-origin boundary (`cz3`): the implemented 1.0 envelope/negotiation and old
+role authorization remain scoped local capabilities. The successor
+[normal protocol](Replication-protocol.md) adds exact origin/grant/slot, durable
+source and selected-result semantics; it is not implemented by these tags.
+`ez3` must version/validate new messages before use. The future Authorizer must
+distinguish origin, sequencer, designated memory recipient and historical
+forwarder; normal origin admission includes nodes outside replica placement.
+
 Implemented by `internal/transport` for disposable synthetic testing. This is a
 socket/session boundary for [Replication-protocol](Replication-protocol.md),
 not an implementation of its stream state machine, acceptance ledger, continuity

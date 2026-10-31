@@ -1,5 +1,20 @@
 # Cross-volume transactions
 
+> **All-origin composition, `cz3` (2026-10-31):** the
+> [normal contract](Replication-protocol.md#claims-unknown-results-and-transaction-composition)
+> supersedes owner-only workload admission and owner-local durable protection
+> below. Any admitted origin, including outside placement, may execute this API
+> with authenticated original credentials and a common closure sequencer A.
+> O durably journals the complete new transaction graph locally; A retains the
+> complete ordered committed RAM projection, or B supplies distinct memory when
+> O=A. The common owner/partner/placement restriction is closure affinity, not
+> exclusive origin access. Preserve immutable anchor claims/bindings, prepares,
+> one decision, INSTALL/VIEW_BARRIER/COMPLETE, foreign homes, exact retries and
+> grow-only closure affinity. All-origin permission/barrier/source coverage
+> applies to every semantic record. The remaining v1 record mechanics and local
+> ledger below retain their scoped history; successor schema/service integration
+> is unimplemented and needs its own model/platform gates.
+
 Status: design contract for `yv3`, selected on 2026-10-28. This is an
 unimplemented protocol to model and validate, not a safety proof or a capability
 of the loopback PoC. It applies to disposable lab/canary volumes only.
@@ -391,7 +406,7 @@ opening any closure member:
 
 This is the decision-slot obligation that the normal commit/fencing model must
 implement and verify; naming a future commit protocol is not evidence it exists.
-The [normal replication protocol](Replication-protocol.md#streams-progress-and-decision-evidence)
+The [normal replication protocol](Replication-protocol.md#identities-journals-and-complete-coverage)
 defines the shared protection/acceptance transport and acyclic evidence graph.
 The fixed common partner and single-writer-per-term restrictions simplify its
 intersection cases. The model must include a delayed old proposal racing the

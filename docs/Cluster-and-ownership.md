@@ -10,7 +10,15 @@ Three nodes is the default deployment, not a hard cluster-size limit. Support ex
 
 Track cluster membership, write-origin admission and each volume's replica placement separately. In normal mode any admitted HomelabFS node may accept writes for any volume regardless of preferred ownership, subject to permissions, valid authority and the commit protocol. A node need not become the preferred owner to originate a write. Admission alone does not make an empty node an up-to-date replica or authorize stale reads. Replica placement requires a verified checkpoint/suffix and safe configuration transition. Adding a node does not automatically redistribute replica sets; periodic preferred-owner reconsolidation is a separate policy.
 
-The earlier two-of-three reasoning applies to a volume's replica group. For membership changes, use a proven joint/overlapping configuration transition that preserves acknowledged history and fencing; two acknowledgements from arbitrary cluster members are not sufficient. A fourth empty node cannot substitute for an up-to-date partner until it has recovered the required state.
+The all-origin normal boundary is not a two-of-three placement quorum: an
+outside origin may supply the only durable new fragment while the owner retains
+RAM. Keep the complete admitted-node set S and origin/grant lineage discoverable
+across membership changes. Activation needs sealed source/choice reports or
+equivalent verified complete durable coverage and issued-grant frontier proof,
+plus positive exclusion of old origin/read-cache rights. Two arbitrary members,
+or two placement replicas, cannot prove it. A fourth empty node cannot substitute
+for recovered history. Joint/overlapping placement transitions remain a separate
+unimplemented requirement and must preserve all outside-origin obligations.
 
 Keep coordination membership independent too: adding a fourth storage node need not add a fourth etcd voter. The recommended initial coordination deployment remains three members; any later quorum changes require their own managed transition.
 
@@ -28,7 +36,11 @@ HomelabFS daemon
       +-- asynchronous replication ----------- third daemon
 ```
 
-Preferred ownership is per volume, not per physical node or the whole filesystem. Any admitted node can originate writes for the same volume. The preferred owner retains the complete ordered committed memory view and may serve it before local disk persistence. The originating writer supplies local durable journal evidence; an owner-originated write instead requires a distinct synchronous partner's memory receipt. Replica placement, write origin and preferred ownership are distinct roles. Their multi-origin ordering, fencing and recovery protocol must be specified and validated before implementation; the earlier fixed-owner two-of-three reasoning below is not a proof for this revised model.
+Preferred ownership is per volume, not per physical node or the whole filesystem. Any admitted node can originate writes for the same volume. The preferred owner retains the complete ordered committed memory view and may serve it before local disk persistence. The originating writer supplies local durable journal evidence; an owner-originated write instead requires a distinct synchronous partner's memory receipt. Replica placement, write origin and preferred ownership are distinct roles. The [normal contract](spec/Replication-protocol.md) selects one outstanding grant
+per closure, origin-local durable choice/result and explicit owner selection and
+publication. A remote origin needs O+A, without a third mandatory synchronous
+host; an owner-origin operation needs A+B. This is unimplemented and unproven
+pending `dz3`, not a fixed-owner two-of-three proof.
 
 Example placement (partner assignments are illustrative):
 
@@ -38,9 +50,14 @@ Example placement (partner assignments are illustrative):
 | `/workloads/b` | node1 | node2 | node0 |
 | `/workloads/c` | node2 | node0 | node1 |
 
-Each directory is an independent replication group with its own ownership epoch, ordered journal stream, commit/apply progress, replica checkpoints, and recovery state. Journal storage may be physically shared by a daemon, but ordering and recovery must remain identifiable per group. A lagging workload must not impose an unnecessary global replication barrier on unrelated workloads; shared disk, memory, and network limits still require resource management.
+Each directory is an independent replication group with its own ownership epoch, globally selected order mapped to exact origin journal streams, commit/apply progress, replica checkpoints, and recovery state. Journal storage may be physically shared by a daemon, but ordering and recovery must remain identifiable per group. A lagging workload must not impose an unnecessary global replication barrier on unrelated workloads; shared disk, memory, and network limits still require resource management.
 
-For example, if node0 fails, workload a can move to node1 while workload b stays on node1 and workload c stays on node2. Workload b loses its asynchronous replica; workload c loses its synchronous replica and must establish a replacement before acknowledging further writes. Each group therefore handles the same physical failure according to its own roles. Catch-up of returning node0 is also tracked separately for each directory.
+For example, if node0 fails, workload a may move to node1 after complete
+origin-source recovery and fencing while unrelated closures retain their own
+owners. For an unchanged owner, loss of B stops owner-origin completions until a
+safe partner transition; remote O+A completions need no B if all their dependencies
+and authority remain ready. A replica's failure can also remove a required durable
+origin source, independent of placement role. Catch-up remains per directory.
 
 The configured directory roots define group boundaries. Keep workload operations inside those roots; cross-group rename/hard-link semantics and management of the shared parent namespace still need an explicit policy. Do not infer support for atomic cross-group operations from local ZFS support. Concurrent access from different admitted hosts is a requirement; its read coherence and commit rules must be validated.
 
@@ -107,8 +124,10 @@ closure-wide ordering when selecting the transfer unit.
 
 Distinguish this planned handoff from crash takeover/fencing and from replica-set
 reconfiguration. Emergency single-survivor mode remains an explicitly authorized
-exception. This is the agreed target, not implemented or validated behavior;
-existing owner-only protocol text, diagrams and tests require reconciliation.
+exception. This is the agreed target, not implemented or validated behavior. The normal
+contract defines source/choice preservation constraints; detailed policy and
+cooperative handoff remain `kz3`. Old owner-only models/tests remain scoped v1
+history and do not establish a handoff proof.
 
 ## Coordination without per-operation etcd access
 
@@ -116,17 +135,31 @@ Target architecture: coordinated multi-origin reads and writes, one preferred ow
 
 Retain etcd for ownership allocation and configuration changes unless measurements or operational constraints justify removing it. Removing etcd entirely does not remove the need for agreement during failover: HomelabFS would need an established embedded consensus implementation or an external fencing authority. Designing a new election protocol merely to save occasional coordination latency is not the recommended starting point. No latency measurements have been made yet.
 
-Use increasing ownership epochs and configuration identifiers. In normal mode, persist fencing promises on the required replica-group quorum before activating a new configuration; replicas must reject older epochs thereafter, including after restart. Every acknowledged normal-mode write requires participation by two members of its configured three-replica group; this is not a majority of an arbitrarily sized cluster. Old and new write majorities intersect, allowing a properly serialized fencing transition to prevent two configurations from independently acknowledging writes. This argument requires an actual recovery protocol, not just counting acknowledgements: retain accepted operations at the intersecting node and reconcile them before enabling the new writer.
+Use increasing ownership epochs/configuration identifiers and durable transition
+promises. The [normal protocol](spec/Replication-protocol.md#outside-origins-recovery-and-authority-transitions)
+requires complete old admitted-origin grant/choice/source coverage and positive
+fencing before a successor activates. Old fixed three-replica majority
+intersection does not establish this when origins lie outside placement. The
+complete report survey can be replaced only by equivalent verified durable
+coverage and complete issued-grant frontier evidence. Unknown evidence gates
+activation; a node with fully proven replacement obligations may be retired
+without reading a permanently dead disk.
 
-An etcd ownership grant authorizes starting takeover; it does not authorize serving I/O immediately. Lease expiry alone does not stop a paused old owner. Takeover must close out prior writes, fence old epochs, recover data, and revoke or safely expire old read permissions. Direct local reads and cached reads need fencing too, since they do not contact a write majority.
+An etcd allocation authorizes starting a transition, never serving. Old granted
+origins, owner-origin memory partners, readers and cache domains must be positively
+closed/fenced, including descriptors and mmap. Lease expiry alone does not stop
+a paused daemon or cached reads. Preserve complete accepted/selected RAM and
+origin journals before voluntary stop, and recover dependencies before opening
+any successor gate. No steady-state operation consults etcd.
 
 Suggested deployment if etcd is retained: a dedicated three-member cluster, one member per physical node, with data on independent local storage. Keep the k3s and HomelabFS coordination services independently bootstrappable. Conservatively stop affected serving rights when their authority cannot be renewed or established, and allow no ownership transfers without coordination quorum. Continuing established groups during an etcd outage would require a separately proven authority protocol and is not assumed here.
 
 The safety rules above are design constraints, not a complete consensus or lease implementation. Specify and model-check the transition state machine before implementing automatic failover. Sources for the distinction between coordination and storage enforcement: [etcd API guarantees](https://etcd.io/docs/v3.6/learning/api_guarantees/), [etcd fencing example](https://github.com/etcd-io/etcd/blob/main/contrib/lock/README.md).
 
-The [takeover specification](spec/Takeover.md) specifies explicit positive cache
-fencing without a clock-based serving-expiry assumption, durable quorum promises
-and closure-wide history recovery. Paul approved its narrow native VM-only fence
+The v1 [takeover specification](spec/Takeover.md) retains explicit positive
+cache fencing without a clock-based serving-expiry assumption and fixed-owner
+recovery mechanics. It is not sufficient for the new all-origin source survey;
+`gz3` must revise the detailed recovery state machine. Paul approved its narrow native VM-only fence
 policy; implementation and validation remain pending. Neither policy approval
 nor etcd allocation grants serving authority.
 

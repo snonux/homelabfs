@@ -1,5 +1,13 @@
 # Single-volume filesystem service
 
+All-origin integration frontier (`cz3`): the owner-stream/applied-store API
+below documents the existing bounded v1 local service. It does not implement the
+[normal all-origin contract](Replication-protocol.md). `fz3` must separate origin
+local durability, globally selected cuts and a complete committed logical RAM
+projection for planning, credentials/permissions and reads, plus all-client cache
+barriers. Do not make every nonowner request an owner-local durable commit or
+relax the local v1 checks as a substitute. Existing tests retain their local scope.
+
 Task `pq3` implements `internal/fsservice` over `internal/fsapi`, the journal
 segment/record packages, verified apply and stable-ID storage. This is local
 implementation evidence for disposable volumes. It is not a distributed

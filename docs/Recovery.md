@@ -1,5 +1,17 @@
 # HomelabFS failure handling and recovery
 
+The all-origin [normal recovery boundary](spec/Replication-protocol.md#outside-origins-recovery-and-authority-transitions)
+now governs the target. The fixed-owner role tables/sequences below retain v1
+planning context, not a sufficient all-origin activation procedure. Recover all
+origin fragments and the complete grant frontier, including outside-placement
+origins, with sealed reports or equivalent verified durable replacements and
+positive exclusion of origin/read-cache rights. Unknown history blocks activation;
+a dead source with proven complete replacement coverage can be retired. `gz3`
+must specify/model the detailed successor. A remote O+A write requires no third
+synchronous host; loss of B alone blocks owner-origin completion, not every remote
+operation whose authority/dependencies remain ready. No old two-of-three argument
+or new etcd epoch supplies a missing origin COMMIT/result/dependency.
+
 [Architecture overview](Architecture.md)
 
 Ordinary failures should recover automatically when valid authority and sufficient history are available. Manual decisions are reserved for the exceptional cases documented below.

@@ -32,15 +32,41 @@ TLS would not require a handshake for every write either: persistent TLS session
 
 An explicit admitted-node list is an agreed requirement. Default to denying nodes absent from that list; network reachability and possession of a WireGuard key do not enroll a node.
 
-Maintain an explicit admitted-node registry with node UUID, cluster UUID, transport identity, admission state, and recovery generation. Initial bootstrap uses a reviewed member list. Adding a WireGuard peer alone does not enroll it into HomelabFS; adding a HomelabFS member does not grant access to every volume.
+Maintain an explicit admitted-node registry with node UUID, cluster UUID, transport identity, admission state, and recovery generation. Initial bootstrap uses a reviewed member list. Adding a WireGuard peer alone does not enroll it into HomelabFS; normal admission makes the node eligible to originate for every volume under
+the installed all-origin authority. This does not authorize arbitrary users:
+original filesystem credentials and exact granted scope are checked for every
+request. Replica placement and recovery-only permissions remain separate.
 
-For every operation, check the locally installed valid authority: cluster/recovery generation, replica-group configuration, sender role, ownership epoch, node incarnation, and expected sequence. Only the authorized primary may originate mutations for that group. Only assigned replicas or explicitly admitted recovery receivers may obtain its journal/snapshot. Never accept a larger claimed epoch as self-proving authority. These checks use validated cached configuration and the established fencing protocol, not an etcd query per write.
+For every operation, check locally installed cluster/recovery generation,
+registry/admitted-origin set, closure configurations/epochs, sequencer and origin
+incarnations, exact grant/intent/credential binding, predecessor slot, source
+references and memory-recipient role. Any admitted normal node can originate for
+any volume, including outside placement. A alone issues ordered grants; it does
+not replace the origin's durable local COMMIT. Remote O+A needs no third host;
+owner-origin A+B forbids self-counting. Transport authentication identifies the
+current forwarder, which can differ from the immutable origin of historical bytes.
+No claimed higher epoch, checksum or source address creates grant authority.
+
+Assigned replicas and explicit recovery receivers may obtain their authorized
+history. An outside origin receives only the grant/read/dependency scope needed
+for its authorized request; normal admission is not an arbitrary snapshot/export
+or admin capability. A checks original numeric credentials and permissions at the
+ordered committed logical cut; stale origin metadata is insufficient. Guest
+credential mapping remains a publication gate. Exact semantic grants, results,
+source references and reader/cache rights are enforced by the normal protocol,
+using installed authority without per-write etcd access. Close/revoke sessions on
+known discontinuity; delayed old receipts prove past retention, not live RAM.
+The successor origin/grant roles require versioned schemas, not permissive v1
+primary/reporter checks.
 
 Reject foreign volumes, unassigned requests, stale generations, duplicate identities, malformed frames, unreasonable lengths, and unauthorized checkpoint or snapshot requests. Bound allocation before decoding payloads. Log security events without logging file contents or credentials.
 
 In emergency mode, valid WireGuard keys still do not permit rejoining. The persistent emergency admission policy overrides normal membership. A manually approved peer receives recovery-only access to specified volumes; it cannot serve or become primary before explicit transition. External fencing remains necessary for excluded nodes that cannot see the new policy.
 
-Removal revokes application admission, closes existing sessions, and triggers safe group reconfiguration. Remove or rotate transport credentials as appropriate too; changing a registry without closing established sessions is insufficient. WireGuard key rotation remains owned by existing FreeBSD/network tooling, not by a second key manager in HomelabFS.
+Removal revokes application admission, closes existing sessions, positively
+excludes old origin/reader/cache rights and triggers a source-aware transition.
+Keep the node in the old grant/source inventory until sealed reports or equivalent
+complete durable coverage and grant-frontier proof replace all obligations. Remove or rotate transport credentials as appropriate too; changing a registry without closing established sessions is insufficient. WireGuard key rotation remains owned by existing FreeBSD/network tooling, not by a second key manager in HomelabFS.
 
 ## Administration and etcd
 

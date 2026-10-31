@@ -1,5 +1,12 @@
 # Immutable local checkpoints and segment reclamation
 
+All-origin retention frontier (`cz3`): this bounded v1 local checkpoint contract
+is not a distributed all-origin reclaim grant. Successor manifests must bind the
+global selected cut to every exact origin source/dependency cut and durable
+replacement, including outside-placement origins and owner committed RAM. Until
+that integration and `gz3` are verified, preserve existing source histories;
+RAM acceptance, backing apply or a one-stream maximum cannot authorize deletion.
+
 `internal/checkpoint` implements bounded local checkpoint publication and source
 segment reclamation for explicitly admitted disposable single-node callers.
 It requires trusted external authority and retention implementations. It adds no

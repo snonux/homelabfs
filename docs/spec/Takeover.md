@@ -1,5 +1,15 @@
 # Ownership, fencing and takeover
 
+> **All-origin recovery frontier, `cz3`:** this document retains the v1
+> fixed-owner state machine and approved narrow native VM fence policy. Its
+> storage-majority survey and single owner-stream selection are insufficient for
+> the [new normal protocol](Replication-protocol.md#outside-origins-recovery-and-authority-transitions).
+> A successor must close all old admitted origin/sequencer/reader/cache domains,
+> obtain sealed reports or equivalent complete durable source/decision and
+> issued-grant frontier coverage, and preserve outside-placement sources.
+> Missing unique history gates activation. `gz3` must revise/model the detailed
+> state machine; no policy approval or old model proves these new transitions.
+
 Status: design contract for `eq3`, 2026-10-28. Paul approved the narrow graceful
 native VM-only `native-vm-stop-v1` fence policy below. Policy approval does not
 authorize installation, a VM lifecycle window or a disruptive test run.

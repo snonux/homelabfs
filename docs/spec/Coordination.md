@@ -1,5 +1,16 @@
 # Coordination allocation and admission storage
 
+All-origin boundary (`cz3`): the API below remains the implemented v1
+infrequent allocation service. It does not allocate per-operation grants. The
+[normal protocol](Replication-protocol.md) installs an immutable all-admitted
+origin set and closure authority, then A grants serial operations locally.
+Remote O+A needs no B/etcd operation on the commit path. Authority transitions
+must preserve the complete old origin/grant frontier and source obligations,
+including origins outside replica placement, with sealed reports or equivalent
+verified durable coverage and positive origin/read-cache fencing. The v1 policy
+and per-volume Allocate API alone cannot activate that authority; successor
+schemas and closure-aware transition integration remain unimplemented.
+
 Task `cr3` implements `internal/coord`, an infrequent control-plane client with
 an etcd v3 backend and an in-memory simulator. Neither backend is connected to
 filesystem operations, normal-node startup or automatic takeover. Normal I/O

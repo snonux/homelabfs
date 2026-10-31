@@ -1,20 +1,9 @@
 # Durability and read freshness
 
-> **2026-10-30 architecture revision:** normal operation must allow any admitted
-> HomelabFS node to accept writes for any volume regardless of preferred ownership.
-> The originating writer durably journals locally; the preferred owner retains
-> the complete ordered committed memory view and can serve it before its own
-> disk persistence. Owner-originated writes require a distinct peer's memory
-> receipt. Receipt alone is not commitment. Preferred ownership is periodically
-> reconsolidated by request demand, without making non-owner access depend on
-> immediate owner relocation. See [Cluster and ownership](../Cluster-and-ownership.md#periodic-ownership-reconsolidation).
-> The fixed-owner mechanics below are an earlier design baseline awaiting
-> reconciliation, not an approved multi-origin protocol or its safety proof.
-
-
-Status: contract for task `aq3`; Paul confirmed the two acknowledgement decisions
-on 2026-10-28. This specifies intended behavior, not behavior implemented by the
-loopback PoC. Scope is disposable lab/canary volumes.
+Status: all-origin contract revised by `cz3`, 2026-10-31. Unimplemented and
+unproven pending `dz3`, successor schemas and runtime/platform validation.
+Scope is disposable lab/canary volumes. The local loopback and fixed-owner v1
+results do not establish this behavior.
 
 ## Confirmed decisions
 
@@ -29,26 +18,32 @@ loopback PoC. Scope is disposable lab/canary volumes.
    ordered recovery evidence on the partner before a successful sync reply.
    The latter needs protocol, recovery, capability and failure-test work.
 
-The [normal replication protocol](Replication-protocol.md) specifies the fixed-owner
-commit/visibility conditions and recovery evidence; model and implementation
-validation remain pending. The contract below uses A and the initial single-durable-copy sync scope.
-Option B and the two-durable-copy mode are out of scope. The remaining commit
-and recovery protocol decisions still need their own specifications.
+The [normal replication protocol](Replication-protocol.md) specifies exact serial
+grants, origin-local durable choice, distinct-node memory acceptance, selected
+results, committed RAM reads and all-origin recovery coverage. The option A
+acknowledgement decision below applies to every admitted origin, including one
+outside replica placement. Option B and two-durable-copy sync remain out of scope.
 
 ## Positions and acknowledgement boundary
 
-For each volume and ownership epoch, distinguish received, locally durable,
-committed and applied contiguous positions. Positions include the epoch/history
-identity; a sequence number alone cannot identify recovered history.
+Distinguish per-origin received/durable source positions from global selected
+and visible cuts, backing installation and durable checkpoints. Bind each to its
+full history, origin/incarnation and exact selected dependency graph. The complete
+ordered durable prefix may span several origins' pinned journals; neither a
+single source maximum nor the owner's disk describes it.
 
 Under A, successful mutation completion requires:
 
-- valid exclusive serving authority throughout admission and completion;
-- a complete replayable operation and required recovery evidence durably synced
-  to the local journal, including its required ordered prefix;
-- synchronous partner retention of that complete prefix in owned memory under
-  the current session/configuration; and
-- satisfaction of the future commit protocol's commit/visibility conditions.
+- valid installed all-origin authority, exact sequencer grant and filesystem
+  authorization at the ordered committed cut;
+- the origin's complete operation fragment, exact COMMIT, claim and selected
+  result durably synced in its own contiguous journal, with older dependencies
+  pinned to explicitly verified durable sources;
+- the preferred owner's complete ordered retained RAM view and exact commit/result
+  acceptance for a remote-origin write; for an owner-origin write, a distinct
+  configured partner supplies the second retained copy; and
+- the protocol's irreversible selected outcome and completed all-client visibility
+  barrier before a successful response. Plain payload receipt is insufficient.
 
 Local sync and partner transmission run in parallel. Receipt is necessary but
 does not itself define commitment. A read following successful completion must
@@ -62,9 +57,12 @@ of the backing data file. Journal retention/checkpointing must preserve every
 acknowledged effect until a durable recoverable checkpoint covers it. This
 requires functioning storage sync semantics; `sync=disabled` is incompatible.
 
-One durable copy plus retained partner memory does not survive loss of the
-owner's storage and the partner's volatile tail. There is no finite loss-window
-claim. An error, timeout or interrupted wait after admission does not prove the
+One durable origin copy plus retained memory does not survive loss of that
+origin's storage and the required second host's volatile tail, unless another
+complete durable copy exists. Receipts prove retention when emitted, not perfect
+knowledge that RAM still exists at reply: delayed pre-crash receipts and later
+unobserved RAM loss are included in this accepted failure window. There is no
+finite loss-window claim. An error, timeout or interrupted wait after admission does not prove the
 operation was rolled back; retries need the commit protocol's identity and
 reconciliation rules. Reads must never expose staged uncommitted backing state.
 
@@ -91,7 +89,7 @@ A conservative initial implementation can use a per-volume sync barrier rather
 than minimize per-file dependencies. It must define concurrent admission order:
 the barrier includes requests ordered before it, not unsynchronized future writes.
 Sync success need not wait for every backing-file apply if replay is sufficient;
-subsequent reads and metadata queries still wait for the required applied state.
+subsequent reads and metadata queries use the required committed logical view.
 Ordinary namespace replies are deliberately stronger than local-filesystem
 conventions that require a later directory fsync.
 
@@ -104,7 +102,7 @@ require a second durable copy. Foreign object homes create placement, recovery,
 barrier and retention dependencies; ordinary operations touching such dependencies
 must honor them too. A file/directory fsync is not an implicit application
 transaction or a cross-volume snapshot. Missing evidence after the accepted
-owner-storage/partner-memory loss window gates the whole affected closure rather
+origin-storage/required-memory loss window gates the whole affected closure rather
 than exposing a partial transaction. The transaction spec defines retries,
 uncertain results, decision retention and the prerequisite model/platform checks;
 no implementation or runtime evidence is implied.
@@ -144,28 +142,30 @@ neither power-loss persistence nor cross-client coherence.
 
 ## Read freshness and authority
 
-At admission, each read, lookup, readdir, getattr or access check captures the
-committed dependencies it must observe under the current serving generation.
-Wait until the local applied prefix covers those dependencies, then access the
-backing object under synchronization that excludes conflicting partial apply.
-A conservative implementation waits for the volume's committed prefix captured
-at admission. It may return a state including later committed operations but
-must preserve namespace/metadata atomicity and never expose uncommitted effects.
-Same-client reads after an acknowledged mutation must cover that mutation.
-Permission checks must use equally fresh metadata and caller credentials.
+Any admitted node may accept observations for any volume. Initially nonowners
+route them to the preferred owner's committed logical view. Capture the visible
+cut under the closure gate; read the complete RAM overlay plus verified baseline
+at that cut, including namespace, metadata, permissions, aliases and lifetimes.
+Owner-local persistence and backing apply may lag. A read after successful write
+completion must include that result. No staged candidate or partial backing redo
+is observable, including through access checks and subsequent mutation planning.
 
-Check serving authority before access and before completion; loss of authority
-blocks/rejects work. Passive replicas do not serve workload reads. During takeover
-recover the authoritative prefix, durably preserve required history, apply it,
-establish authority and synchronous-partner readiness before opening the I/O gate.
-No stale prefix can be declared fresh just because the old owner's disk is local.
+Authority is rechecked before access/completion. All independent frontend/cache
+reader domains participate in positive view barriers before successful mutation
+completion, including cached pages, descriptors and mmap. Dirty data drain must
+complete before a conflicting grant is frozen, without a drain/grant deadlock.
+An unsupported barrier blocks that publication profile; TTL zero, daemon gating
+or application advisory locks cannot replace it. The exact native/9p coherence
+implementation remains pending and no single-writable-client restriction is
+substituted for the required all-origin behavior.
 
-Daemon barriers cannot intercept reads satisfied from existing kernel or guest
-cache pages. Ownership transfer therefore also requires fencing/revoking the old
-guest access path, descriptors and mappings, and invalidating or replacing caches
-before admitting the new generation. A lease timeout or zero attribute TTL alone
-does not accomplish this. Required remount/workload restart behavior is decided
-by the deployment and fencing gates, never assumed transparent.
+On restart/transfer, reconstruct the full selected source/dependency graph and
+fence old origin/sequencer/read-cache domains before readmission. The protocol's
+complete sealed-origin survey or equivalent proven durable coverage is required;
+two placement replicas, a new UUID or an etcd allocation cannot establish it.
+Cooperative handoff may retain committed RAM ahead of new-owner backing apply;
+crash recovery first establishes durable complete recovery coverage. Missing
+history/continuity gates the closure rather than selects a stale local disk.
 
 ## Performance consequence and validation
 

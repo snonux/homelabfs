@@ -1,5 +1,18 @@
 # Canary deployment readiness
 
+All-origin release frontier (`cz3`, 2026-10-31): the selected
+[normal protocol](spec/Replication-protocol.md) remains unimplemented/unproven.
+Before normal publication, require `dz3` models for conflicting origins, outside-
+placement durable coverage, delayed receipts/unobserved RAM loss and read cuts;
+`ez3` successor representations preserving v1 bytes; bounded committed logical
+RAM service and all-client cache/credential barriers; origin-source restart,
+retention/recovery and transaction/home closure integration. Old fixed-owner or
+local-only passes do not satisfy these gates. Cooperative demand-based handoff
+is separately `kz3`, not a prerequisite for nonowner access or a crash fence.
+No executable operational schema/plan can be treated as supporting the new source
+roles until explicitly versioned and integrated. Every test/lab run retains its
+separate explicit approval requirement.
+
 [Architecture](Architecture.md) · [Kubernetes canaries](Kubernetes-and-migration.md) · [Deployment tests](Deployment-tests.md)
 
 ## Scope and completion
@@ -127,7 +140,7 @@ Keep each profile's result separate and make no untested reliability claims.
 | Fencing contract and isolated implementation | `eq3`, `lv3` | No production fence authority |
 | Isolated lifecycle spec and harness integration | `hv3`, `mv3` | No production f3sctl/UPS changes |
 | Supported canary kernels | `iv3` | Before guest compatibility `zq3` |
-| Model and guest compatibility gates | `fq3`, `zq3` | Before replication implementation `4r3` |
+| All-origin model/schema/service and guest gates | `dz3`, `ez3`, `fz3`, `6r3`, `zq3` | Before new normal replication `4r3`; `fq3` remains old fixed-owner history |
 | Numeric canary profiles | `jv3` | Before canary alerts `qr3` and acceptance |
 | Canary snapshot/restore policy and tooling | `kv3`, `nv3` | No production backup-policy changes |
 | Isolated deployment exercise scripts and runs | `ov3`, `pv3` | Separate from bounded live smoke; no production fault injection |

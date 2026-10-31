@@ -1,5 +1,13 @@
 # Isolated cluster shutdown, maintenance and cold start
 
+All-origin lifecycle frontier (`cz3`): the v1 steps below cannot stop only the
+old owner/partner while other origins retain unique durable fragments or accepted
+RAM. The [normal source-survey contract](Replication-protocol.md#outside-origins-recovery-and-authority-transitions)
+requires closure-wide origin/grant/source and reader/cache inventory, durable
+drain or verified handoff of every obligation before voluntary stop, and complete
+recovery coverage before reactivation. Integration remains unimplemented; this
+adds no VM/power permission or lab/test approval.
+
 Status: design contract for `hv3`, 2026-10-28. Lifecycle implementation and
 approved runtime evidence remain pending (`mv3`). This document authorizes no
 installation, test run, VM lifecycle window, mount operation or physical power

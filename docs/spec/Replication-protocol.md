@@ -1,515 +1,454 @@
 # Normal replication, commitment and visibility
 
-> **2026-10-30 architecture revision:** normal operation must allow any admitted
-> HomelabFS node to accept writes for any volume regardless of preferred ownership.
-> The originating writer durably journals locally; the preferred owner retains
-> the complete ordered committed memory view and can serve it before its own
-> disk persistence. Owner-originated writes require a distinct peer's memory
-> receipt. Receipt alone is not commitment. Preferred ownership is periodically
-> reconsolidated by request demand, without making non-owner access depend on
-> immediate owner relocation. See [Cluster and ownership](../Cluster-and-ownership.md#periodic-ownership-reconsolidation).
-> The fixed-owner mechanics below are an earlier design baseline awaiting
-> reconciliation, not an approved multi-origin protocol or its safety proof.
+Status: coordinated all-origin design contract, task `cz3`, 2026-10-31.
+**Unimplemented and unproven.** Task `dz3` must model this protocol before the
+successor representation (`ez3`) and runtime integration are accepted. Existing
+v1 fixed-owner models, codecs and golden bytes keep their original scope; they
+do not implement or prove this contract. Disposable lab/canary volumes only.
 
+[Durability](Durability.md) owns syscall promises; [Transactions](Transactions.md)
+owns anchored identities, two-phase decisions and affinity. This document owns
+normal ordering, origin durability, memory protection and publication. The
+successor wire/storage schemas are not defined by the semantic message names
+below. Do not encode them by weakening the v1 owner/reporter role rules in
+[Journal format](Journal-format.md) or [Transport](Transport.md).
 
-Status: design contract for task `dq3`, 2026-10-28. This is an unimplemented
-protocol for disposable lab/canary volumes, awaiting the `fq3` model and runtime
-validation. It is neither a safety proof nor behavior of `tools/poc/`.
+## Roles and installed authority
 
-[Journal format](Journal-format.md) owns exact record bytes, stream keys and
-limits; [Transactions](Transactions.md) owns anchored identities, affinity and
-two-phase decisions; [Backing store](Backing-store.md) owns redo/checkpoints;
-[Durability](Durability.md) owns successful-return and read-freshness promises.
-This document specifies their fixed-owner transport and state-machine composition.
-The concrete takeover/fencing mechanism is `eq3`; the recovery evidence required
-from this protocol is specified here without assuming that mechanism exists.
+For a dependency closure, A is the preferred owner and sole sequencer, B is its
+configured distinct owner-origin memory partner, and R is the configured replica
+placement. S is the **complete admitted normal-node set** in the installed
+cluster authority. Every node O in S may originate a request for every volume,
+including O outside R. There is no owner-only or single-writable-client admission
+rule. Filesystem credentials, current authority and capacity still apply.
 
-## Scope and authority
+An origin accepts the frontend request, owns its immutable request/payload and
+durably commits its own origin journal. A orders/validates that request and holds
+the complete committed logical view in RAM. Coordinating with A does not replace
+O's durable commit with an owner-local durable commit. For O != A, the required
+hosts are O durable + A retained RAM; B is **not** an extra synchronous dependency.
+For O = A, they are A durable + B retained RAM. Self-counting is forbidden.
+Assigned replicas receive persistent asynchronous delivery obligations in either
+case; an outside origin does not silently become a replica or preferred owner.
 
-Let A be the current owner, B its configured synchronous partner, and C the
-asynchronous replica. Membership, owner, partner, recovery generation,
-configuration, epoch and coordinator term are already authorized, reconciled and
-installed. An initial ready pair has a verified baseline and complete selected
-suffix. Every closure member has the common owner/partner and compatible
-membership required by Transactions. Different groups keep distinct histories.
+Installed authority identifies cluster and recovery generation, immutable registry
+revision and S, closure/affinity manifest and per-member configurations/epochs,
+sequencer node/incarnation, B node/incarnation and the positive-fence lineage.
+Membership/closure changes are gated control-plane transitions. S cannot shrink
+or forget an old origin's history because a node is offline. Admission of a new
+node extends S through that transition before it originates; it needs no volume
+replica placement. No etcd read/transaction occurs on normal I/O. Existing etcd
+allocation only authorizes starting a transition, never serving or grants.
 
-Only A originates owner-stream records. Only A serves workload I/O, from its
-local object homes. B and C are passive even after application. Neither a larger
-epoch supplied on a socket, an etcd response, nor a heartbeat creates serving
-rights. Authority is checked at admission, acceptance, publication and completion
-using the installed validated authority and durable promises, without a per-write
-etcd lookup. Authority loss closes serving/admission gates and enters recovery.
-Old cached/client access needs the separate positive fencing contract.
-
-There is no automatic partner replacement or one-node mode. If B is unavailable
-or cannot retain the required prefix, new protected completions wait, with bounded
-queues and client deadlines. C cannot substitute merely by being connected.
-Changing the pair, membership, epoch or history requires the fenced recovery/
-configuration protocol. Emergency mode is separately authorized and outside this
-normal state machine.
-
-## Streams, progress and decision evidence
-
-An owner stream is `(volume, generation, configuration, epoch, owner-kind)`.
-Reporter evidence adds `(reporter node UUID, reporter incarnation UUID)` and
-uses its own sequence space. Journal `Position` is interpreted together with
-this full stream identity; a bare sequence is never a resume token. SEGMENT_OPEN
-and SEGMENT_SEAL consume positions. ACCEPT, PROMISE and TAIL_REPORT occur only
-in the reporter's evidence stream; B must never allocate an owner sequence.
-Historical bytes are copied exactly, including their original header incarnation.
-
-Each replica tracks these distinct facts for each stream:
-
-| Fact | Advancement rule |
-|---|---|
-| Received R | Complete, validated, contiguous frames from a verified baseline, with all required graph/payload dependencies available in owned memory or verified durable coverage. An out-of-order frame alone does not advance R. |
-| Durable D | The complete prefix, segment/name publication and recovery dependencies have passed storage sync barriers. D <= R; buffered append is insufficient. |
-| Accepted | Exact slot/candidate/term ACCEPT records, not a scalar vote count. A tail summary records contiguous coverage only; it cannot replace the per-slot acceptance ledger. |
-| Decided K | Contiguous owner history whose decision/protection predicates below have been verified, including explicit resolved aborts. Known later decisions cannot bridge an unresolved earlier mutation. |
-| Applied P | Complete ordered decided redo through this position, reconstructed from the selected checkpoint; P <= K. Receive/durability alone cannot permit apply. |
-
-R/D/K/P reports also carry their history, reporting node/incarnation and baseline;
-when no same-history ordering exists, report separate streams, never compare
-numeric maxima. Reporter streams have R/D progress but no filesystem applied
-effects. A received frame with missing graph dependencies remains pending outside
-R. A bounded pending queue may reject transport work and request retransmission.
-It cannot emit a receipt for missing bytes.
-
-Call an owner record **protected** when A durably holds its complete required
-prefix/dependencies and B retains those same complete bytes/dependencies under
-the current session, with a matching receipt. This does not make a MUTATION,
-PREPARED, or unselected DECISION into visible committed state. Protection also
-applies to SESSION, claims, pins, barriers, results and other semantic records;
-they do not acquire a new COMMIT wrapper or their own decision slot.
-
-An ordinary slot is identified by the MUTATION's full history and stable operation
-UUID. Exactly one COMMIT candidate references that mutation in its normal term.
-A's durable COMMIT is a candidate until the following predicate is satisfied:
-
-`chosen(COMMIT) = valid authority + A durable complete COMMIT prefix/graph
-+ B current-term ACCEPT(COMMIT, exact graph/prefix)`.
-
-The local durable append and B acceptance need not happen in that order. B may
-accept before A's sync completes; it does not claim A is already durable. If A
-fails or times out there, B's acceptance still constrains recovery. A never
-reinterprets failure to collect a receipt as permission to propose an opposite
-outcome. The old designated writer sends at most one outcome candidate per slot
-and term. A normal ordinary mutation is committed through COMMIT; an ordinary
-abort after uncertain admission requires a safe RECOVERY_SELECT resolution,
-not a locally invented ABORT record.
-
-A transaction slot is `(bound coordinator history, RequestID)` with coordinator
-term identifying the ballot. Replace ordinary COMMIT above with the exact
-DECISION(COMMIT or ABORT). COMMIT additionally requires all bound protected
-PREPARED records and their dependencies. Each normal term has one designated
-coordinator writer and one outcome candidate. Protection/chosen decision is
-irreversible within the authoritative history; failures after COMMIT gate
-installation/publication rather than select ABORT.
-
-ACCEPT asserts B's owned retention, candidate identity, term, authority and
-complete dependency coverage, with separate retained and durable vectors. Its
-durable vector may lag. It does not assert filesystem apply or client success.
-Only B's configured current-incarnation acceptance counts for a new normal
-completion. C's receipt is catch-up progress, never a synchronous acceptance vote.
-
-The evidence graph is deliberately acyclic:
-
-```text
-MUTATION <- COMMIT <- B reporter ACCEPT <- ORDINARY_RESULT
-PREPARED <- DECISION <- B reporter ACCEPT <- INSTALL <- COMPLETE <- REQUEST_RESULT
-```
-
-Arrows mean "is referenced by". COMMIT does not contain its own ACCEPT; DECISION
-does not contain its own acceptance or terminal visibility. Later result/install
-records carry exact ACCEPT frames or references to their retained graph, and
-plain prefix receipts protect those later records. They never need an ACCEPT
-that refers back to the result being protected. Evidence bundle embedding obeys
-Journal-format's no-nesting rule; referenced graphs may be fetched separately.
-A checksum or ACCEPT digest without the actual resolvable graph is insufficient.
-The later result protection adds a covering receipt/wait beyond the candidate
-acceptance; this is no one-round-trip latency promise. B may still retain all
-of it in memory, so it does not require a second durable replica.
+All participants check this authority at grant, local durable choice, acceptance,
+selection and completion. Higher epochs on sockets are not authority. A known
+loss of authority, revoked session or lost retention continuity closes the
+appropriate gates. No timeout establishes fencing; there is no automatic local-
+only fallback. [Emergency](Emergency.md) is a separately authorized exception.
 
 ## Session establishment and reconnect
 
-Use the [Security](../Security.md) trusted-host WireGuard mapping and explicit
-admission/volume-role checks on every connection. A claimed UUID is checked
-against observed authorized transport identity; WireGuard membership alone
-does not enroll a node. No fallback to cleartext routes or foreign volumes.
+Authenticate observed transport identity and exact cluster/registry revision,
+then bind both live daemon incarnations, session/connection IDs, closure authority,
+source streams, permitted message roles and negotiated successor format. A new
+connection never imports readiness from its predecessor. Exchange exact selected
+cut/source manifests, origin durable fragments, unresolved grants and the memory
+recipient's retained acceptance ledger; missing dependencies/credits gate READY.
+Historical frames keep original creator identities while the authenticated
+forwarder is separately authorized. Unsupported versions or conflicting bytes
+stop before append, acceptance or serving.
 
-The following is the normative logical handshake. Its bounded binary codec and
-numeric message tags remain implementation work; journal payloads use the exact
-existing journal bytes and encodings, never a second serialization of a record.
-All limits are checked before allocation. Initially support protocol 1.0 and
-journal 1.0 only; reject unknown versions/features rather than silently weaken
-semantics.
+An origin-only restart under a continuously valid A can be readmitted after
+positive exclusion of its old lifetime/cache rights, full reconciliation of its
+issued grants/choices/source obligations with A's complete ledger, and explicit
+installation of its new expected incarnation. It cannot clear an uncertain slot
+or substitute a shorter disk. This need not move preferred ownership. Changing
+A's incarnation, installing a replacement B incarnation, or a new closure
+authority uses the complete transition requirements below. B can remain unavailable
+under its old binding while eligible remote O+A operations continue; they cannot
+use it for new owner-origin completions. Pure reconnect still proves exact
+retained continuity.
 
-1. Both endpoints send HELLO: supported protocol/journal versions, cluster UUID,
-   node UUID, fresh daemon incarnation UUID, registry revision, connection UUID,
-   proposed connection class, and finite receive message/byte/operation limits.
-   Authenticate identities and membership first. A new incarnation boots RECOVERING;
-   its UUID does not by itself supersede an old daemon or certify its tail absent.
-2. HELLO_OK selects exact versions, the lower compatible limits, both endpoint
-   identities/incarnations, and a fresh shared session UUID. The control session
-   owns subsequent volume bindings. Additional live/bulk connections repeat HELLO
-   and bind that exact session and both incarnations; no unbound data or ACK is valid.
-   Either endpoint may reject with a precise reason and close.
-3. A sends OPEN_STREAM for each authorized volume: full Authority, affinity and
-   serving-generation reference, authorized baseline/checkpoint, required old
-   history references, intended role (sync/async/recovery-only), and proposed
-   ordered stream binding. B/C validates installed authority and promises rather
-   than trusting the supplied values. A receiver lacking that authority requests
-   reconciliation; it cannot learn serving rights solely from OPEN_STREAM.
-4. Receiver replies RESUME: exact stream keys, verified baseline, R/D/K/P,
-   prior candidate and ACCEPT references, gaps/dependencies, current promises,
-   credits, and continuity state. Continuity is true only if this daemon still
-   owns the complete previously accepted tail or has verified equivalent complete
-   durable coverage. Restart from D alone reports false/unknown. Missing frames
-   on a restored disk or new incarnation never certify old absence.
-5. Reconcile actual frames/hashes at overlapping boundaries and required history
-   links, then transfer missing suffix/evidence or a pinned verified baseline.
-   Divergent same-key bytes or incompatible authority quarantines the stream.
-   Reconnect cannot discard an uncertain tail, reset promises or select history.
-   A receiver with a conflicting old suffix stays gated for recovery.
-6. READY names the exact reconciled stream binding, authority, baseline/cut and
-   current credits. A confirms READY before sending newly admitted candidates.
-   Sync readiness includes B's complete required owner/dependency prefix and
-   accepted-tail reconciliation. Role changes need configuration authority;
-   READY does not promote an async or recovering node.
+## Identities, journals and complete coverage
 
-Per-volume state is CLOSED -> NEGOTIATING -> RECONCILING -> READY, with WAITING
-for temporary capacity/transport shortage, RECOVERING for authority or missing-tail
-resolution, and QUARANTINED for corruption/conflict. Waits have bounded retry
-backoff and request deadlines; states preserve accepted work. Protocol connection
-closure does not close a session's retention obligations. Reopening a socket in
-the same live incarnation can reuse verified memory after a fresh handshake.
-If incarnation changes, old ACCEPTs remain historical evidence but cannot serve
-as fresh receipts without continuity/reconciliation and current retention.
+Keep these identities distinct:
 
-Old-incarnation frames are allowed only as authorized historical transfers,
-with exact immutable bytes, selected history and dependency pins. They cannot
-originate new proposals or fresh receipts. A delayed live message from an old
-session/incarnation is rejected even when its journal checksum is valid.
-The immutable frame's creator incarnation is validated against its original
-history/authority, while the current authenticated transport incarnation is
-validated as an authorized forwarder. They need not be equal. Retransmission,
-catch-up and post-promotion forwarding must not rewrite the creator header.
-An ACK delivered on a surviving control socket after a data socket dies is valid
-only if it matches an actual retained frame under the still-valid binding.
-
-## Message contract
-
-Every post-handshake envelope carries selected version, type, bounded total
-length, session UUID, connection/binding UUID, authenticated source/destination
-node and incarnation, and correlation UUID. Stream messages also carry full
-stream key and Authority reference; slot messages carry stable operation UUID,
-candidate FrameRef, term and, for transactions, RequestID/digest/immutable binding.
-Validate these against the binding on every dispatch, including acknowledgements.
-Correlation UUIDs match waits; they are neither operation identities nor evidence.
-
-| Message | Required body and behavior |
+| Identity | Meaning |
 |---|---|
-| HELLO / HELLO_OK / OPEN_STREAM / RESUME / READY | Fields and sequencing above. No serving or acceptance before readiness. |
-| DATA | One complete exact journal frame with FrameRef, predecessor boundary and required dependency references. Can transfer owner or reporter frames; source must be authorized to supply that history. B/C verifies kind, length, CRC, hash, sequence and semantics. Sender batches only within admitted enclosing bounds; no partial frame is receiptable. |
-| ACCEPT_REQUEST | Exact candidate FrameRef, slot kind, term, authority and required prefix/dependency cut. May accompany DATA logically; acceptance waits until every referenced byte is retained. Only configured A may request B's normal acceptance. |
-| ACCEPTED | Exact B reporter ACCEPT frame and its stream predecessor/graph references. B generates it after validation/owned retention, reserves evidence-stream space and retains it across disconnect. Retransmission returns the same acceptance identity; it cannot create an alternative value. |
-| RECEIPT | Target stream/boundary FrameRef (or verified baseline for sequence zero), R, reporter incarnation and retained dependency vector. Reports receipt of actual complete bytes. A plain RECEIPT never replaces ACCEPTED for a commit/decision slot. |
-| PROGRESS | Per-stream R/D/K/P, baseline, candidate/acceptance references, continuity and missing dependencies. Persist catch-up tracking as REPLICA_PROGRESS. Claims are verified against known history; never use reported R/P as durable GC coverage. |
-| NEED | Stream, next expected frame/predecessor, bounded missing FrameRef/artifact list or required baseline cut. A gap causes resend/catch-up, never an ACK past the gap. |
-| FETCH / ARTIFACT_CHUNK | Authorized immutable artifact identity, total length/hash, bounded offset/range and transfer-pin identity. Validate staged bytes and typed codec before installing; a complete hash alone is not a valid checkpoint. |
-| CREDIT / WAIT | Per-volume/peer byte and operation allowance, reason, latest safe progress and retry hint. Credits are flow control, not storage durability or authority. |
-| STATUS / STATUS_REPLY | Exact internal operation or anchored RequestID/digest; return recorded stage/result or uncertainty. STATUS never executes an unknown request. Application queries first route to anchor. |
-| ERROR / CLOSE | Precise unsupported/unauthorized/stale/gap/conflict/capacity/I/O reason, affected binding and known stage. Closing drains or retains accepted state; it cannot imply abort. |
-| PING / PONG | Bounded service-progress heartbeat, no serving lease or fencing meaning. |
+| Origin stream | `(cluster, volume, generation, configuration, epoch, origin node, origin journal incarnation)` plus contiguous local sequence; structural frames consume local positions. |
+| Operation | Stable origin operation UUID and exact internal claim/intent; explicit application requests keep their immutable principal/anchor/session/request-number identity. |
+| Ordered slot | `(closure authority, sequencer incarnation, serial)` with exact predecessor selected-slot certificate and affected per-volume cuts. Serial numbers do not wrap or imply origin-journal offsets. |
+| Grant | Exact slot, operation/anchored claim, origin identity, canonical intent, credential snapshot, validated redo/result, predecessor, dependency graph and designated memory recipient. |
+| Reference | Complete original stream identity, local position and exact frame hash. Historical forwarding preserves creator bytes; transport correlation is not an operation ID. |
 
-No independent COMMITTED wire assertion is authoritative. Peers learn decisions
-by receiving COMMIT/DECISION plus acceptance/result/install evidence and verifying
-the predicates. All metadata, namespace, payload and result records are delivered
-to C as well as B; no metadata-only best-effort channel exists. Reporter evidence
-must also reach replicas that need the decision graph. Source reporter identity
-is preserved when another authorized peer forwards it.
-ACCEPTED may inline its exact nonstructural frame, but the receiver also obtains
-and retains the reporter stream's preceding OPEN/boundaries and required prefix
-through DATA. An inline ACCEPT must not advance reporter R across a gap. Embedded
-Evidence never acquires forbidden structural frames to work around that rule.
+One origin journal may contain fragments for several selected slots; different
+origins may both use local sequence 1. Neither local sequence nor highest numeric
+slot alone proves committed history. A selected-history manifest maps every slot
+to its exact origin fragments, decisions/results and transitive dependencies.
+The source vector records actual durable coverage by stream and node, separately
+from RAM retention. It includes claims, anchors, authority/grants, payload redo,
+object homes, allocation/tombstone/handle ledgers and transaction graphs.
 
-## Owner and partner execution
+O must durably hold its **complete new operation fragment**: exact grant,
+immutable redo and payload bytes, credential/claim binding, durable choice,
+acceptance evidence available at that phase and stable result. Its own stream
+prefix through that fragment must be durably contiguous. It need not copy the
+entire volume's older payloads or become a full replica before writing. Earlier
+selected dependencies must instead have explicit pinned durable source coverage
+in the manifest. Thus the complete durable history may be distributed across
+several origins; no one origin's disk is assumed to contain it all.
 
-For an ordinary single-group mutation, A executes these transitions:
+Before any new grant, A must possess a verified baseline plus the complete
+ordered committed logical suffix and all still-required candidate/dependency
+bytes in owned RAM or verified readable durable storage. The designated memory
+recipient must retain the granted candidate's complete replay graph and required
+selected prefix/baseline coverage before acceptance. Hashes, remote fetch promises
+or an incomplete dependency list are not retained data. Origin sync plus RAM
+receipt never authorizes deleting any earlier durable source.
 
-1. **ADMISSION:** check serving rights, readiness, permissions, fresh revisions,
-   gates and global/peer/volume capacity. Reserve complete redo, evidence, result,
-   retained buffers and recovery space before effects. Resolve paths once under
-   locks, choose immutable IDs, append offsets, times and metadata, and allocate
-   one internal operation UUID. Before effects protect the internal session and
-   exact anchored InternalRequest claim; retries use that same claim. The
-   single-group baseline places the immutable anchor in that group. Work that
-   touches another home/anchor uses Transactions and its immutable REQUEST_BIND.
-2. **ORDERED:** one volume state machine assigns consecutive owner positions to
-   MUTATION and COMMIT under the installed term. The COMMIT references the exact
-   MUTATION. Dependencies include the already protected claim and all selected
-   prior object/namespace/payload history. Later operations may be encoded/transferred
-   concurrently, but cannot commit or apply over a missing earlier decision.
-3. **PROTECTING:** append/sync the full local prefix and send DATA/ACCEPT_REQUEST
-   to B in parallel. Start delivery to C concurrently without waiting for it.
-   Do not mutate published backing objects. A waits for its covering durable cut
-   and B's matching ACCEPTED, in either order; a RECEIPT of MUTATION alone fails
-   the predicate. Group sync may cover several operations without bypassing
-   each candidate's acceptance/dependency checks.
-4. **CHOSEN:** once the predicate holds, COMMIT cannot be undone. Preserve B's
-   exact ACCEPT and graph; append/protect ORDINARY_RESULT containing that graph,
-   stable result and accepted byte range. Its protection uses plain prefix
-   RECEIPT, not a new recursive decision. Advance decided K only through resolved
-   predecessors. A crash before the result record is reconstructed from candidate
-   and acceptance evidence; absence of result is not absence of COMMIT.
-5. **PUBLISHABLE:** authorize ordered apply behind object/namespace gates.
-   An ordinary data write may publish its logical committed result and return
-   while backing apply is pending only when the admitted platform profile proves
-   freshness for every affected cached alias and mapping during deferred apply.
-   Daemon-mediated observations capture a cut including that result and wait for
-   complete apply, but kernel/guest cache hits and mmap loads can bypass these
-   gates. Without that verified deferred-apply guarantee, await complete apply
-   and the required cache update/invalidation/drain before publication or success.
-   Never expose stale post-completion bytes or partial payload redo through any
-   supported observation path. This condition does not select a concrete cache
-   mechanism or establish that a profile has passed validation.
-   Namespace changes apply their complete entry/object/parent/ledger
-   change atomically under gates and complete the admitted cache invalidation/drain
-   barrier before reopening views and reporting successful namespace completion.
-   Cross-group publication uses protected INSTALL/VIEW_BARRIER/COMPLETE and one
-   closure generation as Transactions requires.
-6. **REPLIED:** recheck serving authority and completion predicates, then reply
-   with the stable protected ORDINARY_RESULT indexed by the internal claim. A
-   positive response never outruns required claim/result, decision or prefix
-   protection. Its ordered predecessor mutations must already be decided/resolved;
-   K cannot remain behind an unresolved predecessor while this reply succeeds.
-   Failed reply delivery changes no outcome. Queue asynchronous
-   work through persistent history obligations, not a detached best-effort task.
+Track separate per-stream received R and durable D, exact candidate acceptances,
+selected contiguous slot cut K, visible cut V, backing-installed P and backing-
+durable/checkpoint coverage. `V <= K`; P is selected-only and cannot jump a hole.
+D is not K, a local source position is not K, and RAM projection is not a durable
+checkpoint. Report full identities/source vectors rather than scalar maxima.
 
-The internal anchor result uses the Transactions terminal schema through its
-internal request machinery when the operation is multi-group. For the single-group
-ordinary path, ORDINARY_RESULT is the typed terminal receipt for the MUTATION and
-the anchor's claim indexes it. The REQUEST_CLAIM, MUTATION, COMMIT and
-ORDINARY_RESULT share the one command's header operation UUID; the claim's exact
-InternalRequest intent must agree with the mutation. Its dependencies retain
-the claim FrameRef, and retry/status first resolves that same protected claim
-to the command/result, never infers an unused ID from a missing result. Do not
-invent a transaction DecisionRef or encode an ordinary COMMIT as a DECISION.
-The checkpoint must preserve the full claim-to-command-to-result association.
+## Serial grants and conflict resolution
 
-B executes WAITING_FOR_FRAME -> VALIDATED -> RETAINED -> ACCEPTED, with persistence
-and application as separate workers. Validate current binding/authority/promise,
-expected term and single candidate, exact redo/claim consistency, contiguous
-stream and complete dependencies before RETAINED. Copy bytes or transfer exclusive
-ownership into its retention arena; caller/network buffers are insufficient.
-Reserve credits for the entire recoverable prefix and reporter acceptance.
-Emit ACCEPTED only after retaining that arena and recording the exact acceptance
-in its reporter stream. That stream may be volatile initially. On duplicates
-compare full bytes/identities and return the existing ACCEPT; conflicting same-key
-bytes or same-term candidates quarantine instead of overwriting.
+Start with **one outstanding mutating grant per dependency closure**, including
+ordinary operations and the closure's transaction coordinator. This deliberately
+trades throughput and head-of-line availability for a small, explicit protocol.
+Requests from different origins queue fairly with bounded credits; independent
+closures may progress concurrently. No range grants or speculative concurrent
+redo are part of this contract. Read-only observations of the old visible cut
+may continue until their publication gates close.
 
-B asynchronously appends/syncs owner and reporter history, advances D only after
-the complete barriers, and applies only decided K. If acceptance arrives before
-A's local durability/result, B retains a candidate and waits for decision evidence;
-it cannot publish or discard it. B can free memory only after equivalent verified
-durable prefix/graph/payload coverage or a protected acknowledged recovery handoff
-replaces it. Client reply, transport ACK, a timer or connection close is not a
-release condition. C uses the same validation, ordered persistence and apply
-rules, without synchronous acceptance authority.
+Before granting, A resolves the original immutable claim at its anchor, then
+resolves paths/object homes against one committed logical cut. It validates the
+original numeric UID/GID/supplementary groups, mode/umask, traversal and required
+permissions there. For an ordinary operation it selects exact revisions, stable object allocations,
+append offset, timestamps, short-write byte range and terminal result once;
+transaction phases fix their exact prepare/decision/result under this same gate.
+Origin-selected allocations use never-reused identities and the closure's
+retained allocation ledger. A validates exact redo against the original intent;
+O independently checks the grant's authority, own request and payload bytes.
+Neither a frontend path resolution nor an origin's stale backing tree authorizes
+redo. Replay never re-resolves names, rechecks permissions against a different
+cut, resamples time or allocates again.
 
-## Barriers, retries and request lifetime
+A installs the exact grant reservation in its owned ledger before sending it.
+No successor grant is issued until that slot is selected COMMIT or explicitly
+resolved NO_EFFECT, its required result is protected and its publication gates
+complete. Consequently two appends get distinct successive offsets; two creates
+of one name resolve against the first result; chmod before write changes the
+write's authorization; overlapping writes/truncate/rename follow one order.
+A denied unclaimed request has no grant/effects. Once a claim is reserved its
+rejection/result must use the same protected identity machinery.
 
-File/directory/volume BARRIER records capture a cut under admission order; they
-cover prior ordered work and foreign-home/decision dependencies. Protect the
-barrier and wait for its captured mutations' commitment/protection. Apply may
-lag where Durability permits, with reads gated on the captured cut. O_SYNC,
-O_DSYNC, fsync, fdatasync and directory fsync retain the exact Durability promises;
-none waits for a second durable replica. A barrier does not include later
-unsynchronized writes or become an implicit cross-file application transaction.
+An ordinary grant has no time expiry that frees its slot. O may durably choose
+exactly one of COMMIT or DECLINE for that grant. Transaction outcome choices
+remain the explicit two-phase COMMIT/ABORT rules below. DECLINE records an irrevocable no-COMMIT
+promise, including when revocation arrives before a delayed grant. A may resolve
+NO_EFFECT only from that exact durable DECLINE and retained matching evidence.
+For NO_EFFECT, M retains the exact durable DECLINE, A selects an explicit
+no-effect certificate/result, O syncs it, M retains it and A acknowledges its
+publication before reply/next grant. The same claim/result/authority checks
+apply; the logical view is unchanged but the resolved slot advances order.
+A deadline, disconnect, missing record, cancelled wait or absent result does not
+close a slot. An unreachable origin can block this closure until reconciliation;
+normal operation never skips its hole. Process restart cannot erase the choice.
 
-Before admission, validation/capacity failure proves no new effects. A protected
-claim already reserves the exact request and records a protected rejection.
-After claim/admission, a lost wait, error, client death, interrupted callback or
-deadline returns PENDING/INDETERMINATE as appropriate; it does not rewind journal,
-free dependencies or promise rollback. Native adapters may map uncertainty to an
-appropriate error, but must document that retrying a new syscall identity may
-have additional effects. Protocol retries keep the original ID and exact bytes.
+## Commit and publication handshake
 
-Application Execute/GetStatus/Cancel first consult the immutable anchor's
-session/floor/claim before paths or coordinator selection. A changed canonical
-request is ID_CONFLICT. Internal requests compare exact immutable InternalRequest
-including requested mode/umask, SETATTR values and selected metadata. Retry never
-samples new times, reallocates an object, chooses a new append offset or adopts
-another request's redo. Internal identities do not give arbitrary application
-retries after restart exactly-once behavior.
+The ordinary-operation exchange below uses authenticated current-incarnation
+sessions and exact graph hashes. Local fragment sync and candidate transfer can overlap;
+selection cannot precede the indicated durable and retention gates.
 
-Cancel requests abort before COMMIT proposal; once COMMIT has been proposed,
-finish or recover the actual outcome, without choosing a second value in the
-term. Participant/coordinator timeout is not safe abort evidence. Cancelled waits
-detach response delivery only. If an admitted ordinary proposal needs abort,
-safe fenced resolution is required; no timeout-generated success/no-effects errno.
-Terminal retries return the recorded result or RETIRED_ID. Explicit protected
-retirement/closure retains permanent floor/tombstone authority; no time-based
-dedup expiry or anchor reassignment.
+1. **GRANTED / STAGED.** O durably records the grant, claim binding and complete
+   immutable redo. Initial append/sync and transfer of those exact bytes to the
+   memory recipient M (`A` for remote origin, `B` for owner-origin) may overlap.
+   M verifies authority,
+   predecessor/slot reservation, intent/redo and full dependencies, reserves
+   retention credits and copies/owns all bytes. It returns PREPARED_ACCEPT for
+   this one candidate and grant. Staging and this receipt expose no effects.
+   For O=A, B additionally verifies A's grant against the installed sequencer.
+2. **ORIGIN_COMMIT.** After matching PREPARED_ACCEPT, O appends and syncs an
+   irrevocable COMMIT containing that exact grant/redo and acceptance identity.
+   COMMIT excludes DECLINE for this slot. Sync error/timeout is uncertain, even
+   if no receipt reached the caller. O sends the complete commit fragment and
+   authenticated durable-coverage assertion; a socket send is not that assertion.
+3. **SELECTED.** M validates and retains COMMIT plus its durable-origin assertion
+   and returns COMMIT_ACCEPT. For remote O, A can then select the slot. For O=A,
+   A must receive B's exact COMMIT_ACCEPT before selecting. The chosen predicate
+   is `valid grant + O durable COMMIT/fragment + M retained COMMIT_ACCEPT` with
+   O and M distinct. A installs an immutable selected-slot certificate linking
+   this evidence and its predecessor. No receipt of redo alone satisfies it.
+   COMMIT is never changed to ABORT after selection. Selection is separate from
+   visibility; no workload read sees an unselected candidate.
+4. **RESULT_PROTECTED.** A sends the selected certificate and previously fixed
+   result to O. O appends/syncs the certificate/result, retaining the original
+   COMMIT and claim association, then transfers that result fragment to M.
+   M owns/retains it and acknowledges RESULT_ACCEPT. A obtains that evidence
+   (directly when M=A, from B when O=A). Missing result does not disprove COMMIT;
+   reconstruct it from the immutable grant/selected evidence under recovery.
+5. **VISIBLE.** A advances K through the slot, publishes its complete committed
+   logical state as one generation, and completes the read/cache barriers below.
+   Namespace/metadata/permissions and data change together. Backing persistence
+   and apply on A may lag. A sends PUBLISHED with the exact cut/generation and
+   result identity only after all publication conditions hold.
+6. **REPLIED.** O verifies PUBLISHED, its durable result, matching retained result
+   evidence and unchanged installed authority/session eligibility, then replies
+   with that stable result. Lost reply changes nothing. A opens the next grant
+   only after publication; a failed result/cache gate retains the chosen slot
+   and gates progress, never converts it to no effects.
 
-Request lifetime belongs to the state machine from claim/admission through
-terminal resolution and durable replacement of its retention obligations. A
-request-scoped context controls admission/response waiting, not already accepted
-background replication. Once admitted, a service-lifetime worker owns completion,
-recovery and retry. Local caller payloads may be released only after the state
-machine has immutable owned bytes. A socket writer owns framing until its send
-completes; send completion does not release B's accepted-retention obligation.
-Use one framing writer per socket, bounded queues and explicit credit return
-when actual retained memory is released. Draining/shutdown persists or safely
-hands off accepted state before voluntary exit; abrupt process loss remains the
-accepted volatile-memory failure case.
+These are extra control phases, not a single-round-trip latency promise. M's
+acceptance ledger is initially RAM and persists asynchronously. Retention ends
+only at verified equivalent durable coverage or a protected explicit transfer;
+client reply, disconnect, timeout and sender-buffer reuse cannot release it.
+A/M voluntarily draining must persist or hand off every such obligation first.
 
-## Persistent catch-up, pins and connections
+**Receipt timing is not perfect crash knowledge.** An authenticated acceptance
+proves owned retention when emitted in the named incarnation. A delayed receipt
+can arrive after an unobserved crash destroyed RAM, even over an apparently live
+session. Check known discontinuities and reject receipts once a restart/revocation
+is known, but do not assume instantaneous detection or prove current physical RAM
+existence from an ACK. An old PUBLISHED reply may likewise arrive after A crashes;
+it certifies the earlier publication, not a new serving lifetime. A restarted
+node stays gated until recovery. If O's durable source is then also lost before
+a durable replacement exists, this is the explicitly accepted durability gap,
+including the delayed-receipt schedule; no finite RPO or loss-free proof follows.
 
-For each assigned replica retain a durable REPLICA_PROGRESS/baseline obligation
-and the selected history needed after it. New admitted records extend that
-obligation by their presence in the authoritative journal; there is no per-record
-memory queue whose loss cancels delivery. Restart reconstructs work from durable
-progress and journal/checkpoint history. A lost PROGRESS reply causes conservative
-retransmission. R or P never advances durable coverage. Offline members retain
-their obligation across restart, pair change and ownership transfer.
+## Committed reads, caches and barriers
 
-On a gap use NEED and retransmit the next expected prefix plus evidence. For a
-duplicate position accept only identical complete stream-key/sequence bytes.
-One command deliberately shares its operation UUID across its specified claim,
-mutation, commit and result records at different positions. A second MUTATION
-or incompatible claim/intent/result association for that UUID is a protocol
-error, not a new allocation; valid associated record kinds are not duplicates. If
-the necessary suffix is no longer retained, first pin a compatible paired
-checkpoint/baseline and its entire required suffix and dependency graph. Fetch
-into a new private gated destination, verify all codecs/hashes/history/authority,
-then publish with Backing-store's acceptance/CURRENT barriers. Never overwrite
-an uncertain replica, replay old bytes onto contaminated payloads, or use a
-snapshot timestamp as selection evidence.
+Every admitted node can accept reads of every volume. Initially nonowners route
+the observation to A's committed logical view; they may not answer from their
+own stale applied tree. This read routing does not route remote writes into
+owner-local durable commitment. A's RAM view covers bytes/extents, overlapping
+writes, truncation/zero-fill/holes, sizes, object and entry revisions, directory
+entries, links/aliases, symlinks, permissions, timestamps and open-unlinked/home
+lifetimes. It combines a verified durable baseline and ordered committed overlay;
+this is not a bytes-only cache. Planning and access checks use the same view.
 
-Snapshot, transfer, replica-baseline, transaction, session, handle and recovery
-pins cover all transitive object homes, payload bases and decision/request graphs.
-Register protection before promising a transfer/recovery point; concurrent GC
-must observe it. Retain the old source/pins until a verified complete durable
-replacement and protected release exists. RETENTION advances only with every
-assigned replica's durable coverage or pinned compatible baseline/suffix, closure
-checkpoint pairing and all external snapshot holds. A partner memory receipt
-never authorizes deletion. External tools own snapshot scheduling/holds; this
-protocol does not prune them. If any coverage is unknown, preserve and throttle.
+A captures V under the closure gate for each read/lookup/getattr/readdir/access.
+The answer is an atomic observation of a committed cut at least as new as that
+capture, never staged or partially applied backing data. A read invoked after a
+completed write must include it. Reads concurrent with publication may linearize
+before or after it. Generation-bound handles and foreign aliases carry home and
+closure dependencies. No raw backing-file passthrough bypasses this rule.
 
-Use three [Performance](../Performance.md) connection classes per active peer
-pair: small persistent control for handshake/ACK/progress; persistent live data
-fairly multiplexed across groups; bounded bulk for historical records/artifacts.
-Every class repeats identity/session/authority validation and has finite message,
-queue, byte, operation, connection and worker limits. Additional live sockets
-require stable volume assignment or a sequence-aware reconciled handoff; socket
-ordering alone cannot decide stream ordering. ACK routing on control is allowed
-only after actual acceptance on a valid data/bulk binding.
+The protocol requires a positive frontend view barrier for **all admitted reader
+and writer domains**, including independent FUSE clients and every cached alias,
+9p mount, descriptor and mmap domain. Before exposing a new cut or returning
+success, close conflicting old-generation observations, drain in-flight reads,
+invalidate/update their data and metadata, and obtain positive acknowledgements
+before reopening them on the new generation. Entry TTL zero and daemon gating
+alone do not intercept cache hits. Dirty mapped/writeback data must be drained
+through ordered origin requests before a conflicting grant is frozen; the
+frontend must stop new conflicting dirtying while that gate is held. The grant
+wait must not hold a lock needed by such drain requests. Failure to drain or
+positively exclude a domain gates the affected closure; a timeout cannot stand
+in for an acknowledgement. A disconnected client is still a domain to fence.
 
-Reserve recovery/control capacity; give bulk catch-up a finite forward-progress
-share while prioritizing live latency. Slow B disk causes retained-memory
-backpressure before B overcommits credits. Slow C consumes pinned journal capacity
-and eventually throttles A admission before recovery reserve is exhausted.
-Bound batches and batching delay; do not spawn a goroutine per unbounded wait.
-Independent closures may progress subject to shared pool limits. Report wait
-reason, credits, R/D/K/P, unresolved slots, dependency gaps, bytes/operations/time
-lag and last verified progress, with no workload payloads in logs.
+This is a required interface, **not an implemented cache algorithm or evidence
+that native FUSE/9p can supply it**. `fz3` and the platform gates must choose and
+validate concrete mechanisms, including mmap, before normal publication. A
+platform lacking them remains unsupported, rather than gaining stale reads or
+a blanket single-client substitute. Same-guest advisory locks remain application
+coordination only. Crash takeover additionally requires positive old-domain
+fencing; an etcd lease/UUID/TTL provides neither barrier.
 
-## Failure and takeover boundary
+File, directory and conservative volume BARRIER requests enter the same sequencer
+queue as grants and capture an exact selected cut/source graph across **all
+origins**, not merely the caller's local stream. A barrier waits for preceding
+slots/results/publication and protects its own origin-local fragment plus the
+designated distinct memory copy. A barrier is protected nonmutating evidence,
+not a second mutation/recursive COMMIT: A holds the queue cut while O syncs its
+exact BARRIER/cut/result and M retains them, then returns that attested result
+before the next grant. It covers foreign-home and transaction decision requirements
+transitively. Later unsynchronized writes are excluded. O_SYNC,
+O_DSYNC, fsync/fdatasync and directory fsync use [Durability](Durability.md); no
+second durable copy or implicit cross-file transaction is added. Requests not
+yet submitted by a buffered guest require the verified frontend drain contract.
 
-| Event | Required result |
+## Claims, unknown results and transaction composition
+
+Protocol retries retain exact operation, grant, source bytes and anchored claim.
+The first lookup is always the immutable anchor/session/floor/claim, before path
+resolution or coordinator choice. Changed canonical intent is ID_CONFLICT;
+retired IDs return RETIRED_ID using protected permanent floor/tombstone evidence.
+Retry via another origin first resolves the existing binding: it neither moves
+the original durable-origin role nor makes a second grant for the same request.
+After admission, interruption/cancel/client death detaches response waiting only.
+Report PENDING/INDETERMINATE until the original slot resolves. A fresh syscall ID
+may have additional effects; arbitrary application retry is not exactly-once.
+
+The state machine owns admitted immutable work beyond request-context lifetime.
+An ordinary COMMIT proposal with lost response is never retried as a fresh append
+or aborted on a timer. If exact status cannot be recovered, preserve it and gate.
+Cancellation can request the mutually exclusive durable DECLINE only before O
+has chosen COMMIT. Terminal status uses the selected result even if no client
+reply was delivered. Explicit session retirement cannot pass pending claims.
+
+Transactions retain immutable anchors/REQUEST_BIND, participant homes, protected
+PREPARED records, one coordinator decision, all-prepare-before-COMMIT, INSTALL,
+VIEW_BARRIER/COMPLETE, exact-ID recovery and grow-only closure affinity. Their
+common A/B/R placement remains an ordering/availability constraint, not an origin
+restriction. The admitted transaction origin O durably holds the complete new
+multi-volume operation graph (claims/bindings/prepares/decision/results); each
+participant record names its exact origin fragment and selected per-volume cut.
+Protection of every semantic record uses O+M above, with no recursive COMMIT
+wrapper. A's closure gate serializes the entire transaction against ordinary
+operations from other origins. COMMIT selection still requires every bound
+prepare; ABORT uses the existing explicit transaction decision and protection
+rules, never a timeout. No participant publishes until protected installation
+and the shared closure visibility barrier complete. Ordinary cross-mount
+rename/link remain EXDEV. Detailed successor transaction schema/runtime work
+remains downstream; the old owner-stream ledger cannot be wired in unchanged.
+
+## Outside origins, recovery and authority transitions
+
+This two-host boundary **does not have the old fixed three-replica majority
+intersection proof**. O outside R may hold the only durable new fragment; two
+ready placement replicas may have neither it nor its unresolved grant. S and its
+lineage are therefore an obligatory recovery-source inventory, not telemetry.
+
+Before changing sequencer incarnation, epoch, membership, closure authority or
+owner-origin partner, recovery must:
+
+1. Gate the whole affected closure. Preserve live RAM tails before voluntarily
+   stopping any host. Obtain serialized control-plane transition allocation;
+   positively close/fence every old sequencer, every node in old S that could
+   hold a grant, every used owner-origin memory partner and every reader/cache
+   domain. Persist nondecreasing transition promises before acknowledging close.
+   A physical fence may establish exclusion; it does not supply a journal report.
+2. Obtain a complete authenticated **sealed close report from every node in old
+   S**, plus all sequencer/partner ledgers used in the authority lineage. The
+   report follows local serialization with pending appends/syncs, gives the exact
+   durable stream tails and retained accepted/selected tails, grants/DECLINEs/
+   COMMITs/results, continuity/lost-RAM statements, source/pin obligations and
+   authority promises. It promises no more old-authority choices or serving.
+   A node without an operation supplies a durable empty/closed report, not an
+   inference from silence. Preserve reports and their bytes durably at the
+   recovery participants. A missing node's report can be replaced only by equivalent verified complete
+   durable coverage plus positive exclusion: exact decisions/results/dependencies
+   for all its grants and proof of the complete issued-grant frontier (for example
+   A's continuously retained, now sealed grant ledger, or an already durable
+   closure manifest). A checkpoint maximum or known selected prefix alone cannot
+   exclude an additional issued grant. An unresolved grant with a potentially
+   unique durable choice cannot be replaced by silence. Thus a permanently dead
+   origin is replaceable when all obligations and the frontier are independently
+   proven; fencing alone supplies no missing data or absence evidence.
+3. Union exact grant and slot/predecessor evidence, origin choices and source
+   fragments across those reports. Resolve every slot and all transitive homes,
+   anchors and dependencies before new admission. Preserve any selected COMMIT.
+   A durable COMMIT whose selection is unknown is conservatively adopted with
+   complete dependencies and reprotected; it may have committed without a reply.
+   Conflicting same-key bytes, incompatible grants or COMMIT versus DECLINE
+   quarantine. Proven closed absence of a COMMIT may resolve NO_EFFECT only
+   after the complete survey or its verified equivalents, never from a placement
+   majority or missing result.
+4. Materialize the complete recovered cut, exact results/claims, source manifest
+   and all required dependencies durably on the prospective A and its distinct
+   B before activation. Restore the logical view and cache/handle generation,
+   retain offline replica/backup obligations, install the new authority/source
+   set and only then reopen grants/observations. Old origin fragments remain
+   pinned until verified durable replacements and protected release exist.
+
+No endpoint is readmitted with only a shorter durable tail and fresh UUID. A
+restart of O/A/M loses old session readiness; reconstruct all its bound grants
+and selected dependencies before it participates again. New incarnations do not
+prove an old acceptance never existed. Pure transport reconnect without restart
+can resume only after exact ledger/retention reconciliation; no peer may discard
+accepted state on socket loss. Known loss of the required retention gates fresh
+completion until the same evidence is reprotected under reconciled authority.
+
+This deliberately conservative survey can block on an offline admitted node,
+even an outside origin with no known selected write, when its complete grant
+frontier/obligations have no verified surviving equivalent. It is the availability cost
+of avoiding an additional mandatory third participant on the normal remote path.
+No finite recovery-time guarantee or automatic majority promotion is claimed.
+Missing storage/continuity may require explicit authorized loss recovery with a
+new generation and preserved copies; it is not a proven ABORT. A later optimized
+source-registration/removal or takeover protocol needs its own specification and
+proof. Task `gz3` supplies detailed crash-recovery integration; old
+[Takeover](Takeover.md) is retained scoped v1 machinery, not a sufficient survey.
+
+Cooperative demand-based preferred-owner handoff is distinct from crash takeover
+and replica redistribution. Periodic policy uses bounded fresh original-request
+counts, hysteresis and tenure/cooldown. A cooperative handoff gates/drains grants,
+transfers the full committed RAM projection, source/pin/dependency manifests,
+claims, handles and unresolved results, closes old authority with positive domain
+acknowledgements, then activates the new sequencer. It need not stop a VM when
+cooperation proves closure. This cooperative transition uses the same complete
+closed-origin/source coverage requirement, with live positive close acknowledgements rather than
+mandatory VM stops. Already verified durable origin coverage can remain
+at the origins; it need not be copied to the new owner's disk. Read readiness
+may therefore precede new-owner persistence/apply. Crash recovery instead uses
+the durable A/B materialization gate above. Every still-admitted origin retains
+write eligibility in the new authority. Detailed handoff policy/state machine
+is `kz3`; do not reuse a crash-fence operation as the
+routine demand-balancing mechanism or move one member of an affinity closure.
+
+## Retention, resources and model obligations
+
+Async delivery to every assigned replica derives from durable origin fragments
+and selected-source manifests, not a disposable send queue. Report per-source
+received/durable/selected/installed coverage and explicit holes. Reconnect sends
+exact original frames; unknown suffix/base installs a pinned verified checkpoint
+into a private gated destination. No timestamp, RAM ACK, apply maximum or empty
+send queue authorizes GC. Checkpoints bind a global cut, all origin source cuts
+and exact dependency graph. External snapshots/holds and backup source pins
+remain authoritative. Missing coverage preserves data and throttles admission.
+
+Reserve bounded credits before grants for origin staging/sync/result fragments,
+A's complete logical overlay, M's accepted graph, retries, reader domains and
+recovery/control reserve. Fairly queue origins/volumes, bound client waits and
+background workers, and persist admitted obligations beyond client cancellation.
+Use persistent control/live-data/bulk classes with one framing writer per socket;
+all classes authenticate authority and bound messages/bytes/connections. Slow
+origin, partner or offline replica eventually backpressures its affected closure.
+
+Concrete conflicting and uncertain histories for the successor model:
+
+| Trace (all slots share one closure authority) | Required outcome |
 |---|---|
-| B absent/not READY, full, or disk stalled | Bounded wait/backpressure; no local-only success or implicit substitution of C. Already chosen work retains its outcome. |
-| A local sync fails after B ACCEPT | No successful completion; preserve candidate/acceptance and resolve uncertainty. B's earlier acceptance cannot be silently erased. |
-| Data/control disconnect or lost ACCEPT/result reply | Retain accepted work, reauthenticate/reconcile, resend exact frames; no duplicate apply or rollback inference. |
-| B restarts with D shorter than prior accepted tail | New incarnation RECOVERING, continuity false/unknown; reconstruct from A/verified history before readiness. Missing record is not absence proof. |
-| A dies after COMMIT acceptance, before result/install | Preserve B's tail; recovery resolves same candidate and dependencies. A missing later result or COMPLETE cannot authorize ABORT. |
-| Partial payload or namespace apply / cache barrier fails | COMMIT remains; reads/views gate until exact-ID redo and admitted cache barrier complete. No uncommitted/piecemeal namespace exposure. |
-| Higher promise races delayed old candidate | Serialize accept versus durable promise; preserve and report any acceptance that preceded promise, reject candidates afterward. Never reply to promise before capturing its prior tail. |
-| C catches up while old history/snapshot is retired | Transfer/dependency pins and durable coverage serialize with retention; stop instead of sending a missing base/graph. |
-| A's storage lost plus B volatile tail lost | Accepted durability gap: use surviving complete evidence or stay unavailable. No finite RPO, automatic stale promotion, invented zero payload or inferred abort. |
+| File initially `abcd`. O1 wins slot 1: overwrite offset 1 with `XY`; O2 wins slot 2: truncate to 2, then slot 3 extends to 4. | Reads after slot 1 see `aXYd`; after slot 3 see `aX` plus two zero bytes, including on A before disk apply. A staged slot 2 cannot affect a slot-1 read. |
+| Empty file. O1 and O2 concurrently append `aa` and `bb`; A grants O2 first. | O2 gets offset 0, O1 gets offset 2, final bytes `bbaa`; retrying O2's same claim cannot append again. |
+| A grants O1's chmod removing U's write permission; U's O2 write was already queued. | A publishes chmod first, then authorizes the O2 request against that new cut and denies it. O2's earlier cached mode cannot supply authority. |
+| Outside origin O3 durably COMMITs slot 4; A selects/publishes it only in RAM; reply is lost; then A crashes. | O3's COMMIT/result and all earlier origin dependencies preserve the selected history. R's two surviving replica disks alone cannot declare slot 4 absent. Missing O3 with no equivalent complete coverage gates recovery; same-ID retry remains unknown until resolved. |
+| O1 receives slot 5 then pauses before any durable choice; O2 requests slot 6. | O2 waits. Timeout cannot free slot 5. O1's exact durable DECLINE permits protected NO_EFFECT; its delayed original grant cannot later COMMIT. |
+| O=A syncs COMMIT; B emits COMMIT_ACCEPT then crashes; its old receipt arrives before A learns that fact. A can finish before that notification. | Receipt certifies B's earlier retention. Losing A's unique disk too may lose the result under the accepted durability gap. A new B incarnation cannot use its empty tail to prove ABORT or regain readiness. |
 
-The takeover task must recover the full owner and reporter histories, canonical
-claims/bindings/results, highest promises, per-slot accepted term/value and
-complete dependencies, continuity statements, and known protected outcomes.
-Obtain intersecting storage-majority evidence for every closure member. For each
-ordinary commit/transaction decision slot adopt the highest accepted term in the
-recovery majority consistent with any protected outcome; retain all prepares.
-If candidates conflict within a term or higher evidence is incompatible, quarantine.
-Unavailable data blocks progress rather than licenses a different value.
+Task `dz3` must check at least these concrete traces, with delayed messages and
+unobserved RAM loss, independent backing apply and an external reply/read oracle:
 
-Absence-based abort needs fenced majority evidence with B's continuous accepted
-tail or equivalent complete durable history and no constraining accepted candidate.
-An offline/restarted B, lagging C or missing result record cannot supply absence.
-An owner-only candidate may be adopted conservatively with complete dependencies;
-one excluded by verified fenced absence cannot revive on return. Persist promises
-before reply, fence old workload/cache rights positively, select and re-protect
-history/dependencies in the new ready pair, replay and establish visibility before
-serving any member. These are `eq3` obligations, not a concrete fence selection
-or permission to activate a new owner from this spec.
+- O1/O2 overlap writes to one offset; append/append; create/create; rename/unlink;
+  truncate then extension; chmod then an otherwise permitted write. One grant
+  order determines redo, permissions, offsets and observations.
+- O1 gets a grant then pauses. O2 cannot leap the hole. A deadline cannot create
+  NO_EFFECT; a durable DECLINE can. A delayed grant after DECLINE cannot commit.
+- O1 outside R syncs COMMIT; A selects in RAM while its disk/apply is blocked.
+  A read and O2's next planning cut include the result. Staged O2 is invisible.
+- Lost PREPARED_ACCEPT/COMMIT_ACCEPT/SELECTED/PUBLISHED/result reply; duplicate
+  exact request through O2; A or O restart between phases. Preserve original
+  choice and result; conflicting canonical intent and reused grant are rejected.
+- Owner-origin rejects self memory; B's pre-crash acceptance arrives late after
+  unobserved RAM loss. Model the accepted durability loss case without perfect
+  detection. Known restart cannot restore old readiness or prove tail absence.
+- A crashes after interleaved O1/O2 durable fragments. Survey all S, including
+  outside R; a missing report without equivalent complete coverage, or a missing
+  dependency, prevents activation. Two placement replicas and a new etcd epoch cannot invent the missing source.
+- A transaction/foreign home and a concurrent remote chmod/write/barrier share
+  the closure order and one view barrier. Missing prepare/result/source pins
+  cannot yield partial namespace/data visibility or permit retention.
+- Two independent reader/cache domains, delayed invalidation and writable mmap;
+  no post-success stale result, speculative read or cache bypass. A failed
+  positive fence/barrier blocks publication/activation rather than weakens it.
 
-Deliberate loss selection needs explicit authorization, LOSS_RECOVERY and a new
-recovery generation, preserved old copies, consistent closure cut and unknown
-client outcomes recorded. It does not reinterpret excluded uncertain work as
-proven ABORT. The accepted owner-storage/partner-memory gap has no finite loss
-window even though B is expected to persist promptly.
-
-## Model and validation obligations
-
-`fq3` starts with one volume, fixed A/B/C, a bounded ordered stream, ordinary
-MUTATION/COMMIT/ACCEPT/result, promises and abstract authorized fence/recovery
-actions. Check normal safety first; the concrete `eq3` fence assumption and
-implementation must be reviewed separately. The transaction model is a separate
-extension with immutable anchor, participants, decision slots and one visibility
-generation; passing a single-group model cannot establish transaction safety.
-
-Required invariants and negative schedules:
-
-1. Successful reply implies valid authority, complete durable A prefix, current B
-   acceptance/retention, chosen outcome and required protected terminal records;
-   remove any check to expose local-only, receipt-only or stale-session success.
-2. A slot has one recoverable outcome; accept-before-local-sync, lost ACCEPT,
-   owner crash before result and delayed proposal versus promise preserve every
-   constraining acceptance. Highest-term recovery cannot overturn protected COMMIT.
-3. R/D/K/P are distinct contiguous same-history prefixes; reorder across sockets,
-   deliver sequence n+1 before n, duplicate frames, partial tails and unknown
-   dependencies. No receipt/commit/apply can jump a hole or treat hash-only state
-   as complete redo. Reporter sequence never aliases owner sequence.
-4. No staged/uncommitted or partially applied state is observed. Delay apply after
-   reply, interleave read/barrier capture with later writes and fail invalidation.
-   Include reads through cached aliases and mmap loads that bypass daemon gates
-   while apply is deferred: a profile lacking verified freshness for those paths
-   must delay publication/success until complete apply and its required cache
-   barrier. Reads cover their admitted cut, successful completion cannot leave
-   stale cached observations, and namespace publication stays atomic.
-5. Owned buffers remain immutable through acceptance until durable replacement/
-   protected handoff. Reuse a sender buffer, close a connection, exhaust credits,
-   or restart B with volatile loss: none may silently erase a retained obligation
-   or prove absence. Explicitly model the accepted multi-failure loss case as
-   unavailable/authorized loss recovery, without claiming loss-free recovery.
-6. Same anchored ID cannot acquire a different canonical intent or effect; retry
-   after lost result/source removal/checkpoint, change CREATE mode or SETATTR
-   value, and retire a floor past a pending claim. Conflicts/retired IDs stop
-   before new effects; an uncertain timeout is never rollback.
-7. Async/offline obligations and all snapshot/home/session/transfer dependencies
-   survive restart and retention; race checkpoint publication/GC with catch-up
-   and reject R/P-only coverage. Missing complete replacement preserves pins.
-8. Stale session/incarnation/authority cannot create fresh acceptance or serving
-   rights; historical transfer preserves bytes without reviving the sender.
-   A restarted partner's shorter D must not enable absence-based abort.
-9. Under stable authorized pair, complete history, finite admitted load, fair
-   delivery/workers, available capacity and functioning apply/cache barriers,
-   admitted work and async catch-up progress. Without these assumptions waits
-   remain bounded at the client, retain evidence and never weaken success.
-
-The later transaction model must additionally check all-prepare commitment,
-highest-accepted coordinator-term recovery, claim-before-path routing, immutable
-binding through closure merges, participant install/alias drain and no partial
-closure visibility. Transactions supplies its detailed negative schedules.
-Use an external oracle of IDs/digests, replies, chosen outcomes and observed
-versions; compare recovery to that oracle rather than replica equality alone.
-
-No model, daemon codec, kernel/cache, storage-fault or workload run is established
-by this document. Local link/format/vector checks validate documentation only.
-Native and guest-path runs require their own explicit approval under
-[Test automation](../Test-automation.md).
+Conditional progress assumes stable installed authority, available O/A (and B
+for owner-origin), fair finite load/delivery/workers, sufficient capacity and
+working frontend barriers. Failed origins or unknown close reports can block;
+client wait deadlines do not weaken safety. Passing old v1 profiles or this
+prose review proves none of the new distributed/runtime/kernel obligations.
+No test or lab execution is authorized here; each run retains
+[Test automation](../Test-automation.md) approval requirements.

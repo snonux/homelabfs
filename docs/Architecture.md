@@ -15,14 +15,14 @@ See [Motivation and goals](Motivation-and-goals.md) for the problem HomelabFS ai
 - In normal mode, any admitted HomelabFS node may accept reads and writes for any volume regardless of ownership, subject to permissions, validated authority and readiness. All origins must participate in a consistent ordering and commit protocol; ownership does not grant exclusive write access.
 - The originating writer durably journals each successful mutation locally, and the preferred owner retains its complete ordered committed state in memory. The owner can serve committed state before its own disk persistence. Owner-originated writes require a distinct synchronous partner in memory; a node cannot count itself twice. Receipt alone does not permit uncommitted reads.
 - Periodically reconsolidate preferred ownership toward the FreeBSD host with the most original requests for a volume, using a measurement window, hysteresis and a minimum tenure/cooldown. Pod movement does not require immediate ownership movement; non-owners continue accepting reads and writes. Safe handoff and eligibility checks are mandatory. See [the reconsolidation policy](Cluster-and-ownership.md#periodic-ownership-reconsolidation).
-- These requirements were clarified on 2026-10-30. The earlier owner-only protocol and its proofs are limited baselines, not the target architecture. Feature implementation and lab work remain stopped while all documents, code and remaining tasks are reviewed and reconciled.
+- The [all-origin normal contract](spec/Replication-protocol.md) now selects serial per-closure grants, origin-local durable COMMIT/result fragments, distinct-node memory acceptance, explicit selected/publication phases and complete source coverage. It is unimplemented and unproven pending `dz3` models, successor formats and runtime/platform gates. The 2026-10-30 review is complete; earlier owner-only proofs retain their limited scope. Every test/lab run still needs explicit approval.
 - Support both FreeBSD and Linux FUSE from the start, using two platform adapters around shared filesystem and replication code.
 - For f3s, expose the FreeBSD HomelabFS mount to each colocated Rocky bhyve guest through virtio-9p. Rocky uses its kernel 9p client; no HomelabFS Linux FUSE daemon is deployed in this path.
 - On 2026-10-30 Paul retained 9p and accepted advisory locking limited to cooperating users of the same guest 9p mount and kernel inode/lock domain. Separate mounts (even in one guest), other guests and direct host access have no shared-lock guarantee. HomelabFS must coordinate independent writable clients itself; guest-local flock cannot serialize different hosts. Fence stale clients, including cached access, when required by the authority protocol. This decision changes only application lock scope; [remaining guest-publication gates](Platform-interfaces.md#accepted-9p-lock-scope-2026-10-30) remain open.
 - Files and directories support traditional Unix user/group ownership and permission bits.
 - Normal file access must support the f3s application portfolio with POSIX-style semantics. Compatibility is a requirement to validate, not a current certification.
 - Use ZFS-backed operations where possible, with HomelabFS coordinating mutations and read freshness. Reads must observe the required committed logical state, including an owner memory view when backing-file application lags; incomplete or stale state must wait.
-- With three healthy nodes, every mutation is sent to the local replica, a synchronous partner, and an asynchronous partner. Every acknowledged normal-mode mutation must be recoverable on the synchronous partner, including the complete ordered prefix it depends on; an in-memory copy is sufficient for the partner ACK.
+- For a remote origin O, normal success uses O's durable journal and preferred owner A's complete retained RAM graph; an origin outside replica placement is supported without a third mandatory synchronous host. For an owner-origin operation, the second memory host is its distinct configured partner B. Assigned replicas receive persistent asynchronous delivery obligations. Recovery cannot reuse a fixed-placement majority proof: it must establish the complete old origin/grant frontier and durable source graph.
 - Async delivery is mandatory and retryable, including metadata operations. Offline replicas retain catch-up obligations; asynchronous means outside the client acknowledgement path, not best-effort delivery.
 - A returning node must recover and establish the authority and readiness needed for its serving role. It does not automatically reclaim preferred ownership; normal admitted non-owner writers remain supported.
 - Periodic ZFS snapshots are required as an additional recovery layer. Scheduling, retention, and snapshot administration are managed by external FreeBSD-level tools, not HomelabFS.
@@ -36,6 +36,10 @@ See [Motivation and goals](Motivation-and-goals.md) for the problem HomelabFS ai
 - Coordination must stay off the steady-state read/write path. etcd was selected earlier; the revised recommendation retains it only for infrequent ownership and configuration changes, subject to the user's latency requirement. HomelabFS enforces ownership and maintains replication progress directly.
 
 ## Architecture diagram
+
+The SVG retains the earlier fixed-owner topology and owner-origin write/failover
+illustration. Its role-specific panels are historical context; the current
+all-origin path and source-aware recovery gates are in [Replication](Replication.md).
 
 ![HomelabFS architecture overview](HomelabFS-architecture.svg)
 
@@ -52,7 +56,7 @@ See [Motivation and goals](Motivation-and-goals.md) for the problem HomelabFS ai
 | [Replication transport](spec/Transport.md) | Implemented bounded authenticated sessions and normal-node startup ordering; stream protocol and serving remain external |
 | [Core simulation](spec/Simulation.md) | Implemented controlled seeded network, virtual clocks and crashable core fixtures; distributed protocol remains external |
 | [History oracle](spec/History-oracle.md) | Implemented external serial history checker and bounded seeded real local recovery scenarios; normal replication and distributed acceptance remain pending |
-| [Normal replication protocol](spec/Replication-protocol.md) | Fixed-owner sessions, messages, commit/visibility gates and recovery evidence; unimplemented |
+| [Normal replication protocol](spec/Replication-protocol.md) | All-origin serial grants, local durable choices, ordered owner RAM, distinct memory copies, results and source-survey recovery; unimplemented/unproven |
 | [Journal storage](Journal-storage.md) | Dataset layout, checkpoints, retention, and safe cleanup |
 | [Performance](Performance.md) | Bounded concurrency, connection pools, fairness, and measurement |
 | [Recovery](Recovery.md) | Automatic recovery, failures, fencing, and manual escalation |
@@ -82,7 +86,7 @@ Diagrams live with the topics they illustrate: placement in Cluster and ownershi
 4. Specify emergency activation/fencing, manual admission and exit, retention limits, and safe group reconfiguration when adding nodes. Implement the failure policies above without automatic acknowledgement downgrades.
 5. Use [go-fuse v2.9.0 for the initial adapters](adr/0001-fuse-library.md), selected from source review and Linux/native PoC evidence. Complete the remaining native capability gates and validate the real daemon through bhyve virtio-9p and f3s application semantics.
 
-Suggested development order: validate the selected guest transport and both FUSE frontends; specify and exercise the commit/fencing state machine; local filesystem and journal replay; replication with fixed ownership; bounded queues and restart recovery; then automatic ownership transfer with partition/crash tests and Kubernetes integration. Follow the [integration-test matrix and rollout gates](Integration-tests.md#integration-test-matrix) before accepting canary results. No production workload migration is planned here.
+Suggested development order: validate the selected guest transport and both FUSE frontends; specify and exercise the commit/fencing state machine; local filesystem and journal replay; coordinated all-origin replication with fixed placement; bounded queues and restart recovery; then automatic ownership transfer with partition/crash tests and Kubernetes integration. Follow the [integration-test matrix and rollout gates](Integration-tests.md#integration-test-matrix) before accepting canary results. No production workload migration is planned here.
 
 ## Packaging and validation
 
@@ -102,9 +106,10 @@ Every run requires explicit user approval; scripts handle execution, evidence, a
 Read [Deployment readiness](Deployment-readiness.md) before freezing the volume,
 fencing or deployment design. Representative test patterns feed volume policy; bounded canary
 capacity feeds fixture mapping and acceptance profiles. Guest/host fencing is chosen in
-the takeover spec, not postponed to CSI. Fixed-owner replication implementation
-waits for both the commit model check and the real-daemon guest compatibility
-gate. This is development ordering, not permission to add 9p to native Stage 1.
+the takeover spec, not postponed to CSI. All-origin replication implementation
+waits for `dz3` multi-origin models, successor schemas, committed logical-view
+and budget prerequisites, and the real-daemon guest compatibility gate. Old
+fixed-owner model success does not satisfy that gate. This is development ordering, not permission to add 9p to native Stage 1.
 Rollout planning may happen before test execution finishes; publication,
 canary deployment and test exercises retain their own prerequisites and explicit
 approvals. Disruptive exercises use isolated test infrastructure; production

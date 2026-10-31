@@ -1,5 +1,12 @@
 # Local journal segment implementation
 
+All-origin boundary (`cz3`): this implemented v1 local segment API is retained
+unchanged. The successor protocol needs origin-keyed streams and exact global
+slot/source mappings under `ez3`; local contiguous durability still grants no
+commit/read/retention authority. A remote origin owns durable new fragments, and
+the full selected history may span several origin disks. The v1 owner/reporter
+paths below cannot silently represent that union.
+
 Task `mq3` implements `internal/journal/segment` over `internal/vfs` and the
 version 1.0 [record codec](../../internal/journal/record/README.md). The normative
 bytes, stream roles and canonical paths remain in
