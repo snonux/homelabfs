@@ -22,7 +22,7 @@ Allow a capped pool of additional live-data connections when independent volumes
 
 ## Shared Go core
 
-Use bounded per-volume queues and ordered state machines, with shared workers for independent encoding, transfer, persistence, and replay tasks. Multiple volume state machines may run concurrently. A single volume may pipeline operations, but commit/apply and filesystem dependencies retain their defined order. Do not require one global lock for all workload data.
+Use bounded per-volume queues and ordered state machines, with shared workers for independent encoding, transfer, persistence, and replay tasks. Multiple independent dependency closures may run concurrently. The current [normal contract](spec/Replication-protocol.md#serial-grants-and-conflict-resolution) permits **one outstanding mutating grant per closure**, including its transactions. Queuing origins fairly does not permit speculative or pipelined grants within that closure. Do not require one global lock for all workload data.
 
 Assign one framing writer per socket, or otherwise serialize complete messages, so concurrent goroutines cannot interleave message headers and bodies. Go permits concurrent calls on a net.Conn, but does not provide application message framing. Readers dispatch by volume/session/operation identity. Source: [Go net.Conn contract](https://pkg.go.dev/net#Conn).
 
@@ -32,7 +32,7 @@ Increasing workers should respond to sustained queuing and available CPU/I/O/mem
 
 ## Disk and fairness
 
-Run local journal persistence and partner transmission in parallel as required by the write contract. Pipeline a bounded number of operations. Evaluate group commit: several journal appends may share a sync, but each client waits for the covering durable boundary and its required partner receipt/commit conditions. Bound batching delay and preserve fsync barriers. Do not set ZFS sync=disabled or acknowledge unsynced journal data as a performance shortcut.
+Run origin-local journal persistence and designated memory-recipient transmission in parallel as required by the write contract. Overlap independent closures while retaining the one-grant rule within each closure. Group commit may combine independent closures' journal appends, but each client waits for its covering durable boundary, protected result and publication conditions. Bound batching delay and preserve fsync barriers. Do not set ZFS sync=disabled or acknowledge unsynced journal data as a performance shortcut.
 
 Prioritize live write latency and control traffic while guaranteeing background catch-up forward progress. Reserve a configurable bandwidth/I/O share for lagging replicas; starving them increases failover time and journal retention. Chunk snapshot transfers so one large transfer cannot monopolize resources. If continuing writes consume all catch-up capacity, throttle admission rather than promise eventual convergence without spare capacity.
 
@@ -45,6 +45,35 @@ Measure p50/p95/p99 latency, throughput, queue wait, local sync time, partner re
 Benchmark one and many volumes; small sync writes, metadata operations, sequential transfers, and database workloads; healthy and slow peers; and live traffic during snapshot catch-up. Compare baseline versus extra connections while holding durability, cache settings, workloads, and resource budgets constant. A throughput gain that makes tail latency or catch-up unacceptable is not automatically an improvement.
 
 Additional integration scenarios: change pool size under load; kill one data connection while its control connection survives; deliver ACKs before local processing sees the matching data; reconnect with duplicate frames; pause one volume while others progress; overload the receiver; and scale down with accepted work in flight. Require bounded resources, preserved ordering, fair progress, and no loss of acknowledged operations outside the established durability gap.
+
+## Implemented admission component
+
+Task `6r3` supplies [bounded admission and ownership](spec/Admission.md) in
+`internal/admission`. Reservations charge bytes, operations, owner RAM, durable
+origin-source space, dependency RAM, workers and connections globally and by
+origin/volume. Isolated live, catch-up, recovery, control, dirty-drain and memory
+pools have checked summed aggregate caps. A full live pool cannot consume
+reserved control/drain/recovery/catch-up capacity. These are capacity and
+dispatch guarantees; actual disk/network bandwidth shares require the consuming
+I/O scheduler and remain an integration obligation.
+
+Callers reserve the complete lifetime package before copying payloads, issuing
+grants or allowing writable PTEs. The owner must include baseline, candidate,
+every pinned logical version, source/claim/result dependencies, temporary copies
+and separate recovery capacity. An arena retains its reservation through all
+those lifetimes. Cancellation, fencing, reconnect and receipt timeouts do not
+release an accepted obligation. Finishing a published grant returns its worker
+and serial slot while retaining its owned bytes and source-space credits;
+accepted release or protected transfer requires external protocol authority.
+Raw receipt or RAM acceptance is never durable garbage-collection permission.
+
+The component creates no waiting goroutines. Round-robin dispatch scans past
+stalled closures and parked final operations, with separate reserved drain
+workers so the final waiter cannot consume the resources required by its drains.
+Its bounded component simulation uses owned payloads and synced replacement
+files under overload and cancellation. It does not implement or verify normal
+replication, physical cache revocation, distributed acknowledgements, source GC
+or any live lab profile. The daemon's normal publication remains closed.
 
 ## Initial transport measurements
 
