@@ -8,6 +8,7 @@ Run as root for the bounded numeric-identity permission checks. Never invoke
 directly as a substitute for the separately approved Stage 2 runner.
 """
 import fcntl
+from contextlib import contextmanager
 import hashlib
 import json
 import mmap
@@ -17,6 +18,85 @@ import signal
 import sqlite3
 import stat
 import sys
+import time
+
+
+CHILD_SIGNALS = {signal.SIGALRM, signal.SIGTERM, signal.SIGINT}
+CHILD_CLEANUP_SECONDS = 1.5
+
+
+@contextmanager
+def child_bookkeeping():
+    """Defer raising handlers only while recording kernel child transitions."""
+    previous = signal.pthread_sigmask(signal.SIG_BLOCK, CHILD_SIGNALS)
+    try:
+        yield previous
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous)
+
+
+class Child:
+    def __init__(self, probe):
+        self.probe = probe
+        self.pid = None
+        self.reaped = False
+        self.status = None
+        self.ownership_lost = False
+
+    def start(self, action):
+        with child_bookkeeping() as previous_mask:
+            self.pid = os.fork()
+            if self.pid == 0:
+                try:
+                    for signum in CHILD_SIGNALS:
+                        signal.signal(signum, signal.SIG_DFL)
+                    signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+                    action()
+                except BaseException:
+                    os._exit(1)
+                os._exit(0)
+            # Registration precedes delivery of any signal queued after fork.
+            self.probe.children.append(self)
+
+    def reap(self, deadline=None):
+        while not self.reaped:
+            with child_bookkeeping():
+                try:
+                    pid, status = os.waitpid(self.pid, os.WNOHANG)
+                except ChildProcessError:
+                    # No status means no proof of termination under our ownership.
+                    # In particular, never send a signal to this numeric PID again.
+                    self.ownership_lost = True
+                    raise
+                if pid:
+                    self.status = status
+                    self.reaped = True
+                    self.probe.child_cleanup.append({"pid": pid, "status": status, "reaped": True})
+            if self.reaped:
+                break
+            if deadline is not None and time.monotonic() >= deadline:
+                return False
+            # A blocking wait under the mask would suppress the entry alarm.
+            time.sleep(0.01)
+        return os.WIFEXITED(self.status) and os.WEXITSTATUS(self.status) == 0
+
+    def cleanup(self):
+        try:
+            if self.pid is None or self.reaped:
+                return
+            with child_bookkeeping():
+                if self.ownership_lost:
+                    return
+                try:
+                    os.kill(self.pid, signal.SIGKILL)
+                    self.probe.child_cleanup.append({"pid": self.pid, "kill_sent": True})
+                except ProcessLookupError:
+                    pass
+            self.reap(time.monotonic() + CHILD_CLEANUP_SECONDS)
+        except BaseException as error:
+            # Preserve the original failure, including an entry alarm, even if
+            # another signal or a kernel error interrupts bounded cleanup.
+            self.probe.child_cleanup.append({"pid": self.pid, "cleanup_error": str(error)})
 
 
 class Probe:
@@ -32,6 +112,12 @@ class Probe:
         self.operations = 0
         self.history = []
         self.checks = []
+        self.children = []
+        self.child_cleanup = []
+
+    def child_evidence(self):
+        return {"child_cleanup": self.child_cleanup,
+                "uncertain_children": [child.pid for child in self.children if not child.reaped]}
 
     def reserve(self, count, size=0):
         self.operations += count
@@ -120,23 +206,13 @@ class Probe:
             self.check("unlink-open", source.read() == b"fi")
 
     def child(self, action):
-        pid = os.fork()
-        if pid == 0:
-            try:
-                action()
-            except BaseException:
-                os._exit(1)
-            os._exit(0)
+        child = Child(self)
         try:
-            _, status = os.waitpid(pid, 0)
+            child.start(action)
+            return child.reap()
         except BaseException:
-            # Never report a terminal failure with a contending child alive.
-            # If reaping itself hangs, the deployment adapter must time out
-            # uncertain rather than certifying remote termination.
-            os.kill(pid, signal.SIGKILL)
-            os.waitpid(pid, 0)
+            child.cleanup()
             raise
-        return os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
 
     def permissions(self):
         self.reserve(20, 32)
@@ -257,7 +333,7 @@ class Probe:
         self.enter()
         action()
         return {"checks": self.checks, "io_bytes": self.bytes, "operations": self.operations,
-                "history": self.history, "probe": "hfs-rocky-smoke-v1"}
+                "history": self.history, "probe": "hfs-rocky-smoke-v1", **self.child_evidence()}
 
 
 def main():
@@ -265,13 +341,25 @@ def main():
     if len(raw) > 4 << 20:
         raise RuntimeError("oversized probe request")
     request = json.loads(raw)
-    result = Probe(request).run()
+    probe = Probe(request)
+    try:
+        result = probe.run()
+    except BaseException as error:
+        result = {"probe": "hfs-rocky-smoke-v1", "error": str(error), **probe.child_evidence()}
+        print(json.dumps(result, sort_keys=True))
+        # Exit 10 certifies a completed failure only after every owned child
+        # was reaped. Other exits require the adapter to retain uncertainty.
+        return 1 if result["uncertain_children"] else 10
     print(json.dumps(result, sort_keys=True))
+    return 0
 
 
 if __name__ == "__main__":
     try:
-        main()
+        code = main()
     except BaseException as error:
         print(json.dumps({"probe": "hfs-rocky-smoke-v1", "error": str(error)}))
-        sys.exit(10)
+        # main() certifies completed failures itself. If reporting or any
+        # other outer operation failed, completion is unknown here.
+        sys.exit(1)
+    sys.exit(code)
