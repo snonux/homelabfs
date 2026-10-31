@@ -11,7 +11,7 @@ import sys
 import tempfile
 import time
 
-root = Path(tempfile.mkdtemp(prefix='homelabfs-io-', dir=sys.argv[1]))
+root = None
 results = {}
 
 def sequential(path, size):
@@ -37,7 +37,7 @@ def sequential(path, size):
                 read_MiB_s=round(size / 1048576 / read_seconds, 2),
                 write_seconds=round(write_seconds, 3), read_seconds=round(read_seconds, 3))
 
-try:
+def benchmark():
     results['sequential'] = sequential(root / 'sequential', 128 * 1024 * 1024)
     rng = random.Random(42)
     expected = {}
@@ -68,6 +68,32 @@ try:
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         futures = [pool.submit(sequential, root / ('parallel-'+str(i)), 16 * 1024 * 1024) for i in range(4)]
         results['four_parallel_files'] = [f.result() for f in futures]
-finally:
-    shutil.rmtree(root)
-print(json.dumps(results, indent=2))
+
+
+def main():
+    global root, results
+    root, results = None, {}
+    status = dict(passed=False, root=None, retained=False)
+    try:
+        root = Path(tempfile.mkdtemp(prefix='homelabfs-io-', dir=sys.argv[1])).absolute()
+        status['root'] = str(root)
+        benchmark()
+        status['passed'] = True
+    except BaseException as exc:
+        status['error'] = repr(exc)
+    if root is not None:
+        status['retained'] = True
+        if status['passed']:
+            try:
+                shutil.rmtree(root)
+                status['retained'] = False
+            except BaseException as exc:
+                status['passed'] = False
+                status['cleanup_error'] = repr(exc)
+    results.update(status)
+    print(json.dumps(results, indent=2))
+    return 0 if status['passed'] else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

@@ -12,7 +12,7 @@ import subprocess
 import sys
 import tempfile
 
-root = Path(tempfile.mkdtemp(prefix='homelabfs-check-', dir=sys.argv[1]))
+root = None
 results = []
 
 def check(name, fn):
@@ -117,7 +117,7 @@ os._exit(0)
     finally:
         c.close()
 
-try:
+def run_checks():
     check('write-fsync-rename-hardlink-unlink-open-directory-fsync',basic)
     check('uid-gid-mode-and-denied-read',permissions)
     check('mmap-flush-fsync',mapped)
@@ -126,7 +126,32 @@ try:
     check('sqlite-delete-full-sync',lambda:database('DELETE'))
     check('sqlite-wal-full-sync',lambda:database('WAL'))
     check('sqlite-wal-process-crash',database_crash)
-finally:
-    shutil.rmtree(root)
-print(json.dumps(results,indent=2))
-sys.exit(0 if all(r['passed'] for r in results) else 1)
+
+
+def main():
+    global root, results
+    root, results = None, []
+    lifecycle = dict(test='run-lifecycle', passed=False, root=None, retained=False)
+    try:
+        root = Path(tempfile.mkdtemp(prefix='homelabfs-check-', dir=sys.argv[1])).absolute()
+        lifecycle['root'] = str(root)
+        run_checks()
+        lifecycle['passed'] = all(r['passed'] for r in results)
+    except BaseException as exc:
+        lifecycle['error'] = repr(exc)
+    if root is not None:
+        lifecycle['retained'] = True
+        if lifecycle['passed']:
+            try:
+                shutil.rmtree(root)
+                lifecycle['retained'] = False
+            except BaseException as exc:
+                lifecycle['passed'] = False
+                lifecycle['cleanup_error'] = repr(exc)
+    results.append(lifecycle)
+    print(json.dumps(results, indent=2))
+    return 0 if lifecycle['passed'] else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

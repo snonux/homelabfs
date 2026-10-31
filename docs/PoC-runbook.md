@@ -123,7 +123,22 @@ timeout 60 python3 /var/tmp/homelabfs-9p-build/check-filesystem.py /mnt/homelabf
 timeout 120 python3 /var/tmp/homelabfs-9p-build/check-io.py /mnt/homelabfs-9p-poc/fuse
 ```
 
-Each script creates and removes its own temporary subdirectory. Run the same scripts on the raw 9p root for comparison. Record exit codes and JSON; do not treat a timeout or missing output as success. These checks do not simulate power loss or prove production compatibility.
+Each script creates a fresh temporary subdirectory beneath the supplied path and
+removes it only after every operation and assertion succeeds. On failure, retain
+the exact reported `root` for inspection, including database and WAL files; do
+not recursively remove the parent directory. A cleanup failure also exits nonzero
+and reports `cleanup_error`; that directory may already be partly removed.
+
+The functional JSON remains a list of check records, followed by a
+`test: "run-lifecycle"` record with `passed`, absolute `root` and `retained` fields.
+The I/O JSON keeps its benchmark keys and adds those same status fields.
+Operation errors remain in their check record or the top-level `error` field;
+failed runs preserve their fixtures without attempting recursive cleanup.
+A failure before directory creation reports `root: null` and `retained: false`.
+
+Run the same scripts on the raw 9p root for comparison. Record exit codes and JSON;
+do not treat a timeout or missing output as success. These checks do not simulate
+power loss or prove production compatibility.
 
 For fio, install `fio` with `doas pkg install fio` on FreeBSD and `dnf install fio` on Rocky. Copy `tools/poc/compare.fio` to both. Use the same job file with `fio --directory=TEST_DIRECTORY --output-format=json --output=RESULT.json compare.fio` on four distinct directories: direct f3/ZFS, f3 through the host FUSE mount, guest raw 9p, and guest 9p/FUSE. For the host-only FUSE run, use a fresh directory under `/var/tmp/homelabfs-9p-poc/share/fuse/`, not the raw backing directory. Run paths sequentially, preserve version information, check every job's `error`, and remove only `sequential.bin` and `random.bin` created by the jobs. See the results document for timings and limits.
 
