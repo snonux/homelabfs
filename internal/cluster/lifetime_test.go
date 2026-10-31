@@ -95,6 +95,9 @@ func TestLifetimeRefusesWrongIdentityAndPrivatePaths(t *testing.T) {
 			if err := os.Mkdir(filepath.Join(d, "incarnations"), 0o755); err != nil {
 				t.Fatal(err)
 			}
+			if err := os.Chmod(filepath.Join(d, "incarnations"), 0o755); err != nil {
+				t.Fatal(err)
+			}
 		}, testID(1), testID(2)},
 	}
 	for _, tc := range cases {
