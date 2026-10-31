@@ -354,6 +354,30 @@ func unmarshal(data []byte, target any, embedded bool) error {
 }
 func sortKey(value any) ([]byte, error) {
 	switch v := value.(type) {
+	case NormalVolume:
+		return marshal(v.Volume)
+	case NormalCut:
+		return marshal(v.Volume)
+	case NormalRef:
+		return marshal(struct {
+			Stream   OriginStream
+			Sequence uint64
+		}{v.Stream, v.Sequence})
+	case RecoveryNode:
+		return sortKey(v.Frame)
+	case SourceCoverage:
+		return marshal(struct {
+			Stream OriginStream
+			Holder Launch
+		}{v.Stream, v.Holder})
+	case ResultObservation:
+		return sortKey(v.Grant)
+	case OriginCloseReport:
+		return marshal(v.Origin)
+	case ReportEquivalent:
+		return marshal(v.Missing)
+	case NormalFrontier:
+		return marshal(v.Stream)
 	case Position:
 		return marshal(v)
 	case FrameRef:

@@ -8,6 +8,11 @@ source and selected-result semantics; it is not implemented by these tags.
 distinguish origin, sequencer, designated memory recipient and historical
 forwarder; normal origin admission includes nodes outside replica placement.
 
+`ez3` adds explicit [normal3 representation helpers](Normal-format.md#transport-and-observation-seams),
+with an indivisible component capability descriptor and preserved creator bytes.
+The current Endpoint handshake remains strictly1.0 and does not negotiate or
+dispatch normal3 traffic. Normal publication remains closed.
+
 Implemented by `internal/transport` for disposable synthetic testing. This is a
 socket/session boundary for [Replication-protocol](Replication-protocol.md),
 not an implementation of its stream state machine, acceptance ledger, continuity

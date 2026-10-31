@@ -174,6 +174,21 @@ func (r *Registry) CheckAssignment(cluster, node, volume fsapi.UUID, history His
 	return nil
 }
 
+// CheckOrigin checks all-origin static eligibility separately from replica
+// placement. It accepts admitted nodes outside R for any configured volume.
+// This is a representation/configuration check only: installed authority,
+// incarnation, grant, durability, retention and publication remain mandatory.
+func (r *Registry) CheckOrigin(cluster, node, volume fsapi.UUID, history History) error {
+	if err := r.checkNode(cluster, node); err != nil {
+		return err
+	}
+	v, ok := r.volumes[volume]
+	if !ok || v.History != history {
+		return fmt.Errorf("origin volume/history not configured")
+	}
+	return nil
+}
+
 func (r *Registry) checkNode(cluster, node fsapi.UUID) error {
 	if !r.cluster.Valid() || cluster != r.cluster {
 		return fmt.Errorf("foreign or unconfigured cluster %s", cluster)

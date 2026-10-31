@@ -6,6 +6,12 @@ foreground. It is not normal distributed serving, emergency mode, a replication
 implementation or production publication. No synthetic partner ACK is supplied.
 The [FUSE adapter](FUSE-adapter.md) capability restrictions remain in force.
 
+The separate [normal3 authority representation](Normal-format.md) records all
+admitted origins independently of replica placement. Static `CheckOrigin`
+eligibility allows admitted nodes outside that placement for a known volume;
+it does not install the authority, issue a grant or change either current
+configuration version, startup readiness or closed normal publication gates.
+
 ## Configuration version 1
 
 Use a private UTF-8 JSON file, at most 64 KiB, with these required fields and

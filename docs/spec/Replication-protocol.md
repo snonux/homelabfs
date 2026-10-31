@@ -1,16 +1,18 @@
 # Normal replication, commitment and visibility
 
 Status: coordinated all-origin design contract, task `cz3`, 2026-10-31.
-**Unimplemented and unproven.** Task `dz3` must model this protocol before the
-successor representation (`ez3`) and runtime integration are accepted. Existing
+**Distributed runtime remains unimplemented.** The [bounded all-origin model](../../spec/tla/AllOrigin-results.md)
+checks its stated finite cases; it does not establish runtime or platform correctness. Existing
 v1 fixed-owner models, codecs and golden bytes keep their original scope; they
 do not implement or prove this contract. Disposable lab/canary volumes only.
 
 [Durability](Durability.md) owns syscall promises; [Transactions](Transactions.md)
 owns anchored identities, two-phase decisions and affinity. This document owns
 normal ordering, origin durability, memory protection and publication. The
-successor wire/storage schemas are not defined by the semantic message names
-below. Do not encode them by weakening the v1 owner/reporter role rules in
+ordinary [normal 3.0 representation](Normal-format.md) provides separate codec
+and source-storage foundations, without serving or publication authority. Its
+wire/storage schemas are not defined by the semantic message names below.
+Do not encode them by weakening the v1 owner/reporter role rules in
 [Journal format](Journal-format.md) or [Transport](Transport.md).
 
 ## Roles and installed authority

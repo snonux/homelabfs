@@ -9,6 +9,11 @@
 > writes/replay/transfer. Do not reuse reporter streams for origin redo, renumber
 > original bytes or regenerate old goldens. Unknown readers fail closed.
 
+`ez3` now supplies the separate [normal 3.0 representation](Normal-format.md)
+and bounded origin-source storage seam. It preserves the exact v1 contract
+below and reserved emergency 2.0 schemas. Encoding/source sync is not normal
+distributed commitment, recovery completeness or publication authority.
+
 Status: version 1.0 design contract for task `cq3`, 2026-10-28. Bounded local
 record/segment and checkpoint implementations now exist; no normal distributed
 commit implementation is supplied by this document. The loopback PoC implements

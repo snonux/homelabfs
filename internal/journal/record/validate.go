@@ -8,6 +8,9 @@ import (
 )
 
 func validate(value any) error {
+	if err := validateNormal(value); err != nil {
+		return err
+	}
 	valid := true
 	switch v := value.(type) {
 	case Time:

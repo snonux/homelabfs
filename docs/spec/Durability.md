@@ -1,7 +1,9 @@
 # Durability and read freshness
 
-Status: all-origin contract revised by `cz3`, 2026-10-31. Unimplemented and
-unproven pending `dz3`, successor schemas and runtime/platform validation.
+Status: all-origin contract revised by `cz3`, 2026-10-31. Distributed runtime
+and platform validation remain pending. The [bounded model](../../spec/tla/AllOrigin-results.md)
+and [normal 3.0 representation](Normal-format.md) retain their stated scopes;
+neither implements these syscall promises.
 Scope is disposable lab/canary volumes. The local loopback and fixed-owner v1
 results do not establish this behavior.
 

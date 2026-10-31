@@ -6,6 +6,11 @@ cluster recovery, emergency activation, membership changes, fencing, host/VM
 lifecycle, history loss or snapshot restoration. Unrecognized control operations
 are denied and audited, including requests from the daemon owner.
 
+The representation-only [normal3 observation codec](Normal-format.md#transport-and-observation-seams)
+keeps complete origin/frontier identities and explicit unknown cuts. It is a
+separate bounded schema and always carries `normal_publication:false`; the
+current admin1.0 socket neither emits it nor accepts version3 requests.
+
 ## Socket and authentication
 
 Each successfully reconstructed local volume has a separate socket at
