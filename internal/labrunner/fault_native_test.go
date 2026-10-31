@@ -13,6 +13,109 @@ import (
 	"time"
 )
 
+// nativeFaultAdmissionFixture prepares an exact approved request, without opening
+// an enrollment or constructing a session that bypasses native admission.
+func nativeFaultAdmissionFixture(t *testing.T, guest string) FaultRequest {
+	t.Helper()
+	p, _, _ := faultFixture(t)
+	now := time.Now().UTC()
+	p.Created = now.Add(-time.Minute)
+	p.Expires = now.Add(time.Hour)
+	p.Faults[0].Target = guest
+	for i := range p.Resources {
+		p.Resources[i].Target = guest
+		p.Resources[i].Location = strings.ReplaceAll(p.Resources[i].Location, "hfsdata0/", "hfsdata"+guest[len(guest)-1:]+"/")
+	}
+	hash, err := p.Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := Approval{PlanHash: hash, Operator: "fixture", ApprovedAt: now, Statement: "I approve this exact plan"}
+	req, err := PrepareFaultRequest(p, a, "exercise", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return req
+}
+
+func TestNativeFaultAdmissionRequiresExactPreparedHostname(t *testing.T) {
+	guests := []string{"hfs-test0", "hfs-test1", "hfs-test2"}
+	for i, guest := range guests {
+		for _, tc := range []struct {
+			name     string
+			hostname string
+			accepted bool
+		}{
+			{"prepared", guest + ".test", true},
+			{"bare", guest, false},
+			{"wrong-guest", guests[(i+1)%len(guests)] + ".test", false},
+			{"foreign-domain", guest + ".other", false},
+			{"extra-suffix", guest + ".test.other", false},
+			{"extra-prefix", "other-" + guest + ".test", false},
+			{"longer-guest", guest + "0.test", false},
+			{"trailing-dot", guest + ".test.", false},
+			{"uppercase", strings.ToUpper(guest + ".test"), false},
+			{"whitespace", guest + ".test\n", false},
+			{"empty", "", false},
+			{"host", "f3", false},
+		} {
+			t.Run(guest+"/"+tc.name, func(t *testing.T) {
+				req := nativeFaultAdmissionFixture(t, guest)
+				calls := 0
+				err := admitNativeFault(req, func() (string, error) {
+					calls++
+					return tc.hostname, nil
+				})
+				if calls != 1 {
+					t.Fatalf("hostname observations=%d; request rejected before hostname admission: %v", calls, err)
+				}
+				if tc.accepted && err != nil {
+					t.Fatalf("prepared guest hostname rejected: %v", err)
+				}
+				if !tc.accepted && (err == nil || err.Error() != "fault backend must run inside exact enrolled guest") {
+					t.Fatalf("hostname %q did not fail hostname admission: %v", tc.hostname, err)
+				}
+			})
+		}
+	}
+}
+
+func TestNativeFaultAdmissionPreservesRequestChecks(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		change func(*FaultRequest)
+	}{
+		{"approval", func(r *FaultRequest) { r.Approval.PlanHash = strings.Repeat("0", 64) }},
+		{"protocol", func(r *FaultRequest) { r.Protocol = "foreign" }},
+		{"seed", func(r *FaultRequest) { r.Seed++ }},
+		{"command", func(r *FaultRequest) { r.Commands[0].Path = "/bin/false" }},
+		{"target", func(r *FaultRequest) { r.Fault.Target = "hfs-test1" }},
+		{"qualified-target", func(r *FaultRequest) { r.Fault.Target = "hfs-test0.test" }},
+		{"unknown-target", func(r *FaultRequest) { r.Fault.Target = "hfs-test3" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := nativeFaultAdmissionFixture(t, "hfs-test0")
+			tc.change(&req)
+			observed := false
+			err := admitNativeFault(req, func() (string, error) {
+				observed = true
+				return "hfs-test0.test", nil
+			})
+			if err == nil || observed {
+				t.Fatalf("changed request reached hostname admission: observed=%v err=%v", observed, err)
+			}
+		})
+	}
+}
+
+func TestNativeFaultAdmissionReturnsHostnameError(t *testing.T) {
+	req := nativeFaultAdmissionFixture(t, "hfs-test0")
+	unavailable := errors.New("hostname unavailable")
+	if err := admitNativeFault(req, func() (string, error) { return "", unavailable }); !errors.Is(err, unavailable) {
+		t.Fatalf("hostname failure was lost: %v", err)
+	}
+}
+
 func TestNativeQuotaChecksIdentityBeforeSetting(t *testing.T) {
 	p, _, _ := faultFixture(t)
 	for _, scenario := range []string{"good", "wrong-guid", "wrong-run", "wrong-cap", "failed-set", "cleanup-repeat"} {

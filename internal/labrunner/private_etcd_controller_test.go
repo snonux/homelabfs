@@ -259,12 +259,12 @@ func TestPrivateEtcdControllerResourceScope(t *testing.T) {
 
 func TestPrivateEtcdDocumentedGuestHostname(t *testing.T) {
 	for _, guest := range []string{"hfs-test0", "hfs-test1", "hfs-test2"} {
-		if etcdGuestHostname(guest) != guest+".test" {
+		if nativeGuestHostname(guest) != guest+".test" {
 			t.Fatal("documented native hostname not required")
 		}
 	}
 	for _, foreign := range []string{"hfs-test0.test", "hfs-test0.other", "f3", "rocky"} {
-		if etcdGuestHostname(foreign) != "" {
+		if nativeGuestHostname(foreign) != "" {
 			t.Fatal("foreign/bare alias adopted as a native target")
 		}
 	}

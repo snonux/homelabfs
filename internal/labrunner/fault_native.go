@@ -156,21 +156,21 @@ func (session *nativeFaultSession) invoke(ctx context.Context) (FaultReceipt, er
 	return *r, nil
 }
 
-func openNativeFault(req FaultRequest) (*nativeFaultSession, error) {
+func admitNativeFault(req FaultRequest, hostname func() (string, error)) error {
 	p := req.Plan
 	if err := p.CheckApproval(req.Approval, time.Now(), req.Cleanup); err != nil {
-		return nil, err
+		return err
 	}
 	h, err := p.Hash()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	step := p.faultStep(req.Step)
 	if req.Deadline.After(time.Now().Add(time.Duration(step.TimeoutSeconds) * time.Second)) {
-		return nil, errors.New("fault deadline exceeds approved step")
+		return errors.New("fault deadline exceeds approved step")
 	}
 	if req.Protocol != "hfs-native-fault-v1" || req.PlanHash != h || req.RunID != p.RunID || req.MaxEvidenceBytes <= 0 || req.MaxEvidenceBytes > p.Budget.ArtifactBytes/int64(len(p.Steps)+2) || req.Deadline.Before(time.Now()) {
-		return nil, errors.New("invalid fault request binding/budget/deadline")
+		return errors.New("invalid fault request binding/budget/deadline")
 	}
 	expectedSeed := int64(0)
 	for _, selection := range p.Tests {
@@ -179,7 +179,7 @@ func openNativeFault(req FaultRequest) (*nativeFaultSession, error) {
 		}
 	}
 	if req.Seed != expectedSeed {
-		return nil, errors.New("request seed differs from approved selection")
+		return errors.New("request seed differs from approved selection")
 	}
 	found := false
 	for _, f := range p.Faults {
@@ -187,18 +187,26 @@ func openNativeFault(req FaultRequest) (*nativeFaultSession, error) {
 	}
 	commands, err := faultRequestCommands(p, req.Fault, req.Cleanup, req.Binding)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if !found || !reflect.DeepEqual(commands, req.Commands) {
-		return nil, errors.New("fault request differs from approved recipe")
+		return errors.New("fault request differs from approved recipe")
 	}
-	hostname, err := os.Hostname()
+	observed, err := hostname()
 	if err != nil {
+		return err
+	}
+	if expected := nativeGuestHostname(req.Fault.Target); expected == "" || observed != expected {
+		return errors.New("fault backend must run inside exact enrolled guest")
+	}
+	return nil
+}
+
+func openNativeFault(req FaultRequest) (*nativeFaultSession, error) {
+	if err := admitNativeFault(req, os.Hostname); err != nil {
 		return nil, err
 	}
-	if hostname != req.Fault.Target {
-		return nil, errors.New("fault backend must run inside exact enrolled guest")
-	}
+	p := req.Plan
 	root := "/var/tmp/hfs-run-" + p.RunID
 	if err := privateDirectory(root); err != nil {
 		return nil, err
@@ -237,7 +245,7 @@ func openNativeFault(req FaultRequest) (*nativeFaultSession, error) {
 		_ = lock.Close()
 		return nil, errors.New("fault enrollment identity mismatch")
 	}
-	s.receipt = FaultReceipt{Protocol: req.Protocol, PlanHash: h, RunID: req.RunID, Step: req.Step, Target: f.Target, Node: f.Node, Volume: f.Volume, Generation: f.Generation, Seed: req.Seed, Started: time.Now().UTC(), RemainingResources: append([]Resource(nil), p.Resources...), Evidence: map[string]json.RawMessage{}}
+	s.receipt = FaultReceipt{Protocol: req.Protocol, PlanHash: req.PlanHash, RunID: req.RunID, Step: req.Step, Target: f.Target, Node: f.Node, Volume: f.Volume, Generation: f.Generation, Seed: req.Seed, Started: time.Now().UTC(), RemainingResources: append([]Resource(nil), p.Resources...), Evidence: map[string]json.RawMessage{}}
 	if f.Process != nil {
 		var process FaultProcess
 		if err := readOwnedJSON(filepath.Join(filepath.Dir(f.Socket), "supervisor-"+f.Process.Handle+".json"), &process); err != nil {

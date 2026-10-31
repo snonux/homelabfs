@@ -366,6 +366,15 @@ func (p Plan) faultResource(id string) Resource {
 func nativeGuest(name string) bool {
 	return name == "hfs-test0" || name == "hfs-test1" || name == "hfs-test2"
 }
+
+// nativeGuestHostname maps only the trusted short targets to their prepared
+// guest hostnames. Aliases, other domains and already qualified targets fail closed.
+func nativeGuestHostname(guest string) string {
+	if !nativeGuest(guest) {
+		return ""
+	}
+	return guest + ".test"
+}
 func safeRunPath(p Plan, target, path string) bool {
 	if !cleanAbsolute(path) {
 		return false

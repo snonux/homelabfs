@@ -380,7 +380,7 @@ func admitEtcdNative(p Plan, a Approval, guest string, recovery bool) error {
 	if err != nil {
 		return err
 	}
-	if hostname != etcdGuestHostname(guest) {
+	if hostname != nativeGuestHostname(guest) {
 		return errors.New("private etcd target hostname mismatch")
 	}
 	executable, err := os.Executable()
@@ -404,13 +404,6 @@ func admitEtcdNative(p Plan, a Approval, guest string, recovery bool) error {
 		return err
 	}
 	return nil
-}
-
-func etcdGuestHostname(guest string) string {
-	if !nativeGuest(guest) {
-		return ""
-	}
-	return guest + ".test"
 }
 
 func stageEtcdInputs(p Plan, root string) error {
