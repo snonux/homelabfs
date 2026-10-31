@@ -193,6 +193,9 @@ func (j *journal) reconcile(r Reconciliation, now time.Time) error {
 		if x.Status != "started" && x.Status != "ambiguous" {
 			return errors.New("step is not awaiting reconciliation")
 		}
+		if r.ObservedAt.Before(x.Started) {
+			return errors.New("reconciliation observation predates step start")
+		}
 		x.Status = r.Outcome
 		x.Finished = r.ObservedAt
 		x.ReconciledBy = r.Operator
