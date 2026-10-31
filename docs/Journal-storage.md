@@ -2,15 +2,15 @@
 
 [Architecture overview](Architecture.md)
 
-All-origin journal role (`cz3`): the [normal protocol](spec/Replication-protocol.md)
-uses origin-local durable streams plus an exact global slot/source manifest.
-A remote origin may lie outside replica placement; its new operation/COMMIT/result
-fragment can be the only durable copy while the owner serves the complete
-committed RAM view. Its journal is a pinned recovery source, not a disposable
-client log. Owner-origin work needs a distinct memory partner. Complete durable
-history may span several origins, so owner-disk or per-stream maxima are not
-closure checkpoints. The v1 local segment/checkpoint implementation remains
-scoped; all-origin distributed retention/restore integration is unimplemented.
+Status: all-origin retention contract `gz3`, 2026-10-31; distributed integration
+is unimplemented. The [normal protocol](spec/Replication-protocol.md) uses durable
+origin streams plus an exact ordered slot/source graph. A remote origin W outside
+replica placement can hold the only durable new COMMIT/result fragment while A
+serves the complete committed RAM view before local persistence/apply. W's journal
+is an obligated recovery source. Owner-origin completion uses distinct B memory;
+B is not an extra synchronous host on the W+A remote path. Complete durable
+history can span many origins. Neither an owner-disk maximum nor one stream's
+prefix is a closure checkpoint.
 
 Recommended layout: separate sibling ZFS datasets for each workload's data and journal under a common parent. HomelabFS owns journal checkpointing and segment deletion; external FreeBSD tools own ZFS snapshot scheduling and retention. This is a design recommendation, not deployed configuration.
 
@@ -38,12 +38,23 @@ Use bounded append-only segments per origin stream, identified by the full volum
 
 The journal serves both local crash recovery and remote catch-up. A successful memory ACK is not permission to delete its data. Neither file age, an empty send queue, nor application to files without a durable checkpoint proves the segment is unnecessary.
 
-Recommended checkpoint protocol:
+The [ordered closure checkpoint contract](spec/Checkpoints.md#ordered-closure-checkpoint)
+requires:
 
-1. Select a committed prefix and gate application beyond that boundary while establishing a consistent checkpoint. Journal ingestion may continue only if the protocol safely separates it from checkpoint publication.
-2. Make corresponding data and namespace changes durable, including required directory operations. Persist the applied checkpoint only after those changes are durable. Partial application before the checkpoint must remain replayable using stable identities and idempotent/recoverable operations.
-3. Persist a manifest tying volume identity, history generation, checkpoint position, commit/configuration evidence, and required journal suffix together. Make publication crash-safe before allowing garbage collection to rely on it.
-4. Compute retention dependencies and advance the reclaimable boundary only when all obligations have valid durable replacements. On restart, revalidate manifests and dependencies before deleting anything.
+1. Capture one selected slot cut with its exact predecessor chain, per-volume
+   cuts, slot-to-origin mapping and complete transitive dependency graph. Retain
+   all issued/unresolved grants and results; a selected maximum is not the issued
+   frontier. Gate source, apply, authority/closure and checkpoint transitions.
+2. Durably establish the corresponding baseline, namespace, payload bases and
+   exact immutable decision/claim/result/ID, home/handle and transaction ledgers.
+   A committed RAM overlay must be persisted or backed by verified pinned origin
+   fragments; backing apply or a memory receipt cannot cover it.
+3. Publish authenticated immutable manifest/baseline/source artifacts and exact
+   per-stream suffix boundaries with ordered file/directory syncs. Bootstrap and
+   every restart validate baseline plus source/suffix graph behind recovery gates.
+4. Obtain fresh complete retention coverage and persist protected source releases
+   before advancing any reclaimable boundary. Preserve external snapshot/backup,
+   transfer/recovery and offline-replica obligations across authority changes.
 
 The bounded local implementation and exact publication/recovery mechanics are
 documented in [Immutable checkpoints](spec/Checkpoints.md). It preserves an
@@ -58,17 +69,17 @@ from the highest journal record or a file timestamp.
 
 Delete only closed segments wholly below a verified safe boundary. Check all of these dependencies:
 
-- Local recovery has a durable checkpoint covering their effects, and needed commit, epoch, configuration, deduplication, and uncertainty-resolution evidence survives outside the deleted segment.
+- Local recovery has a verified durable closure checkpoint plus exact required suffix. Immutable grants/claims/intent/results/IDs, allocation/retirement and rejection ledgers, homes/handles, transaction decisions/prepares and complete issued-frontier evidence survive in verified durable replacements; covering payload effects alone is insufficient.
 - Every origin source/choice/grant obligation has verified complete durable
   replacement and protected release; an outside origin cannot be removed from
   the inventory merely because it is not an assigned replica.
 - Every assigned replica that still relies on incremental replay has durable coverage of that prefix, through retained journal data or a recoverable applied checkpoint. Receipt in RAM is insufficient.
-- No active catch-up stream, snapshot installation, promotion, emergency admission, or checkpoint operation holds a reference to the segment.
+- No active catch-up stream, snapshot installation/capture, backup/point-in-time plan, promotion, emergency admission, checkpoint operation, home/handle or transaction dependency pins the segment. External holds require explicit acknowledged release.
 - Retained point-in-time recovery plans have a baseline plus required suffix; log deletion does not silently break an advertised recovery point.
 
 Serialize garbage collection with membership and checkpoint transitions. Treat a missing progress record as unknown, not caught up. Make deletions restart-safe and persist the directory/manifest changes required by the chosen protocol. If a crash leaves old segments behind, reclaim them later; premature deletion is unacceptable.
 
-A conservative first policy retains the prefix needed by the slowest assigned replica, plus a configurable safety window after it becomes eligible. Eligibility comes from durability and recovery dependencies; the window is extra protection, not the correctness condition. Compaction must not retain only the latest bytes if that destroys the order/evidence needed for filesystem replay or takeover.
+A conservative first policy retains the union of every origin/source and dependency pin, including those needed by the slowest assigned replica, plus a configurable safety window after durable release becomes eligible. Replica progress alone cannot release an outside origin or immutable claim/result. The window is extra protection, not the correctness condition. Compaction must not retain only the latest bytes if that destroys the order/evidence needed for filesystem replay or takeover.
 
 ## Long outages and bounded storage
 
@@ -93,8 +104,9 @@ origin dataset/source cut (including journals outside placement), authority,
 claim/result and dependency manifest, with pins across capture. Alternatively
 durably materialize all obligations in a verified selected backup set before
 capture. Owner RAM itself is not a backup component. Missing one source prevents
-advertising a complete clean recovery point; detailed successor backup/recovery
-integration remains pending.
+advertising a complete clean recovery point. Use the explicit
+[complete recovery-set contract](Snapshots-and-restore.md#complete-all-origin-recovery-sets);
+its runtime integration remains unimplemented.
 
 Independent data-only or journal-only snapshots may be retained additionally. Do not pair them solely by timestamp: restore requires a matching history and a complete replay suffix. Restore tooling validates the checkpoint/manifest before serving; never roll back only one live sibling beneath the daemon.
 

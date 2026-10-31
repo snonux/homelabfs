@@ -1,11 +1,116 @@
-# Immutable local checkpoints and segment reclamation
+# Checkpoints, bootstrap and all-origin reclamation
 
-All-origin retention frontier (`cz3`): this bounded v1 local checkpoint contract
-is not a distributed all-origin reclaim grant. Successor manifests must bind the
-global selected cut to every exact origin source/dependency cut and durable
-replacement, including outside-placement origins and owner committed RAM. Until
-that integration and `gz3` are verified, preserve existing source histories;
-RAM acceptance, backing apply or a one-stream maximum cannot authorize deletion.
+Status: all-origin contract `gz3`, 2026-10-31; distributed publication, bootstrap
+and reclamation are **unimplemented**. The existing v1 local implementation is
+separately scoped below. It cannot grant all-origin deletion or normal serving.
+
+## Ordered closure checkpoint
+
+A checkpoint binds one complete dependency closure and installed authority lineage
+to an immutable selected slot cut K and exact per-volume selected cuts. Gate the
+capture against grants, selection/publication, apply, source mutation, membership,
+closure joins and concurrent checkpoint/trim. The gate may permit later ingestion
+only into a separately pinned suffix with an explicit nonoverlap proof. Finish
+or retain every unresolved issued grant/result explicitly; no selected prefix
+implies a closed issued frontier. A clean whole-closure backup/drain additionally
+closes that frontier through the all-origin sealed survey or verified equivalents.
+A sealed old authority cannot resume choices merely because capture ended; reopen
+only through the appropriate installed successor authority and view barriers.
+
+The manifest records authenticated baseline/catalog/payload digests, all original
+origin stream identities/contiguous source cuts and slot-to-fragment predecessor
+mapping, every exact decision/result/claim, dependency edges, complete authority/
+promise/issued-frontier evidence and protected source/retention obligations. A
+source cut is not a selected cut: one stream may contain unselected/staged and
+structural bytes. K may select W1's first fragment, W2's first and W1's second,
+including W2 outside placement. A checkpoint at W1's latest local position without
+W2's required graph is incomplete. See the
+[worked coverage checks](Takeover.md#worked-source-coverage-checks).
+
+Durably capture the complete logical state at K, including namespace, bytes and
+holes, metadata/revisions, foreign homes/open-unlinked objects, handles/pins,
+allocation/reuse tombstones, claims/anchors/session floors and retired-ID rejection
+state, transaction prepares/decisions/INSTALL/COMPLETE and barrier dependencies.
+Replay uses the original validated redo/results; it cannot re-resolve paths or
+recompute authorization. If a semantic record is still needed to validate a later
+suffix or identity, keep its exact bytes in the baseline/archive or a pinned
+verified durable dependency. Compacting the payload state is not permission to
+erase permanent identity/decision evidence. Semantic compaction needs a separate
+specified and proved replacement, including never-reused allocations.
+
+Owner A's committed RAM overlay is capture input, never a durable checkpoint.
+Either materialize and verify that complete overlay graph durably in the baseline
+or retain exact durable source coverage at every contributing origin. A physical
+snapshot of A's old applied tree and journal alone cannot cover its newer RAM K.
+The designated distinct memory copy, received maximum, backing-installed maximum,
+empty delivery queue or client reply supplies no durable replacement coverage.
+
+## Publication, restart and bootstrap
+
+Prepare immutable baseline/source/selection/dependency artifacts in a private
+destination; verify bytes and complete graph, sync files and directories, then
+publish an authenticated immutable manifest and atomic root pointer with ordered
+syncs. Record the exact required per-stream suffix start and predecessor seals.
+A crash must leave either the previous complete baseline+suffix or the new one;
+old/orphan artifacts remain until verified retirement. A manifest hash alone does
+not prove data durability, authority, source coverage or external pin release.
+
+Before serving after restart, hold recovery/source/visibility gates across pointer
+validation, baseline authorization, archive/source verification, suffix open and
+full replay. Replay exact selected effects in slot order and reconcile unresolved
+grants/results/authority before activation. Check all referenced payload bases,
+foreign dependencies and permanent rejection/claim ledgers. Verify every surviving
+source byte against its archived counterpart, chain/seal and immutable creator
+identity. A missing suffix, interior hole, changed history or unknown authority
+blocks bootstrap; never choose the largest applied/checkpoint position.
+
+A node rejoining with no genesis may bootstrap only from this fully verified
+closure baseline plus its exact complete suffix, behind workload gates in new
+private roots. It is not normal ServingReady until [Takeover](Takeover.md)'s
+current authority/incarnation, source and frontend predicates hold. Crash
+activation needs the full durable graph at prospective A and distinct B;
+cooperative handoff may retain verified origin sources and transfer RAM ahead of
+new-owner disk. Neither path accepts an old APPLIED pointer as an independent
+baseline. The current genesis-only service has no such bootstrap integration.
+
+## Retention and source release
+
+Compute retention from the complete source/dependency graph and its holders,
+independently of local backing apply. A source may be released only when verified
+durable replacements preserve every covered selected and unresolved obligation,
+all identity/result/dependency evidence, and complete issued-frontier information
+needed for later origin retirement/recovery. Persist the exact coverage and
+protected release at required participants before unlinking. An outside origin
+remains an obligated source until this step; shrinking S or changing authority
+cannot erase it.
+
+Acquire a fresh lease excluding membership/closure, checkpoint/backup, transfer,
+emergency/promotion, source-release and pin changes through final unlink and
+directory sync. Check every category, including offline assigned replicas and
+advertised point-in-time recovery/backup sets. Unknown categories/coverage block
+reclaim. An offline replica either retains incremental source coverage, or has an
+explicit durable policy transition to a pinned verified baseline plus suffix.
+That transition preserves resulting state, not literal intermediate replay; do
+not silently change its recovery promise. Capacity pressure throttles/stops
+admission rather than drops needed origins, claims or pins.
+
+Only delete whole closed source segments whose exact bytes are covered. Persist
+reclaim intent and sync each ordered unlink before the next; every restart must
+reauthenticate baseline, sources and fresh dependency gates. A stale reclaim file
+is evidence, never reusable permission. External ZFS snapshots/clones/holds and
+backup archives have independent owners: daemon GC cannot prune them, infer their
+capture/release from timestamps or assume unlinked blocks are freed. The
+[backup capture contract](../Snapshots-and-restore.md#complete-all-origin-recovery-sets)
+requires explicit holds and verified complete recovery sets before releasing
+capture pins. No distributed GC, semantic-history compaction or power-loss proof
+is supplied by the local implementation or seeded AllOrigin graphs.
+
+## Scoped v1 local implementation and evidence
+
+The remaining sections describe exactly the existing bounded single-source v1
+checkpoint package. Their codec and tests preserve their original scope and bytes;
+none implements the all-origin manifest, authenticated source-release or bootstrap
+contract above.
 
 `internal/checkpoint` implements bounded local checkpoint publication and source
 segment reclamation for explicitly admitted disposable single-node callers.

@@ -1,12 +1,9 @@
 # Isolated cluster shutdown, maintenance and cold start
 
-All-origin lifecycle frontier (`cz3`): the v1 steps below cannot stop only the
-old owner/partner while other origins retain unique durable fragments or accepted
-RAM. The [normal source-survey contract](Replication-protocol.md#outside-origins-recovery-and-authority-transitions)
-requires closure-wide origin/grant/source and reader/cache inventory, durable
-drain or verified handoff of every obligation before voluntary stop, and complete
-recovery coverage before reactivation. Integration remains unimplemented; this
-adds no VM/power permission or lab/test approval.
+All-origin lifecycle contract (`gz3`, 2026-10-31): shutdown and cold boot use
+[Takeover's complete source/issued-frontier recovery](Takeover.md#all-origin-transition-state-machine),
+not a fixed-owner prefix or placement majority. This protocol remains unimplemented
+and adds no VM/power permission or lab/test approval.
 
 Status: design contract for `hv3`, 2026-10-28. Lifecycle implementation and
 approved runtime evidence remain pending (`mv3`). This document authorizes no
@@ -20,6 +17,46 @@ contract; [Test automation](../Test-automation.md) supplies the plan-bound,
 per-run approval requirement. Shutdown uses those contracts rather than a second
 ownership protocol. Neither a power deadline nor successful shutdown allocates
 serving authority.
+
+## All-origin drain and recovery invariants
+
+Inventory complete admitted S across the predecessor authority lineage, used
+sequencer/owner-origin partners and all reader/cache domains independently of
+replica placement R. A remote W outside R can hold the only durable operation
+fragment while A holds its committed state only in RAM. Quiesce dirty client
+buffers through the ordered normal path, gate new grants/publication, positively
+close each origin's old choices and readers, then seal reports after its last
+possible local append/sync. Nondecreasing promises and exact issued-grant frontier
+must survive stop. A global shutdown flag does not stop already granted remote
+choices or revoke delayed receipts/replies before each origin closes.
+
+Before voluntary shutdown of any RAM/source holder, establish a finite selected
+closure cut and the complete issued frontier from every S report/used ledger or
+positive exclusion plus independently verified complete durable equivalents.
+Resolve grants/choices/results and all homes/claims/transaction dependencies;
+unknown frontier or unique source blocks drain certification. Durably materialize
+the entire graph and payload bases on selected A and distinct B, with exact
+current-incarnation durable receipts and manifest, before stopping storage. Keep
+old origin sources, immutable claims/results/IDs, home/transaction/snapshot and
+offline replica/backup obligations pinned until verified durable replacement and
+protected release; a drain certificate or clean stop marker alone is no GC grant.
+
+Cold boot authenticates that manifest, baseline and required per-stream suffixes,
+reconciles the complete closed universe and nondecreasing authority promises,
+then executes crash recovery's durable A/B gate and fresh frontend barriers.
+A new UUID, largest applied cut, first two booted replicas or checkpoint pointer
+alone cannot authorize serving. Actual loss of W's only disk and A RAM before
+replacement is the accepted unavailable-history case; report it explicitly and
+use separate authorized loss recovery if no source can return. A power deadline
+never supplies source coverage or ABORT. Partial shutdown can retain live sources
+and resume a cooperative transfer only with proven continuity; otherwise use
+crash recovery. Routine cooperative handoff can transfer RAM ahead of new-owner
+persistence, but a full shutdown drain cannot leave its only recovery copy in RAM.
+
+The independent synced local daemon's `Gen0` is neither normal ServingGrant nor
+this distributed lifecycle protocol. Its local fixtures cannot certify drain,
+source release, cache closure or normal cold-start activation. The finite AllOrigin
+recovery fixtures do not prove arbitrary shutdown/restart/checkpoint composition.
 
 ## Supported boundary and prerequisites
 
@@ -143,7 +180,7 @@ and etcd roles; account for this before the first stop.
 | `PLANNED` | Validate the exact approval, immutable artifacts, enrolled targets and collateral roles; bound workload/backlog, queues, step/run deadlines, evidence/cleanup reserves and restoration. Confirm independent roots, usable coordination quorum and ready storage pair for every affected closure. An unavailable prerequisite blocks starting shutdown effects. |
 | `QUIESCING` | With storage and coordination quorum still available, inhibit new workload starts/publications. Quiesce synthetic applications and flush their dirty buffers through existing sessions while normal ServingReady still holds; stop further mutations before closing daemon admission. Record which application flushes/terminations succeeded. A failed flush is not application-consistent success. Do not stop storage, coordination or the only holder of a needed tail. |
 | `DRAINING` | Withdraw ServingReady, close workload access/new admissions for the entire discovered closure and bound in-flight work. Preserve accepted requests, unknown client replies, results and all transitive dependencies; finish or reconcile them by the normal/Takeover rules using internal paths. Keep the needed replicas and coordination alive. Pre-admission rejection is allowed; an accepted operation cannot become ABORT because shutdown, cancellation or a timer occurred. |
-| `DRAIN_DURABLE` | Establish and sync a finite, exact drain cut for every closure member. Both the selected owner and ready synchronous partner durably hold the full recoverable graph: owner/reporter histories, accepted candidates and terms, protected outcomes, prepares/decisions, payload bases, request/session results, home/anchor/affinity dependencies, promises/configurations and retention pins. Reconcile unresolved slots through Takeover; unknown history blocks certification. Record per-stream/candidate evidence and both current-incarnation durable receipts, not scalar maxima or a memory ACK. Preserve the third replica's catch-up obligation. |
+| `DRAIN_DURABLE` | Establish and sync a finite, exact drain cut for every closure member. Both selected A and distinct B durably hold the full recoverable all-origin graph: exact source fragments and predecessor slots, complete issued frontier and sealed reports/equivalents, accepted candidates/choices, protected outcomes, prepares/decisions, payload bases, immutable request/session results, home/anchor/affinity dependencies, promises/configurations and retention pins. Reconcile unresolved slots through Takeover; unknown history blocks certification. Record per-stream/candidate evidence and both current-incarnation durable receipts, not scalar maxima or a memory ACK. Preserve the third replica's catch-up obligation. |
 | `ACCESS_CLOSING` | Keep all workload gates closed; stop clients and normally unmount their run-owned access paths, collecting failures and descriptor/cache-domain inventory. Persist old serving-generation revocations and launch inhibition through the approved broker before its stop signal. Complete any coordination allocation/request authorization needed by the exact fence schema while quorum still exists. This prepares exclusion; cooperative unmount or service stop alone is not the whole-VM fence proof. |
 | `STORAGE_STOPPING` | Only after the complete drain barrier, normally close the guest FUSE sessions and storage daemons, syncing shutdown/control progress. Preserve journals, pins and failed mounts. Every required sole volatile tail must already be safely persisted/transferred before its process or VM can stop. Failure to close a mount/service stops dependent teardown; do not force unmount or delete through a live mount. |
 | `COORD_STOPPING` | After all access/storage phases are verified and all required allocations/guards/intents are durable, stop the isolated coordination services last. Persist the cluster shutdown inventory externally before intentionally losing its quorum. No remaining step may require a new ownership decision from that quorum. Coordination shutdown itself does not revoke an old cached view. |
@@ -171,7 +208,7 @@ recovery cannot reopen a closure during deliberate shutdown. Releasing that
 intent requires the approved reconciliation/restoration path and normal
 activation predicates, never a healthy heartbeat or expired runner timeout.
 
-The drain barrier deliberately strengthens ordinary owner-durable/partner-memory
+The drain barrier deliberately strengthens ordinary origin-durable/distinct-memory
 ACKs for this lifecycle window; it does not redefine normal writes or fsync.
 Applied progress, an async replica's newest sequence, ZFS pool export or an outer
 VM snapshot is not an equivalent barrier. An offline third replica need not
@@ -214,12 +251,13 @@ even when authorizing that new launch.
    drain cuts against actual durable copies. A clean-stop marker is evidence to
    check, not a shortcut around missing history. If coordination was restored
    from stale state, use Takeover's controlled recovery-generation procedure.
-4. Execute Recovery's seven-step takeover contract: authorized promises and tail
-   capture, full old-domain fence verification, semantic selection, durable
-   prospective pair, gated apply and CONFIGURATION/activation. Reattest fence
-   coverage for actual new successor incarnations. Wait for a delayed old owner
-   when its disk is required; the first two boots are not automatically a valid
-   pair. Never infer absence from a restarted partner's empty memory report.
+4. Execute Recovery's seven-step all-origin takeover contract: authorized
+   promises, complete S reports/equivalents and issued frontier, positive old-domain
+   exclusion, ordered choice/result/dependency reconciliation, durable prospective
+   A/B graph, fresh view barriers and installed-authority activation. Reattest fence
+   coverage for actual new successor incarnations. Wait for any delayed
+   origin/source when its disk or closed frontier is required; the first two
+   boots are not automatically a valid pair. Never infer absence from a restarted partner's empty memory report.
 5. Verify the actual FUSE mount/session and closure-wide visibility/cache
    barriers, then assert ServingReady for that exact authority/view. Only then
    publish the supported workload path and start synthetic clients. Continue

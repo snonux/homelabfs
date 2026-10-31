@@ -1,14 +1,209 @@
 # Ownership, fencing and takeover
 
-> **All-origin recovery frontier, `cz3`:** this document retains the v1
-> fixed-owner state machine and approved narrow native VM fence policy. Its
-> storage-majority survey and single owner-stream selection are insufficient for
-> the [new normal protocol](Replication-protocol.md#outside-origins-recovery-and-authority-transitions).
-> A successor must close all old admitted origin/sequencer/reader/cache domains,
-> obtain sealed reports or equivalent complete durable source/decision and
-> issued-grant frontier coverage, and preserve outside-placement sources.
-> Missing unique history gates activation. `gz3` must revise/model the detailed
-> state machine; no policy approval or old model proves these new transitions.
+Status: all-origin recovery contract, `gz3`, 2026-10-31. **Unimplemented.**
+This section and the linked [normal protocol](Replication-protocol.md) govern
+normal recovery. The v1 appendix below preserves its original assumptions,
+representation and bounded evidence; its storage-majority/single-owner-stream
+rules are not an activation path for all-origin normal operation. The approved
+[native fence policy](#approved-isolated-fence-policy-native-vm-stop-v1) remains
+exactly as scoped there. This contract grants no installation, test, VM window,
+production migration or loss-selection permission.
+
+## All-origin recovery unit and evidence
+
+Use one serialized, durable, resumable transition per complete dependency closure.
+Discover the transitive union of affinity/partial joins and predecessor manifests,
+transaction prepares/decisions/installations, immutable claims and anchors,
+foreign homes, allocation/tombstone/handle ledgers, checkpoints, snapshots and
+recovery/transfer pins. Gate every possibly dependent member until discovery is
+complete. No completed transaction or empty namespace silently splits a closure.
+Independent closures may progress separately only when their dependencies permit.
+
+Let S be the complete admitted origin set in each predecessor authority, R the
+per-volume replica placement, A the sequencer and B its distinct owner-origin
+memory partner. Inventory the full authority lineage, including every prior S,
+sequencer/partner incarnation and reader/cache domain still carrying obligations.
+A remote origin W may be outside R and hold the **only durable new fragment**
+while A has the selected committed state only in RAM. W does not become a replica.
+Owner-origin operations instead use A durable plus B RAM. Neither two placement
+replicas nor a current etcd majority establishes coverage of this history.
+
+The recovery manifest is an authenticated semantic object, not merely a list of
+largest offsets. Its verifier must establish these facts from actual exact bytes:
+
+| Evidence | Required binding |
+| --- | --- |
+| Authority and transition | Cluster/recovery generation, registry revision and complete S, every member's configuration/epoch/R, closure manifest, A/B incarnations, authorized predecessor allocation, attempt ID and nondecreasing promise lineage. |
+| Ordered history | Baseline and every contiguous selected slot, sequencer incarnation/serial, exact predecessor certificate, per-volume selected cuts and slot-to-origin-fragment mapping. Local positions and selected serials are different domains. |
+| Choices and results | Every issued grant/reservation and immutable request/credentials/redo/result, exact COMMIT or DECLINE, phase-specific acceptances, selected certificate, terminal or explicit unresolved result and stable original operation/anchor/session identity. |
+| Durable sources | Full original stream identity and local position/hash, holder identity, verified contiguous durable source coverage and exact replacement graph; RAM retention is separately identified. Hash references require accessible verified bytes. |
+| Closure dependencies | All transitive payload bases, prepare/decision/INSTALL/COMPLETE and barrier evidence, homes/handles, claims/floors/rejection state, allocations/tombstones and source/snapshot/backup/offline pins. |
+| Closed universe | Sealed reports or verified equivalents for all predecessor S and used A/B ledgers, complete issued-grant frontier, positive origin/sequencer/reader/cache exclusion, continuity/lost-RAM statements and protected releases. |
+
+A journal's durable prefix proves only its own contiguous source bytes. It does
+not say which other origin filled the preceding slot, that a grant never existed,
+or that the caller saw its result. A selected-cut maximum does not close the
+issued-grant frontier. Keep unresolved grants/choices/results explicitly;
+missing result, timeout, client cancellation and a restarted empty RAM ledger are
+not NO_EFFECT or ABORT evidence. Contradictory same-key bytes, grants or choices
+quarantine the whole affected closure and preserve both versions.
+
+## All-origin transition state machine
+
+All records below are conceptual successor evidence. A valid codec alone does not
+provide authentication, storage sync, source completeness or serving authority.
+No old v1 TAIL_REPORT/RECOVERY_SELECT may be treated as if it already carries this
+manifest. Persist step intent and verified completion so retries resume the same
+attempt. A successor attempt reconciles every predecessor promise/partial action;
+it never erases them or edits an allocated authority in place.
+
+| Phase | Required action and completion predicate |
+| --- | --- |
+| `DISCOVERED` | Gate new sequencer grants/publication and reserve the entire discovered closure through serialized control-plane predecessor checks. Preserve owned RAM before any voluntary process/VM stop. A discovered larger closure invalidates a subset reservation and requires rediscovery. Allocation authorizes recovery only. |
+| `CLOSING` | Positively close all old sequencer, origin-choice and used partner rights plus every reader/writer/cache domain. Serialize each close with pending local appends/syncs and receipts. Persist nondecreasing transition promises before acknowledging close. Close includes dirty mappings, cached aliases, descriptors and in-flight observations; daemon gating alone is insufficient. |
+| `SURVEYING` | Collect authenticated sealed close reports from every node in each old S and every used sequencer/partner ledger. Durably preserve reports and referenced bytes at recovery participants. Obtain positive exclusion of every old access/choice domain; a physical fence supplies exclusion, never missing journal data. |
+| `SELECTING` | Verify the complete issued-grant frontier and union all exact grants, predecessors, durable choices, acceptances and dependencies. Resolve every slot by the rules below. Establish one contiguous ordered cut, all claims/results and complete transitive source coverage. Unknown frontier/source/dependency blocks selection/activation. |
+| `MATERIALIZING` | For crash recovery, materialize the complete selected graph, payload bases, closed-frontier evidence, claims/results and retention obligations durably on prospective A and distinct B. Verify both actual-incarnation durable receipts and replayability; do not rely on their received/applied maxima. Apply or build a verified complete logical view behind gates. |
+| `INSTALLING` | Install the exact successor authority/source/closure manifest, higher authorized epochs/terms and actual incarnations at all required participants. Persist activation authorization and matching promises. Verify positive old-domain exclusion and fresh frontend generation/cache barriers. A shorter disk plus new UUID is never eligibility. |
+| `SERVING` | Open observations and grants only after all predicates hold for the same manifest. Route admitted nonowner reads to A's committed view; all still-admitted origins remain write eligible. Retain all offline replica and backup obligations. Returning old owners never auto-failback. |
+
+A close is a distributed protocol, not an instantaneous global flag. Until an
+origin has positively closed or learned its revocation, an already issued grant
+may still acquire its old durable choice, and an old reply/receipt can arrive.
+A's gate stops future grants/publication once acknowledged, but cannot retract
+an emitted receipt or prove a remote participant has stopped. The survey must
+serialize after each participant's last possible old-authority choice and retain
+such completions. Epoch/term exhaustion fails closed; neither counter wraps.
+A new authorized proposal must exceed every validated promise in its lineage.
+
+A sealed report binds its issuer and reporting incarnation, exact predecessor
+and transition promise, durable stream tails, issued/reserved grants, COMMITs/
+DECLINEs/results, retained candidate/selected/result bytes, source/pin obligations,
+and continuity or explicit lost-RAM status. It promises no further old-authority
+choices or serving. A node with no grants gives an explicit durable empty/closed
+report. A fresh recovery-only reporter may inspect an intact disk after positive
+exclusion; it cannot recover a lost RAM grant ledger by assertion or gain normal
+serving rights. Preserve creator identities when forwarding old bytes.
+
+A missing report is replaceable only by **both** positive exclusion and verified
+complete durable equivalent evidence: exact choices/results/dependencies for all
+that node's grants, and independent proof of the complete issued-grant frontier
+covering it. Examples are A's continuously retained and now durably sealed grant
+ledger plus durable fragment replacements, or an already complete durable closure
+manifest. The missing node's inaccessible unreported disk, an archive hash alone,
+a known selected prefix or a placement majority cannot be its equivalent. This
+allows a permanently lost origin to retire when all its obligations are proven
+covered; it does not require waiting for a redundant dead node forever. Missing
+frontier/unique source without such coverage remains unavailable.
+
+Resolve grants in predecessor order, before admitting a successor grant:
+
+- Preserve any valid selected COMMIT. Adopt and reprotect an exact durable origin
+  COMMIT even if selection/publication/reply is unknown; recover its fixed result
+  from immutable grant/evidence, never rerun a path operation or permission check.
+- An exact durable DECLINE irrevocably rules out COMMIT for that ordinary grant.
+  Protect its NO_EFFECT selection/result and claim before advancing the slot.
+- An unchosen grant can become NO_EFFECT only after complete sealed survey or
+  verified equivalents proves closed absence of any durable COMMIT. Pre-close
+  absence and silence do not suffice. Incompatible COMMIT/DECLINE evidence blocks.
+- Transactions use their protected prepare/decision rules: all bound prepares
+  precede COMMIT; an existing COMMIT never becomes ABORT. Unknown decisions gate
+  the whole closure. Ordinary DECLINE is not a transaction timeout-abort rule.
+- Preserve unresolved results/anchored identity through recovery. Same-ID retries
+  attach to the existing result or remain PENDING/INDETERMINATE; they cannot
+  allocate a fresh append, home, object or decision. Retirement cannot pass them.
+
+Crash activation deliberately requires a complete durable graph at the new A/B
+pair, even though normal remote completion needs only W durable + A RAM. The
+extra recovery persistence does not strengthen ordinary writes/fsync to two disks.
+Cooperative handoff is distinct: gate/drain and positively close all origins and
+cache domains, transfer the complete committed RAM projection and exact sealed
+source/claim/result/pin ledgers, and retain verified origin durability at existing
+sources. New A may serve before its local disk/apply catches up when every live
+transfer and source/barrier predicate is satisfied. Lost transfer continuity
+falls back to crash recovery gates. Routine handoff is not a VM-stop policy;
+detailed demand policy and continued successor operation remain `kz3` work.
+
+The only approved physical cache exclusion is the unchanged enrolled native
+`hfs-test0`–`hfs-test2` graceful ACPI policy below: 120 seconds maximum, positive
+exact-launch execution-stop proof and durable restart inhibition. A hung/paused
+guest that does not stop blocks activation. No force/reset, f3 host, Rocky/9p,
+production or new guest target is authorized. An all-origin S/domain outside that
+policy needs separately decided enrollment/fence policy or proven cooperative
+closure; this specification does not silently expand the allowlist. Guest trust
+policy remains a separate unselected decision.
+
+## Worked source-coverage checks
+
+These are specification consistency checks of concrete schedules, not executed
+model/runtime evidence. Local positions below stand for the end of complete
+verified fragments and include their structural frames; they are not slot numbers.
+
+| Schedule | Required source/selection outcome |
+| --- | --- |
+| K1 is O1's overwrite (`abcd` to `aXYd`) ending at O1:10; K2 is outside O2's truncate-to-2 ending at O2:12; K3 is O1's extend-to-4 ending at O1:20. A publishes K3 with backing cut zero. | K3 maps in order to O1:10, O2:12, O1:20 and includes both origin dependencies/results. Reads return `aX` plus two NUL bytes. O1:20 alone cannot recover K3, even though it is the largest local position. A checkpoint needs the full graph or verified durable replacement of it. |
+| A loses RAM after K3; O1/O2 disks and all closed reports/frontier survive. | Recover the exact three-slot chain and fixed results, then durably materialize on prospective A/B and publish a fresh view. No owner's old apply maximum determines the recovered cut. |
+| O2 is permanently dead; a verified archive has its exact fragment/result/dependencies, A's continuously retained sealed ledger proves all issued grants, and O2 is positively excluded. | Those exact equivalents can replace O2's report/source. After durable A/B recovery and protected source release, O2 need not return. An archive with only its payload or a known selected maximum is insufficient. |
+| O2's grant for K4 exists, its report is missing, and the only surviving manifest ends at selected K3. All physical domains are fenced. | K4 may have a unique durable choice. Complete issued-frontier/choice coverage is missing, so activation stays blocked. Exclusion cannot prove NO_EFFECT. |
+| K4 has only candidate/PREPARED_ACCEPT; O2 later reports a sealed durable DECLINE, or a complete serialized survey proves no choice. | Select and protect the exact NO_EFFECT/result before K5. A delayed original grant cannot later COMMIT after the sealed promise. A PREPARED_ACCEPT or an incomplete disk scan alone cannot resolve it. |
+| K4's exact durable COMMIT survives, but its selected certificate/result receipt was lost. | Adopt/reprotect the immutable COMMIT and fixed grant result with all dependencies. Same-ID retry returns that eventual result, never a second append or a timeout ABORT. |
+| A RAM and outside O2's unique disk are actually lost before any verified replacement; B/C have only K1. | The chosen K2/K3 graph is unavailable. Positive fencing, two placement disks and a new epoch cannot reconstruct O2:12. Preserve the loss evidence and use only separately authorized whole-closure loss recovery. |
+| Cooperative handoff moves A's K3 projection to C while O1/O2 keep verified durable fragments; C backing remains zero. | Serving can precede C disk/apply only after complete positive closes, source/pin transfer and fresh barriers. Stopping all holders next requires a durable drain, not reliance on C RAM. |
+| Backup captures A data/journal at backing zero and omits outside O2; offline replica C has only K1. | Neither backup completeness nor GC is established. Hold O2 and all dependency/result pins until a complete captured set or durable checkpoint+suffix replaces them and C's explicit replay/baseline obligation is preserved. |
+
+## Loss, restart and composition boundaries
+
+With W outside R and A holding its committed suffix in RAM, loss of A RAM and
+W's unique disk before a verified durable replacement leaves a chosen/replied
+history with no surviving source. Delayed pre-crash receipts can contribute to
+this accepted window; receipt time is not perfect crash knowledge. Once the loss
+is known, stop the affected closure and report missing/uncertain outcomes. Positive
+fencing and intact B/C placement disks cannot repair it. Wait for surviving data
+or use a separately authorized, preserved whole-closure loss/rollback generation
+with permanent rejection of old uncertain identities. Never label this ABORT,
+clean catch-up or a loss-free two-of-three recovery. No finite RPO is claimed.
+
+An origin-only restart under continuous A authority requires positive exclusion
+of its old lifetime/cache rights, complete reconciliation with A's retained grant
+ledger and surviving origin disk, and explicit new-incarnation installation.
+It need not change preferred owner. Changing A or bound B uses the full closure
+transition. Pure transport reconnect requires exact retained continuity and no
+new lifetime; socket loss releases no acceptance or source pin.
+
+The [AllOrigin model](../../spec/tla/README.md#successor-all-origin-commitment-model-dz3)
+and [recorded results](../../spec/tla/AllOrigin-results.md) check separate bounded
+normal/fault pipelines and six explicitly seeded B-then-X recovery component
+graphs. Incoming implementation states must map to these classes without dropping
+bytes or obligations:
+
+| Incoming boundary class | Recovery treatment / seeded class |
+| --- | --- |
+| Grant/candidate/PREPARED_ACCEPT, no durable choice, including lost/delayed receipt | Keep reservation and uncertainty; sealed closed absence or durable DECLINE needed. `staged` represents grant-only absence, not every partial append. |
+| Durable DECLINE, NO_EFFECT/result incomplete | Irrevocable no-COMMIT; complete and protect exact no-effect result. `decline`. |
+| Durable COMMIT, COMMIT_ACCEPT or selection/result unknown | Adopt/reprotect COMMIT and immutable result/dependencies. `pending`. |
+| Selected and result protected, publication barrier incomplete | Retain COMMIT/result; finish fresh publication after exclusion. `result`. |
+| Published with lost/unobserved reply | Recover the same visible result; reply loss does not change history. `published`. |
+| External reply completed | Preserve its outcome whenever required sources survive; explicitly report accepted loss otherwise. `replied`. |
+
+The mapping must additionally preserve stream append/sync uncertainty, exact
+issued frontier, all origin orders, owner-origin A/B acceptance, interleaved
+barriers, multi-volume transaction phases and transitive dependencies, lost RAM,
+late messages, partial reports/replacements, checkpoint/trim and repeat transitions.
+The seeded component graphs do **not** compose the arbitrary incoming pipeline
+into recovery. Their six finite explorations and v1 Takeover checks are not that
+proof. Runtime refinement, authenticated reports, crash-safe manifests, complete
+codec/stream validation, source equivalence, checkpoint/GC, frontend cache/dirty
+mapping barriers and guarded native broker implementation remain acceptance gates.
+No new model or runtime test was run to establish this document.
+
+## Appendix: scoped fixed-owner v1 design and evidence
+
+The remainder records the `eq3`/`gq3`/transaction-composition design in its original
+fixed-owner representation. Its normal role, majority and one-stream clauses are
+historical scope, not exceptions to the all-origin contract above. The narrow
+native fence policy is retained as an applicable policy constraint; its controller
+and broker remain unimplemented. Record names and v1 model results below must not
+be advertised as all-origin report/selection implementations or proofs.
 
 Status: design contract for `eq3`, 2026-10-28. Paul approved the narrow graceful
 native VM-only `native-vm-stop-v1` fence policy below. Policy approval does not

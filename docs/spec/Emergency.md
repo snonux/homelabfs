@@ -18,6 +18,59 @@ Read [Takeover](Takeover.md), [Power lifecycle](Power-lifecycle.md),
 [Security](../Security.md) together. Normal recovery uses Takeover; losing a
 partner, etcd quorum or a shutdown deadline never enters this protocol.
 
+## All-origin normal-history composition (`gz3`)
+
+The [all-origin takeover contract](Takeover.md#all-origin-recovery-unit-and-evidence)
+governs recovery of **pre-emergency normal history**. Its origin durability and
+source inventory replace every fixed-owner normal-prefix assumption. Inventory
+all prior admitted S and used A/B ledgers independently of placement R; an outside
+origin W may hold the only durable COMMIT/result while A's newer committed view
+exists only in RAM. Emergency designation, physical exclusion and a local selected
+maximum do not supply those bytes, close an issued grant or prove absence.
+
+A non-loss activation requires the complete sealed-origin survey or positive
+exclusion plus exact verified durable equivalents, including the complete issued-
+grant frontier and all choices/results/dependencies. Resolve ordinary grants by
+exact durable DECLINE or proven closed absence for NO_EFFECT; adopt/reprotect an
+exact durable COMMIT even if selection/result was unknown. Preserve transaction
+COMMIT and bound prepare/home/claim ledgers. Missing unique source/frontier gates
+the closure until recovery or separate explicit whole-closure loss selection.
+Actual loss of W's unique disk and A's volatile tail is the accepted normal
+multi-loss gap, not emergency proof of ABORT. Keep unknown results/old anchored
+IDs protected and report their uncertainty in the loss plan.
+
+On activation durably materialize the full selected graph, source/dependency
+manifest, claims/results, permanent identity/rejection state and all offline/
+backup/snapshot pins on the sole survivor before local-only serving. Retain source
+obligations until verified durable replacements and protected release. Emergency
+writes have their own local-durable protection and cannot retroactively validate
+an old normal COMMIT lacking evidence. Survivor restart uses that exact manifest
+plus suffix and independent deny-default control; it cannot bootstrap from an old
+applied tree or a shorter stream. Recovery-only peer admission transfers the
+complete graph and pins, never just the survivor's most recent owner-local stream.
+
+Exit must retain the full closed normal-origin inventory and issued-frontier
+evidence, resolve emergency work, then durably materialize the whole final graph
+on prospective A and distinct B before installing successor normal authority.
+The restored normal admitted set S, exclusions and per-volume R are explicit;
+recovery-only or barred peers do not silently gain origin/reader eligibility.
+Every still-admitted origin remains eligible to write every volume. After exit,
+remote W+A uses W durable plus A retained RAM; owner-origin A uses A durable plus
+B RAM. The stronger two-disk exit cut does not add a third synchronous host to
+remote operations or change ordinary fsync. An unavailable B only blocks owner-
+origin completion while unchanged-authority remote operations meet all gates.
+
+The existing synced local daemon uses independent local `Gen0` authority. It is
+neither normal ServingGrant/replication acceptance nor an implemented emergency
+controller. Its local publication and checkpoint fixtures cannot authorize normal
+activation, emergency designation, source trimming or cache/fence claims. The
+emergency-capable representation is separately versioned from normal 3.0; no
+missing/self partner, normal flag or codec upgrade creates emergency authority.
+No approved fence action set is expanded: only enrolled hfs-test0–2 graceful stop
+within 120 seconds with positive stop proof and restart inhibition is approved.
+New origin/cache targets need a separate user policy decision or verified
+cooperative closure. Rocky/9p, f3 host, force/reset and production remain excluded.
+
 ## Scope, authority and irreversible outcomes
 
 Emergency mode is one cluster-wide administrative state with one designated
@@ -60,8 +113,9 @@ Preserve protected ordinary COMMITs, transaction decisions, exact redo,
 claim/binding/result identities and retirement/rejection state wherever their
 evidence survives. A decision already COMMIT cannot become ABORT because the
 partner is absent, INSTALL failed or a client timed out. A prepared transaction
-without sufficient decision evidence waits; a lone survivor cannot invent the
-old majority or prove absence from its missing local record. Reuse Takeover's
+without sufficient decision evidence waits; a lone survivor cannot invent
+complete old-origin survey/frontier evidence or prove absence from its missing
+local record. Reuse Takeover's
 semantic selection rules wherever their real evidence is available. Without
 that evidence, wait/recover another source or present a separate explicit loss
 plan; the emergency flag alone supplies neither bytes nor absence proof.
@@ -118,7 +172,7 @@ selected histories/baselines, unavailable volumes/outcomes, all old serving/cach
 domains, enrollment/policy/verifier digests, exact fence/launch operations,
 coordination handling, format capability, bounded resources/deadlines,
 preservation and restoration inventory. The preview distinguishes normal
-owner-durable/partner-memory guarantees from emergency local-only guarantees.
+origin-durable/distinct-node-memory guarantees from emergency local-only guarantees.
 
 The operator explicitly approves actual activation and any known/uncertain loss;
 a normal-mode approval or generic `--yes`/`--approved-run` cannot stand in for
@@ -268,8 +322,10 @@ node and transport identity, new launch/incarnation, grant UUID/revision, permit
 source/destination and history, limits and plan. A fresh restricted launch must
 boot with workload/etcd-old-cluster startup inhibited. Its old-launch revocation
 remains permanent. A stale live-memory restore is never that launch. An arbitrary
-fourth node remains unsupported as a replacement under Takeover's initial fixed
-membership; this workflow does not invent a membership-reconfiguration protocol.
+fourth node is not enrolled or authorized by this workflow. Adding normal origin
+membership requires its separate control-plane transition; adding a disruptive
+fence target requires a separate user policy decision. Recovery-only admission
+never supplies either authorization.
 
 The receiver may authenticate, report/preserve old evidence and receive verified
 checkpoints/journals into private gated staging. It may not originate mutations,
@@ -307,16 +363,16 @@ must have the same ready owner/partner pair throughout its members.
    partial joins and freezes against the immutable predecessor vector. Preserve
    old serving/cache domains and positively exclude them wherever the planned
    configuration/view transition requires, even if retaining this owner.
-2. Capture a finite final cut vector B covering all normal selected history and
+2. Capture a finite final cut vector F covering all normal selected history and
    all committed emergency operations, session results, prepares/decisions,
    home/ledger state, handles, affinity, control/fence and offline obligations.
-   Resolve every slot affecting B; unavailable decisions keep exit blocked.
+   Resolve every slot affecting F; unavailable decisions keep exit blocked.
    Keep client publication gated while replay/cache transition is incomplete.
 3. Require both designated owner and named peer in their actual prospective
-   incarnations to **durably hold** B's complete recovery graph and payload bases.
-   Sync owner/reporter/emergency evidence and decision replacements; verify
-   both durable receipts and complete contiguous coverage, not received/applied
-   maxima or RAM ACKs. Install/apply B and shared closure visibility behind gates
+   incarnations to **durably hold** F's complete recovery graph and payload bases.
+   Sync all-origin source/closed-frontier/emergency evidence and decision
+   replacements; verify both durable receipts and complete contiguous coverage,
+   not received/applied maxima or RAM ACKs. Install/apply F and shared closure visibility behind gates
    on both. A restart invalidates fresh readiness, not earlier durable decisions.
 4. Reconcile/rebuild dedicated coordination from independent local roots. Bind
    its new logical lineage to this generation, exact predecessors, promises,
@@ -327,17 +383,19 @@ must have the same ready owner/partner pair throughout its members.
    pair are independent prerequisites.
 5. Durably install successor normal authorities for every reopening member on
    both nodes, with real distinct owner/partner, exact incarnations, retained
-   emergency predecessor evidence, B and new coordination authorization. Bind
+   emergency predecessor evidence, F and new coordination authorization. Bind
    one exit/closure visibility vector and positive old-path fence evidence.
    Reject early normal acceptance before that vector is complete. Keep all
    excluded members barred and their async/offline coverage obligations pinned.
 6. At both nodes persist `NORMAL_REQUIRED` for the successor vector: every new
-   protected operation/completion requires current partner retention and local
-   durable evidence under the ordinary Durability contract. Finish and verify
-   cache/mount publication barriers and matching activation authorization.
+   protected operation/completion requires its actual origin's durable fragment
+   and the designated distinct memory recipient under the ordinary Durability
+   contract (A for remote origin, B for A-origin), plus the shared view barrier.
+   Finish and verify cache/mount publication barriers and matching activation
+   authorization.
    Persist the matching independent `EXIT_COMMITTED` record and admission policy
    **before** releasing any workload gates. Only now assert ServingReady. The
-   stronger two-durable-copy B barrier does not change ordinary fsync afterward.
+   stronger two-durable-copy F barrier does not change ordinary fsync afterward.
 
 The successor normal authorities retain the emergency recovery generation and
 link its exact history; exit is not a return to the pre-emergency generation.
@@ -353,10 +411,11 @@ because coordination/pair readiness failed. Abandoning/superseding exit needs a
 new reviewed administrative transition that reconciles all partial authorities,
 pins and fences. Late messages cannot revive either predecessor serving mode.
 
-Two ready replicas permit degraded normal operation within the admitted
-three-member set; they are not a newly invented two-member configuration. The
-third remains barred until a later manual recovery-only admission, full catch-up
-and explicit role authorization. Completed exit does not make a formerly barred
+A ready A/B pair permits activation only after complete all-origin recovery
+coverage; its size does not prove that coverage. Replica placement stays explicit
+and separate from the admitted normal origin set S. All remaining barred peers
+require later manual recovery-only admission, full catch-up and explicit role
+authorization. Completed exit does not make a formerly barred
 member eligible for automatic normal rejoin. Persist those exclusions in normal
 admission authority until individually cleared. Subsequently an unbarred known
 normal member can use ordinary automatic recovery (M02), without automatic
