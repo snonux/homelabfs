@@ -1,0 +1,1054 @@
+Subject: 9p: bound canonical bridge framing and identity/attribute decoding
+
+Base-commit: 79807e970724c1f90cee1316361d61b80db4eef6
+Owned integration patch; no installation or runtime admission.
+
+diff --git a/fs/9p/hfs_protocol.h b/fs/9p/hfs_protocol.h
+new file mode 100644
+--- /dev/null
++++ b/fs/9p/hfs_protocol.h
+@@ -0,0 +1,78 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef FS_9P_HFS_PROTOCOL_H
++#define FS_9P_HFS_PROTOCOL_H
++
++#ifndef HFS_CODEC_USERSPACE
++#include <linux/types.h>
++#include <linux/uuid.h>
++#endif
++
++#define HFS_BODY_MAX 1048576U
++#define HFS_CHUNK_MAX 32768U
++#define HFS_HEADER_SIZE 88U
++#define HFS_GROUPS_MAX 1024U
++#define HFS_CAPS_MAX 256U
++#define HFS_IO_MAX 65536U
++#define HFS_CELL_MAX 2147483647U
++#define HFS_FEATURES 255U
++
++/*
++ * Tokens are preorder spans [start,end), including JSON delimiters. Object key
++ * and value tokens have the same object parent; container descendants follow
++ * their container. Tokens refer to owned immutable bytes, never RPC memory.
++ * Parsing bounds nesting to 64 and tokens to 131072, in addition to body size.
++ * Successful parses retain only count tokens; temporary arenas are released.
++ */
++enum hfs_json_kind {
++	HFS_OBJECT, HFS_ARRAY, HFS_STRING, HFS_NUMBER, HFS_BOOL, HFS_NULL,
++};
++
++struct hfs_token {
++	u32 start;
++	u32 end;
++	u32 parent;
++	enum hfs_json_kind kind;
++};
++
++struct hfs_json {
++	/* Borrowed caller association; parse initializes NULL, free ignores. */
++	void *owner;
++	char *data;
++	u32 len;
++	struct hfs_token *tokens;
++	u32 count;
++};
++
++struct hfs_buf {
++	char *data;
++	u32 len;
++	u32 cap;
++	int error;
++};
++
++int hfs_json_parse(const void *data, u32 len, struct hfs_json **out);
++void hfs_json_free(struct hfs_json *json);
++int hfs_json_field(const struct hfs_json *json, int object, const char *name);
++/* Comma-separated sorted exact key list; no optional/missing fields. */
++int hfs_json_exact(const struct hfs_json *json, int object, const char *keys);
++int hfs_json_u64(const struct hfs_json *json, int token, u64 *value);
++int hfs_json_i64(const struct hfs_json *json, int token, s64 *value);
++int hfs_json_bool(const struct hfs_json *json, int token, bool *value);
++int hfs_json_string(const struct hfs_json *json, int token, char *out, u32 cap);
++int hfs_json_hex(const struct hfs_json *json, int token, void *out, u32 *len);
++bool hfs_json_is(const struct hfs_json *json, int token, const char *literal);
++int hfs_buf_init(struct hfs_buf *buf, u32 cap);
++void hfs_buf_free(struct hfs_buf *buf);
++void hfs_buf_add(struct hfs_buf *buf, const void *bytes, u32 len);
++void hfs_buf_literal(struct hfs_buf *buf, const char *literal);
++__printf(2, 3) void hfs_buf_printf(struct hfs_buf *buf, const char *fmt, ...);
++void hfs_buf_hex(struct hfs_buf *buf, const void *bytes, u32 len);
++void hfs_buf_token(struct hfs_buf *buf, const struct hfs_json *json, int token);
++void hfs_hash(const void *bytes, u32 len, u8 digest[32]);
++int hfs_frame_encode(u16 kind, const uuid_t *session, u64 cell,
++		     const void *body, u32 len, u32 chunk, void *out,
++		     u32 *out_len);
++int hfs_frame_decode(const void *frame, u32 len, u16 kind,
++		     const uuid_t *session, u64 cell, u32 chunk,
++		     u32 *total, u8 hash[32], const void **body, u32 *body_len);
++#endif
+diff --git a/fs/9p/hfs_protocol.c b/fs/9p/hfs_protocol.c
+new file mode 100644
+--- /dev/null
++++ b/fs/9p/hfs_protocol.c
+@@ -0,0 +1,588 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Bounded canonical retained-9p wire codec. Schema validation is the caller's. */
++#include "hfs_protocol.h"
++
++#ifndef HFS_CODEC_USERSPACE
++#include <asm/unaligned.h>
++#include <crypto/sha2.h>
++#include <linux/errno.h>
++#include <linux/kernel.h>
++#include <linux/slab.h>
++#include <linux/string.h>
++#include <linux/vmalloc.h>
++#endif
++
++#define HFS_JSON_DEPTH 64U
++#define HFS_JSON_TOKENS 131072U
++#define HFS_NO_PARENT U32_MAX
++
++struct hfs_parser {
++	struct hfs_json *json;
++	u32 pos;
++	u32 capacity;
++};
++
++static int hfs_token_new(struct hfs_parser *p, u32 parent,
++			 enum hfs_json_kind kind)
++{
++	struct hfs_token *t;
++	int index;
++
++	if (p->json->count == p->capacity)
++		return -E2BIG;
++	index = p->json->count++;
++	t = &p->json->tokens[index];
++	t->start = p->pos;
++	t->parent = parent;
++	t->kind = kind;
++	return index;
++}
++
++static int hfs_parse_string(struct hfs_parser *p, u32 parent)
++{
++	int index = hfs_token_new(p, parent, HFS_STRING);
++	char c;
++
++	if (index < 0)
++		return index;
++	p->pos++;
++	while (p->pos < p->json->len) {
++		c = p->json->data[p->pos++];
++		if (c == '"') {
++			p->json->tokens[index].end = p->pos;
++			return index;
++		}
++		if (c < 0x20 || c > 0x7e)
++			return -EINVAL;
++		if (c == '\\') {
++			if (p->pos == p->json->len)
++				return -EINVAL;
++			c = p->json->data[p->pos++];
++			if (c != '\\' && c != '"')
++				return -EINVAL;
++		}
++	}
++	return -EINVAL;
++}
++
++/* Canonical strings have one spelling; compare their decoded ASCII keys. */
++static int hfs_key_compare(const struct hfs_json *j, int a, int b)
++{
++	u32 x = j->tokens[a].start + 1;
++	u32 y = j->tokens[b].start + 1;
++	u32 xe = j->tokens[a].end - 1;
++	u32 ye = j->tokens[b].end - 1;
++	unsigned char xc, yc;
++
++	while (x < xe && y < ye) {
++		xc = j->data[x++];
++		yc = j->data[y++];
++		if (xc == '\\')
++			xc = j->data[x++];
++		if (yc == '\\')
++			yc = j->data[y++];
++		if (xc != yc)
++			return xc < yc ? -1 : 1;
++	}
++	return x == xe ? (y == ye ? 0 : -1) : 1;
++}
++
++static int hfs_parse_value(struct hfs_parser *p, u32 parent, u32 depth)
++{
++	struct hfs_json *j = p->json;
++	u64 value = 0, limit;
++	bool negative;
++	const char *literal;
++	int index, key, previous = -1, child;
++	char c, close;
++	u32 start, length;
++
++	if (depth > HFS_JSON_DEPTH || p->pos == j->len)
++		return -EINVAL;
++	c = j->data[p->pos];
++	if (c == '"')
++		return hfs_parse_string(p, parent);
++	if (c == '{' || c == '[') {
++		if (depth == HFS_JSON_DEPTH)
++			return -E2BIG;
++		index = hfs_token_new(p, parent,
++				      c == '{' ? HFS_OBJECT : HFS_ARRAY);
++		if (index < 0)
++			return index;
++		close = c == '{' ? '}' : ']';
++		p->pos++;
++		if (p->pos < j->len && j->data[p->pos] == close)
++			goto container_end;
++		for (;;) {
++			if (c == '{') {
++				if (p->pos == j->len || j->data[p->pos] != '"')
++					return -EINVAL;
++				key = hfs_parse_string(p, index);
++				if (key < 0)
++					return key;
++				if (previous >= 0 &&
++				    hfs_key_compare(j, previous, key) >= 0)
++					return -EINVAL;
++				previous = key;
++				if (p->pos == j->len || j->data[p->pos++] != ':')
++					return -EINVAL;
++			}
++			child = hfs_parse_value(p, index, depth + 1);
++			if (child < 0)
++				return child;
++			if (p->pos == j->len)
++				return -EINVAL;
++			if (j->data[p->pos] == close)
++				break;
++			if (j->data[p->pos++] != ',')
++				return -EINVAL;
++		}
++container_end:
++		p->pos++;
++		j->tokens[index].end = p->pos;
++		return index;
++	}
++	if (c == 't' || c == 'f' || c == 'n') {
++		literal = c == 't' ? "true" : c == 'f' ? "false" : "null";
++		length = strlen(literal);
++		if (length > j->len - p->pos ||
++		    memcmp(j->data + p->pos, literal, length))
++			return -EINVAL;
++		index = hfs_token_new(p, parent,
++				      c == 'n' ? HFS_NULL : HFS_BOOL);
++		if (index < 0)
++			return index;
++		p->pos += length;
++		j->tokens[index].end = p->pos;
++		return index;
++	}
++	index = hfs_token_new(p, parent, HFS_NUMBER);
++	if (index < 0)
++		return index;
++	negative = c == '-';
++	if (negative)
++		p->pos++;
++	start = p->pos;
++	limit = negative ? (1ULL << 63) : U64_MAX;
++	while (p->pos < j->len) {
++		c = j->data[p->pos];
++		if (c < '0' || c > '9')
++			break;
++		if (value > (limit - (c - '0')) / 10)
++			return -ERANGE;
++		value = value * 10 + c - '0';
++		p->pos++;
++	}
++	if (p->pos == start || (negative && !value) ||
++	    (p->pos > start + 1 && j->data[start] == '0'))
++		return -EINVAL;
++	j->tokens[index].end = p->pos;
++	return index;
++}
++
++int hfs_json_parse(const void *data, u32 len, struct hfs_json **out)
++{
++	struct hfs_json *j;
++	struct hfs_token *tokens;
++	struct hfs_parser p;
++	int err;
++
++	if (!out)
++		return -EINVAL;
++	*out = NULL;
++	if (!data || !len || len > HFS_BODY_MAX)
++		return -EINVAL;
++	j = kzalloc(sizeof(*j), GFP_KERNEL);
++	if (!j)
++		return -ENOMEM;
++	p.capacity = min_t(u32, len / 2 + 1, HFS_JSON_TOKENS);
++	j->tokens = kvcalloc(p.capacity, sizeof(*j->tokens), GFP_KERNEL);
++	j->data = kvmalloc(len + 1, GFP_KERNEL);
++	if (!j->tokens || !j->data) {
++		err = -ENOMEM;
++		goto fail;
++	}
++	memcpy(j->data, data, len);
++	j->data[len] = 0;
++	j->len = len;
++	p.json = j;
++	p.pos = 0;
++	err = hfs_parse_value(&p, HFS_NO_PARENT, 0);
++	if (err < 0 || p.pos != len) {
++		if (err >= 0)
++			err = -EINVAL;
++		goto fail;
++	}
++	/* Retained large hex payloads must not retain a body-sized token arena. */
++	if (j->count != p.capacity) {
++		tokens = kvcalloc(j->count, sizeof(*tokens), GFP_KERNEL);
++		if (!tokens) {
++			err = -ENOMEM;
++			goto fail;
++		}
++		memcpy(tokens, j->tokens, j->count * sizeof(*tokens));
++		kvfree(j->tokens);
++		j->tokens = tokens;
++	}
++	*out = j;
++	return 0;
++fail:
++	hfs_json_free(j);
++	return err;
++}
++
++void hfs_json_free(struct hfs_json *json)
++{
++	if (!json)
++		return;
++	kvfree(json->tokens);
++	kvfree(json->data);
++	kfree(json);
++}
++
++static bool hfs_token_valid(const struct hfs_json *j, int token)
++{
++	return j && token >= 0 && token < j->count;
++}
++
++static u32 hfs_token_next(const struct hfs_json *j, u32 token)
++{
++	u32 end = j->tokens[token++].end;
++
++	while (token < j->count && j->tokens[token].start < end)
++		token++;
++	return token;
++}
++
++static bool hfs_key_equal(const struct hfs_json *j, int token,
++			  const char *key, u32 len)
++{
++	u32 pos = j->tokens[token].start + 1;
++	u32 end = j->tokens[token].end - 1;
++	u32 i = 0;
++	char c;
++
++	while (pos < end && i < len) {
++		c = j->data[pos++];
++		if (c == '\\')
++			c = j->data[pos++];
++		if (c != key[i++])
++			return false;
++	}
++	return pos == end && i == len;
++}
++
++int hfs_json_field(const struct hfs_json *j, int object, const char *name)
++{
++	u32 key;
++
++	if (!hfs_token_valid(j, object) || !name ||
++	    j->tokens[object].kind != HFS_OBJECT)
++		return -EINVAL;
++	for (key = object + 1; key < j->count &&
++	     j->tokens[key].start < j->tokens[object].end;
++	     key = hfs_token_next(j, key + 1)) {
++		if (hfs_key_equal(j, key, name, strlen(name)))
++			return key + 1;
++	}
++	return -ENOENT;
++}
++
++int hfs_json_exact(const struct hfs_json *j, int object, const char *keys)
++{
++	const char *end;
++	u32 key, length;
++
++	if (!hfs_token_valid(j, object) || !keys ||
++	    j->tokens[object].kind != HFS_OBJECT)
++		return -EINVAL;
++	key = object + 1;
++	while (*keys) {
++		end = strchr(keys, ',');
++		length = end ? end - keys : strlen(keys);
++		if (!length || key >= j->count ||
++		    j->tokens[key].start >= j->tokens[object].end ||
++		    !hfs_key_equal(j, key, keys, length))
++			return -EINVAL;
++		key = hfs_token_next(j, key + 1);
++		keys += length;
++		if (*keys && !*++keys)
++			return -EINVAL;
++	}
++	return key == j->count ||
++	       j->tokens[key].start >= j->tokens[object].end ? 0 : -EINVAL;
++}
++
++int hfs_json_u64(const struct hfs_json *j, int token, u64 *value)
++{
++	u64 number = 0;
++	u32 p;
++
++	if (!value || !hfs_token_valid(j, token) ||
++	    j->tokens[token].kind != HFS_NUMBER ||
++	    j->data[j->tokens[token].start] == '-')
++		return -EINVAL;
++	for (p = j->tokens[token].start; p < j->tokens[token].end; p++)
++		number = number * 10 + j->data[p] - '0';
++	*value = number;
++	return 0;
++}
++
++int hfs_json_i64(const struct hfs_json *j, int token, s64 *value)
++{
++	u64 number = 0;
++	u32 p;
++	bool negative;
++
++	if (!value || !hfs_token_valid(j, token) ||
++	    j->tokens[token].kind != HFS_NUMBER)
++		return -EINVAL;
++	p = j->tokens[token].start;
++	negative = j->data[p] == '-';
++	if (negative)
++		p++;
++	for (; p < j->tokens[token].end; p++)
++		number = number * 10 + j->data[p] - '0';
++	if (!negative && number > S64_MAX)
++		return -ERANGE;
++	*value = negative ? -(s64)(number - 1) - 1 : (s64)number;
++	return 0;
++}
++
++bool hfs_json_is(const struct hfs_json *j, int token, const char *literal)
++{
++	return literal && hfs_token_valid(j, token) &&
++	       strlen(literal) == j->tokens[token].end - j->tokens[token].start &&
++	       !memcmp(j->data + j->tokens[token].start, literal, strlen(literal));
++}
++
++int hfs_json_bool(const struct hfs_json *j, int token, bool *value)
++{
++	if (!value || !hfs_token_valid(j, token) ||
++	    j->tokens[token].kind != HFS_BOOL)
++		return -EINVAL;
++	*value = j->data[j->tokens[token].start] == 't';
++	return 0;
++}
++
++int hfs_json_string(const struct hfs_json *j, int token, char *out, u32 cap)
++{
++	u32 p, end, size = 0;
++	char c;
++
++	if (!out || !cap || !hfs_token_valid(j, token) ||
++	    j->tokens[token].kind != HFS_STRING)
++		return -EINVAL;
++	p = j->tokens[token].start + 1;
++	end = j->tokens[token].end - 1;
++	while (p < end) {
++		c = j->data[p++];
++		if (c == '\\')
++			c = j->data[p++];
++		if (size == cap - 1)
++			return -ENOSPC;
++		out[size++] = c;
++	}
++	out[size] = 0;
++	return size;
++}
++
++static int hfs_hex_digit(char c)
++{
++	if (c >= '0' && c <= '9')
++		return c - '0';
++	if (c >= 'a' && c <= 'f')
++		return c - 'a' + 10;
++	return -EINVAL;
++}
++
++int hfs_json_hex(const struct hfs_json *j, int token, void *out, u32 *len)
++{
++	u32 p, size, i;
++	int a, b;
++	u8 *bytes = out;
++
++	if (!len || !hfs_token_valid(j, token) ||
++	    j->tokens[token].kind != HFS_STRING)
++		return -EINVAL;
++	p = j->tokens[token].start + 1;
++	size = j->tokens[token].end - p - 1;
++	if (size % 2)
++		return -EINVAL;
++	size /= 2;
++	if (size > *len || (size && !out))
++		return -ENOSPC;
++	for (i = 0; i < size; i++) {
++		a = hfs_hex_digit(j->data[p++]);
++		b = hfs_hex_digit(j->data[p++]);
++		if (a < 0 || b < 0)
++			return -EINVAL;
++		bytes[i] = a * 16 + b;
++	}
++	*len = size;
++	return 0;
++}
++
++int hfs_buf_init(struct hfs_buf *buf, u32 cap)
++{
++	if (!buf)
++		return -EINVAL;
++	memset(buf, 0, sizeof(*buf));
++	if (!cap || cap > HFS_BODY_MAX)
++		return buf->error = -EINVAL;
++	buf->data = kvmalloc(cap, GFP_KERNEL);
++	if (!buf->data)
++		return buf->error = -ENOMEM;
++	buf->cap = cap;
++	return 0;
++}
++
++void hfs_buf_free(struct hfs_buf *buf)
++{
++	if (!buf)
++		return;
++	kvfree(buf->data);
++	memset(buf, 0, sizeof(*buf));
++}
++
++void hfs_buf_add(struct hfs_buf *buf, const void *bytes, u32 len)
++{
++	if (buf->error)
++		return;
++	if ((len && !bytes) || len > buf->cap - buf->len) {
++		buf->error = -ENOSPC;
++		return;
++	}
++	if (len)
++		memcpy(buf->data + buf->len, bytes, len);
++	buf->len += len;
++}
++
++void hfs_buf_literal(struct hfs_buf *buf, const char *literal)
++{
++	hfs_buf_add(buf, literal, strlen(literal));
++}
++
++void hfs_buf_printf(struct hfs_buf *buf, const char *fmt, ...)
++{
++	va_list args;
++	int size;
++
++	if (buf->error)
++		return;
++	va_start(args, fmt);
++	size = vsnprintf(buf->data + buf->len, buf->cap - buf->len, fmt, args);
++	va_end(args);
++	if (size < 0 || size >= buf->cap - buf->len) {
++		buf->error = -ENOSPC;
++		return;
++	}
++	buf->len += size;
++}
++
++void hfs_buf_hex(struct hfs_buf *buf, const void *bytes, u32 len)
++{
++	static const char digits[] = "0123456789abcdef";
++	const u8 *input = bytes;
++	u32 i;
++	char pair[2];
++
++	if ((len && !bytes) || len > (HFS_BODY_MAX - 2) / 2) {
++		buf->error = -EINVAL;
++		return;
++	}
++	hfs_buf_literal(buf, "\"");
++	for (i = 0; i < len && !buf->error; i++) {
++		pair[0] = digits[input[i] >> 4];
++		pair[1] = digits[input[i] & 15];
++		hfs_buf_add(buf, pair, sizeof(pair));
++	}
++	hfs_buf_literal(buf, "\"");
++}
++
++void hfs_buf_token(struct hfs_buf *buf, const struct hfs_json *j, int token)
++{
++	if (!hfs_token_valid(j, token)) {
++		buf->error = -EINVAL;
++		return;
++	}
++	hfs_buf_add(buf, j->data + j->tokens[token].start,
++		    j->tokens[token].end - j->tokens[token].start);
++}
++
++void hfs_hash(const void *bytes, u32 len, u8 digest[32])
++{
++	sha256(bytes, len, digest);
++}
++
++static bool hfs_session_nonzero(const uuid_t *session)
++{
++	static const u8 zero[16];
++
++	return session && memcmp(session->b, zero, sizeof(zero));
++}
++
++int hfs_frame_encode(u16 kind, const uuid_t *session, u64 cell,
++		     const void *body, u32 len, u32 chunk, void *out,
++		     u32 *out_len)
++{
++	u8 *frame = out;
++	u32 offset, size;
++
++	if (!out || !out_len || !body || !len || len > HFS_BODY_MAX ||
++	    kind < 1 || kind > 3 || !hfs_session_nonzero(session) ||
++	    !cell || cell > HFS_CELL_MAX || chunk > (len - 1) / HFS_CHUNK_MAX)
++		return -EINVAL;
++	offset = chunk * HFS_CHUNK_MAX;
++	size = min_t(u32, len - offset, HFS_CHUNK_MAX);
++	if (*out_len < HFS_HEADER_SIZE + size)
++		return -ENOSPC;
++	memset(frame, 0, HFS_HEADER_SIZE);
++	memcpy(frame, "HFS9BR1", 7);
++	put_unaligned_le16(1, frame + 8);
++	put_unaligned_le16(kind, frame + 12);
++	put_unaligned_le32(len, frame + 16);
++	put_unaligned_le32(offset, frame + 20);
++	put_unaligned_le32(size, frame + 24);
++	memcpy(frame + 32, session->b, 16);
++	put_unaligned_le64(cell, frame + 48);
++	hfs_hash(body, len, frame + 56);
++	memcpy(frame + HFS_HEADER_SIZE, (const u8 *)body + offset, size);
++	*out_len = HFS_HEADER_SIZE + size;
++	return 0;
++}
++
++int hfs_frame_decode(const void *input, u32 len, u16 kind,
++		     const uuid_t *session, u64 cell, u32 chunk,
++		     u32 *total, u8 hash[32], const void **body, u32 *body_len)
++{
++	const u8 *frame = input;
++	u32 size, length, offset;
++
++	if (!input || !total || !hash || !body || !body_len ||
++	    len < HFS_HEADER_SIZE || kind < 1 || kind > 3 ||
++	    !hfs_session_nonzero(session) || !cell || cell > HFS_CELL_MAX ||
++	    memcmp(frame, "HFS9BR1\0", 8) ||
++	    get_unaligned_le16(frame + 8) != 1 ||
++	    get_unaligned_le16(frame + 10) ||
++	    get_unaligned_le16(frame + 12) != kind ||
++	    get_unaligned_le16(frame + 14) ||
++	    get_unaligned_le32(frame + 28) ||
++	    memcmp(frame + 32, session->b, 16) ||
++	    get_unaligned_le64(frame + 48) != cell)
++		return -EINVAL;
++	length = get_unaligned_le32(frame + 16);
++	offset = get_unaligned_le32(frame + 20);
++	size = get_unaligned_le32(frame + 24);
++	if (!length || length > HFS_BODY_MAX ||
++	    chunk > (length - 1) / HFS_CHUNK_MAX ||
++	    offset != chunk * HFS_CHUNK_MAX ||
++	    size != min_t(u32, length - offset, HFS_CHUNK_MAX) ||
++	    len != HFS_HEADER_SIZE + size)
++		return -EINVAL;
++	*total = length;
++	memcpy(hash, frame + 56, 32);
++	*body = frame + HFS_HEADER_SIZE;
++	*body_len = size;
++	return 0;
++}
+diff --git a/fs/9p/hfs_policy.h b/fs/9p/hfs_policy.h
+new file mode 100644
+--- /dev/null
++++ b/fs/9p/hfs_policy.h
+@@ -0,0 +1,49 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef FS_9P_HFS_POLICY_H
++#define FS_9P_HFS_POLICY_H
++
++#include "hfs_protocol.h"
++
++/* Retained claims, independent of the 64+16 transport snapshot credits. */
++#define HFS_ORDINARY_REQUESTS_MAX 4096U
++#define HFS_CONTROL_REQUESTS_MAX 13312U
++
++struct hfs_timestamp {
++	s64 seconds;
++	u32 nanos;
++};
++
++/* Exact committed service metadata; caller credentials never rewrite it. */
++struct hfs_attr {
++	uuid_t home;
++	uuid_t allocation;
++	u32 uid;
++	u32 gid;
++	u32 mode;
++	u64 size;
++	u64 nlink;
++	u64 revision;
++	u16 type;
++	struct hfs_timestamp atime;
++	struct hfs_timestamp mtime;
++	struct hfs_timestamp ctime;
++};
++
++int hfs_policy_uuid(const struct hfs_json *json, int token, uuid_t *out);
++/* Check the complete input ceiling before producing its sorted unique set. */
++int hfs_groups_snapshot(const u32 *input, u32 count, u32 *out, u32 *out_count);
++/* Preserve an enrollment mapper's error; never repair missing identity. */
++int hfs_identity_validate(u32 uid, u32 gid, const uuid_t *ns, int map_error);
++int hfs_attr_decode(const struct hfs_json *json, int token,
++		    const uuid_t *expected_home,
++		    const uuid_t *expected_allocation, u16 existing_type,
++		    struct hfs_attr *out);
++
++/* Largest permitted exclusive byte end, captured before dispatch. */
++u64 hfs_write_max_end(u64 rlimit, bool largefile, u64 fsmax);
++
++/* Reserved cleanup/drain claims continue while ordinary admission is blocked. */
++int hfs_request_admit(bool blocked, bool control, u32 ordinary_count,
++		      u32 control_count, u64 next_claim);
++
++#endif
+diff --git a/fs/9p/hfs_policy.c b/fs/9p/hfs_policy.c
+new file mode 100644
+--- /dev/null
++++ b/fs/9p/hfs_policy.c
+@@ -0,0 +1,185 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Pure request identity and authoritative metadata validation. */
++#include "hfs_policy.h"
++
++#ifndef HFS_CODEC_USERSPACE
++#include <linux/errno.h>
++#include <linux/fs.h>
++#include <linux/kernel.h>
++#include <linux/sort.h>
++#include <linux/stat.h>
++#include <linux/string.h>
++#endif
++
++static int hfs_policy_hex(char c)
++{
++	if (c >= '0' && c <= '9')
++		return c - '0';
++	if (c >= 'a' && c <= 'f')
++		return c - 'a' + 10;
++	return -EPROTO;
++}
++
++int hfs_policy_uuid(const struct hfs_json *json, int token, uuid_t *out)
++{
++	uuid_t id;
++	char text[37];
++	u32 pos = 0, i;
++	int a, b;
++	u8 nonzero = 0;
++
++	if (!out || hfs_json_string(json, token, text, sizeof(text)) != 36)
++		return -EPROTO;
++	for (i = 0; i < sizeof(id.b); i++) {
++		if (pos == 8 || pos == 13 || pos == 18 || pos == 23) {
++			if (text[pos++] != '-')
++				return -EPROTO;
++		}
++		a = hfs_policy_hex(text[pos++]);
++		b = hfs_policy_hex(text[pos++]);
++		if (a < 0 || b < 0)
++			return -EPROTO;
++		id.b[i] = a * 16 + b;
++		nonzero |= id.b[i];
++	}
++	if (!nonzero)
++		return -EPROTO;
++	*out = id;
++	return 0;
++}
++
++static int hfs_policy_group_compare(const void *a, const void *b)
++{
++	u32 x = *(const u32 *)a;
++	u32 y = *(const u32 *)b;
++
++	return (x > y) - (x < y);
++}
++
++int hfs_groups_snapshot(const u32 *input, u32 count, u32 *out, u32 *out_count)
++{
++	u32 i, size = 0;
++
++	if (!out_count)
++		return -EINVAL;
++	*out_count = 0;
++	if (count > HFS_GROUPS_MAX)
++		return -E2BIG;
++	if (count && (!input || !out))
++		return -EINVAL;
++	for (i = 0; i < count; i++)
++		if (input[i] == U32_MAX)
++			return -EOVERFLOW;
++	if (count) {
++		memmove(out, input, count * sizeof(*out));
++		sort(out, count, sizeof(*out), hfs_policy_group_compare, NULL);
++	}
++	for (i = 0; i < count; i++)
++		if (!size || out[i] != out[size - 1])
++			out[size++] = out[i];
++	*out_count = size;
++	return 0;
++}
++
++int hfs_identity_validate(u32 uid, u32 gid, const uuid_t *ns, int map_error)
++{
++	static const u8 zero[16];
++
++	if (map_error)
++		return map_error;
++	if (uid == U32_MAX || gid == U32_MAX)
++		return -EOVERFLOW;
++	if (!ns || !memcmp(ns->b, zero, sizeof(zero)))
++		return -EACCES;
++	return 0;
++}
++
++static int hfs_timestamp_decode(const struct hfs_json *json, int token,
++				struct hfs_timestamp *time)
++{
++	u64 nanos;
++
++	if (hfs_json_exact(json, token, "nanos,seconds") ||
++	    hfs_json_i64(json, hfs_json_field(json, token, "seconds"),
++			 &time->seconds) ||
++	    hfs_json_u64(json, hfs_json_field(json, token, "nanos"), &nanos) ||
++	    nanos >= 1000000000U)
++		return -EPROTO;
++	time->nanos = nanos;
++	return 0;
++}
++
++int hfs_attr_decode(const struct hfs_json *json, int token,
++		    const uuid_t *expected_home,
++		    const uuid_t *expected_allocation, u16 existing_type,
++		    struct hfs_attr *out)
++{
++	struct hfs_attr attr;
++	u64 uid, gid, mode;
++	int kind;
++
++	if (!out || !expected_home || !expected_allocation)
++		return -EINVAL;
++	memset(&attr, 0, sizeof(attr));
++	if (hfs_json_exact(json, token,
++		"atime,ctime,gid,kind,mode,mtime,nlink,object_allocation,object_home,revision,size,uid") ||
++	    hfs_policy_uuid(json, hfs_json_field(json, token, "object_home"),
++			    &attr.home) ||
++	    hfs_policy_uuid(json, hfs_json_field(json, token, "object_allocation"),
++			    &attr.allocation) ||
++	    memcmp(attr.home.b, expected_home->b, sizeof(attr.home.b)) ||
++	    memcmp(attr.allocation.b, expected_allocation->b,
++		   sizeof(attr.allocation.b)) ||
++	    hfs_json_u64(json, hfs_json_field(json, token, "uid"), &uid) ||
++	    hfs_json_u64(json, hfs_json_field(json, token, "gid"), &gid) ||
++	    hfs_json_u64(json, hfs_json_field(json, token, "mode"), &mode) ||
++	    hfs_json_u64(json, hfs_json_field(json, token, "size"), &attr.size) ||
++	    hfs_json_u64(json, hfs_json_field(json, token, "nlink"), &attr.nlink) ||
++	    hfs_json_u64(json, hfs_json_field(json, token, "revision"),
++			 &attr.revision))
++		return -EPROTO;
++	kind = hfs_json_field(json, token, "kind");
++	if (hfs_json_is(json, kind, "\"REGULAR\""))
++		attr.type = S_IFREG;
++	else if (hfs_json_is(json, kind, "\"DIRECTORY\""))
++		attr.type = S_IFDIR;
++	else if (hfs_json_is(json, kind, "\"SYMLINK\""))
++		attr.type = S_IFLNK;
++	else
++		return -EPROTO;
++	if (uid >= U32_MAX || gid >= U32_MAX || mode > 07777 ||
++	    attr.size > S64_MAX || attr.nlink > UINT_MAX || !attr.revision ||
++	    (attr.type == S_IFLNK && mode != 0777) ||
++	    (existing_type && existing_type != attr.type) ||
++	    hfs_timestamp_decode(json, hfs_json_field(json, token, "atime"),
++				 &attr.atime) ||
++	    hfs_timestamp_decode(json, hfs_json_field(json, token, "mtime"),
++				 &attr.mtime) ||
++	    hfs_timestamp_decode(json, hfs_json_field(json, token, "ctime"),
++				 &attr.ctime))
++		return -EPROTO;
++	attr.uid = uid;
++	attr.gid = gid;
++	attr.mode = mode;
++	*out = attr;
++	return 0;
++}
++
++u64 hfs_write_max_end(u64 rlimit, bool largefile, u64 fsmax)
++{
++	u64 limit = largefile ? S64_MAX : MAX_NON_LFS;
++
++	return min_t(u64, rlimit, min_t(u64, fsmax, limit));
++}
++
++int hfs_request_admit(bool blocked, bool control, u32 ordinary_count,
++		      u32 control_count, u64 next_claim)
++{
++	if (blocked && !control)
++		return -EHOSTDOWN;
++	if (!next_claim || next_claim == U64_MAX ||
++	    (control ? control_count >= HFS_CONTROL_REQUESTS_MAX :
++		       ordinary_count >= HFS_ORDINARY_REQUESTS_MAX))
++		return -ENOSPC;
++	return 0;
++}
+diff --git a/fs/9p/hfs_cursor.h b/fs/9p/hfs_cursor.h
+new file mode 100644
+--- /dev/null
++++ b/fs/9p/hfs_cursor.h
+@@ -0,0 +1,31 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef FS_9P_HFS_CURSOR_H
++#define FS_9P_HFS_CURSOR_H
++
++#include "hfs_protocol.h"
++
++#define HFS_DIR_COOKIES_MAX 4096U
++#define HFS_DIR_NAME_MAX 255U
++
++struct hfs_dir_cookie {
++	u64 position;
++	u64 revision;
++	u32 after_len;
++	u8 after[HFS_DIR_NAME_MAX];
++};
++
++/* Preallocated and charged by the caller; serialize all access externally. */
++struct hfs_dir_cursor {
++	u64 next;
++	u32 count;
++	struct hfs_dir_cookie cookies[HFS_DIR_COOKIES_MAX];
++};
++
++void hfs_cursor_init(struct hfs_dir_cursor *cursor);
++int hfs_cursor_record(struct hfs_dir_cursor *cursor, const void *after,
++		      u32 len, u64 revision, u64 *position);
++/* len is the output capacity on entry and the exact copied size on success. */
++int hfs_cursor_seek(const struct hfs_dir_cursor *cursor, u64 position,
++		    void *after, u32 *len, u64 *revision);
++
++#endif
+diff --git a/fs/9p/hfs_cursor.c b/fs/9p/hfs_cursor.c
+new file mode 100644
+--- /dev/null
++++ b/fs/9p/hfs_cursor.c
+@@ -0,0 +1,88 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Bounded immutable directory resume cookies, owned by one open description. */
++#include "hfs_cursor.h"
++
++#ifndef HFS_CODEC_USERSPACE
++#include <linux/errno.h>
++#include <linux/kernel.h>
++#include <linux/string.h>
++#endif
++
++void hfs_cursor_init(struct hfs_dir_cursor *cursor)
++{
++	cursor->next = 3;
++	cursor->count = 0;
++}
++
++static bool hfs_cursor_component(const u8 *name, u32 len)
++{
++	u32 i;
++
++	if (!name || !len || len > HFS_DIR_NAME_MAX ||
++	    (len == 1 && name[0] == '.') ||
++	    (len == 2 && name[0] == '.' && name[1] == '.'))
++		return false;
++	for (i = 0; i < len; i++)
++		if (!name[i] || name[i] == '/')
++			return false;
++	return true;
++}
++
++int hfs_cursor_record(struct hfs_dir_cursor *cursor, const void *after,
++		      u32 len, u64 revision, u64 *position)
++{
++	struct hfs_dir_cookie *cookie;
++	u32 i;
++
++	if (!cursor || !position || !revision ||
++	    !hfs_cursor_component(after, len) ||
++	    cursor->count > HFS_DIR_COOKIES_MAX || cursor->next < 3)
++		return -EINVAL;
++	for (i = 0; i < cursor->count; i++) {
++		cookie = &cursor->cookies[i];
++		if (cookie->revision == revision && cookie->after_len == len &&
++		    !memcmp(cookie->after, after, len)) {
++			*position = cookie->position;
++			return 0;
++		}
++	}
++	if (cursor->count == HFS_DIR_COOKIES_MAX || cursor->next > S64_MAX)
++		return -ENOSPC;
++	cookie = &cursor->cookies[cursor->count++];
++	cookie->position = cursor->next++;
++	cookie->revision = revision;
++	cookie->after_len = len;
++	memcpy(cookie->after, after, len);
++	*position = cookie->position;
++	return 0;
++}
++
++int hfs_cursor_seek(const struct hfs_dir_cursor *cursor, u64 position,
++		    void *after, u32 *len, u64 *revision)
++{
++	const struct hfs_dir_cookie *cookie;
++	u32 i;
++
++	if (!cursor || !len || !revision ||
++	    cursor->count > HFS_DIR_COOKIES_MAX)
++		return -EINVAL;
++	if (position < 3) {
++		*len = 0;
++		*revision = 0;
++		return 0;
++	}
++	for (i = 0; i < cursor->count; i++) {
++		cookie = &cursor->cookies[i];
++		if (cookie->position != position)
++			continue;
++		if (*len < cookie->after_len)
++			return -ENOSPC;
++		if (!after)
++			return -EINVAL;
++		memcpy(after, cookie->after, cookie->after_len);
++		*len = cookie->after_len;
++		*revision = cookie->revision;
++		return 0;
++	}
++	return -EINVAL;
++}

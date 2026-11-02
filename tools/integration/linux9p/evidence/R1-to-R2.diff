@@ -1,0 +1,872 @@
+--- R1/fs/9p/Makefile
++++ R2/fs/9p/Makefile
+@@ -17,4 +17,4 @@
+ 9p-$(CONFIG_9P_FS_POSIX_ACL) += acl.o
+ 
+ 9p-$(CONFIG_9P_FS_HOMELABFS) += hfs_protocol.o hfs_policy.o hfs_session.o \
+-	hfs_inode.o hfs_file.o
++	hfs_inode.o hfs_file.o hfs_cursor.o
+--- R1/fs/9p/hfs.h
++++ R2/fs/9p/hfs.h
+@@ -13,6 +13,7 @@
+ #include <net/9p/client.h>
+ #include "hfs_protocol.h"
+ #include "hfs_policy.h"
++#include "hfs_cursor.h"
+ 
+ #define HFS_IDENTITIES_MAX 4096U
+ #define HFS_CONTEXT_MAX 4096U
+@@ -122,6 +123,7 @@
+ 	u64 number;
+ 	bool terminal;
+ 	bool adopted;
++	bool control;
+ 	bool retired;
+ 	void *reservation;
+ };
+@@ -149,6 +151,8 @@
+ 	u64 next_release;
+ 	u32 nr_processes;
+ 	u32 nr_requests;
++	u32 nr_control_requests;
++	u32 nr_descriptions;
+ 	u32 nr_objects;
+ 	struct hfs_cell cells[80];
+ 	bool blocked;
+@@ -183,7 +187,8 @@
+ 	struct hfs_cap *cap;
+ 	struct hfs_cred *issuer;
+ 	struct mutex lock;
+-	struct hfs_json *directory;
++	struct hfs_dir_cursor *cursor;
++	void *reservation;
+ 	u64 revision;
+ 	u8 after[255];
+ 	u32 after_len;
+@@ -250,6 +255,10 @@
+ int hfs_object_ino(struct hfs_session *session, const struct hfs_cap *cap,
+ 		   unsigned long *number);
+ int hfs_open(struct inode *inode, struct file *file);
++int hfs_description_prepare(struct hfs_session *session, bool directory,
++			    struct hfs_description **out);
++void hfs_description_discard(struct hfs_session *session,
++			     struct hfs_description *description);
+ void hfs_flags_write(struct hfs_buf *args, unsigned int flags, bool create);
+ extern const struct inode_operations hfs_dir_iops;
+ extern const struct inode_operations hfs_file_iops;
+--- R1/fs/9p/hfs_session.c
++++ R2/fs/9p/hfs_session.c
+@@ -547,7 +547,8 @@
+ 		{ "Unavailable", -EHOSTDOWN }, { "Stale", -ESTALE },
+ 		{ "Interrupted", -EINTR }, { "Busy", -EBUSY },
+ 		{ "WouldBlock", -EAGAIN }, { "TooManyLinks", -EMLINK },
+-		{ "NameTooLong", -ENAMETOOLONG }, { "ID_CONFLICT", -EPROTO },
++		{ "NameTooLong", -ENAMETOOLONG }, { "FileTooLarge", -EFBIG },
++		{ "ID_CONFLICT", -EPROTO },
+ 		{ "RETIRED_ID", -ESTALE }, { "PROTOCOL_ERROR", -EPROTO },
+ 	};
+ 	char code[32];
+@@ -655,8 +656,15 @@
+ 	*out = NULL;
+ 	if (!hfs_operation(opcode, true))
+ 		return -EOPNOTSUPP;
+-	if (!cred || args->error || (READ_ONCE(session->blocked) && !control))
+-		return args->error ?: -EHOSTDOWN;
++	if (!cred || args->error)
++		return args->error ?: -EINVAL;
++	mutex_lock(&session->lock);
++	err = hfs_request_admit(session->blocked, control,
++			session->nr_requests - session->nr_control_requests,
++			session->nr_control_requests, session->next_claim);
++	mutex_unlock(&session->lock);
++	if (err)
++		return err;
+ 	request = kzalloc(sizeof(*request), GFP_KERNEL);
+ 	if (!request)
+ 		return -ENOMEM;
+@@ -689,12 +697,14 @@
+ 	}
+ 	hfs_hash(request->intent.data, request->intent.len, digest);
+ 	mutex_lock(&session->lock);
+-	if (session->nr_requests == HFS_IDENTITIES_MAX ||
+-	    session->next_claim == U64_MAX || session->blocked) {
++	err = hfs_request_admit(session->blocked, control,
++			session->nr_requests - session->nr_control_requests,
++			session->nr_control_requests, session->next_claim);
++	if (err) {
+ 		mutex_unlock(&session->lock);
+-		err = -ENOSPC;
+ 		goto free;
+ 	}
++	request->control = control;
+ 	request->number = session->next_claim++;
+ 	uuid_gen(&request->operation);
+ 	hfs_buf_add(&request->original_context, session->enrollment.context,
+@@ -711,6 +721,8 @@
+ 	hfs_buf_literal(&request->claim, "}");
+ 	list_add_tail(&request->list, &session->requests);
+ 	session->nr_requests++;
++	if (control)
++		session->nr_control_requests++;
+ 	mutex_unlock(&session->lock);
+ 	hfs_buf_literal(&payload, "{\"claim\":");
+ 	hfs_buf_add(&payload, request->claim.data, request->claim.len);
+@@ -1111,10 +1123,7 @@
+ 	}
+ 	list_for_each_entry_safe(description, next_description,
+ 				 &session->descriptions, list) {
+-		hfs_cap_free(description->cap);
+-		hfs_cred_free(description->issuer);
+-		hfs_json_free(description->directory);
+-		kfree(description);
++		hfs_description_discard(session, description);
+ 	}
+ 	list_for_each_entry_safe(forget, next_forget, &session->forgets, list) {
+ 		hfs_cap_free(forget->cap);
+@@ -1412,6 +1421,8 @@
+ 			break;
+ 		list_del(&request->list);
+ 		session->nr_requests--;
++		if (request->control)
++			session->nr_control_requests--;
+ 		hfs_buf_free(&request->claim);
+ 		hfs_buf_free(&request->intent);
+ 		hfs_buf_free(&request->credentials);
+--- R1/fs/9p/hfs_inode.c
++++ R2/fs/9p/hfs_inode.c
+@@ -406,12 +406,9 @@
+ 	err = hfs_begin(dir, true, &cred, &cookie);
+ 	if (err)
+ 		return err;
+-	description = kzalloc(sizeof(*description), GFP_KERNEL);
+-	if (!description) {
+-		err = -ENOMEM;
++	err = hfs_description_prepare(HFS_S(dir), false, &description);
++	if (err)
+ 		goto out;
+-	}
+-	mutex_init(&description->lock);
+ 	err = hfs_args_init(&args);
+ 	if (err)
+ 		goto out;
+@@ -462,9 +459,6 @@
+ 	cap = NULL;
+ 	d_instantiate(dentry, inode);
+ 	description->issuer = cred;
+-	mutex_lock(&HFS_S(dir)->lock);
+-	list_add_tail(&description->list, &HFS_S(dir)->descriptions);
+-	mutex_unlock(&HFS_S(dir)->lock);
+ 	cred = NULL;
+ 	file->private_data = description;
+ 	description = NULL;
+@@ -474,10 +468,7 @@
+ 	if (err)
+ 		WRITE_ONCE(HFS_S(dir)->blocked, true);
+ out:
+-	if (description) {
+-		hfs_cap_free(description->cap);
+-		kfree(description);
+-	}
++	hfs_description_discard(HFS_S(dir), description);
+ 	hfs_cap_free(cap);
+ 	hfs_json_free(result);
+ 	HFS_S(dir)->provider->leave(HFS_S(dir), cookie);
+--- R1/fs/9p/hfs_file.c
++++ R2/fs/9p/hfs_file.c
+@@ -6,35 +6,91 @@
+ #include <linux/slab.h>
+ #include <linux/uio.h>
+ #include <linux/user_namespace.h>
++#include <linux/vmalloc.h>
++#include <linux/resource.h>
++#include <linux/sched/signal.h>
+ #include "hfs.h"
+ 
+-static int hfs_description_bind(struct inode *inode, struct file *file,
+-				struct hfs_json *result, struct hfs_cred *issuer)
++int hfs_description_prepare(struct hfs_session *session, bool directory,
++			    struct hfs_description **out)
+ {
+ 	struct hfs_description *description;
++	u64 bytes = sizeof(*description) + sizeof(struct hfs_cred);
+ 	int err;
+ 
++	*out = NULL;
++	if (directory)
++		bytes += sizeof(struct hfs_dir_cursor);
+ 	description = kzalloc(sizeof(*description), GFP_KERNEL);
+ 	if (!description)
+ 		return -ENOMEM;
++	INIT_LIST_HEAD(&description->list);
+ 	mutex_init(&description->lock);
++	err = session->provider->reserve(session, bytes, false,
++					 &description->reservation);
++	if (err)
++		goto free;
++	if (directory) {
++		description->cursor = kvzalloc(sizeof(*description->cursor), GFP_KERNEL);
++		if (!description->cursor) {
++			err = -ENOMEM;
++			goto unreserve;
++		}
++		hfs_cursor_init(description->cursor);
++	}
++	mutex_lock(&session->lock);
++	if (session->nr_descriptions == HFS_IDENTITIES_MAX) {
++		err = -ENOSPC;
++	} else {
++		session->nr_descriptions++;
++		list_add_tail(&description->list, &session->descriptions);
++	}
++	mutex_unlock(&session->lock);
++	if (err)
++		goto unreserve;
++	*out = description;
++	return 0;
++unreserve:
++	kvfree(description->cursor);
++	session->provider->unreserve(session, description->reservation);
++free:
++	kfree(description);
++	return err;
++}
++
++void hfs_description_discard(struct hfs_session *session,
++			     struct hfs_description *description)
++{
++	if (!description)
++		return;
++	mutex_lock(&session->lock);
++	if (!list_empty(&description->list)) {
++		list_del(&description->list);
++		session->nr_descriptions--;
++	}
++	mutex_unlock(&session->lock);
++	hfs_cap_free(description->cap);
++	hfs_cred_free(description->issuer);
++	kvfree(description->cursor);
++	session->provider->unreserve(session, description->reservation);
++	kfree(description);
++}
++
++static int hfs_description_bind(struct inode *inode, struct file *file,
++				struct hfs_json *result, struct hfs_cred *issuer,
++				struct hfs_description *description)
++{
++	int err;
++
+ 	err = hfs_reply_cap(HFS_S(inode), result, "DESCRIPTION", &description->cap);
+-	if (err) {
+-		kfree(description);
++	if (err)
+ 		return err;
+-	}
+ 	if (!uuid_equal(&description->cap->home, &HFS_I(inode)->object->home) ||
+ 	    !uuid_equal(&description->cap->allocation, &HFS_I(inode)->object->allocation) ||
+ 	    ((file->f_mode & FMODE_READ) && !(description->cap->rights & 1)) ||
+-	    ((file->f_mode & FMODE_WRITE) && !(description->cap->rights & 2))) {
+-		hfs_cap_free(description->cap);
+-		kfree(description);
++	    ((file->f_mode & FMODE_WRITE) && !(description->cap->rights & 2)))
+ 		return -EPROTO;
+-	}
+ 	description->issuer = issuer;
+-	mutex_lock(&HFS_S(inode)->lock);
+-	list_add_tail(&description->list, &HFS_S(inode)->descriptions);
+-	mutex_unlock(&HFS_S(inode)->lock);
+ 	file->private_data = description;
+ 	return 0;
+ }
+@@ -44,6 +100,7 @@
+ 	struct hfs_cred *cred;
+ 	struct hfs_buf args;
+ 	struct hfs_json *result = NULL;
++	struct hfs_description *description = NULL;
+ 	void *cookie;
+ 	int err;
+ 
+@@ -55,6 +112,10 @@
+ 	err = hfs_begin(inode, !!(file->f_mode & FMODE_WRITE), &cred, &cookie);
+ 	if (err)
+ 		return err;
++	err = hfs_description_prepare(HFS_S(inode), S_ISDIR(inode->i_mode),
++				       &description);
++	if (err)
++		goto out;
+ 	err = hfs_args_init(&args);
+ 	if (!err) {
+ 		hfs_buf_literal(&args, "{\"flags\":");
+@@ -65,18 +126,22 @@
+ 		err = hfs_call(HFS_S(inode), "OPEN", &args, cred, false, &result);
+ 	}
+ 	if (!err)
+-		err = hfs_description_bind(inode, file, result, cred);
++		err = hfs_description_bind(inode, file, result, cred, description);
+ 	if (!err)
+ 		hfs_result_adopt(HFS_S(inode), result);
+ 	if (err)
++		hfs_description_discard(HFS_S(inode), description);
++	hfs_json_free(result);
++	hfs_buf_free(&args);
++out:
++	if (err)
+ 		hfs_cred_free(cred);
+ 	HFS_S(inode)->provider->leave(HFS_S(inode), cookie);
+-	hfs_json_free(result);
+-	hfs_buf_free(&args);
+ 	return err;
+ }
+ 
+-static ssize_t hfs_io(struct kiocb *iocb, struct iov_iter *iter, bool write)
++static ssize_t hfs_io(struct kiocb *iocb, struct iov_iter *iter, bool write,
++		      u64 max_end)
+ {
+ 	struct file *file = iocb->ki_filp;
+ 	struct inode *inode = file_inode(file);
+@@ -84,11 +149,13 @@
+ 	struct hfs_cred *cred;
+ 	struct hfs_buf args;
+ 	struct hfs_json *result = NULL;
++	struct hfs_attr selected;
+ 	void *cookie;
+ 	u8 *bytes;
+ 	u32 len = min_t(size_t, iov_iter_count(iter), HFS_IO_MAX);
+-	u64 count;
+-	int err;
++	u64 count = 0;
++	bool copied = false, append = iocb->ki_flags & IOCB_APPEND;
++	int err, attributes;
+ 
+ 	if (!description || !description->cap ||
+ 	    !(description->cap->rights & (write ? 2 : 1)))
+@@ -99,15 +166,21 @@
+ 		return -EFBIG;
+ 	if (iocb->ki_flags & (IOCB_NOWAIT | IOCB_HIPRI | IOCB_DIRECT))
+ 		return -EOPNOTSUPP;
++	/* Per-call RWF_APPEND needs its own negotiated representation. */
++	if (write && append != !!(file->f_flags & O_APPEND))
++		return -EOPNOTSUPP;
+ 	bytes = kmalloc(len, GFP_KERNEL);
+ 	if (!bytes)
+ 		return -ENOMEM;
+ 	err = hfs_begin(inode, write, &cred, &cookie);
+ 	if (err)
+ 		goto free;
+-	if (write && !copy_from_iter_full(bytes, len, iter)) {
+-		err = -EFAULT;
+-		goto end;
++	if (write) {
++		if (!copy_from_iter_full(bytes, len, iter)) {
++			err = -EFAULT;
++			goto end;
++		}
++		copied = true;
+ 	}
+ 	err = hfs_args_init(&args);
+ 	if (err)
+@@ -120,6 +193,8 @@
+ 		hfs_buf_printf(&args, "{\"count\":%u,\"description\":", len);
+ 	}
+ 	hfs_cap_write(&args, description->cap);
++	if (write)
++		hfs_buf_printf(&args, ",\"max_end\":%llu", max_end);
+ 	hfs_buf_printf(&args, ",\"offset\":%lld}", iocb->ki_pos);
+ 	err = hfs_call(HFS_S(inode), write ? "WRITE" : "READ", &args,
+ 		       cred, false, &result);
+@@ -138,12 +213,18 @@
+ 				err = -EFAULT;
+ 		}
+ 	}
+-	if (!err && write &&
+-	    !hfs_json_is(result, hfs_json_field(result, 0, "attributes"), "null"))
+-		err = hfs_attr_install(inode, result, hfs_json_field(result, 0, "attributes"));
++	if (!err && write) {
++		attributes = hfs_json_field(result, 0, "attributes");
++		err = hfs_attr_decode(result, attributes, &description->cap->home,
++				      &description->cap->allocation, S_IFREG, &selected);
++		if (!err && append && (selected.size < count || selected.size > max_end))
++			err = -EPROTO;
++		if (!err)
++			err = hfs_attr_install(inode, result, attributes);
++	}
+ 	if (!err) {
+-		if (write && file->f_flags & O_APPEND)
+-			iocb->ki_pos = i_size_read(inode);
++		if (write && append)
++			iocb->ki_pos = selected.size;
+ 		else
+ 			iocb->ki_pos += count;
+ 		err = count;
+@@ -151,6 +232,8 @@
+ 	hfs_json_free(result);
+ 	hfs_buf_free(&args);
+ end:
++	if (copied)
++		iov_iter_revert(iter, len - (err > 0 ? err : 0));
+ 	hfs_end(inode, cred, cookie);
+ free:
+ 	kfree(bytes);
+@@ -159,12 +242,24 @@
+ 
+ static ssize_t hfs_read_iter(struct kiocb *iocb, struct iov_iter *iter)
+ {
+-	return hfs_io(iocb, iter, false);
++	return hfs_io(iocb, iter, false, S64_MAX);
+ }
+ 
+ static ssize_t hfs_write_iter(struct kiocb *iocb, struct iov_iter *iter)
+ {
+-	return hfs_io(iocb, iter, true);
++	struct file *file = iocb->ki_filp;
++	u64 limit = rlimit(RLIMIT_FSIZE);
++	u64 max_end = hfs_write_max_end(limit,
++				       file->f_flags & O_LARGEFILE,
++				       file_inode(file)->i_sb->s_maxbytes);
++	ssize_t ret = generic_write_checks(iocb, iter);
++
++	if (ret <= 0)
++		return ret;
++	ret = hfs_io(iocb, iter, true, max_end);
++	if (ret == -EFBIG && limit != RLIM_INFINITY && max_end == limit)
++		send_sig(SIGXFSZ, current, 0);
++	return ret > 0 ? generic_write_sync(iocb, ret) : ret;
+ }
+ 
+ static int hfs_fsync(struct file *file, loff_t start, loff_t end, int datasync)
+@@ -268,13 +363,7 @@
+ 		WRITE_ONCE(session->blocked, true);
+ 		return err;
+ 	}
+-	mutex_lock(&session->lock);
+-	list_del(&description->list);
+-	mutex_unlock(&session->lock);
+-	hfs_cap_free(description->cap);
+-	hfs_cred_free(description->issuer);
+-	hfs_json_free(description->directory);
+-	kfree(description);
++	hfs_description_discard(session, description);
+ 	file->private_data = NULL;
+ 	return 0;
+ }
+@@ -291,28 +380,72 @@
+ 	return session->provider->mmap(file, vma);
+ }
+ 
++struct hfs_page_entry {
++	u8 name[255];
++	u32 len;
++	unsigned int type;
++	unsigned long ino;
++	u64 cookie;
++};
++
++static loff_t hfs_dir_llseek(struct file *file, loff_t offset, int whence)
++{
++	struct hfs_description *description = file->private_data;
++	u8 after[255];
++	u32 len = sizeof(after);
++	u64 revision;
++	loff_t result;
++	int err;
++
++	if (!description || !description->cursor)
++		return -ESTALE;
++	mutex_lock(&description->lock);
++	if (whence == SEEK_CUR && !offset) {
++		result = file->f_pos;
++		goto out;
++	}
++	if (whence != SEEK_SET || offset < 0) {
++		result = -EINVAL;
++		goto out;
++	}
++	err = hfs_cursor_seek(description->cursor, offset, after, &len, &revision);
++	if (err) {
++		result = err;
++		goto out;
++	}
++	result = vfs_setpos(file, offset, MAX_LFS_FILESIZE);
++	if (result >= 0) {
++		memcpy(description->after, after, len);
++		description->after_len = len;
++		description->revision = revision;
++	}
++out:
++	mutex_unlock(&description->lock);
++	return result;
++}
++
+ static int hfs_iterate(struct file *file, struct dir_context *context)
+ {
+ 	struct inode *inode = file_inode(file);
+ 	struct hfs_description *description = file->private_data;
++	struct hfs_page_entry *page;
+ 	struct hfs_cred *cred;
+ 	struct hfs_buf args;
+ 	struct hfs_json *result = NULL;
++	struct hfs_attr directory_attr;
+ 	void *cookie;
+ 	int err, entries, attributes;
+-	u32 i, emitted = 0;
+-	u64 revision;
+-
+-	if (!description)
++	u32 i, count = 0;
++
++	if (!description || !description->cursor)
+ 		return -ESTALE;
++	page = kvmalloc_array(256, sizeof(*page), GFP_KERNEL);
++	if (!page)
++		return -ENOMEM;
+ 	mutex_lock(&description->lock);
+ 	if (!context->pos) {
+ 		description->after_len = 0;
+ 		description->revision = 0;
+-	}
+-	if (!dir_emit_dots(file, context)) {
+-		err = 0;
+-		goto unlock;
+ 	}
+ 	err = hfs_begin(inode, false, &cred, &cookie);
+ 	if (err)
+@@ -329,72 +462,93 @@
+ 	if (err)
+ 		goto free_args;
+ 	attributes = hfs_json_field(result, 0, "attributes");
+-	if (hfs_json_u64(result, hfs_json_field(result, attributes, "revision"), &revision) ||
+-	    !revision || (description->revision && description->revision != revision)) {
++	err = hfs_attr_decode(result, attributes, &HFS_I(inode)->object->home,
++			      &HFS_I(inode)->object->allocation, S_IFDIR, &directory_attr);
++	if (err)
++		goto malformed;
++	if (description->revision && description->revision != directory_attr.revision) {
+ 		err = -ESTALE;
+ 		goto free_args;
+ 	}
+-	description->revision = revision;
+ 	entries = hfs_json_field(result, 0, "entries");
+ 	if (entries < 0 || result->tokens[entries].kind != HFS_ARRAY) {
+ 		err = -EPROTO;
+-		goto free_args;
+-	}
++		goto malformed;
++	}
++	/* Validate the entire page before publishing even its first entry. */
+ 	for (i = entries + 1; i < result->count; i++) {
+ 		struct hfs_cap *cap = NULL;
+-		u8 name[255];
+-		u32 len = sizeof(name);
+-		unsigned int type;
+-		int kind, attr;
+-		unsigned long ino;
++		struct hfs_attr attr;
++		struct hfs_page_entry *entry;
++		const u8 *previous;
++		u32 previous_len;
+ 
+ 		if (result->tokens[i].parent != entries)
+ 			continue;
+-		if (++emitted > 256 ||
+-		    hfs_json_exact(result, i, "attributes,capability,name") ||
+-		    hfs_json_hex(result, hfs_json_field(result, i, "name"), name, &len) ||
+-		    !len || memchr(name, 0, len) || memchr(name, '/', len) ||
+-		    (len == 1 && name[0] == '.') ||
+-		    (len == 2 && name[0] == '.' && name[1] == '.')) {
++		if (count == 256 ||
++		    hfs_json_exact(result, i, "attributes,capability,name")) {
+ 			err = -EPROTO;
+-			break;
++			goto malformed;
+ 		}
+-		if (description->after_len &&
+-		    (memcmp(name, description->after,
+-			    min(len, description->after_len)) < 0 ||
+-		     (!memcmp(name, description->after,
+-			      min(len, description->after_len)) &&
+-		      len <= description->after_len))) {
++		entry = &page[count];
++		entry->len = sizeof(entry->name);
++		err = hfs_json_hex(result, hfs_json_field(result, i, "name"),
++				   entry->name, &entry->len);
++		if (err || !entry->len || memchr(entry->name, 0, entry->len) ||
++		    memchr(entry->name, '/', entry->len) ||
++		    (entry->len == 1 && entry->name[0] == '.') ||
++		    (entry->len == 2 && !memcmp(entry->name, "..", 2))) {
+ 			err = -EPROTO;
+-			break;
++			goto malformed;
++		}
++		previous = count ? page[count - 1].name : description->after;
++		previous_len = count ? page[count - 1].len : description->after_len;
++		if (previous_len &&
++		    (memcmp(entry->name, previous, min(entry->len, previous_len)) < 0 ||
++		     (!memcmp(entry->name, previous, min(entry->len, previous_len)) &&
++		      entry->len <= previous_len))) {
++			err = -EPROTO;
++			goto malformed;
+ 		}
+ 		err = hfs_cap_parse(HFS_S(inode), result,
+-				    hfs_json_field(result, i, "capability"), "PATH", &cap);
+-		if (err)
+-			break;
+-		attr = hfs_json_field(result, i, "attributes");
+-		kind = hfs_json_field(result, attr, "kind");
+-		if (hfs_json_is(result, kind, "\"REGULAR\""))
+-			type = DT_REG;
+-		else if (hfs_json_is(result, kind, "\"DIRECTORY\""))
+-			type = DT_DIR;
+-		else if (hfs_json_is(result, kind, "\"SYMLINK\""))
+-			type = DT_LNK;
+-		else {
+-			hfs_cap_free(cap);
+-			err = -EPROTO;
+-			break;
+-		}
+-		err = hfs_object_ino(HFS_S(inode), cap, &ino);
++				hfs_json_field(result, i, "capability"), "PATH", &cap);
++		if (!err)
++			err = hfs_attr_decode(result, hfs_json_field(result, i, "attributes"),
++					      &cap->home, &cap->allocation, 0, &attr);
++		if (!err)
++			err = hfs_object_ino(HFS_S(inode), cap, &entry->ino);
+ 		hfs_cap_free(cap);
+ 		if (err)
++			goto malformed;
++		entry->type = attr.type >> 12;
++		count++;
++	}
++	/* Cookie storage was preallocated/charged before OPEN; never evict old
++	 * positions or replace them with a later page's cursor/revision.
++	 */
++	for (i = 0; i < count; i++) {
++		err = hfs_cursor_record(description->cursor, page[i].name, page[i].len,
++					directory_attr.revision, &page[i].cookie);
++		if (err)
++			goto free_args;
++	}
++	err = hfs_attr_install(inode, result, attributes);
++	if (err)
++		goto malformed;
++	description->revision = directory_attr.revision;
++	if (!dir_emit_dots(file, context))
++		goto free_args;
++	for (i = 0; i < count; i++) {
++		if (!dir_emit(context, page[i].name, page[i].len, page[i].ino, page[i].type))
+ 			break;
+-		if (!dir_emit(context, name, len, ino, type))
+-			break;
+-		memcpy(description->after, name, len);
+-		description->after_len = len;
+-		context->pos++;
+-	}
++		memcpy(description->after, page[i].name, page[i].len);
++		description->after_len = page[i].len;
++		context->pos = page[i].cookie;
++	}
++	goto free_args;
++malformed:
++	if (err == -EPROTO || err == -EINVAL)
++		WRITE_ONCE(HFS_S(inode)->blocked, true);
+ free_args:
+ 	hfs_json_free(result);
+ 	hfs_buf_free(&args);
+@@ -402,6 +556,7 @@
+ 	hfs_end(inode, cred, cookie);
+ unlock:
+ 	mutex_unlock(&description->lock);
++	kvfree(page);
+ 	return err;
+ }
+ 
+@@ -423,7 +578,7 @@
+ 	.open = hfs_open,
+ 	.read = generic_read_dir,
+ 	.iterate_shared = hfs_iterate,
+-	.llseek = generic_file_llseek,
++	.llseek = hfs_dir_llseek,
+ 	.fsync = hfs_fsync,
+ 	.flush = hfs_flush,
+ 	.release = hfs_release,
+--- R1/fs/9p/hfs_policy.h
++++ R2/fs/9p/hfs_policy.h
+@@ -3,6 +3,10 @@
+ #define FS_9P_HFS_POLICY_H
+ 
+ #include "hfs_protocol.h"
++
++/* Retained claims, independent of the 64+16 transport snapshot credits. */
++#define HFS_ORDINARY_REQUESTS_MAX 4096U
++#define HFS_CONTROL_REQUESTS_MAX 13312U
+ 
+ struct hfs_timestamp {
+ 	s64 seconds;
+@@ -35,4 +39,11 @@
+ 		    const uuid_t *expected_allocation, u16 existing_type,
+ 		    struct hfs_attr *out);
+ 
++/* Largest permitted exclusive byte end, captured before dispatch. */
++u64 hfs_write_max_end(u64 rlimit, bool largefile, u64 fsmax);
++
++/* Reserved cleanup/drain claims continue while ordinary admission is blocked. */
++int hfs_request_admit(bool blocked, bool control, u32 ordinary_count,
++		      u32 control_count, u64 next_claim);
++
+ #endif
+--- R1/fs/9p/hfs_policy.c
++++ R2/fs/9p/hfs_policy.c
+@@ -4,6 +4,7 @@
+ 
+ #ifndef HFS_CODEC_USERSPACE
+ #include <linux/errno.h>
++#include <linux/fs.h>
+ #include <linux/kernel.h>
+ #include <linux/sort.h>
+ #include <linux/stat.h>
+@@ -163,3 +164,22 @@
+ 	*out = attr;
+ 	return 0;
+ }
++
++u64 hfs_write_max_end(u64 rlimit, bool largefile, u64 fsmax)
++{
++	u64 limit = largefile ? S64_MAX : MAX_NON_LFS;
++
++	return min_t(u64, rlimit, min_t(u64, fsmax, limit));
++}
++
++int hfs_request_admit(bool blocked, bool control, u32 ordinary_count,
++		      u32 control_count, u64 next_claim)
++{
++	if (blocked && !control)
++		return -EHOSTDOWN;
++	if (!next_claim || next_claim == U64_MAX ||
++	    (control ? control_count >= HFS_CONTROL_REQUESTS_MAX :
++		       ordinary_count >= HFS_ORDINARY_REQUESTS_MAX))
++		return -ENOSPC;
++	return 0;
++}
+--- R1/fs/9p/hfs_cursor.h
++++ R2/fs/9p/hfs_cursor.h
+@@ -0,0 +1,31 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef FS_9P_HFS_CURSOR_H
++#define FS_9P_HFS_CURSOR_H
++
++#include "hfs_protocol.h"
++
++#define HFS_DIR_COOKIES_MAX 4096U
++#define HFS_DIR_NAME_MAX 255U
++
++struct hfs_dir_cookie {
++	u64 position;
++	u64 revision;
++	u32 after_len;
++	u8 after[HFS_DIR_NAME_MAX];
++};
++
++/* Preallocated and charged by the caller; serialize all access externally. */
++struct hfs_dir_cursor {
++	u64 next;
++	u32 count;
++	struct hfs_dir_cookie cookies[HFS_DIR_COOKIES_MAX];
++};
++
++void hfs_cursor_init(struct hfs_dir_cursor *cursor);
++int hfs_cursor_record(struct hfs_dir_cursor *cursor, const void *after,
++		      u32 len, u64 revision, u64 *position);
++/* len is the output capacity on entry and the exact copied size on success. */
++int hfs_cursor_seek(const struct hfs_dir_cursor *cursor, u64 position,
++		    void *after, u32 *len, u64 *revision);
++
++#endif
+--- R1/fs/9p/hfs_cursor.c
++++ R2/fs/9p/hfs_cursor.c
+@@ -0,0 +1,88 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Bounded immutable directory resume cookies, owned by one open description. */
++#include "hfs_cursor.h"
++
++#ifndef HFS_CODEC_USERSPACE
++#include <linux/errno.h>
++#include <linux/kernel.h>
++#include <linux/string.h>
++#endif
++
++void hfs_cursor_init(struct hfs_dir_cursor *cursor)
++{
++	cursor->next = 3;
++	cursor->count = 0;
++}
++
++static bool hfs_cursor_component(const u8 *name, u32 len)
++{
++	u32 i;
++
++	if (!name || !len || len > HFS_DIR_NAME_MAX ||
++	    (len == 1 && name[0] == '.') ||
++	    (len == 2 && name[0] == '.' && name[1] == '.'))
++		return false;
++	for (i = 0; i < len; i++)
++		if (!name[i] || name[i] == '/')
++			return false;
++	return true;
++}
++
++int hfs_cursor_record(struct hfs_dir_cursor *cursor, const void *after,
++		      u32 len, u64 revision, u64 *position)
++{
++	struct hfs_dir_cookie *cookie;
++	u32 i;
++
++	if (!cursor || !position || !revision ||
++	    !hfs_cursor_component(after, len) ||
++	    cursor->count > HFS_DIR_COOKIES_MAX || cursor->next < 3)
++		return -EINVAL;
++	for (i = 0; i < cursor->count; i++) {
++		cookie = &cursor->cookies[i];
++		if (cookie->revision == revision && cookie->after_len == len &&
++		    !memcmp(cookie->after, after, len)) {
++			*position = cookie->position;
++			return 0;
++		}
++	}
++	if (cursor->count == HFS_DIR_COOKIES_MAX || cursor->next > S64_MAX)
++		return -ENOSPC;
++	cookie = &cursor->cookies[cursor->count++];
++	cookie->position = cursor->next++;
++	cookie->revision = revision;
++	cookie->after_len = len;
++	memcpy(cookie->after, after, len);
++	*position = cookie->position;
++	return 0;
++}
++
++int hfs_cursor_seek(const struct hfs_dir_cursor *cursor, u64 position,
++		    void *after, u32 *len, u64 *revision)
++{
++	const struct hfs_dir_cookie *cookie;
++	u32 i;
++
++	if (!cursor || !len || !revision ||
++	    cursor->count > HFS_DIR_COOKIES_MAX)
++		return -EINVAL;
++	if (position < 3) {
++		*len = 0;
++		*revision = 0;
++		return 0;
++	}
++	for (i = 0; i < cursor->count; i++) {
++		cookie = &cursor->cookies[i];
++		if (cookie->position != position)
++			continue;
++		if (*len < cookie->after_len)
++			return -ENOSPC;
++		if (!after)
++			return -EINVAL;
++		memcpy(after, cookie->after, cookie->after_len);
++		*len = cookie->after_len;
++		*revision = cookie->revision;
++		return 0;
++	}
++	return -EINVAL;
++}

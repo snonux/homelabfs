@@ -1,0 +1,109 @@
+{
+  "R1_fixes": [
+    "both admission guards share the tested policy; separate ordinary/control retained-claim counters and retirement accounting",
+    "preallocated/charged directory cookie ledger and real llseek restoration",
+    "validate complete directory attributes and every nested entry before any entries are emitted",
+    "actual generic_write_checks, immutable max_end, host-selected short suffix accounting and authoritative append position"
+  ],
+  "checkpatch": {
+    "checks": 1,
+    "errors": 0,
+    "log": "evidence/checkpatch.log",
+    "notes": "No fabricated DCO certification. New owned integration paths intentional. One 107-column closed-schema string warning and one alignment CHECK remain.",
+    "options": [
+      "--no-tree",
+      "--no-signoff",
+      "--ignore",
+      "SPLIT_STRING,FILE_PATH_CHANGES"
+    ],
+    "warnings": 1
+  },
+  "cursor_cases": "exact older-page and revision restoration, rewind/reuse, unknown offsets, 4096/no-eviction boundary, S64MAX and unchanged failure output",
+  "date": "2026-11-03",
+  "files": {
+    "evidence/R1-to-R2.diff": "09d796825fa0ed3bfa35ef254da61d6441aa2cff11bf4f7998a5589ae335b7fb",
+    "evidence/R1/checkpatch.log": "ff0164cc1381801b31a959ee7958e6ecdef4c21029f4cda139e323485caede58",
+    "evidence/R1/codec.log": "adb24334195192f25e77a95357894e59707103acf5f8afb82e08401a8709633b",
+    "evidence/R1/kernel-object-build.log": "4c1cc061ceb7228ec361eee817cf10c3d59dcf9d2f5814a7ddc613f4e07b88c7",
+    "evidence/R1/kernel-object-receipt.json": "957f36d27c711b1894c0561418fd416a39939237e327a4ab0ffa20c0ca6de09c",
+    "evidence/R1/kernel-object-stages.json": "ae33c6b722b8bdc59c9a9cc6b6452053e7e1b1478f27f6a7e7c653c4099f31d8",
+    "evidence/R1/policy.log": "0a942009ede47c62413efa96d7f03450a57ef49070f2e3fae29d48abed73501b",
+    "evidence/R1/source.json": "cdd28e76b8fb8e3fe9b9e9bf94d3eb5bcff6f88d2a8042eb4c249d6e2f2a9e61",
+    "evidence/checkpatch.log": "771bc5acbde916f119187b05a4f242c676dbc5d92735326b251ef291af3c5b31",
+    "evidence/codec.log": "6a4521b41571ab2dacbb6a2d7e3a04715d233cfc19958fa3085c74355b94a6c5",
+    "evidence/cursor.log": "5f706e126eebd4cb6c1cd20b345f437970e149c4684b9aeb743b60e1beeb317f",
+    "evidence/kernel-object-build.log": "f799c6c5d2ca074188dcb768b168e97d22c719f90d5b0c110e62ea1afb627cd6",
+    "evidence/kernel-object-receipt.json": "c3ce9f2177509fd6de167566b2d713425592058024756878c1091f693f9ed4d2",
+    "evidence/kernel-object-stages.json": "8b6920148d3b2845f528e7d61646c1f49c2bf8eb34f7a3f539b42136bd75c1f1",
+    "evidence/policy.log": "872c9fcdbee92dfe1b7c395ede1a4afed37cdffe3ac0c15905f2671b050a98bc"
+  },
+  "fixture_scope": "exact host WRITE max_end golden bytes from sz3; generic C codec framing, not an entire CALL schema/runtime proof",
+  "fixture_sha256": "0bb0044358ff889158ee5785a38ee8b93c99059b876687963d8724055ab7df88",
+  "format": 1,
+  "kernel_objects": {
+    "maximum_sampling_gap_seconds": 7.9,
+    "observed_peak_group_rss_bytes": 164536320,
+    "receipt": "evidence/kernel-object-receipt.json",
+    "sampling_limit": "Polling may miss peaks; disk walks delay samples. Maximum gaps now include the final process-completion tail. This is no hard memcg bound.",
+    "scope": "upstream kernel object compilation; no module link, installed ELRepo ABI or runtime proof",
+    "stages_actual_exit": [
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "policy_cases": "72 literal metadata cases, complete1024/1025 groups, mapping/UUID failure, full07777, nine max_end cases, independent control/ordinary admission boundaries",
+  "review_status": "Four whole-R1 blocking findings fixed; fresh final narrow R2 linux9p_fixes_r2 clean. Reviewer ran no builds/tests. Root independently matched all17 source and15 evidence hashes and parsed all Python scripts.",
+  "same_production_c_tests": {
+    "codec": {
+      "compile_exit": 0,
+      "log": "evidence/codec.log",
+      "run_exit": 0,
+      "sanitizers": [
+        "address",
+        "undefined",
+        "leak"
+      ]
+    },
+    "cursor": {
+      "compile_exit": 0,
+      "log": "evidence/cursor.log",
+      "run_exit": 0,
+      "sanitizers": [
+        "address",
+        "undefined",
+        "leak"
+      ]
+    },
+    "policy": {
+      "compile_exit": 0,
+      "log": "evidence/policy.log",
+      "run_exit": 0,
+      "sanitizers": [
+        "address",
+        "undefined",
+        "leak"
+      ]
+    }
+  },
+  "source": "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/r2-source",
+  "source_manifest_sha256": "1ea7b8841499c2bf01c8b166f1a0ec9fa48d597eab9b113f205d81936b784163",
+  "source_verification": {
+    "exit": 0,
+    "files_and_symlinks": 78710,
+    "method": "verified archive, exact pax commit, fuzz-zero series, full resulting inventory/hash verification"
+  },
+  "task": "tz3",
+  "unrun": [
+    "kernel current-credential/process/description/LSM execution",
+    "VFS syscalls/local advisory locks and actual getdents/seekdir/rlimit execution",
+    "virtio/lib9p/real FreeBSD FUSE",
+    "physical cache/PTE/TLB/provenance recall",
+    "normal all-origin protected publication/public binding successor",
+    "complete module modpost/link or bootable kernel",
+    "ELRepo source/ABI/running-byte binding",
+    "hermetic/cross-builder bit reproducibility",
+    "install, mount, SSH, VM, production and received-sink operations"
+  ]
+}

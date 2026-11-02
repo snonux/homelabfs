@@ -1,0 +1,95 @@
+  SYNC    include/config/auto.conf
+  GEN     Makefile
+  GEN     Makefile
+  SYSHDR  arch/x86/include/generated/uapi/asm/unistd_32.h
+  SYSHDR  arch/x86/include/generated/uapi/asm/unistd_64.h
+  SYSHDR  arch/x86/include/generated/uapi/asm/unistd_x32.h
+  SYSTBL  arch/x86/include/generated/asm/syscalls_32.h
+  SYSHDR  arch/x86/include/generated/asm/unistd_32_ia32.h
+  WRAP    arch/x86/include/generated/uapi/asm/bpf_perf_event.h
+  WRAP    arch/x86/include/generated/uapi/asm/errno.h
+  WRAP    arch/x86/include/generated/uapi/asm/fcntl.h
+  WRAP    arch/x86/include/generated/uapi/asm/ioctl.h
+  WRAP    arch/x86/include/generated/uapi/asm/ioctls.h
+  WRAP    arch/x86/include/generated/uapi/asm/ipcbuf.h
+  WRAP    arch/x86/include/generated/uapi/asm/param.h
+  WRAP    arch/x86/include/generated/uapi/asm/poll.h
+  WRAP    arch/x86/include/generated/uapi/asm/resource.h
+  WRAP    arch/x86/include/generated/uapi/asm/socket.h
+  SYSHDR  arch/x86/include/generated/asm/unistd_64_x32.h
+  WRAP    arch/x86/include/generated/uapi/asm/sockios.h
+  WRAP    arch/x86/include/generated/uapi/asm/termbits.h
+  WRAP    arch/x86/include/generated/uapi/asm/termios.h
+  WRAP    arch/x86/include/generated/uapi/asm/types.h
+  SYSTBL  arch/x86/include/generated/asm/syscalls_64.h
+  HOSTCC  arch/x86/tools/relocs_32.o
+  HOSTCC  arch/x86/tools/relocs_64.o
+  UPD     include/config/kernel.release
+  HOSTCC  arch/x86/tools/relocs_common.o
+  WRAP    arch/x86/include/generated/asm/early_ioremap.h
+  WRAP    arch/x86/include/generated/asm/export.h
+  WRAP    arch/x86/include/generated/asm/mcs_spinlock.h
+  WRAP    arch/x86/include/generated/asm/irq_regs.h
+  WRAP    arch/x86/include/generated/asm/kmap_size.h
+  WRAP    arch/x86/include/generated/asm/local64.h
+  WRAP    arch/x86/include/generated/asm/mmiowb.h
+  WRAP    arch/x86/include/generated/asm/module.lds.h
+  WRAP    arch/x86/include/generated/asm/rwonce.h
+  WRAP    arch/x86/include/generated/asm/unaligned.h
+  HOSTLD  arch/x86/tools/relocs
+  UPD     include/generated/uapi/linux/version.h
+  UPD     include/generated/utsrelease.h
+  UPD     include/generated/compile.h
+  HOSTCC  scripts/selinux/genheaders/genheaders
+  DESCEND objtool
+  HOSTCC  scripts/selinux/mdp/mdp
+  HOSTCC  scripts/kallsyms
+gcc   -o /home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-objects/tools/objtool/fixdep /home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-objects/tools/objtool/fixdep-in.o
+  HOSTCC  scripts/sorttable
+  HOSTCC  scripts/asn1_compiler
+rm -f /home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-objects/tools/objtool/libsubcmd.a && ar rcs /home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-objects/tools/objtool/libsubcmd.a /home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-objects/tools/objtool/libsubcmd-in.o
+  CC      scripts/mod/empty.o
+  HOSTCC  scripts/mod/mk_elfconfig
+  CC      scripts/mod/devicetable-offsets.s
+  MKELF   scripts/mod/elfconfig.h
+  UPD     scripts/mod/devicetable-offsets.h
+  HOSTCC  scripts/mod/sumversion.o
+  HOSTCC  scripts/mod/modpost.o
+  HOSTCC  scripts/mod/file2alias.o
+  HOSTLD  scripts/mod/modpost
+  UPD     include/generated/timeconst.h
+  CC      kernel/bounds.s
+  CHKSHA1 /home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-source/include/linux/atomic/atomic-arch-fallback.h
+  CHKSHA1 /home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-source/include/linux/atomic/atomic-instrumented.h
+  CHKSHA1 /home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-source/include/linux/atomic/atomic-long.h
+  UPD     include/generated/bounds.h
+  CC      arch/x86/kernel/asm-offsets.s
+  UPD     include/generated/asm-offsets.h
+  CALL    /home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-source/scripts/checksyscalls.sh
+gcc /home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-objects/tools/objtool/objtool-in.o -lelf /home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-objects/tools/objtool/libsubcmd.a   -o /home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-objects/tools/objtool/objtool
+  CC [M]  net/9p/mod.o
+  CC [M]  fs/9p/vfs_super.o
+  CC [M]  net/9p/client.o
+  CC [M]  fs/9p/vfs_inode.o
+  CC [M]  fs/9p/vfs_inode_dotl.o
+  CC [M]  net/9p/error.o
+  CC [M]  net/9p/protocol.o
+  CC [M]  fs/9p/vfs_addr.o
+  CC [M]  net/9p/trans_common.o
+  CC [M]  fs/9p/vfs_file.o
+  CC [M]  net/9p/trans_fd.o
+  CC [M]  fs/9p/vfs_dir.o
+  CC [M]  net/9p/trans_virtio.o
+  CC [M]  fs/9p/vfs_dentry.o
+  CC [M]  fs/9p/v9fs.o
+  LD [M]  net/9p/9pnet.o
+  LD [M]  net/9p/9pnet_fd.o
+  LD [M]  net/9p/9pnet_virtio.o
+  CC [M]  fs/9p/fid.o
+  CC [M]  fs/9p/xattr.o
+  CC [M]  fs/9p/hfs_protocol.o
+  CC [M]  fs/9p/hfs_policy.o
+  CC [M]  fs/9p/hfs_session.o
+  CC [M]  fs/9p/hfs_inode.o
+  CC [M]  fs/9p/hfs_file.o
+  LD [M]  fs/9p/9p.o

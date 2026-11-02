@@ -1,0 +1,5 @@
+argv=["cc", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror", "-Wno-sign-compare", "-DHFS_CODEC_USERSPACE", "-include", "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/worktree/tools/integration/linux9p/tests/codec/compat.h", "-I", "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-source/fs/9p", "-I", "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-codec", "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-source/fs/9p/hfs_protocol.c", "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/worktree/tools/integration/linux9p/tests/codec/test.c", "-lcrypto", "-o", "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-codec/codec-test"]
+exit=0 peak_child_rss_kib=55332
+argv=["/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-codec/codec-test"]
+PASS: production codec canonical JSON, writer, 1024 groups, bounds, exact golden frames, malformed frames, 32-chunk 1MiB body
+exit=0 peak_child_rss_kib=55332
