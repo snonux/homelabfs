@@ -1,0 +1,10 @@
+{
+  "internal/normalpublic/codec.go": "7cb16c0901e486cb282451f32ccc95db3e0f64c50c0680aee9d66a6f3a1005e7",
+  "internal/normalpublic/codec_test.go": "6e1030a13a2c9376565a0083bf37b58adf42f2110e729d9f45667c9df6a700b6",
+  "internal/normalpublic/graph.go": "ce23ef9291cde5bd61300e42ea240b021c8c4b62643d49c27183fa673dd3bbb4",
+  "internal/normalpublic/journal.go": "32d642c2cf0b4a14230b90a44e2656f62a2bb387d72d01564f6b5998e6fc1f88",
+  "internal/normalpublic/ledger.go": "4d55d78c2464f27e58f9454a1d3972306254061404cafb91025595af3bbc2160",
+  "internal/normalpublic/ledger_test.go": "5fce479c129741ef3f7b732cf6649645dba55eb36f335fd38f9ab3831f51899d",
+  "internal/normalpublic/types.go": "f0456250843b6844d5f859601255f044ff401a62ac7a0059336c9c8fddc5fc7f",
+  "docs/spec/Public-claims.md": "9e42bb3b965a51a377f6e24526d1837269389a56a9022dbc47aa64d97cf53ea1"
+}

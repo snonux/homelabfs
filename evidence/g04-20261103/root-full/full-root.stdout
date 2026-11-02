@@ -1,0 +1,32 @@
+?   	github.com/snonux/homelabfs/cmd/hfs-behavior	[no test files]
+?   	github.com/snonux/homelabfs/cmd/hfs-lab	[no test files]
+?   	github.com/snonux/homelabfs/cmd/hfs-smoke-driver	[no test files]
+?   	github.com/snonux/homelabfs/cmd/homelabfs	[no test files]
+?   	github.com/snonux/homelabfs/internal	[no test files]
+ok  	github.com/snonux/homelabfs/internal/admin	2.013s
+ok  	github.com/snonux/homelabfs/internal/admission	0.014s
+ok  	github.com/snonux/homelabfs/internal/apply	8.177s
+ok  	github.com/snonux/homelabfs/internal/behavior	0.381s
+ok  	github.com/snonux/homelabfs/internal/checkpoint	3.275s
+ok  	github.com/snonux/homelabfs/internal/cluster	0.010s
+ok  	github.com/snonux/homelabfs/internal/coord	7.040s
+ok  	github.com/snonux/homelabfs/internal/daemoncli	0.125s
+ok  	github.com/snonux/homelabfs/internal/failpoint	0.034s
+ok  	github.com/snonux/homelabfs/internal/fsapi	0.003s
+ok  	github.com/snonux/homelabfs/internal/fsservice	6.994s
+ok  	github.com/snonux/homelabfs/internal/fuseadapter	0.179s
+ok  	github.com/snonux/homelabfs/internal/guestbridge	0.151s
+?   	github.com/snonux/homelabfs/internal/journal	[no test files]
+ok  	github.com/snonux/homelabfs/internal/journal/record	0.082s
+ok  	github.com/snonux/homelabfs/internal/journal/segment	1.264s
+ok  	github.com/snonux/homelabfs/internal/labrunner	3.837s
+ok  	github.com/snonux/homelabfs/internal/logicalview	0.019s
+ok  	github.com/snonux/homelabfs/internal/normalnode	0.004s
+ok  	github.com/snonux/homelabfs/internal/normalpublic	0.098s
+?   	github.com/snonux/homelabfs/internal/recovery	[no test files]
+?   	github.com/snonux/homelabfs/internal/replication	[no test files]
+ok  	github.com/snonux/homelabfs/internal/sim	20.395s
+ok  	github.com/snonux/homelabfs/internal/storage	0.977s
+ok  	github.com/snonux/homelabfs/internal/transactions	4.862s
+ok  	github.com/snonux/homelabfs/internal/transport	0.117s
+ok  	github.com/snonux/homelabfs/internal/vfs	2.340s
