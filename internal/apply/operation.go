@@ -14,6 +14,25 @@ import (
 	"github.com/snonux/homelabfs/internal/storage"
 )
 
+// Catalog provides one consistent committed metadata observation. Both backing
+// replay and the owner RAM planner use this same redo validation seam.
+type Catalog interface {
+	Stat(context.Context, fsapi.ObjectID) (storage.Object, error)
+	Lookup(context.Context, fsapi.ObjectID, string) (storage.Entry, error)
+}
+
+// MutationOperation translates an exact immutable redo using committed metadata.
+// It does not select commitment or authorize permissions, source durability or
+// publication. Position is the next local projection slot, never an origin offset.
+func MutationOperation(ctx context.Context, catalog Catalog, id fsapi.UUID, position fsapi.Position, m record.Mutation) (storage.Operation, error) {
+	op := storage.Operation{ID: id, Position: position}
+	if err := mutation(ctx, catalog, &op, m); err != nil {
+		return storage.Operation{}, err
+	}
+	op.Participants = homes(ctx, catalog, op)
+	return op, nil
+}
+
 func operation(ctx context.Context, s *storage.Store, h history, e segment.Entry, slot uint64) (*storage.Operation, error) {
 	op := storage.Operation{ID: e.Record.Header.Operation, Position: e.Reference.Position}
 	op.Position.Sequence = slot
@@ -95,7 +114,7 @@ func prior(h history, e segment.Entry, ref record.FrameRef) (segment.Entry, erro
 	}
 	return h.entries[n-1], nil
 }
-func mutation(ctx context.Context, s *storage.Store, op *storage.Operation, m record.Mutation) error {
+func mutation(ctx context.Context, s Catalog, op *storage.Operation, m record.Mutation) error {
 	if err := arguments(op, m.Intent.Arguments); err != nil {
 		return err
 	}
@@ -245,7 +264,7 @@ func compareID(a, b fsapi.ObjectID) int {
 	}
 	return bytes.Compare(a.Allocation[:], b.Allocation[:])
 }
-func homes(ctx context.Context, s *storage.Store, op storage.Operation) []fsapi.UUID {
+func homes(ctx context.Context, s Catalog, op storage.Operation) []fsapi.UUID {
 	set := map[fsapi.UUID]bool{op.Position.Volume: true}
 	add := func(id fsapi.ObjectID) {
 		if id.Valid() {
@@ -316,7 +335,7 @@ func entryIntent(op storage.Operation, args any, edits []record.EntryEdit) error
 	return nil
 }
 
-func validateNoop(ctx context.Context, s *storage.Store, volume fsapi.UUID, a record.Rename) error {
+func validateNoop(ctx context.Context, s Catalog, volume fsapi.UUID, a record.Rename) error {
 	if a.Source.Home == volume {
 		o, err := s.Stat(ctx, a.Source)
 		if err != nil {

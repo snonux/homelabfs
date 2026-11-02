@@ -149,24 +149,20 @@ func EncodeImage(image Image, limits Limits) ([]byte, error) {
 	if err := validateImage(image, limits); err != nil {
 		return nil, err
 	}
-	w := imageWire{Magic: "HOMELABFS-CATALOG", Major: 1, Minor: 0, Volume: image.Volume.String(), Root: toID(image.Root), Position: positionWire{image.Position.Volume.String(), image.Position.Generation.String(), image.Position.Configuration.String(), image.Position.Epoch, image.Position.Sequence}, Objects: []objectWire{}, Entries: []entryWire{}, Pins: []pinWire{}, Retired: []descriptorWire{}, Receipts: []receiptWire{}, Payloads: []payloadWire{}}
+	w := imageHeader(image)
 	for _, o := range image.Objects {
-		a := o.Attr
-		obj := objectWire{Descriptor: toDescriptor(o.Descriptor), Attr: attrWire{toID(a.Object), a.Kind, a.UID, a.GID, a.Mode, a.Size, a.Nlink, a.Revision, a.Atime, a.Mtime, a.Ctime}, Text: base64.StdEncoding.EncodeToString(o.Text), Ledger: o.LedgerRevision, References: []referenceWire{}}
+		obj := objectHeader(o)
+		obj.Text = base64.StdEncoding.EncodeToString(o.Text)
 		for _, r := range o.References {
-			obj.References = append(obj.References, referenceWire{toID(r.Parent), base64.StdEncoding.EncodeToString([]byte(r.Name)), r.Revision})
-		}
-		if o.Parent != nil {
-			obj.Parent = &parentWire{o.Parent.Revision, toID(o.Parent.Object), o.Parent.EntryRevision}
+			v := referenceHeader(r)
+			v.Name = base64.StdEncoding.EncodeToString([]byte(r.Name))
+			obj.References = append(obj.References, v)
 		}
 		w.Objects = append(w.Objects, obj)
 	}
 	for _, e := range image.Entries {
-		v := entryWire{Parent: toID(e.Parent), Name: base64.StdEncoding.EncodeToString([]byte(e.Name)), Revision: e.Revision}
-		if e.Target != nil {
-			id := toID(*e.Target)
-			v.Target = &id
-		}
+		v := entryHeader(e)
+		v.Name = base64.StdEncoding.EncodeToString([]byte(e.Name))
 		w.Entries = append(w.Entries, v)
 	}
 	for _, p := range image.Pins {

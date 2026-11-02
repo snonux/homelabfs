@@ -3,7 +3,6 @@ package fsservice
 import (
 	"context"
 	"errors"
-	"io"
 	"math"
 	"slices"
 	"strings"
@@ -78,6 +77,14 @@ func (s *Service) execute(ctx context.Context, cred fsapi.Cred, c fsapi.Command)
 		return fsapi.Result{}, err
 	}
 	result := fsapi.Result{Position: s.selection.Through.Position}
+	if observed, handled, err := observeCommitted(ctx, c, p, image, s.applied.Store, s.config.Limits, s.config.Storage.Limits); handled {
+		observed.Position = result.Position
+		var failure observationIO
+		if errors.As(err, &failure) {
+			return observed, s.block(err)
+		}
+		return observed, err
+	}
 	switch c.Operation {
 	case fsapi.Lookup:
 		if _, err = p.directory(c.Parent); err != nil {
@@ -106,12 +113,6 @@ func (s *Service) execute(ctx context.Context, cred fsapi.Cred, c fsapi.Command)
 			return result, err
 		}
 		if err = s.acquire(ctx, id, true, nil); err != nil {
-			return result, err
-		}
-		result.Attr = &o.Attr
-	case fsapi.Getattr:
-		o, err := p.object(c.Object)
-		if err != nil {
 			return result, err
 		}
 		result.Attr = &o.Attr
@@ -152,73 +153,6 @@ func (s *Service) execute(ctx context.Context, cred fsapi.Cred, c fsapi.Command)
 		}
 		result.Handle = s.nextHandle
 		result.Attr = &o.Attr
-	case fsapi.Read:
-		if c.Handle == 0 {
-			return result, fsapi.Stale
-		}
-		if c.Size > int64(s.config.Limits.IOBytes) || fsapi.ValidateRange(c.Offset, c.Size) != nil {
-			return result, fsapi.Invalid
-		}
-		o, err := p.object(c.Object)
-		if err != nil {
-			return result, err
-		}
-		if o.Attr.Kind != fsapi.Regular {
-			return result, fsapi.IsDirectory
-		}
-		data := make([]byte, int(c.Size))
-		n, err := s.applied.Store.Read(ctx, c.Object, data, c.Offset)
-		if err != nil && !errors.Is(err, io.EOF) {
-			return result, s.block(err)
-		}
-		result.Data = data[:n]
-		result.Count = int64(n)
-	case fsapi.Readlink:
-		o, err := p.object(c.Object)
-		if err != nil {
-			return result, err
-		}
-		if o.Attr.Kind != fsapi.Symlink {
-			return result, fsapi.Invalid
-		}
-		result.Data = slices.Clone(o.Text)
-	case fsapi.Readdir:
-		if c.After != "" && c.DirectoryRevision == 0 {
-			return result, fsapi.Invalid
-		}
-		o, err := p.directory(c.Object)
-		if err != nil {
-			return result, err
-		}
-		if c.DirectoryRevision != 0 && c.DirectoryRevision != o.Attr.Revision {
-			return result, fsapi.Stale
-		}
-		entries, err := s.applied.Store.ReadDir(ctx, c.Object, c.After, c.Limit)
-		if err != nil {
-			return result, err
-		}
-		result.DirectoryRevision = o.Attr.Revision
-		for _, e := range entries {
-			if e.Target.Home != c.Mount {
-				return result, fsapi.Unsupported
-			}
-			target, err := p.object(*e.Target)
-			if err != nil {
-				return result, err
-			}
-			result.Entries = append(result.Entries, fsapi.DirEntry{Name: e.Name, Object: *e.Target, Revision: e.Revision, Kind: target.Attr.Kind})
-		}
-	case fsapi.Statfs:
-		var used uint64
-		for _, o := range image.Objects {
-			used += uint64(o.Attr.Size)
-		}
-		maxObjects := s.config.Storage.Limits.Objects
-		if maxObjects == 0 {
-			maxObjects = 4096
-		}
-		totalObjects := len(image.Objects) + len(image.Retired)
-		result.Capacity = &fsapi.Capacity{Objects: uint64(maxObjects), ObjectsFree: uint64(max(0, maxObjects-totalObjects)), Bytes: uint64(s.config.Limits.LogicalBytes), BytesFree: uint64(s.config.Limits.LogicalBytes) - used}
 	case fsapi.Sync:
 		if !c.Durability.Valid() {
 			return result, fsapi.Invalid
@@ -270,7 +204,10 @@ func (s *Service) execute(ctx context.Context, cred fsapi.Cred, c fsapi.Command)
 	return result, nil
 }
 func (s *Service) permissions(ctx context.Context, cred fsapi.Cred, original, resolved fsapi.Command, p *plan) error {
-	if s.config.Permissions == nil {
+	return checkPermissions(ctx, s.config.Permissions, cred, original, resolved, p)
+}
+func checkPermissions(ctx context.Context, policy PermissionPolicy, cred fsapi.Cred, original, resolved fsapi.Command, p *plan) error {
+	if policy == nil {
 		return nil
 	} // Explicit validation profile only.
 	input := PermissionContext{Command: original.Clone(), Object: resolved.Object, Handle: resolved.Handle != 0}
@@ -294,7 +231,7 @@ func (s *Service) permissions(ctx context.Context, cred fsapi.Cred, original, re
 	}
 	slices.SortFunc(attrs, func(a, b fsapi.Attr) int { return compareID(a.Object, b.Object) })
 	input.Attributes = slices.Clone(attrs)
-	decision, err := s.config.Permissions.Check(ctx, cred.Clone(), input)
+	decision, err := policy.Check(ctx, cred.Clone(), input)
 	if err != nil {
 		return err
 	}
