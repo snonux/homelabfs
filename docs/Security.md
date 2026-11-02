@@ -84,6 +84,18 @@ Enforce Unix permissions using workload credentials through the full 9p/FUSE pat
 
 The virtio-9p connection is a local VM/host boundary, not a network identity protocol. Explicitly validate credential mapping, root/privileged guest behavior, and the containment provided by bhyve and the share root. A guest administrator is not an untrusted tenant isolated merely by Unix UID ownership. Guest or Kubernetes compromise must not grant access to replication or administrative listeners through an overly broad WireGuard rule.
 
+Paul selected [request-bound guest-kernel delegation](lab/Retained-9p-authorization.md)
+on 2026-10-31. The [bridge 1.0 schema](spec/Retained-9p-protocol.md) preserves
+actual exporter native FUSE credentials and separately binds full current guest
+UID/GID/groups to VM/export/session/generation, opaque capabilities and original
+claims. The service rechecks Unix policy against its committed logical view.
+Guest root/kernel or a compromised trusted exporter can forge identities within
+authorized exports; host per-user protection against that attacker is not
+claimed. Cross-volume isolation, all-origin durability and positive all-domain
+cache barriers remain required. The extensions, private FUSE control inodes and
+delegated admission are unimplemented; stock peers and unknown/mixed features
+must fail closed. Selection grants no installation or normal publication.
+
 ## Encryption at rest and recovery keys
 
 Use native ZFS encryption for the backing data, journals, and checkpoints where encrypted storage is required, managed by existing FreeBSD tooling. Network encryption and ZFS encryption solve different problems. Ensure snapshots and exported backups retain the intended encryption; a decrypted export needs its own protection. [OpenZFS encryption properties](https://openzfs.github.io/openzfs-docs/man/master/7/zfsprops.7.html).

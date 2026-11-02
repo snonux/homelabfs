@@ -38,6 +38,10 @@ ordered barriers and acknowledged view recall. Pin the entire feature set in
 the publication manifest; missing bits, unknown versions and mixed old/new
 backends fail closed. Assign actual wire numbers, encodings and bounds in the
 reviewed schema task, not by asserting stock 9P2000.L support. Keep virtio framing.
+The resulting [bridge 1.0 schema](../spec/Retained-9p-protocol.md) now assigns
+that representation, including nonblocking immutable response cells, exact native
+Read/Write offsets/EOF, delegated provenance and stopped-drain/install unions.
+It remains specification and fixture evidence, not an installed extension.
 
 Each authorization request carries immutable operation/arguments, volume/session/
 serving epoch, guest boot/mount incarnations, request ID, process incarnation,

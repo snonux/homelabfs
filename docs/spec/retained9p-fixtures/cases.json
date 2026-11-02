@@ -1,0 +1,2326 @@
+{
+  "acknowledgements": [
+    {
+      "accepted": true,
+      "expected_context": {
+        "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+        "cut_hash": "93d46379724e38137e15b9037bb3b8c5e06cf3eaf0f62399f32236c869e4ff9b",
+        "domain": "00000000-0000-0000-0000-00000000003c",
+        "inventory_hash": "3e3a43eca8afbd2d669cb614f8467047607854f9be60a0f1af971659e8f2f8c9",
+        "manifest_hash": "1df26aff5bdc868b00669f0d951e2b03033bbe4ca9a9fbccba7ae5353675a59a",
+        "phase": "STOPPED",
+        "recall": "00000000-0000-0000-0000-00000000003d",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      "name": "exact-stopped",
+      "received_context": {
+        "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+        "cut_hash": "93d46379724e38137e15b9037bb3b8c5e06cf3eaf0f62399f32236c869e4ff9b",
+        "domain": "00000000-0000-0000-0000-00000000003c",
+        "inventory_hash": "3e3a43eca8afbd2d669cb614f8467047607854f9be60a0f1af971659e8f2f8c9",
+        "manifest_hash": "1df26aff5bdc868b00669f0d951e2b03033bbe4ca9a9fbccba7ae5353675a59a",
+        "phase": "STOPPED",
+        "recall": "00000000-0000-0000-0000-00000000003d",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      }
+    },
+    {
+      "accepted": false,
+      "expected_context": {
+        "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+        "cut_hash": "93d46379724e38137e15b9037bb3b8c5e06cf3eaf0f62399f32236c869e4ff9b",
+        "domain": "00000000-0000-0000-0000-00000000003c",
+        "inventory_hash": "3e3a43eca8afbd2d669cb614f8467047607854f9be60a0f1af971659e8f2f8c9",
+        "manifest_hash": "1df26aff5bdc868b00669f0d951e2b03033bbe4ca9a9fbccba7ae5353675a59a",
+        "phase": "STOPPED",
+        "recall": "00000000-0000-0000-0000-00000000003d",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      "name": "replayed-domain",
+      "received_context": {
+        "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+        "cut_hash": "93d46379724e38137e15b9037bb3b8c5e06cf3eaf0f62399f32236c869e4ff9b",
+        "domain": "old-00000000-0000-0000-0000-00000000003c",
+        "inventory_hash": "3e3a43eca8afbd2d669cb614f8467047607854f9be60a0f1af971659e8f2f8c9",
+        "manifest_hash": "1df26aff5bdc868b00669f0d951e2b03033bbe4ca9a9fbccba7ae5353675a59a",
+        "phase": "STOPPED",
+        "recall": "00000000-0000-0000-0000-00000000003d",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      }
+    },
+    {
+      "accepted": false,
+      "expected_context": {
+        "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+        "cut_hash": "93d46379724e38137e15b9037bb3b8c5e06cf3eaf0f62399f32236c869e4ff9b",
+        "domain": "00000000-0000-0000-0000-00000000003c",
+        "inventory_hash": "3e3a43eca8afbd2d669cb614f8467047607854f9be60a0f1af971659e8f2f8c9",
+        "manifest_hash": "1df26aff5bdc868b00669f0d951e2b03033bbe4ca9a9fbccba7ae5353675a59a",
+        "phase": "STOPPED",
+        "recall": "00000000-0000-0000-0000-00000000003d",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      "name": "replayed-recall",
+      "received_context": {
+        "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+        "cut_hash": "93d46379724e38137e15b9037bb3b8c5e06cf3eaf0f62399f32236c869e4ff9b",
+        "domain": "00000000-0000-0000-0000-00000000003c",
+        "inventory_hash": "3e3a43eca8afbd2d669cb614f8467047607854f9be60a0f1af971659e8f2f8c9",
+        "manifest_hash": "1df26aff5bdc868b00669f0d951e2b03033bbe4ca9a9fbccba7ae5353675a59a",
+        "phase": "STOPPED",
+        "recall": "old-00000000-0000-0000-0000-00000000003d",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      }
+    },
+    {
+      "accepted": false,
+      "expected_context": {
+        "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+        "cut_hash": "93d46379724e38137e15b9037bb3b8c5e06cf3eaf0f62399f32236c869e4ff9b",
+        "domain": "00000000-0000-0000-0000-00000000003c",
+        "inventory_hash": "3e3a43eca8afbd2d669cb614f8467047607854f9be60a0f1af971659e8f2f8c9",
+        "manifest_hash": "1df26aff5bdc868b00669f0d951e2b03033bbe4ca9a9fbccba7ae5353675a59a",
+        "phase": "STOPPED",
+        "recall": "00000000-0000-0000-0000-00000000003d",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      "name": "replayed-session",
+      "received_context": {
+        "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+        "cut_hash": "93d46379724e38137e15b9037bb3b8c5e06cf3eaf0f62399f32236c869e4ff9b",
+        "domain": "00000000-0000-0000-0000-00000000003c",
+        "inventory_hash": "3e3a43eca8afbd2d669cb614f8467047607854f9be60a0f1af971659e8f2f8c9",
+        "manifest_hash": "1df26aff5bdc868b00669f0d951e2b03033bbe4ca9a9fbccba7ae5353675a59a",
+        "phase": "STOPPED",
+        "recall": "00000000-0000-0000-0000-00000000003d",
+        "session": "old-00000000-0000-0000-0000-00000000000c"
+      }
+    },
+    {
+      "accepted": false,
+      "expected_context": {
+        "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+        "cut_hash": "93d46379724e38137e15b9037bb3b8c5e06cf3eaf0f62399f32236c869e4ff9b",
+        "domain": "00000000-0000-0000-0000-00000000003c",
+        "inventory_hash": "3e3a43eca8afbd2d669cb614f8467047607854f9be60a0f1af971659e8f2f8c9",
+        "manifest_hash": "1df26aff5bdc868b00669f0d951e2b03033bbe4ca9a9fbccba7ae5353675a59a",
+        "phase": "STOPPED",
+        "recall": "00000000-0000-0000-0000-00000000003d",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      "name": "replayed-manifest_hash",
+      "received_context": {
+        "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+        "cut_hash": "93d46379724e38137e15b9037bb3b8c5e06cf3eaf0f62399f32236c869e4ff9b",
+        "domain": "00000000-0000-0000-0000-00000000003c",
+        "inventory_hash": "3e3a43eca8afbd2d669cb614f8467047607854f9be60a0f1af971659e8f2f8c9",
+        "manifest_hash": "old-1df26aff5bdc868b00669f0d951e2b03033bbe4ca9a9fbccba7ae5353675a59a",
+        "phase": "STOPPED",
+        "recall": "00000000-0000-0000-0000-00000000003d",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      }
+    },
+    {
+      "accepted": false,
+      "expected_context": {
+        "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+        "cut_hash": "93d46379724e38137e15b9037bb3b8c5e06cf3eaf0f62399f32236c869e4ff9b",
+        "domain": "00000000-0000-0000-0000-00000000003c",
+        "inventory_hash": "3e3a43eca8afbd2d669cb614f8467047607854f9be60a0f1af971659e8f2f8c9",
+        "manifest_hash": "1df26aff5bdc868b00669f0d951e2b03033bbe4ca9a9fbccba7ae5353675a59a",
+        "phase": "STOPPED",
+        "recall": "00000000-0000-0000-0000-00000000003d",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      "name": "replayed-phase",
+      "received_context": {
+        "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+        "cut_hash": "93d46379724e38137e15b9037bb3b8c5e06cf3eaf0f62399f32236c869e4ff9b",
+        "domain": "00000000-0000-0000-0000-00000000003c",
+        "inventory_hash": "3e3a43eca8afbd2d669cb614f8467047607854f9be60a0f1af971659e8f2f8c9",
+        "manifest_hash": "1df26aff5bdc868b00669f0d951e2b03033bbe4ca9a9fbccba7ae5353675a59a",
+        "phase": "old-STOPPED",
+        "recall": "00000000-0000-0000-0000-00000000003d",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      }
+    },
+    {
+      "accepted": false,
+      "expected_context": {
+        "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+        "cut_hash": "93d46379724e38137e15b9037bb3b8c5e06cf3eaf0f62399f32236c869e4ff9b",
+        "domain": "00000000-0000-0000-0000-00000000003c",
+        "inventory_hash": "3e3a43eca8afbd2d669cb614f8467047607854f9be60a0f1af971659e8f2f8c9",
+        "manifest_hash": "1df26aff5bdc868b00669f0d951e2b03033bbe4ca9a9fbccba7ae5353675a59a",
+        "phase": "STOPPED",
+        "recall": "00000000-0000-0000-0000-00000000003d",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      "name": "replayed-cut_hash",
+      "received_context": {
+        "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+        "cut_hash": "old-93d46379724e38137e15b9037bb3b8c5e06cf3eaf0f62399f32236c869e4ff9b",
+        "domain": "00000000-0000-0000-0000-00000000003c",
+        "inventory_hash": "3e3a43eca8afbd2d669cb614f8467047607854f9be60a0f1af971659e8f2f8c9",
+        "manifest_hash": "1df26aff5bdc868b00669f0d951e2b03033bbe4ca9a9fbccba7ae5353675a59a",
+        "phase": "STOPPED",
+        "recall": "00000000-0000-0000-0000-00000000003d",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      }
+    },
+    {
+      "accepted": false,
+      "expected_context": {
+        "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+        "cut_hash": "93d46379724e38137e15b9037bb3b8c5e06cf3eaf0f62399f32236c869e4ff9b",
+        "domain": "00000000-0000-0000-0000-00000000003c",
+        "inventory_hash": "3e3a43eca8afbd2d669cb614f8467047607854f9be60a0f1af971659e8f2f8c9",
+        "manifest_hash": "1df26aff5bdc868b00669f0d951e2b03033bbe4ca9a9fbccba7ae5353675a59a",
+        "phase": "STOPPED",
+        "recall": "00000000-0000-0000-0000-00000000003d",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      "name": "replayed-inventory_hash",
+      "received_context": {
+        "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+        "cut_hash": "93d46379724e38137e15b9037bb3b8c5e06cf3eaf0f62399f32236c869e4ff9b",
+        "domain": "00000000-0000-0000-0000-00000000003c",
+        "inventory_hash": "old-3e3a43eca8afbd2d669cb614f8467047607854f9be60a0f1af971659e8f2f8c9",
+        "manifest_hash": "1df26aff5bdc868b00669f0d951e2b03033bbe4ca9a9fbccba7ae5353675a59a",
+        "phase": "STOPPED",
+        "recall": "00000000-0000-0000-0000-00000000003d",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      }
+    }
+  ],
+  "create_selection": [
+    {
+      "creator_fsuid": 1001,
+      "parent_gid": 2001,
+      "request_fsgid": 1002,
+      "requested_mode": 1528,
+      "selected_gid": 2001,
+      "selected_mode": 1528,
+      "selected_uid": 1001
+    },
+    {
+      "creator_fsuid": 0,
+      "parent_gid": 2001,
+      "request_fsgid": 1002,
+      "requested_mode": 4095,
+      "selected_gid": 2001,
+      "selected_mode": 4095,
+      "selected_uid": 0
+    }
+  ],
+  "format": 1,
+  "frame_malformed": [
+    {
+      "byte": 2,
+      "error": "header",
+      "name": "version",
+      "offset": 8
+    },
+    {
+      "byte": 1,
+      "error": "header",
+      "name": "unknown-flags",
+      "offset": 14
+    },
+    {
+      "byte": 9,
+      "error": "header",
+      "name": "unknown-kind",
+      "offset": 12
+    },
+    {
+      "byte": 1,
+      "error": "header",
+      "name": "reserved",
+      "offset": 28
+    },
+    {
+      "byte": 255,
+      "error": "frame-scope",
+      "name": "wrong-session",
+      "offset": 32
+    },
+    {
+      "byte": 2,
+      "error": "frame-scope",
+      "name": "wrong-cell",
+      "offset": 48
+    },
+    {
+      "byte": 1,
+      "error": "chunk-bounds",
+      "name": "misaligned-chunk",
+      "offset": 20
+    },
+    {
+      "byte": 0,
+      "error": "body-hash",
+      "name": "body-corruption",
+      "offset": 88
+    }
+  ],
+  "full_native_cells": {
+    "initial": [
+      {
+        "cell": 1,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 1",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 2,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 2",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 3,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 3",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 4,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 4",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 5,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 5",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 6,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 6",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 7,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 7",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 8,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 8",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 9,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 9",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 10,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 10",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 11,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 11",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 12,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 12",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 13,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 13",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 14,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 14",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 15,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 15",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 16,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 16",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 17,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 17",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 18,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 18",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 19,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 19",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 20,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 20",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 21,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 21",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 22,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 22",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 23,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 23",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 24,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 24",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 25,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 25",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 26,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 26",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 27,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 27",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 28,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 28",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 29,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 29",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 30,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 30",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 31,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 31",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 32,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 32",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 33,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 33",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 34,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 34",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 35,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 35",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 36,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 36",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 37,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 37",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 38,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 38",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 39,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 39",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 40,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 40",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 41,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 41",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 42,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 42",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 43,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 43",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 44,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 44",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 45,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 45",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 46,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 46",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 47,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 47",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 48,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 48",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 49,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 49",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 50,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 50",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 51,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 51",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 52,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 52",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 53,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 53",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 54,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 54",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 55,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 55",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 56,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 56",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 57,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 57",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 58,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 58",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 59,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 59",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 60,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 60",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 61,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 61",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 62,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 62",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 63,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 63",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 64,
+        "lane": "ordinary",
+        "received": true,
+        "released": false,
+        "response": "immutable response 64",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 65,
+        "lane": "control",
+        "received": true,
+        "released": false,
+        "response": "immutable response 65",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 66,
+        "lane": "control",
+        "received": true,
+        "released": false,
+        "response": "immutable response 66",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 67,
+        "lane": "control",
+        "received": true,
+        "released": false,
+        "response": "immutable response 67",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 68,
+        "lane": "control",
+        "received": true,
+        "released": false,
+        "response": "immutable response 68",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 69,
+        "lane": "control",
+        "received": true,
+        "released": false,
+        "response": "immutable response 69",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 70,
+        "lane": "control",
+        "received": true,
+        "released": false,
+        "response": "immutable response 70",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 71,
+        "lane": "control",
+        "received": true,
+        "released": false,
+        "response": "immutable response 71",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 72,
+        "lane": "control",
+        "received": true,
+        "released": false,
+        "response": "immutable response 72",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 73,
+        "lane": "control",
+        "received": true,
+        "released": false,
+        "response": "immutable response 73",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 74,
+        "lane": "control",
+        "received": true,
+        "released": false,
+        "response": "immutable response 74",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 75,
+        "lane": "control",
+        "received": true,
+        "released": false,
+        "response": "immutable response 75",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 76,
+        "lane": "control",
+        "received": true,
+        "released": false,
+        "response": "immutable response 76",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 77,
+        "lane": "control",
+        "received": true,
+        "released": false,
+        "response": "immutable response 77",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 78,
+        "lane": "control",
+        "received": true,
+        "released": false,
+        "response": "immutable response 78",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 79,
+        "lane": "control",
+        "received": true,
+        "released": false,
+        "response": "immutable response 79",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "cell": 80,
+        "lane": "control",
+        "received": false,
+        "released": false,
+        "response": "immutable response 80",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      }
+    ],
+    "steps": [
+      {
+        "action": "without-reclaim",
+        "error": "cell-capacity",
+        "name": "all80occupied-blocks-unacknowledged-command"
+      },
+      {
+        "action": "replace",
+        "cell": 81,
+        "error": "response-identity",
+        "lane": "ordinary",
+        "name": "wrong-hash-at-full-capacity-preserves-all-cells",
+        "operation": "CALL",
+        "reclaim": {
+          "cell": 1,
+          "response_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "resources_reserved": true,
+        "response": "not admitted",
+        "schema_valid": true,
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "action": "replace",
+        "cell": 81,
+        "error": "cell-session",
+        "lane": "ordinary",
+        "name": "foreign-session-cannot-donate-target-credit",
+        "operation": "CALL",
+        "reclaim": {
+          "cell": 1,
+          "response_hash": "0b7e6e2433a9b3612995a25632487c2f25ca51f4864d8268e7264414140f2059"
+        },
+        "resources_reserved": true,
+        "response": "not admitted",
+        "schema_valid": true,
+        "session": "00000000-0000-0000-0000-000000000035"
+      },
+      {
+        "action": "replace",
+        "cell": 81,
+        "error": "snapshot-incomplete",
+        "lane": "ordinary",
+        "name": "incomplete-response-cannot-donate-credit",
+        "operation": "CALL",
+        "reclaim": {
+          "cell": 80,
+          "response_hash": "d60440983cd05b19892c16b02905b5973fc02e30261aa6ef5c0e883a97086d40"
+        },
+        "resources_reserved": true,
+        "response": "not admitted",
+        "schema_valid": true,
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "action": "replace",
+        "cell": 81,
+        "error": "replacement-schema",
+        "lane": "ordinary",
+        "name": "invalid-command-cannot-consume-acknowledged-target",
+        "operation": "CALL",
+        "reclaim": {
+          "cell": 1,
+          "response_hash": "0b7e6e2433a9b3612995a25632487c2f25ca51f4864d8268e7264414140f2059"
+        },
+        "resources_reserved": true,
+        "response": "not admitted",
+        "schema_valid": false,
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "action": "replace",
+        "cell": 81,
+        "error": "replacement-resources",
+        "lane": "ordinary",
+        "name": "missing-other-resource-cannot-release-target",
+        "operation": "CALL",
+        "reclaim": {
+          "cell": 1,
+          "response_hash": "0b7e6e2433a9b3612995a25632487c2f25ca51f4864d8268e7264414140f2059"
+        },
+        "resources_reserved": false,
+        "response": "not admitted",
+        "schema_valid": true,
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "action": "replace",
+        "cell": 81,
+        "error": "release-ack-mismatch",
+        "lane": "ordinary",
+        "name": "release-payload-must-equal-reclaim",
+        "operation": "RELEASE_CELL",
+        "payload": {
+          "cell": 2,
+          "response_hash": "0b7e6e2433a9b3612995a25632487c2f25ca51f4864d8268e7264414140f2059"
+        },
+        "reclaim": {
+          "cell": 1,
+          "response_hash": "0b7e6e2433a9b3612995a25632487c2f25ca51f4864d8268e7264414140f2059"
+        },
+        "resources_reserved": true,
+        "response": "not admitted",
+        "schema_valid": true,
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "action": "replace",
+        "cell": 81,
+        "error": "credit-class",
+        "lane": "ordinary",
+        "name": "CALL-cannot-steal-full-control-lane",
+        "operation": "CALL",
+        "reclaim": {
+          "cell": 65,
+          "response_hash": "5cd9366d0e6ab942444973f113c439c01e0c0fb01037788713d780e39771d676"
+        },
+        "resources_reserved": true,
+        "response": "not admitted",
+        "schema_valid": true,
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "action": "replace",
+        "cell": 81,
+        "expected": "REPLACED",
+        "lane": "ordinary",
+        "name": "full80-replaces-target1-with-release81",
+        "operation": "RELEASE_CELL",
+        "payload": {
+          "cell": 1,
+          "response_hash": "0b7e6e2433a9b3612995a25632487c2f25ca51f4864d8268e7264414140f2059"
+        },
+        "reclaim": {
+          "cell": 1,
+          "response_hash": "0b7e6e2433a9b3612995a25632487c2f25ca51f4864d8268e7264414140f2059"
+        },
+        "resources_reserved": true,
+        "response": "RELEASED response 81",
+        "schema_valid": true,
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "action": "read",
+        "cell": 81,
+        "expected": "RELEASED response 81",
+        "name": "read-release81-without-an-extra-retained-cell"
+      },
+      {
+        "action": "replace",
+        "cell": 82,
+        "expected": "REPLACED",
+        "lane": "ordinary",
+        "name": "full80-replaces-release81-with-new-CALL82",
+        "operation": "CALL",
+        "reclaim": {
+          "cell": 81,
+          "response_hash": "2762cbc4313f0bd31048147343fe9a7a4afbb4d4221282df62128360bf6a4490"
+        },
+        "resources_reserved": true,
+        "response": "ADMITTED response 82",
+        "schema_valid": true,
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "action": "read",
+        "cell": 1,
+        "error": "released-cell",
+        "name": "old-target1-remains-stale"
+      },
+      {
+        "action": "read",
+        "cell": 81,
+        "error": "released-cell",
+        "name": "release81-remains-stale-after-next-command"
+      },
+      {
+        "action": "read",
+        "cell": 82,
+        "expected": "ADMITTED response 82",
+        "name": "new-CALL82-progresses-at-full-capacity"
+      },
+      {
+        "action": "read",
+        "cell": 65,
+        "expected": "immutable response 65",
+        "name": "full-control-response65-unchanged"
+      }
+    ]
+  },
+  "golden": [
+    {
+      "body": {
+        "cell": 1,
+        "context": {
+          "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+          "cluster": "00000000-0000-0000-0000-000000000001",
+          "configuration": "00000000-0000-0000-0000-000000000002",
+          "export": "00000000-0000-0000-0000-000000000003",
+          "exporter_incarnation": "00000000-0000-0000-0000-000000000004",
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "generation": "00000000-0000-0000-0000-000000000006",
+          "guest_boot": "00000000-0000-0000-0000-000000000007",
+          "guest_mount": "00000000-0000-0000-0000-000000000008",
+          "origin_incarnation": "00000000-0000-0000-0000-000000000009",
+          "origin_journal": "00000000-0000-0000-0000-00000000000a",
+          "origin_node": "00000000-0000-0000-0000-00000000000b",
+          "policy_hash": "787007365a2d2890e567e0694a318ef81018b9c3d2006fa6bc63806cdc782c53",
+          "registry_hash": "5958fd48cfbec29a4864006b0f1ddaa11559cf001ced0e76b34a91403538711f",
+          "session": "00000000-0000-0000-0000-00000000000c",
+          "vm": "00000000-0000-0000-0000-00000000000d",
+          "volume": "00000000-0000-0000-0000-00000000000e"
+        },
+        "op": "HELLO",
+        "payload": {
+          "body_schema": 1,
+          "bridge_major": 1,
+          "bridge_minor": 0,
+          "features": 255,
+          "msize": 65536,
+          "normal_major": 3,
+          "normal_minor": 0
+        },
+        "reclaim": null
+      },
+      "body_hash": "bea8abb2ffa04b38fadde97644cd5a5a044e1df65c689d787e40daa2ccd84ccb",
+      "frame_hex": [
+        "48465339425231000100000001000000860400000000000086040000000000000000000000000000000000000000000c0100000000000000bea8abb2ffa04b38fadde97644cd5a5a044e1df65c689d787e40daa2ccd84ccb7b2263656c6c223a312c22636f6e74657874223a7b22617574686f726974795f68617368223a2265303937376665383661366133643965613963373130306535613437616336653033396235376534306365383932613739303363323166613132306162616466222c22636c7573746572223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22636f6e66696775726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303032222c226578706f7274223a2230303030303030302d303030302d303030302d303030302d303030303030303030303033222c226578706f727465725f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303034222c22667573655f73657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303035222c2267656e65726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303036222c2267756573745f626f6f74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303037222c2267756573745f6d6f756e74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303038222c226f726967696e5f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303039222c226f726967696e5f6a6f75726e616c223a2230303030303030302d303030302d303030302d303030302d303030303030303030303061222c226f726967696e5f6e6f6465223a2230303030303030302d303030302d303030302d303030302d303030303030303030303062222c22706f6c6963795f68617368223a2237383730303733363561326432383930653536376530363934613331386566383130313862396333643230303666613662633633383036636463373832633533222c2272656769737472795f68617368223a2235393538666434386366626563323961343836343030366230663164646161313135353963663030316365643065373662333461393134303335333837313166222c2273657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303063222c22766d223a2230303030303030302d303030302d303030302d303030302d303030303030303030303064222c22766f6c756d65223a2230303030303030302d303030302d303030302d303030302d303030303030303030303065227d2c226f70223a2248454c4c4f222c227061796c6f6164223a7b22626f64795f736368656d61223a312c226272696467655f6d616a6f72223a312c226272696467655f6d696e6f72223a302c226665617475726573223a3235352c226d73697a65223a36353533362c226e6f726d616c5f6d616a6f72223a332c226e6f726d616c5f6d696e6f72223a307d2c227265636c61696d223a6e756c6c7d"
+      ],
+      "name": "hello"
+    },
+    {
+      "body": {
+        "cell": 2,
+        "context": {
+          "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+          "cluster": "00000000-0000-0000-0000-000000000001",
+          "configuration": "00000000-0000-0000-0000-000000000002",
+          "export": "00000000-0000-0000-0000-000000000003",
+          "exporter_incarnation": "00000000-0000-0000-0000-000000000004",
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "generation": "00000000-0000-0000-0000-000000000006",
+          "guest_boot": "00000000-0000-0000-0000-000000000007",
+          "guest_mount": "00000000-0000-0000-0000-000000000008",
+          "origin_incarnation": "00000000-0000-0000-0000-000000000009",
+          "origin_journal": "00000000-0000-0000-0000-00000000000a",
+          "origin_node": "00000000-0000-0000-0000-00000000000b",
+          "policy_hash": "787007365a2d2890e567e0694a318ef81018b9c3d2006fa6bc63806cdc782c53",
+          "registry_hash": "5958fd48cfbec29a4864006b0f1ddaa11559cf001ced0e76b34a91403538711f",
+          "session": "00000000-0000-0000-0000-00000000000c",
+          "vm": "00000000-0000-0000-0000-00000000000d",
+          "volume": "00000000-0000-0000-0000-00000000000e"
+        },
+        "op": "CALL",
+        "payload": {
+          "claim": {
+            "anchor": "00000000-0000-0000-0000-000000000029",
+            "nonce": "00000000-0000-0000-0000-00000000002a",
+            "number": 1,
+            "original_hash": "6d3e8aa38579aff65c8f10f5a547f4e62264d78798d9a7d6a373a831ac7014e6",
+            "realm": "00000000-0000-0000-0000-000000000028",
+            "subject": "67756573742d6b65726e656c"
+          },
+          "credentials": {
+            "credential_revision": 1,
+            "fsgid": 1002,
+            "fsuid": 1001,
+            "groups": [
+              7,
+              1002,
+              2001
+            ],
+            "idmap_hash": "c004dd8c100ac0b8ab3e543743897c97106af6a3f830cdfa4cff8c91204d2935",
+            "process": "00000000-0000-0000-0000-00000000001e",
+            "user_namespace": "00000000-0000-0000-0000-00000000001f"
+          },
+          "intent": {
+            "args": {
+              "flags": {
+                "access": "READWRITE",
+                "append": false,
+                "create": true,
+                "exclusive": true,
+                "sync": "ORDINARY",
+                "truncate": false
+              },
+              "mode": 1528,
+              "name": "6e65772d66696c65",
+              "parent": {
+                "ancestors_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+                "credential_hash": "e884ceed4aa85cbf746c81eb07fc1ac825a483669a151582fbfee77f7db05c7a",
+                "description": null,
+                "kind": "ROOT",
+                "object_allocation": "00000000-0000-0000-0000-000000000020",
+                "object_home": "00000000-0000-0000-0000-00000000000e",
+                "revision": 1,
+                "rights": 63,
+                "scope": {
+                  "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+                  "cluster": "00000000-0000-0000-0000-000000000001",
+                  "configuration": "00000000-0000-0000-0000-000000000002",
+                  "export": "00000000-0000-0000-0000-000000000003",
+                  "exporter_incarnation": "00000000-0000-0000-0000-000000000004",
+                  "fuse_session": "00000000-0000-0000-0000-000000000005",
+                  "generation": "00000000-0000-0000-0000-000000000006",
+                  "guest_boot": "00000000-0000-0000-0000-000000000007",
+                  "guest_mount": "00000000-0000-0000-0000-000000000008",
+                  "origin_incarnation": "00000000-0000-0000-0000-000000000009",
+                  "origin_journal": "00000000-0000-0000-0000-00000000000a",
+                  "origin_node": "00000000-0000-0000-0000-00000000000b",
+                  "policy_hash": "787007365a2d2890e567e0694a318ef81018b9c3d2006fa6bc63806cdc782c53",
+                  "registry_hash": "5958fd48cfbec29a4864006b0f1ddaa11559cf001ced0e76b34a91403538711f",
+                  "session": "00000000-0000-0000-0000-00000000000c",
+                  "vm": "00000000-0000-0000-0000-00000000000d",
+                  "volume": "00000000-0000-0000-0000-00000000000e"
+                },
+                "token": "7427d4324752a217ef32e0f861a97023f4a17a1780d63a32800bae22100c9f3e"
+              },
+              "umask": 0
+            },
+            "opcode": "CREATE"
+          }
+        },
+        "reclaim": null
+      },
+      "body_hash": "3c178f967e1befe5c4c6760ddf8ba81e53c656f45839fa88145fdad24e186580",
+      "frame_hex": [
+        "48465339425231000100000001000000910c000000000000910c0000000000000000000000000000000000000000000c02000000000000003c178f967e1befe5c4c6760ddf8ba81e53c656f45839fa88145fdad24e1865807b2263656c6c223a322c22636f6e74657874223a7b22617574686f726974795f68617368223a2265303937376665383661366133643965613963373130306535613437616336653033396235376534306365383932613739303363323166613132306162616466222c22636c7573746572223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22636f6e66696775726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303032222c226578706f7274223a2230303030303030302d303030302d303030302d303030302d303030303030303030303033222c226578706f727465725f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303034222c22667573655f73657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303035222c2267656e65726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303036222c2267756573745f626f6f74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303037222c2267756573745f6d6f756e74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303038222c226f726967696e5f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303039222c226f726967696e5f6a6f75726e616c223a2230303030303030302d303030302d303030302d303030302d303030303030303030303061222c226f726967696e5f6e6f6465223a2230303030303030302d303030302d303030302d303030302d303030303030303030303062222c22706f6c6963795f68617368223a2237383730303733363561326432383930653536376530363934613331386566383130313862396333643230303666613662633633383036636463373832633533222c2272656769737472795f68617368223a2235393538666434386366626563323961343836343030366230663164646161313135353963663030316365643065373662333461393134303335333837313166222c2273657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303063222c22766d223a2230303030303030302d303030302d303030302d303030302d303030303030303030303064222c22766f6c756d65223a2230303030303030302d303030302d303030302d303030302d303030303030303030303065227d2c226f70223a2243414c4c222c227061796c6f6164223a7b22636c61696d223a7b22616e63686f72223a2230303030303030302d303030302d303030302d303030302d303030303030303030303239222c226e6f6e6365223a2230303030303030302d303030302d303030302d303030302d303030303030303030303261222c226e756d626572223a312c226f726967696e616c5f68617368223a2236643365386161333835373961666636356338663130663561353437663465363232363464373837393864396137643661333733613833316163373031346536222c227265616c6d223a2230303030303030302d303030302d303030302d303030302d303030303030303030303238222c227375626a656374223a22363737353635373337343264366236353732366536353663227d2c2263726564656e7469616c73223a7b2263726564656e7469616c5f7265766973696f6e223a312c226673676964223a313030322c226673756964223a313030312c2267726f757073223a5b372c313030322c323030315d2c2269646d61705f68617368223a2263303034646438633130306163306238616233653534333734333839376339373130366166366133663833306364666134636666386339313230346432393335222c2270726f63657373223a2230303030303030302d303030302d303030302d303030302d303030303030303030303165222c22757365725f6e616d657370616365223a2230303030303030302d303030302d303030302d303030302d303030303030303030303166227d2c22696e74656e74223a7b2261726773223a7b22666c616773223a7b22616363657373223a22524541445752495445222c22617070656e64223a66616c73652c22637265617465223a747275652c226578636c7573697665223a747275652c2273796e63223a224f5244494e415259222c227472756e63617465223a66616c73657d2c226d6f6465223a313532382c226e616d65223a2236653635373732643636363936633635222c22706172656e74223a7b22616e636573746f72735f68617368223a2234663533636461313863326261613063303335346262356639613365636265356564313261623464386531316261383733633266313131363132303262393435222c2263726564656e7469616c5f68617368223a2265383834636565643461613835636266373436633831656230376663316163383235613438333636396131353135383266626665653737663764623035633761222c226465736372697074696f6e223a6e756c6c2c226b696e64223a22524f4f54222c226f626a6563745f616c6c6f636174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303230222c226f626a6563745f686f6d65223a2230303030303030302d303030302d303030302d303030302d303030303030303030303065222c227265766973696f6e223a312c22726967687473223a36332c2273636f7065223a7b22617574686f726974795f68617368223a2265303937376665383661366133643965613963373130306535613437616336653033396235376534306365383932613739303363323166613132306162616466222c22636c7573746572223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22636f6e66696775726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303032222c226578706f7274223a2230303030303030302d303030302d303030302d303030302d303030303030303030303033222c226578706f727465725f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303034222c22667573655f73657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303035222c2267656e65726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303036222c2267756573745f626f6f74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303037222c2267756573745f6d6f756e74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303038222c226f726967696e5f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303039222c226f726967696e5f6a6f75726e616c223a2230303030303030302d303030302d303030302d303030302d303030303030303030303061222c226f726967696e5f6e6f6465223a2230303030303030302d303030302d303030302d303030302d303030303030303030303062222c22706f6c6963795f68617368223a2237383730303733363561326432383930653536376530363934613331386566383130313862396333643230303666613662633633383036636463373832633533222c2272656769737472795f68617368223a2235393538666434386366626563323961343836343030366230663164646161313135353963663030316365643065373662333461393134303335333837313166222c2273657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303063222c22766d223a2230303030303030302d303030302d303030302d303030302d303030303030303030303064222c22766f6c756d65223a2230303030303030302d303030302d303030302d303030302d303030303030303030303065227d2c22746f6b656e223a2237343237643433323437353261323137656633326530663836316139373032336634613137613137383064363361333238303062616532323130306339663365227d2c22756d61736b223a307d2c226f70636f6465223a22435245415445227d7d2c227265636c61696d223a6e756c6c7d"
+      ],
+      "name": "atomic-create-domain1"
+    },
+    {
+      "body": {
+        "cell": 3,
+        "context": {
+          "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+          "cluster": "00000000-0000-0000-0000-000000000001",
+          "configuration": "00000000-0000-0000-0000-000000000002",
+          "export": "00000000-0000-0000-0000-000000000003",
+          "exporter_incarnation": "00000000-0000-0000-0000-000000000004",
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "generation": "00000000-0000-0000-0000-000000000006",
+          "guest_boot": "00000000-0000-0000-0000-000000000033",
+          "guest_mount": "00000000-0000-0000-0000-000000000034",
+          "origin_incarnation": "00000000-0000-0000-0000-000000000009",
+          "origin_journal": "00000000-0000-0000-0000-00000000000a",
+          "origin_node": "00000000-0000-0000-0000-00000000000b",
+          "policy_hash": "787007365a2d2890e567e0694a318ef81018b9c3d2006fa6bc63806cdc782c53",
+          "registry_hash": "5958fd48cfbec29a4864006b0f1ddaa11559cf001ced0e76b34a91403538711f",
+          "session": "00000000-0000-0000-0000-000000000035",
+          "vm": "00000000-0000-0000-0000-000000000032",
+          "volume": "00000000-0000-0000-0000-00000000000e"
+        },
+        "op": "CALL",
+        "payload": {
+          "claim": {
+            "anchor": "00000000-0000-0000-0000-000000000029",
+            "nonce": "00000000-0000-0000-0000-000000000038",
+            "number": 1,
+            "original_hash": "f718e88a25887893530246927d9d03e517b20044c0d0ae4624f773b52d72f3ab",
+            "realm": "00000000-0000-0000-0000-000000000028",
+            "subject": "67756573742d6b65726e656c"
+          },
+          "credentials": {
+            "credential_revision": 1,
+            "fsgid": 1002,
+            "fsuid": 1001,
+            "groups": [
+              7,
+              1002,
+              2001
+            ],
+            "idmap_hash": "c004dd8c100ac0b8ab3e543743897c97106af6a3f830cdfa4cff8c91204d2935",
+            "process": "00000000-0000-0000-0000-000000000036",
+            "user_namespace": "00000000-0000-0000-0000-00000000001f"
+          },
+          "intent": {
+            "args": {
+              "data": "68656c6c6f00776f726c64",
+              "description": {
+                "ancestors_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+                "credential_hash": "94e1ffa805731931efea750c2b3a2e4e955293bc78f2f665582d8bbf0821d488",
+                "description": "00000000-0000-0000-0000-000000000037",
+                "kind": "DESCRIPTION",
+                "object_allocation": "00000000-0000-0000-0000-000000000020",
+                "object_home": "00000000-0000-0000-0000-00000000000e",
+                "revision": 1,
+                "rights": 63,
+                "scope": {
+                  "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+                  "cluster": "00000000-0000-0000-0000-000000000001",
+                  "configuration": "00000000-0000-0000-0000-000000000002",
+                  "export": "00000000-0000-0000-0000-000000000003",
+                  "exporter_incarnation": "00000000-0000-0000-0000-000000000004",
+                  "fuse_session": "00000000-0000-0000-0000-000000000005",
+                  "generation": "00000000-0000-0000-0000-000000000006",
+                  "guest_boot": "00000000-0000-0000-0000-000000000033",
+                  "guest_mount": "00000000-0000-0000-0000-000000000034",
+                  "origin_incarnation": "00000000-0000-0000-0000-000000000009",
+                  "origin_journal": "00000000-0000-0000-0000-00000000000a",
+                  "origin_node": "00000000-0000-0000-0000-00000000000b",
+                  "policy_hash": "787007365a2d2890e567e0694a318ef81018b9c3d2006fa6bc63806cdc782c53",
+                  "registry_hash": "5958fd48cfbec29a4864006b0f1ddaa11559cf001ced0e76b34a91403538711f",
+                  "session": "00000000-0000-0000-0000-000000000035",
+                  "vm": "00000000-0000-0000-0000-000000000032",
+                  "volume": "00000000-0000-0000-0000-00000000000e"
+                },
+                "token": "44074cc8b9936395745cbfeb1b76019526f26f6a8908f2bbbd3fd0c7b2492e32"
+              },
+              "offset": 0
+            },
+            "opcode": "WRITE"
+          }
+        },
+        "reclaim": null
+      },
+      "body_hash": "f0bb16e88404b5980258633eee7992da5cd94f001e46a86614ce442888e606c4",
+      "frame_hex": [
+        "48465339425231000100000001000000490c000000000000490c000000000000000000000000000000000000000000350300000000000000f0bb16e88404b5980258633eee7992da5cd94f001e46a86614ce442888e606c47b2263656c6c223a332c22636f6e74657874223a7b22617574686f726974795f68617368223a2265303937376665383661366133643965613963373130306535613437616336653033396235376534306365383932613739303363323166613132306162616466222c22636c7573746572223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22636f6e66696775726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303032222c226578706f7274223a2230303030303030302d303030302d303030302d303030302d303030303030303030303033222c226578706f727465725f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303034222c22667573655f73657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303035222c2267656e65726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303036222c2267756573745f626f6f74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303333222c2267756573745f6d6f756e74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303334222c226f726967696e5f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303039222c226f726967696e5f6a6f75726e616c223a2230303030303030302d303030302d303030302d303030302d303030303030303030303061222c226f726967696e5f6e6f6465223a2230303030303030302d303030302d303030302d303030302d303030303030303030303062222c22706f6c6963795f68617368223a2237383730303733363561326432383930653536376530363934613331386566383130313862396333643230303666613662633633383036636463373832633533222c2272656769737472795f68617368223a2235393538666434386366626563323961343836343030366230663164646161313135353963663030316365643065373662333461393134303335333837313166222c2273657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303335222c22766d223a2230303030303030302d303030302d303030302d303030302d303030303030303030303332222c22766f6c756d65223a2230303030303030302d303030302d303030302d303030302d303030303030303030303065227d2c226f70223a2243414c4c222c227061796c6f6164223a7b22636c61696d223a7b22616e63686f72223a2230303030303030302d303030302d303030302d303030302d303030303030303030303239222c226e6f6e6365223a2230303030303030302d303030302d303030302d303030302d303030303030303030303338222c226e756d626572223a312c226f726967696e616c5f68617368223a2266373138653838613235383837383933353330323436393237643964303365353137623230303434633064306165343632346637373362353264373266336162222c227265616c6d223a2230303030303030302d303030302d303030302d303030302d303030303030303030303238222c227375626a656374223a22363737353635373337343264366236353732366536353663227d2c2263726564656e7469616c73223a7b2263726564656e7469616c5f7265766973696f6e223a312c226673676964223a313030322c226673756964223a313030312c2267726f757073223a5b372c313030322c323030315d2c2269646d61705f68617368223a2263303034646438633130306163306238616233653534333734333839376339373130366166366133663833306364666134636666386339313230346432393335222c2270726f63657373223a2230303030303030302d303030302d303030302d303030302d303030303030303030303336222c22757365725f6e616d657370616365223a2230303030303030302d303030302d303030302d303030302d303030303030303030303166227d2c22696e74656e74223a7b2261726773223a7b2264617461223a2236383635366336633666303037373666373236633634222c226465736372697074696f6e223a7b22616e636573746f72735f68617368223a2234663533636461313863326261613063303335346262356639613365636265356564313261623464386531316261383733633266313131363132303262393435222c2263726564656e7469616c5f68617368223a2239346531666661383035373331393331656665613735306332623361326534653935353239336263373866326636363535383264386262663038323164343838222c226465736372697074696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303337222c226b696e64223a224445534352495054494f4e222c226f626a6563745f616c6c6f636174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303230222c226f626a6563745f686f6d65223a2230303030303030302d303030302d303030302d303030302d303030303030303030303065222c227265766973696f6e223a312c22726967687473223a36332c2273636f7065223a7b22617574686f726974795f68617368223a2265303937376665383661366133643965613963373130306535613437616336653033396235376534306365383932613739303363323166613132306162616466222c22636c7573746572223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22636f6e66696775726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303032222c226578706f7274223a2230303030303030302d303030302d303030302d303030302d303030303030303030303033222c226578706f727465725f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303034222c22667573655f73657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303035222c2267656e65726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303036222c2267756573745f626f6f74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303333222c2267756573745f6d6f756e74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303334222c226f726967696e5f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303039222c226f726967696e5f6a6f75726e616c223a2230303030303030302d303030302d303030302d303030302d303030303030303030303061222c226f726967696e5f6e6f6465223a2230303030303030302d303030302d303030302d303030302d303030303030303030303062222c22706f6c6963795f68617368223a2237383730303733363561326432383930653536376530363934613331386566383130313862396333643230303666613662633633383036636463373832633533222c2272656769737472795f68617368223a2235393538666434386366626563323961343836343030366230663164646161313135353963663030316365643065373662333461393134303335333837313166222c2273657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303335222c22766d223a2230303030303030302d303030302d303030302d303030302d303030303030303030303332222c22766f6c756d65223a2230303030303030302d303030302d303030302d303030302d303030303030303030303065227d2c22746f6b656e223a2234343037346363386239393336333935373435636266656231623736303139353236663236663661383930386632626262643366643063376232343932653332227d2c226f6666736574223a307d2c226f70636f6465223a225752495445227d7d2c227265636c61696d223a6e756c6c7d"
+      ],
+      "name": "description-write-domain2"
+    },
+    {
+      "body": {
+        "cell": 4,
+        "context": {
+          "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+          "cluster": "00000000-0000-0000-0000-000000000001",
+          "configuration": "00000000-0000-0000-0000-000000000002",
+          "export": "00000000-0000-0000-0000-000000000003",
+          "exporter_incarnation": "00000000-0000-0000-0000-000000000004",
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "generation": "00000000-0000-0000-0000-000000000006",
+          "guest_boot": "00000000-0000-0000-0000-000000000007",
+          "guest_mount": "00000000-0000-0000-0000-000000000008",
+          "origin_incarnation": "00000000-0000-0000-0000-000000000009",
+          "origin_journal": "00000000-0000-0000-0000-00000000000a",
+          "origin_node": "00000000-0000-0000-0000-00000000000b",
+          "policy_hash": "787007365a2d2890e567e0694a318ef81018b9c3d2006fa6bc63806cdc782c53",
+          "registry_hash": "5958fd48cfbec29a4864006b0f1ddaa11559cf001ced0e76b34a91403538711f",
+          "session": "00000000-0000-0000-0000-00000000000c",
+          "vm": "00000000-0000-0000-0000-00000000000d",
+          "volume": "00000000-0000-0000-0000-00000000000e"
+        },
+        "op": "CALL",
+        "payload": {
+          "claim": {
+            "anchor": "00000000-0000-0000-0000-000000000029",
+            "nonce": "00000000-0000-0000-0000-00000000002a",
+            "number": 2,
+            "original_hash": "2bec6937759105ace04fe6d3d0e596e119ce94aadf402398d95691ab4bf72984",
+            "realm": "00000000-0000-0000-0000-000000000028",
+            "subject": "67756573742d6b65726e656c"
+          },
+          "credentials": {
+            "credential_revision": 1,
+            "fsgid": 1002,
+            "fsuid": 0,
+            "groups": [
+              7,
+              1002,
+              2001
+            ],
+            "idmap_hash": "c004dd8c100ac0b8ab3e543743897c97106af6a3f830cdfa4cff8c91204d2935",
+            "process": "00000000-0000-0000-0000-00000000001e",
+            "user_namespace": "00000000-0000-0000-0000-00000000001f"
+          },
+          "intent": {
+            "args": {
+              "flags": {
+                "access": "READWRITE",
+                "append": false,
+                "create": true,
+                "exclusive": true,
+                "sync": "ORDINARY",
+                "truncate": false
+              },
+              "mode": 4095,
+              "name": "6e65772d66696c65",
+              "parent": {
+                "ancestors_hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+                "credential_hash": "70347620857bc5d12f84dc5bdccd40f44a81091715cb438b2c4f62979c3b5bc5",
+                "description": null,
+                "kind": "ROOT",
+                "object_allocation": "00000000-0000-0000-0000-000000000020",
+                "object_home": "00000000-0000-0000-0000-00000000000e",
+                "revision": 1,
+                "rights": 63,
+                "scope": {
+                  "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+                  "cluster": "00000000-0000-0000-0000-000000000001",
+                  "configuration": "00000000-0000-0000-0000-000000000002",
+                  "export": "00000000-0000-0000-0000-000000000003",
+                  "exporter_incarnation": "00000000-0000-0000-0000-000000000004",
+                  "fuse_session": "00000000-0000-0000-0000-000000000005",
+                  "generation": "00000000-0000-0000-0000-000000000006",
+                  "guest_boot": "00000000-0000-0000-0000-000000000007",
+                  "guest_mount": "00000000-0000-0000-0000-000000000008",
+                  "origin_incarnation": "00000000-0000-0000-0000-000000000009",
+                  "origin_journal": "00000000-0000-0000-0000-00000000000a",
+                  "origin_node": "00000000-0000-0000-0000-00000000000b",
+                  "policy_hash": "787007365a2d2890e567e0694a318ef81018b9c3d2006fa6bc63806cdc782c53",
+                  "registry_hash": "5958fd48cfbec29a4864006b0f1ddaa11559cf001ced0e76b34a91403538711f",
+                  "session": "00000000-0000-0000-0000-00000000000c",
+                  "vm": "00000000-0000-0000-0000-00000000000d",
+                  "volume": "00000000-0000-0000-0000-00000000000e"
+                },
+                "token": "7427d4324752a217ef32e0f861a97023f4a17a1780d63a32800bae22100c9f3e"
+              },
+              "umask": 0
+            },
+            "opcode": "CREATE"
+          }
+        },
+        "reclaim": null
+      },
+      "body_hash": "8c00cc6a0d8b4bf146ab5defd444453ab654d41497ffc26ebc0043ce0b2bb363",
+      "frame_hex": [
+        "484653394252310001000000010000008e0c0000000000008e0c0000000000000000000000000000000000000000000c04000000000000008c00cc6a0d8b4bf146ab5defd444453ab654d41497ffc26ebc0043ce0b2bb3637b2263656c6c223a342c22636f6e74657874223a7b22617574686f726974795f68617368223a2265303937376665383661366133643965613963373130306535613437616336653033396235376534306365383932613739303363323166613132306162616466222c22636c7573746572223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22636f6e66696775726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303032222c226578706f7274223a2230303030303030302d303030302d303030302d303030302d303030303030303030303033222c226578706f727465725f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303034222c22667573655f73657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303035222c2267656e65726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303036222c2267756573745f626f6f74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303037222c2267756573745f6d6f756e74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303038222c226f726967696e5f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303039222c226f726967696e5f6a6f75726e616c223a2230303030303030302d303030302d303030302d303030302d303030303030303030303061222c226f726967696e5f6e6f6465223a2230303030303030302d303030302d303030302d303030302d303030303030303030303062222c22706f6c6963795f68617368223a2237383730303733363561326432383930653536376530363934613331386566383130313862396333643230303666613662633633383036636463373832633533222c2272656769737472795f68617368223a2235393538666434386366626563323961343836343030366230663164646161313135353963663030316365643065373662333461393134303335333837313166222c2273657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303063222c22766d223a2230303030303030302d303030302d303030302d303030302d303030303030303030303064222c22766f6c756d65223a2230303030303030302d303030302d303030302d303030302d303030303030303030303065227d2c226f70223a2243414c4c222c227061796c6f6164223a7b22636c61696d223a7b22616e63686f72223a2230303030303030302d303030302d303030302d303030302d303030303030303030303239222c226e6f6e6365223a2230303030303030302d303030302d303030302d303030302d303030303030303030303261222c226e756d626572223a322c226f726967696e616c5f68617368223a2232626563363933373735393130356163653034666536643364306535393665313139636539346161646634303233393864393536393161623462663732393834222c227265616c6d223a2230303030303030302d303030302d303030302d303030302d303030303030303030303238222c227375626a656374223a22363737353635373337343264366236353732366536353663227d2c2263726564656e7469616c73223a7b2263726564656e7469616c5f7265766973696f6e223a312c226673676964223a313030322c226673756964223a302c2267726f757073223a5b372c313030322c323030315d2c2269646d61705f68617368223a2263303034646438633130306163306238616233653534333734333839376339373130366166366133663833306364666134636666386339313230346432393335222c2270726f63657373223a2230303030303030302d303030302d303030302d303030302d303030303030303030303165222c22757365725f6e616d657370616365223a2230303030303030302d303030302d303030302d303030302d303030303030303030303166227d2c22696e74656e74223a7b2261726773223a7b22666c616773223a7b22616363657373223a22524541445752495445222c22617070656e64223a66616c73652c22637265617465223a747275652c226578636c7573697665223a747275652c2273796e63223a224f5244494e415259222c227472756e63617465223a66616c73657d2c226d6f6465223a343039352c226e616d65223a2236653635373732643636363936633635222c22706172656e74223a7b22616e636573746f72735f68617368223a2234663533636461313863326261613063303335346262356639613365636265356564313261623464386531316261383733633266313131363132303262393435222c2263726564656e7469616c5f68617368223a2237303334373632303835376263356431326638346463356264636364343066343461383130393137313563623433386232633466363239373963336235626335222c226465736372697074696f6e223a6e756c6c2c226b696e64223a22524f4f54222c226f626a6563745f616c6c6f636174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303230222c226f626a6563745f686f6d65223a2230303030303030302d303030302d303030302d303030302d303030303030303030303065222c227265766973696f6e223a312c22726967687473223a36332c2273636f7065223a7b22617574686f726974795f68617368223a2265303937376665383661366133643965613963373130306535613437616336653033396235376534306365383932613739303363323166613132306162616466222c22636c7573746572223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22636f6e66696775726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303032222c226578706f7274223a2230303030303030302d303030302d303030302d303030302d303030303030303030303033222c226578706f727465725f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303034222c22667573655f73657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303035222c2267656e65726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303036222c2267756573745f626f6f74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303037222c2267756573745f6d6f756e74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303038222c226f726967696e5f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303039222c226f726967696e5f6a6f75726e616c223a2230303030303030302d303030302d303030302d303030302d303030303030303030303061222c226f726967696e5f6e6f6465223a2230303030303030302d303030302d303030302d303030302d303030303030303030303062222c22706f6c6963795f68617368223a2237383730303733363561326432383930653536376530363934613331386566383130313862396333643230303666613662633633383036636463373832633533222c2272656769737472795f68617368223a2235393538666434386366626563323961343836343030366230663164646161313135353963663030316365643065373662333461393134303335333837313166222c2273657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303063222c22766d223a2230303030303030302d303030302d303030302d303030302d303030303030303030303064222c22766f6c756d65223a2230303030303030302d303030302d303030302d303030302d303030303030303030303065227d2c22746f6b656e223a2237343237643433323437353261323137656633326530663836316139373032336634613137613137383064363361333238303062616532323130306339663365227d2c22756d61736b223a307d2c226f70636f6465223a22435245415445227d7d2c227265636c61696d223a6e756c6c7d"
+      ],
+      "name": "privileged-create-full07777"
+    }
+  ],
+  "guest_malformed": [
+    {
+      "byte": 0,
+      "error": "9p-header",
+      "name": "wrong-9p-size",
+      "offset": 0
+    },
+    {
+      "byte": 100,
+      "error": "9p-header",
+      "name": "stock-message",
+      "offset": 4
+    },
+    {
+      "byte": 2,
+      "error": "9p-method-channel",
+      "name": "send-to-result",
+      "offset": 8
+    },
+    {
+      "byte": 2,
+      "error": "9p-frame-selector",
+      "name": "wrong-cell-selector",
+      "offset": 9
+    }
+  ],
+  "guest_send_hex": "f3040000f00000010101000000000000000000000048465339425231000100000001000000860400000000000086040000000000000000000000000000000000000000000c0100000000000000bea8abb2ffa04b38fadde97644cd5a5a044e1df65c689d787e40daa2ccd84ccb7b2263656c6c223a312c22636f6e74657874223a7b22617574686f726974795f68617368223a2265303937376665383661366133643965613963373130306535613437616336653033396235376534306365383932613739303363323166613132306162616466222c22636c7573746572223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22636f6e66696775726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303032222c226578706f7274223a2230303030303030302d303030302d303030302d303030302d303030303030303030303033222c226578706f727465725f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303034222c22667573655f73657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303035222c2267656e65726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303036222c2267756573745f626f6f74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303037222c2267756573745f6d6f756e74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303038222c226f726967696e5f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303039222c226f726967696e5f6a6f75726e616c223a2230303030303030302d303030302d303030302d303030302d303030303030303030303061222c226f726967696e5f6e6f6465223a2230303030303030302d303030302d303030302d303030302d303030303030303030303062222c22706f6c6963795f68617368223a2237383730303733363561326432383930653536376530363934613331386566383130313862396333643230303666613662633633383036636463373832633533222c2272656769737472795f68617368223a2235393538666434386366626563323961343836343030366230663164646161313135353963663030316365643065373662333461393134303335333837313166222c2273657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303063222c22766d223a2230303030303030302d303030302d303030302d303030302d303030303030303030303064222c22766f6c756d65223a2230303030303030302d303030302d303030302d303030302d303030303030303030303065227d2c226f70223a2248454c4c4f222c227061796c6f6164223a7b22626f64795f736368656d61223a312c226272696467655f6d616a6f72223a312c226272696467655f6d696e6f72223a302c226665617475726573223a3235352c226d73697a65223a36353533362c226e6f726d616c5f6d616a6f72223a332c226e6f726d616c5f6d696e6f72223a307d2c227265636c61696d223a6e756c6c7d",
+  "history": [
+    {
+      "action": "call",
+      "expected": "ADMITTED",
+      "expected_origin": "O1",
+      "intent": "original-intent+cred-rev1",
+      "key": "realm/subject/anchor/nonce/1 (same across O1 and O2 forwarding)",
+      "origin": "O1"
+    },
+    {
+      "action": "call",
+      "expected": "REPLAY",
+      "expected_origin": "O1",
+      "intent": "original-intent+cred-rev1",
+      "key": "realm/subject/anchor/nonce/1 (same across O1 and O2 forwarding)",
+      "origin": "O2"
+    },
+    {
+      "action": "call",
+      "expected": "ID_CONFLICT",
+      "expected_origin": "O1",
+      "intent": "changed-payload+cred-rev1",
+      "key": "realm/subject/anchor/nonce/1 (same across O1 and O2 forwarding)",
+      "origin": "O2"
+    },
+    {
+      "action": "call",
+      "expected": "ID_CONFLICT",
+      "expected_origin": "O1",
+      "intent": "original-intent+changed-same-UID-groups",
+      "key": "realm/subject/anchor/nonce/1 (same across O1 and O2 forwarding)",
+      "origin": "O2"
+    },
+    {
+      "action": "cancel",
+      "expected": "INDETERMINATE",
+      "expected_origin": "O1",
+      "intent": "",
+      "key": "realm/subject/anchor/nonce/1 (same across O1 and O2 forwarding)",
+      "origin": "O2"
+    },
+    {
+      "action": "disconnect",
+      "expected": "INDETERMINATE",
+      "expected_origin": "O1",
+      "intent": "",
+      "key": "realm/subject/anchor/nonce/1 (same across O1 and O2 forwarding)",
+      "origin": "O2"
+    },
+    {
+      "action": "retire-pending",
+      "expected": "BLOCKED",
+      "expected_origin": "O1",
+      "intent": "",
+      "key": "realm/subject/anchor/nonce/1 (same across O1 and O2 forwarding)",
+      "origin": "O2"
+    },
+    {
+      "action": "query",
+      "expected": "INDETERMINATE",
+      "expected_origin": "O1",
+      "intent": "",
+      "key": "realm/subject/anchor/nonce/1 (same across O1 and O2 forwarding)",
+      "origin": "O2"
+    },
+    {
+      "action": "terminal-and-retire",
+      "expected": "RETIRED",
+      "expected_origin": "O1",
+      "intent": "",
+      "key": "realm/subject/anchor/nonce/1 (same across O1 and O2 forwarding)",
+      "origin": "O2"
+    },
+    {
+      "action": "call",
+      "expected": "RETIRED_ID",
+      "expected_origin": "O1",
+      "intent": "original-intent+cred-rev1",
+      "key": "realm/subject/anchor/nonce/1 (same across O1 and O2 forwarding)",
+      "origin": "O2"
+    }
+  ],
+  "malformed": [
+    {
+      "error": "capability-scope",
+      "name": "cross-volume-cap",
+      "rehash": true,
+      "updates": [
+        [
+          [
+            "payload",
+            "intent",
+            "args",
+            "parent",
+            "scope",
+            "volume"
+          ],
+          "00000000-0000-0000-0000-0000000003e7"
+        ]
+      ]
+    },
+    {
+      "error": "capability-scope",
+      "name": "cross-session-cap",
+      "rehash": true,
+      "updates": [
+        [
+          [
+            "payload",
+            "intent",
+            "args",
+            "parent",
+            "scope",
+            "session"
+          ],
+          "00000000-0000-0000-0000-0000000003e6"
+        ]
+      ]
+    },
+    {
+      "error": "original-hash",
+      "name": "changed-payload-old-claim",
+      "rehash": false,
+      "updates": [
+        [
+          [
+            "payload",
+            "intent",
+            "args",
+            "name"
+          ],
+          "6368616e676564"
+        ]
+      ]
+    },
+    {
+      "error": "fields",
+      "name": "unknown-field",
+      "rehash": false,
+      "updates": [
+        [
+          [
+            "payload",
+            "unknown"
+          ],
+          true
+        ]
+      ]
+    },
+    {
+      "error": "integer",
+      "name": "too-wide-mode",
+      "rehash": true,
+      "updates": [
+        [
+          [
+            "payload",
+            "intent",
+            "args",
+            "mode"
+          ],
+          4096
+        ]
+      ]
+    },
+    {
+      "error": "name",
+      "name": "dotdot-name",
+      "rehash": true,
+      "updates": [
+        [
+          [
+            "payload",
+            "intent",
+            "args",
+            "name"
+          ],
+          "2e2e"
+        ]
+      ]
+    },
+    {
+      "error": "name",
+      "name": "slash-name",
+      "rehash": true,
+      "updates": [
+        [
+          [
+            "payload",
+            "intent",
+            "args",
+            "name"
+          ],
+          "612f62"
+        ]
+      ]
+    },
+    {
+      "error": "name",
+      "name": "nul-name",
+      "rehash": true,
+      "updates": [
+        [
+          [
+            "payload",
+            "intent",
+            "args",
+            "name"
+          ],
+          "00"
+        ]
+      ]
+    },
+    {
+      "error": "groups-order",
+      "name": "duplicate-group",
+      "rehash": false,
+      "updates": [
+        [
+          [
+            "payload",
+            "credentials",
+            "groups"
+          ],
+          [
+            7,
+            7
+          ]
+        ]
+      ]
+    },
+    {
+      "error": "groups-order",
+      "name": "unordered-groups",
+      "rehash": false,
+      "updates": [
+        [
+          [
+            "payload",
+            "credentials",
+            "groups"
+          ],
+          [
+            2001,
+            7
+          ]
+        ]
+      ]
+    },
+    {
+      "error": "integer",
+      "name": "boolean-uid",
+      "rehash": false,
+      "updates": [
+        [
+          [
+            "payload",
+            "credentials",
+            "fsuid"
+          ],
+          true
+        ]
+      ]
+    },
+    {
+      "error": "integer",
+      "name": "negative-group",
+      "rehash": false,
+      "updates": [
+        [
+          [
+            "payload",
+            "credentials",
+            "groups"
+          ],
+          [
+            -1
+          ]
+        ]
+      ]
+    },
+    {
+      "error": "integer",
+      "name": "overflow-uid",
+      "rehash": false,
+      "updates": [
+        [
+          [
+            "payload",
+            "credentials",
+            "fsuid"
+          ],
+          4294967296
+        ]
+      ]
+    },
+    {
+      "error": "integer",
+      "name": "zero-credential-revision",
+      "rehash": false,
+      "updates": [
+        [
+          [
+            "payload",
+            "credentials",
+            "credential_revision"
+          ],
+          0
+        ]
+      ]
+    },
+    {
+      "error": "uuid",
+      "name": "zero-process-incarnation",
+      "rehash": false,
+      "updates": [
+        [
+          [
+            "payload",
+            "credentials",
+            "process"
+          ],
+          "00000000-0000-0000-0000-000000000000"
+        ]
+      ]
+    },
+    {
+      "error": "integer",
+      "name": "cell-wrap",
+      "rehash": false,
+      "updates": [
+        [
+          [
+            "cell"
+          ],
+          2147483648
+        ]
+      ]
+    }
+  ],
+  "native_cells": {
+    "endpoint": {
+      "command_node": 11,
+      "fuse_session": "00000000-0000-0000-0000-000000000005",
+      "recall_node": 13,
+      "result_node": 12
+    },
+    "exporter_incarnation": "00000000-0000-0000-0000-000000000004",
+    "sessions": [
+      "00000000-0000-0000-0000-00000000000c",
+      "00000000-0000-0000-0000-000000000035"
+    ],
+    "steps": [
+      {
+        "action": "allocate",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "expected": "ALLOCATED",
+        "guest_cell": 1,
+        "name": "session-A-guest1-allocates-native1",
+        "native_cell": 1,
+        "response": "A immutable result",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "action": "allocate",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "expected": "ALLOCATED",
+        "guest_cell": 1,
+        "name": "session-B-guest1-allocates-distinct-native2",
+        "native_cell": 2,
+        "response": "B immutable result",
+        "session": "00000000-0000-0000-0000-000000000035"
+      },
+      {
+        "action": "native-read",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "expected": "A immutable result",
+        "name": "native-pread-selects-A-only-by-position",
+        "offset": 2097152
+      },
+      {
+        "action": "native-read",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "expected": "B immutable result",
+        "name": "native-pread-selects-B-only-by-position",
+        "offset": 4194304
+      },
+      {
+        "action": "fetch",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "expected": "B immutable result",
+        "guest_cell": 1,
+        "name": "guest-B-cell1-translates-to-native2",
+        "session": "00000000-0000-0000-0000-000000000035"
+      },
+      {
+        "action": "native-release",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "error": "cell-session",
+        "name": "A-cannot-release-B-native2",
+        "native_cell": 2,
+        "response": "B immutable result",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "action": "release",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "error": "response-identity",
+        "guest_cell": 1,
+        "name": "wrong-response-cannot-release-A",
+        "response": "B immutable result",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "action": "release",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "expected": "RELEASED",
+        "guest_cell": 1,
+        "name": "release-A-guest1-translates-only-to-native1",
+        "response": "A immutable result",
+        "session": "00000000-0000-0000-0000-00000000000c"
+      },
+      {
+        "action": "native-read",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "error": "released-cell",
+        "name": "released-native1-stays-stale",
+        "offset": 2097152
+      },
+      {
+        "action": "fetch",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "expected": "B immutable result",
+        "guest_cell": 1,
+        "name": "B-response-survives-A-release",
+        "session": "00000000-0000-0000-0000-000000000035"
+      },
+      {
+        "action": "replace",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "error": "ledger-missing",
+        "high_water": 2,
+        "ledger_complete": false,
+        "name": "replacement-needs-complete-ledger",
+        "old_session": "00000000-0000-0000-0000-000000000035",
+        "session": "00000000-0000-0000-0000-00000000003d"
+      },
+      {
+        "action": "replace",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "error": "allocator-continuity",
+        "high_water": 0,
+        "ledger_complete": true,
+        "name": "replacement-cannot-rewind-native-high-water",
+        "old_session": "00000000-0000-0000-0000-000000000035",
+        "session": "00000000-0000-0000-0000-00000000003d"
+      },
+      {
+        "action": "replace",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "expected": "RECONCILED",
+        "high_water": 2,
+        "ledger_complete": true,
+        "name": "replace-B-with-C-under-same-endpoint",
+        "old_session": "00000000-0000-0000-0000-000000000035",
+        "session": "00000000-0000-0000-0000-00000000003d"
+      },
+      {
+        "action": "native-read",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "expected": "B immutable result",
+        "name": "old-B-native2-remains-retained-after-replacement",
+        "offset": 4194304
+      },
+      {
+        "action": "allocate",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "expected": "ALLOCATED",
+        "guest_cell": 1,
+        "name": "new-C-guest1-gets-native3",
+        "native_cell": 3,
+        "response": "C immutable result",
+        "session": "00000000-0000-0000-0000-00000000003d"
+      },
+      {
+        "action": "native-read",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "expected": "C immutable result",
+        "name": "new-C-pread-cannot-collide-with-old-B",
+        "offset": 6291456
+      },
+      {
+        "action": "native-read",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "expected": "B immutable result",
+        "name": "old-B-cell2-unchanged-by-C-guest1",
+        "offset": 4194304
+      },
+      {
+        "action": "native-release",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "error": "cell-session",
+        "name": "new-C-cannot-release-old-B-cell2",
+        "native_cell": 2,
+        "response": "B immutable result",
+        "session": "00000000-0000-0000-0000-00000000003d"
+      },
+      {
+        "action": "fetch",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "error": "session-inactive",
+        "guest_cell": 1,
+        "name": "revoked-B-cannot-FETCH-as-live-session",
+        "session": "00000000-0000-0000-0000-000000000035"
+      },
+      {
+        "action": "allocate",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "error": "native-cell-reuse",
+        "guest_cell": 2,
+        "name": "released-native1-cannot-be-reallocated",
+        "native_cell": 1,
+        "response": "collision",
+        "session": "00000000-0000-0000-0000-00000000003d"
+      },
+      {
+        "action": "allocate",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "error": "native-cell-reuse",
+        "guest_cell": 2,
+        "name": "retained-native2-cannot-be-reallocated",
+        "native_cell": 2,
+        "response": "collision",
+        "session": "00000000-0000-0000-0000-00000000003d"
+      },
+      {
+        "action": "reset",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "error": "allocator-reset",
+        "high_water": 0,
+        "name": "native-high-water-cannot-reset-on-new-session"
+      },
+      {
+        "action": "allocate",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "error": "duplicate-guest-cell",
+        "guest_cell": 1,
+        "name": "duplicate-guest-cell-cannot-allocate-again",
+        "native_cell": 4,
+        "response": "duplicate",
+        "session": "00000000-0000-0000-0000-00000000003d"
+      },
+      {
+        "action": "allocate",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "error": "native-cell-gap",
+        "guest_cell": 2,
+        "name": "native-first-chunk-cannot-skip-unallocated-cell",
+        "native_cell": 5,
+        "response": "gap",
+        "session": "00000000-0000-0000-0000-00000000003d"
+      },
+      {
+        "action": "allocate",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "expected": "ALLOCATED",
+        "guest_cell": 2,
+        "name": "correct-next-nativecell-still-available-after-negatives",
+        "native_cell": 4,
+        "response": "C second result",
+        "session": "00000000-0000-0000-0000-00000000003d"
+      },
+      {
+        "action": "native-read",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-0000000003e7",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "error": "endpoint-scope",
+        "name": "wrong-native-endpoint-cannot-select-response",
+        "offset": 4194304
+      },
+      {
+        "action": "forget-mapping",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "expected": "CONTINUITY_LOST",
+        "guest_cell": 1,
+        "name": "simulate-lost-forwarding-entry",
+        "session": "00000000-0000-0000-0000-00000000003d"
+      },
+      {
+        "action": "fetch",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "error": "mapping-missing",
+        "guest_cell": 1,
+        "name": "no-FETCH-without-exact-forwarding-entry",
+        "session": "00000000-0000-0000-0000-00000000003d"
+      },
+      {
+        "action": "allocate",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "error": "ledger-missing",
+        "guest_cell": 3,
+        "name": "no-new-allocation-after-ledger-loss",
+        "native_cell": 5,
+        "response": "unsafe",
+        "session": "00000000-0000-0000-0000-00000000003d"
+      },
+      {
+        "action": "replace",
+        "endpoint": {
+          "command_node": 11,
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "recall_node": 13,
+          "result_node": 12
+        },
+        "error": "ledger-missing",
+        "high_water": 4,
+        "ledger_complete": true,
+        "name": "new-session-cannot-cure-lost-ledger",
+        "old_session": "00000000-0000-0000-0000-00000000003d",
+        "session": "00000000-0000-0000-0000-00000000003e"
+      }
+    ]
+  },
+  "negotiation_malformed": [
+    {
+      "error": "integer",
+      "name": "unknown-features",
+      "updates": [
+        [
+          [
+            "payload",
+            "features"
+          ],
+          511
+        ]
+      ]
+    },
+    {
+      "error": "integer",
+      "name": "missing-feature",
+      "updates": [
+        [
+          [
+            "payload",
+            "features"
+          ],
+          127
+        ]
+      ]
+    },
+    {
+      "error": "integer",
+      "name": "unknown-version",
+      "updates": [
+        [
+          [
+            "payload",
+            "bridge_major"
+          ],
+          2
+        ]
+      ]
+    },
+    {
+      "error": "integer",
+      "name": "mixed-normal-format",
+      "updates": [
+        [
+          [
+            "payload",
+            "normal_major"
+          ],
+          1
+        ]
+      ]
+    },
+    {
+      "error": "integer",
+      "name": "mixed-msize",
+      "updates": [
+        [
+          [
+            "payload",
+            "msize"
+          ],
+          32768
+        ]
+      ]
+    }
+  ],
+  "raw_malformed": [
+    {
+      "error": "duplicate-key",
+      "hex": "7b2263656c6c223a312c2263656c6c223a327d",
+      "name": "duplicate-key"
+    },
+    {
+      "error": "noncanonical",
+      "hex": "7b202261223a317d",
+      "name": "whitespace"
+    },
+    {
+      "error": "json-type",
+      "hex": "7b2261223a312e307d",
+      "name": "float"
+    },
+    {
+      "error": "ascii",
+      "hex": "7b2261223a225c7531323334227d",
+      "name": "non-ascii"
+    },
+    {
+      "error": "json",
+      "hex": "7b7d7b7d",
+      "name": "trailing-json"
+    },
+    {
+      "error": "noncanonical",
+      "hex": "7b2261223a225c7530303631227d",
+      "name": "escaped-ascii"
+    }
+  ]
+}

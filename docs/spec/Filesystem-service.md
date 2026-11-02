@@ -22,6 +22,17 @@ compatibility result.
 
 ## Admission and serving authority
 
+The future [retained-9p bridge](Retained-9p-protocol.md) requires an explicitly
+delegated admission entry beside native credential admission: preserve the real
+exporter provenance, validate scoped current guest credentials/capabilities and
+resolve immutable original claims before path lookup. A forwarding retry retains
+its original durable origin, payload and result; it cannot turn every nonowner
+write into an owner-local commit. Atomic create selects creator UID, logical
+parent GID and full supported mode in the same committed logical observation.
+Its reserved drains and exact installation acknowledgements must compose with
+[View barriers](View-barriers.md). These are successor requirements, not existing
+`Dispatch`/`Protocol` features or permission to weaken v1 checks.
+
 One `Service` owns one volume's source writer, catalog and payload execution.
 Multiple services can serve independently admitted volumes. `New` requires an
 existing initialized owner stream from genesis, authoritative complete selected

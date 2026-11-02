@@ -58,6 +58,18 @@ fake partner acknowledgement or kernel permission checks cannot supply them.
 
 ## Credentials and advisory owners
 
+The selected future retained-9p profile has a separate
+[bridge 1.0 delegation/control schema](Retained-9p-protocol.md). It authenticates
+the actual exporter through native FUSE credentials, then validates a separate
+request-scoped trusted guest assertion. It must not substitute guest IDs into
+these headers, relax `Credentials`/`Participants`, or reinterpret the disposable
+fixed-credential fixtures as arbitrary guest admission. Private direct-I/O
+command/result/recall inodes use explicit positional cells and nonblocking
+response snapshots, not an assumed FreeBSD ioctl hook or one native FUSE handle
+per application fd. STOPPED/drain/DRAINED and installation must cover all admitted
+domains. Those endpoints and delegated entry remain unimplemented and normal
+publication remains refused.
+
 `Credentials.Snapshot` must bind the actual kernel request to complete numeric
 credentials and a nonreused process-incarnation token. UID/GID/PID must exactly
 match the request header; unknown credentials, incomplete snapshots, over 1024

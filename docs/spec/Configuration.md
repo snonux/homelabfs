@@ -12,6 +12,16 @@ eligibility allows admitted nodes outside that placement for a known volume;
 it does not install the authority, issue a grant or change either current
 configuration version, startup readiness or closed normal publication gates.
 
+The selected future retained-9p profile pins the exact
+[bridge 1.0 selection and limits](Retained-9p-protocol.md), owned Linux9p/lib9p
+patch/build identities, actual exporter/FUSE enrollment, authorized VM/export/
+volume sessions, namespace mapping, policy/registry/authority hashes, aggregate
+credits and complete reader/dirty-domain inventory in its admission manifest.
+Both negotiation legs must match; stock, unknown or mixed peers are refused.
+This is no new configuration version or accepted field in either current CLI
+profile. Delegated admission, all-origin source/result representation and actual
+cache/drain/install evidence remain prerequisites before any normal readiness.
+
 ## Configuration version 1
 
 Use a private UTF-8 JSON file, at most 64 KiB, with these required fields and

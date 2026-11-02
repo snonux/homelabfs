@@ -198,12 +198,20 @@ Validation has separate evidence scopes:
    prove POSIX/flock contention and cleanup within one guest 9p mount/kernel
    inode domain, including pods sharing it. Independent/duplicate mounts,
    other guests and host access have no shared-lock guarantee; record those
-   cases as unsupported and separately prove exclusive writable-client
-   publication and old-client cached-access fencing. This concession does not
+   lock cases as unsupported. Independently writable admitted guests/nodes still
+   require shared ordering, current committed observations, positive old-domain
+   cached-access fencing and all-origin durability; an exclusive writable-client
+   publication rule cannot replace those gates. This concession does not
    waive any other gate or admit a target. Check mmap/cache,
    write/fsync/flush propagation against [durability](Durability.md), restart,
    mount disappearance and the smallest safe recovery path. A syscall returning
    success or SQLite process-crash check is not power-loss evidence.
+   The selected [retained-9p bridge 1.0](Retained-9p-protocol.md) additionally
+   requires exact owned Linux9p/lib9p patch/build/runtime binding, per-request
+   guest identity delegation with actual native exporter credentials, private
+   FUSE direct-I/O framing/handle-reuse evidence, atomic final metadata and
+   STOPPED/drain/DRAINED/install on all native and guest domains. This is a
+   selected implementation contract, not an installed or admitted artifact set.
 3. Routine live smoke and isolated K01–K05, fencing, lifecycle, physical-host and
    restore profiles retain their separate approval and evidence boundaries.
    Unsupported or unavailable cases are recorded as not run, with corresponding
