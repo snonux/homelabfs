@@ -5,7 +5,8 @@ journal codecs, `fsservice.Service`, and `vfs.Simulator` inside one process. It 
 a disposable core fixture, not the distributed replication protocol. The normal
 replication/recovery state machines remain future work. The implemented
 [external history oracle](History-oracle.md) checks bounded serial workloads
-against real local service recovery; distributed acknowledgement/receipt
+against real local service recovery. The separate concurrent observation oracle
+below checks overlapping external histories; distributed acknowledgement/receipt
 scenarios still require the pending protocol engine.
 Passing this fixture does not grant workload readiness, fencing, native FUSE,
 WireGuard, VM, ZFS, deployment or production durability evidence.
@@ -189,3 +190,153 @@ unobserved RAM loss do not assume instantaneous remote crash knowledge.
 The model's abstract atomic publication, dependency bundles and positive fences
 are requirements on future runtime work, not behavior implemented by
 `internal/sim`, the local service fixture or the retained v1 codec goldens.
+
+## Concurrent all-origin observation oracle (`iz3`)
+
+The separate `CheckConcurrentHistory` interface accepts externally observed,
+overlapping **same-volume** calls from distinct origin lifetimes, including an
+origin outside placement. It also accepts one fixed multi-volume dependency
+closure. It does not change `History`/`CheckHistory`: those retain their serial,
+local-service scope and all original regression cases.
+
+`ConcurrentTrace` version 1 is the replay format. Supply its seed, fixed recovery
+generation, complete member list, independently declared initial names/home
+objects, invocation attempts and actual responses, atomic read observations and
+fault schedule. Use `EncodeConcurrentTrace` and `DecodeConcurrentTrace` for bounded JSON replay.
+Unknown fields and trailing documents are rejected. The checked encoder rejects
+invalid UTF-8 namespace/principal strings before JSON can replace bytes; the decoder
+also rejects invalid UTF-8 and unpaired surrogate escapes. Those byte-path profiles
+are explicitly unsupported/inconclusive, never normalized into another operation.
+Valid Unicode names preserve their exact spelling, including distinct normalization
+forms. Binary payloads and canonical results use lossless base64. `Clone` owns all
+nested payloads. Attempts have distinct recorder IDs. Ordinary operation UUIDs or
+principal/anchor/session/request-number identities may repeat across receiving
+nodes/incarnations. Preserve original externally observed ordinals; an adapter
+must not replace overlapping invocations with its chosen internal grant order.
+
+A call's terminal `Returned` ordinal bounds its linearization. `WaitUntil`, a
+missing response, `PENDING`, and `INDETERMINATE` do not bound effect completion.
+An unknown operation can linearize after its timeout, between later reads.
+`ClaimedAt` separately retains observed immutable claim evidence; `PENDING` itself
+establishes such a claim by its response time. Same-ID retries compare original
+semantic arguments before path resolution, retain the first captured execution
+credentials and original durable origin, and return one immutable terminal result. Anchored terminal replies require exact
+canonical `StableResult` bytes in addition to the independently checked semantic
+projection; later receipts cannot change their decision/result bytes. Actual
+certificate authority remains the adapter validator's obligation. A changed
+original receives conflict. Successful writes compare their actual
+returned byte count and selected offset with an independently computed prefix;
+unknown writes may have committed any short prefix, the entire input, or nothing.
+An actually observed protected aborted result establishes no effects, including
+when a prepare failure/DECLINE rather than an observed Cancel caused it. A wait
+failure alone never establishes abort. Known terminal results remain constraints
+even when an earlier or later attempt is unknown.
+
+The independent model imports FSAPI data types, not storage, apply, fsservice or
+implementation decisions. It computes append offsets, overwrite/zero-fill,
+truncate/extension, namespace replacement, link counts, permission checks and
+metadata from the original workload and current candidate logical state. Creation
+accepts a fresh allocation identity as legitimate output nondeterminism, constrains
+its home/nonreuse, and computes UID, parent GID, mode/umask and directory inheritance
+independently. When an unknown create's allocation is not captured anywhere, a
+fresh anonymous identity represents its existence without inventing observed ID
+evidence. Captured identities and original object preconditions remain explicit
+allocation alternatives. It does not copy an observed afterimage into expected state.
+The projection captures logical size independently of returned bytes, and covers
+regular files, fixed roots, nested directories, preserved
+symlink text without following links, traditional owner/group/other permissions,
+supplementary groups, sticky directories, set-ID policy, immutable homes and
+predeclared nonexpiring handle/snapshot pins. Timestamps, revisions, native inode
+numbers, ACLs, handle acquisition/expiry and symlink traversal are outside it.
+
+Application `Transaction=true` rename/link crosses volume views atomically;
+ordinary cross-mount operations return cross-volume failure. Directory moves
+preserve descendant/home IDs, logical parent and both parent link counts.
+Foreign aliases share one object's bytes and metadata; unlink preserves a pinned
+zero-link home object. Every member/root/home must belong to the declared closure.
+A diagnostic whole-closure snapshot compares all names/objects in one atomic
+cut, rather than accepting different participant installations independently.
+Ordinary POSIX adapters instead record one `ConcurrentRead.Probe` per actual
+read, getattr, lookup, access or readdir syscall. Each has its own invocation/return
+interval and explicit `ConcurrentFields` selection: uncaptured fields are absent,
+not interpreted as zero. Reads compare their actual returned byte range, short
+reads and EOF; getattr can capture only size/mode/UID/GID/link count or the other
+listed stable fields. Access uses fresh committed permissions and supplementary
+groups. Predeclared pinned descriptors can retain previously granted access after
+chmod. A readdir captures one complete immediate entry list. These granular calls
+may legitimately straddle publication, without requiring a cross-volume snapshot.
+`CutKnown=true` additionally compares its ordered successful effect identities.
+`CutKnown=false` explicitly omits cut evidence; omission never means genesis.
+This oracle cut is a semantic effect history, **not** a normal-format certificate,
+source vector, authority validator or proof of journal commitment. Adapters retain
+and validate those actual certificates/source obligations separately.
+
+Each granular observation represents one actual syscall/captured response. A whole
+closure `View` is optional and requires an externally established coherent cut; it
+is not legitimate to stitch separate concurrent syscalls into such a snapshot.
+A read cannot claim both forms. Thus ordinary adapters can use data-range/stat/
+access probes directly, while a diagnostic snapshot adapter has the stronger
+coherent-capture obligation. Owner backing disk/apply may
+remain at the declared baseline while successful observations reflect committed
+RAM; no backing projection is used as expected truth. With only an unknown
+invocation and an overlapping read, selected completion and premature candidate
+exposure can be observationally indistinguishable. The candidate negative
+therefore uses a genuine externally observed later abort, which cannot coexist
+with an earlier read of its effect. Internal stage labels are not expected truth.
+
+Owner/source loss, retained-memory loss and handoff records preserve the external
+schedule. They never erase known outcomes or change the baseline. Missing required
+history can yield an unavailable read with a reason and no fabricated snapshot;
+this does not excuse a stale successful read before or after it. The accepted
+origin-storage plus required-memory durability gap is not permission to invent
+absence. Authorized loss recovery into another generation is deliberately
+unsupported within one trace: retain the old trace and authorization, and start
+a separate explicitly scoped generation/baseline. An ordinary crash/handoff cannot
+silently obtain that exception. These are observation checks, not an implementation
+or proof of source surveys, actual RAM retention, fencing or takeover activation.
+
+The search explores legal interval orders, deduplicated claims, successful effects,
+short-write choices and optional unknown completions. It admits sixteen attempts,
+sixteen reads, eight closure members, thirty-two diagnostic faults, 256 names/home
+objects, 4 KiB per write input, 8 MiB per file/view, 64 MiB captured binary data
+per trace and a separate 128 MiB encoded-evidence cap. This supports a 4 MiB
+canary baseline plus its observations; the encoded cap is not confused with raw
+file size. The caller must select
+1..1,000,000 search states and a cancellable context. `PASS` requires one **complete**
+linearization satisfying every result/read. `FAIL` requires exhaustive rejection;
+invalid/unsupported evidence, cancellation and resource exhaustion return
+`INCONCLUSIVE`. A consistent partial prefix can never pass after a cutoff. This
+existential finite-history check is not a liveness, durability or arbitrary-bound
+proof.
+
+`GenerateConcurrentPlan` reproducibly chooses conflicting operations on the same
+predeclared file across at least two origins, using its own labelled random stream.
+It generates **inputs only**. A real adapter must start the attempts before
+releasing its controlled grant boundary, then capture real call/read evidence.
+There is no new fake distributed executor. Replay reduced failures from their
+retained trace/workload. `MinimizeConcurrentTrace` with a fresh-execution callback
+can delete calls and reads, accepting only complete oracle failures from the
+reproduced evidence. Invalid scripts/inconclusive runs do not qualify. Offline
+mode removes only read observations: deleting writes while retaining their
+observed bytes would manufacture smaller counterexamples. Baselines, seed and
+fault evidence remain retained and are checked against fresh reproduction inputs;
+a callback changing those inputs or unrelated call/probe identities cannot qualify.
+Reduction is bounded to 128 attempts, without a
+global-minimality claim.
+
+The focused oracle target is `go test ./internal/sim -run '^TestConcurrent'`.
+Hand-built positive/nearby negative histories exercise both append orders,
+conflicting offsets, overwritten/short writes, truncate/extension, rename/chmod,
+authorization at the ordered cut, cross-origin exact retries, known claims after
+timeouts, later-aborted candidate exposure, closure/alias/home consistency,
+owner-RAM-before-disk observations and unavailable-versus-stale loss/handoff reads.
+The actual partial-probe profile starts with a 4 MiB declared file, overwrites its
+tail, checks independent range-read/stat/access responses, serializes more than
+4 MiB of encoded evidence and replays it through the checker. Nearby controls
+reject stale bytes, wrong captured size/offset and stale permission success.
+Additional controls reject altered anchored result bytes, lossy JSON namespaces,
+invalid captured-field masks and unrelated minimization reproductions.
+These tests test the actual oracle, not a distributed executor. They cannot be
+relabeled as actual normal commit/lost-network-reply/failover/kernel evidence.
+The pending runtime adapters for `hr3`, `br3`, `jr3`, `cw3` and `ov3` must supply
+that evidence through this interface while keeping their own deployment gates.
