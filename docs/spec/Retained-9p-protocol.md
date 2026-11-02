@@ -2,8 +2,11 @@
 
 Task `rz3`, design only. This freezes the first bounded bridge representation for
 the [selected guest trust boundary](../lab/Retained-9p-authorization.md).
-No Linux9p/lib9p patch, FUSE control endpoint, delegated service entry, cache
-recall, configuration option or normal publication is implemented here. The
+The host component in [`internal/guestbridge`](../../internal/guestbridge/README.md)
+now implements framing, private raw FUSE callbacks and delegated dispatch seams.
+Its disposable and normal execution providers, installed integration, physical
+cache barriers and normal publication remain separate gated work. This schema
+alone supplies none of those runtime facts. The
 [compatibility design](../lab/Retained-9p-compatibility.md) supplies the required
 integration points and runtime gates; [View barriers](View-barriers.md) owns the
 STOPPED/drain/DRAINED semantics. Existing probe evidence keeps its original scope.
@@ -84,7 +87,7 @@ padding. UUIDs are raw 16-byte nonzero identities, never host integer layout.
 | 8 | 2 | major=1 |
 | 10 | 2 | minor=0 |
 | 12 | 2 | kind: COMMAND=1, RESULT=2, RECALL=3 |
-| 14 | 2 | flags=0 |
+| 14 | 2 | guest leg: flags=0; native leg: credit/reclaim flags below |
 | 16 | 4 | complete body length, 1..1048576 |
 | 20 | 4 | chunk offset in complete body |
 | 24 | 4 | chunk length, 1..32768 |
@@ -92,6 +95,22 @@ padding. UUIDs are raw 16-byte nonzero identities, never host integer layout.
 | 32 | 16 | live bridge session UUID |
 | 48 | 8 | message cell, 1..2147483647: guest-session local on 9p; endpoint-global on FUSE |
 | 56 | 32 | SHA-256 of complete canonical body |
+
+On the **guest leg** flags remain zero. On the **native leg**, bit0 selects
+control/drain credit (zero selects ordinary credit), and bit1 says the complete
+command has nonnull reclaim. Other bits fail. The authenticated backend derives
+these bits from its complete owned guest command and exact retained reclaim
+mapping **before the first native chunk**. They remain identical across every
+chunk. Native RESULT/RECALL echoes the issued command flags; the backend verifies
+them against its retained mapping and clears them for the guest response.
+Ordinary CALL and HELLO use ordinary credit; DRAIN_WRITE and other control
+operations use control/drain credit. RELEASE_CELL inherits its acknowledged
+target's credit class. Reclaim selects the independent fixed workspace, never
+an 81st cell. The host validates both bits against the entire parsed command,
+current scope and exact donor snapshot before effects or atomic credit transfer.
+This explicit native metadata is required because canonical CALL args can place
+opcode after a large data field, beyond the first chunk. Header flags cannot
+authenticate the caller or supply normal publication authority.
 
 The body immediately follows the header. Offsets are multiples of 32768;
 length is min(32768,total-offset), and offset is strictly below total. Chunk
@@ -172,11 +191,11 @@ blocks; a fresh UUID does not supply it.
 
 Guest-leg cells remain local to each guest bridge session and may both be 1 in
 two concurrent sessions. The backend gives them distinct native cells, rewrites
-only the transport body's/header's cell and recomputes framing hashes, retaining
+only the transport body's/header's cell, sets native flags as above and recomputes framing hashes, retaining
 both exact bodies. Responses reverse that mapping. A retained forwarding entry
 is exactly `{endpoint:Endpoint,guest_session:uuid,guest_cell:n64,native_cell:n64,
 request_guest_hash:hash,request_native_hash:hash,response_guest_hash:hash|null,
-response_native_hash:hash|null,state:ASSEMBLING|ADMITTED|RESPONDED|RELEASED}`;
+response_native_hash:hash|null,native_flags:u32(0..3),state:ASSEMBLING|ADMITTED|RESPONDED|RELEASED}`;
 associated exact byte snapshots remain owned until protected release. Each native
 cell also retains its donated credit class (ordinary or control/drain). Every
 ordinary entry has matching forward `(endpoint,guest_session,guest_cell)` and
@@ -403,7 +422,7 @@ DIRECTORY or SYMLINK, separate from mode bits. Flags is
 | SYMLINK | parent:Cap, name:bytes(255), target:bytes(4096) |
 | OPEN | object:Cap, flags:Flags |
 | READ | description:Cap, offset:size, count:u32 (<=65536) |
-| WRITE | description:Cap, offset:size, data:bytes(65536) |
+| WRITE | description:Cap, offset:size, data:bytes(65536), max_end:size |
 | TRUNCATE | object:Cap, description:Cap|null, size:size, times:Times |
 | SETATTR | object:Cap, attributes:Attributes |
 | RENAME | source_parent:Cap, source_name:bytes(255), destination_parent:Cap, destination_name:bytes(255), no_replace:bool |
@@ -418,11 +437,21 @@ DIRECTORY or SYMLINK, separate from mode bits. Flags is
 | PROCESS_EXIT | process:uuid, exit_sequence:n64 |
 | DRAIN_WRITE | description:Cap, offset:size, data:bytes(65536), recall:uuid, dirty_entry:hash, reservation:hash |
 
+WRITE captures `max_end` in 0..S64MAX as the minimum of the submitting
+process's RLIMIT_FSIZE, its non-LFS bound and the filesystem bound, before any
+transport retry. This field and the original full data remain immutable claim
+intent. Under the same all-origin serialization as publication, the host selects
+the actual append offset from authoritative logical metadata, then caps the
+permitted prefix to `max_end - offset`. It returns the short count, or the
+delegated wire code `FileTooLarge` with no effects when no byte is permitted.
+This code is outside the closed fsapi/v1 errno and journal-record enums.
+DRAIN_WRITE retains its separately verified frozen dirty-page obligation.
+
 `Times={atime:Time|null,mtime:Time|null,ctime:Time|null,atime_now:bool,
 mtime_now:bool}`; explicit time and corresponding now are mutually exclusive.
 `Attributes={mode:u32|null,uid:u32|null,gid:u32|null,atime:Time|null,
 mtime:Time|null,atime_now:bool,mtime_now:bool}`; the union must select a field.
-Modes/umasks are 0..4095 (07777), never silently masked; semantic policy chooses
+Modes are 0..4095 (07777) and umasks 0..511 (0777), never silently masked; semantic policy chooses
 supported bits, sticky/set-ID clearing and authorization. CREATE/MKDIR are one
 logical operation: final UID=creator fsuid, GID=logical parent GID unconditionally,
 mode/umask/special-bit policy applied once. Return the authoritative committed
@@ -454,7 +483,8 @@ Code is one of the exact case-sensitive strings OK, Invalid, NotFound, Exists,
 Permission, ReadOnlyFS, NotDirectory, IsDirectory, NotEmpty, CrossDevice,
 Unsupported, NoSpace, Quota, IO, Unavailable, Stale, Interrupted, Busy, WouldBlock,
 TooManyLinks, NameTooLong (the semantic enum in `internal/fsapi/errno.go`), plus
-bridge ID_CONFLICT, RETIRED_ID, PROTOCOL_ERROR; never native errno integers.
+bridge ID_CONFLICT, RETIRED_ID, PROTOCOL_ERROR and delegated FileTooLarge;
+never native errno integers.
 Count is exact successful bytes, not transport bytes; failed results carry zero
 count, empty data/entries/capabilities and null attributes/capacity. An admitted
 error does not imply rollback. Attr is `{object_home:uuid,object_allocation:uuid,

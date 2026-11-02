@@ -322,7 +322,7 @@ func validName(name string) error {
 	if len(name) > 255 {
 		return fsapi.NameTooLong
 	}
-	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\x00") {
+	if name == "" || name == "." || name == ".." || name == ".homelabfs-control-v1" || strings.ContainsAny(name, "/\x00") {
 		return fsapi.Invalid
 	}
 	return nil

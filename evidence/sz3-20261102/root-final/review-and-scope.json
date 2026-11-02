@@ -1,0 +1,17 @@
+{
+  "task": "sz3",
+  "r1": "Whole host R1 clean before cross-component blocking append-limit correction.",
+  "r2": "Fresh narrow host_max_end_r2 clean; exact correction patch and 71 recorded hashes reviewed. No reviewer tests run.",
+  "post_review_change": {
+    "path": "internal/fuseadapter/guestbridge.go",
+    "change": "Remove redundant explicit interface type, use :=; QF1011 lint correction only.",
+    "sha256": "0281f86b2575773724672adb3da504743abbfbe54c14d953dbb464525e4c5816"
+  },
+  "verification": "Corrected batch all seven commands exit0, no source changes. Full module nonrace tests37.214s. Targeted race in max-end-clean receipts.",
+  "coverage_percent": {
+    "guestbridge": 62.0,
+    "fsservice": 79.2,
+    "fuseadapter": 67.4
+  },
+  "limits": "No real runtime provider, mount, installed kernel, lab or normal publication proof. Controlled durable provider f04 and public foundation g04 remain separate."
+}

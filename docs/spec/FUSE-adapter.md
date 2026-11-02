@@ -67,8 +67,10 @@ fixed-credential fixtures as arbitrary guest admission. Private direct-I/O
 command/result/recall inodes use explicit positional cells and nonblocking
 response snapshots, not an assumed FreeBSD ioctl hook or one native FUSE handle
 per application fd. STOPPED/drain/DRAINED and installation must cover all admitted
-domains. Those endpoints and delegated entry remain unimplemented and normal
-publication remains refused.
+domains. The [`host component`](../../internal/guestbridge/README.md) now supplies those
+raw callbacks and delegated service seams, with mandatory external providers.
+There is no CLI enablement or installed/runtime acceptance; normal publication
+remains refused.
 
 `Credentials.Snapshot` must bind the actual kernel request to complete numeric
 credentials and a nonreused process-incarnation token. UID/GID/PID must exactly

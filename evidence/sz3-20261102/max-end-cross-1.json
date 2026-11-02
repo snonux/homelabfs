@@ -1,0 +1,26 @@
+{
+  "cwd": "/home/paul/tmp/codex/hfs-sz3-20261102-_tvt_au5/worktree",
+  "argv": [
+    "go",
+    "test",
+    "-c",
+    "-p",
+    "1",
+    "-o",
+    "/tmp/hfs-s3x-f6cym_bg/guestbridge.test",
+    "./internal/guestbridge"
+  ],
+  "env": {
+    "TMPDIR": "/tmp/hfs-s3x-f6cym_bg",
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "512MiB",
+    "GOFLAGS": "-p=1",
+    "GOOS": "freebsd",
+    "GOARCH": "amd64",
+    "CGO_ENABLED": "0"
+  },
+  "source_manifest": "max-end-source-final.json",
+  "exit": 0,
+  "seconds": 0.8486459310079226,
+  "output": ""
+}

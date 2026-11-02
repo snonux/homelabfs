@@ -1,0 +1,28 @@
+{
+  "verified": {
+    "docs/spec/Configuration.md": "33df8618d28fac6be58b990fd65bbe346c2668e447e1f71314efb51715ecbefe",
+    "docs/spec/FUSE-adapter.md": "9cc51a2d2d27c13575878276e3ca488e09cdd0f6e16690b47e58b4eee911bba2",
+    "docs/spec/Filesystem-service.md": "18f0d0236f170a1abfbac3d6f266851f932e6b13630ffc5c9281f2811bf01041",
+    "docs/spec/Retained-9p-protocol.md": "51e0d4558c45380279fae4441229b9b4334950172a5e53a404db44d0cc3bab8b",
+    "docs/spec/retained9p-fixtures/cases.json": "f3c1b91cf804d8061e2e5614eed68b528112b72fa98b20680e2a0c2f5a821bca",
+    "internal/fsservice/execute.go": "ba4227448ec2df1f7f17f79bb23a55ba26688150b53abf3173420ac7441f6ad5",
+    "internal/fsservice/logical.go": "0f262e09f652a4feada117cfdb3c4838311638b51c53ec3d03334e0a6196816f",
+    "internal/fsservice/private_namespace.go": "638c29eefe90bcd87489a2b8ba3d5a378aebab9c0edaa96d2a127586ac40e356",
+    "internal/fsservice/private_namespace_test.go": "e090fe5d78526f050f4f75124b67772ce9168a07e96d3853f3d2fdf5eb33b3d3",
+    "internal/fuseadapter/guestbridge.go": "2058a86dd9f110ee32247e16c5a9a797183f91962f38bd2fe98206b929f13a35",
+    "internal/fuseadapter/guestbridge_test.go": "f3051b92ea083f0a7d9d23fb8c3b146d643fec184582da1ca267e4db0d5ee8bb",
+    "internal/guestbridge/README.md": "7df6d8643bc25a0391588e6fd6df28b0df441ff74454ecc9383729209f055645",
+    "internal/guestbridge/bridge_test.go": "f4f7de21c66aa943e4f53b6f7b6af6314b478e33533b9b828bc1395ab4f20f09",
+    "internal/guestbridge/codec.go": "f91896a36d80a999a9ff66cea655318ba30d2562b99de37926b169bc3029870f",
+    "internal/guestbridge/dispatch.go": "3f3f4d2a6664a2c5585b810df607fce716d0bc4c299d3a9ce32c63477492d853",
+    "internal/guestbridge/endpoint.go": "72eaf84f5315e078323762d6dc9620a8956fd90e7b4d0a90615ed8744e040c9d",
+    "internal/guestbridge/logical.go": "714ad55e4d0ea5a1aff12d887050537242002e77e189bf26f6d7716aa750ffc7",
+    "internal/guestbridge/response.go": "8c0b754f266496b067c88cc915fade5636e780d53f0820846a0f719d9573f950",
+    "internal/guestbridge/result.go": "7a0e1c19ff9e3fbec6471f4c162b1af798a5ae01fd513a461341909dfe76ed76",
+    "internal/guestbridge/schema.go": "681b6d78c8b95491f88b848a0536a06f6f2390ebda3e3132874f67e902e14e95",
+    "internal/guestbridge/service.go": "4b0560d10632144842e44e51d86c45fbaf84f46e3bc05a19158b0a5f4848edd4",
+    "internal/guestbridge/types.go": "3d9914484aea861e7bd8a2da91e5e9f0d09caa3d311cffbd58598ba7abb8ee9c",
+    "tools/spec/check_retained9p.py": "8df5393ec90876a05f34914e20ecda8a18d38635732c62c9c61654f986dc5ed0"
+  },
+  "unreconstructed": []
+}

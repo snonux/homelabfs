@@ -1,0 +1,23 @@
+{
+  "cwd": "/home/paul/tmp/codex/hfs-sz3-20261102-_tvt_au5/worktree",
+  "tmpdir": "/tmp/hfs-sz3-2uhs4cxx",
+  "source_sha256": "5cfa94e36605262ad8e63929ecd47bd32708457645f90177f801c76ee565d284",
+  "argv": [
+    "go",
+    "vet",
+    "-p",
+    "1",
+    "./internal/guestbridge",
+    "./internal/fuseadapter"
+  ],
+  "env": {
+    "TMPDIR": "/tmp/hfs-sz3-2uhs4cxx",
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "512MiB",
+    "GOFLAGS": "-p=1",
+    "HOMELABFS_FUSE_INTEGRATION": "0"
+  },
+  "exit": 0,
+  "seconds": 0.478,
+  "output": ""
+}

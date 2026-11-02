@@ -1,0 +1,30 @@
+{
+  "cwd": "/home/paul/tmp/codex/hfs-sz3-20261102-_tvt_au5/worktree",
+  "tmpdir": "/tmp/hfs-sz3-9qsdzt_r",
+  "source_sha256": "cd83ab350cea18397d75075b7f0c07a1ec73b041a0f3e84a8cd243053fad688c",
+  "argv": [
+    "go",
+    "test",
+    "-race",
+    "-p",
+    "1",
+    "./internal/guestbridge",
+    "./internal/fuseadapter",
+    "./internal/fsservice",
+    "-run",
+    "Test(Bridge|Delegated|PrivateControl)",
+    "-count=1",
+    "-timeout=60s",
+    "-v"
+  ],
+  "env": {
+    "TMPDIR": "/tmp/hfs-sz3-9qsdzt_r",
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "512MiB",
+    "GOFLAGS": "-p=1",
+    "HOMELABFS_FUSE_INTEGRATION": "0"
+  },
+  "exit": 0,
+  "seconds": 7.357,
+  "output": "=== RUN   TestDelegatedDynamicGroupsCommittedRAMAndMetadata\n--- PASS: TestDelegatedDynamicGroupsCommittedRAMAndMetadata (0.09s)\n=== RUN   TestDelegatedClaimDedupCancelAndConfinement\n--- PASS: TestDelegatedClaimDedupCancelAndConfinement (0.02s)\n=== RUN   TestBridgeFrameAndSchemaRejections\n--- PASS: TestBridgeFrameAndSchemaRejections (0.01s)\n=== RUN   TestBridgeEndpointFullCreditReplacementAndNativeBinding\n--- PASS: TestBridgeEndpointFullCreditReplacementAndNativeBinding (0.19s)\n=== RUN   TestBridgeNativeFlagsFragmentedAdmissionAndPadding\n=== RUN   TestBridgeNativeFlagsFragmentedAdmissionAndPadding/ordinary\n=== RUN   TestBridgeNativeFlagsFragmentedAdmissionAndPadding/drain\n=== RUN   TestBridgeNativeFlagsFragmentedAdmissionAndPadding/wrong-control\n=== RUN   TestBridgeNativeFlagsFragmentedAdmissionAndPadding/wrong-ordinary\n=== RUN   TestBridgeNativeFlagsFragmentedAdmissionAndPadding/changed-chunks\n--- PASS: TestBridgeNativeFlagsFragmentedAdmissionAndPadding (0.73s)\n    --- PASS: TestBridgeNativeFlagsFragmentedAdmissionAndPadding/ordinary (0.21s)\n    --- PASS: TestBridgeNativeFlagsFragmentedAdmissionAndPadding/drain (0.21s)\n    --- PASS: TestBridgeNativeFlagsFragmentedAdmissionAndPadding/wrong-control (0.14s)\n    --- PASS: TestBridgeNativeFlagsFragmentedAdmissionAndPadding/wrong-ordinary (0.11s)\n    --- PASS: TestBridgeNativeFlagsFragmentedAdmissionAndPadding/changed-chunks (0.06s)\n=== RUN   TestDelegatedDescriptionKeepsGrantAfterChmodUnlinkAndFinalRelease\n--- PASS: TestDelegatedDescriptionKeepsGrantAfterChmodUnlinkAndFinalRelease (0.07s)\n=== RUN   TestDelegatedTwoIndependentlyWritableGuestDomains\n--- PASS: TestDelegatedTwoIndependentlyWritableGuestDomains (0.06s)\n=== RUN   TestBridgeReleaseProgressWhileOrdinaryExecutionWaits\n--- PASS: TestBridgeReleaseProgressWhileOrdinaryExecutionWaits (0.02s)\n=== RUN   TestDelegatedConstructionProfilesAndMissingProviders\n--- PASS: TestDelegatedConstructionProfilesAndMissingProviders (0.00s)\n=== RUN   TestBridgePublicationBaselineCannotNameSelectedResult\n--- PASS: TestBridgePublicationBaselineCannotNameSelectedResult (0.00s)\nPASS\nok  \tgithub.com/snonux/homelabfs/internal/guestbridge\t2.217s\n=== RUN   TestPrivateControlCallbacksIdentityVisibilityAndPositionalReceipt\n--- PASS: TestPrivateControlCallbacksIdentityVisibilityAndPositionalReceipt (0.00s)\nPASS\nok  \tgithub.com/snonux/homelabfs/internal/fuseadapter\t1.012s\n=== RUN   TestPrivateControlNamespaceReservationAndExistingConflict\n--- PASS: TestPrivateControlNamespaceReservationAndExistingConflict (0.04s)\nPASS\nok  \tgithub.com/snonux/homelabfs/internal/fsservice\t1.045s\n"
+}

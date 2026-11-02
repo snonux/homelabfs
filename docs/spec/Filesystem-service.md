@@ -30,8 +30,11 @@ its original durable origin, payload and result; it cannot turn every nonowner
 write into an owner-local commit. Atomic create selects creator UID, logical
 parent GID and full supported mode in the same committed logical observation.
 Its reserved drains and exact installation acknowledgements must compose with
-[View barriers](View-barriers.md). These are successor requirements, not existing
-`Dispatch`/`Protocol` features or permission to weaken v1 checks.
+[View barriers](View-barriers.md). The [`host component`](../../internal/guestbridge/README.md) implements the
+delegated admission/capability boundary and calls the shared logical planner.
+Normal source/public-binding execution remains external; `f04` separately owns a
+real-journal controlled execution provider, with null bridge publication. These
+are not existing v1 `Dispatch`/`Protocol` features or permission to weaken v1 checks.
 
 One `Service` owns one volume's source writer, catalog and payload execution.
 Multiple services can serve independently admitted volumes. `New` requires an

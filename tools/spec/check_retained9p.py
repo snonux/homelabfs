@@ -150,7 +150,7 @@ def capability(value, scope):
 
 
 def command(value):
-    """The checked semantic subset is HELLO, CREATE and WRITE, as documented."""
+    """The checked semantic subset is HELLO, CREATE, WRITE and native DRAIN flags."""
     fields(value, {"cell", "context", "op", "payload", "reclaim"})
     integer(value["cell"], 1, 2**31 - 1)
     context(value["context"])
@@ -183,15 +183,24 @@ def command(value):
                 (b".", b"..") and not any(c in bytes.fromhex(args["name"])
                                           for c in (0, 47)), "name")
         integer(args["mode"], 0, 4095)
-        integer(args["umask"], 0, 4095)
+        integer(args["umask"], 0, 511)
         flags = args["flags"]
         fields(flags, {"access", "append", "create", "exclusive", "sync", "truncate"})
         require(flags["access"] in ("READ", "WRITE", "READWRITE"), "access")
         require(flags["sync"] in ("ORDINARY", "DATA", "FILE"), "sync")
         for name in ("append", "create", "exclusive", "truncate"):
             require(type(flags[name]) is bool, "boolean")
-    elif intent["opcode"] == "WRITE":
-        fields(args, {"description", "offset", "data"})
+    elif intent["opcode"] in ("WRITE", "DRAIN_WRITE"):
+        keys = {"description", "offset", "data"}
+        if intent["opcode"] == "WRITE":
+            keys.add("max_end")
+            integer(args["max_end"], 0, 2**63 - 1)
+        if intent["opcode"] == "DRAIN_WRITE":
+            keys |= {"recall", "dirty_entry", "reservation"}
+            identifier(args["recall"])
+            digest(args["dirty_entry"])
+            digest(args["reservation"])
+        fields(args, keys)
         capability(args["description"], value["context"])
         require(args["description"]["kind"] == "DESCRIPTION" and
                 args["description"]["rights"] & 2, "write-grant")
@@ -201,38 +210,39 @@ def command(value):
         raise ValueError("checker-opcode-subset")
 
 
-def frames(body):
+def frames(body, native_flags=0):
     raw = canonical(body)
     require(0 < len(raw) <= MAX_BODY, "body-length")
     session = uuid.UUID(body["context"]["session"]).bytes
-    return [HEADER.pack(b"HFS9BR1\0", 1, 0, 1, 0, len(raw), offset,
+    return [HEADER.pack(b"HFS9BR1\0", 1, 0, 1, native_flags, len(raw), offset,
                         len(raw[offset:offset + CHUNK]), 0, session,
                         body["cell"], hashlib.sha256(raw).digest()) +
             raw[offset:offset + CHUNK] for offset in range(0, len(raw), CHUNK)]
 
 
-def assemble(chunks, expected_session, cell):
+def assemble(chunks, expected_session, cell, native=False):
     parts = {}
     identity = None
     for frame in chunks:
         require(len(frame) >= HEADER.size, "short-header")
         magic, major, minor, kind, flags, total, offset, length, reserved, session, \
             frame_cell, body_hash = HEADER.unpack(frame[:HEADER.size])
-        require((magic, major, minor, kind, flags, reserved) ==
-                (b"HFS9BR1\0", 1, 0, 1, 0, 0), "header")
+        require((magic, major, minor, kind, reserved) ==
+                (b"HFS9BR1\0", 1, 0, 1, 0), "header")
+        require(flags & ~3 == 0 if native else flags == 0, "header")
         require(session == uuid.UUID(expected_session).bytes and frame_cell == cell,
                 "frame-scope")
         require(0 < total <= MAX_BODY and offset < total and offset % CHUNK == 0
                 and length == min(CHUNK, total - offset), "chunk-bounds")
         require(len(frame) == HEADER.size + length, "frame-length")
-        current = (total, body_hash)
+        current = (total, body_hash, flags)
         require(identity is None or identity == current, "changed-assembly")
         identity = current
         part = frame[HEADER.size:]
         require(offset not in parts or parts[offset] == part, "changed-chunk")
         parts[offset] = part
     require(identity is not None, "empty")
-    total, body_hash = identity
+    total, body_hash, flags = identity
     require(set(parts) == set(range(0, total, CHUNK)), "incomplete")
     raw = b"".join(parts[offset] for offset in sorted(parts))
     require(hashlib.sha256(raw).digest() == body_hash, "body-hash")
@@ -240,6 +250,13 @@ def assemble(chunks, expected_session, cell):
     require(value["cell"] == cell and value["context"]["session"] == expected_session,
             "body-scope")
     command(value)
+    if native:
+        expected_control = value["op"] not in ("HELLO", "CALL")
+        if value["op"] == "CALL":
+            expected_control = value["payload"]["intent"]["opcode"] == "DRAIN_WRITE"
+        if value["op"] != "RELEASE_CELL":
+            require(bool(flags & 1) == expected_control, "native-credit-class")
+        require(bool(flags & 2) == (value["reclaim"] is not None), "native-reclaim")
     return value
 
 
@@ -465,6 +482,40 @@ def full_native_cells(example):
     return len(example["steps"])
 
 
+def check_native_flags(fixture):
+    """Native-only metadata; guest goldens stay byte-identical."""
+    count = 0
+    base = copy.deepcopy(fixture["golden"][2]["body"])
+    base["payload"]["intent"]["args"]["data"] = "ab" * 65536
+    for case in fixture["native_flag_cases"]:
+        body = copy.deepcopy(base)
+        intent = body["payload"]["intent"]
+        intent["opcode"] = case["opcode"]
+        if case["opcode"] == "DRAIN_WRITE":
+            intent["args"].pop("max_end", None)
+            intent["args"].update(recall=str(uuid.UUID(int=70)),
+                                  dirty_entry="11" * 32, reservation="22" * 32)
+        body["payload"]["claim"]["original_hash"] = hashlib.sha256(canonical(intent)).hexdigest()
+        if case["reclaim"]:
+            body["reclaim"] = {"cell": 1, "response_hash": "33" * 32}
+        chunks = frames(body, case["flags"])
+        require(len(chunks) > 1, "native-fragment-fixture")
+        if case["changed_chunk_flags"]:
+            changed = bytearray(chunks[-1])
+            changed[14] ^= 1
+            chunks[-1] = bytes(changed)
+        action = lambda: assemble(chunks, body["context"]["session"], body["cell"], native=True)
+        if case["error"] is None:
+            require(action() == body, "native-flags-roundtrip")
+        else:
+            reject(action, case["error"])
+        count += 1
+    guest = frames(fixture["golden"][0]["body"], 1)
+    reject(lambda: assemble(guest, fixture["golden"][0]["body"]["context"]["session"],
+                            fixture["golden"][0]["body"]["cell"]), "header")
+    return count + 1
+
+
 def main():
     path = Path(__file__).resolve().parents[2] / "docs/spec/retained9p-fixtures/cases.json"
     fixture = json.loads(path.read_text(encoding="ascii"), object_pairs_hook=no_duplicates)
@@ -546,6 +597,7 @@ def main():
                 final["parent_gid"] == final["selected_gid"] and
                 final["selected_mode"] == final["requested_mode"] and
                 511 < final["selected_mode"] <= 4095, "create-selection")
+    count += check_native_flags(fixture)
     print(f"PASS: {count} literal golden/malformed examples; groups1024 boundary; "
           f"{len(encoded)}-chunk write/short reads; claim history; "
           f"{len(fixture['acknowledgements'])} acknowledgement contexts; atomic-create example; "

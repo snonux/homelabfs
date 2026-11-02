@@ -1,0 +1,523 @@
+--- a/docs/spec/Retained-9p-protocol.md
++++ b/docs/spec/Retained-9p-protocol.md
+@@ -422,7 +422,7 @@
+ | SYMLINK | parent:Cap, name:bytes(255), target:bytes(4096) |
+ | OPEN | object:Cap, flags:Flags |
+ | READ | description:Cap, offset:size, count:u32 (<=65536) |
+-| WRITE | description:Cap, offset:size, data:bytes(65536) |
++| WRITE | description:Cap, offset:size, data:bytes(65536), max_end:size |
+ | TRUNCATE | object:Cap, description:Cap|null, size:size, times:Times |
+ | SETATTR | object:Cap, attributes:Attributes |
+ | RENAME | source_parent:Cap, source_name:bytes(255), destination_parent:Cap, destination_name:bytes(255), no_replace:bool |
+@@ -436,6 +436,16 @@
+ | FORGET | object:Cap, count:n64 |
+ | PROCESS_EXIT | process:uuid, exit_sequence:n64 |
+ | DRAIN_WRITE | description:Cap, offset:size, data:bytes(65536), recall:uuid, dirty_entry:hash, reservation:hash |
++
++WRITE captures `max_end` in 0..S64MAX as the minimum of the submitting
++process's RLIMIT_FSIZE, its non-LFS bound and the filesystem bound, before any
++transport retry. This field and the original full data remain immutable claim
++intent. Under the same all-origin serialization as publication, the host selects
++the actual append offset from authoritative logical metadata, then caps the
++permitted prefix to `max_end - offset`. It returns the short count, or the
++delegated wire code `FileTooLarge` with no effects when no byte is permitted.
++This code is outside the closed fsapi/v1 errno and journal-record enums.
++DRAIN_WRITE retains its separately verified frozen dirty-page obligation.
+ 
+ `Times={atime:Time|null,mtime:Time|null,ctime:Time|null,atime_now:bool,
+ mtime_now:bool}`; explicit time and corresponding now are mutually exclusive.
+@@ -473,7 +483,8 @@
+ Permission, ReadOnlyFS, NotDirectory, IsDirectory, NotEmpty, CrossDevice,
+ Unsupported, NoSpace, Quota, IO, Unavailable, Stale, Interrupted, Busy, WouldBlock,
+ TooManyLinks, NameTooLong (the semantic enum in `internal/fsapi/errno.go`), plus
+-bridge ID_CONFLICT, RETIRED_ID, PROTOCOL_ERROR; never native errno integers.
++bridge ID_CONFLICT, RETIRED_ID, PROTOCOL_ERROR and delegated FileTooLarge;
++never native errno integers.
+ Count is exact successful bytes, not transport bytes; failed results carry zero
+ count, empty data/entries/capabilities and null attributes/capacity. An admitted
+ error does not imply rollback. Attr is `{object_home:uuid,object_allocation:uuid,
+--- a/docs/spec/retained9p-fixtures/cases.json
++++ b/docs/spec/retained9p-fixtures/cases.json
+@@ -1266,7 +1266,7 @@
+             "anchor": "00000000-0000-0000-0000-000000000029",
+             "nonce": "00000000-0000-0000-0000-000000000038",
+             "number": 1,
+-            "original_hash": "f718e88a25887893530246927d9d03e517b20044c0d0ae4624f773b52d72f3ab",
++            "original_hash": "9554471e36a6ec46f29d2487b6e2f11ffa8887b4381cc05f7a4bec3b0d0071a0",
+             "realm": "00000000-0000-0000-0000-000000000028",
+             "subject": "67756573742d6b65726e656c"
+           },
+@@ -1316,16 +1316,17 @@
+                 },
+                 "token": "44074cc8b9936395745cbfeb1b76019526f26f6a8908f2bbbd3fd0c7b2492e32"
+               },
+-              "offset": 0
++              "offset": 0,
++              "max_end": 9223372036854775807
+             },
+             "opcode": "WRITE"
+           }
+         },
+         "reclaim": null
+       },
+-      "body_hash": "f0bb16e88404b5980258633eee7992da5cd94f001e46a86614ce442888e606c4",
++      "body_hash": "5eb34800cc662413ed101c50d9f85be2d485f68d609112f9d73b98daf9e51b9b",
+       "frame_hex": [
+-        "48465339425231000100000001000000490c000000000000490c000000000000000000000000000000000000000000350300000000000000f0bb16e88404b5980258633eee7992da5cd94f001e46a86614ce442888e606c47b2263656c6c223a332c22636f6e74657874223a7b22617574686f726974795f68617368223a2265303937376665383661366133643965613963373130306535613437616336653033396235376534306365383932613739303363323166613132306162616466222c22636c7573746572223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22636f6e66696775726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303032222c226578706f7274223a2230303030303030302d303030302d303030302d303030302d303030303030303030303033222c226578706f727465725f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303034222c22667573655f73657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303035222c2267656e65726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303036222c2267756573745f626f6f74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303333222c2267756573745f6d6f756e74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303334222c226f726967696e5f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303039222c226f726967696e5f6a6f75726e616c223a2230303030303030302d303030302d303030302d303030302d303030303030303030303061222c226f726967696e5f6e6f6465223a2230303030303030302d303030302d303030302d303030302d303030303030303030303062222c22706f6c6963795f68617368223a2237383730303733363561326432383930653536376530363934613331386566383130313862396333643230303666613662633633383036636463373832633533222c2272656769737472795f68617368223a2235393538666434386366626563323961343836343030366230663164646161313135353963663030316365643065373662333461393134303335333837313166222c2273657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303335222c22766d223a2230303030303030302d303030302d303030302d303030302d303030303030303030303332222c22766f6c756d65223a2230303030303030302d303030302d303030302d303030302d303030303030303030303065227d2c226f70223a2243414c4c222c227061796c6f6164223a7b22636c61696d223a7b22616e63686f72223a2230303030303030302d303030302d303030302d303030302d303030303030303030303239222c226e6f6e6365223a2230303030303030302d303030302d303030302d303030302d303030303030303030303338222c226e756d626572223a312c226f726967696e616c5f68617368223a2266373138653838613235383837383933353330323436393237643964303365353137623230303434633064306165343632346637373362353264373266336162222c227265616c6d223a2230303030303030302d303030302d303030302d303030302d303030303030303030303238222c227375626a656374223a22363737353635373337343264366236353732366536353663227d2c2263726564656e7469616c73223a7b2263726564656e7469616c5f7265766973696f6e223a312c226673676964223a313030322c226673756964223a313030312c2267726f757073223a5b372c313030322c323030315d2c2269646d61705f68617368223a2263303034646438633130306163306238616233653534333734333839376339373130366166366133663833306364666134636666386339313230346432393335222c2270726f63657373223a2230303030303030302d303030302d303030302d303030302d303030303030303030303336222c22757365725f6e616d657370616365223a2230303030303030302d303030302d303030302d303030302d303030303030303030303166227d2c22696e74656e74223a7b2261726773223a7b2264617461223a2236383635366336633666303037373666373236633634222c226465736372697074696f6e223a7b22616e636573746f72735f68617368223a2234663533636461313863326261613063303335346262356639613365636265356564313261623464386531316261383733633266313131363132303262393435222c2263726564656e7469616c5f68617368223a2239346531666661383035373331393331656665613735306332623361326534653935353239336263373866326636363535383264386262663038323164343838222c226465736372697074696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303337222c226b696e64223a224445534352495054494f4e222c226f626a6563745f616c6c6f636174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303230222c226f626a6563745f686f6d65223a2230303030303030302d303030302d303030302d303030302d303030303030303030303065222c227265766973696f6e223a312c22726967687473223a36332c2273636f7065223a7b22617574686f726974795f68617368223a2265303937376665383661366133643965613963373130306535613437616336653033396235376534306365383932613739303363323166613132306162616466222c22636c7573746572223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22636f6e66696775726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303032222c226578706f7274223a2230303030303030302d303030302d303030302d303030302d303030303030303030303033222c226578706f727465725f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303034222c22667573655f73657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303035222c2267656e65726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303036222c2267756573745f626f6f74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303333222c2267756573745f6d6f756e74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303334222c226f726967696e5f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303039222c226f726967696e5f6a6f75726e616c223a2230303030303030302d303030302d303030302d303030302d303030303030303030303061222c226f726967696e5f6e6f6465223a2230303030303030302d303030302d303030302d303030302d303030303030303030303062222c22706f6c6963795f68617368223a2237383730303733363561326432383930653536376530363934613331386566383130313862396333643230303666613662633633383036636463373832633533222c2272656769737472795f68617368223a2235393538666434386366626563323961343836343030366230663164646161313135353963663030316365643065373662333461393134303335333837313166222c2273657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303335222c22766d223a2230303030303030302d303030302d303030302d303030302d303030303030303030303332222c22766f6c756d65223a2230303030303030302d303030302d303030302d303030302d303030303030303030303065227d2c22746f6b656e223a2234343037346363386239393336333935373435636266656231623736303139353236663236663661383930386632626262643366643063376232343932653332227d2c226f6666736574223a307d2c226f70636f6465223a225752495445227d7d2c227265636c61696d223a6e756c6c7d"
++        "48465339425231000100000001000000670c000000000000670c0000000000000000000000000000000000000000003503000000000000005eb34800cc662413ed101c50d9f85be2d485f68d609112f9d73b98daf9e51b9b7b2263656c6c223a332c22636f6e74657874223a7b22617574686f726974795f68617368223a2265303937376665383661366133643965613963373130306535613437616336653033396235376534306365383932613739303363323166613132306162616466222c22636c7573746572223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22636f6e66696775726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303032222c226578706f7274223a2230303030303030302d303030302d303030302d303030302d303030303030303030303033222c226578706f727465725f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303034222c22667573655f73657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303035222c2267656e65726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303036222c2267756573745f626f6f74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303333222c2267756573745f6d6f756e74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303334222c226f726967696e5f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303039222c226f726967696e5f6a6f75726e616c223a2230303030303030302d303030302d303030302d303030302d303030303030303030303061222c226f726967696e5f6e6f6465223a2230303030303030302d303030302d303030302d303030302d303030303030303030303062222c22706f6c6963795f68617368223a2237383730303733363561326432383930653536376530363934613331386566383130313862396333643230303666613662633633383036636463373832633533222c2272656769737472795f68617368223a2235393538666434386366626563323961343836343030366230663164646161313135353963663030316365643065373662333461393134303335333837313166222c2273657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303335222c22766d223a2230303030303030302d303030302d303030302d303030302d303030303030303030303332222c22766f6c756d65223a2230303030303030302d303030302d303030302d303030302d303030303030303030303065227d2c226f70223a2243414c4c222c227061796c6f6164223a7b22636c61696d223a7b22616e63686f72223a2230303030303030302d303030302d303030302d303030302d303030303030303030303239222c226e6f6e6365223a2230303030303030302d303030302d303030302d303030302d303030303030303030303338222c226e756d626572223a312c226f726967696e616c5f68617368223a2239353534343731653336613665633436663239643234383762366532663131666661383838376234333831636330356637613462656333623064303037316130222c227265616c6d223a2230303030303030302d303030302d303030302d303030302d303030303030303030303238222c227375626a656374223a22363737353635373337343264366236353732366536353663227d2c2263726564656e7469616c73223a7b2263726564656e7469616c5f7265766973696f6e223a312c226673676964223a313030322c226673756964223a313030312c2267726f757073223a5b372c313030322c323030315d2c2269646d61705f68617368223a2263303034646438633130306163306238616233653534333734333839376339373130366166366133663833306364666134636666386339313230346432393335222c2270726f63657373223a2230303030303030302d303030302d303030302d303030302d303030303030303030303336222c22757365725f6e616d657370616365223a2230303030303030302d303030302d303030302d303030302d303030303030303030303166227d2c22696e74656e74223a7b2261726773223a7b2264617461223a2236383635366336633666303037373666373236633634222c226465736372697074696f6e223a7b22616e636573746f72735f68617368223a2234663533636461313863326261613063303335346262356639613365636265356564313261623464386531316261383733633266313131363132303262393435222c2263726564656e7469616c5f68617368223a2239346531666661383035373331393331656665613735306332623361326534653935353239336263373866326636363535383264386262663038323164343838222c226465736372697074696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303337222c226b696e64223a224445534352495054494f4e222c226f626a6563745f616c6c6f636174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303230222c226f626a6563745f686f6d65223a2230303030303030302d303030302d303030302d303030302d303030303030303030303065222c227265766973696f6e223a312c22726967687473223a36332c2273636f7065223a7b22617574686f726974795f68617368223a2265303937376665383661366133643965613963373130306535613437616336653033396235376534306365383932613739303363323166613132306162616466222c22636c7573746572223a2230303030303030302d303030302d303030302d303030302d303030303030303030303031222c22636f6e66696775726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303032222c226578706f7274223a2230303030303030302d303030302d303030302d303030302d303030303030303030303033222c226578706f727465725f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303034222c22667573655f73657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303035222c2267656e65726174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303036222c2267756573745f626f6f74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303333222c2267756573745f6d6f756e74223a2230303030303030302d303030302d303030302d303030302d303030303030303030303334222c226f726967696e5f696e6361726e6174696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303039222c226f726967696e5f6a6f75726e616c223a2230303030303030302d303030302d303030302d303030302d303030303030303030303061222c226f726967696e5f6e6f6465223a2230303030303030302d303030302d303030302d303030302d303030303030303030303062222c22706f6c6963795f68617368223a2237383730303733363561326432383930653536376530363934613331386566383130313862396333643230303666613662633633383036636463373832633533222c2272656769737472795f68617368223a2235393538666434386366626563323961343836343030366230663164646161313135353963663030316365643065373662333461393134303335333837313166222c2273657373696f6e223a2230303030303030302d303030302d303030302d303030302d303030303030303030303335222c22766d223a2230303030303030302d303030302d303030302d303030302d303030303030303030303332222c22766f6c756d65223a2230303030303030302d303030302d303030302d303030302d303030303030303030303065227d2c22746f6b656e223a2234343037346363386239393336333935373435636266656231623736303139353236663236663661383930386632626262643366643063376232343932653332227d2c226d61785f656e64223a393232333337323033363835343737353830372c226f6666736574223a307d2c226f70636f6465223a225752495445227d7d2c227265636c61696d223a6e756c6c7d"
+       ],
+       "name": "description-write-domain2"
+     },
+--- a/internal/fsservice/logical.go
++++ b/internal/fsservice/logical.go
+@@ -4,6 +4,7 @@
+ 	"context"
+ 	"encoding/base64"
+ 	"encoding/json"
++	"errors"
+ 	"math"
+ 
+ 	"github.com/snonux/homelabfs/internal/apply"
+@@ -43,6 +44,10 @@
+ 	Result    fsapi.Result
+ }
+ 
++// ErrDelegatedFileTooLarge is a pre-effect delegated write rejection. It is
++// deliberately outside the closed fsapi/v1 errno and journal schemas.
++var ErrDelegatedFileTooLarge = errors.New("delegated write exceeds captured file end")
++
+ // NewLogicalPlanner requires an explicit policy; privileged daemon credentials
+ // never replace workload credentials. Its bounded limits mirror Service.
+ func NewLogicalPlanner(config LogicalConfig) (*LogicalPlanner, error) {
+@@ -77,6 +82,20 @@
+ // zero allocation. It performs no source append, sync or backing installation.
+ // Ordinary cross-mount/foreign-home mutations remain closed until typed 8w3.
+ func (p *LogicalPlanner) Plan(ctx context.Context, observation *logicalview.Observation, cred fsapi.Cred, c fsapi.Command, claim fsapi.UUID, allocation fsapi.ObjectID) (Planned, error) {
++	return p.plan(ctx, observation, cred, c, claim, allocation, nil)
++}
++
++// PlanDelegatedWrite limits the selected prefix after resolving the authoritative
++// append offset. Execution must serialize this cut with publication across all
++// origins. The original full command and bound remain the immutable binding.
++func (p *LogicalPlanner) PlanDelegatedWrite(ctx context.Context, observation *logicalview.Observation, cred fsapi.Cred, c fsapi.Command, claim fsapi.UUID, allocation fsapi.ObjectID, maxEnd int64) (Planned, error) {
++	if c.Operation != fsapi.Write || maxEnd < 0 {
++		return Planned{}, fsapi.Invalid
++	}
++	return p.plan(ctx, observation, cred, c, claim, allocation, &maxEnd)
++}
++
++func (p *LogicalPlanner) plan(ctx context.Context, observation *logicalview.Observation, cred fsapi.Cred, c fsapi.Command, claim fsapi.UUID, allocation fsapi.ObjectID, maxEnd *int64) (Planned, error) {
+ 	if err := p.boundCommand(cred, c); err != nil {
+ 		return Planned{}, err
+ 	}
+@@ -109,6 +128,17 @@
+ 	}
+ 	if err = checkPermissions(ctx, p.config.Permissions, cred, original, c, plan); err != nil {
+ 		return Planned{}, err
++	}
++	if maxEnd != nil {
++		if c.Offset < 0 {
++			return Planned{}, fsapi.Invalid
++		}
++		if c.Offset >= *maxEnd {
++			return Planned{}, ErrDelegatedFileTooLarge
++		}
++		if remaining := *maxEnd - c.Offset; int64(len(c.Data)) > remaining {
++			c.Data = c.Data[:remaining]
++		}
+ 	}
+ 	config := planningConfig{root: image.Root, storageLimits: p.config.StorageLimits, logicalBytes: p.config.Limits.LogicalBytes, identities: func(ctx context.Context, creation bool) (fsapi.UUID, fsapi.ObjectID, error) {
+ 		if creation && (!allocation.Valid() || allocation.Home != c.Mount) {
+@@ -144,7 +174,8 @@
+ 		Version     uint16
+ 		Credentials fsapi.Cred
+ 		Command     fsapi.Command
+-	}{1, cred.Clone(), bound})
++		MaxEnd      *int64 `json:",omitempty"`
++	}{1, cred.Clone(), bound, maxEnd})
+ 	if err != nil {
+ 		return Planned{}, err
+ 	}
+--- a/internal/guestbridge/README.md
++++ b/internal/guestbridge/README.md
+@@ -105,8 +105,14 @@
+ 
+ Evidence is in `evidence/sz3-20261102/` in the isolated task workspace. Tests
+ exercise shared logical planning and real callback methods without mounting.
+-The schema checker preserves all four guest golden frames and adds native-only
++The schema checker updates the WRITE guest golden for captured max_end, preserves the other three guest golden frames and adds native-only
+ fragment/credit/reclaim flags plus high-umask rejection. Actual FreeBSD direct-I/O
+ splitting/EOF, supervised exporter identity, maintained guest/backend runtime,
+ installed-byte binding, complete cache barriers and normal publication remain
+ separate acceptance gates. No lab, SSH, VM, mount or production action was run.
++
++WRITE uses the shared PlanDelegatedWrite seam to cap its prefix after the
++authoritative append offset is selected. Execution preserves the typed pre-effect
++ErrDelegatedFileTooLarge in Outcome.DelegatedError; the bridge emits FileTooLarge
++without extending fsapi/v1 errno or journal records. Controlled Captured providers
++must enforce the same captured bound under their serialized service seam.
+--- a/internal/guestbridge/bridge_test.go
++++ b/internal/guestbridge/bridge_test.go
+@@ -23,10 +23,9 @@
+ type localNative struct{ expected Native }
+ type localAttestor struct{}
+ type localClaims struct {
+-	mu       sync.Mutex
+-	states   map[string]ClaimState
+-	next     byte
+-	gapProof bool
++	mu     sync.Mutex
++	states map[string]ClaimState
++	next   byte
+ }
+ type localViews struct{}
+ type localVerifier struct{}
+@@ -159,6 +158,9 @@
+ 	closeErr := o.Close()
+ 	if closeErr != nil {
+ 		return Outcome{}, closeErr
++	}
++	if errors.Is(e, fsservice.ErrDelegatedFileTooLarge) {
++		return Outcome{DelegatedError: e, Publication: d.publication()}, nil
+ 	}
+ 	if e != nil {
+ 		return Outcome{Result: fsapi.Result{Code: errnoOf(e)}, Publication: d.publication()}, nil
+@@ -598,8 +600,9 @@
+ 			}
+ 			defer tr.Close()
+ 			cap := Capability{Token: digest([]byte("unknown-but-well-shaped")), Kind: "DESCRIPTION", Scope: f.c, Home: f.c.Volume, Allocation: uid(3).String(), Description: ptr(uid(100).String()), Rights: 3, Revision: 1, CredentialHash: digest([]byte("cred")), AncestorsHash: digest([]byte("ancestors"))}
+-			args := map[string]any{"description": cap, "offset": 0, "data": fmt.Sprintf("%x", bytes.Repeat([]byte{0xab}, 65536))}
++			args := map[string]any{"description": cap, "offset": 0, "max_end": int64(1<<63 - 1), "data": fmt.Sprintf("%x", bytes.Repeat([]byte{0xab}, 65536))}
+ 			if tt.opcode == "DRAIN_WRITE" {
++				delete(args, "max_end")
+ 				args["recall"] = uid(100).String()
+ 				args["dirty_entry"] = digest([]byte("dirty"))
+ 				args["reservation"] = digest([]byte("reserved"))
+@@ -650,7 +653,7 @@
+ 	}
+ 	cred.FSUID = 1234
+ 	cred.Revision = 2
+-	_, written := f.call(t, cred, "WRITE", map[string]any{"description": description, "offset": 0, "data": "616263"})
++	_, written := f.call(t, cred, "WRITE", map[string]any{"description": description, "offset": 0, "max_end": int64(1<<63 - 1), "data": "616263"})
+ 	if written["code"] != "OK" || written["count"] != float64(3) {
+ 		t.Fatal(written)
+ 	}
+@@ -856,3 +859,46 @@
+ 		t.Fatal(string(raw))
+ 	}
+ }
++
++func TestWriteMaxEndWireAndRetry(t *testing.T) {
++	f := newBridge(t)
++	f.hello(t)
++	cred := f.cred()
++	cred.FSUID = 0
++	_, root := f.call(t, cred, "ROOT", map[string]any{})
++	flags := map[string]any{"access": "READWRITE", "append": true, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}
++	_, created := f.call(t, cred, "CREATE", map[string]any{"parent": capabilityAt(t, root, 0), "name": "626f756e646564", "mode": 384, "umask": 0, "flags": flags})
++	desc := capabilityAt(t, created, 1)
++	_, first := f.call(t, cred, "WRITE", map[string]any{"description": desc, "offset": 0, "data": "6162", "max_end": 100})
++	if first["count"] != float64(2) {
++		t.Fatal(first)
++	}
++	cmd, short := f.call(t, cred, "WRITE", map[string]any{"description": desc, "offset": 0, "data": "63646566", "max_end": 4})
++	if short["code"] != "OK" || short["count"] != float64(2) {
++		t.Fatal(short)
++	}
++	calls := f.driver.calls
++	if _, err := f.s.Execute(t.Context(), f.native, cmd); err != nil || f.driver.calls != calls {
++		t.Fatalf("lost retry reexecuted: %v", err)
++	}
++	_, blocked := f.call(t, cred, "WRITE", map[string]any{"description": desc, "offset": 0, "data": "6566", "max_end": 4})
++	if blocked["code"] != "FileTooLarge" || blocked["count"] != float64(0) {
++		t.Fatal(blocked)
++	}
++	_, read := f.call(t, cred, "READ", map[string]any{"description": desc, "offset": 0, "count": 16})
++	if read["data"] != "61626364" {
++		t.Fatal(read)
++	}
++	capValue, err := Canonical(mustJSON(t, desc))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := validateArgs("WRITE", map[string]any{"description": capValue, "offset": json.Number("0"), "data": "65", "max_end": json.Number("4")}); err != nil {
++		t.Fatal(err)
++	}
++	for _, bound := range []any{json.Number("-1"), json.Number("9223372036854775808"), nil, "4"} {
++		if err := validateArgs("WRITE", map[string]any{"description": capValue, "offset": json.Number("0"), "data": "65", "max_end": bound}); err == nil {
++			t.Fatalf("accepted bound %v", bound)
++		}
++	}
++}
+--- a/internal/guestbridge/codec.go
++++ b/internal/guestbridge/codec.go
+@@ -6,7 +6,6 @@
+ 	"encoding/binary"
+ 	"encoding/hex"
+ 	"encoding/json"
+-	"fmt"
+ 	"io"
+ 	"strconv"
+ 	"strings"
+@@ -315,6 +314,3 @@
+ 	}
+ 	return nil
+ }
+-func invalid(format string, args ...any) error {
+-	return fmt.Errorf("%w: %s", fsapi.Invalid, fmt.Sprintf(format, args...))
+-}
+--- a/internal/guestbridge/endpoint.go
++++ b/internal/guestbridge/endpoint.go
+@@ -448,13 +448,6 @@
+ 	c.reservation.Release()
+ }
+ 
+-func equalAck(a, b *Ack) bool {
+-	if a == nil || b == nil {
+-		return a == nil && b == nil
+-	}
+-	return *a == *b
+-}
+-
+ // Endpoint returns the enrolled immutable native inode tuple.
+ func (t *Transport) Endpoint() Endpoint { return t.service.config.Endpoint }
+ 
+--- a/internal/guestbridge/logical.go
++++ b/internal/guestbridge/logical.go
+@@ -2,6 +2,7 @@
+ 
+ import (
+ 	"context"
++	"encoding/json"
+ 
+ 	"github.com/snonux/homelabfs/internal/fsapi"
+ 	"github.com/snonux/homelabfs/internal/fsservice"
+@@ -42,7 +43,17 @@
+ 	cred := guestCred(b.Call.Credentials)
+ 	switch command.Operation {
+ 	case fsapi.Create, fsapi.Mkdir, fsapi.SymlinkOp, fsapi.Unlink, fsapi.Rmdir, fsapi.RenameOp, fsapi.LinkOp, fsapi.Write, fsapi.Truncate, fsapi.Setattr:
+-		plan, err := c.planner.Plan(ctx, c.observation, cred, command, b.Operation, b.Allocation)
++		var plan fsservice.Planned
++		var err error
++		if b.Call.Intent.Opcode == "WRITE" {
++			var a arguments
++			if err = json.Unmarshal(b.Call.Intent.Args, &a); err != nil {
++				return Prepared{}, fsapi.Invalid
++			}
++			plan, err = c.planner.PlanDelegatedWrite(ctx, c.observation, cred, command, b.Operation, b.Allocation, int64(a.number("max_end")))
++		} else {
++			plan, err = c.planner.Plan(ctx, c.observation, cred, command, b.Operation, b.Allocation)
++		}
+ 		if err != nil {
+ 			return Prepared{}, err
+ 		}
+--- a/internal/guestbridge/response.go
++++ b/internal/guestbridge/response.go
+@@ -94,7 +94,7 @@
+ 	if e != nil || !hash(o["id"]) || !uintRange(o["count"], 0, ^uint64(0)) || !bytesField(o["data"], 65536, false) {
+ 		return nil, fsapi.Invalid
+ 	}
+-	valid := oneOf(text(o["code"]), "ID_CONFLICT", "RETIRED_ID", "PROTOCOL_ERROR")
++	valid := oneOf(text(o["code"]), "ID_CONFLICT", "RETIRED_ID", "PROTOCOL_ERROR", "FileTooLarge")
+ 	for _, name := range errnoNames() {
+ 		valid = valid || text(o["code"]) == name
+ 	}
+--- a/internal/guestbridge/result.go
++++ b/internal/guestbridge/result.go
+@@ -4,6 +4,8 @@
+ 	"context"
+ 	"encoding/hex"
+ 	"encoding/json"
++	"errors"
++	"github.com/snonux/homelabfs/internal/fsservice"
+ 
+ 	"github.com/snonux/homelabfs/internal/fsapi"
+ )
+@@ -30,8 +32,15 @@
+ 	if !out.Result.Code.Valid() || out.Result.Count < 0 || len(out.Result.Data) > 65536 {
+ 		return nil, fsapi.IO
+ 	}
+-	r := map[string]any{"code": errnoNames()[out.Result.Code], "count": uint64(out.Result.Count), "data": hex.EncodeToString(out.Result.Data), "attributes": nil, "capabilities": []any{}, "entries": []any{}, "capacity": nil, "publication": json.RawMessage(out.Publication)}
+-	if out.Result.Code == fsapi.OK {
++	resultCode := errnoNames()[out.Result.Code]
++	if out.DelegatedError != nil {
++		if !errors.Is(out.DelegatedError, fsservice.ErrDelegatedFileTooLarge) || b.Call.Intent.Opcode != "WRITE" || out.Result.Code != fsapi.OK || out.Result.Count != 0 || len(out.Result.Data) != 0 || out.Result.Attr != nil || len(out.EntryAttributes) != 0 {
++			return nil, fsapi.IO
++		}
++		resultCode = "FileTooLarge"
++	}
++	r := map[string]any{"code": resultCode, "count": uint64(out.Result.Count), "data": hex.EncodeToString(out.Result.Data), "attributes": nil, "capabilities": []any{}, "entries": []any{}, "capacity": nil, "publication": json.RawMessage(out.Publication)}
++	if out.Result.Code == fsapi.OK && out.DelegatedError == nil {
+ 		op := b.Call.Intent.Opcode
+ 		var a arguments
+ 		if e = json.Unmarshal(b.Call.Intent.Args, &a); e != nil {
+--- a/internal/guestbridge/schema.go
++++ b/internal/guestbridge/schema.go
+@@ -88,7 +88,7 @@
+ }
+ func validateArgs(op string, v any) error {
+ 	fields := map[string]string{
+-		"ROOT": "", "LOOKUP": "parent name", "GETATTR": "object", "READLINK": "object", "CREATE": "parent name mode umask flags", "MKDIR": "parent name mode umask", "SYMLINK": "parent name target", "OPEN": "object flags", "READ": "description offset count", "WRITE": "description offset data", "TRUNCATE": "object description size times", "SETATTR": "object attributes", "RENAME": "source_parent source_name destination_parent destination_name no_replace", "LINK": "object parent name", "UNLINK": "parent name", "RMDIR": "parent name", "READDIR": "object after revision limit", "STATFS": "root", "SYNC": "object description scope", "DESCRIPTION_CLOSE": "description process close_sequence", "DESCRIPTION_RELEASE": "description release_sequence", "FORGET": "object count", "PROCESS_EXIT": "process exit_sequence", "DRAIN_WRITE": "description offset data recall dirty_entry reservation",
++		"ROOT": "", "LOOKUP": "parent name", "GETATTR": "object", "READLINK": "object", "CREATE": "parent name mode umask flags", "MKDIR": "parent name mode umask", "SYMLINK": "parent name target", "OPEN": "object flags", "READ": "description offset count", "WRITE": "description offset data max_end", "TRUNCATE": "object description size times", "SETATTR": "object attributes", "RENAME": "source_parent source_name destination_parent destination_name no_replace", "LINK": "object parent name", "UNLINK": "parent name", "RMDIR": "parent name", "READDIR": "object after revision limit", "STATFS": "root", "SYNC": "object description scope", "DESCRIPTION_CLOSE": "description process close_sequence", "DESCRIPTION_RELEASE": "description release_sequence", "FORGET": "object count", "PROCESS_EXIT": "process exit_sequence", "DRAIN_WRITE": "description offset data recall dirty_entry reservation",
+ 	}
+ 	names, ok := fields[op]
+ 	if !ok {
+@@ -135,7 +135,7 @@
+ 			if !bytesField(x, 255, false) {
+ 				return fsapi.Invalid
+ 			}
+-		case "offset", "size":
++		case "offset", "size", "max_end":
+ 			if !uintRange(x, 0, 1<<63-1) {
+ 				return fsapi.Invalid
+ 			}
+--- a/internal/guestbridge/types.go
++++ b/internal/guestbridge/types.go
+@@ -184,6 +184,10 @@
+ 
+ // Outcome returns authoritative logical output plus exact verified publication.
+ type Outcome struct {
++	// DelegatedError preserves ErrDelegatedFileTooLarge from prepare as a
++	// confirmed pre-effect result; no v1 semantic errno is invented for it.
++	// It requires an otherwise zero Result and no protected mutation.
++	DelegatedError  error
+ 	Result          fsapi.Result
+ 	Publication     json.RawMessage
+ 	EntryAttributes []fsapi.Attr
+--- a/tools/spec/check_retained9p.py
++++ b/tools/spec/check_retained9p.py
+@@ -192,6 +192,9 @@
+             require(type(flags[name]) is bool, "boolean")
+     elif intent["opcode"] in ("WRITE", "DRAIN_WRITE"):
+         keys = {"description", "offset", "data"}
++        if intent["opcode"] == "WRITE":
++            keys.add("max_end")
++            integer(args["max_end"], 0, 2**63 - 1)
+         if intent["opcode"] == "DRAIN_WRITE":
+             keys |= {"recall", "dirty_entry", "reservation"}
+             identifier(args["recall"])
+@@ -489,6 +492,7 @@
+         intent = body["payload"]["intent"]
+         intent["opcode"] = case["opcode"]
+         if case["opcode"] == "DRAIN_WRITE":
++            intent["args"].pop("max_end", None)
+             intent["args"].update(recall=str(uuid.UUID(int=70)),
+                                   dirty_entry="11" * 32, reservation="22" * 32)
+         body["payload"]["claim"]["original_hash"] = hashlib.sha256(canonical(intent)).hexdigest()
+--- /dev/null
++++ b/internal/fsservice/delegated_write_test.go
+@@ -0,0 +1,114 @@
++package fsservice
++
++import (
++	"bytes"
++	"encoding/json"
++	"errors"
++	"testing"
++
++	"github.com/snonux/homelabfs/internal/fsapi"
++)
++
++func TestDelegatedWriteCapturedEnd(t *testing.T) {
++	for _, tc := range []struct {
++		name   string
++		end    int64
++		count  int64
++		failed bool
++	}{
++		{"zero-bound", 0, 0, true}, {"at-limit", 2, 0, true}, {"past-limit", 1, 0, true},
++		{"crossing-short-prefix", 4, 2, false}, {"exact-end", 6, 4, false},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			f := newLogicalFixture(t)
++			cred := logicalCred()
++			created := f.plan(cred, fsapi.Command{Operation: fsapi.Create, Parent: f.local.c.Storage.Root, Name: "bounded", Mode: 0600, Flags: fsapi.OpenFlags{Access: fsapi.ReadWrite, Create: true}})
++			f.commit(created, uid(11))
++			id := created.Operation.Object
++			h := f.observe(cred, fsapi.Command{Operation: fsapi.Open, Object: id, Flags: fsapi.OpenFlags{Access: fsapi.ReadWrite, Append: true}}).Handle
++			// Another origin appends after the guest chose offset zero.
++			f.commit(f.plan(cred, fsapi.Command{Operation: fsapi.Write, Handle: h, Data: []byte("ab")}), uid(9))
++			c := fsapi.Command{Operation: fsapi.Write, Mount: f.local.c.Storage.Volume, Generation: f.view.Generation(), Handle: h, Offset: 0, Data: []byte("cdef")}
++			o := f.observation()
++			f.next++
++			p, err := f.planner.PlanDelegatedWrite(t.Context(), o, cred, c, uid(f.next), fsapi.ObjectID{}, tc.end)
++			if e := o.Close(); e != nil {
++				t.Fatal(e)
++			}
++			if tc.failed {
++				if !errors.Is(err, ErrDelegatedFileTooLarge) {
++					t.Fatal(err)
++				}
++			} else {
++				if err != nil {
++					t.Fatal(err)
++				}
++				if p.Operation.Offset != 2 || p.Result.Count != tc.count {
++					t.Fatalf("offset=%d count=%d", p.Operation.Offset, p.Result.Count)
++				}
++				var binding struct {
++					Command fsapi.Command
++					MaxEnd  int64
++				}
++				if err = json.Unmarshal(p.Intent, &binding); err != nil {
++					t.Fatal(err)
++				}
++				if !bytes.Equal(binding.Command.Data, []byte("cdef")) || binding.Command.Offset != 0 || binding.MaxEnd != tc.end {
++					t.Fatalf("lost original binding: %s", p.Intent)
++				}
++				// The same full request at this cut binds identically for a distinct claim;
++				// lost replies must resolve their retained claim rather than reserve it twice.
++				o = f.observation()
++				f.next++
++				retry, e := f.planner.PlanDelegatedWrite(t.Context(), o, cred, c, uid(f.next), fsapi.ObjectID{}, tc.end)
++				_ = o.Close()
++				if e != nil || !bytes.Equal(retry.Intent, p.Intent) {
++					t.Fatalf("retry: %v", e)
++				}
++				f.commit(p, uid(11))
++			}
++			got := f.observe(cred, fsapi.Command{Operation: fsapi.Read, Handle: h, Size: 16})
++			want := "ab"
++			if !tc.failed {
++				want += "cdef"[:tc.count]
++			}
++			if string(got.Data) != want {
++				t.Fatalf("data=%q want=%q", got.Data, want)
++			}
++		})
++	}
++}
++
++func TestDelegatedWriteInvalidBounds(t *testing.T) {
++	f := newLogicalFixture(t)
++	o := f.observation()
++	defer func() { _ = o.Close() }()
++	for _, c := range []fsapi.Command{{Operation: fsapi.Write}, {Operation: fsapi.Getattr}} {
++		if _, err := f.planner.PlanDelegatedWrite(t.Context(), o, logicalCred(), c, uid(900), fsapi.ObjectID{}, -1); !errors.Is(err, fsapi.Invalid) {
++			t.Fatal(err)
++		}
++	}
++}
++
++func TestDelegatedWriteNonAppendOffset(t *testing.T) {
++	f := newLogicalFixture(t)
++	cred := logicalCred()
++	created := f.plan(cred, fsapi.Command{Operation: fsapi.Create, Parent: f.local.c.Storage.Root, Name: "positioned", Mode: 0600, Flags: fsapi.OpenFlags{Access: fsapi.ReadWrite, Create: true}})
++	f.commit(created, uid(11))
++	h := f.observe(cred, fsapi.Command{Operation: fsapi.Open, Object: created.Operation.Object, Flags: fsapi.OpenFlags{Access: fsapi.ReadWrite}}).Handle
++	o := f.observation()
++	defer func() { _ = o.Close() }()
++	command := fsapi.Command{Operation: fsapi.Write, Mount: f.local.c.Storage.Volume, Generation: f.view.Generation(), Handle: h, Offset: 3, Data: []byte("abcd")}
++	p, err := f.planner.PlanDelegatedWrite(t.Context(), o, cred, command, uid(980), fsapi.ObjectID{}, 5)
++	if err != nil || p.Result.Count != 2 || p.Operation.Offset != 3 {
++		t.Fatalf("count=%d offset=%d error=%v", p.Result.Count, p.Operation.Offset, err)
++	}
++	command.Offset = -1
++	if _, err = f.planner.PlanDelegatedWrite(t.Context(), o, cred, command, uid(981), fsapi.ObjectID{}, 5); !errors.Is(err, fsapi.Invalid) {
++		t.Fatal(err)
++	}
++	command.Operation = fsapi.Getattr
++	if _, err = f.planner.PlanDelegatedWrite(t.Context(), o, cred, command, uid(982), fsapi.ObjectID{}, 5); !errors.Is(err, fsapi.Invalid) {
++		t.Fatal(err)
++	}
++}

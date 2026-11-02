@@ -1,0 +1,42 @@
+Narrow shared WRITE max_end correction after clean host R1.
+
+API agreement with tz3 primary: canonical WRITE data,description,max_end,offset;
+max_end is an exclusive file-end bound 0..S64MAX captured as min RLIMIT/non-LFS/fs
+bound. FileTooLarge exact wire string maps C EFBIG. DRAIN_WRITE unchanged.
+
+PlanDelegatedWrite delegates to the real shared planner and caps data only after
+prepare selects authoritative append offset and Unix authorization passes, before
+identity reservation/mutation generation. Plan remains unchanged. The delegated
+internal binding includes MaxEnd plus the full original Command; record.Write is
+only the selected prefix. Outcome.DelegatedError retains typed pre-effect limit
+failure without widening fsapi/v1 or record enums. Controlled Captured providers
+must enforce this bound in their real serialized service seam; no runtime provider
+is supplied here (f04/g04 remain separate).
+
+Real tests: at/past/zero bound with unchanged contents; exact and crossing prefixes;
+another origin's committed append invalidates guest offset zero; retained original
+full data/offset/bound; positioned writes and negative offsets; invalid bounds;
+wire short count and FileTooLarge, no-effect contents, lost reply dedup without
+reexecution. Initial planner retry test incorrectly attempted a second identity
+reservation for the same claim, yielding expected STALE. Corrected planner test
+compares immutable binding across fresh claims; actual bridge lost-result replay
+verifies original claim dedup. Failed receipt retained max-end-initial-0.json.
+
+Three unused symbols from initial package WIP removed for staticcheck: gapProof,
+invalid, equalAck. The initial lint failure max-end-final-4.json remains retained.
+
+Exact fix patch is max-end-fix.patch; reconstructed R1 baseline for every original
+owned path verified against prior freeze.json before diff generation, with results
+in max-end-reconstruction.json. No unverifiable reconstructed paths. New test file
+included as add. max-end-freeze.json records final owned files and fix patch hash.
+
+All final max-end-clean-{0..7}.json passed: affected build, targeted tests, vet,
+errcheck, staticcheck, targeted race, protocol checker, gofmt. FreeBSD amd64 CGO0
+build and guestbridge/fsservice/fuseadapter test-binary cross compilations passed
+in max-end-clean-cross-{0..3}.json. Source bindings: max-end-source-clean.json.
+No full suite, runtime, mount, installation, VM, SSH, production or task/git mutations.
+
+Self-review: Did everything make sense / is there a better way? The narrow shared
+planner seam preserves append serialization and original intents while avoiding
+closed-enum changes. Existing providers stay absent/fail-closed. Ready for root's
+single narrow R2; no further review launched by worker.

@@ -1,0 +1,29 @@
+{
+  "cwd": "/home/paul/tmp/codex/hfs-sz3-20261102-_tvt_au5/worktree",
+  "tmpdir": "/tmp/hfs-sz3-h2xbh9rq",
+  "source_sha256": "69e21eebe06fb8001a0807684880eb4788d215308f89f5dc21fdae0bafce8310",
+  "argv": [
+    "go",
+    "test",
+    "-p",
+    "1",
+    "./internal/guestbridge",
+    "./internal/fuseadapter",
+    "./internal/fsservice",
+    "-run",
+    "Test(Bridge|Delegated|PrivateControl)",
+    "-count=1",
+    "-timeout=60s",
+    "-v"
+  ],
+  "env": {
+    "TMPDIR": "/tmp/hfs-sz3-h2xbh9rq",
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "512MiB",
+    "GOFLAGS": "-p=1",
+    "HOMELABFS_FUSE_INTEGRATION": "0"
+  },
+  "exit": 1,
+  "seconds": 1.136,
+  "output": "# github.com/snonux/homelabfs/internal/guestbridge\ninternal/guestbridge/dispatch.go:179:14: undefined: cred\nFAIL\tgithub.com/snonux/homelabfs/internal/guestbridge [build failed]\nFAIL\tgithub.com/snonux/homelabfs/internal/fuseadapter [build failed]\n=== RUN   TestPrivateControlNamespaceReservationAndExistingConflict\n--- PASS: TestPrivateControlNamespaceReservationAndExistingConflict (0.01s)\nPASS\nok  \tgithub.com/snonux/homelabfs/internal/fsservice\t0.009s\nFAIL\n"
+}

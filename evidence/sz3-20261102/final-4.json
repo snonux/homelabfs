@@ -1,0 +1,35 @@
+{
+  "cwd": "/home/paul/tmp/codex/hfs-sz3-20261102-_tvt_au5/worktree",
+  "tmpdir": "/tmp/hfs-sz3-5fter9iw",
+  "source_sha256": "84e1e710c62e9e604555437626af4bbf56c47081b2bfb4ea3eabeb6195ab41f4",
+  "argv": [
+    "gofmt",
+    "-l",
+    "internal/fsservice/execute.go",
+    "internal/fsservice/logical.go",
+    "internal/fsservice/private_namespace.go",
+    "internal/fsservice/private_namespace_test.go",
+    "internal/fuseadapter/guestbridge.go",
+    "internal/fuseadapter/guestbridge_test.go",
+    "internal/guestbridge/bridge_test.go",
+    "internal/guestbridge/codec.go",
+    "internal/guestbridge/dispatch.go",
+    "internal/guestbridge/endpoint.go",
+    "internal/guestbridge/logical.go",
+    "internal/guestbridge/response.go",
+    "internal/guestbridge/result.go",
+    "internal/guestbridge/schema.go",
+    "internal/guestbridge/service.go",
+    "internal/guestbridge/types.go"
+  ],
+  "env": {
+    "TMPDIR": "/tmp/hfs-sz3-5fter9iw",
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "512MiB",
+    "GOFLAGS": "-p=1",
+    "HOMELABFS_FUSE_INTEGRATION": "0"
+  },
+  "exit": 0,
+  "seconds": 0.013,
+  "output": ""
+}

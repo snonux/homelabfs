@@ -1,0 +1,5 @@
+internal/fuseadapter/guestbridge.go:57:15: QF1011: could omit type fuse.RawFileSystem from declaration; it will be inferred from the right-hand side (staticcheck)
+	var ordinary fuse.RawFileSystem = fuse.NewDefaultRawFileSystem()
+	             ^
+1 issues:
+* staticcheck: 1

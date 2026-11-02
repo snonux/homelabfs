@@ -1,0 +1,36 @@
+{
+  "cwd": "/home/paul/tmp/codex/hfs-sz3-20261102-_tvt_au5/worktree",
+  "base": "5db8059a6989336ec648087958b8aeb115489d4d",
+  "files": {
+    "docs/spec/Configuration.md": "33df8618d28fac6be58b990fd65bbe346c2668e447e1f71314efb51715ecbefe",
+    "docs/spec/FUSE-adapter.md": "9cc51a2d2d27c13575878276e3ca488e09cdd0f6e16690b47e58b4eee911bba2",
+    "docs/spec/Filesystem-service.md": "18f0d0236f170a1abfbac3d6f266851f932e6b13630ffc5c9281f2811bf01041",
+    "docs/spec/Retained-9p-protocol.md": "4a2386ddf2909e9a951994e46677a2b96303d54a84a7353e5aad63953d453895",
+    "docs/spec/retained9p-fixtures/cases.json": "0bb0044358ff889158ee5785a38ee8b93c99059b876687963d8724055ab7df88",
+    "internal/fsservice/delegated_write_test.go": "13d39398e5bdbbcf97042d377804bdd1bfcd21c151cbc58b4ed0033c7c67f774",
+    "internal/fsservice/execute.go": "ba4227448ec2df1f7f17f79bb23a55ba26688150b53abf3173420ac7441f6ad5",
+    "internal/fsservice/logical.go": "9ea612aac032f3f008ba472b781f8e5cd95efa3addd3318b8f31fa5039e6e964",
+    "internal/fsservice/private_namespace.go": "638c29eefe90bcd87489a2b8ba3d5a378aebab9c0edaa96d2a127586ac40e356",
+    "internal/fsservice/private_namespace_test.go": "e090fe5d78526f050f4f75124b67772ce9168a07e96d3853f3d2fdf5eb33b3d3",
+    "internal/fuseadapter/guestbridge.go": "2058a86dd9f110ee32247e16c5a9a797183f91962f38bd2fe98206b929f13a35",
+    "internal/fuseadapter/guestbridge_test.go": "f3051b92ea083f0a7d9d23fb8c3b146d643fec184582da1ca267e4db0d5ee8bb",
+    "internal/guestbridge/README.md": "0220ab2fd67edf2d231b4ed882ce2168c5e720b7a78e781a9613c57612937ff9",
+    "internal/guestbridge/bridge_test.go": "4fa893332d36e59bcb3139461db419436789e5eaa11884c43a191b90413cee46",
+    "internal/guestbridge/codec.go": "d8373b5c4e56fb670907fb3aedb4b50d2bb07e67aa922f7038a95b1dd4ff9b15",
+    "internal/guestbridge/dispatch.go": "3f3f4d2a6664a2c5585b810df607fce716d0bc4c299d3a9ce32c63477492d853",
+    "internal/guestbridge/endpoint.go": "2171d10017587bb0ec78c8a57a380e5a3320b168ba000c643db38c6d0a71d2f6",
+    "internal/guestbridge/logical.go": "89caac78ed3834cc3cd45f653472af6f6c56aa7d8600db2de5e8baf9527aacf0",
+    "internal/guestbridge/response.go": "f863fb449d2aa13f1584c937d867685cb04d9567d59c3c18e5fb4a4c6b46afed",
+    "internal/guestbridge/result.go": "8adca8c7a6b115eb25f844714024e1647c563ba2d4f610b108af887416d97a0a",
+    "internal/guestbridge/schema.go": "32a45ca1c2a845c91c6326aec93f50c6619c25f1b558ea6121646165d15038de",
+    "internal/guestbridge/service.go": "4b0560d10632144842e44e51d86c45fbaf84f46e3bc05a19158b0a5f4848edd4",
+    "internal/guestbridge/types.go": "c037da66d05b7b69cb90e430431deccc5f2738e16bbcd01229d6022a74267882",
+    "tools/spec/check_retained9p.py": "af1105355a4afd5e1b25996e8a65dc781d4bd322fffab2e5af6c83550285e3ec"
+  },
+  "fix_patch_sha256": "b76bb5f9836f5374fa1631205b95e362e84bd5e6c2059a9273c31a1500cfba31",
+  "self_review": "Did everything make sense / is there a better way? Yes: bound after authoritative append selection under existing serial execution, retain original intent; use delegated typed error instead of changing closed fsapi/v1. Three dead symbols removed for lint. No runtime providers added.",
+  "failed_receipts": [
+    "max-end-initial-0.json",
+    "max-end-final-4.json"
+  ]
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"math"
 
 	"github.com/snonux/homelabfs/internal/apply"
@@ -43,6 +44,10 @@ type Planned struct {
 	Result    fsapi.Result
 }
 
+// ErrDelegatedFileTooLarge is a pre-effect delegated write rejection. It is
+// deliberately outside the closed fsapi/v1 errno and journal schemas.
+var ErrDelegatedFileTooLarge = errors.New("delegated write exceeds captured file end")
+
 // NewLogicalPlanner requires an explicit policy; privileged daemon credentials
 // never replace workload credentials. Its bounded limits mirror Service.
 func NewLogicalPlanner(config LogicalConfig) (*LogicalPlanner, error) {
@@ -77,6 +82,20 @@ func NewLogicalPlanner(config LogicalConfig) (*LogicalPlanner, error) {
 // zero allocation. It performs no source append, sync or backing installation.
 // Ordinary cross-mount/foreign-home mutations remain closed until typed 8w3.
 func (p *LogicalPlanner) Plan(ctx context.Context, observation *logicalview.Observation, cred fsapi.Cred, c fsapi.Command, claim fsapi.UUID, allocation fsapi.ObjectID) (Planned, error) {
+	return p.plan(ctx, observation, cred, c, claim, allocation, nil)
+}
+
+// PlanDelegatedWrite limits the selected prefix after resolving the authoritative
+// append offset. Execution must serialize this cut with publication across all
+// origins. The original full command and bound remain the immutable binding.
+func (p *LogicalPlanner) PlanDelegatedWrite(ctx context.Context, observation *logicalview.Observation, cred fsapi.Cred, c fsapi.Command, claim fsapi.UUID, allocation fsapi.ObjectID, maxEnd int64) (Planned, error) {
+	if c.Operation != fsapi.Write || maxEnd < 0 {
+		return Planned{}, fsapi.Invalid
+	}
+	return p.plan(ctx, observation, cred, c, claim, allocation, &maxEnd)
+}
+
+func (p *LogicalPlanner) plan(ctx context.Context, observation *logicalview.Observation, cred fsapi.Cred, c fsapi.Command, claim fsapi.UUID, allocation fsapi.ObjectID, maxEnd *int64) (Planned, error) {
 	if err := p.boundCommand(cred, c); err != nil {
 		return Planned{}, err
 	}
@@ -109,6 +128,17 @@ func (p *LogicalPlanner) Plan(ctx context.Context, observation *logicalview.Obse
 	}
 	if err = checkPermissions(ctx, p.config.Permissions, cred, original, c, plan); err != nil {
 		return Planned{}, err
+	}
+	if maxEnd != nil {
+		if c.Offset < 0 {
+			return Planned{}, fsapi.Invalid
+		}
+		if c.Offset >= *maxEnd {
+			return Planned{}, ErrDelegatedFileTooLarge
+		}
+		if remaining := *maxEnd - c.Offset; int64(len(c.Data)) > remaining {
+			c.Data = c.Data[:remaining]
+		}
 	}
 	config := planningConfig{root: image.Root, storageLimits: p.config.StorageLimits, logicalBytes: p.config.Limits.LogicalBytes, identities: func(ctx context.Context, creation bool) (fsapi.UUID, fsapi.ObjectID, error) {
 		if creation && (!allocation.Valid() || allocation.Home != c.Mount) {
@@ -144,7 +174,8 @@ func (p *LogicalPlanner) Plan(ctx context.Context, observation *logicalview.Obse
 		Version     uint16
 		Credentials fsapi.Cred
 		Command     fsapi.Command
-	}{1, cred.Clone(), bound})
+		MaxEnd      *int64 `json:",omitempty"`
+	}{1, cred.Clone(), bound, maxEnd})
 	if err != nil {
 		return Planned{}, err
 	}
@@ -314,4 +345,30 @@ func (p *LogicalPlanner) boundCommand(cred fsapi.Cred, c fsapi.Command) error {
 		return fsapi.Invalid
 	}
 	return nil
+}
+
+// DelegatedGeneration verifies the built-in Unix policy and actual authority
+// member's volume/history generation against a captured committed RAM image.
+// The returned serving generation is the separate handle/visibility lifetime;
+// neither it nor the member generation establishes normal serving authority.
+func (p *LogicalPlanner) DelegatedGeneration(ctx context.Context, volume, generation fsapi.UUID) (fsapi.UUID, error) {
+	if p == nil || p.config.View == nil {
+		return fsapi.UUID{}, fsapi.Stale
+	}
+	if _, ok := p.config.Permissions.(UnixPermissions); !ok {
+		return fsapi.UUID{}, fsapi.Permission
+	}
+	o, err := p.config.View.Begin(ctx)
+	if err != nil {
+		return fsapi.UUID{}, err
+	}
+	defer func() { _ = o.Close() }()
+	image, err := o.Image(ctx, volume)
+	if err != nil {
+		return fsapi.UUID{}, err
+	}
+	if image.Volume != volume || image.Position.Generation != generation {
+		return fsapi.UUID{}, fsapi.Stale
+	}
+	return p.config.View.Generation(), nil
 }

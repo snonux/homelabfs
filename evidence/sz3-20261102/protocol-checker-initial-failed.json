@@ -1,0 +1,11 @@
+{
+  "cwd": "/home/paul/tmp/codex/hfs-sz3-20261102-_tvt_au5/worktree",
+  "argv": [
+    "python3",
+    "tools/spec/check_retained9p.py"
+  ],
+  "exit": 1,
+  "source_sha256": null,
+  "output": "IndentationError: unexpected indent at tools/spec/check_retained9p.py line 611 (sys.exit(1))",
+  "limitation": "Initial checker edit failure was shown in tool output before correction; its exact pre-correction source digest and elapsed time were not captured. This receipt records that limitation and does not attribute it to the frozen source."
+}

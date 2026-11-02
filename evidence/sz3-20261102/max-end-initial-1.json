@@ -1,0 +1,17 @@
+{
+  "cwd": "/home/paul/tmp/codex/hfs-sz3-20261102-_tvt_au5/worktree",
+  "argv": [
+    "python3",
+    "tools/spec/check_retained9p.py"
+  ],
+  "source_sha256": "4be8b5dda421381d6e3abfc57266440546c0e97c49c3486d3c4acdb51d809f8a",
+  "env": {
+    "TMPDIR": "/tmp/hfs-s3b-t9hyhbru",
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "512MiB",
+    "GOFLAGS": "-p=1"
+  },
+  "exit": 0,
+  "seconds": 0.29224845000135247,
+  "output": "PASS: 55 literal golden/malformed examples; groups1024 boundary; 5-chunk write/short reads; claim history; 8 acknowledgement contexts; atomic-create example; 30 endpoint-wide native-cell cases; 15 full-capacity replacement cases\nDesign subset only: no runtime, authentication, normal3 proof, DAC, durability, cache revocation or FUSE compatibility claim.\n"
+}

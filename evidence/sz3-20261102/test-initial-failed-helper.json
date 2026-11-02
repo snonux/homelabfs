@@ -1,0 +1,28 @@
+{
+  "cwd": "/home/paul/tmp/codex/hfs-sz3-20261102-_tvt_au5/worktree",
+  "tmpdir": "/tmp/hfs-sz3-vor9hu7e",
+  "source_sha256": "1d6b4bf36ab64ce4c20621a4f55a760152a9a217ffb38d657e7df51e9181b0f2",
+  "argv": [
+    "go",
+    "test",
+    "-p",
+    "1",
+    "./internal/guestbridge",
+    "./internal/fuseadapter",
+    "-run",
+    "Test(Bridge|Delegated|PrivateControl)",
+    "-count=1",
+    "-timeout=60s",
+    "-v"
+  ],
+  "env": {
+    "TMPDIR": "/tmp/hfs-sz3-vor9hu7e",
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "512MiB",
+    "GOFLAGS": "-p=1",
+    "HOMELABFS_FUSE_INTEGRATION": "0"
+  },
+  "exit": 1,
+  "seconds": 1.568,
+  "output": "=== RUN   TestDelegatedDynamicGroupsCommittedRAMAndMetadata\n--- PASS: TestDelegatedDynamicGroupsCommittedRAMAndMetadata (0.01s)\n=== RUN   TestDelegatedClaimDedupCancelAndConfinement\n--- PASS: TestDelegatedClaimDedupCancelAndConfinement (0.00s)\n=== RUN   TestBridgeFrameAndSchemaRejections\n--- PASS: TestBridgeFrameAndSchemaRejections (0.00s)\n=== RUN   TestBridgeEndpointFullCreditReplacementAndNativeBinding\n    bridge_test.go:524: INVALID\n--- FAIL: TestBridgeEndpointFullCreditReplacementAndNativeBinding (0.01s)\nFAIL\nFAIL\tgithub.com/snonux/homelabfs/internal/guestbridge\t0.024s\ntesting: warning: no tests to run\nPASS\nok  \tgithub.com/snonux/homelabfs/internal/fuseadapter\t0.002s [no tests to run]\nFAIL\n"
+}

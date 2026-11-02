@@ -1,0 +1,3 @@
+ok  	github.com/snonux/homelabfs/internal/guestbridge	0.132s	coverage: 62.0% of statements
+ok  	github.com/snonux/homelabfs/internal/fsservice	5.741s	coverage: 79.2% of statements
+ok  	github.com/snonux/homelabfs/internal/fuseadapter	0.133s	coverage: 67.4% of statements

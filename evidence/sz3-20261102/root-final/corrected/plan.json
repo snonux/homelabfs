@@ -1,0 +1,81 @@
+{
+  "packages": [
+    "./..."
+  ],
+  "commands": [
+    {
+      "name": "build",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ]
+    },
+    {
+      "name": "vet",
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ]
+    },
+    {
+      "name": "errcheck",
+      "argv": [
+        "errcheck",
+        "./..."
+      ]
+    },
+    {
+      "name": "lint",
+      "argv": [
+        "golangci-lint",
+        "run",
+        "--timeout=3m",
+        "./..."
+      ]
+    },
+    {
+      "name": "freebsd",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "0"
+      }
+    },
+    {
+      "name": "full-root",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-count=1",
+        "-timeout=600s",
+        "./..."
+      ],
+      "timeout": 1200
+    },
+    {
+      "name": "changed-coverage",
+      "argv": [
+        "go",
+        "test",
+        "-count=1",
+        "-timeout=180s",
+        "-cover",
+        "./internal/guestbridge",
+        "./internal/fsservice",
+        "./internal/fuseadapter"
+      ],
+      "timeout": 300
+    }
+  ],
+  "tmp": "/tmp/hs3-d431drkd",
+  "scope": "Host sz3 frozen max_end candidate on base5db8059; full module nonrace and targeted coverage; prior targeted race separate receipts. One inferred-type lint correction after final review; failed original receipt retained."
+}

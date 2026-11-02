@@ -1,0 +1,29 @@
+{
+  "cwd": "/home/paul/tmp/codex/hfs-sz3-20261102-_tvt_au5/worktree",
+  "tmpdir": "/tmp/hfs-sz3-2uhs4cxx",
+  "source_sha256": "5cfa94e36605262ad8e63929ecd47bd32708457645f90177f801c76ee565d284",
+  "argv": [
+    "go",
+    "test",
+    "-race",
+    "-p",
+    "1",
+    "./internal/guestbridge",
+    "./internal/fuseadapter",
+    "-run",
+    "Test(Bridge|Delegated|PrivateControl)",
+    "-count=1",
+    "-timeout=60s",
+    "-v"
+  ],
+  "env": {
+    "TMPDIR": "/tmp/hfs-sz3-2uhs4cxx",
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "512MiB",
+    "GOFLAGS": "-p=1",
+    "HOMELABFS_FUSE_INTEGRATION": "0"
+  },
+  "exit": 0,
+  "seconds": 8.16,
+  "output": "=== RUN   TestDelegatedDynamicGroupsCommittedRAMAndMetadata\n--- PASS: TestDelegatedDynamicGroupsCommittedRAMAndMetadata (0.07s)\n=== RUN   TestDelegatedClaimDedupCancelAndConfinement\n--- PASS: TestDelegatedClaimDedupCancelAndConfinement (0.02s)\n=== RUN   TestBridgeFrameAndSchemaRejections\n--- PASS: TestBridgeFrameAndSchemaRejections (0.01s)\n=== RUN   TestBridgeEndpointFullCreditReplacementAndNativeBinding\n--- PASS: TestBridgeEndpointFullCreditReplacementAndNativeBinding (0.14s)\n=== RUN   TestBridgeNativeFlagsFragmentedAdmissionAndPadding\n=== RUN   TestBridgeNativeFlagsFragmentedAdmissionAndPadding/ordinary\n=== RUN   TestBridgeNativeFlagsFragmentedAdmissionAndPadding/drain\n=== RUN   TestBridgeNativeFlagsFragmentedAdmissionAndPadding/wrong-control\n=== RUN   TestBridgeNativeFlagsFragmentedAdmissionAndPadding/wrong-ordinary\n=== RUN   TestBridgeNativeFlagsFragmentedAdmissionAndPadding/changed-chunks\n--- PASS: TestBridgeNativeFlagsFragmentedAdmissionAndPadding (0.59s)\n    --- PASS: TestBridgeNativeFlagsFragmentedAdmissionAndPadding/ordinary (0.17s)\n    --- PASS: TestBridgeNativeFlagsFragmentedAdmissionAndPadding/drain (0.17s)\n    --- PASS: TestBridgeNativeFlagsFragmentedAdmissionAndPadding/wrong-control (0.10s)\n    --- PASS: TestBridgeNativeFlagsFragmentedAdmissionAndPadding/wrong-ordinary (0.10s)\n    --- PASS: TestBridgeNativeFlagsFragmentedAdmissionAndPadding/changed-chunks (0.05s)\n=== RUN   TestDelegatedDescriptionKeepsGrantAfterChmodUnlinkAndFinalRelease\n--- PASS: TestDelegatedDescriptionKeepsGrantAfterChmodUnlinkAndFinalRelease (0.06s)\nPASS\nok  \tgithub.com/snonux/homelabfs/internal/guestbridge\t1.903s\n=== RUN   TestPrivateControlCallbacksIdentityVisibilityAndPositionalReceipt\n--- PASS: TestPrivateControlCallbacksIdentityVisibilityAndPositionalReceipt (0.00s)\nPASS\nok  \tgithub.com/snonux/homelabfs/internal/fuseadapter\t1.013s\n"
+}

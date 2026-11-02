@@ -203,3 +203,21 @@ data/journal/control roots, root-owned daemon with genuine fixed unprivileged
 helper credentials, evidence and restart. It does not change version 1 normal
 configuration or the direct self-client `mount`/`serve` commands above. Native
 runtime acceptance remains a separate approved gate.
+
+## Retained bridge component boundary (`sz3`)
+
+[`guestbridge.Config`](../../internal/guestbridge/README.md) is an embedding
+component contract, not a new configuration-file/CLI serving option. It requires
+exact native enrollment, separate guest attestation, protected claims, verified
+execution and recall providers plus finite endpoint budgets. A named controlled
+profile requires a real local service/journal provider (`f04`) and null bridge
+publication. Normal mode requires the actual member history generation, shared
+Unix planner and verified public binding/source/barrier execution (`g04` and
+normal integration). Neither mode has a built-in runtime provider here.
+Native enrollment must bind one actual endpoint to one controller incarnation;
+missing prior continuity or an already-issued endpoint refuses fresh enrollment.
+RESUME remains BLOCKED until controller-owned ledger reconstruction/install exists;
+an opaque provider callback cannot supply it. Unknown or missing providers leave
+construction/admission closed. No profile
+flag, HELLO, synthetic component verifier or ordinary native mount grants normal
+publication, new guest trust, installation or a lab lifecycle window.

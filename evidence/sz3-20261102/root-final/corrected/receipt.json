@@ -1,0 +1,88 @@
+[
+  {
+    "check": "build",
+    "argv": [
+      "go",
+      "build",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 1.918
+  },
+  {
+    "check": "vet",
+    "argv": [
+      "go",
+      "vet",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 0.515
+  },
+  {
+    "check": "errcheck",
+    "argv": [
+      "errcheck",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 1.369
+  },
+  {
+    "check": "lint",
+    "argv": [
+      "golangci-lint",
+      "run",
+      "--timeout=3m",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 1.167
+  },
+  {
+    "check": "freebsd",
+    "argv": [
+      "go",
+      "build",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 4.274
+  },
+  {
+    "check": "full-root",
+    "argv": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-count=1",
+      "-timeout=600s",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 37.214
+  },
+  {
+    "check": "changed-coverage",
+    "argv": [
+      "go",
+      "test",
+      "-count=1",
+      "-timeout=180s",
+      "-cover",
+      "./internal/guestbridge",
+      "./internal/fsservice",
+      "./internal/fuseadapter"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 8.833
+  }
+]
