@@ -20,7 +20,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if len(args) == 0 {
-		return fmt.Errorf("usage: homelabfs node-init --control DIR | volume-init|inspect|status|mount|serve --config FILE (see docs/spec/Configuration.md)")
+		return fmt.Errorf("usage: homelabfs -version | node-init --control DIR | volume-init|inspect|status|mount|serve --config FILE | behavior --disposable-validation [options] (see docs/spec/Configuration.md)")
 	}
 	if args[0] == "behavior" {
 		return runBehaviorCommand(ctx, args[1:], stdout, stderr)

@@ -917,8 +917,11 @@ specified conformance cases, not claims that an implementation has passed them:
 | CHECKPOINT_ACCEPT without published matching CURRENT/closure peer/dependency | Preserve predecessor and gate; RETENTION must not advance. |
 
 Local review should check every mutation and every Transactions required record
-against these tables and run the pure generation snippet. Future implementation
-must add parser/fuzz/corruption/limit vectors and model delayed proposals racing
-promises, majority acceptance/tail loss, closure visibility, partial checkpoint
-publication and GC. Native kernel/FUSE, crash, storage sync and guest-cache tests
-need separately explicit approval under [Test automation](../Test-automation.md).
+against these tables and run the pure generation snippet. The bounded local
+[journal codec tests](../../internal/journal/record/README.md) now cover parsing,
+fuzzing, corruption and allocation limits. These representation checks do not
+establish the distributed protocol: future implementation must model delayed
+proposals racing promises, majority acceptance/tail loss, closure visibility,
+partial checkpoint publication and GC. Native kernel/FUSE, crash, storage sync
+and guest-cache tests follow the current approval boundaries in
+[AGENTS.md](../../AGENTS.md) and [Test automation](../Test-automation.md).

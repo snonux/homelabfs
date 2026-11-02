@@ -44,7 +44,7 @@ The runner stores its oracle and report outside the smoke volumes. No default re
 
 For L07/L08, define the necessary administrative observability API during implementation. Missing replication evidence is a test failure or explicit unsupported gate, not permission to assume replicas are current. Poll with deadlines rather than arbitrary sleeps.
 
-Where Kubernetes publication is deployed, an optional explicitly selected smoke profile runs a disposable pod using only a smoke PVC, tests the published path, and removes its own resources. The basic Stage 2 suite runs directly inside the real Rocky VMs and does not depend on changing any application deployment.
+The Stage 2 baseline profile targets real Rocky guests through adapter-managed probes; the controller and pinned deployment adapter run locally. It does not depend on changing any application deployment. Kubernetes smoke profiles are unsupported and rejected by the runner. A future optional profile would need to run a disposable pod using only a smoke PVC, verify the published path, and remove its own resources before it could claim Kubernetes publication coverage.
 
 ## Completion and escalation
 

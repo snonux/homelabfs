@@ -44,15 +44,23 @@ FreeBSD/amd64 daemon binaries under `bin/`. Build the controllers separately wit
 `go build -o bin/hfs-lab ./cmd/hfs-lab` and
 `go build -o bin/hfs-smoke-driver ./cmd/hfs-smoke-driver`; see the
 [lab runner](docs/Lab-runner.md) and [Stage 2 smoke runner](docs/Live-smoke-runner.md)
-for their implemented boundaries and missing drivers/adapters.
+for their implemented boundaries and missing drivers/adapters. `mage behaviorBuild`
+builds the fourth binary, `hfs-behavior`, for Linux/amd64 and FreeBSD/amd64 under
+`bin/`; see the [portable behavior runner](docs/Portable-behavior.md) for its
+disposable single-node checks and limits.
 
 `mage vet` and `mage lint` provide root-module static checks (lint reports a skip
 if golangci-lint is absent). `mage test` runs the root-module unit tests;
-`mage fuzzShort` runs each available fuzz target for five
-seconds with one worker, but no root-module fuzz targets exist yet. Each test
-invocation requires explicit approval under [AGENTS.md](AGENTS.md). The manually
-dispatched CI workflow runs vet, unit tests and both cross builds; it never
-starts the lab. Local unit tests and the Linux kernel probes recorded in the
+`mage fuzzShort` discovers and runs the journal codec's four fuzz targets and
+the transport frame decoder target for five seconds each with one worker.
+Routine bounded verification is covered by the standing approval in
+[AGENTS.md](AGENTS.md); critical or dangerous operations still need explicit
+approval. The [CI workflow](.github/workflows/ci.yml) runs on manual dispatch
+and pushes to `codex/linux-fuse-ci-20261029`. It runs vet, unit tests and both
+cross builds, plus a runner/root [Linux FUSE matrix](docs/Linux-fuse-ci.md)
+against actual kernel mounts on disposable runners. The root job also runs
+the controlled daemon behavior command. CI never starts the lab.
+Local unit tests and the Linux kernel probes recorded in the
 [FUSE binding decision](docs/adr/0001-fuse-library.md) do not establish native
 FreeBSD adapter readiness, distributed integration or live smoke success; those
 validation gates remain open.
@@ -100,7 +108,7 @@ Routine failures should recover automatically when enough valid history and auth
 
 ## Initial test infrastructure
 
-Three FreeBSD bhyve guests on f3 have passed the native FUSE/ZFS PoC checks. Each runs FUSE inside the guest. The separate Rocky 9p/FUSE regression also passed. See [lab operations, scripts, results, and current state](docs/Lab-operations.md); future test runs still require explicit approval.
+Three FreeBSD bhyve guests on f3 have passed the native FUSE/ZFS PoC checks. Each runs FUSE inside the guest. The separate Rocky 9p/FUSE regression also passed. See [lab operations, scripts, results, and current state](docs/Lab-operations.md). Future runs follow the approval boundaries in [AGENTS.md](AGENTS.md), including separate explicit approval for disruptive VM lifecycle windows.
 
 The [deployment readiness prerequisites](docs/Deployment-readiness.md) cover canary isolation, bounded resource budgets, fencing, kernel support, recovery and test acceptance. They do not authorize production migration or NFS retirement.
 
@@ -126,7 +134,7 @@ Start with the [architecture overview](docs/Architecture.md).
 | [Platform interfaces](docs/Platform-interfaces.md) | Shared Go core, FUSE adapters, and virtio-9p |
 | [Security](docs/Security.md) | Encryption, admission, and authorization |
 | [Snapshots and restore](docs/Snapshots-and-restore.md) | External snapshots and coordinated restore |
-| [Test approval and automation](docs/Test-automation.md) | Per-run approval and unattended script execution |
+| [Test approval and automation](docs/Test-automation.md) | Stage approval and unattended script execution; current standing approval in [AGENTS.md](AGENTS.md) |
 | [Disposable FreeBSD lab](docs/FreeBSD-test-lab.md) | Three 2 GiB VMs, memory admission, cleanup, and Rocky restoration |
 | [Live smoke tests](docs/Live-smoke-tests.md) | Stage 2 end-to-end checks from real Rocky guests |
 | [Deployment compatibility](docs/Deployment-tests.md) | Separate 9p and Kubernetes lifecycle checks |
