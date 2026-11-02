@@ -1,0 +1,70 @@
+{
+  "archive_bytes": 221923186,
+  "archive_sha256": "4f3c00db43ece26e00b83da8cee938e544ba89e10dc10aecc45209ab03554a17",
+  "archive_url": "https://codeload.github.com/gregkh/linux/tar.gz/79807e970724c1f90cee1316361d61b80db4eef6",
+  "base_file_sha256": {
+    "fs/9p/Kconfig": "bac76250e3808a428eefe107f2b74b0350689dc303e912cbed726c2a86669256",
+    "fs/9p/Makefile": "7c79bafa9d6e3d66f659744a080827f9d4cd666be03289a86b19ea49f7ccaaad",
+    "fs/9p/hfs.h": null,
+    "fs/9p/hfs_cursor.c": null,
+    "fs/9p/hfs_cursor.h": null,
+    "fs/9p/hfs_file.c": null,
+    "fs/9p/hfs_inode.c": null,
+    "fs/9p/hfs_policy.c": null,
+    "fs/9p/hfs_policy.h": null,
+    "fs/9p/hfs_protocol.c": null,
+    "fs/9p/hfs_protocol.h": null,
+    "fs/9p/hfs_session.c": null,
+    "fs/9p/vfs_super.c": "018008a92c6285ae154b42b9d819ddeeb07a3552b8afcd0bd996ddb037e37aff",
+    "include/net/9p/9p.h": "6b85e46b20d6f0c716d811ee19a9efc19e899674118a8f2508c27ffba5d06902",
+    "include/net/9p/client.h": "8a320337f3f56c0359641c5afb5b17c74cb8be112af680727eb0ca8bf71d9fcb",
+    "net/9p/client.c": "eaa69c993917c4d538d49a8aa93a5e147300fde1d434300a9ced8301cce090ce",
+    "net/9p/protocol.c": "ba03d96ab967327d3cc50a82470ac6fd05d95a539ddb1f546e99dc5367a341ba"
+  },
+  "commit": "79807e970724c1f90cee1316361d61b80db4eef6",
+  "format": 1,
+  "git_url": "https://github.com/gregkh/linux.git",
+  "installed_elrepo_source_binding": "unproven",
+  "module_abi_runtime_and_normal_publication": "unproven; not admitted",
+  "patched_file_sha256": {
+    "fs/9p/Kconfig": "2efc112debcbaf4c2d3dbde5893b280666b9547cb7417dc13cac85b15ebc8fe2",
+    "fs/9p/Makefile": "997eb603d3c6b14d0abea41897783d078e9dcb799c8eb308ca471494006e2096",
+    "fs/9p/hfs.h": "c131bd6989b294fdc14f11982d8c54b0ba245dcab19b93028181c11a26be23f8",
+    "fs/9p/hfs_cursor.c": "94ada25fb7451340390a15305deb62346680d545cdc1c492a0f483e2d4e73127",
+    "fs/9p/hfs_cursor.h": "40876ee1daceaa1b4b18e36781903f5ca1700b60843536d3ebf5a4b56c199871",
+    "fs/9p/hfs_file.c": "fa68d785dfce141a08ae3679a16a658e010d2bca7f01f19af3ccea608efe94fb",
+    "fs/9p/hfs_inode.c": "ab030dd17b97184fc99dc6e9a0cf1ab6e66b384c5d13e0611f10886b500fe54a",
+    "fs/9p/hfs_policy.c": "881618f83408b01871feb91f60f3bea06400d331e3bdd4d3a801c327ae024ba4",
+    "fs/9p/hfs_policy.h": "049c8bd411449c0bb960ecfab63e7426fb13030efcd41bc2d10d1e5c7f4f377e",
+    "fs/9p/hfs_protocol.c": "2de09f23e5779f47b2872d76bd85aa452a94c3e1b36a9da903819050c63e969c",
+    "fs/9p/hfs_protocol.h": "fce2577afd0297d69886741d7e9a87b6516c43871946a901e67764aa179d31f0",
+    "fs/9p/hfs_session.c": "8653be05dbad3089d1dd784f27400d1db37ee68a6b25ff2c83346664f41166d3",
+    "fs/9p/vfs_super.c": "1c85dd57e9f27b324cbf4b8a35e9b4cbaf9f2259533754602220f2b2e60f449f",
+    "include/net/9p/9p.h": "5a46f65229ecb77bd8f70cce081683869c2ae47e63e573a26a1b2e68e1bd5d7b",
+    "include/net/9p/client.h": "0ea1ca90f3cf9eeb25aff8b262da0863e453d9d2c48c3470390d209e6351d6de",
+    "net/9p/client.c": "7b7600b2fc382a4b87671056f42a72803e87e50e0f4bbaa47df0092c84d806b6",
+    "net/9p/protocol.c": "9a0b548ed15ec7e194b391a9cef010541d02c992277c34ba2386c4d8c74092f8"
+  },
+  "patches": [
+    {
+      "bytes": 9665,
+      "file": "0001-9p-hfs1-transport.patch",
+      "sha256": "532fdb1b7014099dd6a15eaf7760fa28710b0c1d6e3df2c57ace4ecb53372ce0"
+    },
+    {
+      "bytes": 29723,
+      "file": "0002-hfs1-canonical-codec-policy.patch",
+      "sha256": "5a97a6d5a86101a0992fbe01290c19e1f318ef7dca574601a15baf9c409fad30"
+    },
+    {
+      "bytes": 101537,
+      "file": "0003-hfs1-guest-vfs.patch",
+      "sha256": "819365c9a3131ee365f23c7dfce69d0c60a8f6d49df3b7203b041c248f803c8d"
+    }
+  ],
+  "project_task": "tz3",
+  "source_kind": "upstream Linux reference",
+  "tag": "v6.1.190",
+  "tag_object": "9ad12a4c0c7a36f365c13ea17d88499618440a7b",
+  "version": "6.1.190"
+}

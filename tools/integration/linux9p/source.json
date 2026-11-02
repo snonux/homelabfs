@@ -36,9 +36,9 @@
     "fs/9p/hfs_inode.c": "ab030dd17b97184fc99dc6e9a0cf1ab6e66b384c5d13e0611f10886b500fe54a",
     "fs/9p/hfs_policy.c": "881618f83408b01871feb91f60f3bea06400d331e3bdd4d3a801c327ae024ba4",
     "fs/9p/hfs_policy.h": "049c8bd411449c0bb960ecfab63e7426fb13030efcd41bc2d10d1e5c7f4f377e",
-    "fs/9p/hfs_protocol.c": "4db26ca615cde687085f6d37fb977281ca9c1a2c81e2a53d9389faa70454c631",
-    "fs/9p/hfs_protocol.h": "de3c70e9e47292d2fa86b65b18e45018d57f19ae0d64ab22ffbc55e8b8d7df5a",
-    "fs/9p/hfs_session.c": "fa78eb4f74161421f34a860f1152ad9f5513e21a8970663b61ea07d999c1dac2",
+    "fs/9p/hfs_protocol.c": "2de09f23e5779f47b2872d76bd85aa452a94c3e1b36a9da903819050c63e969c",
+    "fs/9p/hfs_protocol.h": "fce2577afd0297d69886741d7e9a87b6516c43871946a901e67764aa179d31f0",
+    "fs/9p/hfs_session.c": "8653be05dbad3089d1dd784f27400d1db37ee68a6b25ff2c83346664f41166d3",
     "fs/9p/vfs_super.c": "1c85dd57e9f27b324cbf4b8a35e9b4cbaf9f2259533754602220f2b2e60f449f",
     "include/net/9p/9p.h": "5a46f65229ecb77bd8f70cce081683869c2ae47e63e573a26a1b2e68e1bd5d7b",
     "include/net/9p/client.h": "0ea1ca90f3cf9eeb25aff8b262da0863e453d9d2c48c3470390d209e6351d6de",
@@ -52,14 +52,14 @@
       "sha256": "532fdb1b7014099dd6a15eaf7760fa28710b0c1d6e3df2c57ace4ecb53372ce0"
     },
     {
-      "bytes": 28955,
+      "bytes": 29723,
       "file": "0002-hfs1-canonical-codec-policy.patch",
-      "sha256": "870d77a68b39bda690682af40a8cd5b058031402ea2594861a34a1a12f4e84a2"
+      "sha256": "5a97a6d5a86101a0992fbe01290c19e1f318ef7dca574601a15baf9c409fad30"
     },
     {
-      "bytes": 101373,
+      "bytes": 101537,
       "file": "0003-hfs1-guest-vfs.patch",
-      "sha256": "93d2153ba95c0696fba9af5c2bc45443954d0a5656d54bf223587b86782bd396"
+      "sha256": "819365c9a3131ee365f23c7dfce69d0c60a8f6d49df3b7203b041c248f803c8d"
     }
   ],
   "project_task": "tz3",

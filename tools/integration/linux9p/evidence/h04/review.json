@@ -1,0 +1,7 @@
+{
+  "task": "h04",
+  "review": "Fresh full R1 guest_recall_channel_r1 clean; no second review required.",
+  "root_self_review": "Read actual3-source delta, selector/frame tests and documentation; typed operation-derived response profile preserves requests and all other response channels.",
+  "verification": "All17 actual maintained source hashes plus evidence/test input hashes match. Fresh pinned kernel-object stages0 and all3 production helper sanitizer suites pass. Checkpatch retains inherited0errors/1warning/1CHECK (exit1), no new findings.",
+  "limits": "No transport/provider/syscall/installed kernel proof. Only integration artifacts changed; root will verify387 full-suite Go source hashes remain unchanged after merge."
+}
