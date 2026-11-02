@@ -1,0 +1,346 @@
+Subject: 9p: negotiate exact hfs1 over virtio without stock fallback
+
+Base-commit: 79807e970724c1f90cee1316361d61b80db4eef6
+Owned integration patch; no installation or runtime admission.
+
+diff --git a/include/net/9p/9p.h b/include/net/9p/9p.h
+--- a/include/net/9p/9p.h
++++ b/include/net/9p/9p.h
+@@ -111,6 +111,8 @@
+  */
+ 
+ enum p9_msg_t {
++	P9_TBRIDGE = 240,
++	P9_RBRIDGE = 241,
+ 	P9_TLERROR = 6,
+ 	P9_RLERROR,
+ 	P9_TSTATFS = 8,
+diff --git a/include/net/9p/client.h b/include/net/9p/client.h
+--- a/include/net/9p/client.h
++++ b/include/net/9p/client.h
+@@ -11,6 +11,7 @@
+ 
+ #include <linux/utsname.h>
+ #include <linux/idr.h>
++#include <linux/mutex.h>
+ #include <linux/tracepoint-defs.h>
+ 
+ /* Number of requests per row */
+@@ -26,6 +27,7 @@
+ 	p9_proto_legacy,
+ 	p9_proto_2000u,
+ 	p9_proto_2000L,
++	p9_proto_hfs1,
+ };
+ 
+ 
+@@ -122,6 +124,8 @@
+ 
+ 	struct idr fids;
+ 	struct idr reqs;
++	struct mutex hfs_control_tag;
++	struct mutex hfs_wait_tag;
+ 
+ 	char name[__NEW_UTS_LEN + 1];
+ };
+@@ -297,4 +301,11 @@
+ int p9_client_init(void);
+ void p9_client_exit(void);
+ 
++/* hfs1 uses only Tversion and Tbridge, including reserved control tags. */
++int p9_client_hfs_exchange(struct p9_client *clnt, u16 tag, u8 method,
++			   u8 channel, u64 cell, u32 chunk,
++			   const void *frame, u32 frame_len,
++			   void *reply, u32 *reply_len);
++
+ #endif /* NET_9P_CLIENT_H */
++
+diff --git a/net/9p/client.c b/net/9p/client.c
+--- a/net/9p/client.c
++++ b/net/9p/client.c
+@@ -69,6 +69,9 @@
+ 	seq_printf(m, ",trans=%s", clnt->trans_mod->name);
+ 
+ 	switch (clnt->proto_version) {
++	case p9_proto_hfs1:
++		seq_puts(m, ",version=9P2000.L.hfs1");
++		break;
+ 	case p9_proto_legacy:
+ 		seq_puts(m, ",noextend");
+ 		break;
+@@ -103,7 +106,9 @@
+ {
+ 	int version = -EINVAL;
+ 
+-	if (!strcmp(s, "9p2000")) {
++	if (!strcmp(s, "9P2000.L.hfs1")) {
++		version = p9_proto_hfs1;
++	} else if (!strcmp(s, "9p2000")) {
+ 		version = p9_proto_legacy;
+ 		p9_debug(P9_DEBUG_9P, "Protocol version: Legacy\n");
+ 	} else if (!strcmp(s, "9p2000.u")) {
+@@ -271,7 +276,7 @@
+  */
+ static struct p9_req_t *
+ p9_tag_alloc(struct p9_client *c, int8_t type, uint t_size, uint r_size,
+-	      const char *fmt, va_list ap)
++	      const char *fmt, va_list ap, int wanted_tag)
+ {
+ 	struct p9_req_t *req = kmem_cache_alloc(p9_req_cache, GFP_NOFS);
+ 	int alloc_tsize;
+@@ -312,8 +317,13 @@
+ 	if (type == P9_TVERSION)
+ 		tag = idr_alloc(&c->reqs, req, P9_NOTAG, P9_NOTAG + 1,
+ 				GFP_NOWAIT);
++	else if (wanted_tag >= 0)
++		tag = idr_alloc(&c->reqs, req, wanted_tag, wanted_tag + 1,
++				GFP_NOWAIT);
+ 	else
+-		tag = idr_alloc(&c->reqs, req, 0, P9_NOTAG, GFP_NOWAIT);
++		tag = idr_alloc(&c->reqs, req, 0,
++				c->proto_version == p9_proto_hfs1 ? 65533 : P9_NOTAG,
++			GFP_NOWAIT);
+ 	req->tc.tag = tag;
+ 	spin_unlock_irq(&c->lock);
+ 	idr_preload_end();
+@@ -535,6 +545,9 @@
+ 		p9_debug(P9_DEBUG_ERROR, "couldn't parse header %d\n", err);
+ 		return err;
+ 	}
++	if (c->proto_version == p9_proto_hfs1 &&
++	    (u8)type != P9_RVERSION && (u8)type != P9_RBRIDGE)
++		return -EPROTO;
+ 	if (type != P9_RERROR && type != P9_RLERROR)
+ 		return 0;
+ 
+@@ -620,13 +633,17 @@
+ 
+ static struct p9_req_t *p9_client_prepare_req(struct p9_client *c,
+ 					      int8_t type, uint t_size, uint r_size,
+-					      const char *fmt, va_list ap)
++					      const char *fmt, va_list ap, int wanted_tag)
+ {
+ 	int err;
+ 	struct p9_req_t *req;
+ 	va_list apc;
+ 
+ 	p9_debug(P9_DEBUG_MUX, "client %p op %d\n", c, type);
++
++	if (c->proto_version == p9_proto_hfs1 &&
++	    (u8)type != P9_TVERSION && (u8)type != P9_TBRIDGE)
++		return ERR_PTR(-EPROTO);
+ 
+ 	/* we allow for any status other than disconnected */
+ 	if (c->status == Disconnected)
+@@ -637,7 +654,7 @@
+ 		return ERR_PTR(-EIO);
+ 
+ 	va_copy(apc, ap);
+-	req = p9_tag_alloc(c, type, t_size, r_size, fmt, apc);
++	req = p9_tag_alloc(c, type, t_size, r_size, fmt, apc, wanted_tag);
+ 	va_end(apc);
+ 	if (IS_ERR(req))
+ 		return req;
+@@ -667,9 +684,9 @@
+  */
+ 
+ static struct p9_req_t *
+-p9_client_rpc(struct p9_client *c, int8_t type, const char *fmt, ...)
+-{
+-	va_list ap;
++p9_client_rpc_v(struct p9_client *c, int8_t type, int wanted_tag,
++		const char *fmt, va_list ap)
++{
+ 	int sigpending, err;
+ 	unsigned long flags;
+ 	struct p9_req_t *req;
+@@ -683,9 +700,8 @@
+ 	const uint tsize = 0;
+ 	const uint rsize = c->trans_mod->pooled_rbuffers ? c->msize : 0;
+ 
+-	va_start(ap, fmt);
+-	req = p9_client_prepare_req(c, type, tsize, rsize, fmt, ap);
+-	va_end(ap);
++	req = p9_client_prepare_req(c, type, tsize, rsize, fmt, ap,
++				    wanted_tag);
+ 	if (IS_ERR(req))
+ 		return req;
+ 
+@@ -706,8 +722,15 @@
+ 	}
+ again:
+ 	/* Wait for the response */
+-	err = wait_event_killable(req->wq,
+-				  READ_ONCE(req->status) >= REQ_STATUS_RCVD);
++	if (c->proto_version == p9_proto_hfs1) {
++		/* No stock Tflush can cancel an admitted hfs claim. */
++		wait_event(req->wq,
++			   READ_ONCE(req->status) >= REQ_STATUS_RCVD);
++		err = 0;
++	} else {
++		err = wait_event_killable(req->wq,
++					  READ_ONCE(req->status) >= REQ_STATUS_RCVD);
++	}
+ 
+ 	/* Make sure our req is coherent with regard to updates in other
+ 	 * threads - echoes to wmb() in the callback
+@@ -756,6 +779,70 @@
+ 	p9_req_put(c, req);
+ 	return ERR_PTR(safe_errno(err));
+ }
++
++static struct p9_req_t *
++p9_client_rpc_tag(struct p9_client *c, int8_t type, int tag,
++		  const char *fmt, ...)
++{
++	struct p9_req_t *req;
++	va_list ap;
++
++	va_start(ap, fmt);
++	req = p9_client_rpc_v(c, type, tag, fmt, ap);
++	va_end(ap);
++	return req;
++}
++
++static struct p9_req_t *
++p9_client_rpc(struct p9_client *c, int8_t type, const char *fmt, ...)
++{
++	struct p9_req_t *req;
++	va_list ap;
++
++	va_start(ap, fmt);
++	req = p9_client_rpc_v(c, type, -1, fmt, ap);
++	va_end(ap);
++	return req;
++}
++
++int p9_client_hfs_exchange(struct p9_client *c, u16 tag, u8 method,
++			   u8 channel, u64 cell, u32 chunk,
++			   const void *frame, u32 frame_len,
++			   void *reply, u32 *reply_len)
++{
++	struct p9_req_t *req;
++	u32 len;
++	int err = 0;
++
++	if (c->proto_version != p9_proto_hfs1 || c->msize != 65536 ||
++	    (tag != 65533 && tag != 65534 && tag != P9_NOTAG) ||
++	    !cell || cell > 2147483647 || chunk >= 32 ||
++	    !reply || !reply_len ||
++	    !((method == 1 && channel == 1 && frame &&
++	       frame_len >= 89 && frame_len <= 32856) ||
++	      (method == 2 && (channel == 2 || channel == 3) && !frame_len)))
++		return -EINVAL;
++	if (tag != P9_NOTAG)
++		mutex_lock(tag == 65533 ? &c->hfs_control_tag : &c->hfs_wait_tag);
++	req = p9_client_rpc_tag(c, (s8)P9_TBRIDGE,
++			      tag == P9_NOTAG ? -1 : tag, "bbqdB",
++			      method, channel, cell, chunk, frame_len, frame);
++	if (tag != P9_NOTAG)
++		mutex_unlock(tag == 65533 ? &c->hfs_control_tag : &c->hfs_wait_tag);
++	if (IS_ERR(req))
++		return PTR_ERR(req);
++	len = req->rc.size - req->rc.offset;
++	if (req->rc.id != P9_RBRIDGE || req->rc.tag != req->tc.tag ||
++	    len > *reply_len || !len) {
++		err = -EPROTO;
++	} else {
++		memcpy(reply, req->rc.sdata + req->rc.offset, len);
++		*reply_len = len;
++	}
++	p9_req_put(c, req);
++	return err;
++}
++EXPORT_SYMBOL_GPL(p9_client_hfs_exchange);
+ 
+ /**
+  * p9_client_zc_rpc - issue a request and wait for a response
+@@ -785,7 +872,8 @@
+ 	/* We allocate a inline protocol data of only 4k bytes.
+ 	 * The actual content is passed in zero-copy fashion.
+ 	 */
+-	req = p9_client_prepare_req(c, type, P9_ZC_HDR_SZ, P9_ZC_HDR_SZ, fmt, ap);
++	req = p9_client_prepare_req(c, type, P9_ZC_HDR_SZ, P9_ZC_HDR_SZ,
++				    fmt, ap, -1);
+ 	va_end(ap);
+ 	if (IS_ERR(req))
+ 		return req;
+@@ -910,6 +998,12 @@
+ 		 c->msize, c->proto_version);
+ 
+ 	switch (c->proto_version) {
++	case p9_proto_hfs1:
++		if (c->msize != 65536)
++			return -EPROTO;
++		req = p9_client_rpc(c, P9_TVERSION, "ds",
++				    c->msize, "9P2000.L.hfs1");
++		break;
+ 	case p9_proto_2000L:
+ 		req = p9_client_rpc(c, P9_TVERSION, "ds",
+ 				    c->msize, "9P2000.L");
+@@ -937,7 +1031,14 @@
+ 	}
+ 
+ 	p9_debug(P9_DEBUG_9P, "<<< RVERSION msize %d %s\n", msize, version);
+-	if (!strncmp(version, "9P2000.L", 8)) {
++	if (c->proto_version == p9_proto_hfs1) {
++		if (req->rc.id != P9_RVERSION || req->rc.tag != P9_NOTAG ||
++		    strcmp(version, "9P2000.L.hfs1") || msize != 65536 ||
++		    req->rc.offset != req->rc.size) {
++			err = -EPROTO;
++			goto error;
++		}
++	} else if (!strncmp(version, "9P2000.L", 8)) {
+ 		c->proto_version = p9_proto_2000L;
+ 	} else if (!strncmp(version, "9P2000.u", 8)) {
+ 		c->proto_version = p9_proto_2000u;
+@@ -989,10 +1090,19 @@
+ 	spin_lock_init(&clnt->lock);
+ 	idr_init(&clnt->fids);
+ 	idr_init(&clnt->reqs);
++	mutex_init(&clnt->hfs_control_tag);
++	mutex_init(&clnt->hfs_wait_tag);
+ 
+ 	err = parse_opts(options, clnt);
+ 	if (err < 0)
+ 		goto free_client;
++
++	if (clnt->proto_version == p9_proto_hfs1 &&
++	    (clnt->msize != 65536 || !clnt->trans_mod ||
++	     strcmp(clnt->trans_mod->name, "virtio"))) {
++		err = -EPROTONOSUPPORT;
++		goto put_trans;
++	}
+ 
+ 	if (!clnt->trans_mod)
+ 		clnt->trans_mod = v9fs_get_default_trans();
+diff --git a/net/9p/protocol.c b/net/9p/protocol.c
+--- a/net/9p/protocol.c
++++ b/net/9p/protocol.c
+@@ -55,7 +55,10 @@
+ 	static_assert(NAME_MAX <= 4*1024, "p9_msg_buf_size() currently assumes "
+ 				  "a max. allowed directory entry name length of 4k");
+ 
+-	switch (type) {
++	switch ((u8)type) {
++	case P9_TBRIDGE:
++	case P9_RBRIDGE:
++		return 65536;
+ 
+ 	/* message types not used at all */
+ 	case P9_TERROR:
+@@ -605,6 +608,14 @@
+ 						 stbuf->extension, stbuf->n_uid,
+ 						 stbuf->n_gid, stbuf->n_muid);
+ 			} break;
++		case 'B': {
++				u32 count = va_arg(ap, u32);
++				const void *data = va_arg(ap, const void *);
++
++				if (pdu_write(pdu, data, count))
++					errcode = -EFAULT;
++			}
++			break;
+ 		case 'V':{
+ 				uint32_t count = va_arg(ap, uint32_t);
+ 				struct iov_iter *from =

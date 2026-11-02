@@ -1,0 +1,3336 @@
+Subject: 9p: bind guest VFS requests to immutable credentials, claims and grants
+
+Base-commit: 79807e970724c1f90cee1316361d61b80db4eef6
+Owned integration patch; no installation or runtime admission.
+
+diff --git a/fs/9p/Kconfig b/fs/9p/Kconfig
+--- a/fs/9p/Kconfig
++++ b/fs/9p/Kconfig
+@@ -43,3 +43,15 @@
+ 
+ 	  If you are not using a security module that requires using
+ 	  extended attributes for file security labels, say N.
++
++config 9P_FS_HOMELABFS
++	bool "HomelabFS retained-9p guest integration"
++	depends on 9P_FS && TRACEPOINTS
++	select CRYPTO_LIB_SHA256
++	help
++	  Build the separately versioned 9P2000.L.hfs1 guest adapter. This
++	  requires an exact enrolled provider for authority, namespace maps,
++	  aggregate credits, protected claims and physical view-token recalls.
++	  Without that provider mounting this profile fails before transport.
++	  This option supplies no normal serving or installed-artifact admission.
++	  Stock 9p mounts retain their existing behavior. If unsure, say N.
+diff --git a/fs/9p/Makefile b/fs/9p/Makefile
+--- a/fs/9p/Makefile
++++ b/fs/9p/Makefile
+@@ -15,3 +15,6 @@
+ 
+ 9p-$(CONFIG_9P_FSCACHE) += cache.o
+ 9p-$(CONFIG_9P_FS_POSIX_ACL) += acl.o
++
++9p-$(CONFIG_9P_FS_HOMELABFS) += hfs_protocol.o hfs_policy.o hfs_session.o \
++	hfs_inode.o hfs_file.o hfs_cursor.o
+diff --git a/fs/9p/vfs_super.c b/fs/9p/vfs_super.c
+--- a/fs/9p/vfs_super.c
++++ b/fs/9p/vfs_super.c
+@@ -29,6 +29,7 @@
+ #include "fid.h"
+ #include "xattr.h"
+ #include "acl.h"
++#include "hfs.h"
+ 
+ static const struct super_operations v9fs_super_ops, v9fs_super_ops_dotl;
+ 
+@@ -117,6 +118,9 @@
+ 	struct p9_fid *fid;
+ 	int retval = 0;
+ 
++	if (v9fs_hfs_selected(data))
++		return v9fs_hfs_mount(fs_type, flags, dev_name, data);
++
+ 	p9_debug(P9_DEBUG_VFS, "\n");
+ 
+ 	v9ses = kzalloc(sizeof(struct v9fs_session_info), GFP_KERNEL);
+@@ -217,6 +221,11 @@
+ static void v9fs_kill_super(struct super_block *s)
+ {
+ 	struct v9fs_session_info *v9ses = s->s_fs_info;
++
++	if (v9fs_hfs_super(s)) {
++		v9fs_hfs_kill_super(s);
++		return;
++	}
+ 
+ 	p9_debug(P9_DEBUG_VFS, " %p\n", s);
+ 
+diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
+new file mode 100644
+--- /dev/null
++++ b/fs/9p/hfs.h
+@@ -0,0 +1,269 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef FS_9P_HFS_H
++#define FS_9P_HFS_H
++
++#include <linux/cred.h>
++#include <linux/fs.h>
++#include <linux/list.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/pid.h>
++#include <linux/workqueue.h>
++#include <net/9p/9p.h>
++#include <net/9p/client.h>
++#include "hfs_protocol.h"
++#include "hfs_policy.h"
++#include "hfs_cursor.h"
++
++#define HFS_IDENTITIES_MAX 4096U
++#define HFS_CONTEXT_MAX 4096U
++#define HFS_CAP_MAX 8192U
++
++struct hfs_session;
++struct hfs_cap;
++struct hfs_request;
++
++/* Installed by a separately reviewed enrollment/view-token integration. */
++struct hfs_enrollment {
++	char context[HFS_CONTEXT_MAX];
++	u32 context_len;
++	uuid_t session;
++	uuid_t realm;
++	uuid_t anchor;
++	uuid_t nonce;
++	u8 subject[1024];
++	u32 subject_len;
++};
++
++struct hfs_provider {
++	struct module *owner;
++	u32 features;
++	int (*enroll)(const char *device, struct hfs_enrollment *enrollment);
++	int (*map)(struct hfs_session *session, const struct cred *cred,
++		   struct user_namespace *mnt_userns, uuid_t *user_namespace,
++		   u8 idmap_hash[32]);
++	/* Must gate every observation/dirtying path and preserve drain progress. */
++	int (*enter)(struct hfs_session *session, const struct hfs_cap *cap,
++		     bool mutation, void **cookie);
++	void (*leave)(struct hfs_session *session, void *cookie);
++	int (*publication)(struct hfs_session *session,
++			   const struct hfs_json *json, int token);
++	int (*mmap)(struct file *file, struct vm_area_struct *vma);
++	int (*stop)(struct hfs_session *session);
++	/* Aggregate admission spans all mounts and includes retained claims. */
++	int (*reserve)(struct hfs_session *session, u64 bytes, bool control,
++		       void **reservation);
++	void (*unreserve)(struct hfs_session *session, void *reservation);
++	/* Verify protected normal claim/floor evidence, never a local assertion. */
++	int (*retirement)(struct hfs_session *session, u64 through,
++			  const u8 proof_hash[32]);
++	int (*resolve_gap)(struct hfs_session *session, struct hfs_request *request);
++	int (*retire_session)(struct hfs_session *session);
++	/* Receives ownership on uncertain shutdown; must never discard evidence. */
++	void (*retain)(struct hfs_session *session);
++};
++
++struct hfs_cap {
++	struct hfs_json *json;
++	uuid_t home;
++	uuid_t allocation;
++	uuid_t description;
++	u32 rights;
++	u64 revision;
++};
++
++struct hfs_cred {
++	const struct cred *native;
++	uuid_t process;
++	u64 revision;
++	uuid_t user_namespace;
++	u8 idmap_hash[32];
++	u32 uid;
++	u32 gid;
++	u32 ngroups;
++	u32 groups[HFS_GROUPS_MAX];
++};
++
++struct hfs_process {
++	struct list_head list;
++	struct pid *pid;
++	uuid_t id;
++	u64 revision;
++	atomic_t exited;
++	struct work_struct exit_work;
++	struct hfs_session *session;
++	struct hfs_cred *last;
++};
++
++struct hfs_cell {
++	u64 number;
++	u8 hash[32];
++	bool active;
++	bool ack_ready;
++	bool reserved;
++};
++
++struct hfs_candidate {
++	struct list_head list;
++	struct hfs_buf command;
++	u64 cell;
++	u64 donor;
++};
++
++struct hfs_request {
++	struct list_head list;
++	struct hfs_buf claim;
++	struct hfs_buf intent;
++	struct hfs_buf credentials;
++	struct hfs_buf original_context;
++	uuid_t operation;
++	struct hfs_json *result;
++	struct hfs_json *refusal;
++	bool gap;
++	u64 number;
++	bool terminal;
++	bool adopted;
++	bool control;
++	bool retired;
++	void *reservation;
++};
++
++struct hfs_session {
++	struct p9_client *client;
++	const struct hfs_provider *provider;
++	struct hfs_enrollment enrollment;
++	struct mutex lock;
++	struct mutex writer;
++	struct mutex retirement;
++	spinlock_t processes_lock;
++	struct list_head processes;
++	struct list_head requests;
++	struct list_head uncertain;
++	struct list_head descriptions;
++	struct list_head forgets;
++	struct list_head object_numbers;
++	struct list_head global;
++	struct workqueue_struct *control;
++	u64 next_claim;
++	u64 next_cell;
++	u64 next_inode;
++	u64 next_close;
++	u64 next_release;
++	u32 nr_processes;
++	u32 nr_requests;
++	u32 nr_control_requests;
++	u32 nr_descriptions;
++	u32 nr_objects;
++	struct hfs_cell cells[80];
++	bool blocked;
++	bool closing;
++	bool retained;
++};
++
++struct hfs_forget {
++	struct list_head list;
++	struct work_struct work;
++	struct hfs_session *session;
++	struct hfs_cap *cap;
++	struct hfs_cred *issuer;
++	u64 count;
++};
++
++struct hfs_object_number {
++	struct list_head list;
++	uuid_t home;
++	uuid_t allocation;
++	unsigned long number;
++};
++
++struct hfs_inode {
++	struct inode inode;
++	struct hfs_cap *object;
++	struct hfs_forget *forget;
++};
++
++struct hfs_description {
++	struct list_head list;
++	struct hfs_cap *cap;
++	struct hfs_cred *issuer;
++	struct mutex lock;
++	struct hfs_dir_cursor *cursor;
++	void *reservation;
++	u64 revision;
++	u8 after[255];
++	u32 after_len;
++};
++
++static inline struct hfs_session *HFS_S(const struct inode *inode)
++{
++	return inode->i_sb->s_fs_info;
++}
++
++static inline struct hfs_inode *HFS_I(const struct inode *inode)
++{
++	return container_of(inode, struct hfs_inode, inode);
++}
++
++#ifdef CONFIG_9P_FS_HOMELABFS
++int v9fs_hfs_register_provider(const struct hfs_provider *provider);
++int v9fs_hfs_unregister_provider(const struct hfs_provider *provider);
++bool v9fs_hfs_selected(const char *options);
++struct dentry *v9fs_hfs_mount(struct file_system_type *type, int flags,
++			    const char *device, void *options);
++bool v9fs_hfs_super(const struct super_block *sb);
++void v9fs_hfs_kill_super(struct super_block *sb);
++#else
++static inline bool v9fs_hfs_selected(const char *options) { return false; }
++static inline struct dentry *v9fs_hfs_mount(struct file_system_type *type,
++		int flags, const char *device, void *options)
++{
++	return ERR_PTR(-EOPNOTSUPP);
++}
++static inline bool v9fs_hfs_super(const struct super_block *sb) { return false; }
++static inline void v9fs_hfs_kill_super(struct super_block *sb) {}
++#endif
++int hfs_capture(struct hfs_session *session, struct user_namespace *mnt_userns,
++		struct hfs_cred **out);
++void hfs_cred_free(struct hfs_cred *cred);
++int hfs_call(struct hfs_session *session, const char *opcode,
++	     const struct hfs_buf *args, const struct hfs_cred *cred,
++	     bool control, struct hfs_json **out);
++int hfs_control(struct hfs_session *session, const char *operation,
++		const struct hfs_buf *payload, bool reserved,
++		struct hfs_json **out);
++int hfs_result_code(const struct hfs_json *json);
++void hfs_result_adopt(struct hfs_session *session, const struct hfs_json *result);
++int hfs_retire(struct hfs_session *session);
++int hfs_session_destroy(struct hfs_session *session);
++int hfs_cap_parse(struct hfs_session *session, const struct hfs_json *json,
++		  int token, const char *kind, struct hfs_cap **out);
++void hfs_cap_free(struct hfs_cap *cap);
++void hfs_cap_write(struct hfs_buf *buf, const struct hfs_cap *cap);
++void hfs_dcap_write(struct hfs_buf *buf, struct dentry *dentry);
++int hfs_uuid(const struct hfs_json *json, int token, uuid_t *id);
++int hfs_attr_install(struct inode *inode, const struct hfs_json *json, int token);
++struct inode *hfs_inode_get(struct super_block *sb, struct hfs_json *result,
++			   const char *kind, const struct hfs_cred *issuer);
++int hfs_reply_cap(struct hfs_session *session, const struct hfs_json *result,
++		  const char *kind, struct hfs_cap **out);
++void hfs_args_object(struct hfs_buf *args, const struct hfs_cap *cap);
++int hfs_args_init(struct hfs_buf *args);
++int hfs_begin(struct inode *inode, bool mutation, struct hfs_cred **cred,
++	      void **cookie);
++void hfs_end(struct inode *inode, struct hfs_cred *cred, void *cookie);
++int hfs_refresh(struct inode *inode);
++int hfs_object_ino(struct hfs_session *session, const struct hfs_cap *cap,
++		   unsigned long *number);
++int hfs_open(struct inode *inode, struct file *file);
++int hfs_description_prepare(struct hfs_session *session, bool directory,
++			    struct hfs_description **out);
++void hfs_description_discard(struct hfs_session *session,
++			     struct hfs_description *description);
++void hfs_flags_write(struct hfs_buf *args, unsigned int flags, bool create);
++extern const struct inode_operations hfs_dir_iops;
++extern const struct inode_operations hfs_file_iops;
++extern const struct inode_operations hfs_symlink_iops;
++extern const struct file_operations hfs_file_fops;
++extern const struct file_operations hfs_dir_fops;
++extern const struct super_operations hfs_super_ops;
++#endif
+diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
+new file mode 100644
+--- /dev/null
++++ b/fs/9p/hfs_session.c
+@@ -0,0 +1,1481 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Owned retained-9p guest session, request and credential lifetimes. */
++#include <linux/delay.h>
++#include <linux/mount.h>
++#include <linux/magic.h>
++#include <linux/sched/signal.h>
++#include <linux/seq_file.h>
++#include <linux/slab.h>
++#include <linux/sort.h>
++#include <linux/statfs.h>
++#include <linux/user_namespace.h>
++#include <linux/vmalloc.h>
++#include <net/9p/9p.h>
++#include <trace/events/sched.h>
++#include "hfs.h"
++
++static DEFINE_MUTEX(hfs_provider_lock);
++static const struct hfs_provider *hfs_provider;
++static LIST_HEAD(hfs_sessions);
++static DEFINE_SPINLOCK(hfs_sessions_lock);
++static bool hfs_trace_registered;
++static struct tracepoint *hfs_exit_tracepoint;
++static atomic_t hfs_active_sessions = ATOMIC_INIT(0);
++
++static int hfs_field_u64(const struct hfs_json *json, int object,
++			 const char *key, u64 *value)
++{
++	return hfs_json_u64(json, hfs_json_field(json, object, key), value);
++}
++
++int hfs_uuid(const struct hfs_json *json, int token, uuid_t *id)
++{
++	return hfs_policy_uuid(json, token, id);
++}
++
++static void hfs_cred_write(struct hfs_buf *buf, const struct hfs_cred *cred)
++{
++	u32 i;
++
++	hfs_buf_printf(buf, "{\"credential_revision\":%llu,\"fsgid\":%u,"
++		       "\"fsuid\":%u,\"groups\":[", cred->revision,
++		       cred->gid, cred->uid);
++	for (i = 0; i < cred->ngroups; i++)
++		hfs_buf_printf(buf, "%s%u", i ? "," : "", cred->groups[i]);
++	hfs_buf_literal(buf, "],\"idmap_hash\":");
++	hfs_buf_hex(buf, cred->idmap_hash, 32);
++	hfs_buf_printf(buf, ",\"process\":\"%pUb\",\"user_namespace\":\"%pUb\"}",
++		       &cred->process, &cred->user_namespace);
++}
++
++void hfs_cred_free(struct hfs_cred *cred)
++{
++	if (cred) {
++		put_cred(cred->native);
++		kfree(cred);
++	}
++}
++
++
++static void hfs_process_exit_work(struct work_struct *work)
++{
++	struct hfs_process *process = container_of(work, struct hfs_process,
++						 exit_work);
++	struct hfs_session *session = process->session;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	int err;
++
++	err = hfs_args_init(&args);
++	if (!err) {
++		hfs_buf_printf(&args, "{\"exit_sequence\":1,\"process\":\"%pUb\"}",
++			       &process->id);
++		err = hfs_call(session, "PROCESS_EXIT", &args, process->last,
++			       true, &result);
++	}
++	if (err)
++		WRITE_ONCE(session->blocked, true);
++	hfs_json_free(result);
++	hfs_buf_free(&args);
++}
++
++/* Non-sleeping trace hook: all work and credentials were reserved at capture. */
++static void hfs_process_exit(void *unused, struct task_struct *task)
++{
++	struct hfs_session *session;
++	struct hfs_process *process;
++	unsigned long flags;
++
++	if (atomic_read(&task->signal->live))
++		return;
++	spin_lock_irqsave(&hfs_sessions_lock, flags);
++	list_for_each_entry(session, &hfs_sessions, global) {
++		spin_lock(&session->processes_lock);
++		list_for_each_entry(process, &session->processes, list) {
++			if (process->pid == task_tgid(task) &&
++			    atomic_cmpxchg(&process->exited, 0, 1) == 0)
++				queue_work(session->control, &process->exit_work);
++		}
++		spin_unlock(&session->processes_lock);
++	}
++	spin_unlock_irqrestore(&hfs_sessions_lock, flags);
++}
++
++static void hfs_find_exit_tracepoint(struct tracepoint *tracepoint, void *data)
++{
++	struct tracepoint **found = data;
++
++	if (!strcmp(tracepoint->name, "sched_process_exit"))
++		*found = tracepoint;
++}
++
++int hfs_capture(struct hfs_session *session, struct user_namespace *mnt_userns,
++		struct hfs_cred **out)
++{
++	struct hfs_cred *snapshot, *last;
++	struct hfs_process *process, *candidate;
++	const struct cred *cred;
++	unsigned long flags;
++	u32 i;
++	int err;
++
++	*out = NULL;
++	/* Asynchronous workers must carry an already captured snapshot. */
++	if ((current->flags & PF_KTHREAD) || current_cred() != current_real_cred() ||
++	    READ_ONCE(session->blocked) || READ_ONCE(session->closing))
++		return -EACCES;
++	cred = get_current_cred();
++	if (cred->group_info->ngroups > HFS_GROUPS_MAX) {
++		put_cred(cred);
++		return -E2BIG;
++	}
++	snapshot = kzalloc(sizeof(*snapshot), GFP_KERNEL);
++	candidate = kzalloc(sizeof(*candidate), GFP_KERNEL);
++	last = kzalloc(sizeof(*last), GFP_KERNEL);
++	if (!snapshot || !candidate || !last) {
++		err = -ENOMEM;
++		goto fail;
++	}
++	snapshot->native = cred;
++	snapshot->uid = from_kuid(&init_user_ns, cred->fsuid);
++	snapshot->gid = from_kgid(&init_user_ns, cred->fsgid);
++	if (!uid_valid(cred->fsuid) || !gid_valid(cred->fsgid) ||
++	    snapshot->uid == U32_MAX || snapshot->gid == U32_MAX) {
++		err = -EOVERFLOW;
++		goto fail;
++	}
++	for (i = 0; i < cred->group_info->ngroups; i++) {
++		kgid_t group = cred->group_info->gid[i];
++
++		if (!gid_valid(group)) {
++			err = -EOVERFLOW;
++			goto fail;
++		}
++		snapshot->groups[i] = from_kgid(&init_user_ns, group);
++		if (snapshot->groups[i] == U32_MAX) {
++			err = -EOVERFLOW;
++			goto fail;
++		}
++	}
++	err = hfs_groups_snapshot(snapshot->groups, cred->group_info->ngroups,
++				  snapshot->groups, &snapshot->ngroups);
++	if (err)
++		goto fail;
++	err = session->provider->map(session, cred, mnt_userns,
++				     &snapshot->user_namespace,
++				     snapshot->idmap_hash);
++	err = hfs_identity_validate(snapshot->uid, snapshot->gid,
++				    &snapshot->user_namespace, err);
++	if (err)
++		goto fail;
++	candidate->pid = get_pid(task_tgid(current));
++	uuid_gen(&candidate->id);
++	candidate->session = session;
++	INIT_WORK(&candidate->exit_work, hfs_process_exit_work);
++	spin_lock_irqsave(&session->processes_lock, flags);
++	process = NULL;
++	list_for_each_entry(process, &session->processes, list)
++		if (process->pid == candidate->pid)
++			break;
++	if (&process->list == &session->processes) {
++		if (session->nr_processes == HFS_IDENTITIES_MAX) {
++			err = -ENOSPC;
++			goto unlock;
++		}
++		process = candidate;
++		candidate = NULL;
++		list_add_tail(&process->list, &session->processes);
++		session->nr_processes++;
++	}
++	if (atomic_read(&process->exited) || process->revision == U64_MAX) {
++		err = -ESTALE;
++		goto unlock;
++	}
++	/* Every capture gets a revision, so concurrent thread credentials never
++	 * alias; earlier captures retain their own bytes even after later ones.
++	 */
++	snapshot->revision = ++process->revision;
++	snapshot->process = process->id;
++	*last = *snapshot;
++	last->native = get_cred(cred);
++	if (process->last)
++		hfs_cred_free(process->last);
++	process->last = last;
++	last = NULL;
++	*out = snapshot;
++	err = 0;
++unlock:
++	spin_unlock_irqrestore(&session->processes_lock, flags);
++	if (candidate) {
++		put_pid(candidate->pid);
++		kfree(candidate);
++	}
++	kfree(last);
++	if (!err)
++		return 0;
++	candidate = NULL;
++	last = NULL;
++fail:
++	put_cred(cred);
++	kfree(snapshot);
++	kfree(candidate);
++	kfree(last);
++	return err;
++}
++
++static int hfs_reply_scope(struct hfs_session *session,
++			   struct hfs_json *json, u64 cell,
++			   const char *operation)
++{
++	int context;
++	u64 selected;
++	char op[32];
++
++	if (hfs_json_exact(json, 0, "cell,context,op,payload") ||
++	    hfs_field_u64(json, 0, "cell", &selected) || selected != cell ||
++	    hfs_json_string(json, hfs_json_field(json, 0, "op"), op,
++			    sizeof(op)) < 0 || strcmp(op, operation))
++		return -EPROTO;
++	context = hfs_json_field(json, 0, "context");
++	if (context < 0 || json->tokens[context].end -
++	    json->tokens[context].start != session->enrollment.context_len ||
++	    memcmp(json->data + json->tokens[context].start,
++		   session->enrollment.context, session->enrollment.context_len))
++		return -EPROTO;
++	return 0;
++}
++
++static int hfs_transport(struct hfs_session *session, const struct hfs_buf *body,
++			 u64 cell, u16 tag, void **reply, u32 *reply_len,
++			 bool *writer_held)
++{
++	void *frame = NULL, *packet = NULL, *assembled = NULL;
++	u8 expected[32], hash[32];
++	u32 chunk, total = 0, len, body_len, frame_len;
++	unsigned long deadline = jiffies + 30 * HZ;
++	const void *bytes;
++	int err = -ENOMEM;
++
++	frame = kmalloc(HFS_HEADER_SIZE + HFS_CHUNK_MAX, GFP_KERNEL);
++	packet = kmalloc(HFS_HEADER_SIZE + HFS_CHUNK_MAX + 1, GFP_KERNEL);
++	if (!frame || !packet)
++		goto out;
++	for (chunk = 0; chunk * HFS_CHUNK_MAX < body->len; chunk++) {
++retry_send:
++		frame_len = HFS_HEADER_SIZE + HFS_CHUNK_MAX;
++		err = hfs_frame_encode(1, &session->enrollment.session, cell,
++				       body->data, body->len, chunk, frame, &frame_len);
++		if (err)
++			goto out;
++		len = HFS_HEADER_SIZE + HFS_CHUNK_MAX + 1;
++		err = p9_client_hfs_exchange(session->client, tag, 1, 1, cell,
++					     chunk, frame, frame_len, packet, &len);
++		if (err)
++			goto out;
++		if (!chunk && len == 3 && ((u8 *)packet)[0] == 4 &&
++		    ((u8 *)packet)[1] == 3 && ((u8 *)packet)[2] == 0 &&
++		    time_before(jiffies, deadline)) {
++			/* Definitive first-chunk capacity refusal: preserve exact bytes,
++			 * yield the framing writer so reserved drains can make progress.
++			 */
++			mutex_unlock(&session->writer);
++			*writer_held = false;
++			usleep_range(10000, 12000);
++			mutex_lock(&session->writer);
++			*writer_held = true;
++			goto retry_send;
++		}
++		if (len != 1 || *(u8 *)packet != 1) {
++			err = -EPROTO;
++			goto out;
++		}
++	}
++	mutex_unlock(&session->writer);
++	*writer_held = false;
++	for (chunk = 0;; chunk++) {
++		for (;;) {
++			len = HFS_HEADER_SIZE + HFS_CHUNK_MAX + 1;
++			err = p9_client_hfs_exchange(session->client, tag, 2, 2,
++						     cell, chunk, NULL, 0, packet, &len);
++			if (err)
++				goto out;
++			if (len != 1 || *(u8 *)packet != 2)
++				break;
++			if (time_after_eq(jiffies, deadline)) {
++				err = -ETIMEDOUT;
++				goto out;
++			}
++			usleep_range(10000, 12000);
++		}
++		if (*(u8 *)packet != 3 || len <= 1) {
++			err = -EPROTO;
++			goto out;
++		}
++		err = hfs_frame_decode(packet + 1, len - 1, 2,
++				       &session->enrollment.session, cell, chunk,
++				       &body_len, hash, &bytes, &frame_len);
++		if (err)
++			goto out;
++		if (!chunk) {
++			total = body_len;
++			memcpy(expected, hash, 32);
++			assembled = kvmalloc(total, GFP_KERNEL);
++			if (!assembled) {
++				err = -ENOMEM;
++				goto out;
++			}
++		} else if (total != body_len || memcmp(expected, hash, 32)) {
++			err = -EPROTO;
++			goto out;
++		}
++		memcpy(assembled + chunk * HFS_CHUNK_MAX, bytes, frame_len);
++		if ((chunk + 1) * HFS_CHUNK_MAX >= total)
++			break;
++	}
++	hfs_hash(assembled, total, hash);
++	if (memcmp(expected, hash, 32)) {
++		err = -EPROTO;
++		goto out;
++	}
++	*reply = assembled;
++	*reply_len = total;
++	assembled = NULL;
++	err = 0;
++out:
++	kfree(frame);
++	kfree(packet);
++	kvfree(assembled);
++	return err;
++}
++
++static bool hfs_operation(const char *operation, bool call)
++{
++	static const char * const commands[] = {
++		"HELLO", "CALL", "QUERY", "CANCEL", "RETIRE", "RELEASE_CELL",
++		"RESUME", "VIEW_WAIT", "VIEW_ACK",
++	};
++	static const char * const opcodes[] = {
++		"ROOT", "LOOKUP", "GETATTR", "READLINK", "CREATE", "MKDIR",
++		"SYMLINK", "OPEN", "READ", "WRITE", "TRUNCATE", "SETATTR",
++		"RENAME", "LINK", "UNLINK", "RMDIR", "READDIR", "STATFS", "SYNC",
++		"DESCRIPTION_CLOSE", "DESCRIPTION_RELEASE", "FORGET", "PROCESS_EXIT",
++		"DRAIN_WRITE",
++	};
++	const char * const *names = call ? opcodes : commands;
++	u32 count = call ? ARRAY_SIZE(opcodes) : ARRAY_SIZE(commands), i;
++
++	for (i = 0; i < count; i++)
++		if (!strcmp(names[i], operation))
++			return true;
++	return false;
++}
++
++int hfs_control(struct hfs_session *session, const char *operation,
++		const struct hfs_buf *payload, bool reserved,
++		struct hfs_json **out)
++{
++	struct hfs_buf command;
++	struct hfs_json *json = NULL;
++	struct hfs_cell *slot = NULL;
++	struct hfs_candidate *candidate;
++	bool writer_held = true;
++	void *reply = NULL;
++	u32 i, first = reserved ? 64 : 0, last = reserved ? 80 : 64;
++	u32 reply_len = 0;
++	u64 cell, release_cell = 0;
++	u8 release_hash[32];
++	bool release = !strcmp(operation, "RELEASE_CELL");
++	int err;
++
++	*out = NULL;
++	if (!hfs_operation(operation, false))
++		return -EOPNOTSUPP;
++	if (payload->error || !payload->len)
++		return payload->error ?: -EINVAL;
++	if (release) {
++		struct hfs_json *ack = NULL;
++		u32 len = 32;
++
++		err = hfs_json_parse(payload->data, payload->len, &ack);
++		if (!err && (hfs_json_exact(ack, 0, "cell,response_hash") ||
++		    hfs_field_u64(ack, 0, "cell", &release_cell) || !release_cell ||
++		    hfs_json_hex(ack, hfs_json_field(ack, 0, "response_hash"),
++				 release_hash, &len) || len != 32))
++			err = -EINVAL;
++		hfs_json_free(ack);
++		if (err)
++			return err;
++	}
++	candidate = kzalloc(sizeof(*candidate), GFP_KERNEL);
++	if (!candidate)
++		return -ENOMEM;
++	err = hfs_buf_init(&command, HFS_BODY_MAX);
++	if (err) {
++		kfree(candidate);
++		return err;
++	}
++	/* Writer is never held while awaiting a service grant or recall. FETCH
++	 * below must remain nonblocking; independent control workers own reserve.
++	 */
++	mutex_lock(&session->writer);
++	mutex_lock(&session->lock);
++	if ((session->blocked && !reserved) || session->next_cell > HFS_CELL_MAX) {
++		err = -EHOSTDOWN;
++		goto unlock;
++	}
++	if (release) {
++		for (i = 0; i < 80; i++)
++			if (session->cells[i].ack_ready && !session->cells[i].reserved &&
++			    session->cells[i].number == release_cell &&
++			    !memcmp(session->cells[i].hash, release_hash, 32)) {
++				slot = &session->cells[i];
++				break;
++			}
++		if (!slot) {
++			err = -ESTALE;
++			goto unlock;
++		}
++	}
++	for (i = first; !slot && i < last; i++)
++		if (!session->cells[i].reserved && session->cells[i].ack_ready) {
++			slot = &session->cells[i];
++			break;
++		}
++	if (!slot)
++		for (i = first; i < last; i++)
++			if (!session->cells[i].active && !session->cells[i].reserved) {
++				slot = &session->cells[i];
++				break;
++			}
++	if (!slot) {
++		err = -EAGAIN;
++		goto unlock;
++	}
++	cell = session->next_cell++;
++	slot->reserved = true;
++	hfs_buf_printf(&command, "{\"cell\":%llu,\"context\":", cell);
++	hfs_buf_add(&command, session->enrollment.context,
++		    session->enrollment.context_len);
++	hfs_buf_printf(&command, ",\"op\":\"%s\",\"payload\":", operation);
++	hfs_buf_add(&command, payload->data, payload->len);
++	hfs_buf_literal(&command, ",\"reclaim\":");
++	if (slot->ack_ready) {
++		hfs_buf_printf(&command, "{\"cell\":%llu,\"response_hash\":",
++			       slot->number);
++		hfs_buf_hex(&command, slot->hash, 32);
++		hfs_buf_literal(&command, "}");
++	} else {
++		hfs_buf_literal(&command, "null");
++	}
++	hfs_buf_literal(&command, "}");
++	mutex_unlock(&session->lock);
++	if (command.error) {
++		err = command.error;
++		goto fault;
++	}
++	err = hfs_transport(session, &command, cell,
++		!strcmp(operation, "VIEW_WAIT") ? 65534 :
++		reserved || release ? 65533 : P9_NOTAG,
++		&reply, &reply_len,
++			    &writer_held);
++	if (err)
++		goto fault;
++	err = hfs_json_parse(reply, reply_len, &json);
++	if (!err)
++		err = hfs_reply_scope(session, json, cell, operation);
++	if (err)
++		goto fault;
++	mutex_lock(&session->lock);
++	slot->active = true;
++	slot->number = cell;
++	hfs_hash(reply, reply_len, slot->hash);
++	slot->ack_ready = true;
++	slot->reserved = false;
++	mutex_unlock(&session->lock);
++	if (writer_held)
++		mutex_unlock(&session->writer);
++	kfree(candidate);
++	*out = json;
++	hfs_buf_free(&command);
++	kvfree(reply);
++	return 0;
++fault:
++	/* Keep exact uncertain candidate bytes. Never release donor evidence or
++	 * issue another candidate after an uncertain transport/admission result.
++	 */
++	WRITE_ONCE(session->blocked, true);
++	/* The command is owned by the retained session until reconciliation. */
++	candidate->command = command;
++	candidate->cell = cell;
++	candidate->donor = slot->number;
++	mutex_lock(&session->lock);
++	list_add_tail(&candidate->list, &session->uncertain);
++	mutex_unlock(&session->lock);
++	if (writer_held)
++		mutex_unlock(&session->writer);
++	hfs_json_free(json);
++	kvfree(reply);
++	return err;
++unlock:
++	mutex_unlock(&session->lock);
++	mutex_unlock(&session->writer);
++	hfs_buf_free(&command);
++	kfree(candidate);
++	return err;
++}
++EXPORT_SYMBOL_GPL(hfs_control);
++
++static int hfs_copy_token(const struct hfs_json *source, int token,
++			  struct hfs_json **out)
++{
++	if (token < 0 || token >= source->count)
++		return -EPROTO;
++	return hfs_json_parse(source->data + source->tokens[token].start,
++			      source->tokens[token].end - source->tokens[token].start,
++			      out);
++}
++
++int hfs_result_code(const struct hfs_json *json)
++{
++	static const struct { const char *name; int error; } codes[] = {
++		{ "OK", 0 }, { "Invalid", -EINVAL }, { "NotFound", -ENOENT },
++		{ "Exists", -EEXIST }, { "Permission", -EACCES },
++		{ "ReadOnlyFS", -EROFS }, { "NotDirectory", -ENOTDIR },
++		{ "IsDirectory", -EISDIR }, { "NotEmpty", -ENOTEMPTY },
++		{ "CrossDevice", -EXDEV }, { "Unsupported", -EOPNOTSUPP },
++		{ "NoSpace", -ENOSPC }, { "Quota", -EDQUOT }, { "IO", -EIO },
++		{ "Unavailable", -EHOSTDOWN }, { "Stale", -ESTALE },
++		{ "Interrupted", -EINTR }, { "Busy", -EBUSY },
++		{ "WouldBlock", -EAGAIN }, { "TooManyLinks", -EMLINK },
++		{ "NameTooLong", -ENAMETOOLONG }, { "FileTooLarge", -EFBIG },
++		{ "ID_CONFLICT", -EPROTO },
++		{ "RETIRED_ID", -ESTALE }, { "PROTOCOL_ERROR", -EPROTO },
++	};
++	char code[32];
++	u32 i;
++
++	if (hfs_json_string(json, hfs_json_field(json, 0, "code"), code,
++			    sizeof(code)) < 0)
++		return -EPROTO;
++	for (i = 0; i < ARRAY_SIZE(codes); i++)
++		if (!strcmp(codes[i].name, code))
++			return codes[i].error;
++	return -EPROTO;
++}
++
++static int hfs_result_validate(struct hfs_session *session,
++			       struct hfs_json *result, const char *opcode)
++{
++	static const char * const fields[] = {
++		"attributes", "capabilities", "capacity", "code", "count",
++		"data", "entries", "publication",
++	};
++	struct hfs_buf original;
++	u8 expected[32], actual[32];
++	u32 len = 32, i;
++	int err, publication, array;
++	u32 caps = 0, wanted;
++	const char *kind;
++	u64 count;
++
++	if (hfs_json_exact(result, 0,
++		"attributes,capabilities,capacity,code,count,data,entries,id,publication") ||
++	    hfs_json_hex(result, hfs_json_field(result, 0, "id"), expected, &len) ||
++	    len != 32 || hfs_field_u64(result, 0, "count", &count))
++		return -EPROTO;
++	err = hfs_buf_init(&original, HFS_BODY_MAX);
++	if (err)
++		return err;
++	hfs_buf_literal(&original, "{");
++	for (i = 0; i < ARRAY_SIZE(fields); i++) {
++		hfs_buf_printf(&original, "%s\"%s\":", i ? "," : "", fields[i]);
++		hfs_buf_token(&original, result, hfs_json_field(result, 0, fields[i]));
++	}
++	hfs_buf_literal(&original, "}");
++	err = original.error;
++	if (!err) {
++		hfs_hash(original.data, original.len, actual);
++		if (memcmp(expected, actual, 32))
++			err = -EPROTO;
++	}
++	hfs_buf_free(&original);
++	if (err)
++		return err;
++	err = hfs_result_code(result);
++	if (err && (count ||
++	    !hfs_json_is(result, hfs_json_field(result, 0, "attributes"), "null") ||
++	    !hfs_json_is(result, hfs_json_field(result, 0, "capacity"), "null") ||
++	    !hfs_json_is(result, hfs_json_field(result, 0, "capabilities"), "[]") ||
++	    !hfs_json_is(result, hfs_json_field(result, 0, "entries"), "[]") ||
++	    !hfs_json_is(result, hfs_json_field(result, 0, "data"), "\"\"")))
++		return -EPROTO;
++	array = hfs_json_field(result, 0, "capabilities");
++	if (array < 0 || result->tokens[array].kind != HFS_ARRAY)
++		return -EPROTO;
++	wanted = !strcmp(opcode, "CREATE") ? 2 :
++		!strcmp(opcode, "ROOT") || !strcmp(opcode, "LOOKUP") ||
++		!strcmp(opcode, "OPEN") || !strcmp(opcode, "MKDIR") ||
++		!strcmp(opcode, "SYMLINK") ? 1 : 0;
++	if (err)
++		wanted = 0;
++	for (i = array + 1; i < result->count; i++) {
++		struct hfs_cap *cap = NULL;
++		int field;
++
++		if (result->tokens[i].parent != array)
++			continue;
++		if (++caps > wanted)
++			return -EPROTO;
++		field = hfs_json_field(result, i, "kind");
++		kind = !strcmp(opcode, "ROOT") ? "ROOT" :
++			!strcmp(opcode, "OPEN") ? "DESCRIPTION" : "PATH";
++		if (!strcmp(opcode, "CREATE") &&
++		    hfs_json_is(result, field, "\"DESCRIPTION\""))
++			kind = "DESCRIPTION";
++		if (hfs_cap_parse(session, result, i, kind, &cap))
++			return -EPROTO;
++		hfs_cap_free(cap);
++	}
++	if (caps != wanted)
++		return -EPROTO;
++	publication = hfs_json_field(result, 0, "publication");
++	return session->provider->publication(session, result, publication);
++}
++
++int hfs_call(struct hfs_session *session, const char *opcode,
++	     const struct hfs_buf *args, const struct hfs_cred *cred,
++	     bool control, struct hfs_json **out)
++{
++	struct hfs_request *request;
++	struct hfs_buf payload = {};
++	struct hfs_json *reply = NULL, *result = NULL;
++	u8 digest[32];
++	int err, token, status, claim;
++	unsigned long deadline = jiffies + 30 * HZ;
++
++	*out = NULL;
++	if (!hfs_operation(opcode, true))
++		return -EOPNOTSUPP;
++	if (!cred || args->error)
++		return args->error ?: -EINVAL;
++	mutex_lock(&session->lock);
++	err = hfs_request_admit(session->blocked, control,
++			session->nr_requests - session->nr_control_requests,
++			session->nr_control_requests, session->next_claim);
++	mutex_unlock(&session->lock);
++	if (err)
++		return err;
++	request = kzalloc(sizeof(*request), GFP_KERNEL);
++	if (!request)
++		return -ENOMEM;
++	err = session->provider->reserve(session, 16ULL * 1024 * 1024,
++					 control, &request->reservation);
++	if (err == -ENOSPC || err == -EAGAIN) {
++		if (!hfs_retire(session))
++			err = session->provider->reserve(session, 16ULL * 1024 * 1024,
++						 control, &request->reservation);
++	}
++	if (err) {
++		kfree(request);
++		return err;
++	}
++	if (hfs_buf_init(&request->claim, 4096) ||
++	    hfs_buf_init(&request->intent, args->len + 64) ||
++	    hfs_buf_init(&request->credentials, 16384) ||
++	    hfs_buf_init(&request->original_context, HFS_CONTEXT_MAX) ||
++	    hfs_buf_init(&payload, HFS_BODY_MAX)) {
++		err = -ENOMEM;
++		goto free;
++	}
++	hfs_buf_literal(&request->intent, "{\"args\":");
++	hfs_buf_add(&request->intent, args->data, args->len);
++	hfs_buf_printf(&request->intent, ",\"opcode\":\"%s\"}", opcode);
++	hfs_cred_write(&request->credentials, cred);
++	if (request->intent.error || request->credentials.error) {
++		err = request->intent.error ?: request->credentials.error;
++		goto free;
++	}
++	hfs_hash(request->intent.data, request->intent.len, digest);
++	mutex_lock(&session->lock);
++	err = hfs_request_admit(session->blocked, control,
++			session->nr_requests - session->nr_control_requests,
++			session->nr_control_requests, session->next_claim);
++	if (err) {
++		mutex_unlock(&session->lock);
++		goto free;
++	}
++	request->control = control;
++	request->number = session->next_claim++;
++	uuid_gen(&request->operation);
++	hfs_buf_add(&request->original_context, session->enrollment.context,
++		    session->enrollment.context_len);
++	hfs_buf_printf(&request->claim,
++		"{\"anchor\":\"%pUb\",\"nonce\":\"%pUb\",\"number\":%llu,"
++		"\"original_hash\":", &session->enrollment.anchor,
++		&session->enrollment.nonce, request->number);
++	hfs_buf_hex(&request->claim, digest, 32);
++	hfs_buf_printf(&request->claim, ",\"realm\":\"%pUb\",\"subject\":",
++		       &session->enrollment.realm);
++	hfs_buf_hex(&request->claim, session->enrollment.subject,
++		    session->enrollment.subject_len);
++	hfs_buf_literal(&request->claim, "}");
++	list_add_tail(&request->list, &session->requests);
++	session->nr_requests++;
++	if (control)
++		session->nr_control_requests++;
++	mutex_unlock(&session->lock);
++	hfs_buf_literal(&payload, "{\"claim\":");
++	hfs_buf_add(&payload, request->claim.data, request->claim.len);
++	hfs_buf_literal(&payload, ",\"credentials\":");
++	hfs_buf_add(&payload, request->credentials.data, request->credentials.len);
++	hfs_buf_literal(&payload, ",\"intent\":");
++	hfs_buf_add(&payload, request->intent.data, request->intent.len);
++	hfs_buf_literal(&payload, "}");
++	err = hfs_control(session, "CALL", &payload, control, &reply);
++	if (err)
++		goto retained;
++	token = hfs_json_field(reply, 0, "payload");
++	claim = hfs_json_field(reply, token, "claim");
++	status = hfs_json_field(reply, token, "status");
++	if (hfs_json_exact(reply, token, "claim,code,status") || claim < 0 ||
++	    reply->tokens[claim].end - reply->tokens[claim].start != request->claim.len ||
++	    memcmp(reply->data + reply->tokens[claim].start,
++		   request->claim.data, request->claim.len)) {
++		err = -EPROTO;
++		goto retained;
++	}
++	if (!hfs_json_is(reply, status, "\"ADMITTED\"")) {
++		/* Rejected/unissued numbers need protected no-effect gap evidence
++		 * before a retirement floor can pass them. Keep the original bytes.
++		 */
++		if (!hfs_json_is(reply, status, "\"REJECTED\"")) {
++			err = -EPROTO;
++			goto retained;
++		}
++		err = hfs_copy_token(reply, token, &result);
++		if (err)
++			goto retained;
++		err = hfs_result_code(result);
++		hfs_json_free(result);
++		request->refusal = reply;
++		request->gap = true;
++		hfs_buf_free(&payload);
++		return err ?: -EPROTO;
++	}
++	if (!hfs_json_is(reply, hfs_json_field(reply, token, "code"), "\"OK\"")) {
++		err = -EPROTO;
++		goto retained;
++	}
++	hfs_json_free(reply);
++	reply = NULL;
++	payload.len = 0;
++	hfs_buf_literal(&payload, "{\"claim\":");
++	hfs_buf_add(&payload, request->claim.data, request->claim.len);
++	hfs_buf_literal(&payload, "}");
++	for (;;) {
++		err = hfs_control(session, "QUERY", &payload, control, &reply);
++		if (err)
++			goto retained;
++		token = hfs_json_field(reply, 0, "payload");
++		claim = hfs_json_field(reply, token, "claim");
++		status = hfs_json_field(reply, token, "status");
++		if (hfs_json_exact(reply, token, "claim,result,status") || claim < 0 ||
++		    reply->tokens[claim].end - reply->tokens[claim].start != request->claim.len ||
++		    memcmp(reply->data + reply->tokens[claim].start,
++			   request->claim.data, request->claim.len)) {
++			err = -EPROTO;
++			goto retained;
++		}
++		if (hfs_json_is(reply, status, "\"TERMINAL\""))
++			break;
++		if ((!hfs_json_is(reply, status, "\"PENDING\"") &&
++		     !hfs_json_is(reply, status, "\"INDETERMINATE\"")) ||
++		    !hfs_json_is(reply, hfs_json_field(reply, token, "result"), "null")) {
++			err = -EPROTO;
++			goto retained;
++		}
++		hfs_json_free(reply);
++		reply = NULL;
++		if (time_after_eq(jiffies, deadline)) {
++			err = -ETIMEDOUT;
++			goto retained;
++		}
++		usleep_range(10000, 12000);
++	}
++	err = hfs_copy_token(reply, hfs_json_field(reply, token, "result"), &result);
++	if (!err)
++		err = hfs_result_validate(session, result, opcode);
++	if (err)
++		goto retained;
++	request->result = result;
++	result = NULL;
++	err = hfs_copy_token(request->result, 0, out);
++	if (!err)
++		(*out)->owner = request;
++	mutex_lock(&session->lock);
++	request->adopted = hfs_json_is(request->result,
++		hfs_json_field(request->result, 0, "capabilities"), "[]");
++	request->terminal = true;
++	mutex_unlock(&session->lock);
++	if (!err)
++		err = hfs_result_code(*out);
++	hfs_json_free(reply);
++	hfs_buf_free(&payload);
++	return err;
++retained:
++	/* An uncertain claim outlives caller cancellation and process exit. */
++	WRITE_ONCE(session->blocked, true);
++	hfs_json_free(reply);
++	hfs_json_free(result);
++	hfs_buf_free(&payload);
++	return err;
++free:
++	hfs_buf_free(&request->claim);
++	hfs_buf_free(&request->intent);
++	hfs_buf_free(&request->credentials);
++	hfs_buf_free(&request->original_context);
++	hfs_buf_free(&payload);
++	session->provider->unreserve(session, request->reservation);
++	kfree(request);
++	return err;
++}
++EXPORT_SYMBOL_GPL(hfs_call);
++
++int hfs_args_init(struct hfs_buf *args)
++{
++	return hfs_buf_init(args, 2 * HFS_IO_MAX + 2 * HFS_CAP_MAX + 16384);
++}
++
++void hfs_cap_write(struct hfs_buf *buf, const struct hfs_cap *cap)
++{
++	if (!cap || !cap->json) {
++		buf->error = -ESTALE;
++		return;
++	}
++	hfs_buf_add(buf, cap->json->data, cap->json->len);
++}
++
++void hfs_args_object(struct hfs_buf *args, const struct hfs_cap *cap)
++{
++	hfs_buf_literal(args, "{\"object\":");
++	hfs_cap_write(args, cap);
++	hfs_buf_literal(args, "}");
++}
++
++void hfs_cap_free(struct hfs_cap *cap)
++{
++	if (cap) {
++		hfs_json_free(cap->json);
++		kfree(cap);
++	}
++}
++
++int hfs_cap_parse(struct hfs_session *session, const struct hfs_json *json,
++		  int token, const char *kind, struct hfs_cap **out)
++{
++	struct hfs_cap *cap;
++	int field, scope, err;
++	u8 digest[32];
++	u32 len = 32;
++	u64 value;
++	char actual_kind[16];
++
++	*out = NULL;
++	if (hfs_json_exact(json, token,
++		"ancestors_hash,credential_hash,description,kind,object_allocation,"
++		"object_home,revision,rights,scope,token") ||
++	    json->tokens[token].end - json->tokens[token].start > HFS_CAP_MAX ||
++	    hfs_json_string(json, hfs_json_field(json, token, "kind"),
++			    actual_kind, sizeof(actual_kind)) < 0 ||
++	    strcmp(actual_kind, kind))
++		return -EPROTO;
++	scope = hfs_json_field(json, token, "scope");
++	if (scope < 0 || json->tokens[scope].end - json->tokens[scope].start !=
++	    session->enrollment.context_len ||
++	    memcmp(json->data + json->tokens[scope].start,
++		   session->enrollment.context, session->enrollment.context_len))
++		return -ESTALE;
++	cap = kzalloc(sizeof(*cap), GFP_KERNEL);
++	if (!cap)
++		return -ENOMEM;
++	err = hfs_uuid(json, hfs_json_field(json, token, "object_home"), &cap->home);
++	if (!err)
++		err = hfs_uuid(json, hfs_json_field(json, token, "object_allocation"),
++			       &cap->allocation);
++	if (!err)
++		err = hfs_field_u64(json, token, "revision", &cap->revision);
++	if (err || !cap->revision || hfs_field_u64(json, token, "rights", &value) ||
++	    value > 63) {
++		err = -EPROTO;
++		goto fail;
++	}
++	cap->rights = value;
++	field = hfs_json_field(json, token, "description");
++	if (!strcmp(kind, "DESCRIPTION"))
++		err = hfs_uuid(json, field, &cap->description);
++	else if (!hfs_json_is(json, field, "null"))
++		err = -EPROTO;
++	if (err)
++		goto fail;
++	for (field = 0; field < 3; field++) {
++		static const char * const hashes[] = {
++			"ancestors_hash", "credential_hash", "token",
++		};
++
++		len = 32;
++		err = hfs_json_hex(json, hfs_json_field(json, token, hashes[field]),
++				   digest, &len);
++		if (err || len != 32) {
++			err = -EPROTO;
++			goto fail;
++		}
++	}
++	err = hfs_copy_token(json, token, &cap->json);
++	if (err)
++		goto fail;
++	*out = cap;
++	return 0;
++fail:
++	hfs_cap_free(cap);
++	return err;
++}
++
++int hfs_reply_cap(struct hfs_session *session, const struct hfs_json *result,
++		  const char *kind, struct hfs_cap **out)
++{
++	int array = hfs_json_field(result, 0, "capabilities"), found = -1;
++	u32 i;
++	char actual[16];
++
++	if (array < 0 || result->tokens[array].kind != HFS_ARRAY)
++		return -EPROTO;
++	for (i = array + 1; i < result->count; i++) {
++		if (result->tokens[i].parent != array)
++			continue;
++		if (hfs_json_string(result, hfs_json_field(result, i, "kind"),
++				    actual, sizeof(actual)) < 0)
++			return -EPROTO;
++		if (!strcmp(actual, kind)) {
++			if (found >= 0)
++				return -EPROTO;
++			found = i;
++		}
++	}
++	return found < 0 ? -EPROTO : hfs_cap_parse(session, result, found, kind, out);
++}
++
++int hfs_begin(struct inode *inode, bool mutation, struct hfs_cred **cred,
++	      void **cookie)
++{
++	struct hfs_session *session = HFS_S(inode);
++	int err;
++
++	*cookie = NULL;
++	err = hfs_capture(session, &init_user_ns, cred);
++	if (err)
++		return err;
++	err = session->provider->enter(session, HFS_I(inode)->object, mutation, cookie);
++	if (err)
++		hfs_cred_free(*cred);
++	return err;
++}
++
++void hfs_end(struct inode *inode, struct hfs_cred *cred, void *cookie)
++{
++	HFS_S(inode)->provider->leave(HFS_S(inode), cookie);
++	hfs_cred_free(cred);
++}
++
++int v9fs_hfs_register_provider(const struct hfs_provider *provider)
++{
++	int err = 0;
++
++	if (!provider || provider->features != HFS_FEATURES ||
++	    !provider->enroll || !provider->map || !provider->enter ||
++	    !provider->leave || !provider->publication || !provider->mmap ||
++	    !provider->stop || !provider->retain || !provider->reserve ||
++	    !provider->unreserve || !provider->retirement || !provider->resolve_gap ||
++	    !provider->retire_session)
++		return -EOPNOTSUPP;
++	mutex_lock(&hfs_provider_lock);
++	if (hfs_provider)
++		err = -EBUSY;
++	else
++		hfs_provider = provider;
++	mutex_unlock(&hfs_provider_lock);
++	return err;
++}
++EXPORT_SYMBOL_GPL(v9fs_hfs_register_provider);
++
++int v9fs_hfs_unregister_provider(const struct hfs_provider *provider)
++{
++	int err = 0;
++
++	mutex_lock(&hfs_provider_lock);
++	if (hfs_provider != provider)
++		err = -EINVAL;
++	else if (atomic_read(&hfs_active_sessions))
++		err = -EBUSY;
++	else {
++		hfs_provider = NULL;
++		if (hfs_trace_registered) {
++			tracepoint_probe_unregister(hfs_exit_tracepoint, hfs_process_exit, NULL);
++			tracepoint_synchronize_unregister();
++			hfs_trace_registered = false;
++		}
++	}
++	mutex_unlock(&hfs_provider_lock);
++	return err;
++}
++EXPORT_SYMBOL_GPL(v9fs_hfs_unregister_provider);
++
++bool v9fs_hfs_selected(const char *options)
++{
++	const char *p = options;
++	static const char selected[] = "version=9P2000.L.hfs1";
++	size_t len;
++
++	while (p && *p) {
++		len = strcspn(p, ",");
++		if (len == sizeof(selected) - 1 && !memcmp(p, selected, len))
++			return true;
++		p = p[len] ? p + len + 1 : NULL;
++	}
++	return false;
++}
++
++static int hfs_enrollment_validate(struct hfs_enrollment *enrollment)
++{
++	struct hfs_json *context = NULL;
++	uuid_t id;
++	u32 i;
++	int err;
++
++	if (!enrollment->context_len || enrollment->context_len >= HFS_CONTEXT_MAX ||
++	    uuid_is_null(&enrollment->session) || uuid_is_null(&enrollment->realm) ||
++	    uuid_is_null(&enrollment->anchor) || uuid_is_null(&enrollment->nonce) ||
++	    !enrollment->subject_len || enrollment->subject_len > 1024)
++		return -EINVAL;
++	err = hfs_json_parse(enrollment->context, enrollment->context_len, &context);
++	if (err)
++		return err;
++	err = hfs_json_exact(context, 0,
++		"authority_hash,cluster,configuration,export,exporter_incarnation,"
++		"fuse_session,generation,guest_boot,guest_mount,origin_incarnation,"
++		"origin_journal,origin_node,policy_hash,registry_hash,session,vm,volume");
++	for (i = 1; !err && i + 1 < context->count; i++) {
++		char key[32];
++		u8 hash[32];
++		u32 len = 32;
++		int value;
++
++		if (context->tokens[i].parent != 0 ||
++		    context->tokens[i].kind != HFS_STRING)
++			continue;
++		if (hfs_json_string(context, i, key, sizeof(key)) < 0)
++			continue;
++		value = hfs_json_field(context, 0, key);
++		if (value < 0)
++			continue;
++		if (strstr(key, "_hash")) {
++			err = hfs_json_hex(context, value, hash, &len);
++			if (!err && len != 32)
++				err = -EPROTO;
++		} else {
++			err = hfs_uuid(context, value, &id);
++		}
++	}
++	if (!err) {
++		err = hfs_uuid(context, hfs_json_field(context, 0, "session"), &id);
++		if (!err && !uuid_equal(&id, &enrollment->session))
++			err = -EPROTO;
++	}
++	hfs_json_free(context);
++	return err;
++}
++
++static void hfs_session_free(struct hfs_session *session)
++{
++	struct hfs_process *process, *next_process;
++	struct hfs_request *request, *next_request;
++	struct hfs_description *description, *next_description;
++	struct hfs_forget *forget, *next_forget;
++	struct hfs_object_number *object, *next_object;
++
++	if (session->control)
++		destroy_workqueue(session->control);
++	if (session->client)
++		p9_client_destroy(session->client);
++	list_for_each_entry_safe(process, next_process, &session->processes, list) {
++		hfs_cred_free(process->last);
++		put_pid(process->pid);
++		kfree(process);
++	}
++	list_for_each_entry_safe(request, next_request, &session->requests, list) {
++		hfs_buf_free(&request->claim);
++		hfs_buf_free(&request->intent);
++		hfs_buf_free(&request->credentials);
++		hfs_buf_free(&request->original_context);
++		hfs_json_free(request->result);
++		hfs_json_free(request->refusal);
++		session->provider->unreserve(session, request->reservation);
++		kfree(request);
++	}
++	list_for_each_entry_safe(description, next_description,
++				 &session->descriptions, list) {
++		hfs_description_discard(session, description);
++	}
++	list_for_each_entry_safe(forget, next_forget, &session->forgets, list) {
++		hfs_cap_free(forget->cap);
++		hfs_cred_free(forget->issuer);
++		kfree(forget);
++	}
++	list_for_each_entry_safe(object, next_object, &session->object_numbers, list)
++		kfree(object);
++	module_put(session->provider->owner);
++	atomic_dec(&hfs_active_sessions);
++	kfree(session);
++}
++
++static int hfs_fill_super(struct super_block *sb, void *data, int silent)
++{
++	struct hfs_session *session = data;
++	struct hfs_cred *cred = NULL;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	struct inode *root;
++	int err;
++
++	sb->s_fs_info = session;
++	sb->s_magic = V9FS_MAGIC;
++	sb->s_op = &hfs_super_ops;
++	sb->s_maxbytes = MAX_LFS_FILESIZE;
++	sb->s_blocksize = PAGE_SIZE;
++	sb->s_blocksize_bits = PAGE_SHIFT;
++	sb->s_time_gran = 1;
++	/* No ACL, special inode or suid enablement is implied by protocol modes. */
++	/* VFS/LSM hooks remain active; no SB_NOSEC or security bypass. */
++	err = hfs_capture(session, &init_user_ns, &cred);
++	if (err)
++		return err;
++	err = hfs_args_init(&args);
++	if (!err) {
++		hfs_buf_literal(&args, "{}");
++		err = hfs_call(session, "ROOT", &args, cred, false, &result);
++	}
++	hfs_buf_free(&args);
++	if (err)
++		goto out;
++	root = hfs_inode_get(sb, result, "ROOT", cred);
++	if (IS_ERR(root)) {
++		err = PTR_ERR(root);
++		goto out;
++	}
++	if (!S_ISDIR(root->i_mode)) {
++		iput(root);
++		err = -EPROTO;
++		goto out;
++	}
++	sb->s_root = d_make_root(root);
++	if (!sb->s_root)
++		err = -ENOMEM;
++	else
++		hfs_result_adopt(session, result);
++out:
++	hfs_cred_free(cred);
++	hfs_json_free(result);
++	return err;
++}
++
++struct dentry *v9fs_hfs_mount(struct file_system_type *type, int flags,
++			    const char *device, void *options)
++{
++	static const char hello[] = "{\"body_schema\":1,\"bridge_major\":1,"
++		"\"bridge_minor\":0,\"features\":255,\"msize\":65536,"
++		"\"normal_major\":3,\"normal_minor\":0}";
++	struct hfs_session *session;
++	struct hfs_buf payload;
++	struct hfs_json *reply = NULL;
++	struct dentry *root;
++	unsigned long irqflags;
++	int err, token, selection;
++
++	if (current_user_ns() != &init_user_ns || flags & SB_POSIXACL)
++		return ERR_PTR(-EOPNOTSUPP);
++	mutex_lock(&hfs_provider_lock);
++	if (!hfs_provider || !try_module_get(hfs_provider->owner)) {
++		mutex_unlock(&hfs_provider_lock);
++		return ERR_PTR(-EOPNOTSUPP);
++	}
++	session = kzalloc(sizeof(*session), GFP_KERNEL);
++	if (!session) {
++		module_put(hfs_provider->owner);
++		mutex_unlock(&hfs_provider_lock);
++		return ERR_PTR(-ENOMEM);
++	}
++	session->provider = hfs_provider;
++	atomic_inc(&hfs_active_sessions);
++	mutex_init(&session->lock);
++	mutex_init(&session->writer);
++	mutex_init(&session->retirement);
++	spin_lock_init(&session->processes_lock);
++	INIT_LIST_HEAD(&session->processes);
++	INIT_LIST_HEAD(&session->requests);
++	INIT_LIST_HEAD(&session->uncertain);
++	INIT_LIST_HEAD(&session->descriptions);
++	INIT_LIST_HEAD(&session->forgets);
++	INIT_LIST_HEAD(&session->object_numbers);
++	INIT_LIST_HEAD(&session->global);
++	session->next_claim = session->next_cell = session->next_inode = 1;
++	session->next_close = session->next_release = 1;
++	session->control = alloc_workqueue("9p-hfs-control", WQ_MEM_RECLAIM, 2);
++	if (!session->control) {
++		err = -ENOMEM;
++		goto unlock_fail;
++	}
++	err = session->provider->enroll(device, &session->enrollment);
++	if (!err)
++		err = hfs_enrollment_validate(&session->enrollment);
++	if (err)
++		goto unlock_fail;
++	if (!hfs_trace_registered) {
++		check_trace_callback_type_sched_process_exit(hfs_process_exit);
++		for_each_kernel_tracepoint(hfs_find_exit_tracepoint, &hfs_exit_tracepoint);
++		if (!hfs_exit_tracepoint) {
++			err = -EOPNOTSUPP;
++			goto unlock_fail;
++		}
++		err = tracepoint_probe_register(hfs_exit_tracepoint, hfs_process_exit, NULL);
++		if (err)
++			goto unlock_fail;
++		hfs_trace_registered = true;
++	}
++	spin_lock_irqsave(&hfs_sessions_lock, irqflags);
++	list_add_tail(&session->global, &hfs_sessions);
++	spin_unlock_irqrestore(&hfs_sessions_lock, irqflags);
++	mutex_unlock(&hfs_provider_lock);
++	session->client = p9_client_create(device, options);
++	if (IS_ERR(session->client)) {
++		err = PTR_ERR(session->client);
++		session->client = NULL;
++		goto fail;
++	}
++	if (session->client->proto_version != p9_proto_hfs1) {
++		err = -EPROTO;
++		goto fail;
++	}
++	err = hfs_buf_init(&payload, sizeof(hello));
++	if (err)
++		goto fail;
++	hfs_buf_literal(&payload, hello);
++	err = hfs_control(session, "HELLO", &payload, true, &reply);
++	hfs_buf_free(&payload);
++	if (err)
++		goto fail;
++	token = hfs_json_field(reply, 0, "payload");
++	selection = hfs_json_field(reply, token, "selection");
++	if (hfs_json_exact(reply, token, "selection,status") ||
++	    !hfs_json_is(reply, hfs_json_field(reply, token, "status"), "\"ACCEPTED\"") ||
++	    selection < 0 || reply->tokens[selection].end -
++	    reply->tokens[selection].start != sizeof(hello) - 1 ||
++	    memcmp(reply->data + reply->tokens[selection].start, hello, sizeof(hello) - 1))
++		err = -EPROTO;
++	hfs_json_free(reply);
++	if (err)
++		goto fail;
++	root = mount_nodev(type, flags, session, hfs_fill_super);
++	if (IS_ERR(root)) {
++		/* mount_nodev already invokes kill_sb after fill_super failure. */
++		if (session->closing)
++			return root;
++		err = PTR_ERR(root);
++		goto fail;
++	}
++	return root;
++unlock_fail:
++	mutex_unlock(&hfs_provider_lock);
++fail:
++	WRITE_ONCE(session->closing, true);
++	spin_lock_irqsave(&hfs_sessions_lock, irqflags);
++	list_del_init(&session->global);
++	spin_unlock_irqrestore(&hfs_sessions_lock, irqflags);
++	if (session->nr_requests || session->blocked || session->next_cell > 1) {
++		/* A failed attach cannot discard admitted claims or control cells. */
++		__module_get(THIS_MODULE);
++		session->retained = true;
++		session->provider->retain(session);
++	} else {
++		hfs_session_free(session);
++	}
++	return ERR_PTR(err);
++}
++
++bool v9fs_hfs_super(const struct super_block *sb)
++{
++	return sb->s_op == &hfs_super_ops;
++}
++
++void v9fs_hfs_kill_super(struct super_block *sb)
++{
++	struct hfs_session *session = sb->s_fs_info;
++	unsigned long flags;
++
++	WRITE_ONCE(session->closing, true);
++	if (session->provider->stop(session))
++		WRITE_ONCE(session->blocked, true);
++	spin_lock_irqsave(&hfs_sessions_lock, flags);
++	list_del_init(&session->global);
++	spin_unlock_irqrestore(&hfs_sessions_lock, flags);
++	tracepoint_synchronize_unregister();
++	kill_anon_super(sb);
++	flush_workqueue(session->control);
++	/* Protected claim/result retirement is separate from close or unmount. */
++	__module_get(THIS_MODULE);
++	session->retained = true;
++	session->provider->retain(session);
++	sb->s_fs_info = NULL;
++}
++
++int hfs_retire(struct hfs_session *session)
++{
++	struct hfs_request *request, *next;
++	struct hfs_buf payload;
++	struct hfs_json *reply = NULL;
++	u8 hash[32], proof[32];
++	u32 count = 0, len;
++	u64 through = 0, floor;
++	int err, token;
++
++	mutex_lock(&session->retirement);
++	err = hfs_buf_init(&payload, HFS_BODY_MAX);
++	if (err)
++		goto unlock;
++	hfs_buf_printf(&payload,
++		"{\"anchor\":\"%pUb\",\"nonce\":\"%pUb\",\"realm\":\"%pUb\","
++		"\"result_hashes\":[", &session->enrollment.anchor,
++		&session->enrollment.nonce, &session->enrollment.realm);
++	mutex_lock(&session->lock);
++	list_for_each_entry(request, &session->requests, list) {
++		if (request->terminal && !request->adopted)
++			break;
++		if (!request->terminal) {
++			if (!request->gap)
++				break;
++			mutex_unlock(&session->lock);
++			err = session->provider->resolve_gap(session, request);
++			mutex_lock(&session->lock);
++			if (err || !request->terminal)
++				break;
++		}
++		len = 32;
++		if (!request->result ||
++		    hfs_json_hex(request->result,
++				 hfs_json_field(request->result, 0, "id"), hash, &len) ||
++		    len != 32) {
++			err = -EPROTO;
++			mutex_unlock(&session->lock);
++			goto free;
++		}
++		if (count++)
++			hfs_buf_literal(&payload, ",");
++		hfs_buf_hex(&payload, hash, 32);
++		through = request->number;
++		if (count == 1024)
++			break;
++	}
++	mutex_unlock(&session->lock);
++	if (!count) {
++		err = -EAGAIN;
++		goto free;
++	}
++	hfs_buf_literal(&payload, "],\"subject\":");
++	hfs_buf_hex(&payload, session->enrollment.subject,
++		    session->enrollment.subject_len);
++	hfs_buf_printf(&payload, ",\"through\":%llu}", through);
++	err = hfs_control(session, "RETIRE", &payload, true, &reply);
++	if (err)
++		goto free;
++	token = hfs_json_field(reply, 0, "payload");
++	if (hfs_json_exact(reply, token, "floor,proof_hash,status") ||
++	    hfs_field_u64(reply, token, "floor", &floor)) {
++		err = -EPROTO;
++		goto free;
++	}
++	if (hfs_json_is(reply, hfs_json_field(reply, token, "status"), "\"BLOCKED\"")) {
++		err = -EAGAIN;
++		goto free;
++	}
++	len = 32;
++	if (!hfs_json_is(reply, hfs_json_field(reply, token, "status"), "\"RETIRED\"") ||
++	    floor != through || hfs_json_hex(reply,
++	    hfs_json_field(reply, token, "proof_hash"), proof, &len) || len != 32) {
++		err = -EPROTO;
++		goto free;
++	}
++	err = session->provider->retirement(session, through, proof);
++	if (err)
++		goto free;
++	mutex_lock(&session->lock);
++	list_for_each_entry_safe(request, next, &session->requests, list) {
++		if (request->number > through)
++			break;
++		list_del(&request->list);
++		session->nr_requests--;
++		if (request->control)
++			session->nr_control_requests--;
++		hfs_buf_free(&request->claim);
++		hfs_buf_free(&request->intent);
++		hfs_buf_free(&request->credentials);
++		hfs_buf_free(&request->original_context);
++		hfs_json_free(request->result);
++		hfs_json_free(request->refusal);
++		session->provider->unreserve(session, request->reservation);
++		kfree(request);
++	}
++	mutex_unlock(&session->lock);
++free:
++	hfs_json_free(reply);
++	hfs_buf_free(&payload);
++unlock:
++	mutex_unlock(&session->retirement);
++	return err;
++}
++EXPORT_SYMBOL_GPL(hfs_retire);
++
++/* Only a protected recovery/retirement provider can relinquish retained state. */
++int hfs_session_destroy(struct hfs_session *session)
++{
++	int err;
++
++	if (!session || !session->retained || !session->closing)
++		return -EBUSY;
++	mutex_lock(&session->retirement);
++	if (!list_empty(&session->uncertain) || !list_empty(&session->requests)) {
++		mutex_unlock(&session->retirement);
++		return -EBUSY;
++	}
++	err = session->provider->retire_session(session);
++	mutex_unlock(&session->retirement);
++	if (err)
++		return err;
++	hfs_session_free(session);
++	module_put(THIS_MODULE);
++	return 0;
++}
++EXPORT_SYMBOL_GPL(hfs_session_destroy);
++
++void hfs_result_adopt(struct hfs_session *session, const struct hfs_json *result)
++{
++	struct hfs_request *request;
++
++	if (!result || !result->owner)
++		return;
++	mutex_lock(&session->lock);
++	list_for_each_entry(request, &session->requests, list) {
++		if (request == result->owner) {
++			request->adopted = true;
++			break;
++		}
++	}
++	mutex_unlock(&session->lock);
++}
+diff --git a/fs/9p/hfs_inode.c b/fs/9p/hfs_inode.c
+new file mode 100644
+--- /dev/null
++++ b/fs/9p/hfs_inode.c
+@@ -0,0 +1,914 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Authoritative retained-9p attributes and namespace VFS operations. */
++#include <linux/magic.h>
++#include <linux/iversion.h>
++#include <linux/namei.h>
++#include <linux/pagemap.h>
++#include <linux/slab.h>
++#include <linux/statfs.h>
++#include <linux/user_namespace.h>
++#include "hfs.h"
++
++void hfs_dcap_write(struct hfs_buf *buf, struct dentry *dentry)
++{
++	spin_lock(&dentry->d_lock);
++	hfs_cap_write(buf, dentry->d_fsdata ?: HFS_I(d_inode(dentry))->object);
++	spin_unlock(&dentry->d_lock);
++}
++
++int hfs_attr_install(struct inode *inode, const struct hfs_json *json, int token)
++{
++	struct hfs_attr attr;
++	int err;
++
++	err = hfs_attr_decode(json, token, &HFS_I(inode)->object->home,
++			      &HFS_I(inode)->object->allocation,
++			      inode->i_mode & S_IFMT, &attr);
++	if (err)
++		return err;
++	spin_lock(&inode->i_lock);
++	if (attr.revision >= inode_peek_iversion_raw(inode)) {
++		inode->i_mode = attr.type | attr.mode;
++		inode->i_uid = make_kuid(&init_user_ns, attr.uid);
++		inode->i_gid = make_kgid(&init_user_ns, attr.gid);
++		set_nlink(inode, attr.nlink);
++		i_size_write(inode, attr.size);
++		inode->i_atime = (struct timespec64) { attr.atime.seconds, attr.atime.nanos };
++		inode->i_mtime = (struct timespec64) { attr.mtime.seconds, attr.mtime.nanos };
++		inode->i_ctime = (struct timespec64) { attr.ctime.seconds, attr.ctime.nanos };
++		inode_set_iversion_raw(inode, attr.revision);
++	}
++	spin_unlock(&inode->i_lock);
++	return 0;
++}
++
++int hfs_object_ino(struct hfs_session *session, const struct hfs_cap *cap,
++		   unsigned long *number)
++{
++	struct hfs_object_number *object, *candidate;
++	int err = 0;
++
++	candidate = kzalloc(sizeof(*candidate), GFP_KERNEL);
++	if (!candidate)
++		return -ENOMEM;
++	mutex_lock(&session->lock);
++	list_for_each_entry(object, &session->object_numbers, list) {
++		if (uuid_equal(&object->home, &cap->home) &&
++		    uuid_equal(&object->allocation, &cap->allocation)) {
++			*number = object->number;
++			goto out;
++		}
++	}
++	if (session->nr_objects == HFS_IDENTITIES_MAX ||
++	    session->next_inode == ULONG_MAX) {
++		err = -ENOSPC;
++		goto out;
++	}
++	candidate->home = cap->home;
++	candidate->allocation = cap->allocation;
++	candidate->number = session->next_inode++;
++	list_add_tail(&candidate->list, &session->object_numbers);
++	session->nr_objects++;
++	*number = candidate->number;
++	candidate = NULL;
++out:
++	mutex_unlock(&session->lock);
++	kfree(candidate);
++	return err;
++}
++
++struct hfs_inode_seed {
++	struct hfs_cap *cap;
++	struct hfs_cred *issuer;
++};
++
++static int hfs_test_inode(struct inode *inode, void *data)
++{
++	const struct hfs_cap *cap = ((struct hfs_inode_seed *)data)->cap;
++
++	return uuid_equal(&HFS_I(inode)->object->home, &cap->home) &&
++	       uuid_equal(&HFS_I(inode)->object->allocation, &cap->allocation);
++}
++
++static int hfs_set_inode(struct inode *inode, void *data)
++{
++	struct hfs_inode_seed *seed = data;
++
++	HFS_I(inode)->object = seed->cap;
++	HFS_I(inode)->forget->cap = seed->cap;
++	HFS_I(inode)->forget->issuer = seed->issuer;
++	return 0;
++}
++
++struct inode *hfs_inode_get(struct super_block *sb, struct hfs_json *result,
++			   const char *kind, const struct hfs_cred *issuer)
++{
++	struct hfs_session *session = sb->s_fs_info;
++	struct hfs_inode_seed seed;
++	struct hfs_cap *cap = NULL;
++	struct inode *inode;
++	unsigned long hash, number;
++	int err;
++
++	err = hfs_reply_cap(session, result, kind, &cap);
++	if (err)
++		return ERR_PTR(err);
++	err = hfs_object_ino(session, cap, &number);
++	if (err) {
++		hfs_cap_free(cap);
++		return ERR_PTR(err);
++	}
++	seed.cap = cap;
++	seed.issuer = kmemdup(issuer, sizeof(*issuer), GFP_KERNEL);
++	if (!seed.issuer) {
++		hfs_cap_free(cap);
++		return ERR_PTR(-ENOMEM);
++	}
++	seed.issuer->native = get_cred(issuer->native);
++	hash = full_name_hash(NULL, cap->allocation.b, sizeof(cap->allocation.b));
++	inode = iget5_locked(sb, hash, hfs_test_inode, hfs_set_inode, &seed);
++	if (!inode) {
++		hfs_cred_free(seed.issuer);
++		hfs_cap_free(cap);
++		return ERR_PTR(-ENOMEM);
++	}
++	if (!(inode->i_state & I_NEW)) {
++		hfs_cap_free(cap);
++		hfs_cred_free(seed.issuer);
++	}
++	err = hfs_attr_install(inode, result, hfs_json_field(result, 0, "attributes"));
++	if (err) {
++		if (inode->i_state & I_NEW)
++			iget_failed(inode);
++		else
++			iput(inode);
++		return ERR_PTR(err);
++	}
++	if (inode->i_state & I_NEW) {
++		inode->i_ino = number;
++		if (S_ISDIR(inode->i_mode)) {
++			inode->i_op = &hfs_dir_iops;
++			inode->i_fop = &hfs_dir_fops;
++		} else if (S_ISREG(inode->i_mode)) {
++			inode->i_op = &hfs_file_iops;
++			inode->i_fop = &hfs_file_fops;
++		} else {
++			inode->i_op = &hfs_symlink_iops;
++		}
++		HFS_I(inode)->forget->session = session;
++		mutex_lock(&session->lock);
++		list_add_tail(&HFS_I(inode)->forget->list, &session->forgets);
++		mutex_unlock(&session->lock);
++		unlock_new_inode(inode);
++	}
++	if (strcmp(kind, "ROOT")) {
++		spin_lock(&inode->i_lock);
++		HFS_I(inode)->forget->count++;
++		spin_unlock(&inode->i_lock);
++	}
++	return inode;
++}
++
++static struct inode *hfs_alloc_inode(struct super_block *sb)
++{
++	struct hfs_inode *inode = kzalloc(sizeof(*inode), GFP_KERNEL);
++
++	if (!inode)
++		return NULL;
++	inode->forget = kzalloc(sizeof(*inode->forget), GFP_KERNEL);
++	if (!inode->forget) {
++		kfree(inode);
++		return NULL;
++	}
++	INIT_LIST_HEAD(&inode->forget->list);
++	inode_init_once(&inode->inode);
++	return &inode->inode;
++}
++
++static void hfs_free_inode(struct inode *inode)
++{
++	if (HFS_I(inode)->forget) {
++		hfs_cred_free(HFS_I(inode)->forget->issuer);
++		hfs_cap_free(HFS_I(inode)->object);
++		kfree(HFS_I(inode)->forget);
++	}
++	kfree(HFS_I(inode));
++}
++
++
++static void hfs_forget_work(struct work_struct *work)
++{
++	struct hfs_forget *forget = container_of(work, struct hfs_forget, work);
++	struct hfs_session *session = forget->session;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	int err = hfs_args_init(&args);
++
++	if (!err) {
++		hfs_buf_printf(&args, "{\"count\":%llu,\"object\":", forget->count);
++		hfs_cap_write(&args, forget->cap);
++		hfs_buf_literal(&args, "}");
++		err = hfs_call(session, "FORGET", &args, forget->issuer, true, &result);
++	}
++	hfs_json_free(result);
++	hfs_buf_free(&args);
++	if (err) {
++		WRITE_ONCE(session->blocked, true);
++		return;
++	}
++	mutex_lock(&session->lock);
++	list_del(&forget->list);
++	mutex_unlock(&session->lock);
++	hfs_cap_free(forget->cap);
++	hfs_cred_free(forget->issuer);
++	kfree(forget);
++}
++
++static void hfs_evict_inode(struct inode *inode)
++{
++	struct hfs_forget *forget = HFS_I(inode)->forget;
++
++	truncate_inode_pages_final(&inode->i_data);
++	clear_inode(inode);
++	if (!forget->session)
++		return;
++	if (!forget->count) {
++		mutex_lock(&forget->session->lock);
++		list_del_init(&forget->list);
++		mutex_unlock(&forget->session->lock);
++		return;
++	}
++	INIT_WORK(&forget->work, hfs_forget_work);
++	HFS_I(inode)->forget = NULL;
++	queue_work(forget->session->control, &forget->work);
++}
++
++static int hfs_d_revalidate(struct dentry *dentry, unsigned int flags)
++{
++	return flags & LOOKUP_RCU ? -ECHILD : 0;
++}
++
++static void hfs_d_release(struct dentry *dentry)
++{
++	hfs_cap_free(dentry->d_fsdata);
++}
++
++static const struct dentry_operations hfs_dops = {
++	.d_revalidate = hfs_d_revalidate,
++	.d_release = hfs_d_release,
++};
++
++int hfs_refresh(struct inode *inode)
++{
++	struct hfs_cred *cred;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	void *cookie;
++	int err = hfs_begin(inode, false, &cred, &cookie);
++
++	if (err)
++		return err;
++	err = hfs_args_init(&args);
++	if (!err) {
++		hfs_args_object(&args, HFS_I(inode)->object);
++		err = hfs_call(HFS_S(inode), "GETATTR", &args, cred, false, &result);
++	}
++	if (!err)
++		err = hfs_attr_install(inode, result,
++				       hfs_json_field(result, 0, "attributes"));
++	hfs_json_free(result);
++	hfs_buf_free(&args);
++	hfs_end(inode, cred, cookie);
++	return err;
++}
++
++static int hfs_permission(struct user_namespace *mnt_userns,
++			  struct inode *inode, int mask)
++{
++	int err;
++
++	if (mask & MAY_NOT_BLOCK)
++		return -ECHILD;
++	err = hfs_refresh(inode);
++	return err ?: generic_permission(mnt_userns, inode, mask);
++}
++
++static struct dentry *hfs_lookup(struct inode *dir, struct dentry *dentry,
++				 unsigned int flags)
++{
++	struct hfs_cred *cred;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	struct hfs_cap *cap = NULL;
++	struct inode *inode = NULL;
++	struct dentry *alias;
++	void *cookie;
++	int err;
++
++	if (!dentry->d_name.len || dentry->d_name.len > 255)
++		return ERR_PTR(-ENAMETOOLONG);
++	err = hfs_begin(dir, false, &cred, &cookie);
++	if (err)
++		return ERR_PTR(err);
++	err = hfs_args_init(&args);
++	if (!err) {
++		hfs_buf_literal(&args, "{\"name\":");
++		hfs_buf_hex(&args, dentry->d_name.name, dentry->d_name.len);
++		hfs_buf_literal(&args, ",\"parent\":");
++		hfs_dcap_write(&args, dentry->d_parent);
++		hfs_buf_literal(&args, "}");
++		err = hfs_call(HFS_S(dir), "LOOKUP", &args, cred, false, &result);
++	}
++	if (err == -ENOENT)
++		err = 0;
++	else if (!err) {
++		err = hfs_reply_cap(HFS_S(dir), result, "PATH", &cap);
++		if (!err) {
++			inode = hfs_inode_get(dir->i_sb, result, "PATH", cred);
++			if (IS_ERR(inode)) {
++				err = PTR_ERR(inode);
++				inode = NULL;
++			}
++		}
++	}
++	if (!err && inode)
++		hfs_result_adopt(HFS_S(dir), result);
++	hfs_json_free(result);
++	hfs_buf_free(&args);
++	hfs_end(dir, cred, cookie);
++	if (err) {
++		hfs_cap_free(cap);
++		return ERR_PTR(err);
++	}
++	d_set_d_op(dentry, &hfs_dops);
++	dentry->d_fsdata = cap;
++	alias = d_splice_alias(inode, dentry);
++	/* A directory alias carries another ancestry grant; force the caller to
++	 * rewalk instead of assigning this path's capability to that alias.
++	 */
++	if (IS_ERR(alias))
++		return alias;
++	if (alias) {
++		struct hfs_cap *previous;
++
++		/* Replace the alias's path grant while readers copy under d_lock. */
++		dentry->d_fsdata = NULL;
++		spin_lock(&alias->d_lock);
++		previous = alias->d_fsdata;
++		alias->d_fsdata = cap;
++		spin_unlock(&alias->d_lock);
++		hfs_cap_free(previous);
++	}
++	return alias;
++}
++
++void hfs_flags_write(struct hfs_buf *args, unsigned int flags, bool create)
++{
++	const char *access = (flags & O_ACCMODE) == O_WRONLY ? "WRITE" :
++		(flags & O_ACCMODE) == O_RDWR ? "READWRITE" : "READ";
++	const char *sync = (flags & O_SYNC) == O_SYNC ? "FILE" :
++		flags & O_DSYNC ? "DATA" : "ORDINARY";
++
++	hfs_buf_printf(args, "{\"access\":\"%s\",\"append\":%s,\"create\":%s,"
++		       "\"exclusive\":%s,\"sync\":\"%s\",\"truncate\":%s}",
++		       access, flags & O_APPEND ? "true" : "false",
++		       create ? "true" : "false", flags & O_EXCL ? "true" : "false",
++		       sync, flags & O_TRUNC ? "true" : "false");
++}
++
++static int hfs_atomic_open(struct inode *dir, struct dentry *dentry,
++			   struct file *file, unsigned int flags, umode_t mode)
++{
++	struct hfs_cred *cred;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	struct hfs_description *description = NULL;
++	struct hfs_cap *cap = NULL;
++	struct inode *inode;
++	void *cookie;
++	bool create = flags & O_CREAT;
++	int err;
++
++	if (d_in_lookup(dentry)) {
++		struct dentry *alias = hfs_lookup(dir, dentry, 0);
++
++		if (IS_ERR(alias))
++			return PTR_ERR(alias);
++		if (alias)
++			return finish_no_open(file, alias);
++	}
++	if (d_really_is_positive(dentry))
++		return finish_no_open(file, NULL);
++	if (!create)
++		return -ENOENT;
++	if ((mode & ~(S_IFMT | 07777)) || (flags & O_TMPFILE) == O_TMPFILE)
++		return -EOPNOTSUPP;
++	err = hfs_begin(dir, true, &cred, &cookie);
++	if (err)
++		return err;
++	err = hfs_description_prepare(HFS_S(dir), false, &description);
++	if (err)
++		goto out;
++	err = hfs_args_init(&args);
++	if (err)
++		goto out;
++	hfs_buf_literal(&args, "{\"flags\":");
++	hfs_flags_write(&args, flags | O_EXCL, true);
++	hfs_buf_printf(&args, ",\"mode\":%u,\"name\":", mode & 07777);
++	hfs_buf_hex(&args, dentry->d_name.name, dentry->d_name.len);
++	hfs_buf_literal(&args, ",\"parent\":");
++	hfs_dcap_write(&args, dentry->d_parent);
++	/* VFS already applied the guest umask/capability restrictions. */
++	hfs_buf_literal(&args, ",\"umask\":0}");
++	err = hfs_call(HFS_S(dir), "CREATE", &args, cred, false, &result);
++	hfs_buf_free(&args);
++	if (err == -EEXIST && !(flags & O_EXCL)) {
++		struct dentry *alias;
++
++		hfs_json_free(result);
++		result = NULL;
++		alias = hfs_lookup(dir, dentry, 0);
++		err = finish_no_open(file, alias);
++		goto out;
++	}
++	if (err)
++		goto out;
++	err = hfs_reply_cap(HFS_S(dir), result, "DESCRIPTION", &description->cap);
++	if (!err)
++		err = hfs_reply_cap(HFS_S(dir), result, "PATH", &cap);
++	if (err)
++		goto out;
++	inode = hfs_inode_get(dir->i_sb, result, "PATH", cred);
++	if (IS_ERR(inode)) {
++		err = PTR_ERR(inode);
++		goto out;
++	}
++	if (!S_ISREG(inode->i_mode) ||
++	    !uuid_equal(&description->cap->home, &HFS_I(inode)->object->home) ||
++	    !uuid_equal(&description->cap->allocation, &HFS_I(inode)->object->allocation)) {
++		iput(inode);
++		err = -EPROTO;
++		WRITE_ONCE(HFS_S(dir)->blocked, true);
++		goto out;
++	}
++	/* Never call inode_init_owner: returned creator UID, parent GID and all
++	 * supported special bits are the single authoritative committed result.
++	 */
++	d_set_d_op(dentry, &hfs_dops);
++	dentry->d_fsdata = cap;
++	cap = NULL;
++	d_instantiate(dentry, inode);
++	description->issuer = cred;
++	cred = NULL;
++	file->private_data = description;
++	description = NULL;
++	hfs_result_adopt(HFS_S(dir), result);
++	file->f_mode |= FMODE_CREATED;
++	err = finish_open(file, dentry, generic_file_open);
++	if (err)
++		WRITE_ONCE(HFS_S(dir)->blocked, true);
++out:
++	hfs_description_discard(HFS_S(dir), description);
++	hfs_cap_free(cap);
++	hfs_json_free(result);
++	HFS_S(dir)->provider->leave(HFS_S(dir), cookie);
++	hfs_cred_free(cred);
++	return err;
++}
++
++static int hfs_namespace(struct inode *dir, struct dentry *dentry,
++			 const char *opcode, umode_t mode, const char *target)
++{
++	struct hfs_cred *cred;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	struct hfs_cap *cap = NULL;
++	struct inode *inode;
++	void *cookie;
++	bool mkdir = !strcmp(opcode, "MKDIR");
++	bool symlink = !strcmp(opcode, "SYMLINK");
++	int err = hfs_begin(dir, true, &cred, &cookie);
++
++	if (err)
++		return err;
++	err = hfs_args_init(&args);
++	if (err)
++		goto out;
++	hfs_buf_literal(&args, "{");
++	if (mkdir)
++		hfs_buf_printf(&args, "\"mode\":%u,", mode & 07777);
++	hfs_buf_literal(&args, "\"name\":");
++	hfs_buf_hex(&args, dentry->d_name.name, dentry->d_name.len);
++	hfs_buf_literal(&args, ",\"parent\":");
++	hfs_dcap_write(&args, dentry->d_parent);
++	if (symlink) {
++		if (strlen(target) > 4096) {
++			err = -ENAMETOOLONG;
++			goto free_args;
++		}
++		hfs_buf_literal(&args, ",\"target\":");
++		hfs_buf_hex(&args, target, strlen(target));
++	}
++	if (mkdir)
++		hfs_buf_literal(&args, ",\"umask\":0");
++	hfs_buf_literal(&args, "}");
++	err = hfs_call(HFS_S(dir), opcode, &args, cred, false, &result);
++	if (err || (!mkdir && !symlink))
++		goto free_args;
++	err = hfs_reply_cap(HFS_S(dir), result, "PATH", &cap);
++	if (err)
++		goto free_args;
++	inode = hfs_inode_get(dir->i_sb, result, "PATH", cred);
++	if (IS_ERR(inode)) {
++		err = PTR_ERR(inode);
++		goto free_args;
++	}
++	if ((mkdir && !S_ISDIR(inode->i_mode)) ||
++	    (symlink && !S_ISLNK(inode->i_mode))) {
++		iput(inode);
++		err = -EPROTO;
++		WRITE_ONCE(HFS_S(dir)->blocked, true);
++		goto free_args;
++	}
++	d_set_d_op(dentry, &hfs_dops);
++	dentry->d_fsdata = cap;
++	cap = NULL;
++	d_instantiate(dentry, inode);
++	hfs_result_adopt(HFS_S(dir), result);
++free_args:
++	hfs_buf_free(&args);
++out:
++	hfs_cap_free(cap);
++	hfs_json_free(result);
++	hfs_end(dir, cred, cookie);
++	return err;
++}
++
++static int hfs_mkdir(struct user_namespace *ns, struct inode *dir,
++		     struct dentry *dentry, umode_t mode)
++{
++	return mode & ~(S_IFMT | 07777) ? -EINVAL :
++		hfs_namespace(dir, dentry, "MKDIR", mode, NULL);
++}
++
++static int hfs_symlink(struct user_namespace *ns, struct inode *dir,
++		       struct dentry *dentry, const char *target)
++{
++	return hfs_namespace(dir, dentry, "SYMLINK", 0, target);
++}
++
++static int hfs_unlink(struct inode *dir, struct dentry *dentry)
++{
++	return hfs_namespace(dir, dentry, "UNLINK", 0, NULL);
++}
++
++static int hfs_rmdir(struct inode *dir, struct dentry *dentry)
++{
++	return hfs_namespace(dir, dentry, "RMDIR", 0, NULL);
++}
++
++static int hfs_link(struct dentry *old, struct inode *dir, struct dentry *dentry)
++{
++	struct hfs_cred *cred;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	void *cookie;
++	int err;
++
++	if (old->d_sb != dentry->d_sb)
++		return -EXDEV;
++	err = hfs_begin(dir, true, &cred, &cookie);
++	if (err)
++		return err;
++	err = hfs_args_init(&args);
++	if (!err) {
++		hfs_buf_literal(&args, "{\"name\":");
++		hfs_buf_hex(&args, dentry->d_name.name, dentry->d_name.len);
++		hfs_buf_literal(&args, ",\"object\":");
++		hfs_dcap_write(&args, old);
++		hfs_buf_literal(&args, ",\"parent\":");
++		hfs_dcap_write(&args, dentry->d_parent);
++		hfs_buf_literal(&args, "}");
++		err = hfs_call(HFS_S(dir), "LINK", &args, cred, false, &result);
++	}
++	hfs_json_free(result);
++	hfs_buf_free(&args);
++	hfs_end(dir, cred, cookie);
++	if (!err) {
++		struct dentry *alias = hfs_lookup(dir, dentry, 0);
++
++		err = IS_ERR(alias) ? PTR_ERR(alias) : 0;
++		if (!err && d_inode(alias ?: dentry) != d_inode(old))
++			err = -ESTALE;
++		if (!IS_ERR_OR_NULL(alias))
++			dput(alias);
++	}
++	return err;
++}
++
++static int hfs_rename(struct user_namespace *ns, struct inode *old_dir,
++		      struct dentry *old, struct inode *new_dir,
++		      struct dentry *new, unsigned int flags)
++{
++	struct hfs_cred *cred;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	void *cookie;
++	int err;
++
++	if (old->d_sb != new->d_sb)
++		return -EXDEV;
++	if (flags & ~RENAME_NOREPLACE)
++		return -EOPNOTSUPP;
++	err = hfs_begin(old_dir, true, &cred, &cookie);
++	if (err)
++		return err;
++	err = hfs_args_init(&args);
++	if (!err) {
++		hfs_buf_literal(&args, "{\"destination_name\":");
++		hfs_buf_hex(&args, new->d_name.name, new->d_name.len);
++		hfs_buf_literal(&args, ",\"destination_parent\":");
++		hfs_dcap_write(&args, new->d_parent);
++		hfs_buf_printf(&args, ",\"no_replace\":%s,\"source_name\":",
++			       flags & RENAME_NOREPLACE ? "true" : "false");
++		hfs_buf_hex(&args, old->d_name.name, old->d_name.len);
++		hfs_buf_literal(&args, ",\"source_parent\":");
++		hfs_dcap_write(&args, old->d_parent);
++		hfs_buf_literal(&args, "}");
++		err = hfs_call(HFS_S(old_dir), "RENAME", &args, cred, false, &result);
++	}
++	hfs_json_free(result);
++	hfs_buf_free(&args);
++	hfs_end(old_dir, cred, cookie);
++	return err;
++}
++
++static int hfs_getattr(struct user_namespace *ns, const struct path *path,
++		       struct kstat *stat, u32 request, unsigned int flags)
++{
++	struct inode *inode = d_inode(path->dentry);
++	struct hfs_cred *cred;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	void *cookie;
++	int err = hfs_begin(inode, false, &cred, &cookie);
++
++	if (err)
++		return err;
++	err = hfs_args_init(&args);
++	if (!err) {
++		hfs_buf_literal(&args, "{\"object\":");
++		hfs_dcap_write(&args, path->dentry);
++		hfs_buf_literal(&args, "}");
++		err = hfs_call(HFS_S(inode), "GETATTR", &args, cred, false, &result);
++	}
++	if (!err)
++		err = hfs_attr_install(inode, result,
++				       hfs_json_field(result, 0, "attributes"));
++	if (!err)
++		generic_fillattr(ns, inode, stat);
++	hfs_json_free(result);
++	hfs_buf_free(&args);
++	hfs_end(inode, cred, cookie);
++	return err;
++}
++
++static void hfs_time_write(struct hfs_buf *args, struct timespec64 time)
++{
++	hfs_buf_printf(args, "{\"nanos\":%lu,\"seconds\":%lld}",
++		       time.tv_nsec, time.tv_sec);
++}
++
++static void hfs_optional_time(struct hfs_buf *args, struct iattr *attr,
++			      bool atime)
++{
++	if (attr->ia_valid & (atime ? ATTR_ATIME_SET : ATTR_MTIME_SET))
++		hfs_time_write(args, atime ? attr->ia_atime : attr->ia_mtime);
++	else
++		hfs_buf_literal(args, "null");
++}
++
++static int hfs_setattr(struct user_namespace *ns, struct dentry *dentry,
++		       struct iattr *attr)
++{
++	struct inode *inode = d_inode(dentry);
++	struct hfs_cred *cred;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	struct hfs_description *description = NULL;
++	void *cookie;
++	unsigned int valid = attr->ia_valid;
++	bool truncate = valid & ATTR_SIZE;
++	bool atime_now = (valid & ATTR_ATIME) && !(valid & ATTR_ATIME_SET);
++	bool mtime_now = (valid & ATTR_MTIME) && !(valid & ATTR_MTIME_SET);
++	int err;
++
++	if (valid & ~(ATTR_MODE | ATTR_UID | ATTR_GID | ATTR_SIZE | ATTR_ATIME |
++		      ATTR_MTIME | ATTR_CTIME | ATTR_ATIME_SET | ATTR_MTIME_SET |
++		      ATTR_TIMES_SET | ATTR_FILE | ATTR_OPEN | ATTR_FORCE) ||
++	    (truncate && (valid & (ATTR_MODE | ATTR_UID | ATTR_GID))) ||
++	    (!truncate && valid & ATTR_CTIME && !(valid &
++	      (ATTR_MODE | ATTR_UID | ATTR_GID | ATTR_ATIME | ATTR_MTIME))) ||
++	    ((valid & ATTR_MODE) && (attr->ia_mode & ~(S_IFMT | 07777))) ||
++	    ((valid & ATTR_MODE) && (valid & (ATTR_UID | ATTR_GID)) &&
++	     (attr->ia_mode & (S_ISUID | S_ISGID))))
++		return -EOPNOTSUPP;
++	err = setattr_prepare(ns, dentry, attr);
++	if (err)
++		return err;
++	if (truncate && attr->ia_size < 0)
++		return -EINVAL;
++	if (valid & ATTR_FILE)
++		description = attr->ia_file->private_data;
++	err = hfs_begin(inode, true, &cred, &cookie);
++	if (err)
++		return err;
++	err = hfs_args_init(&args);
++	if (err)
++		goto out;
++	if (truncate) {
++		hfs_buf_literal(&args, "{\"description\":");
++		if (description)
++			hfs_cap_write(&args, description->cap);
++		else
++			hfs_buf_literal(&args, "null");
++		hfs_buf_literal(&args, ",\"object\":");
++		hfs_dcap_write(&args, dentry);
++		hfs_buf_printf(&args, ",\"size\":%lld,\"times\":{\"atime\":", attr->ia_size);
++	} else {
++		hfs_buf_literal(&args, "{\"attributes\":{\"atime\":");
++	}
++	hfs_optional_time(&args, attr, true);
++	hfs_buf_printf(&args, ",\"atime_now\":%s,", atime_now ? "true" : "false");
++	if (truncate) {
++		hfs_buf_literal(&args, "\"ctime\":");
++		if (valid & ATTR_CTIME)
++			hfs_time_write(&args, attr->ia_ctime);
++		else
++			hfs_buf_literal(&args, "null");
++		hfs_buf_literal(&args, ",");
++	} else {
++		hfs_buf_literal(&args, "\"gid\":");
++		if (valid & ATTR_GID)
++			hfs_buf_printf(&args, "%u", from_kgid(&init_user_ns, attr->ia_gid));
++		else
++			hfs_buf_literal(&args, "null");
++		hfs_buf_literal(&args, ",\"mode\":");
++		if (valid & ATTR_MODE)
++			hfs_buf_printf(&args, "%u", attr->ia_mode & 07777);
++		else
++			hfs_buf_literal(&args, "null");
++		hfs_buf_literal(&args, ",");
++	}
++	hfs_buf_literal(&args, "\"mtime\":");
++	hfs_optional_time(&args, attr, false);
++	hfs_buf_printf(&args, ",\"mtime_now\":%s", mtime_now ? "true" : "false");
++	if (truncate) {
++		hfs_buf_literal(&args, "}}");
++	} else {
++		hfs_buf_literal(&args, ",\"uid\":");
++		if (valid & ATTR_UID)
++			hfs_buf_printf(&args, "%u", from_kuid(&init_user_ns, attr->ia_uid));
++		else
++			hfs_buf_literal(&args, "null");
++		hfs_buf_literal(&args, "},\"object\":");
++		hfs_dcap_write(&args, dentry);
++		hfs_buf_literal(&args, "}");
++	}
++	err = hfs_call(HFS_S(inode), truncate ? "TRUNCATE" : "SETATTR", &args,
++		       cred, false, &result);
++	if (!err)
++		err = hfs_attr_install(inode, result,
++				       hfs_json_field(result, 0, "attributes"));
++	hfs_buf_free(&args);
++out:
++	hfs_json_free(result);
++	hfs_end(inode, cred, cookie);
++	return err;
++}
++
++static const char *hfs_get_link(struct dentry *dentry, struct inode *inode,
++			       struct delayed_call *done)
++{
++	struct hfs_cred *cred;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	void *cookie;
++	char *target = NULL;
++	u32 len = 4096;
++	int err;
++
++	if (!dentry)
++		return ERR_PTR(-ECHILD);
++	err = hfs_begin(inode, false, &cred, &cookie);
++	if (err)
++		return ERR_PTR(err);
++	err = hfs_args_init(&args);
++	if (!err) {
++		hfs_buf_literal(&args, "{\"object\":");
++		hfs_dcap_write(&args, dentry);
++		hfs_buf_literal(&args, "}");
++		err = hfs_call(HFS_S(inode), "READLINK", &args, cred, false, &result);
++	}
++	if (!err) {
++		target = kmalloc(4097, GFP_KERNEL);
++		if (!target)
++			err = -ENOMEM;
++		else
++			err = hfs_json_hex(result, hfs_json_field(result, 0, "data"),
++					   target, &len);
++		if (!err && memchr(target, 0, len))
++			err = -EPROTO;
++	}
++	hfs_json_free(result);
++	hfs_buf_free(&args);
++	hfs_end(inode, cred, cookie);
++	if (err) {
++		kfree(target);
++		return ERR_PTR(err);
++	}
++	target[len] = 0;
++	set_delayed_call(done, kfree_link, target);
++	return target;
++}
++
++static int hfs_statfs(struct dentry *dentry, struct kstatfs *stat)
++{
++	struct inode *inode = d_inode(dentry);
++	struct hfs_cred *cred;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	void *cookie;
++	int err, token;
++	u64 bytes, free_bytes, objects, free_objects;
++
++	err = hfs_begin(inode, false, &cred, &cookie);
++	if (err)
++		return err;
++	err = hfs_args_init(&args);
++	if (!err) {
++		hfs_buf_literal(&args, "{\"root\":");
++		hfs_cap_write(&args, HFS_I(d_inode(dentry->d_sb->s_root))->object);
++		hfs_buf_literal(&args, "}");
++		err = hfs_call(HFS_S(inode), "STATFS", &args, cred, false, &result);
++	}
++	if (!err) {
++		token = hfs_json_field(result, 0, "capacity");
++		if (hfs_json_exact(result, token, "bytes,bytes_free,objects,objects_free") ||
++		    hfs_json_u64(result, hfs_json_field(result, token, "bytes"), &bytes) ||
++		    hfs_json_u64(result, hfs_json_field(result, token, "bytes_free"),
++				 &free_bytes) ||
++		    hfs_json_u64(result, hfs_json_field(result, token, "objects"), &objects) ||
++		    hfs_json_u64(result, hfs_json_field(result, token, "objects_free"),
++				 &free_objects) ||
++		    free_bytes > bytes || free_objects > objects) {
++			err = -EPROTO;
++		} else {
++			stat->f_type = V9FS_MAGIC;
++			stat->f_bsize = 4096;
++			stat->f_blocks = bytes / 4096;
++			stat->f_bfree = stat->f_bavail = free_bytes / 4096;
++			stat->f_files = objects;
++			stat->f_ffree = free_objects;
++			stat->f_namelen = 255;
++		}
++	}
++	hfs_json_free(result);
++	hfs_buf_free(&args);
++	hfs_end(inode, cred, cookie);
++	return err;
++}
++
++const struct super_operations hfs_super_ops = {
++	.alloc_inode = hfs_alloc_inode,
++	.free_inode = hfs_free_inode,
++	.evict_inode = hfs_evict_inode,
++	.statfs = hfs_statfs,
++	.drop_inode = generic_delete_inode,
++};
++
++const struct inode_operations hfs_dir_iops = {
++	.lookup = hfs_lookup,
++	.atomic_open = hfs_atomic_open,
++	.mkdir = hfs_mkdir,
++	.symlink = hfs_symlink,
++	.unlink = hfs_unlink,
++	.rmdir = hfs_rmdir,
++	.link = hfs_link,
++	.rename = hfs_rename,
++	.getattr = hfs_getattr,
++	.setattr = hfs_setattr,
++	.permission = hfs_permission,
++};
++
++const struct inode_operations hfs_file_iops = {
++	.getattr = hfs_getattr,
++	.setattr = hfs_setattr,
++	.permission = hfs_permission,
++};
++
++const struct inode_operations hfs_symlink_iops = {
++	.get_link = hfs_get_link,
++	.getattr = hfs_getattr,
++	.setattr = hfs_setattr,
++};
+diff --git a/fs/9p/hfs_file.c b/fs/9p/hfs_file.c
+new file mode 100644
+--- /dev/null
++++ b/fs/9p/hfs_file.c
+@@ -0,0 +1,585 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Description-bound retained-9p I/O. Advisory locks stay in this kernel mount. */
++#include <linux/file.h>
++#include <linux/namei.h>
++#include <linux/sched/signal.h>
++#include <linux/slab.h>
++#include <linux/uio.h>
++#include <linux/user_namespace.h>
++#include <linux/vmalloc.h>
++#include <linux/resource.h>
++#include <linux/sched/signal.h>
++#include "hfs.h"
++
++int hfs_description_prepare(struct hfs_session *session, bool directory,
++			    struct hfs_description **out)
++{
++	struct hfs_description *description;
++	u64 bytes = sizeof(*description) + sizeof(struct hfs_cred);
++	int err;
++
++	*out = NULL;
++	if (directory)
++		bytes += sizeof(struct hfs_dir_cursor);
++	description = kzalloc(sizeof(*description), GFP_KERNEL);
++	if (!description)
++		return -ENOMEM;
++	INIT_LIST_HEAD(&description->list);
++	mutex_init(&description->lock);
++	err = session->provider->reserve(session, bytes, false,
++					 &description->reservation);
++	if (err)
++		goto free;
++	if (directory) {
++		description->cursor = kvzalloc(sizeof(*description->cursor), GFP_KERNEL);
++		if (!description->cursor) {
++			err = -ENOMEM;
++			goto unreserve;
++		}
++		hfs_cursor_init(description->cursor);
++	}
++	mutex_lock(&session->lock);
++	if (session->nr_descriptions == HFS_IDENTITIES_MAX) {
++		err = -ENOSPC;
++	} else {
++		session->nr_descriptions++;
++		list_add_tail(&description->list, &session->descriptions);
++	}
++	mutex_unlock(&session->lock);
++	if (err)
++		goto unreserve;
++	*out = description;
++	return 0;
++unreserve:
++	kvfree(description->cursor);
++	session->provider->unreserve(session, description->reservation);
++free:
++	kfree(description);
++	return err;
++}
++
++void hfs_description_discard(struct hfs_session *session,
++			     struct hfs_description *description)
++{
++	if (!description)
++		return;
++	mutex_lock(&session->lock);
++	if (!list_empty(&description->list)) {
++		list_del(&description->list);
++		session->nr_descriptions--;
++	}
++	mutex_unlock(&session->lock);
++	hfs_cap_free(description->cap);
++	hfs_cred_free(description->issuer);
++	kvfree(description->cursor);
++	session->provider->unreserve(session, description->reservation);
++	kfree(description);
++}
++
++static int hfs_description_bind(struct inode *inode, struct file *file,
++				struct hfs_json *result, struct hfs_cred *issuer,
++				struct hfs_description *description)
++{
++	int err;
++
++	err = hfs_reply_cap(HFS_S(inode), result, "DESCRIPTION", &description->cap);
++	if (err)
++		return err;
++	if (!uuid_equal(&description->cap->home, &HFS_I(inode)->object->home) ||
++	    !uuid_equal(&description->cap->allocation, &HFS_I(inode)->object->allocation) ||
++	    ((file->f_mode & FMODE_READ) && !(description->cap->rights & 1)) ||
++	    ((file->f_mode & FMODE_WRITE) && !(description->cap->rights & 2)))
++		return -EPROTO;
++	description->issuer = issuer;
++	file->private_data = description;
++	return 0;
++}
++
++int hfs_open(struct inode *inode, struct file *file)
++{
++	struct hfs_cred *cred;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	struct hfs_description *description = NULL;
++	void *cookie;
++	int err;
++
++	if (file->private_data)
++		return 0;
++	if (file->f_flags & (O_DIRECT | O_PATH) ||
++	    (file->f_flags & O_TMPFILE) == O_TMPFILE)
++		return -EOPNOTSUPP;
++	err = hfs_begin(inode, !!(file->f_mode & FMODE_WRITE), &cred, &cookie);
++	if (err)
++		return err;
++	err = hfs_description_prepare(HFS_S(inode), S_ISDIR(inode->i_mode),
++				       &description);
++	if (err)
++		goto out;
++	err = hfs_args_init(&args);
++	if (!err) {
++		hfs_buf_literal(&args, "{\"flags\":");
++		hfs_flags_write(&args, file->f_flags & ~(O_CREAT | O_TRUNC), false);
++		hfs_buf_literal(&args, ",\"object\":");
++		hfs_dcap_write(&args, file->f_path.dentry);
++		hfs_buf_literal(&args, "}");
++		err = hfs_call(HFS_S(inode), "OPEN", &args, cred, false, &result);
++	}
++	if (!err)
++		err = hfs_description_bind(inode, file, result, cred, description);
++	if (!err)
++		hfs_result_adopt(HFS_S(inode), result);
++	if (err)
++		hfs_description_discard(HFS_S(inode), description);
++	hfs_json_free(result);
++	hfs_buf_free(&args);
++out:
++	if (err)
++		hfs_cred_free(cred);
++	HFS_S(inode)->provider->leave(HFS_S(inode), cookie);
++	return err;
++}
++
++static ssize_t hfs_io(struct kiocb *iocb, struct iov_iter *iter, bool write,
++		      u64 max_end)
++{
++	struct file *file = iocb->ki_filp;
++	struct inode *inode = file_inode(file);
++	struct hfs_description *description = file->private_data;
++	struct hfs_cred *cred;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	struct hfs_attr selected;
++	void *cookie;
++	u8 *bytes;
++	u32 len = min_t(size_t, iov_iter_count(iter), HFS_IO_MAX);
++	u64 count = 0;
++	bool copied = false, append = iocb->ki_flags & IOCB_APPEND;
++	int err, attributes;
++
++	if (!description || !description->cap ||
++	    !(description->cap->rights & (write ? 2 : 1)))
++		return -EBADF;
++	if (!len)
++		return 0;
++	if (iocb->ki_pos < 0 || iocb->ki_pos > MAX_LFS_FILESIZE - len)
++		return -EFBIG;
++	if (iocb->ki_flags & (IOCB_NOWAIT | IOCB_HIPRI | IOCB_DIRECT))
++		return -EOPNOTSUPP;
++	/* Per-call RWF_APPEND needs its own negotiated representation. */
++	if (write && append != !!(file->f_flags & O_APPEND))
++		return -EOPNOTSUPP;
++	bytes = kmalloc(len, GFP_KERNEL);
++	if (!bytes)
++		return -ENOMEM;
++	err = hfs_begin(inode, write, &cred, &cookie);
++	if (err)
++		goto free;
++	if (write) {
++		if (!copy_from_iter_full(bytes, len, iter)) {
++			err = -EFAULT;
++			goto end;
++		}
++		copied = true;
++	}
++	err = hfs_args_init(&args);
++	if (err)
++		goto end;
++	if (write) {
++		hfs_buf_literal(&args, "{\"data\":");
++		hfs_buf_hex(&args, bytes, len);
++		hfs_buf_literal(&args, ",\"description\":");
++	} else {
++		hfs_buf_printf(&args, "{\"count\":%u,\"description\":", len);
++	}
++	hfs_cap_write(&args, description->cap);
++	if (write)
++		hfs_buf_printf(&args, ",\"max_end\":%llu", max_end);
++	hfs_buf_printf(&args, ",\"offset\":%lld}", iocb->ki_pos);
++	err = hfs_call(HFS_S(inode), write ? "WRITE" : "READ", &args,
++		       cred, false, &result);
++	if (!err && (hfs_json_u64(result, hfs_json_field(result, 0, "count"), &count) ||
++		     count > len))
++		err = -EPROTO;
++	if (!err && !write) {
++		u32 actual = len;
++
++		err = hfs_json_hex(result, hfs_json_field(result, 0, "data"), bytes, &actual);
++		if (!err && actual != count)
++			err = -EPROTO;
++		if (!err) {
++			count = copy_to_iter(bytes, actual, iter);
++			if (!count && actual)
++				err = -EFAULT;
++		}
++	}
++	if (!err && write) {
++		attributes = hfs_json_field(result, 0, "attributes");
++		err = hfs_attr_decode(result, attributes, &description->cap->home,
++				      &description->cap->allocation, S_IFREG, &selected);
++		if (!err && append && (selected.size < count || selected.size > max_end))
++			err = -EPROTO;
++		if (!err)
++			err = hfs_attr_install(inode, result, attributes);
++	}
++	if (!err) {
++		if (write && append)
++			iocb->ki_pos = selected.size;
++		else
++			iocb->ki_pos += count;
++		err = count;
++	}
++	hfs_json_free(result);
++	hfs_buf_free(&args);
++end:
++	if (copied)
++		iov_iter_revert(iter, len - (err > 0 ? err : 0));
++	hfs_end(inode, cred, cookie);
++free:
++	kfree(bytes);
++	return err;
++}
++
++static ssize_t hfs_read_iter(struct kiocb *iocb, struct iov_iter *iter)
++{
++	return hfs_io(iocb, iter, false, S64_MAX);
++}
++
++static ssize_t hfs_write_iter(struct kiocb *iocb, struct iov_iter *iter)
++{
++	struct file *file = iocb->ki_filp;
++	u64 limit = rlimit(RLIMIT_FSIZE);
++	u64 max_end = hfs_write_max_end(limit,
++				       file->f_flags & O_LARGEFILE,
++				       file_inode(file)->i_sb->s_maxbytes);
++	ssize_t ret = generic_write_checks(iocb, iter);
++
++	if (ret <= 0)
++		return ret;
++	ret = hfs_io(iocb, iter, true, max_end);
++	if (ret == -EFBIG && limit != RLIM_INFINITY && max_end == limit)
++		send_sig(SIGXFSZ, current, 0);
++	return ret > 0 ? generic_write_sync(iocb, ret) : ret;
++}
++
++static int hfs_fsync(struct file *file, loff_t start, loff_t end, int datasync)
++{
++	struct inode *inode = file_inode(file);
++	struct hfs_description *description = file->private_data;
++	struct hfs_cred *cred;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	void *cookie;
++	const char *scope = S_ISDIR(inode->i_mode) ? "DIRECTORY" :
++		datasync ? "DATA" : "FILE";
++	int err = hfs_begin(inode, false, &cred, &cookie);
++
++	if (err)
++		return err;
++	err = hfs_args_init(&args);
++	if (!err) {
++		hfs_buf_literal(&args, "{\"description\":");
++		if (description)
++			hfs_cap_write(&args, description->cap);
++		else
++			hfs_buf_literal(&args, "null");
++		hfs_buf_literal(&args, ",\"object\":");
++		hfs_cap_write(&args, HFS_I(inode)->object);
++		hfs_buf_printf(&args, ",\"scope\":\"%s\"}", scope);
++		err = hfs_call(HFS_S(inode), "SYNC", &args, cred, false, &result);
++	}
++	hfs_json_free(result);
++	hfs_buf_free(&args);
++	hfs_end(inode, cred, cookie);
++	return err;
++}
++
++static int hfs_flush(struct file *file, fl_owner_t owner)
++{
++	struct inode *inode = file_inode(file);
++	struct hfs_session *session = HFS_S(inode);
++	struct hfs_description *description = file->private_data;
++	struct hfs_cred *cred;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	u64 sequence;
++	int err;
++
++	if (!description)
++		return -ESTALE;
++	/* Last-thread exit is the independently sequenced process event. */
++	if ((current->flags & PF_EXITING) && !atomic_read(&current->signal->live))
++		return 0;
++	err = hfs_capture(session, &init_user_ns, &cred);
++	if (err)
++		return err;
++	mutex_lock(&session->lock);
++	sequence = session->next_close++;
++	if (!sequence || !session->next_close)
++		session->blocked = true;
++	mutex_unlock(&session->lock);
++	err = hfs_args_init(&args);
++	if (!err) {
++		hfs_buf_printf(&args, "{\"close_sequence\":%llu,\"description\":", sequence);
++		hfs_cap_write(&args, description->cap);
++		hfs_buf_printf(&args, ",\"process\":\"%pUb\"}", &cred->process);
++		err = hfs_call(session, "DESCRIPTION_CLOSE", &args, cred, true, &result);
++	}
++	hfs_json_free(result);
++	hfs_buf_free(&args);
++	hfs_cred_free(cred);
++	return err;
++}
++
++static int hfs_release(struct inode *inode, struct file *file)
++{
++	struct hfs_session *session = HFS_S(inode);
++	struct hfs_description *description = file->private_data;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	u64 sequence;
++	int err;
++
++	if (!description)
++		return 0;
++	mutex_lock(&session->lock);
++	sequence = session->next_release++;
++	if (!sequence || !session->next_release)
++		session->blocked = true;
++	mutex_unlock(&session->lock);
++	err = hfs_args_init(&args);
++	if (!err) {
++		hfs_buf_literal(&args, "{\"description\":");
++		hfs_cap_write(&args, description->cap);
++		hfs_buf_printf(&args, ",\"release_sequence\":%llu}", sequence);
++		/* Final fput may run on a worker. Only its issued snapshot is valid. */
++		err = hfs_call(session, "DESCRIPTION_RELEASE", &args,
++			       description->issuer, true, &result);
++	}
++	hfs_json_free(result);
++	hfs_buf_free(&args);
++	if (err) {
++		/* Retain the exact description/grant after uncertain release. */
++		WRITE_ONCE(session->blocked, true);
++		return err;
++	}
++	hfs_description_discard(session, description);
++	file->private_data = NULL;
++	return 0;
++}
++
++static int hfs_mmap(struct file *file, struct vm_area_struct *vma)
++{
++	struct hfs_session *session = HFS_S(file_inode(file));
++
++	if (READ_ONCE(session->blocked) || !file->private_data)
++		return -EHOSTDOWN;
++	/* No generic_file_mmap/writeback-fid fallback. The mandatory provider
++	 * owns PTE/TLB, page provenance, token reservations and recall proof.
++	 */
++	return session->provider->mmap(file, vma);
++}
++
++struct hfs_page_entry {
++	u8 name[255];
++	u32 len;
++	unsigned int type;
++	unsigned long ino;
++	u64 cookie;
++};
++
++static loff_t hfs_dir_llseek(struct file *file, loff_t offset, int whence)
++{
++	struct hfs_description *description = file->private_data;
++	u8 after[255];
++	u32 len = sizeof(after);
++	u64 revision;
++	loff_t result;
++	int err;
++
++	if (!description || !description->cursor)
++		return -ESTALE;
++	mutex_lock(&description->lock);
++	if (whence == SEEK_CUR && !offset) {
++		result = file->f_pos;
++		goto out;
++	}
++	if (whence != SEEK_SET || offset < 0) {
++		result = -EINVAL;
++		goto out;
++	}
++	err = hfs_cursor_seek(description->cursor, offset, after, &len, &revision);
++	if (err) {
++		result = err;
++		goto out;
++	}
++	result = vfs_setpos(file, offset, MAX_LFS_FILESIZE);
++	if (result >= 0) {
++		memcpy(description->after, after, len);
++		description->after_len = len;
++		description->revision = revision;
++	}
++out:
++	mutex_unlock(&description->lock);
++	return result;
++}
++
++static int hfs_iterate(struct file *file, struct dir_context *context)
++{
++	struct inode *inode = file_inode(file);
++	struct hfs_description *description = file->private_data;
++	struct hfs_page_entry *page;
++	struct hfs_cred *cred;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	struct hfs_attr directory_attr;
++	void *cookie;
++	int err, entries, attributes;
++	u32 i, count = 0;
++
++	if (!description || !description->cursor)
++		return -ESTALE;
++	page = kvmalloc_array(256, sizeof(*page), GFP_KERNEL);
++	if (!page)
++		return -ENOMEM;
++	mutex_lock(&description->lock);
++	if (!context->pos) {
++		description->after_len = 0;
++		description->revision = 0;
++	}
++	err = hfs_begin(inode, false, &cred, &cookie);
++	if (err)
++		goto unlock;
++	err = hfs_args_init(&args);
++	if (err)
++		goto end;
++	hfs_buf_literal(&args, "{\"after\":");
++	hfs_buf_hex(&args, description->after, description->after_len);
++	hfs_buf_literal(&args, ",\"limit\":256,\"object\":");
++	hfs_cap_write(&args, HFS_I(inode)->object);
++	hfs_buf_printf(&args, ",\"revision\":%llu}", description->revision);
++	err = hfs_call(HFS_S(inode), "READDIR", &args, cred, false, &result);
++	if (err)
++		goto free_args;
++	attributes = hfs_json_field(result, 0, "attributes");
++	err = hfs_attr_decode(result, attributes, &HFS_I(inode)->object->home,
++			      &HFS_I(inode)->object->allocation, S_IFDIR, &directory_attr);
++	if (err)
++		goto malformed;
++	if (description->revision && description->revision != directory_attr.revision) {
++		err = -ESTALE;
++		goto free_args;
++	}
++	entries = hfs_json_field(result, 0, "entries");
++	if (entries < 0 || result->tokens[entries].kind != HFS_ARRAY) {
++		err = -EPROTO;
++		goto malformed;
++	}
++	/* Validate the entire page before publishing even its first entry. */
++	for (i = entries + 1; i < result->count; i++) {
++		struct hfs_cap *cap = NULL;
++		struct hfs_attr attr;
++		struct hfs_page_entry *entry;
++		const u8 *previous;
++		u32 previous_len;
++
++		if (result->tokens[i].parent != entries)
++			continue;
++		if (count == 256 ||
++		    hfs_json_exact(result, i, "attributes,capability,name")) {
++			err = -EPROTO;
++			goto malformed;
++		}
++		entry = &page[count];
++		entry->len = sizeof(entry->name);
++		err = hfs_json_hex(result, hfs_json_field(result, i, "name"),
++				   entry->name, &entry->len);
++		if (err || !entry->len || memchr(entry->name, 0, entry->len) ||
++		    memchr(entry->name, '/', entry->len) ||
++		    (entry->len == 1 && entry->name[0] == '.') ||
++		    (entry->len == 2 && !memcmp(entry->name, "..", 2))) {
++			err = -EPROTO;
++			goto malformed;
++		}
++		previous = count ? page[count - 1].name : description->after;
++		previous_len = count ? page[count - 1].len : description->after_len;
++		if (previous_len &&
++		    (memcmp(entry->name, previous, min(entry->len, previous_len)) < 0 ||
++		     (!memcmp(entry->name, previous, min(entry->len, previous_len)) &&
++		      entry->len <= previous_len))) {
++			err = -EPROTO;
++			goto malformed;
++		}
++		err = hfs_cap_parse(HFS_S(inode), result,
++				hfs_json_field(result, i, "capability"), "PATH", &cap);
++		if (!err)
++			err = hfs_attr_decode(result, hfs_json_field(result, i, "attributes"),
++					      &cap->home, &cap->allocation, 0, &attr);
++		if (!err)
++			err = hfs_object_ino(HFS_S(inode), cap, &entry->ino);
++		hfs_cap_free(cap);
++		if (err)
++			goto malformed;
++		entry->type = attr.type >> 12;
++		count++;
++	}
++	/* Cookie storage was preallocated/charged before OPEN; never evict old
++	 * positions or replace them with a later page's cursor/revision.
++	 */
++	for (i = 0; i < count; i++) {
++		err = hfs_cursor_record(description->cursor, page[i].name, page[i].len,
++					directory_attr.revision, &page[i].cookie);
++		if (err)
++			goto free_args;
++	}
++	err = hfs_attr_install(inode, result, attributes);
++	if (err)
++		goto malformed;
++	description->revision = directory_attr.revision;
++	if (!dir_emit_dots(file, context))
++		goto free_args;
++	for (i = 0; i < count; i++) {
++		if (!dir_emit(context, page[i].name, page[i].len, page[i].ino, page[i].type))
++			break;
++		memcpy(description->after, page[i].name, page[i].len);
++		description->after_len = page[i].len;
++		context->pos = page[i].cookie;
++	}
++	goto free_args;
++malformed:
++	if (err == -EPROTO || err == -EINVAL)
++		WRITE_ONCE(HFS_S(inode)->blocked, true);
++free_args:
++	hfs_json_free(result);
++	hfs_buf_free(&args);
++end:
++	hfs_end(inode, cred, cookie);
++unlock:
++	mutex_unlock(&description->lock);
++	kvfree(page);
++	return err;
++}
++
++const struct file_operations hfs_file_fops = {
++	.owner = THIS_MODULE,
++	.open = hfs_open,
++	.read_iter = hfs_read_iter,
++	.write_iter = hfs_write_iter,
++	.llseek = generic_file_llseek,
++	.fsync = hfs_fsync,
++	.flush = hfs_flush,
++	.release = hfs_release,
++	.mmap = hfs_mmap,
++	/* No .lock/.flock RPC: the VFS supplies same-mount advisory locking. */
++};
++
++const struct file_operations hfs_dir_fops = {
++	.owner = THIS_MODULE,
++	.open = hfs_open,
++	.read = generic_read_dir,
++	.iterate_shared = hfs_iterate,
++	.llseek = hfs_dir_llseek,
++	.fsync = hfs_fsync,
++	.flush = hfs_flush,
++	.release = hfs_release,
++};

@@ -1,0 +1,75 @@
+[
+  {
+    "name": "defconfig",
+    "argv": [
+      "make",
+      "-j2",
+      "O=/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-objects",
+      "ARCH=x86_64",
+      "x86_64_defconfig"
+    ],
+    "exit": 0,
+    "seconds": 3.968,
+    "peak_group_rss_bytes": 2592768,
+    "limit_reason": null,
+    "max_rss_sample_gap_seconds": 0.01
+  },
+  {
+    "name": "config",
+    "argv": [
+      "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-source/scripts/config",
+      "--file",
+      "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-objects/.config",
+      "--module",
+      "NET_9P",
+      "--module",
+      "NET_9P_VIRTIO",
+      "--module",
+      "9P_FS",
+      "--enable",
+      "9P_FS_HOMELABFS",
+      "--enable",
+      "CRYPTO_LIB_SHA256",
+      "--disable",
+      "9P_FSCACHE",
+      "--disable",
+      "9P_FS_POSIX_ACL"
+    ],
+    "exit": 0,
+    "seconds": 3.227,
+    "peak_group_rss_bytes": 3727360,
+    "limit_reason": null,
+    "max_rss_sample_gap_seconds": 0.002
+  },
+  {
+    "name": "olddefconfig",
+    "argv": [
+      "make",
+      "-j2",
+      "O=/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-objects",
+      "ARCH=x86_64",
+      "olddefconfig"
+    ],
+    "exit": 0,
+    "seconds": 3.38,
+    "peak_group_rss_bytes": 2658304,
+    "limit_reason": null,
+    "max_rss_sample_gap_seconds": 0.002
+  },
+  {
+    "name": "objects",
+    "argv": [
+      "make",
+      "-j2",
+      "O=/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/acceptance-objects",
+      "ARCH=x86_64",
+      "fs/9p/",
+      "net/9p/"
+    ],
+    "exit": 0,
+    "seconds": 14.543,
+    "peak_group_rss_bytes": 162328576,
+    "limit_reason": null,
+    "max_rss_sample_gap_seconds": 4.302
+  }
+]
