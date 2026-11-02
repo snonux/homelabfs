@@ -1,0 +1,22 @@
+{
+  "inventory.json": {
+    "bytes": 1553,
+    "sha256": "f2b7b23ad65488271a54784699877cdf081a683cf62a583ea2ba836e811eea8e"
+  },
+  "inventory-retry-1.json": {
+    "bytes": 8349,
+    "sha256": "766145551244a350ffcda1c56c8096171757d31951fe23a7a753bf7b8684dbed"
+  },
+  "inventory-capabilities-host.json": {
+    "bytes": 3508,
+    "sha256": "0fde046775d500f2496c9ca185e79fd9cd44df67d25a0401da708192fcc14e00"
+  },
+  "inventory-capabilities-rocky.json": {
+    "bytes": 3199,
+    "sha256": "dc52b5c3a5b77fb48a5d16e4d2e1a520350bda6876265be07d86413786bf4316"
+  },
+  "f3-power-on.json": {
+    "bytes": 439,
+    "sha256": "d5df3eb4e0bbe2692f0bf1d0458020d8d4659ee726e98ad2a8290c8089d98870"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "/home/paul/bin/f3sctl",
+    "power",
+    "f3",
+    "on"
+  ],
+  "binary_sha256": "d66935f26d5bf6b5de5b5f64c7887f3a962b8a11ddbf42ff751fba37eb44e769",
+  "exit": 0,
+  "stdout": "Sending a magic packet to f3 (e8:ff:1e:d7:f3:d7)...\n",
+  "stderr": "",
+  "seconds": 0.175,
+  "authorized_by": "User: start f3 again if you need it may be stopped now",
+  "operation": "f3 only Wake-on-LAN; no host/VM shutdown or configuration"
+}
