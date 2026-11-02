@@ -1,0 +1,94 @@
+{
+  "change": "Immutable command operation selects typed response profile; VIEW_WAIT FETCH channel3/framekind3, ordinary/control and RELEASE_CELL channel2/kind2. Existing reserved tags, request kind1, context/session/cell/chunk/hash validation unchanged.",
+  "checkpatch": {
+    "checks": 1,
+    "errors": 0,
+    "exit": 1,
+    "log": "checkpatch.log",
+    "notes": "Existing107-column closed-schema warning and existing client alignment CHECK; no new findings. Correct patch-mode check run outside repository cwd. Exploratory wrong-mode and strict logs preserved under owned run root.",
+    "warnings": 1
+  },
+  "date": "2026-11-03",
+  "files": {
+    "checkpatch.log": "aa8c6a6da51dc7056f91370091ece351de644773cb9b22e3d6aec5b1b488526b",
+    "codec.log": "e3b69fa2c9c2d89b1933a3dd57be129c73dc38c0557e7be637b27c0d41e1434a",
+    "cursor.log": "da9656578839f1cc86a9ceee0ed5ff6226df7692bb6779bf6ea06f32c02c4ecf",
+    "kernel-object-build.log": "6f71b9b9dd74e21af4e01ba27d639dcf77643d2294b83b89f08321c8022e69e2",
+    "kernel-object-receipt.json": "a22cecf2c6ff616a3d61c0a15364a3a3528300d9f4e5eb5f5990a546beb4fd3f",
+    "kernel-object-stages.json": "c1de3fdf05f304dc6190aff542ceed51d541de9d9b9c070abc55eb2bb01f6cee",
+    "policy.log": "23a4d1bbc237b2b27a880b63139e23d414615050d1a2860e1fd946b4a0347085",
+    "source.json": "6e540bb06d3ae44514e2bcbdcdb047841053b3ffe2e527ca27d10462b0239a4d"
+  },
+  "format": 1,
+  "kernel_objects": {
+    "maximum_sampling_gap_seconds": 3.612,
+    "observed_peak_group_rss_bytes": 242561024,
+    "receipt": "kernel-object-receipt.json",
+    "sampling_limit": "RSS/disk polling records observed bounds; disk walks can delay RSS sampling; actual maximum gaps are recorded per stage; transient overshoot is possible",
+    "scope": "upstream kernel object compilation; no module link, installed ELRepo ABI or runtime proof",
+    "stages_actual_exit": [
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "regression_scope": "Actual hfs_response_profile helper and production frame encoder/decoder: all9 supported operations; literal expected channels/kinds; reject cross-kind/session/cell; preserve hash and detect mismatch. Userspace shim does not execute hfs_control, hfs_transport or p9_client_hfs_exchange; production wiring reviewed and object-compiled.",
+  "same_production_c_tests": {
+    "codec": {
+      "compile_exit": 0,
+      "log": "codec.log",
+      "run_exit": 0,
+      "sanitizers": [
+        "address",
+        "undefined",
+        "leak"
+      ]
+    },
+    "cursor": {
+      "compile_exit": 0,
+      "log": "cursor.log",
+      "run_exit": 0,
+      "sanitizers": [
+        "address",
+        "undefined",
+        "leak"
+      ]
+    },
+    "policy": {
+      "compile_exit": 0,
+      "log": "policy.log",
+      "run_exit": 0,
+      "sanitizers": [
+        "address",
+        "undefined",
+        "leak"
+      ]
+    }
+  },
+  "source": "/home/paul/tmp/codex/hfs-h04-20261103-l00s689i/checked-source",
+  "source_manifest_sha256": "6e540bb06d3ae44514e2bcbdcdb047841053b3ffe2e527ca27d10462b0239a4d",
+  "source_verification": {
+    "exit": 0,
+    "files_and_symlinks": 78710,
+    "method": "verified pinned archive, exact pax commit, fuzz-zero exported series, complete resulting inventory/hash verification before build"
+  },
+  "task": "h04",
+  "test_inputs": {
+    "tests/codec/compat.h": "3dfba42ca9c45ef141b29f55431a0e71f6490993d8873b566579c0a7fabb3dc3",
+    "tests/codec/run.py": "ec485dced211b12fb8e57d4d94c32049b2153462c960d23f9b5c0e5887d47e1f",
+    "tests/codec/test.c": "938fe57ea937efa7af01925f3f9a5ce9837a18cce842b6ff73e2b59480043017",
+    "tests/cursor/run.py": "7241b3beb25f9fc15e5b19a71f1f8c2664ac0377c010860ec02ca018cbf899a1",
+    "tests/cursor/test.c": "8d6651faa08e8de5ce27f49244fae1f5738a34b46e094d792cb17a509d613c8f",
+    "tests/policy/compat.h": "a062f4e6adc7d30c2e30ef9e8e425500d07a76057530ef54d342f9b675cc5166",
+    "tests/policy/run.py": "d1995fa3a2531e0ebf1f2d1cef15018e0010563b0111e92779725f1c06f04631",
+    "tests/policy/test.c": "d3e68b6d4dedd6c6d1949179217581b8d929d7f47475ddfff9075dd8bf804b68"
+  },
+  "unrun": [
+    "actual hfs_transport/p9 exchange, kernel VFS/provider execution and syscall behavior",
+    "virtio/lib9p/FreeBSD FUSE and physical recall",
+    "normal provider publication, protection, recovery and admission proof",
+    "complete module modpost/link, installed ELRepo ABI or running-byte binding",
+    "SSH, mount, VM, install, production or received-sink operation"
+  ]
+}

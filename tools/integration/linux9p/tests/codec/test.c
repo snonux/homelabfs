@@ -212,6 +212,63 @@ static void test_frames(void)
 	free(body);
 }
 
+/* Exercise the exact selector consumed by hfs_transport, with literal wire
+ * expectations independent of its enums. Ordinary control/release stay on 2.
+ */
+static void test_response_profiles(void)
+{
+	static const char * const operations[] = {
+		"VIEW_WAIT", "HELLO", "CALL", "QUERY", "CANCEL", "RETIRE",
+		"RELEASE_CELL", "RESUME", "VIEW_ACK",
+	};
+	const char body[] = "{\"cell\":17}";
+	uuid_t session = {{0}}, other;
+	u8 frame[HFS_HEADER_SIZE + sizeof(body)], hash[32], computed[32];
+	const void *bytes;
+	u32 i, size, total, length;
+
+	session.b[15] = 12;
+	other = session;
+	other.b[15]++;
+	for (i = 0; i < sizeof(operations) / sizeof(operations[0]); i++) {
+		const struct hfs_response_profile response =
+			hfs_response_profile(operations[i]);
+		u16 expected = i ? 2 : 3;
+
+		CHECK(response.channel == expected);
+		CHECK(response.kind == expected);
+		size = sizeof(frame);
+		CHECK(!hfs_frame_encode(expected, &session, 17, body,
+				       sizeof(body) - 1, 0, frame, &size));
+		CHECK(!hfs_frame_decode(frame, size, response.kind, &session,
+				       17, 0, &total, hash, &bytes, &length));
+		CHECK(total == sizeof(body) - 1 && length == total);
+		CHECK(!memcmp(bytes, body, length));
+		hfs_hash(bytes, length, computed);
+		CHECK(!memcmp(hash, computed, sizeof(hash)));
+		CHECK(hfs_frame_decode(frame, size, response.kind, &other,
+				      17, 0, &total, hash, &bytes, &length) < 0);
+		CHECK(hfs_frame_decode(frame, size, response.kind, &session,
+				      18, 0, &total, hash, &bytes, &length) < 0);
+		/* Cross-channel frames must never satisfy this operation. */
+		size = sizeof(frame);
+		CHECK(!hfs_frame_encode(i ? 3 : 2, &session, 17, body,
+				       sizeof(body) - 1, 0, frame, &size));
+		CHECK(hfs_frame_decode(frame, size, response.kind, &session,
+				      17, 0, &total, hash, &bytes, &length) < 0);
+		/* Decode preserves the selected hash; transport verifies it. */
+		size = sizeof(frame);
+		CHECK(!hfs_frame_encode(expected, &session, 17, body,
+				       sizeof(body) - 1, 0, frame, &size));
+		frame[56] ^= 1;
+		CHECK(!hfs_frame_decode(frame, size, response.kind, &session,
+				       17, 0, &total, hash, &bytes, &length));
+		hfs_hash(bytes, length, computed);
+		CHECK(memcmp(hash, computed, sizeof(hash)));
+	}
+	puts("PASS: production response selector: VIEW_WAIT FETCH3/kind3; all ordinary/control/release FETCH2/kind2; cross-kind/session/cell/hash negatives");
+}
+
 static void test_cleanup_and_fuzz(void)
 {
 	struct hfs_json *j;
@@ -253,6 +310,7 @@ int main(void)
 	test_json();
 	test_bounds();
 	test_frames();
+	test_response_profiles();
 	test_cleanup_and_fuzz();
 	puts("PASS: production codec canonical JSON, writer, 1024 groups, bounds, exact golden frames, malformed frames, 32-chunk 1MiB body");
 	return 0;

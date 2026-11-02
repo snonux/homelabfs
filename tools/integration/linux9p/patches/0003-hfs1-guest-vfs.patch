@@ -343,7 +343,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,1481 @@
+@@ -0,0 +1,1483 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include <linux/delay.h>
@@ -592,7 +592,8 @@ new file mode 100644
 +}
 +
 +static int hfs_transport(struct hfs_session *session, const struct hfs_buf *body,
-+			 u64 cell, u16 tag, void **reply, u32 *reply_len,
++			 u64 cell, u16 tag, struct hfs_response_profile response,
++			 void **reply, u32 *reply_len,
 +			 bool *writer_held)
 +{
 +	void *frame = NULL, *packet = NULL, *assembled = NULL;
@@ -641,7 +642,8 @@ new file mode 100644
 +	for (chunk = 0;; chunk++) {
 +		for (;;) {
 +			len = HFS_HEADER_SIZE + HFS_CHUNK_MAX + 1;
-+			err = p9_client_hfs_exchange(session->client, tag, 2, 2,
++			err = p9_client_hfs_exchange(session->client, tag, 2,
++						     response.channel,
 +						     cell, chunk, NULL, 0, packet, &len);
 +			if (err)
 +				goto out;
@@ -657,7 +659,7 @@ new file mode 100644
 +			err = -EPROTO;
 +			goto out;
 +		}
-+		err = hfs_frame_decode(packet + 1, len - 1, 2,
++		err = hfs_frame_decode(packet + 1, len - 1, response.kind,
 +				       &session->enrollment.session, cell, chunk,
 +				       &body_len, hash, &bytes, &frame_len);
 +		if (err)
@@ -720,6 +722,7 @@ new file mode 100644
 +		const struct hfs_buf *payload, bool reserved,
 +		struct hfs_json **out)
 +{
++	const struct hfs_response_profile response = hfs_response_profile(operation);
 +	struct hfs_buf command;
 +	struct hfs_json *json = NULL;
 +	struct hfs_cell *slot = NULL;
@@ -822,8 +825,7 @@ new file mode 100644
 +	err = hfs_transport(session, &command, cell,
 +		!strcmp(operation, "VIEW_WAIT") ? 65534 :
 +		reserved || release ? 65533 : P9_NOTAG,
-+		&reply, &reply_len,
-+			    &writer_held);
++		response, &reply, &reply_len, &writer_held);
 +	if (err)
 +		goto fault;
 +	err = hfs_json_parse(reply, reply_len, &json);

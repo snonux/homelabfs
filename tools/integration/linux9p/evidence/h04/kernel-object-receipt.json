@@ -1,0 +1,134 @@
+{
+  "artifacts": {
+    "fs/9p/9p.o": "343833b22e45716e98e3c45acfc5cff03cf78f62464b5ebb1c8ed153768d2fa2",
+    "fs/9p/fid.o": "b1fb452bacdf88b24199295d35d34fb05dd37f64dd28d23686f75d0a48b89b16",
+    "fs/9p/hfs_cursor.o": "29867f653e09aea7b0517c80454d07a255bfd472e08d128bd15a8def946a9b47",
+    "fs/9p/hfs_file.o": "dc4978b7befef67956e8a4e20173f6a8b5a6e689c7330eea345856b8392ad3b0",
+    "fs/9p/hfs_inode.o": "2de7a5831278d5a5fa177d348f35adcfe2ef9725da6d63433e821fcc71d56b83",
+    "fs/9p/hfs_policy.o": "c7cd47aa9956495d8b6345b793f2cdf30a8fc2946eb5a6c4e435bff0913910d8",
+    "fs/9p/hfs_protocol.o": "b20ca686745aa262e01fec5fc5f5db9ec9ef5af44580ce22c66e90791ef13d26",
+    "fs/9p/hfs_session.o": "b8f49afc427996f2e98aa1c8782775844ffc67f2868e572b23eabedf051a0f5b",
+    "fs/9p/v9fs.o": "e33af100e84691e18547321a5c32dd53e905aeb8bb9e1a5695b6786035451f32",
+    "fs/9p/vfs_addr.o": "3cbb26f5d1cc4e23a69148a3520c17ec0a6a0ef7507b2a9045eee482b1d355ea",
+    "fs/9p/vfs_dentry.o": "f120d81c89599304376a6495251c87de06902726a3e5069c4fb403d3a5e70a21",
+    "fs/9p/vfs_dir.o": "c3c1a807e281a6c7fc6a83f83dc1eab3b0f6ef3c9be5b8c3dc11e4c5dd0f282a",
+    "fs/9p/vfs_file.o": "5c2f75e4b1b7815e2665a29746c99d8ebe80fb851db0b3d655a34eb7f0af1a72",
+    "fs/9p/vfs_inode.o": "41f68c9f92a3f2e07ccf2a334ded88ca0973811eaf6384c90aa282dcd740386d",
+    "fs/9p/vfs_inode_dotl.o": "b67d7d57dcd95e15ac7b53d110017ab08501c7553109866be5b45c4c2c47af1c",
+    "fs/9p/vfs_super.o": "ab466e8975512fa2d20d947a354e68639b84985dc01931ca98b53aad137b954a",
+    "fs/9p/xattr.o": "a4f823d5b9ab9243f88acaef6284fe5f760a6b78b20c855e7b17b0cd4a65d747",
+    "net/9p/9pnet.o": "91fc5bcf97d2779d0e95773f742e495e71babdf051cf751feae7062a0b012b02",
+    "net/9p/9pnet_fd.o": "0d1eaf0f925b4c23438127653c46c45ee3b45f13ce20a6e436bef62426ff8c68",
+    "net/9p/9pnet_virtio.o": "868a215bb9df816e7eb54bda096466c17ce99ed040a0eb72c28c41eea8424ccf",
+    "net/9p/client.o": "f03d18a1f3027588f1841f9e92cbc6dd591eb187be78cfda092a16e2a3941f48",
+    "net/9p/error.o": "e806e1db742822ef9085d17bba3fc598caeafa148232716d5a68cc9f4fb31494",
+    "net/9p/mod.o": "60ffa36f64966edddd7b488bb420436d9d55b7d3905814358f1a53d54c9f47b1",
+    "net/9p/protocol.o": "9a9531e068addc96e7d33aad8216d3463b02d7d2e718c552af86a071e5de775c",
+    "net/9p/trans_common.o": "f0f659da5cbe5abbf3aa0fac6d708c1ce3f33dc244d0c481ccd72009aaa260cd",
+    "net/9p/trans_fd.o": "514b95f80c33cfe93b29ba601c2e1b18147784ffcbb7ab1fb6e1b17f2a80a01a",
+    "net/9p/trans_virtio.o": "e342173ceec0f366e9cbe852a40613c697b2c5fc30b5d07010bf0d2dc63e8fc6"
+  },
+  "config_sha256": "ae5190692f0d93e22980c66cdd19a080abfa7ef3b84e2255d77dab95e61944c3",
+  "cpus": [
+    0,
+    1
+  ],
+  "disk_limit_bytes": 8589934592,
+  "disk_poll_seconds": 5,
+  "environment": {
+    "CC": "gcc",
+    "HOSTCC": "gcc",
+    "KBUILD_BUILD_HOST": "owned-builder",
+    "KBUILD_BUILD_TIMESTAMP": "2026-11-02 00:00:00 UTC",
+    "KBUILD_BUILD_USER": "homelabfs",
+    "KBUILD_BUILD_VERSION": "1",
+    "KCFLAGS": "-fdebug-prefix-map=/home/paul/tmp/codex/hfs-h04-20261103-l00s689i/checked-source=/usr/src/linux -fdebug-prefix-map=/home/paul/tmp/codex/hfs-h04-20261103-l00s689i/checked-objects=/usr/src/linux-build -fmacro-prefix-map=/home/paul/tmp/codex/hfs-h04-20261103-l00s689i/checked-source=/usr/src/linux"
+  },
+  "limits_note": "RSS/disk polling records observed bounds; disk walks can delay RSS sampling; actual maximum gaps are recorded per stage; transient overshoot is possible",
+  "manifest_sha256": "6e540bb06d3ae44514e2bcbdcdb047841053b3ffe2e527ca27d10462b0239a4d",
+  "memory_limit_bytes": 2147483648,
+  "rss_nominal_poll_ms": 250,
+  "scope": "upstream kernel object compilation; no module link, installed ELRepo ABI or runtime proof",
+  "stages": [
+    {
+      "argv": [
+        "make",
+        "-j2",
+        "O=/home/paul/tmp/codex/hfs-h04-20261103-l00s689i/checked-objects",
+        "ARCH=x86_64",
+        "x86_64_defconfig"
+      ],
+      "exit": 0,
+      "limit_reason": null,
+      "max_rss_sample_gap_seconds": 3.612,
+      "name": "defconfig",
+      "peak_group_rss_bytes": 34082816,
+      "seconds": 5.264
+    },
+    {
+      "argv": [
+        "/home/paul/tmp/codex/hfs-h04-20261103-l00s689i/checked-source/scripts/config",
+        "--file",
+        "/home/paul/tmp/codex/hfs-h04-20261103-l00s689i/checked-objects/.config",
+        "--module",
+        "NET_9P",
+        "--module",
+        "NET_9P_VIRTIO",
+        "--module",
+        "9P_FS",
+        "--enable",
+        "9P_FS_HOMELABFS",
+        "--enable",
+        "CRYPTO_LIB_SHA256",
+        "--disable",
+        "9P_FSCACHE",
+        "--disable",
+        "9P_FS_POSIX_ACL"
+      ],
+      "exit": 0,
+      "limit_reason": null,
+      "max_rss_sample_gap_seconds": 2.709,
+      "name": "config",
+      "peak_group_rss_bytes": 3809280,
+      "seconds": 2.713
+    },
+    {
+      "argv": [
+        "make",
+        "-j2",
+        "O=/home/paul/tmp/codex/hfs-h04-20261103-l00s689i/checked-objects",
+        "ARCH=x86_64",
+        "olddefconfig"
+      ],
+      "exit": 0,
+      "limit_reason": null,
+      "max_rss_sample_gap_seconds": 2.958,
+      "name": "olddefconfig",
+      "peak_group_rss_bytes": 34484224,
+      "seconds": 3.506
+    },
+    {
+      "argv": [
+        "make",
+        "-j2",
+        "O=/home/paul/tmp/codex/hfs-h04-20261103-l00s689i/checked-objects",
+        "ARCH=x86_64",
+        "fs/9p/",
+        "net/9p/"
+      ],
+      "exit": 0,
+      "limit_reason": null,
+      "max_rss_sample_gap_seconds": 2.873,
+      "name": "objects",
+      "peak_group_rss_bytes": 242561024,
+      "seconds": 20.234
+    }
+  ],
+  "tools": {
+    "bison": "bison (GNU Bison) 3.8.2",
+    "flex": "flex 2.6.4",
+    "gcc": "gcc (GCC) 16.2.1 20261029 (Red Hat 16.2.1-3)",
+    "ld": "GNU ld version 2.46.1-1.fc44",
+    "make": "GNU Make 4.4.1"
+  }
+}

@@ -114,7 +114,9 @@ Providers must implement and actually prove:
 - retained session ownership and recovery, without deleting uncertain state.
 
 The low-level control entry supports the frozen guest operations, including
-VIEW_WAIT's reserved tag; providers own the full recall/recovery state machines
+VIEW_WAIT's reserved tag and operation-selected recall FETCH channel 3/frame
+kind 3. Ordinary/control responses, including RELEASE_CELL, use channel 2/kind
+2. Providers own the full recall/recovery state machines
 and validation of their corresponding unions. Guest H9B flags remain zero.
 Native endpoint-global cell translation, native lane/reclaim flags and the
 12 MiB replacement workspace belong to the backend/host components.
@@ -188,7 +190,8 @@ The same-source C tests use a userspace allocation/hash shim only at the kernel
 primitive boundary. They exercise the production parser/encoder and pure
 identity/metadata decoder and directory-cookie state. They cover literal golden frames, malformed framing,
 canonical/schema/type limits, deterministic arbitrary/truncated inputs,
-allocation failure cleanup, 1024/1025 groups, mapping refusal and full committed
+allocation failure cleanup, operation-selected recall/result channels and frame
+kinds with cross-kind/session/cell/hash negatives, 1024/1025 groups, mapping refusal and full committed
 metadata including asymmetric creator UID/parent GID and `07777`, captured
 write-end limits, independent ordinary/control admission and exact old directory
 cookie restoration. These are the actual pure helpers used by the kernel
@@ -196,8 +199,9 @@ callbacks; the VFS wiring is also source-reviewed and compiled. They do not
 execute Linux current-credential capture, process scheduling/exit, VFS attribute
 application, LSM policy, virtio, lib9p or FreeBSD FUSE.
 
-See [evidence.json](evidence.json) for exact local checked inputs and retained
-receipts. Kernel-object compilation and these regressions are component evidence;
+See [h04 evidence](evidence/h04/evidence.json) for the current recall-channel
+correction inputs and receipts. The original [tz3 evidence](evidence.json)
+retains its historical source and validation scope. Kernel-object compilation and these regressions are component evidence;
 actual source/package/running-byte binding, syscall/guest behavior, physical
 recall, native FUSE transport, signing, recovery and release admission remain
 separate gates. This work performed no SSH, mount, VM, install, production or
