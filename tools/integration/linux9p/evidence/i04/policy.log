@@ -1,0 +1,6 @@
+literal_metadata_cases=72
+argv=["cc", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror", "-Wno-sign-compare", "-DHFS_CODEC_USERSPACE", "-include", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/worktree/tools/integration/linux9p/tests/policy/compat.h", "-I", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/checked-source/fs/9p", "-I", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/policy-check", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/checked-source/fs/9p/hfs_protocol.c", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/checked-source/fs/9p/hfs_policy.c", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/worktree/tools/integration/linux9p/tests/policy/test.c", "-lcrypto", "-o", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/policy-check/policy-test"]
+exit=0 peak_child_rss_kib=55732
+argv=["/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/policy-check/policy-test"]
+PASS: actual production group/identity/UUID/metadata helpers; full1024/1025, idmap failures, 07777, committed UID/GID, object/type/schema/range boundaries; write max_end; separate ordinary/control claim admission
+exit=0 peak_child_rss_kib=55732

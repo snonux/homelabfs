@@ -714,7 +714,7 @@ diff --git a/fs/9p/hfs_policy.h b/fs/9p/hfs_policy.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_policy.h
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,52 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_POLICY_H
 +#define FS_9P_HFS_POLICY_H
@@ -763,12 +763,15 @@ new file mode 100644
 +int hfs_request_admit(bool blocked, bool control, u32 ordinary_count,
 +		      u32 control_count, u64 next_claim);
 +
++/* Only definitive capacity refusal permits the identical SEND to be retried. */
++int hfs_send_reply(const void *packet, u32 len, bool expired);
++
 +#endif
 diff --git a/fs/9p/hfs_policy.c b/fs/9p/hfs_policy.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_policy.c
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,199 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Pure request identity and authoritative metadata validation. */
 +#include "hfs_policy.h"
@@ -953,6 +956,20 @@ new file mode 100644
 +		       ordinary_count >= HFS_ORDINARY_REQUESTS_MAX))
 +		return -ENOSPC;
 +	return 0;
++}
++
++/* COPIED acknowledges this packet only; AGAIN is never SEND acceptance. */
++int hfs_send_reply(const void *packet, u32 len, bool expired)
++{
++	const u8 *bytes = packet;
++
++	if (!packet)
++		return -EPROTO;
++	if (len == 1 && bytes[0] == 1)
++		return 0;
++	if (len == 3 && bytes[0] == 4 && bytes[1] == 3 && bytes[2] == 0)
++		return expired ? -ETIMEDOUT : -EAGAIN;
++	return -EPROTO;
 +}
 diff --git a/fs/9p/hfs_cursor.h b/fs/9p/hfs_cursor.h
 new file mode 100644

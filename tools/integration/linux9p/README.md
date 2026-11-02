@@ -44,8 +44,12 @@ canonical intent and credentials before dispatch. A lost/uncertain response
 retains its exact candidate/donor state and blocks new ordinary work. Reserved
 control work remains available for reconciliation and drains. Pending snapshots
 are never rewritten: subsequent QUERY uses another cell. RELEASE_CELL selects
-its exact same-session response/hash and inherits its existing credit. First
-chunk capacity refusal yields the framing writer while retrying identical bytes.
+its exact same-session response/hash and inherits its existing credit. Definitive
+SEND capacity refusal at any chunk yields the framing writer while retrying
+the identical encoded frame, cell, chunk and immutable claim/body. Only exact
+COPIED advances the chunk. Retries share the original transport deadline,
+including time spent yielding or reacquiring the writer; malformed refusals and
+AGAIN fail closed.
 Both local credit classes and mandatory aggregate credit admission are bounded.
 Retained claims have separate ordinary/control ceilings (4096/13312), so ordinary
 exhaustion or uncertain work cannot consume the control claim reserve. These
@@ -164,6 +168,8 @@ python3 tools/integration/linux9p/tests/policy/run.py \
   --source /owned/run/linux --output /owned/run/policy-check --sanitize
 python3 tools/integration/linux9p/tests/cursor/run.py \
   --source /owned/run/linux --output /owned/run/cursor-check --sanitize
+python3 tools/integration/linux9p/tests/transport/run.py \
+  --source /owned/run/linux --output /owned/run/transport-check --sanitize
 ```
 
 Omit `--archive` to fetch only the pinned primary archive. Existing destinations
@@ -199,7 +205,16 @@ callbacks; the VFS wiring is also source-reviewed and compiled. They do not
 execute Linux current-credential capture, process scheduling/exit, VFS attribute
 application, LSM policy, virtio, lib9p or FreeBSD FUSE.
 
-See [h04 evidence](evidence/h04/evidence.json) for the current recall-channel
+The transport suite compiles the complete production `hfs_transport` function
+verbatim with the real codec/policy helpers and substitutes only p9 I/O, mutex
+and clock primitives. It verifies exact retries at chunk 0, 1 and the final
+chunk, writer yielding, original deadline expiry (including clock wrap),
+malformed replies and transport errors, with result channel 2 and recall channel
+3. Its simulated control progress proves the lock is released at that boundary;
+it does not execute kernel scheduling or an actual control exchange.
+
+See [i04 evidence](evidence/i04/evidence.json) for the capacity correction and
+current source receipts. See [h04 evidence](evidence/h04/evidence.json) for the current recall-channel
 correction inputs and receipts. The original [tz3 evidence](evidence.json)
 retains its historical source and validation scope. Kernel-object compilation and these regressions are component evidence;
 actual source/package/running-byte binding, syscall/guest behavior, physical

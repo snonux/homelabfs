@@ -34,11 +34,11 @@
     "fs/9p/hfs_cursor.h": "40876ee1daceaa1b4b18e36781903f5ca1700b60843536d3ebf5a4b56c199871",
     "fs/9p/hfs_file.c": "fa68d785dfce141a08ae3679a16a658e010d2bca7f01f19af3ccea608efe94fb",
     "fs/9p/hfs_inode.c": "ab030dd17b97184fc99dc6e9a0cf1ab6e66b384c5d13e0611f10886b500fe54a",
-    "fs/9p/hfs_policy.c": "881618f83408b01871feb91f60f3bea06400d331e3bdd4d3a801c327ae024ba4",
-    "fs/9p/hfs_policy.h": "049c8bd411449c0bb960ecfab63e7426fb13030efcd41bc2d10d1e5c7f4f377e",
+    "fs/9p/hfs_policy.c": "5537099c59641da5bf8809aaa59fb397d7fd9cc39db82a9190e5248119e84922",
+    "fs/9p/hfs_policy.h": "15955864bf48ee2ae29a06df06051a6729cc5e8ef14efc7069f3cad74147ade4",
     "fs/9p/hfs_protocol.c": "2de09f23e5779f47b2872d76bd85aa452a94c3e1b36a9da903819050c63e969c",
     "fs/9p/hfs_protocol.h": "fce2577afd0297d69886741d7e9a87b6516c43871946a901e67764aa179d31f0",
-    "fs/9p/hfs_session.c": "8653be05dbad3089d1dd784f27400d1db37ee68a6b25ff2c83346664f41166d3",
+    "fs/9p/hfs_session.c": "664da74145a2a32ffff00d9d714f21c17d7c9ea3d5c787030d78e56e137a5a0c",
     "fs/9p/vfs_super.c": "1c85dd57e9f27b324cbf4b8a35e9b4cbaf9f2259533754602220f2b2e60f449f",
     "include/net/9p/9p.h": "5a46f65229ecb77bd8f70cce081683869c2ae47e63e573a26a1b2e68e1bd5d7b",
     "include/net/9p/client.h": "0ea1ca90f3cf9eeb25aff8b262da0863e453d9d2c48c3470390d209e6351d6de",
@@ -52,14 +52,14 @@
       "sha256": "532fdb1b7014099dd6a15eaf7760fa28710b0c1d6e3df2c57ace4ecb53372ce0"
     },
     {
-      "bytes": 29723,
+      "bytes": 30256,
       "file": "0002-hfs1-canonical-codec-policy.patch",
-      "sha256": "5a97a6d5a86101a0992fbe01290c19e1f318ef7dca574601a15baf9c409fad30"
+      "sha256": "bfbd6173fad07efb9053e45e43c1bb2a07166a8d3d4ef50025d4e6646df7a1b0"
     },
     {
-      "bytes": 101537,
+      "bytes": 101509,
       "file": "0003-hfs1-guest-vfs.patch",
-      "sha256": "819365c9a3131ee365f23c7dfce69d0c60a8f6d49df3b7203b041c248f803c8d"
+      "sha256": "22ac01639c5068600a2f06ff97336848238e87ce32ca95843eeb22495f7e2fa5"
     }
   ],
   "project_task": "tz3",

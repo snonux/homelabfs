@@ -343,7 +343,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,1483 @@
+@@ -0,0 +1,1484 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include <linux/delay.h>
@@ -608,34 +608,35 @@ new file mode 100644
 +	if (!frame || !packet)
 +		goto out;
 +	for (chunk = 0; chunk * HFS_CHUNK_MAX < body->len; chunk++) {
-+retry_send:
 +		frame_len = HFS_HEADER_SIZE + HFS_CHUNK_MAX;
 +		err = hfs_frame_encode(1, &session->enrollment.session, cell,
 +				       body->data, body->len, chunk, frame, &frame_len);
 +		if (err)
 +			goto out;
++retry_send:
 +		len = HFS_HEADER_SIZE + HFS_CHUNK_MAX + 1;
 +		err = p9_client_hfs_exchange(session->client, tag, 1, 1, cell,
 +					     chunk, frame, frame_len, packet, &len);
 +		if (err)
 +			goto out;
-+		if (!chunk && len == 3 && ((u8 *)packet)[0] == 4 &&
-+		    ((u8 *)packet)[1] == 3 && ((u8 *)packet)[2] == 0 &&
-+		    time_before(jiffies, deadline)) {
-+			/* Definitive first-chunk capacity refusal: preserve exact bytes,
-+			 * yield the framing writer so reserved drains can make progress.
++		err = hfs_send_reply(packet, len, time_after_eq(jiffies, deadline));
++		if (err == -EAGAIN) {
++			/* No bytes of this packet were copied. Retain its exact frame
++			 * and chunk; yield the writer so reserved drains can progress.
 +			 */
 +			mutex_unlock(&session->writer);
 +			*writer_held = false;
 +			usleep_range(10000, 12000);
 +			mutex_lock(&session->writer);
 +			*writer_held = true;
++			if (time_after_eq(jiffies, deadline)) {
++				err = -ETIMEDOUT;
++				goto out;
++			}
 +			goto retry_send;
 +		}
-+		if (len != 1 || *(u8 *)packet != 1) {
-+			err = -EPROTO;
++		if (err)
 +			goto out;
-+		}
 +	}
 +	mutex_unlock(&session->writer);
 +	*writer_held = false;

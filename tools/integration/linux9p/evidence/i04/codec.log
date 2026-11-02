@@ -1,0 +1,8 @@
+fixture_path=/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/worktree/docs/spec/retained9p-fixtures/cases.json
+fixture_sha256=0bb0044358ff889158ee5785a38ee8b93c99059b876687963d8724055ab7df88
+argv=["cc", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror", "-Wno-sign-compare", "-DHFS_CODEC_USERSPACE", "-include", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/worktree/tools/integration/linux9p/tests/codec/compat.h", "-I", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/checked-source/fs/9p", "-I", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/codec-check", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/checked-source/fs/9p/hfs_protocol.c", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/worktree/tools/integration/linux9p/tests/codec/test.c", "-lcrypto", "-o", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/codec-check/codec-test"]
+exit=0 peak_child_rss_kib=58824
+argv=["/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/codec-check/codec-test"]
+PASS: production response selector: VIEW_WAIT FETCH3/kind3; all ordinary/control/release FETCH2/kind2; cross-kind/session/cell/hash negatives
+PASS: production codec canonical JSON, writer, 1024 groups, bounds, exact golden frames, malformed frames, 32-chunk 1MiB body
+exit=0 peak_child_rss_kib=58824

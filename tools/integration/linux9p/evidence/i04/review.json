@@ -1,0 +1,7 @@
+{
+  "task": "i04",
+  "review": "Fresh full R1 guest_send_capacity_r1 clean, no R2 required.",
+  "self_review": "Root read complete3-source delta and evidence; immutable frame and original deadline stay intact, only exact COPIED advances.",
+  "checks": "Fresh exact-source4 Kbuild stages0, all4 sanitizer suites0; inherited checkpatch findings documented. Root matched all17 maintained source and evidence hashes; Python scripts parse. Reviewer also matched test inputs and27 compiled object hashes.",
+  "scope": "No kernel/provider/FUSE/installed ABI/runtime proof. Only integration artifacts changed; existing387 full-suite Go input hashes checked after merge."
+}

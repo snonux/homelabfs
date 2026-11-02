@@ -1,0 +1,6 @@
+hfs_session_sha256=664da74145a2a32ffff00d9d714f21c17d7c9ea3d5c787030d78e56e137a5a0c
+argv=["cc", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror", "-Wno-sign-compare", "-DHFS_CODEC_USERSPACE", "-include", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/worktree/tools/integration/linux9p/tests/policy/compat.h", "-I", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/checked-source/fs/9p", "-I", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/transport-check", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/checked-source/fs/9p/hfs_protocol.c", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/checked-source/fs/9p/hfs_policy.c", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/worktree/tools/integration/linux9p/tests/transport/test.c", "-lcrypto", "-o", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/transport-check/transport-test"]
+exit=0 peak_child_rss_kib=56032
+argv=["/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/transport-check/transport-test"]
+PASS: actual hfs_transport + policy/codec; chunk0/1/last exact frame/session/cell/tag/body retry; no advance/rebind; yielding writer/control progress; fixed/wrapped deadline at reply/sleep/relock/repeated refusal; malformed status/code/length and I/O errors; result2/recall3
+exit=0 peak_child_rss_kib=56032

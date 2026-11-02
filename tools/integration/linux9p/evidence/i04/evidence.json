@@ -1,0 +1,118 @@
+{
+  "change": "Retry exact already-encoded SEND frame at any chunk after definitive ERROR/CAPACITY; yield framing writer and preserve original deadline; only COPIED advances.",
+  "changed_production_sources": [
+    "fs/9p/hfs_policy.c",
+    "fs/9p/hfs_policy.h",
+    "fs/9p/hfs_session.c"
+  ],
+  "checkpatch": {
+    "checks": 1,
+    "errors": 0,
+    "exit": 1,
+    "notes": "Inherited107-column schema warning and client alignment CHECK only; no new findings. Unfiltered exploratory log retained at owned root/checkpatch.log.",
+    "options": [
+      "--no-tree",
+      "--no-signoff",
+      "--ignore",
+      "FILE_PATH_CHANGES,SPLIT_STRING"
+    ],
+    "warnings": 1
+  },
+  "date": "2026-11-03",
+  "exploration": "Successful exploratory transport sanitizer receipt preserved at owned root/transport-exploratory. One optional test edit invocation used run-root cwd and failed with FileNotFoundError before writing; corrected in worktree, then all four final suites passed. No failed resources removed.",
+  "files": {
+    "checkpatch.log": "90186ce5a4508e1c08dac1942f61902b47e6202bf81b718fbc9a4095cbc49a1c",
+    "codec.log": "7be556d300de4dc46bc0b362fa813d84b941551ad68c7c6b1d654f21dcc74e5d",
+    "cursor.log": "e4f60008a330bd363c1b3e5bdaa7dcd64fc5776d01c78ef5ffe409cbedeb571f",
+    "kernel-object-build.log": "f137695a057b2fad4c2893304e1c6ebdd6362d106c6a95574d2a9b03182b5fc6",
+    "kernel-object-receipt.json": "2b6d8b89a872859034130aa7430b9afc20644afa9dfebf97f3c241c13b6b1aa6",
+    "kernel-object-stages.json": "6a9fb91df22771c583692c671b6ef19baba82019bfdc289dcbde1f1bd5f29771",
+    "kernel-objects.log": "492c76bc9ab2b9e8ec9b37a130fde828bc240f5f8b0f82a8fdcbe1d3bfbec60b",
+    "policy.log": "93e6d9bb3ffbe94a06384f115da1ef7be7ca655a4c22d7527d2cbd43b093af81",
+    "source-delta.diff": "7a781758df2a8926cf6ceea55c8c04f2823d6434a49f836e67431aeb59115e14",
+    "source.json": "fad50065d3c3347868fc030a199b0f710ad3d236351b97058c47a3c4cc14d527",
+    "transport.log": "635ff71e0082e9456b485ba60d7dd324fd7e18337e29b2ac1dc4dcf9575ce436"
+  },
+  "format": 1,
+  "kernel_objects": {
+    "limits": "existing builder:2CPU/-j2,2GiB process AS and sampled own process-group RSS,8GiB root,20min/stage; polling can miss transient overshoot",
+    "maximum_sampling_gap_seconds": 3.437,
+    "observed_peak_group_rss_bytes": 275578880,
+    "scope": "upstream kernel object compilation; no full module link, installed ELRepo ABI or runtime proof",
+    "stages_actual_exit": [
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "same_production_c_tests": {
+    "codec": {
+      "compile_exit": 0,
+      "log": "codec.log",
+      "run_exit": 0,
+      "sanitizers": [
+        "address",
+        "undefined",
+        "leak"
+      ]
+    },
+    "cursor": {
+      "compile_exit": 0,
+      "log": "cursor.log",
+      "run_exit": 0,
+      "sanitizers": [
+        "address",
+        "undefined",
+        "leak"
+      ]
+    },
+    "policy": {
+      "compile_exit": 0,
+      "log": "policy.log",
+      "run_exit": 0,
+      "sanitizers": [
+        "address",
+        "undefined",
+        "leak"
+      ]
+    },
+    "transport": {
+      "compile_exit": 0,
+      "log": "transport.log",
+      "run_exit": 0,
+      "sanitizers": [
+        "address",
+        "undefined",
+        "leak"
+      ]
+    }
+  },
+  "source": "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/checked-source",
+  "source_manifest_sha256": "fad50065d3c3347868fc030a199b0f710ad3d236351b97058c47a3c4cc14d527",
+  "source_verification": {
+    "exit": 0,
+    "files_and_symlinks": 78710,
+    "method": "fresh pinned archive preparation, fuzz-zero exported17-path series, full inventory/hash verified before exact-source Kbuild"
+  },
+  "task": "i04",
+  "test_inputs": {
+    "tests/codec/compat.h": "3dfba42ca9c45ef141b29f55431a0e71f6490993d8873b566579c0a7fabb3dc3",
+    "tests/codec/run.py": "ec485dced211b12fb8e57d4d94c32049b2153462c960d23f9b5c0e5887d47e1f",
+    "tests/codec/test.c": "938fe57ea937efa7af01925f3f9a5ce9837a18cce842b6ff73e2b59480043017",
+    "tests/cursor/run.py": "7241b3beb25f9fc15e5b19a71f1f8c2664ac0377c010860ec02ca018cbf899a1",
+    "tests/cursor/test.c": "8d6651faa08e8de5ce27f49244fae1f5738a34b46e094d792cb17a509d613c8f",
+    "tests/policy/compat.h": "a062f4e6adc7d30c2e30ef9e8e425500d07a76057530ef54d342f9b675cc5166",
+    "tests/policy/run.py": "d1995fa3a2531e0ebf1f2d1cef15018e0010563b0111e92779725f1c06f04631",
+    "tests/policy/test.c": "d3e68b6d4dedd6c6d1949179217581b8d929d7f47475ddfff9075dd8bf804b68",
+    "tests/transport/run.py": "c0587e38f94d2df1c50c4d8f553922864bcd27a1d3a57fbbfb0bdd5de34a3d51",
+    "tests/transport/test.c": "880f32c664ec746a87593286643081ea763fa167126e2c3e2284a2910d885c81"
+  },
+  "transport_scope": "Complete hfs_transport function extracted verbatim from checked source, compiled with actual policy and codec. Deterministic substitutes for p9 exchange, mutex and clock. All60 runs: chunk0/1/last x result2+recall3 success, deadline expiry at response/sleep/relock/repeated refusal, I/O error,13 malformed status/reason/length cases. Exact encoded frame/session/cell/tag/chunk/body equality, no advancement before COPIED, no restart/rebind. Wrapped original deadline; writer-yield boundary asserted. Simulated control progress only; no kernel scheduling or real control exchange.",
+  "unrun": [
+    "real p9/virtio/lib9p/FUSE transport or kernel scheduling",
+    "provider/VFS/syscall behavior and guest acceptance",
+    "full module modpost/link, installed kernel ABI or running-byte binding",
+    "SSH,lab,VM,mount,install,production or received-sink operations"
+  ]
+}

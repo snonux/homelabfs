@@ -1,0 +1,5 @@
+argv=["cc", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror", "-Wno-sign-compare", "-DHFS_CODEC_USERSPACE", "-include", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/worktree/tools/integration/linux9p/tests/codec/compat.h", "-I", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/checked-source/fs/9p", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/checked-source/fs/9p/hfs_cursor.c", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/worktree/tools/integration/linux9p/tests/cursor/test.c", "-lcrypto", "-o", "/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/cursor-check/cursor-test"]
+exit=0 peak_child_rss_kib=39588
+argv=["/home/paul/tmp/codex/hfs-i04-20261103-ylgxbw54/cursor-check/cursor-test"]
+PASS: production cursor keeps old page/revision cookies, rewind/reuse, exact raw names, 4096 bound/no eviction, signed-offset boundary, unchanged failure outputs; zero helper allocations
+exit=0 peak_child_rss_kib=39588
