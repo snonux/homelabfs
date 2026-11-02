@@ -99,35 +99,27 @@ workers; requests reach the colocated FreeBSD daemon through 9p and FUSE.
 Ownership need not move immediately because non-owners may still accept reads
 and writes. This policy does not change the selected 9p deployment path.
 
-Measure original admitted frontend requests by volume and originating host over
-a bounded window. Exclude replication traffic, owner memory-copy receipts and
-retry duplication. Guest cache hits are not visible to the daemon, so these
-counts do not claim to count every application syscall. Choose the evaluation
-interval, window, meaningful demand advantage, minimum tenure and cooldown in
-the reviewed policy before implementation; no numeric defaults are selected here.
-Use fresh statistics and require destination eligibility, capacity and readiness.
-Avoid transfers for brief demand spikes or stale measurements.
+The [preferred-owner policy](spec/Preferred-owner.md) now selects exact original
+frontend counting/deduplication, closure aggregation, eligibility and capacity
+checks, and five-minute windows evaluated each minute. Its defaults require 128
+samples, a 32-request and 25% advantage, three confirming rounds, 15-minute tenure,
+10-minute cooldown and complete reports within 90 seconds. Guest cache hits remain
+unobservable; no per-request etcd operation is added.
 
-Use etcd to coordinate the transfer intent and configuration/term changes, with
-HomelabFS enforcing ordered handoff and fencing. An etcd lease or CAS alone is
-not a data or cache fence. Keep request counters local and publish summaries
-periodically rather than introducing a per-request etcd transaction.
+Cooperative handoff positively drains/closes every old origin and cache domain,
+transfers the complete RAM projection plus issued/unknown slots, results, claims,
+homes, handles and source/pin dependencies, and installs exact successor authority
+for the whole affinity closure. Still-admitted origins, including the old owner,
+continue reading/writing under the new owner. New-owner disk/apply may lag.
+Routine preference needs no mandatory VM stop. A target must be in the compatible
+installed replica placement; a hot outside origin remains write eligible and
+needs separate replica-set admission before it can be an owner candidate.
 
-A handoff must preserve the complete committed memory view, ordered dependencies,
-in-flight operations, uncertain results and retry identities before the new
-owner serves. Read readiness may precede persistence to the new owner's own
-disk. Still-admitted origins retain their ability to accept reads and writes;
-coordinate or briefly gate affected operations when safety requires it. A routine
-placement change does not inherently require stopping the old owner's VM or
-revoking every writer. Preserve transaction affinity, aliased object homes and
-closure-wide ordering when selecting the transfer unit.
-
-Distinguish this planned handoff from crash takeover/fencing and from replica-set
-reconfiguration. Emergency single-survivor mode remains an explicitly authorized
-exception. This is the agreed target, not implemented or validated behavior. The normal
-contract defines source/choice preservation constraints; detailed policy and
-cooperative handoff remain `kz3`. Old owner-only models/tests remain scoped v1
-history and do not establish a handoff proof.
+The separate [bounded policy/handoff model](../spec/tla/PreferredOwner-results.md)
+records its finite checks and component assumptions. Runtime controller,
+platform barriers and full distributed composition remain unimplemented. Crash
+recovery, emergency authorization and replica-set reconfiguration retain their
+separate gates; a lease/CAS alone supplies no fence.
 
 ## Coordination without per-operation etcd access
 
