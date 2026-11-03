@@ -62,7 +62,7 @@ func (p *Producer) Bind(ctx context.Context, b guestbridge.VerificationBinding) 
 	for _, scope := range b.Scopes {
 		a := p.facts.admission(scope)
 		provider := p.providers[scope.Session]
-		if a == nil || provider == nil || b.Native != a.supervisor || b.Endpoint != a.endpoint || b.Claims != provider || b.Execution != provider || p.bindings[scope.Session].Valid() {
+		if a == nil || provider == nil || b.Native != a.supervisor || b.Endpoint != a.endpoint || !p.providerBinding(b, scope, provider) || p.bindings[scope.Session].Valid() {
 			return fsapi.Permission
 		}
 		if err := a.check(scope); err != nil {
@@ -223,4 +223,18 @@ func isViewOperation(op string) bool {
 		return true
 	}
 	return false
+}
+
+// providerBinding accepts only actual providers or one actual immutable router.
+func (p *Producer) providerBinding(b guestbridge.VerificationBinding, scope guestbridge.Context, provider *controlledvalidation.Provider) bool {
+	if b.Claims == provider && b.Execution == provider {
+		return true
+	}
+	claims, ok := b.Claims.(*ProviderRouter)
+	execution, executionOK := b.Execution.(*ProviderRouter)
+	if !ok || !executionOK || claims == nil || claims != execution {
+		return false
+	}
+	actual, err := claims.route(scope)
+	return err == nil && actual == provider
 }

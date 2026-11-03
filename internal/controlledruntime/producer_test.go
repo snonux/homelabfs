@@ -45,24 +45,24 @@ type sourceRig struct {
 	credentials     guestbridge.Credentials
 	key             ed25519.PrivateKey
 	cells, claims   uint64
+	peers           []*sourceRig
+	providerFactory func(int) *controlledvalidation.Provider
 }
+type guestCredentialsSetPrimitive struct {
+	scopes      []guestbridge.Context
+	credentials guestbridge.Credentials
+}
+
 type mountedPrimitive struct{ file *os.File }
 
 func (m mountedPrimitive) check() error { _, err := m.file.Stat(); return err }
 
-type guestCredentialsPrimitive struct {
-	scope       guestbridge.Context
-	credentials guestbridge.Credentials
-}
-
-func (g guestCredentialsPrimitive) Verify(_ context.Context, s guestbridge.Context, c guestbridge.Credentials) error {
-	if s != g.scope || !sameJSON(c, g.credentials) {
-		return fsapi.Permission
-	}
-	return nil
-}
-
 func newSourceRigProtocol(t *testing.T, protocol guestbridge.Protocol) *sourceRig {
+	t.Helper()
+	return newSourceRigDomains(t, protocol, 1)
+}
+
+func newSourceRigDomains(t *testing.T, protocol guestbridge.Protocol, count int) *sourceRig {
 	t.Helper()
 	r := &sourceRig{t: t, supervisor: runningFixture(t)}
 	endpoint := guestbridge.Endpoint{FuseSession: testUUID(43).String(), CommandNode: 2, ResultNode: 3, RecallNode: 4}
@@ -115,15 +115,35 @@ func newSourceRigProtocol(t *testing.T, protocol guestbridge.Protocol) *sourceRi
 	identity := r.supervisor.child.identity
 	r.native = guestbridge.Native{UID: identity.UID, GID: identity.GID, PID: identity.PID, Groups: append([]uint32(nil), identity.Groups...), Process: identity.PublicID.String(), Unique: 1, Endpoint: endpoint}
 	r.installed = installedObservation{Version: "homelabfs-installed-observation/1", ManifestHash: hashBytes([]byte("manifest")), BootID: r.scope.GuestBoot, KernelBuildID: strings.Repeat("ab", 20), Modules: map[string]string{}, ABI: physicalContract, Admission: kernelAdmission{Version: "homelabfs-kernel-admission/1", BootID: r.scope.GuestBoot, ProviderNonce: testUUID(66).String(), PhysicalContract: physicalContract, Protocols: map[string]guestbridge.Protocol{r.scope.Session: protocol}, Domains: []guestbridge.Context{r.scope}, Observations: []kernelDomainObservation{{Scope: r.scope, Revision: 1, Fence: 1, Phase: "LIVE"}}}}
+	r.peers = []*sourceRig{r}
+	for i := 1; i < count; i++ {
+		scope := r.scope
+		scope.Session = testUUID(byte(150 + i)).String()
+		scope.GuestMount = testUUID(byte(160 + i)).String()
+		peer := &sourceRig{t: t, supervisor: r.supervisor, service: r.service, scope: scope, credentials: r.credentials, native: r.native}
+		r.peers = append(r.peers, peer)
+		r.installed.Admission.Domains = append(r.installed.Admission.Domains, scope)
+		r.installed.Admission.Protocols[scope.Session] = protocol
+		r.installed.Admission.Observations = append(r.installed.Admission.Observations, kernelDomainObservation{Scope: scope, Revision: 1, Fence: 1, Phase: "LIVE"})
+	}
 	observer, observationFile := liveObserverFixture(t, r.installed)
 	r.observationFile = observationFile
-	r.admission, err = ObserveAdmission(t.Context(), r.supervisor, observer, []guestbridge.Context{r.scope})
+	r.admission, err = ObserveAdmission(t.Context(), r.supervisor, observer, r.installed.Admission.Domains)
 	require(t, err)
 	key := func() ed25519.PrivateKey { _, k, err := ed25519.GenerateKey(rand.Reader); require(t, err); return k }
 	operator, guest := key(), key()
 	r.key = key()
 	enrolled := controlledvalidation.Enrollment{Protocol: &protocol, Profile: profile, Scope: r.scope, Endpoint: endpoint, ServingGeneration: c.Workspace.ID, Ledger: testUUID(65), Journal: journal, HostKey: r.key.Public().(ed25519.PublicKey), GuestKey: guest.Public().(ed25519.PublicKey)}
 	e := viewcontrol.Enrollment{Version: viewcontrol.EnrollmentVersion, ID: testUUID(99), Domains: []controlledvalidation.Enrollment{enrolled}, TicketFamilies: []viewcontrol.TicketFamilies{{Acquisition: viewcontrol.TicketFamily{Anchor: testUUID(110).String(), Nonce: testUUID(111).String()}, Control: viewcontrol.TicketFamily{Anchor: testUUID(110).String(), Nonce: testUUID(112).String()}}}, PageSize: 4096, Bounds: viewcontrol.Bounds{Tickets: 16, ControlTickets: 8, Reservations: 4, Identities: 64, Sources: 8, SourceBytes: 64 << 10, LedgerBytes: 12 << 20, WorkBytes: 192 << 20}}
+	for i, peer := range r.peers[1:] {
+		peer.key = key()
+		domain := enrolled
+		domain.Scope = peer.scope
+		domain.Ledger = testUUID(byte(170 + i))
+		domain.HostKey = peer.key.Public().(ed25519.PublicKey)
+		e.Domains = append(e.Domains, domain)
+		e.TicketFamilies = append(e.TicketFamilies, viewcontrol.TicketFamilies{Acquisition: viewcontrol.TicketFamily{Anchor: testUUID(byte(180 + i)).String(), Nonce: testUUID(byte(190 + i)).String()}, Control: viewcontrol.TicketFamily{Anchor: testUUID(byte(180 + i)).String(), Nonce: testUUID(byte(200 + i)).String()}})
+	}
 	require(t, r.service.Controlled(t.Context(), profile, func(ctx context.Context, cut *fsservice.ControlledCut) error {
 		source, err := cut.ViewSource(ctx, e.Bounds.SourceBytes)
 		if err == nil {
@@ -134,25 +154,53 @@ func newSourceRigProtocol(t *testing.T, protocol guestbridge.Protocol) *sourceRi
 	}))
 	r.facts, err = NewFacts(t.Context(), r.service, e, []*Admission{r.admission})
 	require(t, err)
-	raw, err := json.Marshal(enrolled)
-	require(t, err)
 	private := func() string { dir := t.TempDir(); require(t, os.Chmod(dir, 0700)); return dir }
-	r.provider, err = controlledvalidation.New(t.Context(), controlledvalidation.Config{Directory: private(), Initialize: true, Service: r.service, Operator: operator.Public().(ed25519.PublicKey), Authorization: controlledvalidation.Authorization{Enrollment: enrolled, OperatorSignature: ed25519.Sign(operator, raw), HostSignature: ed25519.Sign(r.key, raw), GuestSignature: ed25519.Sign(guest, raw)}, Facts: r.facts})
-	require(t, err)
-	t.Cleanup(func() { _ = r.provider.Close() })
+	providers := map[string]*controlledvalidation.Provider{}
+	keys := map[string]ed25519.PrivateKey{}
+	routes := map[guestbridge.Context]*controlledvalidation.Provider{}
+	r.providerFactory = func(i int) *controlledvalidation.Provider {
+		peer := r.peers[i]
+		domain := e.Domains[i]
+		raw, err := json.Marshal(domain)
+		require(t, err)
+		provider, err := controlledvalidation.New(t.Context(), controlledvalidation.Config{Directory: private(), Initialize: true, Service: r.service, Operator: operator.Public().(ed25519.PublicKey), Authorization: controlledvalidation.Authorization{Enrollment: domain, OperatorSignature: ed25519.Sign(operator, raw), HostSignature: ed25519.Sign(peer.key, raw), GuestSignature: ed25519.Sign(guest, raw)}, Facts: r.facts})
+		require(t, err)
+		t.Cleanup(func() { _ = provider.Close() })
+		return provider
+	}
+	for i, peer := range r.peers {
+		peer.provider = r.providerFactory(i)
+		providers[peer.scope.Session] = peer.provider
+		keys[peer.scope.Session] = peer.key
+		routes[peer.scope] = peer.provider
+	}
+	var raw []byte
 	raw, err = json.Marshal(e)
 	require(t, err)
-	providers := map[string]*controlledvalidation.Provider{r.scope.Session: r.provider}
-	r.controller, err = viewcontrol.New(t.Context(), viewcontrol.Config{Directory: private(), Initialize: true, Service: r.service, Providers: providers, Operator: operator.Public().(ed25519.PublicKey), Authorization: viewcontrol.Authorization{Enrollment: e, Operator: ed25519.Sign(operator, raw), Domains: []viewcontrol.Signatures{{Host: ed25519.Sign(r.key, raw), Guest: ed25519.Sign(guest, raw)}}}, Facts: r.facts})
+	signatures := []viewcontrol.Signatures{}
+	for _, peer := range r.peers {
+		signatures = append(signatures, viewcontrol.Signatures{Host: ed25519.Sign(peer.key, raw), Guest: ed25519.Sign(guest, raw)})
+	}
+	r.controller, err = viewcontrol.New(t.Context(), viewcontrol.Config{Directory: private(), Initialize: true, Service: r.service, Providers: providers, Operator: operator.Public().(ed25519.PublicKey), Authorization: viewcontrol.Authorization{Enrollment: e, Operator: ed25519.Sign(operator, raw), Domains: signatures}, Facts: r.facts})
 	require(t, err)
 	t.Cleanup(func() { _ = r.controller.Close() })
-	producer, err := NewProducer(t.Context(), r.facts, r.controller, providers, map[string]ed25519.PrivateKey{r.scope.Session: r.key})
+	producer, err := NewProducer(t.Context(), r.facts, r.controller, providers, keys)
 	require(t, err)
-	r.bridge, err = guestbridge.New(t.Context(), guestbridge.Config{Validation: &profile, Protocol: &protocol, Verification: producer, ViewProtocol: r.controller, Endpoint: endpoint, Native: r.supervisor, Attestor: guestCredentialsPrimitive{r.scope, r.credentials}, Claims: r.provider, Execution: r.provider, Views: r.controller, Scopes: []guestbridge.Context{r.scope}})
+	var claims guestbridge.Claims = r.provider
+	var execution guestbridge.Execution = r.provider
+	if count > 1 {
+		router, err := NewProviderRouter(t.Context(), r.service, routes)
+		require(t, err)
+		claims, execution = router, router
+	}
+	r.bridge, err = guestbridge.New(t.Context(), guestbridge.Config{Validation: &profile, Protocol: &protocol, Verification: producer, ViewProtocol: r.controller, Endpoint: endpoint, Native: r.supervisor, Attestor: guestCredentialsSetPrimitive{r.installed.Admission.Domains, r.credentials}, Claims: claims, Execution: execution, Views: r.controller, Scopes: r.installed.Admission.Domains})
 	require(t, err)
 	r.supervisor.record.Stage = "claimed"
-	_, _, err = r.execute("HELLO", protocol)
-	require(t, err)
+	for _, peer := range r.peers {
+		peer.bridge, peer.controller, peer.facts, peer.admission, peer.installed = r.bridge, r.controller, r.facts, r.admission, r.installed
+		_, _, err = peer.execute("HELLO", protocol)
+		require(t, err)
+	}
 	return r
 }
 
@@ -477,4 +525,13 @@ func testRealControlledProducerRejectsFalseFrozenOmission(t *testing.T, protocol
 	r.observeACK(poll.Event, ack, 1)
 	_, _, err = r.execute("VIEW_ACK", ack)
 	require(t, err)
+}
+
+func (g guestCredentialsSetPrimitive) Verify(_ context.Context, scope guestbridge.Context, c guestbridge.Credentials) error {
+	for _, enrolled := range g.scopes {
+		if scope == enrolled && sameJSON(c, g.credentials) {
+			return nil
+		}
+	}
+	return fsapi.Permission
 }

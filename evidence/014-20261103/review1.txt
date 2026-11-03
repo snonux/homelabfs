@@ -1,0 +1,1 @@
+Fresh provider_router_review1: no blocking findings. Actual immutable concrete owner checks and direct path sound; substantive two-mount real service/journal/provider/Facts tests and foreign-scope negatives. Nonblocking: constructor mixed-endpoint branch additional coverage, endpoint Bind and cross-service paths already covered. No second round.

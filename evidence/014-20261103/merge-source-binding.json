@@ -1,0 +1,7 @@
+{
+  "docs/lab/Controlled-runtime-integration.md": "9b3ee53146a69619edc2934a1160446814fbc3b23ec5350ee885e99875a5e725",
+  "internal/controlledruntime/producer.go": "809c2cd27f5a642fc0f77a6e3e1628e750bede07cc528bc051226655ffa1db9c",
+  "internal/controlledruntime/producer_test.go": "2918a53439297bfa18abd1011f8d3605b2fc87d85f33bdd8b6c9f066f80a4c37",
+  "internal/controlledruntime/provider_router.go": "121a4bd0e8e9c014b322fc45d2e43f795ecf24a2283905905f276e16d3374cf4",
+  "internal/controlledruntime/provider_router_test.go": "37e0dad60fb2413501259e5e23dfad635ef1b3e8420511bce62a2e39d095b39c"
+}

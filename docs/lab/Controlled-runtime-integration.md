@@ -201,6 +201,26 @@ runs a lab merely because its dependencies are complete.
 | C9: Reconcile and restore the complete controlled endpoint | `internal/controlledruntime` restore coordinator, narrow guestbridge restore API plus provider/view restoration integration; lib9p adapter recovery tests. Depends C4, C5, C7, C8. | Restore original bytes/counters/controller only after exact full cross-ledger agreement and fresh physical continuity/exclusion. Real restart/lost-reply tests compare response/capability/source identities, reject missing ledger/stale controller/one unexcluded domain, and never replan protected effects. Replacement FUSE connection remains fenced; RESUME stays BLOCKED in every unimplemented case. |
 | C10: Compose a repository-native disposable runtime driver | New explicit controlled runtime command/config under `cmd`/`internal/controlledruntime`; narrow daemoncli lifecycle reuse, no change to self-client/default normal serving. Depends C2, C4, C5, C7, C9. | Driver constructs actual service/providers/controller/bridge/Transport/private shell and emits readiness only after all verifiers/budgets/enrollment bind. Local no-mount assembly test uses real service/files/ledgers and production framing, verifies null publication and refusal with each missing adapter; native mount/guest behavior is explicitly unrun. |
 
+The C10 provider dispatch prerequisite is implemented separately by task `014`.
+`controlledruntime.NewProviderRouter` freezes full enrolled scopes and their actual
+private providers for one service, endpoint, serving journal and volume. Session
+lookup must also match the complete original scope. It forwards the existing
+claims, execution, private continuation, allocation, retirement and cleanup
+contracts without changing the authenticated request context or credentials.
+`Producer.Bind` accepts a direct provider or the same concrete router in both
+Claims and Execution, and verifies each actual route against its own provider.
+Caller assertions cannot establish this binding.
+
+Portable component tests use two distinct GuestMount/session providers under one
+admitted GuestBoot/VM, supervisor, endpoint, service, controller and producer.
+The service, journal, private ledgers, source capture and signed receipts are real;
+the native mount/INIT headers, guest credentials and observed kernel inventory
+remain explicitly substituted operating-system boundaries. This does not prove
+native guest behavior, normal authority, C6 readiness or C10 runtime assembly.
+The later C10 driver must compose this router rather than substitute a generic
+Claims adapter. Native transcript mapping and guest receipt verification remain
+separate tasks `114` and `y04`.
+
 `xz3` then consumes C10 and all exact adapter inputs, building the **complete**
 custom Linux kernel/modules (including generic MM ABI), complete matching
 FreeBSD bhyve/lib9p artifact, actual daemon and provider, with full source/config/

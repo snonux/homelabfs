@@ -1,0 +1,158 @@
+[
+  {
+    "check": "build",
+    "argv": [
+      "go",
+      "build",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 4.829,
+    "peak_group_rss_kib": 293196,
+    "guard": null,
+    "pswpout_before": 1224273,
+    "pswpout_after": 1224273
+  },
+  {
+    "check": "vet",
+    "argv": [
+      "go",
+      "vet",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.527,
+    "peak_group_rss_kib": 53396,
+    "guard": null,
+    "pswpout_before": 1224273,
+    "pswpout_after": 1224273
+  },
+  {
+    "check": "errcheck",
+    "argv": [
+      "errcheck",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 4.343,
+    "peak_group_rss_kib": 218416,
+    "guard": null,
+    "pswpout_before": 1224273,
+    "pswpout_after": 1224273
+  },
+  {
+    "check": "lint",
+    "argv": [
+      "golangci-lint",
+      "run",
+      "--timeout=3m",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.788,
+    "peak_group_rss_kib": 126704,
+    "guard": null,
+    "pswpout_before": 1224273,
+    "pswpout_after": 1224273
+  },
+  {
+    "check": "freebsd",
+    "argv": [
+      "go",
+      "build",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 4.846,
+    "peak_group_rss_kib": 304800,
+    "guard": null,
+    "pswpout_before": 1224273,
+    "pswpout_after": 1224273
+  },
+  {
+    "check": "focused-race",
+    "argv": [
+      "go",
+      "test",
+      "-race",
+      "-p",
+      "1",
+      "-count=1",
+      "-timeout=180s",
+      "./internal/controlledruntime",
+      "./internal/fsservice",
+      "./internal/viewcontrol",
+      "./internal/guestbridge",
+      "./internal/controlledvalidation",
+      "-run",
+      "TestProviderRouter|TestRealControlledProducer|TestDurableTransport|TestControlledProtocol"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 25.109,
+    "peak_group_rss_kib": 211424,
+    "guard": null,
+    "pswpout_before": 1224273,
+    "pswpout_after": 1224273
+  },
+  {
+    "check": "full-root",
+    "argv": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-count=1",
+      "-timeout=600s",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 85.246,
+    "peak_group_rss_kib": 500064,
+    "guard": null,
+    "pswpout_before": 1224273,
+    "pswpout_after": 1224273
+  },
+  {
+    "check": "freebsd-cgo-controlledruntime",
+    "argv": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/paul/tmp/codex/hfs-014-20261103-2he1eqgi/root-gates/controlledruntime-freebsd.test",
+      "./internal/controlledruntime"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 5.109,
+    "peak_group_rss_kib": 143380,
+    "guard": null,
+    "pswpout_before": 1224273,
+    "pswpout_after": 1224273
+  },
+  {
+    "check": "freebsd-cgo-fuseadapter",
+    "argv": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/paul/tmp/codex/hfs-014-20261103-2he1eqgi/root-gates/fuseadapter-freebsd.test",
+      "./internal/fuseadapter"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.525,
+    "peak_group_rss_kib": 161492,
+    "guard": null,
+    "pswpout_before": 1224273,
+    "pswpout_after": 1224273
+  }
+]
