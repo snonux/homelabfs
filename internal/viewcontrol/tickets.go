@@ -35,12 +35,15 @@ func (c *Controller) ExchangeView(ctx context.Context, scope guestbridge.Context
 	if err := c.CheckRequest(ctx, scope, op, raw); err != nil {
 		return nil, err
 	}
-	protocol := guestbridge.ViewProtocol()
+	protocol, ok := c.scopeProtocol(scope)
+	if !ok {
+		return nil, fsapi.Permission
+	}
 	envelope, err := canonical(guestbridge.Command{Cell: 1, Context: scope, Protocol: &protocol, Op: op, Payload: raw})
 	if err != nil {
 		return nil, err
 	}
-	if _, err = guestbridge.DecodeCommandVersion(envelope, 1); err != nil {
+	if _, err = guestbridge.DecodeCommandVersion(envelope, uint16(protocol.BridgeMinor)); err != nil {
 		return nil, err
 	}
 	if !c.mu.TryLock() {

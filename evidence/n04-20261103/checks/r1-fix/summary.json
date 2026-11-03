@@ -1,0 +1,68 @@
+{
+  "gates": [
+    {
+      "gate": "race",
+      "argv": [
+        "go",
+        "test",
+        "-race",
+        "./internal/controlledvalidation",
+        "-run",
+        "TestControlledGapRefusesPreparationAndEffects|TestControlledGapCoverageAndRestart|TestBridgeCreditRefusalDoesNotPublishPredictedLifetimeState",
+        "-count=1",
+        "-timeout=90s"
+      ],
+      "exit": 0,
+      "seconds": 3.331,
+      "peak_group_rss_bytes": 131821568
+    },
+    {
+      "gate": "build",
+      "argv": [
+        "go",
+        "build",
+        "./internal/controlledvalidation"
+      ],
+      "exit": 0,
+      "seconds": 0.417,
+      "peak_group_rss_bytes": 81395712
+    },
+    {
+      "gate": "vet",
+      "argv": [
+        "go",
+        "vet",
+        "./internal/controlledvalidation"
+      ],
+      "exit": 0,
+      "seconds": 0.213,
+      "peak_group_rss_bytes": 17907712
+    },
+    {
+      "gate": "errcheck",
+      "argv": [
+        "errcheck",
+        "./internal/controlledvalidation"
+      ],
+      "exit": 0,
+      "seconds": 0.626,
+      "peak_group_rss_bytes": 124518400
+    },
+    {
+      "gate": "lint",
+      "argv": [
+        "golangci-lint",
+        "run",
+        "./internal/controlledvalidation"
+      ],
+      "exit": 0,
+      "seconds": 0.629,
+      "peak_group_rss_bytes": 176185344
+    }
+  ],
+  "source_changes": [],
+  "hashes": {
+    "internal/controlledvalidation/claims.go": "83cb50bbe7d5e1fa5e7cb2aa9f31e2dcf5763f897fb6e4c971a002f3151ee021",
+    "internal/controlledvalidation/allocation_test.go": "c3cdc52783895f86a789d325b91e483669927b8f80cff3d43884f2ff71cfa550"
+  }
+}

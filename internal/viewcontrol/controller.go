@@ -364,7 +364,8 @@ func (c *Controller) Close() error {
 
 // CheckEnrollment verifies exact tuple, immutable scope and live installed facts.
 func (c *Controller) CheckEnrollment(ctx context.Context, scope guestbridge.Context, p guestbridge.Protocol) error {
-	if p != guestbridge.ViewProtocol() {
+	expected, ok := c.scopeProtocol(scope)
+	if !ok || p != expected {
 		return fsapi.Permission
 	}
 	return c.check(ctx, scope)
@@ -684,4 +685,17 @@ func (c *Controller) newUUID() (string, error) {
 		return id, nil
 	}
 	return "", fsapi.NoSpace
+}
+
+// scopeProtocol derives the exact tuple from the complete signed domain inventory.
+func (c *Controller) scopeProtocol(scope guestbridge.Context) (guestbridge.Protocol, bool) {
+	for _, domain := range c.config.Authorization.Enrollment.Domains {
+		if domain.Scope == scope {
+			if domain.Protocol != nil {
+				return *domain.Protocol, true
+			}
+			return guestbridge.ViewProtocol(), true
+		}
+	}
+	return guestbridge.Protocol{}, false
 }

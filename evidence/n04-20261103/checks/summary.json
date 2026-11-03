@@ -1,0 +1,74 @@
+{
+  "gates": [
+    {
+      "gate": "race",
+      "argv": [
+        "go",
+        "test",
+        "-race",
+        "./internal/controlledvalidation",
+        "./internal/guestbridge",
+        "./internal/viewcontrol",
+        "-run",
+        "TestControlled|TestBridgeCreditRefusalDoesNotPublishPredictedLifetimeState|TestStoppedOmissionRequiresActualExclusionAndClosesExactTypedGap|TestUnknownEarmarkGapCancellationAndRenewalLineage|TestProtectedGapsAndExactRetirement",
+        "-count=1",
+        "-timeout=120s"
+      ],
+      "exit": 0,
+      "seconds": 8.955,
+      "peak_group_rss_bytes": 138838016
+    },
+    {
+      "gate": "build",
+      "argv": [
+        "go",
+        "build",
+        "./internal/controlledvalidation",
+        "./internal/guestbridge",
+        "./internal/viewcontrol"
+      ],
+      "exit": 0,
+      "seconds": 0.837,
+      "peak_group_rss_bytes": 86544384
+    },
+    {
+      "gate": "vet",
+      "argv": [
+        "go",
+        "vet",
+        "./internal/controlledvalidation",
+        "./internal/guestbridge",
+        "./internal/viewcontrol"
+      ],
+      "exit": 0,
+      "seconds": 0.422,
+      "peak_group_rss_bytes": 52420608
+    },
+    {
+      "gate": "errcheck",
+      "argv": [
+        "errcheck",
+        "./internal/controlledvalidation",
+        "./internal/guestbridge",
+        "./internal/viewcontrol"
+      ],
+      "exit": 0,
+      "seconds": 1.669,
+      "peak_group_rss_bytes": 130646016
+    },
+    {
+      "gate": "lint",
+      "argv": [
+        "golangci-lint",
+        "run",
+        "./internal/controlledvalidation",
+        "./internal/guestbridge",
+        "./internal/viewcontrol"
+      ],
+      "exit": 0,
+      "seconds": 1.045,
+      "peak_group_rss_bytes": 225185792
+    }
+  ],
+  "source_changes": []
+}

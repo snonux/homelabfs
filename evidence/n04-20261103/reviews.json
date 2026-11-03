@@ -1,0 +1,15 @@
+{
+  "R1": {
+    "reviewer": "controlled_allocation_review1",
+    "blocking": "Inherited CANCEL could close Original-bound uncertain PREPARING request despite GAP guard"
+  },
+  "fix": [
+    "Original-only preparation guard beforeCancel writes, legacy nilOriginal behavior preserved",
+    "ActualExecute CANCEL negative, unchanged protectedstate/noGap/noDECLINED, floorrefusal anddurableledgerreopen"
+  ],
+  "R2": {
+    "reviewer": "controlled_allocation_review2",
+    "result": "CLEAN",
+    "actions": "Read-only narrow fix/test review, no builds/tests"
+  }
+}

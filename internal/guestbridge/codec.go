@@ -48,7 +48,7 @@ func EncodeFrame(f Frame) ([]byte, error) {
 
 // DecodeFrame rejects all trailing bytes, padding, partial chunks and reserved bits.
 func DecodeFrame(b []byte) (Frame, error) {
-	if len(b) < HeaderBytes || string(b[:8]) != "HFS9BR1\x00" || binary.LittleEndian.Uint16(b[8:]) != 1 || binary.LittleEndian.Uint16(b[10:]) > 1 || binary.LittleEndian.Uint32(b[28:]) != 0 {
+	if len(b) < HeaderBytes || string(b[:8]) != "HFS9BR1\x00" || binary.LittleEndian.Uint16(b[8:]) != 1 || binary.LittleEndian.Uint16(b[10:]) > 2 || binary.LittleEndian.Uint32(b[28:]) != 0 {
 		return Frame{}, fsapi.Invalid
 	}
 	f := Frame{Minor: binary.LittleEndian.Uint16(b[10:]), Flags: binary.LittleEndian.Uint16(b[14:]), Kind: binary.LittleEndian.Uint16(b[12:]), Total: binary.LittleEndian.Uint32(b[16:]), Offset: binary.LittleEndian.Uint32(b[20:]), Cell: binary.LittleEndian.Uint64(b[48:])}
@@ -153,7 +153,7 @@ func DecodeCommand(b []byte) (Command, error) {
 	return c, nil
 }
 func validFrame(f Frame) error {
-	if f.Minor > 1 || f.Flags & ^uint16(3) != 0 || f.Kind < 1 || f.Kind > 3 || !f.Session.Valid() || f.Cell < 1 || f.Cell > MaxCell || f.Total < 1 || f.Total > BodyBytes || f.Offset >= f.Total || f.Offset%ChunkBytes != 0 || len(f.Data) != min(ChunkBytes, int(f.Total-f.Offset)) {
+	if f.Minor > 2 || f.Flags & ^uint16(3) != 0 || f.Kind < 1 || f.Kind > 3 || !f.Session.Valid() || f.Cell < 1 || f.Cell > MaxCell || f.Total < 1 || f.Total > BodyBytes || f.Offset >= f.Total || f.Offset%ChunkBytes != 0 || len(f.Data) != min(ChunkBytes, int(f.Total-f.Offset)) {
 		return fsapi.Invalid
 	}
 	return nil

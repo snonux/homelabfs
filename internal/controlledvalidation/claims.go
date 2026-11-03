@@ -20,7 +20,14 @@ func (p *Provider) Allocate(ctx context.Context, scope guestbridge.Context, clai
 	if !validClaim(claim) {
 		return fsapi.Invalid
 	}
+	return p.allocate(claim, nil)
+}
+
+func (p *Provider) allocate(claim guestbridge.Claim, original *guestbridge.Binding) error {
 	return p.db.Update(func(tx *bolt.Tx) error {
+		if p.bucket(tx, "earmarks").Get(claimKey(claim)) != nil {
+			return fsapi.Permission
+		}
 		b := p.bucket(tx, "claims")
 		k := claimKey(claim)
 		if old := b.Get(k); old != nil {
@@ -28,7 +35,7 @@ func (p *Provider) Allocate(ctx context.Context, scope guestbridge.Context, clai
 			if err := json.Unmarshal(old, &e); err != nil {
 				return err
 			}
-			if e.Claim != claim {
+			if e.Claim != claim || original != nil && (e.Original == nil || !sameExact(*e.Original, *original)) {
 				return fsapi.Stale
 			}
 			return nil
@@ -47,7 +54,24 @@ func (p *Provider) Allocate(ctx context.Context, scope guestbridge.Context, clai
 		if err = p.putPrincipal(tx, claim, ps); err != nil {
 			return err
 		}
-		return put(b, k, entry{Version: ledgerVersion, Claim: claim, Status: "ALLOCATED"})
+		e := entry{Version: ledgerVersion, Claim: claim, Status: "ALLOCATED", Original: original}
+		if original != nil {
+			raw, err := json.Marshal(e)
+			if err != nil {
+				return err
+			}
+			if uint64(len(raw)) > p.config.ClaimCreditBytes {
+				return fsapi.NoSpace
+			}
+			if err = p.reserveCredit(tx, "retained-credit", p.config.ClaimCreditBytes, p.config.MaxRetainedBytes); err != nil {
+				return err
+			}
+			if err = p.reserveCredit(tx, "source-credit", p.config.SourceCreditBytes, p.config.MaxSourceBytes); err != nil {
+				return err
+			}
+			e.RetainedCredit, e.SourceCredit = p.config.ClaimCreditBytes, p.config.SourceCreditBytes
+		}
+		return put(b, k, e)
 	})
 }
 
@@ -110,7 +134,7 @@ func (p *Provider) Reserve(ctx context.Context, b guestbridge.Binding) (guestbri
 		if err != nil {
 			return err
 		}
-		if !ok || e.Gap || e.Claim != b.Call.Claim {
+		if !ok || e.Gap || e.Claim != b.Call.Claim || e.Original != nil && !sameBinding(*e.Original, b) {
 			return fsapi.Permission
 		}
 		if e.Status != "ALLOCATED" {
@@ -208,6 +232,9 @@ func (p *Provider) Cancel(ctx context.Context, scope guestbridge.Context, claim 
 			return fsapi.Permission
 		}
 		if e.Status == "ALLOCATED" || e.Status == "RESERVED" {
+			if e.Original != nil && e.PreparationStage != "" && e.PreparationStage != "UNPREPARED" {
+				return fsapi.Permission
+			}
 			e.Gap = true
 			e.Status = "DECLINED"
 			return put(p.bucket(tx, "claims"), claimKey(claim), e)
@@ -243,7 +270,7 @@ func (p *Provider) ResolveGap(ctx context.Context, scope guestbridge.Context, cl
 		if err != nil {
 			return err
 		}
-		if !ok || e.Claim != claim || e.Plan != nil || e.Outcome != nil || len(e.Result) != 0 {
+		if !ok || e.Claim != claim || e.Plan != nil || e.Outcome != nil || len(e.Result) != 0 || e.Original != nil && e.PreparationStage != "" && e.PreparationStage != "UNPREPARED" {
 			return fsapi.Permission
 		}
 		if e.Status != "ALLOCATED" && e.Status != "RESERVED" && e.Status != "DECLINED" {

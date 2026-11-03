@@ -720,3 +720,8 @@ there is no automatic downgrade. It preserves genuine normal Publication proof
 and uses a separate verified CONTROLLED_LOCAL cut with null Result.Publication.
 The foundation supplies codecs and mandatory controller seams, not a durable
 token engine, physical guest barrier, recovery activation or runtime serving.
+
+The separately selected controlled-only successor is specified in
+[Retained-9p-controlled.md](Retained-9p-controlled.md). Its minor2/schema3
+allocation/gap operations and response verification union do not extend either
+closed1.0 or1.1 schema and supply no normal publication authority.

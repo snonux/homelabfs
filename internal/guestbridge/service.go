@@ -61,6 +61,15 @@ func New(ctx context.Context, c Config) (*Service, error) {
 	}
 	s := &Service{controller: parseID(controller), config: c, sessions: make(map[string]*session)}
 	for _, scope := range c.Scopes {
+		for _, provider := range []any{c.Claims, c.Execution} {
+			if bound, ok := provider.(interface {
+				CheckBridgeProtocol(context.Context, Context, *Protocol) error
+			}); ok {
+				if err := bound.CheckBridgeProtocol(ctx, scope, c.sessionProtocol(scope.Session)); err != nil {
+					return nil, err
+				}
+			}
+		}
 		if protocol := c.sessionProtocol(scope.Session); protocol != nil {
 			if err := c.ViewProtocol.CheckEnrollment(ctx, scope, *protocol); err != nil {
 				return nil, err
@@ -177,8 +186,13 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 	if c.Op != "HELLO" && !hello {
 		return nil, fsapi.Permission
 	}
+	// The signed source/event producer is a later runtime adapter. A codec-valid
+	// controlled view exchange cannot stand in for its missing verified receipt.
+	if c.Protocol != nil && *c.Protocol == ControlledProtocol() && (isViewExtension(c.Op) || c.Op == "VIEW_POLL" || c.Op == "VIEW_ACK") {
+		return nil, fsapi.Unsupported
+	}
 	ctx = observeCommand(ctx, n, s.controller, c, raw)
-	if c.Protocol != nil && c.Op != "HELLO" {
+	if c.Protocol != nil && c.Op != "HELLO" && !isAllocation(c.Op) {
 		if err := s.config.ViewProtocol.CheckRequest(ctx, c.Context, c.Op, bytes.Clone(c.Payload)); err != nil {
 			return nil, err
 		}
@@ -191,6 +205,8 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 		ss.Hello = true
 		s.mu.Unlock()
 		payload = map[string]any{"status": "ACCEPTED", "selection": json.RawMessage(c.Payload)}
+	case "ALLOCATE", "GAP_RESOLVE":
+		payload, err = s.allocation(ctx, c)
 	case "CALL":
 		payload, err = s.call(ctx, c)
 	case "QUERY", "CANCEL":
@@ -220,7 +236,11 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 		}
 	case "RETIRE":
 		var b json.RawMessage
-		b, err = s.config.Claims.Retire(ctx, c.Context, bytes.Clone(c.Payload))
+		if c.Protocol != nil && *c.Protocol == ControlledProtocol() {
+			b, err = s.retireControlled(ctx, c)
+		} else {
+			b, err = s.config.Claims.Retire(ctx, c.Context, bytes.Clone(c.Payload))
+		}
 		if err == nil {
 			err = validateControlResponse(c, b)
 		}
@@ -270,6 +290,9 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 	response := map[string]any{"cell": c.Cell, "context": c.Context, "op": c.Op, "payload": payload}
 	if c.Protocol != nil {
 		response["protocol"] = c.Protocol
+		if *c.Protocol == ControlledProtocol() {
+			response["verification"] = nil
+		}
 	}
 	return marshal(response)
 }

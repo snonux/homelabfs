@@ -1,0 +1,103 @@
+{
+  "packages": [
+    "./..."
+  ],
+  "commands": [
+    {
+      "name": "build",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ]
+    },
+    {
+      "name": "vet",
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ]
+    },
+    {
+      "name": "errcheck",
+      "argv": [
+        "errcheck",
+        "./..."
+      ]
+    },
+    {
+      "name": "lint",
+      "argv": [
+        "golangci-lint",
+        "run",
+        "--timeout=3m",
+        "./..."
+      ]
+    },
+    {
+      "name": "freebsd",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "0"
+      }
+    },
+    {
+      "name": "full-root",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-count=1",
+        "-timeout=600s",
+        "./..."
+      ],
+      "timeout": 1200
+    },
+    {
+      "name": "freebsd-cgo-controlledruntime",
+      "argv": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "@EVIDENCE@/controlledruntime-freebsd.test",
+        "./internal/controlledruntime"
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "1",
+        "CC": "zig cc -target x86_64-freebsd"
+      },
+      "timeout": 600
+    },
+    {
+      "name": "freebsd-cgo-fuseadapter",
+      "argv": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "@EVIDENCE@/fuseadapter-freebsd.test",
+        "./internal/fuseadapter"
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "1",
+        "CC": "zig cc -target x86_64-freebsd"
+      },
+      "timeout": 600
+    }
+  ],
+  "tmp": "/tmp/hfsn-yd75aey8",
+  "scope": "Finaln04 controlled1.2 allocation/gap/credentialretirement/protocolpinning afterR1Cancelguard/R2CLEAN, rootFFbase74ff43e. Alllocalnonrace/FUSEoff pluscompile-onlyactualFreeBSDCGO1current-modulecompatibility. No runtime/kernel/sourceverificationproducerproof."
+}

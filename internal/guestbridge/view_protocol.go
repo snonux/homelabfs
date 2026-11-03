@@ -130,7 +130,7 @@ func DecodeCommandVersion(b []byte, minor uint16) (Command, error) {
 	if minor == 0 {
 		return DecodeCommand(b)
 	}
-	if minor != 1 {
+	if minor != 1 && minor != 2 {
 		return Command{}, fsapi.Unsupported
 	}
 	v, err := Canonical(b)
@@ -138,7 +138,7 @@ func DecodeCommandVersion(b []byte, minor uint16) (Command, error) {
 		return Command{}, err
 	}
 	o, err := object(v, "cell", "context", "op", "payload", "protocol", "reclaim")
-	if err != nil || !uintRange(o["cell"], 1, MaxCell) || validateContext(o["context"]) != nil || validateProtocol(o["protocol"]) != nil {
+	if err != nil || !uintRange(o["cell"], 1, MaxCell) || validateContext(o["context"]) != nil || validateProtocolVersion(o["protocol"], minor) != nil {
 		return Command{}, fsapi.Invalid
 	}
 	if o["reclaim"] != nil && validateAck(o["reclaim"]) != nil {
@@ -149,7 +149,18 @@ func DecodeCommandVersion(b []byte, minor uint16) (Command, error) {
 		return Command{}, fsapi.Invalid
 	}
 	if c.Op == "HELLO" {
-		err = validateProtocol(o["payload"])
+		err = validateProtocolVersion(o["payload"], minor)
+	} else if minor == 2 && isAllocation(c.Op) {
+		err = validatePayload("CALL", o["payload"], nil)
+		if err == nil && c.Payload != nil {
+			var call Call
+			_ = json.Unmarshal(c.Payload, &call)
+			if call.Intent.Opcode == "DRAIN_WRITE" {
+				err = fsapi.Permission
+			}
+		}
+	} else if minor == 2 && c.Op == "RETIRE" {
+		err = validateControlledRetirement(o["payload"])
 	} else if isViewExtension(c.Op) {
 		err = validateViewPayload(c.Context, c.Op, o["payload"])
 	} else if c.Op == "VIEW_ACK" {
@@ -163,12 +174,18 @@ func DecodeCommandVersion(b []byte, minor uint16) (Command, error) {
 	return c, nil
 }
 
-func validateProtocol(v any) error {
+func validateProtocol(v any) error { return validateProtocolVersion(v, 1) }
+
+func validateProtocolVersion(v any, minor uint16) error {
 	raw, err := marshal(v)
 	if err != nil {
 		return err
 	}
-	expected, err := marshal(ViewProtocol())
+	selected := ViewProtocol()
+	if minor == 2 {
+		selected = ControlledProtocol()
+	}
+	expected, err := marshal(selected)
 	if err != nil || !bytes.Equal(raw, expected) {
 		return fsapi.Unsupported
 	}
@@ -179,7 +196,7 @@ func isViewExtension(op string) bool {
 }
 func commandMinor(c Command) uint16 {
 	if c.Protocol != nil {
-		return 1
+		return uint16(c.Protocol.BridgeMinor)
 	}
 	return 0
 }
@@ -198,7 +215,7 @@ func prepareProtocols(c *Config) error {
 		return fsapi.Invalid
 	}
 	if c.Protocol != nil {
-		if *c.Protocol != ViewProtocol() || missing(c.ViewProtocol) {
+		if !supportedProtocol(*c, *c.Protocol) || missing(c.ViewProtocol) {
 			return fsapi.Invalid
 		}
 		p := *c.Protocol
@@ -226,7 +243,7 @@ func prepareProtocols(c *Config) error {
 				break
 			}
 		}
-		if !known || p != ViewProtocol() {
+		if !known || !supportedProtocol(*c, p) {
 			return fsapi.Invalid
 		}
 		protocols[id] = p

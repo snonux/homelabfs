@@ -1,0 +1,21 @@
+{
+  "docs/spec/Retained-9p-controlled.md": "e310691267c1b3e70ce6a99a4041cbf602c5ff48daf95079744c4d04584da3ed",
+  "docs/spec/Retained-9p-protocol.md": "c490621b93819c3e65f2f1a830055f440389849da803f165821d578e95968494",
+  "docs/spec/retained9p-fixtures/controlled.json": "596a8feb05ef7e651352da934694144f9527404cd1697b45e68870a5dd1ee036",
+  "internal/controlledvalidation/allocation.go": "058a558f85215d4976035178d41a807d7b5342e613c63d69b247353c8f836735",
+  "internal/controlledvalidation/allocation_test.go": "fa380f2be57b115dd8399329e415df896191fca365790625f7ba06780c7db733",
+  "internal/controlledvalidation/claims.go": "d831672e08f8d803bf860eff1565a46252e88d9399d1e516b57c91eb5f656f8b",
+  "internal/controlledvalidation/provider.go": "27eec321f188a4cf299e498843fa18d652e2e20ebb8aa65dd51717191cca9964",
+  "internal/controlledvalidation/retirement.go": "6c0095423a56e0c1d1a705dc320e7e17777a5af45bf964b1958cd730518bf278",
+  "internal/guestbridge/codec.go": "19d612392454968e9ce94886f0fac015f16b65d1282c7a9c8cd2dd9a95113ecc",
+  "internal/guestbridge/controlled_protocol.go": "15d294666375b13075ec632d45b0a4c01b888946626f561792bdbc047e482a75",
+  "internal/guestbridge/controlled_protocol_test.go": "acde340c823be173bded58f90ec484e5fa6c17663b1f5986204047be49c4f8ab",
+  "internal/guestbridge/endpoint.go": "08ce6f71a9ddb9e1b04d17f4e51ebe9e97fc8c7117e15caaf598caf2554a0ad4",
+  "internal/guestbridge/service.go": "95296a705e62dc28e09634c6071f41f3a9a771249474266228b562672f32b6b4",
+  "internal/guestbridge/verification.go": "b83cc49ab81f6d4c422e24a18711aa7786d46018cc452887abe3bb498ca3a561",
+  "internal/guestbridge/view_protocol.go": "842a4e3568821fd89a6ca4c37abd9797a9a90f568b9813187fe0a4f8e94ea6ce",
+  "internal/viewcontrol/controlled_protocol_test.go": "16b1de5f7a55d86ac44e69843607e174c55f04923020d2b81e19ef6823a54001",
+  "internal/viewcontrol/controller.go": "f45829da6f05e3a3f02fff6ffa090eb2d0bd54064b644151c1dd0d8d46da2d1c",
+  "internal/viewcontrol/recall.go": "310e30c3b084f918dfd0a2e944efbaf81d4d8233998a5e27e8dfb3f4adde1fa9",
+  "internal/viewcontrol/tickets.go": "e074bed45fd400e1a5f3d4eed060ac630258d386349a2789fa060ece11fe7ed2"
+}

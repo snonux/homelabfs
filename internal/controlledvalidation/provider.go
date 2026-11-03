@@ -26,6 +26,8 @@ const ledgerVersion = "homelabfs-private-controlled-validation/1"
 // Enrollment is the operator-approved complete synthetic scope. Both endpoint
 // keys additionally sign these exact bytes, proving acceptance of this profile.
 type Enrollment struct {
+	// Protocol pins explicit controlled successor enrollment; nil preserves old profiles.
+	Protocol          *guestbridge.Protocol `json:",omitempty"`
 	Profile           fsservice.ValidationProfile
 	Scope             guestbridge.Context
 	Endpoint          guestbridge.Endpoint
@@ -79,6 +81,7 @@ type Provider struct {
 type entry struct {
 	Version                      string
 	Claim                        guestbridge.Claim
+	Original                     *guestbridge.Binding `json:",omitempty"`
 	Binding                      guestbridge.Binding
 	Status                       string
 	PreparationStage             string
@@ -125,7 +128,7 @@ func New(ctx context.Context, c Config) (*Provider, error) {
 	if err != nil {
 		return nil, err
 	}
-	if validateEnrollment(e) != nil || bytes.Equal(e.HostKey, e.GuestKey) || !e.Ledger.Valid() || !e.Profile.Disposable || e.Profile.Name == "" || len(e.HostKey) != ed25519.PublicKeySize || len(e.GuestKey) != ed25519.PublicKeySize || !ed25519.Verify(c.Operator, raw, a.OperatorSignature) || !ed25519.Verify(e.HostKey, raw, a.HostSignature) || !ed25519.Verify(e.GuestKey, raw, a.GuestSignature) {
+	if e.Protocol != nil && *e.Protocol != guestbridge.ControlledProtocol() || validateEnrollment(e) != nil || bytes.Equal(e.HostKey, e.GuestKey) || !e.Ledger.Valid() || !e.Profile.Disposable || e.Profile.Name == "" || len(e.HostKey) != ed25519.PublicKeySize || len(e.GuestKey) != ed25519.PublicKeySize || !ed25519.Verify(c.Operator, raw, a.OperatorSignature) || !ed25519.Verify(e.HostKey, raw, a.HostSignature) || !ed25519.Verify(e.GuestKey, raw, a.GuestSignature) {
 		return nil, fsapi.Permission
 	}
 	journal, err := c.Service.ControlledJournalInfo(ctx, e.Profile)
@@ -175,6 +178,10 @@ func New(ctx context.Context, c Config) (*Provider, error) {
 	}
 	// Roots and policy keys are retained by value, not caller-owned slices.
 	c.Operator = bytes.Clone(c.Operator)
+	if e.Protocol != nil {
+		selected := *e.Protocol
+		c.Authorization.Enrollment.Protocol = &selected
+	}
 	c.Authorization.Enrollment.HostKey = bytes.Clone(e.HostKey)
 	c.Authorization.Enrollment.GuestKey = bytes.Clone(e.GuestKey)
 	filename := filepath.Join(c.Directory, "controlled-validation-v1.db")
@@ -221,7 +228,8 @@ func New(ctx context.Context, c Config) (*Provider, error) {
 			Profile             fsservice.ValidationProfile
 			Ledger              fsapi.UUID
 			Operator            []byte
-		}{2, e.Scope, e.Profile, e.Ledger, c.Operator})
+			Protocol            *guestbridge.Protocol `json:",omitempty"`
+		}{2, e.Scope, e.Profile, e.Ledger, c.Operator, e.Protocol})
 		if err != nil {
 			return err
 		}

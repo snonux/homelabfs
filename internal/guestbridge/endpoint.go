@@ -112,7 +112,11 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 	if e != nil {
 		return 0, e
 	}
-	if (f.Minor == 1) != (t.service.config.sessionProtocol(f.Session.String()) != nil) {
+	expectedMinor := uint16(0)
+	if protocol := t.service.config.sessionProtocol(f.Session.String()); protocol != nil {
+		expectedMinor = uint16(protocol.BridgeMinor)
+	}
+	if f.Minor != expectedMinor {
 		return 0, fsapi.Unsupported
 	}
 	cellID, index, within, e := position(offset)
@@ -167,7 +171,7 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 					return 0, fsapi.WouldBlock
 				}
 				if t.incomplete(f.Session.String()) >= 16 ||
-					f.Minor == 1 && !r.Control && t.incompleteOrdinary(f.Session.String()) >= 12 {
+					f.Minor >= 1 && !r.Control && t.incompleteOrdinary(f.Session.String()) >= 12 {
 					r.Release()
 					return 0, fsapi.WouldBlock
 				}
@@ -498,7 +502,7 @@ func controlCommand(c Command) bool {
 		}
 		return call.Intent.Opcode == "DRAIN_WRITE"
 	}
-	return c.Op != "HELLO" && c.Op != "CALL"
+	return c.Op != "HELLO" && c.Op != "CALL" && c.Op != "ALLOCATE"
 }
 func releaseCell(c *cell) {
 	c.released = true
