@@ -37,6 +37,7 @@ func (s *Service) prepare(ctx context.Context, b Binding, o Captured) (Prepared,
 		rights uint32
 		dst    *fsapi.ObjectID
 	}
+	var transientForget bool
 	var inputs []capInput
 	switch op {
 	case "ROOT":
@@ -111,6 +112,14 @@ func (s *Service) prepare(ctx context.Context, b Binding, o Captured) (Prepared,
 				return Prepared{}, fsapi.NameTooLong
 			}
 		}
+		if op == "FORGET" {
+			// Every wire grant owns exactly one capability reference. Counts
+			// cannot consume another token's lookup obligation.
+			if a.number("count") != 1 || g.Cap.Kind != "PATH" {
+				return Prepared{}, fsapi.Invalid
+			}
+			transientForget = g.NoLookup
+		}
 		*in.dst = capObject(g.Cap)
 	}
 	if raw, ok := a["description"]; ok && string(raw) != "null" {
@@ -154,6 +163,13 @@ func (s *Service) prepare(ctx context.Context, b Binding, o Captured) (Prepared,
 			return Prepared{}, fsapi.Unsupported
 		}
 	}
+	if transientForget {
+		preparer, ok := o.(TransientForgetCaptured)
+		if !ok {
+			return Prepared{}, fsapi.Unsupported
+		}
+		return preparer.PrepareTransientForget(ctx, b, c)
+	}
 	return o.Prepare(ctx, b, c)
 }
 
@@ -168,7 +184,7 @@ func (s *Service) resolve(ctx context.Context, b Binding, cap Capability, rights
 	owned := *g
 	owned.Ancestors = append([]ancestor(nil), g.Ancestors...)
 	s.mu.Unlock()
-	if description {
+	if description || b.Call.Intent.Opcode == "FORGET" {
 		return owned, nil
 	}
 	cred := guestCred(b.Call.Credentials)

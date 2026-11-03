@@ -58,7 +58,10 @@ as fresh operations or replace the original durable origin.
 `Views` owns verified inventory, frozen manifests, page provenance/reservations,
 recall phases and reconstructed recovery. `ValidateDrain` receives the entire
 original binding. A previously captured exited-process credential may be used
-only for its separately verified retained dirty-page obligation. No timeout,
+only for its separately verified retained dirty-page obligation or exact original-
+issuer FORGET/final DESCRIPTION_RELEASE cleanup. Cleanup compares the complete
+live scoped grant and original canonical credential hash/revision; it cannot
+revive an ordinary call, create authority, or clear the process exit marker. No timeout,
 disconnect, hash-only manifest or new UUID proves quiescence or continuity.
 The bridge validates domain/session/scope and closed response unions; this
 package does not implement guest PTE/TLB/MMU barriers.
@@ -70,6 +73,17 @@ attach restriction. Description grants retain issued access through chmod,
 unlink and trusted transfers. Sequenced process exit and final description
 release are distinct from native fh close. Retained capability, revision and
 close-sequence maps have finite limits and never evict unresolved identities.
+`MaxCapabilities` bounds live grants; `MaxCapabilityIdentities` separately bounds
+all nonreused issuance rows (default 65536), including released tombstones. Exact
+FORGET/count1 closes one PATH token, with an optional lookup pin belonging only
+to that token. READDIR grants use the typed `TransientForgetCaptured` preparation
+seam to protect a grant-only closure without dropping a service lookup. Native
+commands cannot select this seam. The controlled provider implements it; normal
+execution remains gated and refuses that seam until its executor implements it.
+Private bridge snapshots and exact controlled-ledger scope bytes carry capability
+lifetime schema 2. Old unclassified snapshots/ledgers are refused, and older
+readers cannot open the new exact ledger scope. There is no in-place migration
+or authority to delete old ledgers; use new disposable lab resources.
 
 RESUME currently returns BLOCKED: no controller ledger reconstruction/install
 API is implemented. An opaque Views callback, matching UUIDs or a hash-only
@@ -119,7 +133,7 @@ must enforce the same captured bound under their serialized service seam.
 
 Bridge1.1 is an explicit opt-in foundation described in
 [view leases](../../docs/spec/Retained-9p-view-leases.md). Config.Protocol selects
-its exact schema2/features2047 tuple for all enrolled sessions, or the mutually
+its exact schema 2/features2047 tuple for all enrolled sessions, or the mutually
 exclusive Config.SessionProtocols map selects1.1 for named sessions while
 unlisted enrolled sessions retain1.0. Configuration is copied and cannot be
 changed by HELLO. Every1.1 frame/body/reply binds that version; old readers and

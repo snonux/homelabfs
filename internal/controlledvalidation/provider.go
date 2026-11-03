@@ -216,11 +216,12 @@ func New(ctx context.Context, c Config) (*Provider, error) {
 			return err
 		}
 		scope, err := json.Marshal(struct {
-			Scope    guestbridge.Context
-			Profile  fsservice.ValidationProfile
-			Ledger   fsapi.UUID
-			Operator []byte
-		}{e.Scope, e.Profile, e.Ledger, c.Operator})
+			CapabilityLifetimes uint32
+			Scope               guestbridge.Context
+			Profile             fsservice.ValidationProfile
+			Ledger              fsapi.UUID
+			Operator            []byte
+		}{2, e.Scope, e.Profile, e.Ledger, c.Operator})
 		if err != nil {
 			return err
 		}

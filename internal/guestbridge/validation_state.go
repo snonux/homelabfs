@@ -32,13 +32,14 @@ type validationAncestor struct {
 }
 
 type validationSnapshot struct {
-	Controller     fsapi.UUID
-	Context        Context
-	Generation     fsapi.UUID
-	Credentials    map[string][]byte
-	Exited         map[string]uint64
-	Grants         map[string]*grant
-	CloseSequences map[string]uint64
+	CapabilityLifetimes uint32
+	Controller          fsapi.UUID
+	Context             Context
+	Generation          fsapi.UUID
+	Credentials         map[string][]byte
+	Exited              map[string]uint64
+	Grants              map[string]*grant
+	CloseSequences      map[string]uint64
 }
 
 func (s *Service) restoreValidation(ctx context.Context, scope Context) error {
@@ -54,7 +55,7 @@ func (s *Service) restoreValidation(ctx context.Context, scope Context) error {
 	if err = json.Unmarshal(raw, &snapshot); err != nil {
 		return err
 	}
-	if snapshot.Context != scope || !snapshot.Controller.Valid() {
+	if snapshot.CapabilityLifetimes != 2 || snapshot.Context != scope || !snapshot.Controller.Valid() {
 		return fsapi.Permission
 	}
 	s.mu.Lock()
@@ -64,7 +65,7 @@ func (s *Service) restoreValidation(ctx context.Context, scope Context) error {
 	// capabilities and descriptions cannot become live grants in that generation.
 	// Credential conflicts and exited process incarnations remain protected.
 
-	if len(snapshot.Grants) > s.config.MaxCapabilities || len(snapshot.Credentials) > s.config.MaxCredentialRevisions {
+	if len(snapshot.Grants) > s.config.MaxCapabilityIdentities || liveGrants(snapshot.Grants) > s.config.MaxCapabilities || len(snapshot.Credentials) > s.config.MaxCredentialRevisions {
 		return fsapi.NoSpace
 	}
 	for key, g := range snapshot.Grants {
@@ -190,7 +191,7 @@ func (s *Service) prepareValidationResult(ctx context.Context, b Binding, out Ou
 	if err != nil {
 		return nil, nil, err
 	}
-	snapshot, err := json.Marshal(validationSnapshot{Controller: s.controller, Context: proposed.Context, Generation: proposed.Generation, Credentials: proposed.Credentials, Exited: proposed.Exited, Grants: proposed.Grants, CloseSequences: proposed.CloseSequences})
+	snapshot, err := json.Marshal(validationSnapshot{CapabilityLifetimes: 2, Controller: s.controller, Context: proposed.Context, Generation: proposed.Generation, Credentials: proposed.Credentials, Exited: proposed.Exited, Grants: proposed.Grants, CloseSequences: proposed.CloseSequences})
 	return result, snapshot, err
 }
 

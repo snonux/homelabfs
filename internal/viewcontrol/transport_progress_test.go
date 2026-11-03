@@ -75,7 +75,11 @@ func (r *rig) transportRead(i int, c guestbridge.Command) []byte {
 	if c.Op == "VIEW_POLL" {
 		node = r.natives[i].Endpoint.RecallNode
 	}
-	deadline := time.NewTimer(3 * time.Second)
+	responseWait := r.transportResponseWait
+	if responseWait == 0 {
+		responseWait = 3 * time.Second
+	}
+	deadline := time.NewTimer(responseWait)
 	defer deadline.Stop()
 	tick := time.NewTicker(time.Millisecond)
 	defer tick.Stop()

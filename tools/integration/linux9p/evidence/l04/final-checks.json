@@ -1,0 +1,75 @@
+[
+  {
+    "argv": [
+      "go",
+      "test",
+      "-race",
+      "./internal/controlledvalidation",
+      "./internal/viewcontrol",
+      "-run",
+      "TestBridge(ExitedIssuer|TransientForgetInterrupted)|TestPrivateLifetimeSchema|TestTransport(Lifetime|ForgetsExact)",
+      "-count=1",
+      "-timeout=120s"
+    ],
+    "exit": 0,
+    "log": "final-focused-race.log"
+  },
+  {
+    "argv": [
+      "go",
+      "build",
+      "./internal/guestbridge",
+      "./internal/controlledvalidation",
+      "./internal/fsservice",
+      "./internal/viewcontrol"
+    ],
+    "exit": 0,
+    "log": "final-build.log"
+  },
+  {
+    "argv": [
+      "go",
+      "vet",
+      "./internal/guestbridge",
+      "./internal/controlledvalidation",
+      "./internal/fsservice",
+      "./internal/viewcontrol"
+    ],
+    "exit": 0,
+    "log": "final-vet.log"
+  },
+  {
+    "argv": [
+      "errcheck",
+      "./internal/guestbridge",
+      "./internal/controlledvalidation",
+      "./internal/fsservice",
+      "./internal/viewcontrol"
+    ],
+    "exit": 0,
+    "log": "final-errcheck.log"
+  },
+  {
+    "argv": [
+      "staticcheck",
+      "./internal/guestbridge",
+      "./internal/controlledvalidation",
+      "./internal/fsservice",
+      "./internal/viewcontrol"
+    ],
+    "exit": 0,
+    "log": "final-staticcheck.log"
+  },
+  {
+    "argv": [
+      "golangci-lint",
+      "run",
+      "./internal/guestbridge",
+      "./internal/controlledvalidation",
+      "./internal/fsservice",
+      "./internal/viewcontrol"
+    ],
+    "exit": 0,
+    "log": "final-lint.log"
+  }
+]

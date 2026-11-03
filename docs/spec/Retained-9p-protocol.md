@@ -403,6 +403,32 @@ Delayed mapped writes retain that exact grant and per-page provenance, never a
 root writeback fid's rights. Process-exit/close are sequenced kernel assertions,
 not inferred from host close, missing PID or a reused fid.
 
+Each issued PATH token owns one reference. `FORGET` closes that exact token with
+`count=1`; it never aggregates other tokens for the same object. A LOOKUP or
+CREATE/MKDIR/SYMLINK path owns its own filesystem lookup pin. A READDIR entry is
+a transient path grant without such a pin: its protected FORGET closes only the
+bridge authority. Forget verifies the full live scoped grant and current
+credentials, but does not rewalk an ancestor that may already have been removed.
+It cannot close DESCRIPTION, DOMAIN or ROOT. After PROCESS_EXIT, only the exact
+retained original credential bytes/revision whose hash bound the still-live
+grant may submit FORGET or final DESCRIPTION_RELEASE as cleanup. The full grant
+and scope must match; a changed credential, unknown/released token or ordinary
+path/data/issuance request remains refused. This exception only reduces existing
+authority and never removes the exited marker or revives a process. Existing
+original terminal claims remain replayable. Inode aliases retain each issued
+path token separately until their last local reference disappears. READDIR
+consumers close every returned transient token, including entries not emitted
+because a userspace buffer filled. Failure preserves the original result and
+uncertain lifetime work; transport ACK alone never closes a grant.
+
+Successful final DESCRIPTION_RELEASE closes its grant after the execution
+provider has verified description/view/dirty/source obligations. DESCRIPTION_CLOSE
+and PROCESS_EXIT do not themselves close descriptions that remain shared or have
+retained mapped obligations. Released grants remain nonreused identity tombstones;
+original terminal results and claim retirement evidence remain independently
+protected. Live capability admission excludes those tombstones, while a separate
+finite issuance identity budget still refuses further grants when exhausted.
+
 ## Operation and result unions
 
 HELLO payload is `{body_schema:1,bridge_major:1,bridge_minor:0,features:255,

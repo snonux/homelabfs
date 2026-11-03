@@ -176,11 +176,19 @@ type Claims interface {
 	Retire(context.Context, Context, json.RawMessage) (json.RawMessage, error)
 }
 
+// TransientForgetCaptured prepares a protected grant-only closure. Service calls
+// it only for an exact live PATH grant known to own no filesystem lookup pin.
+// It never authorizes a native command to omit a lookup obligation.
+type TransientForgetCaptured interface {
+	PrepareTransientForget(context.Context, Binding, fsapi.Command) (Prepared, error)
+}
+
 // Prepared is actual shared-service planning/observation at one committed RAM cut.
 type Prepared struct {
-	Command fsapi.Command
-	Plan    *fsservice.Planned
-	Result  fsapi.Result
+	TransientForget bool
+	Command         fsapi.Command
+	Plan            *fsservice.Planned
+	Result          fsapi.Result
 }
 
 // Outcome returns authoritative logical output plus exact verified publication.
@@ -252,6 +260,8 @@ type Config struct {
 	Planner                                 *fsservice.LogicalPlanner
 	Scopes                                  []Context
 	MaxCapabilities, MaxCredentialRevisions int
+	// MaxCapabilityIdentities bounds nonreused issuance rows, including tombstones.
+	MaxCapabilityIdentities int
 }
 type ancestor struct {
 	Parent                        fsapi.ObjectID
@@ -264,7 +274,9 @@ type grant struct {
 	Ancestors []ancestor
 	Handle    fsapi.OpenHandle
 	Released  bool
-	Sequence  uint64
+	// NoLookup distinguishes transient READDIR paths from lookup-pinned paths.
+	NoLookup bool
+	Sequence uint64
 }
 type session struct {
 	Generation     fsapi.UUID

@@ -123,7 +123,7 @@ func (p *Provider) execute(ctx context.Context, b guestbridge.Binding, prepare f
 				cp := fsservice.ControlledPlan{Operation: b.Operation, Result: fsapi.Result{Code: code}}
 				plan = &cp
 			} else {
-				if cap.plan == nil || prepared.Command.Operation != cap.plan.Command.Operation {
+				if cap.plan == nil || prepared.Command.Operation != cap.plan.Command.Operation || prepared.TransientForget != cap.plan.TransientForget {
 					return fsapi.Stale
 				}
 				plan = cap.plan
@@ -235,7 +235,18 @@ func (c *captured) Lookup(ctx context.Context, id fsapi.ObjectID, name string) (
 	return c.cut.Lookup(c.owned, id, name)
 }
 
-func (c *captured) Prepare(_ context.Context, b guestbridge.Binding, command fsapi.Command) (guestbridge.Prepared, error) {
+func (c *captured) Prepare(ctx context.Context, b guestbridge.Binding, command fsapi.Command) (guestbridge.Prepared, error) {
+	return c.prepare(ctx, b, command, false)
+}
+
+func (c *captured) PrepareTransientForget(ctx context.Context, b guestbridge.Binding, command fsapi.Command) (guestbridge.Prepared, error) {
+	if b.Call.Intent.Opcode != "FORGET" {
+		return guestbridge.Prepared{}, fsapi.Invalid
+	}
+	return c.prepare(ctx, b, command, true)
+}
+
+func (c *captured) prepare(_ context.Context, b guestbridge.Binding, command fsapi.Command, transientForget bool) (guestbridge.Prepared, error) {
 	if !sameExact(c.binding, b) {
 		return guestbridge.Prepared{}, fsapi.Permission
 	}
@@ -284,6 +295,9 @@ func (c *captured) Prepare(_ context.Context, b guestbridge.Binding, command fsa
 		command.Lock.Owner = fsapi.LockOwner{Session: session, Generation: command.Generation, Token: token}
 	}
 	planner := c.cut.PlanControlled
+	if transientForget {
+		planner = c.cut.PlanTransientForget
+	}
 	if b.Call.Intent.Opcode == "DRAIN_WRITE" {
 		planner = c.cut.PlanControlledDrain
 	}
@@ -292,7 +306,7 @@ func (c *captured) Prepare(_ context.Context, b guestbridge.Binding, command fsa
 		return guestbridge.Prepared{}, err
 	}
 	c.plan = &plan
-	return guestbridge.Prepared{Command: plan.Command, Result: plan.Result}, nil
+	return guestbridge.Prepared{Command: plan.Command, Result: plan.Result, TransientForget: transientForget}, nil
 }
 
 // RecoverOutcome resolves the original local operation and exact protected

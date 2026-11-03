@@ -35,6 +35,7 @@ def main():
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--archive', type=Path, required=True)
     parser.add_argument('--development', action='store_true')
+    parser.add_argument('--task', default='vz3', help='owning project task identity')
     args = parser.parse_args()
     source = args.source.resolve(strict=True)
     archive = args.archive.resolve(strict=True)
@@ -77,7 +78,7 @@ def main():
         patches.append({'file': filename, 'sha256': digest(data), 'bytes': len(data)})
     (here / 'patches/series').write_text(''.join(p['file'] + '\n' for p in patches))
     manifest = {
-        'format': 1, 'project_task': 'vz3-development' if args.development else 'vz3', 'source_kind': 'upstream Linux reference', 'unfinished_mmap_development': args.development,
+        'format': 1, 'project_task': args.task + '-development' if args.development else args.task, 'source_kind': 'upstream Linux reference', 'unfinished_mmap_development': args.development,
         'version': '6.1.190', 'commit': COMMIT,
         'tag': 'v6.1.190', 'tag_object': '9ad12a4c0c7a36f365c13ea17d88499618440a7b',
         'git_url': 'https://github.com/gregkh/linux.git',

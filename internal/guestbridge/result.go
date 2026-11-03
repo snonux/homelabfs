@@ -204,10 +204,13 @@ func (s *Service) issue(b Binding, a fsapi.Attr, kind string, rights uint32, han
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ss := s.sessions[b.Context.Session]
-	if len(ss.Grants) >= s.config.MaxCapabilities {
+	if liveGrants(ss.Grants) >= s.config.MaxCapabilities || len(ss.Grants) >= s.config.MaxCapabilityIdentities {
 		return Capability{}, fsapi.NoSpace
 	}
-	ss.Grants[token] = &grant{Cap: cap, Ancestors: append([]ancestor(nil), path...), Handle: handle}
+	if _, exists := ss.Grants[token]; exists {
+		return Capability{}, fsapi.NoSpace
+	}
+	ss.Grants[token] = &grant{Cap: cap, Ancestors: append([]ancestor(nil), path...), Handle: handle, NoLookup: b.Call.Intent.Opcode == "READDIR" || kind == "ROOT" || kind == "DOMAIN"}
 	return cap, nil
 }
 func (s *Service) finishLifetime(b Binding, a arguments) {
@@ -215,6 +218,10 @@ func (s *Service) finishLifetime(b Binding, a arguments) {
 	defer s.mu.Unlock()
 	ss := s.sessions[b.Context.Session]
 	switch b.Call.Intent.Opcode {
+	case "FORGET":
+		if g := ss.Grants[a.cap("object").Token]; g != nil {
+			g.Released = true
+		}
 	case "DESCRIPTION_RELEASE":
 		if g := ss.Grants[a.cap("description").Token]; g != nil {
 			if s.privateValidation() {
@@ -255,4 +262,15 @@ func errnoNames() map[fsapi.Errno]string {
 
 func protectedMutation(op string) bool {
 	return oneOf(op, "CREATE", "MKDIR", "SYMLINK", "WRITE", "DRAIN_WRITE", "TRUNCATE", "SETATTR", "RENAME", "LINK", "UNLINK", "RMDIR", "SYNC")
+}
+
+// liveGrants excludes retired authority without removing nonreused identities.
+func liveGrants(grants map[string]*grant) int {
+	n := 0
+	for _, g := range grants {
+		if g != nil && !g.Released {
+			n++
+		}
+	}
+	return n
 }

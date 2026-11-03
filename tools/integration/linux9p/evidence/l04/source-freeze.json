@@ -1,0 +1,33 @@
+{
+  "base": "6f9b2b3",
+  "paths": {
+    "docs/spec/Retained-9p-protocol.md": "e9f632119e864bdaef5d196e62f95c33df177b1edf589d91dc6f6c857684cc32",
+    "internal/controlledvalidation/execution.go": "0ab2b76faf9eee8645258c02bd2e29268c6dbed8bbf479d4b1d6e187a70fccd4",
+    "internal/controlledvalidation/provider.go": "d86fe0432ae607a0fb3f8c1b97795123a19551962a075e122e5238848b7be8af",
+    "internal/controlledvalidation/regression_test.go": "bf2eebeb6ddff315e0c9974857b017987829665dad8be6836f88a9d9bbb59619",
+    "internal/fsservice/controlled.go": "51de41f7ffd8d9cf37314028fc16450bd1852799e4017d14395324db235347ec",
+    "internal/guestbridge/README.md": "fc9addf790889f046240d3ac455a1ce63d6dc87b6f2a129ce7924eb45e450cf0",
+    "internal/guestbridge/dispatch.go": "51e4fb8e6a182cdf741187c896d54bef38b49f9ce5b65a9c36ed9f7ad81baf61",
+    "internal/guestbridge/result.go": "d54d5ff77d48c248749c99504fc5e6e4ead59c05b49a5893a0ff9119af98c3f1",
+    "internal/guestbridge/service.go": "f61526fae31e3be6ba100e7da11f7cf8a51049bacf01021c55db1200b64d8103",
+    "internal/guestbridge/types.go": "0df9b96ec6331396a498277b620753516b9356bbea1ea540532b9662759d5db4",
+    "internal/guestbridge/validation_state.go": "e3ea45a45218f42338ca6b6c489710f5c26de4c89d19dde711d5efc6cd5d13ad",
+    "internal/viewcontrol/clean_release_test.go": "427b043a6ad887a89ae4aae43db8b7e5f4d903509cbd3fcf9307f82daa78ae13",
+    "internal/viewcontrol/controller_test.go": "9bebdc44ad32afb503ee4d3867d6d63149abccb41cb333f454de91fbe52f6083",
+    "internal/viewcontrol/transport_progress_test.go": "d12cfa117567027c1113b96f66215189aa1e3d02b3527baaa0bc790f19e6e215",
+    "tools/integration/linux9p/MMAP.md": "8a3ddad2994f724ba5f0f949c5083391fc7371e98cafac849976237fb2c2f920",
+    "tools/integration/linux9p/export.py": "9694c014b742053b921fed3e38e17ac7d427830d1edc2a3e33a777bec98bfb0d",
+    "tools/integration/linux9p/patches/0003-hfs1-guest-vfs.patch": "dc89c69c330c2043a3d8bc2d95949c60fac0dd8857fdcba1e34fa000e9145655",
+    "tools/integration/linux9p/source.json": "f7a940fbbde721e7c03628988eb88fe1bf1b2bd30733ffaa00d5b32aa2d9a2a7",
+    "internal/controlledvalidation/capability_test.go": "c9a51e2ad1f1338e444c1733217f908123359f91484489df0051c8de9e3d1742",
+    "internal/viewcontrol/capability_lifetime_test.go": "907bc16384594ec13857b35036a6abca1b3ba2af6cf00b7fef8fcf92b3f32415",
+    "tools/integration/linux9p/tests/reclaim/capture.py": "b486458ae50fb20017b77498ab329cb6a252b95f4776ab122dd248fae230e94e",
+    "tools/integration/linux9p/tests/reclaim/host-result.json": "ade4ef54ddb38e2033309505eb1830826e1df6c2a9ca3dd28b21a9d62d2bb57d",
+    "tools/integration/linux9p/tests/reclaim/inode_test.inc": "3b6a9fe6ccbedbd59110794b1f5afd029aa027320f8de593b8eb0741fbdd8dbf",
+    "tools/integration/linux9p/tests/reclaim/run.py": "d47abcb753c0a157b9a8ffb687b6ba4b5314e5bed39ffe78ec719ea1724ecb85",
+    "tools/integration/linux9p/tests/reclaim/test.c": "9e4772203d771d448b8e0effcffb7f6c1a5d6a6188a536d9f09f2b6b7d7e5e41"
+  },
+  "owned_raw_source": "/home/paul/tmp/codex/hfs-l04-20261103-pe5jz8w8/raw-source",
+  "full_suite_owner": "root",
+  "scope": "component-only; no kernel/runtime/platform/distributed/publication claim"
+}

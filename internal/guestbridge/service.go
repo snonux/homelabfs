@@ -30,6 +30,12 @@ func New(ctx context.Context, c Config) (*Service, error) {
 	if c.MaxCapabilities == 0 {
 		c.MaxCapabilities = 4096
 	}
+	if c.MaxCapabilityIdentities == 0 {
+		c.MaxCapabilityIdentities = 65536
+	}
+	if c.MaxCapabilityIdentities < c.MaxCapabilities || c.MaxCapabilityIdentities > 65536 {
+		return nil, fsapi.Invalid
+	}
 	if c.MaxCredentialRevisions == 0 {
 		c.MaxCredentialRevisions = 4096
 	}
@@ -302,7 +308,7 @@ func (s *Service) call(ctx context.Context, c Command) (any, error) {
 			return nil, err
 		}
 	}
-	if err = s.credentials(ctx, c.Context, call.Credentials, call.Intent.Opcode == "DRAIN_WRITE"); err != nil {
+	if err = s.credentials(ctx, c.Context, call.Credentials, call.Intent.Opcode == "DRAIN_WRITE" || s.originalCleanup(binding)); err != nil {
 		return callPayload(call.Claim, "REJECTED", code(err)), nil
 	}
 	state, err := s.config.Claims.Reserve(ctx, binding)
@@ -330,7 +336,7 @@ func (s *Service) executeCall(ctx context.Context, binding Binding, resume bool)
 	need := capNeeds(binding.Call.Intent)
 	s.mu.Lock()
 	ss := s.sessions[binding.Context.Session]
-	enough := len(ss.Grants)+ss.Reserved+need <= s.config.MaxCapabilities
+	enough := liveGrants(ss.Grants)+ss.Reserved+need <= s.config.MaxCapabilities && len(ss.Grants)+ss.Reserved+need <= s.config.MaxCapabilityIdentities
 	if enough {
 		ss.Reserved += need
 	}
@@ -353,7 +359,7 @@ func (s *Service) executeCall(ctx context.Context, binding Binding, resume bool)
 			return Prepared{}, fsapi.NoSpace
 		}
 		if s.privateValidation() {
-			if err := s.credentials(ctx, binding.Context, binding.Call.Credentials, binding.Call.Intent.Opcode == "DRAIN_WRITE"); err != nil {
+			if err := s.credentials(ctx, binding.Context, binding.Call.Credentials, binding.Call.Intent.Opcode == "DRAIN_WRITE" || s.originalCleanup(binding)); err != nil {
 				return Prepared{}, err
 			}
 		}
@@ -399,7 +405,43 @@ func (s *Service) executeCall(ctx context.Context, binding Binding, resume bool)
 	}
 	return callPayload(binding.Call.Claim, "ADMITTED", "OK"), nil
 }
-func (s *Service) credentials(ctx context.Context, c Context, cred Credentials, drain bool) error {
+
+// originalCleanup permits only authority reduction by the exact retained issuer
+// after process exit. It cannot admit a fresh credential revision or revive any
+// ordinary request, and preparation rechecks the same live grant before effects.
+func (s *Service) originalCleanup(b Binding) bool {
+	var a arguments
+	if json.Unmarshal(b.Call.Intent.Args, &a) != nil {
+		return false
+	}
+	var cap Capability
+	switch b.Call.Intent.Opcode {
+	case "FORGET":
+		cap = a.cap("object")
+		if cap.Kind != "PATH" || a.number("count") != 1 {
+			return false
+		}
+	case "DESCRIPTION_RELEASE":
+		cap = a.cap("description")
+		if cap.Kind != "DESCRIPTION" {
+			return false
+		}
+	default:
+		return false
+	}
+	raw, err := marshal(b.Call.Credentials)
+	if err != nil {
+		return false
+	}
+	key := b.Call.Credentials.Process + ":" + strconv.FormatUint(b.Call.Credentials.Revision, 10)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ss := s.sessions[b.Context.Session]
+	g := ss.Grants[cap.Token]
+	return g != nil && !g.Released && cap.Scope == b.Context && equalCap(g.Cap, cap) && cap.CredentialHash == digest(raw) && bytes.Equal(ss.Credentials[key], raw)
+}
+
+func (s *Service) credentials(ctx context.Context, c Context, cred Credentials, allowExited bool) error {
 	if err := s.config.Attestor.Verify(ctx, c, cred); err != nil {
 		return err
 	}
@@ -415,7 +457,7 @@ func (s *Service) credentials(ctx context.Context, c Context, cred Credentials, 
 		if !bytes.Equal(old, raw) {
 			return fsapi.Stale
 		}
-		if _, dead := ss.Exited[cred.Process]; dead && !drain {
+		if _, dead := ss.Exited[cred.Process]; dead && !allowExited {
 			return fsapi.Stale
 		}
 		return nil

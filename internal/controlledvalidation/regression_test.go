@@ -40,6 +40,9 @@ type bridgeHarness struct {
 }
 
 func newBridgeHarness(t *testing.T) *bridgeHarness {
+	return newBridgeHarnessLimits(t, 0)
+}
+func newBridgeHarnessLimits(t *testing.T, identities int) *bridgeHarness {
 	t.Helper()
 	f := newFixture(t)
 	scope := f.pc.Authorization.Enrollment.Scope
@@ -47,7 +50,7 @@ func newBridgeHarness(t *testing.T) *bridgeHarness {
 	root := f.newBinding("ROOT", map[string]any{}, false)
 	other := root.Call.Credentials
 	other.Process = id(67).String()
-	s, err := guestbridge.New(t.Context(), guestbridge.Config{Validation: f.config.Validation, Endpoint: n.Endpoint, Native: &nativeFacts{native: n}, Attestor: credentialSet{scope: scope, allowed: map[string]guestbridge.Credentials{root.Call.Credentials.Process: root.Call.Credentials, other.Process: other}}, Claims: f.provider, Execution: f.provider, Views: noViews{}, Scopes: []guestbridge.Context{scope}, MaxCapabilities: 5})
+	s, err := guestbridge.New(t.Context(), guestbridge.Config{Validation: f.config.Validation, Endpoint: n.Endpoint, Native: &nativeFacts{native: n}, Attestor: credentialSet{scope: scope, allowed: map[string]guestbridge.Credentials{root.Call.Credentials.Process: root.Call.Credentials, other.Process: other}}, Claims: f.provider, Execution: f.provider, Views: noViews{}, Scopes: []guestbridge.Context{scope}, MaxCapabilities: 5, MaxCapabilityIdentities: identities})
 	if err != nil {
 		t.Fatal(err)
 	}

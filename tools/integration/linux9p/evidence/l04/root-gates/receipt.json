@@ -1,0 +1,72 @@
+[
+  {
+    "check": "build",
+    "argv": [
+      "go",
+      "build",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.883
+  },
+  {
+    "check": "vet",
+    "argv": [
+      "go",
+      "vet",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 2.529
+  },
+  {
+    "check": "errcheck",
+    "argv": [
+      "errcheck",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 6.594
+  },
+  {
+    "check": "lint",
+    "argv": [
+      "golangci-lint",
+      "run",
+      "--timeout=3m",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 1.319
+  },
+  {
+    "check": "freebsd",
+    "argv": [
+      "go",
+      "build",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 6.143
+  },
+  {
+    "check": "full-root",
+    "argv": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-count=1",
+      "-timeout=600s",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 52.389
+  }
+]

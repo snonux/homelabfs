@@ -12,6 +12,7 @@ import (
 	"path"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/snonux/homelabfs/internal/controlledvalidation"
 	"github.com/snonux/homelabfs/internal/fsapi"
@@ -50,22 +51,23 @@ type attestorPrimitive struct {
 	credentials guestbridge.Credentials
 }
 type rig struct {
-	transportReclaim     []*guestbridge.Ack
-	transport            []*guestbridge.Transport
-	controlTickets       []uint64
-	t                    *testing.T
-	service              *fsservice.Service
-	config               fsservice.Config
-	controller           *Controller
-	cc                   Config
-	providers            []*controlledvalidation.Provider
-	bridges              []*guestbridge.Service
-	scopes               []guestbridge.Context
-	credentials          []guestbridge.Credentials
-	natives              []guestbridge.Native
-	domains              []guestbridge.Capability
-	next, tickets, cells []uint64
-	facts                *primitiveFacts
+	transportResponseWait time.Duration
+	transportReclaim      []*guestbridge.Ack
+	transport             []*guestbridge.Transport
+	controlTickets        []uint64
+	t                     *testing.T
+	service               *fsservice.Service
+	config                fsservice.Config
+	controller            *Controller
+	cc                    Config
+	providers             []*controlledvalidation.Provider
+	bridges               []*guestbridge.Service
+	scopes                []guestbridge.Context
+	credentials           []guestbridge.Credentials
+	natives               []guestbridge.Native
+	domains               []guestbridge.Capability
+	next, tickets, cells  []uint64
+	facts                 *primitiveFacts
 }
 type result struct {
 	Code, Data   string

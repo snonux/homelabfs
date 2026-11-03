@@ -28,6 +28,7 @@ type ControlledCut struct {
 // ControlledPlan is private validation recovery evidence, not a v1 journal kind
 // or a normal publication certificate. Persist it before ApplyControlled.
 type ControlledPlan struct {
+	TransientForget  bool
 	LookupPin        bool
 	Operation        fsapi.UUID
 	Command          fsapi.Command
@@ -136,7 +137,14 @@ func (c *ControlledCut) Lookup(ctx context.Context, id fsapi.ObjectID, name stri
 // and semantic output before any filesystem effect. maxEnd is used only for
 // delegated WRITE and after resolving the authoritative append offset.
 func (c *ControlledCut) PlanControlled(ctx context.Context, cred fsapi.Cred, command fsapi.Command, operation fsapi.UUID, allocation fsapi.ObjectID, maxEnd *int64) (ControlledPlan, error) {
-	return c.planControlled(ctx, cred, command, operation, allocation, maxEnd, false)
+	return c.planControlled(ctx, cred, command, operation, allocation, maxEnd, false, false)
+}
+
+// PlanTransientForget prepares a delegated capability closure which owns no
+// lookup pin. Only the bridge's retained exact grant can select this seam;
+// native commands and ordinary lookup-backed FORGET use PlanControlled.
+func (c *ControlledCut) PlanTransientForget(ctx context.Context, cred fsapi.Cred, command fsapi.Command, operation fsapi.UUID, allocation fsapi.ObjectID, maxEnd *int64) (ControlledPlan, error) {
+	return c.planControlled(ctx, cred, command, operation, allocation, maxEnd, false, true)
 }
 
 // PlanControlledDrain preserves the verified mmap positional offset even for an
@@ -151,9 +159,9 @@ func (c *ControlledCut) PlanControlledDrain(ctx context.Context, cred fsapi.Cred
 	if err := verifier.CheckDrain(ctx, command); err != nil {
 		return ControlledPlan{}, err
 	}
-	return c.planControlled(ctx, cred, command, operation, allocation, maxEnd, true)
+	return c.planControlled(ctx, cred, command, operation, allocation, maxEnd, true, false)
 }
-func (c *ControlledCut) planControlled(ctx context.Context, cred fsapi.Cred, command fsapi.Command, operation fsapi.UUID, allocation fsapi.ObjectID, maxEnd *int64, positionalDrain bool) (ControlledPlan, error) {
+func (c *ControlledCut) planControlled(ctx context.Context, cred fsapi.Cred, command fsapi.Command, operation fsapi.UUID, allocation fsapi.ObjectID, maxEnd *int64, positionalDrain, transientForget bool) (ControlledPlan, error) {
 	if !c.accessAllowed() || !operation.Valid() {
 		return ControlledPlan{}, fsapi.Invalid
 	}
@@ -175,6 +183,10 @@ func (c *ControlledCut) planControlled(ctx context.Context, cred fsapi.Cred, com
 	}
 	s.ids[operation] = true
 	cp := ControlledPlan{Operation: operation, Command: command.Clone(), Credentials: cred.Clone(), Before: s.selection.Through.Position, LookupPin: command.Operation == fsapi.Create || command.Operation == fsapi.Mkdir || command.Operation == fsapi.SymlinkOp || command.Operation == fsapi.Lookup}
+	cp.TransientForget = transientForget
+	if transientForget && (command.Operation != fsapi.Forget || command.Count != 1 || command.Handle != 0 || allocation.Valid()) {
+		return cp, fsapi.Invalid
+	}
 	command = command.Clone()
 	if len(command.Data) > s.config.Limits.IOBytes || len(command.Name) > 255 || len(command.NewName) > 255 || command.Size < 0 {
 		return cp, fsapi.Invalid
@@ -358,7 +370,7 @@ func (c *ControlledCut) planControlled(ctx context.Context, cred fsapi.Cred, com
 		}
 	case fsapi.Forget:
 		life := s.lifetimes[command.Object]
-		if life == nil || command.Count == 0 || command.Count > life.lookups {
+		if !transientForget && (life == nil || command.Count == 0 || command.Count > life.lookups) {
 			return cp, fsapi.Stale
 		}
 	case fsapi.DescriptorClose, fsapi.ProcessExit:
@@ -452,6 +464,12 @@ func (c *ControlledCut) applyControlled(ctx context.Context, p ControlledPlan, r
 		return fsapi.Result{}, fsapi.Stale
 	}
 	s := c.service
+	if p.TransientForget {
+		if p.Command.Operation != fsapi.Forget || p.Command.Count != 1 || p.Command.Handle != 0 || p.LookupPin || p.Pin != nil || p.Mutation != nil {
+			return fsapi.Result{}, fsapi.Invalid
+		}
+		return p.Result, nil
+	}
 	if p.TooLarge || p.Result.Code != fsapi.OK {
 		return p.Result, nil
 	}

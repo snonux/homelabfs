@@ -1,0 +1,10 @@
+{
+  "source": {
+    "fs/9p/hfs_session.c": "7d08ba7aa608249e8c4f7af11f8421efee5508b7569fcf60413e3d232af79f77",
+    "fs/9p/hfs.h": "fb1356cd87cfca300d0a9e689bde3302bd4ea6e7aabd99cf464b1823e8d655ca",
+    "fs/9p/hfs_view.h": "77072080c300c66062be346bac448d145ada4454e174a6d3fa5e5a629e54eee3",
+    "fs/9p/hfs_lease.h": "ce851b2f08a0f66afcacaa91482541cce5e739e2013990d143b5337361abc7e4"
+  },
+  "scope": "actual C retirement/result-owner code; primitive mutex/transport/proof fixtures; no VFS/runtime/source closure proof",
+  "primitive_u64": "unsigned long long, matching selected kernel ABI"
+}

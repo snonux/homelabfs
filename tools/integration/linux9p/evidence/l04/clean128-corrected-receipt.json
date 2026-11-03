@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "go",
+    "test",
+    "-race",
+    "./internal/viewcontrol",
+    "-run",
+    "^TestTransportClean128PressureReclaimsBefore129thGrant$",
+    "-count=1",
+    "-timeout=240s"
+  ],
+  "exit": 0,
+  "seconds": 117.33808832800423,
+  "asserted_component_response_seconds": 20,
+  "default_other_response_seconds": 3,
+  "test_sha256": "427b043a6ad887a89ae4aae43db8b7e5f4d903509cbd3fcf9307f82daa78ae13",
+  "scope": "bounded component serialization/progress; no native latency acceptance"
+}

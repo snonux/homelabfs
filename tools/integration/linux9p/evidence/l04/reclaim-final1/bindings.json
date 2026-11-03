@@ -1,0 +1,8 @@
+{
+  "session_sha256": "7d08ba7aa608249e8c4f7af11f8421efee5508b7569fcf60413e3d232af79f77",
+  "header_sha256": "fb1356cd87cfca300d0a9e689bde3302bd4ea6e7aabd99cf464b1823e8d655ca",
+  "fixture_sha256": "ade4ef54ddb38e2033309505eb1830826e1df6c2a9ca3dd28b21a9d62d2bb57d",
+  "entries": 1,
+  "inode_sha256": "18d312f4bfb671339048c7c1dfdd164b903bd1526096ca5ba44c28cb12199d8d",
+  "scope": "actual service/journal host literal, production C decoder/consumer; transport/credential primitives, no VFS/runtime/publication proof"
+}

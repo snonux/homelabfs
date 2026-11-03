@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/snonux/homelabfs/internal/fsapi"
 	"github.com/snonux/homelabfs/internal/guestbridge"
@@ -121,6 +122,10 @@ func TestTransportClean128PressureReclaimsBefore129thGrant(t *testing.T) {
 		b.LedgerBytes = 96 << 20
 		b.WorkBytes = 512 << 20
 	})
+	// The explicit enrollment oracle serializes two active retry lanes under the
+	// race detector. This is a bounded component progress check, not a native
+	// latency promise; other transport tests retain their three-second deadline.
+	r.transportResponseWait = 20 * time.Second
 	r.useTransport()
 	_, description := r.create(0, "clean-window", false)
 	reads := make([]viewReply, 128)

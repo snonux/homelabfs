@@ -263,3 +263,41 @@ all requested objects and complete source/reference verification; narrow root R2
 is clean. The maintained final4 receipts retain source/config/compiler/object
 hashes and sampled resource limits. Runtime kernel/platform acceptance remains
 a separate gate.
+
+
+## Capability lifetime component correction (l04)
+
+READDIR result ownership now includes entry capabilities. After leaving its
+physical observation, the production consumer issues exact-token/count1 FORGET
+with the original captured credentials for every transient entry, including
+entries a full userspace buffer did not emit. It adopts the result only after
+all forgets succeed. Uncertain forget/transport/allocation leaves the session
+blocked with original request evidence; it cannot advance a retirement floor.
+Inode reuse retains each newly issued path token in its own forget record;
+eviction queues each record separately instead of aggregating counts under an
+older token. Final description release still retains its original record after
+failure and cannot erase mapped dirty/source obligations.
+
+`tests/reclaim/capture.py --output <fresh-directory>` obtains two actual
+Service/controlled-provider/local-journal READDIR literals from the small-live-
+limit Go regression. `tests/reclaim/run.py --source <owned-source> --output
+<fresh-directory> --sanitize` runs the production decoder, transient consumer,
+inode token attachment/eviction and forget worker with explicit transport and
+inode/workqueue primitives. It checks exact token/count/original issuer,
+distinct same-object grants, failed transport/allocation and result adoption.
+The committed fixture is a captured component result; it grants no runtime
+source or publication authority. These checks establish no running kernel,
+real inode/dentry eviction, syscall, distributed filesystem or physical flush
+acceptance. The separate installed-platform gates remain required.
+
+The host accepts post-exit FORGET/final DESCRIPTION_RELEASE only from the exact
+retained issuing credentials/revision and still-live complete scoped grant.
+This closes existing authority while ordinary exited-process calls, changed
+credentials, unissued tokens and stale grants remain refused. It does not bulk
+release shared descriptions or dirty reservations on PROCESS_EXIT.
+
+The three changed kernel translation units (`hfs_session`, `hfs_inode`,
+`hfs_file`) were compiled to actual objects using the pinned recorded compiler
+flags, the task's maintained headers, and unchanged read-only generated/stock
+headers. This bounded translation-unit check is separate from a full Kbuild,
+module link, installed ABI, or runtime acceptance.

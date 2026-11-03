@@ -1,0 +1,37 @@
+{
+  "taskroot_allocated_bytes": 31223808,
+  "preserved_failed_fixtures": [
+    "/tmp/hvc-2316996941",
+    "/tmp/hvc-2602479725",
+    "/tmp/hvc-3751882750",
+    "/tmp/hvc-4032842234",
+    "/tmp/hvc-684580768",
+    "/tmp/hvc-811904255",
+    "/tmp/hvc-845766003",
+    "/tmp/hvc-848139599"
+  ],
+  "preserved_failed_fixtures_allocated_bytes": 11022336,
+  "aggregate_allocated_bytes": 49184768,
+  "preserved_controlled_failures_count": 18,
+  "preserved_controlled_failures_allocated_bytes": 6938624,
+  "preserved_controlled_failures": [
+    "/tmp/hfs-controlled-108093405",
+    "/tmp/hfs-controlled-3140188279",
+    "/tmp/hfs-controlled-1456217403",
+    "/tmp/hfs-controlled-2896431298",
+    "/tmp/hfs-controlled-52976438",
+    "/tmp/hfs-controlled-1265391896",
+    "/tmp/hfs-controlled-4113032647",
+    "/tmp/hfs-controlled-1190719398",
+    "/tmp/hfs-controlled-252811704",
+    "/tmp/hfs-controlled-1681257619",
+    "/tmp/hfs-controlled-3064781218",
+    "/tmp/hfs-controlled-1967263258",
+    "/tmp/hfs-controlled-3688916643",
+    "/tmp/hfs-controlled-626347166",
+    "/tmp/hfs-controlled-3781625323",
+    "/tmp/hfs-controlled-2343658673",
+    "/tmp/hfs-controlled-1883471913",
+    "/tmp/hfs-controlled-1323977917"
+  ]
+}

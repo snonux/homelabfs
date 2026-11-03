@@ -1,0 +1,67 @@
+{
+  "packages": [
+    "./..."
+  ],
+  "commands": [
+    {
+      "name": "build",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ]
+    },
+    {
+      "name": "vet",
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ]
+    },
+    {
+      "name": "errcheck",
+      "argv": [
+        "errcheck",
+        "./..."
+      ]
+    },
+    {
+      "name": "lint",
+      "argv": [
+        "golangci-lint",
+        "run",
+        "--timeout=3m",
+        "./..."
+      ]
+    },
+    {
+      "name": "freebsd",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "0"
+      }
+    },
+    {
+      "name": "full-root",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-count=1",
+        "-timeout=600s",
+        "./..."
+      ],
+      "timeout": 1200
+    }
+  ],
+  "tmp": "/tmp/hfsl-49aaj75s",
+  "scope": "Final frozen l04 exact capability lifecycle, schema2 and cleanup-only process-exit changes, rootFFbase086fa31. Full local nonrace suite, FUSEintegrationdisabled. NativeC3TU/component evidence separate; no kernel/runtime/distributed proof."
+}

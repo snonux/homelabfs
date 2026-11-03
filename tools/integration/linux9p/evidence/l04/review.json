@@ -1,0 +1,8 @@
+{
+  "round": 1,
+  "result": "no blocking findings",
+  "reviewer": "capability_reclaim_review1",
+  "source_paths_verified": 25,
+  "nonblocking_followup": "x04 bounded READDIR cleanup progress before artifacts; o04 and xz3 depend on x04",
+  "scope": "Read-only full source review, including real behavior/negative oracles and explicit primitive boundaries; no builds/tests performed by reviewer"
+}

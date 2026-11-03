@@ -69,7 +69,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,332 @@
+@@ -0,0 +1,335 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -283,6 +283,7 @@ new file mode 100644
 +};
 +
 +struct hfs_forget {
++	struct hfs_forget *next;
 +	struct list_head list;
 +	struct work_struct work;
 +	struct hfs_session *session;
@@ -356,6 +357,8 @@ new file mode 100644
 +		const struct hfs_buf *payload, bool reserved,
 +		struct hfs_json **out);
 +int hfs_result_code(const struct hfs_json *json);
++int hfs_readdir_forget(struct hfs_session *, const struct hfs_json *,
++			const struct hfs_cred *);
 +void hfs_result_adopt(struct hfs_session *session, const struct hfs_json *result);
 +int hfs_request_earmark(struct hfs_session *session, const struct hfs_cred *cred,
 +			struct hfs_view_ticket *ticket, struct hfs_request **out);
@@ -406,7 +409,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,1930 @@
+@@ -0,0 +1,1977 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include <linux/delay.h>
@@ -833,6 +836,13 @@ new file mode 100644
 +	kfree(packet);
 +	kvfree(assembled);
 +	return err;
++}
++
++static bool hfs_result_needs_adoption(const struct hfs_json *result)
++{
++	return !hfs_json_is(result, hfs_json_field(result, 0, "capabilities"),
++			    "[]") ||
++	       !hfs_json_is(result, hfs_json_field(result, 0, "entries"), "[]");
 +}
 +
 +static bool hfs_operation(const char *operation, bool call)
@@ -1291,8 +1301,7 @@ new file mode 100644
 +		(*out)->owner = request;
 +		(*out)->owner_put = hfs_request_result_put;
 +	}
-+	request->adopted = hfs_json_is(request->result,
-+		hfs_json_field(request->result, 0, "capabilities"), "[]");
++	request->adopted = !hfs_result_needs_adoption(request->result);
 +	request->terminal = true;
 +	mutex_unlock(&session->lock);
 +	if (!err)
@@ -1616,6 +1625,47 @@ new file mode 100644
 +	hfs_buf_literal(args, "{\"object\":");
 +	hfs_cap_write(args, cap);
 +	hfs_buf_literal(args, "}");
++}
++
++int hfs_readdir_forget(struct hfs_session *session,
++		       const struct hfs_json *result,
++		       const struct hfs_cred *issuer)
++{
++	struct hfs_json *reply = NULL;
++	struct hfs_buf args;
++	struct hfs_cap *cap;
++	int entries = hfs_json_field(result, 0, "entries");
++	int err;
++	u32 i;
++
++	if (entries < 0 || result->tokens[entries].kind != HFS_ARRAY)
++		return -EPROTO;
++	for (i = entries + 1; i < result->count; i++) {
++		if (result->tokens[i].parent != entries)
++			continue;
++		cap = NULL;
++		err = hfs_cap_parse(session, result,
++				    hfs_json_field(result, i, "capability"),
++				    "PATH", &cap);
++		if (err)
++			return err;
++		err = hfs_args_init(&args);
++		if (!err) {
++			hfs_buf_literal(&args, "{\"count\":1,\"object\":");
++			hfs_cap_write(&args, cap);
++			hfs_buf_literal(&args, "}");
++			err = hfs_call(session, "FORGET", &args, issuer, true,
++				       &reply);
++		}
++		hfs_buf_free(&args);
++		hfs_cap_free(cap);
++		hfs_json_free(reply);
++		reply = NULL;
++		if (err)
++			return err;
++	}
++	hfs_result_adopt(session, result);
++	return 0;
 +}
 +
 +void hfs_cap_free(struct hfs_cap *cap)
@@ -2341,7 +2391,7 @@ diff --git a/fs/9p/hfs_inode.c b/fs/9p/hfs_inode.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_inode.c
-@@ -0,0 +1,957 @@
+@@ -0,0 +1,986 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Authoritative retained-9p attributes and namespace VFS operations. */
 +#include <linux/magic.h>
@@ -2454,6 +2504,7 @@ new file mode 100644
 +}
 +
 +struct hfs_inode_seed {
++	struct hfs_forget *forget;
 +	struct hfs_cap *cap;
 +	struct hfs_cred *issuer;
 +};
@@ -2471,13 +2522,31 @@ new file mode 100644
 +	struct hfs_inode_seed *seed = data;
 +
 +	HFS_I(inode)->object = seed->cap;
++	HFS_I(inode)->forget = seed->forget;
 +	HFS_I(inode)->forget->cap = seed->cap;
 +	HFS_I(inode)->forget->issuer = seed->issuer;
 +	return 0;
 +}
 +
++/* The inode owns every issued path token until all its dentry aliases die. */
++static void hfs_inode_link_forget(struct inode *inode,
++				  struct hfs_forget *forget,
++				  struct hfs_session *session)
++{
++	spin_lock(&inode->i_lock);
++	if (forget != HFS_I(inode)->forget) {
++		forget->next = HFS_I(inode)->forget;
++		HFS_I(inode)->forget = forget;
++	}
++	spin_unlock(&inode->i_lock);
++	forget->session = session;
++	mutex_lock(&session->lock);
++	list_add_tail(&forget->list, &session->forgets);
++	mutex_unlock(&session->lock);
++}
++
 +struct inode *hfs_inode_get(struct super_block *sb, struct hfs_json *result,
-+			   const char *kind, const struct hfs_cred *issuer)
++			    const char *kind, const struct hfs_cred *issuer)
 +{
 +	struct hfs_session *session = sb->s_fs_info;
 +	struct hfs_inode_seed seed;
@@ -2501,16 +2570,24 @@ new file mode 100644
 +		return ERR_PTR(-ENOMEM);
 +	}
 +	seed.issuer->native = get_cred(issuer->native);
-+	hash = full_name_hash(NULL, cap->allocation.b, sizeof(cap->allocation.b));
-+	inode = iget5_locked(sb, hash, hfs_test_inode, hfs_set_inode, &seed);
-+	if (!inode) {
++	seed.forget = kzalloc(sizeof(*seed.forget), GFP_KERNEL);
++	if (!seed.forget) {
 +		hfs_cred_free(seed.issuer);
 +		hfs_cap_free(cap);
 +		return ERR_PTR(-ENOMEM);
 +	}
-+	if (!(inode->i_state & I_NEW)) {
-+		hfs_cap_free(cap);
++	INIT_LIST_HEAD(&seed.forget->list);
++	seed.forget->cap = cap;
++	seed.forget->issuer = seed.issuer;
++	seed.forget->count = strcmp(kind, "ROOT") ? 1 : 0;
++	hash =
++	    full_name_hash(NULL, cap->allocation.b, sizeof(cap->allocation.b));
++	inode = iget5_locked(sb, hash, hfs_test_inode, hfs_set_inode, &seed);
++	if (!inode) {
++		kfree(seed.forget);
 +		hfs_cred_free(seed.issuer);
++		hfs_cap_free(cap);
++		return ERR_PTR(-ENOMEM);
 +	}
 +	if ((inode->i_state & I_NEW) && session->bridge_minor) {
 +		inode->i_mapping->a_ops = &hfs_cache_aops;
@@ -2520,12 +2597,17 @@ new file mode 100644
 +			return ERR_PTR(err);
 +		}
 +	}
-+	err = hfs_attr_install(inode, result, hfs_json_field(result, 0, "attributes"));
++	err = hfs_attr_install(inode, result,
++			       hfs_json_field(result, 0, "attributes"));
 +	if (err) {
 +		if (inode->i_state & I_NEW)
 +			iget_failed(inode);
-+		else
++		else {
 +			iput(inode);
++			hfs_cap_free(cap);
++			hfs_cred_free(seed.issuer);
++			kfree(seed.forget);
++		}
 +		return ERR_PTR(err);
 +	}
 +	if (inode->i_state & I_NEW) {
@@ -2539,17 +2621,10 @@ new file mode 100644
 +		} else {
 +			inode->i_op = &hfs_symlink_iops;
 +		}
-+		HFS_I(inode)->forget->session = session;
-+		mutex_lock(&session->lock);
-+		list_add_tail(&HFS_I(inode)->forget->list, &session->forgets);
-+		mutex_unlock(&session->lock);
++	}
++	hfs_inode_link_forget(inode, seed.forget, session);
++	if (inode->i_state & I_NEW)
 +		unlock_new_inode(inode);
-+	}
-+	if (strcmp(kind, "ROOT")) {
-+		spin_lock(&inode->i_lock);
-+		HFS_I(inode)->forget->count++;
-+		spin_unlock(&inode->i_lock);
-+	}
 +	return inode;
 +}
 +
@@ -2559,12 +2634,6 @@ new file mode 100644
 +
 +	if (!inode)
 +		return NULL;
-+	inode->forget = kzalloc(sizeof(*inode->forget), GFP_KERNEL);
-+	if (!inode->forget) {
-+		kfree(inode);
-+		return NULL;
-+	}
-+	INIT_LIST_HEAD(&inode->forget->list);
 +	INIT_LIST_HEAD(&inode->view_list);
 +	inode_init_once(&inode->inode);
 +	return &inode->inode;
@@ -2574,7 +2643,7 @@ new file mode 100644
 +{
 +	if (HFS_I(inode)->forget) {
 +		hfs_cred_free(HFS_I(inode)->forget->issuer);
-+		hfs_cap_free(HFS_I(inode)->object);
++		hfs_cap_free(HFS_I(inode)->forget->cap);
 +		kfree(HFS_I(inode)->forget);
 +	}
 +	kfree(HFS_I(inode));
@@ -2613,21 +2682,31 @@ new file mode 100644
 +{
 +	struct hfs_forget *forget = HFS_I(inode)->forget;
 +
-+	/* Eviction is outside i_lock; remove inventory before inode memory dies. */
++	/* Eviction is outside i_lock; remove inventory before inode memory
++	 * dies. */
 +	hfs_view_unregister_inode(inode);
 +	truncate_inode_pages_final(&inode->i_data);
 +	clear_inode(inode);
-+	if (!forget->session)
-+		return;
-+	if (!forget->count) {
-+		mutex_lock(&forget->session->lock);
-+		list_del_init(&forget->list);
-+		mutex_unlock(&forget->session->lock);
-+		return;
-+	}
-+	INIT_WORK(&forget->work, hfs_forget_work);
 +	HFS_I(inode)->forget = NULL;
-+	queue_work(forget->session->control, &forget->work);
++	while (forget) {
++		struct hfs_forget *next = forget->next;
++
++		forget->next = NULL;
++		if (!forget->session || !forget->count) {
++			if (forget->session) {
++				mutex_lock(&forget->session->lock);
++				list_del_init(&forget->list);
++				mutex_unlock(&forget->session->lock);
++			}
++			hfs_cred_free(forget->issuer);
++			hfs_cap_free(forget->cap);
++			kfree(forget);
++		} else {
++			INIT_WORK(&forget->work, hfs_forget_work);
++			queue_work(forget->session->control, &forget->work);
++		}
++		forget = next;
++	}
 +}
 +
 +static int hfs_d_revalidate(struct dentry *dentry, unsigned int flags)
@@ -3303,7 +3382,7 @@ diff --git a/fs/9p/hfs_file.c b/fs/9p/hfs_file.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_file.c
-@@ -0,0 +1,605 @@
+@@ -0,0 +1,631 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Description-bound retained-9p I/O. Advisory locks stay in this kernel mount. */
 +#include <linux/file.h>
@@ -3777,10 +3856,12 @@ new file mode 100644
 +		goto free_args;
 +	attributes = hfs_json_field(result, 0, "attributes");
 +	err = hfs_attr_decode(result, attributes, &HFS_I(inode)->object->home,
-+			      &HFS_I(inode)->object->allocation, S_IFDIR, &directory_attr);
++			      &HFS_I(inode)->object->allocation, S_IFDIR,
++			      &directory_attr);
 +	if (err)
 +		goto malformed;
-+	if (description->revision && description->revision != directory_attr.revision) {
++	if (description->revision &&
++	    description->revision != directory_attr.revision) {
 +		err = -ESTALE;
 +		goto free_args;
 +	}
@@ -3816,19 +3897,24 @@ new file mode 100644
 +			goto malformed;
 +		}
 +		previous = count ? page[count - 1].name : description->after;
-+		previous_len = count ? page[count - 1].len : description->after_len;
++		previous_len =
++		    count ? page[count - 1].len : description->after_len;
 +		if (previous_len &&
-+		    (memcmp(entry->name, previous, min(entry->len, previous_len)) < 0 ||
-+		     (!memcmp(entry->name, previous, min(entry->len, previous_len)) &&
++		    (memcmp(entry->name, previous,
++			    min(entry->len, previous_len)) < 0 ||
++		     (!memcmp(entry->name, previous,
++			      min(entry->len, previous_len)) &&
 +		      entry->len <= previous_len))) {
 +			err = -EPROTO;
 +			goto malformed;
 +		}
 +		err = hfs_cap_parse(HFS_S(inode), result,
-+				hfs_json_field(result, i, "capability"), "PATH", &cap);
++				    hfs_json_field(result, i, "capability"),
++				    "PATH", &cap);
 +		if (!err)
-+			err = hfs_attr_decode(result, hfs_json_field(result, i, "attributes"),
-+					      &cap->home, &cap->allocation, 0, &attr);
++			err = hfs_attr_decode(
++			    result, hfs_json_field(result, i, "attributes"),
++			    &cap->home, &cap->allocation, 0, &attr);
 +		if (!err)
 +			err = hfs_object_ino(HFS_S(inode), cap, &entry->ino);
 +		hfs_cap_free(cap);
@@ -3841,8 +3927,9 @@ new file mode 100644
 +	 * positions or replace them with a later page's cursor/revision.
 +	 */
 +	for (i = 0; i < count; i++) {
-+		err = hfs_cursor_record(description->cursor, page[i].name, page[i].len,
-+					directory_attr.revision, &page[i].cookie);
++		err = hfs_cursor_record(description->cursor, page[i].name,
++					page[i].len, directory_attr.revision,
++					&page[i].cookie);
 +		if (err)
 +			goto free_args;
 +	}
@@ -3853,7 +3940,8 @@ new file mode 100644
 +	if (!dir_emit_dots(file, context))
 +		goto free_args;
 +	for (i = 0; i < count; i++) {
-+		if (!dir_emit(context, page[i].name, page[i].len, page[i].ino, page[i].type))
++		if (!dir_emit(context, page[i].name, page[i].len, page[i].ino,
++			      page[i].type))
 +			break;
 +		memcpy(description->after, page[i].name, page[i].len);
 +		description->after_len = page[i].len;
@@ -3864,8 +3952,25 @@ new file mode 100644
 +	if (err == -EPROTO || err == -EINVAL)
 +		WRITE_ONCE(HFS_S(inode)->blocked, true);
 +free_args:
-+	hfs_json_free(result);
 +	hfs_buf_free(&args);
++	/* Forget is a protected lifetime command and may need recall progress.
++	 * Drop physical observation before making it, retaining the original
++	 * result and its exact issuing credentials until all entry tokens are
++	 * closed.
++	 */
++	hfs_leave(inode, cookie);
++	if (result && !READ_ONCE(HFS_S(inode)->blocked) &&
++	    !hfs_result_code(result)) {
++		int forgotten = hfs_readdir_forget(HFS_S(inode), result, cred);
++
++		if (forgotten) {
++			WRITE_ONCE(HFS_S(inode)->blocked, true);
++			err = forgotten;
++		}
++	}
++	hfs_json_free(result);
++	hfs_cred_free(cred);
++	goto unlock;
 +end:
 +	hfs_end(inode, cred, cookie);
 +unlock:
