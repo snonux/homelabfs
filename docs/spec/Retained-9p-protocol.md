@@ -683,3 +683,14 @@ normal representation and original-origin durability; reconnect/restart/result
 retirement and all-domain barriers on the actual stack. Stock limitations remain
 historical evidence. Configuration and readiness stay fail closed. This schema
 authorizes no install, mount, SSH, VM lifecycle, security enablement or lab run.
+
+
+## Separately negotiated view-lease extension
+
+[Bridge1.1 view leases and controlled cuts](Retained-9p-view-leases.md) defines
+an exact schema2/features2047/minor1 extension. Its additional protocol envelope
+key, resource tickets and tagged install targets are rejected by closed1.0;
+there is no automatic downgrade. It preserves genuine normal Publication proof
+and uses a separate verified CONTROLLED_LOCAL cut with null Result.Publication.
+The foundation supplies codecs and mandatory controller seams, not a durable
+token engine, physical guest barrier, recovery activation or runtime serving.

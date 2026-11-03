@@ -1,0 +1,62 @@
+[
+  {
+    "name": "go-tests",
+    "argv": [
+      "go",
+      "test",
+      "./internal/guestbridge",
+      "./internal/controlledvalidation",
+      "./internal/fuseadapter",
+      "-count=1"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 5.218,
+    "output_sha256": "05cc9ffc54521fd6e2100104d74d91afc193f86c8a84127476a59e1206afffca"
+  },
+  {
+    "name": "go-vet",
+    "argv": [
+      "go",
+      "vet",
+      "./internal/guestbridge",
+      "./internal/controlledvalidation",
+      "./internal/fuseadapter"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.351,
+    "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "errcheck",
+    "argv": [
+      "errcheck",
+      "./internal/guestbridge/...",
+      "./internal/controlledvalidation/...",
+      "./internal/fuseadapter/..."
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.349,
+    "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "spec",
+    "argv": [
+      "python3",
+      "tools/spec/check_retained9p.py"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.342,
+    "output_sha256": "7ebbd56a8052a34638eb44163cbc1e2da47d4c64b8c46cfaffcf81ac33638d69"
+  },
+  {
+    "name": "diff-check",
+    "argv": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.005,
+    "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+]

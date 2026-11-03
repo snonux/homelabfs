@@ -121,11 +121,12 @@ type Ack struct {
 
 // Command is the closed common command envelope.
 type Command struct {
-	Cell    uint64          `json:"cell"`
-	Context Context         `json:"context"`
-	Op      string          `json:"op"`
-	Payload json.RawMessage `json:"payload"`
-	Reclaim *Ack            `json:"reclaim"`
+	Protocol *Protocol       `json:"protocol,omitempty"`
+	Cell     uint64          `json:"cell"`
+	Context  Context         `json:"context"`
+	Op       string          `json:"op"`
+	Payload  json.RawMessage `json:"payload"`
+	Reclaim  *Ack            `json:"reclaim"`
 }
 
 // Intent contains a closed, semantically validated operation union.
@@ -238,6 +239,9 @@ type Views interface {
 // Every provider is mandatory, including for disposable controlled validation.
 type Config struct {
 	// Validation explicitly labels disposable component fixtures; it supplies no normal publication authority.
+	Protocol                                *Protocol
+	SessionProtocols                        map[string]Protocol
+	ViewProtocol                            ViewProtocolProvider
 	Validation                              *fsservice.ValidationProfile
 	Endpoint                                Endpoint
 	Native                                  NativeVerifier

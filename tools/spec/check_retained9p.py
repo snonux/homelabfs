@@ -610,6 +610,8 @@ def main():
 if __name__ == "__main__":
     try:
         main()
+        from check_retained9p_views import check_views
+        check_views()
     except (ValueError, KeyError, TypeError) as error:
         print(f"FAIL: {error}", file=sys.stderr)
         sys.exit(1)

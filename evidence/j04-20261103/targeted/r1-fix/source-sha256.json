@@ -1,0 +1,35 @@
+{
+  "base": "bbaeade",
+  "files": {
+    "docs/spec/Retained-9p-protocol.md": "569e5332e7772613840af2416b7b5b1e7b34db755db30b849b6cd559d6ed62bf",
+    "docs/spec/Retained-9p-view-leases.md": "a666f36062a4b266eb91694cc7888005d226b3933fa8ed1a0cfa6f0c8346f532",
+    "docs/spec/retained9p-fixtures/views.json": "05a1a9dcddd7a8ad7a1617a3b4c8466b042be0cdbca32af4402c77b75fa44894",
+    "internal/guestbridge/README.md": "28df16bd943f6b64cde16b29e7fdbad37f1973a9b59999288fe570070bb49196",
+    "internal/guestbridge/codec.go": "e17964863a0267d823173a1133dd1dd740f6b2d58829cc4ad9f0bf6fd6beca91",
+    "internal/guestbridge/endpoint.go": "b61a9e1ad93fefe53c07c2c5d4fc909822a82140f90bc5f40cbf5f7f651610b7",
+    "internal/guestbridge/response.go": "4ddcdbb5dcfaa90db8e694eaacfd3449daef417b1d11ac52f5bdd7eed51b118a",
+    "internal/guestbridge/schema.go": "f6795bf309bafe5b3213a4d211b8796560f40268b9099f43e9e0b41a28f4106f",
+    "internal/guestbridge/service.go": "b2b8bb8c814c8038cf310b2d509bbbdee3b5064f6f82e472927ca400f481943f",
+    "internal/guestbridge/types.go": "f2ce492daea709f1f030af01c80768e7c3ae5f24ed4fe0f124baa510e36091c9",
+    "internal/guestbridge/view_dispatch_test.go": "c02f9279dc74637ec9c5411ca788bd98fb8750e4a782ebf85fa30197b9108b99",
+    "internal/guestbridge/view_protocol.go": "1d81e903cfbc046136f4de42a4091f4317f32dda9922313a95d655fbfb761c0e",
+    "internal/guestbridge/view_protocol_test.go": "e9e0114b640514e85cc149b891d5fc440f5fe07b3e78912aa9577d91a65078b8",
+    "internal/guestbridge/view_response.go": "0255639ca17cd4161307f065de9e1ce892529ec170e0b97f1394ee578e227817",
+    "internal/guestbridge/view_schema.go": "454474cdb032c8d9c929041d236775bd7f3dc0a5fb4cb457498a6c084db41424",
+    "tools/integration/lib9p/README.md": "04c3e767448daf8cf9c37c64b78fd1988d9fad13d77dc7bb6d66845f6a42f8f6",
+    "tools/integration/lib9p/owned-inputs.json": "d72304590b487be6023d9f9824149431caf95c311178b887c56801f1ce522e8d",
+    "tools/integration/lib9p/src/hfs9p.c": "d270328048b37cc6e2e9f1c62f68e824fa6946a6f0b081cf53e1738e3d2027ea",
+    "tools/integration/lib9p/src/hfs9p.h": "9f6e851cb69b754952167cc52f12cae2b8cbf8605ededd0e24cf69879aefa825",
+    "tools/integration/lib9p/src/hfs9p_ledger.c": "e989392ed606ad6920a3479fa66587fbf54f7979981242800ea9b786e3f4a17c",
+    "tools/integration/lib9p/tests/backend_test.c": "de46721b76feedacac470354271d252eb2c90b24e82ba1cb053d617d8e3acd6b",
+    "tools/integration/lib9p/tests/fixtures.py": "9bdad2c0c876fb555c8e162021018c2df72194c873ee2be50636bcafe1b0fc0c",
+    "tools/integration/lib9p/tests/ledger_test.c": "8188a97377a9a505d29c5cf1f49b41b61f90db4d213e285d58bcfc2a7d6a6e62",
+    "tools/spec/check_retained9p.py": "59f349d40f39a152d1f1346a2ef527ef7272f55c08ba814427a175cdf01a30f4",
+    "tools/spec/check_retained9p_views.py": "9ebdc560c9b22ac0603ed4472f4f6d8ecb62dd1be271b3e0eb7699e12ad62ae2"
+  },
+  "delta_from_r1": [
+    "internal/guestbridge/view_dispatch_test.go"
+  ],
+  "production_source_changes_from_r1": [],
+  "scope": "j04 wire foundation; R1 fix only real Service.Execute boundary tests; no controller/source proof/runtime"
+}

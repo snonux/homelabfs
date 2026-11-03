@@ -329,7 +329,8 @@ func validatePublication(v any) error {
 	}
 	return nil
 }
-func validateViewAck(v any) error {
+func validateViewAck(v any) error { return validateViewAckWith(v, validatePublication) }
+func validateViewAckWith(v any, target func(any) error) error {
 	o, e := object(v, "domain", "sequence", "recall", "phase", "authority_hash", "closure_hash", "inventory_hash", "session", "manifest", "target")
 	if e != nil || validateCap(o["domain"]) != nil || text(o["domain"].(map[string]any)["kind"]) != "DOMAIN" || !uintRange(o["sequence"], 1, ^uint64(0)) || !uuid(o["recall"]) || !uuid(o["session"]) {
 		return fsapi.Invalid
@@ -354,7 +355,7 @@ func validateViewAck(v any) error {
 		return fsapi.Invalid
 	}
 	if o["target"] != nil {
-		return validatePublication(o["target"])
+		return target(o["target"])
 	}
 	return nil
 }

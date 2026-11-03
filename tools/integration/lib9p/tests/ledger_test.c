@@ -31,9 +31,10 @@ __wrap_fsync(int fd) {
 }
 
 static void
-payload(uint8_t bytes[128], unsigned serial) {
+payload_version(uint8_t bytes[128], unsigned serial, unsigned version) {
    memset(bytes, 0, 128);
    memcpy(bytes, "H9LEDG1\0", 8);
+   bytes[6] = (uint8_t)('0' + version);
    bytes[23] = 5;
    bytes[24] = 110;
    bytes[32] = 111;
@@ -63,8 +64,8 @@ main(int argc, char **argv) {
    ep.session[15] = 5;
    uint8_t zero[32] = {0}, first[128], second[128];
    assert(!hfs9p_ledger_claim(l, &ep, zero));
-   payload(first, 1);
-   payload(second, 2);
+   payload_version(first, 1, 1);
+   payload_version(second, 2, 1);
    assert(!hfs9p_ledger_protect(l, first, sizeof(first)));
    assert(hfs9p_ledger_claim(l, &ep, zero) == ESTALE);
    assert(!hfs9p_ledger_claim(l, &ep, first + 96));
@@ -100,6 +101,17 @@ main(int argc, char **argv) {
    assert(length == sizeof(second) && !memcmp(loaded, second, length));
    free(loaded);
    assert(!hfs9p_ledger_claim(l, &ep, second + 96));
+   uint8_t extension[128];
+   payload_version(extension, 3, 2);
+   assert(!hfs9p_ledger_protect(l, extension, sizeof(extension)));
+   assert(hfs9p_ledger_protect(l, second, sizeof(second)) == ESTALE);
+   hfs9p_ledger_delete(l);
+   assert(!hfs9p_ledger_new(&l, directory, "endpoint"));
+   assert(!hfs9p_ledger_load(l, &loaded, &length));
+   assert(length == sizeof(extension) && !memcmp(loaded, extension, length));
+   free(loaded);
+   assert(!hfs9p_ledger_claim(l, &ep, extension + 96));
+   assert(hfs9p_ledger_protect(l, first, sizeof(first)) == ESTALE);
    hfs9p_ledger_delete(l);
    assert(!close(directory));
    puts("PASS: real local ledger fsync/rename/reopen, lock, process exit, failure");

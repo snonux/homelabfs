@@ -1,0 +1,96 @@
+[
+  {
+    "name": "tests",
+    "argv": [
+      "go",
+      "test",
+      "./internal/guestbridge",
+      "-count=1"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.445,
+    "output_sha256": "b49d2a9837d9a5713a9ca11699cfdb1ce4e3a811813f87fe2356bd34d36b08ce"
+  },
+  {
+    "name": "race",
+    "argv": [
+      "go",
+      "test",
+      "-race",
+      "./internal/guestbridge",
+      "-count=1"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 6.225,
+    "output_sha256": "cf73eabad2530aeb4533ccb41a43b1d65f9ad3b59b77cbad8323c7b1989ecada"
+  },
+  {
+    "name": "coverage",
+    "argv": [
+      "go",
+      "test",
+      "./internal/guestbridge",
+      "-run",
+      "TestViewDispatch",
+      "-count=1",
+      "-coverprofile=../evidence/r1-fix/view-dispatch.cover"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.69,
+    "output_sha256": "4f5722a798dde2257d556518a0e215f263d0533137fd6b75682934b1d66260d5"
+  },
+  {
+    "name": "coverage-functions",
+    "argv": [
+      "go",
+      "tool",
+      "cover",
+      "-func=../evidence/r1-fix/view-dispatch.cover"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.037,
+    "output_sha256": "ff482693abb907b6c48eaab67df0d4966aa320e74dc020ff0fefb4a4d26be8af"
+  },
+  {
+    "name": "vet",
+    "argv": [
+      "go",
+      "vet",
+      "./internal/guestbridge"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.095,
+    "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "errcheck",
+    "argv": [
+      "errcheck",
+      "./internal/guestbridge/..."
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.1,
+    "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "spec",
+    "argv": [
+      "python3",
+      "tools/spec/check_retained9p.py"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.351,
+    "output_sha256": "7ebbd56a8052a34638eb44163cbc1e2da47d4c64b8c46cfaffcf81ac33638d69"
+  },
+  {
+    "name": "diff-check",
+    "argv": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.006,
+    "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+]

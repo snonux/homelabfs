@@ -18,6 +18,9 @@ import (
 // New requires explicitly verified providers before any delegated effects.
 // This constructs a component, never authorizes normal native publication.
 func New(ctx context.Context, c Config) (*Service, error) {
+	if err := prepareProtocols(&c); err != nil {
+		return nil, err
+	}
 	if c.Validation != nil && (!c.Validation.Disposable || c.Validation.Name == "") {
 		return nil, fsapi.Invalid
 	}
@@ -43,6 +46,11 @@ func New(ctx context.Context, c Config) (*Service, error) {
 	}
 	s := &Service{controller: parseID(controller), config: c, sessions: make(map[string]*session)}
 	for _, scope := range c.Scopes {
+		if protocol := c.sessionProtocol(scope.Session); protocol != nil {
+			if err := c.ViewProtocol.CheckEnrollment(ctx, scope, *protocol); err != nil {
+				return nil, err
+			}
+		}
 		if c.Validation != nil {
 			claims, claimBound := c.Claims.(ValidationEnrollment)
 			execution, executionBound := c.Execution.(ValidationEnrollment)
@@ -130,11 +138,15 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 	if validationErr != nil {
 		return nil, validationErr
 	}
-	validated, validationErr := DecodeCommand(raw)
+	validated, validationErr := DecodeCommandVersion(raw, commandMinor(c))
 	if validationErr != nil {
 		return nil, validationErr
 	}
 	c = validated
+	expectedProtocol := s.config.sessionProtocol(c.Context.Session)
+	if (c.Protocol == nil) != (expectedProtocol == nil) || c.Protocol != nil && *c.Protocol != *expectedProtocol {
+		return nil, fsapi.Permission
+	}
 	if e := s.CheckScope(c.Context); e != nil {
 		return nil, e
 	}
@@ -149,6 +161,11 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 	s.mu.Unlock()
 	if c.Op != "HELLO" && !hello {
 		return nil, fsapi.Permission
+	}
+	if c.Protocol != nil && c.Op != "HELLO" {
+		if err := s.config.ViewProtocol.CheckRequest(ctx, c.Context, c.Op, bytes.Clone(c.Payload)); err != nil {
+			return nil, err
+		}
 	}
 	var payload any
 	var err error
@@ -206,6 +223,11 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 		}
 		payload = map[string]any{"status": "BLOCKED", "ledger_hash": p.LedgerHash}
 	case "VIEW_POLL", "VIEW_ACK":
+		if c.Protocol != nil {
+			if err = s.checkViewControlTarget(ctx, c, c.Payload); err != nil {
+				return nil, err
+			}
+		}
 		if c.Op != "RESUME" {
 			if err = s.validateDomain(c); err != nil {
 				return nil, err
@@ -215,15 +237,25 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 		b, err = s.config.Views.Exchange(ctx, c.Context, c.Op, bytes.Clone(c.Payload))
 		if err == nil {
 			err = validateControlResponse(c, b)
+			if err == nil && c.Protocol != nil {
+				err = s.checkViewControlTarget(ctx, c, b)
+			}
 		}
 		payload = b
 	default:
-		return nil, fsapi.Unsupported
+		if !isViewExtension(c.Op) || c.Protocol == nil {
+			return nil, fsapi.Unsupported
+		}
+		payload, err = s.exchangeView(ctx, c)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return marshal(map[string]any{"cell": c.Cell, "context": c.Context, "op": c.Op, "payload": payload})
+	response := map[string]any{"cell": c.Cell, "context": c.Context, "op": c.Op, "payload": payload}
+	if c.Protocol != nil {
+		response["protocol"] = c.Protocol
+	}
+	return marshal(response)
 }
 func (s *Service) call(ctx context.Context, c Command) (any, error) {
 	var call Call

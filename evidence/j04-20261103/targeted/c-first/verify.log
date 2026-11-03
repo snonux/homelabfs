@@ -1,0 +1,35 @@
++ uname -a
+Linux earth 7.2.13-200.fc44.x86_64 #1 SMP PREEMPT_DYNAMIC Mon Oct 26 18:54:52 UTC 2026 x86_64 GNU/Linux
++ cc --version
+cc (GCC) 16.2.1 20261029 (Red Hat 16.2.1-3)
+Copyright (C) 2026 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
++ case $(uname -s) in
+++ uname -s
++ crypto=(-lcrypto)
++ flags=(-std=c11 -Wall -Wextra -Werror -O1 -g)
+++ uname -s
++ [[ Linux == Linux ]]
++ flags+=(-D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L)
++ [[ no == yes ]]
++ [[ -f /home/paul/tmp/codex/hfs-j04-20261103/worktree/tools/integration/lib9p/tests/fixtures.h ]]
++ python3 /home/paul/tmp/codex/hfs-j04-20261103/worktree/tools/integration/lib9p/tests/fixtures.py /home/paul/tmp/codex/hfs-j04-20261103/evidence/c-first/fixtures.h
++ for name in hfs9p hfs9p_json hfs9p_ledger
++ cc -std=c11 -Wall -Wextra -Werror -O1 -g -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L -c /home/paul/tmp/codex/hfs-j04-20261103/worktree/tools/integration/lib9p/src/hfs9p.c -o /home/paul/tmp/codex/hfs-j04-20261103/evidence/c-first/hfs9p.o
++ for name in hfs9p hfs9p_json hfs9p_ledger
++ cc -std=c11 -Wall -Wextra -Werror -O1 -g -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L -c /home/paul/tmp/codex/hfs-j04-20261103/worktree/tools/integration/lib9p/src/hfs9p_json.c -o /home/paul/tmp/codex/hfs-j04-20261103/evidence/c-first/hfs9p_json.o
++ for name in hfs9p hfs9p_json hfs9p_ledger
++ cc -std=c11 -Wall -Wextra -Werror -O1 -g -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L -c /home/paul/tmp/codex/hfs-j04-20261103/worktree/tools/integration/lib9p/src/hfs9p_ledger.c -o /home/paul/tmp/codex/hfs-j04-20261103/evidence/c-first/hfs9p_ledger.o
++ cc -std=c11 -Wall -Wextra -Werror -O1 -g -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L /home/paul/tmp/codex/hfs-j04-20261103/worktree/tools/integration/lib9p/tests/production_api_test.c /home/paul/tmp/codex/hfs-j04-20261103/evidence/c-first/hfs9p.o /home/paul/tmp/codex/hfs-j04-20261103/evidence/c-first/hfs9p_json.o /home/paul/tmp/codex/hfs-j04-20261103/evidence/c-first/hfs9p_ledger.o -pthread -lcrypto -o /home/paul/tmp/codex/hfs-j04-20261103/evidence/c-first/production_api_test
++ /home/paul/tmp/codex/hfs-j04-20261103/evidence/c-first/production_api_test
+PASS: production objects linked; absent enrollment/raw files refused
++ cc -std=c11 -Wall -Wextra -Werror -O1 -g -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L -I/home/paul/tmp/codex/hfs-j04-20261103/evidence/c-first /home/paul/tmp/codex/hfs-j04-20261103/worktree/tools/integration/lib9p/tests/backend_test.c /home/paul/tmp/codex/hfs-j04-20261103/worktree/tools/integration/lib9p/src/hfs9p_json.c /home/paul/tmp/codex/hfs-j04-20261103/worktree/tools/integration/lib9p/src/hfs9p_ledger.c -pthread -lcrypto -o /home/paul/tmp/codex/hfs-j04-20261103/evidence/c-first/backend_test
++ /home/paul/tmp/codex/hfs-j04-20261103/evidence/c-first/backend_test /home/paul/tmp/codex/hfs-j04-20261103/evidence/c-first/backend-ledger
+PASS: C parser/backend transport boundaries (no FUSE/runtime proof)
++ cc -std=c11 -Wall -Wextra -Werror -O1 -g -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L /home/paul/tmp/codex/hfs-j04-20261103/worktree/tools/integration/lib9p/tests/ledger_test.c /home/paul/tmp/codex/hfs-j04-20261103/worktree/tools/integration/lib9p/src/hfs9p_ledger.c -Wl,--wrap=fsync -lcrypto -o /home/paul/tmp/codex/hfs-j04-20261103/evidence/c-first/ledger_test
++ /home/paul/tmp/codex/hfs-j04-20261103/evidence/c-first/ledger_test /home/paul/tmp/codex/hfs-j04-20261103/evidence/c-first/ledger
+PASS: real local ledger fsync/rename/reopen, lock, process exit, failure
++ set +x
+PASS: owned component verification; no FUSE/mount/runtime proof

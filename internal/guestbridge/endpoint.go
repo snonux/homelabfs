@@ -49,6 +49,7 @@ type Transport struct {
 	ordinaryQueue, controlQueue chan job
 	replacementQueue            chan job
 	drainQueue                  chan job
+	acquisitionQueue            chan job
 	done                        chan struct{}
 	workers                     sync.WaitGroup
 	closed                      bool
@@ -68,13 +69,13 @@ func NewTransport(s *Service, budget *admission.Budget) (*Transport, error) {
 	}
 	s.transportAttached = true
 	s.mu.Unlock()
-	t := &Transport{service: s, cells: map[uint64]*cell{}, ordinaryQueue: make(chan job, 64), controlQueue: make(chan job, 16), replacementQueue: make(chan job, 1), drainQueue: make(chan job, 16), done: make(chan struct{})}
+	t := &Transport{service: s, cells: map[uint64]*cell{}, ordinaryQueue: make(chan job, 64), controlQueue: make(chan job, 16), replacementQueue: make(chan job, 1), drainQueue: make(chan job, 16), acquisitionQueue: make(chan job, 64), done: make(chan struct{})}
 	// Reserve complete request/reply/receipt bitmap and bounded decode copies for
 	// every active credit before any callback allocation. Workspace is independent.
 	for _, pool := range []struct {
 		class               admission.Class
 		bytes, ops, workers uint64
-	}{{admission.Live, 64 * 8 << 20, 64, 1}, {admission.Control, 16 * 8 << 20, 16, 2}, {admission.Memory, 12 << 20, 1, 1}} {
+	}{{admission.Live, 64 * 8 << 20, 64, 2}, {admission.Control, 16 * 8 << 20, 16, 2}, {admission.Memory, 12 << 20, 1, 1}} {
 		lease, e := budget.Reserve(admission.Request{Class: pool.class, Peer: s.config.Endpoint.FuseSession, Volume: s.config.Endpoint.FuseSession, Cost: admission.Resources{Bytes: pool.bytes, Operations: pool.ops, Workers: pool.workers}})
 		if e != nil {
 			for _, l := range t.arenas {
@@ -87,11 +88,12 @@ func NewTransport(s *Service, budget *admission.Budget) (*Transport, error) {
 		}
 		t.arenas = append(t.arenas, lease)
 	}
-	t.workers.Add(4)
+	t.workers.Add(5)
 	go t.worker(t.ordinaryQueue)
 	go t.worker(t.controlQueue)
 	go t.worker(t.replacementQueue)
 	go t.worker(t.drainQueue)
+	go t.worker(t.acquisitionQueue)
 	return t, nil
 }
 
@@ -107,6 +109,9 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 	f, e := DecodeFrame(b)
 	if e != nil {
 		return 0, e
+	}
+	if (f.Minor == 1) != (t.service.config.sessionProtocol(f.Session.String()) != nil) {
+		return 0, fsapi.Unsupported
 	}
 	cellID, index, within, e := position(offset)
 	if e != nil || cellID != f.Cell || within != 0 || uint64(f.Offset/ChunkBytes) != index || f.Kind != 1 {
@@ -159,7 +164,8 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 				if r.Control && t.control >= 16 || !r.Control && t.ordinary >= 64 {
 					return 0, fsapi.WouldBlock
 				}
-				if t.incomplete(f.Session.String()) >= 16 {
+				if t.incomplete(f.Session.String()) >= 16 ||
+					f.Minor == 1 && !r.Control && t.incompleteOrdinary(f.Session.String()) >= 12 {
 					r.Release()
 					return 0, fsapi.WouldBlock
 				}
@@ -197,7 +203,7 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 		}
 		return 0, fsapi.Invalid
 	}
-	command, e := DecodeCommand(c.body)
+	command, e := DecodeCommandVersion(c.body, f.Minor)
 	if e != nil || command.Cell != f.Cell || command.Context != *scope {
 		if c == t.workspace {
 			t.workspace = nil
@@ -237,6 +243,8 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 		queue := t.ordinaryQueue
 		if command.Op == "RELEASE_CELL" {
 			queue = t.replacementQueue
+		} else if oneOf(command.Op, "VIEW_ACQUIRE", "DIRTY_RESERVE") {
+			queue = t.acquisitionQueue
 		} else if drainCommand(command) {
 			queue = t.drainQueue
 		} else if r.Control {
@@ -259,6 +267,8 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 	queue := t.ordinaryQueue
 	if command.Op == "RELEASE_CELL" {
 		queue = t.replacementQueue
+	} else if oneOf(command.Op, "VIEW_ACQUIRE", "DIRTY_RESERVE") {
+		queue = t.acquisitionQueue
 	} else if drainCommand(command) {
 		queue = t.drainQueue
 	} else if c.reservation.Control {
@@ -341,6 +351,7 @@ func (t *Transport) Close() {
 		close(t.controlQueue)
 		close(t.replacementQueue)
 		close(t.drainQueue)
+		close(t.acquisitionQueue)
 	}
 	t.mu.Unlock()
 	t.workers.Wait()
@@ -366,7 +377,7 @@ func (t *Transport) worker(queue <-chan job) {
 		unread := 0
 		valid := true
 		for offset := 0; offset < len(raw); offset += ChunkBytes {
-			wire, e := EncodeFrame(Frame{Flags: t.flags(j.id), Kind: kind, Total: uint32(len(raw)), Offset: uint32(offset), Session: session, Cell: j.id, Hash: hash, Data: raw[offset:min(offset+ChunkBytes, len(raw))]})
+			wire, e := EncodeFrame(Frame{Minor: commandMinor(j.command), Flags: t.flags(j.id), Kind: kind, Total: uint32(len(raw)), Offset: uint32(offset), Session: session, Cell: j.id, Hash: hash, Data: raw[offset:min(offset+ChunkBytes, len(raw))]})
 			if e != nil {
 				valid = false
 				break
@@ -413,7 +424,7 @@ func newCell(f Frame) *cell {
 	return &cell{frame: f, body: make([]byte, int(f.Total)), chunks: make([]bool, (int(f.Total)+ChunkBytes-1)/ChunkBytes)}
 }
 func sameFrame(a, b Frame) bool {
-	return a.Flags == b.Flags && a.Kind == b.Kind && a.Total == b.Total && a.Session == b.Session && a.Cell == b.Cell && a.Hash == b.Hash
+	return a.Minor == b.Minor && a.Flags == b.Flags && a.Kind == b.Kind && a.Total == b.Total && a.Session == b.Session && a.Cell == b.Cell && a.Hash == b.Hash
 }
 func intIndex(offset uint32) uint64 { return uint64(offset / ChunkBytes) }
 func position(offset uint64) (uint64, uint64, uint64, error) {
@@ -428,6 +439,9 @@ func position(offset uint64) (uint64, uint64, uint64, error) {
 	return id, in / (HeaderBytes + ChunkBytes), in % (HeaderBytes + ChunkBytes), nil
 }
 func controlCommand(c Command) bool {
+	if oneOf(c.Op, "VIEW_ACQUIRE", "DIRTY_RESERVE") {
+		return false
+	}
 	if c.Op == "CALL" {
 		var call Call
 		if json.Unmarshal(c.Payload, &call) != nil {
@@ -476,4 +490,14 @@ func drainCommand(c Command) bool {
 		return false
 	}
 	return call.Intent.Opcode == "DRAIN_WRITE"
+}
+
+func (t *Transport) incompleteOrdinary(session string) int {
+	n := 0
+	for _, c := range t.cells {
+		if c.frame.Session.String() == session && c.command == nil && !c.released && !c.reservation.Control {
+			n++
+		}
+	}
+	return n
 }

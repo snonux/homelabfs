@@ -116,3 +116,29 @@ authoritative append offset is selected. Execution preserves the typed pre-effec
 ErrDelegatedFileTooLarge in Outcome.DelegatedError; the bridge emits FileTooLarge
 without extending fsapi/v1 errno or journal records. Controlled Captured providers
 must enforce the same captured bound under their serialized service seam.
+
+Bridge1.1 is an explicit opt-in foundation described in
+[view leases](../../docs/spec/Retained-9p-view-leases.md). Config.Protocol selects
+its exact schema2/features2047 tuple for all enrolled sessions, or the mutually
+exclusive Config.SessionProtocols map selects1.1 for named sessions while
+unlisted enrolled sessions retain1.0. Configuration is copied and cannot be
+changed by HELLO. Every1.1 frame/body/reply binds that version; old readers and
+other enrolled versions refuse it. No runtime provider is shipped.
+
+The mandatory ViewProtocolProvider independently checks enrollment, every
+request's original scoped principal/authorization, actual target source proof
+and every protected ticket response's original admission lineage. Resource
+Ticket/ClaimNumber/DirtyReservation types retain provenance and preowned capacity
+before PTEs, without assigning an ordinary OriginalHash to unknown dirty bytes.
+Only frozen exact bytes bind a final immutable DRAIN_WRITE claim. Bootstrap
+VIEW_ACQUIRE.target:null lets the verified issuer choose a current cut; every
+lease/install target remains nonnull. Controlled local cut identities never
+populate Result.Publication. Actual token ordering, earmarking, protected
+reply/floor/source lifetimes and physical MM remain k04/vz3 work.
+
+The acquisition queue/worker uses ordinary credits, separate from drain,
+control and release workers. Minor1 incomplete ordinary assemblies are capped
+at12 per session, leaving four assembly slots for control, alongside the
+independent16 global control credits. PENDING replies must be received and
+released promptly while bounded controller tickets retain their independent
+resources. This boundary supplies no unbounded waiter or timeout expiration.

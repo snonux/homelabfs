@@ -8,6 +8,9 @@ import (
 )
 
 func validateControlResponse(c Command, raw json.RawMessage) error {
+	if isViewExtension(c.Op) {
+		return validateViewResponse(c, raw)
+	}
 	v, e := Canonical(raw)
 	if e != nil {
 		return e
@@ -63,7 +66,7 @@ func validateControlResponse(c Command, raw json.RawMessage) error {
 			if event["target"] != nil || event["manifest_hash"] != nil {
 				return fsapi.Invalid
 			}
-		} else if validatePublication(event["target"]) != nil || !hash(event["manifest_hash"]) {
+		} else if validateCommandTarget(c, event["target"]) != nil || !hash(event["manifest_hash"]) {
 			return fsapi.Invalid
 		}
 		var p struct {

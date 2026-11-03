@@ -43,3 +43,7 @@ with Path(sys.argv[1]).open("w") as out:
     bad = copy.deepcopy(cases[2]["body"])
     bad["payload"]["intent"]["args"]["max_end"] = 2**63
     emit("bad_max_end", bad)
+
+    views = json.loads((source.parent / "views.json").read_text())
+    for case in views["commands"]:
+        emit("view_" + case["name"], case["body"])

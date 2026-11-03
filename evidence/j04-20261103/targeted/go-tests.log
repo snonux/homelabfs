@@ -1,0 +1,3 @@
+ok  	github.com/snonux/homelabfs/internal/guestbridge	0.267s
+ok  	github.com/snonux/homelabfs/internal/controlledvalidation	5.027s
+ok  	github.com/snonux/homelabfs/internal/fuseadapter	0.183s

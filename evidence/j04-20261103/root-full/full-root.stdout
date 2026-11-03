@@ -1,0 +1,33 @@
+?   	github.com/snonux/homelabfs/cmd/hfs-behavior	[no test files]
+?   	github.com/snonux/homelabfs/cmd/hfs-lab	[no test files]
+?   	github.com/snonux/homelabfs/cmd/hfs-smoke-driver	[no test files]
+?   	github.com/snonux/homelabfs/cmd/homelabfs	[no test files]
+?   	github.com/snonux/homelabfs/internal	[no test files]
+ok  	github.com/snonux/homelabfs/internal/admin	2.013s
+ok  	github.com/snonux/homelabfs/internal/admission	0.014s
+ok  	github.com/snonux/homelabfs/internal/apply	7.861s
+ok  	github.com/snonux/homelabfs/internal/behavior	0.380s
+ok  	github.com/snonux/homelabfs/internal/checkpoint	2.863s
+ok  	github.com/snonux/homelabfs/internal/cluster	0.011s
+ok  	github.com/snonux/homelabfs/internal/controlledvalidation	0.812s
+ok  	github.com/snonux/homelabfs/internal/coord	6.215s
+ok  	github.com/snonux/homelabfs/internal/daemoncli	0.112s
+ok  	github.com/snonux/homelabfs/internal/failpoint	0.035s
+ok  	github.com/snonux/homelabfs/internal/fsapi	0.002s
+ok  	github.com/snonux/homelabfs/internal/fsservice	5.462s
+ok  	github.com/snonux/homelabfs/internal/fuseadapter	0.142s
+ok  	github.com/snonux/homelabfs/internal/guestbridge	0.345s
+?   	github.com/snonux/homelabfs/internal/journal	[no test files]
+ok  	github.com/snonux/homelabfs/internal/journal/record	0.078s
+ok  	github.com/snonux/homelabfs/internal/journal/segment	1.343s
+ok  	github.com/snonux/homelabfs/internal/labrunner	3.540s
+ok  	github.com/snonux/homelabfs/internal/logicalview	0.020s
+ok  	github.com/snonux/homelabfs/internal/normalnode	0.004s
+ok  	github.com/snonux/homelabfs/internal/normalpublic	0.118s
+?   	github.com/snonux/homelabfs/internal/recovery	[no test files]
+?   	github.com/snonux/homelabfs/internal/replication	[no test files]
+ok  	github.com/snonux/homelabfs/internal/sim	17.690s
+ok  	github.com/snonux/homelabfs/internal/storage	0.768s
+ok  	github.com/snonux/homelabfs/internal/transactions	3.816s
+ok  	github.com/snonux/homelabfs/internal/transport	0.112s
+ok  	github.com/snonux/homelabfs/internal/vfs	2.552s

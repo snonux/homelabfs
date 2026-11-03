@@ -1,0 +1,4 @@
+PASS: 55 literal golden/malformed examples; groups1024 boundary; 5-chunk write/short reads; claim history; 8 acknowledgement contexts; atomic-create example; 30 endpoint-wide native-cell cases; 15 full-capacity replacement cases
+Design subset only: no runtime, authentication, normal3 proof, DAC, durability, cache revocation or FUSE compatibility claim.
+PASS: 16 literal bridge1.1 commands and 12 replies; frozen immutable claim; bounded ticket histories
+Design/byte subset only: no durable controller, source proof, physical MM or runtime claim.

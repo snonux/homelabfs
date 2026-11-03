@@ -151,3 +151,23 @@ artifact bindings are recorded in summary.json and the retained receipts.
 The full patched bhyve device was not compiled: f3 has no populated matching
 source or generated bhyve build headers. That artifact and actual installed/
 runtime acceptance remain gated as described above.
+
+Explicit bridge1.1 enrollment uses `hfs9p_add_session_protocol(..., 1)` and exact
+`9P2000.L.hfs1.1` Tversion; existing `hfs9p_add_session`/minor0 retain the old
+exact token. A connection copies the immutable enrolled minor before lock-free
+Tversion selection. Frame minor, canonical protocol tuple and host reply must
+match. New lease/reservation opcodes route to the ordinary acquisition lane or
+reserved control lane; the host validates the full closed semantics before any
+effect. Incomplete ordinary1.1 assemblies stop at12 per session, reserving four
+of16 per-session candidates for control.
+
+Any1.1 session selects H9LEDG2 protected snapshots with explicit per-session minor;
+pure1.0 snapshots remain H9LEDG1. Mixed sessions retain their individual versions,
+HELLO state, exact bodies and native mappings on restore. Retained body protocol
+is checked against persisted session minor, including native replies and poll
+trails. The local durable ledger accepts both exact magics and rejects2->1
+replacement, including after reopen. A checksum cannot authorize a version
+change, endpoint reset, missing old ledgers or source continuity. The supervisor
+still verifies installed/running bytes and actual host enrollment; this change
+authorizes no deployment or activation. See
+[the closed1.1 contract](../../../docs/spec/Retained-9p-view-leases.md).

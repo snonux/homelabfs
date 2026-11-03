@@ -20,6 +20,7 @@ typedef struct {
    uint32_t total;
    uint32_t reply_total;
    uint16_t flags;
+   uint16_t minor;
    uint32_t received;
    uint8_t hash[32];
    uint8_t session[16];
@@ -68,7 +69,8 @@ claim_cb(void *arg, const Hfs9pEndpoint *endpoint, const uint8_t hash[32]) {
 static int
 protect_cb(void *arg, const uint8_t *bytes, size_t length) {
    (void)arg;
-   assert(length > 64 && !memcmp(bytes, "H9LEDG1\0", 8));
+   assert(length > 64 && (!memcmp(bytes, "H9LEDG1\0", 8) ||
+       !memcmp(bytes, "H9LEDG2\0", 8)));
    uint8_t hash[32];
    _hash(bytes, length - 32, hash);
    assert(!memcmp(hash, bytes + length - 32, 32));
@@ -107,6 +109,7 @@ fixture_pwrite(int fd, const void *buffer, size_t length, off_t position) {
       f->request = calloc(1, f->total);
       assert(f->request);
       f->flags = flags;
+      f->minor = (uint16_t)_get(p + 10, 2);
       memcpy(f->session, p + 32, 16);
       memcpy(f->hash, p + 56, 32);
    }
@@ -158,6 +161,13 @@ fixture_pwrite(int fd, const void *buffer, size_t length, off_t position) {
           "{\"cell\":%u,\"context\":%.*s,\"op\":%.*s,\"payload\":%s}",
           cell, (int)(c.end - c.start), f->request + c.start,
           (int)(o.end - o.start), f->request + o.start, result);
+      if (f->minor) {
+         n = snprintf((char *)f->reply, HFS9P_BODY,
+             "{\"cell\":%u,\"context\":%.*s,\"op\":%.*s,\"payload\":%s,"
+             "\"protocol\":%s}", cell, (int)(c.end - c.start),
+             f->request + c.start, (int)(o.end - o.start),
+             f->request + o.start, result, _protocol(1));
+      }
       assert(n > 0 && n < (int)HFS9P_BODY);
       f->reply_total = (uint32_t)n;
       f->ready = true;
@@ -190,6 +200,7 @@ fixture_pread(int fd, void *buffer, size_t length, off_t position) {
    uint32_t chunk = (uint32_t)(within / (HFS9P_HEADER + HFS9P_CHUNK));
    size_t start = (size_t)(within % (HFS9P_HEADER + HFS9P_CHUNK));
    Hfs9pEntry e = {0};
+   e.minor = (uint8_t)f->minor;
    e.response_guest = f->reply;
    e.response_total = f->reply_total;
    e.guest_cell = cell;
@@ -294,7 +305,7 @@ reset_fixtures(void) {
 }
 
 static Hfs9pConnection *
-connection(Hfs9p *h, const char *body) {
+connection_protocol(Hfs9p *h, const char *body, uint16_t minor) {
    Hfs9pToken tokens[HFS9P_TOKENS];
    Hfs9pJson j = {(const uint8_t *)body, strlen(body), tokens, 0};
    uint32_t context;
@@ -303,12 +314,20 @@ connection(Hfs9p *h, const char *body) {
    assert(!hfs9p_json_key(&j, 0, "context", &context));
    assert(!_context(&j, context, id));
    Hfs9pToken c = tokens[context];
-   assert(!add_session_retry(h, j.bytes + c.start, c.end - c.start));
+   int added;
+   if (!minor) {
+      added = add_session_retry(h, j.bytes + c.start, c.end - c.start);
+   } else {
+      while ((added = hfs9p_add_session_protocol(h, j.bytes + c.start,
+          c.end - c.start, minor)) == EAGAIN)
+         pause_retry();
+   }
+   assert(!added);
    Hfs9pConnection *conn;
    assert(!connection_retry(h, id, &conn));
    uint8_t request[64] = {0}, reply[HFS9P_MSIZE];
    size_t n;
-   const char *version = "9P2000.L.hfs1";
+   const char *version = minor ? "9P2000.L.hfs1.1" : "9P2000.L.hfs1";
    _put(request, 13 + strlen(version), 4);
    request[4] = 100;
    _put(request + 5, 65535, 2);
@@ -321,9 +340,15 @@ connection(Hfs9p *h, const char *body) {
    return (conn);
 }
 
+static Hfs9pConnection *
+connection(Hfs9p *h, const char *body) {
+   return (connection_protocol(h, body, 0));
+}
+
 static unsigned
 send_body(Hfs9pConnection *c, const char *body, uint64_t cell) {
    Hfs9pEntry e = {0};
+   e.minor = c->endpoint->sessions[c->session].minor;
    e.native = (uint8_t *)body;
    e.native_total = (uint32_t)strlen(body);
    e.native_cell = cell;
@@ -1156,9 +1181,123 @@ assembly_accounting_tests(void) {
    reset_fixtures();
 }
 
+static void
+view_protocol_tests(void) {
+   Hfs9p *h = new_endpoint();
+   Hfs9pConnection *c = connection_protocol(h, view_hello, 1);
+   assert(send_body(c, view_hello, 1) == 1);
+   assert(fetch(c, 1, 2) == 3);
+   assert(h->sessions[0].hello && h->sessions[0].minor == 1);
+   /* Negotiation uses copied enrollment and refuses the old Tversion even
+    * without acquiring the endpoint mutex or changing any ledger state. */
+   Hfs9pConnection *unnegotiated;
+   assert(!connection_retry(h, h->sessions[0].id, &unnegotiated));
+   uint8_t version_request[64] = {0}, version_reply[64];
+   size_t version_size;
+   const char *old_version = "9P2000.L.hfs1";
+   _put(version_request, 13 + strlen(old_version), 4);
+   version_request[4] = 100;
+   _put(version_request + 5, 65535, 2);
+   _put(version_request + 7, HFS9P_MSIZE, 4);
+   _put(version_request + 11, strlen(old_version), 2);
+   memcpy(version_request + 13, old_version, strlen(old_version));
+   assert(hfs9p_exchange(unnegotiated, version_request,
+       13 + strlen(old_version), version_reply, sizeof(version_reply),
+       &version_size) == EINVAL);
+   assert(!atomic_load(&unnegotiated->negotiated));
+   hfs9p_connection_delete(unnegotiated);
+   Hfs9pConnection *legacy = connection(h, golden_write);
+   assert(h->sessions[1].minor == 0);
+   assert(send_body(c, view_dirty_page, 4) == 1);
+   Hfs9pEntry *e = entry(h, 4);
+   assert(e && !e->control && e->minor == 1);
+   pthread_mutex_lock(&h->mutex);
+   /* Structurally parsed/routed byte requests: host supplies semantic proof. */
+   Hfs9pEntry candidate = {0};
+   candidate.session = 0;
+   candidate.minor = 1;
+   candidate.guest_cell = 5;
+   candidate.guest = (uint8_t *)view_reserve;
+   candidate.total = (uint32_t)strlen(view_reserve);
+   assert(!_command(h, &candidate) && !candidate.control);
+   candidate.guest_cell = 6;
+   candidate.guest = (uint8_t *)view_freeze;
+   candidate.total = (uint32_t)strlen(view_freeze);
+   assert(!_command(h, &candidate) && candidate.control);
+   char *bad_tuple = strdup(view_freeze);
+   assert(bad_tuple);
+   char *feature = strstr(bad_tuple, "\"features\":2047");
+   assert(feature);
+   memcpy(feature + strlen("\"features\":"), "4095", 4);
+   candidate.guest = (uint8_t *)bad_tuple;
+   assert(_command(h, &candidate) == EINVAL);
+   free(bad_tuple);
+   candidate.guest = (uint8_t *)view_freeze;
+   /* Envelope tuple is independent of syntactically valid payload bytes. */
+   h->sessions[0].minor = 0;
+   assert(_command(h, &candidate) == EINVAL);
+   h->sessions[0].minor = 1;
+   assert(!_body_version(h, (const uint8_t *)view_freeze,
+       (uint32_t)strlen(view_freeze), 1, false));
+   assert(_body_version(h, (const uint8_t *)view_freeze,
+       (uint32_t)strlen(view_freeze), 0, false));
+   assert(_body_version(h, (const uint8_t *)golden_hello,
+       (uint32_t)strlen(golden_hello), 1, false));
+   uint8_t *snapshot;
+   size_t length;
+   assert(!_snapshot(h, &snapshot, &length));
+   assert(!memcmp(snapshot, "H9LEDG2\0", 8));
+   pthread_mutex_unlock(&h->mutex);
+   Hfs9p *restored = calloc(1, sizeof(*restored));
+   restored->endpoint = h->endpoint;
+   assert(!_restore_bytes(restored, snapshot, length));
+   assert(restored->sessions[0].minor == 1 && restored->sessions[0].hello);
+   assert(restored->session_count == 2 && restored->sessions[1].minor == 0);
+   _discard_recovery(restored);
+   /* Flipping persisted minor1->0 while keeping retained1.1 bytes must fail,
+    * even when an attacker recomputes the non-authoritative checksum. */
+   Hfs9pBuffer reader = {snapshot, length - 32, 0, 61, 0};
+   (void)_unpack_bytes(&reader, 16);
+   uint32_t context_length = (uint32_t)_unpack(&reader, 4);
+   (void)_unpack_bytes(&reader, context_length);
+   (void)_unpack(&reader, 8);
+   unsigned ranges = (unsigned)_unpack(&reader, 2);
+   (void)_unpack_bytes(&reader, ranges * 16);
+   (void)_unpack(&reader, 1);
+   assert(snapshot[reader.cursor] == 1);
+   snapshot[reader.cursor] = 0;
+   _hash(snapshot, length - 32, snapshot + length - 32);
+   restored = calloc(1, sizeof(*restored));
+   restored->endpoint = h->endpoint;
+   assert(_restore_bytes(restored, snapshot, length) == EINVAL);
+   _discard_recovery(restored);
+   free(snapshot);
+   hfs9p_connection_delete(legacy);
+   hfs9p_connection_delete(c);
+   shutdown_endpoint(h);
+   reset_fixtures();
+   h = new_endpoint();
+   c = connection(h, golden_hello);
+   assert(send_body(c, golden_hello, 1) == 1);
+   assert(fetch(c, 1, 2) == 3);
+   pthread_mutex_lock(&h->mutex);
+   h->sessions[0].minor = 1;
+   assert(!_snapshot(h, &snapshot, &length));
+   pthread_mutex_unlock(&h->mutex);
+   restored = calloc(1, sizeof(*restored));
+   restored->endpoint = h->endpoint;
+   assert(_restore_bytes(restored, snapshot, length) == EINVAL);
+   _discard_recovery(restored);
+   free(snapshot);
+   hfs9p_connection_delete(c);
+   shutdown_endpoint(h);
+   reset_fixtures();
+}
+
 int
 main(int argc, char **argv) {
    assert(argc == 2);
+   view_protocol_tests();
    parser_tests();
    core_tests();
    routing_cases();
