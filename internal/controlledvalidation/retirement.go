@@ -66,8 +66,11 @@ func (p *Provider) RetireOriginal(ctx context.Context, scope guestbridge.Context
 		return nil, err
 	}
 	observed, ok := guestbridge.VerifiedRequest(ctx)
-	protocol := guestbridge.ControlledProtocol()
 	enrolled := p.config.Authorization.Enrollment
+	if enrolled.Protocol == nil || !guestbridge.IsControlledProtocol(*enrolled.Protocol) {
+		return nil, fsapi.Permission
+	}
+	protocol := *enrolled.Protocol
 	if !ok || observed.Scope != scope || observed.Operation != "RETIRE" || observed.Protocol == nil || *observed.Protocol != protocol || enrolled.Protocol == nil || *enrolled.Protocol != protocol || observed.PayloadHash != hash(raw) || observed.Native.Endpoint != enrolled.Endpoint {
 		return nil, fsapi.Permission
 	}
@@ -75,7 +78,7 @@ func (p *Provider) RetireOriginal(ctx context.Context, scope guestbridge.Context
 	if err != nil {
 		return nil, err
 	}
-	if _, err = guestbridge.DecodeCommandVersion(envelope, 2); err != nil {
+	if _, err = guestbridge.DecodeCommandVersion(envelope, uint16(protocol.BridgeMinor)); err != nil {
 		return nil, err
 	}
 	var request originalRetirement

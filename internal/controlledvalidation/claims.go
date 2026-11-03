@@ -349,6 +349,9 @@ func (p *Provider) Retire(ctx context.Context, scope guestbridge.Context, raw js
 			if !ok {
 				// Exact typed unbound gap proof was checked above.
 			} else if e.Status == "TERMINAL" {
+				if e.ReaddirClosure != nil && !e.ReaddirClosure.Closed {
+					return nil
+				}
 				var r struct {
 					ID string `json:"id"`
 				}

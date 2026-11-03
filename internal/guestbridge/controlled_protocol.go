@@ -33,20 +33,21 @@ func supportedProtocol(c Config, p Protocol) bool {
 	if p == ViewProtocol() {
 		return true
 	}
-	if p != ControlledProtocol() || c.Validation == nil || !c.Validation.Disposable {
+	if !IsControlledProtocol(p) || c.Validation == nil || !c.Validation.Disposable {
 		return false
 	}
 	_, allocation := c.Claims.(ControlledAllocation)
 	_, retirement := c.Claims.(ControlledRetirement)
 	_, enrolled := c.Claims.(ValidationEnrollment)
 	_, execution := c.Execution.(ValidationEnrollment)
-	return allocation && retirement && enrolled && execution
+	_, cleanup := c.Claims.(ReaddirCleanupStore)
+	return allocation && retirement && enrolled && execution && (p != CleanupProtocol() || cleanup)
 }
 
 func isAllocation(op string) bool { return op == "ALLOCATE" || op == "GAP_RESOLVE" }
 
 func (s *Service) allocation(ctx context.Context, c Command) (any, error) {
-	if c.Protocol == nil || *c.Protocol != ControlledProtocol() || s.config.Validation == nil {
+	if c.Protocol == nil || !IsControlledProtocol(*c.Protocol) || s.config.Validation == nil {
 		return nil, fsapi.Permission
 	}
 	allocator, ok := s.config.Claims.(ControlledAllocation)

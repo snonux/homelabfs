@@ -212,7 +212,10 @@ func (p *Provider) protectSnapshot(tx *bolt.Tx, e entry) error {
 	}
 	var version [8]byte
 	binary.BigEndian.PutUint64(version[:], e.SnapshotVersion)
-	return bucket.Put(versionKey, version[:])
+	if err := bucket.Put(versionKey, version[:]); err != nil {
+		return err
+	}
+	return bucket.Put([]byte(e.Binding.Context.Session+"/owner"), claimKey(e.Claim))
 }
 
 func (p *Provider) reserveCredit(tx *bolt.Tx, name string, amount, maximum uint64) error {

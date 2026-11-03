@@ -725,3 +725,7 @@ The separately selected controlled-only successor is specified in
 [Retained-9p-controlled.md](Retained-9p-controlled.md). Its minor2/schema3
 allocation/gap operations and response verification union do not extend either
 closed1.0 or1.1 schema and supply no normal publication authority.
+
+The separately selected controlled-only1.3 parent-funded READDIR cleanup tuple
+is specified in [Retained-9p-cleanup.md](Retained-9p-cleanup.md). It preserves the
+closed1.0/1.1/1.2 schemas and adds no normal publication authority.

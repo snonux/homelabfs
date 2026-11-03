@@ -1,0 +1,4 @@
+=== RUN   TestReaddirCleanupProductionConsumerRealHost
+--- PASS: TestReaddirCleanupProductionConsumerRealHost (35.90s)
+PASS
+ok  	github.com/snonux/homelabfs/internal/controlledvalidation	35.903s

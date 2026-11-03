@@ -145,6 +145,13 @@ func (p *Provider) execute(ctx context.Context, b guestbridge.Binding, prepare f
 					return fsapi.Invalid
 				}
 			}
+			var closure *guestbridge.ReaddirClosure
+			if selected := p.config.Authorization.Enrollment.Protocol; selected != nil && *selected == guestbridge.CleanupProtocol() && b.Call.Intent.Opcode == "READDIR" && predicted.Result.Code == fsapi.OK {
+				closure, err = guestbridge.PrepareReaddirClosure(b, proposed, bridge)
+				if err != nil {
+					return err
+				}
+			}
 			var snapshotVersion uint64
 			if len(proposed) > 0 {
 				if err = p.db.Update(func(tx *bolt.Tx) error {
@@ -156,6 +163,7 @@ func (p *Provider) execute(ctx context.Context, b guestbridge.Binding, prepare f
 				}
 			}
 			if err = p.update(b, func(e *entry) error {
+				e.ReaddirClosure = closure
 				e.SnapshotVersion = snapshotVersion
 				e.Plan = plan
 				e.ProposedResult = proposed

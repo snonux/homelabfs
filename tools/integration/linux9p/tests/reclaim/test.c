@@ -54,6 +54,7 @@ struct hfs_provider {
 };
 struct hfs_session {
    int lock, control;
+   u16 bridge_minor;
    bool blocked;
    struct list_head forgets;
    struct {
@@ -126,6 +127,15 @@ static void hfs_result_adopt(struct hfs_session *session,
    (void)session;
    CHECK(result == expected_result);
    adopted++;
+}
+/* This legacy1.0/1.1 primitive never selects the new minor3 branch; the
+ * production successor helper is exercised over live host IPC separately.
+ */
+static int hfs_readdir_cleanup(struct hfs_session *session,
+                               const struct hfs_json *result,
+                               const struct hfs_cred *issuer) {
+   (void)session; (void)result; (void)issuer;
+   return -EOPNOTSUPP;
 }
 #include "consumer.inc"
 static int publication(struct hfs_session *session, const struct hfs_json *json,

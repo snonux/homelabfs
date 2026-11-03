@@ -69,7 +69,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,335 @@
+@@ -0,0 +1,337 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -231,6 +231,8 @@ new file mode 100644
 +	struct hfs_view_ticket *earmark_ticket;
 +	struct hfs_buf earmark_number;
 +	struct hfs_buf drain_payload;
++	/* Parent-funded exact successor cleanup, allocated before CALL. */
++	struct hfs_buf readdir_cleanup;
 +	bool bound;
 +	bool held;
 +	u64 number;
@@ -409,7 +411,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,1977 @@
+@@ -0,0 +1,2085 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include <linux/delay.h>
@@ -851,7 +853,7 @@ new file mode 100644
 +		"HELLO", "CALL", "QUERY", "CANCEL", "RETIRE", "RELEASE_CELL",
 +		"RESUME", "VIEW_WAIT", "VIEW_ACK", "VIEW_ACQUIRE",
 +		"VIEW_RELEASE", "VIEW_RENEW", "VIEW_QUERY", "VIEW_CANCEL",
-+		"VIEW_RETIRE", "DIRTY_RESERVE", "DIRTY_FREEZE",
++		"VIEW_RETIRE", "DIRTY_RESERVE", "DIRTY_FREEZE", "READDIR_CLEANUP",
 +	};
 +	static const char * const opcodes[] = {
 +		"ROOT", "LOOKUP", "GETATTR", "READLINK", "CREATE", "MKDIR",
@@ -889,6 +891,8 @@ new file mode 100644
 +
 +	*out = NULL;
 +	if (!hfs_operation(operation, false))
++		return -EOPNOTSUPP;
++	if (!strcmp(operation, "READDIR_CLEANUP") && session->bridge_minor != 3)
 +		return -EOPNOTSUPP;
 +	if (hfs_view_command(operation) &&
 +	    (!session->bridge_minor ||
@@ -1393,6 +1397,7 @@ new file mode 100644
 +	hfs_buf_free(&request->original_context);
 +	hfs_buf_free(&request->earmark_number);
 +	hfs_buf_free(&request->drain_payload);
++	hfs_buf_free(&request->readdir_cleanup);
 +	session->provider->unreserve(session, request->reservation);
 +allocation:
 +	kfree(request);
@@ -1547,6 +1552,11 @@ new file mode 100644
 +		err = request->intent.error ?: request->credentials.error;
 +		goto free;
 +	}
++	if (session->bridge_minor == 3 && !strcmp(opcode, "READDIR")) {
++		err = hfs_buf_init(&request->readdir_cleanup, HFS_BODY_MAX);
++		if (err)
++			goto free;
++	}
 +	request->cache_observation = !strcmp(opcode, "GETATTR") || !strcmp(opcode, "LOOKUP") ||
 +		!strcmp(opcode, "READDIR") || !strcmp(opcode, "READLINK") || !strcmp(opcode, "STATFS");
 +	if (session->bridge_minor && !control) {
@@ -1599,6 +1609,7 @@ new file mode 100644
 +	hfs_buf_free(&request->original_context);
 +	hfs_buf_free(&request->earmark_number);
 +	hfs_buf_free(&request->drain_payload);
++	hfs_buf_free(&request->readdir_cleanup);
 +	hfs_buf_free(&payload);
 +	session->provider->unreserve(session, request->reservation);
 +	kfree(request);
@@ -1627,6 +1638,101 @@ new file mode 100644
 +	hfs_buf_literal(args, "}");
 +}
 +
++/* The owning request's full payload storage was funded before READDIR CALL.
++ * No per-entry claim, capability allocation, or credential recapture occurs.
++ * The caller has left physical observation but still borrows the parent.
++ */
++static int hfs_readdir_cleanup(struct hfs_session *session,
++			       const struct hfs_json *result,
++			       const struct hfs_cred *issuer)
++{
++	struct hfs_request *request = result->owner;
++	struct hfs_json *reply = NULL;
++	struct hfs_buf *payload;
++	u8 digest[32], actual[32];
++	u32 i, n = 0, len = sizeof(actual);
++	int entries, cap, id, token, claim, err;
++
++	if (!request || request->session != session || !request->users ||
++	    !request->terminal || !request->result || !issuer)
++		return -ESTALE;
++	payload = &request->readdir_cleanup;
++	if (!payload->data || payload->cap != HFS_BODY_MAX)
++		return -ENOSPC;
++	if (result->len != request->result->len ||
++	    memcmp(result->data, request->result->data, result->len))
++		return -ESTALE;
++	payload->len = 0;
++	payload->error = 0;
++	hfs_cred_write(payload, issuer);
++	if (payload->error || payload->len != request->credentials.len ||
++	    memcmp(payload->data, request->credentials.data, payload->len))
++		return -EACCES;
++
++	entries = hfs_json_field(result, 0, "entries");
++	id = hfs_json_field(result, 0, "id");
++	if (entries < 0 || result->tokens[entries].kind != HFS_ARRAY || id < 0)
++		return -EPROTO;
++	payload->len = 0;
++	payload->error = 0;
++	hfs_buf_literal(payload, "{\"capabilities\":[");
++	for (i = entries + 1; i < result->count; i++) {
++		if (result->tokens[i].parent != entries)
++			continue;
++		cap = hfs_json_field(result, i, "capability");
++		if (++n > 256 || cap < 0)
++			return -EPROTO;
++		if (n > 1)
++			hfs_buf_literal(payload, ",");
++		hfs_buf_add(payload, result->data + result->tokens[cap].start,
++			    result->tokens[cap].end -
++				    result->tokens[cap].start);
++	}
++	hfs_buf_literal(payload, "],\"claim\":");
++	hfs_buf_add(payload, request->claim.data, request->claim.len);
++	hfs_buf_literal(payload, ",\"credentials\":");
++	/* Retain the exact original bytes, regardless of exit/current
++	 * credentials. */
++	hfs_buf_add(payload, request->credentials.data,
++		    request->credentials.len);
++	hfs_buf_literal(payload, ",\"result_id\":");
++	hfs_buf_add(payload, result->data + result->tokens[id].start,
++		    result->tokens[id].end - result->tokens[id].start);
++	hfs_buf_literal(payload, "}");
++	if (payload->error)
++		return payload->error;
++	hfs_hash(payload->data, payload->len, digest);
++	err = hfs_control(session, "READDIR_CLEANUP", payload, true, &reply);
++	if (err)
++		goto out;
++	token = hfs_json_field(reply, 0, "payload");
++	claim = hfs_json_field(reply, token, "claim");
++	cap = hfs_json_field(reply, token, "result_id");
++	if (hfs_json_exact(reply, token,
++			   "claim,request_hash,result_id,status") ||
++	    !hfs_json_is(reply, hfs_json_field(reply, token, "status"),
++			 "\"CLOSED\"") ||
++	    claim < 0 || cap < 0 ||
++	    reply->tokens[claim].end - reply->tokens[claim].start !=
++		    request->claim.len ||
++	    memcmp(reply->data + reply->tokens[claim].start,
++		   request->claim.data, request->claim.len) ||
++	    reply->tokens[cap].end - reply->tokens[cap].start !=
++		    result->tokens[id].end - result->tokens[id].start ||
++	    memcmp(reply->data + reply->tokens[cap].start,
++		   result->data + result->tokens[id].start,
++		   result->tokens[id].end - result->tokens[id].start) ||
++	    hfs_json_hex(reply, hfs_json_field(reply, token, "request_hash"),
++			 actual, &len) ||
++	    len != 32 || memcmp(actual, digest, 32))
++		err = -EPROTO;
++	if (!err)
++		hfs_result_adopt(session, result);
++out:
++	hfs_json_free(reply);
++	return err;
++}
++
 +int hfs_readdir_forget(struct hfs_session *session,
 +		       const struct hfs_json *result,
 +		       const struct hfs_cred *issuer)
@@ -1638,6 +1744,8 @@ new file mode 100644
 +	int err;
 +	u32 i;
 +
++	if (session->bridge_minor == 3)
++		return hfs_readdir_cleanup(session, result, issuer);
 +	if (entries < 0 || result->tokens[entries].kind != HFS_ARRAY)
 +		return -EPROTO;
 +	for (i = entries + 1; i < result->count; i++) {
@@ -1972,6 +2080,7 @@ new file mode 100644
 +		hfs_buf_free(&request->original_context);
 +		hfs_buf_free(&request->earmark_number);
 +		hfs_buf_free(&request->drain_payload);
++		hfs_buf_free(&request->readdir_cleanup);
 +		hfs_json_free(request->result);
 +		hfs_json_free(request->refusal);
 +		session->provider->unreserve(session, request->reservation);
@@ -2315,6 +2424,7 @@ new file mode 100644
 +		hfs_buf_free(&request->original_context);
 +		hfs_buf_free(&request->earmark_number);
 +		hfs_buf_free(&request->drain_payload);
++		hfs_buf_free(&request->readdir_cleanup);
 +		hfs_json_free(request->result);
 +		hfs_json_free(request->refusal);
 +		session->provider->unreserve(session, request->reservation);

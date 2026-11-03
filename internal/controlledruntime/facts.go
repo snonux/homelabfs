@@ -439,5 +439,5 @@ func (f *Facts) matchesProtocol(scope guestbridge.Context, p guestbridge.Protoco
 	return ok && expected == p
 }
 func runtimeProtocol(p guestbridge.Protocol) bool {
-	return p == guestbridge.ControlledProtocol() || p == (guestbridge.Protocol{BodySchema: 4, BridgeMajor: 1, BridgeMinor: 3, Features: 8191, Msize: 65536, NormalMajor: 3, NormalMinor: 0})
+	return guestbridge.IsControlledProtocol(p)
 }

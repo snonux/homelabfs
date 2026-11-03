@@ -1,0 +1,82 @@
+ok  	github.com/snonux/homelabfs/internal/guestbridge	1.016s
+panic: test timed out after 10m0s
+	running tests:
+		TestReaddirCleanupProductionConsumerRealHost (4m59s)
+
+goroutine 22 [running]:
+testing.(*M).startAlarm.func1()
+	/usr/lib/golang/src/testing/testing.go:2802 +0x605
+created by time.goFunc
+	/usr/lib/golang/src/time/sleep.go:215 +0x45
+
+goroutine 1 [chan receive, 4 minutes]:
+testing.(*T).Run(0xc000144008, {0x996bc5, 0x2c}, 0x99cb90)
+	/usr/lib/golang/src/testing/testing.go:2109 +0xb3e
+testing.runTests.func1(0xc000144008)
+	/usr/lib/golang/src/testing/testing.go:2585 +0x85
+testing.tRunner(0xc000144008, 0xc000137ad0)
+	/usr/lib/golang/src/testing/testing.go:2036 +0x21d
+testing.runTests({0x98ee9a, 0x1b}, {0x99a0d5, 0x39}, 0xc000016060, {0xc60120, 0x31, 0x31}, {0xc2b291b9a4cd4ecc, 0x8bb2cd6969, ...})
+	/usr/lib/golang/src/testing/testing.go:2583 +0x9ea
+testing.(*M).Run(0xc00007e140)
+	/usr/lib/golang/src/testing/testing.go:2443 +0xf4c
+main.main()
+	_testmain.go:142 +0x165
+
+goroutine 16 [chan receive]:
+github.com/snonux/homelabfs/internal/fsservice.(*Service).Controlled(0xc000112908, {0x9a3a80, 0xc0006aa050}, {0x0?, {0x9899ea?, 0x8000?}}, 0xc000a070b0)
+	/home/paul/tmp/codex/hfs-x04-20261103-g1cd9qr_/worktree/internal/fsservice/controlled.go:104 +0x514
+github.com/snonux/homelabfs/internal/controlledvalidation.seedCleanupDirectory(0xc00026a6c8, 0x100)
+	/home/paul/tmp/codex/hfs-x04-20261103-g1cd9qr_/worktree/internal/controlledvalidation/readdir_cleanup_test.go:61 +0x192
+github.com/snonux/homelabfs/internal/controlledvalidation.TestReaddirCleanupProductionConsumerRealHost(0xc000144d88)
+	/home/paul/tmp/codex/hfs-x04-20261103-g1cd9qr_/worktree/internal/controlledvalidation/readdir_cleanup_test.go:247 +0x15f
+testing.tRunner(0xc000144d88, 0x99cb90)
+	/usr/lib/golang/src/testing/testing.go:2036 +0x21d
+created by testing.(*T).Run in goroutine 1
+	/usr/lib/golang/src/testing/testing.go:2101 +0xb13
+
+goroutine 34 [runnable]:
+encoding/json.appendString[...]({0xc000b76ed4?, 0x0, 0x1712c}, {0xc000653500, 0x40}, 0x1)
+	/usr/lib/golang/src/encoding/json/encode.go:1063 +0xc31
+encoding/json.stringEncoder(0xc000314cc0, {0x91b800?, 0xc0009dfda8?, 0x2?}, {0xe0?, 0xc3?})
+	/usr/lib/golang/src/encoding/json/encode.go:632 +0x652
+encoding/json.structEncoder.encode({{{0xc0001b7908, 0x3, 0x4}, 0xc00020f6b0, 0xc00020f6e0}}, 0xc000314cc0, {0x9538e0?, 0xc0009dfd90?, 0x9538e0?}, {0x0, ...})
+	/usr/lib/golang/src/encoding/json/encode.go:747 +0x4de
+encoding/json.arrayEncoder.encode({0x0?}, 0xc000314cc0, {0x9193a0?, 0xc0001fc328?, 0xc0001fc32f?}, {0x40?, 0xc2?})
+	/usr/lib/golang/src/encoding/json/encode.go:890 +0x103
+encoding/json.sliceEncoder.encode({0x4cc849?}, 0xc000314cc0, {0x9193a0?, 0xc0001fc328?, 0x57fd05?}, {0x65?, 0xc3?})
+	/usr/lib/golang/src/encoding/json/encode.go:863 +0x503
+encoding/json.structEncoder.encode({{{0xc000210008, 0xc, 0x11}, 0xc00020fa70, 0xc00020faa0}}, 0xc000314cc0, {0x9748a0?, 0xc0001fc240?, 0x4cc811?}, {0x0, ...})
+	/usr/lib/golang/src/encoding/json/encode.go:747 +0x4de
+encoding/json.(*encodeState).reflectValue(0xc000314cc0, {0x9748a0?, 0xc0001fc240?, 0xc000314cc0?}, {0x80?, 0xc3?})
+	/usr/lib/golang/src/encoding/json/encode.go:367 +0x84
+encoding/json.(*encodeState).marshal(0xc000314cc0, {0x9748a0, 0xc0001fc240}, {0x2f?, 0x9f?})
+	/usr/lib/golang/src/encoding/json/encode.go:343 +0xdc
+encoding/json.Marshal({0x9748a0, 0xc0001fc240})
+	/usr/lib/golang/src/encoding/json/encode.go:209 +0x11f
+github.com/snonux/homelabfs/internal/storage.jsonBytes(...)
+	/home/paul/tmp/codex/hfs-x04-20261103-g1cd9qr_/worktree/internal/storage/format.go:376
+github.com/snonux/homelabfs/internal/storage.EncodeImage({0x1, {0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x40, 0x0, 0x80, ...}, ...}, ...)
+	/home/paul/tmp/codex/hfs-x04-20261103-g1cd9qr_/worktree/internal/storage/image.go:180 +0x1e16
+github.com/snonux/homelabfs/internal/apply.publish({_, _}, {_, _}, {{{0x1, 0x0, 0x0, 0x0, 0x0, 0x0, ...}, ...}, ...}, ...)
+	/home/paul/tmp/codex/hfs-x04-20261103-g1cd9qr_/worktree/internal/apply/progress.go:72 +0x155
+github.com/snonux/homelabfs/internal/apply.(*Result).advance(0xc000112de0, {0x9a3888, 0xc85000}, {0x9a29a0, 0xc00012e180}, {{0x1, 0x0, 0x0, {{0x1, 0x0, ...}, ...}, ...}, ...})
+	/home/paul/tmp/codex/hfs-x04-20261103-g1cd9qr_/worktree/internal/apply/advance.go:123 +0x2518
+github.com/snonux/homelabfs/internal/apply.(*Result).Advance(0xc000112de0, {0x9a3888, 0xc85000}, 0xc00012e180, {{0x1, 0x0, 0x0, {{0x1, 0x0, 0x0, ...}, ...}, ...}, ...})
+	/home/paul/tmp/codex/hfs-x04-20261103-g1cd9qr_/worktree/internal/apply/advance.go:29 +0x311
+github.com/snonux/homelabfs/internal/fsservice.(*Service).protect(0xc000112908, {0x9a3888, 0xc85000}, {0xe4, 0x87, 0xe5, 0x87, 0xc6, 0xa0, 0x4d, ...}, ...)
+	/home/paul/tmp/codex/hfs-x04-20261103-g1cd9qr_/worktree/internal/fsservice/service.go:397 +0x1b85
+github.com/snonux/homelabfs/internal/fsservice.(*ControlledCut).applyControlled(_, {_, _}, {0x0, 0x1, {0xaf, 0x9e, 0xd1, 0xbb, 0x93, ...}, ...}, ...)
+	/home/paul/tmp/codex/hfs-x04-20261103-g1cd9qr_/worktree/internal/fsservice/controlled.go:519 +0xb92
+github.com/snonux/homelabfs/internal/fsservice.(*ControlledCut).ApplyControlled(_, {_, _}, {0x0, 0x1, {0xaf, 0x9e, 0xd1, 0xbb, 0x93, ...}, ...}, ...)
+	/home/paul/tmp/codex/hfs-x04-20261103-g1cd9qr_/worktree/internal/fsservice/controlled.go:446 +0xbe5
+github.com/snonux/homelabfs/internal/controlledvalidation.seedCleanupDirectory.func1({0x9a3888, 0xc85000}, 0xc000570580)
+	/home/paul/tmp/codex/hfs-x04-20261103-g1cd9qr_/worktree/internal/controlledvalidation/readdir_cleanup_test.go:66 +0x51c
+github.com/snonux/homelabfs/internal/fsservice.(*Service).Controlled.func1({0x9a3888, 0xc85000})
+	/home/paul/tmp/codex/hfs-x04-20261103-g1cd9qr_/worktree/internal/fsservice/controlled.go:95 +0x188
+github.com/snonux/homelabfs/internal/fsservice.(*Service).run(0xc000112908)
+	/home/paul/tmp/codex/hfs-x04-20261103-g1cd9qr_/worktree/internal/fsservice/service.go:178 +0x209
+created by github.com/snonux/homelabfs/internal/fsservice.New in goroutine 16
+	/home/paul/tmp/codex/hfs-x04-20261103-g1cd9qr_/worktree/internal/fsservice/service.go:83 +0x1b7d
+FAIL	github.com/snonux/homelabfs/internal/controlledvalidation	600.015s
+FAIL

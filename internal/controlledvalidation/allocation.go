@@ -61,7 +61,7 @@ func (p *Provider) CheckBridgeProtocol(ctx context.Context, scope guestbridge.Co
 		}
 		return nil
 	}
-	if selected != nil && *selected == guestbridge.ControlledProtocol() {
+	if selected != nil && guestbridge.IsControlledProtocol(*selected) {
 		return fsapi.Permission
 	}
 	return nil
@@ -76,10 +76,11 @@ func (p *Provider) allocationOriginal(ctx context.Context, scope guestbridge.Con
 	if err != nil {
 		return guestbridge.Binding{}, err
 	}
-	protocol := guestbridge.ControlledProtocol()
-	if e := p.config.Authorization.Enrollment; e.Protocol == nil || *e.Protocol != protocol {
+	enrolled := p.config.Authorization.Enrollment.Protocol
+	if enrolled == nil || !guestbridge.IsControlledProtocol(*enrolled) {
 		return guestbridge.Binding{}, fsapi.Permission
 	}
+	protocol := *enrolled
 	if !ok || observed.Scope != scope || observed.Operation != op || observed.Protocol == nil || *observed.Protocol != protocol || observed.PayloadHash != hash(raw) || observed.Native.Endpoint != p.config.Authorization.Enrollment.Endpoint {
 		return guestbridge.Binding{}, fsapi.Permission
 	}
@@ -88,7 +89,7 @@ func (p *Provider) allocationOriginal(ctx context.Context, scope guestbridge.Con
 	if err != nil {
 		return guestbridge.Binding{}, err
 	}
-	if _, err = guestbridge.DecodeCommandVersion(envelope, 2); err != nil {
+	if _, err = guestbridge.DecodeCommandVersion(envelope, uint16(protocol.BridgeMinor)); err != nil {
 		return guestbridge.Binding{}, err
 	}
 	return guestbridge.Binding{Context: scope, Call: call, Canonical: raw}, nil

@@ -130,7 +130,7 @@ func DecodeCommandVersion(b []byte, minor uint16) (Command, error) {
 	if minor == 0 {
 		return DecodeCommand(b)
 	}
-	if minor != 1 && minor != 2 {
+	if minor != 1 && minor != 2 && minor != 3 {
 		return Command{}, fsapi.Unsupported
 	}
 	v, err := Canonical(b)
@@ -150,7 +150,7 @@ func DecodeCommandVersion(b []byte, minor uint16) (Command, error) {
 	}
 	if c.Op == "HELLO" {
 		err = validateProtocolVersion(o["payload"], minor)
-	} else if minor == 2 && isAllocation(c.Op) {
+	} else if minor >= 2 && isAllocation(c.Op) {
 		err = validatePayload("CALL", o["payload"], nil)
 		if err == nil && c.Payload != nil {
 			var call Call
@@ -159,8 +159,10 @@ func DecodeCommandVersion(b []byte, minor uint16) (Command, error) {
 				err = fsapi.Permission
 			}
 		}
-	} else if minor == 2 && c.Op == "RETIRE" {
+	} else if minor >= 2 && c.Op == "RETIRE" {
 		err = validateControlledRetirement(o["payload"])
+	} else if minor == 3 && c.Op == "READDIR_CLEANUP" {
+		err = validateReaddirCleanup(o["payload"])
 	} else if isViewExtension(c.Op) {
 		err = validateViewPayload(c.Context, c.Op, o["payload"])
 	} else if c.Op == "VIEW_ACK" {
@@ -184,6 +186,9 @@ func validateProtocolVersion(v any, minor uint16) error {
 	selected := ViewProtocol()
 	if minor == 2 {
 		selected = ControlledProtocol()
+	}
+	if minor == 3 {
+		selected = CleanupProtocol()
 	}
 	expected, err := marshal(selected)
 	if err != nil || !bytes.Equal(raw, expected) {

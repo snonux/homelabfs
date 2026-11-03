@@ -94,6 +94,7 @@ type entry struct {
 	PlannedOutcome               *guestbridge.Outcome
 	SnapshotVersion              uint64
 	RetainedCredit, SourceCredit uint64
+	ReaddirClosure               *guestbridge.ReaddirClosure `json:",omitempty"`
 }
 type principal struct{ High, Floor uint64 }
 type captured struct {
@@ -128,7 +129,7 @@ func New(ctx context.Context, c Config) (*Provider, error) {
 	if err != nil {
 		return nil, err
 	}
-	if e.Protocol != nil && *e.Protocol != guestbridge.ControlledProtocol() || validateEnrollment(e) != nil || bytes.Equal(e.HostKey, e.GuestKey) || !e.Ledger.Valid() || !e.Profile.Disposable || e.Profile.Name == "" || len(e.HostKey) != ed25519.PublicKeySize || len(e.GuestKey) != ed25519.PublicKeySize || !ed25519.Verify(c.Operator, raw, a.OperatorSignature) || !ed25519.Verify(e.HostKey, raw, a.HostSignature) || !ed25519.Verify(e.GuestKey, raw, a.GuestSignature) {
+	if e.Protocol != nil && !guestbridge.IsControlledProtocol(*e.Protocol) || validateEnrollment(e) != nil || bytes.Equal(e.HostKey, e.GuestKey) || !e.Ledger.Valid() || !e.Profile.Disposable || e.Profile.Name == "" || len(e.HostKey) != ed25519.PublicKeySize || len(e.GuestKey) != ed25519.PublicKeySize || !ed25519.Verify(c.Operator, raw, a.OperatorSignature) || !ed25519.Verify(e.HostKey, raw, a.HostSignature) || !ed25519.Verify(e.GuestKey, raw, a.GuestSignature) {
 		return nil, fsapi.Permission
 	}
 	journal, err := c.Service.ControlledJournalInfo(ctx, e.Profile)

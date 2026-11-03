@@ -1,0 +1,122 @@
+{
+  "version": "9P2000.L.hfs1.3",
+  "protocol": {
+    "body_schema": 4,
+    "bridge_major": 1,
+    "bridge_minor": 3,
+    "features": 8191,
+    "msize": 65536,
+    "normal_major": 3,
+    "normal_minor": 0
+  },
+  "commands": [
+    {
+      "name": "hello",
+      "body": {
+        "cell": 1,
+        "context": {
+          "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+          "cluster": "00000000-0000-0000-0000-000000000001",
+          "configuration": "00000000-0000-0000-0000-000000000002",
+          "export": "00000000-0000-0000-0000-000000000003",
+          "exporter_incarnation": "00000000-0000-0000-0000-000000000004",
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "generation": "00000000-0000-0000-0000-000000000006",
+          "guest_boot": "00000000-0000-0000-0000-000000000007",
+          "guest_mount": "00000000-0000-0000-0000-000000000008",
+          "origin_incarnation": "00000000-0000-0000-0000-000000000009",
+          "origin_journal": "00000000-0000-0000-0000-00000000000a",
+          "origin_node": "00000000-0000-0000-0000-00000000000b",
+          "policy_hash": "787007365a2d2890e567e0694a318ef81018b9c3d2006fa6bc63806cdc782c53",
+          "registry_hash": "5958fd48cfbec29a4864006b0f1ddaa11559cf001ced0e76b34a91403538711f",
+          "session": "00000000-0000-0000-0000-00000000000c",
+          "vm": "00000000-0000-0000-0000-00000000000d",
+          "volume": "00000000-0000-0000-0000-00000000000e"
+        },
+        "op": "HELLO",
+        "payload": {
+          "body_schema": 4,
+          "bridge_major": 1,
+          "bridge_minor": 3,
+          "features": 8191,
+          "msize": 65536,
+          "normal_major": 3,
+          "normal_minor": 0
+        },
+        "protocol": {
+          "body_schema": 4,
+          "bridge_major": 1,
+          "bridge_minor": 3,
+          "features": 8191,
+          "msize": 65536,
+          "normal_major": 3,
+          "normal_minor": 0
+        },
+        "reclaim": null
+      },
+      "sha256": "7e3794fdfa4823b3da1db7989ca5b9cc363366fc824153ec084ca5eb05f6d2c3"
+    },
+    {
+      "name": "cleanup-empty",
+      "body": {
+        "cell": 1,
+        "context": {
+          "authority_hash": "e0977fe86a6a3d9ea9c7100e5a47ac6e039b57e40ce892a7903c21fa120abadf",
+          "cluster": "00000000-0000-0000-0000-000000000001",
+          "configuration": "00000000-0000-0000-0000-000000000002",
+          "export": "00000000-0000-0000-0000-000000000003",
+          "exporter_incarnation": "00000000-0000-0000-0000-000000000004",
+          "fuse_session": "00000000-0000-0000-0000-000000000005",
+          "generation": "00000000-0000-0000-0000-000000000006",
+          "guest_boot": "00000000-0000-0000-0000-000000000007",
+          "guest_mount": "00000000-0000-0000-0000-000000000008",
+          "origin_incarnation": "00000000-0000-0000-0000-000000000009",
+          "origin_journal": "00000000-0000-0000-0000-00000000000a",
+          "origin_node": "00000000-0000-0000-0000-00000000000b",
+          "policy_hash": "787007365a2d2890e567e0694a318ef81018b9c3d2006fa6bc63806cdc782c53",
+          "registry_hash": "5958fd48cfbec29a4864006b0f1ddaa11559cf001ced0e76b34a91403538711f",
+          "session": "00000000-0000-0000-0000-00000000000c",
+          "vm": "00000000-0000-0000-0000-00000000000d",
+          "volume": "00000000-0000-0000-0000-00000000000e"
+        },
+        "op": "READDIR_CLEANUP",
+        "payload": {
+          "claim": {
+            "realm": "00000000-0000-0000-0000-000000000001",
+            "subject": "616263",
+            "anchor": "00000000-0000-0000-0000-000000000007",
+            "nonce": "00000000-0000-0000-0000-000000000008",
+            "number": 1,
+            "original_hash": "7c408f002ecd813bbe28c0e9ca6123ffa8e3904fa7bd77b9b9bf8f436147cba6"
+          },
+          "credentials": {
+            "credential_revision": 1,
+            "fsgid": 1002,
+            "fsuid": 1001,
+            "groups": [
+              7,
+              1002,
+              2001
+            ],
+            "idmap_hash": "c004dd8c100ac0b8ab3e543743897c97106af6a3f830cdfa4cff8c91204d2935",
+            "process": "00000000-0000-0000-0000-00000000001e",
+            "user_namespace": "00000000-0000-0000-0000-00000000001f"
+          },
+          "result_id": "3660315a9af3df255d8f19ab077e4797822b41488a0e2a04bc6af71213c23274",
+          "capabilities": []
+        },
+        "protocol": {
+          "body_schema": 4,
+          "bridge_major": 1,
+          "bridge_minor": 3,
+          "features": 8191,
+          "msize": 65536,
+          "normal_major": 3,
+          "normal_minor": 0
+        },
+        "reclaim": null
+      },
+      "sha256": "d6c4d3f50669d7b18d4da95268a5ea7b287f4f2c5643ec22615f48a6a3e86c96"
+    }
+  ]
+}

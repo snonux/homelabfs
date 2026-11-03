@@ -1,0 +1,16 @@
+--- FAIL: TestReaddirCleanupClosedSuccessor (0.00s)
+    readdir_cleanup_test.go:21: cleanup tuple changed
+FAIL
+FAIL	github.com/snonux/homelabfs/internal/guestbridge	0.001s
+--- FAIL: TestReaddirCleanupAtomicFailureReopenAndRetirement (0.02s)
+    readdir_cleanup_test.go:303: STALE
+    provider_test.go:731: preserved failed controlled resources: /tmp/hfs-controlled-3291339938
+    provider_test.go:731: preserved failed controlled resources: /tmp/hfs-controlled-1914362254
+    provider_test.go:731: preserved failed controlled resources: /tmp/hfs-controlled-428211953
+    provider_test.go:731: preserved failed controlled resources: /tmp/hfs-controlled-2022162347
+    provider_test.go:731: preserved failed controlled resources: /tmp/hfs-controlled-3612049554
+    provider_test.go:731: preserved failed controlled resources: /tmp/hfs-controlled-3222238249
+    provider_test.go:731: preserved failed controlled resources: /tmp/hfs-controlled-4257703897
+FAIL
+FAIL	github.com/snonux/homelabfs/internal/controlledvalidation	34.739s
+FAIL

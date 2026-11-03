@@ -62,7 +62,7 @@ func (g guestCredentialsPrimitive) Verify(_ context.Context, s guestbridge.Conte
 	return nil
 }
 
-func newSourceRig(t *testing.T) *sourceRig {
+func newSourceRigProtocol(t *testing.T, protocol guestbridge.Protocol) *sourceRig {
 	t.Helper()
 	r := &sourceRig{t: t, supervisor: runningFixture(t)}
 	endpoint := guestbridge.Endpoint{FuseSession: testUUID(43).String(), CommandNode: 2, ResultNode: 3, RecallNode: 4}
@@ -114,7 +114,7 @@ func newSourceRig(t *testing.T) *sourceRig {
 	r.credentials = guestbridge.Credentials{FSUID: 1000, FSGID: 1001, Groups: []uint32{200}, Process: testUUID(63).String(), Revision: 1, IDMapHash: hashBytes([]byte("map")), UserNamespace: testUUID(64).String()}
 	identity := r.supervisor.child.identity
 	r.native = guestbridge.Native{UID: identity.UID, GID: identity.GID, PID: identity.PID, Groups: append([]uint32(nil), identity.Groups...), Process: identity.PublicID.String(), Unique: 1, Endpoint: endpoint}
-	r.installed = installedObservation{Version: "homelabfs-installed-observation/1", ManifestHash: hashBytes([]byte("manifest")), BootID: r.scope.GuestBoot, KernelBuildID: strings.Repeat("ab", 20), Modules: map[string]string{}, ABI: physicalContract, Admission: kernelAdmission{Version: "homelabfs-kernel-admission/1", BootID: r.scope.GuestBoot, ProviderNonce: testUUID(66).String(), PhysicalContract: physicalContract, Protocols: map[string]guestbridge.Protocol{r.scope.Session: guestbridge.ControlledProtocol()}, Domains: []guestbridge.Context{r.scope}, Observations: []kernelDomainObservation{{Scope: r.scope, Revision: 1, Fence: 1, Phase: "LIVE"}}}}
+	r.installed = installedObservation{Version: "homelabfs-installed-observation/1", ManifestHash: hashBytes([]byte("manifest")), BootID: r.scope.GuestBoot, KernelBuildID: strings.Repeat("ab", 20), Modules: map[string]string{}, ABI: physicalContract, Admission: kernelAdmission{Version: "homelabfs-kernel-admission/1", BootID: r.scope.GuestBoot, ProviderNonce: testUUID(66).String(), PhysicalContract: physicalContract, Protocols: map[string]guestbridge.Protocol{r.scope.Session: protocol}, Domains: []guestbridge.Context{r.scope}, Observations: []kernelDomainObservation{{Scope: r.scope, Revision: 1, Fence: 1, Phase: "LIVE"}}}}
 	observer, observationFile := liveObserverFixture(t, r.installed)
 	r.observationFile = observationFile
 	r.admission, err = ObserveAdmission(t.Context(), r.supervisor, observer, []guestbridge.Context{r.scope})
@@ -122,7 +122,6 @@ func newSourceRig(t *testing.T) *sourceRig {
 	key := func() ed25519.PrivateKey { _, k, err := ed25519.GenerateKey(rand.Reader); require(t, err); return k }
 	operator, guest := key(), key()
 	r.key = key()
-	protocol := guestbridge.ControlledProtocol()
 	enrolled := controlledvalidation.Enrollment{Protocol: &protocol, Profile: profile, Scope: r.scope, Endpoint: endpoint, ServingGeneration: c.Workspace.ID, Ledger: testUUID(65), Journal: journal, HostKey: r.key.Public().(ed25519.PublicKey), GuestKey: guest.Public().(ed25519.PublicKey)}
 	e := viewcontrol.Enrollment{Version: viewcontrol.EnrollmentVersion, ID: testUUID(99), Domains: []controlledvalidation.Enrollment{enrolled}, TicketFamilies: []viewcontrol.TicketFamilies{{Acquisition: viewcontrol.TicketFamily{Anchor: testUUID(110).String(), Nonce: testUUID(111).String()}, Control: viewcontrol.TicketFamily{Anchor: testUUID(110).String(), Nonce: testUUID(112).String()}}}, PageSize: 4096, Bounds: viewcontrol.Bounds{Tickets: 16, ControlTickets: 8, Reservations: 4, Identities: 64, Sources: 8, SourceBytes: 64 << 10, LedgerBytes: 12 << 20, WorkBytes: 192 << 20}}
 	require(t, r.service.Controlled(t.Context(), profile, func(ctx context.Context, cut *fsservice.ControlledCut) error {
@@ -186,7 +185,7 @@ func (r *sourceRig) execute(op string, value any) (json.RawMessage, *guestbridge
 	if err != nil {
 		return nil, nil, err
 	}
-	protocol := guestbridge.ControlledProtocol()
+	protocol := r.installed.Admission.Protocols[r.scope.Session]
 	command := guestbridge.Command{Cell: r.cells, Context: r.scope, Protocol: &protocol, Op: op, Payload: raw}
 	response, err := r.bridge.Execute(r.t.Context(), r.native, command)
 	if err != nil {
@@ -238,7 +237,18 @@ func (r *sourceRig) call(op string, args any) json.RawMessage {
 }
 
 func TestRealControlledProducerSignsSourceEventAndRefusesForgedACK(t *testing.T) {
-	r := newSourceRig(t)
+	for _, selected := range []struct {
+		name     string
+		protocol guestbridge.Protocol
+	}{{"controlled1.2", guestbridge.ControlledProtocol()}, {"cleanup1.3", guestbridge.CleanupProtocol()}} {
+		t.Run(selected.name, func(t *testing.T) {
+			testRealControlledProducerSignsSourceEventAndRefusesForgedACK(t, selected.protocol)
+		})
+	}
+}
+
+func testRealControlledProducerSignsSourceEventAndRefusesForgedACK(t *testing.T, protocol guestbridge.Protocol) {
+	r := newSourceRigProtocol(t, protocol)
 	root := r.call("ROOT", map[string]any{})
 	var result struct {
 		Code         string
@@ -321,7 +331,16 @@ func TestRealControlledProducerSignsSourceEventAndRefusesForgedACK(t *testing.T)
 }
 
 func TestRealControlledProducerFloorUsesOriginalProtectedCoverage(t *testing.T) {
-	r := newSourceRig(t)
+	for _, selected := range []struct {
+		name     string
+		protocol guestbridge.Protocol
+	}{{"controlled1.2", guestbridge.ControlledProtocol()}, {"cleanup1.3", guestbridge.CleanupProtocol()}} {
+		t.Run(selected.name, func(t *testing.T) { testRealControlledProducerFloorUsesOriginalProtectedCoverage(t, selected.protocol) })
+	}
+}
+
+func testRealControlledProducerFloorUsesOriginalProtectedCoverage(t *testing.T, protocol guestbridge.Protocol) {
+	r := newSourceRigProtocol(t, protocol)
 	root := r.call("ROOT", map[string]any{})
 	var result struct{ ID string }
 	require(t, json.Unmarshal(root, &result))
@@ -365,7 +384,16 @@ func (r *sourceRig) observeACK(event map[string]json.RawMessage, ack map[string]
 }
 
 func TestRealControlledProducerRejectsFalseFrozenOmission(t *testing.T) {
-	r := newSourceRig(t)
+	for _, selected := range []struct {
+		name     string
+		protocol guestbridge.Protocol
+	}{{"controlled1.2", guestbridge.ControlledProtocol()}, {"cleanup1.3", guestbridge.CleanupProtocol()}} {
+		t.Run(selected.name, func(t *testing.T) { testRealControlledProducerRejectsFalseFrozenOmission(t, selected.protocol) })
+	}
+}
+
+func testRealControlledProducerRejectsFalseFrozenOmission(t *testing.T, protocol guestbridge.Protocol) {
+	r := newSourceRigProtocol(t, protocol)
 	var root struct{ Capabilities []guestbridge.Capability }
 	require(t, json.Unmarshal(r.call("ROOT", map[string]any{}), &root))
 	domain := root.Capabilities[1]

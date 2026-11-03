@@ -1,0 +1,22 @@
+# x04 frozen implementation handoff
+
+Base7de9012, branch codex/readdir-cleanup-x04-20261103; root owns all git/task mutations and fresh R1. Source paths/hashes: source-freeze.json. No source edits/checks after this freeze. No active process/heavy slot held.
+
+Explicit additional controlled1.3/minor3/schema4/features8191, version9P2000.L.hfs1.3. Closed1.0/1.1/1.2 remain unchanged. Literal codec rejects old/mixed tuples. Full256 READDIR is retained (complete body1MiB; frame msize65536).
+
+Original parent allocation credit owns exact full ordered all-entry cleanup request and immutable receipt before ApplyControlled. Encoded complete QUERY/cleanup bodies are bounded before effect; real retained admission counts request+receipt. New READDIR_CLEANUP is a reserved control, zero per-entry ordinary claims/source effects. Exact original full issuer, parent claim/result ID and all full tokens are required. Original results remain byte-exact. Retire refuses unclosed pages and still requires complete contiguous gap/result coverage. Charges are permanent: no source/body credit reclaim is assumed or added.
+
+Cleanup atomically transforms CURRENT protected snapshot, only matching NoLookup PATH release bits; current snapshot owner metadata and exact owner BridgeState equality are mandatory. Both non-growing snapshot copies reuse their current owner's existing credit. uint64 sequence decimal growth consumes20bytes from existing4096 admission allowance. Snapshot version/owner/parent closure/receipt update in one transaction. RAM changes only same targeted bits, preserving newer credentials/process/control state. No barrier blocks STOP/drain/recall. Lock order matches private CALL: resultMu then provider.execution then DB; no nested DB or callback.
+
+Maintained native source hfs.h/hfs_session.c only: preallocated1MiB parent cleanup payload within existing16MiB request reservation before READDIR CALL; exact original request credentials/result owner; full all-entry command; verified receipt before adopt. hfs_iterate still leaves physical observation before cleanup. Failed preallocation/queue/uncertainty keeps parent owned. Legacy closed branches remain separate. Actual1.3 negotiation, frame/response verification and forwarding are o04/runtime gates: C production helper is tested through primitive allocator/transport IPC with real authenticated host Service/provider; no actual native/FUSE physical fact or runtime claim.
+
+Checks:
+- preflight full Go build PASS (checks/preflight-build.log).
+- targeted host/codec PASS0.002/34.584s, including full256 at ALL64 default credits exhausted; claim65 refuses independently, closure and exact retry still succeed. No budgets raised.
+- final ASan+UBSan production C/helper -> real host full256 PASS35.903s (checks/production-consumer2.log): zero entries emitted, all256 sent; preowned-capacity/held owner/wrong issuer/failed queue negatives before transport, real committed reply loss, unchanged retry, exact receipt/adoption.
+- small-page actual ownership/interleaving/atomic rollback/reopen/floor race PASS1.017/1.569s (checks/focused-race2.log).
+- broad full256 race reached original600s limit while SECOND full256 fixture seeded through ApplyControlled/apply.Result.advance; complete stack checks/focused-race1.log, owned fd/journal progress checks/race1-progress.json. No timeout widening; first full256 test completed without failure before second fixture. Do not claim overall broad race passed or repeat it; failed resources preserved.
+- scoped vet/errcheck/lint PASS; controlled/view/cleanup codec compatibility PASS; legacy reclaim and actual request-retirement ASan+UBSan PASS; three actual native translation units -c PASS, immutable stock/generated references unchanged. checks/final-stage-summary.json and objects1/receipt.json.
+- export28owned inputs matches source manifest; diff check clean. No full suite, linking/kernel boot/runtime/distributed/normal publication validation. Root owns full gates.
+
+Self-review: parent-funded typed control is smaller than source/body recycling or per-entry batching with new ordinary claims; it resolves the actual finite64-credit deadlock without changing budgets. Replacing a precomputed old snapshot was rejected because controls/credentials could interleave; current-owner bounded transform preserves them. Remaining independent identity/source/claim exhaustion stays fail closed before unowned effects. No SSH/VM/mount/install/lab/production/PV/NFS/received-sink actions.

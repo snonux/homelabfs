@@ -20,8 +20,9 @@ import (
 // allocationViews stops at the platform boundary. These tests use the actual
 // bridge, provider and temporary journal, but do not assert kernel/source proof.
 type allocationViews struct {
-	scope guestbridge.Context
-	calls *int
+	scope    guestbridge.Context
+	calls    *int
+	protocol *guestbridge.Protocol
 }
 
 type allocationCredentialFacts struct {
@@ -55,8 +56,14 @@ func alternateAllocationCredentials(original guestbridge.Credentials) guestbridg
 	return original
 }
 
+func (v allocationViews) selectedProtocol() guestbridge.Protocol {
+	if v.protocol != nil {
+		return *v.protocol
+	}
+	return guestbridge.ControlledProtocol()
+}
 func (v allocationViews) CheckEnrollment(_ context.Context, scope guestbridge.Context, p guestbridge.Protocol) error {
-	if scope != v.scope || p != guestbridge.ControlledProtocol() {
+	if scope != v.scope || p != v.selectedProtocol() {
 		return fsapi.Permission
 	}
 	return nil
@@ -66,7 +73,7 @@ func (allocationViews) CheckTarget(context.Context, guestbridge.Context, guestbr
 }
 func (v allocationViews) CheckRequest(ctx context.Context, scope guestbridge.Context, op string, raw json.RawMessage) error {
 	observed, ok := guestbridge.VerifiedRequest(ctx)
-	if !ok || scope != v.scope || observed.Scope != scope || observed.Operation != op || observed.PayloadHash != hash(raw) || observed.Protocol == nil || *observed.Protocol != guestbridge.ControlledProtocol() {
+	if !ok || scope != v.scope || observed.Scope != scope || observed.Operation != op || observed.PayloadHash != hash(raw) || observed.Protocol == nil || *observed.Protocol != v.selectedProtocol() {
 		return fsapi.Permission
 	}
 	return nil
@@ -80,11 +87,13 @@ func (v allocationViews) ExchangeView(context.Context, guestbridge.Context, stri
 }
 
 func newAllocationHarness(t *testing.T) *allocationHarness {
+	return newAllocationHarnessProtocol(t, guestbridge.ControlledProtocol())
+}
+func newAllocationHarnessProtocol(t *testing.T, protocol guestbridge.Protocol) *allocationHarness {
 	t.Helper()
 	f := newFixture(t)
 	mustAllocation(t, f.provider.Close())
 	f.provider = nil
-	protocol := guestbridge.ControlledProtocol()
 	f.pc.Authorization.Enrollment.Protocol = &protocol
 	f.pc.Authorization.Enrollment.Ledger = id(67)
 	f.pc.Directory = tempDirectory(t)
@@ -97,7 +106,7 @@ func newAllocationHarness(t *testing.T) *allocationHarness {
 	mustAllocation(t, err)
 	call.Claim.OriginalHash = hash(raw)
 	native := guestbridge.Native{UID: 1000, GID: 1001, PID: 123, Unique: 1, Groups: []uint32{200}, Process: id(66).String(), Endpoint: f.pc.Authorization.Enrollment.Endpoint}
-	config := guestbridge.Config{Protocol: &protocol, Validation: f.config.Validation, Endpoint: native.Endpoint, Native: &nativeFacts{native: native}, Attestor: allocationCredentialFacts{original: credentialFacts{expected: call.Credentials, scope: scope}, alternate: alternateAllocationCredentials(call.Credentials)}, Claims: f.provider, Execution: f.provider, Views: noViews{}, ViewProtocol: allocationViews{scope: scope, calls: new(int)}, Scopes: []guestbridge.Context{scope}}
+	config := guestbridge.Config{Protocol: &protocol, Validation: f.config.Validation, Endpoint: native.Endpoint, Native: &nativeFacts{native: native}, Attestor: allocationCredentialFacts{original: credentialFacts{expected: call.Credentials, scope: scope}, alternate: alternateAllocationCredentials(call.Credentials)}, Claims: f.provider, Execution: f.provider, Views: noViews{}, ViewProtocol: allocationViews{scope: scope, calls: new(int), protocol: &protocol}, Scopes: []guestbridge.Context{scope}}
 	bridge, err := guestbridge.New(t.Context(), config)
 	mustAllocation(t, err)
 	h := &allocationHarness{f: f, bridge: bridge, config: config, native: native, original: call}

@@ -1,0 +1,55 @@
+{
+  "pid": 721483,
+  "recorded": 1793707823.577357,
+  "owned_resources": [
+    {
+      "fd": "6",
+      "path": "/tmp/hfs-controlled-3560790593",
+      "bytes": 60,
+      "mtime_ns": 1793707579234806231
+    },
+    {
+      "fd": "7",
+      "path": "/tmp/hfs-controlled-1901076148",
+      "bytes": 40,
+      "mtime_ns": 1793707579234126015
+    },
+    {
+      "fd": "8",
+      "path": "/tmp/hfs-controlled-3214384530",
+      "bytes": 120,
+      "mtime_ns": 1793707579238666939
+    },
+    {
+      "fd": "9",
+      "path": "/tmp/hfs-controlled-1796154336",
+      "bytes": 100,
+      "mtime_ns": 1793707579238748194
+    },
+    {
+      "fd": "10",
+      "path": "/tmp/hfs-controlled-159437075",
+      "bytes": 9340,
+      "mtime_ns": 1793707822696545752
+    },
+    {
+      "fd": "11",
+      "path": "/tmp/hfs-controlled-3560790593/segments/01000000-0000-4000-8000-000000000001/02000000-0000-4000-8000-000000000002/03000000-0000-4000-8000-000000000003/e00000000000000000001/owner/00000000000000000001-open.hfj",
+      "bytes": 423965,
+      "mtime_ns": 1793707822696579397
+    },
+    {
+      "fd": "12",
+      "path": "/tmp/hfs-controlled-629960322/controlled-validation-v1.db",
+      "bytes": 32768,
+      "mtime_ns": 1793707579245984774
+    },
+    {
+      "fd": "13",
+      "path": "/tmp/hfs-controlled-3560790593/segments/01000000-0000-4000-8000-000000000001/02000000-0000-4000-8000-000000000002/03000000-0000-4000-8000-000000000003/e00000000000000000001/owner/00000000000000000001-open.hfj",
+      "bytes": 423965,
+      "mtime_ns": 1793707822696579397
+    }
+  ],
+  "scope": "read-only owned test-process fd/journal progress before original600s bound; no timeout widening"
+}

@@ -1,0 +1,16 @@
+Applied patch to 'docs/spec/Retained-9p-protocol.md' cleanly.
+Applied patch to 'internal/controlledvalidation/allocation.go' cleanly.
+Applied patch to 'internal/controlledvalidation/allocation_test.go' cleanly.
+Applied patch to 'internal/controlledvalidation/claims.go' cleanly.
+Applied patch to 'internal/controlledvalidation/execution.go' cleanly.
+Applied patch to 'internal/controlledvalidation/ledger.go' cleanly.
+Applied patch to 'internal/controlledvalidation/provider.go' cleanly.
+Applied patch to 'internal/controlledvalidation/retirement.go' cleanly.
+Applied patch to 'internal/guestbridge/codec.go' cleanly.
+Applied patch to 'internal/guestbridge/controlled_protocol.go' cleanly.
+Applied patch to 'internal/guestbridge/service.go' with conflicts.
+Applied patch to 'internal/guestbridge/view_protocol.go' cleanly.
+Applied patch to 'tools/integration/linux9p/patches/0003-hfs1-guest-vfs.patch' cleanly.
+Applied patch to 'tools/integration/linux9p/source.json' cleanly.
+Applied patch to 'tools/integration/linux9p/tests/reclaim/test.c' cleanly.
+U internal/guestbridge/service.go

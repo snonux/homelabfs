@@ -1,0 +1,37 @@
+[
+  {
+    "stage": "vet",
+    "exit": 0,
+    "seconds": 0.465
+  },
+  {
+    "stage": "errcheck",
+    "exit": 0,
+    "seconds": 0.365
+  },
+  {
+    "stage": "lint",
+    "exit": 0,
+    "seconds": 0.716
+  },
+  {
+    "stage": "codec-compat",
+    "exit": 0,
+    "seconds": 0.365
+  },
+  {
+    "stage": "legacy-reclaim",
+    "exit": 0,
+    "seconds": 1.017
+  },
+  {
+    "stage": "request-retirement",
+    "exit": 0,
+    "seconds": 0.867
+  },
+  {
+    "stage": "native-tus",
+    "exit": 0,
+    "seconds": 3.223
+  }
+]
