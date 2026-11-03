@@ -248,12 +248,14 @@ installation, lab recovery or workload operation is claimed by this plan.
 
 ## Host original/native mapping foundation (task114)
 
-The host now offers the explicitly negotiated
+The host offers the explicitly negotiated
 [1.4 authenticated mapping foundation](../spec/Retained-9p-mapping.md): durable
 C8 candidates/leg-chain protection, staged actual Transport/Producer attachment,
-receipt2 and a pure pinned-host-attestation verifier. This does not close the
-actual C translation/guest verifier integration gap (`y04`) or create the kernel
+receipt2 and a pure pinned-host-attestation verifier. The owned C carrier and
+pure guest attestation verifier (`y04`) now exercise
+that foundation with real Producer signatures. They do not create the kernel
 received-response/provider authority (`s04`). Older1.2/1.3 receipts still bind
 native bytes only. No runtime may advertise guest source/event/floor readiness
-from decoded metadata or this foundation alone; the actual owned carrier and
-received-path integration must still be implemented and validated.
+from decoded metadata or this foundation alone; the private received-path/source
+provider integration must still be implemented
+and validated by C6; the pure verifier remains inert.

@@ -1,0 +1,12 @@
+[
+  {
+    "canonical": "tools/integration/linux9p/tests/controlled/host_test.go.txt",
+    "temporary": "internal/controlledvalidation/o04_production_guest_test.go",
+    "sha256": "f1db2b8c01d77bb0facd6d13e49f53a45adfecaef7b3f29f920fbffca91c0d13"
+  },
+  {
+    "canonical": "tools/integration/linux9p/tests/mapped/host_test.go.txt",
+    "temporary": "internal/controlledruntime/y04_actual_carrier_test.go",
+    "sha256": "8a4880c6c03ebc26969bcc093532fb70c5bab9435cd2420347681643c98fbea0"
+  }
+]

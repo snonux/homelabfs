@@ -1,0 +1,95 @@
+{
+  "tmp": "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/tmp",
+  "packages": [],
+  "commands": [
+    {
+      "name": "export",
+      "argv": [
+        "python3",
+        "tools/integration/linux9p/export.py",
+        "--source",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/source",
+        "--archive",
+        "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/source/linux-79807e970724c1f90cee1316361d61b80db4eef6.tar.gz",
+        "--development",
+        "--task",
+        "y04"
+      ],
+      "timeout": 180
+    },
+    {
+      "name": "freeze-after-export",
+      "argv": [
+        "python3",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/freeze.py"
+      ],
+      "timeout": 30
+    },
+    {
+      "name": "strict-c",
+      "argv": [
+        "bash",
+        "tools/integration/lib9p/verify.sh",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/strict-c"
+      ],
+      "timeout": 180
+    },
+    {
+      "name": "freebsd-c",
+      "argv": [
+        "python3",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/cross.py"
+      ],
+      "timeout": 120
+    },
+    {
+      "name": "race-integration",
+      "argv": [
+        "python3",
+        "tools/integration/linux9p/tests/mapped/run.py",
+        "--source",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/source",
+        "--output",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/mapped",
+        "--budget-root",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk",
+        "--race",
+        "--kernel-headers",
+        "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/final-objects4"
+      ],
+      "timeout": 300
+    },
+    {
+      "name": "vet-focused",
+      "argv": [
+        "go",
+        "vet",
+        "-overlay",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/mapped/overlay.json",
+        "./internal/controlledruntime"
+      ],
+      "timeout": 180
+    },
+    {
+      "name": "errcheck-focused",
+      "argv": [
+        "errcheck",
+        "-tests",
+        "./internal/controlledruntime"
+      ],
+      "env": {
+        "GOFLAGS": "-p=1 -overlay=/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/mapped/overlay.json"
+      },
+      "timeout": 180
+    },
+    {
+      "name": "check-frozen",
+      "argv": [
+        "python3",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/freeze.py",
+        "--check"
+      ],
+      "timeout": 30
+    }
+  ]
+}

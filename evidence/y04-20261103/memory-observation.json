@@ -1,0 +1,20 @@
+[
+  {
+    "mem_available": 22872657920,
+    "swap_used": 4570570752,
+    "pswpout": 1254295,
+    "cgroup": {}
+  },
+  {
+    "mem_available": 22846976000,
+    "swap_used": 4570570752,
+    "pswpout": 1254295,
+    "cgroup": {}
+  },
+  {
+    "mem_available": 22850396160,
+    "swap_used": 4570570752,
+    "pswpout": 1254295,
+    "cgroup": {}
+  }
+]

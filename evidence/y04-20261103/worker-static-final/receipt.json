@@ -1,0 +1,31 @@
+[
+  {
+    "check": "errcheck-focused",
+    "argv": [
+      "python3",
+      "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-static2/check.py"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.35,
+    "peak_group_rss_kib": 39624,
+    "guard": null,
+    "pswpout_before": 1254083,
+    "pswpout_after": 1254083
+  },
+  {
+    "check": "check-frozen",
+    "argv": [
+      "python3",
+      "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/freeze.py",
+      "--check"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.348,
+    "peak_group_rss_kib": 17768,
+    "guard": null,
+    "pswpout_before": 1254083,
+    "pswpout_after": 1254083
+  }
+]

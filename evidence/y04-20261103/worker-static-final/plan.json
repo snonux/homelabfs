@@ -1,0 +1,23 @@
+{
+  "tmp": "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/tmp",
+  "packages": [],
+  "commands": [
+    {
+      "name": "errcheck-focused",
+      "argv": [
+        "python3",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-static2/check.py"
+      ],
+      "timeout": 180
+    },
+    {
+      "name": "check-frozen",
+      "argv": [
+        "python3",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/freeze.py",
+        "--check"
+      ],
+      "timeout": 30
+    }
+  ]
+}

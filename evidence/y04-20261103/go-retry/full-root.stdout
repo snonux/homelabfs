@@ -1,0 +1,12 @@
+?   	github.com/snonux/homelabfs/cmd/hfs-behavior	[no test files]
+?   	github.com/snonux/homelabfs/cmd/hfs-lab	[no test files]
+?   	github.com/snonux/homelabfs/cmd/hfs-smoke-driver	[no test files]
+?   	github.com/snonux/homelabfs/cmd/homelabfs	[no test files]
+?   	github.com/snonux/homelabfs/internal	[no test files]
+ok  	github.com/snonux/homelabfs/internal/admin	2.015s
+ok  	github.com/snonux/homelabfs/internal/admission	0.014s
+ok  	github.com/snonux/homelabfs/internal/apply	9.696s
+ok  	github.com/snonux/homelabfs/internal/behavior	0.403s
+ok  	github.com/snonux/homelabfs/internal/checkpoint	3.667s
+ok  	github.com/snonux/homelabfs/internal/cluster	0.012s
+ok  	github.com/snonux/homelabfs/internal/controlledruntime	4.420s

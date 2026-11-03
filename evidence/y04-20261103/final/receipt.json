@@ -1,0 +1,57 @@
+[
+  {
+    "check": "full-root",
+    "argv": [
+      "go",
+      "test",
+      "-p",
+      "1",
+      "-count=1",
+      "-timeout=600s",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 195.903,
+    "peak_group_rss_kib": 419928,
+    "guard": null,
+    "pswpout_before": 1254295,
+    "pswpout_after": 1254295
+  },
+  {
+    "check": "freebsd-cgo-controlledruntime",
+    "argv": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/root-gates/retry3/controlledruntime-freebsd.test",
+      "./internal/controlledruntime"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 5.625,
+    "peak_group_rss_kib": 286980,
+    "guard": null,
+    "pswpout_before": 1254295,
+    "pswpout_after": 1254295
+  },
+  {
+    "check": "freebsd-cgo-fuseadapter",
+    "argv": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/root-gates/retry3/fuseadapter-freebsd.test",
+      "./internal/fuseadapter"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.619,
+    "peak_group_rss_kib": 156996,
+    "guard": null,
+    "pswpout_before": 1254295,
+    "pswpout_after": 1254295
+  }
+]

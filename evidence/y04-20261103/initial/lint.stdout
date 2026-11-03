@@ -1,0 +1,5 @@
+internal/controlledruntime/y04_actual_carrier_test.go:397:3: QF1003: could use tagged switch on field (staticcheck)
+		if field == "cell" || field == "poll_count" {
+		^
+1 issues:
+* staticcheck: 1

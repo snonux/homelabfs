@@ -1,0 +1,21 @@
+[
+  {
+    "check": "full-root",
+    "argv": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-count=1",
+      "-timeout=600s",
+      "./..."
+    ],
+    "exit": -15,
+    "deadline": false,
+    "seconds": 56.412,
+    "peak_group_rss_kib": 594192,
+    "guard": "swapout advanced",
+    "pswpout_before": 1254188,
+    "pswpout_after": 1254220
+  }
+]

@@ -1,0 +1,128 @@
+{
+  "packages": [
+    "./..."
+  ],
+  "commands": [
+    {
+      "name": "build",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ]
+    },
+    {
+      "name": "vet",
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ]
+    },
+    {
+      "name": "errcheck",
+      "argv": [
+        "errcheck",
+        "./..."
+      ]
+    },
+    {
+      "name": "lint",
+      "argv": [
+        "golangci-lint",
+        "run",
+        "--timeout=3m",
+        "./..."
+      ]
+    },
+    {
+      "name": "freebsd",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "0"
+      }
+    },
+    {
+      "name": "focused-race",
+      "argv": [
+        "go",
+        "test",
+        "-race",
+        "-p",
+        "1",
+        "-count=1",
+        "-timeout=180s",
+        "./internal/controlledruntime",
+        "./internal/fsservice",
+        "./internal/viewcontrol",
+        "./internal/guestbridge",
+        "./internal/controlledvalidation",
+        "-run",
+        "TestMappedActualCarrierTwoSessionsProducer|TestMapped|TestRealMapped|TestControlledProductionGuestBackendHost|TestProviderRouter|TestRealControlledProducer|TestDurableTransport|TestControlledProtocol"
+      ],
+      "timeout": 300
+    },
+    {
+      "name": "full-root",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-count=1",
+        "-timeout=600s",
+        "./..."
+      ],
+      "timeout": 1200
+    },
+    {
+      "name": "freebsd-cgo-controlledruntime",
+      "argv": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "@EVIDENCE@/controlledruntime-freebsd.test",
+        "./internal/controlledruntime"
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "1",
+        "CC": "zig cc -target x86_64-freebsd"
+      },
+      "timeout": 600
+    },
+    {
+      "name": "freebsd-cgo-fuseadapter",
+      "argv": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "@EVIDENCE@/fuseadapter-freebsd.test",
+        "./internal/fuseadapter"
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "1",
+        "CC": "zig cc -target x86_64-freebsd"
+      },
+      "timeout": 600
+    }
+  ],
+  "tmp": "/tmp/hyg-wn3w1l86",
+  "scope": "MergedY04 actualC carrier and inert guestV2 verifier; BOTH oldC2 and newmapped actualC tests materialized for allGo checks. No C6/privateReceived/sourcebytes/physical/native readiness. Previousworker kernel and FreeBSD C compile evidence separate. Equivalent test-only tagged switch correction for staticcheck; rerun all nine Go checks, unchanged two C preflights already passed.",
+  "environment": {
+    "HFS_CONTROLLED_CONSUMER": "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/root-gates/controlled-build/consumer",
+    "HFS_MAPPED_CONSUMER": "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/root-gates/mapped-build/consumer",
+    "HFS_CONTROLLED_TEST_ROOT": "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/root-gates/runtime-fixtures"
+  }
+}

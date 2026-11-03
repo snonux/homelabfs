@@ -1,0 +1,5 @@
+=== RUN   TestMappedActualCarrierTwoSessionsProducer
+    y04_actual_carrier_test.go:510: actual C carrier two sessions, 2 WAIT legs, real Producer V2 and OpenSSL verifier; native/kernel/provider boundaries remain primitives
+--- PASS: TestMappedActualCarrierTwoSessionsProducer (3.63s)
+PASS
+ok  	github.com/snonux/homelabfs/internal/controlledruntime	4.647s

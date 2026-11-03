@@ -1,0 +1,15 @@
+{
+  "docs/lab/Controlled-runtime-integration.md": "0275b9b73b7cde68eebc7992cd700adaa2d7592da136754eebbffc4dad86a5a4",
+  "docs/spec/Retained-9p-mapping.md": "66055c87cbb5c8ad6d524977417b13057af28cb9fb044fb27ed308f0c5721314",
+  "tools/integration/lib9p/src/hfs9p.c": "513a27c4dc6ad5db96c0d4e31ba0a13ef67b08ca5a17803449f3a738ff0e0321",
+  "tools/integration/linux9p/patches/0001-9p-hfs1-transport.patch": "512655d8ad90baefac7f68c6d365153ccdf42968381c0c093c8446ac4514359a",
+  "tools/integration/linux9p/patches/0002-hfs1-canonical-codec-policy.patch": "9d582b7fb8ce492a8ef6e4259e3783b4aa842502d3e05a1bccc4a0ab699ae80f",
+  "tools/integration/linux9p/patches/0003-hfs1-guest-vfs.patch": "611a635615c966f85a0245a7564eb5e1249d5ac5c09d5e07197ecedf847e139f",
+  "tools/integration/linux9p/source.json": "2d75554890cc594aab2e4d41b66feb997f25a1b4a290529eeca9d6146e3e1997",
+  "tools/integration/linux9p/tests/mapped/README.md": "f24e5ff9a868922906dd6d4e642fe34950515ee28d9087b761a6b280eb23b0af",
+  "tools/integration/linux9p/tests/mapped/build.py": "fce8f52825b5116ad894324ff13aa868645d37e902e4c721d5d32c7e91560e39",
+  "tools/integration/linux9p/tests/mapped/consumer.c": "1e611050082994f9e1d2a9ff921e88635203bfe788919f760fa62fc1abbb7617",
+  "tools/integration/linux9p/tests/mapped/host_test.go.txt": "8a4880c6c03ebc26969bcc093532fb70c5bab9435cd2420347681643c98fbea0",
+  "tools/integration/linux9p/tests/mapped/kernel_compile.py": "5876ef8ef53a0dedd7a2e1d39b46ae74baedad2b33ff55c36d9478a205b8ac60",
+  "tools/integration/linux9p/tests/mapped/run.py": "c7c3b69c973276d3b050bc8b3f243cb3298918f58cf5519c1649482cddd82145"
+}

@@ -1,0 +1,21 @@
+{
+  "scope": "actual changed owned C TU compile-only; real FreeBSD headers and SHA256 declarations, no native link/run",
+  "argv": [
+    "zig",
+    "cc",
+    "-target",
+    "x86_64-freebsd",
+    "-std=c11",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-O1",
+    "-UNDEBUG",
+    "-I/tmp/hfs-q04-headers",
+    "-c",
+    "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/worktree/tools/integration/lib9p/src/hfs9p.c",
+    "-o",
+    "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/hfs9p-freebsd.o"
+  ],
+  "object_sha256": "2594e9ae149bb91f59540dfcd9f00dbfb6d3053967506f62340acfdcd3abb3b2"
+}

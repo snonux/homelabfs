@@ -1,0 +1,7 @@
+{
+  "check": "staticcheck QF1003",
+  "path": "tools/integration/linux9p/tests/mapped/host_test.go.txt",
+  "scope": "test only equivalent tagged switch; root self-review; no extra formal round",
+  "old": "\t\tif field == \"cell\" || field == \"poll_count\" {\n\t\t\treceipt[field] = json.RawMessage(`999`)\n\t\t} else if field == \"signature\" {\n\t\t\treceipt[field] = mustRuntimeJSON(t, strings.Repeat(\"00\", 64))\n\t\t} else {\n\t\t\treceipt[field] = mustRuntimeJSON(t, strings.Repeat(\"ab\", 32))\n\t\t}",
+  "new": "\t\tswitch field {\n\t\tcase \"cell\", \"poll_count\":\n\t\t\treceipt[field] = json.RawMessage(`999`)\n\t\tcase \"signature\":\n\t\t\treceipt[field] = mustRuntimeJSON(t, strings.Repeat(\"00\", 64))\n\t\tdefault:\n\t\t\treceipt[field] = mustRuntimeJSON(t, strings.Repeat(\"ab\", 32))\n\t\t}"
+}

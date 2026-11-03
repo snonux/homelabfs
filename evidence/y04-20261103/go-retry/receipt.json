@@ -1,0 +1,122 @@
+[
+  {
+    "check": "build",
+    "argv": [
+      "go",
+      "build",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 4.693,
+    "peak_group_rss_kib": 316220,
+    "guard": null,
+    "pswpout_before": 1254184,
+    "pswpout_after": 1254184
+  },
+  {
+    "check": "vet",
+    "argv": [
+      "go",
+      "vet",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.557,
+    "peak_group_rss_kib": 82668,
+    "guard": null,
+    "pswpout_before": 1254184,
+    "pswpout_after": 1254184
+  },
+  {
+    "check": "errcheck",
+    "argv": [
+      "errcheck",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 4.674,
+    "peak_group_rss_kib": 198208,
+    "guard": null,
+    "pswpout_before": 1254184,
+    "pswpout_after": 1254184
+  },
+  {
+    "check": "lint",
+    "argv": [
+      "golangci-lint",
+      "run",
+      "--timeout=3m",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 4.094,
+    "peak_group_rss_kib": 177984,
+    "guard": null,
+    "pswpout_before": 1254184,
+    "pswpout_after": 1254184
+  },
+  {
+    "check": "freebsd",
+    "argv": [
+      "go",
+      "build",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 4.646,
+    "peak_group_rss_kib": 306188,
+    "guard": null,
+    "pswpout_before": 1254184,
+    "pswpout_after": 1254184
+  },
+  {
+    "check": "focused-race",
+    "argv": [
+      "go",
+      "test",
+      "-race",
+      "-p",
+      "1",
+      "-count=1",
+      "-timeout=180s",
+      "./internal/controlledruntime",
+      "./internal/fsservice",
+      "./internal/viewcontrol",
+      "./internal/guestbridge",
+      "./internal/controlledvalidation",
+      "-run",
+      "TestMappedActualCarrierTwoSessionsProducer|TestMapped|TestRealMapped|TestControlledProductionGuestBackendHost|TestProviderRouter|TestRealControlledProducer|TestDurableTransport|TestControlledProtocol"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 40.283,
+    "peak_group_rss_kib": 225704,
+    "guard": null,
+    "pswpout_before": 1254184,
+    "pswpout_after": 1254184
+  },
+  {
+    "check": "full-root",
+    "argv": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-count=1",
+      "-timeout=600s",
+      "./..."
+    ],
+    "exit": -15,
+    "deadline": false,
+    "seconds": 73.839,
+    "peak_group_rss_kib": 508616,
+    "guard": "swapout advanced",
+    "pswpout_before": 1254184,
+    "pswpout_after": 1254188
+  }
+]

@@ -1,9 +1,9 @@
 # Retained-9p authenticated original mapping 1.4
 
 Task `114` implements the host foundation for an explicit controlled-local
-successor. It does not implement the owned C backend carrier, guest runtime
-integration (`y04`), a kernel received-response provider (`s04`), restoration,
-or distributed operation. The pure verifier below cannot create kernel receipt
+successor. Task `y04` adds the owned C carrier and an inert guest receipt
+verification primitive. A kernel received-response provider (`s04`), restoration
+and distributed operation remain unimplemented. The pure verifier below cannot create kernel receipt
 or source authority. Production workloads, PVs and NFS remain outside scope.
 
 Both legs must select `9P2000.L.hfs1.4`, frame major1/minor4 and the exact tuple
@@ -148,3 +148,50 @@ encoder disables HTML escaping, including the Command marshaler, so a raw
 second row clone; existing bounded ledger serialization/transaction ownership
 funds it. A64-scope/80-marker maximal index remains below128KiB. Existing ledger
 1GiB admission is unchanged; deployment sizing remains a separate canary gate.
+
+## Owned C carrier and inert guest primitive (task y04)
+
+The maintained lib9p backend selects the exact1.4 token/tuple. Its guest ingress
+requires delegation:null before it prepares a native candidate. Every native
+leg reconstructs the compact delegation from the immutable guest original;
+internal WAIT Ack substitution never changes guest_reclaim. Candidate-number
+selection does not advance the native allocator. The actual rewritten bytes and
+existing32768-token arena are preflighted before issuance and complete-command
+acknowledgement. Metadata, digit expansion and both mirrored RELEASE Ack fields
+must fit the unchanged1MiB body. Refusal retains the original guest owner and
+any allocated/uncertain request. Earlier0..3 admission allowances stay unchanged.
+Replies restore only the guest cell/op and preserve the entire V2 receipt.
+
+The maintained Linux guest command builder emits the mandatory null delegation
+for1.4 while retaining the closed older encodings. The pure
+`hfs_mapped_receipt_verify` API takes borrowed canonical original/response JSON,
+an expected context and pinned key, and a required Ed25519 operation. It checks
+host-attested bindings and receipt/kind policy, returning only inert attestation
+scalars. Selected-field SHA256 uses fixed state and borrowed spans; it does not
+clone the response body. The unsigned Ed25519 message is separately bounded to
+16KiB. Kernel SHA256 uses the actual kernel implementation; portable tests use
+real OpenSSL SHA256 and Ed25519 with the real enrolled Producer key.
+
+This API does not enroll the supplied key, independently observe native legs,
+verify source bytes, install a cache object or create KernelReceived/event/floor
+authority. Missing Ed25519 support refuses with EOPNOTSUPP. No production kernel
+Ed25519 adapter or private received-response provider is installed here. C6 must
+obtain immutable key/context/receipt provenance from its private admitted state
+and complete the existing source and physical validation paths. A caller JSON,
+hash, boolean, parsed receipt or successful pure check cannot replace that work.
+The C primitive does not reproduce every nested Go response check: C6 must
+complete original acquire/renew comparisons and frozen-entry schema/request
+validation before using a source. Its successful result remains an inert host
+attestation.
+
+The [portable carrier harness](../../tools/integration/linux9p/tests/mapped/run.py)
+uses actual owned C translation and receipt verification with the real durable
+Transport, concrete provider router, Producer, controller, journals and protected
+providers. It covers two interleaved scopes with reused guest cells and distinct
+native globals, original donor reclaim, mirrored RELEASE payload, exact native
+and guest lost-reply retries, a signed multi-leg WAIT EVENT, early-deadline EMPTY
+reclaim and late continuation refusal, closed guest-builder bytes, mutation/key/
+context/credential negatives, and byte/token/allocation bounds. Native fd,
+mount/INIT, guest credential observation and scheduling are explicit portable
+primitives. Compile-only kernel/FreeBSD checks do not establish an installed
+runtime, source-byte verification, C6 readiness, restoration or deployment.

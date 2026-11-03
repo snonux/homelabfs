@@ -7,7 +7,7 @@ diff --git a/fs/9p/hfs_protocol.h b/fs/9p/hfs_protocol.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_protocol.h
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,150 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_PROTOCOL_H
 +#define FS_9P_HFS_PROTOCOL_H
@@ -29,6 +29,7 @@ new file mode 100644
 +#define HFS_VIEW_FEATURES 2047U
 +#define HFS_CONTROLLED_FEATURES 4095U
 +#define HFS_CLEANUP_FEATURES 8191U
++#define HFS_MAPPED_FEATURES 16383U
 +
 +enum hfs_response_channel {
 +	HFS_CHANNEL_RESULT = 2,
@@ -130,14 +131,38 @@ new file mode 100644
 +		     const void *body, u32 len, u32 chunk, void *out,
 +		     u32 *out_len);
 +int hfs_frame_decode(const void *frame, u32 len, u16 kind,
-+		     const uuid_t *session, u64 cell, u32 chunk,
-+		     u32 *total, u8 hash[32], const void **body, u32 *body_len);
++		     const uuid_t *session, u64 cell, u32 chunk, u32 *total,
++		     u8 hash[32], const void **body, u32 *body_len);
++/* Inert host attestation: this API cannot create kernel/source authority.
++ * C6 must obtain context/key/receipt provenance from private admitted state.
++ * No kernel Ed25519 adapter is installed here; missing crypto refuses. */
++struct hfs_mapped_binding {
++	const struct hfs_json *context;
++	u8 public_key[32];
++	int (*verify_ed25519)(const u8 key[32], const void *message, u32 len,
++			      const u8 signature[64]);
++};
++enum hfs_attestation_kind {
++	HFS_ATTESTATION_SOURCE = 1,
++	HFS_ATTESTATION_EVENT,
++	HFS_ATTESTATION_FLOOR,
++};
++struct hfs_mapped_attestation {
++	enum hfs_attestation_kind kind;
++	u64 guest_cell;
++	u64 poll_count;
++};
++int hfs_mapped_receipt_verify(const struct hfs_mapped_binding *binding,
++			      const struct hfs_json *original,
++			      const struct hfs_json *response,
++			      struct hfs_mapped_attestation *result);
++
 +#endif
 diff --git a/fs/9p/hfs_protocol.c b/fs/9p/hfs_protocol.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_protocol.c
-@@ -0,0 +1,702 @@
+@@ -0,0 +1,1410 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Bounded canonical retained-9p wire codec. Schema validation is the caller's. */
 +#include "hfs_protocol.h"
@@ -708,7 +733,7 @@ new file mode 100644
 +	u8 *frame = out;
 +	u32 offset, size;
 +
-+	if (minor > 3 || !out || !out_len || !body || !len || len > HFS_BODY_MAX ||
++	if (minor > 4 || !out || !out_len || !body || !len || len > HFS_BODY_MAX ||
 +	    kind < 1 || kind > 3 || !hfs_session_nonzero(session) ||
 +	    !cell || cell > HFS_CELL_MAX || chunk > (len - 1) / HFS_CHUNK_MAX)
 +		return -EINVAL;
@@ -739,7 +764,7 @@ new file mode 100644
 +	const u8 *frame = input;
 +	u32 size, length, offset;
 +
-+	if (minor > 3 || !input || !total || !hash || !body || !body_len ||
++	if (minor > 4 || !input || !total || !hash || !body || !body_len ||
 +	    len < HFS_HEADER_SIZE || kind < 1 || kind > 3 ||
 +	    !hfs_session_nonzero(session) || !cell || cell > HFS_CELL_MAX ||
 +	    memcmp(frame, "HFS9BR1\0", 8) ||
@@ -799,8 +824,12 @@ new file mode 100644
 +		"\"bridge_minor\":3,\"features\":8191,\"msize\":65536,"
 +		"\"normal_major\":3,\"normal_minor\":0}";
 +
++	static const char mapped[] = "{\"body_schema\":5,\"bridge_major\":1,"
++		"\"bridge_minor\":4,\"features\":16383,\"msize\":65536,"
++		"\"normal_major\":3,\"normal_minor\":0}";
++
 +	return minor == 0 ? legacy : minor == 1 ? views :
-+		minor == 2 ? controlled : minor == 3 ? cleanup : NULL;
++		minor == 2 ? controlled : minor == 3 ? cleanup : minor == 4 ? mapped : NULL;
 +}
 +
 +int hfs_protocol_match(const struct hfs_json *json, int token, u16 minor)
@@ -839,6 +868,710 @@ new file mode 100644
 +{
 +	return !strcmp(operation, "DIRTY_FREEZE") ||
 +	       !strcmp(operation, "VIEW_RELEASE");
++}
++
++/* Pure host attestation only. The caller must supply an already enrolled key;
++ * this primitive neither enrolls it nor creates received/source authority. */
++static bool hfs_mapped_equal(const struct hfs_json *a, int at,
++			     const struct hfs_json *b, int bt)
++{
++	return at >= 0 && bt >= 0 && (u32)at < a->count && (u32)bt < b->count &&
++	       a->tokens[at].end - a->tokens[at].start ==
++		       b->tokens[bt].end - b->tokens[bt].start &&
++	       !memcmp(a->data + a->tokens[at].start,
++		       b->data + b->tokens[bt].start,
++		       a->tokens[at].end - a->tokens[at].start);
++}
++
++static int hfs_mapped_fields(const struct hfs_json *j, int object,
++			     const char *fields, struct hfs_buf *out)
++{
++	char name[64];
++	u32 count = 0, len;
++	int token;
++
++	hfs_buf_literal(out, "{");
++	while (*fields) {
++		len = strcspn(fields, ",");
++		if (!len || len >= sizeof(name))
++			return -EINVAL;
++		memcpy(name, fields, len);
++		name[len] = 0;
++		token = hfs_json_field(j, object, name);
++		if (token < 0)
++			return -EPROTO;
++		hfs_buf_printf(out, "%s\"%s\":", count++ ? "," : "", name);
++		hfs_buf_token(out, j, token);
++		fields += len + (fields[len] == ',');
++	}
++	hfs_buf_literal(out, "}");
++	return out->error;
++}
++
++static int hfs_mapped_hash(const struct hfs_json *j, int object,
++			   const char *name, const u8 digest[32])
++{
++	u8 expected[32];
++	u32 len = sizeof(expected);
++
++	if (hfs_json_hex(j, hfs_json_field(j, object, name), expected, &len) ||
++	    len != sizeof(expected) ||
++	    memcmp(expected, digest, sizeof(expected)))
++		return -ESTALE;
++	return 0;
++}
++
++static bool hfs_mapped_uuid(const struct hfs_json *j, int token)
++{
++	char value[37];
++	u32 i;
++	bool nonzero = false;
++
++	if (hfs_json_string(j, token, value, sizeof(value)) != 36)
++		return false;
++	for (i = 0; i < 36; i++) {
++		if (i == 8 || i == 13 || i == 18 || i == 23) {
++			if (value[i] != '-')
++				return false;
++		} else {
++			if (hfs_hex_digit(value[i]) < 0)
++				return false;
++			nonzero |= value[i] != '0';
++		}
++	}
++	return nonzero;
++}
++
++static bool hfs_mapped_hex32(const struct hfs_json *j, int object,
++			     const char *field)
++{
++	u8 digest[32];
++	u32 len = sizeof(digest);
++
++	return !hfs_json_hex(j, hfs_json_field(j, object, field), digest,
++			     &len) &&
++	       len == sizeof(digest);
++}
++
++static bool hfs_mapped_number(const struct hfs_json *j, int object,
++			      const char *field, u64 minimum)
++{
++	u64 n;
++
++	return !hfs_json_u64(j, hfs_json_field(j, object, field), &n) &&
++	       n >= minimum;
++}
++
++static int hfs_mapped_target(const struct hfs_json *j, int target,
++			     const struct hfs_json *scope_json, int scope)
++{
++	static const char *const hashes[] = { "context_hash", "enrollment_hash",
++					      "journal_hash", "profile_hash",
++					      "state_hash" };
++	int cut = hfs_json_field(j, target, "cut");
++	int token = hfs_json_field(scope_json, scope, "origin_journal");
++	u8 digest[32];
++	u32 i;
++
++	if (hfs_json_exact(j, target, "cut,kind") ||
++	    !hfs_json_is(j, hfs_json_field(j, target, "kind"),
++			 "\"CONTROLLED_LOCAL\"") ||
++	    hfs_json_exact(
++		    j, cut,
++		    "context_hash,enrollment_hash,journal_epoch,journal_hash,"
++		    "journal_incarnation,journal_position,profile_hash,state_hash,visibility_generation") ||
++	    !hfs_mapped_uuid(j,
++			     hfs_json_field(j, cut, "journal_incarnation")) ||
++	    !hfs_mapped_uuid(j,
++			     hfs_json_field(j, cut, "visibility_generation")) ||
++	    !hfs_mapped_number(j, cut, "journal_epoch", 1) ||
++	    !hfs_mapped_number(j, cut, "journal_position", 0) ||
++	    !hfs_mapped_equal(j, hfs_json_field(j, cut, "journal_incarnation"),
++			      scope_json, token))
++		return -EPROTO;
++	for (i = 0; i < ARRAY_SIZE(hashes); i++)
++		if (!hfs_mapped_hex32(j, cut, hashes[i]))
++			return -EPROTO;
++	if (scope < 0 || (u32)scope >= scope_json->count)
++		return -EPROTO;
++	hfs_hash(scope_json->data + scope_json->tokens[scope].start,
++		 scope_json->tokens[scope].end -
++			 scope_json->tokens[scope].start,
++		 digest);
++	return hfs_mapped_hash(j, cut, "context_hash", digest);
++}
++
++static int hfs_mapped_context(const struct hfs_json *j)
++{
++	static const char *const uuids[] = { "cluster",
++					     "configuration",
++					     "export",
++					     "exporter_incarnation",
++					     "fuse_session",
++					     "generation",
++					     "guest_boot",
++					     "guest_mount",
++					     "origin_incarnation",
++					     "origin_journal",
++					     "origin_node",
++					     "session",
++					     "vm",
++					     "volume" };
++	static const char *const hashes[] = { "authority_hash", "policy_hash",
++					      "registry_hash" };
++	static const char *const nodes[] = { "command_node", "result_node",
++					     "recall_node" };
++	int scope = hfs_json_field(j, 0, "scope"),
++	    endpoint = hfs_json_field(j, 0, "endpoint");
++	u64 ids[3];
++	u32 i;
++
++	if (hfs_json_exact(j, 0,
++			   "controller,endpoint,scope,serving_generation") ||
++	    hfs_json_exact(
++		    j, scope,
++		    "authority_hash,cluster,configuration,export,exporter_incarnation,"
++		    "fuse_session,generation,guest_boot,guest_mount,origin_incarnation,origin_journal,"
++		    "origin_node,policy_hash,registry_hash,session,vm,volume") ||
++	    hfs_json_exact(
++		    j, endpoint,
++		    "command_node,fuse_session,recall_node,result_node") ||
++	    !hfs_mapped_uuid(j, hfs_json_field(j, 0, "controller")) ||
++	    !hfs_mapped_uuid(j, hfs_json_field(j, 0, "serving_generation")) ||
++	    !hfs_mapped_equal(j, hfs_json_field(j, scope, "fuse_session"), j,
++			      hfs_json_field(j, endpoint, "fuse_session")))
++		return -EPROTO;
++	for (i = 0; i < ARRAY_SIZE(uuids); i++)
++		if (!hfs_mapped_uuid(j, hfs_json_field(j, scope, uuids[i])))
++			return -EPROTO;
++	for (i = 0; i < ARRAY_SIZE(hashes); i++)
++		if (!hfs_mapped_hex32(j, scope, hashes[i]))
++			return -EPROTO;
++	for (i = 0; i < ARRAY_SIZE(nodes); i++)
++		if (hfs_json_u64(j, hfs_json_field(j, endpoint, nodes[i]),
++				 &ids[i]) ||
++		    ids[i] < 2)
++			return -EPROTO;
++	return ids[0] != ids[1] && ids[0] != ids[2] && ids[1] != ids[2] ?
++		       0 :
++		       -EPROTO;
++}
++
++static int hfs_mapped_event(const struct hfs_json *original,
++			    const struct hfs_json *response, int event,
++			    int evidence)
++{
++	int phase = hfs_json_field(response, event, "phase");
++	int scope = hfs_json_field(original, 0, "context");
++	int request = hfs_json_field(original, 0, "payload");
++	int target = hfs_json_field(response, event, "target");
++	bool recall = hfs_json_is(response, phase, "\"RECALL\"");
++
++	if (hfs_json_exact(
++		    response, event,
++		    "authority_hash,closure_hash,domain,inventory_hash,"
++		    "manifest_hash,old_visibility,phase,recall,sequence,target") ||
++	    !hfs_mapped_uuid(response,
++			     hfs_json_field(response, event, "recall")) ||
++	    !hfs_mapped_uuid(response, hfs_json_field(response, event,
++						      "old_visibility")) ||
++	    !hfs_mapped_uuid(response, hfs_json_field(response, evidence,
++						      "retained_owner")) ||
++	    !hfs_mapped_hex32(response, evidence, "domain_token") ||
++	    !hfs_mapped_number(response, event, "sequence", 1) ||
++	    !hfs_mapped_hex32(response, event, "authority_hash") ||
++	    !hfs_mapped_hex32(response, event, "closure_hash") ||
++	    !hfs_mapped_hex32(response, event, "inventory_hash") ||
++	    !hfs_mapped_equal(
++		    response, hfs_json_field(response, event, "authority_hash"),
++		    original,
++		    hfs_json_field(original, scope, "authority_hash")) ||
++	    !hfs_mapped_equal(
++		    response, hfs_json_field(response, event, "domain"),
++		    original, hfs_json_field(original, request, "domain")) ||
++	    (!recall && !hfs_json_is(response, phase, "\"INSTALL_DRAIN\"") &&
++	     !hfs_json_is(response, phase, "\"INSTALL_FINAL\"") &&
++	     !hfs_json_is(response, phase, "\"REOPEN\"")))
++		return -EPROTO;
++	if (recall)
++		return hfs_json_is(response, target, "null") &&
++				       hfs_json_is(
++					       response,
++					       hfs_json_field(response, event,
++							      "manifest_hash"),
++					       "null") ?
++			       0 :
++			       -EPROTO;
++	if (!hfs_mapped_hex32(response, event, "manifest_hash"))
++		return -EPROTO;
++	return hfs_mapped_target(response, target, original, scope);
++}
++
++/* Fixed SHA256 state and borrowed canonical spans. No response-body clone. */
++#ifdef HFS_CODEC_USERSPACE
++#include <openssl/evp.h>
++struct hfs_mapped_sha256 {
++	EVP_MD_CTX *context;
++};
++static int hfs_mapped_sha_begin(struct hfs_mapped_sha256 *s)
++{
++	s->context = EVP_MD_CTX_new();
++	if (!s->context)
++		return -ENOMEM;
++	if (EVP_DigestInit_ex(s->context, EVP_sha256(), NULL) != 1) {
++		EVP_MD_CTX_free(s->context);
++		return -EIO;
++	}
++	return 0;
++}
++static int hfs_mapped_sha_add(struct hfs_mapped_sha256 *s, const void *p,
++			      u32 len)
++{
++	return EVP_DigestUpdate(s->context, p, len) == 1 ? 0 : -EIO;
++}
++static int hfs_mapped_sha_end(struct hfs_mapped_sha256 *s, u8 digest[32],
++			      int err)
++{
++	unsigned int len = 32;
++	if (!err &&
++	    (EVP_DigestFinal_ex(s->context, digest, &len) != 1 || len != 32))
++		err = -EIO;
++	EVP_MD_CTX_free(s->context);
++	return err;
++}
++#else
++struct hfs_mapped_sha256 {
++	struct sha256_state state;
++};
++static int hfs_mapped_sha_begin(struct hfs_mapped_sha256 *s)
++{
++	sha256_init(&s->state);
++	return 0;
++}
++static int hfs_mapped_sha_add(struct hfs_mapped_sha256 *s, const void *p,
++			      u32 len)
++{
++	sha256_update(&s->state, p, len);
++	return 0;
++}
++static int hfs_mapped_sha_end(struct hfs_mapped_sha256 *s, u8 digest[32],
++			      int err)
++{
++	if (!err)
++		sha256_final(&s->state, digest);
++	return err;
++}
++#endif
++
++static int hfs_mapped_hash_fields(const struct hfs_json *j, int object,
++				  const char *fields, u8 digest[32])
++{
++	struct hfs_mapped_sha256 state;
++	char name[64], prefix[68];
++	u32 count = 0, len;
++	int token, err;
++
++	err = hfs_mapped_sha_begin(&state);
++	if (err)
++		return err;
++	err = hfs_mapped_sha_add(&state, "{", 1);
++	while (*fields && !err) {
++		len = strcspn(fields, ",");
++		if (!len || len >= sizeof(name)) {
++			err = -EINVAL;
++			break;
++		}
++		memcpy(name, fields, len);
++		name[len] = 0;
++		token = hfs_json_field(j, object, name);
++		if (token < 0 || (u32)token >= j->count) {
++			err = -EPROTO;
++			break;
++		}
++		/* All field names are fixed ASCII protocol keys. */
++		len = snprintf(prefix, sizeof(prefix),
++			       "%s\"%s\":", count++ ? "," : "", name);
++		err = hfs_mapped_sha_add(&state, prefix, len);
++		if (!err)
++			err = hfs_mapped_sha_add(
++				&state, j->data + j->tokens[token].start,
++				j->tokens[token].end - j->tokens[token].start);
++		fields += strlen(name) + (fields[strlen(name)] == ',');
++	}
++	if (!err)
++		err = hfs_mapped_sha_add(&state, "}", 1);
++	return hfs_mapped_sha_end(&state, digest, err);
++}
++
++static int hfs_mapped_object_hash(const struct hfs_json *j, int object,
++				  const char *fields, const char *hash_field)
++{
++	u8 digest[32];
++	int err = hfs_mapped_hash_fields(j, object, fields, digest);
++	return err ? err : hfs_mapped_hash(j, object, hash_field, digest);
++}
++
++static int hfs_mapped_source(const struct hfs_json *original,
++			     const struct hfs_json *response, int payload)
++{
++	int request = hfs_json_field(original, 0, "payload");
++	int op = hfs_json_field(original, 0, "op");
++	int operation = hfs_json_field(response, payload, "operation");
++	int ticket = hfs_json_field(response, payload, "request");
++	int cred = hfs_json_field(response, ticket, "credentials");
++	int lease = hfs_json_field(response, payload, "lease");
++	int reservation = hfs_json_field(response, payload, "reservation");
++	int entry = hfs_json_field(response, payload, "entry");
++	int scope = hfs_json_field(original, 0, "context");
++	bool query = hfs_json_is(original, op, "\"VIEW_QUERY\"");
++	u8 digest[32];
++	int err;
++
++	if (hfs_json_exact(
++		    response, payload,
++		    "entry,id,lease,operation,request,request_hash,reservation,status") ||
++	    !hfs_mapped_equal(response, ticket, original,
++			      hfs_json_field(original, request, "request")) ||
++	    !hfs_mapped_hex32(response, payload, "request_hash") ||
++	    (!query && !hfs_mapped_equal(response, operation, original, op)))
++		return -EPROTO;
++	err = hfs_mapped_object_hash(
++		response, payload,
++		"entry,lease,operation,request,request_hash,reservation,status",
++		"id");
++	if (err)
++		return err;
++	if (!query) {
++		err = hfs_mapped_hash_fields(original, 0, "op,payload", digest);
++		if (err ||
++		    hfs_mapped_hash(response, payload, "request_hash", digest))
++			return err ? err : -ESTALE;
++	}
++	if (!hfs_json_is(response, entry, "null"))
++		return hfs_json_is(response,
++				   hfs_json_field(response, payload, "status"),
++				   "\"FROZEN\"") &&
++				       hfs_json_is(response, operation,
++						   "\"DIRTY_FREEZE\"") &&
++				       hfs_json_is(response, lease, "null") &&
++				       hfs_json_is(response, reservation,
++						   "null") ?
++			       0 :
++			       -EPROTO;
++	if (!hfs_json_is(response, hfs_json_field(response, payload, "status"),
++			 "\"GRANTED\""))
++		return -EPROTO;
++	if (!hfs_json_is(response, lease, "null")) {
++		int mode = hfs_json_field(response, lease, "mode");
++
++		if (!hfs_json_is(response, reservation, "null") ||
++		    !(hfs_json_is(response, operation, "\"VIEW_ACQUIRE\"") ||
++		      hfs_json_is(response, operation, "\"VIEW_RENEW\"")) ||
++		    hfs_json_exact(
++			    response, lease,
++			    "access,credential_hash,domain,fence,id,mode,revision,scope,target") ||
++		    !hfs_mapped_equal(response,
++				      hfs_json_field(response, lease, "scope"),
++				      original, scope) ||
++		    !hfs_mapped_number(response, lease, "fence", 1) ||
++		    !hfs_mapped_number(response, lease, "revision", 1) ||
++		    !(hfs_json_is(response, mode, "\"READ\"") ||
++		      hfs_json_is(response, mode, "\"EXCLUSIVE_DIRTY\"")) ||
++		    hfs_mapped_target(response,
++				      hfs_json_field(response, lease, "target"),
++				      original, scope))
++			return -EPROTO;
++		if (cred < 0 || (u32)cred >= response->count)
++			return -EPROTO;
++		hfs_hash(response->data + response->tokens[cred].start,
++			 response->tokens[cred].end -
++				 response->tokens[cred].start,
++			 digest);
++		if (hfs_mapped_hash(response, lease, "credential_hash", digest))
++			return -ESTALE;
++		return hfs_mapped_object_hash(
++			response, lease,
++			"access,credential_hash,domain,fence,mode,revision,scope,target",
++			"id");
++	}
++	if (!hfs_json_is(response, operation, "\"DIRTY_RESERVE\"") ||
++	    hfs_json_exact(
++		    response, reservation,
++		    "claim_number,credentials,description,drain_credit,id,lease_id,length,offset,provenance,scope") ||
++	    !hfs_mapped_equal(response,
++			      hfs_json_field(response, reservation, "scope"),
++			      original, scope) ||
++	    !hfs_mapped_equal(response,
++			      hfs_json_field(response, reservation,
++					     "credentials"),
++			      response, cred) ||
++	    !hfs_mapped_uuid(response, hfs_json_field(response, reservation,
++						      "provenance")) ||
++	    !hfs_mapped_hex32(response, reservation, "drain_credit") ||
++	    !hfs_mapped_hex32(response, reservation, "lease_id"))
++		return -EPROTO;
++	return hfs_mapped_object_hash(
++		response, reservation,
++		"claim_number,credentials,description,drain_credit,lease_id,length,offset,provenance,scope",
++		"id");
++}
++
++static int hfs_mapped_kind(const struct hfs_json *original,
++			   const struct hfs_json *response, int receipt,
++			   struct hfs_mapped_attestation *out)
++{
++	int kind = hfs_json_field(response, receipt, "kind");
++	int op = hfs_json_field(original, 0, "op");
++	int payload = hfs_json_field(response, 0, "payload");
++	int evidence = hfs_json_field(response, receipt, "evidence");
++	int request = hfs_json_field(original, 0, "payload");
++	int event, domain;
++	const char *fields;
++	char name[32];
++	u32 len;
++
++	if (hfs_json_is(response, kind, "\"SOURCE\"")) {
++		if (!(hfs_json_is(original, op, "\"VIEW_ACQUIRE\"") ||
++		      hfs_json_is(original, op, "\"VIEW_RENEW\"") ||
++		      hfs_json_is(original, op, "\"VIEW_QUERY\"") ||
++		      hfs_json_is(original, op, "\"DIRTY_RESERVE\"") ||
++		      hfs_json_is(original, op, "\"DIRTY_FREEZE\"")) ||
++		    hfs_json_exact(response, evidence,
++				   "retained_owner,target") ||
++		    !hfs_mapped_uuid(response,
++				     hfs_json_field(response, evidence,
++						    "retained_owner")) ||
++		    hfs_mapped_target(
++			    response,
++			    hfs_json_field(response, evidence, "target"),
++			    original, hfs_json_field(original, 0, "context")) ||
++		    !hfs_json_is(response,
++				 hfs_json_field(response,
++						hfs_json_field(response,
++							       evidence,
++							       "target"),
++						"kind"),
++				 "\"CONTROLLED_LOCAL\""))
++			return -EPROTO;
++		if (hfs_mapped_source(original, response, payload))
++			return -EPROTO;
++		fields = "lease,reservation,entry";
++		while (*fields) {
++			len = strcspn(fields, ",");
++			memcpy(name, fields, len);
++			name[len] = 0;
++			event = hfs_json_field(response, payload, name);
++			if (event >= 0 &&
++			    !hfs_json_is(response, event, "null")) {
++				out->kind = HFS_ATTESTATION_SOURCE;
++				return 0;
++			}
++			fields += len + (fields[len] == ',');
++		}
++		return -EPROTO;
++	}
++	if (hfs_json_is(response, kind, "\"EVENT\"")) {
++		if (!(hfs_json_is(original, op, "\"VIEW_WAIT\"") ||
++		      hfs_json_is(original, op, "\"VIEW_POLL\"")) ||
++		    hfs_json_exact(response, payload, "event,status") ||
++		    !hfs_json_is(response,
++				 hfs_json_field(response, payload, "status"),
++				 "\"EVENT\"") ||
++		    hfs_json_exact(
++			    response, evidence,
++			    "domain_token,manifest_hash,phase,recall,retained_owner,sequence,target"))
++			return -EPROTO;
++		event = hfs_json_field(response, payload, "event");
++		domain = hfs_json_field(response, event, "domain");
++		if (hfs_mapped_event(original, response, event, evidence))
++			return -EPROTO;
++		if (!hfs_mapped_equal(
++			    response, hfs_json_field(response, domain, "token"),
++			    response,
++			    hfs_json_field(response, evidence, "domain_token")))
++			return -ESTALE;
++		fields = "sequence,recall,phase,manifest_hash,target";
++		out->kind = HFS_ATTESTATION_EVENT;
++		request = event;
++		original = response;
++	} else if (hfs_json_is(response, kind, "\"FLOOR\"")) {
++		u64 through, floor;
++
++		if (!hfs_json_is(original, op, "\"RETIRE\"") ||
++		    hfs_json_exact(
++			    response, evidence,
++			    "anchor,credentials,nonce,proof_hash,realm,subject,through") ||
++		    hfs_json_exact(response, payload,
++				   "floor,proof_hash,status") ||
++		    !hfs_mapped_hex32(response, evidence, "proof_hash") ||
++		    !hfs_json_is(response,
++				 hfs_json_field(response, payload, "status"),
++				 "\"RETIRED\"") ||
++		    hfs_json_u64(original,
++				 hfs_json_field(original, request, "through"),
++				 &through) ||
++		    hfs_json_u64(response,
++				 hfs_json_field(response, payload, "floor"),
++				 &floor) ||
++		    !through || floor != through ||
++		    !hfs_mapped_equal(
++			    response,
++			    hfs_json_field(response, payload, "proof_hash"),
++			    response,
++			    hfs_json_field(response, evidence, "proof_hash")))
++			return -ESTALE;
++		fields = "realm,subject,anchor,nonce,through,credentials";
++		out->kind = HFS_ATTESTATION_FLOOR;
++	} else {
++		return -EOPNOTSUPP;
++	}
++	while (*fields) {
++		len = strcspn(fields, ",");
++		memcpy(name, fields, len);
++		name[len] = 0;
++		if (!hfs_mapped_equal(
++			    original, hfs_json_field(original, request, name),
++			    response, hfs_json_field(response, evidence, name)))
++			return -ESTALE;
++		fields += len + (fields[len] == ',');
++	}
++	return 0;
++}
++
++int hfs_mapped_receipt_verify(const struct hfs_mapped_binding *binding,
++			      const struct hfs_json *original,
++			      const struct hfs_json *response,
++			      struct hfs_mapped_attestation *result)
++{
++	static const char unsigned_fields[] =
++		"cell,command_hash,controller,endpoint,evidence,guest_cell,"
++		"guest_command_hash,guest_response_hash,kind,mapping_hash,poll_count,"
++		"response_hash,scope,serving_generation,version";
++	struct hfs_mapped_attestation checked = { 0 };
++	struct hfs_buf message = { 0 };
++	const struct hfs_json *context;
++	u8 digest[32], signature[64];
++	u32 len = sizeof(signature);
++	u64 native;
++	int receipt, token, err;
++	const char *fields;
++	char name[32];
++
++	if (!binding || !binding->verify_ed25519)
++		return -EOPNOTSUPP;
++	if (!original || !response || !result || !binding->context ||
++	    original->len > HFS_BODY_MAX || response->len > HFS_BODY_MAX ||
++	    hfs_json_exact(
++		    original, 0,
++		    "cell,context,delegation,op,payload,protocol,reclaim") ||
++	    !hfs_json_is(original, hfs_json_field(original, 0, "delegation"),
++			 "null") ||
++	    hfs_protocol_match(original,
++			       hfs_json_field(original, 0, "protocol"), 4) ||
++	    hfs_json_exact(response, 0,
++			   "cell,context,op,payload,protocol,verification") ||
++	    hfs_protocol_match(response,
++			       hfs_json_field(response, 0, "protocol"), 4))
++		return -EPROTO;
++	context = binding->context;
++	if (hfs_mapped_context(context))
++		return -EPROTO;
++	receipt = hfs_json_field(response, 0, "verification");
++	if (hfs_json_exact(
++		    response, receipt,
++		    "cell,command_hash,controller,endpoint,evidence,guest_cell,guest_command_hash,"
++		    "guest_response_hash,kind,mapping_hash,poll_count,response_hash,scope,"
++		    "serving_generation,signature,version") ||
++	    !hfs_json_is(response, hfs_json_field(response, receipt, "version"),
++			 "\"homelabfs-controlled-verification/2\"") ||
++	    hfs_json_u64(original, hfs_json_field(original, 0, "cell"),
++			 &checked.guest_cell) ||
++	    !checked.guest_cell || checked.guest_cell > HFS_CELL_MAX ||
++	    hfs_json_u64(response, hfs_json_field(response, receipt, "cell"),
++			 &native) ||
++	    !native || native > HFS_CELL_MAX ||
++	    hfs_json_u64(response,
++			 hfs_json_field(response, receipt, "poll_count"),
++			 &checked.poll_count) ||
++	    !checked.poll_count || checked.poll_count > 16 ||
++	    (checked.poll_count > 1 &&
++	     !hfs_json_is(original, hfs_json_field(original, 0, "op"),
++			  "\"VIEW_WAIT\"")))
++		return -EPROTO;
++	fields = "controller,endpoint,scope,serving_generation";
++	while (*fields) {
++		len = strcspn(fields, ",");
++		memcpy(name, fields, len);
++		name[len] = 0;
++		if (!hfs_mapped_equal(context, hfs_json_field(context, 0, name),
++				      response,
++				      hfs_json_field(response, receipt, name)))
++			return -ESTALE;
++		fields += len + (fields[len] == ',');
++	}
++	if (!hfs_mapped_equal(original, hfs_json_field(original, 0, "context"),
++			      context, hfs_json_field(context, 0, "scope")))
++		return -ESTALE;
++	fields = "cell,context,op";
++	while (*fields) {
++		len = strcspn(fields, ",");
++		memcpy(name, fields, len);
++		name[len] = 0;
++		if (!hfs_mapped_equal(
++			    original, hfs_json_field(original, 0, name),
++			    response, hfs_json_field(response, 0, name)))
++			return -ESTALE;
++		fields += len + (fields[len] == ',');
++	}
++	if (!hfs_mapped_equal(original, hfs_json_field(original, 0, "cell"),
++			      response,
++			      hfs_json_field(response, receipt, "guest_cell")))
++		return -ESTALE;
++	hfs_hash(original->data, original->len, digest);
++	err = hfs_mapped_hash(response, receipt, "guest_command_hash", digest);
++	if (err)
++		return err;
++	err = hfs_mapped_hash_fields(
++		response, 0, "cell,context,op,payload,protocol", digest);
++	if (err)
++		return err;
++	err = hfs_mapped_hash(response, receipt, "guest_response_hash", digest);
++	if (err)
++		return err;
++	/* Validate all fixed hash encodings, including fields the guest cannot
++	 * independently reconstruct. Host signature attests those native legs. */
++	fields = "command_hash,response_hash,mapping_hash";
++	while (*fields) {
++		len = strcspn(fields, ",");
++		memcpy(name, fields, len);
++		name[len] = 0;
++		len = 32;
++		token = hfs_json_field(response, receipt, name);
++		if (hfs_json_hex(response, token, digest, &len) || len != 32)
++			return -EPROTO;
++		len = strcspn(fields, ",");
++		fields += len + (fields[len] == ',');
++	}
++	err = hfs_mapped_kind(original, response, receipt, &checked);
++	if (err)
++		return err;
++	len = sizeof(signature);
++	if (hfs_json_hex(response,
++			 hfs_json_field(response, receipt, "signature"),
++			 signature, &len) ||
++	    len != sizeof(signature))
++		return -EPROTO;
++	err = hfs_buf_init(&message, 16384);
++	if (err)
++		return err;
++	err = hfs_mapped_fields(response, receipt, unsigned_fields, &message);
++	if (!err)
++		err = binding->verify_ed25519(binding->public_key, message.data,
++					      message.len, signature);
++	hfs_buf_free(&message);
++	if (!err)
++		*result = checked;
++	return err;
 +}
 diff --git a/fs/9p/hfs_policy.h b/fs/9p/hfs_policy.h
 new file mode 100644

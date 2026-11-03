@@ -235,7 +235,7 @@ static int
 _frame(const uint8_t *p, size_t n, uint16_t flags, uint16_t kind) {
    uint32_t total, offset, length;
    if (n < HFS9P_HEADER || memcmp(p, "HFS9BR1\0", 8) ||
-       _get(p + 8, 2) != 1 || _get(p + 10, 2) > 3 ||
+       _get(p + 8, 2) != 1 || _get(p + 10, 2) > 4 ||
        _get(p + 12, 2) != kind || _get(p + 14, 2) != flags ||
        _get(p + 28, 4) != 0 || _zero(p + 32, 16) ||
        _get(p + 48, 8) == 0 || _get(p + 48, 8) > HFS9P_MAX_CELL)
@@ -456,7 +456,7 @@ hfs9p_add_session_protocol(Hfs9p *h, const uint8_t *context, size_t length,
    uint8_t id[16], fuse[16];
    uint32_t f;
    int error;
-   if (!h || !context || length > 4096 || minor > 3)
+   if (!h || !context || length > 4096 || minor > 4)
       return (EINVAL);
    if (pthread_mutex_trylock(&h->mutex))
       return (EAGAIN);
@@ -499,6 +499,10 @@ hfs9p_add_session(Hfs9p *h, const uint8_t *context, size_t length) {
 
 static const char *
 _protocol(uint16_t minor) {
+   if (minor == 4)
+      return ("{\"body_schema\":5,\"bridge_major\":1,"
+          "\"bridge_minor\":4,\"features\":16383,\"msize\":65536,"
+          "\"normal_major\":3,\"normal_minor\":0}");
    if (minor == 3)
       return ("{\"body_schema\":4,\"bridge_major\":1,"
           "\"bridge_minor\":3,\"features\":8191,\"msize\":65536,"
@@ -527,13 +531,13 @@ static int
 _body_version(Hfs9p *h, const uint8_t *bytes, uint32_t length,
     uint16_t minor, bool response) {
    const char *const command[] = {"cell", "context", "op", "payload",
-      "reclaim", "protocol"};
+      "reclaim", "protocol", "delegation"};
    const char *const reply[] = {"cell", "context", "op", "payload",
       "protocol", "verification"};
-   uint32_t fields[6];
+   uint32_t fields[7];
    Hfs9pJson j = {bytes, length, h->tokens, 0};
    unsigned count = (response ? 4 : 5) + (minor ? 1 : 0) +
-       (response && minor >= 2 ? 1 : 0);
+       (response && minor >= 2 ? 1 : 0) + (!response && minor == 4);
    return (hfs9p_json_parse(&j) || _fields(&j, 0,
        response ? reply : command, count, fields) ||
        (minor && _protocol_body(&j, fields[response ? 4 : 5], minor)) ?
@@ -740,8 +744,8 @@ _rewrite(const Hfs9pJson *j, Hfs9pReplacement *r, unsigned count,
 static int
 _command(Hfs9p *h, Hfs9pEntry *e) {
    const char *const names[] = { "cell", "context", "op", "payload",
-      "reclaim", "protocol" };
-   uint32_t v[6], a[3], in[2], claim_hash;
+      "reclaim", "protocol", "delegation" };
+   uint32_t v[7], a[3], in[2], claim_hash;
    const char *const call_keys[] = { "claim", "credentials", "intent" };
    const char *const intent_keys[] = { "args", "opcode" };
    Hfs9pJson j = { e->guest, e->total, h->tokens, 0 };
@@ -749,8 +753,9 @@ _command(Hfs9p *h, Hfs9pEntry *e) {
    uint8_t hash[32], expected[32];
    uint16_t minor = h->sessions[e->session].minor;
    if (e->minor != minor || hfs9p_json_parse(&j) ||
-       _fields(&j, 0, names, minor ? 6 : 5, v) ||
+       _fields(&j, 0, names, minor == 4 ? 7 : minor ? 6 : 5, v) ||
        (minor && _protocol_body(&j, v[5], minor)) ||
+       (minor == 4 && j.tokens[v[6]].type != 'n') ||
        hfs9p_json_u64(&j, v[0], &cell) || cell != e->guest_cell)
       return (EINVAL);
    Hfs9pSession *s = &h->sessions[e->session];
@@ -786,7 +791,7 @@ _command(Hfs9p *h, Hfs9pEntry *e) {
          return (EINVAL);
       e->control = (call && drain) ||
           hfs9p_json_equal(&j, v[2], "GAP_RESOLVE");
-   } else if (minor == 3 &&
+   } else if (minor >= 3 &&
        hfs9p_json_equal(&j, v[2], "READDIR_CLEANUP")) {
       const char *const keys[] = {"capabilities", "claim", "credentials", "result_id"};
       uint32_t cleanup[4];
@@ -859,7 +864,7 @@ static int
 _native_body(Hfs9p *h, Hfs9pEntry *e) {
    uint32_t cell, reclaim, target, target_hash, payload, op;
    Hfs9pJson j = { e->guest, e->total, h->tokens, 0 };
-   Hfs9pReplacement r[6];
+   Hfs9pReplacement r[7];
    char native[24], donor[24], hash[67];
    unsigned count = 0;
    if (hfs9p_json_parse(&j) || hfs9p_json_key(&j, 0, "cell", &cell))
@@ -913,12 +918,45 @@ _native_body(Hfs9p *h, Hfs9pEntry *e) {
             j.tokens[target_hash].end, (uint8_t *)hash, 66};
       }
    }
+   /* Borrow the immutable original Ack/op, never an internal poll's Ack.
+    * Metadata is a candidate; only authenticated host ingress admits it. */
+   char delegation[512];
+   if (e->minor == 4) {
+      uint32_t metadata;
+      if (hfs9p_json_key(&j, 0, "delegation", &metadata) ||
+          j.tokens[metadata].type != 'n' ||
+          hfs9p_json_key(&j, 0, "op", &op) ||
+          hfs9p_json_key(&j, 0, "reclaim", &reclaim) ||
+          e->poll_count >= 16)
+         return (EINVAL);
+      Hfs9pToken gop = j.tokens[op], ack = j.tokens[reclaim];
+      int written = snprintf(delegation, sizeof(delegation),
+          "{\"guest_cell\":%llu,\"guest_op\":%.*s,"
+          "\"guest_reclaim\":%.*s,\"poll_index\":%u,"
+          "\"version\":\"homelabfs-native-delegation/1\"}",
+          (unsigned long long)e->guest_cell,
+          (int)(gop.end - gop.start), j.bytes + gop.start,
+          (int)(ack.end - ack.start), j.bytes + ack.start, e->poll_count);
+      if (written < 0 || (size_t)written >= sizeof(delegation))
+         return (E2BIG);
+      r[count++] = (Hfs9pReplacement){j.tokens[metadata].start,
+         j.tokens[metadata].end, (const uint8_t *)delegation, (size_t)written};
+   }
    uint32_t length;
-   if (!_memory(h, e->total + 256, e->control))
+   if (!_memory(h, e->total +
+       (e->minor == 4 ? sizeof(delegation) : 256), e->control))
       return (ENOSPC);
    int error = _rewrite(&j, r, count, &e->native, &length);
    if (error)
       return (error);
+   /* Preflight the actual rewritten token bound before issuance/input ACK.
+    * Reuse the existing arena; no command or parser budget is enlarged. */
+   Hfs9pJson preflight = {e->native, length, h->tokens, 0};
+   if (e->minor == 4 && hfs9p_json_parse(&preflight)) {
+      free(e->native);
+      e->native = NULL;
+      return (E2BIG);
+   }
    /* Native cell digit expansion may create one extra final chunk. */
    e->native_total = length;
    _hash(e->native, e->native_total, e->native_hash);
@@ -1440,7 +1478,8 @@ hfs9p_exchange(Hfs9pConnection *connection, const uint8_t *request, size_t lengt
     * the endpoint allocator. It changes no native/claim/session authority and
     * must remain usable while the endpoint polling worker owns its mutex. */
    if (request[4] == 100) {
-      const char *version = connection->minor == 3 ? "9P2000.L.hfs1.3" :
+      const char *version = connection->minor == 4 ? "9P2000.L.hfs1.4" :
+          connection->minor == 3 ? "9P2000.L.hfs1.3" :
           connection->minor == 2 ? "9P2000.L.hfs1.2" : connection->minor ?
           "9P2000.L.hfs1.1" : "9P2000.L.hfs1";
       size_t n = strlen(version);
@@ -1893,7 +1932,7 @@ _restore_bytes(Hfs9p *h, const uint8_t *bytes, size_t length) {
       s->hello = _unpack(&b, 1) != 0;
       s->minor = !memcmp(bytes, "H9LEDG2\0", 8) ?
           (uint8_t)_unpack(&b, 1) : 0;
-      if (s->minor > 3)
+      if (s->minor > 4)
          return (EINVAL);
       Hfs9pJson j = {s->context, n, h->tokens, 0};
       uint8_t context_session[16];

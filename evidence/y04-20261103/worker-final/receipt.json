@@ -1,0 +1,121 @@
+[
+  {
+    "check": "export",
+    "argv": [
+      "python3",
+      "tools/integration/linux9p/export.py",
+      "--source",
+      "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/source",
+      "--archive",
+      "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/source/linux-79807e970724c1f90cee1316361d61b80db4eef6.tar.gz",
+      "--development",
+      "--task",
+      "y04"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 5.947,
+    "peak_group_rss_kib": 84044,
+    "guard": null,
+    "pswpout_before": 1254083,
+    "pswpout_after": 1254083
+  },
+  {
+    "check": "freeze-after-export",
+    "argv": [
+      "python3",
+      "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/freeze.py"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.348,
+    "peak_group_rss_kib": 17232,
+    "guard": null,
+    "pswpout_before": 1254083,
+    "pswpout_after": 1254083
+  },
+  {
+    "check": "strict-c",
+    "argv": [
+      "bash",
+      "tools/integration/lib9p/verify.sh",
+      "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/strict-c"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 16.68,
+    "peak_group_rss_kib": 720548,
+    "guard": null,
+    "pswpout_before": 1254083,
+    "pswpout_after": 1254083
+  },
+  {
+    "check": "freebsd-c",
+    "argv": [
+      "python3",
+      "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/cross.py"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.943,
+    "peak_group_rss_kib": 173952,
+    "guard": null,
+    "pswpout_before": 1254083,
+    "pswpout_after": 1254083
+  },
+  {
+    "check": "race-integration",
+    "argv": [
+      "python3",
+      "tools/integration/linux9p/tests/mapped/run.py",
+      "--source",
+      "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/source",
+      "--output",
+      "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/mapped",
+      "--budget-root",
+      "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk",
+      "--race",
+      "--kernel-headers",
+      "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/final-objects4"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 25.924,
+    "peak_group_rss_kib": 21800,
+    "guard": null,
+    "pswpout_before": 1254083,
+    "pswpout_after": 1254083
+  },
+  {
+    "check": "vet-focused",
+    "argv": [
+      "go",
+      "vet",
+      "-overlay",
+      "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/mapped/overlay.json",
+      "./internal/controlledruntime"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.961,
+    "peak_group_rss_kib": 48084,
+    "guard": null,
+    "pswpout_before": 1254083,
+    "pswpout_after": 1254083
+  },
+  {
+    "check": "errcheck-focused",
+    "argv": [
+      "errcheck",
+      "-tests",
+      "./internal/controlledruntime"
+    ],
+    "exit": 2,
+    "deadline": false,
+    "seconds": 3.349,
+    "peak_group_rss_kib": 0,
+    "guard": null,
+    "pswpout_before": 1254083,
+    "pswpout_after": 1254083
+  }
+]

@@ -1,0 +1,7 @@
+{
+  "source": "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/errcheck-focused.stderr",
+  "source_sha256": "182f590fbf6bb9abe6551d88f20eab12bf9a525e7a4cc9e24cb3dcaf0db9caa4",
+  "curated": "worker-final/errcheck-focused.stderr",
+  "sha256": "25b32d39ac26841e62b68156b37efcea1c2c8df361e8626c1d653306b99a149a",
+  "transformation": "expand tabs and trim trailing whitespace in CLI help from the failed launcher; original bytes preserved in source path"
+}

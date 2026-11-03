@@ -430,7 +430,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,2363 @@
+@@ -0,0 +1,2370 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include <linux/delay.h>
@@ -949,7 +949,7 @@ new file mode 100644
 +	    ((!strcmp(operation, "GAP_RESOLVE") || !strcmp(operation, "READDIR_CLEANUP")) &&
 +	     !reserved))
 +		return -EINVAL;
-+	if (!strcmp(operation, "READDIR_CLEANUP") && session->bridge_minor != 3)
++	if (!strcmp(operation, "READDIR_CLEANUP") && session->bridge_minor < 3)
 +		return -EOPNOTSUPP;
 +	if (hfs_view_command(operation) &&
 +	    (!session->bridge_minor ||
@@ -1039,6 +1039,8 @@ new file mode 100644
 +	hfs_buf_printf(&command, "{\"cell\":%llu,\"context\":", cell);
 +	hfs_buf_add(&command, session->enrollment.context,
 +		    session->enrollment.context_len);
++	if (session->bridge_minor == 4)
++		hfs_buf_literal(&command, ",\"delegation\":null");
 +	hfs_buf_printf(&command, ",\"op\":\"%s\",\"payload\":", operation);
 +	hfs_buf_add(&command, payload->data, payload->len);
 +	if (session->bridge_minor) {
@@ -1803,7 +1805,7 @@ new file mode 100644
 +		err = request->intent.error ?: request->credentials.error;
 +		goto free;
 +	}
-+	if (session->bridge_minor == 3 && !strcmp(opcode, "READDIR")) {
++	if (session->bridge_minor >= 3 && !strcmp(opcode, "READDIR")) {
 +		err = hfs_buf_init(&request->readdir_cleanup, HFS_BODY_MAX);
 +		if (err)
 +			goto free;
@@ -1998,7 +2000,7 @@ new file mode 100644
 +	int err;
 +	u32 i;
 +
-+	if (session->bridge_minor == 3)
++	if (session->bridge_minor >= 3)
 +		return hfs_readdir_cleanup(session, result, issuer);
 +	if (entries < 0 || result->tokens[entries].kind != HFS_ARRAY)
 +		return -EPROTO;
@@ -2187,7 +2189,8 @@ new file mode 100644
 +	if (!provider ||
 +	    (provider->features != HFS_FEATURES && provider->features != HFS_VIEW_FEATURES &&
 +	     provider->features != HFS_CONTROLLED_FEATURES &&
-+	     provider->features != HFS_CLEANUP_FEATURES) ||
++	     provider->features != HFS_CLEANUP_FEATURES &&
++	     provider->features != HFS_MAPPED_FEATURES) ||
 +	    !provider->enroll || !provider->map || !provider->enter ||
 +	    !provider->leave || !provider->publication ||
 +	    !provider->stop || !provider->retain || !provider->reserve ||
@@ -2236,6 +2239,7 @@ new file mode 100644
 +	static const char views[] = "version=9P2000.L.hfs1.1";
 +	static const char controlled[] = "version=9P2000.L.hfs1.2";
 +	static const char cleanup[] = "version=9P2000.L.hfs1.3";
++	static const char mapped[] = "version=9P2000.L.hfs1.4";
 +	size_t len;
 +
 +	while (p && *p) {
@@ -2243,7 +2247,8 @@ new file mode 100644
 +		if ((len == sizeof(selected) - 1 && !memcmp(p, selected, len)) ||
 +		    (len == sizeof(views) - 1 && !memcmp(p, views, len)) ||
 +		    (len == sizeof(controlled) - 1 && !memcmp(p, controlled, len)) ||
-+		    (len == sizeof(cleanup) - 1 && !memcmp(p, cleanup, len)))
++		    (len == sizeof(cleanup) - 1 && !memcmp(p, cleanup, len)) ||
++		    (len == sizeof(mapped) - 1 && !memcmp(p, mapped, len)))
 +			return true;
 +		p = p[len] ? p + len + 1 : NULL;
 +	}
@@ -2451,7 +2456,8 @@ new file mode 100644
 +		return ERR_PTR(-ENOMEM);
 +	}
 +	session->provider = hfs_provider;
-+	session->bridge_minor = hfs_provider->features == HFS_CLEANUP_FEATURES ? 3 :
++	session->bridge_minor = hfs_provider->features == HFS_MAPPED_FEATURES ? 4 :
++		hfs_provider->features == HFS_CLEANUP_FEATURES ? 3 :
 +		hfs_provider->features == HFS_CONTROLLED_FEATURES ? 2 :
 +		hfs_provider->features == HFS_VIEW_FEATURES ? 1 : 0;
 +	hello = hfs_protocol_text(session->bridge_minor);
@@ -2516,7 +2522,8 @@ new file mode 100644
 +		session->client = NULL;
 +		goto fail;
 +	}
-+	if (session->client->proto_version != (session->bridge_minor == 3 ? p9_proto_hfs13 :
++	if (session->client->proto_version != (session->bridge_minor == 4 ? p9_proto_hfs14 :
++				       session->bridge_minor == 3 ? p9_proto_hfs13 :
 +					       session->bridge_minor == 2 ? p9_proto_hfs12 :
 +					       session->bridge_minor ?
 +					       p9_proto_hfs11 : p9_proto_hfs1)) {

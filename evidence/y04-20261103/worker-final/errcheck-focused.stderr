@@ -1,0 +1,27 @@
+flag provided but not defined: -tests
+Usage of errcheck:
+  -abspath
+        print absolute paths to files
+  -asserts
+        if true, check for ignored type assertion results
+  -blank
+        if true, check for errors assigned to blank identifier
+  -exclude string
+        Path to a file containing a list of functions to exclude from checking
+  -excludeonly
+        Use only excludes from -exclude file
+  -ignore value
+        [deprecated] comma-separated list of pairs of the form pkg:regex
+                    the regex is used to ignore names within pkg.
+  -ignoregenerated
+        if true, checking of files with generated code is disabled
+  -ignorepkg string
+        comma-separated list of package paths to ignore
+  -ignoretests
+        if true, checking of _test.go files is disabled
+  -mod string
+        module download mode to use: readonly or vendor. See 'go help modules' for more.
+  -tags value
+        comma or space-separated list of build tags to include
+  -verbose
+        produce more verbose logging

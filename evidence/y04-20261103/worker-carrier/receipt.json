@@ -1,0 +1,63 @@
+{
+  "scope": "Bounded portable C carrier -> real host Producer -> C verifier integration.\n\nNo native mount, installed kernel, C6 provider, source bytes or physical proof.\n",
+  "short_tmp": "/tmp/hfy04-if7idcol",
+  "stages": [
+    {
+      "name": "build",
+      "argv": [
+        "python3",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/worktree/tools/integration/linux9p/tests/mapped/build.py",
+        "--source",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/source",
+        "--output",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/mapped/build"
+      ],
+      "exit": 0,
+      "seconds": 2.8062305549974553,
+      "peak_group_rss": 145784832,
+      "limit_reason": null,
+      "pswpout_before": 1254083
+    },
+    {
+      "name": "host",
+      "argv": [
+        "go",
+        "test",
+        "-race",
+        "-overlay",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/mapped/overlay.json",
+        "-p",
+        "1",
+        "-run",
+        "^TestMappedActualCarrierTwoSessionsProducer$",
+        "-count=1",
+        "-timeout=90s",
+        "-v",
+        "./internal/controlledruntime"
+      ],
+      "exit": 0,
+      "seconds": 10.547648740990553,
+      "peak_group_rss": 193667072,
+      "limit_reason": null,
+      "pswpout_before": 1254083
+    },
+    {
+      "name": "kernel-compile",
+      "argv": [
+        "python3",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/worktree/tools/integration/linux9p/tests/mapped/kernel_compile.py",
+        "--source",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/source",
+        "--headers",
+        "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/final-objects4",
+        "--output",
+        "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/final-focused/mapped/kernel"
+      ],
+      "exit": 0,
+      "seconds": 0.15835104300640523,
+      "peak_group_rss": 16842752,
+      "limit_reason": null,
+      "pswpout_before": 1254083
+    }
+  ]
+}

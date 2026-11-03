@@ -1,0 +1,99 @@
+[
+  {
+    "check": "mapped-c-preflight",
+    "argv": [
+      "python3",
+      "/home/paul/git/homelabfs/tools/integration/linux9p/tests/mapped/build.py",
+      "--source",
+      "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/source",
+      "--output",
+      "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/root-gates/mapped-build"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 5.74,
+    "peak_group_rss_kib": 141712,
+    "guard": null,
+    "pswpout_before": 1254184,
+    "pswpout_after": 1254184
+  },
+  {
+    "check": "controlled-c-preflight",
+    "argv": [
+      "python3",
+      "/home/paul/git/homelabfs/tools/integration/linux9p/tests/controlled/build.py",
+      "--source",
+      "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/source",
+      "--output",
+      "/home/paul/tmp/codex/hfs-y04-carrier-20261103-qeoamkpk/root-gates/controlled-build",
+      "--sanitize"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 6.548,
+    "peak_group_rss_kib": 161984,
+    "guard": null,
+    "pswpout_before": 1254184,
+    "pswpout_after": 1254184
+  },
+  {
+    "check": "build",
+    "argv": [
+      "go",
+      "build",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 4.667,
+    "peak_group_rss_kib": 358000,
+    "guard": null,
+    "pswpout_before": 1254184,
+    "pswpout_after": 1254184
+  },
+  {
+    "check": "vet",
+    "argv": [
+      "go",
+      "vet",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.56,
+    "peak_group_rss_kib": 53636,
+    "guard": null,
+    "pswpout_before": 1254184,
+    "pswpout_after": 1254184
+  },
+  {
+    "check": "errcheck",
+    "argv": [
+      "errcheck",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 4.652,
+    "peak_group_rss_kib": 190216,
+    "guard": null,
+    "pswpout_before": 1254184,
+    "pswpout_after": 1254184
+  },
+  {
+    "check": "lint",
+    "argv": [
+      "golangci-lint",
+      "run",
+      "--timeout=3m",
+      "./..."
+    ],
+    "exit": 1,
+    "deadline": false,
+    "seconds": 4.096,
+    "peak_group_rss_kib": 180408,
+    "guard": null,
+    "pswpout_before": 1254184,
+    "pswpout_after": 1254184
+  }
+]
