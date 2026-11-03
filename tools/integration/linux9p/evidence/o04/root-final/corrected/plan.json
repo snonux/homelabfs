@@ -1,0 +1,127 @@
+{
+  "packages": [
+    "./..."
+  ],
+  "commands": [
+    {
+      "name": "build",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ]
+    },
+    {
+      "name": "vet",
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ]
+    },
+    {
+      "name": "errcheck",
+      "argv": [
+        "errcheck",
+        "./..."
+      ]
+    },
+    {
+      "name": "lint",
+      "argv": [
+        "golangci-lint",
+        "run",
+        "--timeout=3m",
+        "./..."
+      ]
+    },
+    {
+      "name": "freebsd",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "0"
+      }
+    },
+    {
+      "name": "focused-race",
+      "argv": [
+        "go",
+        "test",
+        "-race",
+        "-p",
+        "1",
+        "-count=1",
+        "-timeout=180s",
+        "./internal/controlledruntime",
+        "./internal/fsservice",
+        "./internal/viewcontrol",
+        "./internal/guestbridge",
+        "./internal/controlledvalidation",
+        "-run",
+        "TestControlledProductionGuestBackendHost|TestDurableTransport|TestRealControlledProducer|TestControlledProtocol"
+      ],
+      "timeout": 300
+    },
+    {
+      "name": "full-root",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-count=1",
+        "-timeout=600s",
+        "./..."
+      ],
+      "timeout": 1200
+    },
+    {
+      "name": "freebsd-cgo-controlledruntime",
+      "argv": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "@EVIDENCE@/controlledruntime-freebsd.test",
+        "./internal/controlledruntime"
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "1",
+        "CC": "zig cc -target x86_64-freebsd"
+      },
+      "timeout": 600
+    },
+    {
+      "name": "freebsd-cgo-fuseadapter",
+      "argv": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "@EVIDENCE@/fuseadapter-freebsd.test",
+        "./internal/fuseadapter"
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "1",
+        "CC": "zig cc -target x86_64-freebsd"
+      },
+      "timeout": 600
+    }
+  ],
+  "tmp": "/tmp/hfso-fuma08q8",
+  "scope": "Merged o04 C2 with temporary exact materialization of canonical host_test.go.txt; productionC guest/backend realledger\u2192actualGoTransport/Service/provider/journal included in whole-suite/races/staticchecks. RootCstrictASanUBSan build and frozen28 actualnativeobjects checked separately. No actualHostDIRTY_RESERVE/C6/source/native/runtimeauthority; Y04+z04 boundaries recorded. Correctedtest-onlyIPCwriteerrorhandling; initialrootCstrictASanUBSanpreflightpassed, exactsamebinaryreused/sourceunchanged. Firststaticbatcherrcheckfailurepreserved; fullsuite/racesnotrunthere.",
+  "environment": {
+    "HFS_CONTROLLED_CONSUMER": "/home/paul/tmp/codex/hfs-o04-20261103-oct9t3af/root-gates/consumer/consumer",
+    "HFS_CONTROLLED_TEST_ROOT": "/home/paul/tmp/codex/hfs-o04-20261103-oct9t3af/root-gates/runtime-fixtures"
+  }
+}

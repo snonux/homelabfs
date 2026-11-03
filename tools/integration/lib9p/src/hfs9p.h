@@ -71,7 +71,7 @@ int hfs9p_restore(Hfs9p **, const int[3], const Hfs9pEndpoint *,
  * session adoption still requires separately verified host RESUME recovery. */
 int hfs9p_add_session(Hfs9p *, const uint8_t *, size_t);
 
-/* Explicit exact bridge minor (0 or 1), installed by the authorized controller.
+/* Explicit exact bridge minor (0, 1, 2 or 3), installed by the authorized controller.
  * Minor1 binds body schema2/features2047 for the whole session and ledger; no
  * downgrade or kernel PAGE_SIZE other than the 4096 profile is supported. */
 int hfs9p_add_session_protocol(Hfs9p *, const uint8_t *, size_t, uint16_t);

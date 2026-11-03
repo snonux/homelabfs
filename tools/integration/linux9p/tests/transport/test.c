@@ -170,7 +170,7 @@ int main(void)
 	u32 chunk, i;
 
 	CHECK(hfs_send_reply(NULL, 0, false) == -EPROTO);
-	for (transport_minor = 0; transport_minor < 2; transport_minor++)
+	for (transport_minor = 0; transport_minor < 4; transport_minor++)
 	for (chunk = 0; chunk < 3; chunk++) {
 		response[0] = 4; response[1] = 3; response[2] = 0;
 		response_len = 3;

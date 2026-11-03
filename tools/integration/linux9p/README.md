@@ -124,7 +124,10 @@ remains unsupported before CALL; the ordinary O_APPEND contract is supported.
 `fs/9p/hfs.h` defines a mandatory, kernel-owned provider interface. There is no
 provider implementation in this series. With the guest component enabled,
 absence of a complete provider refuses the profile before transport creation.
-A missing callback or feature mask other than exact `255` cannot register.
+A missing mandatory callback or a feature mask outside exact `255`, `2047`,
+`4095` and `8191` cannot register. The extension masks require target/event/view
+retirement callbacks; the legacy mask requires its mmap callback. Controlled
+successors additionally require CONTROLLED_LOCAL enrollment.
 Providers must implement and actually prove:
 
 - authenticated enrollment/Context and exact immutable namespace mapping;
@@ -288,3 +291,61 @@ See [vz3 component evidence](evidence/vz3/evidence.json) for the exact final
 source/config/compiler/object bindings, preserved failed batch, current primitive
 checks and scope limits. Neither object compilation nor those helpers supplies a
 runtime native provider or proves actual physical recall on an installed kernel.
+
+## Controlled successor forwarding (`o04`)
+
+Explicit `9P2000.L.hfs1.2` and `9P2000.L.hfs1.3` selections use their exact
+minor2/schema3/features4095 and minor3/schema4/features8191 tuples. Providers
+must select the matching complete feature mask and CONTROLLED_LOCAL enrollment;
+there is still no registered provider. Closed older selections cannot carry
+ALLOCATE/GAP_RESOLVE or the minor3-only READDIR_CLEANUP. The owned codec and
+lib9p retain the successor response `verification` field byte for byte.
+
+Before an ordinary CALL, production request code retains the full original
+Claim, intent hash, Context and credentials, then sends the exact full Call in
+ALLOCATE through the ordinary lane. Only its exact ALLOCATED acknowledgment
+permits CALL. An uncertain allocation keeps its original transport cell,
+canonical command, donor and local issuance owner. Retry sends those same
+bytes; subsequent ordinary/control claims and dirty earmarks cannot issue a
+later number. Typed dirty reservations own their original no-hash number and
+hold the same issuance gate until the existing reservation decoder verifies
+its protected binding or its exact CANCELLED-ticket closure. DRAIN_WRITE never
+uses ordinary ALLOCATE. GAP_RESOLVE retains the complete original and its exact
+component proof; mandatory runtime retirement verification remains separate.
+A lost GAP reply retries that original Call in another reserved control cell;
+the unknown earlier transport candidate and blocked session remain owned for
+C9 reconciliation. It does not resume ordinary issuance automatically.
+The request retains its complete terminal QUERY and GAP response envelopes;
+the mandatory retirement callback receives the complete borrowed RETIRE
+envelope for future floor-receipt verification. Receipt retention grants no
+verification authority. Successor RETIRE sends original full credentials and a contiguous prefix owned
+by that issuer, without replacing existing provider floor verification.
+
+The backend translates guest cells, reclaim hashes and VIEW_WAIT poll commands
+into native endpoint coordinates. It preserves the host's exact native receipt;
+that signature does not authenticate rewritten guest coordinates. The current
+`hfs_json.native_cell` field records the guest translated cell, not the
+endpoint-global native cell. Task `y04`
+owns the separately negotiated provenance binding before `s04` can consume
+source/event/floor receipts. No private transported flag or preserved signature
+supplies that missing authority. Missing C6 therefore continues to refuse real
+runtime construction. Primitive tests do not establish native FUSE identity,
+physical observation, installed kernel behavior or deployment.
+
+Run the composed controlled fixture with a new output under an explicitly owned
+budget root:
+
+```sh
+python3 tools/integration/linux9p/tests/controlled/run.py \
+  --source "$SOURCE" --output "$RUN/controlled" --budget-root "$RUN"
+```
+
+It builds actual guest issuance/control/framing plus the owned backend and real
+local backend ledger, then runs the real host Transport/Service/provider/journal
+through a Go test overlay. It does not manually allocate host claims. The kernel
+and native fd observations remain primitives; result publication deliberately
+refuses without C6. Kernel typed-earmark interleaving is distinct from the
+separate production DIRTY_RESERVE decoder check using literal controller bytes,
+with binding/copy-failure negatives. It does not instantiate a live host dirty
+controller or establish source/physical authority. See [o04 evidence](evidence/o04/evidence.json)
+for exact frozen inputs, bounded checks, preserved failed attempts and limits.

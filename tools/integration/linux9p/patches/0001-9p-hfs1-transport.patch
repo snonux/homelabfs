@@ -26,16 +26,18 @@ diff --git a/include/net/9p/client.h b/include/net/9p/client.h
  #include <linux/tracepoint-defs.h>
  
  /* Number of requests per row */
-@@ -26,6 +27,8 @@
+@@ -26,6 +27,10 @@
  	p9_proto_legacy,
  	p9_proto_2000u,
  	p9_proto_2000L,
 +	p9_proto_hfs1,
 +	p9_proto_hfs11,
++	p9_proto_hfs12,
++	p9_proto_hfs13,
  };
  
  
-@@ -122,6 +125,8 @@
+@@ -122,6 +127,8 @@
  
  	struct idr fids;
  	struct idr reqs;
@@ -44,7 +46,7 @@ diff --git a/include/net/9p/client.h b/include/net/9p/client.h
  
  	char name[__NEW_UTS_LEN + 1];
  };
-@@ -297,4 +302,11 @@
+@@ -297,4 +304,11 @@
  int p9_client_init(void);
  void p9_client_exit(void);
  
@@ -59,23 +61,31 @@ diff --git a/include/net/9p/client.h b/include/net/9p/client.h
 diff --git a/net/9p/client.c b/net/9p/client.c
 --- a/net/9p/client.c
 +++ b/net/9p/client.c
-@@ -62,6 +62,12 @@
+@@ -62,6 +62,14 @@
  }
  EXPORT_SYMBOL(p9_is_proto_dotu);
  
 +static bool p9_client_is_hfs(const struct p9_client *client)
 +{
 +	return client->proto_version == p9_proto_hfs1 ||
-+	       client->proto_version == p9_proto_hfs11;
++	       client->proto_version == p9_proto_hfs11 ||
++	       client->proto_version == p9_proto_hfs12 ||
++	       client->proto_version == p9_proto_hfs13;
 +}
 +
  int p9_show_client_options(struct seq_file *m, struct p9_client *clnt)
  {
  	if (clnt->msize != DEFAULT_MSIZE)
-@@ -69,6 +75,12 @@
+@@ -69,6 +77,18 @@
  	seq_printf(m, ",trans=%s", clnt->trans_mod->name);
  
  	switch (clnt->proto_version) {
++	case p9_proto_hfs13:
++		seq_puts(m, ",version=9P2000.L.hfs1.3");
++		break;
++	case p9_proto_hfs12:
++		seq_puts(m, ",version=9P2000.L.hfs1.2");
++		break;
 +	case p9_proto_hfs11:
 +		seq_puts(m, ",version=9P2000.L.hfs1.1");
 +		break;
@@ -85,12 +95,16 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	case p9_proto_legacy:
  		seq_puts(m, ",noextend");
  		break;
-@@ -103,7 +115,11 @@
+@@ -103,7 +123,15 @@
  {
  	int version = -EINVAL;
  
 -	if (!strcmp(s, "9p2000")) {
-+	if (!strcmp(s, "9P2000.L.hfs1.1")) {
++	if (!strcmp(s, "9P2000.L.hfs1.3")) {
++		version = p9_proto_hfs13;
++	} else if (!strcmp(s, "9P2000.L.hfs1.2")) {
++		version = p9_proto_hfs12;
++	} else if (!strcmp(s, "9P2000.L.hfs1.1")) {
 +		version = p9_proto_hfs11;
 +	} else if (!strcmp(s, "9P2000.L.hfs1")) {
 +		version = p9_proto_hfs1;
@@ -98,7 +112,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  		version = p9_proto_legacy;
  		p9_debug(P9_DEBUG_9P, "Protocol version: Legacy\n");
  	} else if (!strcmp(s, "9p2000.u")) {
-@@ -271,7 +287,7 @@
+@@ -271,7 +299,7 @@
   */
  static struct p9_req_t *
  p9_tag_alloc(struct p9_client *c, int8_t type, uint t_size, uint r_size,
@@ -107,7 +121,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  {
  	struct p9_req_t *req = kmem_cache_alloc(p9_req_cache, GFP_NOFS);
  	int alloc_tsize;
-@@ -312,8 +328,13 @@
+@@ -312,8 +340,13 @@
  	if (type == P9_TVERSION)
  		tag = idr_alloc(&c->reqs, req, P9_NOTAG, P9_NOTAG + 1,
  				GFP_NOWAIT);
@@ -122,7 +136,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	req->tc.tag = tag;
  	spin_unlock_irq(&c->lock);
  	idr_preload_end();
-@@ -535,6 +556,9 @@
+@@ -535,6 +568,9 @@
  		p9_debug(P9_DEBUG_ERROR, "couldn't parse header %d\n", err);
  		return err;
  	}
@@ -132,7 +146,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	if (type != P9_RERROR && type != P9_RLERROR)
  		return 0;
  
-@@ -620,13 +644,17 @@
+@@ -620,13 +656,17 @@
  
  static struct p9_req_t *p9_client_prepare_req(struct p9_client *c,
  					      int8_t type, uint t_size, uint r_size,
@@ -151,7 +165,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  	/* we allow for any status other than disconnected */
  	if (c->status == Disconnected)
-@@ -637,7 +665,7 @@
+@@ -637,7 +677,7 @@
  		return ERR_PTR(-EIO);
  
  	va_copy(apc, ap);
@@ -160,7 +174,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	va_end(apc);
  	if (IS_ERR(req))
  		return req;
-@@ -667,9 +695,9 @@
+@@ -667,9 +707,9 @@
   */
  
  static struct p9_req_t *
@@ -173,7 +187,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	int sigpending, err;
  	unsigned long flags;
  	struct p9_req_t *req;
-@@ -683,9 +711,8 @@
+@@ -683,9 +723,8 @@
  	const uint tsize = 0;
  	const uint rsize = c->trans_mod->pooled_rbuffers ? c->msize : 0;
  
@@ -185,7 +199,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	if (IS_ERR(req))
  		return req;
  
-@@ -706,8 +733,15 @@
+@@ -706,8 +745,15 @@
  	}
  again:
  	/* Wait for the response */
@@ -203,7 +217,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  	/* Make sure our req is coherent with regard to updates in other
  	 * threads - echoes to wmb() in the callback
-@@ -756,6 +790,70 @@
+@@ -756,6 +802,70 @@
  	p9_req_put(c, req);
  	return ERR_PTR(safe_errno(err));
  }
@@ -274,7 +288,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  /**
   * p9_client_zc_rpc - issue a request and wait for a response
-@@ -785,7 +883,8 @@
+@@ -785,7 +895,8 @@
  	/* We allocate a inline protocol data of only 4k bytes.
  	 * The actual content is passed in zero-copy fashion.
  	 */
@@ -284,29 +298,35 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	va_end(ap);
  	if (IS_ERR(req))
  		return req;
-@@ -910,6 +1009,14 @@
+@@ -910,6 +1021,18 @@
  		 c->msize, c->proto_version);
  
  	switch (c->proto_version) {
++	case p9_proto_hfs13:
++	case p9_proto_hfs12:
 +	case p9_proto_hfs11:
 +	case p9_proto_hfs1:
 +		if (c->msize != 65536)
 +			return -EPROTO;
 +		req = p9_client_rpc(c, P9_TVERSION, "ds",
-+				    c->msize, c->proto_version == p9_proto_hfs11 ?
++				    c->msize, c->proto_version == p9_proto_hfs13 ? "9P2000.L.hfs1.3" :
++				    c->proto_version == p9_proto_hfs12 ? "9P2000.L.hfs1.2" :
++				    c->proto_version == p9_proto_hfs11 ?
 +				    "9P2000.L.hfs1.1" : "9P2000.L.hfs1");
 +		break;
  	case p9_proto_2000L:
  		req = p9_client_rpc(c, P9_TVERSION, "ds",
  				    c->msize, "9P2000.L");
-@@ -937,7 +1044,15 @@
+@@ -937,7 +1060,17 @@
  	}
  
  	p9_debug(P9_DEBUG_9P, "<<< RVERSION msize %d %s\n", msize, version);
 -	if (!strncmp(version, "9P2000.L", 8)) {
 +	if (p9_client_is_hfs(c)) {
 +		if (req->rc.id != P9_RVERSION || req->rc.tag != P9_NOTAG ||
-+		    strcmp(version, c->proto_version == p9_proto_hfs11 ?
++		    strcmp(version, c->proto_version == p9_proto_hfs13 ? "9P2000.L.hfs1.3" :
++				    c->proto_version == p9_proto_hfs12 ? "9P2000.L.hfs1.2" :
++				    c->proto_version == p9_proto_hfs11 ?
 +			   "9P2000.L.hfs1.1" : "9P2000.L.hfs1") || msize != 65536 ||
 +		    req->rc.offset != req->rc.size) {
 +			err = -EPROTO;
@@ -316,7 +336,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  		c->proto_version = p9_proto_2000L;
  	} else if (!strncmp(version, "9P2000.u", 8)) {
  		c->proto_version = p9_proto_2000u;
-@@ -989,10 +1104,19 @@
+@@ -989,10 +1122,19 @@
  	spin_lock_init(&clnt->lock);
  	idr_init(&clnt->fids);
  	idr_init(&clnt->reqs);

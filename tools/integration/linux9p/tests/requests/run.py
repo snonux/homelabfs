@@ -28,7 +28,7 @@ def main():
     body.append(header[first:last])
     session = inputs[names[0]]
     for first, last in [('static int hfs_field_u64(', '\nint hfs_uuid('),
-                        ('static void hfs_request_result_put(', '\nstatic int hfs_request_run('),
+                        ('static void hfs_request_result_put(', '\nstatic int hfs_request_payload('),
                         ('int hfs_retire(', '\nEXPORT_SYMBOL_GPL(hfs_retire);')]:
         start = session.index(first)
         body.append(session[start:session.index(last,start)])

@@ -166,7 +166,13 @@ fixture_pwrite(int fd, const void *buffer, size_t length, off_t position) {
              "{\"cell\":%u,\"context\":%.*s,\"op\":%.*s,\"payload\":%s,"
              "\"protocol\":%s}", cell, (int)(c.end - c.start),
              f->request + c.start, (int)(o.end - o.start),
-             f->request + o.start, result, _protocol(1));
+             f->request + o.start, result, _protocol(f->minor));
+         if (f->minor >= 2) {
+            assert(n > 0 && n + strlen(controlled_receipt) + 17 < HFS9P_BODY);
+            n--;
+            n += snprintf((char *)f->reply + n, HFS9P_BODY - n,
+                ",\"verification\":%s}", controlled_receipt);
+         }
       }
       assert(n > 0 && n < (int)HFS9P_BODY);
       f->reply_total = (uint32_t)n;
@@ -327,7 +333,8 @@ connection_protocol(Hfs9p *h, const char *body, uint16_t minor) {
    assert(!connection_retry(h, id, &conn));
    uint8_t request[64] = {0}, reply[HFS9P_MSIZE];
    size_t n;
-   const char *version = minor ? "9P2000.L.hfs1.1" : "9P2000.L.hfs1";
+   const char *version = minor == 3 ? "9P2000.L.hfs1.3" :
+       minor == 2 ? "9P2000.L.hfs1.2" : minor ? "9P2000.L.hfs1.1" : "9P2000.L.hfs1";
    _put(request, 13 + strlen(version), 4);
    request[4] = 100;
    _put(request + 5, 65535, 2);
@@ -1294,9 +1301,80 @@ view_protocol_tests(void) {
    reset_fixtures();
 }
 
+/* Literal successor routing and exact receipt-byte preservation. The literal
+ * signature is not authenticated here, and translated guest cells do not mint
+ * native provenance or source/event/floor authority (followup y04/C6).
+ */
+static void
+controlled_protocol_tests(void) {
+   for (uint16_t minor = 2; minor <= 3; minor++) {
+      Hfs9p *h = new_endpoint();
+      const char *hello = minor == 3 ? cleanup_hello : controlled_hello;
+      Hfs9pConnection *c = connection_protocol(h, hello, minor);
+      assert(send_body(c, hello, 1) == 1 && fetch(c, 1, 2) == 3);
+      char *allocate = rewrite_body(minor == 2 ? controlled_allocate :
+          controlled_allocate3, 97, NULL);
+      assert(send_body(c, allocate, 97) == 1 && fetch(c, 97, 2) == 3);
+      free(allocate);
+      Hfs9pEntry *response = entry(h, 97);
+      assert(response->native_cell == 2 && response->guest_cell == 97);
+      Hfs9pJson j = {response->response_guest, response->response_total, h->tokens, 0};
+      uint32_t verification;
+      assert(!hfs9p_json_parse(&j) &&
+          !hfs9p_json_key(&j, 0, "verification", &verification));
+      Hfs9pToken receipt = j.tokens[verification];
+      assert(receipt.end - receipt.start == strlen(controlled_receipt) &&
+          !memcmp(j.bytes + receipt.start, controlled_receipt, strlen(controlled_receipt)));
+      uint32_t bound_cell, command_hash;
+      uint64_t native_cell;
+      uint8_t original_hash[32];
+      assert(!hfs9p_json_key(&j, verification, "cell", &bound_cell) &&
+          !hfs9p_json_u64(&j, bound_cell, &native_cell) && native_cell == 2);
+      assert(!hfs9p_json_key(&j, verification, "command_hash", &command_hash) &&
+          !_hex(&j, command_hash, original_hash, 32, false));
+      if (minor == 2)
+         assert(!memcmp(original_hash, response->native_hash, 32));
+      /* Minor3 forwards this literal unchanged too; its minor2 command hash
+       * cannot authenticate minor3. This forwarder never grants that authority. */
+
+      pthread_mutex_lock(&h->mutex);
+      const char *inputs[] = {controlled_allocate, controlled_gap_resolve,
+          cleanup_cleanup_empty};
+      for (unsigned k = 0; k < 3; k++) {
+         Hfs9pJson command = {(const uint8_t *)inputs[k], strlen(inputs[k]), h->tokens, 0};
+         uint32_t cell;
+         uint64_t number;
+         assert(!hfs9p_json_parse(&command) && !hfs9p_json_key(&command, 0, "cell", &cell) &&
+             !hfs9p_json_u64(&command, cell, &number));
+         Hfs9pEntry candidate = {.session=0, .minor=minor, .guest_cell=number,
+             .guest=(uint8_t *)inputs[k], .total=(uint32_t)strlen(inputs[k])};
+         bool selected = k == 2 ? minor == 3 : minor == 2;
+         int error = _command(h, &candidate);
+         assert((error == 0) == selected);
+         if (selected)
+            assert(candidate.control == (k != 0));
+      }
+      uint8_t *snapshot;
+      size_t length;
+      assert(!_snapshot(h, &snapshot, &length));
+      pthread_mutex_unlock(&h->mutex);
+      Hfs9p *restored = calloc(1, sizeof(*restored));
+      assert(restored);
+      restored->endpoint = h->endpoint;
+      assert(!_restore_bytes(restored, snapshot, length));
+      assert(restored->sessions[0].minor == minor);
+      _discard_recovery(restored);
+      free(snapshot);
+      hfs9p_connection_delete(c);
+      shutdown_endpoint(h);
+      reset_fixtures();
+   }
+}
+
 int
 main(int argc, char **argv) {
    assert(argc == 2);
+   controlled_protocol_tests();
    view_protocol_tests();
    parser_tests();
    core_tests();

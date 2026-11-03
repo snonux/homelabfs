@@ -1,0 +1,8 @@
+{
+  "generated": "internal/controlledvalidation/o04_production_guest_test.go",
+  "canonical": "tools/integration/linux9p/tests/controlled/host_test.go.txt",
+  "sha256": "11df58fc28877459146ac695bdb1854c910e13c4d77361d49bfaf3856dde5e06",
+  "scope": "Exact temporary materialization for whole-suite/race/static checks; generated file removed only after matching canonical bytes, not committed.",
+  "root_fix": "Four testpipewrites now checkactualI/Oerrors afterrooterrcheckfailure; productionC/28native sourceunchanged fromR1 andpriorstrictASanpreflight.",
+  "generated_removed_after_matching_checks": true
+}

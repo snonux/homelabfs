@@ -1,0 +1,162 @@
+package controlledvalidation
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/snonux/homelabfs/internal/admission"
+	"github.com/snonux/homelabfs/internal/guestbridge"
+)
+
+// The subprocess contains actual guest request/control/frame code and lib9p.
+// Native FUSE fd observations, kernel scheduling and guest publication are
+// primitive boundaries; the host Transport/Service/provider/journal are real.
+func TestControlledProductionGuestBackendHost(t *testing.T) {
+	consumer := os.Getenv("HFS_CONTROLLED_CONSUMER")
+	if consumer == "" {
+		t.Fatal("explicit production C consumer required")
+	}
+	for _, gap := range []bool{false, true} {
+		t.Run(fmt.Sprint("gap=", gap), func(t *testing.T) {
+			h := newAllocationHarnessProtocol(t, guestbridge.CleanupProtocol())
+			var cfg admission.Config
+			for class, size := range map[admission.Class]uint64{admission.Live: 512 << 20, admission.Control: 128 << 20, admission.Memory: 12 << 20} {
+				resources := admission.Resources{Bytes: size, Operations: 80, Workers: 4}
+				cfg.Pools[class] = admission.Limits{Global: resources, PerPeer: resources, PerVolume: resources}
+			}
+			budget, err := admission.New(cfg)
+			mustAllocation(t, err)
+			transport, err := guestbridge.NewTransport(h.bridge, budget)
+			mustAllocation(t, err)
+			defer transport.Close()
+			cmd := exec.CommandContext(t.Context(), consumer)
+			cmd.Env = append(os.Environ(), "HFS_CONTROLLED_BACKEND_LEDGER="+tempDirectory(t), "ASAN_OPTIONS=detect_leaks=0:allocator_may_return_null=1:quarantine_size_mb=16")
+			if gap {
+				cmd.Env = append(cmd.Env, "HFS_CONTROLLED_GAP=1")
+			}
+			input, err := cmd.StdinPipe()
+			mustAllocation(t, err)
+			output, err := cmd.StdoutPipe()
+			mustAllocation(t, err)
+			var diagnostics bytes.Buffer
+			cmd.Stderr = &diagnostics
+			mustAllocation(t, cmd.Start())
+			defer func() {
+				if cmd.ProcessState == nil {
+					_ = cmd.Process.Kill()
+					_ = cmd.Wait()
+				}
+			}()
+			fixture, err := canonicalJSON(map[string]any{"context": h.config.Scopes[0], "call": h.original})
+			mustAllocation(t, err)
+			_, err = fmt.Fprintln(input, string(fixture))
+			mustAllocation(t, err)
+			reader := bufio.NewScanner(output)
+			reader.Buffer(make([]byte, 65536), 2*guestbridge.BodyBytes+256)
+			wireEvidence := tempDirectory(t)
+			t.Logf("native wire evidence: %s", wireEvidence)
+			var originalAllocation []byte
+			writes, calls := 0, 0
+			for reader.Scan() {
+				fields := strings.Fields(reader.Text())
+				if len(fields) == 0 {
+					t.Fatal("empty IPC command")
+				}
+				switch fields[0] {
+				case "W":
+					if len(fields) != 3 {
+						t.Fatal("malformed write IPC")
+					}
+					offset, err := strconv.ParseUint(fields[1], 10, 64)
+					mustAllocation(t, err)
+					frame, err := hex.DecodeString(fields[2])
+					mustAllocation(t, err)
+					mustAllocation(t, os.WriteFile(fmt.Sprintf("%s/%03d-command.frame", wireEvidence, writes), frame, 0600))
+					decoded, err := guestbridge.DecodeFrame(frame)
+					mustAllocation(t, err)
+					command, err := guestbridge.DecodeCommandVersion(decoded.Data, decoded.Minor)
+					mustAllocation(t, err)
+					if command.Op == "ALLOCATE" {
+						expected, err := canonicalCall(h.original)
+						mustAllocation(t, err)
+						if !bytes.Equal(command.Payload, expected) {
+							t.Fatal("production guest changed full original allocation")
+						}
+						if originalAllocation == nil {
+							originalAllocation = bytes.Clone(command.Payload)
+						} else if !bytes.Equal(originalAllocation, command.Payload) {
+							t.Fatal("allocation retry changed original")
+						}
+					}
+					if command.Op == "CALL" {
+						calls++
+						e, exists := h.stored(h.original)
+						if !exists || e.Status != "ALLOCATED" || !bytes.Equal(originalAllocation, command.Payload) {
+							t.Fatal("CALL preceded exact protected allocation")
+						}
+					}
+					n, err := transport.Write(t.Context(), h.native, h.native.Endpoint.CommandNode, offset, frame)
+					if err != nil {
+						t.Logf("actual native write refused: %v", err)
+						_, pipeErr := fmt.Fprintln(input, "ERROR", err)
+						mustAllocation(t, pipeErr)
+					} else {
+						_, pipeErr := fmt.Fprintln(input, "OK", n)
+						mustAllocation(t, pipeErr)
+					}
+					writes++
+				case "R":
+					if len(fields) != 4 {
+						t.Fatal("malformed read IPC")
+					}
+					offset, err := strconv.ParseUint(fields[2], 10, 64)
+					mustAllocation(t, err)
+					count, err := strconv.ParseUint(fields[3], 10, 32)
+					mustAllocation(t, err)
+					node := h.native.Endpoint.ResultNode
+					if fields[1] == "12" {
+						node = h.native.Endpoint.RecallNode
+					}
+					raw, err := transport.Read(t.Context(), h.native, node, offset, uint32(count))
+					if err != nil {
+						_, pipeErr := fmt.Fprintln(input, "AGAIN")
+						mustAllocation(t, pipeErr)
+					} else {
+						mustAllocation(t, os.WriteFile(fmt.Sprintf("%s/response-%d.frame", wireEvidence, offset), raw, 0600))
+						_, pipeErr := fmt.Fprintln(input, "DATA", hex.EncodeToString(raw))
+						mustAllocation(t, pipeErr)
+					}
+				default:
+					t.Fatalf("unknown IPC command %q", fields[0])
+				}
+			}
+			mustAllocation(t, reader.Err())
+			mustAllocation(t, input.Close())
+			if err := cmd.Wait(); err != nil {
+				t.Fatalf("C consumer: %v\n%s", err, diagnostics.String())
+			}
+			if originalAllocation == nil || writes < 3 || (!gap && calls != 1) || (gap && calls != 0) {
+				t.Fatalf("missing real path allocations=%v writes=%d calls=%d", originalAllocation != nil, writes, calls)
+			}
+			e, exists := h.stored(h.original)
+			if !exists {
+				t.Fatal("no protected host original")
+			}
+			if gap {
+				if e.Status != "DECLINED" || !e.Gap {
+					t.Fatalf("gap status=%s", e.Status)
+				}
+			} else if e.Status != "TERMINAL" || !controlledResult(e.Result) {
+				t.Fatalf("missing real controlled result status=%s", e.Status)
+			}
+			t.Log(diagnostics.String())
+		})
+	}
+}

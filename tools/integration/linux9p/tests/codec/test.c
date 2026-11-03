@@ -326,6 +326,24 @@ static void test_versioned_frames(void)
 	u32 size, total, length;
 	u16 kind;
 
+	for (u16 minor = 0; minor <= 3; minor++) {
+		struct hfs_json *json = NULL;
+		const char *tuple = hfs_protocol_text(minor);
+		CHECK(tuple && !hfs_json_parse(tuple, strlen(tuple), &json));
+		for (u16 other = 0; other <= 4; other++)
+			CHECK((hfs_protocol_match(json, 0, other) == 0) == (minor == other));
+		hfs_json_free(json);
+		for (kind = 1; kind <= 3; kind++) {
+			size = sizeof(frame);
+			CHECK(!hfs_frame_encode_version(minor, kind, &session, 9,
+				"{\"v\":1}", 7, 0, frame, &size));
+			CHECK(frame[10] == minor);
+			for (u16 other = 0; other <= 4; other++)
+				CHECK((hfs_frame_decode_version(other, frame, size, kind,
+					&session, 9, 0, &total, hash, &body, &length) == 0) ==
+					(minor == other));
+		}
+	}
 	for (kind = 1; kind <= 3; kind++) {
 		size = sizeof(frame);
 		CHECK(!hfs_frame_encode_version(1, kind, &session, 9,
@@ -345,7 +363,7 @@ static void test_versioned_frames(void)
 					0, frame, &size));
 		CHECK(hfs_frame_decode_version(1, frame, size, kind, &session,
 					       9, 0, &total, hash, &body, &length) < 0);
-		CHECK(hfs_frame_encode_version(2, kind, &session, 9,
+		CHECK(hfs_frame_encode_version(4, kind, &session, 9,
 					       "{\"v\":1}", 7, 0, frame, &size) < 0);
 	}
 }

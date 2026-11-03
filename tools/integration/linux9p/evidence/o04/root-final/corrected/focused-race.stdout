@@ -1,0 +1,5 @@
+ok  	github.com/snonux/homelabfs/internal/controlledruntime	10.426s
+ok  	github.com/snonux/homelabfs/internal/fsservice	1.016s [no tests to run]
+ok  	github.com/snonux/homelabfs/internal/viewcontrol	1.184s
+ok  	github.com/snonux/homelabfs/internal/guestbridge	1.709s
+ok  	github.com/snonux/homelabfs/internal/controlledvalidation	1.293s

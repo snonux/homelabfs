@@ -1849,7 +1849,7 @@ diff --git a/fs/9p/hfs_lease.c b/fs/9p/hfs_lease.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.c
-@@ -0,0 +1,1421 @@
+@@ -0,0 +1,1423 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Exact bridge1.1 ticket/lease transport; no physical or source-proof defaults. */
 +#include <linux/slab.h>
@@ -3028,8 +3028,10 @@ new file mode 100644
 +		err = -EPROTO;
 +	if (!err)
 +		err = hfs_copy_json(reply, body, &dirty->reservation);
-+	if (!err)
++	if (!err) {
 +		memcpy(dirty->id, expected, 32);
++		hfs_request_earmark_admitted(session, dirty->request);
++	}
 +done:
 +	hfs_json_free(reply);
 +	if (err == -EPROTO)

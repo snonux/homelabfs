@@ -1,0 +1,4 @@
+internal/controlledvalidation/o04_production_guest_test.go:108:19:	fmt.Fprintln(input, "ERROR", err)
+internal/controlledvalidation/o04_production_guest_test.go:110:19:	fmt.Fprintln(input, "OK", n)
+internal/controlledvalidation/o04_production_guest_test.go:127:19:	fmt.Fprintln(input, "AGAIN")
+internal/controlledvalidation/o04_production_guest_test.go:130:19:	fmt.Fprintln(input, "DATA", hex.EncodeToString(raw))

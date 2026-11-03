@@ -36,13 +36,15 @@ static inline void list_del(struct list_head *p) {
 #define EXPORT_SYMBOL_GPL(x)
 struct hfs_request;
 struct hfs_session;
+struct hfs_json;
 struct hfs_provider {
    int (*reserve)(struct hfs_session *, u64, bool, void **);
    void (*unreserve)(struct hfs_session *, void *);
-   int (*retirement)(struct hfs_session *, u64, const u8 *);
+   int (*retirement)(struct hfs_session *, u64, const u8 *, const struct hfs_json *);
    int (*resolve_gap)(struct hfs_session *, struct hfs_request *);
 };
 struct hfs_session {
+   u16 bridge_minor;
    struct mutex lock, retirement;
    struct list_head requests;
    u32 nr_requests, nr_control_requests;

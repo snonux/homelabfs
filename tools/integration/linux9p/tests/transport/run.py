@@ -24,7 +24,7 @@ def main():
     loader.loader.exec_module(runner)
     session = (source / 'fs/9p/hfs_session.c').read_text()
     # Compile the complete production function verbatim, never a modeled loop.
-    transport = session[session.index('static int hfs_transport('):session.index('\nstatic bool hfs_operation(')]
+    transport = session[session.index('static int hfs_transport('):session.index('\nstatic bool hfs_result_needs_adoption(')]
     (output / 'transport.inc').write_text(transport)
     log = output / 'transport.log'
     log.write_text('hfs_session_sha256=' + hashlib.sha256(session.encode()).hexdigest() + '\n')

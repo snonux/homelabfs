@@ -47,3 +47,15 @@ with Path(sys.argv[1]).open("w") as out:
     views = json.loads((source.parent / "views.json").read_text())
     for case in views["commands"]:
         emit("view_" + case["name"], case["body"])
+
+    controlled = json.loads((source.parent / "controlled.json").read_text())
+    for case in controlled["commands"]:
+        emit("controlled_" + case["name"], case["body"])
+    cleanup = json.loads((source.parent / "cleanup.json").read_text())
+    for case in cleanup["commands"]:
+        emit("cleanup_" + case["name"].replace("-", "_"), case["body"])
+    allocate3 = copy.deepcopy(next(c["body"] for c in controlled["commands"] if c["name"] == "allocate"))
+    allocate3["protocol"] = cleanup["protocol"]
+    emit("controlled_allocate3", allocate3)
+    receipt = controlled["receipts"][0]
+    out.write("static const char controlled_receipt[] = " + json.dumps(json.dumps(receipt,sort_keys=True,separators=(",", ":"))) + ";\n")

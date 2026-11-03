@@ -38,9 +38,11 @@ static void unreserve(struct hfs_session *s, void *credit)
 {
    (void)s; assert(credit); free(credit); released++;
 }
-static int retirement(struct hfs_session *s, u64 through, const u8 *proof)
+static int retirement(struct hfs_session *s, u64 through, const u8 *proof,
+                       const struct hfs_json *response)
 {
    (void)s; assert(through == 1);
+   assert(response && hfs_json_field(response, 0, "payload") >= 0);
    for (int i = 0; i < 32; i++) assert(proof[i] == 0xbb);
    fact_calls++;
    return fact_error;

@@ -1,0 +1,122 @@
+[
+  {
+    "check": "build",
+    "argv": [
+      "go",
+      "build",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 1.519
+  },
+  {
+    "check": "vet",
+    "argv": [
+      "go",
+      "vet",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 0.417
+  },
+  {
+    "check": "errcheck",
+    "argv": [
+      "errcheck",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 1.319
+  },
+  {
+    "check": "lint",
+    "argv": [
+      "golangci-lint",
+      "run",
+      "--timeout=3m",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 0.868
+  },
+  {
+    "check": "freebsd",
+    "argv": [
+      "go",
+      "build",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 1.418
+  },
+  {
+    "check": "focused-race",
+    "argv": [
+      "go",
+      "test",
+      "-race",
+      "-p",
+      "1",
+      "-count=1",
+      "-timeout=180s",
+      "./internal/controlledruntime",
+      "./internal/fsservice",
+      "./internal/viewcontrol",
+      "./internal/guestbridge",
+      "./internal/controlledvalidation",
+      "-run",
+      "TestControlledProductionGuestBackendHost|TestDurableTransport|TestRealControlledProducer|TestControlledProtocol"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 17.415
+  },
+  {
+    "check": "full-root",
+    "argv": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-count=1",
+      "-timeout=600s",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 99.829
+  },
+  {
+    "check": "freebsd-cgo-controlledruntime",
+    "argv": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/paul/tmp/codex/hfs-o04-20261103-oct9t3af/root-gates-final2/controlledruntime-freebsd.test",
+      "./internal/controlledruntime"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 0.516
+  },
+  {
+    "check": "freebsd-cgo-fuseadapter",
+    "argv": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/paul/tmp/codex/hfs-o04-20261103-oct9t3af/root-gates-final2/fuseadapter-freebsd.test",
+      "./internal/fuseadapter"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 0.366
+  }
+]

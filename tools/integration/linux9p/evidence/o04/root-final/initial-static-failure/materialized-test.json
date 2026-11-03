@@ -1,0 +1,6 @@
+{
+  "generated": "internal/controlledvalidation/o04_production_guest_test.go",
+  "canonical": "tools/integration/linux9p/tests/controlled/host_test.go.txt",
+  "sha256": "5fa42f6e0a11689ba5f63983e98e1382fe9aef50ee0597119ba1a37e0cd53959",
+  "scope": "Exact temporary materialization for whole-suite/race/static checks; generated file removed only after matching canonical bytes, not committed."
+}

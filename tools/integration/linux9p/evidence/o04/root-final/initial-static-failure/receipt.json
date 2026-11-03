@@ -1,0 +1,49 @@
+[
+  {
+    "check": "production-c-preflight",
+    "argv": [
+      "python3",
+      "/home/paul/git/homelabfs/tools/integration/linux9p/tests/controlled/build.py",
+      "--source",
+      "/home/paul/tmp/codex/hfs-o04-20261103-oct9t3af/source",
+      "--output",
+      "/home/paul/tmp/codex/hfs-o04-20261103-oct9t3af/root-gates/consumer",
+      "--sanitize"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 2.974
+  },
+  {
+    "check": "build",
+    "argv": [
+      "go",
+      "build",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 1.577
+  },
+  {
+    "check": "vet",
+    "argv": [
+      "go",
+      "vet",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 0.416
+  },
+  {
+    "check": "errcheck",
+    "argv": [
+      "errcheck",
+      "./..."
+    ],
+    "exit": 1,
+    "deadline": false,
+    "seconds": 1.374
+  }
+]

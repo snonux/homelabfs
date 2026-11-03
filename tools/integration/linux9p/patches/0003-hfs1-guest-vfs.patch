@@ -69,7 +69,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,337 @@
+@@ -0,0 +1,356 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -149,9 +149,12 @@ new file mode 100644
 +	int (*reserve)(struct hfs_session *session, u64 bytes, bool control,
 +		       void **reservation);
 +	void (*unreserve)(struct hfs_session *session, void *reservation);
-+	/* Verify protected normal claim/floor evidence, never a local assertion. */
++	/* Verify protected normal claim/floor evidence, never a local assertion.
++	 * response is the borrowed complete transported union, including receipt.
++	 */
 +	int (*retirement)(struct hfs_session *session, u64 through,
-+			  const u8 proof_hash[32]);
++			  const u8 proof_hash[32],
++			  const struct hfs_json *response);
 +	int (*view_retirement)(struct hfs_session *session,
 +			       const struct hfs_buf *credentials, u64 through,
 +			       const u8 proof_hash[32]);
@@ -208,6 +211,7 @@ new file mode 100644
 +struct hfs_candidate {
 +	struct list_head list;
 +	struct hfs_buf command;
++	struct hfs_cell *slot;
 +	u64 cell;
 +	u64 donor;
 +};
@@ -223,6 +227,12 @@ new file mode 100644
 +	uuid_t operation;
 +	struct hfs_json *result;
 +	struct hfs_json *refusal;
++	struct hfs_json *allocation_receipt;
++	/* Complete received terminal envelope; receipt bytes are not authority. */
++	struct hfs_json *response;
++	struct hfs_json *gap_response;
++	bool allocated;
++	bool allocating;
 +	bool gap;
 +	bool earmarked;
 +	bool view_stamped;
@@ -267,6 +277,8 @@ new file mode 100644
 +	u32 nr_view_families;
 +	struct list_head global;
 +	struct workqueue_struct *control;
++	/* Non-NULL until the exact protected ALLOCATE acknowledgement. */
++	struct hfs_request *allocation_pending;
 +	u64 next_claim;
 +	u64 next_cell;
 +	u64 next_inode;
@@ -279,6 +291,7 @@ new file mode 100644
 +	u32 nr_objects;
 +	struct hfs_cell cells[80];
 +	bool blocked;
++	bool allocation_uncertain;
 +	bool closing;
 +	bool retained;
 +	bool retired; /* actual protected whole-session provider proof */
@@ -352,6 +365,10 @@ new file mode 100644
 +int hfs_capture(struct hfs_session *session, struct user_namespace *mnt_userns,
 +		struct hfs_cred **out);
 +void hfs_cred_free(struct hfs_cred *cred);
++int hfs_request_allocate(struct hfs_session *session,
++			 struct hfs_request *request, struct hfs_buf *payload);
++int hfs_request_resolve_gap(struct hfs_session *session,
++			    struct hfs_request *request);
 +int hfs_call(struct hfs_session *session, const char *opcode,
 +	     const struct hfs_buf *args, const struct hfs_cred *cred,
 +	     bool control, struct hfs_json **out);
@@ -365,6 +382,8 @@ new file mode 100644
 +int hfs_request_earmark(struct hfs_session *session, const struct hfs_cred *cred,
 +			struct hfs_view_ticket *ticket, struct hfs_request **out);
 +int hfs_request_cancel_earmark(struct hfs_session *session, struct hfs_request *request);
++void hfs_request_earmark_admitted(struct hfs_session *session,
++				struct hfs_request *request);
 +void hfs_request_unhold(struct hfs_session *session, struct hfs_request *request);
 +int hfs_request_bind_drain(struct hfs_session *session, struct hfs_request *request,
 +			    const struct hfs_buf *args);
@@ -411,7 +430,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,2085 @@
+@@ -0,0 +1,2361 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include <linux/delay.h>
@@ -703,7 +722,9 @@ new file mode 100644
 +	u64 selected;
 +	char op[32];
 +
-+	if (hfs_json_exact(json, 0, session->bridge_minor ?
++	if (hfs_json_exact(json, 0, session->bridge_minor >= 2 ?
++			   "cell,context,op,payload,protocol,verification" :
++			   session->bridge_minor ?
 +			   "cell,context,op,payload,protocol" :
 +			   "cell,context,op,payload") ||
 +	    (session->bridge_minor && hfs_protocol_match(json,
@@ -854,6 +875,7 @@ new file mode 100644
 +		"RESUME", "VIEW_WAIT", "VIEW_ACK", "VIEW_ACQUIRE",
 +		"VIEW_RELEASE", "VIEW_RENEW", "VIEW_QUERY", "VIEW_CANCEL",
 +		"VIEW_RETIRE", "DIRTY_RESERVE", "DIRTY_FREEZE", "READDIR_CLEANUP",
++		"ALLOCATE", "GAP_RESOLVE",
 +	};
 +	static const char * const opcodes[] = {
 +		"ROOT", "LOOKUP", "GETATTR", "READLINK", "CREATE", "MKDIR",
@@ -869,6 +891,33 @@ new file mode 100644
 +		if (!strcmp(names[i], operation))
 +			return true;
 +	return false;
++}
++
++/* Only the exact retained allocation command may reuse its transport cell.
++ * Caller holds writer and session lock. The original body/donor are immutable.
++ */
++static struct hfs_candidate *hfs_allocation_candidate(struct hfs_session *session,
++						   const struct hfs_buf *payload)
++{
++	struct hfs_candidate *candidate;
++
++	list_for_each_entry(candidate, &session->uncertain, list) {
++		struct hfs_json *json = NULL;
++		int token;
++		bool match = false;
++
++		if (hfs_json_parse(candidate->command.data, candidate->command.len, &json))
++			continue;
++		token = hfs_json_field(json, 0, "payload");
++		if (hfs_json_is(json, hfs_json_field(json, 0, "op"), "\"ALLOCATE\"") &&
++		    token >= 0 && json->tokens[token].end - json->tokens[token].start == payload->len &&
++		    !memcmp(json->data + json->tokens[token].start, payload->data, payload->len))
++			match = true;
++		hfs_json_free(json);
++		if (match)
++			return candidate;
++	}
++	return NULL;
 +}
 +
 +int hfs_control(struct hfs_session *session, const char *operation,
@@ -887,11 +936,19 @@ new file mode 100644
 +	u64 cell, release_cell = 0;
 +	u8 release_hash[32];
 +	bool release = !strcmp(operation, "RELEASE_CELL");
++	bool allocate = !strcmp(operation, "ALLOCATE");
 +	int err;
 +
 +	*out = NULL;
 +	if (!hfs_operation(operation, false))
 +		return -EOPNOTSUPP;
++	if ((!strcmp(operation, "ALLOCATE") || !strcmp(operation, "GAP_RESOLVE")) &&
++	    session->bridge_minor < 2)
++		return -EOPNOTSUPP;
++	if ((!strcmp(operation, "ALLOCATE") && reserved) ||
++	    ((!strcmp(operation, "GAP_RESOLVE") || !strcmp(operation, "READDIR_CLEANUP")) &&
++	     !reserved))
++		return -EINVAL;
 +	if (!strcmp(operation, "READDIR_CLEANUP") && session->bridge_minor != 3)
 +		return -EOPNOTSUPP;
 +	if (hfs_view_command(operation) &&
@@ -914,6 +971,22 @@ new file mode 100644
 +		if (err)
 +			return err;
 +	}
++	if (allocate && READ_ONCE(session->allocation_uncertain)) {
++		mutex_lock(&session->writer);
++		mutex_lock(&session->lock);
++		candidate = hfs_allocation_candidate(session, payload);
++		if (!candidate) {
++			mutex_unlock(&session->lock);
++			mutex_unlock(&session->writer);
++			return -EBUSY;
++		}
++		list_del(&candidate->list);
++		command = candidate->command;
++		cell = candidate->cell;
++		slot = candidate->slot;
++		mutex_unlock(&session->lock);
++		goto exchange;
++	}
 +	candidate = kzalloc(sizeof(*candidate), GFP_KERNEL);
 +	if (!candidate)
 +		return -ENOMEM;
@@ -928,7 +1001,8 @@ new file mode 100644
 +	 */
 +	mutex_lock(&session->writer);
 +	mutex_lock(&session->lock);
-+	if ((session->blocked && !reserved) || session->next_cell > HFS_CELL_MAX) {
++	if (((session->blocked || session->allocation_uncertain) && !reserved) ||
++	    session->next_cell > HFS_CELL_MAX) {
 +		err = -EHOSTDOWN;
 +		goto unlock;
 +	}
@@ -986,6 +1060,7 @@ new file mode 100644
 +		err = command.error;
 +		goto fault;
 +	}
++exchange:
 +	err = hfs_transport(session, &command, cell,
 +		!strcmp(operation, "VIEW_WAIT") ? 65534 :
 +		reserved || release ? 65533 : P9_NOTAG,
@@ -1009,6 +1084,8 @@ new file mode 100644
 +	hfs_hash(reply, reply_len, slot->hash);
 +	slot->ack_ready = true;
 +	slot->reserved = false;
++	if (allocate)
++		session->allocation_uncertain = false;
 +	mutex_unlock(&session->lock);
 +	if (writer_held)
 +		mutex_unlock(&session->writer);
@@ -1021,9 +1098,13 @@ new file mode 100644
 +	/* Keep exact uncertain candidate bytes. Never release donor evidence or
 +	 * issue another candidate after an uncertain transport/admission result.
 +	 */
-+	WRITE_ONCE(session->blocked, true);
++	if (allocate)
++		WRITE_ONCE(session->allocation_uncertain, true);
++	else
++		WRITE_ONCE(session->blocked, true);
 +	/* The command is owned by the retained session until reconciliation. */
 +	candidate->command = command;
++	candidate->slot = slot;
 +	candidate->cell = cell;
 +	candidate->donor = slot->number;
 +	mutex_lock(&session->lock);
@@ -1201,15 +1282,9 @@ new file mode 100644
 +	mutex_unlock(&session->lock);
 +}
 +
-+static int hfs_request_run(struct hfs_session *session,
-+			   struct hfs_request *request, const char *opcode,
-+			   struct hfs_buf *payload, struct hfs_json **out)
++/* The same exact full original is used for allocation, CALL and GAP. */
++static int hfs_request_payload(struct hfs_request *request, struct hfs_buf *payload)
 +{
-+	struct hfs_json *reply = NULL, *result = NULL;
-+	unsigned long deadline = jiffies + 30 * HZ;
-+	bool control = request->control;
-+	int err, token, status, claim;
-+
 +	payload->len = 0;
 +	payload->error = 0;
 +	hfs_buf_literal(payload, "{\"claim\":");
@@ -1221,6 +1296,142 @@ new file mode 100644
 +	hfs_buf_literal(payload, "}");
 +	if (payload->error)
 +		return payload->error;
++	return 0;
++}
++
++int hfs_request_allocate(struct hfs_session *session,
++			 struct hfs_request *request, struct hfs_buf *payload)
++{
++	struct hfs_json *reply = NULL;
++	int err, token, claim;
++
++	if (!request || request->session != session)
++		return -EINVAL;
++	if (session->bridge_minor < 2 || request->earmarked)
++		return 0;
++	mutex_lock(&session->lock);
++	if (request->allocating) {
++		mutex_unlock(&session->lock);
++		return -EAGAIN;
++	}
++	if (request->allocated) {
++		mutex_unlock(&session->lock);
++		return 0;
++	}
++	if (session->allocation_pending != request) {
++		mutex_unlock(&session->lock);
++		return -EBUSY;
++	}
++	request->allocating = true;
++	mutex_unlock(&session->lock);
++	err = hfs_request_payload(request, payload);
++	if (!err)
++		err = hfs_control(session, "ALLOCATE", payload, false, &reply);
++	if (err)
++		goto out;
++	token = hfs_json_field(reply, 0, "payload");
++	claim = hfs_json_field(reply, token, "claim");
++	if (hfs_json_exact(reply, token, "claim,status") || claim < 0 ||
++	    !hfs_json_is(reply, hfs_json_field(reply, token, "status"), "\"ALLOCATED\"") ||
++	    reply->tokens[claim].end - reply->tokens[claim].start != request->claim.len ||
++	    memcmp(reply->data + reply->tokens[claim].start,
++		   request->claim.data, request->claim.len)) {
++		err = -EPROTO;
++		goto out;
++	}
++	mutex_lock(&session->lock);
++	request->allocated = true;
++	request->allocation_receipt = reply;
++	reply = NULL;
++	session->allocation_pending = NULL;
++	mutex_unlock(&session->lock);
++out:
++	mutex_lock(&session->lock);
++	request->allocating = false;
++	mutex_unlock(&session->lock);
++	/* Never clear pending on uncertain acknowledgement or change its bytes. */
++	hfs_json_free(reply);
++	return err;
++}
++EXPORT_SYMBOL_GPL(hfs_request_allocate);
++
++int hfs_request_resolve_gap(struct hfs_session *session,
++			    struct hfs_request *request)
++{
++	struct hfs_buf payload = {};
++	struct hfs_json *reply = NULL, *proof = NULL;
++	u8 digest[32];
++	u32 len = sizeof(digest);
++	int err, token, claim;
++
++	if (session->bridge_minor < 2 || request->earmarked || !request->allocated ||
++	    request->terminal || request->users || request->held)
++		return -EINVAL;
++	err = hfs_buf_init(&payload, HFS_BODY_MAX);
++	if (!err)
++		err = hfs_request_payload(request, &payload);
++	if (!err)
++		err = hfs_control(session, "GAP_RESOLVE", &payload, true, &reply);
++	if (err)
++		goto out;
++	token = hfs_json_field(reply, 0, "payload");
++	claim = hfs_json_field(reply, token, "claim");
++	if (hfs_json_exact(reply, token, "claim,proof_hash,status") || claim < 0 ||
++	    !hfs_json_is(reply, hfs_json_field(reply, token, "status"), "\"GAP\"") ||
++	    hfs_json_hex(reply, hfs_json_field(reply, token, "proof_hash"), digest, &len) ||
++	    len != 32 ||
++	    reply->tokens[claim].end - reply->tokens[claim].start != request->claim.len ||
++	    memcmp(reply->data + reply->tokens[claim].start,
++		   request->claim.data, request->claim.len)) {
++		err = -EPROTO;
++		goto out;
++	}
++	/* A protected component receipt is not a verified runtime floor. The
++	 * mandatory provider consumes its own source/floor evidence separately.
++	 */
++	err = hfs_copy_token(reply, token, &proof);
++	if (!err) {
++		mutex_lock(&session->lock);
++		hfs_json_free(request->refusal);
++		request->refusal = proof;
++		if (!request->gap_response) {
++			request->gap_response = reply;
++			reply = NULL;
++		}
++		request->gap = true;
++		mutex_unlock(&session->lock);
++	}
++out:
++	hfs_json_free(reply);
++	hfs_buf_free(&payload);
++	return err;
++}
++EXPORT_SYMBOL_GPL(hfs_request_resolve_gap);
++
++static int hfs_request_run(struct hfs_session *session,
++			   struct hfs_request *request, const char *opcode,
++			   struct hfs_buf *payload, struct hfs_json **out)
++{
++	struct hfs_json *reply = NULL, *result = NULL, *received;
++	unsigned long deadline = jiffies + 30 * HZ;
++	bool control = session->bridge_minor >= 2 ? request->earmarked : request->control;
++	int err, token, status, claim;
++
++	/* A received terminal snapshot is immutable even when its mandatory
++	 * verifier refused adoption. Revalidate that same envelope without a
++	 * second CALL, allocation, source assertion or substituted response.
++	 */
++	if (session->bridge_minor >= 2 && request->response) {
++		received = request->response;
++		token = hfs_json_field(received, 0, "payload");
++		goto result_snapshot;
++	}
++	err = hfs_request_allocate(session, request, payload);
++	if (err)
++		return err; /* allocation_pending fences all subsequent issuance */
++	err = hfs_request_payload(request, payload);
++	if (err)
++		goto retained;
 +	err = hfs_control(session, "CALL", payload, control, &reply);
 +	if (err)
 +		goto retained;
@@ -1262,7 +1473,8 @@ new file mode 100644
 +	hfs_buf_add(payload, request->claim.data, request->claim.len);
 +	hfs_buf_literal(payload, "}");
 +	for (;;) {
-+		err = hfs_control(session, "QUERY", payload, control, &reply);
++		err = hfs_control(session, "QUERY", payload,
++				  session->bridge_minor >= 2 ? true : control, &reply);
 +		if (err)
 +			goto retained;
 +		token = hfs_json_field(reply, 0, "payload");
@@ -1291,7 +1503,23 @@ new file mode 100644
 +		}
 +		usleep_range(10000, 12000);
 +	}
-+	err = hfs_copy_token(reply, hfs_json_field(reply, token, "result"), &result);
++	received = reply;
++	if (session->bridge_minor >= 2) {
++		/* Preserve the actual full envelope, including exact host receipt and
++		 * transport metadata, even when the missing verifier refuses result
++		 * adoption. Never replace it with a caller-created receipt object.
++		 */
++		mutex_lock(&session->lock);
++		if (!request->response) {
++			request->response = reply;
++			reply = NULL;
++		}
++		received = request->response;
++		mutex_unlock(&session->lock);
++		token = hfs_json_field(received, 0, "payload");
++	}
++result_snapshot:
++	err = hfs_copy_token(received, hfs_json_field(received, token, "result"), &result);
 +	if (!err)
 +		err = hfs_result_validate(session, result, opcode, &request->credentials);
 +	if (err)
@@ -1361,7 +1589,8 @@ new file mode 100644
 +		goto free;
 +	}
 +	mutex_lock(&session->lock);
-+	err = hfs_request_admit(session->blocked, true,
++	err = session->allocation_pending ? -EAGAIN :
++		hfs_request_admit(session->blocked, true,
 +			session->nr_requests - session->nr_control_requests,
 +			session->nr_control_requests, session->next_claim);
 +	if (err) {
@@ -1372,6 +1601,8 @@ new file mode 100644
 +	request->earmarked = true;
 +	request->held = true;
 +	request->earmark_ticket = ticket;
++	if (session->bridge_minor >= 2)
++		session->allocation_pending = request;
 +	ticket->users++;
 +	request->number = session->next_claim++;
 +	uuid_gen(&request->operation);
@@ -1446,10 +1677,24 @@ new file mode 100644
 +		request->gap = true;
 +		request->terminal = true;
 +		request->adopted = true;
++		if (session->allocation_pending == request)
++			session->allocation_pending = NULL;
 +	}
 +	mutex_unlock(&session->lock);
 +	hfs_json_free(response);
 +	return 0;
++}
++
++/* Called only after the production dirty-reservation decoder has checked the
++ * exact typed number, full credentials/scope and protected reservation bytes.
++ */
++void hfs_request_earmark_admitted(struct hfs_session *session,
++				struct hfs_request *request)
++{
++	mutex_lock(&session->lock);
++	if (request->earmarked && session->allocation_pending == request)
++		session->allocation_pending = NULL;
++	mutex_unlock(&session->lock);
 +}
 +
 +void hfs_request_unhold(struct hfs_session *session, struct hfs_request *request)
@@ -1512,10 +1757,13 @@ new file mode 100644
 +	*out = NULL;
 +	if (!hfs_operation(opcode, true))
 +		return -EOPNOTSUPP;
++	if (session->bridge_minor >= 2 && !strcmp(opcode, "DRAIN_WRITE"))
++		return -EOPNOTSUPP;
 +	if (!cred || args->error)
 +		return args->error ?: -EINVAL;
 +	mutex_lock(&session->lock);
-+	err = hfs_request_admit(session->blocked, control,
++	err = session->allocation_pending ? -EAGAIN :
++		hfs_request_admit(session->blocked, control,
 +			session->nr_requests - session->nr_control_requests,
 +			session->nr_control_requests, session->next_claim);
 +	mutex_unlock(&session->lock);
@@ -1572,7 +1820,8 @@ new file mode 100644
 +	}
 +	hfs_hash(request->intent.data, request->intent.len, digest);
 +	mutex_lock(&session->lock);
-+	err = hfs_request_admit(session->blocked, control,
++	err = session->allocation_pending ? -EAGAIN :
++		hfs_request_admit(session->blocked, control,
 +			session->nr_requests - session->nr_control_requests,
 +			session->nr_control_requests, session->next_claim);
 +	if (err) {
@@ -1580,6 +1829,8 @@ new file mode 100644
 +		goto free;
 +	}
 +	request->control = control;
++	if (session->bridge_minor >= 2)
++		session->allocation_pending = request;
 +	request->number = session->next_claim++;
 +	uuid_gen(&request->operation);
 +	hfs_buf_add(&request->original_context, session->enrollment.context,
@@ -1931,14 +2182,16 @@ new file mode 100644
 +	int err = 0;
 +
 +	if (!provider ||
-+	    (provider->features != HFS_FEATURES && provider->features != HFS_VIEW_FEATURES) ||
++	    (provider->features != HFS_FEATURES && provider->features != HFS_VIEW_FEATURES &&
++	     provider->features != HFS_CONTROLLED_FEATURES &&
++	     provider->features != HFS_CLEANUP_FEATURES) ||
 +	    !provider->enroll || !provider->map || !provider->enter ||
 +	    !provider->leave || !provider->publication ||
 +	    !provider->stop || !provider->retain || !provider->reserve ||
 +	    !provider->unreserve || !provider->retirement || !provider->resolve_gap ||
 +	    !provider->retire_session ||
 +	    (provider->features == HFS_FEATURES && !provider->mmap) ||
-+	    (provider->features == HFS_VIEW_FEATURES &&
++	    (provider->features != HFS_FEATURES &&
 +	     (!provider->target || !provider->view_event || !provider->view_retirement)))
 +		return -EOPNOTSUPP;
 +	mutex_lock(&hfs_provider_lock);
@@ -1978,12 +2231,16 @@ new file mode 100644
 +	const char *p = options;
 +	static const char selected[] = "version=9P2000.L.hfs1";
 +	static const char views[] = "version=9P2000.L.hfs1.1";
++	static const char controlled[] = "version=9P2000.L.hfs1.2";
++	static const char cleanup[] = "version=9P2000.L.hfs1.3";
 +	size_t len;
 +
 +	while (p && *p) {
 +		len = strcspn(p, ",");
 +		if ((len == sizeof(selected) - 1 && !memcmp(p, selected, len)) ||
-+		    (len == sizeof(views) - 1 && !memcmp(p, views, len)))
++		    (len == sizeof(views) - 1 && !memcmp(p, views, len)) ||
++		    (len == sizeof(controlled) - 1 && !memcmp(p, controlled, len)) ||
++		    (len == sizeof(cleanup) - 1 && !memcmp(p, cleanup, len)))
 +			return true;
 +		p = p[len] ? p + len + 1 : NULL;
 +	}
@@ -2083,6 +2340,9 @@ new file mode 100644
 +		hfs_buf_free(&request->readdir_cleanup);
 +		hfs_json_free(request->result);
 +		hfs_json_free(request->refusal);
++		hfs_json_free(request->allocation_receipt);
++		hfs_json_free(request->response);
++		hfs_json_free(request->gap_response);
 +		session->provider->unreserve(session, request->reservation);
 +		kfree(request);
 +	}
@@ -2188,7 +2448,9 @@ new file mode 100644
 +		return ERR_PTR(-ENOMEM);
 +	}
 +	session->provider = hfs_provider;
-+	session->bridge_minor = hfs_provider->features == HFS_VIEW_FEATURES;
++	session->bridge_minor = hfs_provider->features == HFS_CLEANUP_FEATURES ? 3 :
++		hfs_provider->features == HFS_CONTROLLED_FEATURES ? 2 :
++		hfs_provider->features == HFS_VIEW_FEATURES ? 1 : 0;
 +	hello = hfs_protocol_text(session->bridge_minor);
 +	atomic_inc(&hfs_active_sessions);
 +	mutex_init(&session->lock);
@@ -2216,6 +2478,11 @@ new file mode 100644
 +		err = hfs_enrollment_validate(&session->enrollment);
 +	if (err)
 +		goto unlock_fail;
++	if (session->bridge_minor >= 2 &&
++	    session->enrollment.view_scope != HFS_SCOPE_CONTROLLED_LOCAL) {
++		err = -EOPNOTSUPP;
++		goto unlock_fail;
++	}
 +	if (session->bridge_minor &&
 +	    ((session->enrollment.view_scope != HFS_SCOPE_NORMAL_PUBLIC &&
 +	      session->enrollment.view_scope != HFS_SCOPE_CONTROLLED_LOCAL) ||
@@ -2246,7 +2513,9 @@ new file mode 100644
 +		session->client = NULL;
 +		goto fail;
 +	}
-+	if (session->client->proto_version != (session->bridge_minor ?
++	if (session->client->proto_version != (session->bridge_minor == 3 ? p9_proto_hfs13 :
++					       session->bridge_minor == 2 ? p9_proto_hfs12 :
++					       session->bridge_minor ?
 +					       p9_proto_hfs11 : p9_proto_hfs1)) {
 +		err = -EPROTO;
 +		goto fail;
@@ -2255,7 +2524,8 @@ new file mode 100644
 +	if (err)
 +		goto fail;
 +	hfs_buf_literal(&payload, hello);
-+	err = hfs_control(session, "HELLO", &payload, true, &reply);
++	err = hfs_control(session, "HELLO", &payload,
++			  session->bridge_minor >= 2 ? false : true, &reply);
 +	hfs_buf_free(&payload);
 +	if (err)
 +		goto fail;
@@ -2327,7 +2597,7 @@ new file mode 100644
 +
 +int hfs_retire(struct hfs_session *session)
 +{
-+	struct hfs_request *request, *next;
++	struct hfs_request *request, *next, *issuer = NULL;
 +	struct hfs_buf payload;
 +	struct hfs_json *reply = NULL;
 +	u8 hash[32], proof[32];
@@ -2339,12 +2609,34 @@ new file mode 100644
 +	err = hfs_buf_init(&payload, HFS_BODY_MAX);
 +	if (err)
 +		goto unlock;
-+	hfs_buf_printf(&payload,
-+		"{\"anchor\":\"%pUb\",\"nonce\":\"%pUb\",\"realm\":\"%pUb\","
-+		"\"result_hashes\":[", &session->enrollment.anchor,
-+		&session->enrollment.nonce, &session->enrollment.realm);
 +	mutex_lock(&session->lock);
++	if (session->bridge_minor >= 2) {
++		list_for_each_entry(request, &session->requests, list) {
++			issuer = request;
++			break;
++		}
++		if (!issuer) {
++			mutex_unlock(&session->lock);
++			err = -EAGAIN;
++			goto free;
++		}
++		hfs_buf_printf(&payload, "{\"anchor\":\"%pUb\",\"credentials\":",
++			       &session->enrollment.anchor);
++		hfs_buf_add(&payload, issuer->credentials.data, issuer->credentials.len);
++		hfs_buf_printf(&payload, ",\"nonce\":\"%pUb\",\"realm\":\"%pUb\","
++			       "\"result_hashes\":[", &session->enrollment.nonce,
++			       &session->enrollment.realm);
++	} else {
++		hfs_buf_printf(&payload,
++			"{\"anchor\":\"%pUb\",\"nonce\":\"%pUb\",\"realm\":\"%pUb\","
++			"\"result_hashes\":[", &session->enrollment.anchor,
++			&session->enrollment.nonce, &session->enrollment.realm);
++	}
 +	list_for_each_entry(request, &session->requests, list) {
++		if (issuer && (issuer->credentials.len != request->credentials.len ||
++		    memcmp(issuer->credentials.data, request->credentials.data,
++			   issuer->credentials.len)))
++			break;
 +		if (request->held || request->users)
 +			break;
 +		if (request->terminal && !request->adopted)
@@ -2403,7 +2695,7 @@ new file mode 100644
 +		err = -EPROTO;
 +		goto free;
 +	}
-+	err = session->provider->retirement(session, through, proof);
++	err = session->provider->retirement(session, through, proof, reply);
 +	if (err)
 +		goto free;
 +	mutex_lock(&session->lock);
@@ -2427,6 +2719,9 @@ new file mode 100644
 +		hfs_buf_free(&request->readdir_cleanup);
 +		hfs_json_free(request->result);
 +		hfs_json_free(request->refusal);
++		hfs_json_free(request->allocation_receipt);
++		hfs_json_free(request->response);
++		hfs_json_free(request->gap_response);
 +		session->provider->unreserve(session, request->reservation);
 +		kfree(request);
 +	}

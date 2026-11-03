@@ -171,3 +171,15 @@ change, endpoint reset, missing old ledgers or source continuity. The supervisor
 still verifies installed/running bytes and actual host enrollment; this change
 authorizes no deployment or activation. See
 [the closed1.1 contract](../../../docs/spec/Retained-9p-view-leases.md).
+
+Controlled successor forwarding (`o04`) additionally accepts explicit minor2
+`9P2000.L.hfs1.2` and minor3 `9P2000.L.hfs1.3`, with exact closed tuples
+schema3/features4095 and schema4/features8191. The session ledger pins the
+selected minor; mixed frame/body/version inputs refuse. ALLOCATE uses ordinary
+capacity; GAP_RESOLVE and minor3-only READDIR_CLEANUP use reserved control.
+ALLOCATE/GAP_RESOLVE carry the unchanged full ordinary Call and refuse typed
+DRAIN_WRITE. Host response verification bytes survive translation unchanged.
+They remain bound to native command/cell/response coordinates: task `y04` must
+provide an authenticated translation contract before the missing C6 consumer
+can claim guest source/event/floor verification. Existing native construction
+and controller-provider refusal remain mandatory.

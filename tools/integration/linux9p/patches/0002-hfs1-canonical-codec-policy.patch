@@ -7,7 +7,7 @@ diff --git a/fs/9p/hfs_protocol.h b/fs/9p/hfs_protocol.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_protocol.h
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,125 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_PROTOCOL_H
 +#define FS_9P_HFS_PROTOCOL_H
@@ -27,6 +27,8 @@ new file mode 100644
 +#define HFS_CELL_MAX 2147483647U
 +#define HFS_FEATURES 255U
 +#define HFS_VIEW_FEATURES 2047U
++#define HFS_CONTROLLED_FEATURES 4095U
++#define HFS_CLEANUP_FEATURES 8191U
 +
 +enum hfs_response_channel {
 +	HFS_CHANNEL_RESULT = 2,
@@ -78,6 +80,7 @@ new file mode 100644
 +	u16 frame_kind;
 +	u16 frame_minor;
 +	uuid_t native_session;
++	/* Guest translated cell today; NOT the endpoint-global native cell. */
 +	u64 native_cell;
 +	char *data;
 +	u32 len;
@@ -134,7 +137,7 @@ diff --git a/fs/9p/hfs_protocol.c b/fs/9p/hfs_protocol.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_protocol.c
-@@ -0,0 +1,694 @@
+@@ -0,0 +1,702 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Bounded canonical retained-9p wire codec. Schema validation is the caller's. */
 +#include "hfs_protocol.h"
@@ -705,7 +708,7 @@ new file mode 100644
 +	u8 *frame = out;
 +	u32 offset, size;
 +
-+	if (minor > 1 || !out || !out_len || !body || !len || len > HFS_BODY_MAX ||
++	if (minor > 3 || !out || !out_len || !body || !len || len > HFS_BODY_MAX ||
 +	    kind < 1 || kind > 3 || !hfs_session_nonzero(session) ||
 +	    !cell || cell > HFS_CELL_MAX || chunk > (len - 1) / HFS_CHUNK_MAX)
 +		return -EINVAL;
@@ -736,7 +739,7 @@ new file mode 100644
 +	const u8 *frame = input;
 +	u32 size, length, offset;
 +
-+	if (minor > 1 || !input || !total || !hash || !body || !body_len ||
++	if (minor > 3 || !input || !total || !hash || !body || !body_len ||
 +	    len < HFS_HEADER_SIZE || kind < 1 || kind > 3 ||
 +	    !hfs_session_nonzero(session) || !cell || cell > HFS_CELL_MAX ||
 +	    memcmp(frame, "HFS9BR1\0", 8) ||
@@ -789,7 +792,15 @@ new file mode 100644
 +		"\"bridge_minor\":1,\"features\":2047,\"msize\":65536,"
 +		"\"normal_major\":3,\"normal_minor\":0}";
 +
-+	return minor == 0 ? legacy : minor == 1 ? views : NULL;
++	static const char controlled[] = "{\"body_schema\":3,\"bridge_major\":1,"
++		"\"bridge_minor\":2,\"features\":4095,\"msize\":65536,"
++		"\"normal_major\":3,\"normal_minor\":0}";
++	static const char cleanup[] = "{\"body_schema\":4,\"bridge_major\":1,"
++		"\"bridge_minor\":3,\"features\":8191,\"msize\":65536,"
++		"\"normal_major\":3,\"normal_minor\":0}";
++
++	return minor == 0 ? legacy : minor == 1 ? views :
++		minor == 2 ? controlled : minor == 3 ? cleanup : NULL;
 +}
 +
 +int hfs_protocol_match(const struct hfs_json *json, int token, u16 minor)
