@@ -1,0 +1,485 @@
+package controlledruntime
+
+// This opt-in component harness substitutes OS/device/MM primitives only. The
+// provider, received owners, native carrier, service, journals and signer are real.
+import (
+	"bufio"
+	"bytes"
+	"crypto/ed25519"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/snonux/homelabfs/internal/fsapi"
+	"github.com/snonux/homelabfs/internal/guestbridge"
+	"github.com/snonux/homelabfs/internal/journal/segment"
+)
+
+const receivedInitialIDMap = "063ee717c983abc52c8cdeaeaee32c62ecb93c8fc88e6f887313db9a6c471f98"
+
+type receivedCarrier struct {
+	t           *testing.T
+	rig         *sourceRig
+	cmd         *exec.Cmd
+	input       io.WriteCloser
+	reader      *bufio.Scanner
+	diagnostics receivedDiagnostics
+	nextID      uint64
+	commands    map[uint64]guestbridge.Command
+	originals   map[string][]byte
+	responses   map[uint64][]byte
+	yields      func(uint64)
+	nativeAgain int
+}
+
+type receivedDiagnostics struct {
+	mu     sync.Mutex
+	buffer bytes.Buffer
+}
+
+func startReceivedCarrier(t *testing.T, r *sourceRig) *receivedCarrier {
+	t.Helper()
+	// Both paths are explicit: a materialized test must fail on absent inputs.
+	build, source := os.Getenv("HFS_C6_BUILD"), os.Getenv("HFS_C6_SOURCE")
+	if build == "" || source == "" {
+		t.Fatal("HFS_C6_BUILD and HFS_C6_SOURCE required for actual C6 consumer")
+	}
+	group := GuestProvisionGroup{Authorization: r.artifactAuthorization}
+	credentials := make([]guestbridge.Credentials, len(r.peers))
+	for i, peer := range r.peers {
+		credentials[i] = peer.credentials
+		group.Signers = append(group.Signers, GuestArtifactSigners{Host: peer.key, Guest: r.artifactGuest})
+		group.LocalMounts = append(group.LocalMounts, GuestArtifactMount{DomainIndex: i, Session: peer.scope.Session, DeviceTag: fmt.Sprintf("hfs%d", i), DeviceName: fmt.Sprintf("virtio%d", i), UserNamespace: peer.credentials.UserNamespace, IDMapHash: peer.credentials.IDMapHash, Realm: testUUID(100).String(), Subject: "616263", Anchor: testUUID(101).String(), Nonce: testUUID(103).String(), ViewControlNonce: r.artifactAuthorization.Enrollment.TicketFamilies[i].Control.Nonce})
+	}
+	provision, err := SignGuestProvision(r.scope.GuestBoot, r.installed.Admission.ProviderNonce, []GuestProvisionGroup{group}, GuestArtifactBudget{OrdinaryBytes: 256 << 20, ControlBytes: 256 << 20, Reservations: 8192, Cookies: 4096, Received: 4096}, r.artifactOperator)
+	require(t, err)
+	bind, err := SignGuestBind(provision, group.Authorization.Enrollment.ID.String(), r.supervisor.record.Controller.String(), r.artifactOperator, group.Signers)
+	require(t, err)
+	output := filepath.Join(r.temporary(), "build")
+	compiler := exec.CommandContext(t.Context(), "python3", build, "--source", source, "--output", output, "--operator-key", hex.EncodeToString(r.artifactOperator.Public().(ed25519.PublicKey)))
+	log, err := compiler.CombinedOutput()
+	if err != nil {
+		t.Fatalf("actual C6 build: %v\n%s", err, log)
+	}
+	consumer := filepath.Join(output, "consumer")
+	if _, err := os.Stat(consumer); err != nil {
+		t.Fatalf("missing actual C6 consumer: %v", err)
+	}
+	c := &receivedCarrier{t: t, rig: r, commands: map[uint64]guestbridge.Command{}, originals: map[string][]byte{}, responses: map[uint64][]byte{}}
+	c.cmd = exec.CommandContext(t.Context(), consumer)
+	ledger := r.temporary()
+	require(t, os.Chmod(ledger, 0700))
+	c.cmd.Env = append(os.Environ(), "HFS_C6_LEDGER="+ledger, "ASAN_OPTIONS=detect_leaks=0:allocator_may_return_null=1:quarantine_size_mb=16")
+	c.input, err = c.cmd.StdinPipe()
+	require(t, err)
+	stdout, err := c.cmd.StdoutPipe()
+	require(t, err)
+	c.reader = bufio.NewScanner(stdout)
+	c.reader.Buffer(make([]byte, 65536), 4*guestbridge.BodyBytes+256)
+	c.cmd.Stderr = &c.diagnostics
+	require(t, c.cmd.Start())
+	t.Cleanup(func() {
+		if c.cmd.ProcessState == nil {
+			_ = c.cmd.Process.Kill()
+			_ = c.cmd.Wait()
+		}
+	})
+	c.write(string(mustRuntimeJSON(t, map[string]any{"base": *r.mappingNativeCell, "binds": []json.RawMessage{bind}, "credentials": credentials, "os": map[string]any{"boot_id": r.scope.GuestBoot, "provider_nonce": r.installed.Admission.ProviderNonce}, "provision": json.RawMessage(provision)})))
+	c.readUntil(0, true)
+	return c
+}
+func (d *receivedDiagnostics) Write(raw []byte) (int, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.buffer.Write(raw)
+}
+func (d *receivedDiagnostics) String() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.buffer.String()
+}
+
+func (c *receivedCarrier) write(line string) {
+	c.t.Helper()
+	_, err := fmt.Fprintln(c.input, line)
+	require(c.t, err)
+}
+func (c *receivedCarrier) number(s string) uint64 {
+	c.t.Helper()
+	n, err := strconv.ParseUint(s, 10, 64)
+	require(c.t, err)
+	return n
+}
+func (c *receivedCarrier) readUntil(id uint64, startup bool) (int, []byte) {
+	c.t.Helper()
+	for c.reader.Scan() {
+		fields := strings.Fields(c.reader.Text())
+		if len(fields) == 1 && fields[0] == "READY" && startup {
+			return 0, nil
+		}
+		if len(fields) < 2 {
+			c.t.Fatalf("invalid C6 IPC %q", c.reader.Text())
+		}
+		switch fields[0] {
+		case "S":
+			if len(fields) != 2 {
+				c.t.Fatal("snapshot arity")
+			}
+			raw, err := hex.DecodeString(fields[1])
+			require(c.t, err)
+			var admission kernelAdmission
+			require(c.t, strictJSON(raw, &admission))
+			// Replace only the complete actual serializer record; static observations
+			// retain their independently measured manifest, notes, boot and ABI fields.
+			c.rig.installed.Admission = admission
+			next := c.rig.observationFile + ".next"
+			require(c.t, os.WriteFile(next, mustRuntimeJSON(c.t, c.rig.installed), 0600))
+			require(c.t, os.Rename(next, c.rig.observationFile))
+		case "W":
+			c.nativeWrite(fields)
+		case "R":
+			c.nativeRead(fields)
+		case "Y":
+			yielded := c.number(fields[1])
+			if yielded != id && !startup {
+				c.t.Fatalf("unexpected scheduling ID %d want %d", yielded, id)
+			}
+			if c.yields != nil {
+				c.yields(yielded)
+			}
+			c.write("CONTINUE")
+		case "D":
+			if startup || len(fields) != 4 || c.number(fields[1]) != id {
+				c.t.Fatalf("unexpected completion %q", c.reader.Text())
+			}
+			code, err := strconv.Atoi(fields[2])
+			require(c.t, err)
+			if fields[3] == "-" {
+				return code, nil
+			}
+			raw, err := hex.DecodeString(fields[3])
+			require(c.t, err)
+			return code, raw
+		default:
+			c.t.Fatalf("unexpected IPC %q", c.reader.Text())
+		}
+	}
+	c.t.Fatalf("C6 ended before completion: %v %s", c.reader.Err(), c.diagnostics.String())
+	return -1, nil
+}
+func (c *receivedCarrier) nativeWrite(fields []string) {
+	c.t.Helper()
+	if len(fields) != 3 {
+		c.t.Fatal("native write arity")
+	}
+	offset := c.number(fields[1])
+	raw, err := hex.DecodeString(fields[2])
+	require(c.t, err)
+	frame, err := guestbridge.DecodeFrame(raw)
+	require(c.t, err)
+	if frame.Offset != 0 || uint32(len(frame.Data)) != frame.Total {
+		c.t.Fatal("unexpected fragmented C6 command")
+	}
+	command, err := guestbridge.DecodeCommandVersion(frame.Data, 4)
+	require(c.t, err)
+	if command.Delegation == nil {
+		c.t.Fatal("C6 native request omitted actual delegation")
+	}
+	d := command.Delegation
+	original := command
+	original.Cell = d.GuestCell
+	original.Op = d.GuestOp
+	original.Reclaim = d.GuestReclaim
+	original.Delegation = nil
+	if original.Op == "RELEASE_CELL" {
+		original.Payload = mustRuntimeJSON(c.t, d.GuestReclaim)
+	}
+	key := fmt.Sprintf("%s/%d", command.Context.Session, d.GuestCell)
+	originalBytes := mustRuntimeJSON(c.t, original)
+	if previous := c.originals[key]; previous != nil && !bytes.Equal(previous, originalBytes) {
+		c.t.Fatal("C6 continuation changed full original credentials/payload/Ack")
+	}
+	c.originals[key] = originalBytes
+	if old, ok := c.commands[frame.Cell]; ok && !bytes.Equal(mustRuntimeJSON(c.t, old), frame.Data) {
+		c.t.Fatal("actual native retry changed immutable request bytes")
+	}
+	c.commands[frame.Cell] = command
+	n, err := c.rig.mappingTransport.Write(c.t.Context(), c.rig.native, c.rig.native.Endpoint.CommandNode, offset, raw)
+	if err != nil {
+		c.write("ERROR")
+	} else {
+		c.write(fmt.Sprintf("OK %d", n))
+	}
+}
+func (c *receivedCarrier) nativeRead(fields []string) {
+	c.t.Helper()
+	if len(fields) != 4 {
+		c.t.Fatal("native read arity")
+	}
+	offset, count := c.number(fields[2]), c.number(fields[3])
+	node := c.rig.native.Endpoint.ResultNode
+	if fields[1] == "12" {
+		node = c.rig.native.Endpoint.RecallNode
+	} else if fields[1] != "11" {
+		c.t.Fatal("unknown native fd")
+	}
+	raw, err := c.rig.mappingTransport.Read(c.t.Context(), c.rig.native, node, offset, uint32(count))
+	if errors.Is(err, fsapi.WouldBlock) {
+		c.nativeAgain++
+		c.write("AGAIN")
+		return
+	}
+	require(c.t, err)
+	if offset%guestbridge.CellStride == guestbridge.HeaderBytes {
+		c.responses[offset/guestbridge.CellStride] = bytes.Clone(raw)
+	}
+	c.write("DATA " + hex.EncodeToString(raw))
+}
+func (c *receivedCarrier) action(verb string, session int, tail string, want int) []byte {
+	c.t.Helper()
+	c.nextID++
+	id := c.nextID
+	c.write(strings.TrimSpace(fmt.Sprintf("%s %d %d %s", verb, id, session, tail)))
+	code, raw := c.readUntil(id, false)
+	if code != want {
+		c.t.Fatalf("C6 %s session%d %s = %d want%d body=%s diagnostics=%s", verb, session, tail, code, want, raw, c.diagnostics.String())
+	}
+	return raw
+}
+func (c *receivedCarrier) run(session int, reserved bool, op string, payload any) []byte {
+	c.t.Helper()
+	lane := 0
+	if reserved {
+		lane = 1
+	}
+	return c.action("RUN", session, fmt.Sprintf("%d %s %s", lane, op, hex.EncodeToString(mustRuntimeJSON(c.t, payload))), 0)
+}
+func (c *receivedCarrier) call(session int, op string, args any) []byte {
+	c.t.Helper()
+	peer := c.rig.peers[session]
+	peer.claims++
+	intent := guestbridge.Intent{Opcode: op, Args: mustRuntimeJSON(c.t, args)}
+	call := guestbridge.Call{Claim: guestbridge.Claim{Realm: testUUID(100).String(), Subject: "616263", Anchor: testUUID(101).String(), Nonce: testUUID(103).String(), Number: peer.claims, OriginalHash: hashBytes(mustRuntimeJSON(c.t, intent))}, Credentials: peer.credentials, Intent: intent}
+	c.run(session, false, "ALLOCATE", call)
+	c.run(session, false, "CALL", call)
+	return c.run(session, true, "QUERY", map[string]any{"claim": call.Claim})
+}
+func (c *receivedCarrier) close() {
+	c.t.Helper()
+	c.write("END")
+	require(c.t, c.input.Close())
+	require(c.t, c.cmd.Wait())
+}
+
+func TestControlledReceivedActualProviderProducer(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	domains := make([]guestbridge.Capability, 2)
+	for i := range 2 {
+		root := c.call(i, "ROOT", map[string]any{})
+		caps := receivedResult(t, root)
+		require(t, json.Unmarshal(c.action("ADOPT_ROOT", i, "", 0), &domains[i]))
+		created := c.call(i, "CREATE", map[string]any{"parent": caps[0], "name": fmt.Sprintf("66696c65%02x", i+48), "mode": 0660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}})
+		receivedResult(t, created)
+		c.action("ADOPT_DESCRIPTION", i, "CREATE", 0)
+	}
+	for i := range 2 {
+		c.action("ACQUIRE", i, "", 0)
+		for _, check := range []string{"target", "publication", "cap", "cookie_balance"} {
+			c.action("CHECK", i, check, 0)
+		}
+		for _, check := range []string{"forged_target", "forged_event", "forged_publication", "nonnull_publication", "wrong_channel", "bad_device", "bad_map", "retirement_refuses"} {
+			c.action("CHECK", i, check, 0)
+		}
+	}
+	empty := c.run(0, true, "VIEW_WAIT", map[string]any{"domain": domains[0], "after_sequence": 0})
+	var initial struct{ Payload struct{ Status string } }
+	require(t, json.Unmarshal(empty, &initial))
+	if initial.Payload.Status != "EMPTY" {
+		t.Fatalf("initial actual WAIT must expire EMPTY: %s", empty)
+	}
+	before := c.nativeAgain
+	waitBase := uint64(0)
+	for cell := range c.commands {
+		if cell > waitBase {
+			waitBase = cell
+		}
+	}
+	nested := false
+	c.yields = func(_ uint64) {
+		continuation := false
+		for cell, command := range c.commands {
+			if cell > waitBase && command.Context == r.scope && command.Delegation.GuestOp == "VIEW_WAIT" && command.Delegation.PollIndex >= 1 {
+				continuation = true
+			}
+		}
+		if !nested && continuation {
+			nested = true
+			c.yields = nil
+			c.action("RELEASE_START", 1, "", 0)
+		}
+	}
+	event := c.run(0, true, "VIEW_WAIT", map[string]any{"domain": domains[0], "after_sequence": 0})
+	c.yields = nil
+	if !nested || c.nativeAgain <= before {
+		t.Fatal("WAIT did not yield after actual backend EAGAIN")
+	}
+	verifyReceivedWait(t, c, 0, empty, event)
+	c.action("CHECK", 0, "event", 0)
+	c.action("CHECK", 0, "forged_event", 0)
+	c.action("CHECK", 0, "wrong_channel", 0)
+	for _, phase := range []string{"STOPPED", "INSTALLED_DRAIN", "DRAINED", "INSTALLED_FINAL", "REOPENED"} {
+		for i := range 2 {
+			if i != 0 || phase != "STOPPED" {
+				c.run(i, true, "VIEW_WAIT", map[string]any{"domain": domains[i], "after_sequence": 0})
+			}
+			c.action("PHASE", i, phase, 0)
+		}
+	}
+	for i := range 2 {
+		c.action("CHECK", i, "stale_target", 0)
+		c.action("CHECK", i, "cap", 0)
+		c.action("CHECK", i, "cookie_balance", 0)
+	}
+	c.close()
+}
+func verifyReceivedWait(t *testing.T, c *receivedCarrier, session int, previous, response []byte) {
+	t.Helper()
+	var reply struct {
+		Cell         uint64
+		Verification *guestbridge.VerificationReceiptV2
+	}
+	require(t, json.Unmarshal(response, &reply))
+	if reply.Verification == nil || reply.Verification.Kind != "EVENT" || reply.Verification.PollCount < 2 {
+		t.Fatalf("actual multipoll EVENT receipt missing: %s", response)
+	}
+	key := fmt.Sprintf("%s/%d", c.rig.peers[session].scope.Session, reply.Cell)
+	original := c.originals[key]
+	_, err := guestbridge.VerifyMappedReceipt(c.rig.peers[session].mappedBinding(), original, response)
+	require(t, err)
+	var command guestbridge.Command
+	require(t, json.Unmarshal(original, &command))
+	var prior struct{ Cell uint64 }
+	require(t, json.Unmarshal(previous, &prior))
+	if command.Reclaim == nil || command.Reclaim.Cell != prior.Cell || command.Reclaim.ResponseHash != hashBytes(previous) {
+		t.Fatal("WAIT did not retain exact prior EMPTY response Ack")
+	}
+	legs := 0
+	for _, native := range c.commands {
+		d := native.Delegation
+		if native.Context.Session != command.Context.Session || d.GuestCell != command.Cell {
+			continue
+		}
+		legs++
+		if d.GuestReclaim == nil || *d.GuestReclaim != *command.Reclaim {
+			t.Fatal("native poll changed original Ack")
+		}
+	}
+	if legs != int(reply.Verification.PollCount) {
+		t.Fatalf("real poll count=%d signed=%d", legs, reply.Verification.PollCount)
+	}
+	var native, guest map[string]json.RawMessage
+	require(t, json.Unmarshal(c.responses[reply.Verification.Cell], &native))
+	require(t, json.Unmarshal(response, &guest))
+	if !bytes.Equal(native["verification"], guest["verification"]) {
+		t.Fatal("C carrier changed Producer signature bytes")
+	}
+}
+
+func TestControlledReceivedActualSourceCorruption(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	c.call(0, "ROOT", map[string]any{})
+	c.action("ADOPT_ROOT", 0, "", 0)
+	// Establish an actual retained source before changing its actual journal bytes.
+	c.action("ACQUIRE", 0, "", 0)
+	before := uint64(0)
+	for cell := range c.commands {
+		if cell > before {
+			before = cell
+		}
+	}
+	corruptReceivedJournal(t, r)
+	// The real Producer withholds the damaged SOURCE: the actual native worker
+	// publishes no response, and the actual C exchange reaches its own deadline.
+	c.action("ACQUIRE", 0, "", -110)
+	attempts := 0
+	for cell, command := range c.commands {
+		if cell <= before {
+			continue
+		}
+		if command.Op == "VIEW_ACQUIRE" {
+			attempts++
+			t.Logf("corrupted-source actual VIEW_ACQUIRE native cell %d: no response=%t", cell, c.responses[cell] == nil)
+			if c.responses[cell] != nil {
+				t.Fatal("damaged source minted an actual response")
+			}
+		}
+	}
+	if attempts != 1 {
+		t.Fatalf("corruption must reach exactly one real new source RPC: %d", attempts)
+	}
+	c.action("CHECK", 0, "cookie_balance", 0)
+	c.close()
+}
+func corruptReceivedJournal(t *testing.T, r *sourceRig) {
+	t.Helper()
+	stream := r.artifactAuthorization.Enrollment.Domains[0].Journal.Stream
+	recovered, err := segment.Recover(t.Context(), r.source, stream, segment.RecoveryOptions{})
+	require(t, err)
+	if len(recovered.Segments) == 0 {
+		t.Fatal("no actual source journal segment")
+	}
+	f, err := r.source.Open(t.Context(), recovered.Segments[0].Name, os.O_RDWR, 0)
+	require(t, err)
+	defer func() { require(t, f.Close()) }()
+	var original [1]byte
+	n, err := f.ReadAt(t.Context(), original[:], 32)
+	require(t, err)
+	if n != 1 {
+		t.Fatal("short actual journal read")
+	}
+	changed := original
+	changed[0] ^= 1
+	n, err = f.WriteAt(t.Context(), changed[:], 32)
+	require(t, err)
+	if n != 1 {
+		t.Fatal("short actual journal corruption")
+	}
+	require(t, f.Sync(t.Context()))
+	var actual [1]byte
+	n, err = f.ReadAt(t.Context(), actual[:], 32)
+	require(t, err)
+	if n != 1 || actual != changed || actual == original {
+		t.Fatal("actual journal bytes did not change")
+	}
+	t.Logf("actual source journal %s offset32 byte %02x -> %02x (synced and reread)", recovered.Segments[0].Name, original[0], actual[0])
+}
+
+func receivedResult(t *testing.T, raw []byte) []guestbridge.Capability {
+	t.Helper()
+	var reply struct {
+		Payload struct {
+			Status string
+			Result struct {
+				Code         string
+				Capabilities []guestbridge.Capability
+				Publication  json.RawMessage
+			}
+		}
+	}
+	require(t, json.Unmarshal(raw, &reply))
+	if reply.Payload.Status != "TERMINAL" || reply.Payload.Result.Code != "OK" || len(reply.Payload.Result.Capabilities) != 2 || !bytes.Equal(reply.Payload.Result.Publication, []byte("null")) {
+		t.Fatalf("actual terminal result/capabilities/null publication: %s", raw)
+	}
+	return reply.Payload.Result.Capabilities
+}

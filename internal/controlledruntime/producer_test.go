@@ -31,25 +31,30 @@ import (
 )
 
 type sourceRig struct {
-	mappingTransport  *guestbridge.Transport
-	mappingNativeCell *uint64
-	t                 *testing.T
-	supervisor        *Supervisor
-	service           *fsservice.Service
-	controller        *viewcontrol.Controller
-	provider          *controlledvalidation.Provider
-	bridge            *guestbridge.Service
-	facts             *Facts
-	admission         *Admission
-	installed         installedObservation
-	observationFile   string
-	scope             guestbridge.Context
-	native            guestbridge.Native
-	credentials       guestbridge.Credentials
-	key               ed25519.PrivateKey
-	cells, claims     uint64
-	peers             []*sourceRig
-	providerFactory   func(int) *controlledvalidation.Provider
+	temporary             func() string
+	mappingTransport      *guestbridge.Transport
+	mappingNativeCell     *uint64
+	t                     *testing.T
+	supervisor            *Supervisor
+	service               *fsservice.Service
+	source                storage.Filesystem
+	controller            *viewcontrol.Controller
+	provider              *controlledvalidation.Provider
+	bridge                *guestbridge.Service
+	facts                 *Facts
+	admission             *Admission
+	installed             installedObservation
+	observationFile       string
+	scope                 guestbridge.Context
+	native                guestbridge.Native
+	credentials           guestbridge.Credentials
+	key                   ed25519.PrivateKey
+	cells, claims         uint64
+	peers                 []*sourceRig
+	providerFactory       func(int) *controlledvalidation.Provider
+	artifactOperator      ed25519.PrivateKey
+	artifactGuest         ed25519.PrivateKey
+	artifactAuthorization viewcontrol.Authorization
 }
 type guestCredentialsSetPrimitive struct {
 	scopes      []guestbridge.Context
@@ -67,19 +72,55 @@ func newSourceRigProtocol(t *testing.T, protocol guestbridge.Protocol) *sourceRi
 
 func newSourceRigDomains(t *testing.T, protocol guestbridge.Protocol, count int) *sourceRig {
 	t.Helper()
-	r := &sourceRig{t: t, supervisor: runningFixture(t)}
+	return newSourceRigDomainsWithIDMap(t, protocol, count, hashBytes([]byte("map")))
+}
+
+// newSourceRigDomainsWithIDMap preserves the real construction while allowing
+// the C6 guest's actual initial-namespace map identity at the OS boundary.
+func newSourceRigDomainsWithIDMap(t *testing.T, protocol guestbridge.Protocol, count int, idmap string) *sourceRig {
+	t.Helper()
+	return newSourceRigDomainsBootstrap(t, protocol, count, idmap, true)
+}
+
+// newSourceRigDomainsUnstarted lets the actual C consumer perform the first
+// HELLO. A fixture HELLO would already own guest cell1 in the real mapped ledger.
+// Existing constructors continue to perform their original bootstrap.
+func newSourceRigDomainsUnstarted(t *testing.T, protocol guestbridge.Protocol, count int, idmap string) *sourceRig {
+	t.Helper()
+	return newSourceRigDomainsBootstrap(t, protocol, count, idmap, false)
+}
+
+func newSourceRigDomainsBootstrap(t *testing.T, protocol guestbridge.Protocol, count int, idmap string, hello bool) *sourceRig {
+	t.Helper()
+	temporary := t.TempDir
+	if !hello {
+		// Register before every real owner so normal LIFO cleanup closes children,
+		// workers and ledgers before deleting successful disposable state.
+		root, err := os.MkdirTemp(os.Getenv("TMPDIR"), "hfs-c6-")
+		require(t, err)
+		require(t, os.Chmod(root, 0700))
+		t.Cleanup(func() {
+			if t.Failed() {
+				t.Logf("retained failed C6 fixture resources: %s", root)
+				return
+			}
+			require(t, os.RemoveAll(root))
+		})
+		temporary = func() string { dir, err := os.MkdirTemp(root, "resource-"); require(t, err); return dir }
+	}
+	r := &sourceRig{t: t, temporary: temporary, supervisor: runningFixture(t)}
 	endpoint := guestbridge.Endpoint{FuseSession: testUUID(43).String(), CommandNode: 2, ResultNode: 3, RecallNode: 4}
 	// Only actual mount/INIT/native headers and guest credentials are primitive
 	// fixtures. All child process/groups, bridge, service, journals, claims,
 	// source/controller ledgers, observer process and producer are real.
-	f, err := os.CreateTemp(t.TempDir(), "native-mount-primitive")
+	f, err := os.CreateTemp(r.temporary(), "native-mount-primitive")
 	require(t, err)
 	t.Cleanup(func() { _ = f.Close() })
 	r.supervisor.mount = &nativeMount{server: &fuse.Server{}, witness: mountedPrimitive{f}, endpointObservation: func() (guestbridge.Endpoint, error) { return endpoint, nil }}
 	r.supervisor.record.Endpoint = endpoint
 	r.supervisor.record.Stage = "mounted"
 	filesystem := func() storage.Filesystem {
-		dir := t.TempDir()
+		dir := r.temporary()
 		require(t, os.Chmod(dir, 0700))
 		root, err := vfs.NewOS(t.Context(), dir)
 		require(t, err)
@@ -91,6 +132,7 @@ func newSourceRigDomains(t *testing.T, protocol guestbridge.Protocol, count int)
 	require(t, err)
 	object := fsapi.ObjectID{Home: testUUID(1), Allocation: testUUID(4)}
 	c := fsservice.Config{Stream: segment.Stream{Volume: testUUID(1), Generation: testUUID(2), Configuration: testUUID(3), Epoch: 1, Kind: 1}, Storage: storage.Config{Volume: testUUID(1), Root: object, OwnerUID: uint32(os.Getuid())}, Validation: &profile, RequireControlledViews: true, Permissions: permissions, Source: filesystem(), Reservations: filesystem(), Workspace: fsservice.Workspace{ID: testUUID(30), Data: filesystem(), Journal: filesystem(), Progress: filesystem()}}
+	r.source = c.Source
 	c.Authority = record.Authority{Volume: testUUID(1), Generation: testUUID(2), Configuration: testUUID(3), Epoch: 1, Owner: testUUID(6), Partner: testUUID(8), Members: []fsapi.UUID{testUUID(6), testUUID(8), testUUID(9)}, CoordinatorTerm: 1, OwnerIncarnation: testUUID(7), PartnerIncarnation: testUUID(10)}
 	dir := "."
 	for _, part := range strings.Split(c.Stream.Directory(), "/") {
@@ -114,7 +156,7 @@ func newSourceRigDomains(t *testing.T, protocol guestbridge.Protocol, count int)
 	journal, err := r.service.ControlledJournalInfo(t.Context(), profile)
 	require(t, err)
 	r.scope = guestbridge.Context{AuthorityHash: hashBytes([]byte("authority")), Cluster: testUUID(40).String(), Configuration: testUUID(3).String(), Export: testUUID(41).String(), ExporterIncarnation: r.supervisor.record.ProcessID.String(), FuseSession: endpoint.FuseSession, Generation: testUUID(2).String(), GuestBoot: testUUID(44).String(), GuestMount: testUUID(45).String(), OriginIncarnation: testUUID(46).String(), OriginJournal: journal.Incarnation.String(), OriginNode: testUUID(48).String(), PolicyHash: hashBytes([]byte("policy")), RegistryHash: hashBytes([]byte("registry")), Session: testUUID(50).String(), VM: testUUID(52).String(), Volume: testUUID(1).String()}
-	r.credentials = guestbridge.Credentials{FSUID: 1000, FSGID: 1001, Groups: []uint32{200}, Process: testUUID(63).String(), Revision: 1, IDMapHash: hashBytes([]byte("map")), UserNamespace: testUUID(64).String()}
+	r.credentials = guestbridge.Credentials{FSUID: 1000, FSGID: 1001, Groups: []uint32{200}, Process: testUUID(63).String(), Revision: 1, IDMapHash: idmap, UserNamespace: testUUID(64).String()}
 	identity := r.supervisor.child.identity
 	r.native = guestbridge.Native{UID: identity.UID, GID: identity.GID, PID: identity.PID, Groups: append([]uint32(nil), identity.Groups...), Process: identity.PublicID.String(), Unique: 1, Endpoint: endpoint}
 	r.installed = installedObservation{Version: "homelabfs-installed-observation/1", ManifestHash: hashBytes([]byte("manifest")), BootID: r.scope.GuestBoot, KernelBuildID: strings.Repeat("ab", 20), Modules: map[string]string{}, ABI: physicalContract, Admission: kernelAdmission{Version: "homelabfs-kernel-admission/1", BootID: r.scope.GuestBoot, ProviderNonce: testUUID(66).String(), PhysicalContract: physicalContract, Protocols: map[string]guestbridge.Protocol{r.scope.Session: protocol}, Domains: []guestbridge.Context{r.scope}, Observations: []kernelDomainObservation{{Scope: r.scope, Revision: 1, Fence: 1, Phase: "LIVE"}}}}
@@ -129,12 +171,20 @@ func newSourceRigDomains(t *testing.T, protocol guestbridge.Protocol, count int)
 		r.installed.Admission.Protocols[scope.Session] = protocol
 		r.installed.Admission.Observations = append(r.installed.Admission.Observations, kernelDomainObservation{Scope: scope, Revision: 1, Fence: 1, Phase: "LIVE"})
 	}
-	observer, observationFile := liveObserverFixture(t, r.installed)
+	var observer GuestObserver
+	var observationFile string
+	if hello {
+		observer, observationFile = liveObserverFixture(t, r.installed)
+	} else {
+		observer, observationFile = liveObserverFixtureAt(t, r.installed, r.temporary())
+	}
 	r.observationFile = observationFile
 	r.admission, err = ObserveAdmission(t.Context(), r.supervisor, observer, r.installed.Admission.Domains)
 	require(t, err)
 	key := func() ed25519.PrivateKey { _, k, err := ed25519.GenerateKey(rand.Reader); require(t, err); return k }
 	operator, guest := key(), key()
+	r.artifactOperator = append(ed25519.PrivateKey(nil), operator...)
+	r.artifactGuest = append(ed25519.PrivateKey(nil), guest...)
 	r.key = key()
 	enrolled := controlledvalidation.Enrollment{Protocol: &protocol, Profile: profile, Scope: r.scope, Endpoint: endpoint, ServingGeneration: c.Workspace.ID, Ledger: testUUID(65), Journal: journal, HostKey: r.key.Public().(ed25519.PublicKey), GuestKey: guest.Public().(ed25519.PublicKey)}
 	e := viewcontrol.Enrollment{Version: viewcontrol.EnrollmentVersion, ID: testUUID(99), Domains: []controlledvalidation.Enrollment{enrolled}, TicketFamilies: []viewcontrol.TicketFamilies{{Acquisition: viewcontrol.TicketFamily{Anchor: testUUID(110).String(), Nonce: testUUID(111).String()}, Control: viewcontrol.TicketFamily{Anchor: testUUID(110).String(), Nonce: testUUID(112).String()}}}, PageSize: 4096, Bounds: viewcontrol.Bounds{Tickets: 16, ControlTickets: 8, Reservations: 4, Identities: 64, Sources: 8, SourceBytes: 64 << 10, LedgerBytes: 12 << 20, WorkBytes: 192 << 20}}
@@ -157,7 +207,7 @@ func newSourceRigDomains(t *testing.T, protocol guestbridge.Protocol, count int)
 	}))
 	r.facts, err = NewFacts(t.Context(), r.service, e, []*Admission{r.admission})
 	require(t, err)
-	private := func() string { dir := t.TempDir(); require(t, os.Chmod(dir, 0700)); return dir }
+	private := func() string { dir := r.temporary(); require(t, os.Chmod(dir, 0700)); return dir }
 	providers := map[string]*controlledvalidation.Provider{}
 	keys := map[string]ed25519.PrivateKey{}
 	routes := map[guestbridge.Context]*controlledvalidation.Provider{}
@@ -184,7 +234,11 @@ func newSourceRigDomains(t *testing.T, protocol guestbridge.Protocol, count int)
 	for _, peer := range r.peers {
 		signatures = append(signatures, viewcontrol.Signatures{Host: ed25519.Sign(peer.key, raw), Guest: ed25519.Sign(guest, raw)})
 	}
-	r.controller, err = viewcontrol.New(t.Context(), viewcontrol.Config{Directory: private(), Initialize: true, Service: r.service, Providers: providers, Operator: operator.Public().(ed25519.PublicKey), Authorization: viewcontrol.Authorization{Enrollment: e, Operator: ed25519.Sign(operator, raw), Domains: signatures}, Facts: r.facts})
+	authorization := viewcontrol.Authorization{Enrollment: e, Operator: ed25519.Sign(operator, raw), Domains: signatures}
+	authorizationBytes, err := json.Marshal(authorization)
+	require(t, err)
+	require(t, json.Unmarshal(authorizationBytes, &r.artifactAuthorization))
+	r.controller, err = viewcontrol.New(t.Context(), viewcontrol.Config{Directory: private(), Initialize: true, Service: r.service, Providers: providers, Operator: operator.Public().(ed25519.PublicKey), Authorization: authorization, Facts: r.facts})
 	require(t, err)
 	t.Cleanup(func() { _ = r.controller.Close() })
 	producer, err := NewProducer(t.Context(), r.facts, r.controller, providers, keys)
@@ -207,7 +261,7 @@ func newSourceRigDomains(t *testing.T, protocol guestbridge.Protocol, count int)
 		}
 		budget, err := admission.New(config)
 		require(t, err)
-		transport, err := guestbridge.NewDurableTransport(r.bridge, budget, filepath.Join(t.TempDir(), "mapped-transport"))
+		transport, err := guestbridge.NewDurableTransport(r.bridge, budget, filepath.Join(r.temporary(), "mapped-transport"))
 		require(t, err)
 		t.Cleanup(transport.Close)
 		counter := uint64(0)
@@ -218,15 +272,20 @@ func newSourceRigDomains(t *testing.T, protocol guestbridge.Protocol, count int)
 	}
 	for _, peer := range r.peers {
 		peer.bridge, peer.controller, peer.facts, peer.admission, peer.installed = r.bridge, r.controller, r.facts, r.admission, r.installed
-		_, _, err = peer.execute("HELLO", protocol)
-		require(t, err)
+		if hello {
+			_, _, err = peer.execute("HELLO", protocol)
+			require(t, err)
+		}
 	}
 	return r
 }
 
 func liveObserverFixture(t *testing.T, o installedObservation) (GuestObserver, string) {
 	t.Helper()
-	dir := t.TempDir()
+	return liveObserverFixtureAt(t, o, t.TempDir())
+}
+func liveObserverFixtureAt(t *testing.T, o installedObservation, dir string) (GuestObserver, string) {
+	t.Helper()
 	file := filepath.Join(dir, "kernel-observation.json")
 	raw, err := canonicalJSON(o)
 	require(t, err)
