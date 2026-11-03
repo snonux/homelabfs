@@ -1,0 +1,17 @@
+{
+  "R1": {
+    "blocking": "README incorrectly claimed detection of all re-exec; same pinned-image exec preserves observed OS identity",
+    "nonblocking": "ServeControl needed single-reader invocation guard",
+    "reviewer": "controlled_bootstrap_review1"
+  },
+  "R2": {
+    "result": "CLEAN",
+    "reviewer": "controlled_bootstrap_review2",
+    "scope": "Narrow documentation correction and single-reader guard/real-stream test delta",
+    "actions": "Read-only source review, no build/tests"
+  },
+  "resolutions": [
+    "Precisely document different-image detection and same-image limit/trusted backend no reexec/fork/fd delegation and close-on-exec obligations",
+    "Mutex-protected one invocation; second returns before socket/fence; production real-stream negative test"
+  ]
+}

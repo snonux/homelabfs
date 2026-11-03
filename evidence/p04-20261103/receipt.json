@@ -1,0 +1,100 @@
+[
+  {
+    "check": "build",
+    "argv": [
+      "go",
+      "build",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.881
+  },
+  {
+    "check": "vet",
+    "argv": [
+      "go",
+      "vet",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 2.778
+  },
+  {
+    "check": "errcheck",
+    "argv": [
+      "errcheck",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 8.453
+  },
+  {
+    "check": "lint",
+    "argv": [
+      "golangci-lint",
+      "run",
+      "--timeout=3m",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 0.766
+  },
+  {
+    "check": "freebsd",
+    "argv": [
+      "go",
+      "build",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 4.439
+  },
+  {
+    "check": "full-root",
+    "argv": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-count=1",
+      "-timeout=600s",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 54.77
+  },
+  {
+    "check": "freebsd-cgo-controlledruntime",
+    "argv": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/paul/tmp/codex/hfs-p04-20261103-sjwvcdmj/root-gates/controlledruntime-freebsd.test",
+      "./internal/controlledruntime"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 0.469
+  },
+  {
+    "check": "freebsd-cgo-fuseadapter",
+    "argv": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/paul/tmp/codex/hfs-p04-20261103-sjwvcdmj/root-gates/fuseadapter-freebsd.test",
+      "./internal/fuseadapter"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 0.369
+  }
+]

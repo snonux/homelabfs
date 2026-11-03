@@ -1,0 +1,103 @@
+{
+  "packages": [
+    "./..."
+  ],
+  "commands": [
+    {
+      "name": "build",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ]
+    },
+    {
+      "name": "vet",
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ]
+    },
+    {
+      "name": "errcheck",
+      "argv": [
+        "errcheck",
+        "./..."
+      ]
+    },
+    {
+      "name": "lint",
+      "argv": [
+        "golangci-lint",
+        "run",
+        "--timeout=3m",
+        "./..."
+      ]
+    },
+    {
+      "name": "freebsd",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "0"
+      }
+    },
+    {
+      "name": "full-root",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-count=1",
+        "-timeout=600s",
+        "./..."
+      ],
+      "timeout": 1200
+    },
+    {
+      "name": "freebsd-cgo-controlledruntime",
+      "argv": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "@EVIDENCE@/controlledruntime-freebsd.test",
+        "./internal/controlledruntime"
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "1",
+        "CC": "zig cc -target x86_64-freebsd"
+      },
+      "timeout": 600
+    },
+    {
+      "name": "freebsd-cgo-fuseadapter",
+      "argv": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "@EVIDENCE@/fuseadapter-freebsd.test",
+        "./internal/fuseadapter"
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "1",
+        "CC": "zig cc -target x86_64-freebsd"
+      },
+      "timeout": 600
+    }
+  ],
+  "tmp": "/tmp/hfsp-y8cx9vgc",
+  "scope": "Finalp04 supervisednativeidentity/stagedshell/HSM1afterR1doc+single-readerfix/R2CLEAN andbase92d878e. Fulllocalnonrace/FUSEdisabled; actualCGO1FreeBSDtest-executablecompile only, not run/nativeABIacceptance."
+}

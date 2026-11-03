@@ -19,6 +19,13 @@ type NativeCredentials interface {
 	Snapshot(context.Context, Caller, guestbridge.Endpoint) (guestbridge.Native, error)
 }
 
+// NativeRequestCredentials optionally supplies a private request observation for
+// the exact bootstrap metadata operation. Ordinary Snapshot never authorizes a
+// provisioning caller, and the returned context is used only for authentication.
+type NativeRequestCredentials interface {
+	SnapshotRequest(context.Context, Caller, guestbridge.Endpoint, uint64, string) (context.Context, guestbridge.Native, error)
+}
+
 // PrivateControlConfig composes synthetic control inodes with an existing
 // restricted native adapter. This is component construction, not mount readiness.
 // Directory and leaf IDs must exceed the ordinary adapter's entire retained map.
@@ -37,6 +44,7 @@ type PrivateControl struct {
 	transport   *guestbridge.Transport
 	credentials NativeCredentials
 	directory   uint64
+	privateRoot bool
 	mu          sync.Mutex
 	failure     error
 }
@@ -70,7 +78,7 @@ func NewPrivateControl(c PrivateControlConfig) (*PrivateControl, error) {
 		}
 		ordinary = c.Ordinary
 	}
-	return &PrivateControl{RawFileSystem: ordinary, transport: c.Transport, credentials: c.Credentials, directory: c.Directory}, nil
+	return &PrivateControl{RawFileSystem: ordinary, transport: c.Transport, credentials: c.Credentials, directory: c.Directory, privateRoot: c.Ordinary == nil}, nil
 }
 
 // Err reports unauthenticated kernel close events, which cannot retire a cell,
@@ -79,8 +87,11 @@ func (a *PrivateControl) Err() error { a.mu.Lock(); defer a.mu.Unlock(); return 
 
 // Lookup hides the reserved directory and names from all ordinary callers.
 func (a *PrivateControl) Lookup(cancel <-chan struct{}, h *fuse.InHeader, name string, out *fuse.EntryOut) fuse.Status {
+	if h.NodeId == 1 && a.privateRoot && name != guestbridge.ControlName {
+		return fuse.ENOENT
+	}
 	if h.NodeId == 1 && name == guestbridge.ControlName || a.private(h.NodeId) {
-		n, s := a.native(h)
+		n, s := a.native(h, "LOOKUP:"+name)
 		if s != fuse.OK {
 			return s
 		}
@@ -105,7 +116,7 @@ func (a *PrivateControl) GetAttr(cancel <-chan struct{}, in *fuse.GetAttrIn, out
 	if !a.private(in.NodeId) {
 		return a.RawFileSystem.GetAttr(cancel, in, out)
 	}
-	n, s := a.native(&in.InHeader)
+	n, s := a.native(&in.InHeader, "GETATTR")
 	if s != fuse.OK {
 		return s
 	}
@@ -118,11 +129,11 @@ func (a *PrivateControl) Open(cancel <-chan struct{}, in *fuse.OpenIn, out *fuse
 	if !a.private(in.NodeId) {
 		return a.RawFileSystem.Open(cancel, in, out)
 	}
-	_, s := a.native(&in.InHeader)
+	_, s := a.native(&in.InHeader, "OPEN")
 	if s != fuse.OK {
 		return s
 	}
-	if in.NodeId == a.directory {
+	if in.NodeId == a.directory || in.NodeId == 1 {
 		return fuse.EISDIR
 	}
 	if in.Flags&uint32(syscall.O_APPEND|syscall.O_TRUNC|syscall.O_CREAT) != 0 {
@@ -145,7 +156,7 @@ func (a *PrivateControl) Read(cancel <-chan struct{}, in *fuse.ReadIn, buf []byt
 	if !a.private(in.NodeId) {
 		return a.RawFileSystem.Read(cancel, in, buf)
 	}
-	n, s := a.native(&in.InHeader)
+	n, s := a.native(&in.InHeader, "READ")
 	if s != fuse.OK {
 		return nil, s
 	}
@@ -161,7 +172,7 @@ func (a *PrivateControl) Write(cancel <-chan struct{}, in *fuse.WriteIn, data []
 	if !a.private(in.NodeId) {
 		return a.RawFileSystem.Write(cancel, in, data)
 	}
-	n, s := a.native(&in.InHeader)
+	n, s := a.native(&in.InHeader, "WRITE")
 	if s != fuse.OK {
 		return 0, s
 	}
@@ -185,7 +196,7 @@ func (a *PrivateControl) Release(cancel <-chan struct{}, in *fuse.ReleaseIn) {
 		a.RawFileSystem.Release(cancel, in)
 		return
 	}
-	if _, s := a.native(&in.InHeader); s != fuse.OK {
+	if _, s := a.native(&in.InHeader, "RELEASE"); s != fuse.OK {
 		a.mu.Lock()
 		a.failure = fsapi.Permission
 		a.mu.Unlock()
@@ -202,20 +213,28 @@ func (a *PrivateControl) ReleaseDir(in *fuse.ReleaseIn) {
 }
 func (a *PrivateControl) private(id uint64) bool {
 	e := a.transport.Endpoint()
-	return id == a.directory || id == e.CommandNode || id == e.ResultNode || id == e.RecallNode
+	return id == 1 && a.privateRoot || id == a.directory || id == e.CommandNode || id == e.ResultNode || id == e.RecallNode
 }
-func (a *PrivateControl) native(h *fuse.InHeader) (guestbridge.Native, fuse.Status) {
-	n, e := a.credentials.Snapshot(context.Background(), Caller{UID: h.Uid, GID: h.Gid, Thread: h.Pid, Unique: h.Unique}, a.transport.Endpoint())
+func (a *PrivateControl) native(h *fuse.InHeader, operation string) (guestbridge.Native, fuse.Status) {
+	ctx := context.Background()
+	caller := Caller{UID: h.Uid, GID: h.Gid, Thread: h.Pid, Unique: h.Unique}
+	var n guestbridge.Native
+	var e error
+	if observer, ok := a.credentials.(NativeRequestCredentials); ok {
+		ctx, n, e = observer.SnapshotRequest(observeNativeRequest(ctx, caller, h.NodeId, operation), caller, a.transport.Endpoint(), h.NodeId, operation)
+	} else {
+		n, e = a.credentials.Snapshot(ctx, caller, a.transport.Endpoint())
+	}
 	if e != nil || n.UID != h.Uid || n.GID != h.Gid || n.PID != h.Pid || n.Unique != h.Unique || n.Endpoint != a.transport.Endpoint() {
 		return guestbridge.Native{}, fuse.EACCES
 	}
-	if e = a.transport.Authenticate(context.Background(), n); e != nil {
+	if e = a.transport.Authenticate(ctx, n); e != nil {
 		return guestbridge.Native{}, errorStatus(e)
 	}
 	return n, fuse.OK
 }
 func (a *PrivateControl) deny(h *fuse.InHeader) fuse.Status {
-	_, s := a.native(h)
+	_, s := a.native(h, "DENY")
 	if s != fuse.OK {
 		return s
 	}
@@ -224,7 +243,7 @@ func (a *PrivateControl) deny(h *fuse.InHeader) fuse.Status {
 func (a *PrivateControl) attr(id uint64, n guestbridge.Native) fuse.Attr {
 	mode := uint32(syscall.S_IFREG | 0600)
 	size := guestbridge.VirtualSize
-	if id == a.directory {
+	if id == a.directory || id == 1 {
 		mode = uint32(syscall.S_IFDIR | 0700)
 		size = 0
 	}
@@ -457,6 +476,13 @@ func (a *PrivateControl) FsyncDir(cancel <-chan struct{}, in *fuse.FsyncIn) fuse
 
 // StatFs authenticates and refuses private-inode operations outside the transport.
 func (a *PrivateControl) StatFs(cancel <-chan struct{}, h *fuse.InHeader, out *fuse.StatfsOut) fuse.Status {
+	if a.privateRoot && h.NodeId == 1 {
+		if _, status := a.native(h, "STATFS"); status != fuse.OK {
+			return status
+		}
+		*out = fuse.StatfsOut{Bsize: 4096, Frsize: 4096, NameLen: 255}
+		return fuse.OK
+	}
 	if a.private(h.NodeId) {
 		return a.deny(h)
 	}

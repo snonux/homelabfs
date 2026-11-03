@@ -1,0 +1,12 @@
+{
+  "controlledruntime": {
+    "sha256": "c9ed1ac193ced4e02e7332aa9fb95d51620f0224bd3637d102eb8674010dc78f",
+    "bytes": 11164616,
+    "scope": "Actual FreeBSD amd64 CGO1 test executable compiled, never executed"
+  },
+  "fuseadapter": {
+    "sha256": "bef87228dada1c0586720e83a2cd053fafb7bcdbb215cc8a918190f617596d88",
+    "bytes": 8152038,
+    "scope": "Actual FreeBSD amd64 CGO1 test executable compiled, never executed"
+  }
+}
