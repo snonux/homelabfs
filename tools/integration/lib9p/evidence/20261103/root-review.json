@@ -1,0 +1,10 @@
+{
+  "task": "uz3",
+  "round1": "lib9p_backend_r1 found2 blocking accounting/recovery and replay-oracle defects; both corrected.",
+  "round2": "Fresh narrow lib9p_backend_r2 clean. No third review.",
+  "self_review": "Root read component boundaries, native verification, routing, forwarding, response/poll/recovery and file ledger; corrected subtype and contention mismatches before R1, then self-reviewed shared accounting/oracle fix before R2.",
+  "post_review_change": "README pending/historical wording updated to actual v8 native result; no compiled code/input changed.",
+  "checks": "Final Linux strict object/API and ASan/UBSan transport/real-file ledger tests pass; native v8 same production3 objects and3 tests pass. Script/schema checks pass. Actual object/executable hashes and final zero-swap/unchanged VM inventory recorded.",
+  "scope": "No full bhyve artifact, actual FUSE/guest/direct-I/O/kernel/enrollment provider/installed-byte/normal publication acceptance; xz3/zq3 remain. Mandatory real native facts, no default supervisor. Only routine bounded compile/temp-file tests on f3, no lifecycle/mount/install/production/sink actions.",
+  "merge_checks": "No Go source changed by this artifact-only lane; root matches398 inputs from full main suite after merge."
+}

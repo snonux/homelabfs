@@ -39,6 +39,14 @@ RETIRED_CELL=4). SEND returns COPIED or ERROR; FETCH returns FRAME/AGAIN/ERROR.
 Size includes the seven-byte 9p header and must be exact. No concatenated frames,
 trailing bytes or partial chunks are permitted. The selected H9B cell/chunk and
 kind must match FETCH. COPIED is transport receipt, never filesystem success.
+A SEND ERROR/CAPACITY definitively refuses **that packet** without copying its
+chunk. Retry the identical packet at any chunk index, retaining earlier copied
+chunks, the same cells and immutable claim/intent bytes. Do not advance the
+chunk or restart/reclassify the claim. This packet refusal says nothing about
+semantic no-effect for an earlier admitted claim. A complete command already
+owned by the receiver remains COPIED while its native forwarding is capacity
+blocked; later FETCH exchanges retry/query that retained mapping. FETCH AGAIN
+is bounded readiness backpressure, not an empty or terminal filesystem result.
 
 Responses echo the 9p tag, but tags may be reused only after that response;
 they never identify an operation. Tag 65534 is reserved for VIEW_WAIT's
@@ -308,6 +316,17 @@ sequential SEND/FETCH. The backend may keep its result pending while polling
 is one exact event or EMPTY on its fixed 1000ms wait deadline. EMPTY is
 not an acknowledgement. Repost before acknowledging an event. A recall's event
 identity/bytes remain retained independently of polls until exact acknowledgement.
+Within **one** logical VIEW_WAIT, the backend may transport-acknowledge a fully
+received EMPTY native snapshot by putting its exact same-session cell/hash in
+the next generated VIEW_POLL's reclaim. That atomically donates the existing
+control credit; it neither acknowledges a recall event nor asserts VIEW_ACK.
+Retain the ordered request/response mappings and acknowledged EMPTY tombstones
+(up to 16 polls) until the guest's final immutable snapshot is acknowledged.
+The guest's RELEASE_CELL/reclaim then translates to the final native snapshot;
+earlier EMPTY snapshots have already been transport-acknowledged in that chain.
+Never continue/reclaim automatically after EVENT. The 1000ms deadline cannot
+manufacture EMPTY while a native poll is unknown or has no complete response;
+retain that exact pending mapping until a real EMPTY/EVENT snapshot is received.
 Reserve independent FUSE/parser/backend/drain workers and queue credits. Distinct
 inodes and nonblocking reads avoid a result/recall vnode lock blocking command
 write/drain completion. Do not rely on a FreeBSD FUSE ioctl callback or a unique

@@ -1,0 +1,22 @@
++ uname -a
+FreeBSD f3.lan.buetow.org 15.1-RELEASE-p2 FreeBSD 15.1-RELEASE-p2 releng/15.1-n283596-aadd58dddcbc GENERIC amd64
++ cc --version
+FreeBSD clang version 19.1.7 (https://github.com/llvm/llvm-project.git llvmorg-19.1.7-0-gcd708029e0b2)
+Target: x86_64-unknown-freebsd15.1
+Thread model: posix
+InstalledDir: /usr/bin
++ set -- '-std=c11' -Wall -Wextra -Werror -O1 -g
++ cc '-std=c11' -Wall -Wextra -Werror -O1 -g -c /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/native-bundle-v8/src/hfs9p.c -o /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/hfs9p.o
++ cc '-std=c11' -Wall -Wextra -Werror -O1 -g -c /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/native-bundle-v8/src/hfs9p_json.c -o /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/hfs9p_json.o
++ cc '-std=c11' -Wall -Wextra -Werror -O1 -g -c /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/native-bundle-v8/src/hfs9p_ledger.c -o /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/hfs9p_ledger.o
++ cc '-std=c11' -Wall -Wextra -Werror -O1 -g /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/native-bundle-v8/tests/production_api_test.c /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/hfs9p.o /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/hfs9p_json.o /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/hfs9p_ledger.o -pthread -lmd -o /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/production_api_test
++ /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/production_api_test
+PASS: production objects linked; absent enrollment/raw files refused
++ cc '-std=c11' -Wall -Wextra -Werror -O1 -g -I/var/tmp/hfs-uz3-native-20261103.6LXlcvQC/native-bundle-v8/tests /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/native-bundle-v8/tests/backend_test.c /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/native-bundle-v8/src/hfs9p_json.c /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/native-bundle-v8/src/hfs9p_ledger.c -pthread -lmd -o /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/backend_test
++ /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/backend_test /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/backend-ledger
+PASS: C parser/backend transport boundaries (no FUSE/runtime proof)
++ cc '-std=c11' -Wall -Wextra -Werror -O1 -g /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/native-bundle-v8/tests/ledger_test.c /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/native-bundle-v8/src/hfs9p_ledger.c '-Wl,--wrap=fsync' -lmd -o /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/ledger_test
++ /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/ledger_test /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/ledger
+PASS: real local ledger fsync/rename/reopen, lock, process exit, failure
++ printf '%s\n' 'PASS: native component objects/tests; no bhyve/FUSE runtime proof'
+PASS: native component objects/tests; no bhyve/FUSE runtime proof

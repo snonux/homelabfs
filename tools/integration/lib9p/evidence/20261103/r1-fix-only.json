@@ -1,0 +1,26 @@
+{
+  "baseline": "/home/paul/tmp/codex/hfs-uz3-20261103-yb4nxe4j/r1-baseline",
+  "delta": "/home/paul/tmp/codex/hfs-uz3-20261103-yb4nxe4j/r1-fix-only.patch",
+  "delta_sha256": "9bc439093bbba0445d672072f4c3446b2d65e8736ebe2a9cef160ff38afbe952",
+  "native_bundle": "/home/paul/tmp/codex/hfs-uz3-20261103-yb4nxe4j/native-bundle-v8.tar",
+  "native_bundle_sha256": "9af3d2ad7a027830397fd349ca1738782a7bb8319677844f077ad51fc90ba05b",
+  "files": {
+    "src/hfs9p.c": {
+      "r1": "49e1f3f36d538b2b1ee8a8df74379939da3b2beff8c0acc46e34ad3a6b02cc50",
+      "corrected": "5810af627cf7172aa78e8d2195e5d9fe16da1fd11bd1027e1209ad8c4fa1ca0d"
+    },
+    "tests/backend_test.c": {
+      "r1": "55d58a8802f64d78a43f4ce287e6527f75f8344868b350f9ba1642851e55e959",
+      "corrected": "284075f12622ed37763fe89824dcd4c89f2f97da19c58c603f103ef84dc4915c"
+    },
+    "README.md": {
+      "r1": "eadbb0d1a49a92f7b194667ad2987b05491c8e2532b804df78bcd8b3cc3b9dc4",
+      "corrected": "eedc3d65ce30c1812bea633cdb6bf5e993b62b243511503852d2ef8bc9b5ad3c"
+    },
+    "owned-inputs.json": {
+      "r1": "bf56317551ec0571151e3362205c8ed3338a6679df23a25f6bfe8de97f9450ed",
+      "corrected": "2ffab9022b1672ba709ae14af7f768625d1f54c847fc5a3454b2663776390d62"
+    }
+  },
+  "self_review": "Admission and snapshot/recovery share _account; existing poll trails retain one control credit across queued/uncertain transitions. Exact recovered request and full native frame must equal pre-crash protected bytes; six mutated replay controls are refused before accepted write counters/bytes change."
+}

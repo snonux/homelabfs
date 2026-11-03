@@ -1,0 +1,100 @@
+[
+  {
+    "name": "fresh-directory",
+    "argv": [
+      "ssh",
+      "-o",
+      "StrictHostKeyChecking=yes",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=8",
+      "-o",
+      "ServerAliveInterval=5",
+      "-o",
+      "ServerAliveCountMax=2",
+      "f3",
+      "mktemp -d /var/tmp/hfs-uz3-native-20261103.XXXXXXXX"
+    ],
+    "exit": 0,
+    "seconds": 0.195,
+    "stdout": "/var/tmp/hfs-uz3-native-20261103.Hh2pjG8t\n",
+    "stderr": ""
+  },
+  {
+    "name": "copy-frozen-bundle",
+    "argv": [
+      "scp",
+      "-o",
+      "StrictHostKeyChecking=yes",
+      "-o",
+      "BatchMode=yes",
+      "/home/paul/tmp/codex/hfs-uz3-20261103-yb4nxe4j/native-bundle-v4.tar",
+      "f3:/var/tmp/hfs-uz3-native-20261103.Hh2pjG8t/input.tar"
+    ],
+    "exit": 0,
+    "seconds": 0.291,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "native-component-build-and-tests",
+    "argv": [
+      "ssh",
+      "-o",
+      "StrictHostKeyChecking=yes",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=8",
+      "-o",
+      "ServerAliveInterval=5",
+      "-o",
+      "ServerAliveCountMax=2",
+      "f3",
+      "/bin/sh -s"
+    ],
+    "exit": 0,
+    "seconds": 5.077,
+    "stdout": "",
+    "stderr": "        4.78 real         3.52 user         0.16 sys\n    126176  maximum resident set size\n       104  average shared memory size\n        10  average unshared data size\n       314  average unshared stack size\n     55384  page reclaims\n        55  page faults\n         0  swaps\n         0  block input operations\n        69  block output operations\n         4  messages sent\n         4  messages received\n         1  signals received\n      1252  voluntary context switches\n       209  involuntary context switches\n"
+  },
+  {
+    "name": "collect-log",
+    "argv": [
+      "scp",
+      "-o",
+      "StrictHostKeyChecking=yes",
+      "-o",
+      "BatchMode=yes",
+      "f3:/var/tmp/hfs-uz3-native-20261103.Hh2pjG8t/output/native.log",
+      "/home/paul/tmp/codex/hfs-uz3-native-v4-20261103-dfb7x53n/native.log"
+    ],
+    "exit": 0,
+    "seconds": 0.2,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "preserved-disk-usage",
+    "argv": [
+      "ssh",
+      "-o",
+      "StrictHostKeyChecking=yes",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=8",
+      "-o",
+      "ServerAliveInterval=5",
+      "-o",
+      "ServerAliveCountMax=2",
+      "f3",
+      "du -sk /var/tmp/hfs-uz3-native-20261103.Hh2pjG8t"
+    ],
+    "exit": 0,
+    "seconds": 0.209,
+    "stdout": "220\t/var/tmp/hfs-uz3-native-20261103.Hh2pjG8t\n",
+    "stderr": ""
+  }
+]
