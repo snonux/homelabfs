@@ -1,0 +1,167 @@
+{
+  "scope": "Actualfrozen7TUscompile-only withassertionsenabled; noFreeBSDnativelink/execution",
+  "header_sha256": "858a9b0f8ccc8f4f0be58e27f4b032fe11be9de75a849cb3fa6da0102b388e6e",
+  "rows": [
+    {
+      "source": "tools/integration/lib9p/src/hfs9p.c",
+      "source_sha256": "d75b232b5eb6707980e3c5dd35945246c949be9fc5c03fdc78c6a677a462b713",
+      "argv": [
+        "zig",
+        "cc",
+        "-target",
+        "x86_64-freebsd",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-O1",
+        "-UNDEBUG",
+        "-I/tmp/hfs-q04-headers",
+        "-I/home/paul/tmp/codex/hfs-q04-20261103-efcys73d/root-gates/c-suite",
+        "-c",
+        "/home/paul/git/homelabfs/tools/integration/lib9p/src/hfs9p.c",
+        "-o",
+        "/home/paul/tmp/codex/hfs-q04-20261103-efcys73d/root-gates/freebsd-c-objects/src-hfs9p.c.o"
+      ],
+      "object_sha256": "cc5eca785476d9cdcb470289031fa7d1bd60303b011d395ecc7acbfa0b384583"
+    },
+    {
+      "source": "tools/integration/lib9p/src/hfs9p_json.c",
+      "source_sha256": "bff0d0a125a822834218b574ff111ce0c7c8974816011e97c151be576f825e0a",
+      "argv": [
+        "zig",
+        "cc",
+        "-target",
+        "x86_64-freebsd",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-O1",
+        "-UNDEBUG",
+        "-I/tmp/hfs-q04-headers",
+        "-I/home/paul/tmp/codex/hfs-q04-20261103-efcys73d/root-gates/c-suite",
+        "-c",
+        "/home/paul/git/homelabfs/tools/integration/lib9p/src/hfs9p_json.c",
+        "-o",
+        "/home/paul/tmp/codex/hfs-q04-20261103-efcys73d/root-gates/freebsd-c-objects/src-hfs9p_json.c.o"
+      ],
+      "object_sha256": "b45b55844663ceb2459626bc7264af96b00370029db1688a30282629806d1ac0"
+    },
+    {
+      "source": "tools/integration/lib9p/src/hfs9p_ledger.c",
+      "source_sha256": "e989392ed606ad6920a3479fa66587fbf54f7979981242800ea9b786e3f4a17c",
+      "argv": [
+        "zig",
+        "cc",
+        "-target",
+        "x86_64-freebsd",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-O1",
+        "-UNDEBUG",
+        "-I/tmp/hfs-q04-headers",
+        "-I/home/paul/tmp/codex/hfs-q04-20261103-efcys73d/root-gates/c-suite",
+        "-c",
+        "/home/paul/git/homelabfs/tools/integration/lib9p/src/hfs9p_ledger.c",
+        "-o",
+        "/home/paul/tmp/codex/hfs-q04-20261103-efcys73d/root-gates/freebsd-c-objects/src-hfs9p_ledger.c.o"
+      ],
+      "object_sha256": "3f707afd45b5eeb634e04a24ce2b741fc6699b345d502dc3f7734e384260844e"
+    },
+    {
+      "source": "tools/integration/lib9p/src/hfs9p_supervisor.c",
+      "source_sha256": "01b9da400ecbaee4c01bb9328a93d40cb7afa29b08166da8483841fccd744f6a",
+      "argv": [
+        "zig",
+        "cc",
+        "-target",
+        "x86_64-freebsd",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-O1",
+        "-UNDEBUG",
+        "-I/tmp/hfs-q04-headers",
+        "-I/home/paul/tmp/codex/hfs-q04-20261103-efcys73d/root-gates/c-suite",
+        "-c",
+        "/home/paul/git/homelabfs/tools/integration/lib9p/src/hfs9p_supervisor.c",
+        "-o",
+        "/home/paul/tmp/codex/hfs-q04-20261103-efcys73d/root-gates/freebsd-c-objects/src-hfs9p_supervisor.c.o"
+      ],
+      "object_sha256": "e2a46e1f8fc6d076427413c4f042c91099fe5676b6570e16f734eeb89944adac"
+    },
+    {
+      "source": "tools/integration/lib9p/tests/production_api_test.c",
+      "source_sha256": "4a3fb0154a0d750abd8b22d6ef3ecfeedc9d52c0fafd47db63dfb47b9fed6610",
+      "argv": [
+        "zig",
+        "cc",
+        "-target",
+        "x86_64-freebsd",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-O1",
+        "-UNDEBUG",
+        "-I/tmp/hfs-q04-headers",
+        "-I/home/paul/tmp/codex/hfs-q04-20261103-efcys73d/root-gates/c-suite",
+        "-c",
+        "/home/paul/git/homelabfs/tools/integration/lib9p/tests/production_api_test.c",
+        "-o",
+        "/home/paul/tmp/codex/hfs-q04-20261103-efcys73d/root-gates/freebsd-c-objects/tests-production_api_test.c.o"
+      ],
+      "object_sha256": "53da32c168fadc8ca6115413fb02d7a057d417bf65a7ccd5bdd168c9d23af2ab"
+    },
+    {
+      "source": "tools/integration/lib9p/tests/backend_test.c",
+      "source_sha256": "a51386f5e775d2fae65fc3d36305a91729cf154ad67cacb93895819cb3e38a83",
+      "argv": [
+        "zig",
+        "cc",
+        "-target",
+        "x86_64-freebsd",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-O1",
+        "-UNDEBUG",
+        "-I/tmp/hfs-q04-headers",
+        "-I/home/paul/tmp/codex/hfs-q04-20261103-efcys73d/root-gates/c-suite",
+        "-c",
+        "/home/paul/git/homelabfs/tools/integration/lib9p/tests/backend_test.c",
+        "-o",
+        "/home/paul/tmp/codex/hfs-q04-20261103-efcys73d/root-gates/freebsd-c-objects/tests-backend_test.c.o"
+      ],
+      "object_sha256": "e4cf52549781d597d3cd4cdc0603e31193e3d34f8b7afb5cb4c1f99dabe2cbd8"
+    },
+    {
+      "source": "tools/integration/lib9p/tests/supervisor_test.c",
+      "source_sha256": "f3b6aa5182b2a53e6b0c31b33aef1e2f20703e1c5617aad484cfb59cb52ad88a",
+      "argv": [
+        "zig",
+        "cc",
+        "-target",
+        "x86_64-freebsd",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-O1",
+        "-UNDEBUG",
+        "-I/tmp/hfs-q04-headers",
+        "-I/home/paul/tmp/codex/hfs-q04-20261103-efcys73d/root-gates/c-suite",
+        "-c",
+        "/home/paul/git/homelabfs/tools/integration/lib9p/tests/supervisor_test.c",
+        "-o",
+        "/home/paul/tmp/codex/hfs-q04-20261103-efcys73d/root-gates/freebsd-c-objects/tests-supervisor_test.c.o"
+      ],
+      "object_sha256": "edf28b6cdb78f1cb87d5d433c8ae8d006afe3c2331ae33a0d2b93fa7bb9fe6fc"
+    }
+  ]
+}

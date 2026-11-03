@@ -1,0 +1,7 @@
+zig cc -target x86_64-freebsd -std=c11 -Wall -Wextra -Werror -O1 -UNDEBUG -I/tmp/hfs-q04-headers -I/tmp/hfs-q04-final -c tools/integration/lib9p/src/hfs9p.c -o /tmp/hfs-q04-cross/src-hfs9p.c.o
+zig cc -target x86_64-freebsd -std=c11 -Wall -Wextra -Werror -O1 -UNDEBUG -I/tmp/hfs-q04-headers -I/tmp/hfs-q04-final -c tools/integration/lib9p/src/hfs9p_json.c -o /tmp/hfs-q04-cross/src-hfs9p_json.c.o
+zig cc -target x86_64-freebsd -std=c11 -Wall -Wextra -Werror -O1 -UNDEBUG -I/tmp/hfs-q04-headers -I/tmp/hfs-q04-final -c tools/integration/lib9p/src/hfs9p_ledger.c -o /tmp/hfs-q04-cross/src-hfs9p_ledger.c.o
+zig cc -target x86_64-freebsd -std=c11 -Wall -Wextra -Werror -O1 -UNDEBUG -I/tmp/hfs-q04-headers -I/tmp/hfs-q04-final -c tools/integration/lib9p/src/hfs9p_supervisor.c -o /tmp/hfs-q04-cross/src-hfs9p_supervisor.c.o
+zig cc -target x86_64-freebsd -std=c11 -Wall -Wextra -Werror -O1 -UNDEBUG -I/tmp/hfs-q04-headers -I/tmp/hfs-q04-final -c tools/integration/lib9p/tests/production_api_test.c -o /tmp/hfs-q04-cross/tests-production_api_test.c.o
+zig cc -target x86_64-freebsd -std=c11 -Wall -Wextra -Werror -O1 -UNDEBUG -I/tmp/hfs-q04-headers -I/tmp/hfs-q04-final -c tools/integration/lib9p/tests/backend_test.c -o /tmp/hfs-q04-cross/tests-backend_test.c.o
+zig cc -target x86_64-freebsd -std=c11 -Wall -Wextra -Werror -O1 -UNDEBUG -I/tmp/hfs-q04-headers -I/tmp/hfs-q04-final -c tools/integration/lib9p/tests/supervisor_test.c -o /tmp/hfs-q04-cross/tests-supervisor_test.c.o

@@ -145,17 +145,18 @@
  
  .if ${MK_CASPER} != "no"
  CFLAGS+=	-DWITH_CASPER
-@@ -24,9 +24,12 @@
+@@ -24,9 +24,13 @@
  		threadpool.c \
  		utils.c \
  		backend/fs.c \
 +		backend/hfs9p.c \
 +		backend/hfs9p_json.c \
 +		backend/hfs9p_ledger.c \
++		backend/hfs9p_supervisor.c \
  		transport/socket.c
  
  INCSDIR=	${INCLUDEDIR}/lib9p
 -INCS=		fid.h lib9p.h backend/fs.h
-+INCS=		fid.h lib9p.h backend/fs.h backend/hfs9p.h backend/hfs9p_ledger.h
++INCS=		fid.h lib9p.h backend/fs.h backend/hfs9p.h backend/hfs9p_ledger.h backend/hfs9p_supervisor.h
  
  .include <bsd.lib.mk>

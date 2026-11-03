@@ -428,7 +428,7 @@ int main(void) {
    Hfs9pLedger *ledger = NULL;
    assert(!hfs9p_ledger_new(&ledger, ledger_directory, "transport"));
    Hfs9pVerifier verifier = {ledger, fixture_claim_cb, fixture_protect_cb,
-                             primitive_verify};
+                             primitive_verify, NULL, NULL};
    assert(!_construct(&backend, fds, &endpoint, verifier));
    int err;
    while (

@@ -1,0 +1,6 @@
+cc -std=c11 -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined -c tools/integration/lib9p/src/hfs9p_supervisor.c -o /tmp/hfs-q04-final/hfs9p_supervisor.o
+zig cc -target x86_64-freebsd -std=c11 -Wall -Wextra -Werror -O1 -UNDEBUG -I/tmp/hfs-q04-headers -c tools/integration/lib9p/src/hfs9p_supervisor.c -o /tmp/hfs-q04-cross/src-hfs9p_supervisor.c.o
+cc -std=c11 -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined tools/integration/lib9p/tests/supervisor_test.c /tmp/hfs-q04-final/hfs9p.o /tmp/hfs-q04-final/hfs9p_json.o /tmp/hfs-q04-final/hfs9p_ledger.o -pthread -Wl,--wrap=fsync -lcrypto -o /tmp/hfs-q04-supervisor-frozen
+/tmp/hfs-q04-supervisor-frozen
+Preserved adapter ledger/fsync failure evidence: /tmp/hfs-q04-supervisor-DwoYfC
+PASS: portable management/socket/rights refusals; no native proof

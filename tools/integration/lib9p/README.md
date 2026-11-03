@@ -89,10 +89,20 @@ The controller must combine this concrete local adapter with three mandatory
 facts/callbacks in `Hfs9pVerifier`: claim a genuinely fresh endpoint or verify the
 exact protected recovery digest against the surviving host ledger; authenticate
 the actual supervised exporter/FUSE tuple on every I/O; protect bytes using the
-local adapter (or equivalently durable admitted transport storage). No built-in
-supervisor/process/installed-byte/enrollment provider exists. The weak
-`hfs9p_controller_claim` **always returns ENOTSUP** until that real integration is
-linked. A configuration flag, a checksum or an empty state directory cannot
+local adapter (or equivalently durable admitted transport storage).
+The strong `hfs9p_controller_claim` is now supplied by the owned C supervisor
+adapter. Trusted startup calls `hfs9p_supervisor_start` with an authorized parent
+fd, an exclusive new directory name and installed scope/protocol. There is no
+startup path from guest bytes, named management socket or configuration boolean.
+It receives the inherited fd3 tuple, durably records actual process/socket/fd
+ownership, claims once, verifies, then constructs the native backend. The
+constructor consumes the one-use claim witness. Its optional paired I/O hooks
+serialize fresh fd observations and each actual syscall against a one-second
+VERIFY heartbeat (one bounded 128 KiB stack). Each observation uses actual
+fstat/fstatfs/F_GETFL and exact Capsicum rights; F_GETFL-only CAP_FCNTL survives
+attenuation. Linux startup refuses before files or CLAIM. Restoration remains
+blocked: no nonzero digest can be claimed by this adapter before C9.
+A configuration flag, a checksum or an empty state directory cannot
 substitute for host endpoint continuity. `hfs9p_restore` restores transport state;
 it does not turn host RESUME into RECONCILED. The host component still keeps
 RESUME BLOCKED until its claims/capabilities/cache-domain ledgers are recovered.
@@ -183,3 +193,12 @@ They remain bound to native command/cell/response coordinates: task `y04` must
 provide an authenticated translation contract before the missing C6 consumer
 can claim guest source/event/floor verification. Existing native construction
 and controller-provider refusal remain mandatory.
+
+C4 local verification adds real inherited-socket framing/SCM_RIGHTS tests and
+adapter ledger callbacks with exclusive writer and retained fsync failure bytes.
+These are portable primitives, not native enrollment proof. Source cross-compiles
+for x86_64 FreeBSD with Zig and the maintained FreeBSD SHA256 header; no native
+runtime, FUSE mount, complete bhyve artifact or installed acceptance ran here.
+All failed startup files/ledger candidates remain owned for inspection. The
+trusted exporter must never fork, re-exec or pass its management/data fds after
+enrollment; fd3/data are CLOEXEC and inherited executable fd4 is closed first.

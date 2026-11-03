@@ -80,12 +80,12 @@ compat=(here.parent/'codec/compat.h').read_text().replace('typedef uint64_t u64;
 compat += '\n#include <sys/stat.h>\n#define MAX_NON_LFS 2147483647UL\nstatic inline void sort(void *b,size_t n,size_t s,int (*cmp)(const void *,const void *),void (*swap)(void *,void *,int)) { (void)swap;qsort(b,n,s,cmp); }\n'
 (out/'hfs_codec_compat.h').write_text(compat)
 command=['cc','-std=gnu11','-O1','-g','-Wall','-Wextra','-Werror','-Wno-sign-compare',
-         '-D_DEFAULT_SOURCE','-D_POSIX_C_SOURCE=200809L','-DHFS_CODEC_USERSPACE',
+         '-D_GNU_SOURCE','-D_DEFAULT_SOURCE','-D_POSIX_C_SOURCE=200809L','-DHFS_CODEC_USERSPACE',
          '-include',str(out/'hfs_codec_compat.h'),'-include',str(here.parent/'common/kernel_format.h'),'-I',str(src/'fs/9p'),'-I',str(out),
          '-I',str(here.parent/'common'),'-I',str(repo),str(here/'consumer.c'),
          str(src/'fs/9p/hfs_protocol.c'),str(src/'fs/9p/hfs_policy.c'),
          str(here.parent/'common/kernel_format.c'),
-         str(repo/'tools/integration/lib9p/src/hfs9p_json.c'),str(repo/'tools/integration/lib9p/src/hfs9p_ledger.c'),'-pthread','-lcrypto',
+         str(repo/'tools/integration/lib9p/src/hfs9p_json.c'),str(repo/'tools/integration/lib9p/src/hfs9p_ledger.c'),str(repo/'tools/integration/lib9p/src/hfs9p_supervisor.c'),'-pthread','-lcrypto',
          '-o',str(out/'consumer')]
 if a.sanitize:
     command[1:1]=['-fsanitize=address,undefined','-fno-omit-frame-pointer','-fno-pie','-no-pie']

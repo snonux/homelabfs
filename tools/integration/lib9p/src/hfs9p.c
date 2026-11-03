@@ -337,6 +337,7 @@ _construct(Hfs9p **out, const int fd[3], const Hfs9pEndpoint *endpoint,
    Hfs9p *h;
    if (!out || !fd || !endpoint || !verifier.verify_cb ||
        !verifier.claim_cb || !verifier.protect_cb ||
+       (!!verifier.begin_io_cb != !!verifier.end_io_cb) ||
        _zero(endpoint->session, 16))
       return (EINVAL);
    *out = NULL;
@@ -400,9 +401,10 @@ _native_fds(const int fd[3]) {
           fstatfs(fd[i], &fs) || !_fuse_type(fs.f_fstypename))
          return (EACCES);
       cap_rights_t rights;
-      cap_rights_init(&rights, CAP_FSTAT, CAP_FSTATFS, CAP_SEEK,
+      cap_rights_init(&rights, CAP_FSTAT, CAP_FSTATFS, CAP_FCNTL, CAP_SEEK,
           i == 0 ? CAP_PWRITE : CAP_PREAD);
-      if (cap_rights_limit(fd[i], &rights))
+      if (cap_fcntls_limit(fd[i], CAP_FCNTL_GETFL) ||
+          cap_rights_limit(fd[i], &rights))
          return (errno);
    }
    return (0);
@@ -519,15 +521,6 @@ _protocol_body(const Hfs9pJson *j, uint32_t token, uint16_t minor) {
    Hfs9pToken t = j->tokens[token];
    return (t.end - t.start != strlen(expected) ||
        memcmp(j->bytes + t.start, expected, strlen(expected)) ? EINVAL : 0);
-}
-
-/* Only an actual externally integrated supervisor may replace this refusal. */
-__attribute__((weak)) int
-hfs9p_controller_claim(const char *name, Hfs9pConnection **out) {
-   (void)name;
-   if (out)
-      *out = NULL;
-   return (ENOTSUP);
 }
 
 static int
@@ -986,9 +979,17 @@ _forward(Hfs9p *h, Hfs9pEntry *e) {
       int error = _verify(h);
       if (error)
          return (error);
+      if (h->verifier.begin_io_cb &&
+          (error = h->verifier.begin_io_cb(h->verifier.arg,
+          &h->endpoint, h->fd)))
+         return (error);
       ssize_t written = pwrite(h->fd[0], h->scratch, HFS9P_HEADER + length,
           (off_t)(e->native_cell * HFS9P_STRIDE +
           (offset / HFS9P_CHUNK) * (HFS9P_HEADER + HFS9P_CHUNK)));
+      int native_errno = errno;
+      if (h->verifier.end_io_cb)
+         h->verifier.end_io_cb(h->verifier.arg);
+      errno = native_errno;
       if (written != (ssize_t)(HFS9P_HEADER + length)) {
          error = written < 0 ? errno : EIO;
          if (offset == 0 && !e->uncertain && e->donor < 0 && !e->polls &&
@@ -1037,9 +1038,16 @@ _native_read(Hfs9p *h, unsigned fd, uint8_t *bytes, size_t length,
       int error = _verify(h);
       if (error)
          return (error);
+      if (h->verifier.begin_io_cb &&
+          (error = h->verifier.begin_io_cb(h->verifier.arg,
+          &h->endpoint, h->fd)))
+         return (error);
       ssize_t got = pread(h->fd[fd], bytes + done, n, (off_t)(offset + done));
+      int native_errno = errno;
+      if (h->verifier.end_io_cb)
+         h->verifier.end_io_cb(h->verifier.arg);
       if (got < 0)
-         return (errno);
+         return (native_errno);
       if (got == 0)
          return (EIO);
       done += (size_t)got;
@@ -2054,6 +2062,7 @@ hfs9p_restore(Hfs9p **out, const int fd[3], const Hfs9pEndpoint *endpoint,
    if (!out || !fd || !endpoint || !bytes || length < 64 ||
        length > HFS9P_LEDGER_MAX || !verifier.claim_cb ||
        !verifier.verify_cb || !verifier.protect_cb ||
+       (!!verifier.begin_io_cb != !!verifier.end_io_cb) ||
        (memcmp(bytes, "H9LEDG1\0", 8) &&
        memcmp(bytes, "H9LEDG2\0", 8)))
       return (EINVAL);

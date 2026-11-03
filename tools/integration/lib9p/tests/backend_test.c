@@ -11,6 +11,24 @@
 #undef pwrite
 
 #include <assert.h>
+#include <stdatomic.h>
+static atomic_uint io_begins, io_ends;
+static _Thread_local bool io_active;
+
+static int
+begin_io_cb(void *arg, const Hfs9pEndpoint *e, const int fd[3]) {
+   (void)arg; (void)e; (void)fd;
+   assert(!io_active); io_active = true;
+   atomic_fetch_add(&io_begins, 1);
+   return (0);
+}
+
+static void
+end_io_cb(void *arg) {
+   (void)arg; assert(io_active); io_active = false;
+   atomic_fetch_add(&io_ends, 1);
+}
+
 #include "fixtures.h"
 #include "../src/hfs9p_ledger.h"
 
@@ -188,6 +206,7 @@ fixture_pwrite(int fd, const void *buffer, size_t length, off_t position) {
 
 ssize_t
 fixture_pread(int fd, void *buffer, size_t length, off_t position) {
+   assert(io_active);
    assert(fd == 11 || fd == 12);
    if (pending_read) {
       errno = EAGAIN;
@@ -270,8 +289,11 @@ new_endpoint_with_ledger(Hfs9pLedger *ledger) {
    int fd[3] = {10, 11, 12};
    Hfs9pEndpoint ep = {{0}, {110, 111, 112}};
    ep.session[15] = 5;
-   Hfs9pVerifier v = {ledger, claim_cb, protect_cb, verify_cb};
+   Hfs9pVerifier v = {ledger, claim_cb, protect_cb, verify_cb, begin_io_cb, end_io_cb};
    Hfs9p *h = NULL;
+   Hfs9pVerifier half = v;
+   half.end_io_cb = NULL;
+   assert(_construct(&h, fd, &ep, half) == EINVAL);
    assert(!_construct(&h, fd, &ep, v));
    return (h);
 }
@@ -711,7 +733,7 @@ protected_retry_test(const char *directory_name) {
    h = calloc(1, sizeof(*h));
    assert(h);
    h->endpoint = endpoint;
-   h->verifier = (Hfs9pVerifier){ledger, claim_cb, protect_cb, verify_cb};
+   h->verifier = (Hfs9pVerifier){ledger, claim_cb, protect_cb, verify_cb, begin_io_cb, end_io_cb};
    h->fd[0] = 10;
    h->fd[1] = 11;
    h->fd[2] = 12;
@@ -1386,6 +1408,8 @@ main(int argc, char **argv) {
    session_tests();
    contention_tests();
    assembly_accounting_tests();
+   assert(atomic_load(&io_begins) > 0);
+   assert(atomic_load(&io_begins) == atomic_load(&io_ends));
    puts("PASS: C parser/backend transport boundaries (no FUSE/runtime proof)");
    return (0);
 }

@@ -1,0 +1,39 @@
+[
+  {
+    "argv": [
+      "python3",
+      "/home/paul/tmp/codex/hfs-q04-20261103-efcys73d/worktree/tools/integration/linux9p/tests/controlled/build.py",
+      "--source",
+      "/home/paul/tmp/codex/hfs-o04-20261103-oct9t3af/source",
+      "--output",
+      "/home/paul/tmp/codex/hfs-q04-20261103-efcys73d/c2-smoke2/consumer",
+      "--sanitize"
+    ],
+    "exit": 0,
+    "seconds": 3.0187114879954606,
+    "peak_group_rss": 163516416,
+    "max_sample_gap": 0.1449317910009995,
+    "limit_reason": null
+  },
+  {
+    "argv": [
+      "go",
+      "test",
+      "-overlay",
+      "/home/paul/tmp/codex/hfs-q04-20261103-efcys73d/c2-smoke2/overlay.json",
+      "-p",
+      "1",
+      "-run",
+      "^TestControlledProductionGuestBackendHost$",
+      "-count=1",
+      "-timeout=90s",
+      "-v",
+      "./internal/controlledvalidation"
+    ],
+    "exit": 0,
+    "seconds": 3.2811295019928366,
+    "peak_group_rss": 124735488,
+    "max_sample_gap": 0.15874297099071555,
+    "limit_reason": null
+  }
+]

@@ -1,0 +1,5 @@
+{
+  "canonical": "tools/integration/linux9p/tests/controlled/host_test.go.txt",
+  "generated": "internal/controlledvalidation/o04_production_guest_test.go",
+  "sha256": "11df58fc28877459146ac695bdb1854c910e13c4d77361d49bfaf3856dde5e06"
+}

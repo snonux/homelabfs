@@ -43,6 +43,9 @@ typedef struct {
    int (*claim_cb)(void *, const Hfs9pEndpoint *, const uint8_t[32]);
    int (*protect_cb)(void *, const uint8_t *, size_t);
    int (*verify_cb)(void *, const Hfs9pEndpoint *, const int[3]);
+   /* Optional paired serialization around each actual native syscall. */
+   int (*begin_io_cb)(void *, const Hfs9pEndpoint *, const int[3]);
+   void (*end_io_cb)(void *);
 } Hfs9pVerifier;
 
 /* Takes ownership of a freshly enrolled fd tuple only on success. All fds must
@@ -85,7 +88,7 @@ int hfs9p_add_session_protocol(Hfs9p *, const uint8_t *, size_t, uint16_t);
 int hfs9p_exchange(Hfs9pConnection *, const uint8_t *, size_t, uint8_t *, size_t,
     size_t *);
 
-/* Mandatory controller seam. The default implementation refuses ENOTSUP;
+/* Mandatory strong controller seam. Absent supervised enrollment refuses;
  * production supervision must replace it with actual verified enrollment and
  * recovered endpoint ownership. Merely accepting a config flag is forbidden. */
 int hfs9p_controller_claim(const char *, Hfs9pConnection **);
