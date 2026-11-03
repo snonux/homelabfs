@@ -1,0 +1,162 @@
+# Durable controlled view controller
+
+`viewcontrol.Controller` implements bridge1.1 `ViewProtocolProvider`, `Views`,
+`controlledvalidation.Admission` and the mandatory native service admission
+boundary for an explicitly signed disposable local profile. It runs actual local
+service/journal/claim ledgers. It grants no normal3 publication, partner receipt,
+installed MM/PTE/TLB proof, daemon or mount activation.
+
+Construction requires a real `fsservice.Service` with immutable
+`RequireControlledViews: true`, one or more real `controlledvalidation.Provider`
+instances over that exact service, operator/host/guest signatures over the full
+inventory/bounds/baseline, and every method of the external `Facts` interface.
+Each domain's origin_journal must identify the actual admitted local journal
+incarnation. Missing native/platform/source continuity facts refuse construction
+or keep operations blocked. A new controller never resets a bridge endpoint:
+there is still no host bridge transport restore API. Component ledger reopen
+requires exact full-ledger continuity/positive exclusion; existing bridge objects
+continue to point at their closed controller.
+
+The separately signed acquisition and control Ticket families are aligned with
+Domains in `Enrollment.TicketFamilies`. Each full original Credentials/context
+has independent monotone counters/floors in each lane. ACQUIRE/RESERVE/RENEW use
+Acquisition; FREEZE/RELEASE use Control. QUERY/CANCEL address the original family;
+RETIRE closes that family's exact terminal reply ids. RENEW still travels the
+existing control transport lane but cannot spend preowned freeze/close capacity.
+Pre-admission refusal retains an uncertain original number/request at the caller;
+it is retried or resolved under that exact identity, never skipped or reused.
+
+The controller's exclusive private bbolt ledger retains complete original
+admissions, immutable initial replies, separately protected current/cancellation
+outcomes, lease versions, actual sealed source snapshots, reservations and
+frozen calls, events/ack digests/manifests and permanent floors. Query may grant a
+previously pending acquisition without changing its original PENDING replay.
+Revoked grants never regain host authority when their old reply is replayed.
+Physical fence advances after all exact REOPENED acknowledgements; per-lineage
+revision high-water survives compaction, preventing content-id reuse even when a
+released unchanged cut is reacquired in the same physical fence.
+
+Every source capture flushes/rereads actual complete original journal frames on
+the serialized service worker, and captures complete canonical catalog plus exact
+payload bytes. It binds stream epoch/incarnation/tail frame hash, actual installed
+storage position, signed enrollment/policy/source identity and serving generation.
+A journal tail may contain structural/lifetime records: it is never inferred to
+be a mutation applied to the store. Source proof cannot be supplied by a caller
+hash or normal-shaped certificate. A supplied acquire target is an expectation;
+a stale/pruned expectation drives a bounded stopped install and then BLOCKED for
+that old expectation. A fresh request uses the installed current cut. Returned
+lease targets always pass the actual source verifier. READ/GETATTR preserve atime
+and source cut, so parked fetch/acquire retries cannot create their own cut loop.
+
+Acquisition and ordinary observation/mutation admission run outside shared
+execution locks. Contention returns promptly. A fully acquired permit rechecks
+its exact source cut on the worker immediately before planning/apply, including
+recovery and native lock retries. Same-domain dirty pages are not excluded from
+conflicts. PAGE aliases use physical home/allocation/range; DOMAIN/metadata/EOF/
+namespace dependencies conservatively recall all affected enrolled observations.
+Compatible disjoint page grants preserve all existing provenance. Optional
+fresh admissions cannot spend preowned freeze/release/permanent-identity credit.
+
+DIRTY_RESERVE first protects RESERVING with complete original provenance and
+controller credit, then durably earmarks its future ordinary number plus actual
+provider claim/result/source credit, and only then protects GRANTED. Earmarks are
+typed records without OriginalHash, distinct from immutable ordinary Claims.
+Freeze protects FROZEN_PENDING and exact original call/data/credentials/recall
+before idempotent `BindFrozen`; FROZEN is returned only after both ledgers are
+durable. Every DRAIN_WRITE must equal those bytes. Bound dirty claims cannot be
+cancelled as ordinary gaps. The sealed positional-drain planner preserves mmap
+page offsets through O_APPEND descriptions; ordinary WRITE still appends.
+
+STOPPED requires an exact complete adopted/frozen manifest and mandatory
+physical/source facts. Issued but unreceived/unadopted reservations may be omitted
+only after the separate mandatory `CheckUnadopted` verifies a typed universal
+old-epoch exclusion statement. Omission or a hash/list alone establishes nothing.
+The statement binds the signed admitted running-kernel/source contract, exact
+observed STOP event and authenticated ACK bytes, domain/session/old host fence,
+complete host ledger and every exact omitted reservation. Runtime verification
+must obtain actual ACK provenance via the native/guest supervised endpoint and
+live installation/boot/session evidence for that running component. The admitted
+kernel contract must make old-revision adoption impossible: capture local revision
+before RPC, require LIVE plus unchanged revision/target atomically at reservation
+adoption and final writable PTE, close admission before freezing the complete
+adopted registry, and increment revision before every reopen. A source hash,
+signature, newly chosen UUID or caller-supplied receipt is insufficient.
+
+`guestbridge.VerifiedRequest(ctx)` exposes only observations minted privately by
+real Execute after native authentication and exact scope/version checks: detached
+native headers/groups/controller/scope/protocol and canonical command/payload
+hashes. Facts can bind the ACK to the actual observed command without retaining
+another1MiB copy. This proves request provenance only; the actual running-kernel
+contract and live barrier/source completeness must still be independently checked.
+Facts must consume already available evidence and return blocked when missing,
+without waiting for recall or reentering service execution.
+
+Omitted frozen/bound calls are always refused. For positively excluded unfrozen
+reservations the controller protects CANCELLING with the exact proposed CANCELLED
+TicketResponse, then closes the independent typed ordinary-number gap using that
+response's actual id, and only then publishes Current=CANCELLED/accepts STOPPED.
+If RESERVING crashed before any earmark, closure atomically protects that exact
+next ordinary High number as a typed closed gap. No ordinary Claim, Result or
+placeholder OriginalHash is invented. Existing ordinary RETIRE.result_hashes uses
+the actual protected CANCELLED ticket response id, which the guest obtains via
+original VIEW_QUERY/CANCEL. Initial GRANTED replies stay immutable and can never
+reactivate a closed reservation. Partial closure is recoverable under its original
+binding; false omission and lost closure replies preserve obligations.
+ Drains execute while stopped, with their reserved provider credit.
+Protected terminal results permit INSTALL_DRAIN before DRAINED. Exact intermediate
+install acknowledgements, all original drain results, DRAINED, final install and
+REOPENED close the recall. No query, timeout, cell release, disconnect or new UUID
+retires rights. Disconnect invalidates learned acknowledgements; recovery needs
+full live continuity/exclusion and fresh exact acknowledgements.
+
+Signed finite bounds cover permanent identities/tombstones, separate live/control
+tickets, reservation/freeze/manifests, complete source archives and peak source/
+ledger serialization memory. Source slots for outstanding drains and final
+installs are reserved before granting a dirty reservation. Resource refusal is
+explicit. At verified terminal retirement, complete tombstones keep operation/
+request hash/full principal/floor, while retired bodies and unreferenced closed
+leases/reservations/snapshots can be reclaimed. Source snapshots are not freed
+on reply, disconnect or mere reopen. Identity/fence/revision exhaustion remains
+permanent and blocks new admissions. A runtime workload must enroll sufficient
+bounds and retire completed pressure windows; this component does not install
+or calibrate a runtime profile.
+
+Tests use actual temporary OS files, journals, service/planner, controlled claim
+providers and bridge dispatch. Physical/native/enrollment verifiers are explicit
+primitive-boundary shims requiring exact declared observations; they prove no
+installed platform behavior. Tests also explicitly call the trusted
+`Provider.Allocate` before ordinary CALL. Automatic ordinary-number allocation,
+endpoint restoration and daemon/guest enrollment wiring remain concrete runtime
+driver work for the later artifact/base gates. Frozen ordinary numbers are
+allocated by the real EarmarkNumber/BindFrozen path here. No normal owner-disk wait
+or origin-placement rule is introduced: future normal integration still requires
+original-origin durability plus distinct owner/partner RAM, without owner-disk
+wait.
+
+## Source capacity and pressure refinement
+
+Source snapshot slots and source byte credit are separate. Before DIRTY_RESERVE
+can authorize a PTE, metadata-only projection accounts complete sparse growth to
+every outstanding page's maximum end, the aggregate across physical objects,
+per-write receipts and conservative scalar/catalog widths. Multiple pages in the
+same object charge its maximum extent rather than independent payload copies.
+Actual controlled plans preflight their complete mutation/pin effects before
+plan/effect protection; native journal effects perform the same worker preflight,
+including a creation/truncate-open's following pin. The sizing path projects
+catalog metadata only and never allocates the future hole/payload. No accepted
+drain may make its final source cut unrepresentable or strand INSTALL_DRAIN.
+
+An issued dirty lease's funded VIEW_RELEASE starts recall when needed and returns
+protected PENDING. Thus a guest can initiate pressure progress through its
+independent control family even while an unknown/refused acquisition-family
+number bars a pressure READ. RELEASED still requires actual old-epoch quiescence,
+drain/install/reopen and exact source closure; PENDING replay cannot release it.
+
+A DIRTY_RESERVE that was never granted and has protected BLOCKED history cannot
+be retired while its promised ordinary number remains unbound. CANCEL stages the
+exact original binding and proposed CANCELLED reply, closes the next typed number
+gap with that reply id, and only then publishes/permits retirement. This uses
+verified never-granted history and source checks, not absence inferred from an
+unrecorded request. Unknown/unadmitted requests still retry their original bytes
+and number first. The all-guest pressure regression exercises that complete
+sequence without a native observer or third ticket family.

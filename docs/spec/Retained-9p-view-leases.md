@@ -112,7 +112,12 @@ v1/normal3.0 journal kind or closed fsapi enum is extended. Only VIEW_ACQUIRE ma
 discovery. The issuer must return an actual nonnull verified Lease.target; a
 fresh null-target ticket cannot bypass conflict recall or all-domain/source
 closure. A supplied nonnull acquire target is an **expected** cut: the issuer selects/verifies the actual current
-cut, grants only if equal, otherwise returns BLOCKED or a fresh caller retry.
+cut, grants only if equal, otherwise returns BLOCKED or a fresh caller retry. The controlled expected
+cut is structurally/scope validated before dispatch, but is not source authority
+and need not remain in the issuer archive. It reaches the issuer even when stale
+or pruned so the issuer can drive a bounded stopped install. Every actual returned
+Lease.target still requires mandatory full-source CheckTarget verification; an
+arbitrary expected hash can never issue a lease.
 
 `Lease={id:hash,scope:Context,domain:DOMAIN Cap,access:Access,
 credential_hash:hash,mode:READ|EXCLUSIVE_DIRTY,target:Target,fence:n64,
@@ -242,6 +247,25 @@ must cap reservations and complete frozen manifests before PTEs, including all
 maximum credential/capability/claim bytes. The Go queues alone do not prove that
 controller budget.
 
+An accepted transport cell whose service dispatch returns temporary WouldBlock
+or NoSpace retains its exact native identity, command and body in the existing
+worker's bounded pending ring. A timed FIFO retry gets priority when due; it
+allocates no new cell, claim, counter or capability credit. Independent control,
+drain and replacement workers remain available. Only the first published
+response becomes immutable; logical filesystem error results are not retried.
+Close stops local retry work without claiming endpoint or physical retirement.
+
+In the private controlled provider, ordinary QUERY and repeated CALL may resume
+the sealed original binding only while its durable preparation stage is exactly
+UNPREPARED and no protected plan, outcome or bridge snapshot exists. Reserve
+records UNPREPARED; execution records PREPARING before invoking preparation.
+Both admission and the subsequent execution-lock stage check precede the
+callback. A missing/ambiguous historical stage or a failure between preparation
+and plan protection stays closed across reopen. Existing protected plans use
+original-outcome recovery, never fresh preparation. This marker alone proves
+no cancellation or no-effect closure and changes no claim identity, wire
+status, pending snapshot version or historical credentials.
+
 The guest receives an actual GRANTED lease, then joins physical access only
 after rechecking exact target visibility_generation/fence/revision locally. The guest local cache revision
 increments on every verified stopped install, even if visibility_generation
@@ -285,3 +309,41 @@ fsync/reopen/lock/failure/downgrade refusal. None proves a durable lease engine,
 actual signed enrollment, normal source receipts, physical MM or runtime cache
 barriers. Source-byte receipts and command logs are retained in the isolated
 j04 evidence directory; root runs complete merged gates separately.
+
+## Controlled controller refinement (k04)
+
+The explicit local controller additionally enrolls distinct acquisition and
+preowned-control Ticket anchor/nonce families per full original Credentials.
+ACQUIRE/RESERVE/RENEW use acquisition identities, FREEZE/RELEASE use controls;
+QUERY/CANCEL keep original identities and RETIRE closes each exact family.
+Transport class and identity family are separate. Refused/unknown ordinary
+numbers remain retained for exact retry/closure and cannot strand preowned
+control counters by sharing their family.
+
+STOPPED's complete adopted manifest and authenticated kernel ACK universally
+exclude future adoption of all old local revisions. Host-issued but unadopted
+RESERVED/RESERVING entries can close only through mandatory typed physical Facts
+binding that exact running-kernel/source contract and ACK provenance, exact STOP
+event/domain/session/old fence, full issued ledger and exact omitted IDs. The
+admitted running kernel captures revision before dispatch, requires LIVE and the
+same revision/target at adoption and final writable PTE, closes before taking its
+complete adopted snapshot, and increments revision before reopening. Missing
+actual provenance/installation/barrier evidence blocks; omission, UUID or digest
+alone proves nothing. FROZEN_PENDING/FROZEN/bound calls may never be omitted.
+
+For positively excluded unbound reservations the host protects CANCELLING and
+an exact proposed CANCELLED ticket reply, protects its ClaimNumber as a typed
+no-effect gap in the ordinary provider (including an exact next-High allocation
+if no earmark survived), and then publishes that reply/accepts STOPPED. Its exact
+protected CANCELLED response id is the ordinary RETIRE.result_hashes gap id;
+VIEW_QUERY/CANCEL of the original DIRTY_RESERVE retrieves it. This creates no
+ordinary Claim, Result or OriginalHash. The immutable initial admission reply is
+preserved. Partial two-ledger closure replays the same original id after reopen.
+
+The host verified-command context accessor exposes detached native/controller/
+scope/protocol/header and canonical command/payload hashes minted only after
+actual Execute authentication/scope/version checks. It permits runtime Facts to
+bind the actual ACK provenance without widening1.1. This observation alone is
+neither kernel execution nor source/barrier proof. Native/platform verifiers
+must use actual live supervised endpoint and admitted running component evidence;
+local test shims and source equality do not grant runtime acceptance.

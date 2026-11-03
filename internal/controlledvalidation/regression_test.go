@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/snonux/homelabfs/internal/fsapi"
+	"github.com/snonux/homelabfs/internal/fsservice"
 	"github.com/snonux/homelabfs/internal/guestbridge"
 	bolt "go.etcd.io/bbolt"
 )
@@ -583,5 +584,184 @@ func TestPendingSnapshotAdmissionBoundarySurvivesRestart(t *testing.T) {
 	}
 	if err = f.provider.Check(t.Context(), pending.Context); err != nil {
 		t.Fatalf("pending boundary incorrectly closed authenticated query scope: %v", err)
+	}
+}
+
+func TestResumeValidationNeverPreparesProtectedPlan(t *testing.T) {
+	h := newBridgeHarness(t)
+	b := h.f.newBinding("ROOT", map[string]any{}, false)
+	h.f.provider.config.Failpoint = func(point string) error {
+		if point == "plan-protected" {
+			return errors.New("protected-before-effect")
+		}
+		return nil
+	}
+	h.send("CALL", b.Call)
+	saved := h.entry(b)
+	if saved.Plan == nil || saved.Outcome != nil {
+		t.Fatal("missing protected-plan boundary")
+	}
+	h.f.provider.config.Failpoint = nil
+	var prepared atomic.Uint64
+	_, err := h.f.provider.ResumeValidation(t.Context(), saved.Binding, func(guestbridge.Captured) (guestbridge.Prepared, error) {
+		prepared.Add(1)
+		return guestbridge.Prepared{}, fsapi.IO
+	}, func(guestbridge.Outcome) (json.RawMessage, json.RawMessage, error) {
+		t.Fatal("reprotected existing plan")
+		return nil, nil, fsapi.IO
+	})
+	if !errors.Is(err, fsapi.WouldBlock) || prepared.Load() != 0 {
+		t.Fatalf("protected plan resumed preparation %d %v", prepared.Load(), err)
+	}
+	result := h.query(b)
+	if result.Code != "OK" || h.entry(b).SnapshotVersion != saved.SnapshotVersion {
+		t.Fatal("original protected snapshot changed during recovery")
+	}
+}
+
+func TestConcurrentOriginalContinuationPreparesOnce(t *testing.T) {
+	f := newFixture(t)
+	b := f.binding("CREATE", map[string]any{})
+	var calls atomic.Uint64
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for range 2 {
+		go func() {
+			<-start
+			_, err := f.provider.ResumeValidation(t.Context(), b, func(cut guestbridge.Captured) (guestbridge.Prepared, error) {
+				calls.Add(1)
+				return cut.Prepare(t.Context(), b, createCommand(f, "continued-once"))
+			}, protect)
+			results <- err
+		}()
+	}
+	close(start)
+	success := 0
+	for range 2 {
+		err := <-results
+		if err == nil {
+			success++
+		} else if !errors.Is(err, fsapi.WouldBlock) {
+			t.Fatal(err)
+		}
+	}
+	if success != 1 || calls.Load() != 1 {
+		t.Fatalf("continuation success=%d preparations=%d", success, calls.Load())
+	}
+	for _, change := range []string{"credentials", "intent"} {
+		changed := b
+		if change == "credentials" {
+			changed.Call.Credentials.Revision++
+		} else {
+			changed.Call.Intent.Args = json.RawMessage(`{"changed":true}`)
+		}
+		if _, err := f.provider.ResumeValidation(t.Context(), changed, func(guestbridge.Captured) (guestbridge.Prepared, error) {
+			t.Fatal("changed original reached prepare")
+			return guestbridge.Prepared{}, fsapi.IO
+		}, protect); err == nil {
+			t.Fatal("changed original accepted")
+		}
+	}
+
+}
+
+func TestPreparedButUnprotectedContinuationStaysClosedAcrossReopen(t *testing.T) {
+	f := newFixture(t)
+	b := f.binding("CREATE", map[string]any{})
+	var calls atomic.Uint64
+	prepare := func(cut guestbridge.Captured) (guestbridge.Prepared, error) {
+		calls.Add(1)
+		return cut.Prepare(t.Context(), b, createCommand(f, "not-protected"))
+	}
+	interrupted := errors.New("prepared plan was not protected")
+	f.provider.config.Failpoint = func(point string) error {
+		if point == "prepared-before-plan-protection" {
+			return interrupted
+		}
+		return nil
+	}
+	if _, err := f.provider.ResumeValidation(t.Context(), b, prepare, protect); !errors.Is(err, interrupted) {
+		t.Fatal(err)
+	}
+	var saved entry
+	if err := f.provider.db.View(func(tx *bolt.Tx) error { e, _, err := f.provider.load(tx, b.Call.Claim); saved = e; return err }); err != nil {
+		t.Fatal(err)
+	}
+	if saved.Plan != nil || saved.PreparationStage != "PREPARING" || saved.Outcome != nil {
+		t.Fatal("preparation window lost")
+	}
+	if err := f.provider.Close(); err != nil {
+		t.Fatal(err)
+	}
+	f.provider = nil
+	f.pc.Failpoint = nil
+	f.open()
+	if _, err := f.provider.ResumeValidation(t.Context(), b, prepare, protect); !errors.Is(err, fsapi.WouldBlock) {
+		t.Fatal(err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("uncertain preparation repeated %d times", calls.Load())
+	}
+	if err := f.service.Controlled(t.Context(), *f.config.Validation, func(ctx context.Context, cut *fsservice.ControlledCut) error {
+		image, err := cut.Image(ctx, id(1))
+		if err != nil {
+			return err
+		}
+		if len(image.Entries) != 0 {
+			t.Fatal("unprotected plan had filesystem effects")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInitialDispatchAndContinuationShareOnePreparation(t *testing.T) {
+	f := newFixture(t)
+	b := f.binding("CREATE", map[string]any{})
+	var calls atomic.Uint64
+	prepare := func(cut guestbridge.Captured) (guestbridge.Prepared, error) {
+		calls.Add(1)
+		return cut.Prepare(t.Context(), b, createCommand(f, "initial-race"))
+	}
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	go func() {
+		<-start
+		_, err := f.provider.ExecuteValidation(t.Context(), b, prepare, protect)
+		results <- err
+	}()
+	go func() {
+		<-start
+		_, err := f.provider.ResumeValidation(t.Context(), b, prepare, protect)
+		results <- err
+	}()
+	close(start)
+	for range 2 {
+		if err := <-results; err != nil && !errors.Is(err, fsapi.WouldBlock) {
+			t.Fatal(err)
+		}
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("initial/continuation prepared %d times", calls.Load())
+	}
+	changed := b
+	changed.Context.GuestBoot = id(90).String()
+	if _, err := f.provider.ResumeValidation(t.Context(), changed, prepare, protect); err == nil {
+		t.Fatal("changed scope resumed")
+	}
+}
+
+func TestHistoricalMissingPreparationStageDoesNotResume(t *testing.T) {
+	f := newFixture(t)
+	b := f.binding("CREATE", map[string]any{})
+	if err := f.provider.update(b, func(e *entry) error { e.PreparationStage = ""; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.provider.ResumeValidation(t.Context(), b, func(guestbridge.Captured) (guestbridge.Prepared, error) {
+		t.Fatal("ambiguous historical entry reached prepare")
+		return guestbridge.Prepared{}, fsapi.IO
+	}, protect); !errors.Is(err, fsapi.WouldBlock) {
+		t.Fatal(err)
 	}
 }

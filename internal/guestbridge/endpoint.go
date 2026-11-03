@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"sync"
+	"time"
 
 	"github.com/snonux/homelabfs/internal/admission"
 	"github.com/snonux/homelabfs/internal/fsapi"
@@ -358,9 +360,56 @@ func (t *Transport) Close() {
 }
 func (t *Transport) worker(queue <-chan job) {
 	defer t.workers.Done()
-	for j := range queue {
+	// The pending ring retains only already funded accepted jobs. Each cell has
+	// one dispatch, so aggregate pending storage is bounded by the 80 cell credits
+	// and independent replacement workspace; no retry allocates a claim or credit.
+	pending := make([]job, 0, 81)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var j job
+		retry := false
+		// A due retry gets priority over a continuously replenished queue.
+		// The pending ring itself is FIFO, so one refusal cannot starve peers.
+		if len(pending) > 0 {
+			select {
+			case <-ticker.C:
+				retry = true
+			default:
+			}
+		}
+		if !retry {
+			select {
+			case next, ok := <-queue:
+				if !ok {
+					return
+				}
+				j = next
+			case <-ticker.C:
+				if len(pending) == 0 {
+					continue
+				}
+				retry = true
+			}
+		}
+		if retry {
+			j = pending[0]
+			copy(pending, pending[1:])
+			pending[len(pending)-1] = job{}
+			pending = pending[:len(pending)-1]
+		}
+		t.mu.Lock()
+		c := t.cells[j.id]
+		active := !t.closed && c != nil && !c.released && c.response == nil
+		t.mu.Unlock()
+		if !active {
+			continue
+		}
 		raw, e := t.service.Execute(context.Background(), j.native, j.command)
 		if e != nil {
+			if errors.Is(e, fsapi.WouldBlock) || errors.Is(e, fsapi.NoSpace) {
+				pending = append(pending, j)
+			}
 			continue
 		}
 		if len(raw) == 0 || len(raw) > BodyBytes {
@@ -390,7 +439,7 @@ func (t *Transport) worker(queue <-chan job) {
 			continue
 		}
 		t.mu.Lock()
-		c := t.cells[j.id]
+		c = t.cells[j.id]
 		if c != nil && !c.released && c.response == nil {
 			c.response = raw
 			c.wire = frames

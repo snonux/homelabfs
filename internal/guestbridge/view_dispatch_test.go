@@ -219,7 +219,7 @@ func TestViewDispatchSuccessfulBoundaries(t *testing.T) {
 			if kind == "OBJECT" {
 				access.Object = &x.object
 				target = &x.target
-				expectedTargets = 2
+				expectedTargets = 1
 			}
 			if kind == "PAGE" {
 				offset, length := uint64(0), uint64(4096)
@@ -228,7 +228,7 @@ func TestViewDispatchSuccessfulBoundaries(t *testing.T) {
 				access.Length = &length
 				mode = "EXCLUSIVE_DIRTY"
 				target = &x.target
-				expectedTargets = 2
+				expectedTargets = 1
 			}
 			c := x.acquire(t, access, mode, target)
 			lease := x.lease(t, c)
@@ -363,7 +363,7 @@ func TestViewDispatchDescriptionIssuanceGates(t *testing.T) {
 		}
 	}
 }
-func TestViewDispatchExpectedTargetSourceGate(t *testing.T) {
+func TestViewDispatchExpectedTargetReachesIssuer(t *testing.T) {
 	x := newViewDispatchFixture(t)
 	c := x.acquire(t, ViewAccess{Kind: "DOMAIN"}, "READ", &x.target)
 	x.reply(t, c, "PENDING", nil, nil)
@@ -376,12 +376,13 @@ func TestViewDispatchExpectedTargetSourceGate(t *testing.T) {
 	payload := value.(map[string]any)
 	payload["target"].(map[string]any)["cut"].(map[string]any)["state_hash"] = digest([]byte("unverified expected state"))
 	c.Payload = mustJSON(t, payload)
-	// Keep the reply valid for the changed request so a later structural refusal
-	// cannot mask deletion of the actual request source-verification boundary.
+	// Expected targets carry no authority. A stale or pruned expectation must
+	// reach the issuer so it can return PENDING/BLOCKED and drive fresh install.
+	// Source proof remains mandatory for every actual returned Lease.target.
 	x.reply(t, c, "PENDING", nil, nil)
 	raw, e := x.bridge.s.Execute(t.Context(), x.bridge.native, c)
-	if !errors.Is(e, fsapi.Stale) || len(raw) != 0 || x.provider.targets != 1 || x.provider.exchanges != 0 || x.attestor.calls != 1 {
-		t.Fatalf("expected target source bypass/masked error: %v", e)
+	if e != nil || len(raw) == 0 || x.provider.targets != 0 || x.provider.exchanges != 1 || x.provider.responses != 1 || x.attestor.calls != 1 {
+		t.Fatalf("stale expectation failed to reach issuer: %v", e)
 	}
 }
 func (x *viewDispatchFixture) control(t *testing.T, op string) Command {

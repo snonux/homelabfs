@@ -1,0 +1,98 @@
+{
+  "base": "5b13e0bdd9e74759ecf0f4bb0c58edf8193ed240",
+  "environment": {
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "1GiB",
+    "GOFLAGS": "-p=1"
+  },
+  "checks": [
+    {
+      "name": "race",
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "-coverprofile=/home/paul/tmp/codex/hfs-k04-20261103/checks/r1fix/frozen-coverage.out",
+        "./internal/viewcontrol",
+        "./internal/controlledvalidation",
+        "./internal/guestbridge",
+        "-count=1",
+        "-timeout=120s"
+      ],
+      "exit": 0,
+      "seconds": 40.666
+    },
+    {
+      "name": "storage-source-race",
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "./internal/storage",
+        "-run",
+        "^TestSource",
+        "-count=1",
+        "-timeout=90s"
+      ],
+      "exit": 0,
+      "seconds": 2.42
+    },
+    {
+      "name": "fsservice-focused",
+      "command": [
+        "go",
+        "test",
+        "./internal/fsservice",
+        "-run",
+        "TestControlled|TestDelegated",
+        "-count=1",
+        "-timeout=90s"
+      ],
+      "exit": 0,
+      "seconds": 2.27
+    },
+    {
+      "name": "vet",
+      "command": [
+        "go",
+        "vet",
+        "./internal/viewcontrol",
+        "./internal/controlledvalidation",
+        "./internal/fsservice",
+        "./internal/guestbridge",
+        "./internal/storage"
+      ],
+      "exit": 0,
+      "seconds": 0.666
+    },
+    {
+      "name": "errcheck",
+      "command": [
+        "errcheck",
+        "./internal/viewcontrol",
+        "./internal/controlledvalidation",
+        "./internal/fsservice",
+        "./internal/guestbridge",
+        "./internal/storage"
+      ],
+      "exit": 0,
+      "seconds": 1.519
+    },
+    {
+      "name": "lint",
+      "command": [
+        "golangci-lint",
+        "run",
+        "./internal/viewcontrol",
+        "./internal/controlledvalidation",
+        "./internal/fsservice",
+        "./internal/guestbridge",
+        "./internal/storage",
+        "--timeout=120s"
+      ],
+      "exit": 0,
+      "seconds": 1.217
+    }
+  ],
+  "source_changes": []
+}

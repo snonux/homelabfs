@@ -58,6 +58,7 @@ type Config struct {
 	Operator                                                              ed25519.PublicKey
 	Authorization                                                         Authorization
 	Facts                                                                 Facts
+	Admission                                                             Admission
 	MaxClaims                                                             int
 	MaxRetainedBytes, MaxSourceBytes, ClaimCreditBytes, SourceCreditBytes uint64
 	// Failpoint is component-test instrumentation. Any error preserves evidence.
@@ -66,10 +67,12 @@ type Config struct {
 
 // Provider owns a single locked durable ledger and its exact enrolled scope.
 type Provider struct {
-	config    Config
-	db        *bolt.DB
-	execution sync.Mutex
-	closed    atomic.Bool
+	config      Config
+	db          *bolt.DB
+	execution   sync.Mutex
+	admissionMu sync.RWMutex
+	admission   Admission
+	closed      atomic.Bool
 }
 
 // entry retains original bytes and exact recovery plan before any service effect.
@@ -78,6 +81,7 @@ type entry struct {
 	Claim                        guestbridge.Claim
 	Binding                      guestbridge.Binding
 	Status                       string
+	PreparationStage             string
 	Plan                         *fsservice.ControlledPlan
 	Outcome                      *guestbridge.Outcome
 	Result                       json.RawMessage `json:",omitempty"`
@@ -106,6 +110,9 @@ var _ guestbridge.ValidationExecution = (*Provider)(nil)
 // New authenticates both endpoints before opening the private versioned ledger.
 // bbolt's exclusive OS lock prevents concurrent/restarted writers from sharing it.
 func New(ctx context.Context, c Config) (*Provider, error) {
+	if c.Admission != nil && nilValue(c.Admission) {
+		return nil, fsapi.Invalid
+	}
 	if c.Service == nil || nilValue(c.Facts) || len(c.Operator) != ed25519.PublicKeySize {
 		return nil, fsapi.Invalid
 	}
@@ -202,7 +209,7 @@ func New(ctx context.Context, c Config) (*Provider, error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &Provider{config: c, db: db}
+	p := &Provider{config: c, db: db, admission: c.Admission}
 	err = db.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucketIfNotExists([]byte(ledgerVersion))
 		if err != nil {
@@ -223,7 +230,7 @@ func New(ctx context.Context, c Config) (*Provider, error) {
 		if err = b.Put([]byte("scope"), scope); err != nil {
 			return err
 		}
-		for _, name := range []string{"claims", "principals", "bridge", "processes", "retirements", "operations", "allocations"} {
+		for _, name := range []string{"claims", "principals", "bridge", "processes", "retirements", "operations", "allocations", "earmarks"} {
 			if _, err = b.CreateBucketIfNotExists([]byte(name)); err != nil {
 				return err
 			}
@@ -267,6 +274,9 @@ func (p *Provider) Close() error {
 // Check checks immutable exact scope and live component facts without taking
 // the execution mutex, waiting for an operation, or manufacturing authority.
 func (p *Provider) Check(ctx context.Context, scope guestbridge.Context) error {
+	if p.config.Service.ControlledViewsRequired() && p.currentAdmission() == nil {
+		return fsapi.Unavailable
+	}
 	if p.closed.Load() {
 		return fsapi.Unavailable
 	}

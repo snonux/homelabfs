@@ -110,27 +110,29 @@ type Limits struct {
 // ancestors must already be durably prepared; volume initialization is external.
 // No daemon, mount, checkpoint acceptance or retention is configured here.
 type Config struct {
-	Source, Reservations storage.Filesystem
-	Stream               segment.Stream
-	Authority            record.Authority
-	Storage              storage.Config
-	Workspace            Workspace
-	Selection            apply.Selection
-	Protocol             Protocol
-	Permissions          PermissionPolicy
-	Reclamation          ReclamationPolicy
-	Validation           *ValidationProfile
-	Clock                fsapi.Clock
-	Random               io.Reader
-	Limits               Limits
-	Segment              segment.Options
-	Apply                apply.Config
+	Source, Reservations   storage.Filesystem
+	Stream                 segment.Stream
+	Authority              record.Authority
+	Storage                storage.Config
+	Workspace              Workspace
+	Selection              apply.Selection
+	Protocol               Protocol
+	Permissions            PermissionPolicy
+	Reclamation            ReclamationPolicy
+	Validation             *ValidationProfile
+	RequireControlledViews bool
+	Clock                  fsapi.Clock
+	Random                 io.Reader
+	Limits                 Limits
+	Segment                segment.Options
+	Apply                  apply.Config
 }
 
 type command struct {
 	request    *fsapi.Request
 	value      fsapi.Command
 	controlled func(context.Context)
+	permit     ControlledPermit
 }
 type lifetime struct {
 	pin     fsapi.UUID
@@ -147,6 +149,8 @@ type handle struct {
 // foreign-home coordination and explicit transactions remain a separate service.
 // It must not be copied. Close drains accepted commands without canceling them.
 type Service struct {
+	activePermit      ControlledPermit
+	viewAdmission     ControlledAdmission
 	controlledEffects map[fsapi.UUID][32]byte
 	config            Config
 	state             atomic.Uint32

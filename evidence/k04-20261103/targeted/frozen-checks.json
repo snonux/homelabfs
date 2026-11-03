@@ -1,0 +1,80 @@
+{
+  "base": "5b13e0bdd9e74759ecf0f4bb0c58edf8193ed240",
+  "environment": {
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "1GiB",
+    "GOFLAGS": "-p=1"
+  },
+  "checks": [
+    {
+      "name": "race",
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "-coverprofile=/home/paul/tmp/codex/hfs-k04-20261103/checks/frozen-coverage.out",
+        "./internal/viewcontrol",
+        "./internal/controlledvalidation",
+        "./internal/guestbridge",
+        "-count=1",
+        "-timeout=120s"
+      ],
+      "exit": 0,
+      "seconds": 36.209
+    },
+    {
+      "name": "fsservice-focused",
+      "command": [
+        "go",
+        "test",
+        "./internal/fsservice",
+        "-run",
+        "TestControlled|TestDelegated",
+        "-count=1",
+        "-timeout=90s"
+      ],
+      "exit": 0,
+      "seconds": 1.568
+    },
+    {
+      "name": "vet",
+      "command": [
+        "go",
+        "vet",
+        "./internal/viewcontrol",
+        "./internal/controlledvalidation",
+        "./internal/fsservice",
+        "./internal/guestbridge"
+      ],
+      "exit": 0,
+      "seconds": 0.266
+    },
+    {
+      "name": "errcheck",
+      "command": [
+        "errcheck",
+        "./internal/viewcontrol",
+        "./internal/controlledvalidation",
+        "./internal/fsservice",
+        "./internal/guestbridge"
+      ],
+      "exit": 0,
+      "seconds": 1.719
+    },
+    {
+      "name": "lint",
+      "command": [
+        "golangci-lint",
+        "run",
+        "./internal/viewcontrol",
+        "./internal/controlledvalidation",
+        "./internal/fsservice",
+        "./internal/guestbridge",
+        "--timeout=120s"
+      ],
+      "exit": 0,
+      "seconds": 0.717
+    }
+  ],
+  "source_changes": []
+}

@@ -103,6 +103,29 @@ func (s *Service) Dispatch(ctx context.Context, r *fsapi.Request, c fsapi.Comman
 		return fsapi.Invalid
 	}
 	c = c.Clone()
+	var permit ControlledPermit
+	if s.config.RequireControlledViews {
+		s.mu.Lock()
+		admission := s.viewAdmission
+		s.mu.Unlock()
+		if admission == nil {
+			return fsapi.Unavailable
+		}
+		var err error
+		permit, err = admission.AdmitNative(ctx, r.Credentials(), c)
+		if err != nil {
+			return err
+		}
+		if permit == nil {
+			return fsapi.Permission
+		}
+	}
+	admitted := false
+	defer func() {
+		if !admitted && permit != nil {
+			permit.Close()
+		}
+	}()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed || s.State() != Serving {
@@ -117,7 +140,8 @@ func (s *Service) Dispatch(ctx context.Context, r *fsapi.Request, c fsapi.Comman
 		return fsapi.Busy
 	}
 	select {
-	case s.queue <- command{request: r, value: c}:
+	case s.queue <- command{request: r, value: c, permit: permit}:
+		admitted = true
 		s.accepted[r] = true
 		return nil
 	default:
@@ -192,6 +216,20 @@ func (s *Service) evaluate(ctx context.Context, cmd command) fsapi.Result {
 	if s.State() != Serving {
 		return fsapi.Result{Code: fsapi.Unavailable}
 	}
+	if s.config.RequireControlledViews {
+		if cmd.permit == nil {
+			return fsapi.Result{Code: fsapi.Unavailable}
+		}
+		cut := &ControlledCut{service: s, active: true}
+		err := cmd.permit.Check(ctx, cut)
+		cut.active = false
+		if err != nil {
+			return fsapi.Result{Code: errno(err)}
+		}
+	}
+	previous := s.activePermit
+	s.activePermit = cmd.permit
+	defer func() { s.activePermit = previous }()
 	result, err := s.execute(ctx, cmd.request.Credentials(), cmd.value)
 	if err != nil {
 		return fsapi.Result{Code: errno(err)}
@@ -204,6 +242,9 @@ func (s *Service) evaluate(ctx context.Context, cmd command) fsapi.Result {
 	return result
 }
 func (s *Service) finish(cmd command, result fsapi.Result) {
+	if cmd.permit != nil {
+		cmd.permit.Close()
+	}
 	if err := cmd.request.Completion().Complete(result); err != nil {
 		s.setState(Blocked, "completion-failed")
 		_ = cmd.request.Completion().Complete(fsapi.Result{Code: fsapi.IO})
@@ -286,6 +327,20 @@ func (s *Service) discover(ctx context.Context) error {
 	return nil
 }
 func (s *Service) protect(ctx context.Context, id fsapi.UUID, payloads ...any) error {
+	if s.config.RequireControlledViews {
+		if s.activePermit == nil {
+			return fsapi.Permission
+		}
+		cut := &ControlledCut{service: s, active: true, admitted: true, permit: s.activePermit}
+		defer func() { cut.active = false }()
+		effects := make([]ControlledEffect, 0, len(payloads))
+		for _, payload := range payloads {
+			effects = append(effects, ControlledEffect{id, payload})
+		}
+		if err := s.activePermit.CheckSource(ctx, cut, effects); err != nil {
+			return err
+		}
+	}
 	proposal := Proposal{Previous: s.selection.Through, Selection: cloneSelection(s.selection)}
 	for _, p := range payloads {
 		if m, ok := p.(record.Mutation); ok {

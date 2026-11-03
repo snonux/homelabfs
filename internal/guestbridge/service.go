@@ -36,6 +36,15 @@ func New(ctx context.Context, c Config) (*Service, error) {
 	if c.MaxCapabilities < 1 || c.MaxCapabilities > 65536 || c.MaxCredentialRevisions < 1 || c.MaxCredentialRevisions > 65536 {
 		return nil, fsapi.Invalid
 	}
+	for _, provider := range []any{c.Claims, c.Execution} {
+		if bound, ok := provider.(interface {
+			CheckViewProtocol(Views, ViewProtocolProvider) error
+		}); ok {
+			if err := bound.CheckViewProtocol(c.Views, c.ViewProtocol); err != nil {
+				return nil, err
+			}
+		}
+	}
 	if c.Validation != nil {
 		profile := *c.Validation
 		c.Validation = &profile
@@ -162,6 +171,7 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 	if c.Op != "HELLO" && !hello {
 		return nil, fsapi.Permission
 	}
+	ctx = observeCommand(ctx, n, s.controller, c, raw)
 	if c.Protocol != nil && c.Op != "HELLO" {
 		if err := s.config.ViewProtocol.CheckRequest(ctx, c.Context, c.Op, bytes.Clone(c.Payload)); err != nil {
 			return nil, err
@@ -309,6 +319,14 @@ func (s *Service) call(ctx context.Context, c Command) (any, error) {
 		}
 		return nil, fsapi.Unavailable
 	}
+	return s.executeCall(ctx, binding, false)
+}
+
+// executeCall retains the original operation, allocation and canonical credentials.
+// Private callers hold resultMu across restore, preparation and snapshot protection.
+func (s *Service) executeCall(ctx context.Context, binding Binding, resume bool) (any, error) {
+	private := s.privateValidation()
+	var err error
 	need := capNeeds(binding.Call.Intent)
 	s.mu.Lock()
 	ss := s.sessions[binding.Context.Session]
@@ -343,9 +361,18 @@ func (s *Service) call(ctx context.Context, c Command) (any, error) {
 	}
 	var out Outcome
 	if validation, ok := s.config.Execution.(ValidationExecution); s.config.Validation != nil && ok {
-		out, err = validation.ExecuteValidation(ctx, binding, prepare, func(out Outcome) (json.RawMessage, json.RawMessage, error) {
+		protect := func(out Outcome) (json.RawMessage, json.RawMessage, error) {
 			return s.prepareValidationResult(ctx, binding, out)
-		})
+		}
+		if resume {
+			continuation, ok := s.config.Execution.(ValidationContinuation)
+			if !ok {
+				return nil, fsapi.Unsupported
+			}
+			out, err = continuation.ResumeValidation(ctx, binding, prepare, protect)
+		} else {
+			out, err = validation.ExecuteValidation(ctx, binding, prepare, protect)
+		}
 		if err == nil {
 			err = s.restoreValidation(context.WithoutCancel(ctx), binding.Context)
 		}
@@ -354,7 +381,7 @@ func (s *Service) call(ctx context.Context, c Command) (any, error) {
 	}
 	// Never synthesize no-effect after reservation or dispatch uncertainty.
 	if err != nil || !prepared.Load() {
-		return callPayload(call.Claim, "ADMITTED", "OK"), nil
+		return callPayload(binding.Call.Claim, "ADMITTED", "OK"), nil
 	}
 	if private {
 		protected, e := s.config.Claims.Resolve(ctx, binding.Context, binding.Call.Claim)
@@ -364,13 +391,13 @@ func (s *Service) call(ctx context.Context, c Command) (any, error) {
 		if protected.Status != "TERMINAL" {
 			return nil, fsapi.Unavailable
 		}
-		return callPayload(call.Claim, "ADMITTED", "OK"), nil
+		return callPayload(binding.Call.Claim, "ADMITTED", "OK"), nil
 	}
 	_, err = s.finalizeResult(ctx, binding, out)
 	if err != nil {
 		return nil, err
 	}
-	return callPayload(call.Claim, "ADMITTED", "OK"), nil
+	return callPayload(binding.Call.Claim, "ADMITTED", "OK"), nil
 }
 func (s *Service) credentials(ctx context.Context, c Context, cred Credentials, drain bool) error {
 	if err := s.config.Attestor.Verify(ctx, c, cred); err != nil {

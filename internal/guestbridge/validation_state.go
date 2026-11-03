@@ -134,6 +134,18 @@ func (s *Service) recoverValidation(ctx context.Context, state ClaimState) (Clai
 	}
 	s.resultMu.Lock()
 	defer s.resultMu.Unlock()
+	// Only the private provider can authorize a never-planned continuation.
+	// Reconciled/stale bindings must remain recovery-only.
+	if state.Status == "RESERVED" && state.ReconciledScope == nil {
+		if _, ok := s.config.Execution.(ValidationContinuation); ok {
+			if err := s.restoreValidation(ctx, state.Binding.Context); err != nil {
+				return state, err
+			}
+			if _, err := s.executeCall(ctx, state.Binding, true); err != nil {
+				return state, err
+			}
+		}
+	}
 	if state.Status != "TERMINAL" {
 		_, ready, err := store.RecoverOutcome(ctx, state.Binding)
 		if err != nil {
@@ -200,4 +212,10 @@ func (a *ancestor) UnmarshalJSON(raw []byte) error {
 	}
 	*a = ancestor{Parent: encoded.Parent, Object: encoded.Object, ObjectRevision: encoded.ObjectRevision, EntryRevision: encoded.EntryRevision, Name: string(encoded.Name)}
 	return nil
+}
+
+// ValidationContinuation is a private, sealed-stage continuation. Implementations
+// must decline preparation once any plan, effect or result has been protected.
+type ValidationContinuation interface {
+	ResumeValidation(context.Context, Binding, func(Captured) (Prepared, error), func(Outcome) (json.RawMessage, json.RawMessage, error)) (Outcome, error)
 }

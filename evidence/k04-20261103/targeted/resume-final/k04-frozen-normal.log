@@ -1,0 +1,3 @@
+ok  	github.com/snonux/homelabfs/internal/guestbridge	0.503s
+ok  	github.com/snonux/homelabfs/internal/controlledvalidation	8.236s
+ok  	github.com/snonux/homelabfs/internal/viewcontrol	5.111s

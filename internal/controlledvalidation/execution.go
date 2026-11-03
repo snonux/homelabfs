@@ -17,48 +17,102 @@ import (
 // Execute invokes real serialized filesystem planning and protects exact plan
 // and outcome in the private ledger. Recovery reuses original UUID evidence.
 func (p *Provider) Execute(ctx context.Context, b guestbridge.Binding, prepare func(guestbridge.Captured) (guestbridge.Prepared, error)) (guestbridge.Outcome, error) {
-	return p.execute(ctx, b, prepare, nil)
+	return p.execute(ctx, b, prepare, nil, false)
 }
 
 func (p *Provider) ExecuteValidation(ctx context.Context, b guestbridge.Binding, prepare func(guestbridge.Captured) (guestbridge.Prepared, error), protect func(guestbridge.Outcome) (json.RawMessage, json.RawMessage, error)) (guestbridge.Outcome, error) {
-	return p.execute(ctx, b, prepare, protect)
+	return p.execute(ctx, b, prepare, protect, false)
 }
 
-func (p *Provider) execute(ctx context.Context, b guestbridge.Binding, prepare func(guestbridge.Captured) (guestbridge.Prepared, error), protect func(guestbridge.Outcome) (json.RawMessage, json.RawMessage, error)) (guestbridge.Outcome, error) {
+// ResumeValidation only prepares an exact original RESERVED entry which has
+// never protected a plan or outcome. The second locked load closes races with
+// ordinary dispatch; existing plans stay on RecoverOutcome's recovery path.
+func (p *Provider) ResumeValidation(ctx context.Context, b guestbridge.Binding, prepare func(guestbridge.Captured) (guestbridge.Prepared, error), protect func(guestbridge.Outcome) (json.RawMessage, json.RawMessage, error)) (guestbridge.Outcome, error) {
+	return p.execute(ctx, b, prepare, protect, true)
+}
+
+func (p *Provider) execute(ctx context.Context, b guestbridge.Binding, prepare func(guestbridge.Captured) (guestbridge.Prepared, error), protect func(guestbridge.Outcome) (json.RawMessage, json.RawMessage, error), resume bool) (guestbridge.Outcome, error) {
 	if err := p.Check(ctx, b.Context); err != nil {
 		return guestbridge.Outcome{}, err
 	}
-	p.execution.Lock()
-	defer p.execution.Unlock()
 	var saved entry
-	if err := p.db.View(func(tx *bolt.Tx) error {
-		e, ok, err := p.load(tx, b.Call.Claim)
-		if err != nil {
-			return err
-		}
-		if !ok || !sameExact(e.Binding, b) {
-			return fsapi.Stale
-		}
-		if e.Gap || (e.Status != "RESERVED" && e.Status != "PENDING" && e.Status != "TERMINAL") {
-			return fsapi.Stale
-		}
-		if e.Plan == nil {
-			if err = p.checkPendingStage(tx, b.Context, b.Operation); err != nil {
+	loadSaved := func() error {
+		return p.db.View(func(tx *bolt.Tx) error {
+			e, ok, err := p.load(tx, b.Call.Claim)
+			if err != nil {
 				return err
 			}
+			if !ok || !sameExact(e.Binding, b) {
+				return fsapi.Stale
+			}
+			if e.Gap || (e.Status != "RESERVED" && e.Status != "PENDING" && e.Status != "TERMINAL") {
+				return fsapi.Stale
+			}
+			if resume && (e.Status != "RESERVED" || e.PreparationStage != "UNPREPARED" || e.Plan != nil || e.Outcome != nil || e.PlannedOutcome != nil || len(e.ProposedResult) != 0 || len(e.Result) != 0 || len(e.BridgeState) != 0 || e.SnapshotVersion != 0) {
+				return fsapi.WouldBlock
+			}
+			if e.Plan == nil {
+				if err = p.checkPendingStage(tx, b.Context, b.Operation); err != nil {
+					return err
+				}
+			}
+			saved = e
+			return nil
+		})
+	}
+	p.execution.Lock()
+	errLoad := loadSaved()
+	p.execution.Unlock()
+	if errLoad != nil {
+		return guestbridge.Outcome{}, errLoad
+	}
+	if saved.Outcome != nil {
+		return *saved.Outcome, nil
+	}
+	var admission Admitted
+	if controller := p.currentAdmission(); controller != nil {
+		var err error
+		admission, err = controller.Admit(ctx, b)
+		if err != nil {
+			return guestbridge.Outcome{}, err
 		}
-		saved = e
-		return nil
-	}); err != nil {
+		if nilValue(admission) {
+			return guestbridge.Outcome{}, fsapi.Permission
+		}
+		defer admission.Close()
+	}
+	p.execution.Lock()
+	defer p.execution.Unlock()
+	if err := loadSaved(); err != nil {
 		return guestbridge.Outcome{}, err
 	}
 	if saved.Outcome != nil {
 		return *saved.Outcome, nil
 	}
 	var out guestbridge.Outcome
-	err := p.config.Service.Controlled(ctx, p.config.Authorization.Enrollment.Profile, func(owned context.Context, cut *fsservice.ControlledCut) error {
+	run := p.config.Service.Controlled
+	if admission != nil {
+		run = func(ctx context.Context, profile fsservice.ValidationProfile, callback func(context.Context, *fsservice.ControlledCut) error) error {
+			return p.config.Service.ControlledAdmitted(ctx, profile, admission, callback)
+		}
+	}
+	err := run(ctx, p.config.Authorization.Enrollment.Profile, func(owned context.Context, cut *fsservice.ControlledCut) error {
 		plan := saved.Plan
 		if plan == nil {
+			// A failed protection write must not make an already invoked
+			// preparer look like a never-planned admission refusal on QUERY.
+			if saved.PreparationStage != "UNPREPARED" {
+				return fsapi.WouldBlock
+			}
+			if err := p.update(b, func(e *entry) error {
+				if e.PreparationStage != "UNPREPARED" || e.Plan != nil || e.Outcome != nil {
+					return fsapi.Stale
+				}
+				e.PreparationStage = "PREPARING"
+				return nil
+			}); err != nil {
+				return err
+			}
 			cap := &captured{cut: cut, provider: p, owned: owned, binding: b}
 			prepared, err := prepare(cap)
 			if err != nil {
@@ -73,6 +127,9 @@ func (p *Provider) execute(ctx context.Context, b guestbridge.Binding, prepare f
 					return fsapi.Stale
 				}
 				plan = cap.plan
+			}
+			if err := p.fail("prepared-before-plan-protection"); err != nil {
+				return err
 			}
 			predicted, err := plannedOutcome(owned, cut, *plan)
 			if err != nil {
@@ -226,7 +283,11 @@ func (c *captured) Prepare(_ context.Context, b guestbridge.Binding, command fsa
 		}
 		command.Lock.Owner = fsapi.LockOwner{Session: session, Generation: command.Generation, Token: token}
 	}
-	plan, err := c.cut.PlanControlled(ctx, fsapi.Cred{UID: cred.FSUID, GID: cred.FSGID, Groups: cred.Groups}, command, b.Operation, b.Allocation, maxEnd)
+	planner := c.cut.PlanControlled
+	if b.Call.Intent.Opcode == "DRAIN_WRITE" {
+		planner = c.cut.PlanControlledDrain
+	}
+	plan, err := planner(ctx, fsapi.Cred{UID: cred.FSUID, GID: cred.FSGID, Groups: cred.Groups}, command, b.Operation, b.Allocation, maxEnd)
 	if err != nil {
 		return guestbridge.Prepared{}, err
 	}

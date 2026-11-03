@@ -1,0 +1,71 @@
+{
+  "base": "5b13e0bdd9e74759ecf0f4bb0c58edf8193ed240",
+  "r1_fix_baseline": "../../r1-fix-baseline/source-sha256.json",
+  "environment": {
+    "GOMAXPROCS": "2",
+    "GOFLAGS": "-p=1",
+    "GOMEMLIMIT": "1GiB"
+  },
+  "changed_from_r1_fix": [
+    "docs/spec/Retained-9p-view-leases.md",
+    "internal/controlledvalidation/claims.go",
+    "internal/controlledvalidation/execution.go",
+    "internal/controlledvalidation/provider.go",
+    "internal/guestbridge/service.go",
+    "internal/viewcontrol/controller_test.go"
+  ],
+  "new_paths": [
+    "internal/controlledvalidation/regression_test.go",
+    "internal/guestbridge/endpoint.go",
+    "internal/guestbridge/validation_state.go",
+    "internal/viewcontrol/transport_progress_test.go"
+  ],
+  "checks": [
+    {
+      "name": "k04-final-race",
+      "exit": 0,
+      "log": "k04-final-race.log"
+    },
+    {
+      "name": "k04-marker-target-race",
+      "exit": 0,
+      "log": "k04-marker-target-race.log"
+    },
+    {
+      "name": "k04-stage-extra-race",
+      "exit": 0,
+      "log": "k04-stage-extra-race.log"
+    },
+    {
+      "name": "k04-fairness-corrected",
+      "exit": 0,
+      "log": "k04-fairness-corrected.log"
+    },
+    {
+      "name": "k04-frozen-normal",
+      "exit": 0,
+      "log": "k04-frozen-normal.log"
+    },
+    {
+      "name": "k04-frozen-vet",
+      "exit": 0,
+      "log": "k04-frozen-vet.log"
+    },
+    {
+      "name": "k04-frozen-errcheck",
+      "exit": 0,
+      "log": "k04-frozen-errcheck.log"
+    },
+    {
+      "name": "k04-frozen-lint",
+      "exit": 0,
+      "log": "k04-frozen-lint.log"
+    }
+  ],
+  "notes": [
+    "Full three-package race passed after production stage marker; subsequent test-only intent/historical-stage and same-worker FIFO amendments passed targeted race. Final full normal suite and static checks pass.",
+    "Earlier pressure2 failure was unreclaimed sixteen control response cells; corrected helper uses real framed atomic reclaim. Earlier final-normal failure was invalid out-of-order ticket5 before ticket4 admitted; corrected fairness test uses same original ticket in two accepted cells and passes race count5.",
+    "No R1 fixes reverted. No SSH, VM, mount, installation, git/task mutations, normal-publication or runtime proof."
+  ],
+  "source_changes_after_freeze": []
+}

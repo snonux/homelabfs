@@ -1,0 +1,5 @@
+--- FAIL: TestTransportAcquisitionRetryRetainsOriginalWhileControlDrains (3.35s)
+    transport_progress_test.go:234: WOULD_BLOCK
+FAIL
+FAIL	github.com/snonux/homelabfs/internal/viewcontrol	4.012s
+FAIL

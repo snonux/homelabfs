@@ -1,0 +1,5 @@
+internal/guestbridge/verified_request_test.go:46:52: SA1029: should not use built-in type string as key for value; define your own type to avoid collisions (staticcheck)
+	forged := context.WithValue(context.Background(), "commandObservationKey", CommandObservation{Operation: "VIEW_ACK"})
+	                                                  ^
+1 issues:
+* staticcheck: 1

@@ -1,0 +1,34 @@
+?   	github.com/snonux/homelabfs/cmd/hfs-behavior	[no test files]
+?   	github.com/snonux/homelabfs/cmd/hfs-lab	[no test files]
+?   	github.com/snonux/homelabfs/cmd/hfs-smoke-driver	[no test files]
+?   	github.com/snonux/homelabfs/cmd/homelabfs	[no test files]
+?   	github.com/snonux/homelabfs/internal	[no test files]
+ok  	github.com/snonux/homelabfs/internal/admin	2.021s
+ok  	github.com/snonux/homelabfs/internal/admission	0.022s
+ok  	github.com/snonux/homelabfs/internal/apply	12.552s
+ok  	github.com/snonux/homelabfs/internal/behavior	0.434s
+ok  	github.com/snonux/homelabfs/internal/checkpoint	4.831s
+ok  	github.com/snonux/homelabfs/internal/cluster	0.014s
+ok  	github.com/snonux/homelabfs/internal/controlledvalidation	1.440s
+ok  	github.com/snonux/homelabfs/internal/coord	5.917s
+ok  	github.com/snonux/homelabfs/internal/daemoncli	0.182s
+ok  	github.com/snonux/homelabfs/internal/failpoint	0.036s
+ok  	github.com/snonux/homelabfs/internal/fsapi	0.004s
+ok  	github.com/snonux/homelabfs/internal/fsservice	9.591s
+ok  	github.com/snonux/homelabfs/internal/fuseadapter	0.224s
+ok  	github.com/snonux/homelabfs/internal/guestbridge	0.473s
+?   	github.com/snonux/homelabfs/internal/journal	[no test files]
+ok  	github.com/snonux/homelabfs/internal/journal/record	0.119s
+ok  	github.com/snonux/homelabfs/internal/journal/segment	1.480s
+ok  	github.com/snonux/homelabfs/internal/labrunner	5.246s
+ok  	github.com/snonux/homelabfs/internal/logicalview	0.023s
+ok  	github.com/snonux/homelabfs/internal/normalnode	0.005s
+ok  	github.com/snonux/homelabfs/internal/normalpublic	0.119s
+?   	github.com/snonux/homelabfs/internal/recovery	[no test files]
+?   	github.com/snonux/homelabfs/internal/replication	[no test files]
+ok  	github.com/snonux/homelabfs/internal/sim	28.678s
+ok  	github.com/snonux/homelabfs/internal/storage	1.221s
+ok  	github.com/snonux/homelabfs/internal/transactions	6.559s
+ok  	github.com/snonux/homelabfs/internal/transport	0.124s
+ok  	github.com/snonux/homelabfs/internal/vfs	2.523s
+ok  	github.com/snonux/homelabfs/internal/viewcontrol	5.254s

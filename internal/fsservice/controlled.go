@@ -19,8 +19,10 @@ import (
 // ControlledCut is sealed to the local service's serialized worker. Its methods
 // are valid only during Controlled. It exposes no backing filesystem authority.
 type ControlledCut struct {
-	service *Service
-	active  bool
+	service  *Service
+	active   bool
+	admitted bool
+	permit   ControlledPermit
 }
 
 // ControlledPlan is private validation recovery evidence, not a v1 journal kind
@@ -103,7 +105,7 @@ func (s *Service) Controlled(ctx context.Context, profile ValidationProfile, run
 
 // Image snapshots the actual committed applied metadata on the worker.
 func (c *ControlledCut) Image(ctx context.Context, volume fsapi.UUID) (storage.Image, error) {
-	if !c.active || volume != c.service.config.Storage.Volume {
+	if !c.accessAllowed() || volume != c.service.config.Storage.Volume {
 		return storage.Image{}, fsapi.Permission
 	}
 	return c.service.applied.Store.Export(ctx)
@@ -111,7 +113,7 @@ func (c *ControlledCut) Image(ctx context.Context, volume fsapi.UUID) (storage.I
 
 // Stat resolves a stable logical object without pathname traversal.
 func (c *ControlledCut) Stat(ctx context.Context, id fsapi.ObjectID) (storage.Object, error) {
-	if !c.active {
+	if !c.accessAllowed() {
 		return storage.Object{}, fsapi.Stale
 	}
 	return c.service.applied.Store.Stat(ctx, id)
@@ -134,7 +136,25 @@ func (c *ControlledCut) Lookup(ctx context.Context, id fsapi.ObjectID, name stri
 // and semantic output before any filesystem effect. maxEnd is used only for
 // delegated WRITE and after resolving the authoritative append offset.
 func (c *ControlledCut) PlanControlled(ctx context.Context, cred fsapi.Cred, command fsapi.Command, operation fsapi.UUID, allocation fsapi.ObjectID, maxEnd *int64) (ControlledPlan, error) {
-	if !c.active || !operation.Valid() {
+	return c.planControlled(ctx, cred, command, operation, allocation, maxEnd, false)
+}
+
+// PlanControlledDrain preserves the verified mmap positional offset even for an
+// append description. Only an immutable-drain-validated admission can invoke it.
+func (c *ControlledCut) PlanControlledDrain(ctx context.Context, cred fsapi.Cred, command fsapi.Command, operation fsapi.UUID, allocation fsapi.ObjectID, maxEnd *int64) (ControlledPlan, error) {
+	verifier, ok := c.permit.(interface {
+		CheckDrain(context.Context, fsapi.Command) error
+	})
+	if !ok {
+		return ControlledPlan{}, fsapi.Permission
+	}
+	if err := verifier.CheckDrain(ctx, command); err != nil {
+		return ControlledPlan{}, err
+	}
+	return c.planControlled(ctx, cred, command, operation, allocation, maxEnd, true)
+}
+func (c *ControlledCut) planControlled(ctx context.Context, cred fsapi.Cred, command fsapi.Command, operation fsapi.UUID, allocation fsapi.ObjectID, maxEnd *int64, positionalDrain bool) (ControlledPlan, error) {
+	if !c.accessAllowed() || !operation.Valid() {
 		return ControlledPlan{}, fsapi.Invalid
 	}
 	s := c.service
@@ -181,7 +201,7 @@ func (c *ControlledCut) PlanControlled(ctx context.Context, cred fsapi.Cred, com
 		if command.Operation == fsapi.Read && h.flags.Access == fsapi.WriteOnly || (command.Operation == fsapi.Write || command.Operation == fsapi.Truncate) && h.flags.Access == fsapi.ReadOnly {
 			return cp, fsapi.Permission
 		}
-		if command.Operation == fsapi.Write && h.flags.Append {
+		if command.Operation == fsapi.Write && h.flags.Append && !positionalDrain {
 			o, e := s.applied.Store.Stat(ctx, h.object)
 			if e != nil {
 				return cp, e
@@ -381,6 +401,9 @@ func (c *ControlledCut) PlanControlled(ctx context.Context, cred fsapi.Cred, com
 		cp.PinOperation = op
 		cp.Pin = &record.HandlePin{Pin: pin, Object: cp.Object, ServingGeneration: s.config.Workspace.ID, Incarnation: s.config.Authority.OwnerIncarnation, Reasons: 5}
 	}
+	if err = c.checkSourcePlan(ctx, cp); err != nil {
+		return ControlledPlan{}, err
+	}
 	return cp, nil
 }
 
@@ -388,7 +411,7 @@ func (c *ControlledCut) PlanControlled(ctx context.Context, cred fsapi.Cred, com
 // operation UUID evidence and compares the complete mutation; it never replans
 // against a pathname. Incomplete original journal evidence keeps the gate shut.
 func (c *ControlledCut) ApplyControlled(ctx context.Context, p ControlledPlan, recovery bool) (fsapi.Result, error) {
-	if !c.active {
+	if !c.accessAllowed() {
 		return fsapi.Result{}, fsapi.Stale
 	}
 	raw, err := json.Marshal(p)
@@ -425,7 +448,7 @@ func controlledLifetime(op fsapi.Operation) bool {
 	return false
 }
 func (c *ControlledCut) applyControlled(ctx context.Context, p ControlledPlan, recovery bool) (fsapi.Result, error) {
-	if !c.active {
+	if !c.accessAllowed() {
 		return fsapi.Result{}, fsapi.Stale
 	}
 	s := c.service

@@ -1,0 +1,7 @@
+ok  	github.com/snonux/homelabfs/internal/guestbridge	0.500s
+ok  	github.com/snonux/homelabfs/internal/controlledvalidation	7.245s
+--- FAIL: TestTransportAcquisitionRetryRetainsOriginalWhileControlDrains (3.35s)
+    transport_progress_test.go:282: accepted DIRTY_RESERVE cell 9 stranded
+FAIL
+FAIL	github.com/snonux/homelabfs/internal/viewcontrol	7.710s
+FAIL

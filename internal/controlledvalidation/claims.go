@@ -33,7 +33,7 @@ func (p *Provider) Allocate(ctx context.Context, scope guestbridge.Context, clai
 			}
 			return nil
 		}
-		if b.Stats().KeyN >= p.config.MaxClaims {
+		if p.identityCount(tx) >= p.config.MaxClaims {
 			return fsapi.NoSpace
 		}
 		ps, err := p.principal(tx, claim)
@@ -139,16 +139,19 @@ func (p *Provider) Reserve(ctx context.Context, b guestbridge.Binding) (guestbri
 			}
 			b.Allocation = fsapi.ObjectID{Home: home, Allocation: id}
 		}
-		if err = p.reserveCredit(tx, "retained-credit", p.config.ClaimCreditBytes, p.config.MaxRetainedBytes); err != nil {
-			return err
-		}
-		if err = p.reserveCredit(tx, "source-credit", p.config.SourceCreditBytes, p.config.MaxSourceBytes); err != nil {
-			return err
+		if e.RetainedCredit == 0 {
+			if err = p.reserveCredit(tx, "retained-credit", p.config.ClaimCreditBytes, p.config.MaxRetainedBytes); err != nil {
+				return err
+			}
+			if err = p.reserveCredit(tx, "source-credit", p.config.SourceCreditBytes, p.config.MaxSourceBytes); err != nil {
+				return err
+			}
 		}
 		e.RetainedCredit = p.config.ClaimCreditBytes
 		e.SourceCredit = p.config.SourceCreditBytes
 		e.Binding = b
 		e.Status = "RESERVED"
+		e.PreparationStage = "UNPREPARED"
 		if err = put(p.bucket(tx, "claims"), claimKey(e.Claim), e); err != nil {
 			return err
 		}
@@ -188,6 +191,15 @@ func (p *Provider) Cancel(ctx context.Context, scope guestbridge.Context, claim 
 	p.execution.Lock()
 	defer p.execution.Unlock()
 	err := p.db.Update(func(tx *bolt.Tx) error {
+		if raw := p.bucket(tx, "earmarks").Get(claimKey(claim)); raw != nil {
+			var earmark Earmark
+			if err := json.Unmarshal(raw, &earmark); err != nil {
+				return err
+			}
+			if earmark.Bound != nil && !earmark.Closed {
+				return fsapi.WouldBlock
+			}
+		}
 		e, ok, err := p.load(tx, claim)
 		if err != nil {
 			return err
@@ -218,6 +230,15 @@ func (p *Provider) ResolveGap(ctx context.Context, scope guestbridge.Context, cl
 	defer p.execution.Unlock()
 	var proof string
 	err := p.db.Update(func(tx *bolt.Tx) error {
+		if raw := p.bucket(tx, "earmarks").Get(claimKey(claim)); raw != nil {
+			var earmark Earmark
+			if err := json.Unmarshal(raw, &earmark); err != nil {
+				return err
+			}
+			if earmark.Bound != nil && !earmark.Closed {
+				return fsapi.WouldBlock
+			}
+		}
 		e, ok, err := p.load(tx, claim)
 		if err != nil {
 			return err
@@ -279,11 +300,28 @@ func (p *Provider) Retire(ctx context.Context, scope guestbridge.Context, raw js
 			if err != nil {
 				return err
 			}
-			if !ok {
-				return nil
-			}
 			var expected string
-			if e.Status == "TERMINAL" {
+			if !ok {
+				raw := p.bucket(tx, "earmarks").Get(claimKey(claim))
+				if raw == nil {
+					return nil
+				}
+				var earmark Earmark
+				if err := json.Unmarshal(raw, &earmark); err != nil {
+					return err
+				}
+				if !earmark.Closed || earmark.Scope != scope || earmark.Bound != nil {
+					return nil
+				}
+				expected = earmark.GapProof
+				if len(expected) != 64 {
+					return fsapi.Stale
+				}
+			}
+
+			if !ok {
+				// Exact typed unbound gap proof was checked above.
+			} else if e.Status == "TERMINAL" {
 				var r struct {
 					ID string `json:"id"`
 				}

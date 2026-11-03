@@ -1,0 +1,3 @@
+ok  	github.com/snonux/homelabfs/internal/viewcontrol	12.487s	coverage: 73.6% of statements
+ok  	github.com/snonux/homelabfs/internal/controlledvalidation	11.744s	coverage: 59.1% of statements
+ok  	github.com/snonux/homelabfs/internal/guestbridge	5.363s	coverage: 66.3% of statements

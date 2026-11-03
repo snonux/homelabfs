@@ -1,0 +1,33 @@
+package viewcontrol
+import("testing";"encoding/json";"errors";"github.com/snonux/homelabfs/internal/fsapi";"github.com/snonux/homelabfs/internal/guestbridge")
+func TestReviewSourceGrowth(t *testing.T){
+r:=newRig(t)
+_,d:=r.create(0,"growth",false)
+_,dirty:=r.acquire(0,page(d,65536),"EXCLUSIVE_DIRTY")
+_,payload:=r.reserve(0,dirty.Lease,d)
+reserved:=r.view(0,"DIRTY_RESERVE",payload)
+if reserved.Status!="GRANTED"{t.Fatal(reserved.Status)}
+r.acquire(0,guestbridge.ViewAccess{Kind:"DOMAIN"},"READ")
+f:=freezeRequest(r.controlTicket(0),*reserved.Reservation,r.controller.state.Recall.ID,"61")
+fr:=r.view(0,"DIRTY_FREEZE",f)
+m,_:=canonical(map[string]any{"entries":[]json.RawMessage{fr.Entry},"hash":digest([]json.RawMessage{fr.Entry})})
+r.ack(0,"STOPPED",m)
+b,_:=canonical(f); var req request; must(t,json.Unmarshal(b,&req)); _,call,e:=frozen(req);must(t,e)
+result:=r.sendCall(0,call)
+if result.Code!="OK"{t.Fatal(result.Code)}
+_,e=r.controller.capture(t.Context())
+if !errors.Is(e,fsapi.NoSpace){t.Fatalf("expected capture failure: %v",e)}
+t.Logf("committed drain Count=%d; post-drain source capture=%v phase=%s",result.Count,e,r.controller.state.Recall.Phase)
+_,e=r.execute(0,"VIEW_POLL",map[string]any{"domain":r.domains[0],"after_sequence":0})
+if !errors.Is(e,fsapi.NoSpace){t.Fatalf("expected permanently blocked install: %v",e)}
+}
+
+func TestReviewOrdinarySourceGrowth(t *testing.T){
+r:=newRig(t);_,d:=r.create(0,"ordinary-growth",false)
+result:=r.call(0,"WRITE",map[string]any{"description":d,"offset":65536,"data":"61","max_end":65537})
+if result.Code!="OK"{t.Fatal(result.Code)}
+_,e:=r.controller.capture(t.Context());if !errors.Is(e,fsapi.NoSpace){t.Fatalf("capture: %v",e)}
+t.Logf("ordinary committed Count=%d; post-write source=%v",result.Count,e)
+_,e=r.execute(0,"VIEW_ACQUIRE",map[string]any{"request":r.ticket(0),"domain":r.domains[0],"access":page(d,0),"mode":"READ","target":nil})
+if !errors.Is(e,fsapi.NoSpace){t.Fatalf("acquire: %v",e)}
+}

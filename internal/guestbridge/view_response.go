@@ -39,13 +39,17 @@ func (s *Service) exchangeView(ctx context.Context, c Command) (json.RawMessage,
 	if e = s.credentials(ctx, c.Context, credentials, oneOf(c.Op, "DIRTY_FREEZE", "VIEW_QUERY", "VIEW_CANCEL", "VIEW_RELEASE", "VIEW_RETIRE")); e != nil {
 		return nil, e
 	}
+	// A controlled acquire target is a structurally validated expectation. The
+	// issuer verifies actual current source before grant; stale/pruned expectations
+	// must reach it so it can drive a fresh stopped install. Returned lease targets
+	// still pass the full mandatory source verifier below.
 	// Every provider must authorize the actual original scoped principal before
 	// querying or changing even a pending ticket. Request hashes are not secrets.
 	if c.Op == "VIEW_ACQUIRE" {
 		if e = s.issuedViewAccess(c.Context, o); e != nil {
 			return nil, e
 		}
-		if o["target"] != nil {
+		if target, ok := o["target"].(map[string]any); ok && target["kind"] == "NORMAL_PUBLIC" {
 			if e = s.checkTarget(ctx, c.Context, o["target"]); e != nil {
 				return nil, e
 			}
