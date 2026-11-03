@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+
 	"github.com/snonux/homelabfs/internal/fsservice"
 
 	"github.com/snonux/homelabfs/internal/fsapi"
@@ -216,7 +217,14 @@ func (s *Service) finishLifetime(b Binding, a arguments) {
 	switch b.Call.Intent.Opcode {
 	case "DESCRIPTION_RELEASE":
 		if g := ss.Grants[a.cap("description").Token]; g != nil {
+			if s.privateValidation() {
+				g.Sequence = a.number("release_sequence")
+			}
 			g.Released = true
+		}
+	case "DESCRIPTION_CLOSE":
+		if s.privateValidation() {
+			ss.CloseSequences[a.cap("description").Token+":"+a.text("process")] = a.number("close_sequence")
 		}
 	case "PROCESS_EXIT":
 		ss.Exited[a.text("process")] = a.number("exit_sequence")

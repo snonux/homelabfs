@@ -43,6 +43,21 @@ func New(ctx context.Context, c Config) (*Service, error) {
 	}
 	s := &Service{controller: parseID(controller), config: c, sessions: make(map[string]*session)}
 	for _, scope := range c.Scopes {
+		if c.Validation != nil {
+			claims, claimBound := c.Claims.(ValidationEnrollment)
+			execution, executionBound := c.Execution.(ValidationEnrollment)
+			if claimBound || executionBound {
+				if !claimBound || !executionBound {
+					return nil, fsapi.Permission
+				}
+				if err := claims.CheckValidation(ctx, scope, *c.Validation, c.Endpoint); err != nil {
+					return nil, err
+				}
+				if err := execution.CheckValidation(ctx, scope, *c.Validation, c.Endpoint); err != nil {
+					return nil, err
+				}
+			}
+		}
 		b, e := marshal(scope)
 		if e != nil {
 			return nil, e
@@ -74,6 +89,11 @@ func New(ctx context.Context, c Config) (*Service, error) {
 			return nil, e
 		}
 		s.sessions[scope.Session] = &session{Generation: generation, Context: scope, Credentials: map[string][]byte{}, Exited: map[string]uint64{}, Grants: map[string]*grant{}, CloseSequences: map[string]uint64{}}
+	}
+	for _, scope := range c.Scopes {
+		if err := s.restoreValidation(ctx, scope); err != nil {
+			return nil, err
+		}
 	}
 	if err := c.Native.Enroll(ctx, c.Endpoint, s.controller); err != nil {
 		return nil, err
@@ -154,6 +174,10 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 			state, err = s.config.Claims.Resolve(ctx, c.Context, p.Claim)
 		}
 		if err == nil {
+			state, err = s.recoverValidation(ctx, state)
+			if err != nil {
+				return nil, err
+			}
 			if state.Status == "TERMINAL" {
 				if _, e := validateResult(state.Result); e != nil {
 					return nil, e
@@ -223,7 +247,18 @@ func (s *Service) call(ctx context.Context, c Command) (any, error) {
 		if !bytes.Equal(binding.Canonical, old.Binding.Canonical) || (binding.Context != old.Binding.Context && (old.ReconciledScope == nil || *old.ReconciledScope != binding.Context)) {
 			return callPayload(call.Claim, "REJECTED", "ID_CONFLICT"), nil
 		}
+		if _, err = s.recoverValidation(ctx, old); err != nil {
+			return nil, err
+		}
 		return callPayload(call.Claim, "ADMITTED", "OK"), nil
+	}
+	private := s.privateValidation()
+	if private {
+		s.resultMu.Lock()
+		defer s.resultMu.Unlock()
+		if err = s.restoreValidation(ctx, c.Context); err != nil {
+			return nil, err
+		}
 	}
 	if err = s.credentials(ctx, c.Context, call.Credentials, call.Intent.Opcode == "DRAIN_WRITE"); err != nil {
 		return callPayload(call.Claim, "REJECTED", code(err)), nil
@@ -254,7 +289,7 @@ func (s *Service) call(ctx context.Context, c Command) (any, error) {
 		defer func() { s.mu.Lock(); ss.Reserved -= need; s.mu.Unlock() }()
 	}
 	var prepared atomic.Bool
-	out, err := s.config.Execution.Execute(ctx, binding, func(o Captured) (Prepared, error) {
+	prepare := func(o Captured) (Prepared, error) {
 		if !prepared.CompareAndSwap(false, true) {
 			return Prepared{}, fsapi.Stale
 		}
@@ -267,17 +302,40 @@ func (s *Service) call(ctx context.Context, c Command) (any, error) {
 		if !enough {
 			return Prepared{}, fsapi.NoSpace
 		}
+		if s.privateValidation() {
+			if err := s.credentials(ctx, binding.Context, binding.Call.Credentials, binding.Call.Intent.Opcode == "DRAIN_WRITE"); err != nil {
+				return Prepared{}, err
+			}
+		}
 		return s.prepare(ctx, binding, o)
-	})
+	}
+	var out Outcome
+	if validation, ok := s.config.Execution.(ValidationExecution); s.config.Validation != nil && ok {
+		out, err = validation.ExecuteValidation(ctx, binding, prepare, func(out Outcome) (json.RawMessage, json.RawMessage, error) {
+			return s.prepareValidationResult(ctx, binding, out)
+		})
+		if err == nil {
+			err = s.restoreValidation(context.WithoutCancel(ctx), binding.Context)
+		}
+	} else {
+		out, err = s.config.Execution.Execute(ctx, binding, prepare)
+	}
 	// Never synthesize no-effect after reservation or dispatch uncertainty.
 	if err != nil || !prepared.Load() {
 		return callPayload(call.Claim, "ADMITTED", "OK"), nil
 	}
-	result, err := s.result(ctx, binding, out)
-	if err != nil {
-		return nil, err
+	if private {
+		protected, e := s.config.Claims.Resolve(ctx, binding.Context, binding.Call.Claim)
+		if e != nil {
+			return nil, e
+		}
+		if protected.Status != "TERMINAL" {
+			return nil, fsapi.Unavailable
+		}
+		return callPayload(call.Claim, "ADMITTED", "OK"), nil
 	}
-	if err = s.config.Claims.ProtectResult(ctx, binding, result); err != nil {
+	_, err = s.finalizeResult(ctx, binding, out)
+	if err != nil {
 		return nil, err
 	}
 	return callPayload(call.Claim, "ADMITTED", "OK"), nil

@@ -1,0 +1,6 @@
+ok  	github.com/snonux/homelabfs/internal/fsservice	5.219s
+ok  	github.com/snonux/homelabfs/internal/guestbridge	0.127s
+# github.com/snonux/homelabfs/internal/controlledvalidation
+internal/controlledvalidation/provider.go:841:31: entry.ResultingRevision undefined (type record.EntryEdit has no field or method ResultingRevision)
+FAIL	github.com/snonux/homelabfs/internal/controlledvalidation [build failed]
+FAIL

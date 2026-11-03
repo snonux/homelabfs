@@ -1,0 +1,3 @@
+ok  	github.com/snonux/homelabfs/internal/controlledvalidation	0.329s
+ok  	github.com/snonux/homelabfs/internal/fsservice	(cached)
+ok  	github.com/snonux/homelabfs/internal/guestbridge	(cached)

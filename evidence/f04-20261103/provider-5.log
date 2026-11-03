@@ -1,0 +1,5 @@
+--- FAIL: TestProtectedGapsAndExactRetirement (0.00s)
+    provider_test.go:387: PERMISSION
+FAIL
+FAIL	github.com/snonux/homelabfs/internal/controlledvalidation	0.089s
+FAIL

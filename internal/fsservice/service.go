@@ -117,7 +117,7 @@ func (s *Service) Dispatch(ctx context.Context, r *fsapi.Request, c fsapi.Comman
 		return fsapi.Busy
 	}
 	select {
-	case s.queue <- command{r, c}:
+	case s.queue <- command{request: r, value: c}:
 		s.accepted[r] = true
 		return nil
 	default:
@@ -150,6 +150,11 @@ func (s *Service) run() {
 	defer close(s.done)
 	ctx := context.Background()
 	for cmd := range s.queue {
+		if cmd.controlled != nil {
+			cmd.controlled(ctx)
+			s.retryLocks(ctx)
+			continue
+		}
 		if s.State() != Serving {
 			s.finish(cmd, fsapi.Result{Code: fsapi.Unavailable})
 			s.retryLocks(ctx)

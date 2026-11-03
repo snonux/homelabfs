@@ -1,0 +1,4 @@
+# github.com/snonux/homelabfs/internal/controlledvalidation [github.com/snonux/homelabfs/internal/controlledvalidation.test]
+internal/controlledvalidation/provider.go:841:31: entry.ResultingRevision undefined (type record.EntryEdit has no field or method ResultingRevision)
+FAIL	github.com/snonux/homelabfs/internal/controlledvalidation [build failed]
+FAIL

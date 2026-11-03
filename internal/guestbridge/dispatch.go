@@ -211,7 +211,9 @@ func (s *Service) lifetime(b Binding, a arguments, g grant) error {
 		if seq <= ss.CloseSequences[key] {
 			return fsapi.Stale
 		}
-		ss.CloseSequences[key] = seq
+		if !s.privateValidation() {
+			ss.CloseSequences[key] = seq
+		}
 	}
 	if op == "DESCRIPTION_RELEASE" {
 		original := ss.Grants[g.Cap.Token]
@@ -219,7 +221,9 @@ func (s *Service) lifetime(b Binding, a arguments, g grant) error {
 		if seq <= original.Sequence {
 			return fsapi.Stale
 		}
-		original.Sequence = seq
+		if !s.privateValidation() {
+			original.Sequence = seq
+		}
 	}
 	return nil
 }

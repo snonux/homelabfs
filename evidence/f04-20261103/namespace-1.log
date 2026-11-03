@@ -1,0 +1,5 @@
+--- FAIL: TestRealNamespaceMetadataAndOpenSemantics (0.02s)
+    provider_test.go:596: CREATE result=OK err=STALE
+FAIL
+FAIL	github.com/snonux/homelabfs/internal/controlledvalidation	0.174s
+FAIL

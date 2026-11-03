@@ -1,0 +1,7 @@
+--- FAIL: TestRealBridgeProtectsCapabilitiesBeforeEffectAndReply (0.05s)
+    bridge_test.go:235: actual capability restart ready=false STALE
+FAIL
+FAIL	github.com/snonux/homelabfs/internal/controlledvalidation	0.143s
+ok  	github.com/snonux/homelabfs/internal/guestbridge	0.110s
+ok  	github.com/snonux/homelabfs/internal/fsservice	5.270s
+FAIL

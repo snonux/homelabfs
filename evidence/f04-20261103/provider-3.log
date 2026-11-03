@@ -1,0 +1,13 @@
+--- FAIL: TestRealJournalCrashRecoveryOriginalPlan (0.00s)
+    provider_test.go:244: INVALID
+--- FAIL: TestAppendBoundUsesRealSerializedSize (0.00s)
+    provider_test.go:327: INVALID
+--- FAIL: TestProtectedGapsAndExactRetirement (0.00s)
+    provider_test.go:368: INVALID
+--- FAIL: TestNegativeBindingsEnrollmentAndLock (0.00s)
+    provider_test.go:400: INVALID
+--- FAIL: TestConcurrentDuplicateExecutesOnce (0.00s)
+    provider_test.go:426: INVALID
+FAIL
+FAIL	github.com/snonux/homelabfs/internal/controlledvalidation	0.013s
+FAIL

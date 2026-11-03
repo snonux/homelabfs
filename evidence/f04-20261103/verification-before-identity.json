@@ -1,0 +1,152 @@
+{
+  "head": "369b2a39f27d71d5de94841c139379b7183303c2",
+  "files": {
+    "internal/controlledvalidation/provider.go": "9d087dd21bf46458389d2e68116d54dec0d4d171775cef98fae51e8ccc06fc43",
+    "internal/controlledvalidation/provider_test.go": "5084403bd7dadc8e2e368507845f46ba9ff5583e477d20374a67e5d02da77b27",
+    "internal/controlledvalidation/bridge_test.go": "e1f042272e9a1ef5bde6ffc71c3a797a6e6e862f254fb4f828dd9013dfdb7e29",
+    "internal/controlledvalidation/claims.go": "d34b892fe3737f9c0563e0e8bc8947b06a9b6ea0962018667499596bfd09738d",
+    "internal/controlledvalidation/execution.go": "08bede4aa17cbdf7523e05cb524e753e719d26236a25ac1387719b2fe3fee756",
+    "internal/controlledvalidation/state.go": "77a3e7a5aa04b8589fc2b248e06ad7fd29e1898d6abec5cb19f23119603d256d",
+    "internal/controlledvalidation/ledger.go": "8aa414b29a6c1bd6a360f8204fc3f6ee17a5b63f7c601540ab1ce661585fa8cd",
+    "internal/controlledvalidation/README.md": "786a4c394ebd9fa21ae29fab2e12b26c63cc8a254f5dd45be26f15bbf21cf1db",
+    "internal/fsservice/causal_observation_test.go": "83752d3f2372cac504535860792df9d61b9939aed4ab4da75b29855d33c672b3",
+    "internal/fsservice/delegated_write_test.go": "13d39398e5bdbbcf97042d377804bdd1bfcd21c151cbc58b4ed0033c7c67f774",
+    "internal/fsservice/doc.go": "4ec7fdd2317dc12e75aca8e55ad8c064da13303ca4109b8cea1485a1c3138a7f",
+    "internal/fsservice/execute.go": "ba4227448ec2df1f7f17f79bb23a55ba26688150b53abf3173420ac7441f6ad5",
+    "internal/fsservice/fault_test.go": "df8b3a8175e9c4deebcb19340f9b48b7ce3c736c0533759bb3ad8fcaafce5642",
+    "internal/fsservice/frontend.go": "ec5edf79cc180a9ad9769b85cd0d007c9d2aa13f76f752ef91de896c45ad4bd8",
+    "internal/fsservice/lifetimes.go": "20dd3a0139bcb00327077fdec2722d3516d10f687255997fd51d893d1526eb75",
+    "internal/fsservice/lifetimes_test.go": "f694c223aab7a73b35fd2034639f05f1f1707c3be2e64a06073d609fc2b6ee3d",
+    "internal/fsservice/locks.go": "73fd108379f37c86402c557025aa37745ab3b7f4ece214deaa7e002862b3b010",
+    "internal/fsservice/locks_test.go": "0b35390889050356fe939f88ad36624cacdd01302a557b93f64c2d5fc9409680",
+    "internal/fsservice/logical.go": "9ea612aac032f3f008ba472b781f8e5cd95efa3addd3318b8f31fa5039e6e964",
+    "internal/fsservice/logical_bounds_test.go": "6ffccf4f6ee847e2926d1b2bd5d972bbd670385d57c4e17954fd5f099c61c67c",
+    "internal/fsservice/logical_homes_test.go": "37a8612df6984a225147499091800daf8e2f80cdf54169bac6598ba934ddde3b",
+    "internal/fsservice/logical_preflight_test.go": "57d550dde54a30580e0ce7ec51a31c4f0ab22908697c27066b2f4d6304820aa4",
+    "internal/fsservice/logical_profile_test.go": "a8a45eb320126479442372d3f4995a3a9141b7e2ff593159c1326ce41d029b78",
+    "internal/fsservice/logical_test.go": "9291a95dbedbf9d791e88e9d25d4fee9a32a8ae769cbd07510313688bb797571",
+    "internal/fsservice/mutation.go": "d2ab1cde017ed0ed38b530e5be4d6833ecb55524eb9e5cd6c38f83d1feadd3bf",
+    "internal/fsservice/native_file_limit_test.go": "faefee09cbf4e0b0e8d129c235ea22116697eab87eb5c47372bfb450ca598797",
+    "internal/fsservice/observation.go": "5ce92a4708b91c7a86984582d735edf946ba1649e9c7388cc59d2ae4cc5192f7",
+    "internal/fsservice/permissions.go": "2bd4cb667b5adbc1082cf048c1c6fffa4ffd192a86544c98fe0f6cb2ac954485",
+    "internal/fsservice/permissions_test.go": "13a61a5b2b2be29c64eb4824a0d9ddc2ffd0127829c5e01b1b5ce24adbe43bcb",
+    "internal/fsservice/plan.go": "fae2efa84c06b30c0d2194babc469046dbef75e9d95c7bd5e001575bd780f3b3",
+    "internal/fsservice/private_namespace.go": "638c29eefe90bcd87489a2b8ba3d5a378aebab9c0edaa96d2a127586ac40e356",
+    "internal/fsservice/private_namespace_test.go": "e090fe5d78526f050f4f75124b67772ce9168a07e96d3853f3d2fdf5eb33b3d3",
+    "internal/fsservice/reservation.go": "721f37128d4205b632595cef8da6cb38741f1632a9f004e1fb90e905426a7e33",
+    "internal/fsservice/service.go": "cf4fdea6a673a3c0caf46c41ca5544ad755ee3c844ac0461f51aa703af5982e4",
+    "internal/fsservice/service_test.go": "e9945fffaab696827d0304ab7cb8d358d53f2a04dfe26f9e713ddaf1716cb38b",
+    "internal/fsservice/status.go": "f7614c6d8e6c3c1fffeb193befe1060300ff072b88079f70944d24331d8503e5",
+    "internal/fsservice/status_test.go": "486d59558f737a3ece01079ae5cf9575d8b636759310300b4139f1f62ed72e8d",
+    "internal/fsservice/truncate_times_test.go": "1f78e5987dd661029b155c15f1737b3d4a6c07931b150235da7f7d1bc2e68dc3",
+    "internal/fsservice/types.go": "83d8fceae9cfc449d9d8335953b9c7ed62feb5d042ed10de74f2d46634a101fa",
+    "internal/fsservice/controlled.go": "53a3926edf286c55412df461e6f69e5a66095bc2f6c91b8113b9caea6c2a9041",
+    "internal/guestbridge/README.md": "0220ab2fd67edf2d231b4ed882ce2168c5e720b7a78e781a9613c57612937ff9",
+    "internal/guestbridge/bridge_test.go": "4fa893332d36e59bcb3139461db419436789e5eaa11884c43a191b90413cee46",
+    "internal/guestbridge/codec.go": "d8373b5c4e56fb670907fb3aedb4b50d2bb07e67aa922f7038a95b1dd4ff9b15",
+    "internal/guestbridge/dispatch.go": "3f3f4d2a6664a2c5585b810df607fce716d0bc4c299d3a9ce32c63477492d853",
+    "internal/guestbridge/endpoint.go": "2171d10017587bb0ec78c8a57a380e5a3320b168ba000c643db38c6d0a71d2f6",
+    "internal/guestbridge/logical.go": "89caac78ed3834cc3cd45f653472af6f6c56aa7d8600db2de5e8baf9527aacf0",
+    "internal/guestbridge/response.go": "f863fb449d2aa13f1584c937d867685cb04d9567d59c3c18e5fb4a4c6b46afed",
+    "internal/guestbridge/result.go": "8adca8c7a6b115eb25f844714024e1647c563ba2d4f610b108af887416d97a0a",
+    "internal/guestbridge/schema.go": "32a45ca1c2a845c91c6326aec93f50c6619c25f1b558ea6121646165d15038de",
+    "internal/guestbridge/service.go": "0a578e801280bd5faa1bd3ca2409eca66d27b1b259587cad613eee27cf9f9c8f",
+    "internal/guestbridge/types.go": "81455df727eecd52ac5378d98bb5f71ba25a97cecedab8b2ab5b0ca5e29ae91b",
+    "internal/guestbridge/validation_state.go": "c9562914c1e30ed3f5fb8b471c4b07b7cf1adb16f906c5300430c0d49e030156"
+  },
+  "environment": {
+    "GOMAXPROCS": "2",
+    "GOFLAGS": "-p=1",
+    "GOMEMLIMIT": "512MiB",
+    "TMPDIR": "/tmp/hf04a",
+    "HFS_CONTROLLED_TEST_ROOT": "/home/paul/tmp/codex/hfs-f04-20261103-6fdakx0m/checks/resources"
+  },
+  "stages": [
+    {
+      "name": "build",
+      "argv": [
+        "go",
+        "build",
+        "./internal/controlledvalidation",
+        "./internal/fsservice",
+        "./internal/guestbridge"
+      ],
+      "started": "2026-11-02T23:26:12.144754+00:00",
+      "timeout": 300,
+      "exit": 0,
+      "elapsed_seconds": 1.067
+    },
+    {
+      "name": "vet",
+      "argv": [
+        "go",
+        "vet",
+        "./internal/controlledvalidation",
+        "./internal/fsservice",
+        "./internal/guestbridge"
+      ],
+      "started": "2026-11-02T23:26:13.212721+00:00",
+      "timeout": 300,
+      "exit": 0,
+      "elapsed_seconds": 0.516
+    },
+    {
+      "name": "errcheck",
+      "argv": [
+        "errcheck",
+        "./internal/controlledvalidation",
+        "./internal/fsservice",
+        "./internal/guestbridge"
+      ],
+      "started": "2026-11-02T23:26:13.729107+00:00",
+      "timeout": 300,
+      "exit": 0,
+      "elapsed_seconds": 2.371
+    },
+    {
+      "name": "lint",
+      "argv": [
+        "golangci-lint",
+        "run",
+        "--timeout=5m",
+        "--concurrency=2",
+        "./internal/controlledvalidation",
+        "./internal/fsservice",
+        "./internal/guestbridge"
+      ],
+      "started": "2026-11-02T23:26:16.101122+00:00",
+      "timeout": 300,
+      "exit": 0,
+      "elapsed_seconds": 1.318
+    },
+    {
+      "name": "race",
+      "argv": [
+        "go",
+        "test",
+        "-race",
+        "-count=1",
+        "./internal/controlledvalidation",
+        "./internal/fsservice",
+        "./internal/guestbridge"
+      ],
+      "started": "2026-11-02T23:26:17.419327+00:00",
+      "timeout": 300,
+      "exit": 0,
+      "elapsed_seconds": 69.2
+    },
+    {
+      "name": "coverage",
+      "argv": [
+        "go",
+        "test",
+        "-coverprofile=/home/paul/tmp/codex/hfs-f04-20261103-6fdakx0m/checks/coverage.out",
+        "./internal/controlledvalidation"
+      ],
+      "started": "2026-11-02T23:27:26.619372+00:00",
+      "timeout": 300,
+      "exit": 0,
+      "elapsed_seconds": 2.92
+    }
+  ]
+}

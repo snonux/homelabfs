@@ -1,0 +1,5 @@
+# github.com/snonux/homelabfs/internal/fsservice
+internal/fsservice/controlled.go:107:136: unknown field LookupPin in struct literal of type ControlledPlan
+internal/fsservice/controlled.go:386:15: p.LookupPin undefined (type ControlledPlan has no field or method LookupPin)
+FAIL	github.com/snonux/homelabfs/internal/controlledvalidation [build failed]
+FAIL

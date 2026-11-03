@@ -1,0 +1,7 @@
+# github.com/snonux/homelabfs/internal/controlledvalidation [github.com/snonux/homelabfs/internal/controlledvalidation.test]
+internal/controlledvalidation/provider_test.go:58:11: f.tempDirectory undefined (type *fixture has no field or method tempDirectory)
+internal/controlledvalidation/provider_test.go:58:25: undefined: t
+FAIL	github.com/snonux/homelabfs/internal/controlledvalidation [build failed]
+ok  	github.com/snonux/homelabfs/internal/fsservice	60.366s
+ok  	github.com/snonux/homelabfs/internal/guestbridge	2.476s
+FAIL

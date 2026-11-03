@@ -1,0 +1,10 @@
+{
+  "internal/controlledvalidation/README.md": "b68e27d0db13dc44cc2d13cb70b32eeffda0e4bb038662833639fffffc656c05",
+  "internal/controlledvalidation/bridge_test.go": "e1f042272e9a1ef5bde6ffc71c3a797a6e6e862f254fb4f828dd9013dfdb7e29",
+  "internal/controlledvalidation/claims.go": "8789fff34647722d0ab8580c34cbd73d69023657941c293beebb2683a373d5c6",
+  "internal/controlledvalidation/execution.go": "abf4018e7b781a7575897b0a950b40864009a133a2fae1ae34cb959feb0b9515",
+  "internal/controlledvalidation/ledger.go": "cee73f28f500910cae3fb93f3997d4821e58489ce5917f820d59632a868bb422",
+  "internal/controlledvalidation/provider_test.go": "660771e3ff865119385a3b148f345f28c7f81cf479b81b64b12773de0347793b",
+  "internal/controlledvalidation/regression_test.go": "ba2732a9393ac69976dfec75e4ca19bc36876084e9b6ac0d1d7ed02bf7f1c1e9",
+  "internal/guestbridge/service.go": "9e0820372e7f2e02dad79d5dddb6dd205f427e141e3de08dc09985145a895268"
+}

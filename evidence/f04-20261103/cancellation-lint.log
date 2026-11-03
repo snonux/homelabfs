@@ -1,0 +1,8 @@
+internal/controlledvalidation/execution.go:176:28: SA4009: argument ctx is overwritten before first use (staticcheck)
+func (c *captured) Prepare(ctx context.Context, b guestbridge.Binding, command fsapi.Command) (guestbridge.Prepared, error) {
+                           ^
+internal/controlledvalidation/execution.go:183:2: SA4009(related information): assignment to ctx (staticcheck)
+	ctx = c.owned
+	^
+2 issues:
+* staticcheck: 2

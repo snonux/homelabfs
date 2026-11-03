@@ -1,0 +1,3337 @@
+diff --git a/internal/fsservice/service.go b/internal/fsservice/service.go
+index e2a3fc2..dbf9724 100644
+--- a/internal/fsservice/service.go
++++ b/internal/fsservice/service.go
+@@ -117,7 +117,7 @@ func (s *Service) Dispatch(ctx context.Context, r *fsapi.Request, c fsapi.Comman
+ 		return fsapi.Busy
+ 	}
+ 	select {
+-	case s.queue <- command{r, c}:
++	case s.queue <- command{request: r, value: c}:
+ 		s.accepted[r] = true
+ 		return nil
+ 	default:
+@@ -150,6 +150,10 @@ func (s *Service) run() {
+ 	defer close(s.done)
+ 	ctx := context.Background()
+ 	for cmd := range s.queue {
++		if cmd.controlled != nil {
++			cmd.controlled(ctx)
++			continue
++		}
+ 		if s.State() != Serving {
+ 			s.finish(cmd, fsapi.Result{Code: fsapi.Unavailable})
+ 			s.retryLocks(ctx)
+diff --git a/internal/fsservice/types.go b/internal/fsservice/types.go
+index d57025f..b40e96f 100644
+--- a/internal/fsservice/types.go
++++ b/internal/fsservice/types.go
+@@ -128,8 +128,9 @@ type Config struct {
+ }
+ 
+ type command struct {
+-	request *fsapi.Request
+-	value   fsapi.Command
++	request    *fsapi.Request
++	value      fsapi.Command
++	controlled func(context.Context)
+ }
+ type lifetime struct {
+ 	pin     fsapi.UUID
+diff --git a/internal/guestbridge/service.go b/internal/guestbridge/service.go
+index 75e6fba..d72bc1e 100644
+--- a/internal/guestbridge/service.go
++++ b/internal/guestbridge/service.go
+@@ -43,6 +43,21 @@ func New(ctx context.Context, c Config) (*Service, error) {
+ 	}
+ 	s := &Service{controller: parseID(controller), config: c, sessions: make(map[string]*session)}
+ 	for _, scope := range c.Scopes {
++		if c.Validation != nil {
++			claims, claimBound := c.Claims.(ValidationEnrollment)
++			execution, executionBound := c.Execution.(ValidationEnrollment)
++			if claimBound || executionBound {
++				if !claimBound || !executionBound {
++					return nil, fsapi.Permission
++				}
++				if err := claims.CheckValidation(ctx, scope, *c.Validation, c.Endpoint); err != nil {
++					return nil, err
++				}
++				if err := execution.CheckValidation(ctx, scope, *c.Validation, c.Endpoint); err != nil {
++					return nil, err
++				}
++			}
++		}
+ 		b, e := marshal(scope)
+ 		if e != nil {
+ 			return nil, e
+@@ -75,6 +90,11 @@ func New(ctx context.Context, c Config) (*Service, error) {
+ 		}
+ 		s.sessions[scope.Session] = &session{Generation: generation, Context: scope, Credentials: map[string][]byte{}, Exited: map[string]uint64{}, Grants: map[string]*grant{}, CloseSequences: map[string]uint64{}}
+ 	}
++	for _, scope := range c.Scopes {
++		if err := s.restoreValidation(ctx, scope); err != nil {
++			return nil, err
++		}
++	}
+ 	if err := c.Native.Enroll(ctx, c.Endpoint, s.controller); err != nil {
+ 		return nil, err
+ 	}
+@@ -154,6 +174,10 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
+ 			state, err = s.config.Claims.Resolve(ctx, c.Context, p.Claim)
+ 		}
+ 		if err == nil {
++			state, err = s.recoverValidation(ctx, state)
++			if err != nil {
++				return nil, err
++			}
+ 			if state.Status == "TERMINAL" {
+ 				if _, e := validateResult(state.Result); e != nil {
+ 					return nil, e
+@@ -223,6 +247,9 @@ func (s *Service) call(ctx context.Context, c Command) (any, error) {
+ 		if !bytes.Equal(binding.Canonical, old.Binding.Canonical) || (binding.Context != old.Binding.Context && (old.ReconciledScope == nil || *old.ReconciledScope != binding.Context)) {
+ 			return callPayload(call.Claim, "REJECTED", "ID_CONFLICT"), nil
+ 		}
++		if _, err = s.recoverValidation(ctx, old); err != nil {
++			return nil, err
++		}
+ 		return callPayload(call.Claim, "ADMITTED", "OK"), nil
+ 	}
+ 	if err = s.credentials(ctx, c.Context, call.Credentials, call.Intent.Opcode == "DRAIN_WRITE"); err != nil {
+@@ -254,7 +281,7 @@ func (s *Service) call(ctx context.Context, c Command) (any, error) {
+ 		defer func() { s.mu.Lock(); ss.Reserved -= need; s.mu.Unlock() }()
+ 	}
+ 	var prepared atomic.Bool
+-	out, err := s.config.Execution.Execute(ctx, binding, func(o Captured) (Prepared, error) {
++	prepare := func(o Captured) (Prepared, error) {
+ 		if !prepared.CompareAndSwap(false, true) {
+ 			return Prepared{}, fsapi.Stale
+ 		}
+@@ -268,18 +295,25 @@ func (s *Service) call(ctx context.Context, c Command) (any, error) {
+ 			return Prepared{}, fsapi.NoSpace
+ 		}
+ 		return s.prepare(ctx, binding, o)
+-	})
++	}
++	var out Outcome
++	if validation, ok := s.config.Execution.(ValidationExecution); s.config.Validation != nil && ok {
++		s.resultMu.Lock()
++		out, err = validation.ExecuteValidation(ctx, binding, prepare, func(out Outcome) (json.RawMessage, json.RawMessage, error) {
++			return s.prepareValidationResult(ctx, binding, out)
++		})
++		s.resultMu.Unlock()
++	} else {
++		out, err = s.config.Execution.Execute(ctx, binding, prepare)
++	}
+ 	// Never synthesize no-effect after reservation or dispatch uncertainty.
+ 	if err != nil || !prepared.Load() {
+ 		return callPayload(call.Claim, "ADMITTED", "OK"), nil
+ 	}
+-	result, err := s.result(ctx, binding, out)
++	_, err = s.finalizeResult(ctx, binding, out)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	if err = s.config.Claims.ProtectResult(ctx, binding, result); err != nil {
+-		return nil, err
+-	}
+ 	return callPayload(call.Claim, "ADMITTED", "OK"), nil
+ }
+ func (s *Service) credentials(ctx context.Context, c Context, cred Credentials, drain bool) error {
+diff --git a/internal/guestbridge/types.go b/internal/guestbridge/types.go
+index 3d092e0..451e94c 100644
+--- a/internal/guestbridge/types.go
++++ b/internal/guestbridge/types.go
+@@ -187,7 +187,7 @@ type Outcome struct {
+ 	// DelegatedError preserves ErrDelegatedFileTooLarge from prepare as a
+ 	// confirmed pre-effect result; no v1 semantic errno is invented for it.
+ 	// It requires an otherwise zero Result and no protected mutation.
+-	DelegatedError  error
++	DelegatedError  error `json:"-"`
+ 	Result          fsapi.Result
+ 	Publication     json.RawMessage
+ 	EntryAttributes []fsapi.Attr
+@@ -278,6 +278,7 @@ type Service struct {
+ 	controller        fsapi.UUID
+ 	transportAttached bool
+ 	mu                sync.Mutex
++	resultMu          sync.Mutex
+ 	config            Config
+ 	sessions          map[string]*session
+ }
+diff --git a/internal/controlledvalidation/README.md b/internal/controlledvalidation/README.md
+new file mode 100644
+index 0000000..adbc37f
+--- /dev/null
++++ b/internal/controlledvalidation/README.md
+@@ -0,0 +1,82 @@
++# Private controlled validation provider
++
++This package implements the local provider needed before the retained-9p lab
++base gate. It executes the actual `fsservice` Unix planner, local journal,
++application, read and lifetime paths. It does not implement a distributed
++filesystem, normal publication, kernel cache barriers, installation or a mount.
++It has no dependency on replication or public transaction integration.
++
++Activation requires all of the following component inputs:
++
++* A running, explicitly named disposable `fsservice.Service`, configured with
++  the real Unix permission policy and without reclamation authority.
++* An out-of-band pinned operator Ed25519 key, with operator, host and guest
++  signatures over the exact enrollment. Enrollment binds the profile, complete
++  bridge context, endpoint node identities, serving generation, nonreused private
++  ledger UUID, actual owner stream and admitted source filesystem identity.
++* A live `Facts` implementation that independently authenticates installed
++  component enrollment and guest provenance. Signatures do not prove kernel or
++  installation state. There is no permissive implementation or default.
++* The bridge's separate actual native verifier, credential attestor and view
++  provider. This package supplies Claims, Execution, private result finalization
++  and restoration; it supplies neither a native process verifier nor cache hooks.
++
++Both Claims and Execution verify the bridge's exact enrolled profile and endpoint
++at construction. The guest must independently enforce its signed profile. Every
++successful controlled result has `publication:null`. Normal v1 and normal3
++schemas, grants and verification remain unchanged. This does not open a CLI,
++mount, normal commit path, guest fallback or base-gate acceptance.
++
++The caller provides a private, owner-controlled absolute directory. Creating its
++ledger requires `Initialize:true`, an empty directory and an unused enrolled
++ledger UUID. Ordinary reopening refuses a missing ledger. Existing files must be
++regular, single-link, owner-only files. bbolt provides a process-exclusive OS lock
++and synchronous transactions; directory creation is synchronized before success.
++Administrative exclusion of source and directory ancestors remains mandatory.
++
++The trusted local `Allocate` entry point protects each next number before it can
++be sent. Remote CALL is not an allocator. `Reserve` atomically protects original
++context, credential and intent bytes, operation UUID, creation allocation, and
++bounded retained-result/source accounting credits. Defaults retain at most 4096
++claims and reserve 4 MiB of retained state plus 2 MiB of source accounting per
++admitted claim, within 256/128 MiB budgets. Actual encoded plan, exact wire result,
++capability snapshot and planned outcome must fit those credits before effects.
++These are logical accounting budgets; storage I/O errors remain uncertainty and
++never become proof of absence. Retired entries and credits are conservatively
++retained, so exhausting a budget closes admission instead of recycling identities.
++
++The sealed service worker serializes capture and append with every other local
++origin. WRITE resolves the actual append offset before selecting its `max_end`
++prefix. Before filesystem effects, a separate versioned private ledger protects
++the complete typed redo, original semantic outcome, exact randomly issued wire
++capabilities and controller/process/description snapshot. After journal protection
++and application, a transaction marks those same wire bytes terminal before reply.
++The private ledger does not add record kinds to either closed journal format.
++
++Recovery uses the original operation UUID and compares its complete typed
++mutation/COMMIT evidence. A missing original mutation keeps the claim uncertain;
++it does not cause a new lookup or replanning. Creation/open pins are preplanned
++and recovered under their original identities. An effected operation whose terminal
++reply was lost finishes with its original protected result and capability bytes.
++Old descriptions are excluded when the serving generation changes. Snapshot
++versions prevent older recovery from rolling back newer grant/lifetime state.
++
++Unsent and rejected allocations remain retained, unresolved allocations until
++authenticated protected no-effect resolution. `ResolveGap` can protect no-effect
++only before any plan/effect was admitted;
++CANCEL cannot turn pending work into absence. Retirement verifies exact complete
++result/gap coverage for every number and atomically protects its permanent floor
++and an idempotent retirement receipt. No timeout, TTL, missing map entry or
++counter decrement retires anything. All retained identities are bounded.
++
++`RESUME` remains BLOCKED: this package does not reconstruct native cell mappings,
++response snapshots, kernel domains or complete endpoint controller state. A new
++Go object cannot prove a new endpoint lifetime. Actual supervised process,
++guest-kernel, cache and installation facts are still required from the respective
++platform components before any real guest/kernel acceptance.
++
++Tests use real private OS roots, bbolt files and local journal segments, including
++filesystem-effect-before-terminal failpoints, full service/provider restart,
++original wire capability recovery, duplicate races, append limits, namespace and
++metadata operations, descriptions, gaps, retirement, ledger exclusion and signed
++enrollment negatives. No mount, VM, SSH or production data is involved.
+diff --git a/internal/controlledvalidation/bridge_test.go b/internal/controlledvalidation/bridge_test.go
+new file mode 100644
+index 0000000..4c1e3b3
+--- /dev/null
++++ b/internal/controlledvalidation/bridge_test.go
+@@ -0,0 +1,277 @@
++package controlledvalidation
++
++import (
++	"bytes"
++	"context"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"sync"
++	"testing"
++
++	"github.com/snonux/homelabfs/internal/fsapi"
++	"github.com/snonux/homelabfs/internal/guestbridge"
++	bolt "go.etcd.io/bbolt"
++)
++
++type nativeFacts struct {
++	mu         sync.Mutex
++	native     guestbridge.Native
++	controller fsapi.UUID
++}
++type credentialFacts struct {
++	expected guestbridge.Credentials
++	scope    guestbridge.Context
++}
++type noViews struct{}
++type wireResult struct {
++	ID, Code     string
++	Count        uint64
++	Data         string
++	Capabilities []guestbridge.Capability
++	Publication  json.RawMessage
++}
++
++func (n *nativeFacts) Enroll(_ context.Context, e guestbridge.Endpoint, id fsapi.UUID) error {
++	n.mu.Lock()
++	defer n.mu.Unlock()
++	if n.controller.Valid() || e != n.native.Endpoint {
++		return fsapi.Stale
++	}
++	n.controller = id
++	return nil
++}
++func (n *nativeFacts) Verify(_ context.Context, actual guestbridge.Native, id fsapi.UUID) error {
++	n.mu.Lock()
++	defer n.mu.Unlock()
++	a, _ := json.Marshal(actual)
++	b, _ := json.Marshal(n.native)
++	if id != n.controller || !bytes.Equal(a, b) {
++		return fsapi.Permission
++	}
++	return nil
++}
++func (c credentialFacts) Verify(_ context.Context, s guestbridge.Context, actual guestbridge.Credentials) error {
++	a, _ := json.Marshal(actual)
++	b, _ := json.Marshal(c.expected)
++	if s != c.scope || !bytes.Equal(a, b) {
++		return fsapi.Permission
++	}
++	return nil
++}
++func (noViews) ValidateDrain(context.Context, guestbridge.Binding) error { return fsapi.Unavailable }
++func (noViews) Exchange(context.Context, guestbridge.Context, string, json.RawMessage) (json.RawMessage, error) {
++	return nil, fsapi.Unavailable
++}
++
++func TestRealBridgeProtectsCapabilitiesBeforeEffectAndReply(t *testing.T) {
++	f := newFixture(t)
++	scope := f.pc.Authorization.Enrollment.Scope
++	native := guestbridge.Native{UID: 1000, GID: 1001, PID: 123, Unique: 1, Groups: []uint32{200}, Process: id(66).String(), Endpoint: f.pc.Authorization.Enrollment.Endpoint}
++	verifier := &nativeFacts{native: native}
++	template := f.newBinding("ROOT", map[string]any{}, false)
++	config := guestbridge.Config{Validation: f.config.Validation, Endpoint: native.Endpoint, Native: verifier, Attestor: credentialFacts{expected: template.Call.Credentials, scope: scope}, Claims: f.provider, Execution: f.provider, Views: noViews{}, Scopes: []guestbridge.Context{scope}}
++	wrong := config
++	profile := *f.config.Validation
++	profile.Name = "unsigned-profile"
++	wrong.Validation = &profile
++	if _, err := guestbridge.New(t.Context(), wrong); !errors.Is(err, fsapi.Permission) {
++		t.Fatalf("unsigned bridge profile %v", err)
++	}
++	wrong = config
++	wrong.Endpoint.RecallNode = 5
++	if _, err := guestbridge.New(t.Context(), wrong); !errors.Is(err, fsapi.Permission) {
++		t.Fatalf("unsigned endpoint %v", err)
++	}
++	bridge, err := guestbridge.New(t.Context(), config)
++	if err != nil {
++		t.Fatal(err)
++	}
++	cell := uint64(0)
++	request := func(op string, payload any) ([]byte, error) {
++		cell++
++		raw, err := json.Marshal(payload)
++		if err != nil {
++			return nil, err
++		}
++		return bridge.Execute(t.Context(), native, guestbridge.Command{Cell: cell, Context: scope, Op: op, Payload: raw})
++	}
++	if _, err = request("HELLO", map[string]any{"body_schema": 1, "bridge_major": 1, "bridge_minor": 0, "features": 255, "msize": 65536, "normal_major": 3, "normal_minor": 0}); err != nil {
++		t.Fatal(err)
++	}
++	call := func(b guestbridge.Binding) wireResult {
++		t.Helper()
++		if _, err = request("CALL", b.Call); err != nil {
++			t.Fatal(err)
++		}
++		state, e := f.provider.Resolve(t.Context(), b.Context, b.Call.Claim)
++		if e != nil || state.Status != "TERMINAL" {
++			t.Fatalf("CALL did not complete real service execution: %s %v", state.Status, e)
++		}
++		response, err := request("QUERY", map[string]any{"claim": b.Call.Claim})
++		if err != nil {
++			t.Fatal(err)
++		}
++		var q struct {
++			Payload struct {
++				Status string
++				Result wireResult
++			}
++		}
++		if err = json.Unmarshal(response, &q); err != nil {
++			t.Fatal(err)
++		}
++		if q.Payload.Status != "TERMINAL" {
++			t.Fatalf("nonterminal %s", response)
++		}
++		if string(q.Payload.Result.Publication) != "null" {
++			t.Fatalf("invented publication %s", response)
++		}
++		return q.Payload.Result
++	}
++	root := call(template)
++	if root.Code != "OK" || len(root.Capabilities) != 2 {
++		t.Fatalf("root %+v", root)
++	}
++	flags := map[string]any{"access": "READWRITE", "append": true, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}
++	b := f.newBinding("CREATE", map[string]any{"parent": root.Capabilities[0], "name": hex.EncodeToString([]byte("file")), "mode": 0660, "umask": 0, "flags": flags}, false)
++	crash := errors.New("effect before terminal")
++	f.provider.config.Failpoint = func(name string) error {
++		if name == "effect-before-outcome" {
++			return crash
++		}
++		return nil
++	}
++	if _, err = request("CALL", b.Call); err != nil {
++		t.Fatal(err)
++	}
++	var originalResult, originalSnapshot []byte
++	if err = f.provider.db.View(func(tx *bolt.Tx) error {
++		e, _, err := f.provider.load(tx, b.Call.Claim)
++		originalResult = bytes.Clone(e.ProposedResult)
++		originalSnapshot = bytes.Clone(e.BridgeState)
++		if e.Status != "PENDING" || len(originalResult) == 0 || len(originalSnapshot) == 0 {
++			t.Fatal("capabilities not protected before effect")
++		}
++		return err
++	}); err != nil {
++		t.Fatal(err)
++	}
++	f.provider.config.Failpoint = nil
++	response, err := request("QUERY", map[string]any{"claim": b.Call.Claim})
++	if err != nil {
++		t.Fatal(err)
++	}
++	var query struct {
++		Payload struct {
++			Status string
++			Result json.RawMessage
++		}
++	}
++	if err = json.Unmarshal(response, &query); err != nil {
++		t.Fatal(err)
++	}
++	if query.Payload.Status != "TERMINAL" || !bytes.Equal(query.Payload.Result, originalResult) {
++		t.Fatalf("replaced original capabilities: %s", response)
++	}
++	var created wireResult
++	if err = json.Unmarshal(originalResult, &created); err != nil {
++		t.Fatal(err)
++	}
++	if created.Code != "OK" || len(created.Capabilities) != 2 {
++		t.Fatalf("create %s", originalResult)
++	}
++	// The live grant bytes are exactly those retained before the effect.
++	persisted, err := f.provider.Restore(t.Context(), scope)
++	if err != nil || !bytes.Equal(persisted, originalSnapshot) {
++		t.Fatalf("snapshot changed: %v", err)
++	}
++	description := created.Capabilities[1]
++	write := call(f.newBinding("WRITE", map[string]any{"description": description, "offset": 0, "data": "61626364", "max_end": 3}, false))
++	if write.Code != "OK" || write.Count != 3 {
++		t.Fatalf("write %+v", write)
++	}
++	read := call(f.newBinding("READ", map[string]any{"description": description, "offset": 0, "count": 64}, false))
++	if read.Code != "OK" || read.Data != "616263" {
++		t.Fatalf("read %+v", read)
++	}
++	tooLarge := call(f.newBinding("WRITE", map[string]any{"description": description, "offset": 0, "data": "65", "max_end": 3}, false))
++	if tooLarge.Code != "FileTooLarge" {
++		t.Fatalf("tooLarge %+v", tooLarge)
++	}
++	sync := call(f.newBinding("SYNC", map[string]any{"object": created.Capabilities[0], "description": description, "scope": "FILE"}, false))
++	if sync.Code != "OK" {
++		t.Fatalf("sync %+v", sync)
++	}
++	close := call(f.newBinding("DESCRIPTION_CLOSE", map[string]any{"description": description, "process": template.Call.Credentials.Process, "close_sequence": 1}, false))
++	if close.Code != "OK" {
++		t.Fatalf("close %+v", close)
++	}
++	released := call(f.newBinding("DESCRIPTION_RELEASE", map[string]any{"description": description, "release_sequence": 1}, false))
++	if released.Code != "OK" {
++		t.Fatalf("release %+v", released)
++	}
++	dead := call(f.newBinding("READ", map[string]any{"description": description, "offset": 0, "count": 1}, false))
++	if dead.Code != "Permission" {
++		t.Fatalf("released description %+v", dead)
++	}
++	// A real restart after a second CREATE's effect recovers the already chosen
++	// capability bytes, although the old generation's descriptions stay excluded.
++	crashBinding := f.newBinding("CREATE", map[string]any{"parent": root.Capabilities[0], "name": "72657374617274", "mode": 0660, "umask": 0, "flags": flags}, false)
++	f.provider.config.Failpoint = func(name string) error {
++		if name == "effect-before-outcome" {
++			return crash
++		}
++		return nil
++	}
++	if _, err = request("CALL", crashBinding.Call); err != nil {
++		t.Fatal(err)
++	}
++	var exact []byte
++	if err = f.provider.db.View(func(tx *bolt.Tx) error {
++		e, _, err := f.provider.load(tx, crashBinding.Call.Claim)
++		exact = bytes.Clone(e.ProposedResult)
++		return err
++	}); err != nil {
++		t.Fatal(err)
++	}
++	f.provider.config.Failpoint = nil
++	exited := call(f.newBinding("PROCESS_EXIT", map[string]any{"process": template.Call.Credentials.Process, "exit_sequence": 1}, false))
++	if exited.Code != "OK" {
++		t.Fatalf("exit %+v", exited)
++	}
++	rejected := f.newBinding("ROOT", map[string]any{}, false)
++	reply, err := request("CALL", rejected.Call)
++	if err != nil || !bytes.Contains(reply, []byte("REJECTED")) {
++		t.Fatalf("exited process revived %s %v", reply, err)
++	}
++	if err = f.provider.Close(); err != nil {
++		t.Fatal(err)
++	}
++	f.provider = nil
++	if err = f.service.Close(); err != nil {
++		t.Fatal(err)
++	}
++	f.service = nil
++	f.workspace(id(32))
++	f.start()
++	f.enroll()
++	f.open()
++	retained, err := f.provider.Resolve(t.Context(), scope, crashBinding.Call.Claim)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, ready, err := f.provider.RecoverOutcome(t.Context(), retained.Binding); err != nil || !ready {
++		t.Fatalf("actual capability restart ready=%v %v", ready, err)
++	}
++	terminal, err := f.provider.Resolve(t.Context(), scope, crashBinding.Call.Claim)
++	if err != nil || terminal.Status != "TERMINAL" || !bytes.Equal(terminal.Result, exact) {
++		t.Fatalf("actual capability bytes lost: %s %v", terminal.Result, err)
++	}
++	config.Claims = f.provider
++	config.Execution = f.provider
++	// Reconstructing a Go object cannot claim a fresh native endpoint lifetime.
++	if _, err = guestbridge.New(t.Context(), config); !errors.Is(err, fsapi.Stale) {
++		t.Fatalf("endpoint silently reused: %v", err)
++	}
++}
+diff --git a/internal/controlledvalidation/claims.go b/internal/controlledvalidation/claims.go
+new file mode 100644
+index 0000000..92ee753
+--- /dev/null
++++ b/internal/controlledvalidation/claims.go
+@@ -0,0 +1,327 @@
++package controlledvalidation
++
++import (
++	"bytes"
++	"context"
++	"encoding/json"
++
++	"github.com/snonux/homelabfs/internal/fsapi"
++	"github.com/snonux/homelabfs/internal/guestbridge"
++	bolt "go.etcd.io/bbolt"
++)
++
++// Allocate protects the next exact public number before it can be sent. This
++// trusted local allocator is separate from guest CALL admission. Unsent numbers
++// remain explicit unresolved entries until ResolveGap protects their no-effect.
++func (p *Provider) Allocate(ctx context.Context, scope guestbridge.Context, claim guestbridge.Claim) error {
++	if err := p.Check(ctx, scope); err != nil {
++		return err
++	}
++	if !validClaim(claim) {
++		return fsapi.Invalid
++	}
++	return p.db.Update(func(tx *bolt.Tx) error {
++		b := p.bucket(tx, "claims")
++		k := claimKey(claim)
++		if old := b.Get(k); old != nil {
++			var e entry
++			if err := json.Unmarshal(old, &e); err != nil {
++				return err
++			}
++			if e.Claim != claim {
++				return fsapi.Stale
++			}
++			return nil
++		}
++		if b.Stats().KeyN >= p.config.MaxClaims {
++			return fsapi.NoSpace
++		}
++		ps, err := p.principal(tx, claim)
++		if err != nil {
++			return err
++		}
++		if ps.High == ^uint64(0) || claim.Number != ps.High+1 {
++			return fsapi.Stale
++		}
++		ps.High = claim.Number
++		if err = p.putPrincipal(tx, claim, ps); err != nil {
++			return err
++		}
++		return put(b, k, entry{Version: ledgerVersion, Claim: claim, Status: "ALLOCATED"})
++	})
++}
++
++// Resolve authenticates scope and immutable anchor before exposing old bytes.
++func (p *Provider) Resolve(ctx context.Context, scope guestbridge.Context, claim guestbridge.Claim) (guestbridge.ClaimState, error) {
++	if err := p.Check(ctx, scope); err != nil {
++		return guestbridge.ClaimState{}, err
++	}
++	var out guestbridge.ClaimState
++	err := p.db.View(func(tx *bolt.Tx) error {
++		ps, err := p.principal(tx, claim)
++		if err != nil {
++			return err
++		}
++		if claim.Number <= ps.Floor {
++			out.Status = "RETIRED_ID"
++			return nil
++		}
++		e, ok, err := p.load(tx, claim)
++		if err != nil {
++			return err
++		}
++		if !ok || e.Status == "ALLOCATED" {
++			out.Status = "UNKNOWN"
++			return nil
++		}
++		if e.Claim != claim {
++			return fsapi.Stale
++		}
++		out = state(e)
++		return nil
++	})
++	return out, err
++}
++
++// Reserve persists immutable canonical credentials, intent, context, UUID and
++// allocation before planning. It cannot authorize an unallocated guest number.
++func (p *Provider) Reserve(ctx context.Context, b guestbridge.Binding) (guestbridge.ClaimState, error) {
++	if err := p.Check(ctx, b.Context); err != nil {
++		return guestbridge.ClaimState{}, err
++	}
++	intent, err := canonicalJSON(b.Call.Intent)
++	if err != nil || hash(intent) != b.Call.Claim.OriginalHash {
++		return guestbridge.ClaimState{}, fsapi.Invalid
++	}
++	canonical, err := canonicalCall(b.Call)
++	if err != nil || !bytes.Equal(canonical, b.Canonical) {
++		return guestbridge.ClaimState{}, fsapi.Invalid
++	}
++	var out guestbridge.ClaimState
++	err = p.db.Update(func(tx *bolt.Tx) error {
++		ps, err := p.principal(tx, b.Call.Claim)
++		if err != nil {
++			return err
++		}
++		if b.Call.Claim.Number <= ps.Floor {
++			return fsapi.Stale
++		}
++		e, ok, err := p.load(tx, b.Call.Claim)
++		if err != nil {
++			return err
++		}
++		if !ok || e.Gap || e.Claim != b.Call.Claim {
++			return fsapi.Permission
++		}
++		if e.Status != "ALLOCATED" {
++			if !sameBinding(e.Binding, b) {
++				return fsapi.Stale
++			}
++			out = state(e)
++			return nil
++		}
++		b.Operation, err = p.reserveUUID(tx, "operations")
++		if err != nil {
++			return err
++		}
++		switch b.Call.Intent.Opcode {
++		case "CREATE", "MKDIR", "SYMLINK":
++			id, e := p.reserveUUID(tx, "allocations")
++			if e != nil {
++				return e
++			}
++			home, e := fsapi.ParseUUID(b.Context.Volume)
++			if e != nil {
++				return e
++			}
++			b.Allocation = fsapi.ObjectID{Home: home, Allocation: id}
++		}
++		if err = p.reserveCredit(tx, "retained-credit", p.config.ClaimCreditBytes, p.config.MaxRetainedBytes); err != nil {
++			return err
++		}
++		if err = p.reserveCredit(tx, "source-credit", p.config.SourceCreditBytes, p.config.MaxSourceBytes); err != nil {
++			return err
++		}
++		e.RetainedCredit = p.config.ClaimCreditBytes
++		e.SourceCredit = p.config.SourceCreditBytes
++		e.Binding = b
++		e.Status = "RESERVED"
++		if err = put(p.bucket(tx, "claims"), claimKey(e.Claim), e); err != nil {
++			return err
++		}
++		out = state(e)
++		return nil
++	})
++	return out, err
++}
++
++// ProtectResult persists exact completed wire bytes before TERMINAL is visible.
++func (p *Provider) ProtectResult(ctx context.Context, b guestbridge.Binding, result json.RawMessage) error {
++	if err := p.Check(ctx, b.Context); err != nil {
++		return err
++	}
++	if !controlledResult(result) {
++		return fsapi.Invalid
++	}
++	return p.update(b, func(e *entry) error {
++		if e.Outcome == nil {
++			return fsapi.Unavailable
++		}
++		if len(e.Result) != 0 && !bytes.Equal(e.Result, result) {
++			return fsapi.Stale
++		}
++		e.Result = bytes.Clone(result)
++		e.Status = "TERMINAL"
++		return nil
++	})
++}
++
++// Cancel only resolves protected allocated/reserved no-effect claims. Pending
++// execution is never converted into absence by timeout or cancellation.
++func (p *Provider) Cancel(ctx context.Context, scope guestbridge.Context, claim guestbridge.Claim) (guestbridge.ClaimState, error) {
++	if err := p.Check(ctx, scope); err != nil {
++		return guestbridge.ClaimState{}, err
++	}
++	p.execution.Lock()
++	defer p.execution.Unlock()
++	err := p.db.Update(func(tx *bolt.Tx) error {
++		e, ok, err := p.load(tx, claim)
++		if err != nil {
++			return err
++		}
++		if !ok || e.Claim != claim {
++			return fsapi.Permission
++		}
++		if e.Status == "ALLOCATED" || e.Status == "RESERVED" {
++			e.Gap = true
++			e.Status = "DECLINED"
++			return put(p.bucket(tx, "claims"), claimKey(claim), e)
++		}
++		return nil
++	})
++	if err != nil {
++		return guestbridge.ClaimState{}, err
++	}
++	return p.Resolve(ctx, scope, claim)
++}
++
++// ResolveGap protects authenticated no-effect for an allocated, never admitted
++// number. It refuses every pending or terminal operation.
++func (p *Provider) ResolveGap(ctx context.Context, scope guestbridge.Context, claim guestbridge.Claim) (string, error) {
++	if err := p.Check(ctx, scope); err != nil {
++		return "", err
++	}
++	p.execution.Lock()
++	defer p.execution.Unlock()
++	var proof string
++	err := p.db.Update(func(tx *bolt.Tx) error {
++		e, ok, err := p.load(tx, claim)
++		if err != nil {
++			return err
++		}
++		if !ok || e.Claim != claim || e.Plan != nil || e.Outcome != nil || len(e.Result) != 0 {
++			return fsapi.Permission
++		}
++		if e.Status != "ALLOCATED" && e.Status != "RESERVED" && e.Status != "DECLINED" {
++			return fsapi.Unavailable
++		}
++		e.Gap = true
++		e.Status = "DECLINED"
++		raw, err := json.Marshal(e)
++		if err != nil {
++			return err
++		}
++		proof = hash(raw)
++		return put(p.bucket(tx, "claims"), claimKey(claim), e)
++	})
++	return proof, err
++}
++
++// Retire advances a durable permanent floor only across complete exact terminal
++// result or protected gap coverage. No allocation, timeout or absence is skipped.
++func (p *Provider) Retire(ctx context.Context, scope guestbridge.Context, raw json.RawMessage) (json.RawMessage, error) {
++	if err := p.Check(ctx, scope); err != nil {
++		return nil, err
++	}
++	var req struct {
++		Realm, Subject, Anchor, Nonce string
++		Through                       uint64
++		Hashes                        []string `json:"result_hashes"`
++	}
++	if err := json.Unmarshal(raw, &req); err != nil {
++		return nil, err
++	}
++	claim := guestbridge.Claim{Realm: req.Realm, Subject: req.Subject, Anchor: req.Anchor, Nonce: req.Nonce}
++	status := "BLOCKED"
++	var floor uint64
++	var proof any
++	var receipt []byte
++	receiptKey := []byte(hash(raw))
++	err := p.db.Update(func(tx *bolt.Tx) error {
++		if old := p.bucket(tx, "retirements").Get(receiptKey); old != nil {
++			receipt = bytes.Clone(old)
++			return nil
++		}
++		ps, err := p.principal(tx, claim)
++		if err != nil {
++			return err
++		}
++		floor = ps.Floor
++		if req.Through <= floor || req.Through > ps.High || req.Through-floor > 1024 || uint64(len(req.Hashes)) != req.Through-floor {
++			return nil
++		}
++		for n := floor + 1; ; n++ {
++			claim.Number = n
++			e, ok, err := p.load(tx, claim)
++			if err != nil {
++				return err
++			}
++			if !ok {
++				return nil
++			}
++			var expected string
++			if e.Status == "TERMINAL" {
++				var r struct {
++					ID string `json:"id"`
++				}
++				if err = json.Unmarshal(e.Result, &r); err != nil {
++					return err
++				}
++				expected = r.ID
++			} else if e.Gap && e.Status == "DECLINED" {
++				b, err := json.Marshal(e)
++				if err != nil {
++					return err
++				}
++				expected = hash(b)
++			} else {
++				return nil
++			}
++			if req.Hashes[n-floor-1] != expected {
++				return nil
++			}
++			if n == req.Through {
++				break
++			}
++		}
++		ps.Floor = req.Through
++		if err = p.putPrincipal(tx, claim, ps); err != nil {
++			return err
++		}
++		floor = ps.Floor
++		status = "RETIRED"
++		proof = hash(append(bytes.Clone(raw), []byte(ledgerVersion)...))
++		receipt, err = json.Marshal(map[string]any{"status": status, "floor": floor, "proof_hash": proof})
++		if err != nil {
++			return err
++		}
++		return p.bucket(tx, "retirements").Put(receiptKey, receipt)
++	})
++	if err != nil {
++		return nil, err
++	}
++	if len(receipt) > 0 {
++		return receipt, nil
++	}
++	return json.Marshal(map[string]any{"status": status, "floor": floor, "proof_hash": proof})
++}
+diff --git a/internal/controlledvalidation/execution.go b/internal/controlledvalidation/execution.go
+new file mode 100644
+index 0000000..df46dad
+--- /dev/null
++++ b/internal/controlledvalidation/execution.go
+@@ -0,0 +1,295 @@
++package controlledvalidation
++
++import (
++	"bytes"
++	"context"
++	"encoding/binary"
++	"encoding/json"
++	"errors"
++
++	"github.com/snonux/homelabfs/internal/fsapi"
++	"github.com/snonux/homelabfs/internal/fsservice"
++	"github.com/snonux/homelabfs/internal/guestbridge"
++	"github.com/snonux/homelabfs/internal/storage"
++	bolt "go.etcd.io/bbolt"
++)
++
++// Execute invokes real serialized filesystem planning and protects exact plan
++// and outcome in the private ledger. Recovery reuses original UUID evidence.
++func (p *Provider) Execute(ctx context.Context, b guestbridge.Binding, prepare func(guestbridge.Captured) (guestbridge.Prepared, error)) (guestbridge.Outcome, error) {
++	return p.execute(ctx, b, prepare, nil)
++}
++
++func (p *Provider) ExecuteValidation(ctx context.Context, b guestbridge.Binding, prepare func(guestbridge.Captured) (guestbridge.Prepared, error), protect func(guestbridge.Outcome) (json.RawMessage, json.RawMessage, error)) (guestbridge.Outcome, error) {
++	return p.execute(ctx, b, prepare, protect)
++}
++
++func (p *Provider) execute(ctx context.Context, b guestbridge.Binding, prepare func(guestbridge.Captured) (guestbridge.Prepared, error), protect func(guestbridge.Outcome) (json.RawMessage, json.RawMessage, error)) (guestbridge.Outcome, error) {
++	if err := p.Check(ctx, b.Context); err != nil {
++		return guestbridge.Outcome{}, err
++	}
++	p.execution.Lock()
++	defer p.execution.Unlock()
++	var saved entry
++	if err := p.db.View(func(tx *bolt.Tx) error {
++		e, ok, err := p.load(tx, b.Call.Claim)
++		if err != nil {
++			return err
++		}
++		if !ok || !sameExact(e.Binding, b) {
++			return fsapi.Stale
++		}
++		if e.Gap || (e.Status != "RESERVED" && e.Status != "PENDING" && e.Status != "TERMINAL") {
++			return fsapi.Stale
++		}
++		saved = e
++		return nil
++	}); err != nil {
++		return guestbridge.Outcome{}, err
++	}
++	if saved.Outcome != nil {
++		return *saved.Outcome, nil
++	}
++	var out guestbridge.Outcome
++	err := p.config.Service.Controlled(ctx, p.config.Authorization.Enrollment.Profile, func(owned context.Context, cut *fsservice.ControlledCut) error {
++		plan := saved.Plan
++		if plan == nil {
++			cap := &captured{cut: cut, provider: p, owned: owned, binding: b}
++			prepared, err := prepare(cap)
++			if err != nil {
++				var code fsapi.Errno
++				if !errors.As(err, &code) {
++					code = fsapi.IO
++				}
++				cp := fsservice.ControlledPlan{Operation: b.Operation, Result: fsapi.Result{Code: code}}
++				plan = &cp
++			} else {
++				if cap.plan == nil || prepared.Command.Operation != cap.plan.Command.Operation {
++					return fsapi.Stale
++				}
++				plan = cap.plan
++			}
++			predicted, err := plannedOutcome(owned, cut, *plan)
++			if err != nil {
++				return err
++			}
++			var proposed, bridge json.RawMessage
++			if protect != nil {
++				proposed, bridge, err = protect(predicted)
++				if err != nil {
++					return err
++				}
++				if !controlledResult(proposed) || !json.Valid(bridge) {
++					return fsapi.Invalid
++				}
++			}
++			var snapshotVersion uint64
++			if len(proposed) > 0 {
++				if err = p.db.Update(func(tx *bolt.Tx) error {
++					var e error
++					snapshotVersion, e = p.bucket(tx, "bridge").NextSequence()
++					return e
++				}); err != nil {
++					return err
++				}
++			}
++			if err = p.update(b, func(e *entry) error {
++				e.SnapshotVersion = snapshotVersion
++				e.Plan = plan
++				e.ProposedResult = proposed
++				e.BridgeState = bridge
++				e.PlannedOutcome = &predicted
++				e.Status = "PENDING"
++				raw, err := json.Marshal(e)
++				if err != nil {
++					return err
++				}
++				outcome, err := json.Marshal(predicted)
++				if err != nil {
++					return err
++				}
++				if uint64(len(raw)+len(proposed)+len(bridge)+len(outcome)+4096) > e.RetainedCredit || uint64(len(plan.MutationEncoding)+4096) > e.SourceCredit {
++					return fsapi.NoSpace
++				}
++				return nil
++			}); err != nil {
++				return err
++			}
++			if err = p.fail("plan-protected"); err != nil {
++				return err
++			}
++		}
++		result, err := cut.ApplyControlled(owned, *plan, saved.Plan != nil)
++		if err != nil {
++			return err
++		}
++		if err = p.fail("effect-before-outcome"); err != nil {
++			return err
++		}
++		if saved.Plan != nil && saved.PlannedOutcome != nil {
++			out = *saved.PlannedOutcome
++		} else {
++			var current entry
++			if err = p.db.View(func(tx *bolt.Tx) error { e, _, err := p.load(tx, b.Call.Claim); current = e; return err }); err != nil {
++				return err
++			}
++			if current.PlannedOutcome == nil {
++				return fsapi.Unavailable
++			}
++			out = *current.PlannedOutcome
++		}
++		out.Result = result
++		return p.db.Update(func(tx *bolt.Tx) error {
++			e, ok, err := p.load(tx, b.Call.Claim)
++			if err != nil {
++				return err
++			}
++			if !ok || !sameExact(e.Binding, b) {
++				return fsapi.Stale
++			}
++			e.Outcome = &out
++			if len(e.ProposedResult) > 0 {
++				e.Result = bytes.Clone(e.ProposedResult)
++				e.Status = "TERMINAL"
++				if err = p.protectSnapshot(tx, e); err != nil {
++					return err
++				}
++			}
++			return put(p.bucket(tx, "claims"), claimKey(e.Claim), e)
++		})
++	})
++	return out, err
++}
++
++func (c *captured) Image(ctx context.Context, id fsapi.UUID) (storage.Image, error) {
++	return c.cut.Image(c.owned, id)
++}
++
++func (c *captured) Stat(ctx context.Context, id fsapi.ObjectID) (storage.Object, error) {
++	return c.cut.Stat(c.owned, id)
++}
++
++func (c *captured) Lookup(ctx context.Context, id fsapi.ObjectID, name string) (storage.Entry, error) {
++	return c.cut.Lookup(c.owned, id, name)
++}
++
++func (c *captured) Prepare(_ context.Context, b guestbridge.Binding, command fsapi.Command) (guestbridge.Prepared, error) {
++	if !sameExact(c.binding, b) {
++		return guestbridge.Prepared{}, fsapi.Permission
++	}
++	if c.plan != nil {
++		return guestbridge.Prepared{}, fsapi.Stale
++	}
++	ctx := c.owned
++	var maxEnd *int64
++	if b.Call.Intent.Opcode == "WRITE" {
++		var a struct {
++			MaxEnd int64 `json:"max_end"`
++		}
++		if err := json.Unmarshal(b.Call.Intent.Args, &a); err != nil {
++			return guestbridge.Prepared{}, err
++		}
++		maxEnd = &a.MaxEnd
++	}
++	cred := b.Call.Credentials
++	if command.Operation == fsapi.DescriptorClose || command.Operation == fsapi.ProcessExit {
++		var token uint64
++		err := c.provider.db.Update(func(tx *bolt.Tx) error {
++			bucket := c.provider.bucket(tx, "processes")
++			key := []byte(cred.Process)
++			if raw := bucket.Get(key); raw != nil {
++				if len(raw) != 8 {
++					return fsapi.Stale
++				}
++				token = binary.BigEndian.Uint64(raw)
++				return nil
++			}
++			if bucket.Stats().KeyN >= c.provider.config.MaxClaims {
++				return fsapi.NoSpace
++			}
++			token = uint64(bucket.Stats().KeyN) + 1
++			var raw [8]byte
++			binary.BigEndian.PutUint64(raw[:], token)
++			return bucket.Put(key, raw[:])
++		})
++		if err != nil {
++			return guestbridge.Prepared{}, err
++		}
++		session, err := fsapi.ParseUUID(b.Context.Session)
++		if err != nil {
++			return guestbridge.Prepared{}, err
++		}
++		command.Lock.Owner = fsapi.LockOwner{Session: session, Generation: command.Generation, Token: token}
++	}
++	plan, err := c.cut.PlanControlled(ctx, fsapi.Cred{UID: cred.FSUID, GID: cred.FSGID, Groups: cred.Groups}, command, b.Operation, b.Allocation, maxEnd)
++	if err != nil {
++		return guestbridge.Prepared{}, err
++	}
++	c.plan = &plan
++	return guestbridge.Prepared{Command: plan.Command, Result: plan.Result}, nil
++}
++
++// RecoverOutcome resolves the original local operation and exact protected
++// result. Missing original journal evidence remains uncertain; no callback runs.
++func (p *Provider) RecoverOutcome(ctx context.Context, b guestbridge.Binding) (guestbridge.Outcome, bool, error) {
++	if err := p.Check(ctx, b.Context); err != nil {
++		return guestbridge.Outcome{}, false, err
++	}
++	var saved entry
++	if err := p.db.View(func(tx *bolt.Tx) error {
++		e, ok, err := p.load(tx, b.Call.Claim)
++		if err != nil {
++			return err
++		}
++		if !ok || !sameExact(e.Binding, b) {
++			return fsapi.Stale
++		}
++		saved = e
++		return nil
++	}); err != nil {
++		return guestbridge.Outcome{}, false, err
++	}
++	if saved.Outcome != nil {
++		return *saved.Outcome, true, nil
++	}
++	if saved.Plan == nil {
++		return guestbridge.Outcome{}, false, nil
++	}
++	out, err := p.Execute(ctx, b, func(guestbridge.Captured) (guestbridge.Prepared, error) {
++		return guestbridge.Prepared{}, fsapi.Unavailable
++	})
++	if err != nil {
++		return guestbridge.Outcome{}, false, err
++	}
++	return out, true, nil
++}
++
++func plannedOutcome(ctx context.Context, cut *fsservice.ControlledCut, p fsservice.ControlledPlan) (guestbridge.Outcome, error) {
++	out := guestbridge.Outcome{Result: p.Result, Publication: json.RawMessage("null")}
++	if p.TooLarge {
++		out.DelegatedError = fsservice.ErrDelegatedFileTooLarge
++		return out, nil
++	}
++	if p.Command.Parent.Valid() && p.Command.Name != "" {
++		entry, err := cut.Lookup(ctx, p.Command.Parent, p.Command.Name)
++		if err != nil {
++			return out, err
++		}
++		out.EntryRevision = entry.Revision
++	}
++	if p.Mutation != nil {
++		for _, entry := range p.Mutation.Redo.Entries {
++			if entry.Parent == p.Command.Parent && entry.Name == p.Command.Name {
++				out.EntryRevision = entry.After.Revision
++			}
++		}
++	}
++	for _, entry := range p.Result.Entries {
++		object, err := cut.Stat(ctx, entry.Object)
++		if err != nil {
++			return out, err
++		}
++		out.EntryAttributes = append(out.EntryAttributes, object.Attr)
++	}
++	return out, nil
++}
+diff --git a/internal/controlledvalidation/ledger.go b/internal/controlledvalidation/ledger.go
+new file mode 100644
+index 0000000..cfeb232
+--- /dev/null
++++ b/internal/controlledvalidation/ledger.go
+@@ -0,0 +1,271 @@
++package controlledvalidation
++
++import (
++	"bytes"
++	"crypto/rand"
++	"crypto/sha256"
++	"encoding/binary"
++	"encoding/hex"
++	"encoding/json"
++	"reflect"
++
++	"github.com/snonux/homelabfs/internal/fsapi"
++	"github.com/snonux/homelabfs/internal/fsservice"
++	"github.com/snonux/homelabfs/internal/guestbridge"
++	"github.com/snonux/homelabfs/internal/journal/record"
++	bolt "go.etcd.io/bbolt"
++)
++
++func (p *Provider) bucket(tx *bolt.Tx, name string) *bolt.Bucket {
++	return tx.Bucket([]byte(ledgerVersion)).Bucket([]byte(name))
++}
++
++func (p *Provider) principal(tx *bolt.Tx, c guestbridge.Claim) (principal, error) {
++	var ps principal
++	raw := p.bucket(tx, "principals").Get(principalKey(c))
++	if raw == nil {
++		return ps, nil
++	}
++	err := json.Unmarshal(raw, &ps)
++	return ps, err
++}
++
++func (p *Provider) putPrincipal(tx *bolt.Tx, c guestbridge.Claim, ps principal) error {
++	return put(p.bucket(tx, "principals"), principalKey(c), ps)
++}
++
++func (p *Provider) load(tx *bolt.Tx, c guestbridge.Claim) (entry, bool, error) {
++	var e entry
++	raw := p.bucket(tx, "claims").Get(claimKey(c))
++	if raw == nil {
++		return e, false, nil
++	}
++	err := json.Unmarshal(raw, &e)
++	if err == nil && e.Plan != nil && len(e.Plan.MutationEncoding) > 0 {
++		var decoded record.Record
++		decoded, err = record.Decode(e.Plan.MutationEncoding)
++		if err == nil {
++			mutation, ok := decoded.Payload.(record.Mutation)
++			if !ok {
++				err = fsapi.Stale
++			} else {
++				e.Plan.Mutation = &mutation
++			}
++		}
++	}
++	if err == nil && e.Version != ledgerVersion {
++		err = fsapi.Stale
++	}
++	if err == nil && e.PlannedOutcome != nil && e.Plan != nil && e.Plan.TooLarge {
++		e.PlannedOutcome.DelegatedError = fsservice.ErrDelegatedFileTooLarge
++	}
++	if err == nil && e.Outcome != nil && e.Plan != nil && e.Plan.TooLarge {
++		e.Outcome.DelegatedError = fsservice.ErrDelegatedFileTooLarge
++	}
++	return e, true, err
++}
++
++func (p *Provider) update(b guestbridge.Binding, change func(*entry) error) error {
++	return p.db.Update(func(tx *bolt.Tx) error {
++		e, ok, err := p.load(tx, b.Call.Claim)
++		if err != nil {
++			return err
++		}
++		if !ok || !sameExact(e.Binding, b) {
++			return fsapi.Stale
++		}
++		if err = change(&e); err != nil {
++			return err
++		}
++		return put(p.bucket(tx, "claims"), claimKey(e.Claim), e)
++	})
++}
++
++func (p *Provider) fail(name string) error {
++	if p.config.Failpoint != nil {
++		return p.config.Failpoint(name)
++	}
++	return nil
++}
++
++func put(b *bolt.Bucket, k []byte, value any) error {
++	raw, err := json.Marshal(value)
++	if err != nil {
++		return err
++	}
++	return b.Put(k, raw)
++}
++
++func state(e entry) guestbridge.ClaimState {
++	status := e.Status
++	if status == "DECLINED" {
++		status = "INDETERMINATE"
++	}
++	return guestbridge.ClaimState{Status: status, Binding: e.Binding, Result: bytes.Clone(e.Result)}
++}
++
++func principalKey(c guestbridge.Claim) []byte {
++	raw, _ := json.Marshal([]string{c.Realm, c.Subject, c.Anchor, c.Nonce})
++	return raw
++}
++
++func claimKey(c guestbridge.Claim) []byte {
++	key := principalKey(c)
++	var n [8]byte
++	binary.BigEndian.PutUint64(n[:], c.Number)
++	return append(key, n[:]...)
++}
++
++func sameBinding(a, b guestbridge.Binding) bool {
++	return a.Context == b.Context && bytes.Equal(a.Canonical, b.Canonical)
++}
++
++func sameExact(a, b guestbridge.Binding) bool {
++	if !sameBinding(a, b) || a.Operation != b.Operation || a.Allocation != b.Allocation {
++		return false
++	}
++	raw, err := canonicalCall(b.Call)
++	return err == nil && bytes.Equal(raw, a.Canonical)
++}
++
++func hash(raw []byte) string { sum := sha256.Sum256(raw); return hex.EncodeToString(sum[:]) }
++
++func canonicalCall(call guestbridge.Call) ([]byte, error) { return canonicalJSON(call) }
++func canonicalJSON(value any) ([]byte, error) {
++	raw, err := json.Marshal(value)
++	if err != nil {
++		return nil, err
++	}
++	var v any
++	decoder := json.NewDecoder(bytes.NewReader(raw))
++	decoder.UseNumber()
++	if err = decoder.Decode(&v); err != nil {
++		return nil, err
++	}
++	var canonical bytes.Buffer
++	encoder := json.NewEncoder(&canonical)
++	encoder.SetEscapeHTML(false)
++	err = encoder.Encode(v)
++	raw = bytes.TrimSuffix(canonical.Bytes(), []byte{'\n'})
++	if err != nil {
++		return nil, err
++	}
++	if _, err = guestbridge.Canonical(raw); err != nil {
++		return nil, err
++	}
++	return raw, nil
++}
++
++func validClaim(c guestbridge.Claim) bool {
++	_, a := fsapi.ParseUUID(c.Realm)
++	_, b := fsapi.ParseUUID(c.Anchor)
++	_, d := fsapi.ParseUUID(c.Nonce)
++	subject, e := hex.DecodeString(c.Subject)
++	digest, f := hex.DecodeString(c.OriginalHash)
++	return a == nil && b == nil && d == nil && e == nil && f == nil && len(subject) > 0 && len(subject) <= 1024 && len(digest) == 32 && c.Number > 0
++}
++
++func newUUID() (fsapi.UUID, error) {
++	var id fsapi.UUID
++	if _, err := rand.Read(id[:]); err != nil {
++		return id, err
++	}
++	id[6] = (id[6] & 15) | 64
++	id[8] = (id[8] & 63) | 128
++	return id, nil
++}
++
++func nilValue(v any) bool {
++	if v == nil {
++		return true
++	}
++	r := reflect.ValueOf(v)
++	switch r.Kind() {
++	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Chan, reflect.Func, reflect.Interface:
++		return r.IsNil()
++	}
++	return false
++}
++
++func controlledResult(raw json.RawMessage) bool {
++	if !json.Valid(raw) {
++		return false
++	}
++	var result struct{ Publication json.RawMessage }
++	return json.Unmarshal(raw, &result) == nil && string(result.Publication) == "null"
++}
++
++func (p *Provider) protectSnapshot(tx *bolt.Tx, e entry) error {
++	bucket := p.bucket(tx, "bridge")
++	key := []byte(e.Binding.Context.Session)
++	versionKey := []byte(e.Binding.Context.Session + "/version")
++	if raw := bucket.Get(versionKey); raw != nil {
++		if len(raw) != 8 {
++			return fsapi.Stale
++		}
++		if binary.BigEndian.Uint64(raw) > e.SnapshotVersion {
++			return nil
++		}
++	}
++	if err := bucket.Put(key, e.BridgeState); err != nil {
++		return err
++	}
++	var version [8]byte
++	binary.BigEndian.PutUint64(version[:], e.SnapshotVersion)
++	return bucket.Put(versionKey, version[:])
++}
++
++func (p *Provider) reserveCredit(tx *bolt.Tx, name string, amount, maximum uint64) error {
++	root := tx.Bucket([]byte(ledgerVersion))
++	var used uint64
++	if raw := root.Get([]byte(name)); raw != nil {
++		if len(raw) != 8 {
++			return fsapi.Stale
++		}
++		used = binary.BigEndian.Uint64(raw)
++	}
++	if used > maximum || amount > maximum-used {
++		return fsapi.NoSpace
++	}
++	var next [8]byte
++	binary.BigEndian.PutUint64(next[:], used+amount)
++	return root.Put([]byte(name), next[:])
++}
++
++func validateEnrollment(e Enrollment) error {
++	scope := e.Scope
++	for _, value := range []string{scope.Cluster, scope.Configuration, scope.Export, scope.ExporterIncarnation, scope.FuseSession, scope.Generation, scope.GuestBoot, scope.GuestMount, scope.OriginIncarnation, scope.OriginJournal, scope.OriginNode, scope.Session, scope.VM, scope.Volume} {
++		if _, err := fsapi.ParseUUID(value); err != nil {
++			return fsapi.Invalid
++		}
++	}
++	for _, value := range []string{scope.AuthorityHash, scope.PolicyHash, scope.RegistryHash} {
++		raw, err := hex.DecodeString(value)
++		if err != nil || len(raw) != 32 || hex.EncodeToString(raw) != value {
++			return fsapi.Invalid
++		}
++	}
++	endpoint := e.Endpoint
++	if !e.ServingGeneration.Valid() || endpoint.FuseSession != scope.FuseSession || endpoint.CommandNode <= 1 || endpoint.ResultNode <= 1 || endpoint.RecallNode <= 1 || endpoint.CommandNode == endpoint.ResultNode || endpoint.CommandNode == endpoint.RecallNode || endpoint.ResultNode == endpoint.RecallNode {
++		return fsapi.Invalid
++	}
++	return nil
++}
++
++func (p *Provider) reserveUUID(tx *bolt.Tx, namespace string) (fsapi.UUID, error) {
++	bucket := p.bucket(tx, namespace)
++	for range 128 {
++		id, err := newUUID()
++		if err != nil {
++			return fsapi.UUID{}, err
++		}
++		if bucket.Get(id[:]) != nil {
++			continue
++		}
++		if err = bucket.Put(id[:], []byte{1}); err != nil {
++			return fsapi.UUID{}, err
++		}
++		return id, nil
++	}
++	return fsapi.UUID{}, fsapi.NoSpace
++}
+diff --git a/internal/controlledvalidation/provider.go b/internal/controlledvalidation/provider.go
+new file mode 100644
+index 0000000..f634498
+--- /dev/null
++++ b/internal/controlledvalidation/provider.go
+@@ -0,0 +1,298 @@
++// Package controlledvalidation supplies a durable, explicitly enrolled disposable
++// single-node provider. Its private ledger is not normal distributed authority.
++package controlledvalidation
++
++import (
++	"bytes"
++	"context"
++	"crypto/ed25519"
++	"encoding/json"
++	"errors"
++	"os"
++	"path/filepath"
++	"sync"
++	"sync/atomic"
++	"syscall"
++	"time"
++
++	"github.com/snonux/homelabfs/internal/fsapi"
++	"github.com/snonux/homelabfs/internal/fsservice"
++	"github.com/snonux/homelabfs/internal/guestbridge"
++	bolt "go.etcd.io/bbolt"
++)
++
++const ledgerVersion = "homelabfs-private-controlled-validation/1"
++
++// Enrollment is the operator-approved complete synthetic scope. Both endpoint
++// keys additionally sign these exact bytes, proving acceptance of this profile.
++type Enrollment struct {
++	Profile           fsservice.ValidationProfile
++	Scope             guestbridge.Context
++	Endpoint          guestbridge.Endpoint
++	ServingGeneration fsapi.UUID
++	Ledger            fsapi.UUID
++	Journal           fsservice.ControlledJournal
++	HostKey, GuestKey []byte
++}
++
++// Authorization contains three detached Ed25519 signatures over json.Marshal
++// of Enrollment. Operator is pinned out of band, never read from the ledger.
++type Authorization struct {
++	Enrollment                                       Enrollment
++	OperatorSignature, HostSignature, GuestSignature []byte
++}
++
++// Facts rechecks actual installed component enrollment and guest provenance.
++// No implementation/default is supplied: kernel/cache/installation facts belong
++// to their real platform components, never a signature or a boolean substitute.
++type Facts interface {
++	Check(context.Context, Enrollment) error
++}
++
++// Config requires an existing private ledger directory, actual local service,
++// signed endpoint enrollment and an independent live component fact verifier.
++type Config struct {
++	Directory                                                             string
++	Initialize                                                            bool
++	Service                                                               *fsservice.Service
++	Operator                                                              ed25519.PublicKey
++	Authorization                                                         Authorization
++	Facts                                                                 Facts
++	MaxClaims                                                             int
++	MaxRetainedBytes, MaxSourceBytes, ClaimCreditBytes, SourceCreditBytes uint64
++	// Failpoint is component-test instrumentation. Any error preserves evidence.
++	Failpoint func(string) error
++}
++
++// Provider owns a single locked durable ledger and its exact enrolled scope.
++type Provider struct {
++	config    Config
++	db        *bolt.DB
++	execution sync.Mutex
++	closed    atomic.Bool
++}
++
++// entry retains original bytes and exact recovery plan before any service effect.
++type entry struct {
++	Version                      string
++	Claim                        guestbridge.Claim
++	Binding                      guestbridge.Binding
++	Status                       string
++	Plan                         *fsservice.ControlledPlan
++	Outcome                      *guestbridge.Outcome
++	Result                       json.RawMessage `json:",omitempty"`
++	Gap                          bool
++	ProposedResult               json.RawMessage `json:",omitempty"`
++	BridgeState                  json.RawMessage `json:",omitempty"`
++	PlannedOutcome               *guestbridge.Outcome
++	SnapshotVersion              uint64
++	RetainedCredit, SourceCredit uint64
++}
++type principal struct{ High, Floor uint64 }
++type captured struct {
++	cut      *fsservice.ControlledCut
++	plan     *fsservice.ControlledPlan
++	provider *Provider
++	owned    context.Context
++	binding  guestbridge.Binding
++}
++
++var _ guestbridge.Claims = (*Provider)(nil)
++var _ guestbridge.Execution = (*Provider)(nil)
++var _ guestbridge.Captured = (*captured)(nil)
++var _ guestbridge.ValidationState = (*Provider)(nil)
++var _ guestbridge.ValidationExecution = (*Provider)(nil)
++
++// New authenticates both endpoints before opening the private versioned ledger.
++// bbolt's exclusive OS lock prevents concurrent/restarted writers from sharing it.
++func New(ctx context.Context, c Config) (*Provider, error) {
++	if c.Service == nil || nilValue(c.Facts) || len(c.Operator) != ed25519.PublicKeySize {
++		return nil, fsapi.Invalid
++	}
++	if c.Service.State() != fsservice.Serving {
++		return nil, fsapi.Unavailable
++	}
++	a := c.Authorization
++	e := a.Enrollment
++	raw, err := json.Marshal(e)
++	if err != nil {
++		return nil, err
++	}
++	if validateEnrollment(e) != nil || bytes.Equal(e.HostKey, e.GuestKey) || !e.Ledger.Valid() || !e.Profile.Disposable || e.Profile.Name == "" || len(e.HostKey) != ed25519.PublicKeySize || len(e.GuestKey) != ed25519.PublicKeySize || !ed25519.Verify(c.Operator, raw, a.OperatorSignature) || !ed25519.Verify(e.HostKey, raw, a.HostSignature) || !ed25519.Verify(e.GuestKey, raw, a.GuestSignature) {
++		return nil, fsapi.Permission
++	}
++	journal, err := c.Service.ControlledJournalInfo(ctx, e.Profile)
++	if err != nil {
++		return nil, err
++	}
++	if e.Journal != journal || e.Scope.Generation != journal.Stream.Generation.String() || e.Scope.Configuration != journal.Stream.Configuration.String() {
++		return nil, fsapi.Permission
++	}
++	info := c.Service.FrontendInfo()
++	if info.Validation != e.Profile || !info.UnixPermissions || info.Generation != e.ServingGeneration || info.Volume.String() != e.Scope.Volume || e.Endpoint.FuseSession != e.Scope.FuseSession {
++		return nil, fsapi.Permission
++	}
++	if err = c.Facts.Check(ctx, e); err != nil {
++		return nil, err
++	}
++	if c.MaxRetainedBytes == 0 {
++		c.MaxRetainedBytes = 256 << 20
++	}
++	if c.MaxSourceBytes == 0 {
++		c.MaxSourceBytes = 128 << 20
++	}
++	if c.ClaimCreditBytes == 0 {
++		c.ClaimCreditBytes = 4 << 20
++	}
++	if c.SourceCreditBytes == 0 {
++		c.SourceCreditBytes = 2 << 20
++	}
++	if c.MaxRetainedBytes > 1<<30 || c.MaxSourceBytes > 1<<30 || c.ClaimCreditBytes > c.MaxRetainedBytes || c.SourceCreditBytes > c.MaxSourceBytes || c.ClaimCreditBytes < 4096 || c.SourceCreditBytes < 4096 {
++		return nil, fsapi.Invalid
++	}
++	if c.MaxClaims == 0 {
++		c.MaxClaims = 4096
++	}
++	if c.MaxClaims < 1 || c.MaxClaims > 65536 {
++		return nil, fsapi.Invalid
++	}
++	if !filepath.IsAbs(c.Directory) {
++		return nil, fsapi.Invalid
++	}
++	st, err := os.Lstat(c.Directory)
++	if err != nil {
++		return nil, err
++	}
++	if !st.IsDir() || st.Mode().Perm() != 0700 || st.Sys().(*syscall.Stat_t).Uid != uint32(os.Getuid()) {
++		return nil, fsapi.Permission
++	}
++	// Roots and policy keys are retained by value, not caller-owned slices.
++	c.Operator = bytes.Clone(c.Operator)
++	c.Authorization.Enrollment.HostKey = bytes.Clone(e.HostKey)
++	c.Authorization.Enrollment.GuestKey = bytes.Clone(e.GuestKey)
++	filename := filepath.Join(c.Directory, "controlled-validation-v1.db")
++	fileInfo, statErr := os.Lstat(filename)
++	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
++		return nil, statErr
++	}
++	if statErr == nil {
++		if c.Initialize || !fileInfo.Mode().IsRegular() || fileInfo.Mode().Perm() != 0600 || fileInfo.Sys().(*syscall.Stat_t).Uid != uint32(os.Getuid()) || fileInfo.Sys().(*syscall.Stat_t).Nlink != 1 {
++			return nil, fsapi.Permission
++		}
++	} else {
++		if !c.Initialize {
++			return nil, fsapi.Unavailable
++		}
++		entries, err := os.ReadDir(c.Directory)
++		if err != nil {
++			return nil, err
++		}
++		if len(entries) != 0 {
++			return nil, fsapi.Permission
++		}
++		file, err := os.OpenFile(filename, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
++		if err != nil {
++			return nil, err
++		}
++		if err = file.Close(); err != nil {
++			return nil, err
++		}
++	}
++	db, err := bolt.Open(filename, 0600, &bolt.Options{Timeout: time.Millisecond * 100})
++	if err != nil {
++		return nil, err
++	}
++	p := &Provider{config: c, db: db}
++	err = db.Update(func(tx *bolt.Tx) error {
++		b, err := tx.CreateBucketIfNotExists([]byte(ledgerVersion))
++		if err != nil {
++			return err
++		}
++		scope, err := json.Marshal(struct {
++			Scope    guestbridge.Context
++			Profile  fsservice.ValidationProfile
++			Ledger   fsapi.UUID
++			Operator []byte
++		}{e.Scope, e.Profile, e.Ledger, c.Operator})
++		if err != nil {
++			return err
++		}
++		if old := b.Get([]byte("scope")); (old == nil && !c.Initialize) || (old != nil && !bytes.Equal(old, scope)) {
++			return fsapi.Permission
++		}
++		if err = b.Put([]byte("scope"), scope); err != nil {
++			return err
++		}
++		for _, name := range []string{"claims", "principals", "bridge", "processes", "retirements", "operations", "allocations"} {
++			if _, err = b.CreateBucketIfNotExists([]byte(name)); err != nil {
++				return err
++			}
++		}
++		return nil
++	})
++	if err != nil {
++		_ = db.Close()
++		return nil, err
++	}
++	if c.Initialize {
++		directory, err := os.Open(c.Directory)
++		if err != nil {
++			_ = db.Close()
++			return nil, err
++		}
++		syncErr := directory.Sync()
++		closeErr := directory.Close()
++		if syncErr != nil {
++			_ = db.Close()
++			return nil, syncErr
++		}
++		if closeErr != nil {
++			_ = db.Close()
++			return nil, closeErr
++		}
++	}
++	return p, nil
++}
++
++// Close releases the ledger lock. It neither retires claims nor deletes state.
++func (p *Provider) Close() error {
++	if p.closed.Swap(true) {
++		return nil
++	}
++	p.execution.Lock()
++	defer p.execution.Unlock()
++	return p.db.Close()
++}
++
++// Check checks immutable exact scope and live component facts without taking
++// the execution mutex, waiting for an operation, or manufacturing authority.
++func (p *Provider) Check(ctx context.Context, scope guestbridge.Context) error {
++	if p.closed.Load() {
++		return fsapi.Unavailable
++	}
++	if scope != p.config.Authorization.Enrollment.Scope {
++		return fsapi.Permission
++	}
++	if p.config.Service.State() != fsservice.Serving {
++		return fsapi.Unavailable
++	}
++	return p.config.Facts.Check(ctx, p.config.Authorization.Enrollment)
++}
++
++// ServingGeneration returns the actual selected local service generation.
++func (p *Provider) ServingGeneration(ctx context.Context, scope guestbridge.Context) (fsapi.UUID, error) {
++	if err := p.Check(ctx, scope); err != nil {
++		return fsapi.UUID{}, err
++	}
++	return p.config.Service.FrontendInfo().Generation, nil
++}
++
++// CheckValidation verifies the exact operator-enrolled profile and endpoint at
++// each bridge construction; changing only a disposable label grants no access.
++func (p *Provider) CheckValidation(ctx context.Context, scope guestbridge.Context, profile fsservice.ValidationProfile, endpoint guestbridge.Endpoint) error {
++	e := p.config.Authorization.Enrollment
++	if e.Profile != profile || e.Endpoint != endpoint {
++		return fsapi.Permission
++	}
++	return p.Check(ctx, scope)
++}
+diff --git a/internal/controlledvalidation/provider_test.go b/internal/controlledvalidation/provider_test.go
+new file mode 100644
+index 0000000..2ec1658
+--- /dev/null
++++ b/internal/controlledvalidation/provider_test.go
+@@ -0,0 +1,759 @@
++package controlledvalidation
++
++import (
++	"bytes"
++	"context"
++	"crypto/ed25519"
++	"crypto/rand"
++	"encoding/json"
++	"errors"
++	"io"
++	"os"
++	"path"
++	"sync"
++	"testing"
++
++	"github.com/snonux/homelabfs/internal/fsapi"
++	"github.com/snonux/homelabfs/internal/fsservice"
++	"github.com/snonux/homelabfs/internal/guestbridge"
++	"github.com/snonux/homelabfs/internal/journal/record"
++	"github.com/snonux/homelabfs/internal/journal/segment"
++	"github.com/snonux/homelabfs/internal/storage"
++	"github.com/snonux/homelabfs/internal/vfs"
++	bolt "go.etcd.io/bbolt"
++)
++
++type facts struct{ enrollment Enrollment }
++
++func (f facts) Check(ctx context.Context, e Enrollment) error {
++	a, _ := json.Marshal(f.enrollment)
++	b, _ := json.Marshal(e)
++	if !bytes.Equal(a, b) {
++		return fsapi.Permission
++	}
++	return ctx.Err()
++}
++
++type fixture struct {
++	t                     *testing.T
++	config                fsservice.Config
++	service               *fsservice.Service
++	provider              *Provider
++	pc                    Config
++	next                  uint64
++	roots                 []storage.Filesystem
++	operator, host, guest ed25519.PrivateKey
++}
++
++func id(n byte) fsapi.UUID {
++	var id fsapi.UUID
++	id[0] = n
++	id[6] = 0x40
++	id[8] = 0x80
++	id[15] = n
++	return id
++}
++func (f *fixture) root() storage.Filesystem {
++	f.t.Helper()
++	dir := tempDirectory(f.t)
++	if err := os.Chmod(dir, 0700); err != nil {
++		f.t.Fatal(err)
++	}
++	root, err := vfs.NewOS(f.t.Context(), dir)
++	if err != nil {
++		f.t.Fatal(err)
++	}
++	f.roots = append(f.roots, root)
++	f.t.Cleanup(func() { _ = root.Close() })
++	return root
++}
++func newFixture(t *testing.T) *fixture {
++	t.Helper()
++	f := &fixture{t: t}
++	root := fsapi.ObjectID{Home: id(1), Allocation: id(4)}
++	permissions, err := fsservice.NewUnixPermissions(id(20))
++	if err != nil {
++		t.Fatal(err)
++	}
++	f.config = fsservice.Config{Stream: segment.Stream{Volume: id(1), Generation: id(2), Configuration: id(3), Epoch: 1, Kind: 1}, Storage: storage.Config{Volume: id(1), Root: root, OwnerUID: uint32(os.Getuid())}, Validation: &fsservice.ValidationProfile{Disposable: true, Name: "controlled-test"}, Permissions: permissions}
++	f.config.Authority = record.Authority{Volume: id(1), Generation: id(2), Configuration: id(3), Epoch: 1, Owner: id(6), Partner: id(8), Members: []fsapi.UUID{id(6), id(8), id(9)}, CoordinatorTerm: 1, OwnerIncarnation: id(7), PartnerIncarnation: id(10)}
++	f.config.Source = f.root()
++	f.config.Reservations = f.root()
++	f.workspace(id(30))
++	dir := "."
++	for _, part := range split(f.config.Stream.Directory()) {
++		next := path.Join(dir, part)
++		if err = f.config.Source.Mkdir(t.Context(), next, 0700); err != nil {
++			t.Fatal(err)
++		}
++		if err = f.config.Source.SyncDir(t.Context(), dir); err != nil {
++			t.Fatal(err)
++		}
++		dir = next
++	}
++	header := record.Header{Volume: id(1), Generation: id(2), Configuration: id(3), Epoch: 1, Operation: id(90), Incarnation: id(7)}
++	writer, err := segment.NewWriter(t.Context(), f.config.Source, f.config.Stream, segment.Options{MaximumBytes: 16 << 20, Structural: func(uint64) record.Header { return header }, NewSegment: func() fsapi.UUID { return id(80) }})
++	if err != nil {
++		t.Fatal(err)
++	}
++	init := record.VolumeInit{Root: root, Initial: record.Metadata{Revision: 1, Type: 2, UID: 100, GID: 200, Mode: 02775, Nlink: 2}, RootParent: record.ParentState{Revision: 1, Parent: root}, RootLedger: record.LedgerEdit{Object: root, ResultingRevision: 1}, Authority: f.config.Authority, Authorization: record.Artifact{Kind: 6, ID: id(70), Length: 1}}
++	receipt, err := writer.Append(t.Context(), record.Record{Header: header, Payload: init})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = receipt.Wait(t.Context()); err != nil {
++		t.Fatal(err)
++	}
++	if err = writer.Close(); err != nil {
++		t.Fatal(err)
++	}
++	f.start()
++	f.pc.Directory = tempDirectory(t)
++	f.pc.Initialize = true
++	if err = os.Chmod(f.pc.Directory, 0700); err != nil {
++		t.Fatal(err)
++	}
++	scope := guestbridge.Context{AuthorityHash: hash([]byte("authority")), Cluster: id(40).String(), Configuration: id(3).String(), Export: id(41).String(), ExporterIncarnation: id(42).String(), FuseSession: id(43).String(), Generation: id(2).String(), GuestBoot: id(44).String(), GuestMount: id(45).String(), OriginIncarnation: id(46).String(), OriginJournal: id(47).String(), OriginNode: id(48).String(), PolicyHash: hash([]byte("policy")), RegistryHash: hash([]byte("registry")), Session: id(49).String(), VM: id(50).String(), Volume: id(1).String()}
++	f.pc.Authorization.Enrollment = Enrollment{Ledger: id(65), Profile: *f.config.Validation, Scope: scope, Endpoint: guestbridge.Endpoint{FuseSession: scope.FuseSession, CommandNode: 2, ResultNode: 3, RecallNode: 4}}
++	f.enroll()
++	f.open()
++	t.Cleanup(func() {
++		if f.provider != nil {
++			_ = f.provider.Close()
++		}
++		if f.service != nil {
++			_ = f.service.Close()
++		}
++	})
++	return f
++}
++func split(s string) []string {
++	var out []string
++	start := 0
++	for n := range s {
++		if s[n] == '/' {
++			out = append(out, s[start:n])
++			start = n + 1
++		}
++	}
++	return append(out, s[start:])
++}
++func (f *fixture) workspace(g fsapi.UUID) {
++	f.config.Workspace = fsservice.Workspace{ID: g, Data: f.root(), Journal: f.root(), Progress: f.root()}
++}
++func (f *fixture) start() {
++	f.t.Helper()
++	s, err := fsservice.New(f.t.Context(), f.config)
++	if err != nil {
++		f.t.Fatal(err)
++	}
++	f.service = s
++}
++func (f *fixture) enroll() {
++	f.t.Helper()
++	if f.operator == nil {
++		_, key, err := ed25519.GenerateKey(rand.Reader)
++		if err != nil {
++			f.t.Fatal(err)
++		}
++		f.operator = key
++		_, key, err = ed25519.GenerateKey(rand.Reader)
++		if err != nil {
++			f.t.Fatal(err)
++		}
++		f.host = key
++		_, key, err = ed25519.GenerateKey(rand.Reader)
++		if err != nil {
++			f.t.Fatal(err)
++		}
++		f.guest = key
++	}
++	operator, op := f.operator.Public().(ed25519.PublicKey), f.operator
++	host, h := f.host.Public().(ed25519.PublicKey), f.host
++	guest, g := f.guest.Public().(ed25519.PublicKey), f.guest
++	var err error
++	e := &f.pc.Authorization.Enrollment
++	e.HostKey = host
++	e.GuestKey = guest
++	e.ServingGeneration = f.service.FrontendInfo().Generation
++	e.Journal, err = f.service.ControlledJournalInfo(f.t.Context(), e.Profile)
++	if err != nil {
++		f.t.Fatal(err)
++	}
++	raw, err := json.Marshal(e)
++	if err != nil {
++		f.t.Fatal(err)
++	}
++	f.pc.Operator = operator
++	f.pc.Authorization.OperatorSignature = ed25519.Sign(op, raw)
++	f.pc.Authorization.HostSignature = ed25519.Sign(h, raw)
++	f.pc.Authorization.GuestSignature = ed25519.Sign(g, raw)
++	f.pc.Facts = facts{*e}
++	f.pc.Service = f.service
++}
++func (f *fixture) open() {
++	f.t.Helper()
++	p, err := New(f.t.Context(), f.pc)
++	if err != nil {
++		f.t.Fatal(err)
++	}
++	f.provider = p
++	f.pc.Initialize = false
++}
++func (f *fixture) binding(op string, args any) guestbridge.Binding {
++	return f.newBinding(op, args, true)
++}
++func (f *fixture) newBinding(op string, args any, reserve bool) guestbridge.Binding {
++	f.t.Helper()
++	f.next++
++	raw, err := json.Marshal(args)
++	if err != nil {
++		f.t.Fatal(err)
++	}
++	intent := guestbridge.Intent{Opcode: op, Args: raw}
++	intentRaw, err := json.Marshal(intent)
++	if err != nil {
++		f.t.Fatal(err)
++	}
++	var unordered any
++	decoder := json.NewDecoder(bytes.NewReader(intentRaw))
++	decoder.UseNumber()
++	if err = decoder.Decode(&unordered); err != nil {
++		f.t.Fatal(err)
++	}
++	intentRaw, err = json.Marshal(unordered)
++	if err != nil {
++		f.t.Fatal(err)
++	}
++	canonical, err := guestbridge.Canonical(intentRaw)
++	if err != nil {
++		f.t.Fatal(err)
++	}
++	intentRaw, err = json.Marshal(canonical)
++	if err != nil {
++		f.t.Fatal(err)
++	}
++	claim := guestbridge.Claim{Realm: id(60).String(), Subject: "616263", Anchor: id(61).String(), Nonce: id(62).String(), Number: f.next, OriginalHash: hash(intentRaw)}
++	call := guestbridge.Call{Claim: claim, Credentials: guestbridge.Credentials{FSUID: 1000, FSGID: 1001, Groups: []uint32{200}, Process: id(63).String(), Revision: 1, IDMapHash: hash([]byte("map")), UserNamespace: id(64).String()}, Intent: intent}
++	raw, err = canonicalCall(call)
++	if err != nil {
++		f.t.Fatal(err)
++	}
++	b := guestbridge.Binding{Context: f.pc.Authorization.Enrollment.Scope, Call: call, Canonical: raw}
++	if err = f.provider.Allocate(f.t.Context(), b.Context, claim); err != nil {
++		f.t.Fatal(err)
++	}
++	if !reserve {
++		return b
++	}
++	state, err := f.provider.Reserve(f.t.Context(), b)
++	if err != nil {
++		f.t.Fatal(err)
++	}
++	return state.Binding
++}
++func command(f *fixture, op fsapi.Operation) fsapi.Command {
++	return fsapi.Command{Mount: id(1), Generation: f.service.FrontendInfo().Generation, Operation: op}
++}
++func createCommand(f *fixture, name string) fsapi.Command {
++	c := command(f, fsapi.Create)
++	c.Parent = f.config.Storage.Root
++	c.Name = name
++	c.Mode = 0660
++	c.Flags = fsapi.OpenFlags{Access: fsapi.ReadWrite, Create: true, Exclusive: true}
++	return c
++}
++func execute(f *fixture, b guestbridge.Binding, c fsapi.Command) (guestbridge.Outcome, error) {
++	return f.provider.Execute(f.t.Context(), b, func(cut guestbridge.Captured) (guestbridge.Prepared, error) { return cut.Prepare(f.t.Context(), b, c) })
++}
++func protect(out guestbridge.Outcome) (json.RawMessage, json.RawMessage, error) {
++	raw, err := json.Marshal(map[string]any{"id": hash([]byte("original-result")), "handle": out.Result.Handle, "object": out.Result.Attr, "publication": nil})
++	return raw, json.RawMessage(`{"protected":"original-capability-snapshot"}`), err
++}
++
++func TestRealJournalCrashRecoveryOriginalPlan(t *testing.T) {
++	f := newFixture(t)
++	b := f.binding("CREATE", map[string]any{})
++	c := createCommand(f, "original")
++	crash := errors.New("crash after filesystem effect before terminal")
++	f.provider.config.Failpoint = func(name string) error {
++		if name == "effect-before-outcome" {
++			return crash
++		}
++		return nil
++	}
++	calls := 0
++	_, err := f.provider.ExecuteValidation(t.Context(), b, func(cut guestbridge.Captured) (guestbridge.Prepared, error) {
++		calls++
++		return cut.Prepare(t.Context(), b, c)
++	}, protect)
++	if !errors.Is(err, crash) {
++		t.Fatalf("got %v", err)
++	}
++	var original []byte
++	if err = f.provider.db.View(func(tx *bolt.Tx) error {
++		entry, _, e := f.provider.load(tx, b.Call.Claim)
++		original = bytes.Clone(entry.ProposedResult)
++		if entry.Plan == nil || entry.Plan.Operation != b.Operation || entry.Plan.Mutation == nil || len(original) == 0 {
++			t.Fatal("missing protected original evidence")
++		}
++		return e
++	}); err != nil {
++		t.Fatal(err)
++	}
++	if err = f.provider.Close(); err != nil {
++		t.Fatal(err)
++	}
++	f.provider = nil
++	if err = f.service.Close(); err != nil {
++		t.Fatal(err)
++	}
++	f.service = nil
++	f.workspace(id(31))
++	f.start()
++	f.enroll()
++	f.pc.Failpoint = nil
++	f.open()
++	out, ready, err := f.provider.RecoverOutcome(t.Context(), b)
++	if err != nil || !ready || out.Result.Attr == nil {
++		t.Fatalf("recovery ready=%v err=%v", ready, err)
++	}
++	if calls != 1 {
++		t.Fatalf("fresh planning calls %d", calls)
++	}
++	state, err := f.provider.Resolve(t.Context(), b.Context, b.Call.Claim)
++	if err != nil || state.Status != "TERMINAL" || !bytes.Equal(state.Result, original) {
++		t.Fatalf("lost original terminal bytes: %s %v", state.Status, err)
++	}
++	state2, err := f.provider.Reserve(t.Context(), b)
++	if err != nil || state2.Binding.Operation != b.Operation || !bytes.Equal(state2.Result, original) {
++		t.Fatalf("retry changed original: %v", err)
++	}
++	count := 0
++	reader, err := segment.OpenReader(t.Context(), f.config.Source, f.config.Stream, segment.RecoveryOptions{}, fsapi.Position{Volume: id(1), Generation: id(2), Configuration: id(3), Epoch: 1, Sequence: 1})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = reader.Close() }()
++	for {
++		e, err := reader.Next(t.Context())
++		if errors.Is(err, io.EOF) {
++			break
++		}
++		if err != nil {
++			t.Fatal(err)
++		}
++		if e.Record.Header.Operation == b.Operation {
++			if _, ok := e.Record.Payload.(record.Mutation); ok {
++				count++
++			}
++		}
++	}
++	if count != 1 {
++		t.Fatalf("original mutation executed %d times", count)
++	}
++}
++
++func TestAppendBoundUsesRealSerializedSize(t *testing.T) {
++	f := newFixture(t)
++	b := f.binding("CREATE", map[string]any{})
++	c := createCommand(f, "append")
++	c.Flags.Append = true
++	created, err := execute(f, b, c)
++	if err != nil {
++		t.Fatal(err)
++	}
++	write := func(data string, maxEnd int64) guestbridge.Outcome {
++		b := f.binding("WRITE", map[string]any{"max_end": maxEnd})
++		c := command(f, fsapi.Write)
++		c.Object = created.Result.Attr.Object
++		c.Handle = created.Result.Handle
++		c.Data = []byte(data)
++		out, err := execute(f, b, c)
++		if err != nil {
++			t.Fatal(err)
++		}
++		return out
++	}
++	if out := write("abcd", 6); out.Result.Count != 4 {
++		t.Fatalf("first %d", out.Result.Count)
++	}
++	if out := write("WXYZ", 6); out.Result.Count != 2 {
++		t.Fatalf("short %d", out.Result.Count)
++	}
++	if out := write("x", 6); !errors.Is(out.DelegatedError, fsservice.ErrDelegatedFileTooLarge) || out.Result.Count != 0 {
++		t.Fatalf("too large: %+v", out)
++	}
++	b = f.binding("READ", map[string]any{})
++	c = command(f, fsapi.Read)
++	c.Object = created.Result.Attr.Object
++	c.Handle = created.Result.Handle
++	c.Size = 64
++	out, err := execute(f, b, c)
++	if err != nil || string(out.Result.Data) != "abcdWX" {
++		t.Fatalf("data %q err %v", out.Result.Data, err)
++	}
++}
++
++func TestProtectedGapsAndExactRetirement(t *testing.T) {
++	f := newFixture(t)
++	b := f.binding("ROOT", map[string]any{})
++	scope := b.Context
++	raw, _ := json.Marshal(map[string]any{"realm": b.Call.Claim.Realm, "subject": b.Call.Claim.Subject, "anchor": b.Call.Claim.Anchor, "nonce": b.Call.Claim.Nonce, "through": 1, "result_hashes": []string{hash(nil)}})
++	response, err := f.provider.Retire(t.Context(), scope, raw)
++	if err != nil || !bytes.Contains(response, []byte("BLOCKED")) {
++		t.Fatalf("unresolved floor %s %v", response, err)
++	}
++	proof, err := f.provider.ResolveGap(t.Context(), scope, b.Call.Claim)
++	if err != nil {
++		t.Fatal(err)
++	}
++	raw, _ = json.Marshal(map[string]any{"realm": b.Call.Claim.Realm, "subject": b.Call.Claim.Subject, "anchor": b.Call.Claim.Anchor, "nonce": b.Call.Claim.Nonce, "through": 1, "result_hashes": []string{proof}})
++	response, err = f.provider.Retire(t.Context(), scope, raw)
++	if err != nil || !bytes.Contains(response, []byte("RETIRED")) {
++		t.Fatalf("floor %s %v", response, err)
++	}
++	if err = f.provider.Close(); err != nil {
++		t.Fatal(err)
++	}
++	f.provider = nil
++	f.open()
++	state, err := f.provider.Resolve(t.Context(), scope, b.Call.Claim)
++	if err != nil || state.Status != "RETIRED_ID" {
++		t.Fatalf("floor lost %s %v", state.Status, err)
++	}
++	if _, err = f.provider.Reserve(t.Context(), b); err == nil {
++		t.Fatal("retired gap admitted")
++	}
++}
++
++func TestNegativeBindingsEnrollmentAndLock(t *testing.T) {
++	f := newFixture(t)
++	b := f.binding("ROOT", map[string]any{})
++	changed := b
++	changed.Canonical = bytes.Clone(b.Canonical)
++	changed.Canonical[0] = 'x'
++	if _, err := f.provider.Reserve(t.Context(), changed); err == nil {
++		t.Fatal("changed binding")
++	}
++	scope := b.Context
++	scope.Session = id(99).String()
++	if _, err := f.provider.Resolve(t.Context(), scope, b.Call.Claim); !errors.Is(err, fsapi.Permission) {
++		t.Fatalf("scope %v", err)
++	}
++	cfg := f.pc
++	cfg.Authorization.OperatorSignature = bytes.Clone(cfg.Authorization.OperatorSignature)
++	cfg.Authorization.OperatorSignature[0] ^= 1
++	if _, err := New(t.Context(), cfg); !errors.Is(err, fsapi.Permission) {
++		t.Fatalf("signature %v", err)
++	}
++	if p, err := New(t.Context(), f.pc); err == nil {
++		_ = p.Close()
++		t.Fatal("concurrent ledger writer")
++	}
++}
++
++func TestConcurrentDuplicateExecutesOnce(t *testing.T) {
++	f := newFixture(t)
++	b := f.binding("CREATE", map[string]any{})
++	c := createCommand(f, "once")
++	var wg sync.WaitGroup
++	var mu sync.Mutex
++	calls := 0
++	for range 8 {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			out, err := f.provider.Execute(t.Context(), b, func(cut guestbridge.Captured) (guestbridge.Prepared, error) {
++				mu.Lock()
++				calls++
++				mu.Unlock()
++				return cut.Prepare(t.Context(), b, c)
++			})
++			if err != nil || out.Result.Attr == nil {
++				t.Errorf("duplicate %v", err)
++			}
++		}()
++	}
++	wg.Wait()
++	if calls != 1 {
++		t.Fatalf("callbacks=%d", calls)
++	}
++}
++
++func TestCancellationAndMissingEvidenceKeepGatesClosed(t *testing.T) {
++	f := newFixture(t)
++	b := f.binding("CREATE", map[string]any{})
++	if _, err := f.provider.Cancel(t.Context(), b.Context, b.Call.Claim); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := execute(f, b, createCommand(f, "cancelled")); err == nil {
++		t.Fatal("cancelled no-effect claim executed")
++	}
++	b = f.binding("CREATE", map[string]any{})
++	stopped := errors.New("stopped after plan")
++	f.provider.config.Failpoint = func(name string) error {
++		if name == "plan-protected" {
++			return stopped
++		}
++		return nil
++	}
++	if _, err := execute(f, b, createCommand(f, "pending")); !errors.Is(err, stopped) {
++		t.Fatalf("stop %v", err)
++	}
++	f.provider.config.Failpoint = nil
++	state, err := f.provider.Cancel(t.Context(), b.Context, b.Call.Claim)
++	if err != nil || state.Status != "PENDING" {
++		t.Fatalf("pending cancellation %s %v", state.Status, err)
++	}
++	if _, err = f.provider.ResolveGap(t.Context(), b.Context, b.Call.Claim); err == nil {
++		t.Fatal("pending gap resolved without evidence")
++	}
++	if _, ready, err := f.provider.RecoverOutcome(t.Context(), b); err == nil || ready {
++		t.Fatalf("missing original UUID evidence accepted: %v %v", ready, err)
++	}
++	b = f.binding("ROOT", map[string]any{})
++	canceled, cancel := context.WithCancel(t.Context())
++	cancel()
++	if _, err = f.provider.Execute(canceled, b, func(guestbridge.Captured) (guestbridge.Prepared, error) {
++		t.Fatal("cancelled request planned")
++		return guestbridge.Prepared{}, nil
++	}); !errors.Is(err, context.Canceled) {
++		t.Fatalf("cancelled %v", err)
++	}
++	state, err = f.provider.Resolve(t.Context(), b.Context, b.Call.Claim)
++	if err != nil || state.Status != "RESERVED" {
++		t.Fatalf("cancellation erased claim %s %v", state.Status, err)
++	}
++}
++
++func TestMissingOrReplacedLedgerCannotInitializeImplicitly(t *testing.T) {
++	f := newFixture(t)
++	cfg := f.pc
++	cfg.Directory = tempDirectory(t)
++	if err := os.Chmod(cfg.Directory, 0700); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := New(t.Context(), cfg); !errors.Is(err, fsapi.Unavailable) {
++		t.Fatalf("missing ledger reused counters: %v", err)
++	}
++	cfg.Initialize = true
++	p, err := New(t.Context(), cfg)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = p.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if _, err = New(t.Context(), cfg); err == nil {
++		t.Fatal("explicit init overwrote ledger")
++	}
++}
++
++func TestRealNamespaceMetadataAndOpenSemantics(t *testing.T) {
++	f := newFixture(t)
++	run := func(op string, c fsapi.Command) guestbridge.Outcome {
++		t.Helper()
++		out, err := execute(f, f.binding(op, map[string]any{}), c)
++		if err != nil || out.Result.Code != fsapi.OK {
++			t.Fatalf("%s result=%v err=%v", op, out.Result.Code, err)
++		}
++		return out
++	}
++	c := command(f, fsapi.Mkdir)
++	c.Parent = f.config.Storage.Root
++	c.Name = "dir"
++	c.Mode = 0770
++	directory := run("MKDIR", c).Result.Attr.Object
++	c = createCommand(f, "file")
++	created := run("CREATE", c)
++	object := created.Result.Attr.Object
++	b := f.binding("WRITE", map[string]any{"max_end": 64})
++	c = command(f, fsapi.Write)
++	c.Object = object
++	c.Handle = created.Result.Handle
++	c.Data = []byte("content")
++	if out, err := execute(f, b, c); err != nil || out.Result.Count != 7 {
++		t.Fatalf("write %v %v", out, err)
++	}
++	mode := uint16(0600)
++	c = command(f, fsapi.Setattr)
++	c.Object = object
++	c.Attributes.Mode = &mode
++	if out := run("SETATTR", c); out.Result.Attr.Mode != mode {
++		t.Fatal("mode did not change")
++	}
++	c = command(f, fsapi.Truncate)
++	c.Object = object
++	c.Size = 2
++	if out := run("TRUNCATE", c); out.Result.Attr.Size != 2 {
++		t.Fatal("truncate did not run")
++	}
++	c = command(f, fsapi.Open)
++	c.Object = object
++	c.Flags = fsapi.OpenFlags{Access: fsapi.ReadWrite, Truncate: true}
++	if out := run("OPEN", c); out.Result.Attr.Size != 0 || out.Result.Handle == 0 {
++		t.Fatalf("O_TRUNC %+v", out.Result)
++	}
++	c = createCommand(f, "file")
++	c.Flags.Exclusive = false
++	existing := run("CREATE", c)
++	if existing.Result.Attr.Object != object || existing.Result.Handle == 0 {
++		t.Fatal("nonexclusive create did not open existing")
++	}
++	c = command(f, fsapi.LinkOp)
++	c.Object = object
++	c.Destination = f.config.Storage.Root
++	c.DestinationMount = id(1)
++	c.NewName = "alias"
++	run("LINK", c)
++	c = command(f, fsapi.RenameOp)
++	c.Parent = f.config.Storage.Root
++	c.Name = "alias"
++	c.Destination = directory
++	c.DestinationMount = id(1)
++	c.NewName = "moved"
++	run("RENAME", c)
++	c = command(f, fsapi.Readdir)
++	c.Object = directory
++	c.Limit = 16
++	listed := run("READDIR", c)
++	if len(listed.Result.Entries) != 1 || listed.Result.Entries[0].Name != "moved" || len(listed.EntryAttributes) != 1 {
++		t.Fatalf("readdir %+v", listed)
++	}
++	c = command(f, fsapi.Unlink)
++	c.Parent = directory
++	c.Name = "moved"
++	run("UNLINK", c)
++	c = command(f, fsapi.Rmdir)
++	c.Parent = f.config.Storage.Root
++	c.Name = "dir"
++	run("RMDIR", c)
++	c = command(f, fsapi.SymlinkOp)
++	c.Parent = f.config.Storage.Root
++	c.Name = "sym"
++	c.Data = []byte("file")
++	sym := run("SYMLINK", c).Result.Attr.Object
++	c = command(f, fsapi.Readlink)
++	c.Object = sym
++	if out := run("READLINK", c); string(out.Result.Data) != "file" {
++		t.Fatalf("readlink %q", out.Result.Data)
++	}
++	c = command(f, fsapi.Sync)
++	c.Object = object
++	c.Durability = fsapi.DirectoryDurability
++	out, err := execute(f, f.binding("SYNC", map[string]any{}), c)
++	if err != nil || out.Result.Code != fsapi.Invalid {
++		t.Fatalf("invalid sync was predicted success %+v %v", out, err)
++	}
++}
++
++func TestOldRecoveryCannotRollbackNewerProtectedSnapshot(t *testing.T) {
++	f := newFixture(t)
++	first := f.binding("CREATE", map[string]any{})
++	crash := errors.New("crash")
++	f.provider.config.Failpoint = func(name string) error {
++		if name == "effect-before-outcome" {
++			return crash
++		}
++		return nil
++	}
++	if _, err := f.provider.ExecuteValidation(t.Context(), first, func(cut guestbridge.Captured) (guestbridge.Prepared, error) {
++		return cut.Prepare(t.Context(), first, createCommand(f, "first"))
++	}, protect); !errors.Is(err, crash) {
++		t.Fatal(err)
++	}
++	f.provider.config.Failpoint = nil
++	second := f.binding("CREATE", map[string]any{})
++	newer := json.RawMessage(`{"protected":"newer-snapshot"}`)
++	if _, err := f.provider.ExecuteValidation(t.Context(), second, func(cut guestbridge.Captured) (guestbridge.Prepared, error) {
++		return cut.Prepare(t.Context(), second, createCommand(f, "second"))
++	}, func(out guestbridge.Outcome) (json.RawMessage, json.RawMessage, error) {
++		raw, _, err := protect(out)
++		return raw, newer, err
++	}); err != nil {
++		t.Fatal(err)
++	}
++	if _, ready, err := f.provider.RecoverOutcome(t.Context(), first); err != nil || !ready {
++		t.Fatalf("recover %v %v", ready, err)
++	}
++	actual, err := f.provider.Restore(t.Context(), first.Context)
++	if err != nil || !bytes.Equal(actual, newer) {
++		t.Fatalf("snapshot rolled back %s %v", actual, err)
++	}
++}
++
++func TestReservationCreditsPrecedeEffectsAndRetainRejectedGap(t *testing.T) {
++	f := newFixture(t)
++	f.provider.config.MaxSourceBytes = f.provider.config.SourceCreditBytes
++	first := f.binding("ROOT", map[string]any{})
++	second := f.newBinding("CREATE", map[string]any{}, false)
++	if _, err := f.provider.Reserve(t.Context(), second); !errors.Is(err, fsapi.NoSpace) {
++		t.Fatalf("unreserved source credits %v", err)
++	}
++	state, err := f.provider.Resolve(t.Context(), second.Context, second.Call.Claim)
++	if err != nil || state.Status != "UNKNOWN" {
++		t.Fatalf("rejected allocation lost %s %v", state.Status, err)
++	}
++	if _, err = f.provider.ResolveGap(t.Context(), second.Context, second.Call.Claim); err != nil {
++		t.Fatal(err)
++	}
++	// Failed admission cannot decrement or recycle the allocated public counter.
++	reused := second.Call.Claim
++	reused.OriginalHash = first.Call.Claim.OriginalHash
++	if err = f.provider.Allocate(t.Context(), second.Context, reused); err == nil {
++		t.Fatal("reused allocated number")
++	}
++	if _, err = f.provider.Cancel(t.Context(), first.Context, first.Call.Claim); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func tempDirectory(t *testing.T) string {
++	t.Helper()
++	directory, err := os.MkdirTemp(os.Getenv("HFS_CONTROLLED_TEST_ROOT"), "hfs-controlled-")
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() {
++		if t.Failed() {
++			t.Logf("preserved failed controlled resources: %s", directory)
++			return
++		}
++		if err := os.RemoveAll(directory); err != nil {
++			t.Errorf("remove owned successful fixture %s: %v", directory, err)
++		}
++	})
++	return directory
++}
++
++func TestAdmittedCancellationUsesOwnedContextAndExactOriginalBinding(t *testing.T) {
++	f := newFixture(t)
++	b := f.binding("CREATE", map[string]any{})
++	ctx, cancel := context.WithCancel(t.Context())
++	defer cancel()
++	out, err := f.provider.Execute(ctx, b, func(cut guestbridge.Captured) (guestbridge.Prepared, error) {
++		cancel()
++		return cut.Prepare(ctx, b, createCommand(f, "admitted"))
++	})
++	if err != nil || out.Result.Attr == nil || out.Result.Code != fsapi.OK {
++		t.Fatalf("admitted cancellation changed execution: %+v %v", out, err)
++	}
++	changed := b
++	changed.Call.Credentials.FSUID = 0
++	if _, err = f.provider.Execute(t.Context(), changed, func(guestbridge.Captured) (guestbridge.Prepared, error) {
++		t.Fatal("mutable call bypassed canonical original")
++		return guestbridge.Prepared{}, nil
++	}); !errors.Is(err, fsapi.Stale) {
++		t.Fatalf("modified original binding %v", err)
++	}
++	b = f.binding("CREATE", map[string]any{})
++	out, err = f.provider.Execute(t.Context(), b, func(cut guestbridge.Captured) (guestbridge.Prepared, error) {
++		wrong := b
++		wrong.Call.Credentials.FSUID = 0
++		return cut.Prepare(t.Context(), wrong, createCommand(f, "forged"))
++	})
++	if err != nil || out.Result.Code != fsapi.Permission {
++		t.Fatalf("captured credential substitution %+v %v", out, err)
++	}
++}
+diff --git a/internal/controlledvalidation/state.go b/internal/controlledvalidation/state.go
+new file mode 100644
+index 0000000..3856813
+--- /dev/null
++++ b/internal/controlledvalidation/state.go
+@@ -0,0 +1,66 @@
++package controlledvalidation
++
++import (
++	"bytes"
++	"context"
++	"encoding/json"
++
++	"github.com/snonux/homelabfs/internal/fsapi"
++	"github.com/snonux/homelabfs/internal/guestbridge"
++	bolt "go.etcd.io/bbolt"
++)
++
++// Finalize atomically protects exact wire result and complete capability state.
++func (p *Provider) Finalize(ctx context.Context, b guestbridge.Binding, result, snapshot json.RawMessage) error {
++	if err := p.Check(ctx, b.Context); err != nil {
++		return err
++	}
++	if !controlledResult(result) || !json.Valid(snapshot) {
++		return fsapi.Invalid
++	}
++	return p.db.Update(func(tx *bolt.Tx) error {
++		e, ok, err := p.load(tx, b.Call.Claim)
++		if err != nil {
++			return err
++		}
++		if !ok || !sameExact(e.Binding, b) || e.Outcome == nil {
++			return fsapi.Stale
++		}
++		if len(e.Result) != 0 {
++			if !bytes.Equal(e.Result, result) {
++				return fsapi.Stale
++			}
++			return nil
++		}
++		e.Result = bytes.Clone(result)
++		e.Status = "TERMINAL"
++		if err = put(p.bucket(tx, "claims"), claimKey(e.Claim), e); err != nil {
++			return err
++		}
++		e.BridgeState = bytes.Clone(snapshot)
++		if e.SnapshotVersion == 0 {
++			e.SnapshotVersion, err = p.bucket(tx, "bridge").NextSequence()
++			if err != nil {
++				return err
++			}
++		}
++		if err = put(p.bucket(tx, "claims"), claimKey(e.Claim), e); err != nil {
++			return err
++		}
++		return p.protectSnapshot(tx, e)
++	})
++}
++
++// Restore returns only an authenticated same-scope protected bridge snapshot.
++// The bridge validates its controller, generation, limits and grant bindings.
++func (p *Provider) Restore(ctx context.Context, scope guestbridge.Context) (json.RawMessage, error) {
++	if err := p.Check(ctx, scope); err != nil {
++		return nil, err
++	}
++	var raw []byte
++	err := p.db.View(func(tx *bolt.Tx) error {
++		raw = bytes.Clone(p.bucket(tx, "bridge").Get([]byte(scope.Session)))
++		return nil
++	})
++	return raw, err
++}
+diff --git a/internal/fsservice/controlled.go b/internal/fsservice/controlled.go
+new file mode 100644
+index 0000000..5e26da7
+--- /dev/null
++++ b/internal/fsservice/controlled.go
+@@ -0,0 +1,525 @@
++package fsservice
++
++import (
++	"bytes"
++	"context"
++	"encoding/json"
++	"errors"
++	"io"
++	"slices"
++
++	"github.com/snonux/homelabfs/internal/fsapi"
++	"github.com/snonux/homelabfs/internal/journal/record"
++	"github.com/snonux/homelabfs/internal/journal/segment"
++	"github.com/snonux/homelabfs/internal/storage"
++	"github.com/snonux/homelabfs/internal/vfs"
++)
++
++// ControlledCut is sealed to the local service's serialized worker. Its methods
++// are valid only during Controlled. It exposes no backing filesystem authority.
++type ControlledCut struct {
++	service *Service
++	active  bool
++}
++
++// ControlledPlan is private validation recovery evidence, not a v1 journal kind
++// or a normal publication certificate. Persist it before ApplyControlled.
++type ControlledPlan struct {
++	LookupPin        bool
++	Operation        fsapi.UUID
++	Command          fsapi.Command
++	Credentials      fsapi.Cred
++	Before           fsapi.Position
++	Mutation         *record.Mutation `json:"-"`
++	MutationEncoding []byte
++	Result           fsapi.Result
++	Object           fsapi.ObjectID
++	TooLarge         bool
++	Pin              *record.HandlePin
++	PinOperation     fsapi.UUID
++}
++
++// ControlledJournal identifies the actual admitted local source and owner stream.
++// It is a private enrollment fact, not normal publication or replication proof.
++type ControlledJournal struct {
++	Stream             segment.Stream
++	Owner, Incarnation fsapi.UUID
++	Source             vfs.Identity
++}
++
++// ControlledJournalInfo returns actual journal identity only for the named
++// local disposable profile. The root descriptor is the service's admitted root.
++func (s *Service) ControlledJournalInfo(ctx context.Context, profile ValidationProfile) (ControlledJournal, error) {
++	if s.config.Validation == nil || *s.config.Validation != profile || !profile.Disposable {
++		return ControlledJournal{}, fsapi.Permission
++	}
++	for _, root := range []storage.Filesystem{s.config.Source, s.config.Reservations, s.config.Workspace.Data, s.config.Workspace.Journal, s.config.Workspace.Progress} {
++		if _, ok := root.(*vfs.OS); !ok {
++			return ControlledJournal{}, fsapi.Permission
++		}
++	}
++	info, err := s.config.Source.Stat(ctx, ".")
++	if err != nil {
++		return ControlledJournal{}, err
++	}
++	return ControlledJournal{Stream: s.config.Stream, Owner: s.config.Authority.Owner, Incarnation: s.config.Authority.OwnerIncarnation, Source: info.Identity}, nil
++}
++
++// Controlled serializes capture, durable private planning and execution with
++// every native command. The named disposable profile and Unix policy must match.
++// An admitted closure runs despite caller cancellation, just like Dispatch.
++func (s *Service) Controlled(ctx context.Context, profile ValidationProfile, run func(context.Context, *ControlledCut) error) error {
++	if run == nil || s.config.Validation == nil || profile != *s.config.Validation || !profile.Disposable || s.config.Permissions == nil || s.config.Reclamation != nil {
++		return fsapi.Permission
++	}
++	if err := ctx.Err(); err != nil {
++		return err
++	}
++	done := make(chan error, 1)
++	s.mu.Lock()
++	if s.closed || s.State() != Serving {
++		s.mu.Unlock()
++		return fsapi.Unavailable
++	}
++	task := command{controlled: func(owned context.Context) {
++		if s.State() != Serving {
++			done <- fsapi.Unavailable
++			return
++		}
++		cut := &ControlledCut{service: s, active: true}
++		defer func() { cut.active = false }()
++		done <- run(owned, cut)
++	}}
++	select {
++	case s.queue <- task:
++		s.mu.Unlock()
++	default:
++		s.mu.Unlock()
++		return fsapi.NoSpace
++	}
++	return <-done
++}
++
++// Image snapshots the actual committed applied metadata on the worker.
++func (c *ControlledCut) Image(ctx context.Context, volume fsapi.UUID) (storage.Image, error) {
++	if !c.active || volume != c.service.config.Storage.Volume {
++		return storage.Image{}, fsapi.Permission
++	}
++	return c.service.applied.Store.Export(ctx)
++}
++
++// Stat resolves a stable logical object without pathname traversal.
++func (c *ControlledCut) Stat(ctx context.Context, id fsapi.ObjectID) (storage.Object, error) {
++	if !c.active {
++		return storage.Object{}, fsapi.Stale
++	}
++	return c.service.applied.Store.Stat(ctx, id)
++}
++
++// Lookup reads an entry at this same serialized cut.
++func (c *ControlledCut) Lookup(ctx context.Context, id fsapi.ObjectID, name string) (storage.Entry, error) {
++	image, err := c.Image(ctx, id.Home)
++	if err != nil {
++		return storage.Entry{}, err
++	}
++	p := newPlan(image, c.service.config.Clock.Now())
++	if _, err = p.directory(id); err != nil {
++		return storage.Entry{}, err
++	}
++	return p.entry(id, name), nil
++}
++
++// PlanControlled invokes the shared Unix planner and captures exact afterimages
++// and semantic output before any filesystem effect. maxEnd is used only for
++// delegated WRITE and after resolving the authoritative append offset.
++func (c *ControlledCut) PlanControlled(ctx context.Context, cred fsapi.Cred, command fsapi.Command, operation fsapi.UUID, allocation fsapi.ObjectID, maxEnd *int64) (ControlledPlan, error) {
++	if !c.active || !operation.Valid() {
++		return ControlledPlan{}, fsapi.Invalid
++	}
++	s := c.service
++	if s.ids[operation] {
++		return ControlledPlan{}, fsapi.Stale
++	}
++	if len(s.ids) >= s.config.Apply.MaxFrames+s.config.Limits.Reservations*2+s.config.Limits.Handles*2 {
++		return ControlledPlan{}, fsapi.NoSpace
++	}
++	if allocation.Valid() {
++		if allocation.Home != s.config.Storage.Volume || s.allocations[allocation] {
++			return ControlledPlan{}, fsapi.Stale
++		}
++		if len(s.allocations) >= s.config.Limits.Reservations {
++			return ControlledPlan{}, fsapi.NoSpace
++		}
++		s.allocations[allocation] = true
++	}
++	s.ids[operation] = true
++	cp := ControlledPlan{Operation: operation, Command: command.Clone(), Credentials: cred.Clone(), Before: s.selection.Through.Position, LookupPin: command.Operation == fsapi.Create || command.Operation == fsapi.Mkdir || command.Operation == fsapi.SymlinkOp || command.Operation == fsapi.Lookup}
++	command = command.Clone()
++	if len(command.Data) > s.config.Limits.IOBytes || len(command.Name) > 255 || len(command.NewName) > 255 || command.Size < 0 {
++		return cp, fsapi.Invalid
++	}
++	if (command.Operation == fsapi.RenameOp || command.Operation == fsapi.LinkOp) && command.DestinationMount != command.Mount {
++		return cp, fsapi.CrossDevice
++	}
++	for _, object := range []fsapi.ObjectID{command.Object, command.Parent, command.Destination} {
++		if object.Valid() && object.Home != command.Mount {
++			return cp, fsapi.CrossDevice
++		}
++	}
++	if command.Mount != s.config.Storage.Volume {
++		return cp, fsapi.CrossDevice
++	}
++	if command.Generation.Valid() && command.Generation != s.config.Workspace.ID {
++		return cp, fsapi.Stale
++	}
++	if command.Handle != 0 {
++		h, ok := s.handles[command.Handle]
++		if !ok || h.object != command.Object {
++			return cp, fsapi.Stale
++		}
++		if command.Operation == fsapi.Read && h.flags.Access == fsapi.WriteOnly || (command.Operation == fsapi.Write || command.Operation == fsapi.Truncate) && h.flags.Access == fsapi.ReadOnly {
++			return cp, fsapi.Permission
++		}
++		if command.Operation == fsapi.Write && h.flags.Append {
++			o, e := s.applied.Store.Stat(ctx, h.object)
++			if e != nil {
++				return cp, e
++			}
++			command.Offset = o.Attr.Size
++		}
++	}
++	image, err := s.applied.Store.Export(ctx)
++	if err != nil {
++		return cp, err
++	}
++	p := newPlan(image, s.config.Clock.Now())
++	if err = s.permissions(ctx, cred, cp.Command, command, p); err != nil {
++		return cp, err
++	}
++	if maxEnd != nil {
++		if command.Operation != fsapi.Write || *maxEnd < 0 || command.Offset < 0 {
++			return cp, fsapi.Invalid
++		}
++		if command.Offset >= *maxEnd {
++			cp.TooLarge = true
++			return cp, nil
++		}
++		if int64(len(command.Data)) > *maxEnd-command.Offset {
++			command.Data = slices.Clone(command.Data[:*maxEnd-command.Offset])
++		}
++	}
++	cp.Command = command
++	if observed, handled, e := observeCommitted(ctx, command, p, image, s.applied.Store, s.config.Limits, s.config.Storage.Limits); handled {
++		cp.Result = observed
++		cp.Result.Generation = s.config.Workspace.ID
++		return cp, e
++	}
++	if command.Operation == fsapi.Create && !command.Flags.Exclusive {
++		if entry := p.entry(command.Parent, command.Name); entry.Target != nil {
++			command.Operation = fsapi.Open
++			command.Object = *entry.Target
++			command.Flags.Create = false
++			cp.Command = command
++		}
++	}
++	switch command.Operation {
++	case fsapi.Create, fsapi.Mkdir, fsapi.SymlinkOp, fsapi.Unlink, fsapi.Rmdir, fsapi.RenameOp, fsapi.LinkOp, fsapi.Write, fsapi.Truncate, fsapi.Setattr:
++		if (command.Operation == fsapi.Create || command.Operation == fsapi.Mkdir || command.Operation == fsapi.SymlinkOp) && s.lookupCount >= uint64(s.config.Limits.Lookups) {
++			return cp, fsapi.NoSpace
++		}
++		if command.Operation == fsapi.Create && len(s.handles) >= s.config.Limits.Handles {
++			return cp, fsapi.NoSpace
++		}
++		config := planningConfig{root: image.Root, storageLimits: s.config.Storage.Limits, logicalBytes: s.config.Limits.LogicalBytes, identities: func(_ context.Context, creation bool) (fsapi.UUID, fsapi.ObjectID, error) {
++			if creation && (!allocation.Valid() || allocation.Home != command.Mount) {
++				return fsapi.UUID{}, fsapi.ObjectID{}, fsapi.Invalid
++			}
++			return operation, allocation, nil
++		}}
++		prepared, e := prepareMutation(ctx, cred, command, p, config)
++		if e != nil {
++			return cp, e
++		}
++		cp.Mutation = prepared.Mutation
++		if cp.Mutation != nil {
++			header := s.header(operation)
++			header.Sequence = 1
++			cp.MutationEncoding, err = record.Encode(record.Record{Header: header, Payload: *cp.Mutation})
++			if err != nil {
++				return cp, err
++			}
++		}
++		cp.Object = prepared.Object
++		cp.Result = prepared.Result
++		if cp.Object.Valid() {
++			o, e := p.object(cp.Object)
++			if e != nil {
++				return cp, e
++			}
++			attr := o.Attr
++			cp.Result.Attr = &attr
++		}
++		if command.Operation == fsapi.Create {
++			cp.Result.Handle = s.nextHandle + 1
++		}
++	case fsapi.Open:
++		if err = command.Flags.Validate(); err != nil {
++			return cp, err
++		}
++		if command.Flags.Create || command.Flags.Exclusive {
++			return cp, fsapi.Unsupported
++		}
++		o, e := p.object(command.Object)
++		if e != nil {
++			return cp, e
++		}
++		if o.Attr.Kind == fsapi.Symlink {
++			return cp, fsapi.Unsupported
++		}
++		if o.Attr.Kind == fsapi.Directory && command.Flags.Access != fsapi.ReadOnly {
++			return cp, fsapi.IsDirectory
++		}
++		if len(s.handles) >= s.config.Limits.Handles {
++			return cp, fsapi.NoSpace
++		}
++		if command.Flags.Truncate {
++			if o.Attr.Kind != fsapi.Regular {
++				return cp, fsapi.Invalid
++			}
++			truncate := command.Clone()
++			truncate.Operation = fsapi.Truncate
++			truncate.Size = 0
++			config := planningConfig{root: image.Root, storageLimits: s.config.Storage.Limits, logicalBytes: s.config.Limits.LogicalBytes, identities: func(context.Context, bool) (fsapi.UUID, fsapi.ObjectID, error) {
++				return operation, fsapi.ObjectID{}, nil
++			}}
++			prepared, e := prepareMutation(ctx, cred, truncate, p, config)
++			if e != nil {
++				return cp, e
++			}
++			cp.Mutation = prepared.Mutation
++			o, e = p.object(command.Object)
++			if e != nil {
++				return cp, e
++			}
++		}
++		cp.Object = command.Object
++		cp.Result.Attr = &o.Attr
++		cp.Result.Handle = s.nextHandle + 1
++	case fsapi.Lookup:
++		if _, err = p.directory(command.Parent); err != nil {
++			return cp, err
++		}
++		entry := p.entry(command.Parent, command.Name)
++		if entry.Target == nil {
++			return cp, fsapi.NotFound
++		}
++		o, e := p.object(*entry.Target)
++		if e != nil {
++			return cp, e
++		}
++		cp.Object = *entry.Target
++		cp.Result.Attr = &o.Attr
++	case fsapi.Sync:
++		if !command.Durability.Valid() {
++			return cp, fsapi.Invalid
++		}
++		object, err := p.object(command.Object)
++		if err != nil {
++			return cp, err
++		}
++		if (command.Durability == fsapi.DirectoryDurability) != (object.Attr.Kind == fsapi.Directory) {
++			return cp, fsapi.Invalid
++		}
++	case fsapi.Release:
++		life := s.lifetimes[command.Object]
++		if life == nil || life.handles == 0 || !command.DescriptionOnly {
++			return cp, fsapi.Stale
++		}
++	case fsapi.Forget:
++		life := s.lifetimes[command.Object]
++		if life == nil || command.Count == 0 || command.Count > life.lookups {
++			return cp, fsapi.Stale
++		}
++	case fsapi.DescriptorClose, fsapi.ProcessExit:
++		owner := command.Lock.Owner
++		if !owner.Valid() || owner.Generation != s.config.Workspace.ID {
++			return cp, fsapi.Stale
++		}
++		if command.Operation == fsapi.DescriptorClose && command.Handle == 0 {
++			return cp, fsapi.Stale
++		}
++		if command.Operation == fsapi.ProcessExit {
++			if _, ok := s.owners[owner]; !ok && len(s.owners) >= s.config.Limits.Locks {
++				return cp, fsapi.NoSpace
++			}
++		}
++	default:
++		return cp, fsapi.Unsupported
++	}
++	cp.Result.Generation = s.config.Workspace.ID
++	if cp.Mutation != nil && len(cp.MutationEncoding) == 0 {
++		header := s.header(operation)
++		header.Sequence = 1
++		cp.MutationEncoding, err = record.Encode(record.Record{Header: header, Payload: *cp.Mutation})
++		if err != nil {
++			return cp, err
++		}
++	}
++	if cp.Object.Valid() && (command.Operation == fsapi.Create || command.Operation == fsapi.Mkdir || command.Operation == fsapi.SymlinkOp || command.Operation == fsapi.Lookup || command.Operation == fsapi.Open) && s.lifetimes[cp.Object] == nil {
++		op, err := s.newUUID()
++		if err != nil {
++			return cp, err
++		}
++		pin, err := s.newUUID()
++		if err != nil {
++			return cp, err
++		}
++		if cp.Mutation == nil {
++			op = operation
++		}
++		cp.PinOperation = op
++		cp.Pin = &record.HandlePin{Pin: pin, Object: cp.Object, ServingGeneration: s.config.Workspace.ID, Incarnation: s.config.Authority.OwnerIncarnation, Reasons: 5}
++	}
++	return cp, nil
++}
++
++// ApplyControlled applies the exact protected plan. Recovery finds original
++// operation UUID evidence and compares the complete mutation; it never replans
++// against a pathname. Incomplete original journal evidence keeps the gate shut.
++func (c *ControlledCut) ApplyControlled(ctx context.Context, p ControlledPlan, recovery bool) (fsapi.Result, error) {
++	if !c.active {
++		return fsapi.Result{}, fsapi.Stale
++	}
++	s := c.service
++	if p.TooLarge || p.Result.Code != fsapi.OK {
++		return p.Result, nil
++	}
++	if recovery {
++		if p.Command.Operation == fsapi.Sync {
++			if err := s.writer.Flush(ctx); err != nil {
++				return fsapi.Result{}, s.block(err)
++			}
++		}
++		found, err := s.controlledEvidence(ctx, p)
++		if err != nil {
++			return fsapi.Result{}, err
++		}
++		if p.Mutation != nil && !found {
++			return fsapi.Result{}, fsapi.Unavailable
++		}
++		if p.Pin != nil {
++			pinned, err := s.controlledPinEvidence(ctx, p)
++			if err != nil {
++				return fsapi.Result{}, err
++			}
++			if !pinned {
++				if err = s.protect(ctx, p.PinOperation, *p.Pin); err != nil {
++					return fsapi.Result{}, err
++				}
++			}
++		}
++		return p.Result, nil
++	}
++	if p.Before != s.selection.Through.Position {
++		return fsapi.Result{}, fsapi.Stale
++	}
++	if p.Mutation != nil {
++		if err := s.protect(ctx, p.Operation, *p.Mutation); err != nil {
++			return fsapi.Result{}, err
++		}
++	}
++	command := p.Command
++	switch command.Operation {
++	case fsapi.Create, fsapi.Mkdir, fsapi.SymlinkOp, fsapi.Lookup, fsapi.Open:
++		var flags *fsapi.OpenFlags
++		lookup := p.LookupPin
++		if command.Operation == fsapi.Create || command.Operation == fsapi.Open {
++			flags = &command.Flags
++		}
++		if p.Pin != nil {
++			if err := s.protect(ctx, p.PinOperation, *p.Pin); err != nil {
++				return fsapi.Result{}, err
++			}
++			s.lifetimes[p.Object] = &lifetime{pin: p.Pin.Pin}
++		}
++		if err := s.acquire(ctx, p.Object, lookup, flags); err != nil {
++			return fsapi.Result{}, err
++		}
++		if flags != nil && s.nextHandle != p.Result.Handle {
++			return fsapi.Result{}, s.block(fsapi.Stale)
++		}
++	case fsapi.Sync, fsapi.Release, fsapi.Forget, fsapi.DescriptorClose, fsapi.ProcessExit:
++		result, err := s.execute(ctx, p.Credentials, command)
++		if err != nil {
++			return fsapi.Result{}, err
++		}
++		return result, nil
++	}
++	return p.Result, nil
++}
++func (s *Service) controlledEvidence(ctx context.Context, p ControlledPlan) (bool, error) {
++	reader, err := s.reader(ctx)
++	if err != nil {
++		return false, err
++	}
++	defer func() { _ = reader.Close() }()
++	var mutation *record.FrameRef
++	for {
++		e, err := reader.Next(ctx)
++		if errors.Is(err, io.EOF) {
++			return false, nil
++		}
++		if err != nil {
++			return false, err
++		}
++		if e.Record.Header.Operation != p.Operation {
++			continue
++		}
++		switch value := e.Record.Payload.(type) {
++		case record.Mutation:
++			a, err := json.Marshal(value)
++			if err != nil {
++				return false, err
++			}
++			b, err := json.Marshal(p.Mutation)
++			if err != nil {
++				return false, err
++			}
++			if !bytes.Equal(a, b) {
++				return false, fsapi.Stale
++			}
++			ref := e.Reference
++			mutation = &ref
++		case record.Commit:
++			if mutation == nil || value.Mutation != *mutation {
++				return false, fsapi.Stale
++			}
++			return true, nil
++		}
++	}
++}
++
++func (s *Service) controlledPinEvidence(ctx context.Context, p ControlledPlan) (bool, error) {
++	reader, err := s.reader(ctx)
++	if err != nil {
++		return false, err
++	}
++	defer func() { _ = reader.Close() }()
++	for {
++		e, err := reader.Next(ctx)
++		if errors.Is(err, io.EOF) {
++			return false, nil
++		}
++		if err != nil {
++			return false, err
++		}
++		if e.Record.Header.Operation != p.PinOperation {
++			continue
++		}
++		pin, ok := e.Record.Payload.(record.HandlePin)
++		if !ok || p.Pin == nil || pin != *p.Pin {
++			return false, fsapi.Stale
++		}
++		return true, nil
++	}
++}
+diff --git a/internal/fsservice/controlled_test.go b/internal/fsservice/controlled_test.go
+new file mode 100644
+index 0000000..579fd6c
+--- /dev/null
++++ b/internal/fsservice/controlled_test.go
+@@ -0,0 +1,41 @@
++package fsservice
++
++import (
++	"context"
++	"errors"
++	"testing"
++
++	"github.com/snonux/homelabfs/internal/fsapi"
++)
++
++func TestControlledServiceExcludesReusedIdentities(t *testing.T) {
++	f := setup(t, "os")
++	permissions, err := NewUnixPermissions(uid(60))
++	if err != nil {
++		t.Fatal(err)
++	}
++	f.c.Permissions = permissions
++	f.start()
++	operation := uid(61)
++	allocation := fsapi.ObjectID{Home: f.c.Storage.Volume, Allocation: uid(62)}
++	c := fsapi.Command{Mount: f.c.Storage.Volume, Generation: f.c.Workspace.ID, Operation: fsapi.Create, Parent: f.c.Storage.Root, Name: "controlled", Mode: 0660, Flags: fsapi.OpenFlags{Access: fsapi.ReadWrite, Create: true, Exclusive: true}}
++	err = f.service.Controlled(t.Context(), *f.c.Validation, func(ctx context.Context, cut *ControlledCut) error {
++		plan, err := cut.PlanControlled(ctx, fsapi.Cred{UID: 1000, GID: 1001, Groups: []uint32{200}}, c, operation, allocation, nil)
++		if err != nil {
++			return err
++		}
++		if _, err = cut.ApplyControlled(ctx, plan, false); err != nil {
++			return err
++		}
++		if _, err = cut.PlanControlled(ctx, fsapi.Cred{}, c, operation, allocation, nil); !errors.Is(err, fsapi.Stale) {
++			t.Fatalf("operation reused: %v", err)
++		}
++		if _, err = cut.PlanControlled(ctx, fsapi.Cred{}, c, uid(63), allocation, nil); !errors.Is(err, fsapi.Stale) {
++			t.Fatalf("allocation reused: %v", err)
++		}
++		return nil
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++}
+diff --git a/internal/guestbridge/validation_state.go b/internal/guestbridge/validation_state.go
+new file mode 100644
+index 0000000..81cb69f
+--- /dev/null
++++ b/internal/guestbridge/validation_state.go
+@@ -0,0 +1,170 @@
++package guestbridge
++
++import (
++	"context"
++	"encoding/json"
++
++	"github.com/snonux/homelabfs/internal/fsapi"
++	"github.com/snonux/homelabfs/internal/fsservice"
++)
++
++// ValidationEnrollment binds the private profile to both authenticated endpoints.
++// Providers implementing private finalization must additionally verify the exact
++// operator-approved profile and actual FUSE endpoint at component construction.
++type ValidationEnrollment interface {
++	CheckValidation(context.Context, Context, fsservice.ValidationProfile, Endpoint) error
++}
++
++// ValidationState is the private controlled-provider finalization seam. Normal
++// providers never use it. A terminal result and the entire grant/process state
++// are persisted atomically before reply. Recovery supplies the original local
++// outcome, never replans the submitted command or manufactures publication.
++type ValidationState interface {
++	RecoverOutcome(context.Context, Binding) (Outcome, bool, error)
++	Finalize(context.Context, Binding, json.RawMessage, json.RawMessage) error
++	Restore(context.Context, Context) (json.RawMessage, error)
++}
++type validationSnapshot struct {
++	Controller     fsapi.UUID
++	Context        Context
++	Generation     fsapi.UUID
++	Credentials    map[string][]byte
++	Exited         map[string]uint64
++	Grants         map[string]*grant
++	CloseSequences map[string]uint64
++}
++
++func (s *Service) restoreValidation(ctx context.Context, scope Context) error {
++	store, ok := s.config.Claims.(ValidationState)
++	if s.config.Validation == nil || !ok {
++		return nil
++	}
++	raw, err := store.Restore(ctx, scope)
++	if err != nil || len(raw) == 0 {
++		return err
++	}
++	var snapshot validationSnapshot
++	if err = json.Unmarshal(raw, &snapshot); err != nil {
++		return err
++	}
++	if snapshot.Context != scope || !snapshot.Controller.Valid() {
++		return fsapi.Permission
++	}
++	ss := s.sessions[scope.Session]
++	// Exact terminal results remain queryable in a new generation, while old
++	// capabilities and descriptions cannot become live grants in that generation.
++	// Credential conflicts and exited process incarnations remain protected.
++
++	if len(snapshot.Grants) > s.config.MaxCapabilities || len(snapshot.Credentials) > s.config.MaxCredentialRevisions {
++		return fsapi.NoSpace
++	}
++	for key, g := range snapshot.Grants {
++		if g == nil || key != g.Cap.Token || g.Cap.Scope != scope {
++			return fsapi.Stale
++		}
++	}
++	ss.Credentials = snapshot.Credentials
++	ss.Exited = snapshot.Exited
++	if snapshot.Generation == ss.Generation {
++		ss.Grants = snapshot.Grants
++	}
++	ss.CloseSequences = snapshot.CloseSequences
++	if ss.Credentials == nil {
++		ss.Credentials = map[string][]byte{}
++	}
++	if ss.Exited == nil {
++		ss.Exited = map[string]uint64{}
++	}
++	if ss.Grants == nil {
++		ss.Grants = map[string]*grant{}
++	}
++	if ss.CloseSequences == nil {
++		ss.CloseSequences = map[string]uint64{}
++	}
++	return nil
++}
++func (s *Service) finalizeResult(ctx context.Context, b Binding, out Outcome) (json.RawMessage, error) {
++	s.resultMu.Lock()
++	defer s.resultMu.Unlock()
++	// A concurrent query/call may already have protected the original result.
++	old, err := s.config.Claims.Resolve(ctx, b.Context, b.Call.Claim)
++	if err != nil {
++		return nil, err
++	}
++	if old.Status == "TERMINAL" {
++		return old.Result, nil
++	}
++	result, err := s.result(ctx, b, out)
++	if err != nil {
++		return nil, err
++	}
++	if store, ok := s.config.Claims.(ValidationState); s.config.Validation != nil && ok {
++		s.mu.Lock()
++		ss := s.sessions[b.Context.Session]
++		snapshot := validationSnapshot{Controller: s.controller, Context: ss.Context, Generation: ss.Generation, Credentials: ss.Credentials, Exited: ss.Exited, Grants: ss.Grants, CloseSequences: ss.CloseSequences}
++		raw, e := json.Marshal(snapshot)
++		s.mu.Unlock()
++		if e != nil {
++			return nil, e
++		}
++		if err = store.Finalize(ctx, b, result, raw); err != nil {
++			return nil, err
++		}
++	} else if err = s.config.Claims.ProtectResult(ctx, b, result); err != nil {
++		return nil, err
++	}
++	return result, nil
++}
++func (s *Service) recoverValidation(ctx context.Context, state ClaimState) (ClaimState, error) {
++	store, ok := s.config.Claims.(ValidationState)
++	if s.config.Validation == nil || !ok || state.Status == "TERMINAL" || !state.Binding.Operation.Valid() {
++		return state, nil
++	}
++	outcome, ready, err := store.RecoverOutcome(ctx, state.Binding)
++	if err != nil {
++		return state, err
++	}
++	if !ready {
++		return state, nil
++	}
++	if current, e := s.config.Claims.Resolve(ctx, state.Binding.Context, state.Binding.Call.Claim); e != nil {
++		return state, e
++	} else if current.Status == "TERMINAL" {
++		return current, nil
++	}
++	// If an effect belongs to an old generation, finalizing operations that issue
++	// capabilities requires the original protected grant context. Keep these
++	// uncertain instead of substituting fresh capabilities or descriptions.
++	s.mu.Lock()
++	generation := s.sessions[state.Binding.Context.Session].Generation
++	s.mu.Unlock()
++	if outcome.Result.Generation.Valid() && outcome.Result.Generation != generation && capNeeds(state.Binding.Call.Intent) > 0 {
++		return state, nil
++	}
++	result, err := s.finalizeResult(ctx, state.Binding, outcome)
++	if err != nil {
++		return state, err
++	}
++	state.Status = "TERMINAL"
++	state.Result = result
++	return state, nil
++}
++
++// ValidationExecution protects the original planned semantic result, wire
++// capability bytes and full bridge snapshot before the local filesystem effect.
++// Only the explicitly selected private controlled profile may use this seam.
++type ValidationExecution interface {
++	ExecuteValidation(context.Context, Binding, func(Captured) (Prepared, error), func(Outcome) (json.RawMessage, json.RawMessage, error)) (Outcome, error)
++}
++
++func (s *Service) prepareValidationResult(ctx context.Context, b Binding, out Outcome) (json.RawMessage, json.RawMessage, error) {
++	result, err := s.result(ctx, b, out)
++	if err != nil {
++		return nil, nil, err
++	}
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	ss := s.sessions[b.Context.Session]
++	raw, err := json.Marshal(validationSnapshot{Controller: s.controller, Context: ss.Context, Generation: ss.Generation, Credentials: ss.Credentials, Exited: ss.Exited, Grants: ss.Grants, CloseSequences: ss.CloseSequences})
++	return result, raw, err
++}

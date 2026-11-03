@@ -1,0 +1,13 @@
+--- FAIL: TestRealJournalCrashRecoveryOriginalPlan (0.00s)
+    provider_test.go:243: invalid writer options
+--- FAIL: TestAppendBoundUsesRealSerializedSize (0.00s)
+    provider_test.go:326: invalid writer options
+--- FAIL: TestProtectedGapsAndExactRetirement (0.00s)
+    provider_test.go:367: invalid writer options
+--- FAIL: TestNegativeBindingsEnrollmentAndLock (0.00s)
+    provider_test.go:399: invalid writer options
+--- FAIL: TestConcurrentDuplicateExecutesOnce (0.00s)
+    provider_test.go:425: invalid writer options
+FAIL
+FAIL	github.com/snonux/homelabfs/internal/controlledvalidation	0.003s
+FAIL

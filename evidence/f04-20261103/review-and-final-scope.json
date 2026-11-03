@@ -1,0 +1,8 @@
+{
+  "task": "f04",
+  "round1": "controlled_provider_r1 found3 blocking recovery/staging/waiter defects; all corrected with real regressions.",
+  "round2": "controlled_provider_r2 found1 additional pending-state interleaving defect; review budget exhausted. Root agreed, guided final durable admission boundary and protected snapshot catch-up, read complete correction and real regressions, then personally ran full module gates. No third independent review.",
+  "final_correction": "Durable staged PENDING operation prevents new reservation in that session; original recovery remains available. Before new prediction, latest protected terminal snapshot is installed under the same serialization lock. Unadmitted allocated numbers retain exact gap/floor coverage.",
+  "checks": "Final changed package build/vet/errcheck/lint/race all0, coverage75.5%; root final full module build/vet/errcheck/lint/FreeBSD build/nonrace suite42.022s all0, zero source drift. All18 frozen files matched after integration of current main.",
+  "scope": "Real OS local journal/private controlled ledger only; null Publication, signed operator/host/guest scope and mandatory platform facts, no permissive native/cache defaults, no normal3/v1 widening, no CLI or normal serving. RESUME remains BLOCKED. No lab/SSH/VM/mount/install/production/sink actions in f04."
+}

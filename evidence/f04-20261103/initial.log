@@ -1,0 +1,3 @@
+ok  	github.com/snonux/homelabfs/internal/fsservice	5.125s
+ok  	github.com/snonux/homelabfs/internal/guestbridge	0.108s
+?   	github.com/snonux/homelabfs/internal/controlledvalidation	[no test files]

@@ -1,0 +1,7 @@
+--- FAIL: TestRealJournalCrashRecoveryOriginalPlan (0.01s)
+    provider_test.go:297: recovery ready=false err=STALE
+--- FAIL: TestProtectedGapsAndExactRetirement (0.00s)
+    provider_test.go:387: PERMISSION
+FAIL
+FAIL	github.com/snonux/homelabfs/internal/controlledvalidation	0.087s
+FAIL

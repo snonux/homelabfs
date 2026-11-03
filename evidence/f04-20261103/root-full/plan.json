@@ -1,0 +1,67 @@
+{
+  "packages": [
+    "./..."
+  ],
+  "commands": [
+    {
+      "name": "build",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ]
+    },
+    {
+      "name": "vet",
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ]
+    },
+    {
+      "name": "errcheck",
+      "argv": [
+        "errcheck",
+        "./..."
+      ]
+    },
+    {
+      "name": "lint",
+      "argv": [
+        "golangci-lint",
+        "run",
+        "--timeout=3m",
+        "./..."
+      ]
+    },
+    {
+      "name": "freebsd",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "0"
+      }
+    },
+    {
+      "name": "full-root",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-count=1",
+        "-timeout=600s",
+        "./..."
+      ],
+      "timeout": 1200
+    }
+  ],
+  "tmp": "/tmp/hf4-yd1j7mpp",
+  "scope": "Final controlled provider plus all already merged main sources. Run only AFTER final correction freeze, root selfreview and isolated fast-forward to current main."
+}

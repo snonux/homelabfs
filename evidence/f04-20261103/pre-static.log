@@ -1,0 +1,7 @@
+--- FAIL: TestRealBridgeProtectsCapabilitiesBeforeEffectAndReply (0.08s)
+    bridge_test.go:238: CALL did not complete real service execution: PENDING <nil>
+FAIL
+FAIL	github.com/snonux/homelabfs/internal/controlledvalidation	0.341s
+ok  	github.com/snonux/homelabfs/internal/fsservice	(cached)
+ok  	github.com/snonux/homelabfs/internal/guestbridge	0.262s
+FAIL

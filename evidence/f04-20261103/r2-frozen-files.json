@@ -1,0 +1,20 @@
+{
+  "internal/controlledvalidation/README.md": "b68e27d0db13dc44cc2d13cb70b32eeffda0e4bb038662833639fffffc656c05",
+  "internal/controlledvalidation/bridge_test.go": "e1f042272e9a1ef5bde6ffc71c3a797a6e6e862f254fb4f828dd9013dfdb7e29",
+  "internal/controlledvalidation/claims.go": "8789fff34647722d0ab8580c34cbd73d69023657941c293beebb2683a373d5c6",
+  "internal/controlledvalidation/execution.go": "abf4018e7b781a7575897b0a950b40864009a133a2fae1ae34cb959feb0b9515",
+  "internal/controlledvalidation/ledger.go": "cee73f28f500910cae3fb93f3997d4821e58489ce5917f820d59632a868bb422",
+  "internal/controlledvalidation/provider.go": "0769802ef7c612fd6c1d0fa7c16e6f494c3b596e84a99b4afa2336982eadcedf",
+  "internal/controlledvalidation/provider_test.go": "660771e3ff865119385a3b148f345f28c7f81cf479b81b64b12773de0347793b",
+  "internal/controlledvalidation/regression_test.go": "ba2732a9393ac69976dfec75e4ca19bc36876084e9b6ac0d1d7ed02bf7f1c1e9",
+  "internal/controlledvalidation/state.go": "77a3e7a5aa04b8589fc2b248e06ad7fd29e1898d6abec5cb19f23119603d256d",
+  "internal/fsservice/controlled.go": "d057eb72db1feb47aea96a01ed3439bedd9420a277e7e307531dffb0df100e00",
+  "internal/fsservice/controlled_test.go": "59233aff8c4163990d0cfff733c58bb43e83daa260fddbce8a0389dc0d70b7b8",
+  "internal/fsservice/service.go": "38b11815bde574137d60cea2f91d7b88e42b6dfd282b0382aa2c55e5937b45d4",
+  "internal/fsservice/types.go": "31cc7cff88a2d67cb1536cf8e86b106b523064021ab2cb634feda3dff0685998",
+  "internal/guestbridge/dispatch.go": "917045d5d9fb83627f51c872091d80d4c8a5c54dd12cfe6a2821e04ab29eda8f",
+  "internal/guestbridge/result.go": "b753e5ac3d936c8e1a0740b4ec911bd70468519749e81a998e26f4bc5b7503c8",
+  "internal/guestbridge/service.go": "9e0820372e7f2e02dad79d5dddb6dd205f427e141e3de08dc09985145a895268",
+  "internal/guestbridge/types.go": "81455df727eecd52ac5378d98bb5f71ba25a97cecedab8b2ab5b0ca5e29ae91b",
+  "internal/guestbridge/validation_state.go": "9e0f2c09a7b6781c333d4913edd09bab92d30716418d8b992bc68cbdaa8bbf20"
+}

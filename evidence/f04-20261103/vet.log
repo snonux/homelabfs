@@ -1,0 +1,3 @@
+# github.com/snonux/homelabfs/internal/controlledvalidation
+# [github.com/snonux/homelabfs/internal/controlledvalidation]
+vet: internal/controlledvalidation/provider_test.go:58:11: f.tempDirectory undefined (type *fixture has no field or method tempDirectory)

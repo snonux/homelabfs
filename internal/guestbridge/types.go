@@ -187,7 +187,7 @@ type Outcome struct {
 	// DelegatedError preserves ErrDelegatedFileTooLarge from prepare as a
 	// confirmed pre-effect result; no v1 semantic errno is invented for it.
 	// It requires an otherwise zero Result and no protected mutation.
-	DelegatedError  error
+	DelegatedError  error `json:"-"`
 	Result          fsapi.Result
 	Publication     json.RawMessage
 	EntryAttributes []fsapi.Attr
@@ -278,6 +278,7 @@ type Service struct {
 	controller        fsapi.UUID
 	transportAttached bool
 	mu                sync.Mutex
+	resultMu          sync.Mutex
 	config            Config
 	sessions          map[string]*session
 }

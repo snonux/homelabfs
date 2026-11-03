@@ -128,8 +128,9 @@ type Config struct {
 }
 
 type command struct {
-	request *fsapi.Request
-	value   fsapi.Command
+	request    *fsapi.Request
+	value      fsapi.Command
+	controlled func(context.Context)
 }
 type lifetime struct {
 	pin     fsapi.UUID
@@ -146,31 +147,32 @@ type handle struct {
 // foreign-home coordination and explicit transactions remain a separate service.
 // It must not be copied. Close drains accepted commands without canceling them.
 type Service struct {
-	config         Config
-	state          atomic.Uint32
-	status         atomic.Pointer[Status]
-	stopReason     atomic.Pointer[string]
-	observedSource fsapi.Position
-	mu             sync.Mutex
-	closed         bool
-	frontend       bool
-	accepted       map[*fsapi.Request]bool
-	queue          chan command
-	done           chan struct{}
-	writer         *segment.Writer
-	applied        apply.Result
-	selection      apply.Selection
-	ids            map[fsapi.UUID]bool
-	allocations    map[fsapi.ObjectID]bool
-	lifetimes      map[fsapi.ObjectID]*lifetime
-	handles        map[fsapi.OpenHandle]handle
-	nextHandle     fsapi.OpenHandle
-	lookupCount    uint64
-	locks          []heldLock
-	pending        map[fsapi.UUID]command
-	waits          map[fsapi.UUID]fsapi.LockOwner
-	owners         map[fsapi.LockOwner]bool
-	sessions       map[fsapi.UUID]bool
+	controlledEffects map[fsapi.UUID][32]byte
+	config            Config
+	state             atomic.Uint32
+	status            atomic.Pointer[Status]
+	stopReason        atomic.Pointer[string]
+	observedSource    fsapi.Position
+	mu                sync.Mutex
+	closed            bool
+	frontend          bool
+	accepted          map[*fsapi.Request]bool
+	queue             chan command
+	done              chan struct{}
+	writer            *segment.Writer
+	applied           apply.Result
+	selection         apply.Selection
+	ids               map[fsapi.UUID]bool
+	allocations       map[fsapi.ObjectID]bool
+	lifetimes         map[fsapi.ObjectID]*lifetime
+	handles           map[fsapi.OpenHandle]handle
+	nextHandle        fsapi.OpenHandle
+	lookupCount       uint64
+	locks             []heldLock
+	pending           map[fsapi.UUID]command
+	waits             map[fsapi.UUID]fsapi.LockOwner
+	owners            map[fsapi.LockOwner]bool
+	sessions          map[fsapi.UUID]bool
 }
 
 var _ fsapi.Filesystem = (*Service)(nil)

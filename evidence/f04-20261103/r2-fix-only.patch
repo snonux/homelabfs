@@ -1,0 +1,884 @@
+diff --git a/internal/controlledvalidation/README.md b/internal/controlledvalidation/README.md
+index adbc37f..8de413e 100644
+--- a/internal/controlledvalidation/README.md
++++ b/internal/controlledvalidation/README.md
+@@ -56,8 +56,15 @@ The private ledger does not add record kinds to either closed journal format.
+ Recovery uses the original operation UUID and compares its complete typed
+ mutation/COMMIT evidence. A missing original mutation keeps the claim uncertain;
+ it does not cause a new lookup or replanning. Creation/open pins are preplanned
+-and recovered under their original identities. An effected operation whose terminal
+-reply was lost finishes with its original protected result and capability bytes.
++and recovered under their original identities. Within one serving generation,
++lifetime recovery additionally requires the service's exact operation-completion
++evidence; an unexecuted OPEN/LOOKUP or release/forget/close/exit remains uncertain.
++Recovery never fills a predicted handle slot or overwrites an intervening native
++OPEN. After a service restart, unproven nonmutating lifetime effects stay uncertain.
++Proven effects finish with their original protected result and capability bytes.
++Prediction uses a private session clone; credits and the plan are protected before
++filesystem/lifetime effects, and grants/process state install after protected
++completion. Raw ancestor names retain their original bytes in private snapshots.
+ Old descriptions are excluded when the serving generation changes. Snapshot
+ versions prevent older recovery from rolling back newer grant/lifetime state.
+ 
+diff --git a/internal/controlledvalidation/regression_test.go b/internal/controlledvalidation/regression_test.go
+new file mode 100644
+index 0000000..ba9ecce
+--- /dev/null
++++ b/internal/controlledvalidation/regression_test.go
+@@ -0,0 +1,321 @@
++package controlledvalidation
++
++import (
++	"bytes"
++	"context"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"testing"
++
++	"github.com/snonux/homelabfs/internal/fsapi"
++	"github.com/snonux/homelabfs/internal/guestbridge"
++	bolt "go.etcd.io/bbolt"
++)
++
++type bridgeHarness struct {
++	f       *fixture
++	s       *guestbridge.Service
++	n       guestbridge.Native
++	cell    uint64
++	process string
++	root    wireResult
++}
++
++func newBridgeHarness(t *testing.T) *bridgeHarness {
++	t.Helper()
++	f := newFixture(t)
++	scope := f.pc.Authorization.Enrollment.Scope
++	n := guestbridge.Native{UID: 1000, GID: 1001, PID: 123, Unique: 1, Groups: []uint32{200}, Process: id(66).String(), Endpoint: f.pc.Authorization.Enrollment.Endpoint}
++	root := f.newBinding("ROOT", map[string]any{}, false)
++	s, err := guestbridge.New(t.Context(), guestbridge.Config{Validation: f.config.Validation, Endpoint: n.Endpoint, Native: &nativeFacts{native: n}, Attestor: credentialFacts{expected: root.Call.Credentials, scope: scope}, Claims: f.provider, Execution: f.provider, Views: noViews{}, Scopes: []guestbridge.Context{scope}, MaxCapabilities: 5})
++	if err != nil {
++		t.Fatal(err)
++	}
++	h := &bridgeHarness{f: f, s: s, n: n, process: root.Call.Credentials.Process}
++	h.send("HELLO", map[string]any{"body_schema": 1, "bridge_major": 1, "bridge_minor": 0, "features": 255, "msize": 65536, "normal_major": 3, "normal_minor": 0})
++	h.send("CALL", root.Call)
++	h.root = h.query(root)
++	return h
++}
++func (h *bridgeHarness) send(op string, payload any) []byte {
++	h.f.t.Helper()
++	raw, err := json.Marshal(payload)
++	if err != nil {
++		h.f.t.Fatal(err)
++	}
++	h.cell++
++	response, err := h.s.Execute(h.f.t.Context(), h.n, guestbridge.Command{Cell: h.cell, Context: h.f.pc.Authorization.Enrollment.Scope, Op: op, Payload: raw})
++	if err != nil {
++		h.f.t.Fatal(err)
++	}
++	return response
++}
++func (h *bridgeHarness) query(b guestbridge.Binding) wireResult {
++	h.f.t.Helper()
++	response := h.send("QUERY", map[string]any{"claim": b.Call.Claim})
++	var result struct {
++		Payload struct {
++			Status string
++			Result wireResult
++		}
++	}
++	if err := json.Unmarshal(response, &result); err != nil {
++		h.f.t.Fatal(err)
++	}
++	if result.Payload.Status != "TERMINAL" {
++		h.f.t.Fatalf("expected terminal: %s", response)
++	}
++	return result.Payload.Result
++}
++func (h *bridgeHarness) call(op string, args any) (guestbridge.Binding, wireResult) {
++	h.f.t.Helper()
++	b := h.f.newBinding(op, args, false)
++	h.send("CALL", b.Call)
++	return b, h.query(b)
++}
++func (h *bridgeHarness) create() (guestbridge.Binding, wireResult) {
++	return h.call("CREATE", map[string]any{"parent": h.root.Capabilities[0], "name": "66696c65", "mode": 0660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}})
++}
++func (h *bridgeHarness) entry(b guestbridge.Binding) entry {
++	h.f.t.Helper()
++	var out entry
++	if err := h.f.provider.db.View(func(tx *bolt.Tx) error { e, _, err := h.f.provider.load(tx, b.Call.Claim); out = e; return err }); err != nil {
++		h.f.t.Fatal(err)
++	}
++	return out
++}
++
++func TestBridgeCreditRefusalDoesNotPublishPredictedLifetimeState(t *testing.T) {
++	for _, op := range []string{"PROCESS_EXIT", "DESCRIPTION_RELEASE", "DESCRIPTION_CLOSE", "OPEN"} {
++		t.Run(op, func(t *testing.T) {
++			h := newBridgeHarness(t)
++			f := h.f
++			_, created := h.create()
++			if created.Code != "OK" || len(created.Capabilities) != 2 {
++				t.Fatalf("create %+v", created)
++			}
++			description := created.Capabilities[1]
++			var args any
++			switch op {
++			case "PROCESS_EXIT":
++				args = map[string]any{"process": h.process, "exit_sequence": 1}
++			case "DESCRIPTION_RELEASE":
++				args = map[string]any{"description": description, "release_sequence": 1}
++			case "DESCRIPTION_CLOSE":
++				args = map[string]any{"description": description, "process": h.process, "close_sequence": 1}
++			case "OPEN":
++				args = map[string]any{"object": created.Capabilities[0], "flags": map[string]any{"access": "READWRITE", "append": false, "create": false, "exclusive": false, "sync": "ORDINARY", "truncate": false}}
++			}
++			originalCredit := f.provider.config.ClaimCreditBytes
++			f.provider.config.ClaimCreditBytes = 4096
++			refused := f.newBinding(op, args, false)
++			h.send("CALL", refused.Call)
++			pending := h.entry(refused)
++			if pending.Status != "RESERVED" || pending.Plan != nil || pending.Outcome != nil || len(pending.ProposedResult) != 0 {
++				t.Fatalf("credit refusal admitted plan: %+v", pending)
++			}
++			if _, err := f.provider.ResolveGap(t.Context(), refused.Context, refused.Call.Claim); err != nil {
++				t.Fatalf("never admitted claim lost no-effect resolution: %v", err)
++			}
++			f.provider.config.ClaimCreditBytes = originalCredit
++			_, read := h.call("READ", map[string]any{"description": description, "offset": 0, "count": 1})
++			if read.Code != "OK" {
++				t.Fatalf("refused %s changed live credentials/description: %+v", op, read)
++			}
++			retried, result := h.call(op, args)
++			if result.Code != "OK" {
++				t.Fatalf("refused %s consumed live sequence/grant: %+v", op, result)
++			}
++			if op == "OPEN" {
++				e := h.entry(retried)
++				if e.Outcome == nil || e.Outcome.Result.Handle != 2 {
++					t.Fatalf("refused OPEN consumed service handle: %+v", e.Outcome)
++				}
++			}
++		})
++	}
++}
++
++func TestActualLifetimeFailpointsRequireOriginalEffect(t *testing.T) {
++	for _, op := range []fsapi.Operation{fsapi.Open, fsapi.Lookup, fsapi.Release, fsapi.Forget, fsapi.DescriptorClose, fsapi.ProcessExit} {
++		for _, point := range []string{"plan-protected", "effect-before-outcome"} {
++			t.Run(fmt.Sprintf("op-%d/%s", op, point), func(t *testing.T) {
++				f := newFixture(t)
++				createdBinding := f.binding("CREATE", map[string]any{})
++				created, err := execute(f, createdBinding, createCommand(f, "file"))
++				if err != nil {
++					t.Fatal(err)
++				}
++				c := command(f, op)
++				c.Object = created.Result.Attr.Object
++				c.Handle = created.Result.Handle
++				opcode := map[fsapi.Operation]string{fsapi.Open: "OPEN", fsapi.Lookup: "LOOKUP", fsapi.Release: "DESCRIPTION_RELEASE", fsapi.Forget: "FORGET", fsapi.DescriptorClose: "DESCRIPTION_CLOSE", fsapi.ProcessExit: "PROCESS_EXIT"}[op]
++				if op == fsapi.Open {
++					c.Handle = 0
++					c.Flags = fsapi.OpenFlags{Access: fsapi.ReadWrite}
++				}
++				if op == fsapi.Lookup {
++					c.Handle = 0
++					c.Parent = f.config.Storage.Root
++					c.Name = "file"
++				}
++				if op == fsapi.Release {
++					c.DescriptionOnly = true
++				}
++				if op == fsapi.Forget {
++					c.Handle = 0
++					c.Count = 1
++				}
++				if op == fsapi.ProcessExit {
++					c.Handle = 0
++				}
++				b := f.binding(opcode, map[string]any{})
++				crash := errors.New("intentional lifetime failpoint")
++				f.provider.config.Failpoint = func(name string) error {
++					if name == point {
++						return crash
++					}
++					return nil
++				}
++				if _, err = execute(f, b, c); !errors.Is(err, crash) {
++					t.Fatalf("failpoint %v", err)
++				}
++				f.provider.config.Failpoint = nil
++				out, ready, err := f.provider.RecoverOutcome(t.Context(), b)
++				if point == "plan-protected" {
++					if ready || !errors.Is(err, fsapi.Unavailable) {
++						t.Fatalf("unexecuted lifetime reported terminal: %v %v", ready, err)
++					}
++				} else {
++					if !ready || err != nil {
++						t.Fatalf("executed lifetime evidence lost: %v %v", ready, err)
++					}
++					if op == fsapi.Open {
++						r := fsapi.NewRequest(fsapi.Cred{UID: 1000, GID: 1001, Groups: []uint32{200}})
++						read := command(f, fsapi.Read)
++						read.Object = c.Object
++						read.Handle = out.Result.Handle
++						read.Size = 1
++						if err = f.service.Dispatch(t.Context(), r, read); err != nil {
++							t.Fatal(err)
++						}
++						result, err := r.Completion().Wait(t.Context())
++						if err != nil || result.Code != fsapi.OK {
++							t.Fatalf("recovered DESCRIPTION has no actual handle: %v %v", result.Code, err)
++						}
++					}
++				}
++			})
++		}
++	}
++}
++
++func TestBridgePrivateStagingPreservesRawAncestorNames(t *testing.T) {
++	h := newBridgeHarness(t)
++	_, created := h.call("CREATE", map[string]any{"parent": h.root.Capabilities[0], "name": "ff", "mode": 0660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}})
++	if created.Code != "OK" {
++		t.Fatalf("create raw name: %+v", created)
++	}
++	_, observed := h.call("GETATTR", map[string]any{"object": created.Capabilities[0]})
++	if observed.Code != "OK" {
++		t.Fatalf("private staging normalized raw ancestor name: %+v", observed)
++	}
++}
++
++func TestBridgeOpenRecoveryNeverInventsOrOverwritesHandle(t *testing.T) {
++	for _, point := range []string{"plan-protected", "effect-before-outcome"} {
++		t.Run(point, func(t *testing.T) {
++			h := newBridgeHarness(t)
++			createdBinding, created := h.create()
++			original := h.entry(createdBinding)
++			object := original.Outcome.Result.Attr.Object
++			b := h.f.newBinding("OPEN", map[string]any{"object": created.Capabilities[0], "flags": map[string]any{"access": "READWRITE", "append": false, "create": false, "exclusive": false, "sync": "ORDINARY", "truncate": false}}, false)
++			stopped := errors.New("open crash")
++			h.f.provider.config.Failpoint = func(name string) error {
++				if name == point {
++					return stopped
++				}
++				return nil
++			}
++			h.send("CALL", b.Call)
++			h.f.provider.config.Failpoint = nil
++			if point == "effect-before-outcome" {
++				recovered := h.query(b)
++				if recovered.Code != "OK" || len(recovered.Capabilities) != 1 {
++					t.Fatalf("recovery %+v", recovered)
++				}
++				_, read := h.call("READ", map[string]any{"description": recovered.Capabilities[0], "offset": 0, "count": 1})
++				if read.Code != "OK" {
++					t.Fatalf("recovered capability has no service handle: %+v", read)
++				}
++				return
++			}
++			request := fsapi.NewRequest(fsapi.Cred{UID: 1000, GID: 1001, Groups: []uint32{200}})
++			c := command(h.f, fsapi.Open)
++			c.Object = object
++			c.Flags = fsapi.OpenFlags{Access: fsapi.ReadWrite}
++			if err := h.f.service.Dispatch(t.Context(), request, c); err != nil {
++				t.Fatal(err)
++			}
++			native, err := request.Completion().Wait(t.Context())
++			if err != nil || native.Code != fsapi.OK {
++				t.Fatalf("native OPEN %v %v", native.Code, err)
++			}
++			predicted := h.entry(b).Plan.Result.Handle
++			if native.Handle != predicted {
++				t.Fatal("test did not occupy predicted handle")
++			}
++			h.cell++
++			raw, _ := json.Marshal(map[string]any{"claim": b.Call.Claim})
++			_, err = h.s.Execute(t.Context(), h.n, guestbridge.Command{Cell: h.cell, Context: b.Context, Op: "QUERY", Payload: raw})
++			if !errors.Is(err, fsapi.Unavailable) {
++				t.Fatalf("unexecuted OPEN was presented as success: %v", err)
++			}
++			read := fsapi.NewRequest(fsapi.Cred{UID: 1000, GID: 1001, Groups: []uint32{200}})
++			c = command(h.f, fsapi.Read)
++			c.Object = object
++			c.Handle = native.Handle
++			c.Size = 1
++			if err = h.f.service.Dispatch(t.Context(), read, c); err != nil {
++				t.Fatal(err)
++			}
++			result, err := read.Completion().Wait(t.Context())
++			if err != nil || result.Code != fsapi.OK {
++				t.Fatalf("recovery overwrote native handle: %v %v", result.Code, err)
++			}
++		})
++	}
++}
++
++func TestBridgeCompletedExitInstallsStateDespiteCanceledReply(t *testing.T) {
++	h := newBridgeHarness(t)
++	_, created := h.create()
++	b := h.f.newBinding("PROCESS_EXIT", map[string]any{"process": h.process, "exit_sequence": 1}, false)
++	ctx, cancel := context.WithCancel(t.Context())
++	defer cancel()
++	h.f.provider.config.Failpoint = func(name string) error {
++		if name == "effect-before-outcome" {
++			cancel()
++		}
++		return nil
++	}
++	raw, err := json.Marshal(b.Call)
++	if err != nil {
++		t.Fatal(err)
++	}
++	h.cell++
++	_, err = h.s.Execute(ctx, h.n, guestbridge.Command{Cell: h.cell, Context: b.Context, Op: "CALL", Payload: raw})
++	if err != nil && !errors.Is(err, context.Canceled) {
++		t.Fatalf("reply %v", err)
++	}
++	h.f.provider.config.Failpoint = nil
++	if e := h.entry(b); e.Status != "TERMINAL" {
++		t.Fatalf("completed exit lost durable terminal result: %s", e.Status)
++	}
++	next := h.f.newBinding("READ", map[string]any{"description": created.Capabilities[1], "offset": 0, "count": 1}, false)
++	response := h.send("CALL", next.Call)
++	if !bytes.Contains(response, []byte("REJECTED")) {
++		t.Fatalf("canceled reply prevented completed exit installation: %s", response)
++	}
++}
+diff --git a/internal/fsservice/controlled.go b/internal/fsservice/controlled.go
+index 5e26da7..f5a27e4 100644
+--- a/internal/fsservice/controlled.go
++++ b/internal/fsservice/controlled.go
+@@ -3,6 +3,7 @@ package fsservice
+ import (
+ 	"bytes"
+ 	"context"
++	"crypto/sha256"
+ 	"encoding/json"
+ 	"errors"
+ 	"io"
+@@ -387,6 +388,43 @@ func (c *ControlledCut) PlanControlled(ctx context.Context, cred fsapi.Cred, com
+ // operation UUID evidence and compares the complete mutation; it never replans
+ // against a pathname. Incomplete original journal evidence keeps the gate shut.
+ func (c *ControlledCut) ApplyControlled(ctx context.Context, p ControlledPlan, recovery bool) (fsapi.Result, error) {
++	if !c.active {
++		return fsapi.Result{}, fsapi.Stale
++	}
++	raw, err := json.Marshal(p)
++	if err != nil {
++		return fsapi.Result{}, err
++	}
++	binding := sha256.Sum256(raw)
++	if recovery && controlledLifetime(p.Command.Operation) && p.Result.Code == fsapi.OK && !p.TooLarge {
++		if p.Result.Generation == c.service.config.Workspace.ID {
++			evidence, ok := c.service.controlledEffects[p.Operation]
++			if !ok || evidence != binding {
++				return fsapi.Result{}, fsapi.Unavailable
++			}
++			return p.Result, nil
++		}
++		if p.Mutation == nil {
++			return fsapi.Result{}, fsapi.Unavailable
++		}
++	}
++	result, err := c.applyControlled(ctx, p, recovery)
++	if err == nil && controlledLifetime(p.Command.Operation) {
++		if c.service.controlledEffects == nil {
++			c.service.controlledEffects = make(map[fsapi.UUID][32]byte)
++		}
++		c.service.controlledEffects[p.Operation] = binding
++	}
++	return result, err
++}
++func controlledLifetime(op fsapi.Operation) bool {
++	switch op {
++	case fsapi.Create, fsapi.Mkdir, fsapi.SymlinkOp, fsapi.Open, fsapi.Lookup, fsapi.Release, fsapi.Forget, fsapi.DescriptorClose, fsapi.ProcessExit:
++		return true
++	}
++	return false
++}
++func (c *ControlledCut) applyControlled(ctx context.Context, p ControlledPlan, recovery bool) (fsapi.Result, error) {
+ 	if !c.active {
+ 		return fsapi.Result{}, fsapi.Stale
+ 	}
+diff --git a/internal/fsservice/controlled_test.go b/internal/fsservice/controlled_test.go
+index 579fd6c..56a444b 100644
+--- a/internal/fsservice/controlled_test.go
++++ b/internal/fsservice/controlled_test.go
+@@ -3,7 +3,9 @@ package fsservice
+ import (
+ 	"context"
+ 	"errors"
++	"fmt"
+ 	"testing"
++	"time"
+ 
+ 	"github.com/snonux/homelabfs/internal/fsapi"
+ )
+@@ -39,3 +41,126 @@ func TestControlledServiceExcludesReusedIdentities(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ }
++
++func TestControlledLifetimeRecoveryRequiresEffectEvidence(t *testing.T) {
++	for _, op := range []fsapi.Operation{fsapi.Open, fsapi.Lookup, fsapi.Release, fsapi.Forget, fsapi.DescriptorClose, fsapi.ProcessExit} {
++		for _, applied := range []bool{false, true} {
++			t.Run(fmt.Sprintf("op-%d/applied-%v", op, applied), func(t *testing.T) {
++				f := setup(t, "os")
++				policy, err := NewUnixPermissions(uid(60))
++				if err != nil {
++					t.Fatal(err)
++				}
++				f.c.Permissions = policy
++				f.start()
++				created := f.create(f.c.Storage.Root, "file")
++				c := fsapi.Command{Mount: f.c.Storage.Volume, Generation: f.c.Workspace.ID, Operation: op, Object: created.Attr.Object, Handle: created.Handle, Flags: fsapi.OpenFlags{Access: fsapi.ReadWrite}, Lock: fsapi.Lock{Owner: owner(f, 1)}}
++				if op == fsapi.Open {
++					c.Handle = 0
++				}
++				if op == fsapi.Lookup {
++					c.Handle = 0
++					c.Parent = f.c.Storage.Root
++					c.Name = "file"
++				}
++				if op == fsapi.Release {
++					c.DescriptionOnly = true
++				}
++				if op == fsapi.Forget {
++					c.Handle = 0
++					c.Count = 1
++				}
++				if op == fsapi.ProcessExit {
++					c.Handle = 0
++				}
++				var plan ControlledPlan
++				err = f.service.Controlled(t.Context(), *f.c.Validation, func(ctx context.Context, cut *ControlledCut) error {
++					p, e := cut.PlanControlled(ctx, fsapi.Cred{UID: 1000, GID: 1001, Groups: []uint32{200}}, c, uid(61), fsapi.ObjectID{}, nil)
++					if e != nil {
++						return e
++					}
++					plan = p
++					if applied {
++						_, e = cut.ApplyControlled(ctx, plan, false)
++					}
++					return e
++				})
++				if err != nil {
++					t.Fatal(err)
++				}
++				var intervening fsapi.Result
++				if !applied && op == fsapi.Open {
++					intervening = f.ok(fsapi.Command{Operation: fsapi.Open, Object: created.Attr.Object, Flags: fsapi.OpenFlags{Access: fsapi.ReadWrite}})
++					if intervening.Handle != plan.Result.Handle {
++						t.Fatal("test did not consume predicted handle")
++					}
++				}
++				err = f.service.Controlled(t.Context(), *f.c.Validation, func(ctx context.Context, cut *ControlledCut) error {
++					handles, next, lookups, locks, exited := len(f.service.handles), f.service.nextHandle, f.service.lookupCount, len(f.service.locks), f.service.owners[owner(f, 1)]
++					_, e := cut.ApplyControlled(ctx, plan, true)
++					if !applied && !errors.Is(e, fsapi.Unavailable) {
++						t.Fatalf("unexecuted lifetime reported success: %v", e)
++					}
++					if applied && e != nil {
++						t.Fatalf("completed lifetime evidence lost: %v", e)
++					}
++					if handles != len(f.service.handles) || next != f.service.nextHandle || lookups != f.service.lookupCount || locks != len(f.service.locks) || exited != f.service.owners[owner(f, 1)] {
++						t.Fatal("recovery repeated or invented lifetime effects")
++					}
++					return nil
++				})
++				if err != nil {
++					t.Fatal(err)
++				}
++				if intervening.Handle != 0 {
++					f.ok(fsapi.Command{Operation: fsapi.Read, Handle: intervening.Handle, Size: 1})
++				}
++			})
++		}
++	}
++}
++
++func TestControlledLifetimeCompletionWakesNativeWaiter(t *testing.T) {
++	for _, op := range []fsapi.Operation{fsapi.Release, fsapi.DescriptorClose, fsapi.ProcessExit} {
++		t.Run(fmt.Sprintf("op-%d", op), func(t *testing.T) {
++			f := setup(t, "os")
++			policy, err := NewUnixPermissions(uid(60))
++			if err != nil {
++				t.Fatal(err)
++			}
++			f.c.Permissions = policy
++			f.start()
++			created := f.create(f.c.Storage.Root, "file")
++			other := f.ok(fsapi.Command{Operation: fsapi.Open, Object: created.Attr.Object, Flags: fsapi.OpenFlags{Access: fsapi.ReadWrite}})
++			domain := fsapi.POSIXLock
++			if op == fsapi.Release {
++				domain = fsapi.FlockLock
++			}
++			f.ok(lockCommand(fsapi.TryLock, created.Handle, owner(f, 1), domain, fsapi.ExclusiveLock, 0, 0))
++			wait := lockCommand(fsapi.WaitLock, other.Handle, owner(f, 2), domain, fsapi.ExclusiveLock, 0, 0)
++			wait.Lock.WaitID = uid(64)
++			pending := pendingLock(f, wait)
++			c := fsapi.Command{Mount: f.c.Storage.Volume, Generation: f.c.Workspace.ID, Operation: op, Object: created.Attr.Object, Handle: created.Handle, DescriptionOnly: op == fsapi.Release, Lock: fsapi.Lock{Owner: owner(f, 1)}}
++			if op == fsapi.ProcessExit {
++				c.Handle = 0
++			}
++			err = f.service.Controlled(t.Context(), *f.c.Validation, func(ctx context.Context, cut *ControlledCut) error {
++				p, e := cut.PlanControlled(ctx, fsapi.Cred{UID: 1000, GID: 1001, Groups: []uint32{200}}, c, uid(65), fsapi.ObjectID{}, nil)
++				if e != nil {
++					return e
++				}
++				_, e = cut.ApplyControlled(ctx, p, false)
++				return e
++			})
++			if err != nil {
++				t.Fatal(err)
++			}
++			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
++			defer cancel()
++			result, err := pending.Completion().Wait(ctx)
++			if err != nil || result.Code != fsapi.OK {
++				t.Fatalf("native waiter was not retried after controlled lifetime: %v %v", result.Code, err)
++			}
++		})
++	}
++}
+diff --git a/internal/fsservice/service.go b/internal/fsservice/service.go
+index dbf9724..1e275ae 100644
+--- a/internal/fsservice/service.go
++++ b/internal/fsservice/service.go
+@@ -152,6 +152,7 @@ func (s *Service) run() {
+ 	for cmd := range s.queue {
+ 		if cmd.controlled != nil {
+ 			cmd.controlled(ctx)
++			s.retryLocks(ctx)
+ 			continue
+ 		}
+ 		if s.State() != Serving {
+diff --git a/internal/fsservice/types.go b/internal/fsservice/types.go
+index b40e96f..8f02216 100644
+--- a/internal/fsservice/types.go
++++ b/internal/fsservice/types.go
+@@ -147,31 +147,32 @@ type handle struct {
+ // foreign-home coordination and explicit transactions remain a separate service.
+ // It must not be copied. Close drains accepted commands without canceling them.
+ type Service struct {
+-	config         Config
+-	state          atomic.Uint32
+-	status         atomic.Pointer[Status]
+-	stopReason     atomic.Pointer[string]
+-	observedSource fsapi.Position
+-	mu             sync.Mutex
+-	closed         bool
+-	frontend       bool
+-	accepted       map[*fsapi.Request]bool
+-	queue          chan command
+-	done           chan struct{}
+-	writer         *segment.Writer
+-	applied        apply.Result
+-	selection      apply.Selection
+-	ids            map[fsapi.UUID]bool
+-	allocations    map[fsapi.ObjectID]bool
+-	lifetimes      map[fsapi.ObjectID]*lifetime
+-	handles        map[fsapi.OpenHandle]handle
+-	nextHandle     fsapi.OpenHandle
+-	lookupCount    uint64
+-	locks          []heldLock
+-	pending        map[fsapi.UUID]command
+-	waits          map[fsapi.UUID]fsapi.LockOwner
+-	owners         map[fsapi.LockOwner]bool
+-	sessions       map[fsapi.UUID]bool
++	controlledEffects map[fsapi.UUID][32]byte
++	config            Config
++	state             atomic.Uint32
++	status            atomic.Pointer[Status]
++	stopReason        atomic.Pointer[string]
++	observedSource    fsapi.Position
++	mu                sync.Mutex
++	closed            bool
++	frontend          bool
++	accepted          map[*fsapi.Request]bool
++	queue             chan command
++	done              chan struct{}
++	writer            *segment.Writer
++	applied           apply.Result
++	selection         apply.Selection
++	ids               map[fsapi.UUID]bool
++	allocations       map[fsapi.ObjectID]bool
++	lifetimes         map[fsapi.ObjectID]*lifetime
++	handles           map[fsapi.OpenHandle]handle
++	nextHandle        fsapi.OpenHandle
++	lookupCount       uint64
++	locks             []heldLock
++	pending           map[fsapi.UUID]command
++	waits             map[fsapi.UUID]fsapi.LockOwner
++	owners            map[fsapi.LockOwner]bool
++	sessions          map[fsapi.UUID]bool
+ }
+ 
+ var _ fsapi.Filesystem = (*Service)(nil)
+diff --git a/internal/guestbridge/dispatch.go b/internal/guestbridge/dispatch.go
+index c8f710e..0e6a0fd 100644
+--- a/internal/guestbridge/dispatch.go
++++ b/internal/guestbridge/dispatch.go
+@@ -211,7 +211,9 @@ func (s *Service) lifetime(b Binding, a arguments, g grant) error {
+ 		if seq <= ss.CloseSequences[key] {
+ 			return fsapi.Stale
+ 		}
+-		ss.CloseSequences[key] = seq
++		if !s.privateValidation() {
++			ss.CloseSequences[key] = seq
++		}
+ 	}
+ 	if op == "DESCRIPTION_RELEASE" {
+ 		original := ss.Grants[g.Cap.Token]
+@@ -219,7 +221,9 @@ func (s *Service) lifetime(b Binding, a arguments, g grant) error {
+ 		if seq <= original.Sequence {
+ 			return fsapi.Stale
+ 		}
+-		original.Sequence = seq
++		if !s.privateValidation() {
++			original.Sequence = seq
++		}
+ 	}
+ 	return nil
+ }
+diff --git a/internal/guestbridge/result.go b/internal/guestbridge/result.go
+index e3560a9..3fd8f82 100644
+--- a/internal/guestbridge/result.go
++++ b/internal/guestbridge/result.go
+@@ -5,6 +5,7 @@ import (
+ 	"encoding/hex"
+ 	"encoding/json"
+ 	"errors"
++
+ 	"github.com/snonux/homelabfs/internal/fsservice"
+ 
+ 	"github.com/snonux/homelabfs/internal/fsapi"
+@@ -216,8 +217,15 @@ func (s *Service) finishLifetime(b Binding, a arguments) {
+ 	switch b.Call.Intent.Opcode {
+ 	case "DESCRIPTION_RELEASE":
+ 		if g := ss.Grants[a.cap("description").Token]; g != nil {
++			if s.privateValidation() {
++				g.Sequence = a.number("release_sequence")
++			}
+ 			g.Released = true
+ 		}
++	case "DESCRIPTION_CLOSE":
++		if s.privateValidation() {
++			ss.CloseSequences[a.cap("description").Token+":"+a.text("process")] = a.number("close_sequence")
++		}
+ 	case "PROCESS_EXIT":
+ 		ss.Exited[a.text("process")] = a.number("exit_sequence")
+ 	}
+diff --git a/internal/guestbridge/service.go b/internal/guestbridge/service.go
+index d72bc1e..bf7aa3e 100644
+--- a/internal/guestbridge/service.go
++++ b/internal/guestbridge/service.go
+@@ -294,6 +294,11 @@ func (s *Service) call(ctx context.Context, c Command) (any, error) {
+ 		if !enough {
+ 			return Prepared{}, fsapi.NoSpace
+ 		}
++		if s.privateValidation() {
++			if err := s.credentials(ctx, binding.Context, binding.Call.Credentials, binding.Call.Intent.Opcode == "DRAIN_WRITE"); err != nil {
++				return Prepared{}, err
++			}
++		}
+ 		return s.prepare(ctx, binding, o)
+ 	}
+ 	var out Outcome
+@@ -302,6 +307,9 @@ func (s *Service) call(ctx context.Context, c Command) (any, error) {
+ 		out, err = validation.ExecuteValidation(ctx, binding, prepare, func(out Outcome) (json.RawMessage, json.RawMessage, error) {
+ 			return s.prepareValidationResult(ctx, binding, out)
+ 		})
++		if err == nil {
++			err = s.restoreValidation(context.WithoutCancel(ctx), binding.Context)
++		}
+ 		s.resultMu.Unlock()
+ 	} else {
+ 		out, err = s.config.Execution.Execute(ctx, binding, prepare)
+diff --git a/internal/guestbridge/validation_state.go b/internal/guestbridge/validation_state.go
+index 81cb69f..13794e0 100644
+--- a/internal/guestbridge/validation_state.go
++++ b/internal/guestbridge/validation_state.go
+@@ -1,6 +1,7 @@
+ package guestbridge
+ 
+ import (
++	"bytes"
+ 	"context"
+ 	"encoding/json"
+ 
+@@ -24,6 +25,12 @@ type ValidationState interface {
+ 	Finalize(context.Context, Binding, json.RawMessage, json.RawMessage) error
+ 	Restore(context.Context, Context) (json.RawMessage, error)
+ }
++type validationAncestor struct {
++	Parent, Object                fsapi.ObjectID
++	ObjectRevision, EntryRevision uint64
++	Name                          []byte
++}
++
+ type validationSnapshot struct {
+ 	Controller     fsapi.UUID
+ 	Context        Context
+@@ -50,6 +57,8 @@ func (s *Service) restoreValidation(ctx context.Context, scope Context) error {
+ 	if snapshot.Context != scope || !snapshot.Controller.Valid() {
+ 		return fsapi.Permission
+ 	}
++	s.mu.Lock()
++	defer s.mu.Unlock()
+ 	ss := s.sessions[scope.Session]
+ 	// Exact terminal results remain queryable in a new generation, while old
+ 	// capabilities and descriptions cannot become live grants in that generation.
+@@ -63,6 +72,18 @@ func (s *Service) restoreValidation(ctx context.Context, scope Context) error {
+ 			return fsapi.Stale
+ 		}
+ 	}
++	for key, value := range ss.Credentials {
++		if old, ok := snapshot.Credentials[key]; ok && !bytes.Equal(old, value) {
++			return fsapi.Stale
++		}
++		if snapshot.Credentials == nil {
++			snapshot.Credentials = make(map[string][]byte)
++		}
++		snapshot.Credentials[key] = bytes.Clone(value)
++	}
++	if len(snapshot.Credentials) > s.config.MaxCredentialRevisions {
++		return fsapi.NoSpace
++	}
+ 	ss.Credentials = snapshot.Credentials
+ 	ss.Exited = snapshot.Exited
+ 	if snapshot.Generation == ss.Generation {
+@@ -94,60 +115,44 @@ func (s *Service) finalizeResult(ctx context.Context, b Binding, out Outcome) (j
+ 	if old.Status == "TERMINAL" {
+ 		return old.Result, nil
+ 	}
++	if _, private := s.config.Claims.(ValidationState); s.config.Validation != nil && private {
++		return nil, fsapi.Unavailable
++	}
+ 	result, err := s.result(ctx, b, out)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	if store, ok := s.config.Claims.(ValidationState); s.config.Validation != nil && ok {
+-		s.mu.Lock()
+-		ss := s.sessions[b.Context.Session]
+-		snapshot := validationSnapshot{Controller: s.controller, Context: ss.Context, Generation: ss.Generation, Credentials: ss.Credentials, Exited: ss.Exited, Grants: ss.Grants, CloseSequences: ss.CloseSequences}
+-		raw, e := json.Marshal(snapshot)
+-		s.mu.Unlock()
+-		if e != nil {
+-			return nil, e
+-		}
+-		if err = store.Finalize(ctx, b, result, raw); err != nil {
+-			return nil, err
+-		}
+-	} else if err = s.config.Claims.ProtectResult(ctx, b, result); err != nil {
++	if err = s.config.Claims.ProtectResult(ctx, b, result); err != nil {
+ 		return nil, err
+ 	}
+ 	return result, nil
+ }
+ func (s *Service) recoverValidation(ctx context.Context, state ClaimState) (ClaimState, error) {
+ 	store, ok := s.config.Claims.(ValidationState)
+-	if s.config.Validation == nil || !ok || state.Status == "TERMINAL" || !state.Binding.Operation.Valid() {
+-		return state, nil
+-	}
+-	outcome, ready, err := store.RecoverOutcome(ctx, state.Binding)
+-	if err != nil {
+-		return state, err
+-	}
+-	if !ready {
++	if s.config.Validation == nil || !ok || !state.Binding.Operation.Valid() {
+ 		return state, nil
+ 	}
+-	if current, e := s.config.Claims.Resolve(ctx, state.Binding.Context, state.Binding.Call.Claim); e != nil {
+-		return state, e
+-	} else if current.Status == "TERMINAL" {
+-		return current, nil
+-	}
+-	// If an effect belongs to an old generation, finalizing operations that issue
+-	// capabilities requires the original protected grant context. Keep these
+-	// uncertain instead of substituting fresh capabilities or descriptions.
+-	s.mu.Lock()
+-	generation := s.sessions[state.Binding.Context.Session].Generation
+-	s.mu.Unlock()
+-	if outcome.Result.Generation.Valid() && outcome.Result.Generation != generation && capNeeds(state.Binding.Call.Intent) > 0 {
+-		return state, nil
++	s.resultMu.Lock()
++	defer s.resultMu.Unlock()
++	if state.Status != "TERMINAL" {
++		_, ready, err := store.RecoverOutcome(ctx, state.Binding)
++		if err != nil {
++			return state, err
++		}
++		if !ready {
++			return state, nil
++		}
+ 	}
+-	result, err := s.finalizeResult(ctx, state.Binding, outcome)
++	current, err := s.config.Claims.Resolve(ctx, state.Binding.Context, state.Binding.Call.Claim)
+ 	if err != nil {
+ 		return state, err
+ 	}
+-	state.Status = "TERMINAL"
+-	state.Result = result
+-	return state, nil
++	if current.Status == "TERMINAL" {
++		if err = s.restoreValidation(ctx, state.Binding.Context); err != nil {
++			return state, err
++		}
++	}
++	return current, nil
+ }
+ 
+ // ValidationExecution protects the original planned semantic result, wire
+@@ -158,13 +163,41 @@ type ValidationExecution interface {
+ }
+ 
+ func (s *Service) prepareValidationResult(ctx context.Context, b Binding, out Outcome) (json.RawMessage, json.RawMessage, error) {
+-	result, err := s.result(ctx, b, out)
++	s.mu.Lock()
++	raw, err := json.Marshal(s.sessions[b.Context.Session])
++	s.mu.Unlock()
+ 	if err != nil {
+ 		return nil, nil, err
+ 	}
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-	ss := s.sessions[b.Context.Session]
+-	raw, err := json.Marshal(validationSnapshot{Controller: s.controller, Context: ss.Context, Generation: ss.Generation, Credentials: ss.Credentials, Exited: ss.Exited, Grants: ss.Grants, CloseSequences: ss.CloseSequences})
+-	return result, raw, err
++	var proposed session
++	if err = json.Unmarshal(raw, &proposed); err != nil {
++		return nil, nil, err
++	}
++	staged := &Service{controller: s.controller, config: s.config, sessions: map[string]*session{b.Context.Session: &proposed}}
++	result, err := staged.result(ctx, b, out)
++	if err != nil {
++		return nil, nil, err
++	}
++	snapshot, err := json.Marshal(validationSnapshot{Controller: s.controller, Context: proposed.Context, Generation: proposed.Generation, Credentials: proposed.Credentials, Exited: proposed.Exited, Grants: proposed.Grants, CloseSequences: proposed.CloseSequences})
++	return result, snapshot, err
++}
++
++func (s *Service) privateValidation() bool {
++	_, ok := s.config.Execution.(ValidationExecution)
++	return s.config.Validation != nil && ok
++}
++
++// MarshalJSON retains raw filesystem name bytes in the private session ledger.
++func (a *ancestor) MarshalJSON() ([]byte, error) {
++	return json.Marshal(validationAncestor{Parent: a.Parent, Object: a.Object, ObjectRevision: a.ObjectRevision, EntryRevision: a.EntryRevision, Name: []byte(a.Name)})
++}
++
++// UnmarshalJSON reconstructs the original bytes without UTF-8 normalization.
++func (a *ancestor) UnmarshalJSON(raw []byte) error {
++	var encoded validationAncestor
++	if err := json.Unmarshal(raw, &encoded); err != nil {
++		return err
++	}
++	*a = ancestor{Parent: encoded.Parent, Object: encoded.Object, ObjectRevision: encoded.ObjectRevision, EntryRevision: encoded.EntryRevision, Name: string(encoded.Name)}
++	return nil
+ }

@@ -1,0 +1,12 @@
+{
+  "internal/controlledvalidation/README.md": "786a4c394ebd9fa21ae29fab2e12b26c63cc8a254f5dd45be26f15bbf21cf1db",
+  "internal/controlledvalidation/regression_test.go": null,
+  "internal/fsservice/controlled.go": "7337e1cea6a6fee6e93deebe707d17728bcf16b3981dd46287ea94795ab6fc60",
+  "internal/fsservice/controlled_test.go": "c073b5af4dfaf673794271c1a1df1642f7572ff3353e669bc35332d98b34bf34",
+  "internal/fsservice/service.go": "cf4fdea6a673a3c0caf46c41ca5544ad755ee3c844ac0461f51aa703af5982e4",
+  "internal/fsservice/types.go": "83d8fceae9cfc449d9d8335953b9c7ed62feb5d042ed10de74f2d46634a101fa",
+  "internal/guestbridge/dispatch.go": "3f3f4d2a6664a2c5585b810df607fce716d0bc4c299d3a9ce32c63477492d853",
+  "internal/guestbridge/result.go": "8adca8c7a6b115eb25f844714024e1647c563ba2d4f610b108af887416d97a0a",
+  "internal/guestbridge/service.go": "0a578e801280bd5faa1bd3ca2409eca66d27b1b259587cad613eee27cf9f9c8f",
+  "internal/guestbridge/validation_state.go": "c9562914c1e30ed3f5fb8b471c4b07b7cf1adb16f906c5300430c0d49e030156"
+}
