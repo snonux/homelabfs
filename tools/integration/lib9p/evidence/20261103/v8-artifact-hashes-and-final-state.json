@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "ssh",
+    "-o",
+    "StrictHostKeyChecking=yes",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=8",
+    "f3",
+    "sha256 /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/hfs9p.o /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/hfs9p_json.o /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/hfs9p_ledger.o /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/production_api_test /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/backend_test /var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/ledger_test; swapinfo -k; doas -n vm list"
+  ],
+  "exit": 0,
+  "stdout": "SHA256 (/var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/hfs9p.o) = 827e6f36e58f5d0c8f059cc561c8b9692d3e8c7695d3bf6ae11c782c0722e72f\nSHA256 (/var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/hfs9p_json.o) = a1f0be023209bdee79668270699abe33903e2a05d5a5127b70e4dbe1b53d9bc1\nSHA256 (/var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/hfs9p_ledger.o) = fc98b7f8cf3cb2a4b943c4b1fde55bb86cc4c3b17ec7e11fd67ddacda0412e2e\nSHA256 (/var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/production_api_test) = 070c6766765031ec7b0c3c7f18ee2f82c36f8518a5c9a4b00c70ad843ffcf583\nSHA256 (/var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/backend_test) = 18c15635bc9223881a4f06e6257d9b775298c7ee85f9254bd1540d546243d7e5\nSHA256 (/var/tmp/hfs-uz3-native-20261103.6LXlcvQC/output/ledger_test) = 45556cf1384ac0496cf140d65c2d35b305e7cda2018c7d5331e14829867fcf86\nDevice          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\nNAME       DATASTORE  LOADER     CPU  MEMORY  VNC             AUTO     STATE\nfreebsd    default    bhyveload  4    1G      -               No       Stopped\nrocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (6444)\nhfs-test0  hfslab     bhyveload  2    2G      -               No       Stopped\nhfs-test1  hfslab     bhyveload  2    2G      -               No       Stopped\nhfs-test2  hfslab     bhyveload  2    2G      -               No       Stopped\n",
+  "stderr": ""
+}

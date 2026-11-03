@@ -1,0 +1,59 @@
++ uname -a
+FreeBSD f3.lan.buetow.org 15.1-RELEASE-p2 FreeBSD 15.1-RELEASE-p2 releng/15.1-n283596-aadd58dddcbc GENERIC amd64
++ cc --version
+FreeBSD clang version 19.1.7 (https://github.com/llvm/llvm-project.git llvmorg-19.1.7-0-gcd708029e0b2)
+Target: x86_64-unknown-freebsd15.1
+Thread model: posix
+InstalledDir: /usr/bin
++ set -- '-std=c11' '-D_POSIX_C_SOURCE=200809L' -Wall -Wextra -Werror -O1 -g
++ cc '-std=c11' '-D_POSIX_C_SOURCE=200809L' -Wall -Wextra -Werror -O1 -g -c /var/tmp/hfs-uz3-native-20261103.DWn5BV8E/native-bundle-v2/src/hfs9p.c -o /var/tmp/hfs-uz3-native-20261103.DWn5BV8E/output/hfs9p.o
+In file included from /var/tmp/hfs-uz3-native-20261103.DWn5BV8E/native-bundle-v2/src/hfs9p.c:11:
+/usr/include/sys/capsicum.h:505:17: error: unknown type name 'u_int'
+  505 | int     cap_getmode(u_int *modep);
+      |                     ^
+In file included from /var/tmp/hfs-uz3-native-20261103.DWn5BV8E/native-bundle-v2/src/hfs9p.c:12:
+In file included from /usr/include/sys/mount.h:36:
+/usr/include/sys/ucred.h:110:2: error: unknown type name 'u_int'
+  110 |         u_int   cr_version;             /* structure layout version */
+      |         ^
+/usr/include/sys/ucred.h:150:2: error: unknown type name 'u_int'
+  150 |         u_int    sc_pad;                /* see 32-bit compat structure */
+      |         ^
+/usr/include/sys/ucred.h:151:2: error: unknown type name 'u_int'
+  151 |         u_int    sc_supp_groups_nb;     /* number of supplementary groups */
+      |         ^
+/usr/include/sys/ucred.h:280:13: error: unknown type name 'u_int'
+  280 | int     setcred(u_int flags, const struct setcred *wcred, size_t size);
+      |                 ^
+In file included from /var/tmp/hfs-uz3-native-20261103.DWn5BV8E/native-bundle-v2/src/hfs9p.c:12:
+/usr/include/sys/mount.h:74:2: error: unknown type name 'u_short'; did you mean 'short'?
+   74 |         u_short         fid_len;                /* length of data in bytes */
+      |         ^
+/usr/include/sys/mount.h:75:2: error: unknown type name 'u_short'; did you mean 'short'?
+   75 |         u_short         fid_data0;              /* force longword alignment */
+      |         ^
+/usr/include/sys/mount.h:588:2: error: unknown type name 'u_char'; did you mean 'char'?
+  588 |         u_char  ex_addrlen;             /* and the net address length */
+      |         ^
+/usr/include/sys/mount.h:590:2: error: unknown type name 'u_char'; did you mean 'char'?
+  590 |         u_char  ex_masklen;             /* and the smask length */
+      |         ^
+/usr/include/sys/mount.h:603:2: error: unknown type name 'u_char'; did you mean 'char'?
+  603 |         u_char  ex_addrlen;             /* and the net address length */
+      |         ^
+/usr/include/sys/mount.h:605:2: error: unknown type name 'u_char'; did you mean 'char'?
+  605 |         u_char  ex_masklen;             /* and the smask length */
+      |         ^
+/usr/include/sys/mount.h:621:2: error: unknown type name 'u_char'; did you mean 'char'?
+  621 |         u_char  ex_addrlen;             /* and the net address length */
+      |         ^
+/usr/include/sys/mount.h:623:2: error: unknown type name 'u_char'; did you mean 'char'?
+  623 |         u_char  ex_masklen;             /* and the smask length */
+      |         ^
+/usr/include/sys/mount.h:648:2: error: unknown type name 'u_int'
+  648 |         u_int   vfc_version;            /* ABI version number */
+      |         ^
+/var/tmp/hfs-uz3-native-20261103.DWn5BV8E/native-bundle-v2/src/hfs9p.c:379:56: error: use of undeclared identifier 'O_DIRECT'
+  379 |       if (flags < 0 || (flags & O_APPEND) || !(flags & O_DIRECT) ||
+      |                                                        ^
+15 errors generated.

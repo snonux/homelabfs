@@ -1,0 +1,69 @@
+{
+  "scope": "owned C component, production object linkage/refusal, transport fixtures and real local ledger only",
+  "upstream": "aadd58dddcbc78f4d5594827b46b5633552b15ce",
+  "final_native_bundle": "native-bundle-v8.tar",
+  "final_native_bundle_sha256": "9af3d2ad7a027830397fd349ca1738782a7bb8319677844f077ad51fc90ba05b",
+  "linux_final": {
+    "path": "linux-final.log",
+    "exit": 0,
+    "sanitizers": [
+      "address",
+      "undefined"
+    ]
+  },
+  "historical_native": {
+    "v2": "failed compile: POSIX feature macro hid native BSD namespace; fixed runner defaults",
+    "v3": "pass; historical source before response-capacity/session tests",
+    "v4": "pass; historical source before rejected-count cleanup and subtype fix",
+    "v6": {
+      "version": "v6",
+      "exit": 0,
+      "scope": "three native production C objects + production API refusal + transport fixtures + actual local ledger tests",
+      "receipt": "v6-receipt.json",
+      "native_log": "v6-native.log",
+      "timed_seconds": 4.8,
+      "max_rss_kib": 120996,
+      "swaps": 0,
+      "remote_preserved": "/var/tmp/hfs-uz3-native-20261103.qSXYFku5"
+    },
+    "v7": "pending root-owned v8 R1-correction receipt"
+  },
+  "final_native": {
+    "version": "v8",
+    "exit": 0,
+    "scope": "three native production C objects plus API refusal, corrected transport/recovery fixtures and actual local ledger tests",
+    "receipt": "v8-receipt.json",
+    "native_log": "v8-native.log",
+    "timed_seconds": 5.42,
+    "max_rss_kib": 151332,
+    "swaps": 0,
+    "remote_preserved": "/var/tmp/hfs-uz3-native-20261103.6LXlcvQC"
+  },
+  "not_proven": [
+    "full patched bhyve artifact",
+    "installed/running byte binding",
+    "real native enrollment provider",
+    "real FUSE/mount/direct-I/O kernel behavior",
+    "guest workloads",
+    "normal publication",
+    "cache-domain barriers"
+  ],
+  "local_failures_preserved": "/home/paul/tmp/codex/hfs-uz3-20261103-yb4nxe4j/verified1 and prior owned build runs",
+  "self_review_fixes": [
+    "kept virtio softc first in owned bhyve patch",
+    "honored actual response buffer capacity before copying",
+    "supported distinct sessions with guest cell1 and out-of-order first guest cells",
+    "bounded rejected recovery count cleanup",
+    "accepted real fusefs.<subtype> while requiring exact native endpoint verification",
+    "encoded mutex contention as exact packet-scoped wire backpressure, with connection-local atomic Tversion and coordinated i04 consumer retries"
+  ],
+  "r1_correction": {
+    "baseline": "/home/paul/tmp/codex/hfs-uz3-20261103-yb4nxe4j/r1-baseline",
+    "linux_exact": "verified13",
+    "fixes": [
+      "one accounting invariant for new candidates and retained-credit poll transitions in admission/protection/recovery",
+      "immutable native replay fixture plus exact protected/restored retransmission checks and six rejection controls"
+    ],
+    "scope": "transport only; no filesystem executor or new evidence format"
+  }
+}

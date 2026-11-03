@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "sha256": {
+    "../../../docs/spec/retained9p-fixtures/cases.json": "0bb0044358ff889158ee5785a38ee8b93c99059b876687963d8724055ab7df88",
+    "native-verify.sh": "7c236e7cf0f6c9f09b676dc845044fc6e2983c6e7b7afa91c9798981a1e98462",
+    "patches/0001-dedicated-backend.patch": "becf4e1c35d58c1b2949e56e8b75cd48213afb63e66b0a258795ac9fd0cee7af",
+    "prepare.py": "aecfacccf55507010e4f79192a0e881f6e0a3980dd12c4311ed8a22f1b5848d7",
+    "src/hfs9p.c": "5810af627cf7172aa78e8d2195e5d9fe16da1fd11bd1027e1209ad8c4fa1ca0d",
+    "src/hfs9p.h": "bb1060171f1be13205e7edf3e869b8e43172caeb46ff1e20e0e9dae1e3cdbf49",
+    "src/hfs9p_json.c": "bff0d0a125a822834218b574ff111ce0c7c8974816011e97c151be576f825e0a",
+    "src/hfs9p_json.h": "d5c59818a2a39da141eedd23fab8d9f1462d79414833e822da7e9df41dcc4980",
+    "src/hfs9p_ledger.c": "62fd596db76cfcbc62251c1433334f037e5c0ab611d8637aac9758694cdccd8d",
+    "src/hfs9p_ledger.h": "acab541112c6404aab756485343c24be250f007dcaaeba21bd4805d957450cc2",
+    "tests/backend_test.c": "284075f12622ed37763fe89824dcd4c89f2f97da19c58c603f103ef84dc4915c",
+    "tests/fixtures.py": "fbf77d272df98e7877b8ba97f5e90309192c3885917ecd5563d28a6a7bb8a871",
+    "tests/ledger_test.c": "18ee5be5ba4ce9dec6cb22779c229dec5802e46fd04693a378acfc85d8b024c7",
+    "tests/production_api_test.c": "050d2a733454c7ee4b3f7b4639b011b8e752cb8ee4774e5ab5b8a3631b17f667",
+    "upstream.json": "400a8dff163ad031002ef5842866f5c6b3d9b044b35070d633e4897836f35262",
+    "verify.sh": "a99cf9d36ef680fae7db8cb89fcf817b0eb2d4518d1ae3adf20360c01609382c"
+  }
+}

@@ -1,0 +1,161 @@
+--- a/usr.sbin/bhyve/pci_virtio_9p.c
++++ b/usr.sbin/bhyve/pci_virtio_9p.c
+@@ -46,6 +46,7 @@
+ 
+ #include <lib9p.h>
+ #include <backend/fs.h>
++#include <backend/hfs9p.h>
+ 
+ #include "bhyverun.h"
+ #include "config.h"
+@@ -67,6 +68,7 @@
+  */
+ struct pci_vt9p_softc {
+ 	struct virtio_softc      vsc_vs;
++	Hfs9pConnection *       vsc_hfs;
+ 	struct vqueue_info       vsc_vq;
+ 	pthread_mutex_t          vsc_mtx;
+ 	uint64_t                 vsc_cfg;
+@@ -213,7 +215,46 @@
+ 			    iov[i].iov_len));
+ 		}
+ 
+-		l9p_connection_recv(sc->vsc_conn, iov, preq->vsr_respidx, preq);
++		if (sc->vsc_hfs != NULL) {
++			uint8_t request[HFS9P_MSIZE], response[HFS9P_MSIZE];
++			size_t request_len = 0, response_len = 0;
++			bool valid = true;
++			for (int i = 0; i < req.readable; i++) {
++				if (iov[i].iov_len > sizeof(request) - request_len) {
++					valid = false;
++					break;
++				}
++				memcpy(request + request_len, iov[i].iov_base,
++				    iov[i].iov_len);
++				request_len += iov[i].iov_len;
++			}
++			size_t available = 0;
++			for (int i = req.readable; i < n; i++) {
++				if (iov[i].iov_len > SIZE_MAX - available) {
++					valid = false;
++					break;
++				}
++				available += iov[i].iov_len;
++			}
++			if (!valid || available < 10 ||
++			    hfs9p_exchange(sc->vsc_hfs, request, request_len,
++			    response, MIN(available, sizeof(response)),
++			    &response_len) != 0)
++				response_len = 0;
++			size_t copied = 0;
++			for (int i = req.readable; i < n && copied < response_len; i++) {
++				size_t amount = MIN(iov[i].iov_len, response_len - copied);
++				memcpy(iov[i].iov_base, response + copied, amount);
++				copied += amount;
++			}
++			/* Dedicated exports never enter the stock fid/path backend. */
++			vq_relchain(vq, req.idx, response_len);
++			vq_endchains(vq, 1);
++			free(preq);
++		} else {
++			l9p_connection_recv(sc->vsc_conn, iov,
++			    preq->vsr_respidx, preq);
++		}
+ 	}
+ }
+ 
+@@ -250,13 +290,25 @@
+ 	struct pci_vt9p_softc *sc;
+ 	const char *value;
+ 	const char *sharename;
++	const char *controller;
++	Hfs9pConnection *hfs = NULL;
+ 	int rootfd;
+ 	bool ro;
+ 	cap_rights_t rootcap;
+ 
+ 	ro = get_config_bool_node_default(nvl, "ro", false);
+ 
++	controller = get_config_value_node(nvl, "hfs-controller");
+ 	value = get_config_value_node(nvl, "path");
++	if (controller != NULL) {
++		if (value != NULL || ro ||
++		    hfs9p_controller_claim(controller, &hfs) != 0 || hfs == NULL) {
++			EPRINTLN("virtio-9p: HomelabFS controller enrollment refused");
++			return (1);
++		}
++		rootfd = -1;
++		goto enrolled;
++	}
+ 	if (value == NULL) {
+ 		EPRINTLN("virtio-9p: path required");
+ 		return (1);
+@@ -268,6 +320,7 @@
+ 		return (-1);
+ 	}
+ 
++enrolled:
+ 	sharename = get_config_value_node(nvl, "sharename");
+ 	if (sharename == NULL) {
+ 		EPRINTLN("virtio-9p: share name required");
+@@ -279,11 +332,13 @@
+ 	}
+ 
+ 	sc = calloc(1, sizeof(struct pci_vt9p_softc));
++	sc->vsc_hfs = hfs;
+ 	sc->vsc_config = calloc(1, sizeof(struct pci_vt9p_config) +
+ 	    VT9P_MAXTAGSZ);
+ 
+ 	pthread_mutex_init(&sc->vsc_mtx, NULL);
+ 
++	if (hfs == NULL) {
+ 	cap_rights_init(&rootcap,
+ 	    CAP_LOOKUP, CAP_ACL_CHECK, CAP_ACL_DELETE, CAP_ACL_GET,
+ 	    CAP_ACL_SET, CAP_READ, CAP_WRITE, CAP_SEEK, CAP_FSTAT,
+@@ -297,9 +352,12 @@
+ 	if (cap_rights_limit(rootfd, &rootcap) != 0)
+ 		return (1);
+ 
++	}
++
+ 	sc->vsc_config->tag_len = (uint16_t)strlen(sharename);
+ 	memcpy(sc->vsc_config->tag, sharename, sc->vsc_config->tag_len);
+ 
++	if (hfs == NULL) {
+ 	if (l9p_backend_fs_init(&sc->vsc_fs_backend, rootfd, ro) != 0) {
+ 		errno = ENXIO;
+ 		return (1);
+@@ -319,6 +377,8 @@
+ 	sc->vsc_conn->lc_lt.lt_get_response_buffer = pci_vt9p_get_buffer;
+ 	sc->vsc_conn->lc_lt.lt_send_response = pci_vt9p_send;
+ 	sc->vsc_conn->lc_lt.lt_drop_response = pci_vt9p_drop;
++
++	}
+ 
+ 	vi_softc_linkup(&sc->vsc_vs, &vt9p_vi_consts, sc, pi, &sc->vsc_vq);
+ 	sc->vsc_vs.vs_mtx = &sc->vsc_mtx;
+--- a/lib/lib9p/Makefile
++++ b/lib/lib9p/Makefile
+@@ -4,7 +4,7 @@
+ CFLAGS+=	-I${.CURDIR}
+ CFLAGS+=	-I${.CURDIR}/../../contrib/lib9p
+ 
+-LIBADD=		sbuf
++LIBADD=		sbuf md
+ 
+ .if ${MK_CASPER} != "no"
+ CFLAGS+=	-DWITH_CASPER
+@@ -24,9 +24,12 @@
+ 		threadpool.c \
+ 		utils.c \
+ 		backend/fs.c \
++		backend/hfs9p.c \
++		backend/hfs9p_json.c \
++		backend/hfs9p_ledger.c \
+ 		transport/socket.c
+ 
+ INCSDIR=	${INCLUDEDIR}/lib9p
+-INCS=		fid.h lib9p.h backend/fs.h
++INCS=		fid.h lib9p.h backend/fs.h backend/hfs9p.h backend/hfs9p_ledger.h
+ 
+ .include <bsd.lib.mk>
