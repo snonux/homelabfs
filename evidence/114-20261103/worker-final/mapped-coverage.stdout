@@ -1,0 +1,2 @@
+ok  	github.com/snonux/homelabfs/internal/guestbridge	2.835s	coverage: 36.7% of statements in ./internal/guestbridge, ./internal/controlledruntime
+ok  	github.com/snonux/homelabfs/internal/controlledruntime	1.477s	coverage: 54.5% of statements in ./internal/guestbridge, ./internal/controlledruntime

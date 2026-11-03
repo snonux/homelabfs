@@ -41,7 +41,7 @@ func supportedProtocol(c Config, p Protocol) bool {
 	_, enrolled := c.Claims.(ValidationEnrollment)
 	_, execution := c.Execution.(ValidationEnrollment)
 	_, cleanup := c.Claims.(ReaddirCleanupStore)
-	return allocation && retirement && enrolled && execution && (p != CleanupProtocol() || cleanup)
+	return allocation && retirement && enrolled && execution && (!HasCleanupProtocol(p) || cleanup)
 }
 
 func isAllocation(op string) bool { return op == "ALLOCATE" || op == "GAP_RESOLVE" }

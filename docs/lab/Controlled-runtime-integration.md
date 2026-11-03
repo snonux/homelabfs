@@ -245,3 +245,15 @@ Linux registration and request/retirement/MM call sites, lib9p production claim
 and verifier interfaces, host transport and current daemon lifecycle. Relative
 source links are checked locally. No implementation test, build, SSH, VM, mount,
 installation, lab recovery or workload operation is claimed by this plan.
+
+## Host original/native mapping foundation (task114)
+
+The host now offers the explicitly negotiated
+[1.4 authenticated mapping foundation](../spec/Retained-9p-mapping.md): durable
+C8 candidates/leg-chain protection, staged actual Transport/Producer attachment,
+receipt2 and a pure pinned-host-attestation verifier. This does not close the
+actual C translation/guest verifier integration gap (`y04`) or create the kernel
+received-response/provider authority (`s04`). Older1.2/1.3 receipts still bind
+native bytes only. No runtime may advertise guest source/event/floor readiness
+from decoded metadata or this foundation alone; the actual owned carrier and
+received-path integration must still be implemented and validated.

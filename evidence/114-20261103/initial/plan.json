@@ -1,0 +1,140 @@
+{
+  "packages": [
+    "./..."
+  ],
+  "commands": [
+    {
+      "name": "production-c-preflight",
+      "argv": [
+        "python3",
+        "/home/paul/git/homelabfs/tools/integration/linux9p/tests/controlled/build.py",
+        "--source",
+        "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/source",
+        "--output",
+        "/home/paul/tmp/codex/hfs-114-20261103-umigucjp/root-gates/consumer",
+        "--sanitize"
+      ],
+      "timeout": 300
+    },
+    {
+      "name": "build",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ]
+    },
+    {
+      "name": "vet",
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ]
+    },
+    {
+      "name": "errcheck",
+      "argv": [
+        "errcheck",
+        "./..."
+      ]
+    },
+    {
+      "name": "lint",
+      "argv": [
+        "golangci-lint",
+        "run",
+        "--timeout=3m",
+        "./..."
+      ]
+    },
+    {
+      "name": "freebsd",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "0"
+      }
+    },
+    {
+      "name": "focused-race",
+      "argv": [
+        "go",
+        "test",
+        "-race",
+        "-p",
+        "1",
+        "-count=1",
+        "-timeout=180s",
+        "./internal/controlledruntime",
+        "./internal/fsservice",
+        "./internal/viewcontrol",
+        "./internal/guestbridge",
+        "./internal/controlledvalidation",
+        "-run",
+        "TestMapped|TestRealMapped|TestControlledProductionGuestBackendHost|TestProviderRouter|TestRealControlledProducer|TestDurableTransport|TestControlledProtocol"
+      ],
+      "timeout": 300
+    },
+    {
+      "name": "full-root",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-count=1",
+        "-timeout=600s",
+        "./..."
+      ],
+      "timeout": 1200
+    },
+    {
+      "name": "freebsd-cgo-controlledruntime",
+      "argv": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "@EVIDENCE@/controlledruntime-freebsd.test",
+        "./internal/controlledruntime"
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "1",
+        "CC": "zig cc -target x86_64-freebsd"
+      },
+      "timeout": 600
+    },
+    {
+      "name": "freebsd-cgo-fuseadapter",
+      "argv": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "@EVIDENCE@/fuseadapter-freebsd.test",
+        "./internal/fuseadapter"
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "1",
+        "CC": "zig cc -target x86_64-freebsd"
+      },
+      "timeout": 600
+    }
+  ],
+  "tmp": "/tmp/h14g-iun2ru0j",
+  "scope": "Mapped1.4 host foundation, private durable candidate/all-leg provenance, actual two-session ProducerV2, bounded scalar metadata. Unchanged ownedC2 legacy/successor consumer materialized to detect closedtuple regressions; actual1.4Ccarrier remainsY04. FreeBSDCGO1 compile only. Source/docs freeze map added after workerhandoff.",
+  "environment": {
+    "HFS_CONTROLLED_CONSUMER": "/home/paul/tmp/codex/hfs-114-20261103-umigucjp/root-gates/consumer/consumer",
+    "HFS_CONTROLLED_TEST_ROOT": "/home/paul/tmp/codex/hfs-114-20261103-umigucjp/root-gates/runtime-fixtures"
+  }
+}

@@ -1,0 +1,95 @@
+[
+  {
+    "check": "mapped-focused-race",
+    "argv": [
+      "go",
+      "test",
+      "-race",
+      "-p=1",
+      "./internal/guestbridge",
+      "./internal/controlledruntime",
+      "./internal/controlledvalidation",
+      "-run",
+      "TestMapped|TestControlledLiteralCodec|TestViewProtocolLiteralCodec|TestReaddirCleanupClosedSuccessor|TestReaddirCleanupRejectsChangedOwnershipAndPreservesCurrentSnapshot",
+      "-count=1"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 27.17,
+    "peak_group_rss_kib": 207484,
+    "guard": null,
+    "pswpout_before": 1228471,
+    "pswpout_after": 1228471
+  },
+  {
+    "check": "vet-changed",
+    "argv": [
+      "go",
+      "vet",
+      "./internal/guestbridge",
+      "./internal/controlledruntime",
+      "./internal/controlledvalidation"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 4.949,
+    "peak_group_rss_kib": 133660,
+    "guard": null,
+    "pswpout_before": 1228471,
+    "pswpout_after": 1228471
+  },
+  {
+    "check": "errcheck-changed",
+    "argv": [
+      "errcheck",
+      "./internal/guestbridge",
+      "./internal/controlledruntime",
+      "./internal/controlledvalidation"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 5.654,
+    "peak_group_rss_kib": 165268,
+    "guard": null,
+    "pswpout_before": 1228471,
+    "pswpout_after": 1228471
+  },
+  {
+    "check": "mapped-coverage",
+    "argv": [
+      "go",
+      "test",
+      "-p=1",
+      "-coverprofile=/home/paul/tmp/codex/hfs-114-20261103-umigucjp/final-focused/mapped.cover",
+      "-coverpkg=./internal/guestbridge,./internal/controlledruntime",
+      "./internal/guestbridge",
+      "./internal/controlledruntime",
+      "-run",
+      "TestMapped",
+      "-count=1"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 12.017,
+    "peak_group_rss_kib": 173060,
+    "guard": null,
+    "pswpout_before": 1228471,
+    "pswpout_after": 1228471
+  },
+  {
+    "check": "coverage-functions",
+    "argv": [
+      "go",
+      "tool",
+      "cover",
+      "-func=/home/paul/tmp/codex/hfs-114-20261103-umigucjp/final-focused/mapped.cover"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.385,
+    "peak_group_rss_kib": 43280,
+    "guard": null,
+    "pswpout_before": 1228471,
+    "pswpout_after": 1228471
+  }
+]

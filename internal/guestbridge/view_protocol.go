@@ -130,18 +130,25 @@ func DecodeCommandVersion(b []byte, minor uint16) (Command, error) {
 	if minor == 0 {
 		return DecodeCommand(b)
 	}
-	if minor != 1 && minor != 2 && minor != 3 {
+	if minor != 1 && minor != 2 && minor != 3 && minor != 4 {
 		return Command{}, fsapi.Unsupported
 	}
 	v, err := Canonical(b)
 	if err != nil {
 		return Command{}, err
 	}
-	o, err := object(v, "cell", "context", "op", "payload", "protocol", "reclaim")
+	keys := []string{"cell", "context", "op", "payload", "protocol", "reclaim"}
+	if minor == 4 {
+		keys = append(keys, "delegation")
+	}
+	o, err := object(v, keys...)
 	if err != nil || !uintRange(o["cell"], 1, MaxCell) || validateContext(o["context"]) != nil || validateProtocolVersion(o["protocol"], minor) != nil {
 		return Command{}, fsapi.Invalid
 	}
 	if o["reclaim"] != nil && validateAck(o["reclaim"]) != nil {
+		return Command{}, fsapi.Invalid
+	}
+	if minor == 4 && o["delegation"] != nil && validateDelegation(o["delegation"]) != nil {
 		return Command{}, fsapi.Invalid
 	}
 	var c Command
@@ -161,12 +168,14 @@ func DecodeCommandVersion(b []byte, minor uint16) (Command, error) {
 		}
 	} else if minor >= 2 && c.Op == "RETIRE" {
 		err = validateControlledRetirement(o["payload"])
-	} else if minor == 3 && c.Op == "READDIR_CLEANUP" {
+	} else if minor >= 3 && c.Op == "READDIR_CLEANUP" {
 		err = validateReaddirCleanup(o["payload"])
 	} else if isViewExtension(c.Op) {
 		err = validateViewPayload(c.Context, c.Op, o["payload"])
 	} else if c.Op == "VIEW_ACK" {
 		err = validateViewAckVersion(c.Context, o["payload"])
+	} else if minor == 4 && c.Op == "VIEW_WAIT" {
+		err = validatePayload("VIEW_POLL", o["payload"], o["reclaim"])
 	} else {
 		err = validatePayload(c.Op, o["payload"], o["reclaim"])
 	}
@@ -189,6 +198,9 @@ func validateProtocolVersion(v any, minor uint16) error {
 	}
 	if minor == 3 {
 		selected = CleanupProtocol()
+	}
+	if minor == 4 {
+		selected = MappedProtocol()
 	}
 	expected, err := marshal(selected)
 	if err != nil || !bytes.Equal(raw, expected) {

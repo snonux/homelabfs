@@ -180,6 +180,17 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 		return nil, e
 	}
 	ctx = observeCommand(ctx, n, s.controller, c, raw)
+	if commandMinor(c) == 4 {
+		s.mu.Lock()
+		transport := s.transport
+		s.mu.Unlock()
+		if transport == nil || c.Delegation == nil {
+			return nil, fsapi.Permission
+		}
+		if err := transport.admitMapping(ctx, c); err != nil {
+			return nil, err
+		}
+	}
 	if c.Protocol != nil && IsControlledProtocol(*c.Protocol) && !missing(s.config.Verification) {
 		if err := s.config.Verification.Prepare(ctx, c); err != nil {
 			return nil, err
@@ -303,6 +314,38 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 	if c.Protocol != nil {
 		response["protocol"] = c.Protocol
 		if IsControlledProtocol(*c.Protocol) {
+			if commandMinor(c) == 4 {
+				base, err := marshal(response)
+				if err != nil {
+					return nil, err
+				}
+				s.mu.Lock()
+				transport := s.transport
+				s.mu.Unlock()
+				ctx, err = transport.finishMappingBase(ctx, c, base)
+				if err != nil {
+					return nil, err
+				}
+				producer, ok := s.config.Verification.(MappedVerificationProducer)
+				if !ok {
+					return nil, fsapi.Permission
+				}
+				receipt, err := producer.ProduceMapped(ctx, c, base)
+				if err != nil {
+					return nil, err
+				}
+				if receipt != nil {
+					encoded, err := marshal(receipt)
+					if err != nil {
+						return nil, err
+					}
+					if _, err = DecodeVerificationReceiptV2(encoded); err != nil {
+						return nil, err
+					}
+				}
+				response["verification"] = receipt
+				return marshal(response)
+			}
 			var receipt *VerificationReceipt
 			if !missing(s.config.Verification) {
 				base, err := marshal(response)

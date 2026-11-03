@@ -1,0 +1,94 @@
+--- a/internal/guestbridge/endpoint.go
++++ b/internal/guestbridge/endpoint.go
+@@ -164,6 +164,11 @@
+ 			t.failed = err
+ 			if t.ledger != nil {
+ 				_ = t.ledger.close()
++			}
++			// No worker started and no Transport will be returned. Retain the
++			// service/ledger claim, but return its unopened arena reservations.
++			for _, lease := range t.arenas {
++				_ = lease.Release()
+ 			}
+ 			return nil, err
+ 		}
+--- a/internal/guestbridge/mapping_test.go
++++ b/internal/guestbridge/mapping_test.go
+@@ -20,6 +20,7 @@
+ 
+ type mappingProducerPrimitive struct {
+ 	prepared, produced atomic.Int64
++	attachmentErr      error
+ 	pauseCell          uint64
+ 	entered, resume    chan struct{}
+ }
+@@ -42,7 +43,10 @@
+ }
+ func (p *mappingProducerPrimitive) BindTransport(_ context.Context, tr *Transport) error {
+ 	_, err := tr.VerificationBinding(p)
+-	return err
++	if err != nil {
++		return err
++	}
++	return p.attachmentErr
+ }
+ func (p *mappingProducerPrimitive) ProduceMapped(ctx context.Context, _ Command, _ json.RawMessage) (*VerificationReceiptV2, error) {
+ 	if _, ok := VerifiedMapping(ctx); !ok {
+@@ -768,3 +772,44 @@
+ 	}
+ 	t.Cleanup(transport.Close)
+ }
++
++func TestMappedAttachmentFailureReturnsUnopenedArenaBudget(t *testing.T) {
++	failed := newBridge(t)
++	protocol := MappedProtocol()
++	failed.s.config.Protocol = &protocol
++	rejected := errors.New("actual attachment refused")
++	failed.s.config.Verification = &mappingProducerPrimitive{attachmentErr: rejected}
++	budget := durableBudget(t)
++	root := filepath.Join(t.TempDir(), "failed-attachment")
++	transport, err := NewDurableTransport(failed.s, budget, root)
++	if transport != nil || !errors.Is(err, rejected) {
++		t.Fatal("attachment refusal was not preserved", err)
++	}
++	failed.s.mu.Lock()
++	retained := failed.s.transportAttached && failed.s.transport == nil
++	failed.s.mu.Unlock()
++	if !retained {
++		t.Fatal("attachment failure abandoned the service claim")
++	}
++	retryRoot := filepath.Join(t.TempDir(), "same-service-retry")
++	if retry, err := NewDurableTransport(failed.s, budget, retryRoot); retry != nil || !errors.Is(err, fsapi.Busy) {
++		t.Fatal("uncertain service admitted a second allocator", err)
++	}
++	if _, err = os.Stat(retryRoot); !errors.Is(err, os.ErrNotExist) {
++		t.Fatal("blocked service created a replacement namespace", err)
++	}
++	state, cells := inspectCells(t, root)
++	if state.High != 0 || len(cells) != 0 {
++		t.Fatal("failed unopened owner changed its protected state")
++	}
++	// The same bounded budget must fund a separate fresh service/root. Keeping
++	// the failed service claim must not strand reservations with no Close handle.
++	fresh := newBridge(t)
++	fresh.s.config.Protocol = &protocol
++	fresh.s.config.Verification = &mappingProducerPrimitive{}
++	transport, err = NewDurableTransport(fresh.s, budget, filepath.Join(t.TempDir(), "fresh-attachment"))
++	if err != nil {
++		t.Fatal("attachment failure leaked shared arena reservations", err)
++	}
++	t.Cleanup(transport.Close)
++}
+--- a/internal/controlledruntime/producer_mapping_test.go
++++ b/internal/controlledruntime/producer_mapping_test.go
+@@ -320,8 +320,8 @@
+ 		t.Fatal("oversized1.4closure envelope accepted", err)
+ 	}
+ 	request.Credentials.Revision++
+-	// Wrong-issuer execution is refused and retains the accepted transport owner.
+-	// It has no successful response to inspect and no timeout can release it.
++	// Direct delegated execution still refuses this changed request because it
++	// lacks a private transport candidate. This does not test issuer validation.
+ 	r.cells++
+ 	*r.mappingNativeCell++
+ 	p := guestbridge.MappedProtocol()

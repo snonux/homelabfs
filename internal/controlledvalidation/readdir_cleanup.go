@@ -25,15 +25,18 @@ func (p *Provider) CleanupReaddir(ctx context.Context, scope guestbridge.Context
 	}
 	observed, ok := guestbridge.VerifiedRequest(ctx)
 	protocol := guestbridge.CleanupProtocol()
+	if enrolled := p.config.Authorization.Enrollment.Protocol; enrolled != nil {
+		protocol = *enrolled
+	}
 	enrolled := p.config.Authorization.Enrollment
-	if !ok || enrolled.Protocol == nil || *enrolled.Protocol != protocol || observed.Protocol == nil || *observed.Protocol != protocol || observed.Scope != scope || observed.Operation != "READDIR_CLEANUP" || observed.PayloadHash != hash(raw) || observed.Native.Endpoint != enrolled.Endpoint {
+	if !ok || enrolled.Protocol == nil || !guestbridge.HasCleanupProtocol(protocol) || observed.Protocol == nil || *observed.Protocol != protocol || observed.Scope != scope || observed.Operation != "READDIR_CLEANUP" || observed.PayloadHash != hash(raw) || observed.Native.Endpoint != enrolled.Endpoint {
 		return nil, fsapi.Permission
 	}
 	envelope, err := canonicalJSON(guestbridge.Command{Protocol: &protocol, Cell: observed.Cell, Context: scope, Op: "READDIR_CLEANUP", Payload: raw})
 	if err != nil {
 		return nil, err
 	}
-	if _, err = guestbridge.DecodeCommandVersion(envelope, 3); err != nil {
+	if _, err = guestbridge.DecodeCommandVersion(envelope, uint16(protocol.BridgeMinor)); err != nil {
 		return nil, err
 	}
 	var request guestbridge.ReaddirCleanup

@@ -1,0 +1,51 @@
+[
+  {
+    "check": "constructor-race",
+    "argv": [
+      "go",
+      "test",
+      "-race",
+      "-p=1",
+      "./internal/guestbridge",
+      "-run",
+      "TestMappedConstructor|TestMappedTransportDurablePrivateCandidateAndDonor|TestDurableTransportRequiresLedgerBudget",
+      "-count=1"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 6.137,
+    "peak_group_rss_kib": 164668,
+    "guard": null,
+    "pswpout_before": 1228471,
+    "pswpout_after": 1228471
+  },
+  {
+    "check": "constructor-vet",
+    "argv": [
+      "go",
+      "vet",
+      "./internal/guestbridge"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.38,
+    "peak_group_rss_kib": 24552,
+    "guard": null,
+    "pswpout_before": 1228471,
+    "pswpout_after": 1228471
+  },
+  {
+    "check": "constructor-errcheck",
+    "argv": [
+      "errcheck",
+      "./internal/guestbridge"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 4.692,
+    "peak_group_rss_kib": 179992,
+    "guard": null,
+    "pswpout_before": 1228471,
+    "pswpout_after": 1228471
+  }
+]

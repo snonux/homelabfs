@@ -1,0 +1,6 @@
+{
+  "file": "r1-fix.patch",
+  "sha256": "c7f179832582beea8bea776c819c2165a8ef8379cfadeae5803cc9484397abf0",
+  "source": "/home/paul/tmp/codex/hfs-114-20261103-umigucjp/r1-fix.patch",
+  "whitespace_gate": "Only this byte-exact raw unified diff is excluded; its context prefix followed by Go tabs is inherent patch syntax. All source/docs/other evidence passed whitespace checks."
+}

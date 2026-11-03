@@ -1,0 +1,8 @@
+{
+  "check": "staticcheck QF1001",
+  "path": "internal/guestbridge/mapping.go",
+  "old": "d.GuestOp != c.Op && !(d.GuestOp == \"VIEW_WAIT\" && c.Op == \"VIEW_POLL\")",
+  "new": "d.GuestOp != c.Op && (d.GuestOp != \"VIEW_WAIT\" || c.Op != \"VIEW_POLL\")",
+  "scope": "equivalent De Morgan expression; root self-review; two formal reviews already complete, no third review",
+  "rerun": "all nine Go gates; unchanged C preflight already passed"
+}

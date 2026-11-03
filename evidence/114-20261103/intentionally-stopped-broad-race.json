@@ -1,0 +1,28 @@
+{
+  "scope": "existing broad legacy256 cleanup race intentionally stopped; no whole-batch PASS claim; prior mapped packages passed in preserved log",
+  "receipt": [
+    {
+      "check": "mapped-race",
+      "argv": [
+        "go",
+        "test",
+        "-race",
+        "-p=1",
+        "./internal/guestbridge",
+        "./internal/controlledruntime",
+        "./internal/controlledvalidation",
+        "-run",
+        "TestMapped|TestControlledLiteralCodec|TestViewProtocolLiteralCodec|TestReaddirCleanup",
+        "-count=1"
+      ],
+      "exit": -15,
+      "deadline": false,
+      "seconds": 344.566,
+      "peak_group_rss_kib": 210304,
+      "guard": null,
+      "pswpout_before": 1225894,
+      "pswpout_after": 1225894
+    }
+  ],
+  "raw_log_root": "/home/paul/tmp/codex/hfs-114-20261103-umigucjp/focused5"
+}

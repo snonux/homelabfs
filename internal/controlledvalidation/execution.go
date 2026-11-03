@@ -146,8 +146,8 @@ func (p *Provider) execute(ctx context.Context, b guestbridge.Binding, prepare f
 				}
 			}
 			var closure *guestbridge.ReaddirClosure
-			if selected := p.config.Authorization.Enrollment.Protocol; selected != nil && *selected == guestbridge.CleanupProtocol() && b.Call.Intent.Opcode == "READDIR" && predicted.Result.Code == fsapi.OK {
-				closure, err = guestbridge.PrepareReaddirClosure(b, proposed, bridge)
+			if selected := p.config.Authorization.Enrollment.Protocol; selected != nil && guestbridge.HasCleanupProtocol(*selected) && b.Call.Intent.Opcode == "READDIR" && predicted.Result.Code == fsapi.OK {
+				closure, err = guestbridge.PrepareReaddirClosure(b, proposed, bridge, *selected)
 				if err != nil {
 					return err
 				}

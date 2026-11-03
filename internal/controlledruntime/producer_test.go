@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/hanwen/go-fuse/v2/fuse"
+	"github.com/snonux/homelabfs/internal/admission"
 	"github.com/snonux/homelabfs/internal/apply"
 	"github.com/snonux/homelabfs/internal/controlledvalidation"
 	"github.com/snonux/homelabfs/internal/fsapi"
@@ -30,23 +31,25 @@ import (
 )
 
 type sourceRig struct {
-	t               *testing.T
-	supervisor      *Supervisor
-	service         *fsservice.Service
-	controller      *viewcontrol.Controller
-	provider        *controlledvalidation.Provider
-	bridge          *guestbridge.Service
-	facts           *Facts
-	admission       *Admission
-	installed       installedObservation
-	observationFile string
-	scope           guestbridge.Context
-	native          guestbridge.Native
-	credentials     guestbridge.Credentials
-	key             ed25519.PrivateKey
-	cells, claims   uint64
-	peers           []*sourceRig
-	providerFactory func(int) *controlledvalidation.Provider
+	mappingTransport  *guestbridge.Transport
+	mappingNativeCell *uint64
+	t                 *testing.T
+	supervisor        *Supervisor
+	service           *fsservice.Service
+	controller        *viewcontrol.Controller
+	provider          *controlledvalidation.Provider
+	bridge            *guestbridge.Service
+	facts             *Facts
+	admission         *Admission
+	installed         installedObservation
+	observationFile   string
+	scope             guestbridge.Context
+	native            guestbridge.Native
+	credentials       guestbridge.Credentials
+	key               ed25519.PrivateKey
+	cells, claims     uint64
+	peers             []*sourceRig
+	providerFactory   func(int) *controlledvalidation.Provider
 }
 type guestCredentialsSetPrimitive struct {
 	scopes      []guestbridge.Context
@@ -196,6 +199,23 @@ func newSourceRigDomains(t *testing.T, protocol guestbridge.Protocol, count int)
 	r.bridge, err = guestbridge.New(t.Context(), guestbridge.Config{Validation: &profile, Protocol: &protocol, Verification: producer, ViewProtocol: r.controller, Endpoint: endpoint, Native: r.supervisor, Attestor: guestCredentialsSetPrimitive{r.installed.Admission.Domains, r.credentials}, Claims: claims, Execution: execution, Views: r.controller, Scopes: r.installed.Admission.Domains})
 	require(t, err)
 	r.supervisor.record.Stage = "claimed"
+	if protocol == guestbridge.MappedProtocol() {
+		var config admission.Config
+		for class, size := range map[admission.Class]uint64{admission.Live: 512 << 20, admission.Control: 128 << 20, admission.Memory: guestbridge.TransportLedgerMemoryBytes + (12 << 20)} {
+			resources := admission.Resources{Bytes: size, Operations: 80, Workers: 4}
+			config.Pools[class] = admission.Limits{Global: resources, PerPeer: resources, PerVolume: resources}
+		}
+		budget, err := admission.New(config)
+		require(t, err)
+		transport, err := guestbridge.NewDurableTransport(r.bridge, budget, filepath.Join(t.TempDir(), "mapped-transport"))
+		require(t, err)
+		t.Cleanup(transport.Close)
+		counter := uint64(0)
+		for _, peer := range r.peers {
+			peer.mappingTransport = transport
+			peer.mappingNativeCell = &counter
+		}
+	}
 	for _, peer := range r.peers {
 		peer.bridge, peer.controller, peer.facts, peer.admission, peer.installed = r.bridge, r.controller, r.facts, r.admission, r.installed
 		_, _, err = peer.execute("HELLO", protocol)
@@ -228,6 +248,13 @@ func require(t *testing.T, err error) {
 	}
 }
 func (r *sourceRig) execute(op string, value any) (json.RawMessage, *guestbridge.VerificationReceipt, error) {
+	if r.mappingTransport != nil {
+		payload, receipt, _, _, err := r.mappedExecute(op, value)
+		if receipt == nil {
+			return payload, nil, err
+		}
+		return payload, &receipt.VerificationReceipt, err
+	}
 	r.cells++
 	raw, err := canonicalJSON(value)
 	if err != nil {

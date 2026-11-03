@@ -28,3 +28,11 @@ type VerificationProducer interface {
 	Prepare(context.Context, Command) error
 	Produce(context.Context, Command, json.RawMessage) (*VerificationReceipt, error)
 }
+
+// MappedVerificationProducer binds the actual durable transport after bridge
+// construction and signs only its privately observed protected mappings.
+type MappedVerificationProducer interface {
+	VerificationProducer
+	BindTransport(context.Context, *Transport) error
+	ProduceMapped(context.Context, Command, json.RawMessage) (*VerificationReceiptV2, error)
+}

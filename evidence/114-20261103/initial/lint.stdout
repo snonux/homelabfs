@@ -1,0 +1,5 @@
+internal/guestbridge/mapping.go:294:26: QF1001: could apply De Morgan's law (staticcheck)
+	if d.GuestOp != c.Op && !(d.GuestOp == "VIEW_WAIT" && c.Op == "VIEW_POLL") || d.PollIndex > 0 && d.GuestOp != "VIEW_WAIT" {
+	                        ^
+1 issues:
+* staticcheck: 1

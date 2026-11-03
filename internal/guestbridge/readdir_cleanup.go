@@ -17,10 +17,10 @@ func CleanupProtocol() Protocol {
 	return Protocol{BodySchema: 4, BridgeMajor: 1, BridgeMinor: 3, Features: 8191, Msize: 65536, NormalMajor: 3, NormalMinor: 0}
 }
 
-// IsControlledProtocol reports the two explicitly supported controlled tuples.
+// IsControlledProtocol reports the explicitly supported controlled tuples.
 // Callers must still pin the actual selected tuple to their signed enrollment.
 func IsControlledProtocol(p Protocol) bool {
-	return p == ControlledProtocol() || p == CleanupProtocol()
+	return p == ControlledProtocol() || HasCleanupProtocol(p)
 }
 
 // ReaddirCleanup closes every transient grant from one exact retained page.
@@ -48,7 +48,7 @@ type ReaddirCleanupStore interface {
 
 // PrepareReaddirClosure derives exact closure from the proposed original result
 // and protected grant snapshot. The provider accounts every byte before effect.
-func PrepareReaddirClosure(b Binding, result, snapshot json.RawMessage) (*ReaddirClosure, error) {
+func PrepareReaddirClosure(b Binding, result, snapshot json.RawMessage, protocol Protocol) (*ReaddirClosure, error) {
 	var page struct {
 		Code    string
 		ID      string
@@ -81,10 +81,16 @@ func PrepareReaddirClosure(b Binding, result, snapshot json.RawMessage) (*Readdi
 	}
 	// Bound the full response/command envelopes before any filesystem effect.
 	// MaxCell and a full reclaim object cover the largest decimal cell spelling.
-	protocol := CleanupProtocol()
+	if !HasCleanupProtocol(protocol) {
+		return nil, fsapi.Permission
+	}
+	commandEnvelope := map[string]any{"cell": MaxCell, "context": b.Context, "op": "READDIR_CLEANUP", "payload": json.RawMessage(raw), "protocol": protocol, "reclaim": map[string]any{"cell": MaxCell, "response_hash": digest(raw)}}
+	if protocol == MappedProtocol() {
+		commandEnvelope["delegation"] = &Delegation{Version: DelegationVersion, GuestCell: MaxCell, GuestOp: "READDIR_CLEANUP", GuestReclaim: &Ack{Cell: MaxCell, ResponseHash: digest(raw)}}
+	}
 	envelopes := []any{
 		map[string]any{"cell": MaxCell, "context": b.Context, "op": "QUERY", "payload": map[string]any{"claim": b.Call.Claim, "status": "TERMINAL", "result": json.RawMessage(result)}, "protocol": protocol, "verification": nil},
-		map[string]any{"cell": MaxCell, "context": b.Context, "op": "READDIR_CLEANUP", "payload": json.RawMessage(raw), "protocol": protocol, "reclaim": map[string]any{"cell": MaxCell, "response_hash": digest(raw)}},
+		commandEnvelope,
 	}
 	for _, envelope := range envelopes {
 		encoded, err := marshal(envelope)
@@ -141,7 +147,7 @@ func validateReaddirCleanup(v any) error {
 }
 
 func (s *Service) cleanupReaddir(ctx context.Context, c Command) (json.RawMessage, error) {
-	if c.Protocol == nil || *c.Protocol != CleanupProtocol() || !s.privateValidation() {
+	if c.Protocol == nil || !HasCleanupProtocol(*c.Protocol) || !s.privateValidation() {
 		return nil, fsapi.Permission
 	}
 	store, ok := s.config.Claims.(ReaddirCleanupStore)

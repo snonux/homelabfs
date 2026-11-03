@@ -1,0 +1,51 @@
+[
+  {
+    "check": "attachment-race",
+    "argv": [
+      "go",
+      "test",
+      "-race",
+      "-p=1",
+      "./internal/guestbridge",
+      "-run",
+      "TestMappedAttachmentFailure|TestMappedConstructor|TestMappedTransportDurablePrivateCandidateAndDonor",
+      "-count=1"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 6.137,
+    "peak_group_rss_kib": 158416,
+    "guard": null,
+    "pswpout_before": 1229428,
+    "pswpout_after": 1229428
+  },
+  {
+    "check": "attachment-vet",
+    "argv": [
+      "go",
+      "vet",
+      "./internal/guestbridge"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.381,
+    "peak_group_rss_kib": 24184,
+    "guard": null,
+    "pswpout_before": 1229428,
+    "pswpout_after": 1229428
+  },
+  {
+    "check": "attachment-errcheck",
+    "argv": [
+      "errcheck",
+      "./internal/guestbridge"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 4.934,
+    "peak_group_rss_kib": 160344,
+    "guard": null,
+    "pswpout_before": 1229428,
+    "pswpout_after": 1229428
+  }
+]

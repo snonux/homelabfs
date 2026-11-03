@@ -1,0 +1,1 @@
+Fresh narrow R2 authenticated_mapping_review2: arena leak resolved; actual rejected-attachment regression retains failed service and empty durable namespace while same exact-capacity budget funds fresh service/root. No new blocking defects. No third review.

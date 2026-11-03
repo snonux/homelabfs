@@ -19,21 +19,23 @@ type CellReservation struct {
 	Release func()
 }
 type cell struct {
-	frame        Frame
-	body         []byte
-	chunks       []bool
-	count        int
-	reservation  CellReservation
-	command      *Command
-	response     []byte
-	wire         [][]byte
-	seen         [][]byte
-	unread       int
-	resultKind   uint16
-	released     bool
-	native       Native // Historical accepted callback, never restored authentication.
-	jobPhase     string
-	observations []Native
+	frame          Frame
+	body           []byte
+	chunks         []bool
+	count          int
+	reservation    CellReservation
+	command        *Command
+	response       []byte
+	wire           [][]byte
+	seen           [][]byte
+	unread         int
+	resultKind     uint16
+	released       bool
+	native         Native // Historical accepted callback, never restored authentication.
+	jobPhase       string
+	observations   []Native
+	mapping        *ProtectedMapping
+	guestWatermark uint64
 }
 type job struct {
 	native  Native
@@ -60,6 +62,8 @@ type Transport struct {
 	closed                      bool
 	ledger                      *transportLedger
 	failed                      error
+	guestHigh                   map[string]uint64
+	guestRecent                 []GuestIssuance
 }
 
 // NewTransport reserves independent bounded ordinary/control workers. Admission
@@ -84,6 +88,21 @@ func newTransport(s *Service, budget *admission.Budget, root string) (*Transport
 	if s == nil || budget == nil {
 		return nil, fsapi.Invalid
 	}
+	needsMapped := false
+	for _, scope := range s.config.Scopes {
+		if p := s.config.sessionProtocol(scope.Session); p != nil && *p == MappedProtocol() {
+			needsMapped = true
+			if err := mappedCellFunding(); err != nil {
+				return nil, err
+			}
+			if root == "" {
+				return nil, fsapi.Permission
+			}
+			if _, ok := s.config.Verification.(MappedVerificationProducer); !ok || missing(s.config.Verification) {
+				return nil, fsapi.Permission
+			}
+		}
+	}
 	s.mu.Lock()
 	if s.transportAttached {
 		s.mu.Unlock()
@@ -91,7 +110,7 @@ func newTransport(s *Service, budget *admission.Budget, root string) (*Transport
 	}
 	s.transportAttached = true
 	s.mu.Unlock()
-	t := &Transport{service: s, cells: map[uint64]*cell{}, ordinaryQueue: make(chan job, 64), controlQueue: make(chan job, 16), replacementQueue: make(chan job, 1), drainQueue: make(chan job, 16), acquisitionQueue: make(chan job, 64), done: make(chan struct{})}
+	t := &Transport{guestHigh: map[string]uint64{}, service: s, cells: map[uint64]*cell{}, ordinaryQueue: make(chan job, 64), controlQueue: make(chan job, 16), replacementQueue: make(chan job, 1), drainQueue: make(chan job, 16), acquisitionQueue: make(chan job, 64), done: make(chan struct{})}
 	// Reserve complete request/reply/receipt bitmap and bounded decode copies for
 	// every active credit before any callback allocation. Workspace is independent.
 	pools := []struct {
@@ -140,6 +159,23 @@ func newTransport(s *Service, budget *admission.Budget, root string) (*Transport
 			return nil, err
 		}
 	}
+	if p, ok := s.config.Verification.(MappedVerificationProducer); needsMapped && ok {
+		if err := p.BindTransport(context.Background(), t); err != nil {
+			t.failed = err
+			if t.ledger != nil {
+				_ = t.ledger.close()
+			}
+			// No worker started and no Transport will be returned. Retain the
+			// service/ledger claim, but return its unopened arena reservations.
+			for _, lease := range t.arenas {
+				_ = lease.Release()
+			}
+			return nil, err
+		}
+	}
+	s.mu.Lock()
+	s.transport = t
+	s.mu.Unlock()
 	t.workers.Add(5)
 	go t.worker(t.ordinaryQueue)
 	go t.worker(t.controlQueue)
@@ -232,6 +268,12 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 		if f.Cell != t.high+1 {
 			return 0, fsapi.Invalid
 		}
+		if f.Minor == 4 && t.workspace == nil {
+			t.pruneGuestRecent()
+			if len(t.guestRecent)+t.mappingIncomplete() >= mappingRecentLimit {
+				return 0, fsapi.WouldBlock
+			}
+		}
 		if t.workspace != nil {
 			if !sameFrame(t.workspace.frame, f) {
 				return 0, fsapi.WouldBlock
@@ -242,6 +284,7 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 			// schema validation still precedes atomic release and allocator advancement.
 			if f.Flags&2 != 0 {
 				c = newCell(f)
+				c.guestWatermark = t.guestWatermark(f.Session.String())
 				t.workspace = c
 			} else {
 				r := CellReservation{Control: f.Flags&1 != 0, Release: func() {}}
@@ -254,6 +297,7 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 					return 0, fsapi.WouldBlock
 				}
 				c = newCell(f)
+				c.guestWatermark = t.guestWatermark(f.Session.String())
 				c.reservation = r
 				t.cells[f.Cell] = c
 				t.high = f.Cell
@@ -297,6 +341,10 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 		return 0, fsapi.Permission
 	}
 
+	mappingCandidate, e := t.prepareMapping(c, command)
+	if e != nil {
+		return 0, e
+	}
 	if c == t.workspace {
 		if command.Reclaim == nil {
 			return 0, fsapi.Invalid
@@ -348,6 +396,7 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 	if len(queue) == cap(queue) {
 		return 0, fsapi.WouldBlock
 	}
+	t.acceptMapping(c, command, mappingCandidate)
 	c.command = &command
 	c.native = cloneNative(n)
 	c.jobPhase = "accepted"
@@ -500,7 +549,8 @@ func (t *Transport) worker(queue <-chan job) {
 		if !active {
 			continue
 		}
-		raw, e := t.service.Execute(context.Background(), j.native, j.command)
+		executionContext := context.WithValue(context.Background(), mappingWorkerKey{}, mappingWorker{transport: t, cell: j.id})
+		raw, e := t.service.Execute(executionContext, j.native, j.command)
 		if e != nil {
 			retryable := errors.Is(e, fsapi.WouldBlock) || errors.Is(e, fsapi.NoSpace)
 			t.mu.Lock()
@@ -546,6 +596,11 @@ func (t *Transport) worker(queue <-chan job) {
 		t.mu.Lock()
 		c = t.cells[j.id]
 		if !t.closed && t.failed == nil && c != nil && !c.released && c.response == nil {
+			if err := t.finishMappingFull(c, raw); err != nil {
+				t.failed = err
+				t.mu.Unlock()
+				continue
+			}
 			c.response = raw
 			c.wire = frames
 			c.seen = seen

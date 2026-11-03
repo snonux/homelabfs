@@ -48,6 +48,8 @@ type ProtectedTransportState struct {
 	Scopes            []Context
 	Protocols         []*Protocol
 	High              uint64
+	GuestHigh         map[string]uint64
+	GuestRecent       []GuestIssuance
 	Cells             []uint64
 	Ordinary, Control int
 	Workspace         bool
@@ -58,19 +60,21 @@ type ProtectedTransportState struct {
 // observations. These values cannot construct a VerifiedRequest or grant native
 // authority; a future coordinator must reconcile all other authoritative ledgers.
 type ProtectedTransportCell struct {
-	Header       Frame
-	Body         []byte
-	Chunks       []bool
-	Observations []Native
-	Count        int
-	Control      bool
-	Command      *Command
-	Native       Native
-	JobPhase     string
-	Response     []byte
-	Wire, Seen   [][]byte
-	Unread       int
-	ResultKind   uint16
+	Header         Frame
+	Body           []byte
+	Chunks         []bool
+	Observations   []Native
+	Count          int
+	Control        bool
+	Command        *Command
+	Native         Native
+	JobPhase       string
+	Response       []byte
+	Wire, Seen     [][]byte
+	Unread         int
+	ResultKind     uint16
+	GuestWatermark uint64
+	Mapping        *ProtectedMapping
 }
 
 type transportLedger struct {
@@ -278,10 +282,10 @@ func protectedCell(c *cell) ProtectedTransportCell {
 	// The complete body plus the chunk bitmap owns these bytes; keeping the first
 	// frame's borrowed Data slice would duplicate a callback buffer and alias it.
 	h.Data = nil
-	return ProtectedTransportCell{Header: h, Body: c.body, Chunks: c.chunks, Observations: c.observations, Count: c.count, Control: c.reservation.Control, Command: c.command, Native: c.native, JobPhase: c.jobPhase, Response: c.response, Wire: c.wire, Seen: c.seen, Unread: c.unread, ResultKind: c.resultKind}
+	return ProtectedTransportCell{Header: h, Body: c.body, Chunks: c.chunks, Observations: c.observations, Count: c.count, Control: c.reservation.Control, Command: c.command, Native: c.native, JobPhase: c.jobPhase, Response: c.response, Wire: c.wire, Seen: c.seen, Unread: c.unread, ResultKind: c.resultKind, GuestWatermark: c.guestWatermark, Mapping: c.mapping}
 }
 func (t *Transport) protectedIndex() ProtectedTransportState {
-	s := ProtectedTransportState{Version: 1, Endpoint: t.Endpoint(), Controller: t.service.controller, High: t.high, Ordinary: t.ordinary, Control: t.control, Workspace: t.workspace != nil, Cells: make([]uint64, 0, len(t.cells))}
+	s := ProtectedTransportState{Version: 1, Endpoint: t.Endpoint(), Controller: t.service.controller, High: t.high, GuestHigh: t.guestHigh, GuestRecent: t.guestRecent, Ordinary: t.ordinary, Control: t.control, Workspace: t.workspace != nil, Cells: make([]uint64, 0, len(t.cells))}
 	for id := range t.cells {
 		s.Cells = append(s.Cells, id)
 	}
@@ -328,6 +332,9 @@ func (l *transportLedger) protect(t *Transport, ids []uint64) error {
 	}
 	if len(ids) > 2 {
 		return fsapi.Invalid
+	}
+	if len(t.guestRecent)+t.mappingIncomplete() > mappingRecentLimit {
+		return fsapi.NoSpace
 	}
 	index := t.protectedIndex()
 	if err = validateTransportIndex(index); err != nil {
@@ -396,7 +403,11 @@ func (l *transportLedger) protect(t *Transport, ids []uint64) error {
 	return err
 }
 func boundedTransportJSON(c ProtectedTransportCell) ([]byte, error) {
-	raw, err := json.Marshal(c)
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	err := encoder.Encode(c)
+	raw := bytes.TrimSuffix(buffer.Bytes(), []byte{'\n'})
 	if err != nil {
 		return nil, err
 	}
@@ -409,6 +420,27 @@ func validateTransportIndex(s ProtectedTransportState) error {
 	if s.Version != 1 || !validEndpoint(s.Endpoint) || !s.Controller.Valid() || s.High > MaxCell || len(s.Cells) > 80 || len(s.Scopes) == 0 || len(s.Scopes) > 64 || len(s.Protocols) != len(s.Scopes) || s.Ordinary < 0 || s.Ordinary > 64 || s.Control < 0 || s.Control > 16 || s.Ordinary+s.Control != len(s.Cells) {
 		return fsapi.Stale
 	}
+	if len(s.GuestHigh) > 64 || len(s.GuestRecent) > mappingRecentLimit {
+		return fsapi.Stale
+	}
+	for session, high := range s.GuestHigh {
+		known := false
+		for i, scope := range s.Scopes {
+			if scope.Session == session && s.Protocols[i] != nil && *s.Protocols[i] == MappedProtocol() {
+				known = true
+			}
+		}
+		if !known || high > MaxCell {
+			return fsapi.Stale
+		}
+	}
+	seenGuest := map[GuestIssuance]bool{}
+	for _, issued := range s.GuestRecent {
+		if issued.Cell < 1 || issued.Cell > s.GuestHigh[issued.Session] || seenGuest[issued] {
+			return fsapi.Stale
+		}
+		seenGuest[issued] = true
+	}
 	var previous uint64
 	for _, id := range s.Cells {
 		if id <= previous || id > s.High {
@@ -420,7 +452,7 @@ func validateTransportIndex(s ProtectedTransportState) error {
 		if scope.FuseSession != s.Endpoint.FuseSession {
 			return fsapi.Stale
 		}
-		if p := s.Protocols[i]; p != nil && *p != ViewProtocol() && *p != ControlledProtocol() && *p != CleanupProtocol() {
+		if p := s.Protocols[i]; p != nil && *p != ViewProtocol() && *p != ControlledProtocol() && *p != CleanupProtocol() && *p != MappedProtocol() {
 			return fsapi.Stale
 		}
 	}
@@ -456,6 +488,9 @@ func validateProtectedCell(c ProtectedTransportCell, workspace bool) error {
 		if workspace || count != len(c.Chunks) || c.Command.Cell != c.Header.Cell || len(c.Native.Groups) > 1024 || !validUUID(c.Native.Process) || !oneOf(c.JobPhase, "accepted", "executing", "pending", "blocked", "responded") {
 			return fsapi.Stale
 		}
+	}
+	if err := validateProtectedMapping(c); err != nil {
+		return err
 	}
 	if c.Response == nil {
 		if c.Wire != nil || c.Seen != nil || c.Unread != 0 || c.ResultKind != 0 || c.JobPhase == "responded" {
@@ -559,7 +594,7 @@ func InspectTransport(root string, visit func(ProtectedTransportCell) error) (st
 		if count != expected {
 			return fsapi.Stale
 		}
-		ordinary, control := 0, 0
+		ordinary, control, mappingPending := 0, 0, 0
 		inspect := func(key []byte, workspace bool, id uint64) error {
 			raw := b.Get(key)
 			var c ProtectedTransportCell
@@ -571,6 +606,9 @@ func InspectTransport(root string, visit func(ProtectedTransportCell) error) (st
 			}
 			if e := validateTransportCellBinding(state, c, workspace); e != nil {
 				return e
+			}
+			if c.Header.Minor == 4 && c.Command == nil {
+				mappingPending++
 			}
 			if !workspace {
 				if c.Control {
@@ -596,7 +634,7 @@ func InspectTransport(root string, visit func(ProtectedTransportCell) error) (st
 				return e
 			}
 		}
-		if ordinary != state.Ordinary || control != state.Control {
+		if ordinary != state.Ordinary || control != state.Control || mappingPending+len(state.GuestRecent) > mappingRecentLimit {
 			return fsapi.Stale
 		}
 		state.Digest = hex.EncodeToString(hash.Sum(nil))
@@ -625,6 +663,9 @@ func validateTransportCellBinding(s ProtectedTransportState, c ProtectedTranspor
 	if protocol != nil {
 		minor = uint16(protocol.BridgeMinor)
 	}
+	if c.GuestWatermark > s.GuestHigh[c.Header.Session.String()] {
+		return fsapi.Stale
+	}
 	if c.Header.Minor != minor || c.Header.Kind != 1 || c.Header.Flags > 3 || c.Header.Offset%ChunkBytes != 0 || c.Header.Offset >= c.Header.Total {
 		return fsapi.Stale
 	}
@@ -632,6 +673,9 @@ func validateTransportCellBinding(s ProtectedTransportState, c ProtectedTranspor
 		if present && c.Observations[i].Endpoint != s.Endpoint {
 			return fsapi.Stale
 		}
+	}
+	if err := validateMappingChain(s, c); err != nil {
+		return err
 	}
 	if c.Command != nil && (c.Command.Context != *scope || c.Native.Endpoint != s.Endpoint || !reflect.DeepEqual(c.Command.Protocol, protocol)) {
 		return fsapi.Stale

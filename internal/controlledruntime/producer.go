@@ -26,9 +26,11 @@ type Producer struct {
 	providers  map[string]*controlledvalidation.Provider
 	keys       map[string]ed25519.PrivateKey
 	bindings   map[string]fsapi.UUID
+	transports map[string]*guestbridge.Transport
 }
 
 var _ guestbridge.VerificationProducer = (*Producer)(nil)
+var _ guestbridge.MappedVerificationProducer = (*Producer)(nil)
 
 // NewProducer binds real local owners and verifies every endpoint signing key
 // against the already enrolled host key. No verification callback is accepted.
@@ -39,7 +41,7 @@ func NewProducer(ctx context.Context, facts *Facts, controller *viewcontrol.Cont
 	if err := facts.CheckEnrollment(ctx, facts.enrollment); err != nil {
 		return nil, err
 	}
-	p := &Producer{facts: facts, controller: controller, providers: map[string]*controlledvalidation.Provider{}, keys: map[string]ed25519.PrivateKey{}, bindings: map[string]fsapi.UUID{}}
+	p := &Producer{facts: facts, controller: controller, providers: map[string]*controlledvalidation.Provider{}, keys: map[string]ed25519.PrivateKey{}, bindings: map[string]fsapi.UUID{}, transports: map[string]*guestbridge.Transport{}}
 	for _, e := range facts.enrollment.Domains {
 		provider, key := providers[e.Scope.Session], keys[e.Scope.Session]
 		if provider == nil || !provider.UsesFacts(facts) || !provider.UsesService(facts.service) || !sameJSON(provider.Enrollment(), e) || len(key) != ed25519.PrivateKeySize || !sameJSON(key.Public(), ed25519.PublicKey(e.HostKey)) {
@@ -99,6 +101,13 @@ func (p *Producer) Prepare(ctx context.Context, c guestbridge.Command) error {
 // Produce verifies actual retained bytes/events or an exact protected full-
 // original floor, then binds and signs the original command and response bytes.
 func (p *Producer) Produce(ctx context.Context, c guestbridge.Command, response json.RawMessage) (*guestbridge.VerificationReceipt, error) {
+	if c.Protocol != nil && *c.Protocol == guestbridge.MappedProtocol() {
+		return nil, fsapi.Permission
+	}
+	return p.produce(ctx, c, response)
+}
+
+func (p *Producer) produce(ctx context.Context, c guestbridge.Command, response json.RawMessage) (*guestbridge.VerificationReceipt, error) {
 	if err := p.observed(ctx, c); err != nil {
 		return nil, err
 	}
