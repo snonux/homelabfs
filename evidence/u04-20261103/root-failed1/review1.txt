@@ -1,0 +1,1 @@
+FreshfullR1 controlled_transport_review1: no blocking findings or nonblocking recommendations; all4frozenhashes matched. Static read only, realfiles/6process-lossboundaries/negativecoverage meaningful. Rootselfreview parentFD namespace-syncgap fixed before R1; pre-mmapFDsizeguard present. No restore/native/pressure claims. Root fullgates pending.

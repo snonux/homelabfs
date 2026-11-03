@@ -19,18 +19,21 @@ type CellReservation struct {
 	Release func()
 }
 type cell struct {
-	frame       Frame
-	body        []byte
-	chunks      []bool
-	count       int
-	reservation CellReservation
-	command     *Command
-	response    []byte
-	wire        [][]byte
-	seen        [][]byte
-	unread      int
-	resultKind  uint16
-	released    bool
+	frame        Frame
+	body         []byte
+	chunks       []bool
+	count        int
+	reservation  CellReservation
+	command      *Command
+	response     []byte
+	wire         [][]byte
+	seen         [][]byte
+	unread       int
+	resultKind   uint16
+	released     bool
+	native       Native // Historical accepted callback, never restored authentication.
+	jobPhase     string
+	observations []Native
 }
 type job struct {
 	native  Native
@@ -55,12 +58,29 @@ type Transport struct {
 	done                        chan struct{}
 	workers                     sync.WaitGroup
 	closed                      bool
+	ledger                      *transportLedger
+	failed                      error
 }
 
 // NewTransport reserves independent bounded ordinary/control workers. Admission
 // must have reserved the fixed 12 MiB replacement parser workspace at enrollment;
 // no backend/session may supply another allocator for this inode tuple.
 func NewTransport(s *Service, budget *admission.Budget) (*Transport, error) {
+	return newTransport(s, budget, "")
+}
+
+// NewDurableTransport exclusively creates a private transport ledger. An existing
+// root is never a fresh endpoint. The budget must fund TransportLedgerMemoryBytes
+// in addition to the original transport arenas. This protects ownership only: opening
+// a ledger cannot restore a controller, native authority, workers or RESUME.
+func NewDurableTransport(s *Service, budget *admission.Budget, root string) (*Transport, error) {
+	if root == "" {
+		return nil, fsapi.Invalid
+	}
+	return newTransport(s, budget, root)
+}
+
+func newTransport(s *Service, budget *admission.Budget, root string) (*Transport, error) {
 	if s == nil || budget == nil {
 		return nil, fsapi.Invalid
 	}
@@ -74,10 +94,19 @@ func NewTransport(s *Service, budget *admission.Budget) (*Transport, error) {
 	t := &Transport{service: s, cells: map[uint64]*cell{}, ordinaryQueue: make(chan job, 64), controlQueue: make(chan job, 16), replacementQueue: make(chan job, 1), drainQueue: make(chan job, 16), acquisitionQueue: make(chan job, 64), done: make(chan struct{})}
 	// Reserve complete request/reply/receipt bitmap and bounded decode copies for
 	// every active credit before any callback allocation. Workspace is independent.
-	for _, pool := range []struct {
+	pools := []struct {
 		class               admission.Class
 		bytes, ops, workers uint64
-	}{{admission.Live, 64 * 8 << 20, 64, 2}, {admission.Control, 16 * 8 << 20, 16, 2}, {admission.Memory, 12 << 20, 1, 1}} {
+	}{{admission.Live, 64 * 8 << 20, 64, 2}, {admission.Control, 16 * 8 << 20, 16, 2}, {admission.Memory, 12 << 20, 1, 1}}
+	if root != "" {
+		// Ledger mappings, freelist and per-row encoding/transaction copies need
+		// their own finite owner. This is not another parser workspace.
+		pools = append(pools, struct {
+			class               admission.Class
+			bytes, ops, workers uint64
+		}{admission.Memory, TransportLedgerMemoryBytes, 1, 0})
+	}
+	for _, pool := range pools {
 		lease, e := budget.Reserve(admission.Request{Class: pool.class, Peer: s.config.Endpoint.FuseSession, Volume: s.config.Endpoint.FuseSession, Cost: admission.Resources{Bytes: pool.bytes, Operations: pool.ops, Workers: pool.workers}})
 		if e != nil {
 			for _, l := range t.arenas {
@@ -90,6 +119,27 @@ func NewTransport(s *Service, budget *admission.Budget) (*Transport, error) {
 		}
 		t.arenas = append(t.arenas, lease)
 	}
+	if root != "" {
+		ledger, err := createTransportLedger(root)
+		if err == nil {
+			t.ledger = ledger
+			err = t.protectLocked()
+			if err == nil {
+				err = ledger.finishNamespace()
+			}
+		}
+		if err != nil {
+			if ledger != nil {
+				_ = ledger.close()
+			}
+			for _, l := range t.arenas {
+				_ = l.Release()
+			}
+			// The service remains attached after uncertain protection. A second
+			// constructor cannot silently abandon an issued private root.
+			return nil, err
+		}
+	}
 	t.workers.Add(5)
 	go t.worker(t.ordinaryQueue)
 	go t.worker(t.controlQueue)
@@ -101,7 +151,7 @@ func NewTransport(s *Service, budget *admission.Budget) (*Transport, error) {
 
 // Write validates and copies one positional chunk without awaiting any service,
 // recall, grant or vnode. An error never conveys filesystem success.
-func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b []byte) (uint32, error) {
+func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b []byte) (written uint32, err error) {
 	if e := t.service.Authenticate(ctx, n); e != nil {
 		return 0, e
 	}
@@ -129,9 +179,37 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.closed {
+	if t.closed || t.failed != nil {
 		return 0, fsapi.Unavailable
 	}
+	var dispatch *job
+	var dispatchQueue chan job
+	var reclaimed *cell
+	// Workers cannot execute, and ownership cannot be released, before the exact
+	// accepted state has committed. Error paths also protect workspace changes.
+	defer func() {
+		ids := []uint64{f.Cell}
+		if reclaimed != nil {
+			ids = append(ids, reclaimed.frame.Cell)
+		}
+		if e := t.protectLocked(ids...); e != nil {
+			written, err = 0, e
+			return
+		}
+		if reclaimed != nil {
+			releaseCell(reclaimed)
+			if e := t.protectedPoint("reclaim"); e != nil {
+				written, err = 0, e
+				return
+			}
+		}
+		if dispatch != nil {
+			dispatchQueue <- *dispatch
+		}
+		if e := t.protectedPoint("write"); e != nil {
+			written, err = 0, e
+		}
+	}()
 	c := t.cells[f.Cell]
 	if c == nil && f.Cell <= t.high {
 		return 0, fsapi.Stale
@@ -190,30 +268,25 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 	index = intIndex(f.Offset)
 	if c.chunks[index] {
 		if !bytes.Equal(c.body[f.Offset:f.Offset+uint32(len(f.Data))], f.Data) {
-			if c == t.workspace {
-				t.workspace = nil
-			}
 			return 0, fsapi.Invalid
 		}
-		return uint32(len(b)), nil
+		if c.count != len(c.chunks) {
+			return uint32(len(b)), nil
+		}
+	} else {
+		copy(c.body[f.Offset:], f.Data)
+		c.chunks[index] = true
+		c.observations[index] = cloneNative(n)
+		c.count++
 	}
-	copy(c.body[f.Offset:], f.Data)
-	c.chunks[index] = true
-	c.count++
 	if c.count != len(c.chunks) {
 		return uint32(len(b)), nil
 	}
 	if sha256.Sum256(c.body) != f.Hash {
-		if c == t.workspace {
-			t.workspace = nil
-		}
 		return 0, fsapi.Invalid
 	}
 	command, e := DecodeCommandVersion(c.body, f.Minor)
 	if e != nil || command.Cell != f.Cell || command.Context != *scope {
-		if c == t.workspace {
-			t.workspace = nil
-		}
 		return 0, fsapi.Invalid
 	}
 	if e = t.service.CheckScope(command.Context); e != nil {
@@ -221,29 +294,22 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 	}
 	control := controlCommand(command)
 	if (command.Reclaim != nil) != (f.Flags&2 != 0) {
-		if c == t.workspace {
-			t.workspace = nil
-		}
 		return 0, fsapi.Permission
 	}
 
 	if c == t.workspace {
 		if command.Reclaim == nil {
-			t.workspace = nil
 			return 0, fsapi.Invalid
 		}
 		target := t.cells[command.Reclaim.Cell]
 		if target == nil || target.released || target.frame.Session != f.Session || target.unread != 0 || target.response == nil || digest(target.response) != command.Reclaim.ResponseHash || target.frame.Cell == f.Cell {
-			t.workspace = nil
 			return 0, fsapi.Permission
 		}
 		if command.Op != "RELEASE_CELL" && target.reservation.Control != control {
-			t.workspace = nil
 			return 0, fsapi.Permission
 		}
 		r := CellReservation{Control: f.Flags&1 != 0, Release: func() {}}
 		if r.Control != target.reservation.Control {
-			t.workspace = nil
 			return 0, fsapi.Permission
 		}
 		queue := t.ordinaryQueue
@@ -258,10 +324,9 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 		}
 		if len(queue) == cap(queue) {
 			r.Release()
-			t.workspace = nil
 			return 0, fsapi.WouldBlock
 		}
-		releaseCell(target)
+		reclaimed = target
 		delete(t.cells, command.Reclaim.Cell)
 		c.reservation = r
 		t.cells[f.Cell] = c
@@ -284,7 +349,10 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 		return 0, fsapi.WouldBlock
 	}
 	c.command = &command
-	queue <- job{id: f.Cell, command: command, native: cloneNative(n)}
+	c.native = cloneNative(n)
+	c.jobPhase = "accepted"
+	dispatch = &job{id: f.Cell, command: command, native: cloneNative(n)}
+	dispatchQueue = queue
 	return uint32(len(b)), nil
 }
 
@@ -312,6 +380,9 @@ func (t *Transport) Read(ctx context.Context, n Native, node, offset uint64, cou
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.closed || t.failed != nil {
+		return nil, fsapi.Unavailable
+	}
 	c := t.cells[id]
 	if c == nil {
 		if id <= t.high {
@@ -338,10 +409,20 @@ func (t *Transport) Read(ctx context.Context, n Native, node, offset uint64, cou
 	}
 	end := min(uint64(len(chunk)), k+uint64(count))
 	data := bytes.Clone(chunk[k:end])
+	changed := false
 	for i := k; i < end; i++ {
 		if c.seen[j][i] == 0 {
 			c.seen[j][i] = 1
 			c.unread--
+			changed = true
+		}
+	}
+	if changed {
+		if err := t.protectLocked(id); err != nil {
+			return nil, err
+		}
+		if err := t.protectedPoint("read"); err != nil {
+			return nil, err
 		}
 	}
 	return data, nil
@@ -361,6 +442,12 @@ func (t *Transport) Close() {
 	}
 	t.mu.Unlock()
 	t.workers.Wait()
+	t.mu.Lock()
+	if t.ledger != nil {
+		_ = t.ledger.close()
+		t.ledger = nil
+	}
+	t.mu.Unlock()
 }
 func (t *Transport) worker(queue <-chan job) {
 	defer t.workers.Done()
@@ -404,14 +491,28 @@ func (t *Transport) worker(queue <-chan job) {
 		}
 		t.mu.Lock()
 		c := t.cells[j.id]
-		active := !t.closed && c != nil && !c.released && c.response == nil
+		active := !t.closed && t.failed == nil && c != nil && !c.released && c.response == nil
+		if active {
+			c.jobPhase = "executing"
+			active = t.protectLocked(j.id) == nil
+		}
 		t.mu.Unlock()
 		if !active {
 			continue
 		}
 		raw, e := t.service.Execute(context.Background(), j.native, j.command)
 		if e != nil {
-			if errors.Is(e, fsapi.WouldBlock) || errors.Is(e, fsapi.NoSpace) {
+			retryable := errors.Is(e, fsapi.WouldBlock) || errors.Is(e, fsapi.NoSpace)
+			t.mu.Lock()
+			if c = t.cells[j.id]; c != nil && t.failed == nil {
+				c.jobPhase = "blocked"
+				if retryable {
+					c.jobPhase = "pending"
+				}
+				_ = t.protectLocked(j.id)
+			}
+			t.mu.Unlock()
+			if retryable {
 				pending = append(pending, j)
 			}
 			continue
@@ -444,12 +545,16 @@ func (t *Transport) worker(queue <-chan job) {
 		}
 		t.mu.Lock()
 		c = t.cells[j.id]
-		if c != nil && !c.released && c.response == nil {
+		if !t.closed && t.failed == nil && c != nil && !c.released && c.response == nil {
 			c.response = raw
 			c.wire = frames
 			c.seen = seen
 			c.unread = unread
 			c.resultKind = kind
+			c.jobPhase = "responded"
+			if t.protectLocked(j.id) == nil {
+				_ = t.protectedPoint("response")
+			}
 		}
 		t.mu.Unlock()
 	}
@@ -474,7 +579,8 @@ func (t *Transport) incomplete(session string) int {
 	return n
 }
 func newCell(f Frame) *cell {
-	return &cell{frame: f, body: make([]byte, int(f.Total)), chunks: make([]bool, (int(f.Total)+ChunkBytes-1)/ChunkBytes)}
+	f.Data = nil // Body owns the accepted bytes; never retain a borrowed callback slice.
+	return &cell{frame: f, body: make([]byte, int(f.Total)), chunks: make([]bool, (int(f.Total)+ChunkBytes-1)/ChunkBytes), observations: make([]Native, (int(f.Total)+ChunkBytes-1)/ChunkBytes)}
 }
 func sameFrame(a, b Frame) bool {
 	return a.Minor == b.Minor && a.Flags == b.Flags && a.Kind == b.Kind && a.Total == b.Total && a.Session == b.Session && a.Cell == b.Cell && a.Hash == b.Hash

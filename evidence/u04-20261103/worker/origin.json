@@ -1,0 +1,5 @@
+{
+  "base": "6d005a87760fb6f1bde011bc5a7a7ef07fb29671",
+  "worktree": "/home/paul/tmp/codex/hfs-u04-20261103-jf4pucqm/worktree",
+  "scope": "u04 C8 transport persistence; initially readonly pending x04 merged verification and root fast-forward to freshbase"
+}

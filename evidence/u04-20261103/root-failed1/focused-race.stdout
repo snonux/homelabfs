@@ -1,0 +1,12 @@
+ok  	github.com/snonux/homelabfs/internal/controlledruntime	10.381s
+ok  	github.com/snonux/homelabfs/internal/fsservice	1.013s [no tests to run]
+ok  	github.com/snonux/homelabfs/internal/viewcontrol	1.202s
+--- FAIL: TestDurableTransportProcessLoss (0.10s)
+    --- FAIL: TestDurableTransportProcessLoss/workspace (0.01s)
+        transport_ledger_test.go:306: timeout
+    --- FAIL: TestDurableTransportProcessLoss/response (0.01s)
+        transport_ledger_test.go:306: timeout
+FAIL
+FAIL	github.com/snonux/homelabfs/internal/guestbridge	0.637s
+ok  	github.com/snonux/homelabfs/internal/controlledvalidation	1.011s [no tests to run]
+FAIL

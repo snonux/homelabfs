@@ -1,0 +1,6 @@
+{
+  "internal/guestbridge/endpoint.go": "f5d014f92e1a58f9de61ea756bf2a40186d1f9d0d66477e09d4a12e771f0bdfa",
+  "internal/guestbridge/transport_ledger.go": "5b58ad7ed0a2a92b1eb8f417ce809a8198ce7b7f3bcc241c8eb8b4b9dacb1091",
+  "internal/guestbridge/transport_ledger.md": "0e7dada0fb1d110f40c3f3fed6847201b6d9f27eb39922c6fc6f689961081a6a",
+  "internal/guestbridge/transport_ledger_test.go": "011b2d0af58d4dea826ece12d4e1875a0552e5d0065e1a37c466090cbbb1dc14"
+}

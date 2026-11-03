@@ -1,0 +1,8 @@
+{
+  "failed-lock-roots/lock-606771946/ledger/owner.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "failed-lock-roots/lock-606771946/ledger/transport.db": "4f522e04a48059567464c2feeb61d1ca9c6312879869f14613cf9ae42e9d78cc",
+  "failed-lock-roots/lock-802906340/ledger/owner.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "failed-lock-roots/lock-802906340/ledger/transport.db": "535f9a078e36c2f46d2e2c7355ea2da3ca104e251cd8c8f0cb753aa943433f03",
+  "failed-lock-roots/lock-1215086501/ledger/owner.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "failed-lock-roots/lock-1215086501/ledger/transport.db": "ec9ff1614703886a00a992c3d0a6c988f84b69218cf491937024fdc010eab7b5"
+}

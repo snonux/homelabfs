@@ -1,0 +1,32 @@
+[
+  {
+    "stage": "durable-final",
+    "exit": 0,
+    "seconds": 1.616,
+    "sampled_peak_rss": 159297536
+  },
+  {
+    "stage": "durable-race",
+    "exit": 0,
+    "seconds": 3.693,
+    "sampled_peak_rss": 144228352
+  },
+  {
+    "stage": "vet",
+    "exit": 0,
+    "seconds": 0.262,
+    "sampled_peak_rss": 16543744
+  },
+  {
+    "stage": "staticcheck",
+    "exit": 0,
+    "seconds": 0.531,
+    "sampled_peak_rss": 65716224
+  },
+  {
+    "stage": "errcheck",
+    "exit": 0,
+    "seconds": 0.264,
+    "sampled_peak_rss": 5529600
+  }
+]
