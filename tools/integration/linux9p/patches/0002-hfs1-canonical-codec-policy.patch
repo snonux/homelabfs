@@ -7,7 +7,7 @@ diff --git a/fs/9p/hfs_protocol.h b/fs/9p/hfs_protocol.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_protocol.h
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,157 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_PROTOCOL_H
 +#define FS_9P_HFS_PROTOCOL_H
@@ -97,6 +97,9 @@ new file mode 100644
 +};
 +
 +int hfs_json_parse(const void *data, u32 len, struct hfs_json **out);
++/* Private local signed-enrollment decoding; never use for network bodies. */
++int hfs_json_parse_go_enrollment(const void *data, u32 len,
++				struct hfs_json **out);
 +/* Borrowed immutable body + caller-owned token arena; never hfs_json_free(). */
 +int hfs_json_parse_into(const void *data, u32 len, struct hfs_json *json,
 +			struct hfs_token *tokens, u32 capacity);
@@ -156,16 +159,21 @@ new file mode 100644
 +			      const struct hfs_json *original,
 +			      const struct hfs_json *response,
 +			      struct hfs_mapped_attestation *result);
++/* Inert original response policy; original may be retained {op,payload}. */
++int hfs_mapped_source_policy(const struct hfs_json *scope_json, int scope,
++		const struct hfs_json *original, const struct hfs_json *response,
++		int payload);
 +
 +#endif
 diff --git a/fs/9p/hfs_protocol.c b/fs/9p/hfs_protocol.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_protocol.c
-@@ -0,0 +1,1410 @@
+@@ -0,0 +1,1646 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Bounded canonical retained-9p wire codec. Schema validation is the caller's. */
 +#include "hfs_protocol.h"
++#include "hfs_received.h"
 +
 +#ifndef HFS_CODEC_USERSPACE
 +#include <asm/unaligned.h>
@@ -185,6 +193,7 @@ new file mode 100644
 +	struct hfs_json *json;
 +	u32 pos;
 +	u32 capacity;
++	bool go_enrollment;
 +};
 +
 +static int hfs_token_new(struct hfs_parser *p, u32 parent,
@@ -285,7 +294,7 @@ new file mode 100644
 +				key = hfs_parse_string(p, index);
 +				if (key < 0)
 +					return key;
-+				if (previous >= 0 &&
++				if (!p->go_enrollment && previous >= 0 &&
 +				    hfs_key_compare(j, previous, key) >= 0)
 +					return -EINVAL;
 +				previous = key;
@@ -361,13 +370,15 @@ new file mode 100644
 +	parser.json = json;
 +	parser.capacity = capacity;
 +	parser.pos = 0;
++	parser.go_enrollment = false;
 +	err = hfs_parse_value(&parser, HFS_NO_PARENT, 0);
 +	if (err < 0)
 +		return err;
 +	return parser.pos == len ? 0 : -EINVAL;
 +}
 +
-+int hfs_json_parse(const void *data, u32 len, struct hfs_json **out)
++static int hfs_json_parse_owned(const void *data, u32 len,
++			       struct hfs_json **out, bool go_enrollment)
 +{
 +	struct hfs_json *j;
 +	struct hfs_token *tokens;
@@ -394,6 +405,7 @@ new file mode 100644
 +	j->len = len;
 +	p.json = j;
 +	p.pos = 0;
++	p.go_enrollment = go_enrollment;
 +	err = hfs_parse_value(&p, HFS_NO_PARENT, 0);
 +	if (err < 0 || p.pos != len) {
 +		if (err >= 0)
@@ -418,10 +430,26 @@ new file mode 100644
 +	return err;
 +}
 +
++int hfs_json_parse(const void *data, u32 len, struct hfs_json **out)
++{
++	return hfs_json_parse_owned(data, len, out, false);
++}
++
++/* Local signed Enrollment only. The private schema validator must check exact
++ * original Go key order/shape at EVERY object before consuming any value.
++ * This parser cannot create admission and is never selected for network JSON.
++ */
++int hfs_json_parse_go_enrollment(const void *data, u32 len,
++				struct hfs_json **out)
++{
++	return hfs_json_parse_owned(data, len, out, true);
++}
++
 +void hfs_json_free(struct hfs_json *json)
 +{
 +	if (!json)
 +		return;
++	hfs_received_forget(json);
 +	if (json->owner_put)
 +		json->owner_put(json->owner);
 +	kvfree(json->tokens);
@@ -1211,8 +1239,166 @@ new file mode 100644
 +	return err ? err : hfs_mapped_hash(j, object, hash_field, digest);
 +}
 +
++static int hfs_mapped_bytes(const struct hfs_json *json, int token,
++			    u32 minimum, u32 maximum)
++{
++	u32 start, end, length, i;
++
++	if (!hfs_token_valid(json, token) || json->tokens[token].kind != HFS_STRING)
++		return -EPROTO;
++	start = json->tokens[token].start + 1;
++	end = json->tokens[token].end - 1;
++	length = end - start;
++	if (length % 2 || length / 2 < minimum || length / 2 > maximum)
++		return -EPROTO;
++	for (i = start; i < end; i++)
++		if (hfs_hex_digit(json->data[i]) < 0)
++			return -EPROTO;
++	return 0;
++}
++
++static int hfs_mapped_description(const struct hfs_json *json, int cap,
++				 const struct hfs_json *scope_json, int scope)
++{
++	u64 rights;
++
++	if (hfs_json_exact(json, cap,
++		"ancestors_hash,credential_hash,description,kind,object_allocation,object_home,revision,rights,scope,token") ||
++	    !hfs_json_is(json, hfs_json_field(json, cap, "kind"), "\"DESCRIPTION\"") ||
++	    !hfs_mapped_uuid(json, hfs_json_field(json, cap, "description")) ||
++	    !hfs_mapped_uuid(json, hfs_json_field(json, cap, "object_home")) ||
++	    !hfs_mapped_uuid(json, hfs_json_field(json, cap, "object_allocation")) ||
++	    !hfs_mapped_number(json, cap, "revision", 1) ||
++	    hfs_json_u64(json, hfs_json_field(json, cap, "rights"), &rights) || rights > 63 ||
++	    !hfs_mapped_hex32(json, cap, "ancestors_hash") ||
++	    !hfs_mapped_hex32(json, cap, "credential_hash") ||
++	    !hfs_mapped_hex32(json, cap, "token") ||
++	    !hfs_mapped_equal(json, hfs_json_field(json, cap, "scope"), scope_json, scope))
++		return -EPROTO;
++	return 0;
++}
++
++static int hfs_mapped_claim(const struct hfs_json *json, int claim)
++{
++	if (hfs_json_exact(json, claim, "anchor,nonce,number,original_hash,realm,subject") ||
++	    !hfs_mapped_uuid(json, hfs_json_field(json, claim, "anchor")) ||
++	    !hfs_mapped_uuid(json, hfs_json_field(json, claim, "nonce")) ||
++	    !hfs_mapped_uuid(json, hfs_json_field(json, claim, "realm")) ||
++	    !hfs_mapped_number(json, claim, "number", 1) ||
++	    !hfs_mapped_hex32(json, claim, "original_hash") ||
++	    hfs_mapped_bytes(json, hfs_json_field(json, claim, "subject"), 1, 1024))
++		return -EPROTO;
++	return 0;
++}
++
++static int hfs_mapped_frozen_schema(const struct hfs_json *json, int entry,
++				   const struct hfs_json *scope_json, int scope)
++{
++	u64 offset, length;
++
++	if (hfs_json_exact(json, entry,
++			    "claim,description,id,length,offset,payload_hash,reservation") ||
++	    hfs_mapped_description(json, hfs_json_field(json, entry, "description"), scope_json, scope) ||
++	    hfs_mapped_claim(json, hfs_json_field(json, entry, "claim")) ||
++	    !hfs_mapped_hex32(json, entry, "payload_hash") ||
++	    !hfs_mapped_hex32(json, entry, "reservation") ||
++	    hfs_json_u64(json, hfs_json_field(json, entry, "offset"), &offset) || offset > S64_MAX ||
++	    hfs_json_u64(json, hfs_json_field(json, entry, "length"), &length) || !length || length > 65536)
++		return -EPROTO;
++	return hfs_mapped_object_hash(json, entry,
++		"description,length,offset,payload_hash,reservation", "id");
++}
++
++static int hfs_mapped_freeze_intent(const struct hfs_json *original, int request,
++				   const struct hfs_json *response, int entry,
++				   u8 digest[32])
++{
++	int reservation = hfs_json_field(original, request, "reservation");
++	struct hfs_mapped_sha256 state;
++	const struct {
++		const char *prefix;
++		const struct hfs_json *json;
++		int token;
++	} fields[] = {
++		{ "{\"args\":{\"data\":", original, hfs_json_field(original, request, "data") },
++		{ ",\"description\":", original, hfs_json_field(original, reservation, "description") },
++		{ ",\"dirty_entry\":", response, hfs_json_field(response, entry, "id") },
++		{ ",\"offset\":", original, hfs_json_field(original, reservation, "offset") },
++		{ ",\"recall\":", original, hfs_json_field(original, request, "recall") },
++		{ ",\"reservation\":", original, hfs_json_field(original, reservation, "id") },
++	};
++	u32 i;
++	int err = hfs_mapped_sha_begin(&state);
++
++	if (err)
++		return err;
++	for (i = 0; !err && i < ARRAY_SIZE(fields); i++) {
++		int token = fields[i].token;
++		const struct hfs_json *json = fields[i].json;
++
++		if (!hfs_token_valid(json, token)) {
++			err = -EPROTO;
++			break;
++		}
++		err = hfs_mapped_sha_add(&state, fields[i].prefix, strlen(fields[i].prefix));
++		if (!err)
++			err = hfs_mapped_sha_add(&state, json->data + json->tokens[token].start,
++				json->tokens[token].end - json->tokens[token].start);
++	}
++	if (!err)
++		err = hfs_mapped_sha_add(&state, "},\"opcode\":\"DRAIN_WRITE\"}",
++				 sizeof("},\"opcode\":\"DRAIN_WRITE\"}") - 1);
++	return hfs_mapped_sha_end(&state, digest, err);
++}
++
++static int hfs_mapped_frozen_original(const struct hfs_json *original, int request,
++				     const struct hfs_json *response, int entry)
++{
++	static const char *const fields[] = { "anchor", "nonce", "number", "realm", "subject" };
++	int reservation = hfs_json_field(original, request, "reservation");
++	int claim = hfs_json_field(response, entry, "claim");
++	int number = hfs_json_field(original, reservation, "claim_number");
++	u64 length;
++	u32 decoded = 4096, i;
++	u8 digest[32], *data;
++	int err;
++
++	if (!hfs_mapped_equal(response, hfs_json_field(response, entry, "claim"),
++		original, hfs_json_field(original, request, "claim")) ||
++	    !hfs_mapped_equal(response, hfs_json_field(response, entry, "description"),
++		original, hfs_json_field(original, reservation, "description")) ||
++	    !hfs_mapped_equal(response, hfs_json_field(response, entry, "offset"),
++		original, hfs_json_field(original, reservation, "offset")) ||
++	    !hfs_mapped_equal(response, hfs_json_field(response, entry, "reservation"),
++		original, hfs_json_field(original, reservation, "id")) ||
++	    !hfs_mapped_uuid(original, hfs_json_field(original, request, "recall")))
++		return -ESTALE;
++	for (i = 0; i < ARRAY_SIZE(fields); i++)
++		if (!hfs_mapped_equal(response, hfs_json_field(response, claim, fields[i]),
++			original, hfs_json_field(original, number, fields[i])))
++			return -ESTALE;
++	data = kvmalloc(decoded, GFP_KERNEL);
++	if (!data)
++		return -ENOMEM;
++	err = hfs_json_hex(original, hfs_json_field(original, request, "data"), data, &decoded);
++	if (!err && (!decoded || hfs_json_u64(response,
++		hfs_json_field(response, entry, "length"), &length) || length != decoded))
++		err = -EPROTO;
++	if (!err) {
++		hfs_hash(data, decoded, digest);
++		err = hfs_mapped_hash(response, entry, "payload_hash", digest);
++	}
++	kvfree(data);
++	if (!err)
++		err = hfs_mapped_freeze_intent(original, request, response, entry, digest);
++	if (!err)
++		err = hfs_mapped_hash(response, claim, "original_hash", digest);
++	return err;
++}
++
 +static int hfs_mapped_source(const struct hfs_json *original,
-+			     const struct hfs_json *response, int payload)
++		const struct hfs_json *response, int payload,
++		const struct hfs_json *scope_json, int scope)
 +{
 +	int request = hfs_json_field(original, 0, "payload");
 +	int op = hfs_json_field(original, 0, "op");
@@ -1222,7 +1408,6 @@ new file mode 100644
 +	int lease = hfs_json_field(response, payload, "lease");
 +	int reservation = hfs_json_field(response, payload, "reservation");
 +	int entry = hfs_json_field(response, payload, "entry");
-+	int scope = hfs_json_field(original, 0, "context");
 +	bool query = hfs_json_is(original, op, "\"VIEW_QUERY\"");
 +	u8 digest[32];
 +	int err;
@@ -1247,17 +1432,21 @@ new file mode 100644
 +		    hfs_mapped_hash(response, payload, "request_hash", digest))
 +			return err ? err : -ESTALE;
 +	}
-+	if (!hfs_json_is(response, entry, "null"))
-+		return hfs_json_is(response,
++	if (!hfs_json_is(response, entry, "null")) {
++		if (!(hfs_json_is(response,
 +				   hfs_json_field(response, payload, "status"),
 +				   "\"FROZEN\"") &&
 +				       hfs_json_is(response, operation,
 +						   "\"DIRTY_FREEZE\"") &&
 +				       hfs_json_is(response, lease, "null") &&
 +				       hfs_json_is(response, reservation,
-+						   "null") ?
-+			       0 :
-+			       -EPROTO;
++						   "null")))
++			return -EPROTO;
++		err = hfs_mapped_frozen_schema(response, entry, scope_json, scope);
++		if (!err && !query)
++			err = hfs_mapped_frozen_original(original, request, response, entry);
++		return err;
++	}
 +	if (!hfs_json_is(response, hfs_json_field(response, payload, "status"),
 +			 "\"GRANTED\""))
 +		return -EPROTO;
@@ -1272,14 +1461,14 @@ new file mode 100644
 +			    "access,credential_hash,domain,fence,id,mode,revision,scope,target") ||
 +		    !hfs_mapped_equal(response,
 +				      hfs_json_field(response, lease, "scope"),
-+				      original, scope) ||
++				      scope_json, scope) ||
 +		    !hfs_mapped_number(response, lease, "fence", 1) ||
 +		    !hfs_mapped_number(response, lease, "revision", 1) ||
 +		    !(hfs_json_is(response, mode, "\"READ\"") ||
 +		      hfs_json_is(response, mode, "\"EXCLUSIVE_DIRTY\"")) ||
 +		    hfs_mapped_target(response,
 +				      hfs_json_field(response, lease, "target"),
-+				      original, scope))
++				      scope_json, scope))
 +			return -EPROTO;
 +		if (cred < 0 || (u32)cred >= response->count)
 +			return -EPROTO;
@@ -1289,6 +1478,36 @@ new file mode 100644
 +			 digest);
 +		if (hfs_mapped_hash(response, lease, "credential_hash", digest))
 +			return -ESTALE;
++		if (hfs_json_is(original, op, "\"VIEW_ACQUIRE\"")) {
++			static const char *const fields[] = { "domain", "access", "mode" };
++			u32 i;
++
++			for (i = 0; i < ARRAY_SIZE(fields); i++)
++				if (!hfs_mapped_equal(response, hfs_json_field(response, lease, fields[i]),
++					original, hfs_json_field(original, request, fields[i])))
++					return -ESTALE;
++			if (!hfs_json_is(original, hfs_json_field(original, request, "target"), "null") &&
++			    !hfs_mapped_equal(response, hfs_json_field(response, lease, "target"),
++				original, hfs_json_field(original, request, "target")))
++				return -ESTALE;
++		}
++		if (hfs_json_is(original, op, "\"VIEW_RENEW\"")) {
++			static const char *const fields[] = {
++				"scope", "domain", "access", "credential_hash", "mode", "target", "fence",
++			};
++			int old = hfs_json_field(original, request, "lease");
++			u64 revision, renewed;
++			u32 i;
++
++			if (hfs_json_u64(original, hfs_json_field(original, old, "revision"), &revision) ||
++			    revision == U64_MAX || hfs_json_u64(response,
++				hfs_json_field(response, lease, "revision"), &renewed) || renewed != revision + 1)
++				return -ESTALE;
++			for (i = 0; i < ARRAY_SIZE(fields); i++)
++				if (!hfs_mapped_equal(response, hfs_json_field(response, lease, fields[i]),
++					original, hfs_json_field(original, old, fields[i])))
++					return -ESTALE;
++		}
 +		return hfs_mapped_object_hash(
 +			response, lease,
 +			"access,credential_hash,domain,fence,mode,revision,scope,target",
@@ -1300,7 +1519,7 @@ new file mode 100644
 +		    "claim_number,credentials,description,drain_credit,id,lease_id,length,offset,provenance,scope") ||
 +	    !hfs_mapped_equal(response,
 +			      hfs_json_field(response, reservation, "scope"),
-+			      original, scope) ||
++			      scope_json, scope) ||
 +	    !hfs_mapped_equal(response,
 +			      hfs_json_field(response, reservation,
 +					     "credentials"),
@@ -1310,10 +1529,33 @@ new file mode 100644
 +	    !hfs_mapped_hex32(response, reservation, "drain_credit") ||
 +	    !hfs_mapped_hex32(response, reservation, "lease_id"))
 +		return -EPROTO;
++	if (hfs_json_is(original, op, "\"DIRTY_RESERVE\"")) {
++		static const char *const fields[] = { "description", "offset", "length", "claim_number" };
++		int old = hfs_json_field(original, request, "lease");
++		u32 i;
++
++		if (!hfs_mapped_equal(response, hfs_json_field(response, reservation, "lease_id"),
++			original, hfs_json_field(original, old, "id")))
++			return -ESTALE;
++		for (i = 0; i < ARRAY_SIZE(fields); i++)
++			if (!hfs_mapped_equal(response, hfs_json_field(response, reservation, fields[i]),
++				original, hfs_json_field(original, request, fields[i])))
++				return -ESTALE;
++	}
 +	return hfs_mapped_object_hash(
 +		response, reservation,
 +		"claim_number,credentials,description,drain_credit,lease_id,length,offset,provenance,scope",
 +		"id");
++}
++
++/* Inert complete original-ticket policy, also used for QUERY against the
++ * privately retained actual original op/payload. No receipt/authority is minted.
++ */
++int hfs_mapped_source_policy(const struct hfs_json *scope_json, int scope,
++		const struct hfs_json *original, const struct hfs_json *response,
++		int payload)
++{
++	return hfs_mapped_source(original, response, payload, scope_json, scope);
 +}
 +
 +static int hfs_mapped_kind(const struct hfs_json *original,
@@ -1353,7 +1595,8 @@ new file mode 100644
 +						"kind"),
 +				 "\"CONTROLLED_LOCAL\""))
 +			return -EPROTO;
-+		if (hfs_mapped_source(original, response, payload))
++		if (hfs_mapped_source(original, response, payload, original,
++				       hfs_json_field(original, 0, "context")))
 +			return -EPROTO;
 +		fields = "lease,reservation,entry";
 +		while (*fields) {

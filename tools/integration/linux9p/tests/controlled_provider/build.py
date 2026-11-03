@@ -346,13 +346,30 @@ command = ['cc', '-std=gnu11', '-O1', '-g', '-Wall', '-Wextra', '-Werror',
 # Other production helpers are included/called through the actual test driver.
 subprocess.run(command, check=True, timeout=120)
 commands.append(command)
+# Preserve the reviewed214 bytes/hash exactly. Its original1MiBcontrol pool
+# cannot fund the explicit8MiBaccepted-operation staging reserve.
+original_fixture = json.loads(fixture_bytes)
+subprocess.run([str(out/'installer-test'), str(out/'fixture.json'), 'budget-refuse'],
+               check=True, timeout=120)
+funded_input = copy.deepcopy(original_fixture)
+funded_input['provision']['payload']['budget']['control_bytes'] = 16 << 20
+enrollments = [json.loads(bytes.fromhex(group['enrollment_bytes']))
+               for group in original_fixture['provision']['payload']['groups']]
+funded_fixture = FixtureSigner().fixture(funded_input, enrollments)
+for original_group, funded_group in zip(original_fixture['provision']['payload']['groups'],
+                                       funded_fixture['provision']['payload']['groups']):
+    for field in ['enrollment_bytes', 'enrollment_operator_signature',
+                  'enrollment_domain_signatures']:
+        assert original_group[field] == funded_group[field]
+funded_path = out/'funded-fixture.json'
+funded_path.write_bytes(encoded(funded_fixture, canonical=True))
 baseline_oracle = out/'fixture.oracle.json'
-baseline_oracle.write_bytes(encoded(expected_oracle(json.loads(fixture_bytes)), canonical=True))
-subprocess.run([str(out/'installer-test'), str(out/'fixture.json'), 'accept',
+baseline_oracle.write_bytes(encoded(expected_oracle(funded_fixture), canonical=True))
+subprocess.run([str(out/'installer-test'), str(funded_path), 'accept',
                 str(baseline_oracle)], check=True, timeout=120)
 # Fresh processes retain the real install-once contract; there is no registry reset.
 case_summary = []
-for name, case, refuses in fixture_cases(json.loads(fixture_bytes)):
+for name, case, refuses in fixture_cases(funded_fixture):
     path = out/(name+'.json')
     path.write_bytes(encoded(case, canonical=True))
     arguments = [str(out/'installer-test'), str(path),

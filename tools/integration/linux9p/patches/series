@@ -2,3 +2,4 @@
 0002-hfs1-canonical-codec-policy.patch
 0003-hfs1-guest-vfs.patch
 0004-hfs1-physical-views.patch
+0005-hfs1-controlled-guest-provider.patch

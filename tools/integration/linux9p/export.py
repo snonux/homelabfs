@@ -23,6 +23,23 @@ GROUPS = [
      ['include/linux/mm.h', 'include/linux/page-flags.h', 'mm/memory.c', 'mm/gup.c',
       'mm/mremap.c', 'mm/huge_memory.c', 'fs/9p/hfs_view.h', 'fs/9p/hfs_view.c',
       'fs/9p/hfs_lease.h', 'fs/9p/hfs_lease.c', 'fs/9p/hfs_mmap.c']),
+    ('0005-hfs1-controlled-guest-provider.patch',
+     '9p: admit immutable controlled guest groups and private received authority',
+     ['drivers/char/random.c', 'include/linux/random.h', 'net/9p/trans_virtio.c',
+      'fs/9p/hfs_admission.c', 'fs/9p/hfs_admission.h',
+      'fs/9p/hfs_controlled.c', 'fs/9p/hfs_controlled.h',
+      'fs/9p/hfs_controlled_artifacts.c', 'fs/9p/hfs_controlled_internal.h',
+      'fs/9p/hfs_enrollment.c', 'fs/9p/hfs_enrollment.h',
+      'fs/9p/hfs_received.h', 'fs/9p/hfs_received.inc',
+      'fs/9p/hfs_crypto.h', 'fs/9p/hfs_crypto_core.c', 'fs/9p/hfs_crypto_ed25519.c',
+      'fs/9p/hfs_crypto/namespace.h', 'fs/9p/hfs_crypto/provenance.json',
+      'fs/9p/hfs_crypto/kernel_include/stddef.h',
+      'fs/9p/hfs_crypto/kernel_include/stdint.h',
+      'fs/9p/hfs_crypto/vendor/LICENCE.md',
+      'fs/9p/hfs_crypto/vendor/src/monocypher.h',
+      'fs/9p/hfs_crypto/vendor/src/monocypher.c',
+      'fs/9p/hfs_crypto/vendor/src/optional/monocypher-ed25519.h',
+      'fs/9p/hfs_crypto/vendor/src/optional/monocypher-ed25519.c']),
 ]
 
 

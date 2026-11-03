@@ -255,6 +255,7 @@ int main(int argc,char **argv) {
    assert(!hfs_uuid(fixture,hfs_json_field(fixture,boot_payload,"boot_id"),&primitive_boot));
    assert(!hfs_uuid(fixture,hfs_json_field(fixture,boot_payload,"provider_nonce"),&primitive_nonce));
    assert(!hfs_controlled_artifacts_init());
+   assert(HFS_CONTROLLED_STAGING_REQUIRED<=HFS_CONTROLLED_STAGING_BYTES);
    assert(primitive_node_count==3&&primitive_nodes[0].mode==0400);
    assert(primitive_nodes[1].mode==0200&&primitive_nodes[2].mode==0200);
    assert(!strcmp(primitive_nodes[0].name,"admission_v1"));
@@ -262,18 +263,34 @@ int main(int argc,char **argv) {
    assert(!strcmp(primitive_nodes[2].name,"bind_v1"));
    assert(primitive_nodes[1].ops->atomic_write_len==HFS_ADMISSION_MAX);
    assert(primitive_nodes[2].ops->atomic_write_len==HFS_ADMISSION_MAX);
+   assert(primitive_nodes[1].ops->prealloc&&primitive_nodes[2].ops->prealloc);
+   struct kernfs_open_file administrative[2]={0};
    primitive_admin=false;
+   assert(hfs_artifact_open(&administrative[0])==-EPERM&&!administrative[0].priv);
    assert(hfs_provision_write(NULL,"{}",2,0)==-EPERM);
    assert(hfs_bind_write(NULL,"{}",2,0)==-EPERM);primitive_admin=true;
    primitive_initial_ns=false;
+   assert(hfs_artifact_open(&administrative[0])==-EPERM&&!administrative[0].priv);
    assert(hfs_provision_write(NULL,"{}",2,0)==-EPERM);
    assert(hfs_bind_write(NULL,"{}",2,0)==-EPERM);primitive_initial_ns=true;
-   assert(hfs_provision_write(NULL,"{}",2,1)==-EINVAL);
+   assert(hfs_provision_write(NULL,"{}",2,1)==-EPERM);
+   assert(!hfs_provision_operations.open(&administrative[0]));
+   assert(hfs_bind_operations.open(&administrative[1])==-ENOSPC&&!administrative[1].priv);
+   hfs_bind_operations.release(&administrative[1]); /* failed-open cleanup is inert */
+   assert(hfs_provision_write(&administrative[0],"{}",2,1)==-EINVAL);
+   assert(hfs_bind_write(&administrative[0],"{}",2,1)==-EINVAL);
+   hfs_provision_operations.release(&administrative[0]);
+   assert(!administrative[0].priv&&!hfs_artifact_opens);
+   assert(!hfs_bind_operations.open(&administrative[1]));
+   hfs_bind_operations.release(&administrative[1]);
+   hfs_bind_operations.release(&administrative[1]); /* no double slot release */
+   assert(!hfs_artifact_opens);
    assert(hfs_install_provision("",0)<0&&hfs_install_provision("x",HFS_ADMISSION_MAX+1)<0);
    const char *raw=fixture->data+fixture->tokens[provision].start;
    u32 n=fixture->tokens[provision].end-fixture->tokens[provision].start;
-   if(argc==3&&!strcmp(argv[2],"refuse")) {
-      assert(hfs_install_provision(raw,n)<0);
+   if(argc==3&&(!strcmp(argv[2],"refuse")||!strcmp(argv[2],"budget-refuse"))) {
+      int refused=hfs_install_provision(raw,n);assert(refused<0);
+      if(!strcmp(argv[2],"budget-refuse"))assert(refused==-ENOSPC);
       assert(!hfs_controlled_registry);
       printf("signed admission refusal: %s: PASS\n",argv[1]);
       hfs_json_free(fixture);free(bytes);return 0;
@@ -312,6 +329,9 @@ int main(int argc,char **argv) {
     */
    printf("transaction allocation rollback positions: %u: PASS\n",fault-1);
    assert(hfs_controlled_registry->nr_groups==2&&hfs_controlled_registry->nr_mounts==4);
+   assert(hfs_controlled_registry->control_base_bytes>HFS_CONTROLLED_STAGING_BYTES+
+      HFS_ADMISSION_OPEN_MAX*HFS_ADMISSION_MAX);
+   assert(hfs_controlled_registry->control_base_bytes<hfs_controlled_registry->budget.control_bytes);
    assert(hfs_install_provision(raw,n)==-EALREADY);
    for(unsigned i=0;i<2;i++) {
       const struct hfs_signed_enrollment *e=hfs_controlled_registry->groups[i].enrollment;

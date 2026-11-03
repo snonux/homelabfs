@@ -1,0 +1,413 @@
+{
+  "task": "s04",
+  "base": "9522696",
+  "status": "Fresh independent R1 and final merged verification passed; implementation ready for commit.",
+  "checks": {
+    "crypto": {
+      "receipt": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/crypto-fullbound/receipt.json",
+      "receipt_sha256": "0c706caded3b7d18b1f891e6b7782f39809717fd5c86a22db708c5cbc04b595d",
+      "scope": "Real RFC/Go/OpenSSL Ed25519 and strict canonical/subgroup negatives; generic128KiB/exact-over bounds; receipt unsigned16KiB unchanged. Crypto/boot translation units only, no authority.",
+      "stages": [
+        {
+          "name": "crypto-and-kernel",
+          "argv": [
+            "python3",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/worktree/tools/integration/linux9p/tests/controlled_crypto/build.py",
+            "--source",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/source",
+            "--headers",
+            "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/final-objects4",
+            "--output",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/crypto-fullbound/build"
+          ],
+          "exit": 0,
+          "seconds": 1.9815080320113339,
+          "peak_group_rss": 101502976,
+          "limit_reason": null,
+          "pswpout_before": 1254295
+        }
+      ],
+      "source-binding.json": {
+        "path": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/crypto-fullbound/source-binding.json",
+        "sha256": "9bcb4b057708457752e522eef9f90460c5d97338031802cfa926d10ec59f4d22"
+      }
+    },
+    "installer": {
+      "receipt": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-accounting-first/receipt.json",
+      "receipt_sha256": "8bfce12cc3e47c687c6b36a62ea2d6c0ee7bcaabd91b00b2b32171869f4d69a0",
+      "scope": "Actual signed grouped installer, immutable128KiB snapshot/open controls, original1MiBfixture ENOSPC and re-signed16MiBpositive preserving original enrollment bytes/signatures,50derivedsignedcases and independentoracles,24allocationfailurepositions perpositive,5actualkernelTUs.",
+      "stages": [
+        {
+          "name": "installer-and-kernel",
+          "argv": [
+            "python3",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/worktree/tools/integration/linux9p/tests/controlled_provider/build.py",
+            "--source",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/source",
+            "--headers",
+            "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/final-objects4",
+            "--fixture",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/worktree/internal/controlledruntime/testdata/guest-artifacts.json",
+            "--output",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-accounting-first/build"
+          ],
+          "exit": 0,
+          "seconds": 7.847112407005625,
+          "peak_group_rss": 129372160,
+          "limit_reason": null,
+          "pswpout_before": 1255029
+        }
+      ],
+      "source-binding.json": {
+        "path": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-accounting-first/source-binding.json",
+        "sha256": "b684c57e5375c13cd1a35af5584b8684394d44d1aeeb8116f6d2363d7f443399"
+      },
+      "source-binding-after.json": {
+        "path": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-accounting-first/source-binding-after.json",
+        "sha256": "b684c57e5375c13cd1a35af5584b8684394d44d1aeeb8116f6d2363d7f443399"
+      }
+    },
+    "inert_source_policy": {
+      "receipt": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-provenance-policy/receipt.json",
+      "receipt_sha256": "f114f754dead3bb848843d114bbf24f8d7e2d08cd7dc451419de1a1d1b56ca8d",
+      "scope": "4positive/34semantic/schema/original-byte negatives against actual inert SOURCE policy. No private factory, receipt adoption or funded FROZEN runtime.",
+      "stages": [
+        {
+          "name": "inert-source-policy",
+          "argv": [
+            "python3",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/worktree/tools/integration/linux9p/tests/controlled_received/policy_build.py",
+            "--source",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/source",
+            "--fixture",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/worktree/internal/controlledruntime/testdata/guest-artifacts.json",
+            "--output",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-provenance-policy/build"
+          ],
+          "exit": 0,
+          "seconds": 1.053111325018108,
+          "peak_group_rss": 101679104,
+          "limit_reason": null,
+          "pswpout_before": 1255029
+        }
+      ],
+      "source-binding.json": {
+        "path": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-provenance-policy/source-binding.json",
+        "sha256": "bc6962ee158d032c1d8a35d0146f26cd6312e39a530a7ae7e91de52eb675d053"
+      },
+      "source-binding-after.json": {
+        "path": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-provenance-policy/source-binding-after.json",
+        "sha256": "bc6962ee158d032c1d8a35d0146f26cd6312e39a530a7ae7e91de52eb675d053"
+      }
+    },
+    "kernel": {
+      "receipt": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-provenance-kernel/receipt.json",
+      "receipt_sha256": "a914b792d6ea85a6d14793ab8104528996376d4d55ffb1c3a0ea3c157075a77f",
+      "scope": "19actualkerneltranslationunits, ownedld-r link has no unresolvedowned integration symbols, largestframe1144bytes; no completeKbuild/modpost/installedABI claim.",
+      "stages": [
+        {
+          "name": "actual-c6-kernel",
+          "argv": [
+            "python3",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/worktree/tools/integration/linux9p/tests/controlled_received/kernel_preflight.py",
+            "--source",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/source",
+            "--headers",
+            "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/final-objects4",
+            "--fixture",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/worktree/internal/controlledruntime/testdata/guest-artifacts.json",
+            "--output",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-provenance-kernel/build"
+          ],
+          "exit": 0,
+          "seconds": 3.022832981980173,
+          "peak_group_rss": 159875072,
+          "limit_reason": null,
+          "pswpout_before": 1255029
+        }
+      ],
+      "source-binding.json": {
+        "path": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-provenance-kernel/source-binding.json",
+        "sha256": "c14a45aa065f8af387ba558f0a9b3c02dda20684ea6b2773b1c6303337d2e6d9"
+      },
+      "source-binding-after.json": {
+        "path": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-provenance-kernel/source-binding-after.json",
+        "sha256": "c14a45aa065f8af387ba558f0a9b3c02dda20684ea6b2773b1c6303337d2e6d9"
+      }
+    },
+    "actual_component": {
+      "receipt": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-provenance-runtime/receipt.json",
+      "receipt_sha256": "4f165a63060e3a93a7cd1a6b8bdb26c9a932a95641674458bc9db057d891d89d",
+      "scope": "Bothcanonical414 actualC6/realProducer/source scenarios under Go race. Includes exactcontrolbase debit/privateSOURCE beforebind, detached/otherprovider/null/wrongsession/wrongspan/stale refusals, realDescription/cookies, nonnullpublication/wrongdevice/idmap/channel, actualCobserver+physicalACKcycle and multipollnonnulloriginalWAITack, originaljournal corruption suppressesfreshnativeacquisitionresponse.",
+      "stages": [
+        {
+          "name": "actual-c6-host",
+          "argv": [
+            "go",
+            "test",
+            "-race",
+            "-overlay",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-provenance-runtime/overlay.json",
+            "-p",
+            "1",
+            "-run",
+            "^TestControlledReceivedActual",
+            "-count=1",
+            "-timeout=180s",
+            "-v",
+            "./internal/controlledruntime"
+          ],
+          "exit": 0,
+          "seconds": 53.27257131400984,
+          "peak_group_rss": 459022336,
+          "limit_reason": null,
+          "pswpout_before": 1255029
+        }
+      ],
+      "source-binding.json": {
+        "path": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-provenance-runtime/source-binding.json",
+        "sha256": "095103e61320f8f85a312302d40d7db0f28235729e35d776a03cd73672a09d07"
+      },
+      "source-binding-after.json": {
+        "path": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-provenance-runtime/source-binding-after.json",
+        "sha256": "095103e61320f8f85a312302d40d7db0f28235729e35d776a03cd73672a09d07"
+      }
+    },
+    "export_reproduction": {
+      "receipt": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-export-final/receipt.json",
+      "receipt_sha256": "9cd03ee84512ff58a3be8cd35338552c3f7c2579faa3daf984b24bcfa8bcbbfc",
+      "scope": "5maintainedpatches/53ownedfiles, sparsefuzz0 reproduction hashes matchactualsource andmanifest; nofulltreecopy/build/install.",
+      "stages": [
+        {
+          "name": "export",
+          "argv": [
+            "python3",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/worktree/tools/integration/linux9p/export.py",
+            "--source",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/source",
+            "--archive",
+            "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/source/linux-79807e970724c1f90cee1316361d61b80db4eef6.tar.gz",
+            "--task",
+            "s04"
+          ],
+          "exit": 0,
+          "seconds": 3.4037124090245925,
+          "peak_group_rss": 243544064,
+          "limit_reason": null,
+          "pswpout_before": 1255029
+        },
+        {
+          "name": "sparse-reproduce",
+          "argv": [
+            "python3",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/worktree/tools/integration/linux9p/tests/controlled_received/reproduce.py",
+            "--source",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/source",
+            "--archive",
+            "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/source/linux-79807e970724c1f90cee1316361d61b80db4eef6.tar.gz",
+            "--output",
+            "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-export-final/reproduced"
+          ],
+          "exit": 0,
+          "seconds": 3.695335124997655,
+          "peak_group_rss": 89915392,
+          "limit_reason": null,
+          "pswpout_before": 1255029
+        }
+      ],
+      "source-binding.json": {
+        "path": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-export-final/source-binding.json",
+        "sha256": "9705d68c5897e091b44bd545434191b786ec4cc1a04dd95d6202c4ece084168d"
+      },
+      "source-binding-after.json": {
+        "path": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-export-final/source-binding-after.json",
+        "sha256": "9705d68c5897e091b44bd545434191b786ec4cc1a04dd95d6202c4ece084168d"
+      },
+      "output-binding.json": {
+        "path": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-export-final/output-binding.json",
+        "sha256": "c84a491da2f89fdf3413199fa4ea7ced5e1e935b002d479bf4aceff42a75ad79"
+      }
+    }
+  },
+  "source_manifest_sha256": "b91c00df7579e3c61caf733c099dc68b30d51f87016b512a7529414b39ed17a1",
+  "patches": [
+    {
+      "bytes": 12057,
+      "file": "0001-9p-hfs1-transport.patch",
+      "sha256": "ef7622ac54f303e7af7fdfd5ffb2b9ccb067b0d4ab3f1b14f1e57987ba689988"
+    },
+    {
+      "bytes": 71028,
+      "file": "0002-hfs1-canonical-codec-policy.patch",
+      "sha256": "72f11e6c44c849e1cf2e36b9f47fa7a929260a0a0dd95993f7453194c11698a5"
+    },
+    {
+      "bytes": 144136,
+      "file": "0003-hfs1-guest-vfs.patch",
+      "sha256": "e7f56aa9fe0495a4952155159eeefaafdcd1e96890108b4eb0884c1a27cfea63"
+    },
+    {
+      "bytes": 162174,
+      "file": "0004-hfs1-physical-views.patch",
+      "sha256": "0b71bcf92792e8419a83191d41db36d7baa4ed044a96060e1aba832657a5657b"
+    },
+    {
+      "bytes": 269262,
+      "file": "0005-hfs1-controlled-guest-provider.patch",
+      "sha256": "46a4040ec6fc321b76e30d31406fcc4ad37d7bc139ac157634c4aca62ac7ba12"
+    }
+  ],
+  "original_reviewed214_fixture": {
+    "path": "internal/controlledruntime/testdata/guest-artifacts.json",
+    "sha256": "2e5db2c977ea891011bc132a16a38b9a53fbeda32d69f9d3f4e7136057d5ffd4",
+    "unchanged": true
+  },
+  "preserved_failed_batches": [
+    "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/crypto-first",
+    "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/crypto-second",
+    "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/crypto-third",
+    "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/installer-first",
+    "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/installer-second",
+    "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-kernel-first",
+    "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-kernel-second",
+    "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-runtime-compile-first",
+    "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-runtime-compile-second",
+    "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-runtime-compile-third",
+    "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-joint-first",
+    "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-joint-final",
+    "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/c6-policy-first"
+  ],
+  "boundaries": [
+    "Controlled-local only; unchanged any-node/any-volume origin-D plus owner-RAM contract and accepted local-lock scope.",
+    "Kernel credentials/devices/sysfs/native FUSE identity and MM/PTE primitives are explicit portable OS boundaries.",
+    "Actual boot-ID/virtio/kernel code is compiled and source reviewed; installed/running kernel bytes, PTE/TLB behavior and native mount/guest acceptance are unproved.",
+    "C6 budgets bound requested retained/live-provider allocations with conservativefixedreserves, not kernel RSS/slab residency or generic pre-admission root syscall memory.",
+    "C7 funded aggregate control progress, actual DIRTY_RESERVE/FROZEN/nonempty drain with private provenance, protected floors/gaps/retirement/session release remain required and refuse here.",
+    "No infrastructure/install/SSH/mount/VM/production/PV/NFS/received-sink operation was performed."
+  ],
+  "self_review": [
+    "Authority dependency: inert parser/crypto cannot create private received authority; static factory is beside actual validated transport completion.",
+    "Admission transaction validates complete originals/all signatures/local indices/device/idmap/budgets/worst-case observer before registry publication.",
+    "Private SOURCE consumption requires exactselectedspan/session/channel/type/currentphase+revision; null/otherminor4provider failclosed; legacy0..3 callers preserve their contract.",
+    "FROZEN stores actual received entry after exactcomparison and C6-only locked quiescentrevision/recall recheck; local expectedJSON is never authority.",
+    "No provider/page/view critical lock spans an RPC; verification/copy occur outside final physical adoption lock.",
+    "Consumed early failed mounts retain exact session/client/device evenbefore HELLO allocated a cell.",
+    "Read-only original archive/old trees preserved; sparse53-file reproduction matches all maintained outputs."
+  ],
+  "review_notes": [
+    "git diff --check flags one generatedpatch context line in0001 (leading unified-diff space followedby stocksource tab); it is unchanged upstream context, not ownedsource whitespace. Newpatch blankcontextlines retain required unified-diff prefix."
+  ],
+  "root_review": {
+    "round": 1,
+    "reviewer": "c6_provider_review1",
+    "result": "No independent blocking or nonblocking findings; original 33 repository and 53 source bindings verified before and after, plus header-only legacy adapter addendum reviewed."
+  },
+  "root_merged_verification": {
+    "receipt": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/root-gates/receipt.json",
+    "receipt_sha256": "ddeaf806851fbbe883cef5a8174e13bcda22e1a09cb89e1a461f933346f36ddb",
+    "stages": [
+      {
+        "check": "build",
+        "argv": [
+          "go",
+          "build",
+          "./..."
+        ],
+        "exit": 0,
+        "deadline": false,
+        "seconds": 5.004,
+        "peak_group_rss_kib": 311308,
+        "guard": null,
+        "pswpout_before": 1255029,
+        "pswpout_after": 1255029
+      },
+      {
+        "check": "vet",
+        "argv": [
+          "go",
+          "vet",
+          "./..."
+        ],
+        "exit": 0,
+        "deadline": false,
+        "seconds": 3.572,
+        "peak_group_rss_kib": 41864,
+        "guard": null,
+        "pswpout_before": 1255029,
+        "pswpout_after": 1255029
+      },
+      {
+        "check": "errcheck",
+        "argv": [
+          "errcheck",
+          "./..."
+        ],
+        "exit": 0,
+        "deadline": false,
+        "seconds": 4.929,
+        "peak_group_rss_kib": 224620,
+        "guard": null,
+        "pswpout_before": 1255029,
+        "pswpout_after": 1255029
+      },
+      {
+        "check": "lint",
+        "argv": [
+          "golangci-lint",
+          "run",
+          "--timeout=5m",
+          "./..."
+        ],
+        "exit": 0,
+        "deadline": false,
+        "seconds": 4.422,
+        "peak_group_rss_kib": 110692,
+        "guard": null,
+        "pswpout_before": 1255029,
+        "pswpout_after": 1255029
+      },
+      {
+        "check": "full",
+        "argv": [
+          "go",
+          "test",
+          "-p",
+          "1",
+          "-count=1",
+          "-timeout=600s",
+          "./..."
+        ],
+        "exit": 0,
+        "deadline": false,
+        "seconds": 213.81,
+        "peak_group_rss_kib": 381448,
+        "guard": null,
+        "pswpout_before": 1255029,
+        "pswpout_after": 1255029
+      },
+      {
+        "check": "freebsd-build",
+        "argv": [
+          "go",
+          "build",
+          "./..."
+        ],
+        "exit": 0,
+        "deadline": false,
+        "seconds": 5.683,
+        "peak_group_rss_kib": 339652,
+        "guard": null,
+        "pswpout_before": 1255029,
+        "pswpout_after": 1255029
+      }
+    ],
+    "scope": "Full merged Go suite with current-source legacy controlled, mapped and C6 integration templates enabled; build, vet, errcheck, lint and FreeBSD cross-build. No infrastructure, installed-kernel, PTE/TLB or C7 readiness claim."
+  },
+  "legacy_consumer_adapter": {
+    "path": "tools/integration/linux9p/tests/controlled/consumer.c",
+    "sha256": "c0c1ae824a8e7cb3260b2d04ca2645bb9855ae2fb34e4a1f0e6503f36e20948b",
+    "change": "Include actual production disabled-C6 headers; suppress unused-parameter diagnostics only within those headers. No replacement helpers or production changes.",
+    "first_failure": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/root-legacy-preflight",
+    "corrected_receipt": "/home/paul/tmp/codex/hfs-s04-20261103-g3pbuv2n/root-legacy-corrected/receipt.json"
+  }
+}

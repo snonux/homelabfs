@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <stdatomic.h>
 #include <sys/types.h>
+#define check_add_overflow(a,b,out) __builtin_add_overflow(a,b,out)
 #define MAX_NON_LFS 0x7fffffff
 
 #include "enrollment_struct.inc"
@@ -46,6 +47,7 @@ static inline void uuid_gen(uuid_t *out) { *out=primitive_nonce; }
 struct kernfs_node;
 struct kernfs_open_file { void *priv; };
 struct kernfs_ops {
+   bool prealloc;
    int (*open)(struct kernfs_open_file *);
    ssize_t (*read)(struct kernfs_open_file *,char *,size_t,loff_t);
    void (*release)(struct kernfs_open_file *);

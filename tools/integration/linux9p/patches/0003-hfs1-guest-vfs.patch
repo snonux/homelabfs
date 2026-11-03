@@ -6,7 +6,7 @@ Owned integration patch; no installation or runtime admission.
 diff --git a/fs/9p/Kconfig b/fs/9p/Kconfig
 --- a/fs/9p/Kconfig
 +++ b/fs/9p/Kconfig
-@@ -43,3 +43,15 @@
+@@ -43,3 +43,39 @@
  
  	  If you are not using a security module that requires using
  	  extended attributes for file security labels, say N.
@@ -22,16 +22,54 @@ diff --git a/fs/9p/Kconfig b/fs/9p/Kconfig
 +	  Without that provider mounting this profile fails before transport.
 +	  This option supplies no normal serving or installed-artifact admission.
 +	  Stock 9p mounts retain their existing behavior. If unsure, say N.
++
++config 9P_FS_HOMELABFS_CONTROLLED
++	bool "HomelabFS boot-owned controlled-local guest provider"
++	depends on 9P_FS_HOMELABFS && 9P_FS=y && NET_9P_VIRTIO=y
++	depends on SYSFS && SYSCTL && CC_IS_GCC
++	default n
++	help
++	  Build the explicitly provisioned1.4 guest provider into this kernel.
++	  Requires signed operator/endpoint artifacts, actual virtio/superblock
++	  binding, private transported receipts and physical view barriers.
++	  The boot-owned registry has no unload/reset operation. Missing credits,
++	  source evidence or continuity refuses admission. C7 protected retirement
++	  remains required before runtime readiness; no normal publication is added.
++	  GCC and the exact owned crypto compilation flags are mandatory. If
++	  unsure, say N. Existing profiles and stock mounts keep their behavior.
++
++config 9P_FS_HOMELABFS_OPERATOR_KEY
++	string "Pinned controlled-local operator Ed25519 public key (64 hex chars)"
++	depends on 9P_FS_HOMELABFS_CONTROLLED
++	default ""
++	help
++	  Pin the exact32-byte operator public key in this admitted kernel artifact.
++	  Empty, malformed or unsupported point encodings refuse provider startup.
++	  This is not an endpoint key selector or a normal-serving permission.
 diff --git a/fs/9p/Makefile b/fs/9p/Makefile
 --- a/fs/9p/Makefile
 +++ b/fs/9p/Makefile
-@@ -15,3 +15,6 @@
+@@ -15,3 +15,20 @@
  
  9p-$(CONFIG_9P_FSCACHE) += cache.o
  9p-$(CONFIG_9P_FS_POSIX_ACL) += acl.o
 +
 +9p-$(CONFIG_9P_FS_HOMELABFS) += hfs_protocol.o hfs_policy.o hfs_session.o \
 +	hfs_inode.o hfs_file.o hfs_cursor.o hfs_view.o hfs_lease.o hfs_mmap.o
++
++9p-$(CONFIG_9P_FS_HOMELABFS_CONTROLLED) += hfs_crypto_core.o \
++	hfs_crypto_ed25519.o hfs_enrollment.o hfs_admission.o \
++	hfs_controlled_artifacts.o hfs_controlled.o
++
++# Unchanged upstream crypto is compiled only through these owned wrappers.
++# Whole-program elimination retains the explicitly visible verification APIs
++# and removes unrelated signing/encryption/Argon2 code. GCC-only profile.
++CFLAGS_hfs_crypto_core.o += -fwhole-program \
++	-I$(srctree)/fs/9p/hfs_crypto/kernel_include \
++	-I$(srctree)/fs/9p/hfs_crypto/vendor/src
++CFLAGS_hfs_crypto_ed25519.o += -fwhole-program \
++	-I$(srctree)/fs/9p/hfs_crypto/kernel_include \
++	-I$(srctree)/fs/9p/hfs_crypto/vendor/src
 diff --git a/fs/9p/vfs_super.c b/fs/9p/vfs_super.c
 --- a/fs/9p/vfs_super.c
 +++ b/fs/9p/vfs_super.c
@@ -69,7 +107,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,356 @@
+@@ -0,0 +1,360 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -112,6 +150,10 @@ new file mode 100644
 +	uuid_t anchor;
 +	uuid_t nonce;
 +	uuid_t view_control_nonce;
++	/* Exact signed1.4 lanes, separate from the ordinary principal family. */
++	uuid_t acquisition_anchor;
++	uuid_t acquisition_nonce;
++	uuid_t control_anchor;
 +	u8 subject[1024];
 +	u32 subject_len;
 +};
@@ -430,7 +472,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,2370 @@
+@@ -0,0 +1,2419 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include <linux/delay.h>
@@ -446,6 +488,8 @@ new file mode 100644
 +#include <net/9p/9p.h>
 +#include <trace/events/sched.h>
 +#include "hfs.h"
++#include "hfs_controlled.h"
++#include "hfs_received.h"
 +
 +static DEFINE_MUTEX(hfs_provider_lock);
 +static const struct hfs_provider *hfs_provider;
@@ -861,6 +905,10 @@ new file mode 100644
 +	return err;
 +}
 +
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++#include "hfs_received.inc"
++#endif
++
 +static bool hfs_result_needs_adoption(const struct hfs_json *result)
 +{
 +	return !hfs_json_is(result, hfs_json_field(result, 0, "capabilities"),
@@ -925,6 +973,9 @@ new file mode 100644
 +		struct hfs_json **out)
 +{
 +	const struct hfs_response_profile response = hfs_response_profile(operation);
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++	struct hfs_received_capture received_capture;
++#endif
 +	struct hfs_buf command;
 +	struct hfs_json *json = NULL;
 +	struct hfs_cell *slot = NULL;
@@ -940,6 +991,9 @@ new file mode 100644
 +	int err;
 +
 +	*out = NULL;
++	err = hfs_controlled_before_send(session, operation, payload, reserved);
++	if (err)
++		return err;
 +	if (!hfs_operation(operation, false))
 +		return -EOPNOTSUPP;
 +	if ((!strcmp(operation, "ALLOCATE") || !strcmp(operation, "GAP_RESOLVE")) &&
@@ -1063,6 +1117,10 @@ new file mode 100644
 +		goto fault;
 +	}
 +exchange:
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++	if (hfs_controlled_owns(session) && strcmp(operation, "HELLO"))
++		hfs_received_capture(session, &received_capture);
++#endif
 +	err = hfs_transport(session, &command, cell,
 +		!strcmp(operation, "VIEW_WAIT") ? 65534 :
 +		reserved || release ? 65533 : P9_NOTAG,
@@ -1080,6 +1138,14 @@ new file mode 100644
 +	json->frame_minor = session->bridge_minor;
 +	json->native_session = session->enrollment.session;
 +	json->native_cell = cell;
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++	if (hfs_controlled_owns(session) && strcmp(operation, "HELLO")) {
++		err = hfs_received_new(session, &command, json, &received_capture,
++				       response, reserved || release);
++		if (err)
++			goto fault;
++	}
++#endif
 +	mutex_lock(&session->lock);
 +	slot->active = true;
 +	slot->number = cell;
@@ -1129,11 +1195,7 @@ new file mode 100644
 +static int hfs_copy_token(const struct hfs_json *source, int token,
 +			  struct hfs_json **out)
 +{
-+	if (token < 0 || token >= source->count)
-+		return -EPROTO;
-+	return hfs_json_parse(source->data + source->tokens[token].start,
-+			      source->tokens[token].end - source->tokens[token].start,
-+			      out);
++	return hfs_received_copy(source, token, out);
 +}
 +
 +int hfs_result_code(const struct hfs_json *json)
@@ -2305,6 +2367,37 @@ new file mode 100644
 +	return err;
 +}
 +
++/* Closed older profiles distinguish nonces within their shared anchor. Exact
++ * 1.4 retains all signed lane anchors and distinguishes complete pairs.
++ */
++static int hfs_enrollment_lanes(const struct hfs_enrollment *enrollment, u16 minor)
++{
++	if (!minor)
++		return 0;
++	if (minor > 4 ||
++	    (enrollment->view_scope != HFS_SCOPE_NORMAL_PUBLIC &&
++	     enrollment->view_scope != HFS_SCOPE_CONTROLLED_LOCAL) ||
++	    (minor >= 2 && enrollment->view_scope != HFS_SCOPE_CONTROLLED_LOCAL))
++		return -EOPNOTSUPP;
++	if (minor < 4)
++		return uuid_is_null(&enrollment->view_control_nonce) ||
++			uuid_equal(&enrollment->view_control_nonce, &enrollment->nonce) ?
++			-EOPNOTSUPP : 0;
++	if (uuid_is_null(&enrollment->anchor) || uuid_is_null(&enrollment->nonce) ||
++	    uuid_is_null(&enrollment->acquisition_anchor) ||
++	    uuid_is_null(&enrollment->acquisition_nonce) ||
++	    uuid_is_null(&enrollment->control_anchor) ||
++	    uuid_is_null(&enrollment->view_control_nonce) ||
++	    (uuid_equal(&enrollment->anchor, &enrollment->acquisition_anchor) &&
++	     uuid_equal(&enrollment->nonce, &enrollment->acquisition_nonce)) ||
++	    (uuid_equal(&enrollment->anchor, &enrollment->control_anchor) &&
++	     uuid_equal(&enrollment->nonce, &enrollment->view_control_nonce)) ||
++	    (uuid_equal(&enrollment->acquisition_anchor, &enrollment->control_anchor) &&
++	     uuid_equal(&enrollment->acquisition_nonce, &enrollment->view_control_nonce)))
++		return -EOPNOTSUPP;
++	return 0;
++}
++
 +static int hfs_session_free(struct hfs_session *session)
 +{
 +	struct hfs_process *process, *next_process;
@@ -2389,6 +2482,9 @@ new file mode 100644
 +	sb->s_blocksize = PAGE_SIZE;
 +	sb->s_blocksize_bits = PAGE_SHIFT;
 +	sb->s_time_gran = 1;
++	err = hfs_controlled_bind_super(session, sb);
++	if (err)
++		return err;
 +	/* No ACL, special inode or suid enablement is implied by protocol modes. */
 +	/* VFS/LSM hooks remain active; no SB_NOSEC or security bypass. */
 +	err = hfs_capture(session, &init_user_ns, &cred);
@@ -2487,19 +2583,9 @@ new file mode 100644
 +		err = hfs_enrollment_validate(&session->enrollment);
 +	if (err)
 +		goto unlock_fail;
-+	if (session->bridge_minor >= 2 &&
-+	    session->enrollment.view_scope != HFS_SCOPE_CONTROLLED_LOCAL) {
-+		err = -EOPNOTSUPP;
++	err = hfs_enrollment_lanes(&session->enrollment, session->bridge_minor);
++	if (err)
 +		goto unlock_fail;
-+	}
-+	if (session->bridge_minor &&
-+	    ((session->enrollment.view_scope != HFS_SCOPE_NORMAL_PUBLIC &&
-+	      session->enrollment.view_scope != HFS_SCOPE_CONTROLLED_LOCAL) ||
-+	     uuid_is_null(&session->enrollment.view_control_nonce) ||
-+	     uuid_equal(&session->enrollment.view_control_nonce, &session->enrollment.nonce))) {
-+		err = -EOPNOTSUPP;
-+		goto unlock_fail;
-+	}
 +	if (!hfs_trace_registered) {
 +		check_trace_callback_type_sched_process_exit(hfs_process_exit);
 +		for_each_kernel_tracepoint(hfs_find_exit_tracepoint, &hfs_exit_tracepoint);
@@ -2530,6 +2616,9 @@ new file mode 100644
 +		err = -EPROTO;
 +		goto fail;
 +	}
++	err = hfs_controlled_bind_transport(session);
++	if (err)
++		goto fail;
 +	err = hfs_buf_init(&payload, strlen(hello) + 1);
 +	if (err)
 +		goto fail;
@@ -2560,6 +2649,8 @@ new file mode 100644
 +	mutex_unlock(&hfs_provider_lock);
 +fail:
 +	WRITE_ONCE(session->closing, true);
++	if (hfs_controlled_consumed(session))
++		WRITE_ONCE(session->blocked, true);
 +	spin_lock_irqsave(&hfs_sessions_lock, irqflags);
 +	list_del_init(&session->global);
 +	spin_unlock_irqrestore(&hfs_sessions_lock, irqflags);

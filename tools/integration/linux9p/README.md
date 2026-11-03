@@ -2,26 +2,22 @@
 
 This directory maintains the Linux guest component of the selected
 [retained-9p bridge](../../../docs/spec/Retained-9p-protocol.md). It contains
-four patches against **upstream Linux 6.1.190**, reproducible source/build
+five patches against **upstream Linux 6.1.190**, reproducible source/build
 inputs, and tests that compile the actual C codec and identity/metadata helpers.
 It does not install a kernel, publish a filesystem, or admit a canary.
 
-The fourth patch is an unreviewed `vz3` development candidate with the actual
-fault/page_mkwrite, metadata-view, physical recall, frozen drain and stopped
-installation components described in [MMAP.md](MMAP.md). Its development manifest
-retains `unfinished_mmap_development:true` until root review and coupled host
-integration are complete. The final3 object check passed with a fresh output
-against the completely verified stable-capture candidate before the R1 dirty-aops
-and clean-release corrections. Their current component/static checks are recorded
-in r1-fixes evidence; corrected final4 objects passed and narrow R2 is clean.
-The builder enables
-and asserts THP, SHMEM and read-only filesystem THP for `--mm-objects`. The first
-final attempt with THP disabled is preserved as a failed configuration check.
-Earlier development1 and final2 object receipts retain their prior-source scope.
-Object checks add
-`--mm-objects` for exactly `mm/memory.o`,
-`mm/gup.o`, `mm/mremap.o` and `mm/huge_memory.o`, alongside guest/network objects.
-No snapshot supplies an installed profile or compatibility acceptance.
+The fourth patch contains the `vz3` fault/page_mkwrite, metadata-view, physical
+recall, frozen-drain and stopped-installation components described in
+[MMAP.md](MMAP.md). Its corrected final4 objects and narrow R2 component review
+passed after the dirty-aops and clean-release fixes. Earlier development1,
+final2 and final3 receipts retain their original source/configuration scope.
+The fifth patch adds the controlled-local provider described below.
+
+The builder enables and asserts THP, SHMEM and read-only filesystem THP for
+`--mm-objects`; the preserved first final attempt failed that configuration check.
+Object checks select `mm/memory.o`, `mm/gup.o`, `mm/mremap.o` and
+`mm/huge_memory.o`, alongside guest/network objects. These component inputs do
+not supply an installed profile or compatibility acceptance.
 
 `source.json` pins upstream commit
 `79807e970724c1f90cee1316361d61b80db4eef6`, annotated tag object
@@ -297,7 +293,8 @@ runtime native provider or proves actual physical recall on an installed kernel.
 Explicit `9P2000.L.hfs1.2` and `9P2000.L.hfs1.3` selections use their exact
 minor2/schema3/features4095 and minor3/schema4/features8191 tuples. Providers
 must select the matching complete feature mask and CONTROLLED_LOCAL enrollment;
-there is still no registered provider. Closed older selections cannot carry
+those older selections do not use the registered minor4 controlled provider.
+Closed older selections cannot carry
 ALLOCATE/GAP_RESOLVE or the minor3-only READDIR_CLEANUP. The owned codec and
 lib9p retain the successor response `verification` field byte for byte.
 
@@ -325,11 +322,11 @@ The backend translates guest cells, reclaim hashes and VIEW_WAIT poll commands
 into native endpoint coordinates. It preserves the host's exact native receipt;
 that signature does not authenticate rewritten guest coordinates. The current
 `hfs_json.native_cell` field records the guest translated cell, not the
-endpoint-global native cell. Task `y04`
-owns the separately negotiated provenance binding before `s04` can consume
-source/event/floor receipts. No private transported flag or preserved signature
-supplies that missing authority. Missing C6 therefore continues to refuse real
-runtime construction. Primitive tests do not establish native FUSE identity,
+endpoint-global native cell. The separately negotiated1.4 mapping (`y04`)
+authenticates the original guest/native coordinates and complete poll chain.
+The controlled provider below consumes this through its private received path;
+a public transported flag or preserved signature cannot create that authority.
+Floor/retirement and complete runtime construction remain separate work. Primitive tests do not establish native FUSE identity,
 physical observation, installed kernel behavior or deployment.
 
 Run the composed controlled fixture with a new output under an explicitly owned
@@ -361,3 +358,52 @@ arguments with an unissued drain claim reach the real host and are refused.
 Result publication still refuses without its mandatory verifier. The backend's
 same-class donor restriction is unchanged. [z04 evidence](evidence/z04/evidence.json)
 records the original composed failures and the focused checks.
+
+## Controlled guest provider (`s04`)
+
+The fifth patch supplies a default-off, built-in controlled-local provider for
+exact1.4/schema5/features16383. Its [local admission artifacts](../../../docs/spec/Retained-9p-guest-admission.md)
+install a complete signed grouped local inventory before observer admission,
+then bind each actual host controller once. Enrolled device/client/superblock,
+initial namespace/idmap and all lane identities stay private and immutable.
+Prepared/unbound sessions permit only the exact bootstrap HELLO and grant no
+source or ordinary rights. Failed/uncertain sessions retain consumed identities.
+
+`/sys/kernel/homelabfs/admission_v1` is root-readable0400. Each open reserves one
+of four128KiB immutable snapshots, including stopped/uncertain domains and exact
+protocols/phase/event/ACK hashes. Root-only provision/bind endpoints accept one
+complete bounded signed artifact. There is no reset or replacement interface.
+The approved configuration delta is `9P_FS=y`, `NET_9P_VIRTIO=y`, `SYSCTL=y`,
+`SYSFS=y`, `CC_IS_GCC=y`, `9P_FS_HOMELABFS=y`,
+`9P_FS_HOMELABFS_CONTROLLED=y` and a pinned nonempty
+`9P_FS_HOMELABFS_OPERATOR_KEY`; legacy profiles are unchanged. Crypto wrappers
+require the explicitly pinned GCC whole-program elimination flags.
+
+Actual transport completion alone creates the private received owner. Detached
+JSON, copied diagnostic flags, signatures and source hashes cannot create it.
+Exact descendant capabilities/targets retain that owner independently of the
+existing request lifetime. Nonnull publication refuses. SOURCE/EVENT verifies
+actual original request/evidence, signed enrollment and actual physical state;
+real host C5 verification continues to own journal/catalog/payload byte checks.
+C6 charges retained admission/snapshot/staging ownership against control bytes,
+then supplies finite byte/slot/cookie/received caps and conservative retain.
+One accepted root administrative open uses actual kernfs preallocation to
+serialize same-fd copies; generic pre-admission syscalls/allocator overhead remain
+outside the signed requested-allocation budget.
+It refuses retirement, gaps, floors and session release until C7; it does not
+claim that ordinary saturation preserves funded control progress.
+
+The `controlled_crypto` tests run unchanged Monocypher4.0.3 Ed25519 through owned
+canonical prime-subgroup checks, real RFC/Go/OpenSSL signatures and encoding
+negatives. `controlled_provider` tests run the actual signed transactional
+installer and immutable sysfs serializer, including distinct volumes/journals,
+allocation failures, exact independent inventory/phase oracles and overflow.
+`controlled_received` joins the actual registered provider, private transport
+factory, view/lease/STOP/install/ACK helpers, net9p exchange and C carrier to the
+real Go Transport/Producer/controller/source. Its actual C snapshot drives the
+host observer, including a nonnull original WAIT Ack across multiple polls.
+A changed original journal byte suppresses a fresh source response/adoption.
+Kernel credentials, MM/PTE primitives, native FUSE identity and virtio device
+objects remain explicit OS substitutions in these component tests. Actual
+kernel translation-unit/frame/link checks do not prove installed PTE/TLB,
+native deployment, C7 closure or normal/distributed publication.

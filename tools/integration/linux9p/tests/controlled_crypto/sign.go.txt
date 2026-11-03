@@ -1,0 +1,27 @@
+package main
+
+import (
+	"bytes"
+	"crypto/ed25519"
+	"encoding/hex"
+	"encoding/json"
+	"log"
+	"os"
+)
+
+func main() {
+	var signatures [][3]string
+	for i, length := range []int{0, 1, 255, 16384, 131072} {
+		key := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{byte(80 + i)}, ed25519.SeedSize))
+		message := bytes.Repeat([]byte{byte(i + 1)}, length)
+		signature := ed25519.Sign(key, message)
+		public := key.Public().(ed25519.PublicKey)
+		if !ed25519.Verify(public, message, signature) {
+			log.Fatal("Go rejected its actual signature")
+		}
+		signatures = append(signatures, [3]string{hex.EncodeToString(public), hex.EncodeToString(signature), hex.EncodeToString(message)})
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(signatures); err != nil {
+		log.Fatal(err)
+	}
+}

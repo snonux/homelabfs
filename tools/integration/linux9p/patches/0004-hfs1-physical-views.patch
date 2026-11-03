@@ -1726,7 +1726,7 @@ diff --git a/fs/9p/hfs_lease.h b/fs/9p/hfs_lease.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.h
-@@ -0,0 +1,118 @@
+@@ -0,0 +1,119 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_LEASE_H
 +#define FS_9P_HFS_LEASE_H
@@ -1758,6 +1758,7 @@ new file mode 100644
 +	struct hfs_buf credentials;
 +	u8 hash[32];
 +	uuid_t nonce;
++	uuid_t anchor;
 +	bool control;
 +	u64 next;
 +	u64 prepared; /* preowned finite counter slots, not wire identities */
@@ -1849,7 +1850,7 @@ diff --git a/fs/9p/hfs_lease.c b/fs/9p/hfs_lease.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.c
-@@ -0,0 +1,1423 @@
+@@ -0,0 +1,1469 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Exact bridge1.1 ticket/lease transport; no physical or source-proof defaults. */
 +#include <linux/slab.h>
@@ -1858,6 +1859,7 @@ new file mode 100644
 +#include <linux/pagemap.h>
 +#include <linux/writeback.h>
 +#include "hfs.h"
++#include "hfs_received.h"
 +#include "hfs_lease.h"
 +
 +int hfs_json_hash_fields(const struct hfs_json *json, int object,
@@ -1901,10 +1903,7 @@ new file mode 100644
 +static int hfs_copy_json(const struct hfs_json *json, int token,
 +			 struct hfs_json **out)
 +{
-+	if (token < 0 || token >= json->count)
-+		return -EPROTO;
-+	return hfs_json_parse(json->data + json->tokens[token].start,
-+			      json->tokens[token].end - json->tokens[token].start, out);
++	return hfs_received_copy(json, token, out);
 +}
 +
 +static bool hfs_token_equal(const struct hfs_json *json, int token,
@@ -2141,7 +2140,7 @@ new file mode 100644
 +	int err;
 +
 +	*out = NULL;
-+	if (session->bridge_minor != 1)
++	if (session->bridge_minor != 1 && session->bridge_minor != 4)
 +		return -EOPNOTSUPP;
 +	err = session->provider->reserve(session, 4ULL * 1024 * 1024,
 +					 control, &credit);
@@ -2186,6 +2185,13 @@ new file mode 100644
 +	candidate->control = control;
 +	candidate->nonce = control ? session->enrollment.view_control_nonce :
 +				    session->enrollment.nonce;
++	candidate->anchor = session->enrollment.anchor;
++	if (session->bridge_minor == 4) {
++		candidate->anchor = control ? session->enrollment.control_anchor :
++					       session->enrollment.acquisition_anchor;
++		if (!control)
++			candidate->nonce = session->enrollment.acquisition_nonce;
++	}
 +	mutex_lock(&session->lock);
 +	if ((control && session->nr_view_control_tickets == HFS_VIEW_CONTROL_TICKETS_MAX) ||
 +	    (!control && session->nr_view_tickets - session->nr_view_control_tickets ==
@@ -2284,7 +2290,7 @@ new file mode 100644
 +	ticket->number = family->next++;
 +	WRITE_ONCE(family->initial, ticket);
 +	hfs_buf_printf(&ticket->request, "{\"anchor\":\"%pUb\",\"credentials\":",
-+		       &session->enrollment.anchor);
++		       &family->anchor);
 +	hfs_buf_add(&ticket->request, family->credentials.data, family->credentials.len);
 +	hfs_buf_printf(&ticket->request, ",\"nonce\":\"%pUb\",\"number\":%llu}",
 +		       &family->nonce, ticket->number);
@@ -2366,7 +2372,7 @@ new file mode 100644
 +	struct hfs_json *reply = NULL;
 +	const char *operation = cancel ? "VIEW_CANCEL" : "VIEW_QUERY";
 +	unsigned long flags;
-+	int err, body;
++	int err, body = -1;
 +
 +	*response = NULL;
 +	if (!ticket->bound)
@@ -2510,6 +2516,19 @@ new file mode 100644
 +		    hfs_json_is(reply, status, "\"RELEASED\"") ||
 +		    hfs_json_is(reply, status, "\"CANCELLED\"") ||
 +		    hfs_json_is(reply, status, "\"BLOCKED\"")) {
++			if (session->bridge_minor == 4 &&
++			    (hfs_json_is(reply, status, "\"GRANTED\"") ||
++			     hfs_json_is(reply, status, "\"FROZEN\""))) {
++				int source = hfs_json_field(reply, body, "lease");
++
++				if (hfs_json_is(reply, source, "null"))
++					source = hfs_json_field(reply, body, "reservation");
++				if (hfs_json_is(reply, source, "null"))
++					source = hfs_json_field(reply, body, "entry");
++				err = hfs_received_source(session, reply, source);
++				if (err)
++					goto invalid;
++			}
 +			err = hfs_copy_json(reply, body, response);
 +			if (err)
 +				goto invalid;
@@ -2836,7 +2855,7 @@ new file mode 100644
 +		count = 0;
 +		through = family->floor;
 +		hfs_buf_printf(&payload, "{\"anchor\":\"%pUb\",\"credentials\":",
-+			       &session->enrollment.anchor);
++			       &family->anchor);
 +		hfs_buf_add(&payload, family->credentials.data, family->credentials.len);
 +		hfs_buf_printf(&payload, ",\"nonce\":\"%pUb\",\"result_hashes\":[",
 +			       &family->nonce);
@@ -3026,6 +3045,8 @@ new file mode 100644
 +		"claim_number,credentials,description,drain_credit,lease_id,length,offset,provenance,scope", actual);
 +	if (!err && memcmp(expected, actual, 32))
 +		err = -EPROTO;
++	if (!err && session->bridge_minor == 4)
++		err = hfs_received_source(session, reply, body);
 +	if (!err)
 +		err = hfs_copy_json(reply, body, &dirty->reservation);
 +	if (!err) {
@@ -3082,11 +3103,12 @@ new file mode 100644
 +{
 +	struct hfs_session *session = view->session;
 +	struct hfs_buf *payload = &dirty->freeze_payload, *args = &dirty->drain_args;
-+	struct hfs_json *reply = NULL, *expected_entry = NULL;
++	struct hfs_json *reply = NULL, *expected_entry = NULL, *received_entry = NULL;
 +	struct page *page = dirty->entry->page;
 +	u8 data_hash[32], entry_id[32];
 +	void *address;
 +	unsigned long flags;
++	u64 revision;
 +	int description, entry, err;
 +
 +	if (dirty->frozen)
@@ -3094,6 +3116,7 @@ new file mode 100644
 +	spin_lock_irqsave(&view->lock, flags);
 +	err = !dirty->adopted || !view->quiescent ||
 +		view->phase != HFS_VIEW_QUIESCENT || view->active ? -ESTALE : 0;
++	revision = view->revision;
 +	spin_unlock_irqrestore(&view->lock, flags);
 +	if (err || !page)
 +		return err ?: -ESTALE;
@@ -3187,11 +3210,35 @@ new file mode 100644
 +		err = -EPROTO;
 +		goto done;
 +	}
-+	memcpy(dirty->entry_id, entry_id, 32);
-+	dirty->frozen_entry = expected_entry;
-+	expected_entry = NULL;
-+	dirty->frozen = true;
++	if (session->bridge_minor == 4) {
++		err = hfs_received_source(session, reply, entry);
++		if (!err)
++			err = hfs_received_copy(reply, entry, &received_entry);
++		if (err)
++			goto done;
++		/* Copy/verification can sleep. Adoption itself is a physical-state
++		 * transition and rechecks the actual capture before publication.
++		 */
++		spin_lock_irqsave(&view->lock, flags);
++		if (!view->quiescent || view->phase != HFS_VIEW_QUIESCENT || view->active ||
++		    view->revision != revision || !uuid_equal(&view->recall, &dirty->recall)) {
++			err = -ESTALE;
++		} else {
++			memcpy(dirty->entry_id, entry_id, 32);
++			dirty->frozen_entry = received_entry;
++			received_entry = NULL;
++			dirty->frozen = true;
++		}
++		spin_unlock_irqrestore(&view->lock, flags);
++	} else {
++		/* Preserve the closed older provider contract and allocation path. */
++		memcpy(dirty->entry_id, entry_id, 32);
++		dirty->frozen_entry = expected_entry;
++		expected_entry = NULL;
++		dirty->frozen = true;
++	}
 +done:
++	hfs_json_free(received_entry);
 +	hfs_json_free(reply);
 +	hfs_json_free(expected_entry);
 +	if (err == -EPROTO)
@@ -3277,7 +3324,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,1658 @@
+@@ -0,0 +1,1664 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -3289,6 +3336,8 @@ new file mode 100644
 +#include <linux/highmem.h>
 +#include <linux/user_namespace.h>
 +#include "hfs.h"
++#include "hfs_received.h"
++#include "hfs_controlled.h"
 +
 +/* transitions owns the preallocated inode workspace. No network/user copy or
 + * source verifier runs in this page/PTE critical phase.
@@ -3677,7 +3726,9 @@ new file mode 100644
 +	else
 +		hfs_buf_literal(payload, "null");
 +	hfs_buf_literal(payload, "}");
-+	err = payload->error ?: hfs_control(session, "VIEW_ACK", payload, true, &reply);
++	err = payload->error ?: hfs_controlled_before_ack(view, event, body, phase, payload);
++	if (!err)
++		err = hfs_control(session, "VIEW_ACK", payload, true, &reply);
 +	if (err)
 +		return err;
 +	result = hfs_json_field(reply, 0, "payload");
@@ -3687,6 +3738,8 @@ new file mode 100644
 +		err = -EAGAIN;
 +	else if (!hfs_json_is(reply, hfs_json_field(reply, result, "status"), "\"ACCEPTED\""))
 +		err = -ESTALE;
++	if (!err)
++		err = hfs_controlled_after_ack(session, phase, payload, reply);
 +	if (!err) {
 +		control->last_ack.len = 0;
 +		control->last_ack.error = 0;
@@ -3820,7 +3873,7 @@ new file mode 100644
 +		if (!err) {
 +			struct hfs_json *retained = NULL;
 +
-+			err = hfs_json_parse(json->data, json->len, &retained);
++			err = hfs_received_copy(json, 0, &retained);
 +			if (!err) {
 +				hfs_json_free(control->drain_event);
 +				control->drain_event = retained;

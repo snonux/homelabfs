@@ -25,9 +25,11 @@ and acceptance remain later work.
   has no durable save/restore API. Provider capability restoration alone cannot
   restore its allocator, cells, response snapshots or controller incarnation.
 * [Linux's owned provider interface](../../tools/integration/linux9p/patches/0003-hfs1-guest-vfs.patch)
-  has no registered implementation. `hfs_call` increments `next_claim` internally
-  and has no pre-send allocator hook. Its parser, physical view code and MM
-  callbacks are reusable mechanisms, not runtime enrollment/source authority.
+  now has a default-off built-in1.4 controlled-local implementation (`s04`),
+  described in [guest admission](../spec/Retained-9p-guest-admission.md).
+  Successor ordinary claims retain their full original ALLOCATE before CALL.
+  The closed older semantics remain unchanged; installed/native admission and
+  the complete C7-C10 lifetime/runtime composition remain separate.
 * [lib9p](../../tools/integration/lib9p/src/hfs9p.h) has a real durable transport
   ledger and real positional FUSE forwarding. Its weak
   `hfs9p_controller_claim` returns ENOTSUP. No actual supervisor supplies its
@@ -254,8 +256,11 @@ C8 candidates/leg-chain protection, staged actual Transport/Producer attachment,
 receipt2 and a pure pinned-host-attestation verifier. The owned C carrier and
 pure guest attestation verifier (`y04`) now exercise
 that foundation with real Producer signatures. They do not create the kernel
-received-response/provider authority (`s04`). Older1.2/1.3 receipts still bind
-native bytes only. No runtime may advertise guest source/event/floor readiness
-from decoded metadata or this foundation alone; the private received-path/source
-provider integration must still be implemented
-and validated by C6; the pure verifier remains inert.
+received-response/provider authority by themselves. The `s04` controlled
+provider consumes them only at the actual private transport-completion boundary
+and validates exact immutable enrollment, live device/idmap and physical state.
+Its component tests join the real C carrier/Go Producer/source/observer and
+physical helpers, with OS/MM/native primitives explicitly substituted.
+Older1.2/1.3 receipts still bind native bytes only. No decoded metadata, foundation
+verifier, component result or object build establishes installed guest readiness,
+protected floor/retirement closure or C10 runtime assembly.

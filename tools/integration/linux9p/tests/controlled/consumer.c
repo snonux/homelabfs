@@ -92,6 +92,14 @@ enum hfs_view_scope {
    HFS_SCOPE_CONTROLLED_LOCAL = 2
 };
 #include "types.inc"
+/* Use the production disabled-C6 definitions for these closed older profiles.
+ * Limit the unused-parameter suppression to the production inline headers.
+ */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#include "hfs_received.h"
+#include "hfs_controlled.h"
+#pragma GCC diagnostic pop
 static unsigned long jiffies;
 static Hfs9p *backend;
 static Hfs9pConnection *connection;
