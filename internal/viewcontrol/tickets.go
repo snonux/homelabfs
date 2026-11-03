@@ -348,16 +348,23 @@ func (c *Controller) changeLease(ctx context.Context, scope guestbridge.Context,
 	if c.state.Recall != nil {
 		return c.reply(t, "PENDING", nil, nil, nil)
 	}
-	for _, reservation := range c.state.Reservations {
-		if sameLineage(c.state.Leases[reservation.Reservation.LeaseID].Lease, r.Lease) && reservation.Status != "CLOSED" {
+	// A clean ACTIVE lease may still own readable PTEs. Its preowned release
+	// must start the same physical recall as dirty pressure; CheckPhysical
+	// cannot certify a live mapping as already closed. Include active renewed
+	// siblings so an old immutable lineage release cannot wait without progress.
+	for _, lease := range c.state.Leases {
+		if lease.Active && sameLineage(lease.Lease, r.Lease) {
 			if err := c.startRecall(ctx); err != nil {
 				return nil, err
 			}
 			return c.reply(t, "PENDING", nil, nil, nil)
 		}
 	}
-	for id, l := range c.state.Leases {
-		if id != r.Lease.ID && sameLineage(l.Lease, r.Lease) && l.Active {
+	for _, reservation := range c.state.Reservations {
+		if sameLineage(c.state.Leases[reservation.Reservation.LeaseID].Lease, r.Lease) && reservation.Status != "CLOSED" {
+			if err := c.startRecall(ctx); err != nil {
+				return nil, err
+			}
 			return c.reply(t, "PENDING", nil, nil, nil)
 		}
 	}

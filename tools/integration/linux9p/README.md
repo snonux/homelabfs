@@ -2,9 +2,26 @@
 
 This directory maintains the Linux guest component of the selected
 [retained-9p bridge](../../../docs/spec/Retained-9p-protocol.md). It contains
-three patches against **upstream Linux 6.1.190**, reproducible source/build
+four patches against **upstream Linux 6.1.190**, reproducible source/build
 inputs, and tests that compile the actual C codec and identity/metadata helpers.
 It does not install a kernel, publish a filesystem, or admit a canary.
+
+The fourth patch is an unreviewed `vz3` development candidate with the actual
+fault/page_mkwrite, metadata-view, physical recall, frozen drain and stopped
+installation components described in [MMAP.md](MMAP.md). Its development manifest
+retains `unfinished_mmap_development:true` until root review and coupled host
+integration are complete. The final3 object check passed with a fresh output
+against the completely verified stable-capture candidate before the R1 dirty-aops
+and clean-release corrections. Their current component/static checks are recorded
+in r1-fixes evidence; corrected final4 objects passed and narrow R2 is clean.
+The builder enables
+and asserts THP, SHMEM and read-only filesystem THP for `--mm-objects`. The first
+final attempt with THP disabled is preserved as a failed configuration check.
+Earlier development1 and final2 object receipts retain their prior-source scope.
+Object checks add
+`--mm-objects` for exactly `mm/memory.o`,
+`mm/gup.o`, `mm/mremap.o` and `mm/huge_memory.o`, alongside guest/network objects.
+No snapshot supplies an installed profile or compatibility acceptance.
 
 `source.json` pins upstream commit
 `79807e970724c1f90cee1316361d61b80db4eef6`, annotated tag object
@@ -20,8 +37,8 @@ actual guest acceptance remain `xz3`/`zq3` work.
 The profile remains Linux kernel 9p → virtio → lib9p → real FreeBSD FUSE. There
 is no guest daemon, Linux FUSE replacement, alternate RPC client or stock-fid
 fallback. `CONFIG_9P_FS_HOMELABFS` defaults off and depends on tracepoints.
-When built, the exact `version=9P2000.L.hfs1,trans=virtio,msize=65536` selection
-uses separate inode/file/super operations inside the 9p filesystem. The network
+When built, exact `version=9P2000.L.hfs1,trans=virtio,msize=65536` or
+`version=9P2000.L.hfs1.1,trans=virtio,msize=65536` selection uses separate inode/file/super operations inside the 9p filesystem. The network
 client accepts only exact version/msize replies, sends only Tbridge after
 Tversion, and reserves independent ordinary/control/wait tag classes. Raw
 bridge bytes do not acquire a stock counted-data prefix. The assigned private
@@ -34,9 +51,10 @@ namespace numbers, and calls the admitted mapping provider. Unmapped/reserved
 IDs, mapper errors, overridden worker credentials and more than 1024 input groups
 are refused. The canonical complete set is sorted and deduplicated without
 truncation. Retained kernel TGID objects distinguish process incarnations from
-reused PID numbers; every capture gets a distinct monotonically increasing
-process revision. Earlier request bytes never change when a later capture
-changes credentials. Process-exit assertions use a typed actual kernel exit
+reused PID numbers. Captures with unchanged complete numeric credentials,
+namespace and idmap reuse one revision; observed snapshot changes advance it
+monotonically, including A→B→A changes. Earlier request bytes never change when a
+later capture changes credentials. Process-exit assertions use a typed actual kernel exit
 tracepoint and preallocated work, rather than proc polling or inferred host exit.
 
 Each lowered operation owns an immutable claim, operation UUID, original Context,
@@ -186,7 +204,13 @@ per-process address space and polls aggregate process-group RSS against 2 GiB,
 allocated-root disk against 8 GiB, and each stage against 20 minutes. It only
 terminates its own process group on exceedance. Polling can miss transient
 overshoot; nominal intervals and actual maximum RSS sampling gaps are recorded.
-Failed evidence is preserved. The output receipt identifies config, commands,
+Failed evidence is preserved. Earlier builder revisions summed logical file
+lengths (`st_size`) despite describing the disk measure as allocated space.
+Their historical receipts are unchanged and must not be treated as allocation
+measurements. The `vz3` development builder instead sums `st_blocks * 512` for
+the owned root and every owned file, directory and symlink; filesystem metadata
+outside those entries is excluded. The new input receipt records that measure.
+The output receipt identifies config, commands,
 tool versions and object hashes. It compiles and combines kernel objects;
 it does **not** perform complete module modpost/link, build a bootable kernel,
 prove an ELRepo ABI, establish a hermetic toolchain, or prove cross-builder
@@ -221,3 +245,46 @@ actual source/package/running-byte binding, syscall/guest behavior, physical
 recall, native FUSE transport, signing, recovery and release admission remain
 separate gates. This work performed no SSH, mount, VM, install, production or
 received-sink operation.
+
+## Retained view candidate checks
+
+The owned source contract and required platform gates are described in
+[MMAP.md](MMAP.md). Run every command in a separate fresh output directory;
+`SOURCE` names an owned prepared kernel tree and `HOST_REPO` a checkout with j04.
+These are component checks, not a mounted-filesystem acceptance batch.
+
+```sh
+python3 tools/integration/linux9p/tests/capture/run.py \
+  --source "$SOURCE" --output "$RUN/capture"
+python3 tools/integration/linux9p/tests/view/run.py \
+  --source "$SOURCE" --output "$RUN/view" --sanitize
+python3 tools/integration/linux9p/tests/view/run.py --pressure \
+  --source "$SOURCE" --output "$RUN/pressure" --sanitize
+python3 tools/integration/linux9p/tests/dirty/run.py \
+  --source "$SOURCE" --output "$RUN/dirty" \
+  --fixture "$HOST_REPO/docs/spec/retained9p-fixtures/views.json"
+python3 tools/integration/linux9p/tests/dirty/host_codec.py \
+  --repo "$HOST_REPO" --vectors "$RUN/dirty" --output "$RUN/dirty-host"
+python3 tools/integration/linux9p/tests/requests/run.py \
+  --source "$SOURCE" --output "$RUN/requests"
+python3 tools/integration/linux9p/tests/root/run.py \
+  --source "$SOURCE" --output "$RUN/root"
+python3 tools/integration/linux9p/tests/huge/run.py \
+  --source "$SOURCE" --output "$RUN/huge"
+python3 tools/integration/linux9p/tests/leases/bounds.py --output "$RUN/bounds"
+python3 tools/integration/linux9p/tests/dirty/host_codec.py --mode bounds \
+  --repo "$HOST_REPO" --vectors "$RUN/bounds" --output "$RUN/bounds-host"
+```
+
+The bounded Go overlay checks run only the named interoperability tests with
+one package build job and two CPUs. They hash host source and record actual exit,
+sampled group RSS, maximum sampling gap and unchanged source. The closed-union
+calculator includes full 1024-group credentials, nested Context/capabilities,
+maximum page bytes and number widths; it supplies resource arithmetic, not an
+actual memory-placement or enrollment proof. Existing manifest/ACK/control
+frames keep their one-MiB bound outside the smaller ticket-operation arena.
+
+See [vz3 component evidence](evidence/vz3/evidence.json) for the exact final
+source/config/compiler/object bindings, preserved failed batch, current primitive
+checks and scope limits. Neither object compilation nor those helpers supplies a
+runtime native provider or proves actual physical recall on an installed kernel.

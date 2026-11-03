@@ -1,0 +1,59 @@
+{
+  "source": {
+    "fs/9p/hfs_view.h": "77072080c300c66062be346bac448d145ada4454e174a6d3fa5e5a629e54eee3",
+    "fs/9p/hfs_view.c": "7216a4926f4ed6b6de18cec957be6a4e6a4b486dbdc4961d8a19f217b673b5f4",
+    "fs/9p/hfs_protocol.h": "f1cf7ce710b335811c145d9fe539f9918a9f9c73ad5947f9fa2f324f37746665",
+    "fs/9p/hfs_protocol.c": "73d22c26db74a149fa271dbe5f552aa6126e30d67275013470288a767e9480c5",
+    "fs/9p/hfs_lease.h": "ce851b2f08a0f66afcacaa91482541cce5e739e2013990d143b5337361abc7e4",
+    "fs/9p/hfs.h": "6f4fb4bb5012d81312a30d85bd0182e93f53d390d69aca205dcb74110480d8cf"
+  },
+  "commands": [
+    {
+      "argv": [
+        "gcc",
+        "-std=gnu11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-g",
+        "-O1",
+        "-pthread",
+        "-Wno-sign-compare",
+        "-DHFS_CODEC_USERSPACE",
+        "-I",
+        "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/final-source2/fs/9p",
+        "-include",
+        "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/current-view24/hfs_codec_compat.h",
+        "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/final-source2/fs/9p/hfs_protocol.c",
+        "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/current-view24/test.c",
+        "-lcrypto",
+        "-o",
+        "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/current-view24/view-test",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-fno-pie",
+        "-no-pie"
+      ],
+      "exit": 0,
+      "limit_reason": null,
+      "seconds": 2.0206575300107943,
+      "peak_group_rss_bytes": 91246592,
+      "max_sample_gap_seconds": 0.04497213498689234
+    },
+    {
+      "argv": [
+        "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/current-view24/view-test"
+      ],
+      "exit": 0,
+      "limit_reason": null,
+      "seconds": 0.03955513800610788,
+      "peak_group_rss_bytes": 13094912,
+      "max_sample_gap_seconds": 0.039060875002178364
+    }
+  ],
+  "scope": "actual production C; kernel primitives mocked; no VFS/PTE execution",
+  "affinity": [
+    0,
+    1
+  ]
+}

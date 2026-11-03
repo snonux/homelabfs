@@ -1,0 +1,9 @@
+{
+  "scope": "additional actual GCC driver identification during final3; NOT a pre-build capture; standard frozen builder separately bound ccache wrapper+cc1/as/ld before its stages",
+  "path": "/usr/bin/gcc",
+  "sha256": "f71c9b95b020cd56378a766e7f1cbfecc9818a4e12db831579ee0d0a5d148154",
+  "version": "gcc (GCC) 16.2.1 20261029 (Red Hat 16.2.1-3)",
+  "ccache_compiler_override": "",
+  "time_ns": 1793692975075395425,
+  "earlier_preflight_attempt": "helper assertion refused to mislabel after defconfig.log already existed; no compiler/build failure"
+}

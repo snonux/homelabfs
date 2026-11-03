@@ -1,0 +1,20 @@
+{
+  "scope": "read-only complete raw editing tree versus exact pinned archive, with only maintained28-path manifest substitutions; not fresh prepared-tree/build/runtime proof",
+  "archive_sha256": "4f3c00db43ece26e00b83da8cee938e544ba89e10dc10aecc45209ab03554a17",
+  "source_manifest_sha256": "3be795af6a0e4913097980e74582bcf3d3917c703d08a3335528d8cf3f48071d",
+  "files_checked": 78659,
+  "symlinks_checked": 56,
+  "mismatches": [],
+  "unexpected_paths": [],
+  "python_tarfile_data_filter_link_normalizations": [
+    {
+      "path": "tools/testing/selftests/powerpc/primitives/asm/asm-compat.h",
+      "archive_link": "../.././../../../../arch/powerpc/include/asm/asm-compat.h",
+      "data_filter_link": "../../../../../../arch/powerpc/include/asm/asm-compat.h"
+    }
+  ],
+  "exit": 0,
+  "seconds": 8.948659781992319,
+  "peak_child_self_rss_kib": 885408,
+  "script_sha256": "8534bbc8b307b5238328e23b09a73c14aed80422715d56814806d0832cbf0f9b"
+}

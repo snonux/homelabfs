@@ -1,0 +1,33 @@
+{
+  "argv": [
+    "go",
+    "test",
+    "-overlay",
+    "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/root-capture2/overlay.json",
+    "-p",
+    "2",
+    "-run",
+    "^TestVZ3ExportActualHostROOT$",
+    "-count=1",
+    "-timeout=60s",
+    "./internal/guestbridge"
+  ],
+  "exit": 0,
+  "source": {
+    "internal/guestbridge/bridge_test.go": "4fa893332d36e59bcb3139461db419436789e5eaa11884c43a191b90413cee46",
+    "internal/guestbridge/codec.go": "d8373b5c4e56fb670907fb3aedb4b50d2bb07e67aa922f7038a95b1dd4ff9b15",
+    "internal/guestbridge/dispatch.go": "917045d5d9fb83627f51c872091d80d4c8a5c54dd12cfe6a2821e04ab29eda8f",
+    "internal/guestbridge/endpoint.go": "2171d10017587bb0ec78c8a57a380e5a3320b168ba000c643db38c6d0a71d2f6",
+    "internal/guestbridge/logical.go": "89caac78ed3834cc3cd45f653472af6f6c56aa7d8600db2de5e8baf9527aacf0",
+    "internal/guestbridge/response.go": "f863fb449d2aa13f1584c937d867685cb04d9567d59c3c18e5fb4a4c6b46afed",
+    "internal/guestbridge/result.go": "b753e5ac3d936c8e1a0740b4ec911bd70468519749e81a998e26f4bc5b7503c8",
+    "internal/guestbridge/schema.go": "32a45ca1c2a845c91c6326aec93f50c6619c25f1b558ea6121646165d15038de",
+    "internal/guestbridge/service.go": "28430d32ceefa35105b9075157a65bef263130f407dcc85c2ef7b22bf92a6e72",
+    "internal/guestbridge/types.go": "81455df727eecd52ac5378d98bb5f71ba25a97cecedab8b2ab5b0ca5e29ae91b",
+    "internal/guestbridge/validation_state.go": "9e0f2c09a7b6781c333d4913edd09bab92d30716418d8b992bc68cbdaa8bbf20"
+  },
+  "scope": "actual production formatter via component fixture; no runtime provider",
+  "fixture_sha256": "770173b8a4c551841eb24b5641cf36eb56e41177d49e6dbdc14181033b68d465",
+  "generator_sha256": "f16c7744a300f4a3d0c95bfb62dea39214173c2556090e780ce5d1d8b076d44f",
+  "output_scope": "Captured from actual host production Service/result formatter using its component fixture; no runtime provider/normal authority proof"
+}

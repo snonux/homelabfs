@@ -1,0 +1,11 @@
+{
+  "source": {
+    "fs/9p/hfs_lease.c": "4ada78299507b3ba58aa38343281140f248d01e44f412965bea02ab667ca2f14",
+    "fs/9p/hfs_session.c": "5259d34a56b736368c964d7ccce76ff8bdcdbace45c7310f5bd1494a664b8c75",
+    "fs/9p/hfs.h": "6f4fb4bb5012d81312a30d85bd0182e93f53d390d69aca205dcb74110480d8cf",
+    "fs/9p/hfs_view.h": "77072080c300c66062be346bac448d145ada4454e174a6d3fa5e5a629e54eee3",
+    "fs/9p/hfs_lease.h": "ce851b2f08a0f66afcacaa91482541cce5e739e2013990d143b5337361abc7e4"
+  },
+  "fixture_sha256": "05a1a9dcddd7a8ad7a1617a3b4c8466b042be0cdbca32af4402c77b75fa44894",
+  "scope": "actual C freeze/claim/ticket code; page/transport/clock fixtures; closed codec interoperability, no VFS/runtime/source proof"
+}

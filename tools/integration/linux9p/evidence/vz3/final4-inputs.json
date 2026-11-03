@@ -1,0 +1,25 @@
+{
+  "builder_sha256": "832bd9e9e7e61838474547865c0847f8bf0a7b38200cf9682517c6fc5af6b4c6",
+  "compiler_files": {
+    "as": {
+      "path": "/usr/bin/as",
+      "sha256": "388a25358e48c00dd0efab716ffc12e1dfac27c2501b85f18d5b36057a43bd2d"
+    },
+    "cc1": {
+      "path": "/usr/libexec/gcc/x86_64-redhat-linux/16/cc1",
+      "sha256": "9fa8cf6a760c6a5e068ac743d6ddad1b439e82db720ab5e3f5728f9ed2181b85"
+    },
+    "gcc": {
+      "path": "/usr/bin/ccache",
+      "sha256": "0eb8828d3c5975ed4b3ff6fa3b833de679380d84c752176feab6e2c4594552f2"
+    },
+    "ld": {
+      "path": "/usr/bin/ld.bfd",
+      "sha256": "eccfdb2b11bcae1ca6e2915a40db609299f46d7def305dab744c0da0aaf54370"
+    }
+  },
+  "disk_measure": "sum owned entry st_blocks*512, excluding filesystem metadata",
+  "manifest_sha256": "038ecac28f5639e38e08375153e7d879e4badf09c909c27505cd6da20f83a24a",
+  "source_inventory_sha256": "c74faa440c2dd1c9fab106623160e0fed9078d37cadba0467d76174e7130cd49",
+  "unfinished_mmap_development": true
+}

@@ -1,0 +1,293 @@
+{
+  "scope": "R1 two blocking fixes: registered atomic dirty callback + funded active-clean lineage recall; component/static checks only; native object rebuild+narrow R2 pending",
+  "source_manifest_sha256": "038ecac28f5639e38e08375153e7d879e4badf09c909c27505cd6da20f83a24a",
+  "linux_changed_from_reviewed_candidate": [
+    "fs/9p/hfs_view.c"
+  ],
+  "current_linux_source_hashes": {
+    "fs/9p/Kconfig": "0f65cc75c59aff14b00f69f9d34af9edb2c97d6403170d9599ac28463a240867",
+    "fs/9p/Makefile": "b37bb034594064464bd95955e7b429f2e24aed58ec3ed11b2fba98ae2febf238",
+    "fs/9p/hfs.h": "6f4fb4bb5012d81312a30d85bd0182e93f53d390d69aca205dcb74110480d8cf",
+    "fs/9p/hfs_cursor.c": "94ada25fb7451340390a15305deb62346680d545cdc1c492a0f483e2d4e73127",
+    "fs/9p/hfs_cursor.h": "40876ee1daceaa1b4b18e36781903f5ca1700b60843536d3ebf5a4b56c199871",
+    "fs/9p/hfs_file.c": "5086588849e458c771b0b8020058f92293c313c4da1f117d1fb3b25f761ab769",
+    "fs/9p/hfs_inode.c": "bbad60504e075d047c8f3daf1efc1f2a0756dce6f3595e12db0c331c9de48954",
+    "fs/9p/hfs_lease.c": "4ada78299507b3ba58aa38343281140f248d01e44f412965bea02ab667ca2f14",
+    "fs/9p/hfs_lease.h": "ce851b2f08a0f66afcacaa91482541cce5e739e2013990d143b5337361abc7e4",
+    "fs/9p/hfs_mmap.c": "c03c4f08be550a312bcd0a2e98eaff2c5b03710b7aeddfdc1c01cf83edd70d14",
+    "fs/9p/hfs_policy.c": "5537099c59641da5bf8809aaa59fb397d7fd9cc39db82a9190e5248119e84922",
+    "fs/9p/hfs_policy.h": "1e45a64924ca25bed471d6f149d97cadb35c662dc9944699327ae91ade20f360",
+    "fs/9p/hfs_protocol.c": "73d22c26db74a149fa271dbe5f552aa6126e30d67275013470288a767e9480c5",
+    "fs/9p/hfs_protocol.h": "f1cf7ce710b335811c145d9fe539f9918a9f9c73ad5947f9fa2f324f37746665",
+    "fs/9p/hfs_session.c": "5259d34a56b736368c964d7ccce76ff8bdcdbace45c7310f5bd1494a664b8c75",
+    "fs/9p/hfs_view.c": "4795e84f93b301bf2633bae81a0e5b53f6495d7c44dcc4949bcb34ee748edb40",
+    "fs/9p/hfs_view.h": "77072080c300c66062be346bac448d145ada4454e174a6d3fa5e5a629e54eee3",
+    "fs/9p/vfs_super.c": "1c85dd57e9f27b324cbf4b8a35e9b4cbaf9f2259533754602220f2b2e60f449f",
+    "include/linux/mm.h": "f78c60340bbe1e527c7bc3652b952577ca1297828d85684b7e22f28d37ab1bc6",
+    "include/linux/page-flags.h": "0c8fe49bf4a959eb8669142462afdbcafd90b35ef95cfe1ea801e7069e80558c",
+    "include/net/9p/9p.h": "5a46f65229ecb77bd8f70cce081683869c2ae47e63e573a26a1b2e68e1bd5d7b",
+    "include/net/9p/client.h": "2094b2a8deed51d45f1f3adb2ef35a1a5c30c74fed1a33e00d0629327c702257",
+    "mm/gup.c": "7cabff43f47896a04f25d3ac2fb63cbb20255865b585be37595499d890acf5a2",
+    "mm/huge_memory.c": "f2dadde3c6cb2a468913c5b4c3658f62091e43e1e8c16efeb10e2bebf922ae4d",
+    "mm/memory.c": "afc1442fe6483b42239b158b3760649250857cb2dc0fd5dcf9497f1ee846559b",
+    "mm/mremap.c": "2b961657bb9b07ea8c25dbbf523f783031da496ecda11fa706a4eb2afb355a24",
+    "net/9p/client.c": "e54b23f0fbf071f5a789c639a079777785ea314b7347fdc89b9b6ea3c6d556f8",
+    "net/9p/protocol.c": "9a0b548ed15ec7e194b391a9cef010541d02c992277c34ba2386c4d8c74092f8"
+  },
+  "host_and_doc_hashes": {
+    "internal/viewcontrol/tickets.go": "fda16eefa33ee29c1ba7db3a9e1095755eb591be4516c251d4186033ce31828e",
+    "internal/viewcontrol/controller_test.go": "ce910428ad6ee73e03ffea287e7e07f209aa5c20ab9f637dff47d9c0bfa455ba",
+    "internal/viewcontrol/clean_release_test.go": "f9516daafcf1fb6d27f45d972aee1f5d2e619f3c35eb7b363bff62a85566f6db",
+    "docs/spec/Retained-9p-view-leases.md": "fa0976ede49d8946b080a6fa960b6a52a2a3a11474a1ffbdc55f3f6a5ea1408f"
+  },
+  "checks": {
+    "r1-host5": {
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "1",
+        "-count=1",
+        "-timeout=90s",
+        "./internal/viewcontrol"
+      ],
+      "exit": 0,
+      "seconds": 15.970100460006506,
+      "sampled_peak_group_rss_bytes": 120119296,
+      "maximum_sample_gap_seconds": 0.07137500499084126,
+      "source_unchanged": true,
+      "scope": "real host controller/service/transport/journals; physical/native facts explicit primitive fixtures, no runtime source/physical proof",
+      "receipt_path": "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/r1-host5/receipt.json",
+      "receipt_sha256": "31d9b5d9c4146191633a36b036103359a918aa844015da493dbf1b41c52cf6c5",
+      "log_sha256": "eb879780cb3a4b38695f08cc29c7bcd0a87a5ec04c6fd15b876c72ff3e7ba206"
+    },
+    "r1-host7": {
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "1",
+        "-count=1",
+        "-timeout=240s",
+        "-race",
+        "-run",
+        "TestTransportClean|TestDurableRenewRelease|TestStalePruned|TestAcquisitionGap|TestTransportAcquisitionRetry",
+        "./internal/viewcontrol"
+      ],
+      "exit": 0,
+      "seconds": 120.19737127800181,
+      "sampled_peak_group_rss_bytes": 204701696,
+      "maximum_sample_gap_seconds": 0.09212968799693044,
+      "source_unchanged": true,
+      "scope": "real host controller/service/transport/journals; physical/native facts explicit primitive fixtures, no runtime source/physical proof",
+      "receipt_path": "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/r1-host7/receipt.json",
+      "receipt_sha256": "08be93f056e2ca5cedfbd1841663d0691eaaee9fcf2037a415af0cd564e72a43",
+      "log_sha256": "5fb72da9b6bbe47ae9f26161ab20f925e89422114503a50764b42cfcca0d8c95"
+    },
+    "r1-vet1": {
+      "argv": [
+        "go",
+        "vet",
+        "-p=1",
+        "./internal/viewcontrol"
+      ],
+      "exit": 0,
+      "seconds": 0.49944703999790363,
+      "sampled_peak_group_rss_bytes": 58855424,
+      "maximum_sample_gap_seconds": 0.06436064500303473,
+      "source_unchanged": true,
+      "scope": "real host controller/service/transport/journals; physical/native facts explicit primitive fixtures, no runtime source/physical proof",
+      "receipt_path": "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/r1-vet1/receipt.json",
+      "receipt_sha256": "3e20700f8ef36efe04d08737b537e74d35a019fd4fceec96f1ae9b2ea59435ab",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "r1-errcheck1": {
+      "argv": [
+        "errcheck",
+        "./internal/viewcontrol"
+      ],
+      "exit": 0,
+      "seconds": 0.38982672900601756,
+      "sampled_peak_group_rss_bytes": 97570816,
+      "maximum_sample_gap_seconds": 0.07103196700336412,
+      "source_unchanged": true,
+      "scope": "real host controller/service/transport/journals; physical/native facts explicit primitive fixtures, no runtime source/physical proof",
+      "receipt_path": "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/r1-errcheck1/receipt.json",
+      "receipt_sha256": "fe11fd4fc1eb74ebba3cf3fc36555f51ed12d6524df59aec68d8ae21004f199e",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "r1-staticcheck1": {
+      "argv": [
+        "staticcheck",
+        "./internal/viewcontrol"
+      ],
+      "exit": 0,
+      "seconds": 0.9474198039970361,
+      "sampled_peak_group_rss_bytes": 108396544,
+      "maximum_sample_gap_seconds": 0.07571263299905695,
+      "source_unchanged": true,
+      "scope": "real host controller/service/transport/journals; physical/native facts explicit primitive fixtures, no runtime source/physical proof",
+      "receipt_path": "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/r1-staticcheck1/receipt.json",
+      "receipt_sha256": "a91f1086635db9f487121c725658088022745836e6d1a58363fe0278cf76bb1d",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "r1-lint1": {
+      "argv": [
+        "golangci-lint",
+        "run",
+        "--concurrency",
+        "2",
+        "--timeout",
+        "240s",
+        "./internal/viewcontrol"
+      ],
+      "exit": 0,
+      "seconds": 0.5303820559929591,
+      "sampled_peak_group_rss_bytes": 137367552,
+      "maximum_sample_gap_seconds": 0.06962276800186373,
+      "source_unchanged": true,
+      "scope": "real host controller/service/transport/journals; physical/native facts explicit primitive fixtures, no runtime source/physical proof",
+      "receipt_path": "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/r1-lint1/receipt.json",
+      "receipt_sha256": "e3eb6ccdc4181d75197d6e12d55d81628b682a29ab8687b2b82eeb7e928537fd",
+      "log_sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    "r1-view26": {
+      "receipt_path": "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/r1-view26/receipt.json",
+      "receipt_sha256": "2819b8cf9d549fe59e1dedabdacea2bb135b07d9025b06b8de0afd52b8617706",
+      "source": {
+        "fs/9p/hfs_view.h": "77072080c300c66062be346bac448d145ada4454e174a6d3fa5e5a629e54eee3",
+        "fs/9p/hfs_view.c": "4795e84f93b301bf2633bae81a0e5b53f6495d7c44dcc4949bcb34ee748edb40",
+        "fs/9p/hfs_protocol.h": "f1cf7ce710b335811c145d9fe539f9918a9f9c73ad5947f9fa2f324f37746665",
+        "fs/9p/hfs_protocol.c": "73d22c26db74a149fa271dbe5f552aa6126e30d67275013470288a767e9480c5",
+        "fs/9p/hfs_lease.h": "ce851b2f08a0f66afcacaa91482541cce5e739e2013990d143b5337361abc7e4",
+        "fs/9p/hfs.h": "6f4fb4bb5012d81312a30d85bd0182e93f53d390d69aca205dcb74110480d8cf",
+        "mm/page-writeback.c": "94688b08726c122841e07617bea6b1999be7e059200750fc6dc9706be51cb010",
+        "mm/folio-compat.c": "7e4c0b696a0e4d669ce8d159bc6a2b4164a0857ee191cc079b21a416bfd1640f"
+      },
+      "commands": [
+        {
+          "argv": [
+            "gcc",
+            "-std=gnu11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-g",
+            "-O1",
+            "-pthread",
+            "-Wno-unused-parameter",
+            "-Wno-sign-compare",
+            "-DHFS_CODEC_USERSPACE",
+            "-I",
+            "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/edit-source/fs/9p",
+            "-include",
+            "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/r1-view26/hfs_codec_compat.h",
+            "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/edit-source/fs/9p/hfs_protocol.c",
+            "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/r1-view26/test.c",
+            "-lcrypto",
+            "-o",
+            "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/r1-view26/view-test",
+            "-fsanitize=address,undefined",
+            "-fno-omit-frame-pointer",
+            "-fno-pie",
+            "-no-pie"
+          ],
+          "exit": 0,
+          "limit_reason": null,
+          "seconds": 2.1156677850085543,
+          "peak_group_rss_bytes": 93831168,
+          "max_sample_gap_seconds": 0.04399365599965677
+        },
+        {
+          "argv": [
+            "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/r1-view26/view-test"
+          ],
+          "exit": 0,
+          "limit_reason": null,
+          "seconds": 0.04642454300483223,
+          "peak_group_rss_bytes": 18276352,
+          "max_sample_gap_seconds": 0.04596892499830574
+        }
+      ],
+      "scope": "actual production C; kernel primitives mocked; no VFS/PTE execution"
+    },
+    "r1-pressure3": {
+      "receipt_path": "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/r1-pressure3/receipt.json",
+      "receipt_sha256": "ffc40596d7f5e114c5a677dcf296318a3c6fbf7b381c84d3d944aef9b9297ecc",
+      "source": {
+        "fs/9p/hfs_view.h": "77072080c300c66062be346bac448d145ada4454e174a6d3fa5e5a629e54eee3",
+        "fs/9p/hfs_view.c": "4795e84f93b301bf2633bae81a0e5b53f6495d7c44dcc4949bcb34ee748edb40",
+        "fs/9p/hfs_protocol.h": "f1cf7ce710b335811c145d9fe539f9918a9f9c73ad5947f9fa2f324f37746665",
+        "fs/9p/hfs_protocol.c": "73d22c26db74a149fa271dbe5f552aa6126e30d67275013470288a767e9480c5",
+        "fs/9p/hfs_lease.h": "ce851b2f08a0f66afcacaa91482541cce5e739e2013990d143b5337361abc7e4",
+        "fs/9p/hfs.h": "6f4fb4bb5012d81312a30d85bd0182e93f53d390d69aca205dcb74110480d8cf",
+        "mm/page-writeback.c": "94688b08726c122841e07617bea6b1999be7e059200750fc6dc9706be51cb010",
+        "mm/folio-compat.c": "7e4c0b696a0e4d669ce8d159bc6a2b4164a0857ee191cc079b21a416bfd1640f",
+        "fs/9p/hfs_mmap.c": "c03c4f08be550a312bcd0a2e98eaff2c5b03710b7aeddfdc1c01cf83edd70d14",
+        "fs/9p/hfs_lease.c": "4ada78299507b3ba58aa38343281140f248d01e44f412965bea02ab667ca2f14",
+        "fs/9p/hfs_session.c": "5259d34a56b736368c964d7ccce76ff8bdcdbace45c7310f5bd1494a664b8c75"
+      },
+      "commands": [
+        {
+          "argv": [
+            "gcc",
+            "-std=gnu11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-g",
+            "-O1",
+            "-pthread",
+            "-Wno-unused-parameter",
+            "-Wno-sign-compare",
+            "-DHFS_CODEC_USERSPACE",
+            "-I",
+            "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/edit-source/fs/9p",
+            "-include",
+            "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/r1-pressure3/hfs_codec_compat.h",
+            "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/edit-source/fs/9p/hfs_protocol.c",
+            "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/r1-pressure3/test.c",
+            "-lcrypto",
+            "-o",
+            "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/r1-pressure3/view-test",
+            "-fsanitize=address,undefined",
+            "-fno-omit-frame-pointer",
+            "-fno-pie",
+            "-no-pie"
+          ],
+          "exit": 0,
+          "limit_reason": null,
+          "seconds": 1.5897807739966083,
+          "peak_group_rss_bytes": 97169408,
+          "max_sample_gap_seconds": 0.036825763003434986
+        },
+        {
+          "argv": [
+            "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/r1-pressure3/view-test"
+          ],
+          "exit": 0,
+          "limit_reason": null,
+          "seconds": 0.03148972099006642,
+          "peak_group_rss_bytes": 19902464,
+          "max_sample_gap_seconds": 0.03125215199543163
+        }
+      ],
+      "scope": "actual production C; kernel primitives mocked; no VFS/PTE execution"
+    }
+  },
+  "preserved_failures": {
+    "r1-view25": "helper compile flags needed unused-parameter allowance for actual pinned noop_dirty_folio",
+    "r1-pressure1": "missing primitive list/prototype leaves and unused invalid test inode reconstruction",
+    "r1-pressure2": "missing primitive list_del leaf",
+    "r1-host1": "new128-loop retained transient native snapshots, and old renew test expected revision within unchanged fence",
+    "r1-host2": "RELEASE_CELL fixture omitted exact same envelope reclaim",
+    "r1-host4": "generic test release helper must not auto-complete empty recall when a dirty reservation remains",
+    "r1-host6": "90s race timeout during runnable serialization/cleanup at128 scale; unchanged source/128 workload passed under approved240s bound in r1-host7"
+  },
+  "limitations": [
+    "No actual Linux PTE/TLB/MMU or VFS syscall execution; explicit primitive MM/page-cache/source/RPC/errseq boundaries.",
+    "Host tests use real Service/Controller/Transport/journals with explicit native/physical fact fixtures, never runtime providers.",
+    "Old final3 object/compiler/source receipts remain prior-candidate proof, not bound to new callback.",
+    "No full root suite, native runtime/provider activation, source authority or normal-publication acceptance claim."
+  ]
+}

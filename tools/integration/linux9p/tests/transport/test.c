@@ -6,14 +6,18 @@ unsigned int hfs_test_alloc_call, hfs_test_alloc_fail;
 size_t hfs_test_last_allocation_size;
 #define CHECK(e) do { if (!(e)) { fprintf(stderr, "%d: %s\n", __LINE__, #e); exit(1); } } while (0)
 #define HZ 100UL
+#define msecs_to_jiffies(ms) (((ms) * HZ + 999) / 1000)
+#define P9_NOTAG 65535
 #define time_after_eq(a, b) ((long)((a) - (b)) >= 0)
 #define kmalloc kvmalloc
 struct hfs_session {
+	u16 bridge_minor;
 	struct { uuid_t session; } enrollment;
 	int writer;
 	void *client;
 };
 static unsigned long jiffies;
+static u16 transport_minor;
 static u32 refused_chunk, sends, fetches, yields, retries, next_chunk;
 static u32 saved_len;
 static u8 saved[HFS_HEADER_SIZE + HFS_CHUNK_MAX];
@@ -23,7 +27,8 @@ static int exchange_error;
 static bool refused, expire_reply, expire_sleep, expire_lock, always_refuse;
 static u16 fetch_channel, fetch_kind;
 static const u64 cell = 0x12345678;
-static const u16 tag = 65533;
+static u16 tag = 65533;
+static u32 pending_before_reply, pending_fetches, progress_signals;
 static struct hfs_session *active;
 static const struct hfs_buf *command;
 static const char result[] = "{\"reply\":true}";
@@ -50,6 +55,12 @@ static void usleep_range(unsigned int low, unsigned int high)
 	jiffies += expire_sleep ? 30 * HZ : 1;
 }
 
+static void hfs_mmap_progress(struct hfs_session *session)
+{
+	CHECK(session == active && !active->writer);
+	progress_signals++; /* actual pressure executor is a separate component */
+}
+
 static int p9_client_hfs_exchange(void *client, u16 selected_tag, u8 method,
 				u8 channel, u64 selected_cell, u32 chunk,
 				const void *frame, u32 frame_len,
@@ -63,7 +74,7 @@ static int p9_client_hfs_exchange(void *client, u16 selected_tag, u8 method,
 	if (method == 1) {
 		CHECK(channel == 1 && active->writer && chunk == next_chunk);
 		sends++;
-		CHECK(!hfs_frame_decode(frame, frame_len, 1,
+		CHECK(!hfs_frame_decode_version(active->bridge_minor, frame, frame_len, 1,
 			&active->enrollment.session, cell, chunk, &total, hash, &bytes, &part));
 		CHECK(total == command->len);
 		CHECK(!memcmp(bytes, command->data + chunk * HFS_CHUNK_MAX, part));
@@ -90,9 +101,15 @@ static int p9_client_hfs_exchange(void *client, u16 selected_tag, u8 method,
 	CHECK(method == 2 && channel == fetch_channel && !active->writer);
 	CHECK(next_chunk == 3 && !frame && !frame_len && chunk == 0);
 	fetches++;
+	if (pending_fetches < pending_before_reply) {
+		pending_fetches++;
+		*(u8 *)packet = 2;
+		*len = 1;
+		return 0;
+	}
 	*(u8 *)packet = 3;
 	part = *len - 1;
-	CHECK(!hfs_frame_encode(fetch_kind, &active->enrollment.session, cell,
+	CHECK(!hfs_frame_encode_version(active->bridge_minor, fetch_kind, &active->enrollment.session, cell,
 		result, sizeof(result) - 1, 0, (u8 *)packet + 1, &part));
 	*len = part + 1;
 	return 0;
@@ -102,7 +119,7 @@ static int p9_client_hfs_exchange(void *client, u16 selected_tag, u8 method,
 
 static void run_case(u32 chunk, int expected)
 {
-	struct hfs_session session = { .writer = 1 };
+	struct hfs_session session = { .writer = 1, .bridge_minor = transport_minor };
 	struct hfs_buf body = { .len = 2 * HFS_CHUNK_MAX + 17 };
 	void *reply = NULL;
 	u32 reply_len = 0, i;
@@ -119,17 +136,18 @@ static void run_case(u32 chunk, int expected)
 	command = &body;
 	refused_chunk = chunk;
 	sends = fetches = yields = retries = next_chunk = saved_len = 0;
+	pending_fetches = progress_signals = 0;
 	refused = false;
 	/* Exercise wrap-safe kernel deadline comparisons as well. */
 	jiffies = ULONG_MAX - 100;
 	error = hfs_transport(&session, &body, cell, tag,
-		(struct hfs_response_profile){fetch_channel, fetch_kind},
+		(struct hfs_response_profile){fetch_channel, fetch_kind, HFS_BODY_MAX},
 		&reply, &reply_len, &held);
 	CHECK(error == expected);
 	CHECK(held == !!session.writer);
 	if (!error) {
-		CHECK(!held && sends == 4 && retries == 1 && yields == 1);
-		CHECK(fetches == 1 && next_chunk == 3);
+		CHECK(!held && sends == 4 && retries == 1 && yields == 1 + pending_before_reply);
+		CHECK(fetches == 1 + pending_before_reply && next_chunk == 3);
 		CHECK(reply_len == sizeof(result) - 1 && !memcmp(reply, result, reply_len));
 	} else {
 		CHECK(held && !reply && !reply_len && !fetches && next_chunk == chunk);
@@ -152,6 +170,7 @@ int main(void)
 	u32 chunk, i;
 
 	CHECK(hfs_send_reply(NULL, 0, false) == -EPROTO);
+	for (transport_minor = 0; transport_minor < 2; transport_minor++)
 	for (chunk = 0; chunk < 3; chunk++) {
 		response[0] = 4; response[1] = 3; response[2] = 0;
 		response_len = 3;
@@ -187,6 +206,25 @@ int main(void)
 	response[0] = 4; response[1] = 3; response[2] = 0;
 	CHECK(hfs_send_reply(response, 1, false) == -EPROTO);
 	CHECK(hfs_send_reply(response, 2, false) == -EPROTO);
+	/* Pending ordinary work pulses pressure outside writer ownership. A
+	 * reserved VIEW_WAIT never drives cache eviction merely by long-polling.
+	 */
+	response_len = 3;
+	pending_before_reply = 10;
+	transport_minor = 1;
+	tag = P9_NOTAG;
+	fetch_channel = 2; fetch_kind = 2;
+	run_case(1, 0);
+	CHECK(progress_signals > 0);
+	tag = 65534;
+	fetch_channel = 3; fetch_kind = 3;
+	run_case(0, 0);
+	CHECK(progress_signals == 0);
+	transport_minor = 0;
+	tag = P9_NOTAG;
+	fetch_channel = 2; fetch_kind = 2;
+	run_case(2, 0);
+	CHECK(progress_signals == 0);
 	puts("PASS: actual hfs_transport + policy/codec; chunk0/1/last exact frame/session/cell/tag/body retry; no advance/rebind; yielding writer/control progress; fixed/wrapped deadline at reply/sleep/relock/repeated refusal; malformed status/code/length and I/O errors; result2/recall3");
 	return 0;
 }

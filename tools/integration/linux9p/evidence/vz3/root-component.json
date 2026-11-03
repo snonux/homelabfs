@@ -1,0 +1,7 @@
+{
+  "session_sha256": "b726901a11a2d3f59d4f26f3a95dbf6f64061f578de50bd3d81d74428966769c",
+  "header_sha256": "63c4480be859ac76ffce20f7091c45c12f793b8664be86322cde0ab4216ff609",
+  "fixture_sha256": "770173b8a4c551841eb24b5641cf36eb56e41177d49e6dbdc14181033b68d465",
+  "cases": 18,
+  "scope": "production formatter capture and guest decoder; no VFS/runtime/publication proof"
+}

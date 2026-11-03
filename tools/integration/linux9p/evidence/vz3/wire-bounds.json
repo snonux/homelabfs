@@ -1,0 +1,31 @@
+{
+  "context": 984,
+  "credentials": 11542,
+  "domain": 1428,
+  "description": 1468,
+  "ticket": 11683,
+  "lease": 5345,
+  "reservation": 16611,
+  "entry": 4088,
+  "normal_target": 1109,
+  "local_target": 647,
+  "commands": {
+    "VIEW_ACQUIRE": 17113,
+    "VIEW_RELEASE": 18334,
+    "VIEW_RENEW": 18332,
+    "VIEW_QUERY": 12978,
+    "VIEW_CANCEL": 12979,
+    "DIRTY_RESERVE": 22111,
+    "DIRTY_FREEZE": 40182,
+    "VIEW_RETIRE": 81594
+  },
+  "replies": {
+    "VIEW_ACQUIRE": 18453,
+    "VIEW_RENEW": 18449,
+    "DIRTY_RESERVE": 29721,
+    "DIRTY_FREEZE": 17195,
+    "VIEW_RELEASE": 13113
+  },
+  "maximum_tokens": 2289,
+  "maximum_depth": 7
+}

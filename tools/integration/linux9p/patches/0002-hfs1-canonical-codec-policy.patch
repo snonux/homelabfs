@@ -7,7 +7,7 @@ diff --git a/fs/9p/hfs_protocol.h b/fs/9p/hfs_protocol.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_protocol.h
-@@ -0,0 +1,96 @@
+@@ -0,0 +1,122 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_PROTOCOL_H
 +#define FS_9P_HFS_PROTOCOL_H
@@ -18,6 +18,7 @@ new file mode 100644
 +#endif
 +
 +#define HFS_BODY_MAX 1048576U
++#define HFS_VIEW_BODY_MAX 131072U
 +#define HFS_CHUNK_MAX 32768U
 +#define HFS_HEADER_SIZE 88U
 +#define HFS_GROUPS_MAX 1024U
@@ -25,6 +26,7 @@ new file mode 100644
 +#define HFS_IO_MAX 65536U
 +#define HFS_CELL_MAX 2147483647U
 +#define HFS_FEATURES 255U
++#define HFS_VIEW_FEATURES 2047U
 +
 +enum hfs_response_channel {
 +	HFS_CHANNEL_RESULT = 2,
@@ -39,9 +41,13 @@ new file mode 100644
 +struct hfs_response_profile {
 +	enum hfs_response_channel channel;
 +	enum hfs_response_kind kind;
++	u32 max_body;
 +};
 +
 +/* Select from the immutable command operation, never the returned frame. */
++bool hfs_view_command(const char *operation);
++bool hfs_view_command_control(const char *operation);
++bool hfs_view_command_control_family(const char *operation);
 +struct hfs_response_profile hfs_response_profile(const char *operation);
 +
 +/*
@@ -63,8 +69,16 @@ new file mode 100644
 +};
 +
 +struct hfs_json {
-+	/* Borrowed caller association; parse initializes NULL, free ignores. */
++	/* Optional caller association; parser initializes both NULL. */
 +	void *owner;
++	void (*owner_put)(void *owner);
++	/* Set only after transport frame + canonical envelope scope validation. */
++	bool transported;
++	u16 channel;
++	u16 frame_kind;
++	u16 frame_minor;
++	uuid_t native_session;
++	u64 native_cell;
 +	char *data;
 +	u32 len;
 +	struct hfs_token *tokens;
@@ -79,6 +93,9 @@ new file mode 100644
 +};
 +
 +int hfs_json_parse(const void *data, u32 len, struct hfs_json **out);
++/* Borrowed immutable body + caller-owned token arena; never hfs_json_free(). */
++int hfs_json_parse_into(const void *data, u32 len, struct hfs_json *json,
++			struct hfs_token *tokens, u32 capacity);
 +void hfs_json_free(struct hfs_json *json);
 +int hfs_json_field(const struct hfs_json *json, int object, const char *name);
 +/* Comma-separated sorted exact key list; no optional/missing fields. */
@@ -97,6 +114,15 @@ new file mode 100644
 +void hfs_buf_hex(struct hfs_buf *buf, const void *bytes, u32 len);
 +void hfs_buf_token(struct hfs_buf *buf, const struct hfs_json *json, int token);
 +void hfs_hash(const void *bytes, u32 len, u8 digest[32]);
++const char *hfs_protocol_text(u16 minor);
++int hfs_protocol_match(const struct hfs_json *json, int token, u16 minor);
++int hfs_frame_encode_version(u16 minor, u16 kind, const uuid_t *session,
++			     u64 cell, const void *body, u32 len, u32 chunk,
++			     void *out, u32 *out_len);
++int hfs_frame_decode_version(u16 minor, const void *frame, u32 len, u16 kind,
++			     const uuid_t *session, u64 cell, u32 chunk,
++			     u32 *total, u8 hash[32], const void **body,
++			     u32 *body_len);
 +int hfs_frame_encode(u16 kind, const uuid_t *session, u64 cell,
 +		     const void *body, u32 len, u32 chunk, void *out,
 +		     u32 *out_len);
@@ -108,7 +134,7 @@ diff --git a/fs/9p/hfs_protocol.c b/fs/9p/hfs_protocol.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_protocol.c
-@@ -0,0 +1,601 @@
+@@ -0,0 +1,694 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Bounded canonical retained-9p wire codec. Schema validation is the caller's. */
 +#include "hfs_protocol.h"
@@ -291,6 +317,28 @@ new file mode 100644
 +	return index;
 +}
 +
++int hfs_json_parse_into(const void *data, u32 len, struct hfs_json *json,
++			struct hfs_token *tokens, u32 capacity)
++{
++	struct hfs_parser parser;
++	int err;
++
++	if (!data || !len || len > HFS_BODY_MAX || !json || !tokens ||
++	    !capacity || capacity > HFS_JSON_TOKENS)
++		return -EINVAL;
++	memset(json, 0, sizeof(*json));
++	json->data = (char *)data;
++	json->len = len;
++	json->tokens = tokens;
++	parser.json = json;
++	parser.capacity = capacity;
++	parser.pos = 0;
++	err = hfs_parse_value(&parser, HFS_NO_PARENT, 0);
++	if (err < 0)
++		return err;
++	return parser.pos == len ? 0 : -EINVAL;
++}
++
 +int hfs_json_parse(const void *data, u32 len, struct hfs_json **out)
 +{
 +	struct hfs_json *j;
@@ -346,6 +394,8 @@ new file mode 100644
 +{
 +	if (!json)
 +		return;
++	if (json->owner_put)
++		json->owner_put(json->owner);
 +	kvfree(json->tokens);
 +	kvfree(json->data);
 +	kfree(json);
@@ -632,10 +682,12 @@ new file mode 100644
 +		return (struct hfs_response_profile) {
 +			.channel = HFS_CHANNEL_RECALL,
 +			.kind = HFS_FRAME_RECALL,
++			.max_body = HFS_BODY_MAX,
 +		};
 +	return (struct hfs_response_profile) {
 +		.channel = HFS_CHANNEL_RESULT,
 +		.kind = HFS_FRAME_RESULT,
++		.max_body = hfs_view_command(operation) ? HFS_VIEW_BODY_MAX : HFS_BODY_MAX,
 +	};
 +}
 +
@@ -646,14 +698,14 @@ new file mode 100644
 +	return session && memcmp(session->b, zero, sizeof(zero));
 +}
 +
-+int hfs_frame_encode(u16 kind, const uuid_t *session, u64 cell,
++int hfs_frame_encode_version(u16 minor, u16 kind, const uuid_t *session, u64 cell,
 +		     const void *body, u32 len, u32 chunk, void *out,
 +		     u32 *out_len)
 +{
 +	u8 *frame = out;
 +	u32 offset, size;
 +
-+	if (!out || !out_len || !body || !len || len > HFS_BODY_MAX ||
++	if (minor > 1 || !out || !out_len || !body || !len || len > HFS_BODY_MAX ||
 +	    kind < 1 || kind > 3 || !hfs_session_nonzero(session) ||
 +	    !cell || cell > HFS_CELL_MAX || chunk > (len - 1) / HFS_CHUNK_MAX)
 +		return -EINVAL;
@@ -664,6 +716,7 @@ new file mode 100644
 +	memset(frame, 0, HFS_HEADER_SIZE);
 +	memcpy(frame, "HFS9BR1", 7);
 +	put_unaligned_le16(1, frame + 8);
++	put_unaligned_le16(minor, frame + 10);
 +	put_unaligned_le16(kind, frame + 12);
 +	put_unaligned_le32(len, frame + 16);
 +	put_unaligned_le32(offset, frame + 20);
@@ -676,19 +729,19 @@ new file mode 100644
 +	return 0;
 +}
 +
-+int hfs_frame_decode(const void *input, u32 len, u16 kind,
++int hfs_frame_decode_version(u16 minor, const void *input, u32 len, u16 kind,
 +		     const uuid_t *session, u64 cell, u32 chunk,
 +		     u32 *total, u8 hash[32], const void **body, u32 *body_len)
 +{
 +	const u8 *frame = input;
 +	u32 size, length, offset;
 +
-+	if (!input || !total || !hash || !body || !body_len ||
++	if (minor > 1 || !input || !total || !hash || !body || !body_len ||
 +	    len < HFS_HEADER_SIZE || kind < 1 || kind > 3 ||
 +	    !hfs_session_nonzero(session) || !cell || cell > HFS_CELL_MAX ||
 +	    memcmp(frame, "HFS9BR1\0", 8) ||
 +	    get_unaligned_le16(frame + 8) != 1 ||
-+	    get_unaligned_le16(frame + 10) ||
++	    get_unaligned_le16(frame + 10) != minor ||
 +	    get_unaligned_le16(frame + 12) != kind ||
 +	    get_unaligned_le16(frame + 14) ||
 +	    get_unaligned_le32(frame + 28) ||
@@ -710,11 +763,77 @@ new file mode 100644
 +	*body_len = size;
 +	return 0;
 +}
++
++int hfs_frame_encode(u16 kind, const uuid_t *session, u64 cell,
++		     const void *body, u32 len, u32 chunk, void *out,
++		     u32 *out_len)
++{
++	return hfs_frame_encode_version(0, kind, session, cell, body, len, chunk,
++					out, out_len);
++}
++
++int hfs_frame_decode(const void *input, u32 len, u16 kind,
++		     const uuid_t *session, u64 cell, u32 chunk,
++		     u32 *total, u8 hash[32], const void **body, u32 *body_len)
++{
++	return hfs_frame_decode_version(0, input, len, kind, session, cell, chunk,
++					total, hash, body, body_len);
++}
++
++const char *hfs_protocol_text(u16 minor)
++{
++	static const char legacy[] = "{\"body_schema\":1,\"bridge_major\":1,"
++		"\"bridge_minor\":0,\"features\":255,\"msize\":65536,"
++		"\"normal_major\":3,\"normal_minor\":0}";
++	static const char views[] = "{\"body_schema\":2,\"bridge_major\":1,"
++		"\"bridge_minor\":1,\"features\":2047,\"msize\":65536,"
++		"\"normal_major\":3,\"normal_minor\":0}";
++
++	return minor == 0 ? legacy : minor == 1 ? views : NULL;
++}
++
++int hfs_protocol_match(const struct hfs_json *json, int token, u16 minor)
++{
++	const char *expected = hfs_protocol_text(minor);
++
++	if (!expected || token < 0 || token >= json->count ||
++	    json->tokens[token].end - json->tokens[token].start != strlen(expected) ||
++	    memcmp(json->data + json->tokens[token].start, expected, strlen(expected)))
++		return -EPROTO;
++	return 0;
++}
++
++bool hfs_view_command(const char *operation)
++{
++	static const char * const names[] = {
++		"VIEW_ACQUIRE", "VIEW_RELEASE", "VIEW_RENEW", "VIEW_QUERY",
++		"VIEW_CANCEL", "VIEW_RETIRE", "DIRTY_RESERVE", "DIRTY_FREEZE",
++	};
++	u32 i;
++
++	for (i = 0; i < ARRAY_SIZE(names); i++)
++		if (!strcmp(operation, names[i]))
++			return true;
++	return false;
++}
++
++bool hfs_view_command_control(const char *operation)
++{
++	return hfs_view_command(operation) &&
++	       strcmp(operation, "VIEW_ACQUIRE") &&
++	       strcmp(operation, "DIRTY_RESERVE");
++}
++
++bool hfs_view_command_control_family(const char *operation)
++{
++	return !strcmp(operation, "DIRTY_FREEZE") ||
++	       !strcmp(operation, "VIEW_RELEASE");
++}
 diff --git a/fs/9p/hfs_policy.h b/fs/9p/hfs_policy.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_policy.h
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,53 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_POLICY_H
 +#define FS_9P_HFS_POLICY_H
@@ -765,6 +884,7 @@ new file mode 100644
 +
 +/* Only definitive capacity refusal permits the identical SEND to be retried. */
 +int hfs_send_reply(const void *packet, u32 len, bool expired);
++
 +
 +#endif
 diff --git a/fs/9p/hfs_policy.c b/fs/9p/hfs_policy.c

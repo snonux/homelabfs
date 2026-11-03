@@ -1,0 +1,16 @@
+{
+  "config_sha256": "f37319e4ba1d6d6d9c2fc6a81e464eb4e9dc0db486e5f5686c9231d0eee0803e",
+  "targets": [
+    "fs/9p/",
+    "net/9p/",
+    "mm/memory.o",
+    "mm/gup.o",
+    "mm/mremap.o",
+    "mm/huge_memory.o"
+  ],
+  "mm_check_symbols": {
+    "TRANSPARENT_HUGEPAGE": "y",
+    "SHMEM": "y",
+    "READ_ONLY_THP_FOR_FS": "y"
+  }
+}

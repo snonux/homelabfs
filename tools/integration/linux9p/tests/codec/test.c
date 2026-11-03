@@ -12,9 +12,22 @@ size_t hfs_test_last_allocation_size;
 static void parse_case(const char *body, bool valid)
 {
 	struct hfs_json *j = NULL;
+	struct hfs_json borrowed = {};
+	struct hfs_token tokens[4096];
 	int err = hfs_json_parse(body, strlen(body), &j);
+	int fixed;
 
 	CHECK(valid ? !err && j : err < 0 && !j);
+	hfs_test_alloc_call = 0;
+	hfs_test_alloc_fail = 1;
+	fixed = hfs_json_parse_into(body, strlen(body), &borrowed, tokens, 4096);
+	CHECK(valid ? !fixed : fixed < 0);
+	CHECK(hfs_test_alloc_call == 0);
+	if (strlen(body))
+		CHECK(borrowed.data == body && borrowed.tokens == tokens);
+	hfs_test_alloc_fail = 0;
+	if (valid)
+		CHECK(j->count == borrowed.count);
 	hfs_json_free(j);
 }
 
@@ -305,11 +318,44 @@ static void test_cleanup_and_fuzz(void)
 	}
 }
 
+static void test_versioned_frames(void)
+{
+	uuid_t session = {{1}};
+	u8 frame[HFS_HEADER_SIZE + 16], hash[32];
+	const void *body;
+	u32 size, total, length;
+	u16 kind;
+
+	for (kind = 1; kind <= 3; kind++) {
+		size = sizeof(frame);
+		CHECK(!hfs_frame_encode_version(1, kind, &session, 9,
+					       "{\"v\":1}", 7, 0, frame, &size));
+		CHECK(frame[8] == 1 && frame[10] == 1 && frame[11] == 0);
+		CHECK(!hfs_frame_decode_version(1, frame, size, kind, &session,
+					       9, 0, &total, hash, &body, &length));
+		CHECK(total == 7 && length == 7 && !memcmp(body, "{\"v\":1}", 7));
+		CHECK(hfs_frame_decode(frame, size, kind, &session, 9, 0,
+				       &total, hash, &body, &length) < 0);
+		CHECK(hfs_frame_decode_version(0, frame, size, kind, &session,
+					       9, 0, &total, hash, &body, &length) < 0);
+		CHECK(hfs_frame_decode_version(2, frame, size, kind, &session,
+					       9, 0, &total, hash, &body, &length) < 0);
+		size = sizeof(frame);
+		CHECK(!hfs_frame_encode(kind, &session, 9, "{\"v\":1}", 7,
+					0, frame, &size));
+		CHECK(hfs_frame_decode_version(1, frame, size, kind, &session,
+					       9, 0, &total, hash, &body, &length) < 0);
+		CHECK(hfs_frame_encode_version(2, kind, &session, 9,
+					       "{\"v\":1}", 7, 0, frame, &size) < 0);
+	}
+}
+
 int main(void)
 {
 	test_json();
 	test_bounds();
 	test_frames();
+	test_versioned_frames();
 	test_response_profiles();
 	test_cleanup_and_fuzz();
 	puts("PASS: production codec canonical JSON, writer, 1024 groups, bounds, exact golden frames, malformed frames, 32-chunk 1MiB body");

@@ -1,0 +1,21 @@
+package guestbridge
+
+import (
+ "bytes"
+ "os"
+ "testing"
+)
+
+// This tests the actual closed host codec, without a provider or authority claim.
+func TestVZ3ActualCFreezeCodec(t *testing.T) {
+ raw, err := os.ReadFile(os.Getenv("HFS_C_FREEZE_COMMAND"))
+ if err != nil { t.Fatal(err) }
+ raw = bytes.TrimSpace(raw)
+ command, err := DecodeCommandVersion(raw, 1)
+ if err != nil { t.Fatal(err) }
+ if command.Op != "DIRTY_FREEZE" { t.Fatal(command.Op) }
+ reply, err := os.ReadFile(os.Getenv("HFS_C_FREEZE_REPLY"))
+ if err != nil { t.Fatal(err) }
+ if err = validateControlResponse(command, bytes.TrimSpace(reply)); err != nil { t.Fatal(err) }
+ if _, err = DecodeCommandVersion(raw, 0); err == nil { t.Fatal("minor0 accepted freeze") }
+}

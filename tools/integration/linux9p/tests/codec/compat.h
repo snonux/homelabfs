@@ -58,3 +58,7 @@ static inline void put_unaligned_le16(u16 v, void *ptr) { u8 *p=ptr; p[0]=v; p[1
 static inline void put_unaligned_le32(u32 v, void *ptr) { u8 *p=ptr; p[0]=v; p[1]=v>>8; p[2]=v>>16; p[3]=v>>24; }
 static inline void put_unaligned_le64(u64 v, void *ptr) { u8 *p=ptr; put_unaligned_le32(v,p); put_unaligned_le32(v>>32,p+4); }
 #endif
+
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
+#endif

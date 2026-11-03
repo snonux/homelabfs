@@ -658,7 +658,22 @@ func (r *rig) release(i int, lease *guestbridge.ViewLease) viewReply {
 	ticket := r.controlTicket(i)
 	payload := map[string]any{"request": ticket, "lease": lease}
 	r.physical("VIEW_RELEASE", payload)
-	return r.view(i, "VIEW_RELEASE", payload)
+	reply := r.view(i, "VIEW_RELEASE", payload)
+	if reply.Status == "PENDING" {
+		r.controller.mu.Lock()
+		clean := true
+		for _, reservation := range r.controller.state.Reservations {
+			if reservation.Status != "CLOSED" {
+				clean = false
+			}
+		}
+		r.controller.mu.Unlock()
+		if clean {
+			r.completeCleanRecall()
+			reply = r.view(i, "VIEW_QUERY", map[string]any{"request": ticket})
+		}
+	}
+	return reply
 }
 func (r *rig) retire(i int, through uint64, hashes []string) json.RawMessage {
 	r.t.Helper()
@@ -719,7 +734,7 @@ func TestDurableRenewReleaseRetirementCompactsOnlyClosedSources(t *testing.T) {
 		t.Fatal("old number revived")
 	}
 	_, next := r.acquire(0, page(description, 0), "READ")
-	if next.Lease.ID == first.Lease.ID || next.Lease.Revision <= renewed.Lease.Revision {
+	if next.Lease.ID == first.Lease.ID || next.Lease.Fence <= renewed.Lease.Fence {
 		t.Fatal("retirement reused old lease lifetime identity")
 	}
 	closed := r.release(0, next.Lease)

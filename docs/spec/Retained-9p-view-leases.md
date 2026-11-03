@@ -54,7 +54,8 @@ process, credential revision, namespace/map and all groups, plus anchor/nonce/
 number. It is neither secret authority nor an ordinary Claim. Every QUERY,
 CANCEL, RELEASE, RENEW and retirement attests and authorizes that original
 principal; guessing another process's anchor/nonce cannot disclose or mutate
-its state. Changing credentials requires a new grant/ticket; renewal never
+its state. Changing credentials requires a new full-Credentials grant/ticket for a new
+authorization; renewal never
 replaces original page provenance. Every ticket number is permanently allocated,
 monotone and nonreused within its key family. The provider binds the original
 operation and all canonical argument bytes before effects. Exact retries return
@@ -151,6 +152,28 @@ verified dirty obligation. It preowns freeze request/reply, frozen bytes,
 manifest entry, final immutable claim/result/source and DRAIN_WRITE transport
 and execution resources **before** writable PTE. This schema issues no such
 resources without that provider.
+
+Legally inherited DESCRIPTION/mapping authority remains valid until its ordinary
+revocation or generation/session closure: dup, fork, descriptor transfer,
+CLONE_VM and later credential changes do not retroactively replace an existing
+protected grant. Delayed mapped bytes drain under the exact original authorized
+Description, Credentials, Reservation and ClaimNumber. They never acquire a
+writeback worker's credential or an unrelated description's rights. New path
+authorization and new lease RPCs use their newly captured full Credentials;
+current path denial cannot be bypassed with an old PATH grant. Physical recall
+still revokes every alias of the original mapping, including inherited and
+open-unlinked mappings. This follows Retained-9p-protocol.md's DESCRIPTION
+contract and native Linux mapping authorization through the inherited file's
+f_mode; it does not require identifying the CPU thread performing each store.
+
+A preowned VIEW_RELEASE of an ACTIVE lease may initiate the existing all-domain
+recall and return protected PENDING even for a clean READ lease or an active
+renewed sibling of that lineage. Clean pressure and read-before-write upgrades
+must not need a fresh acquisition ticket to start physical progress. RELEASED
+requires the actual STOPPED/install/DRAINED/final-install/reopen/source closure
+and mandatory exact physical verification; a LIVE readable PTE is not a closed
+lease. Exact initial PENDING replay remains immutable; QUERY reports the current
+protected terminal outcome.
 
 ## Operation union and protected result union
 

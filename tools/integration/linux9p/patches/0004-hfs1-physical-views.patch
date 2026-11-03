@@ -1,0 +1,4936 @@
+Subject: mm/9p: retain physical cache installation tokens and exact view leases
+
+Base-commit: 79807e970724c1f90cee1316361d61b80db4eef6
+Owned integration patch; no installation or runtime admission.
+
+diff --git a/include/linux/mm.h b/include/linux/mm.h
+--- a/include/linux/mm.h
++++ b/include/linux/mm.h
+@@ -549,6 +549,17 @@
+  * to the functions called when a no-page or a wp-page exception occurs.
+  */
+ struct vm_operations_struct {
++	/*
++	 * Retained cache domains: bracket final PTE installation/copy/move.
++	 * begin must not sleep when page != NULL (caller may hold locks).
++	 * A successful begin owns a cookie and callback lifetime until end.
++	 * No RPC or wait for a visibility barrier may occur inside a bracket.
++	 * Opted-in domains are order-0 only; hugepage collapse is excluded.
++	 */
++	int (*cache_begin)(struct vm_area_struct *vma, struct page *page,
++			   bool write, void **cookie);
++	void (*cache_end)(void *cookie);
++	bool no_gup;
+ 	void (*open)(struct vm_area_struct * area);
+ 	/**
+ 	 * @close: Called when the VMA is being removed from the MM.
+@@ -622,6 +633,38 @@
+ 	struct page *(*find_special_page)(struct vm_area_struct *vma,
+ 					  unsigned long addr);
+ };
++
++/* Snapshotted callbacks remain valid even if the VMA is subsequently retired. */
++struct vm_cache_cookie {
++	void *data;
++	void (*end)(void *data);
++};
++
++static inline int vm_cache_begin(struct vm_area_struct *vma, struct page *page,
++				 bool write, struct vm_cache_cookie *cookie)
++{
++	const struct vm_operations_struct *ops = vma->vm_ops;
++	void (*end)(void *data);
++	int err;
++
++	cookie->end = NULL;
++	cookie->data = NULL;
++	if (!ops || !ops->cache_begin)
++		return 0;
++	if (WARN_ON_ONCE(!ops->cache_end))
++		return -EINVAL;
++	end = ops->cache_end; /* no VMA/ops dereference after a parked callback */
++	err = ops->cache_begin(vma, page, write, &cookie->data);
++	if (!err)
++		cookie->end = end;
++	return err;
++}
++
++static inline void vm_cache_end(struct vm_cache_cookie *cookie)
++{
++	if (cookie->end)
++		cookie->end(cookie->data);
++}
+ 
+ static inline void vma_init(struct vm_area_struct *vma, struct mm_struct *mm)
+ {
+diff --git a/include/linux/page-flags.h b/include/linux/page-flags.h
+--- a/include/linux/page-flags.h
++++ b/include/linux/page-flags.h
+@@ -138,6 +138,9 @@
+ #ifdef CONFIG_KASAN_HW_TAGS
+ 	PG_skip_kasan_poison,
+ #endif
++#ifdef CONFIG_9P_FS_HOMELABFS
++	PG_hfs_nogup,		/* retained cache: no exported kernel refs */
++#endif
+ 	__NR_PAGEFLAGS,
+ 
+ 	PG_readahead = PG_reclaim,
+@@ -555,6 +558,12 @@
+ PAGEFLAG_FALSE(SwapCache, swapcache)
+ #endif
+ 
++#ifdef CONFIG_9P_FS_HOMELABFS
++PAGEFLAG(Hfsnogup, hfs_nogup, PF_NO_TAIL)
++#else
++PAGEFLAG_FALSE(Hfsnogup, hfs_nogup)
++#endif
++
+ PAGEFLAG(Unevictable, unevictable, PF_HEAD)
+ 	__CLEARPAGEFLAG(Unevictable, unevictable, PF_HEAD)
+ 	TESTCLEARFLAG(Unevictable, unevictable, PF_HEAD)
+diff --git a/mm/memory.c b/mm/memory.c
+--- a/mm/memory.c
++++ b/mm/memory.c
+@@ -1274,8 +1274,8 @@
+ 	return false;
+ }
+ 
+-int
+-copy_page_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma)
++static int
++__copy_page_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma)
+ {
+ 	pgd_t *src_pgd, *dst_pgd;
+ 	unsigned long addr = src_vma->vm_start;
+@@ -1343,6 +1343,26 @@
+ 	if (ret && unlikely(src_vma->vm_flags & VM_PFNMAP))
+ 		untrack_pfn_copy(dst_vma, pfn);
+ 	return ret;
++}
++
++int copy_page_range(struct vm_area_struct *dst_vma,
++		    struct vm_area_struct *src_vma)
++{
++	struct vm_cache_cookie cookie;
++	int err;
++	unsigned int nofs = 0;
++
++	err = vm_cache_begin(src_vma, NULL, false, &cookie);
++	if (err)
++		return err;
++	/* Prevent reclaim from recursively entering filesystem recall/drains. */
++	if (cookie.end)
++		nofs = memalloc_nofs_save();
++	err = __copy_page_range(dst_vma, src_vma);
++	if (cookie.end)
++		memalloc_nofs_restore(nofs);
++	vm_cache_end(&cookie);
++	return err;
+ }
+ 
+ /* Whether we should zap all COWed (private) pages too */
+@@ -3135,6 +3155,7 @@
+ 	pte_t entry;
+ 	int page_copied = 0;
+ 	struct mmu_notifier_range range;
++	struct vm_cache_cookie cache_cookie;
+ 	int ret;
+ 
+ 	delayacct_wpcopy_start();
+@@ -3178,6 +3199,14 @@
+ 
+ 	__SetPageUptodate(new_page);
+ 
++	/* Allocation/copy can park; only the final PTE phase holds a token. */
++	if (vm_cache_begin(vma, old_page, false, &cache_cookie)) {
++		put_page(new_page);
++		if (old_page)
++			put_page(old_page);
++		delayacct_wpcopy_end();
++		return VM_FAULT_NOPAGE;
++	}
+ 	mmu_notifier_range_init(&range, MMU_NOTIFY_CLEAR, 0, vma, mm,
+ 				vmf->address & PAGE_MASK,
+ 				(vmf->address & PAGE_MASK) + PAGE_SIZE);
+@@ -3275,6 +3304,7 @@
+ 		put_page(old_page);
+ 	}
+ 
++	vm_cache_end(&cache_cookie);
+ 	delayacct_wpcopy_end();
+ 	return (page_copied && !unshare) ? VM_FAULT_WRITE : 0;
+ oom_free_new:
+@@ -3303,7 +3333,7 @@
+  * Return: %0 on success, %VM_FAULT_NOPAGE when PTE got changed before
+  * we acquired PTE lock.
+  */
+-vm_fault_t finish_mkwrite_fault(struct vm_fault *vmf)
++static vm_fault_t __finish_mkwrite_fault(struct vm_fault *vmf)
+ {
+ 	WARN_ON_ONCE(!(vmf->vma->vm_flags & VM_SHARED));
+ 	vmf->pte = pte_offset_map_lock(vmf->vma->vm_mm, vmf->pmd, vmf->address,
+@@ -3319,6 +3349,18 @@
+ 	}
+ 	wp_page_reuse(vmf);
+ 	return 0;
++}
++
++vm_fault_t finish_mkwrite_fault(struct vm_fault *vmf)
++{
++	struct vm_cache_cookie cookie;
++	vm_fault_t ret;
++
++	if (vm_cache_begin(vmf->vma, vmf->page, true, &cookie))
++		return VM_FAULT_NOPAGE;
++	ret = __finish_mkwrite_fault(vmf);
++	vm_cache_end(&cookie);
++	return ret;
+ }
+ 
+ /*
+@@ -4451,6 +4493,7 @@
+ {
+ 	struct vm_area_struct *vma = vmf->vma;
+ 	struct page *page;
++	struct vm_cache_cookie cookie;
+ 	vm_fault_t ret;
+ 
+ 	/* Did we COW the page? */
+@@ -4471,6 +4514,9 @@
+ 
+ 	if (pmd_none(*vmf->pmd)) {
+ 		if (PageTransCompound(page)) {
++			/* Retained cache domains admit order-0 pages only. */
++			if (vma->vm_ops && vma->vm_ops->cache_begin)
++				return VM_FAULT_SIGBUS;
+ 			ret = do_set_pmd(vmf, page);
+ 			if (ret != VM_FAULT_FALLBACK)
+ 				return ret;
+@@ -4489,6 +4535,11 @@
+ 	if (pmd_devmap_trans_unstable(vmf->pmd))
+ 		return VM_FAULT_NOPAGE;
+ 
++	/* All page-table allocation completed before physical admission. */
++	if (vm_cache_begin(vma, vmf->page,
++			   (vmf->flags & FAULT_FLAG_WRITE) &&
++			   (vma->vm_flags & VM_SHARED), &cookie))
++		return VM_FAULT_NOPAGE;
+ 	vmf->pte = pte_offset_map_lock(vma->vm_mm, vmf->pmd,
+ 				      vmf->address, &vmf->ptl);
+ 
+@@ -4506,9 +4557,9 @@
+ 	}
+ 
+ 	pte_unmap_unlock(vmf->pte, vmf->ptl);
++	vm_cache_end(&cookie);
+ 	return ret;
+ }
+-
+ static unsigned long fault_around_bytes __read_mostly =
+ 	rounddown_pow_of_two(65536);
+ 
+diff --git a/mm/gup.c b/mm/gup.c
+--- a/mm/gup.c
++++ b/mm/gup.c
+@@ -124,9 +124,16 @@
+  */
+ struct folio *try_grab_folio(struct page *page, int refs, unsigned int flags)
+ {
+-	if (flags & FOLL_GET)
+-		return try_get_folio(page, refs);
+-	else if (flags & FOLL_PIN) {
++	if (flags & FOLL_GET) {
++		struct folio *folio = try_get_folio(page, refs);
++
++		/* Test only owned page flags, never a lockless mapping pointer. */
++		if (folio && unlikely(PageHfsnogup(&folio->page))) {
++			folio_put_refs(folio, refs);
++			return NULL;
++		}
++		return folio;
++	} else if (flags & FOLL_PIN) {
+ 		struct folio *folio;
+ 
+ 		/*
+@@ -152,6 +159,10 @@
+ 		folio = try_get_folio(page, refs);
+ 		if (!folio)
+ 			return NULL;
++		if (unlikely(PageHfsnogup(&folio->page))) {
++			folio_put_refs(folio, refs);
++			return NULL;
++		}
+ 
+ 		/*
+ 		 * When pinning a large folio, use an exact count to track it.
+@@ -220,6 +231,8 @@
+ {
+ 	struct folio *folio = page_folio(page);
+ 
++	if (unlikely(PageHfsnogup(&folio->page)))
++		return false;
+ 	WARN_ON_ONCE((flags & (FOLL_GET | FOLL_PIN)) == (FOLL_GET | FOLL_PIN));
+ 	if (WARN_ON_ONCE(folio_ref_count(folio) <= 0))
+ 		return false;
+@@ -1066,6 +1079,10 @@
+ 	int write = (gup_flags & FOLL_WRITE);
+ 	int foreign = (gup_flags & FOLL_REMOTE);
+ 
++	/* Retained mappings cannot export untracked kernel observations/pins. */
++	if (vma->vm_ops && vma->vm_ops->no_gup)
++		return -EOPNOTSUPP;
++
+ 	if (vm_flags & (VM_IO | VM_PFNMAP))
+ 		return -EFAULT;
+ 
+diff --git a/mm/mremap.c b/mm/mremap.c
+--- a/mm/mremap.c
++++ b/mm/mremap.c
+@@ -9,6 +9,7 @@
+  */
+ 
+ #include <linux/mm.h>
++#include <linux/sched/mm.h>
+ #include <linux/mm_inline.h>
+ #include <linux/hugetlb.h>
+ #include <linux/shm.h>
+@@ -478,10 +479,10 @@
+ 	return moved;
+ }
+ 
+-unsigned long move_page_tables(struct vm_area_struct *vma,
+-		unsigned long old_addr, struct vm_area_struct *new_vma,
+-		unsigned long new_addr, unsigned long len,
+-		bool need_rmap_locks)
++static unsigned long __move_page_tables(struct vm_area_struct *vma,
++					unsigned long old_addr, struct vm_area_struct *new_vma,
++					unsigned long new_addr, unsigned long len,
++					bool need_rmap_locks)
+ {
+ 	unsigned long extent, old_end;
+ 	struct mmu_notifier_range range;
+@@ -568,6 +569,27 @@
+ 	return len + old_addr - old_end;	/* how much done */
+ }
+ 
++unsigned long move_page_tables(struct vm_area_struct *vma,
++			       unsigned long old_addr, struct vm_area_struct *new_vma,
++			       unsigned long new_addr, unsigned long len,
++			       bool need_rmap_locks)
++{
++	struct vm_cache_cookie cookie;
++	unsigned long moved;
++	unsigned int nofs = 0;
++
++	if (vm_cache_begin(vma, NULL, false, &cookie))
++		return 0;
++	if (cookie.end)
++		nofs = memalloc_nofs_save();
++	moved = __move_page_tables(vma, old_addr, new_vma, new_addr, len,
++				   need_rmap_locks);
++	if (cookie.end)
++		memalloc_nofs_restore(nofs);
++	vm_cache_end(&cookie);
++	return moved;
++}
++
+ static unsigned long move_vma(struct vm_area_struct *vma,
+ 		unsigned long old_addr, unsigned long old_len,
+ 		unsigned long new_len, unsigned long new_addr,
+@@ -577,6 +599,7 @@
+ 	long to_account = new_len - old_len;
+ 	struct mm_struct *mm = vma->vm_mm;
+ 	struct vm_area_struct *new_vma;
++	struct vm_cache_cookie cache_cookie;
+ 	unsigned long vm_flags = vma->vm_flags;
+ 	unsigned long new_pgoff;
+ 	unsigned long moved_len;
+@@ -585,6 +608,8 @@
+ 	int split = 0;
+ 	int err = 0;
+ 	bool need_rmap_locks;
++	unsigned int nofs = 0;
++	bool cache_entered;
+ 
+ 	/*
+ 	 * We'd prefer to avoid failure later on in do_munmap:
+@@ -631,12 +656,21 @@
+ 		return -ENOMEM;
+ 	}
+ 
+-	moved_len = move_page_tables(vma, old_addr, new_vma, new_addr, old_len,
+-				     need_rmap_locks);
+-	if (moved_len < old_len) {
+-		err = -ENOMEM;
+-	} else if (vma->vm_ops && vma->vm_ops->mremap) {
+-		err = vma->vm_ops->mremap(new_vma);
++	/* One bracket owns forward move AND rollback. Reacquiring a token
++	 * during rollback could fail after a partial move and lose COW data.
++	 */
++	err = vm_cache_begin(vma, NULL, false, &cache_cookie);
++	cache_entered = !err;
++	moved_len = 0;
++	if (cache_entered) {
++		if (cache_cookie.end)
++			nofs = memalloc_nofs_save();
++		moved_len = __move_page_tables(vma, old_addr, new_vma, new_addr,
++					       old_len, need_rmap_locks);
++		if (moved_len < old_len)
++			err = -ENOMEM;
++		else if (vma->vm_ops && vma->vm_ops->mremap)
++			err = vma->vm_ops->mremap(new_vma);
+ 	}
+ 
+ 	if (unlikely(err)) {
+@@ -645,14 +679,20 @@
+ 		 * which will succeed since page tables still there,
+ 		 * and then proceed to unmap new area instead of old.
+ 		 */
+-		move_page_tables(new_vma, new_addr, vma, old_addr, moved_len,
+-				 true);
++		__move_page_tables(new_vma, new_addr, vma, old_addr, moved_len,
++				   true);
+ 		vma = new_vma;
+ 		old_len = new_len;
+ 		old_addr = new_addr;
+ 		new_addr = err;
+ 	} else {
+ 		mremap_userfaultfd_prep(new_vma, uf);
++	}
++
++	if (cache_entered) {
++		if (cache_cookie.end)
++			memalloc_nofs_restore(nofs);
++		vm_cache_end(&cache_cookie);
+ 	}
+ 
+ 	if (is_vm_hugetlb_page(vma)) {
+diff --git a/mm/huge_memory.c b/mm/huge_memory.c
+--- a/mm/huge_memory.c
++++ b/mm/huge_memory.c
+@@ -78,6 +78,11 @@
+ 			bool smaps, bool in_pf, bool enforce_sysfs)
+ {
+ 	if (!vma->vm_mm)		/* vdso */
++		return false;
++	/* These domains reserve provenance/pins at order-0 final PTE hooks.
++	 * Neither khugepaged nor MADV_COLLAPSE may bypass those hooks.
++	 */
++	if (vma->vm_ops && vma->vm_ops->cache_begin)
+ 		return false;
+ 
+ 	/*
+diff --git a/fs/9p/hfs_view.h b/fs/9p/hfs_view.h
+new file mode 100644
+--- /dev/null
++++ b/fs/9p/hfs_view.h
+@@ -0,0 +1,207 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef FS_9P_HFS_VIEW_H
++#define FS_9P_HFS_VIEW_H
++
++#include <linux/kref.h>
++#include <linux/list.h>
++#include <linux/mutex.h>
++#include <linux/spinlock.h>
++#include <linux/uuid.h>
++#include <linux/wait.h>
++#include "hfs_protocol.h"
++
++struct hfs_session;
++struct hfs_inode;
++struct hfs_cap;
++struct hfs_cred;
++struct hfs_request;
++struct hfs_cache_page;
++struct hfs_view_family;
++struct hfs_lease;
++struct hfs_dirty;
++struct inode;
++struct page;
++struct file;
++struct vm_area_struct;
++
++/* Physical state, distinct from authority/journal/publication verification. */
++enum hfs_view_phase {
++	HFS_VIEW_UNBOUND, /* no target, observations, cache or PTE authority */
++	HFS_VIEW_LIVE,
++	HFS_VIEW_RECALLING,
++	HFS_VIEW_QUIESCENT,
++	HFS_VIEW_STOPPED,
++	HFS_VIEW_INSTALLED_DRAIN,
++	HFS_VIEW_DRAINED,
++	HFS_VIEW_FINAL,
++	HFS_VIEW_FENCED,
++};
++
++struct hfs_mmap_control;
++
++struct hfs_view {
++	struct hfs_mmap_control *control;
++	struct kref refs;
++	/* Phase, inventory, cache metadata and admitted-token count. */
++	spinlock_t lock;
++	/* Exclusive ownership of stop/install/reopen workspaces. */
++	struct mutex transitions;
++	wait_queue_head_t wait;
++	struct list_head mappings;
++	struct list_head cache;
++	struct list_head dirty;
++	struct list_head observations;
++	u32 nr_observations;
++	u32 nr_dirty;
++	u32 nr_dirty_packages;
++	u32 nr_grants;
++	struct hfs_session *session;
++	struct inode **stopping;
++	struct page **stopping_pages;
++	struct hfs_view_family **retiring;
++	struct hfs_buf retire_payload;
++	struct hfs_buf manifest;
++	u8 manifest_hash[32];
++	struct hfs_buf target;
++	u8 target_hash[32];
++	void *reservation;
++	uuid_t generation;
++	uuid_t recall;
++	u64 revision;
++	u64 sequence;
++	u32 active;
++	u32 nr_mappings;
++	u32 nr_cached;
++	bool quiescent;
++	enum hfs_view_phase phase;
++};
++
++/* A stamp is local physical-cache state; it is never a normal certificate. */
++struct hfs_view_stamp {
++	uuid_t generation;
++	u64 revision;
++};
++
++/* Every API taking view requires a get/put reference, including parked calls. */
++struct hfs_view *hfs_view_get(struct hfs_session *session);
++void hfs_view_put(struct hfs_view *view);
++#define HFS_CACHE_PAGES_MAX 128U
++#define HFS_TARGET_MAX 8192U
++#define HFS_CACHE_GRANTS_MAX 256U
++
++struct hfs_observation {
++	struct list_head list;
++	struct hfs_view *view;
++	struct hfs_lease *lease;
++	struct hfs_view_stamp stamp;
++	struct hfs_buf target;
++	void *native_cookie;
++	void *cleanup;
++};
++
++struct hfs_cache_grant {
++	struct list_head list;
++	struct hfs_lease *lease;
++	void *reservation;
++};
++
++struct hfs_cache_page {
++	struct kref refs;
++	struct list_head list;
++	struct hfs_view *view;
++	struct hfs_view_stamp stamp;
++	struct hfs_buf target;
++	struct hfs_lease *lease;
++	struct list_head readers;
++	struct page *page;
++	void *reservation;
++	struct hfs_dirty *dirty;
++	bool revoking;
++	bool dirty_slot;
++	void *cleanup;
++	u8 fill[4096];
++	u32 fill_length;
++	/* Resource disposal may queue work; never RPC or wait under page lock. */
++	void (*dispose)(struct hfs_cache_page *entry);
++};
++
++struct hfs_dirty {
++	struct list_head list;
++	struct hfs_cache_page *entry;
++	struct hfs_json *reservation;
++	struct hfs_json *frozen_entry;
++	struct hfs_view_ticket *reserve_ticket;
++	struct hfs_view_ticket *freeze_ticket;
++	struct hfs_request *request;
++	struct hfs_buf freeze_payload;
++	struct hfs_buf drain_args;
++	void *credit;
++	u8 id[32];
++	u8 entry_id[32];
++	uuid_t home;
++	uuid_t allocation;
++	u8 data[4096];
++	u64 offset;
++	u32 length;
++	uuid_t recall;
++	bool captured;
++	bool adopted;
++	bool frozen;
++	bool resolved;
++};
++
++int hfs_view_dirty_slot(struct hfs_cache_page *entry);
++void hfs_view_dirty_unslot(struct hfs_cache_page *entry);
++int hfs_view_adopt_dirty(struct hfs_view *view, struct hfs_cache_page *entry,
++			 struct hfs_dirty *dirty);
++struct hfs_cache_page *hfs_view_page_find(struct hfs_view *view, struct page *page);
++
++int hfs_view_page_lease(struct hfs_cache_page *entry, struct hfs_lease *lease);
++int hfs_view_page_grant(struct hfs_cache_page *entry, struct hfs_cache_grant *grant,
++			 struct hfs_cache_page *from);
++int hfs_view_page_prepare(struct hfs_view *view,
++			  const struct hfs_view_stamp *stamp,
++			  struct hfs_cache_page **out);
++int hfs_view_page_attach(struct hfs_cache_page *entry, struct page *page);
++void hfs_view_page_get(struct hfs_cache_page *entry);
++void hfs_view_page_put(struct hfs_cache_page *entry);
++void hfs_view_page_discard(struct hfs_cache_page *entry);
++int hfs_view_page_enter(struct vm_area_struct *vma, struct page *page,
++			bool write, void **cookie);
++extern const struct address_space_operations hfs_cache_aops;
++
++int hfs_view_new_unbound(struct hfs_session *session);
++int hfs_view_new(struct hfs_session *session, const uuid_t *generation);
++int hfs_view_free(struct hfs_session *session);
++int hfs_view_register_inode(struct inode *inode);
++void hfs_view_unregister_inode(struct inode *inode);
++int hfs_view_bind_initial(struct hfs_view *view, const struct hfs_lease *lease);
++int hfs_view_capture(struct hfs_view *view, struct hfs_view_stamp *stamp,
++		     struct hfs_buf *target);
++int hfs_view_snapshot(struct hfs_view *view, struct hfs_view_stamp *stamp);
++int hfs_view_enter(struct hfs_view *view, const struct hfs_view_stamp *stamp,
++		   bool wait, void **cookie);
++void hfs_view_leave(void *cookie);
++int hfs_view_stop(struct hfs_view *view, const uuid_t *generation,
++		  const uuid_t *recall, u64 sequence);
++/* Caller has installed/verified the final target and resolved every old
++ * cache/dirty obligation before transitioning to FINAL. This closes the local
++ * epoch even when the visibility UUID is unchanged by the host mutation.
++ */
++void hfs_mmap_progress(struct hfs_session *session);
++int hfs_mmap_begin(struct inode *inode, bool mutation, const struct hfs_cred *cred,
++		    void *native_cookie, void **cookie);
++void hfs_mmap_end(void *cookie);
++int hfs_mmap_bootstrap(struct hfs_session *session, const struct hfs_cred *cred);
++int hfs_mmap_file(struct file *file, struct vm_area_struct *vma);
++int hfs_mmap_sync(struct file *file);
++int hfs_mmap_start(struct hfs_view *view);
++int hfs_mmap_prepare_retire(struct hfs_view *view);
++int hfs_mmap_stop(struct hfs_view *view);
++int hfs_mmap_install(struct hfs_view *view, const struct hfs_json *event,
++		     int target, const uuid_t *recall, u64 sequence, bool final);
++int hfs_view_seal(struct hfs_view *view);
++int hfs_view_reopen(struct hfs_view *view, const uuid_t *recall, u64 sequence);
++void hfs_view_fence(struct hfs_view *view);
++
++#endif
+diff --git a/fs/9p/hfs_view.c b/fs/9p/hfs_view.c
+new file mode 100644
+--- /dev/null
++++ b/fs/9p/hfs_view.c
+@@ -0,0 +1,1084 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Physical retained-cache admission and all-alias PTE/TLB/MMU quiescence. */
++#include <linux/mm.h>
++#include <linux/pagemap.h>
++#include <linux/slab.h>
++#include <linux/vmalloc.h>
++#include <linux/migrate.h>
++#include <linux/writeback.h>
++#include "hfs.h"
++#include "hfs_view.h"
++
++static void hfs_view_release(struct kref *refs)
++{
++	struct hfs_view *view = container_of(refs, struct hfs_view, refs);
++
++	WARN_ON_ONCE(view->control || view->active || view->nr_mappings ||
++		     view->nr_cached || view->nr_dirty || view->nr_dirty_packages ||
++		     view->nr_grants || view->nr_observations);
++	hfs_buf_free(&view->target);
++	hfs_buf_free(&view->manifest);
++	hfs_buf_free(&view->retire_payload);
++	kvfree(view->retiring);
++	kvfree(view->stopping_pages);
++	kvfree(view->stopping);
++	view->session->provider->unreserve(view->session, view->reservation);
++	kfree(view);
++}
++
++struct hfs_view *hfs_view_get(struct hfs_session *session)
++{
++	struct hfs_view *view;
++
++	/* The caller owns a VFS file/superblock or controller session lifetime. */
++	mutex_lock(&session->lock);
++	view = session->view;
++	if (view && try_module_get(THIS_MODULE))
++		kref_get(&view->refs);
++	else
++		view = NULL;
++	mutex_unlock(&session->lock);
++	return view;
++}
++
++void hfs_view_put(struct hfs_view *view)
++{
++	if (!view)
++		return;
++	kref_put(&view->refs, hfs_view_release);
++	module_put(THIS_MODULE);
++}
++
++static int hfs_view_create(struct hfs_session *session, const uuid_t *generation, bool unbound)
++{
++	struct hfs_view *view;
++	void *reservation;
++	int err;
++
++	if (!generation || (!unbound && uuid_is_null(generation)) || session->view)
++		return -EINVAL;
++	err = session->provider->reserve(session, sizeof(*view) +
++			HFS_IDENTITIES_MAX * sizeof(struct inode *) +
++			HFS_CACHE_PAGES_MAX * sizeof(struct page *) +
++			HFS_VIEW_FAMILIES_MAX * sizeof(struct hfs_view_family *) +
++			HFS_VIEW_BODY_MAX + HFS_BODY_MAX + HFS_TARGET_MAX, true,
++			&reservation);
++	if (err)
++		return err;
++	view = kzalloc(sizeof(*view), GFP_KERNEL);
++	if (!view) {
++		session->provider->unreserve(session, reservation);
++		return -ENOMEM;
++	}
++	view->stopping = kvcalloc(HFS_IDENTITIES_MAX, sizeof(struct inode *),
++				  GFP_KERNEL);
++	if (!view->stopping) {
++		session->provider->unreserve(session, reservation);
++		kfree(view);
++		return -ENOMEM;
++	}
++	view->stopping_pages = kvcalloc(HFS_CACHE_PAGES_MAX,
++					sizeof(struct page *), GFP_KERNEL);
++	if (!view->stopping_pages) {
++		kvfree(view->stopping);
++		session->provider->unreserve(session, reservation);
++		kfree(view);
++		return -ENOMEM;
++	}
++	view->retiring = kvcalloc(HFS_VIEW_FAMILIES_MAX,
++				 sizeof(struct hfs_view_family *), GFP_KERNEL);
++	if (!view->retiring || hfs_buf_init(&view->retire_payload, HFS_VIEW_BODY_MAX) ||
++	    hfs_buf_init(&view->target, HFS_TARGET_MAX) ||
++	    hfs_buf_init(&view->manifest, HFS_BODY_MAX)) {
++		hfs_buf_free(&view->retire_payload);
++		hfs_buf_free(&view->target);
++		hfs_buf_free(&view->manifest);
++		kvfree(view->retiring);
++		kvfree(view->stopping_pages);
++		kvfree(view->stopping);
++		session->provider->unreserve(session, reservation);
++		kfree(view);
++		return -ENOMEM;
++	}
++	kref_init(&view->refs);
++	spin_lock_init(&view->lock);
++	mutex_init(&view->transitions);
++	init_waitqueue_head(&view->wait);
++	INIT_LIST_HEAD(&view->mappings);
++	INIT_LIST_HEAD(&view->cache);
++	INIT_LIST_HEAD(&view->dirty);
++	INIT_LIST_HEAD(&view->observations);
++	view->session = session;
++	view->reservation = reservation;
++	view->generation = *generation;
++	view->revision = 1;
++	view->phase = unbound ? HFS_VIEW_UNBOUND : HFS_VIEW_LIVE;
++	session->view = view;
++	return 0;
++}
++
++int hfs_view_new(struct hfs_session *session, const uuid_t *generation)
++{
++	return hfs_view_create(session, generation, false);
++}
++
++int hfs_view_new_unbound(struct hfs_session *session)
++{
++	uuid_t none = {};
++
++	return hfs_view_create(session, &none, true);
++}
++
++int hfs_view_free(struct hfs_session *session)
++{
++	struct hfs_view *view;
++	int err = 0;
++
++	mutex_lock(&session->lock);
++	view = session->view;
++	if (!view)
++		goto out;
++	/* get() and owner removal are serialized; parked callers retain refs. */
++	if (view->control || view->phase != HFS_VIEW_FENCED || view->active ||
++	    view->nr_mappings || view->nr_cached || view->nr_dirty || view->nr_observations ||
++	    refcount_read(&view->refs.refcount) != 1) {
++		err = -EBUSY;
++		goto out;
++	}
++	session->view = NULL;
++	mutex_unlock(&session->lock);
++	kref_put(&view->refs, hfs_view_release);
++	return 0;
++out:
++	mutex_unlock(&session->lock);
++	return err;
++}
++
++int hfs_view_register_inode(struct inode *inode)
++{
++	struct hfs_view *view = hfs_view_get(HFS_S(inode));
++	unsigned long flags;
++	int err = 0;
++
++	if (!view)
++		return -ESTALE;
++	spin_lock_irqsave(&view->lock, flags);
++	if (!list_empty(&HFS_I(inode)->view_list)) {
++		err = 0;
++	} else if (view->phase != HFS_VIEW_LIVE) {
++		err = -EAGAIN;
++	} else if (view->nr_mappings == HFS_IDENTITIES_MAX) {
++		err = -ENOSPC;
++	} else {
++		list_add_tail(&HFS_I(inode)->view_list, &view->mappings);
++		view->nr_mappings++;
++	}
++	spin_unlock_irqrestore(&view->lock, flags);
++	hfs_view_put(view);
++	return err;
++}
++
++void hfs_view_unregister_inode(struct inode *inode)
++{
++	struct hfs_view *view = hfs_view_get(HFS_S(inode));
++	unsigned long flags;
++
++	if (!view)
++		return;
++	spin_lock_irqsave(&view->lock, flags);
++	if (!list_empty(&HFS_I(inode)->view_list)) {
++		list_del_init(&HFS_I(inode)->view_list);
++		view->nr_mappings--;
++	}
++	spin_unlock_irqrestore(&view->lock, flags);
++	hfs_view_put(view);
++}
++
++int hfs_view_bind_initial(struct hfs_view *view, const struct hfs_lease *lease)
++{
++	unsigned long flags;
++	int token = hfs_json_field(lease->json, 0, "target");
++	u32 len;
++	int err = 0;
++
++	if (token < 0)
++		return -EPROTO;
++	len = lease->json->tokens[token].end - lease->json->tokens[token].start;
++	if (len > HFS_TARGET_MAX)
++		return -EPROTO;
++	mutex_lock(&view->transitions);
++	spin_lock_irqsave(&view->lock, flags);
++	if (view->phase == HFS_VIEW_LIVE && view->target.len) {
++		/* An initial target:null acquire may first require a verified empty
++		 * all-domain recall. It must name the actual already installed cut.
++		 */
++		err = uuid_equal(&view->generation, &lease->visibility) &&
++			!memcmp(view->target_hash, lease->target_hash, 32) ? 0 : -ESTALE;
++	} else if ((view->phase != HFS_VIEW_UNBOUND && view->phase != HFS_VIEW_LIVE) ||
++		   view->target.len || view->active || view->nr_mappings || view->nr_cached ||
++		   (view->phase == HFS_VIEW_LIVE &&
++		    !uuid_equal(&view->generation, &lease->visibility))) {
++		err = -ESTALE;
++	} else {
++		hfs_buf_add(&view->target, lease->json->data +
++			    lease->json->tokens[token].start, len);
++		memcpy(view->target_hash, lease->target_hash, 32);
++		view->generation = lease->visibility;
++		view->phase = HFS_VIEW_LIVE;
++		err = view->target.error;
++	}
++	spin_unlock_irqrestore(&view->lock, flags);
++	mutex_unlock(&view->transitions);
++	return err;
++}
++
++int hfs_view_capture(struct hfs_view *view, struct hfs_view_stamp *stamp,
++		     struct hfs_buf *target)
++{
++	unsigned long flags;
++	int err = 0;
++
++	spin_lock_irqsave(&view->lock, flags);
++	if (view->phase != HFS_VIEW_LIVE || !view->target.len) {
++		err = -EAGAIN;
++	} else if (target->cap < view->target.len) {
++		err = -ENOSPC;
++	} else {
++		target->len = 0;
++		target->error = 0;
++		hfs_buf_add(target, view->target.data, view->target.len);
++		stamp->generation = view->generation;
++		stamp->revision = view->revision;
++		err = target->error;
++	}
++	spin_unlock_irqrestore(&view->lock, flags);
++	return err;
++}
++
++int hfs_view_snapshot(struct hfs_view *view, struct hfs_view_stamp *stamp)
++{
++	unsigned long flags;
++	int err = 0;
++
++	spin_lock_irqsave(&view->lock, flags);
++	if (view->phase != HFS_VIEW_LIVE) {
++		err = -EAGAIN;
++	} else {
++		stamp->generation = view->generation;
++		stamp->revision = view->revision;
++	}
++	spin_unlock_irqrestore(&view->lock, flags);
++	return err;
++}
++
++static int hfs_view_try_enter_locked(struct hfs_view *view,
++				     const struct hfs_view_stamp *stamp,
++				     void **cookie)
++{
++	if (view->phase == HFS_VIEW_FENCED)
++		return -ESTALE;
++	if (stamp && (!uuid_equal(&view->generation, &stamp->generation) ||
++		      view->revision != stamp->revision))
++		return -ESTALE;
++	if (view->phase != HFS_VIEW_LIVE)
++		return -EAGAIN;
++	if (view->active == U32_MAX || !try_module_get(THIS_MODULE))
++		return -EOVERFLOW;
++	kref_get(&view->refs);
++	view->active++;
++	*cookie = view;
++	return 0;
++}
++
++int hfs_view_enter(struct hfs_view *view, const struct hfs_view_stamp *stamp,
++		   bool wait, void **cookie)
++{
++	unsigned long flags;
++	int err;
++
++	*cookie = NULL;
++	/* This independent reference protects parked entrants, before admission. */
++	if (!try_module_get(THIS_MODULE))
++		return -ESHUTDOWN;
++	kref_get(&view->refs);
++	for (;;) {
++		spin_lock_irqsave(&view->lock, flags);
++		err = hfs_view_try_enter_locked(view, stamp, cookie);
++		spin_unlock_irqrestore(&view->lock, flags);
++		if (!wait || err != -EAGAIN)
++			break;
++		err = wait_event_killable(view->wait,
++					  READ_ONCE(view->phase) == HFS_VIEW_LIVE ||
++					  READ_ONCE(view->phase) == HFS_VIEW_FENCED);
++		if (err)
++			break;
++	}
++	hfs_view_put(view);
++	return err;
++}
++
++void hfs_view_leave(void *cookie)
++{
++	struct hfs_view *view = cookie;
++	unsigned long flags;
++	bool wake;
++
++	if (!view)
++		return;
++	/* kzalloc's aligned view pointer leaves bit0 for a lifetime-only
++	 * private-anonymous COW cookie. It has no backing-cache authority.
++	 */
++	if ((unsigned long)view & 1UL) {
++		hfs_view_put((struct hfs_view *)((unsigned long)view & ~1UL));
++		return;
++	}
++	spin_lock_irqsave(&view->lock, flags);
++	if (WARN_ON_ONCE(!view->active)) {
++		spin_unlock_irqrestore(&view->lock, flags);
++		return;
++	}
++	wake = !--view->active;
++	spin_unlock_irqrestore(&view->lock, flags);
++	if (wake)
++		wake_up_all(&view->wait);
++	hfs_view_put(view);
++}
++
++int hfs_view_stop(struct hfs_view *view, const uuid_t *generation,
++		  const uuid_t *recall, u64 sequence)
++{
++	struct hfs_inode *object;
++	struct hfs_cache_page *entry;
++	struct hfs_cache_grant *grant;
++	struct hfs_observation *observation;
++	unsigned long flags;
++	u32 count = 0, pages = 0, i;
++	int err = 0;
++
++	if (!sequence || uuid_is_null(recall))
++		return -EINVAL;
++	mutex_lock(&view->transitions);
++	spin_lock_irqsave(&view->lock, flags);
++	if (view->phase == HFS_VIEW_UNBOUND) {
++		if (uuid_is_null(generation) || view->active || view->nr_cached ||
++		    view->nr_dirty || view->nr_mappings || view->target.len) {
++			err = -ESTALE;
++			goto unlock_initial;
++		}
++		/* Only the mandatory authenticated event path calls STOP here.
++		 * No synthetic Context-generation -> visibility conversion exists.
++		 */
++		view->generation = *generation;
++		view->phase = HFS_VIEW_RECALLING;
++		view->recall = *recall;
++		view->sequence = sequence;
++	}
++	if (!uuid_equal(&view->generation, generation) ||
++	    view->phase == HFS_VIEW_FENCED || sequence < view->sequence) {
++		err = -ESTALE;
++		goto unlock_initial;
++	}
++	if (view->phase == HFS_VIEW_LIVE && sequence > view->sequence) {
++		view->phase = HFS_VIEW_RECALLING;
++		view->quiescent = false;
++		view->recall = *recall;
++		view->sequence = sequence;
++	} else if (sequence != view->sequence ||
++		   !uuid_equal(&view->recall, recall)) {
++		err = -ESTALE;
++		goto unlock_initial;
++	} else if (view->phase == HFS_VIEW_QUIESCENT ||
++		   view->phase == HFS_VIEW_STOPPED ||
++		   view->phase == HFS_VIEW_INSTALLED_DRAIN ||
++		   view->phase == HFS_VIEW_DRAINED ||
++		   view->phase == HFS_VIEW_FINAL) {
++		goto unlock_initial;
++	} else if (view->phase != HFS_VIEW_RECALLING) {
++		err = -ESTALE;
++		goto unlock_initial;
++	}
++	spin_unlock_irqrestore(&view->lock, flags);
++	/* No mmap/i_mmap/page/PTE lock is held while joining token holders. */
++	wait_event(view->wait, !READ_ONCE(view->active));
++	spin_lock_irqsave(&view->lock, flags);
++	if (view->phase != HFS_VIEW_RECALLING) {
++		spin_unlock_irqrestore(&view->lock, flags);
++		mutex_unlock(&view->transitions);
++		return -ESTALE;
++	}
++	/* evict unregisters before free, outside inode->i_lock. The only
++	 * nesting is view lock -> igrab's i_lock; no inode lock -> view path.
++	 */
++	list_for_each_entry(object, &view->mappings, view_list) {
++		struct inode *inode = igrab(&object->inode);
++
++		/* An inode already freeing has no live VMA/file observation. */
++		if (inode)
++			view->stopping[count++] = inode;
++	}
++	list_for_each_entry(entry, &view->cache, list) {
++		if (entry->page) {
++			get_page(entry->page);
++			view->stopping_pages[pages++] = entry->page;
++		}
++	}
++	spin_unlock_irqrestore(&view->lock, flags);
++	for (i = 0; i < count; i++) {
++		struct inode *inode = view->stopping[i];
++
++		/* Includes fork aliases/open-unlinked/executable file PTEs.
++		 * zap_page_range_single completes notifier and TLB invalidation.
++		 * Private anonymous modifications are application-owned snapshots.
++		 */
++		unmap_mapping_range(inode->i_mapping, 0, 0, 0);
++		iput(inode);
++		view->stopping[i] = NULL;
++	}
++	for (i = 0; i < pages; i++) {
++		struct page *page = view->stopping_pages[i];
++
++		lock_page(page);
++		/* No external kernel ref/pin path may bypass the page marker.
++		 * Refuse conservative pin/writeback/busy findings; never unpin,
++		 * force-write or assert success to advance a barrier.
++		 */
++		if (page_mapped(page) || PageWriteback(page) ||
++		    folio_maybe_dma_pinned(page_folio(page)))
++			err = -EBUSY;
++		/* A clean page may have completed eviction after our snapshot;
++		 * it no longer supplies any filesystem PTE or cache observation.
++		 */
++		if (page_mapping(page) && !PageHfsnogup(page))
++			err = -ESTALE;
++		unlock_page(page);
++		put_page(page);
++		view->stopping_pages[i] = NULL;
++	}
++	spin_lock_irqsave(&view->lock, flags);
++	if (!err && view->phase == HFS_VIEW_RECALLING) {
++		list_for_each_entry(entry, &view->cache, list) {
++			if (entry->lease)
++				WRITE_ONCE(entry->lease->revoked, true);
++			list_for_each_entry(grant, &entry->readers, list)
++				WRITE_ONCE(grant->lease->revoked, true);
++		}
++		list_for_each_entry(observation, &view->observations, list)
++			if (observation->lease)
++				WRITE_ONCE(observation->lease->revoked, true);
++		view->phase = HFS_VIEW_QUIESCENT;
++		view->quiescent = true;
++	} else if (!err)
++		err = -ESTALE;
++unlock_initial:
++	spin_unlock_irqrestore(&view->lock, flags);
++	mutex_unlock(&view->transitions);
++	return err;
++}
++
++int hfs_view_seal(struct hfs_view *view)
++{
++	struct hfs_dirty *dirty, *ordered[HFS_DIRTY_PAGES_MAX], *tmp;
++	struct hfs_buf *manifest = &view->manifest;
++	unsigned long flags;
++	u32 count = 0, i, j, entries_start, entries_len;
++	int err = 0;
++
++	mutex_lock(&view->transitions);
++	spin_lock_irqsave(&view->lock, flags);
++	if (view->phase == HFS_VIEW_STOPPED)
++		goto unlock;
++	if (view->phase != HFS_VIEW_QUIESCENT || !view->quiescent || view->active) {
++		err = -ESTALE;
++		goto unlock;
++	}
++	list_for_each_entry(dirty, &view->dirty, list) {
++		if (!dirty->adopted || !dirty->captured || !dirty->frozen ||
++		    !dirty->frozen_entry || count == HFS_DIRTY_PAGES_MAX) {
++			err = -EBUSY;
++			goto unlock;
++		}
++		ordered[count++] = dirty;
++	}
++	if (count != view->nr_dirty) {
++		err = -EPROTO;
++		goto unlock;
++	}
++	/* Insertion sort is bounded by sixteen immutable obligation records. */
++	for (i = 1; i < count; i++) {
++		tmp = ordered[i];
++		for (j = i; j && memcmp(ordered[j - 1]->entry_id, tmp->entry_id, 32) > 0; j--)
++			ordered[j] = ordered[j - 1];
++		ordered[j] = tmp;
++	}
++	manifest->len = 0;
++	manifest->error = 0;
++	hfs_buf_literal(manifest, "{\"entries\":");
++	entries_start = manifest->len;
++	hfs_buf_literal(manifest, "[");
++	for (i = 0; i < count; i++) {
++		if (i && !memcmp(ordered[i - 1]->entry_id, ordered[i]->entry_id, 32)) {
++			err = -EPROTO;
++			goto unlock;
++		}
++		if (i)
++			hfs_buf_literal(manifest, ",");
++		hfs_buf_add(manifest, ordered[i]->frozen_entry->data,
++			    ordered[i]->frozen_entry->len);
++	}
++	hfs_buf_literal(manifest, "]");
++	entries_len = manifest->len - entries_start;
++	if (manifest->error) {
++		err = manifest->error;
++		goto unlock;
++	}
++	hfs_hash(manifest->data + entries_start, entries_len, view->manifest_hash);
++	hfs_buf_literal(manifest, ",\"hash\":");
++	hfs_buf_hex(manifest, view->manifest_hash, 32);
++	hfs_buf_literal(manifest, "}");
++	err = manifest->error;
++	if (!err)
++		view->phase = HFS_VIEW_STOPPED;
++unlock:
++	spin_unlock_irqrestore(&view->lock, flags);
++	mutex_unlock(&view->transitions);
++	return err;
++}
++
++int hfs_view_reopen(struct hfs_view *view, const uuid_t *recall, u64 sequence)
++{
++	struct hfs_cache_page *entry;
++	unsigned long flags;
++	int err = 0;
++
++	mutex_lock(&view->transitions);
++	spin_lock_irqsave(&view->lock, flags);
++	if (view->phase == HFS_VIEW_LIVE && view->sequence == sequence &&
++	    uuid_equal(&view->recall, recall))
++		goto unlock;
++	if (view->phase != HFS_VIEW_FINAL || !view->quiescent ||
++	    !uuid_equal(&view->recall, recall) || sequence <= view->sequence ||
++	    !sequence || !view->target.len || view->active ||
++	    view->nr_dirty) {
++		err = -ESTALE;
++	} else {
++		/* A parked RPC may retain detached old metadata; it supplies no
++		 * cache observation and its old stamp will fail adoption below.
++		 */
++		list_for_each_entry(entry, &view->cache, list)
++			if (entry->page) {
++				err = -EBUSY;
++				break;
++			}
++	}
++	if (!err && view->revision == U64_MAX) {
++		/* Never wrap a stamp into an earlier admission lifetime. */
++		view->phase = HFS_VIEW_FENCED;
++		err = -EOVERFLOW;
++	} else if (!err) {
++		/* Same lock as reservation adoption and final writable-PTE entry.
++		 * A reserve captured before STOP cannot be adopted after REOPEN.
++		 */
++		view->revision++;
++		view->sequence = sequence;
++		view->quiescent = false;
++		view->phase = HFS_VIEW_LIVE;
++	}
++unlock:
++	spin_unlock_irqrestore(&view->lock, flags);
++	mutex_unlock(&view->transitions);
++	if (!err || err == -EOVERFLOW)
++		wake_up_all(&view->wait);
++	return err;
++}
++
++void hfs_view_fence(struct hfs_view *view)
++{
++	unsigned long flags;
++
++	spin_lock_irqsave(&view->lock, flags);
++	view->phase = HFS_VIEW_FENCED;
++	spin_unlock_irqrestore(&view->lock, flags);
++	wake_up_all(&view->wait);
++}
++
++/* Page resources are admitted before allocating/exposing the cache page. */
++int hfs_view_page_prepare(struct hfs_view *view,
++			  const struct hfs_view_stamp *stamp,
++			  struct hfs_cache_page **out)
++{
++	struct hfs_cache_page *entry;
++	void *reservation;
++	unsigned long flags;
++	int err;
++
++	*out = NULL;
++	err = view->session->provider->reserve(view->session,
++			sizeof(*entry) + PAGE_SIZE + HFS_TARGET_MAX, false, &reservation);
++	if (err)
++		return err;
++	entry = kzalloc(sizeof(*entry), GFP_KERNEL);
++	if (!entry) {
++		view->session->provider->unreserve(view->session, reservation);
++		return -ENOMEM;
++	}
++	if (hfs_buf_init(&entry->target, HFS_TARGET_MAX)) {
++		view->session->provider->unreserve(view->session, reservation);
++		kfree(entry);
++		return -ENOMEM;
++	}
++	kref_init(&entry->refs);
++	INIT_LIST_HEAD(&entry->list);
++	INIT_LIST_HEAD(&entry->readers);
++	entry->view = view;
++	entry->stamp = *stamp;
++	entry->reservation = reservation;
++	spin_lock_irqsave(&view->lock, flags);
++	if (view->phase != HFS_VIEW_LIVE ||
++	    !uuid_equal(&view->generation, &stamp->generation) ||
++	    view->revision != stamp->revision) {
++		err = -ESTALE;
++	} else if (view->nr_cached == HFS_CACHE_PAGES_MAX) {
++		err = -ENOSPC;
++	} else if (!try_module_get(THIS_MODULE)) {
++		err = -ESHUTDOWN;
++	} else {
++		kref_get(&view->refs);
++		view->nr_cached++;
++		hfs_buf_add(&entry->target, view->target.data, view->target.len);
++		list_add_tail(&entry->list, &view->cache);
++		err = 0;
++	}
++	spin_unlock_irqrestore(&view->lock, flags);
++	if (err) {
++		hfs_buf_free(&entry->target);
++		view->session->provider->unreserve(view->session, reservation);
++		kfree(entry);
++		return err;
++	}
++	*out = entry;
++	return 0;
++}
++
++static void hfs_view_page_release(struct kref *refs)
++{
++	struct hfs_cache_page *entry = container_of(refs, struct hfs_cache_page, refs);
++	struct hfs_view *view = entry->view;
++	struct hfs_cache_grant *grant;
++	unsigned long flags;
++
++	if (WARN_ON_ONCE(entry->page || entry->dirty))
++		return;
++	spin_lock_irqsave(&view->lock, flags);
++	list_del_init(&entry->list);
++	view->nr_cached--;
++	if (entry->dirty_slot && !entry->cleanup)
++		view->nr_dirty_packages--;
++	list_for_each_entry(grant, &entry->readers, list)
++		view->nr_grants--;
++	spin_unlock_irqrestore(&view->lock, flags);
++	if (entry->dispose)
++		entry->dispose(entry);
++	hfs_buf_free(&entry->target);
++	view->session->provider->unreserve(view->session, entry->reservation);
++	kfree(entry);
++	hfs_view_put(view);
++}
++
++void hfs_view_page_get(struct hfs_cache_page *entry)
++{
++	kref_get(&entry->refs);
++}
++
++void hfs_view_page_put(struct hfs_cache_page *entry)
++{
++	kref_put(&entry->refs, hfs_view_page_release);
++}
++
++void hfs_view_page_discard(struct hfs_cache_page *entry)
++{
++	if (WARN_ON_ONCE(entry->page || entry->dirty))
++		return;
++	hfs_view_page_put(entry);
++}
++
++int hfs_view_page_attach(struct hfs_cache_page *entry, struct page *page)
++{
++	struct hfs_view *view = entry->view;
++	void *cookie;
++	unsigned long flags;
++	int err;
++
++	if (!PageLocked(page) || PageCompound(page) || PagePrivate(page) ||
++	    entry->page)
++		return -EINVAL;
++	if (!entry->lease || READ_ONCE(entry->lease->revoked) ||
++	    !uuid_equal(&entry->lease->visibility, &entry->stamp.generation))
++		return -ESTALE;
++	err = hfs_view_enter(view, &entry->stamp, false, &cookie);
++	if (err)
++		return err;
++	/* No PTE can see this page before marker + metadata are installed. */
++	SetPageHfsnogup(page);
++	folio_attach_private(page_folio(page), entry);
++	hfs_view_page_get(entry); /* private metadata ownership */
++	spin_lock_irqsave(&view->lock, flags);
++	entry->page = page;
++	spin_unlock_irqrestore(&view->lock, flags);
++	hfs_view_leave(cookie);
++	return 0;
++}
++
++struct hfs_cache_page *hfs_view_page_find(struct hfs_view *view, struct page *page)
++{
++	struct hfs_cache_page *entry, *found = NULL;
++	unsigned long flags;
++
++	spin_lock_irqsave(&view->lock, flags);
++	list_for_each_entry(entry, &view->cache, list)
++		if (entry->page == page && !entry->revoking) {
++			hfs_view_page_get(entry);
++			found = entry;
++			break;
++		}
++	spin_unlock_irqrestore(&view->lock, flags);
++	return found;
++}
++
++int hfs_view_dirty_slot(struct hfs_cache_page *entry)
++{
++	struct hfs_view *view = entry->view;
++	unsigned long flags;
++	int err = 0;
++
++	spin_lock_irqsave(&view->lock, flags);
++	if (view->phase != HFS_VIEW_LIVE || entry->revoking ||
++	    !uuid_equal(&view->generation, &entry->stamp.generation) ||
++	    view->revision != entry->stamp.revision)
++		err = -ESTALE;
++	else if (entry->dirty_slot)
++		err = -EBUSY;
++	else if (view->nr_dirty_packages == HFS_DIRTY_PAGES_MAX)
++		err = -ENOSPC;
++	else {
++		view->nr_dirty_packages++;
++		entry->dirty_slot = true;
++	}
++	spin_unlock_irqrestore(&view->lock, flags);
++	return err;
++}
++
++void hfs_view_dirty_unslot(struct hfs_cache_page *entry)
++{
++	struct hfs_view *view = entry->view;
++	unsigned long flags;
++
++	spin_lock_irqsave(&view->lock, flags);
++	if (!WARN_ON_ONCE(entry->dirty || !entry->dirty_slot)) {
++		entry->dirty_slot = false;
++		view->nr_dirty_packages--;
++	}
++	spin_unlock_irqrestore(&view->lock, flags);
++}
++
++int hfs_view_adopt_dirty(struct hfs_view *view, struct hfs_cache_page *entry,
++			 struct hfs_dirty *dirty)
++{
++	unsigned long flags;
++	int err = 0;
++
++	/* These immutable records and actual credit handles exist before PTEs.
++	 * Complete Reservation/number/Cred checks occur in the wire decoder.
++	 */
++	if (!dirty || !dirty->reservation || !dirty->reserve_ticket ||
++	    !dirty->freeze_ticket || !dirty->freeze_ticket->control ||
++	    !dirty->request || !dirty->request->reservation || !dirty->credit ||
++	    !dirty->request->earmarked || !dirty->request->control ||
++	    !dirty->length || dirty->length > 4096 || !entry->lease ||
++	    !entry->lease->dirty)
++		return -EINVAL;
++	spin_lock_irqsave(&view->lock, flags);
++	/* Capture predates dispatch. Neither a delayed reserve during STOP nor
++	 * an original replay after REOPEN may adopt into a later local epoch.
++	 */
++	if (view->phase != HFS_VIEW_LIVE || entry->revoking ||
++	    READ_ONCE(entry->lease->revoked) ||
++	    !uuid_equal(&view->generation, &entry->stamp.generation) ||
++	    view->revision != entry->stamp.revision ||
++	    memcmp(view->target_hash, entry->lease->target_hash, 32))
++		err = -ESTALE;
++	else if (entry->dirty || dirty->adopted)
++		err = -EBUSY;
++	else if (view->nr_dirty == HFS_DIRTY_PAGES_MAX)
++		err = -ENOSPC;
++	else {
++		/* Cancellation closes this same bit before its RPC. No cancellation
++		 * may certify no-effect concurrently with physical adoption.
++		 */
++		spin_lock(&dirty->reserve_ticket->admission_lock);
++		if (dirty->reserve_ticket->closed) {
++			err = -ECANCELED;
++			spin_unlock(&dirty->reserve_ticket->admission_lock);
++			goto unlock;
++		}
++		if (!entry->dirty_slot || !entry->page || !PageLocked(entry->page)) {
++			err = -EINVAL;
++			spin_unlock(&dirty->reserve_ticket->admission_lock);
++			goto unlock;
++		}
++		dirty->reserve_ticket->published = true;
++		spin_unlock(&dirty->reserve_ticket->admission_lock);
++		dirty->entry = entry;
++		dirty->adopted = true;
++		entry->dirty = dirty;
++		view->nr_dirty++;
++		list_add_tail(&dirty->list, &view->dirty);
++		hfs_view_page_get(entry); /* frozen obligation, independent of VMA */
++	}
++unlock:
++	spin_unlock_irqrestore(&view->lock, flags);
++	return err;
++}
++
++int hfs_view_page_lease(struct hfs_cache_page *entry, struct hfs_lease *lease)
++{
++	struct hfs_view *view = entry->view;
++	unsigned long flags;
++	int err = 0;
++
++	if (!lease || !lease->release_ticket)
++		return -EINVAL;
++	spin_lock_irqsave(&view->lock, flags);
++	if (view->phase != HFS_VIEW_LIVE || entry->revoking || entry->lease ||
++	    view->revision != entry->stamp.revision ||
++	    !uuid_equal(&view->generation, &entry->stamp.generation) ||
++	    !uuid_equal(&lease->visibility, &entry->stamp.generation) ||
++	    READ_ONCE(lease->revoked) || memcmp(view->target_hash, lease->target_hash, 32))
++		err = -ESTALE;
++	else
++		entry->lease = lease; /* complete preowned object; STOP shares this lock */
++	spin_unlock_irqrestore(&view->lock, flags);
++	return err;
++}
++
++int hfs_view_page_grant(struct hfs_cache_page *entry, struct hfs_cache_grant *grant,
++			 struct hfs_cache_page *from)
++{
++	struct hfs_view *view = entry->view;
++	unsigned long flags;
++	int err = 0;
++
++	if (!grant || !grant->lease || grant->lease->dirty || !grant->lease->release_ticket ||
++	    (from && (from->view != view || from->page || from->lease != grant->lease)))
++		return -EINVAL;
++	spin_lock_irqsave(&view->lock, flags);
++	if (view->phase != HFS_VIEW_LIVE || entry->revoking ||
++	    !uuid_equal(&view->generation, &entry->stamp.generation) ||
++	    view->revision != entry->stamp.revision ||
++	    memcmp(view->target_hash, grant->lease->target_hash, 32))
++		err = -ESTALE;
++	else if (view->nr_grants == HFS_CACHE_GRANTS_MAX)
++		err = -ENOSPC;
++	else {
++		list_add_tail(&grant->list, &entry->readers);
++		view->nr_grants++;
++		if (from)
++			from->lease = NULL; /* atomic with publication into the reader registry */
++	}
++	spin_unlock_irqrestore(&view->lock, flags);
++	return err;
++}
++
++int hfs_view_page_enter(struct vm_area_struct *vma, struct page *page,
++			bool write, void **cookie)
++{
++	struct hfs_view *view = hfs_view_get(HFS_S(file_inode(vma->vm_file)));
++	struct hfs_cache_page *entry;
++	struct hfs_cache_grant *grant;
++	struct hfs_description *description = vma->vm_file->private_data;
++	struct hfs_lease *lease;
++	struct hfs_view_stamp stamp;
++	unsigned long flags;
++	int err;
++
++	*cookie = NULL;
++	if (!view)
++		return -ESTALE;
++	if (!page) {
++		err = hfs_view_enter(view, NULL, true, cookie);
++		goto out;
++	}
++	/* Private anonymous COW is application data, not backing cache state. */
++	if (PageAnon(page)) {
++		/* Preserve application-owned COW data even while backing cache is
++		 * stopped/fenced. The cookie still pins the actual view/module
++		 * until the snapshotted end callback completes after any VMA loss.
++		 */
++		*cookie = (void *)((unsigned long)view | 1UL);
++		return 0; /* transfer this get() reference, without an active token */
++	}
++	if (PageCompound(page) || !PageHfsnogup(page)) {
++		err = -ESTALE;
++		goto out;
++	}
++	/* wp_page_copy's original page need not be locked. The registry, not
++	 * a lockless page->private dereference, protects metadata lifetime.
++	 */
++	err = -ESTALE;
++	spin_lock_irqsave(&view->lock, flags);
++	list_for_each_entry(entry, &view->cache, list) {
++		if (entry->page != page)
++			continue;
++		lease = NULL;
++		if (!description || !description->cap || entry->revoking)
++			break;
++		if (entry->lease && !memcmp(entry->lease->description, description->cap->token, 32))
++			lease = entry->lease;
++		if (!write && !lease)
++			list_for_each_entry(grant, &entry->readers, list)
++				if (!memcmp(grant->lease->description, description->cap->token, 32)) {
++					lease = grant->lease;
++					break;
++				}
++		if (lease && !READ_ONCE(lease->revoked) &&
++		    !memcmp(lease->target_hash, view->target_hash, 32) &&
++		    (!write || (lease == entry->lease && lease->dirty &&
++				entry->dirty && entry->dirty->adopted))) {
++			stamp = entry->stamp;
++			err = hfs_view_try_enter_locked(view, &stamp, cookie);
++			if (!err)
++				WRITE_ONCE(lease->published, true);
++		}
++		break;
++	}
++	spin_unlock_irqrestore(&view->lock, flags);
++out:
++	hfs_view_put(view);
++	return err;
++}
++
++static bool hfs_cache_frozen_detachable(struct hfs_cache_page *entry)
++{
++	return entry->dirty && entry->dirty->captured && entry->dirty->frozen &&
++		entry->view->quiescent && !entry->view->active &&
++		(entry->view->phase == HFS_VIEW_STOPPED ||
++		 entry->view->phase == HFS_VIEW_INSTALLED_DRAIN);
++}
++
++static int hfs_cache_launder(struct folio *folio)
++{
++	struct hfs_cache_page *entry = folio_get_private(folio);
++	struct hfs_view *view;
++	unsigned long flags;
++	bool detachable;
++
++	if (!entry)
++		return -EBUSY;
++	view = entry->view;
++	spin_lock_irqsave(&view->lock, flags);
++	detachable = hfs_cache_frozen_detachable(entry);
++	spin_unlock_irqrestore(&view->lock, flags);
++	if (!detachable)
++		return -EBUSY;
++	/* Not generic writeback: exact bytes/Claim and credits remain in the
++	 * complete frozen registry and protected DIRTY_FREEZE record. An
++	 * independent reserved drain still must obtain its exact terminal result.
++	 */
++	clear_page_dirty_for_io(&folio->page);
++	return 0;
++}
++
++static void hfs_cache_invalidate(struct folio *folio, size_t offset, size_t len)
++{
++	struct hfs_cache_page *entry = folio_get_private(folio);
++	struct hfs_view *view;
++	struct hfs_cache_grant *grant;
++	unsigned long flags;
++
++	if (!entry)
++		return;
++	view = entry->view;
++	spin_lock_irqsave(&view->lock, flags);
++	if (offset || len != PAGE_SIZE || folio_mapped(folio) ||
++	    PageWriteback(&folio->page) || folio_maybe_dma_pinned(folio) ||
++	    (entry->dirty && !entry->dirty->resolved && !hfs_cache_frozen_detachable(entry)) ||
++	    (view->active && entry->lease && READ_ONCE(entry->lease->published) &&
++	     (!folio->mapping || !mapping_exiting(folio->mapping)))) {
++		/* Dirty provenance owns its private page ref through truncation.
++		 * Unexpected invalidation fences instead of losing an obligation.
++		 */
++		view->phase = HFS_VIEW_FENCED;
++		spin_unlock_irqrestore(&view->lock, flags);
++		wake_up_all(&view->wait);
++		return;
++	}
++	entry->revoking = true;
++	if (entry->lease)
++		WRITE_ONCE(entry->lease->revoked, true);
++	list_for_each_entry(grant, &entry->readers, list)
++		WRITE_ONCE(grant->lease->revoked, true);
++	entry->page = NULL;
++	spin_unlock_irqrestore(&view->lock, flags);
++	folio_clear_uptodate(folio);
++	folio_detach_private(folio);
++	hfs_view_page_put(entry); /* private metadata ownership */
++	/* Keep NoGup until actual mapping detachment in free_folio. */
++}
++
++static bool hfs_cache_release(struct folio *folio, gfp_t gfp)
++{
++	struct hfs_cache_page *entry = folio_get_private(folio);
++
++	(void)gfp;
++	if (!entry)
++		return true;
++	if (folio_mapped(folio) ||
++	    (entry->dirty && !entry->dirty->resolved && !hfs_cache_frozen_detachable(entry)) ||
++	    READ_ONCE(entry->view->phase) < HFS_VIEW_QUIESCENT)
++		return false;
++	hfs_cache_invalidate(folio, 0, PAGE_SIZE);
++	return !folio_get_private(folio);
++}
++
++static void hfs_cache_free(struct folio *folio)
++{
++	/* filemap/vmscan call only after mapping detachment and PTE removal.
++	 * A speculative old fast-GUP reference still rechecks its old PTE;
++	 * clearing this flag cannot validate that now-removed PTE. No mapping
++	 * pointer is dereferenced by GUP, and this physical page is not reused
++	 * until the speculative reference is released.
++	 */
++	if (WARN_ON_ONCE(folio_mapped(folio)))
++		return;
++	if (folio_get_private(folio)) {
++		hfs_cache_invalidate(folio, 0, PAGE_SIZE);
++		if (folio_get_private(folio))
++			return; /* retained unresolved provenance still owns the page */
++	}
++	ClearPageHfsnogup(&folio->page);
++}
++
++static int hfs_cache_migrate(struct address_space *mapping,
++			     struct folio *dst, struct folio *src,
++			     enum migrate_mode mode)
++{
++	/* No generic migration can drop a provenance/NoGup flag or lease. */
++	(void)mapping;
++	(void)dst;
++	(void)src;
++	(void)mode;
++	return -EBUSY;
++}
++
++const struct address_space_operations hfs_cache_aops = {
++	/* All shared writable PTEs already own an adopted immutable obligation.
++	 * Track the real dirty bit without generic writeback tags/accounting or
++	 * replacement credentials. PTE removal can dirty again while RECALLING;
++	 * this atomic callback must not wait, allocate, RPC or require LIVE.
++	 */
++	.dirty_folio = noop_dirty_folio,
++	.launder_folio = hfs_cache_launder,
++	.invalidate_folio = hfs_cache_invalidate,
++	.release_folio = hfs_cache_release,
++	.free_folio = hfs_cache_free,
++	.migrate_folio = hfs_cache_migrate,
++};
+diff --git a/fs/9p/hfs_lease.h b/fs/9p/hfs_lease.h
+new file mode 100644
+--- /dev/null
++++ b/fs/9p/hfs_lease.h
+@@ -0,0 +1,118 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef FS_9P_HFS_LEASE_H
++#define FS_9P_HFS_LEASE_H
++
++#include <linux/list.h>
++#include <linux/kref.h>
++#include <linux/spinlock.h>
++#include <linux/mutex.h>
++#include <linux/wait.h>
++#include "hfs_protocol.h"
++
++struct hfs_session;
++struct hfs_cred;
++struct hfs_cap;
++struct hfs_cache_page;
++struct hfs_dirty;
++struct hfs_view;
++
++#define HFS_VIEW_TICKETS_MAX 256U
++#define HFS_VIEW_CONTROL_TICKETS_MAX 256U
++#define HFS_VIEW_FAMILIES_MAX 4096U
++#define HFS_DIRTY_PAGES_MAX 16U
++
++struct hfs_view_family {
++	struct mutex dispatch;
++	wait_queue_head_t wait;
++	struct hfs_view_ticket *initial;
++	struct list_head list;
++	struct hfs_buf credentials;
++	u8 hash[32];
++	uuid_t nonce;
++	bool control;
++	u64 next;
++	u64 prepared; /* preowned finite counter slots, not wire identities */
++	u64 floor;
++	void *reservation;
++};
++
++struct hfs_view_ticket {
++	/* Never take a view/session lock while holding this lock. */
++	spinlock_t admission_lock;
++	struct list_head list;
++	struct hfs_view_family *family;
++	struct hfs_session *session;
++	u32 users;
++	struct hfs_buf request;
++	struct hfs_buf payload;
++	struct hfs_buf query;
++	struct hfs_buf original;
++	struct hfs_token *scratch;
++	bool admitted;
++	struct hfs_json *response;
++	struct hfs_json *initial_response;
++	void *reservation;
++	u64 number;
++	u8 request_hash[32];
++	char operation[24];
++	bool control;
++	bool bound;
++	bool terminal;
++	bool uncertain;
++	bool closed;
++	bool published;
++};
++
++struct hfs_lease {
++	struct kref refs;
++	struct mutex release_lock;
++	bool released;
++	struct hfs_view_ticket *release_ticket;
++	struct hfs_buf release_payload;
++	struct hfs_json *json;
++	struct hfs_view_ticket *ticket;
++	struct hfs_cred *issuer;
++	bool published;
++	bool revoked; /* irreversible actual all-alias physical exclusion */
++	u8 id[32];
++	u8 target_hash[32];
++	u8 description[32];
++	uuid_t visibility;
++	u64 fence;
++	u64 revision;
++	bool dirty;
++};
++
++void hfs_view_ticket_put(struct hfs_view_ticket *ticket);
++int hfs_view_retire(struct hfs_session *session);
++bool hfs_view_tickets_busy(struct hfs_session *session);
++void hfs_view_tickets_destroy(struct hfs_session *session);
++int hfs_view_target(struct hfs_session *session, const struct hfs_json *json,
++		    int token, uuid_t *visibility, u8 target_hash[32]);
++int hfs_json_hash_fields(const struct hfs_json *json, int object,
++			 const char *fields, u8 digest[32]);
++int hfs_view_ticket_prepare(struct hfs_session *session, const struct hfs_cred *cred,
++			    bool control, struct hfs_view_ticket **out);
++int hfs_view_ticket_activate(struct hfs_view_ticket *ticket);
++int hfs_view_query(struct hfs_session *session, struct hfs_view_ticket *ticket,
++		    bool cancel, struct hfs_json **response);
++int hfs_view_exchange(struct hfs_session *session, struct hfs_view_ticket *ticket,
++		      const char *operation, const struct hfs_buf *payload,
++		      struct hfs_json **response);
++int hfs_lease_acquire(struct hfs_session *session, const struct hfs_cred *cred,
++		      const struct hfs_cap *object, const struct hfs_cap *description,
++		      u64 offset, bool dirty, const struct hfs_buf *expected_target,
++		      struct hfs_lease **out);
++int hfs_lease_release(struct hfs_session *session, struct hfs_lease *lease);
++void hfs_lease_get(struct hfs_lease *lease);
++void hfs_lease_free(struct hfs_lease *lease);
++
++int hfs_dirty_reserve(struct hfs_session *session, struct hfs_cache_page *entry,
++		       const struct hfs_cap *description, u64 offset, u32 length,
++		       struct hfs_dirty **out);
++int hfs_dirty_resume_reserve(struct hfs_session *session, struct hfs_dirty *dirty,
++			     struct hfs_lease *lease);
++int hfs_dirty_freeze(struct hfs_view *view, struct hfs_dirty *dirty);
++int hfs_dirty_drain(struct hfs_view *view, struct hfs_dirty *dirty);
++
++#endif
+diff --git a/fs/9p/hfs_lease.c b/fs/9p/hfs_lease.c
+new file mode 100644
+--- /dev/null
++++ b/fs/9p/hfs_lease.c
+@@ -0,0 +1,1421 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Exact bridge1.1 ticket/lease transport; no physical or source-proof defaults. */
++#include <linux/slab.h>
++#include <linux/delay.h>
++#include <linux/highmem.h>
++#include <linux/pagemap.h>
++#include <linux/writeback.h>
++#include "hfs.h"
++#include "hfs_lease.h"
++
++int hfs_json_hash_fields(const struct hfs_json *json, int object,
++			 const char *fields, u8 digest[32])
++{
++	struct hfs_buf original;
++	char name[64];
++	const char *p = fields;
++	u32 len, count = 0;
++	int err, token;
++
++	err = hfs_buf_init(&original, HFS_VIEW_BODY_MAX);
++	if (err)
++		return err;
++	hfs_buf_literal(&original, "{");
++	while (*p) {
++		len = strcspn(p, ",");
++		if (!len || len >= sizeof(name)) {
++			original.error = -EINVAL;
++			break;
++		}
++		memcpy(name, p, len);
++		name[len] = 0;
++		token = hfs_json_field(json, object, name);
++		if (token < 0) {
++			original.error = -EPROTO;
++			break;
++		}
++		hfs_buf_printf(&original, "%s\"%s\":", count++ ? "," : "", name);
++		hfs_buf_token(&original, json, token);
++		p += len + (p[len] == ',');
++	}
++	hfs_buf_literal(&original, "}");
++	err = original.error;
++	if (!err)
++		hfs_hash(original.data, original.len, digest);
++	hfs_buf_free(&original);
++	return err;
++}
++
++static int hfs_copy_json(const struct hfs_json *json, int token,
++			 struct hfs_json **out)
++{
++	if (token < 0 || token >= json->count)
++		return -EPROTO;
++	return hfs_json_parse(json->data + json->tokens[token].start,
++			      json->tokens[token].end - json->tokens[token].start, out);
++}
++
++static bool hfs_token_equal(const struct hfs_json *json, int token,
++			    const void *bytes, u32 len)
++{
++	return token >= 0 && token < json->count &&
++	       json->tokens[token].end - json->tokens[token].start == len &&
++	       !memcmp(json->data + json->tokens[token].start, bytes, len);
++}
++
++static int hfs_hex32(const struct hfs_json *json, int object, const char *field,
++		     u8 digest[32])
++{
++	u32 len = 32;
++
++	if (hfs_json_hex(json, hfs_json_field(json, object, field), digest, &len) ||
++	    len != 32)
++		return -EPROTO;
++	return 0;
++}
++
++static int hfs_u64_field(const struct hfs_json *json, int object,
++			 const char *field, u64 *value)
++{
++	return hfs_json_u64(json, hfs_json_field(json, object, field), value);
++}
++
++static int hfs_normal_target(const struct hfs_json *json, int token,
++			     uuid_t *visibility)
++{
++	static const char * const hashes[] = {
++		"authority_hash", "selection_hash", "source_manifest_hash",
++	};
++	static const char * const ids[] = {
++		"sequencer_incarnation", "sequencer_node", "visibility_generation",
++	};
++	static const char * const reference_ids[] = {
++		"cluster", "configuration", "creator_incarnation", "creator_node",
++		"generation", "journal_incarnation", "origin_node", "volume",
++	};
++	u64 serial, value;
++	uuid_t id;
++	u8 hash[32];
++	u32 i;
++	int ref;
++
++	if (hfs_json_exact(json, token,
++		"authority_hash,result_ref,selection_hash,sequencer_incarnation,"
++		"sequencer_node,serial,source_manifest_hash,visibility_generation") ||
++	    hfs_u64_field(json, token, "serial", &serial))
++		return -EPROTO;
++	for (i = 0; i < ARRAY_SIZE(hashes); i++)
++		if (hfs_hex32(json, token, hashes[i], hash))
++			return -EPROTO;
++	for (i = 0; i < ARRAY_SIZE(ids); i++)
++		if (hfs_uuid(json, hfs_json_field(json, token, ids[i]), &id))
++			return -EPROTO;
++	*visibility = id;
++	ref = hfs_json_field(json, token, "result_ref");
++	if (hfs_json_is(json, ref, "null"))
++		return 0;
++	if (!serial || hfs_json_exact(json, ref,
++		"cluster,configuration,creator_incarnation,creator_node,epoch,frame_hash,"
++		"generation,journal_incarnation,kind,origin_node,sequence,volume") ||
++	    hfs_u64_field(json, ref, "epoch", &value) || !value ||
++	    hfs_u64_field(json, ref, "sequence", &value) || !value ||
++	    hfs_u64_field(json, ref, "kind", &value) || value < 1 || value > 13 ||
++	    hfs_hex32(json, ref, "frame_hash", hash))
++		return -EPROTO;
++	for (i = 0; i < ARRAY_SIZE(reference_ids); i++)
++		if (hfs_uuid(json, hfs_json_field(json, ref, reference_ids[i]), &id))
++			return -EPROTO;
++	return 0;
++}
++
++int hfs_view_target(struct hfs_session *session,
++			   const struct hfs_json *json, int token,
++			   uuid_t *visibility, u8 target_hash[32])
++{
++	int kind = hfs_json_field(json, token, "kind"), body;
++	u64 epoch, position;
++	uuid_t journal, expected;
++	u8 hash[32], context_hash[32];
++	int err;
++
++	if (hfs_json_is(json, kind, "\"CONTROLLED_LOCAL\"")) {
++		if (session->enrollment.view_scope != HFS_SCOPE_CONTROLLED_LOCAL)
++			return -ESTALE;
++		if (hfs_json_exact(json, token, "cut,kind"))
++			return -EPROTO;
++		body = hfs_json_field(json, token, "cut");
++		if (hfs_json_exact(json, body,
++			"context_hash,enrollment_hash,journal_epoch,journal_hash,"
++			"journal_incarnation,journal_position,profile_hash,state_hash,"
++			"visibility_generation") ||
++		    hfs_u64_field(json, body, "journal_epoch", &epoch) || !epoch ||
++		    hfs_u64_field(json, body, "journal_position", &position) ||
++		    hfs_uuid(json, hfs_json_field(json, body, "journal_incarnation"), &journal) ||
++		    hfs_uuid(json, hfs_json_field(json, body, "visibility_generation"), visibility) ||
++		    hfs_hex32(json, body, "context_hash", context_hash))
++			return -EPROTO;
++		hfs_hash(session->enrollment.context, session->enrollment.context_len, hash);
++		if (memcmp(hash, context_hash, 32))
++			return -ESTALE;
++		{
++			static const char * const fields[] = {
++				"enrollment_hash", "journal_hash", "profile_hash", "state_hash",
++			};
++			u32 i;
++
++			for (i = 0; i < ARRAY_SIZE(fields); i++)
++				if (hfs_hex32(json, body, fields[i], hash))
++					return -EPROTO;
++		}
++		/* Context's original journal is immutable; epoch is independently
++		 * verified by the actual source provider, never guessed from Context.
++		 */
++		{
++			struct hfs_json *context = NULL;
++
++			err = hfs_json_parse(session->enrollment.context,
++					     session->enrollment.context_len, &context);
++			if (!err)
++				err = hfs_uuid(context,
++					hfs_json_field(context, 0, "origin_journal"), &expected);
++			hfs_json_free(context);
++			if (err || !uuid_equal(&journal, &expected))
++				return -ESTALE;
++		}
++	} else if (hfs_json_is(json, kind, "\"NORMAL_PUBLIC\"")) {
++		if (session->enrollment.view_scope != HFS_SCOPE_NORMAL_PUBLIC)
++			return -ESTALE;
++		if (hfs_json_exact(json, token, "kind,publication"))
++			return -EPROTO;
++		body = hfs_json_field(json, token, "publication");
++		if (hfs_normal_target(json, body, visibility))
++			return -EPROTO;
++	} else {
++		return -EPROTO;
++	}
++	/* No codec-valid cut, empty baseline or callback pointer is source proof.
++	 * The separately admitted provider must verify the full actual source.
++	 */
++	err = session->provider->target(session, json, token);
++	if (err)
++		return err;
++	hfs_hash(json->data + json->tokens[token].start,
++		 json->tokens[token].end - json->tokens[token].start, target_hash);
++	return 0;
++}
++
++void hfs_view_ticket_put(struct hfs_view_ticket *ticket)
++{
++	struct hfs_session *session;
++	bool unused = false;
++
++	if (!ticket)
++		return;
++	session = ticket->session;
++	mutex_lock(&session->lock);
++	if (!WARN_ON_ONCE(!ticket->users))
++		ticket->users--;
++	/* A prepared package has no wire identity and was never dispatched.
++	 * Its capacity may be released locally without any counter rollback.
++	 */
++	if (!ticket->users && !ticket->number) {
++		if (!WARN_ON_ONCE(!ticket->family->prepared))
++			ticket->family->prepared--;
++		list_del(&ticket->list);
++		session->nr_view_tickets--;
++		if (ticket->control)
++			session->nr_view_control_tickets--;
++		unused = true;
++	}
++	mutex_unlock(&session->lock);
++	if (unused) {
++		hfs_buf_free(&ticket->request);
++		hfs_buf_free(&ticket->payload);
++		hfs_buf_free(&ticket->query);
++	hfs_buf_free(&ticket->original);
++	kvfree(ticket->scratch);
++		session->provider->unreserve(session, ticket->reservation);
++		kfree(ticket);
++	}
++}
++
++bool hfs_view_tickets_busy(struct hfs_session *session)
++{
++	struct hfs_view_ticket *ticket;
++	bool busy = false;
++
++	mutex_lock(&session->lock);
++	list_for_each_entry(ticket, &session->view_tickets, list)
++		if (ticket->users) {
++			busy = true;
++			break;
++		}
++	mutex_unlock(&session->lock);
++	return busy;
++}
++
++void hfs_view_tickets_destroy(struct hfs_session *session)
++{
++	struct hfs_view_ticket *ticket, *next_ticket;
++	struct hfs_view_family *family, *next_family;
++
++	/* Only protected whole-session retirement or pre-transport failure calls
++	 * this path. Disconnect/close/timeout never discard these identities.
++	 */
++	list_for_each_entry_safe(ticket, next_ticket, &session->view_tickets, list) {
++		hfs_buf_free(&ticket->request);
++		hfs_buf_free(&ticket->payload);
++		hfs_buf_free(&ticket->query);
++	hfs_buf_free(&ticket->original);
++	kvfree(ticket->scratch);
++		hfs_json_free(ticket->response);
++		hfs_json_free(ticket->initial_response);
++		session->provider->unreserve(session, ticket->reservation);
++		kfree(ticket);
++	}
++	list_for_each_entry_safe(family, next_family, &session->view_families, list) {
++		hfs_buf_free(&family->credentials);
++		session->provider->unreserve(session, family->reservation);
++		kfree(family);
++	}
++}
++
++int hfs_view_ticket_prepare(struct hfs_session *session, const struct hfs_cred *cred,
++			bool control, struct hfs_view_ticket **out)
++{
++	struct hfs_view_ticket *ticket;
++	struct hfs_view_family *family, *candidate;
++	void *credit, *family_credit;
++	int err;
++
++	*out = NULL;
++	if (session->bridge_minor != 1)
++		return -EOPNOTSUPP;
++	err = session->provider->reserve(session, 4ULL * 1024 * 1024,
++					 control, &credit);
++	if (err)
++		return err;
++	err = session->provider->reserve(session, sizeof(*candidate) + 16384,
++					 control, &family_credit);
++	if (err)
++		goto unreserve;
++	ticket = kzalloc(sizeof(*ticket), GFP_KERNEL);
++	candidate = kzalloc(sizeof(*candidate), GFP_KERNEL);
++	if (!ticket || !candidate) {
++		err = -ENOMEM;
++		goto allocation;
++	}
++	ticket->reservation = credit;
++	candidate->reservation = family_credit;
++	INIT_LIST_HEAD(&ticket->list);
++	INIT_LIST_HEAD(&candidate->list);
++	if (hfs_buf_init(&candidate->credentials, 16384) ||
++	    hfs_buf_init(&ticket->request, 32768) ||
++	    hfs_buf_init(&ticket->payload, HFS_VIEW_BODY_MAX) ||
++	    hfs_buf_init(&ticket->query, 32768) ||
++	    hfs_buf_init(&ticket->original, HFS_VIEW_BODY_MAX)) {
++		err = -ENOMEM;
++		goto buffers;
++	}
++	ticket->scratch = kvcalloc(4096, sizeof(*ticket->scratch), GFP_KERNEL);
++	if (!ticket->scratch) {
++		err = -ENOMEM;
++		goto buffers;
++	}
++	hfs_cred_write(&candidate->credentials, cred);
++	if (candidate->credentials.error) {
++		err = candidate->credentials.error;
++		goto buffers;
++	}
++	hfs_hash(candidate->credentials.data, candidate->credentials.len, candidate->hash);
++	mutex_init(&candidate->dispatch);
++	init_waitqueue_head(&candidate->wait);
++	candidate->next = 1;
++	candidate->control = control;
++	candidate->nonce = control ? session->enrollment.view_control_nonce :
++				    session->enrollment.nonce;
++	mutex_lock(&session->lock);
++	if ((control && session->nr_view_control_tickets == HFS_VIEW_CONTROL_TICKETS_MAX) ||
++	    (!control && session->nr_view_tickets - session->nr_view_control_tickets ==
++			HFS_VIEW_TICKETS_MAX)) {
++		err = -ENOSPC;
++		goto unlock;
++	}
++	list_for_each_entry(family, &session->view_families, list)
++		if (family->control == control &&
++		    !memcmp(family->hash, candidate->hash, 32) &&
++		    family->credentials.len == candidate->credentials.len &&
++		    !memcmp(family->credentials.data, candidate->credentials.data,
++			    family->credentials.len))
++			goto found;
++	if (session->nr_view_families == HFS_VIEW_FAMILIES_MAX) {
++		err = -ENOSPC;
++		goto unlock;
++	}
++	family = candidate;
++	candidate = NULL;
++	list_add_tail(&family->list, &session->view_families);
++	session->nr_view_families++;
++found:
++	/* Reserve finite number capacity without assigning a wire identity.
++	 * Mandatory deferred controls cannot discover wrap only after dirtying.
++	 */
++	if (family->next >= U64_MAX - family->prepared) {
++		err = -EOVERFLOW;
++		goto unlock;
++	}
++	family->prepared++;
++	ticket->family = family;
++	ticket->session = session;
++	spin_lock_init(&ticket->admission_lock);
++	ticket->users = 1;
++	ticket->control = control;
++	/* Resource ownership is distinct from a numbered wire admission. */
++	list_add_tail(&ticket->list, &session->view_tickets);
++	session->nr_view_tickets++;
++	if (control)
++		session->nr_view_control_tickets++;
++	err = 0;
++	*out = ticket;
++	mutex_unlock(&session->lock);
++	if (candidate) {
++		hfs_buf_free(&candidate->credentials);
++		session->provider->unreserve(session, candidate->reservation);
++		kfree(candidate);
++	}
++	return err;
++unlock:
++	mutex_unlock(&session->lock);
++buffers:
++	if (candidate)
++		hfs_buf_free(&candidate->credentials);
++	hfs_buf_free(&ticket->request);
++	hfs_buf_free(&ticket->payload);
++	hfs_buf_free(&ticket->query);
++	hfs_buf_free(&ticket->original);
++	kvfree(ticket->scratch);
++allocation:
++	kfree(candidate);
++	kfree(ticket);
++	session->provider->unreserve(session, family_credit);
++unreserve:
++	session->provider->unreserve(session, credit);
++	return err;
++}
++
++int hfs_view_ticket_activate(struct hfs_view_ticket *ticket)
++{
++	struct hfs_session *session = ticket->session;
++	struct hfs_view_family *family = ticket->family;
++	int err = 0;
++
++	if (READ_ONCE(ticket->number))
++		return 0;
++retry:
++	mutex_lock(&family->dispatch);
++	if (family->initial && family->initial != ticket) {
++		mutex_unlock(&family->dispatch);
++		err = wait_event_killable(family->wait, !READ_ONCE(family->initial));
++		if (err)
++			return err;
++		goto retry;
++	}
++
++	mutex_lock(&session->lock);
++	if (ticket->number)
++		goto out;
++	if (WARN_ON_ONCE(!family->prepared || family->next == U64_MAX)) {
++		err = -EOVERFLOW;
++		goto out;
++	}
++	family->prepared--;
++	ticket->number = family->next++;
++	WRITE_ONCE(family->initial, ticket);
++	hfs_buf_printf(&ticket->request, "{\"anchor\":\"%pUb\",\"credentials\":",
++		       &session->enrollment.anchor);
++	hfs_buf_add(&ticket->request, family->credentials.data, family->credentials.len);
++	hfs_buf_printf(&ticket->request, ",\"nonce\":\"%pUb\",\"number\":%llu}",
++		       &family->nonce, ticket->number);
++	hfs_buf_literal(&ticket->query, "{\"request\":");
++	hfs_buf_add(&ticket->query, ticket->request.data, ticket->request.len);
++	hfs_buf_literal(&ticket->query, "}");
++	/* Number assignment order is the retirement order, regardless of when
++	 * a future freeze package reserved its resources.
++	 */
++	list_move_tail(&ticket->list, &session->view_tickets);
++	err = ticket->request.error ?: ticket->query.error;
++out:
++	mutex_unlock(&session->lock);
++	mutex_unlock(&family->dispatch);
++	return err;
++}
++
++static int hfs_ticket_union(struct hfs_view_ticket *ticket,
++			    const struct hfs_json *json, int body,
++			    const char *wire_operation)
++{
++	int status = hfs_json_field(json, body, "status");
++	bool lease = !hfs_json_is(json, hfs_json_field(json, body, "lease"), "null");
++	bool reservation = !hfs_json_is(json, hfs_json_field(json, body, "reservation"), "null");
++	bool entry = !hfs_json_is(json, hfs_json_field(json, body, "entry"), "null");
++	const char *original = ticket->operation;
++	bool query = !strcmp(wire_operation, "VIEW_QUERY");
++	bool cancel = !strcmp(wire_operation, "VIEW_CANCEL");
++
++	if (hfs_json_is(json, status, "\"PENDING\"") ||
++	    hfs_json_is(json, status, "\"INDETERMINATE\"") ||
++	    hfs_json_is(json, status, "\"BLOCKED\"") ||
++	    hfs_json_is(json, status, "\"RETIRED_ID\""))
++		return lease || reservation || entry ? -EPROTO : 0;
++	if (hfs_json_is(json, status, "\"CANCELLED\""))
++		return (!query && !cancel) || lease || reservation || entry ? -EPROTO : 0;
++	if (cancel)
++		return -EPROTO;
++	if (hfs_json_is(json, status, "\"RELEASED\""))
++		return strcmp(original, "VIEW_RELEASE") || lease || reservation || entry ? -EPROTO : 0;
++	if (hfs_json_is(json, status, "\"FROZEN\""))
++		return strcmp(original, "DIRTY_FREEZE") || lease || reservation || !entry ? -EPROTO : 0;
++	if (!hfs_json_is(json, status, "\"GRANTED\"") || entry)
++		return -EPROTO;
++	if (!strcmp(original, "VIEW_ACQUIRE") || !strcmp(original, "VIEW_RENEW"))
++		return !lease || reservation ? -EPROTO : 0;
++	return strcmp(original, "DIRTY_RESERVE") || lease || !reservation ? -EPROTO : 0;
++}
++
++static int hfs_ticket_reply(struct hfs_view_ticket *ticket,
++			    const struct hfs_json *json, int payload,
++			    const char *wire_operation)
++{
++	u8 expected[32], actual[32];
++	char operation[24];
++	int err;
++
++	if (hfs_json_exact(json, payload,
++		"entry,id,lease,operation,request,request_hash,reservation,status") ||
++	    !hfs_token_equal(json, hfs_json_field(json, payload, "request"),
++			     ticket->request.data, ticket->request.len) ||
++	    hfs_json_string(json, hfs_json_field(json, payload, "operation"),
++			    operation, sizeof(operation)) < 0 ||
++	    strcmp(operation, ticket->operation) ||
++	    hfs_hex32(json, payload, "request_hash", expected) ||
++	    memcmp(expected, ticket->request_hash, 32) ||
++	    hfs_hex32(json, payload, "id", expected))
++		return -EPROTO;
++	err = hfs_json_hash_fields(json, payload,
++		"entry,lease,operation,request,request_hash,reservation,status", actual);
++	if (err || memcmp(expected, actual, 32))
++		return err ?: -EPROTO;
++	return hfs_ticket_union(ticket, json, payload, wire_operation);
++}
++
++int hfs_view_query(struct hfs_session *session, struct hfs_view_ticket *ticket,
++		    bool cancel, struct hfs_json **response)
++{
++	struct hfs_json *reply = NULL;
++	const char *operation = cancel ? "VIEW_CANCEL" : "VIEW_QUERY";
++	unsigned long flags;
++	int err, body;
++
++	*response = NULL;
++	if (!ticket->bound)
++		return -EAGAIN;
++	if (cancel) {
++		/* This API is only for never-published work. Real cache rights are
++		 * released after their separate physical revocation path.
++		 */
++		spin_lock_irqsave(&ticket->admission_lock, flags);
++		if (ticket->published) {
++			spin_unlock_irqrestore(&ticket->admission_lock, flags);
++			return -EBUSY;
++		}
++		ticket->closed = true;
++		spin_unlock_irqrestore(&ticket->admission_lock, flags);
++	}
++	mutex_lock(&ticket->family->dispatch);
++	err = hfs_control(session, operation, &ticket->query, true, &reply);
++	if (!err) {
++		body = hfs_json_field(reply, 0, "payload");
++		err = hfs_ticket_reply(ticket, reply, body, operation);
++		if (!err && !ticket->admitted) {
++			ticket->admitted = true;
++			WRITE_ONCE(ticket->family->initial, NULL);
++			wake_up_all(&ticket->family->wait);
++		}
++	}
++	mutex_unlock(&ticket->family->dispatch);
++	if (err) {
++		hfs_json_free(reply);
++		if (err == -EPROTO)
++			WRITE_ONCE(session->blocked, true);
++		return err;
++	}
++	if (!err)
++		err = hfs_copy_json(reply, body, response);
++	if (!err && hfs_json_is(reply, hfs_json_field(reply, body, "status"),
++				"\"CANCELLED\"")) {
++		struct hfs_json *closure = NULL;
++
++		err = hfs_copy_json(reply, body, &closure);
++		if (!err) {
++			/* Retirement follows Current; initial admission stays immutable. */
++			hfs_json_free(ticket->response);
++			ticket->response = closure;
++			ticket->terminal = true;
++		}
++	}
++	hfs_json_free(reply);
++	if (err == -EPROTO)
++		WRITE_ONCE(session->blocked, true);
++	return err;
++}
++
++int hfs_view_exchange(struct hfs_session *session, struct hfs_view_ticket *ticket,
++		      const char *operation, const struct hfs_buf *payload,
++		      struct hfs_json **response)
++{
++	struct hfs_json *reply = NULL, request;
++	struct hfs_buf *original = &ticket->original;
++	const struct hfs_buf *sent = payload;
++	const char *op = operation;
++	unsigned long deadline = jiffies + 30 * HZ;
++	bool control = hfs_view_command_control(operation);
++	int err, body, status;
++
++	*response = NULL;
++	if (!ticket->number || !hfs_view_command(operation) || payload->error ||
++	    hfs_view_command_control_family(operation) != ticket->control ||
++	    !strcmp(operation, "VIEW_QUERY") || !strcmp(operation, "VIEW_CANCEL"))
++		return -EINVAL;
++	if (ticket->bound) {
++		if (strcmp(ticket->operation, operation) ||
++		    ticket->payload.len != payload->len ||
++		    memcmp(ticket->payload.data, payload->data, payload->len))
++			return -ESTALE;
++	} else {
++		err = hfs_json_parse_into(payload->data, payload->len, &request,
++					  ticket->scratch, 4096);
++		if (!err && !hfs_token_equal(&request,
++			hfs_json_field(&request, 0, "request"),
++			ticket->request.data, ticket->request.len))
++			err = -EPROTO;
++		if (err)
++			return err;
++		original->len = 0;
++		original->error = 0;
++		hfs_buf_printf(original, "{\"op\":\"%s\",\"payload\":", operation);
++		hfs_buf_add(original, payload->data, payload->len);
++		hfs_buf_literal(original, "}");
++		err = original->error;
++		if (!err) {
++			hfs_hash(original->data, original->len, ticket->request_hash);
++			hfs_buf_add(&ticket->payload, payload->data, payload->len);
++			err = ticket->payload.error;
++		}
++		if (err)
++			return err;
++		strscpy(ticket->operation, operation, sizeof(ticket->operation));
++		ticket->bound = true;
++	}
++	/* Initial admissions are serialized per family, but terminal waits do
++	 * not own that mutex. Retries after protected initial observation QUERY
++	 * Current; they never reinterpret Initial GRANTED as fresh authority.
++	 */
++	sent = &ticket->payload;
++	if (ticket->admitted) {
++		op = "VIEW_QUERY";
++		sent = &ticket->query;
++		control = true;
++	}
++	for (;;) {
++		bool initial = !ticket->admitted;
++
++		if (initial)
++			mutex_lock(&ticket->family->dispatch);
++		err = hfs_control(session, op, sent, control, &reply);
++		if (err) {
++			if (initial)
++				mutex_unlock(&ticket->family->dispatch);
++			ticket->uncertain = true;
++			return err;
++		}
++		body = hfs_json_field(reply, 0, "payload");
++		err = hfs_ticket_reply(ticket, reply, body, op);
++		if (initial) {
++			if (!err) {
++				ticket->admitted = true;
++				WRITE_ONCE(ticket->family->initial, NULL);
++				wake_up_all(&ticket->family->wait);
++				if (!ticket->initial_response)
++					err = hfs_copy_json(reply, body, &ticket->initial_response);
++			}
++			mutex_unlock(&ticket->family->dispatch);
++		}
++		if (err)
++			goto invalid;
++		status = hfs_json_field(reply, body, "status");
++		if (hfs_json_is(reply, status, "\"GRANTED\"") ||
++		    hfs_json_is(reply, status, "\"FROZEN\"") ||
++		    hfs_json_is(reply, status, "\"RELEASED\"") ||
++		    hfs_json_is(reply, status, "\"CANCELLED\"") ||
++		    hfs_json_is(reply, status, "\"BLOCKED\"")) {
++			err = hfs_copy_json(reply, body, response);
++			if (err)
++				goto invalid;
++			hfs_json_free(ticket->response);
++			err = hfs_copy_json(reply, body, &ticket->response);
++			ticket->terminal = !err;
++			if (!err && hfs_json_is(reply, status, "\"CANCELLED\""))
++				err = -ECANCELED;
++			if (!err && hfs_json_is(reply, status, "\"BLOCKED\""))
++				err = -EAGAIN;
++			hfs_json_free(reply);
++			return err;
++		}
++		if (!hfs_json_is(reply, hfs_json_field(reply, body, "entry"), "null") ||
++		    !hfs_json_is(reply, hfs_json_field(reply, body, "lease"), "null") ||
++		    !hfs_json_is(reply, hfs_json_field(reply, body, "reservation"), "null")) {
++			err = -EPROTO;
++			goto invalid;
++		}
++		if (hfs_json_is(reply, status, "\"BLOCKED\"") ||
++		    hfs_json_is(reply, status, "\"RETIRED_ID\"")) {
++			hfs_json_free(reply);
++			return -EAGAIN;
++		}
++		if (!hfs_json_is(reply, status, "\"PENDING\"") &&
++		    !hfs_json_is(reply, status, "\"INDETERMINATE\"")) {
++			err = -EPROTO;
++			goto invalid;
++		}
++		hfs_json_free(reply);
++		reply = NULL;
++		if (time_after_eq(jiffies, deadline)) {
++			ticket->uncertain = true;
++			return -ETIMEDOUT;
++		}
++		usleep_range(10000, 12000);
++		op = "VIEW_QUERY";
++		sent = &ticket->query;
++		control = true;
++	}
++invalid:
++	ticket->uncertain = true;
++	WRITE_ONCE(session->blocked, true);
++	hfs_json_free(reply);
++	return err;
++}
++
++static int hfs_lease_decode(struct hfs_session *session,
++			    struct hfs_view_ticket *ticket,
++			    const struct hfs_json *response,
++			    const struct hfs_buf *access, bool dirty,
++			    const struct hfs_buf *expected_target,
++			    struct hfs_lease **out)
++{
++	struct hfs_lease *lease;
++	u8 actual[32], expected[32];
++	int body = hfs_json_field(response, 0, "lease"), token, err;
++
++	*out = NULL;
++	if (!hfs_json_is(response, hfs_json_field(response, 0, "status"), "\"GRANTED\"") ||
++	    !hfs_json_is(response, hfs_json_field(response, 0, "reservation"), "null") ||
++	    !hfs_json_is(response, hfs_json_field(response, 0, "entry"), "null") ||
++	    hfs_json_exact(response, body,
++		"access,credential_hash,domain,fence,id,mode,revision,scope,target") ||
++	    !hfs_token_equal(response, hfs_json_field(response, body, "access"),
++			     access->data, access->len) ||
++	    !hfs_token_equal(response, hfs_json_field(response, body, "domain"),
++			     session->domain->json->data, session->domain->json->len) ||
++	    !hfs_token_equal(response, hfs_json_field(response, body, "scope"),
++			     session->enrollment.context, session->enrollment.context_len) ||
++	    !hfs_json_is(response, hfs_json_field(response, body, "mode"),
++			 dirty ? "\"EXCLUSIVE_DIRTY\"" : "\"READ\"") ||
++	    hfs_hex32(response, body, "credential_hash", actual) ||
++	    memcmp(actual, ticket->family->hash, 32) ||
++	    hfs_hex32(response, body, "id", expected))
++		return -EPROTO;
++	err = hfs_json_hash_fields(response, body,
++		"access,credential_hash,domain,fence,mode,revision,scope,target", actual);
++	if (err || memcmp(actual, expected, 32))
++		return err ?: -EPROTO;
++	lease = kzalloc(sizeof(*lease), GFP_KERNEL);
++	if (!lease)
++		return -ENOMEM;
++	kref_init(&lease->refs);
++	mutex_init(&lease->release_lock);
++	memcpy(lease->id, expected, 32);
++	lease->dirty = dirty;
++	err = hfs_u64_field(response, body, "fence", &lease->fence);
++	if (!err)
++		err = hfs_u64_field(response, body, "revision", &lease->revision);
++	if (err || !lease->fence || !lease->revision) {
++		err = -EPROTO;
++		goto fail;
++	}
++	token = hfs_json_field(response, body, "target");
++	if (expected_target && !hfs_token_equal(response, token,
++					      expected_target->data, expected_target->len)) {
++		err = -ESTALE;
++		goto fail;
++	}
++	err = hfs_view_target(session, response, token, &lease->visibility,
++			      lease->target_hash);
++	if (!err)
++		err = hfs_copy_json(response, body, &lease->json);
++	if (err)
++		goto fail;
++	lease->ticket = ticket;
++	*out = lease;
++	return 0;
++fail:
++	hfs_lease_free(lease);
++	return err;
++}
++
++int hfs_lease_acquire(struct hfs_session *session, const struct hfs_cred *cred,
++		      const struct hfs_cap *object, const struct hfs_cap *description,
++		      u64 offset, bool dirty, const struct hfs_buf *expected_target,
++		      struct hfs_lease **out)
++{
++	struct hfs_view_ticket *ticket;
++	struct hfs_json *response = NULL;
++	struct hfs_buf payload = {}, access = {};
++	int err;
++
++	*out = NULL;
++	if (!session->domain || !cred || (object && description) ||
++	    (dirty && (!description || !(description->rights & 2))) ||
++	    (description && (!dirty && !(description->rights & 1))) ||
++	    (description && (offset & 4095 || offset > S64_MAX - 4096)))
++		return -EINVAL;
++	err = hfs_view_ticket_prepare(session, cred, false, &ticket);
++	if (err)
++		return err;
++	if (hfs_buf_init(&payload, HFS_VIEW_BODY_MAX) || hfs_buf_init(&access, 16384)) {
++		err = -ENOMEM;
++		goto free;
++	}
++	if (description) {
++		hfs_buf_literal(&access, "{\"description\":");
++		hfs_cap_write(&access, description);
++		hfs_buf_printf(&access, ",\"kind\":\"PAGE\",\"length\":4096,\"offset\":%llu}", offset);
++	} else if (object) {
++		hfs_buf_literal(&access, "{\"kind\":\"OBJECT\",\"object\":");
++		hfs_cap_write(&access, object);
++		hfs_buf_literal(&access, "}");
++	} else {
++		hfs_buf_literal(&access, "{\"kind\":\"DOMAIN\"}");
++	}
++	if (access.error || (expected_target && expected_target->error)) {
++		err = access.error ?: expected_target->error;
++		goto free;
++	}
++	err = hfs_view_ticket_activate(ticket);
++	if (err)
++		goto free;
++	hfs_buf_literal(&payload, "{\"access\":");
++	hfs_buf_add(&payload, access.data, access.len);
++	hfs_buf_literal(&payload, ",\"domain\":");
++	hfs_cap_write(&payload, session->domain);
++	hfs_buf_printf(&payload, ",\"mode\":\"%s\",\"request\":", dirty ? "EXCLUSIVE_DIRTY" : "READ");
++	hfs_buf_add(&payload, ticket->request.data, ticket->request.len);
++	hfs_buf_literal(&payload, ",\"target\":");
++	if (expected_target)
++		hfs_buf_add(&payload, expected_target->data, expected_target->len);
++	else
++		hfs_buf_literal(&payload, "null");
++	hfs_buf_literal(&payload, "}");
++	err = access.error ?: hfs_view_exchange(session, ticket, "VIEW_ACQUIRE", &payload, &response);
++	if (!err)
++		err = hfs_lease_decode(session, ticket, response, &access, dirty, expected_target, out);
++	if (!err && description)
++		memcpy((*out)->description, description->token, 32);
++	if (!err) {
++		(*out)->issuer = kmemdup(cred, sizeof(*cred), GFP_KERNEL);
++		if (!(*out)->issuer) {
++			hfs_lease_free(*out);
++			*out = NULL;
++			ticket = NULL;
++			err = -ENOMEM;
++		} else {
++			(*out)->issuer->native = get_cred(cred->native);
++		}
++	}
++	if (!err)
++		err = hfs_buf_init(&(*out)->release_payload, 32768);
++	if (!err)
++		err = hfs_view_ticket_prepare(session, cred, true, &(*out)->release_ticket);
++	if (err && *out) {
++		hfs_lease_free(*out);
++		*out = NULL;
++		ticket = NULL;
++	}
++	if (err == -EPROTO || err == -ESTALE)
++		WRITE_ONCE(session->blocked, true);
++free:
++	if (err)
++		hfs_view_ticket_put(ticket);
++	hfs_json_free(response);
++	hfs_buf_free(&payload);
++	hfs_buf_free(&access);
++	return err;
++}
++
++static int hfs_lease_release_locked(struct hfs_session *session, struct hfs_lease *lease)
++{
++	struct hfs_view_ticket *ticket = lease->release_ticket;
++	struct hfs_buf *payload = &lease->release_payload;
++	struct hfs_json *response = NULL;
++	int err;
++
++	/* This preowned control may initiate pressure recall while PTEs still
++	 * exist. No physical/page/transition lock may cover the parked RPC.
++	 * The issuer may return PENDING; only verified physical/source closure
++	 * can make it RELEASED. The final local check below is independent.
++	 */
++	if (!ticket || !lease->issuer ||
++	    memcmp(ticket->family->hash, lease->ticket->family->hash, 32))
++		return -ESTALE;
++	err = hfs_view_ticket_activate(ticket);
++	if (err)
++		return err;
++	payload->len = 0;
++	payload->error = 0;
++	hfs_buf_literal(payload, "{\"lease\":");
++	hfs_buf_add(payload, lease->json->data, lease->json->len);
++	hfs_buf_literal(payload, ",\"request\":");
++	hfs_buf_add(payload, ticket->request.data, ticket->request.len);
++	hfs_buf_literal(payload, "}");
++	err = hfs_view_exchange(session, ticket, "VIEW_RELEASE", payload, &response);
++	if (!err &&
++	    (!hfs_json_is(response, hfs_json_field(response, 0, "status"), "\"RELEASED\"") ||
++	     !hfs_json_is(response, hfs_json_field(response, 0, "entry"), "null") ||
++	     !hfs_json_is(response, hfs_json_field(response, 0, "lease"), "null") ||
++	     !hfs_json_is(response, hfs_json_field(response, 0, "reservation"), "null"))) {
++		err = -EPROTO;
++		WRITE_ONCE(session->blocked, true);
++	}
++	if (!err && READ_ONCE(lease->published) && !READ_ONCE(lease->revoked)) {
++		struct hfs_view *view = hfs_view_get(session);
++
++		if (view) {
++			hfs_view_fence(view);
++			hfs_view_put(view);
++		}
++		WRITE_ONCE(session->blocked, true);
++		err = -EPROTO;
++	}
++	hfs_json_free(response);
++	return err;
++}
++
++int hfs_lease_release(struct hfs_session *session, struct hfs_lease *lease)
++{
++	int err;
++
++	mutex_lock(&lease->release_lock);
++	if (lease->released) {
++		err = 0;
++	} else {
++		err = hfs_lease_release_locked(session, lease);
++		if (!err)
++			lease->released = true;
++	}
++	mutex_unlock(&lease->release_lock);
++	return err;
++}
++
++static void hfs_lease_destroy(struct kref *refs)
++{
++	struct hfs_lease *lease = container_of(refs, struct hfs_lease, refs);
++
++	hfs_buf_free(&lease->release_payload);
++	hfs_view_ticket_put(lease->release_ticket);
++	hfs_json_free(lease->json);
++	hfs_cred_free(lease->issuer);
++	hfs_view_ticket_put(lease->ticket);
++	kfree(lease);
++}
++
++void hfs_lease_get(struct hfs_lease *lease)
++{
++	kref_get(&lease->refs);
++}
++
++void hfs_lease_free(struct hfs_lease *lease)
++{
++	if (lease)
++		kref_put(&lease->refs, hfs_lease_destroy);
++}
++
++
++int hfs_view_retire(struct hfs_session *session)
++{
++	struct hfs_view_family *family;
++	struct hfs_view *view;
++	struct hfs_view_ticket *ticket, *next;
++	struct hfs_buf payload = {};
++	struct hfs_json *reply = NULL;
++	LIST_HEAD(released);
++	u8 hash[32], proof[32];
++	u64 through, floor;
++	u32 count, nr_families = 0, index;
++	bool advanced = false;
++	int err = -EAGAIN, body;
++
++	if (session->bridge_minor != 1)
++		return -EOPNOTSUPP;
++	view = hfs_view_get(session);
++	if (!view)
++		return -EAGAIN;
++	mutex_lock(&session->retirement);
++	payload = view->retire_payload;
++	mutex_lock(&session->lock);
++	list_for_each_entry(family, &session->view_families, list)
++		view->retiring[nr_families++] = family;
++	mutex_unlock(&session->lock);
++	/* Families are retained with permanent floors until protected session
++	 * retirement. Advancing a floor never resets next or forgets credentials.
++	 */
++	for (index = 0; index < nr_families; index++) {
++		family = view->retiring[index];
++		payload.len = 0;
++		payload.error = 0;
++		count = 0;
++		through = family->floor;
++		hfs_buf_printf(&payload, "{\"anchor\":\"%pUb\",\"credentials\":",
++			       &session->enrollment.anchor);
++		hfs_buf_add(&payload, family->credentials.data, family->credentials.len);
++		hfs_buf_printf(&payload, ",\"nonce\":\"%pUb\",\"result_hashes\":[",
++			       &family->nonce);
++		mutex_lock(&session->lock);
++		list_for_each_entry(ticket, &session->view_tickets, list) {
++			if (ticket->family != family || !ticket->number)
++				continue;
++			if (ticket->users || !ticket->terminal || !ticket->response ||
++			    ticket->number != through + 1)
++				break;
++			if (hfs_hex32(ticket->response, 0, "id", hash))
++				break;
++			if (count++)
++				hfs_buf_literal(&payload, ",");
++			hfs_buf_hex(&payload, hash, 32);
++			through = ticket->number;
++			if (count == 1024)
++				break;
++		}
++		mutex_unlock(&session->lock);
++		if (!count)
++			continue;
++		hfs_buf_printf(&payload, "],\"through\":%llu}", through);
++		err = hfs_control(session, "VIEW_RETIRE", &payload, true, &reply);
++		if (err)
++			goto out;
++		body = hfs_json_field(reply, 0, "payload");
++		if (hfs_json_exact(reply, body, "floor,proof_hash,status") ||
++		    hfs_u64_field(reply, body, "floor", &floor)) {
++			err = -EPROTO;
++			goto out;
++		}
++		if (hfs_json_is(reply, hfs_json_field(reply, body, "status"), "\"BLOCKED\"")) {
++			if (!hfs_json_is(reply, hfs_json_field(reply, body, "proof_hash"), "null")) {
++				err = -EPROTO;
++				goto out;
++			}
++			hfs_json_free(reply);
++			reply = NULL;
++			continue;
++		}
++		if (!hfs_json_is(reply, hfs_json_field(reply, body, "status"), "\"RETIRED\"") ||
++		    floor != through || hfs_hex32(reply, body, "proof_hash", proof)) {
++			err = -EPROTO;
++			goto out;
++		}
++		err = session->provider->view_retirement(session, &family->credentials,
++						 through, proof);
++		if (err)
++			goto out;
++		mutex_lock(&session->lock);
++		family->floor = through;
++		advanced = true;
++		list_for_each_entry_safe(ticket, next, &session->view_tickets, list) {
++			if (ticket->family != family || !ticket->number || ticket->number > through)
++				continue;
++			if (WARN_ON_ONCE(ticket->users)) {
++				WRITE_ONCE(session->blocked, true);
++				err = -EBUSY;
++				break;
++			}
++			list_move_tail(&ticket->list, &released);
++			session->nr_view_tickets--;
++			if (ticket->control)
++				session->nr_view_control_tickets--;
++		}
++		mutex_unlock(&session->lock);
++		list_for_each_entry_safe(ticket, next, &released, list) {
++			list_del(&ticket->list);
++			hfs_buf_free(&ticket->request);
++			hfs_buf_free(&ticket->payload);
++			hfs_buf_free(&ticket->query);
++			hfs_buf_free(&ticket->original);
++			kvfree(ticket->scratch);
++			hfs_json_free(ticket->response);
++			hfs_json_free(ticket->initial_response);
++			session->provider->unreserve(session, ticket->reservation);
++			kfree(ticket);
++		}
++		hfs_json_free(reply);
++		reply = NULL;
++		if (err)
++			goto out;
++	}
++out:
++	hfs_json_free(reply);
++	/* Payload and snapshot storage were reserved before writable admission. */
++	mutex_unlock(&session->retirement);
++	hfs_view_put(view);
++	return err ?: (advanced ? 0 : -EAGAIN);
++}
++
++/* Outputs remain owned on uncertain errors: their exact ticket and ordinary
++ * number must be resolved; timeout is never a destructor or no-effect proof.
++ */
++int hfs_dirty_reserve(struct hfs_session *session, struct hfs_cache_page *entry,
++		       const struct hfs_cap *description, u64 offset, u32 length,
++		       struct hfs_dirty **out)
++{
++	struct hfs_dirty *dirty;
++	struct hfs_json *reply = NULL;
++	struct hfs_buf *payload;
++	const struct hfs_cred *cred;
++	u8 expected[32], actual[32];
++	uuid_t provenance;
++	u64 number;
++	int err, body;
++
++	*out = NULL;
++	if (!entry->lease || !entry->lease->dirty || !description ||
++	    !(description->rights & 2) || offset % 4096 || offset > S64_MAX - 4096 ||
++	    !length || length > 4096)
++		return -EINVAL;
++	err = hfs_view_dirty_slot(entry);
++	if (err)
++		return err;
++	cred = entry->lease->issuer;
++	dirty = kzalloc(sizeof(*dirty), GFP_KERNEL);
++	if (!dirty) {
++		hfs_view_dirty_unslot(entry);
++		return -ENOMEM;
++	}
++	INIT_LIST_HEAD(&dirty->list);
++	dirty->offset = offset;
++	dirty->length = length;
++	dirty->home = description->home;
++	dirty->allocation = description->allocation;
++	err = session->provider->reserve(session, sizeof(*dirty) + 4ULL * 1024 * 1024,
++					 true, &dirty->credit);
++	if (err) {
++		kfree(dirty);
++		hfs_view_dirty_unslot(entry);
++		return err;
++	}
++	/* From here cleanup must resolve any numbered local/remote obligation. */
++	*out = dirty;
++	if (hfs_buf_init(&dirty->freeze_payload, HFS_VIEW_BODY_MAX) ||
++	    hfs_buf_init(&dirty->drain_args, 32768))
++		return -ENOMEM;
++	err = hfs_view_ticket_prepare(session, cred, true, &dirty->freeze_ticket);
++	if (!err)
++		err = hfs_view_ticket_prepare(session, cred, false, &dirty->reserve_ticket);
++	if (!err)
++		err = hfs_request_earmark(session, cred, dirty->reserve_ticket, &dirty->request);
++	if (err)
++		return err;
++	err = hfs_view_ticket_activate(dirty->reserve_ticket);
++	if (err)
++		return err;
++	payload = &dirty->freeze_payload;
++	hfs_buf_literal(payload, "{\"claim_number\":");
++	hfs_buf_add(payload, dirty->request->earmark_number.data,
++		    dirty->request->earmark_number.len);
++	hfs_buf_literal(payload, ",\"description\":");
++	hfs_cap_write(payload, description);
++	hfs_buf_literal(payload, ",\"lease\":");
++	hfs_buf_add(payload, entry->lease->json->data, entry->lease->json->len);
++	hfs_buf_printf(payload, ",\"length\":4096,\"offset\":%llu,\"request\":", offset);
++	hfs_buf_add(payload, dirty->reserve_ticket->request.data,
++		    dirty->reserve_ticket->request.len);
++	hfs_buf_literal(payload, "}");
++	err = hfs_view_exchange(session, dirty->reserve_ticket, "DIRTY_RESERVE", payload, &reply);
++	if (err)
++		goto done;
++	body = hfs_json_field(reply, 0, "reservation");
++	if (hfs_json_exact(reply, body,
++		"claim_number,credentials,description,drain_credit,id,lease_id,length,offset,provenance,scope") ||
++	    !hfs_token_equal(reply, hfs_json_field(reply, body, "claim_number"),
++			     dirty->request->earmark_number.data, dirty->request->earmark_number.len) ||
++	    !hfs_token_equal(reply, hfs_json_field(reply, body, "credentials"),
++			     dirty->request->credentials.data, dirty->request->credentials.len) ||
++	    !hfs_token_equal(reply, hfs_json_field(reply, body, "description"),
++			     description->json->data, description->json->len) ||
++	    !hfs_token_equal(reply, hfs_json_field(reply, body, "scope"),
++			     dirty->request->original_context.data, dirty->request->original_context.len) ||
++	    hfs_hex32(reply, body, "lease_id", actual) || memcmp(actual, entry->lease->id, 32) ||
++	    hfs_hex32(reply, body, "drain_credit", actual) ||
++	    hfs_hex32(reply, body, "id", expected) ||
++	    hfs_uuid(reply, hfs_json_field(reply, body, "provenance"), &provenance) ||
++	    uuid_is_null(&provenance) ||
++	    hfs_u64_field(reply, body, "offset", &number) || number != offset ||
++	    hfs_u64_field(reply, body, "length", &number) || number != 4096) {
++		err = -EPROTO;
++		goto done;
++	}
++	err = hfs_json_hash_fields(reply, body,
++		"claim_number,credentials,description,drain_credit,lease_id,length,offset,provenance,scope", actual);
++	if (!err && memcmp(expected, actual, 32))
++		err = -EPROTO;
++	if (!err)
++		err = hfs_copy_json(reply, body, &dirty->reservation);
++	if (!err)
++		memcpy(dirty->id, expected, 32);
++done:
++	hfs_json_free(reply);
++	if (err == -EPROTO)
++		WRITE_ONCE(session->blocked, true);
++	return err;
++}
++
++int hfs_dirty_resume_reserve(struct hfs_session *session, struct hfs_dirty *dirty,
++			     struct hfs_lease *lease)
++{
++	struct hfs_view_ticket *ticket = dirty->reserve_ticket;
++	struct hfs_buf *payload = &dirty->freeze_payload;
++	struct hfs_json *response = NULL;
++	int err, access, description;
++
++	if (!ticket || !dirty->request || !lease || !lease->json)
++		return -EINVAL;
++	if (ticket->bound) {
++		err = hfs_view_exchange(session, ticket, "DIRTY_RESERVE", &ticket->payload, &response);
++	} else {
++		err = hfs_view_ticket_activate(ticket);
++		if (err)
++			return err;
++		access = hfs_json_field(lease->json, 0, "access");
++		description = hfs_json_field(lease->json, access, "description");
++		payload->len = 0;
++		payload->error = 0;
++		hfs_buf_literal(payload, "{\"claim_number\":");
++		hfs_buf_add(payload, dirty->request->earmark_number.data,
++			    dirty->request->earmark_number.len);
++		hfs_buf_literal(payload, ",\"description\":");
++		hfs_buf_token(payload, lease->json, description);
++		hfs_buf_literal(payload, ",\"lease\":");
++		hfs_buf_add(payload, lease->json->data, lease->json->len);
++		hfs_buf_printf(payload, ",\"length\":4096,\"offset\":%llu,\"request\":", dirty->offset);
++		hfs_buf_add(payload, ticket->request.data, ticket->request.len);
++		hfs_buf_literal(payload, "}");
++		err = hfs_view_exchange(session, ticket, "DIRTY_RESERVE", payload, &response);
++	}
++	/* No admission/replay result from this cleanup path is ever adopted.
++	 * It only resolves the original numbered reservation before CANCEL.
++	 */
++	hfs_json_free(response);
++	return err;
++}
++
++int hfs_dirty_freeze(struct hfs_view *view, struct hfs_dirty *dirty)
++{
++	struct hfs_session *session = view->session;
++	struct hfs_buf *payload = &dirty->freeze_payload, *args = &dirty->drain_args;
++	struct hfs_json *reply = NULL, *expected_entry = NULL;
++	struct page *page = dirty->entry->page;
++	u8 data_hash[32], entry_id[32];
++	void *address;
++	unsigned long flags;
++	int description, entry, err;
++
++	if (dirty->frozen)
++		return 0;
++	spin_lock_irqsave(&view->lock, flags);
++	err = !dirty->adopted || !view->quiescent ||
++		view->phase != HFS_VIEW_QUIESCENT || view->active ? -ESTALE : 0;
++	spin_unlock_irqrestore(&view->lock, flags);
++	if (err || !page)
++		return err ?: -ESTALE;
++	if (!dirty->captured) {
++		lock_page(page);
++		if (page_mapped(page) || PageWriteback(page) ||
++		    folio_maybe_dma_pinned(page_folio(page))) {
++			unlock_page(page);
++			return -EBUSY;
++		}
++		address = kmap_local_page(page);
++		memcpy(dirty->data, address, dirty->length);
++		kunmap_local(address);
++		unlock_page(page);
++		dirty->recall = view->recall;
++		dirty->captured = true;
++	} else if (!uuid_equal(&dirty->recall, &view->recall)) {
++		return -ESTALE;
++	}
++	/* Frozen page bytes are now in already reserved immutable RAM. All
++	 * following RPC/JSON work happens outside page/PTE/MM critical locks.
++	 */
++	hfs_hash(dirty->data, dirty->length, data_hash);
++	description = hfs_json_field(dirty->reservation, 0, "description");
++	payload->len = 0;
++	payload->error = 0;
++	hfs_buf_literal(payload, "{\"description\":");
++	hfs_buf_token(payload, dirty->reservation, description);
++	hfs_buf_printf(payload, ",\"length\":%u,\"offset\":%llu,\"payload_hash\":",
++		       dirty->length, dirty->offset);
++	hfs_buf_hex(payload, data_hash, 32);
++	hfs_buf_literal(payload, ",\"reservation\":");
++	hfs_buf_hex(payload, dirty->id, 32);
++	hfs_buf_literal(payload, "}");
++	if (payload->error)
++		return payload->error;
++	hfs_hash(payload->data, payload->len, entry_id);
++	args->len = 0;
++	args->error = 0;
++	hfs_buf_literal(args, "{\"data\":");
++	hfs_buf_hex(args, dirty->data, dirty->length);
++	hfs_buf_literal(args, ",\"description\":");
++	hfs_buf_token(args, dirty->reservation, description);
++	hfs_buf_literal(args, ",\"dirty_entry\":");
++	hfs_buf_hex(args, entry_id, 32);
++	hfs_buf_printf(args, ",\"offset\":%llu,\"recall\":\"%pUb\",\"reservation\":",
++		       dirty->offset, &dirty->recall);
++	hfs_buf_hex(args, dirty->id, 32);
++	hfs_buf_literal(args, "}");
++	if (!dirty->request->bound) {
++		err = hfs_request_bind_drain(session, dirty->request, args);
++		if (err)
++			return err;
++	}
++	payload->len = 0;
++	payload->error = 0;
++	hfs_buf_literal(payload, "{\"claim\":");
++	hfs_buf_add(payload, dirty->request->claim.data, dirty->request->claim.len);
++	hfs_buf_literal(payload, ",\"description\":");
++	hfs_buf_token(payload, dirty->reservation, description);
++	hfs_buf_literal(payload, ",\"id\":");
++	hfs_buf_hex(payload, entry_id, 32);
++	hfs_buf_printf(payload, ",\"length\":%u,\"offset\":%llu,\"payload_hash\":",
++		       dirty->length, dirty->offset);
++	hfs_buf_hex(payload, data_hash, 32);
++	hfs_buf_literal(payload, ",\"reservation\":");
++	hfs_buf_hex(payload, dirty->id, 32);
++	hfs_buf_literal(payload, "}");
++	err = payload->error ?: hfs_json_parse(payload->data, payload->len, &expected_entry);
++	if (err)
++		return err;
++	payload->len = 0;
++	payload->error = 0;
++	hfs_buf_literal(payload, "{\"claim\":");
++	hfs_buf_add(payload, dirty->request->claim.data, dirty->request->claim.len);
++	hfs_buf_literal(payload, ",\"data\":");
++	hfs_buf_hex(payload, dirty->data, dirty->length);
++	err = hfs_view_ticket_activate(dirty->freeze_ticket);
++	if (err)
++		goto done;
++	hfs_buf_printf(payload, ",\"recall\":\"%pUb\",\"request\":", &dirty->recall);
++	hfs_buf_add(payload, dirty->freeze_ticket->request.data, dirty->freeze_ticket->request.len);
++	hfs_buf_literal(payload, ",\"reservation\":");
++	hfs_buf_add(payload, dirty->reservation->data, dirty->reservation->len);
++	hfs_buf_literal(payload, "}");
++	err = hfs_view_exchange(session, dirty->freeze_ticket, "DIRTY_FREEZE", payload, &reply);
++	if (err)
++		goto done;
++	entry = hfs_json_field(reply, 0, "entry");
++	if (!hfs_token_equal(reply, entry, expected_entry->data, expected_entry->len)) {
++		err = -EPROTO;
++		goto done;
++	}
++	memcpy(dirty->entry_id, entry_id, 32);
++	dirty->frozen_entry = expected_entry;
++	expected_entry = NULL;
++	dirty->frozen = true;
++done:
++	hfs_json_free(reply);
++	hfs_json_free(expected_entry);
++	if (err == -EPROTO)
++		WRITE_ONCE(session->blocked, true);
++	return err;
++}
++
++static void hfs_dirty_mapping_error(struct hfs_view *view, struct hfs_dirty *dirty, int err)
++{
++	struct hfs_inode *object;
++	struct inode *inode = NULL;
++	unsigned long flags;
++
++	spin_lock_irqsave(&view->lock, flags);
++	list_for_each_entry(object, &view->mappings, view_list)
++		if (uuid_equal(&object->object->home, &dirty->home) &&
++		    uuid_equal(&object->object->allocation, &dirty->allocation)) {
++			inode = igrab(&object->inode);
++			break;
++		}
++	spin_unlock_irqrestore(&view->lock, flags);
++	if (inode) {
++		mapping_set_error(inode->i_mapping, err);
++		iput(inode);
++	}
++}
++
++int hfs_dirty_drain(struct hfs_view *view, struct hfs_dirty *dirty)
++{
++	struct hfs_json *result = NULL;
++	struct page *page;
++	unsigned long flags;
++	u64 count;
++	int err;
++
++	if (!dirty->adopted || !dirty->frozen || !dirty->request ||
++	    !READ_ONCE(view->quiescent))
++		return -ESTALE;
++	if (dirty->resolved)
++		return 0;
++	if (dirty->request->terminal) {
++		err = dirty->request->result ? hfs_copy_json(dirty->request->result, 0, &result) : -EPROTO;
++		if (!err)
++			err = hfs_result_code(result);
++	} else {
++		err = hfs_request_drain(view->session, dirty->request, &result);
++	}
++	if (!err && (hfs_u64_field(result, 0, "count", &count) || count != dirty->length))
++		err = -EIO;
++	if (err) {
++		hfs_dirty_mapping_error(view, dirty, err);
++		goto out;
++	}
++	spin_lock_irqsave(&view->lock, flags);
++	page = dirty->entry->page;
++	if (page)
++		get_page(page);
++	spin_unlock_irqrestore(&view->lock, flags);
++	if (page) {
++		lock_page(page);
++		if (page_mapped(page) || PageWriteback(page) ||
++		    folio_maybe_dma_pinned(page_folio(page)))
++			err = -EBUSY;
++		else
++			clear_page_dirty_for_io(page);
++		unlock_page(page);
++		put_page(page);
++	}
++	if (!err) {
++		/* Intermediate installs may have detached the old cache page.
++		 * Immutable bytes/Claim remained in reserved RAM throughout; the
++		 * exact protected full-length result now resolves that obligation.
++		 */
++		spin_lock_irqsave(&view->lock, flags);
++		dirty->resolved = true;
++		spin_unlock_irqrestore(&view->lock, flags);
++	}
++out:
++	hfs_json_free(result);
++	return err;
++}
+diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
+new file mode 100644
+--- /dev/null
++++ b/fs/9p/hfs_mmap.c
+@@ -0,0 +1,1658 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Retained file mappings: physical stopped installation and reserved drains. */
++#include <linux/mm.h>
++#include <linux/pagemap.h>
++#include <linux/slab.h>
++#include <linux/writeback.h>
++#include <linux/workqueue.h>
++#include <linux/delay.h>
++#include <linux/highmem.h>
++#include <linux/user_namespace.h>
++#include "hfs.h"
++
++/* transitions owns the preallocated inode workspace. No network/user copy or
++ * source verifier runs in this page/PTE critical phase.
++ */
++static int hfs_mmap_invalidate_stopped(struct hfs_view *view)
++{
++	struct hfs_inode *object;
++	struct hfs_cache_page *entry;
++	unsigned long flags;
++	u32 count = 0, pages = 0, i;
++	int err = 0, current_err;
++
++	spin_lock_irqsave(&view->lock, flags);
++	if (!view->quiescent || view->active || view->phase == HFS_VIEW_LIVE ||
++	    view->phase == HFS_VIEW_FENCED) {
++		err = -ESTALE;
++		goto unlock;
++	}
++	list_for_each_entry(object, &view->mappings, view_list) {
++		struct inode *inode = igrab(&object->inode);
++
++		if (inode)
++			view->stopping[count++] = inode;
++	}
++	spin_unlock_irqrestore(&view->lock, flags);
++	for (i = 0; i < count; i++) {
++		struct inode *inode = view->stopping[i];
++
++		/* STOP already zapped all aliases including executable and
++		 * open-unlinked; this check independently refuses a late busy page.
++		 * Frozen bytes/claims remain in the complete reserved registry even
++		 * when their terminal result is waiting for this cut installation.
++		 */
++		current_err = invalidate_inode_pages2(inode->i_mapping);
++		if (current_err && !err)
++			err = current_err;
++		iput(inode);
++		view->stopping[i] = NULL;
++	}
++	spin_lock_irqsave(&view->lock, flags);
++	list_for_each_entry(entry, &view->cache, list)
++		if (entry->page) {
++			get_page(entry->page);
++			view->stopping_pages[pages++] = entry->page;
++		}
++	spin_unlock_irqrestore(&view->lock, flags);
++	for (i = 0; i < pages; i++) {
++		struct page *page = view->stopping_pages[i];
++
++		lock_page(page);
++		/* Last close/unlink/eviction can already have detached a retained
++		 * provenance page from its inode. Frozen RAM still owns its bytes.
++		 */
++		if (!page_mapping(page) && !page_mapped(page) && !PageWriteback(page) &&
++		    !folio_maybe_dma_pinned(page_folio(page))) {
++			current_err = PageDirty(page) ?
++				hfs_cache_aops.launder_folio(page_folio(page)) : 0;
++			if (!current_err) {
++				hfs_cache_aops.invalidate_folio(page_folio(page), 0, PAGE_SIZE);
++				hfs_cache_aops.free_folio(page_folio(page));
++			}
++		}
++		unlock_page(page);
++		put_page(page);
++		view->stopping_pages[i] = NULL;
++	}
++	spin_lock_irqsave(&view->lock, flags);
++	list_for_each_entry(entry, &view->cache, list)
++		if (entry->page)
++			err = err ?: -EBUSY;
++unlock:
++	spin_unlock_irqrestore(&view->lock, flags);
++	return err;
++}
++
++/* An actual terminal full-length drain and physical cache detachment are both
++ * required. The canonical manifest has already copied the frozen records and
++ * remains immutable through final ACK/replay; removing this in-memory registry
++ * does not change that manifest or the host's protected source inventory.
++ */
++static int hfs_mmap_close_drained(struct hfs_view *view)
++{
++	struct hfs_dirty *dirty, *next;
++	LIST_HEAD(closed);
++	unsigned long flags;
++	int err = 0;
++
++	spin_lock_irqsave(&view->lock, flags);
++	list_for_each_entry(dirty, &view->dirty, list)
++		if (!dirty->resolved || !dirty->frozen || dirty->entry->page) {
++			err = -EBUSY;
++			goto unlock;
++		}
++	list_for_each_entry_safe(dirty, next, &view->dirty, list) {
++		dirty->entry->dirty = NULL;
++		view->nr_dirty--;
++		list_move_tail(&dirty->list, &closed);
++	}
++unlock:
++	spin_unlock_irqrestore(&view->lock, flags);
++	if (err)
++		return err;
++	list_for_each_entry_safe(dirty, next, &closed, list) {
++		struct hfs_request *request = dirty->request;
++
++		list_del(&dirty->list);
++		dirty->request = NULL;
++		hfs_request_unhold(view->session, request);
++		hfs_view_ticket_put(dirty->reserve_ticket);
++		hfs_view_ticket_put(dirty->freeze_ticket);
++		hfs_json_free(dirty->reservation);
++		hfs_json_free(dirty->frozen_entry);
++		hfs_buf_free(&dirty->freeze_payload);
++		hfs_buf_free(&dirty->drain_args);
++		hfs_view_page_put(dirty->entry);
++		view->session->provider->unreserve(view->session, dirty->credit);
++		kfree(dirty);
++	}
++	return 0;
++}
++
++static bool hfs_mmap_install_phase(struct hfs_view *view, bool final)
++{
++	return final ? view->phase == HFS_VIEW_DRAINED :
++		(view->phase == HFS_VIEW_STOPPED || view->phase == HFS_VIEW_INSTALLED_DRAIN);
++}
++
++int hfs_mmap_install(struct hfs_view *view, const struct hfs_json *event,
++		     int target, const uuid_t *recall, u64 sequence, bool final)
++{
++	u8 target_hash[32];
++	uuid_t visibility;
++	unsigned long flags;
++	u32 len;
++	int err;
++
++	if (!sequence || target < 0 || target >= event->count)
++		return -EPROTO;
++	len = event->tokens[target].end - event->tokens[target].start;
++	if (!len || len > HFS_TARGET_MAX)
++		return -EPROTO;
++	/* Native source verification is mandatory. It runs while observations
++	 * are stopped, outside every page/PTE/physical critical token.
++	 */
++	err = hfs_view_target(view->session, event, target, &visibility, target_hash);
++	if (err)
++		return err;
++	mutex_lock(&view->transitions);
++	spin_lock_irqsave(&view->lock, flags);
++	if ((final ? view->phase == HFS_VIEW_FINAL :
++	     (view->phase == HFS_VIEW_INSTALLED_DRAIN || view->phase == HFS_VIEW_DRAINED)) &&
++	    view->quiescent && !view->active && sequence == view->sequence &&
++	    uuid_equal(&view->recall, recall) && !memcmp(view->target_hash, target_hash, 32)) {
++		spin_unlock_irqrestore(&view->lock, flags);
++		err = 0;
++		goto out;
++	}
++	if (!view->quiescent || view->active || !uuid_equal(&view->recall, recall) ||
++	    sequence <= view->sequence ||
++	    !hfs_mmap_install_phase(view, final))
++		err = -ESTALE;
++	spin_unlock_irqrestore(&view->lock, flags);
++	if (err)
++		goto out;
++	err = hfs_mmap_invalidate_stopped(view);
++	if (err)
++		goto out;
++	spin_lock_irqsave(&view->lock, flags);
++	/* Source validation may park; fence still wins before installation.
++	 * Revalidate exact phase/event immediately before installing target.
++	 */
++	if (!view->quiescent || view->active || !uuid_equal(&view->recall, recall) ||
++	    sequence <= view->sequence ||
++	    !hfs_mmap_install_phase(view, final)) {
++		err = -ESTALE;
++	} else if (view->revision == U64_MAX) {
++		view->phase = HFS_VIEW_FENCED;
++		err = -EOVERFLOW;
++	} else {
++		view->target.len = 0;
++		view->target.error = 0;
++		hfs_buf_token(&view->target, event, target);
++		err = view->target.error;
++		if (!err) {
++			memcpy(view->target_hash, target_hash, 32);
++			view->generation = visibility;
++			view->revision++;
++			view->sequence = sequence;
++			view->phase = final ? HFS_VIEW_FINAL : HFS_VIEW_INSTALLED_DRAIN;
++		}
++	}
++	spin_unlock_irqrestore(&view->lock, flags);
++out:
++	mutex_unlock(&view->transitions);
++	return err;
++}
++
++static int hfs_mmap_finish_drained(struct hfs_view *view)
++{
++	unsigned long flags;
++	int err;
++
++	mutex_lock(&view->transitions);
++	spin_lock_irqsave(&view->lock, flags);
++	err = view->phase == HFS_VIEW_INSTALLED_DRAIN && view->quiescent &&
++		!view->active ? 0 : -ESTALE;
++	spin_unlock_irqrestore(&view->lock, flags);
++	if (!err)
++		err = hfs_mmap_close_drained(view);
++	if (!err) {
++		spin_lock_irqsave(&view->lock, flags);
++		if (view->phase != HFS_VIEW_INSTALLED_DRAIN || !view->quiescent || view->active)
++			err = -ESTALE;
++		else
++			view->phase = HFS_VIEW_DRAINED;
++		spin_unlock_irqrestore(&view->lock, flags);
++	}
++	mutex_unlock(&view->transitions);
++	return err;
++}
++
++/* Independent poll, event and drain queues prevent a parked service grant from
++ * owning the executor needed to install that grant's protected intermediate cut.
++ */
++struct hfs_mmap_control {
++	struct kref refs;
++	struct hfs_view *view;
++	struct workqueue_struct *poll_queue;
++	struct workqueue_struct *event_queue;
++	struct workqueue_struct *drain_queue;
++	struct workqueue_struct *cleanup_queue;
++	struct workqueue_struct *pressure_queue;
++	struct delayed_work poll;
++	struct delayed_work events;
++	struct delayed_work pressure;
++	struct delayed_work drained;
++	struct hfs_json *drain_event;
++	bool drained_acked;
++	unsigned long pressure_after;
++	struct work_struct drains;
++	spinlock_t lock;
++	struct list_head cleanup;
++	struct hfs_json *pending[3];
++	u32 head;
++	u32 count;
++	u64 delivered;
++	u64 completed;
++	uuid_t recall;
++	uuid_t old_visibility;
++	bool have_recall;
++	struct hfs_json *last_event;
++	struct hfs_buf poll_payload;
++	struct hfs_buf ack;
++	struct hfs_buf last_ack;
++	void *credit;
++	bool stopping;
++	int error;
++};
++
++static void hfs_mmap_control_release(struct kref *refs)
++{
++	struct hfs_mmap_control *control = container_of(refs, struct hfs_mmap_control, refs);
++	struct hfs_view *view = control->view;
++
++	hfs_buf_free(&control->poll_payload);
++	hfs_buf_free(&control->ack);
++	hfs_buf_free(&control->last_ack);
++	view->session->provider->unreserve(view->session, control->credit);
++	hfs_view_put(view);
++	kfree(control);
++}
++
++static struct hfs_mmap_control *hfs_mmap_control_get(struct hfs_view *view)
++{
++	struct hfs_mmap_control *control;
++	unsigned long flags;
++
++	spin_lock_irqsave(&view->lock, flags);
++	control = view->control;
++	if (control && !control->stopping)
++		kref_get(&control->refs);
++	else
++		control = NULL;
++	spin_unlock_irqrestore(&view->lock, flags);
++	return control;
++}
++
++static void hfs_mmap_control_put(struct hfs_mmap_control *control)
++{
++	if (control)
++		kref_put(&control->refs, hfs_mmap_control_release);
++}
++
++static int hfs_mmap_hash32(const struct hfs_json *json, int object,
++			  const char *name, u8 out[32])
++{
++	u32 len = 32;
++
++	if (hfs_json_hex(json, hfs_json_field(json, object, name), out, &len) || len != 32)
++		return -EPROTO;
++	return 0;
++}
++
++static bool hfs_mmap_token(const struct hfs_json *json, int token,
++			    const void *data, u32 len)
++{
++	return token >= 0 && token < json->count &&
++		json->tokens[token].end - json->tokens[token].start == len &&
++		!memcmp(json->data + json->tokens[token].start, data, len);
++}
++
++/* The full canonical VIEW_WAIT envelope remains available to the mandatory
++ * native verifier. Local parsing does not replace enrolled source authority.
++ */
++static int hfs_mmap_event_check(struct hfs_view *view, const struct hfs_json *json,
++			       int event, u64 *sequence, uuid_t *recall)
++{
++	struct hfs_session *session = view->session;
++	u8 digest[32];
++	uuid_t old;
++	int phase = hfs_json_field(json, event, "phase");
++	bool is_recall = hfs_json_is(json, phase, "\"RECALL\"");
++
++	if (!json->transported || json->channel != HFS_CHANNEL_RECALL ||
++	    json->frame_kind != HFS_FRAME_RECALL || json->frame_minor != session->bridge_minor ||
++	    !json->native_cell || !uuid_equal(&json->native_session, &session->enrollment.session))
++		return -EPROTO;
++	if (hfs_json_exact(json, event,
++		"authority_hash,closure_hash,domain,inventory_hash,manifest_hash,"
++		"old_visibility,phase,recall,sequence,target") ||
++	    hfs_json_u64(json, hfs_json_field(json, event, "sequence"), sequence) || !*sequence ||
++	    hfs_uuid(json, hfs_json_field(json, event, "recall"), recall) || uuid_is_null(recall) ||
++	    hfs_uuid(json, hfs_json_field(json, event, "old_visibility"), &old) || uuid_is_null(&old) ||
++	    !hfs_mmap_token(json, hfs_json_field(json, event, "domain"),
++			     session->domain->json->data, session->domain->json->len) ||
++	    hfs_mmap_hash32(json, event, "authority_hash", digest) ||
++	    hfs_mmap_hash32(json, event, "closure_hash", digest) ||
++	    hfs_mmap_hash32(json, event, "inventory_hash", digest))
++		return -EPROTO;
++	if (is_recall) {
++		if (!hfs_json_is(json, hfs_json_field(json, event, "target"), "null") ||
++		    !hfs_json_is(json, hfs_json_field(json, event, "manifest_hash"), "null"))
++			return -EPROTO;
++	} else {
++		if ((!hfs_json_is(json, phase, "\"INSTALL_DRAIN\"") &&
++		     !hfs_json_is(json, phase, "\"INSTALL_FINAL\"") &&
++		     !hfs_json_is(json, phase, "\"REOPEN\"")) ||
++		    hfs_json_is(json, hfs_json_field(json, event, "target"), "null") ||
++		    hfs_mmap_hash32(json, event, "manifest_hash", digest))
++			return -EPROTO;
++	}
++	return session->provider->view_event(session, json, event);
++}
++
++static int hfs_mmap_ack(struct hfs_mmap_control *control, const struct hfs_json *event,
++			int body, const char *phase, bool manifest, bool target)
++{
++	struct hfs_view *view = control->view;
++	struct hfs_session *session = view->session;
++	struct hfs_buf *payload = &control->ack;
++	struct hfs_json *reply = NULL;
++	int err, result;
++
++	payload->len = 0;
++	payload->error = 0;
++	hfs_buf_literal(payload, "{\"authority_hash\":");
++	hfs_buf_token(payload, event, hfs_json_field(event, body, "authority_hash"));
++	hfs_buf_literal(payload, ",\"closure_hash\":");
++	hfs_buf_token(payload, event, hfs_json_field(event, body, "closure_hash"));
++	hfs_buf_literal(payload, ",\"domain\":");
++	hfs_cap_write(payload, session->domain);
++	hfs_buf_literal(payload, ",\"inventory_hash\":");
++	hfs_buf_token(payload, event, hfs_json_field(event, body, "inventory_hash"));
++	hfs_buf_literal(payload, ",\"manifest\":");
++	if (manifest)
++		hfs_buf_add(payload, view->manifest.data, view->manifest.len);
++	else
++		hfs_buf_literal(payload, "null");
++	hfs_buf_printf(payload, ",\"phase\":\"%s\",\"recall\":", phase);
++	hfs_buf_token(payload, event, hfs_json_field(event, body, "recall"));
++	hfs_buf_literal(payload, ",\"sequence\":");
++	hfs_buf_token(payload, event, hfs_json_field(event, body, "sequence"));
++	hfs_buf_printf(payload, ",\"session\":\"%pUb\",\"target\":", &session->enrollment.session);
++	if (target)
++		hfs_buf_token(payload, event, hfs_json_field(event, body, "target"));
++	else
++		hfs_buf_literal(payload, "null");
++	hfs_buf_literal(payload, "}");
++	err = payload->error ?: hfs_control(session, "VIEW_ACK", payload, true, &reply);
++	if (err)
++		return err;
++	result = hfs_json_field(reply, 0, "payload");
++	if (hfs_json_exact(reply, result, "status"))
++		err = -EPROTO;
++	else if (hfs_json_is(reply, hfs_json_field(reply, result, "status"), "\"BLOCKED\""))
++		err = -EAGAIN;
++	else if (!hfs_json_is(reply, hfs_json_field(reply, result, "status"), "\"ACCEPTED\""))
++		err = -ESTALE;
++	if (!err) {
++		control->last_ack.len = 0;
++		control->last_ack.error = 0;
++		hfs_buf_add(&control->last_ack, payload->data, payload->len);
++		err = control->last_ack.error;
++	}
++	hfs_json_free(reply);
++	return err;
++}
++
++static void hfs_mmap_fail(struct hfs_mmap_control *control, int error)
++{
++	WRITE_ONCE(control->error, error);
++	WRITE_ONCE(control->view->session->blocked, true);
++	/* This closes admission, not a declaration of physical STOPPED. All
++	 * original grants/bytes/tickets and canonical evidence remain retained.
++	 */
++	hfs_view_fence(control->view);
++}
++
++static void hfs_mmap_drains(struct work_struct *work)
++{
++	struct hfs_mmap_control *control = container_of(work, struct hfs_mmap_control, drains);
++	struct hfs_view *view = control->view;
++	struct hfs_dirty *dirty, *ordered[HFS_DIRTY_PAGES_MAX], *tmp;
++	unsigned long flags;
++	u32 count = 0, i, j;
++	int err;
++
++	if (READ_ONCE(control->stopping) || READ_ONCE(control->error))
++		return;
++	spin_lock_irqsave(&view->lock, flags);
++	list_for_each_entry(dirty, &view->dirty, list) {
++		if (count == ARRAY_SIZE(ordered)) {
++			spin_unlock_irqrestore(&view->lock, flags);
++			hfs_mmap_fail(control, -EOVERFLOW);
++			return;
++		}
++		ordered[count++] = dirty;
++	}
++	spin_unlock_irqrestore(&view->lock, flags);
++	/* Ordinary earmarks form a contiguous protected origin sequence. Drain
++	 * in that order; manifest order independently remains DirtyEntry id.
++	 */
++	for (i = 1; i < count; i++) {
++		tmp = ordered[i];
++		for (j = i; j && ordered[j - 1]->request->number > tmp->request->number; j--)
++			ordered[j] = ordered[j - 1];
++		ordered[j] = tmp;
++	}
++	for (i = 0; i < count; i++) {
++		err = hfs_dirty_drain(view, ordered[i]);
++		if (err) {
++			hfs_mmap_fail(control, err);
++			return;
++		}
++	}
++}
++
++static void hfs_mmap_drained(struct work_struct *work);
++
++static int hfs_mmap_process(struct hfs_mmap_control *control, struct hfs_json *json)
++{
++	struct hfs_view *view = control->view;
++	struct hfs_dirty *dirty;
++	unsigned long flags;
++	u8 hash[32];
++	uuid_t recall, old;
++	u64 sequence;
++	int body = hfs_json_field(json, 0, "payload");
++	int event = hfs_json_field(json, body, "event");
++	int phase = hfs_json_field(json, event, "phase");
++	int target = hfs_json_field(json, event, "target");
++	int err;
++
++	err = hfs_mmap_event_check(view, json, event, &sequence, &recall);
++	if (err)
++		return err;
++	if (sequence <= control->completed)
++		return -ESTALE;
++	err = hfs_uuid(json, hfs_json_field(json, event, "old_visibility"), &old);
++	if (err)
++		return err;
++	if (hfs_json_is(json, phase, "\"RECALL\"")) {
++		if (!control->have_recall) {
++			spin_lock_irqsave(&view->lock, flags);
++			err = view->phase == HFS_VIEW_UNBOUND ||
++				(uuid_equal(&old, &view->generation) &&
++				 view->phase == HFS_VIEW_LIVE) ? 0 : -ESTALE;
++			spin_unlock_irqrestore(&view->lock, flags);
++			if (err)
++				return err;
++			control->recall = recall;
++			control->old_visibility = old;
++			control->have_recall = true;
++			control->drained_acked = false;
++		}
++		if (!uuid_equal(&control->recall, &recall) ||
++		    !uuid_equal(&control->old_visibility, &old))
++			return -ESTALE;
++		err = hfs_view_stop(view, &old, &recall, sequence);
++		if (err)
++			return err;
++		if (view->phase == HFS_VIEW_QUIESCENT) {
++			/* Admission is closed; only this event executor changes the
++			 * frozen registry until STOPPED has been accepted.
++			 */
++			list_for_each_entry(dirty, &view->dirty, list) {
++				err = hfs_dirty_freeze(view, dirty);
++				if (err)
++					return err;
++			}
++			err = hfs_view_seal(view);
++			if (err)
++				return err;
++		}
++		err = hfs_mmap_ack(control, json, event, "STOPPED", true, false);
++		if (!err)
++			queue_work(control->drain_queue, &control->drains);
++		return err;
++	}
++	if (!control->have_recall || !uuid_equal(&control->recall, &recall) ||
++	    !uuid_equal(&control->old_visibility, &old) ||
++	    hfs_mmap_hash32(json, event, "manifest_hash", hash) ||
++	    memcmp(hash, view->manifest_hash, 32))
++		return -ESTALE;
++	if (hfs_json_is(json, phase, "\"INSTALL_DRAIN\"")) {
++		err = hfs_mmap_install(view, json, target, &recall, sequence, false);
++		if (!err)
++			err = hfs_mmap_ack(control, json, event, "INSTALLED_DRAIN", false, true);
++		if (!err) {
++			struct hfs_json *retained = NULL;
++
++			err = hfs_json_parse(json->data, json->len, &retained);
++			if (!err) {
++				hfs_json_free(control->drain_event);
++				control->drain_event = retained;
++				queue_delayed_work(control->event_queue, &control->drained, 0);
++			}
++		}
++		return err;
++	}
++	if (hfs_json_is(json, phase, "\"INSTALL_FINAL\"")) {
++		err = hfs_mmap_install(view, json, target, &recall, sequence, true);
++		if (!err)
++			err = hfs_mmap_ack(control, json, event, "INSTALLED_FINAL", false, true);
++		return err;
++	}
++	if (!hfs_json_is(json, phase, "\"REOPEN\"") ||
++	    !hfs_mmap_token(json, target, view->target.data, view->target.len))
++		return -ESTALE;
++	err = hfs_view_reopen(view, &recall, sequence);
++	if (!err)
++		err = hfs_mmap_ack(control, json, event, "REOPENED", false, true);
++	if (!err)
++		control->have_recall = false;
++	return err;
++}
++
++static void hfs_mmap_drained(struct work_struct *work)
++{
++	struct hfs_mmap_control *control = container_of(to_delayed_work(work),
++						       struct hfs_mmap_control, drained);
++	struct hfs_json *json = control->drain_event;
++	struct hfs_view *view = control->view;
++	int body, event, err;
++
++	if (!json || control->drained_acked || READ_ONCE(control->stopping) ||
++	    READ_ONCE(control->error))
++		return;
++	err = READ_ONCE(view->phase) == HFS_VIEW_DRAINED ? 0 : hfs_mmap_finish_drained(view);
++	if (!err) {
++		body = hfs_json_field(json, 0, "payload");
++		event = hfs_json_field(json, body, "event");
++		err = hfs_mmap_ack(control, json, event, "DRAINED", true, true);
++	}
++	if (err == -EAGAIN || err == -EBUSY) {
++		if (!READ_ONCE(control->stopping))
++			queue_delayed_work(control->event_queue, &control->drained, msecs_to_jiffies(10));
++	} else if (err) {
++		hfs_mmap_fail(control, err);
++	} else {
++		control->drained_acked = true;
++	}
++}
++
++static void hfs_mmap_events(struct work_struct *work)
++{
++	struct hfs_mmap_control *control = container_of(to_delayed_work(work),
++						       struct hfs_mmap_control, events);
++	struct hfs_json *json;
++	unsigned long flags;
++	u64 sequence;
++	int body, event, err;
++
++	spin_lock_irqsave(&control->lock, flags);
++	json = control->count ? control->pending[control->head] : NULL;
++	spin_unlock_irqrestore(&control->lock, flags);
++	if (!json || READ_ONCE(control->stopping) || READ_ONCE(control->error))
++		return;
++	err = hfs_mmap_process(control, json);
++	if (err == -EAGAIN || err == -EBUSY) {
++		if (!READ_ONCE(control->stopping))
++			queue_delayed_work(control->event_queue, &control->events, msecs_to_jiffies(10));
++		return;
++	}
++	if (err) {
++		hfs_mmap_fail(control, err);
++		return;
++	}
++	body = hfs_json_field(json, 0, "payload");
++	event = hfs_json_field(json, body, "event");
++	err = hfs_json_u64(json, hfs_json_field(json, event, "sequence"), &sequence);
++	if (err) {
++		hfs_mmap_fail(control, err);
++		return;
++	}
++	spin_lock_irqsave(&control->lock, flags);
++	control->pending[control->head] = NULL;
++	control->head = (control->head + 1) % ARRAY_SIZE(control->pending);
++	control->count--;
++	control->completed = sequence;
++	spin_unlock_irqrestore(&control->lock, flags);
++	hfs_json_free(control->last_event);
++	control->last_event = json; /* complete actual canonical envelope */
++	if (!READ_ONCE(control->stopping)) {
++		queue_delayed_work(control->poll_queue, &control->poll, 0);
++		queue_delayed_work(control->event_queue, &control->events, 0);
++	}
++}
++
++static void hfs_mmap_poll(struct work_struct *work)
++{
++	struct hfs_mmap_control *control = container_of(to_delayed_work(work),
++						       struct hfs_mmap_control, poll);
++	struct hfs_session *session = control->view->session;
++	struct hfs_buf *payload = &control->poll_payload;
++	struct hfs_json *reply = NULL;
++	unsigned long flags;
++	uuid_t recall;
++	u64 after, sequence;
++	int body, event, err;
++
++	if (READ_ONCE(control->stopping) || READ_ONCE(control->error))
++		return;
++	spin_lock_irqsave(&control->lock, flags);
++	if (control->count == ARRAY_SIZE(control->pending)) {
++		spin_unlock_irqrestore(&control->lock, flags);
++		return;
++	}
++	after = control->delivered;
++	spin_unlock_irqrestore(&control->lock, flags);
++	payload->len = 0;
++	payload->error = 0;
++	hfs_buf_printf(payload, "{\"after_sequence\":%llu,\"domain\":", after);
++	hfs_cap_write(payload, session->domain);
++	hfs_buf_literal(payload, "}");
++	err = payload->error ?: hfs_control(session, "VIEW_WAIT", payload, true, &reply);
++	if (err)
++		goto failed;
++	body = hfs_json_field(reply, 0, "payload");
++	event = hfs_json_field(reply, body, "event");
++	if (hfs_json_exact(reply, body, "event,status")) {
++		err = -EPROTO;
++		goto failed;
++	}
++	if (hfs_json_is(reply, hfs_json_field(reply, body, "status"), "\"EMPTY\"")) {
++		if (!hfs_json_is(reply, event, "null")) {
++			err = -EPROTO;
++			goto failed;
++		}
++		hfs_json_free(reply);
++		if (!READ_ONCE(control->stopping))
++			queue_delayed_work(control->poll_queue, &control->poll, msecs_to_jiffies(10));
++		return;
++	}
++	if (!hfs_json_is(reply, hfs_json_field(reply, body, "status"), "\"EVENT\"")) {
++		err = -EPROTO;
++		goto failed;
++	}
++	err = hfs_mmap_event_check(control->view, reply, event, &sequence, &recall);
++	if (err || sequence <= after) {
++		err = err ?: -ESTALE;
++		goto failed;
++	}
++	spin_lock_irqsave(&control->lock, flags);
++	control->pending[(control->head + control->count) % ARRAY_SIZE(control->pending)] = reply;
++	control->count++;
++	control->delivered = sequence;
++	spin_unlock_irqrestore(&control->lock, flags);
++	/* Repost the independent reserved VIEW_WAIT before any event ACK. */
++	if (!READ_ONCE(control->stopping)) {
++		queue_delayed_work(control->poll_queue, &control->poll, 0);
++		queue_delayed_work(control->event_queue, &control->events, 0);
++	}
++	return;
++failed:
++	/* The canonical unexpected response remains retained for inspection. */
++	if (reply) {
++		spin_lock_irqsave(&control->lock, flags);
++		control->pending[(control->head + control->count) % ARRAY_SIZE(control->pending)] = reply;
++		control->count++;
++		spin_unlock_irqrestore(&control->lock, flags);
++	}
++	hfs_mmap_fail(control, err);
++}
++
++static void hfs_mmap_pressure_work(struct work_struct *work);
++
++int hfs_mmap_start(struct hfs_view *view)
++{
++	struct hfs_mmap_control *control;
++	struct hfs_session *session = view->session;
++	unsigned long flags;
++	int err;
++
++	if (!session->bridge_minor || view->control ||
++	    (!view->target.len && view->phase != HFS_VIEW_UNBOUND))
++		return -EINVAL;
++	control = kzalloc(sizeof(*control), GFP_KERNEL);
++	if (!control)
++		return -ENOMEM;
++	/* Independent bounded control workspaces. Ticket/request credits cover
++	 * their own immutable sources; this covers envelopes/polls/ACK retention.
++	 */
++	err = session->provider->reserve(session, sizeof(*control) + 32ULL * 1024 * 1024,
++					 true, &control->credit);
++	if (err)
++		goto allocation;
++	control->view = hfs_view_get(session);
++	if (control->view != view) {
++		err = -ESTALE;
++		goto references;
++	}
++	if (hfs_buf_init(&control->poll_payload, 16384) ||
++	    hfs_buf_init(&control->ack, HFS_BODY_MAX) ||
++	    hfs_buf_init(&control->last_ack, HFS_BODY_MAX)) {
++		err = -ENOMEM;
++		goto buffers;
++	}
++	control->poll_queue = alloc_workqueue("9p-hfs-poll", WQ_UNBOUND | WQ_MEM_RECLAIM, 1);
++	control->event_queue = alloc_workqueue("9p-hfs-events", WQ_UNBOUND | WQ_MEM_RECLAIM, 1);
++	control->drain_queue = alloc_workqueue("9p-hfs-drains", WQ_UNBOUND | WQ_MEM_RECLAIM, 1);
++	control->cleanup_queue = alloc_workqueue("9p-hfs-cleanup", WQ_UNBOUND | WQ_MEM_RECLAIM, 1);
++	control->pressure_queue = alloc_workqueue("9p-hfs-pressure", WQ_UNBOUND | WQ_MEM_RECLAIM, 1);
++	if (!control->poll_queue || !control->event_queue ||
++	    !control->drain_queue || !control->cleanup_queue || !control->pressure_queue) {
++		err = -ENOMEM;
++		goto queues;
++	}
++	kref_init(&control->refs);
++	spin_lock_init(&control->lock);
++	INIT_LIST_HEAD(&control->cleanup);
++	INIT_DELAYED_WORK(&control->poll, hfs_mmap_poll);
++	INIT_DELAYED_WORK(&control->events, hfs_mmap_events);
++	INIT_DELAYED_WORK(&control->pressure, hfs_mmap_pressure_work);
++	INIT_DELAYED_WORK(&control->drained, hfs_mmap_drained);
++	INIT_WORK(&control->drains, hfs_mmap_drains);
++	spin_lock_irqsave(&view->lock, flags);
++	if (view->control || (view->phase != HFS_VIEW_LIVE && view->phase != HFS_VIEW_UNBOUND)) {
++		spin_unlock_irqrestore(&view->lock, flags);
++		err = -ESTALE;
++		goto queues;
++	}
++	view->control = control;
++	spin_unlock_irqrestore(&view->lock, flags);
++	queue_delayed_work(control->poll_queue, &control->poll, 0);
++	return 0;
++queues:
++	if (control->pressure_queue)
++		destroy_workqueue(control->pressure_queue);
++	if (control->cleanup_queue)
++		destroy_workqueue(control->cleanup_queue);
++	if (control->drain_queue)
++		destroy_workqueue(control->drain_queue);
++	if (control->event_queue)
++		destroy_workqueue(control->event_queue);
++	if (control->poll_queue)
++		destroy_workqueue(control->poll_queue);
++buffers:
++	hfs_buf_free(&control->poll_payload);
++	hfs_buf_free(&control->ack);
++	hfs_buf_free(&control->last_ack);
++references:
++	hfs_view_put(control->view);
++	session->provider->unreserve(session, control->credit);
++allocation:
++	kfree(control);
++	return err;
++}
++
++static void hfs_mmap_quiesce_control(struct hfs_mmap_control *control)
++{
++	cancel_delayed_work_sync(&control->poll);
++	cancel_delayed_work_sync(&control->events);
++	cancel_delayed_work_sync(&control->drained);
++	cancel_delayed_work_sync(&control->pressure);
++	flush_workqueue(control->drain_queue);
++	flush_workqueue(control->cleanup_queue);
++}
++
++int hfs_mmap_prepare_retire(struct hfs_view *view)
++{
++	struct hfs_mmap_control *control;
++	unsigned long flags;
++
++	spin_lock_irqsave(&view->lock, flags);
++	control = view->control;
++	if (!control) {
++		spin_unlock_irqrestore(&view->lock, flags);
++		return 0;
++	}
++	kref_get(&control->refs);
++	if (view->nr_cached || view->nr_dirty || view->nr_observations || view->active ||
++	    refcount_read(&control->refs.refcount) != 2) {
++		spin_unlock_irqrestore(&view->lock, flags);
++		hfs_mmap_control_put(control);
++		return -EBUSY;
++	}
++	/* Stop generating new transport cells before whole-session retirement
++	 * evidence is verified. Canonical events/ACKs/unknowns remain owned.
++	 * A failed/unknown retirement never silently reopens this old lifetime.
++	 */
++	view->phase = HFS_VIEW_FENCED;
++	WRITE_ONCE(control->stopping, true);
++	spin_unlock_irqrestore(&view->lock, flags);
++	wake_up_all(&view->wait);
++	hfs_mmap_quiesce_control(control);
++	hfs_mmap_control_put(control);
++	return 0;
++}
++
++int hfs_mmap_stop(struct hfs_view *view)
++{
++	struct hfs_mmap_control *control;
++	unsigned long flags;
++	u32 i;
++
++	spin_lock_irqsave(&view->lock, flags);
++	control = view->control;
++	if (!control) {
++		spin_unlock_irqrestore(&view->lock, flags);
++		return 0;
++	}
++	kref_get(&control->refs); /* independent STOP caller lifetime */
++	/* A generic stop callback, disconnect and bare fence are insufficient.
++	 * Whole-session protected retirement is verified by the provider before
++	 * this flag; local physical/cache/source owners must already be gone.
++	 */
++	if (!view->session->retired || view->phase != HFS_VIEW_FENCED ||
++	    view->nr_cached || view->nr_dirty || view->active ||
++	    refcount_read(&control->refs.refcount) != 2) {
++		spin_unlock_irqrestore(&view->lock, flags);
++		hfs_mmap_control_put(control);
++		return -EBUSY;
++	}
++	WRITE_ONCE(control->stopping, true);
++	view->control = NULL;
++	spin_unlock_irqrestore(&view->lock, flags);
++	hfs_mmap_quiesce_control(control);
++	destroy_workqueue(control->pressure_queue);
++	destroy_workqueue(control->cleanup_queue);
++	destroy_workqueue(control->drain_queue);
++	destroy_workqueue(control->event_queue);
++	destroy_workqueue(control->poll_queue);
++	for (i = 0; i < ARRAY_SIZE(control->pending); i++)
++		hfs_json_free(control->pending[i]);
++	hfs_json_free(control->last_event);
++	hfs_json_free(control->drain_event);
++	hfs_mmap_control_put(control); /* owner removed under view lock */
++	hfs_mmap_control_put(control); /* this STOP caller */
++	return 0;
++}
++
++struct hfs_cache_cleanup {
++	struct list_head list;
++	struct delayed_work work;
++	struct hfs_mmap_control *control;
++	struct hfs_lease *lease;
++	struct list_head readers;
++	struct hfs_dirty *pending;
++	void *credit;
++	bool dirty_slot;
++};
++
++static void hfs_mmap_cleanup(struct work_struct *work)
++{
++	struct hfs_cache_cleanup *cleanup = container_of(to_delayed_work(work),
++						       struct hfs_cache_cleanup, work);
++	struct hfs_mmap_control *control = cleanup->control;
++	struct hfs_view *view = control->view;
++	struct hfs_session *session = view->session;
++	struct hfs_cache_grant *grant, *next;
++	struct hfs_dirty *dirty = cleanup->pending;
++	unsigned long flags;
++	int err;
++
++	if (READ_ONCE(control->error))
++		return; /* retained in control->cleanup with exact source ownership */
++	if (dirty && dirty->request) {
++		if (!dirty->reserve_ticket->bound || !dirty->reserve_ticket->admitted) {
++			err = hfs_dirty_resume_reserve(session, dirty, cleanup->lease);
++			if (err && err != -EAGAIN && err != -ECANCELED)
++				goto failed;
++		}
++		err = hfs_request_cancel_earmark(session, dirty->request);
++		if (err) {
++			if (err != -EAGAIN && err != -EBUSY)
++				goto failed;
++			/* Only actual old-epoch STOPPED exclusion/source closure can
++			 * cancel an issued unseen reservation. Its original preowned
++			 * RELEASE starts that recall without acquisition-family credit.
++			 */
++			err = hfs_lease_release(session, cleanup->lease);
++			if (err)
++				goto failed;
++			queue_delayed_work(control->cleanup_queue, &cleanup->work, msecs_to_jiffies(10));
++			return;
++		}
++		hfs_request_unhold(session, dirty->request);
++		dirty->request = NULL;
++	}
++	if (dirty) {
++		hfs_view_ticket_put(dirty->reserve_ticket);
++		hfs_view_ticket_put(dirty->freeze_ticket);
++		hfs_json_free(dirty->reservation);
++		hfs_json_free(dirty->frozen_entry);
++		hfs_buf_free(&dirty->freeze_payload);
++		hfs_buf_free(&dirty->drain_args);
++		session->provider->unreserve(session, dirty->credit);
++		kfree(dirty);
++		cleanup->pending = NULL;
++	}
++	if (cleanup->lease) {
++		err = hfs_lease_release(session, cleanup->lease);
++		if (err)
++			goto failed;
++		hfs_lease_free(cleanup->lease);
++		cleanup->lease = NULL;
++	}
++	list_for_each_entry_safe(grant, next, &cleanup->readers, list) {
++		err = hfs_lease_release(session, grant->lease);
++		if (err)
++			goto failed;
++		list_del(&grant->list);
++		hfs_lease_free(grant->lease);
++		session->provider->unreserve(session, grant->reservation);
++		kfree(grant);
++	}
++	if (cleanup->dirty_slot) {
++		spin_lock_irqsave(&view->lock, flags);
++		view->nr_dirty_packages--;
++		spin_unlock_irqrestore(&view->lock, flags);
++		cleanup->dirty_slot = false;
++	}
++	/* Exact protected floors, independently keyed full-Cred ticket families.
++	 * Neither routine invents a gap result or drops a held/uncertain row.
++	 */
++	hfs_retire(session);
++	hfs_view_retire(session);
++	spin_lock_irqsave(&control->lock, flags);
++	list_del(&cleanup->list);
++	spin_unlock_irqrestore(&control->lock, flags);
++	session->provider->unreserve(session, cleanup->credit);
++	kfree(cleanup);
++	hfs_mmap_control_put(control);
++	return;
++failed:
++	if (err == -EAGAIN || err == -EBUSY || err == -ENOSPC || err == -ENOMEM) {
++		queue_delayed_work(control->cleanup_queue, &cleanup->work, msecs_to_jiffies(10));
++		return;
++	}
++	hfs_mmap_fail(control, err);
++}
++
++static void hfs_mmap_dispose(struct hfs_cache_page *entry)
++{
++	struct hfs_cache_cleanup *cleanup = entry->cleanup;
++
++	/* kref destruction runs under arbitrary page/VFS context. Transfer only
++	 * preowned records; the independent worker performs every parked RPC.
++	 */
++	if (entry->lease)
++		cleanup->lease = entry->lease;
++	cleanup->dirty_slot = entry->dirty_slot;
++	list_splice_init(&entry->readers, &cleanup->readers);
++	queue_delayed_work(cleanup->control->cleanup_queue, &cleanup->work, 0);
++}
++
++static int hfs_mmap_prepare(struct hfs_view *view, const struct hfs_view_stamp *stamp,
++			    struct hfs_cache_page **out)
++{
++	struct hfs_cache_cleanup *cleanup;
++	struct hfs_mmap_control *control = hfs_mmap_control_get(view);
++	unsigned long flags;
++	int err;
++
++	*out = NULL;
++	if (!control)
++		return -ESTALE;
++	cleanup = kzalloc(sizeof(*cleanup), GFP_KERNEL);
++	if (!cleanup) {
++		err = -ENOMEM;
++		goto reference;
++	}
++	err = view->session->provider->reserve(view->session, sizeof(*cleanup), true, &cleanup->credit);
++	if (err)
++		goto allocation;
++	err = hfs_view_page_prepare(view, stamp, out);
++	if (err)
++		goto credit;
++	cleanup->control = control;
++	INIT_LIST_HEAD(&cleanup->list);
++	INIT_LIST_HEAD(&cleanup->readers);
++	INIT_DELAYED_WORK(&cleanup->work, hfs_mmap_cleanup);
++	spin_lock_irqsave(&control->lock, flags);
++	list_add_tail(&cleanup->list, &control->cleanup);
++	spin_unlock_irqrestore(&control->lock, flags);
++	(*out)->cleanup = cleanup;
++	(*out)->dispose = hfs_mmap_dispose;
++	return 0;
++credit:
++	view->session->provider->unreserve(view->session, cleanup->credit);
++allocation:
++	kfree(cleanup);
++reference:
++	hfs_mmap_control_put(control);
++	return err;
++}
++
++static int hfs_mmap_pressure(struct hfs_view *view)
++{
++	struct hfs_cache_page *entry;
++	struct hfs_observation *observation;
++	struct hfs_lease *lease = NULL;
++	unsigned long flags;
++	int err;
++
++	spin_lock_irqsave(&view->lock, flags);
++	list_for_each_entry(entry, &view->cache, list)
++		if (entry->lease && READ_ONCE(entry->lease->published) &&
++		    !READ_ONCE(entry->lease->released)) {
++			lease = entry->lease;
++			break;
++		}
++	if (!lease)
++		list_for_each_entry(observation, &view->observations, list)
++			if (observation->lease && !READ_ONCE(observation->lease->released)) {
++				lease = observation->lease;
++				break;
++			}
++	if (lease)
++		hfs_lease_get(lease);
++	spin_unlock_irqrestore(&view->lock, flags);
++	if (!lease)
++		return -EAGAIN;
++	/* No page, transition, PTE or physical admission token covers this wait.
++	 * The original lease has already reserved RELEASE identity/credit.
++	 */
++	err = hfs_lease_release(view->session, lease);
++	hfs_lease_free(lease);
++	return err;
++}
++
++static void hfs_mmap_pressure_work(struct work_struct *work)
++{
++	struct hfs_mmap_control *control = container_of(to_delayed_work(work),
++						       struct hfs_mmap_control, pressure);
++
++	if (!READ_ONCE(control->error) && !READ_ONCE(control->stopping))
++		hfs_mmap_pressure(control->view);
++	hfs_mmap_control_put(control); /* transferred by the successful queue */
++}
++
++void hfs_mmap_progress(struct hfs_session *session)
++{
++	struct hfs_view *view = hfs_view_get(session);
++	struct hfs_mmap_control *control;
++	unsigned long flags;
++	bool queued = false;
++
++	if (!view)
++		return;
++	control = hfs_mmap_control_get(view);
++	hfs_view_put(view);
++	if (!control)
++		return;
++	spin_lock_irqsave(&control->lock, flags);
++	if (!control->error && !control->stopping &&
++	    time_after_eq(jiffies, control->pressure_after)) {
++		control->pressure_after = jiffies + msecs_to_jiffies(100);
++		queued = queue_delayed_work(control->pressure_queue, &control->pressure, 0);
++	}
++	spin_unlock_irqrestore(&control->lock, flags);
++	if (!queued)
++		hfs_mmap_control_put(control);
++}
++
++static int hfs_mmap_read(struct hfs_session *session, struct hfs_description *description,
++			 const struct hfs_cred *cred, u64 offset, struct hfs_cache_page *entry)
++{
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	u64 count;
++	u32 actual, wanted;
++	int err;
++
++	err = hfs_buf_init(&args, 16384);
++	if (err)
++		return err;
++	entry->fill_length = 0;
++	memset(entry->fill, 0, sizeof(entry->fill));
++	/* A regular-file short read need not fill the requested range. Continue
++	 * at its exact offset; zero means EOF. No page/PTE lock covers these
++	 * source reads. A later exact target/revision grant rejects mixed cuts.
++	 */
++	while (entry->fill_length < sizeof(entry->fill)) {
++		wanted = sizeof(entry->fill) - entry->fill_length;
++		args.len = 0;
++		args.error = 0;
++		hfs_buf_printf(&args, "{\"count\":%u,\"description\":", wanted);
++		hfs_cap_write(&args, description->cap);
++		hfs_buf_printf(&args, ",\"offset\":%llu}", offset + entry->fill_length);
++		err = hfs_call(session, "READ", &args, cred, false, &result);
++		if (err)
++			break;
++		actual = wanted;
++		if (hfs_json_u64(result, hfs_json_field(result, 0, "count"), &count) || count > wanted ||
++		    hfs_json_hex(result, hfs_json_field(result, 0, "data"),
++				 entry->fill + entry->fill_length, &actual) || actual != count) {
++			err = -EPROTO;
++			break;
++		}
++		hfs_json_free(result);
++		result = NULL;
++		if (!count)
++			break;
++		entry->fill_length += count;
++	}
++	hfs_json_free(result);
++	hfs_buf_free(&args);
++	return err;
++}
++
++static vm_fault_t hfs_mmap_fault_error(struct hfs_view *view, int err)
++{
++	if (err == -ENOMEM)
++		return VM_FAULT_OOM;
++	if (err == -ENOSPC || err == -EAGAIN || err == -ESTALE ||
++	    err == -ERESTARTSYS || err == -EINTR) {
++		if (err == -ENOSPC)
++			hfs_mmap_pressure(view);
++		usleep_range(1000, 2000);
++		return VM_FAULT_NOPAGE;
++	}
++	return VM_FAULT_SIGBUS;
++}
++
++static vm_fault_t hfs_mmap_fault(struct vm_fault *vmf)
++{
++	struct file *file = vmf->vma->vm_file;
++	struct inode *inode = file_inode(file);
++	struct hfs_session *session = HFS_S(inode);
++	struct hfs_description *description = file->private_data;
++	struct hfs_view *view = hfs_view_get(session);
++	struct hfs_cache_page *entry = NULL, *existing;
++	struct hfs_cache_cleanup *cleanup;
++	struct hfs_cred *cred = NULL;
++	struct hfs_dirty *dirty = NULL;
++	struct hfs_lease *lease = NULL;
++	struct hfs_view_stamp stamp;
++	struct hfs_cache_grant *grant = NULL;
++	struct page *page = NULL;
++	void *cookie = NULL, *address;
++	u64 offset;
++	bool write = (vmf->flags & FAULT_FLAG_WRITE) && (vmf->vma->vm_flags & VM_SHARED);
++	bool attached = false, inserted = false;
++	vm_fault_t result;
++	int err;
++
++	if (!view || !description || !description->cap ||
++	    vmf->pgoff > ((S64_MAX - 4096) >> PAGE_SHIFT)) {
++		hfs_view_put(view);
++		return VM_FAULT_SIGBUS;
++	}
++	offset = (u64)vmf->pgoff << PAGE_SHIFT;
++	/* Legal dup/fork/transfer aliases may reuse their exact original grant.
++	 * Another Description must obtain its own actual protected READ lease.
++	 */
++	page = find_get_page(inode->i_mapping, vmf->pgoff);
++	if (page) {
++		lock_page(page);
++		if (PageUptodate(page) && page_mapping(page) == inode->i_mapping) {
++			err = hfs_view_page_enter(vmf->vma, page, write, &cookie);
++			if (!err) {
++				hfs_view_leave(cookie);
++				vmf->page = page;
++				hfs_view_put(view);
++				return VM_FAULT_LOCKED;
++			}
++		}
++		unlock_page(page);
++		put_page(page);
++		page = NULL;
++	}
++	err = hfs_view_enter(view, NULL, true, &cookie);
++	if (err)
++		goto failed;
++	hfs_view_leave(cookie);
++	cookie = NULL;
++	err = hfs_view_snapshot(view, &stamp);
++	if (err)
++		goto failed;
++	err = hfs_mmap_prepare(view, &stamp, &entry);
++	if (err)
++		goto failed;
++	cleanup = entry->cleanup;
++	err = hfs_view_capture(view, &stamp, &entry->target);
++	if (err || stamp.revision != entry->stamp.revision ||
++	    !uuid_equal(&stamp.generation, &entry->stamp.generation)) {
++		err = err ?: -ESTALE;
++		goto failed;
++	}
++	err = hfs_capture(session, &init_user_ns, &cred);
++	if (err)
++		goto failed;
++	err = hfs_mmap_read(session, description, cred, offset, entry);
++	if (err)
++		goto failed;
++	if (!entry->fill_length) {
++		err = -ENXIO; /* first byte beyond regular-file EOF */
++		goto failed;
++	}
++	err = hfs_lease_acquire(session, cred, NULL, description->cap,
++				offset, write, &entry->target, &lease);
++	if (err)
++		goto failed;
++	cleanup->lease = lease;
++	err = hfs_view_page_lease(entry, lease);
++	if (err)
++		goto failed;
++	if (write) {
++		err = hfs_dirty_reserve(session, entry, description->cap,
++					offset, entry->fill_length, &dirty);
++		cleanup->pending = dirty;
++		if (err)
++			goto failed;
++	}
++	page = find_get_page(inode->i_mapping, vmf->pgoff);
++	if (page && !write) {
++		/* Compatible readers can share bytes, but retain their distinct
++		 * exact Description leases for final PTE admission and recall.
++		 */
++		grant = kzalloc(sizeof(*grant), GFP_KERNEL);
++		if (!grant) {
++			err = -ENOMEM;
++			goto failed;
++		}
++		INIT_LIST_HEAD(&grant->list);
++		err = session->provider->reserve(session, sizeof(*grant), true, &grant->reservation);
++		if (err)
++			goto failed;
++		lock_page(page);
++		existing = hfs_view_page_find(view, page);
++		if (!existing || !PageUptodate(page) || page_mapping(page) != inode->i_mapping) {
++			if (existing)
++				hfs_view_page_put(existing);
++			unlock_page(page);
++			err = -ESTALE;
++			goto failed;
++		}
++		grant->lease = entry->lease;
++		err = hfs_view_page_grant(existing, grant, entry);
++		hfs_view_page_put(existing);
++		if (err) {
++			grant->lease = NULL;
++			unlock_page(page);
++			goto failed;
++		}
++		cleanup->lease = NULL;
++		grant = NULL;
++		vmf->page = page;
++		hfs_cred_free(cred);
++		hfs_view_page_put(entry);
++		hfs_view_put(view);
++		return VM_FAULT_LOCKED;
++	}
++	if (page) {
++		err = -ESTALE; /* conflicting write recall invalidated the old epoch */
++		goto failed;
++	}
++	page = alloc_page(GFP_HIGHUSER | __GFP_ZERO);
++	if (!page) {
++		err = -ENOMEM;
++		goto failed;
++	}
++	lock_page(page);
++	err = hfs_view_enter(view, &entry->stamp, false, &cookie);
++	if (err)
++		goto unlock;
++	/* NOFS excludes recursive filesystem reclaim/recall while this bounded
++	 * physical token joins cache attachment and immutable dirty adoption.
++	 */
++	err = add_to_page_cache_lru(page, inode->i_mapping, vmf->pgoff, GFP_NOFS);
++	if (err)
++		goto unlock;
++	inserted = true;
++	address = kmap_local_page(page);
++	memcpy(address, entry->fill, sizeof(entry->fill));
++	kunmap_local(address);
++	SetPageUptodate(page);
++	err = hfs_view_page_attach(entry, page);
++	if (err)
++		goto unlock;
++	attached = true;
++	if (dirty) {
++		err = hfs_view_adopt_dirty(view, entry, dirty);
++		if (err)
++			goto unlock;
++		cleanup->pending = NULL; /* adopted registry now owns this obligation */
++	}
++	hfs_view_leave(cookie);
++	cookie = NULL;
++	vmf->page = page;
++	hfs_cred_free(cred);
++	hfs_view_page_put(entry); /* private + adopted registry retain resources */
++	hfs_view_put(view);
++	return VM_FAULT_LOCKED;
++unlock:
++	hfs_view_leave(cookie);
++	cookie = NULL;
++	if (inserted)
++		delete_from_page_cache(page);
++	unlock_page(page);
++failed:
++	if (page)
++		put_page(page);
++	if (grant) {
++		if (grant->reservation)
++			session->provider->unreserve(session, grant->reservation);
++		kfree(grant);
++	}
++	if (entry) {
++		/* Cache-removal callbacks detach private ownership; an adopted
++		 * dirty obligation can never take this failure path after exposure.
++		 */
++		WARN_ON_ONCE(attached && entry->page);
++		hfs_view_page_put(entry);
++	}
++	hfs_cred_free(cred);
++	result = hfs_mmap_fault_error(view, err);
++	hfs_view_put(view);
++	return result;
++}
++
++static vm_fault_t hfs_mmap_mkwrite(struct vm_fault *vmf)
++{
++	struct hfs_view *view = hfs_view_get(HFS_S(file_inode(vmf->vma->vm_file)));
++	void *cookie = NULL;
++	int err;
++	vm_fault_t result;
++
++	if (!view)
++		return VM_FAULT_SIGBUS;
++	lock_page(vmf->page);
++	err = hfs_view_page_enter(vmf->vma, vmf->page, true, &cookie);
++	if (!err) {
++		hfs_view_leave(cookie);
++		hfs_view_put(view);
++		return VM_FAULT_LOCKED;
++	}
++	unlock_page(vmf->page);
++	/* Upgrade the original read-only mapping by recalling its old epoch.
++	 * Never replace vmf->page: do_page_mkwrite holds a reference to that
++	 * exact page. Its next ordinary write fault obtains an EXCLUSIVE_DIRTY
++	 * lease and full reservation before a new writable PTE can be installed.
++	 */
++	err = hfs_mmap_pressure(view);
++	result = !err ? VM_FAULT_NOPAGE : hfs_mmap_fault_error(view, err);
++	hfs_view_put(view);
++	return result;
++}
++
++static const struct vm_operations_struct hfs_mmap_ops = {
++	.fault = hfs_mmap_fault,
++	.page_mkwrite = hfs_mmap_mkwrite,
++	.cache_begin = hfs_view_page_enter,
++	.cache_end = hfs_view_leave,
++	.no_gup = true,
++};
++
++int hfs_mmap_file(struct file *file, struct vm_area_struct *vma)
++{
++	struct inode *inode = file_inode(file);
++	struct hfs_session *session = HFS_S(inode);
++	struct hfs_description *description = file->private_data;
++	struct hfs_view *view = hfs_view_get(session);
++	struct hfs_mmap_control *control;
++	int err;
++
++	if (!view || !description || !description->cap || !S_ISREG(inode->i_mode) ||
++	    PAGE_SIZE != 4096 || !(description->cap->rights & 1) ||
++	    ((vma->vm_flags & VM_SHARED) && (vma->vm_flags & VM_WRITE) &&
++	     !(description->cap->rights & 2))) {
++		hfs_view_put(view);
++		return -EACCES;
++	}
++	control = hfs_mmap_control_get(view);
++	if (!control) {
++		hfs_view_put(view);
++		return -ESTALE;
++	}
++	err = READ_ONCE(session->blocked) || READ_ONCE(control->error) ? -EHOSTDOWN :
++		hfs_view_register_inode(inode);
++	if (!err) {
++		/* The common MM check also refuses THP even if MADV_HUGEPAGE
++		 * later clears this hint; executable and private COW stay legal.
++		 */
++		vma->vm_flags |= VM_NOHUGEPAGE;
++		vma->vm_ops = &hfs_mmap_ops;
++		file_accessed(file);
++	}
++	hfs_mmap_control_put(control);
++	hfs_view_put(view);
++	return err;
++}
++
++int hfs_mmap_sync(struct file *file)
++{
++	struct hfs_view *view = hfs_view_get(HFS_S(file_inode(file)));
++	unsigned long flags;
++	bool dirty;
++	int err = 0, writeback;
++
++	if (!view)
++		return -ESTALE;
++	spin_lock_irqsave(&view->lock, flags);
++	dirty = view->nr_dirty != 0;
++	spin_unlock_irqrestore(&view->lock, flags);
++	if (dirty)
++		err = hfs_mmap_pressure(view);
++	/* Includes terminal short/error drains; never erase them with a later
++	 * successful metadata SYNC. Standard errseq is per open file reference.
++	 */
++	writeback = file_check_and_advance_wb_err(file);
++	hfs_view_put(view);
++	return writeback ?: err;
++}
++
++int hfs_mmap_bootstrap(struct hfs_session *session, const struct hfs_cred *cred)
++{
++	struct hfs_view *view;
++	struct hfs_mmap_control *control;
++	struct hfs_cache_cleanup *cleanup;
++	struct hfs_lease *lease = NULL;
++	unsigned long flags, deadline = jiffies + 30 * HZ;
++	int err;
++
++	err = hfs_view_new_unbound(session);
++	if (err)
++		return err;
++	view = hfs_view_get(session);
++	if (!view)
++		return -ESTALE;
++	err = hfs_mmap_start(view);
++	if (err)
++		goto view;
++	control = hfs_mmap_control_get(view);
++	if (!control) {
++		err = -ESTALE;
++		goto view;
++	}
++	cleanup = kzalloc(sizeof(*cleanup), GFP_KERNEL);
++	if (!cleanup) {
++		err = -ENOMEM;
++		goto reference;
++	}
++	err = session->provider->reserve(session, sizeof(*cleanup), true, &cleanup->credit);
++	if (err) {
++		kfree(cleanup);
++		goto reference;
++	}
++	cleanup->control = control;
++	INIT_LIST_HEAD(&cleanup->list);
++	INIT_LIST_HEAD(&cleanup->readers);
++	INIT_DELAYED_WORK(&cleanup->work, hfs_mmap_cleanup);
++	spin_lock_irqsave(&control->lock, flags);
++	list_add_tail(&cleanup->list, &control->cleanup);
++	spin_unlock_irqrestore(&control->lock, flags);
++	for (;;) {
++		/* The issuer selects/verifies an actual cut. An empty unbound
++		 * domain is already polling and can close a necessary first recall.
++		 */
++		err = hfs_lease_acquire(session, cred, NULL, NULL, 0, false, NULL, &lease);
++		if (err)
++			break;
++		cleanup->lease = lease;
++		err = hfs_view_bind_initial(view, lease);
++		if (err && err != -ESTALE && err != -EAGAIN)
++			break;
++		/* This discovery lease was never cache/PTE authority. Its actual
++		 * original release can still start an empty verified recall.
++		 */
++		if (hfs_lease_release(session, lease)) {
++			err = -EAGAIN;
++			break;
++		}
++		hfs_lease_free(lease);
++		cleanup->lease = NULL;
++		lease = NULL;
++		if (!err || time_after_eq(jiffies, deadline))
++			break;
++	}
++	/* The preowned packet retains any uncertain lease/release evidence and
++	 * its original issuer; no stack pointer or mount caller lifetime escapes.
++	 */
++	queue_delayed_work(control->cleanup_queue, &cleanup->work, 0);
++	hfs_view_put(view);
++	return err;
++reference:
++	hfs_mmap_control_put(control);
++view:
++	hfs_view_put(view);
++	return err;
++}
++
++int hfs_mmap_begin(struct inode *inode, bool mutation, const struct hfs_cred *cred,
++		    void *native_cookie, void **cookie)
++{
++	struct hfs_session *session = HFS_S(inode);
++	struct hfs_view *view = hfs_view_get(session);
++	struct hfs_mmap_control *control;
++	struct hfs_observation *observation;
++	struct hfs_cache_cleanup *cleanup;
++	unsigned long flags;
++	void *physical = NULL;
++	int err;
++
++	*cookie = NULL;
++	if (!view)
++		return -ESTALE;
++	control = hfs_mmap_control_get(view);
++	if (!control) {
++		err = -ESTALE;
++		goto view;
++	}
++	observation = kzalloc(sizeof(*observation), GFP_KERNEL);
++	cleanup = kzalloc(sizeof(*cleanup), GFP_KERNEL);
++	if (!observation || !cleanup) {
++		err = -ENOMEM;
++		goto allocation;
++	}
++	err = session->provider->reserve(session,
++			sizeof(*observation) + sizeof(*cleanup) + HFS_TARGET_MAX, true, &cleanup->credit);
++	if (err)
++		goto allocation;
++	err = hfs_buf_init(&observation->target, HFS_TARGET_MAX);
++	if (err)
++		goto credit;
++	observation->view = view;
++	observation->native_cookie = native_cookie;
++	observation->cleanup = cleanup;
++	INIT_LIST_HEAD(&observation->list);
++	INIT_LIST_HEAD(&cleanup->list);
++	INIT_LIST_HEAD(&cleanup->readers);
++	cleanup->control = control;
++	INIT_DELAYED_WORK(&cleanup->work, hfs_mmap_cleanup);
++	spin_lock_irqsave(&control->lock, flags);
++	list_add_tail(&cleanup->list, &control->cleanup);
++	spin_unlock_irqrestore(&control->lock, flags);
++	err = hfs_view_enter(view, NULL, true, &physical);
++	if (err)
++		goto retained;
++	hfs_view_leave(physical);
++	err = hfs_view_capture(view, &observation->stamp, &observation->target);
++	if (err)
++		goto retained;
++	if (!mutation) {
++		err = hfs_lease_acquire(session, cred, NULL, NULL, 0, false,
++					&observation->target, &observation->lease);
++		cleanup->lease = observation->lease;
++		if (err)
++			goto retained;
++	}
++	spin_lock_irqsave(&view->lock, flags);
++	if (view->phase != HFS_VIEW_LIVE ||
++	    view->revision != observation->stamp.revision ||
++	    !uuid_equal(&view->generation, &observation->stamp.generation) ||
++	    (observation->lease && memcmp(view->target_hash, observation->lease->target_hash, 32))) {
++		err = -ESTALE;
++	} else if (view->nr_observations == HFS_IDENTITIES_MAX) {
++		err = -ENOSPC;
++	} else {
++		list_add_tail(&observation->list, &view->observations);
++		view->nr_observations++;
++		if (observation->lease)
++			WRITE_ONCE(observation->lease->published, true);
++	}
++	spin_unlock_irqrestore(&view->lock, flags);
++	if (err)
++		goto retained;
++	*cookie = observation;
++	/* The packet's control reference owns view/module/session lifetime. */
++	hfs_view_put(view);
++	return 0;
++retained:
++	queue_delayed_work(control->cleanup_queue, &cleanup->work, 0);
++	hfs_buf_free(&observation->target);
++	kfree(observation);
++	hfs_view_put(view);
++	return err;
++credit:
++	session->provider->unreserve(session, cleanup->credit);
++allocation:
++	kfree(observation);
++	kfree(cleanup);
++	hfs_mmap_control_put(control);
++view:
++	hfs_view_put(view);
++	return err;
++}
++
++void hfs_mmap_end(void *cookie)
++{
++	struct hfs_observation *observation = cookie;
++	struct hfs_cache_cleanup *cleanup;
++	struct hfs_view *view;
++	unsigned long flags;
++
++	if (!observation)
++		return;
++	view = observation->view;
++	cleanup = observation->cleanup;
++	spin_lock_irqsave(&view->lock, flags);
++	list_del(&observation->list);
++	view->nr_observations--;
++	/* DOMAIN observations install only under separately stamped short MM
++	 * tokens. No PTE is authorized by this lease. Closing its last observer
++	 * excludes every future use; cached dentries revalidate through RPC and
++	 * attributes never become timeless pathname permission.
++	 */
++	if (observation->lease)
++		WRITE_ONCE(observation->lease->revoked, true);
++	spin_unlock_irqrestore(&view->lock, flags);
++	view->session->provider->leave(view->session, observation->native_cookie);
++	hfs_buf_free(&observation->target);
++	kfree(observation);
++	queue_delayed_work(cleanup->control->cleanup_queue, &cleanup->work, 0);
++}

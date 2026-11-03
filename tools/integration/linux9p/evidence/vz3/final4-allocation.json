@@ -1,0 +1,38 @@
+{
+  "argv": [
+    "python3",
+    "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/run-corrected-build4.py",
+    "all"
+  ],
+  "scope": "root explicit corrected build4 allocation host guard; inner stages separately enforce2CPU/-j2,2GiB AS/groupRSS,8GiB owned blocks,20min/stage",
+  "preflight_samples": [
+    {
+      "available_bytes": 23095050240,
+      "total_bytes": 33330982912,
+      "minimum_available_bytes": 8589934592,
+      "swap_used_bytes": 4471005184,
+      "swap_total_bytes": 8589930496,
+      "swap_used_fraction": 0.5204937555760172,
+      "pswpin": 120575,
+      "pswpout": 1203196
+    },
+    {
+      "available_bytes": 23084445696,
+      "total_bytes": 33330982912,
+      "minimum_available_bytes": 8589934592,
+      "swap_used_bytes": 4470996992,
+      "swap_total_bytes": 8589930496,
+      "swap_used_fraction": 0.520492801901246,
+      "pswpin": 120577,
+      "pswpout": 1203196
+    }
+  ],
+  "zero_swap_io_preflight": false,
+  "exit": 0,
+  "limit_reason": null,
+  "seconds": 157.6381530350045,
+  "maximum_sample_gap_seconds": 0.5012400920095388,
+  "sampled_minimum_host_available_bytes": 22752272384,
+  "sampled_maximum_host_swap_used_fraction": 0.520492801901246,
+  "script_sha256": "5507747b7bb49c1ffacfe4f0ed967c5162451dc95a316286ad9f8e9768ec9ea5"
+}

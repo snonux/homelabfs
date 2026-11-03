@@ -1,0 +1,6 @@
+{"source_sha256": "f2dadde3c6cb2a468913c5b4c3658f62091e43e1e8c16efeb10e2bebf922ae4d", "check_sha256": "35c9b87f782ac024498a5a4cb66256bd9ae28a57224aba410e44ff478f7de835", "scope": "actual common eligibility C; primitive fixtures; no THP/VFS execution"}
+argv=["cc", "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie", "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/huge-check1/test.c", "-o", "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/huge-check1/huge-test"]
+exit=0 peak_child_rss_kib=33784
+argv=["/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/huge-check1/huge-test"]
+actual common THP refusal checks passed; no VFS/THP execution
+exit=0 peak_child_rss_kib=33784

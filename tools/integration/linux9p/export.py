@@ -19,6 +19,10 @@ GROUPS = [
     ('0003-hfs1-guest-vfs.patch', '9p: bind guest VFS requests to immutable credentials, claims and grants',
      ['fs/9p/Kconfig', 'fs/9p/Makefile', 'fs/9p/vfs_super.c', 'fs/9p/hfs.h',
       'fs/9p/hfs_session.c', 'fs/9p/hfs_inode.c', 'fs/9p/hfs_file.c']),
+    ('0004-hfs1-physical-views.patch', 'mm/9p: retain physical cache installation tokens and exact view leases',
+     ['include/linux/mm.h', 'include/linux/page-flags.h', 'mm/memory.c', 'mm/gup.c',
+      'mm/mremap.c', 'mm/huge_memory.c', 'fs/9p/hfs_view.h', 'fs/9p/hfs_view.c',
+      'fs/9p/hfs_lease.h', 'fs/9p/hfs_lease.c', 'fs/9p/hfs_mmap.c']),
 ]
 
 
@@ -30,6 +34,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--archive', type=Path, required=True)
+    parser.add_argument('--development', action='store_true')
     args = parser.parse_args()
     source = args.source.resolve(strict=True)
     archive = args.archive.resolve(strict=True)
@@ -72,7 +77,7 @@ def main():
         patches.append({'file': filename, 'sha256': digest(data), 'bytes': len(data)})
     (here / 'patches/series').write_text(''.join(p['file'] + '\n' for p in patches))
     manifest = {
-        'format': 1, 'project_task': 'tz3', 'source_kind': 'upstream Linux reference',
+        'format': 1, 'project_task': 'vz3-development' if args.development else 'vz3', 'source_kind': 'upstream Linux reference', 'unfinished_mmap_development': args.development,
         'version': '6.1.190', 'commit': COMMIT,
         'tag': 'v6.1.190', 'tag_object': '9ad12a4c0c7a36f365c13ea17d88499618440a7b',
         'git_url': 'https://github.com/gregkh/linux.git',

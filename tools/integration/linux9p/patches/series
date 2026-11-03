@@ -1,3 +1,4 @@
 0001-9p-hfs1-transport.patch
 0002-hfs1-canonical-codec-policy.patch
 0003-hfs1-guest-vfs.patch
+0004-hfs1-physical-views.patch

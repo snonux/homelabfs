@@ -1,0 +1,14 @@
+{
+  "round": 2,
+  "scope": "Final narrow confirmation of two blocking R1 findings and coupled fix delta; no whole-task reaudit",
+  "result": "CLEAN",
+  "reviewer": "retained_mmap_review2",
+  "freeze_sha256": "cae3a628561b5eb04e39de31bb83f827c3fa5a3b6befe3529b50ebe57ae0292c",
+  "findings": [],
+  "confirmed": [
+    "Registered noop_dirty_folio handles first/repeated dirty marking and RECALLING redirty without waiting or generic writeback",
+    "Active clean and renewed-lineage release starts durable all-domain recall; final RELEASED still requires exact CheckPhysical",
+    "Actual controller/transport and production C regressions include meaningful negative assertions with explicit kernel/VFS/PTE/native/source primitive boundaries"
+  ],
+  "actions": "Read-only review; no builds/tests/source changes/infrastructure actions"
+}

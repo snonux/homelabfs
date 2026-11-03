@@ -13,7 +13,7 @@ diff --git a/fs/9p/Kconfig b/fs/9p/Kconfig
 +
 +config 9P_FS_HOMELABFS
 +	bool "HomelabFS retained-9p guest integration"
-+	depends on 9P_FS && TRACEPOINTS
++	depends on 9P_FS && TRACEPOINTS && X86_64 && 64BIT
 +	select CRYPTO_LIB_SHA256
 +	help
 +	  Build the separately versioned 9P2000.L.hfs1 guest adapter. This
@@ -31,7 +31,7 @@ diff --git a/fs/9p/Makefile b/fs/9p/Makefile
  9p-$(CONFIG_9P_FS_POSIX_ACL) += acl.o
 +
 +9p-$(CONFIG_9P_FS_HOMELABFS) += hfs_protocol.o hfs_policy.o hfs_session.o \
-+	hfs_inode.o hfs_file.o hfs_cursor.o
++	hfs_inode.o hfs_file.o hfs_cursor.o hfs_view.o hfs_lease.o hfs_mmap.o
 diff --git a/fs/9p/vfs_super.c b/fs/9p/vfs_super.c
 --- a/fs/9p/vfs_super.c
 +++ b/fs/9p/vfs_super.c
@@ -69,7 +69,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,269 @@
+@@ -0,0 +1,332 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -86,6 +86,8 @@ new file mode 100644
 +#include "hfs_protocol.h"
 +#include "hfs_policy.h"
 +#include "hfs_cursor.h"
++#include "hfs_view.h"
++#include "hfs_lease.h"
 +
 +#define HFS_IDENTITIES_MAX 4096U
 +#define HFS_CONTEXT_MAX 4096U
@@ -96,13 +98,20 @@ new file mode 100644
 +struct hfs_request;
 +
 +/* Installed by a separately reviewed enrollment/view-token integration. */
++enum hfs_view_scope {
++	HFS_SCOPE_NORMAL_PUBLIC = 1,
++	HFS_SCOPE_CONTROLLED_LOCAL = 2,
++};
++
 +struct hfs_enrollment {
++	enum hfs_view_scope view_scope;
 +	char context[HFS_CONTEXT_MAX];
 +	u32 context_len;
 +	uuid_t session;
 +	uuid_t realm;
 +	uuid_t anchor;
 +	uuid_t nonce;
++	uuid_t view_control_nonce;
 +	u8 subject[1024];
 +	u32 subject_len;
 +};
@@ -114,12 +123,26 @@ new file mode 100644
 +	int (*map)(struct hfs_session *session, const struct cred *cred,
 +		   struct user_namespace *mnt_userns, uuid_t *user_namespace,
 +		   u8 idmap_hash[32]);
-+	/* Must gate every observation/dirtying path and preserve drain progress. */
++	/* Native context/domain admissibility facts. The cap identifies the exact
++	 * PATH/ROOT or retained DESCRIPTION supplied by the operation; descriptor
++	 * I/O must not be converted to current-path permission. Bridge1.1 owns
++	 * its lease/MM gates; this verifier holds no physical token/lock over RPC.
++	 * Bridge1.0 retains the original separately supplied gate contract.
++	 */
 +	int (*enter)(struct hfs_session *session, const struct hfs_cap *cap,
 +		     bool mutation, void **cookie);
 +	void (*leave)(struct hfs_session *session, void *cookie);
 +	int (*publication)(struct hfs_session *session,
 +			   const struct hfs_json *json, int token);
++	/* Verify the full actual tagged local/normal source, not caller hashes. */
++	int (*target)(struct hfs_session *session,
++		      const struct hfs_json *json, int token);
++	/* Exact enrolled authority/closure/inventory/session/event provenance.
++	 * The complete canonical response (including channel/session) is retained
++	 * in json; token selects its event. No phase/hash-only success default.
++	 */
++	int (*view_event)(struct hfs_session *session,
++			  const struct hfs_json *json, int token);
 +	int (*mmap)(struct file *file, struct vm_area_struct *vma);
 +	int (*stop)(struct hfs_session *session);
 +	/* Aggregate admission spans all mounts and includes retained claims. */
@@ -129,6 +152,9 @@ new file mode 100644
 +	/* Verify protected normal claim/floor evidence, never a local assertion. */
 +	int (*retirement)(struct hfs_session *session, u64 through,
 +			  const u8 proof_hash[32]);
++	int (*view_retirement)(struct hfs_session *session,
++			       const struct hfs_buf *credentials, u64 through,
++			       const u8 proof_hash[32]);
 +	int (*resolve_gap)(struct hfs_session *session, struct hfs_request *request);
 +	int (*retire_session)(struct hfs_session *session);
 +	/* Receives ownership on uncertain shutdown; must never discard evidence. */
@@ -142,6 +168,9 @@ new file mode 100644
 +	uuid_t description;
 +	u32 rights;
 +	u64 revision;
++	u8 token[32];
++	u8 credential_hash[32];
++	u8 ancestors_hash[32];
 +};
 +
 +struct hfs_cred {
@@ -165,6 +194,7 @@ new file mode 100644
 +	struct work_struct exit_work;
 +	struct hfs_session *session;
 +	struct hfs_cred *last;
++	void *reservation;
 +};
 +
 +struct hfs_cell {
@@ -183,6 +213,8 @@ new file mode 100644
 +};
 +
 +struct hfs_request {
++	struct hfs_session *session;
++	u32 users;
 +	struct list_head list;
 +	struct hfs_buf claim;
 +	struct hfs_buf intent;
@@ -192,6 +224,15 @@ new file mode 100644
 +	struct hfs_json *result;
 +	struct hfs_json *refusal;
 +	bool gap;
++	bool earmarked;
++	bool view_stamped;
++	bool cache_observation;
++	struct hfs_view_stamp view_stamp;
++	struct hfs_view_ticket *earmark_ticket;
++	struct hfs_buf earmark_number;
++	struct hfs_buf drain_payload;
++	bool bound;
++	bool held;
 +	u64 number;
 +	bool terminal;
 +	bool adopted;
@@ -201,6 +242,9 @@ new file mode 100644
 +};
 +
 +struct hfs_session {
++	struct hfs_view *view;
++	u16 bridge_minor;
++	struct hfs_cap *domain;
 +	struct p9_client *client;
 +	const struct hfs_provider *provider;
 +	struct hfs_enrollment enrollment;
@@ -214,6 +258,11 @@ new file mode 100644
 +	struct list_head descriptions;
 +	struct list_head forgets;
 +	struct list_head object_numbers;
++	struct list_head view_tickets;
++	struct list_head view_families;
++	u32 nr_view_tickets;
++	u32 nr_view_control_tickets;
++	u32 nr_view_families;
 +	struct list_head global;
 +	struct workqueue_struct *control;
 +	u64 next_claim;
@@ -230,6 +279,7 @@ new file mode 100644
 +	bool blocked;
 +	bool closing;
 +	bool retained;
++	bool retired; /* actual protected whole-session provider proof */
 +};
 +
 +struct hfs_forget {
@@ -249,6 +299,7 @@ new file mode 100644
 +};
 +
 +struct hfs_inode {
++	struct list_head view_list;
 +	struct inode inode;
 +	struct hfs_cap *object;
 +	struct hfs_forget *forget;
@@ -294,6 +345,7 @@ new file mode 100644
 +static inline bool v9fs_hfs_super(const struct super_block *sb) { return false; }
 +static inline void v9fs_hfs_kill_super(struct super_block *sb) {}
 +#endif
++void hfs_cred_write(struct hfs_buf *buf, const struct hfs_cred *cred);
 +int hfs_capture(struct hfs_session *session, struct user_namespace *mnt_userns,
 +		struct hfs_cred **out);
 +void hfs_cred_free(struct hfs_cred *cred);
@@ -305,6 +357,14 @@ new file mode 100644
 +		struct hfs_json **out);
 +int hfs_result_code(const struct hfs_json *json);
 +void hfs_result_adopt(struct hfs_session *session, const struct hfs_json *result);
++int hfs_request_earmark(struct hfs_session *session, const struct hfs_cred *cred,
++			struct hfs_view_ticket *ticket, struct hfs_request **out);
++int hfs_request_cancel_earmark(struct hfs_session *session, struct hfs_request *request);
++void hfs_request_unhold(struct hfs_session *session, struct hfs_request *request);
++int hfs_request_bind_drain(struct hfs_session *session, struct hfs_request *request,
++			    const struct hfs_buf *args);
++int hfs_request_drain(struct hfs_session *session, struct hfs_request *request,
++		      struct hfs_json **out);
 +int hfs_retire(struct hfs_session *session);
 +int hfs_session_destroy(struct hfs_session *session);
 +int hfs_cap_parse(struct hfs_session *session, const struct hfs_json *json,
@@ -320,8 +380,11 @@ new file mode 100644
 +		  const char *kind, struct hfs_cap **out);
 +void hfs_args_object(struct hfs_buf *args, const struct hfs_cap *cap);
 +int hfs_args_init(struct hfs_buf *args);
++int hfs_begin_cap(struct inode *inode, const struct hfs_cap *cap, bool mutation,
++		  struct hfs_cred **cred, void **cookie);
 +int hfs_begin(struct inode *inode, bool mutation, struct hfs_cred **cred,
 +	      void **cookie);
++void hfs_leave(struct inode *inode, void *cookie);
 +void hfs_end(struct inode *inode, struct hfs_cred *cred, void *cookie);
 +int hfs_refresh(struct inode *inode);
 +int hfs_object_ino(struct hfs_session *session, const struct hfs_cap *cap,
@@ -343,7 +406,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,1484 @@
+@@ -0,0 +1,1930 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include <linux/delay.h>
@@ -379,7 +442,7 @@ new file mode 100644
 +	return hfs_policy_uuid(json, token, id);
 +}
 +
-+static void hfs_cred_write(struct hfs_buf *buf, const struct hfs_cred *cred)
++void hfs_cred_write(struct hfs_buf *buf, const struct hfs_cred *cred)
 +{
 +	u32 i;
 +
@@ -455,11 +518,34 @@ new file mode 100644
 +		*found = tracepoint;
 +}
 +
++/* Complete mapped numeric snapshot; native cred pointer identity is not an
++ * exported credential epoch. Only observed changes advance the monotone epoch.
++ */
++static bool hfs_cred_equal(const struct hfs_cred *a, const struct hfs_cred *b)
++{
++	return a && b && a->uid == b->uid && a->gid == b->gid &&
++		a->ngroups == b->ngroups &&
++		!memcmp(a->groups, b->groups, a->ngroups * sizeof(a->groups[0])) &&
++		uuid_equal(&a->user_namespace, &b->user_namespace) &&
++		!memcmp(a->idmap_hash, b->idmap_hash, sizeof(a->idmap_hash));
++}
++
++/* Caller holds processes_lock. Entries live until protected session teardown. */
++static struct hfs_process *hfs_process_find(struct hfs_session *session, struct pid *pid)
++{
++	struct hfs_process *process;
++
++	list_for_each_entry(process, &session->processes, list)
++		if (process->pid == pid)
++			return process;
++	return NULL;
++}
++
 +int hfs_capture(struct hfs_session *session, struct user_namespace *mnt_userns,
 +		struct hfs_cred **out)
 +{
-+	struct hfs_cred *snapshot, *last;
-+	struct hfs_process *process, *candidate;
++	struct hfs_cred *snapshot = NULL, *last = NULL, *displaced = NULL;
++	struct hfs_process *process, *candidate = NULL;
 +	const struct cred *cred;
 +	unsigned long flags;
 +	u32 i;
@@ -476,9 +562,8 @@ new file mode 100644
 +		return -E2BIG;
 +	}
 +	snapshot = kzalloc(sizeof(*snapshot), GFP_KERNEL);
-+	candidate = kzalloc(sizeof(*candidate), GFP_KERNEL);
 +	last = kzalloc(sizeof(*last), GFP_KERNEL);
-+	if (!snapshot || !candidate || !last) {
++	if (!snapshot || !last) {
 +		err = -ENOMEM;
 +		goto fail;
 +	}
@@ -514,16 +599,34 @@ new file mode 100644
 +				    &snapshot->user_namespace, err);
 +	if (err)
 +		goto fail;
-+	candidate->pid = get_pid(task_tgid(current));
-+	uuid_gen(&candidate->id);
-+	candidate->session = session;
-+	INIT_WORK(&candidate->exit_work, hfs_process_exit_work);
 +	spin_lock_irqsave(&session->processes_lock, flags);
-+	process = NULL;
-+	list_for_each_entry(process, &session->processes, list)
-+		if (process->pid == candidate->pid)
-+			break;
-+	if (&process->list == &session->processes) {
++	process = hfs_process_find(session, task_tgid(current));
++	spin_unlock_irqrestore(&session->processes_lock, flags);
++	if (!process) {
++		candidate = kzalloc(sizeof(*candidate), GFP_KERNEL);
++		if (!candidate) {
++			err = -ENOMEM;
++			goto fail;
++		}
++		/* One cached numeric copy and bounded native reference allowance
++		 * per retained process, independently of caller-owned snapshots.
++		 * Existing-process captures need no duplicate cache admission.
++		 */
++		err = session->provider->reserve(session,
++			sizeof(*candidate) + sizeof(*last) + sizeof(struct cred) +
++			sizeof(struct group_info) + HFS_GROUPS_MAX * sizeof(kgid_t) +
++			sizeof(struct pid) + sizeof(struct user_namespace), true,
++			&candidate->reservation);
++		if (err)
++			goto fail;
++		candidate->pid = get_pid(task_tgid(current));
++		uuid_gen(&candidate->id);
++		candidate->session = session;
++		INIT_WORK(&candidate->exit_work, hfs_process_exit_work);
++	}
++	spin_lock_irqsave(&session->processes_lock, flags);
++	process = hfs_process_find(session, task_tgid(current));
++	if (!process) {
 +		if (session->nr_processes == HFS_IDENTITIES_MAX) {
 +			err = -ENOSPC;
 +			goto unlock;
@@ -533,26 +636,39 @@ new file mode 100644
 +		list_add_tail(&process->list, &session->processes);
 +		session->nr_processes++;
 +	}
-+	if (atomic_read(&process->exited) || process->revision == U64_MAX) {
++	if (atomic_read(&process->exited)) {
 +		err = -ESTALE;
 +		goto unlock;
 +	}
-+	/* Every capture gets a revision, so concurrent thread credentials never
-+	 * alias; earlier captures retain their own bytes even after later ones.
-+	 */
-+	snapshot->revision = ++process->revision;
-+	snapshot->process = process->id;
-+	*last = *snapshot;
-+	last->native = get_cred(cred);
-+	if (process->last)
-+		hfs_cred_free(process->last);
-+	process->last = last;
-+	last = NULL;
++	if (!hfs_cred_equal(snapshot, process->last)) {
++		if (process->revision == U64_MAX) {
++			err = -EOVERFLOW;
++			goto unlock;
++		}
++		/* Linearize concurrent captures here. A changed snapshot returning
++		 * to older values still gets a new epoch: no A->B->A reuse.
++		 * Earlier issued snapshots/grants retain their immutable bytes.
++		 */
++		snapshot->revision = ++process->revision;
++		snapshot->process = process->id;
++		*last = *snapshot;
++		last->native = get_cred(cred);
++		displaced = process->last;
++		process->last = last;
++		last = NULL;
++	} else {
++		snapshot->revision = process->revision;
++		snapshot->process = process->id;
++	}
 +	*out = snapshot;
 +	err = 0;
 +unlock:
 +	spin_unlock_irqrestore(&session->processes_lock, flags);
++	/* Native reference release and credit providers never run under spin. */
++	hfs_cred_free(displaced);
 +	if (candidate) {
++		if (candidate->reservation)
++			session->provider->unreserve(session, candidate->reservation);
 +		put_pid(candidate->pid);
 +		kfree(candidate);
 +	}
@@ -564,7 +680,12 @@ new file mode 100644
 +fail:
 +	put_cred(cred);
 +	kfree(snapshot);
-+	kfree(candidate);
++	if (candidate) {
++		if (candidate->reservation)
++			session->provider->unreserve(session, candidate->reservation);
++		put_pid(candidate->pid);
++		kfree(candidate);
++	}
 +	kfree(last);
 +	return err;
 +}
@@ -577,7 +698,11 @@ new file mode 100644
 +	u64 selected;
 +	char op[32];
 +
-+	if (hfs_json_exact(json, 0, "cell,context,op,payload") ||
++	if (hfs_json_exact(json, 0, session->bridge_minor ?
++			   "cell,context,op,payload,protocol" :
++			   "cell,context,op,payload") ||
++	    (session->bridge_minor && hfs_protocol_match(json,
++			   hfs_json_field(json, 0, "protocol"), session->bridge_minor)) ||
 +	    hfs_field_u64(json, 0, "cell", &selected) || selected != cell ||
 +	    hfs_json_string(json, hfs_json_field(json, 0, "op"), op,
 +			    sizeof(op)) < 0 || strcmp(op, operation))
@@ -600,6 +725,7 @@ new file mode 100644
 +	u8 expected[32], hash[32];
 +	u32 chunk, total = 0, len, body_len, frame_len;
 +	unsigned long deadline = jiffies + 30 * HZ;
++	unsigned long pressure_at = jiffies + msecs_to_jiffies(50);
 +	const void *bytes;
 +	int err = -ENOMEM;
 +
@@ -609,7 +735,8 @@ new file mode 100644
 +		goto out;
 +	for (chunk = 0; chunk * HFS_CHUNK_MAX < body->len; chunk++) {
 +		frame_len = HFS_HEADER_SIZE + HFS_CHUNK_MAX;
-+		err = hfs_frame_encode(1, &session->enrollment.session, cell,
++		err = hfs_frame_encode_version(session->bridge_minor, 1,
++				       &session->enrollment.session, cell,
 +				       body->data, body->len, chunk, frame, &frame_len);
 +		if (err)
 +			goto out;
@@ -626,6 +753,9 @@ new file mode 100644
 +			 */
 +			mutex_unlock(&session->writer);
 +			*writer_held = false;
++			if (session->bridge_minor && tag == P9_NOTAG &&
++			    time_after_eq(jiffies, pressure_at))
++				hfs_mmap_progress(session);
 +			usleep_range(10000, 12000);
 +			mutex_lock(&session->writer);
 +			*writer_held = true;
@@ -654,17 +784,25 @@ new file mode 100644
 +				err = -ETIMEDOUT;
 +				goto out;
 +			}
++			if (session->bridge_minor && tag == P9_NOTAG &&
++			    time_after_eq(jiffies, pressure_at))
++				hfs_mmap_progress(session);
 +			usleep_range(10000, 12000);
 +		}
 +		if (*(u8 *)packet != 3 || len <= 1) {
 +			err = -EPROTO;
 +			goto out;
 +		}
-+		err = hfs_frame_decode(packet + 1, len - 1, response.kind,
++		err = hfs_frame_decode_version(session->bridge_minor, packet + 1,
++				       len - 1, response.kind,
 +				       &session->enrollment.session, cell, chunk,
 +				       &body_len, hash, &bytes, &frame_len);
 +		if (err)
 +			goto out;
++		if (response.max_body && body_len > response.max_body) {
++			err = -EPROTO;
++			goto out;
++		}
 +		if (!chunk) {
 +			total = body_len;
 +			memcpy(expected, hash, 32);
@@ -701,7 +839,9 @@ new file mode 100644
 +{
 +	static const char * const commands[] = {
 +		"HELLO", "CALL", "QUERY", "CANCEL", "RETIRE", "RELEASE_CELL",
-+		"RESUME", "VIEW_WAIT", "VIEW_ACK",
++		"RESUME", "VIEW_WAIT", "VIEW_ACK", "VIEW_ACQUIRE",
++		"VIEW_RELEASE", "VIEW_RENEW", "VIEW_QUERY", "VIEW_CANCEL",
++		"VIEW_RETIRE", "DIRTY_RESERVE", "DIRTY_FREEZE",
 +	};
 +	static const char * const opcodes[] = {
 +		"ROOT", "LOOKUP", "GETATTR", "READLINK", "CREATE", "MKDIR",
@@ -740,6 +880,10 @@ new file mode 100644
 +	*out = NULL;
 +	if (!hfs_operation(operation, false))
 +		return -EOPNOTSUPP;
++	if (hfs_view_command(operation) &&
++	    (!session->bridge_minor ||
++	     reserved != hfs_view_command_control(operation)))
++		return -EOPNOTSUPP;
 +	if (payload->error || !payload->len)
 +		return payload->error ?: -EINVAL;
 +	if (release) {
@@ -759,7 +903,8 @@ new file mode 100644
 +	candidate = kzalloc(sizeof(*candidate), GFP_KERNEL);
 +	if (!candidate)
 +		return -ENOMEM;
-+	err = hfs_buf_init(&command, HFS_BODY_MAX);
++	err = hfs_buf_init(&command,
++			    hfs_view_command(operation) ? HFS_VIEW_BODY_MAX : HFS_BODY_MAX);
 +	if (err) {
 +		kfree(candidate);
 +		return err;
@@ -808,6 +953,10 @@ new file mode 100644
 +		    session->enrollment.context_len);
 +	hfs_buf_printf(&command, ",\"op\":\"%s\",\"payload\":", operation);
 +	hfs_buf_add(&command, payload->data, payload->len);
++	if (session->bridge_minor) {
++		hfs_buf_literal(&command, ",\"protocol\":");
++		hfs_buf_literal(&command, hfs_protocol_text(session->bridge_minor));
++	}
 +	hfs_buf_literal(&command, ",\"reclaim\":");
 +	if (slot->ack_ready) {
 +		hfs_buf_printf(&command, "{\"cell\":%llu,\"response_hash\":",
@@ -834,6 +983,12 @@ new file mode 100644
 +		err = hfs_reply_scope(session, json, cell, operation);
 +	if (err)
 +		goto fault;
++	json->transported = true;
++	json->channel = response.channel;
++	json->frame_kind = response.kind;
++	json->frame_minor = session->bridge_minor;
++	json->native_session = session->enrollment.session;
++	json->native_cell = cell;
 +	mutex_lock(&session->lock);
 +	slot->active = true;
 +	slot->number = cell;
@@ -913,7 +1068,8 @@ new file mode 100644
 +}
 +
 +static int hfs_result_validate(struct hfs_session *session,
-+			       struct hfs_json *result, const char *opcode)
++			       struct hfs_json *result, const char *opcode,
++			       const struct hfs_buf *credentials)
 +{
 +	static const char * const fields[] = {
 +		"attributes", "capabilities", "capacity", "code", "count",
@@ -924,6 +1080,8 @@ new file mode 100644
 +	u32 len = 32, i;
 +	int err, publication, array;
 +	u32 caps = 0, wanted;
++	struct hfs_attr root_attr;
++	u8 credential_hash[32], empty_ancestors[32], root_token[32];
 +	const char *kind;
 +	u64 count;
 +
@@ -961,8 +1119,10 @@ new file mode 100644
 +	array = hfs_json_field(result, 0, "capabilities");
 +	if (array < 0 || result->tokens[array].kind != HFS_ARRAY)
 +		return -EPROTO;
-+	wanted = !strcmp(opcode, "CREATE") ? 2 :
-+		!strcmp(opcode, "ROOT") || !strcmp(opcode, "LOOKUP") ||
++	hfs_hash(credentials->data, credentials->len, credential_hash);
++	hfs_hash("[]", 2, empty_ancestors);
++	wanted = !strcmp(opcode, "CREATE") || !strcmp(opcode, "ROOT") ? 2 :
++		!strcmp(opcode, "LOOKUP") ||
 +		!strcmp(opcode, "OPEN") || !strcmp(opcode, "MKDIR") ||
 +		!strcmp(opcode, "SYMLINK") ? 1 : 0;
 +	if (err)
@@ -976,13 +1136,38 @@ new file mode 100644
 +		if (++caps > wanted)
 +			return -EPROTO;
 +		field = hfs_json_field(result, i, "kind");
-+		kind = !strcmp(opcode, "ROOT") ? "ROOT" :
++		kind = !strcmp(opcode, "ROOT") ? (caps == 1 ? "ROOT" : "DOMAIN") :
 +			!strcmp(opcode, "OPEN") ? "DESCRIPTION" : "PATH";
 +		if (!strcmp(opcode, "CREATE") &&
 +		    hfs_json_is(result, field, "\"DESCRIPTION\""))
 +			kind = "DESCRIPTION";
 +		if (hfs_cap_parse(session, result, i, kind, &cap))
 +			return -EPROTO;
++		if (memcmp(cap->credential_hash, credential_hash, 32)) {
++			hfs_cap_free(cap);
++			return -EPROTO;
++		}
++		if (!strcmp(opcode, "ROOT")) {
++			if (cap->rights != (caps == 1 ? 63 : 0) ||
++			    memcmp(cap->ancestors_hash, empty_ancestors, 32)) {
++				hfs_cap_free(cap);
++				return -EPROTO;
++			}
++			if (caps == 1) {
++				err = hfs_attr_decode(result,
++					hfs_json_field(result, 0, "attributes"),
++					&cap->home, &cap->allocation, S_IFDIR, &root_attr);
++				memcpy(root_token, cap->token, 32);
++			} else if (!uuid_equal(&cap->home, &root_attr.home) ||
++				   !uuid_equal(&cap->allocation, &root_attr.allocation) ||
++				   !memcmp(root_token, cap->token, 32)) {
++				err = -EPROTO;
++			}
++			if (err || cap->revision != root_attr.revision) {
++				hfs_cap_free(cap);
++				return -EPROTO;
++			}
++		}
 +		hfs_cap_free(cap);
 +	}
 +	if (caps != wanted)
@@ -991,96 +1176,38 @@ new file mode 100644
 +	return session->provider->publication(session, result, publication);
 +}
 +
-+int hfs_call(struct hfs_session *session, const char *opcode,
-+	     const struct hfs_buf *args, const struct hfs_cred *cred,
-+	     bool control, struct hfs_json **out)
++static void hfs_request_result_put(void *owner)
 +{
-+	struct hfs_request *request;
-+	struct hfs_buf payload = {};
-+	struct hfs_json *reply = NULL, *result = NULL;
-+	u8 digest[32];
-+	int err, token, status, claim;
-+	unsigned long deadline = jiffies + 30 * HZ;
++	struct hfs_request *request = owner;
++	struct hfs_session *session = request->session;
 +
-+	*out = NULL;
-+	if (!hfs_operation(opcode, true))
-+		return -EOPNOTSUPP;
-+	if (!cred || args->error)
-+		return args->error ?: -EINVAL;
 +	mutex_lock(&session->lock);
-+	err = hfs_request_admit(session->blocked, control,
-+			session->nr_requests - session->nr_control_requests,
-+			session->nr_control_requests, session->next_claim);
++	if (!WARN_ON_ONCE(!request->users))
++		request->users--;
 +	mutex_unlock(&session->lock);
-+	if (err)
-+		return err;
-+	request = kzalloc(sizeof(*request), GFP_KERNEL);
-+	if (!request)
-+		return -ENOMEM;
-+	err = session->provider->reserve(session, 16ULL * 1024 * 1024,
-+					 control, &request->reservation);
-+	if (err == -ENOSPC || err == -EAGAIN) {
-+		if (!hfs_retire(session))
-+			err = session->provider->reserve(session, 16ULL * 1024 * 1024,
-+						 control, &request->reservation);
-+	}
-+	if (err) {
-+		kfree(request);
-+		return err;
-+	}
-+	if (hfs_buf_init(&request->claim, 4096) ||
-+	    hfs_buf_init(&request->intent, args->len + 64) ||
-+	    hfs_buf_init(&request->credentials, 16384) ||
-+	    hfs_buf_init(&request->original_context, HFS_CONTEXT_MAX) ||
-+	    hfs_buf_init(&payload, HFS_BODY_MAX)) {
-+		err = -ENOMEM;
-+		goto free;
-+	}
-+	hfs_buf_literal(&request->intent, "{\"args\":");
-+	hfs_buf_add(&request->intent, args->data, args->len);
-+	hfs_buf_printf(&request->intent, ",\"opcode\":\"%s\"}", opcode);
-+	hfs_cred_write(&request->credentials, cred);
-+	if (request->intent.error || request->credentials.error) {
-+		err = request->intent.error ?: request->credentials.error;
-+		goto free;
-+	}
-+	hfs_hash(request->intent.data, request->intent.len, digest);
-+	mutex_lock(&session->lock);
-+	err = hfs_request_admit(session->blocked, control,
-+			session->nr_requests - session->nr_control_requests,
-+			session->nr_control_requests, session->next_claim);
-+	if (err) {
-+		mutex_unlock(&session->lock);
-+		goto free;
-+	}
-+	request->control = control;
-+	request->number = session->next_claim++;
-+	uuid_gen(&request->operation);
-+	hfs_buf_add(&request->original_context, session->enrollment.context,
-+		    session->enrollment.context_len);
-+	hfs_buf_printf(&request->claim,
-+		"{\"anchor\":\"%pUb\",\"nonce\":\"%pUb\",\"number\":%llu,"
-+		"\"original_hash\":", &session->enrollment.anchor,
-+		&session->enrollment.nonce, request->number);
-+	hfs_buf_hex(&request->claim, digest, 32);
-+	hfs_buf_printf(&request->claim, ",\"realm\":\"%pUb\",\"subject\":",
-+		       &session->enrollment.realm);
-+	hfs_buf_hex(&request->claim, session->enrollment.subject,
-+		    session->enrollment.subject_len);
-+	hfs_buf_literal(&request->claim, "}");
-+	list_add_tail(&request->list, &session->requests);
-+	session->nr_requests++;
-+	if (control)
-+		session->nr_control_requests++;
-+	mutex_unlock(&session->lock);
-+	hfs_buf_literal(&payload, "{\"claim\":");
-+	hfs_buf_add(&payload, request->claim.data, request->claim.len);
-+	hfs_buf_literal(&payload, ",\"credentials\":");
-+	hfs_buf_add(&payload, request->credentials.data, request->credentials.len);
-+	hfs_buf_literal(&payload, ",\"intent\":");
-+	hfs_buf_add(&payload, request->intent.data, request->intent.len);
-+	hfs_buf_literal(&payload, "}");
-+	err = hfs_control(session, "CALL", &payload, control, &reply);
++}
++
++static int hfs_request_run(struct hfs_session *session,
++			   struct hfs_request *request, const char *opcode,
++			   struct hfs_buf *payload, struct hfs_json **out)
++{
++	struct hfs_json *reply = NULL, *result = NULL;
++	unsigned long deadline = jiffies + 30 * HZ;
++	bool control = request->control;
++	int err, token, status, claim;
++
++	payload->len = 0;
++	payload->error = 0;
++	hfs_buf_literal(payload, "{\"claim\":");
++	hfs_buf_add(payload, request->claim.data, request->claim.len);
++	hfs_buf_literal(payload, ",\"credentials\":");
++	hfs_buf_add(payload, request->credentials.data, request->credentials.len);
++	hfs_buf_literal(payload, ",\"intent\":");
++	hfs_buf_add(payload, request->intent.data, request->intent.len);
++	hfs_buf_literal(payload, "}");
++	if (payload->error)
++		return payload->error;
++	err = hfs_control(session, "CALL", payload, control, &reply);
 +	if (err)
 +		goto retained;
 +	token = hfs_json_field(reply, 0, "payload");
@@ -1108,7 +1235,6 @@ new file mode 100644
 +		hfs_json_free(result);
 +		request->refusal = reply;
 +		request->gap = true;
-+		hfs_buf_free(&payload);
 +		return err ?: -EPROTO;
 +	}
 +	if (!hfs_json_is(reply, hfs_json_field(reply, token, "code"), "\"OK\"")) {
@@ -1117,12 +1243,12 @@ new file mode 100644
 +	}
 +	hfs_json_free(reply);
 +	reply = NULL;
-+	payload.len = 0;
-+	hfs_buf_literal(&payload, "{\"claim\":");
-+	hfs_buf_add(&payload, request->claim.data, request->claim.len);
-+	hfs_buf_literal(&payload, "}");
++	payload->len = 0;
++	hfs_buf_literal(payload, "{\"claim\":");
++	hfs_buf_add(payload, request->claim.data, request->claim.len);
++	hfs_buf_literal(payload, "}");
 +	for (;;) {
-+		err = hfs_control(session, "QUERY", &payload, control, &reply);
++		err = hfs_control(session, "QUERY", payload, control, &reply);
 +		if (err)
 +			goto retained;
 +		token = hfs_json_field(reply, 0, "payload");
@@ -1153,15 +1279,18 @@ new file mode 100644
 +	}
 +	err = hfs_copy_token(reply, hfs_json_field(reply, token, "result"), &result);
 +	if (!err)
-+		err = hfs_result_validate(session, result, opcode);
++		err = hfs_result_validate(session, result, opcode, &request->credentials);
 +	if (err)
 +		goto retained;
 +	request->result = result;
 +	result = NULL;
 +	err = hfs_copy_token(request->result, 0, out);
-+	if (!err)
-+		(*out)->owner = request;
 +	mutex_lock(&session->lock);
++	if (!err) {
++		request->users++;
++		(*out)->owner = request;
++		(*out)->owner_put = hfs_request_result_put;
++	}
 +	request->adopted = hfs_json_is(request->result,
 +		hfs_json_field(request->result, 0, "capabilities"), "[]");
 +	request->terminal = true;
@@ -1169,13 +1298,289 @@ new file mode 100644
 +	if (!err)
 +		err = hfs_result_code(*out);
 +	hfs_json_free(reply);
-+	hfs_buf_free(&payload);
 +	return err;
 +retained:
 +	/* An uncertain claim outlives caller cancellation and process exit. */
 +	WRITE_ONCE(session->blocked, true);
 +	hfs_json_free(reply);
 +	hfs_json_free(result);
++	return err;
++}
++
++/* The ordinary number/credentials/resources are durable obligations before a
++ * writable PTE. The future byte hash is deliberately absent until freeze.
++ */
++int hfs_request_earmark(struct hfs_session *session, const struct hfs_cred *cred,
++			struct hfs_view_ticket *ticket, struct hfs_request **out)
++{
++	struct hfs_request *request;
++	int err;
++
++	*out = NULL;
++	if (!cred || !ticket || ticket->control || ticket->session != session)
++		return -EINVAL;
++	request = kzalloc(sizeof(*request), GFP_KERNEL);
++	if (!request)
++		return -ENOMEM;
++	request->session = session;
++	/* Sixteen dirty packages, independently capped from 128 clean pages.
++	 * This is the existing full request/transport credit, never 128 copies.
++	 */
++	err = session->provider->reserve(session, 16ULL * 1024 * 1024, true,
++					 &request->reservation);
++	if (err)
++		goto allocation;
++	if (hfs_buf_init(&request->claim, 4096) ||
++	    hfs_buf_init(&request->earmark_number, 4096) ||
++	    hfs_buf_init(&request->intent, 32768) ||
++	    hfs_buf_init(&request->credentials, 16384) ||
++	    hfs_buf_init(&request->original_context, HFS_CONTEXT_MAX) ||
++	    hfs_buf_init(&request->drain_payload, HFS_BODY_MAX)) {
++		err = -ENOMEM;
++		goto free;
++	}
++	hfs_cred_write(&request->credentials, cred);
++	if (request->credentials.error ||
++	    request->credentials.len != ticket->family->credentials.len ||
++	    memcmp(request->credentials.data, ticket->family->credentials.data,
++		   request->credentials.len)) {
++		err = request->credentials.error ?: -EACCES;
++		goto free;
++	}
++	mutex_lock(&session->lock);
++	err = hfs_request_admit(session->blocked, true,
++			session->nr_requests - session->nr_control_requests,
++			session->nr_control_requests, session->next_claim);
++	if (err) {
++		mutex_unlock(&session->lock);
++		goto free;
++	}
++	request->control = true;
++	request->earmarked = true;
++	request->held = true;
++	request->earmark_ticket = ticket;
++	ticket->users++;
++	request->number = session->next_claim++;
++	uuid_gen(&request->operation);
++	hfs_buf_add(&request->original_context, session->enrollment.context,
++		    session->enrollment.context_len);
++	hfs_buf_printf(&request->earmark_number,
++		"{\"anchor\":\"%pUb\",\"nonce\":\"%pUb\",\"number\":%llu,"
++		"\"realm\":\"%pUb\",\"subject\":", &session->enrollment.anchor,
++		&session->enrollment.nonce, request->number, &session->enrollment.realm);
++	hfs_buf_hex(&request->earmark_number, session->enrollment.subject,
++		    session->enrollment.subject_len);
++	hfs_buf_literal(&request->earmark_number, "}");
++	list_add_tail(&request->list, &session->requests);
++	session->nr_requests++;
++	session->nr_control_requests++;
++	mutex_unlock(&session->lock);
++	*out = request;
++	return 0;
++free:
++	hfs_buf_free(&request->claim);
++	hfs_buf_free(&request->intent);
++	hfs_buf_free(&request->credentials);
++	hfs_buf_free(&request->original_context);
++	hfs_buf_free(&request->earmark_number);
++	hfs_buf_free(&request->drain_payload);
++	session->provider->unreserve(session, request->reservation);
++allocation:
++	kfree(request);
++	return err;
++}
++
++int hfs_request_cancel_earmark(struct hfs_session *session, struct hfs_request *request)
++{
++	struct hfs_view_ticket *ticket = request->earmark_ticket;
++	struct hfs_json *original = NULL, *response = NULL;
++	int number, err;
++
++	/* A bound DRAIN_WRITE is an immutable byte obligation. Only never-bound
++	 * reservations may acquire this typed no-effect ordinary gap proof.
++	 */
++	if (!request->earmarked || request->bound || !ticket || !ticket->bound ||
++	    strcmp(ticket->operation, "DIRTY_RESERVE"))
++		return -EINVAL;
++	err = hfs_json_parse(ticket->payload.data, ticket->payload.len, &original);
++	if (err)
++		return err;
++	number = hfs_json_field(original, 0, "claim_number");
++	if (number < 0 || original->tokens[number].end - original->tokens[number].start !=
++	    request->earmark_number.len ||
++	    memcmp(original->data + original->tokens[number].start,
++		   request->earmark_number.data, request->earmark_number.len))
++		err = -EPROTO;
++	hfs_json_free(original);
++	if (err)
++		return err;
++	err = hfs_view_query(session, ticket, true, &response);
++	if (err)
++		return err;
++	if (!hfs_json_is(response, hfs_json_field(response, 0, "status"), "\"CANCELLED\"")) {
++		hfs_json_free(response);
++		return -EAGAIN;
++	}
++	/* query verified exact original Ticket, operation, request hash and
++	 * protected response self-id. Host atomically binds this same id to
++	 * this ordinary Number before returning CANCELLED. No Claim invented.
++	 */
++	mutex_lock(&session->lock);
++	if (!request->terminal) {
++		request->result = response;
++		response = NULL;
++		request->gap = true;
++		request->terminal = true;
++		request->adopted = true;
++	}
++	mutex_unlock(&session->lock);
++	hfs_json_free(response);
++	return 0;
++}
++
++void hfs_request_unhold(struct hfs_session *session, struct hfs_request *request)
++{
++	mutex_lock(&session->lock);
++	request->held = false;
++	mutex_unlock(&session->lock);
++}
++
++int hfs_request_bind_drain(struct hfs_session *session, struct hfs_request *request,
++			    const struct hfs_buf *args)
++{
++	u8 digest[32];
++
++	if (!request->earmarked || request->terminal || request->bound || args->error ||
++	    args->len + 64 > request->intent.cap)
++		return -EINVAL;
++	/* Freeze owns this never-published request; it cannot be a fresh CALL.
++	 * The immutable intent and original full credentials survive writeback.
++	 */
++	hfs_buf_literal(&request->intent, "{\"args\":");
++	hfs_buf_add(&request->intent, args->data, args->len);
++	hfs_buf_literal(&request->intent, ",\"opcode\":\"DRAIN_WRITE\"}");
++	hfs_hash(request->intent.data, request->intent.len, digest);
++	hfs_buf_printf(&request->claim,
++		"{\"anchor\":\"%pUb\",\"nonce\":\"%pUb\",\"number\":%llu,"
++		"\"original_hash\":", &session->enrollment.anchor,
++		&session->enrollment.nonce, request->number);
++	hfs_buf_hex(&request->claim, digest, 32);
++	hfs_buf_printf(&request->claim, ",\"realm\":\"%pUb\",\"subject\":",
++		       &session->enrollment.realm);
++	hfs_buf_hex(&request->claim, session->enrollment.subject,
++		    session->enrollment.subject_len);
++	hfs_buf_literal(&request->claim, "}");
++	if (request->intent.error || request->claim.error)
++		return request->intent.error ?: request->claim.error;
++	request->bound = true;
++	return 0;
++}
++
++int hfs_request_drain(struct hfs_session *session, struct hfs_request *request,
++		      struct hfs_json **out)
++{
++	*out = NULL;
++	if (!request->earmarked || !request->bound || request->terminal)
++		return -EINVAL;
++	return hfs_request_run(session, request, "DRAIN_WRITE",
++			       &request->drain_payload, out);
++}
++
++int hfs_call(struct hfs_session *session, const char *opcode,
++	     const struct hfs_buf *args, const struct hfs_cred *cred,
++	     bool control, struct hfs_json **out)
++{
++	struct hfs_request *request;
++	struct hfs_buf payload = {};
++	u8 digest[32];
++	int err;
++
++	*out = NULL;
++	if (!hfs_operation(opcode, true))
++		return -EOPNOTSUPP;
++	if (!cred || args->error)
++		return args->error ?: -EINVAL;
++	mutex_lock(&session->lock);
++	err = hfs_request_admit(session->blocked, control,
++			session->nr_requests - session->nr_control_requests,
++			session->nr_control_requests, session->next_claim);
++	mutex_unlock(&session->lock);
++	if (err)
++		return err;
++	request = kzalloc(sizeof(*request), GFP_KERNEL);
++	if (!request)
++		return -ENOMEM;
++	request->session = session;
++	err = session->provider->reserve(session, 16ULL * 1024 * 1024,
++					 control, &request->reservation);
++	if (err == -ENOSPC || err == -EAGAIN) {
++		if (!hfs_retire(session))
++			err = session->provider->reserve(session, 16ULL * 1024 * 1024,
++						 control, &request->reservation);
++	}
++	if (err) {
++		kfree(request);
++		return err;
++	}
++	if (hfs_buf_init(&request->claim, 4096) ||
++	    hfs_buf_init(&request->intent, args->len + 64) ||
++	    hfs_buf_init(&request->credentials, 16384) ||
++	    hfs_buf_init(&request->original_context, HFS_CONTEXT_MAX) ||
++	    hfs_buf_init(&payload, HFS_BODY_MAX)) {
++		err = -ENOMEM;
++		goto free;
++	}
++	hfs_buf_literal(&request->intent, "{\"args\":");
++	hfs_buf_add(&request->intent, args->data, args->len);
++	hfs_buf_printf(&request->intent, ",\"opcode\":\"%s\"}", opcode);
++	hfs_cred_write(&request->credentials, cred);
++	if (request->intent.error || request->credentials.error) {
++		err = request->intent.error ?: request->credentials.error;
++		goto free;
++	}
++	request->cache_observation = !strcmp(opcode, "GETATTR") || !strcmp(opcode, "LOOKUP") ||
++		!strcmp(opcode, "READDIR") || !strcmp(opcode, "READLINK") || !strcmp(opcode, "STATFS");
++	if (session->bridge_minor && !control) {
++		struct hfs_view *view = hfs_view_get(session);
++
++		if (view) {
++			err = hfs_view_snapshot(view, &request->view_stamp);
++			hfs_view_put(view);
++			if (err)
++				goto free;
++			request->view_stamped = true;
++		}
++	}
++	hfs_hash(request->intent.data, request->intent.len, digest);
++	mutex_lock(&session->lock);
++	err = hfs_request_admit(session->blocked, control,
++			session->nr_requests - session->nr_control_requests,
++			session->nr_control_requests, session->next_claim);
++	if (err) {
++		mutex_unlock(&session->lock);
++		goto free;
++	}
++	request->control = control;
++	request->number = session->next_claim++;
++	uuid_gen(&request->operation);
++	hfs_buf_add(&request->original_context, session->enrollment.context,
++		    session->enrollment.context_len);
++	hfs_buf_printf(&request->claim,
++		"{\"anchor\":\"%pUb\",\"nonce\":\"%pUb\",\"number\":%llu,"
++		"\"original_hash\":", &session->enrollment.anchor,
++		&session->enrollment.nonce, request->number);
++	hfs_buf_hex(&request->claim, digest, 32);
++	hfs_buf_printf(&request->claim, ",\"realm\":\"%pUb\",\"subject\":",
++		       &session->enrollment.realm);
++	hfs_buf_hex(&request->claim, session->enrollment.subject,
++		    session->enrollment.subject_len);
++	hfs_buf_literal(&request->claim, "}");
++	list_add_tail(&request->list, &session->requests);
++	session->nr_requests++;
++	if (control)
++		session->nr_control_requests++;
++	mutex_unlock(&session->lock);
++	err = hfs_request_run(session, request, opcode, &payload, out);
 +	hfs_buf_free(&payload);
 +	return err;
 +free:
@@ -1183,6 +1588,8 @@ new file mode 100644
 +	hfs_buf_free(&request->intent);
 +	hfs_buf_free(&request->credentials);
 +	hfs_buf_free(&request->original_context);
++	hfs_buf_free(&request->earmark_number);
++	hfs_buf_free(&request->drain_payload);
 +	hfs_buf_free(&payload);
 +	session->provider->unreserve(session, request->reservation);
 +	kfree(request);
@@ -1278,6 +1685,8 @@ new file mode 100644
 +			err = -EPROTO;
 +			goto fail;
 +		}
++		memcpy(field == 0 ? cap->ancestors_hash :
++		       field == 1 ? cap->credential_hash : cap->token, digest, 32);
 +	}
 +	err = hfs_copy_token(json, token, &cap->json);
 +	if (err)
@@ -1313,25 +1722,49 @@ new file mode 100644
 +	return found < 0 ? -EPROTO : hfs_cap_parse(session, result, found, kind, out);
 +}
 +
-+int hfs_begin(struct inode *inode, bool mutation, struct hfs_cred **cred,
-+	      void **cookie)
++int hfs_begin_cap(struct inode *inode, const struct hfs_cap *cap, bool mutation,
++		  struct hfs_cred **cred, void **cookie)
 +{
 +	struct hfs_session *session = HFS_S(inode);
++	void *native = NULL;
 +	int err;
 +
 +	*cookie = NULL;
 +	err = hfs_capture(session, &init_user_ns, cred);
 +	if (err)
 +		return err;
-+	err = session->provider->enter(session, HFS_I(inode)->object, mutation, cookie);
++	err = session->provider->enter(session, cap, mutation, &native);
++	if (!err && session->bridge_minor) {
++		err = hfs_mmap_begin(inode, mutation, *cred, native, cookie);
++		if (err)
++			session->provider->leave(session, native);
++	} else if (!err) {
++		*cookie = native;
++	}
 +	if (err)
 +		hfs_cred_free(*cred);
 +	return err;
 +}
 +
++int hfs_begin(struct inode *inode, bool mutation, struct hfs_cred **cred,
++	      void **cookie)
++{
++	return hfs_begin_cap(inode, HFS_I(inode)->object, mutation, cred, cookie);
++}
++
++void hfs_leave(struct inode *inode, void *cookie)
++{
++	struct hfs_session *session = HFS_S(inode);
++
++	if (session->bridge_minor)
++		hfs_mmap_end(cookie);
++	else
++		session->provider->leave(session, cookie);
++}
++
 +void hfs_end(struct inode *inode, struct hfs_cred *cred, void *cookie)
 +{
-+	HFS_S(inode)->provider->leave(HFS_S(inode), cookie);
++	hfs_leave(inode, cookie);
 +	hfs_cred_free(cred);
 +}
 +
@@ -1339,12 +1772,16 @@ new file mode 100644
 +{
 +	int err = 0;
 +
-+	if (!provider || provider->features != HFS_FEATURES ||
++	if (!provider ||
++	    (provider->features != HFS_FEATURES && provider->features != HFS_VIEW_FEATURES) ||
 +	    !provider->enroll || !provider->map || !provider->enter ||
-+	    !provider->leave || !provider->publication || !provider->mmap ||
++	    !provider->leave || !provider->publication ||
 +	    !provider->stop || !provider->retain || !provider->reserve ||
 +	    !provider->unreserve || !provider->retirement || !provider->resolve_gap ||
-+	    !provider->retire_session)
++	    !provider->retire_session ||
++	    (provider->features == HFS_FEATURES && !provider->mmap) ||
++	    (provider->features == HFS_VIEW_FEATURES &&
++	     (!provider->target || !provider->view_event || !provider->view_retirement)))
 +		return -EOPNOTSUPP;
 +	mutex_lock(&hfs_provider_lock);
 +	if (hfs_provider)
@@ -1382,11 +1819,13 @@ new file mode 100644
 +{
 +	const char *p = options;
 +	static const char selected[] = "version=9P2000.L.hfs1";
++	static const char views[] = "version=9P2000.L.hfs1.1";
 +	size_t len;
 +
 +	while (p && *p) {
 +		len = strcspn(p, ",");
-+		if (len == sizeof(selected) - 1 && !memcmp(p, selected, len))
++		if ((len == sizeof(selected) - 1 && !memcmp(p, selected, len)) ||
++		    (len == sizeof(views) - 1 && !memcmp(p, views, len)))
 +			return true;
 +		p = p[len] ? p + len + 1 : NULL;
 +	}
@@ -1443,14 +1882,29 @@ new file mode 100644
 +	return err;
 +}
 +
-+static void hfs_session_free(struct hfs_session *session)
++static int hfs_session_free(struct hfs_session *session)
 +{
 +	struct hfs_process *process, *next_process;
 +	struct hfs_request *request, *next_request;
 +	struct hfs_description *description, *next_description;
 +	struct hfs_forget *forget, *next_forget;
 +	struct hfs_object_number *object, *next_object;
++	struct hfs_view *view;
++	int err;
 +
++	if (hfs_view_tickets_busy(session))
++		return -EBUSY;
++	view = hfs_view_get(session);
++	if (view) {
++		hfs_view_fence(view);
++		err = hfs_mmap_stop(view);
++		hfs_view_put(view);
++		if (err)
++			return err;
++		err = hfs_view_free(session);
++		if (err)
++			return err;
++	}
 +	if (session->control)
 +		destroy_workqueue(session->control);
 +	if (session->client)
@@ -1458,6 +1912,7 @@ new file mode 100644
 +	list_for_each_entry_safe(process, next_process, &session->processes, list) {
 +		hfs_cred_free(process->last);
 +		put_pid(process->pid);
++		session->provider->unreserve(session, process->reservation);
 +		kfree(process);
 +	}
 +	list_for_each_entry_safe(request, next_request, &session->requests, list) {
@@ -1465,6 +1920,8 @@ new file mode 100644
 +		hfs_buf_free(&request->intent);
 +		hfs_buf_free(&request->credentials);
 +		hfs_buf_free(&request->original_context);
++		hfs_buf_free(&request->earmark_number);
++		hfs_buf_free(&request->drain_payload);
 +		hfs_json_free(request->result);
 +		hfs_json_free(request->refusal);
 +		session->provider->unreserve(session, request->reservation);
@@ -1481,9 +1938,12 @@ new file mode 100644
 +	}
 +	list_for_each_entry_safe(object, next_object, &session->object_numbers, list)
 +		kfree(object);
++	hfs_view_tickets_destroy(session);
++	hfs_cap_free(session->domain);
 +	module_put(session->provider->owner);
 +	atomic_dec(&hfs_active_sessions);
 +	kfree(session);
++	return 0;
 +}
 +
 +static int hfs_fill_super(struct super_block *sb, void *data, int silent)
@@ -1515,6 +1975,14 @@ new file mode 100644
 +	hfs_buf_free(&args);
 +	if (err)
 +		goto out;
++	err = hfs_reply_cap(session, result, "DOMAIN", &session->domain);
++	if (err)
++		goto out;
++	if (session->bridge_minor) {
++		err = hfs_mmap_bootstrap(session, cred);
++		if (err)
++			goto out;
++	}
 +	root = hfs_inode_get(sb, result, "ROOT", cred);
 +	if (IS_ERR(root)) {
 +		err = PTR_ERR(root);
@@ -1539,9 +2007,7 @@ new file mode 100644
 +struct dentry *v9fs_hfs_mount(struct file_system_type *type, int flags,
 +			    const char *device, void *options)
 +{
-+	static const char hello[] = "{\"body_schema\":1,\"bridge_major\":1,"
-+		"\"bridge_minor\":0,\"features\":255,\"msize\":65536,"
-+		"\"normal_major\":3,\"normal_minor\":0}";
++	const char *hello;
 +	struct hfs_session *session;
 +	struct hfs_buf payload;
 +	struct hfs_json *reply = NULL;
@@ -1563,6 +2029,8 @@ new file mode 100644
 +		return ERR_PTR(-ENOMEM);
 +	}
 +	session->provider = hfs_provider;
++	session->bridge_minor = hfs_provider->features == HFS_VIEW_FEATURES;
++	hello = hfs_protocol_text(session->bridge_minor);
 +	atomic_inc(&hfs_active_sessions);
 +	mutex_init(&session->lock);
 +	mutex_init(&session->writer);
@@ -1574,6 +2042,8 @@ new file mode 100644
 +	INIT_LIST_HEAD(&session->descriptions);
 +	INIT_LIST_HEAD(&session->forgets);
 +	INIT_LIST_HEAD(&session->object_numbers);
++	INIT_LIST_HEAD(&session->view_tickets);
++	INIT_LIST_HEAD(&session->view_families);
 +	INIT_LIST_HEAD(&session->global);
 +	session->next_claim = session->next_cell = session->next_inode = 1;
 +	session->next_close = session->next_release = 1;
@@ -1587,6 +2057,14 @@ new file mode 100644
 +		err = hfs_enrollment_validate(&session->enrollment);
 +	if (err)
 +		goto unlock_fail;
++	if (session->bridge_minor &&
++	    ((session->enrollment.view_scope != HFS_SCOPE_NORMAL_PUBLIC &&
++	      session->enrollment.view_scope != HFS_SCOPE_CONTROLLED_LOCAL) ||
++	     uuid_is_null(&session->enrollment.view_control_nonce) ||
++	     uuid_equal(&session->enrollment.view_control_nonce, &session->enrollment.nonce))) {
++		err = -EOPNOTSUPP;
++		goto unlock_fail;
++	}
 +	if (!hfs_trace_registered) {
 +		check_trace_callback_type_sched_process_exit(hfs_process_exit);
 +		for_each_kernel_tracepoint(hfs_find_exit_tracepoint, &hfs_exit_tracepoint);
@@ -1609,11 +2087,12 @@ new file mode 100644
 +		session->client = NULL;
 +		goto fail;
 +	}
-+	if (session->client->proto_version != p9_proto_hfs1) {
++	if (session->client->proto_version != (session->bridge_minor ?
++					       p9_proto_hfs11 : p9_proto_hfs1)) {
 +		err = -EPROTO;
 +		goto fail;
 +	}
-+	err = hfs_buf_init(&payload, sizeof(hello));
++	err = hfs_buf_init(&payload, strlen(hello) + 1);
 +	if (err)
 +		goto fail;
 +	hfs_buf_literal(&payload, hello);
@@ -1625,9 +2104,7 @@ new file mode 100644
 +	selection = hfs_json_field(reply, token, "selection");
 +	if (hfs_json_exact(reply, token, "selection,status") ||
 +	    !hfs_json_is(reply, hfs_json_field(reply, token, "status"), "\"ACCEPTED\"") ||
-+	    selection < 0 || reply->tokens[selection].end -
-+	    reply->tokens[selection].start != sizeof(hello) - 1 ||
-+	    memcmp(reply->data + reply->tokens[selection].start, hello, sizeof(hello) - 1))
++	    hfs_protocol_match(reply, selection, session->bridge_minor))
 +		err = -EPROTO;
 +	hfs_json_free(reply);
 +	if (err)
@@ -1653,8 +2130,11 @@ new file mode 100644
 +		__module_get(THIS_MODULE);
 +		session->retained = true;
 +		session->provider->retain(session);
-+	} else {
-+		hfs_session_free(session);
++	} else if (hfs_session_free(session)) {
++		/* A parked ticket/view owner prevents unsafe partial destruction. */
++		__module_get(THIS_MODULE);
++		session->retained = true;
++		session->provider->retain(session);
 +	}
 +	return ERR_PTR(err);
 +}
@@ -1670,6 +2150,7 @@ new file mode 100644
 +	unsigned long flags;
 +
 +	WRITE_ONCE(session->closing, true);
++	WRITE_ONCE(session->blocked, true);
 +	if (session->provider->stop(session))
 +		WRITE_ONCE(session->blocked, true);
 +	spin_lock_irqsave(&hfs_sessions_lock, flags);
@@ -1705,6 +2186,8 @@ new file mode 100644
 +		&session->enrollment.nonce, &session->enrollment.realm);
 +	mutex_lock(&session->lock);
 +	list_for_each_entry(request, &session->requests, list) {
++		if (request->held || request->users)
++			break;
 +		if (request->terminal && !request->adopted)
 +			break;
 +		if (!request->terminal) {
@@ -1769,6 +2252,10 @@ new file mode 100644
 +		if (request->number > through)
 +			break;
 +		list_del(&request->list);
++		if (request->earmark_ticket) {
++			if (!WARN_ON_ONCE(!request->earmark_ticket->users))
++				request->earmark_ticket->users--;
++		}
 +		session->nr_requests--;
 +		if (request->control)
 +			session->nr_control_requests--;
@@ -1776,6 +2263,8 @@ new file mode 100644
 +		hfs_buf_free(&request->intent);
 +		hfs_buf_free(&request->credentials);
 +		hfs_buf_free(&request->original_context);
++		hfs_buf_free(&request->earmark_number);
++		hfs_buf_free(&request->drain_payload);
 +		hfs_json_free(request->result);
 +		hfs_json_free(request->refusal);
 +		session->provider->unreserve(session, request->reservation);
@@ -1794,6 +2283,7 @@ new file mode 100644
 +/* Only a protected recovery/retirement provider can relinquish retained state. */
 +int hfs_session_destroy(struct hfs_session *session)
 +{
++	struct hfs_view *view;
 +	int err;
 +
 +	if (!session || !session->retained || !session->closing)
@@ -1803,11 +2293,30 @@ new file mode 100644
 +		mutex_unlock(&session->retirement);
 +		return -EBUSY;
 +	}
++	view = hfs_view_get(session);
++	if (view) {
++		err = hfs_mmap_prepare_retire(view);
++		hfs_view_put(view);
++		if (err) {
++			mutex_unlock(&session->retirement);
++			return err;
++		}
++	}
++	/* Joining a poll can expose an unknown transport result. It is not
++	 * covered by an earlier proof and may not be discarded after the fact.
++	 */
++	if (!list_empty(&session->uncertain) || !list_empty(&session->requests)) {
++		mutex_unlock(&session->retirement);
++		return -EBUSY;
++	}
 +	err = session->provider->retire_session(session);
 +	mutex_unlock(&session->retirement);
 +	if (err)
 +		return err;
-+	hfs_session_free(session);
++	WRITE_ONCE(session->retired, true);
++	err = hfs_session_free(session);
++	if (err)
++		return err;
 +	module_put(THIS_MODULE);
 +	return 0;
 +}
@@ -1832,7 +2341,7 @@ diff --git a/fs/9p/hfs_inode.c b/fs/9p/hfs_inode.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_inode.c
-@@ -0,0 +1,914 @@
+@@ -0,0 +1,957 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Authoritative retained-9p attributes and namespace VFS operations. */
 +#include <linux/magic.h>
@@ -1854,6 +2363,10 @@ new file mode 100644
 +int hfs_attr_install(struct inode *inode, const struct hfs_json *json, int token)
 +{
 +	struct hfs_attr attr;
++	struct hfs_session *session = HFS_S(inode);
++	struct hfs_request *request = json->owner;
++	struct hfs_view *view = NULL;
++	void *cookie = NULL;
 +	int err;
 +
 +	err = hfs_attr_decode(json, token, &HFS_I(inode)->object->home,
@@ -1861,6 +2374,32 @@ new file mode 100644
 +			      inode->i_mode & S_IFMT, &attr);
 +	if (err)
 +		return err;
++	if (session->bridge_minor) {
++		view = hfs_view_get(session);
++		if (!view)
++			return -ESTALE;
++		if (request && request->view_stamped && !(inode->i_state & I_NEW)) {
++			err = hfs_view_enter(view, &request->view_stamp, false, &cookie);
++			if (err && !request->cache_observation) {
++				/* A mutation's immutable result remains its result; never
++				 * overwrite newer cache metadata with its delayed reply.
++				 */
++				hfs_view_put(view);
++				return 0;
++			}
++		} else if (request && request->view_stamped && request->cache_observation) {
++			err = hfs_view_enter(view, &request->view_stamp, false, &cookie);
++		} else {
++			/* Initial immutable identity/creation attributes come from the
++			 * actual protected result. Subsequent observations revalidate.
++			 */
++			err = hfs_view_enter(view, NULL, true, &cookie);
++		}
++		if (err) {
++			hfs_view_put(view);
++			return err;
++		}
++	}
 +	spin_lock(&inode->i_lock);
 +	if (attr.revision >= inode_peek_iversion_raw(inode)) {
 +		inode->i_mode = attr.type | attr.mode;
@@ -1874,6 +2413,8 @@ new file mode 100644
 +		inode_set_iversion_raw(inode, attr.revision);
 +	}
 +	spin_unlock(&inode->i_lock);
++	hfs_view_leave(cookie);
++	hfs_view_put(view);
 +	return 0;
 +}
 +
@@ -1971,6 +2512,14 @@ new file mode 100644
 +		hfs_cap_free(cap);
 +		hfs_cred_free(seed.issuer);
 +	}
++	if ((inode->i_state & I_NEW) && session->bridge_minor) {
++		inode->i_mapping->a_ops = &hfs_cache_aops;
++		err = hfs_view_register_inode(inode);
++		if (err) {
++			iget_failed(inode);
++			return ERR_PTR(err);
++		}
++	}
 +	err = hfs_attr_install(inode, result, hfs_json_field(result, 0, "attributes"));
 +	if (err) {
 +		if (inode->i_state & I_NEW)
@@ -2016,6 +2565,7 @@ new file mode 100644
 +		return NULL;
 +	}
 +	INIT_LIST_HEAD(&inode->forget->list);
++	INIT_LIST_HEAD(&inode->view_list);
 +	inode_init_once(&inode->inode);
 +	return &inode->inode;
 +}
@@ -2063,6 +2613,8 @@ new file mode 100644
 +{
 +	struct hfs_forget *forget = HFS_I(inode)->forget;
 +
++	/* Eviction is outside i_lock; remove inventory before inode memory dies. */
++	hfs_view_unregister_inode(inode);
 +	truncate_inode_pages_final(&inode->i_data);
 +	clear_inode(inode);
 +	if (!forget->session)
@@ -2306,7 +2858,7 @@ new file mode 100644
 +	hfs_description_discard(HFS_S(dir), description);
 +	hfs_cap_free(cap);
 +	hfs_json_free(result);
-+	HFS_S(dir)->provider->leave(HFS_S(dir), cookie);
++	hfs_leave(dir, cookie);
 +	hfs_cred_free(cred);
 +	return err;
 +}
@@ -2751,7 +3303,7 @@ diff --git a/fs/9p/hfs_file.c b/fs/9p/hfs_file.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_file.c
-@@ -0,0 +1,585 @@
+@@ -0,0 +1,605 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Description-bound retained-9p I/O. Advisory locks stay in this kernel mount. */
 +#include <linux/file.h>
@@ -2890,7 +3442,7 @@ new file mode 100644
 +out:
 +	if (err)
 +		hfs_cred_free(cred);
-+	HFS_S(inode)->provider->leave(HFS_S(inode), cookie);
++	hfs_leave(inode, cookie);
 +	return err;
 +}
 +
@@ -2926,7 +3478,7 @@ new file mode 100644
 +	bytes = kmalloc(len, GFP_KERNEL);
 +	if (!bytes)
 +		return -ENOMEM;
-+	err = hfs_begin(inode, write, &cred, &cookie);
++	err = hfs_begin_cap(inode, description->cap, write, &cred, &cookie);
 +	if (err)
 +		goto free;
 +	if (write) {
@@ -3026,8 +3578,15 @@ new file mode 100644
 +	void *cookie;
 +	const char *scope = S_ISDIR(inode->i_mode) ? "DIRECTORY" :
 +		datasync ? "DATA" : "FILE";
-+	int err = hfs_begin(inode, false, &cred, &cookie);
++	int err;
 +
++	if (HFS_S(inode)->bridge_minor) {
++		err = hfs_mmap_sync(file);
++		if (err)
++			return err;
++	}
++	err = hfs_begin_cap(inode, description ? description->cap : HFS_I(inode)->object,
++			    false, &cred, &cookie);
 +	if (err)
 +		return err;
 +	err = hfs_args_init(&args);
@@ -3131,7 +3690,8 @@ new file mode 100644
 +	/* No generic_file_mmap/writeback-fid fallback. The mandatory provider
 +	 * owns PTE/TLB, page provenance, token reservations and recall proof.
 +	 */
-+	return session->provider->mmap(file, vma);
++	return session->bridge_minor ? hfs_mmap_file(file, vma) :
++		session->provider->mmap(file, vma);
 +}
 +
 +struct hfs_page_entry {
@@ -3314,12 +3874,24 @@ new file mode 100644
 +	return err;
 +}
 +
++static loff_t hfs_file_llseek(struct file *file, loff_t offset, int whence)
++{
++	int err;
++
++	if (whence == SEEK_END || whence == SEEK_DATA || whence == SEEK_HOLE) {
++		err = hfs_refresh(file_inode(file));
++		if (err)
++			return err;
++	}
++	return generic_file_llseek(file, offset, whence);
++}
++
 +const struct file_operations hfs_file_fops = {
 +	.owner = THIS_MODULE,
 +	.open = hfs_open,
 +	.read_iter = hfs_read_iter,
 +	.write_iter = hfs_write_iter,
-+	.llseek = generic_file_llseek,
++	.llseek = hfs_file_llseek,
 +	.fsync = hfs_fsync,
 +	.flush = hfs_flush,
 +	.release = hfs_release,

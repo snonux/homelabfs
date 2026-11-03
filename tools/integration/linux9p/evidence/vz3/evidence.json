@@ -1,0 +1,242 @@
+{
+  "format": 1,
+  "project_task": "vz3",
+  "status": "corrected final4 object check passed; root narrow R2 CLEAN; root owns final integration and completion; no runtime acceptance",
+  "source_manifest_sha256": "7066e6ca0ebc6505273324b5df62b04eccfb10cf5740c39cfab3c4a4b1dd09a0",
+  "source_inventory_sha256": "6a50755db40e5fdd933bf59fe2c059f3a1d06a040421c040395672492f04f57c",
+  "patched_sources": {
+    "fs/9p/Kconfig": "0f65cc75c59aff14b00f69f9d34af9edb2c97d6403170d9599ac28463a240867",
+    "fs/9p/Makefile": "b37bb034594064464bd95955e7b429f2e24aed58ec3ed11b2fba98ae2febf238",
+    "fs/9p/hfs.h": "6f4fb4bb5012d81312a30d85bd0182e93f53d390d69aca205dcb74110480d8cf",
+    "fs/9p/hfs_cursor.c": "94ada25fb7451340390a15305deb62346680d545cdc1c492a0f483e2d4e73127",
+    "fs/9p/hfs_cursor.h": "40876ee1daceaa1b4b18e36781903f5ca1700b60843536d3ebf5a4b56c199871",
+    "fs/9p/hfs_file.c": "5086588849e458c771b0b8020058f92293c313c4da1f117d1fb3b25f761ab769",
+    "fs/9p/hfs_inode.c": "bbad60504e075d047c8f3daf1efc1f2a0756dce6f3595e12db0c331c9de48954",
+    "fs/9p/hfs_lease.c": "4ada78299507b3ba58aa38343281140f248d01e44f412965bea02ab667ca2f14",
+    "fs/9p/hfs_lease.h": "ce851b2f08a0f66afcacaa91482541cce5e739e2013990d143b5337361abc7e4",
+    "fs/9p/hfs_mmap.c": "c03c4f08be550a312bcd0a2e98eaff2c5b03710b7aeddfdc1c01cf83edd70d14",
+    "fs/9p/hfs_policy.c": "5537099c59641da5bf8809aaa59fb397d7fd9cc39db82a9190e5248119e84922",
+    "fs/9p/hfs_policy.h": "1e45a64924ca25bed471d6f149d97cadb35c662dc9944699327ae91ade20f360",
+    "fs/9p/hfs_protocol.c": "73d22c26db74a149fa271dbe5f552aa6126e30d67275013470288a767e9480c5",
+    "fs/9p/hfs_protocol.h": "f1cf7ce710b335811c145d9fe539f9918a9f9c73ad5947f9fa2f324f37746665",
+    "fs/9p/hfs_session.c": "5259d34a56b736368c964d7ccce76ff8bdcdbace45c7310f5bd1494a664b8c75",
+    "fs/9p/hfs_view.c": "7216a4926f4ed6b6de18cec957be6a4e6a4b486dbdc4961d8a19f217b673b5f4",
+    "fs/9p/hfs_view.h": "77072080c300c66062be346bac448d145ada4454e174a6d3fa5e5a629e54eee3",
+    "fs/9p/vfs_super.c": "1c85dd57e9f27b324cbf4b8a35e9b4cbaf9f2259533754602220f2b2e60f449f",
+    "include/linux/mm.h": "f78c60340bbe1e527c7bc3652b952577ca1297828d85684b7e22f28d37ab1bc6",
+    "include/linux/page-flags.h": "0c8fe49bf4a959eb8669142462afdbcafd90b35ef95cfe1ea801e7069e80558c",
+    "include/net/9p/9p.h": "5a46f65229ecb77bd8f70cce081683869c2ae47e63e573a26a1b2e68e1bd5d7b",
+    "include/net/9p/client.h": "2094b2a8deed51d45f1f3adb2ef35a1a5c30c74fed1a33e00d0629327c702257",
+    "mm/gup.c": "7cabff43f47896a04f25d3ac2fb63cbb20255865b585be37595499d890acf5a2",
+    "mm/huge_memory.c": "f2dadde3c6cb2a468913c5b4c3658f62091e43e1e8c16efeb10e2bebf922ae4d",
+    "mm/memory.c": "afc1442fe6483b42239b158b3760649250857cb2dc0fd5dcf9497f1ee846559b",
+    "mm/mremap.c": "2b961657bb9b07ea8c25dbbf523f783031da496ecda11fa706a4eb2afb355a24",
+    "net/9p/client.c": "e54b23f0fbf071f5a789c639a079777785ea314b7347fdc89b9b6ea3c6d556f8",
+    "net/9p/protocol.c": "9a0b548ed15ec7e194b391a9cef010541d02c992277c34ba2386c4d8c74092f8"
+  },
+  "scope": "upstream source review, primitive-boundary component checks and exact bounded object compilation; no final kernel/module link, running ABI, physical VFS execution or publication proof",
+  "successful_batch": "final-batch3",
+  "failed_batch_preserved": "final-batch1 disabled-THP explicit huge_memory.o configuration error",
+  "checks": {
+    "final-requests2": {
+      "logs_sha256": {
+        "requests.log": "240e5ef8494826f23d0f25e0fee78c6d4ec2f63c0d4fcea630bd9d0c3a0216f3"
+      },
+      "status": "pass",
+      "scope": "actual production C at explicit primitive boundaries; no VFS/running-kernel/source-authority proof"
+    },
+    "final-root5": {
+      "logs_sha256": {
+        "root.log": "142b58d4adc3233483998456e67291665fb3c39e0703940e4f9645d8fdefb067"
+      },
+      "status": "pass",
+      "scope": "actual production C at explicit primitive boundaries; no VFS/running-kernel/source-authority proof"
+    },
+    "final-codec4": {
+      "logs_sha256": {
+        "codec.log": "3177cf18c81b0a49d2e8eea65b9c0b8cc5e797c6fe8a9db10dfe3b1789f56364"
+      },
+      "status": "pass",
+      "scope": "actual production C at explicit primitive boundaries; no VFS/running-kernel/source-authority proof"
+    },
+    "final-transport4": {
+      "logs_sha256": {
+        "transport.log": "983ecb7e06f6fbd9659b4ed3a94c127701ad343fb0a427a6f4a23d308cd291fd"
+      },
+      "status": "pass",
+      "scope": "actual production C at explicit primitive boundaries; no VFS/running-kernel/source-authority proof"
+    },
+    "dirty-check3": {
+      "logs_sha256": {
+        "dirty.log": "fe51a075971286e4339a58464278639ffb0695f893d3351a41a347b85962c76a"
+      },
+      "status": "pass",
+      "scope": "actual production C at explicit primitive boundaries; no VFS/running-kernel/source-authority proof"
+    },
+    "view-check23": {
+      "logs_sha256": {
+        "stage0.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stage1.log": "243e21e870c6848b0c0cbc407e8bd62f3ca38af456ae2fa62eb23506ebd3a99d"
+      },
+      "status": "pass",
+      "scope": "actual production C at explicit primitive boundaries; no VFS/running-kernel/source-authority proof"
+    },
+    "huge-check1": {
+      "logs_sha256": {
+        "huge.log": "568fa945c11e377e0a417e43d849fdb57fb897923cc6ec2d4f95f880040d09ae"
+      },
+      "status": "pass",
+      "scope": "actual production C at explicit primitive boundaries; no VFS/running-kernel/source-authority proof"
+    }
+  },
+  "evidence_files": {
+    "bounds-host-codec.json": "f2831ac163f0f036e0b97022bc591ad640dcf22f4100a40122cd37a21064b2e6",
+    "capture-component.json": "537473c8d99e2fd1f6e113dcec00afabeae919959dda25d53e2432f5a092b7ef",
+    "capture-component.log": "60b2814d495afefbe27f924fdeed4abb6ab8bcc37bd8fe8d3c71c3be11bed228",
+    "compiler-driver-postcheck.json": "2bc6b160f9b5e12635dff6c18df1cb97282f278ce122dfc2e529d7869d4a45a2",
+    "config-binding.json": "57601d26c8fb5bf2011a6ca4a7d935d745cbcfaa944a93b6c841ccf985590814",
+    "corrected-tools.json": "18e037e5c789b222eab29f5de1803495b7314e76addcc2565ea8678fdc209adf",
+    "current-dirty4-dirty.log": "e7292828fe7cdb6f8c26e531d71052be334c5661fb4835dd08f8e7515d91517b",
+    "current-freeze-component.json": "22a44f20c823e037ada7e8bb5be53e9b0ccd7a886cd22135b99cd2eac394c517",
+    "current-freeze-host-codec.json": "36923f817d5eca97705a4d6443477a6387d398260a683d3d7b4683e976c96a6e",
+    "current-requests-component.json": "d1b85fd37feb4ffd551f4b3549fd99041483789ed44c5e955d60138c624c45bf",
+    "current-requests3-requests.log": "d02f04302cd6360b79ac3433bb3120c8d5e897ee804d5c58732f98dfeb04a060",
+    "current-root-component.json": "1b0c1c72f62c494fd188f5c4da070884a7fb5510cac17d0649a7dcb2d8d4d90c",
+    "current-root6-root.log": "6ce83f1fe2569bfbb99e87755d21d2157d03ea2c5532c3a96d5aad05109664c2",
+    "current-view-component.json": "477362cc28672ebacd90ffadc201d764fe5fb4f21cd783b18c16b1463369557b",
+    "dirty-check3-dirty.log": "fe51a075971286e4339a58464278639ffb0695f893d3351a41a347b85962c76a",
+    "failed-batch.json": "c52d5475caab690b982b4eb3aa33323d81551bed8fa33bd0c054a204abb08a61",
+    "failed-build-stages.json": "40c4194c1f144be72aa9f6e797b147b01f340086a01627a39d9fe9dc4dc3341e",
+    "failed-partial-bindings.json": "9281705434778ef33bf21a57943a14f4a96efafef9c7d11da7950e88580f68c9",
+    "final-codec4-codec.log": "3177cf18c81b0a49d2e8eea65b9c0b8cc5e797c6fe8a9db10dfe3b1789f56364",
+    "final-requests2-requests.log": "240e5ef8494826f23d0f25e0fee78c6d4ec2f63c0d4fcea630bd9d0c3a0216f3",
+    "final-root5-root.log": "142b58d4adc3233483998456e67291665fb3c39e0703940e4f9645d8fdefb067",
+    "final-transport4-transport.log": "983ecb7e06f6fbd9659b4ed3a94c127701ad343fb0a427a6f4a23d308cd291fd",
+    "final3-allocation.json": "3130eed6a3a5b1bb3968002ff08fd271be483754a5ed2b76055d8e45ffd74208",
+    "final3-batch.json": "308d86d7985aa057697482994b88f2c42a2d7f471acae5f82c90075402f245b4",
+    "final3-build.json": "e835bab9e0f1b408e6ab03cabb2ec442a6f33032bf53529849c1861d3e165f99",
+    "final3-compiler-driver-during-build.json": "c059f67aea347e1ea6f088ef769efd02f04c8e5322faa290fcbdecf2f9dd2364",
+    "final3-config.json": "57601d26c8fb5bf2011a6ca4a7d935d745cbcfaa944a93b6c841ccf985590814",
+    "freeze-component.json": "bddf9188dbb0e8b462c3444ab980d50a30f59955092e49cb514b5143b81da4e3",
+    "freeze-host-codec.json": "c8ae1bd2e55bc26031c537b29c22bbe16f3ee390a9304398bfb92cdaa484ac8b",
+    "huge-check1-huge.log": "568fa945c11e377e0a417e43d849fdb57fb897923cc6ec2d4f95f880040d09ae",
+    "huge-component.json": "2bfb0f345be33ca60aacc0d8fe5a3bb699b0ef53da4450e0d18003a7b381a51f",
+    "raw-source-audit.json": "fba25d343206f81f2d88f6a4f85605a3920546e5390b30d75957812f7b1dc5f7",
+    "requests-component.json": "ffd1afe54a9aeb9fcd9a9cb7517afd81d50a192e08abe2f7e5019cf31f5521ba",
+    "root-component.json": "a0625f153017ef1991830bd696e31903719dd3b1da2aa69807deabb16047d747",
+    "successful-batch.json": "5c1c14782706a6c8274bd3782ac4d946c2aa2f341666eada49f62793e9779c7f",
+    "successful-build.json": "a4ea763afbdf69a292c58ed785c1814f1b7f09a4a46fbbe2def7a55ab05191f8",
+    "view-component.json": "95a1a0d6c94dfd87509974185bc2ff4a520902989e05baca2f96aec6df4d563f",
+    "wire-bounds.json": "9198aa6b9b443c2ff1d80fcac5e2828c72f7f0983e0e3da4073acc4f1e36cd22",
+    "r1-fixes.json": "f6302982c660ad81e642a02fbffac2b33826685369b6802a1f35d664a049a35f"
+  },
+  "limitations": [
+    "Native runtime source/event/retirement providers remain mandatory with no default success.",
+    "Normal-public source proof/serving remains unavailable; controlled local uses separate journal/state cut and null Publication.",
+    "Kernel object/source review is not actual PTE/TLB/MMU/GUP syscall acceptance.",
+    "Existing root-controlled k04 resumption integration and l04 lifetime work remain separate gates.",
+    "Historical old disk st_size measurements are not relabeled allocated; new guards use actual st_blocks including dirs/symlinks/root.",
+    "Sampled RSS maxima are observations; maximum sampling gaps are recorded, not continuous proof."
+  ],
+  "stable_capture_correction": {
+    "source": {
+      "fs/9p/hfs_session.c": "5259d34a56b736368c964d7ccce76ff8bdcdbace45c7310f5bd1494a664b8c75",
+      "fs/9p/hfs.h": "6f4fb4bb5012d81312a30d85bd0182e93f53d390d69aca205dcb74110480d8cf",
+      "fs/9p/hfs_lease.c": "4ada78299507b3ba58aa38343281140f248d01e44f412965bea02ab667ca2f14",
+      "fs/9p/hfs_lease.h": "ce851b2f08a0f66afcacaa91482541cce5e739e2013990d143b5337361abc7e4",
+      "fs/9p/hfs_policy.c": "5537099c59641da5bf8809aaa59fb397d7fd9cc39db82a9190e5248119e84922",
+      "fs/9p/hfs_policy.h": "1e45a64924ca25bed471d6f149d97cadb35c662dc9944699327ae91ade20f360"
+    },
+    "checks": "capture-check3 actual production capture/policy/ticket-family ASan/UBSan,4100 repetitions, actual group/fsuid/fsgid/namespace/idmap input changes, historical grants, concurrent equal/mixed capture, reference/credit/error cases",
+    "scope": "kernel primitive fixtures, not running-kernel identity proof",
+    "old_object_receipts": "final2 retained as prior-source evidence; final3-build.json binds corrected current sources"
+  },
+  "prior_final2_source_manifest_sha256": "3be795af6a0e4913097980e74582bcf3d3917c703d08a3335528d8cf3f48071d",
+  "prior_successful_batch_retained": "final-batch2",
+  "fresh_source_verification": "prepared source inventory78715 complete files/symlinks verified before and after final3; source1+development1 also verified and all older tools/artifacts/log hashes unchanged",
+  "final3_resources": {
+    "object_stage": {
+      "argv": [
+        "make",
+        "-j2",
+        "O=/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/final-objects3",
+        "ARCH=x86_64",
+        "fs/9p/",
+        "net/9p/",
+        "mm/memory.o",
+        "mm/gup.o",
+        "mm/mremap.o",
+        "mm/huge_memory.o"
+      ],
+      "exit": 0,
+      "limit_reason": null,
+      "max_rss_sample_gap_seconds": 5.013,
+      "name": "objects",
+      "peak_group_rss_bytes": 253460480,
+      "seconds": 40.348
+    },
+    "host_allocation": {
+      "argv": [
+        "python3",
+        "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/run-final-candidate4-build3.py",
+        "build"
+      ],
+      "scope": "root explicit final3 allocation host guard; inner stages separately enforce2CPU/-j2,2GiB AS/groupRSS,8GiB owned blocks,20min/stage",
+      "preflight_samples": [
+        {
+          "available_bytes": 22934138880,
+          "total_bytes": 33330982912,
+          "minimum_available_bytes": 8589934592,
+          "swap_used_bytes": 4376158208,
+          "swap_total_bytes": 8589930496,
+          "swap_used_fraction": 0.5094521090755982,
+          "pswpin": 57850,
+          "pswpout": 1106048
+        },
+        {
+          "available_bytes": 22926512128,
+          "total_bytes": 33330982912,
+          "minimum_available_bytes": 8589934592,
+          "swap_used_bytes": 4376158208,
+          "swap_total_bytes": 8589930496,
+          "swap_used_fraction": 0.5094521090755982,
+          "pswpin": 57850,
+          "pswpout": 1106048
+        }
+      ],
+      "exit": 0,
+      "limit_reason": null,
+      "seconds": 119.6405064080027,
+      "maximum_sample_gap_seconds": 0.5018945539923152,
+      "sampled_minimum_host_available_bytes": 22336217088,
+      "sampled_maximum_host_swap_used_fraction": 0.5094521090755982,
+      "script_sha256": "edde1aa467a2be5bd2f57d26cb6f0ec10d4604d36cdf30b6c11f703331737485"
+    },
+    "owned_actual_allocated_bytes": 6093041664
+  },
+  "corrected_lifetime_issue": {
+    "source": "hfs_session.c190-197;hfs_lease.c351-358,974ff",
+    "behavior": "PRIOR candidate captured a new revision each call; corrected source reuses unchanged full numeric credential epochs",
+    "impact": "prior unchanged-operation family exhaustion corrected;4100 unchanged actual capture+family helper repetitions pass; no runtime sustained-loop acceptance claim",
+    "owner": "fixed in vz3 stable-capture source and final3 object verification; no ceiling/floor/counter reset",
+    "current_behavior": "unchanged snapshots reuse revision; observed A-B-A changes never reuse old epoch; historical counters/floors retained unchanged"
+  },
+  "current_components": {
+    "view": "current-view-component.json",
+    "requests": "current-requests-component.json",
+    "freeze": "current-freeze-component.json",
+    "root": "current-root-component.json",
+    "capture": "capture-component.json",
+    "host_freeze_codec": "current-freeze-host-codec.json"
+  },
+  "prior_component_receipts": "older component/source receipts remain preserved with their original source bindings, including prior raw-source audit; current full prepared-source verification is final3",
+  "r1_fixes": "r1-fixes.json",
+  "current_source_manifest_sha256": "038ecac28f5639e38e08375153e7d879e4badf09c909c27505cd6da20f83a24a",
+  "current_successful_batch": "final-batch4",
+  "current_object_proof": "final4-build.json",
+  "current_batch_proof": "final4-batch.json",
+  "current_allocation_proof": "final4-allocation.json",
+  "current_config_proof": "final4-config.json",
+  "root_review": "review-r2.json",
+  "current_source_inventory_sha256": "c74faa440c2dd1c9fab106623160e0fed9078d37cadba0467d76174e7130cd49"
+}

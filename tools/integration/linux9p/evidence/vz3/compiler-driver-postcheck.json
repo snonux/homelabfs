@@ -1,0 +1,11 @@
+{
+  "scope": "post-build driver identification/hash, additional to during-build ccache wrapper/cc1/as/ld bindings; not retroactively labeled a before-build capture",
+  "path_lookup": [
+    "/usr/lib64/ccache/gcc",
+    "/usr/bin/gcc"
+  ],
+  "ccache_compiler_override": "",
+  "driver_path": "/usr/bin/gcc",
+  "driver_sha256": "f71c9b95b020cd56378a766e7f1cbfecc9818a4e12db831579ee0d0a5d148154",
+  "driver_version": "gcc (GCC) 16.2.1 20261029 (Red Hat 16.2.1-3)"
+}

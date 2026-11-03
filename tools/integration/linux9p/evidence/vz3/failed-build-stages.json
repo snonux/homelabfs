@@ -1,0 +1,79 @@
+[
+  {
+    "name": "defconfig",
+    "argv": [
+      "make",
+      "-j2",
+      "O=/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/final-objects1",
+      "ARCH=x86_64",
+      "x86_64_defconfig"
+    ],
+    "exit": 0,
+    "seconds": 3.975,
+    "peak_group_rss_bytes": 121769984,
+    "limit_reason": null,
+    "max_rss_sample_gap_seconds": 2.074
+  },
+  {
+    "name": "config",
+    "argv": [
+      "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/final-source1/scripts/config",
+      "--file",
+      "/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/final-objects1/.config",
+      "--module",
+      "NET_9P",
+      "--module",
+      "NET_9P_VIRTIO",
+      "--module",
+      "9P_FS",
+      "--enable",
+      "9P_FS_HOMELABFS",
+      "--enable",
+      "CRYPTO_LIB_SHA256",
+      "--disable",
+      "9P_FSCACHE",
+      "--disable",
+      "9P_FS_POSIX_ACL"
+    ],
+    "exit": 0,
+    "seconds": 1.701,
+    "peak_group_rss_bytes": 3682304,
+    "limit_reason": null,
+    "max_rss_sample_gap_seconds": 1.699
+  },
+  {
+    "name": "olddefconfig",
+    "argv": [
+      "make",
+      "-j2",
+      "O=/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/final-objects1",
+      "ARCH=x86_64",
+      "olddefconfig"
+    ],
+    "exit": 0,
+    "seconds": 2.309,
+    "peak_group_rss_bytes": 36302848,
+    "limit_reason": null,
+    "max_rss_sample_gap_seconds": 1.781
+  },
+  {
+    "name": "objects",
+    "argv": [
+      "make",
+      "-j2",
+      "O=/home/paul/tmp/codex/hfs-vz3-20261103-verxlbhy/final-objects1",
+      "ARCH=x86_64",
+      "fs/9p/",
+      "net/9p/",
+      "mm/memory.o",
+      "mm/gup.o",
+      "mm/mremap.o",
+      "mm/huge_memory.o"
+    ],
+    "exit": 2,
+    "seconds": 22.767,
+    "peak_group_rss_bytes": 288931840,
+    "limit_reason": null,
+    "max_rss_sample_gap_seconds": 3.036
+  }
+]

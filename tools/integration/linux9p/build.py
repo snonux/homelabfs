@@ -41,8 +41,8 @@ def group_rss(group):
 
 
 def tree_bytes(root):
-    return sum(path.lstat().st_size for path in root.rglob('*')
-               if not path.is_symlink() and path.is_file())
+    return root.lstat().st_blocks * 512 + sum(path.lstat().st_blocks * 512
+                                                for path in root.rglob('*'))
 
 
 def main():
@@ -51,6 +51,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--budget-root', type=Path, required=True)
     parser.add_argument('--module-objects', action='store_true')
+    parser.add_argument('--mm-objects', action='store_true')
     args = parser.parse_args()
     source = args.source.resolve(strict=True)
     output = args.output.absolute()
@@ -61,7 +62,7 @@ def main():
         raise SystemExit('refuse: source and output must be disjoint')
     if output.exists():
         raise SystemExit('refuse: output must be fresh; failed builds remain for inspection')
-    for program in ('make', 'gcc', 'ld', 'bison', 'flex', 'bc', 'openssl', 'pkg-config', 'perl'):
+    for program in ('make', 'gcc', 'as', 'ld', 'bison', 'flex', 'bc', 'openssl', 'pkg-config', 'perl'):
         if not shutil.which(program):
             raise SystemExit(f'refuse: missing build prerequisite: {program}')
     if tree_bytes(budget) >= DISK_MAX or shutil.disk_usage(budget).free < 2 * 1024 ** 3:
@@ -70,6 +71,20 @@ def main():
     subprocess.run(['python3', str(HERE / 'prepare.py'), '--destination', str(source), '--verify'],
                    check=True, timeout=300)
     output.mkdir(mode=0o700)
+    compiler_paths = {'gcc': Path(shutil.which('gcc')).resolve(),
+                      'cc1': Path(subprocess.check_output(['gcc', '-print-prog-name=cc1'], text=True).strip()).resolve(),
+                      'as': Path(shutil.which('as')).resolve(),
+                      'ld': Path(shutil.which('ld')).resolve()}
+    compiler_bindings = {name: {'path': str(path), 'sha256': sha(path)}
+                         for name, path in compiler_paths.items()}
+    (output / 'inputs.json').write_text(json.dumps({
+        'compiler_files': compiler_bindings,
+        'source_inventory_sha256': sha(source / '.homelabfs-owned-source.json'),
+        'manifest_sha256': sha(HERE / 'source.json'),
+        'builder_sha256': sha(Path(__file__)),
+        'disk_measure': 'sum owned entry st_blocks*512, excluding filesystem metadata',
+        'unfinished_mmap_development': json.loads((HERE / 'source.json').read_text()).get('unfinished_mmap_development', False),
+    }, indent=2, sort_keys=True) + '\n')
     cpus = sorted(os.sched_getaffinity(0))[:2]
     stages = []
     environment = dict(os.environ)
@@ -137,15 +152,36 @@ def main():
     config += [state, 'NET_9P', state, 'NET_9P_VIRTIO', state, '9P_FS',
                '--enable', '9P_FS_HOMELABFS', '--enable', 'CRYPTO_LIB_SHA256',
                '--disable', '9P_FSCACHE', '--disable', '9P_FS_POSIX_ACL']
+    # huge_memory.c is normally selected only under this symbol. Explicitly
+    # requesting its object with THP disabled compiles against stub headers.
+    if args.mm_objects:
+        config += ['--enable', 'TRANSPARENT_HUGEPAGE', '--enable', 'SHMEM',
+                   '--enable', 'READ_ONLY_THP_FOR_FS']
     run(config, 'config')
     run(make + ['olddefconfig'], 'olddefconfig')
     if 'CONFIG_9P_FS_HOMELABFS=y\n' not in (output / '.config').read_text():
         raise SystemExit('refuse: selected guest code was not enabled')
-    run(make + ['fs/9p/', 'net/9p/'], 'objects')
+    mm_config = {}
+    if args.mm_objects:
+        for symbol in ('TRANSPARENT_HUGEPAGE', 'SHMEM', 'READ_ONLY_THP_FOR_FS'):
+            if 'CONFIG_' + symbol + '=y\n' not in (output / '.config').read_text():
+                raise SystemExit('refuse: MM observer check requires CONFIG_' + symbol + '=y')
+            mm_config[symbol] = 'y'
+    targets = ['fs/9p/', 'net/9p/']
+    if args.mm_objects:
+        targets += ['mm/memory.o', 'mm/gup.o', 'mm/mremap.o', 'mm/huge_memory.o']
+    (output / 'config-binding.json').write_text(json.dumps({'config_sha256': sha(output / '.config'), 'targets': targets, 'mm_check_symbols': mm_config}, indent=2) + '\n')
+    run(make + targets, 'objects')
     artifacts = {str(path.relative_to(output)): sha(path)
                  for part in ('fs/9p', 'net/9p')
                  for path in (output / part).glob('*.o')}
+    if args.mm_objects:
+        for name in ('memory.o', 'gup.o', 'mremap.o', 'huge_memory.o'):
+            artifacts['mm/' + name] = sha(output / 'mm' / name)
     receipt = {
+        'development_unfinished_mmap': json.loads((HERE / 'source.json').read_text()).get('unfinished_mmap_development', False),
+        'source_inventory_sha256': sha(source / '.homelabfs-owned-source.json'),
+        'compiler_files': compiler_bindings,
         'scope': 'upstream kernel object compilation; no module link, installed ELRepo ABI or runtime proof',
         'manifest_sha256': sha(HERE / 'source.json'), 'config_sha256': sha(output / '.config'),
         'artifacts': artifacts, 'cpus': cpus, 'rss_nominal_poll_ms': 250, 'disk_poll_seconds': 5,
