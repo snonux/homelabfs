@@ -1,0 +1,122 @@
+[
+  {
+    "check": "production-c-preflight",
+    "argv": [
+      "python3",
+      "/home/paul/git/homelabfs/tools/integration/linux9p/tests/controlled/build.py",
+      "--source",
+      "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/source",
+      "--output",
+      "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/root-gates/consumer",
+      "--sanitize"
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 6.14,
+    "peak_group_rss_kib": 161052,
+    "guard": null,
+    "pswpout_before": 1224273,
+    "pswpout_after": 1224273
+  },
+  {
+    "check": "build",
+    "argv": [
+      "go",
+      "build",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 4.563,
+    "peak_group_rss_kib": 286296,
+    "guard": null,
+    "pswpout_before": 1224273,
+    "pswpout_after": 1224273
+  },
+  {
+    "check": "vet",
+    "argv": [
+      "go",
+      "vet",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.535,
+    "peak_group_rss_kib": 71416,
+    "guard": null,
+    "pswpout_before": 1224273,
+    "pswpout_after": 1224273
+  },
+  {
+    "check": "errcheck",
+    "argv": [
+      "errcheck",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 4.331,
+    "peak_group_rss_kib": 204564,
+    "guard": null,
+    "pswpout_before": 1224273,
+    "pswpout_after": 1224273
+  },
+  {
+    "check": "lint",
+    "argv": [
+      "golangci-lint",
+      "run",
+      "--timeout=3m",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 3.798,
+    "peak_group_rss_kib": 122704,
+    "guard": null,
+    "pswpout_before": 1224273,
+    "pswpout_after": 1224273
+  },
+  {
+    "check": "freebsd",
+    "argv": [
+      "go",
+      "build",
+      "./..."
+    ],
+    "exit": 0,
+    "deadline": false,
+    "seconds": 4.31,
+    "peak_group_rss_kib": 313268,
+    "guard": null,
+    "pswpout_before": 1224273,
+    "pswpout_after": 1224273
+  },
+  {
+    "check": "focused-race",
+    "argv": [
+      "go",
+      "test",
+      "-race",
+      "-p",
+      "1",
+      "-count=1",
+      "-timeout=180s",
+      "./internal/controlledruntime",
+      "./internal/fsservice",
+      "./internal/viewcontrol",
+      "./internal/guestbridge",
+      "./internal/controlledvalidation",
+      "-run",
+      "TestControlledProductionGuestBackendHost|TestProviderRouter|TestRealControlledProducer|TestDurableTransport|TestControlledProtocol"
+    ],
+    "exit": 1,
+    "deadline": false,
+    "seconds": 24.1,
+    "peak_group_rss_kib": 212092,
+    "guard": null,
+    "pswpout_before": 1224273,
+    "pswpout_after": 1224273
+  }
+]

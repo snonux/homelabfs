@@ -47,6 +47,10 @@ parts=[]
 for first,last in spans:
     start=session.index(first)
     parts.append(session[start:session.index(last,start)])
+# Keep the mount HELLO lane expression tied to maintained production source.
+hello = session.index('err = hfs_control(session, "HELLO", &payload,')
+hello_lane = session[hello:session.index('&reply);', hello)].split('&payload,', 1)[1].rstrip(' ,\n\t')
+parts.append('static bool production_hello_reserved(struct hfs_session *session) { (void)session; return '+hello_lane+'; }')
 (out/'production.inc').write_text('\n'.join(parts))
 lease=(src/'fs/9p/hfs_lease.c').read_text()
 start=session.index('void hfs_request_earmark_admitted(')
@@ -60,7 +64,19 @@ decoder.append('static int production_dirty_decoder(struct hfs_session *session,
 views=json.loads((repo/'docs/spec/retained9p-fixtures/views.json').read_text())
 original=next(v['body'] for v in views['responses'] if v['command']=='reserve')
 def canonical(v):return json.dumps(v,sort_keys=True,separators=(',',':'))
-fixtures=['static const char dirty_original[] = '+json.dumps(canonical(original))+';']
+def drain_args(value):
+    if isinstance(value, dict):
+        if value.get('opcode') == 'DRAIN_WRITE': return value['args']
+        for child in value.values():
+            found = drain_args(child)
+            if found is not None: return found
+    elif isinstance(value, list):
+        for child in value:
+            found = drain_args(child)
+            if found is not None: return found
+    return None
+fixtures=['static const char dirty_original[] = '+json.dumps(canonical(original))+';',
+          'static const char legacy_drain_args[] = '+json.dumps(canonical(drain_args(views)))+';']
 changed=[]
 for field in ['claim_number','credentials','scope','description','lease_id','id','provenance','offset']:
     value=copy.deepcopy(original)

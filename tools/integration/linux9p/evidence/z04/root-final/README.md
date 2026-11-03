@@ -1,0 +1,7 @@
+Task z04 final merged verification
+
+Ten distinct checks passed: sanitizer C consumer build, Go build/vet/errcheck/lint, FreeBSD build, focused race (25.104 s), full Go suite (102.851 s), and two FreeBSD CGO-enabled test-binary compilations. The actual canonical composed C test was temporarily materialized in controlledvalidation for all Go checks; it was hash-verified and removed afterward. Source hashes remained unchanged. No native binaries were executed.
+
+The initial race stage refused before every composed case because root omitted its scratch parent directory. Six preceding checks passed. Creating the owned 0700 directory changed no product or test sources; the four remaining checks then passed. Both receipts and the original setup failure are preserved. Background swapout advanced between batches; each recorded check stayed stable at its recorded counter and within resource limits.
+
+Fresh independent R1 found no findings. Root verified 28 maintained Linux inputs and all recorded reference inputs unchanged; strict compilation of the actual changed session translation unit is component evidence only. Sanitizer backend/request checks and genuine unchanged-source baseline failures are separate worker evidence. Text logs here trim line-end whitespace; hashes link to original preserved scratch logs. No SSH, mount, VM, installation, production or lab operation occurred. Synthetic real-provider legacy claim issuance and publication refusal remain the explicit fixture boundary.

@@ -1,0 +1,30 @@
+[
+  {
+    "original": "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/host.log",
+    "original_sha256": "d429d94a97e7f773f19688b84849a0c1ab3fc37ade26dabc31179a235a350346",
+    "curated": "baseline2-host.log",
+    "sha256": "d429d94a97e7f773f19688b84849a0c1ab3fc37ade26dabc31179a235a350346",
+    "transformation": "trim trailing whitespace from text lines and trailing blank lines"
+  },
+  {
+    "original": "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/final1/host.log",
+    "original_sha256": "664be9dec87bdd4095a8972f14277167a6b55c83ce6d3983a71344cb36c66ec8",
+    "curated": "final1-host.log",
+    "sha256": "8c82e5fd396c223964b0b90df8acf0d9b83e076587623af5a8517f233fd38b82",
+    "transformation": "trim trailing whitespace from text lines and trailing blank lines"
+  },
+  {
+    "original": "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/lib1.log",
+    "original_sha256": "267dc2918677f349a153ae3d6188e499a19dddc0003bccd504ac40a3f4d72d4a",
+    "curated": "lib1.log",
+    "sha256": "267dc2918677f349a153ae3d6188e499a19dddc0003bccd504ac40a3f4d72d4a",
+    "transformation": "trim trailing whitespace from text lines and trailing blank lines"
+  },
+  {
+    "original": "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/requests2.log",
+    "original_sha256": "c45acc3d35ba17ca436c895ea49eb84340f3ce3e61204335c2eccd05fc8ebacb",
+    "curated": "requests2.log",
+    "sha256": "6cac7f94653396cf00c000c94aa840ff13034ad91b6c04dc54c90fbeba0b6e3a",
+    "transformation": "trim trailing whitespace from text lines and trailing blank lines"
+  }
+]

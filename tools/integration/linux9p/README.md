@@ -349,3 +349,15 @@ separate production DIRTY_RESERVE decoder check using literal controller bytes,
 with binding/copy-failure negatives. It does not instantiate a live host dirty
 controller or establish source/physical authority. See [o04 evidence](evidence/o04/evidence.json)
 for exact frozen inputs, bounded checks, preserved failed attempts and limits.
+
+The same composed fixture covers the closed minor0/1 selections. Their
+Enrollment.Protocol remains nil; the fixture explicitly issues the ROOT claim
+with the real legacy Provider.Allocate API because these wire versions have no
+ALLOCATE command. This is synthetic fixture issuance, not guest pre-send
+allocation or native/source/publication authority. Both ordinary and locally
+reserved ROOT requests send ordinary CALLs; QUERY uses control cells and HELLO
+uses ordinary cells. DRAIN_WRITE alone uses a control CALL. Existing corpus
+arguments with an unissued drain claim reach the real host and are refused.
+Result publication still refuses without its mandatory verifier. The backend's
+same-class donor restriction is unchanged. [z04 evidence](evidence/z04/evidence.json)
+records the original composed failures and the focused checks.

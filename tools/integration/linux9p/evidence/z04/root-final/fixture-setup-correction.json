@@ -1,0 +1,8 @@
+{
+  "failure": "runtime fixture parent missing; fixture refused before composed cases",
+  "source_unchanged": true,
+  "fixed": "mkdir owned runtime-fixtures0700",
+  "retry": "retry1/plan.json",
+  "previous_six_checks": "PASS",
+  "remaining_checks": 4
+}

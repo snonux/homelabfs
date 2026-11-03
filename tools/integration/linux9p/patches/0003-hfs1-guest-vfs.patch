@@ -430,7 +430,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,2361 @@
+@@ -0,0 +1,2363 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include <linux/delay.h>
@@ -1414,7 +1414,11 @@ new file mode 100644
 +{
 +	struct hfs_json *reply = NULL, *result = NULL, *received;
 +	unsigned long deadline = jiffies + 30 * HZ;
-+	bool control = session->bridge_minor >= 2 ? request->earmarked : request->control;
++	/* Transport classes follow command semantics, independently of the
++	 * local request admission reserve. Only DRAIN_WRITE is a control CALL.
++	 */
++	bool control = session->bridge_minor >= 2 ? request->earmarked :
++		!strcmp(opcode, "DRAIN_WRITE");
 +	int err, token, status, claim;
 +
 +	/* A received terminal snapshot is immutable even when its mandatory
@@ -1473,8 +1477,7 @@ new file mode 100644
 +	hfs_buf_add(payload, request->claim.data, request->claim.len);
 +	hfs_buf_literal(payload, "}");
 +	for (;;) {
-+		err = hfs_control(session, "QUERY", payload,
-+				  session->bridge_minor >= 2 ? true : control, &reply);
++		err = hfs_control(session, "QUERY", payload, true, &reply);
 +		if (err)
 +			goto retained;
 +		token = hfs_json_field(reply, 0, "payload");
@@ -2524,8 +2527,7 @@ new file mode 100644
 +	if (err)
 +		goto fail;
 +	hfs_buf_literal(&payload, hello);
-+	err = hfs_control(session, "HELLO", &payload,
-+			  session->bridge_minor >= 2 ? false : true, &reply);
++	err = hfs_control(session, "HELLO", &payload, false, &reply);
 +	hfs_buf_free(&payload);
 +	if (err)
 +		goto fail;

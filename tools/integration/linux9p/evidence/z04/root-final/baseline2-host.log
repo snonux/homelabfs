@@ -1,0 +1,65 @@
+=== RUN   TestControlledProductionGuestBackendHost
+=== RUN   TestControlledProductionGuestBackendHost/legacy0
+    o04_production_guest_test.go:78: native wire evidence: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-54492738
+    o04_production_guest_test.go:157: C consumer: signal: aborted (core dumped)
+        backend SEND refusal minor=0 tag=65535 cell=3 packet=040200
+        LEGACY minor=0 ROOT err=-71 calls=1 allocations=0
+        consumer: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/worktree/tools/integration/linux9p/tests/controlled/consumer.c:491: main: Assertion `error == -EOPNOTSUPP && calls == 1 && !allocations' failed.
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-54492738
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-1285367828
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-3022507411
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-1880329323
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-4154593152
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-518026095
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-524495624
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-1615738831
+=== RUN   TestControlledProductionGuestBackendHost/legacy1
+    o04_production_guest_test.go:78: native wire evidence: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-1003804426
+    o04_production_guest_test.go:157: C consumer: signal: aborted (core dumped)
+        backend SEND refusal minor=1 tag=65535 cell=3 packet=040200
+        LEGACY minor=1 ROOT err=-71 calls=1 allocations=0
+        consumer: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/worktree/tools/integration/linux9p/tests/controlled/consumer.c:491: main: Assertion `error == -EOPNOTSUPP && calls == 1 && !allocations' failed.
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-1003804426
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-2596152507
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-2326298899
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-2483720514
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-1345551359
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-2008753398
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-105706845
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-3997711715
+=== RUN   TestControlledProductionGuestBackendHost/legacy0-control
+    o04_production_guest_test.go:78: native wire evidence: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-2087980399
+    o04_production_guest_test.go:157: C consumer: signal: aborted (core dumped)
+        backend SEND refusal minor=0 tag=65533 cell=2 packet=040100
+        LEGACY minor=0 ROOT err=-71 calls=0 allocations=0
+        consumer: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/worktree/tools/integration/linux9p/tests/controlled/consumer.c:491: main: Assertion `error == -EOPNOTSUPP && calls == 1 && !allocations' failed.
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-2087980399
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-1247174655
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-1004558001
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-391455018
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-3237959419
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-3497039789
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-3178604515
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-2433924742
+=== RUN   TestControlledProductionGuestBackendHost/legacy1-control
+    o04_production_guest_test.go:78: native wire evidence: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-2206676891
+    o04_production_guest_test.go:157: C consumer: signal: aborted (core dumped)
+        backend SEND refusal minor=1 tag=65533 cell=2 packet=040100
+        LEGACY minor=1 ROOT err=-71 calls=0 allocations=0
+        consumer: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/worktree/tools/integration/linux9p/tests/controlled/consumer.c:491: main: Assertion `error == -EOPNOTSUPP && calls == 1 && !allocations' failed.
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-2206676891
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-3459634058
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-4078744732
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-3779871071
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-822147090
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-3446209781
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-2668179398
+    provider_test.go:731: preserved failed controlled resources: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/tmp/hfs-controlled-4284717292
+--- FAIL: TestControlledProductionGuestBackendHost (0.44s)
+    --- FAIL: TestControlledProductionGuestBackendHost/legacy0 (0.14s)
+    --- FAIL: TestControlledProductionGuestBackendHost/legacy1 (0.11s)
+    --- FAIL: TestControlledProductionGuestBackendHost/legacy0-control (0.09s)
+    --- FAIL: TestControlledProductionGuestBackendHost/legacy1-control (0.10s)
+FAIL
+FAIL	github.com/snonux/homelabfs/internal/controlledvalidation	0.441s
+FAIL

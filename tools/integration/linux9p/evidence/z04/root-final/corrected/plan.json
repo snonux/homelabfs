@@ -1,0 +1,82 @@
+{
+  "packages": [
+    "./..."
+  ],
+  "commands": [
+    {
+      "name": "focused-race",
+      "argv": [
+        "go",
+        "test",
+        "-race",
+        "-p",
+        "1",
+        "-count=1",
+        "-timeout=180s",
+        "./internal/controlledruntime",
+        "./internal/fsservice",
+        "./internal/viewcontrol",
+        "./internal/guestbridge",
+        "./internal/controlledvalidation",
+        "-run",
+        "TestControlledProductionGuestBackendHost|TestProviderRouter|TestRealControlledProducer|TestDurableTransport|TestControlledProtocol"
+      ],
+      "timeout": 300
+    },
+    {
+      "name": "full-root",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "2",
+        "-count=1",
+        "-timeout=600s",
+        "./..."
+      ],
+      "timeout": 1200
+    },
+    {
+      "name": "freebsd-cgo-controlledruntime",
+      "argv": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "@EVIDENCE@/controlledruntime-freebsd.test",
+        "./internal/controlledruntime"
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "1",
+        "CC": "zig cc -target x86_64-freebsd"
+      },
+      "timeout": 600
+    },
+    {
+      "name": "freebsd-cgo-fuseadapter",
+      "argv": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "@EVIDENCE@/fuseadapter-freebsd.test",
+        "./internal/fuseadapter"
+      ],
+      "env": {
+        "GOOS": "freebsd",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "1",
+        "CC": "zig cc -target x86_64-freebsd"
+      },
+      "timeout": 600
+    }
+  ],
+  "tmp": "/tmp/hzg-4s51wazd",
+  "scope": "Mergedz04 actual legacyHELLO/CALL/QUERY/DRAIN_WRITE lane fix; production composed C consumer materialized for all Go gates, synthetic real legacy issuance explicit. No native acceptance/infra. Corrected root-only missing runtime-fixtures0700 setup; six prior checks passed; retry four remaining. No product/test source changes.",
+  "environment": {
+    "HFS_CONTROLLED_CONSUMER": "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/root-gates/consumer/consumer",
+    "HFS_CONTROLLED_TEST_ROOT": "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/root-gates/runtime-fixtures"
+  }
+}

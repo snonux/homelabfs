@@ -1,0 +1,46 @@
+=== RUN   TestControlledProductionGuestBackendHost
+=== RUN   TestControlledProductionGuestBackendHost/gap=false
+    o04_production_guest_test.go:78: native wire evidence: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/final1/tmp/hfs-controlled-24173821
+    o04_production_guest_test.go:203: PASS: actual typed reservation decoder exact binding, wrong owner, 8 mutations and allocation failure retain/clear pending correctly; literal/physical primitives only
+        first call err=-5 allocations=1 calls=0 next=2
+        PASS: production guest pre-send exact allocation retry, no later numbering while uncertain, typed earmark ownership, real host forwarding; no source/native/provider authority
+
+=== RUN   TestControlledProductionGuestBackendHost/gap=true
+    o04_production_guest_test.go:78: native wire evidence: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/final1/tmp/hfs-controlled-865609411
+    o04_production_guest_test.go:203: PASS: actual typed reservation decoder exact binding, wrong owner, 8 mutations and allocation failure retain/clear pending correctly; literal/physical primitives only
+        first call err=-5 allocations=1 calls=0 next=2
+        PASS: production guest pre-send exact allocation retry, no later numbering while uncertain, typed earmark ownership, real host forwarding; no source/native/provider authority
+
+=== RUN   TestControlledProductionGuestBackendHost/legacy0
+    o04_production_guest_test.go:78: native wire evidence: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/final1/tmp/hfs-controlled-1061705449
+    o04_production_guest_test.go:186: LEGACY minor=0 ROOT err=-95 calls=1 allocations=0
+        LEGACY DRAIN_WRITE unissued claim err=-13 calls=2
+        PASS: legacy production HELLO/CALL/QUERY plus control DRAIN_WRITE unissued-claim refusal; publication refused
+
+=== RUN   TestControlledProductionGuestBackendHost/legacy1
+    o04_production_guest_test.go:78: native wire evidence: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/final1/tmp/hfs-controlled-479288712
+    o04_production_guest_test.go:186: LEGACY minor=1 ROOT err=-95 calls=1 allocations=0
+        LEGACY DRAIN_WRITE unissued claim err=-13 calls=2
+        PASS: legacy production HELLO/CALL/QUERY plus control DRAIN_WRITE unissued-claim refusal; publication refused
+
+=== RUN   TestControlledProductionGuestBackendHost/legacy0-control
+    o04_production_guest_test.go:78: native wire evidence: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/final1/tmp/hfs-controlled-3595945284
+    o04_production_guest_test.go:186: LEGACY minor=0 ROOT err=-95 calls=1 allocations=0
+        LEGACY DRAIN_WRITE unissued claim err=-13 calls=2
+        PASS: legacy production HELLO/CALL/QUERY plus control DRAIN_WRITE unissued-claim refusal; publication refused
+
+=== RUN   TestControlledProductionGuestBackendHost/legacy1-control
+    o04_production_guest_test.go:78: native wire evidence: /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/final1/tmp/hfs-controlled-1012406787
+    o04_production_guest_test.go:186: LEGACY minor=1 ROOT err=-95 calls=1 allocations=0
+        LEGACY DRAIN_WRITE unissued claim err=-13 calls=2
+        PASS: legacy production HELLO/CALL/QUERY plus control DRAIN_WRITE unissued-claim refusal; publication refused
+
+--- PASS: TestControlledProductionGuestBackendHost (0.51s)
+    --- PASS: TestControlledProductionGuestBackendHost/gap=false (0.10s)
+    --- PASS: TestControlledProductionGuestBackendHost/gap=true (0.09s)
+    --- PASS: TestControlledProductionGuestBackendHost/legacy0 (0.08s)
+    --- PASS: TestControlledProductionGuestBackendHost/legacy1 (0.08s)
+    --- PASS: TestControlledProductionGuestBackendHost/legacy0-control (0.08s)
+    --- PASS: TestControlledProductionGuestBackendHost/legacy1-control (0.09s)
+PASS
+ok  	github.com/snonux/homelabfs/internal/controlledvalidation	0.516s

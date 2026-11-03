@@ -1,0 +1,9 @@
+{
+  "tools/integration/linux9p/README.md": "0fa4d1f175a11ea78290125a4c882f5e6a64a96554e8b95c87e25f660ab7ef86",
+  "tools/integration/linux9p/source.json": "cb6ea226b84f3842f12aab24318346eae7c8175a3fd23623a6cc23a6d11808f0",
+  "tools/integration/linux9p/patches/0003-hfs1-guest-vfs.patch": "499c288c67524da75e1ae220d0cfdfd3247d6dd84f474008c8160dd6f6afb747",
+  "tools/integration/linux9p/tests/controlled/consumer.c": "ffc63465d229aef4ed536c573ddc70758bbbe76437866b832987d4979df13fee",
+  "tools/integration/linux9p/tests/controlled/host_test.go.txt": "f1db2b8c01d77bb0facd6d13e49f53a45adfecaef7b3f29f920fbffca91c0d13",
+  "tools/integration/linux9p/tests/controlled/build.py": "90a54f4292f4345c5e6672b4c0f957205098af351bab378edd72077a1e7f5d23",
+  "tools/integration/linux9p/tests/controlled/run.py": "0b8ebd00acafb1d3575b7d8f29a5987a881f0caac858900ab49f2e252c3dcd76"
+}

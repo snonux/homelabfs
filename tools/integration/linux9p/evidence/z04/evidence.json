@@ -1,0 +1,87 @@
+{
+  "after": {
+    "receipt": "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/final1/receipt.json",
+    "result": "PASS six composed cases: two successor allocation/gap regressions plus four legacy cases; legacy native command control flags asserted, ROOT terminal result refused publication -EOPNOTSUPP, corpus DRAIN_WRITE control CALL refused -EACCES by real host for unissued claim.",
+    "source_sha256": "4aeb3501c46ee8c6b2a7a09ee4b5bb6c4c43fe35a9e1dbc85000b69acec2598e"
+  },
+  "base": "a261688",
+  "before": {
+    "log": "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/host.log",
+    "observed": "All four minor0/1 x local ordinary/control ROOT cases fail -EPROTO. Ordinary ROOT reaches real host CALL then backend QUERY donor-class refusal packet040200 at cell3; local-control ROOT refused at CALL tag65533 packet040100/cell2. HELLO itself succeeds after backend reclassification.",
+    "source_sha256": "14fe52b0b891daf0b94e69d40deca6d982ab2469f8b96aa4a5fdfe99350fb922",
+    "stages": [
+      {
+        "argv": [
+          "python3",
+          "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/worktree/tools/integration/linux9p/tests/controlled/build.py",
+          "--source",
+          "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/source",
+          "--output",
+          "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/consumer",
+          "--sanitize"
+        ],
+        "exit": 0,
+        "limit_reason": null,
+        "max_sample_gap": 0.14383488000021316,
+        "peak_group_rss": 165326848,
+        "seconds": 3.0728073740028776
+      },
+      {
+        "argv": [
+          "go",
+          "test",
+          "-overlay",
+          "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/baseline2/overlay.json",
+          "-p",
+          "1",
+          "-run",
+          "^TestControlledProductionGuestBackendHost$/legacy",
+          "-count=1",
+          "-timeout=90s",
+          "-v",
+          "./internal/controlledvalidation"
+        ],
+        "exit": 1,
+        "limit_reason": null,
+        "max_sample_gap": 0.14761828098562546,
+        "peak_group_rss": 141860864,
+        "seconds": 0.6806072220206261
+      }
+    ]
+  },
+  "checks": {
+    "backend_scope": "Existing full owned backend suite includes donor/class/capacity/local RELEASE_CELL/ledger and malformed-pressure negatives. Native observations are primitives.",
+    "diff_check": "git diff --check PASS",
+    "guest_session_translation_unit": "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/objects1/receipt.json",
+    "overlay_vet": "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/overlay-vet.json",
+    "owned_backend_sanitized": "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/lib1.json",
+    "request_ownership_sanitized": "/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/requests2.json",
+    "translation_unit_scope": "Actual strict -c hfs_session.c with recorded pinned read-only stock/generated headers; no Kbuild, link, module ABI or running kernel acceptance."
+  },
+  "files": {
+    "tools/integration/linux9p/README.md": "0fa4d1f175a11ea78290125a4c882f5e6a64a96554e8b95c87e25f660ab7ef86",
+    "tools/integration/linux9p/patches/0003-hfs1-guest-vfs.patch": "499c288c67524da75e1ae220d0cfdfd3247d6dd84f474008c8160dd6f6afb747",
+    "tools/integration/linux9p/source.json": "cb6ea226b84f3842f12aab24318346eae7c8175a3fd23623a6cc23a6d11808f0",
+    "tools/integration/linux9p/tests/controlled/build.py": "90a54f4292f4345c5e6672b4c0f957205098af351bab378edd72077a1e7f5d23",
+    "tools/integration/linux9p/tests/controlled/consumer.c": "ffc63465d229aef4ed536c573ddc70758bbbe76437866b832987d4979df13fee",
+    "tools/integration/linux9p/tests/controlled/host_test.go.txt": "f1db2b8c01d77bb0facd6d13e49f53a45adfecaef7b3f29f920fbffca91c0d13",
+    "tools/integration/linux9p/tests/controlled/run.py": "0b8ebd00acafb1d3575b7d8f29a5987a881f0caac858900ab49f2e252c3dcd76"
+  },
+  "legacy_boundary": "Enrollment.Protocol is nil; real legacy Provider.Allocate explicitly issues fixture ROOT claim. This synthetic fixture issuance is required by old wire selections with no ALLOCATE and does not establish guest allocation, native identity, source authority or normal publication. Kernel/native fd/resource facts and publication refusal remain explicit primitives. No preallocated successor harness or always-success authority callbacks.",
+  "not_run": [
+    "Full Go suite/root gates deferred to orchestrator merged final checks",
+    "No SSH/mounts/VM/installation/lab/production/PV/NFS/received sink",
+    "No native source/physical observation/normal runtime publication acceptance"
+  ],
+  "preserved_attempts": [
+    "baseline1: fixture minor0 used unsupported .0 token; fixed to exact closed token before baseline2; unchanged source",
+    "baseline2: genuine legacy lane failures, raw wire resources retained by failed test cleanup",
+    "fixed1: all6 passed before adding drain negative",
+    "fixed2: new negative mistakenly used {} drain args; backend correctly rejected closed args before classification; corrected with existing corpus bytes",
+    "fixed3: all6 passed; final1 tightens drain expected refusal from generic nonzero to -EACCES",
+    "requests1: CLI-only --sanitize unsupported; requests2 corrected invocation passed builtin ASan/UBSan"
+  ],
+  "resource_bounds": "Single heavy slot; two CPU affinity, Go -p1/GOMAXPROCS2/GOMEMLIMIT1GiB; stable3s pswpout admission, >=8GiB and25% available, <=55% swap; continuous groupRSS2GiB/owned8GiB/time20min/swapout guards. No limit events.",
+  "scope": "Only guest transport lane classification: HELLO ordinary; legacy CALL control only for DRAIN_WRITE; QUERY control. Successor CALL earmark unchanged. Closed tuples/schema/bodies/corpus and backend donor class checks unchanged.",
+  "task": "z04"
+}

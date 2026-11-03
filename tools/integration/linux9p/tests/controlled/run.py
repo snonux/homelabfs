@@ -16,6 +16,7 @@ p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--source',type=Path,required=True)
 p.add_argument('--output',type=Path,required=True)
 p.add_argument('--budget-root',type=Path,required=True)
+p.add_argument('--run',default='^TestControlledProductionGuestBackendHost$',help='Go test selection')
 a=p.parse_args()
 here=Path(__file__).resolve().parent
 repo=here.parents[4]
@@ -26,7 +27,7 @@ if not out.is_relative_to(budget):
 (out/'tmp').mkdir()
 def digest(path): return hashlib.sha256(path.read_bytes()).hexdigest()
 def swapout(): return int(next(x.split()[1] for x in Path('/proc/vmstat').read_text().splitlines() if x.startswith('pswpout ')))
-initial_swap=swapout();time.sleep(1)
+initial_swap=swapout();time.sleep(3)
 memory={x.split(':')[0]:int(x.split()[1])*1024 for x in Path('/proc/meminfo').read_text().splitlines()}
 if memory['MemAvailable']<8*1024**3 or memory['MemAvailable']<memory['MemTotal']/4 or memory['SwapTotal']-memory['SwapFree']>memory['SwapTotal']*.55 or swapout()!=initial_swap:
     raise SystemExit('memory/swap admission refused')
@@ -66,6 +67,6 @@ run('build',['python3',str(here/'build.py'),'--source',str(a.source.resolve()),'
 overlay=out/'overlay.json'
 overlay.write_text(json.dumps({'Replace':{str(repo/'internal/controlledvalidation/o04_production_guest_test.go'):str(here/'host_test.go.txt')}}))
 env['HFS_CONTROLLED_CONSUMER']=str(out/'consumer/consumer')
-run('host',['go','test','-overlay',str(overlay),'-p','1','-run','^TestControlledProductionGuestBackendHost$','-count=1','-timeout=90s','-v','./internal/controlledvalidation'])
-(out/'receipt.json').write_text(json.dumps({'scope':'production guest issuance/framing and owned lib9p -> real host Transport/Service/provider/journal; kernel/native fd/resource observations and publication refusal are explicit primitives; no native/source/runtime acceptance','short_tmp':str(short_tmp),'affinity':affinity,'memory_before':memory,'source':{str(path.relative_to(repo)):digest(path) for path in [here/'consumer.c',here/'host_test.go.txt',repo/'tools/integration/lib9p/src/hfs9p.c']},'stages':stages},indent=2)+'\n')
+run('host',['go','test','-overlay',str(overlay),'-p','1','-run',a.run,'-count=1','-timeout=90s','-v','./internal/controlledvalidation'])
+(out/'receipt.json').write_text(json.dumps({'legacy_issuance':'minor0/1 ROOT claim explicitly issued through real legacy Provider.Allocate with nil enrollment Protocol; not guest pre-send allocation or native/source/publication authority','scope':'production guest issuance/framing and owned lib9p -> real host Transport/Service/provider/journal; kernel/native fd/resource observations and publication refusal are explicit primitives; no native/source/runtime acceptance','short_tmp':str(short_tmp),'affinity':affinity,'memory_before':memory,'source':{str(path.relative_to(repo)):digest(path) for path in [here/'consumer.c',here/'host_test.go.txt',repo/'tools/integration/lib9p/src/hfs9p.c']},'stages':stages},indent=2)+'\n')
 print((out/'host.log').read_text())

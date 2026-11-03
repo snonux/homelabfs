@@ -1,0 +1,20 @@
+ok  	github.com/snonux/homelabfs/internal/controlledruntime	15.357s
+ok  	github.com/snonux/homelabfs/internal/fsservice	1.016s [no tests to run]
+ok  	github.com/snonux/homelabfs/internal/viewcontrol	1.177s
+ok  	github.com/snonux/homelabfs/internal/guestbridge	1.645s
+--- FAIL: TestControlledProductionGuestBackendHost (0.00s)
+    --- FAIL: TestControlledProductionGuestBackendHost/gap=false (0.00s)
+        o04_production_guest_test.go:35: stat /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/root-gates/runtime-fixtures: no such file or directory
+    --- FAIL: TestControlledProductionGuestBackendHost/gap=true (0.00s)
+        o04_production_guest_test.go:35: stat /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/root-gates/runtime-fixtures: no such file or directory
+    --- FAIL: TestControlledProductionGuestBackendHost/legacy0 (0.00s)
+        o04_production_guest_test.go:33: stat /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/root-gates/runtime-fixtures: no such file or directory
+    --- FAIL: TestControlledProductionGuestBackendHost/legacy1 (0.00s)
+        o04_production_guest_test.go:33: stat /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/root-gates/runtime-fixtures: no such file or directory
+    --- FAIL: TestControlledProductionGuestBackendHost/legacy0-control (0.00s)
+        o04_production_guest_test.go:33: stat /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/root-gates/runtime-fixtures: no such file or directory
+    --- FAIL: TestControlledProductionGuestBackendHost/legacy1-control (0.00s)
+        o04_production_guest_test.go:33: stat /home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/root-gates/runtime-fixtures: no such file or directory
+FAIL
+FAIL	github.com/snonux/homelabfs/internal/controlledvalidation	0.014s
+FAIL

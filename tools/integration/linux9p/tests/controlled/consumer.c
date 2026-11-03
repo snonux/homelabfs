@@ -159,10 +159,19 @@ static int p9_client_hfs_exchange(struct p9_client *client, u16 tag, u8 method,
       memcpy(request + 21, frame, frame_len);
    int error = hfs9p_exchange(connection, request, 21 + frame_len, reply,
                               sizeof(reply), &n);
-   if (error)
+   if (error) {
+      fprintf(stderr, "backend exchange method=%u channel=%u cell=%llu error=%d\n",
+              method, channel, (unsigned long long)cell, error);
       return -error;
+   }
    assert(n >= 8 && *len >= n - 7);
    memcpy(packet, reply + 7, n - 7);
+   if (method == 1 && *(u8 *)packet != 1) {
+      fprintf(stderr,"backend SEND refusal minor=%u tag=%u cell=%llu packet=",
+              backend->sessions[0].minor, tag, (unsigned long long)cell);
+      for (size_t x = 7; x < n; x++) fprintf(stderr,"%02x",reply[x]);
+      fprintf(stderr,"\n");
+   }
    *len = n - 7;
    if (method == 1 && frame_len && *(u8 *)packet == 1) {
       Hfs9pJson j = {(const uint8_t *)frame + HFS_HEADER_SIZE,
@@ -368,7 +377,11 @@ static void check_dirty_decoder(void) {
 }
 
 int main(void) {
-   check_dirty_decoder();
+   const char *legacy = getenv("HFS_CONTROLLED_LEGACY");
+   unsigned minor = legacy ? (unsigned)strtoul(legacy, NULL, 10) : 3;
+   assert(minor <= 3);
+   if (!legacy)
+      check_dirty_decoder();
    char *line = read_line();
    struct hfs_json *fixture = NULL, *result = NULL;
    assert(!hfs_json_parse(line, strlen(line), &fixture));
@@ -377,7 +390,7 @@ int main(void) {
        c = hfs_json_field(fixture, call, "credentials"),
        claim = hfs_json_field(fixture, call, "claim");
    struct hfs_session session = {
-       .bridge_minor = 3, .next_claim = 1, .next_cell = 1};
+       .bridge_minor = minor, .next_claim = 1, .next_cell = 1};
    struct hfs_provider provider = {.reserve = primitive_reserve,
                                    .unreserve = primitive_unreserve};
    session.provider = &provider;
@@ -433,7 +446,7 @@ int main(void) {
    int err;
    while (
        (err = hfs9p_add_session_protocol(backend, (const uint8_t *)context.data,
-                                         context.len, 3)) == EAGAIN) {
+                                         context.len, minor)) == EAGAIN) {
       usleep(1000);
    }
    assert(!err);
@@ -444,7 +457,12 @@ int main(void) {
    assert(!err);
    uint8_t version[64], vreply[64];
    size_t vlen = 0;
-   const char *token = "9P2000.L.hfs1.3";
+   char protocol_token[32];
+   if (minor)
+      snprintf(protocol_token, sizeof(protocol_token), "9P2000.L.hfs1.%u", minor);
+   else
+      snprintf(protocol_token, sizeof(protocol_token), "9P2000.L.hfs1");
+   const char *token = protocol_token;
    size_t tn = strlen(token);
    _put(version, 13 + tn, 4);
    version[4] = 100;
@@ -456,12 +474,33 @@ int main(void) {
                           &vlen));
    struct hfs_buf hello = {}, args = {};
    assert(!hfs_buf_init(&hello, 256));
-   hfs_buf_literal(&hello, hfs_protocol_text(3));
-   assert(!hfs_control(&session, "HELLO", &hello, false, &result));
+   hfs_buf_literal(&hello, hfs_protocol_text(minor));
+   assert(!hfs_control(&session, "HELLO", &hello, production_hello_reserved(&session), &result));
    hfs_json_free(result);
    result = NULL;
    assert(!hfs_buf_init(&args, 16));
    hfs_buf_literal(&args, "{}");
+   if (legacy) {
+      /* These fixture claims are explicitly issued by the real legacy provider;
+       * legacy wire tuples have no ALLOCATE. Publication still refuses. */
+      int error = hfs_call(&session, "ROOT", &args, &cred,
+                           getenv("HFS_CONTROLLED_CALL_CONTROL") != NULL,
+                           &result);
+      fprintf(stderr, "LEGACY minor=%u ROOT err=%d calls=%u allocations=%u\n",
+              minor, error, calls, allocations);
+      assert(error == -EOPNOTSUPP && calls == 1 && !allocations);
+      /* Corpus drain arguments carry no authority in this fixture. The real
+       * host must receive the control CALL and refuse its unissued claim. */
+      args.len = 0;
+      hfs_buf_free(&args);
+      assert(!hfs_buf_init(&args, sizeof(legacy_drain_args)));
+      hfs_buf_literal(&args, legacy_drain_args);
+      error = hfs_call(&session, "DRAIN_WRITE", &args, &cred, true, &result);
+      fprintf(stderr, "LEGACY DRAIN_WRITE unissued claim err=%d calls=%u\n", error, calls);
+      assert(error == -EACCES && calls == 2 && !allocations);
+      fprintf(stderr, "PASS: legacy production HELLO/CALL/QUERY plus control DRAIN_WRITE unissued-claim refusal; publication refused\n");
+      return 0;
+   }
    assert(hfs_call(&session, "DRAIN_WRITE", &args, &cred, true, &result) ==
               -EOPNOTSUPP &&
           session.next_claim == 1 && !allocations);

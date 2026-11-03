@@ -1,0 +1,14 @@
+/home/paul/tmp/codex/hfs-z04-20261103-n3nf0fsy/root-gates/retry1/fuseadapter-freebsd.test: go1.26.10-X:nodwarf5
+	path	github.com/snonux/homelabfs/internal/fuseadapter.test
+	mod	github.com/snonux/homelabfs	(devel)
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	CGO_ENABLED=1
+	build	CGO_CFLAGS=
+	build	CGO_CPPFLAGS=
+	build	CGO_CXXFLAGS=
+	build	CGO_LDFLAGS=
+	build	GOARCH=amd64
+	build	GOEXPERIMENT=nodwarf5
+	build	GOOS=freebsd
+	build	GOAMD64=v1

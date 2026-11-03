@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -23,9 +24,16 @@ func TestControlledProductionGuestBackendHost(t *testing.T) {
 	if consumer == "" {
 		t.Fatal("explicit production C consumer required")
 	}
-	for _, gap := range []bool{false, true} {
-		t.Run(fmt.Sprint("gap=", gap), func(t *testing.T) {
-			h := newAllocationHarnessProtocol(t, guestbridge.CleanupProtocol())
+	for _, mode := range []string{"gap=false", "gap=true", "legacy0", "legacy1", "legacy0-control", "legacy1-control"} {
+		t.Run(mode, func(t *testing.T) {
+			gap := mode == "gap=true"
+			legacy := strings.HasPrefix(mode, "legacy")
+			var h *allocationHarness
+			if legacy {
+				h = newLegacyProductionHarness(t, mode[6] == '1')
+			} else {
+				h = newAllocationHarnessProtocol(t, guestbridge.CleanupProtocol())
+			}
 			var cfg admission.Config
 			for class, size := range map[admission.Class]uint64{admission.Live: 512 << 20, admission.Control: 128 << 20, admission.Memory: 12 << 20} {
 				resources := admission.Resources{Bytes: size, Operations: 80, Workers: 4}
@@ -38,6 +46,12 @@ func TestControlledProductionGuestBackendHost(t *testing.T) {
 			defer transport.Close()
 			cmd := exec.CommandContext(t.Context(), consumer)
 			cmd.Env = append(os.Environ(), "HFS_CONTROLLED_BACKEND_LEDGER="+tempDirectory(t), "ASAN_OPTIONS=detect_leaks=0:allocator_may_return_null=1:quarantine_size_mb=16")
+			if legacy {
+				cmd.Env = append(cmd.Env, "HFS_CONTROLLED_LEGACY="+mode[6:7])
+				if strings.HasSuffix(mode, "-control") {
+					cmd.Env = append(cmd.Env, "HFS_CONTROLLED_CALL_CONTROL=1")
+				}
+			}
 			if gap {
 				cmd.Env = append(cmd.Env, "HFS_CONTROLLED_GAP=1")
 			}
@@ -95,11 +109,30 @@ func TestControlledProductionGuestBackendHost(t *testing.T) {
 							t.Fatal("allocation retry changed original")
 						}
 					}
+					if legacy {
+						control := command.Op == "QUERY"
+						if command.Op == "CALL" {
+							var call guestbridge.Call
+							mustAllocation(t, json.Unmarshal(command.Payload, &call))
+							control = call.Intent.Opcode == "DRAIN_WRITE"
+						}
+						if (decoded.Flags&1 != 0) != control {
+							t.Fatalf("incorrect native class: %s flags=%d", command.Op, decoded.Flags)
+						}
+					}
 					if command.Op == "CALL" {
 						calls++
-						e, exists := h.stored(h.original)
-						if !exists || e.Status != "ALLOCATED" || !bytes.Equal(originalAllocation, command.Payload) {
-							t.Fatal("CALL preceded exact protected allocation")
+						if legacy && calls == 2 {
+							var call guestbridge.Call
+							mustAllocation(t, json.Unmarshal(command.Payload, &call))
+							if call.Intent.Opcode != "DRAIN_WRITE" {
+								t.Fatal("missing drain negative")
+							}
+						} else {
+							e, exists := h.stored(h.original)
+							if !exists || e.Status != "ALLOCATED" || (!legacy && !bytes.Equal(originalAllocation, command.Payload)) {
+								t.Fatal("CALL preceded exact protected allocation")
+							}
 						}
 					}
 					n, err := transport.Write(t.Context(), h.native, h.native.Endpoint.CommandNode, offset, frame)
@@ -142,6 +175,17 @@ func TestControlledProductionGuestBackendHost(t *testing.T) {
 			if err := cmd.Wait(); err != nil {
 				t.Fatalf("C consumer: %v\n%s", err, diagnostics.String())
 			}
+			if legacy {
+				if calls != 2 || writes < 4 || originalAllocation != nil {
+					t.Fatalf("legacy path calls=%d writes=%d", calls, writes)
+				}
+				e, exists := h.stored(h.original)
+				if !exists || e.Status != "TERMINAL" {
+					t.Fatalf("legacy provider status=%s", e.Status)
+				}
+				t.Log(diagnostics.String())
+				return
+			}
 			if originalAllocation == nil || writes < 3 || (!gap && calls != 1) || (gap && calls != 0) {
 				t.Fatalf("missing real path allocations=%v writes=%d calls=%d", originalAllocation != nil, writes, calls)
 			}
@@ -159,4 +203,28 @@ func TestControlledProductionGuestBackendHost(t *testing.T) {
 			t.Log(diagnostics.String())
 		})
 	}
+}
+
+// Legacy enrollment keeps Protocol nil. Explicit synthetic issuance through the
+// real provider matches existing legacy fixtures; this is not guest allocation.
+func newLegacyProductionHarness(t *testing.T, view bool) *allocationHarness {
+	t.Helper()
+	f := newFixture(t)
+	scope := f.pc.Authorization.Enrollment.Scope
+	call := guestbridge.Call{Claim: guestbridge.Claim{Realm: id(60).String(), Subject: "616263", Anchor: id(61).String(), Nonce: id(62).String(), Number: 1}, Credentials: guestbridge.Credentials{FSUID: 1000, FSGID: 1001, Groups: []uint32{200}, Process: id(63).String(), Revision: 1, IDMapHash: hash([]byte("map")), UserNamespace: id(64).String()}, Intent: guestbridge.Intent{Opcode: "ROOT", Args: json.RawMessage(`{}`)}}
+	raw, err := canonicalJSON(call.Intent)
+	mustAllocation(t, err)
+	call.Claim.OriginalHash = hash(raw)
+
+	mustAllocation(t, f.provider.Allocate(t.Context(), scope, call.Claim))
+	native := guestbridge.Native{UID: 1000, GID: 1001, PID: 123, Unique: 1, Groups: []uint32{200}, Process: id(66).String(), Endpoint: f.pc.Authorization.Enrollment.Endpoint}
+	config := guestbridge.Config{Validation: f.config.Validation, Endpoint: native.Endpoint, Native: &nativeFacts{native: native}, Attestor: credentialFacts{expected: call.Credentials, scope: scope}, Claims: f.provider, Execution: f.provider, Views: noViews{}, Scopes: []guestbridge.Context{scope}}
+	if view {
+		protocol := guestbridge.ViewProtocol()
+		config.Protocol = &protocol
+		config.ViewProtocol = allocationViews{scope: scope, calls: new(int), protocol: &protocol}
+	}
+	bridge, err := guestbridge.New(t.Context(), config)
+	mustAllocation(t, err)
+	return &allocationHarness{f: f, bridge: bridge, config: config, native: native, original: call}
 }
