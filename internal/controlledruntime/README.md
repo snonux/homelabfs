@@ -2,8 +2,9 @@
 
 This package implements C3 of `docs/lab/Controlled-runtime-integration.md`.
 It owns one disposable endpoint, exporter process and private issuance root.
-It does not provide Facts, guest attestation, source evidence, transport recovery,
-normal publication, an installed driver, or deployment acceptance.
+It also implements the C5 live Facts/source/receipt owner described below.
+It does not provide guest credential attestation, transport recovery, normal
+publication, an installed driver, or deployment acceptance.
 
 `Create` exclusively creates a private root and locks its ownership file. `Start`
 consumes its fresh stage before trying to launch. The exact SHA-256-admitted
@@ -145,3 +146,117 @@ actual libc sysctl/kinfo ABI through cgo; CGO-disabled FreeBSD builds
 refuse process observation. Local tests do not mount, install, access VMs or
 prove native kernel runtime behavior. Native execution and full deployed ABI /
 artifact acceptance remain xz3/zq3 gates.
+
+## Live controlled Facts and verification receipts (C5)
+
+`ObserveAdmission` executes the fixed embedded read-only Linux probe through a
+SHA256-pinned SSH executable, private pinned known-host bytes, an operator-fixed
+direct guest hostname and private root identity. The intended observer runs on
+the supervisor host, where the guest is directly reachable. It does not accept
+caller observation JSON, a guest-selected destination or a replacement socket.
+OpenSSH closes inherited fds, so one bounded private `/tmp` directory holds the
+verified host/key copies during each probe. Each process has a ten-second bound,
+256KiB output bound, and no shell interpolation of configured guest bytes.
+No observation command has been run against a lab guest by this implementation.
+
+Initial admission measures the actual Linux `boot_id`, running kernel GNU build
+ID, complete loaded-module inventory and each module's running build ID. It
+hashes the real installed kernel/module files and matches the operator-pinned
+SHA256 of `/etc/homelabfs/installed-admission-v1.json`. That closed manifest is
+`{version:"homelabfs-installed-artifacts/1",kernel:{path,sha256,build_id},
+modules:{name:{path,sha256,build_id}},abi:"homelabfs-stop-adoption/1"}`.
+Every loaded module must be listed; unsupported notes/ABI or missing files refuse.
+These are measurements inside the already adopted trusted guest-root/kernel
+scope, not hardware attestation or independent verification of physical behavior.
+
+The admitted kernel/provider must implement an atomic read-only sysfs record at
+`/sys/kernel/homelabfs/admission_v1`, bounded to128KiB, with exactly:
+
+* `version:"homelabfs-kernel-admission/1"`, actual `boot_id`, a nonreused
+  `provider_nonce` UUID, `physical_contract:"homelabfs-stop-adoption/1"`;
+* `domains`: the complete stable ordered list of original Contexts, including
+  stopped/uncertain old mounts; `domain_protocols`: exactly one session-keyed
+  selected Protocol per domain, equal to its signed original enrollment;
+* `observations`: exactly one `{scope,revision,fence,phase,event_hash,
+  acknowledgement_hash}` per domain. LIVE has empty hashes. Other phases are
+  the exact outgoing ACK names STOPPED, INSTALLED_DRAIN, DRAINED,
+  INSTALLED_FINAL or REOPENED. `event_hash` hashes the complete canonical issued
+  host event; `acknowledgement_hash` hashes the complete canonical ACK **payload**.
+  The kernel publishes a phase only after completing its actual physical duties
+  and before sending that ACK. STOP closes admission and joins entrants before
+  freezing all adopted state; adoption/final PTE installation requires LIVE plus
+  unchanged revision/target; reopen increments revision before reopening gates.
+
+The nonce and every original domain/session remain owned until actual protected
+retirement; unload/reload cannot reconstruct old identities. Initial host
+admission requires LIVE/revision1/fence1. The source implementing this sysfs ABI
+belongs to S04; absent support currently refuses production construction. No
+kernel or installed module implementing it is claimed here.
+
+The supervisor protects the exact initial measurement and native exporter/tuple
+binding in exclusive `guest-admission.json`. It never reopens that file as live
+authority. Refresh remeasures running notes, manifest identity, boot, nonce,
+complete inventory and phase records; it does not rehash large on-disk artifacts
+whose exact installed/running correspondence was established at initial admission.
+Ordinary requests reuse that bounded static admission for at most five seconds
+and still check the actual live native exporter/endpoint on every callback.
+Every VIEW_ACK refreshes before entering controller/service locks. One Prepare
+has a shared ten-second bound across all guest observers. This conservative
+per-barrier SSH latency has no native calibration or pressure acceptance claim.
+Failures, identity changes, revision rollback and old-revision reopen fence
+admission and retain obligations. The fifteen-second admission freshness limit
+never retires resources. An exact old ACK retry succeeds only through the
+controller's already accepted protected archive; a stale measurement cannot
+authorize another physical phase. Granted-but-unproven CANCEL stays blocked;
+no plain cancellation request is treated as quiescence proof.
+
+`NewFacts` verifies the complete signed-domain/service inventory;
+`Authorize` requires the private actual `Service.Execute` observation and native
+recheck. Physical checks bind exact observed ACK/event/phase/fence and complete
+reservation/manifest/source obligations. Universal unadopted exclusion checks
+every omitted reservation, refusing bound/frozen omissions. Initial recovery
+accepts only an empty fresh controller; existing ownership requires C9.
+
+An actual worker `ControlledCut.ViewSource` capture mints a private live service
+seal over complete catalog/payload state, applied position, original journal
+prefix and visibility. `VerifyControlledSource` verifies the full retained bytes
+and rereads every original prefix frame through the backing OS roots under a
+nonblocking source read cut. Writers/capture/flush/close hold the matching write
+cut. It never queues another service request or walks FUSE paths. This is trusted
+live-capture provenance, not independent historical replay. Serialized/reopened
+sources lose the seal and refuse until C9 reconstructs correspondence. The seal
+contains immutable metadata/digests, never aliases State bytes, has no global
+registry, and lives/dies within the controller's existing bounded source slots.
+
+The controller privately supplies its actual complete retained source set to
+Facts, comparing every source to the raw ledger before checking it. No caller
+JSON creates that provenance. `NewProducer` binds the actual supervisor, Facts,
+controller and provider objects (including the provider's actual Facts owner)
+and exact enrolled host endpoint signing keys.
+After dispatch releases locks it verifies source/event evidence or the real
+protected complete original retirement coverage, then signs the closed receipt
+over original command/response hashes, cell, scope, endpoint, controller and
+serving generation. All targets are CONTROLLED_LOCAL; publication remains null.
+Non-authoritative status replies carry null verification. READDIR_CLEANUP is
+authority reduction and creates no SOURCE/EVENT/FLOOR receipt. Only the explicit
+signed1.2/1.3 family tuples can be measured; codec selection of1.3 additionally
+requires its separately maintained successor implementation.
+
+Current bridge binding accepts one actual per-scope
+`controlledvalidation.Provider` as Claims and Execution. The Facts/observer can
+check complete inventories, but these component tests do not assemble multiple
+providers behind one endpoint. C10 must add a concrete Claims/Execution router
+whose actual per-scope provider ownership is independently verifiable by the
+producer; an asserted provider map, copied enrollment or a successful generic
+binding callback must not broaden this check. The native endpoint remains issued
+once to one bridge controller, so constructing another bridge is no substitute
+for that router.
+
+Local tests use the real maintained probe against disposable file/process
+primitives, actual supervised child credentials, service/journal/controller and
+provider ledgers, real producer and canonical signatures. Mount/INIT/header,
+guest credentials and SSH/sysfs are declared OS/kernel primitive boundaries.
+They reject altered installed/running/source/journal bytes, missing old domains,
+forged ACKs, false frozen omission and old-revision reopen, and exercise complete
+physical phase sequencing and original floor/lost-reply verification. They do
+not establish an installed guest, native FUSE, real PTE/TLB behavior or readiness.

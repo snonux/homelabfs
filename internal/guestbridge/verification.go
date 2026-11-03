@@ -9,7 +9,8 @@ import (
 // VerificationReceipt is a structurally decoded controlled-v1 receipt. Neither
 // this value nor a valid signature proves source bytes or physical facts. Only
 // the later enrolled runtime verifier may produce/consume authority from it.
-// No producer or permissive verification callback exists in this foundation.
+// The optional explicitly bound runtime producer supplies actual evidence; the
+// codec and this exported value cannot create it.
 type VerificationReceipt struct {
 	Version           string          `json:"version"`
 	Kind              string          `json:"kind"`

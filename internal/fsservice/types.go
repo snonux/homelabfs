@@ -149,6 +149,7 @@ type handle struct {
 // foreign-home coordination and explicit transactions remain a separate service.
 // It must not be copied. Close drains accepted commands without canceling them.
 type Service struct {
+	sourceCut         sync.RWMutex
 	activePermit      ControlledPermit
 	viewAdmission     ControlledAdmission
 	controlledEffects map[fsapi.UUID][32]byte

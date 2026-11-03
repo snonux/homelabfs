@@ -375,7 +375,7 @@ func (c *Controller) changeLease(ctx context.Context, scope guestbridge.Context,
 	if err != nil {
 		return nil, err
 	}
-	if err = c.config.Facts.CheckPhysical(ctx, scope, op, t.Payload, ledger); err != nil {
+	if err = c.config.Facts.CheckPhysical(c.factsContext(ctx), scope, op, t.Payload, ledger); err != nil {
 		return nil, err
 	}
 	old.Active = false
@@ -496,7 +496,7 @@ func (c *Controller) cancel(ctx context.Context, key string, t ticketState) (jso
 		if err != nil {
 			return nil, err
 		}
-		if err = c.config.Facts.CheckPhysical(ctx, t.Scope, "VIEW_CANCEL", t.Payload, ledger); err != nil {
+		if err = c.config.Facts.CheckPhysical(c.factsContext(ctx), t.Scope, "VIEW_CANCEL", t.Payload, ledger); err != nil {
 			return nil, err
 		}
 		if err = c.finishDeclinedGap(ctx, key, t); err != nil {
@@ -525,7 +525,7 @@ func (c *Controller) cancel(ctx context.Context, key string, t ticketState) (jso
 	if err != nil {
 		return nil, err
 	}
-	if err = c.config.Facts.CheckPhysical(ctx, t.Scope, "VIEW_CANCEL", t.Payload, ledger); err != nil {
+	if err = c.config.Facts.CheckPhysical(c.factsContext(ctx), t.Scope, "VIEW_CANCEL", t.Payload, ledger); err != nil {
 		return nil, err
 	}
 	var granted struct {

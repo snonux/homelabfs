@@ -167,6 +167,8 @@ func (s *Service) Close() error {
 	}
 	s.mu.Unlock()
 	<-s.done
+	s.sourceCut.Lock()
+	defer s.sourceCut.Unlock()
 	return s.writer.Close()
 }
 
@@ -341,6 +343,8 @@ func (s *Service) protect(ctx context.Context, id fsapi.UUID, payloads ...any) e
 			return err
 		}
 	}
+	s.sourceCut.Lock()
+	defer s.sourceCut.Unlock()
 	proposal := Proposal{Previous: s.selection.Through, Selection: cloneSelection(s.selection)}
 	for _, p := range payloads {
 		if m, ok := p.(record.Mutation); ok {

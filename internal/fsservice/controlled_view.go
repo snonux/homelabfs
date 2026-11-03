@@ -17,6 +17,7 @@ import (
 // ControlledViewSource owns an exact sealed applied state and durable journal
 // frame. It is private local evidence, never a normal publication certificate.
 type ControlledViewSource struct {
+	seal       *sourceSeal
 	Journal    ControlledJournal
 	Through    record.FrameRef
 	State      []byte
@@ -37,6 +38,8 @@ func (c *ControlledCut) ViewSource(ctx context.Context, maxBytes int64) (Control
 		return ControlledViewSource{}, fsapi.Permission
 	}
 	s := c.service
+	s.sourceCut.Lock()
+	defer s.sourceCut.Unlock()
 	if s.State() != Serving {
 		return ControlledViewSource{}, fsapi.Unavailable
 	}
@@ -83,6 +86,7 @@ func (c *ControlledCut) ViewSource(ctx context.Context, maxBytes int64) (Control
 		return ControlledViewSource{}, err
 	}
 	defer func() { _ = reader.Close() }()
+	prefix := sha256.New()
 	var through record.FrameRef
 	var incarnation fsapi.UUID
 	for {
@@ -96,13 +100,15 @@ func (c *ControlledCut) ViewSource(ctx context.Context, maxBytes int64) (Control
 		if record.Hash(sha256.Sum256(frame.Bytes)) != frame.Reference.SHA256 {
 			return ControlledViewSource{}, fsapi.IO
 		}
+		_, _ = prefix.Write(frame.Bytes)
 		through = frame.Reference
 		incarnation = frame.Record.Header.Incarnation
 	}
 	if incarnation != info.Incarnation || through.Position.Sequence == 0 || through.Position.Volume != info.Stream.Volume || through.Position.Generation != info.Stream.Generation || through.Position.Configuration != info.Stream.Configuration || through.Position.Epoch != info.Stream.Epoch {
 		return ControlledViewSource{}, fsapi.Unavailable
 	}
-	return ControlledViewSource{Journal: info, Through: through, State: state, Visibility: s.config.Workspace.ID, Applied: image.Position}, nil
+	seal := &sourceSeal{owner: s, journal: info, through: through, visibility: s.config.Workspace.ID, applied: image.Position, state: sha256.Sum256(state), prefix: [32]byte(prefix.Sum(nil))}
+	return ControlledViewSource{seal: seal, Journal: info, Through: through, State: state, Visibility: s.config.Workspace.ID, Applied: image.Position}, nil
 }
 
 // ControlledViewMetadataBytes returns the immutable admitted catalog bound used

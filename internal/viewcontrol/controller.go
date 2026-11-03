@@ -319,7 +319,7 @@ func New(ctx context.Context, c Config) (*Controller, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = c.Facts.CheckRecovery(ctx, e, state); err != nil {
+	if err = c.Facts.CheckRecovery(controller.factsContext(ctx), e, state); err != nil {
 		return nil, err
 	}
 	if !c.Initialize && controller.state.Recall != nil {

@@ -115,13 +115,17 @@ not a caller-created JSON object. No recursive source RPC may run under
 view/physical/service locks. Receipt lifetime and copies consume the retained
 source/event/floor owner's existing finite credits.
 
-This foundation supplies the strict receipt shape decoder, **no producer** or
-success-returning fact verifier. Its responses carry verification:null.
-1.2 view/source exchanges (VIEW_ACQUIRE/RELEASE/RENEW/CANCEL/QUERY/RETIRE,
-DIRTY_RESERVE/FREEZE, VIEW_POLL/ACK) fail before controller mutation until the
-mandatory producer is implemented. `r04` and `s04` own actual producer/consumer
-verification; `t04` owns guest floor/resource retirement. Native/platform/kernel
-and complete runtime acceptance remain separate gates.
+The strict decoder supplies no authority by itself. The explicit C5
+[controlled runtime producer](../../internal/controlledruntime/README.md) binds
+actual native/provider/controller objects, live admitted-kernel observations and
+complete sealed source or protected floor evidence before signing. The default
+component configuration still carries verification:null and refuses1.2 view/source
+exchanges before controller mutation without that producer. Missing installed
+kernel/sysfs observations refuse production construction; primitive component
+fixtures establish no installed/native readiness. `s04` owns actual receipt
+consumption and the kernel observation carrier; `t04` owns guest floor/resource
+retirement. Native/platform/kernel and complete runtime acceptance remain
+separate gates.
 
 Literal commands, frames and component responses are in
 [controlled.json](retained9p-fixtures/controlled.json). They are portable codec

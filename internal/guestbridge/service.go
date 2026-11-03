@@ -130,6 +130,11 @@ func New(ctx context.Context, c Config) (*Service, error) {
 	if err := c.Native.Enroll(ctx, c.Endpoint, s.controller); err != nil {
 		return nil, err
 	}
+	if !missing(c.Verification) {
+		if err := c.Verification.Bind(ctx, VerificationBinding{Endpoint: c.Endpoint, Controller: s.controller, Native: c.Native, Claims: c.Claims, Execution: c.Execution, Views: c.Views, ViewProtocol: c.ViewProtocol, Scopes: append([]Context(nil), c.Scopes...)}); err != nil {
+			return nil, err
+		}
+	}
 	return s, nil
 }
 
@@ -174,6 +179,12 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 	if e := s.CheckScope(c.Context); e != nil {
 		return nil, e
 	}
+	ctx = observeCommand(ctx, n, s.controller, c, raw)
+	if c.Protocol != nil && *c.Protocol == ControlledProtocol() && !missing(s.config.Verification) {
+		if err := s.config.Verification.Prepare(ctx, c); err != nil {
+			return nil, err
+		}
+	}
 	if c.Op != "RELEASE_CELL" {
 		if e := s.config.Execution.Check(ctx, c.Context); e != nil {
 			return nil, e
@@ -186,12 +197,11 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 	if c.Op != "HELLO" && !hello {
 		return nil, fsapi.Permission
 	}
-	// The signed source/event producer is a later runtime adapter. A codec-valid
-	// controlled view exchange cannot stand in for its missing verified receipt.
-	if c.Protocol != nil && *c.Protocol == ControlledProtocol() && (isViewExtension(c.Op) || c.Op == "VIEW_POLL" || c.Op == "VIEW_ACK") {
+	// A codec-valid controlled view exchange cannot stand in for a missing
+	// runtime source/event producer and its verified receipt.
+	if missing(s.config.Verification) && c.Protocol != nil && *c.Protocol == ControlledProtocol() && (isViewExtension(c.Op) || c.Op == "VIEW_POLL" || c.Op == "VIEW_ACK") {
 		return nil, fsapi.Unsupported
 	}
-	ctx = observeCommand(ctx, n, s.controller, c, raw)
 	if c.Protocol != nil && c.Op != "HELLO" && !isAllocation(c.Op) {
 		if err := s.config.ViewProtocol.CheckRequest(ctx, c.Context, c.Op, bytes.Clone(c.Payload)); err != nil {
 			return nil, err
@@ -291,7 +301,27 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 	if c.Protocol != nil {
 		response["protocol"] = c.Protocol
 		if *c.Protocol == ControlledProtocol() {
-			response["verification"] = nil
+			var receipt *VerificationReceipt
+			if !missing(s.config.Verification) {
+				base, err := marshal(response)
+				if err != nil {
+					return nil, err
+				}
+				receipt, err = s.config.Verification.Produce(ctx, c, base)
+				if err != nil {
+					return nil, err
+				}
+				if receipt != nil {
+					encoded, err := marshal(receipt)
+					if err != nil {
+						return nil, err
+					}
+					if _, err = DecodeVerificationReceipt(encoded); err != nil {
+						return nil, err
+					}
+				}
+			}
+			response["verification"] = receipt
 		}
 	}
 	return marshal(response)

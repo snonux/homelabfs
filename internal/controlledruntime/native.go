@@ -21,14 +21,15 @@ type descriptorIdentity struct {
 }
 type connectionWitness interface{ check() error }
 type nativeMount struct {
-	witness      connectionWitness
-	expected     [3]descriptorIdentity
-	shell        *fuseadapter.Shell
-	server       *fuse.Server
-	files        [3]*os.File
-	identity     string
-	provisioner  processIdentity
-	provisioning bool
+	endpointObservation func() (guestbridge.Endpoint, error)
+	witness             connectionWitness
+	expected            [3]descriptorIdentity
+	shell               *fuseadapter.Shell
+	server              *fuse.Server
+	files               [3]*os.File
+	identity            string
+	provisioner         processIdentity
+	provisioning        bool
 }
 
 type provisionKey struct{}
@@ -240,7 +241,10 @@ func (s *Supervisor) checkLive() error {
 	if err := s.child.live(); err != nil {
 		return err
 	}
-	endpoint, err := s.mount.shell.Endpoint()
+	if s.mount.endpointObservation == nil {
+		return fsapi.Unavailable
+	}
+	endpoint, err := s.mount.endpointObservation()
 	if err != nil || endpoint != s.record.Endpoint {
 		return fsapi.Unavailable
 	}

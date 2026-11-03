@@ -29,7 +29,7 @@ type nativeConnection struct {
 // supplied fsid nor a configuration boolean can manufacture this witness.
 func mountNative(ctx context.Context, path string, shell *fuseadapter.Shell) (*nativeMount, error) {
 	c := &nativeConnection{path: path, stopped: make(chan struct{})}
-	m := &nativeMount{shell: shell, witness: c}
+	m := &nativeMount{shell: shell, witness: c, endpointObservation: shell.Endpoint}
 	if err := ctx.Err(); err != nil {
 		return m, err
 	}

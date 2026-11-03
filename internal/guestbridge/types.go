@@ -246,6 +246,7 @@ type Views interface {
 // Config is component enrollment only. It adds no CLI/mount/publication readiness.
 // Every provider is mandatory, including for disposable controlled validation.
 type Config struct {
+	Verification VerificationProducer
 	// Validation explicitly labels disposable component fixtures; it supplies no normal publication authority.
 	Protocol                                *Protocol
 	SessionProtocols                        map[string]Protocol

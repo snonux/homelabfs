@@ -73,7 +73,7 @@ func (c *Controller) retire(ctx context.Context, scope guestbridge.Context, raw 
 	if err != nil {
 		return nil, err
 	}
-	if err = c.config.Facts.CheckPhysical(ctx, scope, "VIEW_RETIRE", raw, state); err != nil {
+	if err = c.config.Facts.CheckPhysical(c.factsContext(ctx), scope, "VIEW_RETIRE", raw, state); err != nil {
 		return nil, err
 	}
 	f.Floor = r.Through

@@ -475,7 +475,7 @@ func (c *ControlledCut) applyControlled(ctx context.Context, p ControlledPlan, r
 	}
 	if recovery {
 		if p.Command.Operation == fsapi.Sync {
-			if err := s.writer.Flush(ctx); err != nil {
+			if err := s.flushSource(ctx); err != nil {
 				return fsapi.Result{}, s.block(err)
 			}
 		}

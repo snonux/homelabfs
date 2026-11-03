@@ -166,7 +166,7 @@ func (s *Service) execute(ctx context.Context, cred fsapi.Cred, c fsapi.Command)
 		}
 		// Every earlier command is already protected and applied. A conservative
 		// per-volume barrier includes them all, without fabricating BARRIER evidence.
-		if err = s.writer.Flush(ctx); err != nil {
+		if err = s.flushSource(ctx); err != nil {
 			return result, s.block(err)
 		}
 	case fsapi.TryLock, fsapi.WaitLock, fsapi.GetLock, fsapi.Unlock, fsapi.CancelLock, fsapi.DescriptorClose, fsapi.ProcessExit, fsapi.SessionExit:

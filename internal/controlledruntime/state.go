@@ -1,7 +1,7 @@
 //go:build linux || freebsd
 
 // Package controlledruntime owns disposable native bootstrap. It provides no
-// default Facts, guest attestor, source verifier, recovery or publication policy.
+// default admission, guest credential attestor, recovery or publication policy.
 package controlledruntime
 
 import (

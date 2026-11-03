@@ -252,7 +252,7 @@ func (c *Controller) ack(ctx context.Context, scope guestbridge.Context, ack ack
 				if err != nil {
 					return err
 				}
-				if err = c.config.Facts.CheckPhysical(ctx, scope, "VIEW_ACK", raw, state); err != nil {
+				if err = c.config.Facts.CheckPhysical(c.factsContext(ctx), scope, "VIEW_ACK", raw, state); err != nil {
 					return err
 				}
 				c.state.Recall.Acks[key] = bytes.Clone(raw)
@@ -288,7 +288,7 @@ func (c *Controller) ack(ctx context.Context, scope guestbridge.Context, ack ack
 	if err != nil {
 		return err
 	}
-	if err = c.config.Facts.CheckPhysical(ctx, scope, "VIEW_ACK", raw, ledger); err != nil {
+	if err = c.config.Facts.CheckPhysical(c.factsContext(ctx), scope, "VIEW_ACK", raw, ledger); err != nil {
 		return err
 	}
 	switch ack.Phase {
@@ -502,7 +502,7 @@ func (c *Controller) closeUnadopted(ctx context.Context, scope guestbridge.Conte
 		return err
 	}
 	statement := Unadopted{Enrollment: c.config.Authorization.Enrollment, Event: bytes.Clone(c.state.Recall.Events[scope.Session]), Acknowledgement: bytes.Clone(raw), Ledger: ledger, Scope: scope, OldFence: c.state.Fence, Omitted: omitted}
-	if err = c.config.Facts.CheckUnadopted(ctx, statement); err != nil {
+	if err = c.config.Facts.CheckUnadopted(c.factsContext(ctx), statement); err != nil {
 		return err
 	}
 	for _, reservation := range omitted {
