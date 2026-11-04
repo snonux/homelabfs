@@ -1,0 +1,301 @@
+{
+  "task": "v04",
+  "status": "Reviewed implementation and all final merged gates PASS; component-only evidence",
+  "verified_commit": "26a120d4fc0cce1e9ab15806068ca4998bbbf307",
+  "checks": {
+    "merged_regression-terminal-dirty": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/root-gates/regression-terminal-dirty/receipt.json",
+      "sha256": "e93aa43e377e6fb8506bf521d7351106ff6d0b17c673ef3300cd3b025c4bb44c",
+      "scope": "Final reviewed merged source 26a120d4fc0cce1e9ab15806068ca4998bbbf307",
+      "exit": 0,
+      "error": null,
+      "seconds": 64.53584163900086,
+      "peakrss": 589094912,
+      "peakdisk": 4496297984,
+      "source_changes": []
+    },
+    "merged_regression-terminal-kernel80": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/root-gates/regression-terminal-kernel80/receipt.json",
+      "sha256": "0a997734b18bae4e00096e3f0f0dbbea215dd405f41b844d97e958d1d1bdc228",
+      "scope": "Final reviewed merged source 26a120d4fc0cce1e9ab15806068ca4998bbbf307",
+      "exit": 0,
+      "error": null,
+      "seconds": 62.31263813499754,
+      "peakrss": 584740864,
+      "peakdisk": 4465074176,
+      "source_changes": []
+    },
+    "merged_gofmt": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/root-gates/gofmt/receipt.json",
+      "sha256": "41753fdc9b0ab6dff98d92774781de8b5cc412257bc67b7f38295642467c4460",
+      "scope": "Final reviewed merged source 26a120d4fc0cce1e9ab15806068ca4998bbbf307",
+      "exit": 0,
+      "error": null,
+      "seconds": 8.137238102000993,
+      "peakrss": 11022336,
+      "peakdisk": 4428136448,
+      "source_changes": []
+    },
+    "merged_build": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/root-gates/build/receipt.json",
+      "sha256": "960a535737860572fae4a7632f18b4e9d84cae98b1d72bccb70b960909420c12",
+      "scope": "Final reviewed merged source 26a120d4fc0cce1e9ab15806068ca4998bbbf307",
+      "exit": 0,
+      "error": null,
+      "seconds": 16.247959030999482,
+      "peakrss": 195383296,
+      "peakdisk": 4510584832,
+      "source_changes": []
+    },
+    "merged_vet": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/root-gates/vet/receipt.json",
+      "sha256": "7b7c4e4e7a975ae5ac15ced4d8d601da1ee253347702b11077b0384a1a9ad237",
+      "scope": "Final reviewed merged source 26a120d4fc0cce1e9ab15806068ca4998bbbf307",
+      "exit": 0,
+      "error": null,
+      "seconds": 10.6093511700019,
+      "peakrss": 62992384,
+      "peakdisk": 4451016704,
+      "source_changes": []
+    },
+    "merged_errcheck": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/root-gates/errcheck/receipt.json",
+      "sha256": "729c71ddeb44f46060ee765be7c692f976c30ee5aaa6b926f21117f4fa8aca91",
+      "scope": "Final reviewed merged source 26a120d4fc0cce1e9ab15806068ca4998bbbf307",
+      "exit": 0,
+      "error": null,
+      "seconds": 24.084209913999075,
+      "peakrss": 194535424,
+      "peakdisk": 4517027840,
+      "source_changes": []
+    },
+    "merged_lint": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/root-gates/lint/receipt.json",
+      "sha256": "7d06961d16fd741f54560187c147b2827348daff46ac4ba9865419b0a4b5f971",
+      "scope": "Final reviewed merged source 26a120d4fc0cce1e9ab15806068ca4998bbbf307",
+      "exit": 0,
+      "error": null,
+      "seconds": 9.636942961999011,
+      "peakrss": 149594112,
+      "peakdisk": 4496519168,
+      "source_changes": []
+    },
+    "merged_full": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/root-gates/full/receipt.json",
+      "sha256": "a068c9353dbbffdc563bcb610e7cd1f1f084d47d069c1ca5512dbebda5dac612",
+      "scope": "Final reviewed merged source 26a120d4fc0cce1e9ab15806068ca4998bbbf307",
+      "exit": 0,
+      "error": null,
+      "seconds": 249.98599384599947,
+      "peakrss": 381595648,
+      "peakdisk": 4654333952,
+      "source_changes": []
+    },
+    "merged_freebsd-build": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/root-gates/freebsd-build/receipt.json",
+      "sha256": "55687946d4e334629737e456bc6736ad2ef91d2e19edd458d1390b6684035e72",
+      "scope": "Final reviewed merged source 26a120d4fc0cce1e9ab15806068ca4998bbbf307",
+      "exit": 0,
+      "error": null,
+      "seconds": 15.987207858997863,
+      "peakrss": 106725376,
+      "peakdisk": 4581507072,
+      "source_changes": []
+    },
+    "applied-private-reopen-first": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/checks/applied-private-reopen-first/receipt.json",
+      "sha256": "f436726b0d2cf3bcedef60883a91c327bddd14788e11ac918a2c9781fad0c3ff",
+      "scope": "Targeted component evidence; source binding and exact argv retained in receipt; later R1 fixes supersede earlier candidate inputs.",
+      "exit": 0,
+      "error": null,
+      "seconds": 4.121580009999889,
+      "peakrss": 14192640,
+      "peakdisk": 3832922112,
+      "source_changes": []
+    },
+    "barriered-real-c-fourth": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/checks/barriered-real-c-fourth/receipt.json",
+      "sha256": "0a83fb591ad8f1d47e492fbc86725e3db244a04aaaadb2567be665a3a6ef9123",
+      "scope": "Targeted component evidence; source binding and exact argv retained in receipt; later R1 fixes supersede earlier candidate inputs.",
+      "exit": 0,
+      "error": null,
+      "seconds": 9.830035791999762,
+      "peakrss": 165584896,
+      "peakdisk": 3880419328,
+      "source_changes": []
+    },
+    "mutating-real-c-second": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/checks/mutating-real-c-second/receipt.json",
+      "sha256": "3cab6fa80b3919fc0e2182aa32b329f315c7bb6dd31152ba459ac6732a7d7909",
+      "scope": "Targeted component evidence; source binding and exact argv retained in receipt; later R1 fixes supersede earlier candidate inputs.",
+      "exit": 0,
+      "error": null,
+      "seconds": 7.826918093000131,
+      "peakrss": 167923712,
+      "peakdisk": 3883266048,
+      "source_changes": []
+    },
+    "terminal-and-missing-real-c-second": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/checks/terminal-and-missing-real-c-second/receipt.json",
+      "sha256": "6e2fc929d5fbefce8c1b10cb8f8be343c767d0ef872e05dcf0cdee184381e585",
+      "scope": "Targeted component evidence; source binding and exact argv retained in receipt; later R1 fixes supersede earlier candidate inputs.",
+      "exit": 0,
+      "error": null,
+      "seconds": 9.3579425229982,
+      "peakrss": 165261312,
+      "peakdisk": 3904552960,
+      "source_changes": []
+    },
+    "remaining-integrity-first": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/checks/remaining-integrity-first/receipt.json",
+      "sha256": "0859a66fe7930f3c06773612b62dac7cecbe5c702a92f424ca855baa5aaa6635",
+      "scope": "Targeted component evidence; source binding and exact argv retained in receipt; later R1 fixes supersede earlier candidate inputs.",
+      "exit": 0,
+      "error": null,
+      "seconds": 10.839684954000404,
+      "peakrss": 67481600,
+      "peakdisk": 3919638528,
+      "source_changes": []
+    },
+    "historical-real-cut-second": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/checks/historical-real-cut-second/receipt.json",
+      "sha256": "32b6f69b19841aa0bdb300c73ab7115879457da1b7c87a5dd5174303207291f3",
+      "scope": "Targeted component evidence; source binding and exact argv retained in receipt; later R1 fixes supersede earlier candidate inputs.",
+      "exit": 0,
+      "error": null,
+      "seconds": 10.738438755997777,
+      "peakrss": 117972992,
+      "peakdisk": 3979161600,
+      "source_changes": []
+    },
+    "checkpoint-pressure-first": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/checks/checkpoint-pressure-first/receipt.json",
+      "sha256": "611930611c28b2b50db40174a5176c085962312426a9acc26191872c9c87a036",
+      "scope": "Targeted component evidence; source binding and exact argv retained in receipt; later R1 fixes supersede earlier candidate inputs.",
+      "exit": 0,
+      "error": null,
+      "seconds": 18.65037285699873,
+      "peakrss": 164544512,
+      "peakdisk": 3918774272,
+      "source_changes": []
+    },
+    "focused-restart-race-first": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/checks/focused-restart-race-first/receipt.json",
+      "sha256": "d6c60397dfead966805ff739cda88d99c1102c1db8999cca3acd621bed650cea",
+      "scope": "Targeted component evidence; source binding and exact argv retained in receipt; later R1 fixes supersede earlier candidate inputs.",
+      "exit": 0,
+      "error": null,
+      "seconds": 218.04204724699957,
+      "peakrss": 286203904,
+      "peakdisk": 4180099072,
+      "source_changes": []
+    },
+    "final-owner-descriptor-race": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/checks/final-owner-descriptor-race/receipt.json",
+      "sha256": "0a6019d3abc231748b84444c6ade5870d6a0c5fd0cc9d0d17436d5fbba4de6b6",
+      "scope": "Targeted component evidence; source binding and exact argv retained in receipt; later R1 fixes supersede earlier candidate inputs.",
+      "exit": 0,
+      "error": null,
+      "seconds": 42.637076120998245,
+      "peakrss": 163344384,
+      "peakdisk": 4222500864,
+      "source_changes": []
+    },
+    "final-conservative-preflight": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/checks/final-conservative-preflight/receipt.json",
+      "sha256": "531fb0dc3b2814813a1c0425d2a4b1ddd58cac7ca61f61ef913b4b5c7887d5e4",
+      "scope": "Targeted component evidence; source binding and exact argv retained in receipt; later R1 fixes supersede earlier candidate inputs.",
+      "exit": 0,
+      "error": null,
+      "seconds": 33.758148139000696,
+      "peakrss": 242872320,
+      "peakdisk": 4303650816,
+      "source_changes": []
+    },
+    "r1-fixes-first": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/checks/r1-fixes-first/receipt.json",
+      "sha256": "e8f2c9642a2276a9880a132bd334eb7667d183f470073de5e48eb4e7edbf330f",
+      "scope": "Targeted component evidence; source binding and exact argv retained in receipt; later R1 fixes supersede earlier candidate inputs.",
+      "exit": 0,
+      "error": null,
+      "seconds": 37.28553942600047,
+      "peakrss": 164700160,
+      "peakdisk": 4372045824,
+      "source_changes": []
+    },
+    "r1-legacy-readdir": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/checks/r1-legacy-readdir/receipt.json",
+      "sha256": "ba32a78b755e683a67f42ee8475cf0434113d1142ec42770a7b98d12a7a99bb6",
+      "scope": "Targeted component evidence; source binding and exact argv retained in receipt; later R1 fixes supersede earlier candidate inputs.",
+      "exit": 0,
+      "error": null,
+      "seconds": 55.49891645000025,
+      "peakrss": 574480384,
+      "peakdisk": 4388413440,
+      "source_changes": []
+    },
+    "r1-final-targeted-and-static-second": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/checks/r1-final-targeted-and-static-second/receipt.json",
+      "sha256": "686a2de1cb570b34723d1e0b0127d0206409ef319c1d50d5ebc65b26dd85f550",
+      "scope": "Targeted component evidence; source binding and exact argv retained in receipt; later R1 fixes supersede earlier candidate inputs.",
+      "exit": 0,
+      "error": null,
+      "seconds": 50.89014806200066,
+      "peakrss": 213950464,
+      "peakdisk": 4408979456,
+      "source_changes": []
+    },
+    "legacy-c-sanitized": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/checks/legacy-c-sanitized/receipt.json",
+      "sha256": "c8d0aeee4af99f039e7e09441f8a1f60e5adc3b3c98c21a7242adcd2db058241",
+      "scope": "ASan/UBSan legacy owned C suite before identifier-only recovery-local rename; later Linux/C fixture compiles final supervisor source.",
+      "exit": 0,
+      "error": null,
+      "seconds": 24.059217418998742,
+      "peakrss": 693624832,
+      "peakdisk": 3963121664,
+      "source_changes": []
+    },
+    "terminal-c-sanitized": {
+      "receipt": "/home/paul/tmp/codex/hfs-v04-20261104-jmmrz1lb/checks/terminal-c-sanitized/receipt.json",
+      "sha256": "3c3806d7b3266c6b26dc9c701d3114bce128a169cc129cce617cf4556b51604d",
+      "scope": "ASan/UBSan terminal/pressure binary uses unchanged hfs9p.c/json/ledger sources; no installed or native authority claim.",
+      "exit": 0,
+      "error": null,
+      "seconds": 352.73668707199977,
+      "peakrss": 774025216,
+      "peakdisk": 4035702784,
+      "source_changes": []
+    }
+  },
+  "review": {
+    "R1": "Three blockers: requested-count READDIR byte preflight, final C8 fd/capacity revalidation, kernel macro collision; all fixed",
+    "R2": "No blocking findings in narrow final review"
+  },
+  "boundary": {
+    "supported": "Private single-use barriered component reopen under same surviving Supervisor/FUSE/exporter/guest continuity; exact current source/file/ledger cut",
+    "unsupported": [
+      "unplanned owner loss",
+      "replacement FUSE/exporter",
+      "unreconstructed historical sources",
+      "live native lifetime tables",
+      "guest-wire RESUME",
+      "normal publication"
+    ],
+    "native_mount_init_activation": "UNRUN",
+    "installed_physical_behavior": "UNRUN",
+    "infrastructure_operations": "NONE"
+  },
+  "limits": {
+    "one_heavy_job": true,
+    "cpus": 2,
+    "go_parallelism": 1,
+    "rss_all_owned_bytes": 2147483648,
+    "allocated_disk_all_old_new_bytes": 8589934592,
+    "memavailable_min_bytes": 8589934592,
+    "memavailable_min_fraction": 0.25,
+    "stage_seconds": 1200,
+    "swap": "telemetry only"
+  },
+  "historical_failures": "Earlier compile/fixture/candidate failures and exact source bindings remain under the owned taskroot; no failed batch is counted as passing."
+}
