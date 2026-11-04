@@ -1,7 +1,7 @@
 {
   "task": "614",
   "base": "f438e9c",
-  "status": "Reviewed implementation candidate: fresh R1 and narrow final R2 completed, all blockers resolved. Final merged integration/static/full/FreeBSD gates pending; do not mark complete from this file.",
+  "status": "Reviewed implementation and final merged component/static/full Go/FreeBSD checks PASS. Portable component evidence only; no installation, infrastructure or normal publication claim.",
   "source": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/source",
   "owned_source_files": 55,
   "manifest_sha256": "ea87e0c88ed0c7e7b3133c05b59f4ac408824dee3e651c3dd71ff66d4345322b",
@@ -247,6 +247,146 @@
       "peakdisk": 3264024576,
       "source_changes": [],
       "scope": "Actual exporter 16 permanent terminal identities/packages and signed C8 finals; seventeenth admission ENOSPC; explicit privileged OS/controller and observer substitute, no Linux registry/Received."
+    },
+    "merged_component-terminal-clean": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/root-gates/component-terminal-clean/receipt.json",
+      "sha256": "5041f54618553327fa36859732200021698dddaf1901e13cf2094e666320f1c3",
+      "exit": 0,
+      "error": null,
+      "seconds": 124.69694723300017,
+      "peakrss": 610512896,
+      "peakdisk": 3331690496,
+      "source_changes": []
+    },
+    "merged_component-terminal-dirty": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/root-gates/component-terminal-dirty/receipt.json",
+      "sha256": "5ddf799bf13acf20623be6ec5e8865a00b03c702babb4479c620e276523739d1",
+      "exit": 0,
+      "error": null,
+      "seconds": 54.28646010900047,
+      "peakrss": 588374016,
+      "peakdisk": 3291004928,
+      "source_changes": []
+    },
+    "merged_component-terminal-owners": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/root-gates/component-terminal-owners/receipt.json",
+      "sha256": "ec34ab65e81780b9317cbc989a8116b850bd7c9c3feb991a565f8fdc6be3f38c",
+      "exit": 0,
+      "error": null,
+      "seconds": 61.72067820200027,
+      "peakrss": 595976192,
+      "peakdisk": 3292778496,
+      "source_changes": []
+    },
+    "merged_component-terminal-backend": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/root-gates/component-terminal-backend/receipt.json",
+      "sha256": "89261b0f80487f05aeac0c47790d71d77821b5e43e9dab8980c68466ae2bf7b4",
+      "exit": 0,
+      "error": null,
+      "seconds": 57.45420821999869,
+      "peakrss": 574373888,
+      "peakdisk": 3294552064,
+      "source_changes": []
+    },
+    "merged_component-terminal-kernel80": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/root-gates/component-terminal-kernel80/receipt.json",
+      "sha256": "aa6e665a2c3e30367304834d86d69382a7e83d0ea0e6f71503d097be80f26234",
+      "exit": 0,
+      "error": null,
+      "seconds": 55.56465944699994,
+      "peakrss": 581402624,
+      "peakdisk": 3296288768,
+      "source_changes": []
+    },
+    "merged_component-terminal-exhaustion": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/root-gates/component-terminal-exhaustion/receipt.json",
+      "sha256": "35489c29d1d123438a6e35c9e5d7133236e0bd809178fc326ef551274aea6471",
+      "exit": 0,
+      "error": null,
+      "seconds": 58.01706128800106,
+      "peakrss": 575352832,
+      "peakdisk": 3289628672,
+      "source_changes": []
+    },
+    "merged_python-monitor-regression": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/root-gates/python-monitor-regression/receipt.json",
+      "sha256": "9310872548e61935aacfe19f7dfefc0cecad6cef2429361ede4641d96d05054b",
+      "exit": 0,
+      "error": null,
+      "seconds": 21.332193897998877,
+      "peakrss": 41816064,
+      "peakdisk": 3253534720,
+      "source_changes": []
+    },
+    "merged_gofmt": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/root-gates/gofmt/receipt.json",
+      "sha256": "b59a15e6c074105dd7534e1787aa199ea918803e90f48bda59f5ec8fb500bed6",
+      "exit": 0,
+      "error": null,
+      "seconds": 7.976498248999633,
+      "peakrss": 10510336,
+      "peakdisk": 3255123968,
+      "source_changes": []
+    },
+    "merged_build": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/root-gates/build/receipt.json",
+      "sha256": "d5dad840ae711efc05c8d019b6f70da9977da8000975a8a516fe160e9df8e9c4",
+      "exit": 0,
+      "error": null,
+      "seconds": 20.24972942400018,
+      "peakrss": 110952448,
+      "peakdisk": 3384307712,
+      "source_changes": []
+    },
+    "merged_vet": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/root-gates/vet/receipt.json",
+      "sha256": "b5b2f794263d326149cf8427356bacebd6082437acb745b62abd39283ed05293",
+      "exit": 0,
+      "error": null,
+      "seconds": 15.703386298000623,
+      "peakrss": 110100480,
+      "peakdisk": 3310014464,
+      "source_changes": []
+    },
+    "merged_errcheck": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/root-gates/errcheck/receipt.json",
+      "sha256": "93e159f9aa03cd6adf9542c548c267b614c60cc2eefc7378ced0ccfe4344c95d",
+      "exit": 0,
+      "error": null,
+      "seconds": 36.86298779699973,
+      "peakrss": 157700096,
+      "peakdisk": 3431792640,
+      "source_changes": []
+    },
+    "merged_lint": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/root-gates/lint/receipt.json",
+      "sha256": "1abfedcd5a38c7c769f19cb3257442e9ec1eef925da5958f56e11fc67f14d953",
+      "exit": 0,
+      "error": null,
+      "seconds": 11.573586270000305,
+      "peakrss": 105766912,
+      "peakdisk": 3374415872,
+      "source_changes": []
+    },
+    "merged_full-short": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/root-gates/full-short/receipt.json",
+      "sha256": "f6dac209477a248aa6d40d7511beeb4c2c68225bf3cd7ebfa6e5100d4d8aa0b9",
+      "exit": 0,
+      "error": null,
+      "seconds": 366.8798452299998,
+      "peakrss": 476033024,
+      "peakdisk": 3547820032,
+      "source_changes": []
+    },
+    "merged_freebsd-build": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/root-gates/freebsd-build/receipt.json",
+      "sha256": "6f764a49254f9fba7fa4bdba0d53399990fabc1f3c13979ff6a8b34451c19da1",
+      "exit": 0,
+      "error": null,
+      "seconds": 120.07862709300025,
+      "peakrss": 267018240,
+      "peakdisk": 3960807424,
+      "source_changes": []
     }
   },
   "limits": {
@@ -291,5 +431,16 @@
   "review": {
     "R1": "Three acceptance-test gaps, addressed by targeted fixes",
     "R2": "/root/terminal_614_review2: no blocking findings; read-only, no tests/builds/edits/infrastructure"
-  }
+  },
+  "verified_commit": "e199627",
+  "failed_verification_attempts": [
+    {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/root-gates/full/receipt.json",
+      "sha256": "a42e41cb2fb5f38e211e2e3badbcfbaa86b0d4aaeab36a3be35e5655fa24bbee",
+      "exit": -15,
+      "seconds": 251.64134914199894,
+      "source_changes": [],
+      "cause": "Runner temporary path exceeded Unix socket sun_path; daemoncli bind EINVAL. Guarded owned-process stop preserved failed/incomplete attempt; corrected short-path full suite PASS separately."
+    }
+  ]
 }
