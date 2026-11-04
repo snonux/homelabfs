@@ -35,8 +35,9 @@ and immutable reply binds frame minor, full body protocol, complete Context and
 session. lib9p H9LEDG2 stores the installed minor and HELLO per session together
 with existing exact byte/mapping/high-water/receipt ledgers; it is used whenever
 any1.1 session exists, and old readers reject its magic. Pure1.0 ledgers retain
-H9LEDG1. No host transport restore API exists yet: RESUME remains BLOCKED, and a
-new Go Service must not reset or replace an issued endpoint. The mandatory
+H9LEDG1. The [C9 same-owner barriered component path](../../internal/controlledruntime/restart.md)
+can reopen host semantic owners after full reconciliation; RESUME remains
+BLOCKED, and a new Go Service cannot independently reset an issued endpoint. The mandatory
 controller enrollment provider must verify prior complete ledgers or positive
 exclusion before accepting any replacement. Tuple/hash equality alone does not
 establish that continuity.
@@ -312,7 +313,8 @@ learned session acknowledgements. Reconnect requires actual reconstructed full
 ledgers and original source closure or positive exclusion, then fresh exact
 acks. Restart/new UUID/hash-only manifest is not continuity or exclusion. A
 continuously surviving stopped domain may reack only under verified continuity.
-No runtime/source controller or host restore is supplied here; missing evidence
+This wire contract supplies no runtime/source restoration authority; the narrow
+[C9 coordinator](../../internal/controlledruntime/restart.md) requires actual current-source recapture; missing evidence
 keeps BLOCKED. No installation, mounts, SSH, VM or production action is authorized.
 
 

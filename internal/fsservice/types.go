@@ -110,6 +110,11 @@ type Limits struct {
 // ancestors must already be durably prepared; volume initialization is external.
 // No daemon, mount, checkpoint acceptance or retention is configured here.
 type Config struct {
+	// Private one-use controlled restart seeds; no external configuration can
+	// select old native allocator/issuance authority.
+	restartIDs             map[fsapi.UUID]bool
+	restartHandle          fsapi.OpenHandle
+	restartApplied         *apply.BarrieredRestart
 	Source, Reservations   storage.Filesystem
 	Stream                 segment.Stream
 	Authority              record.Authority

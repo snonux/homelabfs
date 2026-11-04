@@ -18,6 +18,10 @@ import (
 // New requires explicitly verified providers before any delegated effects.
 // This constructs a component, never authorizes normal native publication.
 func New(ctx context.Context, c Config) (*Service, error) {
+	return newService(ctx, c, nil)
+}
+
+func newService(ctx context.Context, c Config, restored *endpointRestore) (*Service, error) {
 	if err := prepareProtocols(&c); err != nil {
 		return nil, err
 	}
@@ -55,11 +59,17 @@ func New(ctx context.Context, c Config) (*Service, error) {
 		profile := *c.Validation
 		c.Validation = &profile
 	}
-	controller, err := randomUUID()
-	if err != nil {
-		return nil, err
+	var controller fsapi.UUID
+	if restored == nil {
+		id, err := randomUUID()
+		if err != nil {
+			return nil, err
+		}
+		controller = parseID(id)
+	} else {
+		controller = restored.index.Controller
 	}
-	s := &Service{controller: parseID(controller), config: c, sessions: make(map[string]*session)}
+	s := &Service{controller: controller, config: c, sessions: make(map[string]*session)}
 	for _, scope := range c.Scopes {
 		for _, provider := range []any{c.Claims, c.Execution} {
 			if bound, ok := provider.(interface {
@@ -122,13 +132,25 @@ func New(ctx context.Context, c Config) (*Service, error) {
 		}
 		s.sessions[scope.Session] = &session{Generation: generation, Context: scope, Credentials: map[string][]byte{}, Exited: map[string]uint64{}, Grants: map[string]*grant{}, CloseSequences: map[string]uint64{}}
 	}
-	for _, scope := range c.Scopes {
-		if err := s.restoreValidation(ctx, scope); err != nil {
+	if restored == nil {
+		for _, scope := range c.Scopes {
+			if err := s.restoreValidation(ctx, scope); err != nil {
+				return nil, err
+			}
+		}
+		if err := s.checkpointAdmissionLocked(false); err != nil {
 			return nil, err
 		}
-	}
-	if err := c.Native.Enroll(ctx, c.Endpoint, s.controller); err != nil {
-		return nil, err
+		if err := c.Native.Enroll(ctx, c.Endpoint, s.controller); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := s.restoreSessions(ctx, restored); err != nil {
+			return nil, err
+		}
+		if err := s.checkpointAdmissionLocked(false); err != nil {
+			return nil, err
+		}
 	}
 	if !missing(c.Verification) {
 		if err := c.Verification.Bind(ctx, VerificationBinding{Endpoint: c.Endpoint, Controller: s.controller, Native: c.Native, Claims: c.Claims, Execution: c.Execution, Views: c.Views, ViewProtocol: c.ViewProtocol, Scopes: append([]Context(nil), c.Scopes...)}); err != nil {
@@ -546,6 +568,10 @@ func (s *Service) originalCleanup(b Binding) bool {
 }
 
 func (s *Service) credentials(ctx context.Context, c Context, cred Credentials, allowExited bool) error {
+	return s.admitCredentials(ctx, c, cred, allowExited, false)
+}
+
+func (s *Service) admitCredentials(ctx context.Context, c Context, cred Credentials, allowExited, terminal bool) error {
 	if err := s.config.Attestor.Verify(ctx, c, cred); err != nil {
 		return err
 	}
@@ -569,10 +595,20 @@ func (s *Service) credentials(ctx context.Context, c Context, cred Credentials, 
 	if _, dead := ss.Exited[cred.Process]; dead {
 		return fsapi.Stale
 	}
-	if len(ss.Credentials) >= s.config.MaxCredentialRevisions {
+	credentialLimit := s.config.MaxCredentialRevisions
+	if protocol := s.config.sessionProtocol(c.Session); !terminal && protocol != nil && *protocol == TerminalProtocol() {
+		// The already fenced terminal observer may need one new credential identity.
+		// Ordinary revisions cannot consume its existing configured quota slot.
+		credentialLimit--
+	}
+	if len(ss.Credentials) >= credentialLimit {
 		return fsapi.NoSpace
 	}
 	ss.Credentials[key] = raw
+	if err := s.checkpointAdmissionLocked(terminal); err != nil {
+		delete(ss.Credentials, key)
+		return err
+	}
 	return nil
 }
 func (s *Service) validateDomain(c Command) error {

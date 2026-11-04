@@ -107,3 +107,22 @@ func (s *Shell) SetDebug(bool) {}
 
 // Directory returns the reserved private directory inode, never mount authority.
 func (s *Shell) Directory() uint64 { return s.directory }
+
+// ReplaceEndpoint atomically replaces a fully quiesced predecessor using only
+// its privately funded, same-controller restored successor. The original shell,
+// native connection, credentials and inode tuple remain the exact same owners.
+// It cannot bind a new connection or turn an ordinary NewTransport into recovery.
+func (s *Shell) ReplaceEndpoint(old, next *guestbridge.Transport) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current := s.dispatch.Load()
+	if s.server == nil || s.ended || !s.bound || current == nil || current.transport != old || !next.Restores(old) {
+		return fsapi.Permission
+	}
+	replacement, err := NewPrivateControl(PrivateControlConfig{Transport: next, Credentials: current.credentials, Directory: s.directory})
+	if err != nil {
+		return err
+	}
+	s.dispatch.Store(replacement)
+	return nil
+}

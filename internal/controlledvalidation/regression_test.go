@@ -768,3 +768,64 @@ func TestHistoricalMissingPreparationStageDoesNotResume(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestActualProjectionCapacityDeclinesBeforeProtectedEffect(t *testing.T) {
+	f := newFixture(t)
+	b := f.binding("CREATE", map[string]any{})
+	prepares, projections := 0, 0
+	prepare := func(cut guestbridge.Captured) (guestbridge.Prepared, error) {
+		prepares++
+		return cut.Prepare(t.Context(), b, createCommand(f, "must-not-exist"))
+	}
+	projection := func(out guestbridge.Outcome) (json.RawMessage, json.RawMessage, error) {
+		projections++
+		if out.Result.Code == fsapi.OK {
+			return nil, nil, fsapi.NoSpace
+		}
+		if out.Result.Code != fsapi.NoSpace {
+			t.Fatalf("unexpected projected decline: %+v", out.Result)
+		}
+		return protect(out)
+	}
+	out, err := f.provider.ExecuteValidation(t.Context(), b, prepare, projection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Result.Code != fsapi.NoSpace || prepares != 1 || projections != 2 {
+		t.Fatalf("pre-effect projection: %+v/%d/%d", out.Result, prepares, projections)
+	}
+	if err = f.provider.db.View(func(tx *bolt.Tx) error {
+		e, ok, err := f.provider.load(tx, b.Call.Claim)
+		if err != nil {
+			return err
+		}
+		if !ok || e.Plan == nil || e.Plan.Mutation != nil || e.Plan.Result.Code != fsapi.NoSpace || e.Outcome == nil || e.Outcome.Result.Code != fsapi.NoSpace {
+			t.Fatal("decline was not protected as a no-effect plan/outcome")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.service.Controlled(t.Context(), *f.config.Validation, func(ctx context.Context, cut *fsservice.ControlledCut) error {
+		image, err := cut.Image(ctx, id(1))
+		if err != nil {
+			return err
+		}
+		if len(image.Entries) != 0 {
+			t.Fatal("capacity refusal applied native mutation")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.provider.ResumeValidation(t.Context(), b, prepare, projection); !errors.Is(err, fsapi.WouldBlock) {
+		t.Fatalf("protected plan entered unprepared continuation: %v", err)
+	}
+	recovered, ready, err := f.provider.RecoverOutcome(t.Context(), b)
+	if err != nil || !ready || recovered.Result.Code != fsapi.NoSpace {
+		t.Fatalf("protected decline recovery: %+v/%v/%v", recovered.Result, ready, err)
+	}
+	if prepares != 1 || projections != 2 {
+		t.Fatal("protected no-effect decline replanned")
+	}
+}

@@ -386,7 +386,7 @@ func (s *Service) retireSession(ctx context.Context, c Command) (TerminalRespons
 	if err := json.Unmarshal(c.Payload, &request); err != nil {
 		return empty, err
 	}
-	if err := s.credentials(ctx, c.Context, request.Credentials, true); err != nil {
+	if err := s.admitCredentials(ctx, c.Context, request.Credentials, true, true); err != nil {
 		return empty, err
 	}
 	return coordinator.RetireSession(ctx, attempt)

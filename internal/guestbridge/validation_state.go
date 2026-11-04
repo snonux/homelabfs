@@ -178,6 +178,17 @@ type ValidationExecution interface {
 func (s *Service) prepareValidationResult(ctx context.Context, b Binding, out Outcome) (json.RawMessage, json.RawMessage, error) {
 	s.mu.Lock()
 	raw, err := json.Marshal(s.sessions[b.Context.Session])
+	peers := 0
+	for id, ss := range s.sessions {
+		if id != b.Context.Session {
+			n, e := s.checkpointFootprint(ss)
+			if e != nil {
+				s.mu.Unlock()
+				return nil, nil, e
+			}
+			peers += n
+		}
+	}
 	s.mu.Unlock()
 	if err != nil {
 		return nil, nil, err
@@ -186,7 +197,7 @@ func (s *Service) prepareValidationResult(ctx context.Context, b Binding, out Ou
 	if err = json.Unmarshal(raw, &proposed); err != nil {
 		return nil, nil, err
 	}
-	staged := &Service{controller: s.controller, config: s.config, sessions: map[string]*session{b.Context.Session: &proposed}}
+	staged := &Service{controller: s.controller, config: s.config, checkpointPeers: peers, sessions: map[string]*session{b.Context.Session: &proposed}}
 	result, err := staged.result(ctx, b, out)
 	if err != nil {
 		return nil, nil, err

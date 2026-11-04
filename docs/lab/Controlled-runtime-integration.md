@@ -9,6 +9,10 @@ original-origin durability plus owner/partner RAM without owner-disk wait, and
 same-client advisory-lock scope remain unchanged. Distributed implementation
 and acceptance remain later work.
 
+Current implementation status: [C9 barriered component restart](../../internal/controlledruntime/restart.md)
+implements a narrow same-owner/current-cut boundary. The original planning gaps
+below remain historical context; they are not native/deployment acceptance.
+
 ## Existing mechanisms and actual gaps
 
 * [controlledvalidation](../../internal/controlledvalidation/README.md) owns real

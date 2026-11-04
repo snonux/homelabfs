@@ -30,7 +30,7 @@ dest = args.output / "contrib/lib9p/backend"
 dest.mkdir(parents=True)
 for name in ("hfs9p.c", "hfs9p.h", "hfs9p_json.c", "hfs9p_json.h",
              "hfs9p_ledger.c", "hfs9p_ledger.h",
-             "hfs9p_supervisor.c", "hfs9p_supervisor.h"):
+             "hfs9p_supervisor.c", "hfs9p_supervisor.h", "hfs9p_recovery.inc"):
     shutil.copyfile(root / "src" / name, dest / name)
 print("Prepared pinned subset:", args.output)
 print("This is not a full FreeBSD source tree or a built/installed artifact.")

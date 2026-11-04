@@ -68,6 +68,10 @@ int hfs9p_delete(Hfs9p *);
  * protect_cb durably protects every complete candidate before native effects.
  * Snapshot memory belongs to the caller; free() after use. */
 int hfs9p_snapshot(Hfs9p *, uint8_t **, size_t *);
+/* Inherited host-local management only: full carrier barrier and exact resume.
+ * Any failure preserves the pause. Neither operation restores a new owner. */
+int hfs9p_pause_owned(Hfs9p *, uint8_t **, size_t *);
+int hfs9p_resume_owned(Hfs9p *, const uint8_t[32]);
 int hfs9p_restore(Hfs9p **, const int[3], const Hfs9pEndpoint *,
     Hfs9pVerifier, const uint8_t *, size_t);
 

@@ -45,6 +45,7 @@ type exporter struct {
 	executable          *os.File
 	identity            processIdentity
 	control             *net.UnixConn
+	recovery            *net.UnixConn
 	exited              chan struct{}
 }
 
@@ -93,26 +94,36 @@ func (s *Supervisor) launch(ctx context.Context, spec Executable) (*exporter, er
 		return nil, err
 	}
 	defer func() { _ = child.Close() }()
-	command := exec.Command("/dev/fd/4", spec.Args...)
-	command.Env = []string{"HFS_SUPERVISOR_FD=3"}
-	command.ExtraFiles = []*os.File{child, pinned}
-	if err = command.Start(); err != nil {
+	recoveryParent, recoveryChild, err := controlPair()
+	if err != nil {
 		_ = parent.Close()
 		_ = pinned.Close()
 		return nil, err
 	}
-	result := &exporter{command: command, executable: pinned, control: parent, exited: make(chan struct{})}
+	defer func() { _ = recoveryChild.Close() }()
+	command := exec.Command("/dev/fd/4", spec.Args...)
+	command.Env = []string{"HFS_SUPERVISOR_FD=3"}
+	command.ExtraFiles = []*os.File{child, pinned, recoveryChild}
+	if err = command.Start(); err != nil {
+		_ = recoveryParent.Close()
+		_ = parent.Close()
+		_ = pinned.Close()
+		return nil, err
+	}
+	result := &exporter{command: command, executable: pinned, control: parent, recovery: recoveryParent, exited: make(chan struct{})}
 	go func() { _ = command.Wait(); close(result.exited) }()
 	identity, err := observeProcess(command.Process.Pid)
 	if err == nil {
 		err = sameExecutable(pinned, identity)
 	}
 	if err != nil {
+		_ = recoveryParent.Close()
 		_ = parent.Close()
 		_ = pinned.Close()
 		return nil, fmt.Errorf("observe exporter: %w", err)
 	}
 	if _, err = rand.Read(identity.PublicID[:]); err != nil {
+		_ = recoveryParent.Close()
 		_ = parent.Close()
 		_ = pinned.Close()
 		return nil, err

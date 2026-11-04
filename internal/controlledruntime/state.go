@@ -23,15 +23,17 @@ const maxExecutable = 64 << 20
 // Supervisor is the exclusive process, connection and issuance owner. Close
 // fences admission but never deletes resources or retires endpoint obligations.
 type Supervisor struct {
-	mu             sync.Mutex
-	root           string
-	directory      *os.File
-	lock           *os.File
-	child          *exporter
-	mount          *nativeMount
-	record         issuance
-	closed         bool
-	controlStarted bool
+	mu               sync.Mutex
+	root             string
+	directory        *os.File
+	lock             *os.File
+	child            *exporter
+	mount            *nativeMount
+	record           issuance
+	closed           bool
+	controlStarted   bool
+	restart          *Restart
+	restartAttempted bool
 }
 
 type issuance struct {
@@ -111,6 +113,9 @@ func (s *Supervisor) Close() error {
 	s.closed = true
 	if s.child != nil {
 		_ = s.child.control.Close()
+		if s.child.recovery != nil {
+			_ = s.child.recovery.Close()
+		}
 	}
 	var err error
 	if s.lock != nil {

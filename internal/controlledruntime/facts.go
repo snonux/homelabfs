@@ -18,12 +18,14 @@ type Facts struct {
 	service    *fsservice.Service
 	enrollment viewcontrol.Enrollment
 	admissions []*Admission
+	restart    *Restart
 }
 
 type factsLedger struct {
-	Fence   uint64
-	Sources map[string]fsservice.ControlledViewSource
-	Domains map[string]struct {
+	Recovery bool
+	Fence    uint64
+	Sources  map[string]fsservice.ControlledViewSource
+	Domains  map[string]struct {
 		Domain   guestbridge.Capability
 		Sequence uint64
 	}
@@ -231,6 +233,15 @@ func (f *Facts) CheckRecovery(ctx context.Context, enrollment viewcontrol.Enroll
 	l, err := f.ledger(ctx, raw)
 	if err != nil {
 		return err
+	}
+	if f.restart != nil {
+		if err := f.restart.checkPhysical(ctx); err != nil {
+			return err
+		}
+		if err := f.restart.checkIdlePhysical(l); err != nil {
+			return err
+		}
+		return f.restart.controller.CheckCut(raw)
 	}
 	if l.Fence != 1 || len(l.Sources)+len(l.Domains)+len(l.Leases)+len(l.Reservations)+len(l.Tickets) != 0 || l.Recall != nil {
 		return fsapi.Unavailable

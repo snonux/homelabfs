@@ -42,6 +42,7 @@ var transportWorkspaceKey = []byte("workspace")
 // and holes), without a tombstone per historical cell. A workspace is unissued.
 // Scopes and Protocols are parallel arrays retaining the exact selected tuples.
 type ProtectedTransportState struct {
+	BridgeSessions    bool
 	Version           uint32
 	Endpoint          Endpoint
 	Controller        fsapi.UUID
@@ -126,8 +127,9 @@ func openTransportLedger(root string, create bool) (_ *transportLedger, err erro
 	return openTransportLedgerDirectory(root, fd, create)
 }
 
-func openTransportLedgerDirectory(root string, fd int, create bool) (_ *transportLedger, err error) {
+func openTransportLedgerDirectory(root string, fd int, create bool, writable ...bool) (_ *transportLedger, err error) {
 	l := &transportLedger{directory: os.NewFile(uintptr(fd), root)}
+	write := create || len(writable) > 0 && writable[0]
 	defer func() {
 		if err != nil {
 			_ = l.close()
@@ -167,9 +169,12 @@ func openTransportLedgerDirectory(root string, fd int, create bool) (_ *transpor
 	// bbolt also owns the actual database lock. Pin the directory fd and reject
 	// symlinks, hardlinks, foreign owners and nonprivate files before bbolt sees it.
 	l.db, err = bolt.Open(filepath.Join(root, "transport.db"), 0600, &bolt.Options{
-		Timeout: time.Millisecond, ReadOnly: !create,
+		Timeout: time.Millisecond, ReadOnly: !write,
 		OpenFile: func(_ string, _ int, _ os.FileMode) (*os.File, error) {
 			mode := unix.O_RDONLY
+			if write {
+				mode = unix.O_RDWR
+			}
 			if create {
 				mode = unix.O_RDWR | unix.O_CREAT | unix.O_EXCL
 			}
@@ -287,7 +292,7 @@ func protectedCell(c *cell) ProtectedTransportCell {
 	return ProtectedTransportCell{Header: h, Body: c.body, Chunks: c.chunks, Observations: c.observations, Count: c.count, Control: c.reservation.Control, Command: c.command, Native: c.native, JobPhase: c.jobPhase, Response: c.response, Wire: c.wire, Seen: c.seen, Unread: c.unread, ResultKind: c.resultKind, GuestWatermark: c.guestWatermark, Mapping: c.mapping, Terminal: c.terminal}
 }
 func (t *Transport) protectedIndex() ProtectedTransportState {
-	s := ProtectedTransportState{Version: 1, Endpoint: t.Endpoint(), Controller: t.service.controller, High: t.high, Terminal: t.terminal, GuestHigh: t.guestHigh, GuestRecent: t.guestRecent, Ordinary: t.ordinary, Control: t.control, Workspace: t.workspace != nil, Cells: make([]uint64, 0, len(t.cells))}
+	s := ProtectedTransportState{BridgeSessions: true, Version: 1, Endpoint: t.Endpoint(), Controller: t.service.controller, High: t.high, Terminal: t.terminal, GuestHigh: t.guestHigh, GuestRecent: t.guestRecent, Ordinary: t.ordinary, Control: t.control, Workspace: t.workspace != nil, Cells: make([]uint64, 0, len(t.cells))}
 	for id := range t.cells {
 		s.Cells = append(s.Cells, id)
 	}
@@ -348,7 +353,10 @@ func (l *transportLedger) protect(t *Transport, ids []uint64) error {
 	}
 	// At most one new/changed live cell plus one workspace. A reclaimed ID is a
 	// delete, so serialized cell puts per transaction never exceed 16 MiB.
-	rows := make(map[string][]byte, 3)
+	rows, err := t.service.protectedSessions()
+	if err != nil {
+		return err
+	}
 	for _, id := range ids {
 		key := string(transportCellKey(id))
 		rows[key] = nil
@@ -558,7 +566,24 @@ func decodeTransportJSON(raw []byte, limit int, value any) error {
 // queues work. Callbacks must not reenter this ledger. One bounded row is decoded
 // at a time; retaining callback values is the caller's separately funded cost.
 // No result, even a matching digest, authorizes RESUME or cross-ledger restoration.
-func InspectTransport(root string, visit func(ProtectedTransportCell) error) (state ProtectedTransportState, err error) {
+func InspectTransport(root string, visit func(ProtectedTransportCell) error) (ProtectedTransportState, error) {
+	return InspectEndpoint(root, visit, nil)
+}
+
+// InspectEndpoint additionally visits complete bridge sessions when present.
+// Like InspectTransport, all returned records remain inert and partial visits
+// followed by an error must never be used for restoration.
+func InspectEndpoint(root string, visit func(ProtectedTransportCell) error, sessionVisit func(Context, ProtectedBridgeSession) error) (state ProtectedTransportState, err error) {
+	return inspectEndpoint(root, visit, sessionVisit, false)
+}
+
+// InspectRestorationEndpoint refuses cuts beyond the private barrier workspace
+// before decoding or retaining any row. All returned records are still inert.
+func InspectRestorationEndpoint(root string, visit func(ProtectedTransportCell) error, sessionVisit func(Context, ProtectedBridgeSession) error) (ProtectedTransportState, error) {
+	return inspectEndpoint(root, visit, sessionVisit, true)
+}
+
+func inspectEndpoint(root string, visit func(ProtectedTransportCell) error, sessionVisit func(Context, ProtectedBridgeSession) error, restoration bool) (state ProtectedTransportState, err error) {
 	l, err := openTransportLedger(root, false)
 	if err != nil {
 		return state, err
@@ -568,6 +593,15 @@ func InspectTransport(root string, visit func(ProtectedTransportCell) error) (st
 			err = e
 		}
 	}()
+	if restoration {
+		if err = checkRestorationCapacity(l); err != nil {
+			return state, err
+		}
+	}
+	return inspectEndpointLedger(l, visit, sessionVisit)
+}
+
+func inspectEndpointLedger(l *transportLedger, visit func(ProtectedTransportCell) error, sessionVisit func(Context, ProtectedBridgeSession) error) (state ProtectedTransportState, err error) {
 	info, err := l.file.Stat()
 	if err != nil {
 		return state, err
@@ -594,6 +628,9 @@ func InspectTransport(root string, visit func(ProtectedTransportCell) error) (st
 		hash := sha256.New()
 		_, _ = hash.Write(raw)
 		expected := len(state.Cells) + 1
+		if state.BridgeSessions {
+			expected += len(state.Scopes)
+		}
 		if state.Workspace {
 			expected++
 		}
@@ -609,6 +646,31 @@ func InspectTransport(root string, visit func(ProtectedTransportCell) error) (st
 		}
 		if count != expected {
 			return fsapi.Stale
+		}
+		if state.BridgeSessions {
+			total := 0
+			for _, scope := range state.Scopes {
+				key := bridgeSessionKey(scope.Session)
+				raw := b.Get(key)
+				total += len(raw)
+				if total > bridgeSessionLimit {
+					return fsapi.NoSpace
+				}
+				var row ProtectedBridgeSession
+				if e := decodeTransportJSON(raw, bridgeSessionLimit, &row); e != nil {
+					return e
+				}
+				if e := validateBridgeSession(state, scope, row); e != nil {
+					return e
+				}
+				_, _ = hash.Write(key)
+				_, _ = hash.Write(raw)
+				if sessionVisit != nil {
+					if e := sessionVisit(scope, row); e != nil {
+						return e
+					}
+				}
+			}
 		}
 		ordinary, control, mappingPending := 0, 0, 0
 		inspect := func(key []byte, workspace bool, id uint64) error {
@@ -700,4 +762,12 @@ func validateTransportCellBinding(s ProtectedTransportState, c ProtectedTranspor
 		return fsapi.Stale
 	}
 	return nil
+}
+
+func openWritableTransportLedger(root string) (*transportLedger, error) {
+	fd, err := unix.Open(root, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, err
+	}
+	return openTransportLedgerDirectory(root, fd, false, true)
 }

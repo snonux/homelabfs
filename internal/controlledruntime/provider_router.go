@@ -280,3 +280,12 @@ func (r *ProviderRouter) VerifyTerminalBridge(ctx context.Context, a *guestbridg
 	}
 	return p.VerifyTerminalBridge(ctx, a, seal, snapshot)
 }
+
+// CheckRestoredBridge verifies the actual selected provider's protected state.
+func (r *ProviderRouter) CheckRestoredBridge(ctx context.Context, scope guestbridge.Context, controller fsapi.UUID, raw json.RawMessage) error {
+	p, err := r.route(scope)
+	if err != nil {
+		return err
+	}
+	return p.CheckRestoredBridge(ctx, scope, controller, raw)
+}

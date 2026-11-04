@@ -7,7 +7,9 @@ and maintained Linux components; installation and normal publication remain unad
 component evidence is recorded under
 [614](../../tools/integration/linux9p/evidence/614/evidence.json). It applies only
 to disposable `CONTROLLED_LOCAL` sessions with null publication. Production migration, normal publication, distributed authority
-and endpoint restoration stay closed.
+stay closed. The narrow [C9 barriered component restart](../../internal/controlledruntime/restart.md)
+can retain terminal ownership only under the exact surviving native/exporter/kernel
+owners with complete paired-ledger agreement; guest RESUME remains BLOCKED.
 
 ## Source-supported boundary
 
@@ -455,10 +457,11 @@ code, not a generic kernel change.
 
 Task614 must implement same-live-owner exact lost-reply retry and durable
 pending/final record encoding, reconstruction for validation, and refusal.
-Positive replacement exporter/kernel/endpoint admission may remain blocked
-until C9 supplies actual continuity/exclusion and cross-ledger restoration. C9
-depends on614; these records and refusal checks must work without that future
-coordinator. Decoders must validate the complete pre/post manifest owner cut,
+Replacement exporter/kernel/endpoint admission remains blocked. The narrow
+[C9 same-owner barriered path](../../internal/controlledruntime/restart.md) reopens
+host semantic components while the exact native/exporter/kernel owners survive,
+requiring fresh continuity and complete cross-ledger reconciliation. C9 depends
+on614; these records and refusal checks also work without that coordinator. Decoders must validate the complete pre/post manifest owner cut,
 class/counter/ budget accounting, all native mappings and issuance history;
 reject a missing fence, partial subset, conflicting old rows, forgotten credit
 or inconsistent final removal. Compact hashes alone cannot repair missing owner

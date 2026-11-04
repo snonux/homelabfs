@@ -102,20 +102,24 @@ type Facts interface {
 // Config constructs one controlled component; it does not activate any frontend.
 // Providers must be authenticated real controlledvalidation providers over Service.
 type Config struct {
-	Directory     string
-	Initialize    bool
-	Service       *fsservice.Service
-	Providers     map[string]*controlledvalidation.Provider
-	Operator      ed25519.PublicKey
-	Authorization Authorization
-	Facts         Facts
-	Failpoint     func(string) error
+	restartFile os.FileInfo
+	Directory   string
+	Initialize  bool
+	// RestoreCurrentSources reconstructs only exact current source bytes, never historical cuts.
+	RestoreCurrentSources bool
+	Service               *fsservice.Service
+	Providers             map[string]*controlledvalidation.Provider
+	Operator              ed25519.PublicKey
+	Authorization         Authorization
+	Facts                 Facts
+	Failpoint             func(string) error
 }
 
 // Controller owns durable tickets, sources, reservations and physical recalls.
 // mu is acquired with TryLock by ordinary admissions. An admitted execution owns
 // it until completion, so no worker ever waits on recall holding execution locks.
 type Controller struct {
+	file                        os.FileInfo
 	config                      Config
 	db                          *bolt.DB
 	mu                          sync.Mutex
@@ -256,11 +260,12 @@ func New(ctx context.Context, c Config) (*Controller, error) {
 	if err = prepareFile(filename, c.Initialize); err != nil {
 		return nil, err
 	}
-	db, err := bolt.Open(filename, 0600, &bolt.Options{Timeout: 100 * time.Millisecond})
+	var actualFile os.FileInfo
+	db, err := bolt.Open(filename, 0600, &bolt.Options{Timeout: 100 * time.Millisecond, OpenFile: restartLedgerOpener(c.restartFile, &actualFile)})
 	if err != nil {
 		return nil, err
 	}
-	controller := &Controller{config: c, db: db, enrollmentHash: hash(raw), profileHash: digest(struct {
+	controller := &Controller{config: c, db: db, file: actualFile, enrollmentHash: hash(raw), profileHash: digest(struct {
 		Domains  []controlledvalidation.Enrollment
 		Bounds   Bounds
 		Families []TicketFamilies
@@ -317,6 +322,17 @@ func New(ctx context.Context, c Config) (*Controller, error) {
 			}
 		}
 	}
+	// Reopened JSON carries no live source seal. Only the exact current source,
+	// recaptured by the real service worker above, can reconstruct correspondence.
+	// Historical cuts remain unsupported rather than importing their hashes.
+	if !c.Initialize && c.RestoreCurrentSources {
+		for key, old := range controller.state.Sources {
+			if !sameSource(old, source) {
+				return nil, fsapi.Unavailable
+			}
+			controller.state.Sources[key] = source
+		}
+	}
 	state, err := controller.rawState()
 	if err != nil {
 		return nil, err
@@ -348,6 +364,11 @@ func New(ctx context.Context, c Config) (*Controller, error) {
 	}
 	if err = c.Service.BindControlledAdmission(e.Domains[0].Profile, controller); err != nil {
 		return nil, err
+	}
+	if !c.Initialize && c.RestoreCurrentSources {
+		for session, scope := range controller.state.Terminal {
+			controller.sealed.Store(session, scope.Seal)
+		}
 	}
 	ok = true
 	return controller, nil

@@ -145,6 +145,16 @@ func (p *Provider) execute(ctx context.Context, b guestbridge.Binding, prepare f
 			var proposed, bridge json.RawMessage
 			if protect != nil {
 				proposed, bridge, err = protect(predicted)
+				if errors.Is(err, fsapi.NoSpace) {
+					// This projection precedes plan protection and every native
+					// effect. Decline the actual planned result, not the caller's
+					// requested maximum READDIR count or hypothetical ancestry.
+					plan = &fsservice.ControlledPlan{Operation: b.Operation, Result: fsapi.Result{Code: fsapi.NoSpace}}
+					predicted, err = plannedOutcome(owned, cut, *plan)
+					if err == nil {
+						proposed, bridge, err = protect(predicted)
+					}
+				}
 				if err != nil {
 					return err
 				}

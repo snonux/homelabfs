@@ -13,6 +13,8 @@ void hfs9p_ledger_delete(Hfs9pLedger *);
 int hfs9p_ledger_load(Hfs9pLedger *, uint8_t **, size_t *);
 int hfs9p_ledger_claim(Hfs9pLedger *, const Hfs9pEndpoint *, const uint8_t[32]);
 int hfs9p_ledger_protect(Hfs9pLedger *, const uint8_t *, size_t);
+/* Full descriptor-backed equality without allocating a second ledger copy. */
+int hfs9p_ledger_matches(Hfs9pLedger *, const uint8_t *, size_t);
 
 /* This adapter supplies durable local transport bytes, not a real FUSE/native
  * enrollment verifier or normal public claim/source/domain protection. A

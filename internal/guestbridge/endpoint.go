@@ -50,6 +50,7 @@ type job struct {
 type Transport struct {
 	mu                          sync.Mutex
 	service                     *Service
+	predecessor                 *Transport
 	arenas                      []*admission.Lease
 	high                        uint64
 	cells                       map[uint64]*cell
@@ -522,6 +523,16 @@ func (t *Transport) Read(ctx context.Context, n Native, node, offset uint64, cou
 // Close stops component workers after all dispatched calls finish. It does not
 // retire claims, destroy the endpoint allocator or claim cache-domain exclusion.
 func (t *Transport) Close() {
+	t.stopWorkers()
+	t.mu.Lock()
+	if t.ledger != nil {
+		_ = t.ledger.close()
+		t.ledger = nil
+	}
+	t.mu.Unlock()
+}
+
+func (t *Transport) stopWorkers() {
 	t.mu.Lock()
 	if !t.closed {
 		t.closed = true
@@ -533,12 +544,6 @@ func (t *Transport) Close() {
 	}
 	t.mu.Unlock()
 	t.workers.Wait()
-	t.mu.Lock()
-	if t.ledger != nil {
-		_ = t.ledger.close()
-		t.ledger = nil
-	}
-	t.mu.Unlock()
 }
 func (t *Transport) worker(queue <-chan job) {
 	defer t.workers.Done()

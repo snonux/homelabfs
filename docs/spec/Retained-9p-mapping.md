@@ -216,3 +216,5 @@ context/credential negatives, and byte/token/allocation bounds. Native fd,
 mount/INIT, guest credential observation and scheduling are explicit portable
 primitives. Compile-only kernel/FreeBSD checks do not establish an installed
 runtime, source-byte verification, C6 readiness, restoration or deployment.
+
+The [C9 barriered same-owner coordinator](../../internal/controlledruntime/restart.md) now reconciles actual complete paired ledgers and fresh physical continuity before host component reopen. Mapping hashes alone remain inert; guest RESUME and replacement native/exporter owners stay blocked.

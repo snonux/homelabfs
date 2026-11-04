@@ -157,6 +157,8 @@ struct Hfs9p_ {
    pthread_mutex_t mutex;
    pthread_t worker;
    bool stopping;
+   bool recovery_paused;
+   uint8_t recovery_hash[32];
    int fd[3];
    Hfs9pEndpoint endpoint;
    Hfs9pVerifier verifier;
@@ -564,7 +566,7 @@ hfs9p_add_session_tuple(Hfs9p *h, const uint8_t *context, size_t length,
    if (pthread_mutex_trylock(&h->mutex))
       return (EAGAIN);
    j = (Hfs9pJson){context, length, h->tokens, 0};
-   error = hfs9p_json_parse(&j);
+   error = h->recovery_paused ? EAGAIN : hfs9p_json_parse(&j);
    if (!error)
       error = _context(&j, 0, id);
    if (!error && (hfs9p_json_key(&j, 0, "fuse_session", &f) ||
@@ -2521,6 +2523,7 @@ hfs9p_exchange(Hfs9pConnection *connection, const uint8_t *request, size_t lengt
    if (error)
       goto done;
    size_t body_length = 0;
+   if (h->recovery_paused) { error = EAGAIN; goto encode; }
    Hfs9pSession *bound = &h->sessions[connection->session];
    if (bound->terminal_phase && (bound->terminal_channel != connection ||
        cell != bound->terminal_guest || channel == 3)) {
@@ -2677,7 +2680,7 @@ _wait_worker_cb(void *arg) {
          }
          for (unsigned i = 0; i < HFS9P_ENTRIES; i++) {
             Hfs9pEntry *e = &h->entries[i];
-            if (e->guest && e->complete && e->wait && !e->final)
+            if (!h->recovery_paused && e->guest && e->complete && e->wait && !e->final)
                (void)_wait_step(h, e);
          }
          pthread_mutex_unlock(&h->mutex);
@@ -2889,6 +2892,32 @@ hfs9p_snapshot(Hfs9p *h, uint8_t **out, size_t *length) {
    int error = _verify(h);
    if (!error)
       error = _snapshot(h, out, length);
+   pthread_mutex_unlock(&h->mutex);
+   return (error);
+}
+
+/* Trusted inherited-management operations only. Pause owns the entire endpoint,
+ * including FETCH coverage and asynchronous polls; no guest wire selects it. */
+int
+hfs9p_pause_owned(Hfs9p *h, uint8_t **bytes, size_t *length) {
+   if (!h || !bytes || !length) return (EINVAL);
+   if (pthread_mutex_trylock(&h->mutex)) return (EAGAIN);
+   int error = h->recovery_paused ? EALREADY : _verify(h);
+   if (!error) {
+      h->recovery_paused = true;
+      error = _snapshot(h, bytes, length);
+      if (!error) memcpy(h->recovery_hash, *bytes + *length - 32, 32);
+   }
+   pthread_mutex_unlock(&h->mutex);
+   return (error);
+}
+
+int
+hfs9p_resume_owned(Hfs9p *h, const uint8_t hash[32]) {
+   if (!h || !hash) return (EINVAL);
+   if (pthread_mutex_trylock(&h->mutex)) return (EAGAIN);
+   int error = !h->recovery_paused || memcmp(hash, h->recovery_hash, 32) ? ESTALE : _verify(h);
+   if (!error) h->recovery_paused = false;
    pthread_mutex_unlock(&h->mutex);
    return (error);
 }

@@ -211,6 +211,10 @@ func (s *Service) issue(b Binding, a fsapi.Attr, kind string, rights uint32, han
 		return Capability{}, fsapi.NoSpace
 	}
 	ss.Grants[token] = &grant{Cap: cap, Ancestors: append([]ancestor(nil), path...), Handle: handle, NoLookup: b.Call.Intent.Opcode == "READDIR" || kind == "ROOT" || kind == "DOMAIN"}
+	if err := s.checkpointAdmissionLocked(false); err != nil {
+		delete(ss.Grants, token)
+		return Capability{}, err
+	}
 	return cap, nil
 }
 func (s *Service) finishLifetime(b Binding, a arguments) {

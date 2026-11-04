@@ -301,4 +301,5 @@ type Service struct {
 	resultMu          sync.Mutex
 	config            Config
 	sessions          map[string]*session
+	checkpointPeers   int
 }

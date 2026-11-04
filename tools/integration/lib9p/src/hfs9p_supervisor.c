@@ -45,6 +45,8 @@ typedef struct {
    bool ready;
    Hfs9pLedger *ledger;
    Hfs9p *backend;
+   uint8_t protected_digest[32];
+   size_t protected_length;
    uint8_t session[16];
    char name[65];
 } Hfs9pSupervisor;
@@ -309,7 +311,12 @@ _claim_cb(void *arg, const Hfs9pEndpoint *e, const uint8_t digest[32]) {
 static int
 _protect_cb(void *arg, const uint8_t *bytes, size_t length) {
    Hfs9pSupervisor *s = arg;
-   return (hfs9p_ledger_protect(s->ledger, bytes, length));
+   int error = hfs9p_ledger_protect(s->ledger, bytes, length);
+   if (!error) {
+      memcpy(s->protected_digest, bytes + length - 32, 32);
+      s->protected_length = length;
+   }
+   return (error);
 }
 
 static void *
@@ -324,6 +331,8 @@ _heartbeat_cb(void *arg) {
       if (error) return (NULL);
    }
 }
+
+#include "hfs9p_recovery.inc"
 
 int
 hfs9p_supervisor_start_tuple(int parent, const char *name, const uint8_t *scope,
@@ -345,6 +354,7 @@ hfs9p_supervisor_start_tuple(int parent, const char *name, const uint8_t *scope,
    return (ENOTSUP);
 #endif
    int error = _socket();
+   if (!error) error = _recovery_socket();
    if (error) return (error);
    if (fstat(CONTROL, &st)) return (errno);
    s->socket_device = st.st_dev; s->socket_inode = st.st_ino;
@@ -450,6 +460,8 @@ hfs9p_supervisor_start_tuple(int parent, const char *name, const uint8_t *scope,
           PTHREAD_CREATE_DETACHED);
       if (!error) error = pthread_create(&heartbeat, &attributes,
           _heartbeat_cb, s);
+      if (!error) error = pthread_create(&heartbeat, &attributes,
+          _recovery_cb, s);
       if (initialized) (void)pthread_attr_destroy(&attributes);
    }
    (void)close(directory);

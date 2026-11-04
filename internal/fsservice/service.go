@@ -23,7 +23,14 @@ func New(ctx context.Context, c Config) (*Service, error) {
 	if err := configure(&c); err != nil {
 		return nil, err
 	}
-	s := &Service{config: c, accepted: make(map[*fsapi.Request]bool), queue: make(chan command, c.Limits.Queue), done: make(chan struct{}), ids: make(map[fsapi.UUID]bool), allocations: make(map[fsapi.ObjectID]bool), lifetimes: make(map[fsapi.ObjectID]*lifetime), handles: make(map[fsapi.OpenHandle]handle), pending: make(map[fsapi.UUID]command), waits: make(map[fsapi.UUID]fsapi.LockOwner), owners: make(map[fsapi.LockOwner]bool), sessions: make(map[fsapi.UUID]bool)}
+	ids := c.restartIDs
+	if ids == nil {
+		ids = make(map[fsapi.UUID]bool)
+	}
+	handleHigh := c.restartHandle
+	c.restartIDs = nil
+	c.restartHandle = 0
+	s := &Service{config: c, accepted: make(map[*fsapi.Request]bool), queue: make(chan command, c.Limits.Queue), done: make(chan struct{}), ids: ids, nextHandle: handleHigh, allocations: make(map[fsapi.ObjectID]bool), lifetimes: make(map[fsapi.ObjectID]*lifetime), handles: make(map[fsapi.OpenHandle]handle), pending: make(map[fsapi.UUID]command), waits: make(map[fsapi.UUID]fsapi.LockOwner), owners: make(map[fsapi.LockOwner]bool), sessions: make(map[fsapi.UUID]bool)}
 	s.setState(Recovering, "replaying-local-history")
 	if err := s.checkRoots(ctx); err != nil {
 		return nil, err
@@ -35,6 +42,9 @@ func New(ctx context.Context, c Config) (*Service, error) {
 		return nil, err
 	}
 	c = s.config
+	restartApplied := c.restartApplied
+	c.restartApplied = nil
+	s.config.restartApplied = nil
 	if err := s.check(ctx); err != nil {
 		return nil, err
 	}
@@ -46,7 +56,11 @@ func New(ctx context.Context, c Config) (*Service, error) {
 	ac.Storage = c.Storage
 	ac.Workspace = c.Workspace.ID
 	ac.Authorizer = s.authorizer()
-	s.applied, err = apply.Replay(ctx, c.Workspace.Data, c.Workspace.Journal, c.Workspace.Progress, reader, s.selection, ac)
+	if restartApplied == nil {
+		s.applied, err = apply.Replay(ctx, c.Workspace.Data, c.Workspace.Journal, c.Workspace.Progress, reader, s.selection, ac)
+	} else {
+		s.applied, err = restartApplied.Reopen(ctx, c.Workspace.Data, c.Workspace.Journal, c.Workspace.Progress, reader, ac.Authorizer)
+	}
 	closeErr := reader.Close()
 	if err != nil {
 		return nil, err

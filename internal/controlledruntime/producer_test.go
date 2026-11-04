@@ -100,6 +100,10 @@ func newSourceRigDomainsBootstrap(t *testing.T, protocol guestbridge.Protocol, c
 }
 
 func newSourceRigDomainsBootstrapFailpoint(t *testing.T, protocol guestbridge.Protocol, count int, idmap string, hello bool, failpoint func(int, string) error, additional ...guestbridge.Credentials) *sourceRig {
+	return newSourceRigDomainsOwnedSupervisor(t, protocol, count, idmap, hello, failpoint, nil, additional...)
+}
+
+func newSourceRigDomainsOwnedSupervisor(t *testing.T, protocol guestbridge.Protocol, count int, idmap string, hello bool, failpoint func(int, string) error, supervisor *Supervisor, additional ...guestbridge.Credentials) *sourceRig {
 	t.Helper()
 	temporary := t.TempDir
 	if !hello {
@@ -117,7 +121,10 @@ func newSourceRigDomainsBootstrapFailpoint(t *testing.T, protocol guestbridge.Pr
 		})
 		temporary = func() string { dir, err := os.MkdirTemp(root, "resource-"); require(t, err); return dir }
 	}
-	r := &sourceRig{t: t, temporary: temporary, supervisor: runningFixture(t)}
+	if supervisor == nil {
+		supervisor = runningFixture(t)
+	}
+	r := &sourceRig{t: t, temporary: temporary, supervisor: supervisor}
 	endpoint := guestbridge.Endpoint{FuseSession: testUUID(43).String(), CommandNode: 2, ResultNode: 3, RecallNode: 4}
 	// Only actual mount/INIT/native headers and guest credentials are primitive
 	// fixtures. All child process/groups, bridge, service, journals, claims,

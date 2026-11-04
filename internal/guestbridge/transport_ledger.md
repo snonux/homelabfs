@@ -2,10 +2,11 @@
 
 `NewDurableTransport` exclusively creates a disposable private root. Runtime
 assembly must explicitly select it; `NewTransport` remains the memory-only
-component constructor. Neither constructor restores an endpoint. No restore,
-controller handoff, RESUME, native admission or physical exclusion authority is
-provided by C8. C9 must reconcile the transport, capability, provider, service,
-view/source and supervised endpoint ledgers before any recovery can admit work.
+component constructor. Neither constructor restores an endpoint. C8 alone provides no native admission
+or physical exclusion authority. The [C9 private coordinator](../controlledruntime/restart.md)
+reconciles actual complete ledgers and fresh physical continuity for a barriered
+same-owner component restart. Guest RESUME and replacement native owners remain
+blocked. Older records without complete bridge-session rows are inspection only.
 
 Creation pins the naming parent, uses Mkdirat/Openat for the exact new child,
 and retains that parent descriptor until the initial typed ledger has committed.
@@ -83,3 +84,5 @@ private/second-owner refusals, bounded row reuse and damaged-row refusal. Fixtur
 native identities and HELLO responses are portable component primitives. No
 FreeBSD mount, guest kernel, deployed runtime or physical-pressure acceptance is
 claimed by these checks.
+
+Complete per-scope bridge-session rows share each response/protection transaction. Their aggregate encoding is bounded to8MiB, with ordinary admission reserving maximum control-closure growth before protected effects; no row/index/file or1GiB memory allowance is increased.

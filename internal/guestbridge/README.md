@@ -85,12 +85,13 @@ lifetime schema 2. Old unclassified snapshots/ledgers are refused, and older
 readers cannot open the new exact ledger scope. There is no in-place migration
 or authority to delete old ledgers; use new disposable lab resources.
 
-RESUME currently returns BLOCKED: no controller ledger reconstruction/install
-API is implemented. An opaque Views callback, matching UUIDs or a hash-only
+Guest RESUME returns BLOCKED: its wire request cannot supply the private
+same-native barrier and live continuity grant required by C9. An opaque Views callback, matching UUIDs or a hash-only
 manifest cannot produce RECONCILED. The cell high-water/floors, immutable response
 bytes/receipt state and issued capability ledgers must actually survive or be
 verified reconstructed before this can be opened. Same-process retained state
-is not discarded, but this component does not yet activate session recovery.
+is not discarded. Activation requires the private same-owner C9 coordinator
+and cannot be supplied by this component or a decoded record.
 A new Service is never an allocator reset/recovery mechanism for an issued
 endpoint. Real provider/recovery work must preserve that refusal.
 
@@ -156,3 +157,5 @@ at12 per session, leaving four assembly slots for control, alongside the
 independent16 global control credits. PENDING replies must be received and
 released promptly while bounded controller tickets retain their independent
 resources. This boundary supplies no unbounded waiter or timeout expiration.
+
+The controlled runtime supports [barriered same-native component restart](../controlledruntime/restart.md). Complete C8 session rows and private transferred funding are required; inspection alone never authorizes restoration. Guest RESUME, replacement FUSE/exporter owners and incomplete cuts remain blocked.

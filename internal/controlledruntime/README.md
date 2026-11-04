@@ -3,17 +3,18 @@
 This package implements C3 of `docs/lab/Controlled-runtime-integration.md`.
 It owns one disposable endpoint, exporter process and private issuance root.
 It also implements the C5 live Facts/source/receipt owner described below.
-It does not provide guest credential attestation, transport recovery, normal
-publication, an installed driver, or deployment acceptance.
+It also implements the narrow [barriered C9 component restart](restart.md).
+It does not provide guest credential attestation, normal publication, an installed
+driver, or deployment acceptance.
 
 `Create` exclusively creates a private root and locks its ownership file. `Start`
 consumes its fresh stage before trying to launch. The exact SHA-256-admitted
 executable is copied exclusively, synced, made read-only and executed through
-its retained descriptor, with management socket fd 3 and executable fd 4.
+its retained descriptor, with management socket fd 3, executable fd 4 and pinned recovery socket fd 5.
 No guest-selected executable, socket path or reconnect is accepted. Failed
 startup files and uncertain mounts remain in place. `Open` refuses missing
-ledgers; an issued/attempted root cannot launch a replacement. No RESUME or
-restoration is enabled. `Close` fences admission and closes the management
+ledgers; an issued/attempted root cannot launch a replacement. Guest RESUME and replacement native-owner restoration remain blocked; only
+the same-owner barriered component path described in [C9](restart.md) is supported. `Close` fences admission and closes the management
 socket/owner lock; it does not kill, unmount, delete, or retire obligations.
 The supervised exporter must stop serving on management EOF.
 
@@ -76,7 +77,7 @@ No timeout retires anything. Payload unions:
 | Opcode | Exact payload |
 | --- | --- |
 | 1 CLAIM | endpoint (40 bytes) + protected ledger digest (32 bytes) |
-| 2 RECONCILE | endpoint + protected ledger digest (72 bytes); always BLOCKED until C8/C9 |
+| 2 RECONCILE | endpoint + protected ledger digest (72 bytes); always BLOCKED for replacement ownership; C9 uses fd5 |
 | 3 VERIFY | endpoint + controller UUID + uint64 observation sequence + three 40-byte native fd observations (184 bytes) |
 | 4 TUPLE (host to child only) | endpoint + controller UUID (56 bytes), sequence 0, exactly three SCM_RIGHTS descriptors |
 | request opcode OR 0x80 | uint32 status (4 bytes): 0 success, 1 denied, 2 malformed, 3 blocked |
@@ -224,7 +225,8 @@ and rereads every original prefix frame through the backing OS roots under a
 nonblocking source read cut. Writers/capture/flush/close hold the matching write
 cut. It never queues another service request or walks FUSE paths. This is trusted
 live-capture provenance, not independent historical replay. Serialized/reopened
-sources lose the seal and refuse until C9 reconstructs correspondence. The seal
+sources lose the seal. [C9](restart.md) can recapture and reseal exact current
+correspondence through the real new service worker; historical cuts still refuse. The seal
 contains immutable metadata/digests, never aliases State bytes, has no global
 registry, and lives/dies within the controller's existing bounded source slots.
 

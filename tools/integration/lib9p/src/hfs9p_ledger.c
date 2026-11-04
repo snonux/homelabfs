@@ -217,3 +217,28 @@ hfs9p_ledger_protect(Hfs9pLedger *l, const uint8_t *bytes, size_t length) {
     * them to turn uncertainty into a fresh endpoint or native admission. */
    return (error);
 }
+
+int
+hfs9p_ledger_matches(Hfs9pLedger *l, const uint8_t *bytes, size_t length) {
+   if (!l || _ledger_check(bytes, length)) return (EINVAL);
+   int fd = openat(l->directory, l->name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+   if (fd < 0) return (errno);
+   struct stat st;
+   int error = fstat(fd, &st) ? errno : 0;
+   if (!error && (!S_ISREG(st.st_mode) || st.st_nlink != 1 ||
+       st.st_uid != geteuid() || (st.st_mode & 077) || st.st_size < 0 ||
+       (uint64_t)st.st_size != length)) error = ESTALE;
+   size_t offset = 0;
+   uint8_t chunk[4096];
+   while (!error && offset < length) {
+      size_t n = length - offset;
+      if (n > sizeof(chunk)) n = sizeof(chunk);
+      ssize_t got = read(fd, chunk, n);
+      if (got < 0 && errno == EINTR) continue;
+      if (got <= 0) error = got ? errno : EIO;
+      else if (memcmp(chunk, bytes + offset, (size_t)got)) error = ESTALE;
+      else offset += (size_t)got;
+   }
+   if (close(fd) && !error) error = errno;
+   return (error);
+}

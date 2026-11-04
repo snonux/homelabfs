@@ -54,6 +54,7 @@ type Facts interface {
 // Config requires an existing private ledger directory, actual local service,
 // signed endpoint enrollment and an independent live component fact verifier.
 type Config struct {
+	restartFile                                                           os.FileInfo
 	Directory                                                             string
 	Initialize                                                            bool
 	Service                                                               *fsservice.Service
@@ -69,6 +70,7 @@ type Config struct {
 
 // Provider owns a single locked durable ledger and its exact enrolled scope.
 type Provider struct {
+	file        os.FileInfo
 	config      Config
 	db          *bolt.DB
 	execution   sync.Mutex
@@ -213,11 +215,12 @@ func New(ctx context.Context, c Config) (*Provider, error) {
 			return nil, err
 		}
 	}
-	db, err := bolt.Open(filename, 0600, &bolt.Options{Timeout: time.Millisecond * 100})
+	var actualFile os.FileInfo
+	db, err := bolt.Open(filename, 0600, &bolt.Options{Timeout: time.Millisecond * 100, OpenFile: restartLedgerOpener(c.restartFile, &actualFile)})
 	if err != nil {
 		return nil, err
 	}
-	p := &Provider{config: c, db: db, admission: c.Admission}
+	p := &Provider{config: c, db: db, file: actualFile, admission: c.Admission}
 	err = db.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucketIfNotExists([]byte(ledgerVersion))
 		if err != nil {
