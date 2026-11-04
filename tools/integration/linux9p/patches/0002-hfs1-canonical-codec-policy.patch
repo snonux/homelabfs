@@ -7,7 +7,7 @@ diff --git a/fs/9p/hfs_protocol.h b/fs/9p/hfs_protocol.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_protocol.h
-@@ -0,0 +1,157 @@
+@@ -0,0 +1,159 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_PROTOCOL_H
 +#define FS_9P_HFS_PROTOCOL_H
@@ -17,6 +17,7 @@ new file mode 100644
 +#include <linux/uuid.h>
 +#endif
 +
++#define HFS_RECEIPT_UNSIGNED_MAX 16384U
 +#define HFS_BODY_MAX 1048576U
 +#define HFS_VIEW_BODY_MAX 131072U
 +#define HFS_CHUNK_MAX 32768U
@@ -149,6 +150,7 @@ new file mode 100644
 +	HFS_ATTESTATION_SOURCE = 1,
 +	HFS_ATTESTATION_EVENT,
 +	HFS_ATTESTATION_FLOOR,
++	HFS_ATTESTATION_VIEW_FLOOR,
 +};
 +struct hfs_mapped_attestation {
 +	enum hfs_attestation_kind kind;
@@ -169,7 +171,7 @@ diff --git a/fs/9p/hfs_protocol.c b/fs/9p/hfs_protocol.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_protocol.c
-@@ -0,0 +1,1646 @@
+@@ -0,0 +1,1671 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Bounded canonical retained-9p wire codec. Schema validation is the caller's. */
 +#include "hfs_protocol.h"
@@ -447,14 +449,22 @@ new file mode 100644
 +
 +void hfs_json_free(struct hfs_json *json)
 +{
++	void *owner;
++	void (*owner_put)(void *owner);
++
 +	if (!json)
 +		return;
-+	hfs_received_forget(json);
-+	if (json->owner_put)
-+		json->owner_put(json->owner);
++	owner = json->owner;
++	owner_put = json->owner_put;
 +	kvfree(json->tokens);
 +	kvfree(json->data);
++	/* Remove identity associations before reusing the json address. The
++	 * caller owner remains held until the entire allocated parse is gone.
++	 */
++	hfs_received_forget(json);
 +	kfree(json);
++	if (owner_put)
++		owner_put(owner);
 +}
 +
 +static bool hfs_token_valid(const struct hfs_json *j, int token)
@@ -1637,6 +1647,23 @@ new file mode 100644
 +		out->kind = HFS_ATTESTATION_EVENT;
 +		request = event;
 +		original = response;
++	} else if (hfs_json_is(response, kind, "\"VIEW_FLOOR\"")) {
++		u64 through, floor;
++
++		if (!hfs_json_is(original, op, "\"VIEW_RETIRE\"") ||
++		    hfs_json_exact(response, evidence,
++			"anchor,credentials,nonce,proof_hash,through") ||
++		    hfs_json_exact(response, payload, "floor,proof_hash,status") ||
++		    !hfs_mapped_hex32(response, evidence, "proof_hash") ||
++		    !hfs_json_is(response, hfs_json_field(response, payload, "status"), "\"RETIRED\"") ||
++		    hfs_json_u64(original, hfs_json_field(original, request, "through"), &through) ||
++		    hfs_json_u64(response, hfs_json_field(response, payload, "floor"), &floor) ||
++		    !through || floor != through ||
++		    !hfs_mapped_equal(response, hfs_json_field(response, payload, "proof_hash"),
++			response, hfs_json_field(response, evidence, "proof_hash")))
++			return -ESTALE;
++		fields = "anchor,nonce,through,credentials";
++		out->kind = HFS_ATTESTATION_VIEW_FLOOR;
 +	} else if (hfs_json_is(response, kind, "\"FLOOR\"")) {
 +		u64 through, floor;
 +
@@ -1804,7 +1831,7 @@ new file mode 100644
 +			 signature, &len) ||
 +	    len != sizeof(signature))
 +		return -EPROTO;
-+	err = hfs_buf_init(&message, 16384);
++	err = hfs_buf_init(&message, HFS_RECEIPT_UNSIGNED_MAX);
 +	if (err)
 +		return err;
 +	err = hfs_mapped_fields(response, receipt, unsigned_fields, &message);

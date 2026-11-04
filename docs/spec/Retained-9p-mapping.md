@@ -133,6 +133,27 @@ through/proof matching. Its result is an inert verified **host attestation**.
 It does not independently observe the native legs, validate source bytes or
 create a KernelReceived, installed object, event or retirement permission.
 
+## View retirement receipt
+
+Controlled1.4 receipt2 additionally admits `kind:VIEW_FLOOR`, only for the
+already existing VIEW_RETIRE operation. Its exact evidence is
+`{anchor:uuid,nonce:uuid,through:n64,proof_hash:hash,credentials:Credentials}`.
+Anchor, nonce, through and the complete original credentials must equal the
+actual original view retirement request; the response must be RETIRED with
+`floor == through` and the same nonnull proof hash. Scope, endpoint, controller,
+serving generation, original/native mapping, channel, signature and existing
+receipt-size limits remain mandatory. Unknown fields refuse.
+
+The producer verifies the actual controller's already protected exact
+VIEW_RETIRE receipt before minting this kind. A decoded attestation cannot
+create private guest receipt provenance or permit ticket destruction. The
+provider additionally matches its still-owned contiguous family prefix and
+borrowed complete transported response before the caller frees any ticket.
+Ordinary FLOOR remains RETIRE-only and retains its realm/subject/full-original
+rules. Receipt1 and protocols0..3 refuse VIEW_FLOOR. This uses the existing
+controlled1.4/features16383 tuple; it does not select or implement the separate
+[terminal-session extension](Retained-9p-session-retirement.md).
+
 ## Fixed bounds
 
 No1MiB body, 4MiB canary, cell count, 8MiB protected-row, 128KiB index or existing

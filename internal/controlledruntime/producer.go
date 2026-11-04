@@ -136,6 +136,8 @@ func (p *Producer) produce(ctx context.Context, c guestbridge.Command, response 
 		return nil, nil
 	case c.Op == "RETIRE":
 		kind, evidence, err = p.floor(ctx, c, body.Payload)
+	case c.Op == "VIEW_RETIRE" && c.Protocol != nil && *c.Protocol == guestbridge.MappedProtocol():
+		kind, evidence, err = p.viewFloor(ctx, c, body.Payload)
 	case c.Op == "VIEW_POLL" || c.Op == "VIEW_ACK" || isViewOperation(c.Op):
 		kind, evidence, err = p.controller.ReceiptEvidence(ctx, c, body.Payload)
 	}
@@ -159,8 +161,12 @@ func (p *Producer) produce(ctx context.Context, c guestbridge.Command, response 
 	if err != nil {
 		return nil, err
 	}
-	if _, err = guestbridge.DecodeVerificationReceipt(raw); err != nil {
-		return nil, err
+	// VIEW_FLOOR is emitted only through ProduceMapped, which validates the
+	// complete V2 receipt after adding its protected original/native mapping.
+	if kind != "VIEW_FLOOR" {
+		if _, err = guestbridge.DecodeVerificationReceipt(raw); err != nil {
+			return nil, err
+		}
 	}
 	return &r, nil
 }
@@ -212,6 +218,34 @@ func (p *Producer) floor(ctx context.Context, c guestbridge.Command, payload jso
 	}
 	evidence, err := canonicalJSON(map[string]any{"realm": request.Realm, "subject": request.Subject, "anchor": request.Anchor, "nonce": request.Nonce, "through": request.Through, "proof_hash": reply.ProofHash, "credentials": request.Credentials})
 	return "FLOOR", evidence, err
+}
+
+// viewFloor consumes only the actual controller's protected original receipt.
+func (p *Producer) viewFloor(ctx context.Context, c guestbridge.Command, payload json.RawMessage) (string, json.RawMessage, error) {
+	if err := p.controller.CheckResponse(ctx, c.Context, c.Op, c.Payload, payload); err != nil {
+		return "", nil, err
+	}
+	var reply struct {
+		Status    string
+		Floor     uint64
+		ProofHash string `json:"proof_hash"`
+	}
+	if json.Unmarshal(payload, &reply) != nil {
+		return "", nil, fsapi.Invalid
+	}
+	if reply.Status != "RETIRED" {
+		return "", nil, nil
+	}
+	var request struct {
+		Anchor, Nonce string
+		Through       uint64
+		Credentials   guestbridge.Credentials
+	}
+	if json.Unmarshal(c.Payload, &request) != nil || reply.Floor != request.Through {
+		return "", nil, fsapi.Stale
+	}
+	evidence, err := canonicalJSON(map[string]any{"anchor": request.Anchor, "nonce": request.Nonce, "through": request.Through, "proof_hash": reply.ProofHash, "credentials": request.Credentials})
+	return "VIEW_FLOOR", evidence, err
 }
 
 func unsignedReceipt(r guestbridge.VerificationReceipt) ([]byte, error) {

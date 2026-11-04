@@ -70,16 +70,55 @@ struct fixture_session {
  struct virtio_device device;
  struct super_block super;
  struct hfs_cred credential;
+ struct hfs_cred captures[2];struct hfs_buf capture_bytes[2];unsigned nr_captures;
+ struct hfs_cap *adopted_caps[32];unsigned nr_adopted_caps;
  struct cred native_cred;
  struct hfs_buf credentials;
  struct hfs_json *latest,*ordinary_result;
  struct hfs_cap *root,*description;
  struct hfs_lease *lease;
+ struct hfs_cache_page *dirty_page;
+ struct hfs_dirty *dirty;
+ struct folio folio;
+ bool actual_result;
+ struct hfs_json *held_results[32];unsigned nr_held_results;
+ struct hfs_json *result_pressure[2048], *query_pressure;unsigned nr_result_pressure;
+ struct hfs_json *event_pressure[HFS_MMAP_EVENTS_MAX+1];unsigned nr_event_pressure;
+ void *parked_carrier,*parked_received,*floor_pressure[2],*global_control_pressure;
+ void *pressure[4096];unsigned nr_pressure;
  struct hfs_mmap_control physical;
 };
+static void *hello_parse, *hello_data, *hello_tokens, *hello_candidate;
+static unsigned hello_freed;
+void primitive_free(void *pointer) {
+ if(pointer&&hello_candidate){
+  if(pointer==hello_tokens)hello_freed|=1;
+  if(pointer==hello_data)hello_freed|=2;
+  if(pointer==hello_parse)hello_freed|=4;
+  if(pointer==hello_candidate){assert(hello_freed==7);hello_freed|=8;}
+ }
+ free(pointer);
+}
 static struct fixture_session fixtures[64];
+static struct fixture_session *late_borrow;
+static u64 late_borrow_floor;
+void primitive_after_mutex_unlock(struct mutex *lock) {
+ if(lock==&hfs_controlled_lock&&late_borrow&&hfs_controlled_mount(&late_borrow->session)->ordinary_floor==late_borrow_floor){
+  struct fixture_session *f=late_borrow;late_borrow=NULL;
+  struct hfs_request *request=container_of(f->session.requests.next,struct hfs_request,list);
+  assert(!request->users&&request->result&&request->terminal&&request->adopted&&!f->ordinary_result);
+  assert(!hfs_request_result_borrow(request,&f->ordinary_result));assert(request->users==1);
+ }
+}
 static Hfs9p *carrier;
 static unsigned current_command;
+static char fault_operation[32];
+static unsigned fault_mode;
+static bool fault_reply;
+static size_t fault_scratch, pending_scratch;
+bool primitive_allocation_size_failure(size_t length) {
+ if(fault_scratch&&length==fault_scratch){fault_scratch=0;return true;}return false;
+}
 static char *read_line(void) { char *line=NULL;size_t cap=0;ssize_t n=getline(&line,&cap,stdin);assert(n>0);if(line[n-1]=='\n')line[n-1]=0;return line; }
 static void emit_hex(const void *bytes,size_t length) { const u8 *p=bytes;for(size_t i=0;i<length;i++)printf("%02x",p[i]); }
 static size_t decode_hex(const char *s,void *out,size_t capacity) { size_t n=strlen(s)/2;assert(strlen(s)%2==0&&n<=capacity);u8 *p=out;for(size_t i=0;i<n;i++){int a=_hex_digit(s[i*2]),b=_hex_digit(s[i*2+1]);assert(a>=0&&b>=0);p[i]=a*16+b;}return n; }
@@ -100,9 +139,17 @@ static int claim_cb(void *arg,const Hfs9pEndpoint *e,const u8 hash[32]) { return
 static int protect_cb(void *arg,const u8 *p,size_t n) { return hfs9p_ledger_protect(arg,p,n); }
 static int primitive_rpc_exchange(struct p9_client *client,u16 tag,u8 op,u8 channel,u64 cell,u32 chunk,const void *request,u32 request_len,void *reply,u32 *reply_len) {
  unsigned index;for(index=0;index<64;index++)if(client==&fixtures[index].client)break;assert(index<carrier->session_count);
- int err;if(op==1){err=_send(carrier,index,tag,request,request_len);if(err)return -err;assert(*reply_len>=1);*(u8 *)reply=1;*reply_len=1;return 0;}
+ int err;if(op==1){
+  if(fault_mode){
+   const void *body=NULL;u32 total=0,body_len=0;u8 hash[32];struct hfs_json *original=NULL;
+   assert(!hfs_frame_decode_version(4,request,request_len,1,&fixtures[index].session.enrollment.session,cell,chunk,&total,hash,&body,&body_len));
+   assert(!chunk&&total==body_len&&!hfs_json_parse(body,body_len,&original));
+   char operation[32];assert(hfs_json_string(original,hfs_json_field(original,0,"op"),operation,sizeof(operation))>=0);hfs_json_free(original);
+   if(!strcmp(operation,fault_operation)){unsigned mode=fault_mode;fault_mode=0;if(mode==1)return -EIO;if(mode==2)fault_reply=true;else pending_scratch=!strcmp(operation,"RETIRE")?HFS_BODY_MAX:HFS_VIEW_BODY_MAX;}
+  }
+  err=_send(carrier,index,tag,request,request_len);if(err)return -err;assert(*reply_len>=1);*(u8 *)reply=1;*reply_len=1;return 0;}
  assert(op==2&&*reply_len>1);size_t length=0;err=_fetch(carrier,index,cell,chunk,channel,(u8 *)reply+1,*reply_len-1,&length);
- if(err==EAGAIN){*(u8 *)reply=2;*reply_len=1;return 0;}if(err)return -err;*(u8 *)reply=3;*reply_len=length+1;return 0;
+ if(err==EAGAIN){*(u8 *)reply=2;*reply_len=1;return 0;}if(err)return -err;if(fault_reply){fault_reply=false;return -EIO;}if(pending_scratch){fault_scratch=pending_scratch;pending_scratch=0;}*(u8 *)reply=3;*reply_len=length+1;return 0;
 }
 /* Actual net9p exchange body, with the native RPC/tag allocator substituted.
  * P9_NOTAG is a request for an allocated ordinary tag, never a wire tag.
@@ -138,7 +185,7 @@ void hfs_mmap_progress(struct hfs_session *session) { (void)session; }
 static void copy_json(const struct hfs_json *json,int token,struct hfs_json **out) { assert(token>=0);assert(!hfs_json_parse(json->data+json->tokens[token].start,json->tokens[token].end-json->tokens[token].start,out)); }
 static int number(const struct hfs_json *j,int object,const char *name,u64 *out) { return hfs_json_u64(j,hfs_json_field(j,object,name),out); }
 static void credential_init(struct fixture_session *f,const struct hfs_json *j,int token) {
- struct hfs_cred *c=&f->credential;u64 n;u32 length=32;
+ struct hfs_cred *c=&f->credential;memset(c,0,sizeof(*c));memset(&f->credentials,0,sizeof(f->credentials));u64 n;u32 length=32;
  assert(!number(j,token,"credential_revision",&c->revision));
  assert(!number(j,token,"fsuid",&n)&&n<=UINT32_MAX);c->uid=n;
  assert(!number(j,token,"fsgid",&n)&&n<=UINT32_MAX);c->gid=n;
@@ -155,9 +202,9 @@ static void credential_init(struct fixture_session *f,const struct hfs_json *j,i
 static void session_init(unsigned i) {
  struct fixture_session *f=&fixtures[i];struct hfs_session *s=&f->session;
  struct hfs_controlled_mount *mount=hfs_controlled_registry->mounts[i];
- s->provider=hfs_provider;s->bridge_minor=4;s->client=&f->client;s->next_cell=1;
+ s->provider=hfs_provider;s->bridge_minor=4;s->client=&f->client;s->next_cell=1;s->next_claim=1;
  mutex_init(&s->lock);mutex_init(&s->writer);mutex_init(&s->retirement);
- INIT_LIST_HEAD(&s->global);
+ INIT_LIST_HEAD(&s->global);INIT_LIST_HEAD(&s->descriptions);INIT_LIST_HEAD(&s->processes);INIT_LIST_HEAD(&s->forgets);INIT_LIST_HEAD(&s->object_numbers);
  INIT_LIST_HEAD(&s->uncertain);INIT_LIST_HEAD(&s->requests);INIT_LIST_HEAD(&s->view_tickets);INIT_LIST_HEAD(&s->view_families);
  assert(!s->provider->enroll(mount->device_tag,&s->enrollment));
  assert(!hfs_enrollment_validate(&s->enrollment));
@@ -176,7 +223,12 @@ static void session_init(unsigned i) {
  assert(hfs_control(s,"ALLOCATE",&hello,false,&response)<0&&!response);
  assert(hfs_control(s,"HELLO",&hello,true,&response)<0&&!response);
  struct hfs_buf malformed={.data="{}",.len=2};assert(hfs_control(s,"HELLO",&malformed,false,&response)<0&&!response);
- assert(!hfs_control(s,"HELLO",&hello,false,&response));hfs_json_free(response);
+ u64 hello_before=hfs_controlled_control_used;u32 hello_credits=hfs_controlled_nr_control_credits;
+ assert(!hfs_control(s,"HELLO",&hello,false,&response));assert(response->owner&&response->owner_put==hfs_candidate_parse_put);
+ assert(hfs_controlled_control_used>hello_before&&hfs_controlled_nr_control_credits==hello_credits+1&&hfs_received_require(s,response,0)<0);
+ hello_parse=response;hello_tokens=response->tokens;hello_data=response->data;hello_candidate=response->owner;hello_freed=0;
+ hfs_json_free(response);assert(hello_freed==15&&hfs_controlled_control_used==hello_before&&hfs_controlled_nr_control_credits==hello_credits);
+ hello_parse=hello_data=hello_tokens=hello_candidate=NULL;
  f->super=(struct super_block){.s_fs_info=s,.s_dev=1000+i,.s_user_ns=&init_user_ns};
  assert(!hfs_controlled_bind_super(s,&f->super));
  accounting_regression(s);
@@ -185,6 +237,7 @@ static void session_init(unsigned i) {
 }
 static void done(unsigned id,int error,const void *body,size_t length) { printf("D %u %d ",id,error);if(body&&length)emit_hex(body,length);else printf("-");puts("");fflush(stdout); }
 static int fixture_result(struct fixture_session *f,const char *opcode) {
+ if(f->actual_result)return hfs_result_validate(&f->session,f->ordinary_result,opcode,&f->credentials);
  struct hfs_json *reply=f->latest,*result=NULL;if(!reply)return -EINVAL;
  int payload=hfs_json_field(reply,0,"payload");
  if(!hfs_json_is(reply,hfs_json_field(reply,payload,"status"),"\"TERMINAL\""))return -EPROTO;
@@ -198,7 +251,7 @@ static int fixture_check(struct fixture_session *f,const char *check) {
  int token=-1,err=-EINVAL;void *cookie=NULL;
  if(!strcmp(check,"cookie_balance"))return hfs_controlled_nr_cookies?-EUCLEAN:0;
  if(!strcmp(check,"cap")){struct hfs_cap *cap=f->description?f->description:f->root;if(!cap)return -EINVAL;u32 before=hfs_controlled_nr_cookies;err=s->provider->enter(s,cap,false,&cookie);if(!err){if(!cookie||hfs_controlled_nr_cookies!=before+1)return -EUCLEAN;s->provider->leave(s,cookie);if(hfs_controlled_nr_cookies!=before)return -EUCLEAN;}return err;}
- if(!strcmp(check,"retirement_refuses")){u8 zero[32]={0};return s->provider->retirement(s,1,zero,f->latest)<0&&s->provider->view_retirement(s,&f->credentials,1,zero)<0&&s->provider->retire_session(s)<0?0:-EUCLEAN;}
+ if(!strcmp(check,"retirement_refuses")){u8 zero[32]={0};return s->provider->retirement(s,1,zero,f->latest)<0&&s->provider->view_retirement(s,&f->credentials,1,zero,f->latest)<0&&s->provider->retire_session(s)<0?0:-EUCLEAN;}
  if(!strcmp(check,"bad_device")){
   f->device.dev.registered=false;err=hfs_controlled_admissible(s);f->device.dev.registered=true;if(err>=0)return -EUCLEAN;
   struct virtio_device impostor={.dev={.references=1,.registered=true,.name=f->device.dev.name},.priv=&f->channel};
@@ -237,6 +290,232 @@ static void command(char *line) {
  char operation[32];unsigned id,index;int consumed=0;
  assert(sscanf(line,"%31s %u %u %n",operation,&id,&index,&consumed)>=3&&index<hfs_controlled_registry->nr_mounts);
  current_command=id;struct fixture_session *f=&fixtures[index];
+ if(!strcmp(operation,"RELEASE_NEGATIVES")){
+  struct hfs_controlled_mount *mount=hfs_controlled_mount(&f->session);u32 ordinary=mount->ordinary_credits,control=mount->control_credits;u64 next=f->session.next_cell;
+  struct hfs_buf ack={0};struct hfs_json *out=NULL;assert(!hfs_buf_init(&ack,256));
+  hfs_buf_printf(&ack,"{\"cell\":%llu,\"response_hash\":",f->session.cells[0].number);hfs_buf_hex(&ack,f->session.cells[0].hash,32);hfs_buf_literal(&ack,"}");assert(ack.len<=128);
+  assert(!fault_scratch);fault_scratch=sizeof(struct hfs_json);
+  assert(hfs_control(&f->session,"RELEASE_CELL",&ack,true,&out)==-ENOMEM&&!out&&!fault_scratch);
+  assert(next==f->session.next_cell&&ordinary==mount->ordinary_credits&&control==mount->control_credits);
+  memset(ack.data,' ',129);ack.len=129;assert(hfs_control(&f->session,"RELEASE_CELL",&ack,true,&out)==-EINVAL&&!out);
+  assert(next==f->session.next_cell&&ordinary==mount->ordinary_credits&&control==mount->control_credits);
+  hfs_buf_free(&ack);done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"READDIR_CLEAN")){
+  struct hfs_session *session=&f->session;assert(f->ordinary_result&&f->ordinary_result->owner);
+  session->closing=true;assert(!session->provider->stop(session));session->retained=true;session->provider->retain(session);
+  struct hfs_buf fake={.data="{}",.len=2};struct hfs_json *out=NULL;u64 next=session->next_cell;
+  assert(hfs_control(session,"READDIR_CLEANUP",&fake,true,&out)==-EACCES&&!out&&next==session->next_cell);
+  done(id,hfs_readdir_forget(session,f->ordinary_result,&f->credential),NULL,0);return;
+ }
+ if(!strcmp(operation,"CLOSE_PENDING")){
+  struct hfs_session *session=&f->session;struct hfs_controlled_mount *mount=hfs_controlled_mount(session);assert(f->dirty&&f->dirty->adopted&&f->dirty->request->held);
+  u32 ordinary=mount->ordinary_credits,control=mount->control_credits,cookies=mount->cookies,requests=session->nr_requests;
+  assert(hfs_retire(session)==-EAGAIN&&hfs_view_retire(session)==-EAGAIN);
+  session->closing=true;assert(session->provider->stop(session)==-EBUSY);session->retained=true;session->provider->retain(session);
+  assert(mount->session==session&&mount->retained&&mount->stopping&&f->dirty->request->held&&f->dirty->credit&&f->dirty->request->reservation);
+  assert(ordinary==mount->ordinary_credits&&control==mount->control_credits&&cookies==mount->cookies&&requests==session->nr_requests);
+  assert(session->provider->retire_session(session)==-EBUSY);done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"LATE_BORROW")){assert(!late_borrow);late_borrow=f;late_borrow_floor=strtoull(line+consumed,NULL,10);assert(late_borrow_floor>hfs_controlled_mount(&f->session)->ordinary_floor);done(id,0,NULL,0);return;}
+ if(!strcmp(operation,"DROP_RESULTS")){hfs_json_free(f->ordinary_result);f->ordinary_result=NULL;while(f->nr_held_results)hfs_json_free(f->held_results[--f->nr_held_results]);done(id,0,NULL,0);return;}
+ if(!strcmp(operation,"FLOOR_NEGATIVES")){
+  struct hfs_json *response=f->latest;int payload=hfs_json_field(response,0,"payload");u64 floor;u8 proof[32],wrong[32];u32 length=32;
+  assert(!number(response,payload,"floor",&floor)&&!hfs_json_hex(response,hfs_json_field(response,payload,"proof_hash"),proof,&length)&&length==32);
+  u64 previous=hfs_controlled_mount(&f->session)->ordinary_floor;u32 count=f->session.nr_requests;
+  memcpy(wrong,proof,32);wrong[0]^=1;assert(f->session.provider->retirement(&f->session,floor,wrong,response)<0);
+  assert(f->session.provider->retirement(&f->session,floor+1,proof,response)<0);
+  struct hfs_json *detached=NULL;assert(!hfs_json_parse(response->data,response->len,&detached));detached->transported=true;
+  assert(f->session.provider->retirement(&f->session,floor,proof,detached)<0);hfs_json_free(detached);
+  struct hfs_request *request=container_of(f->session.requests.next,struct hfs_request,list);
+  struct hfs_json *credentials=NULL;assert(!hfs_json_parse(request->credentials.data,request->credentials.len,&credentials));
+  const char *fields[]={"groups","process","credential_revision","user_namespace","idmap_hash"};
+  for(unsigned i=0;i<ARRAY_SIZE(fields);i++){
+   int token=hfs_json_field(credentials,0,fields[i]);assert(token>=0);u32 offset=credentials->tokens[token].start;
+   if(credentials->tokens[token].kind==HFS_STRING||credentials->tokens[token].kind==HFS_ARRAY)offset++;
+   char old=request->credentials.data[offset];request->credentials.data[offset]=old=='1'?'2':'1';
+   assert(f->session.provider->retirement(&f->session,floor,proof,response)<0);request->credentials.data[offset]=old;
+  }
+  hfs_json_free(credentials);assert(previous==hfs_controlled_mount(&f->session)->ordinary_floor&&count==f->session.nr_requests);done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"GAP_NEGATIVES")){
+  struct hfs_request *request=container_of(f->session.requests.prev,struct hfs_request,list);assert(request->gap&&request->terminal&&request->adopted&&!request->result&&request->gap_response&&request->response);
+  struct hfs_buf expected={0};assert(!hfs_buf_init(&expected,HFS_BODY_MAX));hfs_request_payload(request,&expected);
+  assert(!hfs_received_original(&f->session,request->gap_response,"GAP_RESOLVE",&expected));
+  assert(hfs_received_original(&f->session,request->response,"GAP_RESOLVE",&expected)<0);
+  struct hfs_json *credential_original=NULL;assert(!hfs_json_parse(expected.data,expected.len,&credential_original));int cred=hfs_json_field(credential_original,0,"credentials");
+  const char *credential_fields[]={"groups","process","credential_revision","user_namespace","idmap_hash"};
+  for(unsigned i=0;i<ARRAY_SIZE(credential_fields);i++){
+   int token=hfs_json_field(credential_original,cred,credential_fields[i]);assert(token>=0);u32 offset=credential_original->tokens[token].start;
+   if(credential_original->tokens[token].kind==HFS_STRING||credential_original->tokens[token].kind==HFS_ARRAY)offset++;
+   char old=expected.data[offset];expected.data[offset]=old=='1'?'2':'1';assert(hfs_received_original(&f->session,request->gap_response,"GAP_RESOLVE",&expected)<0);expected.data[offset]=old;
+  }
+  hfs_json_free(credential_original);
+  struct hfs_json *original=NULL;assert(!hfs_json_parse(expected.data,expected.len,&original));int claim=hfs_json_field(original,0,"claim"),number_token=hfs_json_field(original,claim,"number");assert(number_token>=0);expected.data[original->tokens[number_token].start]='3';assert(hfs_received_original(&f->session,request->gap_response,"GAP_RESOLVE",&expected)<0);hfs_json_free(original);hfs_buf_free(&expected);
+  struct hfs_json *detached=NULL;assert(!hfs_json_parse(request->gap_response->data,request->gap_response->len,&detached));detached->transported=true;
+  struct hfs_buf query={0};assert(!hfs_buf_init(&query,HFS_BODY_MAX));hfs_request_payload(request,&query);assert(hfs_received_original(&f->session,detached,"GAP_RESOLVE",&query)<0);
+  hfs_json_free(detached);query.len=0;query.error=0;
+  hfs_buf_literal(&query,"{\"claim\":");hfs_buf_add(&query,request->claim.data,request->claim.len);hfs_buf_literal(&query,"}");
+  assert(!hfs_received_original(&f->session,request->response,"QUERY",&query));assert(hfs_received_original(&f->session,request->gap_response,"QUERY",&query)<0);
+  struct hfs_json *query_original=NULL;assert(!hfs_json_parse(query.data,query.len,&query_original));int query_claim=hfs_json_field(query_original,0,"claim"),query_number=hfs_json_field(query_original,query_claim,"number");assert(query_number>=0);
+  query.data[query_original->tokens[query_number].start]='3';assert(hfs_received_original(&f->session,request->response,"QUERY",&query)<0);hfs_json_free(query_original);hfs_buf_free(&query);
+  int body=hfs_json_field(request->gap_response,0,"payload"),proof=hfs_json_field(request->gap_response,body,"proof_hash");assert(proof>=0);
+  u32 offset=request->gap_response->tokens[proof].start+1;char old=request->gap_response->data[offset];request->gap_response->data[offset]=old=='1'?'2':'1';
+  assert(hfs_controlled_request_hash(request,(u8[32]){0})==0); /* Inert hash decoding alone grants no floor. */
+  assert(hfs_received_require(&f->session,request->gap_response,0)<0);request->gap_response->data[offset]=old;
+  assert(f->session.provider->resolve_gap(&f->session,request)==-EBUSY);done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"ISSUER")){unsigned capture=(unsigned)strtoul(line+consumed,NULL,10);assert(capture<f->nr_captures);f->credential=f->captures[capture];f->credentials=f->capture_bytes[capture];done(id,0,NULL,0);return;}
+ if(!strcmp(operation,"FAULT")){assert(!fault_mode&&!fault_reply&&!fault_scratch&&!pending_scratch);assert(sscanf(line+consumed,"%31s %u",fault_operation,&fault_mode)==2&&fault_mode>=1&&fault_mode<=3);if(fault_mode==3)assert(!strcmp(fault_operation,"RETIRE")||!strcmp(fault_operation,"VIEW_RETIRE"));done(id,0,NULL,0);return;}
+ if(!strcmp(operation,"STATE")){
+  unsigned cuts=0;struct hfs_view_family *family;list_for_each_entry(family,&f->session.view_families,list)if(family->retirement_cut)cuts++;
+  unsigned unknown=0;struct hfs_candidate *candidate;list_for_each_entry(candidate,&f->session.uncertain,list){assert(candidate->reservation);unknown++;}
+  struct hfs_controlled_mount *mount=hfs_controlled_mount(&f->session);struct hfs_buf state={0};assert(!hfs_buf_init(&state,1024));
+  hfs_buf_printf(&state,"{\"cut\":%llu,\"cut_reply\":%u,\"view_cuts\":%u,\"floor\":%llu,\"requests\":%u,\"unknown\":%u,\"ordinary_credits\":%u,\"control_credits\":%u}",f->session.retirement_cut?f->session.retirement_cut->through:0,f->session.retirement_cut&&f->session.retirement_cut->response?1:0,cuts,mount->ordinary_floor,f->session.nr_requests,unknown,mount->ordinary_credits,mount->control_credits);
+  done(id,0,state.data,state.len);hfs_buf_free(&state);return;
+ }
+ if(!strcmp(operation,"ADOPT_RESULT")){
+  assert(f->ordinary_result&&f->nr_adopted_caps+2<=ARRAY_SIZE(f->adopted_caps));int err=hfs_result_validate(&f->session,f->ordinary_result,"ROOT",&f->credentials);
+  if(!err)err=hfs_reply_cap(&f->session,f->ordinary_result,"ROOT",&f->adopted_caps[f->nr_adopted_caps++]);
+  if(!err)err=hfs_reply_cap(&f->session,f->ordinary_result,"DOMAIN",&f->adopted_caps[f->nr_adopted_caps++]);
+  if(!err)hfs_result_adopt(&f->session,f->ordinary_result);done(id,err,NULL,0);return;
+ }
+ if(!strcmp(operation,"ALLOCATE_RETRY")){
+  struct hfs_session *session=&f->session;struct hfs_request *request=session->allocation_pending;assert(request&&!request->allocated&&!request->allocating&&session->allocation_uncertain&&!session->blocked);
+  u64 cell=session->next_cell,claim=session->next_claim;u32 count=session->nr_requests;
+  struct hfs_buf payload={0};assert(!hfs_buf_init(&payload,HFS_BODY_MAX)&&!hfs_request_payload(request,&payload));
+  struct hfs_candidate *candidate=hfs_allocation_candidate(session,&payload);assert(candidate&&candidate->completion==request->completion&&candidate->reservation);
+  struct hfs_response_profile profile=candidate->response;assert(profile.channel==HFS_CHANNEL_RESULT&&profile.kind==HFS_FRAME_RESULT&&profile.max_body==HFS_CONTEXT_MAX+4096+1024);
+  int err=hfs_request_allocate(session,request,&payload);
+  if(!err){assert(request->allocated&&request->allocation_receipt&&!session->allocation_pending&&!session->allocation_uncertain&&!session->blocked&&list_empty(&session->uncertain));assert(!hfs_received_original(session,request->allocation_receipt,"ALLOCATE",&payload));assert(request->allocation_receipt->channel==profile.channel&&request->allocation_receipt->frame_kind==profile.kind);}
+  assert(cell==session->next_cell&&claim==session->next_claim&&count==session->nr_requests);hfs_buf_free(&payload);done(id,err,NULL,0);return;
+ }
+ if(!strcmp(operation,"REQUEST_CONTINUE")){
+  struct hfs_request *request=container_of(f->session.requests.prev,struct hfs_request,list);assert(request->allocated&&!request->terminal&&!f->ordinary_result);
+  struct hfs_buf payload={0};assert(!hfs_buf_init(&payload,HFS_BODY_MAX));int err=hfs_request_run(&f->session,request,"ROOT",&payload,&f->ordinary_result);hfs_buf_free(&payload);
+  if(!err){hfs_json_free(f->latest);f->latest=NULL;err=hfs_received_copy(request->response,0,&f->latest);}done(id,err,f->latest?f->latest->data:NULL,f->latest?f->latest->len:0);return;
+ }
+ if(!strcmp(operation,"RESOLVE_GAP")){
+  struct hfs_request *request,*last=NULL;list_for_each_entry(request,&f->session.requests,list)last=request;assert(last);
+  done(id,f->session.provider->resolve_gap(&f->session,last),NULL,0);return;
+ }
+ if(!strcmp(operation,"VIEW_NEW")){
+  int err=f->session.view?-EEXIST:hfs_view_new_unbound(&f->session);
+  if(!err){f->physical.view=f->session.view;assert(!hfs_buf_init(&f->physical.ack,HFS_VIEW_BODY_MAX));assert(!hfs_buf_init(&f->physical.last_ack,HFS_VIEW_BODY_MAX));}
+  done(id,err,NULL,0);return;
+ }
+ if(!strcmp(operation,"EVENT_HOLD")){assert(f->latest&&f->nr_event_pressure<ARRAY_SIZE(f->event_pressure));assert(!hfs_received_event(&f->session,f->latest,hfs_json_field(f->latest,hfs_json_field(f->latest,0,"payload"),"event")));f->event_pressure[f->nr_event_pressure++]=f->latest;f->latest=NULL;done(id,0,NULL,0);return;}
+ if(!strcmp(operation,"EVENT_RESTORE")){assert(!f->latest&&f->nr_event_pressure==ARRAY_SIZE(f->event_pressure));f->latest=f->event_pressure[--f->nr_event_pressure];done(id,0,NULL,0);return;}
+ if(!strcmp(operation,"ACTOR_HOLD")){
+  struct hfs_session *session=&f->session;assert(f->latest&&f->nr_event_pressure==HFS_MMAP_EVENTS_MAX&&!f->parked_carrier&&!f->parked_received);
+  struct hfs_response_profile event=hfs_response_profile("VIEW_WAIT"),floor=hfs_response_profile("RETIRE");event.max_body=HFS_EVENT_BODY_MAX;floor.max_body=HFS_FLOOR_BODY_MAX;
+  assert(!hfs_completion_reserve(session->control_completion,hfs_completion_carrier(HFS_BODY_MAX,HFS_BODY_MAX),false,&f->parked_carrier));
+  assert(!hfs_received_prepare(session,HFS_CONTEXT_MAX+HFS_CAP_MAX+1024,event,true,session->control_completion,&f->parked_received));
+  for(unsigned i=0;i<2;i++)assert(!hfs_received_prepare(session,HFS_BODY_MAX,floor,true,session->retirement_completion,&f->floor_pressure[i]));
+  assert(session->control_completion->nr_received==HFS_MMAP_EVENTS_MAX+2&&session->retirement_completion->nr_received==2);
+  if(!index){u64 remaining=hfs_controlled_registry->budget.control_bytes-hfs_controlled_registry->control_base_bytes-hfs_controlled_control_used;assert(remaining>sizeof(struct hfs_controlled_credit));assert(!hfs_controlled_reserve(session,remaining-sizeof(struct hfs_controlled_credit),true,&f->global_control_pressure));}
+  void *extra=NULL;assert(hfs_controlled_reserve(session,1,true,&extra)==-ENOSPC&&!extra);done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"FLOOR_UNHOLD")){for(unsigned i=0;i<2;i++){assert(f->floor_pressure[i]);hfs_controlled_received_release(&f->session,f->floor_pressure[i]);f->floor_pressure[i]=NULL;}done(id,0,NULL,0);return;}
+ if(!strcmp(operation,"ACTOR_DROP")){
+  while(f->nr_event_pressure)hfs_json_free(f->event_pressure[--f->nr_event_pressure]);
+  hfs_controlled_received_release(&f->session,f->parked_received);f->parked_received=NULL;
+  hfs_controlled_unreserve(&f->session,f->parked_carrier);f->parked_carrier=NULL;
+  if(f->global_control_pressure){hfs_controlled_unreserve(&f->session,f->global_control_pressure);f->global_control_pressure=NULL;}
+  done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"VIEW_QUERY_HOLD")){
+  assert(f->lease&&!f->query_pressure&&!f->lease->ticket->control);u64 control=hfs_controlled_control_used;u32 slots=hfs_controlled_nr_control_credits,received=hfs_controlled_nr_control_received;
+  int err=hfs_view_query(&f->session,f->lease->ticket,false,&f->query_pressure);
+  if(!err){u32 offset,length;struct hfs_kernel_received *owner=hfs_received_get(f->query_pressure,&offset,&length);assert(owner&&!owner->control&&owner->completion==f->lease->ticket->completion);hfs_received_put(owner);}
+  assert(control==hfs_controlled_control_used&&slots==hfs_controlled_nr_control_credits&&received==hfs_controlled_nr_control_received);done(id,err,NULL,0);return;
+ }
+ if(!strcmp(operation,"BORROW_PRESSURE")){
+  unsigned count=(unsigned)strtoul(line+consumed,NULL,10);int err=0;u64 control=hfs_controlled_control_used;u32 slots=hfs_controlled_nr_control_credits,received=hfs_controlled_nr_control_received;
+  struct hfs_request *request=container_of(f->session.requests.next,struct hfs_request,list);assert(request->result&&request->terminal&&!request->control);
+  for(unsigned i=0;i<count&&!err;i++){
+   assert(f->nr_result_pressure<ARRAY_SIZE(f->result_pressure));struct hfs_json *copy=NULL;err=hfs_request_result_borrow(request,&copy);
+   if(!err){u32 offset,length;struct hfs_kernel_received *owner=hfs_received_get(copy,&offset,&length);assert(owner&&!owner->control&&copy->owner==request);hfs_received_put(owner);f->result_pressure[f->nr_result_pressure++]=copy;}
+  }
+  assert(!err||err==-ENOSPC);assert(control==hfs_controlled_control_used&&slots==hfs_controlled_nr_control_credits&&received==hfs_controlled_nr_control_received);
+  char result[128];int length=snprintf(result,sizeof(result),"{\"held\":%u,\"exhausted\":%s}",f->nr_result_pressure,err?"true":"false");done(id,0,result,length);return;
+ }
+ if(!strcmp(operation,"DROP_PRESSURE")){while(f->nr_result_pressure)hfs_json_free(f->result_pressure[--f->nr_result_pressure]);hfs_json_free(f->query_pressure);f->query_pressure=NULL;done(id,0,NULL,0);return;}
+ if(!strcmp(operation,"OWNER_NEGATIVES")){
+  assert(f->lease&&f->lease->ticket->bound);struct hfs_view_ticket *ticket=f->lease->ticket;
+  struct hfs_completion *owner=hfs_completion_find(&f->session,"VIEW_QUERY",&ticket->query);assert(owner==ticket->completion&&!hfs_completion_control(owner));hfs_completion_put(owner);
+  struct hfs_buf wrong={0};assert(!hfs_buf_init(&wrong,ticket->query.len+1));hfs_buf_add(&wrong,ticket->query.data,ticket->query.len);wrong.data[wrong.len-2]^=1;
+  assert(!hfs_completion_find(&f->session,"VIEW_QUERY",&wrong));hfs_buf_free(&wrong);
+  struct hfs_buf bogus={.data="{\"claim\":{}}",.len=12};assert(!hfs_completion_find(&f->session,"QUERY",&bogus));
+  done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"ORDINARY_REFUSES")){
+  struct hfs_json *result=NULL;struct hfs_buf args={.data="{}",.len=2};u32 count=f->session.nr_requests;u64 cell=f->session.next_cell;
+  int err=hfs_call(&f->session,"ROOT",&args,&f->credential,false,&result);
+  assert(err==-ENOSPC&&!result&&count==f->session.nr_requests&&cell==f->session.next_cell&&!f->session.blocked);
+  done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"PIN")){f->folio.page.pinned=atoi(line+consumed)!=0;done(id,0,NULL,0);return;}
+ if(!strcmp(operation,"DRAIN")){assert(f->dirty);
+  if(f->session.closing){
+   struct hfs_buf *payload=&f->dirty->request->drain_payload;struct hfs_json *out=NULL;assert(!hfs_request_payload(f->dirty->request,payload));
+   assert(hfs_controlled_before_send(&f->session,"CALL",payload,false)<0);
+   struct hfs_buf fake={.data="{}",.len=2};u64 next=f->session.next_cell;
+   assert(hfs_control(&f->session,"CALL",&fake,true,&out)==-EACCES&&!out&&next==f->session.next_cell);
+   assert(!hfs_controlled_before_send(&f->session,"CALL",payload,true));
+   payload->data[payload->len-2]^=1;assert(hfs_controlled_before_send(&f->session,"CALL",payload,true)==-EACCES);payload->data[payload->len-2]^=1;
+  }
+  int err=hfs_dirty_drain(f->session.view,f->dirty);done(id,err,NULL,0);return;}
+ if(!strcmp(operation,"RELEASE_DONE")){
+  assert(f->lease);int err=hfs_lease_release(&f->session,f->lease);
+  if(!err){if(f->dirty_page){assert(!f->dirty_page->page&&!f->dirty_page->dirty);hfs_view_page_discard(f->dirty_page);f->dirty_page=NULL;}hfs_lease_free(f->lease);f->lease=NULL;}
+  done(id,err,NULL,0);return;
+ }
+ if(!strcmp(operation,"RETAIN_VERIFY")){
+  struct hfs_session *session=&f->session;struct hfs_controlled_mount *mount=hfs_controlled_mount(session);
+  u32 ordinary=mount->ordinary_credits,control=mount->control_credits,requests=session->nr_requests;u64 next=session->next_cell;struct device *device=mount->device;
+  session->closing=true;int stopped=session->provider->stop(session);assert(stopped==0||stopped==-EBUSY);
+  session->retained=true;session->provider->retain(session);assert(mount->retained&&mount->stopping&&session->blocked);
+  assert(session->provider->retire_session(session)==-EBUSY&&mount->session==session&&mount->device==device);
+  assert(ordinary==mount->ordinary_credits&&control==mount->control_credits&&requests==session->nr_requests&&next==session->next_cell);
+  if(session->view){void *cookie=NULL;assert(hfs_view_enter(session->view,NULL,false,&cookie)<0&&!cookie);}
+  done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"REQUEST")){
+  char op[32];int used=0;assert(sscanf(line+consumed,"%31s %n",op,&used)==1);
+  struct hfs_buf args={0};assert(!hfs_args_init(&args));args.len=decode_hex(line+consumed+used,args.data,args.cap);
+  if(f->ordinary_result){assert(f->nr_held_results<ARRAY_SIZE(f->held_results));f->held_results[f->nr_held_results++]=f->ordinary_result;}f->ordinary_result=NULL;f->actual_result=true;
+  int err=hfs_call(&f->session,op,&args,&f->credential,false,&f->ordinary_result);hfs_buf_free(&args);
+  if(!err){struct hfs_request *request=f->ordinary_result->owner;assert(request&&request->response);hfs_json_free(f->latest);f->latest=NULL;err=hfs_received_copy(request->response,0,&f->latest);}
+  done(id,err,f->latest?f->latest->data:NULL,f->latest?f->latest->len:0);return;
+ }
+ if(!strcmp(operation,"DIRTY")){
+  assert(!f->dirty&&!f->dirty_page&&f->description);
+  struct hfs_lease *lease=NULL;struct hfs_view *view=f->session.view;struct hfs_view_stamp stamp;
+  int err=hfs_lease_acquire(&f->session,&f->credential,NULL,f->description,0,true,NULL,&lease);
+  if(!err)err=hfs_view_bind_initial(view,lease);
+  if(!err)err=hfs_view_snapshot(view,&stamp);
+  if(!err)err=hfs_view_page_prepare(view,&stamp,&f->dirty_page);
+  if(!err)err=hfs_view_page_lease(f->dirty_page,lease);
+  if(!err){lock_page(&f->folio.page);err=hfs_view_page_attach(f->dirty_page,&f->folio.page);unlock_page(&f->folio.page);}
+  if(!err)err=hfs_dirty_reserve(&f->session,f->dirty_page,f->description,0,4096,&f->dirty);
+  if(!err){lock_page(&f->folio.page);err=hfs_view_adopt_dirty(view,f->dirty_page,f->dirty);unlock_page(&f->folio.page);}
+  if(!err){if(!f->lease)f->lease=lease;for(unsigned n=0;n<4096;n++)f->folio.page.data[n]=(u8)(n*17+index);f->folio.page.dirty=true;}
+  done(id,err,err?NULL:f->dirty->reservation->data,err?0:f->dirty->reservation->len);return;
+ }
+ if(!strcmp(operation,"PRESSURE")){
+  unsigned requested=(unsigned)strtoul(line+consumed,NULL,10),count=0;int err=0;
+  struct hfs_cap *cap=f->description?f->description:f->root;assert(cap);
+  while(!err&&f->nr_pressure<ARRAY_SIZE(f->pressure)&&(!requested||count<requested)){
+   void *cookie=NULL;err=f->session.provider->enter(&f->session,cap,false,&cookie);
+   if(!err){assert(cookie);f->pressure[f->nr_pressure++]=cookie;count++;}
+  }
+  if(!requested&&err==-ENOSPC)err=0;
+  done(id,err,NULL,0);return;
+ }
+ if(!strcmp(operation,"UNPRESSURE")){while(f->nr_pressure)f->session.provider->leave(&f->session,f->pressure[--f->nr_pressure]);done(id,0,NULL,0);return;}
+ if(!strcmp(operation,"RETIRE")){hfs_json_free(f->ordinary_result);f->ordinary_result=NULL;while(f->nr_held_results)hfs_json_free(f->held_results[--f->nr_held_results]);int err=hfs_retire(&f->session);if(err==-EBUSY&&f->session.retirement_cut)assert(!late_borrow&&f->ordinary_result&&f->ordinary_result->owner);done(id,err,NULL,0);return;}
+ if(!strcmp(operation,"VIEW_RETIRE")){done(id,hfs_view_retire(&f->session),NULL,0);return;}
  if(!strcmp(operation,"RUN")) {
   unsigned reserved;char op[32];int used=0;assert(sscanf(line+consumed,"%u %31s %n",&reserved,op,&used)==2&&reserved<=1);
   struct hfs_buf payload={0};assert(!hfs_buf_init(&payload,HFS_BODY_MAX));payload.len=decode_hex(line+consumed+used,payload.data,HFS_BODY_MAX);
@@ -244,19 +523,22 @@ static void command(char *line) {
   done(id,err,f->latest?f->latest->data:NULL,f->latest?f->latest->len:0);return;
  }
  if(!strcmp(operation,"CHECK")){done(id,fixture_check(f,line+consumed),NULL,0);return;}
- if(!strcmp(operation,"ADOPT_ROOT")){
+ if(!strcmp(operation,"ADOPT_ROOT")||!strcmp(operation,"ADOPT_ROOT_PREPARE")){
+  if(f->root||f->session.domain||f->session.view){done(id,-EEXIST,NULL,0);return;}
   int err=fixture_result(f,"ROOT");if(!err)err=hfs_reply_cap(&f->session,f->ordinary_result,"ROOT",&f->root);
   if(!err)err=hfs_reply_cap(&f->session,f->ordinary_result,"DOMAIN",&f->session.domain);
-  if(!err)err=hfs_view_new_unbound(&f->session);
-  if(!err){f->physical.view=f->session.view;assert(!hfs_buf_init(&f->physical.ack,HFS_VIEW_BODY_MAX));assert(!hfs_buf_init(&f->physical.last_ack,HFS_VIEW_BODY_MAX));}
+  if(!err&&!strcmp(operation,"ADOPT_ROOT"))err=hfs_view_new_unbound(&f->session);
+  if(!err&&!strcmp(operation,"ADOPT_ROOT")){f->physical.view=f->session.view;assert(!hfs_buf_init(&f->physical.ack,HFS_VIEW_BODY_MAX));assert(!hfs_buf_init(&f->physical.last_ack,HFS_VIEW_BODY_MAX));}
+  if(!err)hfs_result_adopt(&f->session,f->ordinary_result);
   done(id,err,err?NULL:f->session.domain->json->data,err?0:f->session.domain->json->len);return;
  }
  if(!strcmp(operation,"ADOPT_DESCRIPTION")){
   int err=fixture_result(f,line+consumed);if(!err)err=hfs_reply_cap(&f->session,f->ordinary_result,"DESCRIPTION",&f->description);
+  if(!err)hfs_result_adopt(&f->session,f->ordinary_result);
   done(id,err,err?NULL:f->description->json->data,err?0:f->description->json->len);return;
  }
- if(!strcmp(operation,"ACQUIRE")){
-  struct hfs_lease *lease=NULL;int err=hfs_lease_acquire(&f->session,&f->credential,NULL,NULL,0,false,NULL,&lease);
+ if(!strcmp(operation,"ACQUIRE")||!strcmp(operation,"ACQUIRE_PAGE")){
+  struct hfs_lease *lease=NULL;int err=hfs_lease_acquire(&f->session,&f->credential,NULL,!strcmp(operation,"ACQUIRE_PAGE")?f->description:NULL,0,false,NULL,&lease);
   if(!err){
    /* Consumption is checked BEFORE initial physical binding; no phase
     * exception is invented to keep an old grant fresh afterwards. */
@@ -291,11 +573,13 @@ static void command(char *line) {
   int err=body<0?-EINVAL:f->session.provider->view_event(&f->session,event,body);
   uuid_t recall;u64 sequence;if(!err&&(hfs_uuid(event,hfs_json_field(event,body,"recall"),&recall)||number(event,body,"sequence",&sequence)))err=-EPROTO;
   bool manifest=!strcmp(phase,"STOPPED")||!strcmp(phase,"DRAINED"),target=strcmp(phase,"STOPPED")!=0;
-  if(!err){if(!strcmp(phase,"STOPPED")){err=hfs_view_stop(view,&view->generation,&recall,sequence);if(!err)err=hfs_view_seal(view);}
+  if(!err){if(!strcmp(phase,"STOPPED")){err=hfs_view_stop(view,&view->generation,&recall,sequence);if(!err&&f->dirty)err=hfs_dirty_freeze(view,f->dirty);if(!err&&f->dirty){assert(f->dirty->frozen&&f->dirty->frozen_entry&&f->dirty->request->held);assert(!hfs_received_source(&f->session,f->dirty->frozen_entry,0));}
+    if(!err)err=hfs_view_seal(view);}
    else if(!strcmp(phase,"INSTALLED_DRAIN")||!strcmp(phase,"INSTALLED_FINAL"))err=hfs_mmap_install(view,event,hfs_json_field(event,body,"target"),&recall,sequence,!strcmp(phase,"INSTALLED_FINAL"));
-   else if(!strcmp(phase,"DRAINED"))err=hfs_mmap_finish_drained(view);
+   else if(!strcmp(phase,"DRAINED")){if(f->dirty)err=hfs_dirty_drain(view,f->dirty);if(!err){err=hfs_mmap_finish_drained(view);if(!err)f->dirty=NULL;}}
    else if(!strcmp(phase,"REOPENED"))err=hfs_view_reopen(view,&recall,sequence);else err=-EINVAL;}
   if(!err)err=hfs_mmap_ack(&f->physical,event,body,phase,manifest,target);
+  if(err&&f->dirty){assert(f->dirty->adopted&&f->dirty->request->held&&f->dirty->credit&&f->dirty->request->reservation&&view->nr_dirty==1);}
   emit_snapshot();done(id,err,NULL,0);return;
  }
  done(id,-EOPNOTSUPP,NULL,0);
@@ -318,7 +602,18 @@ int main(void) {
  for(u32 i=credentials+1;i<initial->count;i++)if(initial->tokens[i].parent==(u32)credentials){assert(index<hfs_controlled_registry->nr_mounts);credential_init(&fixtures[index++],initial,i);}
  assert(index==hfs_controlled_registry->nr_mounts);
  for(unsigned i=0;i<index;i++){struct hfs_enrollment *e=&hfs_controlled_registry->mounts[i]->enrollment;assert(!hfs9p_add_session_protocol(carrier,(u8 *)e->context,e->context_len,4));}
- for(unsigned i=0;i<index;i++)session_init(i);
+ int captures=hfs_json_field(initial,os,"capture_tuples");assert(captures>=0);
+ for(unsigned i=0;i<index;i++){
+  struct fixture_session *f=&fixtures[i];f->captures[0]=f->credential;f->capture_bytes[0]=f->credentials;f->nr_captures=1;
+  unsigned count=0;
+  for(u32 token=captures+1;token<initial->count;token++)if(initial->tokens[token].parent==(u32)captures){
+   assert(count<2);
+   if(!count){assert(f->credentials.len==initial->tokens[token].end-initial->tokens[token].start&&!memcmp(f->credentials.data,initial->data+initial->tokens[token].start,f->credentials.len));}
+   else {credential_init(f,initial,token);f->captures[1]=f->credential;f->capture_bytes[1]=f->credentials;f->nr_captures=2;}
+   count++;
+  }
+  assert(count==f->nr_captures);f->credential=f->captures[0];f->credentials=f->capture_bytes[0];session_init(i);
+ }
  hfs_json_free(initial);puts("READY");fflush(stdout);
  for(;;){line=read_line();if(!strcmp(line,"END")){free(line);break;}command(line);free(line);}
  return 0;

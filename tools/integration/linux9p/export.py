@@ -28,6 +28,7 @@ GROUPS = [
      ['drivers/char/random.c', 'include/linux/random.h', 'net/9p/trans_virtio.c',
       'fs/9p/hfs_admission.c', 'fs/9p/hfs_admission.h',
       'fs/9p/hfs_controlled.c', 'fs/9p/hfs_controlled.h',
+      'fs/9p/hfs_controlled_lifetime.inc', 'fs/9p/hfs_completion.inc',
       'fs/9p/hfs_controlled_artifacts.c', 'fs/9p/hfs_controlled_internal.h',
       'fs/9p/hfs_enrollment.c', 'fs/9p/hfs_enrollment.h',
       'fs/9p/hfs_received.h', 'fs/9p/hfs_received.inc',

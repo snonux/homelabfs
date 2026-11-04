@@ -168,14 +168,7 @@ func (f *Facts) Authorize(ctx context.Context, scope guestbridge.Context, op str
 	if !ok || observed.Scope != scope || observed.Operation != op || observed.PayloadHash != hashBytes(raw) || observed.Protocol == nil || !f.matchesProtocol(scope, *observed.Protocol) {
 		return fsapi.Permission
 	}
-	if err := f.checkScope(ctx, scope); err != nil {
-		return err
-	}
-	a := f.admission(scope)
-	if a == nil || observed.Native.Endpoint != a.endpoint {
-		return fsapi.Permission
-	}
-	return a.supervisor.Verify(ctx, observed.Native, observed.Controller)
+	return f.authorizeNative(ctx, scope, observed)
 }
 
 // CheckPhysical accepts ACKs only when the fixed read-only observer measured the
@@ -184,7 +177,15 @@ func (f *Facts) Authorize(ctx context.Context, scope guestbridge.Context, op str
 func (f *Facts) CheckPhysical(ctx context.Context, scope guestbridge.Context, op string, raw, ledger json.RawMessage) error {
 	if op != "VIEW_CANCEL" {
 		if err := f.Authorize(ctx, scope, op, raw); err != nil {
-			return err
+			// A query may resume only the exact protected release selected by
+			// this controller. The actual outer/native observation stays intact.
+			if viewcontrol.VerifyPhysicalContinuation(ctx, f.service, f, scope, op, raw) != nil {
+				return err
+			}
+			observed, _ := guestbridge.VerifiedRequest(ctx)
+			if err := f.authorizeNative(ctx, scope, observed); err != nil {
+				return err
+			}
 		}
 	}
 	l, err := f.ledger(ctx, ledger)
@@ -292,6 +293,20 @@ func (f *Facts) CheckUnadopted(ctx context.Context, u viewcontrol.Unadopted) err
 		delete(omitted, r.ID)
 	}
 	return nil
+}
+
+func (f *Facts) authorizeNative(ctx context.Context, scope guestbridge.Context, observed guestbridge.CommandObservation) error {
+	if observed.Scope != scope || observed.Protocol == nil || !f.matchesProtocol(scope, *observed.Protocol) {
+		return fsapi.Permission
+	}
+	if err := f.checkScope(ctx, scope); err != nil {
+		return err
+	}
+	a := f.admission(scope)
+	if a == nil || observed.Native.Endpoint != a.endpoint {
+		return fsapi.Permission
+	}
+	return a.supervisor.Verify(ctx, observed.Native, observed.Controller)
 }
 
 func (f *Facts) checkScope(ctx context.Context, scope guestbridge.Context) error {

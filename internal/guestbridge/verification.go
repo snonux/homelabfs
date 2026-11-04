@@ -29,6 +29,10 @@ type VerificationReceipt struct {
 // authenticate a signer, observe transport receipt or verify physical/source
 // continuity. Runtime consumers must do all three independently.
 func DecodeVerificationReceipt(raw []byte) (VerificationReceipt, error) {
+	return decodeVerificationReceipt(raw, false)
+}
+
+func decodeVerificationReceipt(raw []byte, mapped bool) (VerificationReceipt, error) {
 	v, err := Canonical(raw)
 	if err != nil {
 		return VerificationReceipt{}, err
@@ -50,12 +54,12 @@ func DecodeVerificationReceipt(raw []byte) (VerificationReceipt, error) {
 	if json.Unmarshal(raw, &receipt) != nil || !validEndpoint(receipt.Endpoint) || receipt.Scope.FuseSession != receipt.Endpoint.FuseSession {
 		return VerificationReceipt{}, fsapi.Invalid
 	}
-	if err = validateVerificationEvidence(receipt.Scope, receipt.Kind, o["evidence"]); err != nil {
+	if err = validateVerificationEvidence(receipt.Scope, receipt.Kind, o["evidence"], mapped); err != nil {
 		return VerificationReceipt{}, err
 	}
 	return receipt, nil
 }
-func validateVerificationEvidence(scope Context, kind string, v any) error {
+func validateVerificationEvidence(scope Context, kind string, v any, mapped bool) error {
 	switch kind {
 	case "SOURCE":
 		o, err := object(v, "target", "retained_owner")
@@ -72,6 +76,11 @@ func validateVerificationEvidence(scope Context, kind string, v any) error {
 				return fsapi.Invalid
 			}
 		} else if !hash(o["manifest_hash"]) || validateControlledReceiptTarget(scope, o["target"]) != nil {
+			return fsapi.Invalid
+		}
+	case "VIEW_FLOOR":
+		o, err := object(v, "anchor", "nonce", "through", "proof_hash", "credentials")
+		if !mapped || err != nil || !uuid(o["anchor"]) || !uuid(o["nonce"]) || !uintRange(o["through"], 1, ^uint64(0)) || !hash(o["proof_hash"]) || validateCred(o["credentials"]) != nil {
 			return fsapi.Invalid
 		}
 	case "FLOOR":

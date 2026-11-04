@@ -102,6 +102,9 @@ func (p *Provider) Resolve(ctx context.Context, scope guestbridge.Context, claim
 			return fsapi.Stale
 		}
 		out = state(e)
+		if p.protectedGapQuery(ctx, scope, e) {
+			out.Status = "DECLINED"
+		}
 		return nil
 	})
 	return out, err

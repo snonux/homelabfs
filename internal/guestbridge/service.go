@@ -246,16 +246,19 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 			state, err = s.config.Claims.Resolve(ctx, c.Context, p.Claim)
 		}
 		if err == nil {
-			state, err = s.recoverValidation(ctx, state)
-			if err != nil {
-				return nil, err
+			declinedQuery := c.Op == "QUERY" && c.Protocol != nil && *c.Protocol == MappedProtocol()
+			if state.Status != "DECLINED" || !declinedQuery {
+				state, err = s.recoverValidation(ctx, state)
+				if err != nil {
+					return nil, err
+				}
 			}
 			if state.Status == "TERMINAL" {
 				if _, e := validateResult(state.Result); e != nil {
 					return nil, e
 				}
 			}
-			payload, err = queryPayload(p.Claim, state)
+			payload, err = queryPayload(p.Claim, state, declinedQuery)
 		}
 	case "RETIRE":
 		var b json.RawMessage
@@ -599,12 +602,12 @@ func sameBinding(a, b Binding) bool {
 func callPayload(c Claim, status, code string) any {
 	return map[string]any{"status": status, "claim": c, "code": code}
 }
-func queryPayload(c Claim, s ClaimState) (any, error) {
+func queryPayload(c Claim, s ClaimState, declinedQuery bool) (any, error) {
 	status := s.Status
 	if status == "UNKNOWN" || status == "RESERVED" {
 		status = "INDETERMINATE"
 	}
-	if !oneOf(status, "PENDING", "INDETERMINATE", "TERMINAL", "RETIRED_ID") {
+	if !oneOf(status, "PENDING", "INDETERMINATE", "TERMINAL", "RETIRED_ID") && (!declinedQuery || status != "DECLINED" || len(s.Result) != 0) {
 		return nil, fsapi.Unavailable
 	}
 	var result any

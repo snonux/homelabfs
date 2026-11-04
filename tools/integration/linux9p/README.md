@@ -193,7 +193,7 @@ Omit `--archive` to fetch only the pinned primary archive. Existing destinations
 and build outputs are refused. Preparation checks lengths/digests, extraction
 bounds, exact commit comment, fuzz-zero patch application and every resulting
 source file/symlink. Each build re-verifies the complete source inventory.
-`export.py` is for editing only the 17 maintained paths in a separately owned
+`export.py` is for editing only the55 maintained paths in a separately owned
 source checkout; it regenerates patches and `source.json` against the verified
 archive, without Git commits or incidental vendor modifications.
 
@@ -314,7 +314,7 @@ the unknown earlier transport candidate and blocked session remain owned for
 C9 reconciliation. It does not resume ordinary issuance automatically.
 The request retains its complete terminal QUERY and GAP response envelopes;
 the mandatory retirement callback receives the complete borrowed RETIRE
-envelope for future floor-receipt verification. Receipt retention grants no
+envelope for exact controlled1.4 private floor-receipt verification. Receipt retention grants no
 verification authority. Successor RETIRE sends original full credentials and a contiguous prefix owned
 by that issuer, without replacing existing provider floor verification.
 
@@ -326,7 +326,8 @@ endpoint-global native cell. The separately negotiated1.4 mapping (`y04`)
 authenticates the original guest/native coordinates and complete poll chain.
 The controlled provider below consumes this through its private received path;
 a public transported flag or preserved signature cannot create that authority.
-Floor/retirement and complete runtime construction remain separate work. Primitive tests do not establish native FUSE identity,
+Complete runtime construction and positive terminal session handoff remain
+separate work. Primitive tests do not establish native FUSE identity,
 physical observation, installed kernel behavior or deployment.
 
 Run the composed controlled fixture with a new output under an explicitly owned
@@ -390,8 +391,37 @@ then supplies finite byte/slot/cookie/received caps and conservative retain.
 One accepted root administrative open uses actual kernfs preallocation to
 serialize same-fd copies; generic pre-admission syscalls/allocator overhead remain
 outside the signed requested-allocation budget.
-It refuses retirement, gaps, floors and session release until C7; it does not
-claim that ordinary saturation preserves funded control progress.
+C7 precharges actual request/ticket completion packages and independent session
+event/floor lanes before exposure. Native reserved scheduling does not classify
+resource ownership: ordinary QUERY/view-query data and descendants stay ordinary,
+while exact preowned cleanup can consume its already funded capacity while closing
+or globally saturated. The event6/floor2 Received-slot split follows the actual
+pending[3]/last-event/reposted-WAIT/ACK and retained-cut lifetimes. HELLO retains its
+actual carrier through complete JSON destruction without creating Received
+authority. See the [admission contract](../../../docs/spec/Retained-9p-guest-admission.md)
+for computed byte/slot bounds and the installer-versus-SB admission distinction.
+
+C7 partitions ordinary and funded control bytes/slots across mounts and retains
+per-session ownership. Its typed closing path permits only exact preowned cleanup,
+including bound DRAIN_WRITE and parent READDIR cleanup; generic control CALL
+refuses. Actual full protected FLOOR/VIEW_FLOOR replies authorize same-issuer
+contiguous retirement; actual GAP and QUERY envelopes retain no-effect coverage.
+Uncertain candidates and ordinary/per-family retirement attempts keep their exact
+original bytes, issuer, cut and any full reply until consumption or definite
+BLOCKED. A late result borrower keeps the accepted old cut available for replay.
+No timeout, stop fence or empty local list supplies retirement authority.
+
+The C7 component scenarios exercise two-session ordinary-cookie saturation with
+real hfs_call refusal while funded STOP/FROZEN and a nonempty4096-byte drain
+progress, busy-pin refusal, strict full-credential A/B/A floors, lost GAP/FLOOR
+replies, prepared/effected refusal, and later-request/ticket interleavings. The
+actual closed1.4 QUERY exposes protected DECLINED/null only under its exact
+private request/native binding; direct/CANCEL and older protocols retain the
+conservative projection. Final guest/native cells, unknown candidates and
+session/module/physical/source ownership remain bounded and retained.
+Positive terminal closure belongs to task614 under the separately negotiated
+[session contract](../../../docs/spec/Retained-9p-session-retirement.md), a C9
+prerequisite; C7 does not reinterpret RELEASE_CELL or implement its new tuple.
 
 The `controlled_crypto` tests run unchanged Monocypher4.0.3 Ed25519 through owned
 canonical prime-subgroup checks, real RFC/Go/OpenSSL signatures and encoding
@@ -406,4 +436,4 @@ A changed original journal byte suppresses a fresh source response/adoption.
 Kernel credentials, MM/PTE primitives, native FUSE identity and virtio device
 objects remain explicit OS substitutions in these component tests. Actual
 kernel translation-unit/frame/link checks do not prove installed PTE/TLB,
-native deployment, C7 closure or normal/distributed publication.
+native deployment, terminal closure or normal/distributed publication.

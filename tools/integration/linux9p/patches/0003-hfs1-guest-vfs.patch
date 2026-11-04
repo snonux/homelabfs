@@ -107,7 +107,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,360 @@
+@@ -0,0 +1,385 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -134,6 +134,7 @@ new file mode 100644
 +struct hfs_session;
 +struct hfs_cap;
 +struct hfs_request;
++struct hfs_completion;
 +
 +/* Installed by a separately reviewed enrollment/view-token integration. */
 +enum hfs_view_scope {
@@ -199,7 +200,8 @@ new file mode 100644
 +			  const struct hfs_json *response);
 +	int (*view_retirement)(struct hfs_session *session,
 +			       const struct hfs_buf *credentials, u64 through,
-+			       const u8 proof_hash[32]);
++			       const u8 proof_hash[32],
++			       const struct hfs_json *response);
 +	int (*resolve_gap)(struct hfs_session *session, struct hfs_request *request);
 +	int (*retire_session)(struct hfs_session *session);
 +	/* Receives ownership on uncertain shutdown; must never discard evidence. */
@@ -251,14 +253,19 @@ new file mode 100644
 +};
 +
 +struct hfs_candidate {
++	struct hfs_response_profile response;
++	struct hfs_completion *completion;
++	struct hfs_session *session;
 +	struct list_head list;
 +	struct hfs_buf command;
 +	struct hfs_cell *slot;
 +	u64 cell;
 +	u64 donor;
++	void *reservation; /* actual transient/uncertain carrier ownership */
 +};
 +
 +struct hfs_request {
++	struct hfs_completion *completion;
 +	struct hfs_session *session;
 +	u32 users;
 +	struct list_head list;
@@ -295,8 +302,23 @@ new file mode 100644
 +	void *reservation;
 +};
 +
++/* Exact in-memory attempt, retained across uncertain transport/callbacks.
++ * No new cut may replace it until consumed or definitively BLOCKED.
++ */
++struct hfs_retirement_cut {
++	struct hfs_buf payload;
++	struct hfs_json *response;
++	u64 first;
++	u64 through;
++	char operation[16];
++	void *reservation;
++};
++
 +struct hfs_session {
++	struct hfs_completion *control_completion;
++	struct hfs_completion *retirement_completion;
 +	struct hfs_view *view;
++	struct hfs_retirement_cut *retirement_cut;
 +	u16 bridge_minor;
 +	struct hfs_cap *domain;
 +	struct p9_client *client;
@@ -431,6 +453,9 @@ new file mode 100644
 +			    const struct hfs_buf *args);
 +int hfs_request_drain(struct hfs_session *session, struct hfs_request *request,
 +		      struct hfs_json **out);
++int hfs_retirement_cut_new(struct hfs_session *session, const char *operation,
++	const struct hfs_buf *payload, u64 first, u64 through, struct hfs_retirement_cut **out);
++void hfs_retirement_cut_free(struct hfs_session *session, struct hfs_retirement_cut *cut);
 +int hfs_retire(struct hfs_session *session);
 +int hfs_session_destroy(struct hfs_session *session);
 +int hfs_cap_parse(struct hfs_session *session, const struct hfs_json *json,
@@ -472,7 +497,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,2419 @@
+@@ -0,0 +1,2729 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include <linux/delay.h>
@@ -968,13 +993,34 @@ new file mode 100644
 +	return NULL;
 +}
 +
++/* A HELLO parse has no private Received authority. Its actual candidate
++ * retains the complete carrier credit until json_free has freed the parse.
++ */
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++static void hfs_candidate_parse_put(void *opaque)
++{
++	struct hfs_candidate *candidate = opaque;
++	struct hfs_session *session = candidate->session;
++	void *credit = candidate->reservation;
++
++	kfree(candidate);
++	session->provider->unreserve(session, credit);
++}
++
++#endif
++
 +int hfs_control(struct hfs_session *session, const char *operation,
 +		const struct hfs_buf *payload, bool reserved,
 +		struct hfs_json **out)
 +{
-+	const struct hfs_response_profile response = hfs_response_profile(operation);
++	struct hfs_response_profile response = hfs_response_profile(operation);
 +#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
 +	struct hfs_received_capture received_capture;
++	struct hfs_completion *completion = NULL;
++	bool resource_control = false;
++	void *response_credit = NULL;
++	u64 command_bound = 0;
++	u32 retained_body = response.max_body;
 +#endif
 +	struct hfs_buf command;
 +	struct hfs_json *json = NULL;
@@ -988,6 +1034,7 @@ new file mode 100644
 +	u8 release_hash[32];
 +	bool release = !strcmp(operation, "RELEASE_CELL");
 +	bool allocate = !strcmp(operation, "ALLOCATE");
++	void *carrier_credit = NULL;
 +	int err;
 +
 +	*out = NULL;
@@ -1011,20 +1058,21 @@ new file mode 100644
 +		return -EOPNOTSUPP;
 +	if (payload->error || !payload->len)
 +		return payload->error ?: -EINVAL;
-+	if (release) {
-+		struct hfs_json *ack = NULL;
-+		u32 len = 32;
-+
-+		err = hfs_json_parse(payload->data, payload->len, &ack);
-+		if (!err && (hfs_json_exact(ack, 0, "cell,response_hash") ||
-+		    hfs_field_u64(ack, 0, "cell", &release_cell) || !release_cell ||
-+		    hfs_json_hex(ack, hfs_json_field(ack, 0, "response_hash"),
-+				 release_hash, &len) || len != 32))
-+			err = -EINVAL;
-+		hfs_json_free(ack);
-+		if (err)
-+			return err;
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++	if (hfs_controlled_owns(session)) {
++		if (check_add_overflow((u64)payload->len, (u64)session->enrollment.context_len, &command_bound) ||
++		    check_add_overflow(command_bound, 1024ULL, &command_bound))
++			return -EOVERFLOW;
++		command_bound = min_t(u64, command_bound,
++			hfs_view_command(operation) ? HFS_VIEW_BODY_MAX : HFS_BODY_MAX);
 +	}
++#endif
++	/* A closed canonical ACK (u64 cell and64 hex digits) fits128 bytes.
++	 * Check the bound without allocation; its parse shares the later command
++	 * capacity and is freed before candidate/command allocation.
++	 */
++	if (release && payload->len > 128)
++		return -EINVAL;
 +	if (allocate && READ_ONCE(session->allocation_uncertain)) {
 +		mutex_lock(&session->writer);
 +		mutex_lock(&session->lock);
@@ -1038,18 +1086,114 @@ new file mode 100644
 +		command = candidate->command;
 +		cell = candidate->cell;
 +		slot = candidate->slot;
++		response = candidate->response;
 +		mutex_unlock(&session->lock);
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++		completion = hfs_completion_get(candidate->completion);
++		resource_control = completion && hfs_completion_control(completion);
++		retained_body = hfs_completion_retained_body(completion, operation, response.max_body);
++#endif
 +		goto exchange;
 +	}
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++	if (hfs_controlled_owns(session)) {
++		if (!strcmp(operation, "ALLOCATE") || !strcmp(operation, "CALL") || !strcmp(operation, "GAP_RESOLVE"))
++			response.max_body = HFS_CONTEXT_MAX + 4096 + 1024;
++		/* Complete command, assembled/raw parsed response, both parser token
++		 * arenas, and transport/native frame packages are charged BEFORE
++		 * any allocation/send. Received owners acquire separate exact credits
++		 * before this temporary package is returned. Small request metadata
++		 * and caller payloads remain in their preowned request/ticket package.
++		 */
++		u64 command_cap = hfs_view_command(operation) ? HFS_VIEW_BODY_MAX : HFS_BODY_MAX;
++		u64 response_cap, bytes;
++
++		completion = hfs_completion_find(session, operation, payload);
++		if (completion && hfs_completion_body(completion) < response.max_body)
++			response.max_body = hfs_completion_body(completion);
++		retained_body = hfs_completion_retained_body(completion, operation, response.max_body);
++		response_cap = response.max_body;
++		bytes = sizeof(*candidate) + command_cap + 2ULL * response_cap +
++			2ULL + sizeof(struct hfs_json) +
++			2ULL * min_t(u64, response_cap / 2 + 1, 131072ULL) * sizeof(struct hfs_token) +
++			6ULL * (HFS_HEADER_SIZE + HFS_CHUNK_MAX + 1ULL);
++
++		resource_control = completion ? hfs_completion_control(completion) :
++			(reserved || release) && strcmp(operation, "QUERY") && strcmp(operation, "CANCEL") &&
++			strcmp(operation, "GAP_RESOLVE") && strcmp(operation, "VIEW_QUERY") &&
++			strcmp(operation, "VIEW_CANCEL") && strcmp(operation, "VIEW_RENEW");
++		if (completion)
++			err = hfs_completion_reserve(completion, bytes, false, &carrier_credit);
++		else
++			err = hfs_controlled_transport_reserve(session, operation, bytes,
++				resource_control, &carrier_credit);
++		if (err) {
++			hfs_completion_put(completion);
++			return err;
++		}
++	}
++#endif
++	if (release) {
++		struct hfs_json *ack = NULL;
++		u32 len = 32;
++
++		err = hfs_json_parse(payload->data, payload->len, &ack);
++		if (!err && (hfs_json_exact(ack, 0, "cell,response_hash") ||
++		    hfs_field_u64(ack, 0, "cell", &release_cell) || !release_cell ||
++		    hfs_json_hex(ack, hfs_json_field(ack, 0, "response_hash"),
++				 release_hash, &len) || len != 32))
++			err = -EINVAL;
++		hfs_json_free(ack);
++		if (err) {
++			if (carrier_credit)
++				session->provider->unreserve(session, carrier_credit);
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++			hfs_completion_put(completion);
++#endif
++			return err;
++		}
++	}
 +	candidate = kzalloc(sizeof(*candidate), GFP_KERNEL);
-+	if (!candidate)
++	if (!candidate) {
++		if (carrier_credit)
++			session->provider->unreserve(session, carrier_credit);
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++		hfs_completion_put(completion);
++#endif
 +		return -ENOMEM;
++	}
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++	candidate->completion = completion;
++#endif
++	candidate->response = response;
++	candidate->session = session;
++	candidate->reservation = carrier_credit;
 +	err = hfs_buf_init(&command,
 +			    hfs_view_command(operation) ? HFS_VIEW_BODY_MAX : HFS_BODY_MAX);
 +	if (err) {
 +		kfree(candidate);
++		if (carrier_credit)
++			session->provider->unreserve(session, carrier_credit);
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++		hfs_completion_put(completion);
++#endif
 +		return err;
 +	}
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++	if (hfs_controlled_owns(session) && strcmp(operation, "HELLO")) {
++		struct hfs_response_profile receipt_profile = response;
++
++		receipt_profile.max_body = retained_body;
++		err = hfs_received_prepare(session, (u32)command_bound, receipt_profile, resource_control, completion, &response_credit);
++		if (err) {
++			hfs_buf_free(&command);
++			kfree(candidate);
++			session->provider->unreserve(session, carrier_credit);
++			hfs_completion_put(completion);
++			return err;
++		}
++	}
++#endif
 +	/* Writer is never held while awaiting a service grant or recall. FETCH
 +	 * below must remain nonblocking; independent control workers own reserve.
 +	 */
@@ -1118,8 +1262,17 @@ new file mode 100644
 +	}
 +exchange:
 +#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
-+	if (hfs_controlled_owns(session) && strcmp(operation, "HELLO"))
++	if (hfs_controlled_owns(session) && strcmp(operation, "HELLO")) {
++		if (!response_credit) {
++			struct hfs_response_profile receipt_profile = response;
++
++			receipt_profile.max_body = retained_body;
++			err = hfs_received_prepare(session, (u32)command_bound, receipt_profile, resource_control, completion, &response_credit);
++			if (err)
++				goto fault;
++		}
 +		hfs_received_capture(session, &received_capture);
++	}
 +#endif
 +	err = hfs_transport(session, &command, cell,
 +		!strcmp(operation, "VIEW_WAIT") ? 65534 :
@@ -1140,8 +1293,12 @@ new file mode 100644
 +	json->native_cell = cell;
 +#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
 +	if (hfs_controlled_owns(session) && strcmp(operation, "HELLO")) {
++		if (json->len > retained_body || command.len > command_bound) {
++			err = -EPROTO;
++			goto fault;
++		}
 +		err = hfs_received_new(session, &command, json, &received_capture,
-+				       response, reserved || release);
++				       response, resource_control, reserved || release, completion, &response_credit);
 +		if (err)
 +			goto fault;
 +	}
@@ -1157,12 +1314,32 @@ new file mode 100644
 +	mutex_unlock(&session->lock);
 +	if (writer_held)
 +		mutex_unlock(&session->writer);
-+	kfree(candidate);
-+	*out = json;
++	carrier_credit = candidate->reservation;
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++	if (carrier_credit && !strcmp(operation, "HELLO")) {
++		json->owner = candidate;
++		json->owner_put = hfs_candidate_parse_put;
++		carrier_credit = NULL;
++	} else
++#endif
++		kfree(candidate);
 +	hfs_buf_free(&command);
 +	kvfree(reply);
++	/* Received owns returned parses except HELLO, which retains its actual
++	 * carrier until the entire HELLO parse is destroyed.
++	 */
++	if (carrier_credit)
++		session->provider->unreserve(session, carrier_credit);
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++	hfs_completion_put(completion);
++#endif
++	*out = json;
 +	return 0;
 +fault:
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++	hfs_controlled_received_release(session, response_credit);
++	hfs_completion_uncertain(completion);
++#endif
 +	/* Keep exact uncertain candidate bytes. Never release donor evidence or
 +	 * issue another candidate after an uncertain transport/admission result.
 +	 */
@@ -1182,12 +1359,24 @@ new file mode 100644
 +		mutex_unlock(&session->writer);
 +	hfs_json_free(json);
 +	kvfree(reply);
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++	hfs_completion_put(completion);
++#endif
 +	return err;
 +unlock:
 +	mutex_unlock(&session->lock);
 +	mutex_unlock(&session->writer);
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++	hfs_controlled_received_release(session, response_credit);
++#endif
++	carrier_credit = candidate->reservation;
 +	hfs_buf_free(&command);
 +	kfree(candidate);
++	if (carrier_credit)
++		session->provider->unreserve(session, carrier_credit);
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++	hfs_completion_put(completion);
++#endif
 +	return err;
 +}
 +EXPORT_SYMBOL_GPL(hfs_control);
@@ -1472,6 +1661,21 @@ new file mode 100644
 +}
 +EXPORT_SYMBOL_GPL(hfs_request_resolve_gap);
 +
++/* Caller owns the request lifetime while copying its immutable result. */
++static int hfs_request_result_borrow(struct hfs_request *request, struct hfs_json **out)
++{
++	int err = hfs_copy_token(request->result, 0, out);
++
++	if (!err) {
++		mutex_lock(&request->session->lock);
++		request->users++;
++		(*out)->owner = request;
++		(*out)->owner_put = hfs_request_result_put;
++		mutex_unlock(&request->session->lock);
++	}
++	return err;
++}
++
 +static int hfs_request_run(struct hfs_session *session,
 +			   struct hfs_request *request, const char *opcode,
 +			   struct hfs_buf *payload, struct hfs_json **out)
@@ -1593,13 +1797,8 @@ new file mode 100644
 +		goto retained;
 +	request->result = result;
 +	result = NULL;
-+	err = hfs_copy_token(request->result, 0, out);
++	err = hfs_request_result_borrow(request, out);
 +	mutex_lock(&session->lock);
-+	if (!err) {
-+		request->users++;
-+		(*out)->owner = request;
-+		(*out)->owner_put = hfs_request_result_put;
-+	}
 +	request->adopted = !hfs_result_needs_adoption(request->result);
 +	request->terminal = true;
 +	mutex_unlock(&session->lock);
@@ -1634,10 +1833,13 @@ new file mode 100644
 +	/* Sixteen dirty packages, independently capped from 128 clean pages.
 +	 * This is the existing full request/transport credit, never 128 copies.
 +	 */
-+	err = session->provider->reserve(session, 16ULL * 1024 * 1024, true,
++	err = session->provider->reserve(session, (hfs_controlled_consumed(session) ? 4ULL : 16ULL) * 1024 * 1024, true,
 +					 &request->reservation);
 +	if (err)
 +		goto allocation;
++	err = hfs_completion_new(session, true, false, HFS_CONTEXT_MAX + 4096 + 1024, &request->completion);
++	if (err)
++		goto free;
 +	if (hfs_buf_init(&request->claim, 4096) ||
 +	    hfs_buf_init(&request->earmark_number, 4096) ||
 +	    hfs_buf_init(&request->intent, 32768) ||
@@ -1696,6 +1898,7 @@ new file mode 100644
 +	hfs_buf_free(&request->earmark_number);
 +	hfs_buf_free(&request->drain_payload);
 +	hfs_buf_free(&request->readdir_cleanup);
++	hfs_completion_close(request->completion);
 +	session->provider->unreserve(session, request->reservation);
 +allocation:
 +	kfree(request);
@@ -1840,17 +2043,20 @@ new file mode 100644
 +	if (!request)
 +		return -ENOMEM;
 +	request->session = session;
-+	err = session->provider->reserve(session, 16ULL * 1024 * 1024,
++	err = session->provider->reserve(session, (hfs_controlled_consumed(session) ? 4ULL : 16ULL) * 1024 * 1024,
 +					 control, &request->reservation);
 +	if (err == -ENOSPC || err == -EAGAIN) {
 +		if (!hfs_retire(session))
-+			err = session->provider->reserve(session, 16ULL * 1024 * 1024,
++			err = session->provider->reserve(session, (hfs_controlled_consumed(session) ? 4ULL : 16ULL) * 1024 * 1024,
 +						 control, &request->reservation);
 +	}
 +	if (err) {
 +		kfree(request);
 +		return err;
 +	}
++	err = hfs_completion_new(session, control, false, HFS_BODY_MAX, &request->completion);
++	if (err)
++		goto free;
 +	if (hfs_buf_init(&request->claim, 4096) ||
 +	    hfs_buf_init(&request->intent, args->len + 64) ||
 +	    hfs_buf_init(&request->credentials, 16384) ||
@@ -1929,6 +2135,7 @@ new file mode 100644
 +	hfs_buf_free(&request->drain_payload);
 +	hfs_buf_free(&request->readdir_cleanup);
 +	hfs_buf_free(&payload);
++	hfs_completion_close(request->completion);
 +	session->provider->unreserve(session, request->reservation);
 +	kfree(request);
 +	return err;
@@ -2408,7 +2615,7 @@ new file mode 100644
 +	struct hfs_view *view;
 +	int err;
 +
-+	if (hfs_view_tickets_busy(session))
++	if (session->retirement_cut || hfs_view_tickets_busy(session))
 +		return -EBUSY;
 +	view = hfs_view_get(session);
 +	if (view) {
@@ -2444,7 +2651,8 @@ new file mode 100644
 +		hfs_json_free(request->allocation_receipt);
 +		hfs_json_free(request->response);
 +		hfs_json_free(request->gap_response);
-+		session->provider->unreserve(session, request->reservation);
++		hfs_completion_close(request->completion);
++	session->provider->unreserve(session, request->reservation);
 +		kfree(request);
 +	}
 +	list_for_each_entry_safe(description, next_description,
@@ -2695,20 +2903,92 @@ new file mode 100644
 +	sb->s_fs_info = NULL;
 +}
 +
++int hfs_retirement_cut_new(struct hfs_session *session, const char *operation,
++	const struct hfs_buf *payload, u64 first, u64 through, struct hfs_retirement_cut **out)
++{
++	struct hfs_retirement_cut *cut;
++	void *credit;
++	int err;
++
++	*out = NULL;
++	if (!first || through < first || through - first >= 1024 ||
++	    payload->error || !payload->len || payload->len >= HFS_BODY_MAX ||
++	    (strcmp(operation, "RETIRE") && strcmp(operation, "VIEW_RETIRE")))
++		return -EINVAL;
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++	if (hfs_controlled_owns(session))
++		err = hfs_controlled_progress_reserve(session, sizeof(*cut) + payload->len + 1ULL, &credit);
++	else
++#endif
++		err = session->provider->reserve(session, sizeof(*cut) + payload->len + 1ULL, true, &credit);
++	if (err)
++		return err;
++	cut = kzalloc(sizeof(*cut), GFP_KERNEL);
++	if (!cut) {
++		err = -ENOMEM;
++		goto unreserve;
++	}
++	err = hfs_buf_init(&cut->payload, payload->len + 1);
++	if (err) {
++		kfree(cut);
++		goto unreserve;
++	}
++	hfs_buf_add(&cut->payload, payload->data, payload->len);
++	cut->first = first;
++	cut->through = through;
++	memcpy(cut->operation, operation, strlen(operation) + 1);
++	cut->reservation = credit;
++	*out = cut;
++	return 0;
++unreserve:
++	session->provider->unreserve(session, credit);
++	return err;
++}
++
++void hfs_retirement_cut_free(struct hfs_session *session, struct hfs_retirement_cut *cut)
++{
++	void *credit;
++
++	if (!cut)
++		return;
++	credit = cut->reservation;
++	hfs_json_free(cut->response);
++	hfs_buf_free(&cut->payload);
++	kfree(cut);
++	session->provider->unreserve(session, credit);
++}
++
 +int hfs_retire(struct hfs_session *session)
 +{
 +	struct hfs_request *request, *next, *issuer = NULL;
-+	struct hfs_buf payload;
++	struct hfs_buf payload = {};
++	struct hfs_retirement_cut *cut = NULL;
 +	struct hfs_json *reply = NULL;
++	void *scratch_credit = NULL;
 +	u8 hash[32], proof[32];
 +	u32 count = 0, len;
 +	u64 through = 0, floor;
 +	int err, token;
 +
 +	mutex_lock(&session->retirement);
++	if (session->bridge_minor == 4 && session->retirement_cut) {
++		cut = session->retirement_cut;
++		through = cut->through;
++		goto exchange;
++	}
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++	if (hfs_controlled_owns(session)) {
++		/* This payload exists even before selecting any parent request and
++		 * remains alive while retired request reservations are disposed.
++		 */
++		err = hfs_controlled_progress_reserve(session, HFS_BODY_MAX, &scratch_credit);
++		if (err)
++			goto unreserve;
++	}
++#endif
 +	err = hfs_buf_init(&payload, HFS_BODY_MAX);
 +	if (err)
-+		goto unlock;
++		goto unreserve;
 +	mutex_lock(&session->lock);
 +	if (session->bridge_minor >= 2) {
 +		list_for_each_entry(request, &session->requests, list) {
@@ -2751,10 +3031,16 @@ new file mode 100644
 +				break;
 +		}
 +		len = 32;
-+		if (!request->result ||
-+		    hfs_json_hex(request->result,
-+				 hfs_json_field(request->result, 0, "id"), hash, &len) ||
-+		    len != 32) {
++		if (session->bridge_minor == 4 && !request->result && request->gap && request->gap_response) {
++			int gap = hfs_json_field(request->gap_response, 0, "payload");
++
++			err = hfs_json_hex(request->gap_response,
++				hfs_json_field(request->gap_response, gap, "proof_hash"), hash, &len);
++		} else {
++			err = !request->result ? -EPROTO : hfs_json_hex(request->result,
++				hfs_json_field(request->result, 0, "id"), hash, &len);
++		}
++		if (err || len != 32) {
 +			err = -EPROTO;
 +			mutex_unlock(&session->lock);
 +			goto free;
@@ -2775,9 +3061,22 @@ new file mode 100644
 +	hfs_buf_hex(&payload, session->enrollment.subject,
 +		    session->enrollment.subject_len);
 +	hfs_buf_printf(&payload, ",\"through\":%llu}", through);
-+	err = hfs_control(session, "RETIRE", &payload, true, &reply);
-+	if (err)
-+		goto free;
++	if (session->bridge_minor == 4) {
++		err = hfs_retirement_cut_new(session, "RETIRE", &payload, issuer->number, through, &cut);
++		if (err)
++			goto free;
++		session->retirement_cut = cut;
++	}
++exchange:
++	if (cut && cut->response)
++		reply = cut->response;
++	else {
++		err = hfs_control(session, "RETIRE", cut ? &cut->payload : &payload, true, &reply);
++		if (err)
++			goto free;
++		if (cut)
++			cut->response = reply;
++	}
 +	token = hfs_json_field(reply, 0, "payload");
 +	if (hfs_json_exact(reply, token, "floor,proof_hash,status") ||
 +	    hfs_field_u64(reply, token, "floor", &floor)) {
@@ -2785,6 +3084,16 @@ new file mode 100644
 +		goto free;
 +	}
 +	if (hfs_json_is(reply, hfs_json_field(reply, token, "status"), "\"BLOCKED\"")) {
++		if (!hfs_json_is(reply, hfs_json_field(reply, token, "proof_hash"), "null")) {
++			err = -EPROTO;
++			goto free;
++		}
++		if (cut) {
++			session->retirement_cut = NULL;
++			hfs_retirement_cut_free(session, cut);
++			cut = NULL;
++			reply = NULL;
++		}
 +		err = -EAGAIN;
 +		goto free;
 +	}
@@ -2799,7 +3108,23 @@ new file mode 100644
 +	if (err)
 +		goto free;
 +	mutex_lock(&session->lock);
++	/* A late borrower cannot be destroyed after the callback parked. The
++	 * retained cut permits revalidation of the same already protected floor.
++	 */
++	if (session->bridge_minor == 4) {
++		list_for_each_entry(request, &session->requests, list) {
++			if (request->number > through)
++				break;
++			if (request->held || request->users || !request->terminal || !request->adopted) {
++				err = -EBUSY;
++				mutex_unlock(&session->lock);
++				goto free;
++			}
++		}
++	}
 +	list_for_each_entry_safe(request, next, &session->requests, list) {
++		void *reservation = request->reservation;
++
 +		if (request->number > through)
 +			break;
 +		list_del(&request->list);
@@ -2822,14 +3147,24 @@ new file mode 100644
 +		hfs_json_free(request->allocation_receipt);
 +		hfs_json_free(request->response);
 +		hfs_json_free(request->gap_response);
-+		session->provider->unreserve(session, request->reservation);
++		hfs_completion_close(request->completion);
 +		kfree(request);
++		session->provider->unreserve(session, reservation);
 +	}
 +	mutex_unlock(&session->lock);
++	if (cut) {
++		session->retirement_cut = NULL;
++		hfs_retirement_cut_free(session, cut);
++		cut = NULL;
++		reply = NULL;
++	}
 +free:
-+	hfs_json_free(reply);
++	if (!cut)
++		hfs_json_free(reply);
 +	hfs_buf_free(&payload);
-+unlock:
++unreserve:
++	if (scratch_credit)
++		session->provider->unreserve(session, scratch_credit);
 +	mutex_unlock(&session->retirement);
 +	return err;
 +}

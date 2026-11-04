@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <openssl/evp.h>
+#include <openssl/rand.h>
 typedef atomic_int atomic_t;
 struct file_system_type;
 #define MAX_NON_LFS 0x7fffffff
@@ -34,7 +35,7 @@ struct inode { struct address_space *i_mapping; struct super_block *i_sb; int re
 struct file { struct inode *inode; void *private_data; };
 struct vm_area_struct { struct file *vm_file; };
 struct address_space { bool exiting; const struct address_space_operations *a_ops; };
-struct page { bool locked,compound,anon,marker,uptodate,mapped,writeback,pinned,dirty; void *private; int refs; };
+struct page { bool locked,compound,anon,marker,uptodate,mapped,writeback,pinned,dirty; void *private; int refs;u8 data[4096]; };
 struct folio { struct page page; struct address_space *mapping; };
 struct device { unsigned references; bool registered; const char *name; };
 struct p9_client { void *trans; void *trans_mod; int status; int proto_version;u32 msize;struct mutex hfs_control_tag,hfs_wait_tag; };
@@ -51,7 +52,8 @@ static inline void list_del_init(struct list_head *p) { list_del(p);INIT_LIST_HE
 #define DEFINE_MUTEX(name) struct mutex name = { PTHREAD_MUTEX_INITIALIZER }
 #define mutex_init(m) assert(!pthread_mutex_init(&(m)->native,NULL))
 #define mutex_lock(m) assert(!pthread_mutex_lock(&(m)->native))
-#define mutex_unlock(m) assert(!pthread_mutex_unlock(&(m)->native))
+extern void primitive_after_mutex_unlock(struct mutex *);
+#define mutex_unlock(m) do { assert(!pthread_mutex_unlock(&(m)->native)); primitive_after_mutex_unlock(m); } while(0)
 #define spin_lock_init(m) assert(!pthread_mutex_init(m,NULL))
 #define spin_lock(m) assert(!pthread_mutex_lock(m))
 #define spin_unlock(m) assert(!pthread_mutex_unlock(m))
@@ -113,7 +115,10 @@ struct address_space_operations {
 #define lock_page(p) ((p)->locked=true)
 #define unlock_page(p) ((p)->locked=false)
 #define page_mapped(p) ((p)->mapped)
-#define page_mapping(p) ((p)->private?(void *)1:NULL)
+#define page_mapping(p) (page_folio(p)->mapping)
+#define kmap_local_page(p) ((p)->data)
+#define kunmap_local(p) ((void)(p))
+#define mapping_set_error(mapping,error) ((void)(mapping),(void)(error))
 #define page_folio(p) container_of(p,struct folio,page)
 #define folio_mapping(f) ((f)->mapping)
 #define folio_mapped(f) ((f)->page.mapped)

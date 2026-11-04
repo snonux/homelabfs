@@ -93,7 +93,7 @@ func startReceivedCarrier(t *testing.T, r *sourceRig) *receivedCarrier {
 			_ = c.cmd.Wait()
 		}
 	})
-	c.write(string(mustRuntimeJSON(t, map[string]any{"base": *r.mappingNativeCell, "binds": []json.RawMessage{bind}, "credentials": credentials, "os": map[string]any{"boot_id": r.scope.GuestBoot, "provider_nonce": r.installed.Admission.ProviderNonce}, "provision": json.RawMessage(provision)})))
+	c.write(string(mustRuntimeJSON(t, map[string]any{"base": *r.mappingNativeCell, "binds": []json.RawMessage{bind}, "credentials": credentials, "os": map[string]any{"boot_id": r.scope.GuestBoot, "provider_nonce": r.installed.Admission.ProviderNonce, "capture_tuples": r.credentialCaptures}, "provision": json.RawMessage(provision)})))
 	c.readUntil(0, true)
 	return c
 }
@@ -251,6 +251,11 @@ func (c *receivedCarrier) action(verb string, session int, tail string, want int
 	c.write(strings.TrimSpace(fmt.Sprintf("%s %d %d %s", verb, id, session, tail)))
 	code, raw := c.readUntil(id, false)
 	if code != want {
+		for cell, command := range c.commands {
+			if command.Op == "GAP_RESOLVE" || command.Op == "QUERY" || command.Op == "RETIRE" {
+				c.t.Logf("actual retained exchange cell%d %s request=%s response=%s", cell, command.Op, command.Payload, c.responses[cell])
+			}
+		}
 		c.t.Fatalf("C6 %s session%d %s = %d want%d body=%s diagnostics=%s", verb, session, tail, code, want, raw, c.diagnostics.String())
 	}
 	return raw
@@ -283,6 +288,9 @@ func (c *receivedCarrier) close() {
 func TestControlledReceivedActualProviderProducer(t *testing.T) {
 	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
 	c := startReceivedCarrier(t, r)
+	for i := range 2 {
+		c.action("RELEASE_NEGATIVES", i, "", 0)
+	}
 	domains := make([]guestbridge.Capability, 2)
 	for i := range 2 {
 		root := c.call(i, "ROOT", map[string]any{})
@@ -482,4 +490,660 @@ func receivedResult(t *testing.T, raw []byte) []guestbridge.Capability {
 		t.Fatalf("actual terminal result/capabilities/null publication: %s", raw)
 	}
 	return reply.Payload.Result.Capabilities
+}
+
+// TestControlledReceivedActualFundedDirty exercises the actual provider, private
+// factory, frozen page/manifest and host service under aggregate ordinary slots.
+func TestControlledReceivedActualFundedDirty(t *testing.T) {
+	runControlledReceivedFundedDirty(t, false)
+}
+func TestControlledReceivedActualRetainedResultPressure(t *testing.T) {
+	runControlledReceivedFundedDirty(t, true)
+}
+func runControlledReceivedFundedDirty(t *testing.T, retainedPressure bool) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	domains := make([]guestbridge.Capability, 2)
+	request := func(i int, op string, args any) []byte {
+		return c.action("REQUEST", i, op+" "+hex.EncodeToString(mustRuntimeJSON(t, args)), 0)
+	}
+	for i := range 2 {
+		caps := receivedResult(t, request(i, "ROOT", map[string]any{}))
+		require(t, json.Unmarshal(c.action("ADOPT_ROOT_PREPARE", i, "", 0), &domains[i]))
+		receivedResult(t, request(i, "CREATE", map[string]any{"parent": caps[0], "name": fmt.Sprintf("6469727479%02x", i+48), "mode": 0660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}}))
+		c.action("ADOPT_DESCRIPTION", i, "CREATE", 0)
+		c.action("VIEW_NEW", i, "", 0)
+		c.action("VIEW_NEW", i, "", -17)
+	}
+	c.action("DIRTY", 0, "", 0)
+	c.action("ACQUIRE_PAGE", 1, "", 0)
+	if retainedPressure {
+		for i := range 2 {
+			c.action("OWNER_NEGATIVES", i, "", 0)
+			c.action("VIEW_QUERY_HOLD", i, "", 0)
+		}
+		full := false
+		for round := 0; round < 32 && !full; round++ {
+			for i := range 2 {
+				var pressure struct {
+					Held      int
+					Exhausted bool
+				}
+				require(t, json.Unmarshal(c.action("BORROW_PRESSURE", i, "64", 0), &pressure))
+				if pressure.Held == 0 {
+					t.Fatal("no real held ordinary result")
+				}
+				full = full || pressure.Exhausted
+			}
+		}
+		if !full {
+			t.Fatal("actual ordinary retained-result capacity never refused")
+		}
+	} else {
+		c.action("PRESSURE", 0, "1000", 0)
+		c.action("PRESSURE", 1, "0", 0)
+		c.action("CHECK", 0, "cap", -28)
+		c.action("CHECK", 1, "cap", -28)
+	}
+	c.action("ORDINARY_REFUSES", 0, "", 0)
+	c.action("ORDINARY_REFUSES", 1, "", 0)
+	c.action("CLOSE_PENDING", 0, "", 0)
+	c.action("RELEASE_START", 1, "", 0)
+	for i := range 2 {
+		if retainedPressure {
+			for event := 0; event < 4; event++ {
+				c.run(i, true, "VIEW_WAIT", map[string]any{"domain": domains[i], "after_sequence": 0})
+				c.action("EVENT_HOLD", i, "", 0)
+			}
+			c.action("EVENT_RESTORE", i, "", 0)
+			c.action("ACTOR_HOLD", i, "", 0)
+		} else {
+			c.run(i, true, "VIEW_WAIT", map[string]any{"domain": domains[i], "after_sequence": 0})
+		}
+		if i == 0 {
+			c.action("PIN", i, "1", 0)
+			c.action("PHASE", i, "STOPPED", -16)
+			c.action("PIN", i, "0", 0)
+		}
+		c.action("PHASE", i, "STOPPED", 0)
+	}
+	c.action("DRAIN", 0, "", 0)
+	for _, phase := range []string{"INSTALLED_DRAIN", "DRAINED", "INSTALLED_FINAL", "REOPENED"} {
+		for i := range 2 {
+			c.run(i, true, "VIEW_WAIT", map[string]any{"domain": domains[i], "after_sequence": 0})
+			c.action("PHASE", i, phase, 0)
+		}
+	}
+	if retainedPressure {
+		for i := range 2 {
+			c.action("FLOOR_UNHOLD", i, "", 0)
+		}
+		for i := range 2 {
+			c.action("RELEASE_DONE", i, "", 0)
+			c.action("RETIRE", i, "", -11)
+			c.action("VIEW_RETIRE", i, "", 0)
+		}
+		for i := range 2 {
+			c.action("ACTOR_DROP", i, "", 0)
+		}
+		for i := range 2 {
+			c.action("DROP_PRESSURE", i, "", 0)
+			c.action("RETIRE", i, "", 0)
+		}
+	}
+	for i := 0; !retainedPressure && i < 2; i++ {
+		c.action("RELEASE_DONE", i, "", 0)
+		c.action("RETIRE", i, "", 0)
+		if i == 0 {
+			c.action("VIEW_RETIRE", i, "", 0)
+			continue
+		}
+		// The real host commits the old view floor before its guest-side
+		// comparison allocation fails. A later acquisition cannot replace it.
+		c.action("FAULT", i, "VIEW_RETIRE 3", 0)
+		c.action("VIEW_RETIRE", i, "", -12)
+		requireReceivedCut(t, c, i, 0, 0, 1)
+		c.action("UNPRESSURE", i, "", 0)
+		c.action("ACQUIRE_PAGE", i, "", 0)
+		c.action("VIEW_RETIRE", i, "", 0)
+		requireReceivedCut(t, c, i, 0, 0, 0)
+		c.action("RELEASE_START", i, "", 0)
+		for _, phase := range []string{"STOPPED", "INSTALLED_DRAIN", "DRAINED", "INSTALLED_FINAL", "REOPENED"} {
+			for j := range 2 {
+				c.run(j, true, "VIEW_WAIT", map[string]any{"domain": domains[j], "after_sequence": 0})
+				c.action("PHASE", j, phase, 0)
+			}
+		}
+		c.action("RELEASE_DONE", i, "", 0)
+		c.action("VIEW_RETIRE", i, "", 0)
+	}
+	for i := range 2 {
+		c.action("UNPRESSURE", i, "", 0)
+		c.action("RETAIN_VERIFY", i, "", 0)
+	}
+	checkReceivedViewFloorBindings(t, c, !retainedPressure)
+	drains := 0
+	for _, command := range c.commands {
+		if command.Op != "CALL" {
+			continue
+		}
+		var call guestbridge.Call
+		require(t, json.Unmarshal(command.Payload, &call))
+		if call.Intent.Opcode == "DRAIN_WRITE" {
+			drains++
+			var args struct{ Data string }
+			require(t, json.Unmarshal(call.Intent.Args, &args))
+			data, err := hex.DecodeString(args.Data)
+			require(t, err)
+			if len(data) != 4096 {
+				t.Fatal("nonempty drain length")
+			}
+			for n, value := range data {
+				if value != byte(n*17) {
+					t.Fatal("drain changed frozen bytes")
+				}
+			}
+		}
+	}
+	if drains != 1 {
+		t.Fatalf("actual DRAIN_WRITE count %d", drains)
+	}
+	c.close()
+}
+
+// Reconstruct only the documented scalar translation of the recorded actual
+// native receipt. This is an inert cross-language check; the real guest callback
+// has already consumed the actual privately received response before this runs.
+func checkReceivedViewFloorBindings(t *testing.T, c *receivedCarrier, extended bool) {
+	t.Helper()
+	count := 0
+	blocked := 0
+	var blockedKey string
+	floors := make(map[string]struct {
+		Through uint64
+		Hashes  []string `json:"result_hashes"`
+	})
+	for cell, command := range c.commands {
+		if command.Op != "VIEW_RETIRE" {
+			continue
+		}
+		var fields map[string]json.RawMessage
+		require(t, json.Unmarshal(c.responses[cell], &fields))
+		var cut struct {
+			Anchor, Nonce string
+			Credentials   guestbridge.Credentials
+			Through       uint64
+			Hashes        []string `json:"result_hashes"`
+		}
+		require(t, json.Unmarshal(command.Payload, &cut))
+		key := command.Context.Session + "/" + cut.Anchor + "/" + cut.Nonce
+		var response struct {
+			Payload struct {
+				Status string
+				Floor  uint64
+				Proof  *string `json:"proof_hash"`
+			}
+		}
+		require(t, json.Unmarshal(c.responses[cell], &response))
+		var receipt guestbridge.VerificationReceiptV2
+		require(t, json.Unmarshal(fields["verification"], &receipt))
+		if receipt.Kind != "VIEW_FLOOR" {
+			if response.Payload.Status != "BLOCKED" || response.Payload.Floor != 0 || response.Payload.Proof != nil ||
+				command.Context != c.rig.peers[1].scope || cut.Through != 1 || len(cut.Hashes) != 1 || !bytes.Equal(mustRuntimeJSON(t, cut.Credentials), mustRuntimeJSON(t, c.rig.credentials)) {
+				t.Fatalf("unexpected actual blocked view cut: %s / %s", command.Payload, c.responses[cell])
+			}
+			blocked++
+			blockedKey = key
+			continue
+		}
+		floors[key] = struct {
+			Through uint64
+			Hashes  []string `json:"result_hashes"`
+		}{cut.Through, cut.Hashes}
+		count++
+		fields["cell"] = mustRuntimeJSON(t, receipt.GuestCell)
+		fields["op"] = mustRuntimeJSON(t, "VIEW_RETIRE")
+		original := c.originals[fmt.Sprintf("%s/%d", command.Context.Session, receipt.GuestCell)]
+		if len(original) == 0 {
+			t.Fatal("missing actual original VIEW_RETIRE")
+		}
+		binding := c.rig.peers[0].mappedBinding()
+		for _, peer := range c.rig.peers {
+			if peer.scope == command.Context {
+				binding = peer.mappedBinding()
+			}
+		}
+		_, err := guestbridge.VerifyMappedReceipt(binding, original, mustRuntimeJSON(t, fields))
+		require(t, err)
+		changed := receipt
+		changed.MappingHash = hashBytes([]byte("wrong mapping"))
+		fields["verification"] = mustRuntimeJSON(t, changed)
+		if _, err = guestbridge.VerifyMappedReceipt(binding, original, mustRuntimeJSON(t, fields)); err == nil {
+			t.Fatal("VIEW_FLOOR accepted changed mapping")
+		}
+		changed = receipt
+		changed.PollCount = 2
+		fields["verification"] = mustRuntimeJSON(t, changed)
+		if _, err = guestbridge.VerifyMappedReceipt(binding, original, mustRuntimeJSON(t, fields)); err == nil {
+			t.Fatal("VIEW_FLOOR accepted wrong poll mapping")
+		}
+		fields["verification"] = mustRuntimeJSON(t, receipt)
+		wrongBinding := binding
+		wrongBinding.Controller = testUUID(120).String()
+		if _, err = guestbridge.VerifyMappedReceipt(wrongBinding, original, mustRuntimeJSON(t, fields)); err == nil {
+			t.Fatal("VIEW_FLOOR accepted other controller")
+		}
+	}
+	if !extended {
+		if count != 4 || blocked != 0 {
+			t.Fatalf("pressure view floors/blocked %d/%d", count, blocked)
+		}
+		return
+	}
+	if count != 5 || blocked != 1 {
+		t.Fatalf("actual signed view floors/blocked cuts %d/%d", count, blocked)
+	}
+	final := floors[blockedKey]
+	if final.Through != 2 || len(final.Hashes) != 2 {
+		t.Fatalf("final control floor omitted real releases: %+v", final)
+	}
+	actual := make(map[string]bool)
+	for cell, command := range c.commands {
+		if command.Op != "VIEW_RELEASE" || command.Context != c.rig.peers[1].scope {
+			continue
+		}
+		var reply struct{ Payload struct{ Status, ID string } }
+		require(t, json.Unmarshal(c.responses[cell], &reply))
+		if reply.Payload.Status == "RELEASED" {
+			actual[reply.Payload.ID] = true
+		}
+	}
+	// Final release may be completed by VIEW_QUERY; its protected payload
+	// retains the original VIEW_RELEASE operation and exact response self-id.
+	for cell, command := range c.commands {
+		if command.Op != "VIEW_QUERY" || command.Context != c.rig.peers[1].scope {
+			continue
+		}
+		var reply struct {
+			Payload struct{ Status, ID, Operation string }
+		}
+		require(t, json.Unmarshal(c.responses[cell], &reply))
+		if reply.Payload.Status == "RELEASED" && reply.Payload.Operation == "VIEW_RELEASE" {
+			actual[reply.Payload.ID] = true
+		}
+	}
+	if len(actual) != 2 || !actual[final.Hashes[0]] || !actual[final.Hashes[1]] || final.Hashes[0] == final.Hashes[1] {
+		t.Fatalf("control floor differs from actual release replies: %v / %v", final.Hashes, actual)
+	}
+}
+
+func receivedState(t *testing.T, c *receivedCarrier, session int) (uint64, int, int) {
+	t.Helper()
+	var state struct {
+		Floor             uint64
+		Requests, Unknown int
+	}
+	require(t, json.Unmarshal(c.action("STATE", session, "", 0), &state))
+	return state.Floor, state.Requests, state.Unknown
+}
+
+func requireReceivedCut(t *testing.T, c *receivedCarrier, session int, cut uint64, reply, views int) {
+	t.Helper()
+	var state struct {
+		Cut      uint64
+		CutReply int `json:"cut_reply"`
+		ViewCuts int `json:"view_cuts"`
+	}
+	require(t, json.Unmarshal(c.action("STATE", session, "", 0), &state))
+	if state.Cut != cut || state.CutReply != reply || state.ViewCuts != views {
+		t.Fatalf("retained attempt: %+v, want %d/%d/%d", state, cut, reply, views)
+	}
+}
+
+func TestControlledReceivedActualRetirementInterleaving(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	args := "ROOT " + hex.EncodeToString(mustRuntimeJSON(t, map[string]any{}))
+	c.action("REQUEST", 0, args, 0)
+	c.action("ADOPT_ROOT_PREPARE", 0, "", 0)
+	c.action("FAULT", 0, "RETIRE 3", 0)
+	c.action("RETIRE", 0, "", -12)
+	requireReceivedCut(t, c, 0, 1, 1, 0)
+	// A real later numbered request is admitted while the first exact full
+	// protected reply remains owned. Replaying it must consume only cut one.
+	c.action("REQUEST", 0, args, 0)
+	c.action("ADOPT_RESULT", 0, "", 0)
+	c.action("RETIRE", 0, "", 0)
+	if floor, requests, _ := receivedState(t, c, 0); floor != 1 || requests != 1 {
+		t.Fatalf("old cut replaced by later request: %d/%d", floor, requests)
+	}
+	requireReceivedCut(t, c, 0, 0, 0, 0)
+	c.action("RETIRE", 0, "", 0)
+	if floor, requests, _ := receivedState(t, c, 0); floor != 2 || requests != 0 {
+		t.Fatalf("next exact floor: %d/%d", floor, requests)
+	}
+	floors := make(map[uint64]int)
+	for _, command := range c.commands {
+		if command.Op == "RETIRE" {
+			var payload struct{ Through uint64 }
+			require(t, json.Unmarshal(command.Payload, &payload))
+			floors[payload.Through]++
+		}
+	}
+	if len(floors) != 2 || floors[1] != 1 || floors[2] != 1 {
+		t.Fatalf("unexpected replacement/retransmission: %v", floors)
+	}
+	c.action("RETAIN_VERIFY", 0, "", 0)
+	c.close()
+}
+
+func TestControlledReceivedActualLateBorrowRetirement(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	c.action("REQUEST", 0, "ROOT "+hex.EncodeToString(mustRuntimeJSON(t, map[string]any{})), 0)
+	c.action("ADOPT_ROOT_PREPARE", 0, "", 0)
+	c.action("LATE_BORROW", 0, "1", 0)
+	c.action("RETIRE", 0, "", -16)
+	if floor, requests, _ := receivedState(t, c, 0); floor != 1 || requests != 1 {
+		t.Fatalf("late borrower destroyed or authorization lost: %d/%d", floor, requests)
+	}
+	requireReceivedCut(t, c, 0, 1, 1, 0)
+	c.action("DROP_RESULTS", 0, "", 0)
+	c.action("RETIRE", 0, "", 0)
+	if floor, requests, _ := receivedState(t, c, 0); floor != 1 || requests != 0 {
+		t.Fatalf("same protected cut could not reap after borrower release: %d/%d", floor, requests)
+	}
+	requireReceivedCut(t, c, 0, 0, 0, 0)
+	n := 0
+	for _, command := range c.commands {
+		if command.Op == "RETIRE" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("same accepted proof caused %d retirement RPCs", n)
+	}
+	c.action("RETAIN_VERIFY", 0, "", 0)
+	c.close()
+}
+
+func TestControlledReceivedActualAllocateRetryProfile(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	args := "ROOT " + hex.EncodeToString(mustRuntimeJSON(t, map[string]any{}))
+	for session, mode := range []int{1, 2} {
+		c.action("FAULT", session, fmt.Sprintf("ALLOCATE %d", mode), 0)
+		c.action("REQUEST", session, args, -5)
+		if floor, requests, unknown := receivedState(t, c, session); floor != 0 || requests != 1 || unknown != 1 {
+			t.Fatalf("lost allocation ownership: %d/%d/%d", floor, requests, unknown)
+		}
+		c.action("ALLOCATE_RETRY", session, "", 0)
+		if floor, requests, unknown := receivedState(t, c, session); floor != 0 || requests != 1 || unknown != 0 {
+			t.Fatalf("same candidate not resolved: %d/%d/%d", floor, requests, unknown)
+		}
+		receivedResult(t, c.action("REQUEST_CONTINUE", session, "", 0))
+		c.action("ADOPT_ROOT_PREPARE", session, "", 0)
+		c.action("RETIRE", session, "", 0)
+		if floor, requests, unknown := receivedState(t, c, session); floor != 1 || requests != 0 || unknown != 0 {
+			t.Fatalf("retry changed protected original/floor: %d/%d/%d", floor, requests, unknown)
+		}
+		c.action("RETAIN_VERIFY", session, "", 0)
+	}
+	c.close()
+}
+
+func TestControlledReceivedActualProtectedGapQuery(t *testing.T) {
+	for _, protocol := range []guestbridge.Protocol{guestbridge.ControlledProtocol(), guestbridge.CleanupProtocol(), guestbridge.MappedProtocol()} {
+		t.Run(fmt.Sprint(protocol.BridgeMinor), func(t *testing.T) {
+			r := newSourceRigProtocol(t, protocol)
+			intent := guestbridge.Intent{Opcode: "ROOT", Args: json.RawMessage(`{}`)}
+			call := guestbridge.Call{Claim: guestbridge.Claim{Realm: testUUID(100).String(), Subject: "616263", Anchor: testUUID(101).String(), Nonce: testUUID(103).String(), Number: 1, OriginalHash: hashBytes(mustRuntimeJSON(t, intent))}, Credentials: r.credentials, Intent: intent}
+			_, _, err := r.execute("ALLOCATE", call)
+			require(t, err)
+			_, _, err = r.execute("GAP_RESOLVE", call)
+			require(t, err)
+			want := "INDETERMINATE"
+			if protocol == guestbridge.MappedProtocol() {
+				want = "DECLINED"
+			}
+			check := func(op, status string) {
+				raw, receipt, err := r.execute(op, map[string]any{"claim": call.Claim})
+				require(t, err)
+				var reply struct {
+					Status string
+					Claim  guestbridge.Claim
+					Result json.RawMessage
+				}
+				require(t, json.Unmarshal(raw, &reply))
+				if reply.Status != status || reply.Claim != call.Claim || !bytes.Equal(reply.Result, []byte("null")) || receipt != nil {
+					t.Fatalf("unexpected query/no-effect authority: %s / %+v", raw, receipt)
+				}
+			}
+			check("QUERY", want)
+			check("CANCEL", "INDETERMINATE")
+			check("QUERY", want)
+			// A caller without the real private QUERY provenance still observes
+			// the conservative state; it cannot construct DECLINED authority.
+			state, err := r.provider.Resolve(t.Context(), r.scope, call.Claim)
+			require(t, err)
+			if state.Status != "INDETERMINATE" {
+				t.Fatal("direct provider lookup gained query provenance")
+			}
+			wrongScope := r.scope
+			wrongScope.Session = testUUID(99).String()
+			if _, err = r.provider.Resolve(t.Context(), wrongScope, call.Claim); err == nil {
+				t.Fatal("wrong scope accepted")
+			}
+			wrongClaim := call.Claim
+			wrongClaim.OriginalHash = hashBytes([]byte("changed claim"))
+			if _, _, err = r.execute("QUERY", map[string]any{"claim": wrongClaim}); err == nil {
+				t.Fatal("changed claim accepted")
+			}
+			// The actual transport/native verifier must reject a changed endpoint.
+			r.native.Endpoint.CommandNode++
+			if _, _, err = r.execute("QUERY", map[string]any{"claim": call.Claim}); err == nil {
+				t.Fatal("changed native endpoint accepted")
+			}
+		})
+	}
+}
+
+func TestControlledReceivedActualGapLostReplies(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	args := "ROOT " + hex.EncodeToString(mustRuntimeJSON(t, map[string]any{}))
+	c.action("REQUEST", 0, args, 0)
+	c.action("ADOPT_ROOT_PREPARE", 0, "", 0)
+	c.action("FAULT", 0, "CALL 1", 0)
+	c.action("REQUEST", 0, args, -5)
+	if floor, requests, unknown := receivedState(t, c, 0); floor != 0 || requests != 2 || unknown != 1 {
+		t.Fatalf("unsent original lost: %d/%d/%d", floor, requests, unknown)
+	}
+	c.action("FAULT", 0, "GAP_RESOLVE 2", 0)
+	c.action("RESOLVE_GAP", 0, "", -5)
+	if floor, requests, unknown := receivedState(t, c, 0); floor != 0 || requests != 2 || unknown != 2 {
+		t.Fatalf("lost GAP destroyed ownership: %d/%d/%d", floor, requests, unknown)
+	}
+	c.action("RESOLVE_GAP", 0, "", 0)
+	c.action("GAP_NEGATIVES", 0, "", 0)
+	c.action("FAULT", 0, "RETIRE 2", 0)
+	c.action("RETIRE", 0, "", -5)
+	if floor, requests, unknown := receivedState(t, c, 0); floor != 0 || requests != 2 || unknown != 3 {
+		t.Fatalf("lost FLOOR destroyed ownership: %d/%d/%d", floor, requests, unknown)
+	}
+	c.action("RETIRE", 0, "", 0)
+	if floor, requests, unknown := receivedState(t, c, 0); floor != 2 || requests != 0 || unknown != 3 {
+		t.Fatalf("protected gap floor/unknown retention: %d/%d/%d", floor, requests, unknown)
+	}
+	proofs := []string{}
+	for cell, command := range c.commands {
+		if command.Op != "GAP_RESOLVE" {
+			continue
+		}
+		var reply struct {
+			Payload struct {
+				Proof string `json:"proof_hash"`
+			}
+		}
+		require(t, json.Unmarshal(c.responses[cell], &reply))
+		proofs = append(proofs, reply.Payload.Proof)
+	}
+	if len(proofs) != 2 || proofs[0] == "" || proofs[0] != proofs[1] {
+		t.Fatalf("GAP retry changed protected proof: %v", proofs)
+	}
+	c.action("RETAIN_VERIFY", 0, "", 0)
+	c.close()
+}
+
+func TestControlledReceivedActualMixedIssuerFloors(t *testing.T) {
+	second := guestbridge.Credentials{FSUID: 1000, FSGID: 1001, Groups: []uint32{200, 201}, Process: testUUID(73).String(), Revision: 2, IDMapHash: receivedInitialIDMap, UserNamespace: testUUID(64).String()}
+	r := newSourceRigDomainsBootstrap(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap, false, second)
+	c := startReceivedCarrier(t, r)
+	args := "ROOT " + hex.EncodeToString(mustRuntimeJSON(t, map[string]any{}))
+	var first struct {
+		Payload struct{ Result struct{ ID string } }
+	}
+	for i, issuer := range []int{0, 1, 0} {
+		c.action("ISSUER", 0, strconv.Itoa(issuer), 0)
+		raw := c.action("REQUEST", 0, args, 0)
+		if i == 0 {
+			require(t, json.Unmarshal(raw, &first))
+		}
+		c.action("ADOPT_RESULT", 0, "", 0)
+	}
+	// An allowed family with no protected view ticket cannot mint a floor.
+	family := r.artifactAuthorization.Enrollment.TicketFamilies[0].Acquisition
+	unprotected := c.run(0, true, "VIEW_RETIRE", map[string]any{"anchor": family.Anchor, "nonce": family.Nonce, "credentials": r.credentials, "through": 1, "result_hashes": []string{hashBytes([]byte("unprotected"))}})
+	var refused struct {
+		Verification *guestbridge.VerificationReceiptV2
+		Payload      struct{ Status string }
+	}
+	require(t, json.Unmarshal(unprotected, &refused))
+	if refused.Verification != nil || refused.Payload.Status != "BLOCKED" {
+		t.Fatal("unprotected view retirement minted evidence")
+	}
+	c.action("DROP_RESULTS", 0, "", 0)
+	c.run(0, true, "RETIRE", map[string]any{"realm": testUUID(100).String(), "subject": "616263", "anchor": testUUID(101).String(), "nonce": testUUID(103).String(), "through": 1, "result_hashes": []string{first.Payload.Result.ID}, "credentials": r.credentials})
+	c.action("FLOOR_NEGATIVES", 0, "", 0)
+	for through := uint64(1); through <= 3; through++ {
+		c.action("RETIRE", 0, "", 0)
+		floor, requests, unknown := receivedState(t, c, 0)
+		if floor != through || requests != 3-int(through) || unknown != 0 {
+			t.Fatalf("issuer prefix %d: %d/%d/%d", through, floor, requests, unknown)
+		}
+	}
+	seen := map[uint64]guestbridge.Credentials{}
+	for _, command := range c.commands {
+		if command.Op != "RETIRE" {
+			continue
+		}
+		var original struct {
+			Through     uint64
+			Credentials guestbridge.Credentials
+			Hashes      []string `json:"result_hashes"`
+		}
+		require(t, json.Unmarshal(command.Payload, &original))
+		if len(original.Hashes) != 1 {
+			t.Fatal("retirement crossed issuer boundary")
+		}
+		expected := r.credentials
+		if original.Through == 2 {
+			expected = second
+		}
+		if !sameJSON(original.Credentials, expected) {
+			t.Fatal("retirement changed original full issuer")
+		}
+		seen[original.Through] = original.Credentials
+	}
+	if len(seen) != 3 {
+		t.Fatal("missing actual protected issuer prefix")
+	}
+	c.action("RETAIN_VERIFY", 0, "", 0)
+	c.close()
+}
+
+func TestControlledReceivedActualEffectedGapRefusal(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	root := c.action("REQUEST", 0, "ROOT "+hex.EncodeToString(mustRuntimeJSON(t, map[string]any{})), 0)
+	caps := receivedResult(t, root)
+	c.action("ADOPT_ROOT_PREPARE", 0, "", 0)
+	c.action("FAULT", 0, "CALL 2", 0)
+	args := map[string]any{"parent": caps[0], "name": "6566666563746564", "mode": 0660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}}
+	c.action("REQUEST", 0, "CREATE "+hex.EncodeToString(mustRuntimeJSON(t, args)), -5)
+	var claim guestbridge.Claim
+	for _, command := range c.commands {
+		if command.Op != "CALL" {
+			continue
+		}
+		var call guestbridge.Call
+		require(t, json.Unmarshal(command.Payload, &call))
+		if call.Intent.Opcode == "CREATE" {
+			claim = call.Claim
+		}
+	}
+	if claim.Number != 2 {
+		t.Fatal("lost CALL did not retain actual CREATE original")
+	}
+	terminal := false
+	for range 100 {
+		raw := c.run(0, true, "QUERY", map[string]any{"claim": claim})
+		var reply struct {
+			Payload struct {
+				Status string
+				Result struct {
+					Code         string
+					Capabilities []guestbridge.Capability
+				}
+			}
+		}
+		require(t, json.Unmarshal(raw, &reply))
+		if reply.Payload.Status == "TERMINAL" {
+			if reply.Payload.Result.Code != "OK" || len(reply.Payload.Result.Capabilities) == 0 {
+				t.Fatal("actual CREATE effect absent")
+			}
+			terminal = true
+			break
+		}
+	}
+	if !terminal {
+		t.Fatal("actual admitted CREATE did not finish")
+	}
+	// The host refuses GAP for its protected effected claim. The actual guest
+	// control deadline retains the original request/candidate; no reset follows.
+	c.action("RESOLVE_GAP", 0, "", -110)
+	if floor, requests, unknown := receivedState(t, c, 0); floor != 0 || requests != 2 || unknown != 2 {
+		t.Fatalf("effected GAP refusal lost ownership: %d/%d/%d", floor, requests, unknown)
+	}
+	c.action("RETAIN_VERIFY", 0, "", 0)
+	c.close()
+}
+
+func TestControlledReceivedActualClosingReaddir(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	request := func(op string, args any) []byte {
+		return c.action("REQUEST", 0, op+" "+hex.EncodeToString(mustRuntimeJSON(t, args)), 0)
+	}
+	caps := receivedResult(t, request("ROOT", map[string]any{}))
+	c.action("ADOPT_ROOT_PREPARE", 0, "", 0)
+	receivedResult(t, request("CREATE", map[string]any{"parent": caps[0], "name": "656e747279", "mode": 0660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}}))
+	c.action("ADOPT_DESCRIPTION", 0, "CREATE", 0)
+	request("READDIR", map[string]any{"object": caps[0], "after": "", "revision": 0, "limit": 256})
+	c.action("READDIR_CLEAN", 0, "", 0)
+	c.action("RETIRE", 0, "", 0)
+	if floor, requests, unknown := receivedState(t, c, 0); floor != 3 || requests != 0 || unknown != 0 {
+		t.Fatalf("closing cleanup floor: %d/%d/%d", floor, requests, unknown)
+	}
+	cleanup := 0
+	for _, command := range c.commands {
+		if command.Op == "READDIR_CLEANUP" {
+			cleanup++
+		}
+	}
+	if cleanup != 1 {
+		t.Fatalf("actual cleanup calls %d", cleanup)
+	}
+	c.action("RETAIN_VERIFY", 0, "", 0)
+	c.close()
 }

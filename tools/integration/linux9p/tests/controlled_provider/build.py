@@ -319,6 +319,13 @@ for declaration in ['enum hfs_view_scope {', 'struct hfs_enrollment {']:
     end = declarations.index('\n};', start)+3
     parts.append(declarations[start:end])
 (out/'enrollment_struct.inc').write_text('\n'.join(parts)+'\n')
+session_parts = ['typedef pthread_mutex_t spinlock_t;',
+                 'struct list_head { struct list_head *next, *prev; };']
+for declaration in ['struct hfs_cell {', 'struct hfs_session {']:
+    start = declarations.index(declaration)
+    end = declarations.index('\n};', start)+3
+    session_parts.append(declarations[start:end])
+(out/'session_struct.inc').write_text('\n'.join(session_parts)+'\n')
 crypto = source/'fs/9p/hfs_crypto'
 commands = []
 for unit in ['hfs_crypto_core', 'hfs_crypto_ed25519']:

@@ -52,7 +52,7 @@ func DecodeVerificationReceiptV2(raw []byte) (VerificationReceiptV2, error) {
 	if err != nil {
 		return VerificationReceiptV2{}, err
 	}
-	if _, err = DecodeVerificationReceipt(base); err != nil {
+	if _, err = decodeVerificationReceipt(base, true); err != nil {
 		return VerificationReceiptV2{}, err
 	}
 	var receipt VerificationReceiptV2
@@ -184,11 +184,15 @@ func validateMappedKind(c Command, r VerificationReceiptV2, payload []byte) erro
 				return fsapi.Stale
 			}
 		}
-	case "FLOOR":
-		if c.Op != "RETIRE" {
+	case "FLOOR", "VIEW_FLOOR":
+		if r.Kind == "FLOOR" && c.Op != "RETIRE" || r.Kind == "VIEW_FLOOR" && c.Op != "VIEW_RETIRE" {
 			return fsapi.Permission
 		}
-		if err := validateControlResponse(c, payload); err != nil {
+		if r.Kind == "VIEW_FLOOR" {
+			if err := validateViewResponse(c, payload); err != nil {
+				return err
+			}
+		} else if err := validateControlResponse(c, payload); err != nil {
 			return err
 		}
 		request, err := envelopeFields(c.Payload)
@@ -203,7 +207,11 @@ func validateMappedKind(c Command, r VerificationReceiptV2, payload []byte) erro
 		if err != nil {
 			return err
 		}
-		for _, key := range []string{"realm", "subject", "anchor", "nonce", "through", "credentials"} {
+		keys := []string{"anchor", "nonce", "through", "credentials"}
+		if r.Kind == "FLOOR" {
+			keys = append(keys, "realm", "subject")
+		}
+		for _, key := range keys {
 			if !bytes.Equal(request[key], evidence[key]) {
 				return fsapi.Stale
 			}

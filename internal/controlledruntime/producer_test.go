@@ -48,6 +48,7 @@ type sourceRig struct {
 	scope                 guestbridge.Context
 	native                guestbridge.Native
 	credentials           guestbridge.Credentials
+	credentialCaptures    []guestbridge.Credentials
 	key                   ed25519.PrivateKey
 	cells, claims         uint64
 	peers                 []*sourceRig
@@ -59,6 +60,7 @@ type sourceRig struct {
 type guestCredentialsSetPrimitive struct {
 	scopes      []guestbridge.Context
 	credentials guestbridge.Credentials
+	additional  []guestbridge.Credentials
 }
 
 type mountedPrimitive struct{ file *os.File }
@@ -90,7 +92,7 @@ func newSourceRigDomainsUnstarted(t *testing.T, protocol guestbridge.Protocol, c
 	return newSourceRigDomainsBootstrap(t, protocol, count, idmap, false)
 }
 
-func newSourceRigDomainsBootstrap(t *testing.T, protocol guestbridge.Protocol, count int, idmap string, hello bool) *sourceRig {
+func newSourceRigDomainsBootstrap(t *testing.T, protocol guestbridge.Protocol, count int, idmap string, hello bool, additional ...guestbridge.Credentials) *sourceRig {
 	t.Helper()
 	temporary := t.TempDir
 	if !hello {
@@ -157,6 +159,14 @@ func newSourceRigDomainsBootstrap(t *testing.T, protocol guestbridge.Protocol, c
 	require(t, err)
 	r.scope = guestbridge.Context{AuthorityHash: hashBytes([]byte("authority")), Cluster: testUUID(40).String(), Configuration: testUUID(3).String(), Export: testUUID(41).String(), ExporterIncarnation: r.supervisor.record.ProcessID.String(), FuseSession: endpoint.FuseSession, Generation: testUUID(2).String(), GuestBoot: testUUID(44).String(), GuestMount: testUUID(45).String(), OriginIncarnation: testUUID(46).String(), OriginJournal: journal.Incarnation.String(), OriginNode: testUUID(48).String(), PolicyHash: hashBytes([]byte("policy")), RegistryHash: hashBytes([]byte("registry")), Session: testUUID(50).String(), VM: testUUID(52).String(), Volume: testUUID(1).String()}
 	r.credentials = guestbridge.Credentials{FSUID: 1000, FSGID: 1001, Groups: []uint32{200}, Process: testUUID(63).String(), Revision: 1, IDMapHash: idmap, UserNamespace: testUUID(64).String()}
+	if len(additional) > 1 {
+		t.Fatal("only two predeclared credential captures supported")
+	}
+	r.credentialCaptures = append([]guestbridge.Credentials{r.credentials}, additional...)
+	for i := range r.credentialCaptures {
+		r.credentialCaptures[i].Groups = append([]uint32(nil), r.credentialCaptures[i].Groups...)
+	}
+
 	identity := r.supervisor.child.identity
 	r.native = guestbridge.Native{UID: identity.UID, GID: identity.GID, PID: identity.PID, Groups: append([]uint32(nil), identity.Groups...), Process: identity.PublicID.String(), Unique: 1, Endpoint: endpoint}
 	r.installed = installedObservation{Version: "homelabfs-installed-observation/1", ManifestHash: hashBytes([]byte("manifest")), BootID: r.scope.GuestBoot, KernelBuildID: strings.Repeat("ab", 20), Modules: map[string]string{}, ABI: physicalContract, Admission: kernelAdmission{Version: "homelabfs-kernel-admission/1", BootID: r.scope.GuestBoot, ProviderNonce: testUUID(66).String(), PhysicalContract: physicalContract, Protocols: map[string]guestbridge.Protocol{r.scope.Session: protocol}, Domains: []guestbridge.Context{r.scope}, Observations: []kernelDomainObservation{{Scope: r.scope, Revision: 1, Fence: 1, Phase: "LIVE"}}}}
@@ -250,7 +260,7 @@ func newSourceRigDomainsBootstrap(t *testing.T, protocol guestbridge.Protocol, c
 		require(t, err)
 		claims, execution = router, router
 	}
-	r.bridge, err = guestbridge.New(t.Context(), guestbridge.Config{Validation: &profile, Protocol: &protocol, Verification: producer, ViewProtocol: r.controller, Endpoint: endpoint, Native: r.supervisor, Attestor: guestCredentialsSetPrimitive{r.installed.Admission.Domains, r.credentials}, Claims: claims, Execution: execution, Views: r.controller, Scopes: r.installed.Admission.Domains})
+	r.bridge, err = guestbridge.New(t.Context(), guestbridge.Config{Validation: &profile, Protocol: &protocol, Verification: producer, ViewProtocol: r.controller, Endpoint: endpoint, Native: r.supervisor, Attestor: newGuestCredentialsSetPrimitive(r.installed.Admission.Domains, r.credentialCaptures), Claims: claims, Execution: execution, Views: r.controller, Scopes: r.installed.Admission.Domains})
 	require(t, err)
 	r.supervisor.record.Stage = "claimed"
 	if protocol == guestbridge.MappedProtocol() {
@@ -613,10 +623,29 @@ func testRealControlledProducerRejectsFalseFrozenOmission(t *testing.T, protocol
 	require(t, err)
 }
 
+func newGuestCredentialsSetPrimitive(scopes []guestbridge.Context, captures []guestbridge.Credentials) guestCredentialsSetPrimitive {
+	copyCredentials := func(c guestbridge.Credentials) guestbridge.Credentials {
+		c.Groups = append([]uint32(nil), c.Groups...)
+		return c
+	}
+	g := guestCredentialsSetPrimitive{scopes: append([]guestbridge.Context(nil), scopes...), credentials: copyCredentials(captures[0])}
+	for _, c := range captures[1:] {
+		g.additional = append(g.additional, copyCredentials(c))
+	}
+	return g
+}
+
 func (g guestCredentialsSetPrimitive) Verify(_ context.Context, scope guestbridge.Context, c guestbridge.Credentials) error {
 	for _, enrolled := range g.scopes {
-		if scope == enrolled && sameJSON(c, g.credentials) {
-			return nil
+		if scope == enrolled {
+			if sameJSON(c, g.credentials) {
+				return nil
+			}
+			for _, captured := range g.additional {
+				if sameJSON(c, captured) {
+					return nil
+				}
+			}
 		}
 	}
 	return fsapi.Permission

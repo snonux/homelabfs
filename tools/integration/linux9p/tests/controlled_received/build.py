@@ -57,6 +57,8 @@ def main():
             (out/path.name).write_text(portable(read(str(path.relative_to(source)))))
     codec = (here.parent/'codec/compat.h').read_text().replace(
         'typedef uint64_t u64;', 'typedef unsigned long long u64;')
+    codec = codec.replace('static inline bool hfs_test_allocation_fail(void)', 'extern bool primitive_allocation_size_failure(size_t);\nstatic inline bool hfs_test_allocation_fail(void)').replace('return ++hfs_test_alloc_call == hfs_test_alloc_fail;', 'return ++hfs_test_alloc_call == hfs_test_alloc_fail || primitive_allocation_size_failure(hfs_test_last_allocation_size);')
+    codec = codec.replace('#define kfree free', 'extern void primitive_free(void *);\n#define kfree primitive_free').replace('#define kvfree free', '#define kvfree primitive_free')
     (out/'hfs_codec_compat.h').write_text(codec)
     for name in ('kernel_format.c', 'kernel_format.h'):
         (out/name).write_bytes((here.parent/'common'/name).read_bytes())
@@ -64,21 +66,28 @@ def main():
     # Reuse the independently reviewed sysfs/identity primitive declarations.
     admin = (here.parent/'controlled_provider/compat.h').read_text()
     admin = admin.replace('#include "enrollment_struct.inc"', '')
+    admin = admin.replace('#include "session_struct.inc"', '')
     admin = admin.replace('struct mutex { pthread_mutex_t native; };', '')
     admin = re.sub(r'^static inline void sort\([^}]+}\n', '', admin, flags=re.S|re.M)
     admin = re.sub(r'^static inline int hfs_uuid.*\n', '', admin, flags=re.M)
     admin = admin.replace('typedef atomic_int atomic_t;', '')
+    admin = admin.replace('static inline void uuid_gen(uuid_t *out) { *out=primitive_nonce; }',
+                          'static inline void uuid_gen(uuid_t *out) { static unsigned calls; if (!calls++) *out=primitive_nonce; else assert(RAND_bytes(out->b,16)==1); }')
     admin = re.sub(r'^#define DEFINE_MUTEX.*\n', '', admin, flags=re.M)
     admin = re.sub(r'^static inline void mutex_(lock|unlock).*\n', '', admin, flags=re.M)
     (out/'controlled_compat.h').write_text(admin)
     session = read('fs/9p/hfs_session.c')
     selected = ['hfs_field_u64', 'hfs_uuid', 'hfs_cred_write', 'hfs_cred_free',
                 'hfs_reply_scope', 'hfs_transport', 'hfs_result_needs_adoption',
-                'hfs_operation', 'hfs_allocation_candidate', 'hfs_control',
+                'hfs_operation', 'hfs_allocation_candidate', 'hfs_candidate_parse_put', 'hfs_control',
                 'hfs_copy_token', 'hfs_result_code', 'hfs_result_validate',
                 'hfs_args_init', 'hfs_cap_write', 'hfs_args_object',
                 'hfs_cap_free', 'hfs_cap_parse', 'hfs_reply_cap',
-                'hfs_request_unhold', 'hfs_enrollment_validate', 'hfs_enrollment_lanes', 'v9fs_hfs_register_provider']
+                'hfs_request_unhold', 'hfs_request_result_put', 'hfs_request_payload',
+                'hfs_request_allocate', 'hfs_request_resolve_gap', 'hfs_request_result_borrow', 'hfs_request_run',
+                'hfs_request_earmark', 'hfs_request_cancel_earmark', 'hfs_request_earmark_admitted',
+                'hfs_request_bind_drain', 'hfs_request_drain', 'hfs_call', 'hfs_retirement_cut_new', 'hfs_retirement_cut_free', 'hfs_retire', 'hfs_result_adopt',
+                'hfs_readdir_cleanup', 'hfs_readdir_forget', 'hfs_enrollment_validate', 'hfs_enrollment_lanes', 'v9fs_hfs_register_provider']
     definitions = []
     for name in selected:
         definitions.append(function(session, name))
@@ -89,7 +98,7 @@ def main():
     fail = mount.index('\nfail:\n')
     (out/'mount_fail.inc').write_text('static void *fixture_actual_mount_fail(struct hfs_session *session,int err) {\nunsigned long irqflags;\n' + mount[fail+len('\nfail:\n'):])
     lease = read('fs/9p/hfs_lease.c')
-    (out/'lease.inc').write_text(portable(lease[:lease.index('\nint hfs_view_retire(')]))
+    (out/'lease.inc').write_text(portable(lease))
     exchange = function(lease, 'hfs_view_exchange')
     bound = exchange.index('\n\t/* Initial admissions')
     (out/'release_prepare.inc').write_text(exchange[:bound].replace('int hfs_view_exchange(', 'static int fixture_prepare_exchange(') + '\n\t(void)reply;(void)sent;(void)op;(void)deadline;(void)control;(void)body;(void)status;return 0;\n}\n')

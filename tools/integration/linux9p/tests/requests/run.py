@@ -23,13 +23,15 @@ def main():
     for name in names[2:]:
         body.append('\n'.join(line for line in inputs[name].splitlines() if not line.startswith('#include')))
     header = inputs[names[1]]
+    cut_start = header.index('struct hfs_retirement_cut {')
+    body.append(header[cut_start:header.index('\n};', cut_start)+len('\n};')])
     first = header.index('struct hfs_request {')
     last = header.index('\n};', first)+len('\n};')
     body.append(header[first:last])
     session = inputs[names[0]]
     for first, last in [('static int hfs_field_u64(', '\nint hfs_uuid('),
                         ('static void hfs_request_result_put(', '\nstatic int hfs_request_payload('),
-                        ('int hfs_retire(', '\nEXPORT_SYMBOL_GPL(hfs_retire);')]:
+                        ('int hfs_retirement_cut_new(', '\nEXPORT_SYMBOL_GPL(hfs_retire);')]:
         start = session.index(first)
         body.append(session[start:session.index(last,start)])
     (args.output/'production.c').write_text('\n'.join(body)+'\n')

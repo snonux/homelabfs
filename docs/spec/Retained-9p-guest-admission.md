@@ -105,7 +105,8 @@ identities remain present despite subsequent failures or uncertainty.
 ## Retained allocation accounting
 
 Before publishing the registry, C6 computes an immutable `control_base_bytes`.
-It includes each retained registry/mount/enrollment structure, each owned JSON
+It includes each retained registry/mount/enrollment structure and one complete
+`hfs_session` per local mount, each owned JSON
 structure, raw bytes including its terminator and compacted token array, all
 four128KiB snapshot packages, one128KiB+1 artifact input buffer, accepted-open
 bookkeeping and a permanent8MiB accepted-operation staging reserve. If that base
@@ -201,9 +202,139 @@ The observer freezes one complete immutable snapshot per open across chunked
 reads/seeks, with four128KiB slots and exact EOF. It preserves all original local
 stopped/uncertain domains and the exact C5 phases/event/ACK-payload hashes. Publish
 a phase only after actual STOP/adoption/PTE/source duties and before its ACK.
-There is no boot-local reset/unload/reconstruction interface. C6 conservative
-retention releases no uncertain ownership; C7 must implement protected retirement,
-gaps, floors and session release before those operations can succeed.
+There is no boot-local reset/unload/reconstruction interface. C7 separates definite local owner disposal from uncertain retention and verifies
+protected ordinary/view floors as described below. Positive whole-session
+handoff remains unsupported until task614 implements the
+[separately negotiated terminal contract](Retained-9p-session-retirement.md).
+
+## C7 aggregate ownership and closing
+
+The signed totals remain unchanged. Ordinary and control byte pools never borrow
+from each other. Each receives `floor(reservations/2)` reservation slots and
+`floor(received/2)` private received-owner slots; an odd final slot is unused.
+The provider accounts all local mounts together and retains per-session credit,
+received-owner and admissibility-cookie counts. Cookies also obey their existing
+independent signed aggregate limit. These live counters do not recycle permanent
+host capability, source or ticket identities and tombstones.
+
+Before exposing an original controlled1.4 request or ticket, admission reserves
+its completion bytes and finite reservation/Received slots in that actual owner's
+semantic class. Exact existing claim/credentials/intent or complete ticket and
+saved operation/query bytes select this private package. Native reserved tags,
+cells and channels retain their original scheduling rules: ordinary QUERY,
+VIEW_QUERY/RENEW/CANCEL data and descendants remain ordinary resource owners;
+earmarked drain and genuine control families remain funded controls. A caller
+reserved flag cannot select the resource class. The independent cleanup identity
+gate allows exact existing owners to consume preowned ordinary capacity while
+closing or globally saturated, without reopening ordinary Source/target ingress.
+
+`hfs_completion.inc` computes simultaneous-phase bounds from actual response,
+token, candidate and private Received/copy sizes. Ordinary phases cover retained
+ALLOCATE/QUERY, required snapshot/caller copies and uncertain carriers; GAP adds
+retained complete GAP/QUERY and its two scratch buffers. View phases cover initial,
+current and query owners plus required copies. Admission precharges16 reservation
+slots and3 Received slots for each request/ticket package. Controlled originals
+use4MiB request and1MiB ticket buffer allowances in addition to the computed
+completion package; older profiles retain their16/4MiB allowances. Signed budgets
+are unchanged: insufficient complete capacity refuses before original exposure.
+
+Each actual session separately preowns an event lane and retirement lane at
+superblock binding, before any non-HELLO ingress. The event lane reserves6 Received
+slots for `pending[3]`, `last_event`, reposted WAIT and ACK; its byte bound includes
+both in-flight carriers and required retained parses/workspaces. Two independent
+Received slots and a separate byte/slot package cover ordinary/view retirement
+cuts, uncertain carriers and floor scratch. Retained floor attempts cannot consume
+ACK capacity. The production event worker reposts WAIT before ACK and frees its
+previous event only after processing/ACK; these lifetimes determine the bound.
+The installer's existing re-signed16MiB positive fixture proves only installation
+and immutable metadata admission. Actual SB/operation admission additionally
+requires these computed packages; that fixture is not a full runtime capacity
+claim and no signed fixture budget is raised to pass C7.
+
+Carrier credit covers command/raw/parsed response/token/frame packages before
+allocation. Received bytes and a Received slot are also admitted before response
+data is created; the command bound uses checked `payload + context +1024` grammar
+arithmetic rather than the larger command arena. Successful private construction
+shrinks only definitely unused suballocation to actual parse ownership. Complete
+EVENT and FLOOR retained-envelope bounds (64/32KiB) follow the existing16KiB
+unsigned-receipt verifier limit,8KiB domain/target bounds,4KiB context and fixed
+closed-envelope fields; carrier/raw wire profiles retain their existing limits.
+Closed ALLOCATE/CALL/GAP and earmarked empty-data DRAIN replies carry no full
+credentials/groups or Source receipt and fit context+claim+1024, including the
+complete mapped/native envelope. Other QUERY/view data retain their full profile.
+
+A definite parent reap may return unused completion capacity, while descendants
+keep their actual package and slot charges through independent references. An
+uncertain candidate preserves the complete package conservatively. Mandatory
+completion draws existing ownership; optional extra copies may ordinary-refuse.
+No failure resets counters. Saved ALLOCATE candidates also retain their immutable
+response profile so exact same-cell retry cannot outgrow its original funding.
+
+RELEASE_CELL checks its128-byte closed canonical ACK without allocation, reserves
+carrier ownership, then parses/frees the ACK before command allocation. HELLO has
+no private Received association: its actual carrier candidate stays attached to
+the returned JSON until all arenas, associations and the JSON allocation are
+freed. The saved generic owner callback runs after that destruction; existing
+result-user release is correspondingly delayed safely. Signatures/public flags
+alone still grant no private Received authority.
+
+Ordinary retirement payload/comparison and view comparison scratch draw the
+session retirement lane; GAP comparison/nested payload scratch draw its actual
+ordinary request package. Immutable ordinary/per-family retirement attempts retain
+their original full issuer, first/through cut, exact payload and any complete reply
+until consumption or authenticated BLOCKED. Later requests/tickets never replace
+an unresolved cut. An already authenticated ordinary floor is revalidated against
+the exact still-owned attempt before reaping after a late borrower releases it.
+
+HELLO uses an explicitly typed control reservation before an sb
+exists; this grants no source or workload rights. Signed budgets are not
+increased to make a package fit. Allocation errors preserve uncertainty; these
+are requested-allocation bounds, not an allocator-residency or OOM guarantee.
+
+STOP closes ordinary admission before examining any owner. The controlled1.4
+physical entry gate also checks blocked/closing state. A bare local fence is
+never physical STOP: existing authenticated recall helpers still join entrants,
+revoke aliases, reject pins and capture the complete frozen manifest. Pending or
+busy cleanup retains the session/device/module and all held resources. The
+original observer rows and phase evidence remain present.
+
+Closing permits only existing typed control progress under the still-live
+original group/device/endpoint identity. A control CALL must exactly match the
+original claim, complete credentials and immutable DRAIN_WRITE intent of a
+held, bound, preowned dirty request. READDIR_CLEANUP must exactly match the
+preowned cleanup buffer of its still-borrowed terminal READDIR parent. These
+comparisons borrow immutable buffers under the session lock before carrier
+allocation; no RPC or parser allocation runs under that lock. Generic CALL,
+new acquisition and new ordinary cookies remain closed. No native transport
+class is relabeled. Only the exact locally disposed credit may be returned by
+unreserve; retained dirty/request/unknown owners are never blanket-freed.
+
+Ordinary retirement consumes a contiguous same-issuer prefix from the existing
+shared principal floor, preserving every full original credential tuple. Held
+results, users, unadopted results and unresolved numbers stop that prefix.
+Never-prepared gaps retain the actual full GAP_RESOLVE envelope and the exact
+QUERY DECLINED envelope with `result:null`; their protected `proof_hash` is
+coverage, without an invented `Result.id`. Only an actual authenticated mapped1.4
+QUERY with exact scope, claim payload, enrolled protocol and native endpoint can
+expose DECLINED from the protected original no-effect entry. Direct lookups,
+CANCEL and older protocols keep their conservative INDETERMINATE projection;
+prepared/effected entries cannot use that path. Private transport association binds
+those original replies but cannot itself destroy a claim. Destruction requires
+a real signed FLOOR in the complete privately received mapped response, matched
+to the actual original retirement payload and still-owned local prefix.
+
+VIEW_RETIRE uses the distinct1.4
+[VIEW_FLOOR receipt](Retained-9p-mapping.md#view-retirement-receipt) and passes the
+borrowed complete response through the provider callback before releasing any
+ticket. Its original family/credentials, through, hashes and protected proof
+must match. Permanent family floors and number counters remain monotonic.
+
+`retire_session` inspects actual local owners and refuses while requests,
+unknown candidates, cells, credits, cookies or physical/source owners remain.
+Even a provably never-issued case cannot invent a protected terminal handoff.
+Task614 must provide the explicit terminal proof; RELEASE_CELL remains a cell
+replacement operation and supplies none. C7 component evidence and the later
+unchanged4MiB/native guest/platform acceptance remain separate.
 
 ## Cryptographic boundary
 

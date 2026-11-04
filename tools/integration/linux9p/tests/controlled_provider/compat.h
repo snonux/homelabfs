@@ -20,6 +20,7 @@ static inline void sort(void *base,size_t count,size_t size,
    (void)swap;qsort(base,count,size,compare);
 }
 struct mutex { pthread_mutex_t native; };
+#include "session_struct.inc"
 #define DEFINE_MUTEX(name) struct mutex name = { PTHREAD_MUTEX_INITIALIZER }
 static inline void mutex_lock(struct mutex *m) { assert(!pthread_mutex_lock(&m->native)); }
 static inline void mutex_unlock(struct mutex *m) { assert(!pthread_mutex_unlock(&m->native)); }

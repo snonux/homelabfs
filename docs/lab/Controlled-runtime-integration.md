@@ -200,8 +200,24 @@ runs a lab merely because its dependencies are complete.
 | C6: Implement guest enrollment/credential and source/event verification provider | New owned Linux controlled-provider source plus patch/export/manifests/tests; successor receipt consumer. Depends C2, C5. | Registered provider supplies enroll/map/enter/leave/publication/target/view_event from exact admitted state and privately received receipts. Same production helpers reject forged/stale/wrong-channel source/event, changed idmap, wrong device and nonnull publication; balance admissibility lifetime cookies. |
 | C7: Implement guest aggregate credits and retained retirement owner | Same owned Linux controlled-provider module's resource/lifetime file and tests; narrow host receipt handling if required. Depends C6, `l04`. | reserve/unreserve/stop/retain/retirement/view_retirement/resolve_gap/retire_session have an actual bounded owner; uncertain sessions remain owned. Two-session production-helper pressure test proves ordinary saturation preserves funded control progress and failed retirement cannot release held results, dirty pins, cells or module/session ownership. |
 | C8: Protect host endpoint transport state before external observations | `internal/guestbridge/endpoint.go`, new private transport-ledger adapter/tests; same-generation controller identity handoff only where required. Depends C3, `l04`. | Exact accepted chunks/responses/reclaim transitions survive process failure in real private files. Failpoint tests prove no acknowledged input or exposed immutable response disappears, no cell reuse, bounded serialization, and exclusive writer ownership. Does not itself enable RESUME. |
-| C9: Reconcile and restore the complete controlled endpoint | `internal/controlledruntime` restore coordinator, narrow guestbridge restore API plus provider/view restoration integration; lib9p adapter recovery tests. Depends C4, C5, C7, C8. | Restore original bytes/counters/controller only after exact full cross-ledger agreement and fresh physical continuity/exclusion. Real restart/lost-reply tests compare response/capability/source identities, reject missing ledger/stale controller/one unexcluded domain, and never replan protected effects. Replacement FUSE connection remains fenced; RESUME stays BLOCKED in every unimplemented case. |
+| C9: Reconcile and restore the complete controlled endpoint | `internal/controlledruntime` restore coordinator, narrow guestbridge restore API plus provider/view restoration integration; lib9p adapter recovery tests. Depends C4, C5, C7, C8 and terminal implementation614. | Restore original bytes/counters/controller only after exact full cross-ledger agreement and fresh physical continuity/exclusion. Real restart/lost-reply tests compare response/capability/source identities, reject missing ledger/stale controller/one unexcluded domain, and never replan protected effects. Replacement FUSE connection remains fenced; RESUME stays BLOCKED in every unimplemented case. |
 | C10: Compose a repository-native disposable runtime driver | New explicit controlled runtime command/config under `cmd`/`internal/controlledruntime`; narrow daemoncli lifecycle reuse, no change to self-client/default normal serving. Depends C2, C4, C5, C7, C9. | Driver constructs actual service/providers/controller/bridge/Transport/private shell and emits readiness only after all verifiers/budgets/enrollment bind. Local no-mount assembly test uses real service/files/ledgers and production framing, verifies null publication and refusal with each missing adapter; native mount/guest behavior is explicitly unrun. |
+
+C7 core preserves final guest/native cell and session ownership. Task514 fixes
+its [separate terminal handoff contract](../spec/Retained-9p-session-retirement.md);
+task614 implements and validates it before C9. Existing RELEASE_CELL necessarily
+leaves a replacement cell and cannot provide whole-session retirement. C7 does
+not claim positive terminal destruction from local absence or a protected host
+cell alone. Its floor proof for existing VIEW_RETIRE is the distinct1.4
+VIEW_FLOOR kind; the terminal opcode/feature tuple belongs only to614.
+
+A saved PENDING VIEW_RELEASE resumed by authenticated VIEW_QUERY retains that
+actual outer request. The locked controller may attach a private, synchronous
+continuation for its exact protected original ticket/operation/payload. Facts
+checks the actual Controller/Facts/Service assembly, full outer observation,
+expiry and current native/scope/source/physical state; it never overwrites
+VerifiedRequest or accepts a caller continuation flag. This allows real pending
+release completion without treating QUERY as a new source or physical proof.
 
 The C10 provider dispatch prerequisite is implemented separately by task `014`.
 `controlledruntime.NewProviderRouter` freezes full enrolled scopes and their actual

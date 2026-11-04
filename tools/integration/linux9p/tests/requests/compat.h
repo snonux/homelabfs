@@ -43,7 +43,11 @@ struct hfs_provider {
    int (*retirement)(struct hfs_session *, u64, const u8 *, const struct hfs_json *);
    int (*resolve_gap)(struct hfs_session *, struct hfs_request *);
 };
+struct hfs_completion;
+static inline void hfs_completion_close(struct hfs_completion *completion) { (void)completion; }
+struct hfs_retirement_cut;
 struct hfs_session {
+   struct hfs_retirement_cut *retirement_cut;
    u16 bridge_minor;
    struct mutex lock, retirement;
    struct list_head requests;

@@ -48,6 +48,24 @@ func (p *Provider) ResolveOriginalGap(ctx context.Context, scope guestbridge.Con
 	return p.ResolveGap(ctx, scope, call.Claim)
 }
 
+// protectedGapQuery exposes the definite protected no-effect state only to its
+// actual authenticated mapped QUERY. It supplies no retirement/destruction right.
+// Common direct/legacy/CANCEL lookups keep their conservative state projection.
+func (p *Provider) protectedGapQuery(ctx context.Context, scope guestbridge.Context, e entry) bool {
+	selected := p.config.Authorization.Enrollment.Protocol
+	if selected == nil || *selected != guestbridge.MappedProtocol() || !e.Gap || e.Status != "DECLINED" ||
+		e.Original == nil || e.Original.Context != scope || e.Original.Call.Claim != e.Claim ||
+		e.Plan != nil || e.Outcome != nil || len(e.Result) != 0 || len(e.ProposedResult) != 0 ||
+		(e.PreparationStage != "" && e.PreparationStage != "UNPREPARED") {
+		return false
+	}
+	observed, ok := guestbridge.VerifiedRequest(ctx)
+	raw, err := canonicalJSON(map[string]any{"claim": e.Claim})
+	return err == nil && ok && observed.Scope == scope && observed.Operation == "QUERY" &&
+		observed.Protocol != nil && *observed.Protocol == *selected && observed.PayloadHash == hash(raw) &&
+		observed.Native.Endpoint == p.config.Authorization.Enrollment.Endpoint
+}
+
 // CheckBridgeProtocol refuses using an explicitly enrolled successor with any
 // other bridge tuple, including the legacy default.
 func (p *Provider) CheckBridgeProtocol(ctx context.Context, scope guestbridge.Context, selected *guestbridge.Protocol) error {

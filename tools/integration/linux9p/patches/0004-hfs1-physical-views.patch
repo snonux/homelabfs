@@ -425,7 +425,7 @@ diff --git a/fs/9p/hfs_view.h b/fs/9p/hfs_view.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.h
-@@ -0,0 +1,207 @@
+@@ -0,0 +1,209 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_VIEW_H
 +#define FS_9P_HFS_VIEW_H
@@ -464,6 +464,8 @@ new file mode 100644
 +	HFS_VIEW_FINAL,
 +	HFS_VIEW_FENCED,
 +};
++
++#define HFS_MMAP_EVENTS_MAX 3U
 +
 +struct hfs_mmap_control;
 +
@@ -637,7 +639,7 @@ diff --git a/fs/9p/hfs_view.c b/fs/9p/hfs_view.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.c
-@@ -0,0 +1,1084 @@
+@@ -0,0 +1,1089 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Physical retained-cache admission and all-alias PTE/TLB/MMU quiescence. */
 +#include <linux/mm.h>
@@ -915,7 +917,9 @@ new file mode 100644
 +				     const struct hfs_view_stamp *stamp,
 +				     void **cookie)
 +{
-+	if (view->phase == HFS_VIEW_FENCED)
++	if (view->phase == HFS_VIEW_FENCED ||
++	    (view->session->bridge_minor == 4 &&
++	     (READ_ONCE(view->session->closing) || READ_ONCE(view->session->blocked))))
 +		return -ESTALE;
 +	if (stamp && (!uuid_equal(&view->generation, &stamp->generation) ||
 +		      view->revision != stamp->revision))
@@ -949,7 +953,10 @@ new file mode 100644
 +			break;
 +		err = wait_event_killable(view->wait,
 +					  READ_ONCE(view->phase) == HFS_VIEW_LIVE ||
-+					  READ_ONCE(view->phase) == HFS_VIEW_FENCED);
++					  READ_ONCE(view->phase) == HFS_VIEW_FENCED ||
++					  (view->session->bridge_minor == 4 &&
++					   (READ_ONCE(view->session->closing) ||
++					    READ_ONCE(view->session->blocked))));
 +		if (err)
 +			break;
 +	}
@@ -1726,7 +1733,7 @@ diff --git a/fs/9p/hfs_lease.h b/fs/9p/hfs_lease.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.h
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,121 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_LEASE_H
 +#define FS_9P_HFS_LEASE_H
@@ -1754,6 +1761,7 @@ new file mode 100644
 +	struct mutex dispatch;
 +	wait_queue_head_t wait;
 +	struct hfs_view_ticket *initial;
++	struct hfs_retirement_cut *retirement_cut;
 +	struct list_head list;
 +	struct hfs_buf credentials;
 +	u8 hash[32];
@@ -1767,6 +1775,7 @@ new file mode 100644
 +};
 +
 +struct hfs_view_ticket {
++	struct hfs_completion *completion;
 +	/* Never take a view/session lock while holding this lock. */
 +	spinlock_t admission_lock;
 +	struct list_head list;
@@ -1850,7 +1859,7 @@ diff --git a/fs/9p/hfs_lease.c b/fs/9p/hfs_lease.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.c
-@@ -0,0 +1,1469 @@
+@@ -0,0 +1,1531 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Exact bridge1.1 ticket/lease transport; no physical or source-proof defaults. */
 +#include <linux/slab.h>
@@ -1860,6 +1869,7 @@ new file mode 100644
 +#include <linux/writeback.h>
 +#include "hfs.h"
 +#include "hfs_received.h"
++#include "hfs_controlled.h"
 +#include "hfs_lease.h"
 +
 +int hfs_json_hash_fields(const struct hfs_json *json, int object,
@@ -2085,6 +2095,7 @@ new file mode 100644
 +		hfs_buf_free(&ticket->query);
 +	hfs_buf_free(&ticket->original);
 +	kvfree(ticket->scratch);
++		hfs_completion_close(ticket->completion);
 +		session->provider->unreserve(session, ticket->reservation);
 +		kfree(ticket);
 +	}
@@ -2093,6 +2104,7 @@ new file mode 100644
 +bool hfs_view_tickets_busy(struct hfs_session *session)
 +{
 +	struct hfs_view_ticket *ticket;
++	struct hfs_view_family *family;
 +	bool busy = false;
 +
 +	mutex_lock(&session->lock);
@@ -2101,6 +2113,9 @@ new file mode 100644
 +			busy = true;
 +			break;
 +		}
++	list_for_each_entry(family, &session->view_families, list)
++		if (family->retirement_cut)
++			busy = true;
 +	mutex_unlock(&session->lock);
 +	return busy;
 +}
@@ -2113,6 +2128,9 @@ new file mode 100644
 +	/* Only protected whole-session retirement or pre-transport failure calls
 +	 * this path. Disconnect/close/timeout never discard these identities.
 +	 */
++	list_for_each_entry(family, &session->view_families, list)
++		if (WARN_ON_ONCE(family->retirement_cut))
++			return;
 +	list_for_each_entry_safe(ticket, next_ticket, &session->view_tickets, list) {
 +		hfs_buf_free(&ticket->request);
 +		hfs_buf_free(&ticket->payload);
@@ -2121,6 +2139,7 @@ new file mode 100644
 +	kvfree(ticket->scratch);
 +		hfs_json_free(ticket->response);
 +		hfs_json_free(ticket->initial_response);
++		hfs_completion_close(ticket->completion);
 +		session->provider->unreserve(session, ticket->reservation);
 +		kfree(ticket);
 +	}
@@ -2142,7 +2161,7 @@ new file mode 100644
 +	*out = NULL;
 +	if (session->bridge_minor != 1 && session->bridge_minor != 4)
 +		return -EOPNOTSUPP;
-+	err = session->provider->reserve(session, 4ULL * 1024 * 1024,
++	err = session->provider->reserve(session, (hfs_controlled_consumed(session) ? 1ULL : 4ULL) * 1024 * 1024,
 +					 control, &credit);
 +	if (err)
 +		return err;
@@ -2156,6 +2175,9 @@ new file mode 100644
 +		err = -ENOMEM;
 +		goto allocation;
 +	}
++	err = hfs_completion_new(session, control, true, HFS_VIEW_BODY_MAX, &ticket->completion);
++	if (err)
++		goto allocation;
 +	ticket->reservation = credit;
 +	candidate->reservation = family_credit;
 +	INIT_LIST_HEAD(&ticket->list);
@@ -2253,6 +2275,8 @@ new file mode 100644
 +	hfs_buf_free(&ticket->original);
 +	kvfree(ticket->scratch);
 +allocation:
++	if (ticket)
++		hfs_completion_close(ticket->completion);
 +	kfree(candidate);
 +	kfree(ticket);
 +	session->provider->unreserve(session, family_credit);
@@ -2827,6 +2851,7 @@ new file mode 100644
 +	struct hfs_view_ticket *ticket, *next;
 +	struct hfs_buf payload = {};
 +	struct hfs_json *reply = NULL;
++	struct hfs_retirement_cut *cut = NULL;
 +	LIST_HEAD(released);
 +	u8 hash[32], proof[32];
 +	u64 through, floor;
@@ -2834,7 +2859,7 @@ new file mode 100644
 +	bool advanced = false;
 +	int err = -EAGAIN, body;
 +
-+	if (session->bridge_minor != 1)
++	if (session->bridge_minor != 1 && session->bridge_minor != 4)
 +		return -EOPNOTSUPP;
 +	view = hfs_view_get(session);
 +	if (!view)
@@ -2850,6 +2875,11 @@ new file mode 100644
 +	 */
 +	for (index = 0; index < nr_families; index++) {
 +		family = view->retiring[index];
++		cut = session->bridge_minor == 4 ? family->retirement_cut : NULL;
++		if (cut) {
++			through = cut->through;
++			goto exchange;
++		}
 +		payload.len = 0;
 +		payload.error = 0;
 +		count = 0;
@@ -2879,9 +2909,23 @@ new file mode 100644
 +		if (!count)
 +			continue;
 +		hfs_buf_printf(&payload, "],\"through\":%llu}", through);
-+		err = hfs_control(session, "VIEW_RETIRE", &payload, true, &reply);
-+		if (err)
-+			goto out;
++		if (session->bridge_minor == 4) {
++			err = hfs_retirement_cut_new(session, "VIEW_RETIRE", &payload,
++				family->floor + 1, through, &cut);
++			if (err)
++				goto out;
++			family->retirement_cut = cut;
++		}
++exchange:
++		if (cut && cut->response)
++			reply = cut->response;
++		else {
++			err = hfs_control(session, "VIEW_RETIRE", cut ? &cut->payload : &payload, true, &reply);
++			if (err)
++				goto out;
++			if (cut)
++				cut->response = reply;
++		}
 +		body = hfs_json_field(reply, 0, "payload");
 +		if (hfs_json_exact(reply, body, "floor,proof_hash,status") ||
 +		    hfs_u64_field(reply, body, "floor", &floor)) {
@@ -2893,7 +2937,12 @@ new file mode 100644
 +				err = -EPROTO;
 +				goto out;
 +			}
-+			hfs_json_free(reply);
++			if (cut) {
++				family->retirement_cut = NULL;
++				hfs_retirement_cut_free(session, cut);
++				cut = NULL;
++			} else
++				hfs_json_free(reply);
 +			reply = NULL;
 +			continue;
 +		}
@@ -2903,10 +2952,23 @@ new file mode 100644
 +			goto out;
 +		}
 +		err = session->provider->view_retirement(session, &family->credentials,
-+						 through, proof);
++						 through, proof, reply);
 +		if (err)
 +			goto out;
 +		mutex_lock(&session->lock);
++		if (session->bridge_minor == 4) {
++			list_for_each_entry(ticket, &session->view_tickets, list) {
++				if (ticket->family == family && ticket->number && ticket->number <= through &&
++				    (ticket->users || !ticket->terminal || !ticket->response)) {
++					err = -EBUSY;
++					break;
++				}
++			}
++			if (err) {
++				mutex_unlock(&session->lock);
++				goto out;
++			}
++		}
 +		family->floor = through;
 +		advanced = true;
 +		list_for_each_entry_safe(ticket, next, &session->view_tickets, list) {
@@ -2924,6 +2986,8 @@ new file mode 100644
 +		}
 +		mutex_unlock(&session->lock);
 +		list_for_each_entry_safe(ticket, next, &released, list) {
++			void *reservation = ticket->reservation;
++
 +			list_del(&ticket->list);
 +			hfs_buf_free(&ticket->request);
 +			hfs_buf_free(&ticket->payload);
@@ -2932,16 +2996,23 @@ new file mode 100644
 +			kvfree(ticket->scratch);
 +			hfs_json_free(ticket->response);
 +			hfs_json_free(ticket->initial_response);
-+			session->provider->unreserve(session, ticket->reservation);
++			hfs_completion_close(ticket->completion);
 +			kfree(ticket);
++			session->provider->unreserve(session, reservation);
 +		}
-+		hfs_json_free(reply);
++		if (cut) {
++			family->retirement_cut = NULL;
++			hfs_retirement_cut_free(session, cut);
++			cut = NULL;
++		} else
++			hfs_json_free(reply);
 +		reply = NULL;
 +		if (err)
 +			goto out;
 +	}
 +out:
-+	hfs_json_free(reply);
++	if (!cut)
++		hfs_json_free(reply);
 +	/* Payload and snapshot storage were reserved before writable admission. */
 +	mutex_unlock(&session->retirement);
 +	hfs_view_put(view);
@@ -3580,7 +3651,7 @@ new file mode 100644
 +	struct work_struct drains;
 +	spinlock_t lock;
 +	struct list_head cleanup;
-+	struct hfs_json *pending[3];
++	struct hfs_json *pending[HFS_MMAP_EVENTS_MAX];
 +	u32 head;
 +	u32 count;
 +	u64 delivered;

@@ -160,3 +160,11 @@ verified never-granted history and source checks, not absence inferred from an
 unrecorded request. Unknown/unadmitted requests still retry their original bytes
 and number first. The all-guest pressure regression exercises that complete
 sequence without a native observer or third ticket family.
+
+For controlled runtime release completion, an authenticated VIEW_QUERY can resume
+only its exact protected PENDING VIEW_RELEASE. The locked controller privately
+binds the actual outer observation, full scope/ticket/issuer and original payload
+to its concrete Controller/Facts/Service assembly for that synchronous callback.
+The borrow expires on return. Facts still rechecks current native identity and
+all source/physical obligations; no public context constructor or generic
+operation authorization bypass is supplied.

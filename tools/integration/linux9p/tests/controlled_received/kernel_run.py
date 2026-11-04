@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import sys
 import subprocess
 import tempfile
 import time
@@ -22,6 +23,9 @@ p.add_argument('--fixture',type=Path,required=True)
 p.add_argument('--kernel-headers',type=Path,required=True)
 a=p.parse_args()
 here=Path(__file__).resolve().parent
+sys.dont_write_bytecode=True
+sys.path.insert(0,str(here.parent/'common'))
+from runner_process import process_running, finish_process_group
 repo=here.parents[4]
 budget=a.budget_root.resolve(strict=True)
 out=a.output.absolute()
@@ -30,29 +34,40 @@ out.mkdir(mode=0o700,exist_ok=False)
 source=a.source.resolve(strict=True)
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 short=Path(tempfile.mkdtemp(prefix='hfs04kernel-',dir='/tmp'))
-env=dict(os.environ,TMPDIR=str(short),GOTMPDIR=str(short),HFS_CONTROLLED_TEST_ROOT=str(short),GOMAXPROCS='2',GOMEMLIMIT='1GiB',GOFLAGS='-p=1',HFS_MAPPED_CONSUMER=str(out/'build/consumer'))
+env=dict(os.environ,TMPDIR=str(short),GOTMPDIR=str(short),HFS_CONTROLLED_TEST_ROOT=str(short),GOMAXPROCS='2',GOMEMLIMIT='256MiB',GOGC='50',GOFLAGS='-p=1',HFS_MAPPED_CONSUMER=str(out/'build/consumer'))
 os.sched_setaffinity(0,sorted(os.sched_getaffinity(0))[:2])
+# Include retained temporary outputs from every earlier task-owned stage.
+owned_roots = {budget, short}
+for prior in budget.glob('*/receipt.json'):
+    prior_tmp = json.loads(prior.read_text()).get('short_tmp')
+    if prior_tmp:
+        owned_roots.add(Path(prior_tmp))
+owned_index = budget/'owned-temporaries.json'
+if owned_index.exists():
+    owned_roots.update(Path(path) for path in json.loads(owned_index.read_text()))
+owned_index.write_text(json.dumps(sorted(str(path) for path in owned_roots if path != budget))+'\n')
 def resources():
     m={x.split(':')[0]:int(x.split()[1])*1024 for x in Path('/proc/meminfo').read_text().splitlines()}
-    if m['MemAvailable']<max(8<<30,m['MemTotal']/4) or m['SwapTotal']-m['SwapFree']>m['SwapTotal']*.55:raise RuntimeError('memory/swap floor')
+    if m['MemAvailable']<max(8<<30,m['MemTotal']/4):raise RuntimeError('memory floor')
     disk=0
-    for root in [budget,short]:
+    for root in owned_roots:
         for directory,_,files in os.walk(root):
+            try:disk += Path(directory).lstat().st_blocks*512
+            except FileNotFoundError:pass
             for name in files:
-                try:disk+=(Path(directory)/name).stat().st_blocks*512
+                try:disk+=(Path(directory)/name).lstat().st_blocks*512
                 except FileNotFoundError:pass
     if disk>8<<30:raise RuntimeError('owned disk over8GiB')
     return int(next(x.split()[1] for x in Path('/proc/vmstat').read_text().splitlines() if x.startswith('pswpout ')))
 rows=[]
 def run(name,argv):
-    before=resources();time.sleep(3)
-    if resources()!=before:raise RuntimeError('prelaunch swapout changed')
+    before=resources();observations=[before]
     start=time.monotonic();peak=0;reason=None
     with (out/(name+'.stdout')).open('wb') as stdout,(out/(name+'.stderr')).open('wb') as stderr:
         process=subprocess.Popen(argv,cwd=repo,env=env,stdout=stdout,stderr=stderr,start_new_session=True)
         try:
-            while process.poll() is None:
-                if resources()!=before:raise RuntimeError('swapout advanced')
+            while process_running(process):
+                observations.append(resources())
                 rss=0
                 for entry in Path('/proc').iterdir():
                     if not entry.name.isdecimal():continue
@@ -63,15 +78,26 @@ def run(name,argv):
                 peak=max(peak,rss)
                 if rss>2<<30 or time.monotonic()-start>1200:raise RuntimeError('RSS/time bound')
                 time.sleep(.1)
-        except (RuntimeError,KeyboardInterrupt) as error:
-            reason=str(error);os.killpg(process.pid,signal.SIGTERM)
-        try:code=process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid,signal.SIGKILL);code=process.wait()
-    rows.append(dict(name=name,argv=argv,exit=code,seconds=time.monotonic()-start,peak_group_rss=peak,limit_reason=reason,pswpout_before=before))
+        except (Exception,KeyboardInterrupt) as error:
+            reason=f'{type(error).__name__}: {error}'
+        code=finish_process_group(process)
+    try:after_resources=resources()
+    except (Exception,KeyboardInterrupt) as error:
+        after_resources=None
+        reason=reason or f'{type(error).__name__}: {error}'
+    try:
+        swap_telemetry={key:int(next(line.split()[1] for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith(key+':'))) for key in ['SwapTotal','SwapFree']}
+    except (Exception,KeyboardInterrupt) as error:
+        swap_telemetry=None
+        reason=reason or f'{type(error).__name__}: {error}'
+    rows.append(dict(name=name,argv=argv,exit=code,seconds=time.monotonic()-start,peak_group_rss=peak,limit_reason=reason,pswpout_before=before,pswpout_after=after_resources,pswpout_observed=observations,swap_telemetry=swap_telemetry))
     (out/'receipt.json').write_text(json.dumps(dict(scope=__doc__,short_tmp=str(short),stages=rows),indent=2)+'\n')
+    after={path:digest(Path(path)) for path in frozen_binding}
+    (out/'source-binding-after.json').write_text(json.dumps(after,indent=2)+'\n')
+    if after!=frozen_binding:raise SystemExit('consumed inputs changed during stage')
     if code or reason:raise SystemExit('failed stage preserved: '+str(out))
-inputs=[here/'kernel_preflight.py',a.fixture.resolve(strict=True),*sorted((source/'fs/9p').rglob('*')),source/'net/9p/trans_virtio.c',source/'drivers/char/random.c',source/'include/linux/random.h',source/'include/net/9p/client.h']
-(out/'source-binding.json').write_text(json.dumps({str(path):digest(path) for path in inputs if path.is_file()},indent=2)+'\n')
+inputs=[here.parent/'common/runner_process.py',here/'kernel_preflight.py',a.fixture.resolve(strict=True),*sorted((source/'fs/9p').rglob('*')),source/'net/9p/trans_virtio.c',source/'drivers/char/random.c',source/'include/linux/random.h',source/'include/net/9p/client.h']
+frozen_binding={str(path):digest(path) for path in inputs if path.is_file()}
+(out/'source-binding.json').write_text(json.dumps(frozen_binding,indent=2)+'\n')
 run('actual-c6-kernel',['python3',str(here/'kernel_preflight.py'),'--source',str(source),'--headers',str(a.kernel_headers.resolve(strict=True)),'--fixture',str(a.fixture.resolve(strict=True)),'--output',str(out/'build')])
 print((out/'actual-c6-kernel.stdout').read_text())

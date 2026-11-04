@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/snonux/homelabfs/internal/controlledvalidation"
 	"github.com/snonux/homelabfs/internal/fsapi"
@@ -101,6 +102,12 @@ func (c *Controller) ExchangeView(ctx context.Context, scope guestbridge.Context
 	if op == "VIEW_QUERY" || op == "VIEW_CANCEL" {
 		if !exists {
 			return nil, fsapi.Permission
+		}
+		if op == "VIEW_QUERY" {
+			var live atomic.Bool
+			live.Store(true)
+			defer live.Store(false)
+			ctx = c.releaseQueryContext(ctx, scope, raw, r.Request, saved, &live)
 		}
 		if absent(saved.Initial) {
 			var original request
