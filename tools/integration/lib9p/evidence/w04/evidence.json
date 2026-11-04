@@ -1,0 +1,321 @@
+{
+  "task": "w04",
+  "status": "Reviewed component implementation and final merged checks PASS",
+  "verified_commit": "c13125a11177ba50f0ad22c0e6999a1fd6a1e5ae",
+  "checks": {
+    "regression-terminal-dirty": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/root-gates/regression-terminal-dirty/receipt.json",
+      "sha256": "738c4828fdfd73660a27f09d5cfcb1c4f941263a80e7791e2b6c913ca72b49e6",
+      "argv": [
+        "python3",
+        "tools/integration/linux9p/tests/controlled_received/run.py",
+        "--source",
+        "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/source",
+        "--output",
+        "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/root-final-terminal-dirty",
+        "--budget-root",
+        "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn",
+        "--host-tree",
+        "/home/paul/git/homelabfs",
+        "--scenario",
+        "terminal-dirty"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 85.88066958499985,
+      "peakrss": 593874944,
+      "peakdisk": 4853018624,
+      "source_changes": []
+    },
+    "regression-terminal-kernel80": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/root-gates/regression-terminal-kernel80/receipt.json",
+      "sha256": "b41fb172fed01819a130261f176689097f970f5de25e39b02755a3fdb43abfc8",
+      "argv": [
+        "python3",
+        "tools/integration/linux9p/tests/controlled_received/run.py",
+        "--source",
+        "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/source",
+        "--output",
+        "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/root-final-terminal-kernel80",
+        "--budget-root",
+        "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn",
+        "--host-tree",
+        "/home/paul/git/homelabfs",
+        "--scenario",
+        "terminal-kernel80"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 88.06316075300128,
+      "peakrss": 587620352,
+      "peakdisk": 4828479488,
+      "source_changes": []
+    },
+    "gofmt": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/root-gates/gofmt/receipt.json",
+      "sha256": "74e0c293878f97308880c1bd9f4dabc9abe90c91d38c9c1a85e21b3ec53f1ddf",
+      "argv": [
+        "python3",
+        "-c",
+        "import subprocess; r=subprocess.run(['gofmt','-l','cmd','internal'],capture_output=True,text=True,check=True); print(r.stdout,end=''); raise SystemExit(bool(r.stdout))"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 12.140546799000731,
+      "peakrss": 10776576,
+      "peakdisk": 4781596672,
+      "source_changes": []
+    },
+    "build": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/root-gates/build/receipt.json",
+      "sha256": "4d7352728f78241c13249cb04b589f911f191be44ab8c4fc6fba33fdb5b55ef3",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 20.28982273299698,
+      "peakrss": 140890112,
+      "peakdisk": 4870737920,
+      "source_changes": []
+    },
+    "vet": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/root-gates/vet/receipt.json",
+      "sha256": "190cd62d27425ab362fd1bb203621d568f756a6b7950f34de4620c46511b8c4a",
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 14.083342084999458,
+      "peakrss": 79527936,
+      "peakdisk": 4801556480,
+      "source_changes": []
+    },
+    "errcheck": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/root-gates/errcheck/receipt.json",
+      "sha256": "3da27c2a4d285776527fd323cbd37b2805ca40d2b213a578a7ee860e49144f87",
+      "argv": [
+        "errcheck",
+        "./..."
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 26.469893134002632,
+      "peakrss": 266100736,
+      "peakdisk": 4846149632,
+      "source_changes": []
+    },
+    "lint": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/root-gates/lint/receipt.json",
+      "sha256": "349049ef99387f4cf293de7179cce8141dd64743291088d6b12755320cf53987",
+      "argv": [
+        "golangci-lint",
+        "run",
+        "--timeout=5m",
+        "./..."
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 14.575734309000836,
+      "peakrss": 158691328,
+      "peakdisk": 4833497088,
+      "source_changes": []
+    },
+    "affected-race": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/root-gates/affected-race/receipt.json",
+      "sha256": "8ce0aed38e1a5151578e148dcebec8e74b5964e5d3bc96ef315593fbef3f6396",
+      "argv": [
+        "go",
+        "test",
+        "-race",
+        "./internal/controlledruntime",
+        "./internal/daemoncli",
+        "./internal/guestbridge",
+        "./cmd/hfs-controlled-runtime",
+        "-run",
+        "TestRuntime|TestOpenControlled|TestBarrieredEndpointRestartRealC|TestDurableTransportResponseCoverageAndReclaim|TestProductionControlFramingAndBounds|TestFailedStartupPreservesConsumedOwnership|TestRealChildUsesProductionInheritedControlFrame|TestOpenLocal|TestServePreflight",
+        "-count=1",
+        "-timeout=180s"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 48.22707841600277,
+      "peakrss": 261677056,
+      "peakdisk": 4884533248,
+      "source_changes": []
+    },
+    "full": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/root-gates/full/receipt.json",
+      "sha256": "fcd78d7044c5b6109b4f3a262f3cd5830976228931931debab3279ddec1c373f",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "1",
+        "-count=1",
+        "-timeout=600s",
+        "./..."
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 377.6376713409991,
+      "peakrss": 326987776,
+      "peakdisk": 5015629824,
+      "source_changes": []
+    },
+    "freebsd-build": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/root-gates/freebsd-build/receipt.json",
+      "sha256": "e3389f68d0453cb5c73a93223bdadf8e605c3cf07d5a45e40ae25517f3c1cb35",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 28.162435728001583,
+      "peakrss": 150224896,
+      "peakdisk": 4908675072,
+      "source_changes": []
+    },
+    "final-focused-go-01": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/checks/final-focused-go-01/receipt.json",
+      "sha256": "f20b7949a4986c598d90e58224e4e2415964e9933b0241b2163fb9ec62d27a1e",
+      "argv": [
+        "go",
+        "test",
+        "./internal/controlledruntime",
+        "./internal/daemoncli",
+        "./internal/guestbridge",
+        "./cmd/hfs-controlled-runtime",
+        "-run",
+        "TestRuntime|TestOpenControlled|TestBarrieredEndpointRestartRealC|TestDurableTransportResponseCoverageAndReclaim|TestProductionControlFramingAndBounds|TestFailedStartupPreservesConsumedOwnership|TestRealChildUsesProductionInheritedControlFrame|TestOpenLocal|TestServePreflight",
+        "-count=1",
+        "-timeout=180s"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 17.915213950996986,
+      "peakrss": 132653056,
+      "peakdisk": 4747550720,
+      "source_changes": []
+    },
+    "final-static-c-01": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/checks/final-static-c-01/receipt.json",
+      "sha256": "4fe7f82b93d2829c513f70f4f9a6152d7a2500a0ad9b3698c19c2a487082f01f",
+      "argv": [
+        "python3",
+        "../checks/final-static-c.py"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 5.867869784000504,
+      "peakrss": 227737600,
+      "peakdisk": 4732342272,
+      "source_changes": []
+    },
+    "r1-alias-focused-01": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/checks/r1-alias-focused-01/receipt.json",
+      "sha256": "8ae6d768e6952168806d7b96061217d48375c7e577cf315fbbd909748e01800c",
+      "argv": [
+        "go",
+        "test",
+        "./internal/daemoncli",
+        "./internal/controlledruntime",
+        "-run",
+        "TestControlledRuntimePathsRejectParentAliases|TestOpenControlledRealVolumeLifecycle|TestRuntimeProposalStagedExternalConsent|TestRuntimeDriverSharedSequenceRealC",
+        "-count=1",
+        "-timeout=90s"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 19.172202343001118,
+      "peakrss": 170766336,
+      "peakdisk": 4765892608,
+      "source_changes": []
+    },
+    "r1-alias-lint-01": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/checks/r1-alias-lint-01/receipt.json",
+      "sha256": "03dee4fb796cf30a2ec8bcf675cdbecb6dc4631269166d2801043ebb7a08a039",
+      "argv": [
+        "golangci-lint",
+        "run",
+        "./internal/daemoncli",
+        "./internal/controlledruntime",
+        "--timeout=3m"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 8.57232331799969,
+      "peakrss": 89047040,
+      "peakdisk": 4750090240,
+      "source_changes": []
+    }
+  },
+  "failed_development_attempts": {
+    "driver-01": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/checks/driver-01/receipt.json",
+      "exit": 1,
+      "error": null,
+      "sha256": "7363aa1b4368a18594ca1b27280497a7554ca4ed6e7d26dd8313478f2c3ef59a"
+    },
+    "driver-02": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/checks/driver-02/receipt.json",
+      "exit": 1,
+      "error": null,
+      "sha256": "a0ae7437a53f9e412fdb8ada51eb6cd72e6494c35aa2d8bd6b53be8a5a3dc52c"
+    },
+    "driver-03": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/checks/driver-03/receipt.json",
+      "exit": 1,
+      "error": null,
+      "sha256": "a4ead5da1ca94a14b0d39d303ad0bdd30df31e6b7186419916c6ae0226fa8272"
+    },
+    "driver-04": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/checks/driver-04/receipt.json",
+      "exit": 1,
+      "error": null,
+      "sha256": "a5668bd42f51c0bcf637b0ddefec292e751297134a7da50f1a1a91c96e8b347b"
+    },
+    "driver-05": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/checks/driver-05/receipt.json",
+      "exit": 1,
+      "error": null,
+      "sha256": "a887599784a81579f7a104a593c75403634b0c6461a178e24f66c9934297c359"
+    },
+    "focused-01": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/checks/focused-01/receipt.json",
+      "exit": 1,
+      "error": null,
+      "sha256": "197d21f19919abb49bcdd1d45e0e60486b945ea8aa967411d91ce717a678b05b"
+    },
+    "focused-02": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/checks/focused-02/receipt.json",
+      "exit": 1,
+      "error": null,
+      "sha256": "bc14961e8077396ac33c08386576a6ddf907d42941118158c61e5345fe0c840c"
+    },
+    "static-focused-01": {
+      "receipt": "/home/paul/tmp/codex/hfs-w04-20261104-b727_odn/checks/static-focused-01/receipt.json",
+      "exit": 1,
+      "error": null,
+      "sha256": "257e26d9759facedb69fb56a6ea015a2cd2bf65babec801e15fc28f51cb151bc"
+    }
+  },
+  "reviews": {
+    "R1": "One blocking path-isolation defect: symlinked runtime owner/handoff parents bypassed lexical lifecycle-root exclusion. Fixed by existing component-wise directory validation and meaningful alias regressions.",
+    "R2": "CLEAN: scoped four-file fix resolves R1; no new blocking defect. Both reviewers read-only, no duplicate suite."
+  },
+  "resource_scope": "One serial heavy job, CPU2, Go-p1/GOMAXPROCS2/GOMEMLIMIT256MiB/GOGC50, owned descendant RSS2GiB, aggregate allocated disk8GiB across old/new roots/cache/temporaries, MemAvailable8GiB and25%,20min/stage; swap telemetry only.",
+  "evidence_boundary": [
+    "Actual local service/providers/router/controller/Producer/bridge/durableC8 and source-pinned strongC startup/full two-device/protectedHELLO framing; null Publication.",
+    "External operator signing/guestphysical/kernel/native mount/INIT/syscalls are declared fixture boundaries; no native deployment, artifact, MM/PTE, pressure or lab acceptance.",
+    "No SSH/mount/VM/install/lab/production/PV/NFS/received-sink operations.",
+    "Default normal/self-client serving unchanged. PrivateC9 same-surviving-owner/current-cut only; replacements/guest-wireRESUME remain blocked."
+  ]
+}
