@@ -42,7 +42,11 @@ void destroy_workqueue(struct workqueue_struct *);
 struct module;
 struct inode;
 struct pid { int number, refs; };
-struct task_struct { unsigned flags; struct pid *pid; };
+struct signal_struct { atomic_t live; };
+struct task_struct { unsigned flags; struct pid *pid; struct signal_struct *signal; };
+#define PF_EXITING 2U
+typedef void *fl_owner_t;
+#define kvzalloc(size, flags) kzalloc(size, flags)
 extern struct task_struct primitive_current_task;
 #define current (&primitive_current_task)
 #define PF_KTHREAD 1U

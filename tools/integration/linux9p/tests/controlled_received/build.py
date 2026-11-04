@@ -95,7 +95,9 @@ def main():
         definitions.append(function(session, name))
         if name == 'hfs_transport':
             definitions.append('#include "hfs_received.inc"\n')
-    definitions.append(function(read('fs/9p/hfs_file.c'), 'hfs_description_discard'))
+    for name in ('hfs_description_discard', 'hfs_description_prepare', 'hfs_flush', 'hfs_release'):
+        definitions.append(function(read('fs/9p/hfs_file.c'), name))
+    definitions.append(function(read('fs/9p/hfs_inode.c'), 'hfs_forget_work'))
     (out/'session.inc').write_text('\n'.join(definitions))
     mount = function(session, 'v9fs_hfs_mount')
     fail = mount.index('\nfail:\n')
@@ -144,7 +146,7 @@ def main():
         '-DCONFIG_9P_FS_HOMELABFS_OPERATOR_KEY="'+args.operator_key+'"',
         '-include', str(out/'runtime_compat.h'), '-I'+str(out), '-I'+str(repo),
         str(here/'consumer.c'), str(out/'hfs_protocol.c'), str(out/'hfs_policy.c'),
-        str(out/'hfs_enrollment.c'), str(out/'kernel_format.c'),
+        str(out/'hfs_enrollment.c'), str(out/'hfs_cursor.c'), str(out/'kernel_format.c'),
         str(out/'hfs_crypto_core.o'), str(out/'hfs_crypto_ed25519.o'),
         str(repo/'tools/integration/lib9p/src/hfs9p_json.c'),
         str(repo/'tools/integration/lib9p/src/hfs9p_ledger.c'),

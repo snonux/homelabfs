@@ -522,7 +522,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,2931 @@
+@@ -0,0 +1,2951 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -1960,7 +1960,20 @@ new file mode 100644
 +		err = hfs_result_validate(session, result, opcode, &request->credentials);
 +	if (err)
 +		goto retained;
-+	request->result = result;
++	/* Existing canonical snapshots remain immutable while callers hold the
++	 * request. Revalidate the retained response above, then discard only the
++	 * identical duplicate; replacing the canonical would race its borrowers.
++	 */
++	if (request->result) {
++		if (request->result->len != result->len ||
++		    memcmp(request->result->data, result->data, result->len)) {
++			err = -EPROTO;
++			goto retained;
++		}
++		hfs_json_free(result);
++	} else {
++		request->result = result;
++	}
 +	result = NULL;
 +	err = hfs_request_result_borrow(request, out);
 +	mutex_lock(&session->lock);
@@ -2182,16 +2195,23 @@ new file mode 100644
 +			       &request->drain_payload, out);
 +}
 +
-+/* Local cleanup slots preserve their admission semantics. These exact normal
-+ * commands spend ordinary bytes with their unchanged full response profile;
-+ * only the terminal tuple selects this resource classification. The ordinary
-+ * provider gate still requires admission before closing. */
++/* Cleanup's local request slot is independent of its semantic byte class.
++ * Both admitted controlled tuples send these normal CALLs on the ordinary
++ * lane with full immutable replies. Fresh ordinary funding still requires
++ * admission before closing; reserved DRAIN requests use their own owners.
++ * Legacy and unknown tuples keep their existing resource classification.
++ */
 +static bool hfs_call_control_bytes(const struct hfs_session *session, const char *opcode,
 +				   bool control)
 +{
-+	return control && !(session->bridge_minor == 4 &&
-+			    session->enrollment.protocol_features == HFS_TERMINAL_FEATURES &&
-+			    (!strcmp(opcode, "DESCRIPTION_RELEASE") || !strcmp(opcode, "FORGET")));
++	bool normal_cleanup = !strcmp(opcode, "DESCRIPTION_CLOSE") ||
++		!strcmp(opcode, "DESCRIPTION_RELEASE") || !strcmp(opcode, "FORGET") ||
++		!strcmp(opcode, "PROCESS_EXIT");
++	bool controlled = session->bridge_minor == 4 &&
++		(session->enrollment.protocol_features == HFS_MAPPED_FEATURES ||
++		 session->enrollment.protocol_features == HFS_TERMINAL_FEATURES);
++
++	return control && !(controlled && normal_cleanup);
 +}
 +
 +int hfs_call(struct hfs_session *session, const char *opcode, const struct hfs_buf *args,

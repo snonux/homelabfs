@@ -247,3 +247,22 @@ test TestTerminalProducerPermanentControlExhaustion exhausts actual C8 control
 credits with17 admitted scopes; the last request returns WOULD_BLOCK and all16
 final identities and signed bytes remain. These are component capacity proofs,
 not installed-kernel identity-exhaustion or native memory measurements.
+
+`--scenario cleanup` runs task814's real C cleanup byte-funding regression for
+both admitted minor4 tuples (features16383 and32767), using the unchanged
+256MiB ordinary/control budgets and full1MiB response packages. Actual
+`hfs_call` requests and the extracted, unchanged `hfs_flush`, `hfs_release`,
+`hfs_forget_work` and `hfs_process_exit_work` callers must progress when control
+bytes are full, while ordinary exhaustion refuses before claim/cell/native
+send and retains failed callers' owners. Disposable fork copies isolate those
+permanent blocked-on-error states; they do not restore live failed sessions.
+Each normal cleanup retains its local control request slot while its request,
+completion and private Received descendants charge ordinary bytes. Closing
+provider ingress still refuses fresh normal cleanup even with `control=true`.
+Profile checks retain legacy0..3 and unknown-tuple classification, with no new
+protocol admission. Exact snapshot retry revalidates the retained response,
+keeps the canonical snapshot stable for held borrowers and returns all duplicate
+completion bytes/slots. Setup and completed replies are adopted/reaped between
+operations to stay within existing budgets. These are portable production-source
+component checks with declared OS/MM primitives; they establish no installed
+kernel, native PTE/TLB, ABI or deployment acceptance.

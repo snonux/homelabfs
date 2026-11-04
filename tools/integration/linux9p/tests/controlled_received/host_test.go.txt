@@ -1625,3 +1625,106 @@ func TestControlledReceivedActualTerminalPermanentExhaustion(t *testing.T) {
  if state.Control != 16 || state.Ordinary != 0 || state.Workspace || len(cells) != 16 || len(state.Terminal) != 16 { t.Fatalf("permanent C8 owners changed: %+v", state) }
  for _, cell := range cells { if cell.Terminal == nil || cell.Terminal.Phase != "TERMINAL_RESPONDED" || !cell.Control { t.Fatal("lost permanent native final") } }
 }
+
+// Exercise actual hfs_call and unchanged VFS/workqueue cleanup wrappers against
+// the real exporter/host. Exhaustion must not consume a claim or native cell.
+func TestControlledReceivedActualCleanupByteFunding(t *testing.T) {
+	for _, protocol := range []guestbridge.Protocol{guestbridge.MappedProtocol(), guestbridge.TerminalProtocol()} {
+		t.Run(fmt.Sprint(protocol.Features), func(t *testing.T) {
+			r := newSourceRigDomainsUnstarted(t, protocol, 2, receivedInitialIDMap)
+			c := startReceivedCarrier(t, r)
+			setup := func(session int, wrappers bool) (guestbridge.Capability, guestbridge.Capability) {
+				request := func(op string, args any) []byte {
+					return c.action("REQUEST", session, op+" "+hex.EncodeToString(mustRuntimeJSON(t, args)), 0)
+				}
+				root := receivedResult(t, request("ROOT", map[string]any{}))
+				c.action("ADOPT_ROOT_PREPARE", session, "", 0)
+				caps := receivedResult(t, request("CREATE", map[string]any{"parent": root[0], "name": fmt.Sprintf("636c65616e7570%02x", session+48), "mode": 0660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}}))
+				var description, path guestbridge.Capability
+				for _, cap := range caps {
+					if cap.Kind == "DESCRIPTION" {
+						description = cap
+					}
+					if cap.Kind == "PATH" {
+						path = cap
+					}
+				}
+				if description.Kind == "" || path.Kind == "" {
+					t.Fatal("missing actual CREATE capability")
+				}
+				if wrappers {
+					c.action("CLEANUP_OWNERS", session, "", 0)
+				} else {
+					c.action("ADOPT_DESCRIPTION", session, "CREATE", 0)
+				}
+				c.action("REPLIES_DROP", session, "", 0)
+				c.action("RETIRE", session, "", 0)
+				return description, path
+			}
+			description, path := setup(0, false)
+			operations := []struct {
+				op   string
+				args any
+			}{
+				{"DESCRIPTION_CLOSE", map[string]any{"description": description, "process": r.peers[0].credentials.Process, "close_sequence": 1}},
+				{"DESCRIPTION_RELEASE", map[string]any{"description": description, "release_sequence": 1}},
+				{"FORGET", map[string]any{"object": path, "count": 1}},
+				{"PROCESS_EXIT", map[string]any{"process": r.peers[0].credentials.Process, "exit_sequence": 1}},
+			}
+			c.action("BYTE_PRESSURE", 0, "ordinary", 0)
+			before := len(c.commands)
+			for _, item := range operations {
+				c.action("CLEANUP_REQUEST", 0, item.op+" "+hex.EncodeToString(mustRuntimeJSON(t, item.args)), -28)
+			}
+			if len(c.commands) != before {
+				t.Fatal("unfunded cleanup emitted native bytes")
+			}
+			c.action("BYTE_UNPRESSURE", 0, "ordinary", 0)
+			c.action("BYTE_PRESSURE", 0, "control", 0)
+			for _, item := range operations {
+				c.action("CLEANUP_REQUEST", 0, item.op+" "+hex.EncodeToString(mustRuntimeJSON(t, item.args)), 0)
+				// The full reply remains live through the C owner/retry/retirement checks.
+				// Reap it before the next full request, within the unchanged byte budget.
+				c.action("REPLIES_DROP", 0, "", 0)
+				c.action("RETIRE", 0, "", 0)
+			}
+			c.action("BYTE_UNPRESSURE", 0, "control", 0)
+			setup(1, true)
+			c.action("BYTE_PRESSURE", 0, "ordinary", 0)
+			before = len(c.commands)
+			c.action("CALLERS_UNFUNDED", 1, "", 0)
+			if len(c.commands) != before {
+				t.Fatal("unfunded production caller emitted native bytes")
+			}
+			c.action("BYTE_UNPRESSURE", 0, "ordinary", 0)
+			c.action("BYTE_PRESSURE", 0, "control", 0)
+			for _, item := range operations {
+				c.action("CLEANUP_CALLER", 1, item.op, 0)
+				c.action("RETIRE", 1, "", 0)
+			}
+			c.action("BYTE_UNPRESSURE", 0, "control", 0)
+			seen := map[string]int{}
+			for _, command := range c.commands {
+				if command.Context != r.scope || command.Op != "CALL" {
+					continue
+				}
+				var call guestbridge.Call
+				require(t, json.Unmarshal(command.Payload, &call))
+				for _, item := range operations {
+					if call.Intent.Opcode == item.op {
+						seen[item.op]++
+						if command.Delegation.GuestOp != "CALL" || !bytes.Equal(call.Intent.Args, mustRuntimeJSON(t, item.args)) || !bytes.Equal(mustRuntimeJSON(t, call.Credentials), mustRuntimeJSON(t, r.peers[0].credentials)) {
+							t.Fatalf("cleanup changed original wire/credentials: %s", command.Payload)
+						}
+					}
+				}
+			}
+			for _, item := range operations {
+				if seen[item.op] != 1 {
+					t.Fatalf("cleanup %s executed %d times", item.op, seen[item.op])
+				}
+			}
+			c.close()
+		})
+	}
+}

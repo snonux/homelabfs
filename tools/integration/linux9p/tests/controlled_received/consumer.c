@@ -136,6 +136,7 @@ struct fixture_session {
  struct hfs_buf credentials;
  struct hfs_json *latest,*ordinary_result,*domain_alias;
  struct hfs_cap *root,*description,*created_path;
+ struct hfs_description *cleanup_description;struct hfs_forget *cleanup_forget;
  struct hfs_lease *lease;
  struct hfs_cache_page *dirty_page;
  struct hfs_dirty *dirty;
@@ -151,7 +152,9 @@ struct fixture_session {
 };
 static void *hello_parse, *hello_data, *hello_tokens, *hello_candidate;
 static unsigned hello_freed;
+static void *retry_snapshot_watch;static unsigned retry_snapshot_frees;
 void primitive_free(void *pointer) {
+ if(pointer&&pointer==retry_snapshot_watch)retry_snapshot_frees++;
  if(pointer&&hello_candidate){
   if(pointer==hello_tokens)hello_freed|=1;
   if(pointer==hello_data)hello_freed|=2;
@@ -303,7 +306,7 @@ static void session_init(unsigned i) {
  atomic_inc_return(&hfs_active_sessions);
  struct hfs_session *s=f->session;
  struct hfs_controlled_mount *mount=hfs_controlled_registry->mounts[i];
- s->provider=hfs_provider;s->bridge_minor=4;s->client=&(*f->client);s->next_cell=1;s->next_claim=1;s->next_release=1;
+ s->provider=hfs_provider;s->bridge_minor=4;s->client=&(*f->client);s->next_cell=1;s->next_claim=1;s->next_close=s->next_release=1;
  mutex_init(&s->lock);mutex_init(&s->writer);mutex_init(&s->retirement);spin_lock_init(&s->processes_lock);
  INIT_LIST_HEAD(&s->global);INIT_LIST_HEAD(&s->descriptions);INIT_LIST_HEAD(&s->processes);INIT_LIST_HEAD(&s->forgets);INIT_LIST_HEAD(&s->object_numbers);
  INIT_LIST_HEAD(&s->uncertain);INIT_LIST_HEAD(&s->requests);INIT_LIST_HEAD(&s->view_tickets);INIT_LIST_HEAD(&s->view_families);
@@ -333,6 +336,15 @@ static void session_init(unsigned i) {
  hello_parse=hello_data=hello_tokens=hello_candidate=NULL;
  f->super=(struct super_block){.s_fs_info=s,.s_dev=1000+i,.s_user_ns=&init_user_ns};
  assert(!hfs_controlled_bind_super(s,&f->super));
+ {
+  struct hfs_session profile={0};const char *ops[]={"DESCRIPTION_CLOSE","DESCRIPTION_RELEASE","FORGET","PROCESS_EXIT"};
+  const u64 features[]={HFS_MAPPED_FEATURES,HFS_TERMINAL_FEATURES,HFS_CONTROLLED_FEATURES,HFS_CLEANUP_FEATURES,0,32766};
+  for(unsigned minor=0;minor<=5;minor++)for(unsigned n=0;n<ARRAY_SIZE(features);n++){
+   profile.bridge_minor=minor;profile.enrollment.protocol_features=features[n];bool ordinary=minor==4&&(features[n]==HFS_MAPPED_FEATURES||features[n]==HFS_TERMINAL_FEATURES);
+   for(unsigned j=0;j<ARRAY_SIZE(ops);j++){assert(hfs_call_control_bytes(&profile,ops[j],true)==!ordinary);assert(!hfs_call_control_bytes(&profile,ops[j],false));}
+   assert(hfs_call_control_bytes(&profile,"DRAIN_WRITE",true));assert(hfs_call_control_bytes(&profile,"ROOT",true));
+  }
+ }
  accounting_regression(s);
  uuid_t user_namespace;u8 map[32];assert(!s->provider->map(s,&f->native_cred,&init_user_ns,&user_namespace,map));
  assert(uuid_equal(&user_namespace,&f->credential.user_namespace)&&!memcmp(map,f->credential.idmap_hash,32));
@@ -782,6 +794,93 @@ static void command(char *line) {
   assert(ordinary==mount->ordinary_credits&&control==mount->control_credits&&requests==session->nr_requests&&next==session->next_cell);
   if(session->view){void *cookie=NULL;assert(hfs_view_enter(session->view,NULL,false,&cookie)<0&&!cookie);}
   done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"CLEANUP_OWNERS")){
+  assert(f->ordinary_result&&!f->cleanup_description&&!f->cleanup_forget);
+  if(list_empty(&f->session->processes)){primitive_process_uuid=f->credential.process;primitive_process_uuid_pending=true;}
+  assert(!hfs_description_prepare(f->session,false,&f->cleanup_description));
+  assert(!hfs_reply_cap(f->session,f->ordinary_result,"DESCRIPTION",&f->cleanup_description->cap));
+  assert(!hfs_capture(f->session,&init_user_ns,&f->cleanup_description->issuer));
+  f->cleanup_forget=kzalloc(sizeof(*f->cleanup_forget),GFP_KERNEL);assert(f->cleanup_forget);
+  f->cleanup_forget->session=f->session;f->cleanup_forget->count=1;
+  assert(!hfs_reply_cap(f->session,f->ordinary_result,"PATH",&f->cleanup_forget->cap));
+  assert(!hfs_capture(f->session,&init_user_ns,&f->cleanup_forget->issuer));
+  list_add_tail(&f->cleanup_forget->list,&f->session->forgets);
+  hfs_result_adopt(f->session,f->ordinary_result);done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"CALLERS_UNFUNDED")){
+  fflush(NULL);
+  for(unsigned op=0;op<4;op++){
+   pid_t child=fork();assert(child>=0);
+   if(!child){
+    struct hfs_session *s=f->session;u64 claim=s->next_claim,cell=s->next_cell,ordinary=hfs_controlled_ordinary_used,control=hfs_controlled_control_used;u32 requests=s->nr_requests;
+    struct inode inode={.i_sb=&f->super};struct file file={.inode=&inode,.private_data=f->cleanup_description};
+    if(op==0)assert(hfs_flush(&file,NULL)==-ENOSPC);
+    else if(op==1){assert(hfs_release(&inode,&file)==-ENOSPC&&s->blocked&&file.private_data==f->cleanup_description);}
+    else if(op==2){hfs_forget_work(&f->cleanup_forget->work);assert(s->blocked&&f->cleanup_forget->cap&&f->cleanup_forget->issuer&&!list_empty(&s->forgets));}
+    else {struct hfs_process *process=hfs_process_find(s,&f->pid);assert(process&&process->last);struct hfs_cred *issuer=process->last;hfs_process_exit_work(&process->exit_work);assert(s->blocked&&process->last==issuer&&uuid_equal(&process->id,&f->credential.process));}
+    assert(s->next_claim==claim&&s->next_cell==cell&&s->nr_requests==requests&&ordinary==hfs_controlled_ordinary_used&&control==hfs_controlled_control_used);
+    _exit(0);
+   }
+   int status;assert(waitpid(child,&status,0)==child&&WIFEXITED(status)&&WEXITSTATUS(status)==0);
+  }
+  done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"CLEANUP_CALLER")){
+  struct hfs_session *s=f->session;int err=0;u64 control=hfs_controlled_control_used;
+  if(!strcmp(line+consumed,"PROCESS_EXIT")){
+   struct hfs_process *process=hfs_process_find(s,&f->pid);assert(process&&process->last&&uuid_equal(&process->id,&f->credential.process));
+   hfs_process_exit_work(&process->exit_work);err=s->blocked?-EHOSTDOWN:0;
+  }else if(!strcmp(line+consumed,"FORGET")){
+   assert(f->cleanup_forget);hfs_forget_work(&f->cleanup_forget->work);if(!s->blocked)f->cleanup_forget=NULL;err=s->blocked?-EHOSTDOWN:0;
+  }else {
+   struct inode inode={.i_sb=&f->super};struct file file={.inode=&inode,.private_data=f->cleanup_description};
+   assert(f->cleanup_description);
+   if(!strcmp(line+consumed,"DESCRIPTION_CLOSE"))err=hfs_flush(&file,NULL);
+   else {assert(!strcmp(line+consumed,"DESCRIPTION_RELEASE"));err=hfs_release(&inode,&file);if(!err){assert(!file.private_data);f->cleanup_description=NULL;}}
+  }
+  assert(control==hfs_controlled_control_used);done(id,err,NULL,0);return;
+ }
+ if(!strcmp(operation,"BYTE_PRESSURE")||!strcmp(operation,"BYTE_UNPRESSURE")){
+  bool control=!strcmp(line+consumed,"control");void **credit=&f->terminal_external_credit;
+  if(!strcmp(operation,"BYTE_UNPRESSURE")){assert(*credit);hfs_controlled_unreserve(f->session,*credit);*credit=NULL;}
+  else {assert(!*credit);u64 remaining=control?hfs_controlled_registry->budget.control_bytes-hfs_controlled_registry->control_base_bytes-hfs_controlled_control_used:hfs_controlled_registry->budget.ordinary_bytes-hfs_controlled_ordinary_used;assert(remaining>sizeof(struct hfs_controlled_credit));assert(!hfs_controlled_reserve(f->session,remaining-sizeof(struct hfs_controlled_credit),control,credit));}
+  done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"CLEANUP_REQUEST")){
+  char op[32];int used=0;assert(sscanf(line+consumed,"%31s %n",op,&used)==1);
+  assert(!strcmp(op,"DESCRIPTION_CLOSE")||!strcmp(op,"DESCRIPTION_RELEASE")||!strcmp(op,"FORGET")||!strcmp(op,"PROCESS_EXIT"));
+  struct hfs_session *session=f->session;u64 next=session->next_claim,cell=session->next_cell,control=hfs_controlled_control_used,ordinary=hfs_controlled_ordinary_used;u32 requests=session->nr_requests,control_requests=session->nr_control_requests;
+  struct hfs_buf args={0};struct hfs_json *result=NULL;assert(!hfs_args_init(&args));args.len=decode_hex(line+consumed+used,args.data,args.cap);
+  fflush(NULL);pid_t closed=fork();assert(closed>=0);
+  if(!closed){
+   session->closing=true;struct hfs_json *late=NULL;
+   assert(hfs_call(session,op,&args,&f->credential,true,&late)==-ESTALE&&!late);
+   assert(session->next_claim==next&&session->next_cell==cell&&session->nr_requests==requests&&session->nr_control_requests==control_requests&&control==hfs_controlled_control_used&&ordinary==hfs_controlled_ordinary_used);
+   _exit(0);
+  }
+  int closed_status;assert(waitpid(closed,&closed_status,0)==closed&&WIFEXITED(closed_status)&&WEXITSTATUS(closed_status)==0);
+  int err=hfs_call(session,op,&args,&f->credential,true,&result);
+  if(!err){
+   struct hfs_request *request=result->owner;struct hfs_controlled_credit *credit=request->reservation;
+   assert(session->nr_control_requests==control_requests+1);
+   assert(request->control&&!request->earmarked&&!request->view_stamped&&request->users&&credit&&!credit->control);
+   assert(!hfs_completion_control(request->completion)&&hfs_completion_body(request->completion)==HFS_BODY_MAX);
+   u32 offset,length;struct hfs_kernel_received *owner=hfs_received_get(result,&offset,&length);assert(owner&&!owner->control&&owner->completion==request->completion);hfs_received_put(owner);
+   struct hfs_json *again=NULL;assert(!hfs_request_result_borrow(request,&again));assert(again->len==result->len&&!memcmp(again->data,result->data,result->len));
+   u64 retry_cell=session->next_cell,retry_claim=session->next_claim;
+   struct hfs_buf retry={0};struct hfs_json *replayed=NULL;assert(!hfs_buf_init(&retry,HFS_BODY_MAX));
+   u32 retry_slots=request->completion->nr_slots,retry_received=request->completion->nr_received;u64 retry_bytes=request->completion->used;
+   retry_snapshot_watch=request->result;retry_snapshot_frees=0;
+   assert(!hfs_request_run(session,request,op,&retry,&replayed));
+   assert(request->result==retry_snapshot_watch?!retry_snapshot_frees:retry_snapshot_frees==1);retry_snapshot_watch=NULL;
+   assert(replayed->len==result->len&&!memcmp(replayed->data,result->data,result->len));
+   assert(session->next_cell==retry_cell&&session->next_claim==retry_claim&&request->users>=3);hfs_json_free(replayed);hfs_buf_free(&retry);
+   assert(request->completion->nr_slots==retry_slots&&request->completion->nr_received==retry_received&&request->completion->used==retry_bytes);
+   assert(hfs_retire(session)==-EAGAIN&&request->users>=2&&request->control);hfs_json_free(again);
+   assert(f->nr_held_results<ARRAY_SIZE(f->held_results));f->held_results[f->nr_held_results++]=result;result=NULL;
+  }else if(err==-ENOSPC){assert(session->next_claim==next&&session->next_cell==cell&&session->nr_requests==requests&&session->nr_control_requests==control_requests&&ordinary==hfs_controlled_ordinary_used);}
+  assert(control==hfs_controlled_control_used);hfs_json_free(result);hfs_buf_free(&args);done(id,err,NULL,0);return;
  }
  if(!strcmp(operation,"REQUEST")){
   char op[32];int used=0;assert(sscanf(line+consumed,"%31s %n",op,&used)==1);
