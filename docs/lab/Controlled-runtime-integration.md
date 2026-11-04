@@ -9,7 +9,11 @@ original-origin durability plus owner/partner RAM without owner-disk wait, and
 same-client advisory-lock scope remain unchanged. Distributed implementation
 and acceptance remain later work.
 
-Current implementation status: [C9 barriered component restart](../../internal/controlledruntime/restart.md)
+Current implementation status: [C10 disposable runtime composition](../../internal/controlledruntime/runtime.md)
+implements explicit staged external enrollment, supervised all-session startup and
+durable response-backed readiness. Native artifact/installation/acceptance remains
+xz3/zq3, with no lab activation claimed here.
+[C9 barriered component restart](../../internal/controlledruntime/restart.md)
 implements a narrow same-owner/current-cut boundary. The original planning gaps
 below remain historical context; they are not native/deployment acceptance.
 

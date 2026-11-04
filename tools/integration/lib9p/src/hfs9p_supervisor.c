@@ -22,6 +22,7 @@
 #include <poll.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -49,6 +50,10 @@ typedef struct {
    size_t protected_length;
    uint8_t session[16];
    char name[65];
+   unsigned session_count;
+   uint8_t sessions[16][16];
+   char names[16][65];
+   bool connections[16];
 } Hfs9pSupervisor;
 
 static Hfs9pSupervisor OWNER = {.mutex = PTHREAD_MUTEX_INITIALIZER,
@@ -248,10 +253,26 @@ _observe(Hfs9pSupervisor *s, uint8_t out[184]) {
    return (0);
 }
 
+/* Private native syscall adapters. The production object has no setter or
+ * configuration path for these bindings; portable source-inclusion tests replace
+ * only this operating-system boundary in their separate translation unit. */
+static int (*NATIVE_OBSERVE)(Hfs9pSupervisor *, uint8_t[184]) = _observe;
+static int (*NATIVE_CONSTRUCT)(Hfs9p **, const int[3], const Hfs9pEndpoint *,
+    Hfs9pVerifier) = hfs9p_new;
+static int
+_native_platform(void) {
+#ifndef __FreeBSD__
+   return (ENOTSUP);
+#else
+   return (0);
+#endif
+}
+static int (*NATIVE_PLATFORM)(void) = _native_platform;
+
 static int
 _verify_locked(Hfs9pSupervisor *s) {
    uint8_t payload[184];
-   int error = s->fenced ? ESTALE : _observe(s, payload);
+   int error = s->fenced ? ESTALE : NATIVE_OBSERVE(s, payload);
    if (!error) error = _request(s, 3, payload, sizeof(payload));
    if (error) { s->fenced = true; (void)shutdown(CONTROL, SHUT_RDWR); }
    return (error);
@@ -333,6 +354,7 @@ _heartbeat_cb(void *arg) {
 }
 
 #include "hfs9p_recovery.inc"
+#include "hfs9p_bootstrap.inc"
 
 int
 hfs9p_supervisor_start_tuple(int parent, const char *name, const uint8_t *scope,
@@ -348,12 +370,9 @@ hfs9p_supervisor_start_tuple(int parent, const char *name, const uint8_t *scope,
        !strcmp(name, ".") || !strcmp(name, "..") || !scope || !length ||
        fstat(parent, &st) || !S_ISDIR(st.st_mode) || st.st_uid != geteuid() ||
        (st.st_mode & 077)) return (EINVAL);
-#ifndef __FreeBSD__
-   /* Do not create owned files or send CLAIM for a portable raw-file path. */
-   (void)minor;
-   return (ENOTSUP);
-#endif
-   int error = _socket();
+   int error = NATIVE_PLATFORM();
+   if (error) return (error);
+   error = _socket();
    if (!error) error = _recovery_socket();
    if (error) return (error);
    if (fstat(CONTROL, &st)) return (errno);
@@ -420,33 +439,14 @@ hfs9p_supervisor_start_tuple(int parent, const char *name, const uint8_t *scope,
    if (!error) error = _verify_locked(s);
    Hfs9pVerifier verifier = {s, _claim_cb, _protect_cb, _verify_cb,
        _begin_io_cb, _end_io_cb, _controller_cb};
-   if (!error) error = hfs9p_new(&s->backend, s->fd, &s->endpoint, verifier);
+   if (!error) error = NATIVE_CONSTRUCT(&s->backend, s->fd, &s->endpoint, verifier);
    if (!error) error = hfs9p_add_session_tuple(s->backend, scope, length, minor, features);
    if (!error) {
-      Hfs9pToken *tokens = calloc(HFS9P_TOKENS, sizeof(*tokens));
-      Hfs9pJson json = {scope, length, tokens, 0};
-      uint32_t id;
-      if (!tokens) error = ENOMEM;
-      else if (hfs9p_json_parse(&json) ||
-          hfs9p_json_key(&json, 0, "session", &id)) error = EINVAL;
-      if (!error) {
-         Hfs9pToken t = tokens[id];
-         const uint8_t *p = scope + t.start + 1;
-         if (t.type != '"' || t.end - t.start != 38) error = EINVAL;
-         for (unsigned i = 0; !error && i < 16; i++) {
-            if (i == 4 || i == 6 || i == 8 || i == 10) p++;
-            unsigned value = 0;
-            for (unsigned j = 0; j < 2; j++, p++) {
-               int digit = *p >= '0' && *p <= '9' ? *p - '0' :
-                   (*p >= 'a' && *p <= 'f' ? *p - 'a' + 10 : -1);
-               if (digit < 0) { error = EINVAL; break; }
-               value = value * 16 + (unsigned)digit;
-            }
-            s->session[i] = (uint8_t)value;
-         }
-      }
-      free(tokens);
+      error = _bootstrap_session(scope, length, s->session);
       strcpy(s->name, name);
+      s->session_count = 1;
+      memcpy(s->sessions[0], s->session, 16);
+      strcpy(s->names[0], name);
       pthread_t heartbeat;
       pthread_attr_t attributes;
       bool initialized = false;
@@ -487,12 +487,20 @@ hfs9p_controller_claim(const char *name, Hfs9pConnection **out) {
    if (!out) return (EINVAL);
    *out = NULL;
    pthread_mutex_lock(&s->mutex);
-   int error = (!s->ready || !s->backend || s->fenced || s->connected || !name ||
-       strcmp(name, s->name)) ? EACCES : _verify_locked(s);
+   unsigned index = s->session_count;
+   for (unsigned i = 0; name && i < s->session_count; i++)
+      if (!strcmp(name, s->names[i])) index = i;
+   int error = (!s->ready || !s->backend || s->fenced ||
+       index >= s->session_count || s->connections[index]) ?
+       EACCES : _verify_locked(s);
    bool granted = !error;
-   if (granted) s->connected = true;
+   if (granted) {
+      s->connections[index] = true;
+      s->connected = true;
+   }
    pthread_mutex_unlock(&s->mutex);
-   if (granted) error = hfs9p_connection_new(s->backend, s->session, out);
+   if (granted) error = hfs9p_connection_new(s->backend,
+       s->sessions[index], out);
    if (error && granted) {
       pthread_mutex_lock(&s->mutex);
       s->fenced = true;

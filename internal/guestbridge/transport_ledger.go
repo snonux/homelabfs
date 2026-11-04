@@ -42,6 +42,7 @@ var transportWorkspaceKey = []byte("workspace")
 // and holes), without a tombstone per historical cell. A workspace is unissued.
 // Scopes and Protocols are parallel arrays retaining the exact selected tuples.
 type ProtectedTransportState struct {
+	RuntimeHellos     map[string]runtimeHelloWitness `json:",omitempty"`
 	BridgeSessions    bool
 	Version           uint32
 	Endpoint          Endpoint
@@ -292,7 +293,7 @@ func protectedCell(c *cell) ProtectedTransportCell {
 	return ProtectedTransportCell{Header: h, Body: c.body, Chunks: c.chunks, Observations: c.observations, Count: c.count, Control: c.reservation.Control, Command: c.command, Native: c.native, JobPhase: c.jobPhase, Response: c.response, Wire: c.wire, Seen: c.seen, Unread: c.unread, ResultKind: c.resultKind, GuestWatermark: c.guestWatermark, Mapping: c.mapping, Terminal: c.terminal}
 }
 func (t *Transport) protectedIndex() ProtectedTransportState {
-	s := ProtectedTransportState{BridgeSessions: true, Version: 1, Endpoint: t.Endpoint(), Controller: t.service.controller, High: t.high, Terminal: t.terminal, GuestHigh: t.guestHigh, GuestRecent: t.guestRecent, Ordinary: t.ordinary, Control: t.control, Workspace: t.workspace != nil, Cells: make([]uint64, 0, len(t.cells))}
+	s := ProtectedTransportState{RuntimeHellos: t.runtimeHellos, BridgeSessions: true, Version: 1, Endpoint: t.Endpoint(), Controller: t.service.controller, High: t.high, Terminal: t.terminal, GuestHigh: t.guestHigh, GuestRecent: t.guestRecent, Ordinary: t.ordinary, Control: t.control, Workspace: t.workspace != nil, Cells: make([]uint64, 0, len(t.cells))}
 	for id := range t.cells {
 		s.Cells = append(s.Cells, id)
 	}
@@ -429,6 +430,9 @@ func boundedTransportJSON(c ProtectedTransportCell) ([]byte, error) {
 func validateTransportIndex(s ProtectedTransportState) error {
 	if s.Version != 1 || !validEndpoint(s.Endpoint) || !s.Controller.Valid() || s.High > MaxCell || len(s.Cells) > 80 || len(s.Scopes) == 0 || len(s.Scopes) > 64 || len(s.Protocols) != len(s.Scopes) || s.Ordinary < 0 || s.Ordinary > 64 || s.Control < 0 || s.Control > 16 || s.Ordinary+s.Control != len(s.Cells) {
 		return fsapi.Stale
+	}
+	if err := validateRuntimeHellos(s); err != nil {
+		return err
 	}
 	if len(s.Terminal) > 64 {
 		return fsapi.Stale
@@ -722,6 +726,11 @@ func inspectEndpointLedger(l *transportLedger, visit func(ProtectedTransportCell
 }
 
 func validateTransportCellBinding(s ProtectedTransportState, c ProtectedTransportCell, workspace bool) error {
+	if witness, ok := s.RuntimeHellos[c.Header.Session.String()]; ok && witness.Cell == c.Header.Cell {
+		if workspace || c.Command == nil || c.Command.Op != "HELLO" || c.JobPhase != "responded" || digest(c.Body) != witness.CommandHash || digest(c.Response) != witness.ResponseHash {
+			return fsapi.Stale
+		}
+	}
 	if err := validateTerminalCell(s, c, workspace); err != nil {
 		return err
 	}

@@ -62,6 +62,9 @@ func validateBridgeSession(index ProtectedTransportState, scope Context, row Pro
 	if err := decodeTransportJSON(row.State, bridgeSessionLimit, &ss); err != nil {
 		return err
 	}
+	if _, ok := index.RuntimeHellos[scope.Session]; ok && !ss.Hello {
+		return fsapi.Stale
+	}
 	if ss.Context != scope || !ss.Generation.Valid() || ss.Reserved < 0 || len(ss.Grants) > 65536 || len(ss.Credentials) > 65536 || ss.Grants == nil || ss.Credentials == nil || ss.Exited == nil || ss.CloseSequences == nil {
 		return fsapi.Stale
 	}

@@ -66,6 +66,7 @@ type Transport struct {
 	ledger                      *transportLedger
 	failed                      error
 	uncertainReclaims           []*cell // Original owners retained after uncertain atomic protection.
+	runtimeHellos               map[string]runtimeHelloWitness
 	terminal                    map[string]uint64
 	guestHigh                   map[string]uint64
 	guestRecent                 []GuestIssuance
@@ -125,7 +126,7 @@ func newTransport(s *Service, budget *admission.Budget, root string, hook func(s
 	}
 	s.transportAttached = true
 	s.mu.Unlock()
-	t := &Transport{terminal: map[string]uint64{}, guestHigh: map[string]uint64{}, service: s, cells: map[uint64]*cell{}, ordinaryQueue: make(chan job, 64), controlQueue: make(chan job, 16), replacementQueue: make(chan job, 1), drainQueue: make(chan job, 16), acquisitionQueue: make(chan job, 64), done: make(chan struct{})}
+	t := &Transport{runtimeHellos: map[string]runtimeHelloWitness{}, terminal: map[string]uint64{}, guestHigh: map[string]uint64{}, service: s, cells: map[uint64]*cell{}, ordinaryQueue: make(chan job, 64), controlQueue: make(chan job, 16), replacementQueue: make(chan job, 1), drainQueue: make(chan job, 16), acquisitionQueue: make(chan job, 64), done: make(chan struct{})}
 	// Reserve complete request/reply/receipt bitmap and bounded decode copies for
 	// every active credit before any callback allocation. Workspace is independent.
 	pools := []struct {
@@ -663,6 +664,11 @@ func (t *Transport) worker(queue <-chan job) {
 			c.unread = unread
 			c.resultKind = kind
 			c.jobPhase = "responded"
+			if err := t.protectRuntimeHello(c); err != nil {
+				t.failed = err
+				t.mu.Unlock()
+				continue
+			}
 			if c.terminal != nil {
 				c.terminal.Phase = "TERMINAL_RESPONDED"
 			}

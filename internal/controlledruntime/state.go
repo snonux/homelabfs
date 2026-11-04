@@ -23,6 +23,7 @@ const maxExecutable = 64 << 20
 // Supervisor is the exclusive process, connection and issuance owner. Close
 // fences admission but never deletes resources or retires endpoint obligations.
 type Supervisor struct {
+	runtimeFunding   *runtimeFunding // retained across uncertain native/guest ownership; Close is not retirement
 	mu               sync.Mutex
 	root             string
 	directory        *os.File
@@ -32,6 +33,8 @@ type Supervisor struct {
 	record           issuance
 	closed           bool
 	controlStarted   bool
+	bootstrapScopes  map[string]guestbridge.Context
+	bootstrapClaimed map[string]bool
 	restart          *Restart
 	restartAttempted bool
 }
@@ -112,6 +115,9 @@ func (s *Supervisor) Close() error {
 	defer s.mu.Unlock()
 	s.closed = true
 	if s.child != nil {
+		if s.child.bootstrap != nil {
+			_ = s.child.bootstrap.Close()
+		}
 		_ = s.child.control.Close()
 		if s.child.recovery != nil {
 			_ = s.child.recovery.Close()

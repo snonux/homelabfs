@@ -35,6 +35,10 @@ type readyMessage struct {
 }
 
 func openLocal(ctx context.Context, c Config) (_ *localService, retErr error) {
+	return openLocalMode(ctx, c, false, fsservice.Limits{})
+}
+
+func openLocalMode(ctx context.Context, c Config, controlled bool, limits fsservice.Limits) (_ *localService, retErr error) {
 	v, err := inspectVolume(c)
 	if err != nil {
 		return nil, err
@@ -56,6 +60,10 @@ func openLocal(ctx context.Context, c Config) (_ *localService, retErr error) {
 	fc, err := serviceConfig(v)
 	if err != nil {
 		return nil, err
+	}
+	if controlled {
+		fc.RequireControlledViews = true
+		fc.Limits = limits
 	}
 	workspace, err := freshID()
 	if err != nil {

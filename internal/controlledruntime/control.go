@@ -5,6 +5,7 @@ package controlledruntime
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math"
 	"net"
@@ -28,6 +29,8 @@ const (
 	ControlVerify = 3
 	// ControlTuple carries the admitted tuple/controller and exactly three rights.
 	ControlTuple = 4
+	// ControlDevice confirms one actual configured device after strong startup.
+	ControlDevice = 5
 )
 
 type controlFrame struct {
@@ -67,7 +70,7 @@ func (s *Supervisor) ServeControl(ctx context.Context) error {
 			return err
 		}
 		if frame.sequence != sequence || sequence == math.MaxUint32 {
-			return fsapi.Permission
+			return fmt.Errorf("management sequence %d, expected %d: %w", frame.sequence, sequence, fsapi.Permission)
 		}
 		sequence++
 		status := s.controlRequest(frame)
@@ -77,7 +80,7 @@ func (s *Supervisor) ServeControl(ctx context.Context) error {
 			return err
 		}
 		if status != 0 {
-			return fsapi.Permission
+			return fmt.Errorf("management opcode %d refused (%d): %w", frame.opcode, status, fsapi.Permission)
 		}
 	}
 }
@@ -105,6 +108,17 @@ func (s *Supervisor) controlRequest(frame controlFrame) uint32 {
 		if s.protect() != nil {
 			return 3
 		}
+		return 0
+	case ControlDevice: // Exact per-device claim after actual strong C startup and VERIFY.
+		if len(frame.payload) != 72 || s.record.Stage != "claimed" || !s.child.tupleVerified || string(frame.payload[40:56]) != string(s.record.Controller[:]) {
+			return 1
+		}
+		var session fsapi.UUID
+		copy(session[:], frame.payload[56:72])
+		if _, ok := s.bootstrapScopes[session.String()]; !ok || s.bootstrapClaimed[session.String()] {
+			return 1
+		}
+		s.bootstrapClaimed[session.String()] = true
 		return 0
 	case ControlReconcile:
 		return 3 // Complete host transport restoration belongs to C8/C9.
@@ -139,7 +153,7 @@ func readControl(r io.Reader) (controlFrame, error) {
 		return controlFrame{}, fsapi.Invalid
 	}
 	opcode := header[5]
-	if opcode < ControlClaim || opcode > ControlVerify {
+	if opcode != ControlClaim && opcode != ControlReconcile && opcode != ControlVerify && opcode != ControlDevice {
 		return controlFrame{}, fsapi.Invalid
 	}
 	expected := uint32(72)

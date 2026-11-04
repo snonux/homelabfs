@@ -24,6 +24,8 @@ type Executable struct {
 	Path   string
 	SHA256 [32]byte
 	Args   []string
+	// ControlledBootstrap adds private inherited bootstrap fd6 and owned parent fd7.
+	ControlledBootstrap bool
 }
 
 type processIdentity struct {
@@ -46,6 +48,7 @@ type exporter struct {
 	identity            processIdentity
 	control             *net.UnixConn
 	recovery            *net.UnixConn
+	bootstrap           *os.File
 	exited              chan struct{}
 }
 
@@ -62,6 +65,11 @@ func (s *Supervisor) Start(ctx context.Context, executable Executable) error {
 		return err
 	}
 	child, err := s.launch(ctx, executable)
+	// Retain every actually started child, including one whose OS observation
+	// failed. It must be fenced/inspectable, never silently replaced or killed.
+	if child != nil {
+		s.child = child
+	}
 	if err != nil {
 		s.record.Stage = "start-failed"
 		if e := s.protect(); e != nil {
@@ -104,13 +112,29 @@ func (s *Supervisor) launch(ctx context.Context, spec Executable) (*exporter, er
 	command := exec.Command("/dev/fd/4", spec.Args...)
 	command.Env = []string{"HFS_SUPERVISOR_FD=3"}
 	command.ExtraFiles = []*os.File{child, pinned, recoveryChild}
+	var bootstrapWriter *os.File
+	if spec.ControlledBootstrap {
+		reader, writer, pipeErr := os.Pipe()
+		if pipeErr != nil {
+			_ = recoveryParent.Close()
+			_ = parent.Close()
+			_ = pinned.Close()
+			return nil, pipeErr
+		}
+		defer func() { _ = reader.Close() }()
+		bootstrapWriter = writer
+		command.ExtraFiles = append(command.ExtraFiles, reader, s.directory)
+	}
 	if err = command.Start(); err != nil {
+		if bootstrapWriter != nil {
+			_ = bootstrapWriter.Close()
+		}
 		_ = recoveryParent.Close()
 		_ = parent.Close()
 		_ = pinned.Close()
 		return nil, err
 	}
-	result := &exporter{command: command, executable: pinned, control: parent, recovery: recoveryParent, exited: make(chan struct{})}
+	result := &exporter{command: command, executable: pinned, control: parent, recovery: recoveryParent, bootstrap: bootstrapWriter, exited: make(chan struct{})}
 	go func() { _ = command.Wait(); close(result.exited) }()
 	identity, err := observeProcess(command.Process.Pid)
 	if err == nil {
@@ -119,14 +143,18 @@ func (s *Supervisor) launch(ctx context.Context, spec Executable) (*exporter, er
 	if err != nil {
 		_ = recoveryParent.Close()
 		_ = parent.Close()
-		_ = pinned.Close()
-		return nil, fmt.Errorf("observe exporter: %w", err)
+		if bootstrapWriter != nil {
+			_ = bootstrapWriter.Close()
+		}
+		return result, fmt.Errorf("observe exporter: %w", err)
 	}
 	if _, err = rand.Read(identity.PublicID[:]); err != nil {
 		_ = recoveryParent.Close()
 		_ = parent.Close()
-		_ = pinned.Close()
-		return nil, err
+		if bootstrapWriter != nil {
+			_ = bootstrapWriter.Close()
+		}
+		return result, err
 	}
 	result.identity = identity
 	return result, nil

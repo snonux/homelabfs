@@ -1,27 +1,29 @@
 --- a/usr.sbin/bhyve/pci_virtio_9p.c
 +++ b/usr.sbin/bhyve/pci_virtio_9p.c
-@@ -46,6 +46,7 @@
+@@ -46,6 +46,8 @@
  
  #include <lib9p.h>
  #include <backend/fs.h>
 +#include <backend/hfs9p.h>
++#include <backend/hfs9p_supervisor.h>
  
  #include "bhyverun.h"
  #include "config.h"
-@@ -67,6 +68,7 @@
+@@ -67,6 +69,8 @@
   */
  struct pci_vt9p_softc {
  	struct virtio_softc      vsc_vs;
-+	Hfs9pConnection *       vsc_hfs;
++	Hfs9pPending *          vsc_hfs;
++	bool                   vsc_hfs_dedicated;
  	struct vqueue_info       vsc_vq;
  	pthread_mutex_t          vsc_mtx;
  	uint64_t                 vsc_cfg;
-@@ -213,7 +215,46 @@
+@@ -213,7 +217,46 @@
  			    iov[i].iov_len));
  		}
  
 -		l9p_connection_recv(sc->vsc_conn, iov, preq->vsr_respidx, preq);
-+		if (sc->vsc_hfs != NULL) {
++		if (sc->vsc_hfs_dedicated) {
 +			uint8_t request[HFS9P_MSIZE], response[HFS9P_MSIZE];
 +			size_t request_len = 0, response_len = 0;
 +			bool valid = true;
@@ -43,7 +45,7 @@
 +				available += iov[i].iov_len;
 +			}
 +			if (!valid || available < 10 ||
-+			    hfs9p_exchange(sc->vsc_hfs, request, request_len,
++			    hfs9p_pending_exchange(sc->vsc_hfs, request, request_len,
 +			    response, MIN(available, sizeof(response)),
 +			    &response_len) != 0)
 +				response_len = 0;
@@ -64,12 +66,12 @@
  	}
  }
  
-@@ -250,13 +290,25 @@
+@@ -250,13 +293,25 @@
  	struct pci_vt9p_softc *sc;
  	const char *value;
  	const char *sharename;
 +	const char *controller;
-+	Hfs9pConnection *hfs = NULL;
++	Hfs9pPending *hfs = NULL;
  	int rootfd;
  	bool ro;
  	cap_rights_t rootcap;
@@ -80,7 +82,7 @@
  	value = get_config_value_node(nvl, "path");
 +	if (controller != NULL) {
 +		if (value != NULL || ro ||
-+		    hfs9p_controller_claim(controller, &hfs) != 0 || hfs == NULL) {
++		    hfs9p_supervisor_prepare(controller, &hfs) != 0 || hfs == NULL) {
 +			EPRINTLN("virtio-9p: HomelabFS controller enrollment refused");
 +			return (1);
 +		}
@@ -90,7 +92,7 @@
  	if (value == NULL) {
  		EPRINTLN("virtio-9p: path required");
  		return (1);
-@@ -268,6 +320,7 @@
+@@ -268,6 +323,7 @@
  		return (-1);
  	}
  
@@ -98,21 +100,22 @@
  	sharename = get_config_value_node(nvl, "sharename");
  	if (sharename == NULL) {
  		EPRINTLN("virtio-9p: share name required");
-@@ -279,11 +332,13 @@
+@@ -279,11 +335,14 @@
  	}
  
  	sc = calloc(1, sizeof(struct pci_vt9p_softc));
 +	sc->vsc_hfs = hfs;
++	sc->vsc_hfs_dedicated = controller != NULL;
  	sc->vsc_config = calloc(1, sizeof(struct pci_vt9p_config) +
  	    VT9P_MAXTAGSZ);
  
  	pthread_mutex_init(&sc->vsc_mtx, NULL);
  
-+	if (hfs == NULL) {
++	if (!sc->vsc_hfs_dedicated) {
  	cap_rights_init(&rootcap,
  	    CAP_LOOKUP, CAP_ACL_CHECK, CAP_ACL_DELETE, CAP_ACL_GET,
  	    CAP_ACL_SET, CAP_READ, CAP_WRITE, CAP_SEEK, CAP_FSTAT,
-@@ -297,9 +352,12 @@
+@@ -297,9 +356,12 @@
  	if (cap_rights_limit(rootfd, &rootcap) != 0)
  		return (1);
  
@@ -121,11 +124,11 @@
  	sc->vsc_config->tag_len = (uint16_t)strlen(sharename);
  	memcpy(sc->vsc_config->tag, sharename, sc->vsc_config->tag_len);
  
-+	if (hfs == NULL) {
++	if (!sc->vsc_hfs_dedicated) {
  	if (l9p_backend_fs_init(&sc->vsc_fs_backend, rootfd, ro) != 0) {
  		errno = ENXIO;
  		return (1);
-@@ -319,6 +377,8 @@
+@@ -319,6 +381,8 @@
  	sc->vsc_conn->lc_lt.lt_get_response_buffer = pci_vt9p_get_buffer;
  	sc->vsc_conn->lc_lt.lt_send_response = pci_vt9p_send;
  	sc->vsc_conn->lc_lt.lt_drop_response = pci_vt9p_drop;

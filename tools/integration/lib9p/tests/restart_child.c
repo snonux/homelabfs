@@ -23,6 +23,8 @@ int restart_fstat(int, struct stat *);
 #include <assert.h>
 
 static int native_socket;
+static bool RUNTIME_MODE;
+static Hfs9pPending *RUNTIME_PENDING[16];
 static pthread_mutex_t native_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void
@@ -70,19 +72,24 @@ rpc(uint8_t method, uint64_t position, void *buffer, uint32_t length,
 }
 int
 restart_fstat(int fd, struct stat *st) {
+   if (RUNTIME_MODE) {
+      int error = fstat(fd, st);
+      if (!error) { st->st_size = HFS9P_VSIZE; for(unsigned i=0;i<3;i++) if(fd==OWNER.fd[i]) st->st_ino=OWNER.endpoint.node[i]; }
+      return (error);
+   }
    memset(st, 0, sizeof(*st)); st->st_mode = S_IFREG | 0600;
    st->st_ino = fd - 98; st->st_size = HFS9P_VSIZE; return (0);
 }
 ssize_t
 restart_pwrite(int fd, const void *body, size_t length, off_t offset) {
-   assert(fd == 100); uint32_t returned;
+   assert(fd == (RUNTIME_MODE ? OWNER.fd[0] : 100)); uint32_t returned;
    int error = rpc('W', (uint64_t)offset, (void *)body, (uint32_t)length, &returned);
    if (error) {errno = error; return (-1);} return ((ssize_t)returned);
 }
 ssize_t
 restart_pread(int fd, void *body, size_t length, off_t offset) {
-   assert(fd == 101 || fd == 102); uint32_t returned;
-   int error = rpc('R', (uint64_t)offset | ((uint64_t)(fd == 102) << 63), body, (uint32_t)length, &returned);
+   assert(fd == (RUNTIME_MODE ? OWNER.fd[1] : 101) || fd == (RUNTIME_MODE ? OWNER.fd[2] : 102)); uint32_t returned;
+   int error = rpc('R', (uint64_t)offset | ((uint64_t)(fd == (RUNTIME_MODE ? OWNER.fd[2] : 102)) << 63), body, (uint32_t)length, &returned);
    if (error) {errno = error; return (-1);} return ((ssize_t)returned);
 }
 static int
@@ -119,12 +126,41 @@ result(int command, int status, const void *body, uint32_t n) {
    if (n) memcpy(p + 4, body, n);
    send_packet(command, 'D', p, n + 4); free(p);
 }
+static int
+runtime_platform(void) { return (0); }
+static int
+runtime_observe(Hfs9pSupervisor *s, uint8_t out[184]) {
+   memcpy(out, s->tuple, 56); management_put(out + 56, s->sequence, 8);
+   for (unsigned i = 0; i < 3; i++) {
+      struct stat st; if (fstat(s->fd[i], &st)) return (errno);
+      uint8_t *p = out + 64 + 40 * i; memset(p, 0, 40);
+      management_put(p, (unsigned)s->fd[i], 4);
+      management_put(p+4, (i ? 2 : 1) | 4, 4);
+      management_put(p+8, st.st_dev, 8); management_put(p+16, s->endpoint.node[i], 8);
+      management_put(p+24, HFS9P_VSIZE, 8); management_put(p+32, 1, 4);
+   }
+   return (0);
+}
+
 int
 main(int argc, char **argv) {
-   assert(argc == 3); int command = connect_local(argv[1], 'C');
+   RUNTIME_MODE = argc >= 5 && !strcmp(argv[3], "runtime");
+   assert(argc == 3 || RUNTIME_MODE);
+   if (RUNTIME_MODE) {char log[1024]; (void)snprintf(log,sizeof(log),"%s/runtime-child.stderr",argv[2]); int fd=open(log,O_CREAT|O_WRONLY|O_EXCL,0600); assert(fd>=0); assert(dup2(fd,2)==2);close(fd);}
+   int command = connect_local(argv[1], 'C');
    native_socket = connect_local(argv[1], 'N');
-   pthread_t guard; assert(!pthread_create(&guard, NULL, monitor, NULL));
-   uint8_t op; uint32_t n; uint8_t *initial = packet(command, &op, &n); assert(op == 'I');
+   pthread_t guard;
+   if (!RUNTIME_MODE) assert(!pthread_create(&guard, NULL, monitor, NULL));
+   uint8_t op; uint32_t n;
+   if (RUNTIME_MODE) {
+      NATIVE_PLATFORM = runtime_platform;
+      NATIVE_OBSERVE = runtime_observe;
+      NATIVE_CONSTRUCT = _construct;
+      for (int i = 4; i < argc; i++)
+         assert(!hfs9p_supervisor_prepare(argv[i], &RUNTIME_PENDING[i-4]));
+      goto runtime_loop;
+   }
+   uint8_t *initial = packet(command, &op, &n); assert(op == 'I');
    Hfs9pToken *tokens = calloc(HFS9P_TOKENS, sizeof(*tokens)); assert(tokens);
    Hfs9pJson json = {initial, n, tokens, 0}; assert(!hfs9p_json_parse(&json));
    uint32_t contexts, key; assert(!hfs9p_json_key(&json, 0, "contexts", &contexts));
@@ -149,8 +185,9 @@ main(int argc, char **argv) {
    free(tokens); free(initial); assert(!_recovery_socket());
    pthread_t recovery; assert(!pthread_create(&recovery, NULL, _recovery_cb, &OWNER));
    result(command, 0, NULL, 0);
+runtime_loop:;
    Hfs9pConnection *connections[16] = {0};
-   for (unsigned i = 0; i < OWNER.backend->session_count; i++) {
+   for (unsigned i = 0; !RUNTIME_MODE && i < OWNER.backend->session_count; i++) {
       assert(!hfs9p_connection_new(OWNER.backend, OWNER.backend->sessions[i].id, &connections[i]));
       atomic_store(&connections[i]->negotiated, true); /* OS guest-session setup primitive. */
    }
@@ -159,6 +196,21 @@ main(int argc, char **argv) {
       if (op == 'Q') {free(p); return (0);}
       assert(n >= 1 && p[0] < OWNER.backend->session_count);
       unsigned si = p[0]; Hfs9p *h = OWNER.backend;
+      if (RUNTIME_MODE) {
+         connections[si] = atomic_load(&RUNTIME_PENDING[si]->connection);
+         assert(connections[si]);
+         if (!atomic_load(&connections[si]->negotiated)) {
+            const char *version = "9P2000.L.hfs1.4";
+            uint8_t request[64] = {0}, reply[64]; size_t got = 0;
+            _put(request, 13 + strlen(version), 4); request[4] = 100;
+            _put(request+5, 65535, 2); _put(request+7, 65536, 4);
+            _put(request+11, strlen(version), 2);
+            memcpy(request+13, version, strlen(version));
+            assert(!hfs9p_pending_exchange(RUNTIME_PENDING[si], request,
+                13+strlen(version), reply, sizeof(reply), &got));
+            assert(got > 13 && reply[4] == 101);
+         }
+      }
       uint8_t *answer = malloc(HFS9P_BODY); assert(answer); uint32_t used = 0; int error = 0;
       if (op == 'S') {
          Hfs9pToken *scratch = calloc(HFS9P_TOKENS, sizeof(*scratch)); assert(scratch);
@@ -176,7 +228,7 @@ main(int argc, char **argv) {
             memset(wire,0,21);_put(wire,21+HFS9P_HEADER+length,4);wire[4]=240;
             _put(wire+5,wait_op?65534:control_op?65533:42,2);wire[7]=1;wire[8]=1;_put(wire+9,guest,8);_put(wire+17,offset/HFS9P_CHUNK,4);
             _make_frame(wire+21,&frame_owner,offset,false);memcpy(wire+21+32,h->sessions[si].id,16);
-            size_t got=0;error=hfs9p_exchange(connections[si],wire,21+HFS9P_HEADER+length,reply,sizeof(reply),&got);
+            size_t got=0;error=RUNTIME_MODE ? hfs9p_pending_exchange(RUNTIME_PENDING[si],wire,21+HFS9P_HEADER+length,reply,sizeof(reply),&got) : hfs9p_exchange(connections[si],wire,21+HFS9P_HEADER+length,reply,sizeof(reply),&got);
             if(!error && (got!=8 || reply[7]!=1))error=EAGAIN;
          }
          free(scratch);
@@ -188,7 +240,7 @@ main(int argc, char **argv) {
          pthread_mutex_unlock(&h->mutex);
          for(uint32_t chunk=0; !error;chunk++) {
             uint8_t wire[21]={0},reply[HFS9P_MSIZE];_put(wire,21,4);wire[4]=240;_put(wire+5,42,2);wire[7]=2;wire[8]=wait_op?3:2;_put(wire+9,guest,8);_put(wire+17,chunk,4);
-            size_t got=0;error=hfs9p_exchange(connections[si],wire,sizeof(wire),reply,sizeof(reply),&got);
+            size_t got=0;error=RUNTIME_MODE ? hfs9p_pending_exchange(RUNTIME_PENDING[si],wire,sizeof(wire),reply,sizeof(reply),&got) : hfs9p_exchange(connections[si],wire,sizeof(wire),reply,sizeof(reply),&got);
             if(!error && (got<8+HFS9P_HEADER || reply[7]!=3))error=EAGAIN;
             if(error)break;
             uint32_t length=(uint32_t)_get(reply+8+24,4),total=(uint32_t)_get(reply+8+16,4);

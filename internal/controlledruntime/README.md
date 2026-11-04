@@ -4,8 +4,9 @@ This package implements C3 of `docs/lab/Controlled-runtime-integration.md`.
 It owns one disposable endpoint, exporter process and private issuance root.
 It also implements the C5 live Facts/source/receipt owner described below.
 It also implements the narrow [barriered C9 component restart](restart.md).
-It does not provide guest credential attestation, normal publication, an installed
-driver, or deployment acceptance.
+The explicit [C10 driver](runtime.md) composes those owners and the trusted-kernel
+credential attestor. It provides no normal publication, installed driver, or
+deployment acceptance.
 
 `Create` exclusively creates a private root and locks its ownership file. `Start`
 consumes its fresh stage before trying to launch. The exact SHA-256-admitted
@@ -80,6 +81,7 @@ No timeout retires anything. Payload unions:
 | 2 RECONCILE | endpoint + protected ledger digest (72 bytes); always BLOCKED for replacement ownership; C9 uses fd5 |
 | 3 VERIFY | endpoint + controller UUID + uint64 observation sequence + three 40-byte native fd observations (184 bytes) |
 | 4 TUPLE (host to child only) | endpoint + controller UUID (56 bytes), sequence 0, exactly three SCM_RIGHTS descriptors |
+| 5 DEVICE (child to host) | endpoint + controller UUID + exact session UUID (72 bytes); one confirmation after actual strong startup and device publication |
 | request opcode OR 0x80 | uint32 status (4 bytes): 0 success, 1 denied, 2 malformed, 3 blocked |
 
 An endpoint is its raw 16-byte nonzero session UUID followed by command/result/

@@ -91,7 +91,13 @@ exact protected recovery digest against the surviving host ledger; authenticate
 the actual supervised exporter/FUSE tuple on every I/O; protect bytes using the
 local adapter (or equivalently durable admitted transport storage).
 The strong `hfs9p_controller_claim` is now supplied by the owned C supervisor
-adapter. Trusted startup calls `hfs9p_supervisor_start` with an authorized parent
+adapter. The [C10 runtime](../../../internal/controlledruntime/runtime.md)
+registers explicitly dedicated pending devices, then one bounded asynchronous
+worker consumes inherited fd6/fd7 inputs and calls the strong explicit-tuple
+startup once for up to16 signed sessions on one endpoint. Pending/failed queues
+return bounded tagged Linux-errno retries/errors and never fall through the stock
+filesystem backend; the VM remains alive on failure.
+Trusted startup supplies an authorized parent
 fd, an exclusive new directory name and installed scope/protocol. There is no
 startup path from guest bytes, named management socket or configuration boolean.
 It receives the inherited fd3 tuple, durably records actual process/socket/fd

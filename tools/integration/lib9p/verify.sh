@@ -51,5 +51,9 @@ nm "$output/production_api_test" | rg ' T hfs9p_controller_claim$'
     "$output/hfs9p.o" "$output/hfs9p_json.o" "$output/hfs9p_ledger.o" \
     -pthread -Wl,--wrap=fsync "${crypto[@]}" -o "$output/supervisor_test"
 "$output/supervisor_test"
+"${CC:-cc}" "${flags[@]}" "$source_dir/tests/bootstrap_test.c" \
+    "$output/hfs9p.o" "$output/hfs9p_json.o" "$output/hfs9p_ledger.o" \
+    -pthread "${crypto[@]}" -o "$output/bootstrap_test"
+"$output/bootstrap_test"
 set +x
 printf '%s\n' 'PASS: owned component verification; no FUSE/mount/runtime proof'
