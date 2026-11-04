@@ -3,6 +3,7 @@
 #ifndef HFS_C6_RUNTIME_COMPAT_H
 #define HFS_C6_RUNTIME_COMPAT_H
 #include "hfs_codec_compat.h"
+#include "hfs_protocol.h"
 #include "kernel_format.h"
 #include <assert.h>
 #include <pthread.h>
@@ -23,10 +24,31 @@ struct mutex { pthread_mutex_t native; };
 struct list_head { struct list_head *next, *prev; };
 struct kref { atomic_int refcount; };
 typedef struct { int unused; } wait_queue_head_t;
-struct work_struct { int unused; };
+struct workqueue_struct;
+struct work_struct { void (*function)(struct work_struct *); bool queued; bool running; struct workqueue_struct *queue; };
+struct delayed_work { struct work_struct work; };
+struct workqueue_struct { struct work_struct *pending[32]; unsigned count; };
+#define INIT_WORK(work,fn) (*(work)=(struct work_struct){.function=(fn)})
+#define INIT_DELAYED_WORK(delayed,fn) INIT_WORK(&(delayed)->work,fn)
+#define to_delayed_work(work) container_of(work,struct delayed_work,work)
+#define WQ_UNBOUND 1
+#define WQ_MEM_RECLAIM 2
+struct workqueue_struct *alloc_workqueue(const char *,unsigned,unsigned);
+bool queue_work(struct workqueue_struct *,struct work_struct *);
+bool queue_delayed_work(struct workqueue_struct *,struct delayed_work *,unsigned long);
+bool cancel_delayed_work_sync(struct delayed_work *);
+void flush_workqueue(struct workqueue_struct *);
+void destroy_workqueue(struct workqueue_struct *);
 struct module;
 struct inode;
-struct pid;
+struct pid { int number, refs; };
+struct task_struct { unsigned flags; struct pid *pid; };
+extern struct task_struct primitive_current_task;
+#define current (&primitive_current_task)
+#define PF_KTHREAD 1U
+#define task_tgid(task) ((task)->pid)
+static inline struct pid *get_pid(struct pid *pid) { pid->refs++;return pid; }
+static inline void put_pid(struct pid *pid) { assert(pid->refs>0);pid->refs--; }
 struct cred;
 struct device;
 struct user_namespace;
@@ -67,7 +89,8 @@ extern void primitive_after_mutex_unlock(struct mutex *);
 #define late_initcall(name)
 #define THIS_MODULE NULL
 #define try_module_get(m) ((void)(m),true)
-#define module_put(m) ((void)(m))
+void primitive_module_put(void *);
+#define module_put(m) primitive_module_put(m)
 #define might_sleep() ((void)0)
 #define likely(p) (p)
 #define unlikely(p) (p)
@@ -142,9 +165,26 @@ static inline bool noop_dirty_folio(struct address_space *m,struct folio *f) { (
 static inline bool folio_mark_dirty(struct folio *f) { return folio_test_set_dirty(f); }
 static inline bool set_page_dirty(struct page *p) { bool old=p->dirty;p->dirty=true;return !old; }
 #define PAGE_SIZE 4096U
-struct cred { struct user_namespace *user_ns; };
-#define get_cred(c) (c)
-#define put_cred(c) ((void)(c))
+typedef u32 kuid_t;
+typedef u32 kgid_t;
+struct group_info { unsigned ngroups;kgid_t gid[HFS_GROUPS_MAX]; };
+struct cred { struct user_namespace *user_ns;u32 fsuid,fsgid;struct group_info *group_info;unsigned refs;bool heap_owned; };
+extern const struct cred *primitive_current_cred;
+extern const struct cred *primitive_real_cred;
+#define current_cred() (primitive_current_cred)
+#define current_real_cred() (primitive_real_cred)
+const struct cred *primitive_get_current_cred(void);
+#define get_current_cred() primitive_get_current_cred()
+#define from_kuid(ns,uid) ((void)(ns),(uid))
+#define from_kgid(ns,gid) ((void)(ns),(gid))
+#define uid_valid(uid) ((uid)!=U32_MAX)
+#define gid_valid(gid) ((gid)!=U32_MAX)
+static inline int atomic_read(const atomic_t *value) { return atomic_load(value); }
+void p9_client_destroy(struct p9_client *);
+const struct cred *primitive_get_cred(const struct cred *);
+void primitive_put_cred(const struct cred *);
+#define get_cred(c) primitive_get_cred(c)
+#define put_cred(c) primitive_put_cred(c)
 static inline struct device *get_device(struct device *d) { if(d)d->references++;return d; }
 static inline void put_device(struct device *d) { if(d){assert(d->references);d->references--;} }
 int p9_client_hfs_exchange(struct p9_client *,u16,u8,u8,u64,u32,const void *,u32,void *,u32 *);

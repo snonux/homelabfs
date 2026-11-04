@@ -47,6 +47,9 @@ func (c *Controller) Exchange(ctx context.Context, scope guestbridge.Context, op
 		return nil, fsapi.WouldBlock
 	}
 	defer c.mu.Unlock()
+	if _, sealed := c.state.Terminal[scope.Session]; sealed {
+		return nil, fsapi.Permission
+	}
 	if c.closed.Load() || c.poisoned.Load() || c.state.Recovery {
 		return nil, fsapi.Unavailable
 	}
@@ -218,6 +221,9 @@ func (c *Controller) events(ctx context.Context, phase string) error {
 		return err
 	}
 	for session, domain := range c.state.Domains {
+		if _, sealed := c.state.Terminal[session]; sealed {
+			continue
+		}
 		if domain.Sequence == ^uint64(0) {
 			return fsapi.NoSpace
 		}

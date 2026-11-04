@@ -202,3 +202,27 @@ runtime, FUSE mount, complete bhyve artifact or installed acceptance ran here.
 All failed startup files/ledger candidates remain owned for inspection. The
 trusted exporter must never fork, re-exec or pass its management/data fds after
 enrollment; fd3/data are CLOEXEC and inherited executable fd4 is closed first.
+
+## Controlled terminal owner (`614`)
+
+Explicit features32767 adds SESSION_RETIRE and preserves the exact16383 and
+older contracts. Before native forwarding, the exporter protects a permanent
+scope fence, the original candidate, the complete donor/settled set and its
+actual native mappings. Final protection atomically removes the old entries
+and retains one charged native entry and the original ordinary/control funding
+class. Other sessions keep the shared allocator. Only the exact original
+same-live-owner retry is admitted; decoded ledger records do not admit a
+replacement exporter or restore native authority. C9 remains required for that.
+
+Each32767 session preowns88504 bytes inside the existing64MiB live arena:
+four closed-grammar terminal body slots and the full bounded native manifest.
+Ordinary/control pressure cannot spend unused terminal capacity. Permanent
+final ownership keeps this package charged. Existing snapshot protection can
+simultaneously hold two separately bounded65MiB staging buffers while checking
+the prior ledger; those buffers are separate from live entry accounting.
+No general body, group, arena or signed guest budget is increased.
+
+[614 evidence](../linux9p/evidence/614/evidence.json) distinguishes sanitized
+exporter transport fixtures, actual C/Go signed handoff, and maintained Linux
+private consumption. It makes no installed FUSE, kernel ABI, PTE/TLB or positive
+replacement-owner restoration claim.

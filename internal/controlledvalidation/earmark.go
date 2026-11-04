@@ -55,7 +55,7 @@ func (p *Provider) EarmarkNumber(ctx context.Context, e Earmark) error {
 		return fsapi.Invalid
 	}
 	c := numberClaim(n)
-	return p.db.Update(func(tx *bolt.Tx) error {
+	return p.updateOpen(func(tx *bolt.Tx) error {
 		bucket := p.bucket(tx, "earmarks")
 		if raw := bucket.Get(claimKey(c)); raw != nil {
 			var old Earmark
@@ -119,7 +119,7 @@ func (p *Provider) BindFrozen(ctx context.Context, scope guestbridge.Context, re
 	} else if p.config.Service.ControlledViewsRequired() {
 		return fsapi.Permission
 	}
-	return p.db.Update(func(tx *bolt.Tx) error {
+	return p.updateOpen(func(tx *bolt.Tx) error {
 		bucket := p.bucket(tx, "earmarks")
 		var e Earmark
 		raw := bucket.Get(claimKey(call.Claim))
@@ -221,7 +221,7 @@ func (p *Provider) CloseEarmark(ctx context.Context, original Earmark, proof str
 	if err := verifier.CheckEarmarkClosure(ctx, original, proof); err != nil {
 		return "", err
 	}
-	err := p.db.Update(func(tx *bolt.Tx) error {
+	err := p.updateOpen(func(tx *bolt.Tx) error {
 		bucket := p.bucket(tx, "earmarks")
 		claim := numberClaim(original.Number)
 		key := claimKey(claim)

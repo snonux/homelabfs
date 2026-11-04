@@ -157,6 +157,18 @@ func DecodeCommandVersion(b []byte, minor uint16) (Command, error) {
 	}
 	if c.Op == "HELLO" {
 		err = validateProtocolVersion(o["payload"], minor)
+		if err == nil {
+			payload, payloadErr := marshal(o["payload"])
+			selected, selectedErr := marshal(c.Protocol)
+			if payloadErr != nil || selectedErr != nil || !bytes.Equal(payload, selected) {
+				err = fsapi.Permission
+			}
+		}
+	} else if c.Op == "SESSION_RETIRE" {
+		if c.Protocol == nil || *c.Protocol != TerminalProtocol() {
+			return Command{}, fsapi.Unsupported
+		}
+		err = validateTerminalRequest(o["payload"])
 	} else if minor >= 2 && isAllocation(c.Op) {
 		err = validatePayload("CALL", o["payload"], nil)
 		if err == nil && c.Payload != nil {
@@ -201,6 +213,10 @@ func validateProtocolVersion(v any, minor uint16) error {
 	}
 	if minor == 4 {
 		selected = MappedProtocol()
+		terminal, e := marshal(TerminalProtocol())
+		if e == nil && bytes.Equal(raw, terminal) {
+			return nil
+		}
 	}
 	expected, err := marshal(selected)
 	if err != nil || !bytes.Equal(raw, expected) {

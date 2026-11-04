@@ -51,7 +51,7 @@ func (p *Producer) ProduceMapped(ctx context.Context, c guestbridge.Command, res
 	p.mu.Lock()
 	transport := p.transports[c.Context.Session]
 	p.mu.Unlock()
-	if !ok || mapping.NativeCell != c.Cell || mapping.NativeResponseHash != hashBytes(response) || transport == nil || mapping.Transport != transport || c.Protocol == nil || *c.Protocol != guestbridge.MappedProtocol() || c.Delegation == nil || mapping.GuestCell != c.Delegation.GuestCell || mapping.PollCount != c.Delegation.PollIndex+1 {
+	if !ok || mapping.NativeCell != c.Cell || mapping.NativeResponseHash != hashBytes(response) || transport == nil || mapping.Transport != transport || c.Protocol == nil || !guestbridge.IsMappedProtocol(*c.Protocol) || c.Delegation == nil || mapping.GuestCell != c.Delegation.GuestCell || mapping.PollCount != c.Delegation.PollIndex+1 {
 		return nil, fsapi.Permission
 	}
 	receipt, err := p.produce(ctx, c, response)

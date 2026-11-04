@@ -2,9 +2,11 @@
 
 Task `514` specifies the owned implementation for `614`, following `t04`. Task
 `714` corrects its multiple-cell handoff against `5ef6840` and the immutable C6
-maintained source. This is a design, not an implemented or installed retirement
-API. It applies only to disposable `CONTROLLED_LOCAL` sessions with null
-publication. Production migration, normal publication, distributed authority
+maintained source. Task `614` implements this contract in the owned Go, exporter
+and maintained Linux components; installation and normal publication remain unadmitted. Local
+component evidence is recorded under
+[614](../../tools/integration/linux9p/evidence/614/evidence.json). It applies only
+to disposable `CONTROLLED_LOCAL` sessions with null publication. Production migration, normal publication, distributed authority
 and endpoint restoration stay closed.
 
 ## Source-supported boundary
@@ -26,7 +28,8 @@ transfers final response ownership. The private Linux `Received` factory
 observes a real completed transport response; it is not a public constructor.
 In actual `hfs_session_destroy`, uncertain requests and physical retirement are
 checked before `provider->retire_session`; only its success permits
-`hfs_session_free`. C6's provider returns `EOPNOTSUPP` there.
+`hfs_session_free`. The baseline C6 features16383 provider returns `EOPNOTSUPP` there; task614 adds
+the explicitly negotiated features32767 path.
 
 The selected addition is one mapped `SESSION_RETIRE` exchange. Its success
 permanently closes one guest scope and transfers its final transport owner to
@@ -48,9 +51,9 @@ select1.5. The accepted `t04` `VIEW_FLOOR` extension remains separate; ordinary
 unchanged.
 
 This choice and the terminal donor-class exception below were explicitly
-approved by the root. Task714 amends the exact, unimplemented/uninstalled
-features32767 schema in place; it creates no new version. C7 remains on
-features16383. Existing sole-donor component positives establish only that
+approved by the root. Task714 amended the exact features32767 schema before
+implementation; it created no new version. The implementation remains
+uninstalled. C7 remains on features16383. Existing sole-donor component positives establish only that
 limited composition, not full session closure.
 
 All objects below are closed canonical JSON with duplicate/unknown fields

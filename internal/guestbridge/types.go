@@ -281,6 +281,7 @@ type grant struct {
 	Sequence uint64
 }
 type session struct {
+	Terminal       *TerminalSeal `json:",omitempty"`
 	Generation     fsapi.UUID
 	Reserved       int
 	Context        Context

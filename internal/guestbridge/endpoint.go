@@ -36,6 +36,8 @@ type cell struct {
 	observations   []Native
 	mapping        *ProtectedMapping
 	guestWatermark uint64
+	terminal       *ProtectedTerminal
+	invocation     *workerInvocation
 }
 type job struct {
 	native  Native
@@ -62,6 +64,8 @@ type Transport struct {
 	closed                      bool
 	ledger                      *transportLedger
 	failed                      error
+	uncertainReclaims           []*cell // Original owners retained after uncertain atomic protection.
+	terminal                    map[string]uint64
 	guestHigh                   map[string]uint64
 	guestRecent                 []GuestIssuance
 }
@@ -70,7 +74,7 @@ type Transport struct {
 // must have reserved the fixed 12 MiB replacement parser workspace at enrollment;
 // no backend/session may supply another allocator for this inode tuple.
 func NewTransport(s *Service, budget *admission.Budget) (*Transport, error) {
-	return newTransport(s, budget, "")
+	return newTransport(s, budget, "", nil)
 }
 
 // NewDurableTransport exclusively creates a private transport ledger. An existing
@@ -81,16 +85,26 @@ func NewDurableTransport(s *Service, budget *admission.Budget, root string) (*Tr
 	if root == "" {
 		return nil, fsapi.Invalid
 	}
-	return newTransport(s, budget, root)
+	return newTransport(s, budget, root, nil)
 }
 
-func newTransport(s *Service, budget *admission.Budget, root string) (*Transport, error) {
+// NewDurableTransportWithFailureHook installs constructor-bound failure
+// instrumentation on the actual ledger. Any injected error fences ownership;
+// the hook supplies no state, provenance, restore or response authority.
+func NewDurableTransportWithFailureHook(s *Service, budget *admission.Budget, root string, hook func(string) error) (*Transport, error) {
+	if root == "" {
+		return nil, fsapi.Invalid
+	}
+	return newTransport(s, budget, root, hook)
+}
+
+func newTransport(s *Service, budget *admission.Budget, root string, hook func(string) error) (*Transport, error) {
 	if s == nil || budget == nil {
 		return nil, fsapi.Invalid
 	}
 	needsMapped := false
 	for _, scope := range s.config.Scopes {
-		if p := s.config.sessionProtocol(scope.Session); p != nil && *p == MappedProtocol() {
+		if p := s.config.sessionProtocol(scope.Session); p != nil && IsMappedProtocol(*p) {
 			needsMapped = true
 			if err := mappedCellFunding(); err != nil {
 				return nil, err
@@ -110,7 +124,7 @@ func newTransport(s *Service, budget *admission.Budget, root string) (*Transport
 	}
 	s.transportAttached = true
 	s.mu.Unlock()
-	t := &Transport{guestHigh: map[string]uint64{}, service: s, cells: map[uint64]*cell{}, ordinaryQueue: make(chan job, 64), controlQueue: make(chan job, 16), replacementQueue: make(chan job, 1), drainQueue: make(chan job, 16), acquisitionQueue: make(chan job, 64), done: make(chan struct{})}
+	t := &Transport{terminal: map[string]uint64{}, guestHigh: map[string]uint64{}, service: s, cells: map[uint64]*cell{}, ordinaryQueue: make(chan job, 64), controlQueue: make(chan job, 16), replacementQueue: make(chan job, 1), drainQueue: make(chan job, 16), acquisitionQueue: make(chan job, 64), done: make(chan struct{})}
 	// Reserve complete request/reply/receipt bitmap and bounded decode copies for
 	// every active credit before any callback allocation. Workspace is independent.
 	pools := []struct {
@@ -141,6 +155,7 @@ func newTransport(s *Service, budget *admission.Budget, root string) (*Transport
 	if root != "" {
 		ledger, err := createTransportLedger(root)
 		if err == nil {
+			ledger.failpoint = hook
 			t.ledger = ledger
 			err = t.protectLocked()
 			if err == nil {
@@ -220,20 +235,23 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 	}
 	var dispatch *job
 	var dispatchQueue chan job
-	var reclaimed *cell
+	var reclaimed []*cell
 	// Workers cannot execute, and ownership cannot be released, before the exact
 	// accepted state has committed. Error paths also protect workspace changes.
 	defer func() {
 		ids := []uint64{f.Cell}
-		if reclaimed != nil {
-			ids = append(ids, reclaimed.frame.Cell)
+		for _, old := range reclaimed {
+			ids = append(ids, old.frame.Cell)
 		}
 		if e := t.protectLocked(ids...); e != nil {
+			t.uncertainReclaims = append(t.uncertainReclaims, reclaimed...)
 			written, err = 0, e
 			return
 		}
-		if reclaimed != nil {
-			releaseCell(reclaimed)
+		if len(reclaimed) != 0 {
+			for _, old := range reclaimed {
+				releaseCell(old)
+			}
 			if e := t.protectedPoint("reclaim"); e != nil {
 				written, err = 0, e
 				return
@@ -246,6 +264,9 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 			written, err = 0, e
 		}
 	}()
+	if final := t.terminal[scope.Session]; final != 0 && final != f.Cell {
+		return 0, fsapi.Permission
+	}
 	c := t.cells[f.Cell]
 	if c == nil && f.Cell <= t.high {
 		return 0, fsapi.Stale
@@ -345,6 +366,10 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 	if e != nil {
 		return 0, e
 	}
+	terminal, e := t.prepareTerminal(c, command, mappingCandidate)
+	if e != nil {
+		return 0, e
+	}
 	if c == t.workspace {
 		if command.Reclaim == nil {
 			return 0, fsapi.Invalid
@@ -353,7 +378,7 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 		if target == nil || target.released || target.frame.Session != f.Session || target.unread != 0 || target.response == nil || digest(target.response) != command.Reclaim.ResponseHash || target.frame.Cell == f.Cell {
 			return 0, fsapi.Permission
 		}
-		if command.Op != "RELEASE_CELL" && target.reservation.Control != control {
+		if !oneOf(command.Op, "RELEASE_CELL", "SESSION_RETIRE") && target.reservation.Control != control {
 			return 0, fsapi.Permission
 		}
 		r := CellReservation{Control: f.Flags&1 != 0, Release: func() {}}
@@ -361,7 +386,7 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 			return 0, fsapi.Permission
 		}
 		queue := t.ordinaryQueue
-		if command.Op == "RELEASE_CELL" {
+		if oneOf(command.Op, "RELEASE_CELL", "SESSION_RETIRE") {
 			queue = t.replacementQueue
 		} else if oneOf(command.Op, "VIEW_ACQUIRE", "DIRTY_RESERVE") {
 			queue = t.acquisitionQueue
@@ -374,7 +399,7 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 			r.Release()
 			return 0, fsapi.WouldBlock
 		}
-		reclaimed = target
+		reclaimed = append(reclaimed, target)
 		delete(t.cells, command.Reclaim.Cell)
 		c.reservation = r
 		t.cells[f.Cell] = c
@@ -384,7 +409,7 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 		return 0, fsapi.Permission
 	}
 	queue := t.ordinaryQueue
-	if command.Op == "RELEASE_CELL" {
+	if oneOf(command.Op, "RELEASE_CELL", "SESSION_RETIRE") {
 		queue = t.replacementQueue
 	} else if oneOf(command.Op, "VIEW_ACQUIRE", "DIRTY_RESERVE") {
 		queue = t.acquisitionQueue
@@ -395,6 +420,23 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 	}
 	if len(queue) == cap(queue) {
 		return 0, fsapi.WouldBlock
+	}
+	if terminal != nil {
+		// Only the exact prevalidated terminal manifest may remove multiple old
+		// cells. Stage post-index counters under the owner lock; no credit is
+		// released until the complete deletion/candidate/fence transaction commits.
+		for _, donor := range terminal.Donors {
+			old := t.cells[donor.NativeCell]
+			reclaimed = append(reclaimed, old)
+			delete(t.cells, donor.NativeCell)
+			if old.reservation.Control {
+				t.control--
+			} else {
+				t.ordinary--
+			}
+		}
+		c.terminal = terminal
+		t.terminal[command.Context.Session] = f.Cell
 	}
 	t.acceptMapping(c, command, mappingCandidate)
 	c.command = &command
@@ -538,19 +580,28 @@ func (t *Transport) worker(queue <-chan job) {
 			pending[len(pending)-1] = job{}
 			pending = pending[:len(pending)-1]
 		}
+		invocation := &workerInvocation{live: true}
 		t.mu.Lock()
 		c := t.cells[j.id]
 		active := !t.closed && t.failed == nil && c != nil && !c.released && c.response == nil
 		if active {
 			c.jobPhase = "executing"
+			c.invocation = invocation
 			active = t.protectLocked(j.id) == nil
 		}
 		t.mu.Unlock()
 		if !active {
+			invocation.live = false
 			continue
 		}
-		executionContext := context.WithValue(context.Background(), mappingWorkerKey{}, mappingWorker{transport: t, cell: j.id})
+		executionContext := context.WithValue(context.Background(), mappingWorkerKey{}, mappingWorker{transport: t, cell: j.id, invocation: invocation})
 		raw, e := t.service.Execute(executionContext, j.native, j.command)
+		t.mu.Lock()
+		invocation.live = false
+		if c := t.cells[j.id]; c != nil && c.invocation == invocation {
+			c.invocation = nil
+		}
+		t.mu.Unlock()
 		if e != nil {
 			retryable := errors.Is(e, fsapi.WouldBlock) || errors.Is(e, fsapi.NoSpace)
 			t.mu.Lock()
@@ -607,6 +658,9 @@ func (t *Transport) worker(queue <-chan job) {
 			c.unread = unread
 			c.resultKind = kind
 			c.jobPhase = "responded"
+			if c.terminal != nil {
+				c.terminal.Phase = "TERMINAL_RESPONDED"
+			}
 			if t.protectLocked(j.id) == nil {
 				_ = t.protectedPoint("response")
 			}

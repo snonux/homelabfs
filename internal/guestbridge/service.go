@@ -205,7 +205,8 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 	ss := s.sessions[c.Context.Session]
 	hello := ss.Hello
 	s.mu.Unlock()
-	if c.Op != "HELLO" && !hello {
+	if c.Op != "HELLO" && !hello &&
+		(c.Op != "SESSION_RETIRE" || c.Protocol == nil || *c.Protocol != TerminalProtocol()) {
 		return nil, fsapi.Permission
 	}
 	// A codec-valid controlled view exchange cannot stand in for a missing
@@ -246,7 +247,7 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 			state, err = s.config.Claims.Resolve(ctx, c.Context, p.Claim)
 		}
 		if err == nil {
-			declinedQuery := c.Op == "QUERY" && c.Protocol != nil && *c.Protocol == MappedProtocol()
+			declinedQuery := c.Op == "QUERY" && c.Protocol != nil && IsMappedProtocol(*c.Protocol)
 			if state.Status != "DECLINED" || !declinedQuery {
 				state, err = s.recoverValidation(ctx, state)
 				if err != nil {
@@ -271,6 +272,8 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 			err = validateControlResponse(c, b)
 		}
 		payload = b
+	case "SESSION_RETIRE":
+		payload, err = s.retireSession(ctx, c)
 	case "RELEASE_CELL":
 		payload = map[string]any{"status": "RELEASED"}
 	case "RESUME":

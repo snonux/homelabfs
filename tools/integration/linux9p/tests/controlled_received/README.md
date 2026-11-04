@@ -193,3 +193,57 @@ until group cleanup finishes, then reaps it. This also cleans remaining group
 members when the leader exits normally. The regression uses process-local
 subreaping solely to observe and reap its synthetic grandchildren:
 `TMPDIR=<owned> python3 tools/integration/linux9p/tests/common/runner_monitor_test.py -v`.
+
+## Terminal scenarios (`614`)
+
+`--scenario terminal-clean` checks actual maintained session destruction,
+external DOMAIN/ROOT borrowers and exact retained-candidate retries before send
+and after reply loss. `terminal-dirty` uses the actual dirty reserve, freeze,
+drain and mmap control actors, complete production lease release, original
+admitted description cleanup, and ordinary/view floors before private terminal
+consumption. Its nested QUERY scheduling waits for actual initial release
+admission; the abbreviated RELEASE_START helper does not establish that state
+and must not be substituted for this path. The test retires one dirty session
+while another enrolled session can continue on the shared endpoint.
+
+`terminal-owners` checks that an actual unrelated reservation blocks any terminal
+send until normal release, and that handoff/handoff/destroy is idempotent without
+new RPCs. It forces a post-proof teardown failure by temporarily withholding
+the original private registry-owner pointer, verifies that module/session
+cleanup has not run, then restores that same owner and retries destruction.
+These scenarios use the actual C observer serializer and private
+Received/session lifecycle, with the same declared OS/native/MM substitutions
+as the existing component harness.
+
+`terminal-backend` separately runs the actual C exporter against the real Go
+owners for64ordinary and16control old cells,79 settled Acks, signed terminal
+handoff, exact reply replay and other-session continuation. This explicit
+backend-only fixture skips Linux session construction and ignores C snapshot
+updates, using the existing host-component OS observer substitute. It proves
+both-leg exporter/C8 ownership and counters, **not** a Linux80-cell physical
+closure or private Received consumption. HELLO and blocked RESUME retain their
+existing verification:null contract; the final SESSION_RETIRED signature is
+mandatory and checked against the enrolled key. No fixture supplies a signed
+terminal reply itself.
+
+`terminal-kernel80` complements the exporter test with all80 actual Linux
+transport slots and private Received associations. Retired, non-authoritative
+VIEW_ACQUIRE/VIEW_QUERY replies fill64 ordinary and16 control slots through
+actual hfs_control; a declared scheduling hook delays native delivery while the
+requests enter. Normal freeing returns transient carrier/Received charges to
+baseline. Actual terminal capture enumerates all80, clears the transport and
+completion parents, and retains the tombstone through a forced post-proof
+teardown failure and normal retry. Its dedicated signed stress enrollment uses
+768MiB ordinary plus256MiB control within the existing1GiB maximum; ordinary
+profiles and implementation limits remain unchanged.
+
+`terminal-exhaustion` uses the explicit exporter-only OS/controller and kernel
+observer boundary, without constructing a Linux registry or private Received.
+Sixteen real signed terminal finals retain16 control cells and16 exporter
+identity packages. Repeated admission of a seventeenth session refuses with
+ENOSPC. All16 exact replies replay without another native request, and the
+closed durable C8 records retain their final classes. The separate host race
+test TestTerminalProducerPermanentControlExhaustion exhausts actual C8 control
+credits with17 admitted scopes; the last request returns WOULD_BLOCK and all16
+final identities and signed bytes remain. These are component capacity proofs,
+not installed-kernel identity-exhaustion or native memory measurements.

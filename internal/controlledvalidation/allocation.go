@@ -53,7 +53,7 @@ func (p *Provider) ResolveOriginalGap(ctx context.Context, scope guestbridge.Con
 // Common direct/legacy/CANCEL lookups keep their conservative state projection.
 func (p *Provider) protectedGapQuery(ctx context.Context, scope guestbridge.Context, e entry) bool {
 	selected := p.config.Authorization.Enrollment.Protocol
-	if selected == nil || *selected != guestbridge.MappedProtocol() || !e.Gap || e.Status != "DECLINED" ||
+	if selected == nil || !guestbridge.IsMappedProtocol(*selected) || !e.Gap || e.Status != "DECLINED" ||
 		e.Original == nil || e.Original.Context != scope || e.Original.Call.Claim != e.Claim ||
 		e.Plan != nil || e.Outcome != nil || len(e.Result) != 0 || len(e.ProposedResult) != 0 ||
 		(e.PreparationStage != "" && e.PreparationStage != "UNPREPARED") {

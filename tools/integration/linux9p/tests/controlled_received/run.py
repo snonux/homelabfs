@@ -22,7 +22,7 @@ p.add_argument('--budget-root',type=Path,required=True)
 p.add_argument('--host-tree',type=Path,required=True)
 p.add_argument('--final-focus',action='store_true')
 p.add_argument('--receipt-tests',action='store_true')
-p.add_argument('--scenario',choices=['provider','corruption','dirty','gap','mixed','effected','readdir','interleaving','allocate','both'],default='provider')
+p.add_argument('--scenario',choices=['provider','corruption','dirty','gap','mixed','effected','readdir','interleaving','allocate','terminal','terminal-clean','terminal-smoke','terminal-handoff','terminal-dirty','terminal-owners','terminal-backend','terminal-kernel80','terminal-exhaustion','both'],default='provider')
 
 a=p.parse_args()
 here=Path(__file__).resolve().parent
@@ -124,7 +124,7 @@ inputs=[here.parent/'common/runner_process.py',here/'build.py',here/'consumer.c'
 frozen_binding={str(path):digest(path) for path in inputs if path.is_file()}
 (out/'source-binding.json').write_text(json.dumps(frozen_binding,indent=2)+'\n')
 env.update(HFS_C6_BUILD=str(here/'build.py'),HFS_C6_SOURCE=str(source),GOFLAGS='-p=1 -overlay='+str(overlay))
-pattern={'provider':'^TestControlledReceivedActualProviderProducer$','corruption':'^TestControlledReceivedActualSourceCorruption$','dirty':'^TestControlledReceivedActual(FundedDirty|RetainedResultPressure)$','gap':'^TestControlledReceivedActual(ProtectedGapQuery|GapLostReplies)$','mixed':'^TestControlledReceivedActualMixedIssuerFloors$','effected':'^TestControlledReceivedActualEffectedGapRefusal$','readdir':'^TestControlledReceivedActualClosingReaddir$','interleaving':'^TestControlledReceivedActual(RetirementInterleaving|LateBorrowRetirement)$','allocate':'^TestControlledReceivedActualAllocateRetryProfile$','both':'^TestControlledReceivedActual'}[a.scenario]
+pattern={'provider':'^TestControlledReceivedActualProviderProducer$','corruption':'^TestControlledReceivedActualSourceCorruption$','dirty':'^TestControlledReceivedActual(FundedDirty|RetainedResultPressure)$','gap':'^TestControlledReceivedActual(ProtectedGapQuery|GapLostReplies)$','mixed':'^TestControlledReceivedActualMixedIssuerFloors$','effected':'^TestControlledReceivedActualEffectedGapRefusal$','readdir':'^TestControlledReceivedActualClosingReaddir$','interleaving':'^TestControlledReceivedActual(RetirementInterleaving|LateBorrowRetirement)$','allocate':'^TestControlledReceivedActualAllocateRetryProfile$','terminal':'^TestControlledReceivedActualTerminal','terminal-handoff':'^TestControlledReceivedActualTerminalHandoffIdempotent$','terminal-smoke':'^TestControlledReceivedActualTerminalClean$','terminal-clean':'^TestControlledReceivedActualTerminal(Clean|DomainAlias|ExactRetry)$','terminal-dirty':'^TestControlledReceivedActualTerminalDirtyActor$','terminal-owners':'^TestControlledReceivedActualTerminal(ReservationOwner|HandoffIdempotent)$','terminal-backend':'^TestControlledReceivedActualTerminalBackend80$','terminal-kernel80':'^TestControlledReceivedActualTerminalKernel80$','terminal-exhaustion':'^TestControlledReceivedActualTerminalPermanentExhaustion$','both':'^TestControlledReceivedActual'}[a.scenario]
 if a.receipt_tests:
     run('view-floor-policy',['go','test','-p','1','-run','^Test(MappedViewFloorBinding|ProtectedGapQueryEncoding)$','-count=1','./internal/guestbridge'])
     run('release-query-continuation',['go','test','-race','-p','1','-run','^TestPhysicalReleaseQueryContinuation$','-count=1','./internal/viewcontrol'])

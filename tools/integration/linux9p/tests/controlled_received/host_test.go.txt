@@ -27,18 +27,20 @@ import (
 const receivedInitialIDMap = "063ee717c983abc52c8cdeaeaee32c62ecb93c8fc88e6f887313db9a6c471f98"
 
 type receivedCarrier struct {
-	t           *testing.T
-	rig         *sourceRig
-	cmd         *exec.Cmd
-	input       io.WriteCloser
-	reader      *bufio.Scanner
-	diagnostics receivedDiagnostics
-	nextID      uint64
-	commands    map[uint64]guestbridge.Command
-	originals   map[string][]byte
-	responses   map[uint64][]byte
-	yields      func(uint64)
-	nativeAgain int
+	t                   *testing.T
+	rig                 *sourceRig
+	cmd                 *exec.Cmd
+	input               io.WriteCloser
+	reader              *bufio.Scanner
+	diagnostics         receivedDiagnostics
+	nextID              uint64
+	commands            map[uint64]guestbridge.Command
+	originals           map[string][]byte
+	responses           map[uint64][]byte
+	holdNativeResponses bool
+	backendOnly         bool
+	yields              func(uint64)
+	nativeAgain         int
 }
 
 type receivedDiagnostics struct {
@@ -47,6 +49,12 @@ type receivedDiagnostics struct {
 }
 
 func startReceivedCarrier(t *testing.T, r *sourceRig) *receivedCarrier {
+	return startReceivedCarrierMode(t, r, false)
+}
+func startReceivedCarrierMode(t *testing.T, r *sourceRig, backendOnly bool) *receivedCarrier {
+	return startReceivedCarrierBudget(t, r, backendOnly, GuestArtifactBudget{OrdinaryBytes: 256 << 20, ControlBytes: 256 << 20, Reservations: 8192, Cookies: 4096, Received: 4096})
+}
+func startReceivedCarrierBudget(t *testing.T, r *sourceRig, backendOnly bool, budget GuestArtifactBudget) *receivedCarrier {
 	t.Helper()
 	// Both paths are explicit: a materialized test must fail on absent inputs.
 	build, source := os.Getenv("HFS_C6_BUILD"), os.Getenv("HFS_C6_SOURCE")
@@ -55,12 +63,14 @@ func startReceivedCarrier(t *testing.T, r *sourceRig) *receivedCarrier {
 	}
 	group := GuestProvisionGroup{Authorization: r.artifactAuthorization}
 	credentials := make([]guestbridge.Credentials, len(r.peers))
+	contexts := []guestbridge.Context{}
 	for i, peer := range r.peers {
 		credentials[i] = peer.credentials
+		if i < 16 { contexts = append(contexts, peer.scope) }
 		group.Signers = append(group.Signers, GuestArtifactSigners{Host: peer.key, Guest: r.artifactGuest})
 		group.LocalMounts = append(group.LocalMounts, GuestArtifactMount{DomainIndex: i, Session: peer.scope.Session, DeviceTag: fmt.Sprintf("hfs%d", i), DeviceName: fmt.Sprintf("virtio%d", i), UserNamespace: peer.credentials.UserNamespace, IDMapHash: peer.credentials.IDMapHash, Realm: testUUID(100).String(), Subject: "616263", Anchor: testUUID(101).String(), Nonce: testUUID(103).String(), ViewControlNonce: r.artifactAuthorization.Enrollment.TicketFamilies[i].Control.Nonce})
 	}
-	provision, err := SignGuestProvision(r.scope.GuestBoot, r.installed.Admission.ProviderNonce, []GuestProvisionGroup{group}, GuestArtifactBudget{OrdinaryBytes: 256 << 20, ControlBytes: 256 << 20, Reservations: 8192, Cookies: 4096, Received: 4096}, r.artifactOperator)
+	provision, err := SignGuestProvision(r.scope.GuestBoot, r.installed.Admission.ProviderNonce, []GuestProvisionGroup{group}, budget, r.artifactOperator)
 	require(t, err)
 	bind, err := SignGuestBind(provision, group.Authorization.Enrollment.ID.String(), r.supervisor.record.Controller.String(), r.artifactOperator, group.Signers)
 	require(t, err)
@@ -74,11 +84,14 @@ func startReceivedCarrier(t *testing.T, r *sourceRig) *receivedCarrier {
 	if _, err := os.Stat(consumer); err != nil {
 		t.Fatalf("missing actual C6 consumer: %v", err)
 	}
-	c := &receivedCarrier{t: t, rig: r, commands: map[uint64]guestbridge.Command{}, originals: map[string][]byte{}, responses: map[uint64][]byte{}}
+	c := &receivedCarrier{t: t, rig: r, backendOnly: backendOnly, commands: map[uint64]guestbridge.Command{}, originals: map[string][]byte{}, responses: map[uint64][]byte{}}
 	c.cmd = exec.CommandContext(t.Context(), consumer)
 	ledger := r.temporary()
 	require(t, os.Chmod(ledger, 0700))
 	c.cmd.Env = append(os.Environ(), "HFS_C6_LEDGER="+ledger, "ASAN_OPTIONS=detect_leaks=0:allocator_may_return_null=1:quarantine_size_mb=16")
+	if backendOnly {
+		c.cmd.Env = append(c.cmd.Env, "HFS_C6_BACKEND_ONLY=1")
+	}
 	c.input, err = c.cmd.StdinPipe()
 	require(t, err)
 	stdout, err := c.cmd.StdoutPipe()
@@ -93,7 +106,7 @@ func startReceivedCarrier(t *testing.T, r *sourceRig) *receivedCarrier {
 			_ = c.cmd.Wait()
 		}
 	})
-	c.write(string(mustRuntimeJSON(t, map[string]any{"base": *r.mappingNativeCell, "binds": []json.RawMessage{bind}, "credentials": credentials, "os": map[string]any{"boot_id": r.scope.GuestBoot, "provider_nonce": r.installed.Admission.ProviderNonce, "capture_tuples": r.credentialCaptures}, "provision": json.RawMessage(provision)})))
+	c.write(string(mustRuntimeJSON(t, map[string]any{"base": *r.mappingNativeCell, "contexts": contexts, "protocol_features": guestbridge.TerminalProtocol().Features, "binds": []json.RawMessage{bind}, "credentials": credentials, "os": map[string]any{"controller": r.supervisor.record.Controller.String(), "native_endpoint": r.native.Endpoint, "boot_id": r.scope.GuestBoot, "provider_nonce": r.installed.Admission.ProviderNonce, "capture_tuples": r.credentialCaptures}, "provision": json.RawMessage(provision)})))
 	c.readUntil(0, true)
 	return c
 }
@@ -130,7 +143,12 @@ func (c *receivedCarrier) readUntil(id uint64, startup bool) (int, []byte) {
 			c.t.Fatalf("invalid C6 IPC %q", c.reader.Text())
 		}
 		switch fields[0] {
+		case "L":
+			c.t.Log(strings.Join(fields[1:], " "))
 		case "S":
+			if c.backendOnly {
+				continue
+			} // This mode explicitly substitutes the OS observer.
 			if len(fields) != 2 {
 				c.t.Fatal("snapshot arity")
 			}
@@ -226,6 +244,12 @@ func (c *receivedCarrier) nativeRead(fields []string) {
 		c.t.Fatal("native read arity")
 	}
 	offset, count := c.number(fields[2]), c.number(fields[3])
+	if c.holdNativeResponses {
+		// Declared OS delivery delay only; no response or receipt is fabricated.
+		c.nativeAgain++
+		c.write("AGAIN")
+		return
+	}
 	node := c.rig.native.Endpoint.ResultNode
 	if fields[1] == "12" {
 		node = c.rig.native.Endpoint.RecallNode
@@ -1146,4 +1170,458 @@ func TestControlledReceivedActualClosingReaddir(t *testing.T) {
 	}
 	c.action("RETAIN_VERIFY", 0, "", 0)
 	c.close()
+}
+
+// This exercises the actual portable C session teardown and private receipt;
+// scheduling/device primitives remain local substitutions.
+func TestControlledReceivedActualTerminalClean(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.TerminalProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	c.action("DESTROY", 0, "", 0)
+	raw := c.action("TOMBSTONE", 0, "", 0)
+	var admission kernelAdmission
+	require(t, strictJSON(raw, &admission))
+	// The other scope still uses the same actual native endpoint.
+	receivedResult(t, c.action("REQUEST", 1, "ROOT "+hex.EncodeToString(mustRuntimeJSON(t, map[string]any{})), 0))
+	c.close()
+}
+
+func TestControlledReceivedActualTerminalDomainAlias(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.TerminalProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	receivedResult(t, c.action("REQUEST", 0, "ROOT "+hex.EncodeToString(mustRuntimeJSON(t, map[string]any{})), 0))
+	c.action("ADOPT_ROOT_PREPARE", 0, "", 0)
+	c.action("DOMAIN_HOLD", 0, "", 0)
+	c.action("RETIRE", 0, "", 0)
+	c.action("REPLIES_DROP", 0, "", 0)
+	// A genuine externally retained capability survives ordinary family retirement.
+	c.action("DESTROY", 0, "", -16)
+	c.action("ROOT_DROP", 0, "", 0)
+	c.action("DESTROY", 0, "", -16)
+	c.action("DOMAIN_DROP", 0, "", 0)
+	c.action("DESTROY", 0, "", 0)
+	c.action("TOMBSTONE", 0, "", 0)
+	receivedResult(t, c.action("REQUEST", 1, "ROOT "+hex.EncodeToString(mustRuntimeJSON(t, map[string]any{})), 0))
+	c.close()
+}
+
+func TestControlledReceivedActualTerminalExactRetry(t *testing.T) {
+	for _, mode := range []int{1, 2} {
+		t.Run(strconv.Itoa(mode), func(t *testing.T) {
+			changed := guestbridge.Credentials{FSUID: 1000, FSGID: 1001, Groups: []uint32{200, 201}, Process: testUUID(73).String(), Revision: 2, IDMapHash: receivedInitialIDMap, UserNamespace: testUUID(64).String()}
+			r := newSourceRigDomainsBootstrap(t, guestbridge.TerminalProtocol(), 2, receivedInitialIDMap, false, changed)
+			c := startReceivedCarrier(t, r)
+			c.action("FAULT", 0, "SESSION_RETIRE "+strconv.Itoa(mode), 0)
+			c.action("DESTROY", 0, "", -5)
+			c.action("TERMINAL_CANDIDATE_NEGATIVES", 0, "", 0)
+			// A later task's current credentials cannot rewrite the retained candidate.
+			c.action("ISSUER", 0, "1", 0)
+			c.action("DESTROY", 0, "", 0)
+			c.action("TOMBSTONE", 0, "", 0)
+			retired := 0
+			for _, command := range c.commands {
+				if command.Op == "SESSION_RETIRE" {
+					retired++
+				}
+			}
+			if retired != 1 {
+				t.Fatalf("terminal retry allocated %d native cells", retired)
+			}
+			receivedResult(t, c.action("REQUEST", 1, "ROOT "+hex.EncodeToString(mustRuntimeJSON(t, map[string]any{})), 0))
+			c.close()
+		})
+	}
+}
+
+func TestControlledReceivedActualTerminalDirtyActor(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.TerminalProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	request := func(i int, op string, args any) []byte {
+		return c.action("REQUEST", i, op+" "+hex.EncodeToString(mustRuntimeJSON(t, args)), 0)
+	}
+	for i := range 1 {
+		caps := receivedResult(t, request(i, "ROOT", map[string]any{}))
+		c.action("ADOPT_ROOT_PREPARE", i, "", 0)
+		receivedResult(t, request(i, "CREATE", map[string]any{"parent": caps[0], "name": fmt.Sprintf("6163746f72%02x", i+48), "mode": 0660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}}))
+		c.action("ADOPT_DESCRIPTION", i, "CREATE", 0)
+		// A lookup reference can be forgotten while its independent open
+		// description remains live, before acquiring physical/dirty authority.
+		c.action("PATH_FORGET", i, "", 0)
+		// Settle completed setup claims before admitting dirty capacity. Live
+		// capabilities keep their genuine independent Received owners.
+		c.action("REPLIES_DROP", i, "", 0)
+		c.action("RETIRE", i, "", 0)
+		c.action("VIEW_NEW", i, "", 0)
+	}
+	for i := range 1 {
+		c.action("ACTOR_START", i, "", 0)
+	}
+	c.action("DIRTY", 0, "", 0)
+	// The final description release is already admitted when it waits for
+	// recall. Schedule STOP and the real actors at its actual QUERY yield;
+	// shutdown must retain the dirty request until those actors drain it.
+	through := uint64(0)
+	for cell := range c.commands {
+		if cell > through {
+			through = cell
+		}
+	}
+	drained := false
+	c.yields = func(_ uint64) {
+		pending := false
+		for cell, command := range c.commands {
+			if cell > through && command.Context == r.scope && command.Delegation.GuestOp == "QUERY" && len(c.responses[cell]) != 0 {
+				pending = true
+			}
+		}
+		if !pending {
+			return
+		}
+		// Use the complete production release path. Its initial private
+		// response must release the family admission lock before freeze.
+		c.yields = func(_ uint64) {
+			var ready bool
+			require(t, json.Unmarshal(c.action("RELEASE_READY", 0, "", 0), &ready))
+			if !ready {
+				return
+			}
+			c.yields = nil
+			c.action("CLOSE_PENDING", 0, "", 0)
+			for round := 0; round < 80 && !drained; round++ {
+				for _, queue := range []string{"poll", "event", "drain", "event"} {
+					c.action("ACTOR_STEP", 0, queue, 0)
+				}
+				var state struct{ Phase string }
+				require(t, json.Unmarshal(c.action("ACTOR_STATE", 0, "", 0), &state))
+				drained = state.Phase == "REOPENED"
+			}
+			if !drained {
+				t.Fatal("actual C control actors failed to finish recall")
+			}
+		}
+		c.action("RELEASE_DONE", 0, "", 0)
+		c.yields = nil
+	}
+	c.action("DESCRIPTION_CLOSE", 0, "", 0)
+	c.yields = nil
+	if !drained {
+		t.Fatal("description release never yielded with actual pending QUERY")
+	}
+	for i := range 1 {
+		c.action("RETIRE", i, "", 0)
+		c.action("VIEW_RETIRE", i, "", 0)
+		c.action("REPLIES_DROP", i, "", 0)
+		c.action("ROOT_DROP", i, "", 0)
+	}
+	c.action("DESTROY", 0, "", 0)
+	c.action("TOMBSTONE", 0, "", 0)
+	receivedResult(t, c.action("REQUEST", 1, "ROOT "+hex.EncodeToString(mustRuntimeJSON(t, map[string]any{})), 0))
+	c.close()
+}
+
+func TestControlledReceivedActualTerminalReservationOwner(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.TerminalProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	c.action("RESERVATION_HOLD", 0, "", 0)
+	c.action("DESTROY", 0, "", -16)
+	for _, command := range c.commands {
+		if command.Context == r.scope && command.Op == "SESSION_RETIRE" {
+			t.Fatal("unowned live reservation passed terminal preflight")
+		}
+	}
+	c.action("RESERVATION_DROP", 0, "", 0)
+	c.action("DESTROY", 0, "", 0)
+	c.action("TOMBSTONE", 0, "", 0)
+	receivedResult(t, c.action("REQUEST", 1, "ROOT "+hex.EncodeToString(mustRuntimeJSON(t, map[string]any{})), 0))
+	c.close()
+}
+
+func TestControlledReceivedActualTerminalHandoffIdempotent(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.TerminalProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	c.action("HANDOFF", 0, "", 0)
+	issued := len(c.commands)
+	c.action("HANDOFF", 0, "", 0)
+	if len(c.commands) != issued {
+		t.Fatal("private handoff replay issued another command")
+	}
+	c.action("POST_HANDOFF_FAILURE", 0, "", 0)
+	if len(c.commands) != issued {
+		t.Fatal("failed post-handoff teardown issued another command")
+	}
+	c.action("DESTROY", 0, "", 0)
+	if len(c.commands) != issued {
+		t.Fatal("post-handoff guest teardown issued another command")
+	}
+	c.action("TOMBSTONE", 0, "", 0)
+	receivedResult(t, c.action("REQUEST", 1, "ROOT "+hex.EncodeToString(mustRuntimeJSON(t, map[string]any{})), 0))
+	c.close()
+}
+
+// Full 80-cell composition of the actual C exporter with the actual Go owners.
+// This mode explicitly substitutes the OS/kernel observer, as the host-only
+// owner tests do. It does not execute Linux teardown or mint private Received;
+// the separate dirty test exercises those production-source lifetime paths.
+func TestControlledReceivedActualTerminalBackend80(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.TerminalProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrierMode(t, r, true)
+	exchange := func(session int, cell uint64, op string, payload any, ack *guestbridge.Ack) ([]byte, []byte, guestbridge.VerificationReceiptV2) {
+		peer := r.peers[session]
+		original := mustRuntimeJSON(t, map[string]any{"cell": cell, "context": peer.scope, "delegation": nil, "op": op, "payload": payload, "protocol": guestbridge.TerminalProtocol(), "reclaim": ack})
+		response := c.action("BACKEND_EXCHANGE", session, hex.EncodeToString(original), 0)
+		var receipt guestbridge.VerificationReceiptV2
+		if op == "SESSION_RETIRE" {
+			var err error
+			receipt, err = guestbridge.VerifyMappedReceipt(peer.mappedBinding(), original, response)
+			require(t, err)
+		} else {
+			// HELLO/blocked RESUME own transport replies, not source or terminal
+			// authority: their existing closed contract has verification:null.
+			var envelope struct {
+				Cell         uint64
+				Context      guestbridge.Context
+				Op           string
+				Protocol     guestbridge.Protocol
+				Verification json.RawMessage
+				Payload      struct{ Status string }
+			}
+			require(t, json.Unmarshal(response, &envelope))
+			status := "ACCEPTED"
+			if op == "RESUME" {
+				status = "BLOCKED"
+			}
+			if envelope.Cell != cell || envelope.Context != peer.scope || envelope.Op != op || envelope.Protocol != guestbridge.TerminalProtocol() || string(envelope.Verification) != "null" || envelope.Payload.Status != status {
+				t.Fatalf("invalid actual control reply: %s", response)
+			}
+		}
+		return original, response, receipt
+	}
+	old := []terminalOldCell{}
+	for i := 0; i < 80; i++ {
+		op, value := "HELLO", any(guestbridge.TerminalProtocol())
+		control := i >= 64
+		if control {
+			op = "RESUME"
+			value = map[string]any{"previous_session": r.scope.Session, "ledger_hash": hashBytes([]byte("ledger")), "claims_hash": hashBytes([]byte("claims")), "domains_hash": hashBytes([]byte("domains"))}
+		}
+		r.cells++
+		_, response, _ := exchange(0, r.cells, op, value, nil)
+		nativeCell := uint64(0)
+		for cell, command := range c.commands {
+			if command.Context == r.scope && command.Delegation.GuestCell == r.cells {
+				if nativeCell != 0 {
+					t.Fatal("duplicate native original")
+				}
+				nativeCell = cell
+			}
+		}
+		if nativeCell == 0 || len(c.responses[nativeCell]) == 0 {
+			t.Fatal("missing actual native response")
+		}
+		old = append(old, terminalOldCell{guest: guestbridge.Ack{Cell: r.cells, ResponseHash: hashBytes(response)}, native: guestbridge.Ack{Cell: nativeCell, ResponseHash: hashBytes(c.responses[nativeCell])}, control: control})
+	}
+	type stats struct {
+		Rows, Ordinary, Control, Old, Phase int
+		High                                uint64
+		Removed                             bool
+		PackageBytes                        uint64 `json:"package_bytes"`
+	}
+	var before stats
+	require(t, json.Unmarshal(c.action("BACKEND_STATS", 0, "", 0), &before))
+	if before.Rows != 80 || before.Ordinary != 64 || before.Control != 16 || before.High != 80 || before.PackageBytes == 0 {
+		t.Fatalf("wrong actual exporter pre-cut: %+v", before)
+	}
+	request, donor, _, _ := terminalPublishCut(t, r, old, 0)
+	r.cells++
+	original, response, receipt := exchange(0, r.cells, "SESSION_RETIRE", request, donor)
+	if receipt.Kind != "SESSION_RETIRED" || receipt.PollCount != 1 {
+		t.Fatal("missing real signed terminal receipt")
+	}
+	var final stats
+	require(t, json.Unmarshal(c.action("BACKEND_STATS", 0, "", 0), &final))
+	if final.Rows != 1 || final.Ordinary != 1 || final.Control != 0 || final.Old != 80 || !final.Removed || final.Phase != 3 || final.High != 81 || final.PackageBytes != before.PackageBytes {
+		t.Fatalf("wrong actual exporter final owner: %+v", final)
+	}
+	// Exact same-live replay retains one native cell and identical full bytes.
+	_, replay, _ := exchange(0, r.cells, "SESSION_RETIRE", request, donor)
+	if !bytes.Equal(response, replay) {
+		t.Fatal("exporter replay changed signed bytes")
+	}
+	_, _, _ = exchange(1, 1, "HELLO", guestbridge.TerminalProtocol(), nil)
+	var peer stats
+	require(t, json.Unmarshal(c.action("BACKEND_STATS", 1, "", 0), &peer))
+	if peer.High != 82 || peer.Rows != 1 || peer.Ordinary != 2 || peer.Control != 0 {
+		t.Fatalf("shared native allocator stopped or reset: %+v", peer)
+	}
+	c.close()
+	state, cells := terminalInspect(t, r)
+	if state.Ordinary != 2 || state.Control != 0 || state.Workspace || len(cells) != 2 || state.Terminal[r.scope.Session] != 81 {
+		t.Fatalf("wrong actual C8 final cut: %+v", state)
+	}
+	found := false
+	for _, cell := range cells {
+		if cell.Header.Cell != 81 {
+			continue
+		}
+		found = true
+		if cell.Terminal == nil || cell.Terminal.Phase != "TERMINAL_RESPONDED" || cell.Terminal.OldOrdinary != 64 || cell.Terminal.OldControl != 16 || len(cell.Terminal.Donors) != 79 {
+			t.Fatal("C8 lost full original manifest/class owners")
+		}
+	}
+	if !found {
+		t.Fatal("final native C8 owner missing")
+	}
+	_, err := guestbridge.VerifyMappedReceipt(r.mappedBinding(), original, response)
+	require(t, err)
+}
+
+// Real maintained hfs_control owns every slot and private Received object here.
+// Delayed native delivery creates genuine concurrent ordinary/control candidates;
+// no slot, Ack, counter, observer or successful receipt is supplied by the test.
+func TestControlledReceivedActualTerminalKernel80(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.TerminalProtocol(), 1, receivedInitialIDMap)
+	// Existing signed total cap is1GiB. Select an explicit stress enrollment;
+	// default256/256MiB profiles and all implementation caps remain unchanged.
+	c := startReceivedCarrierBudget(t, r, false, GuestArtifactBudget{OrdinaryBytes: 768 << 20, ControlBytes: 256 << 20, Reservations: 8192, Cookies: 4096, Received: 4096})
+	receivedResult(t, c.action("REQUEST", 0, "ROOT "+hex.EncodeToString(mustRuntimeJSON(t, map[string]any{})), 0))
+	c.action("ADOPT_ROOT", 0, "", 0)
+	c.action("ACTOR_START", 0, "", 0)
+	c.action("ACQUIRE", 0, "", 0)
+	var acquire json.RawMessage
+	for _, command := range c.commands {
+		if command.Context == r.scope && command.Op == "VIEW_ACQUIRE" {
+			acquire = bytes.Clone(command.Payload)
+		}
+	}
+	if len(acquire) == 0 {
+		t.Fatal("missing real acquisition original")
+	}
+	var acquired struct{ Request json.RawMessage }
+	require(t, json.Unmarshal(acquire, &acquired))
+	query := mustRuntimeJSON(t, map[string]any{"request": acquired.Request})
+	reopened := false
+	c.yields = func(_ uint64) {
+		var ready bool
+		require(t, json.Unmarshal(c.action("RELEASE_READY", 0, "", 0), &ready))
+		if !ready {
+			return
+		}
+		c.yields = nil
+		for round := 0; round < 80 && !reopened; round++ {
+			for _, queue := range []string{"poll", "event", "drain", "event"} {
+				c.action("ACTOR_STEP", 0, queue, 0)
+			}
+			var state struct{ Phase string }
+			require(t, json.Unmarshal(c.action("ACTOR_STATE", 0, "", 0), &state))
+			reopened = state.Phase == "REOPENED"
+		}
+		if !reopened {
+			t.Fatal("actual clean recall actors did not finish")
+		}
+	}
+	c.action("RELEASE_DONE", 0, "", 0)
+	c.yields = nil
+	if !reopened {
+		t.Fatal("actual lease release did not exercise recall")
+	}
+	c.action("REPLIES_DROP", 0, "", 0)
+	c.action("RETIRE", 0, "", 0)
+	c.action("VIEW_RETIRE", 0, "", 0)
+	type kernelStats struct {
+		Ordinary, Control, Reserved, Unknown, Links int
+		OrdinaryCredits                             int `json:"ordinary_credits"`
+		ControlCredits                              int `json:"control_credits"`
+		OrdinaryReceived                            int `json:"ordinary_received"`
+		ControlReceived                             int `json:"control_received"`
+		CapturedOrdinary                            int `json:"captured_ordinary"`
+		CapturedControl                             int `json:"captured_control"`
+		Verified, Pending                           bool
+		ModulePuts                                  int `json:"module_puts"`
+		ClientDestroys                              int `json:"client_destroys"`
+		FaultModulePuts                             int `json:"fault_module_puts"`
+		FaultClients                                int `json:"fault_clients"`
+		Active                                      int
+		ProgressParents                             bool `json:"progress_parents"`
+	}
+	stats := func() kernelStats {
+		var s kernelStats
+		require(t, json.Unmarshal(c.action("KERNEL_STATS", 0, "", 0), &s))
+		return s
+	}
+	baseline := stats()
+	issued := 1
+	c.holdNativeResponses = true
+	c.yields = func(_ uint64) {
+		if issued == 80 {
+			c.holdNativeResponses = false
+			c.yields = nil
+			return
+		}
+		reserved, op, payload := 0, "VIEW_ACQUIRE", acquire
+		if issued >= 64 {
+			reserved, op, payload = 1, "VIEW_QUERY", query
+		}
+		issued++
+		c.action("REPLAY_CONTROL", 0, fmt.Sprintf("%d %s %s", reserved, op, hex.EncodeToString(payload)), 0)
+	}
+	c.action("REPLAY_CONTROL", 0, "0 VIEW_ACQUIRE "+hex.EncodeToString(acquire), 0)
+	c.yields = nil
+	c.holdNativeResponses = false
+	full := stats()
+	if issued != 80 || full.Ordinary != 64 || full.Control != 16 || full.Reserved != 0 || full.Unknown != 0 || full.Links != baseline.Links || full.OrdinaryCredits != baseline.OrdinaryCredits || full.ControlCredits != baseline.ControlCredits || full.OrdinaryReceived != baseline.OrdinaryReceived || full.ControlReceived != baseline.ControlReceived {
+		t.Fatalf("actual80-slot/private Received cut or released transient credits wrong: baseline%+v full%+v issued%d", baseline, full, issued)
+	}
+	c.action("ROOT_DROP", 0, "", 0)
+	c.action("ARM_POST_HANDOFF_FAULT", 0, "", 0)
+	c.action("DESTROY", 0, "", -116)
+	transferred := stats()
+	if !transferred.Verified || !transferred.Pending || transferred.Ordinary != 0 || transferred.Control != 0 || transferred.Reserved != 0 || transferred.Unknown != 0 || transferred.Links != 0 || transferred.CapturedOrdinary != 64 || transferred.CapturedControl != 16 || transferred.ProgressParents || transferred.ModulePuts != transferred.FaultModulePuts || transferred.ClientDestroys != transferred.FaultClients || transferred.Active != 1 {
+		t.Fatalf("actual guest80 handoff lost retained failure owner or leaked private completion: %+v", transferred)
+	}
+	before := len(c.commands)
+	c.action("RESTORE_POST_HANDOFF", 0, "", 0)
+	c.action("DESTROY", 0, "", 0)
+	if len(c.commands) != before {
+		t.Fatal("post-handoff retry issued another RPC")
+	}
+	c.action("TOMBSTONE", 0, "", 0)
+	c.close()
+	state, cells := terminalInspect(t, r)
+	if state.Ordinary != 1 || state.Control != 0 || len(cells) != 1 || cells[0].Terminal == nil || cells[0].Terminal.OldOrdinary != 64 || cells[0].Terminal.OldControl != 16 || len(cells[0].Terminal.Donors) != 79 {
+		t.Fatal("actual guest80 handoff lost retained native manifest/classes")
+	}
+}
+
+// Exporter-only boundary, as in Backend80: kernel/observer are substituted.
+// Every native request, durable C8 final, signature and exporter owner is real.
+func TestControlledReceivedActualTerminalPermanentExhaustion(t *testing.T) {
+ r := newSourceRigDomainsUnstarted(t, guestbridge.TerminalProtocol(), 17, receivedInitialIDMap)
+ c := startReceivedCarrierMode(t, r, true)
+ responses := make([][]byte, 16)
+ originals := make([][]byte, 16)
+ type stats struct { Rows, Ordinary, Control, Old, Phase int; High uint64; Removed bool; PackageBytes uint64 `json:"package_bytes"` }
+ for i, peer := range r.peers[:16] {
+  request, donor, _, _ := terminalPublishCut(t, peer, nil, -1)
+  original := mustRuntimeJSON(t, map[string]any{"cell": uint64(1), "context": peer.scope, "delegation": nil, "op": "SESSION_RETIRE", "payload": request, "protocol": guestbridge.TerminalProtocol(), "reclaim": donor})
+  response := c.action("BACKEND_EXCHANGE", i, hex.EncodeToString(original), 0)
+  receipt, err := guestbridge.VerifyMappedReceipt(peer.mappedBinding(), original, response); require(t, err)
+  if receipt.Kind != "SESSION_RETIRED" { t.Fatal("missing actual terminal proof") }
+  originals[i], responses[i] = original, response
+ }
+ beforeCommands := len(c.commands)
+ // All 16 session entries are permanent. Actual admission must fail without
+ // forwarding anything or replacing an old package/identity.
+ c.action("BACKEND_ADD", 0, hex.EncodeToString(mustRuntimeJSON(t, r.peers[16].scope)), -28)
+ c.action("BACKEND_ADD", 0, hex.EncodeToString(mustRuntimeJSON(t, r.peers[16].scope)), -28)
+ for i := range r.peers[:16] {
+  response := c.action("BACKEND_EXCHANGE", i, hex.EncodeToString(originals[i]), 0)
+  if !bytes.Equal(response, responses[i]) { t.Fatal("permanent signed bytes changed") }
+  var s stats; require(t, json.Unmarshal(c.action("BACKEND_STATS", i, "", 0), &s))
+  if s.Rows != 1 || s.Ordinary != 0 || s.Control != 16 || s.High != 16 || !s.Removed || s.Phase != 3 || s.PackageBytes != 88504 { t.Fatalf("permanent exporter owners evicted/refunded: %+v", s) }
+ }
+ if len(c.commands) != beforeCommands || beforeCommands != 16 { t.Fatal("exhaustion/replay issued another native cell") }
+ c.close()
+ state, cells := terminalInspect(t, r)
+ if state.Control != 16 || state.Ordinary != 0 || state.Workspace || len(cells) != 16 || len(state.Terminal) != 16 { t.Fatalf("permanent C8 owners changed: %+v", state) }
+ for _, cell := range cells { if cell.Terminal == nil || cell.Terminal.Phase != "TERMINAL_RESPONDED" || !cell.Control { t.Fatal("lost permanent native final") } }
 }

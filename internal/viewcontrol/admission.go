@@ -40,6 +40,9 @@ func (c *Controller) Admit(ctx context.Context, b guestbridge.Binding) (controll
 			c.mu.Unlock()
 		}
 	}()
+	if _, sealed := c.state.Terminal[b.Context.Session]; sealed {
+		return nil, fsapi.Permission
+	}
 	if c.closed.Load() || c.poisoned.Load() || c.state.Recovery {
 		return nil, fsapi.Unavailable
 	}
@@ -125,6 +128,9 @@ func (c *Controller) AdmitNative(ctx context.Context, cred fsapi.Cred, command f
 			c.mu.Unlock()
 		}
 	}()
+	if _, sealed := c.state.Terminal[scope.Session]; sealed {
+		return nil, fsapi.Permission
+	}
 	if c.closed.Load() || c.poisoned.Load() || c.state.Recovery {
 		return nil, fsapi.Unavailable
 	}

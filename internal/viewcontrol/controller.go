@@ -123,9 +123,11 @@ type Controller struct {
 	enrollmentHash, profileHash string
 	closed                      atomic.Bool
 	poisoned                    atomic.Bool
+	sealed                      sync.Map
 }
 
 type ledger struct {
+	Terminal                map[string]terminalScope `json:",omitempty"`
 	UUIDs                   map[string]bool
 	Revisions               map[string]uint64
 	AckArchive              map[string]string
@@ -382,6 +384,9 @@ func (c *Controller) CheckTarget(ctx context.Context, scope guestbridge.Context,
 	if err := c.check(ctx, scope); err != nil {
 		return err
 	}
+	if _, sealed := c.state.Terminal[scope.Session]; sealed {
+		return fsapi.Permission
+	}
 	if target.Kind != "CONTROLLED_LOCAL" || target.Cut == nil {
 		return fsapi.Permission
 	}
@@ -417,6 +422,9 @@ func (c *Controller) CheckTarget(ctx context.Context, scope guestbridge.Context,
 // CheckRequest independently authorizes the actual original principal before
 // any response, replay or state exposure, including control/non-view commands.
 func (c *Controller) CheckRequest(ctx context.Context, scope guestbridge.Context, op string, raw json.RawMessage) error {
+	if err := c.terminalIngress(ctx, scope, op); err != nil {
+		return err
+	}
 	if err := c.check(ctx, scope); err != nil {
 		return err
 	}

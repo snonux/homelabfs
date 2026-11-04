@@ -45,7 +45,8 @@ _ledger_check(const uint8_t *bytes, size_t length) {
    uint8_t hash[32];
    if (!bytes || length < 64 || length > LEDGER_MAX ||
        (memcmp(bytes, "H9LEDG1\0", 8) &&
-       memcmp(bytes, "H9LEDG2\0", 8)))
+       memcmp(bytes, "H9LEDG2\0", 8) &&
+       memcmp(bytes, "H9LEDG3\0", 8)))
       return (EINVAL);
    _ledger_hash(bytes, length - 32, hash);
    return (memcmp(hash, bytes + length - 32, 32) ? EINVAL : 0);
@@ -184,7 +185,7 @@ hfs9p_ledger_protect(Hfs9pLedger *l, const uint8_t *bytes, size_t length) {
    uint8_t *previous = NULL;
    size_t previous_length = 0;
    int prior_error = hfs9p_ledger_load(l, &previous, &previous_length);
-   if (!prior_error && previous[6] == '2' && bytes[6] != '2')
+   if (!prior_error && previous[6] > bytes[6])
       prior_error = ESTALE;
    free(previous);
    if (prior_error && prior_error != ENOENT)

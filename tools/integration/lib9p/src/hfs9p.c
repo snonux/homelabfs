@@ -13,6 +13,7 @@
 #include <sha256.h>
 #else
 #include <openssl/sha.h>
+#include <openssl/evp.h>
 #endif
 
 #include <errno.h>
@@ -35,6 +36,8 @@ typedef struct {
    uint64_t last;
 } Hfs9pRange;
 
+typedef struct Hfs9pTerminalPackage_ Hfs9pTerminalPackage;
+
 typedef struct {
    uint8_t id[16];
    uint8_t *context;
@@ -43,6 +46,12 @@ typedef struct {
    Hfs9pRange seen[256];
    uint16_t seen_count;
    bool hello;
+   uint32_t features;
+   uint8_t controller[16];
+   Hfs9pTerminalPackage *terminal_package;
+   atomic_uchar terminal_phase;
+   const Hfs9pConnection *terminal_channel;
+   uint64_t terminal_guest, terminal_native;
    uint8_t minor;
 } Hfs9pSession;
 
@@ -57,6 +66,49 @@ typedef struct Hfs9pPoll_ {
    uint8_t response_hash[32];
    bool acknowledged;
 } Hfs9pPoll;
+
+/* One bounded native-owner record arena, charged to terminal control staging.
+ * Hashes bind each old cell's original full command (including its principal)
+ * and both immutable full replies; old bodies retain their existing owners. */
+typedef struct {
+   uint64_t guest_cell;
+   uint64_t native_cell;
+   uint8_t guest_hash[32];
+   uint8_t native_hash[32];
+   uint8_t mapping_hash[32];
+   uint8_t response_guest_hash[32];
+   uint8_t response_native_hash[32];
+   uint8_t entry;
+   bool control;
+} Hfs9pTerminalOld;
+
+typedef struct {
+   Hfs9pTerminalOld old[HFS9P_CELLS];
+   uint8_t settled_hash[32];
+   uint8_t count;
+   uint8_t funding; /* 255 denotes a genuinely empty old cut. */
+   uint8_t ordinary;
+   uint8_t control;
+   bool removed;
+} Hfs9pTerminal;
+
+_Static_assert(sizeof(Hfs9pTerminal) <= 32768,
+    "terminal native records exceed their charged arena");
+
+/* Source-derived canonical maxima: full1024-group credentials, complete scope,
+ * maximal scalar widths,79 settled Acks and one funding Ack. These are bounds
+ * on the closed terminal grammar, not changes to the general1MiB body limit. */
+#define HFS9P_TERMINAL_GUEST 21224u
+#define HFS9P_TERMINAL_NATIVE 21449u
+#define HFS9P_TERMINAL_REPLY 15535u
+
+struct Hfs9pTerminalPackage_ {
+   Hfs9pTerminal state;
+   uint8_t guest[HFS9P_TERMINAL_GUEST];
+   uint8_t native[HFS9P_TERMINAL_NATIVE];
+   uint8_t response_guest[HFS9P_TERMINAL_REPLY];
+   uint8_t response_native[HFS9P_TERMINAL_REPLY];
+};
 
 typedef struct {
    uint8_t *guest;
@@ -84,6 +136,10 @@ typedef struct {
    bool issued;
    bool uncertain;
    bool responded;
+   bool terminal;
+   bool terminal_funded;
+   Hfs9pTerminal *terminal_state;
+   uint64_t guest_watermark;
    bool release;
    bool control;
    bool hello;
@@ -126,6 +182,13 @@ struct Hfs9pConnection_ {
 static void *_wait_worker_cb(void *);
 static int _snapshot(Hfs9p *, uint8_t **, size_t *);
 static int _wait_step(Hfs9p *, Hfs9pEntry *);
+static int _terminal_final(Hfs9p *, Hfs9pEntry *);
+static int _terminal_manifest(Hfs9p *, Hfs9pJson *, uint32_t,
+    Hfs9pEntry *, bool);
+static int _terminal_capture(Hfs9p *, Hfs9pEntry *);
+static int _mapping_donor(Hfs9p *, Hfs9pEntry *, Hfs9pTerminalOld *);
+static int _snapshot_cut(Hfs9p *, uint8_t **, size_t *, Hfs9pEntry *);
+static uint32_t _terminal_usage(const Hfs9p *, unsigned);
 
 static uint64_t
 _now(void) {
@@ -272,11 +335,28 @@ _make_frame(uint8_t *p, Hfs9pEntry *e, uint32_t offset, bool response) {
        (response ? e->response_guest : e->native) + offset, length);
 }
 
+static uint32_t
+_terminal_usage(const Hfs9p *h, unsigned session) {
+   uint32_t used = 0;
+   for (unsigned i = 0; i < HFS9P_ENTRIES; i++) {
+      const Hfs9pEntry *e = &h->entries[i];
+      if (e->session != session || !e->terminal_funded)
+         continue;
+      used += e->guest ? HFS9P_TERMINAL_GUEST : 0;
+      used += e->native ? HFS9P_TERMINAL_NATIVE : 0;
+      used += e->response_guest ? HFS9P_TERMINAL_REPLY : 0;
+      used += e->response_native ? HFS9P_TERMINAL_REPLY : 0;
+      used += e->terminal_state ? sizeof(Hfs9pTerminal) : 0;
+   }
+   return (used);
+}
+
 static bool
 _memory(Hfs9p *h, size_t extra, bool control) {
    uint64_t total = sizeof(*h), ordinary = 0;
    for (unsigned i = 0; i < h->session_count; i++)
-      total += h->sessions[i].length;
+      total += h->sessions[i].length +
+          (h->sessions[i].terminal_package ? sizeof(Hfs9pTerminalPackage) : 0);
    for (unsigned i = 0; i < HFS9P_ENTRIES; i++) {
       Hfs9pEntry *e = &h->entries[i];
       uint64_t bytes = (e->guest ? e->total : 0) +
@@ -285,6 +365,8 @@ _memory(Hfs9p *h, size_t extra, bool control) {
           (e->response_native ? e->native_response_total : 0);
       for (Hfs9pPoll *p = e->polls; p; p = p->previous)
          bytes += sizeof(*p) + p->request_length + p->response_length;
+      if (e->terminal_funded)
+         bytes = 0; /* Already physically preowned in this scope's package. */
       total += bytes;
       if (!(e->complete ? e->control : e->assembly_control))
          ordinary += bytes;
@@ -309,6 +391,19 @@ _verify(Hfs9p *h) {
       }
    }
    int error = h->verifier.verify_cb(h->verifier.arg, &h->endpoint, h->fd);
+   for (unsigned i = 0; !error && i < h->session_count; i++) {
+      Hfs9pSession *s = &h->sessions[i];
+      if (s->features != 32767u)
+         continue;
+      uint8_t controller[16];
+      if (!h->verifier.controller_cb)
+         error = EACCES;
+      else
+         error = h->verifier.controller_cb(h->verifier.arg, &h->endpoint,
+             h->fd, controller);
+      if (!error && memcmp(controller, s->controller, 16))
+         error = ESTALE;
+   }
    if (error)
       h->revoked = true;
    return (error);
@@ -323,10 +418,13 @@ _entry_clear(Hfs9pEntry *e) {
       free(p->response);
       free(p);
    }
-   free(e->guest);
-   free(e->native);
-   free(e->response_guest);
-   free(e->response_native);
+   if (!e->terminal_funded) {
+      free(e->terminal_state);
+      free(e->guest);
+      free(e->native);
+      free(e->response_guest);
+      free(e->response_native);
+   }
    memset(e, 0, sizeof(*e));
    e->donor = -1;
 }
@@ -439,8 +537,10 @@ hfs9p_delete(Hfs9p *h) {
    pthread_mutex_unlock(&h->mutex);
    (void)pthread_join(h->worker, NULL);
    pthread_mutex_lock(&h->mutex);
-   for (unsigned i = 0; i < h->session_count; i++)
+   for (unsigned i = 0; i < h->session_count; i++) {
       free(h->sessions[i].context);
+      free(h->sessions[i].terminal_package);
+   }
    for (unsigned i = 0; i < 3; i++)
       (void)close(h->fd[i]);
    pthread_mutex_unlock(&h->mutex);
@@ -450,13 +550,16 @@ hfs9p_delete(Hfs9p *h) {
 }
 
 int
-hfs9p_add_session_protocol(Hfs9p *h, const uint8_t *context, size_t length,
-    uint16_t minor) {
+hfs9p_add_session_tuple(Hfs9p *h, const uint8_t *context, size_t length,
+    uint16_t minor, uint32_t features) {
    Hfs9pJson j;
-   uint8_t id[16], fuse[16];
+   uint8_t id[16], fuse[16], controller[16] = {0};
    uint32_t f;
    int error;
-   if (!h || !context || length > 4096 || minor > 4)
+   if (!h || !context || length > 4096 || minor > 4 ||
+       (features != (minor == 4 ? 16383u : minor == 3 ? 8191u :
+       minor == 2 ? 4095u : minor == 1 ? 2047u : 255u) &&
+       !(minor == 4 && features == 32767u)))
       return (EINVAL);
    if (pthread_mutex_trylock(&h->mutex))
       return (EAGAIN);
@@ -475,16 +578,43 @@ hfs9p_add_session_protocol(Hfs9p *h, const uint8_t *context, size_t length,
       error = ENOSPC;
    if (!error)
       error = _verify(h);
+   if (!error && features == 32767u) {
+      if (!h->verifier.controller_cb)
+         error = EACCES;
+      else
+         error = h->verifier.controller_cb(h->verifier.arg, &h->endpoint,
+             h->fd, controller);
+      if (!error && _zero(controller, sizeof(controller)))
+         error = EACCES;
+   }
    if (!error) {
       Hfs9pSession *s = &h->sessions[h->session_count];
-      s->context = malloc(length);
-      if (!s->context) {
-         error = ENOMEM;
+      size_t reserve = features == 32767u ? sizeof(Hfs9pTerminalPackage) : 0;
+      bool terminal_budget = reserve != 0;
+      for (unsigned i = 0; i < h->session_count; i++)
+         terminal_budget |= h->sessions[i].terminal_package != NULL;
+      if (terminal_budget && !_memory(h, reserve + length, true)) {
+         error = ENOSPC;
       } else {
+         s->context = malloc(length);
+         if (reserve)
+            s->terminal_package = calloc(1, reserve);
+         if (!s->context || (reserve && !s->terminal_package)) {
+            free(s->context);
+            free(s->terminal_package);
+            s->context = NULL;
+            s->terminal_package = NULL;
+            error = ENOMEM;
+         }
+      }
+      if (!error) {
          memcpy(s->context, context, length);
          memcpy(s->id, id, 16);
          s->length = length;
          s->minor = (uint8_t)minor;
+         s->features = features;
+         memcpy(s->controller, controller, 16);
+         atomic_init(&s->terminal_phase, 0);
          h->session_count++;
       }
    }
@@ -493,12 +623,24 @@ hfs9p_add_session_protocol(Hfs9p *h, const uint8_t *context, size_t length,
 }
 
 int
+hfs9p_add_session_protocol(Hfs9p *h, const uint8_t *context, size_t length,
+    uint16_t minor) {
+   uint32_t features = minor == 4 ? 16383u : minor == 3 ? 8191u :
+       minor == 2 ? 4095u : minor == 1 ? 2047u : 255u;
+   return (hfs9p_add_session_tuple(h, context, length, minor, features));
+}
+
+int
 hfs9p_add_session(Hfs9p *h, const uint8_t *context, size_t length) {
    return (hfs9p_add_session_protocol(h, context, length, 0));
 }
 
 static const char *
-_protocol(uint16_t minor) {
+_protocol_tuple(uint16_t minor, uint32_t features) {
+   if (minor == 4 && features == 32767u)
+      return ("{\"body_schema\":5,\"bridge_major\":1,"
+          "\"bridge_minor\":4,\"features\":32767,\"msize\":65536,"
+          "\"normal_major\":3,\"normal_minor\":0}");
    if (minor == 4)
       return ("{\"body_schema\":5,\"bridge_major\":1,"
           "\"bridge_minor\":4,\"features\":16383,\"msize\":65536,"
@@ -519,17 +661,23 @@ _protocol(uint16_t minor) {
        "\"normal_major\":3,\"normal_minor\":0}");
 }
 
+static const char *
+_protocol(uint16_t minor) {
+   return (_protocol_tuple(minor, 0));
+}
+
 static int
-_protocol_body(const Hfs9pJson *j, uint32_t token, uint16_t minor) {
-   const char *expected = _protocol(minor);
+_protocol_body(const Hfs9pJson *j, uint32_t token, uint16_t minor, uint32_t features) {
+   const char *expected = features == 32767u ?
+       _protocol_tuple(minor, features) : _protocol(minor);
    Hfs9pToken t = j->tokens[token];
    return (t.end - t.start != strlen(expected) ||
        memcmp(j->bytes + t.start, expected, strlen(expected)) ? EINVAL : 0);
 }
 
 static int
-_body_version(Hfs9p *h, const uint8_t *bytes, uint32_t length,
-    uint16_t minor, bool response) {
+_body_version_tuple(Hfs9p *h, const uint8_t *bytes, uint32_t length,
+    uint16_t minor, uint32_t features, bool response) {
    const char *const command[] = {"cell", "context", "op", "payload",
       "reclaim", "protocol", "delegation"};
    const char *const reply[] = {"cell", "context", "op", "payload",
@@ -538,10 +686,26 @@ _body_version(Hfs9p *h, const uint8_t *bytes, uint32_t length,
    Hfs9pJson j = {bytes, length, h->tokens, 0};
    unsigned count = (response ? 4 : 5) + (minor ? 1 : 0) +
        (response && minor >= 2 ? 1 : 0) + (!response && minor == 4);
-   return (hfs9p_json_parse(&j) || _fields(&j, 0,
+   if (hfs9p_json_parse(&j) || _fields(&j, 0,
        response ? reply : command, count, fields) ||
-       (minor && _protocol_body(&j, fields[response ? 4 : 5], minor)) ?
-       EINVAL : 0);
+       (minor && _protocol_body(&j, fields[response ? 4 : 5], minor, features)))
+      return (EINVAL);
+   bool terminal = hfs9p_json_equal(&j, fields[2], "SESSION_RETIRE");
+   if (terminal && (minor != 4 || features != 32767u))
+      return (EINVAL);
+   if (response && minor >= 2 && j.tokens[fields[5]].type == '{') {
+      uint32_t kind;
+      if (!hfs9p_json_key(&j, fields[5], "kind", &kind) &&
+          hfs9p_json_equal(&j, kind, "SESSION_RETIRED") && !terminal)
+         return (EINVAL);
+   }
+   return (0);
+}
+
+static int
+_body_version(Hfs9p *h, const uint8_t *bytes, uint32_t length,
+    uint16_t minor, bool response) {
+   return (_body_version_tuple(h, bytes, length, minor, 0, response));
 }
 
 static int
@@ -688,13 +852,152 @@ _ack(Hfs9p *h, Hfs9pJson *j, uint32_t token, unsigned session,
       uint32_t count = (e->response_total + HFS9P_CHUNK - 1) / HFS9P_CHUNK;
       uint32_t all = count == 32 ? UINT32_MAX : (UINT32_C(1) << count) - 1;
       if (e->guest && e->session == session && e->guest_cell == cell &&
-          e->responded && e->fetched == all &&
+          e->responded && !e->terminal && e->fetched == all &&
           !memcmp(hash, e->response_guest_hash, 32)) {
          *donor = (int)i;
          return (0);
       }
    }
    return (EACCES);
+}
+
+static int
+_terminal_manifest(Hfs9p *h, Hfs9pJson *j, uint32_t array,
+    Hfs9pEntry *e, bool capture) {
+   Hfs9pToken list = j->tokens[array];
+   int entries[HFS9P_CELLS];
+   unsigned count = 0;
+   uint64_t previous = 0;
+   if (list.type != '[' || list.count > HFS9P_CELLS - 1 ||
+       (e->donor < 0 && list.count))
+      return (EINVAL);
+   if (e->donor >= 0)
+      entries[count++] = e->donor;
+   uint32_t token = array + 1;
+   for (unsigned i = 0; i < list.count; i++) {
+      int index = -1;
+      int error = _ack(h, j, token, e->session, &index);
+      if (error)
+         return (error);
+      Hfs9pEntry *old = &h->entries[index];
+      if (index == e->donor || old->guest_cell <= previous ||
+          old->guest_cell >= e->guest_cell)
+         return (EINVAL);
+      previous = old->guest_cell;
+      entries[count++] = index;
+      token = j->tokens[token].next;
+   }
+   for (unsigned i = 0; i < HFS9P_ENTRIES; i++) {
+      Hfs9pEntry *old = &h->entries[i];
+      if (!old->guest || old == e || old->session != e->session)
+         continue;
+      bool included = false;
+      for (unsigned k = 0; k < count; k++)
+         included |= entries[k] == (int)i;
+      if (!included || !old->complete || !old->issued || !old->responded ||
+          old->terminal || (old->wait && !old->final) ||
+          old->guest_cell > e->guest_watermark ||
+          h->pending == (int)i)
+         return (EACCES);
+   }
+   if (!count && (!e->control || e->donor >= 0))
+      return (EINVAL);
+   if (!h->sessions[e->session].hello &&
+       (count || e->guest_watermark))
+      return (EACCES);
+   if (!capture)
+      return (0);
+   Hfs9pTerminalPackage *package = h->sessions[e->session].terminal_package;
+   if (!e->terminal_funded || !package || e->terminal_state)
+      return (EACCES);
+   Hfs9pTerminal *state = &package->state;
+   memset(state, 0, sizeof(*state));
+   state->count = (uint8_t)count;
+   state->funding = 255;
+   _hash(j->bytes + list.start, list.end - list.start, state->settled_hash);
+   /* Canonical record order is the entire old guest-cell union. */
+   for (unsigned i = 0; i < count; i++) {
+      for (unsigned k = i + 1; k < count; k++) {
+         if (h->entries[entries[k]].guest_cell <
+             h->entries[entries[i]].guest_cell) {
+            int swap = entries[i];
+            entries[i] = entries[k];
+            entries[k] = swap;
+         }
+      }
+      Hfs9pEntry *old = &h->entries[entries[i]];
+      Hfs9pTerminalOld *record = &state->old[i];
+      int error = _mapping_donor(h, old, record);
+      if (error) {
+         memset(state, 0, sizeof(*state));
+         return (error);
+      }
+      record->entry = (uint8_t)entries[i];
+      record->control = old->control;
+      state->control += old->control;
+      state->ordinary += !old->control;
+      if (entries[i] == e->donor)
+         state->funding = (uint8_t)i;
+   }
+   e->terminal_state = state;
+   return (0);
+}
+
+static int
+_terminal_capture(Hfs9p *h, Hfs9pEntry *e) {
+   Hfs9pJson j = {e->guest, e->total, h->tokens, 0};
+   uint32_t payload, manifest;
+   if (hfs9p_json_parse(&j) ||
+       hfs9p_json_key(&j, 0, "payload", &payload) ||
+       hfs9p_json_key(&j, payload, "settled_cells", &manifest))
+      return (EINVAL);
+   return (_terminal_manifest(h, &j, manifest, e, true));
+}
+
+/* The complete closed terminal grammar fits one normal transport chunk. Classify
+ * that immutable packet under the backend lock before copying any body bytes;
+ * no ordinary/control header may borrow this session's preowned package. */
+static bool
+_terminal_input(Hfs9p *h, unsigned session, const uint8_t *frame,
+    uint32_t total) {
+   const char *const envelope[] = {"cell", "context", "delegation", "op",
+      "payload", "protocol", "reclaim"};
+   const char *const keys[] = {"closure_hash", "credentials", "guest_through",
+      "observer_revision", "retirement_id", "settled_cells"};
+   Hfs9pSession *s = &h->sessions[session];
+   Hfs9pJson j = {frame + HFS9P_HEADER, total, h->tokens, 0};
+   uint32_t v[7], p[6];
+   uint64_t number;
+   uint8_t hash[32];
+   uint64_t cell = _get(frame + 48, 8);
+   if (s->features != 32767u || total > HFS9P_TERMINAL_GUEST ||
+       hfs9p_json_parse(&j) || _fields(&j, 0, envelope, 7, v) ||
+       hfs9p_json_u64(&j, v[0], &number) || number != cell ||
+       cell <= s->high || j.tokens[v[2]].type != 'n' ||
+       !hfs9p_json_equal(&j, v[3], "SESSION_RETIRE") ||
+       _protocol_body(&j, v[5], 4, 32767u) ||
+       _fields(&j, v[4], keys, 6, p) ||
+       _hex(&j, p[0], hash, 32, false) || _credentials(&j, p[1]) ||
+       hfs9p_json_u64(&j, p[2], &number) || number != s->high ||
+       hfs9p_json_u64(&j, p[3], &number) || !number ||
+       _hex(&j, p[4], hash, 16, true))
+      return (false);
+   Hfs9pToken context = j.tokens[v[1]];
+   if (context.end - context.start != s->length ||
+       memcmp(j.bytes + context.start, s->context, s->length))
+      return (false);
+   _hash(j.bytes, total, hash);
+   if (memcmp(hash, frame + 56, 32))
+      return (false);
+   Hfs9pEntry candidate = {.guest = (uint8_t *)j.bytes, .total = total,
+      .guest_cell = cell, .guest_watermark = s->high,
+      .session = (uint8_t)session, .minor = 4, .control = true, .donor = -1};
+   if (j.tokens[v[6]].type != 'n') {
+      if (_ack(h, &j, v[6], session, &candidate.donor))
+         return (false);
+      candidate.control = h->entries[candidate.donor].control;
+   }
+   return (!_terminal_manifest(h, &j, p[5], &candidate, false));
 }
 
 /* Replacements refer only to top-level routing tokens. Every other byte,
@@ -707,8 +1010,8 @@ typedef struct {
 } Hfs9pReplacement;
 
 static int
-_rewrite(const Hfs9pJson *j, Hfs9pReplacement *r, unsigned count,
-    uint8_t **out, uint32_t *length) {
+_rewrite_owned(const Hfs9pJson *j, Hfs9pReplacement *r, unsigned count,
+    uint8_t **out, uint32_t *length, uint8_t *owned, size_t capacity) {
    size_t n = j->length, source = 0, dest = 0;
    for (unsigned i = 0; i < count; i++) {
       for (unsigned k = i + 1; k < count; k++) {
@@ -725,7 +1028,9 @@ _rewrite(const Hfs9pJson *j, Hfs9pReplacement *r, unsigned count,
    }
    if (n == 0 || n > HFS9P_BODY)
       return (E2BIG);
-   uint8_t *p = malloc(n);
+   if (owned && n > capacity)
+      return (E2BIG);
+   uint8_t *p = owned ? owned : malloc(n);
    if (!p)
       return (ENOMEM);
    for (unsigned i = 0; i < count; i++) {
@@ -742,6 +1047,12 @@ _rewrite(const Hfs9pJson *j, Hfs9pReplacement *r, unsigned count,
 }
 
 static int
+_rewrite(const Hfs9pJson *j, Hfs9pReplacement *r, unsigned count,
+    uint8_t **out, uint32_t *length) {
+   return (_rewrite_owned(j, r, count, out, length, NULL, 0));
+}
+
+static int
 _command(Hfs9p *h, Hfs9pEntry *e) {
    const char *const names[] = { "cell", "context", "op", "payload",
       "reclaim", "protocol", "delegation" };
@@ -754,7 +1065,7 @@ _command(Hfs9p *h, Hfs9pEntry *e) {
    uint16_t minor = h->sessions[e->session].minor;
    if (e->minor != minor || hfs9p_json_parse(&j) ||
        _fields(&j, 0, names, minor == 4 ? 7 : minor ? 6 : 5, v) ||
-       (minor && _protocol_body(&j, v[5], minor)) ||
+       (minor && _protocol_body(&j, v[5], minor, h->sessions[e->session].features)) ||
        (minor == 4 && j.tokens[v[6]].type != 'n') ||
        hfs9p_json_u64(&j, v[0], &cell) || cell != e->guest_cell)
       return (EINVAL);
@@ -768,7 +1079,7 @@ _command(Hfs9p *h, Hfs9pEntry *e) {
    e->hello = false;
    e->donor = -1;
    if (hfs9p_json_equal(&j, v[2], "HELLO")) {
-      if (_protocol_body(&j, v[3], minor))
+      if (_protocol_body(&j, v[3], minor, s->features))
          return (EINVAL);
       e->control = false;
       e->hello = true;
@@ -800,6 +1111,22 @@ _command(Hfs9p *h, Hfs9pEntry *e) {
           _credentials(&j, cleanup[2]) || _hex(&j, cleanup[3], hash, 32, false))
          return (EINVAL);
       e->control = true;
+   } else if (hfs9p_json_equal(&j, v[2], "SESSION_RETIRE")) {
+      const char *const keys[] = {"closure_hash", "credentials", "guest_through",
+         "observer_revision", "retirement_id", "settled_cells"};
+      uint32_t values[6];
+      uint64_t through, revision;
+      if (minor != 4 || s->features != 32767u ||
+          _fields(&j, v[3], keys, 6, values) ||
+          _hex(&j, values[0], hash, 32, false) ||
+          _credentials(&j, values[1]) ||
+          hfs9p_json_u64(&j, values[2], &through) ||
+          hfs9p_json_u64(&j, values[3], &revision) || !revision ||
+          _hex(&j, values[4], hash, 16, true) ||
+          through != e->guest_watermark || through >= e->guest_cell ||
+          s->high != e->guest_cell)
+         return (EINVAL);
+      e->terminal = true;
    } else if (hfs9p_json_equal(&j, v[2], "RELEASE_CELL")) {
       Hfs9pToken p = j.tokens[v[3]], r = j.tokens[v[4]];
       if (p.end - p.start != r.end - r.start ||
@@ -842,19 +1169,28 @@ _command(Hfs9p *h, Hfs9pEntry *e) {
        !hfs9p_json_equal(&j, v[2], "VIEW_ACK")) {
       return (EINVAL);
    }
-   if (!e->hello && !s->hello)
+   if (!e->hello && !s->hello &&
+       !(e->terminal && !e->guest_watermark))
       return (EACCES);
    if (j.tokens[v[4]].type != 'n') {
       int error = _ack(h, &j, v[4], e->session, &e->donor);
       if (error)
          return (error);
       Hfs9pEntry *d = &h->entries[e->donor];
-      if (d == e || (!e->release && e->control != d->control))
+      if (d == e || (!e->release && !e->terminal && e->control != d->control))
          return (EACCES);
-      if (e->release)
+      if (e->release || e->terminal)
          e->control = d->control;
    } else if (e->release) {
       return (EINVAL);
+   }
+   if (e->terminal) {
+      uint32_t manifest;
+      if (hfs9p_json_key(&j, v[3], "settled_cells", &manifest))
+         return (EINVAL);
+      int error = _terminal_manifest(h, &j, manifest, e, false);
+      if (error)
+         return (error);
    }
    e->flags = (e->control ? 1 : 0) | (e->donor >= 0 ? 2 : 0);
    return (0);
@@ -943,17 +1279,22 @@ _native_body(Hfs9p *h, Hfs9pEntry *e) {
          j.tokens[metadata].end, (const uint8_t *)delegation, (size_t)written};
    }
    uint32_t length;
-   if (!_memory(h, e->total +
+   Hfs9pTerminalPackage *package = h->sessions[e->session].terminal_package;
+   if (!e->terminal_funded && !_memory(h, e->total +
        (e->minor == 4 ? sizeof(delegation) : 256), e->control))
       return (ENOSPC);
-   int error = _rewrite(&j, r, count, &e->native, &length);
+   int error = e->terminal_funded ?
+       _rewrite_owned(&j, r, count, &e->native, &length,
+       package->native, sizeof(package->native)) :
+       _rewrite(&j, r, count, &e->native, &length);
    if (error)
       return (error);
    /* Preflight the actual rewritten token bound before issuance/input ACK.
     * Reuse the existing arena; no command or parser budget is enlarged. */
    Hfs9pJson preflight = {e->native, length, h->tokens, 0};
    if (e->minor == 4 && hfs9p_json_parse(&preflight)) {
-      free(e->native);
+      if (!e->terminal_funded)
+         free(e->native);
       e->native = NULL;
       return (E2BIG);
    }
@@ -975,6 +1316,11 @@ _forward(Hfs9p *h, Hfs9pEntry *e) {
    if (h->pending >= 0 && (unsigned)h->pending != index)
       return (EAGAIN);
    if (!e->native) {
+      if (e->terminal && !e->terminal_state) {
+         int error = _terminal_capture(h, e);
+         if (error)
+            return (error);
+      }
       if (e->donor >= 0) {
          Hfs9pJson j = {e->guest, e->total, h->tokens, 0};
          uint32_t reclaim;
@@ -999,14 +1345,25 @@ _forward(Hfs9p *h, Hfs9pEntry *e) {
    /* Protect exact candidate and donor snapshots before any possible native
     * effect. The persisted pending candidate is replayed unchanged on recovery. */
    h->pending = (int)index;
+   if (e->terminal) {
+      Hfs9pSession *session = &h->sessions[e->session];
+      if (session->terminal_phase &&
+          (session->terminal_guest != e->guest_cell || session->terminal_native != e->native_cell))
+         return (EACCES);
+      session->terminal_phase = 1;
+      session->terminal_guest = e->guest_cell;
+      session->terminal_native = e->native_cell;
+   }
    uint8_t *ledger = NULL;
    size_t ledger_length = 0;
    int protection = _snapshot(h, &ledger, &ledger_length);
    if (!protection)
       protection = h->verifier.protect_cb(h->verifier.arg, ledger, ledger_length);
    free(ledger);
-   if (protection)
+   if (protection) {
+      if (e->terminal) h->revoked = true;
       return (protection);
+   }
    for (uint32_t offset = 0; offset < e->native_total;
        offset += HFS9P_CHUNK) {
       uint32_t length = e->native_total - offset;
@@ -1030,7 +1387,7 @@ _forward(Hfs9p *h, Hfs9pEntry *e) {
       errno = native_errno;
       if (written != (ssize_t)(HFS9P_HEADER + length)) {
          error = written < 0 ? errno : EIO;
-         if (offset == 0 && !e->uncertain && e->donor < 0 && !e->polls &&
+         if (offset == 0 && !e->terminal && !e->uncertain && e->donor < 0 && !e->polls &&
              written < 0 && (error == EAGAIN || error == EWOULDBLOCK)) {
             free(e->native);
             e->native = NULL;
@@ -1052,7 +1409,10 @@ _forward(Hfs9p *h, Hfs9pEntry *e) {
    e->issued = true;
    if (e->wait)
       e->poll_count++;
-   if (e->polls) {
+   if (e->terminal && e->terminal_state->count) {
+      /* Funding remains in transition; all old exporter rows and class
+       * charges survive input ACK until the protected full native proof. */
+   } else if (e->polls) {
       e->polls->acknowledged = true;
    } else if (e->donor >= 0) {
       _entry_clear(&h->entries[e->donor]);
@@ -1098,7 +1458,7 @@ _response(Hfs9p *h, Hfs9pEntry *e) {
    uint32_t offset = 0, total = 0;
    uint8_t expected[32];
    if (e->responded)
-      return (0);
+      return (e->terminal ? _terminal_final(h, e) : 0);
    for (;;) {
       uint64_t position = e->native_cell * HFS9P_STRIDE +
           (offset / HFS9P_CHUNK) * (HFS9P_HEADER + HFS9P_CHUNK);
@@ -1124,11 +1484,19 @@ _response(Hfs9p *h, Hfs9pEntry *e) {
          total = (uint32_t)_get(h->scratch + 16, 4);
          memcpy(expected, h->scratch + 56, 32);
          if (!e->response_native) {
-            if (!_memory(h, total, e->control))
-               return (ENOSPC);
-            e->response_native = malloc(total);
-            if (!e->response_native)
-               return (ENOMEM);
+            if (e->terminal_funded) {
+               Hfs9pTerminalPackage *package =
+                   h->sessions[e->session].terminal_package;
+               if (total > sizeof(package->response_native))
+                  return (E2BIG);
+               e->response_native = package->response_native;
+            } else {
+               if (!_memory(h, total, e->control))
+                  return (ENOSPC);
+               e->response_native = malloc(total);
+               if (!e->response_native)
+                  return (ENOMEM);
+            }
             e->response_total = total;
             e->native_response_total = total;
             memcpy(e->response_native_hash, expected, 32);
@@ -1156,9 +1524,16 @@ _response(Hfs9p *h, Hfs9pEntry *e) {
    uint64_t cell;
    if (hfs9p_json_parse(&response) ||
        _fields(&response, 0, fields, e->minor >= 2 ? 6 : e->minor ? 5 : 4, v) ||
-       (e->minor && _protocol_body(&response, v[4], e->minor)) ||
+       (e->minor && _protocol_body(&response, v[4], e->minor, h->sessions[e->session].features)) ||
        hfs9p_json_u64(&response, v[0], &cell) || cell != e->native_cell)
       return (EINVAL);
+   if (e->minor >= 2 && !e->terminal &&
+       response.tokens[v[5]].type == '{') {
+      uint32_t kind;
+      if (!hfs9p_json_key(&response, v[5], "kind", &kind) &&
+          hfs9p_json_equal(&response, kind, "SESSION_RETIRED"))
+         return (EINVAL);
+   }
    Hfs9pSession *s = &h->sessions[e->session];
    Hfs9pToken context = response.tokens[v[1]], response_op = response.tokens[v[2]];
    if (context.end - context.start != s->length ||
@@ -1189,9 +1564,13 @@ _response(Hfs9p *h, Hfs9pEntry *e) {
    };
    response.tokens = h->tokens;
    uint32_t translated_total;
-   if (!_memory(h, total + 32, e->control))
+   if (!e->terminal_funded && !_memory(h, total + 32, e->control))
       return (ENOSPC);
-   int error = _rewrite(&response, r, e->wait ? 2 : 1, &e->response_guest,
+   Hfs9pTerminalPackage *package = h->sessions[e->session].terminal_package;
+   int error = e->terminal_funded ?
+       _rewrite_owned(&response, r, 1, &e->response_guest, &translated_total,
+       package->response_guest, sizeof(package->response_guest)) :
+       _rewrite(&response, r, e->wait ? 2 : 1, &e->response_guest,
        &translated_total);
    if (error)
       return (error);
@@ -1224,7 +1603,585 @@ _response(Hfs9p *h, Hfs9pEntry *e) {
           e->response_guest + selected_start, selected_size))
          s->hello = true;
    }
+   return (e->terminal ? _terminal_final(h, e) : 0);
+}
+
+/* Compare immutable token slices without a second parser arena or body copy. */
+static bool
+_same_token(const uint8_t *a, Hfs9pToken x, const uint8_t *b,
+    Hfs9pToken y) {
+   return (x.end - x.start == y.end - y.start &&
+       !memcmp(a + x.start, b + y.start, x.end - x.start));
+}
+
+static int
+_translation_matches(Hfs9p *h, Hfs9pEntry *e) {
+   const char *const keys[] = {"cell", "context", "op", "payload",
+      "protocol", "verification"};
+   uint32_t values[6];
+   Hfs9pToken native[6];
+   Hfs9pJson j = {e->response_native, e->native_response_total, h->tokens, 0};
+   uint64_t cell;
+   if (hfs9p_json_parse(&j) || _fields(&j, 0, keys, 6, values) ||
+       hfs9p_json_u64(&j, values[0], &cell) || cell != e->native_cell)
+      return (EINVAL);
+   for (unsigned i = 0; i < 6; i++)
+      native[i] = j.tokens[values[i]];
+   j.bytes = e->response_guest;
+   j.length = e->response_total;
+   if (hfs9p_json_parse(&j) || _fields(&j, 0, keys, 6, values) ||
+       hfs9p_json_u64(&j, values[0], &cell) || cell != e->guest_cell)
+      return (EINVAL);
+   for (unsigned i = 1; i < 6; i++) {
+      if (i == 2 && e->wait) {
+         if (native[i].end - native[i].start != 11 ||
+             memcmp(e->response_native + native[i].start, "\"VIEW_POLL\"", 11) ||
+             !hfs9p_json_equal(&j, values[i], "VIEW_WAIT"))
+            return (EINVAL);
+      } else if (!_same_token(e->response_native, native[i],
+          e->response_guest, j.tokens[values[i]])) {
+         return (EINVAL);
+      }
+   }
    return (0);
+}
+
+/* Canonical verification is the last envelope field. Hash its exact omission,
+ * including the closing brace, without another body-sized staging buffer. */
+static int
+_terminal_base(const uint8_t *bytes, size_t length, Hfs9pToken receipt,
+    uint8_t hash[32]) {
+   const char marker[] = ",\"verification\":";
+   size_t n = sizeof(marker) - 1;
+   if (receipt.start < n || receipt.end + 1 != length ||
+       bytes[length - 1] != '}' ||
+       memcmp(bytes + receipt.start - n, marker, n))
+      return (EINVAL);
+#ifdef __FreeBSD__
+   SHA256_CTX ctx;
+   SHA256_Init(&ctx);
+   SHA256_Update(&ctx, bytes, receipt.start - n);
+   SHA256_Update(&ctx, "}", 1);
+   SHA256_Final(hash, &ctx);
+#else
+   EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+   if (!ctx)
+      return (ENOMEM);
+   int ok = EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) &&
+       EVP_DigestUpdate(ctx, bytes, receipt.start - n) &&
+       EVP_DigestUpdate(ctx, "}", 1) &&
+       EVP_DigestFinal_ex(ctx, hash, NULL);
+   EVP_MD_CTX_free(ctx);
+   if (!ok)
+      return (EIO);
+#endif
+   return (0);
+}
+
+static void
+_hex_string(const uint8_t *bytes, size_t length, char *text) {
+   static const char digits[] = "0123456789abcdef";
+   for (size_t i = 0; i < length; i++) {
+      text[i * 2] = digits[bytes[i] >> 4];
+      text[i * 2 + 1] = digits[bytes[i] & 15];
+   }
+   text[length * 2] = 0;
+}
+
+static void
+_uuid_string(const uint8_t bytes[16], char text[37]) {
+   char hex[33];
+   _hex_string(bytes, 16, hex);
+   (void)snprintf(text, 37, "%.8s-%.4s-%.4s-%.4s-%.12s",
+       hex, hex + 8, hex + 12, hex + 16, hex + 20);
+}
+
+static int
+_mapping_leg(Hfs9p *h, Hfs9pEntry *e, const uint8_t *request,
+    uint32_t request_length, const uint8_t *response, uint32_t response_length,
+    uint64_t cell, unsigned index, uint8_t chain[32]) {
+   Hfs9pJson j = {response, response_length, h->tokens, 0};
+   uint32_t verification, v;
+   uint8_t base[32], command[32], observed[32];
+   uint64_t number;
+   if (hfs9p_json_parse(&j) ||
+       hfs9p_json_key(&j, 0, "verification", &verification) ||
+       hfs9p_json_key(&j, 0, "cell", &v) ||
+       hfs9p_json_u64(&j, v, &number) || number != cell ||
+       _terminal_base(response, response_length, j.tokens[verification], base))
+      return (EINVAL);
+   _hash(request, request_length, command);
+   char prior[65], command_text[65], base_text[65], encoded[512];
+   _hex_string(chain, 32, prior);
+   _hex_string(command, 32, command_text);
+   _hex_string(base, 32, base_text);
+   int n = snprintf(encoded, sizeof(encoded),
+       "{\"domain\":\"homelabfs-mapping-leg/1\",\"index\":%u,"
+       "\"native_cell\":%llu,\"native_command_hash\":\"%s\","
+       "\"native_response_hash\":\"%s\",\"previous\":\"%s\"}",
+       index, (unsigned long long)cell, command_text, base_text, prior);
+   if (n < 0 || (size_t)n >= sizeof(encoded))
+      return (E2BIG);
+   _hash((const uint8_t *)encoded, (size_t)n, chain);
+   if (j.tokens[verification].type == 'n')
+      return (0);
+   if (j.tokens[verification].type != '{' ||
+       hfs9p_json_key(&j, verification, "version", &v) ||
+       !hfs9p_json_equal(&j, v, "homelabfs-controlled-verification/2") ||
+       hfs9p_json_key(&j, verification, "mapping_hash", &v) ||
+       _hex(&j, v, observed, 32, false) || memcmp(observed, chain, 32) ||
+       hfs9p_json_key(&j, verification, "controller", &v) ||
+       _hex(&j, v, observed, 16, true) ||
+       memcmp(observed, h->sessions[e->session].controller, 16) ||
+       hfs9p_json_key(&j, verification, "guest_cell", &v) ||
+       hfs9p_json_u64(&j, v, &number) || number != e->guest_cell ||
+       hfs9p_json_key(&j, verification, "cell", &v) ||
+       hfs9p_json_u64(&j, v, &number) || number != cell ||
+       hfs9p_json_key(&j, verification, "poll_count", &v) ||
+       hfs9p_json_u64(&j, v, &number) || number != index + 1 ||
+       hfs9p_json_key(&j, verification, "command_hash", &v) ||
+       _hex(&j, v, observed, 32, false) || memcmp(observed, command, 32) ||
+       hfs9p_json_key(&j, verification, "response_hash", &v) ||
+       _hex(&j, v, observed, 32, false) || memcmp(observed, base, 32) ||
+       hfs9p_json_key(&j, verification, "guest_command_hash", &v) ||
+       _hex(&j, v, observed, 32, false) || memcmp(observed, e->guest_hash, 32))
+      return (EINVAL);
+   return (0);
+}
+
+/* Reconstruct C8's exact chain from actual authenticated native I/O and the
+ * supervised immutable controller. No receipt is required for null HELLO; no
+ * public mapping hash or caller UUID is an observation of that native tuple. */
+static int
+_mapping_donor(Hfs9p *h, Hfs9pEntry *e, Hfs9pTerminalOld *record) {
+   Hfs9pSession *s = &h->sessions[e->session];
+   if (e->minor != 4 || s->features != 32767u ||
+       _zero(s->controller, 16) || !e->guest || !e->native ||
+       !e->response_native || !e->response_guest || !e->issued ||
+       !e->responded || (e->wait && !e->final))
+      return (EACCES);
+   uint32_t chunks = (e->response_total + HFS9P_CHUNK - 1) / HFS9P_CHUNK;
+   uint32_t all = chunks == 32 ? UINT32_MAX : (UINT32_C(1) << chunks) - 1;
+   if ((!e->terminal && e->fetched != all) || _translation_matches(h, e))
+      return (EACCES);
+   char controller[37], fuse[37], original[65], seed[8192];
+   _uuid_string(s->controller, controller);
+   _uuid_string(h->endpoint.session, fuse);
+   _hex_string(e->guest_hash, 32, original);
+   int n = snprintf(seed, sizeof(seed),
+       "{\"controller\":\"%s\",\"domain\":\"homelabfs-mapping-chain/1\","
+       "\"endpoint\":{\"command_node\":%llu,\"fuse_session\":\"%s\","
+       "\"recall_node\":%llu,\"result_node\":%llu},\"guest_cell\":%llu,"
+       "\"guest_command_hash\":\"%s\",\"scope\":%.*s}", controller,
+       (unsigned long long)h->endpoint.node[0], fuse,
+       (unsigned long long)h->endpoint.node[2],
+       (unsigned long long)h->endpoint.node[1],
+       (unsigned long long)e->guest_cell, original, (int)s->length, s->context);
+   if (n < 0 || (size_t)n >= sizeof(seed))
+      return (E2BIG);
+   uint8_t chain[32];
+   _hash((const uint8_t *)seed, (size_t)n, chain);
+   Hfs9pPoll *polls[16];
+   unsigned count = 0;
+   for (Hfs9pPoll *p = e->polls; p; p = p->previous) {
+      if (count == 15)
+         return (EINVAL);
+      polls[count++] = p;
+   }
+   for (unsigned i = 0; i < count; i++) {
+      Hfs9pPoll *p = polls[count - i - 1];
+      int error = _mapping_leg(h, e, p->request, p->request_length,
+          p->response, p->response_length, p->cell, i, chain);
+      if (error)
+         return (error);
+   }
+   int error = _mapping_leg(h, e, e->native, e->native_total,
+       e->response_native, e->native_response_total,
+       e->native_cell, count, chain);
+   if (error)
+      return (error);
+   record->guest_cell = e->guest_cell;
+   record->native_cell = e->native_cell;
+   memcpy(record->guest_hash, e->guest_hash, 32);
+   memcpy(record->native_hash, e->native_hash, 32);
+   memcpy(record->mapping_hash, chain, 32);
+   memcpy(record->response_guest_hash, e->response_guest_hash, 32);
+   memcpy(record->response_native_hash, e->response_native_hash, 32);
+   return (0);
+}
+
+/* Structural/native binding checks only. The enrolled guest kernel verifies
+ * the signature and creates private Received; parsing creates no authority. */
+static int
+_terminal_response(Hfs9p *h, Hfs9pEntry *e) {
+   const char *const request_keys[] = {"retirement_id", "credentials",
+      "guest_through", "observer_revision", "closure_hash", "settled_cells"};
+   const char *const response_keys[] = {"retirement_id", "guest_through",
+      "observer_revision", "closure_hash", "ownership_hash", "status",
+      "settled_hash"};
+   const char *const evidence_keys[] = {"retirement_id", "credentials",
+      "guest_through", "observer_revision", "closure_hash",
+      "ownership_hash", "retained_owner", "settled_hash"};
+   const char *const receipt_keys[] = {"version", "kind", "scope",
+      "endpoint", "controller", "serving_generation", "cell",
+      "command_hash", "response_hash", "evidence", "signature",
+      "guest_cell", "guest_command_hash", "guest_response_hash",
+      "poll_count", "mapping_hash"};
+   Hfs9pJson j = {e->guest, e->total, h->tokens, 0};
+   uint32_t payload, values[16], p[7], evidence[8], verification;
+   Hfs9pToken original[5];
+   uint8_t hash[64], base[32];
+   uint64_t number;
+   if (hfs9p_json_parse(&j) ||
+       hfs9p_json_key(&j, 0, "payload", &payload) ||
+       _fields(&j, payload, request_keys, 6, values))
+      return (EINVAL);
+   for (unsigned i = 0; i < 5; i++)
+      original[i] = j.tokens[values[i]];
+   Hfs9pToken manifest = j.tokens[values[5]];
+   uint8_t settled_hash[32];
+   _hash(j.bytes + manifest.start, manifest.end - manifest.start, settled_hash);
+   if (!e->terminal_state ||
+       memcmp(settled_hash, e->terminal_state->settled_hash, 32))
+      return (EINVAL);
+   j.bytes = e->response_native;
+   j.length = e->native_response_total;
+   if (hfs9p_json_parse(&j) ||
+       hfs9p_json_key(&j, 0, "payload", &payload) ||
+       hfs9p_json_key(&j, 0, "verification", &verification) ||
+       _fields(&j, payload, response_keys, 7, p) ||
+       !hfs9p_json_equal(&j, p[5], "RETIRED") ||
+       _hex(&j, p[4], hash, 32, false) ||
+       _fields(&j, verification, receipt_keys, 16, values) ||
+       !hfs9p_json_equal(&j, values[0],
+       "homelabfs-controlled-verification/2") ||
+       !hfs9p_json_equal(&j, values[1], "SESSION_RETIRED") ||
+       _fields(&j, values[9], evidence_keys, 8, evidence) ||
+       !hfs9p_json_equal(&j, evidence[6], "C8_TERMINAL_CELL") ||
+       _hex(&j, evidence[7], hash, 32, false) ||
+       memcmp(hash, settled_hash, 32) ||
+       _hex(&j, p[6], hash, 32, false) || memcmp(hash, settled_hash, 32) ||
+       _hex(&j, values[10], hash, 64, false) ||
+       _hex(&j, values[4], hash, 16, true) ||
+       memcmp(hash, h->sessions[e->session].controller, 16) ||
+       _hex(&j, values[5], hash, 16, true) ||
+       _hex(&j, values[15], hash, 32, false) || _zero(hash, 32) ||
+       hfs9p_json_u64(&j, values[6], &number) ||
+       number != e->native_cell ||
+       hfs9p_json_u64(&j, values[11], &number) ||
+       number != e->guest_cell ||
+       hfs9p_json_u64(&j, values[14], &number) || number != 1 ||
+       _hex(&j, values[7], hash, 32, false) ||
+       memcmp(hash, e->native_hash, 32) ||
+       _hex(&j, values[12], hash, 32, false) ||
+       memcmp(hash, e->guest_hash, 32))
+      return (EINVAL);
+   Hfs9pSession *s = &h->sessions[e->session];
+   Hfs9pToken scope = j.tokens[values[2]];
+   if (scope.end - scope.start != s->length ||
+       memcmp(j.bytes + scope.start, s->context, s->length))
+      return (EACCES);
+   const char *const endpoint_keys[] = {"fuse_session", "command_node",
+      "result_node", "recall_node"};
+   uint32_t endpoint[4];
+   if (_fields(&j, values[3], endpoint_keys, 4, endpoint) ||
+       _hex(&j, endpoint[0], hash, 16, true) ||
+       memcmp(hash, h->endpoint.session, 16))
+      return (EINVAL);
+   for (unsigned i = 0; i < 3; i++) {
+      if (hfs9p_json_u64(&j, endpoint[i + 1], &number) ||
+          number != h->endpoint.node[i])
+         return (EINVAL);
+   }
+   for (unsigned i = 0; i < 5; i++) {
+      if (!_same_token(e->guest, original[i], j.bytes,
+          j.tokens[evidence[i]]))
+         return (EINVAL);
+      if (i != 1 && !_same_token(e->guest, original[i], j.bytes,
+          j.tokens[p[i ? i - 1 : 0]]))
+         return (EINVAL);
+   }
+   if (!_same_token(j.bytes, j.tokens[p[4]], j.bytes,
+       j.tokens[evidence[5]]) ||
+       _terminal_base(j.bytes, j.length, j.tokens[verification], base) ||
+       _hex(&j, values[8], hash, 32, false) || memcmp(hash, base, 32))
+      return (EINVAL);
+   uint8_t guest_base_expected[32];
+   if (_hex(&j, values[13], guest_base_expected, 32, false))
+      return (EINVAL);
+   j.bytes = e->response_guest;
+   j.length = e->response_total;
+   if (hfs9p_json_parse(&j) ||
+       hfs9p_json_key(&j, 0, "verification", &verification) ||
+       _terminal_base(j.bytes, j.length, j.tokens[verification], base) ||
+       memcmp(base, guest_base_expected, 32) || _translation_matches(h, e))
+      return (EINVAL);
+   Hfs9pTerminalOld actual;
+   return (_mapping_donor(h, e, &actual));
+}
+
+/* Read-only validation of the complete pre/post owner cut. Old records remain
+ * inert commitments after deletion; decoding them never enrolls a controller. */
+static int
+_terminal_records(Hfs9p *h) {
+   for (unsigned si = 0; si < h->session_count; si++) {
+      Hfs9pSession *s = &h->sessions[si];
+      unsigned terminals = 0;
+      if ((s->features == 32767u) == _zero(s->controller, 16) ||
+          (s->features == 32767u) != (s->terminal_package != NULL) ||
+          _terminal_usage(h, si) > sizeof(Hfs9pTerminalPackage))
+         return (EINVAL);
+      for (unsigned i = 0; i < HFS9P_ENTRIES; i++) {
+         Hfs9pEntry *e = &h->entries[i];
+         if (!e->guest || e->session != si)
+            continue;
+         Hfs9pTerminalPackage *package = s->terminal_package;
+         if (e->terminal_funded && (!package ||
+             e->guest != package->guest || e->total > sizeof(package->guest) ||
+             (e->native && e->native != package->native) ||
+             e->native_total > sizeof(package->native) ||
+             (e->response_guest && e->response_guest != package->response_guest) ||
+             e->response_total > sizeof(package->response_guest) ||
+             (e->response_native && e->response_native != package->response_native) ||
+             e->native_response_total > sizeof(package->response_native) ||
+             (e->terminal_state && e->terminal_state != &package->state)))
+            return (EINVAL);
+         Hfs9pJson j = {e->guest, e->total, h->tokens, 0};
+         uint32_t op;
+         if (e->complete && (hfs9p_json_parse(&j) ||
+             hfs9p_json_key(&j, 0, "op", &op) ||
+             !!hfs9p_json_equal(&j, op, "SESSION_RETIRE") != e->terminal))
+            return (EINVAL);
+         if (!e->terminal) {
+            if (e->terminal_state)
+               return (EINVAL);
+            continue;
+         }
+         terminals++;
+         if (s->minor != 4 || s->features != 32767u || !e->terminal_funded ||
+             !e->complete || e->release || e->hello || e->wait || e->polls ||
+             e->poll_count || e->guest_watermark >= e->guest_cell ||
+             s->high != e->guest_cell)
+            return (EINVAL);
+         bool staged = !e->native && !e->native_total && !e->native_cell &&
+             !e->issued && !e->uncertain && !e->responded &&
+             !s->terminal_phase && h->pending != (int)i;
+         Hfs9pTerminal *state = e->terminal_state;
+         if (!staged && (!state || !e->native || !e->native_cell ||
+             !s->terminal_phase || s->terminal_guest != e->guest_cell ||
+             s->terminal_native != e->native_cell ||
+             (s->terminal_phase == 3 && (!e->issued || !e->responded)) ||
+             (!e->issued && h->pending != (int)i)))
+            return (EINVAL);
+         const char *const names[] = {"cell", "context", "op", "payload",
+            "reclaim", "protocol", "delegation"};
+         const char *const keys[] = {"retirement_id", "credentials",
+            "guest_through", "observer_revision", "closure_hash", "settled_cells"};
+         const char *const ack_keys[] = {"cell", "response_hash"};
+         uint32_t v[7], p[6], a[2];
+         Hfs9pToken original[7];
+         uint64_t number, cells[80];
+         uint8_t hash[32], hashes[80][32];
+         unsigned count = 0;
+         uint64_t funding_cell = 0;
+         if (hfs9p_json_parse(&j) || _fields(&j, 0, names, 7, v) ||
+             !hfs9p_json_equal(&j, v[2], "SESSION_RETIRE") ||
+             j.tokens[v[6]].type != 'n' ||
+             hfs9p_json_u64(&j, v[0], &number) || number != e->guest_cell ||
+             _protocol_body(&j, v[5], 4, 32767u) ||
+             _fields(&j, v[3], keys, 6, p) ||
+             _hex(&j, p[0], hash, 16, true) || _credentials(&j, p[1]) ||
+             hfs9p_json_u64(&j, p[2], &number) || number != e->guest_watermark ||
+             hfs9p_json_u64(&j, p[3], &number) || !number ||
+             _hex(&j, p[4], hash, 32, false) ||
+             j.tokens[p[5]].type != '[' || j.tokens[p[5]].count > 79)
+            return (EINVAL);
+         Hfs9pToken manifest = j.tokens[p[5]];
+         _hash(j.bytes + manifest.start, manifest.end - manifest.start, hash);
+         if (state && memcmp(hash, state->settled_hash, 32))
+            return (EINVAL);
+         uint32_t token = p[5] + 1;
+         for (unsigned k = 0; k < manifest.count; k++) {
+            if (_fields(&j, token, ack_keys, 2, a) ||
+                hfs9p_json_u64(&j, a[0], &cells[count]) ||
+                !cells[count] || cells[count] > e->guest_watermark ||
+                (count && cells[count] <= cells[count - 1]) ||
+                _hex(&j, a[1], hashes[count], 32, false))
+               return (EINVAL);
+            count++;
+            token = j.tokens[token].next;
+         }
+         if (j.tokens[v[4]].type != 'n') {
+            if (_fields(&j, v[4], ack_keys, 2, a) ||
+                hfs9p_json_u64(&j, a[0], &funding_cell) ||
+                !funding_cell || funding_cell > e->guest_watermark ||
+                _hex(&j, a[1], hashes[count], 32, false))
+               return (EINVAL);
+            cells[count++] = funding_cell;
+            for (unsigned k = count - 1; k && cells[k] < cells[k - 1]; k--) {
+               uint64_t swap = cells[k];
+               cells[k] = cells[k - 1];
+               cells[k - 1] = swap;
+               memcpy(hash, hashes[k], 32);
+               memcpy(hashes[k], hashes[k - 1], 32);
+               memcpy(hashes[k - 1], hash, 32);
+            }
+            for (unsigned k = 1; k < count; k++) {
+               if (cells[k] == cells[k - 1])
+                  return (EINVAL);
+            }
+         } else if (count || !e->control || e->donor >= 0) {
+            return (EINVAL);
+         }
+         if (!s->hello && (count || e->guest_watermark))
+            return (EINVAL);
+         for (unsigned k = 0; k < 7; k++)
+            original[k] = j.tokens[v[k]];
+         if (original[1].end - original[1].start != s->length ||
+             memcmp(e->guest + original[1].start, s->context, s->length))
+            return (EINVAL);
+         if (staged && !state) {
+            if (_terminal_manifest(h, &j, p[5], e, false))
+               return (EINVAL);
+            continue;
+         }
+         if (!state || state->count != count ||
+             state->ordinary + state->control != count ||
+             state->ordinary > 64 || state->control > 16 ||
+             (state->removed != (s->terminal_phase == 3)))
+            return (EINVAL);
+         unsigned ordinary = 0, control = 0, funding = 255;
+         for (unsigned k = 0; k < count; k++) {
+            Hfs9pTerminalOld *record = &state->old[k];
+            if (record->entry >= HFS9P_ENTRIES ||
+                record->guest_cell != cells[k] || !record->native_cell ||
+                record->native_cell > h->high ||
+                (!staged && record->native_cell >= e->native_cell) ||
+                memcmp(record->response_guest_hash, hashes[k], 32) ||
+                _zero(record->guest_hash, 32) || _zero(record->native_hash, 32) ||
+                _zero(record->mapping_hash, 32))
+               return (EINVAL);
+            for (unsigned q = 0; q < k; q++) {
+               if (state->old[q].native_cell == record->native_cell ||
+                   state->old[q].entry == record->entry)
+                  return (EINVAL);
+            }
+            if (record->guest_cell == funding_cell)
+               funding = k;
+            ordinary += !record->control;
+            control += record->control;
+            if (!state->removed) {
+               Hfs9pEntry *old = &h->entries[record->entry];
+               Hfs9pTerminalOld actual = {0};
+               if (!old->guest || old->session != si || old->terminal ||
+                   old->control != record->control ||
+                   _mapping_donor(h, old, &actual) ||
+                   actual.guest_cell != record->guest_cell ||
+                   actual.native_cell != record->native_cell ||
+                   memcmp(actual.guest_hash, record->guest_hash, 32) ||
+                   memcmp(actual.native_hash, record->native_hash, 32) ||
+                   memcmp(actual.mapping_hash, record->mapping_hash, 32) ||
+                   memcmp(actual.response_guest_hash, record->response_guest_hash, 32) ||
+                   memcmp(actual.response_native_hash, record->response_native_hash, 32))
+                  return (EINVAL);
+            }
+         }
+         if (ordinary != state->ordinary || control != state->control ||
+             state->funding != funding ||
+             (count && (funding == 255 ||
+              e->control != state->old[funding].control)) ||
+             (state->removed && e->donor >= 0) ||
+             (!state->removed && count &&
+              e->donor != state->old[funding].entry))
+            return (EINVAL);
+         for (unsigned k = 0; k < HFS9P_ENTRIES; k++) {
+            Hfs9pEntry *old = &h->entries[k];
+            if (!old->guest || old == e || old->session != si)
+               continue;
+            bool found = false;
+            for (unsigned q = 0; q < count; q++)
+               found |= state->old[q].entry == k;
+            if (state->removed || !found)
+               return (EINVAL);
+         }
+         if (staged)
+            continue;
+         j.bytes = e->native;
+         j.length = e->native_total;
+         if (hfs9p_json_parse(&j) || _fields(&j, 0, names, 7, v) ||
+             hfs9p_json_u64(&j, v[0], &number) || number != e->native_cell)
+            return (EINVAL);
+         for (unsigned k = 1; k <= 5; k++) {
+            if (k != 4 && !_same_token(e->guest, original[k], j.bytes,
+                j.tokens[v[k]]))
+               return (EINVAL);
+         }
+         const char *const delegation[] = {"guest_cell", "guest_op",
+            "guest_reclaim", "poll_index", "version"};
+         if (_fields(&j, v[6], delegation, 5, p) ||
+             hfs9p_json_u64(&j, p[0], &number) || number != e->guest_cell ||
+             !_same_token(e->guest, original[2], j.bytes, j.tokens[p[1]]) ||
+             !_same_token(e->guest, original[4], j.bytes, j.tokens[p[2]]) ||
+             hfs9p_json_u64(&j, p[3], &number) || number ||
+             !hfs9p_json_equal(&j, p[4], "homelabfs-native-delegation/1"))
+            return (EINVAL);
+         if (funding == 255) {
+            if (j.tokens[v[4]].type != 'n')
+               return (EINVAL);
+         } else if (_fields(&j, v[4], ack_keys, 2, a) ||
+             hfs9p_json_u64(&j, a[0], &number) ||
+             number != state->old[funding].native_cell ||
+             _hex(&j, a[1], hash, 32, false) ||
+             memcmp(hash, state->old[funding].response_native_hash, 32)) {
+            return (EINVAL);
+         }
+         if (e->responded && _terminal_response(h, e))
+            return (EINVAL);
+      }
+      if (terminals > 1 || (s->terminal_phase && terminals != 1) ||
+          (!s->terminal_phase && (s->terminal_guest || s->terminal_native)) ||
+          (s->terminal_phase != 0 && s->terminal_phase != 1 &&
+           s->terminal_phase != 3))
+         return (EINVAL);
+   }
+   return (0);
+}
+
+static int
+_terminal_final(Hfs9p *h, Hfs9pEntry *e) {
+   Hfs9pSession *s = &h->sessions[e->session];
+   if (!e->terminal || !e->issued || !e->responded ||
+       s->features != 32767u || s->terminal_guest != e->guest_cell ||
+       s->terminal_native != e->native_cell ||
+       (s->terminal_phase != 1 && s->terminal_phase != 3))
+      return (EACCES);
+   if (s->terminal_phase == 3)
+      return (0);
+   int error = _terminal_response(h, e);
+   if (error)
+      return (error);
+   Hfs9pTerminal *state = e->terminal_state;
+   uint8_t *ledger = NULL;
+   size_t length = 0;
+   /* Encode the complete post-cut without mutating a single precommit owner. */
+   error = _snapshot_cut(h, &ledger, &length, e);
+   if (!error)
+      error = h->verifier.protect_cb(h->verifier.arg, ledger, length);
+   free(ledger);
+   if (error) {
+      h->revoked = true;
+      return (error);
+   }
+   for (unsigned k = 0; k < state->count; k++)
+      _entry_clear(&h->entries[state->old[k].entry]);
+   if (state->count) {
+      h->ordinary = h->ordinary - state->ordinary + !e->control;
+      h->control = h->control - state->control + e->control;
+   }
+   state->removed = true;
+   e->donor = -1;
+   s->terminal_phase = 3;
+   return (error);
 }
 
 static bool
@@ -1282,6 +2239,9 @@ typedef struct {
 
 static bool
 _owns_credit(const Hfs9pEntry *e) {
+   if (e->terminal_state && e->terminal_state->count &&
+       !e->terminal_state->removed)
+      return (false);
    return (e->issued || (e->wait && e->polls));
 }
 
@@ -1352,6 +2312,17 @@ _send(Hfs9p *h, unsigned bound_session, uint16_t tag,
       }
    }
    if (!e) {
+      bool terminal_input = false;
+      Hfs9pSession *scope = &h->sessions[session];
+      if (scope->features == 32767u && !offset &&
+          length == HFS9P_HEADER + total && total <= HFS9P_TERMINAL_GUEST) {
+         terminal_input = _terminal_input(h, session, frame, total);
+      }
+      if (h->sessions[session].terminal_phase)
+         return (EACCES);
+      for (unsigned i = 0; i < HFS9P_ENTRIES; i++)
+         if (h->entries[i].guest && h->entries[i].session == session && h->entries[i].terminal)
+            return (EACCES);
       if (_seen(&h->sessions[session], cell))
          return (ESTALE);
       if (_account(h, &accounting))
@@ -1361,15 +2332,23 @@ _send(Hfs9p *h, unsigned bound_session, uint16_t tag,
           (h->sessions[session].minor && tag < 65533 &&
           accounting.per_session_ordinary[session] >= 12) ||
           (accounting.ordinary_candidates >= 16 && tag < 65533) ||
-          !_memory(h, total, tag >= 65533))
+          (!terminal_input && !_memory(h, total, tag >= 65533)))
          return (ENOSPC);
       e = &h->entries[free_index];
-      e->guest = calloc(1, total);
-      if (!e->guest)
-         return (ENOMEM);
+      if (terminal_input) {
+         if (!scope->terminal_package || _terminal_usage(h, session))
+            return (EACCES);
+         e->terminal_funded = true;
+         e->guest = scope->terminal_package->guest;
+      } else {
+         e->guest = calloc(1, total);
+         if (!e->guest)
+            return (ENOMEM);
+      }
       e->total = total;
       e->assembly_control = tag >= 65533;
       e->guest_cell = cell;
+      e->guest_watermark = h->sessions[session].high;
       e->session = (uint8_t)session;
       e->minor = h->sessions[session].minor;
       memcpy(e->guest_hash, frame + 56, 32);
@@ -1399,13 +2378,17 @@ _send(Hfs9p *h, unsigned bound_session, uint16_t tag,
       uint8_t digest[32];
       _hash(e->guest, total, digest);
       int error = memcmp(digest, e->guest_hash, 32) ? EINVAL : _command(h, e);
-      if (error)
+      if (error) {
+         e->terminal = false; /* No complete candidate/fence was accepted. */
          return (error);
+      }
       if ((tag == 65534 && !e->wait) ||
-          (tag == 65533 && !e->control && !e->hello) ||
+          (tag == 65533 && !e->control && !e->hello && !e->terminal) ||
           (e->wait && tag != 65534) ||
-          (e->assembly_control && !e->control && !e->hello))
+          (e->assembly_control && !e->control && !e->hello && !e->terminal)) {
+         e->terminal = false;
          return (EINVAL);
+      }
       e->complete = true;
    }
    int error = _forward(h, e);
@@ -1478,6 +2461,8 @@ hfs9p_exchange(Hfs9pConnection *connection, const uint8_t *request, size_t lengt
     * the endpoint allocator. It changes no native/claim/session authority and
     * must remain usable while the endpoint polling worker owns its mutex. */
    if (request[4] == 100) {
+      if (atomic_load(&h->sessions[connection->session].terminal_phase))
+         return (EACCES);
       const char *version = connection->minor == 4 ? "9P2000.L.hfs1.4" :
           connection->minor == 3 ? "9P2000.L.hfs1.3" :
           connection->minor == 2 ? "9P2000.L.hfs1.2" : connection->minor ?
@@ -1536,6 +2521,15 @@ hfs9p_exchange(Hfs9pConnection *connection, const uint8_t *request, size_t lengt
    if (error)
       goto done;
    size_t body_length = 0;
+   Hfs9pSession *bound = &h->sessions[connection->session];
+   if (bound->terminal_phase && (bound->terminal_channel != connection ||
+       cell != bound->terminal_guest || channel == 3)) {
+      error = EACCES;
+      goto encode;
+   }
+   /* Bind before SEND can protect a terminal fence; never restore this pointer. */
+   if (!bound->terminal_phase)
+      bound->terminal_channel = connection;
    if (method == 1 && channel == 1 && length >= 21 + HFS9P_HEADER &&
        _get(request + 21 + 48, 8) == cell &&
        _get(request + 21 + 20, 4) / HFS9P_CHUNK == chunk) {
@@ -1547,6 +2541,7 @@ hfs9p_exchange(Hfs9pConnection *connection, const uint8_t *request, size_t lengt
    } else {
       error = EINVAL;
    }
+ encode:
    reply[4] = 241;
    memcpy(reply + 5, request + 5, 2);
    if (!error) {
@@ -1582,7 +2577,7 @@ hfs9p_connection_new(Hfs9p *h, const uint8_t session[16],
       if (!memcmp(session, h->sessions[index].id, 16))
          break;
    }
-   int error = index == h->session_count ? EACCES : _verify(h);
+   int error = index == h->session_count || h->sessions[index].terminal_phase ? EACCES : _verify(h);
    if (!error) {
       *out = calloc(1, sizeof(**out));
       if (!*out) {
@@ -1739,17 +2734,30 @@ _pack_blob(Hfs9pBuffer *b, const uint8_t *p, uint32_t n) {
       _pack_bytes(b, p, n);
 }
 
+static bool
+_cut_old_entry(const Hfs9pEntry *cut, unsigned index) {
+   if (cut && cut->terminal_state) {
+      for (unsigned k = 0; k < cut->terminal_state->count; k++) {
+         if (cut->terminal_state->old[k].entry == index)
+            return (true);
+      }
+   }
+   return (false);
+}
+
 static int
-_snapshot(Hfs9p *h, uint8_t **out, size_t *length) {
+_snapshot_cut(Hfs9p *h, uint8_t **out, size_t *length, Hfs9pEntry *cut) {
    Hfs9pAccounting accounting;
-   if (_account(h, &accounting) || accounting.ordinary != h->ordinary ||
+   if (_terminal_records(h) || _account(h, &accounting) || accounting.ordinary != h->ordinary ||
        accounting.control != h->control)
       return (EINVAL);
    Hfs9pBuffer b = {0};
-   bool extension = false;
-   for (unsigned i = 0; i < h->session_count; i++)
+   bool extension = false, terminal_format = false;
+   for (unsigned i = 0; i < h->session_count; i++) {
       extension |= h->sessions[i].minor != 0;
-   _pack_bytes(&b, extension ? "H9LEDG2\0" : "H9LEDG1\0", 8);
+      terminal_format |= h->sessions[i].features == 32767u;
+   }
+   _pack_bytes(&b, terminal_format ? "H9LEDG3\0" : extension ? "H9LEDG2\0" : "H9LEDG1\0", 8);
    _pack_bytes(&b, h->endpoint.session, 16);
    for (unsigned i = 0; i < 3; i++)
       _pack(&b, h->endpoint.node[i], 8);
@@ -1769,11 +2777,24 @@ _snapshot(Hfs9p *h, uint8_t **out, size_t *length) {
       _pack(&b, s->hello, 1);
       if (extension)
          _pack(&b, s->minor, 1);
+      if (terminal_format) {
+         _pack(&b, s->features, 4);
+         _pack_bytes(&b, s->controller, 16);
+         uint32_t reserve = s->terminal_package ? sizeof(Hfs9pTerminalPackage) : 0;
+         uint32_t used = _terminal_usage(h, i);
+         _pack(&b, reserve, 4);
+         _pack(&b, used, 4);
+         _pack(&b, reserve - used, 4);
+         _pack(&b, cut && cut->session == i ? 3 : s->terminal_phase, 1);
+         _pack(&b, s->terminal_guest, 8);
+         _pack(&b, s->terminal_native, 8);
+      }
    }
    for (unsigned i = 0; i < HFS9P_ENTRIES; i++) {
       Hfs9pEntry *e = &h->entries[i];
-      _pack(&b, e->guest != NULL, 1);
-      if (!e->guest)
+      bool present = e->guest && !_cut_old_entry(cut, i);
+      _pack(&b, present, 1);
+      if (!present)
          continue;
       _pack(&b, e->guest_cell, 8);
       _pack(&b, e->native_cell, 8);
@@ -1786,9 +2807,34 @@ _snapshot(Hfs9p *h, uint8_t **out, size_t *length) {
       uint32_t bits = e->complete | e->issued << 1 | e->uncertain << 2 |
           e->responded << 3 | e->release << 4 | e->control << 5 |
           e->hello << 6 | e->wait << 7 | e->final << 8 |
-          e->assembly_control << 9;
+          e->assembly_control << 9 | e->terminal << 10 | e->terminal_funded << 11;
       _pack(&b, bits, 4);
-      _pack(&b, (uint32_t)e->donor, 4);
+      if (terminal_format) {
+         _pack(&b, e->guest_watermark, 8);
+         Hfs9pTerminal *state = e->terminal_state;
+         _pack(&b, state != NULL, 1);
+         if (state) {
+            _pack(&b, state->count, 1);
+            _pack(&b, state->funding, 1);
+            _pack(&b, state->ordinary, 1);
+            _pack(&b, state->control, 1);
+            _pack(&b, cut == e || state->removed, 1);
+            _pack_bytes(&b, state->settled_hash, 32);
+            for (unsigned k = 0; k < state->count; k++) {
+               Hfs9pTerminalOld *old = &state->old[k];
+               _pack(&b, old->guest_cell, 8);
+               _pack(&b, old->native_cell, 8);
+               _pack(&b, old->entry, 1);
+               _pack(&b, old->control, 1);
+               _pack_bytes(&b, old->guest_hash, 32);
+               _pack_bytes(&b, old->native_hash, 32);
+               _pack_bytes(&b, old->mapping_hash, 32);
+               _pack_bytes(&b, old->response_guest_hash, 32);
+               _pack_bytes(&b, old->response_native_hash, 32);
+            }
+         }
+      }
+      _pack(&b, cut == e ? UINT32_MAX : (uint32_t)e->donor, 4);
       _pack(&b, e->deadline, 8);
       _pack(&b, e->next_poll, 8);
       _pack(&b, e->poll_count, 1);
@@ -1827,6 +2873,11 @@ _snapshot(Hfs9p *h, uint8_t **out, size_t *length) {
    return (0);
 }
 
+static int
+_snapshot(Hfs9p *h, uint8_t **out, size_t *length) {
+   return (_snapshot_cut(h, out, length, NULL));
+}
+
 int
 hfs9p_snapshot(Hfs9p *h, uint8_t **out, size_t *length) {
    if (!h || !out || !length)
@@ -1860,7 +2911,8 @@ _unpack(Hfs9pBuffer *b, unsigned length) {
 }
 
 static uint8_t *
-_unpack_blob(Hfs9pBuffer *b, uint32_t *length, uint32_t max) {
+_unpack_blob_owned(Hfs9pBuffer *b, uint32_t *length, uint32_t max,
+    uint8_t *owned) {
    *length = (uint32_t)_unpack(b, 4);
    if (*length > max) {
       b->error = EINVAL;
@@ -1871,13 +2923,18 @@ _unpack_blob(Hfs9pBuffer *b, uint32_t *length, uint32_t max) {
    const uint8_t *p = _unpack_bytes(b, *length);
    if (!p)
       return (NULL);
-   uint8_t *copy = malloc(*length);
+   uint8_t *copy = owned ? owned : malloc(*length);
    if (!copy) {
       b->error = ENOMEM;
       return (NULL);
    }
    memcpy(copy, p, *length);
    return (copy);
+}
+
+static uint8_t *
+_unpack_blob(Hfs9pBuffer *b, uint32_t *length, uint32_t max) {
+   return (_unpack_blob_owned(b, length, max, NULL));
 }
 
 static void
@@ -1891,6 +2948,8 @@ _unpack_hash(Hfs9pBuffer *b, uint8_t out[32]) {
  * protected-storage and real-host-ledger verification, never their checksum. */
 static int
 _restore_bytes(Hfs9p *h, const uint8_t *bytes, size_t length) {
+   bool terminal_format = !memcmp(bytes, "H9LEDG3\0", 8);
+   uint32_t used[HFS9P_SESSIONS] = {0}, remaining[HFS9P_SESSIONS] = {0};
    Hfs9pBuffer b = {(uint8_t *)bytes, length - 32, 0, 8, 0};
    const uint8_t *session = _unpack_bytes(&b, 16);
    if (!session || memcmp(session, h->endpoint.session, 16))
@@ -1930,10 +2989,41 @@ _restore_bytes(Hfs9p *h, const uint8_t *bytes, size_t length) {
           (!s->seen_count && s->high))
          return (EINVAL);
       s->hello = _unpack(&b, 1) != 0;
-      s->minor = !memcmp(bytes, "H9LEDG2\0", 8) ?
+      s->minor = (!memcmp(bytes, "H9LEDG2\0", 8) || terminal_format) ?
           (uint8_t)_unpack(&b, 1) : 0;
       if (s->minor > 4)
          return (EINVAL);
+      s->features = s->minor == 4 ? 16383u : s->minor == 3 ? 8191u :
+          s->minor == 2 ? 4095u : s->minor == 1 ? 2047u : 255u;
+      if (terminal_format) {
+         uint32_t features = (uint32_t)_unpack(&b, 4);
+         if (features != s->features && !(s->minor == 4 && features == 32767u))
+            return (EINVAL);
+         s->features = features;
+         const uint8_t *controller = _unpack_bytes(&b, 16);
+         if (!controller)
+            return (EINVAL);
+         memcpy(s->controller, controller, 16);
+         uint32_t reserve = (uint32_t)_unpack(&b, 4);
+         used[i] = (uint32_t)_unpack(&b, 4);
+         remaining[i] = (uint32_t)_unpack(&b, 4);
+         uint32_t expected = features == 32767u ? sizeof(Hfs9pTerminalPackage) : 0;
+         if (reserve != expected || used[i] > reserve ||
+             remaining[i] != reserve - used[i])
+            return (EINVAL);
+         if (reserve) {
+            if (!_memory(h, reserve, true))
+               return (ENOSPC);
+            s->terminal_package = calloc(1, reserve);
+            if (!s->terminal_package)
+               return (ENOMEM);
+         }
+         s->terminal_phase = (uint8_t)_unpack(&b, 1);
+         s->terminal_guest = _unpack(&b, 8);
+         s->terminal_native = _unpack(&b, 8);
+         if (s->terminal_phase != 0 && s->terminal_phase != 1 && s->terminal_phase != 3)
+            return (EINVAL);
+      }
       Hfs9pJson j = {s->context, n, h->tokens, 0};
       uint8_t context_session[16];
       if (b.error || hfs9p_json_parse(&j) ||
@@ -1961,6 +3051,48 @@ _restore_bytes(Hfs9p *h, const uint8_t *bytes, size_t length) {
       e->minor = h->sessions[e->session].minor;
       e->kind = (uint8_t)_unpack(&b, 1);
       uint32_t bits = (uint32_t)_unpack(&b, 4);
+      e->terminal = bits & 1024;
+      e->terminal_funded = bits & 2048;
+      Hfs9pTerminalPackage *package = h->sessions[e->session].terminal_package;
+      if (e->terminal_funded && (!package || _terminal_usage(h, e->session)))
+         return (EINVAL);
+      if (terminal_format) {
+         e->guest_watermark = _unpack(&b, 8);
+         uint64_t present = _unpack(&b, 1);
+         if (present > 1)
+            return (EINVAL);
+         if (present) {
+            if (!e->terminal_funded || !package)
+               return (EINVAL);
+            Hfs9pTerminal *state = &package->state;
+            memset(state, 0, sizeof(*state));
+            e->terminal_state = state;
+            state->count = (uint8_t)_unpack(&b, 1);
+            state->funding = (uint8_t)_unpack(&b, 1);
+            state->ordinary = (uint8_t)_unpack(&b, 1);
+            state->control = (uint8_t)_unpack(&b, 1);
+            uint64_t removed = _unpack(&b, 1);
+            if (state->count > 80 || removed > 1)
+               return (EINVAL);
+            state->removed = removed;
+            _unpack_hash(&b, state->settled_hash);
+            for (unsigned k = 0; k < state->count; k++) {
+               Hfs9pTerminalOld *old = &state->old[k];
+               old->guest_cell = _unpack(&b, 8);
+               old->native_cell = _unpack(&b, 8);
+               old->entry = (uint8_t)_unpack(&b, 1);
+               uint64_t control = _unpack(&b, 1);
+               if (control > 1)
+                  return (EINVAL);
+               old->control = control;
+               _unpack_hash(&b, old->guest_hash);
+               _unpack_hash(&b, old->native_hash);
+               _unpack_hash(&b, old->mapping_hash);
+               _unpack_hash(&b, old->response_guest_hash);
+               _unpack_hash(&b, old->response_native_hash);
+            }
+         }
+      }
       e->complete = bits & 1;
       e->issued = bits & 2;
       e->uncertain = bits & 4;
@@ -1979,13 +3111,24 @@ _restore_bytes(Hfs9p *h, const uint8_t *bytes, size_t length) {
       _unpack_hash(&b, e->native_hash);
       _unpack_hash(&b, e->response_guest_hash);
       _unpack_hash(&b, e->response_native_hash);
-      e->guest = _unpack_blob(&b, &e->total, HFS9P_BODY);
-      e->native = _unpack_blob(&b, &e->native_total, HFS9P_BODY);
-      e->response_guest = _unpack_blob(&b, &e->response_total, HFS9P_BODY);
-      e->response_native = _unpack_blob(&b, &e->native_response_total,
-          HFS9P_BODY);
+      if (e->terminal_funded) {
+         e->guest = _unpack_blob_owned(&b, &e->total,
+             sizeof(package->guest), package->guest);
+         e->native = _unpack_blob_owned(&b, &e->native_total,
+             sizeof(package->native), package->native);
+         e->response_guest = _unpack_blob_owned(&b, &e->response_total,
+             sizeof(package->response_guest), package->response_guest);
+         e->response_native = _unpack_blob_owned(&b, &e->native_response_total,
+             sizeof(package->response_native), package->response_native);
+      } else {
+         e->guest = _unpack_blob(&b, &e->total, HFS9P_BODY);
+         e->native = _unpack_blob(&b, &e->native_total, HFS9P_BODY);
+         e->response_guest = _unpack_blob(&b, &e->response_total, HFS9P_BODY);
+         e->response_native = _unpack_blob(&b, &e->native_response_total,
+             HFS9P_BODY);
+      }
       unsigned count = (unsigned)_unpack(&b, 1);
-      if (count > 15 || e->poll_count > 16 || bits > 1023 ||
+      if (count > 15 || e->poll_count > 16 || bits > (terminal_format ? 4095u : 1023u) ||
           e->session >= h->session_count || !e->guest_cell ||
           !_seen(&h->sessions[e->session], e->guest_cell) ||
           e->native_cell > h->high + 1 || e->donor < -1 ||
@@ -2025,9 +3168,9 @@ _restore_bytes(Hfs9p *h, const uint8_t *bytes, size_t length) {
          uint8_t hash[32];
          _hash(p->response, p->response_length, hash);
          if (memcmp(hash, p->response_hash, 32) ||
-             _body_version(h, p->request, p->request_length,
-             e->minor, false) || _body_version(h, p->response,
-             p->response_length, e->minor, true))
+             _body_version_tuple(h, p->request, p->request_length,
+             e->minor, h->sessions[e->session].features, false) || _body_version_tuple(h, p->response,
+             p->response_length, e->minor, h->sessions[e->session].features, true))
             return (EINVAL);
          previous = p->cell;
       }
@@ -2037,13 +3180,13 @@ _restore_bytes(Hfs9p *h, const uint8_t *bytes, size_t length) {
       if (e->complete) {
          _hash(e->guest, e->total, hash);
          if (memcmp(hash, e->guest_hash, 32) ||
-             _body_version(h, e->guest, e->total, e->minor, false))
+             _body_version_tuple(h, e->guest, e->total, e->minor, h->sessions[e->session].features, false))
             return (EINVAL);
       }
       if (e->native) {
          _hash(e->native, e->native_total, hash);
          if (memcmp(hash, e->native_hash, 32) ||
-             _body_version(h, e->native, e->native_total, e->minor, false))
+             _body_version_tuple(h, e->native, e->native_total, e->minor, h->sessions[e->session].features, false))
             return (EINVAL);
       }
       if (e->responded) {
@@ -2051,22 +3194,29 @@ _restore_bytes(Hfs9p *h, const uint8_t *bytes, size_t length) {
             return (EINVAL);
          _hash(e->response_guest, e->response_total, hash);
          if (memcmp(hash, e->response_guest_hash, 32) ||
-             _body_version(h, e->response_guest, e->response_total,
-             e->minor, true))
+             _body_version_tuple(h, e->response_guest, e->response_total,
+             e->minor, h->sessions[e->session].features, true))
             return (EINVAL);
          _hash(e->response_native, e->native_response_total, hash);
          if (memcmp(hash, e->response_native_hash, 32) ||
-             _body_version(h, e->response_native, e->native_response_total,
-             e->minor, true))
+             _body_version_tuple(h, e->response_native, e->native_response_total,
+             e->minor, h->sessions[e->session].features, true))
             return (EINVAL);
       }
+   }
+   for (unsigned i = 0; i < h->session_count; i++) {
+      uint32_t reserve = h->sessions[i].terminal_package ? sizeof(Hfs9pTerminalPackage) : 0;
+      if (used[i] != _terminal_usage(h, i) ||
+          used[i] > reserve || remaining[i] != reserve - used[i])
+         return (EINVAL);
    }
    Hfs9pAccounting accounting;
    if (_account(h, &accounting))
       return (EINVAL);
    h->ordinary = accounting.ordinary;
    h->control = accounting.control;
-   if (b.error || b.cursor != b.length || !_memory(h, 0, true) ||
+   if (b.error || b.cursor != b.length || _terminal_records(h) ||
+       !_memory(h, 0, true) ||
        (h->pending >= 0 && !h->entries[h->pending].native))
       return (EINVAL);
    return (0);
@@ -2080,12 +3230,36 @@ _discard_recovery(Hfs9p *h) {
    for (unsigned i = 0; i < h->session_count &&
        i < HFS9P_SESSIONS; i++)
       free(h->sessions[i].context);
+   for (unsigned i = 0; i < h->session_count && i < HFS9P_SESSIONS; i++)
+      free(h->sessions[i].terminal_package);
    free(h);
+}
+
+int
+hfs9p_terminal_evidence_check(const Hfs9pEndpoint *endpoint,
+    const uint8_t *bytes, size_t length) {
+   if (!endpoint || !bytes || length < 64 ||
+       length > HFS9P_LEDGER_MAX || memcmp(bytes, "H9LEDG3\0", 8))
+      return (EINVAL);
+   uint8_t hash[32];
+   _hash(bytes, length - 32, hash);
+   if (memcmp(hash, bytes + length - 32, 32))
+      return (EINVAL);
+   Hfs9p *h = calloc(1, sizeof(*h));
+   if (!h)
+      return (ENOMEM);
+   h->endpoint = *endpoint;
+   for (unsigned i = 0; i < HFS9P_ENTRIES; i++)
+      h->entries[i].donor = -1;
+   int error = _restore_bytes(h, bytes, length);
+   _discard_recovery(h);
+   return (error);
 }
 
 int
 hfs9p_restore(Hfs9p **out, const int fd[3], const Hfs9pEndpoint *endpoint,
     Hfs9pVerifier verifier, const uint8_t *bytes, size_t length) {
+   (void)_body_version;
 #ifndef __FreeBSD__
    (void)_restore_bytes;
    (void)_discard_recovery;
@@ -2103,7 +3277,7 @@ hfs9p_restore(Hfs9p **out, const int fd[3], const Hfs9pEndpoint *endpoint,
        !verifier.verify_cb || !verifier.protect_cb ||
        (!!verifier.begin_io_cb != !!verifier.end_io_cb) ||
        (memcmp(bytes, "H9LEDG1\0", 8) &&
-       memcmp(bytes, "H9LEDG2\0", 8)))
+       memcmp(bytes, "H9LEDG2\0", 8) && memcmp(bytes, "H9LEDG3\0", 8)))
       return (EINVAL);
    *out = NULL;
    uint8_t hash[32];
@@ -2121,6 +3295,10 @@ hfs9p_restore(Hfs9p **out, const int fd[3], const Hfs9pEndpoint *endpoint,
    int error = _native_fds(fd);
    if (!error)
       error = _restore_bytes(h, bytes, length);
+   if (!error) {
+      for (unsigned i = 0; i < h->session_count; i++)
+         if (h->sessions[i].features == 32767u) error = ENOTSUP;
+   }
    if (!error)
       error = _verify(h);
    if (!error)

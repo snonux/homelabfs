@@ -18,20 +18,21 @@ static void bootstrap_failure_regression(struct fixture_session *fixture) {
  fflush(NULL);
  pid_t child=fork();assert(child>=0);
  if(!child){
-  struct hfs_session *session=&fixture->session;
+  struct hfs_session *session=fixture->session;
   struct hfs_controlled_mount *mount=hfs_controlled_mount(session);
   assert(mount&&mount->session==session&&mount->device==&fixture->device.dev);
   assert(session->next_cell==1&&!session->nr_requests&&!session->blocked&&!mount->super);
   unsigned allocation=hfs_test_alloc_call;
   hfs_test_alloc_fail=allocation+1;
-  struct hfs_buf hello={.data=(char *)hfs_protocol_text(4),.len=strlen(hfs_protocol_text(4))};
+  const char *selected=hfs_protocol_selected_text(4,session->enrollment.protocol_features);
+  struct hfs_buf hello={.data=(char *)selected,.len=strlen(selected)};
   struct hfs_json *response=NULL;
   int error=hfs_control(session,"HELLO",&hello,false,&response);
   assert(error==-ENOMEM&&!response&&hfs_test_alloc_call==allocation+1);
   assert(session->next_cell==1&&!session->nr_requests&&!session->blocked);
   assert(PTR_ERR(fixture_actual_mount_fail(session,error))==-ENOMEM);
   assert(session->retained&&session->closing&&session->blocked&&primitive_retained_modules==1);
-  assert(mount->retained&&mount->session==session&&mount->device==&fixture->device.dev&&session->client==&fixture->client);
+  assert(mount->retained&&mount->session==session&&mount->device==&fixture->device.dev&&session->client==fixture->client);
   assert(hfs_controlled_admissible(session)<0&&session->provider->retire_session(session)<0);
   struct hfs_enrollment replacement;assert(session->provider->enroll(mount->device_tag,&replacement)<0);
   _exit(0);

@@ -39,7 +39,7 @@ main(void) {
    int fd[3] = {-1, -1, -1};
    Hfs9pEndpoint ep = {{0}, {1, 2, 3}};
    ep.session[15] = 1;
-   Hfs9pVerifier verifier = {NULL, claim_cb, protect_cb, verify_cb, NULL, NULL};
+   Hfs9pVerifier verifier = {NULL, claim_cb, protect_cb, verify_cb, NULL, NULL, NULL};
    Hfs9p *endpoint = NULL;
    Hfs9pConnection *connection = NULL;
    assert(hfs9p_controller_claim("unimplemented", &connection) == EACCES);

@@ -61,6 +61,8 @@ func decodeVerificationReceipt(raw []byte, mapped bool) (VerificationReceipt, er
 }
 func validateVerificationEvidence(scope Context, kind string, v any, mapped bool) error {
 	switch kind {
+	case "SESSION_RETIRED":
+		return validateTerminalEvidence(v, mapped)
 	case "SOURCE":
 		o, err := object(v, "target", "retained_owner")
 		if err != nil || !uuid(o["retained_owner"]) || validateControlledReceiptTarget(scope, o["target"]) != nil {

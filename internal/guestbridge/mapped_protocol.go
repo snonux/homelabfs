@@ -26,8 +26,16 @@ type Delegation struct {
 // MappedProtocol is the closed original-binding successor of cleanup1.3.
 func MappedProtocol() Protocol { return Protocol{5, 1, 4, 16383, 65536, 3, 0} }
 
+// TerminalProtocol explicitly selects authenticated terminal session ownership.
+// The existing mapped tuple remains unchanged and cannot issue this extension.
+func TerminalProtocol() Protocol { return Protocol{5, 1, 4, 32767, 65536, 3, 0} }
+
+// IsMappedProtocol recognizes only the two exact original-binding tuples.
+// The complete selected tuple must additionally match signed enrollment.
+func IsMappedProtocol(p Protocol) bool { return p == MappedProtocol() || p == TerminalProtocol() }
+
 // HasCleanupProtocol reports tuples implementing the complete parent-funded cleanup contract.
-func HasCleanupProtocol(p Protocol) bool { return p == CleanupProtocol() || p == MappedProtocol() }
+func HasCleanupProtocol(p Protocol) bool { return p == CleanupProtocol() || IsMappedProtocol(p) }
 
 // MarshalJSON preserves the closed legacy envelopes and requires explicit null
 // delegation in the new guest-original envelope.

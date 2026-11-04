@@ -312,7 +312,7 @@ func guestAuthorization(a viewcontrol.Authorization, operator ed25519.PublicKey)
 	return raw, nil
 }
 func guestDomainValid(d controlledvalidation.Enrollment) error {
-	if !d.Profile.Disposable || !guestProfileName(d.Profile.Name) || !d.Ledger.Valid() || !d.Journal.Owner.Valid() || !d.Journal.Incarnation.Valid() || !d.Journal.Stream.Volume.Valid() || !d.Journal.Stream.Generation.Valid() || !d.Journal.Stream.Configuration.Valid() || d.Journal.Stream.Epoch == 0 || d.Journal.Stream.Kind < 1 || d.Journal.Stream.Kind > 2 || d.Protocol == nil || *d.Protocol != guestbridge.MappedProtocol() || len(d.HostKey) != 32 || len(d.GuestKey) != 32 || bytes.Equal(d.HostKey, d.GuestKey) {
+	if !d.Profile.Disposable || !guestProfileName(d.Profile.Name) || !d.Ledger.Valid() || !d.Journal.Owner.Valid() || !d.Journal.Incarnation.Valid() || !d.Journal.Stream.Volume.Valid() || !d.Journal.Stream.Generation.Valid() || !d.Journal.Stream.Configuration.Valid() || d.Journal.Stream.Epoch == 0 || d.Journal.Stream.Kind < 1 || d.Journal.Stream.Kind > 2 || d.Protocol == nil || !guestbridge.IsMappedProtocol(*d.Protocol) || len(d.HostKey) != 32 || len(d.GuestKey) != 32 || bytes.Equal(d.HostKey, d.GuestKey) {
 		return fsapi.Invalid
 	}
 	raw, err := json.Marshal(d.Scope)

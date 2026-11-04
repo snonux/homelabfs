@@ -46,7 +46,7 @@ func (p *Provider) CleanupReaddir(ctx context.Context, scope guestbridge.Context
 	p.execution.Lock()
 	defer p.execution.Unlock()
 	var receipt json.RawMessage
-	err = p.db.Update(func(tx *bolt.Tx) error {
+	err = p.updateOpen(func(tx *bolt.Tx) error {
 		parent, exists, err := p.load(tx, request.Claim)
 		if err != nil {
 			return err

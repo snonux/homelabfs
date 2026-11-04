@@ -24,7 +24,7 @@ func (p *Provider) Allocate(ctx context.Context, scope guestbridge.Context, clai
 }
 
 func (p *Provider) allocate(claim guestbridge.Claim, original *guestbridge.Binding) error {
-	return p.db.Update(func(tx *bolt.Tx) error {
+	return p.updateOpen(func(tx *bolt.Tx) error {
 		if p.bucket(tx, "earmarks").Get(claimKey(claim)) != nil {
 			return fsapi.Permission
 		}
@@ -125,7 +125,7 @@ func (p *Provider) Reserve(ctx context.Context, b guestbridge.Binding) (guestbri
 		return guestbridge.ClaimState{}, fsapi.Invalid
 	}
 	var out guestbridge.ClaimState
-	err = p.db.Update(func(tx *bolt.Tx) error {
+	err = p.updateOpen(func(tx *bolt.Tx) error {
 		ps, err := p.principal(tx, b.Call.Claim)
 		if err != nil {
 			return err
@@ -217,7 +217,7 @@ func (p *Provider) Cancel(ctx context.Context, scope guestbridge.Context, claim 
 	}
 	p.execution.Lock()
 	defer p.execution.Unlock()
-	err := p.db.Update(func(tx *bolt.Tx) error {
+	err := p.updateOpen(func(tx *bolt.Tx) error {
 		if raw := p.bucket(tx, "earmarks").Get(claimKey(claim)); raw != nil {
 			var earmark Earmark
 			if err := json.Unmarshal(raw, &earmark); err != nil {
@@ -259,7 +259,7 @@ func (p *Provider) ResolveGap(ctx context.Context, scope guestbridge.Context, cl
 	p.execution.Lock()
 	defer p.execution.Unlock()
 	var proof string
-	err := p.db.Update(func(tx *bolt.Tx) error {
+	err := p.updateOpen(func(tx *bolt.Tx) error {
 		if raw := p.bucket(tx, "earmarks").Get(claimKey(claim)); raw != nil {
 			var earmark Earmark
 			if err := json.Unmarshal(raw, &earmark); err != nil {
@@ -311,7 +311,7 @@ func (p *Provider) Retire(ctx context.Context, scope guestbridge.Context, raw js
 	var proof any
 	var receipt []byte
 	receiptKey := []byte(hash(raw))
-	err := p.db.Update(func(tx *bolt.Tx) error {
+	err := p.updateOpen(func(tx *bolt.Tx) error {
 		if old := p.bucket(tx, "retirements").Get(receiptKey); old != nil {
 			receipt = bytes.Clone(old)
 			return nil

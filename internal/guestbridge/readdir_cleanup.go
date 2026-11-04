@@ -85,7 +85,7 @@ func PrepareReaddirClosure(b Binding, result, snapshot json.RawMessage, protocol
 		return nil, fsapi.Permission
 	}
 	commandEnvelope := map[string]any{"cell": MaxCell, "context": b.Context, "op": "READDIR_CLEANUP", "payload": json.RawMessage(raw), "protocol": protocol, "reclaim": map[string]any{"cell": MaxCell, "response_hash": digest(raw)}}
-	if protocol == MappedProtocol() {
+	if IsMappedProtocol(protocol) {
 		commandEnvelope["delegation"] = &Delegation{Version: DelegationVersion, GuestCell: MaxCell, GuestOp: "READDIR_CLEANUP", GuestReclaim: &Ack{Cell: MaxCell, ResponseHash: digest(raw)}}
 	}
 	envelopes := []any{

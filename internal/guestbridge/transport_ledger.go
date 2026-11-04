@@ -48,6 +48,7 @@ type ProtectedTransportState struct {
 	Scopes            []Context
 	Protocols         []*Protocol
 	High              uint64
+	Terminal          map[string]uint64 `json:",omitempty"`
 	GuestHigh         map[string]uint64
 	GuestRecent       []GuestIssuance
 	Cells             []uint64
@@ -74,6 +75,7 @@ type ProtectedTransportCell struct {
 	Unread         int
 	ResultKind     uint16
 	GuestWatermark uint64
+	Terminal       *ProtectedTerminal `json:",omitempty"`
 	Mapping        *ProtectedMapping
 }
 
@@ -282,10 +284,10 @@ func protectedCell(c *cell) ProtectedTransportCell {
 	// The complete body plus the chunk bitmap owns these bytes; keeping the first
 	// frame's borrowed Data slice would duplicate a callback buffer and alias it.
 	h.Data = nil
-	return ProtectedTransportCell{Header: h, Body: c.body, Chunks: c.chunks, Observations: c.observations, Count: c.count, Control: c.reservation.Control, Command: c.command, Native: c.native, JobPhase: c.jobPhase, Response: c.response, Wire: c.wire, Seen: c.seen, Unread: c.unread, ResultKind: c.resultKind, GuestWatermark: c.guestWatermark, Mapping: c.mapping}
+	return ProtectedTransportCell{Header: h, Body: c.body, Chunks: c.chunks, Observations: c.observations, Count: c.count, Control: c.reservation.Control, Command: c.command, Native: c.native, JobPhase: c.jobPhase, Response: c.response, Wire: c.wire, Seen: c.seen, Unread: c.unread, ResultKind: c.resultKind, GuestWatermark: c.guestWatermark, Mapping: c.mapping, Terminal: c.terminal}
 }
 func (t *Transport) protectedIndex() ProtectedTransportState {
-	s := ProtectedTransportState{Version: 1, Endpoint: t.Endpoint(), Controller: t.service.controller, High: t.high, GuestHigh: t.guestHigh, GuestRecent: t.guestRecent, Ordinary: t.ordinary, Control: t.control, Workspace: t.workspace != nil, Cells: make([]uint64, 0, len(t.cells))}
+	s := ProtectedTransportState{Version: 1, Endpoint: t.Endpoint(), Controller: t.service.controller, High: t.high, Terminal: t.terminal, GuestHigh: t.guestHigh, GuestRecent: t.guestRecent, Ordinary: t.ordinary, Control: t.control, Workspace: t.workspace != nil, Cells: make([]uint64, 0, len(t.cells))}
 	for id := range t.cells {
 		s.Cells = append(s.Cells, id)
 	}
@@ -330,7 +332,7 @@ func (l *transportLedger) protect(t *Transport, ids []uint64) error {
 	if info.Size() >= transportFileCeiling {
 		return fsapi.NoSpace
 	}
-	if len(ids) > 2 {
+	if len(ids) > 2 && !t.terminalDeletionDelta(ids) {
 		return fsapi.Invalid
 	}
 	if len(t.guestRecent)+t.mappingIncomplete() > mappingRecentLimit {
@@ -420,13 +422,27 @@ func validateTransportIndex(s ProtectedTransportState) error {
 	if s.Version != 1 || !validEndpoint(s.Endpoint) || !s.Controller.Valid() || s.High > MaxCell || len(s.Cells) > 80 || len(s.Scopes) == 0 || len(s.Scopes) > 64 || len(s.Protocols) != len(s.Scopes) || s.Ordinary < 0 || s.Ordinary > 64 || s.Control < 0 || s.Control > 16 || s.Ordinary+s.Control != len(s.Cells) {
 		return fsapi.Stale
 	}
+	if len(s.Terminal) > 64 {
+		return fsapi.Stale
+	}
+	for session, id := range s.Terminal {
+		known := false
+		for i, scope := range s.Scopes {
+			if scope.Session == session && s.Protocols[i] != nil && *s.Protocols[i] == TerminalProtocol() {
+				known = true
+			}
+		}
+		if !known || id == 0 || !slices.Contains(s.Cells, id) {
+			return fsapi.Stale
+		}
+	}
 	if len(s.GuestHigh) > 64 || len(s.GuestRecent) > mappingRecentLimit {
 		return fsapi.Stale
 	}
 	for session, high := range s.GuestHigh {
 		known := false
 		for i, scope := range s.Scopes {
-			if scope.Session == session && s.Protocols[i] != nil && *s.Protocols[i] == MappedProtocol() {
+			if scope.Session == session && s.Protocols[i] != nil && IsMappedProtocol(*s.Protocols[i]) {
 				known = true
 			}
 		}
@@ -452,7 +468,7 @@ func validateTransportIndex(s ProtectedTransportState) error {
 		if scope.FuseSession != s.Endpoint.FuseSession {
 			return fsapi.Stale
 		}
-		if p := s.Protocols[i]; p != nil && *p != ViewProtocol() && *p != ControlledProtocol() && *p != CleanupProtocol() && *p != MappedProtocol() {
+		if p := s.Protocols[i]; p != nil && *p != ViewProtocol() && *p != ControlledProtocol() && *p != CleanupProtocol() && !IsMappedProtocol(*p) {
 			return fsapi.Stale
 		}
 	}
@@ -644,6 +660,9 @@ func InspectTransport(root string, visit func(ProtectedTransportCell) error) (st
 }
 
 func validateTransportCellBinding(s ProtectedTransportState, c ProtectedTransportCell, workspace bool) error {
+	if err := validateTerminalCell(s, c, workspace); err != nil {
+		return err
+	}
 	if err := validateProtectedCell(c, workspace); err != nil {
 		return err
 	}

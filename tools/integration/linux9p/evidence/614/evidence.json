@@ -1,0 +1,295 @@
+{
+  "task": "614",
+  "base": "f438e9c",
+  "status": "Reviewed implementation candidate: fresh R1 and narrow final R2 completed, all blockers resolved. Final merged integration/static/full/FreeBSD gates pending; do not mark complete from this file.",
+  "source": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/source",
+  "owned_source_files": 55,
+  "manifest_sha256": "ea87e0c88ed0c7e7b3133c05b59f4ac408824dee3e651c3dd71ff66d4345322b",
+  "checks": {
+    "kernel19": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/kernel-dirty-closure-final/receipt.json",
+      "sha256": "03eaa7b354680de417592f3ea778a4719ed374a6054b8a3973436c66d8e5335e",
+      "exit": 0,
+      "error": null,
+      "seconds": 2.472018685999956,
+      "peakrss": 144281600,
+      "peakdisk": 1110454272,
+      "source_changes": []
+    },
+    "source_export": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/source-export-final/receipt.json",
+      "sha256": "c516074a38271f294d7d4ad6f48bfc076eae0ed1da018fc477c479537081c9b2",
+      "exit": 0,
+      "error": null,
+      "seconds": 3.7901314380001168,
+      "peakrss": 84406272,
+      "peakdisk": 1131687936,
+      "source_changes": []
+    },
+    "source_reproduction": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/source-reproduce-final/receipt.json",
+      "sha256": "9cb63142f9d14c8bbd07d40abe94f2f3185a3882e36af18f6e29d9a8c1af4020",
+      "exit": 0,
+      "error": null,
+      "seconds": 142.27913110300005,
+      "peakrss": 254943232,
+      "peakdisk": 2628141056,
+      "source_changes": []
+    },
+    "lib9p_sanitized_pressure": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/lib9p-precharge-final/receipt.json",
+      "sha256": "37d5cb18cbabbc64c115ba8f45c704e88c2f076a69b8257f35d064b593488406",
+      "exit": 0,
+      "error": null,
+      "seconds": 361.2138268859999,
+      "peakrss": 799354880,
+      "peakdisk": 927105024,
+      "source_changes": [],
+      "scope": "Sanitized actual exporter/ledger, invalid-signature native transport fixtures; no terminal signature or physical authority."
+    },
+    "host_all80": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/host-settled-owners-first/receipt.json",
+      "sha256": "dc7fa285465292d908410cb65996d83c96b07509bcf1a0d9ceb065d0482082b7",
+      "exit": 0,
+      "error": null,
+      "seconds": 27.25355907098856,
+      "peakrss": 153006080,
+      "peakdisk": 561840128,
+      "source_changes": [],
+      "scope": "Host/C8 ownership (and actual exporter for exporter_host_all80) with explicitly substituted OS/kernel observer; no Linux physical/private Received proof."
+    },
+    "host_malformed_oldcuts": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/host-terminal-malformed-first/receipt.json",
+      "sha256": "0f5351382da490d88e59ff8c9194330b6efdad5a2b1012453e5ae68d7390d1dd",
+      "exit": 0,
+      "error": null,
+      "seconds": 18.74595031098579,
+      "peakrss": 162537472,
+      "peakdisk": 677142528,
+      "source_changes": []
+    },
+    "host_atomic_commit": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/host-terminal-atomic-empty-first/receipt.json",
+      "sha256": "a9e333a08bfab1c7974b374c4e483a9d61f5b42cd081cfa21f8b1e62cc2e314f",
+      "exit": 1,
+      "error": null,
+      "seconds": 34.344285394006874,
+      "peakrss": 172318720,
+      "peakdisk": 930492416,
+      "source_changes": [],
+      "scope": "Overall historical batch failed the empty-group test fixture; only actual bbolt atomic before/after-commit regressions passed. Corrected empty-group proof is recorded separately. This is not an overall PASS."
+    },
+    "host_empty_groups": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/host-terminal-empty-second/receipt.json",
+      "sha256": "de3b549fa95b83438bcddb4de146dfe638ad19e04956d37ca64c1eec31cde5b7",
+      "exit": 0,
+      "error": null,
+      "seconds": 13.911657307995483,
+      "peakrss": 174583808,
+      "peakdisk": 919138304,
+      "source_changes": []
+    },
+    "host_bridge_concurrency": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/host-terminal-bridge-concurrency-second/receipt.json",
+      "sha256": "0fb331c2e602211d4281cf8a245b63ebd1319615ac3018a199116880d5685a30",
+      "exit": 0,
+      "error": null,
+      "seconds": 4.914166098999999,
+      "peakrss": 143421440,
+      "peakdisk": 862507008,
+      "source_changes": []
+    },
+    "host_consumed_earmark": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/host-consumed-earmark-regressions/receipt.json",
+      "sha256": "536fea6144c75d1d7141f0016e12b31ce89811cd8ba5ccdf0fb762f79011cc4f",
+      "exit": 0,
+      "error": null,
+      "seconds": 3.894130744999984,
+      "peakrss": 114782208,
+      "peakdisk": 1128452096,
+      "source_changes": [],
+      "scope": "Seeded retained-ledger predicate only; cannot issue a seal/receipt or source authority. Actual consumed drain authority is covered by linux_dirty_private_handoff."
+    },
+    "host_cleanup_continuation": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/host-cleanup-continuation-regressions-second/receipt.json",
+      "sha256": "99d6c0fa1861409833b599fe9506d74ba45f2ce91b4b31e861ad55d2c1ae2cea",
+      "exit": 0,
+      "error": null,
+      "seconds": 3.3004656590001105,
+      "peakrss": 121364480,
+      "peakdisk": 1137795072,
+      "source_changes": [],
+      "scope": "Real authenticated outer QUERY; in-package token isolates binding/expiry negatives. Actual provider token creation/cleanup is covered by linux_dirty_private_handoff."
+    },
+    "linux_dirty_private_handoff": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/terminal-dirty-actor-twentieth/receipt.json",
+      "sha256": "b025423513d2d99c5f392ea84ace77b522a2b0afcd87407ae335bef99e44df26",
+      "exit": 0,
+      "error": null,
+      "seconds": 29.599027309999656,
+      "peakrss": 579805184,
+      "peakdisk": 1165070336,
+      "source_changes": [],
+      "scope": "Actual maintained Linux production-source lifetime/private Received and real C/Go owners with declared OS/native/MM primitives; no installed kernel/PTE/TLB or ABI proof."
+    },
+    "linux_reservation_idempotence": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/terminal-reservation-and-idempotence/receipt.json",
+      "sha256": "bc44c57ca9c9147de3ba82a16923dfe65b1d00e4aabb21cf5b154d9048420b29",
+      "exit": 0,
+      "error": null,
+      "seconds": 44.29447164300018,
+      "peakrss": 604872704,
+      "peakdisk": 1184190464,
+      "source_changes": [],
+      "scope": "Actual maintained Linux production-source lifetime/private Received and real C/Go owners with declared OS/native/MM primitives; no installed kernel/PTE/TLB or ABI proof."
+    },
+    "exporter_host_all80": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/terminal-real-backend-all80-fifth/receipt.json",
+      "sha256": "c2993b5fe38c5581ed8b8bdf946c57ec7d138d879132f455067199e06e495afe",
+      "exit": 0,
+      "error": null,
+      "seconds": 47.419661938999525,
+      "peakrss": 568176640,
+      "peakdisk": 2723053568,
+      "source_changes": [],
+      "scope": "Host/C8 ownership (and actual exporter for exporter_host_all80) with explicitly substituted OS/kernel observer; no Linux physical/private Received proof."
+    },
+    "focused_host_race": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/host-final-focused-race/receipt.json",
+      "sha256": "dcee0e35dab6aeeb7ce79b7066a4e1f3ec8f63e8e1bf8ea63f2b15cc655fce7a",
+      "exit": 0,
+      "error": null,
+      "seconds": 69.28016080100042,
+      "peakrss": 179228672,
+      "peakdisk": 2705354752,
+      "source_changes": []
+    },
+    "current_linux_clean_alias_retry": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/terminal-clean-current/receipt.json",
+      "sha256": "ff0fc089fd078fbc5f41813e6a641ce68a41df1b7c90898eab06219d1f2e587d",
+      "exit": 0,
+      "error": null,
+      "seconds": 140.6430615749996,
+      "peakrss": 606748672,
+      "peakdisk": 2727870464,
+      "source_changes": []
+    },
+    "partial_real_owner_seals": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/host-terminal-partial-seals/receipt.json",
+      "sha256": "058ff827b2c0f03cc921274a1f2dac47441baeff4ae5c94a201a8581cbd26587",
+      "exit": 0,
+      "error": null,
+      "seconds": 13.77101762500024,
+      "peakrss": 139304960,
+      "peakdisk": 3135938560,
+      "source_changes": []
+    },
+    "actual_C8_protection_crash_cuts": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/host-terminal-protection-crash-cuts/receipt.json",
+      "sha256": "f72eb9350edbab4fe59f3e2718e8292a0f427234f92288f1e914fee820ea0f7b",
+      "exit": 0,
+      "error": null,
+      "seconds": 15.25675150799998,
+      "peakrss": 150216704,
+      "peakdisk": 3153158144,
+      "source_changes": []
+    },
+    "current_lint": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/lint-pre-r1-second/receipt.json",
+      "sha256": "9d802fed83e08a0bc291a680f794ffe8c215af77d24b44cad25815bcf562c7ed",
+      "exit": 0,
+      "error": null,
+      "seconds": 16.283657259999927,
+      "peakrss": 231886848,
+      "peakdisk": 3186810880,
+      "source_changes": []
+    },
+    "post_handoff_failure": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/r1-post-handoff-failure-second/receipt.json",
+      "sha256": "2c8a5a29bbf1663eb553b43e7a93a4191af9afedf501eeb71783b6b7c9c06b9b",
+      "exit": 0,
+      "error": null,
+      "seconds": 34.41317766100019,
+      "peakrss": 584818688,
+      "peakdisk": 3215962112,
+      "source_changes": [],
+      "scope": "Actual Linux private terminal handoff, forced post-proof owner-pointer refusal, retained cleanup retry; declared OS/native/MM primitives."
+    },
+    "linux_all80_private_received": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/r1-kernel-all80-second/receipt.json",
+      "sha256": "15fa53d909b8c174bc1363ab364e160d749981ae1b78cc079658e5c406f9420e",
+      "exit": 0,
+      "error": null,
+      "seconds": 50.487982503999774,
+      "peakrss": 566927360,
+      "peakdisk": 3241349120,
+      "source_changes": [],
+      "scope": "Actual Linux 64+16 slots, private Received and terminal handoff; signed stress budget 768+256 MiB within existing 1GiB max; declared OS/native/MM primitives."
+    },
+    "host_permanent_exhaustion": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/r1-host-permanent-exhaustion-second/receipt.json",
+      "sha256": "979c48a1d1801ad7df29e91b2a9c8e715f0b65d72e6ecfc12c0b1a3cae8870a3",
+      "exit": 0,
+      "error": null,
+      "seconds": 17.592886939999516,
+      "peakrss": 133025792,
+      "peakdisk": 3232145408,
+      "source_changes": [],
+      "scope": "Actual C8 16 permanent control finals; seventeenth request WOULD_BLOCK; kernel observer/OS substituted."
+    },
+    "exporter_permanent_exhaustion": {
+      "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/checks/r1-exporter-permanent-exhaustion/receipt.json",
+      "sha256": "4c7eb833ccd21742062dba8c644e4519aa6f08ba7652eea664cffe9e01d6323c",
+      "exit": 0,
+      "error": null,
+      "seconds": 42.9614069800009,
+      "peakrss": 556896256,
+      "peakdisk": 3264024576,
+      "source_changes": [],
+      "scope": "Actual exporter 16 permanent terminal identities/packages and signed C8 finals; seventeenth admission ENOSPC; explicit privileged OS/controller and observer substitute, no Linux registry/Received."
+    }
+  },
+  "limits": {
+    "one_heavy_job": true,
+    "cpus": 2,
+    "go_parallelism": 1,
+    "memory_available_min_bytes": 8589934592,
+    "memory_available_min_fraction": 0.25,
+    "aggregate_owned_rss_max_bytes": 2147483648,
+    "aggregate_owned_disk_max_bytes": 8589934592,
+    "stage_max_seconds": 1200,
+    "swap": "telemetry only; never a veto"
+  },
+  "ownership": {
+    "exporter_terminal_precharge_bytes_per_scope": 88504,
+    "exporter_live_arena_bytes": 67108864,
+    "exporter_ordinary_arena_bytes": 50331648,
+    "final_native_cells_per_terminal_scope": 1,
+    "retained_kernel_tombstone": true,
+    "same_live_retry_only": true,
+    "replacement_authority": "C9 required; persisted records remain inert"
+  },
+  "limitations": [
+    "No infrastructure, VM, SSH, mounts, installation, production or sink operations.",
+    "No distributed HomelabFS implementation or normal publication claim.",
+    "Portable OS/native/MM hooks remain explicit.",
+    "All80 actual exporter/host cut and actual Linux dirty private-consumption evidence are separate; no Linux80-cell physical claim.",
+    "Earlier receipts bind their exact historical inputs; current-source focused/final gates are still required after review."
+  ],
+  "reviews": {
+    "implementation_R1": "ready for fresh review; source candidate frozen",
+    "implementation_R2": "not launched"
+  },
+  "final_gates": "pending",
+  "pre_review_static": {
+    "receipt": "/home/paul/tmp/codex/hfs-614-20261104-yw5hy6hk/static-pre-r1/receipt.json",
+    "build_vet_errcheck": "PASS",
+    "initial_lint": "Four findings fixed; current lint PASS0issues, separately recorded",
+    "note": "Final merged full/build/static/FreeBSD gates still pending."
+  },
+  "self_review": "Root checked ownership, live-only continuation, physical/transport boundaries, class/byte accounting, crash cuts and test quality; corrected concrete issues before fresh review. No implementation review spent yet.",
+  "review": {
+    "R1": "Three acceptance-test gaps, addressed by targeted fixes",
+    "R2": "/root/terminal_614_review2: no blocking findings; read-only, no tests/builds/edits/infrastructure"
+  }
+}

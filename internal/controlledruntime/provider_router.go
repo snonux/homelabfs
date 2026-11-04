@@ -253,3 +253,30 @@ func (r *ProviderRouter) route(scope guestbridge.Context) (*controlledvalidation
 	}
 	return route.provider, nil
 }
+
+// ProtectTerminalBridge forwards the exact private terminal worker and lifetime
+// state to this scope's original protected provider.
+func (r *ProviderRouter) ProtectTerminalBridge(ctx context.Context, a *guestbridge.TerminalAttempt, seal guestbridge.TerminalSeal, snapshot []byte) error {
+	_, scope, err := a.Attempt(ctx)
+	if err != nil {
+		return err
+	}
+	p, err := r.route(scope)
+	if err != nil {
+		return err
+	}
+	return p.ProtectTerminalBridge(ctx, a, seal, snapshot)
+}
+
+// VerifyTerminalBridge verifies the actual original scope's protected snapshot.
+func (r *ProviderRouter) VerifyTerminalBridge(ctx context.Context, a *guestbridge.TerminalAttempt, seal guestbridge.TerminalSeal, snapshot []byte) error {
+	_, scope, err := a.Attempt(ctx)
+	if err != nil {
+		return err
+	}
+	p, err := r.route(scope)
+	if err != nil {
+		return err
+	}
+	return p.VerifyTerminalBridge(ctx, a, seal, snapshot)
+}

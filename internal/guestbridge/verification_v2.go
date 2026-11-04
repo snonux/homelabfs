@@ -86,7 +86,7 @@ func VerifyMappedReceipt(binding MappedReceiptBinding, original, response []byte
 	var protocol Protocol
 	var cell uint64
 	var op string
-	if json.Unmarshal(fields["context"], &scope) != nil || json.Unmarshal(fields["protocol"], &protocol) != nil || json.Unmarshal(fields["cell"], &cell) != nil || json.Unmarshal(fields["op"], &op) != nil || scope != command.Context || protocol != MappedProtocol() || cell != command.Cell || op != command.Op || o["verification"] == nil {
+	if json.Unmarshal(fields["context"], &scope) != nil || json.Unmarshal(fields["protocol"], &protocol) != nil || json.Unmarshal(fields["cell"], &cell) != nil || json.Unmarshal(fields["op"], &op) != nil || scope != command.Context || command.Protocol == nil || protocol != *command.Protocol || cell != command.Cell || op != command.Op || o["verification"] == nil {
 		return VerificationReceiptV2{}, fsapi.Stale
 	}
 	receipt, err := DecodeVerificationReceiptV2(fields["verification"])
@@ -130,7 +130,12 @@ func unsignedVerificationV2(receipt VerificationReceiptV2) ([]byte, error) {
 	return marshal(values)
 }
 func validateMappedKind(c Command, r VerificationReceiptV2, payload []byte) error {
+	if c.Op == "SESSION_RETIRE" && r.Kind != "SESSION_RETIRED" {
+		return fsapi.Permission
+	}
 	switch r.Kind {
+	case "SESSION_RETIRED":
+		return validateTerminalKind(c, r, payload)
 	case "SOURCE":
 		if !isViewExtension(c.Op) {
 			return fsapi.Permission

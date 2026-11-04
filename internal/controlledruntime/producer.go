@@ -20,13 +20,16 @@ import (
 // controller, provider and pinned enrolled endpoint signing key. It never signs
 // normal publication or a caller-supplied evidence object.
 type Producer struct {
-	mu         sync.Mutex
-	facts      *Facts
-	controller *viewcontrol.Controller
-	providers  map[string]*controlledvalidation.Provider
-	keys       map[string]ed25519.PrivateKey
-	bindings   map[string]fsapi.UUID
-	transports map[string]*guestbridge.Transport
+	// Private failure instrumentation; nil in runtime constructors. It can only
+	// observe an actual worker or refuse, never replace owner/source checks.
+	terminalFailpoint func(context.Context, *guestbridge.TerminalAttempt, string) error
+	mu                sync.Mutex
+	facts             *Facts
+	controller        *viewcontrol.Controller
+	providers         map[string]*controlledvalidation.Provider
+	keys              map[string]ed25519.PrivateKey
+	bindings          map[string]fsapi.UUID
+	transports        map[string]*guestbridge.Transport
 }
 
 var _ guestbridge.VerificationProducer = (*Producer)(nil)
@@ -87,7 +90,7 @@ func (p *Producer) Prepare(ctx context.Context, c guestbridge.Command) error {
 	defer cancel()
 	for _, a := range p.facts.admissions {
 		a.mu.Lock()
-		refresh := c.Op == "VIEW_ACK" || time.Since(a.refreshed) >= 5*time.Second
+		refresh := c.Op == "SESSION_RETIRE" || c.Op == "VIEW_ACK" || time.Since(a.refreshed) >= 5*time.Second
 		a.mu.Unlock()
 		if refresh {
 			if err := a.Refresh(bounded); err != nil {
@@ -101,7 +104,7 @@ func (p *Producer) Prepare(ctx context.Context, c guestbridge.Command) error {
 // Produce verifies actual retained bytes/events or an exact protected full-
 // original floor, then binds and signs the original command and response bytes.
 func (p *Producer) Produce(ctx context.Context, c guestbridge.Command, response json.RawMessage) (*guestbridge.VerificationReceipt, error) {
-	if c.Protocol != nil && *c.Protocol == guestbridge.MappedProtocol() {
+	if c.Protocol != nil && guestbridge.IsMappedProtocol(*c.Protocol) {
 		return nil, fsapi.Permission
 	}
 	return p.produce(ctx, c, response)
@@ -131,12 +134,14 @@ func (p *Producer) produce(ctx context.Context, c guestbridge.Command, response 
 	var evidence json.RawMessage
 	var err error
 	switch {
+	case c.Op == "SESSION_RETIRE":
+		kind, evidence, err = p.terminalEvidence(ctx, c, body.Payload)
 	case c.Op == "READDIR_CLEANUP":
 		// Exact authenticated authority reduction grants no new source/floor.
 		return nil, nil
 	case c.Op == "RETIRE":
 		kind, evidence, err = p.floor(ctx, c, body.Payload)
-	case c.Op == "VIEW_RETIRE" && c.Protocol != nil && *c.Protocol == guestbridge.MappedProtocol():
+	case c.Op == "VIEW_RETIRE" && c.Protocol != nil && guestbridge.IsMappedProtocol(*c.Protocol):
 		kind, evidence, err = p.viewFloor(ctx, c, body.Payload)
 	case c.Op == "VIEW_POLL" || c.Op == "VIEW_ACK" || isViewOperation(c.Op):
 		kind, evidence, err = p.controller.ReceiptEvidence(ctx, c, body.Payload)
@@ -163,7 +168,7 @@ func (p *Producer) produce(ctx context.Context, c guestbridge.Command, response 
 	}
 	// VIEW_FLOOR is emitted only through ProduceMapped, which validates the
 	// complete V2 receipt after adding its protected original/native mapping.
-	if kind != "VIEW_FLOOR" {
+	if kind != "VIEW_FLOOR" && kind != "SESSION_RETIRED" {
 		if _, err = guestbridge.DecodeVerificationReceipt(raw); err != nil {
 			return nil, err
 		}

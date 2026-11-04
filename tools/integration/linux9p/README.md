@@ -437,3 +437,36 @@ Kernel credentials, MM/PTE primitives, native FUSE identity and virtio device
 objects remain explicit OS substitutions in these component tests. Actual
 kernel translation-unit/frame/link checks do not prove installed PTE/TLB,
 native deployment, terminal closure or normal/distributed publication.
+
+## Explicit terminal tuple (`614`)
+
+The maintained provider also supports explicitly enrolled features32767 with
+the same hfs1.4 token/schema. Features16383 remains unchanged. SESSION_RETIRE
+uses a preowned completion package, the actual complete known-Ack set, immutable
+read-only terminal observation, and private SESSION_RETIRED receipt validation.
+The exact candidate/cell/full credentials survive pre-send uncertainty and lost
+replies. Physical/claim/view obligations must finish before acceptance; no
+fresh ordinary CALL is admitted after closing.
+
+The32767 cleanup admission slots for DESCRIPTION_RELEASE and FORGET retain
+control scheduling while spending ordinary bytes for their full normal response
+profiles. An already admitted, never-planned original cleanup may resume through
+its authenticated QUERY using an expiring provider-owned continuation; full
+original credentials, binding, scope and live native identity remain checked.
+Other operations and old tuples receive no such exception. Completed consumed
+dirty earmarks close through their exact terminal drain claim and protected
+floor; the unused-earmark cancellation flag is not fabricated for them.
+
+For this tuple the control actor charges its actual persistent poll/ACK buffers
+in addition to the provider's already charged event/transport/Received parents,
+instead of duplicating the legacy32MiB envelope reservation. Final inventory
+enumerates completed process/family identity credits, reconciles real class and
+Received counters, and retains them until their normal destructors run. An
+unknown reservation or external Received alias still refuses closure.
+
+Successful private consumption frees guest owners and leaves the original
+charged kernel registry/device tombstone, plus one exporter/C8 native cell.
+Other sessions remain usable. The [614 evidence](evidence/614/evidence.json)
+separates the real dirty-session lifetime test from the80-cell exporter/host
+composition with a substituted OS observer. Neither establishes an installed
+kernel, native PTE/TLB exclusion, deployed ABI acceptance or C9 restoration.

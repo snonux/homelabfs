@@ -165,8 +165,13 @@ func (f *Facts) CheckEnrollment(ctx context.Context, enrollment viewcontrol.Enro
 // remains in the bridge/service; source/physical facts remain separate below.
 func (f *Facts) Authorize(ctx context.Context, scope guestbridge.Context, op string, raw json.RawMessage) error {
 	observed, ok := guestbridge.VerifiedRequest(ctx)
-	if !ok || observed.Scope != scope || observed.Operation != op || observed.PayloadHash != hashBytes(raw) || observed.Protocol == nil || !f.matchesProtocol(scope, *observed.Protocol) {
+	if !ok || observed.Scope != scope || observed.Protocol == nil || !f.matchesProtocol(scope, *observed.Protocol) {
 		return fsapi.Permission
+	}
+	if observed.Operation != op || observed.PayloadHash != hashBytes(raw) {
+		if controlledvalidation.VerifyCleanupQueryContinuation(ctx, f.service, f, scope, op, raw) != nil {
+			return fsapi.Permission
+		}
 	}
 	return f.authorizeNative(ctx, scope, observed)
 }

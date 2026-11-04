@@ -21,14 +21,18 @@ import (
 )
 
 func (r *sourceRig) mappedExecute(op string, value any) (json.RawMessage, *guestbridge.VerificationReceiptV2, []byte, []byte, error) {
+	return r.mappedExecuteReclaim(op, value, nil, nil, nil)
+}
+
+func (r *sourceRig) mappedExecuteReclaim(op string, value any, guestAck, nativeAck *guestbridge.Ack, donorControl *bool) (json.RawMessage, *guestbridge.VerificationReceiptV2, []byte, []byte, error) {
 	r.cells++
 	*r.mappingNativeCell++
-	p := guestbridge.MappedProtocol()
+	p := r.installed.Admission.Protocols[r.scope.Session]
 	payload, err := canonicalJSON(value)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	original := guestbridge.Command{Cell: r.cells, Context: r.scope, Protocol: &p, Op: op, Payload: payload}
+	original := guestbridge.Command{Cell: r.cells, Context: r.scope, Protocol: &p, Op: op, Payload: payload, Reclaim: guestAck}
 	guestRaw, err := canonicalJSON(original)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -38,7 +42,11 @@ func (r *sourceRig) mappedExecute(op string, value any) (json.RawMessage, *guest
 		native.Op = "VIEW_POLL"
 	}
 	native.Cell = *r.mappingNativeCell
-	native.Delegation = &guestbridge.Delegation{Version: guestbridge.DelegationVersion, GuestCell: original.Cell, GuestOp: op}
+	native.Reclaim = nativeAck
+	if op == "RELEASE_CELL" && nativeAck != nil {
+		native.Payload, _ = canonicalJSON(nativeAck)
+	}
+	native.Delegation = &guestbridge.Delegation{Version: guestbridge.DelegationVersion, GuestCell: original.Cell, GuestOp: op, GuestReclaim: guestAck}
 	nativeRaw, err := canonicalJSON(native)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -46,6 +54,12 @@ func (r *sourceRig) mappedExecute(op string, value any) (json.RawMessage, *guest
 	flags := uint16(1)
 	if op == "HELLO" || op == "CALL" || op == "ALLOCATE" || op == "VIEW_ACQUIRE" || op == "DIRTY_RESERVE" {
 		flags = 0
+	}
+	if nativeAck != nil {
+		flags |= 2
+		if donorControl != nil && !*donorControl {
+			flags &^= 1
+		}
 	}
 	hash := sha256.Sum256(nativeRaw)
 	for offset := 0; offset < len(nativeRaw); offset += guestbridge.ChunkBytes {

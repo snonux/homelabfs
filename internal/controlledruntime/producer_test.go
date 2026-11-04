@@ -31,8 +31,10 @@ import (
 )
 
 type sourceRig struct {
+	producer              *Producer
 	temporary             func() string
 	mappingTransport      *guestbridge.Transport
+	mappingDirectory      string
 	mappingNativeCell     *uint64
 	t                     *testing.T
 	supervisor            *Supervisor
@@ -93,6 +95,11 @@ func newSourceRigDomainsUnstarted(t *testing.T, protocol guestbridge.Protocol, c
 }
 
 func newSourceRigDomainsBootstrap(t *testing.T, protocol guestbridge.Protocol, count int, idmap string, hello bool, additional ...guestbridge.Credentials) *sourceRig {
+	t.Helper()
+	return newSourceRigDomainsBootstrapFailpoint(t, protocol, count, idmap, hello, nil, additional...)
+}
+
+func newSourceRigDomainsBootstrapFailpoint(t *testing.T, protocol guestbridge.Protocol, count int, idmap string, hello bool, failpoint func(int, string) error, additional ...guestbridge.Credentials) *sourceRig {
 	t.Helper()
 	temporary := t.TempDir
 	if !hello {
@@ -164,7 +171,7 @@ func newSourceRigDomainsBootstrap(t *testing.T, protocol guestbridge.Protocol, c
 	}
 	r.credentialCaptures = append([]guestbridge.Credentials{r.credentials}, additional...)
 	for i := range r.credentialCaptures {
-		r.credentialCaptures[i].Groups = append([]uint32(nil), r.credentialCaptures[i].Groups...)
+		r.credentialCaptures[i].Groups = append([]uint32{}, r.credentialCaptures[i].Groups...)
 	}
 
 	identity := r.supervisor.child.identity
@@ -226,7 +233,11 @@ func newSourceRigDomainsBootstrap(t *testing.T, protocol guestbridge.Protocol, c
 		domain := e.Domains[i]
 		raw, err := json.Marshal(domain)
 		require(t, err)
-		provider, err := controlledvalidation.New(t.Context(), controlledvalidation.Config{Directory: private(), Initialize: true, Service: r.service, Operator: operator.Public().(ed25519.PublicKey), Authorization: controlledvalidation.Authorization{Enrollment: domain, OperatorSignature: ed25519.Sign(operator, raw), HostSignature: ed25519.Sign(peer.key, raw), GuestSignature: ed25519.Sign(guest, raw)}, Facts: r.facts})
+		var hook func(string) error
+		if failpoint != nil {
+			hook = func(stage string) error { return failpoint(i, stage) }
+		}
+		provider, err := controlledvalidation.New(t.Context(), controlledvalidation.Config{Directory: private(), Initialize: true, Service: r.service, Operator: operator.Public().(ed25519.PublicKey), Authorization: controlledvalidation.Authorization{Enrollment: domain, OperatorSignature: ed25519.Sign(operator, raw), HostSignature: ed25519.Sign(peer.key, raw), GuestSignature: ed25519.Sign(guest, raw)}, Facts: r.facts, Failpoint: hook})
 		require(t, err)
 		t.Cleanup(func() { _ = provider.Close() })
 		return provider
@@ -248,11 +259,16 @@ func newSourceRigDomainsBootstrap(t *testing.T, protocol guestbridge.Protocol, c
 	authorizationBytes, err := json.Marshal(authorization)
 	require(t, err)
 	require(t, json.Unmarshal(authorizationBytes, &r.artifactAuthorization))
-	r.controller, err = viewcontrol.New(t.Context(), viewcontrol.Config{Directory: private(), Initialize: true, Service: r.service, Providers: providers, Operator: operator.Public().(ed25519.PublicKey), Authorization: authorization, Facts: r.facts})
+	var controllerFailpoint func(string) error
+	if failpoint != nil {
+		controllerFailpoint = func(stage string) error { return failpoint(-1, stage) }
+	}
+	r.controller, err = viewcontrol.New(t.Context(), viewcontrol.Config{Failpoint: controllerFailpoint, Directory: private(), Initialize: true, Service: r.service, Providers: providers, Operator: operator.Public().(ed25519.PublicKey), Authorization: authorization, Facts: r.facts})
 	require(t, err)
 	t.Cleanup(func() { _ = r.controller.Close() })
 	producer, err := NewProducer(t.Context(), r.facts, r.controller, providers, keys)
 	require(t, err)
+	r.producer = producer
 	var claims guestbridge.Claims = r.provider
 	var execution guestbridge.Execution = r.provider
 	if count > 1 {
@@ -263,7 +279,7 @@ func newSourceRigDomainsBootstrap(t *testing.T, protocol guestbridge.Protocol, c
 	r.bridge, err = guestbridge.New(t.Context(), guestbridge.Config{Validation: &profile, Protocol: &protocol, Verification: producer, ViewProtocol: r.controller, Endpoint: endpoint, Native: r.supervisor, Attestor: newGuestCredentialsSetPrimitive(r.installed.Admission.Domains, r.credentialCaptures), Claims: claims, Execution: execution, Views: r.controller, Scopes: r.installed.Admission.Domains})
 	require(t, err)
 	r.supervisor.record.Stage = "claimed"
-	if protocol == guestbridge.MappedProtocol() {
+	if guestbridge.IsMappedProtocol(protocol) {
 		var config admission.Config
 		for class, size := range map[admission.Class]uint64{admission.Live: 512 << 20, admission.Control: 128 << 20, admission.Memory: guestbridge.TransportLedgerMemoryBytes + (12 << 20)} {
 			resources := admission.Resources{Bytes: size, Operations: 80, Workers: 4}
@@ -271,17 +287,26 @@ func newSourceRigDomainsBootstrap(t *testing.T, protocol guestbridge.Protocol, c
 		}
 		budget, err := admission.New(config)
 		require(t, err)
-		transport, err := guestbridge.NewDurableTransport(r.bridge, budget, filepath.Join(r.temporary(), "mapped-transport"))
+		directory := filepath.Join(r.temporary(), "mapped-transport")
+		var transport *guestbridge.Transport
+		if failpoint == nil {
+			transport, err = guestbridge.NewDurableTransport(r.bridge, budget, directory)
+		} else {
+			transport, err = guestbridge.NewDurableTransportWithFailureHook(r.bridge, budget, directory,
+				func(stage string) error { return failpoint(-2, stage) })
+		}
 		require(t, err)
 		t.Cleanup(transport.Close)
 		counter := uint64(0)
 		for _, peer := range r.peers {
 			peer.mappingTransport = transport
+			peer.mappingDirectory = directory
 			peer.mappingNativeCell = &counter
 		}
 	}
 	for _, peer := range r.peers {
 		peer.bridge, peer.controller, peer.facts, peer.admission, peer.installed = r.bridge, r.controller, r.facts, r.admission, r.installed
+		peer.observationFile = r.observationFile
 		if hello {
 			_, _, err = peer.execute("HELLO", protocol)
 			require(t, err)
@@ -625,7 +650,7 @@ func testRealControlledProducerRejectsFalseFrozenOmission(t *testing.T, protocol
 
 func newGuestCredentialsSetPrimitive(scopes []guestbridge.Context, captures []guestbridge.Credentials) guestCredentialsSetPrimitive {
 	copyCredentials := func(c guestbridge.Credentials) guestbridge.Credentials {
-		c.Groups = append([]uint32(nil), c.Groups...)
+		c.Groups = append([]uint32{}, c.Groups...)
 		return c
 	}
 	g := guestCredentialsSetPrimitive{scopes: append([]guestbridge.Context(nil), scopes...), credentials: copyCredentials(captures[0])}

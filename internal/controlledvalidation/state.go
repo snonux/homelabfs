@@ -18,7 +18,7 @@ func (p *Provider) Finalize(ctx context.Context, b guestbridge.Binding, result, 
 	if !controlledResult(result) || !json.Valid(snapshot) {
 		return fsapi.Invalid
 	}
-	return p.db.Update(func(tx *bolt.Tx) error {
+	return p.updateOpen(func(tx *bolt.Tx) error {
 		e, ok, err := p.load(tx, b.Call.Claim)
 		if err != nil {
 			return err

@@ -285,6 +285,18 @@ _verify_cb(void *arg, const Hfs9pEndpoint *e, const int fd[3]) {
 }
 
 static int
+_controller_cb(void *arg, const Hfs9pEndpoint *e, const int fd[3],
+    uint8_t controller[16]) {
+   Hfs9pSupervisor *s = arg;
+   int error = _begin_io_cb(arg, e, fd);
+   if (!error) {
+      memcpy(controller, s->tuple + 40, 16);
+      _end_io_cb(arg);
+   }
+   return (error);
+}
+
+static int
 _claim_cb(void *arg, const Hfs9pEndpoint *e, const uint8_t digest[32]) {
    Hfs9pSupervisor *s = arg;
    uint8_t zero[32] = {0};
@@ -314,8 +326,8 @@ _heartbeat_cb(void *arg) {
 }
 
 int
-hfs9p_supervisor_start(int parent, const char *name, const uint8_t *scope,
-    size_t length, uint16_t minor) {
+hfs9p_supervisor_start_tuple(int parent, const char *name, const uint8_t *scope,
+    size_t length, uint16_t minor, uint32_t features) {
    Hfs9pSupervisor *s = &OWNER;
    struct stat st;
    pthread_mutex_lock(&s->mutex);
@@ -397,9 +409,9 @@ hfs9p_supervisor_start(int parent, const char *name, const uint8_t *scope,
 #endif
    if (!error) error = _verify_locked(s);
    Hfs9pVerifier verifier = {s, _claim_cb, _protect_cb, _verify_cb,
-       _begin_io_cb, _end_io_cb};
+       _begin_io_cb, _end_io_cb, _controller_cb};
    if (!error) error = hfs9p_new(&s->backend, s->fd, &s->endpoint, verifier);
-   if (!error) error = hfs9p_add_session_protocol(s->backend, scope, length, minor);
+   if (!error) error = hfs9p_add_session_tuple(s->backend, scope, length, minor, features);
    if (!error) {
       Hfs9pToken *tokens = calloc(HFS9P_TOKENS, sizeof(*tokens));
       Hfs9pJson json = {scope, length, tokens, 0};
@@ -446,6 +458,15 @@ hfs9p_supervisor_start(int parent, const char *name, const uint8_t *scope,
    else s->ready = true;
    pthread_mutex_unlock(&s->mutex);
    return (error);
+}
+
+int
+hfs9p_supervisor_start(int parent, const char *name, const uint8_t *scope,
+    size_t length, uint16_t minor) {
+   uint32_t features = minor == 4 ? 16383u : minor == 3 ? 8191u :
+       minor == 2 ? 4095u : minor == 1 ? 2047u : 255u;
+   return (hfs9p_supervisor_start_tuple(parent, name, scope, length,
+       minor, features));
 }
 
 int

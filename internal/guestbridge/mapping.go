@@ -64,9 +64,12 @@ type MappingObservation struct {
 	PollCount                                        uint64
 }
 type mappingWorkerKey struct{}
+type workerInvocation struct{ live bool } // Protected by the actual transport mutex.
+
 type mappingWorker struct {
-	transport *Transport
-	cell      uint64
+	invocation *workerInvocation
+	transport  *Transport
+	cell       uint64
 }
 type mappingObservationKey struct{}
 
@@ -211,7 +214,7 @@ func (t *Transport) admitMapping(ctx context.Context, command Command) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	c := t.cells[command.Cell]
-	if t.failed != nil || t.closed || c == nil || c.mapping == nil || c.mapping.CommandHash != observed.CommandHash || c.command == nil {
+	if worker.invocation == nil || !worker.invocation.live || c == nil || c.invocation != worker.invocation || c.jobPhase != "executing" || t.failed != nil || t.closed || c.mapping == nil || c.mapping.CommandHash != observed.CommandHash || c.command == nil {
 		return fsapi.Permission
 	}
 	c.mapping.Admitted = true
@@ -234,7 +237,7 @@ func (t *Transport) finishMappingBase(ctx context.Context, command Command, raw 
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	c := t.cells[command.Cell]
-	if t.failed != nil || t.closed || c == nil || c.mapping == nil || !c.mapping.Admitted || c.mapping.CommandHash != observed.CommandHash {
+	if worker.invocation == nil || !worker.invocation.live || c == nil || c.invocation != worker.invocation || c.jobPhase != "executing" || t.failed != nil || t.closed || c.mapping == nil || !c.mapping.Admitted || c.mapping.CommandHash != observed.CommandHash {
 		return ctx, fsapi.Permission
 	}
 	m := c.mapping
@@ -558,7 +561,10 @@ func validateMappingChain(s ProtectedTransportState, c ProtectedTransportCell) e
 // 8MiB clone; existing ledger transaction ownership funds its bounded copies.
 func mappedCellFunding() error {
 	const base64Arena = ((BodyBytes+32*HeaderBytes+2)/3)*4 + 32*4
-	const worstRow = BodyBytes + 4*base64Arena + 33*(16<<10) + (32 << 10) + MappingMaxBytes
+	// Terminal state includes the precharged <=32KiB native-record arena,
+	// original request/manifest, descriptor, seals and class metadata. This
+	// allowance remains inside each existing 8MiB transport arena and row.
+	const worstRow = BodyBytes + 4*base64Arena + 33*(16<<10) + (32 << 10) + MappingMaxBytes + terminalStateBytes
 	if worstRow > transportCellLimit {
 		return fsapi.NoSpace
 	}

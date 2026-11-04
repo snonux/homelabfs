@@ -425,7 +425,7 @@ diff --git a/fs/9p/hfs_view.h b/fs/9p/hfs_view.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.h
-@@ -0,0 +1,209 @@
+@@ -0,0 +1,210 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_VIEW_H
 +#define FS_9P_HFS_VIEW_H
@@ -627,6 +627,7 @@ new file mode 100644
 +int hfs_mmap_sync(struct file *file);
 +int hfs_mmap_start(struct hfs_view *view);
 +int hfs_mmap_prepare_retire(struct hfs_view *view);
++int hfs_mmap_terminal_prepare(struct hfs_view *view);
 +int hfs_mmap_stop(struct hfs_view *view);
 +int hfs_mmap_install(struct hfs_view *view, const struct hfs_json *event,
 +		     int target, const uuid_t *recall, u64 sequence, bool final);
@@ -3395,7 +3396,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,1664 @@
+@@ -0,0 +1,1755 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -4136,8 +4137,25 @@ new file mode 100644
 +	/* Independent bounded control workspaces. Ticket/request credits cover
 +	 * their own immutable sources; this covers envelopes/polls/ACK retention.
 +	 */
-+	err = session->provider->reserve(session, sizeof(*control) + 32ULL * 1024 * 1024,
-+					 true, &control->credit);
++	if (session->bridge_minor == 4 &&
++	    session->enrollment.protocol_features == HFS_TERMINAL_FEATURES &&
++	    hfs_controlled_consumed(session)) {
++		/* Progress parents already charge event/ACK carriers, parsers and
++		 * retained Received owners. Charge the actual persistent actor
++		 * buffers here; tickets and dirty packages retain their charges.
++		 */
++		if (!session->control_completion || !session->retirement_completion) {
++			err = -ESTALE;
++			goto allocation;
++		}
++		err = session->provider->reserve(session,
++				sizeof(*control) + 16384ULL + 2ULL * HFS_BODY_MAX,
++				true, &control->credit);
++	} else {
++		err = session->provider->reserve(session,
++				sizeof(*control) + 32ULL * 1024 * 1024,
++				true, &control->credit);
++	}
 +	if (err)
 +		goto allocation;
 +	control->view = hfs_view_get(session);
@@ -4241,6 +4259,80 @@ new file mode 100644
 +	hfs_mmap_quiesce_control(control);
 +	hfs_mmap_control_put(control);
 +	return 0;
++}
++
++/* This exact controlled terminal seam disposes joined, physically empty
++ * bookkeeping. It neither sets retired nor weakens generic STOP authority. */
++int hfs_mmap_terminal_prepare(struct hfs_view *view)
++{
++	struct hfs_session *session = view->session;
++	struct hfs_mmap_control *control;
++	unsigned long flags;
++	u32 i;
++	int err;
++
++	if (session->enrollment.protocol_features != HFS_TERMINAL_FEATURES || !session->closing ||
++	    !session->retained)
++		return -EACCES;
++	err = hfs_mmap_prepare_retire(view);
++	if (err)
++		return err;
++	spin_lock_irqsave(&view->lock, flags);
++	control = view->control;
++	if (view->active || view->nr_cached || view->nr_dirty || view->nr_dirty_packages ||
++	    view->nr_observations || view->nr_mappings || view->nr_grants ||
++	    refcount_read(&view->refs.refcount) != (control ? 3 : 2)) {
++		spin_unlock_irqrestore(&view->lock, flags);
++		return -EBUSY;
++	}
++	if (!control) {
++		view->phase = HFS_VIEW_FENCED;
++		spin_unlock_irqrestore(&view->lock, flags);
++		return 0;
++	}
++	kref_get(&control->refs);
++	spin_unlock_irqrestore(&view->lock, flags);
++	/* The real cancel/flush above joins every actor before inspecting these
++	 * private fields; an actor's extra reference or revealed event refuses. */
++	if (refcount_read(&control->refs.refcount) != 2 || control->error || !control->stopping ||
++	    control->count || control->have_recall || control->delivered != control->completed ||
++	    !list_empty(&control->cleanup) || (control->drain_event && !control->drained_acked)) {
++		err = -EBUSY;
++		goto out;
++	}
++	for (i = 0; i < ARRAY_SIZE(control->pending); i++)
++		if (control->pending[i]) {
++			err = -EBUSY;
++			goto out;
++		}
++	err = hfs_controlled_terminal_event_done(session, control->last_event, &control->last_ack,
++						 control->completed);
++	if (!err && control->drain_event)
++		err = hfs_received_exclusive(session, control->drain_event);
++	if (err)
++		goto out;
++	spin_lock_irqsave(&view->lock, flags);
++	if (view->control != control || refcount_read(&control->refs.refcount) != 2) {
++		spin_unlock_irqrestore(&view->lock, flags);
++		err = -EBUSY;
++		goto out;
++	}
++	view->control = NULL;
++	spin_unlock_irqrestore(&view->lock, flags);
++	destroy_workqueue(control->pressure_queue);
++	destroy_workqueue(control->cleanup_queue);
++	destroy_workqueue(control->drain_queue);
++	destroy_workqueue(control->event_queue);
++	destroy_workqueue(control->poll_queue);
++	hfs_json_free(control->last_event);
++	control->last_event = NULL;
++	hfs_json_free(control->drain_event);
++	control->drain_event = NULL;
++	hfs_mmap_control_put(control); /* actual owner */
++	err = 0;
++out:
++	hfs_mmap_control_put(control); /* this joined caller */
++	return err;
 +}
 +
 +int hfs_mmap_stop(struct hfs_view *view)

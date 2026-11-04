@@ -66,7 +66,7 @@ func (p *Provider) load(tx *bolt.Tx, c guestbridge.Claim) (entry, bool, error) {
 }
 
 func (p *Provider) update(b guestbridge.Binding, change func(*entry) error) error {
-	return p.db.Update(func(tx *bolt.Tx) error {
+	return p.updateOpen(func(tx *bolt.Tx) error {
 		e, ok, err := p.load(tx, b.Call.Claim)
 		if err != nil {
 			return err

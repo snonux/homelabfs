@@ -48,12 +48,13 @@ type kernelAdmission struct {
 	Observations     []kernelDomainObservation       `json:"observations"`
 }
 type kernelDomainObservation struct {
-	Scope               guestbridge.Context `json:"scope"`
-	Revision            uint64              `json:"revision"`
-	Fence               uint64              `json:"fence"`
-	Phase               string              `json:"phase"`
-	EventHash           string              `json:"event_hash"`
-	AcknowledgementHash string              `json:"acknowledgement_hash"`
+	Scope               guestbridge.Context           `json:"scope"`
+	Revision            uint64                        `json:"revision"`
+	Fence               uint64                        `json:"fence"`
+	Phase               string                        `json:"phase"`
+	EventHash           string                        `json:"event_hash"`
+	AcknowledgementHash string                        `json:"acknowledgement_hash"`
+	Terminal            *guestbridge.TerminalSnapshot `json:"terminal,omitempty"`
 }
 
 type installedObservation struct {
@@ -296,7 +297,19 @@ func (a *Admission) accept(o installedObservation, domains []guestbridge.Context
 		if !found {
 			return fsapi.Permission
 		}
+		if observation.Terminal != nil {
+			protocol := o.Admission.Protocols[observation.Scope.Session]
+			if protocol != guestbridge.TerminalProtocol() || observation.Terminal.Validate() != nil || observation.Terminal.Scope != observation.Scope || observation.Terminal.Revision != observation.Revision || (observation.Phase != "TERMINAL_PENDING" && observation.Phase != "TERMINAL_RETIRED") {
+				return fsapi.Permission
+			}
+		} else if observation.Phase == "TERMINAL_PENDING" || observation.Phase == "TERMINAL_RETIRED" {
+			return fsapi.Permission
+		}
 		switch observation.Phase {
+		case "TERMINAL_PENDING", "TERMINAL_RETIRED":
+			if (observation.EventHash == "") != (observation.AcknowledgementHash == "") {
+				return fsapi.Permission
+			}
 		case "LIVE":
 			if observation.EventHash != "" || observation.AcknowledgementHash != "" {
 				return fsapi.Permission
@@ -409,6 +422,11 @@ func (a *Admission) advance(next installedObservation) error {
 		for _, old := range a.installed.Admission.Observations {
 			if old.Scope == state.Scope {
 				prior = old
+			}
+		}
+		if prior.Terminal != nil {
+			if state.Terminal == nil || !sameJSON(prior.Terminal, state.Terminal) || state.Phase != "TERMINAL_PENDING" && state.Phase != "TERMINAL_RETIRED" || prior.Phase == "TERMINAL_RETIRED" && state.Phase != "TERMINAL_RETIRED" {
+				return fsapi.Stale
 			}
 		}
 		if prior.Revision == 0 || state.Revision < prior.Revision || state.Fence < prior.Fence {

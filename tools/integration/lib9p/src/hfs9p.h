@@ -46,6 +46,9 @@ typedef struct {
    /* Optional paired serialization around each actual native syscall. */
    int (*begin_io_cb)(void *, const Hfs9pEndpoint *, const int[3]);
    void (*end_io_cb)(void *);
+   /* Required only for32767: read the controller from the actual verified
+    * supervised tuple. Detached UUID input cannot replace this observation. */
+   int (*controller_cb)(void *, const Hfs9pEndpoint *, const int[3], uint8_t[16]);
 } Hfs9pVerifier;
 
 /* Takes ownership of a freshly enrolled fd tuple only on success. All fds must
@@ -68,6 +71,11 @@ int hfs9p_snapshot(Hfs9p *, uint8_t **, size_t *);
 int hfs9p_restore(Hfs9p **, const int[3], const Hfs9pEndpoint *,
     Hfs9pVerifier, const uint8_t *, size_t);
 
+/* Decode terminal v3 records as inert evidence only. This checks exact pending/
+ * final fences and bindings; success never creates a connection/native owner.
+ * Replacement terminal-capable exporters remain refused until C9 continuity. */
+int hfs9p_terminal_evidence_check(const Hfs9pEndpoint *, const uint8_t *, size_t);
+
 /* Privileged controller operation, never called from guest wire data. Context
  * is the complete canonical installed scope, copied into bounded session state.
  * At most 16 sessions. Existing session contexts cannot be overwritten; old
@@ -77,6 +85,8 @@ int hfs9p_add_session(Hfs9p *, const uint8_t *, size_t);
 /* Explicit exact bridge minor (0, 1, 2 or 3), installed by the authorized controller.
  * Minor1 binds body schema2/features2047 for the whole session and ledger; no
  * downgrade or kernel PAGE_SIZE other than the 4096 profile is supported. */
+/* Exact signed selected tuple; only16383/32767 are accepted for minor4. */
+int hfs9p_add_session_tuple(Hfs9p *, const uint8_t *, size_t, uint16_t, uint32_t);
 int hfs9p_add_session_protocol(Hfs9p *, const uint8_t *, size_t, uint16_t);
 
 /* Bounded nonblocking raw wire exchange, one 9p request/reply. A send receipt

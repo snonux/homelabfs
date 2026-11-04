@@ -55,6 +55,9 @@ static bool eof;
 static bool deny;
 static bool fail_protect;
 static bool pending_read;
+/* Default preserves deliberate short-read coverage; pressure tests can select
+ * bounded full chunks without hashing a whole large reply per seven bytes. */
+static size_t fixture_read_limit = 7;
 static bool hold_receipts;
 static uint8_t last_accepted[HFS9P_HEADER + HFS9P_CHUNK];
 static size_t last_accepted_length;
@@ -237,8 +240,8 @@ fixture_pread(int fd, void *buffer, size_t length, off_t position) {
    memcpy(wire + 32, f->session, 16);
    size_t size = HFS9P_HEADER + _get(wire + 24, 4);
    assert(start < size);
-   if (length > 7)
-      length = 7; /* Exercise actual short pread accumulation. */
+   if (length > fixture_read_limit)
+      length = fixture_read_limit; /* Exercise actual pread accumulation. */
    if (length > size - start)
       length = size - start;
    memcpy(buffer, wire + start, length);
@@ -289,7 +292,7 @@ new_endpoint_with_ledger(Hfs9pLedger *ledger) {
    int fd[3] = {10, 11, 12};
    Hfs9pEndpoint ep = {{0}, {110, 111, 112}};
    ep.session[15] = 5;
-   Hfs9pVerifier v = {ledger, claim_cb, protect_cb, verify_cb, begin_io_cb, end_io_cb};
+   Hfs9pVerifier v = {ledger, claim_cb, protect_cb, verify_cb, begin_io_cb, end_io_cb, NULL};
    Hfs9p *h = NULL;
    Hfs9pVerifier half = v;
    half.end_io_cb = NULL;
@@ -311,8 +314,10 @@ shutdown_endpoint(Hfs9p *h) {
    assert(!pthread_join(h->worker, NULL));
    for (unsigned i = 0; i < HFS9P_ENTRIES; i++)
       _entry_clear(&h->entries[i]);
-   for (unsigned i = 0; i < h->session_count; i++)
+   for (unsigned i = 0; i < h->session_count; i++) {
       free(h->sessions[i].context);
+      free(h->sessions[i].terminal_package);
+   }
    pthread_mutex_destroy(&h->mutex);
    free(h);
 }
@@ -327,6 +332,7 @@ reset_fixtures(void) {
    writes = protects = verifies = poll_count = event_after = 0;
    lose_receipt = wrong_flags = eof = deny = fail_protect = false;
    pending_read = false;
+   fixture_read_limit = 7;
    hold_receipts = false;
    rejected_writes = 0;
    last_accepted_length = 0;
@@ -733,7 +739,7 @@ protected_retry_test(const char *directory_name) {
    h = calloc(1, sizeof(*h));
    assert(h);
    h->endpoint = endpoint;
-   h->verifier = (Hfs9pVerifier){ledger, claim_cb, protect_cb, verify_cb, begin_io_cb, end_io_cb};
+   h->verifier = (Hfs9pVerifier){ledger, claim_cb, protect_cb, verify_cb, begin_io_cb, end_io_cb, NULL};
    h->fd[0] = 10;
    h->fd[1] = 11;
    h->fd[2] = 12;

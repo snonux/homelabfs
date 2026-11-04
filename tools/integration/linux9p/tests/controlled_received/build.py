@@ -72,27 +72,30 @@ def main():
     admin = re.sub(r'^static inline int hfs_uuid.*\n', '', admin, flags=re.M)
     admin = admin.replace('typedef atomic_int atomic_t;', '')
     admin = admin.replace('static inline void uuid_gen(uuid_t *out) { *out=primitive_nonce; }',
-                          'static inline void uuid_gen(uuid_t *out) { static unsigned calls; if (!calls++) *out=primitive_nonce; else assert(RAND_bytes(out->b,16)==1); }')
+                          'void primitive_uuid_gen(uuid_t *);\n#define uuid_gen primitive_uuid_gen')
     admin = re.sub(r'^#define DEFINE_MUTEX.*\n', '', admin, flags=re.M)
     admin = re.sub(r'^static inline void mutex_(lock|unlock).*\n', '', admin, flags=re.M)
     (out/'controlled_compat.h').write_text(admin)
     session = read('fs/9p/hfs_session.c')
     selected = ['hfs_field_u64', 'hfs_uuid', 'hfs_cred_write', 'hfs_cred_free',
+                'hfs_process_exit_work', 'hfs_cred_equal', 'hfs_process_find',
+                'hfs_capture_owned', 'hfs_capture', 'hfs_capture_terminal',
                 'hfs_reply_scope', 'hfs_transport', 'hfs_result_needs_adoption',
-                'hfs_operation', 'hfs_allocation_candidate', 'hfs_candidate_parse_put', 'hfs_control',
+                'hfs_operation', 'hfs_allocation_candidate', 'hfs_terminal_candidate', 'hfs_candidate_parse_put', 'hfs_control',
                 'hfs_copy_token', 'hfs_result_code', 'hfs_result_validate',
                 'hfs_args_init', 'hfs_cap_write', 'hfs_args_object',
                 'hfs_cap_free', 'hfs_cap_parse', 'hfs_reply_cap',
                 'hfs_request_unhold', 'hfs_request_result_put', 'hfs_request_payload',
                 'hfs_request_allocate', 'hfs_request_resolve_gap', 'hfs_request_result_borrow', 'hfs_request_run',
                 'hfs_request_earmark', 'hfs_request_cancel_earmark', 'hfs_request_earmark_admitted',
-                'hfs_request_bind_drain', 'hfs_request_drain', 'hfs_call', 'hfs_retirement_cut_new', 'hfs_retirement_cut_free', 'hfs_retire', 'hfs_result_adopt',
-                'hfs_readdir_cleanup', 'hfs_readdir_forget', 'hfs_enrollment_validate', 'hfs_enrollment_lanes', 'v9fs_hfs_register_provider']
+                'hfs_request_bind_drain', 'hfs_request_drain', 'hfs_call_control_bytes', 'hfs_call', 'hfs_retirement_cut_new', 'hfs_retirement_cut_free', 'hfs_retire', 'hfs_result_adopt',
+                'hfs_readdir_cleanup', 'hfs_readdir_forget', 'hfs_session_free', 'hfs_session_destroy', 'hfs_enrollment_validate', 'hfs_enrollment_lanes', 'v9fs_hfs_register_provider']
     definitions = []
     for name in selected:
         definitions.append(function(session, name))
         if name == 'hfs_transport':
             definitions.append('#include "hfs_received.inc"\n')
+    definitions.append(function(read('fs/9p/hfs_file.c'), 'hfs_description_discard'))
     (out/'session.inc').write_text('\n'.join(definitions))
     mount = function(session, 'v9fs_hfs_mount')
     fail = mount.index('\nfail:\n')
@@ -105,7 +108,20 @@ def main():
     mmap = read('fs/9p/hfs_mmap.c')
     first = mmap.index('static int hfs_mmap_invalidate_stopped(')
     last = mmap.index('/* Independent poll,', first)
-    (out/'physical.inc').write_text(mmap[first:last] + '\n' + function(mmap, 'hfs_mmap_ack'))
+    (out/'physical.inc').write_text(mmap[first:last])
+    control_start = mmap.index('struct hfs_mmap_control {')
+    control_end = mmap.index('\n};', control_start) + 4
+    (out/'control_struct.inc').write_text(mmap[control_start:control_end])
+    control_names = ['hfs_mmap_control_release', 'hfs_mmap_control_get',
+                     'hfs_mmap_control_put', 'hfs_mmap_hash32', 'hfs_mmap_token',
+                     'hfs_mmap_event_check', 'hfs_mmap_ack', 'hfs_mmap_fail',
+                     'hfs_mmap_drains', 'hfs_mmap_process', 'hfs_mmap_drained',
+                     'hfs_mmap_events', 'hfs_mmap_poll', 'hfs_mmap_pressure',
+                     'hfs_mmap_pressure_work', 'hfs_mmap_start',
+                     'hfs_mmap_quiesce_control', 'hfs_mmap_prepare_retire',
+                     'hfs_mmap_terminal_prepare', 'hfs_mmap_stop']
+    (out/'control.inc').write_text('static void hfs_mmap_drained(struct work_struct *);\n' +
+                                 '\n'.join(function(mmap, name) for name in control_names))
     (out/'virtio_identity.inc').write_text(function(read('net/9p/trans_virtio.c'), 'p9_client_hfs_virtio_identity'))
     client = read('net/9p/client.c')
     (out/'client_exchange.inc').write_text(function(client, 'p9_client_is_hfs') + function(client, 'p9_client_hfs_exchange'))

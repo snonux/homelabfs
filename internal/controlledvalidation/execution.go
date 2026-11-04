@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"sync/atomic"
 
 	"github.com/snonux/homelabfs/internal/fsapi"
 	"github.com/snonux/homelabfs/internal/fsservice"
@@ -68,6 +69,12 @@ func (p *Provider) execute(ctx context.Context, b guestbridge.Binding, prepare f
 	}
 	if saved.Outcome != nil {
 		return *saved.Outcome, nil
+	}
+	if resume {
+		live := new(atomic.Bool)
+		live.Store(true)
+		defer live.Store(false)
+		ctx = p.cleanupQueryContext(ctx, b, saved, live)
 	}
 	var admission Admitted
 	if controller := p.currentAdmission(); controller != nil {
@@ -154,7 +161,7 @@ func (p *Provider) execute(ctx context.Context, b guestbridge.Binding, prepare f
 			}
 			var snapshotVersion uint64
 			if len(proposed) > 0 {
-				if err = p.db.Update(func(tx *bolt.Tx) error {
+				if err = p.updateOpen(func(tx *bolt.Tx) error {
 					var e error
 					snapshotVersion, e = p.bucket(tx, "bridge").NextSequence()
 					return e
@@ -209,7 +216,7 @@ func (p *Provider) execute(ctx context.Context, b guestbridge.Binding, prepare f
 			out = *current.PlannedOutcome
 		}
 		out.Result = result
-		return p.db.Update(func(tx *bolt.Tx) error {
+		return p.updateOpen(func(tx *bolt.Tx) error {
 			e, ok, err := p.load(tx, b.Call.Claim)
 			if err != nil {
 				return err
@@ -275,7 +282,7 @@ func (c *captured) prepare(_ context.Context, b guestbridge.Binding, command fsa
 	cred := b.Call.Credentials
 	if command.Operation == fsapi.DescriptorClose || command.Operation == fsapi.ProcessExit {
 		var token uint64
-		err := c.provider.db.Update(func(tx *bolt.Tx) error {
+		err := c.provider.updateOpen(func(tx *bolt.Tx) error {
 			bucket := c.provider.bucket(tx, "processes")
 			key := []byte(cred.Process)
 			if raw := bucket.Get(key); raw != nil {

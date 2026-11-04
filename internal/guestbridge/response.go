@@ -8,6 +8,9 @@ import (
 )
 
 func validateControlResponse(c Command, raw json.RawMessage) error {
+	if c.Op == "SESSION_RETIRE" {
+		return validateTerminalResponse(c, raw)
+	}
 	if isViewExtension(c.Op) {
 		return validateViewResponse(c, raw)
 	}
