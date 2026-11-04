@@ -1,0 +1,320 @@
+{
+  "task": "814",
+  "status": "Reviewed ordinary cleanup funding and canonical snapshot ownership; final merged checks PASS",
+  "verified_commit": "f5a295ba8925b9294e00b10667c642ae9fae154b",
+  "checks": {
+    "regression-cleanup": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/root-gates/regression-cleanup/receipt.json",
+      "sha256": "4c3beae8533e2e9a0544750a32872c43212fba18c784168101fb89a4223cf3f3",
+      "argv": [
+        "python3",
+        "tools/integration/linux9p/tests/controlled_received/run.py",
+        "--source",
+        "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/source",
+        "--output",
+        "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/root-final-cleanup",
+        "--budget-root",
+        "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u",
+        "--host-tree",
+        "/home/paul/git/homelabfs",
+        "--scenario",
+        "cleanup"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 129.03543747300137,
+      "peakrss": 614502400,
+      "peakdisk": 6927429632,
+      "source_changes": []
+    },
+    "regression-terminal-dirty": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/root-gates/regression-terminal-dirty/receipt.json",
+      "sha256": "0029445c85a0e1477862fc0460a7e7c9209f9683afd1fa7c9923f5360c0ae087",
+      "argv": [
+        "python3",
+        "tools/integration/linux9p/tests/controlled_received/run.py",
+        "--source",
+        "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/source",
+        "--output",
+        "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/root-final-terminal-dirty",
+        "--budget-root",
+        "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u",
+        "--host-tree",
+        "/home/paul/git/homelabfs",
+        "--scenario",
+        "terminal-dirty"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 74.0447247330012,
+      "peakrss": 588017664,
+      "peakdisk": 6911528960,
+      "source_changes": []
+    },
+    "regression-terminal-kernel80": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/root-gates/regression-terminal-kernel80/receipt.json",
+      "sha256": "5b61ce944baa32182c78813772f93d1827f27541070e69a169e7d7b4f53afe3f",
+      "argv": [
+        "python3",
+        "tools/integration/linux9p/tests/controlled_received/run.py",
+        "--source",
+        "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/source",
+        "--output",
+        "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/root-final-terminal-kernel80",
+        "--budget-root",
+        "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u",
+        "--host-tree",
+        "/home/paul/git/homelabfs",
+        "--scenario",
+        "terminal-kernel80"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 88.41881694599942,
+      "peakrss": 579895296,
+      "peakdisk": 6913171456,
+      "source_changes": []
+    },
+    "gofmt": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/root-gates/gofmt/receipt.json",
+      "sha256": "36a62f72c56088e6c1ad8d7e64b38439904f2999584ddeb09d9039f9b50ebb6b",
+      "argv": [
+        "python3",
+        "-c",
+        "import subprocess; r=subprocess.run(['gofmt','-l','cmd','internal'],capture_output=True,text=True,check=True); print(r.stdout,end=''); raise SystemExit(bool(r.stdout))"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 16.17782212200109,
+      "peakrss": 11087872,
+      "peakdisk": 6874316800,
+      "source_changes": []
+    },
+    "build": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/root-gates/build/receipt.json",
+      "sha256": "ccaf3fc577952b3b18269faa2390534bc69419087c95840886c464dcd0b80a11",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 19.11110209099934,
+      "peakrss": 78319616,
+      "peakdisk": 6931636224,
+      "source_changes": []
+    },
+    "vet": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/root-gates/vet/receipt.json",
+      "sha256": "804b5ca5037657bcff25311d0fd5f50d91b4fade1299f0f4d1bb660f3d2896fd",
+      "argv": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 15.938874883999233,
+      "peakrss": 14192640,
+      "peakdisk": 6877966336,
+      "source_changes": []
+    },
+    "errcheck": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/root-gates/errcheck/receipt.json",
+      "sha256": "4bba0f0177d20a33492099a2273e87cec78d22f5352c23a76fa23bb22d8376f0",
+      "argv": [
+        "errcheck",
+        "./..."
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 16.774458711999614,
+      "peakrss": 5660672,
+      "peakdisk": 6879563776,
+      "source_changes": []
+    },
+    "lint": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/root-gates/lint/receipt.json",
+      "sha256": "f6f8ab4c0ce6813b241d2913742ec6999be1092b7af3536b2ab3430f86dd9cd2",
+      "argv": [
+        "golangci-lint",
+        "run",
+        "--timeout=5m",
+        "./..."
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 16.11593669600188,
+      "peakrss": 30769152,
+      "peakdisk": 6881165312,
+      "source_changes": []
+    },
+    "full": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/root-gates/full/receipt.json",
+      "sha256": "168f9cdd89eec9931d73a1db59e7c812f938de27d41da1f52d4b0c91e0560bf4",
+      "argv": [
+        "go",
+        "test",
+        "-p",
+        "1",
+        "-count=1",
+        "-timeout=600s",
+        "./..."
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 330.5758295980013,
+      "peakrss": 325816320,
+      "peakdisk": 7038083072,
+      "source_changes": []
+    },
+    "freebsd-build": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/root-gates/freebsd-build/receipt.json",
+      "sha256": "5acf92b3bfd481911bcc02a880a4dd09f36ec7031d08ef1c54e2f0a0dd147544",
+      "argv": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 19.29557148099775,
+      "peakrss": 120991744,
+      "peakdisk": 6944866304,
+      "source_changes": []
+    },
+    "focused_components-frozen": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/checks/components-frozen/receipt.json",
+      "sha256": "381527874585f68737de7dfeea9158529e7d59e49c0c19c8f29ef22885fc6171",
+      "exit": 0,
+      "error": null,
+      "seconds": 109.85266529400178,
+      "peakrss": 606539776,
+      "peakdisk": 6893264896,
+      "source_changes": []
+    },
+    "focused_typedlint-frozen": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/checks/typedlint-frozen/receipt.json",
+      "sha256": "c8d5384ccee75ad0a5d82ab6e2895610f52066f0d09e7d1f2bb1afa982dfa6f4",
+      "exit": 0,
+      "error": null,
+      "seconds": 12.01070969400098,
+      "peakrss": 10907648,
+      "peakdisk": 6852427776,
+      "source_changes": []
+    },
+    "focused_kernel-frozen": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/checks/kernel-frozen/receipt.json",
+      "sha256": "d1a56c287b77e523b8a506d3a3625223bb06dd12eede3084ac2f0bcd7b26addd",
+      "exit": 0,
+      "error": null,
+      "seconds": 11.595633376000478,
+      "peakrss": 11333632,
+      "peakdisk": 6858256384,
+      "source_changes": []
+    },
+    "focused_dirty-final": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/checks/dirty-final/receipt.json",
+      "sha256": "0ed951580e9a2d18904a5c54db304ccad435368655da7dfb7edef24b5d0946e0",
+      "exit": 0,
+      "error": null,
+      "seconds": 191.0465894529989,
+      "peakrss": 618143744,
+      "peakdisk": 6854123520,
+      "source_changes": []
+    }
+  },
+  "worker_handoff": {
+    "path": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/final-handoff.json",
+    "sha256": "04a33ca755162c9b4e0cf7024ce307b30cdd8cc281b656695d4d8f997a4fcf77"
+  },
+  "candidate_binding": {
+    "path": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/checks/candidate-frozen.json",
+    "sha256": "b2d4ddbaca7193852887b1ccd33289909295144432dc6f2705b04c41bd4d4a52"
+  },
+  "review": "Fresh R1 CLEAN; no blocking/nonblocking findings, no R2. Product/test/export bindings verified by reviewer; actual final receipts attached by root.",
+  "behavior": [
+    "Exact minor4 feature tuples16383/32767: DESCRIPTION_CLOSE/RELEASE/FORGET/PROCESS_EXIT spend ordinary bytes while cleanup slots and wire semantics stay unchanged.",
+    "Ordinary saturation or closing refuses before new claim/cell/send/effects; preowned DRAIN/control capacity unchanged; no quota or full1MiB reply cap change.",
+    "Exact retry revalidates retained full response, frees only identical new duplicate and retains canonical JSON until normal retirement; held callers retain original immutable bytes."
+  ],
+  "checkpatch": {
+    "result": "PASS 0 errors/0 warnings on final owned C diff; source-style-only, no signoff assertion",
+    "log": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/checks/static-complete/stdout",
+    "note": "That combined stage later failed on nonexistent-overlay-file golangci loading; typedlint-frozen independently passed with exact generated fixture physically present then removed."
+  },
+  "dirty_final_note": "Dirty pressure gate predates final continuation-tab formatting and test-only change to actual registered process issuer; no product semantics changed after that gate. Final components/kernel/typed lint bind exact frozen candidate.",
+  "failed_development_attempts": {
+    "cleanup-first": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/checks/cleanup-first/receipt.json",
+      "sha256": "11c8e796c261e6f9ab40dc4d8c843629ad53c4163421bf8a30413288ead0a53f",
+      "exit": 1,
+      "error": null,
+      "source_changes": []
+    },
+    "cleanup-second": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/checks/cleanup-second/receipt.json",
+      "sha256": "1db937fb994247ae1cc706295e5dbb7f5ec58a533b5d4a599af92aacf728e817",
+      "exit": 1,
+      "error": null,
+      "source_changes": []
+    },
+    "cleanup-third": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/checks/cleanup-third/receipt.json",
+      "sha256": "9e8fd9d2fef15c6453a9afd2c3b48c7d25d59b444b4854a87a6108ba8056a360",
+      "exit": 1,
+      "error": null,
+      "source_changes": []
+    },
+    "snapshot-leak-baseline": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/checks/snapshot-leak-baseline/receipt.json",
+      "sha256": "82542eaff6b9e7329c6b18f28f5f24034bad72cb6c8b7ab7aa814ed28d5319fb",
+      "exit": 1,
+      "error": null,
+      "source_changes": []
+    },
+    "static-final": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/checks/static-final/receipt.json",
+      "sha256": "cd5e7349dc512669fbf0d4aa9d729d7dc6f1506ad6bb8eb281eb1ac87afd3f4e",
+      "exit": 2,
+      "error": null,
+      "source_changes": []
+    },
+    "static-final-absolute": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/checks/static-final-absolute/receipt.json",
+      "sha256": "bfa621214ed175fe6367476285fcd770324e99dae1dd2e10d32bc19dbee6e394",
+      "exit": 1,
+      "error": null,
+      "source_changes": []
+    },
+    "static-confirmed": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/checks/static-confirmed/receipt.json",
+      "sha256": "7700843bba549ff86578cb0a0f59ff0a9095af341dfe2474017640f3fa063ae0",
+      "exit": 1,
+      "error": null,
+      "source_changes": []
+    },
+    "static-source-only": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/checks/static-source-only/receipt.json",
+      "sha256": "ad10045df0943001771ee463058d4c84cb6bbf25fee0f4bb22a1c6d12e5e0902",
+      "exit": 1,
+      "error": null,
+      "source_changes": []
+    },
+    "static-complete": {
+      "receipt": "/home/paul/tmp/codex/hfs-814-20261104-cygiix_u/checks/static-complete/receipt.json",
+      "sha256": "6f658037fb0fad645ab52e5f3f70102f3a208706ee82bdf830ec8315de1f33da",
+      "exit": 1,
+      "error": null,
+      "source_changes": []
+    }
+  },
+  "resource_scope": "One serial heavy job CPU2/Go-p1/GOMAXPROCS2/GOMEMLIMIT256MiB/GOGC50; observed descendant RSS2GiB cap; all retained old/new roots/cache/temporary and reused archive/header/stock inputs counted under8GiB; available memory8GiB and25%;20min/stage; swap telemetry only.",
+  "evidence_boundary": [
+    "Real owned C request/provider/completion/Received and unchanged production cleanup wrappers, real host bridge/service/exporter, ASAN/UBSAN plus Go race; kernel primitives are declared substitutes.",
+    "Kernel19translation units and owned-symbol object link are compile-only; no complete kernel ABI/link/boot, native PTE/TLB, installed/runtime profile or pressure acceptance.",
+    "No SSH/mount/VM/install/lab/production/PV/NFS/received-sink actions in814.",
+    "Default normal publication remains refused/null; no new protocol or closing authority. xz3 must consume this final source before artifact build."
+  ]
+}
