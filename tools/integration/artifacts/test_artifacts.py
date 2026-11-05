@@ -10,7 +10,61 @@ import tempfile
 import unittest
 
 import elf
+import kernel
 import package
+
+
+class KernelConfigTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.path = Path(self.temporary.name) / 'config'
+        self.key = 'ab' * 32
+        # Parser/admission fixture, not Kconfig resolution or a boot claim.
+        self.values = {'CONFIG_' + symbol: 'y' for symbol in kernel.REQUIRED}
+        self.values.update(CONFIG_9P_FS_HOMELABFS_OPERATOR_KEY='"' + self.key + '"',
+                           CONFIG_LOCALVERSION='"-hfs-xz3"', CONFIG_VIRTIO_NET='m')
+
+    def write(self, extra=''):
+        self.path.write_text(''.join(key + '=' + value + '\n'
+                                     for key, value in self.values.items()) + extra)
+
+    def test_selected_profile_and_shared_package_admission(self):
+        import admit
+        self.write()
+        self.assertIs(admit.assert_config, kernel.assert_config)
+        admit.assert_config(self.path, self.key)
+        # VFS storage/private netns require neither overlay nor CNI devices.
+        self.write('# CONFIG_OVERLAY_FS is not set\n'
+                   '# CONFIG_VETH is not set\n# CONFIG_BRIDGE is not set\n')
+        kernel.assert_config(self.path, self.key)
+
+    def test_each_required_feature_missing_disabled_or_module_refuses(self):
+        for symbol in dict.fromkeys(kernel.REQUIRED):
+            name = 'CONFIG_' + symbol
+            for value in (None, 'n', 'm'):
+                with self.subTest(symbol=symbol, value=value):
+                    if value is None:
+                        del self.values[name]
+                    else:
+                        self.values[name] = value
+                    self.write('# ' + name + ' is not set\n' if value is None else '')
+                    with self.assertRaisesRegex(ValueError, symbol):
+                        kernel.assert_config(self.path, self.key)
+                    self.values[name] = 'y'
+            del self.values[name]
+            self.write()
+            with self.assertRaisesRegex(ValueError, symbol):
+                kernel.assert_config(self.path, self.key)
+            self.values[name] = 'y'
+
+    def test_ambiguous_and_malformed_config_refuses(self):
+        for entry in ('CONFIG_UTS_NS=y\n', 'CONFIG_UTS_NS=n\n',
+                      '# CONFIG_UTS_NS is not set\n', 'CONFIG_NET_NS=\n'):
+            with self.subTest(entry=entry):
+                self.write(entry)
+                with self.assertRaises(ValueError):
+                    kernel.assert_config(self.path, self.key)
 
 
 class PackageTests(unittest.TestCase):

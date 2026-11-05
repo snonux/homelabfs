@@ -278,6 +278,51 @@ isolated runtime, pinned images, numeric security contexts and ID maps; plain
 Rocky is not evidence of k3s/pod capability. Preseeded files alone do not replace
 dynamic namespace and changing-group workloads.
 
+### Ordinary pod namespace profile
+
+The selected prerequisite profile is an isolated **rootful OCI pod/container**
+in the guest's `init_user_ns`, using VFS image storage and private loopback-only
+networking. It requires actual separate mount, PID, network, UTS and IPC
+namespaces; no host-network or host-only fallback satisfies the original pod
+filesystem gate. This is a concrete filesystem compatibility fixture, not a
+claim about CNI, overlay storage, service networking or Kubernetes scheduling.
+Those profiles require their own admitted runtime and additional kernel inputs.
+
+The maintained [kernel fragment and admission](../../tools/integration/artifacts/README.md)
+require NAMESPACES, UTS_NS, IPC_NS, PID_NS, NET_NS and MULTIUSER, plus the
+SYSVIPC/POSIX_MQUEUE and NET dependencies. Mount namespaces have no separate
+Kconfig switch. CGROUPS/MEMCG/CGROUP_PIDS support bounded memory and process
+limits. PROC_FS, SYSFS, TMPFS with security xattrs, UNIX98_PTYS, SECCOMP/FILTER,
+SELinux/securityfs/audit and FILE_LOCKING supply runtime/security/local-lock
+primitives. USER_NS remains enabled for the negative control; the provider's
+real initial-user-namespace and exact numeric-map restriction is unchanged.
+VETH, BRIDGE and OVERLAY_FS are unnecessary for this VFS/private-netns choice.
+Config admission is necessary and does not prove a working runtime or policy.
+
+Before execution, pin the runtime and OCI image/rootfs digest, exact OCI spec,
+VFS storage/run roots, namespace ownership/sharing, numeric UID/GID and complete
+supplementary groups, capabilities/seccomp profile, finite memory/PID limits,
+SELinux policy/labels and audit collection. Use fresh disposable roots; keep
+SELinux enforcing without disabling labeling to make the runtime start. Record
+the actual namespace inode identities from guest and workload processes and
+their user namespace/UID/GID maps. PID, mount, net, UTS and IPC must be isolated
+from the guest, while the user namespace and identity map remain initial.
+Observe the private network's actual loopback and absence of external links;
+do not infer isolation from a runtime option. Pin and observe the real cgroup
+placement and effective limits as well.
+
+Run the dynamic two-UID, supplementary-only, same-UID/different-fullgroups and
+changing-groups/fsuid permission matrix inside these namespaces, with explicit
+allow/deny and SELinux enforcing/audit observations. Two cooperating workload
+processes must bind-share **one guest 9p mount/kernel inode domain** and exercise
+POSIX/flock contention, waits/wakeups and lifetimes. A second independent 9p
+mount remains outside the shared-lock guarantee. Verify foreign-userns requests
+refuse before effects, alongside the positive ordinary namespace cases; that
+negative alone cannot pass the gate. zq3 owns these actual runtime observations
+and the original pod/namespace acceptance; xz3 owns the corrected full kernel
+build/reproduction. Executable presence, resolved config and offline unit
+fixtures do not mark either native acceptance or normal publication successful.
+
 ## Positive cache and CPU fence authority
 
 Ordinary mutation barriers require every exact admitted native/guest domain's

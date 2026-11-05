@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 
@@ -16,12 +17,21 @@ from elf import identity
 from package import canonical, digest, read_json
 
 HERE = Path(__file__).resolve().parent
+# Rootful/init_user_ns OCI fixture: VFS rootfs, private loopback-only network,
+# separate mount/PID/network/UTS/IPC namespaces, memory and PID cgroup limits.
+# Mount namespaces have no separate MNT_NS Kconfig symbol in selected Linux.
+POD_REQUIRED = ('MULTIUSER', 'NAMESPACES', 'UTS_NS', 'IPC_NS', 'PID_NS', 'NET_NS',
+                'USER_NS', 'SYSVIPC', 'POSIX_MQUEUE', 'NET', 'INET', 'UNIX',
+                'CGROUPS', 'CGROUP_PIDS', 'MEMCG', 'PROC_FS', 'SYSFS', 'TMPFS',
+                'TMPFS_XATTR', 'UNIX98_PTYS', 'SECCOMP', 'SECCOMP_FILTER',
+                'SECURITY', 'SECURITY_NETWORK', 'SECURITYFS', 'SECURITY_SELINUX',
+                'AUDIT', 'AUDITSYSCALL', 'FILE_LOCKING')
 REQUIRED = ('64BIT', 'X86_64', 'FILE_LOCKING', 'MODULES', 'MODVERSIONS', 'SYSFS', 'SYSCTL',
             'TRACEPOINTS', 'NET_9P', 'NET_9P_VIRTIO', '9P_FS',
             '9P_FS_HOMELABFS', '9P_FS_HOMELABFS_CONTROLLED', 'CC_IS_GCC',
             'TRANSPARENT_HUGEPAGE', 'SHMEM', 'READ_ONLY_THP_FOR_FS',
             'EFI', 'EFI_STUB', 'BLK_DEV_NVME', 'BLK_DEV_DM', 'EXT4_FS', 'XFS_FS',
-            'SECURITY_SELINUX', 'AUDIT', 'DEVTMPFS', 'BLK_DEV_INITRD')
+            'SECURITY_SELINUX', 'AUDIT', 'DEVTMPFS', 'BLK_DEV_INITRD') + POD_REQUIRED
 
 
 def write_new(path, value):
@@ -57,8 +67,24 @@ def toolchain():
 
 
 def config_values(path):
-    return dict(line.split('=', 1) for line in path.read_text().splitlines()
-                if line.startswith('CONFIG_') and '=' in line)
+    # Admit a resolved .config, not a fragment with last-assignment-wins
+    # ambiguity. Also count disabled entries when detecting duplicates.
+    values = {}
+    for line in path.read_text().splitlines():
+        assignment = re.fullmatch(r'(CONFIG_[A-Za-z0-9_]+)=(.+)', line)
+        disabled = re.fullmatch(r'# (CONFIG_[A-Za-z0-9_]+) is not set', line)
+        if assignment:
+            symbol, value = assignment.groups()
+        elif disabled:
+            symbol, value = disabled.group(1), 'n'
+        elif line.startswith(('CONFIG_', '# CONFIG_')):
+            raise ValueError('malformed kernel configuration entry')
+        else:
+            continue
+        if symbol in values:
+            raise ValueError('duplicate kernel configuration: ' + symbol)
+        values[symbol] = value
+    return values
 
 
 def assert_config(path, key):

@@ -38,6 +38,33 @@ loader dependencies, source inventory, timestamps, kernel/module outputs and
 GNU build IDs. It does not assert that candidate firmware/storage/rootfs/security
 choices match a currently running target.
 
+The ordinary namespace fixture selects a rootful OCI runtime in the initial
+user namespace, VFS image storage and a newly created private network namespace
+with loopback only. Mount, PID, network, UTS and IPC namespaces must actually
+differ from the guest's initial namespaces; host-network or host-only probes do
+not satisfy it. `kernel.py` and component admission share the same resolved
+config checks, including namespace, numeric multiuser credentials, local locks,
+memory/PID cgroups, proc/sys/tmpfs/devpts, seccomp and SELinux/audit primitives.
+In selected Linux `init/Kconfig`, NAMESPACES depends on MULTIUSER; IPC_NS depends
+on SYSVIPC or POSIX_MQUEUE; NET_NS depends on NET; CGROUP_PIDS and MEMCG live
+under CGROUPS. There is no separate MNT_NS switch. TMPFS_XATTR (selected by the
+maintained TMPFS_POSIX_ACL) supports security labels on runtime tmpfs mounts.
+UTS_NS and CGROUP_PIDS repair previously disabled prerequisites; IPC_NS is now
+explicit instead of relying on its default. Resolved configs reject missing,
+disabled, modular or duplicate required entries. The maintained fragment alone
+does not establish Kconfig resolution.
+
+Overlay, veth, bridge, NAT/CNI and Kubernetes scheduling are outside this
+fixture's capability claim; they are not prerequisites for VFS/private-loopback
+OCI namespaces. This choice preserves the mandatory namespace/pod filesystem
+gate. The [fixture requirements](../../../docs/lab/Retained-9p-fixtures.md#ordinary-pod-namespace-profile)
+still demand a pinned isolated runtime/image, actual namespace observations,
+numeric IDs/full groups, SELinux enforcing and shared-bind lock evidence.
+USER_NS enables a foreign-userns refusal control, never foreign-userns guest
+attestation. Actual full image/modules rebuild and clean reproduction belong
+to xz3 after config and runtime repairs; installed boot and actual pod acceptance
+remain zq3. Historical candidate reproducibility does not cover this config.
+
 `daemon.py --package ABSOLUTE_PACKAGE` cross-builds the actual
 `cmd/hfs-controlled-runtime` for FreeBSD/amd64 with cgo disabled and records
 its Go source/dependency/license closure and Go build ID. Set an explicit

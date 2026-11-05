@@ -1,0 +1,396 @@
+{
+  "version": "homelabfs-pod-kernel-config-evidence/1",
+  "retained_root": "/home/paul/tmp/codex/hfs-t24-20261105-jjwkde_3",
+  "source_baseline": "c520332",
+  "source_files": {
+    "docs/Deployment-tests.md": "e24594673a8bd93f614329ed1c6c73b661aa0b444ffe3e848c5270ddb90d37f1",
+    "docs/lab/Retained-9p-fixtures.md": "89ed854b449cabc7f0b87df4a69ca16cc70ca414cac5dad87c7a2c10f5d4765e",
+    "tools/integration/artifacts/README.md": "b052084db5d868158e072a99b5b5b64250fc0a220cae86e783f6f559b7ef8623",
+    "tools/integration/artifacts/kernel.config": "2072efd731ea76005efb3e824ccd7889373fce7fcecd5397418680581fde0cb6",
+    "tools/integration/artifacts/kernel.py": "f6f9837651373dbdfc31c685c3c18fde4da62d1de5def1dc37a36274c72a088e",
+    "tools/integration/artifacts/test_artifacts.py": "a910deb275ed429959c07c592814c6d4f3fc961794a548dd1f259367183f57f1"
+  },
+  "checks": {
+    "focused-artifacts": {
+      "sha256": "31ea8c43c7a0f39d1903989c0fa1bd5e5fcaadcbd068ffe293dfb3bb547cc536",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/integration/artifacts",
+        "-p",
+        "test_artifacts.py",
+        "-v"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 14.304806165004265,
+      "peakrss": 12136448,
+      "peakdisk": 9013396480,
+      "source_changes": []
+    },
+    "configure-first": {
+      "sha256": "bee43b55c39464e86a2ecba85200bade5909820c0a97128389384dec56bc61f4",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/integration/artifacts/kernel.py",
+        "configure",
+        "--source",
+        "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/source",
+        "--output",
+        "/home/paul/tmp/codex/hfs-t24-20261105-jjwkde_3/configure-first",
+        "--package",
+        "/home/paul/tmp/codex/hfs-t24-20261105-jjwkde_3/configure-package",
+        "--operator-public",
+        "abababababababababababababababababababababababababababababababab"
+      ],
+      "exit": 1,
+      "error": null,
+      "seconds": 14.242565866006771,
+      "peakrss": 9998336,
+      "peakdisk": 9612846080,
+      "source_changes": []
+    },
+    "source-current-prepare": {
+      "sha256": "491673a67a780009a31ff96dd3dbfd4d7f414de54ac9f841e68a6c49c3d7c6c5",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/integration/linux9p/prepare.py",
+        "--destination",
+        "/home/paul/tmp/codex/hfs-t24-20261105-jjwkde_3/source-current",
+        "--archive",
+        "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/source/linux-79807e970724c1f90cee1316361d61b80db4eef6.tar.gz"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 57.934724655002356,
+      "peakrss": 216297472,
+      "peakdisk": 10256753664,
+      "source_changes": []
+    },
+    "configure-current": {
+      "sha256": "6b0340b01ce721a445458fdeda335ffecc80cbe31c8cc8b2787432eebc98592e",
+      "argv": [
+        "python3",
+        "-B",
+        "tools/integration/artifacts/kernel.py",
+        "configure",
+        "--source",
+        "/home/paul/tmp/codex/hfs-t24-20261105-jjwkde_3/source-current",
+        "--output",
+        "/home/paul/tmp/codex/hfs-t24-20261105-jjwkde_3/configure-current",
+        "--package",
+        "/home/paul/tmp/codex/hfs-t24-20261105-jjwkde_3/configure-package-current",
+        "--operator-public",
+        "abababababababababababababababababababababababababababababababab"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 32.12556857400341,
+      "peakrss": 47386624,
+      "peakdisk": 10291885056,
+      "source_changes": []
+    }
+  },
+  "owned_inputs": {
+    "config_sha256": "f961653f97693becc7945b95ef74da40eeb4b3c6c3959265bd1ce38ac990aecb",
+    "environment": {
+      "HOME": "/home/paul",
+      "KBUILD_BUILD_HOST": "owned-builder",
+      "KBUILD_BUILD_TIMESTAMP": "2026-11-04 00:00:00 UTC",
+      "KBUILD_BUILD_USER": "homelabfs",
+      "KBUILD_BUILD_VERSION": "1",
+      "KCFLAGS": "-fdebug-prefix-map=/home/paul/tmp/codex/hfs-t24-20261105-jjwkde_3/source-current=/usr/src/linux -fdebug-prefix-map=/home/paul/tmp/codex/hfs-t24-20261105-jjwkde_3/configure-current=/usr/src/linux-build -fmacro-prefix-map=/home/paul/tmp/codex/hfs-t24-20261105-jjwkde_3/source-current=/usr/src/linux -fmacro-prefix-map=/home/paul/tmp/codex/hfs-t24-20261105-jjwkde_3/configure-current=/usr/src/linux-build",
+      "KCONFIG_NOTIMESTAMP": "1",
+      "LC_ALL": "C",
+      "PATH": "/usr/bin:/bin",
+      "SOURCE_DATE_EPOCH": "1793750400",
+      "TMPDIR": "/tmp/ht24-qyg81dho",
+      "TZ": "UTC"
+    },
+    "fragment_sha256": "2072efd731ea76005efb3e824ccd7889373fce7fcecd5397418680581fde0cb6",
+    "maintained_source_manifest_sha256": "e87976984ca670ff552c40c215a178da943124bb15cc9a933e011d02fb12e0fd",
+    "make": [
+      "/usr/bin/make",
+      "-j2",
+      "O=/home/paul/tmp/codex/hfs-t24-20261105-jjwkde_3/configure-current",
+      "ARCH=x86_64",
+      "CC=/usr/bin/gcc",
+      "HOSTCC=/usr/bin/gcc",
+      "LD=/usr/bin/ld",
+      "AR=/usr/bin/ar",
+      "NM=/usr/bin/nm",
+      "OBJCOPY=/usr/bin/objcopy",
+      "OBJDUMP=/usr/bin/objdump",
+      "READELF=/usr/bin/readelf"
+    ],
+    "operator_public": "abababababababababababababababababababababababababababababababab",
+    "recipe_sha256": "f6f9837651373dbdfc31c685c3c18fde4da62d1de5def1dc37a36274c72a088e",
+    "source_inventory_sha256": "eaada4623ca4f73d34aaa5c7dc8015e612750ab617560b9846d8eeaf99a53457",
+    "toolchain": {
+      "/usr/bin/ar": {
+        "bytes": 61616,
+        "sha256": "97910d3148c2a6bbaf899821e6f6c07c602fcd1ef00f081ec7a58a348288b7c5"
+      },
+      "/usr/bin/as": {
+        "bytes": 821696,
+        "sha256": "388a25358e48c00dd0efab716ffc12e1dfac27c2501b85f18d5b36057a43bd2d"
+      },
+      "/usr/bin/bc": {
+        "bytes": 90920,
+        "sha256": "02b76c282fc9ae23a14dde1646c899082ed43d5018e93e7fffa7d942dd35e63d"
+      },
+      "/usr/bin/bison": {
+        "bytes": 510216,
+        "sha256": "93cb8a2d74fece28520f03fdf1297402a9aefe61757b14a4ff9f586a439655bf"
+      },
+      "/usr/bin/flex": {
+        "bytes": 323216,
+        "sha256": "fb7e884a07ea0a1a3e7fbb81069f5f8a5748ad3bb908be5f0be41634428411a2"
+      },
+      "/usr/bin/gcc": {
+        "bytes": 1504328,
+        "sha256": "f71c9b95b020cd56378a766e7f1cbfecc9818a4e12db831579ee0d0a5d148154"
+      },
+      "/usr/bin/ld.bfd": {
+        "bytes": 1598648,
+        "sha256": "eccfdb2b11bcae1ca6e2915a40db609299f46d7def305dab744c0da0aaf54370"
+      },
+      "/usr/bin/make": {
+        "bytes": 287384,
+        "sha256": "25544ed459e6f5c79daf61383d7ef1c83cd9e77f2dfbe2bdbeaa8defec9d0bc9"
+      },
+      "/usr/bin/nm": {
+        "bytes": 50112,
+        "sha256": "2dc5364b80142b8495034049ef3633bbaf76471da35b5d9f1a829b5f0073b70e"
+      },
+      "/usr/bin/objcopy": {
+        "bytes": 193240,
+        "sha256": "d4c9b0d52b21fa8375e082a13e12eac1a8b6fb515a0f034dd085dd5de4011da4"
+      },
+      "/usr/bin/objdump": {
+        "bytes": 469808,
+        "sha256": "b947cc7fae5e951ca6009bbc72889a35d2af7a832416de0489c607c7598472b2"
+      },
+      "/usr/bin/openssl": {
+        "bytes": 999664,
+        "sha256": "b96850e2d8e6fefce8998ff9dc06f1e323f84565110198904a09750943c0a74f"
+      },
+      "/usr/bin/perl": {
+        "bytes": 11400,
+        "sha256": "74558cbd79170f4d6ce0931fd6d59fc7a6450c034ff97b68c3eca7f041cd4c48"
+      },
+      "/usr/bin/pkg-config": {
+        "bytes": 335,
+        "sha256": "b717e9f6d51553f6bb88d0603bcc07dd6ea7c2cf5ab4295b41a28ae6b627a62b"
+      },
+      "/usr/bin/readelf": {
+        "bytes": 853000,
+        "sha256": "20f4971b177980026114be33ed5ce3814aeeac3c12ba8a329b9c2ef3b42cf20f"
+      },
+      "/usr/lib64/ld-linux-x86-64.so.2": {
+        "bytes": 1002600,
+        "sha256": "4e5d39355699e90fa29313d3100e82af4a23290028c58c364d6a249ef6a78e5e"
+      },
+      "/usr/lib64/libbfd-2.46.1-1.fc44.so": {
+        "bytes": 1336848,
+        "sha256": "932a298d87e31322111d1dd1989e12803550befb0a3f4f795e621c602a0de076"
+      },
+      "/usr/lib64/libc.so.6": {
+        "bytes": 2482096,
+        "sha256": "a5c5ad9d59d3c69eda93aa8f82930ba06cc4e893a113e66c85ad6e96243d53c8"
+      },
+      "/usr/lib64/libcom_err.so.2.1": {
+        "bytes": 19872,
+        "sha256": "fd86ff884b7b6b441844d7f89afecbb7f53b7602c7f7515abc4c8bd5b8e83500"
+      },
+      "/usr/lib64/libcrypt.so.2.0.0": {
+        "bytes": 221624,
+        "sha256": "d599ca6de2ff06d1189c47945616fde24cd7816bcafb1c587ca1a51cb0c584e3"
+      },
+      "/usr/lib64/libcrypto.so.3.5.9": {
+        "bytes": 5783496,
+        "sha256": "695648ac8dc5e6a2b70e5e72399940de0f84bf24fddb7dd18949ba40bc575c72"
+      },
+      "/usr/lib64/libctf-nobfd.so.0.0.0": {
+        "bytes": 219904,
+        "sha256": "0ab58cf64ad4ea80660b99598e65d3aa4c33af2d8bbd57f31222b469b056f5fd"
+      },
+      "/usr/lib64/libctf.so.0.0.0": {
+        "bytes": 223936,
+        "sha256": "5d7e28493d315b52847e941a87fd5abe3a374b2c5825928462f448ccda8362aa"
+      },
+      "/usr/lib64/libcurl.so.4.8.0": {
+        "bytes": 773608,
+        "sha256": "3f1855a1ccadd161f5e91b848dba508f437605facc13d7ddf3ead126b37978d7"
+      },
+      "/usr/lib64/libdebuginfod-0.196.so": {
+        "bytes": 56880,
+        "sha256": "d0aa6bd1d286a21cdcc5dc68e373119e36f0b9e5ced4bb2c714e015db6e9c920"
+      },
+      "/usr/lib64/libelf-0.196.so": {
+        "bytes": 120144,
+        "sha256": "fbaccb23dd9942116f28d4608d24c5afe61853491686aa93877d5346c8c55758"
+      },
+      "/usr/lib64/libgcc_s-16-20261029.so.1": {
+        "bytes": 186520,
+        "sha256": "5a52ae4a6f1b119aa092aa1483c967e19d9ba036b1b0c2133236a8a2ce826ebf"
+      },
+      "/usr/lib64/libgmp.so.10.5.0": {
+        "bytes": 694648,
+        "sha256": "47e2550d2f19c8c87886d82db6ed4896db9342e3f26f6d992911c4f037b6ef5d"
+      },
+      "/usr/lib64/libgssapi_krb5.so.2.2": {
+        "bytes": 375584,
+        "sha256": "4985d7c137097a00b5b20b09e208ea33514d96e098df37025f39ec4dedf1a65c"
+      },
+      "/usr/lib64/libidn2.so.0.4.0": {
+        "bytes": 327296,
+        "sha256": "d7add4da68cc0f9f9d7436be69fdaecff6a19deaefaff6fcac770c19f0e3524b"
+      },
+      "/usr/lib64/libjansson.so.4.14.0": {
+        "bytes": 66088,
+        "sha256": "d81dc843cb2c2c6079afad172baeb70e65768a67ef90ac580276f70622af4f2a"
+      },
+      "/usr/lib64/libjson-c.so.5.4.0": {
+        "bytes": 79288,
+        "sha256": "6dfe4deb41877c38acbe863485614dfafd54b5eda8e0a9187b0874899c44e7e6"
+      },
+      "/usr/lib64/libk5crypto.so.3.1": {
+        "bytes": 95176,
+        "sha256": "b2ca21d597a72b833d0816116cadc3493b624880d69819a9c7c33de8e93367f6"
+      },
+      "/usr/lib64/libkeyutils.so.1.10": {
+        "bytes": 24192,
+        "sha256": "26ce5c6b6d9d9691437b0476dabe62fbc6e22ad0781b78d3df78906466dea121"
+      },
+      "/usr/lib64/libkrb5.so.3.3": {
+        "bytes": 874144,
+        "sha256": "4256ace2d584f14c5de4d0e045a8ab0258938c0bc9adf16fb49eadbe023c4453"
+      },
+      "/usr/lib64/libkrb5support.so.0.1": {
+        "bytes": 66368,
+        "sha256": "171e649fbbcc92fb05b83929ac15e9b073fb703d796800b02265cf2d2cf8689f"
+      },
+      "/usr/lib64/libm.so.6": {
+        "bytes": 1153848,
+        "sha256": "16a03ce6d24c8a46742206d4a9c1d35bb6577ae2384f153dc6ef4a4b62b5357f"
+      },
+      "/usr/lib64/libmpc.so.3.4.1": {
+        "bytes": 152248,
+        "sha256": "d9b978e355eafe3dae39cacaf57ade0f3fb6b97ac73ea2b5160d0730d0432237"
+      },
+      "/usr/lib64/libmpfr.so.6.2.2": {
+        "bytes": 795784,
+        "sha256": "d9cd83626df4c3962e5ade80d901763a1952ef43a26a0403a28e6cbf27decfb2"
+      },
+      "/usr/lib64/libnghttp2.so.14.29.2": {
+        "bytes": 168912,
+        "sha256": "8fd9e97899df16b29890fa87702d636b0ac4fbfbe58924947874ba265ddab02d"
+      },
+      "/usr/lib64/libopcodes-2.46.1-1.fc44.so": {
+        "bytes": 799064,
+        "sha256": "5217cc1d70f7879b4f684b4b6a87c87232f8f5dea85bd0d4f08fc8aa7416ac8d"
+      },
+      "/usr/lib64/libpcre2-8.so.0.15.0": {
+        "bytes": 724280,
+        "sha256": "473aeb0704abc871886650c553b43bb300395d73fe4088620329459b5ddbf4be"
+      },
+      "/usr/lib64/libperl.so.5.42.3": {
+        "bytes": 3977584,
+        "sha256": "50440fd997dad8fbac42e8ea65b5f993cdb578fb83f54a160644f1ce625ee755"
+      },
+      "/usr/lib64/libreadline.so.8.3": {
+        "bytes": 390408,
+        "sha256": "c269f96b057ad5dd84d94311fe7ddd2a3d640d0af6515c0e43f95ef9af4a9f12"
+      },
+      "/usr/lib64/libresolv.so.2": {
+        "bytes": 69984,
+        "sha256": "7aba4bc66547667af661384fd84c79008445ff5456b27476fe5a6c2f1038233f"
+      },
+      "/usr/lib64/libselinux.so.1": {
+        "bytes": 209040,
+        "sha256": "cc9f8b1691e4f8cc807b2d8fe4a1ce2e0bdb96386285fdc7769849ffab0aaa7e"
+      },
+      "/usr/lib64/libsframe.so.3.0.0": {
+        "bytes": 40760,
+        "sha256": "fc11c66affa329c1eb83c588651371c493ea62f6a07a00d4380d78542527be05"
+      },
+      "/usr/lib64/libssl.so.3.5.9": {
+        "bytes": 1048056,
+        "sha256": "970950c1a999fa48ec8fc8df075ad0b211f3cd0bc35573ba4e788d20c3141796"
+      },
+      "/usr/lib64/libtinfo.so.6.6": {
+        "bytes": 187232,
+        "sha256": "b053da6b12bebc6e239835fbb646d46f26c97942b3098ac7b01604f8ce827679"
+      },
+      "/usr/lib64/libunistring.so.5.0.0": {
+        "bytes": 1764096,
+        "sha256": "5de0c08a98e1bffa31f9e4dc22870a20f903248078602a194398cd7206e2d831"
+      },
+      "/usr/lib64/libz.so.1.3.1.zlib-ng": {
+        "bytes": 169544,
+        "sha256": "bbde8faec092a7c67b8bd76bbba4a826e61b05c171b97004ce6b308c5a090351"
+      },
+      "/usr/lib64/libzstd.so.1.5.7": {
+        "bytes": 959384,
+        "sha256": "70ec54d150f4052f28fb1e8f8a1c6ca35e1a499e4744c6f6d9d783537618f80b"
+      },
+      "/usr/libexec/gcc/x86_64-redhat-linux/16/cc1": {
+        "bytes": 42529488,
+        "sha256": "9fa8cf6a760c6a5e068ac743d6ddad1b439e82db720ab5e3f5728f9ed2181b85"
+      }
+    }
+  },
+  "resolved_config_sha256": "f961653f97693becc7945b95ef74da40eeb4b3c6c3959265bd1ce38ac990aecb",
+  "required_features": {
+    "CONFIG_MULTIUSER": "y",
+    "CONFIG_NAMESPACES": "y",
+    "CONFIG_UTS_NS": "y",
+    "CONFIG_IPC_NS": "y",
+    "CONFIG_PID_NS": "y",
+    "CONFIG_NET_NS": "y",
+    "CONFIG_USER_NS": "y",
+    "CONFIG_SYSVIPC": "y",
+    "CONFIG_POSIX_MQUEUE": "y",
+    "CONFIG_NET": "y",
+    "CONFIG_INET": "y",
+    "CONFIG_UNIX": "y",
+    "CONFIG_CGROUPS": "y",
+    "CONFIG_CGROUP_PIDS": "y",
+    "CONFIG_MEMCG": "y",
+    "CONFIG_PROC_FS": "y",
+    "CONFIG_SYSFS": "y",
+    "CONFIG_TMPFS": "y",
+    "CONFIG_TMPFS_XATTR": "y",
+    "CONFIG_UNIX98_PTYS": "y",
+    "CONFIG_SECCOMP": "y",
+    "CONFIG_SECCOMP_FILTER": "y",
+    "CONFIG_SECURITY": "y",
+    "CONFIG_SECURITY_NETWORK": "y",
+    "CONFIG_SECURITYFS": "y",
+    "CONFIG_SECURITY_SELINUX": "y",
+    "CONFIG_AUDIT": "y",
+    "CONFIG_AUDITSYSCALL": "y",
+    "CONFIG_FILE_LOCKING": "y"
+  },
+  "optional_profile_features": {
+    "CONFIG_OVERLAY_FS": "n",
+    "CONFIG_VETH": "n",
+    "CONFIG_BRIDGE": "n"
+  },
+  "synthetic_operator_public_key_only": true,
+  "source_reusable_for_final_artifact": "/home/paul/tmp/codex/hfs-t24-20261105-jjwkde_3/source-current",
+  "configuration_for_resolution_only": true,
+  "final_artifact_requires_fresh_config_with_real_selected_operator_public_key": true,
+  "kernel_compiled": false,
+  "installed": false,
+  "booted": false,
+  "pod_acceptance": false,
+  "zq3_acceptance_complete": false,
+  "publication": null
+}
