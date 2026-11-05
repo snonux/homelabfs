@@ -1,0 +1,127 @@
+{
+  "version": "homelabfs-retained9p-preparation-evidence/1",
+  "retained_root": "/home/paul/tmp/codex/hfs-zq3-20261105-28zoa18c",
+  "source_files": {
+    "cmd/hfs-retained9p-operator/main.go": "dba01e20a2f2d58eb1fcee0cc88dabb0b4e9af1c9dfd6d4802ee4d6114b3896d",
+    "internal/retained9plab/operator.go": "367aa27acf191c11817f058daf5b7f9a9f08bdf2b61ef73743043b764387e2bf",
+    "internal/retained9plab/operator_test.go": "b223507e8027f3f3285566ceadf3aa2265659f3d094c53e0aaa9e7c36ba7d363",
+    "docs/lab/Real-daemon-9p-base-gate.md": "36224d212b52732a583ae5babd7db9ce3be4e2818882ffaba68c3311eaffc433",
+    "tools/lab/check-retained9p.sh": "bd1d6346f64f8bb0f5cc8aff6c3bce692da98732a027bc448b39e780e4b336f2",
+    "tools/lab/retained9p/README.md": "95c63cf32ba4e10e35e82773761ec6965fa68d9d08d37e5bd0b5bbd85633330d",
+    "tools/lab/retained9p/controller.py": "63f41cf2f9bd8ebe1c9f76376fec611a7515476886ffc990e99f3450ba93edd2",
+    "tools/lab/retained9p/guest.py": "f3fd9f15a449fff1ad86db2f5c8035cc6749d741851839e6ec1c0f39b4acbd86",
+    "tools/lab/retained9p/observer.py": "682da1b255544e8fde251d9a1dda878e8870ab47889209abc46d969458e648a1",
+    "tools/lab/retained9p/quarantine.json": "3b3c40429068c30f73a85a893e52bfb9021ba12cf74789209e150ba8fd207e2b",
+    "tools/lab/retained9p/test_preparation.py": "cb143fa9543a6811f4b1f514cb74519208595d11785b2b825ef7fe0ab9a00e47"
+  },
+  "checks": {
+    "prep-python-static": {
+      "receipt": "/home/paul/tmp/codex/hfs-zq3-20261105-28zoa18c/checks/prep-python-static/receipt.json",
+      "sha256": "ef25d335fcf54516bfd1ba0dfad95a9a546575e3af52188d11f374aa770f37b4",
+      "exit": 1,
+      "error": null,
+      "seconds": 11.57921932899626,
+      "peakrss": 3678208,
+      "peakdisk": 8162272256,
+      "source_changes": []
+    },
+    "prep-python-static-fix1": {
+      "receipt": "/home/paul/tmp/codex/hfs-zq3-20261105-28zoa18c/checks/prep-python-static-fix1/receipt.json",
+      "sha256": "5450ec205f147e1926ca7e5f9450813235ea0a80c6a475acf7bbf5654f44c111",
+      "exit": 0,
+      "error": null,
+      "seconds": 11.490787264003302,
+      "peakrss": 3612672,
+      "peakdisk": 8164963328,
+      "source_changes": []
+    },
+    "prep-go": {
+      "receipt": "/home/paul/tmp/codex/hfs-zq3-20261105-28zoa18c/checks/prep-go/receipt.json",
+      "sha256": "97dbcbb9f6efb8b8c851445ccb9246d93f23e6d82bdfd58b4c8d3840d241c4d9",
+      "exit": 0,
+      "error": null,
+      "seconds": 55.517265606002184,
+      "peakrss": 212340736,
+      "peakdisk": 8441582592,
+      "source_changes": []
+    },
+    "prep-python-deadline": {
+      "receipt": "/home/paul/tmp/codex/hfs-zq3-20261105-28zoa18c/checks/prep-python-deadline/receipt.json",
+      "sha256": "78617d464c6c77eada1fa4043697dcb1a0367d20596137223a669ecd86db3a0f",
+      "exit": 0,
+      "error": null,
+      "seconds": 13.70366101199761,
+      "peakrss": 3801088,
+      "peakdisk": 8245269504,
+      "source_changes": [],
+      "python_tests": 9,
+      "ast_files": 4,
+      "bash_syntax": "PASS",
+      "shellcheck": "PASS"
+    },
+    "prep-r1-fixes": {
+      "receipt": "/home/paul/tmp/codex/hfs-zq3-20261105-28zoa18c/checks/prep-r1-fixes/receipt.json",
+      "sha256": "101ed02b70bb266c53bbb18aab4bce3510b852c9c26e33524d5d5b763e33a691",
+      "exit": 0,
+      "error": null,
+      "seconds": 14.732771523995325,
+      "peakrss": 3735552,
+      "peakdisk": 8800138240,
+      "source_changes": [],
+      "python_tests": 15,
+      "ast_files": 4,
+      "bash_syntax": "PASS",
+      "shellcheck": "PASS",
+      "resource_envelope": "authorized LIGHT batch; global10GiB; original failed and successful8GiB receipts retain their original scope"
+    },
+    "prep-r2-path-root-fix": {
+      "receipt": "/home/paul/tmp/codex/hfs-zq3-20261105-28zoa18c/checks/prep-r2-path-root-fix/receipt.json",
+      "sha256": "14bc6f8c92100fd77867612d819ef344449c4b44d241dd8bcbcc93a78e81ef59",
+      "exit": 0,
+      "error": null,
+      "seconds": 13.226156852993881,
+      "peakrss": 3858432,
+      "peakdisk": 9204073472,
+      "source_changes": [],
+      "python_tests": 16,
+      "ast_files": 4,
+      "bash_syntax": "PASS",
+      "shellcheck": "PASS"
+    }
+  },
+  "reviews": {
+    "R1": {
+      "blocking": [
+        "Plan hash checked first raw read but dispatched separately loaded path; check has corresponding validate/read race.",
+        "One-time checked SSH/probe/known-hosts inputs remained mutable path references; invocation re-read unverified source.",
+        "Top-level output parent and per-case log directory entries were not fsynced before dispatch/completion."
+      ],
+      "test_quality": "Fresh-key Go signing and real local transport tests useful; missing these three guarantees.",
+      "status": "all three fixed, regressions passed, R2 confirmed resolved"
+    },
+    "R2": {
+      "blocking": [
+        "Staged paths allowed OpenSSH %h/${...}/whitespace expansion before ProxyCommand shell quoting, allowing different executable/pin path without changing private staged directory."
+      ],
+      "original_R1_findings": "resolved",
+      "status": "root fixed safe ASCII path before IO/child and verified all16tests; no third review"
+    },
+    "scope": "partial preparation only; no full zq3 acceptance or deployment eligibility"
+  },
+  "actual_operator_private_key_used": false,
+  "lab_actions": false,
+  "deployment_eligible": false,
+  "zq3_acceptance_complete": false,
+  "publication": null,
+  "remaining": [
+    "r24 merged c520332; corrected xz3 must consume qualified native observer and prelaunch refusal; old immutable CGO-disabled candidate remains quarantined",
+    "s24 actual private C9/evidence/lost-reply controls and exporter diagnostic retention",
+    "reopened xz3 corrected qualified artifacts",
+    "ordinary pod and namespace compatibility under SELinux",
+    "actual host journal/source/error correlation before successful payload release",
+    "real recall/GUP/PTE/TLB/old-client fences and funded full4MiB pressure",
+    "same-mount advisory locks integrated with actual pods",
+    "K04 and approved graceful lifecycle installation/normal restoration",
+    "Parent zq3 stays unpassed; successful local syscall payload release is not historical source proof; s24 must capture real per-operation host correlation before release"
+  ]
+}

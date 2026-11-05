@@ -1,0 +1,253 @@
+# Real single-node retained-9p base gate
+
+Preparation at source `59acf153f8148001d41167a058e7050b9cecddfd`, task `zq3`.
+This assessment records source facts and a proposed operational scope. It is
+not lab execution, installation authority or a compatibility pass. The task
+retains all original credential, namespace/pod, permission/special-bit, sync,
+cache, recovery, fencing and K04 requirements. The selected lock limitation and
+explicit unsupported replacement-native/guest-RESUME paths are the established
+exceptions; other missing behavior is not waived.
+
+The base gate uses one actual initialized disposable service/journal/state cut,
+one real FreeBSD FUSE owner and patched exporter, and two independent negotiated
+guest mount/cache domains sharing the same volume. NORMAL_PUBLIC remains
+refused and Publication remains null. It cannot prove later all-origin
+replication, remote-origin durable plus owner-RAM protection or distributed
+cache coherence. Any admitted node's eligibility to originate writes is unchanged.
+
+## Existing actual components and operational gaps
+
+**Actual candidate daemon cannot admit a native exporter.** The xz3 daemon was
+built with `CGO_ENABLED=0`. The selected
+[`process_freebsd_nocgo.go`](../../internal/controlledruntime/process_freebsd_nocgo.go)
+explicitly returns `fsapi.Unsupported` from `observeProcess`. In
+[`Supervisor.launch`](../../internal/controlledruntime/process.go), the child
+starts before this observation; failure retains the child and closes management
+channels. Thus compilation/reproducibility of that pure-Go artifact proves no
+native runtime readiness, and installing it cannot complete bootstrap. Prepare
+and admit a separately versioned actual FreeBSD cgo daemon with the selected
+libc/sysctl ABI (or a real, separately validated pure-Go observer), preserving
+the old candidate and its narrower offline evidence unchanged. Do not execute
+a known-impossible VM bootstrap to rediscover this source-proven prerequisite.
+
+Root quarantined the old candidate in commit
+`ad2a8527eca50abeaefe4ec9a1cc03425d23ccd6` and reopened xz3. Task r24 owns
+actual native process qualification and unsupported prelaunch refusal; s24 owns
+the private C9/evidence/lost-reply control and bounded exporter diagnostics.
+The local preparation controller refuses the quarantined exact manifest before
+any SSH. All old build proofs remain preserved, and no different digest alone
+establishes native eligibility. This preparation changes no runtime APIs.
+
+[`runRuntimeWithOS`](../../internal/controlledruntime/driver.go) composes the real
+service, supervisor, native shell, Facts, original providers/router/controller,
+Producer and durable C8 endpoint. Its initial proposal records actual native
+identities and current journal/state cut. Complete externally signed provisioning,
+all pending-device claims and all protected funded HELLOs precede READY.
+The live observer independently measures the installed/booted kernel, complete
+loaded module set, provider nonce and every original domain. No plan assertion
+or a syscall-only probe may replace these checks.
+
+The current command's only interface is foreground `--config` plus staged
+EnrollmentFile. After READY it waits for owner channel loss or cancellation.
+It exposes no control operation to invoke the real
+[`SuspendEndpoint`, `Restart.Reopen`, `Restart.Activate`](../../internal/controlledruntime/restart.go)
+sequence, so external harnesses cannot currently exercise the supported C9 cut.
+Those methods require the actual in-process owners, not decoded state files.
+Guest-wire RESUME and replacement FUSE/exporter remain blocked. The harness must
+record and safely test those refusals without claiming daemon restart continuity.
+
+`Supervisor.launch` currently leaves the child command's Stdout and Stderr nil,
+so actual exporter stdout/stderr goes to the null device. The C bootstrap's
+refusal diagnostic is therefore not retained. The observation adapter must
+provide bounded owned diagnostic capture without auto-killing a VM on overflow
+or applying a general file-size limit to its journal/data. Required evidence
+overflow remains an incomplete result, not a silent successful truncation.
+
+Minimum proposed additional runtime adapter, requiring its own focused review:
+
+1. One private, bounded, peer-credential checked local control endpoint in the
+   explicit disposable runtime only, owned by that actual process. No guest or
+   network listener and no caller-supplied Facts, native handles or source claims.
+2. A single-use bounded C9 operation calls the existing real Suspend/Reopen/Activate
+   sequence using the retained actual Supervisor/Producer/Transport. It replaces
+   assembly owners only after protected activation; on error retain and close
+   nonnil partial owners, preserve evidence and leave forwarding fenced.
+3. A bounded observation operation refreshes actual complete Admission and
+   captures actual current service journal/source, provider/controller/C8 state
+   and mutation/barrier identifiers. It emits no acceptance flag. The independent
+   external invocation/reply oracle correlates these real records.
+4. Any lost-reply/error fixture controls the actual native response exposure or
+   journal error path, is pre-funded, exact one-shot and disposable-only. It must
+   preserve the original accepted effect and uncertain result; fabricated success,
+   permissive Facts or model I/O cannot stand in for an actual lost reply.
+
+The [guest admission ABI](../spec/Retained-9p-guest-admission.md) exposes immutable
+`admission_v1`, one-time `provision_v1` and `bind_v1`. It does not expose a pause
+recall or acquire-GUP-pin command. Actual mmap aliases can be created with real
+Linux processes; busy/GUP/PTE/TLB fixtures need an actual admitted external pin
+primitive or a separately reviewed narrow diagnostic adapter. A missing such
+fixture remains unrun. Timestamps, TTL zero, a successful fsync and an absent
+process listing cannot prove physical exclusion.
+
+The provider requires real `init_user_ns` and its exact numeric map. New user
+namespaces refuse; ordinary pod mount/PID/network namespaces may retain the
+initial user namespace and must be exercised. An actual foreign-userns refusal
+is useful boundary evidence but cannot by itself satisfy mandatory namespace
+compatibility. Pinned isolated runtime/image, explicit numeric pod securityContext,
+groups, bind sharing, policy and SELinux enforcing/audit observations remain needed.
+
+`RuntimeConfig.VolumeConfig` requires an initialized volume. The xz3 package
+contains the runtime but no `homelabfs node-init/volume-init` executable. Build
+and pin a source-matching small initialization helper, or package the existing
+actual `cmd/homelabfs` initialization command as a separate helper. Never fabricate
+genesis, APPLIED or journal/state-cut files. The external staged signer is
+implemented separately in [`tools/lab/retained9p`](../../tools/lab/retained9p/README.md);
+it changes neither immutable candidate bytes nor runtime authority.
+
+The current [`GuestObserver.runProbe`](../../internal/controlledruntime/guest_observer.go)
+executes SSH **from the FreeBSD runtime host**, requires an actual private
+Identity file, stages its bytes privately and strips the child environment.
+The workstation ProxyCommand and agent cannot supply this authentication. The
+critical security plan must provide a newly generated run-only observer SSH key
+and scoped public authorization on Rocky, or a reviewed alternative transport.
+Never copy Paul's private SSH keys. If restricting the temporary public key to
+a forced read-only observer command, pin that exact wrapper/probe behavior and
+keep it compatible with both full and phase observations. Enroll/remove only
+the run-owned authorization entry and preserve unrelated authorized keys. This
+SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
+
+## Exact installation plan inputs
+
+The xz3 candidate is retained at
+`/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-final`, manifest SHA256
+`7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b`.
+Its source checkout is `13fbad97dad85ce3145f22c92892aefa132ee1e9`; its recorded
+Go-builder baseline is `e1a7374010ac4b5ed6264a64b0fc26aebb5ed753`, with maintained
+source/recipes separately pinned. Do not claim the baseline includes later fixes.
+Operator public key is `2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635`;
+the actual private key remains outside repository/runtime/guest and must not be
+read during preparation. Full custom Linux6.1.190-hfs-xz3 plus all matching
+configured modules is mandatory because generic MM ABI changed. An out-of-tree
+module on stock/ELRepo is not a substitute.
+
+Root collects one fresh bounded read-only facts batch, through the existing
+exact SSH pins, stdout/stderr separate, no opportunistic retry/config tuning:
+
+| Target | Required actual facts |
+|---|---|
+| f3 lifetime | hardware/physical RAM, every VM and exact process PID/start/executable/argv, /dev/vmm, all native guests stopped, existing Rocky config/hash, current mounts, active exporter/native consumers |
+| f3 storage | healthy pool, free/unreserved bytes, sync, quota/refquota/reservation/refreservation/usedbysnapshots, staging source ownership, complete run/disk inventory |
+| f3 native | kernel/base, loaded fusefs path/hash, actual candidate native loader/shared-library closure and hashes, pinned mount helper, limits and process credentials/groups |
+| direct candidate launch | actual full bhyve hardware argv, network tap/bridge management, console/UEFI firmware and vars files, vm-bhyve launch/stop/cleanup scripts and ownership |
+| Rocky | actual running/default/one-shot kernels, complete commandline, boot/EFI/root storage identifiers and free bytes, rollback kernel/modules/initramfs, dracut/depmod/grub tools, four CPU allocation and RAM, loaded modules, SELinux/policy/audit, namespace support, isolated runtime/image availability |
+| recovery | exact normal console/stop path, rollback config/artifacts and their preserved source; snapshot GUID/ownership where relevant without modifying received sink or retention |
+
+Root's completed read-only facts from2026-11-05 are retained outside Git at
+`/home/paul/tmp/codex/hfs-zq3-20261105-28zoa18c/{f3,rocky}-readonly-facts.json`.
+Both commands completed with exit0 and no reported SSH incident. They observed
+only Rocky `/dev/vmm`, PID6444,4CPUs/12GiB and unchanged config SHA256
+`c101adf10d58d8e021faaa1c3dd98ccb7777c2b78b7931f478e71b526814c581`;
+all four FreeBSD VMs were stopped. Host physical RAM was16,879,837,184bytes;
+pool ONLINE and available361,878,417,408bytes. Rocky booted
+`5.14.0-687.61.1.el9_8.x86_64`, but its actual configured restoration default is
+the newer `5.14.0-687.65.1.el9_8.x86_64`, with an empty one-shot entry. Preserve
+that actual default, rather than historical defaults. Observed free bytes were
+410,304,512 on `/boot`,619,917,312 on EFI and24,276,848,640 on root. SELinux was
+enforcing, Python3.9.25, and podman/crun/docker executables were present; their
+mere presence proves no images, initialized runtime or supported pod profile.
+
+Candidate UTS_NS, CGROUP_PIDS, OVERLAY_FS, VETH and BRIDGE are disabled. Do not
+claim reduced namespace/container fixtures pass mandatory ordinary pod
+compatibility. Scoped implementation/configuration prerequisites must preserve
+the original gate rather than substituting a smaller profile. The failed
+`kldstat -n fusefs` query and absent `/dev/fuse` in these facts do not establish
+the complete module state; root must inspect the full loaded inventory.
+
+Root's completed `f3-readonly-followup.json` supplies that full inventory:
+fusefs is not loaded. The existing `/boot/kernel/fusefs.ko` is216,032bytes,
+SHA256 `b207adf6383bee8e022fa6115044508b7c64da07e73865e5ea71594d524cc4bd`.
+Any module loading belongs in the separately approved exact host setup; do not
+change persistent autoload policy. `/usr/local/bin/go` is absent on f3, so a
+native-capable daemon recipe must not assume an installed Go compiler there.
+The actual540,672-byte `uefi-vars.fd` hashes to
+`e78b91441ff0458645e14972cf9f548e74b9d9d6397f6d2e8ed8ac4ac7ee3444`;
+the3,653,632-byte bootrom hashes to
+`6b48e9673915110037a54835dca217bcb262c1de3606a482f0ff3890687499e2`.
+The retained vm-bhyve log records the hardware command from the current
+Nov2 launch, including NVMe slot0:4:0, virtio-net slot0:5:0, fbuf slot0:6:0,
+historical PoC slot0:7:0, UUID/MAC, firmware and com1 device. These historical
+launch bytes supplement current config/process facts; the new controlled launch
+must replace the PoC device with exact dedicated sessions and use6GiB, without
+claiming log text is an actual new process observation.
+
+Current network/console facts are tap0 on vm-public and
+`/dev/nmdm-rocky.1B`; the NVMe image is the existing200GiB logical
+`/zroot/bhyve/rocky/disk0.img`. `procstat -c` reports only the rewritten title
+`bhyve: rocky`, not the hardware argv. Retained vm-run source specifies the
+actual UEFI vars pathname `uefi-vars.fd` and default firmware
+`/usr/local/share/uefi-firmware/BHYVE_UEFI.fd`; the original query for
+`BHYVE_UEFI_VARS.fd` used a different name. Obtain actual file metadata/hashes
+and reconstruct/pin hardware arguments before any direct launch.
+
+Source review found no child kill in `Supervisor.launch` or Close: launch uses
+`exec.Command` without context cancellation and retains a started child even on
+observation failure; Close closes management/bootstrap/recovery descriptors.
+Owned C startup errors fence the dedicated branch and management channel,
+without exiting bhyve. The separate GuestObserver CommandContext controls only
+its SSH subprocess. This is a source finding, not a live lifecycle proof.
+Retained vm-bhyve vm-run destroys taps and the vmm context after its child exits;
+a direct runtime-owned launch needs explicit guarded post-exit cleanup. Never
+start the normal12GiB Rocky while a retained/uncertain6GiB child may still run.
+
+The proposal's6GiB host runtime +6GiB configured Rocky +3GiB host reserve is
+15GiB, and the signed provider/workload ceiling remains2GiB. This is arithmetic,
+not measured allocation/MM pressure admission. The original4MiB canary and
+every native guest's2GiB allocation remain unchanged. Retain a60-minute total
+window,4GiB host run disk and2GiB guest run disk ceiling, plus8GiB unreserved
+host and2GiB guest free headroom. Count all retained old/new/cache/tmp/remote
+footprints in the independent global preparation budget. Swap is telemetry.
+
+## Staged critical-window proposal
+
+Before seeking critical approval, finish and verify exact helper binaries,
+configuration, run UUIDs/seeds/paths, all artifact checksums, signed limits and
+the current facts-bound admission/normal restoration scripts. Preserve failures;
+routine bounded local verification already has standing approval.
+
+1. Stage immutable candidate bytes and separately pinned helper inputs in new
+   private run directories; verify actual bytes. Preserve exact original config,
+   stock kernel/default/initramfs/modules and console access. No system bhyve or
+   library replacement. Guest boot/install paths must be fresh and refuse reuse.
+2. Prepare the full custom kernel/modules/initramfs/temporary boot entry from
+   actual NVMe/GPT/EFI/LVM/XFS/security facts. Check root drivers, SELinux,
+   virtio-net and every expected loaded module/build ID against the candidate.
+   Preserve stock default; no kernel pruning, disk resizing or source-sink edits.
+3. In the separately approved critical window cleanly stop exact Rocky through
+   its normal path and positively verify that VM lifetime stopped. Do not kill,
+   force-unmount or treat timeout/SSH loss as success. Native guests stay stopped.
+4. Launch the exact source-pinned controlled bhyve as the runtime's own child,
+   with6GiB and both dedicated pending-device sessions. A possible route keeps
+   original12GiB vm-bhyve config unchanged and uses an explicitly pinned direct
+   launch argv/transient tap/console setup; it needs actual launch/cleanup facts
+   first. Existing running Rocky cannot be attached/enrolled as that child.
+5. The120-second staged bootstrap requires pre-staged signer/transfers and
+   known boot timing: actual boot/provider/domain inventory → signed complete
+   provision write → atomic host enrollment → actual controller bind write →
+   both real hfs1.4 mounts/HELLO. Missing/late/changed records refuse and retain
+   native/guest resources; no device falls back to stock filesystem callbacks.
+6. Execute the bounded original matrix with external syscall/reply oracle and
+   actual host journal/source/error/cache/fence correlations. Stop dependent
+   probes on first failure. Distinguish pass/fail/unsupported/unrun/uncertain;
+   a partial gate never completes `zq3` or unblocks `4r3`.
+7. Collect all logs/oracles outside target. Close owned probes/mappings, normally
+   unmount exact guest mounts before host FUSE, and positively inspect owned
+   mount/process/native obligations. Preserve busy/failed resources; no recursive
+   deletion through mounts. Restore exact original boot default/config and normal
+   Rocky state only through approved clean lifecycle, verifying actual pins,
+   kernel/modules, memory, VM/PID/mount/storage inventory. No native guest starts.
+
+No step above is authorized by an `--approved-run` flag, this proposal or an
+offline artifact admission. Root owns actual lab operations and the concrete
+critical-window approval request. Native FUSE/private-inode/direct-I/O, original
+credential/sync/cache/error matrix, full dirty-canary/funded drains/PTE/TLB,
+same-client locks, safe restart/refusal and K04 acceptance all remain unproven.

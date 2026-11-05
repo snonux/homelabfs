@@ -1,0 +1,12 @@
+{
+  "version": "homelabfs-retained9p-preparation-quarantine/1",
+  "candidate_manifest_sha256": "7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b",
+  "daemon_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+  "deployment_eligible": false,
+  "acceptance": false,
+  "publication": null,
+  "reason": "Actual CGO-disabled FreeBSD observer returns Unsupported after exporter starts; cannot reach native READY",
+  "prerequisites": ["r24", "s24", "reopened xz3"],
+  "root_quarantine_commit": "ad2a8527eca50abeaefe4ec9a1cc03425d23ccd6",
+  "preserve": "Immutable old package and all genuine build/reproducibility proofs; do not relabel as installable"
+}
