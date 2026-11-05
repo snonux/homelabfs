@@ -19,3 +19,7 @@ synthetic test input. The final artifact must use fresh build/config outputs wit
 the real selected operator public key; only the verified source tree is reusable.
 Actual runtime/image pinning and all original namespace/pod/SELinux/9p acceptance
 remain required in zq3. Publication stays null.
+
+Fresh R1 found no blocking or nonblocking issue. The merged source `2d944b3`
+passed all artifact and preparation Python tests, shell checks and helper
+format checks; see [merged checks](merged-checks.json).

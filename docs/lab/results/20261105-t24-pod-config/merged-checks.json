@@ -1,0 +1,27 @@
+{
+  "version": "homelabfs-pod-config-merged-checks/1",
+  "source": "2d944b3",
+  "receipt": "/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/checks/merged-artifact-prep-python-v1/receipt.json",
+  "receipt_sha256": "8337d735cafbf5edde95178f0f7b1419703deb41093c45f3281cfafcc6cff271",
+  "checks": {
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/usr/bin/python3 -B -m unittest discover -s tools/integration/artifacts -p \"test_*.py\" -v && /usr/bin/python3 -B -m unittest discover -s tools/lab/retained9p -p test_preparation.py -v && bash -n tools/lab/check-retained9p.sh && shellcheck tools/lab/check-retained9p.sh && test -z \"$(gofmt -l cmd/hfs-retained9p-operator internal/retained9plab)\""
+    ],
+    "exit": 0,
+    "error": null,
+    "seconds": 18.991776266004308,
+    "peakrss": 3727360,
+    "peakdisk": 10329850880,
+    "source_changes": []
+  },
+  "python_suite_test_counts": [
+    22,
+    16
+  ],
+  "review": "R1 clean, noR2",
+  "full_kernel_build": false,
+  "boot_or_pod_acceptance": false,
+  "publication": null
+}
