@@ -1,0 +1,137 @@
+{
+  "coverage_scope": "selected focused tests in internal/controlledruntime, not full-suite coverage",
+  "current_native_recheck": {
+    "foreign_vm_changed_by_agent": false,
+    "native_accepted": false,
+    "provenance": "root handoff after R2",
+    "reason": "external development FreeBSD VM running alongside Rocky",
+    "result": "not attempted; deferred after guard refused separate read-only tool-closure capture before its command"
+  },
+  "diagnostic_component": "historical native v5 passed; old Go bytes, current merged/native recheck pending root",
+  "focused_statement_coverage_percent": 31.9,
+  "full_native_startup": "failed in r1/r2; pending w24",
+  "historical_local": {
+    "cross-native-v5": {
+      "argv": [
+        "python3",
+        "-B",
+        "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/cross-native-v5.py"
+      ],
+      "error": null,
+      "exit": 0,
+      "peakdisk": 11460084736,
+      "peakrss": 10915840,
+      "seconds": 17.92425223000464,
+      "source_changes": []
+    },
+    "focused-race-native-oracle-5": {
+      "argv": [
+        "go",
+        "test",
+        "-race",
+        "-count=1",
+        "-timeout=600s",
+        "./internal/controlledruntime",
+        "-run",
+        "Test(DiagnosticComponent|ActualExporterDiagnostics|ExporterDiagnostics|FailedExecRetainsIncompleteDiagnostics|ObserverPreflight|ExclusiveRegistry|FailedStartup|LiveIdentity|RuntimeFundingCompleteOwners)"
+      ],
+      "error": null,
+      "exit": 0,
+      "peakdisk": 11459257344,
+      "peakrss": 198242304,
+      "seconds": 28.9605018680013,
+      "source_changes": []
+    },
+    "native-diagnostic-component-v5": {
+      "argv": [
+        "python3",
+        "-B",
+        "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v5.py"
+      ],
+      "error": null,
+      "exit": 0,
+      "peakdisk": 11463345152,
+      "peakrss": 54558720,
+      "seconds": 20.530759478002437,
+      "source_changes": []
+    },
+    "static-checks-5": {
+      "argv": [
+        "python3",
+        "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/static-checks.py"
+      ],
+      "error": null,
+      "exit": 0,
+      "peakdisk": 11436475392,
+      "peakrss": 10903552,
+      "seconds": 16.64423178799916,
+      "source_changes": []
+    }
+  },
+  "local_current": {
+    "focused-race-r1-fixes-7": {
+      "argv": [
+        "go",
+        "test",
+        "-race",
+        "-cover",
+        "-count=1",
+        "-timeout=600s",
+        "./internal/controlledruntime",
+        "-run",
+        "Test(DiagnosticComponent|ActualExporterDiagnostics|ExporterDiagnostics|FailedExecRetainsIncompleteDiagnostics|ObserverPreflight|ExclusiveRegistry|FailedStartup|LiveIdentity|RuntimeFundingCompleteOwners)"
+      ],
+      "error": null,
+      "exit": 0,
+      "peakdisk": 11730056192,
+      "peakrss": 212049920,
+      "seconds": 33.66697631998977,
+      "source_changes": []
+    },
+    "static-checks-r1-fixes-7": {
+      "argv": [
+        "python3",
+        "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/static-checks.py"
+      ],
+      "error": null,
+      "exit": 0,
+      "peakdisk": 11709584384,
+      "peakrss": 10903552,
+      "seconds": 18.165535476000514,
+      "source_changes": []
+    }
+  },
+  "native_accepted": false,
+  "native_component": {
+    "argv": [
+      "/usr/bin/env",
+      "HFS_DIAGNOSTIC_CHILD=/var/tmp/hfs-s24-64wm-r5/diagnostic-child",
+      "/var/tmp/hfs-s24-64wm-r5/controlledruntime-freebsd.test",
+      "-test.run=^TestDiagnosticComponentParentExit$",
+      "-test.count=1",
+      "-test.timeout=45s",
+      "-test.v"
+    ],
+    "binding_scope": "historical pre-R1-fix Go binary; no current-byte qualification",
+    "booted": false,
+    "error": null,
+    "exit": 0,
+    "installed": false,
+    "native_accepted": false,
+    "peak_global_allocated_disk": 11538926592,
+    "peak_rss": 128008192,
+    "seconds": 0.331256246999601
+  },
+  "native_runtime_ready": false,
+  "publication": null,
+  "required_followups": [
+    "w24 full protected FD-exec/native startup",
+    "u24 private C9/evidence operations",
+    "v24 actual lost-reply exposure",
+    "xz3 final exact-byte build/qualification",
+    "zq3 full base gate"
+  ],
+  "review": "R2 confirmed both R1 blockers resolved; merged checks and current-byte native recheck pending root",
+  "task": "s24",
+  "version": "homelabfs-s24-diagnostics-evidence/1"
+}

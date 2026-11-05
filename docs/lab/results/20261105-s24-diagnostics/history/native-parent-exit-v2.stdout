@@ -1,0 +1,13 @@
+=== RUN   TestActualExporterDiagnosticsParentExit
+=== RUN   TestActualExporterDiagnosticsParentExit/default-negative
+    process_logs_parent_test.go:119: oracle accept: accept unix /var/tmp/hfs-s24-64wm-r2/tmp/exit-1692597573/oracle: i/o timeout; actual owner exit: exit status 93
+        detached owner Start: fork/exec /dev/fd/4: no such file or directory
+    process_logs_parent_test.go:98: preserved parent-exit resources: /var/tmp/hfs-s24-64wm-r2/tmp/exit-1692597573
+=== RUN   TestActualExporterDiagnosticsParentExit/native
+    process_logs_parent_test.go:119: oracle accept: accept unix /var/tmp/hfs-s24-64wm-r2/tmp/exit-1674874053/oracle: i/o timeout; actual owner exit: exit status 93
+        detached owner Start: fork/exec /dev/fd/4: no such file or directory
+    process_logs_parent_test.go:98: preserved parent-exit resources: /var/tmp/hfs-s24-64wm-r2/tmp/exit-1674874053
+--- FAIL: TestActualExporterDiagnosticsParentExit (10.04s)
+    --- FAIL: TestActualExporterDiagnosticsParentExit/default-negative (5.02s)
+    --- FAIL: TestActualExporterDiagnosticsParentExit/native (5.02s)
+FAIL

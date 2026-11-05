@@ -40,7 +40,7 @@ func checkedBudgetSum(values ...uint64) (uint64, error) {
 // fundRuntime reserves complete C8 mmap/copy capacity independently of its
 // 652 MiB arenas, then all semantic/source/controller/exporter/guest-copy owners.
 func fundRuntime(b RuntimeBudget, p ProviderLimits, views viewcontrol.Bounds, domains int) (*runtimeFunding, error) {
-	if !validProviderLimits(p) || domains < 1 || domains > 16 || views.WorkBytes <= 0 || views.SourceBytes <= 0 || views.LedgerBytes <= 0 || views.Sources < 1 || b.ServiceBytes < 64<<20 || b.ExporterBytes < (64+64+130+16)<<20 || b.GuestCopyBytes < 16<<20 || b.GuestBaseBytes < 256<<20 || b.GuestBytes == 0 || b.GuestBytes > 2<<30 || !guestBudgetValid(b.Guest) {
+	if !validProviderLimits(p) || domains < 1 || domains > 16 || views.WorkBytes <= 0 || views.SourceBytes <= 0 || views.LedgerBytes <= 0 || views.Sources < 1 || b.ServiceBytes < 64<<20 || b.ExporterBytes < ((64+64+130+15)<<20)+exporterDiagnosticMemoryBytes || b.GuestCopyBytes < 16<<20 || b.GuestBaseBytes < 256<<20 || b.GuestBytes == 0 || b.GuestBytes > 2<<30 || !guestBudgetValid(b.Guest) {
 		return nil, fmt.Errorf("explicit runtime owner budgets: %w", fsapi.Invalid)
 	}
 	guest, err := checkedBudgetSum(b.GuestBaseBytes, b.Guest.OrdinaryBytes, b.Guest.ControlBytes, b.Guest.Reservations*131072, b.Guest.Cookies*4096, b.Guest.Received*4096)
@@ -70,7 +70,7 @@ func fundRuntime(b RuntimeBudget, p ProviderLimits, views viewcontrol.Bounds, do
 	for class, resources := range map[admission.Class]admission.Resources{
 		admission.Live:    {Bytes: 512 << 20, Operations: 64, Workers: 2},
 		admission.Control: {Bytes: 128 << 20, Operations: 16, Workers: 2},
-		admission.Memory:  {Bytes: b.HostBytes - (640 << 20), Operations: 3, Workers: 1},
+		admission.Memory:  {Bytes: b.HostBytes - (640 << 20), Operations: 3, Workers: 1 + exporterDiagnosticWorkers, Connections: exporterDiagnosticPipes},
 	} {
 		config.Pools[class] = admission.Limits{Global: resources, PerPeer: resources, PerVolume: resources}
 	}
@@ -78,7 +78,7 @@ func fundRuntime(b RuntimeBudget, p ProviderLimits, views viewcontrol.Bounds, do
 	if err != nil {
 		return nil, err
 	}
-	lease, err := budget.Reserve(admission.Request{Class: admission.Memory, Peer: "controlled-runtime", Volume: "controlled-runtime", Cost: admission.Resources{Bytes: extra, Operations: 1}})
+	lease, err := budget.Reserve(admission.Request{Class: admission.Memory, Peer: "controlled-runtime", Volume: "controlled-runtime", Cost: admission.Resources{Bytes: extra, Operations: 1, Workers: exporterDiagnosticWorkers, Connections: exporterDiagnosticPipes}})
 	if err != nil {
 		return nil, err
 	}

@@ -1,0 +1,11 @@
+=== RUN   TestActualExporterDiagnosticsParentExit
+=== RUN   TestActualExporterDiagnosticsParentExit/default-negative
+    process_logs_parent_test.go:110: accept unix /var/tmp/hfs-s24-64wm-r1/tmp/exit-940160213/oracle: i/o timeout
+    process_logs_parent_test.go:92: preserved parent-exit resources: /var/tmp/hfs-s24-64wm-r1/tmp/exit-940160213
+=== RUN   TestActualExporterDiagnosticsParentExit/native
+    process_logs_parent_test.go:110: accept unix /var/tmp/hfs-s24-64wm-r1/tmp/exit-724839895/oracle: i/o timeout
+    process_logs_parent_test.go:92: preserved parent-exit resources: /var/tmp/hfs-s24-64wm-r1/tmp/exit-724839895
+--- FAIL: TestActualExporterDiagnosticsParentExit (10.03s)
+    --- FAIL: TestActualExporterDiagnosticsParentExit/default-negative (5.01s)
+    --- FAIL: TestActualExporterDiagnosticsParentExit/native (5.02s)
+FAIL

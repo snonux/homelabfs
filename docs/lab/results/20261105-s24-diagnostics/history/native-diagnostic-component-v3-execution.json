@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "ssh",
+    "-T",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "StrictHostKeyChecking=yes",
+    "-o",
+    "ForwardAgent=no",
+    "-o",
+    "ConnectTimeout=8",
+    "-o",
+    "ServerAliveInterval=3",
+    "-o",
+    "ServerAliveCountMax=1",
+    "f3",
+    "/usr/local/bin/doas -n /usr/bin/timeout -k 2 110 /usr/local/bin/python3.12 -B /var/tmp/hfs-s24-64wm-r3/native_guard.py --root /var/tmp/hfs-s24-64wm-r3 --stage parent-exit --local-reserved-bytes 11464999936 --rocky-birth 'Mon Nov  2 20:40:40 2026' --rocky-config-sha256 c101adf10d58d8e021faaa1c3dd98ccb7777c2b78b7931f478e71b526814c581 /usr/bin/env HFS_DIAGNOSTIC_CHILD=/var/tmp/hfs-s24-64wm-r3/diagnostic-child /var/tmp/hfs-s24-64wm-r3/controlledruntime-freebsd.test '-test.run=^TestDiagnosticComponentParentExit$' -test.count=1 -test.timeout=45s -test.v"
+  ],
+  "exit": 1,
+  "stdout": "{\"argv\": [\"/usr/bin/env\", \"HFS_DIAGNOSTIC_CHILD=/var/tmp/hfs-s24-64wm-r3/diagnostic-child\", \"/var/tmp/hfs-s24-64wm-r3/controlledruntime-freebsd.test\", \"-test.run=^TestDiagnosticComponentParentExit$\", \"-test.count=1\", \"-test.timeout=45s\", \"-test.v\"], \"local_reserved_bytes\": 11464999936, \"error\": \"Command '['/bin/ps', '-p', '6444', '-o', 'pid=', '-o', 'command=']' returned non-zero exit status 1.\", \"exit\": null, \"peak_rss\": 0, \"peak_global_allocated_disk\": 0, \"seconds\": 0.0022269319999850268, \"installed\": false, \"booted\": false, \"native_accepted\": false}\n",
+  "stderr": "",
+  "local_reserved_bytes": 11464999936,
+  "local_allocated_bytes": 10383814656,
+  "old_native_reserved_bytes": 1014076416
+}

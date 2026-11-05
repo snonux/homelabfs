@@ -1,0 +1,41 @@
+[
+  {
+    "attempt": 1,
+    "collection_exit": 0,
+    "collection_sha256": "8ede846c6c773d6c21e3e12308a21927af788ebbe041a03afcd7fc447b7e11ff",
+    "kind": "full-protected-launch",
+    "local_guard_exit": 1,
+    "native_exit": 1,
+    "original_directory": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v1",
+    "result": "failed"
+  },
+  {
+    "attempt": 2,
+    "collection_exit": 0,
+    "collection_sha256": "c22089d94881b15e02dba5d285e0f0c3a05aa284e966bb0b4d1bdc718b86c02e",
+    "kind": "full-protected-launch",
+    "local_guard_exit": 1,
+    "native_exit": 1,
+    "original_directory": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v2",
+    "result": "failed"
+  },
+  {
+    "attempt": 3,
+    "collection_exit": 1,
+    "collection_sha256": "6042f731fdcce86767c3bf803deb64ea63f9b1bb14cccbc0dddd2980bd4b9b59",
+    "kind": "admission-refusal",
+    "local_guard_exit": 1,
+    "original_directory": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v3",
+    "result": "failed"
+  },
+  {
+    "attempt": 4,
+    "collection_exit": 0,
+    "collection_sha256": "e7e3226a97011e79222f746289ea97fd14bbb1a45002b961c4d6177fb8b8e8f2",
+    "kind": "component-oracle-error",
+    "local_guard_exit": 1,
+    "native_exit": 1,
+    "original_directory": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v4",
+    "result": "failed"
+  }
+]

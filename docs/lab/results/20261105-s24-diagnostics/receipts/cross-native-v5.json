@@ -1,0 +1,43 @@
+{
+  "argv": [
+    "python3",
+    "-B",
+    "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/cross-native-v5.py"
+  ],
+  "exit": 0,
+  "error": null,
+  "seconds": 17.92425223000464,
+  "peakrss": 10915840,
+  "peakdisk": 11460084736,
+  "observations": [
+    {
+      "memavailable": 25677586432,
+      "swaptotal": 8589930496,
+      "swapfree": 6559563776,
+      "pswpout": 585758,
+      "disk": 11439719424
+    },
+    {
+      "memavailable": 25059692544,
+      "swaptotal": 8589930496,
+      "swapfree": 6559567872,
+      "pswpout": 585758,
+      "disk": 11452294144
+    },
+    {
+      "memavailable": 25539678208,
+      "swaptotal": 8589930496,
+      "swapfree": 6559567872,
+      "pswpout": 585758,
+      "disk": 11460084736
+    },
+    {
+      "memavailable": 25527193600,
+      "swaptotal": 8589930496,
+      "swapfree": 6559567872,
+      "pswpout": 585758,
+      "disk": 11460084736
+    }
+  ],
+  "source_changes": []
+}

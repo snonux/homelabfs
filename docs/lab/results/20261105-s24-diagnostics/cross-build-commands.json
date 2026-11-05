@@ -1,0 +1,31 @@
+[
+  {
+    "argv": [
+      "/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/freebsd-cc",
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-O1",
+      "-g",
+      "internal/controlledruntime/testdata/diagnostic_child.c",
+      "-Wl,-Map,/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/cross-native-v5/diagnostic-child.map",
+      "-o",
+      "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/cross-native-v5/diagnostic-child"
+    ],
+    "exit": 0
+  },
+  {
+    "argv": [
+      "/usr/bin/go",
+      "test",
+      "-c",
+      "-trimpath",
+      "-buildvcs=false",
+      "-o",
+      "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/cross-native-v5/controlledruntime-freebsd.test",
+      "./internal/controlledruntime"
+    ],
+    "exit": 0
+  }
+]

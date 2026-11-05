@@ -39,6 +39,7 @@ type processIdentity struct {
 }
 
 type exporter struct {
+	logs                *exporterLogs
 	nativeFDs           [3]int
 	observationConsumed bool
 	observedUnique      uint64
@@ -141,7 +142,20 @@ func (s *Supervisor) launchObserved(ctx context.Context, spec Executable, observ
 		bootstrapWriter = writer
 		command.ExtraFiles = append(command.ExtraFiles, reader, s.directory)
 	}
+	logs, err := newExporterLogs(s.directory)
+	if err != nil {
+		if bootstrapWriter != nil {
+			_ = bootstrapWriter.Close()
+		}
+		_ = recoveryParent.Close()
+		_ = parent.Close()
+		_ = pinned.Close()
+		return nil, fmt.Errorf("exporter diagnostics: %w", err)
+	}
+	logs.funding = s.runtimeFunding
+	logs.attach(command)
 	if err = command.Start(); err != nil {
+		logs.abort()
 		if bootstrapWriter != nil {
 			_ = bootstrapWriter.Close()
 		}
@@ -150,8 +164,9 @@ func (s *Supervisor) launchObserved(ctx context.Context, spec Executable, observ
 		_ = pinned.Close()
 		return nil, err
 	}
-	result := &exporter{command: command, executable: pinned, control: parent, recovery: recoveryParent, bootstrap: bootstrapWriter, exited: make(chan struct{})}
-	go func() { _ = command.Wait(); close(result.exited) }()
+	logs.start()
+	result := &exporter{logs: logs, command: command, executable: pinned, control: parent, recovery: recoveryParent, bootstrap: bootstrapWriter, exited: make(chan struct{})}
+	go func() { err := command.Wait(); close(result.exited); logs.exited(err) }()
 	identity, err := observe(command.Process.Pid)
 	if err == nil {
 		err = sameExecutable(pinned, identity)

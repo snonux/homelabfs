@@ -1,0 +1,8 @@
+--- FAIL: TestActualExporterDiagnosticsDrainOverflowAndClose (1.07s)
+    process_logs_test.go:103: separate bounded child logs: stdout=262144 stderr="bootstrap-refusal-stderr-after-management-EOFwarning: GOCOVERDIR not set, no coverage data emitted\n"
+--- FAIL: TestActualExporterDiagnosticsCompleteQuietExit (1.06s)
+    process_logs_test.go:170: quiet exit diagnostics: {Started:true ProcessExited:true WaitError:false ExitCode:0 Stdout:{Observed:0 Stored:0 Overflow:false EOF:true ReadError:false WriteError:false} Stderr:{Observed:54 Stored:54 Overflow:false EOF:true ReadError:false WriteError:false} StatusError:false Complete:true}
+FAIL
+coverage: 31.9% of statements
+FAIL	github.com/snonux/homelabfs/internal/controlledruntime	15.547s
+FAIL

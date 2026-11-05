@@ -1,0 +1,50 @@
+{
+  "argv": [
+    "python3",
+    "-B",
+    "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v3.py"
+  ],
+  "exit": 1,
+  "error": null,
+  "seconds": 21.29327511700103,
+  "peakrss": 54464512,
+  "peakdisk": 11397698560,
+  "observations": [
+    {
+      "memavailable": 26959867904,
+      "swaptotal": 8589930496,
+      "swapfree": 6553169920,
+      "pswpout": 585731,
+      "disk": 11397673984
+    },
+    {
+      "memavailable": 26943143936,
+      "swaptotal": 8589930496,
+      "swapfree": 6553169920,
+      "pswpout": 585731,
+      "disk": 11397686272
+    },
+    {
+      "memavailable": 26891960320,
+      "swaptotal": 8589930496,
+      "swapfree": 6553169920,
+      "pswpout": 585731,
+      "disk": 11397690368
+    },
+    {
+      "memavailable": 26962849792,
+      "swaptotal": 8589930496,
+      "swapfree": 6553169920,
+      "pswpout": 585731,
+      "disk": 11397698560
+    },
+    {
+      "memavailable": 26998079488,
+      "swaptotal": 8589930496,
+      "swapfree": 6553169920,
+      "pswpout": 585731,
+      "disk": 11397698560
+    }
+  ],
+  "source_changes": []
+}

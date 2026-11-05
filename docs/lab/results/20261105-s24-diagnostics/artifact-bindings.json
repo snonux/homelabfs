@@ -1,0 +1,29 @@
+{
+  "native_accepted": false,
+  "native_files": {
+    "controlledruntime-freebsd.test": "bf444255c385f8bce4894a7491203dc972b001729265135ee22e88bda5f7638e",
+    "diagnostic-child": "25fb59e8c9b7e2b02f8a830a3af3e51817d255901493c711df810488096c6f80",
+    "native_guard.py": "65997d2f9ef5308f81c12f559d3346a3090d5c7c06642b651e088c27d4b0488e",
+    "runner_process.py": "91310cb7aac7c58e7a16271e69cd88c0443fa3be84d7843b2dd2b9a577ca4c10"
+  },
+  "native_libraries": {
+    "/lib/libc.so.7": "95b6597787b89cec982f44bee5e9af2cf0cd5e5258c1a20ae9cadf8f0421ea5b",
+    "/lib/libsys.so.7": "9f8b058e0acf4136efb54817ffc4403535c50d026d385c3209390b0ec9ceb239",
+    "/lib/libthr.so.3": "0dec1f746d9415c86dff7d719e6b55208e5e007bc1543ddd17e1e8e810c05537",
+    "/libexec/ld-elf.so.1": "305a0b7947a890c653e32a1ed9fc50c100416658dc422f2ca8de9ebcda9ddb6f"
+  },
+  "native_runtime_ready": false,
+  "selected_kernel_sources": {
+    "uipc_sockbuf.c": {
+      "bytes": 46123,
+      "scope": "primary selected-kernel source inspection only; never compiled or installed",
+      "sha256": "5ae87a067995dea7e7f81df12047ea1d6b335ef554b2a7d1a6bdc1fb09cb3371",
+      "url": "https://raw.githubusercontent.com/freebsd/freebsd-src/aadd58dddcbc78f4d5594827b46b5633552b15ce/sys/kern/uipc_sockbuf.c"
+    },
+    "uipc_socket.c": {
+      "bytes": 131929,
+      "sha256": "e178d225e66edd22a8e248c66a5fb9a02de5a337460040afd892bcf15bf6d185",
+      "url": "https://raw.githubusercontent.com/freebsd/freebsd-src/aadd58dddcbc78f4d5594827b46b5633552b15ce/sys/kern/uipc_socket.c"
+    }
+  }
+}

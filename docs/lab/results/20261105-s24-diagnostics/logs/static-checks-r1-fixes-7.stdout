@@ -1,0 +1,6 @@
+{"command": ["go", "build", "./internal/controlledruntime"]}
+{"command": ["go", "build", "-o", "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/bin/hfs-controlled-runtime", "./cmd/hfs-controlled-runtime"]}
+{"command": ["go", "vet", "./internal/controlledruntime"]}
+{"command": ["/home/paul/go/bin/errcheck", "./internal/controlledruntime"]}
+{"command": ["gofmt", "-l", "internal/controlledruntime/process_logs.go", "internal/controlledruntime/process_logs_test.go", "internal/controlledruntime/process_logs_freebsd.go", "internal/controlledruntime/process_logs_linux.go", "internal/controlledruntime/process_logs_parent_test.go", "internal/controlledruntime/process.go", "internal/controlledruntime/state.go", "internal/controlledruntime/runtime_budget.go", "internal/controlledruntime/driver.go", "internal/controlledruntime/process_observer_test.go", "internal/controlledruntime/assembly_test.go"]}
+{"result": "all static checks passed"}

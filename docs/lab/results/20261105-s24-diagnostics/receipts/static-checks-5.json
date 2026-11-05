@@ -1,0 +1,42 @@
+{
+  "argv": [
+    "python3",
+    "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/static-checks.py"
+  ],
+  "exit": 0,
+  "error": null,
+  "seconds": 16.64423178799916,
+  "peakrss": 10903552,
+  "peakdisk": 11436475392,
+  "observations": [
+    {
+      "memavailable": 25207840768,
+      "swaptotal": 8589930496,
+      "swapfree": 6559432704,
+      "pswpout": 585758,
+      "disk": 11428795392
+    },
+    {
+      "memavailable": 25119846400,
+      "swaptotal": 8589930496,
+      "swapfree": 6559432704,
+      "pswpout": 585758,
+      "disk": 11428836352
+    },
+    {
+      "memavailable": 25061318656,
+      "swaptotal": 8589930496,
+      "swapfree": 6559432704,
+      "pswpout": 585758,
+      "disk": 11436475392
+    },
+    {
+      "memavailable": 25037090816,
+      "swaptotal": 8589930496,
+      "swapfree": 6559432704,
+      "pswpout": 585758,
+      "disk": 11436475392
+    }
+  ],
+  "source_changes": []
+}

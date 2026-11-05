@@ -1,0 +1,13 @@
+=== RUN   TestDiagnosticComponentParentExit
+=== RUN   TestDiagnosticComponentParentExit/default-negative
+    process_logs_parent_test.go:190: oracle accept: accept unix /var/tmp/hfs-s24-64wm-r4/tmp/exit-2662383933/oracle: i/o timeout; actual owner exit: exit status 88
+        component readiness: byte="\x00" error=EOF
+    process_logs_parent_test.go:169: preserved parent-exit resources: /var/tmp/hfs-s24-64wm-r4/tmp/exit-2662383933
+=== RUN   TestDiagnosticComponentParentExit/native
+    process_logs_parent_test.go:190: oracle accept: accept unix /var/tmp/hfs-s24-64wm-r4/tmp/exit-3621276509/oracle: i/o timeout; actual owner exit: exit status 88
+        component readiness: byte="\x00" error=EOF
+    process_logs_parent_test.go:169: preserved parent-exit resources: /var/tmp/hfs-s24-64wm-r4/tmp/exit-3621276509
+--- FAIL: TestDiagnosticComponentParentExit (10.04s)
+    --- FAIL: TestDiagnosticComponentParentExit/default-negative (5.02s)
+    --- FAIL: TestDiagnosticComponentParentExit/native (5.03s)
+FAIL

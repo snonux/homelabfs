@@ -259,6 +259,10 @@ func TestRuntimeFundingCompleteOwners(t *testing.T) {
 	funding, err := fundRuntime(b, c.ProviderLimits, c.Authorization.Enrollment.Bounds, 2)
 	require(t, err)
 	defer func() { require(t, funding.owner.Release()) }()
+	resources := funding.transport.Usage().Used
+	if resources.Workers != exporterDiagnosticWorkers || resources.Connections != exporterDiagnosticPipes {
+		t.Fatalf("diagnostic owners absent from retained runtime lease: %+v", resources)
+	}
 	c.Budget = funding.transport
 	a, err := Assemble(t.Context(), c)
 	t.Cleanup(func() { require(t, a.Close()) })

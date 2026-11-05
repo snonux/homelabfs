@@ -196,3 +196,125 @@ oversized/partial groups and syscall errors without starting any process. These
 fixtures are distinct from real native self observation. Neither read-only proof
 establishes native READY, FUSE/filesystem behavior, installed PTE semantics,
 pressure acceptance, publication or approval for VM operations.
+
+## Bounded exporter diagnostics
+
+Every actual supervisor launch captures stdout and stderr independently in
+`OwnerDirectory/exporter.stdout` and `exporter.stderr`. These are exclusive,
+private0600 regular files, capped at256KiB each. The runtime checks this owner
+root against all actual volume/control/workspace/mount roots before launch.
+Observer capability preflight still precedes executable pinning, inherited
+channels, diagnostic creation and child startup. Failed capture setup or exec
+preserves the partial files and consumes the existing launch attempt.
+
+Exactly two drain workers each own one32KiB buffer. Each consumes its actual
+output channel through EOF; after a cap or file-write refusal it continues discarding
+incoming bytes, retaining an overflow/error indication. On actual FreeBSD the
+channels are AF_UNIX stream socketpairs with SO_NOSIGPIPE on the child's two
+inherited output sockets before exec. Each socket's send/receive high-water is
+explicitly set and read back at no more than4096 bytes; unknown/excess bounds
+refuse. The unused directions are shut down. The host's actual
+`kern.ipc.sockbuf_waste_factor` must be1..8, bounding mbuf accounting for all
+eight socket buffers to256KiB within the diagnostic reservation. Larger or
+unreadable host policies refuse before child launch. No host sysctl is changed.
+If the daemon/main exits or crashes, the actual child writes receive EPIPE
+without a kernel SIGPIPE from these sockets. This does not fabricate successful
+output or guarantee that every application ignores EPIPE. No ambient signal
+policy or executable wrapper is introduced. Linux component tests use ordinary
+pipes as an explicitly substituted OS boundary because Linux has no equivalent
+SO_NOSIGPIPE option for inherited write descriptors; production Linux startup
+still refuses. No diagnostic limit
+kills, cancels, signals or waits for bhyve/Rocky. The child still uses
+`exec.Command`; there is no `CommandContext`, WaitDelay or file-size rlimit.
+A storage stall can delay its drain; this adapter does not claim disk I/O
+latency bounds or uninterrupted VM output under a failed storage device.
+
+`exporter-diagnostics.json` is one bounded4096-byte padded JSON status cell.
+It records per-stream observed/stored bytes (observed counters saturate), EOF,
+overflow and read/write errors, plus actual process-wait completion/outcome/exit code (-1 if unknown or signaled),
+status-write errors and diagnostic `Complete`. Capture completeness requires
+process exit, both channel EOFs and no lost evidence. It says nothing about runtime
+readiness, successful child behavior, filesystem acceptance or retirement.
+`WaitError` records the process outcome separately; a nonzero exit can still
+have complete diagnostics. The in-process `Supervisor.Diagnostics` snapshot
+reports these same inert facts. Status is checkpointed at setup/start, each
+drain finish, process exit and Supervisor.Close. A live checkpoint is incomplete;
+a missing, malformed, unsynced or stale cell supplies no final evidence. Output
+may still be arriving after a live checkpoint, so its byte counters are not a
+continuous external oracle. Overflow and I/O refusal never become a successful
+truncation result. A terminal status WriteAt/Sync/Close error is sticky in the
+live owner and returned by later Supervisor.Close even after the status
+file descriptor closes. A failed checkpoint attempts one rewrite with
+Complete=false/StatusError=true; it never clears the original error if that
+invalidation succeeds. Failed storage cannot guarantee that this repair is
+durable or even readable, so saved success bytes alone cannot certify evidence.
+The retained first error is bounded and does not grow on repeated Close calls.
+
+Process exit and EOF are independent. An inherited output descriptor owner may
+outlive the supervised process; such a channel retains its drain and incomplete
+status while this daemon remains alive.
+Supervisor.Close only checkpoints and closes the existing management ownership;
+it neither joins nor closes active diagnostic readers/files. The workers retain
+the original runtime funding and their own descriptors until actual EOF. Final
+status is written through its retained owned descriptor after Close if needed;
+no path reopen or owner-lock reacquisition is used. A daemon crash/return
+destroys its Go drains and leaves only its last checkpoint, never a fabricated final EOF. The FreeBSD socket policy separately
+prevents that reader loss from signaling the surviving VM. External evidence
+collection must treat uncertain/missing final capture as incomplete.
+
+The existing274MiB minimum exporter memory budget is unchanged:64MiB pinned
+executable,64MiB backend,130MiB C snapshots/protection,15MiB other management and
+1MiB diagnostic ownership. That1MiB includes the two drain buffers, bounded
+status serialization, worker stacks, bounded kernel socket-buffer bookkeeping
+and descriptor metadata. The checked native buffer/waste-factor bounds spend at most256KiB of
+that slice on socket mbufs. Overall allocator/RSS placement remains an actual
+artifact admission check. The actual supervisor-held admission lease separately
+charges the two workers and two output-channel connections (the historical accounting field
+is named Pipes). The protected `runtime-budget.json` records
+these fixed bounds, the528384-byte file cap and descriptor inventory explicitly.
+It keeps its memory/worker/pipe charges after Close; local
+closure is not proof that guest/native obligations retired. At most seven parent
+capture descriptors exist during setup (three files and two output-channel
+pairs); after exec closes the parent's two write ends, five capture descriptors
+remain. There are no per-chunk goroutines or growing buffers/queues. These
+accounting reservations are not proof of physical free memory or disk capacity.
+
+Local subprocess/pipe tests exercise real capped output, separate stderr,
+continued writes after management Close, quiet EOF, incomplete process-exit
+versus pipe ownership, write refusal, existing-file preservation and failed
+exec. Real-file wrappers inject positive partial-write/EIO and short/nil outcomes
+while actual child stdout continues draining. Final status WriteAt/EIO and
+successful WriteAt followed by Sync/EIO verify exact stored bytes, readable
+success invalidation, sticky errors and error retention after descriptor close. A separate real-parent-exit regression execs an owned C child, positively
+reaps its actual Go supervisor, then releases actual stdout/stderr writes from
+an independent oracle. Under default SIGPIPE policy FreeBSD's inherited socket
+options must produce EPIPE on both writes while the child survives. A negative
+control disables only the disposable fixture's socket options and reports its
+reaped writer's actual SIGPIPE death. Linux's positive fixture explicitly
+substitutes SIGPIPE-ignore and establishes no FreeBSD safety. The test helpers
+are disposable local processes and explicit OS boundary fixtures. Actual FreeBSD
+execution is needed to qualify its socket safety; these fixtures do not start
+bhyve or prove guest/filesystem behavior.
+Private external C9 lifecycle/evidence operations and a real response-exposure
+lost-reply fixture remain separate unimplemented prerequisites for the real9p
+gate; diagnostic capture does not satisfy them.
+
+`TestActualExporterDiagnosticsParentExit` retains the complete protected
+`Supervisor.Start` integration. Actual FreeBSD attempts failed before child
+startup with `fork/exec /dev/fd/4: no such file or directory`: that host lacked
+fdescfs. These failed receipts remain failures. Task w24 owns the separate
+FD-exec capability/preflight, reviewed host setup/restoration and full native
+launch qualification; xz3/zq3 retain that prerequisite. Diagnostic transport
+component evidence cannot pass this integration or claim runtime READY.
+
+`TestDiagnosticComponentParentExit` is a distinct component fixture. It uses
+actual `newExporterLogs`, the same production attachment/start/exit hooks and
+actual FreeBSD socket policy. Only this test execs its real private,
+source-pinned C file by pathname to isolate output transport from unavailable
+host FD execution. It reaps its actual owner process before releasing the real
+C writes, checks the same SIGPIPE negative/default-policy EPIPE positive and
+requires the saved status to remain incomplete. This is no product fallback,
+replacement native endpoint, observer substitution or `Supervisor.Start` claim.
+Linux exercises both fixtures with its declared signal boundary. Actual FreeBSD
+component execution separately qualifies only diagnostic socket behavior;
+protected native launch/runtime and filesystem acceptance remain w24/xz3/zq3.

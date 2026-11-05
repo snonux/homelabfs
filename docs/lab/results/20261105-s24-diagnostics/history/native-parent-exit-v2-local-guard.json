@@ -1,0 +1,71 @@
+{
+  "argv": [
+    "python3",
+    "-B",
+    "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v2.py"
+  ],
+  "exit": 1,
+  "error": null,
+  "seconds": 32.83482780000486,
+  "peakrss": 59977728,
+  "peakdisk": 11070850048,
+  "observations": [
+    {
+      "memavailable": 25262362624,
+      "swaptotal": 8589930496,
+      "swapfree": 6453968896,
+      "pswpout": 585697,
+      "disk": 11070800896
+    },
+    {
+      "memavailable": 25842757632,
+      "swaptotal": 8589930496,
+      "swapfree": 6453968896,
+      "pswpout": 585699,
+      "disk": 11070813184
+    },
+    {
+      "memavailable": 25190801408,
+      "swaptotal": 8589930496,
+      "swapfree": 6453968896,
+      "pswpout": 585699,
+      "disk": 11070817280
+    },
+    {
+      "memavailable": 25404870656,
+      "swaptotal": 8589930496,
+      "swapfree": 6453968896,
+      "pswpout": 585699,
+      "disk": 11070817280
+    },
+    {
+      "memavailable": 25148506112,
+      "swaptotal": 8589930496,
+      "swapfree": 6453968896,
+      "pswpout": 585699,
+      "disk": 11070817280
+    },
+    {
+      "memavailable": 25367412736,
+      "swaptotal": 8589930496,
+      "swapfree": 6453968896,
+      "pswpout": 585699,
+      "disk": 11070850048
+    },
+    {
+      "memavailable": 25328005120,
+      "swaptotal": 8589930496,
+      "swapfree": 6453968896,
+      "pswpout": 585699,
+      "disk": 11070850048
+    },
+    {
+      "memavailable": 25180921856,
+      "swaptotal": 8589930496,
+      "swapfree": 6453968896,
+      "pswpout": 585699,
+      "disk": 11070850048
+    }
+  ],
+  "source_changes": []
+}

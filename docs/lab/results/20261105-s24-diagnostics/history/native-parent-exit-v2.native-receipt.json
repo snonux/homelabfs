@@ -1,0 +1,582 @@
+{
+  "argv": [
+    "/usr/bin/env",
+    "HFS_DIAGNOSTIC_CHILD=/var/tmp/hfs-s24-64wm-r2/diagnostic-child",
+    "/var/tmp/hfs-s24-64wm-r2/controlledruntime-freebsd.test",
+    "-test.run=^TestActualExporterDiagnosticsParentExit$",
+    "-test.count=1",
+    "-test.timeout=45s",
+    "-test.v"
+  ],
+  "local_reserved_bytes": 11138126848,
+  "error": null,
+  "exit": 1,
+  "peak_rss": 129105920,
+  "peak_global_allocated_disk": 11146435584,
+  "seconds": 10.260417860001326,
+  "observations": [
+    {
+      "elapsed": 0.016096154024126008,
+      "rss": 93372416,
+      "global_allocated_disk": 11146364416,
+      "build_output_bytes": 8237568,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2024788,
+        "inactive_pages": 678261,
+        "physical_free_bytes": 8293531648,
+        "free_plus_inactive_bytes": 11071688704
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 0.05109080602414906,
+      "rss": 125419520,
+      "global_allocated_disk": 11146368000,
+      "build_output_bytes": 8241152,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019421,
+        "inactive_pages": 678331,
+        "physical_free_bytes": 8271548416,
+        "free_plus_inactive_bytes": 11049992192
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 0.31875545700313523,
+      "rss": 115875840,
+      "global_allocated_disk": 11146370048,
+      "build_output_bytes": 8243200,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019627,
+        "inactive_pages": 678401,
+        "physical_free_bytes": 8272392192,
+        "free_plus_inactive_bytes": 11051122688
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 0.5863797460042406,
+      "rss": 116092928,
+      "global_allocated_disk": 11146370048,
+      "build_output_bytes": 8243200,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019572,
+        "inactive_pages": 678401,
+        "physical_free_bytes": 8272166912,
+        "free_plus_inactive_bytes": 11050897408
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 0.8540938360092696,
+      "rss": 116092928,
+      "global_allocated_disk": 11146370048,
+      "build_output_bytes": 8243200,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019575,
+        "inactive_pages": 678401,
+        "physical_free_bytes": 8272179200,
+        "free_plus_inactive_bytes": 11050909696
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 1.1220169050211553,
+      "rss": 116088832,
+      "global_allocated_disk": 11146370048,
+      "build_output_bytes": 8243200,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019572,
+        "inactive_pages": 678403,
+        "physical_free_bytes": 8272166912,
+        "free_plus_inactive_bytes": 11050905600
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 1.3899772450095043,
+      "rss": 116092928,
+      "global_allocated_disk": 11146370048,
+      "build_output_bytes": 8243200,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019570,
+        "inactive_pages": 678399,
+        "physical_free_bytes": 8272158720,
+        "free_plus_inactive_bytes": 11050881024
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 1.657775567000499,
+      "rss": 116088832,
+      "global_allocated_disk": 11146370048,
+      "build_output_bytes": 8243200,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019574,
+        "inactive_pages": 678399,
+        "physical_free_bytes": 8272175104,
+        "free_plus_inactive_bytes": 11050897408
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 1.9256058240134735,
+      "rss": 116109312,
+      "global_allocated_disk": 11146398720,
+      "build_output_bytes": 8271872,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019573,
+        "inactive_pages": 678403,
+        "physical_free_bytes": 8272171008,
+        "free_plus_inactive_bytes": 11050909696
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 2.1936027080228087,
+      "rss": 116101120,
+      "global_allocated_disk": 11146398720,
+      "build_output_bytes": 8271872,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019572,
+        "inactive_pages": 678403,
+        "physical_free_bytes": 8272166912,
+        "free_plus_inactive_bytes": 11050905600
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 2.461252967012115,
+      "rss": 116109312,
+      "global_allocated_disk": 11146398720,
+      "build_output_bytes": 8271872,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019569,
+        "inactive_pages": 678401,
+        "physical_free_bytes": 8272154624,
+        "free_plus_inactive_bytes": 11050885120
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 2.7293630800268147,
+      "rss": 116109312,
+      "global_allocated_disk": 11146398720,
+      "build_output_bytes": 8271872,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019571,
+        "inactive_pages": 678403,
+        "physical_free_bytes": 8272162816,
+        "free_plus_inactive_bytes": 11050901504
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 2.9971228660142515,
+      "rss": 116101120,
+      "global_allocated_disk": 11146398720,
+      "build_output_bytes": 8271872,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019568,
+        "inactive_pages": 678399,
+        "physical_free_bytes": 8272150528,
+        "free_plus_inactive_bytes": 11050872832
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 3.2649933620123193,
+      "rss": 116109312,
+      "global_allocated_disk": 11146398720,
+      "build_output_bytes": 8271872,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019570,
+        "inactive_pages": 678403,
+        "physical_free_bytes": 8272158720,
+        "free_plus_inactive_bytes": 11050897408
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 3.5332495360053144,
+      "rss": 116125696,
+      "global_allocated_disk": 11146398720,
+      "build_output_bytes": 8271872,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019570,
+        "inactive_pages": 678399,
+        "physical_free_bytes": 8272158720,
+        "free_plus_inactive_bytes": 11050881024
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 3.8012096200254746,
+      "rss": 116101120,
+      "global_allocated_disk": 11146398720,
+      "build_output_bytes": 8271872,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019567,
+        "inactive_pages": 678399,
+        "physical_free_bytes": 8272146432,
+        "free_plus_inactive_bytes": 11050868736
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 4.069374718004838,
+      "rss": 116113408,
+      "global_allocated_disk": 11146398720,
+      "build_output_bytes": 8271872,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019566,
+        "inactive_pages": 678401,
+        "physical_free_bytes": 8272142336,
+        "free_plus_inactive_bytes": 11050872832
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 4.336792833026266,
+      "rss": 116101120,
+      "global_allocated_disk": 11146398720,
+      "build_output_bytes": 8271872,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019567,
+        "inactive_pages": 678401,
+        "physical_free_bytes": 8272146432,
+        "free_plus_inactive_bytes": 11050876928
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 4.604731499013724,
+      "rss": 116129792,
+      "global_allocated_disk": 11146398720,
+      "build_output_bytes": 8271872,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019566,
+        "inactive_pages": 678401,
+        "physical_free_bytes": 8272142336,
+        "free_plus_inactive_bytes": 11050872832
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 4.872723175009014,
+      "rss": 116097024,
+      "global_allocated_disk": 11146398720,
+      "build_output_bytes": 8271872,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2019566,
+        "inactive_pages": 678399,
+        "physical_free_bytes": 8272142336,
+        "free_plus_inactive_bytes": 11050864640
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 5.151628325023921,
+      "rss": 129077248,
+      "global_allocated_disk": 11146402816,
+      "build_output_bytes": 8275968,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016444,
+        "inactive_pages": 678269,
+        "physical_free_bytes": 8259354624,
+        "free_plus_inactive_bytes": 11037544448
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 5.419979317026446,
+      "rss": 129081344,
+      "global_allocated_disk": 11146402816,
+      "build_output_bytes": 8275968,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016441,
+        "inactive_pages": 678267,
+        "physical_free_bytes": 8259342336,
+        "free_plus_inactive_bytes": 11037523968
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 5.68868074400234,
+      "rss": 129093632,
+      "global_allocated_disk": 11146402816,
+      "build_output_bytes": 8275968,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016440,
+        "inactive_pages": 678265,
+        "physical_free_bytes": 8259338240,
+        "free_plus_inactive_bytes": 11037511680
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 5.956623093021335,
+      "rss": 129089536,
+      "global_allocated_disk": 11146402816,
+      "build_output_bytes": 8275968,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016442,
+        "inactive_pages": 678265,
+        "physical_free_bytes": 8259346432,
+        "free_plus_inactive_bytes": 11037519872
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 6.224947388021974,
+      "rss": 129085440,
+      "global_allocated_disk": 11146402816,
+      "build_output_bytes": 8275968,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016439,
+        "inactive_pages": 678265,
+        "physical_free_bytes": 8259334144,
+        "free_plus_inactive_bytes": 11037507584
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 6.493155846023001,
+      "rss": 129093632,
+      "global_allocated_disk": 11146402816,
+      "build_output_bytes": 8275968,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016439,
+        "inactive_pages": 678265,
+        "physical_free_bytes": 8259334144,
+        "free_plus_inactive_bytes": 11037507584
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 6.771310928015737,
+      "rss": 129081344,
+      "global_allocated_disk": 11146435584,
+      "build_output_bytes": 8308736,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016439,
+        "inactive_pages": 678266,
+        "physical_free_bytes": 8259334144,
+        "free_plus_inactive_bytes": 11037511680
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 7.039657215005718,
+      "rss": 129081344,
+      "global_allocated_disk": 11146435584,
+      "build_output_bytes": 8308736,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016439,
+        "inactive_pages": 678267,
+        "physical_free_bytes": 8259334144,
+        "free_plus_inactive_bytes": 11037515776
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 7.307848322001519,
+      "rss": 129093632,
+      "global_allocated_disk": 11146435584,
+      "build_output_bytes": 8308736,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016441,
+        "inactive_pages": 678269,
+        "physical_free_bytes": 8259342336,
+        "free_plus_inactive_bytes": 11037532160
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 7.576319347019307,
+      "rss": 129089536,
+      "global_allocated_disk": 11146435584,
+      "build_output_bytes": 8308736,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016438,
+        "inactive_pages": 678266,
+        "physical_free_bytes": 8259330048,
+        "free_plus_inactive_bytes": 11037507584
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 7.844791208015522,
+      "rss": 129093632,
+      "global_allocated_disk": 11146435584,
+      "build_output_bytes": 8308736,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016441,
+        "inactive_pages": 678267,
+        "physical_free_bytes": 8259342336,
+        "free_plus_inactive_bytes": 11037523968
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 8.1133646700182,
+      "rss": 129101824,
+      "global_allocated_disk": 11146435584,
+      "build_output_bytes": 8308736,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016439,
+        "inactive_pages": 678269,
+        "physical_free_bytes": 8259334144,
+        "free_plus_inactive_bytes": 11037523968
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 8.381464258010965,
+      "rss": 129097728,
+      "global_allocated_disk": 11146435584,
+      "build_output_bytes": 8308736,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016439,
+        "inactive_pages": 678265,
+        "physical_free_bytes": 8259334144,
+        "free_plus_inactive_bytes": 11037507584
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 8.65001686400501,
+      "rss": 129093632,
+      "global_allocated_disk": 11146435584,
+      "build_output_bytes": 8308736,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016436,
+        "inactive_pages": 678269,
+        "physical_free_bytes": 8259321856,
+        "free_plus_inactive_bytes": 11037511680
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 8.918435248022433,
+      "rss": 129105920,
+      "global_allocated_disk": 11146435584,
+      "build_output_bytes": 8308736,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016435,
+        "inactive_pages": 678267,
+        "physical_free_bytes": 8259317760,
+        "free_plus_inactive_bytes": 11037499392
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 9.187058854004135,
+      "rss": 129105920,
+      "global_allocated_disk": 11146435584,
+      "build_output_bytes": 8308736,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016435,
+        "inactive_pages": 678265,
+        "physical_free_bytes": 8259317760,
+        "free_plus_inactive_bytes": 11037491200
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 9.455130194022786,
+      "rss": 129101824,
+      "global_allocated_disk": 11146435584,
+      "build_output_bytes": 8308736,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016438,
+        "inactive_pages": 678269,
+        "physical_free_bytes": 8259330048,
+        "free_plus_inactive_bytes": 11037519872
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 9.723589707020437,
+      "rss": 129105920,
+      "global_allocated_disk": 11146435584,
+      "build_output_bytes": 8308736,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016435,
+        "inactive_pages": 678269,
+        "physical_free_bytes": 8259317760,
+        "free_plus_inactive_bytes": 11037507584
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 9.992104471020866,
+      "rss": 129101824,
+      "global_allocated_disk": 11146435584,
+      "build_output_bytes": 8308736,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2016438,
+        "inactive_pages": 678265,
+        "physical_free_bytes": 8259330048,
+        "free_plus_inactive_bytes": 11037503488
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    },
+    {
+      "elapsed": 10.260305265022907,
+      "rss": 93720576,
+      "global_allocated_disk": 11146435072,
+      "build_output_bytes": 8308224,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 2022965,
+        "inactive_pages": 678268,
+        "physical_free_bytes": 8286064640,
+        "free_plus_inactive_bytes": 11064250368
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n/dev/ada0p3       2097152        0  2097152     0%\n"
+    }
+  ],
+  "installed": false,
+  "booted": false,
+  "native_accepted": false
+}

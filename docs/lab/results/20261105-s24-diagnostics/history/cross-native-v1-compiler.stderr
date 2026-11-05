@@ -1,0 +1,7 @@
+internal/controlledruntime/testdata/diagnostic_child.c:21:40: error: use of undeclared identifier 'SO_NOSIGPIPE'
+   21 |       if (getsockopt(i_fd, SOL_SOCKET, SO_NOSIGPIPE,
+      |                                        ^~~~~~~~~~~~
+internal/controlledruntime/testdata/diagnostic_child.c:25:54: error: use of undeclared identifier 'SO_NOSIGPIPE'
+   25 |       if (!i_enabled && setsockopt(i_fd, SOL_SOCKET, SO_NOSIGPIPE,
+      |                                                      ^~~~~~~~~~~~
+2 errors generated.

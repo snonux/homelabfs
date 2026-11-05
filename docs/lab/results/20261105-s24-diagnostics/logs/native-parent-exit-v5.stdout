@@ -1,0 +1,7 @@
+=== RUN   TestDiagnosticComponentParentExit
+=== RUN   TestDiagnosticComponentParentExit/default-negative
+=== RUN   TestDiagnosticComponentParentExit/native
+--- PASS: TestDiagnosticComponentParentExit (0.05s)
+    --- PASS: TestDiagnosticComponentParentExit/default-negative (0.03s)
+    --- PASS: TestDiagnosticComponentParentExit/native (0.02s)
+PASS

@@ -392,12 +392,13 @@ func waitRuntimeSessions(ctx context.Context, t *guestbridge.Transport, controll
 
 func protectRuntimeBudget(s *Supervisor, c RuntimeConfig) error {
 	raw, err := json.Marshal(struct {
-		Budget    RuntimeBudget
-		Providers ProviderLimits
-		Service   fsservice.Limits
-		Views     viewcontrol.Bounds
-		Domains   int
-	}{c.Budget, c.Providers, c.Service, c.Views, len(c.Scopes)})
+		Budget      RuntimeBudget
+		Providers   ProviderLimits
+		Service     fsservice.Limits
+		Views       viewcontrol.Bounds
+		Domains     int
+		Diagnostics diagnosticBudget
+	}{c.Budget, c.Providers, c.Service, c.Views, len(c.Scopes), fixedDiagnosticBudget()})
 	if err != nil {
 		return err
 	}

@@ -40,7 +40,7 @@ func assertObserverRefusalHasNoChild(t *testing.T, s *Supervisor, child *exporte
 	if child != nil || s.child != nil {
 		t.Fatal("observer refusal retained an actually started child")
 	}
-	for _, path := range []string{marker, filepath.Join(s.root, "exporter")} {
+	for _, path := range []string{marker, filepath.Join(s.root, "exporter"), filepath.Join(s.root, "exporter.stdout"), filepath.Join(s.root, "exporter.stderr"), filepath.Join(s.root, "exporter-diagnostics.json")} {
 		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("observer refusal reached launch effects: %s: %v", path, err)
 		}

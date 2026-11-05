@@ -124,8 +124,13 @@ func (s *Supervisor) Close() error {
 		}
 	}
 	var err error
+	if s.child != nil && s.child.logs != nil {
+		err = s.child.logs.checkpoint()
+	}
 	if s.lock != nil {
-		err = s.lock.Close()
+		if closeErr := s.lock.Close(); err == nil {
+			err = closeErr
+		}
 		s.lock = nil
 	}
 	if s.directory != nil {

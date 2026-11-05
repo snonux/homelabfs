@@ -1,0 +1,276 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 5574,
+      "origin": "current R1-fixed local receipts/root review handoff/evidence summary; see source file",
+      "sha256": "0b5e019a17575a3023bfa19c0e0eee96a39dd7774004ca821e1ff1530387e8ba"
+    },
+    "artifact-bindings.json": {
+      "bytes": 1538,
+      "origin": "verified current cross binaries / collected staged bindings / selected primary-source receipts",
+      "sha256": "df899aa928e23fc89ed9316d26cf370b73de03da6e58deed72ac006120348555"
+    },
+    "cross-build-commands.json": {
+      "bytes": 759,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/cross-native-v5/commands.json",
+      "sha256": "e5cf15a81532ea2b5ac612626363d386d31fc6e31c391af4c5d38b3890e0c883"
+    },
+    "history/cross-native-v1-compiler.stderr": {
+      "bytes": 516,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/cross-native-v1/0.stderr",
+      "sha256": "9ddbae52251251879f6452ce4cf0df1034ed13f9394fa3895d05d9142874f3cd"
+    },
+    "history/cross-native-v1-receipt.json": {
+      "bytes": 921,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/cross-native-v1/receipt.json",
+      "sha256": "78fb6f7a57722e97d395fd9cee8d2e5b4d84df9c00ee44fd0f992f5a317008c5"
+    },
+    "history/focused-race-r1-fixes-6.receipt.json": {
+      "bytes": 1805,
+      "origin": "current R1-fixed local receipts/root review handoff/evidence summary; see source file",
+      "sha256": "0c5fbec6fdb6e6fe5e72d8c2c95dae0dd194747ae8d492c948717e068be682c3"
+    },
+    "history/focused-race-r1-fixes-6.stderr": {
+      "bytes": 0,
+      "origin": "current R1-fixed local receipts/root review handoff/evidence summary; see source file",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "history/focused-race-r1-fixes-6.stdout": {
+      "bytes": 746,
+      "origin": "current R1-fixed local receipts/root review handoff/evidence summary; see source file",
+      "sha256": "09c47b0f458fc6dbf3d69411e717312d18a956c6a2aba49c42f7f032cadc7dab"
+    },
+    "history/index.json": {
+      "bytes": 1374,
+      "origin": "verified original failed guard/collection records; never reclassified as passes",
+      "sha256": "c96720334d7016d8a90f9cb8a66e48d06831f43e566177e80601e6f24a3261cc"
+    },
+    "history/native-diagnostic-component-v3-collection.json": {
+      "bytes": 630,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v3/collection.json",
+      "sha256": "6042f731fdcce86767c3bf803deb64ea63f9b1bb14cccbc0dddd2980bd4b9b59"
+    },
+    "history/native-diagnostic-component-v3-execution.json": {
+      "bytes": 1593,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v3/execution.json",
+      "sha256": "5247b27a41e3da0f85bc47e83e5c7b8d9424d4e4182dc50c81261e9ffbbd6d63"
+    },
+    "history/native-diagnostic-component-v3-local-guard.json": {
+      "bytes": 1079,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/native-diagnostic-component-v3/receipt.json",
+      "sha256": "f17d552c8ef117cb842325d7a54e630418aefd57c2df43715e56a0e3dcb00352"
+    },
+    "history/native-diagnostic-component-v4-local-guard.json": {
+      "bytes": 1559,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/native-diagnostic-component-v4/receipt.json",
+      "sha256": "5cf3af4f521132f861dc4e7b693607df7b9be9ee3f63c4d305090275557d8111"
+    },
+    "history/native-diagnostic-component-v4.native-receipt.json": {
+      "bytes": 21006,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v4/collection.json#checks/parent-exit/receipt.json",
+      "sha256": "593cb84d3dc804a414fe850de160b4e95606572308b390d7c3795d5e58254ac4"
+    },
+    "history/native-diagnostic-component-v4.stderr": {
+      "bytes": 0,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v4/collection.json#checks/parent-exit/stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "history/native-diagnostic-component-v4.stdout": {
+      "bytes": 1010,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v4/collection.json#checks/parent-exit/stdout",
+      "sha256": "ed6dc20637b213021558db24a77d36481b6ac8c4a6b84c4eecb2b5136d0f2aee"
+    },
+    "history/native-parent-exit-v1-local-guard.json": {
+      "bytes": 1558,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/native-parent-exit-v1/receipt.json",
+      "sha256": "bd40be8ff47717aa5df278bdcdb6e80694bcf2721539d06e47e04278c14b2500"
+    },
+    "history/native-parent-exit-v1.native-receipt.json": {
+      "bytes": 21012,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v1/collection.json#checks/parent-exit/receipt.json",
+      "sha256": "c723311384d77c03b562c1790a81243de7e3d970d8d9f8e3593209a920b5b657"
+    },
+    "history/native-parent-exit-v1.stderr": {
+      "bytes": 0,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v1/collection.json#checks/parent-exit/stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "history/native-parent-exit-v1.stdout": {
+      "bytes": 838,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v1/collection.json#checks/parent-exit/stdout",
+      "sha256": "dbb0734229c30e9b0853b0cf82efe41aa28f561a559d274dc6d0b48df453c6e3"
+    },
+    "history/native-parent-exit-v2-local-guard.json": {
+      "bytes": 1559,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/native-parent-exit-v2/receipt.json",
+      "sha256": "24d842263671967755ee6d584e2c3cc9a2a5488d4b76dd08eb50214506c963ca"
+    },
+    "history/native-parent-exit-v2.native-receipt.json": {
+      "bytes": 21010,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v2/collection.json#checks/parent-exit/receipt.json",
+      "sha256": "5134d22e4de104d1d48bd6ae15a1d3962aed825ecf175dc5c360dee78688ff85"
+    },
+    "history/native-parent-exit-v2.stderr": {
+      "bytes": 0,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v2/collection.json#checks/parent-exit/stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "history/native-parent-exit-v2.stdout": {
+      "bytes": 1096,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v2/collection.json#checks/parent-exit/stdout",
+      "sha256": "c10dc2ddf19f71150df4d02ce0cdca66a7ed2116caad69efbeb07230b1df690b"
+    },
+    "history/r4-readonly-failure-inspection.json": {
+      "bytes": 9889,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/inspect-native-component-failure-r4/stdout",
+      "sha256": "859bab5dba11862e814f25b0ebb22f56161c2b030aab19a888fa42ea5f71ba15"
+    },
+    "logs/cross-native-v5.stderr": {
+      "bytes": 0,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/cross-native-v5/stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/cross-native-v5.stdout": {
+      "bytes": 789,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/cross-native-v5/stdout",
+      "sha256": "6e5609a27409d9ae5431d37ea131acad0e03c82cbe3c937e60b569599398988d"
+    },
+    "logs/focused-race-native-oracle-5.stderr": {
+      "bytes": 0,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/focused-race-native-oracle-5/stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/focused-race-native-oracle-5.stdout": {
+      "bytes": 68,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/focused-race-native-oracle-5/stdout",
+      "sha256": "d823c657a7ad4f8c5abee31503dac3d854d0be536ec29cb7f4bb104756c714be"
+    },
+    "logs/focused-race-r1-fixes-7.stderr": {
+      "bytes": 0,
+      "origin": "current R1-fixed local receipts/root review handoff/evidence summary; see source file",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/focused-race-r1-fixes-7.stdout": {
+      "bytes": 98,
+      "origin": "current R1-fixed local receipts/root review handoff/evidence summary; see source file",
+      "sha256": "80b2f43582f3d66ba50f77d8717667b4bc8781a277feacf0518043feb7076d78"
+    },
+    "logs/native-diagnostic-component-v5.stderr": {
+      "bytes": 0,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/native-diagnostic-component-v5/stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/native-diagnostic-component-v5.stdout": {
+      "bytes": 2221,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/native-diagnostic-component-v5/stdout",
+      "sha256": "5d3f73198b1c2a34141e8c781da5e42e0bf31d59d99b8b9d32ebefd1775e8d58"
+    },
+    "logs/native-parent-exit-v5.stderr": {
+      "bytes": 0,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v5/collection.json#checks/parent-exit/stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/native-parent-exit-v5.stdout": {
+      "bytes": 349,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v5/collection.json#checks/parent-exit/stdout",
+      "sha256": "8c1d0c34dc0c65706c83abe769ecd0ff976df29813518f3fbdc08e8844ed2622"
+    },
+    "logs/static-checks-5.stderr": {
+      "bytes": 0,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/static-checks-5/stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/static-checks-5.stdout": {
+      "bytes": 946,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/static-checks-5/stdout",
+      "sha256": "5eb58c664931770cbc6588218865b7ab36af44a450229ee6192dde26717ceb6a"
+    },
+    "logs/static-checks-r1-fixes-7.stderr": {
+      "bytes": 0,
+      "origin": "current R1-fixed local receipts/root review handoff/evidence summary; see source file",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/static-checks-r1-fixes-7.stdout": {
+      "bytes": 946,
+      "origin": "current R1-fixed local receipts/root review handoff/evidence summary; see source file",
+      "sha256": "5eb58c664931770cbc6588218865b7ab36af44a450229ee6192dde26717ceb6a"
+    },
+    "native-plan.json": {
+      "bytes": 1303,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v5/plan.json",
+      "sha256": "881504f2c6c99c3343f287a9d80487b796d0a575406b276a8b3d4d86d8a0cf89"
+    },
+    "native-staged-bindings.json": {
+      "bytes": 376,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v5/collection.json#staged-bindings.json",
+      "sha256": "4a56f867a04e78e098a1c305981c280f4ee9aa5b823a2d600792d8d428dffe67"
+    },
+    "native-staging.json": {
+      "bytes": 961,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v5/staging.json",
+      "sha256": "a8e23e7a77018d500d84f5157b38d37594316afeebe96cc45d9e1f49132d94c1"
+    },
+    "native-v5-source-bindings.json": {
+      "bytes": 6221,
+      "origin": "current R1-fixed local receipts/root review handoff/evidence summary; see source file",
+      "sha256": "842d82df09fdbff72622e2bd8dd23416c4a649990c7ee564947a742b5b6305e1"
+    },
+    "receipts/cross-native-v5.json": {
+      "bytes": 924,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/cross-native-v5/receipt.json",
+      "sha256": "6665e85c1503d15dc4e585bf24f65f9fbe53242a55df023529e189adb58da0eb"
+    },
+    "receipts/focused-race-native-oracle-5.json": {
+      "bytes": 1629,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/focused-race-native-oracle-5/receipt.json",
+      "sha256": "7385aaf31e83818207e888fc81bc8f8c8d145f381b582aba28ea45de2986cd3c"
+    },
+    "receipts/focused-race-r1-fixes-7.json": {
+      "bytes": 1804,
+      "origin": "current R1-fixed local receipts/root review handoff/evidence summary; see source file",
+      "sha256": "2956ff686af5f822f96076d17158b22596ef360bd176c12f566f4a4ec6f2a26e"
+    },
+    "receipts/native-diagnostic-component-v5.json": {
+      "bytes": 1080,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/native-diagnostic-component-v5/receipt.json",
+      "sha256": "1191d0a06d66606710636001049c4956dfe708d34feec1dbc152c79e93135195"
+    },
+    "receipts/native-parent-exit-v5.json": {
+      "bytes": 2086,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/native-fixture-v5/collection.json#checks/parent-exit/receipt.json",
+      "sha256": "2f2cb64f10333c8a81f43ec43dd7c73509ab635ab6f1588a8b16f352cce13831"
+    },
+    "receipts/static-checks-5.json": {
+      "bytes": 912,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/static-checks-5/receipt.json",
+      "sha256": "15a46d32ead09e236b04021b59dfb1e15416a80a72662063a2d7286a2ffc13ea"
+    },
+    "receipts/static-checks-r1-fixes-7.json": {
+      "bytes": 913,
+      "origin": "current R1-fixed local receipts/root review handoff/evidence summary; see source file",
+      "sha256": "1821c9258f3163ef8561e2bc76222fb9da63ee600a978aefca9d7e2b3add448d"
+    },
+    "result.json": {
+      "bytes": 4362,
+      "origin": "verified raw receipts",
+      "sha256": "5969a01c867423331e5acb66dc9537f4b9ac23009d066522af403f2b74de07e2"
+    },
+    "review.json": {
+      "bytes": 1139,
+      "origin": "current R1-fixed local receipts/root review handoff/evidence summary; see source file",
+      "sha256": "950329f5581f7f72e98e8ba4a8e930e8e23bd0df6ef223805e4209441a31b769"
+    },
+    "source-bindings.json": {
+      "bytes": 6765,
+      "origin": "current guarded bindings and direct source-byte comparison",
+      "sha256": "2f3390d1185812167ffa376a74cb20a29d66e7a317c51a8280255d9bcd9bb0e0"
+    },
+    "static-checks.py": {
+      "bytes": 1519,
+      "origin": "/home/paul/tmp/codex/hfs-s24-20261105-64_wmjyv/checks/static-checks.py",
+      "sha256": "885cc8efec1cdf3114e3345fa471651a321f1d46cfcaa663bc7683ab46a08a2a"
+    }
+  },
+  "scope": "current local receipts and historical native v5; no current-byte native/merged acceptance claim",
+  "version": "sha256-evidence-manifest/1"
+}

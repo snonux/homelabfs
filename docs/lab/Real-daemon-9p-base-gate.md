@@ -40,7 +40,8 @@ a known-impossible VM bootstrap to rediscover this source-proven prerequisite.
 Root quarantined the old candidate in commit
 `ad2a8527eca50abeaefe4ec9a1cc03425d23ccd6` and reopened xz3. Task r24 owns
 actual native process qualification and unsupported prelaunch refusal; s24 owns
-the private C9/evidence/lost-reply control and bounded exporter diagnostics.
+bounded exporter diagnostics. Separate follow-up prerequisites retain the private
+C9/evidence control (u24) and actual response-exposure lost-reply (v24) requirements.
 Task r24 is now complete: source `c520332` refuses unsupported observation before
 launch effects, and its actual CGO daemon passed native read-only qualification.
 See [observer evidence](results/20261105-r24-observer/README.md). This qualifies
@@ -68,12 +69,23 @@ Those methods require the actual in-process owners, not decoded state files.
 Guest-wire RESUME and replacement FUSE/exporter remain blocked. The harness must
 record and safely test those refusals without claiming daemon restart continuity.
 
-`Supervisor.launch` currently leaves the child command's Stdout and Stderr nil,
-so actual exporter stdout/stderr goes to the null device. The C bootstrap's
-refusal diagnostic is therefore not retained. The observation adapter must
-provide bounded owned diagnostic capture without auto-killing a VM on overflow
-or applying a general file-size limit to its journal/data. Required evidence
-overflow remains an incomplete result, not a silent successful truncation.
+`Supervisor.launch` now wires separate bounded stdout/stderr drains into exclusive
+owned files outside actual runtime volume roots. Each retains at most256KiB,
+then continues consuming output while recording overflow/incomplete evidence;
+a fixed4KiB status cell distinguishes process exit from actual pipe EOF.
+Supervisor.Close checkpoints without joining, closing active drains or killing
+a VM. Actual FreeBSD output uses bounded socketpairs with inherited
+SO_NOSIGPIPE, so daemon exit/crash does not newly signal the surviving child;
+EPIPE and incomplete capture remain visible. Linux pipe fixtures cannot prove
+that native property. See [diagnostic ownership and limits](../../internal/controlledruntime/runtime.md#bounded-exporter-diagnostics).
+This source change needs focused review and a rebuilt exact-byte
+artifact; it supplies no actual native/bootstrap acceptance. The separate
+actual FreeBSD full-launch fixture failed at `/dev/fd/4` execution on the host
+without fdescfs. Task w24 preserves FD-exec capability/preflight, reviewed host
+setup/restoration and native launch qualification as an xz3/zq3 prerequisite.
+The distinct diagnostic socket component fixture uses test-only private pinned
+pathname exec and cannot pass that full-launch requirement. Required evidence
+overflow remains incomplete, and no generic journal/data file-size limit applies.
 
 Minimum proposed additional runtime adapter, requiring its own focused review:
 

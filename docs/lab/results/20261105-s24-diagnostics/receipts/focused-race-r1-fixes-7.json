@@ -1,0 +1,77 @@
+{
+  "argv": [
+    "go",
+    "test",
+    "-race",
+    "-cover",
+    "-count=1",
+    "-timeout=600s",
+    "./internal/controlledruntime",
+    "-run",
+    "Test(DiagnosticComponent|ActualExporterDiagnostics|ExporterDiagnostics|FailedExecRetainsIncompleteDiagnostics|ObserverPreflight|ExclusiveRegistry|FailedStartup|LiveIdentity|RuntimeFundingCompleteOwners)"
+  ],
+  "exit": 0,
+  "error": null,
+  "seconds": 33.66697631998977,
+  "peakrss": 212049920,
+  "peakdisk": 11730056192,
+  "observations": [
+    {
+      "memavailable": 26556063744,
+      "swaptotal": 8589930496,
+      "swapfree": 6562025472,
+      "pswpout": 585758,
+      "disk": 11684955136
+    },
+    {
+      "memavailable": 26559942656,
+      "swaptotal": 8589930496,
+      "swapfree": 6562025472,
+      "pswpout": 585758,
+      "disk": 11694834688
+    },
+    {
+      "memavailable": 26442174464,
+      "swaptotal": 8589930496,
+      "swapfree": 6562029568,
+      "pswpout": 585758,
+      "disk": 11717182464
+    },
+    {
+      "memavailable": 26434142208,
+      "swaptotal": 8589930496,
+      "swapfree": 6562029568,
+      "pswpout": 585758,
+      "disk": 11730056192
+    },
+    {
+      "memavailable": 26418991104,
+      "swaptotal": 8589930496,
+      "swapfree": 6562029568,
+      "pswpout": 585758,
+      "disk": 11727553536
+    },
+    {
+      "memavailable": 26400960512,
+      "swaptotal": 8589930496,
+      "swapfree": 6562029568,
+      "pswpout": 585758,
+      "disk": 11694932992
+    },
+    {
+      "memavailable": 26590056448,
+      "swaptotal": 8589930496,
+      "swapfree": 6562029568,
+      "pswpout": 585758,
+      "disk": 11694281728
+    },
+    {
+      "memavailable": 26625179648,
+      "swaptotal": 8589930496,
+      "swapfree": 6562029568,
+      "pswpout": 585758,
+      "disk": 11694281728
+    }
+  ],
+  "source_changes": []
+}
