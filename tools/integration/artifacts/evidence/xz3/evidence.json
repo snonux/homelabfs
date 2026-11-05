@@ -1,0 +1,1098 @@
+{
+  "candidate": {
+    "baseline_meaning": "actual Go builder baseline; maintained changes and new recipes separately retained/pinned; baseline does not claim to contain trace/const/annotation fixes",
+    "directory": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-final",
+    "files": 195,
+    "manifest_sha256": "7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b",
+    "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+    "repository_build_baseline": "e1a7374010ac4b5ed6264a64b0fc26aebb5ed753",
+    "result": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "source_checkout": "13fbad97dad85ce3145f22c92892aefa132ee1e9"
+  },
+  "components": {
+    "daemon": {
+      "artifacts": {
+        "freebsd/hfs-controlled-runtime": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99"
+      },
+      "compiler_tools": {
+        "binaries": {
+          "asm": {
+            "path": "/usr/lib/golang/pkg/tool/linux_amd64/asm",
+            "sha256": "afeed3024401960d3ab8ac8ee41ce0050d41af7f362a9ada93f4935c5594f14d"
+          },
+          "compile": {
+            "path": "/usr/lib/golang/pkg/tool/linux_amd64/compile",
+            "sha256": "559bb0b5719aa6ff239323484bccecba9163419c51e4777517c33edb7435a0b6"
+          },
+          "go": {
+            "path": "/usr/lib/golang/bin/go",
+            "sha256": "ccaa26464afb51c19c34030b88468fe18cde8c4b009edff87856b5d474674202"
+          },
+          "link": {
+            "path": "/usr/lib/golang/pkg/tool/linux_amd64/link",
+            "sha256": "0241fbab02ea1e89a0c3ba41ebfb3ebf03748a068c42b17b056d3527513bd518"
+          }
+        },
+        "licenses": {},
+        "selected_environment": {
+          "GOENV": "",
+          "GOROOT": "/usr/lib/golang",
+          "GOTOOLDIR": "/usr/lib/golang/pkg/tool/linux_amd64",
+          "GOVERSION": "go1.26.10-X:nodwarf5",
+          "GOWORK": "off"
+        },
+        "version": "go version go1.26.10-X:nodwarf5 linux/amd64"
+      },
+      "go_version": "go version go1.26.10-X:nodwarf5 linux/amd64",
+      "identity": {
+        "gnu_build_id": "212e48afe999221fb6c8973cf1f1104d9dd26b70",
+        "go_build_id": "-9lLz6t4tf1hBwXPcFGt/fs1RlQi6zPy0r-bJ8gol/WmgnQIXJ-blpEjQ6Sfkm/LUaG0G-NfeaQf7bgC9kJ",
+        "machine": 62,
+        "osabi": 9,
+        "type": 2
+      }
+    },
+    "freebsd": {
+      "artifacts": {
+        "freebsd/bhyve": "f082a33875d28ac1d89767839e756e227e83d7940b32a72f41c29d91a402ac2e",
+        "freebsd/bhyve-slirp-helper": "15eb32965e122a624dcf0135e76ab9a42ddeac6b6a423e67155b5e8c69b14070",
+        "freebsd/lib9p.a": "ee302ea3ae06093e92ed3af0286897fe702df1abcf6488bd192412d2a012c2b6",
+        "freebsd/lib9p_pie.a": "4d46edc611edb22f321ec343c387567dd2f1bb720ae918e3a1a9f03ed1e1acf2",
+        "freebsd/libvmmapi.a": "47ea581b48e212a230a1b9a5c57a00d38f0f664b1da0555a7a02c911fc6c186b",
+        "freebsd/libvmmapi_pie.a": "4cd317ab0a571ff2e7625cb3d95872a9fbe4fb5341a4c8d8f96d227546841e91",
+        "freebsd/share/bhyve/gdb/aarch64-core.xml": "438dd8bde0590252272c6246d9db9fee77f9df18e935d6955d6ea205873de4a3",
+        "freebsd/share/bhyve/gdb/amd64.xml": "a6776f5acd06ce7e313637623b8ac9bb89362849b31060f38a393b6f88c9280e",
+        "freebsd/share/bhyve/gdb/target.xml": "826b64658229e9471acb0111275f41eef473112adabacb16187d2858d8e2b61f",
+        "freebsd/share/bhyve/kbdlayout/am": "fdff4ea657620d8708df6b9ab339912086b7e9654d7354d645f5945e5f12502e",
+        "freebsd/share/bhyve/kbdlayout/be": "68092ca1d25434a6e99201e09be652447625cb5c115f14a55f82fb5f4424b611",
+        "freebsd/share/bhyve/kbdlayout/be_acc": "63dc17f483213e59b55750bbcdc5ff3cb08148a538472ef8fbf6142fe6129415",
+        "freebsd/share/bhyve/kbdlayout/bg_bds": "800d4911f964f37f462b0bb48831134ea29f099c5bcd1f1d6b4d073d18e85b4f",
+        "freebsd/share/bhyve/kbdlayout/bg_phonetic": "05b92c8aedd9ec8bd5b61d535b9db935a7a5af00abb995f0c004ff2478f1f592",
+        "freebsd/share/bhyve/kbdlayout/br": "ced3e760d6c425bdd39994f556cc0d2a851dbb0720cc327edb04ad76999ca7aa",
+        "freebsd/share/bhyve/kbdlayout/br_noacc": "06bb41924a9393a5dbb8357ccfea1e470915950a4c49147cb11e48b0ef2af835",
+        "freebsd/share/bhyve/kbdlayout/centraleuropean": "55ff18620552e7790d1fc9d050b7b4997a7b2e8ad5362a2a5bb4cc10c544043b",
+        "freebsd/share/bhyve/kbdlayout/ch": "dfe8825741cd2bd36f6474f131b7835fe3336684498e87e9ae6d535fe37a39aa",
+        "freebsd/share/bhyve/kbdlayout/ch-fr": "170c0c33bf395d85df75ac9b7d68d401d999a0bfb375cc12b4b3682b72bdee61",
+        "freebsd/share/bhyve/kbdlayout/ch-fr_acc": "cc78e175474b5f846d422d2a424f164f8e149c9f4c4e9f1fb0164c1485fe4a28",
+        "freebsd/share/bhyve/kbdlayout/ch_acc": "1e481a8bcf99768bc92d010547dfd3d53fb2af0de7f9feb741770c558d4142bf",
+        "freebsd/share/bhyve/kbdlayout/ch_macbook_acc": "e41b0c40961100a132ed5b0c018bffa57c6539756d8f95521dc5909a3d231bd3",
+        "freebsd/share/bhyve/kbdlayout/cz": "996a60b4b43b58aeb6e3584d813da735301826bac49ff86bd09008bbaa56c2be",
+        "freebsd/share/bhyve/kbdlayout/de": "9595eaa4d64de40c8d2227dcf9c1fdf6b1c6a14df31477e2016267d8e2566372",
+        "freebsd/share/bhyve/kbdlayout/de_acc": "a71658996ae8d225bd5dd3facc72909eddc4df769e4951b732947cb81c8f022f",
+        "freebsd/share/bhyve/kbdlayout/de_noacc": "2fbac5888b08c6a62bf27759a62ea9aded06b3a59f9b2f597df5dbead2172219",
+        "freebsd/share/bhyve/kbdlayout/default": "61da5ac4205298006cf0995cbb655d26ed62517f8287dc84f5c2351abe15817d",
+        "freebsd/share/bhyve/kbdlayout/dk": "60f61bcaaa68d5f5df3e09bd63b9d6310d3d479d44ba04d2c0daa3815e5a82e0",
+        "freebsd/share/bhyve/kbdlayout/dk_macbook": "83de415c651eab00582956891b55f31d4fe1b6577424503b47a6895c1278f60a",
+        "freebsd/share/bhyve/kbdlayout/ee": "1cc67d695bfb3ae4bad0b09f2470d358482615825aca545c6b945d862f54ad2e",
+        "freebsd/share/bhyve/kbdlayout/es": "254b85122128d441dd8a46090cd3993d5e0b31d5313a5409b5a4b90d98bb950b",
+        "freebsd/share/bhyve/kbdlayout/es_acc": "9f07e212cca21abf2095b876e4929f160bea88a4be34421ba057c5cea086598b",
+        "freebsd/share/bhyve/kbdlayout/es_dvorak": "ee63fd9a634a43350861af5b389aba64beb6b87ee4ee6d82cc97ffa91951f49c",
+        "freebsd/share/bhyve/kbdlayout/fi": "172ed622954bc932718412bcad8c8af1a882e979de0fd2c4127662bf84ac118e",
+        "freebsd/share/bhyve/kbdlayout/fr": "2b6d9d0e3be5f77da60e00ffdf1a23237cc901697ac1f6147bc6f78a45af2b9e",
+        "freebsd/share/bhyve/kbdlayout/fr_acc": "814427e9375db55fe5b9d6ed3d5a246d77667082c0573833babd84a3b4ba4f94",
+        "freebsd/share/bhyve/kbdlayout/fr_dvorak": "2d4105992ff6417f9fd50039e765930cec6bcd2d488d3893feb6b881ecbe6ba8",
+        "freebsd/share/bhyve/kbdlayout/fr_dvorak_acc": "ee17b916cbb48cc790f8a3538bab3611e64bb016f8dd9bbd99d09b95266dec10",
+        "freebsd/share/bhyve/kbdlayout/fr_macbook": "ff131557e2a98a5b076c0bb53ddd27b48e103ac04fe7c2320731da23d674988a",
+        "freebsd/share/bhyve/kbdlayout/gr": "21aeb973c2eb32f515b1693aaa1a6f7b0aab53e7a29ccf860ad34f6925f766a8",
+        "freebsd/share/bhyve/kbdlayout/gr_101_acc": "1bea530fe631de0e9ebb182f8187e626d853b1cd53b6fac8411e2f24b8ca90b2",
+        "freebsd/share/bhyve/kbdlayout/gr_elot_acc": "694e0db0bddd45eab290380c5ce101e1be7ccd10d22c7ad068c5e255db24b245",
+        "freebsd/share/bhyve/kbdlayout/hr": "1dd7bdeebd0de874b0682960d3fdeb134b01a642f654b595de7aac869f4757d3",
+        "freebsd/share/bhyve/kbdlayout/hu_101": "1198c935240437f0de0f503e04e807aa62585b5fc076a374f351e5a9a6f0c4e5",
+        "freebsd/share/bhyve/kbdlayout/hu_102": "abdc11cb580c345352e8adfb1caf32c6a9add62554460c0d58694c1a6b046f1f",
+        "freebsd/share/bhyve/kbdlayout/is": "8059493cfd8cee978c84a2f88b129e7089e2e0ded3a3e6497df1d37d08bc7b3a",
+        "freebsd/share/bhyve/kbdlayout/is_acc": "ba3c66c189134882e7876b7d1ecbaea7ec6adb16c376e80b4991ff25c5a8ba56",
+        "freebsd/share/bhyve/kbdlayout/it": "f4e96e5d825451ff0d1c9d0f655146ba463df58117a8b8e54a9dcac78898f8ec",
+        "freebsd/share/bhyve/kbdlayout/jp": "bfcabce8ca699b0ba4059335898a21299b5209393d173b83faa60eeeb0cb0706",
+        "freebsd/share/bhyve/kbdlayout/jp_capsctrl": "a6fae870c1e6e98048e2c815ba68b762886f91dc68e6a04e92f1decb5d3b1b50",
+        "freebsd/share/bhyve/kbdlayout/kz_io": "f2a93a4881db353673b66ddafe1d075254fbca7d36ef8cb759ffc74c97faf943",
+        "freebsd/share/bhyve/kbdlayout/kz_kst": "02cb88d8ed72705f47471d1932f98ee5df36861d9138f9b1862b361a7e89b60d",
+        "freebsd/share/bhyve/kbdlayout/latinamerican": "d38db64ab2f28c8c4873b864560b7fc58875002bd57cd318d3db4355bec38004",
+        "freebsd/share/bhyve/kbdlayout/latinamerican_acc": "1deb455ca0d33c9e0a16230e4cacd451271ec5ef26a40bc4ef8cc9a9d62fd329",
+        "freebsd/share/bhyve/kbdlayout/lt": "71131fa48e1836bcd04231868394f7b1f91dbd36ff2c3cdc013c45c463323bf2",
+        "freebsd/share/bhyve/kbdlayout/nl": "aca0da45fe2e7e393c766aec3642629d7e2db3dbb96fad194ff8766c7171d159",
+        "freebsd/share/bhyve/kbdlayout/no": "f0ecc38214e7f7fc4be6b8197f2c8fc56433f05ba9a940cd1262e52555faf145",
+        "freebsd/share/bhyve/kbdlayout/no_dvorak": "29412a8dca95b6d4fdf922cb0a5affac6da47064d2a164cb5c829eaddf151e37",
+        "freebsd/share/bhyve/kbdlayout/nordic_asus-eee": "7039b5cf8d130cb1ab908c2bed7e968a25fdedeb8adcb3a37c6586ff7e8dc130",
+        "freebsd/share/bhyve/kbdlayout/pl_dvorak": "c0431ab99f5ab311db35267db4cf6c792522db870aaee6c85ea27e3df25858bb",
+        "freebsd/share/bhyve/kbdlayout/pt": "2f30454f92a95d505140da7b44b35fa230f1aa64f4ec04b78ff06fe4a4531963",
+        "freebsd/share/bhyve/kbdlayout/pt_acc": "a4937969b9b8c2a52d43cc3ff1788d86b5755c544b267cb44f6eda8a2d90eae8",
+        "freebsd/share/bhyve/kbdlayout/ru": "e0b03e93bef24b4dac84ba5f5933ad6c86ebcf7c467afbe53e815bfcbe9dd132",
+        "freebsd/share/bhyve/kbdlayout/ru_shift": "a180689f81644e97e6b2c1e17bcd35989138c680ff6adb34e724ffa588ad0b42",
+        "freebsd/share/bhyve/kbdlayout/ru_win": "1273fc5b8b5e60709a073dd8e99ec53566f89b8e1338626f4275b7c7277d5199",
+        "freebsd/share/bhyve/kbdlayout/se": "e7e020e5376760735696674da4dbf03ced330ec0913a126949d5ea3303edd34c",
+        "freebsd/share/bhyve/kbdlayout/si": "0e85d175625c3c0819df688527bd47c271ef940389240b9461aed807712a1e4b",
+        "freebsd/share/bhyve/kbdlayout/tr": "5a4b305aa993724e8586f2c8a65afedf554c92cb6bcf37ecd993afcc684645dd",
+        "freebsd/share/bhyve/kbdlayout/tr_f": "6516495e318696c18155f191a7b254eef1e2f537b56f5b3522e4ade4456b9e85",
+        "freebsd/share/bhyve/kbdlayout/ua": "b0ad5f70ca0649903612180feee09e23442bb026ce83dc83490292c884309b87",
+        "freebsd/share/bhyve/kbdlayout/ua_shift_alt": "1492377d9f014f57887419185dcdd7c4c95463c361aeed3857a8867d03196f9b",
+        "freebsd/share/bhyve/kbdlayout/uk": "824c3ea3bee6390d6c842b3ed542a7427e7640fca300a20730271560d4d45e3a",
+        "freebsd/share/bhyve/kbdlayout/uk_capsctrl": "e95e5c5779602d694ac46bdba89ae8bbd7e62ddfcba2fd6154b2d17da0287c1c",
+        "freebsd/share/bhyve/kbdlayout/uk_dvorak": "82e35b9001f6e2631822fed84ee6cf8a905aa1e18e53261641131b0110f2486d",
+        "freebsd/share/bhyve/kbdlayout/uk_macbook": "35d06dd0a6231a6bc090e2ef2d495e8df33ce0b3c0a7995fb3b5cffdd1ec1124",
+        "freebsd/share/bhyve/kbdlayout/us_dvorak": "fb40917633ac728324f547cda4d03edc8f235b0791060c4e8c7a3bc06e381036",
+        "freebsd/share/bhyve/kbdlayout/us_dvorakl": "7ed25efad184dce66763e391f0c095d6d879035374a68ccbf022601b3b781bde",
+        "freebsd/share/bhyve/kbdlayout/us_dvorakp": "02121827acd2bfcbb91122ffffbd6d694cd1d2ac559d44c5e4f7f67ff548f3c2",
+        "freebsd/share/bhyve/kbdlayout/us_dvorakr": "f2cf3fb69456a81c7de775feeab336343b0b9fc8453726556a8e233e7a9fb6bd",
+        "freebsd/share/bhyve/kbdlayout/us_dvorakx": "9f134dcc5df436ecae5fff5c865e7b8c42db454ea6c5b24ae5a8ac106dd73c64",
+        "freebsd/share/bhyve/kbdlayout/us_emacs": "9eb39922fedcdd83c2188bb8ce9dbef3082c5d31efc5e13445c07636282f6cbe",
+        "freebsd/share/bhyve/kbdlayout/us_unix": "9b36f0d15f8a319a3f6263ce0bcf11ecc47c5088a975b585e33976de4ec9ed1e"
+      },
+      "consumed_binary_sysroot_files": 191,
+      "external_runtime_libraries": {
+        "/libexec/ld-elf.so.1": {
+          "binding": {
+            "bytes": 120400,
+            "mode": 365,
+            "resolved": "/libexec/ld-elf.so.1",
+            "sha256": "305a0b7947a890c653e32a1ed9fc50c100416658dc422f2ca8de9ebcda9ddb6f",
+            "symlink": null,
+            "uid": 0
+          },
+          "provenance": "measured binary base interpreter input",
+          "redistributed": false,
+          "source": "/libexec/ld-elf.so.1"
+        },
+        "libc.so.7": {
+          "binding": {
+            "bytes": 2075224,
+            "mode": 292,
+            "resolved": "/lib/libc.so.7",
+            "sha256": "95b6597787b89cec982f44bee5e9af2cf0cd5e5258c1a20ae9cadf8f0421ea5b",
+            "symlink": null,
+            "uid": 0
+          },
+          "provenance": "measured binary base input; source ancestry and license not inferred",
+          "redistributed": false,
+          "source": "/lib/libc.so.7"
+        },
+        "libcam.so.7": {
+          "binding": {
+            "bytes": 234944,
+            "mode": 292,
+            "resolved": "/lib/libcam.so.7",
+            "sha256": "7454c9917f3d96f16a951aee372a6a7bd3e1dc9a6867507f85b58df84f5afcb6",
+            "symlink": null,
+            "uid": 0
+          },
+          "provenance": "measured binary base input; source ancestry and license not inferred",
+          "redistributed": false,
+          "source": "/lib/libcam.so.7"
+        },
+        "libcap_grp.so.1": {
+          "binding": {
+            "bytes": 16976,
+            "mode": 292,
+            "resolved": "/lib/libcap_grp.so.1",
+            "sha256": "e9dffcdac1671d619907d68c11bf3d11f1fff809820df7014d02a14701b77c03",
+            "symlink": null,
+            "uid": 0
+          },
+          "provenance": "measured binary base input; source ancestry and license not inferred",
+          "redistributed": false,
+          "source": "/lib/libcap_grp.so.1"
+        },
+        "libcap_pwd.so.1": {
+          "binding": {
+            "bytes": 16824,
+            "mode": 292,
+            "resolved": "/lib/libcap_pwd.so.1",
+            "sha256": "2d58633eee7c8ab5a39502e397bbdc1fe88d3b27d361c6891c2dcca73da64b14",
+            "symlink": null,
+            "uid": 0
+          },
+          "provenance": "measured binary base input; source ancestry and license not inferred",
+          "redistributed": false,
+          "source": "/lib/libcap_pwd.so.1"
+        },
+        "libcasper.so.1": {
+          "binding": {
+            "bytes": 22688,
+            "mode": 292,
+            "resolved": "/lib/libcasper.so.1",
+            "sha256": "493db32ba722a854b8ffb5a5a63be3dd461426e8a973fe8fcb888da542eac98a",
+            "symlink": null,
+            "uid": 0
+          },
+          "provenance": "measured binary base input; source ancestry and license not inferred",
+          "redistributed": false,
+          "source": "/lib/libcasper.so.1"
+        },
+        "libcrypto.so.35": {
+          "binding": {
+            "bytes": 6288480,
+            "mode": 292,
+            "resolved": "/lib/libcrypto.so.35",
+            "sha256": "beacc4542bde340aab83e8c3ed340b60e2da08cf45f275026afefeabb6b6d612",
+            "symlink": null,
+            "uid": 0
+          },
+          "provenance": "measured binary base input; source ancestry and license not inferred",
+          "redistributed": false,
+          "source": "/lib/libcrypto.so.35"
+        },
+        "libmd.so.7": {
+          "binding": {
+            "bytes": 121272,
+            "mode": 292,
+            "resolved": "/lib/libmd.so.7",
+            "sha256": "a148410513724837affd9d293b39d4815e76e98948e998e868819106fa43074c",
+            "symlink": null,
+            "uid": 0
+          },
+          "provenance": "measured binary base input; source ancestry and license not inferred",
+          "redistributed": false,
+          "source": "/lib/libmd.so.7"
+        },
+        "libnetgraph.so.4": {
+          "binding": {
+            "bytes": 18192,
+            "mode": 292,
+            "resolved": "/usr/lib/libnetgraph.so.4",
+            "sha256": "81cc7cb195d3197829fd43b222d3106f847ea938ebf7ddfc2a6e1c47b37dd44c",
+            "symlink": null,
+            "uid": 0
+          },
+          "provenance": "measured binary base input; source ancestry and license not inferred",
+          "redistributed": false,
+          "source": "/usr/lib/libnetgraph.so.4"
+        },
+        "libnv.so.1": {
+          "binding": {
+            "bytes": 94024,
+            "mode": 292,
+            "resolved": "/lib/libnv.so.1",
+            "sha256": "5be2a7582be621501310b599c6503e3016278ebd356ad2a141f1adabe3e0bcdf",
+            "symlink": null,
+            "uid": 0
+          },
+          "provenance": "measured binary base input; source ancestry and license not inferred",
+          "redistributed": false,
+          "source": "/lib/libnv.so.1"
+        },
+        "libsbuf.so.6": {
+          "binding": {
+            "bytes": 13080,
+            "mode": 292,
+            "resolved": "/lib/libsbuf.so.6",
+            "sha256": "dffebd982b37d0f3ac649c5b779abd37a27c693d5ac8c25fba4934f5e89a72f8",
+            "symlink": null,
+            "uid": 0
+          },
+          "provenance": "measured binary base input; source ancestry and license not inferred",
+          "redistributed": false,
+          "source": "/lib/libsbuf.so.6"
+        },
+        "libsys.so.7": {
+          "binding": {
+            "bytes": 111392,
+            "mode": 292,
+            "resolved": "/lib/libsys.so.7",
+            "sha256": "9f8b058e0acf4136efb54817ffc4403535c50d026d385c3209390b0ec9ceb239",
+            "symlink": null,
+            "uid": 0
+          },
+          "provenance": "measured binary base input; source ancestry and license not inferred",
+          "redistributed": false,
+          "source": "/lib/libsys.so.7"
+        },
+        "libthr.so.3": {
+          "binding": {
+            "bytes": 127768,
+            "mode": 292,
+            "resolved": "/lib/libthr.so.3",
+            "sha256": "0dec1f746d9415c86dff7d719e6b55208e5e007bc1543ddd17e1e8e810c05537",
+            "symlink": null,
+            "uid": 0
+          },
+          "provenance": "measured binary base input; source ancestry and license not inferred",
+          "redistributed": false,
+          "source": "/lib/libthr.so.3"
+        },
+        "libutil.so.10": {
+          "binding": {
+            "bytes": 88832,
+            "mode": 292,
+            "resolved": "/lib/libutil.so.10",
+            "sha256": "b0ed07a0caf31a27667cde46899fd137f97bde1a4140559f164292840a759ce2",
+            "symlink": null,
+            "uid": 0
+          },
+          "provenance": "measured binary base input; source ancestry and license not inferred",
+          "redistributed": false,
+          "source": "/lib/libutil.so.10"
+        },
+        "libuvmem.so.1": {
+          "binding": {
+            "bytes": 15080,
+            "mode": 292,
+            "resolved": "/usr/lib/libuvmem.so.1",
+            "sha256": "6cca136449d2b4483ac0a5cfa8216acdd7063de9706ee6b11ceb3001413c2bf9",
+            "symlink": null,
+            "uid": 0
+          },
+          "provenance": "measured binary base input; source ancestry and license not inferred",
+          "redistributed": false,
+          "source": "/usr/lib/libuvmem.so.1"
+        },
+        "libz.so.6": {
+          "binding": {
+            "bytes": 102728,
+            "mode": 292,
+            "resolved": "/lib/libz.so.6",
+            "sha256": "6cff47739a1ba1d179adf0eeb3756c28de135f6b3473d661b3bc1d94a8fa1c35",
+            "symlink": null,
+            "uid": 0
+          },
+          "provenance": "measured binary base input; source ancestry and license not inferred",
+          "redistributed": false,
+          "source": "/lib/libz.so.6"
+        }
+      },
+      "identity": {
+        "gnu_build_id": "4ee862e7ae4baf57075168029b8d4bac8fdf3041",
+        "go_build_id": null,
+        "machine": 62,
+        "osabi": 9,
+        "type": 3
+      }
+    },
+    "linux": {
+      "artifacts": {
+        "linux/Module.symvers": "19c61e42b432be5653d51831ff68473813e0b5447efe9c940c1ffb6d7ea8a4bb",
+        "linux/System.map": "335986af35e5f6c0dc7c52188849605c3816b0759c433f7b886f79d3e1356036",
+        "linux/bzImage": "f0c76b1f65352a4e09da0cd8ba7d623b588e672784a6a437f9877666cf8291ef",
+        "linux/config": "f60537f1ced5d987d00fbfb86deae08df35fc63406cb401010ffbbff29e74f5d",
+        "linux/modules.builtin": "1f33442939e7faf978dc707cb69f99015328b39b3125cea6d6de25715f8bebf1",
+        "linux/modules.builtin.modinfo": "c53973bb5c4498e6fc6e61d0143353782a5628374b2b00624f422ed6f2236cf2",
+        "linux/modules.order": "f820618416411197b17fe7795d067e9687d905c487bffb207589bec3c173019a",
+        "linux/modules/drivers/net/net_failover.ko": "81c486e75fca38ba35e23fdb5de4bacfabb4d279dfb833bdc145772a0194cb97",
+        "linux/modules/drivers/net/virtio_net.ko": "2d743e3c6d76b05e16a136c27458d62b2463e6afec4d469084fedb57f2541ca0",
+        "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko": "540b10690cf295119325427f3522a663aecc128d670de73c11f69952cd24b562",
+        "linux/modules/fs/efivarfs/efivarfs.ko": "b0342f93a708d286b777aef4e9e01b8d7ef39b00a4462206380d5866585ab4e0",
+        "linux/modules/net/core/failover.ko": "ab1e9d7f3da3f69a92e4d6f659502ecf9e5b43e0f9ee8df58361a9904620f1e6",
+        "linux/vmlinux": "a1b276703fb5b45880905cc03783d21c72a3da6ff2583db36020451539818224"
+      },
+      "config_sha256": "f60537f1ced5d987d00fbfb86deae08df35fc63406cb401010ffbbff29e74f5d",
+      "configured_modules": {
+        "drivers/net/net_failover.ko": {
+          "gnu_build_id": "8adc9246bfa778e9465e31d0942a8f782cd957d9",
+          "go_build_id": null,
+          "machine": 62,
+          "osabi": 0,
+          "type": 1
+        },
+        "drivers/net/virtio_net.ko": {
+          "gnu_build_id": "b91ef747edc5eb50f3b25b5c2a25fa286e739d78",
+          "go_build_id": null,
+          "machine": 62,
+          "osabi": 0,
+          "type": 1
+        },
+        "drivers/thermal/intel/x86_pkg_temp_thermal.ko": {
+          "gnu_build_id": "781853996e3a4d69ef39b15ed1b3451ba53b85df",
+          "go_build_id": null,
+          "machine": 62,
+          "osabi": 0,
+          "type": 1
+        },
+        "fs/efivarfs/efivarfs.ko": {
+          "gnu_build_id": "47305655ab00d9a7cf261393c4920901232bf96d",
+          "go_build_id": null,
+          "machine": 62,
+          "osabi": 0,
+          "type": 1
+        },
+        "net/core/failover.ko": {
+          "gnu_build_id": "fcb166f975fd394bad9294bb53e65d7bed08fe9b",
+          "go_build_id": null,
+          "machine": 62,
+          "osabi": 0,
+          "type": 1
+        }
+      },
+      "identity": {
+        "gnu_build_id": "74797dc6cb1b98c0e3bf230fec1a8f7a9619355d",
+        "go_build_id": null,
+        "machine": 62,
+        "osabi": 0,
+        "type": 2
+      },
+      "release": "6.1.190-hfs-xz3",
+      "symvers_sha256": "19c61e42b432be5653d51831ff68473813e0b5447efe9c940c1ffb6d7ea8a4bb"
+    }
+  },
+  "inert_installation_proposal": {
+    "approval_boundary": "separate fresh exact reviewed user approval before installation/VM lifecycle/boot/mount/exporter execution; source/kernel/loadedmodule/process/livefacts/scope admission and zq3 native acceptance still required",
+    "execution_authorized": false,
+    "guest_signed_ceiling_bytes": 2147483648,
+    "host_reserve_bytes": 3221225472,
+    "host_runtime_bytes": 6442450944,
+    "limits_are_proposed_only": true,
+    "logical_canary_bytes": 4194304,
+    "native_guest_ram_unchanged": true,
+    "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-final/installation-proposal.json",
+    "placement_admitted": false,
+    "proposed_rocky_bytes": 6442450944,
+    "sha256": "2c1e558982acb64bbe0310b687aea10db761c88536d74d73254a7433d95ab403"
+  },
+  "normal_publication": null,
+  "operator_private_key": "outside Git/package/runtime; not collected",
+  "policy": {
+    "guest_ceiling_bytes": 2147483648,
+    "logical_bytes": 4194304,
+    "page_size": 4096,
+    "physical_contract": "homelabfs-stop-adoption/1",
+    "profile": "CONTROLLED_LOCAL",
+    "publication": null,
+    "recovery": "same-surviving-owner-current-cut-only",
+    "replacement_resume": "BLOCKED",
+    "runtime_config": "homelabfs-controlled-runtime/1",
+    "session_limit": 16,
+    "topology": "one-vm-boot-process-endpoint",
+    "transport_checkpoint": 1,
+    "view_enrollment": "homelabfs-private-viewcontrol/1"
+  },
+  "protocol": {
+    "BodySchema": 5,
+    "BridgeMajor": 1,
+    "BridgeMinor": 4,
+    "Features": 32767,
+    "Msize": 65536,
+    "NormalMajor": 3,
+    "NormalMinor": 0
+  },
+  "replacement_exporter_fuse_and_guest_resume": "BLOCKED",
+  "reproducibility": {
+    "daemon": {
+      "both_forced_rebuilds": true,
+      "equal": true,
+      "executed": false,
+      "first_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+      "installed": false,
+      "second_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+      "version": "homelabfs-daemon-clean-repro/1"
+    },
+    "linux": {
+      "proof_path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-final/linux/clean-repro.json",
+      "scope": "two actual clean same-canonical-output full kernel/image/allmodule/config/symvers/ABI builds",
+      "sha256": "4a7d0d40e8c4f61c11968229f5123f4bf57d26185bedcbcf45a95eafab023c67"
+    },
+    "native": {
+      "equal_files": 83,
+      "equal_preflight_inputs": true,
+      "proof_path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-final/evidence/native-clean-repro.json",
+      "sha256": "d669300040e65487e970a411a6aa6bfc731cb0ae225da54abf1dbad883b0f690"
+    }
+  },
+  "resource_policy": {
+    "cleanup_proofs": {
+      "merged-cache-reclamation.json": "c3a68ebfd9cc5d7cd5231a03c2187a87695d4e1c80f5d70ac9655d29cf3f3b29",
+      "post-verification-cache-cleanup.json": "a61f948c09d607abe476c0cd09734e51d3b35493eb9d68a03abaf05b68cfa444",
+      "successful-control-copy-cleanup.json": "ba33bcdc02ea1f8f3184fbcd9197c6cff4e02fa79a65d8ca57d07b7e1fc55ea3",
+      "successful-repro-binary-dedup.json": "e7eb42112a56d92667315b090ee8284e6a2a63b8cc9626b09e4ff5b3af9389ef"
+    },
+    "local": "one heavy job;2CPU/Go-p1/GOMAXPROCS2/GOMEMLIMIT256MiB/GOGC50; descendantRSS2GiB; MemAvailable>=8GiB and25%;20min/stage; aggregate run-owned/reused/cache/tmp+frozen all-native footprint8GiB; swap telemetry only",
+    "native": "CPU1; aggregateRSS512MiB includingguard+64MiBhelpers;20min/stage; exactRocky6444/birth/config12G plus /dev/vmm onlyRocky; freepages>=3GiB+512MiB; sameglobal8GiB and objects/package128MiB cap; no VM change",
+    "resource_cleanup": "only successful restored control-copy and byte-identical successful second local payloads deduplicated after retained firstbytes+equality proofs and R1; all second metadata/logs and failed resources preserved; only dedicated rebuildable Go cache evicted after terminal jobs; unrelated user module cache untouched; shared lint cache conservatively counted, not erased"
+  },
+  "retained_attempts": {
+    "explanations": {
+      "final-candidate-assembly": "caller supplied final-proof-view path before creating it; CLI stopped before assembly, with only empty evidence directory created. Exact original proof files copied into view; same reviewed assemble() function then completed into unchanged component inputs with already-created empty evidence directory. Failure receipt retained.",
+      "full-candidate-negative-controls-v1": "test expected missing GNU identity for Go ELF, but this Go ELF has GNU+Go notes and correctly fails the dynamic-exporter requirement instead; corrected exact refusal assertion and added genuine native-helper missing-controller case. Original candidate untouched; failed private copy retained.",
+      "merged-freebsd-build": "8GiB allocated-disk guard stopped attempt, no compiler diagnostic/source change; all Go gates already passed; terminal group then only task-private rebuildable Go cache reclaimed; only cross-build rerun and passed in80.552s. Failed temporary work and logs preserved. Sampled peak8609649664B triggered stop, not an assertion that all attempts stayed below cap."
+    },
+    "records": {
+      "final-candidate-assembly": {
+        "error": null,
+        "exit": 1,
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/final-candidate-assembly/receipt.json",
+        "peakdisk": 7981855744,
+        "seconds": 13.859267734995228,
+        "sha256": "04ce9caea94a99add7a16bc3f8855b27fa130e9b299fe51aa6f0c1088f1d683f"
+      },
+      "full-candidate-negative-controls-v1": {
+        "error": null,
+        "exit": 1,
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/full-candidate-negative-controls-v1/receipt.json",
+        "peakdisk": 7402320896,
+        "seconds": 10.205353193996416,
+        "sha256": "8511a146c541859c37025adda9abb6149f279a1ef0c68a9460c95455fcc20235"
+      },
+      "merged-freebsd-build": {
+        "error": "owned allocated disk",
+        "exit": -15,
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/merged-freebsd-build/receipt.json",
+        "peakdisk": 8609649664,
+        "seconds": 43.30215487100213,
+        "sha256": "ea2ff01938335803dcb5c572ede79e96192d0b80c426e8c57bef542fee73a56a"
+      }
+    }
+  },
+  "scope": "Actual source-owned complete build artifacts and offline admission only; no installed, booted, exporter-executed, native workload, PTE/TLB, distributed or normal-publication acceptance.",
+  "source_commit": "13fbad97dad85ce3145f22c92892aefa132ee1e9",
+  "source_pins": {
+    "freebsd_complete_inventory": "10850a3e2cee963a5e9fa06f533716eaf2b3b463f6304b578573b29046a0abbb",
+    "freebsd_first_capture_trust": "TOFU exact pinned HTTPS URL/PAX commit plus independently known base-file hashes; previous expected archive hash null, observed hash reviewed before compile",
+    "freebsd_original_archive": "044a42ccc657d4c3b31499e2cb713c3f9d6ec0e51c1b288c46b13106c148d84e",
+    "freebsd_selected_archive": "07d13dc3c2a09865f24c03106b171ef1c30cd49e93ac4826fe06ab5899eab5d0",
+    "freebsd_selected_archive_bytes": 23442371,
+    "freebsd_selected_source_bytes": 140523909,
+    "freebsd_selected_source_files": 8670,
+    "linux_complete_inventory": "eaada4623ca4f73d34aaa5c7dc8015e612750ab617560b9846d8eeaf99a53457",
+    "linux_manifest": "e87976984ca670ff552c40c215a178da943124bb15cc9a933e011d02fb12e0fd",
+    "native_binary_sysroot": "measured installed binary inputs; source ancestry not inferred; runtime libraries external and not redistributed",
+    "native_notices": "complete selected sources preserve per-file notices; complete upstream COPYRIGHT and lib9p COPYRIGHT copied separately"
+  },
+  "task": "xz3",
+  "upstream_source_revisions": {
+    "freebsd": "aadd58dddcbc78f4d5594827b46b5633552b15ce",
+    "linux": "79807e970724c1f90cee1316361d61b80db4eef6",
+    "repository": "e1a7374010ac4b5ed6264a64b0fc26aebb5ed753"
+  },
+  "verification": {
+    "actual_candidate_negative_controls": {
+      "actual_full_candidate_positive": {
+        "booted": false,
+        "container_verified": true,
+        "full_components_verified": true,
+        "installed": false,
+        "native_accepted": false,
+        "publication": null
+      },
+      "cases": [
+        {
+          "case": "external operator mismatch",
+          "reason": "unexpected operator or repository source",
+          "refused": true
+        },
+        {
+          "case": "external repository mismatch",
+          "reason": "unexpected operator or repository source",
+          "refused": true
+        },
+        {
+          "case": "old negotiated features",
+          "reason": "unsupported version, protocol or policy",
+          "refused": true
+        },
+        {
+          "case": "old source revision",
+          "reason": "Linux source/patch identity mismatch",
+          "refused": true
+        },
+        {
+          "case": "different packaged Linux patch",
+          "reason": "Linux packaged patch/source identity mismatch",
+          "refused": true
+        },
+        {
+          "case": "different native owned source",
+          "reason": "native source/build/bundle provenance mismatch",
+          "refused": true
+        },
+        {
+          "case": "wrong actual bundled source with consistent container hashes",
+          "reason": "native source archive content mismatch: contrib/lib9p/backend/hfs9p.c",
+          "refused": true
+        },
+        {
+          "case": "Go ELF labelled as full exporter",
+          "reason": "dynamic native exporter expected",
+          "refused": true
+        },
+        {
+          "case": "native helper ELF lacks production controllers",
+          "reason": "missing strong production exporter symbols: {'hfs9p_supervisor_prepare', 'hfs9p_supervisor_start_tuple', 'hfs9p_pending_exchange', 'hfs9p_controller_claim'}",
+          "refused": true
+        },
+        {
+          "case": "invented stock shared9p runtime",
+          "reason": "native external runtime closure or owned static linkage mismatch",
+          "refused": true
+        },
+        {
+          "case": "installed success claim",
+          "reason": "unsupported component build record",
+          "refused": true
+        },
+        {
+          "case": "missing actual Go build version",
+          "reason": "actual repository-native FreeBSD runtime required",
+          "refused": true
+        },
+        {
+          "case": "installation authority claim",
+          "reason": "installation proposal artifact/policy/authority mismatch",
+          "refused": true
+        },
+        {
+          "case": "false forced rebuild witness",
+          "reason": "daemon forced rebuild proof mismatch",
+          "refused": true
+        }
+      ],
+      "original_manifest_sha256": "7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b",
+      "original_passed_after_controls": true,
+      "restored_fixture_passed": true
+    },
+    "local_receipts": {
+      "artifact-unit-controls-final": {
+        "argv": [
+          "python3",
+          "-B",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "tools/integration/artifacts",
+          "-p",
+          "test_*.py"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/artifact-unit-controls-final/receipt.json",
+        "peakdisk": 7291057152,
+        "peakrss": 10641408,
+        "seconds": 9.725087516002532,
+        "sha256": "526578d760cdf4971a51a51b10c21b43be8093444f73d801e188857201b51d94",
+        "source_changes": []
+      },
+      "daemon-build-private-clean-repro": {
+        "argv": [
+          "python3",
+          "-B",
+          "tools/integration/artifacts/daemon.py",
+          "--package",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-repro"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/daemon-build-private-clean-repro/receipt.json",
+        "peakdisk": 7261167104,
+        "peakrss": 205582336,
+        "seconds": 36.2889641820002,
+        "sha256": "cebca1b682d3c036aaa59b44122623b01849045b6575417a655e0fde978c80e3",
+        "source_changes": []
+      },
+      "daemon-build-private-first": {
+        "argv": [
+          "python3",
+          "-B",
+          "tools/integration/artifacts/daemon.py",
+          "--package",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-v2"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/daemon-build-private-first/receipt.json",
+        "peakdisk": 7236845056,
+        "peakrss": 201715712,
+        "seconds": 36.36630196600163,
+        "sha256": "1688a56cc79c3a29ea9e587392590c04421609fce9e8011ff30c7b3ad094261f",
+        "source_changes": []
+      },
+      "final-candidate-assembly-corrected-proof-view": {
+        "argv": [
+          "python3",
+          "-B",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/final-assemble-api.py"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/final-candidate-assembly-corrected-proof-view/receipt.json",
+        "peakdisk": 7986185216,
+        "peakrss": 10776576,
+        "seconds": 14.074000638000143,
+        "sha256": "db6447406b748dec3ed4c5527d027faa28d8d1f90fbe54708b0466ebfb1578ab",
+        "source_changes": []
+      },
+      "final-candidate-negative-controls": {
+        "argv": [
+          "python3",
+          "-B",
+          "tools/integration/artifacts/check_candidate.py",
+          "--package",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-final",
+          "--manifest-sha256",
+          "7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b",
+          "--operator-public",
+          "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+          "--repository",
+          "e1a7374010ac4b5ed6264a64b0fc26aebb5ed753",
+          "--output",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/final-candidate-controls"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/final-candidate-negative-controls/receipt.json",
+        "peakdisk": 8096793600,
+        "peakrss": 155385856,
+        "seconds": 36.054213858995354,
+        "sha256": "8ba9abc6b02a0225837f2f18e53bcc374a7af6370e0700defec6a6f8c349d994",
+        "source_changes": []
+      },
+      "kernel-abi-mismatch-v2": {
+        "argv": [
+          "python3",
+          "tools/integration/artifacts/check_abi_mismatch.py",
+          "--package",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-v2",
+          "--operator-public",
+          "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/kernel-abi-mismatch-v2/receipt.json",
+        "peakdisk": 7971311616,
+        "peakrss": 10645504,
+        "seconds": 14.265918400000373,
+        "sha256": "fc0b534b6aed0a8a510b4ee912c3a953dd003de4307df19ca83b31308d55515e",
+        "source_changes": []
+      },
+      "kernel-abi-mmflag-v2": {
+        "argv": [
+          "python3",
+          "tools/integration/artifacts/abi.py",
+          "collect",
+          "--output",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/kernel-v2",
+          "--package",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-v2",
+          "--operator-public",
+          "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/kernel-abi-mmflag-v2/receipt.json",
+        "peakdisk": 7924842496,
+        "peakrss": 11472896,
+        "seconds": 14.767325164997601,
+        "sha256": "d926606bbc374cc114a7d9dc1a41c9f644d5c60ddec6a2d7a737840462178022",
+        "source_changes": []
+      },
+      "kernel-clean-repro-equality": {
+        "argv": [
+          "python3",
+          "tools/integration/artifacts/compare_kernel.py",
+          "--first",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-v2",
+          "--second",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-repro",
+          "--operator-public",
+          "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+          "--record",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-v2/linux/clean-repro.json"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/kernel-clean-repro-equality/receipt.json",
+        "peakdisk": 8127873024,
+        "peakrss": 9596928,
+        "seconds": 14.797645423001086,
+        "sha256": "3f838760a30c65fd5ec28af1827a8178cbd07bb6e24cf90c5567a919c0a432cc",
+        "source_changes": []
+      },
+      "kernel-image-modules-clean-repro": {
+        "argv": [
+          "python3",
+          "tools/integration/artifacts/kernel.py",
+          "image-modules",
+          "--source",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/source-v2",
+          "--output",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/kernel-v2",
+          "--package",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-repro",
+          "--operator-public",
+          "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/kernel-image-modules-clean-repro/receipt.json",
+        "peakdisk": 8041156608,
+        "peakrss": 126816256,
+        "seconds": 37.64868065700284,
+        "sha256": "80d2babfecd1e47c5a3341b0cafee7d31de76c91a31540d1439b853b75874589",
+        "source_changes": []
+      },
+      "kernel-image-modules-mmflag-v2": {
+        "argv": [
+          "python3",
+          "tools/integration/artifacts/kernel.py",
+          "image-modules",
+          "--source",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/source-v2",
+          "--output",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/kernel-v2",
+          "--package",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-v2",
+          "--operator-public",
+          "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/kernel-image-modules-mmflag-v2/receipt.json",
+        "peakdisk": 7852072960,
+        "peakrss": 73142272,
+        "seconds": 39.17964822099748,
+        "sha256": "6c19da1e9c24ea61dc89db09f6b84b734b269524b32b7990e959e4a3ec7e2a97",
+        "source_changes": []
+      },
+      "kernel-vmlinux-clean-repro": {
+        "argv": [
+          "python3",
+          "tools/integration/artifacts/kernel.py",
+          "vmlinux",
+          "--source",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/source-v2",
+          "--output",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/kernel-v2",
+          "--package",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-repro",
+          "--operator-public",
+          "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/kernel-vmlinux-clean-repro/receipt.json",
+        "peakdisk": 7971667968,
+        "peakrss": 539971584,
+        "seconds": 815.6431472989934,
+        "sha256": "685579ccfe64ee3d9606c1c138e5e6cc1a3148bdc8d9450f92020e923e38e80c",
+        "source_changes": []
+      },
+      "kernel-vmlinux-mmflag-v2": {
+        "argv": [
+          "python3",
+          "tools/integration/artifacts/kernel.py",
+          "vmlinux",
+          "--source",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/source-v2",
+          "--output",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/kernel-v2",
+          "--package",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-v2",
+          "--operator-public",
+          "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/kernel-vmlinux-mmflag-v2/receipt.json",
+        "peakdisk": 7782592512,
+        "peakrss": 508162048,
+        "seconds": 802.4200025320024,
+        "sha256": "06f70dea881c27d843ac2891fae05cc67b2727b5cbb7e4a4bb98b2896c017284",
+        "source_changes": []
+      },
+      "mmflags-hfs-off-v2": {
+        "argv": [
+          "python3",
+          "tools/integration/artifacts/check_mmflags.py",
+          "--source",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/source-v2",
+          "--config",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-v2/linux/config",
+          "--output",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/mmflags-off-v2"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/mmflags-hfs-off-v2/receipt.json",
+        "peakdisk": 7957372928,
+        "peakrss": 106385408,
+        "seconds": 32.99568073300179,
+        "sha256": "2d439bd38ff8a07c53bfd185df5436f95a538edf1736f1b2ef53f761b4d36036",
+        "source_changes": []
+      },
+      "native-package-local-collection": {
+        "argv": [
+          "python3",
+          "-B",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/collect-native-packages.py"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/native-package-local-collection/receipt.json",
+        "peakdisk": 7213956608,
+        "peakrss": 10653696,
+        "seconds": 11.069524467995507,
+        "sha256": "d7a2648a156b410b9c7ef9ac5dc5a6fd2b4b059c61bc7552c4cf1be496226fd5",
+        "source_changes": []
+      },
+      "native-source-local-collection": {
+        "argv": [
+          "python3",
+          "-B",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/collect-native-source.py"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/native-source-local-collection/receipt.json",
+        "peakdisk": 7290352640,
+        "peakrss": 9998336,
+        "seconds": 10.10933928599843,
+        "sha256": "63e99ea1edbdb6049e55da4afd7ba40784329ce117166bd9857dbd4d65e35d98",
+        "source_changes": []
+      },
+      "precommit-static": {
+        "argv": [
+          "python3",
+          "-B",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/precommit-static.py"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/precommit-static/receipt.json",
+        "peakdisk": 7591285760,
+        "peakrss": 10776576,
+        "seconds": 9.795344165999268,
+        "sha256": "55cf364ce70851dc91ac938a1fceaf60df3e535d5f45f411b1418d076967f4e2",
+        "source_changes": []
+      },
+      "review-backend-final": {
+        "argv": [
+          "bash",
+          "tools/integration/lib9p/verify.sh",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/review-backend-final"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/review-backend-final/receipt.json",
+        "peakdisk": 7517991936,
+        "peakrss": 708661248,
+        "seconds": 24.81497725599911,
+        "sha256": "c40faefded3f04ea7dce1d1c39e4145fd7f6f44ef1f3a52df380624a893669ce",
+        "source_changes": []
+      },
+      "review-terminal-final": {
+        "argv": [
+          "python3",
+          "-B",
+          "tools/integration/lib9p/tests/terminal_verify.py",
+          "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/review-terminal-final"
+        ],
+        "path": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/review-terminal-final/receipt.json",
+        "peakdisk": 7590581248,
+        "peakrss": 747192320,
+        "seconds": 269.1896833999999,
+        "sha256": "f4ab5fcc0a042b42678db79020103d91e1b24430599b66763e68a167f52ba742",
+        "source_changes": []
+      }
+    },
+    "merged_checks": {
+      "all_logical_gates_passed": true,
+      "no_source_changes": true,
+      "preserved_resource_only_failure": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/merged-freebsd-build/receipt.json",
+      "source_commit": "13fbad97dad85ce3145f22c92892aefa132ee1e9",
+      "stages": [
+        {
+          "logical_stage": "merged-python-unit",
+          "peakdisk": 7592928256,
+          "peakrss": 10252288,
+          "receipt": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/merged-python-unit/receipt.json",
+          "receipt_sha256": "948da5590c39251de8ba9c4d41acb79887ed0a44fb26423010cf668e5da3d33f",
+          "seconds": 13.046151809998264
+        },
+        {
+          "logical_stage": "merged-gofmt",
+          "peakdisk": 7594529792,
+          "peakrss": 10514432,
+          "receipt": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/merged-gofmt/receipt.json",
+          "receipt_sha256": "59125b426e49980665e304b7a895e638c31fe56772d0e81fd1298528767989ff",
+          "seconds": 13.624809563996678
+        },
+        {
+          "logical_stage": "merged-build",
+          "peakdisk": 8361567232,
+          "peakrss": 247132160,
+          "receipt": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/merged-build/receipt.json",
+          "receipt_sha256": "efa63520779e1f3d2c75d77828f7ec2c65229aaa9d7461f3275b3ee41e3734a6",
+          "seconds": 89.61841282200476
+        },
+        {
+          "logical_stage": "merged-vet",
+          "peakdisk": 8438764544,
+          "peakrss": 154771456,
+          "receipt": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/merged-vet/receipt.json",
+          "receipt_sha256": "b29342e77469968262150b171ba6cbebb9217deb96ea2fcf5d39949b638bdebc",
+          "seconds": 81.29690200999903
+        },
+        {
+          "logical_stage": "merged-errcheck",
+          "peakdisk": 8455599104,
+          "peakrss": 113303552,
+          "receipt": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/merged-errcheck/receipt.json",
+          "receipt_sha256": "cb98c830275b54f8fd3d249151b8a62d5166a84f6d8752132aa1330449ae34a9",
+          "seconds": 35.54486970000289
+        },
+        {
+          "logical_stage": "merged-lint",
+          "peakdisk": 8402433024,
+          "peakrss": 349560832,
+          "receipt": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/merged-lint/receipt.json",
+          "receipt_sha256": "c5516e7fcabfe23d9421634ee510f6e6e8f7a88bdf79f68b911ba7ce3e309201",
+          "seconds": 39.38494203400478
+        },
+        {
+          "logical_stage": "merged-full-go",
+          "peakdisk": 8517866496,
+          "peakrss": 326156288,
+          "receipt": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/merged-full-go/receipt.json",
+          "receipt_sha256": "5be8a88f7a5adc26d12d16e0d29d46b15871a50b2afd9921e42dad26d6c4782e",
+          "seconds": 302.8721478340012
+        },
+        {
+          "logical_stage": "merged-freebsd-build",
+          "peakdisk": 8385565696,
+          "peakrss": 279457792,
+          "receipt": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/checks/merged-freebsd-build-after-cache-clean/receipt.json",
+          "receipt_sha256": "c116ebc54efa808a66c4f4aeb4421405844f95099e9e7d5dc21ce0d538c6fc6d",
+          "seconds": 80.55249076000473
+        }
+      ]
+    },
+    "native_compiler_stage_receipts": {
+      "build-bhyve-clean-repro": {
+        "peak_global_allocated_disk": 7082412032,
+        "peak_rss": 260009984,
+        "seconds": 43.69327052598237,
+        "transport": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/root-build-bhyve-clean-repro.json",
+        "transport_sha256": "99b3eb07adbceb5cccae35ee4afa4610c2322a84f62e6b98eceb199538441183"
+      },
+      "build-bhyve-v1": {
+        "peak_global_allocated_disk": 7074905088,
+        "peak_rss": 259776512,
+        "seconds": 43.78923641401343,
+        "transport": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/root-build-bhyve-v1.json",
+        "transport_sha256": "6697786363afc0e01fe99c9b080ea06fedf9a426247a3852b3f528d938937a59"
+      },
+      "build-library9p-clean-repro": {
+        "peak_global_allocated_disk": 7080374272,
+        "peak_rss": 259346432,
+        "seconds": 36.69478858500952,
+        "transport": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/root-build-library9p-clean-repro.json",
+        "transport_sha256": "c18a68f0ee3084bf80adb943fb93ab251503342c408cee95a5a35a0b43f745e2"
+      },
+      "build-library9p-v4": {
+        "peak_global_allocated_disk": 7072871424,
+        "peak_rss": 270589952,
+        "seconds": 36.57288579602027,
+        "transport": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/root-build-library9p-v4.json",
+        "transport_sha256": "04dd9206d4fd93d4681def81e7c3bfe4297170e4f55267db636cdc8ed0d53eb7"
+      },
+      "build-libraryvmmapi-clean-repro": {
+        "peak_global_allocated_disk": 7080562688,
+        "peak_rss": 201195520,
+        "seconds": 26.796755454008235,
+        "transport": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/root-build-libraryvmmapi-clean-repro.json",
+        "transport_sha256": "f550020924fbb8915699bdbe5b5db9b1f069ad0e683560655848a6e451e1135a"
+      },
+      "build-libraryvmmapi-v1": {
+        "peak_global_allocated_disk": 7073055744,
+        "peak_rss": 212606976,
+        "seconds": 26.632781941996654,
+        "transport": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/root-build-libraryvmmapi-v1.json",
+        "transport_sha256": "0dca84673eb82def260b5537b0484669948fb033393d08b5f62a3435fa64e0eb"
+      },
+      "collect-native-clean-repro": {
+        "peak_global_allocated_disk": 7085302272,
+        "peak_rss": 167358464,
+        "seconds": 17.532408311992185,
+        "transport": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/root-collect-native-clean-repro.json",
+        "transport_sha256": "ad9849a95456d90111f343b92098b18cde9bdf8d51f69817f003400f2c4fee61"
+      },
+      "collect-native-first": {
+        "peak_global_allocated_disk": 7080248832,
+        "peak_rss": 166785024,
+        "seconds": 17.565473702998133,
+        "transport": "/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/root-collect-native-first.json",
+        "transport_sha256": "c339e16de71344548623910f6f45e81601404fb59bfc7d0749329b1752724e92"
+      }
+    },
+    "review": {
+      "agent": "/root/artifact_xz3_review1",
+      "blocking": [],
+      "fresh_context": true,
+      "nonblocking": [],
+      "read_only": true,
+      "result": "CLEAN",
+      "round": 1,
+      "scope": "full tracked diff, all new artifact scripts/config/tests/docs and retained actual component/proof records; explicit test-quality/negative assessment adequate",
+      "second_round_needed": false
+    }
+  },
+  "version": "homelabfs-controlled-artifact-evidence/1"
+}
