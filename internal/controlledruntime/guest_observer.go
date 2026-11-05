@@ -187,6 +187,9 @@ func (o GuestObserver) runProbe(ctx context.Context, phaseArgument string) (inst
 	if !validSSHHost(o.Host) || o.ManifestHash == ([32]byte{}) || !filepath.IsAbs(o.Identity) {
 		return result, fsapi.Invalid
 	}
+	if _, err := checkDescriptorExec(); err != nil {
+		return result, err
+	}
 	ssh, err := pinnedRead(o.SSH, o.SSHHash, 64<<20, false)
 	if err != nil {
 		return result, err

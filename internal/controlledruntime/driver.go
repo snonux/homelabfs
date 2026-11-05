@@ -31,10 +31,17 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	f := flag.NewFlagSet("hfs-controlled-runtime", flag.ContinueOnError)
 	f.SetOutput(stderr)
 	qualify := f.Bool("check-process-observer", false, "read-only native process observer qualification; no runtime startup")
+	descriptors := f.Bool("check-descriptor-exec", false, "read-only descriptor execution prerequisite report; no child or runtime startup")
 	config := f.String("config", "", "private controlled-runtime/1 config")
 	disposable := f.Bool("disposable-validation", false, "explicit controlled local runtime; publication remains null")
 	if err := f.Parse(args); err != nil {
 		return err
+	}
+	if *descriptors {
+		if f.NFlag() != 1 || f.NArg() != 0 {
+			return fmt.Errorf("--check-descriptor-exec must be used alone")
+		}
+		return reportDescriptorExec(stdout)
 	}
 	if *qualify {
 		if f.NFlag() != 1 || f.NArg() != 0 {
@@ -57,6 +64,9 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 	if _, err := checkProcessObserver(observeProcess); err != nil {
 		return fmt.Errorf("process observer preflight: %w", err)
+	}
+	if _, err := checkDescriptorExec(); err != nil {
+		return err
 	}
 	return runRuntime(ctx, c, stdout)
 }

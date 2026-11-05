@@ -1,5 +1,11 @@
 # Controlled native bootstrap
 
+Native execution requires the actual
+[`fdescfs`/`nodup` descriptor profile](../../docs/lab/Descriptor-execution-window.md)
+as well as the native process observer. `--check-descriptor-exec` is a read-only
+prerequisite report, not an actual child/READY qualification. No pathname
+execution fallback or automatic SYSTEM mount setup exists.
+
 This package implements C3 of `docs/lab/Controlled-runtime-integration.md`.
 It owns one disposable endpoint, exporter process and private issuance root.
 It also implements the C5 live Facts/source/receipt owner described below.

@@ -145,6 +145,15 @@ future periodic ownership reconciliation and same-client locks are unchanged.
 
 ## Process observer admission
 
+Descriptor-backed launches also require the actual native
+[`fdescfs`/`nodup` prerequisite](../../docs/lab/Descriptor-execution-window.md).
+`--check-descriptor-exec` emits a separate read-only prerequisite report, including
+unsupported profiles, with actual mount type/FSID/flags and null publication.
+It starts no child and grants no readiness or host setup authority. Default
+descriptor character devices and `rdlnk` pathname links refuse; there is no
+path-execution fallback. Run checks this before service creation, and direct
+exporter/mount/guest-observer entry points check before their side effects.
+
 The native runtime requires a FreeBSD CGO build against its selected target
 headers and libc/sysctl ABI. A FreeBSD `CGO_ENABLED=0` binary remains an
 unsupported build. Startup observes and validates the daemon's own complete

@@ -1,0 +1,91 @@
+{
+  "version": "homelabfs-w24-native-artifacts/1",
+  "target_executed": false,
+  "current_host_admission": false,
+  "actual_qualification": false,
+  "sysroot_capture_sha256": "c16fdc1cf25a9c36a959dc935df7e4d40a2dd094fd565677961a445091197de8",
+  "recipe_sha256": "64ce1350cad556920035cdbf559a305ed65651df0665da6044c8540bea57e252",
+  "inventory_recipe_sha256": "2c515fa1aa52dac752f0b4e9c51a3f4f27b48e841248bb1feeeda02f8bf870cd",
+  "retained_inventory": "/home/paul/tmp/codex/hfs-w24-20261105-jlmt3gdt/cross-native-v1/inventory.json",
+  "artifacts": {
+    "fdescfs-namespace": {
+      "sha256": "4b49a2a6ee4daec4a5c4dd4ce97df185f107ee71f586658459b4ac80ee0784c4",
+      "bytes": 22568,
+      "needed": [
+        "libc.so.7"
+      ],
+      "interpreter": "/libexec/ld-elf.so.1",
+      "search_paths": [],
+      "linkmap_sha256": "51b4cdba91d7a92b536259c87f69063ddeff89e2b6af9431e9279636dda3b563"
+    },
+    "controlledruntime.test": {
+      "sha256": "c00826caaebbbf6e55ef56d76b97e22e0cd08c368b2d253e26b6622d1fe3f499",
+      "bytes": 12435976,
+      "needed": [
+        "libthr.so.3",
+        "libc.so.7"
+      ],
+      "interpreter": "/libexec/ld-elf.so.1",
+      "search_paths": [],
+      "linkmap_sha256": "93e5cadae96bb4ffbc9905fed5151dfbd4ad50ee22f8880902d0968718f66c3b"
+    },
+    "hfs-controlled-runtime": {
+      "sha256": "a038857d0392ed83199f1b929aa618e9ac89c6ca9e389fec1972ca0aac6c9012",
+      "bytes": 9822832,
+      "needed": [
+        "libthr.so.3",
+        "libc.so.7"
+      ],
+      "interpreter": "/libexec/ld-elf.so.1",
+      "search_paths": [],
+      "linkmap_sha256": "35bc5a1baa7d74ebc7c5ad3a4d85cc8251e2d08c09cefe64577a492e69dde99f"
+    }
+  },
+  "captured_elf_closure": {
+    "/libexec/ld-elf.so.1": {
+      "sha256": "305a0b7947a890c653e32a1ed9fc50c100416658dc422f2ca8de9ebcda9ddb6f",
+      "bytes": 120400,
+      "needed": [],
+      "interpreter": null,
+      "captured_path": "/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/sysroot-capture/root/libexec/ld-elf.so.1"
+    },
+    "/lib/libc.so.7": {
+      "sha256": "95b6597787b89cec982f44bee5e9af2cf0cd5e5258c1a20ae9cadf8f0421ea5b",
+      "bytes": 2075224,
+      "needed": [
+        "libsys.so.7"
+      ],
+      "interpreter": null,
+      "captured_path": "/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/sysroot-capture/root/lib/libc.so.7"
+    },
+    "/lib/libsys.so.7": {
+      "sha256": "9f8b058e0acf4136efb54817ffc4403535c50d026d385c3209390b0ec9ceb239",
+      "bytes": 111392,
+      "needed": [],
+      "interpreter": null,
+      "captured_path": "/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/sysroot-capture/root/lib/libsys.so.7"
+    },
+    "/lib/libthr.so.3": {
+      "sha256": "0dec1f746d9415c86dff7d719e6b55208e5e007bc1543ddd17e1e8e810c05537",
+      "bytes": 127768,
+      "needed": [
+        "libc.so.7",
+        "libsys.so.7"
+      ],
+      "interpreter": null,
+      "captured_path": "/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/sysroot-capture/root/lib/libthr.so.3"
+    }
+  },
+  "unchanged_go_c_source_hashes": {
+    "internal/controlledruntime/descriptor_exec.go": "395c983a3a54fa4ceacb8a05ac35defde4de9c7f1ca7553a0a63e0bef467caf3",
+    "internal/controlledruntime/descriptor_exec_freebsd.go": "469e16da584f8cb404ecf55ea9da9887b320b7f2e1ed63ad9dc39c6bccbd06d8",
+    "internal/controlledruntime/descriptor_exec_linux.go": "f7610327e9fdd37fb690b40b78b01c52253c0134e54ee223eb20f1ac312decdf",
+    "internal/controlledruntime/descriptor_exec_test.go": "bbcbf90f4edc25017e1f98c69e70403c927ebef3e1e5e1f335f067dc0d2a6e2d",
+    "internal/controlledruntime/descriptor_exec_freebsd_test.go": "fdfd7c3348e22c38cebfc4fff557a57e8c5341fe939e27499cf3c446b4665047",
+    "internal/controlledruntime/driver.go": "2876e22758737c6cd02c9cf12edbfa3c73c4780bf938340b91fadd13a649160b",
+    "internal/controlledruntime/process.go": "13fd9119043eb5cfb10b45f8fdad383a6caaf1d484b5e2f2faf7d5970c57fff4",
+    "internal/controlledruntime/native_freebsd.go": "14dc2963eee157e15b553b232fff76c5b3103933e920fe7d448c8a9506611058",
+    "internal/controlledruntime/guest_observer.go": "ebb00ef9d0dc5a0fff631f5d5bdf60f9df83b5ed10a7e09d62dcc051a60ce9dd",
+    "tools/lab/fdescfs-namespace.c": "e59cde412a23ca898e0d95e2f850d08b3595a8a719bb28311c6d3680efe6af86"
+  }
+}

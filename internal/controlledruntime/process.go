@@ -52,13 +52,16 @@ type exporter struct {
 	exited              chan struct{}
 }
 
-// Start launches one exact owned executable copy. Any attempted start consumes
-// this root; failed resources are preserved, never silently retried or replaced.
+// Start launches one exact owned executable copy. After platform admission an
+// attempted start consumes this root; failed resources are preserved.
 func (s *Supervisor) Start(ctx context.Context, executable Executable) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed || s.record.Stage != "created" || s.child != nil {
 		return fsapi.Unavailable
+	}
+	if _, err := checkDescriptorExec(); err != nil {
+		return err
 	}
 	s.record.Stage = "starting"
 	if err := s.protect(); err != nil {
@@ -101,6 +104,9 @@ func (s *Supervisor) launchObserved(ctx context.Context, spec Executable, observ
 	// inherited channels, or creating any native exporter child.
 	if _, err := checkProcessObserver(observe); err != nil {
 		return nil, fmt.Errorf("process observer preflight: %w", err)
+	}
+	if _, err := checkDescriptorExec(); err != nil {
+		return nil, err
 	}
 	pinned, err := s.pinExecutable(spec)
 	if err != nil {

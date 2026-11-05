@@ -1,5 +1,11 @@
 # Controlled retained-9p runtime integration
 
+Native descriptor-backed exporter/helper/SSH launch additionally requires the
+actual [`fdescfs`/`nodup` profile](Descriptor-execution-window.md). Its read-only
+prerequisite report and native owned-child qualification are separate from
+process-observer qualification and the full filesystem gate. SYSTEM `/dev/fd`
+setup needs its own concrete reviewed authority; routine test flags grant none.
+
 Task `m04`, planning only, against `6f9b2b3`. This selects the missing adapters
 for disposable single-node validation. Nothing here activates a daemon, mount,
 kernel or exporter. Successful execution remains `CONTROLLED_LOCAL` with

@@ -1,5 +1,13 @@
 # Real single-node retained-9p base gate
 
+Before any controlled native startup, admit the actual
+[`fdescfs`/`nodup` descriptor execution prerequisite](Descriptor-execution-window.md)
+and native process observer. Missing support refuses before service creation,
+exporter pinning, child launch or native mount. The W24 temporary host setup plan
+and bounded child qualification do not complete this base gate or authorize a
+SYSTEM mount/module change. Requalify the final daemon bytes and actual platform
+profile after pending runtime changes.
+
 Preparation at source `59acf153f8148001d41167a058e7050b9cecddfd`, task `zq3`.
 This assessment records source facts and a proposed operational scope. It is
 not lab execution, installation authority or a compatibility pass. The task

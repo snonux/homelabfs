@@ -33,6 +33,9 @@ func mountNative(ctx context.Context, path string, shell *fuseadapter.Shell) (*n
 	if err := ctx.Err(); err != nil {
 		return m, err
 	}
+	if _, err := checkDescriptorExec(); err != nil {
+		return m, err
+	}
 	full, err := filepath.Abs(path)
 	if err != nil {
 		return m, err

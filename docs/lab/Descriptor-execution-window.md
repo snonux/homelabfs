@@ -1,0 +1,164 @@
+# Native descriptor execution prerequisite and temporary qualification window
+
+The controlled runtime executes its pinned exporter, mount helper and SSH
+observer through inherited `/dev/fd/N` descriptors. FreeBSD requires an actual
+`fdescfs` mount at `/dev/fd` with **`nodup`** vnode lookup semantics. A default
+fdescfs mount returns descriptor character devices. `rdlnk` pathname symlinks
+discard descriptor pinning and are not an acceptable substitute. The preflight
+checks the actual filesystem and a held executable's regular vnode identity;
+it does not trust a configuration boolean or a caller's mount claim.
+
+The selected FreeBSD source's [lookup implementation](https://github.com/freebsd/freebsd-src/blob/aadd58dddcbc78f4d5594827b46b5633552b15ce/sys/fs/fdescfs/fdesc_vnops.c)
+returns the held vnode under `FMNT_NODUP`; its
+[mount implementation](https://github.com/freebsd/freebsd-src/blob/aadd58dddcbc78f4d5594827b46b5633552b15ce/sys/fs/fdescfs/fdesc_vfsops.c)
+recognizes `nodup`. The selected target kernel/source and actual mount profile
+still require qualification. Linux `/dev/fd` magic links have different semantics;
+Linux tests cannot establish this FreeBSD prerequisite.
+
+`hfs-controlled-runtime --check-descriptor-exec` is an exclusive, read-only
+prerequisite report. It opens its own executable and emits the actual platform,
+mount type, FSID, flags, support/failure and null publication, including on
+refusal. It creates no owner, log, child, service or mount. A supported report
+does not prove a child launch, process observer support, FUSE, READY, bhyve,
+guest behavior, or the complete zq3 gate. `--check-process-observer` remains a
+separate read-only qualification. Startup checks both prerequisites before
+opening the disposable service. Direct Start, mount and observer entry points
+also check descriptor support before their executable/device/staging effects.
+
+## Authority and reviewed plan
+
+`/dev/fd` is a SYSTEM namespace outside disposable test directories. The
+standing routine verification approval does not itself authorize mounting it or
+loading a module. Root obtains any necessary explicit host setup authority only
+after reviewing the exact plan, scripts and artifact bytes. No worker performs
+host actions. An exact plan hash records the reviewed input; it grants no
+authority. Do not edit fstab, rc/loader policy, install packages, unload modules,
+force unmount, signal/reset VMs, touch production/NFS/PVs or modify a received
+replication sink.
+
+The version-controlled [controller](../../tools/lab/fdescfs-window.py) runs on
+the selected FreeBSD host through the pinned `/usr/local/bin/python3.12 -I -B`
+interpreter, with user-site/environment imports isolated and bytecode writes
+disabled. Actual read-only root facts on 2026-11-05 established
+f3 kernel/base/userland `15.1-RELEASE-p2`, with fdescfs absent from both the module
+and VFS registries. Its existing root-owned mode0444 stock module is47,696bytes,
+SHA256 `847cd1f2dc47db32d56dcf5352b65bad2b174b339e8aa89a8d114299311856d2`.
+The proposed window explicitly includes one pinned
+`/sbin/kldload /boot/kernel/fdescfs.ko` only if still absent, and **retains that
+new module after normally restoring the mount**. That kernel state change must
+be explicit in the reviewed authority; it is not full original-system
+restoration. No module is unloaded. Existing modules and supported mounts are
+preserved; an existing unsupported mount refuses before module/mount changes.
+
+The selected source's [`mount` command](https://github.com/freebsd/freebsd-src/blob/aadd58dddcbc78f4d5594827b46b5633552b15ce/sbin/mount/mount.c)
+signals mountd after successful root mounts. The
+[narrow native helper](../../tools/lab/fdescfs-namespace.c) instead invokes only
+checked-header `nmount` and normal `unmount` for fixed `/dev/fd`, verifies the
+exact FSID and never signals mountd or any other process. It is a host namespace
+setup tool, never an exporter exec wrapper. Compile it offline against the
+selected actual FreeBSD headers/libc with warnings treated as errors; pin the
+compiler, recipe, executable and loader/library closure before host setup.
+Its generic `nocover` iovec option selects the kernel's atomic `MNT_NOCOVER`
+guard against a concurrently installed foreign mount. The 64-bit flag is not
+truncated into nmount's int flags argument. The selected
+[kernel parser](https://github.com/freebsd/freebsd-src/blob/aadd58dddcbc78f4d5594827b46b5633552b15ce/sys/kern/vfs_mount.c)
+recognizes that option before entering the mount operation.
+Normal restoration uses the selected kernel's `MNT_BYFSID` and documented
+`FSID:decimal:decimal` selector, with no force flag, so a foreign mount covering
+the pathname cannot become the unmount target between observation and syscall.
+
+Preparation must pin the actual root-owned, non-writable native inspector and
+test binaries, their loader/shared-library closure, the actual kernel/base and
+fdescfs module when present, Python/interpreter closure, every base command,
+controller bytes, hostname, boot, loaded module inventory, mount table and
+`/dev/fd` directory metadata. Root alone obtains fresh read-only host facts;
+historical inventories are not current admission. Include the existing Rocky
+and all guest/process/memory/storage inventory in the outer reviewed plan.
+This window runs no VM lifecycle, FUSE mount or filesystem workload.
+
+Controller plan schema (values below are explanatory placeholders, **not an
+executable exact plan**):
+
+```json
+{
+  "version": "homelabfs-fdescfs-window/1",
+  "run_id": "w24-UNIQUE",
+  "expires": 0,
+  "directory": "/var/tmp/hfs-fdescfs-windows/w24-UNIQUE",
+  "inspector": "/ROOT-PRIVATE-STAGING/hfs-controlled-runtime",
+  "namespace_helper": "/ROOT-PRIVATE-STAGING/fdescfs-namespace",
+  "module_policy": "preserve-existing-or-retain-new",
+  "sha256": {"/ABSOLUTE/ARTIFACT": "ACTUAL_SHA256"},
+  "before": {"ACTUAL_FACTS_OUTPUT": "not invented or historical"},
+  "qualification": [["/ROOT-PRIVATE-STAGING/controlledruntime.test",
+    "-test.run=^TestDescriptorExecNativeQualification$", "-test.v",
+    "-test.timeout=5s"]]
+}
+```
+
+Root prepares `/var/tmp/hfs-fdescfs-windows` as a root-private directory under
+the reviewed staging plan, counts all retained/current/cache/tmp/remote storage
+in the global 12 GiB ownership envelope and maintains the separate free-space
+guard. Bind the 512 MiB native RSS envelope and one CPU through the outer
+approved resource guard; Go child GC/parallelism hints are not an RSS limit.
+No package/toolchain install is implicit. The controller limits each fixed
+command to 10 seconds and combined stdout/stderr to 256 KiB. Qualification has
+a five-second Go test deadline. The actual selected binaries and resource guard
+must be validated before the host setup request.
+
+## Exact intended sequence
+
+Every controller invocation below has the explicit prefix
+`/usr/local/bin/python3.12 -I -B /ROOT-PRIVATE-STAGING/fdescfs-window.py`;
+do not select an interpreter from PATH or run an editable workstation copy.
+
+1. Root collects read-only actual facts and pins all selected artifacts. Build
+   the source-matching native CGO test and command offline using the reviewed
+   native toolchain. On the actual unsupported profile, run only
+   `TestDescriptorExecNativeUnsupported`: it must refuse before the child,
+   pinned exporter, issuance changes, mount device and observer file staging.
+   A skip is unrun negative evidence. Retain stdout, stderr and exit separately.
+2. Review the filled plan JSON and its SHA256, complete artifact closure and
+   fresh outer resource/VM guard. Obtain required SYSTEM setup authority.
+3. `facts --inspector /ABSOLUTE/INSPECTOR` emits fresh controller facts without
+   creating a run. `setup --inspector ... --plan /ABSOLUTE/PLAN
+   --plan-sha256 HASH --directory /var/tmp/hfs-fdescfs-windows/RUN` refuses
+   reused IDs or changed pins/facts. If absent, the explicit stock module load
+   has its own intent/result and actual before/after module evidence. Setup then
+   invokes the pinned helper's `mount` action: exactly fdescfs at `/dev/fd`,
+   `nodup` vnode lookup and `MNT_NOSUID`, without mountd notification. It verifies
+   the sole new mount, actual regular FD vnode semantics, and matching helper/
+   inspector FSID, then protects `owned.json`. Private `nodup` flags are not
+   inferred from mount's printed standard flags. Existing supported mounts
+   receive `existing.json` instead.
+4. `qualify` with the same arguments checks that exact FSID/profile and runs
+   only the pinned bounded native test commands. The positive test starts the
+   existing short owned Go helper through its copied, hash-pinned executable
+   descriptor, receives management readiness and checks native live executable
+   identity. It never starts bhyve. Run the separately reviewed S24 bounded C
+   parent-death/SIGPIPE fixtures only when their exact bytes/invocations are
+   included in the outer authorized plan. Their result is distinct evidence.
+5. `restore` with the same arguments only normally unmounts the exact owned
+   FSID/profile via the pinned helper's `unmount EXACT_FSID` action. A preexisting mount is preserved.
+   Restore compares final boot/base/module/mount/directory facts with the
+   post-module-load baseline facts. `restoration-summary.json` explicitly records
+   mount restoration and whether the newly loaded module remains; it does not
+   report full original-system restoration when that module is retained.
+   Restore remains permitted after plan expiry for the same
+   pinned bytes and ownership, so expiry does not strand normal restoration.
+   Collect all private evidence outside the host and inspect final VM/process,
+   memory, module, filesystem and remaining-resource inventory.
+
+Every mutating/qualification dispatch writes exclusive durable intent before
+the child and a separate result afterward. Intent without result is uncertain:
+do not replay. A timeout/overflow stops dependent actions and preserves state;
+only the exact short command child may be stopped, never a VM or process group.
+Mount success without completed ownership evidence requires independent root
+inspection and explicit reconciliation before any cleanup. Busy unmounts,
+changed FSIDs/profiles and restoration mismatches stop and retain resources.
+No trap automatically unmounts uncertain resources or removes failed evidence.
+
+This document and script are preparation, not a recorded native pass or an
+approved filled host setup plan. Actual facts, artifact hashes, resource guard,
+review, SYSTEM authority, unsupported-profile evidence, positive FD exec and
+normal restoration evidence remain required before calling W24 qualified.

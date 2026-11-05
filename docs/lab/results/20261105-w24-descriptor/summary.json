@@ -1,0 +1,168 @@
+{
+  "version": "homelabfs-w24-evidence-summary/1",
+  "date": "2026-11-05",
+  "task": "w24",
+  "task_status": "started",
+  "task_root": "/home/paul/tmp/codex/hfs-w24-20261105-jlmt3gdt",
+  "worktree_baseline": "fa0da8c",
+  "publication": null,
+  "positive_native_qualification": false,
+  "critical_setup_plan_prepared": false,
+  "critical_setup_approved": false,
+  "system_mount_module_action": false,
+  "runtime_ready": false,
+  "receipts": {
+    "cross-native-helper-v1": {
+      "argv": [
+        "python3",
+        "/home/paul/tmp/codex/hfs-w24-20261105-jlmt3gdt/cross-native-v1/recipe.py",
+        "helper"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 15.520699853994302,
+      "peakrss": 10645504,
+      "peakdisk": 11466654720,
+      "source_changes": [],
+      "retained_receipt": "/home/paul/tmp/codex/hfs-w24-20261105-jlmt3gdt/checks/cross-native-helper-v1/receipt.json"
+    },
+    "cross-native-test-v1": {
+      "argv": [
+        "python3",
+        "/home/paul/tmp/codex/hfs-w24-20261105-jlmt3gdt/cross-native-v1/recipe.py",
+        "test"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 21.594618927003467,
+      "peakrss": 205189120,
+      "peakdisk": 11496514560,
+      "source_changes": [],
+      "retained_receipt": "/home/paul/tmp/codex/hfs-w24-20261105-jlmt3gdt/checks/cross-native-test-v1/receipt.json"
+    },
+    "cross-native-command-v1": {
+      "argv": [
+        "python3",
+        "/home/paul/tmp/codex/hfs-w24-20261105-jlmt3gdt/cross-native-v1/recipe.py",
+        "command"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 17.21229627499997,
+      "peakrss": 12062720,
+      "peakdisk": 11543147520,
+      "source_changes": [],
+      "retained_receipt": "/home/paul/tmp/codex/hfs-w24-20261105-jlmt3gdt/checks/cross-native-command-v1/receipt.json"
+    },
+    "native-unsupported-v1": {
+      "argv": [
+        "python3",
+        "-B",
+        "/home/paul/tmp/codex/hfs-w24-20261105-jlmt3gdt/native-unsupported-v1.py"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 26.278659397998126,
+      "peakrss": 122716160,
+      "peakdisk": 11655783424,
+      "source_changes": [],
+      "retained_receipt": "/home/paul/tmp/codex/hfs-w24-20261105-jlmt3gdt/checks/native-unsupported-v1/receipt.json"
+    },
+    "python-parser-r1-fix": {
+      "argv": [
+        "python3",
+        "tools/lab/test_fdescfs_window.py",
+        "-v"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 17.919667626993032,
+      "peakrss": 12582912,
+      "peakdisk": 11662328832,
+      "source_changes": [],
+      "retained_receipt": "/home/paul/tmp/codex/hfs-w24-20261105-jlmt3gdt/checks/python-parser-r1-fix/receipt.json"
+    }
+  },
+  "native_unsupported": {
+    "result": "PASS",
+    "test": "TestDescriptorExecNativeUnsupported",
+    "stdout": "=== RUN   TestDescriptorExecNativeUnsupported\n--- PASS: TestDescriptorExecNativeUnsupported (0.02s)\nPASS\n",
+    "stdout_sha256": "679408d10b84629b9918654bb742448486d84d61089001eeb704741de265c4d0",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native_receipt_sha256": "067c9586774a1c6fb73c34107e80eeef317a3d7b44631915b5b1dde38c8d6698",
+    "native_guard": {
+      "argv": [
+        "/var/tmp/hfs-w24-jlmt-r1/controlledruntime.test",
+        "-test.run=^TestDescriptorExecNativeUnsupported$",
+        "-test.count=1",
+        "-test.timeout=45s",
+        "-test.v"
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 0.3145746329996655,
+      "peak_rss": 93323264,
+      "peak_global_allocated_disk": 11737824768,
+      "installed": false,
+      "booted": false,
+      "native_accepted": false
+    },
+    "retained_resources": "/var/tmp/hfs-w24-jlmt-r1"
+  },
+  "current_readonly_observation": {
+    "retained_facts": "/home/paul/tmp/codex/hfs-w24-20261105-jlmt3gdt/readonly-controller-facts-v1/facts.json",
+    "hostname": "f3.lan.buetow.org",
+    "base": "15.1-RELEASE-p2\n15.1-RELEASE-p2\n",
+    "boot": "{ sec = 1793876105, usec = 108150 } Thu Nov  5 12:55:05 2026\n",
+    "kernel": "FreeBSD 15.1-RELEASE-p2 releng/15.1-n283596-aadd58dddcbc GENERIC\n\n",
+    "descriptor": {
+      "failure": "descriptor execution requires an admitted /dev/fd: UNSUPPORTED",
+      "mount_flags": 0,
+      "mount_id": "7100ff00:00000071",
+      "mount_type": "devfs",
+      "platform": "freebsd/amd64",
+      "publication": null,
+      "supported": false,
+      "version": "homelabfs-descriptor-exec/1"
+    },
+    "fd_directory": {
+      "dev": 1895890688,
+      "gid": 0,
+      "ino": 84,
+      "mode": 16749,
+      "uid": 0
+    },
+    "module": {
+      "argv": [
+        "/sbin/kldstat",
+        "-m",
+        "fdescfs"
+      ],
+      "exit": 1,
+      "stderr": "kldstat: can't find module fdescfs: No such file or directory\n",
+      "stdout": ""
+    },
+    "module_inventory_fixture": "../../../../tools/lab/testdata/fdescfs-kldstat-f3-20261105.txt",
+    "module_inventory_sha256": "3934235bf817952a76733d791b7557ec87c41c02cc92d87041608cefcfbc8e79",
+    "earlier_pre_reboot_facts_are_historical": true,
+    "future_plan_admission": false
+  },
+  "inventory_guard": {
+    "retained_receipt": "/home/paul/tmp/codex/hfs-w24-20261105-jlmt3gdt/checks/cross-native-inventory-v1/receipt.json",
+    "child_exit": 0,
+    "error": null,
+    "source_changes": [
+      "/home/paul/tmp/codex/hfs-w24-20261105-jlmt3gdt/source-roots.json"
+    ],
+    "overall_guard_pass": false,
+    "successful_elf_reads_are_distinct_from_source_stability": true,
+    "reported_cause": "Root appended native-coordinator inputs to source-roots.json during the inventory stage; no Go/C artifact change."
+  },
+  "review": {
+    "R1": "BLOCKING: kldstat -v pathname suffix rejected by parser; fixed preserving pathname identity.",
+    "R2": "Root reported descriptor_w24_review2 confirmed R1 resolved with no new blockers.",
+    "final_python_tests": 14,
+    "malformed_input_subcases": 11,
+    "review_is_not_system_setup_authority": true
+  }
+}
