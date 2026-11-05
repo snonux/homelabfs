@@ -29,7 +29,7 @@ else
     python3 "$source_dir/tests/fixtures.py" "$output/fixtures.h"
 fi
 for name in hfs9p hfs9p_json hfs9p_ledger hfs9p_supervisor; do
-    "${CC:-cc}" "${flags[@]}" -c "$source_dir/src/$name.c" \
+    "${CC:-cc}" "${flags[@]}" -Wcast-qual -c "$source_dir/src/$name.c" \
         -o "$output/$name.o"
 done
 ar rcs "$output/libhfs9p.a" "$output/hfs9p.o" "$output/hfs9p_json.o" \

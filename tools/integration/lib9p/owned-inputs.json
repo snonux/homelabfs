@@ -10,7 +10,7 @@
     "native-verify.sh": "f3743a6f6727a11e2185c5e814a2e86962765d44b2914673281c11afcd3e35df",
     "patches/0001-dedicated-backend.patch": "df00a6b0f576532da0a43373b971017410b7e7f35db560395d42571fb953f264",
     "prepare.py": "e465bb5af8eef4a26904310ec38503537b4922ce7110575699b1f3f94f669b9a",
-    "src/hfs9p.c": "84d2ba38fc51b46987f8d8c69aa058deb7cb47295ef712f22fd1534dd30b7e5c",
+    "src/hfs9p.c": "3f8e53eca008ccf8f402402ca2b84221140eabc39c25b4266f43ecd56b7d6ed4",
     "src/hfs9p.h": "4700a75263d87dc8d17f292f2a716ac6cdb626054852d26a3243f06fdebbee67",
     "src/hfs9p_bootstrap.inc": "5fca1f2e18818805253d116b2d64a1d5079d235b2242a0100da4c575a95a6685",
     "src/hfs9p_json.c": "bff0d0a125a822834218b574ff111ce0c7c8974816011e97c151be576f825e0a",
@@ -18,9 +18,9 @@
     "src/hfs9p_ledger.c": "d64f06c10e9f117f2d301e5cf7614b78a28890ae4487075108926302a90298bd",
     "src/hfs9p_ledger.h": "567c4d534094fc6de8705004615ec64930f22d4c679709410deeffcb13a1e7b7",
     "src/hfs9p_recovery.inc": "215c509abe43ac844ec6b9d6b56ad20c9206f46d26d5bc2873f0b88db84ac29f",
-    "src/hfs9p_supervisor.c": "8d4edc206fbac80c1de9f99df26c1e964b20e4ec59b61bc01d9df0f9de713fe7",
+    "src/hfs9p_supervisor.c": "c0169c6e32f627aeefd7f3c474ed90a6574b480f1b626dc03b19fd4473d7b296",
     "src/hfs9p_supervisor.h": "dcc30297332b2766a43489e03f0720f846e527e7775a259c28e548c53f920b92",
-    "tests/backend_test.c": "a6ae5c6b0b51688d4b8aedde1a2d7739b165e192b0b57aa49ed7934cd066ae6f",
+    "tests/backend_test.c": "8b6a3a259afefd48a0c6d5177a1af0eb5f68d64fbccfcdbf22c6d896d79d7028",
     "tests/bootstrap_test.c": "dc0cc5aafb70cb7cadcd1165fd6bace3aac22aec8c5436cb552e12945d0fb911",
     "tests/fixtures.py": "bfcfadac46e015a5db88f82114e11bd7b4a7f592c292143553079ef752ab1bce",
     "tests/ledger_test.c": "8188a97377a9a505d29c5cf1f49b41b61f90db4d213e285d58bcfc2a7d6a6e62",
@@ -28,9 +28,9 @@
     "tests/restart_child.c": "786257a22fea79312b2fc8cf6b69290be550d5f01faf8c2b65703fa867d3ad91",
     "tests/supervisor_test.c": "f3b6aa5182b2a53e6b0c31b33aef1e2f20703e1c5617aad484cfb59cb52ad88a",
     "tests/terminal_fixtures.py": "9e46a3e45a52cfbe51078c054f6009ea5d8b34bef0df99404a0fddcaedc98861",
-    "tests/terminal_test.c": "61fb89b2f03d29a536ffb5b08ad2beb22fe7605bb6428a7f8781245d7ff0c1e6",
+    "tests/terminal_test.c": "69c9deb04e862c73534b87d9ce36b7d018d85a2024f8591a8034646059ca8c97",
     "tests/terminal_verify.py": "b2901894b44f115b20f328ac95acbf26a3388179d8de8d0c8adc35dc4a2fb9fb",
     "upstream.json": "400a8dff163ad031002ef5842866f5c6b3d9b044b35070d633e4897836f35262",
-    "verify.sh": "b6c952143711d62811a87fb3afb9b3fb0cef4d6a435b8cbcabb0b725a98e62e3"
+    "verify.sh": "e27b718efbe1a2f28144b27b9e4126fe9fc3a4b7d88744b155132c1bd371f52b"
   }
 }

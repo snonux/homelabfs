@@ -991,7 +991,7 @@ _terminal_input(Hfs9p *h, unsigned session, const uint8_t *frame,
    _hash(j.bytes, total, hash);
    if (memcmp(hash, frame + 56, 32))
       return (false);
-   Hfs9pEntry candidate = {.guest = (uint8_t *)j.bytes, .total = total,
+   Hfs9pEntry candidate = {.total = total,
       .guest_cell = cell, .guest_watermark = s->high,
       .session = (uint8_t)session, .minor = 4, .control = true, .donor = -1};
    if (j.tokens[v[6]].type != 'n') {
@@ -2922,8 +2922,17 @@ hfs9p_resume_owned(Hfs9p *h, const uint8_t hash[32]) {
    return (error);
 }
 
+/* Decoding borrows immutable authenticated bytes; unlike the encoder, this
+ * reader neither grows nor owns the underlying allocation. */
+typedef struct {
+   const uint8_t *bytes;
+   size_t length;
+   size_t cursor;
+   int error;
+} Hfs9pReader;
+
 static const uint8_t *
-_unpack_bytes(Hfs9pBuffer *b, size_t length) {
+_unpack_bytes(Hfs9pReader *b, size_t length) {
    if (b->error || length > b->length - b->cursor) {
       b->error = EINVAL;
       return (NULL);
@@ -2934,13 +2943,13 @@ _unpack_bytes(Hfs9pBuffer *b, size_t length) {
 }
 
 static uint64_t
-_unpack(Hfs9pBuffer *b, unsigned length) {
+_unpack(Hfs9pReader *b, unsigned length) {
    const uint8_t *p = _unpack_bytes(b, length);
    return (p ? _get(p, length) : 0);
 }
 
 static uint8_t *
-_unpack_blob_owned(Hfs9pBuffer *b, uint32_t *length, uint32_t max,
+_unpack_blob_owned(Hfs9pReader *b, uint32_t *length, uint32_t max,
     uint8_t *owned) {
    *length = (uint32_t)_unpack(b, 4);
    if (*length > max) {
@@ -2962,12 +2971,12 @@ _unpack_blob_owned(Hfs9pBuffer *b, uint32_t *length, uint32_t max,
 }
 
 static uint8_t *
-_unpack_blob(Hfs9pBuffer *b, uint32_t *length, uint32_t max) {
+_unpack_blob(Hfs9pReader *b, uint32_t *length, uint32_t max) {
    return (_unpack_blob_owned(b, length, max, NULL));
 }
 
 static void
-_unpack_hash(Hfs9pBuffer *b, uint8_t out[32]) {
+_unpack_hash(Hfs9pReader *b, uint8_t out[32]) {
    const uint8_t *p = _unpack_bytes(b, 32);
    if (p)
       memcpy(out, p, 32);
@@ -2979,7 +2988,7 @@ static int
 _restore_bytes(Hfs9p *h, const uint8_t *bytes, size_t length) {
    bool terminal_format = !memcmp(bytes, "H9LEDG3\0", 8);
    uint32_t used[HFS9P_SESSIONS] = {0}, remaining[HFS9P_SESSIONS] = {0};
-   Hfs9pBuffer b = {(uint8_t *)bytes, length - 32, 0, 8, 0};
+   Hfs9pReader b = {.bytes = bytes, .length = length - 32, .cursor = 8};
    const uint8_t *session = _unpack_bytes(&b, 16);
    if (!session || memcmp(session, h->endpoint.session, 16))
       return (EINVAL);

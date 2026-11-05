@@ -51,6 +51,7 @@
     "include/linux/random.h": "77348d3b4f2f5d9801d3d0dcbce9086270939a44252f0c420906343c04cfdb8b",
     "include/net/9p/9p.h": "6b85e46b20d6f0c716d811ee19a9efc19e899674118a8f2508c27ffba5d06902",
     "include/net/9p/client.h": "8a320337f3f56c0359641c5afb5b17c74cb8be112af680727eb0ca8bf71d9fcb",
+    "include/trace/events/mmflags.h": "f467b0a9017543ccaeb6a7aaac81895ac85673512326f4cd9f234e86acf9dfb7",
     "mm/gup.c": "61afa3601307c82d4fd255182a1a80bd5787fde7757a997ed490cbfa82b03778",
     "mm/huge_memory.c": "d68404c3139301196a82f830873d99a8559845d7d01bf458e91c813c1768f69e",
     "mm/memory.c": "0f6b67154cc49e497c4d3bc22060d4a5466a15ee4729d1ad12122f8d9b1f3bbd",
@@ -113,6 +114,7 @@
     "include/linux/random.h": "3d12ae4db798a41066b72e95580a6d34c5f35705b94f7393ac416156c35618d5",
     "include/net/9p/9p.h": "5a46f65229ecb77bd8f70cce081683869c2ae47e63e573a26a1b2e68e1bd5d7b",
     "include/net/9p/client.h": "204ca6d87a8214de1231bc34946d92c14af98c1de6d89a91a1bcee82c2a6a9f0",
+    "include/trace/events/mmflags.h": "967ef3a4e712272cd3d9a65bbdc2c54f109fdd975c47bca7bd3d7c264f810d7d",
     "mm/gup.c": "7cabff43f47896a04f25d3ac2fb63cbb20255865b585be37595499d890acf5a2",
     "mm/huge_memory.c": "f2dadde3c6cb2a468913c5b4c3658f62091e43e1e8c16efeb10e2bebf922ae4d",
     "mm/memory.c": "afc1442fe6483b42239b158b3760649250857cb2dc0fd5dcf9497f1ee846559b",
@@ -138,9 +140,9 @@
       "sha256": "99eef35826c2ae38c2b174d1e2c275b5ec9863ccbe916f17582b7f3461bc3750"
     },
     {
-      "bytes": 167858,
+      "bytes": 168789,
       "file": "0004-hfs1-physical-views.patch",
-      "sha256": "b5e72fd1cc3c6b3b7edbeecff2e8e00f3b71d9cc86132bb914b7b5eee84911d2"
+      "sha256": "b0a521a926780ee4c278e771def03fa12eea16c17d897d03d2328cdd146ce080"
     },
     {
       "bytes": 338279,
@@ -148,7 +150,7 @@
       "sha256": "debe155cfe8712fef33b5aea820d6842e0d3e4d5a18906279c7d2cbf890178ff"
     }
   ],
-  "project_task": "814",
+  "project_task": "xz3",
   "source_kind": "upstream Linux reference",
   "tag": "v6.1.190",
   "tag_object": "9ad12a4c0c7a36f365c13ea17d88499618440a7b",

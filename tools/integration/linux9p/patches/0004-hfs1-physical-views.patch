@@ -89,6 +89,32 @@ diff --git a/include/linux/page-flags.h b/include/linux/page-flags.h
  PAGEFLAG(Unevictable, unevictable, PF_HEAD)
  	__CLEARPAGEFLAG(Unevictable, unevictable, PF_HEAD)
  	TESTCLEARFLAG(Unevictable, unevictable, PF_HEAD)
+diff --git a/include/trace/events/mmflags.h b/include/trace/events/mmflags.h
+--- a/include/trace/events/mmflags.h
++++ b/include/trace/events/mmflags.h
+@@ -103,6 +103,12 @@
+ #define IF_HAVE_PG_SKIP_KASAN_POISON(flag,string)
+ #endif
+ 
++#ifdef CONFIG_9P_FS_HOMELABFS
++#define IF_HAVE_PG_HFS_NOGUP(flag,string) ,{1UL << flag, string}
++#else
++#define IF_HAVE_PG_HFS_NOGUP(flag,string)
++#endif
++
+ #define __def_pageflag_names						\
+ 	{1UL << PG_locked,		"locked"	},		\
+ 	{1UL << PG_waiters,		"waiters"	},		\
+@@ -131,7 +137,8 @@
+ IF_HAVE_PG_IDLE(PG_young,		"young"		)		\
+ IF_HAVE_PG_IDLE(PG_idle,		"idle"		)		\
+ IF_HAVE_PG_ARCH_2(PG_arch_2,		"arch_2"	)		\
+-IF_HAVE_PG_SKIP_KASAN_POISON(PG_skip_kasan_poison, "skip_kasan_poison")
++IF_HAVE_PG_SKIP_KASAN_POISON(PG_skip_kasan_poison, "skip_kasan_poison")	\
++IF_HAVE_PG_HFS_NOGUP(PG_hfs_nogup, "hfs_nogup")
+ 
+ #define show_page_flags(flags)						\
+ 	(flags) ? __print_flags(flags, "|",				\
 diff --git a/mm/memory.c b/mm/memory.c
 --- a/mm/memory.c
 +++ b/mm/memory.c

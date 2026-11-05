@@ -1291,7 +1291,7 @@ view_protocol_tests(void) {
    _discard_recovery(restored);
    /* Flipping persisted minor1->0 while keeping retained1.1 bytes must fail,
     * even when an attacker recomputes the non-authoritative checksum. */
-   Hfs9pBuffer reader = {snapshot, length - 32, 0, 61, 0};
+   Hfs9pReader reader = {snapshot, length - 32, 61, 0};
    (void)_unpack_bytes(&reader, 16);
    uint32_t context_length = (uint32_t)_unpack(&reader, 4);
    (void)_unpack_bytes(&reader, context_length);

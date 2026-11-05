@@ -243,7 +243,7 @@ negative_manifest_checks(Hfs9p *h) {
 static void
 package_counter_negatives(const Hfs9pEndpoint *endpoint, uint8_t *bytes,
     size_t length) {
-   Hfs9pBuffer reader = {bytes, length - 32, 0, 61, 0};
+   Hfs9pReader reader = {bytes, length - 32, 61, 0};
    (void)_unpack_bytes(&reader, 16);
    uint32_t context = (uint32_t)_unpack(&reader, 4);
    (void)_unpack_bytes(&reader, context);

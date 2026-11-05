@@ -285,19 +285,27 @@ _matches(Hfs9pSupervisor *s, const Hfs9pEndpoint *e, const int fd[3]) {
        !memcmp(fd, s->fd, sizeof(s->fd)));
 }
 
+/* The begin/end callback pair deliberately retains the mutex on success.
+ * Describe that contract to the native pthread lock analysis. */
+#ifdef __FreeBSD__
+static int _begin_io_cb(void *arg, const Hfs9pEndpoint *e, const int fd[3])
+    __trylocks_exclusive(0, ((Hfs9pSupervisor *)arg)->mutex);
+static void _end_io_cb(void *arg)
+    __unlocks(((Hfs9pSupervisor *)arg)->mutex);
+#endif
+
 static int
 _begin_io_cb(void *arg, const Hfs9pEndpoint *e, const int fd[3]) {
    Hfs9pSupervisor *s = arg;
-   pthread_mutex_lock(&s->mutex);
+   pthread_mutex_lock(&((Hfs9pSupervisor *)arg)->mutex);
    int error = _matches(s, e, fd) ? _verify_locked(s) : EACCES;
-   if (error) pthread_mutex_unlock(&s->mutex);
+   if (error) pthread_mutex_unlock(&((Hfs9pSupervisor *)arg)->mutex);
    return (error);
 }
 
 static void
 _end_io_cb(void *arg) {
-   Hfs9pSupervisor *s = arg;
-   pthread_mutex_unlock(&s->mutex);
+   pthread_mutex_unlock(&((Hfs9pSupervisor *)arg)->mutex);
 }
 
 static int
