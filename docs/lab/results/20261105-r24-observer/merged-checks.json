@@ -1,0 +1,158 @@
+{
+  "version": "homelabfs-process-observer-merged-checks/1",
+  "source": "c520332",
+  "retained_root": "/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn",
+  "checks": {
+    "merged-build-v1": {
+      "sha256": "658ddccb3e843e7c7ac4b87f4ff2ce6f5c972281af766a91f260a918a172a868",
+      "argv": [
+        "/usr/bin/go",
+        "build",
+        "./..."
+      ],
+      "exit": -15,
+      "error": "new selected-package cache/tmp320MiB bound",
+      "seconds": 57.12960092199501,
+      "peakrss": 230445056,
+      "peakdisk": 8544621568,
+      "source_changes": []
+    },
+    "merged-build-v2": {
+      "sha256": "a0a78ed28bfff40055565a260e4177c1ab4ad9148eaa3e241922582f104ecc93",
+      "argv": [
+        "/usr/bin/go",
+        "build",
+        "./..."
+      ],
+      "exit": null,
+      "error": "owned allocated disk",
+      "seconds": 9.548072902995045,
+      "peakrss": 0,
+      "peakdisk": 8604668928,
+      "source_changes": []
+    },
+    "merged-build-v3": {
+      "sha256": "40d6659218a3f400313b847e9a23517af00ab28c53521d129ca579e612521afc",
+      "argv": [
+        "/usr/bin/go",
+        "build",
+        "./..."
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 42.03710847700131,
+      "peakrss": 171122688,
+      "peakdisk": 8859026432,
+      "source_changes": []
+    },
+    "merged-full-tests-v1": {
+      "sha256": "019a38163a5353883191d7d1f0d104de1e2cb1df6d6bd98a5a25d5cdf0babc94",
+      "argv": [
+        "/usr/bin/go",
+        "test",
+        "-p=1",
+        "-count=1",
+        "-timeout=600s",
+        "./..."
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 376.78305055999954,
+      "peakrss": 277078016,
+      "peakdisk": 9241728000,
+      "source_changes": []
+    },
+    "merged-static-v1": {
+      "sha256": "1fd65d212e4b81a8d9b6bd6562b4bb0c8c7a4c593d39924e1c1f1ae31ba30250",
+      "argv": [
+        "/bin/bash",
+        "-c",
+        "go vet ./... && /home/paul/go/bin/errcheck ./... && /home/paul/go/bin/golangci-lint run --timeout=5m ./..."
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 52.55302109500917,
+      "peakrss": 302886912,
+      "peakdisk": 8999683072,
+      "source_changes": []
+    },
+    "merged-freebsd-builds-v1": {
+      "sha256": "53e6291ffa1e2c5b4ac63309c4ff3ed0cfb7c245df8a0b76bdc522700ce5518b",
+      "argv": [
+        "/bin/bash",
+        "-c",
+        "GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 /usr/bin/go build ./... && GOOS=freebsd GOARCH=amd64 CGO_ENABLED=1 CC=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/freebsd-cc /usr/bin/go build ./..."
+      ],
+      "exit": -15,
+      "error": "merged cache/tmp1GiB bound",
+      "seconds": 63.812863475992344,
+      "peakrss": 253136896,
+      "peakdisk": 9400583168,
+      "source_changes": []
+    },
+    "merged-freebsd-static-v2": {
+      "sha256": "c4e0c6a575a8cb50735318a3fef5046dd72a132d446d7d506e9c0740169ff314",
+      "argv": [
+        "/usr/bin/env",
+        "GOOS=freebsd",
+        "GOARCH=amd64",
+        "CGO_ENABLED=0",
+        "/usr/bin/go",
+        "build",
+        "./..."
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 31.06743331499456,
+      "peakrss": 58826752,
+      "peakdisk": 9617916928,
+      "source_changes": []
+    },
+    "merged-freebsd-cgo-v2": {
+      "sha256": "50d69da25a3d683369e337ddd20702595018383ae71c171e15d496859bc8a83a",
+      "argv": [
+        "/usr/bin/env",
+        "GOOS=freebsd",
+        "GOARCH=amd64",
+        "CGO_ENABLED=1",
+        "CC=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/freebsd-cc",
+        "/usr/bin/go",
+        "build",
+        "./..."
+      ],
+      "exit": 0,
+      "error": null,
+      "seconds": 41.40711462000036,
+      "peakrss": 126492672,
+      "peakdisk": 9714844672,
+      "source_changes": []
+    }
+  },
+  "passed": [
+    "merged-build-v3",
+    "merged-full-tests-v1",
+    "merged-static-v1",
+    "merged-freebsd-static-v2",
+    "merged-freebsd-cgo-v2"
+  ],
+  "resource_stops_preserved": [
+    "merged-build-v1",
+    "merged-build-v2",
+    "merged-freebsd-builds-v1"
+  ],
+  "local_only_envelope": {
+    "aggregate_owned_bytes": 10737418240,
+    "cache_tmp_bytes": 2147483648,
+    "minimum_free_home_tmp_bytes": 4294967296,
+    "cpus": 2,
+    "rss_bytes": 2147483648,
+    "stage_seconds": 1200,
+    "memory_floor_bytes": 8589934592,
+    "memory_floor_fraction": 0.25,
+    "swap": "telemetry only"
+  },
+  "native_constraints_changed": false,
+  "fresh_review": "R1 clean; no R2 needed",
+  "native_runtime_ready": false,
+  "publication": null
+}

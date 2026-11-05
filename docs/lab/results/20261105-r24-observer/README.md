@@ -22,3 +22,10 @@ This qualifies the recorded daemon bytes for the observer capability only.
 The quarantined xz3 artifact remains unchanged and ineligible. The final selected
 daemon must be rebuilt and qualified again after later runtime changes; this
 receipt cannot qualify different bytes or establish native runtime readiness.
+
+The merged source `c520332` also passed the full Go suite, full build, vet,
+errcheck, lint, and FreeBSD static/CGO cross-builds. [Merged checks](merged-checks.json)
+retain every result. The broad local checks used a separately recorded 10GiB
+aggregate workspace allowance; earlier small-cache/storage stops remain failures
+of those attempts. Native resource constraints and VM state were unchanged.
+Fresh R1 found no blocking or nonblocking issue.
