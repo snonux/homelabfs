@@ -30,10 +30,17 @@ import (
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	f := flag.NewFlagSet("hfs-controlled-runtime", flag.ContinueOnError)
 	f.SetOutput(stderr)
+	qualify := f.Bool("check-process-observer", false, "read-only native process observer qualification; no runtime startup")
 	config := f.String("config", "", "private controlled-runtime/1 config")
 	disposable := f.Bool("disposable-validation", false, "explicit controlled local runtime; publication remains null")
 	if err := f.Parse(args); err != nil {
 		return err
+	}
+	if *qualify {
+		if f.NFlag() != 1 || f.NArg() != 0 {
+			return fmt.Errorf("--check-process-observer must be used alone")
+		}
+		return qualifyProcessObserver(stdout)
 	}
 	if !*disposable || *config == "" || f.NArg() != 0 {
 		return fmt.Errorf("requires --config FILE --disposable-validation")
@@ -47,6 +54,9 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 	if runtime.GOOS != "freebsd" {
 		return fmt.Errorf("native controlled runtime requires actual FreeBSD FUSE: %w", fsapi.Unsupported)
+	}
+	if _, err := checkProcessObserver(observeProcess); err != nil {
+		return fmt.Errorf("process observer preflight: %w", err)
 	}
 	return runRuntime(ctx, c, stdout)
 }

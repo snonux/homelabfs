@@ -142,3 +142,48 @@ bhyve boot, installed kernel MM/PTE behavior, artifact ABI, runtime pressure,
 lab readiness or native canary acceptance. No lab/SSH/VM/mount/install operation
 was run by this task. Any-node writes, original-origin D plus owner/partner RAM,
 future periodic ownership reconciliation and same-client locks are unchanged.
+
+## Process observer admission
+
+The native runtime requires a FreeBSD CGO build against its selected target
+headers and libc/sysctl ABI. A FreeBSD `CGO_ENABLED=0` binary remains an
+unsupported build. Startup observes and validates the daemon's own complete
+credentials before opening the runtime service; every direct supervisor launch
+repeats that capability check before copying an exporter, allocating inherited
+channels or starting a child. A missing/denied observer fails closed with no
+exporter child. A subsequent child-specific observation failure still preserves
+any actually started child and consumed ownership for inspection.
+
+The C observer uses the compiler's actual `struct kinfo_proc` layout and checks
+both returned size and `ki_structsize`. Two process snapshots bracket complete,
+bounded group and executable-path samples. It refuses mixed real/effective/saved
+UIDs or primary GIDs, incomplete/changed groups, zombie state, changed PID,
+birth time, text vnode or path, and any sysctl error. The owned executable's
+protected descriptor and path checks remain mandatory after launch and on live
+verification.
+
+For a separately reviewed, bounded read-only qualification, the actual selected
+daemon supports this mutually exclusive invocation:
+
+```
+hfs-controlled-runtime --check-process-observer
+```
+
+Stage that binary with mode0500 and one hard link under its intended runtime
+owner. This invocation observes only itself, checks its complete numeric
+credentials against the OS, validates the protected executable descriptor,
+hashes that executable and repeats its identity observation. It reads no runtime
+configuration, starts no exporter, creates no owner and mounts nothing. Its JSON
+record identifies the exact executable SHA256 and observed process identity with
+`publication:null`. Actual native execution and independently captured compiler,
+header, runtime-library and source bindings are needed before an artifact can
+consume this qualification. A compiled binary, Linux fixture, or C boundary
+harness alone provides no native process qualification.
+
+`process_freebsd_boundary.c` is an explicitly substituted sysctl boundary harness
+compiled against the selected actual target headers. It checks ABI sizes,
+credential/group/path races, zombie and stale snapshots, full1024-group capture,
+oversized/partial groups and syscall errors without starting any process. These
+fixtures are distinct from real native self observation. Neither read-only proof
+establishes native READY, FUSE/filesystem behavior, installed PTE semantics,
+pressure acceptance, publication or approval for VM operations.

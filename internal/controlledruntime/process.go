@@ -89,8 +89,18 @@ func (s *Supervisor) Start(ctx context.Context, executable Executable) error {
 }
 
 func (s *Supervisor) launch(ctx context.Context, spec Executable) (*exporter, error) {
+	return s.launchObserved(ctx, spec, observeProcess)
+}
+
+// The observer argument is an internal OS boundary, never a runtime option.
+func (s *Supervisor) launchObserved(ctx context.Context, spec Executable, observe func(int) (processIdentity, error)) (*exporter, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	// Refuse missing build/OS capabilities before pinning files, allocating
+	// inherited channels, or creating any native exporter child.
+	if _, err := checkProcessObserver(observe); err != nil {
+		return nil, fmt.Errorf("process observer preflight: %w", err)
 	}
 	pinned, err := s.pinExecutable(spec)
 	if err != nil {
@@ -136,7 +146,7 @@ func (s *Supervisor) launch(ctx context.Context, spec Executable) (*exporter, er
 	}
 	result := &exporter{command: command, executable: pinned, control: parent, recovery: recoveryParent, bootstrap: bootstrapWriter, exited: make(chan struct{})}
 	go func() { _ = command.Wait(); close(result.exited) }()
-	identity, err := observeProcess(command.Process.Pid)
+	identity, err := observe(command.Process.Pid)
 	if err == nil {
 		err = sameExecutable(pinned, identity)
 	}

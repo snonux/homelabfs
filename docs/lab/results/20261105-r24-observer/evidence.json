@@ -1,0 +1,134 @@
+{
+  "version": "homelabfs-process-observer-qualification/1",
+  "scope": "read-only native process observer and actual unsupported prelaunch refusal; no native runtime READY/filesystem/VM/mount qualification",
+  "retained_root": "/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn",
+  "source_baseline": "ad2a8527eca50abeaefe4ec9a1cc03425d23ccd6",
+  "source_files": {
+    "internal/controlledruntime/driver.go": "610d38f4baed940a3afea3207be5021571a44ae63cd4d032f347793ac13c3466",
+    "internal/controlledruntime/process.go": "23ea986159eed49c63264ceef9c4feba8624938fb390038e7deefc4017691397",
+    "internal/controlledruntime/process_freebsd.go": "047279d6abbad2bb197ff42736e714f35a6f0998ed462e134646cd2a335717d4",
+    "internal/controlledruntime/process_freebsd.h": "5d30eb3cf4db472f834dc6db6d920bc039b106e738054a8503f7500a925e44bb",
+    "internal/controlledruntime/process_freebsd_nocgo_test.go": "7278e08aeccb01988570a9457813f6b617f1f1056456bd6c018919074a64d775",
+    "internal/controlledruntime/process_freebsd_test.go": "ce7a22de59d8882ca284a877c2e7abf0da2657d5548e5184b564df31ab147cd6",
+    "internal/controlledruntime/process_observer.go": "f8eb2b55b9740b8abda501de0639a77540743bf2057898b557f18c49403e58ad",
+    "internal/controlledruntime/process_observer_test.go": "adf92b06d6a662557a4ee585e7140766c501dcee9d6d17617ce6b16a9ca7a3cb",
+    "internal/controlledruntime/testdata/process_freebsd_boundary.c": "4017f04647757b0f8aff7edc79837ba4c954ec013910068d814d6d5c8ab61a37"
+  },
+  "compiler": {
+    "/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/freebsd-cc": "ed9b79ddcabd4873e61d0e9a6a7950f1dae3fd9a0f62377f457ab8e794688f24",
+    "/usr/bin/clang-22": "4ea85504401d9f5c05109d6cb05778b241aa8d56fde1da2e5bc7ba46cffd44f5",
+    "/usr/bin/lld": "2fb44dd81f694f227964b67d60df9520f0c875505dcff1f3aae8e64b163f1621",
+    "/usr/lib/golang/bin/go": "ccaa26464afb51c19c34030b88468fe18cde8c4b009edff87856b5d474674202"
+  },
+  "sysroot_inventory_sha256": "c16fdc1cf25a9c36a959dc935df7e4d40a2dd094fd565677961a445091197de8",
+  "sysroot_capture_receipt_sha256": "51fde2a6ccc5733e41dc53201eaddfb45bebf96b90a03782c2bc5fd87c8940ae",
+  "sysroot_files": 3109,
+  "sysroot_payload_bytes": 32106375,
+  "native_report": {
+    "version": "homelabfs-process-observer/1",
+    "platform": "freebsd/amd64",
+    "uid": 0,
+    "gid": 0,
+    "pid": 21355,
+    "groups": [
+      0,
+      0,
+      5
+    ],
+    "incarnation": "freebsd:21355:1793863624:180709:fffff80106f806e0",
+    "executable": "/var/tmp/hfs-r24-20261105-0h1d6esn/hfs-controlled-runtime",
+    "sha256": "bf047fa223becaff9ef2a2fd6a1603361e2c18548116200d9ffccaf3bd4ea5b3",
+    "text_vnode": 18446735282028414688,
+    "publication": null
+  },
+  "native_probe_receipt_sha256": "b52c923cb5ac29eec9ebdf64aa7329b8dd216d25e7acd9aa89f4bf08defdd29e",
+  "native_tests": {
+    "boundary": {
+      "exit": 0,
+      "stdout": "{\"boundary_fixture\":true,\"positive_cases\":2,\"negative_cases\":59,\"native_observation\":false}\n"
+    },
+    "observer-cgo.test": {
+      "exit": 0,
+      "stdout": "=== RUN   TestFreeBSDObserverReadOnly\n    process_freebsd_test.go:59: actual FreeBSD self observation: pid=21357 uid=0 gid=0 groups=[0 0 5] incarnation=freebsd:21357:1793863624:198709:fffff80106fb6a50 executable=/var/tmp/hfs-r24-20261105-0h1d6esn/observer-cgo.test\n--- PASS: TestFreeBSDObserverReadOnly (0.00s)\nPASS\n"
+    },
+    "observer-nocgo.test": {
+      "exit": 0,
+      "stdout": "=== RUN   TestUnsupportedObserverStartCreatesNoChild\n--- PASS: TestUnsupportedObserverStartCreatesNoChild (0.02s)\nPASS\n"
+    }
+  },
+  "native_root": "/var/tmp/hfs-r24-20261105-0h1d6esn",
+  "native_child_maxrss_kib": 281568,
+  "rocky_before": "6444 Mon Nov  2 20:40:40 2026 bhyve: rocky (bhyve)\n",
+  "rocky_after": "6444 Mon Nov  2 20:40:40 2026 bhyve: rocky (bhyve)\n",
+  "vmm_before": "rocky\n",
+  "vmm_after": "rocky\n",
+  "checks": {
+    "local-focused-v1": {
+      "sha256": "72f9d0d82eec2a1cd09135d4f2128f116d8b9bae3e54bcc057973552b0f7fef9",
+      "exit": 0,
+      "error": null,
+      "seconds": 33.59231429800275,
+      "peakrss": 143011840,
+      "peakdisk": 8266036224,
+      "source_changes": []
+    },
+    "sysroot-capture-v1": {
+      "sha256": "8580e644de43a78640a59861a94197739ae3f3820b307b4ff99976feaafe2787",
+      "exit": 0,
+      "error": null,
+      "seconds": 13.126040146002197,
+      "peakrss": 11087872,
+      "peakdisk": 8300438528,
+      "source_changes": []
+    },
+    "cross-cgo-v1": {
+      "sha256": "b203fa92de1624a19f7944c6d4e08470660773968a02f899af56753da1b9c779",
+      "exit": 1,
+      "error": null,
+      "seconds": 12.936240273993462,
+      "peakrss": 17035264,
+      "peakdisk": 8303694848,
+      "source_changes": []
+    },
+    "cross-cgo-fix1": {
+      "sha256": "0edba23ffbf03fef6d3c5423c71d2782ef387609a9219865b5854f36dec28e60",
+      "exit": 1,
+      "error": null,
+      "seconds": 36.50302626199846,
+      "peakrss": 261562368,
+      "peakdisk": 8453522432,
+      "source_changes": []
+    },
+    "cross-cgo-fix2": {
+      "sha256": "b2a5d24bd7e6c03203f0ccc7d6679c6c911d6e95c4cb458c7fe5c5720c7846b1",
+      "exit": 0,
+      "error": null,
+      "seconds": 31.19517456900212,
+      "peakrss": 202813440,
+      "peakdisk": 8475481088,
+      "source_changes": []
+    },
+    "cross-nocgo-refusal-v1": {
+      "sha256": "3ce942214a9b4542f015692a8bdf2ec8c2e16c3ce57bd2f43648bf309f01ca9c",
+      "exit": 0,
+      "error": null,
+      "seconds": 19.268800445992383,
+      "peakrss": 46731264,
+      "peakdisk": 8489894912,
+      "source_changes": []
+    },
+    "native-observer-v1": {
+      "sha256": "9a6db9b6f48bb3d06b5d0e1e9d150acd7554842f430875f8ea6dd5615b25d6a3",
+      "exit": 0,
+      "error": null,
+      "seconds": 13.591481085997657,
+      "peakrss": 10772480,
+      "peakdisk": 8560256000,
+      "source_changes": []
+    }
+  },
+  "installed": false,
+  "native_runtime_ready": false,
+  "publication": null,
+  "requires_requalification_after_binary_change": true
+}
