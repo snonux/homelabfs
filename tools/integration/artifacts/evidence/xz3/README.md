@@ -1,5 +1,13 @@
 # xz3: controlled validation build artifacts
 
+**Not deployment eligible: xz3 reopened during zq3 preparation.** The selected
+CGO-disabled FreeBSD daemon uses an unsupported process observer. Its launch
+path starts the child before the observation fails, so this candidate cannot
+reach native READY. Tasks r24/s24 and the reopened artifact task must supply
+a qualified native observer, prelaunch refusal and corrected artifacts. No VM
+was started and nothing was installed. The build and offline checks below
+retain their narrower historical scope; they did not qualify this capability.
+
 Source commit: `13fbad97dad85ce3145f22c92892aefa132ee1e9`.
 Final candidate manifest: `7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b`.
 Candidate: `/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-final`.

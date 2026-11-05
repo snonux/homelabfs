@@ -550,6 +550,21 @@
     "native_binary_sysroot": "measured installed binary inputs; source ancestry not inferred; runtime libraries external and not redistributed",
     "native_notices": "complete selected sources preserve per-file notices; complete upstream COPYRIGHT and lib9p COPYRIGHT copied separately"
   },
+  "superseding_native_eligibility_finding": {
+    "corrective_tasks": [
+      "r24",
+      "s24",
+      "xz3",
+      "zq3"
+    ],
+    "manifest_sha256": "7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b",
+    "prior_proofs": "retained unchanged as build-only evidence; no installed/boot/native acceptance was ever granted",
+    "reason": "Actual selected CGO_ENABLED=0 FreeBSD observer returns Unsupported for every process. process.go launch starts the child before that observation; this candidate cannot reach native READY. Metadata/source/build/repro/offline byte checks did not qualify this mandatory runtime capability. No VM was started or candidate installed.",
+    "required": "native-capable selected process observer, prelaunch unsupported refusal, actual selected-binary read-only native qualification, then corrected artifact build/admission; no relabeling old candidate",
+    "runtime_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+    "source": "internal/controlledruntime/process_freebsd_nocgo.go",
+    "status": "NOT DEPLOYMENT ELIGIBLE; task xz3 reopened"
+  },
   "task": "xz3",
   "upstream_source_revisions": {
     "freebsd": "aadd58dddcbc78f4d5594827b46b5633552b15ce",
