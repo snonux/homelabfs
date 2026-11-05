@@ -20,8 +20,7 @@ cache coherence. Any admitted node's eligibility to originate writes is unchange
 **Actual candidate daemon cannot admit a native exporter.** The xz3 daemon was
 built with `CGO_ENABLED=0`. The selected
 [`process_freebsd_nocgo.go`](../../internal/controlledruntime/process_freebsd_nocgo.go)
-explicitly returns `fsapi.Unsupported` from `observeProcess`. In
-[`Supervisor.launch`](../../internal/controlledruntime/process.go), the child
+explicitly returns `fsapi.Unsupported` from `observeProcess`. In that candidate's `Supervisor.launch` (source `13fbad9`), the child
 starts before this observation; failure retains the child and closes management
 channels. Thus compilation/reproducibility of that pure-Go artifact proves no
 native runtime readiness, and installing it cannot complete bootstrap. Prepare
@@ -34,6 +33,11 @@ Root quarantined the old candidate in commit
 `ad2a8527eca50abeaefe4ec9a1cc03425d23ccd6` and reopened xz3. Task r24 owns
 actual native process qualification and unsupported prelaunch refusal; s24 owns
 the private C9/evidence/lost-reply control and bounded exporter diagnostics.
+Task r24 is now complete: source `c520332` refuses unsupported observation before
+launch effects, and its actual CGO daemon passed native read-only qualification.
+See [observer evidence](results/20261105-r24-observer/README.md). This qualifies
+those observer bytes only; the final post-s24 artifact still needs rebuilding
+and exact-byte native qualification. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
 any SSH. All old build proofs remain preserved, and no different digest alone
 establishes native eligibility. This preparation changes no runtime APIs.
@@ -47,7 +51,7 @@ The live observer independently measures the installed/booted kernel, complete
 loaded module set, provider nonce and every original domain. No plan assertion
 or a syscall-only probe may replace these checks.
 
-The current command's only interface is foreground `--config` plus staged
+The current command's runtime interface is foreground `--config` plus staged
 EnrollmentFile. After READY it waits for owner channel loss or cancellation.
 It exposes no control operation to invoke the real
 [`SuspendEndpoint`, `Restart.Reopen`, `Restart.Activate`](../../internal/controlledruntime/restart.go)
