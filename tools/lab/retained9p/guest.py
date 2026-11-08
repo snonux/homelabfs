@@ -803,9 +803,11 @@ def lost_reply_call(p, mounts):
 
     The host must arm with `--operation arm-lost-reply` immediately before this
     step. Nothing else touches a domain here and the mkdir is never retried:
-    the guest kernel's own path walk still issues GETATTR/LOOKUP CALLs before
-    MKDIR, so the dropped exposure may belong to one of those (the correlator
-    tells them apart only by whether the source advanced).
+    the guest kernel's own mkdir(2) always issues GETATTR/LOOKUP CALLs before
+    MKDIR (no warm-up here could avoid them: permission refresh and dentry
+    revalidation are uncached by design), so an unfiltered ARM may drop one
+    of those. Only an ARM with the d44 `--lost-intent MKDIR` filter targets
+    the MKDIR reply; the correlator reads the daemon's `dropped_opcode`.
     """
     path = mounts[0]["path"] + "/" + step_leaf(p, "lost-reply")
     code, _ = attempt(p, "mkdir-lost-reply-call", lambda: os.mkdir(path, 0o755), path=path)

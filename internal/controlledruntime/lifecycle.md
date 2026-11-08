@@ -45,7 +45,7 @@ carries exactly one request and one reply.
 |---|---|---|
 | 1 OBSERVE | runtime UUID (16 bytes) | `{"status":"OBSERVED","sequence":N,"evidence":{...}}` |
 | 2 RESTART | runtime UUID, current cut UUID, uint64 epoch (40 bytes) | restart outcome with post-attempt evidence |
-| 3 ARM_LOST_REPLY | runtime UUID, current cut UUID, uint64 epoch, session UUID, operation code (57 bytes) | `{"status":"ARMED","sequence":N,"lost_reply":{...}}` |
+| 3 ARM_LOST_REPLY | runtime UUID, current cut UUID, uint64 epoch, session UUID, operation code: 1 any CALL, 2 MKDIR CALL only (57 bytes) | `{"status":"ARMED","sequence":N,"lost_reply":{...}}` |
 
 Replies use opcode `request|0x80`; frame-level refusals use `0xff`. Unknown
 opcodes, wrong lengths (checked before any payload read or allocation), bad
@@ -65,7 +65,8 @@ OBSERVE, which needs only the runtime UUID, to learn the current cut/epoch.
 
 `hfs-controlled-runtime --control SOCKET --operation
 observe|restart|arm-lost-reply --runtime UUID --sequence N [--cut UUID --epoch
-N [--session UUID --lost-operation CALL]]` is the matching one-shot client; it
+N [--session UUID --lost-operation CALL [--lost-intent MKDIR]]]` is the
+matching one-shot client (`--lost-intent MKDIR` sends operation code 2); it
 prints the raw reply and exits non-zero on refusal (FENCED and
 EFFECT_UNREPORTABLE are consumed attempts, not refusals, and exit zero). Flags
 belonging to another operation refuse.
@@ -152,7 +153,8 @@ ARM_LOST_REPLY arms one disposable, exact one-shot fixture inside the actual
 `guestbridge.Transport.Read`, which is the protected response exposure that the
 native exporter's result-node `pread` reaches through the FUSE
 `PrivateControl.Read` callback. It requires the SERVING stage, the exact
-current runtime/cut/epoch, an enrolled session and operation code 1 (`CALL`);
+current runtime/cut/epoch, an enrolled session and operation code 1 (any
+`CALL`) or 2 (only a `CALL` whose guest intent opcode is `MKDIR`, d44);
 any other code, a stale or consumed binding, an unknown session, any ARM after
 one succeeded (even once it fired or expired) or an exhausted budget
 refuses. Before the transport is armed the endpoint reserves the fixture's own
@@ -165,11 +167,21 @@ The predicate takes no response, result, Facts, bytes or caller values. It
 matches only the first nonempty result-node exposure of a `CALL` cell in the
 armed session that was accepted after arming (its native cell is above the
 recorded `armed_high`), is fully responded (so its effect, claim and response
-are already protected) and has no covered byte yet. That Read computes the
+are already protected), has no covered byte yet and, with code 2, carries the
+intent opcode `MKDIR` in its own accepted command; other CALLs are exposed
+normally and leave the fixture armed. That Read computes the
 chunk, then returns EIO with no bytes and leaves read coverage unchanged,
 because nothing reached the native reader. The record (`exposure`) names the
-actual native cell, claim, command/response/dropped-chunk digests, wire and
-unread bytes, job phase and outcome `UNCERTAIN`. All later reads, including the
+armed `intent` filter (absent for code 1), the actual native cell, claim,
+`dropped_opcode`, command/response/dropped-chunk digests, wire and unread
+bytes, job phase and outcome `UNCERTAIN`.
+
+Code 2 exists because the Linux guest's `mkdir(2)` always sends GETATTR and
+LOOKUP CALLs before MKDIR (and background FORGET/PROCESS_EXIT CALLs may race
+in), so code 1 practically never drops the mutating reply, and no guest
+warm-up can avoid those CALLs; see the
+[guestbridge analysis](../guestbridge/README.md#targeting-the-mkdir-reply-d44).
+A runtime built before d44 refuses code 2 as an unsupported operation. All later reads, including the
 retry of the same chunk, deliver the identical protected bytes; nothing is
 re-executed, reclassified or written to the C8 ledger. An unfired fixture is
 expired before a C9 suspension. The record lives only in daemon memory; an
@@ -257,8 +269,10 @@ the Memory pool exactly full. An oversized post-attempt record is reached only
 with constructed evidence; actual owners cannot produce one.
 
 `lifecycle_lostreply_test.go` arms the fixture through the real endpoint (and
-the CLI client) on the same real runtime. An actual MKDIR CALL commits its
-journal effect; the C exporter's actual result pread then receives EIO from the
+the CLI client) on the same real runtime. The main subtest arms code 2: a
+GETATTR CALL accepted after arming is delivered normally, then an actual MKDIR
+CALL commits its journal effect (the record names `dropped_opcode` MKDIR);
+the C exporter's actual result pread then receives EIO from the
 real `Transport.Read`, and that guest FETCH delivers no bytes. Evidence shows
 the claim, protected response and committed source change with no coverage.
 QUERY reconciles the original OK result, the retry delivers the retained bytes,
@@ -266,10 +280,12 @@ and after FORGET plus a view refresh the real C9 restart preserves the response
 bytes, result, source identity and a single directory entry. A second subtest
 shows C9 refusing (FENCED) while the dropped response is still unread.
 Negative cases cover a foreign peer UID, foreign runtime, stale cut and epoch,
-operations 0/2/255, an unknown session, a short frame, an exhausted actual
+operations 0/3/255, an unknown session, a short frame, an exhausted actual
 budget, repeated ARM, ARM after restart, a foreign session's CALL and expiry
-of an unfired fixture at C9. `internal/guestbridge/lost_reply_test.go` covers
-the predicate on a real bridge service. The test C fixture's guest emulation
+of an unfired fixture at C9; `TestLifecycleClientArmTargets` checks the
+client's `--lost-intent` mapping onto the unchanged 57-byte frame.
+`internal/guestbridge/lost_reply_test.go` covers the predicate, including the
+MKDIR filter passing an earlier non-matching CALL, on a real bridge service. The test C fixture's guest emulation
 reports every non-data FETCH reply as EAGAIN, so the native EIO is observed at
 its actual pread boundary. Native FreeBSD execution, the native lost-reply and
 compatibility acceptance and the real 9p base gate (zq3) remain unrun and

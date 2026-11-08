@@ -14,14 +14,26 @@ import (
 )
 
 const (
-	// lostReplyOperationCall is the only HSC1 operation code ARM accepts; it
-	// selects guestbridge.LostReplyOperation. Every other code refuses.
+	// lostReplyOperationCall selects guestbridge.LostReplyOperation for any
+	// guest CALL (the original v24 target).
 	lostReplyOperationCall = 1
+	// lostReplyOperationMkdir selects only a CALL whose guest intent opcode is
+	// MKDIR (d44), so a guest mkdir(2), whose GETATTR/LOOKUP CALLs always come
+	// first, loses the mutating reply itself. Every code outside
+	// lostReplyIntents refuses; the 57-byte ARM frame is unchanged.
+	lostReplyOperationMkdir = 2
 	// lostReplyMemoryBytes funds the fixture: its fixed evidence record, the
 	// copied claim, digests, the arm-time source baseline and their encodings.
 	// The transient source capture itself is covered by the control lease.
 	lostReplyMemoryBytes = 64 << 10
 )
+
+// lostReplyIntents maps each accepted HSC1 operation code to the guestbridge
+// intent filter it arms ("" matches any CALL).
+var lostReplyIntents = map[uint8]string{
+	lostReplyOperationCall:  "",
+	lostReplyOperationMkdir: guestbridge.LostReplyIntentMkdir,
+}
 
 // lifecycleLostReply is the single arming of the response-exposure fixture
 // for this runtime. It keeps the exact transport it armed (later observations
@@ -53,9 +65,10 @@ type lostReplyView struct {
 
 // armLostReply arms the one-shot fixture on the actual current transport. The
 // binding must name the exact current cut and epoch of a SERVING runtime, an
-// enrolled session and the CALL operation. Funding is reserved and the source
-// baseline captured before the transport is armed; any refusal releases the
-// lease and leaves nothing armed, so a refused ARM consumes no one-shot.
+// enrolled session and an accepted operation code (any CALL, or only a MKDIR
+// CALL). Funding is reserved and the source baseline captured before the
+// transport is armed; any refusal releases the lease and leaves nothing armed,
+// so a refused ARM consumes no one-shot.
 func (l *runtimeLifecycle) armLostReply(ctx context.Context, r lifecycleRequest) (lostReplyView, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -75,7 +88,7 @@ func (l *runtimeLifecycle) armLostReply(ctx context.Context, r lifecycleRequest)
 		err = fmt.Errorf("source baseline: %s", armed.baseline.Error)
 	}
 	if err == nil {
-		err = armed.transport.ArmLostReply(session, guestbridge.LostReplyOperation)
+		err = armed.transport.ArmLostReply(session, guestbridge.LostReplyOperation, lostReplyIntents[r.operation])
 	}
 	if err != nil {
 		if releaseErr := lease.Release(); releaseErr != nil {
@@ -96,12 +109,19 @@ func (l *runtimeLifecycle) checkArmLocked(r lifecycleRequest) error {
 		return fmt.Errorf("%w: stale cut/epoch binding", errLifecycleRefused)
 	case l.lostReply != nil:
 		return fmt.Errorf("%w: lost-reply fixture already armed once", errLifecycleRefused)
-	case r.operation != lostReplyOperationCall:
+	case !hasLostReplyIntent(r.operation):
 		return fmt.Errorf("%w: unsupported lost-reply operation %d", errLifecycleRefused, r.operation)
 	case !slices.Contains(l.sessions, r.session.String()):
 		return fmt.Errorf("%w: session not enrolled in this runtime", errLifecycleRefused)
 	}
 	return nil
+}
+
+// hasLostReplyIntent reports whether an ARM operation code is in the closed
+// lostReplyIntents table; anything else refuses before funding is reserved.
+func hasLostReplyIntent(operation uint8) bool {
+	_, ok := lostReplyIntents[operation]
+	return ok
 }
 
 // lostReplyViewLocked reports the armed fixture from the transport it armed,
