@@ -28,7 +28,10 @@ REPO_KEYS = Path(__file__).resolve().parents[2] / "docs/lab/f3-known_hosts"
 LIMIT = 256 << 10
 VMS = Path(__file__).resolve().with_name("vms.sh")
 # Coupled deliberately: conditional pre-stop admission requires this exact guard.
-GUARDED_VMS_SHA256 = "106dae1dd2730a729341e80b9c5204a1c51ce679ffcce3bd96b01f8d112a06e3"
+# Reviewed vms.sh pin. Re-pinned on 2026-11-08 to the b44 version (d120d8c),
+# which adds the hfs-zq3 direct-launch refusal to start-rocky/start-lab while
+# keeping the post-stop memory guard; older run records keep the 106dae1d pin.
+GUARDED_VMS_SHA256 = "136c8c0b364b7eed99b954bb231456ec3b10e032870260c91c9921eb003de6eb"
 
 
 class Blocked(Exception):
