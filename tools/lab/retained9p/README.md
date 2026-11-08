@@ -371,7 +371,8 @@ pins it by `WORKLOAD_SHA256`, so the staged `pod_fixture.py` hash pins both.
 Stage both files root-owned in one directory: the driver reads the workload
 from its own directory and refuses other bytes.
 Both files are Python 3.9 compatible. Nothing here pulls an image, installs a
-package, mounts, unmounts, kills or forces anything.
+package, mounts, unmounts or forces anything, and it never kills a container
+or the VM (see the timeout note under **Results**).
 
 **Runtime choice (A8, agent judgement under Paul's 2026-11-08 delegation).**
 Use the podman `5.8.2-8.el9_8` and crun `1.27-1.el9_7` already installed on
@@ -386,7 +387,8 @@ It is a directory built from Rocky's own installed files and started with
 - `buildah` and `skopeo` are absent. Any registry pull would add a network
   dependency and bytes nobody reviewed.
 - Every rootfs file is attested against the RPM database's SHA256 digest of
-  the installed, signed package.
+  the installed package, and that package must carry a signature
+  (`RSAHEADER`). An empty or `(none)` signature refuses.
 - The exact tree can be re-verified in place before and after the run.
 
 `runc` is not installed and is not needed.
@@ -421,7 +423,8 @@ It is a directory built from Rocky's own installed files and started with
   - `m0` has the exact controlled 9p tuple, as `guest.py` admits it;
   - the run directory is root-private and not on `m0`;
   - the runtime hashes and NEVRAs and the rootfs equal their pins;
-  - the audit log is readable.
+  - `/var/log/audit/audit.log` exists and is readable. Admission stats it and
+    reads its last byte; the AVC delta is read after the containers exit.
 
   Then it starts `w0` (new mount, PID, net (`--network=none`, loopback only),
   UTS and IPC namespaces, private cgroupns, hostname `hfs-zq3-RUN-pod`). It
@@ -458,7 +461,8 @@ w0's PID, net, UTS and IPC namespaces and have its own mount namespace.
 Container root must be `0/0` with no group other than 0, the exact capability
 mask in effective, permitted and bounding sets, empty ambient, NNP=1 and
 seccomp=2. The label must be `container_t:s0:c731,c914`. The only link may be
-`lo`. `/hfs/m0` must be exactly one 9p row with the `m0` tag and device. The
+`lo`, and its recorded flags must show it UP; a down loopback fails rather than
+being inferred from `--network=none`. `/hfs/m0` must be exactly one 9p row with the `m0` tag and device. The
 cgroup limits must equal the pins. Every matrix and lock outcome must match.
 There may be no AVC denial for the pod in the audit delta. A rotated or
 oversized delta is *incomplete*. SELinux must still be enforcing afterwards,
@@ -468,8 +472,14 @@ mount points, which are reported.
 **Results.** A pass removes the two exited containers with plain `podman rm`
 and the exact five payload files and leaf on `m0`, after checking the listing.
 A cleanup failure is reported apart from the T7 result. Any failure, timeout or
-malformed report preserves the containers, payload and evidence. A timeout is
-recorded as `uncertain`, and nothing is killed. Evidence goes to
+malformed report preserves the containers, payload and evidence. A driver
+timeout waiting for the workloads is recorded as `uncertain` and kills nothing.
+A short command that hangs (`rpm`, `podman inspect`, `podman rm`) is bounded:
+its timeout kills only that client process, never a container, conmon or the
+VM. Such a timeout during the run is a T7 failure, and the verdict and both
+workloads' output are still written. Note that `w0` is PID 1 of the shared PID
+namespace: if it exits early (its own failure or deadline), the kernel ends
+`w1` too, and `w1`'s exit status records that. Evidence goes to
 `RUN/pod/evidence/`: `request.json`, both workloads' stdout and stderr,
 `verdict.json` and `cleanup.json`. The pod directory is single-use: a second
 `run` refuses. The verdict always says `acceptance: false`. A T7 pass is one

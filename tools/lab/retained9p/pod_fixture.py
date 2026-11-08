@@ -240,6 +240,9 @@ def rpm_table(host, paths):
         code, header, _ = host.run(["rpm", "-q", "--qf", RPM_HEADER, nevra], 60)
         algo, vendor, signature = (header.decode().rstrip("\n").split("\t") + ["", "", ""])[:3]
         require(code == 0 and algo == "8", "package without SHA256 file digests: " + nevra)
+        # The attestation means "equal to a signed installed package"; an
+        # unsigned (locally built or rebuilt) package does not qualify.
+        require(signature.strip() not in ("", "(none)"), "unsigned package: " + nevra)
         packages.append({"nevra": nevra, "vendor": vendor, "signature": signature})
         code, rows, _ = host.run(["rpm", "-q", "--qf", RPM_FILES, nevra], 60)
         require(code == 0, "rpm file list failed: " + nevra)
@@ -737,8 +740,9 @@ def run_containers(host, request, pod, version):
                                               env, workloads, deadline)[1]
         wait_until(workloads, lambda: all(item.finished() for item in workloads),
                    deadline, "both workloads to exit")
-    except (Refused, OSError, ValueError) as failure:
-        # Never kill: the containers stay for inspection, the error is evidence.
+    except (Refused, OSError, ValueError, subprocess.SubprocessError) as failure:
+        # Never kill a container: they stay for inspection, the error is evidence.
+        # A TimeoutExpired from `podman inspect` killed only that client process.
         error = type(failure).__name__ + ": " + str(failure)
     return workloads, outside, error
 
@@ -746,7 +750,9 @@ def run_containers(host, request, pod, version):
 # --- audit ----------------------------------------------------------------------
 
 def audit_mark(host):
+    """Admission: the audit log exists AND is readable (its last byte is read)."""
     info = host.stat(AUDIT_LOG)
+    host.read(AUDIT_LOG, 1, max(0, info.st_size - 1))
     return {"ino": info.st_ino, "size": info.st_size}
 
 
@@ -806,6 +812,8 @@ def check_environment(role, run_id, baseline, outside, ident):
     failures = []
     if ident["links"] != ["lo"]:
         failures.append(role + ": network links are " + str(ident["links"]) + ", expected only lo")
+    elif not int(ident["link_flags"].get("lo", "0x0"), 16) & 0x1:  # IFF_UP
+        failures.append(role + ": loopback is not UP (flags " + str(ident["link_flags"]) + ")")
     if ident["hostname"] != hostname(run_id) or ident["hostname"] == baseline["hostname"]:
         failures.append(role + ": UTS hostname " + ident["hostname"] + " is not the pod's own")
     mounts = ident.get("mounts") or []
@@ -999,7 +1007,7 @@ def run(host, request_raw):
     if not failures:
         try:
             verdict["cleanup"] = cleanup(host, pod, request["run_id"], w)
-        except (OSError, Refused) as failure:  # Reported apart from the T7 result.
+        except (OSError, Refused, subprocess.SubprocessError) as failure:  # Apart from T7.
             verdict["cleanup"] = {"error": str(failure)}
         persist(pod, "cleanup.json", verdict["cleanup"])
     return verdict

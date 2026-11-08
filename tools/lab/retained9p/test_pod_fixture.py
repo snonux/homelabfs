@@ -226,7 +226,7 @@ class Mirror:
                              "glibc-2.34-231.el9_8.x86_64")
                       for name in list(self.FILES) + list(self.LINKS)}
         self.db = {name: self.row(name) for name in self.owner}
-        self.algo = "8"
+        self.algo, self.signature = "8", "RSA/SHA256, Key ID 702d426d350d275d"
         self.maps = ["/usr/bin/python3.9", "/usr/lib64/ld-linux-x86-64.so.2", "/usr/lib64/libc.so.6",
                      "/usr/lib64/libffi.so.8.1.0",
                      "/usr/lib64/python3.9/lib-dynload/_ctypes.cpython-39-x86_64-linux-gnu.so",
@@ -251,7 +251,7 @@ class Mirror:
                 return 1, b"", ("file %s is not owned by any package\n" % missing[0]).encode()
             return 0, "".join(self.owner[name] + "\n" for name in argv[5:]).encode(), b""
         if argv[:3] == ["rpm", "-q", "--qf"] and argv[3] == pod.RPM_HEADER:
-            return 0, ("%s\t%s\tRSA/SHA256, Key ID 702d426d350d275d\n" % (self.algo, ROCKY)).encode(), b""
+            return 0, ("%s\t%s\t%s\n" % (self.algo, ROCKY, self.signature)).encode(), b""
         if argv[:3] == ["rpm", "-q", "--qf"] and argv[3] == pod.RPM_FILES:
             rows = ["%s\t%d\t%s\t%s\n" % (name, *self.db[name]) for name, nevra in
                     sorted(self.owner.items()) if nevra == argv[4]]
@@ -410,6 +410,8 @@ class EvaluateTests(unittest.TestCase):
                          lambda case: case["outside"]["w1"]["namespaces"].update(mnt="mnt:[5000]"))
         self.assertFails("expected only lo",
                          lambda case: find(case, "w0", "identity").update(links=["eth0", "lo"]))
+        self.assertFails("loopback is not UP",  # IFF_LOOPBACK without IFF_UP.
+                         lambda case: find(case, "w1", "identity").update(link_flags={"lo": "0x8"}))
         self.assertFails("is not the pod's own",
                          lambda case: find(case, "w0", "identity").update(hostname="rocky"))
         self.assertFails("memory.max is max", lambda case: case["outside"]["w0"]["limits"].update(
@@ -544,6 +546,8 @@ class ManifestTests(Sandbox):
             ("module outside the Rocky python3.9 stdlib",
              lambda: self.mirror.modules.append(pod.STDLIB + "site-packages/evil.py")),
             ("without SHA256 file digests", lambda: setattr(self.mirror, "algo", "1")),
+            ("unsigned package", lambda: setattr(self.mirror, "signature", "(none)")),
+            ("unsigned package", lambda: setattr(self.mirror, "signature", "")),
             ("closure probe used another interpreter",
              lambda: setattr(self.mirror, "executable", "/usr/bin/python3")),
             ("mode differs from rpm database",
@@ -558,6 +562,7 @@ class ManifestTests(Sandbox):
                 finally:  # Restore even when this subtest failed.
                     self.mirror.owner, self.mirror.maps, self.mirror.modules = saved
                     self.mirror.algo, self.mirror.executable = "8", pod.PYTHON
+                    self.mirror.signature = "RSA/SHA256, Key ID 702d426d350d275d"
                     libc = self.mirror.src + "/usr/lib64/libc.so.6"
                     Path(libc).write_bytes(Mirror.FILES["/usr/lib64/libc.so.6"])
                     os.chmod(libc, 0o755)
@@ -765,6 +770,9 @@ class RunTests(AdmissionTests):
         if argv[0] != "/usr/bin/podman":
             return None
         if "inspect" in argv:
+            if getattr(self, "inspect_timeout", None) == argv[-1][-2:]:
+                # What Host.run raises after killing a stuck podman client.
+                raise subprocess.TimeoutExpired(argv, 30)
             return 0, (b"4242\n" if argv[-1].endswith("w0") else b"4343\n"), b""
         if "rm" in argv:
             return 0, argv[-1].encode() + b"\n", b""
@@ -820,6 +828,24 @@ class RunTests(AdmissionTests):
         self.assertEqual(code, 1)
         self.assertTrue(verdict["failures"][0].startswith("Refused: uncertain: timed out"))
         self.assertIsNone(self.host.spawned[0].poll())  # The driver did not kill it.
+
+    def test_client_timeout_still_writes_verdict_and_keeps_containers(self):
+        self.inspect_timeout = "w1"
+        code, verdict = self.main()
+        self.assertEqual(code, 1)
+        self.assertTrue(verdict["failures"][0].startswith("TimeoutExpired"), verdict["failures"])
+        evidence = self.run_dir / "pod" / "evidence"
+        for name in ("verdict.json", "w0.stdout", "w0.stderr", "w1.stdout", "w1.stderr"):
+            self.assertTrue((evidence / name).exists(), name)
+        self.assertFalse([call for call in self.host.calls if "rm" in call])
+        self.assertTrue((self.run_dir / "m0" / "zq3-r1-pod" / "lock-posix").exists())
+
+    @unittest.skipIf(os.geteuid() == 0, "root reads mode 000 files")
+    def test_unreadable_audit_log_refuses_before_any_write(self):
+        os.chmod(self.root / "audit.log", 0)
+        code, verdict = self.main()
+        self.assertEqual((code, verdict["refused"]), (2, True))
+        self.assertFalse((self.run_dir / "pod" / "evidence").exists())
 
     def test_missing_audit_log_refuses_before_any_write(self):
         os.unlink(self.root / "audit.log")
