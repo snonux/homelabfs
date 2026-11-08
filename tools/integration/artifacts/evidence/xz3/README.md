@@ -1,5 +1,8 @@
 # xz3: controlled validation build artifacts
 
+**Superseded on 2026-11-08** by the [rebuilt CGO candidate](../xz3-20261108/README.md)
+(manifest `3f770a88…`). This record and its candidate remain historical and quarantined.
+
 **Not deployment eligible: xz3 reopened during zq3 preparation.** The selected
 CGO-disabled FreeBSD daemon uses an unsupported process observer. Its launch
 path starts the child before the observation fails, so this candidate cannot

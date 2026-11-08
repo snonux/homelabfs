@@ -152,12 +152,14 @@ SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
 
 ## Exact installation plan inputs
 
-The xz3 candidate is retained at
-`/home/paul/tmp/codex/hfs-xz3-20261104-4sgkdoky/package-final`, manifest SHA256
-`7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b`.
-Its source checkout is `13fbad97dad85ce3145f22c92892aefa132ee1e9`; its recorded
-Go-builder baseline is `e1a7374010ac4b5ed6264a64b0fc26aebb5ed753`, with maintained
-source/recipes separately pinned. Do not claim the baseline includes later fixes.
+The current xz3 candidate (2026-11-08) is retained at
+`/home/paul/tmp/claude/hfs-xz3-20261108/package-final`, manifest SHA256
+`3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1`, built from
+source checkout `e0cca0c874f0027f050974ab5a54095d4af1c416` with a CGO FreeBSD
+daemon; see its [evidence](../../tools/integration/artifacts/evidence/xz3-20261108/README.md).
+The earlier `7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b`
+candidate (CGO-disabled daemon) stays quarantined and must not be installed.
+Any later source change requires a new rebuild and admission.
 Operator public key is `2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635`;
 the actual private key remains outside repository/runtime/guest and must not be
 read during preparation. Full custom Linux6.1.190-hfs-xz3 plus all matching

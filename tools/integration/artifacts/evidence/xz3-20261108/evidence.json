@@ -1,0 +1,186 @@
+{
+  "candidate": {
+    "admission": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "durable_copy_readmitted": true,
+    "files": 194,
+    "manifest_sha256": "3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
+    "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+    "path": "/home/paul/tmp/claude/hfs-xz3-20261108/package-final",
+    "source_checkout": "e0cca0c874f0027f050974ab5a54095d4af1c416"
+  },
+  "controls": {
+    "all_refused": true,
+    "case_names": [
+      "external operator mismatch",
+      "external repository mismatch",
+      "old negotiated features",
+      "old source revision",
+      "different packaged Linux patch",
+      "different native owned source",
+      "wrong actual bundled source with consistent container hashes",
+      "daemon ELF labelled as full exporter",
+      "native helper ELF lacks production controllers",
+      "invented stock shared9p runtime",
+      "installed success claim",
+      "missing actual Go build version",
+      "real CGO_ENABLED=0 daemon with nocgo observer stub",
+      "record claims CGO0 build",
+      "nocgo stub in recorded source closure",
+      "renamed cgo process observer symbols",
+      "foreign dynamic loader",
+      "extra recorded DT_NEEDED",
+      "missing recorded DT_NEEDED",
+      "sysroot library hash differs from recorded closure",
+      "unlinked sysroot capture",
+      "unrecorded clang resource headers",
+      "unrecorded clang shared-library closure",
+      "foreign cgo compiler wrapper",
+      "installation authority claim",
+      "false forced rebuild witness"
+    ],
+    "cases": 26,
+    "cgo0_control_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+    "original_passed_after": true,
+    "restored_passed": true
+  },
+  "daemon": {
+    "cgo": true,
+    "closure": {
+      "interpreter": {
+        "path": "/libexec/ld-elf.so.1",
+        "sha256": "305a0b7947a890c653e32a1ed9fc50c100416658dc422f2ca8de9ebcda9ddb6f",
+        "sysroot_path": "libexec/ld-elf.so.1"
+      },
+      "libraries": {
+        "libc.so.7": {
+          "needed": [
+            "libsys.so.7"
+          ],
+          "redistributed": false,
+          "sha256": "95b6597787b89cec982f44bee5e9af2cf0cd5e5258c1a20ae9cadf8f0421ea5b",
+          "sysroot_path": "lib/libc.so.7"
+        },
+        "libsys.so.7": {
+          "needed": [],
+          "redistributed": false,
+          "sha256": "9f8b058e0acf4136efb54817ffc4403535c50d026d385c3209390b0ec9ceb239",
+          "sysroot_path": "lib/libsys.so.7"
+        },
+        "libthr.so.3": {
+          "needed": [
+            "libc.so.7",
+            "libsys.so.7"
+          ],
+          "redistributed": false,
+          "sha256": "0dec1f746d9415c86dff7d719e6b55208e5e007bc1543ddd17e1e8e810c05537",
+          "sysroot_path": "lib/libthr.so.3"
+        }
+      },
+      "needed": [
+        "libthr.so.3",
+        "libc.so.7"
+      ],
+      "provenance": "measured FreeBSD base binary inputs; external, not redistributed"
+    },
+    "forced_rebuilds_equal": true,
+    "repository": "e0cca0c874f0027f050974ab5a54095d4af1c416",
+    "sha256": "5359873799fa9ca28bb7aebc65449ceb839e07736c7d65eda1d6d6d6af2583a5"
+  },
+  "kernel": {
+    "clean_repro_equal_artifacts": 13,
+    "clean_repro_modules": 5,
+    "clean_repro_record_sha256": "f82ed141337cb6a63a74cda5730c6c8c953d0c10f8f99f0a60d55b455ff79c48",
+    "note": "a second build at a different output path was refused by compare_kernel (O path is a recorded compile input) and retained; reproduction used the same canonical output path",
+    "release": "6.1.190-hfs-xz3",
+    "source": "/home/paul/tmp/codex/hfs-t24-20261105-jjwkde_3/source-current",
+    "stage_seconds": [
+      [
+        "first",
+        "configure",
+        0,
+        14
+      ],
+      [
+        "first",
+        "vmlinux",
+        0,
+        535
+      ],
+      [
+        "first",
+        "image-modules",
+        0,
+        27
+      ],
+      [
+        "first",
+        "collect",
+        0,
+        5
+      ],
+      [
+        "repro",
+        "configure",
+        0,
+        12
+      ],
+      [
+        "repro",
+        "vmlinux",
+        0,
+        639
+      ],
+      [
+        "repro",
+        "image-modules",
+        0,
+        25
+      ],
+      [
+        "repro",
+        "collect",
+        0,
+        7
+      ]
+    ]
+  },
+  "native": {
+    "archive_matches_earlier_tofu": true,
+    "archive_sha256": "044a42ccc657d4c3b31499e2cb713c3f9d6ec0e51c1b288c46b13106c148d84e",
+    "equal": true,
+    "equal_files": 83,
+    "first_seal_sha256": "fc14b27f0a88dc243364e53f237733e6a7cadf897f5c37adec8decfeefa4b0f7",
+    "guard": "tools/integration/artifacts/native_guard.py at f44ba1a: one CPU, 512 MiB aggregate RSS, 20 min/stage, 8 GiB disk, pinned Rocky pid 80203 start 2026-11-08 16:05:53 UTC",
+    "interrupted_stage": "build-first-library9p: local SSH dropped (rc 255) during a network switch; remote guard receipt exit 0 retrieved and recorded, stage not rerun",
+    "recipe_sha256": {
+      "elf.py": "1a4ef154e9e228417df8e9cfa163b7e54ce7ac9a5677d1c9cc375b739243cf17",
+      "native_build_v3.py": "263775fd727085e7b9c60eeac74fa713327a99b85de8db67475647182453c601",
+      "native_guard_v3.py": "228c91f3489fd1a49a15a5d837883f44fc521005185096eef624e5ba3f11b04b",
+      "native_source_v2.py": "31f9ce908cdb11bc76e9594484f747b1d9615578c13d3407f755bf016d740271",
+      "runner_process.py": "91310cb7aac7c58e7a16271e69cd88c0443fa3be84d7843b2dd2b9a577ca4c10"
+    },
+    "root": "/var/tmp/hfs-xz3-20261108-r1 on f3",
+    "source_inventory_sha256": "524a414a42936ca2133bbe17989cbf98fefc047774102b1b32ca3c86cd9db451"
+  },
+  "not_claimed": [
+    "installed",
+    "booted",
+    "native acceptance",
+    "VM/exporter execution",
+    "normal publication",
+    "PTE/TLB or pod acceptance (zq3)"
+  ],
+  "recorded": "2026-11-08",
+  "superseded_candidate": {
+    "manifest_sha256": "7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b",
+    "status": "quarantined, unchanged"
+  },
+  "version": "homelabfs-xz3-evidence/2"
+}
