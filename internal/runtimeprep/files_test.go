@@ -117,7 +117,7 @@ func TestRunUsageRefusals(t *testing.T) {
 // TestRunGenerateCLI writes a bundle through the command entry point and
 // refuses to overwrite it.
 func TestRunGenerateCLI(t *testing.T) {
-	root := t.TempDir()
+	root := shortRoot(t)
 	s := exampleSpec(t)
 	operatorFixture(t, root, &s)
 	spec := filepath.Join(root, "spec.json")

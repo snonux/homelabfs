@@ -36,7 +36,7 @@ type requestFixture struct {
 
 func newRequestFixture(t *testing.T) requestFixture {
 	t.Helper()
-	root := t.TempDir()
+	root := shortRoot(t)
 	s := exampleSpec(t)
 	operatorFixture(t, root, &s)
 	_, output := generateBundle(t, root, s)
