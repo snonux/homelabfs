@@ -64,14 +64,14 @@ the step that consumes it:
 
 | Fill | When and source | Used by |
 |---|---|---|
-| F1 f3 `/usr/bin/ssh` SHA256 | Phase 4 step 0, read-only `sha256 -r` on f3 | bootstrap `observer.ssh_sha256`, then the final bootstrap plan hash and `bootstrap.py check` |
+| F1 f3 `/usr/bin/ssh` SHA256 | Phase 4 step 0, read-only `sha256 -r` on f3 | bootstrap `observer.ssh_sha256` (filled by `fill_plan.py bootstrap`), then the final bootstrap plan hash and `bootstrap.py check` |
 | F2 fdescfs window plan and its hash | Phase 4 step 0: controller `facts` (needs staged inspector), host hashes, `ldd` closure, f3 `date -u +%s`, then `fdescfs-window-plan.py` | setup, qualify, restore |
 | F3 pod rootfs manifest digest | Phase 3: `pod_fixture.py manifest` on Rocky (needs the staged scripts) | `build`, pod request |
 | F4 observer key pair, enrolled line, `after_sha256` | Phase 4 step 5: `ssh-keygen` on f3, `observer_key.py enrol` | runtime observer, Phase 11 `remove --expect-sha256` |
 | F5 BLS entry ID | Phase 3 install record | `select` (from the state directory) |
 | F6 boot ID, provider nonce, admission manifest SHA256, `virtioN` names, proposal, controller, provision hash | Phase 8 admission and runtime records | enrollment and bind requests (bootstrap fills them), controller batch plan |
 | F7 m0/m1 mount IDs | Phase 8 mount steps (mountinfo) | batch plan, lock-probe requests, pod request |
-| F8 batch plan and its hash | Phase 8, after READY: template plus F6/F7, then `check-retained9p.sh check` | every controller and correlator call |
+| F8 batch plan and its hash | Phase 8, after READY: `fill_plan.py batch` (template plus F6/F7 from the bootstrap run), then `check-retained9p.sh check` | every controller and correlator call |
 | F9 runtime UUID and lifecycle sequences | READY record, then each reply | OBSERVE, ARM, RESTART (`correlate.py command` prints them) |
 | F10 exporter child PID | runtime and guard evidence | `host.py cleanup --child-pid` |
 | F11 Rocky PID and lstart recheck | Phase 1 recheck and Phase 4 (`80203`, `Sun Nov  8 16:05:53 2026` now) | native guard host profile |
@@ -100,6 +100,9 @@ the step that consumes it:
   time pressure, followed by `check`. No staging tool exists either: this fill
   defines tar-based staging with exact expected hash and stat lists. Both
   steps are root-orchestrated, as plan limitation G15 already states.
+  (Batch plan part since addressed by k44: `tools/lab/retained9p/fill_plan.py`
+  fills it, and the bootstrap plan's F1, from recorded evidence; the
+  [run sheet](run-sheet.md) uses it.)
 - **F3, 120 s bootstrap.** UEFI, GRUB, the kernel boot, SSH, admission (which
   refuses to start with less than 40 s left) and two human signatures must
   all fit inside 120 s, the base-gate maximum. Paul should keep both signer
