@@ -93,7 +93,13 @@ pinned in `controller.py`) and a check that both hosts still present the keys in
   Rocky root's `authorized_keys`, remove it and destroy the key (Phases 4, 11).
 - A7 Use of the operator signing key `2f6d909c…` for the enrollment and bind
   signatures during bootstrap (Phase 8): who holds and runs it.
-- A8 Pod fixture inside Rocky: which OCI runtime/rootfs (Phase 10, T7), or skip.
+- A8 Pod fixture inside Rocky (Phase 10, T7), or skip. Runtime/rootfs chosen by
+  agent judgement (w34): the installed podman `5.8.2-8.el9_8` and crun
+  `1.27-1.el9_7`, rootful in `init_user_ns`, VFS storage in run-owned roots, and a
+  `--rootfs` tree built on Rocky from its own RPM-attested files. No image pull,
+  install or registry. The yes covers building `RUN/pod/rootfs` and running two
+  disposable containers that bind-share `m0`
+  ([details](../../tools/lab/retained9p/README.md#ordinary-pod-namespace-fixture-zq3-g9-t7-decision-a8)).
 
 **(B) Routine bounded verification** (standing approval of 2026-11-02, but only
 inside an approved (A) window): read-only facts, local builds/tests, read-only
@@ -383,7 +389,7 @@ unsupported, unrun or uncertain; a partial result never completes zq3.
 | T5 | `cache=mmap`: full 4 MiB mapped canary, cross-domain hash | case `mapped-pressure` + correlation + `release` |
 | T6 | locks within one guest mount | `tools/lab/guest-lock-probe.py` on `m0` (POSIX/flock conflicts, blocking waits, GETLK, close/exit cleanup) |
 | T6b | locks across clients | same probe across `m0`/`m1`: **recorded as unsupported** per the accepted lock scope, never as a pass |
-| T7 | ordinary pod namespace profile | **GAP G9** and decision A8: separate mount/PID/net/UTS/IPC namespaces in `init_user_ns`, numeric IDs/full groups, SELinux enforcing, two workloads bind-sharing `m0` |
+| T7 | ordinary pod namespace profile: separate mount/PID/net/UTS/IPC namespaces in `init_user_ns`, numeric IDs/full groups, SELinux enforcing, two workloads bind-sharing `m0` | under A8, after T6: `pod_fixture.py run --request ABS` (rootfs built earlier with `build`, see G9); pass = `t7_pass: true`, which also removes the two exited containers and the pod payload normally; any failure or `uncertain` preserves both. The SELinux access of `container_t` to the 9p label is only known now: a denial is a T7 failure, never relabelled or disabled |
 | T8 | K04 guest side: no writes to an empty fallback | normal `umount m1`; a probe naming `m1` must refuse at admission ("exact mountpoint not present once") before any open; the empty directory stays empty |
 | T9 | v24 lost reply | `--operation arm-lost-reply` (CALL), one guest mkdir CALL, OBSERVE `lost_reply.exposure` = UNCERTAIN, guest re-read/QUERY returns the original result. **GAP G10** (guest step) |
 | T10 | daemon restart via u24 | guest quiesce (FORGET, view refresh), then `--operation restart`; RESTARTED or FENCED are both recorded (FENCED, fencing then runtime exit, is Paul's accepted behavior); **always the last step**. **GAP G10** (quiesce step) |
@@ -568,7 +574,17 @@ reviewed and pinned, and this plan is re-filled:
   reviewed Ed25519 fingerprints; pins in [`f3-host-known_hosts`](f3-host-known_hosts)
   and [`rocky-known_hosts`](rocky-known_hosts); local tests in
   `test_controller_targets.py`.
-- G9 Pod/namespace fixture script and pinned runtime/rootfs (depends on A8).
+- G9 **Implemented (w34)**: [`tools/lab/retained9p/pod_fixture.py`](../../tools/lab/retained9p/pod_fixture.py)
+  `manifest`/`build`/`run` with the container side in
+  [`pod_workload.py`](../../tools/lab/retained9p/pod_workload.py) (pinned by the
+  driver; stage both side by side); local tests in `test_pod_fixture.py`. At run time it still needs,
+  from Phase 1: the SHA256 of `pod_fixture.py` (the operator checks it before
+  each invocation) and of `/usr/bin/podman`, `/usr/bin/crun`, `/usr/bin/conmon`,
+  `/usr/share/containers/seccomp.json`; conmon's NEVRA; a readable
+  `/var/log/audit/audit.log`; and the read-only `pod_fixture.py manifest` digest
+  for Paul's review. `build` must later reproduce that exact digest (Phase 3 or
+  before T7). The request also needs `m0`'s Phase 8 mount ID. Plus Paul's A8
+  approval.
 - G10 Guest steps for the v24 lost-reply CALL and the C9 quiesce before RESTART.
 - G11 Host-side K04/after-loss check.
 - G12 Filled fdescfs window plan; rebuilt, pinned `controlledruntime.test` and
