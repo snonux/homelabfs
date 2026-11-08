@@ -198,7 +198,8 @@ or vmm context could still exist.
   staged inspector, so it runs at the start of Phase 4.) The f3 batch includes
   the G4 launch facts, `doas -n /usr/local/bin/python3.12 -I -B - facts <
   tools/lab/directlaunch/host.py` (read-only, nothing staged): rocky.conf,
-  vm-run, firmware and UEFI vars hashes, the last vm-bhyve launch block (the
+  vm-run, firmware (package symlink text and confined target) and UEFI vars
+  hashes, the last vm-bhyve launch block (the
   retained one is from 2026-11-02, PID 6444; Rocky has since restarted as PID
   80203), `vm list`, `/dev/vmm`, interfaces, `vm-public` members, nmdm nodes,
   processes. Choose a free tap unit (`tap100`..`tap999`) from it.
@@ -389,7 +390,8 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
 
 - `argv.py generate` (after Phase 1, before Phase 2 staging) rebuilds the argv from the Phase 1 launch facts
   and pins it in a canonical record; any drift from the reviewed baseline
-  (rocky.conf, vm-run, firmware, every logged hardware token) refuses. For
+  (rocky.conf, vm-run, firmware symlink text `../edk2-bhyve/BHYVE_UEFI.fd`
+  and target hash, every logged hardware token) refuses. For
   run `zq3-r1` with tap `tap100` the argv is (vm-run order: devices, options,
   console, name):
   `-s 0,hostbridge -s 31,lpc -s 0:4:0,nvme,/zroot/bhyve/rocky/disk0.img
@@ -810,8 +812,11 @@ reviewed and pinned, and this plan is re-filled:
 - G4 Pinned direct bhyve argv reconstructed from the current launch facts, plus
   the tap/nmdm/UEFI-vars setup and post-exit cleanup script. **Prepared** in
   [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md) (task t34,
-  local simulated tests only). Still needed: fresh `host.py facts` from f3 for
-  the current Rocky launch block and vars hash, a chosen tap unit, the G2
+  local simulated tests only). The first Phase 1 `facts` run (2026-11-08)
+  refused the package firmware symlink; task h44 pins exactly that link (text,
+  target confined to `/usr/local/share`, target hash; every other symlink
+  still refuses, setup re-checks). Still needed: fresh `host.py facts` from f3
+  for the current Rocky launch block and vars hash, a chosen tap unit, the G2
   session UUIDs, then `argv.py generate` and review of the record.
 - G5 **Implemented (r34), locally tested only:** Rocky kernel
   install/one-shot/removal script and the `installed-admission-v1.json`

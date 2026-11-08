@@ -24,7 +24,7 @@ The source is vm-bhyve's own log of the normal Rocky launch
 `rocky.conf`. vm-run passes `devices, options, console, name` in that order;
 `procstat -c` only shows the rewritten title, so the log is the only argv
 record. Baseline (2026-11-02 launch, vm-run `43753bc8…`, `rocky.conf`
-`c101adf1…`, firmware `6b48e967…`):
+`c101adf1…`, firmware target `6b48e967…`):
 
 ```
 -s 0,hostbridge -s 31,lpc -s 0:4:0,nvme,/zroot/bhyve/rocky/disk0.img
@@ -75,8 +75,9 @@ not restarted.
 ## Drift refusal
 
 `generate` refuses unless the facts match the reviewed constants in
-`argv.py`: `rocky.conf` text and hash, vm-run hash, firmware hash, and every
-token of the last logged launch block (only the dynamic tap name may differ).
+`argv.py`: `rocky.conf` text and hash, vm-run hash, the firmware symlink (see
+below), and every token of the last logged launch block (only the dynamic tap
+name may differ).
 It also refuses a later `initialising` without its own block, an install ISO
 line, a missing bridge, invalid run ID/tap/sessions. A changed profile needs a
 reviewed code change, never a re-derivation on the spot.
@@ -90,7 +91,29 @@ not the candidate bhyve `36423b6d…`. **Contract for the G2 config generator:**
 copy `args` verbatim and run `verify` before staging.
 
 `setup` re-collects the facts and refuses if anything drifted since the record
-was pinned (including the UEFI vars hash, which a normal Rocky boot can change).
+was pinned (including the UEFI vars hash, which a normal Rocky boot can change,
+and the firmware link text and target hash).
+
+### Firmware symlink
+
+`/usr/local/share/uefi-firmware/BHYVE_UEFI.fd` is a symlink installed by pkg
+`edk2-bhyve` (`g202508_3`) to `../edk2-bhyve/BHYVE_UEFI.fd`; bhyve follows it,
+and the argv keeps the link path vm-bhyve logged. The first Phase 1 `facts`
+run (2026-11-08) refused it with `EMLINK` (FreeBSD's errno for `O_NOFOLLOW`
+on a symlink). It is now the only symlink these tools follow, one hop:
+
+- `host.py` requires a root-owned symlink, resolves its text lexically and
+  refuses a target outside `/usr/local/share` before opening anything. The
+  target is digested with `O_NOFOLLOW` and must be a root-owned regular file,
+  not writable by group/other, below root-controlled real directories.
+- The fact records `link`, `target`, `sha256` and `bytes`. An unexpected but
+  confined link text is recorded as Phase 1 evidence; `argv.py` then refuses
+  unless the text is exactly `../edk2-bhyve/BHYVE_UEFI.fd`, the target is
+  `/usr/local/share/edk2-bhyve/BHYVE_UEFI.fd` and its hash is `6b48e967…`
+  (the 3,653,632 target bytes; the earlier `sha256(1)` pin followed the link).
+  The record carries the link text and target too.
+- Every other symlink, including a second hop from the firmware target, is
+  still refused (`symlink refused`).
 
 ## Host safety properties
 
@@ -133,7 +156,8 @@ python3 -I -B tools/lab/directlaunch/argv.py verify --record bhyve-argv.json \
 
 Tests: `python3 -B -m unittest test_directlaunch` in this directory. They use
 a temporary root, a command simulator and a model of bhyve's option parser;
-the hashes of vm-run and the firmware are patched to fake files.
+the hashes of vm-run and the firmware are patched to fake files. The firmware
+is laid out as the package installs it (relative symlink plus target).
 `testdata/` holds the retained 2026-11-05 `rocky.conf` and vm-bhyve log tail.
 
 ## Open facts and limits
@@ -141,7 +165,9 @@ the hashes of vm-run and the firmware are patched to fake files.
 - The baseline log block is the 2026-11-02 launch (PID 6444). On 2026-11-08
   Rocky ran as PID 80203, so it was restarted since; that launch's log block,
   the current UEFI vars hash and the vm-run/firmware hashes must come from a
-  fresh `host.py facts` run before a record can be generated.
+  fresh `host.py facts` run before a record can be generated. The 2026-11-08
+  run failed on the firmware symlink; after the fix above a read-only rerun
+  on f3 (2026-11-08 21:07Z) recorded the pinned link, target and hash.
 - The tap unit must be chosen free from those facts.
 - Tested locally only (Python 3.14; f3 runs 3.12, no newer syntax is used).
   `ifconfig`, `bhyvectl`, `ps` and `vm list` outputs are simulated from their
