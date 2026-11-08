@@ -20,7 +20,7 @@ else is exact.
 
 ```bash
 D=/home/paul/tmp/claude/hfs-zq3-r1-fill      # private 0700 fill dir
-S=$D/snapshot                                # git archive of 08831e7
+S=$D/snapshot                                # git archive of 08831e7, refreshed to the k44 commit (Phase 0)
 R=/var/tmp/hfs-validation-xz3/zq3-r1         # f3 staging prefix
 G=/var/tmp/hfs-zq3-zq3-r1                    # Rocky run directory (m0, m1)
 E=$D/evidence; umask 077; mkdir -p "$E"
@@ -57,6 +57,15 @@ sha256sum -c <<'EOF'
 ac3a0e754ac59a165398bad44bc73185fd18eb5cf0cc842112f7883f766bc46a  /home/paul/tmp/claude/hfs-zq3-r1-fill/kernel/rocky-kernel-plan.json
 EOF
 ```
+
+Refresh the tools snapshot so it holds `fill_plan.py` (k44), which fills
+the bootstrap plan in Phase 4 and the controller batch plan in Phase 8.
+Between `08831e7` and the k44 commit only `fill_plan.py`, `test_fill_plan.py`
+and documentation changed below `tools/`, so every staged and pinned hash
+above stays valid (`git diff --stat 08831e7 <K44> -- tools/` must list only
+those two files). Then rerun `python3 -B -m unittest discover -s
+tools/lab/retained9p` in the checkout at that commit (not in `$S`; see
+[finding F6](README.md#findings)).
 
 **PAUL (before Phase 8, ideally now):** place the operator signing key at
 `/home/paul/tmp/claude/hfs-zq3-r1-fill/operator/operator-signing-key`: a copy
@@ -154,10 +163,15 @@ f3 "doas -n sh -c 'umask 277; test ! -e $R/records/fdescfs-plan.json && cat > $R
 f3 doas -n sha256 -r $R/records/fdescfs-plan.json      # must equal <WINDOW_PLAN_SHA256>
 ```
 
-Fill the bootstrap plan (F1) and check it (B):
+Fill the bootstrap plan (F1) from the fact file and check it (B). The filler
+refuses unless `p4-f3-ssh.sha256` is exactly one `HASH /usr/bin/ssh` line and
+the result passes `bootstrap.py check`'s own validation; it prints the plan's
+`sha256`:
 
 ```bash
-sed 's/PHASE4_F3_USR_BIN_SSH_SHA256/<F3_SSH_SHA256>/' $D/bootstrap/bootstrap-plan.TEMPLATE.json > $D/bootstrap/bootstrap-plan.json
+python3 -I -B $S/tools/lab/retained9p/fill_plan.py bootstrap --template $D/bootstrap/bootstrap-plan.TEMPLATE.json \
+  --template-sha256 8996f535df95202ed6890b602b9dd8e8d93b31dc2d051b1e76def40b9a773bf9 \
+  --ssh-fact $E/p4-f3-ssh.sha256 --output $D/bootstrap/bootstrap-plan.json | tee $E/p4-bootstrap-fill.json
 python3 -I -B $S/tools/lab/retained9p/bootstrap.py check --plan $D/bootstrap/bootstrap-plan.json --plan-sha256 $(sha256sum $D/bootstrap/bootstrap-plan.json | cut -c1-64)
 ```
 
@@ -271,16 +285,29 @@ bind, mount-0, mount-1, READY. The driver never reads the key. Failure or
 go to Phase 11 (inspection first). If no guest kernel ran (no GRUB output),
 `next_entry` is unconsumed: U3 after the child is positively gone.
 
-After READY (B): read `<BOOT_ID>`, `<PROVIDER_NONCE>`, `<MANIFEST_SHA256>`
-from the admission result in `$D/bootstrap-run/journal.jsonl`, `<M0_ID>` and
-`<M1_ID>` (first field of each mount step's `mountinfo`) and `<RUNTIME_UUID>`
-from the READY record; copy the controller template with those values
-(`boot_id`, `provider_nonce`, `installed_manifest_sha256` and each request's
-`manifest_sha256`, both `mount_id`s) to `$D/controller/batch-plan.json`, then:
+After READY (B): fill the controller batch plan (F6/F7) from the run's
+recorded evidence, then check it independently. The filler takes `<BOOT_ID>`,
+`<PROVIDER_NONCE>` and `<MANIFEST_SHA256>` from the journal's `guest-ready`
+and `admission` results (cross-checked with `work/enroll-request.json`) and
+`<M0_ID>`/`<M1_ID>` from the first field of each mount step's `mountinfo`;
+it refuses unless the run is READY with every step `ok`, every value agrees,
+and the plan passes the controller's own validation, and it never overwrites
+an existing plan. It prints the values and `<BATCH_PLAN_SHA256>`:
 
 ```bash
-$S/tools/lab/check-retained9p.sh check --plan $D/controller/batch-plan.json   # <BATCH_PLAN_SHA256>
+python3 -I -B $S/tools/lab/retained9p/fill_plan.py batch --template $D/controller/batch-plan.TEMPLATE.json \
+  --template-sha256 24f7116e11d80dcaf889e0b9282110e85abc60d49bb740c21c6b1c063f7fec8b \
+  --bootstrap-run $D/bootstrap-run --bootstrap-plan-sha256 $(sha256sum $P | cut -c1-64) \
+  --output $D/controller/batch-plan.json | tee $E/p8-batch-fill.json
+$S/tools/lab/check-retained9p.sh check --plan $D/controller/batch-plan.json   # must print the same <BATCH_PLAN_SHA256>
 ```
+
+Read `<RUNTIME_UUID>` from the READY record (`control.runtime`) in
+`$D/bootstrap-run/journal.jsonl`. On a filler refusal nothing was written and
+the runtime keeps serving under the guard's bounds. A wrong argument (path,
+pin) may be corrected and the filler rerun; a mismatch in the evidence itself
+is a run finding: never hand-edit the plan around it, go to Phase 11
+(inspection first).
 
 ## Phase 9: READY admission (B, 1 min)
 

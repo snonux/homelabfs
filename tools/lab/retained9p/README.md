@@ -88,7 +88,9 @@ correlations, pod cases or other required matrix entries keep `zq3` incomplete.
 ## Controller evidence and uncertain dispatch
 
 `check-retained9p.sh check --plan ABS` validates an exact syscall batch and emits
-its byte digest without contacting the lab. The batch then runs one case at a
+its byte digest without contacting the lab. The zq3 batch plan's Phase 8 values
+come from `fill_plan.py batch` (see [run-time plan
+fills](#run-time-plan-fills-zq3-f1-f6-f8)). The batch then runs one case at a
 time against already installed/admitted mounts:
 
 1. `probe --plan ABS --sha256 SHA --output FRESH_ABS` creates the run and
@@ -826,6 +828,66 @@ files exported; regenerate with `HFS_BOOTSTRAP_FIXTURE_DIR=NEW_DIR go test
 `test_bootstrap_remote.py` covers every remote action against a temporary
 root. Not covered: real SSH/doas, FreeBSD rename semantics, Rocky's sysfs
 and 9p mount behaviour, the runtime itself and real timing of the 120 s.
+
+## Run-time plan fills (zq3 F1, F6-F8)
+
+Two zq3 plans are written ahead of the run as templates with placeholders
+for values that exist only during the run. [`fill_plan.py`](fill_plan.py)
+writes the final plans from recorded evidence on the workstation (no SSH, no
+lab contact), so nothing is hand-edited under time pressure:
+
+```
+python3 -I -B fill_plan.py bootstrap --template TEMPLATE --template-sha256 SHA \
+  --ssh-fact P4_F3_SSH_SHA256_FILE --output NEW_PLAN
+python3 -I -B fill_plan.py batch --template TEMPLATE --template-sha256 SHA \
+  --bootstrap-run BOOTSTRAP_OUT --bootstrap-plan-sha256 SHA --output NEW_PLAN
+```
+
+| Command | Placeholder → source |
+|---|---|
+| `bootstrap` | `observer.ssh_sha256` (`PHASE4_F3_USR_BIN_SSH_SHA256`) ← the Phase 4 fact file, exactly one `sha256 -r` line `HASH PATH` whose path is the plan's `observer.ssh` |
+| `batch` | `boot_id` (`PHASE8_BOOT_ID`) ← `guest-ready` result, equal to the `admission` result's boot ID |
+| | `provider_nonce` (`PHASE8_PROVIDER_NONCE`) ← `admission` result |
+| | `installed_manifest_sha256` and each request's `manifest_sha256` (`PHASE8_ADMISSION_MANIFEST_SHA256`) ← `admission` result |
+| | each request's m0/m1 `mount_id` (`PHASE8_M0_MOUNT_ID`, `PHASE8_M1_MOUNT_ID`) ← first field of the `mount-0`/`mount-1` results' `mountinfo` row |
+
+`batch` reads the `bootstrap.py run` output directory as that tool wrote
+it, and refuses unless all of these hold: `journal.jsonl` (no torn tail)
+starts with the run record for the pinned bootstrap plan SHA256 and holds
+exactly one intent and one `ok` result per bootstrap step, in order;
+`plan.json` has that SHA256 and the journal's run ID; `summary.json` says
+`ready`; the boot ID and provider nonce are UUIDs and the manifest is
+SHA256 hex; `work/enroll-request.json` still has its journaled SHA256 and
+carries the same boot ID, provider nonce and `Observer.ManifestHash`; each
+`mountinfo` is one row of a `9p` mount of the plan's tag on the plan's
+mount point with a positive decimal mount ID, and the two IDs differ. Each
+template mount's path, tag and session must equal the bootstrap plan's
+mount and the enrollment request's session for that domain, so a template
+from another bundle or run refuses.
+
+For both commands the template is pinned by SHA256; every placeholder must
+sit exactly in its field (an already filled or moved value refuses) and any
+other `PHASEn_…` string refuses as an unknown run-time value. The filled
+plan is written privately (`0600`) to `NEW_PLAN.next`, checked by the
+consumer's own validation (`controller.py`'s `plan_snapshot`, the same as
+`check-retained9p.sh check`, or `bootstrap.py`'s `load_plan`, the same as
+`bootstrap.py check`), and only then linked to `NEW_PLAN`; an existing
+output is never replaced. It prints one JSON line with the filled values
+and the plan's `sha256` for the next pinned command. Filling grants no
+authority.
+
+**Local evidence.** `test_fill_plan.py` produces its bootstrap evidence by
+running the real `bootstrap.run` against `test_bootstrap.py`'s simulated
+world (only the mount replies carry realistic `mountinfo` rows), fills the
+batch plan and checks it with `plan_snapshot` and `controller.py check` as
+a child process, and fills the bootstrap plan and checks it with
+`bootstrap.py check`. Negatives: a run stopped before READY, a non-READY
+summary, another bootstrap plan, a torn journal, malformed, foreign, non-9p
+or multi-row `mountinfo`, zero or leading-zero IDs, duplicate IDs,
+disagreeing admission/enrollment evidence, a changed enrollment request,
+template pin, filled, moved and unknown placeholders, a template of another
+bundle or run, consumer validation refusals (no output, no `.next`), an
+existing output, and malformed or foreign `sha256 -r` fact files.
 
 ## Required work before an executable exact plan
 
