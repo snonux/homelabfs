@@ -2,7 +2,8 @@
 """Forced-command target for a new run-only, read-only guest observer SSH key.
 
 Does not provision keys or change authorized_keys. Root must separately approve
-installation of these exact bytes and a restrictive run-owned public-key entry.
+installation of these exact bytes and a restrictive run-owned public-key entry;
+observer_key.py stages these bytes and enrols/removes that one entry.
 Accepts only the actual controlled-runtime fixed probe command, with optional
 literal `phase`; arbitrary SSH commands and other arguments refuse.
 """
