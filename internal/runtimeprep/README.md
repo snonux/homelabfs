@@ -30,7 +30,11 @@ Before writing anything, the generated config goes through the **actual**
 `controlledruntime.Run` on Linux (strict file decoder plus
 `validateRuntimeConfig`, which then refuses with `Unsupported` before creating
 any owner) with only VolumeConfig/OwnerDirectory/EnrollmentFile swapped for a
-private sandbox. The generator itself checks the real paths (clean, absolute,
+private sandbox. The sandbox (a `.v…` directory holding a transient copy of
+the config) is created beside `--output`, not in `$TMPDIR`, and removed
+afterwards. Because the runtime also checks the sandbox's lifecycle socket
+against `sockaddr_un`, the parent of `--output` must be at most about 75
+characters long; a longer one refuses with a clear message. The generator itself checks the real paths (clean, absolute,
 disjoint, lifecycle socket within `sockaddr_un`) and the view controller's
 enrollment-time work rule, which the runtime applies only inside the bootstrap
 window. On FreeBSD `generate` refuses: there `Run` would continue natively.
@@ -48,10 +52,37 @@ authority). OriginNode is not daemoncli's `node.json` ID; no controlled check
 compares them. The mount idmap hash is SHA256 of the only admitted map,
 `{"gid":[[0,0,4294967295]],"uid":[[0,0,4294967295]]}`.
 
-### Exporter argv
+### Exporter argv and the G4 record
 
-`Exporter.Args` is the bhyve argv (without argv[0]) parsed with bhyve's own
-getopt string. It must define exactly two controlled 9p devices in this form:
+The exporter argv is owned by G4
+([`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md)), whose
+`argv.py generate` needs the session UUIDs, while this generator draws them.
+The order is therefore:
+
+1. Spec `Exporter.Args` = the G4 controlled argv for the run and tap (the
+   example spec holds the `zq3-r1`/`tap100` one), with `{{session:0}}` and
+   `{{session:1}}` as the hfs0/hfs1 `hfs-controller` values.
+   `hfs-runtime-prep generate` substitutes its fresh sessions.
+2. `argv.py generate --session <hfs0> --session <hfs1>` with the sessions from
+   `generation.json` (`Sessions[].DeviceTag`/`Session`).
+3. Both must pass, and neither file is ever edited by hand:
+
+```
+python3 -I -B tools/lab/directlaunch/argv.py verify --record bhyve-argv.json \
+  --record-sha256 SHA --runtime-config BUNDLE/runtime-config.json
+hfs-runtime-prep check-argv --bundle BUNDLE --record bhyve-argv.json --record-sha256 SHA
+```
+
+`check-argv` requires the pinned record bytes, the bundle's run ID, the same
+session for each share tag, the same exporter path and digest, the config's
+`Exporter.Args` equal to the record's `args` element by element and in order,
+and `args_sha256` recomputed as argv.py's canonical JSON. A mismatch means
+regenerating from a corrected spec (new sessions, then a new record). The
+test suite builds a genuine record with argv.py's own `build_record` from the
+generated sessions and runs both checks.
+
+`Exporter.Args` (without argv[0]) is parsed with bhyve's own getopt string.
+It must define exactly two controlled 9p devices in this form:
 
 ```
 -s 0:7:0,virtio-9p -o pci.0.7.0.sharename=hfs0 -o pci.0.7.0.hfs-controller={{session:0}}
@@ -72,7 +103,9 @@ The admission package caps the runtime's aggregate pools at 4 GiB, so
 `Budget.HostBytes` cannot exceed 4 GiB although the xz3 installation proposal
 describes a 6 GiB host envelope. The example uses 4 GiB with a 1 GiB service
 reservation. `Views` uses 6 MiB sources (room for the 4 MiB canary plus
-metadata), which needs `WorkBytes` of at least 296 MiB; the example uses 320 MiB.
+metadata). The controller rule is `WorkBytes >= 3*LedgerBytes + 6*SourceBytes
++ 128 MiB`, so with the example's 44 MiB ledger `WorkBytes` must be at least
+296 MiB; the example uses 320 MiB.
 
 ## Filling the signer requests (after the runtime started)
 
@@ -114,7 +147,10 @@ tools/lab/build-init-helper.sh /private/new-helper-dir
 ```
 
 It builds FreeBSD/amd64 with `CGO_ENABLED=0`, `-trimpath`, `GOPROXY=off`,
-twice with independent caches, and requires identical bytes. On 2026-11-08 it
+pinned `GOAMD64=v1` and `GOFIPS140=off` and the caller's `GOEXPERIMENT`
+removed (the toolchain default, `nodwarf5`, is recorded), twice with
+independent caches, and requires identical bytes. A rebuild with hostile
+`GOAMD64`/`GOEXPERIMENT`/`GOFIPS140` exported gave the same hash. On 2026-11-08 it
 reproduced SHA256
 `8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80` (Go
 `go1.26.10-X:nodwarf5`; the same go.mod/go.sum hashes as the candidate daemon).
@@ -146,8 +182,12 @@ through the actual runtime entry point, initialises the planned volume with the
 same daemoncli code and opens it with `daemoncli.OpenControlled` and the
 generated limits (service volume equals the scope volume), and drives both fill
 steps through the actual external signer with a throwaway operator key, checking
-the signed bind's provision hash. Negative cases cover every generator,
-request and runtime-owned refusal listed above. `tools/lab/test_runtime_volume_init.py`
+the signed bind's provision hash. It builds a G4 record with argv.py's own
+`build_record` from the generated sessions and passes both `check-argv` and
+`argv.py verify` (when `python3` is available; otherwise that test skips).
+Negative cases cover every generator, argv, request, check-argv and
+runtime-owned refusal listed above, including the 64-argument and 64 KiB
+argv bounds. `tools/lab/test_runtime_volume_init.py`
 covers the helper with a fake for failure paths and, with
 `HFS_HOMELABFS_TEST_BINARY`, a real local `cmd/homelabfs`. Root, the f3
 filesystem and the runtime's actual proposal/native identities are declared

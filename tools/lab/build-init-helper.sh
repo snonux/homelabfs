@@ -17,12 +17,24 @@ usage() {
     exit 2
 }
 
+# Code-generation knobs are pinned (GOAMD64, GOFIPS140) or removed from the
+# caller's environment (GOEXPERIMENT, which then means the toolchain's own
+# default, recorded in build.json), so an exported shell setting cannot change
+# the helper bytes.
+readonly GOAMD64_PIN=v1
+readonly GOFIPS140_PIN=off
+
+# goenv: the exact build environment for both builds and for `go env`.
+goenv() {
+    env -u GOEXPERIMENT GOENV=off GOTOOLCHAIN=local GOPROXY=off GOFLAGS='-p=1 -mod=readonly' \
+        GOMAXPROCS=2 GOGC=50 GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 \
+        GOAMD64="$GOAMD64_PIN" GOFIPS140="$GOFIPS140_PIN" "$@"
+}
+
 # build SOURCE OUTPUT CACHE: one isolated, reproducible FreeBSD build.
 build() {
     local source=$1 output=$2 cache=$3
-    (cd -- "$source" && env GOENV=off GOTOOLCHAIN=local GOPROXY=off GOFLAGS='-p=1 -mod=readonly' \
-        GOMAXPROCS=2 GOGC=50 GOCACHE="$cache" GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 \
-        go build -a -trimpath -buildvcs=false -o "$output" ./cmd/homelabfs)
+    (cd -- "$source" && GOCACHE="$cache" goenv go build -a -trimpath -buildvcs=false -o "$output" ./cmd/homelabfs)
 }
 
 sha() {
@@ -40,8 +52,14 @@ main() {
     build "$output/src" "$output/homelabfs.repro" "$output/cache-b"
     cmp -- "$output/homelabfs" "$output/homelabfs.repro"
     chmod 0500 -- "$output/homelabfs"
-    printf '{"version":"homelabfs-init-helper-build/1","source":"%s","go":"%s","goos":"freebsd","goarch":"amd64","cgo_enabled":"0","go_mod_sha256":"%s","go_sum_sha256":"%s","helper_sha256":"%s","reproduced":true}\n' \
-        "$SOURCE_COMMIT" "$(go version)" "$(sha "$output/src/go.mod")" "$(sha "$output/src/go.sum")" \
+    # Assigned separately so that a failing `go` stops the script (set -e
+    # does not see failures inside printf's argument substitutions).
+    local experiment version
+    experiment=$(cd -- "$output/src" && goenv go env GOEXPERIMENT)
+    version=$(goenv go version)
+    printf '{"version":"homelabfs-init-helper-build/1","source":"%s","go":"%s","goos":"freebsd","goarch":"amd64","goamd64":"%s","gofips140":"%s","goexperiment":"%s","cgo_enabled":"0","go_mod_sha256":"%s","go_sum_sha256":"%s","helper_sha256":"%s","reproduced":true}\n' \
+        "$SOURCE_COMMIT" "$version" "$GOAMD64_PIN" "$GOFIPS140_PIN" "$experiment" \
+        "$(sha "$output/src/go.mod")" "$(sha "$output/src/go.sum")" \
         "$(sha "$output/homelabfs")" >"$output/build.json"
     cat -- "$output/build.json"
 }

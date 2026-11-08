@@ -13,6 +13,20 @@ import (
 	"testing"
 )
 
+// shortRoot is a private test directory with a short path. Generation puts
+// its validation sandbox beside the output, and the runtime checks that
+// sandbox's lifecycle socket path against sockaddr_un (103 bytes), which
+// t.TempDir's subtest-named paths can exceed.
+func shortRoot(t *testing.T) string {
+	t.Helper()
+	root, err := os.MkdirTemp("", "rp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	return root
+}
+
 // exampleSpec decodes the reviewed zq3-shaped example through the strict decoder.
 func exampleSpec(t *testing.T) Spec {
 	t.Helper()

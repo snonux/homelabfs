@@ -26,25 +26,32 @@ const linuxRefusal = "native controlled runtime requires actual FreeBSD FUSE"
 // before creating any owner, service, process or mount. Only the three host
 // paths are swapped for a private sandbox (their parents must exist for the
 // runtime's path checks); the generator checks the real paths itself.
-func validateRuntimeConfig(ctx context.Context, c controlledruntime.RuntimeConfig) error {
-	sandbox, err := os.MkdirTemp("", "hfs-runtime-prep-")
+//
+// The sandbox is created beside the output bundle, not in a shared $TMPDIR,
+// so the transient copy of the host receipt keys stays where the bundle's own
+// keys will live. Its names are short because the runtime also checks the
+// sandbox owner directory against sockaddr_un.
+func validateRuntimeConfig(ctx context.Context, c controlledruntime.RuntimeConfig, output string) error {
+	sandbox, err := os.MkdirTemp(filepath.Dir(output), ".v")
 	if err != nil {
-		return err
+		return fmt.Errorf("create validation sandbox beside the output: %w", err)
 	}
-	// The sandbox holds a copy of the host receipt keys; remove only this
-	// tool's own fresh temporary directory, never anything it did not create.
+	// Remove only this tool's own fresh sandbox, never anything it did not create.
 	defer func() { _ = os.RemoveAll(sandbox) }()
-	if err := os.Mkdir(filepath.Join(sandbox, "handoff"), 0o700); err != nil {
+	if len(filepath.Join(sandbox, "o", controlledruntime.LifecycleSocketName)) > socketPathLimit {
+		return fmt.Errorf("output parent path too long for the validation sandbox's lifecycle socket; use a shorter --output")
+	}
+	if err := os.Mkdir(filepath.Join(sandbox, "h"), 0o700); err != nil {
 		return err
 	}
-	c.VolumeConfig = filepath.Join(sandbox, "volume.json")
-	c.OwnerDirectory = filepath.Join(sandbox, "owner")
-	c.EnrollmentFile = filepath.Join(sandbox, "handoff", "enrollment.json")
+	c.VolumeConfig = filepath.Join(sandbox, "v.json")
+	c.OwnerDirectory = filepath.Join(sandbox, "o")
+	c.EnrollmentFile = filepath.Join(sandbox, "h", "e.json")
 	raw, err := json.Marshal(c)
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(sandbox, "runtime-config.json")
+	path := filepath.Join(sandbox, "c.json")
 	if err := writeExclusive(path, raw); err != nil {
 		return err
 	}

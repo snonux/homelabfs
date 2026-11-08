@@ -22,12 +22,18 @@ import (
 const exampleVM = "e10b6225-44d0-11f1-882a-e8ff1ed7f3d7"
 
 func TestGenerateExampleSpecPassesActualRuntimeValidation(t *testing.T) {
-	root := t.TempDir()
+	root := shortRoot(t)
 	s := exampleSpec(t)
 	operatorFixture(t, root, &s)
-	// An unreadable operator key proves the generator never opens it.
-	if err := os.Chmod(s.OperatorKey, 0); err != nil {
-		t.Fatal(err)
+	// An unreadable operator key proves the generator never opens it. Root
+	// can read a mode-0 file, so that proof is skipped for root; the rest of
+	// the test still runs.
+	if os.Geteuid() != 0 {
+		if err := os.Chmod(s.OperatorKey, 0); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		t.Log("running as root: operator key unreadability proof skipped")
 	}
 	bundle, output := generateBundle(t, root, s)
 	var config controlledruntime.RuntimeConfig
@@ -160,7 +166,7 @@ func checkFiles(t *testing.T, output string, b Bundle) {
 // controlled service constructor with the generated limits and paths. The
 // host filesystem is an explicit local boundary: the test UID stands in for root.
 func TestGeneratedVolumeOpensWithRuntimeService(t *testing.T) {
-	root := t.TempDir()
+	root := shortRoot(t)
 	s := exampleSpec(t)
 	operatorFixture(t, root, &s)
 	localLayout(t, root, &s)
@@ -260,6 +266,8 @@ func specRefusals() map[string]func(*Spec) {
 		"bad vm uuid":       func(s *Spec) { s.Exporter.Args = exporterArgs([]string{"-U", "E10B", "hfs"}, d0, d1) },
 		"no vm name":        func(s *Spec) { s.Exporter.Args = exporterArgs([]string{"-U", exampleVM}, d0, d1) },
 		"two vm names":      func(s *Spec) { s.Exporter.Args = exporterArgs(append(vm, "extra"), d0, d1) },
+		"too many args":     args(d0, d1, slices.Repeat([]string{"-A"}, maxExporterArgs)),
+		"too many bytes":    args(d0, d1, []string{"-l", "com1," + strings.Repeat("x", maxExporterBytes)}),
 		"runtime canary":    func(s *Spec) { s.Service.LogicalBytes = 8 << 20 },
 		"runtime bootstrap": func(s *Spec) { s.BootstrapSeconds = 121 },
 		"runtime host":      func(s *Spec) { s.Budget.HostBytes = 2 << 30 },
@@ -274,7 +282,7 @@ func TestGenerateRefusals(t *testing.T) {
 			s := exampleSpec(t)
 			s.OperatorPublicKey = hex.EncodeToString(make([]byte, 32))
 			mutate(&s)
-			_, err := Generate(t.Context(), s, filepath.Join(t.TempDir(), "out"), rand.Reader)
+			_, err := Generate(t.Context(), s, filepath.Join(shortRoot(t), "out"), rand.Reader)
 			if err == nil {
 				t.Fatal("invalid spec accepted")
 			}
@@ -290,10 +298,18 @@ func TestGenerateRefusals(t *testing.T) {
 
 func TestGenerateRefusesShortEntropy(t *testing.T) {
 	s := exampleSpec(t)
-	if _, err := Generate(t.Context(), s, "/out", bytes.NewReader(make([]byte, 40))); err == nil {
-		t.Fatal("short entropy accepted")
-	}
-	if _, err := Generate(t.Context(), s, "/out", bytes.NewReader(make([]byte, 4096))); err == nil {
-		t.Fatal("constant entropy produced accepted keys")
+	s.OperatorPublicKey = hex.EncodeToString(make([]byte, 32))
+	output := filepath.Join(shortRoot(t), "out")
+	for name, c := range map[string]struct {
+		entropy []byte
+		want    string
+	}{
+		"short":    {make([]byte, 40), "draw UUID entropy"},
+		"constant": {make([]byte, 4096), "entropy source produced identical keys"},
+	} {
+		_, err := Generate(t.Context(), s, output, bytes.NewReader(c.entropy))
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Fatalf("%s entropy: want %q, got %v", name, c.want, err)
+		}
 	}
 }

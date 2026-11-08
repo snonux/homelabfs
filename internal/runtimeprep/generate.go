@@ -81,7 +81,7 @@ func Generate(ctx context.Context, spec Spec, output string, random io.Reader) (
 		return Bundle{}, err
 	}
 	config := g.runtimeConfig()
-	if err = validateRuntimeConfig(ctx, config); err != nil {
+	if err = validateRuntimeConfig(ctx, config, output); err != nil {
 		return Bundle{}, fmt.Errorf("actual runtime validation refused the generated config: %w", err)
 	}
 	return g.bundle(config)

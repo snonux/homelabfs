@@ -9,13 +9,17 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
+
+	"github.com/snonux/homelabfs/internal/controlledruntime"
 )
 
 const usage = "usage: hfs-runtime-prep generate --spec FILE --output NEW_DIR | " +
 	"enroll-request --template FILE --proposal FILE --boot-id UUID --provider-nonce UUID " +
 	"--device-names virtioA,virtioB --observer FILE --output NEW_FILE | " +
-	"bind-request --template FILE --provision FILE --awaiting FILE --output NEW_FILE"
+	"bind-request --template FILE --provision FILE --awaiting FILE --output NEW_FILE | " +
+	"check-argv --bundle DIR --record FILE --record-sha256 HEX"
 
 // Run executes one subcommand. None of them reads the operator private key,
 // contacts a host or starts a runtime; every output is a new private file.
@@ -30,6 +34,8 @@ func Run(ctx context.Context, args []string, stdout io.Writer) error {
 		return runEnrollRequest(args[1:], stdout)
 	case "bind-request":
 		return runBindRequest(args[1:], stdout)
+	case "check-argv":
+		return runCheckArgv(args[1:], stdout)
 	}
 	return fmt.Errorf("unknown subcommand %q; %s", args[0], usage)
 }
@@ -112,6 +118,38 @@ func runBindRequest(args []string, stdout io.Writer) error {
 		return err
 	}
 	return writeRequest(*output, request, stdout)
+}
+
+// runCheckArgv confirms that a generated bundle and the pinned G4 argv record
+// agree element by element (see CheckArgvRecord). It writes nothing.
+func runCheckArgv(args []string, stdout io.Writer) error {
+	f := flag.NewFlagSet("check-argv", flag.ContinueOnError)
+	bundle := f.String("bundle", "", "generated bundle directory")
+	record := f.String("record", "", "argv.py generate output (homelabfs-zq3-bhyve-argv/1)")
+	pin := f.String("record-sha256", "", "approved SHA256 of the record bytes")
+	if err := parseAll(f, args, bundle, record, pin); err != nil {
+		return err
+	}
+	if !cleanAbsolute(*bundle) {
+		return fmt.Errorf("require a clean absolute bundle directory")
+	}
+	var config controlledruntime.RuntimeConfig
+	var generation Record
+	if _, err := readStrict(filepath.Join(*bundle, ConfigFile), &config); err != nil {
+		return err
+	}
+	if _, err := readStrict(filepath.Join(*bundle, RecordFile), &generation); err != nil {
+		return err
+	}
+	raw, err := readPrivate(*record, inputLimit)
+	if err != nil {
+		return err
+	}
+	digest, err := CheckArgvRecord(config, generation, raw, *pin)
+	if err != nil {
+		return err
+	}
+	return printJSON(stdout, map[string]any{"verified": true, "args_sha256": digest, "record_sha256": *pin})
 }
 
 // parseAll parses flags and requires every listed flag to be non-empty.
