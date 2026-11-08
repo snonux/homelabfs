@@ -20,7 +20,9 @@ files owned by the daemon UID. Duplicate/unknown keys, field aliases, trailing
 data and invalid UTF-8 refuse. No defaults select runtime capacities.
 
 The config references an already initialized disposable version1 `VolumeConfig`;
-it does not initialize/import a volume. `OwnerDirectory` must be new.
+it does not initialize/import a volume. The separate
+[run preparation tools](../runtimeprep/README.md) generate this config and
+initialise the volume with a pinned helper outside the runtime. `OwnerDirectory` must be new.
 `EnrollmentFile` is an external operator handoff created atomically after the
 proposal exists. `Exporter` pins the exact executable SHA256 and host-selected
 argument array. Each selected bhyve device uses `hfs-controller=<session UUID>`;
