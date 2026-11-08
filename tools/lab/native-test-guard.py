@@ -4,10 +4,12 @@
 
 Promoted on 2026-11-08 (task l34) from the evidence copy
 docs/lab/results/20261108-native-fd-qualification/tools/native_guard.py, which
-was derived from the reviewed S24 guard. The bounds, profiles and receipt are
-unchanged; the promotion only splits the former single main function and adds
---cwd so a staged source tree (see native-test-drive.py --source-archive) can
-serve the test binary's cwd-relative repository inputs.
+was derived from the reviewed S24 guard. The bounds and profiles are unchanged.
+The promotion splits the former single main function, adds --cwd so a staged
+source tree (see native-test-drive.py --source-archive) can serve the test
+binary's cwd-relative repository inputs, records that cwd in the receipt, and
+updates the runner_process fallback import path for the tools/lab/ location.
+The elapsed-time clock now starts after the cpuset call (no practical effect).
 
 Never starts/stops a VM, mounts or installs. The coordinator first creates one
 fresh 0700 private root and transfers this file there. Every stage receives a

@@ -142,6 +142,8 @@ class DriveArgumentTests(unittest.TestCase):
             (["--target", "f3-production"] + base[2:], "invalid choice"),
             (base[:3] + ["/tmp/hfs-2026x"] + base[4:], "--root must be"),
             (base[:3] + ["/var/tmp/hfs-2026x;rm"] + base[4:], "--root must be"),
+            # Upper case could collide with the remote program placeholders.
+            (base[:3] + ["/var/tmp/hfs-2026-SOURCE"] + base[4:], "--root must be"),
             (base[:5] + ["stage/../x"] + base[6:], "--stage must be"),
             (self.argv("--outer-seconds", "0"), "--outer-seconds"),
             (self.argv("--cwd", "src/internal"), "--cwd needs --source-archive"),

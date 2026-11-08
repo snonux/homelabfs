@@ -34,7 +34,10 @@ BASE = ['ssh', '-T', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
         '-o', 'ForwardAgent=no', '-o', 'ConnectTimeout=10',
         '-o', 'ServerAliveInterval=5', '-o', 'ServerAliveCountMax=2']
 GUESTS = {'hfs-test0': '172.31.253.11', 'hfs-test1': '172.31.253.12', 'hfs-test2': '172.31.253.13'}
-ROOT_PATTERN = re.compile(r'/var/tmp/hfs-2026[A-Za-z0-9-]*')
+# Lower case only: the remote programs are filled in by replacing upper-case
+# placeholders (ROOT, SOURCE, STAGE, MAX_*), so an upper-case run root could be
+# re-matched by a later replacement and silently stage somewhere else.
+ROOT_PATTERN = re.compile(r'/var/tmp/hfs-2026[a-z0-9-]*')
 STAGE_PATTERN = re.compile(r'[A-Za-z0-9-]+')
 PATH_PART = re.compile(r'[A-Za-z0-9._-]+')
 ARTIFACTS = ('diagnostic-child', 'controlledruntime-freebsd.test')
