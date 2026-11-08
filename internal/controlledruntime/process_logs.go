@@ -126,6 +126,12 @@ func newExporterLogs(directory *os.File) (*exporterLogs, error) {
 func (s *Supervisor) Diagnostics() (ExporterDiagnostics, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.diagnosticsLocked()
+}
+
+// diagnosticsLocked is Diagnostics for callers already holding s.mu, so a
+// lifecycle observation can snapshot it together with the supervisor record.
+func (s *Supervisor) diagnosticsLocked() (ExporterDiagnostics, bool) {
 	if s.child == nil || s.child.logs == nil {
 		return ExporterDiagnostics{}, false
 	}

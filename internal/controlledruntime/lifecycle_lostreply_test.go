@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/snonux/homelabfs/internal/admission"
 	"github.com/snonux/homelabfs/internal/fsapi"
@@ -69,10 +70,11 @@ func (d *restartChild) readErrors() int {
 // which the exporter's actual result pread was answered with EIO. That FETCH
 // must deliver no bytes. (The C fixture's guest emulation reports every
 // non-data FETCH reply, including the exporter's error reply, as EAGAIN.)
+// Like fetch, it polls with a 1 ms pause within a 10 s deadline.
 func (d *restartChild) fetchLost(session int, cell uint64) uint32 {
 	d.t.Helper()
 	request := binary.BigEndian.AppendUint64([]byte{byte(session)}, cell)
-	for attempt := 0; attempt < 10000; attempt++ {
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(time.Millisecond) {
 		before := d.readErrors()
 		require(d.t, d.writePacket('F', request))
 		status, response, err := d.readResult()

@@ -42,6 +42,18 @@ type lifecycleEvidence struct {
 	Restart     *lifecycleRestartView `json:"restart,omitempty"`
 	// LostReply is the armed response-exposure fixture record (v24), if any.
 	LostReply *lostReplyView `json:"lost_reply,omitempty"`
+	// Endpoint is the control endpoint's own accept health. Only OBSERVE
+	// replies carry it (the serving worker owns those counters); it does not
+	// affect Complete, because a retried transient failure loses no owner.
+	Endpoint *endpointEvidence `json:"endpoint,omitempty"`
+}
+
+// endpointEvidence counts accept failures of the lifecycle endpoint since
+// READY. Transient failures were retried with bounded backoff; a permanent one
+// ends the runtime and is reported by its exit error instead.
+type endpointEvidence struct {
+	AcceptErrors    uint64 `json:"accept_errors"`
+	LastAcceptError string `json:"last_accept_error,omitempty"`
 }
 
 type supervisorEvidence struct {
@@ -139,18 +151,16 @@ func serviceStateName(s fsservice.State) string {
 }
 
 // captureSupervisor reads the actual supervisor issuance record, its live
-// check and the bounded s24 diagnostics snapshot. It never kills or waits.
+// check (which includes the child's own liveness) and the bounded s24
+// diagnostics snapshot under one supervisor lock hold, so all three describe
+// the same moment. It never kills or waits.
 func captureSupervisor(s *Supervisor) supervisorEvidence {
-	diagnostics, ok := s.Diagnostics()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e := supervisorEvidence{Stage: s.record.Stage, Process: s.record.ProcessID.String(), Controller: s.record.Controller.String(), Endpoint: s.record.Endpoint}
 	err := s.checkLive()
-	if err == nil && s.child != nil {
-		err = s.child.live()
-	}
 	e.Live, e.Error = err == nil, evidenceError(err)
-	if ok {
+	if diagnostics, ok := s.diagnosticsLocked(); ok {
 		e.Diagnostics = &diagnostics
 	}
 	return e

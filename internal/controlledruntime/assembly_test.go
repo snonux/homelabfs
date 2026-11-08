@@ -300,6 +300,45 @@ func TestRuntimeFundingCompleteOwners(t *testing.T) {
 	_ = r
 }
 
+// TestRuntimeFundingHostBoundary checks the host envelope at its exact sum and
+// one byte short now that the 64 KiB lost-reply lease is pre-counted, and that
+// at the exact sum the assembled runtime still finds the fixture's bytes and
+// its operation slot, leaving the Memory pool exactly full.
+func TestRuntimeFundingHostBoundary(t *testing.T) {
+	_, c := assemblyFixture(t)
+	views := c.Authorization.Enrollment.Bounds
+	b := RuntimeBudget{ServiceBytes: 64 << 20, ExporterBytes: 274 << 20, GuestCopyBytes: 16 << 20, GuestBytes: 2 << 30, GuestBaseBytes: 256 << 20, Guest: GuestArtifactBudget{OrdinaryBytes: 64 << 20, ControlBytes: 32 << 20, Reservations: 32, Cookies: 32, Received: 32}}
+	owners, err := runtimeOwnerBytes(b, c.ProviderLimits, views, 2)
+	require(t, err)
+	control, err := lifecycleMemoryBytes(views)
+	require(t, err)
+	exact, err := checkedBudgetSum(owners, control, lostReplyMemoryBytes, 652<<20, guestbridge.TransportLedgerMemoryBytes)
+	require(t, err)
+	b.HostBytes = exact - 1
+	if f, err := fundRuntime(b, c.ProviderLimits, views, 2); !errors.Is(err, fsapi.NoSpace) {
+		if f != nil {
+			_ = f.owner.Release()
+			_ = f.releaseControl()
+		}
+		t.Fatalf("host budget one byte short admitted: %v", err)
+	}
+	b.HostBytes = exact
+	funding, err := fundRuntime(b, c.ProviderLimits, views, 2)
+	require(t, err)
+	defer func() { require(t, errors.Join(funding.owner.Release(), funding.releaseControl())) }()
+	c.Budget = funding.transport
+	a, err := Assemble(t.Context(), c)
+	t.Cleanup(func() { require(t, a.Close()) })
+	require(t, err)
+	lease, err := funding.reserveLostReply()
+	require(t, err)
+	defer func() { require(t, lease.Release()) }()
+	memory := funding.transport.Usage().Pools[admission.Memory]
+	if memory.Bytes != exact-(640<<20) || memory.Operations != 5 {
+		t.Fatalf("exact host envelope left Memory unaccounted: %+v", memory)
+	}
+}
+
 func TestRuntimeCLIRefusesWithoutNativeAdapters(t *testing.T) {
 	var out, errout bytes.Buffer
 	if Run(t.Context(), nil, &out, &errout) == nil || out.Len() != 0 {
