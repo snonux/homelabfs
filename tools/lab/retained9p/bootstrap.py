@@ -168,7 +168,10 @@ def validate_plan(plan):
     require(plan["version"] == VERSION and isinstance(plan["run_id"], str) and
             RUN_ID.match(plan["run_id"]) is not None, "plan version/run ID")
     seconds = plan["bootstrap_seconds"]
-    require(type(seconds) is int and 30 <= seconds <= BOOTSTRAP_LIMIT, "bootstrap_seconds 30..120 (launch to READY)")
+    # At least 60 s: Rocky's boot consumes part of the window and admission
+    # needs a 40 s floor (udevadm settle), so a shorter plan could only fail
+    # after launch had already used the one-shot test-kernel boot.
+    require(type(seconds) is int and 60 <= seconds <= BOOTSTRAP_LIMIT, "bootstrap_seconds 60..120 (launch to READY)")
     safe_path(plan["signer"], "signer")
     for section, names in PLAN_SHAPE.items():
         closed(plan[section], names, section)

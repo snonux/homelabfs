@@ -647,6 +647,8 @@ class PlanTests(Case):
         cases = [
             (lambda p: p.update(extra=1), "closed keys"),
             (lambda p: p.update(bootstrap_seconds=121), "bootstrap_seconds"),
+            # Below 60 s admission could only fail after the one-shot boot.
+            (lambda p: p.update(bootstrap_seconds=59), "bootstrap_seconds 60..120"),
             (lambda p: p["host"].update(address="192.168.1.133"), "retired"),
             (lambda p: p["guest"].update(user="paul"), "target must be exactly"),
             (lambda p: p["guard"].update(run_dir="/var/tmp/$HOME/guard"), "safe ASCII"),
