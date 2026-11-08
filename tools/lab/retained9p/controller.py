@@ -13,6 +13,8 @@ only `next` after a completed release dispatches the following case, so the
 4MiB logical canary never holds two cases' payloads.
 """
 import argparse
+import base64
+import binascii
 import datetime
 import fcntl
 import hashlib
@@ -46,6 +48,23 @@ CORRELATION_VERSION = "homelabfs-retained9p-host-correlation/1"
 # Payload may stay retained at most this long after the run started (the base
 # gate's 60-minute total window); later commands refuse and preserve.
 RUN_WINDOW = 3600
+# Exact SSH targets: (address, HostKeyAlias, user). The addresses are the
+# IQ-verified primaries after the 10.20.0.0/24 LAN migration (IQ
+# infra/f3s/network/host-addresses.md, checked 2026-11-08). Phase 1 of the zq3
+# run plan re-verifies them before any contact.
+TARGETS = {"host": ("10.20.0.133", "f3", "paul"),
+           "guest": ("10.20.0.123", "rocky", "root")}
+# Pre-migration addresses stay configured on both machines as aliases, but a
+# plan may name only the primary: the pinned known_hosts lines, the observer
+# key's from= restriction (observer_key.py) and the evidence all name one route,
+# so accepting either address would let one plan digest mean two network paths.
+RETIRED = {"192.168.1.133": "host", "192.168.1.123": "guest"}
+# Ed25519 host key fingerprints, cross-checked on 2026-11-08 between Paul's
+# existing known_hosts entries and the earlier lab record in
+# docs/lab/Retained-9p-fixtures.md. Never scanned or accepted-new. The public
+# pin files are docs/lab/f3-host-known_hosts and docs/lab/rocky-known_hosts.
+HOST_KEYS = {"f3": "SHA256:VZLFFSJZ9K7iOBQ/cFehASFzCfIOn0TKFD1L89ziL5g",
+             "rocky": "SHA256:UCoipW2LqGWOpaRnuShloHwgo0w2sHAUthKdvPt5KsA"}
 
 
 class Refused(RuntimeError):
@@ -191,7 +210,42 @@ def validate(plan):
     inputs = {name: verified_bytes(path, expected, bound)
               for name, (path, expected, bound) in pinned_sources(plan).items()}
     inputs["probe.py"].decode("utf-8")
+    for name in ["host", "guest"]:
+        check_pin(inputs[name + "-known_hosts"], plan[name])
     return inputs
+
+
+def key_fingerprint(encoded):
+    """OpenSSH SHA256 fingerprint of one base64 ssh-ed25519 public key blob."""
+    try:
+        blob = base64.b64decode(encoded, validate=True)
+    except binascii.Error:
+        raise Refused("pinned host key is not base64") from None
+    # Wire format: string "ssh-ed25519", then string of the 32-byte key; no more.
+    if len(blob) != 51 or not blob.startswith(b"\0\0\0\x0bssh-ed25519\0\0\0\x20"):
+        raise Refused("pinned host key is not one ssh-ed25519 key")
+    return "SHA256:" + base64.b64encode(hashlib.sha256(blob).digest()).decode().rstrip("=")
+
+
+def check_pin(raw, target):
+    """Pin file content: exactly `ALIAS,ADDRESS ssh-ed25519 KEY` of the reviewed key.
+
+    The plan hash only binds bytes; this binds them to the reviewed host
+    identity. The alias serves the controller's HostKeyAlias lookup, the
+    address the runtime observer's plain `root@ADDRESS` lookup. A retired
+    address, a second line or a different key refuses.
+    """
+    try:
+        lines = [line for line in raw.decode("ascii").splitlines()
+                 if line.strip() and not line.startswith("#")]
+    except UnicodeDecodeError:
+        raise Refused("pinned host key file must be ASCII") from None
+    expected = target["alias"] + "," + target["address"]
+    fields = lines[0].split(" ") if len(lines) == 1 else []
+    if len(fields) != 3 or fields[0] != expected or fields[1] != "ssh-ed25519":
+        raise Refused("pin file must hold exactly one line: " + expected + " ssh-ed25519 KEY")
+    if key_fingerprint(fields[2]) != HOST_KEYS[target["alias"]]:
+        raise Refused("pinned host key differs from reviewed " + target["alias"] + " fingerprint")
 
 
 def validate_shape(plan):
@@ -218,11 +272,15 @@ def validate_shape(plan):
 
 
 def validate_targets(plan):
-    if ((plan["host"]["address"], plan["host"]["alias"], plan["host"]["user"]) !=
-            ("192.168.1.133", "f3", "paul") or
-            (plan["guest"]["address"], plan["guest"]["alias"], plan["guest"]["user"]) !=
-            ("192.168.1.123", "rocky", "root")):
-        raise Refused("only the recorded f3/standalone Rocky lab path is in scope")
+    """Only the IQ primaries; a retired alias refuses with its reason, not silently."""
+    for name, expected in TARGETS.items():
+        address = plan[name]["address"]
+        if address in RETIRED:
+            primary = TARGETS[RETIRED[address]]
+            raise Refused("pre-migration address " + address + " of " + primary[1] +
+                          " is a retained alias only; plans name the primary " + primary[0])
+        if (address, plan[name]["alias"], plan[name]["user"]) != expected:
+            raise Refused("only the recorded f3/standalone Rocky lab path is in scope")
 
 
 def validate_requests(plan):

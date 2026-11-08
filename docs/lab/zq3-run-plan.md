@@ -49,6 +49,7 @@ the run and needs a revised plan.
 | f3 memory | physmem 16,879,837,184 bytes; swap 2 GiB, unused |
 | f3 modules | loaded: `vmm`, `nmdm`, `if_bridge`; **not** loaded: `fusefs`, `fdescfs`; no fuse/fdescfs mounts |
 | f3 storage | `zroot` 338G available (`zroot/bhyve` 109G used, `zroot/var/tmp` 3.57G) |
+| f3 route to Rocky | `route -n get 10.20.0.123`: destination `10.20.0.0` on `re0`, directly connected, no gateway; `re0` carries `10.20.0.133/24` (also `192.168.1.133/24`, `10.98.0.133/24` on other subnets), so f3's source toward Rocky is `10.20.0.133`, matching the observer key's `from=` (`f3-route-to-rocky.txt`) |
 | f3 stock modules/binaries | `fdescfs.ko` `847cd1f2…`, `fusefs.ko` `b207adf6…`, `/usr/sbin/bhyve` `c54a6361…` |
 | Rocky vm-bhyve config | unchanged; still contains the old PoC line `bhyve_options="-s 0:7:0,virtio-9p,homelabfs_poc=/var/tmp/homelabfs-9p-poc/share"` |
 | Rocky OS/kernel | Rocky Linux 9.8; running and grubby default `5.14.0-687.66.1.el9_8.x86_64`; other entries ELRepo 7.0.3, ELRepo 6.1.190, 5.14.0-687.65.1/.64.1, rescue. **The custom `6.1.190-hfs-xz3` is not installed.** |
@@ -64,9 +65,13 @@ hash on f3 (the fdescfs controller's pinned interpreter); `vm-public` bridge
 members and free tap names; current zrepl snapshot name/GUID of
 `zroot/bhyve/rocky`; Rocky `/boot` and EFI free bytes, `grub2-editenv list`
 (`saved_entry`, `next_entry`), `/etc/kernel/cmdline` or default BLS options,
-dracut/depmod/grubby versions, root `authorized_keys` SHA256, `/usr/bin/python3`
-hash; current authoritative addresses from IQ (f3 `10.20.0.133` and Rocky
-`10.20.0.123` were used on 2026-11-08) with independently verified host-key pins.
+dracut/depmod/grubby versions, root `authorized_keys` SHA256, the real file
+behind `/usr/bin/python3` (expected `/usr/bin/python3.9`; the observer pins and
+opens it with `O_NOFOLLOW`, so a symlink refuses) and its hash; current
+authoritative addresses from IQ (f3 `10.20.0.133` and Rocky `10.20.0.123`, now
+pinned in `controller.py`) and a check that both hosts still present the keys in
+[`f3-host-known_hosts`](f3-host-known_hosts) and
+[`rocky-known_hosts`](rocky-known_hosts) (strict checking, never accept-new).
 
 ## Approval classes
 
@@ -133,7 +138,8 @@ or vmm context could still exist.
   packages, shellcheck).
 - Changes: workstation files only.
 - **GAP**: run config/enrollment/bhyve-argv generator (G2, G4), filled window
-  plan (G12), controller target addresses (G8).
+  plan (G12). Controller target addresses and host-key pins (G8) are
+  implemented: the batch plan's `host`/`guest` entries name the pin files above.
 - Evidence: hashes of every staged byte, plan files and their SHA256.
 - Failure: fix locally; nothing remote has happened.
 
@@ -145,7 +151,9 @@ or vmm context could still exist.
   staged inspector, so it runs at the start of Phase 4.)
 - Preconditions to continue: Rocky running PID matches, all four FreeBSD VMs
   stopped, swap unused, pool ONLINE with the disk headroom above, `fusefs` and
-  `fdescfs` state as recorded, `/dev/fd` is devfs, PoC share path on f3 present
+  `fdescfs` state as recorded, `/dev/fd` is devfs, f3's route to
+  `10.20.0.123` still directly connected on the interface carrying
+  `10.20.0.133` (else the observer key's `from=` would refuse), PoC share path on f3 present
   (R6), Rocky default kernel/grubenv unchanged, SELinux enforcing, one-line
   `authorized_keys` hash recorded.
 - Evidence: `f3-facts.json`, `rocky-facts.json` with timestamps.
@@ -191,7 +199,22 @@ the stop (see [Boot selection and recovery](#boot-selection-and-recovery)).
      `internal/controlledruntime/README.md`); record its SHA256. **GAP G5**: no
      generator exists.
   6. Stage `observer.py` and the run directory `/var/tmp/hfs-zq3-zq3-r1`
-     (root, `0700`, with empty `m0`, `m1`) on Rocky's local disk.
+     (root, `0700`, with empty `m0`, `m1`) on Rocky's local disk with
+     [`observer_key.py`](../../tools/lab/retained9p/observer_key.py) `stage`
+     (G6, implemented): copy `observer.py` and
+     `internal/controlledruntime/probe/installed.py` (`c824b183…`, the probe the
+     runtime embeds) into a root-private incoming directory over the pinned
+     channel, then run the tool from stdin, e.g.
+     `/usr/bin/python3.9 -I -B - stage --run-id zq3-r1 --observer IN/observer.py
+     --observer-sha256 <sha> --probe IN/installed.py --python /usr/bin/python3.9
+     --python-sha256 <Phase 1 hash> < SNAPSHOT/observer_key.py`.
+     The filled plan pins the SHA256 of `observer_key.py` at the plan commit;
+     the operator copies it once into a private snapshot, checks that hash
+     immediately before every stdin invocation (stage, enrol, status,
+     remove) and records it with each result, since Rocky cannot check
+     bytes it reads from stdin.
+     It checks both hashes and the interpreter, creates the run directory if
+     absent and writes `observer.py` and `installed-probe.py` root-owned `0400`.
 - Changes: new files in `/boot`, `/lib/modules/6.1.190-hfs-xz3`, one
   non-default BLS entry, `/etc/homelabfs/`, the run directory. grubenv is
   unchanged.
@@ -226,10 +249,17 @@ controller `tools/lab/fdescfs-window.py` with the explicit prefix
    before/after `kldstat`. **Disclosed: stays loaded afterwards.**
 5. Observer key (A6): on f3, `ssh-keygen -t ed25519 -N '' -C
    hfs-zq3-zq3-r1-observer -f /var/tmp/hfs-validation-xz3/zq3-r1/observer/id_ed25519`
-   (root `0600`, never copied off f3, never Paul's key). On Rocky append exactly
-   one line to `/root/.ssh/authorized_keys`:
-   `restrict,from="<f3 address>",command="/usr/bin/python3 -I /var/tmp/hfs-zq3-zq3-r1/observer.py --probe … --probe-sha256 … --python /usr/bin/python3.9 --python-sha256 …" ssh-ed25519 AAAA… hfs-zq3-zq3-r1-observer`;
-   record file SHA256 before and after. **GAP G6**: enrol/remove script.
+   (root `0600`, never copied off f3, never Paul's key). Copy only
+   `id_ed25519.pub` to the Rocky incoming directory, then run
+   `observer_key.py enrol --run-id zq3-r1 --public-key IN/id_ed25519.pub
+   --observer-sha256 <sha> --python /usr/bin/python3.9 --python-sha256 <hash>
+   --expect-sha256 <Phase 1 authorized_keys SHA256>` (G6, implemented; same
+   stdin form). It re-verifies the staged files, writes a durable receipt, then
+   atomically appends exactly one line to `/root/.ssh/authorized_keys`:
+   `restrict,from="10.20.0.133",command="/usr/bin/python3.9 -I /var/tmp/hfs-zq3-zq3-r1/observer.py --probe /var/tmp/hfs-zq3-zq3-r1/installed-probe.py --probe-sha256 c824b183… --python /usr/bin/python3.9 --python-sha256 …" ssh-ed25519 AAAA… hfs-zq3-zq3-r1-observer`,
+   and prints the before/after SHA256 (after = SHA256(before + line)). The
+   runtime's `GuestObserver.Host` is `10.20.0.123` and its `KnownHosts` is
+   `rocky-known_hosts`.
 - The `/dev/fd` mount stays in place through Phase 10: the runtime execs the
   exporter (`/dev/fd/4`) and the SSH observer (`/dev/fd/3`) through it. The
   observer `/dev/fd/3` production path is exercised for real in Phase 8, the
@@ -381,8 +411,12 @@ Order matters; each step needs the previous one confirmed.
    the tokens or record next to each one whether it is spent; the unredacted
    originals (whose hashes `state.json` records) stay private.
 2. Guest (still under the custom kernel): close probes; normal `umount` of
-   `m0`/`m1` (busy: stop and preserve). Remove the observer line from
-   `authorized_keys`; verify the file SHA256 equals the pre-run value. Verify
+   `m0`/`m1` (busy: stop and preserve). Remove the observer line with
+   `observer_key.py remove --run-id zq3-r1 --expect-sha256 <enrol after_sha256>`:
+   it deletes only that exact line and must report `restored_pre_run: true`
+   (file SHA256 equals the pre-run value). If unrelated keys changed meanwhile,
+   it refuses; only an explicit rerun with the current hash removes just its
+   line and reports `restored_pre_run: false` for Paul to review. Verify
    `grub2-editenv list`: `next_entry` empty (consumed by the Phase 8 boot) and
    `saved_entry` unchanged; if `next_entry` is somehow still set, run U1 now.
 3. Guest: `systemctl poweroff`. On f3 confirm the bhyve child exited (runtime
@@ -521,15 +555,19 @@ reviewed and pinned, and this plan is re-filled:
   the tap/nmdm/UEFI-vars setup and post-exit cleanup script.
 - G5 Rocky kernel install/one-shot/removal script and the
   `installed-admission-v1.json` generator.
-- G6 Observer key enrol/remove script (one line, hash-checked), and staging of
-  `observer.py` and its pinned interpreter hash.
+- G6 **Implemented (q34)**: [`tools/lab/retained9p/observer_key.py`](../../tools/lab/retained9p/observer_key.py)
+  `stage`/`enrol`/`status`/`remove`, run on Rocky as root (Phases 3, 4, 11);
+  local tests in `test_observer_key.py`. Still needs, at run time, the Phase 1
+  interpreter and `authorized_keys` hashes and Paul's A6 approval.
 - G7 Host correlator producing `homelabfs-retained9p-host-correlation/1`
   records from lifecycle OBSERVE (journal/source/ledger identities) for each
   retained case; the controller binds but does not interpret them.
-- G8 `controller.py` still accepts only the pre-migration addresses
-  `192.168.1.133` (f3) and `192.168.1.123` (Rocky); update to IQ-verified
-  addresses and add a pinned Rocky host-key file (`docs/lab/f3-known_hosts`
-  lists only the hfs-test guests).
+- G8 **Implemented (q34)**: `controller.py` accepts only the IQ primaries
+  f3 `10.20.0.133` and Rocky `10.20.0.123` (the retained `192.168.1.x` aliases
+  refuse with an explicit reason) and checks pin file content against the
+  reviewed Ed25519 fingerprints; pins in [`f3-host-known_hosts`](f3-host-known_hosts)
+  and [`rocky-known_hosts`](rocky-known_hosts); local tests in
+  `test_controller_targets.py`.
 - G9 Pod/namespace fixture script and pinned runtime/rootfs (depends on A8).
 - G10 Guest steps for the v24 lost-reply CALL and the C9 quiesce before RESTART.
 - G11 Host-side K04/after-loss check.

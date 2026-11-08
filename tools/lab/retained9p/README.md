@@ -117,6 +117,22 @@ The batch's SSH executable, host/guest public pin files and probe bytes are pinn
 and checked before dispatch. The guest connection goes through f3 with strict
 explicit host/guest pin policy and no agent forwarding/control master/key update.
 
+**Targets and host-key pins (zq3 G8).** The plan must name exactly f3
+`10.20.0.133` (alias `f3`, user `paul`) and Rocky `10.20.0.123` (alias `rocky`,
+user `root`), the IQ-verified primaries after the LAN migration. The
+pre-migration `192.168.1.133`/`192.168.1.123` stay configured on both machines
+as aliases, but a plan naming one refuses with an explicit reason: the pin
+lines, the observer key's `from=` and the evidence all name one route, so one
+plan digest never means two network paths. The plan's `known_hosts` files must
+be byte copies of [`f3-host-known_hosts`](../../../docs/lab/f3-host-known_hosts)
+and [`rocky-known_hosts`](../../../docs/lab/rocky-known_hosts) (or comment-only
+variants): exactly one `ALIAS,ADDRESS ssh-ed25519 KEY` line whose fingerprint
+equals the reviewed one (`SHA256:VZLF…` f3, `SHA256:UCoi…` Rocky). The alias
+serves this controller's `HostKeyAlias`, the address the runtime observer's
+plain `root@10.20.0.123` lookup. Those keys come read-only from Paul's existing
+known_hosts, cross-checked against the earlier lab record; nothing was scanned.
+`docs/lab/f3-known_hosts` remains the hfs-test guest pin file.
+
 The controller reads the plan once: those exact raw bytes supply parsing,
 validation, the reported digest and the durable `plan.json`. Verified SSH,
 public-pin and probe bytes are retained from their checked reads. Execution uses
@@ -160,6 +176,54 @@ draining stdout/stderr. A stalled SSH handshake or child that never reads cannot
 hold the controller in a synchronous pipe write beyond that deadline. Local
 regressions use an actual4KiB pipe/non-reading child and pre-spawn oversize denial;
 these exercise controller transport safety only, not guest filesystem acceptance.
+
+## Run-only observer key (zq3 G6)
+
+[`observer_key.py`](observer_key.py) runs **on Rocky as root** inside the
+approved window (A6). It generates no key and opens no connection; the run
+generates the key on f3 and transfers only its public half. Python 3.9
+compatible, so it can run from stdin as `/usr/bin/python3.9 -I -B - ACTION …`;
+Rocky cannot hash stdin, so the filled plan pins this file's SHA256 and the
+operator checks it before each invocation.
+
+- `stage`: checks the pinned interpreter (root-owned regular file, no symlink,
+  SHA256), `observer.py` against `--observer-sha256` and the installed probe
+  against the built-in `c824b183…` (the bytes `hfs-controlled-runtime` embeds
+  from `internal/controlledruntime/probe/installed.py`). Creates
+  `/var/tmp/hfs-zq3-RUN` (`0700`, empty `m0`, `m1`) if absent and writes
+  `observer.py` and `installed-probe.py` exclusively, root-owned `0400`.
+- `enrol`: re-verifies those, accepts only one `ssh-ed25519 KEY
+  hfs-zq3-RUN-observer` public line, requires the current `authorized_keys`
+  SHA256 to equal `--expect-sha256` (the Phase 1 value) and refuses if the key
+  or run comment is already present. Writes the receipt
+  `observer-key.json` first, then appends exactly one line
+  `restrict,from="10.20.0.133",command="PY -I RUN/observer.py --probe
+  RUN/installed-probe.py --probe-sha256 … --python PY --python-sha256 …"
+  ssh-ed25519 KEY hfs-zq3-RUN-observer` and verifies after = SHA256(before + line).
+- `remove --expect-sha256 H`: H must be the current file hash. With the
+  receipt's post-enrol hash it removes the exact line and must restore the
+  pre-run bytes. With another explicitly given current hash (unrelated keys
+  changed meanwhile) it removes only that line, keeps everything else and
+  reports `restored_pre_run: false`. A duplicated line refuses. If an enrol was
+  interrupted before its line landed and the file is still at the receipt's
+  pre-run hash, it only retires the receipt; with the line absent and any other
+  hash it refuses, and root retires the receipt manually after inspection. The receipt
+  becomes `observer-key-removed.json`, so a repeat refuses.
+- `status`: read-only hash, line count and enrolled-line count.
+
+Every change replaces `authorized_keys` atomically (exclusive temporary file,
+original owner, mode and SELinux label, fsync, rename, directory fsync) after
+re-reading it, so a crash leaves a complete old or new file. Other tools take
+no lock: an edit landing between that last re-read and the rename (an append
+to the old file or another tool's rename) is **silently lost and not
+detected**; the post-rename hash check only catches writes after our rename.
+Nothing else may edit root's `authorized_keys` during the window. A kill
+between writing the temporary file and the rename leaves a stale
+`.authorized_keys.hfs-observer-next` beside it; `status` reports it
+(`stale_pending`), and the next replacement refuses until root inspects and
+deletes it. One flock per run directory serialises the tool.
+The interpreter pin covers the executable file only, not the shared libraries
+it loads (the same limit as `observer.py`'s own `fexecve` pin).
 
 ## External staged signer
 
