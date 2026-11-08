@@ -324,7 +324,10 @@ controller `tools/lab/fdescfs-window.py` with the explicit prefix
    `hfs-controlled-runtime --check-descriptor-exec` (must now report
    `fdescfs`, supported). This closes the host rerun transferred from w24.
 4. `kldload /boot/kernel/fusefs.ko` (`b207adf6…`) only if absent, with
-   before/after `kldstat`. **Disclosed: stays loaded afterwards.**
+   before/after `kldstat`. **Disclosed: stays loaded afterwards.** This exact
+   file is the window plan's declared `window_module` (path and pinned hash,
+   from `pins.json`; task j44), so Phase 11's restore accepts it. Loading
+   anything else here, or from another path, makes restore refuse.
 5. Observer key (A6): on f3, `ssh-keygen -t ed25519 -N '' -C
    hfs-zq3-zq3-r1-observer -f /var/tmp/hfs-validation-xz3/zq3-r1/observer/id_ed25519`
    (root `0600`, never copied off f3, never Paul's key). Copy only
@@ -635,8 +638,13 @@ Order matters; each step needs the previous one confirmed.
    unmount of the native FUSE mount if the runtime left it (busy: preserve);
    delete the observer private key file.
 5. f3: `fdescfs-window.py restore …`: normal `unmount` by exact FSID; compares
-   final state with the post-load baseline; `restoration-summary.json` states
-   that `fdescfs` stays loaded. `fusefs` also stays loaded.
+   final state with the post-load baseline, accepting only the plan-declared
+   `fusefs.ko` (exact path, registered `fusefs` module, on-disk SHA256
+   `b207adf6…`) as an extra loaded file (j44). Any other module difference,
+   a missing `fdescfs.ko` or a changed mount table refuses and retains
+   `owned.json`. `restoration-summary.json` states that `fdescfs` stays loaded
+   and records the loaded `fusefs.ko` (`window_module_loaded`), which also
+   stays loaded.
 - Failure: a busy unmount, surviving child or changed FSID stops cleanup;
   Rocky's normal start waits until the child is positively gone.
 

@@ -89,6 +89,13 @@ the step that consumes it:
   `restoration-summary.json`. Options: a reviewed code change before the run
   (let restore accept the plan-declared fusefs load), or Paul accepts this
   failure and the manual review of `restored.json`. Nothing was changed here.
+  **Resolved by task j44 (after this fill):** the window pins and plan now
+  declare `window_module` `/boot/kernel/fusefs.ko` `b207adf6…`, and restore
+  accepts the post-load baseline plus exactly that file (any other
+  difference still refuses). This changes the bytes of `fdescfs-window.py`
+  and `fdescfs-window-plan.py`, so their hashes in [pins](pins.json)
+  (`20e0e2ea…`, `07791469…`) and the f3 staging tarball `51c52c5b…` are
+  stale: re-pin them from the commit used for the run before staging.
 - **F2, manual steps without a dedicated tool.** No reviewed tool fills the
   controller batch plan after READY: it is a manual edit of four fields under
   time pressure, followed by `check`. No staging tool exists either: this fill

@@ -134,7 +134,7 @@ Step 0, read-only facts (B):
 ```bash
 f3 doas -n sha256 -r /usr/local/bin/python3.12 /boot/kernel/kernel /sbin/mount /sbin/kldload /sbin/kldstat /sbin/sysctl /bin/freebsd-version /bin/hostname \
   $R/bin/hfs-controlled-runtime $R/bin/fdescfs-namespace $R/bin/controlledruntime.test $R/bin/fdescfs-window.py \
-  /boot/kernel/fdescfs.ko /libexec/ld-elf.so.1 /lib/libc.so.7 /lib/libthr.so.3 /lib/libsys.so.7 > $E/p4-host.sha256
+  /boot/kernel/fdescfs.ko /boot/kernel/fusefs.ko /libexec/ld-elf.so.1 /lib/libc.so.7 /lib/libthr.so.3 /lib/libsys.so.7 > $E/p4-host.sha256
 f3 'ldd /usr/local/bin/python3.12' > $E/p4-python-ldd.txt     # add `sha256 -r` lines of the listed libs to p4-host.sha256
 f3 "stat -f '%Sp %Su %Sg %N' /usr/local/bin/python3.12 /usr/local/bin /usr/local /usr /" > $E/p4-python-stat.txt
 f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/fdescfs-window.py facts --inspector $R/bin/hfs-controlled-runtime; date -u +%s" > $E/p4-facts-and-now.txt
@@ -369,8 +369,11 @@ f3 "doas -n /usr/local/bin/python3.12 -I -B $W restore" | tee $E/p11-window-rest
 `<EXPORTER_PID>` comes from the runtime evidence (guard `observations.jsonl`
 / runtime stdout). Release tokens in case `stdout.log` files are redacted or
 marked spent before anything is copied into `docs/lab/results`. Expected
-restore outcome: see [finding F1](README.md#findings): the unmount happens,
-but the module comparison will report `fusefs.ko` as a difference.
+restore outcome (after task j44): the unmount happens, and the module
+comparison accepts only the plan-declared `fusefs.ko` beyond the post-load
+baseline; `restoration-summary.json` records it in `window_module_loaded`.
+With the controller bytes pinned by this fill (before j44) it would instead
+report `fusefs.ko` as a difference; see [finding F1](README.md#findings).
 
 ## Phase 12: normal restoration (A1, A3; about 5-10 min)
 

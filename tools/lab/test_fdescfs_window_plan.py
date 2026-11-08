@@ -24,6 +24,8 @@ RECORD = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/build-record.json"
 # Daemon of the admitted xz3 f44 candidate (b203799e, source defd974).
 ADMITTED_DAEMON_SHA256 = "174949c1ebf97d483d49e41f1ade7bce88f63013cb943be794276bb1ddd417a7"
 CONTROLLER_SHA = "c" * 64
+# f3 stock fusefs.ko, docs/lab/results/20261108-zq3-phase1 (task j44).
+FUSEFS_SHA256 = "b207adf6383bee8e022fa6115044508b7c64da07e73865e5ea71594d524cc4bd"
 
 
 def facts():
@@ -104,6 +106,41 @@ class FillerTests(unittest.TestCase):
             WINDOW.validate(plan, self.pins["inspector"], "setup")
         raw = FILLER.plan_bytes(plan)
         self.assertEqual(json.loads(raw), plan)
+
+    def test_plan_declares_pinned_fusefs_window_module(self):
+        plan = self.fill()
+        declared = {"path": "/boot/kernel/fusefs.ko", "sha256": FUSEFS_SHA256}
+        self.assertEqual(plan["window_module"], declared)
+        self.assertEqual(plan["sha256"]["/boot/kernel/fusefs.ko"], FUSEFS_SHA256)
+
+    def test_controller_rejects_plan_with_mismatched_window_module(self):
+        plan = self.fill()
+        plan["window_module"]["sha256"] = "4" * 64
+        with patch.object(WINDOW, "digest", side_effect=dict(plan["sha256"]).__getitem__), \
+                patch.object(WINDOW, "__file__", self.pins["controller"]), \
+                patch.object(WINDOW.sys, "executable", "/usr/local/bin/python3.12"):
+            with self.assertRaisesRegex(RuntimeError, "window module hash"):
+                WINDOW.validate(plan, self.pins["inspector"], "restore")
+
+    def test_window_module_pins_refuse(self):
+        unpinned = copy.deepcopy(self.pins)
+        del unpinned["pinned"]["/boot/kernel/fusefs.ko"]
+        self.refuses("window module must be pinned", pins=unpinned)
+        mismatched = copy.deepcopy(self.pins)
+        mismatched["window_module"]["sha256"] = "5" * 64
+        self.refuses("window module must be pinned", pins=mismatched)
+        allowed = copy.deepcopy(self.pins)
+        allowed["expected"]["modules_forbidden"].remove("fusefs.ko")
+        self.refuses("expected absent", pins=allowed)
+        own = copy.deepcopy(self.pins)
+        own["window_module"]["path"] = "/boot/kernel/fdescfs.ko"
+        self.refuses("stock /boot/kernel module", pins=own)
+        loose = copy.deepcopy(self.pins)
+        loose["window_module"]["name"] = "fusefs"
+        self.refuses("closed window module pins", pins=loose)
+        drifted = dict(self.host)
+        drifted["/boot/kernel/fusefs.ko"] = "6" * 64
+        self.refuses("pinned artifact differs", host=drifted)
 
     def test_controller_rejects_plan_missing_a_collected_pin(self):
         plan = self.fill()

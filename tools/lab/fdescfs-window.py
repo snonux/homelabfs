@@ -4,6 +4,11 @@
 Run on the exact FreeBSD host only after review/explicit host-setup authority.
 No SSH, VM lifecycle, package/policy edits, forced unmount or module unload.
 Interrupted dispatches are uncertain and cannot be automatically replayed.
+
+The plan may declare one `window_module` (exact /boot/kernel path and pinned
+SHA256) that the outer reviewed run loads itself between setup and restore,
+e.g. fusefs.ko in zq3 Phase 4 step 4. This controller never loads it; restore
+only tolerates exactly that loaded file beyond the post-load baseline.
 """
 import argparse
 import base64
@@ -21,6 +26,9 @@ import time
 
 VERSION = "homelabfs-fdescfs-window/1"
 PARENT = Path("/var/tmp/hfs-fdescfs-windows")
+# A declarable window module is a stock kernel module file; fdescfs.ko is the
+# controller's own module and is handled by load_module(), never declared.
+WINDOW_MODULE_PATH = re.compile(r"/boot/kernel/([a-z0-9_]+)\.ko")
 COMMANDS = {"mount": "/sbin/mount", "kldload": "/sbin/kldload",
             "kldstat": "/sbin/kldstat", "sysctl": "/sbin/sysctl",
             "version": "/bin/freebsd-version", "hostname": "/bin/hostname"}
@@ -174,10 +182,31 @@ def facts(executable):
                              for name in ("mode", "uid", "gid", "dev", "ino")}}
 
 
+def check_window_module(plan):
+    """Validate the optional module the outer run may load during the window.
+
+    `None` means restore requires the exact post-load baseline. Otherwise the
+    declared path must also be an artifact pin with the same hash, so the
+    plan-hash-bound pin set covers it and validate() re-digests the file on
+    every action, including restore, before anything is dispatched.
+    """
+    declared = plan["window_module"]
+    if declared is None:
+        return
+    require(isinstance(declared, dict) and set(declared) == {"path", "sha256"},
+            "closed window module schema")
+    match = (WINDOW_MODULE_PATH.fullmatch(declared["path"])
+             if isinstance(declared["path"], str) else None)
+    require(match is not None and match[1] != "fdescfs",
+            "window module must be a stock /boot/kernel module other than fdescfs")
+    require(plan["sha256"].get(declared["path"]) == declared["sha256"],
+            "window module hash must equal its artifact pin")
+
+
 def validate(plan, executable, action):
     require(set(plan) == {"version", "run_id", "expires", "directory", "inspector",
                           "sha256", "before", "qualification", "namespace_helper",
-                          "module_policy"}, "closed plan schema")
+                          "module_policy", "window_module"}, "closed plan schema")
     require(plan["module_policy"] == "preserve-existing-or-retain-new",
             "explicit approved module retention policy required")
     require(plan["version"] == VERSION and
@@ -186,6 +215,7 @@ def validate(plan, executable, action):
         require(plan["expires"] >= time.time() and plan["expires"] - time.time() <= 3600,
                 "expired or unbounded plan")
     require(plan["inspector"] == executable and Path(executable).is_absolute(), "inspector path")
+    check_window_module(plan)
     expected = set(COMMANDS.values()) | {executable, "/boot/kernel/kernel",
                                        "/boot/kernel/fdescfs.ko", plan["namespace_helper"],
                                        str(Path(__file__).resolve()), sys.executable}
@@ -335,6 +365,50 @@ def qualify(plan, directory, executable):
                 "--- SKIP:" not in result["stdout"], "native qualification failed/skipped")
 
 
+def window_module_group(plan, groups):
+    """Check the loaded file of the declared window module; return its group.
+
+    kldstat cannot hash loaded kernel text, so identity is the exact loaded
+    pathname, the registered module name and the pinned on-disk file hash,
+    re-digested here after the unmount, next to the facts it is compared with.
+    """
+    declared = plan["window_module"]
+    path = Path(declared["path"])
+    group = groups[path.name]
+    require(group[0][4] == declared["path"], "window module pathname changed; retain resources")
+    require(any(re.fullmatch(r"\d+\s+" + re.escape(path.stem), line) for line in group[1:]),
+            "window module not registered by loaded file; retain resources")
+    require(digest(declared["path"]) == declared["sha256"],
+            "window module file hash changed; retain resources")
+    return group
+
+
+def compare_restored(plan, baseline, after):
+    """Accept the post-load baseline plus at most the declared window module.
+
+    Every non-module fact (boot, base, fdescfs module query, mounts, /dev/fd,
+    descriptor report) must equal the baseline exactly. Every baseline file,
+    including fdescfs.ko, must still be loaded unchanged (reference counts
+    aside, as in module_files). The only tolerated addition is the declared
+    window module file; it may be absent when the run stopped before loading
+    it. Returns the loaded window module group, or None.
+    """
+    require(after.keys() == baseline.keys() and
+            all(after[key] == baseline[key] for key in baseline.keys() - {"modules"}),
+            "normal mount restore incomplete; retain resources")
+    old = module_files(baseline["modules"])
+    new = module_files(after["modules"])
+    require(all(new.get(name) == group for name, group in old.items()),
+            "baseline module changed or missing; retain resources")
+    added = new.keys() - old.keys()
+    if not added:
+        return None
+    declared = plan["window_module"]
+    require(declared is not None and added == {Path(declared["path"]).name},
+            "unexpected module loaded during window; retain resources")
+    return window_module_group(plan, new)
+
+
 def restore(plan, directory, executable):
     require(load(directory / "plan.json") == plan, "plan changed")
     require(not (directory / "restore.intent.json").exists(), "restore already dispatched; inspect uncertain/completed state")
@@ -347,14 +421,18 @@ def restore(plan, directory, executable):
     result = dispatch(directory, "restore", [plan["namespace_helper"], "unmount", owned["mount_id"]])
     after = facts(executable)
     persist(directory / "restored.json", after)
-    baseline = load(directory / "module-baseline.json")
-    require(result["exit"] == 0 and after == baseline, "normal mount restore incomplete; retain resources")
+    require(result["exit"] == 0, "normal mount restore incomplete; retain resources")
+    # Any refusal below leaves owned.json and no summary: resources retained.
+    loaded = compare_restored(plan, load(directory / "module-baseline.json"), after)
     require(json.loads(result["stdout"], object_pairs_hook=unique) == {"unmounted_fsid": owned["mount_id"]},
             "helper unmount FSID report mismatch")
+    retained = (directory / "module-retained.json").exists()
     persist(directory / "restoration-summary.json", {
         "mount_restored": True,
-        "module_retained_by_reviewed_plan": (directory / "module-retained.json").exists(),
-        "full_original_system_state_restored": not (directory / "module-retained.json").exists()})
+        "module_retained_by_reviewed_plan": retained,
+        "window_module": plan["window_module"],
+        "window_module_loaded": loaded,
+        "full_original_system_state_restored": not retained and loaded is None})
 
 
 def main():

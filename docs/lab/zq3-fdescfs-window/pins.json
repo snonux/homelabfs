@@ -7,11 +7,16 @@
   "qualification_test": "/var/tmp/hfs-validation-xz3/zq3-r1/bin/controlledruntime.test",
   "controller": "/var/tmp/hfs-validation-xz3/zq3-r1/bin/fdescfs-window.py",
   "module_policy": "preserve-existing-or-retain-new",
+  "window_module": {
+    "path": "/boot/kernel/fusefs.ko",
+    "sha256": "b207adf6383bee8e022fa6115044508b7c64da07e73865e5ea71594d524cc4bd"
+  },
   "pinned": {
     "/var/tmp/hfs-validation-xz3/zq3-r1/bin/hfs-controlled-runtime": "174949c1ebf97d483d49e41f1ade7bce88f63013cb943be794276bb1ddd417a7",
     "/var/tmp/hfs-validation-xz3/zq3-r1/bin/fdescfs-namespace": "a773f3ef506bec572fe777a269cffb958ce5e04925eb22f580bf40b9f434fe98",
     "/var/tmp/hfs-validation-xz3/zq3-r1/bin/controlledruntime.test": "9e046c2015b2d12c8fc42a89b06e7eaf5bc93876ece018917e3c67db35249cd8",
     "/boot/kernel/fdescfs.ko": "847cd1f2dc47db32d56dcf5352b65bad2b174b339e8aa89a8d114299311856d2",
+    "/boot/kernel/fusefs.ko": "b207adf6383bee8e022fa6115044508b7c64da07e73865e5ea71594d524cc4bd",
     "/libexec/ld-elf.so.1": "305a0b7947a890c653e32a1ed9fc50c100416658dc422f2ca8de9ebcda9ddb6f",
     "/lib/libc.so.7": "95b6597787b89cec982f44bee5e9af2cf0cd5e5258c1a20ae9cadf8f0421ea5b",
     "/lib/libthr.so.3": "0dec1f746d9415c86dff7d719e6b55208e5e007bc1543ddd17e1e8e810c05537",
