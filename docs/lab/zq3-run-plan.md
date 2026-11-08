@@ -64,7 +64,10 @@ hash on f3 (the fdescfs controller's pinned interpreter); `vm-public` bridge
 members and free tap names; current zrepl snapshot name/GUID of
 `zroot/bhyve/rocky`; Rocky `/boot` and EFI free bytes, `grub2-editenv list`
 (`saved_entry`, `next_entry`), `/etc/kernel/cmdline` or default BLS options,
-dracut/depmod/grubby versions, root `authorized_keys` SHA256, `/usr/bin/python3`
+dracut/depmod/grubby versions and the root-owned tool paths `rocky_kernel.py`
+pins (`/usr/sbin/grubby`, `/usr/bin/grub2-editenv`, `/usr/sbin/grub2-reboot`,
+`/usr/sbin/depmod`, `/usr/bin/dracut`, `/usr/bin/systemctl`), root
+`authorized_keys` SHA256, `/usr/bin/python3`
 hash; current authoritative addresses from IQ (f3 `10.20.0.133` and Rocky
 `10.20.0.123` were used on 2026-11-08) with independently verified host-key pins.
 
@@ -171,7 +174,14 @@ does **not** set the one-shot `next_entry`: an installed but unselected kernel
 cannot be booted by an abort. Selection happens in Phase 5, immediately before
 the stop (see [Boot selection and recovery](#boot-selection-and-recovery)).
 
-- Machine: Rocky (root over pinned SSH). **GAP G5** (no script yet). Intended steps:
+- Machine: Rocky (root over pinned SSH). G5 implemented (r34):
+  [`tools/lab/retained9p/rocky_kernel.py`](../../tools/lab/retained9p/README.md#rocky-test-kernel-zq3-g5).
+  Phase 0 runs `rocky_kernel.py plan` on the workstation (package checked
+  against the pinned manifest, targets derived, build IDs of `vmlinux` and
+  each module recorded); the plan, the script and the package's `linux/`
+  files are staged on Rocky, then
+  `/usr/bin/python3 -I -B rocky_kernel.py install --plan … --plan-sha256 …
+  --state … --stage …` does steps 1-4 with a durable intent/result journal:
   1. Copy `bzImage` to `/boot/vmlinuz-6.1.190-hfs-xz3`, `System.map` and
      `config` beside it; the five modules plus `modules.order`,
      `modules.builtin`, `modules.builtin.modinfo` into
@@ -186,15 +196,21 @@ the stop (see [Boot selection and recovery](#boot-selection-and-recovery)).
      `saved_entry` is unchanged and `next_entry` is still **empty**, and that
      `grubby --default-kernel` is still `5.14.0-687.66.1.el9_8.x86_64` (or the
      fresh Phase 1 value).
-  5. Write `/etc/homelabfs/installed-admission-v1.json` from the actual
-     installed kernel/module hashes and build IDs (closed schema in
-     `internal/controlledruntime/README.md`); record its SHA256. **GAP G5**: no
-     generator exists.
+  5. *Moved to Phase 8:* `/etc/homelabfs/installed-admission-v1.json` cannot
+     be written here. The observer probe requires its module set to **equal**
+     `/proc/modules` and compares the running kernel's notes, and which of
+     the five modules load is only known in the booted test kernel. So
+     `rocky_kernel.py admission` runs as root in the controlled Phase 8 boot,
+     before the first observation. It writes the closed manifest from the
+     installed file hashes and the running build IDs (each checked against
+     the plan and the installed `.ko`), and its SHA256 becomes the
+     `Observer.ManifestHash` in the enrollment request (G1 orchestrator).
   6. Stage `observer.py` and the run directory `/var/tmp/hfs-zq3-zq3-r1`
      (root, `0700`, with empty `m0`, `m1`) on Rocky's local disk.
 - Changes: new files in `/boot`, `/lib/modules/6.1.190-hfs-xz3`, one
-  non-default BLS entry, `/etc/homelabfs/`, the run directory. grubenv is
-  unchanged.
+  non-default BLS entry, the run directory and the root-private G5 state
+  directory (`pre.json`, `install.json`, `journal.jsonl`). grubenv is
+  unchanged. `/etc/homelabfs/` is written only in Phase 8 (step 5).
 - Bounds: `/boot` must keep at least the Phase 1 headroom minus kernel+initramfs
   size (expected < 100 MiB).
 - Evidence: file hashes, BLS entry text, `grub2-editenv list` before/after,
@@ -250,7 +266,9 @@ which an abort leaves an unconsumed `next_entry` is as short as possible.
    `zroot/bhyve/rocky` recorded (disk-level reference only; no manual snapshot
    and no automatic rollback).
 2. Rocky: `grub2-reboot <entry id recorded in Phase 3>`; verify `next_entry`
-   names it, `saved_entry` and `grubby --default-kernel` unchanged.
+   names it, `saved_entry` and `grubby --default-kernel` unchanged. Entry
+   point: `rocky_kernel.py select` (refuses unless the installed bytes and
+   BLS entry still match the install record; any failure runs U1 at once).
 3. f3, immediately after step 2: `tools/lab/vms.sh --approved-action stop-rocky`
    (clean ACPI `vm stop`, waits, never forces). Then verify `vm list` shows
    Rocky Stopped, no `bhyve: rocky` process, no `/dev/vmm/rocky`, its tap gone.
@@ -425,15 +443,23 @@ one-shot entry is consumed by the first boot that reaches GRUB, whatever kernel
 that boot then runs. The 2026-10-25 9p run used the same `grub2-reboot`
 mechanism with the ELRepo kernel and Rocky returned to its stock default.
 
+Entry points (G5, implemented in r34): `rocky_kernel.py cancel` (U1),
+`remove` (U2), `check --expect test|stock|any` (U3 step 3, Phase 11 step 2,
+Phase 12 step 2) and `reboot-to-stock` (U3 step 4). A journal intent without
+a result blocks every later command except `cancel`, until root inspects and
+records it with `reconcile`.
+
 - **U1, cancel the one-shot (Rocky running):** `grub2-editenv - unset
   next_entry`; verify `next_entry` empty, `saved_entry` and `grubby
   --default-kernel` unchanged. Mandatory for any failure before Rocky is stopped
   once Phase 5 step 2 has run.
-- **U2, remove the custom kernel (Rocky running, stock kernel or test kernel):**
+- **U2, remove the custom kernel (Rocky running its stock kernel):**
   `grubby --remove-kernel=/boot/vmlinuz-6.1.190-hfs-xz3`; remove the copied
   `/boot` files, the initramfs, `/lib/modules/6.1.190-hfs-xz3` and
   `/etc/homelabfs/installed-admission-v1.json`; verify `grubby --info=ALL`
-  equals the pre-run listing. Never while running the test kernel itself.
+  equals the pre-run listing. Never while running the test kernel itself;
+  refused while `next_entry` is set (run U1 first) and, before deleting
+  anything, if the module tree holds anything the plan or depmod did not create.
 - **U3, recovery after Rocky stopped with `next_entry` still set** (aborts in
   Phases 5 step 3 to 8 before the controlled boot reached GRUB). There is no way
   to edit grubenv while Rocky is stopped without touching its disk from f3,
@@ -447,7 +473,10 @@ mechanism with the ELRepo kernel and Rocky returned to its stock default.
   3. Wait (bounded, 10 minutes) for pinned root SSH; record `uname -r`; verify
      `next_entry` empty and `saved_entry` unchanged.
   4. `systemctl reboot` (clean); verify Rocky comes back on the Phase 1 default
-     kernel; then U2 and the Phase 12 checks.
+     kernel; then U2 and the Phase 12 checks. `reboot-to-stock` requires a
+     passing `check --expect test` in the same boot and refuses in the
+     controlled Phase 8 boot (recognised by the admission manifest), which
+     ends with Phase 11's poweroff instead.
   - Alternative U3-b (also needs Paul's yes, a human at the console): during
     step 2, open the Rocky VNC console (`127.0.0.1:5900` on f3) and choose the
     stock entry in the GRUB menu. `next_entry` is already cleared at that point,
@@ -519,8 +548,12 @@ reviewed and pinned, and this plan is re-filled:
   contains only `hfs-controlled-runtime` (no `homelabfs node-init/volume-init`).
 - G4 Pinned direct bhyve argv reconstructed from the current launch facts, plus
   the tap/nmdm/UEFI-vars setup and post-exit cleanup script.
-- G5 Rocky kernel install/one-shot/removal script and the
-  `installed-admission-v1.json` generator.
+- G5 **Implemented (r34), locally tested only:** Rocky kernel
+  install/one-shot/removal script and the `installed-admission-v1.json`
+  generator, `tools/lab/retained9p/rocky_kernel.py` (`plan`, `install`,
+  `select`, `cancel`, `remove`, `check`, `reboot-to-stock`, `admission`).
+  Still to pin at run time: the script's SHA256, the filled plan and the
+  Rocky tool paths it assumes (Phase 1 records them).
 - G6 Observer key enrol/remove script (one line, hash-checked), and staging of
   `observer.py` and its pinned interpreter hash.
 - G7 Host correlator producing `homelabfs-retained9p-host-correlation/1`
