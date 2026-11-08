@@ -25,7 +25,7 @@ preparation used SSH, the lab, a VM, a mount or a private key.
 | Run ID | `zq3-r1` (guest/controller regex `[a-z0-9][a-z0-9-]{0,23}`); a retry gets a new ID |
 | Candidate | `/home/paul/tmp/claude/hfs-xz3-20261108b/package` (f44), manifest SHA256 `b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2`, source `defd974af3721614b1a52d24fd949822ef5cd735`, CGO daemon `174949c1…`; kernel and native parts reused byte-identically from the superseded `3f770a88…` (`e0cca0c`) candidate |
 | Quarantined, never installed | `7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b` (CGO-disabled daemon); the probe controller refuses it |
-| Daemon | `freebsd/hfs-controlled-runtime` `5359873799fa9ca28bb7aebc65449ceb839e07736c7d65eda1d6d6d6af2583a5` (native observer check passed on f3) |
+| Daemon | `freebsd/hfs-controlled-runtime` `174949c1ebf97d483d49e41f1ade7bce88f63013cb943be794276bb1ddd417a7` (f44; native observer check passed on f3) |
 | Patched bhyve (exporter) | `freebsd/bhyve` `36423b6d4f68dc1b05299b1c379a164035e7db5b06ca64b47f2a8571d823fb5c`; the system `/usr/sbin/bhyve` (`c54a6361…`) is never replaced |
 | Guest kernel | `6.1.190-hfs-xz3`: `linux/bzImage` `f40ee561…`, `linux/config` `d88b4c56…`, `System.map` `d5e915c5…`, five modules (`virtio_net`, `net_failover`, `failover`, `efivarfs`, `x86_pkg_temp_thermal`) with hashes in the package's `installation-proposal.json` |
 | Operator public key | `2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635` (built into the guest kernel config) |
@@ -453,7 +453,7 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
   The guard command is:
   `doas -n /usr/local/bin/python3.12 -I -B
   /var/tmp/hfs-validation-xz3/zq3-r1/bin/runtime-guard.py --run-dir
-  /var/tmp/hfs-validation-xz3/zq3-r1/guard --runtime-sha256 53598737…
+  /var/tmp/hfs-validation-xz3/zq3-r1/guard --runtime-sha256 174949c1…
   --vm-name hfs-zq3-r1 --disk-root /var/tmp/hfs-validation-xz3/zq3-r1
   --disk-root /var/tmp/hfs-fdescfs-windows/zq3-r1 --skip-path <native
   mountpoint from the run config> --

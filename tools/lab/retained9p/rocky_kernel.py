@@ -57,7 +57,9 @@ PHYSICAL_CONTRACT = "homelabfs-stop-adoption/1"
 ADMISSION_PATH = "/etc/homelabfs/installed-admission-v1.json"
 # Same pins as controller.py (this file is staged alone on Rocky, so it
 # cannot import them; a local test asserts they stay equal).
-# f44 rebuild (defd974); the e0cca0c candidate 3f770a88… is superseded.
+# f44 rebuild (defd974). The e0cca0c candidate is superseded: not defective,
+# but it cannot arm the d44 MKDIR-only lost reply, so it refuses distinctly.
+SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"}
 ADMITTED = {"b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2"}
 QUARANTINED = {"7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b"}
 HASH = re.compile(r"[0-9a-f]{64}\Z")
@@ -286,6 +288,8 @@ def check_plan_shape(plan):
     if not RUN_ID.fullmatch(plan["run_id"]) or \
             not RELEASE.fullmatch(plan["kernel_release"]):
         raise Refused("plan run ID/kernel release")
+    if plan["manifest_sha256"] in SUPERSEDED:
+        raise Refused("plan names the superseded xz3 candidate; use the f44 rebuild")
     if plan["manifest_sha256"] in QUARANTINED or plan["manifest_sha256"] not in ADMITTED:
         raise Refused("plan names a candidate manifest that is not admitted")
     stock = plan["stock_default_kernel"]
@@ -351,6 +355,8 @@ def stock_release(plan):
 
 
 def read_manifest(package, expected):
+    if expected in SUPERSEDED:
+        raise Refused("superseded xz3 candidate manifest; use the f44 rebuild")
     if expected in QUARANTINED or expected not in ADMITTED:
         raise Refused("candidate manifest is not admitted")
     raw = read_bounded(package / "manifest.json", JSON_LIMIT)

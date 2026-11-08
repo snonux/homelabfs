@@ -45,10 +45,10 @@ C9/evidence control (u24) and actual response-exposure lost-reply (v24) requirem
 Task r24 is now complete: source `c520332` refuses unsupported observation before
 launch effects, and its actual CGO daemon passed native read-only qualification.
 See [observer evidence](results/20261105-r24-observer/README.md). This qualifies
-those observer bytes only. On 2026-11-08 the final rebuilt xz3 daemon
-`53598737…` passed the same exact-byte native observer check (see the xz3
-evidence below); its f3-host descriptor execution still awaits the approved zq3
-fdescfs window. The old candidate remains unchanged.
+those observer bytes only. On 2026-11-08 the rebuilt xz3 daemon `53598737…`
+(now superseded) and then the f44 daemon `174949c1…` each passed the same
+exact-byte native observer check (see the xz3 evidence below); f3-host
+descriptor execution still awaits the approved zq3 fdescfs window. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
 any SSH. All old build proofs remain preserved, and no different digest alone
 establishes native eligibility. This preparation changes no runtime APIs.

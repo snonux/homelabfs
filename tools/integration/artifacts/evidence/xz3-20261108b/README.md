@@ -24,7 +24,8 @@ publication null.
   and ABI records with their inputs and licenses. `git diff e0cca0c defd974`
   is empty for `tools/integration/lib9p`, `tools/integration/linux9p` and every
   kernel and native recipe. Each file was checked against the earlier manifest
-  and the native first seal before reuse.
+  and the native first seal before reuse; [reused-files.json](reused-files.json)
+  lists all 136 with their hashes.
 - **Rebuilt:** the CGO daemon, from `defd974`; two forced builds produced
   identical bytes.
 - **Window artifacts:** rebuilt from `defd974` so the f3 host qualification
@@ -34,6 +35,9 @@ publication null.
 - **G3 init helper:** kept at `8c02b98f…` from `e0cca0c`. The non-test Go
   changes up to `defd974` are limited to the lost-reply fixture, the lifecycle
   client and the new prep packages, and no volume-format code changed.
+  `cmd/homelabfs` does import `internal/guestbridge`, so a rebuild from
+  `defd974` would differ in bytes, but only through the lost-reply fixture,
+  which `node-init`/`volume-init` never reach.
 
 ## Checks
 

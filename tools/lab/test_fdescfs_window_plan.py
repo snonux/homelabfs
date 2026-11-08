@@ -21,6 +21,8 @@ SPEC.loader.exec_module(FILLER)
 WINDOW = FILLER.WINDOW
 PINS = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/pins.json"
 RECORD = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/build-record.json"
+# Daemon of the admitted xz3 f44 candidate (b203799e, source defd974).
+ADMITTED_DAEMON_SHA256 = "174949c1ebf97d483d49e41f1ade7bce88f63013cb943be794276bb1ddd417a7"
 CONTROLLER_SHA = "c" * 64
 
 
@@ -75,6 +77,13 @@ class FillerTests(unittest.TestCase):
         pinned = self.pins["pinned"]
         self.assertTrue(record["reproducible"]["byte_identical"])
         self.assertTrue(record["toolchain_cross_check"]["equal"])
+        # The inspector daemon in the record must be the bytes the cross-check
+        # rebuilt and the candidate's admitted daemon; a stale artifact entry
+        # would otherwise pass because pins.json is compared with this record.
+        cross = record["toolchain_cross_check"]
+        self.assertEqual(artifacts["hfs-controlled-runtime"]["sha256"], cross["rebuilt_sha256"])
+        self.assertEqual(cross["rebuilt_sha256"], cross["candidate_manifest_sha256"])
+        self.assertEqual(cross["rebuilt_sha256"], ADMITTED_DAEMON_SHA256)
         self.assertEqual(pinned[self.pins["inspector"]], artifacts["hfs-controlled-runtime"]["sha256"])
         self.assertEqual(pinned[self.pins["namespace_helper"]], artifacts["fdescfs-namespace"]["sha256"])
         self.assertEqual(pinned[self.pins["qualification_test"]], artifacts["controlledruntime.test"]["sha256"])

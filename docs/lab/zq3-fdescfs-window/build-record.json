@@ -18,13 +18,13 @@
       "sha256": "a773f3ef506bec572fe777a269cffb958ce5e04925eb22f580bf40b9f434fe98"
     },
     "hfs-controlled-runtime": {
-      "bytes": 10744520,
+      "bytes": 10750096,
       "interpreter": "/libexec/ld-elf.so.1",
       "needed": [
         "libthr.so.3",
         "libc.so.7"
       ],
-      "sha256": "5359873799fa9ca28bb7aebc65449ceb839e07736c7d65eda1d6d6d6af2583a5"
+      "sha256": "174949c1ebf97d483d49e41f1ade7bce88f63013cb943be794276bb1ddd417a7"
     }
   },
   "captured_base_closure_sha256": {

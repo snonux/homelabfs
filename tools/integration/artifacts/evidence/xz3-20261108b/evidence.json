@@ -79,7 +79,7 @@
   },
   "init_helper": {
     "kept": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80 from e0cca0c",
-    "reason": "non-test Go changes e0cca0c..defd974 are limited to the lost-reply fixture, lifecycle client and new runtimeprep packages; no volume-format code changed"
+    "reason": "non-test Go changes e0cca0c..defd974 are limited to the lost-reply fixture, lifecycle client and new runtimeprep packages; no volume-format code changed; cmd/homelabfs does import internal/guestbridge, so a helper rebuilt from defd974 would have different bytes, but the only guestbridge change is the lost-reply fixture, which node-init/volume-init never reach"
   },
   "not_claimed": [
     "installed",
@@ -95,6 +95,7 @@
     "files": 136,
     "from_manifest": "3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
     "justification": "git diff e0cca0c..defd974 is empty for tools/integration/lib9p, tools/integration/linux9p and every kernel/native recipe; each reused file was hash-checked against the 3f770a88 manifest and the native first seal",
+    "list": "reused-files.json (136 paths with SHA256, identical in both packages)",
     "scope": "83 native FreeBSD files, 5 source-bundle files, Linux kernel/modules/config/clean-repro/abi records and Linux inputs/licenses"
   },
   "task": "f44",

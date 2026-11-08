@@ -411,6 +411,10 @@ class PlanTests(Rig):
         with mock.patch.object(rk, "QUARANTINED", {self.manifest_sha256}):
             with self.assertRaisesRegex(rk.Refused, "not admitted"):
                 build(self.manifest_sha256)
+        # A superseded candidate refuses with its own reason, even if admitted.
+        with mock.patch.object(rk, "SUPERSEDED", {self.manifest_sha256}):
+            with self.assertRaisesRegex(rk.Refused, "superseded"):
+                build(self.manifest_sha256)
         (self.stage / "linux/modules/net/core/failover.ko").write_bytes(b"tampered")
         with self.assertRaisesRegex(rk.Refused, "does not match manifest"):
             build(self.manifest_sha256)
@@ -843,6 +847,7 @@ class BoundaryTests(unittest.TestCase):
         controller = module("controller")
         self.assertEqual(rk.ADMITTED, controller.ADMITTED)
         self.assertEqual(rk.QUARANTINED, controller.QUARANTINED)
+        self.assertEqual(rk.SUPERSEDED, controller.SUPERSEDED)
 
     def test_no_default_changing_grub_call_exists(self):
         source = Path(rk.__file__).read_text()

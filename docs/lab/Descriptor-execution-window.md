@@ -185,9 +185,9 @@ ELF closure: [build record](zq3-fdescfs-window/build-record.json).
 
 | Artifact (staged under `/var/tmp/hfs-validation-xz3/zq3-r1/bin/`) | SHA256 | Bytes |
 |---|---|---|
-| `controlledruntime.test` (FreeBSD CGO test binary) | `9e046c2015b2d12c8fc42a89b06e7eaf5bc93876ece018917e3c67db35249cd8` | 13,366,616 |
+| `controlledruntime.test` (FreeBSD CGO test binary) | `9e046c2015b2d12c8fc42a89b06e7eaf5bc93876ece018917e3c67db35249cd8` | 13,378,320 |
 | `fdescfs-namespace` (helper, `-std=c11 -Wall -Wextra -Werror -O1 -g`) | `a773f3ef506bec572fe777a269cffb958ce5e04925eb22f580bf40b9f434fe98` | 22,576 |
-| `hfs-controlled-runtime` (inspector, equals the candidate manifest) | `5359873799fa9ca28bb7aebc65449ceb839e07736c7d65eda1d6d6d6af2583a5` | 10,744,520 |
+| `hfs-controlled-runtime` (inspector, equals the candidate manifest) | `174949c1ebf97d483d49e41f1ade7bce88f63013cb943be794276bb1ddd417a7` | 10,750,096 |
 | `fdescfs-window.py` (controller) | SHA256 of the repository file at the reviewed commit | |
 
 All three binaries load through `/libexec/ld-elf.so.1` and need base
