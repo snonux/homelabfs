@@ -42,8 +42,12 @@ the selected FreeBSD host through the pinned `/usr/local/bin/python3.12 -I -B`
 interpreter, with user-site/environment imports isolated and bytecode writes
 disabled. Actual read-only root facts on 2026-11-05 established
 f3 kernel/base/userland `15.1-RELEASE-p2`, with fdescfs absent from both the module
-and VFS registries. Its existing root-owned mode0444 stock module is47,696bytes,
+and VFS registries. Its existing root-owned mode 0444 stock module is 47,696 bytes,
 SHA256 `847cd1f2dc47db32d56dcf5352b65bad2b174b339e8aa89a8d114299311856d2`.
+The read-only facts of 2026-11-08 18:10 UTC confirm the same kernel
+(`FreeBSD 15.1-RELEASE-p2 releng/15.1-n283596-aadd58dddcbc GENERIC`), the same
+module SHA256, fdescfs and fusefs not loaded and no fuse/fdescfs mounts
+(see [filled f3 plan](#filled-f3-plan-for-zq3-r1-2026-11-08)).
 The proposed window explicitly includes one pinned
 `/sbin/kldload /boot/kernel/fdescfs.ko` only if still absent, and **retains that
 new module after normally restoring the mount**. That kernel state change must
@@ -160,7 +164,90 @@ changed FSIDs/profiles and restoration mismatches stop and retain resources.
 No trap automatically unmounts uncertain resources or removes failed evidence.
 
 This document and script are preparation for the **f3 host** window, not an
-approved filled host setup plan; no f3 host `/dev/fd` mount has been made.
+approved host setup; no f3 host `/dev/fd` mount has been made. The section
+below fills everything that can be pinned offline for the zq3 run.
+
+## Filled f3 plan for zq3-r1 (2026-11-08)
+
+Prepared offline by task v34 (zq3 gap G12) from source `e0cca0c`. Nothing used
+SSH, the lab, a VM, a mount or a module. It grants no authority: the window is
+zq3 approval class A5 and still needs Paul's explicit yes at run time.
+
+**Rebuilt artifacts.** [`build-fdescfs-window-artifacts.sh`](../../tools/lab/build-fdescfs-window-artifacts.sh)
+exports `e0cca0c` as a source archive and builds each artifact twice with
+fresh Go caches, using the pinned clang cross wrapper, the captured f3 sysroot
+(`c16fdc1c…`) and the candidate daemon's Go environment. Both builds were
+byte-identical. As a toolchain cross-check the same recipe reproduced the
+candidate daemon exactly. Exact commands, environment, toolchain hashes and
+ELF closure: [build record](zq3-fdescfs-window/build-record.json).
+
+| Artifact (staged under `/var/tmp/hfs-validation-xz3/zq3-r1/bin/`) | SHA256 | Bytes |
+|---|---|---|
+| `controlledruntime.test` (FreeBSD CGO test binary) | `415fdaa6b0e83605fe781dae4a323dcda6de0645707bd3ec260eb9fc5849096d` | 13,366,616 |
+| `fdescfs-namespace` (helper, `-std=c11 -Wall -Wextra -Werror -O1 -g`) | `ec2d56e48bd747dcfb41c0d3e75c57a0e955afaf64141ea5066d606cf454221c` | 22,576 |
+| `hfs-controlled-runtime` (inspector, equals the candidate manifest) | `5359873799fa9ca28bb7aebc65449ceb839e07736c7d65eda1d6d6d6af2583a5` | 10,744,520 |
+| `fdescfs-window.py` (controller) | SHA256 of the repository file at the reviewed commit | |
+
+All three binaries need only `/libexec/ld-elf.so.1` and base `libc.so.7`
+(the Go binaries also `libthr.so.3`, which needs `libsys.so.7`). Those hashes,
+taken from the f3 sysroot capture, are pinned too and re-verified on f3 by the
+controller at setup.
+
+**Pins and filler.** [`pins.json`](zq3-fdescfs-window/pins.json) holds every
+reviewed value: run ID `zq3-r1`, window directory, staged paths, the hashes
+above, the stock module `847cd1f2…`, the expected host identity
+(`f3.lan.buetow.org`, `15.1-RELEASE-p2` kernel and userland), fdescfs absent,
+`/dev/fd` devfs and unsupported, and which modules must or must not be loaded.
+The controller compares the plan's `before` with fresh `facts` output and
+refuses an expiry more than one hour ahead, so the exact plan JSON can only be
+produced at run time. [`fdescfs-window-plan.py`](../../tools/lab/fdescfs-window-plan.py)
+does that on the workstation: it refuses unless the fresh facts and host
+hashes match every pin, then writes `plan.json` and `fill-record.json` and
+prints the plan SHA256 for review. Its tests feed the filled plan to the
+actual controller `validate()`.
+
+**Facts the orchestrator collects read-only on f3** (root over pinned SSH,
+after staging, at the start of Phase 4):
+
+1. `sha256 -r` of `/usr/local/bin/python3.12`, `/boot/kernel/kernel`,
+   `/sbin/mount`, `/sbin/kldload`, `/sbin/kldstat`, `/sbin/sysctl`,
+   `/bin/freebsd-version`, `/bin/hostname`, `/boot/kernel/fdescfs.ko`,
+   `/libexec/ld-elf.so.1`, `/lib/libc.so.7`, `/lib/libthr.so.3`,
+   `/lib/libsys.so.7` and the four staged files above.
+2. `ldd /usr/local/bin/python3.12` and `sha256 -r` of each library it lists
+   (optional extra pins; the filler accepts them only under `/lib`, `/usr/lib`,
+   `/usr/local/lib` or `/libexec`).
+3. `stat -f '%Sp %Su %Sg %N'` of `/usr/local/bin/python3.12` and its
+   ancestors. The controller opens every pinned file with `O_NOFOLLOW` and
+   requires root-owned, non-writable files under root-controlled directories,
+   so a symlinked or writable interpreter path refuses.
+4. `/usr/local/bin/python3.12 -I -B STAGED/fdescfs-window.py facts --inspector
+   STAGED/hfs-controlled-runtime` stdout (read-only; creates no run).
+
+Feed items 1, 2 and 4 to the filler with an expiry under one hour, review the
+printed hash, then run `setup`, `qualify` and `restore` with exactly that plan
+and hash. `qualify` runs under the bounded native guard's host profile
+(512 MiB aggregate RSS, one CPU, Rocky pinned, because Rocky still runs during
+Phase 4), staged together with its `runner_process.py` in a fresh 0700 root
+as `native-test-drive.py` does. The guard imports that sibling module, so it
+runs with `-B` but without `-I` (which would drop the script directory from
+the import path); the controller below keeps `-I -B`:
+
+```sh
+doas -n /usr/local/bin/python3.12 -B /var/tmp/hfs-20261108-zq3r1-fdq/native-test-guard.py \
+  --root /var/tmp/hfs-20261108-zq3r1-fdq --stage qualify \
+  --local-reserved-bytes 4294967296 --profile host --rocky-pid PID \
+  --rocky-birth 'LSTART' --rocky-config-sha256 HASH --max-seconds 60 -- \
+  /usr/local/bin/python3.12 -I -B /var/tmp/hfs-validation-xz3/zq3-r1/bin/fdescfs-window.py \
+  qualify --inspector /var/tmp/hfs-validation-xz3/zq3-r1/bin/hfs-controlled-runtime \
+  --plan PLAN --plan-sha256 PLAN_SHA256 --directory /var/tmp/hfs-fdescfs-windows/zq3-r1
+```
+
+`setup` and `restore` run directly: the controller bounds each of their
+commands to 10 s, and the native guard's process-group TERM/KILL must never
+interrupt a mount or unmount dispatch. The pre-setup
+`TestDescriptorExecNativeUnsupported` negative uses the same guard with the
+staged test binary as its command.
 
 ## Qualification result (2026-11-08)
 

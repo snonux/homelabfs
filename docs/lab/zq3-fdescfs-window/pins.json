@@ -1,0 +1,39 @@
+{
+  "version": "homelabfs-fdescfs-window-pins/1",
+  "run_id": "zq3-r1",
+  "directory": "/var/tmp/hfs-fdescfs-windows/zq3-r1",
+  "inspector": "/var/tmp/hfs-validation-xz3/zq3-r1/bin/hfs-controlled-runtime",
+  "namespace_helper": "/var/tmp/hfs-validation-xz3/zq3-r1/bin/fdescfs-namespace",
+  "qualification_test": "/var/tmp/hfs-validation-xz3/zq3-r1/bin/controlledruntime.test",
+  "controller": "/var/tmp/hfs-validation-xz3/zq3-r1/bin/fdescfs-window.py",
+  "module_policy": "preserve-existing-or-retain-new",
+  "pinned": {
+    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/hfs-controlled-runtime": "5359873799fa9ca28bb7aebc65449ceb839e07736c7d65eda1d6d6d6af2583a5",
+    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/fdescfs-namespace": "ec2d56e48bd747dcfb41c0d3e75c57a0e955afaf64141ea5066d606cf454221c",
+    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/controlledruntime.test": "415fdaa6b0e83605fe781dae4a323dcda6de0645707bd3ec260eb9fc5849096d",
+    "/boot/kernel/fdescfs.ko": "847cd1f2dc47db32d56dcf5352b65bad2b174b339e8aa89a8d114299311856d2",
+    "/libexec/ld-elf.so.1": "305a0b7947a890c653e32a1ed9fc50c100416658dc422f2ca8de9ebcda9ddb6f",
+    "/lib/libc.so.7": "95b6597787b89cec982f44bee5e9af2cf0cd5e5258c1a20ae9cadf8f0421ea5b",
+    "/lib/libthr.so.3": "0dec1f746d9415c86dff7d719e6b55208e5e007bc1543ddd17e1e8e810c05537",
+    "/lib/libsys.so.7": "9f8b058e0acf4136efb54817ffc4403535c50d026d385c3209390b0ec9ceb239"
+  },
+  "collect": [
+    "/usr/local/bin/python3.12",
+    "/boot/kernel/kernel",
+    "/sbin/mount",
+    "/sbin/kldload",
+    "/sbin/kldstat",
+    "/sbin/sysctl",
+    "/bin/freebsd-version",
+    "/bin/hostname"
+  ],
+  "expected": {
+    "hostname": "f3.lan.buetow.org",
+    "base": "15.1-RELEASE-p2\n15.1-RELEASE-p2\n",
+    "kernel_prefix": "FreeBSD 15.1-RELEASE-p2 releng/15.1-n283596-aadd58dddcbc GENERIC",
+    "fdescfs_module": "absent",
+    "descriptor_mount_type": "devfs",
+    "modules_required": ["kernel", "vmm.ko", "nmdm.ko", "if_bridge.ko"],
+    "modules_forbidden": ["fdescfs.ko", "fusefs.ko"]
+  }
+}
