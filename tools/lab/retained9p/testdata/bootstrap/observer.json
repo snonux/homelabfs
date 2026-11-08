@@ -1,0 +1,10 @@
+{
+  "Version": "homelabfs-runtime-observer-input/1",
+  "SSH": "/usr/bin/ssh",
+  "KnownHosts": "/var/tmp/run/rocky-known_hosts",
+  "Identity": "/var/tmp/run/observer/id_ed25519",
+  "Host": "10.20.0.123",
+  "SSHSHA256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+  "KnownHostsSHA256": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+  "ManifestSHA256": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+}

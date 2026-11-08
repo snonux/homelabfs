@@ -1,0 +1,18 @@
+{
+  "Provision": "/home/paul/tmp/claude/rp1360094917/enrolled/provision.json",
+  "OperatorKey": "/home/paul/tmp/claude/rp1360094917/operator.pem",
+  "GroupID": "ca499e08-671d-466e-8af9-f328610892a0",
+  "Controller": "9dbadf09-54a7-47e4-ac1b-877e2e0502db",
+  "Keys": [
+    {
+      "Session": "42593ba3-a425-4d5f-b511-c5f1c4b537db",
+      "Host": "/home/paul/tmp/claude/rp1360094917/bundle/keys/host-0.key",
+      "Guest": "/home/paul/tmp/claude/rp1360094917/bundle/keys/guest-0.key"
+    },
+    {
+      "Session": "dcf66640-e1cb-4eb8-8090-658528f62912",
+      "Host": "/home/paul/tmp/claude/rp1360094917/bundle/keys/host-1.key",
+      "Guest": "/home/paul/tmp/claude/rp1360094917/bundle/keys/guest-1.key"
+    }
+  ]
+}

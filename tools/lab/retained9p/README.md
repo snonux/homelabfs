@@ -670,6 +670,163 @@ SELinux labels of the copied files (they inherit the `/boot` and
 `/lib/modules` defaults; Phase 3 evidence should include `ls -Z`), and
 whether the hostonly initramfs boots under bhyve (risk R2).
 
+## Phase 8 bootstrap orchestrator (zq3 G1)
+
+[`bootstrap.py`](bootstrap.py) drives the run plan's Phase 8 from the
+workstation, inside `bootstrap_seconds` (at most 120) from launch to READY.
+**It has only run against simulated f3, Rocky, runtime and operator.**
+Running it needs Paul's explicit approval of the filled plan (A3, A4, A7);
+the plan pin is no authority.
+
+Python, like the other lab orchestration (`controller.py`, `runtime-guard.py`,
+`runtime-volume-init.py`, `directlaunch`): it composes existing pieces over
+SSH and subprocesses, reuses the controller's reviewed pins and durable-file
+primitives, and keeps the Go tools (`hfs-runtime-prep`,
+`hfs-retained9p-operator`) and the runtime unchanged. The order is the code's
+(`runRuntimeWithOS`/`admitOperatorEnrollment` in
+`internal/controlledruntime/driver_phases.go`):
+
+| Step | Kind | What happens |
+|---|---|---|
+| `host-preflight` | read | f3: guard script and runtime match their pins; guard run dir, OwnerDirectory and EnrollmentFile absent; handoff directory root-private |
+| `launch` | launch | `doas -n python3.12 -I -B runtime-guard.py … -- hfs-controlled-runtime --config …` in one long-lived f3 SSH session, detached from this terminal; the 120 s start here |
+| `proposal` | read | runtime stdout's first record is `AWAITING_OPERATOR_ENROLLMENT` naming `OwnerDirectory/proposal.json`; a private copy of its bytes |
+| `guest-ready` | read | Rocky answers SSH, runs the plan's test kernel release (GRUB consumed `next_entry`), boot ID |
+| `admission` | remote | one SSH round trip: pinned `rocky_kernel.py admission`, then manifest SHA256 readback, boot ID, provider nonce from `admission_v1`, `virtioN` of each share tag |
+| `enroll-request` | local | `observer.json` with that manifest SHA256, then pinned `hfs-runtime-prep enroll-request`; the request must carry the measured values |
+| `signed-enrollment` | read | prints the `hfs-retained9p-operator enroll` command and waits for its fresh output directory |
+| `provision` | remote | one write of `provision.json` to `/sys/kernel/homelabfs/provision_v1` |
+| `enrollment-handoff` | remote | `enrollment.json` atomically to the EnrollmentFile (temporary file, rename, one link, `0600`); the runtime then runs `ObserveAdmission` |
+| `awaiting-bind` | read | second record `AWAITING_GUEST_BIND` (controller, provision hash) |
+| `bind-request` | local | `hfs-runtime-prep bind-request` (recomputes the provision hash) |
+| `signed-bind` | read | prints the `hfs-retained9p-operator bind` command and waits |
+| `bind` | remote | one write of `bind.json` to `/sys/kernel/homelabfs/bind_v1` |
+| `mount-0`, `mount-1` | remote | `mount -t 9p -o trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,msize=65536 hfsN /var/tmp/hfs-zq3-RUN/mN`, checked in `/proc/self/mountinfo` |
+| `ready` | read | third record `READY`, `CONTROLLED_LOCAL`, two domains, control binding |
+
+```
+python3 -I -B bootstrap.py check --plan PLAN --plan-sha256 SHA
+python3 -I -B bootstrap.py run --plan PLAN --plan-sha256 SHA --output NEW_DIR
+python3 -I -B bootstrap.py status --output DIR
+```
+
+**Plan.** Closed JSON (`homelabfs-zq3-bootstrap-plan/1`, `PLAN_SHAPE` in the
+source): run ID, `bootstrap_seconds` (30-120, and equal to the bundle runtime
+config's `BootstrapSeconds`), `remote_sha256` (the reviewed
+`bootstrap_remote.py`), the signer path (only printed),
+SSH executable and both pin files (the G8 targets and fingerprints, exactly
+as the controller checks them), f3 `doas`/python, Rocky python, the guard
+script/run dir/VM name/disk roots/skip paths, runtime executable/pin/config/
+OwnerDirectory/EnrollmentFile, the staged `rocky_kernel.py` and its plan/
+state/test kernel release, `hfs-runtime-prep` and the bundle's
+`request-template.json` (pinned; its device tags must be `hfs0`, `hfs1`) and
+`runtime-config.json` (pinned; only `BootstrapSeconds`, `OwnerDirectory` and
+`EnrollmentFile` are read and compared with the plan, the host receipt keys it
+also holds are neither kept nor logged),
+the observer fields of `ObserverInput` except the manifest hash, and the two
+mounts, which must be `hfsN` on `/var/tmp/hfs-zq3-RUN/mN` (what
+`observer_key.py stage` creates). Every value that reaches a remote command
+line is a plain path, hash or token (`[A-Za-z0-9_./=:,+-]`), so no shell
+quoting is involved. `check` and `run` verify every local pin before any
+contact: SSH, both host-key files, `hfs-runtime-prep`, the template and the
+runtime config (both private files of this user, as `hfs-runtime-prep`
+requires), and `bootstrap_remote.py`. A local misconfiguration therefore
+refuses before the launch can consume Rocky's one-shot boot.
+
+**Prerequisite on f3.** The remote half runs as `doas -n
+/usr/local/bin/python3.12 -I -B -c "LOADER" …`. A doas rule that permits this
+is effectively unrestricted root for `paul` on f3 (Python with `-c` runs any
+code), whatever the loader checks. Grant it only for the run window and
+remove it afterwards, or accept it explicitly.
+
+**Operator signing (A7).** The orchestrator never reads the operator key
+and never runs the signer. At each signing point it prints one JSON line
+with the exact command, for example `hfs-retained9p-operator enroll --request
+OUT/work/enroll-request.json --output OUT/work/signer-enrollment`, and waits
+for that fresh directory to hold exactly the expected files, private to the
+same user, with identical bytes on two polls 0.25 s apart. It then checks
+the signed files against what it measured: `enrollment.json` is a
+`RuntimeEnrollment` whose `Provision` equals `provision.json`, whose
+`Observer` equals the request's (so `Observer.ManifestHash` is the measured
+manifest SHA256), whose `Authorization.Enrollment` is the runtime's exact
+proposal with only the empty `guest_boot` filled, and whose provision payload
+names the measured boot ID and provider nonce, and whose single provision
+group's local mounts name, in domain order, the request's sessions and tags
+and the measured `virtioN` devices; `bind.json`'s payload must be
+exactly (boot ID, provider nonce, the runtime's provision hash and
+controller, the proposal's group ID). Any extra file or mismatch fails the
+step before anything is written to the guest. The operator runs the signer
+on the workstation as the same user; both signings count against the 120 s.
+
+**Durability and uncertainty.** `OUT/journal.jsonl` gets a durable intent
+before every step and a result after it (`ok`, `failed`, `uncertain`), in the
+fixed step order; out-of-order steps, steps after a non-ok result and steps
+while an intent is open refuse. A mutating call whose outcome was not observed
+(an SSH timeout or lost transport during a sysfs write, a remote exit 1, an
+overflow, malformed output) ends `uncertain`. The run stops there; nothing
+dependent runs, and nothing is replayed: there is no resume and `run`
+refuses an existing output directory. A Ctrl-C or kill leaves an open intent,
+which `status` reports as uncertain. Only read-only polls are retried. A
+mutating step is not dispatched with less than 3 s left, `admission` not with
+less than 40 s (`udevadm settle` may take 30 s) and a mount not with less than
+10 s; it fails undispatched instead. A deadline stops dependent steps; the orchestrator never signals, kills,
+unmounts or deletes anything remote. After a failure the runtime's own
+`BootstrapSeconds` fence it and the guard writes its receipt. Every call's
+arguments, exit status and streams are kept in `OUT/calls/`, the signed and
+request files in `OUT/work/`, the guard transport's streams beside them, and
+`OUT/summary.json` at the end (`acceptance: false`).
+
+**Remote half.** [`bootstrap_remote.py`](bootstrap_remote.py) holds the fixed
+f3/Rocky actions (Python 3.9 compatible). It is not staged: each SSH command
+is `PYTHON -I -B -c "LOADER" ACTION ARGS`, where the loader reads exactly the
+helper's length from stdin, compares its SHA256 and only then executes it
+(exit 97 otherwise). That hash comes from the orchestrator on the same
+command line, so the loader only proves that f3 and Rocky run exactly the
+bytes the orchestrator sent, intact; it does not say which bytes are
+reviewed. That is the plan's `remote_sha256`: the orchestrator refuses before
+any contact unless its `bootstrap_remote.py` has that SHA256, and sends only
+those checked bytes. A payload follows on the same stdin and is checked against
+`--size`/`--sha256`. Exit 0 means done, 2 a known state (with `changed`), 1
+uncertain. Remote children (`rocky_kernel.py`, `mount`) are never killed on a
+deadline; the action reports uncertain instead.
+
+**Guard transport.** The guard runs in the foreground of one f3 SSH session
+started in its own session with stdin `/dev/null` and streams to files, so a
+Ctrl-C of the orchestrator does not reach it and it outlives the
+orchestrator (READY returns; Phases 9-11 follow). Losing that SSH session
+does **not** stop the guard: the session has no tty (`-T`), so sshd sends no
+SIGHUP, and the guard and the runtime keep running on f3 under the guard's
+own bounds (3600 s, RSS, disk, memory, VM context). The orchestrator only
+loses its view: it stops all dependent steps and records the transport loss
+in the step result and in `summary.json` (`guard_transport_note`). The
+operator then reconnects to f3 and inspects the guard run directory; the
+runtime's own bootstrap timeout or the guard limits end the runtime. The
+same message is recorded when the guard itself finished (its `receipt.json`
+says why), because the local SSH exit cannot tell the two apart. Keepalive
+is 15 s × 8 to ride out short stalls. The orchestrator never signals the
+transport; `status` reports whether its local PID still exists.
+
+**Local evidence.** `test_bootstrap.py` runs the whole sequence and its
+negatives against a simulated world: guard refusal, guard transport exit,
+breach, timeout mid-step (uncertain, dependents not run, no replay), killed
+orchestrator, remote exit 1/2/97, wrong manifest hash, changed boot, wrong
+kernel, request without the measured manifest, changed prep binary, signer
+manifest/provision/proposal/bind mismatches, provision local mounts not
+naming the measured devices, a mismatched bind request, extra files, the
+deadline during the signer wait, no dispatch close to the deadline,
+admission not dispatched without time for `udevadm settle`, the recorded
+guard transport loss, plan refusals (remote, prep and config pins, a
+non-private template, `BootstrapSeconds` and path mismatches), runtime stage
+order violations, journal order, plan refusals, the SSH argv and pins, the
+loader through `/bin/sh` and `bash` with tampered bytes, bounded local
+children. The signed files it checks are real signer output from
+`internal/runtimeprep/bootstrap_fixture_test.go` (throwaway keys, no key
+files exported; regenerate with `HFS_BOOTSTRAP_FIXTURE_DIR=NEW_DIR go test
+-run TestExportBootstrapFixture ./internal/runtimeprep`).
+`test_bootstrap_remote.py` covers every remote action against a temporary
+root. Not covered: real SSH/doas, FreeBSD rename semantics, Rocky's sysfs
+and 9p mount behaviour, the runtime itself and real timing of the 120 s.
+
 ## Required work before an executable exact plan
 
 Read [the concrete gap and installation assessment](../../../docs/lab/Real-daemon-9p-base-gate.md).
