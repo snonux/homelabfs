@@ -1,0 +1,5 @@
+destination: 10.20.0.0
+  interface: re0
+	inet 10.20.0.133 netmask 0xffffff00 broadcast 10.20.0.255
+	inet 192.168.1.133 netmask 0xffffff00 broadcast 192.168.1.255
+	inet 10.98.0.133 netmask 0xffffff00 broadcast 10.98.0.255

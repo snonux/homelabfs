@@ -1,0 +1,17 @@
+# /usr/local/etc/doas.conf on the f-hosts f0-f3, installed by gonf (task
+# freebsd_base_doas, gonf/freebsd/base.go) from
+# f3s/freebsd-hosts/base/doas.conf: edit it there, not on the host. gonf
+# validates every candidate with "doas -C" before it replaces the live file.
+#
+# doas applies the LAST matching rule.
+# Members of wheel (paul) act as root without a password. gonf itself
+# deploys as paul with "doas -n", so this rule must stay.
+permit nopass :wheel
+# f3sctl power agent: only the verbs that genuinely need root. The agent
+# account, its key and the sshd Match block are gonf task freebsd_f3sctl_*
+# (gonf/freebsd/f3sctl.go); these rules stay here, in the one owner of
+# doas.conf.
+permit nopass f3sctl as root cmd /usr/local/bin/f3sctl args agent-root poweroff
+permit nopass f3sctl as root cmd /usr/local/bin/f3sctl args agent-root zusb-unload
+permit nopass f3sctl as root cmd /usr/local/bin/f3sctl args agent-root probe
+permit nopass f3sctl as root cmd /usr/local/bin/f3sctl args agent-root carp-quiesce

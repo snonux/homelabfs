@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "<stdin>", line 568, in <module>
+  File "<stdin>", line 556, in main
+  File "<stdin>", line 540, in execute
+  File "<stdin>", line 251, in collect_facts
+  File "<stdin>", line 159, in digest
+  File "<stdin>", line 150, in open_checked
+OSError: [Errno 31] Too many links: '/usr/local/share/uefi-firmware/BHYVE_UEFI.fd'
