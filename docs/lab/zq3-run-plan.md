@@ -117,6 +117,7 @@ unmounts of run-owned mounts.
 | Total critical window | 60 minutes from runtime start to runtime exit; only the probe controller enforces it (refuses commands 3600 s after its run started); the runtime has no enforced total deadline yet (G13) | proposal `seconds: 3600`; controller `RUN_WINDOW` |
 | Restoration budget | 15 minutes after runtime exit (estimate, not enforced) | this plan |
 | Host runtime envelope | 6 GiB (signed), plus 6 GiB guest and 3 GiB host reserve = 15 GiB of 15.7 GiB physical | installation proposal |
+| Runtime admission accounting | `Budget.HostBytes` at most 4 GiB (the admission package's aggregate pool ceiling), inside the 6 GiB physical envelope; the example spec uses 4 GiB with a 1 GiB service share | `admission/budget.go`, `runtimeprep` |
 | Guest workload ceiling | 2 GiB signed provider/workload ceiling; logical canary 4 MiB | proposal |
 | Guest kdump reservation | the copied default arguments carry `crashkernel=…,2G-64G:256M,…`, i.e. 256 MiB of the 6 GiB VM under a kernel that honours it. The test kernel's config has `CONFIG_KEXEC`, `CONFIG_KEXEC_FILE` and `CONFIG_CRASH_DUMP` unset, so it should reserve nothing and `kdump.service` should fail in that boot (an expected failed unit); budget the 256 MiB anyway until Phase 8 confirms it | Phase 1 kdump fact, package `linux/config` |
 | Disk | host run 4 GiB, guest run 2 GiB; keep 8 GiB unreserved host and 2 GiB guest free | proposal |
@@ -151,12 +152,26 @@ or vmm context could still exist.
   `tools/lab/test_fdescfs_window.py`, artifact tests, `go test` for touched
   packages, shellcheck).
 - Changes: workstation files only.
-- **GAP**: run config/enrollment generator (G2), filled window plan (G12).
+- **GAP**: filled window plan (G12).
   Controller target addresses and host-key pins (G8) are implemented: the
-  batch plan's `host`/`guest` entries name the pin files above. The bhyve argv
-  record comes from `tools/lab/directlaunch/argv.py generate`, run on the
-  workstation after the Phase 1 launch facts exist and before Phase 2 staging
-  (G4); G2 must copy its `args` verbatim, and `argv.py verify` checks the config.
+  batch plan's `host`/`guest` entries name the pin files above. G2 is
+  implemented (s34, pending review/pinning,
+  [runtimeprep](../../internal/runtimeprep/README.md)); the G3 helper is built
+  with `tools/lab/build-init-helper.sh`. The G2 sessions must exist before the
+  G4 argv record, so the order is, on the workstation after the Phase 1 launch
+  facts exist and before Phase 2 staging:
+  1. `hfs-runtime-prep generate`: its spec `Exporter.Args` is the G4
+     controlled argv (Phase 7) with `{{session:0}}`/`{{session:1}}` as the
+     hfs0/hfs1 `hfs-controller` values. It draws the sessions and writes the
+     run config, keys, G3 plan and request template.
+  2. `tools/lab/directlaunch/argv.py generate --session <hfs0> --session
+     <hfs1>` with the two sessions from `generation.json` (G4).
+  3. `argv.py verify --runtime-config <bundle>/runtime-config.json` and
+     `hfs-runtime-prep check-argv --bundle … --record … --record-sha256 …`
+     must both pass: same args element by element and in order, same exporter
+     path/digest, same run ID and the same session for each share tag. Any
+     difference means regenerating from a corrected spec (new sessions, then a
+     new record), never editing the config or the record.
 - Evidence: hashes of every staged byte, plan files and their SHA256.
 - Failure: fix locally; nothing remote has happened.
 
@@ -187,10 +202,12 @@ or vmm context could still exist.
 - Machine: f3. Actions: create `/var/tmp/hfs-validation-xz3/zq3-r1` root-owned
   `0700`; copy into its `bin/` only `freebsd/hfs-controlled-runtime`, `freebsd/bhyve`,
   `freebsd/bhyve-slirp-helper` (if the argv needs it), the `controlledruntime.test`
-  binary and `fdescfs-namespace` helper, mode `0500`, one hard link each; verify
+  binary, `fdescfs-namespace` helper and the G3 `homelabfs` init helper,
+  mode `0500`, one hard link each; verify
   SHA256 of every staged file against the manifest/Phase 0 pins. Also stage
   (G4) `tools/lab/directlaunch/{host,argv}.py` and the pinned argv record,
-  mode `0400`, with their hashes.
+  and (G3) `tools/lab/runtime-volume-init.py` with the bundle's
+  `volume-init.json`, mode `0400`, with their hashes.
 - Changes: new files under the staging prefix only. No system binary,
   library, rc or loader change.
 - Evidence: staged-file listing with hashes, owner, mode, link count.
@@ -376,12 +393,18 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
   the pinned tap: `create`, description `homelabfs-hfs-zq3-r1`, `vm-public
   addm`, `up`, each with an intent record.
 - Initialise the disposable volume and node control directory under the
-  staging prefix. **GAP G3**: the candidate has no `homelabfs node-init /
-  volume-init` helper.
-- Write the private `controlled-runtime/1` config (G2) with `Exporter` = staged
-  bhyve and `Args` copied verbatim from the record; `argv.py verify` must pass.
-- Changes: one transient tap in `vm-public`, the vars copy and records under
-  the staging prefix; bhyve creates the nmdm pair and the vmm context.
+  staging prefix (G3, implemented in s34, pending review/pinning):
+  `/usr/local/bin/python3.12 -I -B tools/lab/runtime-volume-init.py --plan
+  <volume-init.json> --plan-sha256 … --record …` drives the staged pinned
+  `homelabfs` helper (actual `cmd/homelabfs` from `e0cca0c`, reproduced SHA256
+  `8c02b98f…`) through node-init, volume-init and inspect, writes the volume
+  config and the empty `0700` mountpoint, and never deletes on failure.
+- Stage the private `controlled-runtime/1` config (G2) generated and verified
+  in Phase 0: `Exporter` = staged bhyve, `Args` equal to the record element
+  by element (`argv.py verify` and `hfs-runtime-prep check-argv` passed).
+- Changes: one transient tap in `vm-public`, the vars copy, the volume and
+  records under the staging prefix; bhyve creates the nmdm pair and the vmm
+  context.
 - Rollback: Phase 11 step 4 (`host.py cleanup`).
 - Failure (no child started): `host.py cleanup --no-child` (destroys the tap),
   restore the window, then **U3**.
@@ -654,9 +677,19 @@ reviewed and pinned, and this plan is re-filled:
   transfer, the runtime's observation, bind, two mounts.
 - G2 Generator for the `controlled-runtime/1` config, enrollment/bind request
   templates (completed in Phase 8 step 0 with `BootID`, `ProviderNonce` and
-  `Observer.ManifestHash`) and per-session keys.
-- G3 Source-matching volume/node initialisation helper; the candidate package
-  contains only `hfs-controlled-runtime` (no `homelabfs node-init/volume-init`).
+  `Observer.ManifestHash`) and per-session keys. **Implemented in s34**
+  (`cmd/hfs-runtime-prep`, [README](../../internal/runtimeprep/README.md));
+  needs review and a pinned build. It validates the config through the actual
+  runtime validator, never reads the operator key, and fills the requests with
+  `enroll-request`/`bind-request`. `check-argv` binds the config to the G4
+  record (order in Phase 0). The admission package caps the runtime's pools
+  at 4 GiB, so `Budget.HostBytes` cannot carry the proposal's 6 GiB envelope
+  (see Limits).
+- G3 Source-matching volume/node initialisation helper. **Implemented in s34**
+  as a separate pinned helper, so the xz3 candidate needs no rebuild:
+  `tools/lab/build-init-helper.sh` (reproducible FreeBSD build of the actual
+  `cmd/homelabfs` from `e0cca0c`) plus `tools/lab/runtime-volume-init.py`;
+  needs review, and the Phase 0 rebuild must reproduce the recorded hash.
 - G4 Pinned direct bhyve argv reconstructed from the current launch facts, plus
   the tap/nmdm/UEFI-vars setup and post-exit cleanup script. **Prepared** in
   [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md) (task t34,

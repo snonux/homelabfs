@@ -136,7 +136,10 @@ groups, bind sharing, policy and SELinux enforcing/audit observations remain nee
 contains the runtime but no `homelabfs node-init/volume-init` executable. Build
 and pin a source-matching small initialization helper, or package the existing
 actual `cmd/homelabfs` initialization command as a separate helper. Never fabricate
-genesis, APPLIED or journal/state-cut files. The external staged signer is
+genesis, APPLIED or journal/state-cut files. s34 chose the second option: a
+reproducible pinned `cmd/homelabfs` build from the candidate source driven by
+`tools/lab/runtime-volume-init.py`
+([runtimeprep](../../internal/runtimeprep/README.md)), with no runtime rebuild. The external staged signer is
 implemented separately in [`tools/lab/retained9p`](../../tools/lab/retained9p/README.md);
 it changes neither immutable candidate bytes nor runtime authority.
 
