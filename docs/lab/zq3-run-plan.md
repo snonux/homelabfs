@@ -104,7 +104,13 @@ check that both hosts still present the keys in
   Rocky root's `authorized_keys`, remove it and destroy the key (Phases 4, 11).
 - A7 Use of the operator signing key `2f6d909c…` for the enrollment and bind
   signatures during bootstrap (Phase 8): who holds and runs it.
-- A8 Pod fixture inside Rocky: which OCI runtime/rootfs (Phase 10, T7), or skip.
+- A8 Pod fixture inside Rocky (Phase 10, T7), or skip. Runtime/rootfs chosen by
+  agent judgement (w34): the installed podman `5.8.2-8.el9_8` and crun
+  `1.27-1.el9_7`, rootful in `init_user_ns`, VFS storage in run-owned roots, and a
+  `--rootfs` tree built on Rocky from its own RPM-attested files. No image pull,
+  install or registry. The yes covers building `RUN/pod/rootfs` and running two
+  disposable containers that bind-share `m0`
+  ([details](../../tools/lab/retained9p/README.md#ordinary-pod-namespace-fixture-zq3-g9-t7-decision-a8)).
 
 **(B) Routine bounded verification** (standing approval of 2026-11-02, but only
 inside an approved (A) window): read-only facts, local builds/tests, read-only
@@ -511,7 +517,7 @@ unsupported, unrun or uncertain; a partial result never completes zq3.
 | T5 | `cache=mmap`: full 4 MiB mapped canary, cross-domain hash | case `mapped-pressure` + correlation + `release` |
 | T6 | locks within one guest mount | `tools/lab/guest-lock-probe.py` on `m0` (POSIX/flock conflicts, blocking waits, GETLK, close/exit cleanup) |
 | T6b | locks across clients | same probe across `m0`/`m1`: **recorded as unsupported** per the accepted lock scope, never as a pass |
-| T7 | ordinary pod namespace profile | **GAP G9** and decision A8: separate mount/PID/net/UTS/IPC namespaces in `init_user_ns`, numeric IDs/full groups, SELinux enforcing, two workloads bind-sharing `m0` |
+| T7 | ordinary pod namespace profile: separate mount/PID/net/UTS/IPC namespaces in `init_user_ns`, numeric IDs/full groups, SELinux enforcing, two workloads bind-sharing `m0` | under A8, after T6: `pod_fixture.py run --request ABS` (rootfs built earlier with `build`, see G9); pass = `t7_pass: true`, which also removes the two exited containers and the pod payload normally; any failure or `uncertain` preserves both. The SELinux access of `container_t` to the 9p label is only known now: a denial is a T7 failure, never relabelled or disabled |
 | T9 | v24 lost reply | OBSERVE; `correlate.py command --operation arm-lost-reply` prints the ARM argv (m0's session, current cut/epoch); root runs it; `lifecycle --step lost-reply-call` (one mkdir in m0); OBSERVE; `lifecycle --step lost-reply-reread` (m1 then m0, no second mkdir); `correlate.py lost-reply` records the exposure (UNCERTAIN expected), source effect since arming and a classification decided by the unarmed m1 (expected: `dropped-before-mutation` with m0 blocked, `EHOSTDOWN`), never a pass |
 | T10 | daemon restart via u24 | `lifecycle --step quiesce` (syncfs, guest `drop_caches` 3 twice: view leases released, lookups FORGET; no VIEW_ACQUIRE refresh; on the blocked m0 the open and FORGETs fail), OBSERVE taken after the quiesce result, then `correlate.py command --operation restart` (refuses unless that OBSERVE is later than every bound one and shows view-controller `Leases`/`Reservations` 0, no `Recall`, `Matches`; then recorded as unrun) and root runs the printed `--operation restart`; RESTARTED or FENCED are both recorded (FENCED, fencing then runtime exit, is Paul's accepted behavior and the expected outcome after T9); **last step that needs the live runtime** |
 | T11 | remount / VM restart need, K04 host side | after the runtime exited (FENCED T10), with m1 still mounted: root takes `host_snapshot.py --label before` of the runtime's FUSE mount point on f3, `lifecycle --step after-loss` (lstat, list, exclusive create in **m1**, never retried), `host_snapshot.py --label after`; `correlate.py k04` (with the Phase 7 `baseline` snapshot of the empty mount point, required) records whether guest I/O failed and nothing reached a raw directory. **Limitation:** m0 cannot be probed (T9 blocked its session, so its refusals are local); if m1 also shows the guest's own `EHOSTDOWN` (T9 re-read, T10 quiesce or the first after-loss attempt) the record flags the probe as vacuous and K04 is not observed. If T10 is RESTARTED, the runtime keeps serving, no supported stop exists here and T11 is unrun. Replacement FUSE/exporter and guest RESUME are blocked by design, so the recorded answer is "VM restart required", with the refusals as evidence |
@@ -768,7 +774,17 @@ reviewed and pinned, and this plan is re-filled:
   reviewed Ed25519 fingerprints; pins in [`f3-host-known_hosts`](f3-host-known_hosts)
   and [`rocky-known_hosts`](rocky-known_hosts); local tests in
   `test_controller_targets.py`.
-- G9 Pod/namespace fixture script and pinned runtime/rootfs (depends on A8).
+- G9 **Implemented (w34)**: [`tools/lab/retained9p/pod_fixture.py`](../../tools/lab/retained9p/pod_fixture.py)
+  `manifest`/`build`/`run` with the container side in
+  [`pod_workload.py`](../../tools/lab/retained9p/pod_workload.py) (pinned by the
+  driver; stage both side by side); local tests in `test_pod_fixture.py`. At run time it still needs,
+  from Phase 1: the SHA256 of `pod_fixture.py` (the operator checks it before
+  each invocation) and of `/usr/bin/podman`, `/usr/bin/crun`, `/usr/bin/conmon`,
+  `/usr/share/containers/seccomp.json`; conmon's NEVRA; a readable
+  `/var/log/audit/audit.log`; and the read-only `pod_fixture.py manifest` digest
+  for Paul's review. `build` must later reproduce that exact digest (Phase 3 or
+  before T7). The request also needs `m0`'s Phase 8 mount ID. Plus Paul's A8
+  approval.
 - G10 **Implemented (u34)**: `guest.py` lifecycle steps `lost-reply-call`,
   `lost-reply-reread`, `quiesce`, dispatched by `controller.py lifecycle`;
   `correlate.py lost-reply` and `command` (ARM/RESTART argv, RESTART only after

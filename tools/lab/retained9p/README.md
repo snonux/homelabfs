@@ -361,6 +361,170 @@ deletes it. One flock per run directory serialises the tool.
 The interpreter pin covers the executable file only, not the shared libraries
 it loads (the same limit as `observer.py`'s own `fexecve` pin).
 
+## Ordinary pod namespace fixture (zq3 G9, T7, decision A8)
+
+[`pod_fixture.py`](pod_fixture.py) runs **on Rocky as root** inside the
+approved window, after Phase 8 mounted `m0`. It implements the
+[ordinary pod namespace profile](../../../docs/lab/Retained-9p-fixtures.md#ordinary-pod-namespace-profile).
+The container-side code is [`pod_workload.py`](pod_workload.py). The driver
+pins it by `WORKLOAD_SHA256`, so the staged `pod_fixture.py` hash pins both.
+Stage both files root-owned in one directory: the driver reads the workload
+from its own directory and refuses other bytes.
+Both files are Python 3.9 compatible. Nothing here pulls an image, installs a
+package, mounts, unmounts or forces anything, and it never kills a container
+or the VM (see the timeout note under **Results**).
+
+**Runtime choice (A8, agent judgement under Paul's 2026-11-08 delegation).**
+Use the podman `5.8.2-8.el9_8` and crun `1.27-1.el9_7` already installed on
+Rocky. Both NEVRAs are pinned in the script. The SHA256 of podman, crun,
+conmon and `/usr/share/containers/seccomp.json` comes from Phase 1 in the
+request. Containers are rootful, use `--userns=host` (`init_user_ns`), VFS
+storage in fresh run-owned roots, and run-owned `containers.conf`,
+`storage.conf` and an empty `registries.conf`. The rootfs is **not an image**.
+It is a directory built from Rocky's own installed files and started with
+`--rootfs --read-only`. Why this choice:
+
+- `buildah` and `skopeo` are absent. Any registry pull would add a network
+  dependency and bytes nobody reviewed.
+- Every rootfs file is attested against the RPM database's SHA256 digest of
+  the installed package, and that package must carry a signature
+  (`RSAHEADER`). An empty or `(none)` signature refuses.
+- The exact tree can be re-verified in place before and after the run.
+
+`runc` is not installed and is not needed.
+
+- `manifest` (read-only, usable for Phase 1 facts) runs the workload's own
+  `closure` mode under the pinned `/usr/bin/python3.9 -I -B -S` with
+  `LC_ALL=C`. That mode exercises the workload's code paths and lists every
+  module file and `/proc/self/maps` file the interpreter loaded. The manifest
+  then adds the usrmerge links (`/lib64` for PT_INTERP) and versioned SONAME
+  links. It requires every file to be owned by a package whose
+  `FILEDIGESTALGO` is SHA256, with mode, digest and link target equal to the
+  RPM database row. Fixture-made entries are labelled `origin: fixture`: the
+  directories and mount points, a minimal numeric `/etc/passwd`/`group`, empty
+  `/etc/hosts`/`hostname`/`resolv.conf` and the workload. The command prints
+  the canonical manifest and its SHA256. With `TZ=UTC` and `LC_ALL=C` the same
+  install always gives the same digest. The workload deliberately avoids
+  `hashlib`/`ssl`, so OpenSSL and its configuration files stay out of the
+  container.
+- `build --run-id R --expect-manifest-sha256 H` recomputes the manifest and
+  refuses unless it equals the pinned `H`, then writes `RUN/pod/rootfs`
+  exclusively. Files are root-owned and labelled
+  `system_u:object_r:container_file_t:s0`, the label podman documents for
+  `--rootfs`. The command also writes `RUN/pod/rootfs-manifest.json` and
+  re-verifies the whole tree.
+- `run --request ABS` takes a closed request:
+  `{version, run_id, fixture_sha256, rootfs_manifest_sha256, runtime_sha256{podman,crun,conmon,seccomp}, m0{tag:"hfs0", mount_id}}`.
+  It admits only if all of these hold:
+  - it runs as root on Linux;
+  - SELinux is enforcing;
+  - the driver is in guest init's mount/PID/net/UTS/IPC/user/cgroup namespaces;
+  - init has the identity uid/gid map;
+  - `m0` has the exact controlled 9p tuple, as `guest.py` admits it;
+  - the run directory is root-private and not on `m0`;
+  - the runtime hashes and NEVRAs and the rootfs equal their pins;
+  - `/var/log/audit/audit.log` exists and is readable. Admission stats it and
+    reads its last byte; the AVC delta is read after the containers exit.
+
+  Then it starts `w0` (new mount, PID, net (`--network=none`, loopback only),
+  UTS and IPC namespaces, private cgroupns, hostname `hfs-zq3-RUN-pod`). It
+  starts `w1` with its own mount namespace, joined to w0's PID, net, UTS and
+  IPC namespaces, like a pod. Both bind-mount the same `RUN/m0` at `/hfs/m0`
+  with `rprivate` propagation. Both use `--cap-drop=all` plus only
+  CHOWN/FOWNER/SETGID/SETUID, `no-new-privileges`, the pinned seccomp profile
+  and MCS level `s0:c731,c914`. Limits: 256 MiB memory, no swap, 64 PIDs.
+  Each workload prints its identity and then waits on a stdin barrier, so the
+  driver inspects `/proc/PID/{ns,status,uid_map,gid_map,attr/current,cgroup}`
+  and the effective cgroup limits **from outside** while it is alive.
+
+The workloads then run:
+
+- **Numeric permission matrix in `w0`:** two UIDs; supplementary group only;
+  the same UID with a full 1024-entry group vector, allowed only through its
+  final entry, and denied after removing just that entry; changing groups
+  inside one process under `setfsuid(41001)`/`setfsgid(42001)`.
+- **Lock matrix across `w0`/`w1` through their separate binds of one mount:**
+  - same device/inode;
+  - nonblocking POSIX and flock conflicts;
+  - `F_GETLK` reports w0's PID in the shared PID namespace;
+  - `/proc/locks` blocked-waiter evidence;
+  - acquisition only after release;
+  - w1's locks released by its exit.
+
+They coordinate over an abstract UNIX socket. Abstract sockets are per network
+namespace, so reaching it shows w1 really joined w0's netns.
+
+**Judgement.** Self-reported and outside namespace inodes must agree. Mount,
+PID, net, UTS and IPC must differ from the guest's. The user namespace must
+equal the guest's initial one, with the `0 0 4294967295` maps. w1 must share
+w0's PID, net, UTS and IPC namespaces and have its own mount namespace.
+Container root must be `0/0` with no group other than 0, the exact capability
+mask in effective, permitted and bounding sets, empty ambient, NNP=1 and
+seccomp=2. The label must be `container_t:s0:c731,c914`. The only link may be
+`lo`, and its recorded flags must show it UP; a down loopback fails rather than
+being inferred from `--network=none`. `/hfs/m0` must be exactly one 9p row with the `m0` tag and device. The
+cgroup limits must equal the pins. Every matrix and lock outcome must match.
+There may be no AVC denial for the pod in the audit delta. A rotated or
+oversized delta is *incomplete*. SELinux must still be enforcing afterwards,
+and pinned rootfs entries must be unchanged; the runtime may add only empty
+mount points, which are reported.
+
+**Results.** A pass removes the two exited containers with plain `podman rm`
+and the exact five payload files and leaf on `m0`, after checking the listing.
+A cleanup failure is reported apart from the T7 result. Any failure, timeout or
+malformed report preserves the containers, payload and evidence. A driver
+timeout waiting for the workloads is recorded as `uncertain` and kills nothing.
+A short command that hangs (`rpm`, `podman inspect`, `podman rm`) is bounded:
+its timeout kills only that client process, never a container, conmon or the
+VM. Such a timeout during the run is a T7 failure, and the verdict and both
+workloads' output are still written. Note that `w0` is PID 1 of the shared PID
+namespace: if it exits early (its own failure or deadline), the kernel ends
+`w1` too, and `w1`'s exit status records that. Evidence goes to
+`RUN/pod/evidence/`: `request.json`, both workloads' stdout and stderr,
+`verdict.json` and `cleanup.json`. The pod directory is single-use: a second
+`run` refuses. The verdict always says `acceptance: false`. A T7 pass is one
+gate of the matrix, not zq3 acceptance.
+
+**Not known before the run (and recorded rather than worked around).**
+
+- Whether `container_t` may use the label Rocky's policy gives the
+  candidate's 9p mount. The fixture records `m0_label` and never uses `:z`/`:Z`
+  (which would write xattrs into the tested volume) or `label=disable`. A
+  denial fails T7 with its AVC lines. Fixing it (for example a `context=`
+  option in Phase 8's mount, or a boolean) is a decision for Paul.
+- Whether podman relabels or adds files in a `--rootfs` tree. A relabel shows
+  as changed pinned entries and fails T7. Added empty mount points are
+  tolerated and reported.
+- The container root's exact supplementary group list, `[]` or `[0]`. Both are
+  accepted; anything else fails.
+
+**Local tests** (`test_pod_fixture.py`) simulate rpm, podman inspect/rm,
+`/proc`, `/sys` and labels explicitly with a FakeHost and a fake installed-file
+mirror. They drive the whole `run` through real pipes with fake container
+processes. Negative cases include:
+
+- a namespace not separated;
+- a foreign user namespace or map;
+- SELinux not enforcing, a wrong context or AVC denials;
+- wrong UID/GID, groups, capabilities or matrix outcomes;
+- a missing shared bind or different inodes;
+- an unshared pod namespace, extra links, missing limits or rootfs changes;
+- unattested, unowned, non-SHA256 or out-of-tree closure files;
+- admission refusals;
+- runtime pin mismatches;
+- request shape errors;
+- a timeout that must not kill;
+- single-use evidence.
+
+The lock protocol runs for real between two local processes on tmpfs, with
+real kernel locks and `/proc/locks` waiters. It uses tmpfs, not `$TMPDIR`,
+because on btrfs `st_dev` differs from the superblock device that `/proc/locks`
+prints. Linux 9p reports one device in both places. An optional test reads the
+workstation's real RPM database read-only, builds the rootfs and starts the
+interpreter and all workload imports from it alone in an unprivileged
+user-namespace chroot. That checks closure completeness on Fedora, **not on
+Rocky**. No test runs podman, crun, SELinux policy or 9p.
+
 ## External staged signer
 
 `cmd/hfs-retained9p-operator` runs on the external controller. It never executes
