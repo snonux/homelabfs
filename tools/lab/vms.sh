@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Explicit lifecycle and separately approved faults for the fixed f3 lab.
 # Fault stops are never fencing proof and never target Rocky or the host.
+# start-rocky and start-lab refuse while an hfs-zq3-* direct-launch VM exists
+# (vmm context or process title); test_vms_sh.py exercises the HOST script.
 set -euo pipefail
 # This branch acknowledges approval already checked by the plan-bound driver.
 # A flag or environment value does not authorize a future run.
@@ -157,14 +159,47 @@ stop_vm() {
         sleep 2
     done
 }
+# zq3 plan risk R3: a direct launch boots Rocky's real disk under its own bhyve
+# VM named hfs-zq3-<run>, outside vm-bhyve, so `vm list` cannot show it and a
+# normal Rocky start would open the same disk concurrently. Both start actions
+# therefore inspect the kernel vmm contexts and process titles first. bhyve
+# retitles itself `bhyve: <vm>`, or `4: <vm>` when exec'd as /dev/fd/4, so
+# titles are split into tokens on blanks and colons. Any hfs-zq3-* token
+# refuses (fail closed). Detection only: nothing is stopped, killed or
+# destroyed; the run's own cleanup must end it first.
+refuse_zq3_launch() {
+    zq3_contexts=
+    # devfs creates /dev/vmm only while some vmm context exists. A failing ls
+    # or ps aborts under set -e instead of reading as "nothing found".
+    if test -e /dev/vmm; then
+        vmm_names=$(ls /dev/vmm)
+        zq3_contexts=$(printf '%s\n' "$vmm_names" |
+            awk '/^hfs-zq3-/ {printf "%s ", $0}')
+    fi
+    # Snapshot ps before filtering so the filter never inspects itself.
+    process_lines=$(ps -ax -ww -o pid= -o args=)
+    zq3_processes=$(printf '%s\n' "$process_lines" | awk -F '[ \t:]+' '
+        {for (i = 1; i <= NF; i++) if ($i ~ /^hfs-zq3-/) {print; next}}')
+    test -z "$zq3_contexts" && test -z "$zq3_processes" && return 0
+    echo "Refusing $action: an hfs-zq3 direct-launch VM may hold Rocky's disk (zq3 plan risk R3)." >&2
+    test -z "$zq3_contexts" || echo "vmm contexts: $zq3_contexts" >&2
+    test -z "$zq3_processes" || printf 'processes:\n%s\n' "$zq3_processes" >&2
+    echo 'Nothing was stopped or killed; let the zq3 run exit and clean up first.' >&2
+    exit 1
+}
 case "$action" in
     stop-rocky) stop_vm rocky ;;
     stop-lab) for i in 0 1 2; do stop_vm "hfs-test$i"; done ;;
     start-rocky)
+        refuse_zq3_launch
         for i in 0 1 2; do stopped "hfs-test$i"; done
         if stopped rocky; then vm start rocky; fi
         ;;
     start-lab)
+        # The lab guests do not use Rocky's disk, but a live zq3 child means
+        # its critical window is still open, and the vm-bhyve inventory checks
+        # below cannot see that 6 GiB bhyve VM.
+        refuse_zq3_launch
         stopped rocky || { echo 'Stop Rocky in an approved window first.' >&2; exit 1; }
         stopped freebsd || { echo 'Other FreeBSD VM is running; reassess memory.' >&2; exit 1; }
         vm list | awk 'NR>1 && $1 !~ /^hfs-test[012]$/ && $NF!="Stopped" {exit 1}'
