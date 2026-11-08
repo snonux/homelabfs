@@ -234,6 +234,19 @@ and only m1 shows whether the effect committed. The C9 restart that follows is
 then expected to refuse at the paired cut and FENCE (lifecycle.md). The
 correlator therefore classifies instead of judging; see below.
 
+No guest-side warm-up can make MKDIR the first CALL after the ARM: the
+GETATTR (from `may_create`'s permission check) and the LOOKUP of the new
+name are issued inside the same `mkdir(2)`, uncached by design (analysis
+with patch line references in the
+[guestbridge README](../../../internal/guestbridge/README.md#targeting-the-mkdir-reply-d44)).
+A runtime built with task d44 instead accepts an intent filter:
+`correlate.py command --operation arm-lost-reply --lost-intent MKDIR` prints
+the ARM with `--lost-intent MKDIR`, whose fixture lets those CALLs (and
+background FORGET/PROCESS_EXIT CALLs) through and drops only the MKDIR reply,
+after its effect committed. The expected T9 shape then becomes
+`dropped-reply-effect-committed-and-visible` (m1 sees the leaf, m0 still
+blocked). An older runtime refuses the flag, so it is opt-in.
+
 **What the quiesce does not do.** It performs no explicit VIEW_ACQUIRE
 refresh: it can only release views (page cache drop) and leave none
 historical. On a blocked m0, opening the root and the evicted lookups' FORGET
@@ -267,12 +280,15 @@ nothing.
 - `lost-reply --before R --armed R --after R --record NEW` (T9): the ARM used
   the pre-arm OBSERVE's cut/epoch and m0's session; the post-CALL OBSERVE has
   the same binding and fixture. A `FIRED` exposure must be `UNCERTAIN`, `CALL`,
-  above `armed_high`, with claim and hashes. The leaf state is decided by the
+  above `armed_high`, with claim and hashes; an ARM with the MKDIR filter
+  (`intent`) must show `dropped_opcode` MKDIR, and both are copied to the
+  record as `armed_intent`/`dropped_opcode`. The leaf state is decided by the
   unarmed m1 (m0 only if m1 is unmounted and m0 answered itself); m0's
   `EHOSTDOWN` is recorded as `effect_seen.armed_domain_blocked`. With whether
   the source advanced since the arm baseline this gives `classification`:
   `dropped-reply-effect-committed-and-visible`, `dropped-before-mutation` (the
-  expected T9 shape: m1 ENOENT, m0 blocked, no source change),
+  expected T9 shape without the MKDIR filter: m1 ENOENT, m0 blocked, no
+  source change),
   `fixture-not-fired`, `effect-undetermined` (no domain could answer) or
   `inconsistent`. None of these is a pass.
 - `k04 --baseline S --before S --after S --record NEW` (T11): snapshots from
@@ -292,9 +308,10 @@ nothing.
   its 10 s alarm refuses the whole snapshot (a hang is uncertain, never a dead
   mount's errno).
 - `command --operation observe|arm-lost-reply|restart --observe R [--last R]
-  --runtime-binary PATH --control SOCK`: prints, never runs, the exact client
-  argv: runtime, cut and epoch from the latest OBSERVE and sequence = last
-  reply's sequence + 1. ARM refuses unless the batch is released, no lifecycle
+  [--lost-intent MKDIR] --runtime-binary PATH --control SOCK`: prints, never
+  runs, the exact client argv: runtime, cut and epoch from the latest OBSERVE
+  and sequence = last reply's sequence + 1; `--lost-intent` (ARM only) adds
+  the d44 filter flag. ARM refuses unless the batch is released, no lifecycle
   step ran and nothing is armed. RESTART refuses unless the last step was
   `quiesce`, the OBSERVE is later than every OBSERVE bound by a case
   correlation, and it shows the C9 cut precondition: view-controller `Leases`

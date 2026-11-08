@@ -12,15 +12,17 @@ records; every record says acceptance:false.
               `release` binds (T1-T5): an OBSERVE before and one after the case,
               same runtime/cut/epoch, plan boot/provider/sessions, unchanged
               journal/ledger/transport identities and an advanced applied position.
-  lost-reply  homelabfs-retained9p-lost-reply-correlation/1 (T9): ARM binding,
-              the fired UNCERTAIN exposure, source effect since arming and the
-              guest CALL/re-read observations.
+  lost-reply  homelabfs-retained9p-lost-reply-correlation/1 (T9): ARM binding
+              and intent filter, the fired UNCERTAIN exposure and its dropped
+              opcode, source effect since arming and the guest CALL/re-read
+              observations.
   k04         homelabfs-retained9p-k04-after-loss/1 (T11): guest I/O on the
               unblocked m1 after host loss failed and the host path (baseline,
               before, after snapshots) showed no raw-directory effect; a probe
               the guest refused locally (EHOSTDOWN) is flagged as vacuous.
-  command     the exact lifecycle client argv for observe, arm-lost-reply or
-              restart from the latest OBSERVE; restart only after the quiesce
+  command     the exact lifecycle client argv for observe, arm-lost-reply
+              (optionally --lost-intent MKDIR, d44) or restart from the
+              latest OBSERVE; restart only after the quiesce
               step and an OBSERVE showing the C9 cut precondition. It prints
               argv and executes nothing.
 
@@ -59,6 +61,11 @@ SNAPSHOT_ORDER = ["baseline", "before", "after"]
 # T11 probes the unarmed m1: T9 leaves m0's guest session blocked, so m0's
 # refusals would be local (EHOSTDOWN) and say nothing about the host.
 K04_DOMAIN = 1
+# Intent filters a runtime with the d44 fixture accepts (lost_reply.go
+# LostReplyIntentMkdir). A guest mkdir(2) always sends GETATTR and LOOKUP CALLs
+# before MKDIR, so only the MKDIR filter can drop the mutating reply itself.
+# An older runtime has no filter: its ARM exposure carries no "intent".
+LOST_REPLY_INTENTS = ["MKDIR"]
 # The lifecycle client prints the raw reply (at most 128 KiB) plus a newline.
 REPLY_LIMIT = (128 << 10) + 1
 SNAPSHOT_LIMIT = 64 << 10
@@ -334,7 +341,8 @@ def require_steps(steps, names):
 
 
 def armed_view(armed, before, evidence, session):
-    """The ARMED reply: current cut/epoch, m0's session, an unfired CALL fixture."""
+    """The ARMED reply: current cut/epoch, m0's session, an unfired CALL fixture
+    with no intent filter (any CALL) or the MKDIR filter."""
     reply = armed["reply"]
     view = reply.get("lost_reply")
     if reply.get("status") != "ARMED" or not isinstance(view, dict):
@@ -347,7 +355,8 @@ def armed_view(armed, before, evidence, session):
     if (view.get("session") != session or view.get("error") or not view.get("fixture") or
             not isinstance(exposure, dict) or exposure.get("state") != "ARMED" or
             exposure.get("operation") != "CALL" or exposure.get("session") != session or
-            type(exposure.get("armed_high")) is not int):
+            type(exposure.get("armed_high")) is not int or
+            ("intent" in exposure and exposure["intent"] not in LOST_REPLY_INTENTS)):
         raise Refused("ARM reply is not an unfired CALL fixture on m0's session")
     baseline = view.get("baseline")
     if not isinstance(baseline, dict):
@@ -376,7 +385,22 @@ def fired_exposure(evidence, view):
             not all(isinstance(value, str) and controller.HASH.fullmatch(value) for value in hashes) or
             type(exposure.get("dropped_bytes")) is not int or exposure["dropped_bytes"] <= 0):
         raise Refused("fired exposure is not an UNCERTAIN CALL above the armed high-water")
+    check_fired_intent(exposure, view["exposure"].get("intent"))
     return exposure
+
+
+def check_fired_intent(exposure, intent):
+    """A filtered fixture must have dropped exactly its armed intent opcode.
+
+    Without a filter the dropped opcode is only informative (and absent on a
+    runtime that predates d44), so any string or nothing is accepted.
+    """
+    dropped = exposure.get("dropped_opcode")
+    if intent is not None and (exposure.get("intent") != intent or dropped != intent):
+        raise Refused("fired exposure does not match the armed " + intent + " filter")
+    if intent is None and (exposure.get("intent") is not None or
+                           (dropped is not None and not isinstance(dropped, str))):
+        raise Refused("fired exposure of an unfiltered fixture names a filter")
 
 
 def reread_rows(reread):
@@ -426,11 +450,13 @@ def classify(exposure, committed, call, seen):
 
 
 LOST_REPLY_LIMITS = [
-    "the exposure names cell/claim/hashes, not the operation: the guest path walk issues "
-    "GETATTR/LOOKUP CALLs before MKDIR, so only the committed source shows a MKDIR effect",
+    "a guest mkdir(2) always issues GETATTR and LOOKUP CALLs before MKDIR (no guest warm-up "
+    "avoids them); only an ARM with the MKDIR intent filter (armed_intent) targets the MKDIR "
+    "reply, otherwise one of those or a background FORGET/PROCESS_EXIT CALL takes the drop",
+    "dropped_opcode is the daemon's own record of the dropped CALL's intent opcode; a runtime "
+    "without the d44 filter omits it and only the committed source shows a MKDIR effect",
     "the guest blocks the armed m0 session after a dropped reply (EHOSTDOWN); the unarmed m1 "
     "re-read decides the leaf state, m0's error is recorded as armed_domain_blocked",
-    "background guest CALLs on m0 (FORGET, PROCESS_EXIT, GETATTR) after the ARM can take the drop",
     "the fixture record lives in daemon memory only; a crash loses it",
 ]
 
@@ -458,6 +484,8 @@ def lost_reply_record(output, plan_sha256, before, armed, after):
     return {"version": LOST_REPLY_VERSION, "run_id": plan["run_id"], "acceptance": False,
             "classification": classify(exposure, committed, call["observation"], seen),
             "fixture": view["fixture"], "session": session, "exposure": exposure,
+            "armed_intent": view["exposure"].get("intent"),
+            "dropped_opcode": None if exposure is None else exposure.get("dropped_opcode"),
             "committed_since_arm": committed, "effect_seen": seen,
             "guest": {"call": call, "reread": reread},
             "replies": {"pre_arm": entry_record(before), "armed": entry_record(armed),
@@ -652,10 +680,17 @@ def client_command(args):
         evidence = evidence_of(observe, "command")
         quiesce = command_preconditions(args.operation, observe, output, state)
         argv += ["--cut", evidence["cut"], "--epoch", str(evidence["epoch"])]
+    if args.lost_intent is not None and args.operation != "arm-lost-reply":
+        raise Refused("--lost-intent belongs to arm-lost-reply only")
     if args.operation == "arm-lost-reply":
         argv += ["--session", plan_identity(plan)["sessions"][0], "--lost-operation", "CALL"]
+        # Only a runtime built with the d44 filter accepts --lost-intent; an
+        # older admitted candidate refuses the flag, so it stays opt-in.
+        if args.lost_intent is not None:
+            argv += ["--lost-intent", args.lost_intent]
     return {"argv": argv, "operation": args.operation, "sequence": last["sequence"] + 1,
-            "quiesce": quiesce, "execution_authorized": False, "acceptance": False}
+            "lost_intent": args.lost_intent, "quiesce": quiesce,
+            "execution_authorized": False, "acceptance": False}
 
 
 def write_record(path, value):
@@ -702,6 +737,8 @@ def arguments(argv=None):
     command.add_argument("--operation", required=True, choices=["observe", "arm-lost-reply", "restart"])
     command.add_argument("--runtime-binary", required=True)
     command.add_argument("--control", required=True)
+    command.add_argument("--lost-intent", choices=LOST_REPLY_INTENTS,
+                         help="arm-lost-reply only: drop just this guest intent opcode's CALL reply")
     pinned(command, "observe")
     pinned(command, "last", required=False)
     return parser.parse_args(argv)

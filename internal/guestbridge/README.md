@@ -161,3 +161,54 @@ resources. This boundary supplies no unbounded waiter or timeout expiration.
 The controlled runtime supports [barriered same-native component restart](../controlledruntime/restart.md). Complete C8 session rows and private transferred funding are required; inspection alone never authorizes restoration. Guest RESUME, replacement FUSE/exporter owners and incomplete cuts remain blocked.
 
 A disposable validation service may arm one [response-exposure lost-reply fixture](../controlledruntime/lifecycle.md#lost-reply-fixture-v24) on its transport (`lost_reply.go`). It withholds only the first actual `Transport.Read` exposure of a protected CALL response in the armed session: the first such read of any CALL accepted after arming, which with several CALLs in flight need not be the next one issued (EIO, no bytes, no coverage); it takes no caller bytes or results and is never written to the C8 ledger.
+An optional intent filter (d44) narrows it to a CALL whose original guest intent opcode is MKDIR; non-matching CALLs in the armed session are exposed normally and the record names the dropped CALL's `dropped_opcode`.
+
+### Targeting the MKDIR reply (d44)
+
+zq3 T9 wants the lost reply on the mutating MKDIR itself. With the unfiltered
+fixture that is practically unreachable, and no guest warm-up can fix it. The
+evidence below is from the patched Linux 6.1 guest in
+`tools/integration/linux9p/patches/0003-hfs1-guest-vfs.patch` (patch-file line
+numbers; 0004/0005 do not change these functions):
+
+* The hfs mount does not use v9fs caching at all: `v9fs_mount` hands any
+  `version=9P2000.L.hfs1*` mount to `v9fs_hfs_mount` (line 88, selector at
+  2695-2716), whose superblock uses `hfs_super_ops`/`hfs_dir_iops`
+  (4435-4455). `cache=mmap` and v9fs dentry/attribute caching therefore play
+  no part.
+* `hfs_permission` (3838-3847) refuses RCU mode (`MAY_NOT_BLOCK` gives
+  `-ECHILD`) and otherwise always calls `hfs_refresh` (3814-3836), a GETATTR
+  CALL (3827). In one `mkdir(2)` the VFS calls it twice on the parent:
+  `may_lookup` during the path walk and `may_create` inside `vfs_mkdir`,
+  immediately before `->mkdir`. No attribute timeout or cached permission
+  exists.
+* `hfs_d_revalidate` (3799-3802) returns `-ECHILD` in RCU mode and 0
+  (invalid) otherwise, so a cached positive or negative dentry is never kept:
+  `filename_create` always reaches `hfs_lookup`, a LOOKUP CALL (3873), for
+  the new name, even right after a `stat` of that name.
+* Only then does `hfs_namespace` send MKDIR (4068). So every guest mkdir
+  sends, in order, GETATTR(parent), LOOKUP(name), GETATTR(parent), MKDIR in
+  the armed session, and an unfiltered fixture drops the first GETATTR.
+* Background CALLs can also race in: inode eviction (`drop_inode =
+  generic_delete_inode`, 4440) queues FORGET CALLs on the control workqueue
+  (3768-3797, 3740-3766), and every exiting guest process that used the mount
+  queues a PROCESS_EXIT CALL (586-629).
+* After any failed CALL fetch the guest marks the session blocked
+  (`hfs_request_run` `retained:`, 1988-1989), and later ordinary CALLs get
+  `-EHOSTDOWN` (`hfs_request_admit`, 0002 line 2195). There is no second
+  attempt, so a warm-up that lost the race cannot be repeated in the same run.
+
+Decision: guest warm-up (option a) is impossible; per-operation arming
+(option b) is implemented. `Transport.ArmLostReply(session, "CALL", intent)`
+accepts the closed set `""` (any CALL, the original v24 behavior) and
+`LostReplyIntentMkdir`. The predicate (`armedCall`) still reads only the
+accepted cell's own decoded command, whose intent is bound to the claim's
+original hash; it takes no response, result or replacement bytes, and a
+non-matching CALL is exposed normally while the fixture stays armed. The
+evidence adds `intent` and the actual `dropped_opcode`. The lifecycle endpoint
+maps ARM operation code 2 to the MKDIR filter without changing the 57-byte
+frame; the client spells it `--lost-operation CALL --lost-intent MKDIR`.
+This is runtime code: the admitted xz3 candidate does not have it, so using
+the filter in zq3 needs a rebuilt, re-admitted candidate. The guest still
+blocks m0 after the dropped MKDIR reply, so T10 is still expected to FENCE;
+the difference is that m1 then shows the committed directory.

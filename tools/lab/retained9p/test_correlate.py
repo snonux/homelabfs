@@ -304,6 +304,35 @@ class LostReplyCorrelationTests(CorrelatorBase):
         self.assertEqual(record["guest"]["call"]["observation"]["mkdir_errno"], errno.EIO)
         path, sha = self.write(record, "lost-reply.json")
         self.assertEqual(controller.digest(Path(path).read_bytes()), sha)
+        # A runtime without the d44 filter records neither field.
+        self.assertEqual((record["armed_intent"], record["dropped_opcode"]), (None, None))
+
+    def mkdir_fixture(self, **changes):
+        """Post-CALL OBSERVE of an ARM with the d44 MKDIR intent filter."""
+        post = armed(0, 11, intent="MKDIR")["lost_reply"]
+        exposure = fired(**{"intent": "MKDIR", "dropped_opcode": "MKDIR", **changes})
+        return observed(self.sequence + 3, 12, lost_reply={**post, "exposure": exposure})
+
+    def test_mkdir_filtered_drop_is_the_committed_mutation(self):
+        # Expected T9 shape with the d44 runtime: the MKDIR reply itself is
+        # dropped after its effect committed; m1 sees the leaf, m0 is blocked.
+        self.steps()
+        record = self.record(arm=armed(self.sequence + 2, 11, intent="MKDIR"), after=self.mkdir_fixture())
+        self.assertEqual(record["classification"], "dropped-reply-effect-committed-and-visible")
+        self.assertEqual((record["armed_intent"], record["dropped_opcode"]), ("MKDIR", "MKDIR"))
+
+    def test_mkdir_filter_mismatch_or_unknown_intent_refuses(self):
+        self.steps()
+        s = self.sequence
+        unfiltered = observed(s + 3, 12, lost_reply={**armed(0, 11)["lost_reply"],
+                                                     "exposure": fired(intent="MKDIR")})
+        for message, kwargs in [
+                ("armed MKDIR filter", {"arm": armed(s + 2, 11, intent="MKDIR"),
+                                        "after": self.mkdir_fixture(dropped_opcode="GETATTR")}),
+                ("unfiltered fixture names a filter", {"after": unfiltered}),
+                ("unfired CALL fixture on m0", {"arm": armed(s + 2, 11, intent="GETATTR")})]:
+            with self.subTest(message=message), self.assertRaisesRegex(correlate.Refused, message):
+                self.record(**kwargs)
 
     def reread(self, m1, m0):
         """Re-read rows as the guest emits them: m1 (unarmed) first, then m0.
@@ -520,11 +549,11 @@ class K04CorrelationTests(CorrelatorBase):
 
 
 class CommandTests(CorrelatorBase):
-    def command(self, operation, observe, last=None, control="/var/tmp/hfs/owner/control.sock"):
+    def command(self, operation, observe, last=None, control="/var/tmp/hfs/owner/control.sock", extra=()):
         path, sha = self.reply(observe)
         argv = ["command", "--output", str(self.output), "--sha256", self.hash, "--operation", operation,
                 "--runtime-binary", "/var/tmp/hfs-validation-xz3/test/bin/hfs-controlled-runtime",
-                "--control", control, "--observe", path, "--observe-sha256", sha]
+                "--control", control, "--observe", path, "--observe-sha256", sha, *extra]
         if last is not None:
             last_path, last_sha = self.reply(last)
             argv += ["--last", last_path, "--last-sha256", last_sha]
@@ -538,6 +567,17 @@ class CommandTests(CorrelatorBase):
             "--runtime", "runtime-1", "--sequence", str(sequence + 2), "--cut", "cut-1", "--epoch", "1",
             "--session", "session0", "--lost-operation", "CALL"])
         self.assertFalse(result["execution_authorized"])
+        self.assertIsNone(result["lost_intent"])
+
+    def test_arm_argv_with_mkdir_intent_filter(self):
+        sequence = self.release_all()
+        result = self.command("arm-lost-reply", observed(sequence + 1, 11), extra=["--lost-intent", "MKDIR"])
+        self.assertEqual(result["argv"][-4:], ["--lost-operation", "CALL", "--lost-intent", "MKDIR"])
+        self.assertEqual(result["lost_intent"], "MKDIR")
+        with self.assertRaisesRegex(correlate.Refused, "arm-lost-reply only"):
+            self.command("observe", observed(sequence + 1, 11), extra=["--lost-intent", "MKDIR"])
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            self.command("arm-lost-reply", observed(sequence + 1, 11), extra=["--lost-intent", "GETATTR"])
 
     def test_arm_refuses_before_batch_after_steps_or_when_armed(self):
         quiet(controller.probe, self.path, self.hash, self.output)
