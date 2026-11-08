@@ -42,7 +42,7 @@ the `NG`/`W` variables defined in Phase 4.
 
 Done on 2026-11-08 by the fill: bundle, argv record, kernel plan, templates,
 staging trees and tarballs, init helper rebuild (reproduced `8c02b98f…`).
-Local tests passed: retained9p 259, directlaunch 26, fdescfs window, window
+Local tests passed: retained9p 259 at the fill (280 after k44), directlaunch 26, fdescfs window, window
 plan, runtime guard, volume init (1 skip), vms.sh, `go test
 ./internal/runtimeprep`. Re-verify immediately before Phase 1:
 
@@ -58,14 +58,22 @@ ac3a0e754ac59a165398bad44bc73185fd18eb5cf0cc842112f7883f766bc46a  /home/paul/tmp
 EOF
 ```
 
-Refresh the tools snapshot so it holds `fill_plan.py` (k44), which fills
-the bootstrap plan in Phase 4 and the controller batch plan in Phase 8.
-Between `08831e7` and the k44 commit only `fill_plan.py`, `test_fill_plan.py`
-and documentation changed below `tools/`, so every staged and pinned hash
-above stays valid (`git diff --stat 08831e7 <K44> -- tools/` must list only
-those two files). Then rerun `python3 -B -m unittest discover -s
-tools/lab/retained9p` in the checkout at that commit (not in `$S`; see
-[finding F6](README.md#findings)).
+Refresh the tools snapshot to the final main commit `$FINAL` (which holds
+`fill_plan.py` from k44 and the j44 window-restore fix), for example
+`rm -rf $S.new && mkdir -m 700 $S.new && git -C /home/paul/git/homelabfs
+archive $FINAL tools docs | tar -x -C $S.new && mv $S $S.old && mv $S.new $S`.
+Between `08831e7` and `$FINAL`, below `tools/` only `fill_plan.py`,
+`test_fill_plan.py`, `tools/lab/retained9p/README.md` (k44) and the window
+controller, filler and tests (j44) change; check with
+`git diff --stat 08831e7 $FINAL -- tools/`. The j44 files change the pins for
+`fdescfs-window.py`, `fdescfs-window-plan.py`, the window `pins.json` and the
+f3 staging tarball; use the refreshed values from the pins-refresh record (see
+the README), never the original fill values. Then rerun
+`python3 -B -m unittest discover -s tools/lab/retained9p` (280 tests at k44)
+in the checkout at `$FINAL` (not in `$S`; see
+[finding F6](README.md#findings)). If a fill is interrupted, a leftover
+`NEW.next` file makes reruns refuse with "File exists": inspect it, then
+remove it by hand before retrying.
 
 **PAUL (before Phase 8, ideally now):** place the operator signing key at
 `/home/paul/tmp/claude/hfs-zq3-r1-fill/operator/operator-signing-key`: a copy
