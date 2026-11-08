@@ -530,8 +530,12 @@ also stops until Paul decides on a forced power-off.
   `next_entry` is unconsumed and a plain normal start would boot the test
   kernel. Recovery is U3 (one test-kernel boot, then a clean reboot), or U3-b.
 - R3 Disk image shared: the direct launch uses Rocky's real disk. vm-bhyve must
-  not start `rocky` while the child runs (`vms.sh` and a manual `vm start` would
-  both corrupt it). AUTO=yes only acts on an f3 boot, which also ends the child.
+  not start `rocky` while the child runs (a concurrent start would corrupt it).
+  `vms.sh start-rocky` and `start-lab` refuse, before any `vm start`, while any
+  `/dev/vmm/hfs-zq3-*` context or process title token `hfs-zq3-*` exists, and
+  never kill anything (b44; offline test `tools/lab/test_vms_sh.py`). A manual
+  `vm start rocky` stays unguarded. AUTO=yes only acts on an f3 boot, which also
+  ends the child.
 - R4 A RESTART FENCE ends the runtime while the bhyve child keeps running;
   Phase 11 shuts the guest down from inside.
 - R5 Retained `fdescfs`/`fusefs` modules change f3's kernel state until reboot.
