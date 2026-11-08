@@ -305,7 +305,10 @@ class GuestLockProbeTests(unittest.TestCase):
             self.assertIsNone(probe.waiter_record(line, 456, expected, "flock"))
         posix = "3: -> POSIX ADVISORY WRITE 123 00:15:42 0 7"
         self.assertEqual(probe.waiter_record(posix, 123, expected, "posix"), posix)
+        # A device mismatch must refuse as deliberately as an inode mismatch
+        # (btrfs reports a different device in /proc/locks than in fstat).
         for broken in (posix.replace("0 7", "0 EOF"), posix.replace(":42", ":43"),
+                       posix.replace("00:15:", "00:16:"),
                        posix.replace("POSIX", "FLOCK")):
             with self.assertRaises(probe.Refused):
                 probe.waiter_record(broken, 123, expected, "posix")
