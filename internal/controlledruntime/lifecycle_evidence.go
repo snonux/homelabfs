@@ -40,6 +40,8 @@ type lifecycleEvidence struct {
 	Controller  controllerEvidence    `json:"controller"`
 	Transport   transportEvidence     `json:"transport"`
 	Restart     *lifecycleRestartView `json:"restart,omitempty"`
+	// LostReply is the armed response-exposure fixture record (v24), if any.
+	LostReply *lostReplyView `json:"lost_reply,omitempty"`
 }
 
 type supervisorEvidence struct {

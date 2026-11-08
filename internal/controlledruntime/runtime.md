@@ -302,9 +302,10 @@ are disposable local processes and explicit OS boundary fixtures. Actual FreeBSD
 execution is needed to qualify its socket safety; these fixtures do not start
 bhyve or prove guest/filesystem behavior.
 Private C9 lifecycle/evidence operations are implemented separately by the
-[lifecycle endpoint](lifecycle.md) (u24). A real response-exposure lost-reply
-fixture (v24) remains a separate unimplemented prerequisite for the real9p
-gate; neither diagnostic capture nor lifecycle evidence satisfies it.
+[lifecycle endpoint](lifecycle.md) (u24). Its funded one-shot
+[response-exposure lost-reply fixture](lifecycle.md#lost-reply-fixture-v24)
+(v24) has local component evidence only; native lost-reply acceptance for the
+real9p gate remains zq3. Diagnostic capture satisfies neither.
 
 `TestActualExporterDiagnosticsParentExit` retains the complete protected
 `Supervisor.Start` integration. Actual FreeBSD attempts failed before child

@@ -53,7 +53,10 @@ A READY runtime exposes this sequence only through its private
 runtime/cut/epoch, calls these real methods on the retained owners, switches
 the runtime's current owners only after Activate and otherwise keeps the
 supervisor fenced with all partial owners retained. `Activate` uses the native
-shell switch; local tests substitute only that FUSE dispatch primitive.
+shell switch; local tests substitute only that FUSE dispatch primitive. An
+armed, unfired lost-reply fixture is expired before suspension. A response whose
+exposure was dropped and never re-read leaves its C row without a response, so
+the paired exporter/C8 cut refuses until the exporter re-reads it.
 
 ## Private C recovery channel and bounds
 

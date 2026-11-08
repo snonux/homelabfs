@@ -53,6 +53,10 @@ type restartChild struct {
 	writeBodies   map[uint64][]byte
 	loseCallReply bool
 	lost          bool
+	// readEIO counts actual result/recall preads answered with EIO at the
+	// native boundary (for example a dropped response exposure). It is an
+	// observation of the real reply, never a substitute for one.
+	readEIO int
 }
 
 func buildRestartChild(t *testing.T) string {
@@ -249,6 +253,10 @@ func (d *restartChild) serveNative() {
 			status = uint32(unix.EIO)
 			if errors.Is(err, fsapi.WouldBlock) {
 				status = uint32(unix.EAGAIN)
+			} else if op == 'R' {
+				d.mu.Lock()
+				d.readEIO++
+				d.mu.Unlock()
 			}
 			output = nil
 		}
@@ -262,6 +270,16 @@ func (d *restartChild) serveNative() {
 	}
 }
 func (d *restartChild) exchange(session int, op string, payload any, reclaim *guestbridge.Ack) (uint64, []byte) {
+	d.t.Helper()
+	cell, reclaim, control := d.send(session, op, payload, reclaim)
+	response := d.fetch(session, cell)
+	d.settle(session, cell, op, reclaim, control, response)
+	return cell, response
+}
+
+// send is exchange's SEND half: it allocates the next guest cell, chooses the
+// same-class automatic reclaim and retries SEND only while the C side refuses.
+func (d *restartChild) send(session int, op string, payload any, reclaim *guestbridge.Ack) (uint64, *guestbridge.Ack, bool) {
 	d.t.Helper()
 	d.cells[session]++
 	cell := d.cells[session]
@@ -295,7 +313,12 @@ func (d *restartChild) exchange(session int, op string, payload any, reclaim *gu
 		}
 		time.Sleep(time.Millisecond)
 	}
-	response := d.fetch(session, cell)
+	return cell, reclaim, control
+}
+
+// settle records the guest-side acknowledgement bookkeeping for one fetched
+// response, exactly as a completed exchange does.
+func (d *restartChild) settle(session int, cell uint64, op string, reclaim *guestbridge.Ack, control bool, response []byte) {
 	if reclaim != nil {
 		if op == "SESSION_RETIRE" {
 			control = d.classes[session][reclaim.Cell]
@@ -310,7 +333,6 @@ func (d *restartChild) exchange(session int, op string, payload any, reclaim *gu
 	d.acks[session][cell] = guestbridge.Ack{Cell: cell, ResponseHash: hashBytes(response)}
 	d.classes[session][cell] = control
 	d.replies[session][cell] = bytes.Clone(response)
-	return cell, response
 }
 func (d *restartChild) fetch(session int, cell uint64) []byte {
 	d.t.Helper()
@@ -339,12 +361,19 @@ func (d *restartChild) hello() {
 func (d *restartChild) root(session int) (guestbridge.Call, json.RawMessage) {
 	return d.ordinary(session, "ROOT", map[string]any{})
 }
-func (d *restartChild) ordinary(session int, opcode string, args any) (guestbridge.Call, json.RawMessage) {
-	d.t.Helper()
+
+// newCall builds the next actual claimed CALL for one session.
+func (d *restartChild) newCall(session int, opcode string, args any) guestbridge.Call {
 	d.claims[session]++
 	intent := guestbridge.Intent{Opcode: opcode, Args: mustRuntimeJSON(d.t, args)}
 	claim := guestbridge.Claim{Realm: testUUID(100).String(), Subject: "616263", Anchor: testUUID(101).String(), Nonce: testUUID(103).String(), Number: d.claims[session], OriginalHash: hashBytes(mustRuntimeJSON(d.t, intent))}
-	call := guestbridge.Call{Claim: claim, Credentials: d.rig.peers[session].credentials, Intent: intent}
+	return guestbridge.Call{Claim: claim, Credentials: d.rig.peers[session].credentials, Intent: intent}
+}
+
+func (d *restartChild) ordinary(session int, opcode string, args any) (guestbridge.Call, json.RawMessage) {
+	d.t.Helper()
+	call := d.newCall(session, opcode, args)
+	claim := call.Claim
 	d.exchange(session, "ALLOCATE", call, nil)
 	cell, _ := d.exchange(session, "CALL", call, nil)
 	d.lastCall[session] = cell
@@ -491,8 +520,13 @@ func TestBarrieredEndpointRestartRealC(t *testing.T) {
 // This drives the actual host controller and C transport through a clean recall;
 // the pinned read-only observer is the declared running-kernel/MM primitive.
 func (d *restartChild) releaseAndRetireRead(lease guestbridge.ViewLease, acquireID string, retire ...bool) {
+	d.releaseAndRetireFamily(d.rig.facts.enrollment.TicketFamilies[0], lease, acquireID, retire...)
+}
+
+// releaseAndRetireFamily is releaseAndRetireRead for explicit ticket families,
+// such as those of a runtime's own signed enrollment.
+func (d *restartChild) releaseAndRetireFamily(family viewcontrol.TicketFamilies, lease guestbridge.ViewLease, acquireID string, retire ...bool) {
 	t := d.t
-	family := d.rig.facts.enrollment.TicketFamilies[0]
 	ticket := guestbridge.Ticket{Anchor: family.Control.Anchor, Nonce: family.Control.Nonce, Number: 1, Credentials: d.rig.credentials}
 	d.exchange(0, "VIEW_RELEASE", map[string]any{"request": ticket, "lease": lease}, nil)
 	for _, phase := range []string{"STOPPED", "INSTALLED_DRAIN", "DRAINED", "INSTALLED_FINAL", "REOPENED"} {

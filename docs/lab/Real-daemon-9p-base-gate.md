@@ -96,7 +96,8 @@ overflow remains incomplete, and no generic journal/data file-size limit applies
 
 Minimum proposed additional runtime adapter, requiring its own focused review.
 Items 1-3 are implemented by u24's [lifecycle endpoint](../../internal/controlledruntime/lifecycle.md)
-(component tests only; native acceptance unrun). Item 4 remains v24:
+and item 4 by v24's [lost-reply fixture](../../internal/controlledruntime/lifecycle.md#lost-reply-fixture-v24)
+(component tests only; native acceptance unrun, zq3):
 
 1. One private, bounded, peer-credential checked local control endpoint in the
    explicit disposable runtime only, owned by that actual process. No guest or

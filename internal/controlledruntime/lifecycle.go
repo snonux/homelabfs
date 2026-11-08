@@ -49,6 +49,7 @@ type runtimeLifecycle struct {
 	current     lifecycleOwners
 	restored    *RestoredEndpoint // nonnil after Reopen ran; possibly partial
 	outcome     *lifecycleRestartView
+	lostReply   *lifecycleLostReply // the single successful ARM, if any (v24)
 }
 
 // lifecycleOwners are the actual objects that observation reads. They are
@@ -123,6 +124,7 @@ func (l *runtimeLifecycle) observeLocked(ctx context.Context) lifecycleEvidence 
 	e.Providers = captureProviders(ctx, owners.providers, l.sessions)
 	e.Controller = captureController(ctx, owners.controller)
 	e.Transport = captureTransport(owners.transport)
+	e.LostReply = l.lostReplyViewLocked()
 	if l.outcome != nil {
 		view := *l.outcome
 		view.Evidence = nil
@@ -184,6 +186,8 @@ func (l *runtimeLifecycle) restart(ctx context.Context, cut fsapi.UUID, epoch ui
 // runtime after the reply) and blocks every reachable service.
 func (l *runtimeLifecycle) runRestart(ctx context.Context) lifecycleRestartView {
 	view := lifecycleRestartView{Status: lifecycleFenced}
+	// An armed fixture belongs to the consumed cut; it never crosses C9.
+	l.expireLostReplyLocked()
 	r, err := l.supervisor.SuspendEndpoint(ctx, l.current.producer, l.current.transport)
 	if err != nil {
 		view.Step, view.Error = "suspend", evidenceError(err)
@@ -244,17 +248,18 @@ func (l *runtimeLifecycle) fenced() bool {
 	return l.stage == lifecycleFenced
 }
 
-// close joins restored transport workers and closes reopened owners. It never
-// removes a ledger or infers session retirement. Original Assembly owners stay
-// with the driver, whose closes are idempotent after suspension.
+// close joins restored transport workers, closes reopened owners and returns
+// the lost-reply fixture funding. It never removes a ledger or infers session
+// retirement. Original Assembly owners stay with the driver, whose closes are
+// idempotent after suspension. It runs only after the endpoint worker joined.
 func (l *runtimeLifecycle) close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	err := l.releaseLostReplyLocked()
 	a := l.restored
 	if a == nil {
-		return nil
+		return err
 	}
-	var err error
 	if a.Transport != nil {
 		a.Transport.Close()
 	}
