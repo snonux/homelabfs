@@ -1,4 +1,6 @@
 """Local OS fixture verification only; never constitutes a live 9p pass."""
+import fcntl
+import functools
 import importlib.util
 import json
 import os
@@ -15,12 +17,64 @@ probe = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(probe)
 
 
+def kernel_lock_identity_matches_stat(base):
+    """Hold a real lock under base; True when /proc/locks names the fstat dev:ino.
+
+    The probe proves a kernel wait by matching the /proc/locks dev:ino with the
+    fstat identity, as it should on 9p, where both use the superblock device.
+    btrfs reports a per-subvolume anonymous st_dev while /proc/locks prints the
+    superblock s_dev, so the probe correctly refuses there ("kernel waiter
+    inode differs"). Running the self-test on such a filesystem only exercises
+    that refusal and not the lock oracle.
+    """
+    with tempfile.TemporaryDirectory(prefix="hfs-lock-fscheck-", dir=base) as directory:
+        fd = os.open(os.path.join(directory, "check"), os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            st = os.fstat(fd)
+            with open("/proc/locks", encoding="ascii") as stream:
+                held = [line.split() for line in stream]
+        finally:
+            os.close(fd)
+    expected = "%02x:%02x:%d" % (os.major(st.st_dev), os.minor(st.st_dev), st.st_ino)
+    return any(len(f) >= 6 and f[4] == str(os.getpid()) and f[5] == expected for f in held)
+
+
+@functools.cache
+def local_root_base():
+    """First temp base whose kernel lock identity is exact; stable per run.
+
+    $TMPDIR may sit on btrfs (as on the Linux workstation), so tmpfs bases are
+    tried next. If none qualifies, the suite fails loudly instead of skipping.
+    It never loosens the probe's identity check.
+    """
+    candidates = [tempfile.gettempdir(), "/dev/shm", "/tmp"]
+    for base in dict.fromkeys(candidates):
+        try:
+            if os.path.isdir(base) and kernel_lock_identity_matches_stat(base):
+                return base
+        except OSError:
+            continue
+    raise RuntimeError("no temp filesystem with matching stat and /proc/locks identity among "
+                       + ", ".join(candidates))
+
+
 class GuestLockProbeTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="hfs-lock-local-")
+        self.temp = tempfile.TemporaryDirectory(prefix="hfs-lock-local-", dir=local_root_base())
         self.addCleanup(self.temp.cleanup)
         self.root = os.open(self.temp.name, os.O_RDONLY | os.O_DIRECTORY)
         self.addCleanup(os.close, self.root)
+
+    def root_entries(self):
+        """List the run root by path, not via the long-lived self.root fd.
+
+        On btrfs, a directory description opened before an entry was created
+        may omit that entry until it is rewound. listdir(fd) only rewinds after
+        reading, so a stale empty view could mask a mutation and falsely pass a
+        "nothing created" assertion.
+        """
+        return sorted(os.listdir(self.temp.name))
 
     def fixture(self, **kwargs):
         return probe.Fixture(self.root, "test", overall=10, case=1, **kwargs)
@@ -56,13 +110,13 @@ class GuestLockProbeTests(unittest.TestCase):
                 self.assertFalse(result["publication_identity_verified"])
                 self.assertFalse(result["security_admission_verified"])
                 self.assertTrue(result["parent_guard_oracle_required"])
-                self.assertEqual(os.listdir(self.root), [])
+                self.assertEqual(self.root_entries(), [])
 
     def test_unsupported_abi_refused_before_leaf_creation(self):
         with mock.patch.object(probe.platform, "machine", return_value="aarch64"):
             with self.assertRaisesRegex(probe.Refused, "unsupported"):
                 self.fixture().run()
-        self.assertEqual(os.listdir(self.root), [])
+        self.assertEqual(self.root_entries(), [])
 
     def test_actual_os_lock_cases(self):
         result = self.run_fixture()
@@ -145,7 +199,12 @@ class GuestLockProbeTests(unittest.TestCase):
                 self.assertEqual(len(observations), 1)
                 self.assertTrue(observations[0][0])
                 receipts = [item for item in observations[0][1] if item.get("pid") == reaped_pid[0]]
-                self.assertEqual(receipts, [{"pid": reaped_pid[0], "status": 0, "reaped": True}])
+                # The first reap must be the POSIX holder's clean protocol exit,
+                # reached only after the real posix lock cases pass. A TERM
+                # receipt here means the fixture failed earlier, not that the
+                # signal deferral is broken (see test_actual_os_lock_cases).
+                self.assertEqual(receipts, [{"pid": reaped_pid[0], "status": 0, "reaped": True}],
+                                 "first reap was not a clean exit; earlier error: " + str(result["error"]))
                 self.assertNotIn((reaped_pid[0], signal.SIGTERM), kills)
 
     def test_noop_lock_falsepass_detected(self):
@@ -217,7 +276,7 @@ class GuestLockProbeTests(unittest.TestCase):
     def test_real_non9p_mount_refused_before_mutation(self):
         with self.assertRaises(probe.Refused):
             probe.admit(self.request())
-        self.assertEqual(os.listdir(self.root), [])
+        self.assertEqual(self.root_entries(), [])
 
     def test_invalid_missing_and_symlink_mounts_refused_before_mutation(self):
         for changed in ({"run_id": "../escape"}, {"mount_id": 0},
@@ -228,7 +287,7 @@ class GuestLockProbeTests(unittest.TestCase):
         Path(self.temp.name, "link").symlink_to(self.temp.name)
         with self.assertRaises(probe.Refused):
             probe.admit(self.request(mountpoint=self.temp.name + "/link"))
-        self.assertEqual(os.listdir(self.root), ["link"])
+        self.assertEqual(self.root_entries(), ["link"])
 
     def test_retained_descriptor_mount_mismatch_refused(self):
         request = self.request()
@@ -236,7 +295,7 @@ class GuestLockProbeTests(unittest.TestCase):
                 mock.patch.object(probe, "fd_mount_id", return_value=-1):
             with self.assertRaises(probe.Refused):
                 probe.admit(request)
-        self.assertEqual(os.listdir(self.root), [])
+        self.assertEqual(self.root_entries(), [])
 
     def test_kernel_waiter_native_and_9p_flock_representations(self):
         expected = {"dev": os.makedev(0, 21), "ino": 42}

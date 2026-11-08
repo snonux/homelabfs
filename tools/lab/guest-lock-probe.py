@@ -194,7 +194,13 @@ def worker(sock, directory, filename, family):
 
 
 def waiter_record(raw, pid, expected_identity, family):
-    """Select only our child's waiter; record Linux 9p's POSIX flock conversion."""
+    """Select only our child's waiter; record Linux 9p's POSIX flock conversion.
+
+    /proc/locks prints the superblock s_dev, while fstat reports st_dev. On 9p
+    the two are equal. btrfs subvolumes report an anonymous st_dev, so the exact
+    match below deliberately refuses there instead of accepting an unproven
+    waiter. Local self-tests must therefore run on a filesystem such as tmpfs.
+    """
     for line in raw.splitlines():
         fields = line.split()
         if "->" not in fields:
