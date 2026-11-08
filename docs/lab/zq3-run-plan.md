@@ -60,7 +60,9 @@ the run and needs a revised plan.
 wired/free/inactive pages; whether the host path of the old PoC line,
 `/var/tmp/homelabfs-9p-poc/share` on **f3**, still exists (vm-bhyve's normal
 Rocky start in Phase 12 depends on it, see Risk R6); `/usr/local/bin/python3.12`
-hash on f3 (the fdescfs controller's pinned interpreter); `vm-public` bridge
+hash on f3 (the fdescfs controller's pinned interpreter) plus the other host
+hashes, `ldd` closure and interpreter ownership listed under
+[Filled f3 plan](Descriptor-execution-window.md#filled-f3-plan-for-zq3-r1-2026-11-08); `vm-public` bridge
 members and free tap names; current zrepl snapshot name/GUID of
 `zroot/bhyve/rocky`; Rocky `/boot` and EFI free bytes, `grub2-editenv list`
 (`saved_entry`, `next_entry`), `/etc/kernel/cmdline` or default BLS options,
@@ -100,7 +102,7 @@ unmounts of run-owned mounts.
 
 | Limit | Value | Source |
 |---|---|---|
-| Total critical window | 60 minutes from runtime start to runtime exit; only the probe controller enforces it (refuses commands 3600 s after its run started); the runtime has no enforced total deadline yet (G13) | proposal `seconds: 3600`; controller `RUN_WINDOW` |
+| Total critical window | 60 minutes from runtime start to runtime exit; the probe controller refuses commands 3600 s after its run started, and the outer runtime guard sends the runtime one SIGTERM (its retained stop, bhyve untouched) at 3600 s | proposal `seconds: 3600`; controller `RUN_WINDOW`; `runtime-guard.py` |
 | Restoration budget | 15 minutes after runtime exit (estimate, not enforced) | this plan |
 | Host runtime envelope | 6 GiB (signed), plus 6 GiB guest and 3 GiB host reserve = 15 GiB of 15.7 GiB physical | installation proposal |
 | Guest workload ceiling | 2 GiB signed provider/workload ceiling; logical canary 4 MiB | proposal |
@@ -108,7 +110,8 @@ unmounts of run-owned mounts.
 | Bootstrap | 120 s from launch to READY | base gate |
 | Guest probe case | at most 60 s, 256 operations, 12 MiB issued writes, 128 fds | `guest.py` |
 | Controller dispatch | each SSH dispatch bounded by `min(case seconds + 15, plan seconds)`, plan seconds 60-600 (enforced); streams 256 KiB each | `controller.py` |
-| fdescfs commands | 10 s each, 256 KiB output; Go test 5 s; native RSS 512 MiB, one CPU | fdescfs window doc |
+| fdescfs commands | 10 s each, 256 KiB output; Go test 5 s; native RSS 512 MiB, one CPU (`qualify` under `native-test-guard.py` host profile) | fdescfs window doc |
+| Runtime guard | runtime + non-bhyve descendants 6 GiB RSS; bhyve 6 GiB + 512 MiB; run disk 4 GiB; 8 GiB free; no swap; 512 MiB available memory; 3600 s | `runtime-guard.py` |
 | Lifecycle endpoint | OBSERVE/ARM 30 s, RESTART 90 s, replies 128 KiB | `lifecycle.md` |
 
 ## Phases
@@ -123,17 +126,22 @@ or vmm context could still exist.
 
 ### Phase 0: local preparation (workstation, B)
 
-- Actions: build from source `e0cca0c` with the reviewed recipes: the FreeBSD
-  CGO `controlledruntime.test` binary (for the host FD rerun), the
-  `fdescfs-namespace` helper; pin them with hashes. Fill the fdescfs window plan
-  JSON (schema in the window doc). Write the run config, enrollment requests,
+- Actions: the FreeBSD CGO `controlledruntime.test` binary (for the host FD
+  rerun) and the `fdescfs-namespace` helper are already rebuilt from `e0cca0c`
+  and pinned (`415fdaa6…`, `ec2d56e4…`, reproducible; recipe
+  `tools/lab/build-fdescfs-window-artifacts.sh`, record
+  `docs/lab/zq3-fdescfs-window/build-record.json`); rebuild only to re-verify.
+  The fdescfs window pins are reviewed in `docs/lab/zq3-fdescfs-window/pins.json`;
+  the exact plan JSON is filled in Phase 4 from fresh facts with
+  `tools/lab/fdescfs-window-plan.py`. Write the run config, enrollment requests,
   controller batch plan (`check-retained9p.sh check --plan` gives its hash).
   Run all local tests (`python3 -B -m unittest` in `tools/lab/retained9p`,
-  `tools/lab/test_fdescfs_window.py`, artifact tests, `go test` for touched
-  packages, shellcheck).
+  `tools/lab/test_fdescfs_window.py`, `test_fdescfs_window_plan.py`,
+  `test_runtime_guard.py`, artifact tests, `go test` for touched packages,
+  shellcheck).
 - Changes: workstation files only.
-- **GAP**: run config/enrollment/bhyve-argv generator (G2, G4), filled window
-  plan (G12), controller target addresses (G8).
+- **GAP**: run config/enrollment/bhyve-argv generator (G2, G4), controller
+  target addresses (G8).
 - Evidence: hashes of every staged byte, plan files and their SHA256.
 - Failure: fix locally; nothing remote has happened.
 
@@ -156,8 +164,10 @@ or vmm context could still exist.
 - Machine: f3. Actions: create `/var/tmp/hfs-validation-xz3/zq3-r1` root-owned
   `0700`; copy into its `bin/` only `freebsd/hfs-controlled-runtime`, `freebsd/bhyve`,
   `freebsd/bhyve-slirp-helper` (if the argv needs it), the `controlledruntime.test`
-  binary and `fdescfs-namespace` helper, mode `0500`, one hard link each; verify
-  SHA256 of every staged file against the manifest/Phase 0 pins.
+  binary and `fdescfs-namespace` helper, mode `0500`, plus the controllers
+  `tools/lab/fdescfs-window.py` and `tools/lab/runtime-guard.py`, mode `0400`,
+  one hard link each; verify SHA256 of every staged file against the
+  manifest/Phase 0 pins.
 - Changes: new files under the staging prefix only. No system binary,
   library, rc or loader change.
 - Evidence: staged-file listing with hashes, owner, mode, link count.
@@ -210,16 +220,22 @@ controller `tools/lab/fdescfs-window.py` with the explicit prefix
 `/usr/local/bin/python3.12 -I -B` and the pinned `fdescfs-namespace` helper.
 
 0. `facts --inspector /var/tmp/hfs-validation-xz3/zq3-r1/bin/hfs-controlled-runtime`
-   (read-only, B); must match Phase 1 and the filled window plan.
+   (read-only, B) plus the read-only host hashes listed in the
+   [filled f3 plan](Descriptor-execution-window.md#filled-f3-plan-for-zq3-r1-2026-11-08);
+   on the workstation `fdescfs-window-plan.py --pins
+   docs/lab/zq3-fdescfs-window/pins.json --facts … --host-sha256 … --expires …
+   --out …` must accept them (any mismatch with the pins or Phase 1 stops) and
+   prints the exact plan SHA256, which is reviewed before step 2.
 1. Negative before setup (B): run only `TestDescriptorExecNativeUnsupported`
-   from the staged test binary under the bounded guard; it must refuse before
-   child/pin/observer effects. A skip counts as unrun.
+   from the staged test binary under `native-test-guard.py --profile host`; it
+   must refuse before child/pin/observer effects. A skip counts as unrun.
 2. `setup --plan … --plan-sha256 … --directory /var/tmp/hfs-fdescfs-windows/zq3-r1`:
    loads the stock `fdescfs.ko` (`847cd1f2…`) only if absent, mounts fdescfs
    `nodup,nosuid` on `/dev/fd` via `nmount` with `MNT_NOCOVER`, writes
    `owned.json`. **Disclosed: the module stays loaded after restoration.**
-3. `qualify` (B): rerun `TestDescriptorExecNativeQualification` on the **f3
-   host** with the final test bytes from source `e0cca0c`, plus
+3. `qualify` (B, under `native-test-guard.py --profile host`): rerun
+   `TestDescriptorExecNativeQualification` on the **f3 host** with the final
+   test bytes from source `e0cca0c` (`415fdaa6…`), plus
    `hfs-controlled-runtime --check-descriptor-exec` (must now report
    `fdescfs`, supported). This closes the host rerun transferred from w24.
 4. `kldload /boot/kernel/fusefs.ko` (`b207adf6…`) only if absent, with
@@ -305,9 +321,21 @@ Intended setup:
 
 ### Phase 8: start the runtime and staged bootstrap (f3 + Rocky, A4, A7)
 
-- Action: `doas -n /var/tmp/hfs-validation-xz3/zq3-r1/bin/hfs-controlled-runtime
-  --config <private config>` in the foreground under an outer resource guard
-  (**GAP G13**: no guard profile for this long-running envelope yet).
+- Action: in the foreground, the outer resource guard launches the runtime:
+  `doas -n /usr/local/bin/python3.12 -I -B
+  /var/tmp/hfs-validation-xz3/zq3-r1/bin/runtime-guard.py --run-dir
+  /var/tmp/hfs-validation-xz3/zq3-r1/guard --runtime-sha256 53598737…
+  --vm-name hfs-zq3-r1 --disk-root /var/tmp/hfs-validation-xz3/zq3-r1
+  --disk-root /var/tmp/hfs-fdescfs-windows/zq3-r1 --
+  /var/tmp/hfs-validation-xz3/zq3-r1/bin/hfs-controlled-runtime --config
+  <private config>`. Runtime stdout (READY) and stderr go to `guard/runtime.stdout`
+  and `guard/runtime.stderr`. The guard refuses unless no VM context exists
+  and every limit already holds. On the first breach (limits table, a foreign
+  VM context such as `rocky`, an unobservable sample, or a SIGHUP/SIGINT/SIGTERM
+  to the guard) it writes `breach.json` and sends exactly one SIGTERM to the
+  runtime, which handles it as its retained stop. It never signals bhyve,
+  Rocky or a process group and never sends SIGKILL. Exit 3 means the runtime
+  still ran after the grace period: inspect, do not escalate.
 - The runtime launches the bhyve child; GRUB consumes the one-shot entry and
   boots `6.1.190-hfs-xz3`. Record the consumption evidence: the observed guest
   kernel release and boot ID, plus the console log. Within the 120 s bootstrap the following must
@@ -326,7 +354,9 @@ Intended setup:
      hfs0 /var/tmp/hfs-zq3-zq3-r1/m0` and the same for `hfs1` on `m1`; both
      HELLOs; runtime prints READY with the control binding.
 - Evidence: runtime stdout/stderr (bounded drains), READY record,
-  `runtime-budget.json`, observer receipts, the signed files.
+  `runtime-budget.json`, observer receipts, the signed files, and the guard's
+  `intent.json`, `observations.jsonl`, any `breach.json`/`stop-*.json` and
+  `receipt.json` (written when the runtime exits).
 - Failure: missing/late/changed records refuse and **retain** native and guest
   resources; nothing falls back to stock 9p callbacks. Go to Phase 11 with
   inspection first. If the child exited or failed before GRUB ran (no guest
@@ -533,9 +563,15 @@ reviewed and pinned, and this plan is re-filled:
 - G9 Pod/namespace fixture script and pinned runtime/rootfs (depends on A8).
 - G10 Guest steps for the v24 lost-reply CALL and the C9 quiesce before RESTART.
 - G11 Host-side K04/after-loss check.
-- G12 Filled fdescfs window plan; rebuilt, pinned `controlledruntime.test` and
-  `fdescfs-namespace` from `e0cca0c`; python3.12 hash on f3.
-- G13 Outer resource guard for the long-running runtime and its child.
+- G12 *Prepared (v34)*: rebuilt, reproducible `controlledruntime.test`
+  `415fdaa6…` and `fdescfs-namespace` `ec2d56e4…` from `e0cca0c` (recipe
+  cross-checked by reproducing the candidate daemon), reviewed window pins and
+  the run-time plan filler. Open until run time: the read-only host facts
+  (python3.12 and base command hashes, `ldd` closure, controller `facts`)
+  that the filler needs to emit the exact plan hash.
+- G13 *Prepared (v34)*: `tools/lab/runtime-guard.py`, outer RSS/time/disk/
+  memory/VM-context guard for the runtime and its bhyve child; tested
+  offline only, never run on FreeBSD.
 - G14 PTE/TLB/GUP exclusion fixtures (no admitted pin primitive): unrun.
 - G15 This run is root-orchestrated with intent records, not the full
   plan-bound, crash-resumable runner from `docs/Test-automation.md`.
