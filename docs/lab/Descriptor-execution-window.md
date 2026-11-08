@@ -93,6 +93,7 @@ executable exact plan**):
   "inspector": "/ROOT-PRIVATE-STAGING/hfs-controlled-runtime",
   "namespace_helper": "/ROOT-PRIVATE-STAGING/fdescfs-namespace",
   "module_policy": "preserve-existing-or-retain-new",
+  "window_module": {"path": "/boot/kernel/OTHER.ko", "sha256": "ITS_PINNED_SHA256"},
   "sha256": {"/ABSOLUTE/ARTIFACT": "ACTUAL_SHA256"},
   "before": {"ACTUAL_FACTS_OUTPUT": "not invented or historical"},
   "qualification": [["/ROOT-PRIVATE-STAGING/controlledruntime.test",
@@ -100,6 +101,14 @@ executable exact plan**):
     "-test.timeout=5s"]]
 }
 ```
+
+`window_module` is either `null` or exactly one stock `/boot/kernel/*.ko`
+file other than `fdescfs.ko`, whose hash must equal its entry in `sha256`. It
+declares a module that the **outer reviewed run** loads itself between setup
+and restore (zq3: `fusefs.ko` in Phase 4 step 4). The controller never loads
+or unloads it. Because the declaration is part of the hash-bound plan and its
+file is an artifact pin, every controller action re-digests that file before
+doing anything.
 
 Root prepares `/var/tmp/hfs-fdescfs-windows` as a root-private directory under
 the reviewed staging plan, counts all retained/current/cache/tmp/remote storage
@@ -146,9 +155,19 @@ do not select an interpreter from PATH or run an editable workstation copy.
 5. `restore` with the same arguments only normally unmounts the exact owned
    FSID/profile via the pinned helper's `unmount EXACT_FSID` action. A preexisting mount is preserved.
    Restore compares final boot/base/module/mount/directory facts with the
-   post-module-load baseline facts. `restoration-summary.json` explicitly records
-   mount restoration and whether the newly loaded module remains; it does not
-   report full original-system restoration when that module is retained.
+   post-module-load baseline facts. Every non-module fact must be equal, and
+   every baseline loaded file (fdescfs.ko included) must still be loaded
+   unchanged (same Id, address, size, path and contained modules; reference
+   counts are ignored because loading the window module raises them). The only tolerated addition is the plan's `window_module` file,
+   loaded from its exact declared path, registering its module name, with the
+   on-disk file still matching the pinned SHA256 (kldstat cannot hash loaded
+   kernel text). It may also be absent if the run stopped before loading it.
+   Any other module, a second extra module, a wrong path or hash, or a missing
+   baseline module refuses after the normal unmount and retains `owned.json`
+   for inspection. `restoration-summary.json` explicitly records mount
+   restoration, whether the newly loaded fdescfs module remains and the loaded
+   window module; it does not report full original-system restoration when
+   either module is retained.
    Restore remains permitted after plan expiry for the same
    pinned bytes and ownership, so expiry does not strand normal restoration.
    Collect all private evidence outside the host and inspect final VM/process,
@@ -197,7 +216,10 @@ too and re-verified on f3 by the controller at setup.
 
 **Pins and filler.** [`pins.json`](zq3-fdescfs-window/pins.json) holds every
 reviewed value: run ID `zq3-r1`, window directory, staged paths, the hashes
-above, the stock module `847cd1f2…`, the expected host identity
+above, the stock module `847cd1f2…`, the declared window module
+`/boot/kernel/fusefs.ko` (`b207adf6…`, also pinned, from the
+[Phase 1 facts](results/20261108-zq3-phase1/README.md); task j44) that Phase 4
+step 4 loads after setup and restore therefore tolerates, the expected host identity
 (`f3.lan.buetow.org`, `15.1-RELEASE-p2` kernel and userland), fdescfs absent,
 `/dev/fd` devfs and unsupported, and which modules must or must not be loaded.
 The controller compares the plan's `before` with fresh `facts` output and
@@ -213,7 +235,8 @@ after staging, at the start of Phase 4):
 
 1. `sha256 -r` of every path in `pins.json` (`collect`, `pinned` and
    `controller`). The `collect` values (interpreter, kernel, the six base
-   commands) are new facts; the others must equal their pins.
+   commands) are new facts; the others, including `/boot/kernel/fusefs.ko`,
+   must equal their pins.
 2. `ldd /usr/local/bin/python3.12` and `sha256 -r` of each library it lists
    (optional extra pins; the filler accepts them only under `/lib`, `/usr/lib`,
    `/usr/local/lib` or `/libexec`).

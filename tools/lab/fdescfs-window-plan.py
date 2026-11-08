@@ -19,6 +19,9 @@ This tool refuses unless those facts match every reviewed pin: the f3 host
 identity and 15.1-RELEASE-p2 kernel/base, fdescfs absent from the module
 inventory, /dev/fd still devfs and unsupported, no /dev/fd mount, the rebuilt
 artifact hashes, the stock module hash and the repository controller bytes.
+The pins' `window_module` (task j44: fusefs.ko, loaded by zq3 Phase 4 step 4
+after setup) is copied into the plan so restore tolerates exactly that file;
+it must be pinned with the same hash and still be absent at fill time.
 It writes the canonical plan.json and a fill-record.json and prints the plan
 SHA256. Neither file grants authority; the filled plan is reviewed, and the
 SYSTEM host setup still needs Paul's explicit approval (zq3 class A5).
@@ -84,7 +87,7 @@ def parse_host_sha256(text):
 def check_pins(pins):
     require(set(pins) == {"version", "run_id", "directory", "inspector", "namespace_helper",
                           "qualification_test", "controller", "module_policy", "pinned",
-                          "collect", "expected"}, "closed pins schema")
+                          "collect", "expected", "window_module"}, "closed pins schema")
     require(pins["version"] == PINS_VERSION, "pins version")
     require(pins["directory"] == str(WINDOW.PARENT / pins["run_id"]), "pins run directory")
     require(pins["module_policy"] == "preserve-existing-or-retain-new", "pins module policy")
@@ -94,6 +97,26 @@ def check_pins(pins):
     require(all(SHA.fullmatch(value) for value in pins["pinned"].values()), "pinned hashes")
     required = set(WINDOW.COMMANDS.values()) | {"/boot/kernel/kernel", "/usr/local/bin/python3.12"}
     require(set(pins["collect"]) == required, "collect list must be the controller's fixed inputs")
+    check_window_module(pins)
+
+
+def check_window_module(pins):
+    """The declared window module is a pinned stock file, absent at fill time.
+
+    Pinning it in `pinned` makes artifact_pins() require the f3 hash to match
+    and puts it into the plan's `sha256`, which the controller re-digests on
+    every action. Requiring it in `modules_forbidden` keeps the plan honest:
+    restore tolerates it only because the run itself loads it after setup.
+    """
+    declared = pins["window_module"]
+    require(isinstance(declared, dict) and set(declared) == {"path", "sha256"},
+            "closed window module pins")
+    path = declared["path"]
+    require(isinstance(path, str) and WINDOW.WINDOW_MODULE_PATH.fullmatch(path) is not None and
+            path != "/boot/kernel/fdescfs.ko", "window module must be a stock /boot/kernel module")
+    require(pins["pinned"].get(path) == declared["sha256"], "window module must be pinned with its hash")
+    require(Path(path).name in pins["expected"]["modules_forbidden"],
+            "window module must be expected absent at fill time")
 
 
 def check_identity(facts, expected):
@@ -176,6 +199,7 @@ def build_plan(pins, facts, host, controller_sha256, expires, now):
             "directory": pins["directory"], "inspector": pins["inspector"],
             "namespace_helper": pins["namespace_helper"],
             "module_policy": pins["module_policy"],
+            "window_module": dict(pins["window_module"]),
             "sha256": artifact_pins(pins, host, controller_sha256), "before": facts,
             "qualification": [[pins["qualification_test"], *QUALIFICATION_FLAGS]]}
     require(re.fullmatch(r"[a-z0-9][a-z0-9-]{1,63}", plan["run_id"]) is not None, "run id")

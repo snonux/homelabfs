@@ -25,6 +25,19 @@ ADDED = """ 2 1 0xffffffff82000000 100 fdescfs.ko (/boot/kernel/fdescfs.ko)
          Id Name
          20 fdescfs
 """
+# The plan-declared window module, as loaded by zq3 Phase 4 step 4 (j44).
+FUSEFS = """ 3 1 0xffffffff82100000 200 fusefs.ko (/boot/kernel/fusefs.ko)
+    Contains modules:
+         Id Name
+         21 fusefs
+"""
+OTHER = """ 4 1 0xffffffff82200000 300 if_wg.ko (/boot/kernel/if_wg.ko)
+    Contains modules:
+         Id Name
+         22 wg
+"""
+FUSEFS_PATH = "/boot/kernel/fusefs.ko"
+FUSEFS_SHA = "b" * 64
 
 
 def descriptor(supported=False, identity="00000000:00000001"):
@@ -46,7 +59,8 @@ class WindowTests(unittest.TestCase):
         self.directory.mkdir()
         self.plan = {"before": baseline(), "namespace_helper": "/pinned/helper",
                      "module_policy": "preserve-existing-or-retain-new",
-                     "sha256": {"/boot/kernel/fdescfs.ko": "a" * 64}}
+                     "window_module": {"path": FUSEFS_PATH, "sha256": FUSEFS_SHA},
+                     "sha256": {"/boot/kernel/fdescfs.ko": "a" * 64, FUSEFS_PATH: FUSEFS_SHA}}
         WINDOW.persist(self.directory / "plan.json", self.plan)
 
     def own(self):
@@ -93,6 +107,82 @@ class WindowTests(unittest.TestCase):
         self.assertTrue(summary["mount_restored"])
         self.assertTrue(summary["module_retained_by_reviewed_plan"])
         self.assertFalse(summary["full_original_system_state_restored"])
+
+    def restore_after(self, modules, file_sha=FUSEFS_SHA, plan=None, **changes):
+        """Restore with substituted post-unmount facts; return the refusal or None.
+
+        Only the inspector, facts, helper command and file digest boundaries
+        are substituted; intent/result/summary evidence is real.
+        """
+        plan = plan or self.plan
+        owned = self.own()
+        after = dict(plan["before"], modules=modules, **changes)
+        reply = {"exit": 0, "stdout": json.dumps({"unmounted_fsid": owned["mount_id"]})}
+        with patch.object(WINDOW, "inspect", return_value=owned), \
+                patch.object(WINDOW, "facts", return_value=after), \
+                patch.object(WINDOW, "command", return_value=reply), \
+                patch.object(WINDOW, "digest", return_value=file_sha):
+            try:
+                WINDOW.restore(plan, self.directory, "/inspector")
+            except RuntimeError as failure:
+                self.assertTrue((self.directory / "owned.json").exists())
+                self.assertFalse((self.directory / "restoration-summary.json").exists())
+                return failure
+        return None
+
+    def test_declared_window_module_is_accepted(self):
+        self.assertIsNone(self.restore_after(MODULES + ADDED + FUSEFS))
+        summary = WINDOW.load(self.directory / "restoration-summary.json")
+        self.assertTrue(summary["mount_restored"])
+        self.assertEqual(summary["window_module"], self.plan["window_module"])
+        self.assertEqual(summary["window_module_loaded"][0][3:], ["fusefs.ko", FUSEFS_PATH])
+        self.assertFalse(summary["full_original_system_state_restored"])
+
+    def test_declared_window_module_may_stay_unloaded(self):
+        self.assertIsNone(self.restore_after(MODULES + ADDED))
+        summary = WINDOW.load(self.directory / "restoration-summary.json")
+        self.assertIsNone(summary["window_module_loaded"])
+        self.assertTrue(summary["full_original_system_state_restored"])
+
+    def test_window_module_other_differences_refuse(self):
+        cases = {
+            "other_module": (MODULES + ADDED + OTHER, {}, "unexpected module"),
+            "extra_unexpected_module": (MODULES + ADDED + FUSEFS + OTHER, {}, "unexpected module"),
+            "wrong_hash": (MODULES + ADDED + FUSEFS, {"file_sha": "c" * 64}, "file hash changed"),
+            "missing_fdescfs": (MODULES + FUSEFS, {}, "changed or missing"),
+            "foreign_pathname": (MODULES + ADDED + FUSEFS.replace("(/boot/kernel/", "(/tmp/"),
+                                 {}, "pathname changed"),
+            "unregistered": (MODULES + ADDED + FUSEFS.replace(" 21 fusefs", " 21 other"),
+                             {}, "not registered"),
+            "changed_mounts": (MODULES + ADDED + FUSEFS,
+                               {"mounts": "devfs /dev devfs rw 0 0\n/dev/fuse /mnt fusefs rw 0 0\n"},
+                               "restore incomplete"),
+        }
+        for name, (modules, changes, pattern) in cases.items():
+            with self.subTest(name=name):
+                self.setUp()
+                self.assertRegex(str(self.restore_after(modules, **changes)), pattern)
+
+    def test_undeclared_window_module_refuses(self):
+        plan = dict(self.plan, window_module=None)
+        WINDOW.persist(self.directory / "plan.json.tmp", plan)
+        (self.directory / "plan.json.tmp").replace(self.directory / "plan.json")
+        self.assertRegex(str(self.restore_after(MODULES + ADDED + FUSEFS, plan=plan)),
+                         "unexpected module")
+
+    def test_window_module_declaration_is_checked(self):
+        WINDOW.check_window_module(self.plan)
+        WINDOW.check_window_module(dict(self.plan, window_module=None))
+        cases = {
+            "fdescfs": {"path": "/boot/kernel/fdescfs.ko", "sha256": "a" * 64},
+            "foreign": {"path": "/tmp/fusefs.ko", "sha256": FUSEFS_SHA},
+            "unpinned_hash": {"path": FUSEFS_PATH, "sha256": "d" * 64},
+            "extra_key": {"path": FUSEFS_PATH, "sha256": FUSEFS_SHA, "name": "fusefs"},
+            "not_object": [FUSEFS_PATH, FUSEFS_SHA],
+        }
+        for name, declared in cases.items():
+            with self.subTest(name=name), self.assertRaises(RuntimeError):
+                WINDOW.check_window_module(dict(self.plan, window_module=declared))
 
     def test_existing_mount_preserved(self):
         original = descriptor(True)
