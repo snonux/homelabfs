@@ -15,6 +15,7 @@ import (
 	"github.com/snonux/homelabfs/internal/controlledvalidation"
 	"github.com/snonux/homelabfs/internal/fsapi"
 	"github.com/snonux/homelabfs/internal/fsservice"
+	"github.com/snonux/homelabfs/internal/fuseadapter"
 	"github.com/snonux/homelabfs/internal/guestbridge"
 	"github.com/snonux/homelabfs/internal/viewcontrol"
 )
@@ -252,7 +253,18 @@ func (r *Restart) Reopen(ctx context.Context) (*RestoredEndpoint, error) {
 // Activate replaces only the original shell's joined frontend, then releases
 // the exact same paused exporter. A replacement FUSE connection always refuses.
 func (r *Restart) Activate(ctx context.Context, a *RestoredEndpoint) error {
-	if r == nil {
+	return r.activate(ctx, a, (*fuseadapter.Shell).ReplaceEndpoint)
+}
+
+// shellSwitch is the native FUSE dispatch handoff primitive. Production always
+// uses (*fuseadapter.Shell).ReplaceEndpoint; local tests may substitute only
+// this operating-system boundary (a real initialized go-fuse server cannot be
+// constructed without a kernel connection). Every grant/assembly/physical check
+// and the actual exporter resume remain in activate.
+type shellSwitch func(shell *fuseadapter.Shell, old, next *guestbridge.Transport) error
+
+func (r *Restart) activate(ctx context.Context, a *RestoredEndpoint, replace shellSwitch) error {
+	if r == nil || replace == nil {
 		return fsapi.Permission
 	}
 	r.mu.Lock()
@@ -274,7 +286,7 @@ func (r *Restart) Activate(ctx context.Context, a *RestoredEndpoint) error {
 	}
 	shell := s.mount.shell
 	s.mu.Unlock()
-	if err := shell.ReplaceEndpoint(r.predecessor, a.Transport); err != nil {
+	if err := replace(shell, r.predecessor, a.Transport); err != nil {
 		return err
 	}
 	if err := r.resumeExporter(ctx); err != nil {

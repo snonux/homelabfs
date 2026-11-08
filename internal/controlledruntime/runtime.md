@@ -97,6 +97,9 @@ acceptance remain the xz3/zq3 gates.
    emit `READY`, `profile:"CONTROLLED_LOCAL"`, full domain count and
    `publication:null`. The ongoing inherited control channel fences loss of its
    live owner. There is no normal publication or native acceptance certificate.
+   READY also announces the server-issued `control` binding (socket, runtime,
+   cut, epoch) of the private [lifecycle endpoint](lifecycle.md), which is
+   listening before READY is written.
 
 The credential attestor requires the private bridge VerifiedRequest, exact live
 Admission/native controller, complete numeric sorted groups and the immutable
@@ -112,7 +115,10 @@ deletes failed resources or treats process exit as session retirement. A pending
 or failed dedicated device always remains on the dedicated branch. Operator VM
 lifecycle and normal unmount/recovery are separate approved operations. Unplanned
 owner loss, replacement FUSE/exporter and guest-wire RESUME remain blocked; the
-existing C9 path is limited to its same-surviving-owner barriered cut.
+existing C9 path is limited to its same-surviving-owner barriered cut. After
+READY that cut is reachable only through the private, peer-UID checked
+[lifecycle endpoint](lifecycle.md) (OBSERVE/RESTART); a failed restart stays
+fenced and ends the runtime like any owner loss, retaining all resources.
 
 ## Local evidence boundary
 
@@ -295,9 +301,10 @@ substitutes SIGPIPE-ignore and establishes no FreeBSD safety. The test helpers
 are disposable local processes and explicit OS boundary fixtures. Actual FreeBSD
 execution is needed to qualify its socket safety; these fixtures do not start
 bhyve or prove guest/filesystem behavior.
-Private external C9 lifecycle/evidence operations and a real response-exposure
-lost-reply fixture remain separate unimplemented prerequisites for the real9p
-gate; diagnostic capture does not satisfy them.
+Private C9 lifecycle/evidence operations are implemented separately by the
+[lifecycle endpoint](lifecycle.md) (u24). A real response-exposure lost-reply
+fixture (v24) remains a separate unimplemented prerequisite for the real9p
+gate; neither diagnostic capture nor lifecycle evidence satisfies it.
 
 `TestActualExporterDiagnosticsParentExit` retains the complete protected
 `Supervisor.Start` integration. Actual FreeBSD attempts failed before child

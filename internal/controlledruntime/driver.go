@@ -12,10 +12,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"runtime"
 	"time"
 
+	"github.com/snonux/homelabfs/internal/admin"
 	"github.com/snonux/homelabfs/internal/controlledvalidation"
 	"github.com/snonux/homelabfs/internal/daemoncli"
 	"github.com/snonux/homelabfs/internal/fsapi"
@@ -34,8 +34,12 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	descriptors := f.Bool("check-descriptor-exec", false, "read-only descriptor execution prerequisite report; no child or runtime startup")
 	config := f.String("config", "", "private controlled-runtime/1 config")
 	disposable := f.Bool("disposable-validation", false, "explicit controlled local runtime; publication remains null")
+	client := lifecycleClientFlags(f)
 	if err := f.Parse(args); err != nil {
 		return err
+	}
+	if client.socket != "" {
+		return runLifecycleClient(ctx, f, client, stdout)
 	}
 	if *descriptors {
 		if f.NFlag() != 1 || f.NArg() != 0 {
@@ -82,6 +86,11 @@ type runtimeOS struct {
 	start  func(context.Context, *Supervisor, Executable) error
 	mount  func(context.Context, *Supervisor, string, *fuseadapter.Shell) (guestbridge.Endpoint, error)
 	bind   func(context.Context, *Supervisor, *guestbridge.Transport) error
+	// replace is the native FUSE shell-dispatch switch used by C9 Activate;
+	// nil leaves the private RESTART operation unsupported before any effect.
+	replace shellSwitch
+	// peer reads kernel peer credentials for the private lifecycle endpoint.
+	peer peerCredentials
 }
 
 func nativeRuntimeOS() runtimeOS {
@@ -102,162 +111,13 @@ func nativeRuntimeOS() runtimeOS {
 		mount: func(ctx context.Context, s *Supervisor, path string, shell *fuseadapter.Shell) (guestbridge.Endpoint, error) {
 			return s.MountShell(ctx, path, shell)
 		},
-		bind: func(ctx context.Context, s *Supervisor, t *guestbridge.Transport) error { return s.Bind(ctx, t) },
+		bind:    func(ctx context.Context, s *Supervisor, t *guestbridge.Transport) error { return s.Bind(ctx, t) },
+		replace: (*fuseadapter.Shell).ReplaceEndpoint,
+		peer:    admin.PeerCredentials,
 	}
 }
 func runRuntime(ctx context.Context, c RuntimeConfig, output io.Writer) error {
 	return runRuntimeWithOS(ctx, c, output, nativeRuntimeOS())
-}
-
-func runRuntimeWithOS(ctx context.Context, c RuntimeConfig, output io.Writer, platform runtimeOS) (retErr error) {
-	if err := validateRuntimeConfig(ctx, c); err != nil {
-		return err
-	}
-	funding, err := fundRuntime(c.Budget, c.Providers, c.Views, len(c.Scopes))
-	if err != nil {
-		return err
-	}
-	attached := false
-	defer func() {
-		if !attached {
-			retErr = errors.Join(retErr, funding.owner.Release())
-		}
-	}()
-	local, err := platform.open(ctx, c)
-	if err != nil {
-		return err
-	}
-	defer func() { retErr = errors.Join(retErr, local.close()) }()
-	supervisor, err := platform.create(ctx, c.OwnerDirectory)
-	if err != nil {
-		return err
-	}
-	defer func() { retErr = errors.Join(retErr, supervisor.Close()) }()
-	if err = protectRuntimeBudget(supervisor, c); err != nil {
-		return err
-	}
-	supervisor.runtimeFunding = funding
-	attached = true
-	c.Exporter.ControlledBootstrap = true
-	if err = platform.start(ctx, supervisor, c.Exporter); err != nil {
-		return err
-	}
-	shell, err := fuseadapter.NewShell(100, 101, 102, 103)
-	if err != nil {
-		return err
-	}
-	endpoint, err := platform.mount(ctx, supervisor, local.mountpoint, shell)
-	if err != nil {
-		return err
-	}
-	proposal, err := runtimeProposal(ctx, c, local.service, supervisor, endpoint)
-	if err != nil {
-		return err
-	}
-	if err = protectProposal(supervisor, proposal); err != nil {
-		return err
-	}
-	// This record is deliberately not readiness and contains no private keys.
-	if err = json.NewEncoder(output).Encode(struct {
-		Stage       string `json:"stage"`
-		Proposal    string `json:"proposal"`
-		Publication any    `json:"publication"`
-	}{"AWAITING_OPERATOR_ENROLLMENT", filepath.Join(c.OwnerDirectory, "proposal.json"), nil}); err != nil {
-		return err
-	}
-	bootstrap, cancel := context.WithTimeout(ctx, time.Duration(c.BootstrapSeconds)*time.Second)
-	defer cancel()
-	handoff, err := waitRuntimeEnrollment(bootstrap, c.EnrollmentFile)
-	if err != nil {
-		return err
-	}
-	proposal, err = bindRuntimeProposal(proposal, handoff.Authorization.Enrollment)
-	if err != nil {
-		return err
-	}
-	if _, err = guestAuthorization(handoff.Authorization, c.Operator); err != nil {
-		return err
-	}
-	scopes := make([]guestbridge.Context, len(proposal.Domains))
-	for i, d := range proposal.Domains {
-		scopes[i] = d.Scope
-	}
-	admitted, err := ObserveAdmission(bootstrap, supervisor, handoff.Observer, scopes)
-	if err != nil {
-		return err
-	}
-	attestor, err := newKernelAttestor(admitted, handoff.Authorization, handoff.Provision, c.Operator, c.Budget.Guest)
-	if err != nil {
-		return err
-	}
-	assembly, err := Assemble(bootstrap, AssemblyConfig{Directory: c.OwnerDirectory, Service: local.service, Supervisor: supervisor, Admissions: []*Admission{admitted}, Authorization: handoff.Authorization, Providers: handoff.Providers, Operator: c.Operator, HostKeys: c.HostKeys, Attestor: attestor, ProviderLimits: c.Providers, Capabilities: c.Capabilities, CapabilityIdentities: c.CapabilityIdentities, CredentialRevisions: c.CredentialRevisions, Budget: funding.transport})
-	defer func() { retErr = errors.Join(retErr, assembly.Close()) }()
-	if err != nil {
-		return err
-	}
-	if err = platform.bind(bootstrap, supervisor, assembly.Transport); err != nil {
-		return err
-	}
-	controlCtx, stopControl := context.WithCancel(ctx)
-	defer stopControl()
-	control := make(chan error, 1)
-	go func() { control <- supervisor.ServeControl(controlCtx) }()
-	if err = supervisor.supplyBootstrap(bootstrap, scopes, guestbridge.TerminalProtocol()); err != nil {
-		return err
-	}
-	if err = supervisor.waitBootstrap(bootstrap); err != nil {
-		select {
-		case readerErr := <-control:
-			return fmt.Errorf("controlled C bootstrap: %v; management: %w", err, readerErr)
-		default:
-		}
-		return fmt.Errorf("controlled C bootstrap: %w", err)
-	}
-	var provision guestProvisionArtifact
-	if err = json.Unmarshal(handoff.Provision, &provision); err != nil {
-		return err
-	}
-	provisionPayload, err := canonicalJSON(provision.Payload)
-	if err != nil {
-		return err
-	}
-	if err = json.NewEncoder(output).Encode(struct {
-		Stage         string `json:"stage"`
-		Controller    string `json:"controller"`
-		ProvisionHash string `json:"provision_hash"`
-		Publication   any    `json:"publication"`
-	}{"AWAITING_GUEST_BIND", supervisor.record.Controller.String(), hashBytes(provisionPayload), nil}); err != nil {
-		return err
-	}
-	if err = waitRuntimeSessions(bootstrap, assembly.Transport, supervisor.record.Controller, scopes); err != nil {
-		return err
-	}
-	// Fresh measurement and source/enrollment checks after all real C devices
-	// have claimed their exact session over the one inherited native endpoint.
-	if err = admitted.Refresh(bootstrap); err != nil {
-		return err
-	}
-	if err = assembly.Facts.CheckEnrollment(bootstrap, proposal); err != nil {
-		return err
-	}
-	if err = json.NewEncoder(output).Encode(struct {
-		Stage       string `json:"stage"`
-		Profile     string `json:"profile"`
-		Domains     int    `json:"domains"`
-		Publication any    `json:"publication"`
-	}{"READY", "CONTROLLED_LOCAL", len(scopes), nil}); err != nil {
-		return err
-	}
-	select {
-	case err = <-control:
-		local.service.BlockAdmission("controlled-native-owner-lost")
-		return err
-	case <-ctx.Done():
-		local.service.BlockAdmission("controlled-runtime-stopping-retained")
-		// No session retirement or replacement-native recovery is inferred. The
-		// unpublished mount/guest obligations remain for explicit inspection.
-		return nil
-	}
 }
 
 func runtimeProposal(ctx context.Context, c RuntimeConfig, service *fsservice.Service, s *Supervisor, endpoint guestbridge.Endpoint) (viewcontrol.Enrollment, error) {
@@ -398,7 +258,8 @@ func protectRuntimeBudget(s *Supervisor, c RuntimeConfig) error {
 		Views       viewcontrol.Bounds
 		Domains     int
 		Diagnostics diagnosticBudget
-	}{c.Budget, c.Providers, c.Service, c.Views, len(c.Scopes), fixedDiagnosticBudget()})
+		Control     lifecycleBudget
+	}{c.Budget, c.Providers, c.Service, c.Views, len(c.Scopes), fixedDiagnosticBudget(), fixedLifecycleBudget(c.Views)})
 	if err != nil {
 		return err
 	}

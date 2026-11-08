@@ -48,6 +48,13 @@ refuses them. Snapshots cannot include unsupported EXECUTING cells at a restart
 cut. Existing service result serialization protects capability effects before
 plan protection and prevents peer mutation from becoming unprotected authority.
 
+A READY runtime exposes this sequence only through its private
+[lifecycle endpoint](lifecycle.md): RESTART names the exact server-issued
+runtime/cut/epoch, calls these real methods on the retained owners, switches
+the runtime's current owners only after Activate and otherwise keeps the
+supervisor fenced with all partial owners retained. `Activate` uses the native
+shell switch; local tests substitute only that FUSE dispatch primitive.
+
 ## Private C recovery channel and bounds
 
 Start passes one additional unnamed pinned AF_UNIX socket at fd5 to the same

@@ -20,8 +20,10 @@ implements explicit staged external enrollment, supervised all-session startup a
 durable response-backed readiness. Native artifact/installation/acceptance remains
 xz3/zq3, with no lab activation claimed here.
 [C9 barriered component restart](../../internal/controlledruntime/restart.md)
-implements a narrow same-owner/current-cut boundary. The original planning gaps
-below remain historical context; they are not native/deployment acceptance.
+implements a narrow same-owner/current-cut boundary. After READY it is reachable
+only through the private [lifecycle control/evidence endpoint](../../internal/controlledruntime/lifecycle.md)
+(u24). The original planning gaps below remain historical context; they are not
+native/deployment acceptance.
 
 ## Existing mechanisms and actual gaps
 
