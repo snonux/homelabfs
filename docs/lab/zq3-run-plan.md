@@ -427,7 +427,19 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
 
 ### Phase 8: start the runtime and staged bootstrap (f3 + Rocky, A3, A4, A7)
 
-- Action: in the foreground, the outer resource guard launches the runtime:
+- Driver (G1, implemented in x34, locally tested only): on the workstation,
+  `python3 -I -B tools/lab/retained9p/bootstrap.py run --plan <bootstrap
+  plan> --plan-sha256 … --output <new dir>`
+  ([README](../../tools/lab/retained9p/README.md#phase-8-bootstrap-orchestrator-zq3-g1)).
+  It runs every step below in this order, each with a durable intent and
+  result in `<new dir>/journal.jsonl`, refuses out-of-order steps, stops at
+  the first failed or uncertain step and never replays one (no resume, no
+  reused output directory). It first checks on f3 that the guard script and
+  runtime match their pins and that the guard run directory, OwnerDirectory
+  and EnrollmentFile do not exist yet, while the EnrollmentFile's parent
+  directory does (root, `0700`; Phase 7 must create it).
+- Action: in the foreground of one f3 SSH session that the driver starts
+  detached from its terminal, the outer resource guard launches the runtime:
   `doas -n /usr/local/bin/python3.12 -I -B
   /var/tmp/hfs-validation-xz3/zq3-r1/bin/runtime-guard.py --run-dir
   /var/tmp/hfs-validation-xz3/zq3-r1/guard --runtime-sha256 53598737…
@@ -448,46 +460,60 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
   the grace period: inspect, do not escalate.
 - The runtime launches the bhyve child; GRUB consumes the one-shot entry and
   boots `6.1.190-hfs-xz3`. Record the consumption evidence: the observed guest
-  kernel release and boot ID, plus the console log. The runtime emits its
+  kernel release and boot ID (the driver's `guest-ready` result), plus the
+  console log (collected separately; the driver does not read it). The runtime emits its
   proposal (`AWAITING_OPERATOR_ENROLLMENT`) and waits for the enrollment
   handoff; it observes the guest only after that handoff, with the handoff's
   `Observer` (`admitOperatorEnrollment` in
-  `internal/controlledruntime/driver_phases.go`). Within the 120 s bootstrap
-  the following must complete in order (**GAP G1**: no orchestrator script):
-  0. (A3) Root over pinned root SSH to the guest, once it answers:
-     `rocky_kernel.py admission` (G5) waits for `udevadm settle`, then writes
+  `internal/controlledruntime/driver_phases.go`). Within the 120 s bootstrap,
+  counted by the driver from the launch, the following must complete in
+  order (G1 driver steps in brackets):
+  0. (A3) Root over pinned root SSH to the guest, once it answers with the
+     test kernel release [`guest-ready`]: `rocky_kernel.py admission` (G5)
+     waits for `udevadm settle`, then writes
      `/etc/homelabfs/installed-admission-v1.json` from the live loaded-module
      set (see Phase 3 step 5). Record its SHA256 and the boot ID it reports,
      and read the provider nonce from `/sys/kernel/homelabfs/admission_v1`
-     (read-only). Fill `BootID`, `ProviderNonce` and `Observer.ManifestHash`
-     into the enrollment request. This SSH round trip counts against the
-     120 s.
+     and the `virtioN` name of each share tag (read-only) [`admission`, one
+     SSH round trip with the pinned script]. Fill `BootID`, `ProviderNonce`,
+     the device names and `Observer.ManifestHash` into the enrollment request
+     with `hfs-runtime-prep enroll-request` [`enroll-request`]. This SSH round
+     trip counts against the 120 s.
   1. Signer (`hfs-retained9p-operator enroll`, on the workstation, with the
-     operator key under A7) emits `provision.json` and `enrollment.json`.
+     operator key under A7) emits `provision.json` and `enrollment.json`
+     [`signed-enrollment`]. The driver never reads the key: it prints the
+     exact command, waits for its fresh output directory and refuses signed
+     files that differ from the measured boot ID, provider nonce, manifest
+     hash or exact proposal, or that disagree with each other.
   2. Root writes `provision.json` to `/sys/kernel/homelabfs/provision_v1` in
-     one write, then transfers `enrollment.json` atomically to the host
-     `EnrollmentFile`.
+     one write [`provision`], then transfers `enrollment.json` atomically to
+     the host `EnrollmentFile` [`enrollment-handoff`].
   3. The runtime reads the handoff and observes the guest through the
      observer key: actual boot ID, provider nonce, complete module inventory,
      `admission_v1`, and the manifest's SHA256 equal to
      `Observer.ManifestHash`.
-  4. At `AWAITING_GUEST_BIND`: `hfs-retained9p-operator bind` emits
-     `bind.json`; one write to `/sys/kernel/homelabfs/bind_v1`.
-  5. Guest mounts both domains:
+  4. At `AWAITING_GUEST_BIND` [`awaiting-bind`]: `hfs-runtime-prep
+     bind-request` [`bind-request`], then `hfs-retained9p-operator bind`
+     emits `bind.json` [`signed-bind`, checked against the runtime's
+     controller and provision hash]; one write to
+     `/sys/kernel/homelabfs/bind_v1` [`bind`].
+  5. Guest mounts both domains [`mount-0`, `mount-1`]:
      `mount -t 9p -o trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,msize=65536
      hfs0 /var/tmp/hfs-zq3-zq3-r1/m0` and the same for `hfs1` on `m1`; both
-     HELLOs; runtime prints READY with the control binding.
+     HELLOs; runtime prints READY with the control binding [`ready`].
 - Changes on Rocky's disk (A3): `/etc/homelabfs/installed-admission-v1.json`
   (and `/etc/homelabfs/` if absent), the G5 journal lines; kdump may create
   `/boot/initramfs-6.1.190-hfs-xz3kdump.img`. U2 removes them.
 - Evidence: runtime stdout/stderr (bounded drains), READY record,
   `runtime-budget.json`, observer receipts, the signed files, the admission
-  command output and manifest SHA256, and the guard's `intent.json`,
+  command output and manifest SHA256, the driver's `journal.jsonl`, `calls/`,
+  `work/` and `summary.json`, and the guard's `intent.json`,
   `observations.jsonl`, any `breach.json`/`stop-*.json` and `receipt.json`
   (written when the runtime exits).
 - Failure: missing/late/changed records refuse and **retain** native and guest
-  resources; nothing falls back to stock 9p callbacks. Go to Phase 11 with
-  inspection first. If the child exited or failed before GRUB ran (no guest
+  resources; nothing falls back to stock 9p callbacks. The driver signals,
+  kills, unmounts and deletes nothing remote; an `uncertain` step is inspected
+  by root, never repeated. Go to Phase 11 with inspection first. If the child exited or failed before GRUB ran (no guest
   kernel observed and no GRUB output on the console), treat `next_entry` as
   unconsumed and restore with **U3** after the child is positively gone.
 
@@ -708,7 +734,14 @@ reviewed and pinned, and this plan is re-filled:
 - G1 Bootstrap orchestrator for Phase 8, inside 120 s: the root SSH round
   trip running `rocky_kernel.py admission` (manifest SHA256, boot ID, provider
   nonce), filling the enrollment request, sign, provision, enrollment
-  transfer, the runtime's observation, bind, two mounts.
+  transfer, the runtime's observation, bind, two mounts. **Implemented (x34),
+  locally tested only**: `tools/lab/retained9p/bootstrap.py` with its remote
+  half `bootstrap_remote.py` ([README](../../tools/lab/retained9p/README.md#phase-8-bootstrap-orchestrator-zq3-g1));
+  tests `test_bootstrap.py` (against real signer output) and
+  `test_bootstrap_remote.py`. Still needed at run time: the filled bootstrap
+  plan and its SHA256, the handoff directory created in Phase 7, a doas rule
+  for `python3.12 -I -B -c` on f3, the operator ready to sign twice inside
+  the 120 s (A7), and review/pinning of the two scripts.
 - G2 Generator for the `controlled-runtime/1` config, enrollment/bind request
   templates (completed in Phase 8 step 0 with `BootID`, `ProviderNonce` and
   `Observer.ManifestHash`) and per-session keys. **Implemented in s34**
