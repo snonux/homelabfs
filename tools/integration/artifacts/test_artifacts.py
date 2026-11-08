@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: BSD-2-Clause
 """Offline structural/digest controls; synthetic ELF notes are parser fixtures."""
+import argparse
 import copy
 import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import struct
 import tempfile
 import unittest
@@ -434,6 +436,9 @@ class DaemonCgoTests(unittest.TestCase):
             ('libc.so.7', lambda o, c, s: c['libraries']['libc.so.7'].update(sha256='ab' * 32)),
             ('libc.so.7', lambda o, c, s: c['libraries']['libc.so.7'].update(redistributed=True)),
             ('libc.so.7', lambda o, c, s: c['libraries']['libc.so.7'].update(sysroot_path='lib/libsys.so.7')),
+            # Same bytes, but outside rtld's /lib:/usr/lib search directories.
+            ('libc.so.7', lambda o, c, s: (s['files'].update({'usr/local/lib/libc.so.7': s['files']['lib/libc.so.7']}),
+                                           c['libraries']['libc.so.7'].update(sysroot_path='usr/local/lib/libc.so.7'))),
         ]
         for reason, change in cases:
             o, c, s = copy.deepcopy(observed), copy.deepcopy(closure), copy.deepcopy(capture)
@@ -483,27 +488,112 @@ class DaemonCgoTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'unsupported sysroot capture'):
             self.cgo.verify_sysroot(self.sysroot)
 
-    def test_wrapper_must_bind_selected_tools_and_sysroot(self):
-        import argparse
+    def fake_wrapper(self, search=None):
+        """A shell stand-in for the pinned wrapper. It answers the resource-dir
+        and header-search probes like clang, and otherwise has the bound text
+        that daemon.cgo_toolchain requires. /usr/bin/true stands in for clang
+        and ld.lld, so their hashes and host library closures are real."""
         import daemon
+        resource = self.root / 'resource'
+        (resource / 'include').mkdir(parents=True, exist_ok=True)
+        (resource / 'include/stddef.h').write_bytes(b'/* resource stddef */\n')
+        search = search or str(self.sysroot / 'usr/include')
         wrapper = self.root / 'freebsd-cc'
-        tool = Path('/usr/bin/true')
-        args = argparse.Namespace(cc_wrapper=wrapper, clang=tool, lld=tool, sysroot=self.sysroot)
-        good = ('#!/usr/bin/env bash\nlinker_args=(--ld-path=' + str(tool) + ')\n'
-                'exec ' + str(tool) + ' --no-default-config \\\n --target=' + daemon.TARGET + ' \\\n'
+        tool = '/usr/bin/true'
+        text = ('#!/usr/bin/env bash\nlinker_args=(--ld-path=' + tool + ')\n'
+                'case "$1" in\n -print-resource-dir) echo ' + str(resource) + '; exit 0;;\n'
+                " -E) printf '%s\\n' '#include <...> search starts here:' ' " + str(resource / 'include')
+                + "' ' " + search + "' 'End of search list.' >&2; exit 0;;\nesac\n"
+                'exec ' + tool + ' --no-default-config \\\n --target=' + daemon.TARGET + ' \\\n'
                 ' --sysroot=' + str(self.sysroot) + ' \\\n "${linker_args[@]}" "$@"\n')
-        wrapper.write_text(good)
+        wrapper.write_text(text)
+        wrapper.chmod(0o700)
+        args = argparse.Namespace(cc_wrapper=wrapper, clang=Path(tool), lld=Path(tool), sysroot=self.sysroot)
+        return args, text, resource
+
+    def test_wrapper_must_bind_selected_tools_and_sysroot(self):
+        import daemon
+        args, good, _ = self.fake_wrapper()
         record = daemon.cgo_toolchain(args)
         self.assertEqual(record['wrapper']['sha256'], hashlib.sha256(good.encode()).hexdigest())
         self.assertEqual(record['target'], 'x86_64-unknown-freebsd15.1')
         for old, new in [(' --no-default-config', ''), (daemon.TARGET, 'x86_64-unknown-linux-gnu'),
                          ('--sysroot=' + str(self.sysroot), '--sysroot=/'),
-                         ('--ld-path=' + str(tool), '--ld-path=/usr/bin/ld.bfd')]:
-            wrapper.write_text(good.replace(old, new))
+                         ('--ld-path=/usr/bin/true', '--ld-path=/usr/bin/ld.bfd')]:
+            args.cc_wrapper.write_text(good.replace(old, new))
             with self.subTest(old=old), self.assertRaisesRegex(ValueError, 'does not bind'):
                 daemon.cgo_toolchain(args)
         with self.assertRaisesRegex(ValueError, 'explicit absolute'):
             daemon.explicit_path(Path('relative/freebsd-cc'), 'cc wrapper')
+
+    def test_host_toolchain_inputs_recorded_and_change_detected(self):
+        import daemon
+        args, _, resource = self.fake_wrapper()
+        first = daemon.cgo_toolchain(args)
+        self.cgo.check_host_toolchain(first)
+        self.assertEqual(set(first['resource_dir']['files']), {'include/stddef.h'})
+        self.assertEqual(first['include_search'], [str(resource / 'include'), str(self.sysroot / 'usr/include')])
+        self.assertTrue(any(name.startswith('libc.so') for name in first['clang']['libraries']))
+        self.assertEqual(set(first['interpreter']), {'/usr/bin/env', shutil.which('bash', path='/usr/bin:/bin')})
+        self.assertEqual(daemon.cgo_toolchain(args), first)
+        # inputs_snapshot compares this record before and after the build, so
+        # a resource header changed between snapshots must change the record.
+        (resource / 'include/stddef.h').write_bytes(b'/* changed during build */\n')
+        self.assertNotEqual(daemon.cgo_toolchain(args), first)
+        (resource / 'include/stddef.h').write_bytes(b'/* resource stddef */\n')
+        (resource / 'include/alias.h').symlink_to('stddef.h')
+        self.assertEqual(daemon.cgo_toolchain(args)['resource_dir']['symlinks'], {'include/alias.h': 'stddef.h'})
+
+    def test_header_search_must_stay_in_resource_dir_or_sysroot(self):
+        import daemon
+        args, _, _ = self.fake_wrapper(search='/usr/include')
+        with self.assertRaisesRegex(ValueError, 'escapes resource dir and sysroot'):
+            daemon.cgo_toolchain(args)
+        for report in ['', 'End of search list.\n#include <...> search starts here:\n',
+                       '#include <...> search starts here:\nEnd of search list.\n']:
+            with self.subTest(report=report), self.assertRaises(ValueError):
+                self.cgo.parse_search_dirs(report)
+
+    def test_host_loader_parsing_and_admission_shape(self):
+        sample = ('\tlinux-vdso.so.1 (0x00007f3d9c6e2000)\n'
+                  '\tlibLLVM.so.22.1 => /lib64/libLLVM.so.22.1 (0x00007f3d90000000)\n'
+                  '\t/lib64/ld-linux-x86-64.so.2 (0x00007f3d9c6e4000)\n')
+        self.assertEqual(self.cgo.parse_ldd(sample), {'libLLVM.so.22.1': '/lib64/libLLVM.so.22.1',
+                                                      '/lib64/ld-linux-x86-64.so.2': '/lib64/ld-linux-x86-64.so.2'})
+        self.assertEqual(self.cgo.parse_ldd('\tstatically linked\n'), {})
+        for bad in ['\tlibLLVM.so.22.1 => not found\n', '\tgarbage line\n',
+                    sample + '\tlibLLVM.so.22.1 => /opt/libLLVM.so.22.1 (0x1)\n']:
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                self.cgo.parse_ldd(bad)
+        library = {'libc.so.6': {'sha256': 'ab' * 32}}
+        good = {'resource_dir': {'files': {'include/stddef.h': 'cd' * 32}},
+                'include_search': ['/usr/lib/clang/22/include'],
+                'clang': {'libraries': library}, 'lld': {'libraries': library},
+                'interpreter': {'/usr/bin/bash': {'libraries': library}}}
+        self.cgo.check_host_toolchain(good)
+        cases = [('resource directory', lambda t: t['resource_dir'].update(files={})),
+                 ('resource directory', lambda t: t['resource_dir']['files'].update({'include/stddef.h': 'x'})),
+                 ('header search', lambda t: t.update(include_search=[])),
+                 ('library closure', lambda t: t['clang'].update(libraries={})),
+                 ('library closure', lambda t: t['lld'].update(libraries={'libc.so.6': {'sha256': None}})),
+                 ('library closure', lambda t: t.update(interpreter={}))]
+        for reason, change in cases:
+            mutated = copy.deepcopy(good)
+            change(mutated)
+            with self.subTest(reason=reason), self.assertRaisesRegex(ValueError, reason):
+                self.cgo.check_host_toolchain(mutated)
+
+    def test_empty_banner_and_missing_loader_raise_value_errors(self):
+        import daemon
+        silent = self.root / 'silent'
+        silent.write_text('#!/bin/sh\nexit 0\n')
+        silent.chmod(0o700)
+        with self.assertRaisesRegex(ValueError, 'empty version banner'):
+            daemon.tool_record(silent, '--version')
+        capture, _ = self.cgo.verify_sysroot(self.sysroot)
+        del capture['files']['libexec/ld-elf.so.1']
+        with self.assertRaisesRegex(ValueError, 'loader absent from sysroot capture'):
+            self.cgo.resolve_closure(self.binary, self.sysroot, capture)
 
 
 class ProposalTests(unittest.TestCase):

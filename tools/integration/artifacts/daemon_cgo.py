@@ -17,15 +17,24 @@ recorded FreeBSD base runtime closure from a hashed sysroot capture:
 * PT_INTERP is FreeBSD's /libexec/ld-elf.so.1 and DT_NEEDED equals the
   recorded closure, whose libraries match the sysroot capture hashes.
 
+It also records the host side of the cross compile, which lies outside the
+FreeBSD sysroot: clang's resource directory (searched before the sysroot, so
+e.g. stddef.h comes from there), the host shared-library closure of clang,
+ld.lld and the wrapper's interpreter, and the effective header search list,
+which must stay inside the resource directory and the sysroot.
+
 These parsers stay separate from elf.py and native_build.py so that the
 already pinned native recipe bytes do not change.
 """
-from pathlib import PurePosixPath
+import os
+from pathlib import Path, PurePosixPath
 import re
+import shutil
 import struct
+import subprocess
 
 from native_build import dynamic_needed
-from package import digest, read_json
+from package import HASH, digest, read_json
 
 MAX_ELF = 128 << 20
 INTERPRETER = '/libexec/ld-elf.so.1'
@@ -251,7 +260,9 @@ def check_closure(observed, closure, capture):
         raise ValueError('daemon runtime closure contains unreachable library')
     for name, item in libraries.items():
         row = files.get(item.get('sysroot_path'))
-        if row is None or PurePosixPath(item['sysroot_path']).name != name or row.get('sha256') != item.get('sha256') or item.get('redistributed') is not False:
+        # Only rtld's standard search directories can satisfy DT_NEEDED.
+        location = PurePosixPath(str(item.get('sysroot_path')))
+        if row is None or location.name != name or str(location.parent) not in LIBRARY_DIRECTORIES or row.get('sha256') != item.get('sha256') or item.get('redistributed') is not False:
             raise ValueError('daemon runtime library sysroot hash mismatch: ' + name)
 
 
@@ -295,7 +306,153 @@ def resolve_closure(binary, root, capture):
                            'needed': dependencies, 'redistributed': False}
         pending += dependencies
     location = INTERPRETER.lstrip('/')
+    if location not in capture['files']:
+        raise ValueError('FreeBSD dynamic loader absent from sysroot capture')
     return {'needed': needed, 'libraries': libraries,
             'interpreter': {'path': INTERPRETER, 'sysroot_path': location,
                             'sha256': capture['files'][location]['sha256']},
             'provenance': 'measured FreeBSD base binary inputs; external, not redistributed'}
+
+
+# Host toolchain inputs outside the sysroot -----------------------------------
+
+HOST_ENVIRONMENT = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C'}
+SEARCH_START = '#include <...> search starts here:'
+SEARCH_END = 'End of search list.'
+MAX_TREE_FILES = 20000
+
+
+def tree_hashes(directory):
+    """Hash every regular file under one tool directory, recording links.
+
+    Symlinked files are hashed by content and their link text is kept, so a
+    retargeted alias with identical bytes still changes the record.
+    """
+    files, links, count = {}, {}, 0
+    for current, dirs, names in os.walk(directory, followlinks=False):
+        dirs.sort()
+        for name in sorted(dirs + names):
+            path = Path(current) / name
+            relative = path.relative_to(directory).as_posix()
+            if path.is_symlink():
+                links[relative] = os.readlink(path)
+            if name in names:
+                if not path.is_file():
+                    raise ValueError('special file in compiler resource directory: ' + relative)
+                count += 1
+                if count > MAX_TREE_FILES:
+                    raise ValueError('compiler resource directory bound')
+                files[relative] = digest(path)[1]
+    return {'files': files, 'symlinks': links}
+
+
+def parse_ldd(text):
+    """Map each host dependency (including the ELF interpreter) to its path."""
+    if 'statically linked' in text:
+        return {}
+    rows = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith('linux-vdso.so'):
+            continue
+        if 'not found' in line:
+            raise ValueError('unresolved host toolchain library: ' + line)
+        match = re.fullmatch(r'(\S+) => (/\S+) \(0x[0-9a-f]+\)', line) or re.fullmatch(r'((/\S+)) \(0x[0-9a-f]+\)', line)
+        if not match:
+            raise ValueError('unrecognised host loader line: ' + line)
+        name, path = match.groups()
+        if rows.setdefault(name, path) != path:
+            raise ValueError('ambiguous host library alias: ' + name)
+    return rows
+
+
+def shared_libraries(program):
+    """Host shared-library closure of an existing trusted tool, with hashes."""
+    result = subprocess.run(['/usr/bin/ldd', str(program)], env=HOST_ENVIRONMENT, text=True,
+                            capture_output=True, timeout=30)
+    if result.returncode and 'statically linked' not in result.stdout + result.stderr:
+        raise ValueError('host toolchain loader observation failed: ' + str(program))
+    return {name: {'path': path, 'resolved': str(Path(path).resolve(strict=True)),
+                   'sha256': digest(Path(path))[1]}
+            for name, path in parse_ldd(result.stdout).items()}
+
+
+def tool_binding(path):
+    resolved = Path(path).resolve(strict=True)
+    return {'path': str(path), 'resolved': str(resolved), 'sha256': digest(resolved)[1],
+            'libraries': shared_libraries(resolved)}
+
+
+def interpreter_bindings(wrapper_text):
+    """The wrapper's `#!` interpreter (and env's target) as hashed host tools."""
+    first = wrapper_text.splitlines()[0] if wrapper_text else ''
+    words = first[2:].split() if first.startswith('#!') else []
+    if not words or not words[0].startswith('/'):
+        raise ValueError('cc wrapper needs an absolute #! interpreter')
+    programs = [words[0]]
+    if PurePosixPath(words[0]).name == 'env':
+        if len(words) != 2:
+            raise ValueError('cc wrapper env interpreter must name one program')
+        found = shutil.which(words[1], path=HOST_ENVIRONMENT['PATH'])
+        if not found:
+            raise ValueError('cc wrapper interpreter not found: ' + words[1])
+        programs.append(found)
+    return {program: tool_binding(program) for program in programs}
+
+
+def parse_search_dirs(stderr):
+    lines = stderr.splitlines()
+    if lines.count(SEARCH_START) != 1 or lines.count(SEARCH_END) != 1:
+        raise ValueError('cc wrapper header search list not reported')
+    start, end = lines.index(SEARCH_START), lines.index(SEARCH_END)
+    directories = [line.strip() for line in lines[start + 1:end]] if start < end else []
+    if not directories:
+        raise ValueError('cc wrapper header search list empty')
+    return directories
+
+
+def check_search_dirs(directories, resource, sysroot):
+    """Every angle-bracket include directory must be hashed resource or sysroot."""
+    allowed = [Path(resource).resolve(strict=True), Path(sysroot).resolve(strict=True)]
+    for directory in directories:
+        actual = Path(directory).resolve(strict=True)
+        if not any(actual == root or actual.is_relative_to(root) for root in allowed):
+            raise ValueError('cc wrapper header search escapes resource dir and sysroot: ' + directory)
+
+
+def compiler_environment(wrapper, sysroot):
+    """Record clang's resource directory and the effective header search."""
+    resource = subprocess.check_output([str(wrapper), '-print-resource-dir'], env=HOST_ENVIRONMENT,
+                                       text=True, timeout=30).strip()
+    if not resource.startswith('/'):
+        raise ValueError('cc wrapper resource directory must be absolute')
+    report = subprocess.run([str(wrapper), '-E', '-v', '-x', 'c', '/dev/null', '-o', '/dev/null'],
+                            env=HOST_ENVIRONMENT, text=True, capture_output=True, timeout=30, check=True)
+    directories = parse_search_dirs(report.stderr)
+    check_search_dirs(directories, resource, sysroot)
+    resolved = Path(resource).resolve(strict=True)
+    return {'resource_dir': {'path': resource, 'resolved': str(resolved), **tree_hashes(resolved)},
+            'include_search': directories}
+
+
+def _hashed_libraries(value):
+    return isinstance(value, dict) and value and all(
+        isinstance(item, dict) and HASH.fullmatch(str(item.get('sha256'))) for item in value.values())
+
+
+def check_host_toolchain(toolchain):
+    """Admission shape check: host compiler inputs were recorded, not skipped.
+
+    The host bytes are not packaged, so admission can only require that the
+    builder recorded a complete, hashed resource tree and library closures.
+    """
+    resource = toolchain.get('resource_dir') or {}
+    files = resource.get('files')
+    if not isinstance(files, dict) or 'include/stddef.h' not in files or not all(HASH.fullmatch(str(v)) for v in files.values()):
+        raise ValueError('daemon cgo compiler resource directory not recorded')
+    if not isinstance(toolchain.get('include_search'), list) or not toolchain['include_search']:
+        raise ValueError('daemon cgo header search list not recorded')
+    interpreters = toolchain.get('interpreter') or {}
+    tools = [toolchain.get('clang') or {}, toolchain.get('lld') or {}] + list(interpreters.values())
+    if not interpreters or any(not _hashed_libraries(tool.get('libraries')) for tool in tools):
+        raise ValueError('daemon cgo host toolchain library closure not recorded')

@@ -121,6 +121,8 @@ def daemon_controls(m, cgo0_daemon):
         m.metadata(record, lambda v: v['sysroot'].update(capture_sha256=value))
     m.reject('sysroot library hash differs from recorded closure', foreign_library_hash, 'daemon runtime library sysroot hash mismatch: libc.so.7')
     m.reject('unlinked sysroot capture', lambda: m.metadata(SYSROOT_CAPTURE, lambda v: v.update(scope='foreign')), 'daemon sysroot capture linkage mismatch')
+    m.reject('unrecorded clang resource headers', lambda: m.metadata(record, lambda v: v['cgo_toolchain']['resource_dir'].update(files={})), 'resource directory not recorded')
+    m.reject('unrecorded clang shared-library closure', lambda: m.metadata(record, lambda v: v['cgo_toolchain']['clang'].update(libraries={})), 'host toolchain library closure not recorded')
     m.reject('foreign cgo compiler wrapper', lambda: m.put(CC_WRAPPER, b'#!/bin/sh\nexec /usr/bin/gcc "$@"\n'), 'daemon cgo compiler wrapper/toolchain linkage mismatch')
 
 

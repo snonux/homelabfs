@@ -7,8 +7,12 @@ process_freebsd_nocgo.go, whose observeProcess always returns
 fsapi.Unsupported, so that daemon starts bhyve and then can never reach native
 READY. The cgo build links process_freebsd.go/process_freebsd.h against the
 FreeBSD libc ABI from a hashed sysroot capture through an explicit pinned
-cross C compiler wrapper. Every compiler, wrapper, sysroot and runtime-closure
-input is an explicit absolute argument and is recorded by hash. The produced
+cross C compiler wrapper. The wrapper, clang, ld.lld and sysroot are explicit
+absolute arguments. Their bytes are recorded by hash, together with the host
+inputs the wrapper reaches outside the sysroot: clang's resource directory
+(searched before the sysroot), the effective header search list, and the host
+shared-library closures of clang, ld.lld and the wrapper's interpreter. All of
+these are re-measured after the build and must be unchanged. The produced
 binary is parsed, never executed.
 """
 import argparse
@@ -106,11 +110,12 @@ def explicit_path(value, kind):
 
 
 def tool_record(path, version_argument):
-    resolved = path.resolve(strict=True)
+    """Executable hash, version banner and host shared-library closure."""
     banner = subprocess.check_output([str(path), version_argument], text=True,
-                                     timeout=30, env={'PATH': '/usr/bin:/bin', 'LC_ALL': 'C'})
-    return {'path': str(path), 'resolved': str(resolved),
-            'sha256': digest(resolved)[1], 'version': banner.splitlines()[0]}
+                                     timeout=30, env=daemon_cgo.HOST_ENVIRONMENT).splitlines()
+    if not banner or not banner[0].strip():
+        raise ValueError('empty version banner: ' + str(path))
+    return {**daemon_cgo.tool_binding(path), 'version': banner[0]}
 
 
 def cgo_toolchain(args):
@@ -119,7 +124,10 @@ def cgo_toolchain(args):
     The wrapper is a pinned build input, so its text must name exactly the
     tools and sysroot recorded here, disable ambient clang configuration and
     select the FreeBSD 15.1 target. Otherwise its recorded hash would not
-    explain what actually compiled and linked the daemon.
+    explain what actually compiled and linked the daemon. The host inputs it
+    reaches outside the sysroot (resource directory, header search, tool
+    shared libraries, #! interpreter) are recorded alongside, and
+    inputs_snapshot compares this whole record before and after the build.
     """
     wrapper = explicit_path(args.cc_wrapper, 'cc wrapper')
     text = wrapper.read_text()
@@ -130,8 +138,10 @@ def cgo_toolchain(args):
             raise ValueError('cc wrapper does not bind selected input: ' + required)
     size, value = digest(wrapper)
     return {'wrapper': {'path': str(wrapper), 'bytes': size, 'sha256': value},
+            'interpreter': daemon_cgo.interpreter_bindings(text),
             'clang': tool_record(args.clang, '--version'),
-            'lld': tool_record(args.lld, '--version'), 'target': TARGET}
+            'lld': tool_record(args.lld, '--version'), 'target': TARGET,
+            **daemon_cgo.compiler_environment(wrapper, args.sysroot)}
 
 
 def build_environment(args):

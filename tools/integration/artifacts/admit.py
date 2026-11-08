@@ -43,6 +43,9 @@ def admit_daemon_build(root, manifest, daemon, revision):
     wrapper = manifest['files'].get(CC_WRAPPER)
     if wrapper is None or wrapper['sha256'] != (toolchain.get('wrapper') or {}).get('sha256') or any(not HASH.fullmatch(str((toolchain.get(name) or {}).get('sha256'))) for name in ('clang', 'lld')):
         raise ValueError('daemon cgo compiler wrapper/toolchain linkage mismatch')
+    # Host resource headers and tool libraries are not packaged; require that
+    # the builder recorded them (it already refused any change during build).
+    daemon_cgo.check_host_toolchain(toolchain)
     for path, value in daemon.get('licenses', {}).items():
         if path not in manifest['files'] or manifest['files'][path]['sha256'] != value:
             raise ValueError('daemon license/package linkage mismatch')

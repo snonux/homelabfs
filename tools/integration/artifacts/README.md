@@ -75,12 +75,22 @@ compiles `process_freebsd_nocgo.go`, whose `observeProcess` always returns
 can never reach native READY. The cgo build compiles `process_freebsd.go` and
 `process_freebsd.h` against the FreeBSD libc ABI.
 
-All C inputs are explicit absolute arguments; nothing defaults to a local
-path. The wrapper must name exactly the given clang, `ld.lld` and sysroot, use
-`--no-default-config` and target `x86_64-unknown-freebsd15.1`. The sysroot is a
-closed capture: `capture.json` must list exactly its files and their hashes,
-checked before and after the build. The record keeps wrapper bytes, clang/lld
-hashes and versions, the capture manifest hash and platform, explicit
+The wrapper, clang, `ld.lld` and sysroot are explicit absolute arguments;
+nothing defaults to a local path. The wrapper must name exactly the given
+clang, `ld.lld` and sysroot, use `--no-default-config` and target
+`x86_64-unknown-freebsd15.1`. The sysroot is a closed capture: `capture.json`
+must list exactly its files and their hashes. Some host inputs lie outside the
+sysroot and are derived rather than passed: clang's resource directory (from
+the wrapper's `-print-resource-dir`; it is searched before the sysroot, so
+e.g. `stddef.h` comes from there) and the host shared libraries loaded by
+clang, `ld.lld` and the wrapper's `#!` interpreter (via `ldd`). Every resource
+file is hashed. The wrapper's effective header search list (`-E -v`) must stay
+inside that resource directory and the sysroot. All of this is measured before
+and after the build and must be unchanged. Admission cannot re-hash these
+unpackaged host files; it only requires that they were recorded. The record
+keeps wrapper bytes, clang/lld hashes, versions and library closures, the
+resource tree hashes, the header search list, the capture manifest hash and
+platform, explicit
 `CGO_CFLAGS`/`CGO_LDFLAGS` and Go's embedded build settings. It also records
 the binary's runtime closure: PT_INTERP `/libexec/ld-elf.so.1`, exact DT_NEEDED
 order and every transitive base library, with sysroot path and hash. These
@@ -156,7 +166,8 @@ false rebuild evidence and authority claims. Daemon cases cover a real
 `CGO_ENABLED=0` daemon supplied read-only via `--cgo0-daemon`, a CGO0 record,
 the nocgo stub in the source closure, renamed observer symbols, and a foreign
 loader. They also cover extra or missing DT_NEEDED, a sysroot library hash
-mismatch, an unlinked capture and a foreign cc wrapper. It restores the copy and rechecks
+mismatch, an unlinked capture, unrecorded clang resource headers or tool
+library closure, and a foreign cc wrapper. It restores the copy and rechecks
 both it and the immutable original. Small unit fixtures cover parser boundaries;
 they are not component or runtime acceptance evidence.
 
