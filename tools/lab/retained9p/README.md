@@ -13,15 +13,37 @@ qualified corrected artifacts. Existing offline build proofs remain preserved;
 neither a successful old metadata admission nor a different digest establishes
 native eligibility. These preparation commands never grant deployment eligibility.
 
+**The controller pins exactly one candidate:** the 2026-11-08 xz3 rebuild,
+manifest `3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1`
+(source `e0cca0c`, CGO daemon `53598737…`; see its
+[evidence](../../integration/artifacts/evidence/xz3-20261108/README.md)). Any
+other digest refuses before reading inputs or contacting the lab. This pin is a
+dispatch precondition only; installed/booted/native acceptance remains zq3.
+
 `guest.py` runs real Linux syscalls only after matching the actual boot/provider,
 complete two-domain inventory, installed manifest digest, SELinux enforcing and
 both exact `9P2000.L.hfs1.4,cache=mmap,msize=65536` mount IDs. It retains directory
 descriptors and verifies independent `st_dev` domains. Every operation stays in
 a newly exclusively created case directory. JSONL invocation/reply/errno evidence
 leaves through stdout; a controller must preserve it outside the tested volume.
-Successful cases remove their exact known payload entries, preserving the journal;
-failed cases preserve their files. This permits the full 4MiB logical canary to
-run without previous successful payloads consuming its logical ceiling.
+
+**Successful cases retain their payload** until host correlation is captured.
+(The earlier probe deleted it immediately, so the host could never correlate
+journal/source state against the files the guest had just written.) The case
+records the exact payload inventory (names, types, inodes, ownership, modes,
+sizes, links, leaf listing) and the SHA256 of a fresh 256-bit release token in
+`/var/tmp/hfs-zq3-RUN/release-CASE.json`: exclusive, `0600`, fsynced, in the
+root-private local run directory that holds both mount points and is checked to
+be on neither tested device. The token itself appears only in the controller's
+private stdout log. A separate `homelabfs-retained9p-release/1` request passes
+the same full admission, then must present that token, the unchanged inventory
+digest and the host correlation digest. Only then is the record consumed
+(renamed to `released-CASE.json`, so a replay refuses) and the exact known
+entries unlinked; the journal is preserved. A wrong token, changed inventory,
+changed boot/provider, insecure run directory or existing record refuses and
+preserves everything. Failed cases preserve their files and write no record.
+One release before the next case keeps the full 4MiB logical canary free of
+earlier payloads.
 
 Implemented probe cases are credentials, sync, metadata, namespace refusal and
 full mapped pressure. The namespace refusal case exercises an actual new user
@@ -45,10 +67,30 @@ correlations, pod cases or other required matrix entries keep `zq3` incomplete.
 ## Controller evidence and uncertain dispatch
 
 `check-retained9p.sh check --plan ABS` validates an exact syscall batch and emits
-its byte digest without contacting the lab. `probe --plan ABS --sha256 SHA
---output FRESH_ABS` runs that exact batch only against already installed/admitted
-mounts. `status --output ABS` reads its retained state. These commands provide no
-VM lifecycle, package installation, mounting, fencing or normal publication.
+its byte digest without contacting the lab. The batch then runs one case at a
+time against already installed/admitted mounts:
+
+1. `probe --plan ABS --sha256 SHA --output FRESH_ABS` creates the run and
+   dispatches the first case, ending at `payload-retained-awaiting-correlation`.
+2. Root captures host correlation for that case while its payload is present and
+   writes a `homelabfs-retained9p-host-correlation/1` record: closed keys
+   `version, run_id, case, case_stdout_sha256, inventory_sha256, host_observe,
+   acceptance:false`, bound to the case's retained stdout and inventory digests;
+   `host_observe` is the nonempty raw host evidence (for example the lifecycle
+   endpoint OBSERVE reply). The controller binds, but does not interpret, it.
+3. `release --output ABS --sha256 SHA --correlation ABS --correlation-sha256 SHA`
+   checks that binding and the retained stdout digest, persists the record and
+   dispatches the guest release.
+4. `next --output ABS --sha256 SHA` dispatches the following case only after the
+   previous payload is released. `syscall_batch_success` needs all five released.
+
+`status --output ABS` reads retained state. Refusals before a dispatch change no
+state; a failed or uncertain dispatch records `error`, after which every later
+command refuses (inspect, never replay). Commands refuse 3600 seconds after the
+run started, leaving any retained payload for inspection. Each reopen verifies
+the owned lock, exact plan digest and every staged input snapshot. These commands
+provide no VM lifecycle, package installation, mounting, fencing or normal
+publication; the host correlator that produces step 2's record does not exist yet.
 Root must complete the separately approved critical setup before a probe batch.
 The batch's SSH executable, host/guest public pin files and probe bytes are pinned
 and checked before dispatch. The guest connection goes through f3 with strict

@@ -27,6 +27,41 @@ def module(name):
 controller = module("controller")
 guest = module("guest")
 observer = module("observer")
+ADMITTED = "3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
+QUARANTINED = "7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b"
+
+
+def guest_stdout(request):
+    """Guest-shaped JSONL for local controller tests; no real guest or SSH."""
+    case = request["case"]
+    if request["version"] == guest.RELEASE_VERSION:
+        events = [{"event": "payload-released", "leaf": "zq3-test-" + case,
+                   "correlation_sha256": request["correlation_sha256"]},
+                  {"event": "terminal", "action": "release", "syscall_success": True,
+                   "payload_retained": False, "payload_released": True,
+                   "uncertain_children": [], "acceptance": False, "publication": None}]
+    else:
+        inventory = {"leaf": "zq3-test-" + case, "leaf_ino": 7, "listing": [case], "entries": []}
+        events = [{"event": "payload-retained", "leaf": inventory["leaf"], "inventory": inventory,
+                   "inventory_sha256": controller.digest(guest.canonical(inventory)),
+                   "release_token": controller.digest(case.encode())},
+                  {"event": "terminal", "action": "case", "syscall_success": True,
+                   "payload_retained": True, "payload_released": False,
+                   "uncertain_children": [], "acceptance": False, "publication": None}]
+    return "".join(json.dumps(event) + "\n" for event in events)
+
+
+def correlation_for(root, output, name, **changes):
+    """A host correlation record bound to the retained case's actual evidence."""
+    state = json.loads((output / "state.json").read_bytes())
+    record = next(item for item in state["cases"] if item["name"] == name)
+    value = {"version": controller.CORRELATION_VERSION, "run_id": "test", "case": name,
+             "case_stdout_sha256": record["stdout_sha256"],
+             "inventory_sha256": record["inventory_sha256"],
+             "host_observe": {"journal": "fixture"}, "acceptance": False, **changes}
+    path = root / ("correlation-" + name + ".json")
+    path.write_text(json.dumps(value))
+    return str(path), controller.digest(path.read_bytes())
 
 
 def batch_fixture(root):
@@ -49,7 +84,7 @@ def batch_fixture(root):
                  "mounts": mounts, "case": name, "seconds": 1}
                 for name in ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]]
     plan = {"version": controller.VERSION, "run_id": "test", "seconds": 120,
-            "candidate_manifest_sha256": "a" * 64, "installed_manifest_sha256": "b" * 64,
+            "candidate_manifest_sha256": ADMITTED, "installed_manifest_sha256": "b" * 64,
             "ssh": {"path": str(ssh), "sha256": controller.digest(ssh.read_bytes())},
             "probe_sha256": controller.digest(probe.read_bytes()), "requests": requests,
             "host": {"address": "192.168.1.133", "alias": "f3", "user": "paul",
@@ -223,8 +258,7 @@ class PreparationTests(unittest.TestCase):
             def terminal_only(argv, request, folder, seconds):
                 nonlocal dispatched
                 dispatched += 1
-                (folder / "stdout.log").write_text(json.dumps({"event": "terminal", "syscall_success": True,
-                        "uncertain_children": [], "acceptance": False, "publication": None}) + "\n")
+                (folder / "stdout.log").write_text(guest_stdout(request))
                 (folder / "stderr.log").write_text("")
                 return {"returncode": 0}
 
@@ -245,22 +279,72 @@ class PreparationTests(unittest.TestCase):
 
     def test_known_candidate_quarantine_refuses_without_contacting_lab(self):
         with self.assertRaisesRegex(controller.Refused, "quarantined CGO-disabled"):
-            controller.require_candidate("7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b")
+            controller.require_candidate(QUARANTINED)
+
+    def test_only_pinned_admitted_candidate_passes(self):
+        controller.require_candidate(ADMITTED)
+        for value in ["a" * 64, ADMITTED.upper(), ADMITTED[:-1], None]:
+            with self.subTest(candidate=value), self.assertRaises(controller.Refused):
+                controller.require_candidate(value)
+        with tempfile.TemporaryDirectory() as temporary:
+            path, plan, probe = batch_fixture(Path(temporary))
+            plan["candidate_manifest_sha256"] = QUARANTINED
+            path.write_text(json.dumps(plan))
+            with mock.patch.object(controller, "GUEST", probe), \
+                    mock.patch.object(controller, "verified_bytes") as reads:
+                with self.assertRaisesRegex(controller.Refused, "quarantined"):
+                    controller.plan_snapshot(path)
+                reads.assert_not_called()
 
     def test_terminal_cannot_claim_acceptance_or_hide_uncertain_children(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "reply"
-            terminal = {"event": "terminal", "syscall_success": True,
-                        "uncertain_children": [], "acceptance": False,
-                        "publication": None}
-            path.write_text(json.dumps(terminal) + "\n")
-            self.assertFalse(controller.check_terminal(path, "sync")["acceptance"])
+            request = {"version": guest.VERSION, "case": "sync"}
+            path.write_text(guest_stdout(request))
+            result = controller.check_terminal(path, "sync")
+            self.assertFalse(result["acceptance"])
+            self.assertEqual(result["payload"], "retained")
+            events = [json.loads(line) for line in guest_stdout(request).splitlines()]
             for changes in [{"acceptance": True}, {"publication": {}},
                             {"uncertain_children": [123]}, {"syscall_success": False},
-                            {"event": "reply"}]:
-                path.write_text(json.dumps({**terminal, **changes}) + "\n")
-                with self.assertRaises(controller.Refused):
+                            {"event": "reply"}, {"action": "release"},
+                            {"payload_retained": False}, {"payload_released": True}]:
+                path.write_text(json.dumps(events[0]) + "\n" + json.dumps({**events[1], **changes}) + "\n")
+                with self.subTest(changes=changes), self.assertRaises(controller.Refused):
                     controller.check_terminal(path, "sync")
+
+    def test_successful_case_without_valid_retention_refuses(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "reply"
+            retained, terminal = guest_stdout({"version": guest.VERSION, "case": "sync"}).splitlines()
+            # The released-immediately behaviour (no retention record) must refuse.
+            path.write_text(terminal + "\n")
+            with self.assertRaisesRegex(controller.Refused, "retain its payload exactly once"):
+                controller.check_terminal(path, "sync")
+            event = json.loads(retained)
+            for changes in [{"inventory_sha256": "0" * 64}, {"release_token": "short"},
+                            {"leaf": "other"}, {"inventory": None}]:
+                path.write_text(json.dumps({**event, **changes}) + "\n" + terminal + "\n")
+                with self.subTest(changes=changes), self.assertRaisesRegex(controller.Refused, "retention"):
+                    controller.check_terminal(path, "sync")
+            path.write_text(retained + "\n" + retained + "\n" + terminal + "\n")
+            with self.assertRaisesRegex(controller.Refused, "exactly once"):
+                controller.check_terminal(path, "sync")
+
+    def test_release_terminal_must_prove_bound_release(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "reply"
+            request = {"version": guest.RELEASE_VERSION, "case": "sync", "correlation_sha256": "c" * 64}
+            path.write_text(guest_stdout(request))
+            self.assertEqual(controller.check_terminal(path, "sync", "release", "c" * 64)["payload"], "released")
+            with self.assertRaisesRegex(controller.Refused, "bound payload release"):
+                controller.check_terminal(path, "sync", "release", "d" * 64)
+            with self.assertRaisesRegex(controller.Refused, "action differs"):
+                controller.check_terminal(path, "sync", "case")
+            released, terminal = guest_stdout(request).splitlines()
+            path.write_text(terminal + "\n")
+            with self.assertRaisesRegex(controller.Refused, "bound payload release"):
+                controller.check_terminal(path, "sync", "release", "c" * 64)
 
     def test_plain_directory_fallback_refused_before_any_open_or_io(self):
         request = {"version": guest.VERSION, "run_id": "test", "case": "sync", "seconds": 5,
@@ -348,6 +432,302 @@ class PreparationTests(unittest.TestCase):
             link.symlink_to(path)
             with self.assertRaises(OSError):
                 controller.read(link)
+
+
+class RetainedReleaseControllerTests(unittest.TestCase):
+    """Local controller state machine; dispatch is a guest-shaped stand-in."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.path, self.plan, probe = batch_fixture(self.root)
+        self.hash = controller.digest(self.path.read_bytes())
+        self.output = self.root / "run"
+        self.dispatched = []
+        for patcher in [mock.patch.object(controller, "GUEST", probe),
+                        mock.patch.object(controller, "bounded_child", side_effect=self.fake_dispatch)]:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def fake_dispatch(self, argv, request, folder, seconds):
+        self.dispatched.append(request)
+        (folder / "stdout.log").write_text(guest_stdout(request))
+        (folder / "stderr.log").write_text("")
+        return {"returncode": 0}
+
+    def quiet(self, function, *args):
+        with contextlib.redirect_stdout(io.StringIO()):
+            return function(*args)
+
+    def state(self):
+        return json.loads((self.output / "state.json").read_bytes())
+
+    def release(self, name, **changes):
+        correlation, sha = correlation_for(self.root, self.output, name, **changes)
+        return self.quiet(controller.release, self.output, self.hash, correlation, sha)
+
+    def test_each_case_stays_retained_until_bound_correlation_release(self):
+        self.assertEqual(self.quiet(controller.probe, self.path, self.hash, self.output), 0)
+        self.assertEqual(self.state()["cases"][0]["state"], "payload-retained-awaiting-correlation")
+        # Next case cannot start while the previous payload is still retained.
+        with self.assertRaisesRegex(controller.Refused, "previous payload released"):
+            controller.next_case(self.output, self.hash)
+        for index, case in enumerate(controller.CASES):
+            if index:
+                self.assertEqual(self.quiet(controller.next_case, self.output, self.hash), 0)
+            self.assertEqual(self.release(case), 0)
+            request = self.dispatched[-1]
+            self.assertEqual(request["version"], guest.RELEASE_VERSION)
+            self.assertEqual(request["case"], case)
+            self.assertEqual(request["token"], controller.digest(case.encode()))
+            record = self.state()["cases"][index]
+            self.assertEqual(record["state"], "released")
+            self.assertEqual(request["correlation_sha256"], record["correlation_sha256"])
+            self.assertTrue((self.output / case / "correlation.json").exists())
+        final = self.state()
+        self.assertTrue(final["syscall_batch_success"])
+        self.assertFalse(final["zq3_acceptance_complete"])
+        self.assertEqual(len(self.dispatched), 10)
+        with self.assertRaisesRegex(controller.Refused, "remaining case"):
+            controller.next_case(self.output, self.hash)
+
+    def test_unbound_correlation_refuses_without_dispatch_or_state_change(self):
+        self.quiet(controller.probe, self.path, self.hash, self.output)
+        before = (self.output / "state.json").read_bytes()
+        for changes in [{"case": "sync"}, {"run_id": "other"}, {"case_stdout_sha256": "0" * 64},
+                        {"inventory_sha256": "0" * 64}, {"host_observe": {}},
+                        {"acceptance": True}, {"version": "other"}, {"extra": 1}]:
+            with self.subTest(changes=changes), self.assertRaises(controller.Refused):
+                self.release("credentials", **changes)
+        correlation, _ = correlation_for(self.root, self.output, "credentials")
+        with self.assertRaisesRegex(controller.Refused, "pinned input changed"):
+            controller.release(self.output, self.hash, correlation, "0" * 64)
+        with self.assertRaisesRegex(controller.Refused, "plan digest differs"):
+            controller.release(self.output, "0" * 64, correlation, "0" * 64)
+        self.assertEqual(len(self.dispatched), 1)
+        self.assertEqual((self.output / "state.json").read_bytes(), before)
+        self.assertEqual(self.release("credentials"), 0)
+
+    def test_changed_retained_evidence_or_staged_input_refuses_release(self):
+        self.quiet(controller.probe, self.path, self.hash, self.output)
+        correlation, sha = correlation_for(self.root, self.output, "credentials")
+        log = self.output / "credentials" / "stdout.log"
+        original = log.read_bytes()
+        log.write_bytes(original.replace(b'"leaf_ino": 7', b'"leaf_ino": 8'))
+        with self.assertRaisesRegex(controller.Refused, "evidence changed"):
+            controller.release(self.output, self.hash, correlation, sha)
+        log.write_bytes(original)
+        staged = self.output / "inputs" / "probe.py"
+        staged.chmod(0o600)
+        staged.write_text("replaced staged probe")
+        with self.assertRaisesRegex(controller.Refused, "pinned input changed"):
+            controller.release(self.output, self.hash, correlation, sha)
+        self.assertEqual(len(self.dispatched), 1)
+
+    def test_failed_release_dispatch_is_recorded_and_never_replayed(self):
+        self.quiet(controller.probe, self.path, self.hash, self.output)
+
+        def failed_release(argv, request, folder, seconds):
+            self.dispatched.append(request)
+            (folder / "stdout.log").write_text(json.dumps({"event": "terminal", "action": "release",
+                "syscall_success": False, "payload_retained": False, "payload_released": False,
+                "uncertain_children": [], "acceptance": False, "publication": None}) + "\n")
+            return {"returncode": 1}
+
+        with mock.patch.object(controller, "bounded_child", side_effect=failed_release):
+            self.assertEqual(self.release("credentials"), 1)
+        state = self.state()
+        self.assertEqual(state["cases"][0]["state"], "release-dispatching-uncertain")
+        self.assertIn("release failed", state["error"])
+        with self.assertRaisesRegex(controller.Refused, "never replay"):
+            self.release("credentials")
+        with self.assertRaisesRegex(controller.Refused, "never replay"):
+            controller.next_case(self.output, self.hash)
+        self.assertEqual(len(self.dispatched), 2)
+
+    def test_expired_run_window_preserves_retained_payload(self):
+        self.quiet(controller.probe, self.path, self.hash, self.output)
+        started = self.state()["started_epoch"]
+        correlation, sha = correlation_for(self.root, self.output, "credentials")
+        with mock.patch.object(controller.time, "time", return_value=started + controller.RUN_WINDOW + 1):
+            with self.assertRaisesRegex(controller.Refused, "window expired"):
+                controller.release(self.output, self.hash, correlation, sha)
+        self.assertEqual(self.state()["cases"][0]["state"], "payload-retained-awaiting-correlation")
+
+    def test_concurrent_owner_lock_refuses(self):
+        self.quiet(controller.probe, self.path, self.hash, self.output)
+        with open(self.output / "owner.lock", "rb") as holder:
+            fcntl.flock(holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with self.assertRaises(BlockingIOError):
+                controller.next_case(self.output, self.hash)
+
+
+class GuestRetentionTests(unittest.TestCase):
+    """Real local syscalls on two filesystems: payload retention and release.
+
+    Domain roots live on one filesystem and the run directory on another, as
+    the guest's two 9p mounts and its local /var/tmp run directory do. This is
+    local logic only, never 9p, host correlation or filesystem acceptance.
+    """
+
+    def setUp(self):
+        domains = tempfile.TemporaryDirectory(dir="/dev/shm" if os.path.isdir("/dev/shm") else None)
+        local = tempfile.TemporaryDirectory()
+        self.addCleanup(domains.cleanup)
+        self.addCleanup(local.cleanup)
+        self.run_dir = Path(local.name) / "hfs-zq3-test"
+        self.run_dir.mkdir(mode=0o700)
+        self.domain = Path(domains.name)
+        if os.stat(self.domain).st_dev == os.stat(self.run_dir).st_dev:
+            self.skipTest("needs two distinct local filesystems")
+        for name in ["m0", "m1"]:
+            (self.domain / name).mkdir()
+        self.roots = [os.open(self.domain / name, os.O_RDONLY | os.O_DIRECTORY) for name in ["m0", "m1"]]
+        for fd in self.roots:
+            self.addCleanup(os.close, fd)
+        for name, value in [("RUN_PARENT", str(Path(local.name) / "hfs-zq3-")),
+                            ("TRUSTED_UID", os.geteuid())]:
+            patcher = mock.patch.object(guest, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.request = {"version": guest.VERSION, "run_id": "test", "boot_id": "boot",
+                        "provider_nonce": "provider", "manifest_sha256": "b" * 64,
+                        "mounts": [], "case": "sync", "seconds": 5}
+
+    def run_case(self):
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            probe = guest.Probe(self.request, self.roots)
+            guest.sync(probe)
+            guest.Retention(probe).retain()
+        events = [json.loads(line) for line in printed.getvalue().splitlines()]
+        return next(event for event in events if event["event"] == "payload-retained")
+
+    def release(self, retained, **changes):
+        request = {**self.request, "version": guest.RELEASE_VERSION,
+                   "token": retained["release_token"],
+                   "inventory_sha256": retained["inventory_sha256"],
+                   "correlation_sha256": "c" * 64, **changes}
+        guest.is_release(request)
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            guest.Retention(guest.Probe(request, self.roots)).release()
+        return [json.loads(line) for line in printed.getvalue().splitlines()]
+
+    def leaf(self):
+        return self.domain / "m0" / "zq3-test-sync"
+
+    def test_successful_case_retains_until_authenticated_release(self):
+        retained = self.run_case()
+        names = sorted(path.name for path in self.leaf().iterdir())
+        self.assertEqual(names, ["dsync", "mapped", "ordinary", "sync"])
+        record = self.run_dir / "release-sync.json"
+        self.assertEqual(record.stat().st_mode & 0o777, 0o600)
+        self.assertNotIn(retained["release_token"], record.read_text())
+        self.assertEqual(json.loads(record.read_text())["inventory_sha256"], retained["inventory_sha256"])
+        events = self.release(retained)
+        self.assertFalse(self.leaf().exists())
+        self.assertFalse(record.exists())
+        self.assertTrue((self.run_dir / "released-sync.json").exists())
+        self.assertEqual(events[-1]["correlation_sha256"], "c" * 64)
+        # Replay finds no retention record and refuses.
+        with self.assertRaises(FileNotFoundError):
+            self.release(retained)
+
+    def assert_preserved(self, retained):
+        self.assertEqual(len(list(self.leaf().iterdir())), 4)
+        self.assertTrue((self.run_dir / "release-sync.json").exists())
+        self.assertFalse((self.run_dir / "released-sync.json").exists())
+        self.assertEqual(self.release(retained)[-1]["event"], "payload-released")
+
+    def test_wrong_token_refuses_and_preserves(self):
+        retained = self.run_case()
+        with self.assertRaisesRegex(guest.Refused, "release token refused"):
+            self.release(retained, token="0" * 64)
+        self.assert_preserved(retained)
+
+    def test_changed_payload_or_identity_refuses_and_preserves(self):
+        retained = self.run_case()
+        for changes, message in [({"inventory_sha256": "0" * 64}, "differs from release request"),
+                                 ({"boot_id": "rebooted"}, "differs from release request"),
+                                 ({"provider_nonce": "other"}, "differs from release request")]:
+            with self.subTest(changes=changes), self.assertRaisesRegex(guest.Refused, message):
+                self.release(retained, **changes)
+        with open(self.leaf() / "ordinary", "ab") as stream:
+            stream.write(b"x")
+        with self.assertRaisesRegex(guest.Refused, "changed since correlation"):
+            self.release(retained)
+        self.assertEqual(len(list(self.leaf().iterdir())), 4)
+        self.assertTrue((self.run_dir / "release-sync.json").exists())
+
+    def test_insecure_or_shared_run_directory_refuses_retention(self):
+        self.run_dir.chmod(0o777)
+        with self.assertRaisesRegex(guest.Refused, "root-private local run directory"):
+            self.run_case()
+        self.assertEqual(len(list(self.leaf().iterdir())), 4)
+        self.run_dir.chmod(0o700)
+        with mock.patch.object(guest, "RUN_PARENT", str(self.domain / "m1" / "hfs-zq3-")):
+            (self.domain / "m1" / "hfs-zq3-test").mkdir(mode=0o700)
+            probe = guest.Probe(self.request, self.roots)
+            with self.assertRaisesRegex(guest.Refused, "root-private local run directory"):
+                guest.Retention(probe).run_directory()
+
+    def test_existing_retention_record_is_never_overwritten(self):
+        (self.run_dir / "release-sync.json").write_text("{}")
+        with self.assertRaises(FileExistsError):
+            self.run_case()
+        self.assertEqual((self.run_dir / "release-sync.json").read_text(), "{}")
+
+    def test_release_request_shape_is_closed(self):
+        base = {**self.request, "version": guest.RELEASE_VERSION, "token": "a" * 64,
+                "inventory_sha256": "b" * 64, "correlation_sha256": "c" * 64}
+        self.assertTrue(guest.is_release(base))
+        self.assertFalse(guest.is_release(self.request))
+        for request in [{key: value for key, value in base.items() if key != "correlation_sha256"},
+                        {**base, "token": "A" * 64}, {**base, "token": 1},
+                        {**self.request, "token": "a" * 64}, {**base, "version": guest.VERSION}, []]:
+            with self.subTest(request=request), self.assertRaises(guest.Refused):
+                guest.is_release(request)
+
+    def test_main_retains_on_case_and_releases_only_on_release_request(self):
+        def stub_case(probe):
+            directory, _ = probe.directory()
+            os.close(os.open("namespace", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600, dir_fd=directory))
+            os.close(directory)
+
+        def main(request):
+            printed = io.StringIO()
+            stdin = io.TextIOWrapper(io.BytesIO(json.dumps(request).encode()))
+            with mock.patch.object(guest, "admit", return_value=list(self.roots)), \
+                    mock.patch.object(guest.os, "close", side_effect=lambda fd: None if fd in self.roots else real_close(fd)), \
+                    mock.patch.object(guest.resource, "setrlimit"), \
+                    mock.patch.dict(guest.CASES, {"namespace": stub_case}), \
+                    mock.patch.object(sys, "argv", ["guest"]), mock.patch.object(sys, "stdin", stdin), \
+                    contextlib.redirect_stdout(printed):
+                code = guest.main()
+            return code, [json.loads(line) for line in printed.getvalue().splitlines()]
+
+        real_close = os.close
+        request = {**self.request, "case": "namespace"}
+        code, events = main(request)
+        self.assertEqual(code, 0)
+        self.assertEqual({key: events[-1][key] for key in ["action", "payload_retained", "payload_released"]},
+                         {"action": "case", "payload_retained": True, "payload_released": False})
+        leaf = self.domain / "m0" / "zq3-test-namespace"
+        self.assertTrue((leaf / "namespace").exists())
+        retained = next(event for event in events if event["event"] == "payload-retained")
+        code, events = main({**request, "version": guest.RELEASE_VERSION, "token": "0" * 64,
+                             "inventory_sha256": retained["inventory_sha256"], "correlation_sha256": "c" * 64})
+        self.assertEqual(code, 1)
+        self.assertFalse(events[-1]["payload_released"])
+        self.assertTrue((leaf / "namespace").exists())
+        code, events = main({**request, "version": guest.RELEASE_VERSION, "token": retained["release_token"],
+                             "inventory_sha256": retained["inventory_sha256"], "correlation_sha256": "c" * 64})
+        self.assertEqual(code, 0)
+        self.assertEqual({key: events[-1][key] for key in ["action", "payload_retained", "payload_released"]},
+                         {"action": "release", "payload_retained": False, "payload_released": True})
+        self.assertFalse(leaf.exists())
 
 
 if __name__ == "__main__":
