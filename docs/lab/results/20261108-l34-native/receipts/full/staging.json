@@ -1,0 +1,6 @@
+{
+  "exit": 0,
+  "stdout": "{\"root\": \"/var/tmp/hfs-20261108-l34-full\", \"bindings\": {\"diagnostic-child\": \"bc7289cfb8ff13152281007cc8dbae4c71be18ce8e70e716c9b28da1be8bfc99\", \"controlledruntime-freebsd.test\": \"e02ac9741bb1c77a2bddafbac8edac31745d3c51a1c738bb1772a94a9ca85670\", \"native-test-guard.py\": \"b5f8bea545b0d5e1a5f53b45a5f83237d5dfe267b59247c230d0f047b761e82a\", \"runner_process.py\": \"91310cb7aac7c58e7a16271e69cd88c0443fa3be84d7843b2dd2b9a577ca4c10\"}, \"source\": {\"sha256\": \"c638614277b3f4745ba5086f9f7f64570d50266f2ecf1ba41aa89e5d1455508e\", \"commit\": \"d94198e0f3a699d20fc2c967721701a35eff7675\", \"directory\": \"/var/tmp/hfs-20261108-l34-full/src\"}}\n",
+  "stderr": "",
+  "source_commit": "d94198e0f3a699d20fc2c967721701a35eff7675"
+}

@@ -1,0 +1,1385 @@
+=== RUN   TestRuntimeProposalStagedExternalConsent
+--- PASS: TestRuntimeProposalStagedExternalConsent (0.37s)
+=== RUN   TestRuntimeAssemblyTwoDomainsRealFraming
+--- PASS: TestRuntimeAssemblyTwoDomainsRealFraming (0.63s)
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/service
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/supervisor
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/attestor
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/budget
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/operator
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/host-key
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/explicit-provider-budget
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/missing-original-domain
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/guest-admission
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/provider
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/capability-identities
+--- PASS: TestRuntimeAssemblyMissingAdaptersRefuse (0.15s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/service (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/supervisor (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/attestor (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/budget (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/operator (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/host-key (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/explicit-provider-budget (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/missing-original-domain (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/guest-admission (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/provider (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/capability-identities (0.00s)
+=== RUN   TestRuntimeFundingCompleteOwners
+--- PASS: TestRuntimeFundingCompleteOwners (0.18s)
+=== RUN   TestRuntimeCLIRefusesWithoutNativeAdapters
+--- PASS: TestRuntimeCLIRefusesWithoutNativeAdapters (0.00s)
+=== RUN   TestDescriptorExecNativeUnsupported
+    descriptor_exec_freebsd_test.go:53: requires actual unsupported /dev/fd profile
+--- SKIP: TestDescriptorExecNativeUnsupported (0.00s)
+=== RUN   TestDescriptorExecNativeQualification
+    descriptor_exec_freebsd_test.go:110: native FD exec and protected identity qualified: controlledruntime.descriptorExecReport{Version:"homelabfs-descriptor-exec/1", Platform:"freebsd/amd64", MountType:"fdescfs", MountID:"5900ff01:00000059", Flags:0x0, Supported:true, Failure:"", Publication:interface {}(nil)}
+--- PASS: TestDescriptorExecNativeQualification (0.25s)
+=== RUN   TestDescriptorExecReport
+--- PASS: TestDescriptorExecReport (0.00s)
+=== RUN   TestDescriptorExecFlagsExclusive
+--- PASS: TestDescriptorExecFlagsExclusive (0.00s)
+=== RUN   TestRuntimeDriverSharedSequenceRealC
+    driver_test.go:182: actual C recovery fixture compile: exit status 1
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:11:
+        /usr/include/sys/capsicum.h:505:17: error: unknown type name 'u_int'
+          505 | int     cap_getmode(u_int *modep);
+              |                     ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        In file included from /usr/include/sys/mount.h:36:
+        /usr/include/sys/ucred.h:110:2: error: unknown type name 'u_int'
+          110 |         u_int   cr_version;             /* structure layout version */
+              |         ^
+        /usr/include/sys/ucred.h:150:2: error: unknown type name 'u_int'
+          150 |         u_int    sc_pad;                /* see 32-bit compat structure */
+              |         ^
+        /usr/include/sys/ucred.h:151:2: error: unknown type name 'u_int'
+          151 |         u_int    sc_supp_groups_nb;     /* number of supplementary groups */
+              |         ^
+        /usr/include/sys/ucred.h:280:13: error: unknown type name 'u_int'
+          280 | int     setcred(u_int flags, const struct setcred *wcred, size_t size);
+              |                 ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        /usr/include/sys/mount.h:74:2: error: unknown type name 'u_short'; did you mean 'short'?
+           74 |         u_short         fid_len;                /* length of data in bytes */
+              |         ^
+        /usr/include/sys/mount.h:75:2: error: unknown type name 'u_short'; did you mean 'short'?
+           75 |         u_short         fid_data0;              /* force longword alignment */
+              |         ^
+        /usr/include/sys/mount.h:588:2: error: unknown type name 'u_char'; did you mean 'char'?
+          588 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:590:2: error: unknown type name 'u_char'; did you mean 'char'?
+          590 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:603:2: error: unknown type name 'u_char'; did you mean 'char'?
+          603 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:605:2: error: unknown type name 'u_char'; did you mean 'char'?
+          605 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:621:2: error: unknown type name 'u_char'; did you mean 'char'?
+          621 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:623:2: error: unknown type name 'u_char'; did you mean 'char'?
+          623 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:648:2: error: unknown type name 'u_int'
+          648 |         u_int   vfc_version;            /* ABI version number */
+              |         ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:499:56: error: use of undeclared identifier 'O_DIRECT'
+          499 |       if (flags < 0 || (flags & O_APPEND) || !(flags & O_DIRECT) ||
+              |                                                        ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:19:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:48: error: call to undeclared function 'CMSG_SPACE'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                                ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:42: error: fields must have a constant size: 'variable length array in structure' extension will never be supported
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                          ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:113:40: error: use of undeclared identifier 'MSG_DONTWAIT'
+          113 |       ssize_t n = recvmsg(CONTROL, &m, MSG_DONTWAIT);
+              |                                        ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:120:28: error: call to undeclared function 'CMSG_LEN'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          120 |              c->cmsg_len < CMSG_LEN(0) ||
+              |                            ^
+        fatal error: too many errors emitted, stopping now [-ferror-limit=]
+        20 errors generated.
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:18: error: call to undeclared function 'flock'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                  ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:33: error: use of undeclared identifier 'LOCK_EX'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                 ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:43: error: use of undeclared identifier 'LOCK_NB'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                           ^
+        3 errors generated.
+--- FAIL: TestRuntimeDriverSharedSequenceRealC (1.28s)
+=== RUN   TestFixturePythonSelection
+=== RUN   TestFixturePythonSelection/first_executable_wins
+=== RUN   TestFixturePythonSelection/missing_skipped
+=== RUN   TestFixturePythonSelection/non-executable_skipped
+=== RUN   TestFixturePythonSelection/directory_skipped
+=== RUN   TestFixturePythonSelection/relative_refused
+=== RUN   TestFixturePythonSelection/symlink_to_executable_accepted
+=== RUN   TestFixturePythonSelection/nothing_usable
+--- PASS: TestFixturePythonSelection (0.00s)
+    --- PASS: TestFixturePythonSelection/first_executable_wins (0.00s)
+    --- PASS: TestFixturePythonSelection/missing_skipped (0.00s)
+    --- PASS: TestFixturePythonSelection/non-executable_skipped (0.00s)
+    --- PASS: TestFixturePythonSelection/directory_skipped (0.00s)
+    --- PASS: TestFixturePythonSelection/relative_refused (0.00s)
+    --- PASS: TestFixturePythonSelection/symlink_to_executable_accepted (0.00s)
+    --- PASS: TestFixturePythonSelection/nothing_usable (0.00s)
+=== RUN   TestGuestArtifactsOriginalAndOuterSignatures
+--- PASS: TestGuestArtifactsOriginalAndOuterSignatures (0.04s)
+=== RUN   TestGuestArtifactsRefuseInvalidInputs
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/missing_signer
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/missing_original_signature
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/extra_original_signature
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/duplicate_tag
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/unicode
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/reservation_cap
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/reordered_signers
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/duplicate_enrollment
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/slash
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/bad_subject
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/long_subject
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/zero_ordinary
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/short_host
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/remote_signature
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/remote_row
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/zero_namespace
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/wrong_control_nonce
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/sum_too_large
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/corrupt_private_suffix
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/extra_signer
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/missing_row
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/overlong_device
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/nul
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/wrong_operator
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/empty_subject
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/sum_overflow
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/empty_groups
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/short_operator
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/wrong_session
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/ordinary_acquisition_collision
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/wrong_guest
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/extra_row
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/reordered_rows
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/bad_idmap
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/duplicate_name
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/empty_device
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/cookie_cap
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/received_cap
+--- PASS: TestGuestArtifactsRefuseInvalidInputs (0.12s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/missing_signer (0.01s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/missing_original_signature (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/extra_original_signature (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/duplicate_tag (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/unicode (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/reservation_cap (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/reordered_signers (0.01s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/duplicate_enrollment (0.01s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/slash (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/bad_subject (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/long_subject (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/zero_ordinary (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/short_host (0.01s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/remote_signature (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/remote_row (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/zero_namespace (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/wrong_control_nonce (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/sum_too_large (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/corrupt_private_suffix (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/extra_signer (0.01s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/missing_row (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/overlong_device (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/nul (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/wrong_operator (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/empty_subject (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/sum_overflow (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/empty_groups (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/short_operator (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/wrong_session (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/ordinary_acquisition_collision (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/wrong_guest (0.01s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/extra_row (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/reordered_rows (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/bad_idmap (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/duplicate_name (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/empty_device (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/cookie_cap (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/received_cap (0.00s)
+=== RUN   TestGuestArtifactsResignedSemanticRefusals
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/baseline_kind
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/overflow_bounds
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/wrong_local_VM
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/old_protocol
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/baseline_hash
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/bad_UUID
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/bad_public_key
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/duplicate_session
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/invalid_lane_UUID
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/baseline_UUID
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/bad_profile
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/baseline_epoch
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/baseline_reporter
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/journal_kind
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/bad_bounds
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/equal_endpoint_keys
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/identical_lanes
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/zero_ledger
+--- PASS: TestGuestArtifactsResignedSemanticRefusals (0.05s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/baseline_kind (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/overflow_bounds (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/wrong_local_VM (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/old_protocol (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/baseline_hash (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/bad_UUID (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/bad_public_key (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/duplicate_session (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/invalid_lane_UUID (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/baseline_UUID (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/bad_profile (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/baseline_epoch (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/baseline_reporter (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/journal_kind (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/bad_bounds (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/equal_endpoint_keys (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/identical_lanes (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/zero_ledger (0.00s)
+=== RUN   TestGuestArtifactsBindRejectsTampering
+=== RUN   TestGuestArtifactsBindRejectsTampering/missing_domain
+=== RUN   TestGuestArtifactsBindRejectsTampering/upper_signature
+=== RUN   TestGuestArtifactsBindRejectsTampering/upper_enrollment
+=== RUN   TestGuestArtifactsBindRejectsTampering/missing_group
+=== RUN   TestGuestArtifactsBindRejectsTampering/original_signature
+=== RUN   TestGuestArtifactsBindRejectsTampering/outer_signature
+=== RUN   TestGuestArtifactsBindRejectsTampering/remote_signature
+=== RUN   TestGuestArtifactsBindRejectsTampering/extra_group
+=== RUN   TestGuestArtifactsBindRejectsTampering/reordered_domains
+--- PASS: TestGuestArtifactsBindRejectsTampering (0.21s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/missing_domain (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/upper_signature (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/upper_enrollment (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/missing_group (0.01s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/original_signature (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/outer_signature (0.01s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/remote_signature (0.03s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/extra_group (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/reordered_domains (0.02s)
+=== RUN   TestGuestArtifactsBoundaries
+--- PASS: TestGuestArtifactsBoundaries (0.26s)
+=== RUN   TestGuestArtifactInventoryCountAndProfileBoundaries
+--- PASS: TestGuestArtifactInventoryCountAndProfileBoundaries (0.30s)
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/noncanonical_original_order
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/budget
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/index
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/duplicate_device
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/nonce
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/unknown_original_field
+--- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy (0.12s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/noncanonical_original_order (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/budget (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/index (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/duplicate_device (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/nonce (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/unknown_original_field (0.02s)
+=== RUN   TestInstalledObserverPinnedProcessAndClosedObservation
+--- PASS: TestInstalledObserverPinnedProcessAndClosedObservation (0.08s)
+=== RUN   TestInstalledAdmissionRejectsIncompleteOrChangedKernelOwnership
+--- PASS: TestInstalledAdmissionRejectsIncompleteOrChangedKernelOwnership (0.00s)
+=== RUN   TestActualInstalledProbeReadsCompleteLocalArtifactPrimitives
+--- PASS: TestActualInstalledProbeReadsCompleteLocalArtifactPrimitives (0.19s)
+=== RUN   TestAdmissionHighWaterRejectsOldRevisionReopen
+--- PASS: TestAdmissionHighWaterRejectsOldRevisionReopen (0.00s)
+=== RUN   TestFreeBSDObserverReadOnly
+    process_freebsd_test.go:59: actual FreeBSD self observation: pid=1394 uid=0 gid=0 groups=[0 0 5] incarnation=freebsd:1394:1794151186:444088:fffff80045437898 executable=/var/tmp/hfs-20261108-l34-full/controlledruntime-freebsd.test
+--- PASS: TestFreeBSDObserverReadOnly (0.00s)
+=== RUN   TestExporterDetachedParent
+--- PASS: TestExporterDetachedParent (0.00s)
+=== RUN   TestDiagnosticComponentParent
+--- PASS: TestDiagnosticComponentParent (0.00s)
+=== RUN   TestActualExporterDiagnosticsParentExit
+=== RUN   TestActualExporterDiagnosticsParentExit/default-negative
+=== RUN   TestActualExporterDiagnosticsParentExit/native
+--- PASS: TestActualExporterDiagnosticsParentExit (0.27s)
+    --- PASS: TestActualExporterDiagnosticsParentExit/default-negative (0.25s)
+    --- PASS: TestActualExporterDiagnosticsParentExit/native (0.02s)
+=== RUN   TestDiagnosticComponentParentExit
+=== RUN   TestDiagnosticComponentParentExit/default-negative
+=== RUN   TestDiagnosticComponentParentExit/native
+--- PASS: TestDiagnosticComponentParentExit (0.04s)
+    --- PASS: TestDiagnosticComponentParentExit/default-negative (0.02s)
+    --- PASS: TestDiagnosticComponentParentExit/native (0.02s)
+=== RUN   TestExporterDiagnosticsHelper
+--- PASS: TestExporterDiagnosticsHelper (0.00s)
+=== RUN   TestActualExporterDiagnosticsDrainOverflowAndClose
+--- PASS: TestActualExporterDiagnosticsDrainOverflowAndClose (0.04s)
+=== RUN   TestExporterDiagnosticsStorageFailureStillConsumes
+--- PASS: TestExporterDiagnosticsStorageFailureStillConsumes (0.00s)
+=== RUN   TestExporterDiagnosticsPreservesExistingAndFailedStart
+--- PASS: TestExporterDiagnosticsPreservesExistingAndFailedStart (0.00s)
+=== RUN   TestActualExporterDiagnosticsCompleteQuietExit
+--- PASS: TestActualExporterDiagnosticsCompleteQuietExit (0.05s)
+=== RUN   TestFailedExecRetainsIncompleteDiagnostics
+--- PASS: TestFailedExecRetainsIncompleteDiagnostics (0.02s)
+=== RUN   TestExporterDiagnosticsProcessExitDoesNotImplyPipeEOF
+--- PASS: TestExporterDiagnosticsProcessExitDoesNotImplyPipeEOF (0.00s)
+=== RUN   TestExporterPartialDiagnosticsHelper
+--- PASS: TestExporterPartialDiagnosticsHelper (0.00s)
+=== RUN   TestActualExporterDiagnosticsPartialWriteStillDrains
+=== RUN   TestActualExporterDiagnosticsPartialWriteStillDrains/partial-eio
+=== RUN   TestActualExporterDiagnosticsPartialWriteStillDrains/short-nil
+--- PASS: TestActualExporterDiagnosticsPartialWriteStillDrains (0.30s)
+    --- PASS: TestActualExporterDiagnosticsPartialWriteStillDrains/partial-eio (0.05s)
+    --- PASS: TestActualExporterDiagnosticsPartialWriteStillDrains/short-nil (0.25s)
+=== RUN   TestActualExporterDiagnosticsFinalStatusFailureRetained
+=== RUN   TestActualExporterDiagnosticsFinalStatusFailureRetained/sync-eio
+=== RUN   TestActualExporterDiagnosticsFinalStatusFailureRetained/write-at-eio
+--- PASS: TestActualExporterDiagnosticsFinalStatusFailureRetained (0.07s)
+    --- PASS: TestActualExporterDiagnosticsFinalStatusFailureRetained/sync-eio (0.04s)
+    --- PASS: TestActualExporterDiagnosticsFinalStatusFailureRetained/write-at-eio (0.03s)
+=== RUN   TestRefusedObserverChildCounter
+--- PASS: TestRefusedObserverChildCounter (0.00s)
+=== RUN   TestObserverPreflightFailureCreatesNoChild
+=== RUN   TestObserverPreflightFailureCreatesNoChild/UNSUPPORTED
+=== RUN   TestObserverPreflightFailureCreatesNoChild/PERMISSION
+=== RUN   TestObserverPreflightFailureCreatesNoChild/UNAVAILABLE
+--- PASS: TestObserverPreflightFailureCreatesNoChild (0.04s)
+    --- PASS: TestObserverPreflightFailureCreatesNoChild/UNSUPPORTED (0.01s)
+    --- PASS: TestObserverPreflightFailureCreatesNoChild/PERMISSION (0.01s)
+    --- PASS: TestObserverPreflightFailureCreatesNoChild/UNAVAILABLE (0.01s)
+=== RUN   TestObserverPreflightRejectsIncompleteSelf
+=== RUN   TestObserverPreflightRejectsIncompleteSelf/pid
+=== RUN   TestObserverPreflightRejectsIncompleteSelf/uid
+=== RUN   TestObserverPreflightRejectsIncompleteSelf/gid
+=== RUN   TestObserverPreflightRejectsIncompleteSelf/groups
+=== RUN   TestObserverPreflightRejectsIncompleteSelf/birth
+--- PASS: TestObserverPreflightRejectsIncompleteSelf (0.00s)
+    --- PASS: TestObserverPreflightRejectsIncompleteSelf/pid (0.00s)
+    --- PASS: TestObserverPreflightRejectsIncompleteSelf/uid (0.00s)
+    --- PASS: TestObserverPreflightRejectsIncompleteSelf/gid (0.00s)
+    --- PASS: TestObserverPreflightRejectsIncompleteSelf/groups (0.00s)
+    --- PASS: TestObserverPreflightRejectsIncompleteSelf/birth (0.00s)
+=== RUN   TestObserverQualificationFlagsAreExclusive
+--- PASS: TestObserverQualificationFlagsAreExclusive (0.00s)
+=== RUN   TestObserverPreflightDominatesLaunchEffects
+--- PASS: TestObserverPreflightDominatesLaunchEffects (0.00s)
+=== RUN   TestExporterHelper
+--- PASS: TestExporterHelper (0.00s)
+=== RUN   TestExclusiveRegistryMissingLedgerAndReplacementRefusal
+--- PASS: TestExclusiveRegistryMissingLedgerAndReplacementRefusal (0.06s)
+=== RUN   TestFailedStartupPreservesConsumedOwnership
+=== RUN   TestFailedStartupPreservesConsumedOwnership/wrong-digest
+=== RUN   TestFailedStartupPreservesConsumedOwnership/missing-executable
+=== RUN   TestFailedStartupPreservesConsumedOwnership/non-executable-bytes
+--- PASS: TestFailedStartupPreservesConsumedOwnership (0.32s)
+    --- PASS: TestFailedStartupPreservesConsumedOwnership/wrong-digest (0.04s)
+    --- PASS: TestFailedStartupPreservesConsumedOwnership/missing-executable (0.02s)
+    --- PASS: TestFailedStartupPreservesConsumedOwnership/non-executable-bytes (0.25s)
+=== RUN   TestLiveIdentityRejectsReplacementGroupsAndDeath
+=== RUN   TestLiveIdentityRejectsReplacementGroupsAndDeath/groups
+=== RUN   TestLiveIdentityRejectsReplacementGroupsAndDeath/exec-replacement
+=== RUN   TestLiveIdentityRejectsReplacementGroupsAndDeath/death
+--- PASS: TestLiveIdentityRejectsReplacementGroupsAndDeath (0.13s)
+    --- PASS: TestLiveIdentityRejectsReplacementGroupsAndDeath/groups (0.04s)
+    --- PASS: TestLiveIdentityRejectsReplacementGroupsAndDeath/exec-replacement (0.05s)
+    --- PASS: TestLiveIdentityRejectsReplacementGroupsAndDeath/death (0.04s)
+=== RUN   TestPortableFixtureCannotMintNativeAuthority
+    process_test.go:217: Linux primitive-only negative constructor boundary; never mount in tests
+--- SKIP: TestPortableFixtureCannotMintNativeAuthority (0.00s)
+=== RUN   TestProductionControlFramingAndBounds
+=== RUN   TestProductionControlFramingAndBounds/magic
+=== RUN   TestProductionControlFramingAndBounds/version
+=== RUN   TestProductionControlFramingAndBounds/reserved
+=== RUN   TestProductionControlFramingAndBounds/opcode
+=== RUN   TestProductionControlFramingAndBounds/oversized
+=== RUN   TestProductionControlFramingAndBounds/length
+=== RUN   TestProductionControlFramingAndBounds/truncated
+--- PASS: TestProductionControlFramingAndBounds (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/magic (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/version (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/reserved (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/opcode (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/oversized (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/length (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/truncated (0.00s)
+=== RUN   TestProvisionObservationCannotBeReusedOrRebound
+--- PASS: TestProvisionObservationCannotBeReusedOrRebound (0.00s)
+=== RUN   TestOwnershipRootAndExecutableReplacementAreRejected
+=== RUN   TestOwnershipRootAndExecutableReplacementAreRejected/unsafe-root
+=== RUN   TestOwnershipRootAndExecutableReplacementAreRejected/symlink-root
+=== RUN   TestOwnershipRootAndExecutableReplacementAreRejected/pinned-path-replacement
+--- PASS: TestOwnershipRootAndExecutableReplacementAreRejected (0.04s)
+    --- PASS: TestOwnershipRootAndExecutableReplacementAreRejected/unsafe-root (0.00s)
+    --- PASS: TestOwnershipRootAndExecutableReplacementAreRejected/symlink-root (0.00s)
+    --- PASS: TestOwnershipRootAndExecutableReplacementAreRejected/pinned-path-replacement (0.04s)
+=== RUN   TestProvisionerHasOnlyExactMetadataAndNoSyntheticCallback
+--- PASS: TestProvisionerHasOnlyExactMetadataAndNoSyntheticCallback (0.00s)
+=== RUN   TestNativeFDObservationExactTupleControllerAndRequest
+--- PASS: TestNativeFDObservationExactTupleControllerAndRequest (0.00s)
+=== RUN   TestRealChildUsesProductionInheritedControlFrame
+--- PASS: TestRealChildUsesProductionInheritedControlFrame (0.04s)
+=== RUN   TestFDObservationFundsOnlyOneActualKernelRequest
+--- PASS: TestFDObservationFundsOnlyOneActualKernelRequest (0.00s)
+=== RUN   TestRegistryContenderHelper
+--- PASS: TestRegistryContenderHelper (0.00s)
+=== RUN   TestOwnerLockRejectsIndependentProcess
+--- PASS: TestOwnerLockRejectsIndependentProcess (0.01s)
+=== RUN   TestServeControlRejectsSecondReaderWithoutDisturbingFirst
+--- PASS: TestServeControlRejectsSecondReaderWithoutDisturbingFirst (0.00s)
+=== RUN   TestMappedProducerActualTransportTwoScopes
+=== RUN   TestMappedProducerActualTransportTwoScopes/guest-op
+=== RUN   TestMappedProducerActualTransportTwoScopes/payload
+=== RUN   TestMappedProducerActualTransportTwoScopes/guest-cell
+=== RUN   TestMappedProducerActualTransportTwoScopes/reclaim
+=== RUN   TestMappedProducerActualTransportTwoScopes/native-response
+=== RUN   TestMappedProducerActualTransportTwoScopes/chain
+=== RUN   TestMappedProducerActualTransportTwoScopes/native-cell
+=== RUN   TestMappedProducerActualTransportTwoScopes/native-command
+=== RUN   TestMappedProducerActualTransportTwoScopes/guest-cell#01
+=== RUN   TestMappedProducerActualTransportTwoScopes/reclaim#01
+=== RUN   TestMappedProducerActualTransportTwoScopes/guest-op#01
+=== RUN   TestMappedProducerActualTransportTwoScopes/payload#01
+=== RUN   TestMappedProducerActualTransportTwoScopes/native-response#01
+=== RUN   TestMappedProducerActualTransportTwoScopes/chain#01
+=== RUN   TestMappedProducerActualTransportTwoScopes/native-cell#01
+=== RUN   TestMappedProducerActualTransportTwoScopes/native-command#01
+--- PASS: TestMappedProducerActualTransportTwoScopes (0.47s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/guest-op (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/payload (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/guest-cell (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/reclaim (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/native-response (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/chain (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/native-cell (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/native-command (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/guest-cell#01 (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/reclaim#01 (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/guest-op#01 (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/payload#01 (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/native-response#01 (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/chain#01 (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/native-cell#01 (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/native-command#01 (0.00s)
+=== RUN   TestMappedProducerInheritsActualParentFundedCleanup
+--- PASS: TestMappedProducerInheritsActualParentFundedCleanup (0.51s)
+=== RUN   TestMappedProducerActualWaitEventAndEvidencePolicy
+--- PASS: TestMappedProducerActualWaitEventAndEvidencePolicy (0.21s)
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/never-hello
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/sole-ordinary
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/empty-supplementary-groups
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/mixed-ordinary-funding
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/mixed-control-funding
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/all-80-old-cells
+--- PASS: TestTerminalProducerActualMultipleCellOwnerTransfer (13.36s)
+    --- PASS: TestTerminalProducerActualMultipleCellOwnerTransfer/never-hello (0.56s)
+    --- PASS: TestTerminalProducerActualMultipleCellOwnerTransfer/sole-ordinary (3.79s)
+    --- PASS: TestTerminalProducerActualMultipleCellOwnerTransfer/empty-supplementary-groups (2.38s)
+    --- PASS: TestTerminalProducerActualMultipleCellOwnerTransfer/mixed-ordinary-funding (0.72s)
+    --- PASS: TestTerminalProducerActualMultipleCellOwnerTransfer/mixed-control-funding (0.85s)
+    --- PASS: TestTerminalProducerActualMultipleCellOwnerTransfer/all-80-old-cells (5.06s)
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/omission
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/duplicate
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/funding-repeated
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/changed-full-hash
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/future
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/other-scope
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/wrong-native-funding-hash
+--- PASS: TestTerminalProducerMalformedOldCutPreservesActualOwners (1.67s)
+    --- PASS: TestTerminalProducerMalformedOldCutPreservesActualOwners/omission (0.17s)
+    --- PASS: TestTerminalProducerMalformedOldCutPreservesActualOwners/duplicate (0.35s)
+    --- PASS: TestTerminalProducerMalformedOldCutPreservesActualOwners/funding-repeated (0.17s)
+    --- PASS: TestTerminalProducerMalformedOldCutPreservesActualOwners/changed-full-hash (0.35s)
+    --- PASS: TestTerminalProducerMalformedOldCutPreservesActualOwners/future (0.13s)
+    --- PASS: TestTerminalProducerMalformedOldCutPreservesActualOwners/other-scope (0.34s)
+    --- PASS: TestTerminalProducerMalformedOldCutPreservesActualOwners/wrong-native-funding-hash (0.16s)
+=== RUN   TestTerminalProducerActualOpenClaimRefusesSeal
+--- PASS: TestTerminalProducerActualOpenClaimRefusesSeal (0.39s)
+=== RUN   TestTerminalProducerOtherScopeContinuesDuringBridgeProtection
+--- PASS: TestTerminalProducerOtherScopeContinuesDuringBridgeProtection (0.21s)
+=== RUN   TestTerminalProducerPartialSealsRetainSameLiveAttempt
+=== RUN   TestTerminalProducerPartialSealsRetainSameLiveAttempt/provider-sealed
+=== RUN   TestTerminalProducerPartialSealsRetainSameLiveAttempt/controller-sealed
+=== RUN   TestTerminalProducerPartialSealsRetainSameLiveAttempt/bridge-before-protection
+--- PASS: TestTerminalProducerPartialSealsRetainSameLiveAttempt (1.39s)
+    --- PASS: TestTerminalProducerPartialSealsRetainSameLiveAttempt/provider-sealed (0.47s)
+    --- PASS: TestTerminalProducerPartialSealsRetainSameLiveAttempt/controller-sealed (0.46s)
+    --- PASS: TestTerminalProducerPartialSealsRetainSameLiveAttempt/bridge-before-protection (0.46s)
+=== RUN   TestTerminalProducerProtectionCrashCutsExposeNoReply
+=== RUN   TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-terminal-sealed
+=== RUN   TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-mapping-base
+=== RUN   TestTerminalProducerProtectionCrashCutsExposeNoReply/before-full-response-commit
+=== RUN   TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-response
+--- PASS: TestTerminalProducerProtectionCrashCutsExposeNoReply (1.14s)
+    --- PASS: TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-terminal-sealed (0.16s)
+    --- PASS: TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-mapping-base (0.39s)
+    --- PASS: TestTerminalProducerProtectionCrashCutsExposeNoReply/before-full-response-commit (0.20s)
+    --- PASS: TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-response (0.39s)
+=== RUN   TestTerminalProducerPermanentControlExhaustion
+--- PASS: TestTerminalProducerPermanentControlExhaustion (14.80s)
+=== RUN   TestTerminalProducerActualOwnersSharedEndpoint
+--- PASS: TestTerminalProducerActualOwnersSharedEndpoint (0.86s)
+=== RUN   TestTerminalProducerActualWorkerInvocationExpires
+--- PASS: TestTerminalProducerActualWorkerInvocationExpires (1.45s)
+=== RUN   TestRealControlledProducerSignsSourceEventAndRefusesForgedACK
+=== RUN   TestRealControlledProducerSignsSourceEventAndRefusesForgedACK/controlled1.2
+=== RUN   TestRealControlledProducerSignsSourceEventAndRefusesForgedACK/cleanup1.3
+--- PASS: TestRealControlledProducerSignsSourceEventAndRefusesForgedACK (1.88s)
+    --- PASS: TestRealControlledProducerSignsSourceEventAndRefusesForgedACK/controlled1.2 (0.83s)
+    --- PASS: TestRealControlledProducerSignsSourceEventAndRefusesForgedACK/cleanup1.3 (1.05s)
+=== RUN   TestRealControlledProducerFloorUsesOriginalProtectedCoverage
+=== RUN   TestRealControlledProducerFloorUsesOriginalProtectedCoverage/controlled1.2
+=== RUN   TestRealControlledProducerFloorUsesOriginalProtectedCoverage/cleanup1.3
+--- PASS: TestRealControlledProducerFloorUsesOriginalProtectedCoverage (0.50s)
+    --- PASS: TestRealControlledProducerFloorUsesOriginalProtectedCoverage/controlled1.2 (0.36s)
+    --- PASS: TestRealControlledProducerFloorUsesOriginalProtectedCoverage/cleanup1.3 (0.14s)
+=== RUN   TestRealControlledProducerRejectsFalseFrozenOmission
+=== RUN   TestRealControlledProducerRejectsFalseFrozenOmission/controlled1.2
+=== RUN   TestRealControlledProducerRejectsFalseFrozenOmission/cleanup1.3
+--- PASS: TestRealControlledProducerRejectsFalseFrozenOmission (1.13s)
+    --- PASS: TestRealControlledProducerRejectsFalseFrozenOmission/controlled1.2 (0.56s)
+    --- PASS: TestRealControlledProducerRejectsFalseFrozenOmission/cleanup1.3 (0.57s)
+=== RUN   TestProviderRouterRealTwoMounts
+=== RUN   TestProviderRouterRealTwoMounts/1.2
+=== RUN   TestProviderRouterRealTwoMounts/1.3
+--- PASS: TestProviderRouterRealTwoMounts (0.84s)
+    --- PASS: TestProviderRouterRealTwoMounts/1.2 (0.42s)
+    --- PASS: TestProviderRouterRealTwoMounts/1.3 (0.41s)
+=== RUN   TestProviderRouterConstructionAndBinding
+=== RUN   TestProviderRouterConstructionAndBinding/empty
+=== RUN   TestProviderRouterConstructionAndBinding/nil
+=== RUN   TestProviderRouterConstructionAndBinding/swapped
+=== RUN   TestProviderRouterConstructionAndBinding/foreign-context
+=== RUN   TestProviderRouterConstructionAndBinding/missing
+=== RUN   TestProviderRouterConstructionAndBinding/foreign-provider-same-session
+=== RUN   TestProviderRouterConstructionAndBinding/wrong-endpoint
+=== RUN   TestProviderRouterConstructionAndBinding/unequal
+=== RUN   TestProviderRouterConstructionAndBinding/direct-multiple
+=== RUN   TestProviderRouterConstructionAndBinding/reserve
+=== RUN   TestProviderRouterConstructionAndBinding/generation
+=== RUN   TestProviderRouterConstructionAndBinding/enrollment
+=== RUN   TestProviderRouterConstructionAndBinding/finalize
+=== RUN   TestProviderRouterConstructionAndBinding/resolve
+=== RUN   TestProviderRouterConstructionAndBinding/cancel
+=== RUN   TestProviderRouterConstructionAndBinding/retire
+=== RUN   TestProviderRouterConstructionAndBinding/execute
+=== RUN   TestProviderRouterConstructionAndBinding/recover
+=== RUN   TestProviderRouterConstructionAndBinding/retire-original
+=== RUN   TestProviderRouterConstructionAndBinding/protocol
+=== RUN   TestProviderRouterConstructionAndBinding/cleanup
+=== RUN   TestProviderRouterConstructionAndBinding/protect
+=== RUN   TestProviderRouterConstructionAndBinding/check
+=== RUN   TestProviderRouterConstructionAndBinding/restore
+=== RUN   TestProviderRouterConstructionAndBinding/validation-execute
+=== RUN   TestProviderRouterConstructionAndBinding/continuation
+=== RUN   TestProviderRouterConstructionAndBinding/allocate
+=== RUN   TestProviderRouterConstructionAndBinding/gap
+=== RUN   TestProviderRouterConstructionAndBinding/restore#01
+=== RUN   TestProviderRouterConstructionAndBinding/recover#01
+=== RUN   TestProviderRouterConstructionAndBinding/validation-execute#01
+=== RUN   TestProviderRouterConstructionAndBinding/continuation#01
+=== RUN   TestProviderRouterConstructionAndBinding/protocol#01
+=== RUN   TestProviderRouterConstructionAndBinding/allocate#01
+=== RUN   TestProviderRouterConstructionAndBinding/reserve#01
+=== RUN   TestProviderRouterConstructionAndBinding/protect#01
+=== RUN   TestProviderRouterConstructionAndBinding/generation#01
+=== RUN   TestProviderRouterConstructionAndBinding/finalize#01
+=== RUN   TestProviderRouterConstructionAndBinding/gap#01
+=== RUN   TestProviderRouterConstructionAndBinding/cleanup#01
+=== RUN   TestProviderRouterConstructionAndBinding/check#01
+=== RUN   TestProviderRouterConstructionAndBinding/execute#01
+=== RUN   TestProviderRouterConstructionAndBinding/enrollment#01
+=== RUN   TestProviderRouterConstructionAndBinding/retire-original#01
+=== RUN   TestProviderRouterConstructionAndBinding/resolve#01
+=== RUN   TestProviderRouterConstructionAndBinding/cancel#01
+=== RUN   TestProviderRouterConstructionAndBinding/retire#01
+--- PASS: TestProviderRouterConstructionAndBinding (0.24s)
+    --- PASS: TestProviderRouterConstructionAndBinding/empty (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/nil (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/swapped (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/foreign-context (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/missing (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/foreign-provider-same-session (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/wrong-endpoint (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/unequal (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/direct-multiple (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/reserve (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/generation (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/enrollment (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/finalize (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/resolve (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/cancel (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/retire (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/execute (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/recover (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/retire-original (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/protocol (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/cleanup (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/protect (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/check (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/restore (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/validation-execute (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/continuation (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/allocate (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/gap (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/restore#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/recover#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/validation-execute#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/continuation#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/protocol#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/allocate#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/reserve#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/protect#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/generation#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/finalize#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/gap#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/cleanup#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/check#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/execute#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/enrollment#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/retire-original#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/resolve#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/cancel#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/retire#01 (0.00s)
+=== RUN   TestBarrieredEndpointRestartRealC
+    restart_test.go:409: actual C recovery fixture compile: exit status 1
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:11:
+        /usr/include/sys/capsicum.h:505:17: error: unknown type name 'u_int'
+          505 | int     cap_getmode(u_int *modep);
+              |                     ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        In file included from /usr/include/sys/mount.h:36:
+        /usr/include/sys/ucred.h:110:2: error: unknown type name 'u_int'
+          110 |         u_int   cr_version;             /* structure layout version */
+              |         ^
+        /usr/include/sys/ucred.h:150:2: error: unknown type name 'u_int'
+          150 |         u_int    sc_pad;                /* see 32-bit compat structure */
+              |         ^
+        /usr/include/sys/ucred.h:151:2: error: unknown type name 'u_int'
+          151 |         u_int    sc_supp_groups_nb;     /* number of supplementary groups */
+              |         ^
+        /usr/include/sys/ucred.h:280:13: error: unknown type name 'u_int'
+          280 | int     setcred(u_int flags, const struct setcred *wcred, size_t size);
+              |                 ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        /usr/include/sys/mount.h:74:2: error: unknown type name 'u_short'; did you mean 'short'?
+           74 |         u_short         fid_len;                /* length of data in bytes */
+              |         ^
+        /usr/include/sys/mount.h:75:2: error: unknown type name 'u_short'; did you mean 'short'?
+           75 |         u_short         fid_data0;              /* force longword alignment */
+              |         ^
+        /usr/include/sys/mount.h:588:2: error: unknown type name 'u_char'; did you mean 'char'?
+          588 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:590:2: error: unknown type name 'u_char'; did you mean 'char'?
+          590 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:603:2: error: unknown type name 'u_char'; did you mean 'char'?
+          603 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:605:2: error: unknown type name 'u_char'; did you mean 'char'?
+          605 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:621:2: error: unknown type name 'u_char'; did you mean 'char'?
+          621 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:623:2: error: unknown type name 'u_char'; did you mean 'char'?
+          623 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:648:2: error: unknown type name 'u_int'
+          648 |         u_int   vfc_version;            /* ABI version number */
+              |         ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:499:56: error: use of undeclared identifier 'O_DIRECT'
+          499 |       if (flags < 0 || (flags & O_APPEND) || !(flags & O_DIRECT) ||
+              |                                                        ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:19:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:48: error: call to undeclared function 'CMSG_SPACE'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                                ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:42: error: fields must have a constant size: 'variable length array in structure' extension will never be supported
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                          ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:113:40: error: use of undeclared identifier 'MSG_DONTWAIT'
+          113 |       ssize_t n = recvmsg(CONTROL, &m, MSG_DONTWAIT);
+              |                                        ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:120:28: error: call to undeclared function 'CMSG_LEN'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          120 |              c->cmsg_len < CMSG_LEN(0) ||
+              |                            ^
+        fatal error: too many errors emitted, stopping now [-ferror-limit=]
+        20 errors generated.
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:18: error: call to undeclared function 'flock'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                  ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:33: error: use of undeclared identifier 'LOCK_EX'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                 ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:43: error: use of undeclared identifier 'LOCK_NB'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                           ^
+        3 errors generated.
+--- FAIL: TestBarrieredEndpointRestartRealC (0.34s)
+=== RUN   TestBarrieredMutatingEndpointRestartRealC
+    restart_test.go:531: actual C recovery fixture compile: exit status 1
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:11:
+        /usr/include/sys/capsicum.h:505:17: error: unknown type name 'u_int'
+          505 | int     cap_getmode(u_int *modep);
+              |                     ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        In file included from /usr/include/sys/mount.h:36:
+        /usr/include/sys/ucred.h:110:2: error: unknown type name 'u_int'
+          110 |         u_int   cr_version;             /* structure layout version */
+              |         ^
+        /usr/include/sys/ucred.h:150:2: error: unknown type name 'u_int'
+          150 |         u_int    sc_pad;                /* see 32-bit compat structure */
+              |         ^
+        /usr/include/sys/ucred.h:151:2: error: unknown type name 'u_int'
+          151 |         u_int    sc_supp_groups_nb;     /* number of supplementary groups */
+              |         ^
+        /usr/include/sys/ucred.h:280:13: error: unknown type name 'u_int'
+          280 | int     setcred(u_int flags, const struct setcred *wcred, size_t size);
+              |                 ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        /usr/include/sys/mount.h:74:2: error: unknown type name 'u_short'; did you mean 'short'?
+           74 |         u_short         fid_len;                /* length of data in bytes */
+              |         ^
+        /usr/include/sys/mount.h:75:2: error: unknown type name 'u_short'; did you mean 'short'?
+           75 |         u_short         fid_data0;              /* force longword alignment */
+              |         ^
+        /usr/include/sys/mount.h:588:2: error: unknown type name 'u_char'; did you mean 'char'?
+          588 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:590:2: error: unknown type name 'u_char'; did you mean 'char'?
+          590 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:603:2: error: unknown type name 'u_char'; did you mean 'char'?
+          603 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:605:2: error: unknown type name 'u_char'; did you mean 'char'?
+          605 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:621:2: error: unknown type name 'u_char'; did you mean 'char'?
+          621 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:623:2: error: unknown type name 'u_char'; did you mean 'char'?
+          623 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:648:2: error: unknown type name 'u_int'
+          648 |         u_int   vfc_version;            /* ABI version number */
+              |         ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:499:56: error: use of undeclared identifier 'O_DIRECT'
+          499 |       if (flags < 0 || (flags & O_APPEND) || !(flags & O_DIRECT) ||
+              |                                                        ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:19:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:48: error: call to undeclared function 'CMSG_SPACE'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                                ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:42: error: fields must have a constant size: 'variable length array in structure' extension will never be supported
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                          ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:113:40: error: use of undeclared identifier 'MSG_DONTWAIT'
+          113 |       ssize_t n = recvmsg(CONTROL, &m, MSG_DONTWAIT);
+              |                                        ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:120:28: error: call to undeclared function 'CMSG_LEN'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          120 |              c->cmsg_len < CMSG_LEN(0) ||
+              |                            ^
+        fatal error: too many errors emitted, stopping now [-ferror-limit=]
+        20 errors generated.
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:18: error: call to undeclared function 'flock'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                  ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:33: error: use of undeclared identifier 'LOCK_EX'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                 ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:43: error: use of undeclared identifier 'LOCK_NB'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                           ^
+        3 errors generated.
+--- FAIL: TestBarrieredMutatingEndpointRestartRealC (0.35s)
+=== RUN   TestBarrieredTerminalEndpointRestartRealC
+    restart_test.go:670: actual C recovery fixture compile: exit status 1
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:11:
+        /usr/include/sys/capsicum.h:505:17: error: unknown type name 'u_int'
+          505 | int     cap_getmode(u_int *modep);
+              |                     ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        In file included from /usr/include/sys/mount.h:36:
+        /usr/include/sys/ucred.h:110:2: error: unknown type name 'u_int'
+          110 |         u_int   cr_version;             /* structure layout version */
+              |         ^
+        /usr/include/sys/ucred.h:150:2: error: unknown type name 'u_int'
+          150 |         u_int    sc_pad;                /* see 32-bit compat structure */
+              |         ^
+        /usr/include/sys/ucred.h:151:2: error: unknown type name 'u_int'
+          151 |         u_int    sc_supp_groups_nb;     /* number of supplementary groups */
+              |         ^
+        /usr/include/sys/ucred.h:280:13: error: unknown type name 'u_int'
+          280 | int     setcred(u_int flags, const struct setcred *wcred, size_t size);
+              |                 ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        /usr/include/sys/mount.h:74:2: error: unknown type name 'u_short'; did you mean 'short'?
+           74 |         u_short         fid_len;                /* length of data in bytes */
+              |         ^
+        /usr/include/sys/mount.h:75:2: error: unknown type name 'u_short'; did you mean 'short'?
+           75 |         u_short         fid_data0;              /* force longword alignment */
+              |         ^
+        /usr/include/sys/mount.h:588:2: error: unknown type name 'u_char'; did you mean 'char'?
+          588 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:590:2: error: unknown type name 'u_char'; did you mean 'char'?
+          590 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:603:2: error: unknown type name 'u_char'; did you mean 'char'?
+          603 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:605:2: error: unknown type name 'u_char'; did you mean 'char'?
+          605 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:621:2: error: unknown type name 'u_char'; did you mean 'char'?
+          621 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:623:2: error: unknown type name 'u_char'; did you mean 'char'?
+          623 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:648:2: error: unknown type name 'u_int'
+          648 |         u_int   vfc_version;            /* ABI version number */
+              |         ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:499:56: error: use of undeclared identifier 'O_DIRECT'
+          499 |       if (flags < 0 || (flags & O_APPEND) || !(flags & O_DIRECT) ||
+              |                                                        ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:19:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:48: error: call to undeclared function 'CMSG_SPACE'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                                ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:42: error: fields must have a constant size: 'variable length array in structure' extension will never be supported
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                          ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:113:40: error: use of undeclared identifier 'MSG_DONTWAIT'
+          113 |       ssize_t n = recvmsg(CONTROL, &m, MSG_DONTWAIT);
+              |                                        ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:120:28: error: call to undeclared function 'CMSG_LEN'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          120 |              c->cmsg_len < CMSG_LEN(0) ||
+              |                            ^
+        fatal error: too many errors emitted, stopping now [-ferror-limit=]
+        20 errors generated.
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:18: error: call to undeclared function 'flock'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                  ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:33: error: use of undeclared identifier 'LOCK_EX'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                 ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:43: error: use of undeclared identifier 'LOCK_NB'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                           ^
+        3 errors generated.
+--- FAIL: TestBarrieredTerminalEndpointRestartRealC (0.35s)
+=== RUN   TestBarrieredEndpointRestartRefusesIncompleteOwners
+    restart_test.go:750: actual C recovery fixture compile: exit status 1
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:11:
+        /usr/include/sys/capsicum.h:505:17: error: unknown type name 'u_int'
+          505 | int     cap_getmode(u_int *modep);
+              |                     ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        In file included from /usr/include/sys/mount.h:36:
+        /usr/include/sys/ucred.h:110:2: error: unknown type name 'u_int'
+          110 |         u_int   cr_version;             /* structure layout version */
+              |         ^
+        /usr/include/sys/ucred.h:150:2: error: unknown type name 'u_int'
+          150 |         u_int    sc_pad;                /* see 32-bit compat structure */
+              |         ^
+        /usr/include/sys/ucred.h:151:2: error: unknown type name 'u_int'
+          151 |         u_int    sc_supp_groups_nb;     /* number of supplementary groups */
+              |         ^
+        /usr/include/sys/ucred.h:280:13: error: unknown type name 'u_int'
+          280 | int     setcred(u_int flags, const struct setcred *wcred, size_t size);
+              |                 ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        /usr/include/sys/mount.h:74:2: error: unknown type name 'u_short'; did you mean 'short'?
+           74 |         u_short         fid_len;                /* length of data in bytes */
+              |         ^
+        /usr/include/sys/mount.h:75:2: error: unknown type name 'u_short'; did you mean 'short'?
+           75 |         u_short         fid_data0;              /* force longword alignment */
+              |         ^
+        /usr/include/sys/mount.h:588:2: error: unknown type name 'u_char'; did you mean 'char'?
+          588 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:590:2: error: unknown type name 'u_char'; did you mean 'char'?
+          590 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:603:2: error: unknown type name 'u_char'; did you mean 'char'?
+          603 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:605:2: error: unknown type name 'u_char'; did you mean 'char'?
+          605 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:621:2: error: unknown type name 'u_char'; did you mean 'char'?
+          621 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:623:2: error: unknown type name 'u_char'; did you mean 'char'?
+          623 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:648:2: error: unknown type name 'u_int'
+          648 |         u_int   vfc_version;            /* ABI version number */
+              |         ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:499:56: error: use of undeclared identifier 'O_DIRECT'
+          499 |       if (flags < 0 || (flags & O_APPEND) || !(flags & O_DIRECT) ||
+              |                                                        ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:19:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:48: error: call to undeclared function 'CMSG_SPACE'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                                ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:42: error: fields must have a constant size: 'variable length array in structure' extension will never be supported
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                          ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:113:40: error: use of undeclared identifier 'MSG_DONTWAIT'
+          113 |       ssize_t n = recvmsg(CONTROL, &m, MSG_DONTWAIT);
+              |                                        ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:120:28: error: call to undeclared function 'CMSG_LEN'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          120 |              c->cmsg_len < CMSG_LEN(0) ||
+              |                            ^
+        fatal error: too many errors emitted, stopping now [-ferror-limit=]
+        20 errors generated.
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:18: error: call to undeclared function 'flock'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                  ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:33: error: use of undeclared identifier 'LOCK_EX'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                 ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:43: error: use of undeclared identifier 'LOCK_NB'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                           ^
+        3 errors generated.
+--- FAIL: TestBarrieredEndpointRestartRefusesIncompleteOwners (0.49s)
+=== RUN   TestBarrieredEndpointRejectsCopiedCutAndVerifier
+    restart_test.go:901: actual C recovery fixture compile: exit status 1
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:11:
+        /usr/include/sys/capsicum.h:505:17: error: unknown type name 'u_int'
+          505 | int     cap_getmode(u_int *modep);
+              |                     ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        In file included from /usr/include/sys/mount.h:36:
+        /usr/include/sys/ucred.h:110:2: error: unknown type name 'u_int'
+          110 |         u_int   cr_version;             /* structure layout version */
+              |         ^
+        /usr/include/sys/ucred.h:150:2: error: unknown type name 'u_int'
+          150 |         u_int    sc_pad;                /* see 32-bit compat structure */
+              |         ^
+        /usr/include/sys/ucred.h:151:2: error: unknown type name 'u_int'
+          151 |         u_int    sc_supp_groups_nb;     /* number of supplementary groups */
+              |         ^
+        /usr/include/sys/ucred.h:280:13: error: unknown type name 'u_int'
+          280 | int     setcred(u_int flags, const struct setcred *wcred, size_t size);
+              |                 ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        /usr/include/sys/mount.h:74:2: error: unknown type name 'u_short'; did you mean 'short'?
+           74 |         u_short         fid_len;                /* length of data in bytes */
+              |         ^
+        /usr/include/sys/mount.h:75:2: error: unknown type name 'u_short'; did you mean 'short'?
+           75 |         u_short         fid_data0;              /* force longword alignment */
+              |         ^
+        /usr/include/sys/mount.h:588:2: error: unknown type name 'u_char'; did you mean 'char'?
+          588 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:590:2: error: unknown type name 'u_char'; did you mean 'char'?
+          590 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:603:2: error: unknown type name 'u_char'; did you mean 'char'?
+          603 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:605:2: error: unknown type name 'u_char'; did you mean 'char'?
+          605 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:621:2: error: unknown type name 'u_char'; did you mean 'char'?
+          621 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:623:2: error: unknown type name 'u_char'; did you mean 'char'?
+          623 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:648:2: error: unknown type name 'u_int'
+          648 |         u_int   vfc_version;            /* ABI version number */
+              |         ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:499:56: error: use of undeclared identifier 'O_DIRECT'
+          499 |       if (flags < 0 || (flags & O_APPEND) || !(flags & O_DIRECT) ||
+              |                                                        ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:19:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:48: error: call to undeclared function 'CMSG_SPACE'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                                ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:42: error: fields must have a constant size: 'variable length array in structure' extension will never be supported
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                          ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:113:40: error: use of undeclared identifier 'MSG_DONTWAIT'
+          113 |       ssize_t n = recvmsg(CONTROL, &m, MSG_DONTWAIT);
+              |                                        ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:120:28: error: call to undeclared function 'CMSG_LEN'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          120 |              c->cmsg_len < CMSG_LEN(0) ||
+              |                            ^
+        fatal error: too many errors emitted, stopping now [-ferror-limit=]
+        20 errors generated.
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:18: error: call to undeclared function 'flock'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                  ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:33: error: use of undeclared identifier 'LOCK_EX'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                 ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:43: error: use of undeclared identifier 'LOCK_NB'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                           ^
+        3 errors generated.
+--- FAIL: TestBarrieredEndpointRejectsCopiedCutAndVerifier (0.39s)
+=== RUN   TestBarrieredEndpointRefusesUnresolvedNativeWrite
+    restart_test.go:938: actual C recovery fixture compile: exit status 1
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:11:
+        /usr/include/sys/capsicum.h:505:17: error: unknown type name 'u_int'
+          505 | int     cap_getmode(u_int *modep);
+              |                     ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        In file included from /usr/include/sys/mount.h:36:
+        /usr/include/sys/ucred.h:110:2: error: unknown type name 'u_int'
+          110 |         u_int   cr_version;             /* structure layout version */
+              |         ^
+        /usr/include/sys/ucred.h:150:2: error: unknown type name 'u_int'
+          150 |         u_int    sc_pad;                /* see 32-bit compat structure */
+              |         ^
+        /usr/include/sys/ucred.h:151:2: error: unknown type name 'u_int'
+          151 |         u_int    sc_supp_groups_nb;     /* number of supplementary groups */
+              |         ^
+        /usr/include/sys/ucred.h:280:13: error: unknown type name 'u_int'
+          280 | int     setcred(u_int flags, const struct setcred *wcred, size_t size);
+              |                 ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        /usr/include/sys/mount.h:74:2: error: unknown type name 'u_short'; did you mean 'short'?
+           74 |         u_short         fid_len;                /* length of data in bytes */
+              |         ^
+        /usr/include/sys/mount.h:75:2: error: unknown type name 'u_short'; did you mean 'short'?
+           75 |         u_short         fid_data0;              /* force longword alignment */
+              |         ^
+        /usr/include/sys/mount.h:588:2: error: unknown type name 'u_char'; did you mean 'char'?
+          588 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:590:2: error: unknown type name 'u_char'; did you mean 'char'?
+          590 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:603:2: error: unknown type name 'u_char'; did you mean 'char'?
+          603 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:605:2: error: unknown type name 'u_char'; did you mean 'char'?
+          605 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:621:2: error: unknown type name 'u_char'; did you mean 'char'?
+          621 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:623:2: error: unknown type name 'u_char'; did you mean 'char'?
+          623 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:648:2: error: unknown type name 'u_int'
+          648 |         u_int   vfc_version;            /* ABI version number */
+              |         ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:499:56: error: use of undeclared identifier 'O_DIRECT'
+          499 |       if (flags < 0 || (flags & O_APPEND) || !(flags & O_DIRECT) ||
+              |                                                        ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:19:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:48: error: call to undeclared function 'CMSG_SPACE'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                                ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:42: error: fields must have a constant size: 'variable length array in structure' extension will never be supported
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                          ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:113:40: error: use of undeclared identifier 'MSG_DONTWAIT'
+          113 |       ssize_t n = recvmsg(CONTROL, &m, MSG_DONTWAIT);
+              |                                        ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:120:28: error: call to undeclared function 'CMSG_LEN'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          120 |              c->cmsg_len < CMSG_LEN(0) ||
+              |                            ^
+        fatal error: too many errors emitted, stopping now [-ferror-limit=]
+        20 errors generated.
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:18: error: call to undeclared function 'flock'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                  ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:33: error: use of undeclared identifier 'LOCK_EX'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                 ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:43: error: use of undeclared identifier 'LOCK_NB'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                           ^
+        3 errors generated.
+--- FAIL: TestBarrieredEndpointRefusesUnresolvedNativeWrite (0.38s)
+=== RUN   TestBarrieredTerminalRejectsIncompleteManifest
+    restart_test.go:972: actual C recovery fixture compile: exit status 1
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:11:
+        /usr/include/sys/capsicum.h:505:17: error: unknown type name 'u_int'
+          505 | int     cap_getmode(u_int *modep);
+              |                     ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        In file included from /usr/include/sys/mount.h:36:
+        /usr/include/sys/ucred.h:110:2: error: unknown type name 'u_int'
+          110 |         u_int   cr_version;             /* structure layout version */
+              |         ^
+        /usr/include/sys/ucred.h:150:2: error: unknown type name 'u_int'
+          150 |         u_int    sc_pad;                /* see 32-bit compat structure */
+              |         ^
+        /usr/include/sys/ucred.h:151:2: error: unknown type name 'u_int'
+          151 |         u_int    sc_supp_groups_nb;     /* number of supplementary groups */
+              |         ^
+        /usr/include/sys/ucred.h:280:13: error: unknown type name 'u_int'
+          280 | int     setcred(u_int flags, const struct setcred *wcred, size_t size);
+              |                 ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        /usr/include/sys/mount.h:74:2: error: unknown type name 'u_short'; did you mean 'short'?
+           74 |         u_short         fid_len;                /* length of data in bytes */
+              |         ^
+        /usr/include/sys/mount.h:75:2: error: unknown type name 'u_short'; did you mean 'short'?
+           75 |         u_short         fid_data0;              /* force longword alignment */
+              |         ^
+        /usr/include/sys/mount.h:588:2: error: unknown type name 'u_char'; did you mean 'char'?
+          588 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:590:2: error: unknown type name 'u_char'; did you mean 'char'?
+          590 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:603:2: error: unknown type name 'u_char'; did you mean 'char'?
+          603 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:605:2: error: unknown type name 'u_char'; did you mean 'char'?
+          605 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:621:2: error: unknown type name 'u_char'; did you mean 'char'?
+          621 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:623:2: error: unknown type name 'u_char'; did you mean 'char'?
+          623 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:648:2: error: unknown type name 'u_int'
+          648 |         u_int   vfc_version;            /* ABI version number */
+              |         ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:499:56: error: use of undeclared identifier 'O_DIRECT'
+          499 |       if (flags < 0 || (flags & O_APPEND) || !(flags & O_DIRECT) ||
+              |                                                        ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:19:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:48: error: call to undeclared function 'CMSG_SPACE'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                                ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:42: error: fields must have a constant size: 'variable length array in structure' extension will never be supported
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                          ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:113:40: error: use of undeclared identifier 'MSG_DONTWAIT'
+          113 |       ssize_t n = recvmsg(CONTROL, &m, MSG_DONTWAIT);
+              |                                        ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:120:28: error: call to undeclared function 'CMSG_LEN'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          120 |              c->cmsg_len < CMSG_LEN(0) ||
+              |                            ^
+        fatal error: too many errors emitted, stopping now [-ferror-limit=]
+        20 errors generated.
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:18: error: call to undeclared function 'flock'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                  ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:33: error: use of undeclared identifier 'LOCK_EX'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                 ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:43: error: use of undeclared identifier 'LOCK_NB'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                           ^
+        3 errors generated.
+--- FAIL: TestBarrieredTerminalRejectsIncompleteManifest (0.35s)
+=== RUN   TestBarrieredEndpointRefusesHistoricalSource
+    restart_test.go:1007: actual C recovery fixture compile: exit status 1
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:11:
+        /usr/include/sys/capsicum.h:505:17: error: unknown type name 'u_int'
+          505 | int     cap_getmode(u_int *modep);
+              |                     ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        In file included from /usr/include/sys/mount.h:36:
+        /usr/include/sys/ucred.h:110:2: error: unknown type name 'u_int'
+          110 |         u_int   cr_version;             /* structure layout version */
+              |         ^
+        /usr/include/sys/ucred.h:150:2: error: unknown type name 'u_int'
+          150 |         u_int    sc_pad;                /* see 32-bit compat structure */
+              |         ^
+        /usr/include/sys/ucred.h:151:2: error: unknown type name 'u_int'
+          151 |         u_int    sc_supp_groups_nb;     /* number of supplementary groups */
+              |         ^
+        /usr/include/sys/ucred.h:280:13: error: unknown type name 'u_int'
+          280 | int     setcred(u_int flags, const struct setcred *wcred, size_t size);
+              |                 ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        /usr/include/sys/mount.h:74:2: error: unknown type name 'u_short'; did you mean 'short'?
+           74 |         u_short         fid_len;                /* length of data in bytes */
+              |         ^
+        /usr/include/sys/mount.h:75:2: error: unknown type name 'u_short'; did you mean 'short'?
+           75 |         u_short         fid_data0;              /* force longword alignment */
+              |         ^
+        /usr/include/sys/mount.h:588:2: error: unknown type name 'u_char'; did you mean 'char'?
+          588 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:590:2: error: unknown type name 'u_char'; did you mean 'char'?
+          590 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:603:2: error: unknown type name 'u_char'; did you mean 'char'?
+          603 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:605:2: error: unknown type name 'u_char'; did you mean 'char'?
+          605 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:621:2: error: unknown type name 'u_char'; did you mean 'char'?
+          621 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:623:2: error: unknown type name 'u_char'; did you mean 'char'?
+          623 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:648:2: error: unknown type name 'u_int'
+          648 |         u_int   vfc_version;            /* ABI version number */
+              |         ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:499:56: error: use of undeclared identifier 'O_DIRECT'
+          499 |       if (flags < 0 || (flags & O_APPEND) || !(flags & O_DIRECT) ||
+              |                                                        ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:19:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:48: error: call to undeclared function 'CMSG_SPACE'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                                ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:42: error: fields must have a constant size: 'variable length array in structure' extension will never be supported
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                          ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:113:40: error: use of undeclared identifier 'MSG_DONTWAIT'
+          113 |       ssize_t n = recvmsg(CONTROL, &m, MSG_DONTWAIT);
+              |                                        ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:120:28: error: call to undeclared function 'CMSG_LEN'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          120 |              c->cmsg_len < CMSG_LEN(0) ||
+              |                            ^
+        fatal error: too many errors emitted, stopping now [-ferror-limit=]
+        20 errors generated.
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:18: error: call to undeclared function 'flock'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                  ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:33: error: use of undeclared identifier 'LOCK_EX'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                 ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:43: error: use of undeclared identifier 'LOCK_NB'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                           ^
+        3 errors generated.
+--- FAIL: TestBarrieredEndpointRefusesHistoricalSource (0.35s)
+=== RUN   TestBarrieredReaddir256ActualProjection
+    restart_test.go:1045: actual C recovery fixture compile: exit status 1
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:11:
+        /usr/include/sys/capsicum.h:505:17: error: unknown type name 'u_int'
+          505 | int     cap_getmode(u_int *modep);
+              |                     ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        In file included from /usr/include/sys/mount.h:36:
+        /usr/include/sys/ucred.h:110:2: error: unknown type name 'u_int'
+          110 |         u_int   cr_version;             /* structure layout version */
+              |         ^
+        /usr/include/sys/ucred.h:150:2: error: unknown type name 'u_int'
+          150 |         u_int    sc_pad;                /* see 32-bit compat structure */
+              |         ^
+        /usr/include/sys/ucred.h:151:2: error: unknown type name 'u_int'
+          151 |         u_int    sc_supp_groups_nb;     /* number of supplementary groups */
+              |         ^
+        /usr/include/sys/ucred.h:280:13: error: unknown type name 'u_int'
+          280 | int     setcred(u_int flags, const struct setcred *wcred, size_t size);
+              |                 ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:12:
+        /usr/include/sys/mount.h:74:2: error: unknown type name 'u_short'; did you mean 'short'?
+           74 |         u_short         fid_len;                /* length of data in bytes */
+              |         ^
+        /usr/include/sys/mount.h:75:2: error: unknown type name 'u_short'; did you mean 'short'?
+           75 |         u_short         fid_data0;              /* force longword alignment */
+              |         ^
+        /usr/include/sys/mount.h:588:2: error: unknown type name 'u_char'; did you mean 'char'?
+          588 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:590:2: error: unknown type name 'u_char'; did you mean 'char'?
+          590 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:603:2: error: unknown type name 'u_char'; did you mean 'char'?
+          603 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:605:2: error: unknown type name 'u_char'; did you mean 'char'?
+          605 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:621:2: error: unknown type name 'u_char'; did you mean 'char'?
+          621 |         u_char  ex_addrlen;             /* and the net address length */
+              |         ^
+        /usr/include/sys/mount.h:623:2: error: unknown type name 'u_char'; did you mean 'char'?
+          623 |         u_char  ex_masklen;             /* and the smask length */
+              |         ^
+        /usr/include/sys/mount.h:648:2: error: unknown type name 'u_int'
+          648 |         u_int   vfc_version;            /* ABI version number */
+              |         ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:12:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p.c:499:56: error: use of undeclared identifier 'O_DIRECT'
+          499 |       if (flags < 0 || (flags & O_APPEND) || !(flags & O_DIRECT) ||
+              |                                                        ^
+        In file included from /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/restart_child.c:19:
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:48: error: call to undeclared function 'CMSG_SPACE'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                                ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:108:42: error: fields must have a constant size: 'variable length array in structure' extension will never be supported
+          108 |       union { struct cmsghdr align; char bytes[CMSG_SPACE(16 * sizeof(int))]; } ancillary;
+              |                                          ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:113:40: error: use of undeclared identifier 'MSG_DONTWAIT'
+          113 |       ssize_t n = recvmsg(CONTROL, &m, MSG_DONTWAIT);
+              |                                        ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/tests/../src/hfs9p_supervisor.c:120:28: error: call to undeclared function 'CMSG_LEN'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+          120 |              c->cmsg_len < CMSG_LEN(0) ||
+              |                            ^
+        fatal error: too many errors emitted, stopping now [-ferror-limit=]
+        20 errors generated.
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:18: error: call to undeclared function 'flock'; ISO C99 and later do not support implicit function declarations [-Werror,-Wimplicit-function-declaration]
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                  ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:33: error: use of undeclared identifier 'LOCK_EX'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                 ^
+        /var/tmp/hfs-20261108-l34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c:84:43: error: use of undeclared identifier 'LOCK_NB'
+           84 |    if (!error && flock(l->lock, LOCK_EX | LOCK_NB))
+              |                                           ^
+        3 errors generated.
+--- FAIL: TestBarrieredReaddir256ActualProjection (0.35s)
+FAIL

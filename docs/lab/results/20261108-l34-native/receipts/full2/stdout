@@ -1,0 +1,724 @@
+=== RUN   TestRuntimeProposalStagedExternalConsent
+--- PASS: TestRuntimeProposalStagedExternalConsent (0.34s)
+=== RUN   TestRuntimeAssemblyTwoDomainsRealFraming
+--- PASS: TestRuntimeAssemblyTwoDomainsRealFraming (0.84s)
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/host-key
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/explicit-provider-budget
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/capability-identities
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/service
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/budget
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/operator
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/missing-original-domain
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/supervisor
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/guest-admission
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/attestor
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse/provider
+--- PASS: TestRuntimeAssemblyMissingAdaptersRefuse (0.17s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/host-key (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/explicit-provider-budget (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/capability-identities (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/service (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/budget (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/operator (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/missing-original-domain (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/supervisor (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/guest-admission (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/attestor (0.00s)
+    --- PASS: TestRuntimeAssemblyMissingAdaptersRefuse/provider (0.00s)
+=== RUN   TestRuntimeFundingCompleteOwners
+--- PASS: TestRuntimeFundingCompleteOwners (0.36s)
+=== RUN   TestRuntimeCLIRefusesWithoutNativeAdapters
+--- PASS: TestRuntimeCLIRefusesWithoutNativeAdapters (0.00s)
+=== RUN   TestDescriptorExecNativeUnsupported
+    descriptor_exec_freebsd_test.go:53: requires actual unsupported /dev/fd profile
+--- SKIP: TestDescriptorExecNativeUnsupported (0.00s)
+=== RUN   TestDescriptorExecNativeQualification
+    descriptor_exec_freebsd_test.go:110: native FD exec and protected identity qualified: controlledruntime.descriptorExecReport{Version:"homelabfs-descriptor-exec/1", Platform:"freebsd/amd64", MountType:"fdescfs", MountID:"5900ff01:00000059", Flags:0x0, Supported:true, Failure:"", Publication:interface {}(nil)}
+--- PASS: TestDescriptorExecNativeQualification (0.04s)
+=== RUN   TestDescriptorExecReport
+--- PASS: TestDescriptorExecReport (0.00s)
+=== RUN   TestDescriptorExecFlagsExclusive
+--- PASS: TestDescriptorExecFlagsExclusive (0.00s)
+=== RUN   TestRuntimeDriverSharedSequenceRealC
+=== RUN   TestRuntimeDriverSharedSequenceRealC/none
+    driver_test.go:287: stages=[AWAITING_OPERATOR_ENROLLMENT] tuple=false claims=map[] C log=HomelabFS controlled bootstrap refused: 13
+    driver_test.go:289: controlled C bootstrap: UNAVAILABLE; management: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-90675025
+    driver_test.go:37: preserved runtime resources /var/tmp/hfs-20261108-l34-full2/tmp/driver-421202781
+=== RUN   TestRuntimeDriverSharedSequenceRealC/missing-device
+=== RUN   TestRuntimeDriverSharedSequenceRealC/unbound-guest
+=== RUN   TestRuntimeDriverSharedSequenceRealC/one-hello
+=== RUN   TestRuntimeDriverSharedSequenceRealC/changed-policy
+=== RUN   TestRuntimeDriverSharedSequenceRealC/missing-provider
+=== RUN   TestRuntimeDriverSharedSequenceRealC/missing-provision
+=== RUN   TestRuntimeDriverSharedSequenceRealC/missing-observer
+=== RUN   TestRuntimeDriverSharedSequenceRealC/missing-host-key
+=== RUN   TestRuntimeDriverSharedSequenceRealC/missing-service
+=== RUN   TestRuntimeDriverSharedSequenceRealC/missing-native
+--- FAIL: TestRuntimeDriverSharedSequenceRealC (6.14s)
+    --- FAIL: TestRuntimeDriverSharedSequenceRealC/none (0.18s)
+    --- PASS: TestRuntimeDriverSharedSequenceRealC/missing-device (0.39s)
+    --- PASS: TestRuntimeDriverSharedSequenceRealC/unbound-guest (0.16s)
+    --- PASS: TestRuntimeDriverSharedSequenceRealC/one-hello (0.39s)
+    --- PASS: TestRuntimeDriverSharedSequenceRealC/changed-policy (0.10s)
+    --- PASS: TestRuntimeDriverSharedSequenceRealC/missing-provider (0.33s)
+    --- PASS: TestRuntimeDriverSharedSequenceRealC/missing-provision (0.14s)
+    --- PASS: TestRuntimeDriverSharedSequenceRealC/missing-observer (0.10s)
+    --- PASS: TestRuntimeDriverSharedSequenceRealC/missing-host-key (0.31s)
+    --- PASS: TestRuntimeDriverSharedSequenceRealC/missing-service (0.08s)
+    --- PASS: TestRuntimeDriverSharedSequenceRealC/missing-native (0.08s)
+=== RUN   TestFixturePythonSelection
+=== RUN   TestFixturePythonSelection/first_executable_wins
+=== RUN   TestFixturePythonSelection/missing_skipped
+=== RUN   TestFixturePythonSelection/non-executable_skipped
+=== RUN   TestFixturePythonSelection/directory_skipped
+=== RUN   TestFixturePythonSelection/relative_refused
+=== RUN   TestFixturePythonSelection/symlink_to_executable_accepted
+=== RUN   TestFixturePythonSelection/nothing_usable
+--- PASS: TestFixturePythonSelection (0.00s)
+    --- PASS: TestFixturePythonSelection/first_executable_wins (0.00s)
+    --- PASS: TestFixturePythonSelection/missing_skipped (0.00s)
+    --- PASS: TestFixturePythonSelection/non-executable_skipped (0.00s)
+    --- PASS: TestFixturePythonSelection/directory_skipped (0.00s)
+    --- PASS: TestFixturePythonSelection/relative_refused (0.00s)
+    --- PASS: TestFixturePythonSelection/symlink_to_executable_accepted (0.00s)
+    --- PASS: TestFixturePythonSelection/nothing_usable (0.00s)
+=== RUN   TestGuestArtifactsOriginalAndOuterSignatures
+--- PASS: TestGuestArtifactsOriginalAndOuterSignatures (0.04s)
+=== RUN   TestGuestArtifactsRefuseInvalidInputs
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/missing_signer
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/remote_row
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/duplicate_tag
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/slash
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/bad_subject
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/empty_groups
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/remote_signature
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/duplicate_enrollment
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/wrong_session
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/empty_device
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/reservation_cap
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/corrupt_private_suffix
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/wrong_operator
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/short_host
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/wrong_guest
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/nul
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/long_subject
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/zero_namespace
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/sum_too_large
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/cookie_cap
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/short_operator
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/extra_signer
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/reordered_rows
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/unicode
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/overlong_device
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/empty_subject
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/reordered_signers
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/duplicate_name
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/wrong_control_nonce
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/ordinary_acquisition_collision
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/zero_ordinary
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/missing_original_signature
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/extra_original_signature
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/missing_row
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/extra_row
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/sum_overflow
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/bad_idmap
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/received_cap
+--- PASS: TestGuestArtifactsRefuseInvalidInputs (0.11s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/missing_signer (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/remote_row (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/duplicate_tag (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/slash (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/bad_subject (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/empty_groups (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/remote_signature (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/duplicate_enrollment (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/wrong_session (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/empty_device (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/reservation_cap (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/corrupt_private_suffix (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/wrong_operator (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/short_host (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/wrong_guest (0.01s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/nul (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/long_subject (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/zero_namespace (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/sum_too_large (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/cookie_cap (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/short_operator (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/extra_signer (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/reordered_rows (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/unicode (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/overlong_device (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/empty_subject (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/reordered_signers (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/duplicate_name (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/wrong_control_nonce (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/ordinary_acquisition_collision (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/zero_ordinary (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/missing_original_signature (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/extra_original_signature (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/missing_row (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/extra_row (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/sum_overflow (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/bad_idmap (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/received_cap (0.00s)
+=== RUN   TestGuestArtifactsResignedSemanticRefusals
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/baseline_kind
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/baseline_hash
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/journal_kind
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/overflow_bounds
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/bad_public_key
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/duplicate_session
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/identical_lanes
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/old_protocol
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/bad_bounds
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/bad_UUID
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/equal_endpoint_keys
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/wrong_local_VM
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/zero_ledger
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/baseline_UUID
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/baseline_epoch
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/baseline_reporter
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/bad_profile
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/invalid_lane_UUID
+--- PASS: TestGuestArtifactsResignedSemanticRefusals (0.05s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/baseline_kind (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/baseline_hash (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/journal_kind (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/overflow_bounds (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/bad_public_key (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/duplicate_session (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/identical_lanes (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/old_protocol (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/bad_bounds (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/bad_UUID (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/equal_endpoint_keys (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/wrong_local_VM (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/zero_ledger (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/baseline_UUID (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/baseline_epoch (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/baseline_reporter (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/bad_profile (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/invalid_lane_UUID (0.00s)
+=== RUN   TestGuestArtifactsBindRejectsTampering
+=== RUN   TestGuestArtifactsBindRejectsTampering/upper_enrollment
+=== RUN   TestGuestArtifactsBindRejectsTampering/original_signature
+=== RUN   TestGuestArtifactsBindRejectsTampering/outer_signature
+=== RUN   TestGuestArtifactsBindRejectsTampering/missing_group
+=== RUN   TestGuestArtifactsBindRejectsTampering/missing_domain
+=== RUN   TestGuestArtifactsBindRejectsTampering/upper_signature
+=== RUN   TestGuestArtifactsBindRejectsTampering/remote_signature
+=== RUN   TestGuestArtifactsBindRejectsTampering/extra_group
+=== RUN   TestGuestArtifactsBindRejectsTampering/reordered_domains
+--- PASS: TestGuestArtifactsBindRejectsTampering (0.17s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/upper_enrollment (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/original_signature (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/outer_signature (0.01s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/missing_group (0.01s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/missing_domain (0.01s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/upper_signature (0.01s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/remote_signature (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/extra_group (0.01s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/reordered_domains (0.01s)
+=== RUN   TestGuestArtifactsBoundaries
+--- PASS: TestGuestArtifactsBoundaries (0.16s)
+=== RUN   TestGuestArtifactInventoryCountAndProfileBoundaries
+--- PASS: TestGuestArtifactInventoryCountAndProfileBoundaries (0.28s)
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/budget
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/index
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/duplicate_device
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/nonce
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/unknown_original_field
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/noncanonical_original_order
+--- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy (0.17s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/budget (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/index (0.04s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/duplicate_device (0.03s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/nonce (0.03s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/unknown_original_field (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/noncanonical_original_order (0.03s)
+=== RUN   TestInstalledObserverPinnedProcessAndClosedObservation
+--- PASS: TestInstalledObserverPinnedProcessAndClosedObservation (0.08s)
+=== RUN   TestInstalledAdmissionRejectsIncompleteOrChangedKernelOwnership
+--- PASS: TestInstalledAdmissionRejectsIncompleteOrChangedKernelOwnership (0.00s)
+=== RUN   TestActualInstalledProbeReadsCompleteLocalArtifactPrimitives
+--- PASS: TestActualInstalledProbeReadsCompleteLocalArtifactPrimitives (0.18s)
+=== RUN   TestAdmissionHighWaterRejectsOldRevisionReopen
+--- PASS: TestAdmissionHighWaterRejectsOldRevisionReopen (0.00s)
+=== RUN   TestFreeBSDObserverReadOnly
+    process_freebsd_test.go:59: actual FreeBSD self observation: pid=1844 uid=0 gid=0 groups=[0 0 5] incarnation=freebsd:1844:1794151427:338948:fffff800456496e0 executable=/var/tmp/hfs-20261108-l34-full2/controlledruntime-freebsd.test
+--- PASS: TestFreeBSDObserverReadOnly (0.00s)
+=== RUN   TestExporterDetachedParent
+--- PASS: TestExporterDetachedParent (0.00s)
+=== RUN   TestDiagnosticComponentParent
+--- PASS: TestDiagnosticComponentParent (0.00s)
+=== RUN   TestActualExporterDiagnosticsParentExit
+=== RUN   TestActualExporterDiagnosticsParentExit/default-negative
+=== RUN   TestActualExporterDiagnosticsParentExit/native
+--- PASS: TestActualExporterDiagnosticsParentExit (0.17s)
+    --- PASS: TestActualExporterDiagnosticsParentExit/default-negative (0.14s)
+    --- PASS: TestActualExporterDiagnosticsParentExit/native (0.02s)
+=== RUN   TestDiagnosticComponentParentExit
+=== RUN   TestDiagnosticComponentParentExit/default-negative
+=== RUN   TestDiagnosticComponentParentExit/native
+--- PASS: TestDiagnosticComponentParentExit (0.05s)
+    --- PASS: TestDiagnosticComponentParentExit/default-negative (0.03s)
+    --- PASS: TestDiagnosticComponentParentExit/native (0.03s)
+=== RUN   TestExporterDiagnosticsHelper
+--- PASS: TestExporterDiagnosticsHelper (0.00s)
+=== RUN   TestActualExporterDiagnosticsDrainOverflowAndClose
+--- PASS: TestActualExporterDiagnosticsDrainOverflowAndClose (0.04s)
+=== RUN   TestExporterDiagnosticsStorageFailureStillConsumes
+--- PASS: TestExporterDiagnosticsStorageFailureStillConsumes (0.00s)
+=== RUN   TestExporterDiagnosticsPreservesExistingAndFailedStart
+--- PASS: TestExporterDiagnosticsPreservesExistingAndFailedStart (0.00s)
+=== RUN   TestActualExporterDiagnosticsCompleteQuietExit
+--- PASS: TestActualExporterDiagnosticsCompleteQuietExit (0.04s)
+=== RUN   TestFailedExecRetainsIncompleteDiagnostics
+--- PASS: TestFailedExecRetainsIncompleteDiagnostics (0.02s)
+=== RUN   TestExporterDiagnosticsProcessExitDoesNotImplyPipeEOF
+--- PASS: TestExporterDiagnosticsProcessExitDoesNotImplyPipeEOF (0.00s)
+=== RUN   TestExporterPartialDiagnosticsHelper
+--- PASS: TestExporterPartialDiagnosticsHelper (0.00s)
+=== RUN   TestActualExporterDiagnosticsPartialWriteStillDrains
+=== RUN   TestActualExporterDiagnosticsPartialWriteStillDrains/partial-eio
+=== RUN   TestActualExporterDiagnosticsPartialWriteStillDrains/short-nil
+--- PASS: TestActualExporterDiagnosticsPartialWriteStillDrains (0.19s)
+    --- PASS: TestActualExporterDiagnosticsPartialWriteStillDrains/partial-eio (0.04s)
+    --- PASS: TestActualExporterDiagnosticsPartialWriteStillDrains/short-nil (0.15s)
+=== RUN   TestActualExporterDiagnosticsFinalStatusFailureRetained
+=== RUN   TestActualExporterDiagnosticsFinalStatusFailureRetained/sync-eio
+=== RUN   TestActualExporterDiagnosticsFinalStatusFailureRetained/write-at-eio
+--- PASS: TestActualExporterDiagnosticsFinalStatusFailureRetained (0.21s)
+    --- PASS: TestActualExporterDiagnosticsFinalStatusFailureRetained/sync-eio (0.17s)
+    --- PASS: TestActualExporterDiagnosticsFinalStatusFailureRetained/write-at-eio (0.03s)
+=== RUN   TestRefusedObserverChildCounter
+--- PASS: TestRefusedObserverChildCounter (0.00s)
+=== RUN   TestObserverPreflightFailureCreatesNoChild
+=== RUN   TestObserverPreflightFailureCreatesNoChild/UNSUPPORTED
+=== RUN   TestObserverPreflightFailureCreatesNoChild/PERMISSION
+=== RUN   TestObserverPreflightFailureCreatesNoChild/UNAVAILABLE
+--- PASS: TestObserverPreflightFailureCreatesNoChild (0.05s)
+    --- PASS: TestObserverPreflightFailureCreatesNoChild/UNSUPPORTED (0.02s)
+    --- PASS: TestObserverPreflightFailureCreatesNoChild/PERMISSION (0.01s)
+    --- PASS: TestObserverPreflightFailureCreatesNoChild/UNAVAILABLE (0.02s)
+=== RUN   TestObserverPreflightRejectsIncompleteSelf
+=== RUN   TestObserverPreflightRejectsIncompleteSelf/pid
+=== RUN   TestObserverPreflightRejectsIncompleteSelf/uid
+=== RUN   TestObserverPreflightRejectsIncompleteSelf/gid
+=== RUN   TestObserverPreflightRejectsIncompleteSelf/groups
+=== RUN   TestObserverPreflightRejectsIncompleteSelf/birth
+--- PASS: TestObserverPreflightRejectsIncompleteSelf (0.00s)
+    --- PASS: TestObserverPreflightRejectsIncompleteSelf/pid (0.00s)
+    --- PASS: TestObserverPreflightRejectsIncompleteSelf/uid (0.00s)
+    --- PASS: TestObserverPreflightRejectsIncompleteSelf/gid (0.00s)
+    --- PASS: TestObserverPreflightRejectsIncompleteSelf/groups (0.00s)
+    --- PASS: TestObserverPreflightRejectsIncompleteSelf/birth (0.00s)
+=== RUN   TestObserverQualificationFlagsAreExclusive
+--- PASS: TestObserverQualificationFlagsAreExclusive (0.00s)
+=== RUN   TestObserverPreflightDominatesLaunchEffects
+--- PASS: TestObserverPreflightDominatesLaunchEffects (0.00s)
+=== RUN   TestExporterHelper
+--- PASS: TestExporterHelper (0.00s)
+=== RUN   TestExclusiveRegistryMissingLedgerAndReplacementRefusal
+--- PASS: TestExclusiveRegistryMissingLedgerAndReplacementRefusal (0.07s)
+=== RUN   TestFailedStartupPreservesConsumedOwnership
+=== RUN   TestFailedStartupPreservesConsumedOwnership/wrong-digest
+=== RUN   TestFailedStartupPreservesConsumedOwnership/missing-executable
+=== RUN   TestFailedStartupPreservesConsumedOwnership/non-executable-bytes
+--- PASS: TestFailedStartupPreservesConsumedOwnership (0.33s)
+    --- PASS: TestFailedStartupPreservesConsumedOwnership/wrong-digest (0.04s)
+    --- PASS: TestFailedStartupPreservesConsumedOwnership/missing-executable (0.03s)
+    --- PASS: TestFailedStartupPreservesConsumedOwnership/non-executable-bytes (0.26s)
+=== RUN   TestLiveIdentityRejectsReplacementGroupsAndDeath
+=== RUN   TestLiveIdentityRejectsReplacementGroupsAndDeath/groups
+=== RUN   TestLiveIdentityRejectsReplacementGroupsAndDeath/exec-replacement
+=== RUN   TestLiveIdentityRejectsReplacementGroupsAndDeath/death
+--- PASS: TestLiveIdentityRejectsReplacementGroupsAndDeath (0.11s)
+    --- PASS: TestLiveIdentityRejectsReplacementGroupsAndDeath/groups (0.04s)
+    --- PASS: TestLiveIdentityRejectsReplacementGroupsAndDeath/exec-replacement (0.04s)
+    --- PASS: TestLiveIdentityRejectsReplacementGroupsAndDeath/death (0.03s)
+=== RUN   TestPortableFixtureCannotMintNativeAuthority
+    process_test.go:217: Linux primitive-only negative constructor boundary; never mount in tests
+--- SKIP: TestPortableFixtureCannotMintNativeAuthority (0.00s)
+=== RUN   TestProductionControlFramingAndBounds
+=== RUN   TestProductionControlFramingAndBounds/magic
+=== RUN   TestProductionControlFramingAndBounds/version
+=== RUN   TestProductionControlFramingAndBounds/reserved
+=== RUN   TestProductionControlFramingAndBounds/opcode
+=== RUN   TestProductionControlFramingAndBounds/oversized
+=== RUN   TestProductionControlFramingAndBounds/length
+=== RUN   TestProductionControlFramingAndBounds/truncated
+--- PASS: TestProductionControlFramingAndBounds (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/magic (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/version (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/reserved (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/opcode (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/oversized (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/length (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/truncated (0.00s)
+=== RUN   TestProvisionObservationCannotBeReusedOrRebound
+--- PASS: TestProvisionObservationCannotBeReusedOrRebound (0.00s)
+=== RUN   TestOwnershipRootAndExecutableReplacementAreRejected
+=== RUN   TestOwnershipRootAndExecutableReplacementAreRejected/unsafe-root
+=== RUN   TestOwnershipRootAndExecutableReplacementAreRejected/symlink-root
+=== RUN   TestOwnershipRootAndExecutableReplacementAreRejected/pinned-path-replacement
+--- PASS: TestOwnershipRootAndExecutableReplacementAreRejected (0.04s)
+    --- PASS: TestOwnershipRootAndExecutableReplacementAreRejected/unsafe-root (0.00s)
+    --- PASS: TestOwnershipRootAndExecutableReplacementAreRejected/symlink-root (0.00s)
+    --- PASS: TestOwnershipRootAndExecutableReplacementAreRejected/pinned-path-replacement (0.03s)
+=== RUN   TestProvisionerHasOnlyExactMetadataAndNoSyntheticCallback
+--- PASS: TestProvisionerHasOnlyExactMetadataAndNoSyntheticCallback (0.00s)
+=== RUN   TestNativeFDObservationExactTupleControllerAndRequest
+--- PASS: TestNativeFDObservationExactTupleControllerAndRequest (0.00s)
+=== RUN   TestRealChildUsesProductionInheritedControlFrame
+--- PASS: TestRealChildUsesProductionInheritedControlFrame (0.05s)
+=== RUN   TestFDObservationFundsOnlyOneActualKernelRequest
+--- PASS: TestFDObservationFundsOnlyOneActualKernelRequest (0.00s)
+=== RUN   TestRegistryContenderHelper
+--- PASS: TestRegistryContenderHelper (0.00s)
+=== RUN   TestOwnerLockRejectsIndependentProcess
+--- PASS: TestOwnerLockRejectsIndependentProcess (0.01s)
+=== RUN   TestServeControlRejectsSecondReaderWithoutDisturbingFirst
+--- PASS: TestServeControlRejectsSecondReaderWithoutDisturbingFirst (0.00s)
+=== RUN   TestMappedProducerActualTransportTwoScopes
+=== RUN   TestMappedProducerActualTransportTwoScopes/guest-op
+=== RUN   TestMappedProducerActualTransportTwoScopes/payload
+=== RUN   TestMappedProducerActualTransportTwoScopes/guest-cell
+=== RUN   TestMappedProducerActualTransportTwoScopes/reclaim
+=== RUN   TestMappedProducerActualTransportTwoScopes/native-cell
+=== RUN   TestMappedProducerActualTransportTwoScopes/native-command
+=== RUN   TestMappedProducerActualTransportTwoScopes/native-response
+=== RUN   TestMappedProducerActualTransportTwoScopes/chain
+=== RUN   TestMappedProducerActualTransportTwoScopes/guest-cell#01
+=== RUN   TestMappedProducerActualTransportTwoScopes/reclaim#01
+=== RUN   TestMappedProducerActualTransportTwoScopes/guest-op#01
+=== RUN   TestMappedProducerActualTransportTwoScopes/payload#01
+=== RUN   TestMappedProducerActualTransportTwoScopes/native-response#01
+=== RUN   TestMappedProducerActualTransportTwoScopes/chain#01
+=== RUN   TestMappedProducerActualTransportTwoScopes/native-cell#01
+=== RUN   TestMappedProducerActualTransportTwoScopes/native-command#01
+--- PASS: TestMappedProducerActualTransportTwoScopes (0.35s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/guest-op (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/payload (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/guest-cell (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/reclaim (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/native-cell (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/native-command (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/native-response (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/chain (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/guest-cell#01 (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/reclaim#01 (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/guest-op#01 (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/payload#01 (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/native-response#01 (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/chain#01 (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/native-cell#01 (0.00s)
+    --- PASS: TestMappedProducerActualTransportTwoScopes/native-command#01 (0.00s)
+=== RUN   TestMappedProducerInheritsActualParentFundedCleanup
+--- PASS: TestMappedProducerInheritsActualParentFundedCleanup (2.65s)
+=== RUN   TestMappedProducerActualWaitEventAndEvidencePolicy
+--- PASS: TestMappedProducerActualWaitEventAndEvidencePolicy (0.23s)
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/never-hello
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/sole-ordinary
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/empty-supplementary-groups
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/mixed-ordinary-funding
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/mixed-control-funding
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/all-80-old-cells
+--- PASS: TestTerminalProducerActualMultipleCellOwnerTransfer (13.95s)
+    --- PASS: TestTerminalProducerActualMultipleCellOwnerTransfer/never-hello (3.23s)
+    --- PASS: TestTerminalProducerActualMultipleCellOwnerTransfer/sole-ordinary (3.21s)
+    --- PASS: TestTerminalProducerActualMultipleCellOwnerTransfer/empty-supplementary-groups (1.71s)
+    --- PASS: TestTerminalProducerActualMultipleCellOwnerTransfer/mixed-ordinary-funding (0.29s)
+    --- PASS: TestTerminalProducerActualMultipleCellOwnerTransfer/mixed-control-funding (2.06s)
+    --- PASS: TestTerminalProducerActualMultipleCellOwnerTransfer/all-80-old-cells (3.45s)
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/omission
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/duplicate
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/funding-repeated
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/changed-full-hash
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/future
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/other-scope
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/wrong-native-funding-hash
+--- PASS: TestTerminalProducerMalformedOldCutPreservesActualOwners (1.70s)
+    --- PASS: TestTerminalProducerMalformedOldCutPreservesActualOwners/omission (0.15s)
+    --- PASS: TestTerminalProducerMalformedOldCutPreservesActualOwners/duplicate (0.37s)
+    --- PASS: TestTerminalProducerMalformedOldCutPreservesActualOwners/funding-repeated (0.14s)
+    --- PASS: TestTerminalProducerMalformedOldCutPreservesActualOwners/changed-full-hash (0.36s)
+    --- PASS: TestTerminalProducerMalformedOldCutPreservesActualOwners/future (0.14s)
+    --- PASS: TestTerminalProducerMalformedOldCutPreservesActualOwners/other-scope (0.37s)
+    --- PASS: TestTerminalProducerMalformedOldCutPreservesActualOwners/wrong-native-funding-hash (0.16s)
+=== RUN   TestTerminalProducerActualOpenClaimRefusesSeal
+--- PASS: TestTerminalProducerActualOpenClaimRefusesSeal (0.40s)
+=== RUN   TestTerminalProducerOtherScopeContinuesDuringBridgeProtection
+--- PASS: TestTerminalProducerOtherScopeContinuesDuringBridgeProtection (0.42s)
+=== RUN   TestTerminalProducerPartialSealsRetainSameLiveAttempt
+=== RUN   TestTerminalProducerPartialSealsRetainSameLiveAttempt/provider-sealed
+=== RUN   TestTerminalProducerPartialSealsRetainSameLiveAttempt/controller-sealed
+=== RUN   TestTerminalProducerPartialSealsRetainSameLiveAttempt/bridge-before-protection
+--- PASS: TestTerminalProducerPartialSealsRetainSameLiveAttempt (3.22s)
+    --- PASS: TestTerminalProducerPartialSealsRetainSameLiveAttempt/provider-sealed (0.29s)
+    --- PASS: TestTerminalProducerPartialSealsRetainSameLiveAttempt/controller-sealed (2.48s)
+    --- PASS: TestTerminalProducerPartialSealsRetainSameLiveAttempt/bridge-before-protection (0.46s)
+=== RUN   TestTerminalProducerProtectionCrashCutsExposeNoReply
+=== RUN   TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-terminal-sealed
+=== RUN   TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-mapping-base
+=== RUN   TestTerminalProducerProtectionCrashCutsExposeNoReply/before-full-response-commit
+=== RUN   TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-response
+--- PASS: TestTerminalProducerProtectionCrashCutsExposeNoReply (1.20s)
+    --- PASS: TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-terminal-sealed (0.20s)
+    --- PASS: TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-mapping-base (0.38s)
+    --- PASS: TestTerminalProducerProtectionCrashCutsExposeNoReply/before-full-response-commit (0.42s)
+    --- PASS: TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-response (0.19s)
+=== RUN   TestTerminalProducerPermanentControlExhaustion
+--- PASS: TestTerminalProducerPermanentControlExhaustion (11.39s)
+=== RUN   TestTerminalProducerActualOwnersSharedEndpoint
+--- PASS: TestTerminalProducerActualOwnersSharedEndpoint (3.16s)
+=== RUN   TestTerminalProducerActualWorkerInvocationExpires
+--- PASS: TestTerminalProducerActualWorkerInvocationExpires (3.47s)
+=== RUN   TestRealControlledProducerSignsSourceEventAndRefusesForgedACK
+=== RUN   TestRealControlledProducerSignsSourceEventAndRefusesForgedACK/controlled1.2
+=== RUN   TestRealControlledProducerSignsSourceEventAndRefusesForgedACK/cleanup1.3
+--- PASS: TestRealControlledProducerSignsSourceEventAndRefusesForgedACK (2.26s)
+    --- PASS: TestRealControlledProducerSignsSourceEventAndRefusesForgedACK/controlled1.2 (1.09s)
+    --- PASS: TestRealControlledProducerSignsSourceEventAndRefusesForgedACK/cleanup1.3 (1.17s)
+=== RUN   TestRealControlledProducerFloorUsesOriginalProtectedCoverage
+=== RUN   TestRealControlledProducerFloorUsesOriginalProtectedCoverage/controlled1.2
+=== RUN   TestRealControlledProducerFloorUsesOriginalProtectedCoverage/cleanup1.3
+--- PASS: TestRealControlledProducerFloorUsesOriginalProtectedCoverage (0.39s)
+    --- PASS: TestRealControlledProducerFloorUsesOriginalProtectedCoverage/controlled1.2 (0.26s)
+    --- PASS: TestRealControlledProducerFloorUsesOriginalProtectedCoverage/cleanup1.3 (0.14s)
+=== RUN   TestRealControlledProducerRejectsFalseFrozenOmission
+=== RUN   TestRealControlledProducerRejectsFalseFrozenOmission/controlled1.2
+=== RUN   TestRealControlledProducerRejectsFalseFrozenOmission/cleanup1.3
+--- PASS: TestRealControlledProducerRejectsFalseFrozenOmission (1.15s)
+    --- PASS: TestRealControlledProducerRejectsFalseFrozenOmission/controlled1.2 (0.57s)
+    --- PASS: TestRealControlledProducerRejectsFalseFrozenOmission/cleanup1.3 (0.58s)
+=== RUN   TestProviderRouterRealTwoMounts
+=== RUN   TestProviderRouterRealTwoMounts/1.2
+=== RUN   TestProviderRouterRealTwoMounts/1.3
+--- PASS: TestProviderRouterRealTwoMounts (0.60s)
+    --- PASS: TestProviderRouterRealTwoMounts/1.2 (0.20s)
+    --- PASS: TestProviderRouterRealTwoMounts/1.3 (0.40s)
+=== RUN   TestProviderRouterConstructionAndBinding
+=== RUN   TestProviderRouterConstructionAndBinding/nil
+=== RUN   TestProviderRouterConstructionAndBinding/swapped
+=== RUN   TestProviderRouterConstructionAndBinding/empty
+=== RUN   TestProviderRouterConstructionAndBinding/foreign-provider-same-session
+=== RUN   TestProviderRouterConstructionAndBinding/wrong-endpoint
+=== RUN   TestProviderRouterConstructionAndBinding/unequal
+=== RUN   TestProviderRouterConstructionAndBinding/direct-multiple
+=== RUN   TestProviderRouterConstructionAndBinding/foreign-context
+=== RUN   TestProviderRouterConstructionAndBinding/missing
+=== RUN   TestProviderRouterConstructionAndBinding/generation
+=== RUN   TestProviderRouterConstructionAndBinding/execute
+=== RUN   TestProviderRouterConstructionAndBinding/enrollment
+=== RUN   TestProviderRouterConstructionAndBinding/finalize
+=== RUN   TestProviderRouterConstructionAndBinding/continuation
+=== RUN   TestProviderRouterConstructionAndBinding/retire-original
+=== RUN   TestProviderRouterConstructionAndBinding/resolve
+=== RUN   TestProviderRouterConstructionAndBinding/protect
+=== RUN   TestProviderRouterConstructionAndBinding/allocate
+=== RUN   TestProviderRouterConstructionAndBinding/cleanup
+=== RUN   TestProviderRouterConstructionAndBinding/retire
+=== RUN   TestProviderRouterConstructionAndBinding/check
+=== RUN   TestProviderRouterConstructionAndBinding/restore
+=== RUN   TestProviderRouterConstructionAndBinding/recover
+=== RUN   TestProviderRouterConstructionAndBinding/validation-execute
+=== RUN   TestProviderRouterConstructionAndBinding/gap
+=== RUN   TestProviderRouterConstructionAndBinding/protocol
+=== RUN   TestProviderRouterConstructionAndBinding/reserve
+=== RUN   TestProviderRouterConstructionAndBinding/cancel
+=== RUN   TestProviderRouterConstructionAndBinding/cleanup#01
+=== RUN   TestProviderRouterConstructionAndBinding/execute#01
+=== RUN   TestProviderRouterConstructionAndBinding/restore#01
+=== RUN   TestProviderRouterConstructionAndBinding/validation-execute#01
+=== RUN   TestProviderRouterConstructionAndBinding/retire-original#01
+=== RUN   TestProviderRouterConstructionAndBinding/protocol#01
+=== RUN   TestProviderRouterConstructionAndBinding/reserve#01
+=== RUN   TestProviderRouterConstructionAndBinding/cancel#01
+=== RUN   TestProviderRouterConstructionAndBinding/check#01
+=== RUN   TestProviderRouterConstructionAndBinding/generation#01
+=== RUN   TestProviderRouterConstructionAndBinding/recover#01
+=== RUN   TestProviderRouterConstructionAndBinding/enrollment#01
+=== RUN   TestProviderRouterConstructionAndBinding/finalize#01
+=== RUN   TestProviderRouterConstructionAndBinding/continuation#01
+=== RUN   TestProviderRouterConstructionAndBinding/allocate#01
+=== RUN   TestProviderRouterConstructionAndBinding/resolve#01
+=== RUN   TestProviderRouterConstructionAndBinding/protect#01
+=== RUN   TestProviderRouterConstructionAndBinding/retire#01
+=== RUN   TestProviderRouterConstructionAndBinding/gap#01
+--- PASS: TestProviderRouterConstructionAndBinding (0.44s)
+    --- PASS: TestProviderRouterConstructionAndBinding/nil (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/swapped (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/empty (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/foreign-provider-same-session (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/wrong-endpoint (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/unequal (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/direct-multiple (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/foreign-context (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/missing (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/generation (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/execute (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/enrollment (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/finalize (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/continuation (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/retire-original (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/resolve (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/protect (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/allocate (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/cleanup (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/retire (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/check (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/restore (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/recover (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/validation-execute (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/gap (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/protocol (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/reserve (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/cancel (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/cleanup#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/execute#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/restore#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/validation-execute#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/retire-original#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/protocol#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/reserve#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/cancel#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/check#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/generation#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/recover#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/enrollment#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/finalize#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/continuation#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/allocate#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/resolve#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/protect#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/retire#01 (0.00s)
+    --- PASS: TestProviderRouterConstructionAndBinding/gap#01 (0.00s)
+=== RUN   TestBarrieredEndpointRestartRealC
+=== RUN   TestBarrieredEndpointRestartRealC/current-source-original-capabilities-and-lost-reply
+    restart_test.go:420: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-503223783
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-1349127546
+--- FAIL: TestBarrieredEndpointRestartRealC (3.50s)
+    --- FAIL: TestBarrieredEndpointRestartRealC/current-source-original-capabilities-and-lost-reply (0.31s)
+=== RUN   TestBarrieredMutatingEndpointRestartRealC
+    restart_test.go:540: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-907576661
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-3385226156
+--- FAIL: TestBarrieredMutatingEndpointRestartRealC (3.27s)
+=== RUN   TestBarrieredTerminalEndpointRestartRealC
+    restart_test.go:679: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-1707073002
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-2829532726
+--- FAIL: TestBarrieredTerminalEndpointRestartRealC (3.27s)
+=== RUN   TestBarrieredEndpointRestartRefusesIncompleteOwners
+=== RUN   TestBarrieredEndpointRestartRefusesIncompleteOwners/provider
+    restart_test.go:762: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-1899976502
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-355111385
+=== RUN   TestBarrieredEndpointRestartRefusesIncompleteOwners/controller
+    restart_test.go:762: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-942270854
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-2597262627
+=== RUN   TestBarrieredEndpointRestartRefusesIncompleteOwners/transport
+    restart_test.go:762: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-1901416001
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-633336626
+=== RUN   TestBarrieredEndpointRestartRefusesIncompleteOwners/stale-controller
+    restart_test.go:762: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-1064748946
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-1713405506
+=== RUN   TestBarrieredEndpointRestartRefusesIncompleteOwners/unexcluded-domain
+    restart_test.go:762: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-2345440391
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-3390127558
+=== RUN   TestBarrieredEndpointRestartRefusesIncompleteOwners/changed-catalog
+    restart_test.go:762: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-4174874954
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-2126097380
+=== RUN   TestBarrieredEndpointRestartRefusesIncompleteOwners/changed-C-file
+    restart_test.go:762: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-3187341666
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-8654058
+=== RUN   TestBarrieredEndpointRestartRefusesIncompleteOwners/changed-physical-domain
+    restart_test.go:762: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-1897824108
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-2977251056
+=== RUN   TestBarrieredEndpointRestartRefusesIncompleteOwners/replacement-connection
+    restart_test.go:762: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-1663849688
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-1820275387
+=== RUN   TestBarrieredEndpointRestartRefusesIncompleteOwners/copied-provider
+    restart_test.go:762: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-2134542536
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-4183334225
+=== RUN   TestBarrieredEndpointRestartRefusesIncompleteOwners/copied-controller
+    restart_test.go:762: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-335888087
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-690893049
+=== RUN   TestBarrieredEndpointRestartRefusesIncompleteOwners/expired-grant
+    restart_test.go:762: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-1783648393
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-2073963089
+--- FAIL: TestBarrieredEndpointRestartRefusesIncompleteOwners (5.33s)
+    --- FAIL: TestBarrieredEndpointRestartRefusesIncompleteOwners/provider (0.32s)
+    --- FAIL: TestBarrieredEndpointRestartRefusesIncompleteOwners/controller (0.12s)
+    --- FAIL: TestBarrieredEndpointRestartRefusesIncompleteOwners/transport (0.08s)
+    --- FAIL: TestBarrieredEndpointRestartRefusesIncompleteOwners/stale-controller (0.10s)
+    --- FAIL: TestBarrieredEndpointRestartRefusesIncompleteOwners/unexcluded-domain (0.32s)
+    --- FAIL: TestBarrieredEndpointRestartRefusesIncompleteOwners/changed-catalog (0.09s)
+    --- FAIL: TestBarrieredEndpointRestartRefusesIncompleteOwners/changed-C-file (0.35s)
+    --- FAIL: TestBarrieredEndpointRestartRefusesIncompleteOwners/changed-physical-domain (0.09s)
+    --- FAIL: TestBarrieredEndpointRestartRefusesIncompleteOwners/replacement-connection (0.09s)
+    --- FAIL: TestBarrieredEndpointRestartRefusesIncompleteOwners/copied-provider (0.40s)
+    --- FAIL: TestBarrieredEndpointRestartRefusesIncompleteOwners/copied-controller (0.08s)
+    --- FAIL: TestBarrieredEndpointRestartRefusesIncompleteOwners/expired-grant (0.10s)
+=== RUN   TestBarrieredEndpointRejectsCopiedCutAndVerifier
+    restart_test.go:910: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-4241696788
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-2887411517
+--- FAIL: TestBarrieredEndpointRejectsCopiedCutAndVerifier (3.39s)
+=== RUN   TestBarrieredEndpointRefusesUnresolvedNativeWrite
+    restart_test.go:947: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-1632027189
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-895413432
+--- FAIL: TestBarrieredEndpointRefusesUnresolvedNativeWrite (3.18s)
+=== RUN   TestBarrieredTerminalRejectsIncompleteManifest
+=== RUN   TestBarrieredTerminalRejectsIncompleteManifest/missing-manifest-member
+    restart_test.go:984: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-1844761103
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-556340769
+=== RUN   TestBarrieredTerminalRejectsIncompleteManifest/missing-fence
+    restart_test.go:984: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-3775353752
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-1726323868
+=== RUN   TestBarrieredTerminalRejectsIncompleteManifest/old-pending-phase
+    restart_test.go:984: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-2020335670
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-1222965967
+=== RUN   TestBarrieredTerminalRejectsIncompleteManifest/class-charge
+    restart_test.go:984: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-1258752539
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-576445344
+--- FAIL: TestBarrieredTerminalRejectsIncompleteManifest (3.86s)
+    --- FAIL: TestBarrieredTerminalRejectsIncompleteManifest/missing-manifest-member (0.08s)
+    --- FAIL: TestBarrieredTerminalRejectsIncompleteManifest/missing-fence (0.08s)
+    --- FAIL: TestBarrieredTerminalRejectsIncompleteManifest/old-pending-phase (0.40s)
+    --- FAIL: TestBarrieredTerminalRejectsIncompleteManifest/class-charge (0.08s)
+=== RUN   TestBarrieredEndpointRefusesHistoricalSource
+    restart_test.go:1016: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-4182721999
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-3919913284
+--- FAIL: TestBarrieredEndpointRefusesHistoricalSource (3.43s)
+=== RUN   TestBarrieredReaddir256ActualProjection
+    restart_test.go:1054: EOF
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-l34-full2/tmp/hfs-c6-1189394917
+    restart_test.go:91: preserved restart resources /var/tmp/hfs-20261108-l34-full2/tmp/restart-1067689394
+--- FAIL: TestBarrieredReaddir256ActualProjection (3.50s)
+FAIL
