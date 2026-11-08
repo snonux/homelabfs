@@ -14,8 +14,10 @@ reports its errno (typically ENOTCONN) instead of a listing: nothing reaches
 the raw directory through it. A path that is no longer a mount point is the
 raw directory, and its listing must not change.
 
-Bounds: a 10 s alarm; a call stuck in an uninterruptible kernel sleep cannot
-be interrupted, so the operator's outer timeout must treat it as uncertain.
+Bounds: a 10 s alarm. Its expiry refuses the snapshot (exit 1, nothing
+printed): a hang is uncertain, never a dead mount's errno. A call stuck in an
+uninterruptible kernel sleep cannot be interrupted at all, so the operator's
+outer timeout must treat it as uncertain too.
 """
 import argparse
 import datetime
@@ -39,6 +41,23 @@ class Refused(RuntimeError):
     pass
 
 
+class Deadline(Exception):
+    """The snapshot alarm expired. Not an OSError (unlike TimeoutError), so the
+    lstat/listing handlers can never record a hung path as a dead mount's
+    errno: a deadline refuses the whole snapshot as uncertain instead."""
+
+
+def deadline(*_):
+    raise Deadline("snapshot deadline; host path state uncertain")
+
+
+def errno_of(failure):
+    """The kernel's errno; an OSError without one is not an answer and propagates."""
+    if not failure.errno:
+        raise failure
+    return failure.errno
+
+
 def checked_path(run_id, path):
     """Canonical safe ASCII path strictly below the run's staging directory."""
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,23}", run_id):
@@ -55,7 +74,7 @@ def lstat_row(path):
     try:
         seen = os.lstat(path)
     except OSError as failure:
-        return {"errno": failure.errno or errno.EIO, "dev": None, "ino": None, "type": None}
+        return {"errno": errno_of(failure), "dev": None, "ino": None, "type": None}
     kind = ("dir" if stat.S_ISDIR(seen.st_mode) else
             "symlink" if stat.S_ISLNK(seen.st_mode) else "other")
     return {"errno": None, "dev": seen.st_dev, "ino": seen.st_ino, "type": kind}
@@ -75,7 +94,7 @@ def listing(path):
         finally:
             os.close(fd)
     except OSError as failure:
-        return {"errno": failure.errno or errno.EIO, "names": None, "truncated": False}
+        return {"errno": errno_of(failure), "names": None, "truncated": False}
     return {"errno": None, "names": sorted(names), "truncated": False}
 
 
@@ -101,7 +120,7 @@ def main(argv=None):
     parser.add_argument("--path", required=True)
     parser.add_argument("--label", required=True, choices=["baseline", "before", "after"])
     args = parser.parse_args(argv)
-    signal.signal(signal.SIGALRM, lambda *_: (_ for _ in ()).throw(TimeoutError("snapshot deadline")))
+    signal.signal(signal.SIGALRM, deadline)
     signal.alarm(SECONDS)
     try:
         value = snapshot(args.run_id, args.path, args.label)
@@ -114,6 +133,6 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (OSError, Refused) as failure:
+    except (OSError, Refused, Deadline) as failure:
         print("refuse: " + str(failure), file=sys.stderr)
         sys.exit(1)

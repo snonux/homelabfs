@@ -455,10 +455,12 @@ unsupported, unrun or uncertain; a partial result never completes zq3.
 | T6 | locks within one guest mount | `tools/lab/guest-lock-probe.py` on `m0` (POSIX/flock conflicts, blocking waits, GETLK, close/exit cleanup) |
 | T6b | locks across clients | same probe across `m0`/`m1`: **recorded as unsupported** per the accepted lock scope, never as a pass |
 | T7 | ordinary pod namespace profile | **GAP G9** and decision A8: separate mount/PID/net/UTS/IPC namespaces in `init_user_ns`, numeric IDs/full groups, SELinux enforcing, two workloads bind-sharing `m0` |
-| T8 | K04 guest side: no writes to an empty fallback | normal `umount m1`; a probe naming `m1` must refuse at admission ("exact mountpoint not present once") before any open; the empty directory stays empty |
-| T9 | v24 lost reply | OBSERVE; `correlate.py command --operation arm-lost-reply` prints the ARM argv (m0's session, current cut/epoch); root runs it; `lifecycle --step lost-reply-call` (one mkdir in m0); OBSERVE; `lifecycle --step lost-reply-reread` (m1 then m0, no second mkdir); `correlate.py lost-reply` records the exposure (UNCERTAIN expected), source effect since arming and a classification, never a pass |
-| T10 | daemon restart via u24 | `lifecycle --step quiesce` (syncfs, guest `drop_caches` 3 twice: view leases released/retired, lookups FORGET), OBSERVE, then `correlate.py command --operation restart` (refuses unless view-controller `Leases`/`Reservations` 0, no `Recall`, `Matches`; then recorded as unrun) and root runs the printed `--operation restart`; RESTARTED or FENCED are both recorded (FENCED, fencing then runtime exit, is Paul's accepted behavior); **always the last step** |
-| T11 | remount / VM restart need, K04 host side | after T10 or runtime exit: root takes `host_snapshot.py --label before` of the runtime's FUSE mount point on f3, `lifecycle --step after-loss` (lstat, list, exclusive create in `m0`, never retried), `host_snapshot.py --label after`; `correlate.py k04` (with the Phase 7 `baseline` snapshot of the empty mount point) records whether guest I/O failed and nothing reached a raw directory; replacement FUSE/exporter and guest RESUME are blocked by design, so the recorded answer is "VM restart required", with the refusals as evidence |
+| T9 | v24 lost reply | OBSERVE; `correlate.py command --operation arm-lost-reply` prints the ARM argv (m0's session, current cut/epoch); root runs it; `lifecycle --step lost-reply-call` (one mkdir in m0); OBSERVE; `lifecycle --step lost-reply-reread` (m1 then m0, no second mkdir); `correlate.py lost-reply` records the exposure (UNCERTAIN expected), source effect since arming and a classification decided by the unarmed m1 (expected: `dropped-before-mutation` with m0 blocked, `EHOSTDOWN`), never a pass |
+| T10 | daemon restart via u24 | `lifecycle --step quiesce` (syncfs, guest `drop_caches` 3 twice: view leases released, lookups FORGET; no VIEW_ACQUIRE refresh; on the blocked m0 the open and FORGETs fail), OBSERVE taken after the quiesce result, then `correlate.py command --operation restart` (refuses unless that OBSERVE is later than every bound one and shows view-controller `Leases`/`Reservations` 0, no `Recall`, `Matches`; then recorded as unrun) and root runs the printed `--operation restart`; RESTARTED or FENCED are both recorded (FENCED, fencing then runtime exit, is Paul's accepted behavior and the expected outcome after T9); **last step that needs the live runtime** |
+| T11 | remount / VM restart need, K04 host side | after the runtime exited (FENCED T10), with m1 still mounted: root takes `host_snapshot.py --label before` of the runtime's FUSE mount point on f3, `lifecycle --step after-loss` (lstat, list, exclusive create in **m1**, never retried), `host_snapshot.py --label after`; `correlate.py k04` (with the Phase 7 `baseline` snapshot of the empty mount point, required) records whether guest I/O failed and nothing reached a raw directory. **Limitation:** m0 cannot be probed (T9 blocked its session, so its refusals are local); if m1 also shows the guest's own `EHOSTDOWN` (T9 re-read, T10 quiesce or the first after-loss attempt) the record flags the probe as vacuous and K04 is not observed. If T10 is RESTARTED, the runtime keeps serving, no supported stop exists here and T11 is unrun. Replacement FUSE/exporter and guest RESUME are blocked by design, so the recorded answer is "VM restart required", with the refusals as evidence |
+| T8 | K04 guest side: no writes to an empty fallback | **runs last, after T11** (orchestrator decision: T9 before T8; T11 needs m1 mounted): normal `umount m1`; a probe naming `m1` must refuse at admission ("exact mountpoint not present once") before any open; the empty directory stays empty. Needs no live runtime; if the unmount refuses or hangs after host loss, T8 is unrun and Phase 11 handles the mount |
+
+Execution order: **T1-T7, T9, T10, T11, T8** (table order).
 
 Mid-release failure (T1-T5): the guest consumes the retention record before
 its first unlink. If an unlink or the deadline then fails, part of the payload
@@ -468,16 +470,18 @@ root inspects the leaf against the inventory in `released-CASE.json`, keeps the
 leftovers and evidence, marks T1-T5 incomplete, and any repeat uses a new run ID.
 
 T9-T11 guest steps (u34) run only after all five releases, once each and in
-order, through the same pinned `guest.py`. They admit m0 from mountinfo
-without touching it and accept m1 absent after T8; if T8's unmount changed the
-provider's admitted inventory they refuse and T9-T11 are unrun (running T9
-before T8 avoids that, if Paul prefers). Expect T9 not to show a clean MKDIR
-lost reply with the current guest kernel: its path walk sends GETATTR and
-LOOKUP CALLs before MKDIR, the fixture drops the first one, and the guest then
-blocks m0's session (`EHOSTDOWN`) with no userspace QUERY. The correlator
-records that as `dropped-before-mutation` (or `fixture-not-fired`), m1 still
-shows whether anything committed, and the T10 RESTART is then expected to
-FENCE. See the [probe tools](../../tools/lab/retained9p/README.md#guest-lifecycle-steps-zq3-g10-g11).
+order, through the same pinned `guest.py`. They admit their own domain (m0 for
+T9/T10, m1 for T11) from mountinfo without touching it and record the other
+as present or absent. Expect T9 not to show a clean MKDIR lost reply with the
+current guest kernel: its path walk sends GETATTR and LOOKUP CALLs before
+MKDIR, the fixture drops the first one (a background CALL on m0 could also
+take it), and the guest then blocks m0's session (`EHOSTDOWN`) with no
+userspace QUERY. The correlator decides the leaf state from the unarmed m1 and
+records that as `dropped-before-mutation` (or `fixture-not-fired`), and the
+T10 RESTART is then expected to FENCE, which is the host loss T11 probes on
+m1. A step deadline ends the step as failed and uncertain; it is never
+recorded as an errno or a refusal. See the
+[probe tools](../../tools/lab/retained9p/README.md#guest-lifecycle-steps-zq3-g10-g11).
 
 Not runnable in this run and reported as unrun: PTE/TLB/busy-pin/GUP
 exclusion and funded drains (**GAP G14**: no admitted pin primitive),
@@ -705,8 +709,9 @@ reviewed and pinned, and this plan is re-filled:
   `test_correlate.py`. The guest-kernel limit on T9 above stays.
 - G11 **Implemented (u34)**: `guest.py` step `after-loss`, read-only
   [`host_snapshot.py`](../../tools/lab/retained9p/host_snapshot.py) on f3
-  (pinned python3.12, root) and `correlate.py k04`. Needs the runtime's FUSE
-  mount point path from the G2 config at fill time.
+  (pinned python3.12, root) and `correlate.py k04`, probing m1 (T9 blocks m0)
+  and flagging a probe the guest refused locally as vacuous. Needs the
+  runtime's FUSE mount point path from the G2 config at fill time.
 - G12 Filled fdescfs window plan; rebuilt, pinned `controlledruntime.test` and
   `fdescfs-namespace` from `e0cca0c`; python3.12 hash on f3.
 - G13 Outer resource guard for the long-running runtime and its child.

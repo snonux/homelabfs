@@ -305,15 +305,56 @@ class LostReplyCorrelationTests(CorrelatorBase):
         path, sha = self.write(record, "lost-reply.json")
         self.assertEqual(controller.digest(Path(path).read_bytes()), sha)
 
-    def test_dropped_before_mutation_and_not_fired_are_observations(self):
-        self.observations["lost-reply-reread"]["domains"][0].update(
-            {"lstat_errno": errno.ENOENT, "type": None, "listing_matches": 0})
-        self.observations["lost-reply-reread"]["domains"][1]["lstat_errno"] = errno.ENOENT
+    def reread(self, m1, m0):
+        """Re-read rows as the guest emits them: m1 (unarmed) first, then m0.
+
+        Each row is (lstat_errno, listing_errno, listing_matches) or None (unmounted).
+        """
+        rows = []
+        for index, row in [(1, m1), (0, m0)]:
+            rows.append({"index": index, "present": False} if row is None else
+                        {"index": index, "present": True, "type": None, "lstat_errno": row[0],
+                         "listing_errno": row[1], "listing_matches": row[2]})
+        self.observations["lost-reply-reread"]["domains"] = rows
+
+    def unchanged_fired(self):
+        return observed(self.sequence + 3, 11, lost_reply={**armed(0, 11)["lost_reply"], "exposure": fired()})
+
+    def test_realistic_blocked_m0_is_dropped_before_mutation(self):
+        # Expected T9 shape: a GETATTR/LOOKUP reply dropped, m0's session
+        # blocked, nothing committed, m1 answers ENOENT.
+        self.reread((errno.ENOENT, 0, 0), (errno.EHOSTDOWN, errno.EHOSTDOWN, None))
         self.steps()
-        s = self.sequence
-        unchanged = observed(s + 3, 11, lost_reply={**armed(0, 11)["lost_reply"], "exposure": fired()})
-        self.assertEqual(self.record(after=unchanged)["classification"], "dropped-before-mutation")
-        idle = observed(s + 3, 11, lost_reply=armed(0, 11)["lost_reply"])
+        record = self.record(after=self.unchanged_fired())
+        self.assertEqual(record["classification"], "dropped-before-mutation")
+        self.assertEqual({key: record["effect_seen"][key] for key in
+                          ["armed_domain_blocked", "armed_domain_errno", "decided_by_domain"]},
+                         {"armed_domain_blocked": True, "armed_domain_errno": errno.EHOSTDOWN,
+                          "decided_by_domain": 1})
+
+    def test_unmounted_m1_with_blocked_m0_is_undetermined(self):
+        self.reread(None, (errno.EHOSTDOWN, errno.EHOSTDOWN, None))
+        self.steps()
+        record = self.record(after=self.unchanged_fired())
+        self.assertEqual(record["classification"], "effect-undetermined")
+        self.assertIsNone(record["effect_seen"]["decided_by_domain"])
+
+    def test_unmounted_m1_with_answering_m0_decides_from_m0(self):
+        self.reread(None, (errno.ENOENT, 0, 0))
+        self.steps()
+        record = self.record(after=self.unchanged_fired())
+        self.assertEqual((record["classification"], record["effect_seen"]["decided_by_domain"]),
+                         ("dropped-before-mutation", 0))
+
+    def test_contradicting_shapes_are_inconsistent(self):
+        # The source advanced, yet the unarmed m1 does not see the leaf.
+        self.reread((errno.ENOENT, 0, 0), (errno.EHOSTDOWN, errno.EHOSTDOWN, None))
+        self.steps()
+        self.assertEqual(self.record()["classification"], "inconsistent")
+
+    def test_fixture_not_fired_is_an_observation(self):
+        self.steps()
+        idle = observed(self.sequence + 3, 11, lost_reply=armed(0, 11)["lost_reply"])
         record = self.record(after=idle)
         self.assertEqual(record["classification"], "fixture-not-fired")
         self.assertIsNone(record["exposure"])
@@ -355,15 +396,16 @@ class K04CorrelationTests(CorrelatorBase):
         (prefix / "test").mkdir(parents=True)
         self.mountpoint = prefix / "test" / "fuse"
         self.mountpoint.mkdir()
-        patcher = mock.patch.object(host_snapshot, "PREFIX", str(prefix) + "/")
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        for target, name in [(host_snapshot, "PREFIX"), (correlate, "STAGING_PREFIX")]:
+            patcher = mock.patch.object(target, name, str(prefix) + "/")
+            patcher.start()
+            self.addCleanup(patcher.stop)
         refused = [{"operation": name, "errno": errno.ENOTCONN}
                    for name in ["lstat-root-after-loss", "listdir-after-loss", "create-after-loss"]]
-        self.observations["after-loss"] = {"marker": "zq3-test-after-loss", "attempts": refused,
-                                           "io_refused": True}
+        self.observations["after-loss"] = {"domain": 1, "marker": "zq3-test-after-loss",
+                                           "attempts": refused, "io_refused": True}
 
-    def snapshot(self, label, run_id="test", path=None, dead=False):
+    def snapshot(self, label, run_id="test", path=None, dead=False, **changes):
         target = str(path or self.mountpoint)
         real_lstat = os.lstat
 
@@ -375,25 +417,63 @@ class K04CorrelationTests(CorrelatorBase):
         with mock.patch.object(host_snapshot.os, "lstat", side_effect=lstat):
             value = host_snapshot.snapshot("test", target, label)
         value["run_id"] = run_id  # A snapshot of another run, relabelled after the fact.
-        path, sha = self.reply(value)
-        return path, sha
+        value.update(changes)
+        return self.reply(value)
 
-    def k04(self, **snapshots):
-        quiet(controller.lifecycle, self.output, self.hash, "after-loss")
+    def triple(self, dead=False):
+        """baseline (raw, before runtime start), then before/after around the probe."""
+        return {"baseline": self.snapshot("baseline"), "before": self.snapshot("before", dead=dead),
+                "after": self.snapshot("after", dead=dead)}
+
+    def run_steps(self, *names):
+        for name in names:
+            self.assertEqual(quiet(controller.lifecycle, self.output, self.hash, name), 0)
+
+    def k04(self, snapshots):
+        self.run_steps("after-loss")
         return correlate.k04_record(str(self.output), self.hash, snapshots)
 
-    def test_dead_mount_and_unchanged_raw_directory_record_refusal(self):
-        record = self.k04(before=self.snapshot("before", dead=True), after=self.snapshot("after", dead=True))
+    def test_dead_mount_records_refusal_reaching_host(self):
+        record = self.k04(self.triple(dead=True))
         self.assertTrue(record["k04_refusal_observed"])
+        self.assertEqual(record["probe"], {"domain": 1, "blocked_evidence": [], "probe_reached_host": True})
         self.assertFalse(record["checks"]["raw_directory_reachable"])
         self.assertFalse(record["acceptance"])
+
+    def test_locally_blocked_probe_domain_is_vacuous(self):
+        # m1 already refused by the guest itself: its refusals never reached the host.
+        blocked = {"index": 1, "present": True, "lstat_errno": errno.EHOSTDOWN, "type": None,
+                   "listing_errno": errno.EHOSTDOWN, "listing_matches": None}
+        self.observations.update({
+            "lost-reply-call": {"armed_domain": 0, "leaf": "zq3-test-lost-reply",
+                                "mkdir_errno": errno.EIO, "retried": False},
+            "lost-reply-reread": {"leaf": "zq3-test-lost-reply", "mkdir_retried": False,
+                                  "domains": [blocked, {**blocked, "index": 0}]},
+            "quiesce": {"domains": [{"index": 0, "open_errno": errno.EHOSTDOWN, "syncfs_errno": None},
+                                    {"index": 1, "open_errno": errno.EHOSTDOWN, "syncfs_errno": None}],
+                        "drop_caches_errno": [0, 0], "settle_seconds": 2}})
+        self.observations["after-loss"]["attempts"][0]["errno"] = errno.EHOSTDOWN
+        self.run_steps("lost-reply-call", "lost-reply-reread", "quiesce")
+        record = self.k04(self.triple(dead=True))
+        self.assertFalse(record["k04_refusal_observed"])
+        self.assertTrue(record["checks"]["guest_io_refused"])
+        self.assertEqual(record["probe"]["blocked_evidence"],
+                         ["lost-reply-reread", "quiesce", "after-loss first attempt"])
+
+    def test_blocked_m0_alone_does_not_invalidate_the_m1_probe(self):
+        self.observations["quiesce"] = {
+            "domains": [{"index": 0, "open_errno": errno.EHOSTDOWN, "syncfs_errno": None},
+                        {"index": 1, "open_errno": 0, "syncfs_errno": 0}],
+            "drop_caches_errno": [0, 0], "settle_seconds": 2}
+        self.run_steps("quiesce")
+        self.assertTrue(self.k04(self.triple(dead=True))["probe"]["probe_reached_host"])
 
     def test_raw_directory_with_guest_marker_is_recorded_as_not_holding(self):
         baseline = self.snapshot("baseline")
         before = self.snapshot("before")
         (self.mountpoint / "zq3-test-after-loss").write_text("")
         self.observations["after-loss"]["attempts"][2]["errno"] = 0
-        record = self.k04(baseline=baseline, before=before, after=self.snapshot("after"))
+        record = self.k04({"baseline": baseline, "before": before, "after": self.snapshot("after")})
         self.assertFalse(record["k04_refusal_observed"])
         self.assertEqual({key: record["checks"][key] for key in
                           ["guest_io_refused", "marker_absent", "raw_directory_reachable",
@@ -402,35 +482,41 @@ class K04CorrelationTests(CorrelatorBase):
                           "raw_directory_reachable": True, "raw_directory_unchanged": False})
 
     def test_unchanged_raw_directory_holds_against_baseline(self):
-        record = self.k04(baseline=self.snapshot("baseline"), before=self.snapshot("before"),
-                          after=self.snapshot("after"))
+        record = self.k04(self.triple())
         self.assertTrue(record["k04_refusal_observed"])
         self.assertTrue(record["checks"]["raw_directory_reachable"])
 
     def test_snapshot_binding_negatives_refuse(self):
         other = self.mountpoint.parent / "other"
         other.mkdir()
-        quiet(controller.lifecycle, self.output, self.hash, "after-loss")
+        self.run_steps("after-loss")
+        good = self.triple()
         for message, snapshots in [
-                ("version/run/label", {"before": self.snapshot("after"), "after": self.snapshot("after")}),
-                ("version/run/label", {"before": self.snapshot("before", run_id="other"),
-                                       "after": self.snapshot("after")}),
-                ("different paths", {"before": self.snapshot("before", path=other),
-                                     "after": self.snapshot("after")}),
-                ("pinned input changed", {"before": (self.snapshot("before")[0], "0" * 64),
-                                          "after": self.snapshot("after")}),
-                ("raw pre-run directory", {"baseline": self.snapshot("baseline", dead=True),
-                                           "before": self.snapshot("before"), "after": self.snapshot("after")})]:
+                ("version/run/label", {**good, "before": self.snapshot("after")}),
+                ("version/run/label", {**good, "before": self.snapshot("before", run_id="other")}),
+                ("different paths", {**good, "before": self.snapshot("before", path=other)}),
+                ("pinned input changed", {**good, "before": (good["before"][0], "0" * 64)}),
+                ("raw pre-run directory", {**good, "baseline": self.snapshot(
+                    "baseline", dead=True, taken_utc="2000-01-01T00:00:00+00:00")}),
+                ("needs baseline, before and after", {"before": good["before"], "after": good["after"]}),
+                ("out of order", {**good, "before": self.snapshot(
+                    "before", taken_utc="2999-01-01T00:00:00+00:00")}),
+                ("time malformed", {**good, "after": self.snapshot("after", taken_utc="yesterday")})]:
             with self.subTest(message=message), self.assertRaisesRegex(correlate.Refused, message):
                 correlate.k04_record(str(self.output), self.hash, snapshots)
+        with mock.patch.object(correlate, "STAGING_PREFIX", "/var/tmp/hfs-validation-xz3/"):
+            with self.assertRaisesRegex(correlate.Refused, "path outside"):
+                correlate.k04_record(str(self.output), self.hash, good)
 
     def test_missing_after_loss_step_or_malformed_observation_refuses(self):
         with self.assertRaisesRegex(correlate.Refused, "after-loss"):
-            correlate.k04_record(str(self.output), self.hash,
-                                 {"before": self.snapshot("before"), "after": self.snapshot("after")})
-        self.observations["after-loss"]["marker"] = "zq3-other-after-loss"
+            correlate.k04_record(str(self.output), self.hash, self.triple())
+        self.observations["after-loss"]["domain"] = 0  # A probe of the blocked m0.
         with self.assertRaisesRegex(correlate.Refused, "observation malformed"):
-            self.k04(before=self.snapshot("before"), after=self.snapshot("after"))
+            self.k04(self.triple())
+
+    def test_staging_prefix_matches_host_snapshot(self):
+        self.assertEqual(module("correlate").STAGING_PREFIX, module("host_snapshot").PREFIX)
 
 
 class CommandTests(CorrelatorBase):
@@ -487,10 +573,15 @@ class CommandTests(CorrelatorBase):
             busy["evidence"]["controller"]["ledger"][field] = value
             with self.subTest(field=field), self.assertRaisesRegex(correlate.Refused, "RESTART not issued"):
                 self.command("restart", busy)
+        # An OBSERVE no later than the last one bound by a case correlation
+        # cannot have been taken after the quiesce.
+        with self.assertRaisesRegex(correlate.Refused, "predates an OBSERVE already bound"):
+            self.command("restart", observed(sequence, 11))
         result = self.command("restart", observed(sequence + 1, 11))
         self.assertEqual(result["argv"][3:], ["--operation", "restart", "--runtime", "runtime-1",
                                               "--sequence", str(sequence + 2), "--cut", "cut-1", "--epoch", "1"])
         self.assertEqual(result["quiesce"]["Leases"], 0)
+        self.assertEqual(result["quiesce"]["quiesce_completed_utc"], self.state()["lifecycle"][-1]["completed_utc"])
 
     def test_observe_uses_latest_sequence_and_unsafe_paths_refuse(self):
         sequence = self.release_all()
@@ -535,6 +626,19 @@ class HostSnapshotTests(unittest.TestCase):
         link.symlink_to(directory)
         value = host_snapshot.snapshot("test", str(link), "after")
         self.assertEqual((value["target"]["type"], value["listing"]["errno"]), ("symlink", errno.ENOTDIR))
+
+    def test_deadline_refuses_instead_of_recording_a_dead_mount(self):
+        directory = self.prefix / "test" / "fuse"
+        directory.mkdir()
+        with mock.patch.object(host_snapshot.os, "lstat", side_effect=host_snapshot.deadline):
+            with self.assertRaisesRegex(host_snapshot.Deadline, "uncertain"):
+                host_snapshot.snapshot("test", str(directory), "after")
+        with mock.patch.object(host_snapshot.os, "scandir", side_effect=host_snapshot.deadline):
+            with self.assertRaises(host_snapshot.Deadline):
+                host_snapshot.snapshot("test", str(directory), "after")
+        with mock.patch.object(host_snapshot.os, "lstat", side_effect=OSError("no errno")):
+            with self.assertRaisesRegex(OSError, "no errno"):
+                host_snapshot.snapshot("test", str(directory), "after")
 
     def test_main_prints_canonical_snapshot(self):
         directory = self.prefix / "test" / "fuse"

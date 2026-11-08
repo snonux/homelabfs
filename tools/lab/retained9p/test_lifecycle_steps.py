@@ -72,12 +72,12 @@ def captured(function, *args):
 
 
 class StepAdmissionTests(unittest.TestCase):
-    def admit(self, rows):
+    def admit(self, rows, step="quiesce"):
         with mock.patch.object(guest, "read", side_effect=lambda path, _: boundary(mountinfo(rows))[path]), \
                 mock.patch.object(guest.os, "geteuid", return_value=0), \
                 mock.patch.object(guest.os, "open") as opened, \
                 mock.patch.object(guest.os.path, "realpath", side_effect=lambda path: path):
-            value, events = captured(guest.admit_step, step_request("quiesce"))
+            value, events = captured(guest.admit_step, step_request(step))
             opened.assert_not_called()
         return value, events
 
@@ -108,6 +108,15 @@ class StepAdmissionTests(unittest.TestCase):
         self.assertFalse(events[-1]["acceptance"])
         both, _ = self.admit([(MOUNTS[0]["path"], "9p", "hfs0", 10), (MOUNTS[1]["path"], "9p", "hfs1", 11)])
         self.assertEqual([row["mount_id"] for row in both], [10, 11])
+
+    def test_after_loss_needs_m1_and_tolerates_m0_absent(self):
+        m0, m1 = (MOUNTS[0]["path"], "9p", "hfs0", 10), (MOUNTS[1]["path"], "9p", "hfs1", 11)
+        with self.assertRaisesRegex(guest.Refused, "exact mountpoint"):
+            self.admit([m0], step="after-loss")
+        mounts, _ = self.admit([m1], step="after-loss")
+        self.assertEqual([row["present"] for row in mounts], [False, True])
+        self.assertEqual(guest.STEP_DOMAIN, {"lost-reply-call": 0, "lost-reply-reread": 0,
+                                             "quiesce": 0, "after-loss": 1})
 
     def test_missing_m0_or_raw_fallback_filesystem_refuses(self):
         for rows, message in [([], "exact mountpoint"),
@@ -222,7 +231,29 @@ class GuestStepTests(unittest.TestCase):
     def test_after_loss_reaching_a_directory_is_recorded_and_preserved(self):
         observation, _ = self.run_step(guest.after_loss)
         self.assertFalse(observation["io_refused"])
-        self.assertTrue((self.root / "m0" / "zq3-test-after-loss").exists())
+        # m1, the domain T9 did not block, is probed; m0 is left alone.
+        self.assertEqual(observation["domain"], 1)
+        self.assertTrue((self.root / "m1" / "zq3-test-after-loss").exists())
+        self.assertFalse((self.root / "m0" / "zq3-test-after-loss").exists())
+
+    def test_deadline_is_never_recorded_as_an_errno(self):
+        # The SIGALRM handler's exception is not an OSError: a hung, interrupted
+        # call ends the step (uncertain) instead of becoming a refusal.
+        self.assertFalse(issubclass(guest.Deadline, OSError))
+        for step in [guest.after_loss, guest.lost_reply_call, guest.lost_reply_reread]:
+            with self.subTest(step=step.__name__), \
+                    mock.patch.object(guest.os, "lstat", side_effect=guest.deadline), \
+                    mock.patch.object(guest.os, "mkdir", side_effect=guest.deadline):
+                printed = io.StringIO()
+                with contextlib.redirect_stdout(printed), self.assertRaises(guest.Deadline):
+                    step(self.probe, self.mounts)
+                last = json.loads(printed.getvalue().splitlines()[-1])
+                self.assertEqual((last["event"], last["errno"], last["timeout"]), ("reply", None, True))
+
+    def test_oserror_without_errno_ends_the_step(self):
+        with mock.patch.object(guest.os, "mkdir", side_effect=OSError("no errno")):
+            with contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(OSError, "no errno"):
+                guest.lost_reply_call(self.probe, self.mounts)
 
 
 class GuestStepMainTests(unittest.TestCase):
@@ -245,6 +276,21 @@ class GuestStepMainTests(unittest.TestCase):
                          {"action": "step", "step": "quiesce", "syscall_success": True,
                           "payload_retained": False, "payload_released": False,
                           "acceptance": False, "publication": None})
+
+    def test_step_deadline_reports_failed_terminal(self):
+        def hung(p, mounts):
+            p.call("lstat-root-after-loss", lambda: guest.deadline())
+
+        stdin = io.TextIOWrapper(io.BytesIO(json.dumps(step_request("after-loss")).encode()))
+        with mock.patch.object(guest, "admit_step", return_value=[{}, {}]), \
+                mock.patch.object(guest.resource, "setrlimit"), \
+                mock.patch.dict(guest.STEP_ACTIONS, {"after-loss": hung}), \
+                mock.patch.object(sys, "argv", ["guest"]), mock.patch.object(sys, "stdin", stdin):
+            code, events = captured(guest.main)
+        self.assertEqual(code, 1)
+        self.assertEqual((events[-2]["event"], events[-2]["error"]), ("failure", "Deadline"))
+        self.assertEqual((events[-1]["step"], events[-1]["syscall_success"]), ("after-loss", False))
+        self.assertNotIn("step-observed", [event["event"] for event in events])
 
     def test_step_refusal_reports_failed_terminal(self):
         code, events = self.main(step_request("quiesce"), failure=guest.Refused("exact mountpoint not present once"))

@@ -189,31 +189,56 @@ the plan's boot/provider/manifest/mount identity plus `step` and a 30 s alarm.
 Steps run at most once, in the order below (skipping is allowed, going back
 is not; the re-read needs the CALL directly before it). Each records every
 errno as data in one `step-observed` event; the terminal's `syscall_success`
-only says the step ran to completion. Nothing is retried or deleted.
+only says the step ran to completion. Nothing is retried or deleted. The
+controller records each step's `completed_utc` (workstation clock).
+
+**Gate order: T1-T7, T9, T10, T11, then T8.** T9 blocks m0's guest session
+(below), so the T11 K04 probe uses m1, which must still be mounted and
+unblocked when host loss happens; T8's normal unmount of m1 therefore comes
+last. T8's guest-side assertions (admission refuses `m1`, the empty directory
+stays empty) need no live runtime; if the unmount refuses or hangs after host
+loss, T8 is recorded unrun and Phase 11 handles the mount. Host loss for T11 is
+the runtime exit after a FENCED T10. If T10 is RESTARTED the runtime keeps
+serving, this plan has no supported way to stop it with the guest still up,
+and T11 is recorded unrun.
+
+**Deadlines are never errno values.** The guest's SIGALRM handler raises
+`Deadline`, which is not an `OSError`: an interrupted call is logged as a
+`reply` with `timeout: true` and ends the step as failed, so the controller
+keeps it uncertain (never a refusal, never a pass). An `OSError` without an
+errno also ends the step instead of being recorded as EIO.
 
 Step admission checks the full guest identity but reads the mount tuples from
-mountinfo only, without opening or resolving anything inside a domain: m0 must
-be the exact admitted mount; m1 may be absent after T8's normal unmount, which
-is recorded (the admitted provider inventory must still list both sessions,
-otherwise the step refuses and T9-T11 are unrun).
+mountinfo only, without opening or resolving anything inside a domain. The
+step's own domain (m0 for T9/T10, m1 for T11) must be the exact admitted
+mount; the other may be absent, which is recorded (the admitted provider
+inventory must still list both sessions, otherwise the step refuses).
 
 | Step | Gate | Guest action |
 |---|---|---|
 | `lost-reply-call` | T9 | One `mkdir m0/zq3-RUN-lost-reply` immediately after the host ARM of m0's session; nothing else touches a domain. |
 | `lost-reply-reread` | T9 | `lstat` and a bounded root listing of the leaf, m1 first, then m0; no second mkdir. |
 | `quiesce` | T10 | Open, `syncfs` and close each present root; write `3` to `/proc/sys/vm/drop_caches` (guest-wide: page cache releases view leases, dentry/inode eviction sends FORGET), settle 2 s, drop again. |
-| `after-loss` | T11 | After runtime exit: `lstat` m0, list m0, exclusive create of `zq3-RUN-after-loss`; a create that succeeds is kept as evidence. |
+| `after-loss` | T11 | After runtime exit: `lstat` m1, list m1, exclusive create of `m1/zq3-RUN-after-loss`; a create that succeeds is kept as evidence. |
 
 **What the guest kernel actually does with T9.** The patched guest
 (`tools/integration/linux9p/patches/0003`) issues a GETATTR for the parent's
 permission check and a LOOKUP before MKDIR, all as CALLs, and never trusts a
-cached dentry (`hfs_d_revalidate` returns 0). The armed fixture drops the *first* matching CALL response, so
-it can hit one of those instead of MKDIR. After any dropped response the guest
-marks the session blocked (`EHOSTDOWN` for later ordinary CALLs) and has no
-userspace-visible QUERY; the m0 re-read then fails and only m1 can show
-whether the effect committed. The C9 restart that follows is then expected to
-refuse at the paired cut and FENCE (lifecycle.md). The correlator therefore
-classifies instead of judging; see below.
+cached dentry (`hfs_d_revalidate` returns 0). The armed fixture drops the
+*first* matching CALL response, so it can hit one of those instead of MKDIR;
+background CALLs on m0's session after the ARM (deferred FORGET, PROCESS_EXIT
+of an earlier probe process, a GETATTR) can take the drop too. After any
+dropped response the guest marks the session blocked (`EHOSTDOWN` for later
+ordinary CALLs) and has no userspace-visible QUERY; the m0 re-read then fails
+and only m1 shows whether the effect committed. The C9 restart that follows is
+then expected to refuse at the paired cut and FENCE (lifecycle.md). The
+correlator therefore classifies instead of judging; see below.
+
+**What the quiesce does not do.** It performs no explicit VIEW_ACQUIRE
+refresh: it can only release views (page cache drop) and leave none
+historical. On a blocked m0, opening the root and the evicted lookups' FORGET
+CALLs fail with `EHOSTDOWN`, so m0's capabilities stay held; the host OBSERVE
+gate then shows whether the C9 cut precondition holds anyway.
 
 ## Host correlator (zq3 G7, G10, G11)
 
@@ -242,35 +267,50 @@ nothing.
 - `lost-reply --before R --armed R --after R --record NEW` (T9): the ARM used
   the pre-arm OBSERVE's cut/epoch and m0's session; the post-CALL OBSERVE has
   the same binding and fixture. A `FIRED` exposure must be `UNCERTAIN`, `CALL`,
-  above `armed_high`, with claim and hashes. Whether the source advanced since
-  the arm baseline plus the two guest observations give `classification`:
-  `dropped-reply-effect-committed-and-visible`, `dropped-before-mutation`,
-  `fixture-not-fired` or `inconsistent`. None of these is a pass.
-- `k04 --before S --after S [--baseline S] --record NEW` (T11): snapshots from
-  [`host_snapshot.py`](host_snapshot.py) of one run-owned host path (for
-  example the runtime's FUSE mount point under
-  `/var/tmp/hfs-validation-xz3/RUN/`): `baseline` before runtime start, then
-  `before` and `after` around the guest after-loss step. `k04_refusal_observed`
-  needs every guest attempt to fail, the marker absent on the host, a raw
-  directory (if the path is no longer a mount point) equal to the baseline,
-  and no host change during the attempt. A dead FUSE mount still covering the
-  path reports its errno instead of a listing. `host_snapshot.py` is read-only
-  (lstat, at most 256 names through an `O_NOFOLLOW` descriptor, 10 s alarm)
-  and runs on f3 as root with the pinned interpreter.
+  above `armed_high`, with claim and hashes. The leaf state is decided by the
+  unarmed m1 (m0 only if m1 is unmounted and m0 answered itself); m0's
+  `EHOSTDOWN` is recorded as `effect_seen.armed_domain_blocked`. With whether
+  the source advanced since the arm baseline this gives `classification`:
+  `dropped-reply-effect-committed-and-visible`, `dropped-before-mutation` (the
+  expected T9 shape: m1 ENOENT, m0 blocked, no source change),
+  `fixture-not-fired`, `effect-undetermined` (no domain could answer) or
+  `inconsistent`. None of these is a pass.
+- `k04 --baseline S --before S --after S --record NEW` (T11): snapshots from
+  [`host_snapshot.py`](host_snapshot.py) of one run-owned host path below
+  `/var/tmp/hfs-validation-xz3/RUN/` (for example the runtime's FUSE mount
+  point): `baseline` before runtime start, then `before` and `after` around the
+  guest after-loss step, all three required, the same path and taken in that
+  order (f3 clock only). `k04_refusal_observed` needs every guest attempt on m1
+  to fail, the marker absent on the host, a raw directory (if the path is no
+  longer a mount point) equal to the baseline, no host change during the
+  attempt, and `probe.probe_reached_host`: m1 must not have shown the guest's
+  own `EHOSTDOWN` in the T9 re-read, the T10 quiesce or the first after-loss
+  attempt, otherwise the refusals were local and K04 is flagged vacuous. A dead
+  FUSE mount still covering the path reports its errno instead of a listing.
+  `host_snapshot.py` is read-only (lstat, at most 256 names through an
+  `O_NOFOLLOW` descriptor) and runs on f3 as root with the pinned interpreter;
+  its 10 s alarm refuses the whole snapshot (a hang is uncertain, never a dead
+  mount's errno).
 - `command --operation observe|arm-lost-reply|restart --observe R [--last R]
   --runtime-binary PATH --control SOCK`: prints, never runs, the exact client
   argv: runtime, cut and epoch from the latest OBSERVE and sequence = last
   reply's sequence + 1. ARM refuses unless the batch is released, no lifecycle
   step ran and nothing is armed. RESTART refuses unless the last step was
-  `quiesce` and that OBSERVE shows the C9 cut precondition: view-controller
-  `Leases` and `Reservations` 0, no `Recall`, `Matches` true.
+  `quiesce`, the OBSERVE is later than every OBSERVE bound by a case
+  correlation, and it shows the C9 cut precondition: view-controller `Leases`
+  and `Reservations` 0, no `Recall`, `Matches` true. OBSERVE carries no
+  timestamp, so that it was taken after the quiesce is checkable only in part;
+  the output repeats the quiesce's `completed_utc` the operator must follow.
 
 Local tests: `test_lifecycle_steps.py` (step shapes, mountinfo-only admission,
 real local syscalls for each step with the kernel's errno substituted,
-controller ordering/no-replay) and `test_correlate.py` (every case correlated
-and accepted by the real `release`, stale cut/epoch, rotated runtime,
-wrong case, changed log, broken chain, lost-reply classifications and binding
-refusals, K04 with real snapshots of temporary directories, argv builder).
+deadlines that end a step instead of becoming an errno, per-step required
+domain, controller ordering/no-replay) and `test_correlate.py` (every case
+correlated and accepted by the real `release`, stale cut/epoch, rotated
+runtime, wrong case, changed log, broken chain, lost-reply classifications
+including the realistic blocked-m0 shape, binding refusals, K04 with real
+snapshots of temporary directories including a vacuous blocked-m1 probe and
+snapshot order/path binding, argv builder, snapshot deadlines).
 These are local logic tests only, never 9p, runtime or lab evidence.
 
 ## Run-only observer key (zq3 G6)

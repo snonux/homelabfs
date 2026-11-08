@@ -694,6 +694,8 @@ class Run:
             raise Refused("SSH/guest nonzero exit")
         fsync_directory(folder)
         record.update(result)
+        # Workstation clock; correlate.py prints it as what a RESTART OBSERVE must follow.
+        record["completed_utc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         record["state"] = "completed"
         self.save()
 

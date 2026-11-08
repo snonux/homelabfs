@@ -15,17 +15,21 @@ records; every record says acceptance:false.
   lost-reply  homelabfs-retained9p-lost-reply-correlation/1 (T9): ARM binding,
               the fired UNCERTAIN exposure, source effect since arming and the
               guest CALL/re-read observations.
-  k04         homelabfs-retained9p-k04-after-loss/1 (T11): guest I/O after host
-              loss failed and the host path showed no raw-directory effect.
+  k04         homelabfs-retained9p-k04-after-loss/1 (T11): guest I/O on the
+              unblocked m1 after host loss failed and the host path (baseline,
+              before, after snapshots) showed no raw-directory effect; a probe
+              the guest refused locally (EHOSTDOWN) is flagged as vacuous.
   command     the exact lifecycle client argv for observe, arm-lost-reply or
-              restart from the latest OBSERVE; restart only after an observed
-              quiesce. It prints argv and executes nothing.
+              restart from the latest OBSERVE; restart only after the quiesce
+              step and an OBSERVE showing the C9 cut precondition. It prints
+              argv and executes nothing.
 
 A binding problem (wrong run, digest, runtime, stale cut, wrong case) refuses
 and writes nothing. For T9/T11 the observed outcome, good or bad, is the
 record's content; it never becomes acceptance.
 """
 import argparse
+import datetime
 import errno
 import importlib.util
 import json
@@ -50,6 +54,11 @@ OBSERVE_FORMAT = "homelabfs-retained9p-host-observe/1"
 LOST_REPLY_VERSION = "homelabfs-retained9p-lost-reply-correlation/1"
 K04_VERSION = "homelabfs-retained9p-k04-after-loss/1"
 SNAPSHOT_VERSION = "homelabfs-retained9p-host-path-snapshot/1"  # Same as host_snapshot.py.
+STAGING_PREFIX = "/var/tmp/hfs-validation-xz3/"  # Same as host_snapshot.PREFIX.
+SNAPSHOT_ORDER = ["baseline", "before", "after"]
+# T11 probes the unarmed m1: T9 leaves m0's guest session blocked, so m0's
+# refusals would be local (EHOSTDOWN) and say nothing about the host.
+K04_DOMAIN = 1
 # The lifecycle client prints the raw reply (at most 128 KiB) plus a newline.
 REPLY_LIMIT = (128 << 10) + 1
 SNAPSHOT_LIMIT = 64 << 10
@@ -370,17 +379,48 @@ def fired_exposure(evidence, view):
     return exposure
 
 
-def classify(exposure, committed, call, reread):
+def reread_rows(reread):
+    """Present re-read rows by domain index (0 armed, 1 unarmed)."""
+    return {row.get("index"): row for row in reread.get("domains", [])
+            if isinstance(row, dict) and row.get("present")}
+
+
+def leaf_absent(row):
+    return (row is not None and row.get("lstat_errno") == errno.ENOENT and
+            row.get("listing_errno") == 0 and row.get("listing_matches") == 0)
+
+
+def leaf_visible(row):
+    return (row is not None and row.get("lstat_errno") == 0 and row.get("type") == "dir" and
+            row.get("listing_matches") == 1)
+
+
+def effect_seen(reread):
+    """Leaf state from the domains that can still answer.
+
+    The unarmed m1 decides: the guest blocks the armed m0's session after a
+    dropped reply, so m0's EHOSTDOWN says nothing about the leaf. m0 counts
+    only when it answered itself (not blocked) and m1 is unmounted.
+    """
+    rows = reread_rows(reread)
+    armed, unarmed = rows.get(0), rows.get(1)
+    blocked = armed is not None and armed.get("lstat_errno") == errno.EHOSTDOWN
+    decider = unarmed if unarmed is not None else (None if blocked else armed)
+    return {"armed_domain_blocked": blocked,
+            "armed_domain_errno": None if armed is None else armed.get("lstat_errno"),
+            "decided_by_domain": None if decider is None else decider.get("index"),
+            "visible": leaf_visible(decider), "absent": leaf_absent(decider)}
+
+
+def classify(exposure, committed, call, seen):
     """Name what was observed; never a pass value."""
-    rows = [row for row in reread.get("domains", []) if row.get("present")]
-    visible = [row for row in rows if row.get("lstat_errno") == 0 and row.get("type") == "dir" and
-               row.get("listing_matches") == 1]
-    absent = rows and all(row.get("lstat_errno") == errno.ENOENT for row in rows)
     if exposure is None:
         return "fixture-not-fired"
-    if committed and visible:
+    if seen["decided_by_domain"] is None:
+        return "effect-undetermined"
+    if committed and seen["visible"]:
         return "dropped-reply-effect-committed-and-visible"
-    if not committed and absent and call.get("mkdir_errno") != 0:
+    if not committed and seen["absent"] and call.get("mkdir_errno") != 0:
         return "dropped-before-mutation"
     return "inconsistent"
 
@@ -388,7 +428,9 @@ def classify(exposure, committed, call, reread):
 LOST_REPLY_LIMITS = [
     "the exposure names cell/claim/hashes, not the operation: the guest path walk issues "
     "GETATTR/LOOKUP CALLs before MKDIR, so only the committed source shows a MKDIR effect",
-    "a guest kernel blocks the armed session after a dropped reply; m0 re-read errors are data",
+    "the guest blocks the armed m0 session after a dropped reply (EHOSTDOWN); the unarmed m1 "
+    "re-read decides the leaf state, m0's error is recorded as armed_domain_blocked",
+    "background guest CALLs on m0 (FORGET, PROCESS_EXIT, GETATTR) after the ARM can take the drop",
     "the fixture record lives in daemon memory only; a crash loses it",
 ]
 
@@ -412,10 +454,11 @@ def lost_reply_record(output, plan_sha256, before, armed, after):
     committed = advanced(view["baseline"], service, "post-CALL")
     exposure = fired_exposure(post, view)
     call, reread = steps["lost-reply-call"], steps["lost-reply-reread"]
+    seen = effect_seen(reread["observation"])
     return {"version": LOST_REPLY_VERSION, "run_id": plan["run_id"], "acceptance": False,
-            "classification": classify(exposure, committed, call["observation"], reread["observation"]),
+            "classification": classify(exposure, committed, call["observation"], seen),
             "fixture": view["fixture"], "session": session, "exposure": exposure,
-            "committed_since_arm": committed,
+            "committed_since_arm": committed, "effect_seen": seen,
             "guest": {"call": call, "reread": reread},
             "replies": {"pre_arm": entry_record(before), "armed": entry_record(armed),
                         "post_call": entry_record(after)},
@@ -438,14 +481,67 @@ def load_snapshot(path, sha256, run_id, label):
     return {"sha256": sha256, "snapshot": value}
 
 
+def check_snapshot_set(snapshots, run_id):
+    """baseline, before, after: one run-owned path, taken in that order on f3.
+
+    The times all come from f3's clock, so only their order is compared;
+    nothing is compared with the workstation's controller times.
+    """
+    if sorted(snapshots) != sorted(SNAPSHOT_ORDER):
+        raise Refused("K04 needs baseline, before and after snapshots")
+    paths = {item["snapshot"]["path"] for item in snapshots.values()}
+    base = STAGING_PREFIX + run_id + "/"
+    if len(paths) != 1:
+        raise Refused("host snapshots name different paths")
+    if not next(iter(paths)).startswith(base):
+        raise Refused("host snapshot path outside " + base)
+    try:
+        times = [datetime.datetime.fromisoformat(snapshots[label]["snapshot"]["taken_utc"])
+                 for label in SNAPSHOT_ORDER]
+    except (TypeError, ValueError):
+        raise Refused("host snapshot time malformed") from None
+    if times != sorted(times):
+        raise Refused("host snapshots out of order: baseline, before, after required")
+    baseline = snapshots["baseline"]["snapshot"]
+    if baseline["mountpoint"] is not False or names_of(baseline) is None:
+        raise Refused("baseline snapshot must show the raw pre-run directory")
+
+
 def after_loss_observation(steps, run_id):
     observation = steps["after-loss"]["observation"]
     attempts = observation.get("attempts")
-    if (observation.get("marker") != "zq3-" + run_id + "-after-loss" or not isinstance(attempts, list) or
+    if (observation.get("marker") != "zq3-" + run_id + "-after-loss" or
+            observation.get("domain") != K04_DOMAIN or not isinstance(attempts, list) or
             len(attempts) != 3 or not all(isinstance(item, dict) and type(item.get("errno")) is int
                                           for item in attempts)):
         raise Refused("after-loss observation malformed")
     return observation
+
+
+def blocked_errno(row, keys):
+    return row is not None and errno.EHOSTDOWN in [row.get(key) for key in keys]
+
+
+def probe_validity(steps, observation):
+    """Whether the after-loss probe could reach the host at all.
+
+    EHOSTDOWN is the guest's own refusal for a session it already blocked. If
+    m1 showed it in the T9 re-read or T10 quiesce, or on the first after-loss
+    attempt, the refusals are local and K04 is not observed (vacuous).
+    """
+    blocked = []
+    if "lost-reply-reread" in steps:
+        row = reread_rows(steps["lost-reply-reread"]["observation"]).get(K04_DOMAIN)
+        if blocked_errno(row, ["lstat_errno", "listing_errno"]):
+            blocked.append("lost-reply-reread")
+    if "quiesce" in steps:
+        rows = [row for row in steps["quiesce"]["observation"].get("domains", [])
+                if isinstance(row, dict) and row.get("index") == K04_DOMAIN]
+        if any(blocked_errno(row, ["open_errno", "syncfs_errno"]) for row in rows):
+            blocked.append("quiesce")
+    if observation["attempts"][0]["errno"] == errno.EHOSTDOWN:
+        blocked.append("after-loss first attempt")
+    return {"domain": K04_DOMAIN, "blocked_evidence": blocked, "probe_reached_host": not blocked}
 
 
 def names_of(snapshot):
@@ -456,14 +552,21 @@ def names_of(snapshot):
 def k04_checks(observation, snapshots):
     """Guest I/O refused, the marker never reached the host path, no raw change."""
     before, after = snapshots["before"]["snapshot"], snapshots["after"]["snapshot"]
-    reference = snapshots.get("baseline", snapshots["before"])["snapshot"]
     after_names = names_of(after)
     raw_directory = after["mountpoint"] is False and after_names is not None
     return {"guest_io_refused": all(item["errno"] != 0 for item in observation["attempts"]),
             "marker_absent": after_names is None or observation["marker"] not in after_names,
             "raw_directory_reachable": raw_directory,
-            "raw_directory_unchanged": not raw_directory or after_names == names_of(reference),
+            "raw_directory_unchanged": (not raw_directory or
+                                        after_names == names_of(snapshots["baseline"]["snapshot"])),
             "host_path_unchanged_during_attempt": names_of(before) == after_names}
+
+
+K04_LIMITS = [
+    "one host path only; another raw path the exporter could reach is not covered",
+    "probes m1 only: m0's session is blocked by T9; a blocked m1 makes the probe vacuous",
+    "replacement FUSE/exporter and guest RESUME refusals are recorded separately",
+]
 
 
 def k04_record(output, plan_sha256, snapshot_args):
@@ -474,19 +577,15 @@ def k04_record(output, plan_sha256, snapshot_args):
     observation = after_loss_observation(steps, plan["run_id"])
     snapshots = {label: load_snapshot(path, sha256, plan["run_id"], label)
                  for label, (path, sha256) in snapshot_args.items()}
-    if len({item["snapshot"]["path"] for item in snapshots.values()}) != 1:
-        raise Refused("host snapshots name different paths")
-    if "baseline" in snapshots and (snapshots["baseline"]["snapshot"]["mountpoint"] is not False or
-                                    names_of(snapshots["baseline"]["snapshot"]) is None):
-        raise Refused("baseline snapshot must show the raw pre-run directory")
+    check_snapshot_set(snapshots, plan["run_id"])
     checks = k04_checks(observation, snapshots)
-    held = all(checks[key] for key in ["guest_io_refused", "marker_absent", "raw_directory_unchanged",
-                                       "host_path_unchanged_during_attempt"])
+    probe = probe_validity(steps, observation)
+    held = probe["probe_reached_host"] and all(checks[key] for key in [
+        "guest_io_refused", "marker_absent", "raw_directory_unchanged",
+        "host_path_unchanged_during_attempt"])
     return {"version": K04_VERSION, "run_id": plan["run_id"], "acceptance": False,
-            "k04_refusal_observed": held, "checks": checks,
-            "guest": steps["after-loss"], "snapshots": snapshots,
-            "limits": ["one host path only; another raw path the exporter could reach is not covered",
-                       "replacement FUSE/exporter and guest RESUME refusals are recorded separately"]}
+            "k04_refusal_observed": held, "probe": probe, "checks": checks,
+            "guest": steps["after-loss"], "snapshots": snapshots, "limits": K04_LIMITS}
 
 
 def quiesced(evidence):
@@ -501,21 +600,41 @@ def quiesced(evidence):
     return counts
 
 
-def command_preconditions(operation, evidence, state):
+def last_bound_sequence(output, state):
+    """Highest OBSERVE sequence bound by a released case correlation in this run."""
+    highest = 0
+    for case in state.get("cases", []):
+        if case.get("correlation_sha256"):
+            raw = controller.verified_bytes(output / case["name"] / "correlation.json",
+                                            case["correlation_sha256"], RECORD_LIMIT)
+            highest = max(highest, controller.parse(raw)["host_observe"]["retained"]["sequence"])
+    return highest
+
+
+def command_preconditions(operation, observe, output, state):
+    """ARM once before any step; RESTART only on an OBSERVE after the quiesce.
+
+    OBSERVE carries no timestamp, so "after the quiesce" is checkable only in
+    part: the reply must be later than every OBSERVE bound in this run, and the
+    printed quiesce completion time tells the operator what it must follow.
+    """
+    evidence = observe["reply"]["evidence"]
     done = [item["step"] for item in state.get("lifecycle", [])]
     if operation == "arm-lost-reply":
         if not state.get("syscall_batch_success") or done or "lost_reply" in evidence:
             raise Refused("ARM only once, after the released batch and before any lifecycle step")
-    if operation == "restart":
-        if done[-1:] != ["quiesce"]:
-            raise Refused("RESTART only directly after the guest quiesce step")
-        return quiesced(evidence)
-    return None
+    if operation != "restart":
+        return None
+    if done[-1:] != ["quiesce"]:
+        raise Refused("RESTART only directly after the guest quiesce step")
+    if observe["sequence"] <= last_bound_sequence(output, state):
+        raise Refused("RESTART OBSERVE predates an OBSERVE already bound in this run")
+    return {**quiesced(evidence), "quiesce_completed_utc": state["lifecycle"][-1].get("completed_utc")}
 
 
 def client_command(args):
     """Exact client argv from the latest OBSERVE; prints, never executes."""
-    _, plan, state = retained_run(args.output, args.sha256)
+    output, plan, state = retained_run(args.output, args.sha256)
     for path in [args.runtime_binary, args.control]:
         controller.check_output_path(path)
     observe = load_reply(args.observe, args.observe_sha256)
@@ -531,7 +650,7 @@ def client_command(args):
     quiesce = None
     if args.operation != "observe":
         evidence = evidence_of(observe, "command")
-        quiesce = command_preconditions(args.operation, evidence, state)
+        quiesce = command_preconditions(args.operation, observe, output, state)
         argv += ["--cut", evidence["cut"], "--epoch", str(evidence["epoch"])]
     if args.operation == "arm-lost-reply":
         argv += ["--session", plan_identity(plan)["sessions"][0], "--lost-operation", "CALL"]
@@ -578,7 +697,7 @@ def arguments(argv=None):
         pinned(commands["lost-reply"], name)
     for name in ["before", "after"]:
         pinned(commands["k04"], name)
-    pinned(commands["k04"], "baseline", required=False)
+    pinned(commands["k04"], "baseline")
     command = commands["command"]
     command.add_argument("--operation", required=True, choices=["observe", "arm-lost-reply", "restart"])
     command.add_argument("--runtime-binary", required=True)
@@ -599,10 +718,8 @@ def build(args):
                                  load_reply(args.before, args.before_sha256),
                                  load_reply(args.armed, args.armed_sha256),
                                  load_reply(args.after, args.after_sha256))
-    snapshots = {"before": (args.before, args.before_sha256), "after": (args.after, args.after_sha256)}
-    if args.baseline or args.baseline_sha256:
-        snapshots["baseline"] = (args.baseline, args.baseline_sha256)
-    return k04_record(args.output, args.sha256, snapshots)
+    return k04_record(args.output, args.sha256, {label: (getattr(args, label), getattr(args, label + "_sha256"))
+                                                 for label in SNAPSHOT_ORDER})
 
 
 def main(argv=None):

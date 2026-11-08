@@ -60,6 +60,11 @@ STEPS = ("lost-reply-call", "lost-reply-reread", "quiesce", "after-loss")
 DROP_CACHES = "/proc/sys/vm/drop_caches"
 QUIESCE_SETTLE = 2  # Seconds for the guest's asynchronous release/retire work.
 LISTING_LIMIT = 1024  # Bounded root listing per domain in the re-read step.
+# The domain each step needs mounted. T9 arms and probes m0, which the guest
+# kernel then blocks (EHOSTDOWN) after the dropped reply; T11 therefore probes
+# the still-unblocked m1 after host loss, or its refusals would be local and
+# prove nothing about the host. T8 (unmount of m1) runs after T11.
+STEP_DOMAIN = {"lost-reply-call": 0, "lost-reply-reread": 0, "quiesce": 0, "after-loss": 1}
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 RECORD_LIMIT = 65536
 REQUEST_LIMIT = 16384
@@ -79,6 +84,20 @@ PAYLOAD_DIRS = {"credentials": ["setgid", "sticky"]}
 
 class Refused(RuntimeError):
     """Admission or a required assertion refused."""
+
+
+class Deadline(Exception):
+    """The SIGALRM case/step deadline expired.
+
+    Deliberately not an OSError (unlike TimeoutError): code that records a
+    syscall's errno as an observation must never turn an interrupted, hung
+    operation into a refusal with an invented errno. A deadline always ends the
+    request as failed, so the controller keeps it uncertain.
+    """
+
+
+def deadline(*_):
+    raise Deadline("case/step deadline")
 
 
 def unique(pairs):
@@ -254,9 +273,9 @@ def admit_step(request):
 
     No descriptor is opened and no path inside a tested domain is resolved: the
     lost-reply CALL must be the step's only domain I/O and after host loss even
-    resolving a mount root is the I/O under test. m0 must still be the exact
-    admitted mount; m1 may be absent after the T8 normal unmount, which is
-    recorded instead of refused. A different filesystem on either path refuses.
+    resolving a mount root is the I/O under test. The step's own domain
+    (STEP_DOMAIN) must still be the exact admitted mount; the other one may be
+    absent (recorded, not refused). A different filesystem on either refuses.
     """
     if request_kind(request) != "step":
         raise Refused("step admission requires a lifecycle step request")
@@ -269,7 +288,7 @@ def admit_step(request):
     for index, row in enumerate(request["mounts"]):
         check_row(request, row, index)
         found = find_mount(lines, row["path"])
-        if found is None and index == 0:
+        if found is None and index == STEP_DOMAIN[request["step"]]:
             raise Refused("exact mountpoint not present once")
         mounts.append({"index": index, "path": row["path"], "present": found is not None,
                        "mount_id": check_tuple(row, found) if found else None})
@@ -300,6 +319,11 @@ class Probe:
         except OSError as failure:
             emit("reply", sequence=self.sequence, operation=operation,
                  errno=failure.errno, result=None)
+            raise
+        except Deadline:
+            # Distinct from any errno: the operation was interrupted, not refused.
+            emit("reply", sequence=self.sequence, operation=operation,
+                 errno=None, timeout=True, result=None)
             raise
         emit("reply", sequence=self.sequence, operation=operation, errno=0,
              result=value if isinstance(value, (int, str, dict, list)) else None)
@@ -756,11 +780,18 @@ CASES = {"credentials": credentials, "sync": sync, "metadata": metadata,
 
 
 def attempt(p, operation, function, **args):
-    """One recorded syscall whose errno is an observation, not a step failure."""
+    """One recorded syscall whose errno is an observation, not a step failure.
+
+    A Deadline is not an OSError and propagates: the step then fails and the
+    controller records it as uncertain. An OSError without an errno is not a
+    kernel answer either, so it also ends the step instead of becoming EIO.
+    """
     try:
         return 0, p.call(operation, function, **args)
     except OSError as failure:
-        return failure.errno or errno.EIO, None
+        if not failure.errno:
+            raise
+        return failure.errno, None
 
 
 def step_leaf(p, suffix):
@@ -867,13 +898,17 @@ def quiesce(p, mounts):
 
 
 def after_loss(p, mounts):
-    """T11 guest half of K04: after host loss, m0 I/O must fail.
+    """T11 guest half of K04: after host loss, I/O on the unblocked m1 must fail.
 
-    Each attempt is recorded once and never retried. An exclusive create that
-    succeeds is closed and preserved (never unlinked): it is the evidence the
-    host snapshot then looks for in the raw directory.
+    m1, not m0: T9 leaves m0's guest session blocked, so m0 would refuse
+    locally (EHOSTDOWN) without ever reaching the host. Each attempt is
+    recorded once and never retried; the first one reaches the host, later
+    ones may be refused locally once the guest blocks m1 too. An exclusive
+    create that succeeds is closed and preserved (never unlinked): it is the
+    evidence the host snapshot then looks for in the raw directory.
     """
-    root, marker = mounts[0]["path"], step_leaf(p, "after-loss")
+    domain = STEP_DOMAIN["after-loss"]
+    root, marker = mounts[domain]["path"], step_leaf(p, "after-loss")
 
     def create():
         os.close(os.open(root + "/" + marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
@@ -885,7 +920,7 @@ def after_loss(p, mounts):
             ("create-after-loss", create)]:
         code, _ = attempt(p, operation, function, path=root)
         attempts.append({"operation": operation, "errno": code})
-    return {"marker": marker, "attempts": attempts,
+    return {"domain": domain, "marker": marker, "attempts": attempts,
             "io_refused": all(item["errno"] != 0 for item in attempts)}
 
 
@@ -927,7 +962,7 @@ def main():
     roots, p, success, kind, step = [], None, False, None, None
     try:
         checked(len(sys.argv) == 1, "one stdin request; no arguments")
-        signal.signal(signal.SIGALRM, lambda *_: (_ for _ in ()).throw(TimeoutError("case deadline")))
+        signal.signal(signal.SIGALRM, deadline)
         signal.alarm(10)
         raw = sys.stdin.buffer.read(REQUEST_LIMIT + 1)
         checked(len(raw) <= REQUEST_LIMIT, "request limit")
