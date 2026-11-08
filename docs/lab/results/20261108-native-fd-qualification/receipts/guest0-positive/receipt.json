@@ -1,0 +1,64 @@
+{
+  "argv": [
+    "/usr/bin/env",
+    "HFS_DIAGNOSTIC_CHILD=/var/tmp/hfs-20261108-guest0-r1/diagnostic-child",
+    "/var/tmp/hfs-20261108-guest0-r1/controlledruntime-freebsd.test",
+    "-test.run=^(TestDescriptorExecNativeQualification|TestActualExporterDiagnosticsParentExit|TestDiagnosticComponentParentExit|TestFreeBSDObserverReadOnly|TestDescriptorExecNativeUnsupported)$",
+    "-test.count=1",
+    "-test.timeout=60s",
+    "-test.v"
+  ],
+  "local_reserved_bytes": 268435456,
+  "error": null,
+  "exit": 0,
+  "peak_rss": 105431040,
+  "peak_global_allocated_disk": 281161728,
+  "seconds": 0.3275691099999989,
+  "observations": [
+    {
+      "elapsed": 0.013281202000001713,
+      "rss": 92344320,
+      "global_allocated_disk": 281141248,
+      "build_output_bytes": 12705792,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 447452,
+        "inactive_pages": 518,
+        "physical_free_bytes": 1832763392,
+        "free_plus_inactive_bytes": 1834885120
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n"
+    },
+    {
+      "elapsed": 0.05653143299999641,
+      "rss": 105431040,
+      "global_allocated_disk": 281161728,
+      "build_output_bytes": 12726272,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 446959,
+        "inactive_pages": 515,
+        "physical_free_bytes": 1830744064,
+        "free_plus_inactive_bytes": 1832853504
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n"
+    },
+    {
+      "elapsed": 0.32742363100000205,
+      "rss": 92569600,
+      "global_allocated_disk": 281145344,
+      "build_output_bytes": 12709888,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 446834,
+        "inactive_pages": 523,
+        "physical_free_bytes": 1830232064,
+        "free_plus_inactive_bytes": 1832374272
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n"
+    }
+  ],
+  "installed": false,
+  "booted": false,
+  "native_accepted": false
+}

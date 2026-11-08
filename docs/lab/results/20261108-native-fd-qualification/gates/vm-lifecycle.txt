@@ -1,0 +1,24 @@
+# Transcribed tool output, 2026-11-08 (times EET = UTC+2). Commands via tools/lab/vms.sh.
+## before (16:36): doas -n vm list
+rocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (6473)
+freebsd / hfs-test0..2                                                 Stopped
+swap /dev/ada0p3 2.0G used 0B; fdescfs: no mount, no module
+## vms.sh --approved-action stop-rocky
+Sending ACPI shutdown to rocky
+rocky      default    uefi       4    12G     -    Yes [1]  Stopped
+## check: /dev/vmm absent, no bhyve process, swap used 0
+## vms.sh --approved-action start-lab
+Starting hfs-test0 / hfs-test1 / hfs-test2 ... booting
+hfs-test0  Running (54416)   hfs-test1  Running (54450)   hfs-test2  Running (54435)
+pinned SSH to 172.31.253.11/.12/.13 ready on first attempt
+## (guest stages, fdescfs window on hfs-test0 only)
+## vms.sh --approved-action stop-lab
+Sending ACPI shutdown to hfs-test0 / hfs-test1 / hfs-test2
+all three Stopped; rocky Stopped
+## vms.sh --approved-action start-rocky
+Starting rocky ... booting
+## after (16:46): doas -n vm list; ls /dev/vmm; swapinfo; mount -t fdescfs; kldstat
+rocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (58580)
+freebsd / hfs-test0..2                                                 Stopped
+/dev/vmm: rocky; swap used 0; fdescfs mount: none; fdescfs module count: 0
+rocky SSH (10.20.0.123, pinned): 5.14.0-687.66.1.el9_8.x86_64, up 2 min

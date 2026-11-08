@@ -1,0 +1,541 @@
+=== RUN   TestRuntimeProposalStagedExternalConsent
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+--- FAIL: TestRuntimeProposalStagedExternalConsent (0.07s)
+=== RUN   TestRuntimeAssemblyTwoDomainsRealFraming
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+--- FAIL: TestRuntimeAssemblyTwoDomainsRealFraming (0.05s)
+=== RUN   TestRuntimeAssemblyMissingAdaptersRefuse
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+--- FAIL: TestRuntimeAssemblyMissingAdaptersRefuse (0.06s)
+=== RUN   TestRuntimeFundingCompleteOwners
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+--- FAIL: TestRuntimeFundingCompleteOwners (0.06s)
+=== RUN   TestRuntimeCLIRefusesWithoutNativeAdapters
+--- PASS: TestRuntimeCLIRefusesWithoutNativeAdapters (0.00s)
+=== RUN   TestDescriptorExecNativeUnsupported
+    descriptor_exec_freebsd_test.go:53: requires actual unsupported /dev/fd profile
+--- SKIP: TestDescriptorExecNativeUnsupported (0.00s)
+=== RUN   TestDescriptorExecNativeQualification
+    descriptor_exec_freebsd_test.go:110: native FD exec and protected identity qualified: controlledruntime.descriptorExecReport{Version:"homelabfs-descriptor-exec/1", Platform:"freebsd/amd64", MountType:"fdescfs", MountID:"5900ff01:00000059", Flags:0x0, Supported:true, Failure:"", Publication:interface {}(nil)}
+--- PASS: TestDescriptorExecNativeQualification (0.05s)
+=== RUN   TestDescriptorExecReport
+--- PASS: TestDescriptorExecReport (0.00s)
+=== RUN   TestDescriptorExecFlagsExclusive
+--- PASS: TestDescriptorExecFlagsExclusive (0.00s)
+=== RUN   TestRuntimeDriverSharedSequenceRealC
+    driver_test.go:182: actual C recovery fixture compile: exit status 1
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/tests/restart_child.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_json.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_ledger.c'
+--- FAIL: TestRuntimeDriverSharedSequenceRealC (0.71s)
+=== RUN   TestGuestArtifactsOriginalAndOuterSignatures
+    guest_artifacts_test.go:176: open testdata/guest-artifacts.json: no such file or directory
+--- FAIL: TestGuestArtifactsOriginalAndOuterSignatures (0.04s)
+=== RUN   TestGuestArtifactsRefuseInvalidInputs
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/extra_signer
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/remote_signature
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/missing_original_signature
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/empty_subject
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/bad_idmap
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/empty_groups
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/wrong_control_nonce
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/corrupt_private_suffix
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/missing_signer
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/reordered_rows
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/duplicate_tag
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/sum_too_large
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/slash
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/empty_device
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/received_cap
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/wrong_guest
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/reordered_signers
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/remote_row
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/missing_row
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/unicode
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/nul
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/cookie_cap
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/short_host
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/extra_original_signature
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/short_operator
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/duplicate_name
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/overlong_device
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/bad_subject
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/zero_namespace
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/ordinary_acquisition_collision
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/reservation_cap
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/duplicate_enrollment
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/extra_row
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/wrong_session
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/long_subject
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/zero_ordinary
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/sum_overflow
+=== RUN   TestGuestArtifactsRefuseInvalidInputs/wrong_operator
+--- PASS: TestGuestArtifactsRefuseInvalidInputs (0.11s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/extra_signer (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/remote_signature (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/missing_original_signature (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/empty_subject (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/bad_idmap (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/empty_groups (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/wrong_control_nonce (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/corrupt_private_suffix (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/missing_signer (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/reordered_rows (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/duplicate_tag (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/sum_too_large (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/slash (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/empty_device (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/received_cap (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/wrong_guest (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/reordered_signers (0.01s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/remote_row (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/missing_row (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/unicode (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/nul (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/cookie_cap (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/short_host (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/extra_original_signature (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/short_operator (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/duplicate_name (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/overlong_device (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/bad_subject (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/zero_namespace (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/ordinary_acquisition_collision (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/reservation_cap (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/duplicate_enrollment (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/extra_row (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/wrong_session (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/long_subject (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/zero_ordinary (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/sum_overflow (0.00s)
+    --- PASS: TestGuestArtifactsRefuseInvalidInputs/wrong_operator (0.00s)
+=== RUN   TestGuestArtifactsResignedSemanticRefusals
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/baseline_UUID
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/journal_kind
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/equal_endpoint_keys
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/old_protocol
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/baseline_reporter
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/baseline_kind
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/baseline_epoch
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/baseline_hash
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/bad_profile
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/bad_UUID
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/duplicate_session
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/zero_ledger
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/bad_bounds
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/overflow_bounds
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/bad_public_key
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/wrong_local_VM
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/identical_lanes
+=== RUN   TestGuestArtifactsResignedSemanticRefusals/invalid_lane_UUID
+--- PASS: TestGuestArtifactsResignedSemanticRefusals (0.05s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/baseline_UUID (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/journal_kind (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/equal_endpoint_keys (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/old_protocol (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/baseline_reporter (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/baseline_kind (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/baseline_epoch (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/baseline_hash (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/bad_profile (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/bad_UUID (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/duplicate_session (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/zero_ledger (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/bad_bounds (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/overflow_bounds (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/bad_public_key (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/wrong_local_VM (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/identical_lanes (0.00s)
+    --- PASS: TestGuestArtifactsResignedSemanticRefusals/invalid_lane_UUID (0.00s)
+=== RUN   TestGuestArtifactsBindRejectsTampering
+=== RUN   TestGuestArtifactsBindRejectsTampering/upper_enrollment
+=== RUN   TestGuestArtifactsBindRejectsTampering/remote_signature
+=== RUN   TestGuestArtifactsBindRejectsTampering/extra_group
+=== RUN   TestGuestArtifactsBindRejectsTampering/upper_signature
+=== RUN   TestGuestArtifactsBindRejectsTampering/original_signature
+=== RUN   TestGuestArtifactsBindRejectsTampering/outer_signature
+=== RUN   TestGuestArtifactsBindRejectsTampering/missing_group
+=== RUN   TestGuestArtifactsBindRejectsTampering/reordered_domains
+=== RUN   TestGuestArtifactsBindRejectsTampering/missing_domain
+--- PASS: TestGuestArtifactsBindRejectsTampering (0.17s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/upper_enrollment (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/remote_signature (0.01s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/extra_group (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/upper_signature (0.01s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/original_signature (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/outer_signature (0.01s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/missing_group (0.01s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/reordered_domains (0.01s)
+    --- PASS: TestGuestArtifactsBindRejectsTampering/missing_domain (0.01s)
+=== RUN   TestGuestArtifactsBoundaries
+--- PASS: TestGuestArtifactsBoundaries (0.17s)
+=== RUN   TestGuestArtifactInventoryCountAndProfileBoundaries
+--- PASS: TestGuestArtifactInventoryCountAndProfileBoundaries (0.23s)
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/budget
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/index
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/duplicate_device
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/nonce
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/unknown_original_field
+=== RUN   TestGuestArtifactsBindRejectsSignedInvalidPolicy/noncanonical_original_order
+--- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy (0.13s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/budget (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/index (0.03s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/duplicate_device (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/nonce (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/unknown_original_field (0.02s)
+    --- PASS: TestGuestArtifactsBindRejectsSignedInvalidPolicy/noncanonical_original_order (0.02s)
+=== RUN   TestInstalledObserverPinnedProcessAndClosedObservation
+    guest_observer_test.go:25: local process fixture needs python3
+--- SKIP: TestInstalledObserverPinnedProcessAndClosedObservation (0.00s)
+=== RUN   TestInstalledAdmissionRejectsIncompleteOrChangedKernelOwnership
+--- PASS: TestInstalledAdmissionRejectsIncompleteOrChangedKernelOwnership (0.00s)
+=== RUN   TestActualInstalledProbeReadsCompleteLocalArtifactPrimitives
+    guest_observer_test.go:113: probe fixture needs python3
+--- SKIP: TestActualInstalledProbeReadsCompleteLocalArtifactPrimitives (0.00s)
+=== RUN   TestAdmissionHighWaterRejectsOldRevisionReopen
+--- PASS: TestAdmissionHighWaterRejectsOldRevisionReopen (0.00s)
+=== RUN   TestFreeBSDObserverReadOnly
+    process_freebsd_test.go:59: actual FreeBSD self observation: pid=1364 uid=0 gid=0 groups=[0 0 5] incarnation=freebsd:1364:1794148944:164923:fffff800676866e0 executable=/var/tmp/hfs-20261108-guest0-r1/controlledruntime-freebsd.test
+--- PASS: TestFreeBSDObserverReadOnly (0.00s)
+=== RUN   TestExporterDetachedParent
+--- PASS: TestExporterDetachedParent (0.00s)
+=== RUN   TestDiagnosticComponentParent
+--- PASS: TestDiagnosticComponentParent (0.00s)
+=== RUN   TestActualExporterDiagnosticsParentExit
+=== RUN   TestActualExporterDiagnosticsParentExit/default-negative
+=== RUN   TestActualExporterDiagnosticsParentExit/native
+--- PASS: TestActualExporterDiagnosticsParentExit (0.06s)
+    --- PASS: TestActualExporterDiagnosticsParentExit/default-negative (0.03s)
+    --- PASS: TestActualExporterDiagnosticsParentExit/native (0.03s)
+=== RUN   TestDiagnosticComponentParentExit
+=== RUN   TestDiagnosticComponentParentExit/default-negative
+=== RUN   TestDiagnosticComponentParentExit/native
+--- PASS: TestDiagnosticComponentParentExit (0.05s)
+    --- PASS: TestDiagnosticComponentParentExit/default-negative (0.02s)
+    --- PASS: TestDiagnosticComponentParentExit/native (0.02s)
+=== RUN   TestExporterDiagnosticsHelper
+--- PASS: TestExporterDiagnosticsHelper (0.00s)
+=== RUN   TestActualExporterDiagnosticsDrainOverflowAndClose
+--- PASS: TestActualExporterDiagnosticsDrainOverflowAndClose (0.04s)
+=== RUN   TestExporterDiagnosticsStorageFailureStillConsumes
+--- PASS: TestExporterDiagnosticsStorageFailureStillConsumes (0.00s)
+=== RUN   TestExporterDiagnosticsPreservesExistingAndFailedStart
+--- PASS: TestExporterDiagnosticsPreservesExistingAndFailedStart (0.00s)
+=== RUN   TestActualExporterDiagnosticsCompleteQuietExit
+--- PASS: TestActualExporterDiagnosticsCompleteQuietExit (0.07s)
+=== RUN   TestFailedExecRetainsIncompleteDiagnostics
+--- PASS: TestFailedExecRetainsIncompleteDiagnostics (0.02s)
+=== RUN   TestExporterDiagnosticsProcessExitDoesNotImplyPipeEOF
+--- PASS: TestExporterDiagnosticsProcessExitDoesNotImplyPipeEOF (0.00s)
+=== RUN   TestExporterPartialDiagnosticsHelper
+--- PASS: TestExporterPartialDiagnosticsHelper (0.00s)
+=== RUN   TestActualExporterDiagnosticsPartialWriteStillDrains
+=== RUN   TestActualExporterDiagnosticsPartialWriteStillDrains/partial-eio
+=== RUN   TestActualExporterDiagnosticsPartialWriteStillDrains/short-nil
+--- PASS: TestActualExporterDiagnosticsPartialWriteStillDrains (0.10s)
+    --- PASS: TestActualExporterDiagnosticsPartialWriteStillDrains/partial-eio (0.05s)
+    --- PASS: TestActualExporterDiagnosticsPartialWriteStillDrains/short-nil (0.05s)
+=== RUN   TestActualExporterDiagnosticsFinalStatusFailureRetained
+=== RUN   TestActualExporterDiagnosticsFinalStatusFailureRetained/sync-eio
+=== RUN   TestActualExporterDiagnosticsFinalStatusFailureRetained/write-at-eio
+--- PASS: TestActualExporterDiagnosticsFinalStatusFailureRetained (0.08s)
+    --- PASS: TestActualExporterDiagnosticsFinalStatusFailureRetained/sync-eio (0.04s)
+    --- PASS: TestActualExporterDiagnosticsFinalStatusFailureRetained/write-at-eio (0.04s)
+=== RUN   TestRefusedObserverChildCounter
+--- PASS: TestRefusedObserverChildCounter (0.00s)
+=== RUN   TestObserverPreflightFailureCreatesNoChild
+=== RUN   TestObserverPreflightFailureCreatesNoChild/UNSUPPORTED
+=== RUN   TestObserverPreflightFailureCreatesNoChild/PERMISSION
+=== RUN   TestObserverPreflightFailureCreatesNoChild/UNAVAILABLE
+--- PASS: TestObserverPreflightFailureCreatesNoChild (0.04s)
+    --- PASS: TestObserverPreflightFailureCreatesNoChild/UNSUPPORTED (0.01s)
+    --- PASS: TestObserverPreflightFailureCreatesNoChild/PERMISSION (0.01s)
+    --- PASS: TestObserverPreflightFailureCreatesNoChild/UNAVAILABLE (0.01s)
+=== RUN   TestObserverPreflightRejectsIncompleteSelf
+=== RUN   TestObserverPreflightRejectsIncompleteSelf/pid
+=== RUN   TestObserverPreflightRejectsIncompleteSelf/uid
+=== RUN   TestObserverPreflightRejectsIncompleteSelf/gid
+=== RUN   TestObserverPreflightRejectsIncompleteSelf/groups
+=== RUN   TestObserverPreflightRejectsIncompleteSelf/birth
+--- PASS: TestObserverPreflightRejectsIncompleteSelf (0.00s)
+    --- PASS: TestObserverPreflightRejectsIncompleteSelf/pid (0.00s)
+    --- PASS: TestObserverPreflightRejectsIncompleteSelf/uid (0.00s)
+    --- PASS: TestObserverPreflightRejectsIncompleteSelf/gid (0.00s)
+    --- PASS: TestObserverPreflightRejectsIncompleteSelf/groups (0.00s)
+    --- PASS: TestObserverPreflightRejectsIncompleteSelf/birth (0.00s)
+=== RUN   TestObserverQualificationFlagsAreExclusive
+--- PASS: TestObserverQualificationFlagsAreExclusive (0.00s)
+=== RUN   TestObserverPreflightDominatesLaunchEffects
+    process_observer_test.go:121: open process.go: no such file or directory
+--- FAIL: TestObserverPreflightDominatesLaunchEffects (0.00s)
+=== RUN   TestExporterHelper
+--- PASS: TestExporterHelper (0.00s)
+=== RUN   TestExclusiveRegistryMissingLedgerAndReplacementRefusal
+--- PASS: TestExclusiveRegistryMissingLedgerAndReplacementRefusal (0.06s)
+=== RUN   TestFailedStartupPreservesConsumedOwnership
+=== RUN   TestFailedStartupPreservesConsumedOwnership/wrong-digest
+=== RUN   TestFailedStartupPreservesConsumedOwnership/missing-executable
+=== RUN   TestFailedStartupPreservesConsumedOwnership/non-executable-bytes
+--- PASS: TestFailedStartupPreservesConsumedOwnership (0.10s)
+    --- PASS: TestFailedStartupPreservesConsumedOwnership/wrong-digest (0.05s)
+    --- PASS: TestFailedStartupPreservesConsumedOwnership/missing-executable (0.02s)
+    --- PASS: TestFailedStartupPreservesConsumedOwnership/non-executable-bytes (0.03s)
+=== RUN   TestLiveIdentityRejectsReplacementGroupsAndDeath
+=== RUN   TestLiveIdentityRejectsReplacementGroupsAndDeath/groups
+=== RUN   TestLiveIdentityRejectsReplacementGroupsAndDeath/exec-replacement
+=== RUN   TestLiveIdentityRejectsReplacementGroupsAndDeath/death
+--- PASS: TestLiveIdentityRejectsReplacementGroupsAndDeath (0.12s)
+    --- PASS: TestLiveIdentityRejectsReplacementGroupsAndDeath/groups (0.03s)
+    --- PASS: TestLiveIdentityRejectsReplacementGroupsAndDeath/exec-replacement (0.05s)
+    --- PASS: TestLiveIdentityRejectsReplacementGroupsAndDeath/death (0.04s)
+=== RUN   TestPortableFixtureCannotMintNativeAuthority
+    process_test.go:217: Linux primitive-only negative constructor boundary; never mount in tests
+--- SKIP: TestPortableFixtureCannotMintNativeAuthority (0.00s)
+=== RUN   TestProductionControlFramingAndBounds
+=== RUN   TestProductionControlFramingAndBounds/magic
+=== RUN   TestProductionControlFramingAndBounds/version
+=== RUN   TestProductionControlFramingAndBounds/reserved
+=== RUN   TestProductionControlFramingAndBounds/opcode
+=== RUN   TestProductionControlFramingAndBounds/oversized
+=== RUN   TestProductionControlFramingAndBounds/length
+=== RUN   TestProductionControlFramingAndBounds/truncated
+--- PASS: TestProductionControlFramingAndBounds (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/magic (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/version (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/reserved (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/opcode (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/oversized (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/length (0.00s)
+    --- PASS: TestProductionControlFramingAndBounds/truncated (0.00s)
+=== RUN   TestProvisionObservationCannotBeReusedOrRebound
+--- PASS: TestProvisionObservationCannotBeReusedOrRebound (0.00s)
+=== RUN   TestOwnershipRootAndExecutableReplacementAreRejected
+=== RUN   TestOwnershipRootAndExecutableReplacementAreRejected/unsafe-root
+=== RUN   TestOwnershipRootAndExecutableReplacementAreRejected/symlink-root
+=== RUN   TestOwnershipRootAndExecutableReplacementAreRejected/pinned-path-replacement
+--- PASS: TestOwnershipRootAndExecutableReplacementAreRejected (0.04s)
+    --- PASS: TestOwnershipRootAndExecutableReplacementAreRejected/unsafe-root (0.00s)
+    --- PASS: TestOwnershipRootAndExecutableReplacementAreRejected/symlink-root (0.00s)
+    --- PASS: TestOwnershipRootAndExecutableReplacementAreRejected/pinned-path-replacement (0.03s)
+=== RUN   TestProvisionerHasOnlyExactMetadataAndNoSyntheticCallback
+--- PASS: TestProvisionerHasOnlyExactMetadataAndNoSyntheticCallback (0.00s)
+=== RUN   TestNativeFDObservationExactTupleControllerAndRequest
+--- PASS: TestNativeFDObservationExactTupleControllerAndRequest (0.00s)
+=== RUN   TestRealChildUsesProductionInheritedControlFrame
+--- PASS: TestRealChildUsesProductionInheritedControlFrame (0.04s)
+=== RUN   TestFDObservationFundsOnlyOneActualKernelRequest
+--- PASS: TestFDObservationFundsOnlyOneActualKernelRequest (0.00s)
+=== RUN   TestRegistryContenderHelper
+--- PASS: TestRegistryContenderHelper (0.00s)
+=== RUN   TestOwnerLockRejectsIndependentProcess
+--- PASS: TestOwnerLockRejectsIndependentProcess (0.01s)
+=== RUN   TestServeControlRejectsSecondReaderWithoutDisturbingFirst
+--- PASS: TestServeControlRejectsSecondReaderWithoutDisturbingFirst (0.00s)
+=== RUN   TestMappedProducerActualTransportTwoScopes
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+--- FAIL: TestMappedProducerActualTransportTwoScopes (0.06s)
+=== RUN   TestMappedProducerInheritsActualParentFundedCleanup
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+--- FAIL: TestMappedProducerInheritsActualParentFundedCleanup (0.05s)
+=== RUN   TestMappedProducerActualWaitEventAndEvidencePolicy
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+--- FAIL: TestMappedProducerActualWaitEventAndEvidencePolicy (0.07s)
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/never-hello
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-743382831
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/sole-ordinary
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-809131119
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/empty-supplementary-groups
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-3466304348
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/mixed-ordinary-funding
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-1801326021
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/mixed-control-funding
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-2629142595
+=== RUN   TestTerminalProducerActualMultipleCellOwnerTransfer/all-80-old-cells
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-830991050
+--- FAIL: TestTerminalProducerActualMultipleCellOwnerTransfer (0.32s)
+    --- FAIL: TestTerminalProducerActualMultipleCellOwnerTransfer/never-hello (0.05s)
+    --- FAIL: TestTerminalProducerActualMultipleCellOwnerTransfer/sole-ordinary (0.06s)
+    --- FAIL: TestTerminalProducerActualMultipleCellOwnerTransfer/empty-supplementary-groups (0.05s)
+    --- FAIL: TestTerminalProducerActualMultipleCellOwnerTransfer/mixed-ordinary-funding (0.05s)
+    --- FAIL: TestTerminalProducerActualMultipleCellOwnerTransfer/mixed-control-funding (0.07s)
+    --- FAIL: TestTerminalProducerActualMultipleCellOwnerTransfer/all-80-old-cells (0.05s)
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/omission
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-2697692010
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/duplicate
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-1895600260
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/funding-repeated
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-618673684
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/changed-full-hash
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-3054787418
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/future
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-3304847363
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/other-scope
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-3925274948
+=== RUN   TestTerminalProducerMalformedOldCutPreservesActualOwners/wrong-native-funding-hash
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-3777684873
+--- FAIL: TestTerminalProducerMalformedOldCutPreservesActualOwners (0.53s)
+    --- FAIL: TestTerminalProducerMalformedOldCutPreservesActualOwners/omission (0.06s)
+    --- FAIL: TestTerminalProducerMalformedOldCutPreservesActualOwners/duplicate (0.08s)
+    --- FAIL: TestTerminalProducerMalformedOldCutPreservesActualOwners/funding-repeated (0.09s)
+    --- FAIL: TestTerminalProducerMalformedOldCutPreservesActualOwners/changed-full-hash (0.06s)
+    --- FAIL: TestTerminalProducerMalformedOldCutPreservesActualOwners/future (0.06s)
+    --- FAIL: TestTerminalProducerMalformedOldCutPreservesActualOwners/other-scope (0.07s)
+    --- FAIL: TestTerminalProducerMalformedOldCutPreservesActualOwners/wrong-native-funding-hash (0.11s)
+=== RUN   TestTerminalProducerActualOpenClaimRefusesSeal
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-643392512
+--- FAIL: TestTerminalProducerActualOpenClaimRefusesSeal (0.07s)
+=== RUN   TestTerminalProducerOtherScopeContinuesDuringBridgeProtection
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-692073380
+--- FAIL: TestTerminalProducerOtherScopeContinuesDuringBridgeProtection (0.05s)
+=== RUN   TestTerminalProducerPartialSealsRetainSameLiveAttempt
+=== RUN   TestTerminalProducerPartialSealsRetainSameLiveAttempt/provider-sealed
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-3050502575
+=== RUN   TestTerminalProducerPartialSealsRetainSameLiveAttempt/controller-sealed
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-2103550389
+=== RUN   TestTerminalProducerPartialSealsRetainSameLiveAttempt/bridge-before-protection
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-912769324
+--- FAIL: TestTerminalProducerPartialSealsRetainSameLiveAttempt (0.23s)
+    --- FAIL: TestTerminalProducerPartialSealsRetainSameLiveAttempt/provider-sealed (0.07s)
+    --- FAIL: TestTerminalProducerPartialSealsRetainSameLiveAttempt/controller-sealed (0.11s)
+    --- FAIL: TestTerminalProducerPartialSealsRetainSameLiveAttempt/bridge-before-protection (0.05s)
+=== RUN   TestTerminalProducerProtectionCrashCutsExposeNoReply
+=== RUN   TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-terminal-sealed
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-2392106390
+=== RUN   TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-mapping-base
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-4285727757
+=== RUN   TestTerminalProducerProtectionCrashCutsExposeNoReply/before-full-response-commit
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-3058095656
+=== RUN   TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-response
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-2206593489
+--- FAIL: TestTerminalProducerProtectionCrashCutsExposeNoReply (0.31s)
+    --- FAIL: TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-terminal-sealed (0.05s)
+    --- FAIL: TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-mapping-base (0.06s)
+    --- FAIL: TestTerminalProducerProtectionCrashCutsExposeNoReply/before-full-response-commit (0.07s)
+    --- FAIL: TestTerminalProducerProtectionCrashCutsExposeNoReply/protected-response (0.13s)
+=== RUN   TestTerminalProducerPermanentControlExhaustion
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-1951856432
+--- FAIL: TestTerminalProducerPermanentControlExhaustion (0.05s)
+=== RUN   TestTerminalProducerActualOwnersSharedEndpoint
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-775114496
+--- FAIL: TestTerminalProducerActualOwnersSharedEndpoint (0.05s)
+=== RUN   TestTerminalProducerActualWorkerInvocationExpires
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+    producer_test.go:117: retained failed C6 fixture resources: /var/tmp/hfs-20261108-guest0-r1/tmp/hfs-c6-1523356366
+--- FAIL: TestTerminalProducerActualWorkerInvocationExpires (0.05s)
+=== RUN   TestRealControlledProducerSignsSourceEventAndRefusesForgedACK
+=== RUN   TestRealControlledProducerSignsSourceEventAndRefusesForgedACK/controlled1.2
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+=== RUN   TestRealControlledProducerSignsSourceEventAndRefusesForgedACK/cleanup1.3
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+--- FAIL: TestRealControlledProducerSignsSourceEventAndRefusesForgedACK (0.19s)
+    --- FAIL: TestRealControlledProducerSignsSourceEventAndRefusesForgedACK/controlled1.2 (0.05s)
+    --- FAIL: TestRealControlledProducerSignsSourceEventAndRefusesForgedACK/cleanup1.3 (0.15s)
+=== RUN   TestRealControlledProducerFloorUsesOriginalProtectedCoverage
+=== RUN   TestRealControlledProducerFloorUsesOriginalProtectedCoverage/controlled1.2
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+=== RUN   TestRealControlledProducerFloorUsesOriginalProtectedCoverage/cleanup1.3
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+--- FAIL: TestRealControlledProducerFloorUsesOriginalProtectedCoverage (0.10s)
+    --- FAIL: TestRealControlledProducerFloorUsesOriginalProtectedCoverage/controlled1.2 (0.05s)
+    --- FAIL: TestRealControlledProducerFloorUsesOriginalProtectedCoverage/cleanup1.3 (0.05s)
+=== RUN   TestRealControlledProducerRejectsFalseFrozenOmission
+=== RUN   TestRealControlledProducerRejectsFalseFrozenOmission/controlled1.2
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+=== RUN   TestRealControlledProducerRejectsFalseFrozenOmission/cleanup1.3
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+--- FAIL: TestRealControlledProducerRejectsFalseFrozenOmission (0.12s)
+    --- FAIL: TestRealControlledProducerRejectsFalseFrozenOmission/controlled1.2 (0.07s)
+    --- FAIL: TestRealControlledProducerRejectsFalseFrozenOmission/cleanup1.3 (0.05s)
+=== RUN   TestProviderRouterRealTwoMounts
+=== RUN   TestProviderRouterRealTwoMounts/1.2
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+=== RUN   TestProviderRouterRealTwoMounts/1.3
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+--- FAIL: TestProviderRouterRealTwoMounts (0.21s)
+    --- FAIL: TestProviderRouterRealTwoMounts/1.2 (0.14s)
+    --- FAIL: TestProviderRouterRealTwoMounts/1.3 (0.07s)
+=== RUN   TestProviderRouterConstructionAndBinding
+    producer_test.go:103: installed guest observation: fork/exec /dev/fd/3: no such file or directory
+--- FAIL: TestProviderRouterConstructionAndBinding (0.05s)
+=== RUN   TestBarrieredEndpointRestartRealC
+    restart_test.go:409: actual C recovery fixture compile: exit status 1
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/tests/restart_child.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_json.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_ledger.c'
+--- FAIL: TestBarrieredEndpointRestartRealC (0.04s)
+=== RUN   TestBarrieredMutatingEndpointRestartRealC
+    restart_test.go:531: actual C recovery fixture compile: exit status 1
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/tests/restart_child.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_json.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_ledger.c'
+--- FAIL: TestBarrieredMutatingEndpointRestartRealC (0.04s)
+=== RUN   TestBarrieredTerminalEndpointRestartRealC
+    restart_test.go:670: actual C recovery fixture compile: exit status 1
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/tests/restart_child.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_json.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_ledger.c'
+--- FAIL: TestBarrieredTerminalEndpointRestartRealC (0.04s)
+=== RUN   TestBarrieredEndpointRestartRefusesIncompleteOwners
+    restart_test.go:750: actual C recovery fixture compile: exit status 1
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/tests/restart_child.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_json.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_ledger.c'
+--- FAIL: TestBarrieredEndpointRestartRefusesIncompleteOwners (0.12s)
+=== RUN   TestBarrieredEndpointRejectsCopiedCutAndVerifier
+    restart_test.go:901: actual C recovery fixture compile: exit status 1
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/tests/restart_child.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_json.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_ledger.c'
+--- FAIL: TestBarrieredEndpointRejectsCopiedCutAndVerifier (0.04s)
+=== RUN   TestBarrieredEndpointRefusesUnresolvedNativeWrite
+    restart_test.go:938: actual C recovery fixture compile: exit status 1
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/tests/restart_child.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_json.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_ledger.c'
+--- FAIL: TestBarrieredEndpointRefusesUnresolvedNativeWrite (0.04s)
+=== RUN   TestBarrieredTerminalRejectsIncompleteManifest
+    restart_test.go:972: actual C recovery fixture compile: exit status 1
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/tests/restart_child.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_json.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_ledger.c'
+--- FAIL: TestBarrieredTerminalRejectsIncompleteManifest (0.04s)
+=== RUN   TestBarrieredEndpointRefusesHistoricalSource
+    restart_test.go:1007: actual C recovery fixture compile: exit status 1
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/tests/restart_child.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_json.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_ledger.c'
+--- FAIL: TestBarrieredEndpointRefusesHistoricalSource (0.04s)
+=== RUN   TestBarrieredReaddir256ActualProjection
+    restart_test.go:1045: actual C recovery fixture compile: exit status 1
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/tests/restart_child.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_json.c'
+        cc: error: no such file or directory: '/var/tools/integration/lib9p/src/hfs9p_ledger.c'
+--- FAIL: TestBarrieredReaddir256ActualProjection (0.04s)
+FAIL

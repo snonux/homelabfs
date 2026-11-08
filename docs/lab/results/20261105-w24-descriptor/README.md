@@ -46,3 +46,9 @@ in [summary.json](summary.json). Full failed/successful resources remain under
 the recorded task root and `/var/tmp/hfs-w24-jlmt-r1`; no large logs are copied
 here. No module load, mount, VM lifecycle or production change occurred in
 these W24 checks.
+
+## Continued 2026-11-08
+
+Positive FD-exec qualification, negative controls before and after setup, and
+normal restoration ran in disposable guest hfs-test0. The f3 host window was not
+executed. See [20261108-native-fd-qualification](../20261108-native-fd-qualification/).

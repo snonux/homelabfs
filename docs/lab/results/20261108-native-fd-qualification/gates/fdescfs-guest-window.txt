@@ -1,0 +1,21 @@
+hfs-test0.test FreeBSD 15.1-RELEASE releng/15.1-n283562-96841ea08dcf GENERIC amd64
+/boot/kernel/fdescfs.ko SHA256 4d9dfea0c046f49b0d8f53de9bf24cd832b064bd7954bd04b9d12fb840d060b5
+--- fdescfs-pre.txt
+pre: 2026-11-08T14:42:04Z
+0
+devfd fs=#C:0x7100ff00 ino=91
+--- fdescfs-post.txt (kldload /boot/kernel/fdescfs.ko; mount -t fdescfs -o nodup fdescfs /dev/fd)
+post: 2026-11-08T14:42:04Z loaded_by_run=1
+ 4    1 0xffffffff82c27000     3578 fdescfs.ko (/boot/kernel/fdescfs.ko)
+		508 fdescfs
+fdescfs			/dev/fd			fdescfs	rw		0 0
+fdescfs on /dev/fd (fdescfs)
+--- fdescfs-restored.txt (umount /dev/fd; kldunload fdescfs)
+restored: 2026-11-08T14:43:20Z
+0
+devfd fs=#C:0x7100ff00 ino=91
+--- fdescfs-intent
+load-intent
+mount-intent loaded_by_run=1
+restored-normal
+(pre and restored records compared equal apart from their timestamp line)

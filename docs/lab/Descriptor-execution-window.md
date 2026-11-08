@@ -11,8 +11,9 @@ it does not trust a configuration boolean or a caller's mount claim.
 The selected FreeBSD source's [lookup implementation](https://github.com/freebsd/freebsd-src/blob/aadd58dddcbc78f4d5594827b46b5633552b15ce/sys/fs/fdescfs/fdesc_vnops.c)
 returns the held vnode under `FMNT_NODUP`; its
 [mount implementation](https://github.com/freebsd/freebsd-src/blob/aadd58dddcbc78f4d5594827b46b5633552b15ce/sys/fs/fdescfs/fdesc_vfsops.c)
-recognizes `nodup`. The selected target kernel/source and actual mount profile
-still require qualification. Linux `/dev/fd` magic links have different semantics;
+recognizes `nodup`. Actual qualification of a `nodup` mount on FreeBSD 15.1 is
+recorded [below](#qualification-result-2026-11-08); the f3 host kernel still
+requires its own window. Linux `/dev/fd` magic links have different semantics;
 Linux tests cannot establish this FreeBSD prerequisite.
 
 `hfs-controlled-runtime --check-descriptor-exec` is an exclusive, read-only
@@ -158,7 +159,25 @@ inspection and explicit reconciliation before any cleanup. Busy unmounts,
 changed FSIDs/profiles and restoration mismatches stop and retain resources.
 No trap automatically unmounts uncertain resources or removes failed evidence.
 
-This document and script are preparation, not a recorded native pass or an
-approved filled host setup plan. Actual facts, artifact hashes, resource guard,
-review, SYSTEM authority, unsupported-profile evidence, positive FD exec and
-normal restoration evidence remain required before calling W24 qualified.
+This document and script are preparation for the **f3 host** window, not an
+approved filled host setup plan; no f3 host `/dev/fd` mount has been made.
+
+## Qualification result (2026-11-08)
+
+W24's FreeBSD qualification ran in the disposable guest **hfs-test0**
+(15.1-RELEASE `n283562-96841ea08dcf`), not on the f3 host. Paul allowed
+stopping Rocky and starting the test VMs; treating a mount inside that
+disposable guest as a lab action rather than a host SYSTEM change is the
+agent's interpretation, flagged for Paul's confirmation. The run loaded the guest's stock
+module, mounted `fdescfs -o nodup` on `/dev/fd`, and passed
+`TestDescriptorExecNativeQualification` plus the full `Supervisor.Start`
+parent-exit test `TestActualExporterDiagnosticsParentExit`. Negative controls
+refused before setup and after normal `umount`/`kldunload`; the guest's
+`/dev/fd` devfs identity matched its pre-setup record. On the f3 host itself,
+the unsupported profile refused correctly with the current bytes. See the
+[evidence](results/20261108-native-fd-qualification/).
+
+The guest kernel and its module bytes differ from f3's `15.1-RELEASE-p2`. Before
+the real daemon runs on the f3 host (zq3, annotated there), this host window still needs its
+filled plan, explicit critical authority, rerunning
+`TestDescriptorExecNativeQualification` on the host, and normal restoration.

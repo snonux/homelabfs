@@ -85,3 +85,9 @@ startup remain separate from this component record.
 
 [Manifest](manifest.json) records the copied evidence hashes. Full guard binding
 indexes and original collection wrappers remain in the referenced task root.
+
+## Continued 2026-11-08
+
+Merged gates and the current-byte native component recheck passed; the full
+`Supervisor.Start` parent-exit test passed with fdescfs `nodup` in disposable
+guest hfs-test0. See [20261108-native-fd-qualification](../20261108-native-fd-qualification/).

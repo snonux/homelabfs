@@ -1,0 +1,278 @@
+{
+  "version": "homelabfs-native-fd-qualification/1",
+  "recorded_utc": "2026-11-08T14:50:00Z",
+  "authority": "Paul resumed work after IP migration (/goal work-on-tasks) and explicitly allowed stopping Rocky and starting the hfs-test VMs on f3. Routine bounded verification standing approval of 2026-11-02. No f3 host SYSTEM mount/module authority was requested or used.",
+  "source_commit": "c216cae3a6065a3b0d4bb36f51c72ac7e1f7a6df",
+  "source_note": "c216cae differs from d417bb3 only in docs/lab/results/20261105-migration-pause/handoff.json",
+  "migration_inventory": {
+    "f3": "10.20.0.133 primary, 192.168.1.133 retained (IQ host-addresses, reviewed 2026-11-07)",
+    "f3_pin": "ED25519 SHA256:VZLFFSJZ9K7iOBQ/cFehASFzCfIOn0TKFD1L89ziL5g, same key as pre-migration 192.168.1.133 entry; StrictHostKeyChecking=yes",
+    "f3_kernel": "15.1-RELEASE-p2 releng/15.1-n283596-aadd58dddcbc, boot 1794123678",
+    "guests": "172.31.253.11-13 on internal hfslab bridge, unchanged; pinned via docs/lab/f3-known_hosts"
+  },
+  "merged_gates": {
+    "gofmt": {
+      "exit": 0,
+      "seconds": 0.5
+    },
+    "build": {
+      "exit": 0,
+      "seconds": 9.3
+    },
+    "vet": {
+      "exit": 0,
+      "seconds": 4.7
+    },
+    "vet-freebsd-cgo0": {
+      "exit": 0,
+      "seconds": 27.0
+    },
+    "vet-freebsd-cgo1": {
+      "exit": 0,
+      "seconds": 33.5
+    },
+    "lint": {
+      "exit": 0,
+      "seconds": 17.2
+    },
+    "errcheck": {
+      "exit": 0,
+      "seconds": 1.9
+    },
+    "mage-build": {
+      "exit": 0,
+      "seconds": 4.9
+    },
+    "x-diag-child": {
+      "exit": 0,
+      "seconds": 0.2
+    },
+    "x-cr-test": {
+      "exit": 0,
+      "seconds": 33.9
+    },
+    "x-cr-cmd": {
+      "exit": 0,
+      "seconds": 1.4
+    },
+    "x-fdesc-helper": {
+      "exit": 0,
+      "seconds": 0.1
+    }
+  },
+  "merged_gates_peak_rss_kib": 323076,
+  "merged_gates_bounds": "GOFLAGS=-p=1 GOMAXPROCS=2 GOGC=50, sequential",
+  "full_go_test": "Not repeated: d417bb3 full merged suite PASS 452.953s (docs/lab/results/20261105-migration-pause/handoff.json); code unchanged since.",
+  "artifacts_sha256": {
+    "diagnostic-child": "3b94e1091fa751d2c3e1da7d479a02f89795fb7a43a7e59a866b4d6c7df53a00",
+    "controlledruntime-freebsd.test": "c441f772f93269cea735cebf599d0948d9951611995c9cf5716107b442d7c63b",
+    "hfs-controlled-runtime": "187e0837bf92339cbc54abc50fcb421353916b1b8c67b5b38e2c7d2e8a396656",
+    "fdescfs-namespace": "fb6433578fd03c1a7a42c56c7a102d0c1dbb73be73f9c401e8e79de90249fb91"
+  },
+  "native_stages": {
+    "host-r1": {
+      "argv": [
+        "/usr/bin/env",
+        "HFS_DIAGNOSTIC_CHILD=/var/tmp/hfs-20261108-host-r1/diagnostic-child",
+        "/var/tmp/hfs-20261108-host-r1/controlledruntime-freebsd.test",
+        "-test.run=^(TestDiagnosticComponentParentExit|TestDescriptorExecNativeUnsupported|TestFreeBSDObserverReadOnly)$",
+        "-test.count=1",
+        "-test.timeout=60s",
+        "-test.v"
+      ],
+      "exit": 0,
+      "error": null,
+      "peak_rss": 140161024,
+      "seconds": 0.32781963600064046,
+      "installed": false,
+      "booted": false,
+      "native_accepted": false,
+      "pass": [
+        "TestDescriptorExecNativeUnsupported",
+        "TestFreeBSDObserverReadOnly",
+        "TestDiagnosticComponentParentExit"
+      ],
+      "fail": [],
+      "skip": [],
+      "stdout_sha256": "e88ed5df3c616a9acc7e9cef33b4cbe3e09128f0f21f20c079ba0028022d40b9"
+    },
+    "guest0-pre-negative": {
+      "argv": [
+        "/usr/bin/env",
+        "HFS_DIAGNOSTIC_CHILD=/var/tmp/hfs-20261108-guest0-r1/diagnostic-child",
+        "/var/tmp/hfs-20261108-guest0-r1/controlledruntime-freebsd.test",
+        "-test.run=^(TestDescriptorExecNativeUnsupported|TestFreeBSDObserverReadOnly|TestDiagnosticComponentParentExit)$",
+        "-test.count=1",
+        "-test.timeout=60s",
+        "-test.v"
+      ],
+      "exit": 0,
+      "error": null,
+      "peak_rss": 119771136,
+      "seconds": 0.3521646029999985,
+      "installed": false,
+      "booted": false,
+      "native_accepted": false,
+      "pass": [
+        "TestDescriptorExecNativeUnsupported",
+        "TestFreeBSDObserverReadOnly",
+        "TestDiagnosticComponentParentExit"
+      ],
+      "fail": [],
+      "skip": [],
+      "stdout_sha256": "3fdf526375472ab1888884239636f87161dfa4efe50b949617e49209c5848932"
+    },
+    "guest0-positive": {
+      "argv": [
+        "/usr/bin/env",
+        "HFS_DIAGNOSTIC_CHILD=/var/tmp/hfs-20261108-guest0-r1/diagnostic-child",
+        "/var/tmp/hfs-20261108-guest0-r1/controlledruntime-freebsd.test",
+        "-test.run=^(TestDescriptorExecNativeQualification|TestActualExporterDiagnosticsParentExit|TestDiagnosticComponentParentExit|TestFreeBSDObserverReadOnly|TestDescriptorExecNativeUnsupported)$",
+        "-test.count=1",
+        "-test.timeout=60s",
+        "-test.v"
+      ],
+      "exit": 0,
+      "error": null,
+      "peak_rss": 105431040,
+      "seconds": 0.3275691099999989,
+      "installed": false,
+      "booted": false,
+      "native_accepted": false,
+      "pass": [
+        "TestDescriptorExecNativeQualification",
+        "TestFreeBSDObserverReadOnly",
+        "TestActualExporterDiagnosticsParentExit",
+        "TestDiagnosticComponentParentExit"
+      ],
+      "fail": [],
+      "skip": [
+        "TestDescriptorExecNativeUnsupported"
+      ],
+      "stdout_sha256": "a71b44888ecfbfe82698dd85d5676deed33aa8245d14567d94d1445f7270ca07"
+    },
+    "guest0-full": {
+      "argv": [
+        "/usr/bin/env",
+        "HFS_DIAGNOSTIC_CHILD=/var/tmp/hfs-20261108-guest0-r1/diagnostic-child",
+        "/var/tmp/hfs-20261108-guest0-r1/controlledruntime-freebsd.test",
+        "-test.count=1",
+        "-test.timeout=280s",
+        "-test.v"
+      ],
+      "exit": 1,
+      "error": null,
+      "peak_rss": 199147520,
+      "seconds": 5.815149942999994,
+      "installed": false,
+      "booted": false,
+      "native_accepted": false,
+      "pass": 45,
+      "fail": [
+        "TestRuntimeProposalStagedExternalConsent",
+        "TestRuntimeAssemblyTwoDomainsRealFraming",
+        "TestRuntimeAssemblyMissingAdaptersRefuse",
+        "TestRuntimeFundingCompleteOwners",
+        "TestRuntimeDriverSharedSequenceRealC",
+        "TestGuestArtifactsOriginalAndOuterSignatures",
+        "TestObserverPreflightDominatesLaunchEffects",
+        "TestMappedProducerActualTransportTwoScopes",
+        "TestMappedProducerInheritsActualParentFundedCleanup",
+        "TestMappedProducerActualWaitEventAndEvidencePolicy",
+        "TestTerminalProducerActualMultipleCellOwnerTransfer",
+        "TestTerminalProducerMalformedOldCutPreservesActualOwners",
+        "TestTerminalProducerActualOpenClaimRefusesSeal",
+        "TestTerminalProducerOtherScopeContinuesDuringBridgeProtection",
+        "TestTerminalProducerPartialSealsRetainSameLiveAttempt",
+        "TestTerminalProducerProtectionCrashCutsExposeNoReply",
+        "TestTerminalProducerPermanentControlExhaustion",
+        "TestTerminalProducerActualOwnersSharedEndpoint",
+        "TestTerminalProducerActualWorkerInvocationExpires",
+        "TestRealControlledProducerSignsSourceEventAndRefusesForgedACK",
+        "TestRealControlledProducerFloorUsesOriginalProtectedCoverage",
+        "TestRealControlledProducerRejectsFalseFrozenOmission",
+        "TestProviderRouterRealTwoMounts",
+        "TestProviderRouterConstructionAndBinding",
+        "TestBarrieredEndpointRestartRealC",
+        "TestBarrieredMutatingEndpointRestartRealC",
+        "TestBarrieredTerminalEndpointRestartRealC",
+        "TestBarrieredEndpointRestartRefusesIncompleteOwners",
+        "TestBarrieredEndpointRejectsCopiedCutAndVerifier",
+        "TestBarrieredEndpointRefusesUnresolvedNativeWrite",
+        "TestBarrieredTerminalRejectsIncompleteManifest",
+        "TestBarrieredEndpointRefusesHistoricalSource",
+        "TestBarrieredReaddir256ActualProjection"
+      ],
+      "skip": [
+        "TestDescriptorExecNativeUnsupported",
+        "TestInstalledObserverPinnedProcessAndClosedObservation",
+        "TestActualInstalledProbeReadsCompleteLocalArtifactPrimitives",
+        "TestPortableFixtureCannotMintNativeAuthority"
+      ],
+      "stdout_sha256": "a5ad005aec6f985ab9fff35c62d958580847a98583a965545b71861a5a5230df"
+    },
+    "guest0-post-negative": {
+      "argv": [
+        "/usr/bin/env",
+        "HFS_DIAGNOSTIC_CHILD=/var/tmp/hfs-20261108-guest0-r1/diagnostic-child",
+        "/var/tmp/hfs-20261108-guest0-r1/controlledruntime-freebsd.test",
+        "-test.run=^(TestDescriptorExecNativeUnsupported|TestDescriptorExecNativeQualification)$",
+        "-test.count=1",
+        "-test.timeout=60s",
+        "-test.v"
+      ],
+      "exit": 1,
+      "error": null,
+      "peak_rss": 105488384,
+      "seconds": 0.5307321939999952,
+      "installed": false,
+      "booted": false,
+      "native_accepted": false,
+      "pass": [
+        "TestDescriptorExecNativeUnsupported"
+      ],
+      "fail": [
+        "TestDescriptorExecNativeQualification"
+      ],
+      "skip": [],
+      "stdout_sha256": "972cab2a59848d6f379c3137d8665c40712c11a2c30d711683628e300db0c056"
+    }
+  },
+  "guest_window": {
+    "guest": "hfs-test0",
+    "kernel": "15.1-RELEASE releng/15.1-n283562-96841ea08dcf",
+    "module_sha256": "4d9dfea0c046f49b0d8f53de9bf24cd832b064bd7954bd04b9d12fb840d060b5",
+    "module_loaded_by_run": true,
+    "mount": "mount -t fdescfs -o nodup fdescfs /dev/fd",
+    "admitted_report": {
+      "MountType": "fdescfs",
+      "MountID": "5900ff01:00000059",
+      "Flags": 0,
+      "Supported": true
+    },
+    "restore": "umount /dev/fd (normal) then kldunload fdescfs; /dev/fd devfs identity #C:0x7100ff00 ino 91 matches pre-setup",
+    "records": "gates/fdescfs-guest-window.txt; originals preserved in /var/tmp/hfs-20261108-guest0-r1 on hfs-test0"
+  },
+  "vm_lifecycle": [
+    "vms.sh stop-rocky (ACPI, Rocky pid 6473)",
+    "vms.sh start-lab",
+    "guest tests",
+    "vms.sh stop-lab (ACPI)",
+    "vms.sh start-rocky (pid 58580, stock 5.14.0-687.66.1.el9_8 kernel, pinned SSH OK)"
+  ],
+  "final_state": {
+    "rocky": "Running",
+    "hfs_test0_2": "Stopped",
+    "freebsd": "Stopped",
+    "f3_fdescfs": "absent (never touched)",
+    "swap_used": 0
+  },
+  "full_package_failures_classification": "test-environment only: (1) relocated test binary cannot reach cwd-relative repository C sources/testdata (restart/driver/guest_artifacts/process_observer tests); (2) producer observer fixture writes a #!/usr/bin/python3 script, absent on FreeBSD, so execve of /dev/fd/3 returns ENOENT for the interpreter. No product failure identified; recorded as follow-up task.",
+  "not_qualified": [
+    "f3 host /dev/fd fdescfs window (critical SYSTEM action; needs separate explicit approval, belongs to zq3 window)",
+    "real-daemon READY, FUSE, bhyve, 9p base gate (zq3)",
+    "final xz3 artifact bytes after u24/v24"
+  ],
+  "native_runtime_ready": false,
+  "publication": null
+}

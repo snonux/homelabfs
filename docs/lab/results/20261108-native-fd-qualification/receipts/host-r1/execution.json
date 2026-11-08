@@ -1,0 +1,31 @@
+{
+  "command": [
+    "/usr/local/bin/python3.12",
+    "-B",
+    "/var/tmp/hfs-20261108-host-r1/native_guard.py",
+    "--root",
+    "/var/tmp/hfs-20261108-host-r1",
+    "--stage",
+    "host-native",
+    "--local-reserved-bytes",
+    "268435456",
+    "--profile",
+    "host",
+    "--rocky-pid",
+    "6473",
+    "--rocky-birth",
+    "Sun Nov  8 07:41:36 2026",
+    "--rocky-config-sha256",
+    "c101adf10d58d8e021faaa1c3dd98ccb7777c2b78b7931f478e71b526814c581",
+    "/usr/bin/env",
+    "HFS_DIAGNOSTIC_CHILD=/var/tmp/hfs-20261108-host-r1/diagnostic-child",
+    "/var/tmp/hfs-20261108-host-r1/controlledruntime-freebsd.test",
+    "-test.run=^(TestDiagnosticComponentParentExit|TestDescriptorExecNativeUnsupported|TestFreeBSDObserverReadOnly)$",
+    "-test.count=1",
+    "-test.timeout=60s",
+    "-test.v"
+  ],
+  "exit": 0,
+  "stdout": "{\"argv\": [\"/usr/bin/env\", \"HFS_DIAGNOSTIC_CHILD=/var/tmp/hfs-20261108-host-r1/diagnostic-child\", \"/var/tmp/hfs-20261108-host-r1/controlledruntime-freebsd.test\", \"-test.run=^(TestDiagnosticComponentParentExit|TestDescriptorExecNativeUnsupported|TestFreeBSDObserverReadOnly)$\", \"-test.count=1\", \"-test.timeout=60s\", \"-test.v\"], \"local_reserved_bytes\": 268435456, \"error\": null, \"exit\": 0, \"peak_rss\": 140161024, \"peak_global_allocated_disk\": 268444160, \"seconds\": 0.32781963600064046, \"installed\": false, \"booted\": false, \"native_accepted\": false}\n",
+  "stderr": ""
+}

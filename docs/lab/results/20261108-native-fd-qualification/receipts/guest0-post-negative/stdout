@@ -1,0 +1,6 @@
+=== RUN   TestDescriptorExecNativeUnsupported
+--- PASS: TestDescriptorExecNativeUnsupported (0.02s)
+=== RUN   TestDescriptorExecNativeQualification
+    descriptor_exec_freebsd_test.go:94: native FD prerequisite: controlledruntime.descriptorExecReport{Version:"homelabfs-descriptor-exec/1", Platform:"freebsd/amd64", MountType:"devfs", MountID:"7100ff00:00000071", Flags:0x0, Supported:false, Failure:"", Publication:interface {}(nil)}: descriptor execution requires an admitted /dev/fd: UNSUPPORTED
+--- FAIL: TestDescriptorExecNativeQualification (0.00s)
+FAIL

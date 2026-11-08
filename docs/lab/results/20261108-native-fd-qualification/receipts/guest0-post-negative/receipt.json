@@ -1,0 +1,64 @@
+{
+  "argv": [
+    "/usr/bin/env",
+    "HFS_DIAGNOSTIC_CHILD=/var/tmp/hfs-20261108-guest0-r1/diagnostic-child",
+    "/var/tmp/hfs-20261108-guest0-r1/controlledruntime-freebsd.test",
+    "-test.run=^(TestDescriptorExecNativeUnsupported|TestDescriptorExecNativeQualification)$",
+    "-test.count=1",
+    "-test.timeout=60s",
+    "-test.v"
+  ],
+  "local_reserved_bytes": 268435456,
+  "error": null,
+  "exit": 1,
+  "peak_rss": 105488384,
+  "peak_global_allocated_disk": 284528640,
+  "seconds": 0.5307321939999952,
+  "observations": [
+    {
+      "elapsed": 0.0848210110000025,
+      "rss": 92336128,
+      "global_allocated_disk": 284524544,
+      "build_output_bytes": 16089088,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 435670,
+        "inactive_pages": 541,
+        "physical_free_bytes": 1784504320,
+        "free_plus_inactive_bytes": 1786720256
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n"
+    },
+    {
+      "elapsed": 0.19327267700001016,
+      "rss": 105488384,
+      "global_allocated_disk": 284528640,
+      "build_output_bytes": 16093184,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 435158,
+        "inactive_pages": 545,
+        "physical_free_bytes": 1782407168,
+        "free_plus_inactive_bytes": 1784639488
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n"
+    },
+    {
+      "elapsed": 0.5305808230000082,
+      "rss": 92766208,
+      "global_allocated_disk": 284528640,
+      "build_output_bytes": 16093184,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 435319,
+        "inactive_pages": 549,
+        "physical_free_bytes": 1783066624,
+        "free_plus_inactive_bytes": 1785315328
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n"
+    }
+  ],
+  "installed": false,
+  "booted": false,
+  "native_accepted": false
+}

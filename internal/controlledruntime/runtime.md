@@ -302,9 +302,11 @@ gate; diagnostic capture does not satisfy them.
 `TestActualExporterDiagnosticsParentExit` retains the complete protected
 `Supervisor.Start` integration. Actual FreeBSD attempts failed before child
 startup with `fork/exec /dev/fd/4: no such file or directory`: that host lacked
-fdescfs. These failed receipts remain failures. Task w24 owns the separate
-FD-exec capability/preflight, reviewed host setup/restoration and full native
-launch qualification; xz3/zq3 retain that prerequisite. Diagnostic transport
+fdescfs. These failed receipts remain failures. On 2026-11-08 the same test
+passed in disposable guest hfs-test0 with fdescfs `nodup`
+([evidence](../../docs/lab/results/20261108-native-fd-qualification/)). The f3
+host window and a host rerun before the real daemon starts there belong to
+zq3's window once Paul approves it; xz3 keeps the FD-exec prerequisite. Diagnostic transport
 component evidence cannot pass this integration or claim runtime READY.
 
 `TestDiagnosticComponentParentExit` is a distinct component fixture. It uses

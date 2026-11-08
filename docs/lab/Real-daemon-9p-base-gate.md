@@ -83,6 +83,9 @@ artifact; it supplies no actual native/bootstrap acceptance. The separate
 actual FreeBSD full-launch fixture failed at `/dev/fd/4` execution on the host
 without fdescfs. Task w24 preserves FD-exec capability/preflight, reviewed host
 setup/restoration and native launch qualification as an xz3/zq3 prerequisite.
+On 2026-11-08 that full launch passed in disposable guest hfs-test0 with
+fdescfs `nodup` ([evidence](results/20261108-native-fd-qualification/)); the
+f3 host window and a host rerun belong to the zq3 window once Paul approves it.
 The distinct diagnostic socket component fixture uses test-only private pinned
 pathname exec and cannot pass that full-launch requirement. Required evidence
 overflow remains incomplete, and no generic journal/data file-size limit applies.

@@ -1,0 +1,12 @@
+gofmt	0	0.5
+build	0	9.3
+vet	0	4.7
+vet-freebsd-cgo0	0	27.0
+vet-freebsd-cgo1	0	33.5
+lint	0	17.2
+errcheck	0	1.9
+mage-build	0	4.9
+x-diag-child	0	0.2
+x-cr-test	0	33.9
+x-cr-cmd	0	1.4
+x-fdesc-helper	0	0.1

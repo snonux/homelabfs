@@ -1,0 +1,12 @@
+=== RUN   TestDescriptorExecNativeUnsupported
+--- PASS: TestDescriptorExecNativeUnsupported (0.02s)
+=== RUN   TestFreeBSDObserverReadOnly
+    process_freebsd_test.go:59: actual FreeBSD self observation: pid=51895 uid=0 gid=0 groups=[0 0 5] incarnation=freebsd:51895:1794148847:161114:fffff8036226da50 executable=/var/tmp/hfs-20261108-host-r1/controlledruntime-freebsd.test
+--- PASS: TestFreeBSDObserverReadOnly (0.00s)
+=== RUN   TestDiagnosticComponentParentExit
+=== RUN   TestDiagnosticComponentParentExit/default-negative
+=== RUN   TestDiagnosticComponentParentExit/native
+--- PASS: TestDiagnosticComponentParentExit (0.05s)
+    --- PASS: TestDiagnosticComponentParentExit/default-negative (0.03s)
+    --- PASS: TestDiagnosticComponentParentExit/native (0.02s)
+PASS

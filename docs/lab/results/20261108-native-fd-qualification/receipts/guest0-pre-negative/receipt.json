@@ -1,0 +1,64 @@
+{
+  "argv": [
+    "/usr/bin/env",
+    "HFS_DIAGNOSTIC_CHILD=/var/tmp/hfs-20261108-guest0-r1/diagnostic-child",
+    "/var/tmp/hfs-20261108-guest0-r1/controlledruntime-freebsd.test",
+    "-test.run=^(TestDescriptorExecNativeUnsupported|TestFreeBSDObserverReadOnly|TestDiagnosticComponentParentExit)$",
+    "-test.count=1",
+    "-test.timeout=60s",
+    "-test.v"
+  ],
+  "local_reserved_bytes": 268435456,
+  "error": null,
+  "exit": 0,
+  "peak_rss": 119771136,
+  "peak_global_allocated_disk": 281124864,
+  "seconds": 0.3521646029999985,
+  "observations": [
+    {
+      "elapsed": 0.016987163999999666,
+      "rss": 92299264,
+      "global_allocated_disk": 281116672,
+      "build_output_bytes": 12681216,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 447507,
+        "inactive_pages": 528,
+        "physical_free_bytes": 1832988672,
+        "free_plus_inactive_bytes": 1835151360
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n"
+    },
+    {
+      "elapsed": 0.08036974099999838,
+      "rss": 119771136,
+      "global_allocated_disk": 281124864,
+      "build_output_bytes": 12689408,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 447112,
+        "inactive_pages": 520,
+        "physical_free_bytes": 1831370752,
+        "free_plus_inactive_bytes": 1833500672
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n"
+    },
+    {
+      "elapsed": 0.3520224549999966,
+      "rss": 92315648,
+      "global_allocated_disk": 281120768,
+      "build_output_bytes": 12685312,
+      "physical_observation": {
+        "page_size": 4096,
+        "free_pages": 447259,
+        "inactive_pages": 518,
+        "physical_free_bytes": 1831972864,
+        "free_plus_inactive_bytes": 1834094592
+      },
+      "swap_telemetry": "Device          1K-blocks     Used    Avail Capacity\n"
+    }
+  ],
+  "installed": false,
+  "booted": false,
+  "native_accepted": false
+}

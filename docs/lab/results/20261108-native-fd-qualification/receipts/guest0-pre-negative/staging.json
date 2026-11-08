@@ -1,0 +1,5 @@
+{
+  "exit": 0,
+  "stdout": "{\"root\": \"/var/tmp/hfs-20261108-guest0-r1\", \"bindings\": {\"diagnostic-child\": \"3b94e1091fa751d2c3e1da7d479a02f89795fb7a43a7e59a866b4d6c7df53a00\", \"controlledruntime-freebsd.test\": \"c441f772f93269cea735cebf599d0948d9951611995c9cf5716107b442d7c63b\", \"native_guard.py\": \"b63a976c7551aac4010401e806c259951806fa8f809da282669d05633ed0d59c\", \"runner_process.py\": \"91310cb7aac7c58e7a16271e69cd88c0443fa3be84d7843b2dd2b9a577ca4c10\"}}\n",
+  "stderr": ""
+}
