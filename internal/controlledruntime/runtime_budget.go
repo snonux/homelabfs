@@ -64,7 +64,9 @@ func fundRuntime(b RuntimeBudget, p ProviderLimits, views viewcontrol.Bounds, do
 	if err != nil {
 		return nil, err
 	}
-	total, err := checkedBudgetSum(extra, control, 652<<20, guestbridge.TransportLedgerMemoryBytes)
+	// The disposable lost-reply fixture lease (v24) is pre-accounted here and
+	// reserved only when ARM succeeds its binding checks.
+	total, err := checkedBudgetSum(extra, control, lostReplyMemoryBytes, 652<<20, guestbridge.TransportLedgerMemoryBytes)
 	if err != nil || total > b.HostBytes {
 		return nil, fmt.Errorf("host budget omits a runtime owner: %w", fsapi.NoSpace)
 	}
@@ -89,13 +91,14 @@ func runtimeOwnerBytes(b RuntimeBudget, p ProviderLimits, views viewcontrol.Boun
 
 // reserveRuntimeFunding creates the finite pools and reserves the retained owner
 // lease plus the separate lifecycle-control lease. The Memory pool admits
-// exactly those two leases and the transport's workspace and ledger leases.
+// exactly those two leases, the transport's workspace and ledger leases and
+// one later lost-reply fixture lease (one operation, no worker/connection).
 func reserveRuntimeFunding(host, owner, control uint64) (*runtimeFunding, error) {
 	var config admission.Config
 	for class, resources := range map[admission.Class]admission.Resources{
 		admission.Live:    {Bytes: 512 << 20, Operations: 64, Workers: 2},
 		admission.Control: {Bytes: 128 << 20, Operations: 16, Workers: 2},
-		admission.Memory:  {Bytes: host - (640 << 20), Operations: 3 + 1, Workers: 1 + exporterDiagnosticWorkers + lifecycleWorkers, Connections: exporterDiagnosticPipes + lifecycleConnections},
+		admission.Memory:  {Bytes: host - (640 << 20), Operations: 3 + 1 + 1, Workers: 1 + exporterDiagnosticWorkers + lifecycleWorkers, Connections: exporterDiagnosticPipes + lifecycleConnections},
 	} {
 		config.Pools[class] = admission.Limits{Global: resources, PerPeer: resources, PerVolume: resources}
 	}
@@ -128,4 +131,14 @@ func (f *runtimeFunding) releaseControl() error {
 	err := f.control.Release()
 	f.control = nil
 	return err
+}
+
+// reserveLostReply reserves the fixture's own Memory lease from the actual
+// runtime budget. fundRuntime pre-accounted its bytes in the host envelope and
+// left exactly one Memory operation for it; an exhausted pool refuses.
+func (f *runtimeFunding) reserveLostReply() (*admission.Lease, error) {
+	if f == nil || f.transport == nil {
+		return nil, fsapi.NoSpace
+	}
+	return f.transport.Reserve(admission.Request{Class: admission.Memory, Peer: "controlled-runtime-lost-reply", Volume: "controlled-runtime", Cost: admission.Resources{Bytes: lostReplyMemoryBytes, Operations: 1}})
 }

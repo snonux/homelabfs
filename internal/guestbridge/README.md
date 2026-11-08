@@ -159,3 +159,5 @@ released promptly while bounded controller tickets retain their independent
 resources. This boundary supplies no unbounded waiter or timeout expiration.
 
 The controlled runtime supports [barriered same-native component restart](../controlledruntime/restart.md). Complete C8 session rows and private transferred funding are required; inspection alone never authorizes restoration. Guest RESUME, replacement FUSE/exporter owners and incomplete cuts remain blocked.
+
+A disposable validation service may arm one [response-exposure lost-reply fixture](../controlledruntime/lifecycle.md#lost-reply-fixture-v24) on its transport (`lost_reply.go`). It withholds only the first actual `Transport.Read` exposure of the next protected CALL response in one session (EIO, no bytes, no coverage); it takes no caller bytes or results and is never written to the C8 ledger.

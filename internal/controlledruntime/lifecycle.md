@@ -1,8 +1,9 @@
-# Private lifecycle control and evidence (u24)
+# Private lifecycle control and evidence (u24, v24)
 
 After `READY`, the explicit disposable runtime exposes one private, bounded
 lifecycle endpoint over its **actual** surviving owners. It is the operator
-harness's only way to invoke the supported [C9 same-owner restart](restart.md)
+harness's only way to invoke the supported [C9 same-owner restart](restart.md),
+to arm the one-shot [response-exposure lost-reply fixture](#lost-reply-fixture-v24)
 and to collect actual source/ledger evidence from a live runtime. It adds no
 normal publication, guest RESUME, replacement exporter/FUSE/native owner or
 recovery after owner loss. READY and every evidence record carry `publication: null`; the OBSERVED and
@@ -35,6 +36,7 @@ carries exactly one request and one reply.
 |---|---|---|
 | 1 OBSERVE | runtime UUID (16 bytes) | `{"status":"OBSERVED","sequence":N,"evidence":{...}}` |
 | 2 RESTART | runtime UUID, current cut UUID, uint64 epoch (40 bytes) | restart outcome with post-attempt evidence |
+| 3 ARM_LOST_REPLY | runtime UUID, current cut UUID, uint64 epoch, session UUID, operation code (57 bytes) | `{"status":"ARMED","sequence":N,"lost_reply":{...}}` |
 
 Replies use opcode `request|0x80`; frame-level refusals use `0xff`. Unknown
 opcodes, wrong lengths (checked before any payload read or allocation), bad
@@ -47,9 +49,11 @@ accepted command consumes its sequence even if refused later (for example a
 stale cut). After a lost reply, the client sends a larger sequence and uses
 OBSERVE, which needs only the runtime UUID, to learn the current cut/epoch.
 
-`hfs-controlled-runtime --control SOCKET --operation observe|restart --runtime
-UUID --sequence N [--cut UUID --epoch N]` is the matching one-shot client; it
-prints the raw reply and exits non-zero on refusal.
+`hfs-controlled-runtime --control SOCKET --operation
+observe|restart|arm-lost-reply --runtime UUID --sequence N [--cut UUID --epoch
+N [--session UUID --lost-operation CALL]]` is the matching one-shot client; it
+prints the raw reply and exits non-zero on refusal. Flags belonging to another
+operation refuse.
 
 ## OBSERVE
 
@@ -70,7 +74,11 @@ does; nothing is retried) and captures, from the current actual owners:
   equals those protected bytes, and inert counts;
 * the live C8 ledger index (controller, endpoint, high-water, cells, classes,
   workspace, terminal/HELLO witnesses, guest high-water) and its full digest,
-  read under the transport mutex so the cut equals the last protected transition.
+  read under the transport mutex so the cut equals the last protected transition;
+* after a successful ARM, the `lost_reply` section: the server-issued fixture
+  UUID, the arming cut/epoch/session, funded bytes, the service source identity
+  captured at arming (`baseline`) and the armed transport's actual exposure
+  record, read from that transport even after a restart switched owners.
 
 Each section reports its own error text (truncated to 512 bytes) instead of
 inventing a value. `complete` only means every section was captured without
@@ -99,21 +107,71 @@ issued whatever happens) and calls the real `Supervisor.SuspendEndpoint`,
 The outcome plus its post-attempt evidence is protected in the exclusive owner
 file `control-restart.json` before the reply is written. A later RESTART always
 refuses. Without a native shell-switch primitive the operation refuses before
-any effect.
+any effect. An armed, unfired lost-reply fixture is expired before suspension;
+it never crosses C9.
+
+A C9 cut after a filesystem mutation additionally needs the guest steps any cut
+needs: no active lookups (FORGET the returned capabilities) and no historical
+view source, so the guest refreshes its view (VIEW_ACQUIRE, a complete recall
+release and VIEW_RETIRE through the runtime's own ticket families) before
+RESTART. Otherwise transport suspension or controller reopen refuses and the
+runtime stays fenced, as for any unsupported cut.
+
+## Lost-reply fixture (v24)
+
+ARM_LOST_REPLY arms one disposable, exact one-shot fixture inside the actual
+`guestbridge.Transport.Read`, which is the protected response exposure that the
+native exporter's result-node `pread` reaches through the FUSE
+`PrivateControl.Read` callback. It requires the SERVING stage, the exact
+current runtime/cut/epoch, an enrolled session and operation code 1 (`CALL`);
+any other code, a stale or consumed binding, an unknown session, any ARM after
+one succeeded (even once it fired or expired) or an exhausted budget
+refuses. Before the transport is armed the endpoint reserves the fixture's own
+admission lease and captures the service source baseline; a refusal releases
+the lease and arms nothing, so it consumes no one-shot. ARM itself does not
+rotate the cut. The fixture is armed only on a transport owned by a disposable
+validation service.
+
+The predicate takes no response, result, Facts, bytes or caller values. It
+matches only the first nonempty result-node exposure of a `CALL` cell in the
+armed session that was accepted after arming (its native cell is above the
+recorded `armed_high`), is fully responded (so its effect, claim and response
+are already protected) and has no covered byte yet. That Read computes the
+chunk, then returns EIO with no bytes and leaves read coverage unchanged,
+because nothing reached the native reader. The record (`exposure`) names the
+actual native cell, claim, command/response/dropped-chunk digests, wire and
+unread bytes, job phase and outcome `UNCERTAIN`. All later reads, including the
+retry of the same chunk, deliver the identical protected bytes; nothing is
+re-executed, reclassified or written to the C8 ledger. An unfired fixture is
+expired before a C9 suspension. The record lives only in daemon memory; an
+external oracle must OBSERVE it, and a daemon crash loses an unobserved record
+without inventing one.
+
+Recovery is the guest's: resolve the uncertain result by claim (QUERY returns
+the original result), re-read the retained CALL cell, then, if wanted, the real
+C9 restart. A C9 attempt while the dropped response is still unread by the
+exporter refuses at the paired exporter/C8 cut (the C row has no response) and
+stays fenced; C9 does not fabricate the missing exposure.
 
 ## Bounds and funding
 
-A single worker accepts and serves connections strictly serially, so OBSERVE and
-RESTART never overlap. Each connection has a 5 s I/O deadline for its request
-and reply; OBSERVE has 30 s and RESTART 90 s (the C9 grant itself expires after
-60 s). Requests are at most 56 bytes; replies at most 128 KiB.
+A single worker accepts and serves connections strictly serially, so OBSERVE,
+ARM and RESTART never overlap. Each connection has a 5 s I/O deadline for its
+request and reply; OBSERVE and ARM have 30 s and RESTART 90 s (the C9 grant
+itself expires after 60 s). Requests are at most 73 bytes; replies at most
+128 KiB.
 
 `fundRuntime` reserves a separate admission lease for this endpoint before any
 owner exists: one worker, one connection and
 `1 MiB + C8 peak (128 KiB + 8 MiB + 8 MiB) + 2 × LedgerBytes + 3 × SourceBytes`.
 The host budget check includes it and `runtime-budget.json` records it under
 `Control`, with the 128 KiB `control-restart.json` disk bound. The lease is
-returned only after the endpoint's worker joined. Closing the endpoint stops
+returned only after the endpoint's worker joined. The lost-reply fixture has a
+separate 64 KiB Memory lease (one operation, no worker or connection) for its
+record, claim copy, digests and source baseline; the host budget check
+pre-accounts it, `Control.LostReplyBytes` records it and the runtime Memory
+pool keeps exactly one operation slot for it. ARM reserves it and runtime close
+returns it. Closing the endpoint stops
 accepting and joins the bounded in-flight command (its reply and protected
 outcome are not truncated by an owner-loss shutdown); parent cancellation still
 propagates into that command.
@@ -132,6 +190,23 @@ cut/epoch, repeated restart, inconsistent guest physical state (truthful fenced
 evidence and a FENCED suspend) and a refused native switch (FENCED activate with
 retained partial owners). The kernel peer credentials (when a test says so),
 native mount/INIT/fd syscalls, FUSE shell dispatch switch and observed guest
-physical state are explicitly substituted OS boundaries. Native FreeBSD
-execution, actual lost-reply response exposure (v24) and the real 9p base gate
-(zq3) remain unrun and unclaimed.
+physical state are explicitly substituted OS boundaries.
+
+`lifecycle_lostreply_test.go` arms the fixture through the real endpoint (and
+the CLI client) on the same real runtime. An actual MKDIR CALL commits its
+journal effect; the C exporter's actual result pread then receives EIO from the
+real `Transport.Read`, and that guest FETCH delivers no bytes. Evidence shows
+the claim, protected response and committed source change with no coverage.
+QUERY reconciles the original OK result, the retry delivers the retained bytes,
+and after FORGET plus a view refresh the real C9 restart preserves the response
+bytes, result, source identity and a single directory entry. A second subtest
+shows C9 refusing (FENCED) while the dropped response is still unread.
+Negative cases cover a foreign peer UID, foreign runtime, stale cut and epoch,
+operations 0/2/255, an unknown session, a short frame, an exhausted actual
+budget, repeated ARM, ARM after restart, a foreign session's CALL and expiry
+of an unfired fixture at C9. `internal/guestbridge/lost_reply_test.go` covers
+the predicate on a real bridge service. The test C fixture's guest emulation
+reports every non-data FETCH reply as EAGAIN, so the native EIO is observed at
+its actual pread boundary. Native FreeBSD execution, the native lost-reply and
+compatibility acceptance and the real 9p base gate (zq3) remain unrun and
+unclaimed.

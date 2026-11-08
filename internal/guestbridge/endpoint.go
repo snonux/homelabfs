@@ -70,6 +70,10 @@ type Transport struct {
 	terminal                    map[string]uint64
 	guestHigh                   map[string]uint64
 	guestRecent                 []GuestIssuance
+	// lostReply is the disposable one-shot response-exposure fixture record
+	// (see lost_reply.go); nil unless explicitly armed. It is not protocol
+	// state and is never written to or restored from the C8 ledger.
+	lostReply *LostReplyEvidence
 }
 
 // NewTransport reserves independent bounded ordinary/control workers. Admission
@@ -451,6 +455,9 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 
 // Read returns immutable positional chunk bytes, EAGAIN, ESTALE or exact EOF.
 // It never waits for an operation. Native read splitting preserves byte identity.
+// This is the actual protected response exposure: an armed disposable
+// lost-reply fixture may withhold exactly one computed exposure here (EIO, no
+// bytes, no coverage) after the original effect and response were protected.
 func (t *Transport) Read(ctx context.Context, n Native, node, offset uint64, count uint32) ([]byte, error) {
 	if e := t.service.Authenticate(ctx, n); e != nil {
 		return nil, e
@@ -502,23 +509,33 @@ func (t *Transport) Read(ctx context.Context, n Native, node, offset uint64, cou
 	}
 	end := min(uint64(len(chunk)), k+uint64(count))
 	data := bytes.Clone(chunk[k:end])
+	if t.dropExposureLocked(c, id, kind, j, k, data) {
+		return nil, fsapi.IO
+	}
+	if err := t.coverLocked(c, id, j, k, end); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+// coverLocked marks newly exposed wire bytes as read and protects that change
+// before the bytes are returned. Already covered bytes change nothing.
+func (t *Transport) coverLocked(c *cell, id, chunk, from, end uint64) error {
 	changed := false
-	for i := k; i < end; i++ {
-		if c.seen[j][i] == 0 {
-			c.seen[j][i] = 1
+	for i := from; i < end; i++ {
+		if c.seen[chunk][i] == 0 {
+			c.seen[chunk][i] = 1
 			c.unread--
 			changed = true
 		}
 	}
-	if changed {
-		if err := t.protectLocked(id); err != nil {
-			return nil, err
-		}
-		if err := t.protectedPoint("read"); err != nil {
-			return nil, err
-		}
+	if !changed {
+		return nil
 	}
-	return data, nil
+	if err := t.protectLocked(id); err != nil {
+		return err
+	}
+	return t.protectedPoint("read")
 }
 
 // Close stops component workers after all dispatched calls finish. It does not

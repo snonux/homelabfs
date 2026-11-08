@@ -40,23 +40,25 @@ type lifecycleRun struct {
 	done     chan error
 	cancel   context.CancelFunc
 	ready    lifecycleBinding
-	foreign  atomic.Bool // simulate a different kernel peer UID
-	credFail atomic.Bool // simulate unavailable kernel peer credentials
+	signed   RuntimeEnrollment // the actual signed handoff (runtime ticket families)
+	foreign  atomic.Bool       // simulate a different kernel peer UID
+	credFail atomic.Bool       // simulate unavailable kernel peer credentials
 	switches atomic.Int32
 	switchFn func(*fuseadapter.Shell, *guestbridge.Transport, *guestbridge.Transport) error
 }
 
 type lifecycleReply struct {
-	Status   string             `json:"status"`
-	Reason   string             `json:"reason"`
-	Sequence uint32             `json:"sequence"`
-	Step     string             `json:"step"`
-	Error    string             `json:"error"`
-	Epoch    uint64             `json:"epoch"`
-	Cut      string             `json:"cut"`
-	Barrier  string             `json:"barrier"`
-	Partial  []string           `json:"partial_owners"`
-	Evidence *lifecycleEvidence `json:"evidence"`
+	Status    string             `json:"status"`
+	Reason    string             `json:"reason"`
+	Sequence  uint32             `json:"sequence"`
+	Step      string             `json:"step"`
+	Error     string             `json:"error"`
+	Epoch     uint64             `json:"epoch"`
+	Cut       string             `json:"cut"`
+	Barrier   string             `json:"barrier"`
+	Partial   []string           `json:"partial_owners"`
+	Evidence  *lifecycleEvidence `json:"evidence"`
+	LostReply *lostReplyView     `json:"lost_reply"`
 }
 
 func startLifecycleRun(t *testing.T, binary string, mutate func(*lifecycleRun, *runtimeOS)) *lifecycleRun {
@@ -139,6 +141,7 @@ func (run *lifecycleRun) driveToReady() {
 				t.Fatalf("READY lacks exact private lifecycle binding: %s", run.scanner.Bytes())
 			}
 			run.ready = ready.Control
+			run.signed = submitted
 			d.autoReclaim = true
 			return
 		}
@@ -169,7 +172,7 @@ func (run *lifecycleRun) command(opcode uint8, sequence uint32, runtime, cut str
 		cid, err = fsapi.ParseUUID(cut)
 		require(run.t, err)
 	}
-	op, raw, err := lifecycleCommand(run.t.Context(), run.ready.Socket, opcode, sequence, rid, cid, epoch)
+	op, raw, err := lifecycleCommand(run.t.Context(), run.ready.Socket, lifecycleRequest{opcode: opcode, sequence: sequence, runtime: rid, cut: cid, epoch: epoch})
 	require(run.t, err)
 	var reply lifecycleReply
 	require(run.t, json.Unmarshal(raw, &reply))

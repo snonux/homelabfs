@@ -33,6 +33,11 @@ const (
 	// LifecycleRestart runs the single supported C9 same-owner restart.
 	// Payload: runtime UUID, current cut UUID and big-endian uint64 epoch.
 	LifecycleRestart = 2
+	// LifecycleArmLostReply arms the disposable one-shot response-exposure
+	// lost-reply fixture (v24). Payload: runtime UUID, current cut UUID,
+	// big-endian uint64 epoch, enrolled session UUID and one operation code
+	// (1 = CALL).
+	LifecycleArmLostReply = 3
 	// LifecycleRefused is the reply opcode for frame-level refusals.
 	LifecycleRefused = 0xff
 	// LifecycleSocketName is the fixed socket name in the owner directory.
@@ -43,6 +48,7 @@ const (
 	lifecycleHeaderBytes  = 16
 	lifecycleObserveBytes = 16
 	lifecycleRestartBytes = 40
+	lifecycleArmBytes     = 57
 	// lifecycleReplyBytes bounds every reply payload, including restart outcome
 	// plus its post-attempt evidence; larger replies refuse, never truncate.
 	lifecycleReplyBytes = 128 << 10
@@ -66,6 +72,8 @@ type lifecycleBudget struct {
 	MemoryBytes, ReplyBytes, TransportPeakBytes, FileBytes uint64
 	Workers, Connections                                   uint64
 	IOTimeoutMillis, ObserveMillis, RestartMillis          int64
+	// LostReplyBytes is the separate fixture lease reserved by ARM (v24).
+	LostReplyBytes uint64
 }
 
 // lifecycleMemoryBytes funds the endpoint: fixed frames/replies, the C8
@@ -80,7 +88,7 @@ func lifecycleMemoryBytes(v viewcontrol.Bounds) (uint64, error) {
 
 func fixedLifecycleBudget(v viewcontrol.Bounds) lifecycleBudget {
 	memory, _ := lifecycleMemoryBytes(v)
-	return lifecycleBudget{MemoryBytes: memory, ReplyBytes: lifecycleReplyBytes, TransportPeakBytes: lifecycleTransportPeakBytes, FileBytes: lifecycleReplyBytes, Workers: lifecycleWorkers, Connections: lifecycleConnections, IOTimeoutMillis: lifecycleIOTimeout.Milliseconds(), ObserveMillis: lifecycleObserveTime.Milliseconds(), RestartMillis: lifecycleRestartTime.Milliseconds()}
+	return lifecycleBudget{MemoryBytes: memory, ReplyBytes: lifecycleReplyBytes, TransportPeakBytes: lifecycleTransportPeakBytes, FileBytes: lifecycleReplyBytes, Workers: lifecycleWorkers, Connections: lifecycleConnections, IOTimeoutMillis: lifecycleIOTimeout.Milliseconds(), ObserveMillis: lifecycleObserveTime.Milliseconds(), RestartMillis: lifecycleRestartTime.Milliseconds(), LostReplyBytes: lostReplyMemoryBytes}
 }
 
 // peerCredentials is the kernel peer-credential OS boundary.
@@ -88,11 +96,13 @@ type peerCredentials func(*net.UnixConn) (admin.Peer, error)
 
 // lifecycleRequest is one decoded, length-checked HSC1 request.
 type lifecycleRequest struct {
-	opcode   uint8
-	sequence uint32
-	runtime  fsapi.UUID
-	cut      fsapi.UUID
-	epoch    uint64
+	opcode    uint8
+	sequence  uint32
+	runtime   fsapi.UUID
+	cut       fsapi.UUID
+	epoch     uint64
+	session   fsapi.UUID // ARM only
+	operation uint8      // ARM only
 }
 
 // lifecycleServer is the single-worker private endpoint. One connection carries
@@ -217,23 +227,49 @@ func (s *lifecycleServer) dispatch(r lifecycleRequest) any {
 	s.last = r.sequence
 	switch r.opcode {
 	case LifecycleObserve:
-		ctx, cancel := context.WithTimeout(s.ctx, lifecycleObserveTime)
-		defer cancel()
-		e := s.lifecycle.observe(ctx)
-		return struct {
-			Status   string            `json:"status"`
-			Sequence uint32            `json:"sequence"`
-			Evidence lifecycleEvidence `json:"evidence"`
-		}{"OBSERVED", r.sequence, e}
+		return s.observeReply(r)
+	case LifecycleArmLostReply:
+		return s.armReply(r)
 	default:
-		ctx, cancel := context.WithTimeout(s.ctx, lifecycleRestartTime)
-		defer cancel()
-		view, err := s.lifecycle.restart(ctx, r.cut, r.epoch)
-		if err != nil {
-			return refusal(evidenceError(err))
-		}
-		return view
+		return s.restartReply(r)
 	}
+}
+
+func (s *lifecycleServer) observeReply(r lifecycleRequest) any {
+	ctx, cancel := context.WithTimeout(s.ctx, lifecycleObserveTime)
+	defer cancel()
+	e := s.lifecycle.observe(ctx)
+	return struct {
+		Status   string            `json:"status"`
+		Sequence uint32            `json:"sequence"`
+		Evidence lifecycleEvidence `json:"evidence"`
+	}{"OBSERVED", r.sequence, e}
+}
+
+func (s *lifecycleServer) restartReply(r lifecycleRequest) any {
+	ctx, cancel := context.WithTimeout(s.ctx, lifecycleRestartTime)
+	defer cancel()
+	view, err := s.lifecycle.restart(ctx, r.cut, r.epoch)
+	if err != nil {
+		return refusal(evidenceError(err))
+	}
+	return view
+}
+
+// armReply arms the lost-reply fixture. Its source baseline capture uses the
+// observation deadline; ARMED carries no publication and no acceptance value.
+func (s *lifecycleServer) armReply(r lifecycleRequest) any {
+	ctx, cancel := context.WithTimeout(s.ctx, lifecycleObserveTime)
+	defer cancel()
+	view, err := s.lifecycle.armLostReply(ctx, r)
+	if err != nil {
+		return refusal(evidenceError(err))
+	}
+	return struct {
+		Status    string        `json:"status"`
+		Sequence  uint32        `json:"sequence"`
+		LostReply lostReplyView `json:"lost_reply"`
+	}{"ARMED", r.sequence, view}
 }
 
 type lifecycleRefusal struct {
@@ -259,20 +295,39 @@ func readLifecycleRequest(r io.Reader) (lifecycleRequest, error) {
 	if string(header[:4]) != "HSC1" || header[4] != LifecycleVersion || header[6] != 0 || header[7] != 0 || req.sequence == 0 {
 		return lifecycleRequest{}, fsapi.Invalid
 	}
-	want := map[uint8]uint32{LifecycleObserve: lifecycleObserveBytes, LifecycleRestart: lifecycleRestartBytes}[req.opcode]
+	want := map[uint8]uint32{LifecycleObserve: lifecycleObserveBytes, LifecycleRestart: lifecycleRestartBytes, LifecycleArmLostReply: lifecycleArmBytes}[req.opcode]
 	if want == 0 || length != want {
 		return lifecycleRequest{}, fsapi.Invalid
 	}
-	var payload [lifecycleRestartBytes]byte
+	var payload [lifecycleArmBytes]byte
 	if _, err := io.ReadFull(r, payload[:length]); err != nil {
 		return lifecycleRequest{}, err
 	}
 	copy(req.runtime[:], payload[:16])
-	if req.opcode == LifecycleRestart {
+	if req.opcode != LifecycleObserve {
 		copy(req.cut[:], payload[16:32])
 		req.epoch = binary.BigEndian.Uint64(payload[32:40])
 	}
+	if req.opcode == LifecycleArmLostReply {
+		copy(req.session[:], payload[40:56])
+		req.operation = payload[56]
+	}
 	return req, nil
+}
+
+// encodeLifecyclePayload is the client-side inverse of readLifecycleRequest.
+func encodeLifecyclePayload(r lifecycleRequest) []byte {
+	payload := append(make([]byte, 0, lifecycleArmBytes), r.runtime[:]...)
+	if r.opcode == LifecycleObserve {
+		return payload
+	}
+	payload = append(payload, r.cut[:]...)
+	payload = binary.BigEndian.AppendUint64(payload, r.epoch)
+	if r.opcode == LifecycleArmLostReply {
+		payload = append(payload, r.session[:]...)
+		payload = append(payload, r.operation)
+	}
+	return payload
 }
 
 func writeLifecycleReply(w io.Writer, opcode uint8, sequence uint32, v any) error {
