@@ -4,15 +4,27 @@
 One private controller request arrives on stdin; JSONL invocation/reply evidence
 goes to stdout outside the tested filesystem. No mounting, lifecycle or cleanup
 deletion is performed. Failed resources and exact errno remain for inspection.
+
+A successful case RETAINS its payload: host source/journal correlation must be
+captured against the still-present files before anything is removed. The case
+writes a root-private retention record (token hash plus exact inventory) beside
+the run mounts, outside the tested volume, and emits the one-shot release token
+only to the controller's private stdout. A later, separately dispatched release
+request must pass full re-admission and present that token, the unchanged
+inventory digest and the host correlation digest; only then are the exact known
+payload entries unlinked. Missing, changed or replayed releases refuse and
+preserve the payload for inspection.
 """
 import ctypes
 import errno
 import hashlib
+import hmac
 import json
 import mmap
 import os
 import re
 import resource
+import secrets
 import select
 import signal
 import stat
@@ -20,10 +32,32 @@ import sys
 import time
 
 VERSION = "homelabfs-retained9p-syscalls/1"
+# Run-owned local directory holding the m0/m1 mount points and retention records.
+RUN_PARENT = "/var/tmp/hfs-zq3-"
+TRUSTED_UID = 0  # Trusted guest root; local tests substitute their own UID.
+RELEASE_VERSION = "homelabfs-retained9p-release/1"
+RECORD_VERSION = "homelabfs-retained9p-retention/1"
+REQUEST_FIELDS = {"version", "run_id", "boot_id", "provider_nonce", "manifest_sha256",
+                  "mounts", "case", "seconds"}
+# A release names the retained case and carries the one-shot token, the exact
+# inventory digest it expects and the digest of the host correlation captured
+# while the payload was still present.
+RELEASE_FIELDS = REQUEST_FIELDS | {"token", "inventory_sha256", "correlation_sha256"}
+HEX64 = re.compile(r"[0-9a-f]{64}\Z")
+RECORD_LIMIT = 65536
 REQUEST_LIMIT = 16384
 REPLY_LIMIT = 65536
 PAYLOAD = 4 << 20
 DENIED = {errno.EACCES, errno.EPERM, errno.EOPNOTSUPP}
+# Exact entries each successful case leaves; directories are removed after files.
+PAYLOAD_FILES = {
+    "credentials": ["setgid/created", "group", "group-tail", "sticky/owned"],
+    "sync": ["ordinary", "sync", "dsync", "mapped"],
+    "namespace": ["namespace"],
+    "mapped-pressure": ["full"],
+    "metadata": ["renamed", "linked"],
+}
+PAYLOAD_DIRS = {"credentials": ["setgid", "sticky"]}
 
 
 class Refused(RuntimeError):
@@ -67,11 +101,47 @@ def fd_mount(fd):
     raise Refused("descriptor mount identity unavailable")
 
 
-def admit(request):
-    expected = {"version", "run_id", "boot_id", "provider_nonce", "manifest_sha256",
-                "mounts", "case", "seconds"}
-    if set(request) != expected or request["version"] != VERSION:
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+
+
+def is_release(request):
+    """Closed request shapes: a syscall case or the release of its payload."""
+    if not isinstance(request, dict):
         raise Refused("request shape/version")
+    if request.get("version") == VERSION and set(request) == REQUEST_FIELDS:
+        return False
+    if request.get("version") == RELEASE_VERSION and set(request) == RELEASE_FIELDS:
+        for name in ["token", "inventory_sha256", "correlation_sha256"]:
+            if not isinstance(request[name], str) or not HEX64.fullmatch(request[name]):
+                raise Refused("release token/digest shape")
+        return True
+    raise Refused("request shape/version")
+
+
+def match_mount(lines, path):
+    """Return the single mountinfo tuple for path; absence/duplicates refuse."""
+    matches = []
+    for line in lines:
+        left, right = line.split(" - ", 1)
+        fields, fs = left.split(), right.split()
+        if decode_mount(fields[4]) == path:
+            matches.append((int(fields[0]), fs[0], decode_mount(fs[1]),
+                            set(fields[5].split(",")), set(fs[2].split(","))))
+    if len(matches) != 1:
+        raise Refused("exact mountpoint not present once")
+    return matches[0]
+
+
+def admit(request):
+    """Full admission for every request, a release included; no reduced path."""
+    is_release(request)
+    admit_identity(request)
+    return open_domains(request)
+
+
+def admit_identity(request):
+    """Bounds plus actual boot, installed manifest, SELinux and provider inventory."""
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,23}", request["run_id"]):
         raise Refused("run ID bound")
     if type(request["seconds"]) is not int or not 1 <= request["seconds"] <= 60:
@@ -95,6 +165,10 @@ def admit(request):
     scopes = observed["domains"]
     if sorted(row["session"] for row in scopes) != sorted(row["session"] for row in request["mounts"]):
         raise Refused("complete admitted domain inventory changed")
+
+
+def open_domains(request):
+    """Open both exact controlled 9p mounts as independent retained root fds."""
     lines = read("/proc/self/mountinfo", 1 << 20).decode().splitlines()
     fds, devices, ids = [], [], []
     try:
@@ -102,19 +176,10 @@ def admit(request):
             if set(row) != {"path", "tag", "mount_id", "session"}:
                 raise Refused("mount row shape")
             path = row["path"]
-            if (path != "/var/tmp/hfs-zq3-" + request["run_id"] + "/m" + str(len(fds)) or
+            if (path != RUN_PARENT + request["run_id"] + "/m" + str(len(fds)) or
                     os.path.normpath(path) != path or os.path.realpath(path) != path):
                 raise Refused("private canonical run mount path required")
-            matches = []
-            for line in lines:
-                left, right = line.split(" - ", 1)
-                fields, fs = left.split(), right.split()
-                if decode_mount(fields[4]) == path:
-                    matches.append((int(fields[0]), fs[0], decode_mount(fs[1]),
-                                    set(fields[5].split(",")), set(fs[2].split(","))))
-            if len(matches) != 1:
-                raise Refused("exact mountpoint not present once")
-            mount_id, kind, tag, options, super_options = matches[0]
+            mount_id, kind, tag, options, super_options = match_mount(lines, path)
             combined = options | super_options
             if (mount_id != row["mount_id"] or kind != "9p" or tag != row["tag"] or
                     not {"rw", "cache=mmap", "version=9P2000.L.hfs1.4",
@@ -150,7 +215,6 @@ class Probe:
         self.sequence = 0
         self.writes = 0
         self.children = set()
-        self.leaf = None
 
     def call(self, operation, function, **args):
         self.sequence += 1
@@ -172,12 +236,17 @@ class Probe:
         return self.call("pwrite", lambda: os.pwrite(fd, data, offset),
                          bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), offset=offset)
 
+    def leaf_name(self):
+        return "zq3-" + self.request["run_id"] + "-" + self.request["case"]
+
+    def open_leaf(self):
+        return os.open(self.leaf_name(), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                       dir_fd=self.roots[0])
+
     def directory(self):
-        leaf = "zq3-" + self.request["run_id"] + "-" + self.request["case"]
+        leaf = self.leaf_name()
         self.call("mkdir-exclusive", lambda: os.mkdir(leaf, 0o777, dir_fd=self.roots[0]), name=leaf)
-        self.leaf = leaf
-        return os.open(leaf, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                       dir_fd=self.roots[0]), leaf
+        return self.open_leaf(), leaf
 
     def child(self, action, uid=None, gid=None, groups=None):
         receive, send = os.pipe2(os.O_CLOEXEC)
@@ -233,28 +302,151 @@ class Probe:
         finally:
             os.close(receive)
 
-    def release_successful_payload(self):
-        """Release exact successful payloads; retain journal and failed cases."""
-        files = {
-            "credentials": ["setgid/created", "group", "group-tail", "sticky/owned"],
-            "sync": ["ordinary", "sync", "dsync", "mapped"],
-            "namespace": ["namespace"],
-            "mapped-pressure": ["full"],
-            "metadata": ["renamed", "linked"],
-        }
-        case = self.request["case"]
-        fd = os.open(self.leaf, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                     dir_fd=self.roots[0])
+
+class Retention:
+    """Retain a successful payload until an authenticated post-correlation release.
+
+    The record lives in the root-private local run directory that holds both
+    mount points, never inside a tested domain, so it consumes no canary bytes
+    and cannot be altered through the 9p path under test. Only the token's hash
+    is stored; the token itself reaches the controller through private stdout.
+    """
+
+    def __init__(self, probe):
+        self.probe = probe
+        self.request = probe.request
+
+    def record_name(self, prefix="release-"):
+        return prefix + self.request["case"] + ".json"
+
+    def run_directory(self):
+        path = RUN_PARENT + self.request["run_id"]
+        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
-            for name in files[case]:
-                self.call("unlink-successful-payload", lambda n=name: os.unlink(n, dir_fd=fd), name=name)
-            if case == "credentials":
-                for name in ["setgid", "sticky"]:
-                    os.rmdir(name, dir_fd=fd)
+            info = os.fstat(fd)
+            domains = {os.fstat(root).st_dev for root in self.probe.roots}
+            # Owner-only: no group/other bits, so no other account can even
+            # list or traverse to the retention records.
+            checked(info.st_uid == TRUSTED_UID and not info.st_mode & 0o077 and
+                    info.st_dev not in domains, "root-private local run directory required")
+        except BaseException:
+            os.close(fd)
+            raise
+        return fd
+
+    def inventory(self, fd):
+        """Exact payload identity: names, types, inode, owner, mode, size, links."""
+        case = self.request["case"]
+        entries = []
+        for name in PAYLOAD_DIRS.get(case, []) + PAYLOAD_FILES[case]:
+            seen = os.stat(name, dir_fd=fd, follow_symlinks=False)
+            regular = stat.S_ISREG(seen.st_mode)
+            checked(regular or stat.S_ISDIR(seen.st_mode), "payload entry type")
+            entries.append({"name": name, "type": "file" if regular else "dir",
+                            "ino": seen.st_ino, "uid": seen.st_uid, "gid": seen.st_gid,
+                            "mode": stat.S_IMODE(seen.st_mode),
+                            "size": seen.st_size if regular else None,
+                            "nlink": seen.st_nlink if regular else None})
+        return {"leaf": self.probe.leaf_name(), "leaf_ino": os.fstat(fd).st_ino,
+                "listing": sorted(os.listdir(fd)), "entries": entries}
+
+    def current_inventory(self):
+        fd = self.probe.open_leaf()
+        try:
+            return self.inventory(fd)
         finally:
             os.close(fd)
-        os.rmdir(self.leaf, dir_fd=self.roots[0])
-        emit("payload-released", leaf=self.leaf, journal_preserved=True)
+
+    def write_record(self, record):
+        run = self.run_directory()
+        try:
+            out = os.open(self.record_name(), os.O_CREAT | os.O_EXCL | os.O_WRONLY |
+                          os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=run)
+            try:
+                raw = canonical(record)
+                checked(os.write(out, raw) == len(raw), "short retention record write")
+                os.fsync(out)
+            finally:
+                os.close(out)
+            os.fsync(run)
+        finally:
+            os.close(run)
+
+    def retain(self):
+        """Keep the payload for host correlation; persist only the token hash."""
+        inventory = self.current_inventory()
+        expected = sorted({name.split("/", 1)[0] for name in PAYLOAD_FILES[self.request["case"]]})
+        checked(inventory["listing"] == expected, "unexpected payload entries")
+        token = secrets.token_hex(32)
+        inventory_sha256 = hashlib.sha256(canonical(inventory)).hexdigest()
+        self.write_record({
+            "version": RECORD_VERSION, "run_id": self.request["run_id"],
+            "case": self.request["case"], "boot_id": self.request["boot_id"],
+            "provider_nonce": self.request["provider_nonce"], "inventory": inventory,
+            "inventory_sha256": inventory_sha256,
+            "token_sha256": hashlib.sha256(token.encode()).hexdigest()})
+        # The token leaves only through the controller's private stdout log.
+        emit("payload-retained", leaf=inventory["leaf"], inventory=inventory,
+             inventory_sha256=inventory_sha256, release_token=token,
+             required_host_correlation=True)
+
+    def read_record(self, run):
+        fd = os.open(self.record_name(), os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=run)
+        try:
+            info = os.fstat(fd)
+            checked(stat.S_ISREG(info.st_mode) and info.st_uid == TRUSTED_UID and
+                    not info.st_mode & 0o077 and info.st_size <= RECORD_LIMIT,
+                    "root-private bounded retention record required")
+            raw = os.read(fd, RECORD_LIMIT + 1)
+        finally:
+            os.close(fd)
+        checked(len(raw) <= RECORD_LIMIT, "retention record bound")
+        return json.loads(raw, object_pairs_hook=unique)
+
+    def authenticate(self, record):
+        request = self.request
+        checked(record.get("version") == RECORD_VERSION and
+                all(record.get(key) == request[key] for key in
+                    ["run_id", "case", "boot_id", "provider_nonce", "inventory_sha256"]),
+                "retention record differs from release request")
+        presented = hashlib.sha256(request["token"].encode()).hexdigest()
+        checked(hmac.compare_digest(str(record.get("token_sha256")), presented),
+                "release token refused")
+        # The inventory covers names, types, inodes, owners, modes, sizes and
+        # links, not file contents; the error must not claim more than that.
+        current = self.current_inventory()
+        checked(current == record.get("inventory") and
+                hashlib.sha256(canonical(current)).hexdigest() == request["inventory_sha256"],
+                "retained payload inventory changed (names/inodes/owners/modes/sizes/links; "
+                "contents not hashed)")
+
+    def release(self):
+        """One-shot release after authentication; any refusal preserves all."""
+        case, p = self.request["case"], self.probe
+        run = self.run_directory()
+        try:
+            self.authenticate(self.read_record(run))
+            # Consume before deleting: a replay finds no record and refuses.
+            # If an unlink below then fails, part of the payload remains with
+            # the record already consumed; that state needs root's manual
+            # inspection against released-CASE.json, never a second release.
+            os.rename(self.record_name(), self.record_name("released-"),
+                      src_dir_fd=run, dst_dir_fd=run)
+            os.fsync(run)
+        finally:
+            os.close(run)
+        fd = p.open_leaf()
+        try:
+            for name in PAYLOAD_FILES[case]:
+                p.call("unlink-released-payload", lambda n=name: os.unlink(n, dir_fd=fd), name=name)
+            for name in PAYLOAD_DIRS.get(case, []):
+                p.call("rmdir-released-payload", lambda n=name: os.rmdir(n, dir_fd=fd), name=name)
+        finally:
+            os.close(fd)
+        p.call("rmdir-released-leaf", lambda: os.rmdir(p.leaf_name(), dir_fd=p.roots[0]),
+               name=p.leaf_name())
+        emit("payload-released", leaf=p.leaf_name(), journal_preserved=True,
+             correlation_sha256=self.request["correlation_sha256"])
 
 
 def credentials(p):
@@ -380,12 +572,15 @@ def sync(p):
         fd = os.open("mapped", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600, dir_fd=directory)
         try:
             os.ftruncate(fd, 4096)
+            # Slice and readback lengths derive from the receipt itself: a fixed
+            # 16-byte slice of this 17-byte receipt raised IndexError locally.
+            receipt = b"mmap-receipt-0001"
             with mmap.mmap(fd, 4096, flags=mmap.MAP_SHARED,
                            prot=mmap.PROT_READ | mmap.PROT_WRITE) as view:
-                view[:16] = b"mmap-receipt-0001"
+                view[:len(receipt)] = receipt
                 p.call("MS_SYNC", view.flush, bytes=4096)
                 p.call("mapped-fsync", lambda: os.fsync(fd))
-                checked(os.pread(fd, 16, 0) == b"mmap-receipt-0001", "mapped readback")
+                checked(os.pread(fd, len(receipt), 0) == receipt, "mapped readback")
         finally:
             os.close(fd)
     finally:
@@ -486,7 +681,7 @@ CASES = {"credentials": credentials, "sync": sync, "metadata": metadata,
 
 
 def main():
-    roots, p, success = [], None, False
+    roots, p, success, release = [], None, False, None
     try:
         checked(len(sys.argv) == 1, "one stdin request; no arguments")
         signal.signal(signal.SIGALRM, lambda *_: (_ for _ in ()).throw(TimeoutError("case deadline")))
@@ -494,13 +689,18 @@ def main():
         raw = sys.stdin.buffer.read(REQUEST_LIMIT + 1)
         checked(len(raw) <= REQUEST_LIMIT, "request limit")
         request = json.loads(raw, object_pairs_hook=unique)
+        release = is_release(request)
         roots = admit(request)
         signal.alarm(request["seconds"])
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
         resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
         p = Probe(request, roots)
-        CASES[request["case"]](p)
-        p.release_successful_payload()
+        if release:
+            Retention(p).release()
+        else:
+            CASES[request["case"]](p)
+            # Never delete here: host correlation needs the payload present.
+            Retention(p).retain()
         success = True
     except BaseException as failure:
         emit("failure", error=type(failure).__name__, detail=str(failure)[:1024],
@@ -509,7 +709,10 @@ def main():
         signal.alarm(0)
         for fd in roots:
             os.close(fd)
-        emit("terminal", syscall_success=success,
+        # A case success retains its payload; only a release success removes it.
+        emit("terminal", action="release" if release else "case", syscall_success=success,
+             payload_retained=success and release is False,
+             payload_released=success and release is True,
              uncertain_children=sorted(p.children) if p else [],
              required_host_correlation=True, acceptance=False, publication=None)
     return 0 if success and not p.children else 1
