@@ -221,7 +221,7 @@ the stop (see [Boot selection and recovery](#boot-selection-and-recovery)).
 - Changes: new files in `/boot`, `/lib/modules/6.1.190-hfs-xz3`, one
   non-default BLS entry, the run directory and the root-private G5 state
   directory (`pre.json`, `install.json`, `journal.jsonl`). grubenv is
-  unchanged. `/etc/homelabfs/` is written only in Phase 8 (step 5).
+  unchanged. `/etc/homelabfs/` is written only in Phase 8 (step 0, the admission manifest).
 - Bounds: `/boot` must keep at least the Phase 1 headroom minus kernel+initramfs
   size (expected < 100 MiB).
 - Evidence: file hashes, BLS entry text, `grub2-editenv list` before/after,
