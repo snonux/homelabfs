@@ -289,7 +289,7 @@ class FakeFreeBSD:
         if args[0] == "-p":
             pid = int(args[1])
             return ("%d\n" % pid, 0) if pid in self.alive else ("", 1)
-        assert args == ["-ax", "-o", "pid=", "-o", "args="], args
+        assert args == ["-ax", "-ww", "-o", "pid=", "-o", "args="], args
         return "\n".join(self.processes) + "\n", 0
 
     def _bhyvectl(self, args):

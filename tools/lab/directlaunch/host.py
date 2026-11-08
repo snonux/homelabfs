@@ -259,7 +259,7 @@ def collect_facts(host):
             "interfaces": checked_stdout(host, [COMMANDS["ifconfig"], "-l"]).split(),
             "bridge_members": bridge_members(bridge["stdout"]) if bridge["exit"] == 0 else None,
             "dev_nmdm": [n for n in host.listdir("/dev") if n.startswith("nmdm")],
-            "processes": checked_stdout(host, [COMMANDS["ps"], "-ax", "-o", "pid=",
+            "processes": checked_stdout(host, [COMMANDS["ps"], "-ax", "-ww", "-o", "pid=",
                                                "-o", "args="]).splitlines()}
 
 
@@ -425,7 +425,7 @@ def require_child_gone(host, vm, child_pid):
         probe = host.command([COMMANDS["ps"], "-p", str(child_pid), "-o", "pid="])
         require(probe["exit"] != 0 and not probe["stdout"].strip(),
                 "exporter child PID %d still exists; never killed, wait for its exit" % child_pid)
-    lines = checked_stdout(host, [COMMANDS["ps"], "-ax", "-o", "pid=", "-o", "args="])
+    lines = checked_stdout(host, [COMMANDS["ps"], "-ax", "-ww", "-o", "pid=", "-o", "args="])
     require(not process_names(lines.splitlines(), vm),
             "a process still names %s; never killed" % vm)
 

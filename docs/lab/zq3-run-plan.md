@@ -134,7 +134,8 @@ or vmm context could still exist.
 - Changes: workstation files only.
 - **GAP**: run config/enrollment generator (G2), filled window plan (G12),
   controller target addresses (G8). The bhyve argv record comes from
-  `tools/lab/directlaunch/argv.py generate` on the Phase 1 launch facts (G4);
+  `tools/lab/directlaunch/argv.py generate`, run on the workstation after the
+  Phase 1 launch facts exist and before Phase 2 staging (G4);
   G2 must copy its `args` verbatim, and `argv.py verify` checks the config.
 - Evidence: hashes of every staged byte, plan files and their SHA256.
 - Failure: fix locally; nothing remote has happened.
@@ -288,7 +289,7 @@ The 12 GiB vm-bhyve config stays unchanged; the candidate bhyve runs directly
 as the runtime's own child. G4 is implemented as preparation (not yet run on
 f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
 
-- `argv.py generate` (Phase 0) rebuilds the argv from the Phase 1 launch facts
+- `argv.py generate` (after Phase 1, before Phase 2 staging) rebuilds the argv from the Phase 1 launch facts
   and pins it in a canonical record; any drift from the reviewed baseline
   (rocky.conf, vm-run, firmware, every logged hardware token) refuses. For
   run `zq3-r1` with tap `tap100` the argv is (vm-run order: devices, options,

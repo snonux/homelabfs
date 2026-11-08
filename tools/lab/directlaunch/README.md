@@ -121,7 +121,7 @@ was pinned (including the UEFI vars hash, which a normal Rocky boot can change).
 ```
 # Phase 1, read-only, before anything is staged:
 ssh f3 doas -n /usr/local/bin/python3.12 -I -B - facts < tools/lab/directlaunch/host.py > launch-facts.json
-# Phase 0, workstation:
+# Workstation, after Phase 1 and before Phase 2 staging:
 python3 -I -B tools/lab/directlaunch/argv.py generate --facts launch-facts.json \
   --run-id zq3-r1 --session <hfs0 uuid> --session <hfs1 uuid> --tap tap100 --output bhyve-argv.json
 python3 -I -B tools/lab/directlaunch/argv.py verify --record bhyve-argv.json \
