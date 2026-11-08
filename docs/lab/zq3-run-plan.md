@@ -445,7 +445,12 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
   and EnrollmentFile do not exist yet, while the EnrollmentFile's parent
   directory does (root, `0700`; Phase 7 must create it).
 - Action: in the foreground of one f3 SSH session that the driver starts
-  detached from its terminal, the outer resource guard launches the runtime:
+  detached from its terminal (no tty), the outer resource guard launches the
+  runtime. If that SSH connection is lost, sshd sends no SIGHUP: the guard and
+  the runtime keep running under the guard's bounds, the driver stops all
+  dependent steps and records the transport loss, and the operator reconnects
+  to f3 to inspect; the runtime's bootstrap timeout or the guard limits end it.
+  The guard command is:
   `doas -n /usr/local/bin/python3.12 -I -B
   /var/tmp/hfs-validation-xz3/zq3-r1/bin/runtime-guard.py --run-dir
   /var/tmp/hfs-validation-xz3/zq3-r1/guard --runtime-sha256 53598737…
@@ -781,9 +786,12 @@ reviewed and pinned, and this plan is re-filled:
   half `bootstrap_remote.py` ([README](../../tools/lab/retained9p/README.md#phase-8-bootstrap-orchestrator-zq3-g1));
   tests `test_bootstrap.py` (against real signer output) and
   `test_bootstrap_remote.py`. Still needed at run time: the filled bootstrap
-  plan and its SHA256, the handoff directory created in Phase 7, a doas rule
-  for `python3.12 -I -B -c` on f3, the operator ready to sign twice inside
-  the 120 s (A7), and review/pinning of the two scripts.
+  plan and its SHA256 (it pins `bootstrap_remote.py` and the bundle's
+  template and runtime config, whose `BootstrapSeconds` must equal the plan's),
+  the handoff directory created in Phase 7, a doas rule for `python3.12 -I -B
+  -c` on f3 (effectively unrestricted root for `paul`: only for the run window,
+  or accepted explicitly), the operator ready to sign twice inside the 120 s
+  (A7), and review/pinning of the two scripts.
 - G2 Generator for the `controlled-runtime/1` config, enrollment/bind request
   templates (completed in Phase 8 step 0 with `BootID`, `ProviderNonce` and
   `Observer.ManifestHash`) and per-session keys. **Implemented in s34**

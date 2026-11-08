@@ -77,6 +77,17 @@ BOOTSTRAP_LIMIT = 120          # base gate: launch to READY
 POLL_SECONDS = 1.0             # host/guest polls (one SSH round trip each)
 SIGNER_POLL_SECONDS = 0.25     # local signer output directory
 MIN_DISPATCH = 3.0             # never start a mutating call with less left
+# Steps with a remote child need a realistic floor, not MIN_DISPATCH: admission
+# waits up to 30 s for `udevadm settle` (+5 s remote margin); a 9p mount must
+# have time to complete its HELLO. Below the floor the step fails undispatched.
+MIN_REMOTE_SECONDS = {"admission": 40.0, "mount-0": 10.0, "mount-1": 10.0}
+# Ending of the local guard SSH process says little about f3: the guard may
+# have finished (its receipt says why) or only the connection was lost.
+TRANSPORT_LOST = ("The local guard SSH transport ended. If the guard itself finished, its receipt.json on f3 "
+                  "says why. After a lost connection the guard and the runtime KEEP RUNNING on f3 (no tty, so "
+                  "no SIGHUP) under the guard's own bounds; the runtime's bootstrap timeout or the guard limits "
+                  "end the runtime. Dependent steps were stopped; reconnect to f3 and inspect the guard run "
+                  "directory before anything else.")
 STREAM_LIMIT = 1 << 20         # per stream of one SSH/local child
 SAFE_TOKEN = re.compile(r"[A-Za-z0-9_./=:,+-]+\Z")
 SAFE_PATH = re.compile(r"/[A-Za-z0-9_./-]+\Z")
@@ -144,14 +155,16 @@ PLAN_SHAPE = {
     "guard": ["script", "script_sha256", "run_dir", "vm_name", "disk_roots", "skip_paths"],
     "runtime": ["executable", "sha256", "config", "owner_directory", "enrollment_file"],
     "kernel": ["script", "script_sha256", "plan", "plan_sha256", "state", "release"],
-    "prep": ["path", "sha256", "template", "template_sha256"],
+    "prep": ["path", "sha256", "template", "template_sha256", "config", "config_sha256"],
     "observer": ["ssh", "ssh_sha256", "known_hosts", "known_hosts_sha256", "identity", "host"],
 }
 
 
 def validate_plan(plan):
     """Closed schema; every remote token is a safe path, hash or fixed name."""
-    closed(plan, ["version", "run_id", "bootstrap_seconds", "signer", "mounts"] + list(PLAN_SHAPE), "plan")
+    closed(plan, ["version", "run_id", "bootstrap_seconds", "signer", "mounts", "remote_sha256"] +
+           list(PLAN_SHAPE), "plan")
+    safe_hash(plan["remote_sha256"], "remote_sha256")
     require(plan["version"] == VERSION and isinstance(plan["run_id"], str) and
             RUN_ID.match(plan["run_id"]) is not None, "plan version/run ID")
     seconds = plan["bootstrap_seconds"]
@@ -210,13 +223,39 @@ def load_plan(path, expected_sha256):
     plan = parse(raw)
     validate_plan(plan)
     inputs = {"ssh": controller.verified_bytes(plan["ssh"]["path"], plan["ssh"]["sha256"], 16 << 20),
-              "template": controller.verified_bytes(plan["prep"]["template"], plan["prep"]["template_sha256"], 512 << 10)}
+              "template": private_input(plan["prep"]["template"], plan["prep"]["template_sha256"])}
     for name in ("host", "guest"):
         pins = controller.verified_bytes(plan[name]["known_hosts"], plan[name]["known_hosts_sha256"], 65536)
         controller.check_pin(pins, plan[name])
         inputs[name + "-known_hosts"] = pins
     inputs["template-tags"] = template_tags(inputs["template"], plan)
+    # Local misconfiguration must refuse here, before the launch consumes
+    # Rocky's one-shot boot; each fill step re-checks the prep pin anyway.
+    controller.verified_bytes(plan["prep"]["path"], plan["prep"]["sha256"], 256 << 20)
+    check_runtime_config(private_input(plan["prep"]["config"], plan["prep"]["config_sha256"]), plan)
+    inputs["remote"] = controller.verified_bytes(str(REMOTE), plan["remote_sha256"], 256 << 10)
     return raw, plan, inputs
+
+
+def private_input(path, expected):
+    """A pinned input that hfs-runtime-prep will read: private, ours, one link."""
+    raw = controller.verified_bytes(path, expected, 512 << 10)
+    info = os.lstat(path)
+    require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and not info.st_mode & 0o077 and
+            info.st_uid == os.geteuid(), path + ": must be a private single-link file of this user")
+    return raw
+
+
+def check_runtime_config(raw, plan):
+    """The bundle's runtime-config.json must match the plan's bootstrap bound
+    and runtime paths. It also holds the run's host receipt private keys: only
+    these three fields are read, nothing of it is kept or logged."""
+    config = parse(raw)
+    require(config.get("BootstrapSeconds") == plan["bootstrap_seconds"],
+            "plan bootstrap_seconds differs from the runtime config's BootstrapSeconds")
+    require((config.get("OwnerDirectory"), config.get("EnrollmentFile")) ==
+            (plan["runtime"]["owner_directory"], plan["runtime"]["enrollment_file"]),
+            "plan OwnerDirectory/EnrollmentFile differ from the runtime config")
 
 
 def template_tags(raw, plan):
@@ -329,7 +368,11 @@ class SshRemote:
         argv = controller.ssh_base(self.plan[name], self.inputs, name)
         if keepalive:
             # The guard transport lives for the whole run window: tolerate a
-            # short network stall (a lost session is the guard's orderly stop).
+            # short network stall. A lost session does NOT stop the guard: -T
+            # gives it no tty, so sshd sends no SIGHUP and the guard keeps
+            # supervising the runtime under its own bounds (time, RSS, disk,
+            # VM context). Only this orchestrator loses its view (see
+            # TRANSPORT_LOST).
             argv = [a for a in argv if not a.startswith("-oServerAlive")]
             argv += ["-oServerAliveInterval=15", "-oServerAliveCountMax=8"]
         return argv
@@ -379,7 +422,9 @@ class GuardLauncher:
 
     Its own session (a Ctrl-C here never reaches it), stdin from /dev/null and
     streams to files, so it keeps running if the orchestrator exits. It is
-    never signalled by this tool.
+    never signalled by this tool. If this local SSH process ends while the
+    guard still runs on f3 (a lost connection), the guard and the runtime
+    continue under the guard's own bounds; see TRANSPORT_LOST.
     """
 
     def start(self, argv, stdout_path, stderr_path):
@@ -637,11 +682,28 @@ def enrollment_problems(enrollment, provision, provision_raw, facts):
     if (payload.get("version") != "homelabfs-guest-provision/1" or payload.get("boot_id") != facts["boot_id"] or
             payload.get("provider_nonce") != facts["provider_nonce"]):
         problems.append("provision is not for the measured boot ID and provider nonce")
+    problems += provision_mount_problems(payload, facts)
     if enrollment["Authorization"]["Enrollment"] != expected_enrollment(facts):
         problems.append("signed enrollment is not the runtime's exact proposal for the measured boot")
     if not isinstance(enrollment["Providers"], list) or len(enrollment["Providers"]) != 2:
         problems.append("signed enrollment must carry two provider authorizations")
     return problems
+
+
+def provision_mount_problems(payload, facts):
+    """The single provision group's local mounts must name, in domain order,
+    the request's sessions and tags and the MEASURED virtio device names: the
+    guest provider binds each session to that device."""
+    groups = payload.get("groups")
+    if not isinstance(groups, list) or len(groups) != 1:
+        return ["provision must hold exactly one group"]
+    found = [(m.get("domain_index"), m.get("session"), m.get("device_tag"), m.get("device_name"))
+             for m in groups[0]["local_mounts"]]
+    expected = [(i, m["session"], m["device_tag"], facts["device_names"][i])
+                for i, m in enumerate(facts["enroll_request"]["Mounts"])]
+    if found != expected:
+        return ["provision local mounts {!r} are not the measured devices/request sessions {!r}".format(found, expected)]
+    return []
 
 
 def check_signed_bind(raw, facts):
@@ -737,8 +799,10 @@ class Bootstrap:
 
     def remote(self, target, action, args, payload=b"", mutating=False, seconds=None):
         seconds = self.seconds(self.cap) if seconds is None else seconds
-        if mutating and seconds < MIN_DISPATCH:
-            raise StepFailed("not dispatched: {:.1f} s left before the bootstrap deadline".format(seconds))
+        floor = max(MIN_DISPATCH, MIN_REMOTE_SECONDS.get(self.step_name, 0.0))
+        if mutating and seconds < floor:
+            raise StepFailed("not dispatched: {:.1f} s left for {} (needs {:.0f} s) before the bootstrap "
+                             "deadline".format(seconds, self.step_name, floor))
         reply = self.io.remote.call(target, action, args, payload, seconds)
         self.evidence(action, {"target": target, "args": args, "seconds": seconds,
                                "payload_sha256": digest(payload) if payload else None}, reply)
@@ -790,7 +854,8 @@ class Bootstrap:
                     detail = tail(stream.read()[-4096:])
             except OSError:
                 detail = ""
-            raise StepFailed("runtime guard transport exited with {} during {}: {}".format(code, self.step_name, detail))
+            raise StepFailed("runtime guard transport exited with {} during {}: {}. {}".format(
+                code, self.step_name, detail, TRANSPORT_LOST))
 
     def runtime_records(self, expected):
         """The runtime's records once exactly `expected` exist; None before."""
@@ -1059,7 +1124,7 @@ def real_boundaries(plan, inputs_dir, program):
 
 def run(plan_path, expected_sha256, output, boundaries=real_boundaries):
     raw, plan, inputs = load_plan(plan_path, expected_sha256)
-    program = read(REMOTE, 256 << 10)
+    program = inputs["remote"]  # the plan-pinned bootstrap_remote.py bytes
     output = prepare_output(output, raw, inputs, program)
     io = boundaries(plan, output / "inputs", program)
     journal = Journal.create(output / "journal.jsonl", {"plan_sha256": digest(raw), "run_id": plan["run_id"],
@@ -1072,6 +1137,8 @@ def run(plan_path, expected_sha256, output, boundaries=real_boundaries):
                "guard_transport_pid": guard.pid if guard else None,
                "guard_transport_running": bool(guard) and guard.poll() is None,
                "acceptance": False, "note": "READY is not gate acceptance; Phases 9-11 follow"}
+    if guard and guard.poll() is not None:
+        summary["guard_transport_note"] = TRANSPORT_LOST
     controller.persist(output / "summary.json", summary)
     io.notify(summary)
     return code

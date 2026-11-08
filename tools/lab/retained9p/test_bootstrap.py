@@ -68,19 +68,29 @@ READY_LINE = compact({"stage": "READY", "profile": "CONTROLLED_LOCAL", "domains"
                       "control": {"socket": OWNER + "/lifecycle.sock", "runtime": BOOT, "cut": NONCE, "epoch": 1}})
 
 
-def plan_fixture(root, change=None):
-    """A complete plan whose observer and template match the real fixture."""
-    inputs = root / "in"
+def input_files(inputs):
+    """Local pinned inputs; template and runtime config private like the bundle."""
     inputs.mkdir()
+    config = {"BootstrapSeconds": 120, "OwnerDirectory": OWNER, "EnrollmentFile": RUN + "/runtime/handoff/enrollment.json",
+              "HostKeys": ["not read by the orchestrator"]}
     files = {"ssh": b"pinned ssh stand-in", "prep": b"pinned hfs-runtime-prep stand-in",
              "host-known_hosts": (LAB / "f3-host-known_hosts").read_bytes(),
              "guest-known_hosts": (LAB / "rocky-known_hosts").read_bytes(),
-             "template": fixture("request-template.json")}
+             "template": fixture("request-template.json"), "config": json.dumps(config).encode()}
     for name, raw in files.items():
         (inputs / name).write_bytes(raw)
+        (inputs / name).chmod(0o600)
+    return files
+
+
+def plan_fixture(root, change=None):
+    """A complete plan whose observer and template match the real fixture."""
+    inputs = root / "in"
+    files = input_files(inputs)
     observer = REQUEST["Observer"]
     plan = {
         "version": bootstrap.VERSION, "run_id": "zq3-r1", "bootstrap_seconds": 120,
+        "remote_sha256": sha(bootstrap.REMOTE.read_bytes()),
         "signer": "/usr/local/bin/hfs-retained9p-operator",
         "mounts": [{"tag": "hfs0", "mountpoint": "/var/tmp/hfs-zq3-zq3-r1/m0"},
                    {"tag": "hfs1", "mountpoint": "/var/tmp/hfs-zq3-zq3-r1/m1"}],
@@ -101,7 +111,8 @@ def plan_fixture(root, change=None):
                    "plan": "/root/stage/kernel-plan.json", "plan_sha256": "f" * 64,
                    "state": "/root/hfs-zq3-zq3-r1-kernel-state", "release": RELEASE},
         "prep": {"path": str(inputs / "prep"), "sha256": sha(files["prep"]), "template": str(inputs / "template"),
-                 "template_sha256": sha(files["template"])},
+                 "template_sha256": sha(files["template"]), "config": str(inputs / "config"),
+                 "config_sha256": sha(files["config"])},
         "observer": {"ssh": observer["SSH"], "ssh_sha256": bytes(observer["SSHHash"]).hex(),
                      "known_hosts": observer["KnownHosts"],
                      "known_hosts_sha256": bytes(observer["KnownHostsHash"]).hex(),
@@ -382,6 +393,11 @@ class FailureTests(Case):
         self.world.guard_code = 1
         self.assertEqual(self.run_plan(), 1)
         self.assert_stopped("proposal", "failed", "guard transport exited with 1")
+        # The evidence must not claim the guard stopped: after a lost SSH
+        # connection it keeps supervising the runtime on f3.
+        self.assert_stopped("proposal", "failed", "KEEP RUNNING on f3")
+        summary = json.loads((self.output / "summary.json").read_text())
+        self.assertIn("reconnect to f3", summary["guard_transport_note"])
 
     def test_breach_during_bootstrap_fails(self):
         self.world.guard_files = {"breach.json": '{"found": [["vm-context", "rocky"]]}'}
@@ -462,6 +478,25 @@ class FailureTests(Case):
         self.assert_stopped("enroll-request", "failed", "measured")
         self.assertFalse([n for n in self.world.notes if "operator_action" in n])
 
+    def test_bind_request_mismatch_fails_before_signing(self):
+        def tamper(command, request):
+            if command == "bind-request":
+                request["Controller"] = BOOT
+        self.world.prep_tamper = tamper
+        self.assertEqual(self.run_plan(), 1)
+        self.assert_stopped("bind-request", "failed", "runtime controller")
+        self.assertEqual([n["operator_action"] for n in self.world.notes if "operator_action" in n], ["sign-enroll"])
+        self.assertNotIn(("guest-write", "bind"), self.world.mutating())
+
+    def test_admission_is_not_dispatched_without_time_for_udev_settle(self):
+        def late(options, payload):
+            self.world.clock += 85  # The guest answered with < 40 s left.
+            return {"release": RELEASE, "boot_id": BOOT}
+        self.world.ping_failures, self.world.overrides["guest-ping"] = 0, late
+        self.assertEqual(self.run_plan(), 1)
+        self.assert_stopped("admission", "failed", "needs 40 s")
+        self.assertNotIn("guest-admission", self.world.actions())
+
     def test_prep_pin_change_fails(self):
         def run(argv, seconds):
             raise AssertionError("a changed hfs-runtime-prep must not run")
@@ -506,6 +541,20 @@ class SignerTests(Case):
         self.assertEqual(self.run_plan(), 1)
         self.assert_stopped("signed-bind", "failed", "bind payload")
         self.assertNotIn(("guest-write", "bind"), self.world.mutating())
+
+    def test_provision_local_mounts_must_name_the_measured_devices(self):
+        provision = fixture("provision.json").replace(b'"device_name":"virtio3"', b'"device_name":"virtio9"')
+        self.assertNotEqual(provision, fixture("provision.json"))
+        self.world.tamper["provision.json"] = lambda raw: provision
+        # A consistent signer output (enrollment embeds the same provision):
+        # only the device binding is wrong.
+        self.world.tamper["enrollment.json"] = edit_json("enrollment.json", lambda v: v.update(
+            Provision=base64.b64encode(provision).decode()))
+        self.assertEqual(self.run_plan(), 1)
+        self.assert_stopped("signed-enrollment", "failed", "provision local mounts")
+        detail = [r for r in records(self.output) if r.get("step") == "signed-enrollment"][-1]["detail"]["error"]
+        self.assertNotIn("different provision", detail)
+        self.assertEqual(self.world.mutating(), [("guest-admission", None)])
 
     def test_deadline_during_signer_wait_stops_without_provision(self):
         self.world.sign = False
@@ -588,7 +637,7 @@ class PlanTests(Case):
     def refuses(self, change, text):
         plan, digest = plan_fixture(self.root, change)
         with mock.patch.object(bootstrap.subprocess, "Popen") as spawn:
-            with self.assertRaisesRegex(bootstrap.Refused, text):
+            with self.assertRaisesRegex((bootstrap.Refused, bootstrap.controller.Refused), text):
                 bootstrap.run(plan, digest, self.output, boundaries=self.world.boundaries)
             spawn.assert_not_called()
         self.assertFalse(self.output.exists())
@@ -605,6 +654,11 @@ class PlanTests(Case):
             (lambda p: p["mounts"].reverse(), "mount 0 must be hfs0"),
             (lambda p: p["observer"].update(host="10.20.0.124"), "observer host"),
             (lambda p: p["runtime"].update(sha256="5" * 63), "SHA256 hex"),
+            (lambda p: p.update(remote_sha256="0" * 64), "pinned input changed"),
+            (lambda p: p["prep"].update(sha256="0" * 64), "pinned input changed"),
+            (lambda p: p.update(bootstrap_seconds=90), "BootstrapSeconds"),
+            (lambda p: p["runtime"].update(owner_directory=RUN + "/elsewhere"), "OwnerDirectory"),
+            (lambda p: Path(p["prep"]["template"]).chmod(0o640), "private single-link"),
         ]
         for change, text in cases:
             with self.subTest(text=text):

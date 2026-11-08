@@ -709,18 +709,33 @@ python3 -I -B bootstrap.py status --output DIR
 ```
 
 **Plan.** Closed JSON (`homelabfs-zq3-bootstrap-plan/1`, `PLAN_SHAPE` in the
-source): run ID, `bootstrap_seconds` (30-120), the signer path (only printed),
+source): run ID, `bootstrap_seconds` (30-120, and equal to the bundle runtime
+config's `BootstrapSeconds`), `remote_sha256` (the reviewed
+`bootstrap_remote.py`), the signer path (only printed),
 SSH executable and both pin files (the G8 targets and fingerprints, exactly
 as the controller checks them), f3 `doas`/python, Rocky python, the guard
 script/run dir/VM name/disk roots/skip paths, runtime executable/pin/config/
 OwnerDirectory/EnrollmentFile, the staged `rocky_kernel.py` and its plan/
 state/test kernel release, `hfs-runtime-prep` and the bundle's
-`request-template.json` (pinned; its device tags must be `hfs0`, `hfs1`),
+`request-template.json` (pinned; its device tags must be `hfs0`, `hfs1`) and
+`runtime-config.json` (pinned; only `BootstrapSeconds`, `OwnerDirectory` and
+`EnrollmentFile` are read and compared with the plan, the host receipt keys it
+also holds are neither kept nor logged),
 the observer fields of `ObserverInput` except the manifest hash, and the two
 mounts, which must be `hfsN` on `/var/tmp/hfs-zq3-RUN/mN` (what
 `observer_key.py stage` creates). Every value that reaches a remote command
 line is a plain path, hash or token (`[A-Za-z0-9_./=:,+-]`), so no shell
-quoting is involved.
+quoting is involved. `check` and `run` verify every local pin before any
+contact: SSH, both host-key files, `hfs-runtime-prep`, the template and the
+runtime config (both private files of this user, as `hfs-runtime-prep`
+requires), and `bootstrap_remote.py`. A local misconfiguration therefore
+refuses before the launch can consume Rocky's one-shot boot.
+
+**Prerequisite on f3.** The remote half runs as `doas -n
+/usr/local/bin/python3.12 -I -B -c "LOADER" …`. A doas rule that permits this
+is effectively unrestricted root for `paul` on f3 (Python with `-c` runs any
+code), whatever the loader checks. Grant it only for the run window and
+remove it afterwards, or accept it explicitly.
 
 **Operator signing (A7).** The orchestrator never reads the operator key
 and never runs the signer. At each signing point it prints one JSON line
@@ -733,7 +748,9 @@ the signed files against what it measured: `enrollment.json` is a
 `Observer` equals the request's (so `Observer.ManifestHash` is the measured
 manifest SHA256), whose `Authorization.Enrollment` is the runtime's exact
 proposal with only the empty `guest_boot` filled, and whose provision payload
-names the measured boot ID and provider nonce; `bind.json`'s payload must be
+names the measured boot ID and provider nonce, and whose single provision
+group's local mounts name, in domain order, the request's sessions and tags
+and the measured `virtioN` devices; `bind.json`'s payload must be
 exactly (boot ID, provider nonce, the runtime's provision hash and
 controller, the proposal's group ID). Any extra file or mismatch fails the
 step before anything is written to the guest. The operator runs the signer
@@ -748,7 +765,9 @@ overflow, malformed output) ends `uncertain`. The run stops there; nothing
 dependent runs, and nothing is replayed: there is no resume and `run`
 refuses an existing output directory. A Ctrl-C or kill leaves an open intent,
 which `status` reports as uncertain. Only read-only polls are retried. A
-deadline stops dependent steps; the orchestrator never signals, kills,
+mutating step is not dispatched with less than 3 s left, `admission` not with
+less than 40 s (`udevadm settle` may take 30 s) and a mount not with less than
+10 s; it fails undispatched instead. A deadline stops dependent steps; the orchestrator never signals, kills,
 unmounts or deletes anything remote. After a failure the runtime's own
 `BootstrapSeconds` fence it and the guard writes its receipt. Every call's
 arguments, exit status and streams are kept in `OUT/calls/`, the signed and
@@ -759,8 +778,12 @@ request files in `OUT/work/`, the guard transport's streams beside them, and
 f3/Rocky actions (Python 3.9 compatible). It is not staged: each SSH command
 is `PYTHON -I -B -c "LOADER" ACTION ARGS`, where the loader reads exactly the
 helper's length from stdin, compares its SHA256 and only then executes it
-(exit 97 otherwise), so Rocky and f3 check the bytes they run although they
-arrive on stdin. A payload follows on the same stdin and is checked against
+(exit 97 otherwise). That hash comes from the orchestrator on the same
+command line, so the loader only proves that f3 and Rocky run exactly the
+bytes the orchestrator sent, intact; it does not say which bytes are
+reviewed. That is the plan's `remote_sha256`: the orchestrator refuses before
+any contact unless its `bootstrap_remote.py` has that SHA256, and sends only
+those checked bytes. A payload follows on the same stdin and is checked against
 `--size`/`--sha256`. Exit 0 means done, 2 a known state (with `changed`), 1
 uncertain. Remote children (`rocky_kernel.py`, `mount`) are never killed on a
 deadline; the action reports uncertain instead.
@@ -769,18 +792,29 @@ deadline; the action reports uncertain instead.
 started in its own session with stdin `/dev/null` and streams to files, so a
 Ctrl-C of the orchestrator does not reach it and it outlives the
 orchestrator (READY returns; Phases 9-11 follow). Losing that SSH session
-hangs up the guard, which is its documented `guard-interrupted` breach: one
-SIGTERM, the runtime's retained stop. Keepalive is 15 s × 8 to ride out short
-stalls. The orchestrator never signals it; `status` reports whether its PID
-still exists.
+does **not** stop the guard: the session has no tty (`-T`), so sshd sends no
+SIGHUP, and the guard and the runtime keep running on f3 under the guard's
+own bounds (3600 s, RSS, disk, memory, VM context). The orchestrator only
+loses its view: it stops all dependent steps and records the transport loss
+in the step result and in `summary.json` (`guard_transport_note`). The
+operator then reconnects to f3 and inspects the guard run directory; the
+runtime's own bootstrap timeout or the guard limits end the runtime. The
+same message is recorded when the guard itself finished (its `receipt.json`
+says why), because the local SSH exit cannot tell the two apart. Keepalive
+is 15 s × 8 to ride out short stalls. The orchestrator never signals the
+transport; `status` reports whether its local PID still exists.
 
 **Local evidence.** `test_bootstrap.py` runs the whole sequence and its
 negatives against a simulated world: guard refusal, guard transport exit,
 breach, timeout mid-step (uncertain, dependents not run, no replay), killed
 orchestrator, remote exit 1/2/97, wrong manifest hash, changed boot, wrong
 kernel, request without the measured manifest, changed prep binary, signer
-manifest/provision/proposal/bind mismatches and extra files, the deadline
-during the signer wait, no dispatch close to the deadline, runtime stage
+manifest/provision/proposal/bind mismatches, provision local mounts not
+naming the measured devices, a mismatched bind request, extra files, the
+deadline during the signer wait, no dispatch close to the deadline,
+admission not dispatched without time for `udevadm settle`, the recorded
+guard transport loss, plan refusals (remote, prep and config pins, a
+non-private template, `BootstrapSeconds` and path mismatches), runtime stage
 order violations, journal order, plan refusals, the SSH argv and pins, the
 loader through `/bin/sh` and `bash` with tampered bytes, bounded local
 children. The signed files it checks are real signer output from
