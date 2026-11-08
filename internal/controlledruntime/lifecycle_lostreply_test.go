@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"testing"
 	"time"
@@ -120,17 +121,21 @@ func queryResult(t *testing.T, wire []byte) json.RawMessage {
 }
 
 // TestLifecycleLostReplyAtActualResponseExposure arms the fixture through the
-// real endpoint, loses the actual MKDIR CALL reply after its committed effect,
-// reconciles the uncertain result by claim and then crosses same-owner C9.
+// real endpoint with the MKDIR intent filter (d44): a GETATTR CALL accepted
+// after arming, as a guest mkdir(2) always issues first, is delivered
+// normally; the actual MKDIR CALL reply is lost after its committed effect,
+// the uncertain result is reconciled by claim and same-owner C9 is crossed.
 func TestLifecycleLostReplyAtActualResponseExposure(t *testing.T) {
 	binary := buildRestartChild(t)
 	t.Run("reconcile-one-effect-through-c9", func(t *testing.T) {
 		run := startLifecycleRun(t, binary, nil)
 		root := lostReplyRoot(t, run)
-		armed := run.arm(2, run.ready.Runtime, run.ready.Cut, 1, run.r.peers[0].scope.Session, lostReplyOperationCall)
-		if armed.Status != "ARMED" || armed.LostReply == nil || armed.LostReply.Exposure.State != guestbridge.LostReplyArmed || armed.LostReply.Cut != run.ready.Cut || armed.LostReply.FundedBytes != lostReplyMemoryBytes || armed.LostReply.Baseline.StateHash == "" {
+		armed := run.arm(2, run.ready.Runtime, run.ready.Cut, 1, run.r.peers[0].scope.Session, lostReplyOperationMkdir)
+		if armed.Status != "ARMED" || armed.LostReply == nil || armed.LostReply.Exposure.State != guestbridge.LostReplyArmed || armed.LostReply.Exposure.Intent != guestbridge.LostReplyIntentMkdir || armed.LostReply.Cut != run.ready.Cut || armed.LostReply.FundedBytes != lostReplyMemoryBytes || armed.LostReply.Baseline.StateHash == "" {
 			t.Fatalf("ARM: %+v", armed)
 		}
+		// The guest's pre-MKDIR attribute refresh passes the filter untouched.
+		run.d.ordinary(0, "GETATTR", map[string]any{"object": root[0]})
 		lost := run.d.loseCall(0, "MKDIR", map[string]any{"parent": root[0], "name": "6c6f73742d7265706c79", "mode": 0770, "umask": 0})
 		fired := checkFiredEvidence(t, run, armed.LostReply, lost)
 		result, created := reconcileByClaim(t, run, lost, fired)
@@ -195,7 +200,7 @@ func checkFiredEvidence(t *testing.T, run *lifecycleRun, armed *lostReplyView, l
 		t.Fatalf("fired observation: %+v", e)
 	}
 	f := x.Exposure
-	if f.State != guestbridge.LostReplyFired || f.Claim == nil || *f.Claim != lost.call.Claim || f.Session != run.r.peers[0].scope.Session || f.Cell <= f.ArmedHigh || f.JobPhase != "responded" || f.Outcome != "UNCERTAIN" || f.UnreadBytes != f.WireBytes || f.DroppedBytes == 0 || f.ResponseHash == "" {
+	if f.State != guestbridge.LostReplyFired || f.Claim == nil || *f.Claim != lost.call.Claim || f.Session != run.r.peers[0].scope.Session || f.Cell <= f.ArmedHigh || f.DroppedOpcode != lost.call.Intent.Opcode || f.JobPhase != "responded" || f.Outcome != "UNCERTAIN" || f.UnreadBytes != f.WireBytes || f.DroppedBytes == 0 || f.ResponseHash == "" {
 		t.Fatalf("fired exposure: %+v", f)
 	}
 	if e.Service.StateHash == x.Baseline.StateHash || e.Service.Through == nil || x.Baseline.Through == nil || *e.Service.Through == *x.Baseline.Through {
@@ -360,7 +365,7 @@ func checkArmRefusals(t *testing.T, run *lifecycleRun, session string) {
 		"stale-cut":       {run.ready.Runtime, other, session, 1, lostReplyOperationCall},
 		"stale-epoch":     {run.ready.Runtime, run.ready.Cut, session, 2, lostReplyOperationCall},
 		"operation-0":     {run.ready.Runtime, run.ready.Cut, session, 1, 0},
-		"operation-2":     {run.ready.Runtime, run.ready.Cut, session, 1, 2},
+		"operation-3":     {run.ready.Runtime, run.ready.Cut, session, 1, 3},
 		"operation-255":   {run.ready.Runtime, run.ready.Cut, session, 1, 255},
 		"unknown-session": {run.ready.Runtime, run.ready.Cut, other, 1, lostReplyOperationCall},
 	} {
@@ -394,5 +399,44 @@ func checkUnfundedArm(t *testing.T, run *lifecycleRun, session string) {
 	}
 	if e := run.observe(13); e.LostReply != nil {
 		t.Fatalf("unfunded ARM armed: %+v", e.LostReply)
+	}
+}
+
+// TestLifecycleClientArmTargets maps the client's --lost-operation and
+// optional --lost-intent flags to the fixed 57-byte ARM frame (d44): CALL alone
+// is code 1, CALL with MKDIR code 2; any other target refuses before a frame.
+func TestLifecycleClientArmTargets(t *testing.T) {
+	id := fsapi.UUID{1}.String()
+	base := []string{"--control", "/nonexistent", "--operation", "arm-lost-reply", "--runtime", id, "--sequence", "2", "--cut", id, "--epoch", "1", "--session", id, "--lost-operation", "CALL"}
+	for name, c := range map[string]struct {
+		extra []string
+		code  uint8
+		ok    bool
+	}{
+		"any-call":         {nil, lostReplyOperationCall, true},
+		"mkdir":            {[]string{"--lost-intent", "MKDIR"}, lostReplyOperationMkdir, true},
+		"unsupported-op":   {[]string{"--lost-intent", "GETATTR"}, 0, false},
+		"lowercase-intent": {[]string{"--lost-intent", "mkdir"}, 0, false},
+	} {
+		f := flag.NewFlagSet("client", flag.ContinueOnError)
+		client := lifecycleClientFlags(f)
+		require(t, f.Parse(append(append([]string{}, base...), c.extra...)))
+		r, err := client.request(f)
+		if (err == nil) != c.ok || (c.ok && r.operation != c.code) {
+			t.Fatalf("%s: operation %d, %v", name, r.operation, err)
+		}
+		if c.ok {
+			payload := encodeLifecyclePayload(r)
+			if len(payload) != lifecycleArmBytes || payload[56] != c.code {
+				t.Fatalf("%s: ARM payload %d bytes, code %d", name, len(payload), payload[56])
+			}
+		}
+	}
+	// --lost-intent belongs to arm-lost-reply only.
+	f := flag.NewFlagSet("client", flag.ContinueOnError)
+	client := lifecycleClientFlags(f)
+	require(t, f.Parse([]string{"--control", "/nonexistent", "--operation", "observe", "--runtime", id, "--sequence", "1", "--lost-intent", "MKDIR"}))
+	if _, err := client.request(f); err == nil {
+		t.Fatal("observe accepted --lost-intent")
 	}
 }

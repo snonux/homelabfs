@@ -104,7 +104,13 @@ check that both hosts still present the keys in
   Rocky root's `authorized_keys`, remove it and destroy the key (Phases 4, 11).
 - A7 Use of the operator signing key `2f6d909c…` for the enrollment and bind
   signatures during bootstrap (Phase 8): who holds and runs it.
-- A8 Pod fixture inside Rocky: which OCI runtime/rootfs (Phase 10, T7), or skip.
+- A8 Pod fixture inside Rocky (Phase 10, T7), or skip. Runtime/rootfs chosen by
+  agent judgement (w34): the installed podman `5.8.2-8.el9_8` and crun
+  `1.27-1.el9_7`, rootful in `init_user_ns`, VFS storage in run-owned roots, and a
+  `--rootfs` tree built on Rocky from its own RPM-attested files. No image pull,
+  install or registry. The yes covers building `RUN/pod/rootfs` and running two
+  disposable containers that bind-share `m0`
+  ([details](../../tools/lab/retained9p/README.md#ordinary-pod-namespace-fixture-zq3-g9-t7-decision-a8)).
 
 **(B) Routine bounded verification** (standing approval of 2026-11-02, but only
 inside an approved (A) window): read-only facts, local builds/tests, read-only
@@ -530,18 +536,20 @@ unsupported, unrun or uncertain; a partial result never completes zq3.
 
 | Step | Gate (Deployment-tests) | How |
 |---|---|---|
-| T1 | UID/GID incl. full 1024-entry groups, setgid/umask create, sticky, special bits, cross-domain metadata | `check-retained9p.sh probe` (case `credentials`), then host correlation (**GAP G7**), then `release`, then `next` |
+| T1 | UID/GID incl. full 1024-entry groups, setgid/umask create, sticky, special bits, cross-domain metadata | `check-retained9p.sh probe` (case `credentials`), then host correlation (`correlate.py case` from an OBSERVE taken right before the dispatch and one while the payload is retained), then `release`, then `next` |
 | T2 | write acknowledgement and sync propagation (O_SYNC/O_DSYNC/fdatasync/fsync, directory fsync, mmap MS_SYNC) | case `sync` + correlation of journal `Through/Applied` via OBSERVE + `release`, `next` |
 | T3 | metadata: rename, hardlink, truncate, open-unlinked, cross-domain freshness | case `metadata` + correlation + `release`, `next` |
 | T4 | foreign user namespace refusal (boundary only) | case `namespace` + correlation + `release`, `next` |
 | T5 | `cache=mmap`: full 4 MiB mapped canary, cross-domain hash | case `mapped-pressure` + correlation + `release` |
 | T6 | locks within one guest mount | `tools/lab/guest-lock-probe.py` on `m0` (POSIX/flock conflicts, blocking waits, GETLK, close/exit cleanup) |
 | T6b | locks across clients | same probe across `m0`/`m1`: **recorded as unsupported** per the accepted lock scope, never as a pass |
-| T7 | ordinary pod namespace profile | **GAP G9** and decision A8: separate mount/PID/net/UTS/IPC namespaces in `init_user_ns`, numeric IDs/full groups, SELinux enforcing, two workloads bind-sharing `m0` |
-| T8 | K04 guest side: no writes to an empty fallback | normal `umount m1`; a probe naming `m1` must refuse at admission ("exact mountpoint not present once") before any open; the empty directory stays empty |
-| T9 | v24 lost reply | `--operation arm-lost-reply` (CALL), one guest mkdir CALL, OBSERVE `lost_reply.exposure` = UNCERTAIN, guest re-read/QUERY returns the original result. **GAP G10** (guest step) |
-| T10 | daemon restart via u24 | guest quiesce (FORGET, view refresh), then `--operation restart`; RESTARTED or FENCED are both recorded (FENCED, fencing then runtime exit, is Paul's accepted behavior); **always the last step**. **GAP G10** (quiesce step) |
-| T11 | remount / VM restart need, K04 host side | after T10 or runtime exit: guest I/O on `m0` must fail, not reach a raw directory; replacement FUSE/exporter and guest RESUME are blocked by design, so the recorded answer is "VM restart required", with the refusals as evidence. **GAP G11** (host-side check) |
+| T7 | ordinary pod namespace profile: separate mount/PID/net/UTS/IPC namespaces in `init_user_ns`, numeric IDs/full groups, SELinux enforcing, two workloads bind-sharing `m0` | under A8, after T6: `pod_fixture.py run --request ABS` (rootfs built earlier with `build`, see G9); pass = `t7_pass: true`, which also removes the two exited containers and the pod payload normally; any failure or `uncertain` preserves both. The SELinux access of `container_t` to the 9p label is only known now: a denial is a T7 failure, never relabelled or disabled |
+| T9 | v24 lost reply | OBSERVE; `correlate.py command --operation arm-lost-reply` prints the ARM argv (m0's session, current cut/epoch); root runs it; `lifecycle --step lost-reply-call` (one mkdir in m0); OBSERVE; `lifecycle --step lost-reply-reread` (m1 then m0, no second mkdir); `correlate.py lost-reply` records the exposure (UNCERTAIN expected), source effect since arming and a classification decided by the unarmed m1 (expected: `dropped-before-mutation` with m0 blocked, `EHOSTDOWN`; with a d44-rebuilt runtime and `--lost-intent MKDIR`: `dropped-reply-effect-committed-and-visible`, see below), never a pass |
+| T10 | daemon restart via u24 | `lifecycle --step quiesce` (syncfs, guest `drop_caches` 3 twice: view leases released, lookups FORGET; no VIEW_ACQUIRE refresh; on the blocked m0 the open and FORGETs fail), OBSERVE taken after the quiesce result, then `correlate.py command --operation restart` (refuses unless that OBSERVE is later than every bound one and shows view-controller `Leases`/`Reservations` 0, no `Recall`, `Matches`; then recorded as unrun) and root runs the printed `--operation restart`; RESTARTED or FENCED are both recorded (FENCED, fencing then runtime exit, is Paul's accepted behavior and the expected outcome after T9); **last step that needs the live runtime** |
+| T11 | remount / VM restart need, K04 host side | after the runtime exited (FENCED T10), with m1 still mounted: root takes `host_snapshot.py --label before` of the runtime's FUSE mount point on f3, `lifecycle --step after-loss` (lstat, list, exclusive create in **m1**, never retried), `host_snapshot.py --label after`; `correlate.py k04` (with the Phase 7 `baseline` snapshot of the empty mount point, required) records whether guest I/O failed and nothing reached a raw directory. **Limitation:** m0 cannot be probed (T9 blocked its session, so its refusals are local); if m1 also shows the guest's own `EHOSTDOWN` (T9 re-read, T10 quiesce or the first after-loss attempt) the record flags the probe as vacuous and K04 is not observed. If T10 is RESTARTED, the runtime keeps serving, no supported stop exists here and T11 is unrun. Replacement FUSE/exporter and guest RESUME are blocked by design, so the recorded answer is "VM restart required", with the refusals as evidence |
+| T8 | K04 guest side: no writes to an empty fallback | **runs last, after T11** (orchestrator decision: T9 before T8; T11 needs m1 mounted): normal `umount m1`; a probe naming `m1` must refuse at admission ("exact mountpoint not present once") before any open; the empty directory stays empty. Needs no live runtime; if the unmount refuses or hangs after host loss, T8 is unrun and Phase 11 handles the mount |
+
+Execution order: **T1-T7, T9, T10, T11, T8** (table order).
 
 Mid-release failure (T1-T5): the guest consumes the retention record before
 its first unlink. If an unlink or the deadline then fails, part of the payload
@@ -549,6 +557,40 @@ can remain, `released-CASE.json` exists and the controller stays at
 `release-dispatching-uncertain` with `error`. Do not re-release or replay:
 root inspects the leaf against the inventory in `released-CASE.json`, keeps the
 leftovers and evidence, marks T1-T5 incomplete, and any repeat uses a new run ID.
+
+T9-T11 guest steps (u34) run only after all five releases, once each and in
+order, through the same pinned `guest.py`. They admit their own domain (m0 for
+T9/T10, m1 for T11) from mountinfo without touching it and record the other
+as present or absent. Expect T9 not to show a clean MKDIR lost reply with the
+current guest kernel: its path walk sends GETATTR and LOOKUP CALLs before
+MKDIR, the fixture drops the first one (a background CALL on m0 could also
+take it), and the guest then blocks m0's session (`EHOSTDOWN`) with no
+userspace QUERY. The correlator decides the leaf state from the unarmed m1 and
+records that as `dropped-before-mutation` (or `fixture-not-fired`), and the
+T10 RESTART is then expected to FENCE, which is the host loss T11 probes on
+m1.
+
+**MKDIR-targeted variant (d44, needs a rebuilt runtime).** No guest warm-up
+can make MKDIR the first CALL: inside the one `mkdir(2)` the guest always
+sends GETATTR(parent) for `may_lookup`, LOOKUP(name) because
+`hfs_d_revalidate` never keeps a dentry, and GETATTR(parent) again for
+`may_create`, all uncached and none affected by `cache=mmap` (the hfs mount
+bypasses v9fs caching). Evidence with patch line numbers is in the
+[guestbridge analysis](../../internal/guestbridge/README.md#targeting-the-mkdir-reply-d44).
+d44 therefore adds per-operation arming to the runtime: ARM operation code 2,
+`correlate.py command --operation arm-lost-reply --lost-intent MKDIR`, drops
+only a CALL whose guest intent opcode is MKDIR and lets the earlier CALLs
+through. The admitted xz3 candidate (G12, `e0cca0c`) predates it and refuses
+the flag, so the variant needs a rebuilt, re-admitted candidate and new pins.
+With it, the T9 expectation becomes `dropped-reply-effect-committed-and-visible`
+(record `armed_intent`/`dropped_opcode` MKDIR, mkdir fails in m0, m1 sees the
+directory, m0 still blocked), and T10 is still expected to FENCE because the
+blocked guest never re-reads the dropped response. Without the rebuild, run
+T9 unfiltered as above.
+
+A step deadline ends the step as failed and uncertain; it is never
+recorded as an errno or a refusal. See the
+[probe tools](../../tools/lab/retained9p/README.md#guest-lifecycle-steps-zq3-g10-g11).
 
 Not runnable in this run and reported as unrun: PTE/TLB/busy-pin/GUP
 exclusion and funded drains (**GAP G14**: no admitted pin primitive),
@@ -773,18 +815,40 @@ reviewed and pinned, and this plan is re-filled:
   `stage`/`enrol`/`status`/`remove`, run on Rocky as root (Phases 3, 4, 11);
   local tests in `test_observer_key.py`. Still needs, at run time, the Phase 1
   interpreter and `authorized_keys` hashes and Paul's A6 approval.
-- G7 Host correlator producing `homelabfs-retained9p-host-correlation/1`
-  records from lifecycle OBSERVE (journal/source/ledger identities) for each
-  retained case; the controller binds but does not interpret them.
+- G7 **Implemented (u34)**: [`tools/lab/retained9p/correlate.py`](../../tools/lab/retained9p/correlate.py)
+  `case` builds `homelabfs-retained9p-host-correlation/1` from two OBSERVE
+  replies per case (runtime/cut/epoch, plan boot/provider/sessions,
+  journal/ledger/transport identities, advanced applied position, chain to
+  the previous release); local tests feed its records to the real `release`
+  (`test_correlate.py`). The filled plan pins its SHA256.
 - G8 **Implemented (q34)**: `controller.py` accepts only the IQ primaries
   f3 `10.20.0.133` and Rocky `10.20.0.123` (the retained `192.168.1.x` aliases
   refuse with an explicit reason) and checks pin file content against the
   reviewed Ed25519 fingerprints; pins in [`f3-host-known_hosts`](f3-host-known_hosts)
   and [`rocky-known_hosts`](rocky-known_hosts); local tests in
   `test_controller_targets.py`.
-- G9 Pod/namespace fixture script and pinned runtime/rootfs (depends on A8).
-- G10 Guest steps for the v24 lost-reply CALL and the C9 quiesce before RESTART.
-- G11 Host-side K04/after-loss check.
+- G9 **Implemented (w34)**: [`tools/lab/retained9p/pod_fixture.py`](../../tools/lab/retained9p/pod_fixture.py)
+  `manifest`/`build`/`run` with the container side in
+  [`pod_workload.py`](../../tools/lab/retained9p/pod_workload.py) (pinned by the
+  driver; stage both side by side); local tests in `test_pod_fixture.py`. At run time it still needs,
+  from Phase 1: the SHA256 of `pod_fixture.py` (the operator checks it before
+  each invocation) and of `/usr/bin/podman`, `/usr/bin/crun`, `/usr/bin/conmon`,
+  `/usr/share/containers/seccomp.json`; conmon's NEVRA; a readable
+  `/var/log/audit/audit.log`; and the read-only `pod_fixture.py manifest` digest
+  for Paul's review. `build` must later reproduce that exact digest (Phase 3 or
+  before T7). The request also needs `m0`'s Phase 8 mount ID. Plus Paul's A8
+  approval.
+- G10 **Implemented (u34)**: `guest.py` lifecycle steps `lost-reply-call`,
+  `lost-reply-reread`, `quiesce`, dispatched by `controller.py lifecycle`;
+  `correlate.py lost-reply` and `command` (ARM/RESTART argv, RESTART only after
+  an observed quiesce); local tests in `test_lifecycle_steps.py`,
+  `test_correlate.py`. The guest-kernel limit on T9 above stays unless the
+  d44 MKDIR filter is used, which needs a rebuilt runtime candidate.
+- G11 **Implemented (u34)**: `guest.py` step `after-loss`, read-only
+  [`host_snapshot.py`](../../tools/lab/retained9p/host_snapshot.py) on f3
+  (pinned python3.12, root) and `correlate.py k04`, probing m1 (T9 blocks m0)
+  and flagging a probe the guest refused locally as vacuous. Needs the
+  runtime's FUSE mount point path from the G2 config at fill time.
 - G12 *Prepared (v34)*: rebuilt, reproducible `controlledruntime.test`
   `415fdaa6…` and `fdescfs-namespace` `ec2d56e4…` from `e0cca0c` (recipe
   cross-checked by reproducing the candidate daemon), reviewed window pins and

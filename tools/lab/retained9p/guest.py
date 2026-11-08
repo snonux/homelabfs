@@ -14,6 +14,11 @@ request must pass full re-admission and present that token, the unchanged
 inventory digest and the host correlation digest; only then are the exact known
 payload entries unlinked. Missing, changed or replayed releases refuse and
 preserve the payload for inspection.
+
+After the five released cases, lifecycle step requests (zq3 T9-T11) run one
+bounded, never-retried guest action each: the lost-reply mkdir CALL, its
+re-read, the quiesce before RESTART and the after-host-loss I/O attempt. They
+record each errno as an observation; only host correlation interprets them.
 """
 import ctypes
 import errno
@@ -43,6 +48,23 @@ REQUEST_FIELDS = {"version", "run_id", "boot_id", "provider_nonce", "manifest_sh
 # inventory digest it expects and the digest of the host correlation captured
 # while the payload was still present.
 RELEASE_FIELDS = REQUEST_FIELDS | {"token", "inventory_sha256", "correlation_sha256"}
+# Lifecycle steps (zq3 T9-T11) run after all five cases were released. They
+# carry the same boot/provider/manifest/mount identity, name a step instead of
+# a case and only record what the guest kernel returned: a step never decides
+# a gate; the host correlator compares it with lifecycle OBSERVE evidence.
+STEP_VERSION = "homelabfs-retained9p-lifecycle-step/1"
+STEP_FIELDS = (REQUEST_FIELDS - {"case"}) | {"step"}
+STEPS = ("lost-reply-call", "lost-reply-reread", "quiesce", "after-loss")
+# Guest-wide cache drop used by the quiesce step: 3 frees page cache (view
+# leases/recall releases) plus unused dentries/inodes (lookup FORGET).
+DROP_CACHES = "/proc/sys/vm/drop_caches"
+QUIESCE_SETTLE = 2  # Seconds for the guest's asynchronous release/retire work.
+LISTING_LIMIT = 1024  # Bounded root listing per domain in the re-read step.
+# The domain each step needs mounted. T9 arms and probes m0, which the guest
+# kernel then blocks (EHOSTDOWN) after the dropped reply; T11 therefore probes
+# the still-unblocked m1 after host loss, or its refusals would be local and
+# prove nothing about the host. T8 (unmount of m1) runs after T11.
+STEP_DOMAIN = {"lost-reply-call": 0, "lost-reply-reread": 0, "quiesce": 0, "after-loss": 1}
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 RECORD_LIMIT = 65536
 REQUEST_LIMIT = 16384
@@ -62,6 +84,20 @@ PAYLOAD_DIRS = {"credentials": ["setgid", "sticky"]}
 
 class Refused(RuntimeError):
     """Admission or a required assertion refused."""
+
+
+class Deadline(Exception):
+    """The SIGALRM case/step deadline expired.
+
+    Deliberately not an OSError (unlike TimeoutError): code that records a
+    syscall's errno as an observation must never turn an interrupted, hung
+    operation into a refusal with an invented errno. A deadline always ends the
+    request as failed, so the controller keeps it uncertain.
+    """
+
+
+def deadline(*_):
+    raise Deadline("case/step deadline")
 
 
 def unique(pairs):
@@ -105,22 +141,36 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
 
 
-def is_release(request):
-    """Closed request shapes: a syscall case or the release of its payload."""
+def request_kind(request):
+    """Closed request shapes: a syscall case, its payload release or a lifecycle step."""
     if not isinstance(request, dict):
         raise Refused("request shape/version")
     if request.get("version") == VERSION and set(request) == REQUEST_FIELDS:
-        return False
+        return "case"
     if request.get("version") == RELEASE_VERSION and set(request) == RELEASE_FIELDS:
         for name in ["token", "inventory_sha256", "correlation_sha256"]:
             if not isinstance(request[name], str) or not HEX64.fullmatch(request[name]):
                 raise Refused("release token/digest shape")
-        return True
+        return "release"
+    if request.get("version") == STEP_VERSION and set(request) == STEP_FIELDS:
+        return "step"
     raise Refused("request shape/version")
+
+
+def is_release(request):
+    return request_kind(request) == "release"
 
 
 def match_mount(lines, path):
     """Return the single mountinfo tuple for path; absence/duplicates refuse."""
+    found = find_mount(lines, path)
+    if found is None:
+        raise Refused("exact mountpoint not present once")
+    return found
+
+
+def find_mount(lines, path):
+    """The mountinfo tuple for path, None when absent; duplicates refuse."""
     matches = []
     for line in lines:
         left, right = line.split(" - ", 1)
@@ -128,14 +178,15 @@ def match_mount(lines, path):
         if decode_mount(fields[4]) == path:
             matches.append((int(fields[0]), fs[0], decode_mount(fs[1]),
                             set(fields[5].split(",")), set(fs[2].split(","))))
-    if len(matches) != 1:
+    if len(matches) > 1:
         raise Refused("exact mountpoint not present once")
-    return matches[0]
+    return matches[0] if matches else None
 
 
 def admit(request):
-    """Full admission for every request, a release included; no reduced path."""
-    is_release(request)
+    """Full admission for every case or release request; no reduced path."""
+    if request_kind(request) == "step":
+        raise Refused("lifecycle steps use step admission")
     admit_identity(request)
     return open_domains(request)
 
@@ -146,7 +197,8 @@ def admit_identity(request):
         raise Refused("run ID bound")
     if type(request["seconds"]) is not int or not 1 <= request["seconds"] <= 60:
         raise Refused("case deadline bound")
-    if request["case"] not in CASES or len(request["mounts"]) != 2:
+    known = request.get("step") in STEPS if "step" in request else request.get("case") in CASES
+    if not known or len(request["mounts"]) != 2:
         raise Refused("case/two-domain inventory")
     if os.geteuid() != 0 or sys.platform != "linux":
         raise Refused("trusted Linux guest root required")
@@ -173,18 +225,11 @@ def open_domains(request):
     fds, devices, ids = [], [], []
     try:
         for row in request["mounts"]:
-            if set(row) != {"path", "tag", "mount_id", "session"}:
-                raise Refused("mount row shape")
+            check_row(request, row, len(fds))
             path = row["path"]
-            if (path != RUN_PARENT + request["run_id"] + "/m" + str(len(fds)) or
-                    os.path.normpath(path) != path or os.path.realpath(path) != path):
+            if os.path.realpath(path) != path:
                 raise Refused("private canonical run mount path required")
-            mount_id, kind, tag, options, super_options = match_mount(lines, path)
-            combined = options | super_options
-            if (mount_id != row["mount_id"] or kind != "9p" or tag != row["tag"] or
-                    not {"rw", "cache=mmap", "version=9P2000.L.hfs1.4",
-                         "msize=65536"} <= combined):
-                raise Refused("exact controlled mount tuple differs")
+            mount_id = check_tuple(row, match_mount(lines, path))
             fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
             fds.append(fd)
             if fd_mount(fd) != mount_id:
@@ -202,6 +247,55 @@ def open_domains(request):
         for fd in fds:
             os.close(fd)
         raise
+
+
+def check_row(request, row, index):
+    """Closed mount row naming the exact run mount point mINDEX."""
+    if not isinstance(row, dict) or set(row) != {"path", "tag", "mount_id", "session"}:
+        raise Refused("mount row shape")
+    path = row["path"]
+    if path != RUN_PARENT + request["run_id"] + "/m" + str(index) or os.path.normpath(path) != path:
+        raise Refused("private canonical run mount path required")
+
+
+def check_tuple(row, found):
+    """The admitted controlled 9p tuple: mount ID, type, tag and exact options."""
+    mount_id, kind, tag, options, super_options = found
+    if (mount_id != row["mount_id"] or kind != "9p" or tag != row["tag"] or
+            not {"rw", "cache=mmap", "version=9P2000.L.hfs1.4",
+                 "msize=65536"} <= options | super_options):
+        raise Refused("exact controlled mount tuple differs")
+    return mount_id
+
+
+def admit_step(request):
+    """Lifecycle step admission: full identity, mount tuples from mountinfo only.
+
+    No descriptor is opened and no path inside a tested domain is resolved: the
+    lost-reply CALL must be the step's only domain I/O and after host loss even
+    resolving a mount root is the I/O under test. The step's own domain
+    (STEP_DOMAIN) must still be the exact admitted mount; the other one may be
+    absent (recorded, not refused). A different filesystem on either refuses.
+    """
+    if request_kind(request) != "step":
+        raise Refused("step admission requires a lifecycle step request")
+    admit_identity(request)
+    parent = RUN_PARENT + request["run_id"]
+    if os.path.realpath(parent) != parent:
+        raise Refused("private canonical run directory required")
+    lines = read("/proc/self/mountinfo", 1 << 20).decode().splitlines()
+    mounts = []
+    for index, row in enumerate(request["mounts"]):
+        check_row(request, row, index)
+        found = find_mount(lines, row["path"])
+        if found is None and index == STEP_DOMAIN[request["step"]]:
+            raise Refused("exact mountpoint not present once")
+        mounts.append({"index": index, "path": row["path"], "present": found is not None,
+                       "mount_id": check_tuple(row, found) if found else None})
+    emit("admitted-step", step=request["step"], boot_id=request["boot_id"],
+         provider_nonce=request["provider_nonce"], mounts=mounts,
+         publication=None, acceptance=False)
+    return mounts
 
 
 def checked(condition, message):
@@ -225,6 +319,11 @@ class Probe:
         except OSError as failure:
             emit("reply", sequence=self.sequence, operation=operation,
                  errno=failure.errno, result=None)
+            raise
+        except Deadline:
+            # Distinct from any errno: the operation was interrupted, not refused.
+            emit("reply", sequence=self.sequence, operation=operation,
+                 errno=None, timeout=True, result=None)
             raise
         emit("reply", sequence=self.sequence, operation=operation, errno=0,
              result=value if isinstance(value, (int, str, dict, list)) else None)
@@ -680,27 +779,203 @@ CASES = {"credentials": credentials, "sync": sync, "metadata": metadata,
          "namespace": namespace, "mapped-pressure": mapped_pressure}
 
 
+def attempt(p, operation, function, **args):
+    """One recorded syscall whose errno is an observation, not a step failure.
+
+    A Deadline is not an OSError and propagates: the step then fails and the
+    controller records it as uncertain. An OSError without an errno is not a
+    kernel answer either, so it also ends the step instead of becoming EIO.
+    """
+    try:
+        return 0, p.call(operation, function, **args)
+    except OSError as failure:
+        if not failure.errno:
+            raise
+        return failure.errno, None
+
+
+def step_leaf(p, suffix):
+    return "zq3-" + p.request["run_id"] + "-" + suffix
+
+
+def lost_reply_call(p, mounts):
+    """T9: exactly one mkdir through m0 after the host armed m0's session.
+
+    The host must arm with `--operation arm-lost-reply` immediately before this
+    step. Nothing else touches a domain here and the mkdir is never retried:
+    the guest kernel's own mkdir(2) always issues GETATTR/LOOKUP CALLs before
+    MKDIR (no warm-up here could avoid them: permission refresh and dentry
+    revalidation are uncached by design), so an unfiltered ARM may drop one
+    of those. Only an ARM with the d44 `--lost-intent MKDIR` filter targets
+    the MKDIR reply; the correlator reads the daemon's `dropped_opcode`.
+    """
+    path = mounts[0]["path"] + "/" + step_leaf(p, "lost-reply")
+    code, _ = attempt(p, "mkdir-lost-reply-call", lambda: os.mkdir(path, 0o755), path=path)
+    return {"armed_domain": 0, "leaf": step_leaf(p, "lost-reply"), "mkdir_errno": code,
+            "retried": False}
+
+
+def reread_domain(p, mount, leaf):
+    """Fresh lookup and bounded root listing of one present domain."""
+    path = mount["path"] + "/" + leaf
+    code, seen = attempt(p, "lstat-reread", lambda: os.lstat(path), path=path)
+    row = {"index": mount["index"], "present": True, "lstat_errno": code,
+           "type": None, "listing_errno": None, "listing_matches": None}
+    if seen is not None:
+        row["type"] = "dir" if stat.S_ISDIR(seen.st_mode) else "other"
+    names = []
+
+    def listing():
+        with os.scandir(mount["path"]) as entries:
+            for entry in entries:
+                checked(len(names) < LISTING_LIMIT, "re-read listing bound")
+                names.append(entry.name)
+        return len(names)
+
+    row["listing_errno"], _ = attempt(p, "listdir-reread", listing, path=mount["path"])
+    if row["listing_errno"] == 0:
+        row["listing_matches"] = names.count(leaf)
+    return row
+
+
+def lost_reply_reread(p, mounts):
+    """T9: re-read the leaf through each present domain; no second mkdir.
+
+    The unarmed domain m1 goes first: a guest kernel that blocked m0's session
+    after the dropped reply still lets m1 show whether the effect committed.
+    """
+    leaf = step_leaf(p, "lost-reply")
+    rows = [reread_domain(p, mount, leaf) if mount["present"] else
+            {"index": mount["index"], "present": False}
+            for mount in reversed(mounts)]
+    return {"leaf": leaf, "domains": rows, "mkdir_retried": False}
+
+
+def syncfs(fd):
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.syncfs(fd) != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code))
+    return 0
+
+
+def sync_domain(p, mount):
+    """Open, syncfs and close one domain root; every errno is recorded."""
+    code, fd = attempt(p, "open-root-quiesce", lambda: os.open(
+        mount["path"], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW), path=mount["path"])
+    row = {"index": mount["index"], "open_errno": code, "syncfs_errno": None}
+    if fd is not None:
+        try:
+            row["syncfs_errno"], _ = attempt(p, "syncfs", lambda: syncfs(fd), path=mount["path"])
+        finally:
+            os.close(fd)
+    return row
+
+
+def drop_caches(p, label):
+    def write():
+        with open(DROP_CACHES, "w") as stream:
+            return stream.write("3\n")
+    code, _ = attempt(p, "drop-caches-" + label, write, value=3)
+    return code
+
+
+def quiesce(p, mounts):
+    """T10 guest quiesce before RESTART (lifecycle.md: no active lookups, no
+    historical view source).
+
+    syncfs writes back dirty mapped pages; dropping page cache releases view
+    leases so the guest's cleanup work releases recalls and sends VIEW_RETIRE;
+    dropping dentries/inodes sends FORGET for every unused lookup capability.
+    The second pass catches parents freed by the first. Userspace cannot see
+    those protocol exchanges: the host checks the post-quiesce OBSERVE
+    controller ledger before it may issue RESTART.
+    """
+    rows = [sync_domain(p, mount) for mount in mounts if mount["present"]]
+    first = drop_caches(p, "first")
+    time.sleep(QUIESCE_SETTLE)
+    second = drop_caches(p, "second")
+    return {"domains": rows, "drop_caches_errno": [first, second],
+            "settle_seconds": QUIESCE_SETTLE}
+
+
+def after_loss(p, mounts):
+    """T11 guest half of K04: after host loss, I/O on the unblocked m1 must fail.
+
+    m1, not m0: T9 leaves m0's guest session blocked, so m0 would refuse
+    locally (EHOSTDOWN) without ever reaching the host. Each attempt is
+    recorded once and never retried; the first one reaches the host, later
+    ones may be refused locally once the guest blocks m1 too. An exclusive
+    create that succeeds is closed and preserved (never unlinked): it is the
+    evidence the host snapshot then looks for in the raw directory.
+    """
+    domain = STEP_DOMAIN["after-loss"]
+    root, marker = mounts[domain]["path"], step_leaf(p, "after-loss")
+
+    def create():
+        os.close(os.open(root + "/" + marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+
+    attempts = []
+    for operation, function in [
+            ("lstat-root-after-loss", lambda: os.lstat(root).st_ino),
+            ("listdir-after-loss", lambda: len(os.listdir(root))),
+            ("create-after-loss", create)]:
+        code, _ = attempt(p, operation, function, path=root)
+        attempts.append({"operation": operation, "errno": code})
+    return {"domain": domain, "marker": marker, "attempts": attempts,
+            "io_refused": all(item["errno"] != 0 for item in attempts)}
+
+
+STEP_ACTIONS = {"lost-reply-call": lost_reply_call, "lost-reply-reread": lost_reply_reread,
+                "quiesce": quiesce, "after-loss": after_loss}
+
+
+def run_step(request):
+    """Step admission, then the step; its observation leaves through stdout."""
+    mounts = admit_step(request)
+    limit(request)
+    p = Probe(request, [])  # Steps fork no children; p.children stays empty.
+    observation = STEP_ACTIONS[request["step"]](p, mounts)
+    emit("step-observed", step=request["step"], observation=observation,
+         acceptance=False, publication=None)
+    return p
+
+
+def limit(request):
+    signal.alarm(request["seconds"])
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
+
+
+def run_case(request, roots):
+    """Case or release after full admission; a case retains its payload."""
+    limit(request)
+    p = Probe(request, roots)
+    if request_kind(request) == "release":
+        Retention(p).release()
+    else:
+        CASES[request["case"]](p)
+        # Never delete here: host correlation needs the payload present.
+        Retention(p).retain()
+    return p
+
+
 def main():
-    roots, p, success, release = [], None, False, None
+    roots, p, success, kind, step = [], None, False, None, None
     try:
         checked(len(sys.argv) == 1, "one stdin request; no arguments")
-        signal.signal(signal.SIGALRM, lambda *_: (_ for _ in ()).throw(TimeoutError("case deadline")))
+        signal.signal(signal.SIGALRM, deadline)
         signal.alarm(10)
         raw = sys.stdin.buffer.read(REQUEST_LIMIT + 1)
         checked(len(raw) <= REQUEST_LIMIT, "request limit")
         request = json.loads(raw, object_pairs_hook=unique)
-        release = is_release(request)
-        roots = admit(request)
-        signal.alarm(request["seconds"])
-        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-        resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
-        p = Probe(request, roots)
-        if release:
-            Retention(p).release()
+        kind = request_kind(request)
+        if kind == "step":
+            step = request["step"]
+            p = run_step(request)
         else:
-            CASES[request["case"]](p)
-            # Never delete here: host correlation needs the payload present.
-            Retention(p).retain()
+            roots = admit(request)
+            p = run_case(request, roots)
         success = True
     except BaseException as failure:
         emit("failure", error=type(failure).__name__, detail=str(failure)[:1024],
@@ -709,13 +984,22 @@ def main():
         signal.alarm(0)
         for fd in roots:
             os.close(fd)
-        # A case success retains its payload; only a release success removes it.
-        emit("terminal", action="release" if release else "case", syscall_success=success,
-             payload_retained=success and release is False,
-             payload_released=success and release is True,
-             uncertain_children=sorted(p.children) if p else [],
-             required_host_correlation=True, acceptance=False, publication=None)
+        terminal(kind, step, success, p)
     return 0 if success and not p.children else 1
+
+
+def terminal(kind, step, success, p):
+    """A case success retains its payload; only a release success removes it.
+
+    A step terminal also names its step; its syscall_success means the step ran
+    to completion and recorded its observation, whatever errno the kernel gave.
+    """
+    fields = {"step": step} if kind == "step" else {}
+    emit("terminal", action=kind if kind in {"release", "step"} else "case",
+         syscall_success=success, payload_retained=success and kind == "case",
+         payload_released=success and kind == "release",
+         uncertain_children=sorted(p.children) if p else [],
+         required_host_correlation=True, acceptance=False, publication=None, **fields)
 
 
 if __name__ == "__main__":

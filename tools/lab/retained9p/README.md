@@ -95,13 +95,17 @@ time against already installed/admitted mounts:
    writes a `homelabfs-retained9p-host-correlation/1` record: closed keys
    `version, run_id, case, case_stdout_sha256, inventory_sha256, host_observe,
    acceptance:false`, bound to the case's retained stdout and inventory digests;
-   `host_observe` is the nonempty raw host evidence (for example the lifecycle
-   endpoint OBSERVE reply). The controller binds, but does not interpret, it.
+   `host_observe` is the nonempty raw host evidence. The controller binds, but
+   does not interpret, it; [`correlate.py case`](#host-correlator-zq3-g7-g10-g11)
+   produces it from two lifecycle OBSERVE replies.
 3. `release --output ABS --sha256 SHA --correlation ABS --correlation-sha256 SHA`
    checks that binding and the retained stdout digest, persists the record and
    dispatches the guest release.
 4. `next --output ABS --sha256 SHA` dispatches the following case only after the
    previous payload is released. `syscall_batch_success` needs all five released.
+5. `lifecycle --output ABS --sha256 SHA --step STEP` (after all five releases)
+   dispatches one zq3 T9-T11 guest step with the same intent journal: see
+   [lifecycle steps](#guest-lifecycle-steps-zq3-g10-g11).
 
 `status --output ABS` reads retained state. Refusals before a dispatch change no
 state; a failed or uncertain dispatch records `error`, after which every later
@@ -111,7 +115,7 @@ run started, leaving any retained payload for inspection. The plan's `seconds`
 `min(case seconds + 15, plan seconds)`. Each reopen verifies
 the owned lock, exact plan digest and every staged input snapshot. These commands
 provide no VM lifecycle, package installation, mounting, fencing or normal
-publication; the host correlator that produces step 2's record does not exist yet.
+publication.
 Root must complete the separately approved critical setup before a probe batch.
 The batch's SSH executable, host/guest public pin files and probe bytes are pinned
 and checked before dispatch. The guest connection goes through f3 with strict
@@ -177,6 +181,155 @@ hold the controller in a synchronous pipe write beyond that deadline. Local
 regressions use an actual4KiB pipe/non-reading child and pre-spawn oversize denial;
 these exercise controller transport safety only, not guest filesystem acceptance.
 
+## Guest lifecycle steps (zq3 G10, G11)
+
+After all five payloads are released, `controller.py lifecycle --step` sends
+`homelabfs-retained9p-lifecycle-step/1` requests to the same pinned `guest.py`:
+the plan's boot/provider/manifest/mount identity plus `step` and a 30 s alarm.
+Steps run at most once, in the order below (skipping is allowed, going back
+is not; the re-read needs the CALL directly before it). Each records every
+errno as data in one `step-observed` event; the terminal's `syscall_success`
+only says the step ran to completion. Nothing is retried or deleted. The
+controller records each step's `completed_utc` (workstation clock).
+
+**Gate order: T1-T7, T9, T10, T11, then T8.** T9 blocks m0's guest session
+(below), so the T11 K04 probe uses m1, which must still be mounted and
+unblocked when host loss happens; T8's normal unmount of m1 therefore comes
+last. T8's guest-side assertions (admission refuses `m1`, the empty directory
+stays empty) need no live runtime; if the unmount refuses or hangs after host
+loss, T8 is recorded unrun and Phase 11 handles the mount. Host loss for T11 is
+the runtime exit after a FENCED T10. If T10 is RESTARTED the runtime keeps
+serving, this plan has no supported way to stop it with the guest still up,
+and T11 is recorded unrun.
+
+**Deadlines are never errno values.** The guest's SIGALRM handler raises
+`Deadline`, which is not an `OSError`: an interrupted call is logged as a
+`reply` with `timeout: true` and ends the step as failed, so the controller
+keeps it uncertain (never a refusal, never a pass). An `OSError` without an
+errno also ends the step instead of being recorded as EIO.
+
+Step admission checks the full guest identity but reads the mount tuples from
+mountinfo only, without opening or resolving anything inside a domain. The
+step's own domain (m0 for T9/T10, m1 for T11) must be the exact admitted
+mount; the other may be absent, which is recorded (the admitted provider
+inventory must still list both sessions, otherwise the step refuses).
+
+| Step | Gate | Guest action |
+|---|---|---|
+| `lost-reply-call` | T9 | One `mkdir m0/zq3-RUN-lost-reply` immediately after the host ARM of m0's session; nothing else touches a domain. |
+| `lost-reply-reread` | T9 | `lstat` and a bounded root listing of the leaf, m1 first, then m0; no second mkdir. |
+| `quiesce` | T10 | Open, `syncfs` and close each present root; write `3` to `/proc/sys/vm/drop_caches` (guest-wide: page cache releases view leases, dentry/inode eviction sends FORGET), settle 2 s, drop again. |
+| `after-loss` | T11 | After runtime exit: `lstat` m1, list m1, exclusive create of `m1/zq3-RUN-after-loss`; a create that succeeds is kept as evidence. |
+
+**What the guest kernel actually does with T9.** The patched guest
+(`tools/integration/linux9p/patches/0003`) issues a GETATTR for the parent's
+permission check and a LOOKUP before MKDIR, all as CALLs, and never trusts a
+cached dentry (`hfs_d_revalidate` returns 0). The armed fixture drops the
+*first* matching CALL response, so it can hit one of those instead of MKDIR;
+background CALLs on m0's session after the ARM (deferred FORGET, PROCESS_EXIT
+of an earlier probe process, a GETATTR) can take the drop too. After any
+dropped response the guest marks the session blocked (`EHOSTDOWN` for later
+ordinary CALLs) and has no userspace-visible QUERY; the m0 re-read then fails
+and only m1 shows whether the effect committed. The C9 restart that follows is
+then expected to refuse at the paired cut and FENCE (lifecycle.md). The
+correlator therefore classifies instead of judging; see below.
+
+No guest-side warm-up can make MKDIR the first CALL after the ARM: the
+GETATTR (from `may_create`'s permission check) and the LOOKUP of the new
+name are issued inside the same `mkdir(2)`, uncached by design (analysis
+with patch line references in the
+[guestbridge README](../../../internal/guestbridge/README.md#targeting-the-mkdir-reply-d44)).
+A runtime built with task d44 instead accepts an intent filter:
+`correlate.py command --operation arm-lost-reply --lost-intent MKDIR` prints
+the ARM with `--lost-intent MKDIR`, whose fixture lets those CALLs (and
+background FORGET/PROCESS_EXIT CALLs) through and drops only the MKDIR reply,
+after its effect committed. The expected T9 shape then becomes
+`dropped-reply-effect-committed-and-visible` (m1 sees the leaf, m0 still
+blocked). An older runtime refuses the flag, so it is opt-in.
+
+**What the quiesce does not do.** It performs no explicit VIEW_ACQUIRE
+refresh: it can only release views (page cache drop) and leave none
+historical. On a blocked m0, opening the root and the evicted lookups' FORGET
+CALLs fail with `EHOSTDOWN`, so m0's capabilities stay held; the host OBSERVE
+gate then shows whether the C9 cut precondition holds anyway.
+
+## Host correlator (zq3 G7, G10, G11)
+
+[`correlate.py`](correlate.py) runs offline on the workstation. Its inputs are
+the controller run directory (verified plan digest, state without `error`,
+re-hashed guest logs) and files root copied off f3, each given with its
+SHA256: raw `hfs-controlled-runtime --control SOCK --operation …` client output
+and host snapshots. It writes new exclusive `0600` records, never overwrites,
+and every record says `acceptance:false`. Binding problems refuse and write
+nothing.
+
+- `case --case NAME --baseline R --retained R --record NEW`: OBSERVE replies
+  taken right before the case dispatch and while its payload is retained.
+  Both must be `OBSERVED`, `complete`, `SERVING`, without publication, RESTART
+  or lost-reply section; strictly increasing sequence; same runtime, cut and
+  epoch (a stale or rotated cut refuses); one unfenced admission with the
+  plan's boot ID, provider nonce and both sessions, unchanged domain phase/fence;
+  unchanged journal/owner/generation/configuration, provider ledger
+  (UUID/device/inode), view-controller ledger and transport controller/FUSE
+  session; a non-decreasing transport high-water and a strictly advanced
+  applied position. The guest's own admission event must match. From the
+  second case on, the baseline must follow the previous case's bound retained
+  OBSERVE in the same incarnation and show the release's applied effect. The
+  record (`host_observe` holds both raw replies, a summary and limits) is what
+  `controller.py release --correlation` binds.
+- `lost-reply --before R --armed R --after R --record NEW` (T9): the ARM used
+  the pre-arm OBSERVE's cut/epoch and m0's session; the post-CALL OBSERVE has
+  the same binding and fixture. A `FIRED` exposure must be `UNCERTAIN`, `CALL`,
+  above `armed_high`, with claim and hashes; an ARM with the MKDIR filter
+  (`intent`) must show `dropped_opcode` MKDIR, and both are copied to the
+  record as `armed_intent`/`dropped_opcode`. The leaf state is decided by the
+  unarmed m1 (m0 only if m1 is unmounted and m0 answered itself); m0's
+  `EHOSTDOWN` is recorded as `effect_seen.armed_domain_blocked`. With whether
+  the source advanced since the arm baseline this gives `classification`:
+  `dropped-reply-effect-committed-and-visible`, `dropped-before-mutation` (the
+  expected T9 shape without the MKDIR filter: m1 ENOENT, m0 blocked, no
+  source change),
+  `fixture-not-fired`, `effect-undetermined` (no domain could answer) or
+  `inconsistent`. None of these is a pass.
+- `k04 --baseline S --before S --after S --record NEW` (T11): snapshots from
+  [`host_snapshot.py`](host_snapshot.py) of one run-owned host path below
+  `/var/tmp/hfs-validation-xz3/RUN/` (for example the runtime's FUSE mount
+  point): `baseline` before runtime start, then `before` and `after` around the
+  guest after-loss step, all three required, the same path and taken in that
+  order (f3 clock only). `k04_refusal_observed` needs every guest attempt on m1
+  to fail, the marker absent on the host, a raw directory (if the path is no
+  longer a mount point) equal to the baseline, no host change during the
+  attempt, and `probe.probe_reached_host`: m1 must not have shown the guest's
+  own `EHOSTDOWN` in the T9 re-read, the T10 quiesce or the first after-loss
+  attempt, otherwise the refusals were local and K04 is flagged vacuous. A dead
+  FUSE mount still covering the path reports its errno instead of a listing.
+  `host_snapshot.py` is read-only (lstat, at most 256 names through an
+  `O_NOFOLLOW` descriptor) and runs on f3 as root with the pinned interpreter;
+  its 10 s alarm refuses the whole snapshot (a hang is uncertain, never a dead
+  mount's errno).
+- `command --operation observe|arm-lost-reply|restart --observe R [--last R]
+  [--lost-intent MKDIR] --runtime-binary PATH --control SOCK`: prints, never
+  runs, the exact client argv: runtime, cut and epoch from the latest OBSERVE
+  and sequence = last reply's sequence + 1; `--lost-intent` (ARM only) adds
+  the d44 filter flag. ARM refuses unless the batch is released, no lifecycle
+  step ran and nothing is armed. RESTART refuses unless the last step was
+  `quiesce`, the OBSERVE is later than every OBSERVE bound by a case
+  correlation, and it shows the C9 cut precondition: view-controller `Leases`
+  and `Reservations` 0, no `Recall`, `Matches` true. OBSERVE carries no
+  timestamp, so that it was taken after the quiesce is checkable only in part;
+  the output repeats the quiesce's `completed_utc` the operator must follow.
+
+Local tests: `test_lifecycle_steps.py` (step shapes, mountinfo-only admission,
+real local syscalls for each step with the kernel's errno substituted,
+deadlines that end a step instead of becoming an errno, per-step required
+domain, controller ordering/no-replay) and `test_correlate.py` (every case
+correlated and accepted by the real `release`, stale cut/epoch, rotated
+runtime, wrong case, changed log, broken chain, lost-reply classifications
+including the realistic blocked-m0 shape, binding refusals, K04 with real
+snapshots of temporary directories including a vacuous blocked-m1 probe and
+snapshot order/path binding, argv builder, snapshot deadlines).
+These are local logic tests only, never 9p, runtime or lab evidence.
+
 ## Run-only observer key (zq3 G6)
 
 [`observer_key.py`](observer_key.py) runs **on Rocky as root** inside the
@@ -224,6 +377,170 @@ between writing the temporary file and the rename leaves a stale
 deletes it. One flock per run directory serialises the tool.
 The interpreter pin covers the executable file only, not the shared libraries
 it loads (the same limit as `observer.py`'s own `fexecve` pin).
+
+## Ordinary pod namespace fixture (zq3 G9, T7, decision A8)
+
+[`pod_fixture.py`](pod_fixture.py) runs **on Rocky as root** inside the
+approved window, after Phase 8 mounted `m0`. It implements the
+[ordinary pod namespace profile](../../../docs/lab/Retained-9p-fixtures.md#ordinary-pod-namespace-profile).
+The container-side code is [`pod_workload.py`](pod_workload.py). The driver
+pins it by `WORKLOAD_SHA256`, so the staged `pod_fixture.py` hash pins both.
+Stage both files root-owned in one directory: the driver reads the workload
+from its own directory and refuses other bytes.
+Both files are Python 3.9 compatible. Nothing here pulls an image, installs a
+package, mounts, unmounts or forces anything, and it never kills a container
+or the VM (see the timeout note under **Results**).
+
+**Runtime choice (A8, agent judgement under Paul's 2026-11-08 delegation).**
+Use the podman `5.8.2-8.el9_8` and crun `1.27-1.el9_7` already installed on
+Rocky. Both NEVRAs are pinned in the script. The SHA256 of podman, crun,
+conmon and `/usr/share/containers/seccomp.json` comes from Phase 1 in the
+request. Containers are rootful, use `--userns=host` (`init_user_ns`), VFS
+storage in fresh run-owned roots, and run-owned `containers.conf`,
+`storage.conf` and an empty `registries.conf`. The rootfs is **not an image**.
+It is a directory built from Rocky's own installed files and started with
+`--rootfs --read-only`. Why this choice:
+
+- `buildah` and `skopeo` are absent. Any registry pull would add a network
+  dependency and bytes nobody reviewed.
+- Every rootfs file is attested against the RPM database's SHA256 digest of
+  the installed package, and that package must carry a signature
+  (`RSAHEADER`). An empty or `(none)` signature refuses.
+- The exact tree can be re-verified in place before and after the run.
+
+`runc` is not installed and is not needed.
+
+- `manifest` (read-only, usable for Phase 1 facts) runs the workload's own
+  `closure` mode under the pinned `/usr/bin/python3.9 -I -B -S` with
+  `LC_ALL=C`. That mode exercises the workload's code paths and lists every
+  module file and `/proc/self/maps` file the interpreter loaded. The manifest
+  then adds the usrmerge links (`/lib64` for PT_INTERP) and versioned SONAME
+  links. It requires every file to be owned by a package whose
+  `FILEDIGESTALGO` is SHA256, with mode, digest and link target equal to the
+  RPM database row. Fixture-made entries are labelled `origin: fixture`: the
+  directories and mount points, a minimal numeric `/etc/passwd`/`group`, empty
+  `/etc/hosts`/`hostname`/`resolv.conf` and the workload. The command prints
+  the canonical manifest and its SHA256. With `TZ=UTC` and `LC_ALL=C` the same
+  install always gives the same digest. The workload deliberately avoids
+  `hashlib`/`ssl`, so OpenSSL and its configuration files stay out of the
+  container.
+- `build --run-id R --expect-manifest-sha256 H` recomputes the manifest and
+  refuses unless it equals the pinned `H`, then writes `RUN/pod/rootfs`
+  exclusively. Files are root-owned and labelled
+  `system_u:object_r:container_file_t:s0`, the label podman documents for
+  `--rootfs`. The command also writes `RUN/pod/rootfs-manifest.json` and
+  re-verifies the whole tree.
+- `run --request ABS` takes a closed request:
+  `{version, run_id, fixture_sha256, rootfs_manifest_sha256, runtime_sha256{podman,crun,conmon,seccomp}, m0{tag:"hfs0", mount_id}}`.
+  It admits only if all of these hold:
+  - it runs as root on Linux;
+  - SELinux is enforcing;
+  - the driver is in guest init's mount/PID/net/UTS/IPC/user/cgroup namespaces;
+  - init has the identity uid/gid map;
+  - `m0` has the exact controlled 9p tuple, as `guest.py` admits it;
+  - the run directory is root-private and not on `m0`;
+  - the runtime hashes and NEVRAs and the rootfs equal their pins;
+  - `/var/log/audit/audit.log` exists and is readable. Admission stats it and
+    reads its last byte; the AVC delta is read after the containers exit.
+
+  Then it starts `w0` (new mount, PID, net (`--network=none`, loopback only),
+  UTS and IPC namespaces, private cgroupns, hostname `hfs-zq3-RUN-pod`). It
+  starts `w1` with its own mount namespace, joined to w0's PID, net, UTS and
+  IPC namespaces, like a pod. Both bind-mount the same `RUN/m0` at `/hfs/m0`
+  with `rprivate` propagation. Both use `--cap-drop=all` plus only
+  CHOWN/FOWNER/SETGID/SETUID, `no-new-privileges`, the pinned seccomp profile
+  and MCS level `s0:c731,c914`. Limits: 256 MiB memory, no swap, 64 PIDs.
+  Each workload prints its identity and then waits on a stdin barrier, so the
+  driver inspects `/proc/PID/{ns,status,uid_map,gid_map,attr/current,cgroup}`
+  and the effective cgroup limits **from outside** while it is alive.
+
+The workloads then run:
+
+- **Numeric permission matrix in `w0`:** two UIDs; supplementary group only;
+  the same UID with a full 1024-entry group vector, allowed only through its
+  final entry, and denied after removing just that entry; changing groups
+  inside one process under `setfsuid(41001)`/`setfsgid(42001)`.
+- **Lock matrix across `w0`/`w1` through their separate binds of one mount:**
+  - same device/inode;
+  - nonblocking POSIX and flock conflicts;
+  - `F_GETLK` reports w0's PID in the shared PID namespace;
+  - `/proc/locks` blocked-waiter evidence;
+  - acquisition only after release;
+  - w1's locks released by its exit.
+
+They coordinate over an abstract UNIX socket. Abstract sockets are per network
+namespace, so reaching it shows w1 really joined w0's netns.
+
+**Judgement.** Self-reported and outside namespace inodes must agree. Mount,
+PID, net, UTS and IPC must differ from the guest's. The user namespace must
+equal the guest's initial one, with the `0 0 4294967295` maps. w1 must share
+w0's PID, net, UTS and IPC namespaces and have its own mount namespace.
+Container root must be `0/0` with no group other than 0, the exact capability
+mask in effective, permitted and bounding sets, empty ambient, NNP=1 and
+seccomp=2. The label must be `container_t:s0:c731,c914`. The only link may be
+`lo`, and its recorded flags must show it UP; a down loopback fails rather than
+being inferred from `--network=none`. `/hfs/m0` must be exactly one 9p row with the `m0` tag and device. The
+cgroup limits must equal the pins. Every matrix and lock outcome must match.
+There may be no AVC denial for the pod in the audit delta. A rotated or
+oversized delta is *incomplete*. SELinux must still be enforcing afterwards,
+and pinned rootfs entries must be unchanged; the runtime may add only empty
+mount points, which are reported.
+
+**Results.** A pass removes the two exited containers with plain `podman rm`
+and the exact five payload files and leaf on `m0`, after checking the listing.
+A cleanup failure is reported apart from the T7 result. Any failure, timeout or
+malformed report preserves the containers, payload and evidence. A driver
+timeout waiting for the workloads is recorded as `uncertain` and kills nothing.
+A short command that hangs (`rpm`, `podman inspect`, `podman rm`) is bounded:
+its timeout kills only that client process, never a container, conmon or the
+VM. Such a timeout during the run is a T7 failure, and the verdict and both
+workloads' output are still written. Note that `w0` is PID 1 of the shared PID
+namespace: if it exits early (its own failure or deadline), the kernel ends
+`w1` too, and `w1`'s exit status records that. Evidence goes to
+`RUN/pod/evidence/`: `request.json`, both workloads' stdout and stderr,
+`verdict.json` and `cleanup.json`. The pod directory is single-use: a second
+`run` refuses. The verdict always says `acceptance: false`. A T7 pass is one
+gate of the matrix, not zq3 acceptance.
+
+**Not known before the run (and recorded rather than worked around).**
+
+- Whether `container_t` may use the label Rocky's policy gives the
+  candidate's 9p mount. The fixture records `m0_label` and never uses `:z`/`:Z`
+  (which would write xattrs into the tested volume) or `label=disable`. A
+  denial fails T7 with its AVC lines. Fixing it (for example a `context=`
+  option in Phase 8's mount, or a boolean) is a decision for Paul.
+- Whether podman relabels or adds files in a `--rootfs` tree. A relabel shows
+  as changed pinned entries and fails T7. Added empty mount points are
+  tolerated and reported.
+- The container root's exact supplementary group list, `[]` or `[0]`. Both are
+  accepted; anything else fails.
+
+**Local tests** (`test_pod_fixture.py`) simulate rpm, podman inspect/rm,
+`/proc`, `/sys` and labels explicitly with a FakeHost and a fake installed-file
+mirror. They drive the whole `run` through real pipes with fake container
+processes. Negative cases include:
+
+- a namespace not separated;
+- a foreign user namespace or map;
+- SELinux not enforcing, a wrong context or AVC denials;
+- wrong UID/GID, groups, capabilities or matrix outcomes;
+- a missing shared bind or different inodes;
+- an unshared pod namespace, extra links, missing limits or rootfs changes;
+- unattested, unowned, non-SHA256 or out-of-tree closure files;
+- admission refusals;
+- runtime pin mismatches;
+- request shape errors;
+- a timeout that must not kill;
+- single-use evidence.
+
+The lock protocol runs for real between two local processes on tmpfs, with
+real kernel locks and `/proc/locks` waiters. It uses tmpfs, not `$TMPDIR`,
+because on btrfs `st_dev` differs from the superblock device that `/proc/locks`
+prints. Linux 9p reports one device in both places. An optional test reads the
+workstation's real RPM database read-only, builds the rootfs and starts the
+interpreter and all workload imports from it alone in an unprivileged
+user-namespace chroot. That checks closure completeness on Fedora, **not on
+Rocky**. No test runs podman, crun, SELinux policy or 9p.
 
 ## External staged signer
 

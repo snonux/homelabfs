@@ -19,9 +19,9 @@ import (
 // lifecycleClient holds the explicit client-mode flags. Every binding value is
 // copied from the runtime's own READY/OBSERVE records; the client invents none.
 type lifecycleClient struct {
-	socket, operation, runtime, cut string
-	session, lostOperation          string
-	sequence, epoch                 uint64
+	socket, operation, runtime, cut    string
+	session, lostOperation, lostIntent string
+	sequence, epoch                    uint64
 }
 
 func lifecycleClientFlags(f *flag.FlagSet) *lifecycleClient {
@@ -32,6 +32,7 @@ func lifecycleClientFlags(f *flag.FlagSet) *lifecycleClient {
 	f.StringVar(&c.cut, "cut", "", "client mode (restart, arm-lost-reply): server-issued current cut UUID")
 	f.StringVar(&c.session, "session", "", "client mode (arm-lost-reply): enrolled session UUID")
 	f.StringVar(&c.lostOperation, "lost-operation", "", "client mode (arm-lost-reply): CALL")
+	f.StringVar(&c.lostIntent, "lost-intent", "", "client mode (arm-lost-reply, optional): drop only a CALL with this guest intent opcode (MKDIR)")
 	f.Uint64Var(&c.sequence, "sequence", 0, "client mode: strictly increasing command sequence")
 	f.Uint64Var(&c.epoch, "epoch", 0, "client mode (restart, arm-lost-reply): server-issued current epoch")
 	return c
@@ -63,12 +64,12 @@ func runLifecycleClient(ctx context.Context, f *flag.FlagSet, c *lifecycleClient
 func (c *lifecycleClient) request(f *flag.FlagSet) (lifecycleRequest, error) {
 	bound := c.operation == "restart" || c.operation == "arm-lost-reply"
 	arm := c.operation == "arm-lost-reply"
-	allowed := map[string]bool{"control": true, "operation": true, "runtime": true, "sequence": true, "cut": bound, "epoch": bound, "session": arm, "lost-operation": arm}
+	allowed := map[string]bool{"control": true, "operation": true, "runtime": true, "sequence": true, "cut": bound, "epoch": bound, "session": arm, "lost-operation": arm, "lost-intent": arm}
 	extra := false
 	f.Visit(func(fl *flag.Flag) { extra = extra || !allowed[fl.Name] })
 	runtime, err := fsapi.ParseUUID(c.runtime)
 	if extra || f.NArg() != 0 || err != nil || c.sequence == 0 || c.sequence > uint64(^uint32(0)) {
-		return lifecycleRequest{}, fmt.Errorf("client requires --control SOCKET --operation observe|restart|arm-lost-reply --runtime UUID --sequence N [--cut UUID --epoch N [--session UUID --lost-operation CALL]]")
+		return lifecycleRequest{}, fmt.Errorf("client requires --control SOCKET --operation observe|restart|arm-lost-reply --runtime UUID --sequence N [--cut UUID --epoch N [--session UUID --lost-operation CALL [--lost-intent MKDIR]]]")
 	}
 	r := lifecycleRequest{opcode: LifecycleObserve, sequence: uint32(c.sequence), runtime: runtime, epoch: c.epoch}
 	switch c.operation {
@@ -78,10 +79,11 @@ func (c *lifecycleClient) request(f *flag.FlagSet) (lifecycleRequest, error) {
 		r.opcode = LifecycleRestart
 	case "arm-lost-reply":
 		r.opcode = LifecycleArmLostReply
-		if r.session, err = fsapi.ParseUUID(c.session); err != nil || c.lostOperation != guestbridge.LostReplyOperation {
-			return lifecycleRequest{}, fmt.Errorf("arm-lost-reply requires an enrolled --session and --lost-operation CALL")
+		var ok bool
+		r.session, err = fsapi.ParseUUID(c.session)
+		if r.operation, ok = c.armOperation(); err != nil || !ok {
+			return lifecycleRequest{}, fmt.Errorf("arm-lost-reply requires an enrolled --session, --lost-operation CALL and optionally --lost-intent MKDIR")
 		}
-		r.operation = lostReplyOperationCall
 	default:
 		return lifecycleRequest{}, fmt.Errorf("unknown --operation %q", c.operation)
 	}
@@ -89,6 +91,21 @@ func (c *lifecycleClient) request(f *flag.FlagSet) (lifecycleRequest, error) {
 		return lifecycleRequest{}, fmt.Errorf("%s requires the current --cut and --epoch", c.operation)
 	}
 	return r, nil
+}
+
+// armOperation maps --lost-operation and the optional --lost-intent to the
+// HSC1 ARM operation code: CALL alone selects any CALL, CALL with MKDIR only
+// a MKDIR CALL. Any other combination has no code and refuses client-side.
+func (c *lifecycleClient) armOperation() (uint8, bool) {
+	if c.lostOperation != guestbridge.LostReplyOperation {
+		return 0, false
+	}
+	for code, intent := range lostReplyIntents {
+		if intent == c.lostIntent {
+			return code, true
+		}
+	}
+	return 0, false
 }
 
 // lifecycleCommand performs one bounded request/reply exchange. The reply

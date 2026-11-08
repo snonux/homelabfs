@@ -111,5 +111,10 @@ after fork and successful waitpid, exact mount/source/ID
 mismatch, invalid or missing paths, symlinks and preexisting run leaves. Negative
 controls must fail while reaping their children and preserving run resources.
 The suite runs sequentially, uses temporary directories, and does no remote I/O.
+It first selects a temporary filesystem where a real held lock appears in
+`/proc/locks` with exactly the device and inode `fstat` reports (`$TMPDIR`,
+then `/dev/shm`, then `/tmp`); btrfs reports a per-subvolume device in `fstat`
+and fails this check, so tmpfs is used there. If no candidate qualifies, every
+test errors instead of skipping.
 Its results verify the local fixture and failure detection, not live 9p behavior,
 publication, security, sync, replication, or production admission.
