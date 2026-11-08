@@ -137,9 +137,12 @@ or vmm context could still exist.
   `tools/lab/test_fdescfs_window.py`, artifact tests, `go test` for touched
   packages, shellcheck).
 - Changes: workstation files only.
-- **GAP**: run config/enrollment/bhyve-argv generator (G2, G4), filled window
-  plan (G12). Controller target addresses and host-key pins (G8) are
-  implemented: the batch plan's `host`/`guest` entries name the pin files above.
+- **GAP**: run config/enrollment generator (G2), filled window plan (G12).
+  Controller target addresses and host-key pins (G8) are implemented: the
+  batch plan's `host`/`guest` entries name the pin files above. The bhyve argv
+  record comes from `tools/lab/directlaunch/argv.py generate`, run on the
+  workstation after the Phase 1 launch facts exist and before Phase 2 staging
+  (G4); G2 must copy its `args` verbatim, and `argv.py verify` checks the config.
 - Evidence: hashes of every staged byte, plan files and their SHA256.
 - Failure: fix locally; nothing remote has happened.
 
@@ -148,7 +151,13 @@ or vmm context could still exist.
 - Actions: one bounded read-only batch per host over pinned SSH, stdout and
   stderr kept separate, no retry: everything in the baseline table plus the
   *new* items above. (The fdescfs controller's own `facts` call needs the
-  staged inspector, so it runs at the start of Phase 4.)
+  staged inspector, so it runs at the start of Phase 4.) The f3 batch includes
+  the G4 launch facts, `doas -n /usr/local/bin/python3.12 -I -B - facts <
+  tools/lab/directlaunch/host.py` (read-only, nothing staged): rocky.conf,
+  vm-run, firmware and UEFI vars hashes, the last vm-bhyve launch block (the
+  retained one is from 2026-11-02, PID 6444; Rocky has since restarted as PID
+  80203), `vm list`, `/dev/vmm`, interfaces, `vm-public` members, nmdm nodes,
+  processes. Choose a free tap unit (`tap100`..`tap999`) from it.
 - Preconditions to continue: Rocky running PID matches, all four FreeBSD VMs
   stopped, swap unused, pool ONLINE with the disk headroom above, `fusefs` and
   `fdescfs` state as recorded, `/dev/fd` is devfs, f3's route to
@@ -165,7 +174,9 @@ or vmm context could still exist.
   `0700`; copy into its `bin/` only `freebsd/hfs-controlled-runtime`, `freebsd/bhyve`,
   `freebsd/bhyve-slirp-helper` (if the argv needs it), the `controlledruntime.test`
   binary and `fdescfs-namespace` helper, mode `0500`, one hard link each; verify
-  SHA256 of every staged file against the manifest/Phase 0 pins.
+  SHA256 of every staged file against the manifest/Phase 0 pins. Also stage
+  (G4) `tools/lab/directlaunch/{host,argv}.py` and the pinned argv record,
+  mode `0400`, with their hashes.
 - Changes: new files under the staging prefix only. No system binary,
   library, rc or loader change.
 - Evidence: staged-file listing with hashes, owner, mode, link count.
@@ -304,34 +315,47 @@ which an abort leaves an unconsumed `next_entry` is as short as possible.
 
 ### Phase 7: host setup for the controlled launch (f3, A4)
 
-**GAP G4**: the exact bhyve argv and the setup/cleanup script do not exist.
-The docs fix the route only as "possible": keep the 12 GiB vm-bhyve config
-unchanged and launch the candidate bhyve directly as the runtime's own child.
-Intended setup:
+The 12 GiB vm-bhyve config stays unchanged; the candidate bhyve runs directly
+as the runtime's own child. G4 is implemented as preparation (not yet run on
+f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
 
-- `ifconfig tap create` (record the name, e.g. `tapN`), `ifconfig vm-public
-  addm tapN`, `ifconfig tapN up`.
-- Copy `/zroot/bhyve/rocky/uefi-vars.fd` (`e78b9144…`) into the run directory;
-  the original vars file is never written.
+- `argv.py generate` (after Phase 1, before Phase 2 staging) rebuilds the argv from the Phase 1 launch facts
+  and pins it in a canonical record; any drift from the reviewed baseline
+  (rocky.conf, vm-run, firmware, every logged hardware token) refuses. For
+  run `zq3-r1` with tap `tap100` the argv is (vm-run order: devices, options,
+  console, name):
+  `-s 0,hostbridge -s 31,lpc -s 0:4:0,nvme,/zroot/bhyve/rocky/disk0.img
+  -s 0:5:0,virtio-net,tap100,mac=58:9c:fc:4c:38:84
+  -c 4 -m 6G -AHPw
+  -l bootrom,/usr/local/share/uefi-firmware/BHYVE_UEFI.fd,/var/tmp/hfs-validation-xz3/zq3-r1/launch/uefi-vars.fd
+  -s 0:7:0,virtio-9p -o pci.0.7.0.sharename=hfs0 -o pci.0.7.0.hfs-controller=<session0-uuid>
+  -s 0:8:0,virtio-9p -o pci.0.8.0.sharename=hfs1 -o pci.0.8.0.hfs-controller=<session1-uuid>
+  -U e10b6225-44d0-11f1-882a-e8ff1ed7f3d7 -u -l com1,/dev/nmdm-hfs-zq3-r1.1A hfs-zq3-r1`.
+  The earlier sketch here would not have worked: bhyve's virtio-9p `-s`
+  parser reads `sharename=hfs0` as share `sharename` with path `hfs0` and
+  refuses the second `=`, so the controller is set with `-o` after the
+  device's `-s`. The sketch also lacked vm-bhyve's `-w` and `-u`. The PoC
+  device and the fbuf/VNC device are dropped; NIC slot and MAC are kept, so
+  Rocky keeps its interface name and address. A guest reboot ends the child
+  (no vm-run restart loop).
+- `host.py setup --record … --record-sha256 …` (f3, root): re-collects the
+  facts and refuses on drift (including a changed UEFI vars hash), unless all
+  vm-bhyve guests are Stopped, `/dev/vmm` is empty, the tap and nmdm names are
+  free and the launch directory is new. Then it copies
+  `/zroot/bhyve/rocky/uefi-vars.fd` (`e78b9144…` on 2026-11-05; re-pinned
+  from fresh facts) into `<staging>/launch/` (original only read) and creates
+  the pinned tap: `create`, description `homelabfs-hfs-zq3-r1`, `vm-public
+  addm`, `up`, each with an intent record.
 - Initialise the disposable volume and node control directory under the
   staging prefix. **GAP G3**: the candidate has no `homelabfs node-init /
   volume-init` helper.
-- Write the private `controlled-runtime/1` config: `Exporter` = staged bhyve
-  with `ControlledBootstrap: true` and argv of the form
-  `-c 4 -m 6G -A -H -P -s 0:0,hostbridge -s 31:0,lpc
-  -s 0:4:0,nvme,/zroot/bhyve/rocky/disk0.img
-  -s 0:5:0,virtio-net,tapN,mac=58:9c:fc:4c:38:84
-  -s 0:7:0,virtio-9p,sharename=hfs0,hfs-controller=<session0-uuid>
-  -s 0:8:0,virtio-9p,sharename=hfs1,hfs-controller=<session1-uuid>
-  -l com1,/dev/nmdm-hfs-zq3-r1.1A
-  -l bootrom,/usr/local/share/uefi-firmware/BHYVE_UEFI.fd,<copied vars>
-  -U e10b6225-44d0-11f1-882a-e8ff1ed7f3d7 hfs-zq3-r1`
-  (to be reconstructed from the actual vm-bhyve launch facts, then pinned).
-  The PoC `homelabfs_poc` device is **not** included; the fbuf/VNC device is
-  dropped. Same MAC keeps Rocky's address.
-- Changes: one transient tap in `vm-public`, a new nmdm pair, run files.
-- Rollback: Phase 11 destroys the tap and vmm context after bhyve exits.
-- Failure (no child started): destroy the tap, restore the window, then **U3**.
+- Write the private `controlled-runtime/1` config (G2) with `Exporter` = staged
+  bhyve and `Args` copied verbatim from the record; `argv.py verify` must pass.
+- Changes: one transient tap in `vm-public`, the vars copy and records under
+  the staging prefix; bhyve creates the nmdm pair and the vmm context.
+- Rollback: Phase 11 step 4 (`host.py cleanup`).
+- Failure (no child started): `host.py cleanup --no-child` (destroys the tap),
+  restore the window, then **U3**.
 
 ### Phase 8: start the runtime and staged bootstrap (f3 + Rocky, A4, A7)
 
@@ -422,9 +446,15 @@ Order matters; each step needs the previous one confirmed.
 3. Guest: `systemctl poweroff`. On f3 confirm the bhyve child exited (runtime
    reports exit; no process; if the runtime already exited, wait for the child).
    Never kill the child.
-4. f3: if `/dev/vmm/hfs-zq3-r1` remains, `bhyvectl --destroy --vm=hfs-zq3-r1`;
-   `ifconfig tapN destroy`; normal unmount of the native FUSE mount if the runtime
-   left it (busy: preserve); delete the observer private key file.
+4. f3: `host.py cleanup --record … --record-sha256 … --child-pid <exporter PID
+   from runtime evidence>` (G4): refuses while that PID exists or any process
+   carries the name `hfs-zq3-r1`, and never signals anything. Otherwise it
+   destroys `/dev/vmm/hfs-zq3-r1` only if `/dev/vmm` was empty before setup
+   and the name is no vm-bhyve guest, destroys the pinned tap only if its
+   description is the run label, reports the inert nmdm nodes, keeps the vars
+   copy with its hash and checks the original vars are unchanged. Then normal
+   unmount of the native FUSE mount if the runtime left it (busy: preserve);
+   delete the observer private key file.
 5. f3: `fdescfs-window.py restore …`: normal `unmount` by exact FSID; compares
    final state with the post-load baseline; `restoration-summary.json` states
    that `fdescfs` stays loaded. `fusefs` also stays loaded.
@@ -556,7 +586,11 @@ reviewed and pinned, and this plan is re-filled:
 - G3 Source-matching volume/node initialisation helper; the candidate package
   contains only `hfs-controlled-runtime` (no `homelabfs node-init/volume-init`).
 - G4 Pinned direct bhyve argv reconstructed from the current launch facts, plus
-  the tap/nmdm/UEFI-vars setup and post-exit cleanup script.
+  the tap/nmdm/UEFI-vars setup and post-exit cleanup script. **Prepared** in
+  [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md) (task t34,
+  local simulated tests only). Still needed: fresh `host.py facts` from f3 for
+  the current Rocky launch block and vars hash, a chosen tap unit, the G2
+  session UUIDs, then `argv.py generate` and review of the record.
 - G5 Rocky kernel install/one-shot/removal script and the
   `installed-admission-v1.json` generator.
 - G6 **Implemented (q34)**: [`tools/lab/retained9p/observer_key.py`](../../tools/lab/retained9p/observer_key.py)
