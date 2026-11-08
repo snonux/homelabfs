@@ -171,7 +171,8 @@ class FakeRocky(rk.System):
             return self.faults[tool]
         handler = {"grubby": self.grubby, "editenv": self.editenv,
                    "reboot-once": self.reboot_once, "depmod": self.depmod,
-                   "dracut": self.dracut, "systemctl": self.systemctl}[tool]
+                   "dracut": self.dracut, "systemctl": self.systemctl,
+                   "udevadm": self.udevadm}[tool]
         result = handler(list(args))
         if tool in self.hooks:
             self.hooks[tool](self, list(args))
@@ -244,6 +245,16 @@ class FakeRocky(rk.System):
     def systemctl(self, args):
         assert args == ["reboot"]
         return 0, "", ""
+
+    def udevadm(self, args):
+        assert args == rk.UDEV_SETTLE
+        return 0, "", ""
+
+    def kdump(self):
+        """kdump.service in a test-kernel boot builds its per-kernel initramfs."""
+        path = self.path("/boot/initramfs-{}kdump.img".format(self.current))
+        path.write_bytes(b"kdump initramfs for " + self.current.encode())
+        return path
 
     # -- Emulated boots ----------------------------------------------------
     def boot(self, release=None, loaded=()):
@@ -612,7 +623,7 @@ class RemoveAndRecoveryTests(Rig):
         self.select()
         self.refused("remove", "run cancel (U1) first")
         self.rocky.boot()  # GRUB consumes next_entry, test kernel runs.
-        self.refused("remove", "never remove the kernel that is running")
+        self.refused("remove", "runs only on the stock kernel")
         self.assertTrue(self.target("/boot/vmlinuz-" + RELEASE).exists())
 
     def test_remove_preserves_everything_on_foreign_content(self):
@@ -651,7 +662,7 @@ class RemoveAndRecoveryTests(Rig):
         self.boot_test_kernel(loaded=())
         self.ok("check", "--expect", "test")
         self.append_intent("reboot")  # The shutdown won the race.
-        self.refused("remove", "never remove")  # Still the same boot.
+        self.refused("remove", "runs only on the stock kernel")  # Still the same boot.
         self.rocky.boot()
         self.ok("remove")
 
@@ -672,6 +683,52 @@ class RemoveAndRecoveryTests(Rig):
         self.refused("reconcile", "no uncertain intent", "--seq", "7", "--note", "x")
         self.ok("reconcile", "--seq", "99", "--note", "root inspected /boot: untouched")
         self.ok("remove")
+
+    def test_third_kernel_is_neither_stock_nor_test(self):
+        """An installed ELRepo kernel must not pass as 'stock'."""
+        elrepo = "7.0.3-1.el9.elrepo.x86_64"
+        self.rocky.current = elrepo
+        self.refused("install", "required " + STOCK)
+        self.rocky.current = STOCK
+        self.install()
+        self.rocky.current = elrepo
+        self.refused("select", "required " + STOCK)
+        self.refused("remove", "required " + STOCK)
+        self.refused("admission", "required " + RELEASE)
+        self.refused("reboot-to-stock", "required " + RELEASE)
+        self.assertEqual(self.grub_mutations()[1:], [])  # Only install's grubby add.
+
+    def test_u2_removes_kdump_initramfs_with_hash(self):
+        self.boot_test_kernel(loaded=())
+        kdump = self.rocky.kdump()  # kdump.service in the test-kernel boot.
+        expected = rk.digest(kdump.read_bytes())
+        self.ok("check", "--expect", "test")
+        self.ok("reboot-to-stock")
+        self.rocky.boot()
+        result = self.ok("remove")
+        name = "/boot/initramfs-{}kdump.img".format(RELEASE)
+        self.assertEqual(result["removed_files"][name], expected)
+        self.assertFalse(kdump.exists())
+        stock_kdump = self.rocky.kdump()  # The stock kernel's image is never touched.
+        self.assertTrue(stock_kdump.exists())
+
+    def test_install_refuses_existing_kdump_initramfs(self):
+        self.rocky.path("/boot/initramfs-{}kdump.img".format(RELEASE)).write_bytes(b"old")
+        self.refused("install", "already exist")
+
+    def test_torn_journal_blocks_all_but_cancel_and_status(self):
+        self.select()
+        with (self.state / "journal.jsonl").open("a") as stream:
+            stream.write('{"seq": 7, "kind": "inte')  # Interrupted write.
+        self.refused("remove", "torn journal tail")
+        self.refused("select", "torn journal tail")
+        self.assertTrue(self.ok("status")["torn_tail"])
+        # check is read-only diagnostics and still runs (it reports next_entry).
+        self.assertEqual(self.run_tool("check", "--expect", "any")[0], 1)
+        self.ok("cancel")
+        self.assert_stock_boot_state()
+        self.refused("remove", "unparseable journal line")  # Root must repair.
+        self.ok("cancel")  # Still possible after the fragment became a line.
 
     def append_intent(self, step):
         with (self.state / "journal.jsonl").open("a") as stream:
@@ -746,6 +803,15 @@ class AdmissionTests(Rig):
                 self.refused("admission", text)
                 self.assertFalse(os.path.lexists(self.target(rk.ADMISSION_PATH)))
 
+    def test_admission_waits_for_udev_and_refuses_unsettled_queue(self):
+        self.boot_test_kernel()
+        self.rocky.faults["udevadm"] = (1, "", "timeout waiting for udev queue")
+        self.refused("admission", "udev queue did not settle")
+        self.assertFalse(os.path.lexists(self.target(rk.ADMISSION_PATH)))
+        del self.rocky.faults["udevadm"]
+        self.ok("admission")
+        self.assertIn(("udevadm", rk.UDEV_SETTLE), self.rocky.calls)
+
     def test_admission_refuses_unstable_observation(self):
         self.boot_test_kernel()
         ids = iter(["a", "a", "b"])  # settled check, first read, repeated read
@@ -756,7 +822,7 @@ class AdmissionTests(Rig):
         self.boot_test_kernel()  # Phase 8: the controlled boot consumes next_entry.
         self.ok("admission")
         self.assertTrue(self.ok("check", "--expect", "test")["ok"])  # Phase 11 step 2.
-        self.refused("reboot-to-stock", "controlled boot")  # Phase 11 uses poweroff.
+        self.refused("reboot-to-stock", "admission manifest exists")  # Phase 11 uses poweroff.
         self.assertEqual(self.rocky.boot(), STOCK)  # Phase 12 normal start.
         self.assertTrue(self.ok("check", "--expect", "stock")["ok"])
         self.ok("remove")

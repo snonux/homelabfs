@@ -241,13 +241,13 @@ Rocky-side command still needs Paul's explicit A3 approval of the filled plan.
 
 | Command | Plan step | What it does and refuses |
 |---|---|---|
-| `install --stage DIR` | Phase 3 steps 1-4 | Needs the stock kernel running, the pinned default, empty `next_entry`, no existing targets or test-kernel entry, `/boot` headroom. Then it records `pre.json` (grubenv, default, raw `grubby --info=ALL`), copies the verified bytes (write beside, link, never clobber), runs `depmod`, `dracut --kver`, `grubby --add-kernel … --copy-default --title …`, and checks for exactly one new entry, all old entries unchanged, the default and `saved_entry` unchanged and `next_entry` still empty. |
-| `select` | Phase 5 step 2 | Last Rocky action before the f3 stop. Rechecks installed bytes, initramfs and BLS entry, runs `grub2-reboot <id>`, verifies `next_entry` = id and the default unchanged. Any failure runs U1 at once. Runs once per state directory. |
-| `cancel` | U1 | `grub2-editenv - unset next_entry` and verify. Allowed even with an uncertain journal. |
-| `remove` | U2 | Stock kernel only, `next_entry` empty. Scans first and refuses, deleting nothing, if anything the plan or depmod did not create is present (including symlinks). Then `grubby --remove-kernel`, deletes the files and the admission manifest, and requires `grubby --info=ALL` to equal the pre-run listing byte for byte. |
+| `install --stage DIR` | Phase 3 steps 1-4 | Needs exactly the plan's stock release running (any other installed kernel, such as ELRepo 7.0.3, refuses), the pinned default, empty `next_entry`, no existing targets or test-kernel entry, `/boot` headroom. Then it records `pre.json` (grubenv, default, raw `grubby --info=ALL`), copies the verified bytes (write beside, link, never clobber), runs `depmod`, `dracut --kver`, `grubby --add-kernel … --copy-default --title …`, and checks for exactly one new entry, all old entries unchanged, the default and `saved_entry` unchanged and `next_entry` still empty. |
+| `select` | Phase 5 step 2 | Last Rocky action before the f3 stop; exactly the stock release. Rechecks installed bytes, initramfs and BLS entry, runs `grub2-reboot <id>`, verifies `next_entry` = id and the default unchanged. Any failure runs U1 at once. Runs once per state directory. |
+| `cancel` | U1 | `grub2-editenv - unset next_entry` and verify. Allowed even with an uncertain or torn journal. Manual fallback if even this cannot run: `grub2-editenv - unset next_entry`, then `grub2-editenv - list` and `grubby --default-kernel`. |
+| `remove` | U2 | Exactly the stock release, `next_entry` empty. Scans first and refuses, deleting nothing, if anything the plan or depmod did not create is present (including symlinks). Then `grubby --remove-kernel`, deletes the files (including `/boot/initramfs-Rkdump.img` if kdump built it in a test-kernel boot) and the admission manifest, recording each removed file's SHA256, and requires `grubby --info=ALL` to equal the pre-run listing byte for byte. |
 | `check --expect test\|stock\|any` | U3 step 3, Phase 11 step 2, Phase 12 step 2 | Read-only: running release, boot ID, `next_entry` empty, `saved_entry` and default unchanged. Exit 1 on any problem. The result is journaled. |
-| `reboot-to-stock` | U3 step 4 | Test kernel only, a passing `check --expect test` in this boot, no admission manifest (that marks the controlled boot, which ends with a poweroff instead). Runs `systemctl reboot`. A new boot ID resolves the dangling intent if the shutdown wins the race. |
-| `admission` | Phase 8, before the first observation | See below. |
+| `reboot-to-stock` | U3 step 4 | Test kernel only, a passing `check --expect test` in this boot, and refuses once the admission manifest exists. That is its only marker: it cannot itself tell a U3 boot from the controlled boot (which ends with a poweroff). A Phase 8 boot that failed before admission leaves no manifest, and a manifest written by mistake in a U3 boot makes it refuse wrongly, so the operator must know which boot they are in. Runs `systemctl reboot`. A new boot ID resolves the dangling intent if the shutdown wins the race. |
+| `admission` | Phase 8 step 0, before the enrollment is signed | Exactly the test kernel. See below. |
 | `status`, `reconcile --seq N --note TEXT` | | Show the journal. Record root's inspected outcome of an uncertain intent. It counts as failed and is never repeated. |
 
 **Why the admission manifest is generated in the controlled boot.**
@@ -255,20 +255,25 @@ Rocky-side command still needs Paul's explicit A3 approval of the filled plan.
 modules are exactly the loaded `/proc/modules` set and the running
 `/sys/kernel/notes` build ID matches. Which of the five planned modules load
 (for example `x86_pkg_temp_thermal` under bhyve) is only known once the test
-kernel runs. The generator therefore runs as root in the Phase 8 boot. It
+kernel runs. The generator therefore runs as root in the Phase 8 boot, after
+`udevadm settle` (refused if the udev queue does not settle). It
 refuses any loaded module the plan did not install, checks each loaded
 module's installed hash and `.ko` build ID and its running sysfs build ID
 against the plan, and checks the kernel image hash and the running kernel's
 build ID (from `vmlinux`). It then repeats the boot/module observation, as
 the probe does, and writes the closed
-`homelabfs-installed-artifacts/1` manifest exclusively (canonical JSON,
-`0644`, never overwritten). Its SHA256 is the `Observer.ManifestHash` of the
+`homelabfs-installed-artifacts/1` manifest (canonical JSON, `0644`, written beside and linked
+into place, never overwritten). Its SHA256 is the `Observer.ManifestHash` of the
 enrollment request. A local test runs the actual `installed.py` probe against
 the generated manifest in the simulated root.
 
 Every mutating step writes a durable intent and a durable result to
 `journal.jsonl` under an exclusive lock. An intent without a result (the
-process was killed) blocks every later command except `cancel`. The tool
+process was killed) blocks install, select, remove, reboot-to-stock and
+admission until root inspects it and records the outcome with `reconcile`;
+`cancel`, `check`, `status` and `reconcile` still run. A torn journal line
+(an interrupted write) blocks everything except `cancel`, `status` and the
+read-only `check` until root repairs `journal.jsonl`. The tool
 never runs `grubby --set-default`/`--make-default` and has no code path for
 them. Tools run by absolute path (root-owned and not group/world-writable,
 symlinks followed), with a fixed environment, no shell and bounded output.

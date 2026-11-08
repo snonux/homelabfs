@@ -66,7 +66,11 @@ members and free tap names; current zrepl snapshot name/GUID of
 (`saved_entry`, `next_entry`), `/etc/kernel/cmdline` or default BLS options,
 dracut/depmod/grubby versions and the root-owned tool paths `rocky_kernel.py`
 pins (`/usr/sbin/grubby`, `/usr/bin/grub2-editenv`, `/usr/sbin/grub2-reboot`,
-`/usr/sbin/depmod`, `/usr/bin/dracut`, `/usr/bin/systemctl`), root
+`/usr/sbin/depmod`, `/usr/bin/dracut`, `/usr/bin/systemctl`,
+`/usr/bin/udevadm`); Rocky kdump state (orchestrator read on 2026-11-08,
+`zq3-facts/rocky-kdump.txt`: kdump enabled and active, `crashkernel=1G-2G:192M,2G-64G:256M,64G-:512M`,
+one `/boot/initramfs-<release>kdump.img` per installed kernel, so a
+test-kernel boot may create `initramfs-6.1.190-hfs-xz3kdump.img`); root
 `authorized_keys` SHA256, `/usr/bin/python3`
 hash; current authoritative addresses from IQ (f3 `10.20.0.133` and Rocky
 `10.20.0.123` were used on 2026-11-08) with independently verified host-key pins.
@@ -79,7 +83,9 @@ hash; current authoritative addresses from IQ (f3 `10.20.0.133` and Rocky
 - A2 Stage the candidate bytes on f3 under the private staging prefix (Phase 2).
 - A3 Install the custom guest kernel on Rocky's disk (Phase 3), select it as a
   **one-shot** boot immediately before the stop (Phase 5), stock default kept,
-  and remove it afterwards (Phase 12). Includes the U3 recovery boot: after an
+  and remove it afterwards (Phase 12). Includes writing
+  `/etc/homelabfs/installed-admission-v1.json` on Rocky's disk in the
+  controlled boot (Phase 8 step 0) and the U3 recovery boot: after an
   abort between the stop and the controlled boot, Rocky boots the test kernel
   once under its normal config and is then cleanly rebooted to stock.
 - A4 Run Rocky once under the candidate's own bhyve, launched by the runtime,
@@ -107,6 +113,7 @@ unmounts of run-owned mounts.
 | Restoration budget | 15 minutes after runtime exit (estimate, not enforced) | this plan |
 | Host runtime envelope | 6 GiB (signed), plus 6 GiB guest and 3 GiB host reserve = 15 GiB of 15.7 GiB physical | installation proposal |
 | Guest workload ceiling | 2 GiB signed provider/workload ceiling; logical canary 4 MiB | proposal |
+| Guest kdump reservation | the copied default arguments carry `crashkernel=…,2G-64G:256M,…`, i.e. 256 MiB of the 6 GiB VM under a kernel that honours it. The test kernel's config has `CONFIG_KEXEC`, `CONFIG_KEXEC_FILE` and `CONFIG_CRASH_DUMP` unset, so it should reserve nothing and `kdump.service` should fail in that boot (an expected failed unit); budget the 256 MiB anyway until Phase 8 confirms it | Phase 1 kdump fact, package `linux/config` |
 | Disk | host run 4 GiB, guest run 2 GiB; keep 8 GiB unreserved host and 2 GiB guest free | proposal |
 | Bootstrap | 120 s from launch to READY | base gate |
 | Guest probe case | at most 60 s, 256 operations, 12 MiB issued writes, 128 fds | `guest.py` |
@@ -129,8 +136,12 @@ or vmm context could still exist.
 - Actions: build from source `e0cca0c` with the reviewed recipes: the FreeBSD
   CGO `controlledruntime.test` binary (for the host FD rerun), the
   `fdescfs-namespace` helper; pin them with hashes. Fill the fdescfs window plan
-  JSON (schema in the window doc). Write the run config, enrollment requests,
-  controller batch plan (`check-retained9p.sh check --plan` gives its hash).
+  JSON (schema in the window doc). Write the run config, the G5 kernel plan
+  (`rocky_kernel.py plan`), enrollment request *templates* and the controller
+  batch plan (`check-retained9p.sh check --plan` gives its hash). The
+  enrollment requests cannot be complete here: `BootID`, `ProviderNonce` and
+  `Observer.ManifestHash` exist only in the controlled boot and are filled in
+  Phase 8 step 0.
   Run all local tests (`python3 -B -m unittest` in `tools/lab/retained9p`,
   `tools/lab/test_fdescfs_window.py`, artifact tests, `go test` for touched
   packages, shellcheck).
@@ -200,8 +211,8 @@ the stop (see [Boot selection and recovery](#boot-selection-and-recovery)).
      be written here. The observer probe requires its module set to **equal**
      `/proc/modules` and compares the running kernel's notes, and which of
      the five modules load is only known in the booted test kernel. So
-     `rocky_kernel.py admission` runs as root in the controlled Phase 8 boot,
-     before the first observation. It writes the closed manifest from the
+     `rocky_kernel.py admission` runs as root in the controlled boot as
+     Phase 8 step 0, before the enrollment is signed. It writes the closed manifest from the
      installed file hashes and the running build IDs (each checked against
      the plan and the installed `.ko`), and its SHA256 becomes the
      `Observer.ManifestHash` in the enrollment request (G1 orchestrator).
@@ -321,30 +332,48 @@ Intended setup:
 - Rollback: Phase 11 destroys the tap and vmm context after bhyve exits.
 - Failure (no child started): destroy the tap, restore the window, then **U3**.
 
-### Phase 8: start the runtime and staged bootstrap (f3 + Rocky, A4, A7)
+### Phase 8: start the runtime and staged bootstrap (f3 + Rocky, A3, A4, A7)
 
 - Action: `doas -n /var/tmp/hfs-validation-xz3/zq3-r1/bin/hfs-controlled-runtime
   --config <private config>` in the foreground under an outer resource guard
   (**GAP G13**: no guard profile for this long-running envelope yet).
 - The runtime launches the bhyve child; GRUB consumes the one-shot entry and
   boots `6.1.190-hfs-xz3`. Record the consumption evidence: the observed guest
-  kernel release and boot ID, plus the console log. Within the 120 s bootstrap the following must
-  complete in order (**GAP G1**: no orchestrator script):
-  1. Runtime observes the guest through the observer key (actual boot ID,
-     provider nonce, complete module inventory, `admission_v1`).
-  2. Signer (`hfs-retained9p-operator enroll`, on the workstation, with the
+  kernel release and boot ID, plus the console log. The runtime emits its
+  proposal (`AWAITING_OPERATOR_ENROLLMENT`) and waits for the enrollment
+  handoff; it observes the guest only after that handoff, with the handoff's
+  `Observer` (`admitOperatorEnrollment` in
+  `internal/controlledruntime/driver_phases.go`). Within the 120 s bootstrap
+  the following must complete in order (**GAP G1**: no orchestrator script):
+  0. (A3) Root over pinned root SSH to the guest, once it answers:
+     `rocky_kernel.py admission` (G5) waits for `udevadm settle`, then writes
+     `/etc/homelabfs/installed-admission-v1.json` from the live loaded-module
+     set (see Phase 3 step 5). Record its SHA256 and the boot ID it reports,
+     and read the provider nonce from `/sys/kernel/homelabfs/admission_v1`
+     (read-only). Fill `BootID`, `ProviderNonce` and `Observer.ManifestHash`
+     into the enrollment request. This SSH round trip counts against the
+     120 s.
+  1. Signer (`hfs-retained9p-operator enroll`, on the workstation, with the
      operator key under A7) emits `provision.json` and `enrollment.json`.
-  3. Root writes `provision.json` to `/sys/kernel/homelabfs/provision_v1` in
+  2. Root writes `provision.json` to `/sys/kernel/homelabfs/provision_v1` in
      one write, then transfers `enrollment.json` atomically to the host
      `EnrollmentFile`.
+  3. The runtime reads the handoff and observes the guest through the
+     observer key: actual boot ID, provider nonce, complete module inventory,
+     `admission_v1`, and the manifest's SHA256 equal to
+     `Observer.ManifestHash`.
   4. At `AWAITING_GUEST_BIND`: `hfs-retained9p-operator bind` emits
      `bind.json`; one write to `/sys/kernel/homelabfs/bind_v1`.
   5. Guest mounts both domains:
      `mount -t 9p -o trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,msize=65536
      hfs0 /var/tmp/hfs-zq3-zq3-r1/m0` and the same for `hfs1` on `m1`; both
      HELLOs; runtime prints READY with the control binding.
+- Changes on Rocky's disk (A3): `/etc/homelabfs/installed-admission-v1.json`
+  (and `/etc/homelabfs/` if absent), the G5 journal lines; kdump may create
+  `/boot/initramfs-6.1.190-hfs-xz3kdump.img`. U2 removes them.
 - Evidence: runtime stdout/stderr (bounded drains), READY record,
-  `runtime-budget.json`, observer receipts, the signed files.
+  `runtime-budget.json`, observer receipts, the signed files, the admission
+  command output and manifest SHA256.
 - Failure: missing/late/changed records refuse and **retain** native and guest
   resources; nothing falls back to stock 9p callbacks. Go to Phase 11 with
   inspection first. If the child exited or failed before GRUB ran (no guest
@@ -446,20 +475,28 @@ mechanism with the ELRepo kernel and Rocky returned to its stock default.
 Entry points (G5, implemented in r34): `rocky_kernel.py cancel` (U1),
 `remove` (U2), `check --expect test|stock|any` (U3 step 3, Phase 11 step 2,
 Phase 12 step 2) and `reboot-to-stock` (U3 step 4). A journal intent without
-a result blocks every later command except `cancel`, until root inspects and
-records it with `reconcile`.
+a result blocks install, select, remove, reboot-to-stock and admission until
+root inspects and records it with `reconcile`; `cancel`, `check` and `status`
+still run. install, select and remove require exactly the pinned stock
+release to be running (another installed kernel, such as ELRepo 7.0.3,
+refuses); admission and reboot-to-stock require exactly the test kernel.
 
 - **U1, cancel the one-shot (Rocky running):** `grub2-editenv - unset
   next_entry`; verify `next_entry` empty, `saved_entry` and `grubby
   --default-kernel` unchanged. Mandatory for any failure before Rocky is stopped
-  once Phase 5 step 2 has run.
+  once Phase 5 step 2 has run. `cancel` also runs with a torn journal; if even
+  it cannot run, the manual fallback is exactly `grub2-editenv - unset
+  next_entry` followed by `grub2-editenv - list` and `grubby --default-kernel`.
 - **U2, remove the custom kernel (Rocky running its stock kernel):**
   `grubby --remove-kernel=/boot/vmlinuz-6.1.190-hfs-xz3`; remove the copied
-  `/boot` files, the initramfs, `/lib/modules/6.1.190-hfs-xz3` and
-  `/etc/homelabfs/installed-admission-v1.json`; verify `grubby --info=ALL`
-  equals the pre-run listing. Never while running the test kernel itself;
-  refused while `next_entry` is set (run U1 first) and, before deleting
-  anything, if the module tree holds anything the plan or depmod did not create.
+  `/boot` files, the initramfs, the kdump initramfs
+  `/boot/initramfs-6.1.190-hfs-xz3kdump.img` if kdump created it in a
+  test-kernel boot, `/lib/modules/6.1.190-hfs-xz3` and
+  `/etc/homelabfs/installed-admission-v1.json`; the SHA256 of every removed
+  file is recorded. Verify `grubby --info=ALL` equals the pre-run listing.
+  Never while running the test kernel itself; refused while `next_entry` is
+  set (run U1 first) and, before deleting anything, if the module tree holds
+  anything the plan or depmod did not create.
 - **U3, recovery after Rocky stopped with `next_entry` still set** (aborts in
   Phases 5 step 3 to 8 before the controlled boot reached GRUB). There is no way
   to edit grubenv while Rocky is stopped without touching its disk from f3,
@@ -474,9 +511,12 @@ records it with `reconcile`.
      `next_entry` empty and `saved_entry` unchanged.
   4. `systemctl reboot` (clean); verify Rocky comes back on the Phase 1 default
      kernel; then U2 and the Phase 12 checks. `reboot-to-stock` requires a
-     passing `check --expect test` in the same boot and refuses in the
-     controlled Phase 8 boot (recognised by the admission manifest), which
-     ends with Phase 11's poweroff instead.
+     passing `check --expect test` in the same boot and refuses once the
+     admission manifest exists. That is its only marker: it cannot itself tell
+     a U3 boot from the controlled Phase 8 boot (which ends with Phase 11's
+     poweroff, never a reboot). A Phase 8 boot that failed before admission
+     leaves no manifest, and a manifest written by mistake in a U3 boot makes
+     it refuse wrongly. **The operator must know which boot they are in.**
   - Alternative U3-b (also needs Paul's yes, a human at the console): during
     step 2, open the Rocky VNC console (`127.0.0.1:5900` on f3) and choose the
     stock entry in the GRUB menu. `next_entry` is already cleared at that point,
@@ -540,10 +580,13 @@ also stops until Paul decides on a forced power-off.
 These do not exist yet; the run is not executable until each is implemented,
 reviewed and pinned, and this plan is re-filled:
 
-- G1 Bootstrap orchestrator for Phase 8 (observe, sign, provision, enrollment
-  transfer, bind, two mounts) inside 120 s.
-- G2 Generator for the `controlled-runtime/1` config, enrollment/bind requests
-  and per-session keys.
+- G1 Bootstrap orchestrator for Phase 8, inside 120 s: the root SSH round
+  trip running `rocky_kernel.py admission` (manifest SHA256, boot ID, provider
+  nonce), filling the enrollment request, sign, provision, enrollment
+  transfer, the runtime's observation, bind, two mounts.
+- G2 Generator for the `controlled-runtime/1` config, enrollment/bind request
+  templates (completed in Phase 8 step 0 with `BootID`, `ProviderNonce` and
+  `Observer.ManifestHash`) and per-session keys.
 - G3 Source-matching volume/node initialisation helper; the candidate package
   contains only `hfs-controlled-runtime` (no `homelabfs node-init/volume-init`).
 - G4 Pinned direct bhyve argv reconstructed from the current launch facts, plus

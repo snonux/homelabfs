@@ -13,10 +13,14 @@ Two halves:
 * All other commands run on Rocky as root (`/usr/bin/python3 -I -B`, Python
   3.9) against that plan, pinned by its SHA256, plus a root-private state
   directory holding a journal. A journal intent without a result is
-  *uncertain* and blocks every later mutating command (inspect, never
-  replay); only U1 `cancel` stays allowed, because unsetting `next_entry` is
-  always the safe direction. After inspecting, root records the outcome with
-  `reconcile` (counted as failed, never repeated).
+  *uncertain* and blocks the mutating commands install, select, remove,
+  reboot-to-stock and admission (inspect, never replay). U1 `cancel` stays
+  allowed, because unsetting `next_entry` is always the safe direction, and
+  the read-only `check`/`status` and `reconcile` still run. After
+  inspecting, root records the outcome with `reconcile` (counted as failed,
+  never repeated). A torn journal line (interrupted write) blocks everything
+  except `cancel`, `status` and the read-only `check` (which only appends)
+  until root repairs the file.
 
 Commands map to the plan as follows: `install` (Phase 3 steps 1-4),
 `select` (Phase 5 step 2, the last Rocky action before the f3 stop; any
@@ -73,8 +77,10 @@ JSON_LIMIT = 1 << 20
 # symlink to kmod, so the trust check follows links (see check_tool).
 TOOLS = {"grubby": "/usr/sbin/grubby", "editenv": "/usr/bin/grub2-editenv",
          "reboot-once": "/usr/sbin/grub2-reboot", "depmod": "/usr/sbin/depmod",
-         "dracut": "/usr/bin/dracut", "systemctl": "/usr/bin/systemctl"}
-TIMEOUTS = {"dracut": 600, "depmod": 120}
+         "dracut": "/usr/bin/dracut", "systemctl": "/usr/bin/systemctl",
+         "udevadm": "/usr/bin/udevadm"}
+TIMEOUTS = {"dracut": 600, "depmod": 120, "udevadm": 45}
+UDEV_SETTLE = ["settle", "--timeout=30"]  # Module autoload done before admission.
 TOOL_ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
 OUTPUT_LIMIT = 1 << 20
 INITRAMFS_ESTIMATE = 64 << 20  # /boot headroom check before dracut runs.
@@ -326,6 +332,13 @@ def kernel_path(plan):
 
 def initramfs_path(plan):
     return "/boot/initramfs-{}.img".format(plan["kernel_release"])
+
+
+def kdump_initramfs_path(plan):
+    """Rocky's kdump service builds this per booted kernel (Phase 1 fact:
+    kdump enabled and active); a test-kernel boot may create it, so U2
+    removes it if present. The tool itself never creates it."""
+    return "/boot/initramfs-{}kdump.img".format(plan["kernel_release"])
 
 
 def stock_release(plan):
@@ -590,6 +603,7 @@ class Journal:
             raise Refused("state directory must be a private 0700 directory")
         self.directory, self.system = directory, system
         self.path = directory / "journal.jsonl"
+        self.allow_torn = False  # Set only by cancel and status (see records).
         self.lock = os.open(directory / "lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         try:
             fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -611,23 +625,54 @@ class Journal:
         fsync_directory(directory.parent)
         return cls(directory, system)
 
-    def records(self):
+    def raw(self):
         if not os.path.lexists(self.path):
-            return []
-        raw = read_bounded(self.path, 4 * JSON_LIMIT)
-        return [parse(line) for line in raw.splitlines() if line]
+            return b""
+        return read_bounded(self.path, 4 * JSON_LIMIT)
+
+    def torn(self):
+        """Every record is written as one line ending in a newline, so a file
+        that does not end in one holds an interrupted (torn) write."""
+        raw = self.raw()
+        return bool(raw) and not raw.endswith(b"\n")
+
+    def records(self):
+        """Parsed records. A torn tail or an unparseable (formerly torn) line
+        refuses unless `allow_torn` is set (only cancel and status set it);
+        such lines are then skipped. Root repairs the file after inspection."""
+        lines = self.raw().split(b"\n")
+        complete, tail = lines[:-1], lines[-1]
+        result = []
+        for line in complete:
+            if not line:
+                continue
+            try:
+                result.append(parse(line))
+            except (ValueError, Refused):
+                if not self.allow_torn:
+                    raise Refused("unparseable journal line: root must inspect and repair "
+                                  "journal.jsonl; only cancel, status and check run")
+        if tail and not self.allow_torn:
+            raise Refused("torn journal tail (interrupted write): root must inspect "
+                          "and repair journal.jsonl; only cancel, status and check run")
+        return result
 
     def append(self, record):
         record = dict(record, time=datetime.datetime.now(datetime.timezone.utc).isoformat())
+        line = canonical(record) + b"\n"
+        if self.torn():
+            line = b"\n" + line  # Keep the torn fragment on its own line.
         fd = os.open(self.path, os.O_CREAT | os.O_APPEND | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
         try:
-            os.write(fd, canonical(record) + b"\n")
+            os.write(fd, line)
             os.fsync(fd)
         finally:
             os.close(fd)
 
     def begin(self, step, boot_id):
-        seq = len(self.records())
+        # Strictly increasing, also when skipped torn lines shorten records().
+        records = self.records()
+        seq = 1 + max([r["seq"] for r in records if "seq" in r] + [len(records)])
         self.append({"seq": seq, "kind": "intent", "step": step, "boot_id": boot_id})
         return seq
 
@@ -684,8 +729,12 @@ def require_root(ctx):
 
 
 def require_release(ctx, test, why):
-    if (ctx.system.release() == ctx.plan["kernel_release"]) != test:
-        raise Refused(why + " (running " + ctx.system.release() + ")")
+    """Exactly the test kernel (test=True) or exactly the plan's stock default
+    (test=False); any third kernel, such as an installed ELRepo one, refuses."""
+    expected = ctx.plan["kernel_release"] if test else stock_release(ctx.plan)
+    if ctx.system.release() != expected:
+        raise Refused("{} (running {}, required {})".format(
+            why, ctx.system.release(), expected))
 
 
 def require_settled(ctx):
@@ -778,7 +827,8 @@ def preflight_install(ctx, state):
     if any(b.get("kernel") == kernel_path(plan) for b in parse_info(ctx.grub.info_all())):
         raise Refused("a boot entry for the test kernel already exists")
     targets = [e["target"] for e in plan["files"]] + [
-        initramfs_path(plan), ADMISSION_PATH, "/lib/modules/" + plan["kernel_release"]]
+        initramfs_path(plan), kdump_initramfs_path(plan), ADMISSION_PATH,
+        "/lib/modules/" + plan["kernel_release"]]
     existing = [t for t in targets if os.path.lexists(system.path(t))]
     if existing:
         raise Refused("install targets already exist: " + ",".join(existing))
@@ -805,9 +855,18 @@ def make_directory(path):
     fsync_directory(path.parent)
 
 
+def link_into_place(path, raw, mode):
+    """Write beside the target, then link: never clobbers, never half-visible.
+    A crash leaves only the `.NAME.hfs-zq3-partial` file, which U2 removes."""
+    partial = path.with_name("." + path.name + PARTIAL)
+    write_exclusive(partial, raw, mode)
+    os.link(partial, path)
+    os.unlink(partial)
+    fsync_directory(path.parent)
+
+
 def place(ctx, target, raw):
-    """Write beside the target, then link: never clobbers, never half-visible."""
-    path = ctx.system.path(target)
+    """Install one plan file, creating its module directories first."""
     modules = "/lib/modules/" + ctx.plan["kernel_release"]
     if target.startswith(modules + "/"):
         current = ctx.system.path(modules)
@@ -815,11 +874,7 @@ def place(ctx, target, raw):
             current = current / part
             if not os.path.lexists(current):
                 make_directory(current)
-    partial = path.with_name("." + path.name + PARTIAL)
-    write_exclusive(partial, raw, 0o644)
-    os.link(partial, path)
-    os.unlink(partial)
-    fsync_directory(path.parent)
+    link_into_place(ctx.system.path(target), raw, 0o644)
 
 
 def verify_added(ctx, pre):
@@ -926,8 +981,11 @@ def cmd_select(ctx, args):
 
 
 def cmd_cancel(ctx, args):
-    """U1. Allowed even with uncertain steps: unsetting is always safe."""
+    """U1. Allowed even with uncertain steps or a torn journal: unsetting is
+    always safe. If even this cannot run, the documented manual fallback is
+    `grub2-editenv - unset next_entry` plus `grub2-editenv - list`."""
     require_root(ctx)
+    ctx.journal.allow_torn = True
     return {"step": "cancel", "state": run_step(ctx, "cancel", lambda: cancel_once(ctx))}
 
 
@@ -936,10 +994,11 @@ def cmd_cancel(ctx, args):
 
 
 def removal_files(ctx):
-    """Existing /boot and admission files this tool may have created."""
+    """Existing /boot and admission files of the test kernel (created by this
+    tool, or the kdump initramfs created by kdump in a test-kernel boot)."""
     plan = ctx.plan
     names = [e["target"] for e in plan["files"] if e["target"].startswith("/boot/")]
-    names += [initramfs_path(plan), ADMISSION_PATH]
+    names += [initramfs_path(plan), kdump_initramfs_path(plan), ADMISSION_PATH]
     names += [str(Path(n).with_name("." + Path(n).name + PARTIAL)) for n in list(names)]
     found = []
     for name in names:
@@ -992,7 +1051,10 @@ def remove_steps(ctx, files, dirs):
     pre = ctx.journal.read_json("pre.json")
     if any(b.get("kernel") == kernel_path(plan) for b in parse_info(ctx.grub.info_all())):
         ctx.grub.remove(plan)
+    removed = {}
     for name in files:
+        # Hash first: evidence of exactly what was deleted (e.g. kdump's image).
+        removed[name] = digest(read_bounded(system.path(name), ARTIFACT_LIMIT))
         os.unlink(system.path(name))
     for name in dirs:
         os.rmdir(system.path(name))
@@ -1006,12 +1068,12 @@ def remove_steps(ctx, files, dirs):
     if ctx.grub.info_all() != pre["grubby_info_all"]:
         raise Failed("grubby --info=ALL differs from the pre-run listing")
     require_boot(ctx, "")
-    return {"removed_files": files, "removed_dirs": dirs, "kept": kept}
+    return {"removed_files": removed, "removed_dirs": dirs, "kept": kept}
 
 
 def cmd_remove(ctx, args):
     require_root(ctx)
-    require_release(ctx, False, "never remove the kernel that is running")
+    require_release(ctx, False, "remove runs only on the stock kernel, never the test kernel")
     require_settled(ctx)
     if any(r["ok"] for r in ctx.journal.results("remove")):
         raise Refused("the test kernel was already removed")
@@ -1045,15 +1107,22 @@ def cmd_check(ctx, args):
 
 
 def cmd_reboot(ctx, args):
-    """Clean reboot from the U3 test-kernel boot into the stock default."""
+    """Clean reboot from the U3 test-kernel boot into the stock default.
+
+    The tool cannot tell a U3 boot from the controlled Phase 8 boot by
+    itself: the operator must know which boot they are in (the controlled
+    boot ends with Phase 11's guest poweroff, never a reboot). The only
+    safeguard is that the admission manifest, normally written only in the
+    controlled boot, makes this refuse. A Phase 8 boot that failed before
+    admission leaves no manifest, and a manifest written by mistake in a U3
+    boot makes this refuse wrongly (U2 removes it after a manual reboot).
+    """
     require_root(ctx)
     require_release(ctx, True, "only the test kernel needs the U3 reboot")
     require_settled(ctx)
-    # Only the controlled Phase 8 boot generates the admission manifest; that
-    # boot ends with Phase 11's guest poweroff, never with a reboot inside
-    # the candidate bhyve child.
     if os.path.lexists(ctx.system.path(ADMISSION_PATH)):
-        raise Refused("admission manifest present: controlled boot, use Phase 11 poweroff")
+        raise Refused("admission manifest exists: refusing (the controlled boot ends "
+                      "with Phase 11 poweroff; the operator must know which boot this is)")
     boot = ctx.system.boot_id()
     if not any(r["kind"] == "check" and r["ok"] and r["boot_id"] == boot and
                r["expect"] in ("test", "any") for r in ctx.journal.records()):
@@ -1156,7 +1225,7 @@ def write_admission(ctx, raw, summary):
     if (not stat.S_ISDIR(info.st_mode) or info.st_uid != system.trusted_uid or
             info.st_mode & 0o022):
         raise Failed("/etc/homelabfs must be a trusted directory")
-    write_exclusive(system.path(ADMISSION_PATH), raw, 0o644)
+    link_into_place(system.path(ADMISSION_PATH), raw, 0o644)
     if read_bounded(system.path(ADMISSION_PATH), 65536) != raw:
         raise Failed("manifest readback differs")
     return dict(summary, path=ADMISSION_PATH, manifest_sha256=digest(raw))
@@ -1169,14 +1238,23 @@ def cmd_admission(ctx, args):
     require_succeeded(ctx, "install")
     if os.path.lexists(ctx.system.path(ADMISSION_PATH)):
         raise Refused("installed admission manifest exists; never overwritten")
+    # udev loads hardware modules asynchronously after boot; snapshot the
+    # inventory only once its queue is empty, or a late module load would
+    # make the probe's exact /proc/modules equality fail later.
+    try:
+        run_ok(ctx.system, "udevadm", UDEV_SETTLE)
+    except Failed as error:
+        raise Refused("udev queue did not settle: " + str(error))
     raw, summary = build_admission(ctx)
     detail = run_step(ctx, "admission", lambda: write_admission(ctx, raw, summary))
     return dict(detail, step="admission")
 
 
 def cmd_status(ctx, args):
+    """Read-only journal view; skips (and reports) torn or unparseable lines."""
+    ctx.journal.allow_torn = True
     records = ctx.journal.records()
-    return {"step": "status", "records": records,
+    return {"step": "status", "records": records, "torn_tail": ctx.journal.torn(),
             "uncertain": ctx.journal.uncertain(ctx.system.boot_id())}
 
 
