@@ -444,7 +444,7 @@ class RetainedReleaseControllerTests(unittest.TestCase):
         self.path, self.plan, probe = batch_fixture(self.root)
         self.hash = controller.digest(self.path.read_bytes())
         self.output = self.root / "run"
-        self.dispatched = []
+        self.dispatched, self.deadlines = [], []
         for patcher in [mock.patch.object(controller, "GUEST", probe),
                         mock.patch.object(controller, "bounded_child", side_effect=self.fake_dispatch)]:
             patcher.start()
@@ -452,6 +452,7 @@ class RetainedReleaseControllerTests(unittest.TestCase):
 
     def fake_dispatch(self, argv, request, folder, seconds):
         self.dispatched.append(request)
+        self.deadlines.append(seconds)
         (folder / "stdout.log").write_text(guest_stdout(request))
         (folder / "stderr.log").write_text("")
         return {"returncode": 0}
@@ -555,6 +556,25 @@ class RetainedReleaseControllerTests(unittest.TestCase):
                 controller.release(self.output, self.hash, correlation, sha)
         self.assertEqual(self.state()["cases"][0]["state"], "payload-retained-awaiting-correlation")
 
+    def test_plan_seconds_caps_every_dispatch(self):
+        for plan_seconds, case_seconds, expected in [(60, 60, 60), (70, 60, 70),
+                                                     (600, 60, 75), (60, 1, 16)]:
+            with self.subTest(plan=plan_seconds, case=case_seconds):
+                self.plan["seconds"] = plan_seconds
+                for request in self.plan["requests"]:
+                    request["seconds"] = case_seconds
+                self.path.write_text(json.dumps(self.plan))
+                self.hash = controller.digest(self.path.read_bytes())
+                self.output = self.root / ("run-" + str(plan_seconds) + "-" + str(case_seconds))
+                self.deadlines.clear()
+                self.assertEqual(self.quiet(controller.probe, self.path, self.hash, self.output), 0)
+                self.assertEqual(self.release("credentials"), 0)
+                self.assertEqual(self.deadlines, [expected, expected])
+        for invalid in [59, 601, "60"]:
+            self.plan["seconds"] = invalid
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(controller.Refused, "deadline cap"):
+                controller.validate_shape(self.plan)
+
     def test_concurrent_owner_lock_refuses(self):
         self.quiet(controller.probe, self.path, self.hash, self.output)
         with open(self.output / "owner.lock", "rb") as holder:
@@ -656,7 +676,7 @@ class GuestRetentionTests(unittest.TestCase):
                 self.release(retained, **changes)
         with open(self.leaf() / "ordinary", "ab") as stream:
             stream.write(b"x")
-        with self.assertRaisesRegex(guest.Refused, "changed since correlation"):
+        with self.assertRaisesRegex(guest.Refused, "inventory changed .*contents not hashed"):
             self.release(retained)
         self.assertEqual(len(list(self.leaf().iterdir())), 4)
         self.assertTrue((self.run_dir / "release-sync.json").exists())
@@ -666,7 +686,15 @@ class GuestRetentionTests(unittest.TestCase):
         with self.assertRaisesRegex(guest.Refused, "root-private local run directory"):
             self.run_case()
         self.assertEqual(len(list(self.leaf().iterdir())), 4)
+        # Any group or other bit, even read/execute only, refuses.
+        probe = guest.Probe(self.request, self.roots)
+        for mode in [0o750, 0o705, 0o710, 0o701, 0o740, 0o704]:
+            self.run_dir.chmod(mode)
+            with self.subTest(mode=oct(mode)), \
+                    self.assertRaisesRegex(guest.Refused, "root-private local run directory"):
+                guest.Retention(probe).run_directory()
         self.run_dir.chmod(0o700)
+        os.close(guest.Retention(probe).run_directory())
         with mock.patch.object(guest, "RUN_PARENT", str(self.domain / "m1" / "hfs-zq3-")):
             (self.domain / "m1" / "hfs-zq3-test").mkdir(mode=0o700)
             probe = guest.Probe(self.request, self.roots)

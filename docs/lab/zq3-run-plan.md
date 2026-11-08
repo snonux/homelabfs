@@ -74,8 +74,11 @@ hash; current authoritative addresses from IQ (f3 `10.20.0.133` and Rocky
 
 - A1 Stop Rocky for the run window (Phases 5-12); see [downtime](#rocky-downtime).
 - A2 Stage the candidate bytes on f3 under the private staging prefix (Phase 2).
-- A3 Install the custom guest kernel on Rocky's disk with a **one-shot** boot
-  entry, stock default kept, and remove it afterwards (Phases 3 and 12).
+- A3 Install the custom guest kernel on Rocky's disk (Phase 3), select it as a
+  **one-shot** boot immediately before the stop (Phase 5), stock default kept,
+  and remove it afterwards (Phase 12). Includes the U3 recovery boot: after an
+  abort between the stop and the controlled boot, Rocky boots the test kernel
+  once under its normal config and is then cleanly rebooted to stock.
 - A4 Run Rocky once under the candidate's own bhyve, launched by the runtime,
   with 6 GiB, a transient tap on `vm-public` and its own console (Phases 7-8).
 - A5 f3 host SYSTEM changes: `kldload fdescfs` and `kldload fusefs` if absent,
@@ -97,14 +100,14 @@ unmounts of run-owned mounts.
 
 | Limit | Value | Source |
 |---|---|---|
-| Total critical window | 60 minutes from runtime start to runtime exit | proposal `seconds: 3600`; controller `RUN_WINDOW` |
-| Restoration budget | 15 minutes after runtime exit | this plan |
+| Total critical window | 60 minutes from runtime start to runtime exit; only the probe controller enforces it (refuses commands 3600 s after its run started); the runtime has no enforced total deadline yet (G13) | proposal `seconds: 3600`; controller `RUN_WINDOW` |
+| Restoration budget | 15 minutes after runtime exit (estimate, not enforced) | this plan |
 | Host runtime envelope | 6 GiB (signed), plus 6 GiB guest and 3 GiB host reserve = 15 GiB of 15.7 GiB physical | installation proposal |
 | Guest workload ceiling | 2 GiB signed provider/workload ceiling; logical canary 4 MiB | proposal |
 | Disk | host run 4 GiB, guest run 2 GiB; keep 8 GiB unreserved host and 2 GiB guest free | proposal |
 | Bootstrap | 120 s from launch to READY | base gate |
 | Guest probe case | at most 60 s, 256 operations, 12 MiB issued writes, 128 fds | `guest.py` |
-| Controller dispatch | per-command 60-600 s, streams 256 KiB each | `controller.py` |
+| Controller dispatch | each SSH dispatch bounded by `min(case seconds + 15, plan seconds)`, plan seconds 60-600 (enforced); streams 256 KiB each | `controller.py` |
 | fdescfs commands | 10 s each, 256 KiB output; Go test 5 s; native RSS 512 MiB, one CPU | fdescfs window doc |
 | Lifecycle endpoint | OBSERVE/ARM 30 s, RESTART 90 s, replies 128 KiB | `lifecycle.md` |
 
@@ -161,9 +164,12 @@ or vmm context could still exist.
 - Failure: hash mismatch stops; staged files are preserved for inspection.
 - Rollback: delete the staging directory in Phase 12 (only after evidence copy).
 
-### Phase 3: install the custom kernel on Rocky, one-shot (A3)
+### Phase 3: install the custom kernel on Rocky, not yet selected (A3)
 
-Rocky still runs normally on the stock kernel during this phase.
+Rocky still runs normally on the stock kernel during this phase. This phase
+does **not** set the one-shot `next_entry`: an installed but unselected kernel
+cannot be booted by an abort. Selection happens in Phase 5, immediately before
+the stop (see [Boot selection and recovery](#boot-selection-and-recovery)).
 
 - Machine: Rocky (root over pinned SSH). **GAP G5** (no script yet). Intended steps:
   1. Copy `bzImage` to `/boot/vmlinuz-6.1.190-hfs-xz3`, `System.map` and
@@ -176,8 +182,8 @@ Rocky still runs normally on the stock kernel during this phase.
   3. `grubby --add-kernel=/boot/vmlinuz-6.1.190-hfs-xz3
      --initrd=/boot/initramfs-6.1.190-hfs-xz3.img --copy-default
      --title='HomelabFS zq3 6.1.190-hfs-xz3'` (never `--make-default`).
-  4. `grub2-reboot <new BLS entry id>`; verify with `grub2-editenv list` that
-     `saved_entry` is unchanged and `next_entry` names the new entry, and that
+  4. Record the new BLS entry ID; verify with `grub2-editenv list` that
+     `saved_entry` is unchanged and `next_entry` is still **empty**, and that
      `grubby --default-kernel` is still `5.14.0-687.66.1.el9_8.x86_64` (or the
      fresh Phase 1 value).
   5. Write `/etc/homelabfs/installed-admission-v1.json` from the actual
@@ -186,17 +192,16 @@ Rocky still runs normally on the stock kernel during this phase.
      generator exists.
   6. Stage `observer.py` and the run directory `/var/tmp/hfs-zq3-zq3-r1`
      (root, `0700`, with empty `m0`, `m1`) on Rocky's local disk.
-- Changes: new files in `/boot`, `/lib/modules/6.1.190-hfs-xz3`, one BLS entry,
-  `next_entry` in grubenv, `/etc/homelabfs/`, the run directory.
+- Changes: new files in `/boot`, `/lib/modules/6.1.190-hfs-xz3`, one
+  non-default BLS entry, `/etc/homelabfs/`, the run directory. grubenv is
+  unchanged.
 - Bounds: `/boot` must keep at least the Phase 1 headroom minus kernel+initramfs
   size (expected < 100 MiB).
 - Evidence: file hashes, BLS entry text, `grub2-editenv list` before/after,
   `grubby --info=ALL` before/after.
-- Failure: stop before Phase 5; undo is step R3 below while Rocky still runs.
-- Rollback (R3): `grub2-editenv - unset next_entry`, `grubby --remove-kernel=
-  /boot/vmlinuz-6.1.190-hfs-xz3`, remove the copied files and
-  `/lib/modules/6.1.190-hfs-xz3`, `/etc/homelabfs/installed-admission-v1.json`;
-  verify `grubby --info=ALL` equals the pre-run listing.
+- Failure: stop before Phase 5 and run U2 while Rocky still runs.
+- Rollback: U2 (kernel removal), defined under
+  [Boot selection and recovery](#boot-selection-and-recovery).
 
 ### Phase 4: f3 host fdescfs window and observer key (A5, A6)
 
@@ -231,18 +236,31 @@ controller `tools/lab/fdescfs-window.py` with the explicit prefix
   first time natively.
 - Failure: busy/changed FSID or unexpected mount stops; uncertain mount needs
   root inspection and explicit reconciliation before restore. Nothing is unloaded.
+  Rocky's boot state is untouched at this point (no `next_entry`); remove the
+  unselected kernel with U2 and restore the window (Phase 11 step 5).
 
-### Phase 5: stop Rocky (A1)
+### Phase 5: select the one-shot kernel and stop Rocky (A1, A3)
 
-- Machine: f3. Action: `tools/lab/vms.sh --approved-action stop-rocky` (clean
-  ACPI `vm stop`, waits, never forces). Then verify `vm list` shows Rocky
-  Stopped, no `bhyve: rocky` process, no `/dev/vmm/rocky`, its tap gone.
-- Precondition: Phases 1-4 succeeded; latest zrepl snapshot of
-  `zroot/bhyve/rocky` recorded (disk-level reference; no manual snapshot and no
-  automatic rollback).
-- Failure: a timeout or SSH loss is not success; keep waiting within the
-  helper's bound, then stop and inspect. Never `vm poweroff`.
-- Restoration: Phase 12.
+The one-shot selection is the last action before the stop, so the window in
+which an abort leaves an unconsumed `next_entry` is as short as possible.
+
+1. Final pre-stop checks (B): Phase 1 facts unchanged; memory pre-estimate
+   (current free + inactive + reclaimable ARC + Rocky's resident bhyve memory
+   must cover the 15 GiB requirement); latest zrepl snapshot of
+   `zroot/bhyve/rocky` recorded (disk-level reference only; no manual snapshot
+   and no automatic rollback).
+2. Rocky: `grub2-reboot <entry id recorded in Phase 3>`; verify `next_entry`
+   names it, `saved_entry` and `grubby --default-kernel` unchanged.
+3. f3, immediately after step 2: `tools/lab/vms.sh --approved-action stop-rocky`
+   (clean ACPI `vm stop`, waits, never forces). Then verify `vm list` shows
+   Rocky Stopped, no `bhyve: rocky` process, no `/dev/vmm/rocky`, its tap gone.
+- Failure in step 1 or 2, or if step 3 refuses before stopping anything: Rocky
+  still runs, so run **U1** (cancel the one-shot) and verify, then U2.
+- Failure in step 3 (timeout or SSH loss is not success): keep waiting within
+  the helper's bound, then stop and inspect; never `vm poweroff`. If Rocky still
+  answers pinned SSH, run U1. If it is stopped, `next_entry` is still set:
+  recovery is **U3**.
+- Restoration: Phase 12, or U3 for any abort before the Phase 8 boot.
 
 ### Phase 6: post-stop admission (f3, B)
 
@@ -250,7 +268,9 @@ controller `tools/lab/fdescfs-window.py` with the explicit prefix
   reclaimable ARC (above `arc_min`) must cover 6 GiB guest + 6 GiB runtime +
   3 GiB reserve; swap unused; all FreeBSD VMs still stopped; `/dev/fd` still the
   owned fdescfs FSID.
-- Failure: go directly to Phase 11/12 (restore fdescfs, restart Rocky normally).
+- Failure: restore the fdescfs window (Phase 11 step 5), then **U3**, not a
+  plain normal start: `next_entry` is still set, so a plain start would boot
+  the test kernel.
 
 ### Phase 7: host setup for the controlled launch (f3, A4)
 
@@ -281,6 +301,7 @@ Intended setup:
   dropped. Same MAC keeps Rocky's address.
 - Changes: one transient tap in `vm-public`, a new nmdm pair, run files.
 - Rollback: Phase 11 destroys the tap and vmm context after bhyve exits.
+- Failure (no child started): destroy the tap, restore the window, then **U3**.
 
 ### Phase 8: start the runtime and staged bootstrap (f3 + Rocky, A4, A7)
 
@@ -288,7 +309,8 @@ Intended setup:
   --config <private config>` in the foreground under an outer resource guard
   (**GAP G13**: no guard profile for this long-running envelope yet).
 - The runtime launches the bhyve child; GRUB consumes the one-shot entry and
-  boots `6.1.190-hfs-xz3`. Within the 120 s bootstrap the following must
+  boots `6.1.190-hfs-xz3`. Record the consumption evidence: the observed guest
+  kernel release and boot ID, plus the console log. Within the 120 s bootstrap the following must
   complete in order (**GAP G1**: no orchestrator script):
   1. Runtime observes the guest through the observer key (actual boot ID,
      provider nonce, complete module inventory, `admission_v1`).
@@ -307,7 +329,9 @@ Intended setup:
   `runtime-budget.json`, observer receipts, the signed files.
 - Failure: missing/late/changed records refuse and **retain** native and guest
   resources; nothing falls back to stock 9p callbacks. Go to Phase 11 with
-  inspection first.
+  inspection first. If the child exited or failed before GRUB ran (no guest
+  kernel observed and no GRUB output on the console), treat `next_entry` as
+  unconsumed and restore with **U3** after the child is positively gone.
 
 ### Phase 9: READY admission (B)
 
@@ -335,6 +359,13 @@ unsupported, unrun or uncertain; a partial result never completes zq3.
 | T10 | daemon restart via u24 | guest quiesce (FORGET, view refresh), then `--operation restart`; RESTARTED or FENCED are both recorded (FENCED, fencing then runtime exit, is Paul's accepted behavior); **always the last step**. **GAP G10** (quiesce step) |
 | T11 | remount / VM restart need, K04 host side | after T10 or runtime exit: guest I/O on `m0` must fail, not reach a raw directory; replacement FUSE/exporter and guest RESUME are blocked by design, so the recorded answer is "VM restart required", with the refusals as evidence. **GAP G11** (host-side check) |
 
+Mid-release failure (T1-T5): the guest consumes the retention record before
+its first unlink. If an unlink or the deadline then fails, part of the payload
+can remain, `released-CASE.json` exists and the controller stays at
+`release-dispatching-uncertain` with `error`. Do not re-release or replay:
+root inspects the leaf against the inventory in `released-CASE.json`, keeps the
+leftovers and evidence, marks T1-T5 incomplete, and any repeat uses a new run ID.
+
 Not runnable in this run and reported as unrun: PTE/TLB/busy-pin/GUP
 exclusion and funded drains (**GAP G14**: no admitted pin primitive),
 distributed SAME-volume writers (ov3/pv3).
@@ -343,10 +374,17 @@ distributed SAME-volume writers (ov3/pv3).
 
 Order matters; each step needs the previous one confirmed.
 
-1. Collect all controller, runtime, observer and guest evidence off the hosts.
+1. Collect all controller, runtime, observer and guest evidence off the hosts
+   into private storage. Each case `stdout.log` contains that case's
+   `release_token`: spent once its release succeeded, still live for a case
+   never released. Before anything is copied into `docs/lab/results`, redact
+   the tokens or record next to each one whether it is spent; the unredacted
+   originals (whose hashes `state.json` records) stay private.
 2. Guest (still under the custom kernel): close probes; normal `umount` of
    `m0`/`m1` (busy: stop and preserve). Remove the observer line from
-   `authorized_keys`; verify the file SHA256 equals the pre-run value.
+   `authorized_keys`; verify the file SHA256 equals the pre-run value. Verify
+   `grub2-editenv list`: `next_entry` empty (consumed by the Phase 8 boot) and
+   `saved_entry` unchanged; if `next_entry` is somehow still set, run U1 now.
 3. Guest: `systemctl poweroff`. On f3 confirm the bhyve child exited (runtime
    reports exit; no process; if the runtime already exited, wait for the child).
    Never kill the child.
@@ -362,12 +400,14 @@ Order matters; each step needs the previous one confirmed.
 ### Phase 12: normal restoration and final state (A1, A3)
 
 1. f3: `tools/lab/vms.sh --approved-action start-rocky` (normal vm-bhyve
-   12 GiB config, unchanged). GRUB boots the stock default (the one-shot entry
-   was consumed in Phase 8).
+   12 GiB config, unchanged). GRUB boots the stock default **only because** the
+   Phase 8 boot consumed `next_entry` and Phase 11 step 2 verified it empty.
+   Without that verification (abort before the Phase 8 boot, or a guest that
+   could not be inspected), use U3 instead of this step.
 2. Rocky: verify running kernel equals the Phase 1 default, `saved_entry`
    unchanged, `next_entry` empty, SELinux enforcing, `authorized_keys` hash
    equals pre-run, memory as before.
-3. Remove the custom kernel (R3 above), unless Paul chose to keep it.
+3. Remove the custom kernel (U2), unless Paul chose to keep it.
 4. f3: delete the staging prefix after evidence is safe (or keep, if chosen).
 5. Final inventory: Rocky running with a new PID, `freebsd` and `hfs-test0..2`
    stopped, no `/dev/vmm/hfs-*`, no extra tap, `/dev/fd` devfs, `fdescfs` and
@@ -377,9 +417,55 @@ Expected final state: identical to the baseline except for the two loaded
 kernel modules on f3, the new Rocky PID, the consumed one-shot boot record,
 and retained evidence files (plus anything Paul chose to keep).
 
+## Boot selection and recovery
+
+Rocky's kernel choice lives in its own disk's grubenv. GRUB clears
+`next_entry` while loading its configuration, before it boots anything, so a
+one-shot entry is consumed by the first boot that reaches GRUB, whatever kernel
+that boot then runs. The 2026-10-25 9p run used the same `grub2-reboot`
+mechanism with the ELRepo kernel and Rocky returned to its stock default.
+
+- **U1, cancel the one-shot (Rocky running):** `grub2-editenv - unset
+  next_entry`; verify `next_entry` empty, `saved_entry` and `grubby
+  --default-kernel` unchanged. Mandatory for any failure before Rocky is stopped
+  once Phase 5 step 2 has run.
+- **U2, remove the custom kernel (Rocky running, stock kernel or test kernel):**
+  `grubby --remove-kernel=/boot/vmlinuz-6.1.190-hfs-xz3`; remove the copied
+  `/boot` files, the initramfs, `/lib/modules/6.1.190-hfs-xz3` and
+  `/etc/homelabfs/installed-admission-v1.json`; verify `grubby --info=ALL`
+  equals the pre-run listing. Never while running the test kernel itself.
+- **U3, recovery after Rocky stopped with `next_entry` still set** (aborts in
+  Phases 5 step 3 to 8 before the controlled boot reached GRUB). There is no way
+  to edit grubenv while Rocky is stopped without touching its disk from f3,
+  which this plan does not do. Honest recovery path, approved as part of A3:
+  1. Confirm no candidate bhyve child or `/dev/vmm/hfs-zq3-r1` exists.
+  2. `tools/lab/vms.sh --approved-action start-rocky`: the normal 12 GiB
+     config. GRUB consumes `next_entry` and boots `6.1.190-hfs-xz3` **once**,
+     now under the normal config (with the unused PoC 9p device and normal
+     network; no HomelabFS controller exists, so the provider stays unenrolled;
+     services that need modules the test kernel lacks may fail for this boot).
+  3. Wait (bounded, 10 minutes) for pinned root SSH; record `uname -r`; verify
+     `next_entry` empty and `saved_entry` unchanged.
+  4. `systemctl reboot` (clean); verify Rocky comes back on the Phase 1 default
+     kernel; then U2 and the Phase 12 checks.
+  - Alternative U3-b (also needs Paul's yes, a human at the console): during
+    step 2, open the Rocky VNC console (`127.0.0.1:5900` on f3) and choose the
+    stock entry in the GRUB menu. `next_entry` is already cleared at that point,
+    so Rocky boots stock directly, without the test-kernel boot.
+  - If the test kernel does not come up in step 3 (hang or panic), a clean
+    guest shutdown is impossible; getting out needs a forced power-off
+    (`vm poweroff -f`), which this plan never does on its own. It stops and asks
+    Paul for that specific action.
+
+Not chosen: booting the controlled launch through `grub-bhyve` with an explicit
+kernel would avoid touching Rocky's grubenv, but needs a package installed on
+f3 and a different firmware/boot path than Rocky's UEFI setup. It can be
+proposed if Paul prefers no grubenv change.
+
 ## Rocky downtime
 
-Normal Rocky is unavailable from Phase 5 to Phase 12:
+Normal Rocky is unavailable from Phase 5 step 3 (the stop) to Phase 12. The
+figures are estimates counted from that stop; no tool enforces them:
 
 | Part | Expected |
 |---|---|
@@ -388,19 +474,27 @@ Normal Rocky is unavailable from Phase 5 to Phase 12:
 | Gate matrix T1-T11 | 25-35 min |
 | Cleanup | 5-10 min |
 | Normal start | 2 min |
-| **Total** | **about 45-60 min; hard plan cap 75 min** |
+| **Total** | **about 45-60 min; planning estimate up to 75 min** |
+| U3 instead of a normal start (abort before the controlled boot) | about 10 more minutes (one test-kernel boot plus a clean reboot) |
 
 Exception: after an uncertain failure, normal Rocky stays stopped until the
 candidate bhyve child and its vmm context are positively gone. That has no
-fixed bound; it ends when root reconciles it.
+fixed bound; it ends when root reconciles it. A hung test kernel during U3
+also stops until Paul decides on a forced power-off.
 
 ## Risks
 
 - R1 Memory: the 15 GiB arithmetic leaves about 0.7 GiB physical headroom; ARC
   and kernel use must fit. Phase 6 measures it and refuses otherwise.
-- R2 The custom kernel fails to boot (initramfs/LVM). GRUB falls back to the
-  default on the next boot because the entry is one-shot; the runtime bootstrap
-  times out and preserves resources; Phase 11/12 restores.
+- R2 The custom kernel fails to boot (initramfs/LVM). The one-shot entry was
+  consumed when GRUB ran, so the next normal start boots stock. But a hung or
+  panicked guest cannot be shut down from inside; ending that child (in Phase 8
+  or in U3) needs a forced power-off, which requires Paul's separate explicit
+  approval at that time. The runtime bootstrap times out and preserves
+  resources meanwhile.
+- R2b Abort after the Phase 5 stop but before the controlled boot reaches GRUB:
+  `next_entry` is unconsumed and a plain normal start would boot the test
+  kernel. Recovery is U3 (one test-kernel boot, then a clean reboot), or U3-b.
 - R3 Disk image shared: the direct launch uses Rocky's real disk. vm-bhyve must
   not start `rocky` while the child runs (`vms.sh` and a manual `vm start` would
   both corrupt it). AUTO=yes only acts on an f3 boot, which also ends the child.

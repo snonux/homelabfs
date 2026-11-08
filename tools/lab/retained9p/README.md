@@ -43,7 +43,26 @@ entries unlinked; the journal is preserved. A wrong token, changed inventory,
 changed boot/provider, insecure run directory or existing record refuses and
 preserves everything. Failed cases preserve their files and write no record.
 One release before the next case keeps the full 4MiB logical canary free of
-earlier payloads.
+earlier payloads. The inventory covers names, types, inodes, owners, modes,
+sizes and links; file **contents are not hashed**, so it detects replaced or
+resized entries, not same-size in-place rewrites.
+
+**Mid-release failure.** The record is consumed before the first unlink. If an
+unlink/rmdir or the deadline then fails, part of the payload can remain while
+`released-CASE.json` already exists; the guest terminal reports failure and the
+controller keeps the case at `release-dispatching-uncertain` with `error` set.
+Recovery is manual and never a second release: root inspects the leaf against
+the inventory stored in `released-CASE.json`, preserves the remaining entries
+and evidence, and continues only with a new run ID (the canary may still hold
+the leftover bytes, so that volume/run is not reused).
+
+**Release tokens in evidence.** Each case's `stdout.log` contains its
+`release_token`. It is single-use: after a successful release the guest record
+is consumed and the token is spent. A token of a case that was never released
+can still release that payload. Before copying controller evidence into
+`docs/lab/results`, redact `release_token` values or record next to them that
+they are spent (and which ones are still live). Keep `state.json`'s
+`stdout_sha256` with the unredacted original, which stays private.
 
 Implemented probe cases are credentials, sync, metadata, namespace refusal and
 full mapped pressure. The namespace refusal case exercises an actual new user
@@ -87,7 +106,9 @@ time against already installed/admitted mounts:
 `status --output ABS` reads retained state. Refusals before a dispatch change no
 state; a failed or uncertain dispatch records `error`, after which every later
 command refuses (inspect, never replay). Commands refuse 3600 seconds after the
-run started, leaving any retained payload for inspection. Each reopen verifies
+run started, leaving any retained payload for inspection. The plan's `seconds`
+(60-600) caps each single SSH dispatch: its local deadline is
+`min(case seconds + 15, plan seconds)`. Each reopen verifies
 the owned lock, exact plan digest and every staged input snapshot. These commands
 provide no VM lifecycle, package installation, mounting, fencing or normal
 publication; the host correlator that produces step 2's record does not exist yet.

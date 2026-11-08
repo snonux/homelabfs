@@ -325,7 +325,9 @@ class Retention:
         try:
             info = os.fstat(fd)
             domains = {os.fstat(root).st_dev for root in self.probe.roots}
-            checked(info.st_uid == TRUSTED_UID and not info.st_mode & 0o022 and
+            # Owner-only: no group/other bits, so no other account can even
+            # list or traverse to the retention records.
+            checked(info.st_uid == TRUSTED_UID and not info.st_mode & 0o077 and
                     info.st_dev not in domains, "root-private local run directory required")
         except BaseException:
             os.close(fd)
@@ -410,10 +412,13 @@ class Retention:
         presented = hashlib.sha256(request["token"].encode()).hexdigest()
         checked(hmac.compare_digest(str(record.get("token_sha256")), presented),
                 "release token refused")
+        # The inventory covers names, types, inodes, owners, modes, sizes and
+        # links, not file contents; the error must not claim more than that.
         current = self.current_inventory()
         checked(current == record.get("inventory") and
                 hashlib.sha256(canonical(current)).hexdigest() == request["inventory_sha256"],
-                "retained payload changed since correlation")
+                "retained payload inventory changed (names/inodes/owners/modes/sizes/links; "
+                "contents not hashed)")
 
     def release(self):
         """One-shot release after authentication; any refusal preserves all."""
@@ -422,6 +427,9 @@ class Retention:
         try:
             self.authenticate(self.read_record(run))
             # Consume before deleting: a replay finds no record and refuses.
+            # If an unlink below then fails, part of the payload remains with
+            # the record already consumed; that state needs root's manual
+            # inspection against released-CASE.json, never a second release.
             os.rename(self.record_name(), self.record_name("released-"),
                       src_dir_fd=run, dst_dir_fd=run)
             os.fsync(run)

@@ -31,12 +31,13 @@ folder when the real mount is gone (the K04 check).
 ## What happens to Rocky
 
 1. **While Rocky is still running normally**, a test Linux kernel is copied
-   onto its disk and marked "use once on the next boot only". Rocky's normal
-   kernel stays the default, so any later reboot goes back to normal.
+   onto its disk. It is not selected yet; Rocky's normal kernel stays the
+   default.
 2. The throwaway SSH key from f3 is allowed into Rocky's root account with
    tight restrictions (it can only run one read-only check). Your own keys are
    not touched and are never copied anywhere.
-3. Rocky is shut down cleanly (no forced power-off).
+3. Right before the shutdown, the test kernel is marked "use once on the next
+   boot only", and Rocky is shut down cleanly (no forced power-off).
 4. The HomelabFS daemon on f3 starts Rocky itself, with 6 GiB of memory instead
    of the usual 12 GiB, booting the test kernel once.
 5. The tests run inside Rocky, only in new test folders.
@@ -46,17 +47,29 @@ folder when the real mount is gone (the K04 check).
 
 ## How long Rocky is down
 
-Normally **about 45 to 60 minutes**, with a planned maximum of 75 minutes. If
-something goes wrong in an unclear way, Rocky stays off until someone has made
-sure the test copy is really gone, because starting the normal Rocky while the
-test copy might still run could damage its disk. That has no fixed time limit.
+Normally **about 45 to 60 minutes**, counted from the shutdown; our planning
+estimate allows up to 75 minutes. These are estimates, not a timer that
+enforces them. If the test stops early (after the shutdown but before the test
+copy boots), add about 10 minutes for one extra boot (see below). If something
+goes wrong in an unclear way, Rocky stays off until someone has made sure the
+test copy is really gone, because starting the normal Rocky while the test copy
+might still run could damage its disk. That has no fixed time limit.
 
 ## What could go wrong
 
 - **Memory is tight.** The test needs about 15 of f3's 15.7 GiB. The plan
   measures free memory after Rocky stops and refuses to start if it does not fit.
-- **The test kernel might not boot.** Because it is a one-time boot, the next
-  normal start uses the normal kernel again.
+- **The "use once" mark is used up by the first boot, whichever that is.** If
+  the test stops after Rocky was shut down but before the test copy booted, the
+  mark is still there, and Rocky's next normal start would boot the test
+  kernel. We would then let it boot the test kernel once, check that the mark
+  is gone, and reboot it cleanly into the normal kernel (about 10 extra
+  minutes). Alternatively someone picks the normal kernel by hand in Rocky's
+  boot menu on the VNC console. If the test stops before Rocky is shut down,
+  the mark is simply removed again.
+- **The test kernel might not boot or might hang.** A hung Rocky cannot shut
+  itself down cleanly, and the only way out is a forced power-off. We would
+  never do that on our own; we would stop and ask you first.
 - **Rocky's disk is shared** between the normal setup and the test copy. Nobody
   may start the normal Rocky while the test runs.
 - **The daemon restart test may end the run.** If the restart is refused, the
@@ -66,22 +79,31 @@ test copy might still run could damage its disk. That has no fixed time limit.
   from the earlier test. If that folder no longer exists on f3, the normal
   Rocky could not start afterwards, so the plan checks it before stopping Rocky.
 
-Nothing is force-killed, nothing is force-unmounted, and failed test leftovers
-are kept for inspection instead of being deleted.
+Nothing is force-killed without asking you, nothing is force-unmounted, and
+failed test leftovers are kept for inspection instead of being deleted.
 
 ## How it is undone
 
 Clean shutdown of the test copy, removal of the temporary network port and
-`/dev/fd` mount, removal of the SSH key line, normal start of Rocky with its
-normal kernel, then removal of the test kernel and test files. Only the two
-loaded modules on f3 remain until f3 reboots.
+`/dev/fd` mount, removal of the SSH key line, a check that the "use once" mark
+is used up, normal start of Rocky with its normal kernel, then removal of the
+test kernel and test files. (After an early stop, the extra test-kernel boot
+and clean reboot described above come first.) Only the two loaded modules on
+f3 remain until f3 reboots.
 
 ## Not ready yet
 
-The plan is honest about missing pieces: about 15 helper scripts do not exist
-yet (for example the script that starts Rocky under the daemon, the kernel
-install script, the SSH key script, the pod test, and the tool that checks the
-daemon's own records against what Rocky did). See
+The plan is honest about missing pieces. Twelve helper scripts or tools do not
+exist yet: the script that starts Rocky under the daemon in time, the
+configuration generator, the volume setup helper, the test-copy launch and
+cleanup script, the kernel install script, the installed-kernel record
+generator, the SSH key script, the tool that checks the daemon's own records
+against what Rocky did, the pod test, the guest steps for the lost-reply and
+restart tests, the host-side "empty folder" check, and a memory/CPU guard for
+the daemon. Two more preparation items are open: updating the probe
+controller's network addresses (and Rocky's host key pin), and filling in the
+`/dev/fd` plan with freshly rebuilt test programs. Some checks (page-table
+pinning) cannot run at all yet. See
 [Implementation gaps](zq3-run-plan.md#implementation-gaps). A yes now would let
 us build those; the actual run still needs your yes to the final, filled-in
 plan with exact file hashes.
@@ -90,12 +112,17 @@ plan with exact file hashes.
 
 Please answer each with yes or no:
 
-1. **Rocky downtime:** may Rocky be stopped for about an hour (at most 75
-   minutes, longer only if something needs inspecting)?
+1. **Rocky downtime:** may Rocky be stopped for about an hour (estimated up to
+   75 minutes from the shutdown, not a hard limit; longer if something needs
+   inspecting)?
 2. **Test files on f3:** may the test programs be copied into a private
    `/var/tmp` folder on f3?
-3. **Test kernel on Rocky:** may a test kernel be installed on Rocky's disk for
-   a one-time boot, with the normal kernel kept as the default?
+3. **Test kernel on Rocky:** may a test kernel be installed on Rocky's disk and
+   selected for a one-time boot right before the shutdown, with the normal
+   kernel kept as the default? This includes the recovery after an early stop:
+   one boot of the test kernel under Rocky's normal settings, then a clean
+   reboot into the normal kernel. (Or would you rather pick the normal kernel
+   by hand on the VNC console in that case?)
 4. **Remove afterwards:** should the test kernel be removed after the run (yes)
    or kept for future reruns (no)?
 5. **Rocky under the daemon:** may the daemon start Rocky itself once, with

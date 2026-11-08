@@ -200,8 +200,9 @@ def validate_shape(plan):
     require_candidate(plan["candidate_manifest_sha256"])
     if plan["version"] != VERSION or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,23}", plan["run_id"]):
         raise Refused("batch version/run ID")
+    # plan["seconds"] caps every single SSH dispatch (see dispatch_seconds).
     if type(plan["seconds"]) is not int or not 60 <= plan["seconds"] <= 600:
-        raise Refused("per-command deadline60..600 seconds")
+        raise Refused("per-dispatch deadline cap60..600 seconds")
     closed(plan["ssh"], ["path", "sha256"])
     if not HASH.fullmatch(plan["installed_manifest_sha256"]):
         raise Refused("probe/installed-manifest pin")
@@ -458,6 +459,11 @@ def check_correlation(value, run_id, case):
         raise Refused("host correlation evidence missing or claims acceptance")
 
 
+def dispatch_seconds(plan, request):
+    """Local SSH deadline: guest case alarm plus 15 s margin, capped by the plan."""
+    return min(request["seconds"] + 15, plan["seconds"])
+
+
 def new_state(expected_hash):
     return {"version": VERSION, "plan_sha256": expected_hash,
             "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -496,7 +502,7 @@ class Run:
     def dispatch(self, request, folder, action, correlation=None):
         """One SSH dispatch; a retained terminal plus zero exit is mandatory."""
         result = bounded_child(invocation(self.plan, self.inputs, self.probe_bytes),
-                               request, folder, request["seconds"] + 15)
+                               request, folder, dispatch_seconds(self.plan, request))
         result.update(check_terminal(folder / "stdout.log", request["case"], action, correlation))
         if result["returncode"] != 0:
             raise Refused("SSH/guest nonzero exit")
