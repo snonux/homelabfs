@@ -248,6 +248,12 @@ footprints in the independent global preparation budget. Swap is telemetry.
 
 ## Staged critical-window proposal
 
+The concrete phased proposal for one disposable run with candidate `3f770a88…`,
+including the remaining implementation gaps and Paul's decisions, is
+[zq3-run-plan.md](zq3-run-plan.md) ([plain-language summary](zq3-plan-summary.md)).
+The guest probe now retains each successful payload until an authenticated
+release after host correlation (see the [probe tools](../../tools/lab/retained9p/README.md)).
+
 Before seeking critical approval, finish and verify exact helper binaries,
 configuration, run UUIDs/seeds/paths, all artifact checksums, signed limits and
 the current facts-bound admission/normal restoration scripts. Preserve failures;
