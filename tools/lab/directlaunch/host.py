@@ -179,10 +179,12 @@ class Host:
     def resolve_link(self, absolute, confine):
         """Return (text, target) of one owner-owned symlink confined to `confine`.
 
-        The target is resolved lexically, which is exact because both the
-        link's and (via digest) the target's ancestors are checked with lstat
-        and must be real directories, never symlinks. Only one hop is
-        followed: the target is opened with O_NOFOLLOW later.
+        The target is resolved lexically. That matches what the kernel follows
+        only for link texts whose intermediate components lie on the checked
+        ancestor chains (the link's and, via digest, the target's ancestors
+        are lstat-checked real directories); for arbitrary text the exact
+        link-text pin in argv.check_bootrom is what makes it safe. Only one
+        hop is followed: the target is opened with O_NOFOLLOW later.
         """
         self.check_ancestors(absolute)
         info = os.lstat(self.path(absolute))

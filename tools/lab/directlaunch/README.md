@@ -166,7 +166,8 @@ is laid out as the package installs it (relative symlink plus target).
   Rocky ran as PID 80203, so it was restarted since; that launch's log block,
   the current UEFI vars hash and the vm-run/firmware hashes must come from a
   fresh `host.py facts` run before a record can be generated. The 2026-11-08
-  run failed on the firmware symlink (fixed above, not yet rerun on f3).
+  run failed on the firmware symlink; after the fix above a read-only rerun
+  on f3 (2026-11-08 21:07Z) recorded the pinned link, target and hash.
 - The tap unit must be chosen free from those facts.
 - Tested locally only (Python 3.14; f3 runs 3.12, no newer syntax is used).
   `ifconfig`, `bhyvectl`, `ps` and `vm list` outputs are simulated from their
