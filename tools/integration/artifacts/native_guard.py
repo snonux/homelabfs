@@ -42,14 +42,21 @@ def processes():
     return result
 
 
-def vm_invariant(birth, config_hash):
+def vm_invariant(rocky_pid, birth, config_hash):
+    """Admit only the pinned current Rocky incarnation as the single VM context.
+
+    The PID is a required argument (it was hard-coded until 2026-11-08, which
+    went stale on every f3 reboot); the exact process start time still binds
+    the incarnation, so a reused PID cannot satisfy the invariant.
+    """
     if {p.name for p in Path('/dev/vmm').iterdir()} != {'rocky'}:
         raise ValueError('VM context inventory changed')
-    actual = subprocess.check_output(['/bin/ps', '-p', '6444', '-o',
+    pid = str(rocky_pid)
+    actual = subprocess.check_output(['/bin/ps', '-p', pid, '-o',
                                       'pid=', '-o', 'command='], text=True, timeout=5).strip()
-    if actual.split(maxsplit=1) != ['6444', 'bhyve: rocky (bhyve)']:
+    if actual.split(maxsplit=1) != [pid, 'bhyve: rocky (bhyve)']:
         raise ValueError('original Rocky process changed')
-    actual_birth = subprocess.check_output(['/bin/ps', '-p', '6444', '-o',
+    actual_birth = subprocess.check_output(['/bin/ps', '-p', pid, '-o',
                                            'lstart='], text=True, timeout=5).strip()
     if actual_birth != birth:
         raise ValueError('original Rocky incarnation changed')
@@ -101,6 +108,7 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--stage', required=True)
     parser.add_argument('--local-reserved-bytes', type=int, required=True)
+    parser.add_argument('--rocky-pid', type=int, required=True)
     parser.add_argument('--rocky-birth', required=True)
     parser.add_argument('--rocky-config-sha256', required=True)
     parser.add_argument('command', nargs=argparse.REMAINDER)
@@ -129,7 +137,7 @@ def main():
 
     def sample():
         nonlocal peak_rss, peak_disk
-        physical = vm_invariant(args.rocky_birth, args.rocky_config_sha256)
+        physical = vm_invariant(args.rocky_pid, args.rocky_birth, args.rocky_config_sha256)
         rows = processes()
         owned = {os.getpid()}
         if child:
