@@ -5,7 +5,8 @@ lifecycle endpoint over its **actual** surviving owners. It is the operator
 harness's only way to invoke the supported [C9 same-owner restart](restart.md)
 and to collect actual source/ledger evidence from a live runtime. It adds no
 normal publication, guest RESUME, replacement exporter/FUSE/native owner or
-recovery after owner loss. `publication` stays null in every record.
+recovery after owner loss. READY and every evidence record carry `publication: null`; the OBSERVED and
+restart-outcome wrappers carry no publication key at all.
 
 ## Endpoint and authority
 
