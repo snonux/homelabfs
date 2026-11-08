@@ -18,10 +18,13 @@ approved inputs; they never grant authority.
 Never: VM lifecycle commands, signals to any process (no kill, even on a
 command deadline), forced unmounts, or a lookup of /dev/nmdm* or /dev/tap*
 paths (devfs cloning would create those devices); /dev is only listed.
+Symlinks are refused everywhere except the one package-installed firmware
+link (FIRMWARE), whose text and confined target are recorded as facts.
 Every mutating command writes an intent first; an intent without a result is
 uncertain and blocks every later run until root reconciles it.
 """
 import argparse
+import errno
 import fcntl
 import hashlib
 import importlib.util
@@ -40,7 +43,15 @@ COMMANDS = {"ifconfig": "/sbin/ifconfig", "bhyvectl": "/usr/sbin/bhyvectl",
 FACTS_VERSION = "homelabfs-zq3-launch-facts/1"
 ROCKY_DIR = "/zroot/bhyve/rocky"
 HASHED = (ROCKY_DIR + "/rocky.conf", "/usr/local/lib/vm-bhyve/vm-run",
-          "/usr/local/share/uefi-firmware/BHYVE_UEFI.fd", ROCKY_DIR + "/uefi-vars.fd")
+          ROCKY_DIR + "/uefi-vars.fd")
+# pkg edk2-bhyve installs the bootrom path as a relative symlink
+# (../edk2-bhyve/BHYVE_UEFI.fd) and bhyve follows it. It is the only symlink
+# this tool follows: its target must resolve inside FIRMWARE_CONFINE and is
+# digested like every other pinned file. The exact link text, target path and
+# target hash are pins in argv.py (`facts` never imports it), re-checked by
+# argv.py at generate time and again by `setup`.
+FIRMWARE = "/usr/local/share/uefi-firmware/BHYVE_UEFI.fd"
+FIRMWARE_CONFINE = "/usr/local/share"
 DISK = ROCKY_DIR + "/disk0.img"
 LOG = ROCKY_DIR + "/vm-bhyve.log"
 BRIDGE = "vm-public"
@@ -145,15 +156,43 @@ class Host:
                     "ancestors must be owner-controlled directories: " + str(parent))
 
     def open_checked(self, absolute):
-        """Open a regular, owner-owned, not group/other-writable file."""
+        """Open a regular, owner-owned, not group/other-writable file.
+
+        O_NOFOLLOW refuses a symlink at the final component; FreeBSD reports
+        that as EMLINK ("Too many links"), Linux as ELOOP. Both become a clean
+        refusal instead of a traceback.
+        """
         self.check_ancestors(absolute)
-        fd = os.open(self.path(absolute), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            fd = os.open(self.path(absolute), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        except OSError as failure:
+            if failure.errno in (errno.ELOOP, errno.EMLINK):
+                raise Refused("symlink refused: " + absolute) from failure
+            raise
         info = os.fstat(fd)
         if not (stat.S_ISREG(info.st_mode) and info.st_uid == self.owner and
                 not info.st_mode & 0o022):
             os.close(fd)
             raise Refused("protected regular file required: " + absolute)
         return fd, info
+
+    def resolve_link(self, absolute, confine):
+        """Return (text, target) of one owner-owned symlink confined to `confine`.
+
+        The target is resolved lexically, which is exact because both the
+        link's and (via digest) the target's ancestors are checked with lstat
+        and must be real directories, never symlinks. Only one hop is
+        followed: the target is opened with O_NOFOLLOW later.
+        """
+        self.check_ancestors(absolute)
+        info = os.lstat(self.path(absolute))
+        require(stat.S_ISLNK(info.st_mode) and info.st_uid == self.owner,
+                "owner-owned symlink required: " + absolute)
+        text = os.readlink(self.path(absolute))
+        target = os.path.normpath(os.path.join(os.path.dirname(absolute), text))
+        require(target.startswith(confine + "/"),
+                "symlink target outside %s: %s -> %s" % (confine, absolute, text))
+        return text, target
 
     def digest(self, absolute):
         fd, info = self.open_checked(absolute)
@@ -244,11 +283,22 @@ def bridge_members(text):
     return sorted(m[1] for m in re.finditer(r"^\s+member: (\S+) ", text, re.MULTILINE))
 
 
+def firmware_fact(host):
+    """Link text, confined target and the target's digest for the bootrom.
+
+    The text is recorded rather than compared here so that Phase 1 evidence
+    shows an unexpected (but confined) link; argv.check_facts refuses it.
+    """
+    text, target = host.resolve_link(FIRMWARE, FIRMWARE_CONFINE)
+    return {"link": text, "target": target, **host.digest(target)}
+
+
 def collect_facts(host):
     """Read-only launch facts; the same collector feeds Phase 1 and setup."""
     conf_raw, _ = host.read(HASHED[0], 64 << 10)
     tail, truncated = host.read(LOG, LOG_TAIL, tail=True)
     files = {path: host.digest(path) for path in HASHED}
+    files[FIRMWARE] = firmware_fact(host)
     files[DISK] = {"bytes": host.size(DISK)}
     bridge = host.command([COMMANDS["ifconfig"], BRIDGE])
     return {"version": FACTS_VERSION, "collected": time.time(), "files": files,

@@ -7,8 +7,8 @@ controlled exporter argv from read-only launch facts (collected by
 runtime config whose Exporter argv/path/digest drifted from that record.
 
 The reconstruction is anchored to reviewed baseline constants (rocky.conf,
-vm-bhyve's vm-run, firmware and the hardware tokens vm-bhyve logged for the
-current Rocky launch). Any difference refuses: a changed launch profile needs a
+vm-bhyve's vm-run, the firmware symlink text and target digest, and the
+hardware tokens vm-bhyve logged for the current Rocky launch). Any difference refuses: a changed launch profile needs a
 reviewed code/plan revision, never a silent re-derivation.
 """
 import argparse
@@ -28,6 +28,13 @@ VM_RUN = "/usr/local/lib/vm-bhyve/vm-run"
 VM_RUN_SHA256 = "43753bc83263c26a25f49e7ccd3c1da79dca7a6361442b3c61a1831bd2782db0"
 VM_BHYVE_LOG = "/zroot/bhyve/rocky/vm-bhyve.log"
 BOOTROM = "/usr/local/share/uefi-firmware/BHYVE_UEFI.fd"
+# BOOTROM is a symlink installed by pkg edk2-bhyve (g202508_3, seen 2026-11-08)
+# and bhyve follows it. The argv keeps the link path vm-bhyve logged; the
+# link text and resolved target are pinned so a relinked firmware refuses.
+BOOTROM_LINK = "../edk2-bhyve/BHYVE_UEFI.fd"
+BOOTROM_TARGET = "/usr/local/share/edk2-bhyve/BHYVE_UEFI.fd"
+# Digest of the 3,653,632 target bytes (2026-11-05 batch, sha256(1) follows
+# the link), so the pin carries over to the target unchanged.
 BOOTROM_SHA256 = "6b48e9673915110037a54835dca217bcb262c1de3606a482f0ff3890687499e2"
 VARS = "/zroot/bhyve/rocky/uefi-vars.fd"
 DISK = "/zroot/bhyve/rocky/disk0.img"
@@ -159,6 +166,15 @@ def match_baseline(block):
                 require(got == want, "launch %s drifted: %s != %s" % (key, got, want))
 
 
+def check_bootrom(fact):
+    """The firmware fact must be the pinned package link and target bytes."""
+    require(fact.get("link") == BOOTROM_LINK,
+            "firmware symlink text drifted: %r" % (fact.get("link"),))
+    require(fact.get("target") == BOOTROM_TARGET,
+            "firmware symlink target drifted: %r" % (fact.get("target"),))
+    require(fact.get("sha256") == BOOTROM_SHA256, "pinned file drifted: " + BOOTROM_TARGET)
+
+
 def check_facts(facts):
     """Gate the reviewed hardware subset of read-only facts; return mutable pins."""
     require(isinstance(facts, dict) and facts.get("version") == FACTS_VERSION,
@@ -170,9 +186,10 @@ def check_facts(facts):
     files = facts["files"]
     require(set(files) == {ROCKY_CONF, VM_RUN, BOOTROM, VARS, DISK} and
             all(isinstance(item, dict) for item in files.values()), "closed file facts")
-    pinned = {ROCKY_CONF: ROCKY_CONF_SHA256, VM_RUN: VM_RUN_SHA256, BOOTROM: BOOTROM_SHA256}
+    pinned = {ROCKY_CONF: ROCKY_CONF_SHA256, VM_RUN: VM_RUN_SHA256}
     for path, want in pinned.items():
         require(files[path].get("sha256") == want, "pinned file drifted: " + path)
+    check_bootrom(files[BOOTROM])
     require(sha256(facts["rocky_conf"].encode()) == ROCKY_CONF_SHA256,
             "rocky.conf text does not match its pinned hash")
     vars_fact = files[VARS]
@@ -258,7 +275,8 @@ def build_record(run_id, sessions, tap, pins, facts_sha256):
             "launch": names["launch"], "staging": names["staging"],
             "vars_source": VARS, "vars_source_sha256": pins["vars_sha256"],
             "vars_bytes": pins["vars_bytes"], "vars_copy": names["vars_copy"],
-            "bootrom": BOOTROM, "bootrom_sha256": BOOTROM_SHA256, "disk": DISK,
+            "bootrom": BOOTROM, "bootrom_link": BOOTROM_LINK,
+            "bootrom_target": BOOTROM_TARGET, "bootrom_sha256": BOOTROM_SHA256, "disk": DISK,
             "rocky_conf": ROCKY_CONF, "rocky_conf_sha256": ROCKY_CONF_SHA256,
             "vm_run_sha256": VM_RUN_SHA256}
     return {"version": RECORD_VERSION, "run_id": run_id, "vm": names["vm"],

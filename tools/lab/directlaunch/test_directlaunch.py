@@ -6,6 +6,8 @@ f3 filesystem, a command simulator for ifconfig/bhyvectl/ps/vm, and a small
 model of bhyve's option parser for the argv shape. Nothing here touches a
 real host, VM, tap, nmdm or vmm device. Pinned hashes of files that cannot be
 reproduced locally (vm-run, firmware) are patched to the fake files' digests.
+The firmware path is laid out like pkg edk2-bhyve installs it: a relative
+symlink into ../edk2-bhyve/ with the bytes in the target.
 """
 import copy
 import hashlib
@@ -67,7 +69,8 @@ def pinned_constants():
 def facts(conf=CONF, log=LOG, interfaces=None):
     files = {ARGV.ROCKY_CONF: {"sha256": sha(conf.encode()), "bytes": len(conf)},
              ARGV.VM_RUN: {"sha256": sha(FAKE_VM_RUN), "bytes": len(FAKE_VM_RUN)},
-             ARGV.BOOTROM: {"sha256": sha(FAKE_BOOTROM), "bytes": len(FAKE_BOOTROM)},
+             ARGV.BOOTROM: {"link": ARGV.BOOTROM_LINK, "target": ARGV.BOOTROM_TARGET,
+                            "sha256": sha(FAKE_BOOTROM), "bytes": len(FAKE_BOOTROM)},
              ARGV.VARS: {"sha256": sha(VARS_BYTES), "bytes": len(VARS_BYTES)},
              ARGV.DISK: {"bytes": 1 << 20}}
     return {"version": ARGV.FACTS_VERSION, "files": files, "rocky_conf": conf,
@@ -199,6 +202,20 @@ class ArgvTests(unittest.TestCase):
             changed = facts()
             changed["files"][path]["sha256"] = "0" * 64
             with self.subTest(path), self.assertRaisesRegex(ARGV.Refused, "pinned file drifted"):
+                ARGV.check_facts(changed)
+
+    def test_firmware_symlink_drift_refuses(self):
+        cases = {
+            "other link text": ("link", "../edk2-bhyve/BHYVE_UEFI_CODE.fd", "text drifted"),
+            "absolute link text": ("link", ARGV.BOOTROM_TARGET, "text drifted"),
+            "no link (regular file)": ("link", None, "text drifted"),
+            "other target": ("target", "/usr/local/share/edk2-bhyve/BHYVE_UEFI_CODE.fd",
+                             "target drifted"),
+        }
+        for name, (key, value, pattern) in cases.items():
+            changed = facts()
+            changed["files"][ARGV.BOOTROM][key] = value
+            with self.subTest(name), self.assertRaisesRegex(ARGV.Refused, pattern):
                 ARGV.check_facts(changed)
 
     def test_invalid_run_inputs_refuse(self):
@@ -360,7 +377,8 @@ class HostTests(unittest.TestCase):
         self.place("/zroot/bhyve/rocky/uefi-vars.fd", VARS_BYTES)
         self.place("/zroot/bhyve/rocky/disk0.img", b"\0" * 4096)
         self.place("/usr/local/lib/vm-bhyve/vm-run", FAKE_VM_RUN)
-        self.place("/usr/local/share/uefi-firmware/BHYVE_UEFI.fd", FAKE_BOOTROM)
+        self.place(ARGV.BOOTROM_TARGET, FAKE_BOOTROM)
+        self.relink(ARGV.BOOTROM_LINK)
         (self.root / "dev" / "vmm").mkdir(parents=True)
         for name in ("null", "nmdm-rocky.1A", "nmdm-rocky.1B"):
             (self.root / "dev" / name).touch()
@@ -372,11 +390,21 @@ class HostTests(unittest.TestCase):
         self.place(self.record_path, self.raw, mode=0o600)
         self.launch = self.root / "var/tmp/hfs-validation-xz3/zq3-r1/launch"
 
-    def place(self, absolute, raw, mode=0o644):
+    def place(self, absolute, raw, mode=0o644, replace=False):
         path = self.root / absolute.lstrip("/")
         path.parent.mkdir(parents=True, exist_ok=True)
+        if replace and os.path.lexists(path):
+            path.unlink()  # never write through an existing symlink
         path.write_bytes(raw)
         path.chmod(mode)
+
+    def relink(self, text, path=ARGV.BOOTROM):
+        """(Re)create `path` as a symlink with the given link text."""
+        link = self.root / path.lstrip("/")
+        link.parent.mkdir(parents=True, exist_ok=True)
+        if os.path.lexists(link):
+            link.unlink()
+        os.symlink(text, link)
 
     def setup_run(self):
         raw, value = HOST.load_record(self.host, ARGV, self.record_path, self.digest)
@@ -414,7 +442,52 @@ class HostTests(unittest.TestCase):
         self.assertEqual(mutating(self.os.calls[:4]), [])
         self.assertEqual(value["dev_nmdm"], ["nmdm-rocky.1A", "nmdm-rocky.1B"])
         self.assertEqual(value["bridge_members"], ["tap0"])
+        self.assertEqual(value["files"][ARGV.BOOTROM], {
+            "link": ARGV.BOOTROM_LINK, "target": ARGV.BOOTROM_TARGET,
+            "sha256": sha(FAKE_BOOTROM), "bytes": len(FAKE_BOOTROM)})
         ARGV.check_facts(value)  # host facts feed the generator unchanged
+
+    def test_unexpected_but_confined_firmware_link_is_recorded(self):
+        self.place("/usr/local/share/edk2-bhyve/BHYVE_UEFI_CODE.fd", FAKE_BOOTROM)
+        self.relink("../edk2-bhyve/BHYVE_UEFI_CODE.fd")
+        value = HOST.collect_facts(self.host)  # Phase 1 evidence shows the link
+        self.assertEqual(value["files"][ARGV.BOOTROM]["link"], "../edk2-bhyve/BHYVE_UEFI_CODE.fd")
+        with self.assertRaisesRegex(ARGV.Refused, "symlink text drifted"):
+            ARGV.check_facts(value)
+
+    def test_firmware_link_is_the_only_symlink_followed(self):
+        outside = "/tmp/BHYVE_UEFI.fd"
+        cases = [
+            ("relative escape", lambda: self.relink("../../../../tmp/BHYVE_UEFI.fd"), "outside"),
+            ("absolute outside", lambda: self.relink(outside), "outside"),
+            ("prefix sibling", lambda: self.relink("/usr/local/shared/BHYVE_UEFI.fd"), "outside"),
+            ("target is a link", lambda: (  # a second hop is never followed
+                self.place("/usr/local/share/edk2-bhyve/BHYVE_UEFI.real", FAKE_BOOTROM),
+                self.relink("BHYVE_UEFI.real", ARGV.BOOTROM_TARGET)), "symlink refused"),
+            ("regular firmware", lambda: self.place(ARGV.BOOTROM, FAKE_BOOTROM, replace=True),
+             "symlink required"),
+            ("writable target", lambda: (self.root / ARGV.BOOTROM_TARGET.lstrip("/")).chmod(0o666),
+             "protected"),
+            ("conf symlink", lambda: self.relink("rocky.conf.real", ARGV.ROCKY_CONF), "symlink refused"),
+            ("vm-run symlink", lambda: self.relink("vm-run.real", ARGV.VM_RUN), "symlink refused"),
+            ("vars symlink", lambda: self.relink("uefi-vars.real", ARGV.VARS), "symlink refused"),
+        ]
+        real_open = os.open
+        def never_outside(path, *args, **kwargs):
+            if str(path).endswith(outside):
+                raise AssertionError("opened a target outside the confinement")
+            return real_open(path, *args, **kwargs)
+        for name, arrange, pattern in cases:
+            with self.subTest(name):
+                self.setUp()
+                self.place(outside, FAKE_BOOTROM)
+                for real in ("rocky.conf.real", "uefi-vars.real"):
+                    self.place("/zroot/bhyve/rocky/" + real, CONF.encode())
+                self.place("/usr/local/lib/vm-bhyve/vm-run.real", FAKE_VM_RUN)
+                arrange()
+                with mock.patch.object(HOST.os, "open", never_outside), \
+                     self.assertRaisesRegex(HOST.Refused, pattern):
+                    HOST.collect_facts(self.host)
 
     def test_setup_creates_only_pinned_resources(self):
         owned = self.setup_run()
@@ -452,6 +525,15 @@ class HostTests(unittest.TestCase):
             ("process", lambda: self.os.processes.append("9 4: hfs-zq3-r1"), "names the run"),
             ("writable conf", lambda: (self.root / "zroot/bhyve/rocky/rocky.conf").chmod(0o666),
              "protected"),
+            # Setup re-checks the firmware link text and target bytes.
+            ("firmware relinked", lambda: (
+                self.place("/usr/local/share/edk2-bhyve/BHYVE_UEFI_CODE.fd", FAKE_BOOTROM),
+                self.relink("../edk2-bhyve/BHYVE_UEFI_CODE.fd")), "symlink text drifted"),
+            ("firmware target changed", lambda: self.place(ARGV.BOOTROM_TARGET, b"other fw"),
+             "pinned file drifted"),
+            ("firmware target replaced", lambda: self.place(
+                ARGV.BOOTROM_TARGET, FAKE_BOOTROM[::-1], replace=True), "pinned file drifted"),
+            ("firmware outside", lambda: self.relink("/tmp/BHYVE_UEFI.fd"), "outside"),
         ]
         for name, arrange, pattern in cases:
             with self.subTest(name):
