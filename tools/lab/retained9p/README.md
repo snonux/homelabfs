@@ -117,6 +117,22 @@ The batch's SSH executable, host/guest public pin files and probe bytes are pinn
 and checked before dispatch. The guest connection goes through f3 with strict
 explicit host/guest pin policy and no agent forwarding/control master/key update.
 
+**Targets and host-key pins (zq3 G8).** The plan must name exactly f3
+`10.20.0.133` (alias `f3`, user `paul`) and Rocky `10.20.0.123` (alias `rocky`,
+user `root`), the IQ-verified primaries after the LAN migration. The
+pre-migration `192.168.1.133`/`192.168.1.123` stay configured on both machines
+as aliases, but a plan naming one refuses with an explicit reason: the pin
+lines, the observer key's `from=` and the evidence all name one route, so one
+plan digest never means two network paths. The plan's `known_hosts` files must
+be byte copies of [`f3-host-known_hosts`](../../../docs/lab/f3-host-known_hosts)
+and [`rocky-known_hosts`](../../../docs/lab/rocky-known_hosts) (or comment-only
+variants): exactly one `ALIAS,ADDRESS ssh-ed25519 KEY` line whose fingerprint
+equals the reviewed one (`SHA256:VZLF…` f3, `SHA256:UCoi…` Rocky). The alias
+serves this controller's `HostKeyAlias`, the address the runtime observer's
+plain `root@10.20.0.123` lookup. Those keys come read-only from Paul's existing
+known_hosts, cross-checked against the earlier lab record; nothing was scanned.
+`docs/lab/f3-known_hosts` remains the hfs-test guest pin file.
+
 The controller reads the plan once: those exact raw bytes supply parsing,
 validation, the reported digest and the durable `plan.json`. Verified SSH,
 public-pin and probe bytes are retained from their checked reads. Execution uses
@@ -160,6 +176,54 @@ draining stdout/stderr. A stalled SSH handshake or child that never reads cannot
 hold the controller in a synchronous pipe write beyond that deadline. Local
 regressions use an actual4KiB pipe/non-reading child and pre-spawn oversize denial;
 these exercise controller transport safety only, not guest filesystem acceptance.
+
+## Run-only observer key (zq3 G6)
+
+[`observer_key.py`](observer_key.py) runs **on Rocky as root** inside the
+approved window (A6). It generates no key and opens no connection; the run
+generates the key on f3 and transfers only its public half. Python 3.9
+compatible, so it can run from stdin as `/usr/bin/python3.9 -I -B - ACTION …`;
+Rocky cannot hash stdin, so the filled plan pins this file's SHA256 and the
+operator checks it before each invocation.
+
+- `stage`: checks the pinned interpreter (root-owned regular file, no symlink,
+  SHA256), `observer.py` against `--observer-sha256` and the installed probe
+  against the built-in `c824b183…` (the bytes `hfs-controlled-runtime` embeds
+  from `internal/controlledruntime/probe/installed.py`). Creates
+  `/var/tmp/hfs-zq3-RUN` (`0700`, empty `m0`, `m1`) if absent and writes
+  `observer.py` and `installed-probe.py` exclusively, root-owned `0400`.
+- `enrol`: re-verifies those, accepts only one `ssh-ed25519 KEY
+  hfs-zq3-RUN-observer` public line, requires the current `authorized_keys`
+  SHA256 to equal `--expect-sha256` (the Phase 1 value) and refuses if the key
+  or run comment is already present. Writes the receipt
+  `observer-key.json` first, then appends exactly one line
+  `restrict,from="10.20.0.133",command="PY -I RUN/observer.py --probe
+  RUN/installed-probe.py --probe-sha256 … --python PY --python-sha256 …"
+  ssh-ed25519 KEY hfs-zq3-RUN-observer` and verifies after = SHA256(before + line).
+- `remove --expect-sha256 H`: H must be the current file hash. With the
+  receipt's post-enrol hash it removes the exact line and must restore the
+  pre-run bytes. With another explicitly given current hash (unrelated keys
+  changed meanwhile) it removes only that line, keeps everything else and
+  reports `restored_pre_run: false`. A duplicated line refuses. If an enrol was
+  interrupted before its line landed and the file is still at the receipt's
+  pre-run hash, it only retires the receipt; with the line absent and any other
+  hash it refuses, and root retires the receipt manually after inspection. The receipt
+  becomes `observer-key-removed.json`, so a repeat refuses.
+- `status`: read-only hash, line count and enrolled-line count.
+
+Every change replaces `authorized_keys` atomically (exclusive temporary file,
+original owner, mode and SELinux label, fsync, rename, directory fsync) after
+re-reading it, so a crash leaves a complete old or new file. Other tools take
+no lock: an edit landing between that last re-read and the rename (an append
+to the old file or another tool's rename) is **silently lost and not
+detected**; the post-rename hash check only catches writes after our rename.
+Nothing else may edit root's `authorized_keys` during the window. A kill
+between writing the temporary file and the rename leaves a stale
+`.authorized_keys.hfs-observer-next` beside it; `status` reports it
+(`stale_pending`), and the next replacement refuses until root inspects and
+deletes it. One flock per run directory serialises the tool.
+The interpreter pin covers the executable file only, not the shared libraries
+it loads (the same limit as `observer.py`'s own `fexecve` pin).
 
 ## External staged signer
 
@@ -213,6 +277,77 @@ to the private host EnrollmentFile. At `AWAITING_GUEST_BIND`, the bind request
 names that exact provision, original group ID, actual emitted controller and
 same ordered key files. It emits `bind.json` for one complete guest sysfs write.
 Neither file is a native readiness receipt.
+
+## Rocky test kernel (zq3 G5)
+
+`rocky_kernel.py` installs, selects once and removes the candidate guest kernel
+on Rocky, and generates `/etc/homelabfs/installed-admission-v1.json`. It
+implements the [run plan](../../../docs/lab/zq3-run-plan.md)'s Phase 3, Phase 5
+step 2 and "Boot selection and recovery" (U1-U3). **It has only been tested
+locally against a simulated Rocky** (temporary root, emulated grubby, grubenv,
+depmod, dracut, systemctl and GRUB's one-shot consumption at boot). Every
+Rocky-side command still needs Paul's explicit A3 approval of the filled plan.
+
+1. Workstation, Phase 0:
+   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 3f770a88… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
+   It refuses any manifest other than the pinned candidate, checks every
+   Linux file's size and SHA256 against the manifest and the installation
+   proposal, requires `modules.order` to name exactly the manifest's modules,
+   and records the GNU build IDs of `vmlinux` and every `.ko`. Targets are
+   derived from the source names (`/boot/vmlinuz-R`, `/boot/System.map-R`,
+   `/boot/config-R`, `/lib/modules/R/…`); the Rocky side recomputes them, so a
+   plan cannot direct a write anywhere else.
+2. Stage the script, the plan and the package's `linux/` files on Rocky (for
+   example `/root/hfs-zq3-zq3-r1-kernel-stage/`). Every Rocky command is
+   `/usr/bin/python3 -I -B rocky_kernel.py CMD --plan P --plan-sha256 S --state D`
+   as root, with `D` a new path in a root-only parent (for example
+   `/root/hfs-zq3-zq3-r1-kernel-state`).
+
+| Command | Plan step | What it does and refuses |
+|---|---|---|
+| `install --stage DIR` | Phase 3 steps 1-4 | Needs exactly the plan's stock release running (any other installed kernel, such as ELRepo 7.0.3, refuses), the pinned default, empty `next_entry`, no existing targets or test-kernel entry, `/boot` headroom. Then it records `pre.json` (grubenv, default, raw `grubby --info=ALL`), copies the verified bytes (write beside, link, never clobber), runs `depmod`, `dracut --kver`, `grubby --add-kernel … --copy-default --title …`, and checks for exactly one new entry, all old entries unchanged, the default and `saved_entry` unchanged and `next_entry` still empty. |
+| `select` | Phase 5 step 2 | Last Rocky action before the f3 stop; exactly the stock release. Rechecks installed bytes, initramfs and BLS entry, runs `grub2-reboot <id>`, verifies `next_entry` = id and the default unchanged. Any failure runs U1 at once. Runs once per state directory. |
+| `cancel` | U1 | `grub2-editenv - unset next_entry` and verify. Allowed even with an uncertain or torn journal. Manual fallback if even this cannot run: `grub2-editenv - unset next_entry`, then `grub2-editenv - list` and `grubby --default-kernel`. |
+| `remove` | U2 | Exactly the stock release, `next_entry` empty. Scans first and refuses, deleting nothing, if anything the plan or depmod did not create is present (including symlinks). Then `grubby --remove-kernel`, deletes the files (including `/boot/initramfs-Rkdump.img` if kdump built it in a test-kernel boot) and the admission manifest, recording each removed file's SHA256, and requires `grubby --info=ALL` to equal the pre-run listing byte for byte. |
+| `check --expect test\|stock\|any` | U3 step 3, Phase 11 step 2, Phase 12 step 2 | Read-only: running release, boot ID, `next_entry` empty, `saved_entry` and default unchanged. Exit 1 on any problem. The result is journaled. |
+| `reboot-to-stock` | U3 step 4 | Test kernel only, a passing `check --expect test` in this boot, and refuses once the admission manifest exists. That is its only marker: it cannot itself tell a U3 boot from the controlled boot (which ends with a poweroff). A Phase 8 boot that failed before admission leaves no manifest, and a manifest written by mistake in a U3 boot makes it refuse wrongly, so the operator must know which boot they are in. Runs `systemctl reboot`. A new boot ID resolves the dangling intent if the shutdown wins the race. |
+| `admission` | Phase 8 step 0, before the enrollment is signed | Exactly the test kernel. See below. |
+| `status`, `reconcile --seq N --note TEXT` | | Show the journal. Record root's inspected outcome of an uncertain intent. It counts as failed and is never repeated. |
+
+**Why the admission manifest is generated in the controlled boot.**
+`internal/controlledruntime/probe/installed.py` refuses unless the manifest's
+modules are exactly the loaded `/proc/modules` set and the running
+`/sys/kernel/notes` build ID matches. Which of the five planned modules load
+(for example `x86_pkg_temp_thermal` under bhyve) is only known once the test
+kernel runs. The generator therefore runs as root in the Phase 8 boot, after
+`udevadm settle` (refused if the udev queue does not settle). It
+refuses any loaded module the plan did not install, checks each loaded
+module's installed hash and `.ko` build ID and its running sysfs build ID
+against the plan, and checks the kernel image hash and the running kernel's
+build ID (from `vmlinux`). It then repeats the boot/module observation, as
+the probe does, and writes the closed
+`homelabfs-installed-artifacts/1` manifest (canonical JSON, `0644`, written beside and linked
+into place, never overwritten). Its SHA256 is the `Observer.ManifestHash` of the
+enrollment request. A local test runs the actual `installed.py` probe against
+the generated manifest in the simulated root.
+
+Every mutating step writes a durable intent and a durable result to
+`journal.jsonl` under an exclusive lock. An intent without a result (the
+process was killed) blocks install, select, remove, reboot-to-stock and
+admission until root inspects it and records the outcome with `reconcile`;
+`cancel`, `check`, `status` and `reconcile` still run. A torn journal line
+(an interrupted write) blocks everything except `cancel`, `status` and the
+read-only `check` until root repairs `journal.jsonl`. The tool
+never runs `grubby --set-default`/`--make-default` and has no code path for
+them. Tools run by absolute path (root-owned and not group/world-writable,
+symlinks followed), with a fixed environment, no shell and bounded output.
+If `grubby --add-kernel` itself changed the default, `install` fails and
+nothing tries to restore it. That needs Paul.
+
+Not covered locally: real grubby/BLS/grubenv/dracut behaviour on Rocky 9.8,
+SELinux labels of the copied files (they inherit the `/boot` and
+`/lib/modules` defaults; Phase 3 evidence should include `ls -Z`), and
+whether the hostonly initramfs boots under bhyve (risk R2).
 
 ## Required work before an executable exact plan
 
