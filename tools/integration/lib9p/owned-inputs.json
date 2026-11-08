@@ -26,7 +26,7 @@
     "tests/ledger_test.c": "8188a97377a9a505d29c5cf1f49b41b61f90db4d213e285d58bcfc2a7d6a6e62",
     "tests/production_api_test.c": "d44ad8441033aacd90b57a24d4be3dd814c319ef82a63077c9820635a83ff9bd",
     "tests/restart_child.c": "786257a22fea79312b2fc8cf6b69290be550d5f01faf8c2b65703fa867d3ad91",
-    "tests/supervisor_test.c": "7820f0bf4d391053ff35f51cfcabc787c969ff92d5fb708bc0bb18957bc56aff",
+    "tests/supervisor_test.c": "b988e7c0fe94a8af5fd626c76452fe903900bd48f18d2d9653e679264243bd01",
     "tests/terminal_fixtures.py": "9e46a3e45a52cfbe51078c054f6009ea5d8b34bef0df99404a0fddcaedc98861",
     "tests/terminal_test.c": "69c9deb04e862c73534b87d9ce36b7d018d85a2024f8591a8034646059ca8c97",
     "tests/terminal_verify.py": "b2901894b44f115b20f328ac95acbf26a3388179d8de8d0c8adc35dc4a2fb9fb",

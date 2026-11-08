@@ -153,7 +153,14 @@ _unnamed_policy(void) {
    /* FreeBSD placeholder: admitted only by the NUL-path (FreeBSD) policy. */
    assert(_unix_unnamed_as(&a, 16, true));
    assert(!_unix_unnamed_as(&a, 16, false));
-   assert(_unix_unnamed(&a, 16) == NUL_PATH_UNNAMED);
+   /* The platform policy must match the kernel's unnamed form: FreeBSD's
+    * 16-byte placeholder is unnamed there, while Linux stays strict so an
+    * all-NUL abstract name is never mistaken for an unnamed socket. */
+#ifdef __FreeBSD__
+   assert(_unix_unnamed(&a, 16));
+#else
+   assert(!_unix_unnamed(&a, 16));
+#endif
    a.sun_family = AF_INET;
    assert(!_unix_unnamed_as(&a, path, true) && !_unix_unnamed_as(&a, 16, true));
    a.sun_family = AF_UNIX;
