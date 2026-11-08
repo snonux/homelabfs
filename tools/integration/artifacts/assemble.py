@@ -7,7 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 
-from admit import admit
+from admit import CC_WRAPPER, SYSROOT_CAPTURE, admit
 from kernel import write_new
 from native_source import OWNED
 from package import digest, read_json, seal
@@ -15,6 +15,9 @@ from proposal import pinned_proposal
 
 HERE = Path(__file__).resolve().parent
 REPOSITORY = HERE.parents[2]
+# daemon.py imports daemon_cgo.py for its cgo/closure evidence, so both are
+# daemon build recipes and both must match the retained builder bindings.
+DAEMON_RECIPES = ('daemon.py', 'daemon_cgo.py')
 
 
 def copy(source, destination):
@@ -28,20 +31,8 @@ def copy(source, destination):
     shutil.copyfile(source, destination)
 
 
-def assemble(package, evidence, operator, physical):
-    if (package / 'manifest.json').exists():
-        raise ValueError('preserve sealed candidates; use a fresh package')
-    checkout = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPOSITORY, text=True).strip()
-    native = read_json(package / 'freebsd/build.json')
-    daemon = read_json(package / 'freebsd/daemon-build.json')
-    baseline = daemon['repository']
-    linux = read_json(package / 'linux/build.json')
-    capture = read_json(evidence / 'native-final-source-and-first-seal.json')
-    native_repro = read_json(evidence / 'native-clean-repro-evidence.json')['repro']
-    daemon_repro = read_json(evidence / 'daemon-clean-repro.json')
-    first_binding = read_json(evidence / 'checks/daemon-build-private-first/binding.json')
-    second_binding = read_json(evidence / 'checks/daemon-build-private-clean-repro/binding.json')
-    bindings = capture['recipe_sha256']
+def copy_native_inputs(package, evidence, native, linux, bindings):
+    """Native/kernel recipes, owned native sources and patch, as built."""
     actual = {'native_build_v3.py': 'native_build.py', 'native_source_v2.py': 'native_source.py',
               'native_guard_v3.py': 'native_guard.py', 'elf.py': 'elf.py'}
     for name, local in actual.items():
@@ -50,10 +41,6 @@ def assemble(package, evidence, operator, physical):
         copy(HERE / local, package / 'inputs/build-recipes' / local)
     if digest(HERE / 'kernel.py')[1] != linux['inputs']['recipe_sha256']:
         raise ValueError('actual kernel recipe differs')
-    daemon_path = str(HERE / 'daemon.py')
-    if first_binding[daemon_path] != digest(HERE / 'daemon.py')[1] or second_binding[daemon_path] != first_binding[daemon_path]:
-        raise ValueError('actual daemon recipe differs')
-    copy(HERE / 'daemon.py', package / 'inputs/build-recipes/daemon.py')
     copy(HERE.parent / 'linux9p/tests/common/runner_process.py', package / 'inputs/build-recipes/runner_process.py')
     if digest(package / 'inputs/build-recipes/runner_process.py')[1] != bindings['runner_process.py']:
         raise ValueError('native process helper differs')
@@ -72,6 +59,38 @@ def assemble(package, evidence, operator, physical):
     if digest(patch)[1] != seed['0001-dedicated-backend.patch']:
         raise ValueError('actual native patch differs')
     copy(patch, package / 'inputs/freebsd-owned/patches' / patch.name)
+    return seed, bundle_binding
+
+
+def copy_daemon_inputs(package, evidence, daemon):
+    """Daemon recipes plus the exact cgo wrapper and sysroot capture manifest.
+
+    The wrapper and capture manifest come from the paths recorded by
+    daemon.py and must still hash to the recorded values. Sysroot libraries
+    themselves stay external: only their capture inventory is packaged so
+    admission can compare the daemon's runtime closure against it.
+    """
+    first = read_json(evidence / 'checks/daemon-build-private-first/binding.json')
+    second = read_json(evidence / 'checks/daemon-build-private-clean-repro/binding.json')
+    recipes = {}
+    for name in DAEMON_RECIPES:
+        path = str(HERE / name)
+        if first[path] != digest(HERE / name)[1] or second[path] != first[path]:
+            raise ValueError('actual daemon recipe differs: ' + name)
+        copy(HERE / name, package / 'inputs/build-recipes' / name)
+        recipes[name] = first[path]
+    wrapper = Path(daemon['cgo_toolchain']['wrapper']['path'])
+    if digest(wrapper)[1] != daemon['cgo_toolchain']['wrapper']['sha256']:
+        raise ValueError('daemon cgo compiler wrapper differs from build record')
+    copy(wrapper, package / CC_WRAPPER)
+    capture = Path(daemon['sysroot']['root']) / 'capture.json'
+    if digest(capture)[1] != daemon['sysroot']['capture_sha256']:
+        raise ValueError('daemon sysroot capture differs from build record')
+    copy(capture, package / SYSROOT_CAPTURE)
+    return recipes
+
+
+def write_repository_source(package, checkout, baseline, seed, daemon):
     copy(REPOSITORY / 'LICENSE', package / 'licenses/HomelabFS-LICENSE')
     new_recipes = {}
     for path in sorted(HERE.iterdir()):
@@ -95,37 +114,63 @@ def assemble(package, evidence, operator, physical):
         'maintained_changes_sha256': digest(package / 'inputs/repository-changes.patch')[1] if diff else None,
         'new_recipe_files': new_recipes, 'native_owned_seed': seed,
         'daemon_repository_baseline': daemon['repository']})
+
+
+def write_records(package, evidence, records, bindings, physical, operator):
+    native, daemon, linux = records['native'], records['daemon'], records['linux']
     write_new(package / 'inputs/toolchains.json', {'linux': linux['inputs']['toolchain'],
-        'freebsd': native['toolchain'], 'go': daemon['toolchain']})
+        'freebsd': native['toolchain'], 'go': daemon['toolchain'],
+        'go_cgo': daemon['cgo_toolchain']})
     write_new(package / 'inputs/sysroot.json', {'native_consumed': native['sysroot_files'],
         'native_runtime_external': native['runtime_libraries'],
+        'daemon_cgo_sysroot': daemon['sysroot'],
+        'daemon_runtime_external': daemon['runtime_closure'],
         'provenance': 'measured binary inputs only; no inferred source ancestry or redistribution'})
-    write_new(package / 'evidence/native-clean-repro.json', native_repro)
-    write_new(package / 'evidence/daemon-clean-repro.json', daemon_repro)
+    write_new(package / 'evidence/native-clean-repro.json',
+              read_json(evidence / 'native-clean-repro-evidence.json')['repro'])
+    write_new(package / 'evidence/daemon-clean-repro.json', read_json(evidence / 'daemon-clean-repro.json'))
     write_new(package / 'evidence/actual-builder-bindings.json', {
-        'native': bindings, 'kernel_recipe': linux['inputs']['recipe_sha256'],
-        'daemon_recipe': first_binding[daemon_path], 'native_bundle_recipe': bundle_binding})
+        'native': bindings['native'], 'kernel_recipe': linux['inputs']['recipe_sha256'],
+        'daemon_recipe': bindings['daemon']['daemon.py'],
+        'daemon_cgo_recipe': bindings['daemon']['daemon_cgo.py'],
+        'native_bundle_recipe': bindings['native_bundle']})
     write_new(package / 'installation-proposal.json', pinned_proposal(package, physical, operator))
-    inventory = {}
-    for path in sorted(package.rglob('*')):
-        if not path.is_file():
-            continue
-        name = path.relative_to(package).as_posix()
-        if name == 'inputs/toolchains.json': kind = 'toolchain'
-        elif name == 'inputs/sysroot.json': kind = 'sysroot'
-        elif name.startswith(('licenses/', 'inputs/licenses/')): kind = 'license'
-        elif name.endswith('.patch') or name.endswith('/series'): kind = 'patch'
-        elif name.startswith(('inputs/build-recipes/', 'inputs/admission-recipes/')): kind = 'recipe'
-        elif name == 'linux/config': kind = 'config'
-        elif name.startswith('linux/modules/') and name.endswith('.ko'): kind = 'module'
-        elif name in ('linux/vmlinux', 'linux/bzImage'): kind = 'kernel'
-        elif name == 'freebsd/hfs-controlled-runtime': kind = 'daemon'
-        elif name in ('freebsd/bhyve', 'freebsd/bhyve-slirp-helper') or name.startswith('freebsd/share/'): kind = 'exporter'
-        elif name.startswith('freebsd/') and name.endswith('.a'): kind = 'runtime-library'
-        elif name == 'installation-proposal.json': kind = 'proposal'
-        elif name.startswith('inputs/'): kind = 'source'
-        else: kind = 'build-record'
-        inventory[name] = kind
+
+
+def inventory_kind(name):
+    if name == 'inputs/toolchains.json': return 'toolchain'
+    if name in ('inputs/sysroot.json', SYSROOT_CAPTURE): return 'sysroot'
+    if name.startswith(('licenses/', 'inputs/licenses/')): return 'license'
+    if name.endswith('.patch') or name.endswith('/series'): return 'patch'
+    if name.startswith(('inputs/build-recipes/', 'inputs/admission-recipes/')): return 'recipe'
+    if name == 'linux/config': return 'config'
+    if name.startswith('linux/modules/') and name.endswith('.ko'): return 'module'
+    if name in ('linux/vmlinux', 'linux/bzImage'): return 'kernel'
+    if name == 'freebsd/hfs-controlled-runtime': return 'daemon'
+    if name in ('freebsd/bhyve', 'freebsd/bhyve-slirp-helper') or name.startswith('freebsd/share/'): return 'exporter'
+    if name.startswith('freebsd/') and name.endswith('.a'): return 'runtime-library'
+    if name == 'installation-proposal.json': return 'proposal'
+    if name.startswith('inputs/'): return 'source'
+    return 'build-record'
+
+
+def assemble(package, evidence, operator, physical):
+    if (package / 'manifest.json').exists():
+        raise ValueError('preserve sealed candidates; use a fresh package')
+    checkout = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPOSITORY, text=True).strip()
+    records = {'native': read_json(package / 'freebsd/build.json'),
+               'daemon': read_json(package / 'freebsd/daemon-build.json'),
+               'linux': read_json(package / 'linux/build.json')}
+    baseline = records['daemon']['repository']
+    native_bindings = read_json(evidence / 'native-final-source-and-first-seal.json')['recipe_sha256']
+    seed, bundle_binding = copy_native_inputs(package, evidence, records['native'],
+                                              records['linux'], native_bindings)
+    daemon_bindings = copy_daemon_inputs(package, evidence, records['daemon'])
+    write_repository_source(package, checkout, baseline, seed, records['daemon'])
+    write_records(package, evidence, records, {'native': native_bindings, 'daemon': daemon_bindings,
+                  'native_bundle': bundle_binding}, physical, operator)
+    inventory = {path.relative_to(package).as_posix(): inventory_kind(path.relative_to(package).as_posix())
+                 for path in sorted(package.rglob('*')) if path.is_file()}
     pin = seal(package, inventory, operator, baseline)
     result = admit(package, pin, operator, baseline)
     record = {'manifest_sha256': pin, 'repository_baseline': baseline, 'source_checkout': checkout,

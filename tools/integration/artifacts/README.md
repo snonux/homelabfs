@@ -15,7 +15,9 @@ lib9p/libvmmapi archives and FreeBSD Go runtime also reproduce byte-for-byte
 across clean builds. The candidate passes complete offline component admission.
 These results establish build reproducibility; kernel boot and filesystem
 behavior remain unverified. Older object receipts retain
-their narrower component scope.
+their narrower component scope. Those historical daemon results describe the
+quarantined CGO_ENABLED=0 daemon, which current admission refuses. The dynamic
+CGO daemon must be rebuilt, reproduced and admitted on its own.
 
 ## Kernel and daemon recipes
 
@@ -65,12 +67,33 @@ attestation. Actual full image/modules rebuild and clean reproduction belong
 to xz3 after config and runtime repairs; installed boot and actual pod acceptance
 remain zq3. Historical candidate reproducibility does not cover this config.
 
-`daemon.py --package ABSOLUTE_PACKAGE` cross-builds the actual
-`cmd/hfs-controlled-runtime` for FreeBSD/amd64 with cgo disabled and records
-its Go source/dependency/license closure and Go build ID. Set an explicit
-private `GOMODCACHE`; `--prepare` downloads only the selected target dependencies
-there before the offline build. Other projects’ module caches are not inputs.
-A Go build ID is not assumed to be a GNU note. The binary is never started by the builder.
+`daemon.py --package ABS --cc-wrapper ABS --sysroot ABS --clang ABS --lld ABS`
+cross-builds the actual `cmd/hfs-controlled-runtime` for FreeBSD/amd64 with
+**cgo enabled**. CGO is mandatory: with `CGO_ENABLED=0` the FreeBSD build
+compiles `process_freebsd_nocgo.go`, whose `observeProcess` always returns
+`Unsupported`. The runtime starts bhyve before observing it, so such a daemon
+can never reach native READY. The cgo build compiles `process_freebsd.go` and
+`process_freebsd.h` against the FreeBSD libc ABI.
+
+All C inputs are explicit absolute arguments; nothing defaults to a local
+path. The wrapper must name exactly the given clang, `ld.lld` and sysroot, use
+`--no-default-config` and target `x86_64-unknown-freebsd15.1`. The sysroot is a
+closed capture: `capture.json` must list exactly its files and their hashes,
+checked before and after the build. The record keeps wrapper bytes, clang/lld
+hashes and versions, the capture manifest hash and platform, explicit
+`CGO_CFLAGS`/`CGO_LDFLAGS` and Go's embedded build settings. It also records
+the binary's runtime closure: PT_INTERP `/libexec/ld-elf.so.1`, exact DT_NEEDED
+order and every transitive base library, with sysroot path and hash. These
+libraries stay external and are not redistributed. A sysroot prefix map keeps
+capture paths out of C debug info.
+
+`-trimpath -buildvcs=false`, a forced `-a` rebuild, an explicit private
+`GOMODCACHE` and `GOPROXY=off` remain. `--prepare` downloads only the selected
+target dependencies there first, using the same cgo environment, so the source
+closure matches. Other projects’ module caches are not inputs. The record
+keeps the Go source/dependency/license closure, including runtime/cgo C files,
+and the Go build ID. A Go build ID is not assumed to be a GNU note. The builder
+parses the binary and never starts it.
 
 The external operator's fresh disposable **public** key is a kernel input.
 The private key stays outside the repository, package and runtime process.
@@ -90,7 +113,20 @@ working filesystem.
 `admit.py` additionally requires the actual full linked Linux kernel, complete
 configured in-tree module inventory and matching source/config/build records;
 the complete FreeBSD exporter with strong production controller/bootstrap
-symbols; and the actual FreeBSD Go runtime. It distinguishes source-owned
+symbols; and the actual dynamic CGO FreeBSD Go runtime. Daemon admission
+requires a `homelabfs-daemon-build/2` record with cgo enabled. Version 1
+records describe the CGO0 daemon and are always refused. Go's embedded build
+information must show `CGO_ENABLED=1`, freebsd/amd64, `-trimpath` and the
+recorded Go version. The binary must define `x_cgo_init` and the Go and C cgo
+trampolines for `C.hfs_process`. Build constraints make that observer and the
+nocgo stub mutually exclusive, and the recorded source closure must contain
+`process_freebsd.go`/`.h` but not `process_freebsd_nocgo.go`. PT_INTERP must be
+`/libexec/ld-elf.so.1`. DT_NEEDED must equal the recorded list exactly. The
+recorded transitive closure must be fully reachable, and every library and the
+loader must match the packaged sysroot capture, whose hash is in the record. A
+packaged copy of the cc wrapper must match its recorded hash. The admission
+refuses a stripped binary, a CGO0 binary, a foreign loader, extra or missing
+DT_NEEDED entries and any sysroot hash mismatch. It distinguishes source-owned
 FreeBSD inputs from exactly hashed installed **binary sysroot** inputs. OS
 version strings cannot supply invented source ancestry for installed libraries.
 Neither successful verifier changes installed/booted/native acceptance to true.
@@ -105,14 +141,22 @@ sysroot/runtime libraries are measured external inputs and are not bundled.
 
 `assemble.py --package ABS --evidence-root ABS --operator-public HEX
 --physical-bytes N` consumes completed component outputs and retained proof
-records. It never substitutes successful object tests for full builds. The
+records. It never substitutes successful object tests for full builds. It
+copies the recorded cc wrapper to `inputs/build-recipes/freebsd-cc` and the
+sysroot `capture.json` to `inputs/freebsd-cgo-sysroot-capture.json` after
+checking their recorded hashes. Both daemon recipes (`daemon.py`,
+`daemon_cgo.py`) must match the retained builder bindings. The
 recorded repository revision is the actual Go builder's baseline; the owned
 source changes and new recipes have separate hashes and retained bytes. The
 baseline alone does not claim to contain those changes.
 
 `check_candidate.py` exercises the real assembled package and mutations of a
 private copy, including source/patch disagreement, old features, foreign ELF,
-false rebuild evidence and authority claims. It restores the copy and rechecks
+false rebuild evidence and authority claims. Daemon cases cover a real
+`CGO_ENABLED=0` daemon supplied read-only via `--cgo0-daemon`, a CGO0 record,
+the nocgo stub in the source closure, renamed observer symbols, and a foreign
+loader. They also cover extra or missing DT_NEEDED, a sysroot library hash
+mismatch, an unlinked capture and a foreign cc wrapper. It restores the copy and rechecks
 both it and the immutable original. Small unit fixtures cover parser boundaries;
 they are not component or runtime acceptance evidence.
 
