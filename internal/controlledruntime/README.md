@@ -9,7 +9,9 @@ execution fallback or automatic SYSTEM mount setup exists.
 This package implements C3 of `docs/lab/Controlled-runtime-integration.md`.
 It owns one disposable endpoint, exporter process and private issuance root.
 It also implements the C5 live Facts/source/receipt owner described below.
-It also implements the narrow [barriered C9 component restart](restart.md).
+It also implements the narrow [barriered C9 component restart](restart.md),
+reachable after READY only through the private
+[lifecycle control and evidence endpoint](lifecycle.md).
 The explicit [C10 driver](runtime.md) composes those owners and the trusted-kernel
 credential attestor. It provides no normal publication, installed driver, or
 deployment acceptance.

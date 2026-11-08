@@ -194,6 +194,11 @@ func validateRuntimeConfig(ctx context.Context, c RuntimeConfig) error {
 	if err := daemoncli.CheckControlledRuntimePaths(c.OwnerDirectory, c.EnrollmentFile); err != nil {
 		return err
 	}
+	// The post-READY lifecycle socket must fit sockaddr_un (104 bytes on
+	// FreeBSD, including NUL); refuse before any owner exists, not after bootstrap.
+	if len(filepath.Join(c.OwnerDirectory, LifecycleSocketName)) > 103 {
+		return fmt.Errorf("owner directory too long for the private lifecycle socket: %w", fsapi.Invalid)
+	}
 	seen := map[string]bool{}
 	for _, scope := range c.Scopes {
 		if !validUUIDString(scope.Session) || seen[scope.Session] || scope.GuestBoot != c.Scopes[0].GuestBoot || scope.VM != c.Scopes[0].VM || scope.Volume != c.Scopes[0].Volume || scope.Export != c.Scopes[0].Export || len(c.HostKeys[scope.Session]) != ed25519.PrivateKeySize || len(c.GuestKeys[scope.Session]) != ed25519.PublicKeySize {

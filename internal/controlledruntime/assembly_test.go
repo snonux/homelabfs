@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -114,7 +115,12 @@ func TestRuntimeProposalStagedExternalConsent(t *testing.T) {
 	// owner, workspace, child or mount. The separate assembly test owns OS seams.
 	config.Version = "homelabfs-controlled-runtime/1"
 	config.VolumeConfig = filepath.Join(t.TempDir(), "volume-config")
-	config.OwnerDirectory = filepath.Join(t.TempDir(), "must-stay-absent")
+	// The owner root also holds the private lifecycle socket, so it must fit
+	// sockaddr_un; t.TempDir names embed the long test name.
+	short, err := os.MkdirTemp(os.Getenv("TMPDIR"), "rt-")
+	require(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(short) })
+	config.OwnerDirectory = filepath.Join(short, "must-stay-absent")
 	config.EnrollmentFile = filepath.Join(t.TempDir(), "handoff")
 	config.Operator = c.Operator
 	config.Providers = c.ProviderLimits
@@ -125,6 +131,11 @@ func TestRuntimeProposalStagedExternalConsent(t *testing.T) {
 	config.Service = fsservice.Limits{Queue: 8, IOBytes: 65536, Handles: 64, Lookups: 128, Reservations: 128, Locks: 64, LogicalBytes: 4 << 20}
 	config.Budget = RuntimeBudget{HostBytes: 4 << 30, ServiceBytes: 64 << 20, ExporterBytes: 274 << 20, GuestCopyBytes: 16 << 20, GuestBytes: 2 << 30, GuestBaseBytes: 256 << 20, Guest: GuestArtifactBudget{OrdinaryBytes: 64 << 20, ControlBytes: 32 << 20, Reservations: 32, Cookies: 32, Received: 32}}
 	require(t, validateRuntimeConfig(t.Context(), config))
+	long := config
+	long.OwnerDirectory = filepath.Join(short, strings.Repeat("o", 104))
+	if validateRuntimeConfig(t.Context(), long) == nil {
+		t.Fatal("owner directory beyond sockaddr_un admitted")
+	}
 	alias := filepath.Join(t.TempDir(), "runtime-parent-alias")
 	require(t, os.Symlink(filepath.Dir(config.OwnerDirectory), alias))
 	for _, field := range []string{"owner", "handoff"} {
@@ -260,8 +271,15 @@ func TestRuntimeFundingCompleteOwners(t *testing.T) {
 	require(t, err)
 	defer func() { require(t, funding.owner.Release()) }()
 	resources := funding.transport.Usage().Used
-	if resources.Workers != exporterDiagnosticWorkers || resources.Connections != exporterDiagnosticPipes {
-		t.Fatalf("diagnostic owners absent from retained runtime lease: %+v", resources)
+	if resources.Workers != exporterDiagnosticWorkers+lifecycleWorkers || resources.Connections != exporterDiagnosticPipes+lifecycleConnections {
+		t.Fatalf("diagnostic/lifecycle owners absent from runtime leases: %+v", resources)
+	}
+	control, err := lifecycleMemoryBytes(c.Authorization.Enrollment.Bounds)
+	require(t, err)
+	require(t, funding.releaseControl())
+	require(t, funding.releaseControl()) // idempotent after the endpoint joined
+	if after := funding.transport.Usage().Used; after.Bytes != resources.Bytes-control || after.Workers != exporterDiagnosticWorkers || after.Connections != exporterDiagnosticPipes {
+		t.Fatalf("lifecycle control funding not separately releasable: %+v", after)
 	}
 	c.Budget = funding.transport
 	a, err := Assemble(t.Context(), c)

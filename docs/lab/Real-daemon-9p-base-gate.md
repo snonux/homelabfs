@@ -61,11 +61,15 @@ loaded module set, provider nonce and every original domain. No plan assertion
 or a syscall-only probe may replace these checks.
 
 The current command's runtime interface is foreground `--config` plus staged
-EnrollmentFile. After READY it waits for owner channel loss or cancellation.
-It exposes no control operation to invoke the real
+EnrollmentFile. After READY it waits for owner channel loss or cancellation
+and serves the private [lifecycle endpoint](../../internal/controlledruntime/lifecycle.md)
+(task u24): a peer-UID checked AF_UNIX socket in the owner root whose RESTART
+invokes the real
 [`SuspendEndpoint`, `Restart.Reopen`, `Restart.Activate`](../../internal/controlledruntime/restart.go)
-sequence, so external harnesses cannot currently exercise the supported C9 cut.
-Those methods require the actual in-process owners, not decoded state files.
+sequence on the actual in-process owners, and whose OBSERVE refreshes every
+Admission and captures actual journal/source, provider/controller/C8 ledger and
+cut identities. Neither operation accepts decoded state files or caller facts.
+This is local component evidence only; native FreeBSD execution remains zq3.
 Guest-wire RESUME and replacement FUSE/exporter remain blocked. The harness must
 record and safely test those refusals without claiming daemon restart continuity.
 
@@ -90,7 +94,9 @@ The distinct diagnostic socket component fixture uses test-only private pinned
 pathname exec and cannot pass that full-launch requirement. Required evidence
 overflow remains incomplete, and no generic journal/data file-size limit applies.
 
-Minimum proposed additional runtime adapter, requiring its own focused review:
+Minimum proposed additional runtime adapter, requiring its own focused review.
+Items 1-3 are implemented by u24's [lifecycle endpoint](../../internal/controlledruntime/lifecycle.md)
+(component tests only; native acceptance unrun). Item 4 remains v24:
 
 1. One private, bounded, peer-credential checked local control endpoint in the
    explicit disposable runtime only, owned by that actual process. No guest or
