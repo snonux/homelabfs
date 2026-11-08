@@ -78,8 +78,7 @@ the step that consumes it:
 
 ## Findings
 
-- **F1, window restore against the post-load baseline (expected failure,
-  needs a decision).** `fdescfs-window.py restore` unmounts `/dev/fd` and then
+- **F1, window restore against the post-load baseline (resolved by j44).** `fdescfs-window.py restore` unmounts `/dev/fd` and then
   requires the full host `facts`, including `kldstat -v` and `mount -p`, to
   equal the baseline recorded right after loading fdescfs. The plan loads
   `fusefs.ko` after that baseline (Phase 4 step 4). The window pins forbid

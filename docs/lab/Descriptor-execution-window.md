@@ -157,7 +157,8 @@ do not select an interpreter from PATH or run an editable workstation copy.
    Restore compares final boot/base/module/mount/directory facts with the
    post-module-load baseline facts. Every non-module fact must be equal, and
    every baseline loaded file (fdescfs.ko included) must still be loaded
-   unchanged. The only tolerated addition is the plan's `window_module` file,
+   unchanged (same Id, address, size, path and contained modules; reference
+   counts are ignored because loading the window module raises them). The only tolerated addition is the plan's `window_module` file,
    loaded from its exact declared path, registering its module name, with the
    on-disk file still matching the pinned SHA256 (kldstat cannot hash loaded
    kernel text). It may also be absent if the run stopped before loading it.
