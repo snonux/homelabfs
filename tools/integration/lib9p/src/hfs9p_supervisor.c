@@ -23,6 +23,7 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdatomic.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -181,37 +182,91 @@ _request(Hfs9pSupervisor *s, uint8_t op, const uint8_t *payload, size_t length) 
    return (error);
 }
 
+/* Unnamed AF_UNIX carrier policy. Linux reports an unnamed socket as
+ * sun_family only (n == offsetof(sun_path)) and an abstract name as a longer
+ * address whose first path byte is NUL, so Linux admits only the short form.
+ * FreeBSD instead copies its sun_noname placeholder: a 16-byte address with
+ * sun_len 16, AF_UNIX and all-zero path bytes. FreeBSD has no abstract
+ * namespace and bind(2) refuses an empty path, so NUL-only returned path bytes
+ * mean unnamed there. Any nonzero byte (pathname or abstract) is refused. The
+ * policy is a parameter so the FreeBSD form is testable on every platform. */
+#ifdef __FreeBSD__
+#define NUL_PATH_UNNAMED true
+#else
+#define NUL_PATH_UNNAMED false
+#endif
+
+static bool
+_unix_unnamed_as(const struct sockaddr_un *address, socklen_t n,
+    bool nul_path_unnamed) {
+   size_t path = offsetof(struct sockaddr_un, sun_path);
+   if (n < path || (size_t)n > sizeof(*address) ||
+       address->sun_family != AF_UNIX) return (false);
+   if (n == path) return (true);
+   if (!nul_path_unnamed) return (false);
+   for (size_t i = path; i < (size_t)n; i++)
+      if (((const unsigned char *)address)[i]) return (false);
+   return (true);
+}
+
+static bool
+_unix_unnamed(const struct sockaddr_un *address, socklen_t n) {
+   return (_unix_unnamed_as(address, n, NUL_PATH_UNNAMED));
+}
+
+/* Both local and peer addresses must be unnamed: a named end could have been
+ * reached by an unrelated connect(2) rather than inherited from socketpair. */
 static int
-_socket(void) {
-   struct sockaddr_un addr;
-   socklen_t length = sizeof(addr);
+_unnamed_stream(int fd) {
+   struct sockaddr_un address;
+   socklen_t n = sizeof(address);
    int type;
    socklen_t size = sizeof(type);
-   if (getsockname(CONTROL, (struct sockaddr *)&addr, &length) ||
-       addr.sun_family != AF_UNIX ||
-       length > offsetof(struct sockaddr_un, sun_path) ||
-       getsockopt(CONTROL, SOL_SOCKET, SO_TYPE, &type, &size) ||
+   memset(&address, 0, sizeof(address));
+   if (getsockname(fd, (struct sockaddr *)&address, &n) ||
+       !_unix_unnamed(&address, n) ||
+       getsockopt(fd, SOL_SOCKET, SO_TYPE, &type, &size) ||
        type != SOCK_STREAM) return (EACCES);
-   length = sizeof(addr);
-   if (getpeername(CONTROL, (struct sockaddr *)&addr, &length) ||
-       addr.sun_family != AF_UNIX ||
-       length > offsetof(struct sockaddr_un, sun_path)) return (EACCES);
+   memset(&address, 0, sizeof(address));
+   n = sizeof(address);
+   if (getpeername(fd, (struct sockaddr *)&address, &n) ||
+       !_unix_unnamed(&address, n)) return (EACCES);
+   return (0);
+}
+
+/* The peer must be our parent supervisor running as our effective uid. */
+static int
+_parent_peer(int fd) {
 #ifdef __FreeBSD__
    struct xucred cred;
-   size = sizeof(cred);
-   if (getsockopt(CONTROL, SOL_LOCAL, LOCAL_PEERCRED, &cred, &size) ||
+   socklen_t size = sizeof(cred);
+   if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERCRED, &cred, &size) ||
        size != sizeof(cred) || cred.cr_version != XUCRED_VERSION ||
        cred.cr_uid != geteuid() || cred.cr_pid != getppid())
       return (EACCES);
 #else
    struct ucred cred;
-   size = sizeof(cred);
-   if (getsockopt(CONTROL, SOL_SOCKET, SO_PEERCRED, &cred, &size) ||
-       cred.uid != geteuid() || cred.pid != getppid()) return (EACCES);
+   socklen_t size = sizeof(cred);
+   if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &size) ||
+       size != sizeof(cred) || cred.uid != geteuid() ||
+       cred.pid != getppid()) return (EACCES);
 #endif
-   if (fcntl(CONTROL, F_SETFD, FD_CLOEXEC) ||
-       fcntl(CONTROL, F_GETFD) != FD_CLOEXEC) return (EACCES);
    return (0);
+}
+
+/* Shared CONTROL (fd3) and RECOVERY (fd5) admission: an inherited unnamed
+ * stream socketpair end whose peer is the parent, kept close-on-exec. */
+static int
+_parent_socket(int fd) {
+   if (_unnamed_stream(fd) || _parent_peer(fd)) return (EACCES);
+   if (fcntl(fd, F_SETFD, FD_CLOEXEC) ||
+       fcntl(fd, F_GETFD) != FD_CLOEXEC) return (EACCES);
+   return (0);
+}
+
+static int
+_socket(void) {
+   return (_parent_socket(CONTROL));
 }
 
 static int

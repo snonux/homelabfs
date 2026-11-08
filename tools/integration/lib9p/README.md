@@ -209,6 +209,22 @@ All failed startup files/ledger candidates remain owned for inspection. The
 trusted exporter must never fork, re-exec or pass its management/data fds after
 enrollment; fd3/data are CLOEXEC and inherited executable fd4 is closed first.
 
+CONTROL fd3 and RECOVERY fd5 share one admission (`_parent_socket`): a
+connected stream whose local and peer addresses are both unnamed AF_UNIX, with
+the parent as peer at our euid. Linux reports an unnamed socket as just
+`sun_family` (2 bytes), and only that form passes there, so abstract names stay
+refused. FreeBSD returns its 16-byte `sun_noname` placeholder with an all-zero
+`sun_path`. FreeBSD has no abstract namespace and cannot bind an empty path, so
+there (and only there) all-NUL path bytes also count as unnamed. Any nonzero
+path byte is refused. Task `m34` fixed the older rule, which allowed at most
+`offsetof(sun_path)` bytes and so rejected real FreeBSD socketpairs. That old
+rule failed the l34 native run (`!_recovery_socket()`, see
+[l34](../../../docs/lab/results/20261108-l34-native/README.md)). Evidence
+recorded before m34, including the l34 receipts and the xz3 quarantined
+artifact, describes the old sources. `supervisor_test.c` checks both address
+forms as pure cases on every platform, plus real socketpair, datagram,
+pathname and Linux abstract sockets, and fd5.
+
 ## Controlled terminal owner (`614`)
 
 Explicit features32767 adds SESSION_RETIRE and preserves the exact16383 and
