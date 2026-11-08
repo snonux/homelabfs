@@ -91,6 +91,8 @@ type runtimeOS struct {
 	replace shellSwitch
 	// peer reads kernel peer credentials for the private lifecycle endpoint.
 	peer peerCredentials
+	// accept is the lifecycle listener's accept call; nil uses AcceptUnix.
+	accept acceptUnix
 }
 
 func nativeRuntimeOS() runtimeOS {

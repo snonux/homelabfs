@@ -12,11 +12,20 @@ restart-outcome wrappers carry no publication key at all.
 ## Endpoint and authority
 
 * The socket is `OwnerDirectory/control.sock`, created exclusively inside the
-  private `0700` owner root (an existing name is preserved and refused), mode
-  `0600`. There is no guest, network, abstract or reconnect listener. Closing
-  removes only that unchanged socket name. Configuration validation refuses an
-  owner directory whose socket path would not fit `sockaddr_un` (103 bytes),
-  before any owner is created.
+  private `0700` owner root (an existing name, including a symlink, is preserved
+  and refused), mode `0600`. The endpoint holds an `O_NOFOLLOW` handle of the
+  owner root (checked to be this account's private directory) and does every
+  post-bind step relative to it without following a symlink: it confirms the
+  bound name is its own socket, records that inode, sets `0600` with
+  `fchmodat(AT_SYMLINK_NOFOLLOW)` (Linux: `fchmodat2`, or on kernels before 6.6
+  an `O_PATH|O_NOFOLLOW` handle pinned to the recorded inode) and re-checks the
+  same inode has exactly `0600`. A name swapped in between is refused, never
+  chmodded. Between bind and that change the socket has the umask's mode, but
+  only this account can traverse the owner root. There is no guest, network,
+  abstract or reconnect listener. Closing removes only that unchanged socket
+  inode (a replaced name is preserved and reported). Configuration validation
+  refuses an owner directory whose socket path would not fit `sockaddr_un`
+  (103 bytes), before any owner is created.
 * Each connection is authenticated by the kernel peer credentials before any
   request byte is read (Linux `SO_PEERCRED`, FreeBSD `LOCAL_PEERCRED` with the
   checked `xucred` ABI, through the narrow `admin.PeerCredentials` helper). Only
@@ -40,8 +49,13 @@ carries exactly one request and one reply.
 
 Replies use opcode `request|0x80`; frame-level refusals use `0xff`. Unknown
 opcodes, wrong lengths (checked before any payload read or allocation), bad
-magic/version/reserved bytes, sequence zero and oversized replies refuse.
-`{"status":"REFUSED","reason":...}` never claims an effect.
+magic/version/reserved bytes and sequence zero refuse. An oversized OBSERVE
+reply refuses. `{"status":"REFUSED","reason":...}` means the command took no
+effect, so a command that may already have taken effect never answers REFUSED:
+a RESTART outcome that does not fit is reported as `EFFECT_UNREPORTABLE` (see
+[RESTART](#restart)), and the frame backstop for an oversized RESTART or ARM
+reply is `{"status":"EFFECT_UNREPORTABLE","reason":...}` (ARMED is a fixed-size
+record, so that backstop is not expected to be reached).
 
 The sequence must be strictly greater than the last accepted sequence. A wrong
 runtime UUID or non-monotone sequence refuses without consuming it; any other
@@ -52,8 +66,9 @@ OBSERVE, which needs only the runtime UUID, to learn the current cut/epoch.
 `hfs-controlled-runtime --control SOCKET --operation
 observe|restart|arm-lost-reply --runtime UUID --sequence N [--cut UUID --epoch
 N [--session UUID --lost-operation CALL]]` is the matching one-shot client; it
-prints the raw reply and exits non-zero on refusal. Flags belonging to another
-operation refuse.
+prints the raw reply and exits non-zero on refusal (FENCED and
+EFFECT_UNREPORTABLE are consumed attempts, not refusals, and exit zero). Flags
+belonging to another operation refuse.
 
 ## OBSERVE
 
@@ -86,6 +101,10 @@ error and the lifecycle is not FENCED; it is not an acceptance flag. Closed,
 suspended, absent or partial owners are reported as such. An external
 invocation/reply oracle must correlate these records.
 
+OBSERVE replies (only) also carry `endpoint`: the number of accept failures
+since READY and the last one's text. They do not affect `complete`; see
+[Bounds and funding](#bounds-and-funding) for how they are handled.
+
 ## RESTART
 
 RESTART requires the exact current runtime, cut and epoch and the SERVING stage.
@@ -105,9 +124,19 @@ issued whatever happens) and calls the real `Supervisor.SuspendEndpoint`,
   files, mount and VM resources.
 
 The outcome plus its post-attempt evidence is protected in the exclusive owner
-file `control-restart.json` before the reply is written. A later RESTART always
-refuses. Without a native shell-switch primitive the operation refuses before
-any effect. An armed, unfired lost-reply fixture is expired before suspension;
+file `control-restart.json` (at most 124 KiB) before the reply is written; an
+existing file is preserved and the reply then carries `protect_error`, as do
+later OBSERVE `restart` sections. If the outcome with its evidence would not fit
+that bound, the attempt is still never reported as refused: the protected record
+and the reply use status `EFFECT_UNREPORTABLE`, `outcome` keeps the actual
+RESTARTED/FENCED result, step, error, barrier, physical hash, epoch, cut and
+partial owners are kept (all bounded), and only `evidence` is replaced by
+`evidence_error` naming its encoded size; OBSERVE then reports the current
+owners, and its `restart` section keeps the actual status. The remaining 4 KiB
+of the 128 KiB reply bound are reserved for `protect_error`, whose 512-byte
+text JSON escaping can grow sixfold. A later RESTART always refuses. Without a
+native shell-switch primitive the operation refuses before any effect (it
+consumes its sequence, but no attempt, cut or epoch). An armed, unfired lost-reply fixture is expired before suspension;
 it never crosses C9.
 
 A C9 cut after a filesystem mutation additionally needs the guest steps any cut
@@ -161,6 +190,15 @@ request and reply; OBSERVE and ARM have 30 s and RESTART 90 s (the C9 grant
 itself expires after 60 s). Requests are at most 73 bytes; replies at most
 128 KiB.
 
+A transient accept failure (`EMFILE`, `ENFILE`, `ENOBUFS`, `ENOMEM`, an aborted
+or interrupted connection) never ends the worker: it is counted in OBSERVE's
+`endpoint` section and retried after a backoff of 5 ms doubling up to 1 s
+(reset by the next accepted connection; closing the endpoint interrupts it).
+Any other accept failure is permanent: the worker ends and the runtime ends as
+on owner loss (admission blocked, every owner, file, mount and VM resource
+retained), returning `lifecycle endpoint accept failed permanently: ...`, rather
+than serving on without its only control endpoint.
+
 `fundRuntime` reserves a separate admission lease for this endpoint before any
 owner exists: one worker, one connection and
 `1 MiB + C8 peak (128 KiB + 8 MiB + 8 MiB) + 2 × LedgerBytes + 3 × SourceBytes`.
@@ -169,9 +207,13 @@ The host budget check includes it and `runtime-budget.json` records it under
 returned only after the endpoint's worker joined. The lost-reply fixture has a
 separate 64 KiB Memory lease (one operation, no worker or connection) for its
 record, claim copy, digests and source baseline; the host budget check
-pre-accounts it, `Control.LostReplyBytes` records it and the runtime Memory
-pool keeps exactly one operation slot for it. ARM reserves it and runtime close
-returns it. Closing the endpoint stops
+pre-accounts it (a host budget one byte short refuses) and
+`Control.LostReplyBytes` records it. The runtime Memory pool's limits count one
+operation and those bytes for it, but nothing is held in advance: ARM reserves
+the lease only when it arms, and runtime close returns it. After assembly no
+other runtime owner reserves from that pool (a C9 restore transfers the
+suspended transport's leases), so the slot is normally free; if anything took
+it first, ARM refuses as unfunded and arms nothing. Closing the endpoint stops
 accepting and joins the bounded in-flight command (its reply and protected
 outcome are not truncated by an owner-loss shutdown); parent cancellation still
 propagates into that command.
@@ -191,6 +233,28 @@ evidence and a FENCED suspend) and a refused native switch (FENCED activate with
 retained partial owners). The kernel peer credentials (when a test says so),
 native mount/INIT/fd syscalls, FUSE shell dispatch switch and observed guest
 physical state are explicitly substituted OS boundaries.
+
+`lifecycle_hardening_test.go` adds, on further real runtimes: RESTART without
+a native shell switch (refused before any effect, sequence consumed, binding
+and stage unchanged, no outcome file); simulated `EMFILE` at the accept
+boundary at startup and after a served connection (retried, counted in
+OBSERVE) and then a simulated `EINVAL` (the runtime ends with that diagnostic,
+the VM stand-in alive, socket and control funding returned); and a guest
+physical state that changes between the attempt's suspend and reopen refreshes
+(served through a FIFO at the observation boundary), giving a FENCED `reopen`
+step with retained partial owners, while a pre-existing `control-restart.json`
+makes the real protection fail (`protect_error`, file preserved). Unit tests
+use real types and a real exclusive supervisor owner directory: the
+EFFECT_UNREPORTABLE bound with worst-case `protect_error`, every protection
+refusal (unencodable, oversized, existing file, closed directory), socket
+creation in a private root with exact `0600`, refusal of existing files and
+symlinks and of non-private or symlinked owner roots, a socket name swapped for
+a symlink after bind (target untouched, name preserved), the Linux pre-6.6
+pinned-handle chmod, accept error classification and backoff bounds.
+`TestRuntimeFundingHostBoundary` funds the exact host sum (and refuses one byte
+less), assembles the runtime and then reserves the lost-reply lease, leaving
+the Memory pool exactly full. An oversized post-attempt record is reached only
+with constructed evidence; actual owners cannot produce one.
 
 `lifecycle_lostreply_test.go` arms the fixture through the real endpoint (and
 the CLI client) on the same real runtime. An actual MKDIR CALL commits its

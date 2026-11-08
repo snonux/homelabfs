@@ -48,17 +48,20 @@ type lifecycleRun struct {
 }
 
 type lifecycleReply struct {
-	Status    string             `json:"status"`
-	Reason    string             `json:"reason"`
-	Sequence  uint32             `json:"sequence"`
-	Step      string             `json:"step"`
-	Error     string             `json:"error"`
-	Epoch     uint64             `json:"epoch"`
-	Cut       string             `json:"cut"`
-	Barrier   string             `json:"barrier"`
-	Partial   []string           `json:"partial_owners"`
-	Evidence  *lifecycleEvidence `json:"evidence"`
-	LostReply *lostReplyView     `json:"lost_reply"`
+	Status       string             `json:"status"`
+	Reason       string             `json:"reason"`
+	Sequence     uint32             `json:"sequence"`
+	Outcome      string             `json:"outcome"`
+	Step         string             `json:"step"`
+	Error        string             `json:"error"`
+	Epoch        uint64             `json:"epoch"`
+	Cut          string             `json:"cut"`
+	Barrier      string             `json:"barrier"`
+	Physical     string             `json:"physical"`
+	Partial      []string           `json:"partial_owners"`
+	Evidence     *lifecycleEvidence `json:"evidence"`
+	ProtectError string             `json:"protect_error"`
+	LostReply    *lostReplyView     `json:"lost_reply"`
 }
 
 func startLifecycleRun(t *testing.T, binary string, mutate func(*lifecycleRun, *runtimeOS)) *lifecycleRun {
@@ -480,17 +483,24 @@ func TestLifecycleRestartFailuresStayFenced(t *testing.T) {
 // the VM stand-in, protected outcome and all ledgers are preserved.
 func checkFencedExit(t *testing.T, run *lifecycleRun) {
 	t.Helper()
+	checkFencedRuntimeExit(t, run)
+	protected, err := os.ReadFile(filepath.Join(run.c.OwnerDirectory, "control-restart.json"))
+	require(t, err)
+	if !bytes.Contains(protected, []byte(`"status":"FENCED"`)) {
+		t.Fatalf("fenced outcome not protected: %s", protected)
+	}
+}
+
+// checkFencedRuntimeExit verifies the fenced runtime exit, the surviving VM
+// stand-in and the owned evidence files, without reading the outcome file.
+func checkFencedRuntimeExit(t *testing.T, run *lifecycleRun) {
+	t.Helper()
 	err := run.finish()
 	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("C9 restart fenced")) {
 		t.Fatalf("fenced restart did not end the runtime truthfully: %v", err)
 	}
 	if e := run.r.supervisor.child.live(); e != nil {
 		t.Fatalf("fenced restart killed the VM stand-in: %v", e)
-	}
-	protected, err := os.ReadFile(filepath.Join(run.c.OwnerDirectory, "control-restart.json"))
-	require(t, err)
-	if !bytes.Contains(protected, []byte(`"status":"FENCED"`)) {
-		t.Fatalf("fenced outcome not protected: %s", protected)
 	}
 	for _, name := range []string{"transport", "controller", "provider-0", "provider-1", "issuance.json"} {
 		if _, err := os.Lstat(filepath.Join(run.c.OwnerDirectory, name)); err != nil {

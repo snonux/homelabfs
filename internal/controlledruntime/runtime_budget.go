@@ -90,9 +90,13 @@ func runtimeOwnerBytes(b RuntimeBudget, p ProviderLimits, views viewcontrol.Boun
 }
 
 // reserveRuntimeFunding creates the finite pools and reserves the retained owner
-// lease plus the separate lifecycle-control lease. The Memory pool admits
-// exactly those two leases, the transport's workspace and ledger leases and
-// one later lost-reply fixture lease (one operation, no worker/connection).
+// lease plus the separate lifecycle-control lease. The Memory pool limits are
+// sized for exactly those two leases, the transport's workspace and ledger
+// leases and one later lost-reply fixture lease (one operation, 64 KiB, no
+// worker/connection). That last slot is counted, not held: ARM reserves it
+// only when it arms. No other runtime owner reserves Memory after assembly
+// (a C9 restore transfers the suspended transport's leases), so it is normally
+// free; if anything took it first, ARM refuses as unfunded and arms nothing.
 func reserveRuntimeFunding(host, owner, control uint64) (*runtimeFunding, error) {
 	var config admission.Config
 	for class, resources := range map[admission.Class]admission.Resources{
@@ -135,7 +139,8 @@ func (f *runtimeFunding) releaseControl() error {
 
 // reserveLostReply reserves the fixture's own Memory lease from the actual
 // runtime budget. fundRuntime pre-accounted its bytes in the host envelope and
-// left exactly one Memory operation for it; an exhausted pool refuses.
+// sized the Memory pool for one more operation, but holds nothing in advance;
+// an exhausted pool refuses.
 func (f *runtimeFunding) reserveLostReply() (*admission.Lease, error) {
 	if f == nil || f.transport == nil {
 		return nil, fsapi.NoSpace

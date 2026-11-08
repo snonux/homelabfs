@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"path/filepath"
 	"time"
 
@@ -234,8 +235,8 @@ func bindGuestSessions(ctx context.Context, supervisor *Supervisor, assembly *As
 }
 
 // serveReady opens the private lifecycle endpoint over the actual READY owners,
-// announces READY with its server-issued binding and waits for owner loss or
-// cancellation. The endpoint is closed (worker joined) before admission is
+// announces READY with its server-issued binding and waits for owner loss,
+// endpoint loss or cancellation (awaitRuntimeEnd). The endpoint is closed (worker joined) before admission is
 // blocked, so no lifecycle command races shutdown. No session retirement or
 // replacement-native recovery is inferred; obligations remain for inspection.
 func serveReady(ctx context.Context, c RuntimeConfig, platform runtimeOS, s *Supervisor, local *runtimeLocal, a *Assembly, admitted *Admission, control <-chan error, output io.Writer) (retErr error) {
@@ -244,11 +245,7 @@ func serveReady(ctx context.Context, c RuntimeConfig, platform runtimeOS, s *Sup
 		return err
 	}
 	defer func() { retErr = errors.Join(retErr, lifecycle.close()) }()
-	peer := platform.peer
-	if peer == nil {
-		peer = admin.PeerCredentials
-	}
-	server, err := listenLifecycle(ctx, c.OwnerDirectory, lifecycle, peer)
+	server, err := listenLifecycle(ctx, c.OwnerDirectory, lifecycle, platform.lifecycleBoundary())
 	if err != nil {
 		return err
 	}
@@ -263,14 +260,40 @@ func serveReady(ctx context.Context, c RuntimeConfig, platform runtimeOS, s *Sup
 	}{"READY", "CONTROLLED_LOCAL", len(lifecycle.sessions), nil, lifecycleBinding{server.path, runtime.String(), cut.String(), epoch}}); err != nil {
 		return err
 	}
+	return awaitRuntimeEnd(ctx, server, lifecycle, control)
+}
+
+// lifecycleBoundary returns the endpoint's OS boundaries, substituting the
+// native kernel peer-credential and accept calls for unset test hooks.
+func (p runtimeOS) lifecycleBoundary() lifecycleOS {
+	boundary := lifecycleOS{peer: p.peer, accept: p.accept}
+	if boundary.peer == nil {
+		boundary.peer = admin.PeerCredentials
+	}
+	if boundary.accept == nil {
+		boundary.accept = (*net.UnixListener).AcceptUnix
+	}
+	return boundary
+}
+
+// awaitRuntimeEnd waits for native owner loss, loss of the lifecycle endpoint
+// or cancellation. Every path joins the endpoint worker before blocking
+// admission. A permanent accept failure ended the only control worker; the
+// runtime then ends as on owner loss, retaining every owner, and returns that
+// failure (server.close reports it) instead of serving uncontrollably.
+func awaitRuntimeEnd(ctx context.Context, server *lifecycleServer, lifecycle *runtimeLifecycle, control <-chan error) error {
 	select {
-	case err = <-control:
+	case err := <-control:
 		closeErr := server.close()
 		lifecycle.blockAdmission("controlled-native-owner-lost")
 		if lifecycle.fenced() {
 			err = fmt.Errorf("controlled C9 restart fenced the native owner: %w", err)
 		}
 		return errors.Join(err, closeErr)
+	case <-server.done:
+		closeErr := server.close()
+		lifecycle.blockAdmission("controlled-lifecycle-endpoint-lost")
+		return closeErr
 	case <-ctx.Done():
 		closeErr := server.close()
 		lifecycle.blockAdmission("controlled-runtime-stopping-retained")

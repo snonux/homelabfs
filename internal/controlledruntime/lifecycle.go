@@ -29,6 +29,11 @@ const (
 	lifecycleFenced    = "FENCED"
 )
 
+// lifecycleUnreportable is a reply status, never a stage: the command was
+// consumed and may have taken effect (for RESTART, Outcome names the actual
+// RESTARTED/FENCED result), but its full record does not fit the funded bound.
+const lifecycleUnreportable = "EFFECT_UNREPORTABLE"
+
 // runtimeLifecycle owns the actual current owners of one READY disposable
 // runtime: the surviving Supervisor and Admissions plus either the original
 // Assembly or the C9-restored endpoint. It is reachable only through the
@@ -66,8 +71,12 @@ type lifecycleOwners struct {
 // lifecycleRestartView is the bounded, inert outcome of the single restart
 // attempt. Step names the first failed C9 stage; Partial names nonnil partial
 // owners that remain open (and are closed only at runtime exit, files kept).
+// Status is RESTARTED or FENCED, or EFFECT_UNREPORTABLE when the post-attempt
+// evidence did not fit: then Outcome keeps the actual result, Evidence is
+// omitted and EvidenceError says why.
 type lifecycleRestartView struct {
 	Status   string             `json:"status"`
+	Outcome  string             `json:"outcome,omitempty"`
 	Step     string             `json:"step,omitempty"`
 	Error    string             `json:"error,omitempty"`
 	Barrier  string             `json:"barrier,omitempty"`
@@ -76,8 +85,11 @@ type lifecycleRestartView struct {
 	Cut      string             `json:"cut"`
 	Partial  []string           `json:"partial_owners,omitempty"`
 	Evidence *lifecycleEvidence `json:"evidence,omitempty"`
-	// ProtectError is set only in the reply when control-restart.json could
-	// not be protected; the file itself never claims its own protection.
+	// EvidenceError explains an omitted Evidence (EFFECT_UNREPORTABLE only).
+	EvidenceError string `json:"evidence_error,omitempty"`
+	// ProtectError is set in the reply (and in later OBSERVE restart sections)
+	// when control-restart.json could not be protected; the file itself never
+	// claims its own protection.
 	ProtectError string `json:"protect_error,omitempty"`
 }
 
@@ -172,13 +184,51 @@ func (l *runtimeLifecycle) restart(ctx context.Context, cut fsapi.UUID, epoch ui
 	l.cut = next
 	view := l.runRestart(ctx)
 	view.Epoch, view.Cut = l.epoch, l.cut.String()
-	l.outcome = &view
+	return l.reportRestartLocked(ctx, view), nil
+}
+
+// reportRestartLocked records the consumed attempt, attaches its post-attempt
+// evidence, bounds the record and protects it before any reply exists. The
+// stored outcome, which later OBSERVEs report without evidence, keeps the
+// actual RESTARTED/FENCED status and also learns why the protected record
+// lacks evidence (EvidenceError) or protection (ProtectError).
+func (l *runtimeLifecycle) reportRestartLocked(ctx context.Context, view lifecycleRestartView) lifecycleRestartView {
+	outcome := view
+	l.outcome = &outcome
 	evidence := l.observeLocked(ctx)
 	view.Evidence = &evidence
-	if err := l.protectOutcome(view); err != nil {
+	view, raw := boundRestartOutcome(view, lifecycleOutcomeBytes)
+	if err := protectRestartOutcome(l.supervisor, raw); err != nil {
 		view.ProtectError = evidenceError(err)
 	}
-	return view, nil
+	outcome.EvidenceError, outcome.ProtectError = view.EvidenceError, view.ProtectError
+	return view
+}
+
+// boundRestartOutcome returns the reportable outcome and its encoding of at
+// most limit bytes. The attempt has already taken effect, so an outcome whose
+// post-attempt evidence does not fit is never refused: Status becomes
+// EFFECT_UNREPORTABLE, Outcome keeps the actual RESTARTED/FENCED result, every
+// bounded field (step, error, barrier, physical, epoch, cut, partial owners)
+// is kept and only Evidence is replaced by its encoded size. Those fields are
+// bounded by construction (512-byte error text, at most six owner names plus
+// one per enrolled session, at most 16), so the reduced record always fits; a
+// nil encoding is refused by protectRestartOutcome and never written.
+func boundRestartOutcome(view lifecycleRestartView, limit int) (lifecycleRestartView, []byte) {
+	raw, err := json.Marshal(view)
+	if err == nil && len(raw) <= limit {
+		return view, raw
+	}
+	reason := fmt.Sprintf("post-attempt evidence encodes to %d bytes, over the %d-byte outcome bound; OBSERVE reports the current owners", len(raw), limit)
+	if err != nil {
+		reason = "post-attempt evidence not encodable: " + evidenceError(err)
+	}
+	view.Outcome, view.Status = view.Status, lifecycleUnreportable
+	view.Evidence, view.EvidenceError = nil, reason
+	if raw, err = json.Marshal(view); err != nil || len(raw) > limit {
+		return view, nil
+	}
+	return view, raw
 }
 
 // runRestart drives the three C9 stages. Success switches owners; failure
@@ -294,19 +344,18 @@ func partialOwners(a *RestoredEndpoint) []string {
 	return names
 }
 
-// protectOutcome writes the single restart outcome (with its post-attempt
-// evidence) to an exclusive private owner file before the reply is sent, so a
-// lost reply cannot lose the evidence. A protection failure is reported in the
-// reply; it never changes or retries the attempt itself.
-func (l *runtimeLifecycle) protectOutcome(view lifecycleRestartView) error {
-	raw, err := json.Marshal(view)
-	if err != nil {
-		return err
+// protectRestartOutcome writes the single bounded restart outcome encoding
+// (boundRestartOutcome) to the exclusive private owner file
+// control-restart.json before the reply is sent, so a lost reply cannot lose
+// the record. An existing file is preserved and refused. A protection failure
+// is reported in the reply; it never changes or retries the attempt itself.
+func protectRestartOutcome(s *Supervisor, raw []byte) error {
+	if len(raw) == 0 {
+		return fmt.Errorf("restart outcome not encodable: %w", fsapi.Invalid)
 	}
-	if len(raw) > lifecycleReplyBytes {
+	if len(raw) > lifecycleOutcomeBytes {
 		return fmt.Errorf("restart outcome %d bytes: %w", len(raw), fsapi.NoSpace)
 	}
-	s := l.supervisor
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.directory == nil {

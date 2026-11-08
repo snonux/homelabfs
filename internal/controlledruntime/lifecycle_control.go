@@ -12,13 +12,13 @@ import (
 	"math"
 	"net"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/snonux/homelabfs/internal/admin"
 	"github.com/snonux/homelabfs/internal/fsapi"
 	"github.com/snonux/homelabfs/internal/viewcontrol"
+	"golang.org/x/sys/unix"
 )
 
 // HSC1 is the private post-READY lifecycle control protocol. It is host-local,
@@ -50,8 +50,14 @@ const (
 	lifecycleRestartBytes = 40
 	lifecycleArmBytes     = 57
 	// lifecycleReplyBytes bounds every reply payload, including restart outcome
-	// plus its post-attempt evidence; larger replies refuse, never truncate.
+	// plus its post-attempt evidence. Replies are never truncated: an oversized
+	// OBSERVE refuses, and a RESTART outcome drops only its evidence and reports
+	// EFFECT_UNREPORTABLE (boundRestartOutcome).
 	lifecycleReplyBytes = 128 << 10
+	// lifecycleOutcomeBytes bounds the protected restart outcome. The reply may
+	// add protect_error: at most lifecycleErrorBytes of text, which JSON escaping
+	// can grow sixfold, plus its key, so 4 KiB of the reply bound stay free.
+	lifecycleOutcomeBytes = lifecycleReplyBytes - (4 << 10)
 	// lifecycleTransportPeakBytes is the C8 evidence read peak: 128 KiB index,
 	// at most 8 MiB complete bridge rows and one decoded 8 MiB cell.
 	lifecycleTransportPeakBytes = (128 << 10) + (8 << 20) + (8 << 20)
@@ -65,6 +71,10 @@ const (
 	// lifecycleRestartTime exceeds the internal 60 s restart grant deadline so
 	// the C9 stages, not this wrapper, decide most timeouts.
 	lifecycleRestartTime = 90 * time.Second
+	// A transient accept failure is retried after 5 ms, doubling up to 1 s, so
+	// descriptor exhaustion neither spins the worker nor ends the endpoint.
+	lifecycleAcceptBackoffMin = 5 * time.Millisecond
+	lifecycleAcceptBackoffMax = time.Second
 )
 
 // lifecycleBudget is the protected record of the control endpoint's bounds.
@@ -94,6 +104,25 @@ func fixedLifecycleBudget(v viewcontrol.Bounds) lifecycleBudget {
 // peerCredentials is the kernel peer-credential OS boundary.
 type peerCredentials func(*net.UnixConn) (admin.Peer, error)
 
+// acceptUnix is the listener accept OS boundary. Production uses
+// (*net.UnixListener).AcceptUnix; tests may substitute it to simulate
+// descriptor exhaustion or a broken listener explicitly.
+type acceptUnix func(*net.UnixListener) (*net.UnixConn, error)
+
+// lifecycleOS are the endpoint's operating-system boundaries. Both are
+// required; serveReady supplies the native calls.
+type lifecycleOS struct {
+	peer   peerCredentials
+	accept acceptUnix
+}
+
+// acceptDiagnostics counts accept failures for OBSERVE. It is worker-owned:
+// only the serving worker writes it, and OBSERVE is served by that worker.
+type acceptDiagnostics struct {
+	errors uint64
+	last   string
+}
+
 // lifecycleRequest is one decoded, length-checked HSC1 request.
 type lifecycleRequest struct {
 	opcode    uint8
@@ -111,44 +140,35 @@ type lifecycleRequest struct {
 type lifecycleServer struct {
 	lifecycle *runtimeLifecycle
 	listener  *net.UnixListener
+	socket    *lifecycleSocket
 	path      string
-	socket    os.FileInfo
-	peer      peerCredentials
+	boundary  lifecycleOS
 	uid       uint32
-	last      uint32 // highest accepted command sequence; worker-owned
+	last      uint32            // highest accepted command sequence; worker-owned
+	accepts   acceptDiagnostics // worker-owned
+	// acceptErr is the permanent accept failure that ended the worker. It is
+	// written before done closes and read only after done.
+	acceptErr error
 	ctx       context.Context
 	cancel    context.CancelFunc
+	closing   chan struct{} // closed first by close; ends an accept backoff
 	done      chan struct{}
 	once      sync.Once
 }
 
-// listenLifecycle creates the socket exclusively in the private owner root. An
-// existing name is preserved and refused. No guest/network listener exists.
-func listenLifecycle(ctx context.Context, owner string, l *runtimeLifecycle, peer peerCredentials) (*lifecycleServer, error) {
-	if l == nil || peer == nil {
+// listenLifecycle creates the socket exclusively in the private owner root
+// (bindLifecycleSocket): an existing name is preserved and refused, and the
+// mode is set without following a symlink. No guest/network listener exists.
+func listenLifecycle(ctx context.Context, owner string, l *runtimeLifecycle, boundary lifecycleOS) (*lifecycleServer, error) {
+	if l == nil || boundary.peer == nil || boundary.accept == nil {
 		return nil, fsapi.Invalid
 	}
-	path := filepath.Join(owner, LifecycleSocketName)
-	if _, err := os.Lstat(path); err == nil {
-		return nil, fmt.Errorf("existing lifecycle socket preserved: %w", fsapi.Permission)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
-	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	listener, socket, err := bindLifecycleSocket(owner)
 	if err != nil {
-		return nil, err
-	}
-	listener.SetUnlinkOnClose(false)
-	st, err := os.Lstat(path)
-	if err == nil {
-		err = os.Chmod(path, 0o600)
-	}
-	if err != nil {
-		_ = listener.Close()
 		return nil, err
 	}
 	serveCtx, cancel := context.WithCancel(ctx)
-	s := &lifecycleServer{lifecycle: l, listener: listener, path: path, socket: st, peer: peer, uid: uint32(os.Geteuid()), ctx: serveCtx, cancel: cancel, done: make(chan struct{})}
+	s := &lifecycleServer{lifecycle: l, listener: listener, socket: socket, path: socket.path, boundary: boundary, uid: uint32(os.Geteuid()), ctx: serveCtx, cancel: cancel, closing: make(chan struct{}), done: make(chan struct{})}
 	go s.serve()
 	return s, nil
 }
@@ -158,34 +178,88 @@ func listenLifecycle(ctx context.Context, owner string, l *runtimeLifecycle, pee
 // restart deadline) is not cancelled here: a failed restart fences the native
 // owner, which itself triggers shutdown, and its post-attempt evidence, protected
 // outcome and reply must not be truncated by that shutdown. Cancellation of the
-// runtime's parent context still propagates into the command. Only the first
-// call reports errors, so explicit and deferred closes do not duplicate them.
+// runtime's parent context still propagates into the command. A permanent
+// accept failure that ended the worker is reported here. Only the first call
+// reports errors, so explicit and deferred closes do not duplicate them.
 func (s *lifecycleServer) close() error {
 	var result error
 	s.once.Do(func() {
+		close(s.closing)
 		result = s.listener.Close()
 		<-s.done
 		s.cancel()
-		st, err := os.Lstat(s.path)
-		if err == nil && os.SameFile(st, s.socket) {
-			result = errors.Join(result, os.Remove(s.path))
-		} else if !errors.Is(err, os.ErrNotExist) {
-			result = errors.Join(result, fmt.Errorf("lifecycle socket replaced or inaccessible; preserved"), err)
-		}
+		result = errors.Join(result, s.acceptErr, s.socket.close())
 	})
 	return result
 }
 
+// serve accepts and serves connections strictly serially. A closed listener
+// ends the worker normally. A transient accept failure (descriptor, buffer or
+// memory exhaustion) is counted as an OBSERVE diagnostic and retried after a
+// bounded exponential backoff, so it never silently ends the endpoint. Any
+// other accept failure is permanent: it ends the worker and is kept for close;
+// serveReady then ends the runtime with it, retaining every owner.
 func (s *lifecycleServer) serve() {
 	defer close(s.done)
+	var backoff time.Duration
 	for {
-		c, err := s.listener.AcceptUnix()
-		if err != nil {
+		c, err := s.boundary.accept(s.listener)
+		if err == nil {
+			backoff = 0
+			s.handle(c)
+			_ = c.Close()
+			continue
+		}
+		if errors.Is(err, net.ErrClosed) {
 			return
 		}
-		s.handle(c)
-		_ = c.Close()
+		s.accepts.errors++
+		s.accepts.last = evidenceError(err)
+		if !transientAcceptError(err) {
+			s.acceptErr = fmt.Errorf("lifecycle endpoint accept failed permanently: %w", err)
+			return
+		}
+		backoff = nextAcceptBackoff(backoff)
+		if !s.pause(backoff) {
+			return
+		}
 	}
+}
+
+// pause waits one backoff step unless close started. It deliberately does not
+// watch the parent context: cancellation reaches the worker through close,
+// which keeps a normal stop distinct from a lost endpoint in serveReady.
+func (s *lifecycleServer) pause(d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-s.closing:
+		return false
+	}
+}
+
+// transientAcceptError reports accept failures caused by momentary resource
+// exhaustion or an aborted/interrupted peer, which a later accept can survive.
+func transientAcceptError(err error) bool {
+	var errno unix.Errno
+	if !errors.As(err, &errno) {
+		return false
+	}
+	switch errno {
+	case unix.EMFILE, unix.ENFILE, unix.ENOBUFS, unix.ENOMEM, unix.ECONNABORTED, unix.EINTR, unix.EAGAIN, unix.EPROTO:
+		return true
+	}
+	return false
+}
+
+// nextAcceptBackoff doubles the accept retry delay within its fixed bounds.
+func nextAcceptBackoff(d time.Duration) time.Duration {
+	if d <= 0 {
+		return lifecycleAcceptBackoffMin
+	}
+	return min(2*d, lifecycleAcceptBackoffMax)
 }
 
 // handle authenticates the kernel peer before reading any request byte.
@@ -193,7 +267,7 @@ func (s *lifecycleServer) handle(c *net.UnixConn) {
 	if err := c.SetDeadline(time.Now().Add(lifecycleIOTimeout)); err != nil {
 		return
 	}
-	peer, err := s.peer(c)
+	peer, err := s.boundary.peer(c)
 	if err != nil || peer.UID != s.uid {
 		_ = writeLifecycleReply(c, LifecycleRefused, 0, refusal("peer credentials unauthorized"))
 		return
@@ -206,7 +280,7 @@ func (s *lifecycleServer) handle(c *net.UnixConn) {
 	reply := s.dispatch(request)
 	raw, err := json.Marshal(reply)
 	if err != nil || len(raw) > lifecycleReplyBytes {
-		raw, _ = json.Marshal(refusal("reply exceeds funded bound"))
+		raw, _ = json.Marshal(oversizedReply(request.opcode))
 	}
 	if err = c.SetWriteDeadline(time.Now().Add(lifecycleIOTimeout)); err != nil {
 		return
@@ -235,10 +309,13 @@ func (s *lifecycleServer) dispatch(r lifecycleRequest) any {
 	}
 }
 
+// observeReply captures the actual owners and adds the endpoint's own accept
+// diagnostics, which this worker owns (restart evidence omits that section).
 func (s *lifecycleServer) observeReply(r lifecycleRequest) any {
 	ctx, cancel := context.WithTimeout(s.ctx, lifecycleObserveTime)
 	defer cancel()
 	e := s.lifecycle.observe(ctx)
+	e.Endpoint = &endpointEvidence{AcceptErrors: s.accepts.errors, LastAcceptError: s.accepts.last}
 	return struct {
 		Status   string            `json:"status"`
 		Sequence uint32            `json:"sequence"`
@@ -272,14 +349,28 @@ func (s *lifecycleServer) armReply(r lifecycleRequest) any {
 	}{"ARMED", r.sequence, view}
 }
 
-type lifecycleRefusal struct {
+// lifecycleNotice is a reply without evidence: a REFUSED command, or an
+// EFFECT_UNREPORTABLE one whose effect may exist but cannot be reported.
+type lifecycleNotice struct {
 	Status      string `json:"status"`
 	Reason      string `json:"reason"`
 	Publication any    `json:"publication"`
 }
 
-func refusal(reason string) lifecycleRefusal {
-	return lifecycleRefusal{Status: "REFUSED", Reason: reason}
+func refusal(reason string) lifecycleNotice {
+	return lifecycleNotice{Status: "REFUSED", Reason: reason}
+}
+
+// oversizedReply replaces a reply that does not fit the funded frame. OBSERVE
+// has no command effect, so it refuses. RESTART and ARM may already have taken
+// effect, so they must never claim a refusal. RESTART bounds its own outcome
+// (boundRestartOutcome) and ARMED is a fixed-size record, so for them this is
+// only a backstop that keeps the reply truthful.
+func oversizedReply(opcode uint8) lifecycleNotice {
+	if opcode == LifecycleObserve {
+		return refusal("reply exceeds funded bound")
+	}
+	return lifecycleNotice{Status: lifecycleUnreportable, Reason: "reply exceeds funded bound after the command may have taken effect; OBSERVE reports the current owners"}
 }
 
 // readLifecycleRequest decodes one closed, fixed-length request. Every length
