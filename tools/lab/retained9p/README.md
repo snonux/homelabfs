@@ -278,6 +278,77 @@ names that exact provision, original group ID, actual emitted controller and
 same ordered key files. It emits `bind.json` for one complete guest sysfs write.
 Neither file is a native readiness receipt.
 
+## Rocky test kernel (zq3 G5)
+
+`rocky_kernel.py` installs, selects once and removes the candidate guest kernel
+on Rocky, and generates `/etc/homelabfs/installed-admission-v1.json`. It
+implements the [run plan](../../../docs/lab/zq3-run-plan.md)'s Phase 3, Phase 5
+step 2 and "Boot selection and recovery" (U1-U3). **It has only been tested
+locally against a simulated Rocky** (temporary root, emulated grubby, grubenv,
+depmod, dracut, systemctl and GRUB's one-shot consumption at boot). Every
+Rocky-side command still needs Paul's explicit A3 approval of the filled plan.
+
+1. Workstation, Phase 0:
+   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 3f770a88… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
+   It refuses any manifest other than the pinned candidate, checks every
+   Linux file's size and SHA256 against the manifest and the installation
+   proposal, requires `modules.order` to name exactly the manifest's modules,
+   and records the GNU build IDs of `vmlinux` and every `.ko`. Targets are
+   derived from the source names (`/boot/vmlinuz-R`, `/boot/System.map-R`,
+   `/boot/config-R`, `/lib/modules/R/…`); the Rocky side recomputes them, so a
+   plan cannot direct a write anywhere else.
+2. Stage the script, the plan and the package's `linux/` files on Rocky (for
+   example `/root/hfs-zq3-zq3-r1-kernel-stage/`). Every Rocky command is
+   `/usr/bin/python3 -I -B rocky_kernel.py CMD --plan P --plan-sha256 S --state D`
+   as root, with `D` a new path in a root-only parent (for example
+   `/root/hfs-zq3-zq3-r1-kernel-state`).
+
+| Command | Plan step | What it does and refuses |
+|---|---|---|
+| `install --stage DIR` | Phase 3 steps 1-4 | Needs exactly the plan's stock release running (any other installed kernel, such as ELRepo 7.0.3, refuses), the pinned default, empty `next_entry`, no existing targets or test-kernel entry, `/boot` headroom. Then it records `pre.json` (grubenv, default, raw `grubby --info=ALL`), copies the verified bytes (write beside, link, never clobber), runs `depmod`, `dracut --kver`, `grubby --add-kernel … --copy-default --title …`, and checks for exactly one new entry, all old entries unchanged, the default and `saved_entry` unchanged and `next_entry` still empty. |
+| `select` | Phase 5 step 2 | Last Rocky action before the f3 stop; exactly the stock release. Rechecks installed bytes, initramfs and BLS entry, runs `grub2-reboot <id>`, verifies `next_entry` = id and the default unchanged. Any failure runs U1 at once. Runs once per state directory. |
+| `cancel` | U1 | `grub2-editenv - unset next_entry` and verify. Allowed even with an uncertain or torn journal. Manual fallback if even this cannot run: `grub2-editenv - unset next_entry`, then `grub2-editenv - list` and `grubby --default-kernel`. |
+| `remove` | U2 | Exactly the stock release, `next_entry` empty. Scans first and refuses, deleting nothing, if anything the plan or depmod did not create is present (including symlinks). Then `grubby --remove-kernel`, deletes the files (including `/boot/initramfs-Rkdump.img` if kdump built it in a test-kernel boot) and the admission manifest, recording each removed file's SHA256, and requires `grubby --info=ALL` to equal the pre-run listing byte for byte. |
+| `check --expect test\|stock\|any` | U3 step 3, Phase 11 step 2, Phase 12 step 2 | Read-only: running release, boot ID, `next_entry` empty, `saved_entry` and default unchanged. Exit 1 on any problem. The result is journaled. |
+| `reboot-to-stock` | U3 step 4 | Test kernel only, a passing `check --expect test` in this boot, and refuses once the admission manifest exists. That is its only marker: it cannot itself tell a U3 boot from the controlled boot (which ends with a poweroff). A Phase 8 boot that failed before admission leaves no manifest, and a manifest written by mistake in a U3 boot makes it refuse wrongly, so the operator must know which boot they are in. Runs `systemctl reboot`. A new boot ID resolves the dangling intent if the shutdown wins the race. |
+| `admission` | Phase 8 step 0, before the enrollment is signed | Exactly the test kernel. See below. |
+| `status`, `reconcile --seq N --note TEXT` | | Show the journal. Record root's inspected outcome of an uncertain intent. It counts as failed and is never repeated. |
+
+**Why the admission manifest is generated in the controlled boot.**
+`internal/controlledruntime/probe/installed.py` refuses unless the manifest's
+modules are exactly the loaded `/proc/modules` set and the running
+`/sys/kernel/notes` build ID matches. Which of the five planned modules load
+(for example `x86_pkg_temp_thermal` under bhyve) is only known once the test
+kernel runs. The generator therefore runs as root in the Phase 8 boot, after
+`udevadm settle` (refused if the udev queue does not settle). It
+refuses any loaded module the plan did not install, checks each loaded
+module's installed hash and `.ko` build ID and its running sysfs build ID
+against the plan, and checks the kernel image hash and the running kernel's
+build ID (from `vmlinux`). It then repeats the boot/module observation, as
+the probe does, and writes the closed
+`homelabfs-installed-artifacts/1` manifest (canonical JSON, `0644`, written beside and linked
+into place, never overwritten). Its SHA256 is the `Observer.ManifestHash` of the
+enrollment request. A local test runs the actual `installed.py` probe against
+the generated manifest in the simulated root.
+
+Every mutating step writes a durable intent and a durable result to
+`journal.jsonl` under an exclusive lock. An intent without a result (the
+process was killed) blocks install, select, remove, reboot-to-stock and
+admission until root inspects it and records the outcome with `reconcile`;
+`cancel`, `check`, `status` and `reconcile` still run. A torn journal line
+(an interrupted write) blocks everything except `cancel`, `status` and the
+read-only `check` until root repairs `journal.jsonl`. The tool
+never runs `grubby --set-default`/`--make-default` and has no code path for
+them. Tools run by absolute path (root-owned and not group/world-writable,
+symlinks followed), with a fixed environment, no shell and bounded output.
+If `grubby --add-kernel` itself changed the default, `install` fails and
+nothing tries to restore it. That needs Paul.
+
+Not covered locally: real grubby/BLS/grubenv/dracut behaviour on Rocky 9.8,
+SELinux labels of the copied files (they inherit the `/boot` and
+`/lib/modules` defaults; Phase 3 evidence should include `ls -Z`), and
+whether the hostonly initramfs boots under bhyve (risk R2).
+
 ## Required work before an executable exact plan
 
 Read [the concrete gap and installation assessment](../../../docs/lab/Real-daemon-9p-base-gate.md).
