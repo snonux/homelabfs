@@ -1,0 +1,7 @@
+rc=1
++ cc '-std=c11' -Wall -Wextra -Werror -O1 -g -I/var/tmp/hfs-20261108-m34-full/src/tools/integration/lib9p/tests /var/tmp/hfs-20261108-m34-full/src/tools/integration/lib9p/tests/backend_test.c /var/tmp/hfs-20261108-m34-full/src/tools/integration/lib9p/src/hfs9p_json.c /var/tmp/hfs-20261108-m34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c -pthread -lmd -o /var/tmp/hfs-20261108-m34-lib9p/backend_test
+/var/tmp/hfs-20261108-m34-full/src/tools/integration/lib9p/tests/backend_test.c:32:10: fatal error: 'fixtures.h' file not found
+   32 | #include "fixtures.h"
+      |          ^~~~~~~~~~~~
+1 error generated.
+20

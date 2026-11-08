@@ -1,0 +1,30 @@
+{
+  "command": [
+    "/usr/local/bin/python3.12",
+    "-B",
+    "/var/tmp/hfs-20261108-m34-full/native-test-guard.py",
+    "--root",
+    "/var/tmp/hfs-20261108-m34-full",
+    "--stage",
+    "full-package",
+    "--local-reserved-bytes",
+    "268435456",
+    "--cwd",
+    "/var/tmp/hfs-20261108-m34-full/src/internal/controlledruntime",
+    "--profile",
+    "guest",
+    "--guest-hostname",
+    "hfs-test0",
+    "--max-seconds",
+    "540",
+    "/usr/bin/env",
+    "HFS_DIAGNOSTIC_CHILD=/var/tmp/hfs-20261108-m34-full/diagnostic-child",
+    "/var/tmp/hfs-20261108-m34-full/controlledruntime-freebsd.test",
+    "-test.count=1",
+    "-test.timeout=500s",
+    "-test.v"
+  ],
+  "exit": 0,
+  "stdout": "{\"argv\": [\"/usr/bin/env\", \"HFS_DIAGNOSTIC_CHILD=/var/tmp/hfs-20261108-m34-full/diagnostic-child\", \"/var/tmp/hfs-20261108-m34-full/controlledruntime-freebsd.test\", \"-test.count=1\", \"-test.timeout=500s\", \"-test.v\"], \"cwd\": \"/var/tmp/hfs-20261108-m34-full/src/internal/controlledruntime\", \"local_reserved_bytes\": 268435456, \"error\": null, \"exit\": 0, \"peak_rss\": 373682176, \"peak_global_allocated_disk\": 304132096, \"seconds\": 99.76670226299996, \"installed\": false, \"booted\": false, \"native_accepted\": false}\n",
+  "stderr": ""
+}

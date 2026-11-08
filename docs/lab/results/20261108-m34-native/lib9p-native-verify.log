@@ -1,0 +1,27 @@
++ uname -a
+FreeBSD hfs-test0.test 15.1-RELEASE FreeBSD 15.1-RELEASE releng/15.1-n283562-96841ea08dcf GENERIC amd64
++ cc --version
+FreeBSD clang version 19.1.7 (https://github.com/llvm/llvm-project.git llvmorg-19.1.7-0-gcd708029e0b2)
+Target: x86_64-unknown-freebsd15.1
+Thread model: posix
+InstalledDir: /usr/bin
++ set -- '-std=c11' -Wall -Wextra -Werror -O1 -g
++ cc '-std=c11' -Wall -Wextra -Werror -O1 -g -c /var/tmp/hfs-20261108-m34-full/src/tools/integration/lib9p/src/hfs9p.c -o /var/tmp/hfs-20261108-m34-lib9p-r2/hfs9p.o
++ cc '-std=c11' -Wall -Wextra -Werror -O1 -g -c /var/tmp/hfs-20261108-m34-full/src/tools/integration/lib9p/src/hfs9p_json.c -o /var/tmp/hfs-20261108-m34-lib9p-r2/hfs9p_json.o
++ cc '-std=c11' -Wall -Wextra -Werror -O1 -g -c /var/tmp/hfs-20261108-m34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c -o /var/tmp/hfs-20261108-m34-lib9p-r2/hfs9p_ledger.o
++ cc '-std=c11' -Wall -Wextra -Werror -O1 -g -c /var/tmp/hfs-20261108-m34-full/src/tools/integration/lib9p/src/hfs9p_supervisor.c -o /var/tmp/hfs-20261108-m34-lib9p-r2/hfs9p_supervisor.o
++ cc '-std=c11' -Wall -Wextra -Werror -O1 -g /var/tmp/hfs-20261108-m34-full/src/tools/integration/lib9p/tests/production_api_test.c /var/tmp/hfs-20261108-m34-lib9p-r2/hfs9p.o /var/tmp/hfs-20261108-m34-lib9p-r2/hfs9p_json.o /var/tmp/hfs-20261108-m34-lib9p-r2/hfs9p_ledger.o /var/tmp/hfs-20261108-m34-lib9p-r2/hfs9p_supervisor.o -pthread -lmd -o /var/tmp/hfs-20261108-m34-lib9p-r2/production_api_test
++ /var/tmp/hfs-20261108-m34-lib9p-r2/production_api_test
+PASS: production objects linked; absent enrollment/raw files refused
++ cc '-std=c11' -Wall -Wextra -Werror -O1 -g -I/var/tmp/hfs-20261108-m34-full/src/tools/integration/lib9p/tests /var/tmp/hfs-20261108-m34-full/src/tools/integration/lib9p/tests/backend_test.c /var/tmp/hfs-20261108-m34-full/src/tools/integration/lib9p/src/hfs9p_json.c /var/tmp/hfs-20261108-m34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c -pthread -lmd -o /var/tmp/hfs-20261108-m34-lib9p-r2/backend_test
++ /var/tmp/hfs-20261108-m34-lib9p-r2/backend_test /var/tmp/hfs-20261108-m34-lib9p-r2/backend-ledger
+PASS: C parser/backend transport boundaries (no FUSE/runtime proof)
++ cc '-std=c11' -Wall -Wextra -Werror -O1 -g /var/tmp/hfs-20261108-m34-full/src/tools/integration/lib9p/tests/ledger_test.c /var/tmp/hfs-20261108-m34-full/src/tools/integration/lib9p/src/hfs9p_ledger.c '-Wl,--wrap=fsync' -lmd -o /var/tmp/hfs-20261108-m34-lib9p-r2/ledger_test
++ /var/tmp/hfs-20261108-m34-lib9p-r2/ledger_test /var/tmp/hfs-20261108-m34-lib9p-r2/ledger
+PASS: real local ledger fsync/rename/reopen, lock, process exit, failure
++ cc '-std=c11' -Wall -Wextra -Werror -O1 -g /var/tmp/hfs-20261108-m34-full/src/tools/integration/lib9p/tests/supervisor_test.c /var/tmp/hfs-20261108-m34-lib9p-r2/hfs9p.o /var/tmp/hfs-20261108-m34-lib9p-r2/hfs9p_json.o /var/tmp/hfs-20261108-m34-lib9p-r2/hfs9p_ledger.o -pthread '-Wl,--wrap=fsync' -lmd -o /var/tmp/hfs-20261108-m34-lib9p-r2/supervisor_test
++ /var/tmp/hfs-20261108-m34-lib9p-r2/supervisor_test
+Preserved adapter ledger/fsync failure evidence: /tmp/hfs-q04-supervisor-zCDHcI
+PASS: portable management/socket/rights refusals; no native proof
++ printf '%s\n' 'PASS: native component objects/tests; no bhyve/FUSE runtime proof'
+PASS: native component objects/tests; no bhyve/FUSE runtime proof
