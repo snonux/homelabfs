@@ -29,6 +29,9 @@ guest = module("guest")
 observer = module("observer")
 ADMITTED = "3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
 QUARANTINED = "7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b"
+LAB = Path(__file__).resolve().parents[3] / "docs/lab"
+HOST_PIN = (LAB / "f3-host-known_hosts").read_bytes()
+GUEST_PIN = (LAB / "rocky-known_hosts").read_bytes()
 
 
 def guest_stdout(request):
@@ -74,9 +77,11 @@ def batch_fixture(root):
     ssh.chmod(0o700)
     probe = root / "guest-original.py"
     probe.write_text("print('verified-probe')\n")
+    # Copies of the reviewed public pin files: the controller checks their
+    # content against its fingerprints, not only the plan's byte hashes.
     host, guest_pin = root / "host-pin", root / "guest-pin"
-    host.write_text("original-host-public-pin\n")
-    guest_pin.write_text("original-guest-public-pin\n")
+    host.write_bytes(HOST_PIN)
+    guest_pin.write_bytes(GUEST_PIN)
     mounts = [{"path": "/var/tmp/hfs-zq3-test/m" + str(i), "tag": "hfs" + str(i),
                "mount_id": i + 10, "session": "session" + str(i)} for i in range(2)]
     requests = [{"version": guest.VERSION, "run_id": "test", "boot_id": "boot",
@@ -87,9 +92,9 @@ def batch_fixture(root):
             "candidate_manifest_sha256": ADMITTED, "installed_manifest_sha256": "b" * 64,
             "ssh": {"path": str(ssh), "sha256": controller.digest(ssh.read_bytes())},
             "probe_sha256": controller.digest(probe.read_bytes()), "requests": requests,
-            "host": {"address": "192.168.1.133", "alias": "f3", "user": "paul",
+            "host": {"address": "10.20.0.133", "alias": "f3", "user": "paul",
                      "known_hosts": str(host), "known_hosts_sha256": controller.digest(host.read_bytes())},
-            "guest": {"address": "192.168.1.123", "alias": "rocky", "user": "root",
+            "guest": {"address": "10.20.0.123", "alias": "rocky", "user": "root",
                       "known_hosts": str(guest_pin), "known_hosts_sha256": controller.digest(guest_pin.read_bytes())}}
     path = root / "plan.json"
     # Preserve a deliberately noncanonical but valid original plan byte image.
@@ -179,8 +184,8 @@ class PreparationTests(unittest.TestCase):
             inputs = controller.stage_inputs(output, verified)
             argv = controller.invocation(plan, inputs, verified["probe.py"])
             jump = shlex.split(next(arg.split("=", 1)[1] for arg in argv if arg.startswith("-oProxyCommand=")))
-            for command, expected_pin in [(argv, "original-guest-public-pin\n"),
-                                          (jump, "original-host-public-pin\n")]:
+            for command, expected_pin in [(argv, GUEST_PIN.decode()),
+                                          (jump, HOST_PIN.decode())]:
                 result = subprocess.run(command, input=b"", capture_output=True, check=True, timeout=2)
                 observed = json.loads(result.stdout)
                 self.assertEqual(observed["marker"], "verified-original")
