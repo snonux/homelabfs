@@ -58,8 +58,9 @@ involved.
   identity (numeric credentials, groups, incarnation, text vnode) and matched
   its own executable SHA256.
 - `--check-descriptor-exec` **refused**, as expected, because the f3 host's
-  `/dev/fd` is still devfs. Positive FD execution was qualified for the same
-  sources on the hfs-test0 guest (w24, m34). Enabling fdescfs on the f3 host
+  `/dev/fd` is still devfs. Positive FD execution was qualified on the hfs-test0
+  guest (w24, m34) with test binaries built from the same, unchanged
+  descriptor-execution code, not with this daemon binary. Enabling fdescfs on the f3 host
   and rerunning there is a zq3 step that needs explicit approval.
 
 Receipts are under `receipts/observer-*` in the durable root.
