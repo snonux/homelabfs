@@ -219,7 +219,7 @@ func boundRestartOutcome(view lifecycleRestartView, limit int) (lifecycleRestart
 	if err == nil && len(raw) <= limit {
 		return view, raw
 	}
-	reason := fmt.Sprintf("post-attempt evidence encodes to %d bytes, over the %d-byte outcome bound; OBSERVE reports the current owners", len(raw), limit)
+	reason := fmt.Sprintf("post-attempt evidence encodes to %d bytes, over the %d-byte outcome bound; a later OBSERVE reports current owners if its own reply fits the bound", len(raw), limit)
 	if err != nil {
 		reason = "post-attempt evidence not encodable: " + evidenceError(err)
 	}

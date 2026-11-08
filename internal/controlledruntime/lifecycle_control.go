@@ -370,7 +370,7 @@ func oversizedReply(opcode uint8) lifecycleNotice {
 	if opcode == LifecycleObserve {
 		return refusal("reply exceeds funded bound")
 	}
-	return lifecycleNotice{Status: lifecycleUnreportable, Reason: "reply exceeds funded bound after the command may have taken effect; OBSERVE reports the current owners"}
+	return lifecycleNotice{Status: lifecycleUnreportable, Reason: "reply exceeds funded bound after the command may have taken effect; a later OBSERVE reports current owners if its own reply fits the bound"}
 }
 
 // readLifecycleRequest decodes one closed, fixed-length request. Every length
