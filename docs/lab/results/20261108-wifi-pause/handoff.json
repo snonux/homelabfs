@@ -1,0 +1,31 @@
+{
+  "version": "homelabfs-network-pause/1",
+  "recorded_utc": "2026-11-08T15:15:00Z",
+  "authority": "Paul: 'it can be that soon we will be switching into another wifi, so f3 may not be reachable then. if that is the case, pause your work.'",
+  "trigger": "Laptop moved to Wi-Fi 10.158.72.81/24 (default via 10.158.72.232); f3 10.20.0.133 no ping, SSH connect timeout rc255.",
+  "state": "paused until f3 is reachable again and work is resumed",
+  "lab_state_at_last_observation": {
+    "rocky": "STOPPED by tools/lab/vms.sh stop-rocky (ACPI), around 15:11Z",
+    "hfs_test0_2": "STARTED by vms.sh start-lab; hfs-test0 answered pinned SSH (fdescfs absent, no /dev/fd mount) at about 15:12Z",
+    "freebsd_dev_vm": "Stopped",
+    "f3_host_fdescfs": "never touched"
+  },
+  "uncertain_action": {
+    "what": "fdescfs setup script on hfs-test0 (mkdir /var/tmp/hfs-20261108-l34-fdescfs, pre.txt, intent 'load-intent' -> kldload /boot/kernel/fdescfs.ko, 'mount-intent loaded_by_run=1' -> mount -t fdescfs -o nodup fdescfs /dev/fd)",
+    "result": "UNKNOWN: ssh wrapper hit its 60 s timeout (rc124) with no output while the network changed; may not have connected at all, or may have run partially.",
+    "do_not": "Do not replay blindly."
+  },
+  "resume_sequence": [
+    "Confirm f3 reachable with StrictHostKeyChecking=yes (name pin ED25519 SHA256:VZLFFSJZ9K7iOBQ/cFehASFzCfIOn0TKFD1L89ziL5g).",
+    "Inspect actual state: doas -n vm list on f3; on hfs-test0: ls -l /var/tmp/hfs-20261108-l34-fdescfs; cat its intent/pre.txt; kldstat -v | grep fdescfs; mount -p | grep /dev/fd.",
+    "Reconcile: if the directory is absent, nothing ran. If intent shows loaded_by_run=1 and fdescfs is mounted on /dev/fd, either continue the l34 native run or restore with umount /dev/fd then kldunload fdescfs. If the module was loaded but not mounted, kldunload only. Record a restore line in the intent file.",
+    "l34 native run (when continuing): artifacts in scratch l34/out (controlledruntime-freebsd.test e02ac974..., diagnostic-child bc7289cf...), source.tar c6386142... from commit d94198e; command per l34 worker report using tools/lab/native-test-drive.py with --source-archive and --cwd src/internal/controlledruntime.",
+    "Then vms.sh stop-lab and vms.sh start-rocky; confirm Rocky pinned SSH."
+  ],
+  "tasks": {
+    "l34": "Started. Implementation committed in worktree branch worktree-agent-ab66fad910fb96b03 (d94198e), Linux checks pass, NOT merged; native guest verification pending (interrupted at fdescfs setup).",
+    "u24": "Started; local-only implementation worker running in its own worktree (no f3 dependency). Not merged.",
+    "uy3": "Pending; this outage is a laptop network change, not an f3 SSH transport incident."
+  },
+  "note_unrelated": "tools/lab/test_guest_lock_probe.py has 5 failures on main on this Linux host (pre-existing, not caused by l34)."
+}
