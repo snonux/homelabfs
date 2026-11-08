@@ -21,9 +21,7 @@ import (
 // This is a real local process substituted ONLY at the external SSH/guest OS
 // primitive boundary. It proves no remote kernel, native mount or deployment.
 func TestInstalledObserverPinnedProcessAndClosedObservation(t *testing.T) {
-	if _, err := os.Stat("/usr/bin/python3"); err != nil {
-		t.Skip("local process fixture needs python3")
-	}
+	python := fixturePython(t)
 	fixture := installedObservation{Version: "homelabfs-installed-observation/1", ManifestHash: hashBytes([]byte("manifest")), BootID: testUUID(1).String(), KernelBuildID: strings.Repeat("ab", 20), Modules: map[string]string{}, ABI: physicalContract, Admission: kernelAdmission{Version: "homelabfs-kernel-admission/1", BootID: testUUID(1).String(), ProviderNonce: testUUID(2).String(), PhysicalContract: physicalContract, Protocols: map[string]guestbridge.Protocol{}}}
 	raw, err := canonicalJSON(fixture)
 	if err != nil {
@@ -32,7 +30,8 @@ func TestInstalledObserverPinnedProcessAndClosedObservation(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "ssh-primitive")
 	quoted, _ := json.Marshal(string(raw))
-	script := "#!/usr/bin/python3\nimport sys, pathlib\nargs=sys.argv[1:]\nassert '-oStrictHostKeyChecking=yes' in args\nassert '-F' in args and '/dev/null' in args\nassert 'root@guest.test' in args\nassert 'installed-admission-v1.json' in args[-1]\nfor prefix in ['-oUserKnownHostsFile=', '-oIdentityFile=']:\n p=next(a[len(prefix):] for a in args if a.startswith(prefix))\n assert pathlib.Path(p).read_bytes()\nsys.stdout.write(" + string(quoted) + ")\n"
+	// The shebang names the resolved interpreter; SSHHash pins these exact bytes.
+	script := "#!" + python + "\nimport sys, pathlib\nargs=sys.argv[1:]\nassert '-oStrictHostKeyChecking=yes' in args\nassert '-F' in args and '/dev/null' in args\nassert 'root@guest.test' in args\nassert 'installed-admission-v1.json' in args[-1]\nfor prefix in ['-oUserKnownHostsFile=', '-oIdentityFile=']:\n p=next(a[len(prefix):] for a in args if a.startswith(prefix))\n assert pathlib.Path(p).read_bytes()\nsys.stdout.write(" + string(quoted) + ")\n"
 	if err = os.WriteFile(path, []byte(script), 0500); err != nil {
 		t.Fatal(err)
 	}
@@ -109,9 +108,7 @@ func testUUID(n byte) fsapi.UUID {
 }
 
 func TestActualInstalledProbeReadsCompleteLocalArtifactPrimitives(t *testing.T) {
-	if _, err := os.Stat("/usr/bin/python3"); err != nil {
-		t.Skip("probe fixture needs python3")
-	}
+	python := fixturePython(t)
 	directory := t.TempDir()
 	write := func(name string, data []byte) {
 		t.Helper()
@@ -151,7 +148,7 @@ func TestActualInstalledProbeReadsCompleteLocalArtifactPrimitives(t *testing.T) 
 		if phase {
 			args = append(args, "phase")
 		}
-		return exec.CommandContext(t.Context(), "/usr/bin/python3", args...).CombinedOutput()
+		return exec.CommandContext(t.Context(), python, args...).CombinedOutput()
 	}
 	raw, err := run(false)
 	if err != nil {
