@@ -90,6 +90,42 @@
       "provenance": "measured FreeBSD base binary inputs; external, not redistributed"
     },
     "forced_rebuilds_equal": true,
+    "native_qualification": {
+      "check_descriptor_exec": {
+        "exit": 1,
+        "meaning": "expected refusal: f3 host /dev/fd is devfs; host fdescfs window is a zq3 step needing explicit approval",
+        "record": {
+          "failure": "descriptor execution requires an admitted /dev/fd: UNSUPPORTED",
+          "mount_flags": 0,
+          "mount_id": "7100ff00:00000071",
+          "mount_type": "devfs",
+          "platform": "freebsd/amd64",
+          "publication": null,
+          "supported": false,
+          "version": "homelabfs-descriptor-exec/1"
+        }
+      },
+      "check_process_observer": {
+        "exit": 0,
+        "record": {
+          "executable": "/var/tmp/hfs-20261108-xz3-observer/hfs-controlled-runtime",
+          "gid": 0,
+          "groups": [
+            0,
+            0
+          ],
+          "incarnation": "freebsd:1437:1794161250:546654:fffff802274b8c08",
+          "pid": 1437,
+          "platform": "freebsd/amd64",
+          "publication": null,
+          "sha256": "5359873799fa9ca28bb7aebc65449ceb839e07736c7d65eda1d6d6d6af2583a5",
+          "text_vnode": 18446735286865726472,
+          "uid": 1001,
+          "version": "homelabfs-process-observer/1"
+        }
+      },
+      "host": "f3 15.1-RELEASE-p2, guard tools/lab/native-test-guard.py host profile (Rocky pid 80203 pinned), staged 0500 nlink 1 at /var/tmp/hfs-20261108-xz3-observer"
+    },
     "repository": "e0cca0c874f0027f050974ab5a54095d4af1c416",
     "sha256": "5359873799fa9ca28bb7aebc65449ceb839e07736c7d65eda1d6d6d6af2583a5"
   },
@@ -97,8 +133,9 @@
     "clean_repro_equal_artifacts": 13,
     "clean_repro_modules": 5,
     "clean_repro_record_sha256": "f82ed141337cb6a63a74cda5730c6c8c953d0c10f8f99f0a60d55b455ff79c48",
-    "note": "a second build at a different output path was refused by compare_kernel (O path is a recorded compile input) and retained; reproduction used the same canonical output path",
+    "note": "a second build at a different output path was refused by compare_kernel (O path is a recorded compile input) and retained; reproduction used the same canonical output path; the first same-path comparison failed only because abi.py collect had not yet produced linux/kernel.release (procedural, receipts/compare-repro.stderr); after abi.py collect on both packages the comparison passed",
     "release": "6.1.190-hfs-xz3",
+    "retained_refused_build": "/home/paul/tmp/claude/hfs-xz3-20261108/kernel-second-package-refused-different-O (package); build trees remain in the session scratch directory",
     "source": "/home/paul/tmp/codex/hfs-t24-20261105-jjwkde_3/source-current",
     "stage_seconds": [
       [
@@ -175,7 +212,8 @@
     "native acceptance",
     "VM/exporter execution",
     "normal publication",
-    "PTE/TLB or pod acceptance (zq3)"
+    "PTE/TLB or pod acceptance (zq3)",
+    "positive descriptor-execution qualification of these exact daemon bytes (proven for the same source on the hfs-test0 guest in w24/m34; f3 host rerun is zq3)"
   ],
   "recorded": "2026-11-08",
   "superseded_candidate": {

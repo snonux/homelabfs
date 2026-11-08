@@ -45,8 +45,10 @@ C9/evidence control (u24) and actual response-exposure lost-reply (v24) requirem
 Task r24 is now complete: source `c520332` refuses unsupported observation before
 launch effects, and its actual CGO daemon passed native read-only qualification.
 See [observer evidence](results/20261105-r24-observer/README.md). This qualifies
-those observer bytes only; the final post-s24 artifact still needs rebuilding
-and exact-byte native qualification. The old candidate remains unchanged.
+those observer bytes only. On 2026-11-08 the final rebuilt xz3 daemon
+`53598737…` passed the same exact-byte native observer check (see the xz3
+evidence below); its f3-host descriptor execution still awaits the approved zq3
+fdescfs window. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
 any SSH. All old build proofs remain preserved, and no different digest alone
 establishes native eligibility. This preparation changes no runtime APIs.
@@ -156,7 +158,8 @@ The current xz3 candidate (2026-11-08) is retained at
 `/home/paul/tmp/claude/hfs-xz3-20261108/package-final`, manifest SHA256
 `3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1`, built from
 source checkout `e0cca0c874f0027f050974ab5a54095d4af1c416` with a CGO FreeBSD
-daemon; see its [evidence](../../tools/integration/artifacts/evidence/xz3-20261108/README.md).
+daemon whose exact bytes passed native `--check-process-observer` on f3; see its
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261108/README.md).
 The earlier `7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b`
 candidate (CGO-disabled daemon) stays quarantined and must not be installed.
 Any later source change requires a new rebuild and admission.

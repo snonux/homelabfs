@@ -28,9 +28,13 @@ control names.
   (two CPUs, 2 GiB, no swap) with a 20-minute timeout, followed by
   `abi.py collect`. A repeat at the same canonical output path matched the
   first build exactly: identical compile inputs, all 13 artifacts and the full
-  module ABI. An intermediate repeat at a *different* output path was refused
-  by `compare_kernel.py`, because the output path is a recorded compile input.
-  It is retained, not counted.
+  module ABI. The first comparison of the same-path repeat failed only
+  because `abi.py collect` had not yet written `linux/kernel.release`. After
+  running it on both packages, the comparison passed. An intermediate repeat at
+  a *different* output path was refused by `compare_kernel.py`, because the
+  output path is a recorded compile input. Its package is retained, not
+  counted, under `kernel-second-package-refused-different-O` in the durable
+  root; build trees remain in the session scratch directory.
 - **Native FreeBSD** (f3, fresh root `/var/tmp/hfs-xz3-20261108-r1`, committed
   guard with the current Rocky PID): the pinned upstream archive re-captured to
   the same `044a42cc…` hash as the earlier TOFU capture. The owned-source
@@ -42,6 +46,23 @@ control names.
   sysroot and cross wrapper. It records the clang resource headers, the tool
   library closures and the runtime loader closure. Two forced builds
   produced identical binaries.
+
+## Native qualification of the exact daemon bytes
+
+On f3 (FreeBSD 15.1-RELEASE-p2), the exact final binary `53598737…` ran its
+read-only checks under the bounded host guard, with Rocky pinned. It was staged
+with mode 0500 and one hard link. No configuration, exporter, VM or mount was
+involved.
+
+- `--check-process-observer` **passed**. It observed its complete native
+  identity (numeric credentials, groups, incarnation, text vnode) and matched
+  its own executable SHA256.
+- `--check-descriptor-exec` **refused**, as expected, because the f3 host's
+  `/dev/fd` is still devfs. Positive FD execution was qualified for the same
+  sources on the hfs-test0 guest (w24, m34). Enabling fdescfs on the f3 host
+  and rerunning there is a zq3 step that needs explicit approval.
+
+Receipts are under `receipts/observer-*` in the durable root.
 
 ## Admission and controls
 
