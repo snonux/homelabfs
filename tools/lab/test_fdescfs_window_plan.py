@@ -164,6 +164,14 @@ class FillerTests(unittest.TestCase):
         self.refuses("expiry", expires=self.now + 3601)
         self.assertEqual(self.fill(expires=self.now + 3600)["expires"], self.now + 3600)
 
+    def test_host_clock_skew_and_expiry(self):
+        FILLER.check_host_clock(self.now + 1800, self.now + 60, self.now)
+        with self.assertRaisesRegex(FILLER.FillRefused, "skew"):
+            FILLER.check_host_clock(self.now + 1800, self.now + 301, self.now)
+        # Valid on the workstation clock but already beyond one hour on f3's.
+        with self.assertRaisesRegex(FILLER.FillRefused, "expiry"):
+            FILLER.check_host_clock(self.now + 3600, self.now - 200, self.now)
+
     def test_pins_schema_is_closed(self):
         extra = dict(self.pins, surprise=True)
         self.refuses("closed pins schema", pins=extra)
@@ -195,6 +203,7 @@ class FillerTests(unittest.TestCase):
             argv = ["--pins", str(PINS), "--facts", str(temp / "facts.json"),
                     "--host-sha256", str(temp / "host.sha256"),
                     "--expires", str(int(time.time()) + 600), "--out", str(temp / "out"),
+                    "--host-now", str(int(time.time()) + 30),
                     "--controller", str(controller)]
             with patch("builtins.print") as printed:
                 FILLER.main(argv)

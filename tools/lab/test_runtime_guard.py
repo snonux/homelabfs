@@ -28,6 +28,8 @@ GIB = GUARD.GIB
 PIN = "a" * 64
 RUNTIME, EXPORTER, OBSERVER, ROCKY = 1000, 1001, 1002, 80203
 LSTART = "Sun Nov  8 18:00:00 2026"
+# setproctitle on an image exec'd as /dev/fd/4 prefixes the image name "4".
+EXPORTER_TITLE = "4: hfs-zq3-r1 (4)"
 
 
 class FakeChild:
@@ -60,12 +62,17 @@ class FakeHost:
         self.exit_on_term = True
         self.hooks = {}             # elapsed second -> callable(host)
         self.fail_processes = False
+        self.mounts = set()
+        self.skips_seen = []
+        self.missing_roots = set()
 
     # Admission boundaries.
     def admitted(self):
         return self.admit
 
     def lstat(self, path):
+        if Path(path) in self.missing_roots:
+            raise FileNotFoundError(path)
         if Path(path) == self.root:
             return os.stat_result((stat.S_IFDIR | 0o700, 0, 0, 0, 0, 0, 0, 0, 0, 0))
         return os.lstat(path)
@@ -83,7 +90,7 @@ class FakeHost:
             rows[OBSERVER] = (RUNTIME, 8 << 20, LSTART, "/dev/fd/3 -T root@rocky")
         if self.child is not None:
             parent = RUNTIME if self.child.alive else 1
-            rows[EXPORTER] = (parent, self.exporter_rss, LSTART, "bhyve: hfs-zq3-r1 (bhyve)")
+            rows[EXPORTER] = (parent, self.exporter_rss, LSTART, EXPORTER_TITLE)
         return rows
 
     def vm_contexts(self):
@@ -95,8 +102,12 @@ class FakeHost:
     def swap_used(self):
         return self.swap
 
-    def allocated(self, root):
+    def allocated(self, root, skip):
+        self.skips_seen.append(set(skip))
         return self.disk
+
+    def mountpoints(self, roots):
+        return set(self.mounts)
 
     def free_bytes(self, root):
         return self.free
@@ -176,7 +187,7 @@ class GuardTests(unittest.TestCase):
 
     def test_limit_breaches_stop_only_the_runtime(self):
         cases = {
-            "runtime-rss": lambda h: setattr(h, "runtime_rss", 6 * GIB + 1),
+            "runtime-rss": lambda h: setattr(h, "runtime_rss", 4 * GIB + 256 * GUARD.MIB + 1),
             "exporter-rss": lambda h: setattr(h, "exporter_rss", 6 * GIB + 512 * GUARD.MIB + 1),
             "disk": lambda h: setattr(h, "disk", 4 * GIB + 1),
             "free-disk": lambda h: setattr(h, "free", 8 * GIB - 1),
@@ -292,8 +303,12 @@ class GuardTests(unittest.TestCase):
         with self.assertRaisesRegex(GUARD.Refused, "already exists"):
             self.run_guard()
         args = GUARD.parse_args(self.argv())
+        elsewhere = tempfile.TemporaryDirectory()
+        self.addCleanup(elsewhere.cleanup)
         for field, value, pattern in (("vm_name", "rocky", "hfs-"),
-                                      ("disk_root", [Path("/elsewhere")], "count against"),
+                                      ("disk_root", [Path(elsewhere.name)], "count against"),
+                                      ("disk_root", [self.root, Path("/nonexistent-v34")], "unavailable"),
+                                      ("skip_path", [Path("/var/tmp/outside")], "strictly below"),
                                       ("disk_root", [self.root, self.root / "sub"], "non-nested")):
             with self.subTest(field=field, value=value):
                 changed = GUARD.parse_args(self.argv())
@@ -310,10 +325,67 @@ class GuardTests(unittest.TestCase):
         with self.assertRaisesRegex(GUARD.Refused, "root-private"):
             self.run_guard()
 
+    def test_real_bhyve_title_uses_exporter_not_runtime_limit(self):
+        # 6 GiB of bhyve RSS under its real "/dev/fd/4" title must not count
+        # against the 4.25 GiB runtime envelope (review blocker B2).
+        self.host.exporter_rss = 6 * GIB
+        self.assertEqual(self.run_guard(), 0)
+        receipt = self.receipt()
+        self.assertEqual(receipt["peaks"]["exporter_rss"], 6 * GIB)
+        self.assertLess(receipt["peaks"]["runtime_rss"], GIB)
+        self.assertTrue(receipt["exporter_alive_at_guard_exit"])
+
+    def test_mount_table_and_skip_paths_reach_the_disk_walk(self):
+        mount = str(self.root / "volume/mnt")
+        self.host.mounts = {mount}
+        self.assertEqual(self.run_guard("--skip-path", str(self.root / "volume/native")), 0)
+        self.assertTrue(self.host.skips_seen)
+        for skip in self.host.skips_seen:
+            self.assertEqual(skip, {mount, str(self.root / "volume/native")})
+
+    def test_record_failure_still_stops_runtime(self):
+        def readonly(host):
+            os.chmod(self.root / "guard", 0o500)
+        self.addCleanup(lambda: os.chmod(self.root / "guard", 0o700))
+        self.host.exit_after = None
+        self.host.hooks = {2: readonly}
+        self.assertEqual(self.run_guard(), 1)
+        self.assert_only_runtime_signalled()
+        self.assertFalse((self.root / "guard/receipt.json").exists())
+
+    def test_guard_bug_is_a_breach_and_stops_runtime(self):
+        def broken(host):
+            host.vm_contexts = lambda: (_ for _ in ()).throw(RuntimeError("guard bug"))
+        self.host.exit_after = None
+        self.host.hooks = {2: broken}
+        self.assertEqual(self.run_guard(), 1)
+        self.assertEqual(self.breach_kinds(), ["guard-failure"])
+        self.assert_only_runtime_signalled()
+        self.assertEqual(self.receipt()["runtime_exit"], 0)
+
+    def test_guard_bug_in_report_mode_never_signals(self):
+        def broken(host):
+            host.vm_contexts = lambda: (_ for _ in ()).throw(RuntimeError("guard bug"))
+        self.host.exit_after = None
+        self.host.hooks = {2: broken}
+        self.assertEqual(self.run_guard("--on-breach", "report"), 3)
+        self.assertEqual(self.host.signals, [])
+
+    def test_preflight_observation_error_refuses_cleanly(self):
+        def failing(root, skip):
+            raise PermissionError("unreadable staging entry")
+        self.host.allocated = failing
+        self.assertEqual(self.run_guard(), 1)
+        self.assertIn("preflight observation failed", self.receipt()["refused"])
+        self.assertEqual(self.host.spawned, [])
+
     def test_pre_retitle_bhyve_counts_as_exporter(self):
         guard = GUARD.Guard(GUARD.parse_args(self.argv()), self.host)
         self.assertTrue(guard.is_exporter("/dev/fd/4 -c 4 -m 6G -A -H -P hfs-zq3-r1"))
+        self.assertTrue(guard.is_exporter(EXPORTER_TITLE))
         self.assertTrue(guard.is_exporter("bhyve: hfs-zq3-r1 (bhyve)"))
+        self.assertFalse(guard.is_exporter("4: hfs-zq3-r10 (4)"))
+        self.assertFalse(guard.is_exporter("/r --config /var/tmp/hfs-zq3-r1-x/config.json"))
         self.assertFalse(guard.is_exporter("bhyve: rocky (bhyve)"))
         self.assertFalse(guard.is_exporter("/dev/fd/3 -T root@rocky"))
 
@@ -340,12 +412,13 @@ class HostBoundaryTests(unittest.TestCase):
 
     def test_ps_parsing(self):
         output = (f"  1000     1 102400 {LSTART} /var/tmp/x/bin/hfs-controlled-runtime --config /c\n"
-                  f"  1001  1000 2097152 {LSTART} bhyve: hfs-zq3-r1 (bhyve)\n"
+                  f"  1001  1000 2097152 {LSTART} {EXPORTER_TITLE}\n"
                   f"    12     0      0 {LSTART} \n")
-        with patch.object(GUARD.subprocess, "check_output", return_value=output):
+        with patch.object(GUARD.subprocess, "check_output", return_value=output) as ps:
             rows = GUARD.HostOS().processes()
+        self.assertIn("-ww", ps.call_args[0][0])
         # lstart words are re-joined with single spaces; only equality matters.
-        self.assertEqual(rows[1001], (1000, 2 * GIB, " ".join(LSTART.split()), "bhyve: hfs-zq3-r1 (bhyve)"))
+        self.assertEqual(rows[1001], (1000, 2 * GIB, " ".join(LSTART.split()), EXPORTER_TITLE))
         self.assertEqual(rows[12][3], "")
         with patch.object(GUARD.subprocess, "check_output", return_value="1 2\n"):
             with self.assertRaises(ValueError):
@@ -390,6 +463,60 @@ class HostBoundaryTests(unittest.TestCase):
                 walled = GUARD.allocated_bytes(root)
             self.assertLess(walled, whole)
             self.assertGreaterEqual(whole - walled, 1 << 20)
+
+    def test_disk_walk_never_lstats_a_skipped_mountpoint(self):
+        # A FUSE mountpoint's lstat is a request to the runtime's own server:
+        # it may fail or block forever. The walk must not issue it (B1).
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "owned").write_bytes(b"x" * 4096)
+            (root / "mnt").mkdir()
+            real_lstat = os.lstat
+
+            def fuse_lstat(path):
+                if Path(path) == root / "mnt":
+                    raise AssertionError("blocked: lstat reached the FUSE mountpoint")
+                return real_lstat(path)
+
+            with patch.object(GUARD.os, "lstat", side_effect=fuse_lstat):
+                self.assertGreater(GUARD.allocated_bytes(root, frozenset({str(root / "mnt")})), 0)
+                with self.assertRaises(AssertionError):
+                    GUARD.allocated_bytes(root)
+
+    def test_host_disk_sample_skips_mount_table_entries(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "owned").write_bytes(b"x" * 4096)
+            (root / "mnt").mkdir()
+            table = (f"zroot/var/tmp /var/tmp zfs rw 0 0\n"
+                     f"/dev/fuse {root}/mnt fusefs rw,nosuid 0 0\n")
+            real_lstat = os.lstat
+
+            def fuse_lstat(path):
+                if Path(path) == root / "mnt":
+                    raise OSError(5, "Input/output error (FUSE server)")
+                return real_lstat(path)
+
+            host = GUARD.HostOS()
+            with patch.object(GUARD.subprocess, "check_output", return_value=table) as mount, \
+                    patch.object(GUARD.os, "lstat", side_effect=fuse_lstat):
+                skip = host.mountpoints([root])
+                self.assertGreater(host.allocated(root, skip), 0)
+            self.assertEqual(mount.call_args[0][0], ["/sbin/mount", "-p"])
+            self.assertEqual(skip, {str(root / "mnt")})
+
+    def test_mount_table_parsing(self):
+        roots = [Path("/var/tmp/hfs-validation-xz3/zq3-r1")]
+        table = ("zroot/var/tmp /var/tmp zfs rw 0 0\n"
+                 "/dev/fuse /var/tmp/hfs-validation-xz3/zq3-r1/vol\\040a/mnt fusefs rw 0 0\n"
+                 "odd line with spaces elsewhere /mnt x y z 0\n"
+                 "devfs /dev devfs rw 0 0\n")
+        self.assertEqual(GUARD.parse_mount_table(table, roots),
+                         {"/var/tmp/hfs-validation-xz3/zq3-r1/vol a/mnt"})
+        with self.assertRaisesRegex(ValueError, "ambiguous"):
+            GUARD.parse_mount_table("a b /var/tmp/hfs-validation-xz3/zq3-r1/m fusefs rw 0 0\n", roots)
+        with self.assertRaisesRegex(ValueError, "itself a mountpoint"):
+            GUARD.parse_mount_table("/dev/fuse /var/tmp/hfs-validation-xz3/zq3-r1 fusefs rw 0 0\n", roots)
 
     def test_disk_walk_tolerates_vanished_entries(self):
         with tempfile.TemporaryDirectory() as temp:

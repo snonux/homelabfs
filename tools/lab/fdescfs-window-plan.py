@@ -7,8 +7,10 @@ The controller (fdescfs-window.py) requires its plan's `before` to equal the
 actual `facts` output and `expires` to be at most one hour ahead, so the exact
 plan JSON can only exist after root has collected, read-only:
 
-  1. `facts --inspector STAGED_INSPECTOR` stdout (zq3 Phase 4 step 0), and
-  2. `sha256 -r` lines ("HASH PATH") for every path in the pins' `collect`
+  1. `facts --inspector STAGED_INSPECTOR` stdout (zq3 Phase 4 step 0),
+  2. `date -u +%s` on f3 (passed as --host-now; the controller checks the
+     expiry against f3's clock), and
+  3. `sha256 -r` lines ("HASH PATH") for every path in the pins' `collect`
      list, every staged artifact and the base library closure, plus optional
      extra library closure lines (e.g. from `ldd /usr/local/bin/python3.12`)
      under /lib, /usr/lib, /usr/local/lib or /libexec.
@@ -153,6 +155,17 @@ def check_expiry(expires, now):
             "expiry must be in the future and at most one hour ahead")
 
 
+def check_host_clock(expires, host_now, workstation_now):
+    """The controller checks expiry against f3's clock, not the workstation's.
+
+    `host_now` is f3's `date -u +%s`, collected with the facts. Expiry must be
+    valid on both clocks, and a skew above five minutes refuses: it would make
+    the reviewed one-hour bound mean something different on f3.
+    """
+    require(abs(host_now - workstation_now) <= 300, "f3/workstation clock skew above 300 s")
+    check_expiry(expires, host_now)
+
+
 def build_plan(pins, facts, host, controller_sha256, expires, now):
     """Return the exact plan the controller's validate() accepts."""
     check_pins(pins)
@@ -189,6 +202,8 @@ def parse_args(argv=None):
     parser.add_argument("--facts", type=Path, required=True)
     parser.add_argument("--host-sha256", type=Path, required=True)
     parser.add_argument("--expires", type=int, required=True)
+    parser.add_argument("--host-now", type=int, required=True,
+                        help="f3 `date -u +%%s` collected with the facts")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--controller", type=Path, default=HERE / "fdescfs-window.py")
     return parser.parse_args(argv)
@@ -199,13 +214,15 @@ def main(argv=None):
     pins, facts = read_json(args.pins), read_json(args.facts)
     host_text = args.host_sha256.read_text(encoding="utf-8")
     controller = sha256_file(args.controller)
-    plan = build_plan(pins, facts, parse_host_sha256(host_text), controller,
-                      args.expires, int(time.time()))
+    now = int(time.time())
+    check_host_clock(args.expires, args.host_now, now)
+    plan = build_plan(pins, facts, parse_host_sha256(host_text), controller, args.expires, now)
     digest = hashlib.sha256(plan_bytes(plan)).hexdigest()
     record = {"version": FILL_VERSION, "plan_sha256": digest,
               "pins_sha256": sha256_file(args.pins), "facts_sha256": sha256_file(args.facts),
               "host_sha256_sha256": hashlib.sha256(host_text.encode()).hexdigest(),
               "controller_sha256": controller, "expires": args.expires,
+              "host_now": args.host_now, "workstation_now": now,
               "authority": "none: review input only; host setup needs explicit approval"}
     write_outputs(args.out, plan, record)
     print(digest)

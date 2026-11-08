@@ -188,10 +188,10 @@ ELF closure: [build record](zq3-fdescfs-window/build-record.json).
 | `hfs-controlled-runtime` (inspector, equals the candidate manifest) | `5359873799fa9ca28bb7aebc65449ceb839e07736c7d65eda1d6d6d6af2583a5` | 10,744,520 |
 | `fdescfs-window.py` (controller) | SHA256 of the repository file at the reviewed commit | |
 
-All three binaries need only `/libexec/ld-elf.so.1` and base `libc.so.7`
-(the Go binaries also `libthr.so.3`, which needs `libsys.so.7`). Those hashes,
-taken from the f3 sysroot capture, are pinned too and re-verified on f3 by the
-controller at setup.
+All three binaries load through `/libexec/ld-elf.so.1` and need base
+`libc.so.7`, which itself needs `libsys.so.7`; the Go binaries also need
+`libthr.so.3`. Those four hashes, taken from the f3 sysroot capture, are pinned
+too and re-verified on f3 by the controller at setup.
 
 **Pins and filler.** [`pins.json`](zq3-fdescfs-window/pins.json) holds every
 reviewed value: run ID `zq3-r1`, window directory, staged paths, the hashes
@@ -209,11 +209,9 @@ actual controller `validate()`.
 **Facts the orchestrator collects read-only on f3** (root over pinned SSH,
 after staging, at the start of Phase 4):
 
-1. `sha256 -r` of `/usr/local/bin/python3.12`, `/boot/kernel/kernel`,
-   `/sbin/mount`, `/sbin/kldload`, `/sbin/kldstat`, `/sbin/sysctl`,
-   `/bin/freebsd-version`, `/bin/hostname`, `/boot/kernel/fdescfs.ko`,
-   `/libexec/ld-elf.so.1`, `/lib/libc.so.7`, `/lib/libthr.so.3`,
-   `/lib/libsys.so.7` and the four staged files above.
+1. `sha256 -r` of every path in `pins.json` (`collect`, `pinned` and
+   `controller`). The `collect` values (interpreter, kernel, the six base
+   commands) are new facts; the others must equal their pins.
 2. `ldd /usr/local/bin/python3.12` and `sha256 -r` of each library it lists
    (optional extra pins; the filler accepts them only under `/lib`, `/usr/lib`,
    `/usr/local/lib` or `/libexec`).
@@ -223,9 +221,12 @@ after staging, at the start of Phase 4):
    so a symlinked or writable interpreter path refuses.
 4. `/usr/local/bin/python3.12 -I -B STAGED/fdescfs-window.py facts --inspector
    STAGED/hfs-controlled-runtime` stdout (read-only; creates no run).
+5. `date -u +%s` on f3, taken with item 4.
 
-Feed items 1, 2 and 4 to the filler with an expiry under one hour, review the
-printed hash, then run `setup`, `qualify` and `restore` with exactly that plan
+Feed items 1, 2, 4 and 5 (`--host-now`) to the filler with an expiry under one
+hour. The controller compares the expiry with f3's clock, not the
+workstation's, so the filler checks it against both and refuses a skew above
+300 s. Review the printed hash, then run `setup`, `qualify` and `restore` with exactly that plan
 and hash. `qualify` runs under the bounded native guard's host profile
 (512 MiB aggregate RSS, one CPU, Rocky pinned, because Rocky still runs during
 Phase 4), staged together with its `runner_process.py` in a fresh 0700 root

@@ -126,7 +126,7 @@ unmounts of run-owned mounts.
 | Guest probe case | at most 60 s, 256 operations, 12 MiB issued writes, 128 fds | `guest.py` |
 | Controller dispatch | each SSH dispatch bounded by `min(case seconds + 15, plan seconds)`, plan seconds 60-600 (enforced); streams 256 KiB each | `controller.py` |
 | fdescfs commands | 10 s each, 256 KiB output; Go test 5 s; native RSS 512 MiB, one CPU (`qualify` under `native-test-guard.py` host profile) | fdescfs window doc |
-| Runtime guard | runtime + non-bhyve descendants 6 GiB RSS; bhyve 6 GiB + 512 MiB; run disk 4 GiB; 8 GiB free; no swap; 512 MiB available memory; 3600 s | `runtime-guard.py` |
+| Runtime guard | runtime + non-bhyve descendants 4 GiB + 256 MiB RSS (the 4 GiB `Budget.HostBytes` cap plus observer/Go overhead); bhyve 6 GiB + 512 MiB; run disk 4 GiB (mounts below it never touched); 8 GiB free; no swap; 512 MiB available memory; 3600 s | `runtime-guard.py` |
 | Lifecycle endpoint | OBSERVE/ARM 30 s, RESTART 90 s, replies 128 KiB | `lifecycle.md` |
 
 ## Phases
@@ -285,7 +285,7 @@ controller `tools/lab/fdescfs-window.py` with the explicit prefix
    [filled f3 plan](Descriptor-execution-window.md#filled-f3-plan-for-zq3-r1-2026-11-08);
    on the workstation `fdescfs-window-plan.py --pins
    docs/lab/zq3-fdescfs-window/pins.json --facts … --host-sha256 … --expires …
-   --out …` must accept them (any mismatch with the pins or Phase 1 stops) and
+   --host-now <f3 date -u +%s> --out …` must accept them (any mismatch with the pins or Phase 1 stops) and
    prints the exact plan SHA256, which is reviewed before step 2.
 1. Negative before setup (B): run only `TestDescriptorExecNativeUnsupported`
    from the staged test binary under `native-test-guard.py --profile host`; it
@@ -409,7 +409,8 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
   /var/tmp/hfs-validation-xz3/zq3-r1/bin/runtime-guard.py --run-dir
   /var/tmp/hfs-validation-xz3/zq3-r1/guard --runtime-sha256 53598737…
   --vm-name hfs-zq3-r1 --disk-root /var/tmp/hfs-validation-xz3/zq3-r1
-  --disk-root /var/tmp/hfs-fdescfs-windows/zq3-r1 --
+  --disk-root /var/tmp/hfs-fdescfs-windows/zq3-r1 --skip-path <native
+  mountpoint from the run config> --
   /var/tmp/hfs-validation-xz3/zq3-r1/bin/hfs-controlled-runtime --config
   <private config>`. Runtime stdout (READY) and stderr go to `guard/runtime.stdout`
   and `guard/runtime.stderr`. The guard refuses unless no VM context exists
@@ -417,8 +418,11 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
   VM context such as `rocky`, an unobservable sample, or a SIGHUP/SIGINT/SIGTERM
   to the guard) it writes `breach.json` and sends exactly one SIGTERM to the
   runtime, which handles it as its retained stop. It never signals bhyve,
-  Rocky or a process group and never sends SIGKILL. Exit 3 means the runtime
-  still ran after the grace period: inspect, do not escalate.
+  Rocky or a process group and never sends SIGKILL. The disk walk never
+  touches the native FUSE mount (cached `mount -p` table plus `--skip-path`).
+  `--on-breach report` would only record, not even stopping on Ctrl-C or the
+  time limit, so it is not used here. Exit 3 means the runtime still ran after
+  the grace period: inspect, do not escalate.
 - The runtime launches the bhyve child; GRUB consumes the one-shot entry and
   boots `6.1.190-hfs-xz3`. Record the consumption evidence: the observed guest
   kernel release and boot ID, plus the console log. The runtime emits its
