@@ -76,8 +76,9 @@ might still run could damage its disk. That has no fixed time limit.
   daemon stops on purpose (you accepted this behaviour). The test copy of Rocky
   is then shut down from inside.
 - **An old setting** in Rocky's normal configuration still points to a folder
-  from the earlier test. If that folder no longer exists on f3, the normal
-  Rocky could not start afterwards, so the plan checks it before stopping Rocky.
+  from the earlier test (`/var/tmp/homelabfs-9p-poc/share` on f3). It was
+  checked on 2026-11-08 and exists, so the normal Rocky start works; the plan
+  re-checks it before stopping Rocky.
 
 Nothing is force-killed without asking you, nothing is force-unmounted, and
 failed test leftovers are kept for inspection instead of being deleted.
@@ -91,22 +92,23 @@ test kernel and test files. (After an early stop, the extra test-kernel boot
 and clean reboot described above come first.) Only the two loaded modules on
 f3 remain until f3 reboots.
 
-## Not ready yet
+## What is ready now (2026-11-08)
 
-The plan is honest about missing pieces. Twelve helper scripts or tools do not
-exist yet: the script that starts Rocky under the daemon in time, the
-configuration generator, the volume setup helper, the test-copy launch and
-cleanup script, the kernel install script, the installed-kernel record
-generator, the SSH key script, the tool that checks the daemon's own records
-against what Rocky did, the pod test, the guest steps for the lost-reply and
-restart tests, the host-side "empty folder" check, and a memory/CPU guard for
-the daemon. Two more preparation items are open: updating the probe
-controller's network addresses (and Rocky's host key pin), and filling in the
-`/dev/fd` plan with freshly rebuilt test programs. Some checks (page-table
-pinning) cannot run at all yet. See
-[Implementation gaps](zq3-run-plan.md#implementation-gaps). A yes now would let
-us build those; the actual run still needs your yes to the final, filled-in
-plan with exact file hashes.
+All the helper scripts the plan needs now exist, each reviewed and tested on
+the workstation only: starting Rocky under the daemon (startup orchestrator),
+the configuration generator, the volume setup helper, the test-copy launch and
+cleanup script, the kernel install/removal script with its installed-kernel
+record, the SSH key script, the tool that checks the daemon's records against
+what Rocky did, the pod test, the lost-reply and restart steps, the host-side
+"empty folder" check, the `/dev/fd` plan with rebuilt test programs, and a
+memory/time watchdog for the daemon. The test bundle was rebuilt so it contains
+all of this (`b203799e…`), and its daemon passed a read-only self-check on f3.
+
+Still true: nothing has been tested on the real f3 or Rocky; the page-table
+pinning checks cannot run at all yet; and the run is driven step by step with a
+written record of every step, not by a fully automatic runner. Right before the
+run, fresh read-only facts are collected and the exact file hashes are filled
+into the plan; you then get the final plan to approve.
 
 ## The decisions you need to make
 
@@ -134,10 +136,15 @@ Please answer each with yes or no:
 8. **Signing key:** the daemon needs signatures from the operator key
    (`2f6d909c…`). Do you want to run the signing step yourself, or allow the
    agent to use that key file during the run (tell us where it is)?
-9. **Pod test:** for the container part, may we use the already installed
-   `crun` with a home-made container built only from Rocky's own files (no
-   downloads)? Alternatives: download one pinned image with `podman`, or skip
-   the pod test this time (then the gate stays incomplete).
-10. **Earlier guest test:** in the w24 test, loading a module and mounting
-    `/dev/fd` inside the disposable `hfs-test0` VM was treated as a normal lab
-    action. Do you agree with that reading?
+9. **Signing twice within two minutes:** during startup the daemon waits at
+   most 120 seconds, and the operator key has to sign twice in that time (the
+   commands are printed and can be prepared in advance). Is that workable for
+   you, or should the agent sign with the key file you point it to (question 8)?
+10. **Root helper on f3:** the startup script runs its f3 steps through a
+    `doas` rule for `python3.12 -I -B -c`, which in practice means unrestricted
+    root for your user on f3 during the run. May that rule be added for the run
+    (and removed afterwards)?
+
+Already settled by your earlier "defaults are fine": the pod test uses the
+installed `podman`/`crun` with a container built only from Rocky's own files
+(no downloads), and the w24 guest test counts as a normal lab action.
