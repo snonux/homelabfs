@@ -3,7 +3,7 @@
   "recorded_utc": "2026-11-08T15:15:00Z",
   "authority": "Paul: 'it can be that soon we will be switching into another wifi, so f3 may not be reachable then. if that is the case, pause your work.'",
   "trigger": "Laptop moved to Wi-Fi 10.158.72.81/24 (default via 10.158.72.232); f3 10.20.0.133 no ping, SSH connect timeout rc255.",
-  "state": "paused until f3 is reachable again and work is resumed",
+  "state": "RESUMED 2026-11-08 ~15:17Z",
   "lab_state_at_last_observation": {
     "rocky": "STOPPED by tools/lab/vms.sh stop-rocky (ACPI), around 15:11Z",
     "hfs_test0_2": "STARTED by vms.sh start-lab; hfs-test0 answered pinned SSH (fdescfs absent, no /dev/fd mount) at about 15:12Z",
@@ -27,5 +27,11 @@
     "u24": "Started; local-only implementation worker running in its own worktree (no f3 dependency). Not merged.",
     "uy3": "Pending; this outage is a laptop network change, not an f3 SSH transport incident."
   },
-  "note_unrelated": "tools/lab/test_guest_lock_probe.py has 5 failures on main on this Linux host (pre-existing, not caused by l34)."
+  "note_unrelated": "tools/lab/test_guest_lock_probe.py has 5 failures on main on this Linux host (pre-existing, not caused by l34).",
+  "resolution": {
+    "route": "Paul: reach f3 via paul@f0.wg0 then f3.lan. Used ProxyJump (no agent forwarding) through a scratch ssh_config mapping alias f3 -> f3.lan via paul@f0.wg0 with HostKeyAlias f3 (same pinned ED25519 key; f0.wg0 also pinned).",
+    "uncertain_action_reconciled": "hfs-test0 had no /var/tmp/hfs-20261108-l34-fdescfs directory, fdescfs not loaded/mounted: the timed-out setup never ran. Not replayed blindly; setup then ran fresh with new intent records.",
+    "l34_window": "fdescfs nodup mounted in hfs-test0 15:18:20Z, two native full-package runs, normal umount+kldunload 15:26:55Z (devfs identity matches pre), stop-lab, start-rocky (pid 69694, pinned SSH via jump OK, stock 5.14 kernel).",
+    "finding": "lib9p unnamed AF_UNIX socket check rejects FreeBSD socketpair addresses (n=16); task m34."
+  }
 }
