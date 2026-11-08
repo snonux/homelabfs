@@ -63,10 +63,19 @@ func buildRestartChild(t *testing.T) string {
 	require(t, err)
 	binary := filepath.Join(t.TempDir(), "restart-child")
 	crypto := "-lcrypto"
-	if runtime.GOOS == "freebsd" {
+	flags := []string{"-std=c11", "-Wall", "-Wextra", "-Werror", "-O1", "-g"}
+	switch runtime.GOOS {
+	case "freebsd":
+		// FreeBSD exposes BSD types (u_int, used by sys/capsicum.h and
+		// sys/ucred.h) only without a strict POSIX feature macro; defining
+		// _POSIX_C_SOURCE there hides them and the fixture fails to compile.
 		crypto = "-lmd"
+	case "linux":
+		// glibc needs the feature macros for POSIX/BSD declarations under -std=c11.
+		flags = append(flags, "-D_DEFAULT_SOURCE", "-D_POSIX_C_SOURCE=200809L")
 	}
-	command := exec.CommandContext(t.Context(), compiler, "-std=c11", "-D_DEFAULT_SOURCE", "-D_POSIX_C_SOURCE=200809L", "-Wall", "-Wextra", "-Werror", "-O1", "-g", filepath.Join(repository, "tools/integration/lib9p/tests/restart_child.c"), filepath.Join(repository, "tools/integration/lib9p/src/hfs9p_json.c"), filepath.Join(repository, "tools/integration/lib9p/src/hfs9p_ledger.c"), "-pthread", crypto, "-o", binary)
+	flags = append(flags, filepath.Join(repository, "tools/integration/lib9p/tests/restart_child.c"), filepath.Join(repository, "tools/integration/lib9p/src/hfs9p_json.c"), filepath.Join(repository, "tools/integration/lib9p/src/hfs9p_ledger.c"), "-pthread", crypto, "-o", binary)
+	command := exec.CommandContext(t.Context(), compiler, flags...)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("actual C recovery fixture compile: %v\n%s", err, output)

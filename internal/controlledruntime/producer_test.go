@@ -333,7 +333,9 @@ func liveObserverFixtureAt(t *testing.T, o installedObservation, dir string) (Gu
 	require(t, err)
 	require(t, os.WriteFile(file, raw, 0600))
 	quoted, _ := json.Marshal(file)
-	script := "#!/usr/bin/python3\nimport sys,pathlib\nsys.stdout.write(pathlib.Path(" + string(quoted) + ").read_text())\n"
+	// The fake SSH primitive needs a host-resolved absolute interpreter (see
+	// fixturePython); SSHHash below pins these exact script bytes.
+	script := "#!" + fixturePython(t) + "\nimport sys,pathlib\nsys.stdout.write(pathlib.Path(" + string(quoted) + ").read_text())\n"
 	ssh := filepath.Join(dir, "pinned-ssh-primitive")
 	require(t, os.WriteFile(ssh, []byte(script), 0500))
 	hosts := filepath.Join(dir, "known_hosts")
