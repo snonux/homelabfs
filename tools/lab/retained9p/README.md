@@ -95,13 +95,17 @@ time against already installed/admitted mounts:
    writes a `homelabfs-retained9p-host-correlation/1` record: closed keys
    `version, run_id, case, case_stdout_sha256, inventory_sha256, host_observe,
    acceptance:false`, bound to the case's retained stdout and inventory digests;
-   `host_observe` is the nonempty raw host evidence (for example the lifecycle
-   endpoint OBSERVE reply). The controller binds, but does not interpret, it.
+   `host_observe` is the nonempty raw host evidence. The controller binds, but
+   does not interpret, it; [`correlate.py case`](#host-correlator-zq3-g7-g10-g11)
+   produces it from two lifecycle OBSERVE replies.
 3. `release --output ABS --sha256 SHA --correlation ABS --correlation-sha256 SHA`
    checks that binding and the retained stdout digest, persists the record and
    dispatches the guest release.
 4. `next --output ABS --sha256 SHA` dispatches the following case only after the
    previous payload is released. `syscall_batch_success` needs all five released.
+5. `lifecycle --output ABS --sha256 SHA --step STEP` (after all five releases)
+   dispatches one zq3 T9-T11 guest step with the same intent journal: see
+   [lifecycle steps](#guest-lifecycle-steps-zq3-g10-g11).
 
 `status --output ABS` reads retained state. Refusals before a dispatch change no
 state; a failed or uncertain dispatch records `error`, after which every later
@@ -111,7 +115,7 @@ run started, leaving any retained payload for inspection. The plan's `seconds`
 `min(case seconds + 15, plan seconds)`. Each reopen verifies
 the owned lock, exact plan digest and every staged input snapshot. These commands
 provide no VM lifecycle, package installation, mounting, fencing or normal
-publication; the host correlator that produces step 2's record does not exist yet.
+publication.
 Root must complete the separately approved critical setup before a probe batch.
 The batch's SSH executable, host/guest public pin files and probe bytes are pinned
 and checked before dispatch. The guest connection goes through f3 with strict
@@ -176,6 +180,98 @@ draining stdout/stderr. A stalled SSH handshake or child that never reads cannot
 hold the controller in a synchronous pipe write beyond that deadline. Local
 regressions use an actual4KiB pipe/non-reading child and pre-spawn oversize denial;
 these exercise controller transport safety only, not guest filesystem acceptance.
+
+## Guest lifecycle steps (zq3 G10, G11)
+
+After all five payloads are released, `controller.py lifecycle --step` sends
+`homelabfs-retained9p-lifecycle-step/1` requests to the same pinned `guest.py`:
+the plan's boot/provider/manifest/mount identity plus `step` and a 30 s alarm.
+Steps run at most once, in the order below (skipping is allowed, going back
+is not; the re-read needs the CALL directly before it). Each records every
+errno as data in one `step-observed` event; the terminal's `syscall_success`
+only says the step ran to completion. Nothing is retried or deleted.
+
+Step admission checks the full guest identity but reads the mount tuples from
+mountinfo only, without opening or resolving anything inside a domain: m0 must
+be the exact admitted mount; m1 may be absent after T8's normal unmount, which
+is recorded (the admitted provider inventory must still list both sessions,
+otherwise the step refuses and T9-T11 are unrun).
+
+| Step | Gate | Guest action |
+|---|---|---|
+| `lost-reply-call` | T9 | One `mkdir m0/zq3-RUN-lost-reply` immediately after the host ARM of m0's session; nothing else touches a domain. |
+| `lost-reply-reread` | T9 | `lstat` and a bounded root listing of the leaf, m1 first, then m0; no second mkdir. |
+| `quiesce` | T10 | Open, `syncfs` and close each present root; write `3` to `/proc/sys/vm/drop_caches` (guest-wide: page cache releases view leases, dentry/inode eviction sends FORGET), settle 2 s, drop again. |
+| `after-loss` | T11 | After runtime exit: `lstat` m0, list m0, exclusive create of `zq3-RUN-after-loss`; a create that succeeds is kept as evidence. |
+
+**What the guest kernel actually does with T9.** The patched guest
+(`tools/integration/linux9p/patches/0003`) issues a GETATTR for the parent's
+permission check and a LOOKUP before MKDIR, all as CALLs, and never trusts a
+cached dentry (`hfs_d_revalidate` returns 0). The armed fixture drops the *first* matching CALL response, so
+it can hit one of those instead of MKDIR. After any dropped response the guest
+marks the session blocked (`EHOSTDOWN` for later ordinary CALLs) and has no
+userspace-visible QUERY; the m0 re-read then fails and only m1 can show
+whether the effect committed. The C9 restart that follows is then expected to
+refuse at the paired cut and FENCE (lifecycle.md). The correlator therefore
+classifies instead of judging; see below.
+
+## Host correlator (zq3 G7, G10, G11)
+
+[`correlate.py`](correlate.py) runs offline on the workstation. Its inputs are
+the controller run directory (verified plan digest, state without `error`,
+re-hashed guest logs) and files root copied off f3, each given with its
+SHA256: raw `hfs-controlled-runtime --control SOCK --operation …` client output
+and host snapshots. It writes new exclusive `0600` records, never overwrites,
+and every record says `acceptance:false`. Binding problems refuse and write
+nothing.
+
+- `case --case NAME --baseline R --retained R --record NEW`: OBSERVE replies
+  taken right before the case dispatch and while its payload is retained.
+  Both must be `OBSERVED`, `complete`, `SERVING`, without publication, RESTART
+  or lost-reply section; strictly increasing sequence; same runtime, cut and
+  epoch (a stale or rotated cut refuses); one unfenced admission with the
+  plan's boot ID, provider nonce and both sessions, unchanged domain phase/fence;
+  unchanged journal/owner/generation/configuration, provider ledger
+  (UUID/device/inode), view-controller ledger and transport controller/FUSE
+  session; a non-decreasing transport high-water and a strictly advanced
+  applied position. The guest's own admission event must match. From the
+  second case on, the baseline must follow the previous case's bound retained
+  OBSERVE in the same incarnation and show the release's applied effect. The
+  record (`host_observe` holds both raw replies, a summary and limits) is what
+  `controller.py release --correlation` binds.
+- `lost-reply --before R --armed R --after R --record NEW` (T9): the ARM used
+  the pre-arm OBSERVE's cut/epoch and m0's session; the post-CALL OBSERVE has
+  the same binding and fixture. A `FIRED` exposure must be `UNCERTAIN`, `CALL`,
+  above `armed_high`, with claim and hashes. Whether the source advanced since
+  the arm baseline plus the two guest observations give `classification`:
+  `dropped-reply-effect-committed-and-visible`, `dropped-before-mutation`,
+  `fixture-not-fired` or `inconsistent`. None of these is a pass.
+- `k04 --before S --after S [--baseline S] --record NEW` (T11): snapshots from
+  [`host_snapshot.py`](host_snapshot.py) of one run-owned host path (for
+  example the runtime's FUSE mount point under
+  `/var/tmp/hfs-validation-xz3/RUN/`): `baseline` before runtime start, then
+  `before` and `after` around the guest after-loss step. `k04_refusal_observed`
+  needs every guest attempt to fail, the marker absent on the host, a raw
+  directory (if the path is no longer a mount point) equal to the baseline,
+  and no host change during the attempt. A dead FUSE mount still covering the
+  path reports its errno instead of a listing. `host_snapshot.py` is read-only
+  (lstat, at most 256 names through an `O_NOFOLLOW` descriptor, 10 s alarm)
+  and runs on f3 as root with the pinned interpreter.
+- `command --operation observe|arm-lost-reply|restart --observe R [--last R]
+  --runtime-binary PATH --control SOCK`: prints, never runs, the exact client
+  argv: runtime, cut and epoch from the latest OBSERVE and sequence = last
+  reply's sequence + 1. ARM refuses unless the batch is released, no lifecycle
+  step ran and nothing is armed. RESTART refuses unless the last step was
+  `quiesce` and that OBSERVE shows the C9 cut precondition: view-controller
+  `Leases` and `Reservations` 0, no `Recall`, `Matches` true.
+
+Local tests: `test_lifecycle_steps.py` (step shapes, mountinfo-only admission,
+real local syscalls for each step with the kernel's errno substituted,
+controller ordering/no-replay) and `test_correlate.py` (every case correlated
+and accepted by the real `release`, stale cut/epoch, rotated runtime,
+wrong case, changed log, broken chain, lost-reply classifications and binding
+refusals, K04 with real snapshots of temporary directories, argv builder).
+These are local logic tests only, never 9p, runtime or lab evidence.
 
 ## Run-only observer key (zq3 G6)
 

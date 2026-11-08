@@ -376,7 +376,7 @@ unsupported, unrun or uncertain; a partial result never completes zq3.
 
 | Step | Gate (Deployment-tests) | How |
 |---|---|---|
-| T1 | UID/GID incl. full 1024-entry groups, setgid/umask create, sticky, special bits, cross-domain metadata | `check-retained9p.sh probe` (case `credentials`), then host correlation (**GAP G7**), then `release`, then `next` |
+| T1 | UID/GID incl. full 1024-entry groups, setgid/umask create, sticky, special bits, cross-domain metadata | `check-retained9p.sh probe` (case `credentials`), then host correlation (`correlate.py case` from an OBSERVE taken right before the dispatch and one while the payload is retained), then `release`, then `next` |
 | T2 | write acknowledgement and sync propagation (O_SYNC/O_DSYNC/fdatasync/fsync, directory fsync, mmap MS_SYNC) | case `sync` + correlation of journal `Through/Applied` via OBSERVE + `release`, `next` |
 | T3 | metadata: rename, hardlink, truncate, open-unlinked, cross-domain freshness | case `metadata` + correlation + `release`, `next` |
 | T4 | foreign user namespace refusal (boundary only) | case `namespace` + correlation + `release`, `next` |
@@ -385,9 +385,9 @@ unsupported, unrun or uncertain; a partial result never completes zq3.
 | T6b | locks across clients | same probe across `m0`/`m1`: **recorded as unsupported** per the accepted lock scope, never as a pass |
 | T7 | ordinary pod namespace profile | **GAP G9** and decision A8: separate mount/PID/net/UTS/IPC namespaces in `init_user_ns`, numeric IDs/full groups, SELinux enforcing, two workloads bind-sharing `m0` |
 | T8 | K04 guest side: no writes to an empty fallback | normal `umount m1`; a probe naming `m1` must refuse at admission ("exact mountpoint not present once") before any open; the empty directory stays empty |
-| T9 | v24 lost reply | `--operation arm-lost-reply` (CALL), one guest mkdir CALL, OBSERVE `lost_reply.exposure` = UNCERTAIN, guest re-read/QUERY returns the original result. **GAP G10** (guest step) |
-| T10 | daemon restart via u24 | guest quiesce (FORGET, view refresh), then `--operation restart`; RESTARTED or FENCED are both recorded (FENCED, fencing then runtime exit, is Paul's accepted behavior); **always the last step**. **GAP G10** (quiesce step) |
-| T11 | remount / VM restart need, K04 host side | after T10 or runtime exit: guest I/O on `m0` must fail, not reach a raw directory; replacement FUSE/exporter and guest RESUME are blocked by design, so the recorded answer is "VM restart required", with the refusals as evidence. **GAP G11** (host-side check) |
+| T9 | v24 lost reply | OBSERVE; `correlate.py command --operation arm-lost-reply` prints the ARM argv (m0's session, current cut/epoch); root runs it; `lifecycle --step lost-reply-call` (one mkdir in m0); OBSERVE; `lifecycle --step lost-reply-reread` (m1 then m0, no second mkdir); `correlate.py lost-reply` records the exposure (UNCERTAIN expected), source effect since arming and a classification, never a pass |
+| T10 | daemon restart via u24 | `lifecycle --step quiesce` (syncfs, guest `drop_caches` 3 twice: view leases released/retired, lookups FORGET), OBSERVE, then `correlate.py command --operation restart` (refuses unless view-controller `Leases`/`Reservations` 0, no `Recall`, `Matches`; then recorded as unrun) and root runs the printed `--operation restart`; RESTARTED or FENCED are both recorded (FENCED, fencing then runtime exit, is Paul's accepted behavior); **always the last step** |
+| T11 | remount / VM restart need, K04 host side | after T10 or runtime exit: root takes `host_snapshot.py --label before` of the runtime's FUSE mount point on f3, `lifecycle --step after-loss` (lstat, list, exclusive create in `m0`, never retried), `host_snapshot.py --label after`; `correlate.py k04` (with the Phase 7 `baseline` snapshot of the empty mount point) records whether guest I/O failed and nothing reached a raw directory; replacement FUSE/exporter and guest RESUME are blocked by design, so the recorded answer is "VM restart required", with the refusals as evidence |
 
 Mid-release failure (T1-T5): the guest consumes the retention record before
 its first unlink. If an unlink or the deadline then fails, part of the payload
@@ -395,6 +395,18 @@ can remain, `released-CASE.json` exists and the controller stays at
 `release-dispatching-uncertain` with `error`. Do not re-release or replay:
 root inspects the leaf against the inventory in `released-CASE.json`, keeps the
 leftovers and evidence, marks T1-T5 incomplete, and any repeat uses a new run ID.
+
+T9-T11 guest steps (u34) run only after all five releases, once each and in
+order, through the same pinned `guest.py`. They admit m0 from mountinfo
+without touching it and accept m1 absent after T8; if T8's unmount changed the
+provider's admitted inventory they refuse and T9-T11 are unrun (running T9
+before T8 avoids that, if Paul prefers). Expect T9 not to show a clean MKDIR
+lost reply with the current guest kernel: its path walk sends GETATTR and
+LOOKUP CALLs before MKDIR, the fixture drops the first one, and the guest then
+blocks m0's session (`EHOSTDOWN`) with no userspace QUERY. The correlator
+records that as `dropped-before-mutation` (or `fixture-not-fired`), m1 still
+shows whether anything committed, and the T10 RESTART is then expected to
+FENCE. See the [probe tools](../../tools/lab/retained9p/README.md#guest-lifecycle-steps-zq3-g10-g11).
 
 Not runnable in this run and reported as unrun: PTE/TLB/busy-pin/GUP
 exclusion and funded drains (**GAP G14**: no admitted pin primitive),
@@ -559,9 +571,12 @@ reviewed and pinned, and this plan is re-filled:
   `stage`/`enrol`/`status`/`remove`, run on Rocky as root (Phases 3, 4, 11);
   local tests in `test_observer_key.py`. Still needs, at run time, the Phase 1
   interpreter and `authorized_keys` hashes and Paul's A6 approval.
-- G7 Host correlator producing `homelabfs-retained9p-host-correlation/1`
-  records from lifecycle OBSERVE (journal/source/ledger identities) for each
-  retained case; the controller binds but does not interpret them.
+- G7 **Implemented (u34)**: [`tools/lab/retained9p/correlate.py`](../../tools/lab/retained9p/correlate.py)
+  `case` builds `homelabfs-retained9p-host-correlation/1` from two OBSERVE
+  replies per case (runtime/cut/epoch, plan boot/provider/sessions,
+  journal/ledger/transport identities, advanced applied position, chain to
+  the previous release); local tests feed its records to the real `release`
+  (`test_correlate.py`). The filled plan pins its SHA256.
 - G8 **Implemented (q34)**: `controller.py` accepts only the IQ primaries
   f3 `10.20.0.133` and Rocky `10.20.0.123` (the retained `192.168.1.x` aliases
   refuse with an explicit reason) and checks pin file content against the
@@ -569,8 +584,15 @@ reviewed and pinned, and this plan is re-filled:
   and [`rocky-known_hosts`](rocky-known_hosts); local tests in
   `test_controller_targets.py`.
 - G9 Pod/namespace fixture script and pinned runtime/rootfs (depends on A8).
-- G10 Guest steps for the v24 lost-reply CALL and the C9 quiesce before RESTART.
-- G11 Host-side K04/after-loss check.
+- G10 **Implemented (u34)**: `guest.py` lifecycle steps `lost-reply-call`,
+  `lost-reply-reread`, `quiesce`, dispatched by `controller.py lifecycle`;
+  `correlate.py lost-reply` and `command` (ARM/RESTART argv, RESTART only after
+  an observed quiesce); local tests in `test_lifecycle_steps.py`,
+  `test_correlate.py`. The guest-kernel limit on T9 above stays.
+- G11 **Implemented (u34)**: `guest.py` step `after-loss`, read-only
+  [`host_snapshot.py`](../../tools/lab/retained9p/host_snapshot.py) on f3
+  (pinned python3.12, root) and `correlate.py k04`. Needs the runtime's FUSE
+  mount point path from the G2 config at fill time.
 - G12 Filled fdescfs window plan; rebuilt, pinned `controlledruntime.test` and
   `fdescfs-namespace` from `e0cca0c`; python3.12 hash on f3.
 - G13 Outer resource guard for the long-running runtime and its child.

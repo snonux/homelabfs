@@ -11,6 +11,10 @@ waits, durably, for host source/journal correlation of that exact case. Only
 inventory digests dispatches the guest's authenticated one-shot release, and
 only `next` after a completed release dispatches the following case, so the
 4MiB logical canary never holds two cases' payloads.
+
+After all five releases, `lifecycle --step` dispatches the zq3 T9-T11 guest
+steps (lost-reply CALL, re-read, quiesce, after-loss) once each and in order,
+with the same intent journal and no replay. correlate.py interprets them.
 """
 import argparse
 import base64
@@ -45,6 +49,12 @@ ADMITTED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"}
 CASES = ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
 RELEASE_VERSION = "homelabfs-retained9p-release/1"  # Same as guest.py.
 CORRELATION_VERSION = "homelabfs-retained9p-host-correlation/1"
+STEP_VERSION = "homelabfs-retained9p-lifecycle-step/1"  # Same as guest.py.
+# zq3 T9-T11 guest steps in their only allowed order. A step may be skipped
+# (a failed gate stops dependent work) but never repeated or run out of order;
+# the re-read additionally needs its lost-reply CALL.
+STEPS = ["lost-reply-call", "lost-reply-reread", "quiesce", "after-loss"]
+STEP_SECONDS = 30  # Guest alarm per step; quiesce needs syncfs plus a 2 s settle.
 # Payload may stay retained at most this long after the run started (the base
 # gate's 60-minute total window); later commands refuse and preserve.
 RUN_WINDOW = 3600
@@ -505,6 +515,55 @@ def check_terminal(path, run_case, action="case", correlation=None):
             "scope": "refusal-boundary-only" if run_case == "namespace" else "real-guest-syscalls-only"}
 
 
+def check_step_terminal(path, step):
+    """A completed lifecycle step: truthful terminal plus exactly one observation.
+
+    syscall_success here means the guest ran the step to completion; the
+    errno values inside the observation are data for the host correlator.
+    """
+    raw = read(path, STREAM_LIMIT)
+    events = read_events(raw)
+    if not events or events[-1].get("event") != "terminal":
+        raise Refused("missing complete guest terminal; remote state uncertain")
+    terminal = events[-1]
+    if terminal.get("uncertain_children"):
+        raise Refused("guest child quiescence uncertain")
+    if terminal.get("acceptance") is not False or terminal.get("publication", "missing") is not None:
+        raise Refused("guest claims unauthorized acceptance/publication")
+    if terminal.get("action") != "step" or terminal.get("step") != step:
+        raise Refused("guest terminal action differs from dispatch")
+    if (terminal.get("syscall_success") is not True or terminal.get("payload_retained") is not False or
+            terminal.get("payload_released") is not False):
+        raise Refused("required lifecycle step did not complete: " + step)
+    observed = [event for event in events if event.get("event") == "step-observed"]
+    if (len(observed) != 1 or observed[0].get("step") != step or
+            not isinstance(observed[0].get("observation"), dict) or
+            observed[0].get("acceptance") is not False):
+        raise Refused("lifecycle step must record exactly one observation: " + step)
+    return {"stdout_sha256": digest(raw), "observation": observed[0]["observation"],
+            "acceptance": False}
+
+
+def check_step_order(state, step):
+    """All five payloads released, then STEPS strictly in order, each once."""
+    if step not in STEPS:
+        raise Refused("unknown lifecycle step")
+    if not state.get("syscall_batch_success"):
+        raise Refused("lifecycle steps require all five case payloads released")
+    done = [item["step"] for item in state.get("lifecycle", [])]
+    if done and STEPS.index(done[-1]) >= STEPS.index(step):
+        raise Refused("lifecycle step repeated or out of order: " + step)
+    if step == "lost-reply-reread" and done[-1:] != ["lost-reply-call"]:
+        raise Refused("re-read requires the immediately preceding lost-reply CALL")
+
+
+def step_request(plan, step):
+    """The plan's exact boot/provider/manifest/mount identity naming one step."""
+    identity = {key: value for key, value in plan["requests"][0].items()
+                if key not in {"version", "case", "seconds"}}
+    return {**identity, "version": STEP_VERSION, "step": step, "seconds": STEP_SECONDS}
+
+
 def check_correlation(value, run_id, case):
     """Bind host correlation to this exact retained case; contents stay external."""
     closed(value, ["version", "run_id", "case", "case_stdout_sha256", "inventory_sha256",
@@ -620,6 +679,24 @@ class Run:
             all(item["state"] == "released" for item in self.state["cases"]))
         self.save()
 
+    def run_lifecycle(self, step):
+        """One guest lifecycle step; intent is durable before SSH, never replayed."""
+        request = step_request(self.plan, step)
+        folder = self.output / ("lifecycle-" + step)
+        mkdir_durable(folder)
+        record = {"step": step, "state": "dispatching-uncertain"}
+        self.state.setdefault("lifecycle", []).append(record)
+        self.save()
+        result = bounded_child(invocation(self.plan, self.inputs, self.probe_bytes),
+                               request, folder, dispatch_seconds(self.plan, request))
+        result.update(check_step_terminal(folder / "stdout.log", step))
+        if result["returncode"] != 0:
+            raise Refused("SSH/guest nonzero exit")
+        fsync_directory(folder)
+        record.update(result)
+        record["state"] = "completed"
+        self.save()
+
 
 def open_run(output, expected_hash):
     """Reopen an owned run; staged snapshots must still match the exact plan."""
@@ -688,6 +765,17 @@ def release(output, expected_hash, correlation_path, correlation_sha256):
     return run.step(lambda: run.release(*prepared))
 
 
+def lifecycle(output, expected_hash, step):
+    """Dispatch one zq3 T9-T11 guest step after the released batch."""
+    run = open_run(output, expected_hash)
+    try:
+        check_step_order(run.state, step)
+    except BaseException:
+        run.lock.close()
+        raise
+    return run.step(lambda: run.run_lifecycle(step))
+
+
 def arguments():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
@@ -704,6 +792,10 @@ def arguments():
     freeing.add_argument("--output", required=True)
     freeing.add_argument("--correlation", required=True)
     freeing.add_argument("--correlation-sha256", required=True)
+    stepping = sub.add_parser("lifecycle")
+    stepping.add_argument("--sha256", required=True)
+    stepping.add_argument("--output", required=True)
+    stepping.add_argument("--step", required=True, choices=STEPS)
     sub.add_parser("status").add_argument("--output", required=True)
     return parser.parse_args()
 
@@ -723,6 +815,8 @@ def main():
         return next_case(args.output, args.sha256)
     if args.action == "release":
         return release(args.output, args.sha256, args.correlation, args.correlation_sha256)
+    if args.action == "lifecycle":
+        return lifecycle(args.output, args.sha256, args.step)
     return probe(args.plan, args.sha256, args.output)
 
 
