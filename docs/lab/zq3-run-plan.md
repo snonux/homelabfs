@@ -23,7 +23,7 @@ preparation used SSH, the lab, a VM, a mount or a private key.
 | Input | Value |
 |---|---|
 | Run ID | `zq3-r1` (guest/controller regex `[a-z0-9][a-z0-9-]{0,23}`); a retry gets a new ID |
-| Candidate | `/home/paul/tmp/claude/hfs-xz3-20261108/package-final`, manifest SHA256 `3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1`, source `e0cca0c874f0027f050974ab5a54095d4af1c416` |
+| Candidate | `/home/paul/tmp/claude/hfs-xz3-20261108b/package` (f44), manifest SHA256 `b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2`, source `defd974af3721614b1a52d24fd949822ef5cd735`, CGO daemon `174949c1…`; kernel and native parts reused byte-identically from the superseded `3f770a88…` (`e0cca0c`) candidate |
 | Quarantined, never installed | `7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b` (CGO-disabled daemon); the probe controller refuses it |
 | Daemon | `freebsd/hfs-controlled-runtime` `5359873799fa9ca28bb7aebc65449ceb839e07736c7d65eda1d6d6d6af2583a5` (native observer check passed on f3) |
 | Patched bhyve (exporter) | `freebsd/bhyve` `36423b6d4f68dc1b05299b1c379a164035e7db5b06ca64b47f2a8571d823fb5c`; the system `/usr/sbin/bhyve` (`c54a6361…`) is never replaced |
@@ -149,8 +149,8 @@ or vmm context could still exist.
 ### Phase 0: local preparation (workstation, B)
 
 - Actions: the FreeBSD CGO `controlledruntime.test` binary (for the host FD
-  rerun) and the `fdescfs-namespace` helper are already rebuilt from `e0cca0c`
-  and pinned (`415fdaa6…`, `ec2d56e4…`, reproducible; recipe
+  rerun) and the `fdescfs-namespace` helper are already rebuilt from `defd974`
+  (f44) and pinned (`9e046c20…`, `a773f3ef…`, reproducible; recipe
   `tools/lab/build-fdescfs-window-artifacts.sh`, record
   `docs/lab/zq3-fdescfs-window/build-record.json`); rebuild only to re-verify.
   The fdescfs window pins are reviewed in `docs/lab/zq3-fdescfs-window/pins.json`;
@@ -319,7 +319,7 @@ controller `tools/lab/fdescfs-window.py` with the explicit prefix
    `owned.json`. **Disclosed: the module stays loaded after restoration.**
 3. `qualify` (B, under `native-test-guard.py --profile host`): rerun
    `TestDescriptorExecNativeQualification` on the **f3 host** with the final
-   test bytes from source `e0cca0c` (`415fdaa6…`), plus
+   test bytes from source `defd974` (`9e046c20…`), plus
    `hfs-controlled-runtime --check-descriptor-exec` (must now report
    `fdescfs`, supported). This closes the host rerun transferred from w24.
 4. `kldload /boot/kernel/fusefs.ko` (`b207adf6…`) only if absent, with
@@ -554,8 +554,8 @@ bypasses v9fs caching). Evidence with patch line numbers is in the
 d44 therefore adds per-operation arming to the runtime: ARM operation code 2,
 `correlate.py command --operation arm-lost-reply --lost-intent MKDIR`, drops
 only a CALL whose guest intent opcode is MKDIR and lets the earlier CALLs
-through. The admitted xz3 candidate (G12, `e0cca0c`) predates it and refuses
-the flag, so the variant needs a rebuilt, re-admitted candidate and new pins.
+through. The superseded `e0cca0c` candidate refuses the flag; the f44 rebuild
+(`b203799e…`, source `defd974`) carries it, with its window pins rebuilt too.
 With it, the T9 expectation becomes `dropped-reply-effect-committed-and-visible`
 (record `armed_intent`/`dropped_opcode` MKDIR, mkdir fails in m0, m1 sees the
 directory, m0 still blocked), and T10 is still expected to FENCE because the
@@ -817,7 +817,7 @@ reviewed and pinned, and this plan is re-filled:
   and flagging a probe the guest refused locally as vacuous. Needs the
   runtime's FUSE mount point path from the G2 config at fill time.
 - G12 *Prepared (v34)*: rebuilt, reproducible `controlledruntime.test`
-  `415fdaa6…` and `fdescfs-namespace` `ec2d56e4…` from `e0cca0c` (recipe
+  `9e046c20…` and `fdescfs-namespace` `a773f3ef…` from `defd974`, f44 (recipe
   cross-checked by reproducing the candidate daemon), reviewed window pins and
   the run-time plan filler. Open until run time: the read-only host facts
   (python3.12 and base command hashes, `ldd` closure, controller `facts`)

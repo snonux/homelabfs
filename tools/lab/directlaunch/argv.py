@@ -48,7 +48,8 @@ BASELINE = {
                 "-s", FBUF_DEVICE],
     "console": ["-l", "com1,/dev/nmdm-rocky.1A"],
 }
-# Candidate exporter (xz3 package-final, manifest 3f770a88...).
+# Candidate exporter (xz3 f44 package, manifest b203799e...; the bhyve bytes are
+# unchanged from the earlier 3f770a88... package because the native build was reused).
 EXPORTER_SHA256 = "36423b6d4f68dc1b05299b1c379a164035e7db5b06ca64b47f2a8571d823fb5c"
 STAGING_PARENT = "/var/tmp/hfs-validation-xz3"
 GUEST_MEMORY = "6G"

@@ -1,5 +1,9 @@
 # xz3 (2026-11-08): rebuilt controlled validation artifacts
 
+**Superseded later the same day** by the [f44 rebuild](../xz3-20261108b/README.md)
+(`b203799e…`, source `defd974`), which adds the d44 MKDIR-targeted lost reply.
+This candidate is not defective; the tooling refuses it as superseded.
+
 This candidate supersedes the quarantined `7e962627…` package, whose
 CGO-disabled FreeBSD daemon could never observe native processes (see the
 [earlier record](../xz3/README.md)). It contains the current runtime sources

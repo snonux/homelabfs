@@ -42,10 +42,13 @@ REQUEST_LIMIT = 16384  # Same wire bound as guest.py, including final newline.
 HASH = re.compile(r"[0-9a-f]{64}\Z")
 # CGO-disabled daemon: can never observe a native exporter (see quarantine.json).
 QUARANTINED = {"7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b"}
-# The only candidate this controller pins: xz3 2026-11-08 rebuild from source
-# e0cca0c with the CGO daemon whose exact bytes passed native observer checks.
-# Admission here is a dispatch precondition, never native/deployment eligibility.
-ADMITTED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"}
+# Superseded, not defective: the e0cca0c candidate cannot arm the MKDIR-only
+# lost reply (d44), so T9 needs the f44 rebuild below.
+SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"}
+# The only candidate this controller pins: xz3 f44 rebuild (2026-11-08) from
+# source defd974 with the CGO daemon whose exact bytes passed native observer
+# checks. Admission here is a dispatch precondition, never deployment eligibility.
+ADMITTED = {"b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2"}
 CASES = ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
 RELEASE_VERSION = "homelabfs-retained9p-release/1"  # Same as guest.py.
 CORRELATION_VERSION = "homelabfs-retained9p-host-correlation/1"
@@ -197,6 +200,8 @@ def require_candidate(manifest_hash):
         raise Refused("exact candidate manifest digest required")
     if manifest_hash in QUARANTINED:
         raise Refused("quarantined CGO-disabled FreeBSD daemon cannot admit native exporter; r24/s24/xz3 prerequisites pending")
+    if manifest_hash in SUPERSEDED:
+        raise Refused("superseded xz3 candidate: rebuilt as f44 for the MKDIR-targeted lost reply (d44)")
     if manifest_hash not in ADMITTED:
         # Fail closed: an unknown digest is not a qualified candidate.
         raise Refused("candidate manifest is not the pinned admitted xz3 candidate")

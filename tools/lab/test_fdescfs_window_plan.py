@@ -80,7 +80,9 @@ class FillerTests(unittest.TestCase):
         self.assertEqual(pinned[self.pins["qualification_test"]], artifacts["controlledruntime.test"]["sha256"])
         for path, value in record["captured_base_closure_sha256"].items():
             self.assertEqual(pinned[path], value)
-        self.assertEqual(record["source_commit"], "e0cca0c874f0027f050974ab5a54095d4af1c416")
+        # The window artifacts follow the admitted candidate source: rebuilt for
+        # f44 from defd974 (d44 MKDIR-targeted lost reply) on 2026-11-08.
+        self.assertEqual(record["source_commit"], "defd974af3721614b1a52d24fd949822ef5cd735")
 
     def test_filled_plan_is_accepted_by_actual_controller_validate(self):
         plan = self.fill()

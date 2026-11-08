@@ -27,7 +27,8 @@ def module(name):
 controller = module("controller")
 guest = module("guest")
 observer = module("observer")
-ADMITTED = "3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
+ADMITTED = "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2"
+SUPERSEDED = "3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
 QUARANTINED = "7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b"
 LAB = Path(__file__).resolve().parents[3] / "docs/lab"
 HOST_PIN = (LAB / "f3-host-known_hosts").read_bytes()
@@ -285,6 +286,12 @@ class PreparationTests(unittest.TestCase):
     def test_known_candidate_quarantine_refuses_without_contacting_lab(self):
         with self.assertRaisesRegex(controller.Refused, "quarantined CGO-disabled"):
             controller.require_candidate(QUARANTINED)
+
+    def test_superseded_candidate_refuses_with_reason(self):
+        # The e0cca0c candidate is not defective but cannot arm the MKDIR-only
+        # lost reply; it must refuse distinctly from an unknown digest.
+        with self.assertRaisesRegex(controller.Refused, "superseded xz3 candidate"):
+            controller.require_candidate(SUPERSEDED)
 
     def test_only_pinned_admitted_candidate_passes(self):
         controller.require_candidate(ADMITTED)

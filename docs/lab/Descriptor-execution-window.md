@@ -169,12 +169,14 @@ below fills everything that can be pinned offline for the zq3 run.
 
 ## Filled f3 plan for zq3-r1 (2026-11-08)
 
-Prepared offline by task v34 (zq3 gap G12) from source `e0cca0c`. Nothing used
+Prepared offline by task v34 (zq3 gap G12) from source `e0cca0c`, then rebuilt
+for f44 from `defd974` (d44 MKDIR-targeted lost reply) so the test bytes match
+the final daemon source. Nothing used
 SSH, the lab, a VM, a mount or a module. It grants no authority: the window is
 zq3 approval class A5 and still needs Paul's explicit yes at run time.
 
 **Rebuilt artifacts.** [`build-fdescfs-window-artifacts.sh`](../../tools/lab/build-fdescfs-window-artifacts.sh)
-exports `e0cca0c` as a source archive and builds each artifact twice with
+exports the selected commit (now `defd974`) as a source archive and builds each artifact twice with
 fresh Go caches, using the pinned clang cross wrapper, the captured f3 sysroot
 (`c16fdc1c…`) and the candidate daemon's Go environment. Both builds were
 byte-identical. As a toolchain cross-check the same recipe reproduced the
@@ -183,8 +185,8 @@ ELF closure: [build record](zq3-fdescfs-window/build-record.json).
 
 | Artifact (staged under `/var/tmp/hfs-validation-xz3/zq3-r1/bin/`) | SHA256 | Bytes |
 |---|---|---|
-| `controlledruntime.test` (FreeBSD CGO test binary) | `415fdaa6b0e83605fe781dae4a323dcda6de0645707bd3ec260eb9fc5849096d` | 13,366,616 |
-| `fdescfs-namespace` (helper, `-std=c11 -Wall -Wextra -Werror -O1 -g`) | `ec2d56e48bd747dcfb41c0d3e75c57a0e955afaf64141ea5066d606cf454221c` | 22,576 |
+| `controlledruntime.test` (FreeBSD CGO test binary) | `9e046c2015b2d12c8fc42a89b06e7eaf5bc93876ece018917e3c67db35249cd8` | 13,366,616 |
+| `fdescfs-namespace` (helper, `-std=c11 -Wall -Wextra -Werror -O1 -g`) | `a773f3ef506bec572fe777a269cffb958ce5e04925eb22f580bf40b9f434fe98` | 22,576 |
 | `hfs-controlled-runtime` (inspector, equals the candidate manifest) | `5359873799fa9ca28bb7aebc65449ceb839e07736c7d65eda1d6d6d6af2583a5` | 10,744,520 |
 | `fdescfs-window.py` (controller) | SHA256 of the repository file at the reviewed commit | |
 

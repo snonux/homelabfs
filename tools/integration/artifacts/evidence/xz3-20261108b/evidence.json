@@ -1,0 +1,108 @@
+{
+  "candidate": {
+    "admission": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "files": 194,
+    "manifest_sha256": "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
+    "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+    "path": "/home/paul/tmp/claude/hfs-xz3-20261108b/package",
+    "source_checkout": "defd974af3721614b1a52d24fd949822ef5cd735"
+  },
+  "controls": {
+    "all_refused": true,
+    "cases": 26,
+    "cgo0_control_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+    "original_passed_after": true,
+    "restored_passed": true
+  },
+  "daemon": {
+    "forced_builds_equal": true,
+    "native_qualification": {
+      "check_descriptor_exec": {
+        "exit": 1,
+        "meaning": "expected: f3 host /dev/fd is devfs; host fdescfs window is a zq3 step needing approval",
+        "record": {
+          "failure": "descriptor execution requires an admitted /dev/fd: UNSUPPORTED",
+          "mount_flags": 0,
+          "mount_id": "7100ff00:00000071",
+          "mount_type": "devfs",
+          "platform": "freebsd/amd64",
+          "publication": null,
+          "supported": false,
+          "version": "homelabfs-descriptor-exec/1"
+        }
+      },
+      "check_process_observer": {
+        "exit": 0,
+        "record": {
+          "executable": "/var/tmp/hfs-20261108-f44-observer/hfs-controlled-runtime",
+          "gid": 0,
+          "groups": [
+            0,
+            0
+          ],
+          "incarnation": "freebsd:15644:1794169202:412166:fffff801d5d406e0",
+          "pid": 15644,
+          "platform": "freebsd/amd64",
+          "publication": null,
+          "sha256": "174949c1ebf97d483d49e41f1ade7bce88f63013cb943be794276bb1ddd417a7",
+          "text_vnode": 18446735285498939104,
+          "uid": 1001,
+          "version": "homelabfs-process-observer/1"
+        }
+      }
+    },
+    "sha256": "174949c1ebf97d483d49e41f1ade7bce88f63013cb943be794276bb1ddd417a7",
+    "steps": [
+      [
+        "prepare",
+        "0",
+        "4"
+      ],
+      [
+        "build-first",
+        "0",
+        "23"
+      ],
+      [
+        "build-second",
+        "0",
+        "22"
+      ]
+    ]
+  },
+  "init_helper": {
+    "kept": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80 from e0cca0c",
+    "reason": "non-test Go changes e0cca0c..defd974 are limited to the lost-reply fixture, lifecycle client and new runtimeprep packages; no volume-format code changed"
+  },
+  "not_claimed": [
+    "installed",
+    "booted",
+    "native acceptance",
+    "VM/exporter execution",
+    "normal publication",
+    "positive descriptor execution of these exact bytes on the f3 host (zq3)"
+  ],
+  "reason": "d44 changed runtime code (MKDIR-only lost-reply arming, ARM code 2); the e0cca0c candidate refuses it",
+  "recorded": "2026-11-08",
+  "reused": {
+    "files": 136,
+    "from_manifest": "3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
+    "justification": "git diff e0cca0c..defd974 is empty for tools/integration/lib9p, tools/integration/linux9p and every kernel/native recipe; each reused file was hash-checked against the 3f770a88 manifest and the native first seal",
+    "scope": "83 native FreeBSD files, 5 source-bundle files, Linux kernel/modules/config/clean-repro/abi records and Linux inputs/licenses"
+  },
+  "task": "f44",
+  "version": "homelabfs-xz3-evidence/2",
+  "window_artifacts": {
+    "controlledruntime.test": "9e046c2015b2d12c8fc42a89b06e7eaf5bc93876ece018917e3c67db35249cd8",
+    "daemon_cross_check_equal": true,
+    "fdescfs-namespace": "a773f3ef506bec572fe777a269cffb958ce5e04925eb22f580bf40b9f434fe98",
+    "source": "defd974"
+  }
+}

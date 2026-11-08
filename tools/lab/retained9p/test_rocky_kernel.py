@@ -36,7 +36,7 @@ def module(name):
 rk = module("rocky_kernel")
 REPOSITORY = Path(__file__).resolve().parents[3]
 PROBE = REPOSITORY / "internal/controlledruntime/probe/installed.py"
-REAL_PACKAGE = Path("/home/paul/tmp/claude/hfs-xz3-20261108/package-final")
+REAL_PACKAGE = Path("/home/paul/tmp/claude/hfs-xz3-20261108b/package")
 RELEASE = "6.1.190-hfs-xz3"
 STOCK = "5.14.0-687.66.1.el9_8.x86_64"
 MID = "b26c0ac534534d7fb81b3e0698558bc3"
@@ -457,7 +457,7 @@ class PlanTests(Rig):
     @unittest.skipUnless((REAL_PACKAGE / "manifest.json").exists(), "candidate package absent")
     def test_real_candidate_package_plan(self):
         """Read-only: the pinned xz3 package yields the build IDs readelf reports."""
-        sha = "3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
+        sha = "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2"
         with mock.patch.object(rk, "ADMITTED", {sha}):
             plan = json.loads(rk.build_plan(REAL_PACKAGE, sha, "zq3-r1",
                                             "/boot/vmlinuz-" + STOCK, 64 << 20))

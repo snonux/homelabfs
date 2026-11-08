@@ -9,8 +9,8 @@
   "module_policy": "preserve-existing-or-retain-new",
   "pinned": {
     "/var/tmp/hfs-validation-xz3/zq3-r1/bin/hfs-controlled-runtime": "5359873799fa9ca28bb7aebc65449ceb839e07736c7d65eda1d6d6d6af2583a5",
-    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/fdescfs-namespace": "ec2d56e48bd747dcfb41c0d3e75c57a0e955afaf64141ea5066d606cf454221c",
-    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/controlledruntime.test": "415fdaa6b0e83605fe781dae4a323dcda6de0645707bd3ec260eb9fc5849096d",
+    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/fdescfs-namespace": "a773f3ef506bec572fe777a269cffb958ce5e04925eb22f580bf40b9f434fe98",
+    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/controlledruntime.test": "9e046c2015b2d12c8fc42a89b06e7eaf5bc93876ece018917e3c67db35249cd8",
     "/boot/kernel/fdescfs.ko": "847cd1f2dc47db32d56dcf5352b65bad2b174b339e8aa89a8d114299311856d2",
     "/libexec/ld-elf.so.1": "305a0b7947a890c653e32a1ed9fc50c100416658dc422f2ca8de9ebcda9ddb6f",
     "/lib/libc.so.7": "95b6597787b89cec982f44bee5e9af2cf0cd5e5258c1a20ae9cadf8f0421ea5b",
