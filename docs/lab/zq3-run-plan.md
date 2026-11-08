@@ -132,8 +132,12 @@ or vmm context could still exist.
   `tools/lab/test_fdescfs_window.py`, artifact tests, `go test` for touched
   packages, shellcheck).
 - Changes: workstation files only.
-- **GAP**: run config/enrollment/bhyve-argv generator (G2, G4), filled window
-  plan (G12), controller target addresses (G8).
+- **GAP**: bhyve-argv (G4), filled window plan (G12), controller target
+  addresses (G8). G2 is implemented (s34, pending review/pinning):
+  `hfs-runtime-prep generate` writes the run config, fresh session keys, the
+  G3 volume-init plan and the signer request template from a closed spec
+  ([runtimeprep](../../internal/runtimeprep/README.md)); build the G3 helper
+  with `tools/lab/build-init-helper.sh`.
 - Evidence: hashes of every staged byte, plan files and their SHA256.
 - Failure: fix locally; nothing remote has happened.
 
@@ -156,7 +160,8 @@ or vmm context could still exist.
 - Machine: f3. Actions: create `/var/tmp/hfs-validation-xz3/zq3-r1` root-owned
   `0700`; copy into its `bin/` only `freebsd/hfs-controlled-runtime`, `freebsd/bhyve`,
   `freebsd/bhyve-slirp-helper` (if the argv needs it), the `controlledruntime.test`
-  binary and `fdescfs-namespace` helper, mode `0500`, one hard link each; verify
+  binary, `fdescfs-namespace` helper and the G3 `homelabfs` init helper,
+  mode `0500`, one hard link each; verify
   SHA256 of every staged file against the manifest/Phase 0 pins.
 - Changes: new files under the staging prefix only. No system binary,
   library, rc or loader change.
@@ -284,8 +289,12 @@ Intended setup:
 - Copy `/zroot/bhyve/rocky/uefi-vars.fd` (`e78b9144…`) into the run directory;
   the original vars file is never written.
 - Initialise the disposable volume and node control directory under the
-  staging prefix. **GAP G3**: the candidate has no `homelabfs node-init /
-  volume-init` helper.
+  staging prefix (G3, implemented in s34, pending review/pinning):
+  `/usr/local/bin/python3.12 -I -B tools/lab/runtime-volume-init.py --plan
+  <volume-init.json> --plan-sha256 … --record …` drives the staged pinned
+  `homelabfs` helper (actual `cmd/homelabfs` from `e0cca0c`, reproduced SHA256
+  `8c02b98f…`) through node-init, volume-init and inspect, writes the volume
+  config and the empty `0700` mountpoint, and never deletes on failure.
 - Write the private `controlled-runtime/1` config: `Exporter` = staged bhyve
   with `ControlledBootstrap: true` and argv of the form
   `-c 4 -m 6G -A -H -P -s 0:0,hostbridge -s 31:0,lpc
@@ -514,9 +523,21 @@ reviewed and pinned, and this plan is re-filled:
 - G1 Bootstrap orchestrator for Phase 8 (observe, sign, provision, enrollment
   transfer, bind, two mounts) inside 120 s.
 - G2 Generator for the `controlled-runtime/1` config, enrollment/bind requests
-  and per-session keys.
-- G3 Source-matching volume/node initialisation helper; the candidate package
-  contains only `hfs-controlled-runtime` (no `homelabfs node-init/volume-init`).
+  and per-session keys. **Implemented in s34** (`cmd/hfs-runtime-prep`,
+  [README](../../internal/runtimeprep/README.md)); needs review and a pinned
+  build. It validates the config through the actual runtime validator and
+  never reads the operator key. Findings for other gaps: the Phase 7 argv form
+  `virtio-9p,sharename=…,hfs-controller=…` fails in bhyve's virtio-9p legacy
+  parser (two share names), so G4 must use `-s B:S:F,virtio-9p` plus
+  `-o pci.B.S.F.sharename=…` and `-o pci.B.S.F.hfs-controller=…` (the
+  generator refuses the inline form); and the admission package caps the
+  runtime's pools at 4 GiB, so `Budget.HostBytes` cannot carry the proposal's
+  6 GiB host envelope.
+- G3 Source-matching volume/node initialisation helper. **Implemented in s34**
+  as a separate pinned helper, so the xz3 candidate needs no rebuild:
+  `tools/lab/build-init-helper.sh` (reproducible FreeBSD build of the actual
+  `cmd/homelabfs` from `e0cca0c`) plus `tools/lab/runtime-volume-init.py`;
+  needs review, and the Phase 0 rebuild must reproduce the recorded hash.
 - G4 Pinned direct bhyve argv reconstructed from the current launch facts, plus
   the tap/nmdm/UEFI-vars setup and post-exit cleanup script.
 - G5 Rocky kernel install/one-shot/removal script and the

@@ -1,0 +1,84 @@
+{
+  "Version": "homelabfs-runtime-prep-spec/1",
+  "RunID": "zq3-r1",
+  "Volume": {
+    "Config": "/var/tmp/hfs-validation-xz3/zq3-r1/runtime/volume-config.json",
+    "ControlDirectory": "/var/tmp/hfs-validation-xz3/zq3-r1/runtime/control",
+    "VolumeDirectory": "/var/tmp/hfs-validation-xz3/zq3-r1/runtime/volume",
+    "Mountpoint": "/var/tmp/hfs-validation-xz3/zq3-r1/runtime/mnt"
+  },
+  "OwnerDirectory": "/var/tmp/hfs-validation-xz3/zq3-r1/runtime/owner",
+  "EnrollmentFile": "/var/tmp/hfs-validation-xz3/zq3-r1/runtime/handoff/enrollment.json",
+  "Exporter": {
+    "Path": "/var/tmp/hfs-validation-xz3/zq3-r1/bin/bhyve",
+    "SHA256": "36423b6d4f68dc1b05299b1c379a164035e7db5b06ca64b47f2a8571d823fb5c",
+    "Args": [
+      "-c", "4", "-m", "6G", "-A", "-H", "-P",
+      "-s", "0:0,hostbridge",
+      "-s", "31:0,lpc",
+      "-s", "0:4:0,nvme,/zroot/bhyve/rocky/disk0.img",
+      "-s", "0:5:0,virtio-net,tap9,mac=58:9c:fc:4c:38:84",
+      "-s", "0:7:0,virtio-9p",
+      "-o", "pci.0.7.0.sharename=hfs0",
+      "-o", "pci.0.7.0.hfs-controller={{session:0}}",
+      "-s", "0:8:0,virtio-9p",
+      "-o", "pci.0.8.0.sharename=hfs1",
+      "-o", "pci.0.8.0.hfs-controller={{session:1}}",
+      "-l", "com1,/dev/nmdm-hfs-zq3-r1.1A",
+      "-l", "bootrom,/usr/local/share/uefi-firmware/BHYVE_UEFI.fd,/var/tmp/hfs-validation-xz3/zq3-r1/runtime-vm/uefi-vars.fd",
+      "-U", "e10b6225-44d0-11f1-882a-e8ff1ed7f3d7",
+      "hfs-zq3-r1"
+    ]
+  },
+  "InitHelper": {
+    "Path": "/var/tmp/hfs-validation-xz3/zq3-r1/bin/homelabfs",
+    "SHA256": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80"
+  },
+  "OperatorPublicKey": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+  "OperatorKey": "/private/zq3/operator-signing-key",
+  "Views": {
+    "WorkBytes": 335544320,
+    "Tickets": 16,
+    "ControlTickets": 8,
+    "Reservations": 4,
+    "Identities": 64,
+    "Sources": 2,
+    "SourceBytes": 6291456,
+    "LedgerBytes": 46137344
+  },
+  "Service": {
+    "Queue": 8,
+    "IOBytes": 65536,
+    "Handles": 256,
+    "Lookups": 1024,
+    "Reservations": 256,
+    "Locks": 256,
+    "LogicalBytes": 4194304
+  },
+  "Providers": {
+    "Claims": 64,
+    "RetainedBytes": 33554432,
+    "SourceBytes": 16777216,
+    "ClaimCreditBytes": 1048576,
+    "SourceCreditBytes": 1048576
+  },
+  "Capabilities": 64,
+  "CapabilityIdentities": 128,
+  "CredentialRevisions": 32,
+  "Budget": {
+    "HostBytes": 4294967296,
+    "ServiceBytes": 1073741824,
+    "ExporterBytes": 287309824,
+    "GuestCopyBytes": 67108864,
+    "GuestBytes": 2147483648,
+    "GuestBaseBytes": 536870912,
+    "Guest": {
+      "ordinary_bytes": 134217728,
+      "control_bytes": 134217728,
+      "reservations": 32,
+      "cookies": 64,
+      "received": 64
+    }
+  },
+  "BootstrapSeconds": 120
+}

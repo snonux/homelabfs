@@ -206,7 +206,9 @@ complete aggregate and per-domain signatures, inventory, protocol and budgets.
 
 The quoted record descriptions above are schema explanations, not runnable
 request values. Populate actual exported structs and validate locally before
-an approved bootstrap. The signer emits `enrollment.json` (the real
+an approved bootstrap; `hfs-runtime-prep enroll-request` and `bind-request`
+([runtimeprep](../../../internal/runtimeprep/README.md)) fill both requests
+from the generated template and the runtime's actual records. The signer emits `enrollment.json` (the real
 RuntimeEnrollment handoff) and `provision.json` (one complete canonical sysfs
 write). Install the guest provision first, then atomically transfer enrollment
 to the private host EnrollmentFile. At `AWAITING_GUEST_BIND`, the bind request
