@@ -71,33 +71,11 @@ _recovery_request(uint8_t *op, uint32_t sequence, uint8_t payload[PAYLOAD],
    return (_recovery_transfer(payload, *length, false));
 }
 
+/* fd5 uses the same unnamed-socketpair and parent-peer admission as CONTROL
+ * (_parent_socket in supervisor.c), including FreeBSD's 16-byte unnamed form. */
 static int
 _recovery_socket(void) {
-   struct sockaddr_un address;
-   socklen_t n = sizeof(address);
-   int type; socklen_t size = sizeof(type);
-   if (getsockname(RECOVERY, (struct sockaddr *)&address, &n) ||
-       address.sun_family != AF_UNIX || n > offsetof(struct sockaddr_un, sun_path) ||
-       getsockopt(RECOVERY, SOL_SOCKET, SO_TYPE, &type, &size) || type != SOCK_STREAM)
-      return (EACCES);
-   n = sizeof(address);
-   if (getpeername(RECOVERY, (struct sockaddr *)&address, &n) ||
-       address.sun_family != AF_UNIX || n > offsetof(struct sockaddr_un, sun_path))
-      return (EACCES);
-#ifdef __FreeBSD__
-   struct xucred cred; size = sizeof(cred);
-   if (getsockopt(RECOVERY, SOL_LOCAL, LOCAL_PEERCRED, &cred, &size) ||
-       size != sizeof(cred) || cred.cr_version != XUCRED_VERSION ||
-       cred.cr_uid != geteuid() || cred.cr_pid != getppid()) return (EACCES);
-#else
-   struct ucred cred; size = sizeof(cred);
-   if (getsockopt(RECOVERY, SOL_SOCKET, SO_PEERCRED, &cred, &size) ||
-       size != sizeof(cred) || cred.uid != geteuid() || cred.pid != getppid())
-      return (EACCES);
-#endif
-   if (fcntl(RECOVERY, F_SETFD, FD_CLOEXEC) ||
-       fcntl(RECOVERY, F_GETFD) != FD_CLOEXEC) return (EACCES);
-   return (0);
+   return (_parent_socket(RECOVERY));
 }
 
 static int
