@@ -19,7 +19,8 @@ opens no network connection and never touches a line it did not write.
   current hash (unrelated keys changed meanwhile) it still removes only its own
   line and reports `restored_pre_run: false`. After an interrupted enrol whose
   line never landed (file still at the pre-run hash) it only retires the receipt.
-- `status` is read-only.
+- `status` is read-only; it also reports a stale temporary file left by a kill
+  between writing it and the rename (`stale_pending`).
 
 The file is replaced atomically (exclusive temporary file, same owner, mode and
 SELinux label, fsync, rename, directory fsync), so a crash leaves either the
@@ -261,16 +262,24 @@ def write_pending(pending, raw, info, label):
     os.close(fd)
 
 
+def pending_path():
+    """The fixed temporary name used for every atomic replacement."""
+    return Path(AUTHORIZED_KEYS).with_name(".authorized_keys.hfs-observer-next")
+
+
 def replace_keys(raw, expected_current):
     """Atomically replace authorized_keys if it still has the expected bytes."""
     path = Path(AUTHORIZED_KEYS)
     current, info = read_keys()
     label = selinux_label(str(path))
-    pending = path.with_name(".authorized_keys.hfs-observer-next")
+    pending = pending_path()
     write_pending(pending, raw, info, label)
-    # Last check before the rename: a concurrent change refuses, preserving it.
-    # (sshd and other tools take no lock, so a write in this short gap remains
-    # possible; the post-rename hash check below then reports it.)
+    # Last check before the rename: a concurrent change seen here refuses and
+    # is preserved. Other tools take no lock, so an edit landing between this
+    # check and os.replace (an append to the old file, or another tool's own
+    # rename) is silently overwritten and NOT detected: the post-rename check
+    # below only catches writes after our rename. Nothing else may edit
+    # authorized_keys during the window.
     if digest(read_keys()[0]) != expected_current or digest(current) != expected_current:
         os.unlink(str(pending))
         raise Refused("authorized_keys changed during the update; nothing replaced")
@@ -350,9 +359,14 @@ def load_receipt(run, run_id):
         raise Refused("no active observer-key receipt for this run (" + state + ")")
     raw, _ = read_bounded(run / RECEIPT, 65536, trusted=True)
     receipt = json.loads(raw)
+    fields = ["line", "line_sha256", "before_sha256", "after_sha256"]
+    # Type checks first, so a malformed receipt refuses cleanly instead of
+    # failing later with an AttributeError or KeyError.
     if (not isinstance(receipt, dict) or receipt.get("version") != VERSION or
             receipt.get("run_id") != run_id or
-            digest(receipt.get("line", "").encode("ascii")) != receipt.get("line_sha256")):
+            not all(isinstance(receipt.get(name), str) for name in fields) or
+            not receipt["line"].isascii() or
+            digest(receipt["line"].encode("ascii")) != receipt["line_sha256"]):
         raise Refused("observer-key receipt does not describe this run")
     return receipt
 
@@ -410,8 +424,12 @@ def remove(args):
 def status(args):
     """Read-only: current hash, line count and whether the run's line is present."""
     current, _ = read_keys()
+    # A kill between write_pending and the rename leaves the temporary file;
+    # its exclusive create then refuses every later replacement until root
+    # inspects and deletes it.
     result = {"action": "status", "sha256": digest(current),
-              "lines": len(current.splitlines()), "receipt": None, "enrolled_line_count": 0}
+              "lines": len(current.splitlines()), "receipt": None, "enrolled_line_count": 0,
+              "stale_pending": os.path.lexists(str(pending_path()))}
     run = run_directory(args.run_id)
     if os.path.lexists(str(run / RECEIPT)):
         receipt = load_receipt(run, args.run_id)

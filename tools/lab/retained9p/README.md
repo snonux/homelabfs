@@ -182,7 +182,9 @@ these exercise controller transport safety only, not guest filesystem acceptance
 [`observer_key.py`](observer_key.py) runs **on Rocky as root** inside the
 approved window (A6). It generates no key and opens no connection; the run
 generates the key on f3 and transfers only its public half. Python 3.9
-compatible, so it can run from stdin as `/usr/bin/python3.9 -I -B - ACTION …`.
+compatible, so it can run from stdin as `/usr/bin/python3.9 -I -B - ACTION …`;
+Rocky cannot hash stdin, so the filled plan pins this file's SHA256 and the
+operator checks it before each invocation.
 
 - `stage`: checks the pinned interpreter (root-owned regular file, no symlink,
   SHA256), `observer.py` against `--observer-sha256` and the installed probe
@@ -203,15 +205,23 @@ compatible, so it can run from stdin as `/usr/bin/python3.9 -I -B - ACTION …`.
   pre-run bytes. With another explicitly given current hash (unrelated keys
   changed meanwhile) it removes only that line, keeps everything else and
   reports `restored_pre_run: false`. A duplicated line refuses. If an enrol was
-  interrupted before its line landed, it only retires the receipt. The receipt
+  interrupted before its line landed and the file is still at the receipt's
+  pre-run hash, it only retires the receipt; with the line absent and any other
+  hash it refuses, and root retires the receipt manually after inspection. The receipt
   becomes `observer-key-removed.json`, so a repeat refuses.
 - `status`: read-only hash, line count and enrolled-line count.
 
 Every change replaces `authorized_keys` atomically (exclusive temporary file,
 original owner, mode and SELinux label, fsync, rename, directory fsync) after
-re-reading it, so a crash leaves a complete old or new file. sshd takes no
-lock, so a concurrent edit in the final gap is still possible; the post-rename
-hash check then reports it. One flock per run directory serialises the tool.
+re-reading it, so a crash leaves a complete old or new file. Other tools take
+no lock: an edit landing between that last re-read and the rename (an append
+to the old file or another tool's rename) is **silently lost and not
+detected**; the post-rename hash check only catches writes after our rename.
+Nothing else may edit root's `authorized_keys` during the window. A kill
+between writing the temporary file and the rename leaves a stale
+`.authorized_keys.hfs-observer-next` beside it; `status` reports it
+(`stale_pending`), and the next replacement refuses until root inspects and
+deletes it. One flock per run directory serialises the tool.
 The interpreter pin covers the executable file only, not the shared libraries
 it loads (the same limit as `observer.py`'s own `fexecve` pin).
 

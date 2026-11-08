@@ -322,6 +322,70 @@ class ObserverKeyTests(unittest.TestCase):
         finally:
             os.close(held)
 
+    def stage_args(self, python):
+        args = self.common()
+        args[5], args[7] = str(python), sha(self.python)
+        return ["stage", *args, "--observer", str(OBSERVER), "--probe", str(PROBE)]
+
+    def test_symlinked_interpreter_refuses(self):
+        # O_NOFOLLOW: even a link to the exact pinned bytes refuses.
+        link = self.root / "python3"
+        link.symlink_to(self.python)
+        before = self.keys.read_bytes()
+        with self.assertRaises(OSError) as raised:
+            observer_key.main(self.stage_args(link))
+        self.assertEqual(raised.exception.errno, errno.ELOOP)
+        self.assertEqual(self.keys.read_bytes(), before)
+        self.assertFalse(self.run_dir.exists())
+
+    def test_group_or_other_writable_interpreter_refuses(self):
+        for mode in [0o775, 0o757]:
+            with self.subTest(mode=oct(mode)):
+                self.python.chmod(mode)
+                self.refuses("without group/other write", *self.stage_args(self.python))
+        self.assertFalse(self.run_dir.exists())
+
+    def test_interpreter_not_owned_by_trusted_uid_refuses(self):
+        # Simulated: the trusted UID is someone else, the root check passes.
+        with mock.patch.object(observer_key, "TRUSTED_UID", os.getuid() + 1), \
+                mock.patch.object(observer_key, "require_root"):
+            self.refuses("root-owned", *self.stage_args(self.python))
+        self.assertFalse(self.run_dir.exists())
+
+    def test_interpreter_refusals_also_block_enrol(self):
+        self.stage()
+        self.python.chmod(0o775)
+        self.refuses("without group/other write", "enrol", *self.common(),
+                     "--public-key", str(self.public), "--expect-sha256", sha(self.keys))
+        self.assertFalse((self.run_dir / "observer-key.json").exists())
+
+    def test_stale_pending_file_is_reported_and_blocks_replacement(self):
+        self.stage()
+        stale = self.keys.parent / ".authorized_keys.hfs-observer-next"
+        stale.write_bytes(b"left by a killed run\n")
+        self.assertTrue(self.call("status", "--run-id", "r1")["stale_pending"])
+        with self.assertRaises(FileExistsError):
+            self.enrol()
+        self.assertEqual(self.keys.read_bytes(), PAUL)
+        self.assertEqual(stale.read_bytes(), b"left by a killed run\n")
+
+    def test_malformed_receipt_refuses_cleanly(self):
+        self.stage()
+        self.enrol()
+        receipt = self.run_dir / "observer-key.json"
+        original = json.loads(receipt.read_text())
+        for label, change in [("line not string", {"line": 7}), ("line missing", {"line": None}),
+                              ("hash not string", {"after_sha256": 1}),
+                              ("non-ascii line", {"line": "\u00e9"}),
+                              ("line hash mismatch", {"line_sha256": "0" * 64}),
+                              ("other run", {"run_id": "r2"})]:
+            with self.subTest(receipt=label):
+                receipt.chmod(0o600)
+                receipt.write_text(json.dumps({**original, **change}))
+                self.refuses("does not describe this run", "remove", "--run-id", "r1",
+                             "--expect-sha256", sha(self.keys))
+                self.refuses("does not describe this run", "status", "--run-id", "r1")
+
     def test_pins_and_python39_syntax(self):
         self.assertEqual(observer_key.PROBE_SHA256, sha(PROBE))
         source = (HERE / "observer_key.py").read_text()

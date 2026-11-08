@@ -49,6 +49,7 @@ the run and needs a revised plan.
 | f3 memory | physmem 16,879,837,184 bytes; swap 2 GiB, unused |
 | f3 modules | loaded: `vmm`, `nmdm`, `if_bridge`; **not** loaded: `fusefs`, `fdescfs`; no fuse/fdescfs mounts |
 | f3 storage | `zroot` 338G available (`zroot/bhyve` 109G used, `zroot/var/tmp` 3.57G) |
+| f3 route to Rocky | `route -n get 10.20.0.123`: destination `10.20.0.0` on `re0`, directly connected, no gateway; `re0` carries `10.20.0.133/24` (also `192.168.1.133/24`, `10.98.0.133/24` on other subnets), so f3's source toward Rocky is `10.20.0.133`, matching the observer key's `from=` (`f3-route-to-rocky.txt`) |
 | f3 stock modules/binaries | `fdescfs.ko` `847cd1f2…`, `fusefs.ko` `b207adf6…`, `/usr/sbin/bhyve` `c54a6361…` |
 | Rocky vm-bhyve config | unchanged; still contains the old PoC line `bhyve_options="-s 0:7:0,virtio-9p,homelabfs_poc=/var/tmp/homelabfs-9p-poc/share"` |
 | Rocky OS/kernel | Rocky Linux 9.8; running and grubby default `5.14.0-687.66.1.el9_8.x86_64`; other entries ELRepo 7.0.3, ELRepo 6.1.190, 5.14.0-687.65.1/.64.1, rescue. **The custom `6.1.190-hfs-xz3` is not installed.** |
@@ -150,7 +151,9 @@ or vmm context could still exist.
   staged inspector, so it runs at the start of Phase 4.)
 - Preconditions to continue: Rocky running PID matches, all four FreeBSD VMs
   stopped, swap unused, pool ONLINE with the disk headroom above, `fusefs` and
-  `fdescfs` state as recorded, `/dev/fd` is devfs, PoC share path on f3 present
+  `fdescfs` state as recorded, `/dev/fd` is devfs, f3's route to
+  `10.20.0.123` still directly connected on the interface carrying
+  `10.20.0.133` (else the observer key's `from=` would refuse), PoC share path on f3 present
   (R6), Rocky default kernel/grubenv unchanged, SELinux enforcing, one-line
   `authorized_keys` hash recorded.
 - Evidence: `f3-facts.json`, `rocky-facts.json` with timestamps.
@@ -204,7 +207,12 @@ the stop (see [Boot selection and recovery](#boot-selection-and-recovery)).
      channel, then run the tool from stdin, e.g.
      `/usr/bin/python3.9 -I -B - stage --run-id zq3-r1 --observer IN/observer.py
      --observer-sha256 <sha> --probe IN/installed.py --python /usr/bin/python3.9
-     --python-sha256 <Phase 1 hash> < tools/lab/retained9p/observer_key.py`.
+     --python-sha256 <Phase 1 hash> < SNAPSHOT/observer_key.py`.
+     The filled plan pins the SHA256 of `observer_key.py` at the plan commit;
+     the operator copies it once into a private snapshot, checks that hash
+     immediately before every stdin invocation (stage, enrol, status,
+     remove) and records it with each result, since Rocky cannot check
+     bytes it reads from stdin.
      It checks both hashes and the interpreter, creates the run directory if
      absent and writes `observer.py` and `installed-probe.py` root-owned `0400`.
 - Changes: new files in `/boot`, `/lib/modules/6.1.190-hfs-xz3`, one
