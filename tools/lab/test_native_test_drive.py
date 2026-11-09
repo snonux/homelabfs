@@ -224,5 +224,37 @@ class GuardTests(unittest.TestCase):
             GUARD.check_request(argparse.Namespace(stage="bad/stage", command=["/bin/true"], local_reserved_bytes=1))
 
 
+class MemoryFloorTests(unittest.TestCase):
+    """free_pages floors, including the host profile's reclaimable floor (o54)."""
+
+    def check(self, free, inactive, floor, reclaimable_floor=None):
+        output = "4096\n%d\n%d\n" % (free, inactive)
+        with patch.object(GUARD.subprocess, "check_output", return_value=output):
+            return GUARD.free_pages(floor, reclaimable_floor)
+
+    def test_zq3_r2_host_observation_passes(self):
+        # f3 at zq3-r2 Phase 4: 2.87 GB free, 2.62 GB inactive.
+        result = self.check(701267, 638694, 1 << 30, 3 * (1 << 30) + 512 * (1 << 20))
+        self.assertEqual(result["free_plus_inactive_bytes"], (701267 + 638694) * 4096)
+
+    def test_hard_free_floor_still_refuses(self):
+        with self.assertRaisesRegex(ValueError, "free-page reserve below floor"):
+            self.check(200000, 2000000, 1 << 30, 3 * (1 << 30))
+
+    def test_reclaimable_floor_refuses(self):
+        with self.assertRaisesRegex(ValueError, "free\\+inactive reserve below floor"):
+            self.check(300000, 300000, 1 << 30, 3 * (1 << 30) + 512 * (1 << 20))
+
+    def test_exact_boundaries_pass(self):
+        gib = 1 << 30
+        self.check(gib // 4096, (3 * gib + 512 * (1 << 20)) // 4096 - gib // 4096,
+                   gib, 3 * gib + 512 * (1 << 20))
+
+    def test_without_reclaimable_floor_only_free_counts(self):
+        with self.assertRaisesRegex(ValueError, "free-page reserve below floor"):
+            self.check(100000, 5000000, 512 * (1 << 20))
+        self.check(140000, 0, 512 * (1 << 20))
+
+
 if __name__ == "__main__":
     unittest.main()
