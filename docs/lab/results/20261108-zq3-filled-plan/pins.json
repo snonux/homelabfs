@@ -88,7 +88,7 @@
  "fdescfs_window": {
   "directory": "/var/tmp/hfs-fdescfs-windows/zq3-r1",
   "native_guard_root": "/var/tmp/hfs-20261108-zq3r1-fdq",
-  "pins_sha256": "e0dc7eac3c501f9db9bf7edd34fc67d3ec0fb0a991a7ccc5f0a11fadcfe4ae75",
+  "pins_sha256": "703a49fcc6609666bf77f7ba2b36f4add2453ed211dc35541b3bd860eec787d4",
   "plan": "Phase 4 fill (fdescfs-window-plan.py from fresh facts)"
  },
  "filled_utc": "2026-11-08T21:30Z",
@@ -225,7 +225,7 @@
    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/bhyve": "36423b6d4f68dc1b05299b1c379a164035e7db5b06ca64b47f2a8571d823fb5c",
    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/controlledruntime.test": "9e046c2015b2d12c8fc42a89b06e7eaf5bc93876ece018917e3c67db35249cd8",
    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/fdescfs-namespace": "a773f3ef506bec572fe777a269cffb958ce5e04925eb22f580bf40b9f434fe98",
-   "/var/tmp/hfs-validation-xz3/zq3-r1/bin/fdescfs-window.py": "20e0e2ea5a6912218484f52741f7884b734d130d2efb2dcdab528f92d5922ba2",
+   "/var/tmp/hfs-validation-xz3/zq3-r1/bin/fdescfs-window.py": "1cceeb338ae874087d8408632e25371ff2c55cc559c1e13aeb6a85a17a5dd603",
    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/hfs-controlled-runtime": "174949c1ebf97d483d49e41f1ade7bce88f63013cb943be794276bb1ddd417a7",
    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/homelabfs": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80",
    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/host.py": "738e1ca55a460bf6dfb596a3e60c90a5ceef3ec4d4f5c908f94ceb3ca8a929ec",
@@ -237,7 +237,7 @@
    "/var/tmp/hfs-validation-xz3/zq3-r1/records/volume-init.json": "747b12b3f8a6a54070d42bcd5e623b44f041066ef368097540ec6e37c48d4c8b",
    "/var/tmp/hfs-validation-xz3/zq3-r1/runtime/runtime-config.json": "409bef902f048f9b0a8258203126bf714960289d475964354c452ef8fad6cd59"
   },
-  "f3_tar_sha256": "51c52c5b63e47ea5ecd838ff463fd9d9b59683b9ef003cbf03cc27ac1fb1cbc0",
+  "f3_tar_sha256": "c51cac6df8b5fb9453d85b6975af3d1090c7dc2cf5ed0bf14e96eeaeea2d5aca",
   "phase4_generated_on_f3": [
    "/var/tmp/hfs-validation-xz3/zq3-r1/observer/id_ed25519 (+ .pub)",
    "/var/tmp/hfs-validation-xz3/zq3-r1/records/fdescfs-plan.json"
@@ -273,7 +273,7 @@
    "check-retained9p.sh": "bd1d6346f64f8bb0f5cc8aff6c3bce692da98732a027bc448b39e780e4b336f2",
    "controller.py": "063b23c1b1dc8389abc6e9dce477499ae89b3a28c64e8102147ef0006f2ecc93",
    "correlate.py": "82af8060b7230274236623f0ef9199cb8a826afc94a767cee5b8d1adf4b79639",
-   "fdescfs-window-plan.py": "07791469f3d0d95ba5c3206651e4754e42cb2466d94178575f59570b80b1217d",
+   "fdescfs-window-plan.py": "56ef5bb4aaf845ef1d975cc6598ac0b186e70f9539e1d0300bd8c7253fe98c54",
    "vms.sh": "136c8c0b364b7eed99b954bb231456ec3b10e032870260c91c9921eb003de6eb"
   }
  },

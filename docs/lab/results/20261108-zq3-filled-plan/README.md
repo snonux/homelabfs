@@ -38,7 +38,7 @@ private and are never committed.
 | 3. Controller batch | template with all fixed fields; the real plan needs Phase 8 values, so `check` on the template refuses as designed (`probe/installed-manifest pin`); a synthetic copy (zero IDs) passes `check` | template `24f7116e…` |
 | 4. Bootstrap plan | template with every pin (`remote_sha256` `121ee0cc…`, prep, template, runtime config, `bootstrap_seconds` 120 = `BootstrapSeconds`); `check` refuses only `observer.ssh_sha256` (f3 `/usr/bin/ssh` hash, a Phase 4 fact); a synthetic copy passes `check` | template `8996f535…` |
 | 5. Guard argv | exact argv as `bootstrap.py` builds it; limits are the guard defaults, which equal the plan ceilings | in [pins](pins.json) |
-| 6. Observer and staging pins | interpreter, pre-run `authorized_keys`, `observer_key.py` `cd7f38c2…`, and SHA256 of all 17 f3 and 18 Rocky staged files, plus two staging tarballs | f3 tar `51c52c5b…`, Rocky tar `2d7fd06c…` |
+| 6. Observer and staging pins | interpreter, pre-run `authorized_keys`, `observer_key.py` `cd7f38c2…`, and SHA256 of all 17 f3 and 18 Rocky staged files, plus two staging tarballs | f3 tar `c51cac6d…`, Rocky tar `2d7fd06c…` |
 | 8. Run sheet | [run-sheet.md](run-sheet.md), Phases 0-12 plus U1-U3 | |
 
 The synthetic copies only prove that the fixed fields pass the real
@@ -93,7 +93,7 @@ the step that consumes it:
   accepts the post-load baseline plus exactly that file (any other
   difference still refuses). This changes the bytes of `fdescfs-window.py`
   and `fdescfs-window-plan.py`, so their hashes in [pins](pins.json)
-  (`20e0e2ea…`, `07791469…`) and the f3 staging tarball `51c52c5b…` are
+  (`1cceeb33…`, `56ef5bb4…`) and the f3 staging tarball `c51cac6d…` are
   stale: re-pin them from the commit used for the run before staging.
 - **F2, manual steps without a dedicated tool.** No reviewed tool fills the
   controller batch plan after READY: it is a manual edit of four fields under
@@ -126,3 +126,26 @@ retained9p 259 tests, directlaunch 26, `test_fdescfs_window`,
 `test_fdescfs_window_plan`, `test_runtime_guard`, `test_runtime_volume_init`
 (1 skip), `test_vms_sh`, and `go test ./internal/runtimeprep`, all passing.
 No code was changed.
+
+## Pin refresh after j44 and k44 (2026-11-09)
+
+Tasks j44 (window restore accepts the declared fusefs load) and k44 (run-time
+plan filler) merged after the fill; final main commit `a05b7f2`. Below
+`tools/`, the only staged file that changed is `fdescfs-window.py`;
+`fdescfs-window-plan.py` and `fill_plan.py` run on the workstation only.
+Refreshed values (the old ones were replaced everywhere in this directory and
+in the private fill):
+
+| Item | Old | New |
+|---|---|---|
+| `fdescfs-window.py` (staged on f3) | `20e0e2ea…` | `1cceeb338ae874087d8408632e25371ff2c55cc559c1e13aeb6a85a17a5dd603` |
+| `fdescfs-window-plan.py` (workstation) | `07791469…` | `56ef5bb4aaf845ef1d975cc6598ac0b186e70f9539e1d0300bd8c7253fe98c54` |
+| window `pins.json` | `e0dc7eac…` | `703a49fcc6609666bf77f7ba2b36f4add2453ed211dc35541b3bd860eec787d4` |
+| f3 staging tarball | `51c52c5b…` | `c51cac6df8b5fb9453d85b6975af3d1090c7dc2cf5ed0bf14e96eeaeea2d5aca` |
+
+The f3 tarball was rebuilt deterministically from the private stage tree with
+`tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=2026-11-09T00:00:00Z --format=gnu`
+(command kept beside it; the previous tarball and hash list are kept as
+`*.pre-j44`). After extraction, all 17 staged files matched the expected
+hash list. The private tools snapshot was refreshed to `a05b7f2` (the
+previous one kept as `snapshot.08831e7`). Every other pin is unchanged.

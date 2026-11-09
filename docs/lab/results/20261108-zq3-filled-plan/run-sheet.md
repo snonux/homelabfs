@@ -52,7 +52,7 @@ cd $S/tools/lab/directlaunch && python3 -I -B argv.py verify --record $D/argv/bh
 $D/bin/hfs-runtime-prep check-argv --bundle $D/bundle --record $D/argv/bhyve-argv.json \
   --record-sha256 ba493bf67f9dbd6570074c9f4ec29e4f60ddb3ef7a75e6a0ffeb5546fe243589
 sha256sum -c <<'EOF'
-51c52c5b63e47ea5ecd838ff463fd9d9b59683b9ef003cbf03cc27ac1fb1cbc0  /home/paul/tmp/claude/hfs-zq3-r1-fill/stage/f3-stage.tar
+c51cac6df8b5fb9453d85b6975af3d1090c7dc2cf5ed0bf14e96eeaeea2d5aca  /home/paul/tmp/claude/hfs-zq3-r1-fill/stage/f3-stage.tar
 2d7fd06c9d5456f550d8a7cabee243b007b424432e6dddc757fa2c23ccc86d6d  /home/paul/tmp/claude/hfs-zq3-r1-fill/stage/rocky-stage.tar
 ac3a0e754ac59a165398bad44bc73185fd18eb5cf0cc842112f7883f766bc46a  /home/paul/tmp/claude/hfs-zq3-r1-fill/kernel/rocky-kernel-plan.json
 EOF
