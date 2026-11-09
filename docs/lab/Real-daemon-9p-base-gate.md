@@ -47,7 +47,8 @@ launch effects, and its actual CGO daemon passed native read-only qualification.
 See [observer evidence](results/20261105-r24-observer/README.md). This qualifies
 those observer bytes only. On 2026-11-08 the rebuilt xz3 daemon `53598737…`
 (now superseded) and then the f44 daemon `174949c1…` each passed the same
-exact-byte native observer check (see the xz3 evidence below); f3-host
+exact-byte native observer check (see the xz3 evidence below). The current z54
+daemon `39c92d01…` (2026-11-09) has not yet run that check; f3-host
 descriptor execution still awaits the approved zq3 fdescfs window. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
 any SSH. All old build proofs remain preserved, and no different digest alone
@@ -157,21 +158,24 @@ SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
 
 ## Exact installation plan inputs
 
-The current xz3 candidate (w54 kernel rebuild, 2026-11-09) is retained at
-`/home/paul/tmp/claude/hfs-xz3-20261109d/package`, manifest SHA256
-`89c928d5072838bb509ec19e471109b549ce7b06c59451fab64a6d09250bec66`, assembled from source checkout
-`ff866c59e8fe779c7db6aa03e22a7b098dafab5b`; see its
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261109d/README.md).
-Only the guest kernel and Linux source records were rebuilt, from the w54
-patch series (a failed `hfs_fill_super` no longer oopses in kill_sb; zq3-r3
-R3-1); the five modules came out byte-identical. The CGO FreeBSD daemon
-(`174949c1…`, whose exact bytes passed native `--check-process-observer` on
-f3) and the native FreeBSD parts are byte-identical reuses of the f44 candidate
-(`b203799e…`, source `defd974`,
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261108b/README.md)),
-carried through the r54 candidate (`5eb42c50…`, source `ca920a2`,
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261109c/README.md)).
-Both are now refused as superseded together with the earlier `3f770a88…`.
+The current xz3 candidate (z54 daemon rebuild, 2026-11-09) is retained at
+`/home/paul/tmp/claude/hfs-xz3-20261109e/package`, manifest SHA256
+`2e0412a62d1c1f0aa0b29865c521bf3df7a925ea5ef293428fa9b38b647d8f2f`, assembled from source checkout
+`a20aca192911e380f3863897e1e6774b1fc46e0e`; see its
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261109e/README.md).
+Only the CGO FreeBSD daemon was rebuilt (`39c92d01…`; z54 answers every
+VIEW_POLL/VIEW_ACK, so a pre-acquire poll no longer blocks the first mount,
+zq3-r4 R4-1). Its exact bytes have not yet run native
+`--check-process-observer` on f3; the f44 daemon `174949c1…` passed it. The
+w54 guest kernel, its modules and Linux source records come byte for byte from
+the w54 candidate (`89c928d5…`, source `ff866c5`,
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261109d/README.md)),
+and the native FreeBSD parts from the f44 candidate (`b203799e…`, source
+`defd974`, [evidence](../../tools/integration/artifacts/evidence/xz3-20261108b/README.md)),
+carried through r54 (`5eb42c50…`, source `ca920a2`,
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261109c/README.md))
+and w54. All three are now refused as superseded together with the earlier
+`3f770a88…`.
 The earlier `7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b`
 candidate (CGO-disabled daemon) stays quarantined and must not be installed.
 Any later source change requires a new rebuild and admission.
@@ -261,7 +265,7 @@ footprints in the independent global preparation budget. Swap is telemetry.
 
 ## Staged critical-window proposal
 
-The concrete phased proposal for one disposable run with candidate `89c928d5…`,
+The concrete phased proposal for one disposable run with candidate `2e0412a6…`,
 including the remaining implementation gaps and Paul's decisions, is
 [zq3-run-plan.md](zq3-run-plan.md) ([plain-language summary](zq3-plan-summary.md)).
 The guest probe now retains each successful payload until an authenticated

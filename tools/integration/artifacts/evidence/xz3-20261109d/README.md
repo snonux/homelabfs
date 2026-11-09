@@ -1,5 +1,12 @@
 # xz3 w54 kernel rebuild (2026-11-09): fenced failed-bind kill_sb
 
+**Superseded on 2026-11-09** by the [z54 daemon rebuild](../xz3-20261109e/README.md)
+(`2e0412a6…`, source `a20aca1`). This package's f44 daemon `174949c1…` left a
+VIEW_POLL that arrived before the domain was acquired unanswered, so the first
+mount in zq3-r4 blocked in the transport (R4-1). Its w54 kernel, modules and
+native parts are reused unchanged; the tooling refuses this manifest as
+superseded.
+
 This candidate supersedes the [r54 candidate](../xz3-20261109c/README.md)
 (`5eb42c50…`, source `ca920a2`) only because its guest kernel predates w54.
 In lab run zq3-r3 (R3-1) `hfs_fill_super` failed after the accepted HELLO, and

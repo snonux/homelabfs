@@ -21,10 +21,9 @@ SPEC.loader.exec_module(FILLER)
 WINDOW = FILLER.WINDOW
 PINS = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/pins.json"
 RECORD = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/build-record.json"
-# Daemon of the admitted xz3 w54 kernel rebuild (89c928d5), built for f44 from
-# defd974 and reused byte for byte by r54 and w54 (only the guest kernel was
-# rebuilt each time).
-ADMITTED_DAEMON_SHA256 = "174949c1ebf97d483d49e41f1ade7bce88f63013cb943be794276bb1ddd417a7"
+# Daemon of the admitted xz3 z54 daemon rebuild (2e0412a6), built from a20aca1
+# (z54 answers every VIEW_POLL/VIEW_ACK); the window build reproduced it.
+ADMITTED_DAEMON_SHA256 = "39c92d016f17b4c480c3c3bfac266f284123413ea4d95697b935d80bdf98a521"
 CONTROLLER_SHA = "c" * 64
 # f3 stock fusefs.ko, docs/lab/results/20261108-zq3-phase1 (task j44).
 FUSEFS_SHA256 = "b207adf6383bee8e022fa6115044508b7c64da07e73865e5ea71594d524cc4bd"
@@ -93,11 +92,11 @@ class FillerTests(unittest.TestCase):
         self.assertEqual(pinned[self.pins["qualification_test"]], artifacts["controlledruntime.test"]["sha256"])
         for path, value in record["captured_base_closure_sha256"].items():
             self.assertEqual(pinned[path], value)
-        # The window artifacts follow the admitted daemon source: rebuilt for
-        # f44 from defd974 (d44 MKDIR-targeted lost reply) on 2026-11-08 and
-        # reused by the r54 and w54 kernel rebuilds, whose daemon is the same
-        # bytes.
-        self.assertEqual(record["source_commit"], "defd974af3721614b1a52d24fd949822ef5cd735")
+        # The window artifacts follow the admitted daemon source: rebuilt from
+        # a20aca1 for the z54 daemon rebuild on 2026-11-09 (earlier from
+        # defd974 for f44, reused by r54 and w54), so the qualification test
+        # bytes match the daemon source.
+        self.assertEqual(record["source_commit"], "a20aca192911e380f3863897e1e6774b1fc46e0e")
 
     def test_filled_plan_is_accepted_by_actual_controller_validate(self):
         plan = self.fill()

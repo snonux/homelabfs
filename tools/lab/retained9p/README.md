@@ -13,18 +13,22 @@ qualified corrected artifacts. Existing offline build proofs remain preserved;
 neither a successful old metadata admission nor a different digest establishes
 native eligibility. These preparation commands never grant deployment eligibility.
 
-**The controller pins exactly one candidate:** the xz3 w54 kernel rebuild
-(2026-11-09), manifest `89c928d5072838bb509ec19e471109b549ce7b06c59451fab64a6d09250bec66`
-(source `ff866c5`; see its
-[evidence](../../integration/artifacts/evidence/xz3-20261109d/README.md)). Its
-guest kernel is rebuilt from the w54 patch series: the mount builds HELLO
-after enrollment (r54), and a failed `hfs_fill_super` no longer oopses in
-`v9fs_hfs_kill_super` (w54). The CGO daemon `174949c1…`, native exporter and
-window artifacts are byte-identical reuses from f44. Three earlier candidates
-are refused as superseded: `3f770a88…` cannot arm the d44 MKDIR-only lost
-reply, the f44 `b203799e…` has the pre-r54 guest kernel (every hfs1.4 mount
-returns EPROTO, zq3-r2 R2-4), and the r54 `5eb42c50…` has the pre-w54 guest
-kernel (kill_sb oops after a failed bind, zq3-r3 R3-1). Any
+**The controller pins exactly one candidate:** the xz3 z54 daemon rebuild
+(2026-11-09), manifest `2e0412a62d1c1f0aa0b29865c521bf3df7a925ea5ef293428fa9b38b647d8f2f`
+(source `a20aca1`; see its
+[evidence](../../integration/artifacts/evidence/xz3-20261109e/README.md)). Its
+CGO daemon `39c92d01…` answers every VIEW_POLL and VIEW_ACK, including a poll
+that arrives before the domain is acquired (z54). Its guest kernel is the w54
+build, reused byte for byte: the mount builds HELLO after enrollment (r54),
+and a failed `hfs_fill_super` no longer oopses in `v9fs_hfs_kill_super` (w54).
+The native exporter is a byte-identical reuse from f44; the window artifacts
+were rebuilt from `a20aca1`. Four earlier candidates are refused as
+superseded: `3f770a88…` cannot arm the d44 MKDIR-only lost reply, the f44
+`b203799e…` has the pre-r54 guest kernel (every hfs1.4 mount returns EPROTO,
+zq3-r2 R2-4), the r54 `5eb42c50…` has the pre-w54 guest kernel (kill_sb oops
+after a failed bind, zq3-r3 R3-1), and the w54 `89c928d5…` has the pre-z54
+daemon `174949c1…` (an unanswered pre-acquire VIEW_POLL blocks the first
+mount, zq3-r4 R4-1). Any
 other digest refuses before reading inputs or contacting the lab. This pin is a
 dispatch precondition only; installed/booted/native acceptance remains zq3.
 
@@ -618,7 +622,7 @@ depmod, dracut, systemctl and GRUB's one-shot consumption at boot). Every
 Rocky-side command still needs Paul's explicit A3 approval of the filled plan.
 
 1. Workstation, Phase 0:
-   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 89c928d5… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
+   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 2e0412a6… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
    It refuses any manifest other than the pinned candidate, checks every
    Linux file's size and SHA256 against the manifest and the installation
    proposal, requires `modules.order` to name exactly the manifest's modules,
