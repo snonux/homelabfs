@@ -1,0 +1,214 @@
+{
+  "candidate": {
+    "admission": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "assembled_from": "/home/paul/git/homelabfs (main checkout at ca920a2, byte-identical tools/integration); the retained daemon builder bindings name that checkout path",
+    "files": 195,
+    "independent_admit": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "manifest_sha256": "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
+    "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+    "path": "/home/paul/tmp/claude/hfs-xz3-20261109c/package",
+    "repository_baseline": "defd974af3721614b1a52d24fd949822ef5cd735",
+    "source_checkout": "ca920a2ab7346cbcacb4e7bcc9148e213edd7fc4"
+  },
+  "controls": {
+    "all_refused": true,
+    "case_names": [
+      "external operator mismatch",
+      "external repository mismatch",
+      "old negotiated features",
+      "old source revision",
+      "different packaged Linux patch",
+      "different native owned source",
+      "wrong actual bundled source with consistent container hashes",
+      "daemon ELF labelled as full exporter",
+      "native helper ELF lacks production controllers",
+      "invented stock shared9p runtime",
+      "installed success claim",
+      "missing actual Go build version",
+      "real CGO_ENABLED=0 daemon with nocgo observer stub",
+      "record claims CGO0 build",
+      "nocgo stub in recorded source closure",
+      "renamed cgo process observer symbols",
+      "foreign dynamic loader",
+      "extra recorded DT_NEEDED",
+      "missing recorded DT_NEEDED",
+      "sysroot library hash differs from recorded closure",
+      "unlinked sysroot capture",
+      "unrecorded clang resource headers",
+      "unrecorded clang shared-library closure",
+      "foreign cgo compiler wrapper",
+      "installation authority claim",
+      "false forced rebuild witness"
+    ],
+    "cases": 26,
+    "cgo0_control_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+    "original_passed_after": true,
+    "restored_passed": true
+  },
+  "init_helper": {
+    "kept": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80 from e0cca0c"
+  },
+  "kernel": {
+    "abi_negative_controls": [
+      "different-kernel-module-layout-crc",
+      "different-operator-config-identity",
+      "missing-kernel-module-layout-crc",
+      "stock-kernel-release"
+    ],
+    "artifacts": {
+      "linux/Module.symvers": "7602f7ec6d56f3e861dbb43d624b3dfe59e63c08b1fb8c4220b86d4547733078",
+      "linux/System.map": "69b6c7bc16980f74ca607b934e3c3541993d4c607fc0a75a6a2f77ece69efadc",
+      "linux/abi-negative.json": "f7c4aa9efbe87a6e18eae268097b01c7cb333b1b72ceefbfa93448d6e7417da0",
+      "linux/abi.json": "971e9575c21db2904f13e01f912364aef651e3ccf67c35f0fbeb6ae83b04fe38",
+      "linux/build.json": "c326c01daaa84d11203b6fa3aa51321a2fa391dc85981d088effb9262275f462",
+      "linux/bzImage": "98cc02d578a2b34e86586f22cb90e9d9eb64f50e72f81f3a95824d154aee2dc5",
+      "linux/clean-repro.json": "6fc2c2efd05f516d7b2391e6acb48315ed2020164518cadbcd759979f8307e40",
+      "linux/config": "d88b4c567e5676be1ab9c9d8a317978f0fd2b6976a6b3f24be51407b848ef5ff",
+      "linux/kernel.release": "50bb45b1af138cf586adddcde600f85e256a19336c861654e6ce76c20eb034e3",
+      "linux/modules.builtin": "1f33442939e7faf978dc707cb69f99015328b39b3125cea6d6de25715f8bebf1",
+      "linux/modules.builtin.modinfo": "c53973bb5c4498e6fc6e61d0143353782a5628374b2b00624f422ed6f2236cf2",
+      "linux/modules.order": "f820618416411197b17fe7795d067e9687d905c487bffb207589bec3c173019a",
+      "linux/modules/drivers/net/net_failover.ko": "cc9755c71cc1d0776f5efd61198b1ebe99741cff877104879b8658db469f9143",
+      "linux/modules/drivers/net/virtio_net.ko": "39de7e933fa325b2c6b576004213f34bee04085191ea94e141a6c2aeeaf7fef1",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko": "6b98068988086d3b1b5c7a1e3b71f5f0ac4378f2d907c0e3a8c50a22bcde53fa",
+      "linux/modules/fs/efivarfs/efivarfs.ko": "6dd0679c5a026189f4feef51fcdcf4d0542fbc9cba7f3e552cb8a0324e68974f",
+      "linux/modules/net/core/failover.ko": "b1aa98beb495be131c06a02775109cba97de2ecacae227c4932909166b88cf5a",
+      "linux/vmlinux": "593571028e7f7d88b755f3ed429fde80309547e7abe986b9fa445fc7a396ebf0"
+    },
+    "clean_repro_equal_artifacts": 13,
+    "clean_repro_modules": 5,
+    "clean_repro_record_sha256": "6fc2c2efd05f516d7b2391e6acb48315ed2020164518cadbcd759979f8307e40",
+    "gnu_build_id": "1f7808b8960571ffada903a53010fe12e8f54a2d",
+    "initramfs": "none built or packaged; the recipe builds bzImage and modules",
+    "module_build_ids": {
+      "drivers/net/net_failover.ko": "3255e434a34a125cd9251bebddaaf6bdf98c68bb",
+      "drivers/net/virtio_net.ko": "072995182e1a95b83cf3ec794649ce05adf8a59d",
+      "drivers/thermal/intel/x86_pkg_temp_thermal.ko": "da295c7cb8ec345542f4ad350ebe6b4ab30ce306",
+      "fs/efivarfs/efivarfs.ko": "c7dca1ae388661db98a1b00f73a39cc2c2d88539",
+      "net/core/failover.ko": "3b9f54841993c81600f6794137822622987c4f9d"
+    },
+    "note": "both builds used the same canonical O path (first tree moved to kernel-build-first before the repeat); abi.py collect ran on both packages before compare_kernel, which passed first time",
+    "release": "6.1.190-hfs-xz3",
+    "source": {
+      "archive_path": "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/source/linux-79807e970724c1f90cee1316361d61b80db4eef6.tar.gz (cached, not downloaded)",
+      "archive_sha256": "4f3c00db43ece26e00b83da8cee938e544ba89e10dc10aecc45209ab03554a17",
+      "patch_0003_sha256": "e287211a7ed9542767faa2fff47e933006f89089e4dce43b3bd7fe01dca3df66",
+      "prepared": "/home/paul/tmp/claude/hfs-xz3-20261109c/linux-source",
+      "project_task": "r54",
+      "source_inventory_sha256": "1a7dc67596d7a8aef6573c155f429c00634e7d5dd96069b20858b5addc661c23",
+      "source_json_sha256": "d9d40904f8a84c58ad7b65bec5eb383c78e90454bd1727464bade7d7f29c7e0f"
+    },
+    "stage_seconds": [
+      [
+        "first",
+        "configure",
+        0,
+        9
+      ],
+      [
+        "first",
+        "vmlinux",
+        0,
+        632
+      ],
+      [
+        "first",
+        "image-modules",
+        0,
+        41
+      ],
+      [
+        "first",
+        "collect",
+        0,
+        10
+      ],
+      [
+        "repro",
+        "configure",
+        0,
+        11
+      ],
+      [
+        "repro",
+        "vmlinux",
+        0,
+        581
+      ],
+      [
+        "repro",
+        "image-modules",
+        0,
+        23
+      ],
+      [
+        "repro",
+        "collect",
+        0,
+        5
+      ]
+    ],
+    "toolchain_change_since_f44": "host elfutils 0.196 -> 0.197 (libelf, libdebuginfod loader dependencies of the build tools); identical for both builds",
+    "unchanged_from_f44": [
+      "linux/Module.symvers",
+      "linux/abi-negative.json",
+      "linux/config",
+      "linux/kernel.release",
+      "linux/modules.builtin",
+      "linux/modules.builtin.modinfo",
+      "linux/modules.order",
+      "linux/modules/drivers/net/net_failover.ko",
+      "linux/modules/drivers/net/virtio_net.ko",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko",
+      "linux/modules/fs/efivarfs/efivarfs.ko",
+      "linux/modules/net/core/failover.ko"
+    ]
+  },
+  "mount_hello": {
+    "cases": 5,
+    "command": "tools/integration/linux9p/tests/mount_hello/run.py --source <prepared> --output <root>/mount-hello --sanitize",
+    "failures": 0
+  },
+  "not_claimed": [
+    "installed",
+    "booted",
+    "native acceptance",
+    "VM/exporter execution",
+    "normal publication",
+    "a working hfs1.4 mount on Rocky (zq3)"
+  ],
+  "reason": "r54 fixed the guest mount HELLO (built before enrollment, so every hfs1.4 mount returned EPROTO, zq3-r2 R2-4); the f44 package carries the pre-r54 kernel",
+  "recorded": "2026-11-09",
+  "reused": {
+    "files": 122,
+    "from_manifest": "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
+    "justification": "git diff defd974..HEAD touches only internal/guestbridge/README.md and a runtimeprep test in internal/cmd/lib9p, and go.mod only drops an // indirect marker; each reused file was hash-checked against the f44 manifest (re-admitted first), Linux notices and patches also against the current source and repository",
+    "list": "reused-files.json",
+    "scope": "83 native FreeBSD files, 5 native source-bundle/notice files, 7 daemon files, 22 Linux license notices, patches 0001/0002/0004/0005 and series"
+  },
+  "superseded_candidate": {
+    "manifest_sha256": "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
+    "status": "refused as superseded (pre-r54 guest kernel)"
+  },
+  "task": "xz3 r54 rebuild",
+  "version": "homelabfs-xz3-evidence/2",
+  "window_artifacts": {
+    "controlledruntime.test": "9e046c2015b2d12c8fc42a89b06e7eaf5bc93876ece018917e3c67db35249cd8",
+    "fdescfs-namespace": "a773f3ef506bec572fe777a269cffb958ce5e04925eb22f580bf40b9f434fe98",
+    "source": "defd974 (f44 window-build run-1/run-2 re-hashed 2026-11-09; internal/controlledruntime and cmd unchanged since)"
+  }
+}
