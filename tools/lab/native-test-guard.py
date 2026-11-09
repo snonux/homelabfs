@@ -74,7 +74,7 @@ def host_invariant(rocky_pid, birth, config_hash):
     # free-only floor refused. The protection for Rocky is the hard 1 GiB free
     # floor: the pagedaemon starts reclaiming inactive pages only below
     # v_free_target (about 340 MB on f3), and the child is bounded to 512 MiB
-    # RSS, so a run admitted at 1 GiB free never forces reclaim. The 3.5 GiB
+    # RSS, so a run admitted at 1 GiB free should not force reclaim. The 3.5 GiB
     # free+inactive floor is a sanity check on overall headroom; inactive
     # pages may still hold dirty or idle guest memory, so they are not counted
     # as freely reclaimable.
