@@ -278,7 +278,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  	/* Make sure our req is coherent with regard to updates in other
  	 * threads - echoes to wmb() in the callback
-@@ -756,6 +822,112 @@
+@@ -756,6 +822,123 @@
  	p9_req_put(c, req);
  	return ERR_PTR(safe_errno(err));
  }
@@ -317,7 +317,9 @@ diff --git a/net/9p/client.c b/net/9p/client.c
 + * mutex, until the previous request is fully released, so a fixed tag is
 + * reused only after its response is fully released. Dynamic tags never fall
 + * in this range, so once the slot is empty only the mutex holder can take it.
-+ * Nothing is sent while waiting; -EBUSY after the bound is a local no-send.
++ * Nothing is sent while waiting; -EBUSY after the bound is a local no-send
++ * that hfs_transport retries on the same cell and chunk. A disconnecting
++ * client reports -EIO first, as p9_client_prepare_req would.
 + */
 +static int p9_client_hfs_tag_idle(struct p9_client *c, u16 tag)
 +{
@@ -325,6 +327,9 @@ diff --git a/net/9p/client.c b/net/9p/client.c
 +	bool busy;
 +
 +	for (;;) {
++		if (READ_ONCE(c->status) == Disconnected ||
++		    READ_ONCE(c->status) == BeginDisconnect)
++			return -EIO;
 +		spin_lock_irq(&c->lock);
 +		busy = idr_find(&c->reqs, tag) != NULL;
 +		spin_unlock_irq(&c->lock);
@@ -367,7 +372,13 @@ diff --git a/net/9p/client.c b/net/9p/client.c
 +			      tag == P9_NOTAG ? -1 : tag, "bbqdB",
 +			      method, channel, cell, chunk, frame_len, frame);
 +	if (IS_ERR(req)) {
-+		err = PTR_ERR(req);
++		/* -EBUSY from this exchange must mean "nothing sent": only the idle
++		 * wait above returns it. With the tag idle under its mutex,
++		 * p9_tag_alloc cannot find it busy, so any -EBUSY here would come
++		 * from after the request reached the transport. Report it as an
++		 * I/O error so that callers never retry a possibly sent packet.
++		 */
++		err = PTR_ERR(req) == -EBUSY ? -EIO : PTR_ERR(req);
 +		goto unlock;
 +	}
 +	len = req->rc.size - req->rc.offset;
@@ -391,7 +402,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  /**
   * p9_client_zc_rpc - issue a request and wait for a response
-@@ -785,7 +957,8 @@
+@@ -785,7 +968,8 @@
  	/* We allocate a inline protocol data of only 4k bytes.
  	 * The actual content is passed in zero-copy fashion.
  	 */
@@ -401,7 +412,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	va_end(ap);
  	if (IS_ERR(req))
  		return req;
-@@ -910,6 +1083,20 @@
+@@ -910,6 +1094,20 @@
  		 c->msize, c->proto_version);
  
  	switch (c->proto_version) {
@@ -422,7 +433,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	case p9_proto_2000L:
  		req = p9_client_rpc(c, P9_TVERSION, "ds",
  				    c->msize, "9P2000.L");
-@@ -937,7 +1124,18 @@
+@@ -937,7 +1135,18 @@
  	}
  
  	p9_debug(P9_DEBUG_9P, "<<< RVERSION msize %d %s\n", msize, version);
@@ -442,7 +453,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  		c->proto_version = p9_proto_2000L;
  	} else if (!strncmp(version, "9P2000.u", 8)) {
  		c->proto_version = p9_proto_2000u;
-@@ -989,10 +1187,19 @@
+@@ -989,10 +1198,19 @@
  	spin_lock_init(&clnt->lock);
  	idr_init(&clnt->fids);
  	idr_init(&clnt->reqs);

@@ -98,14 +98,14 @@
     "fs/9p/hfs_inode.c": "18d312f4bfb671339048c7c1dfdd164b903bd1526096ca5ba44c28cb12199d8d",
     "fs/9p/hfs_lease.c": "4f3d2f47e23b1618994e54804b11dbc5483191fb4c37c8ab0564e415acc1870a",
     "fs/9p/hfs_lease.h": "2064d1a0e291774889fdf1801db65c9f271b3a437e549f675d38c03eb2bf4ea8",
-    "fs/9p/hfs_mmap.c": "e23b133de46b6087545ed9bc884f1b192c19d4febd3ca1a68bf76038d63320ae",
+    "fs/9p/hfs_mmap.c": "e436f3862f133a6e41af910390637f413dcafcd3c3745f1287cda9bfa7206e13",
     "fs/9p/hfs_policy.c": "5537099c59641da5bf8809aaa59fb397d7fd9cc39db82a9190e5248119e84922",
     "fs/9p/hfs_policy.h": "1e45a64924ca25bed471d6f149d97cadb35c662dc9944699327ae91ade20f360",
     "fs/9p/hfs_protocol.c": "3e37db2361002ac2d7d52c6f8dc43be72918cd285bc596008b9d218021be14b0",
     "fs/9p/hfs_protocol.h": "20c87fc0c4ff2d06921addfbcbabcc3b8239c9607563c2fd9e10fe15ef821907",
     "fs/9p/hfs_received.h": "d6b1a1fe74ed749151ef8c9327e24b9fcfce082ddf03cc67cefd8cc2479dad03",
     "fs/9p/hfs_received.inc": "dc13c92ba0aaf251ccc692b71d0f013b9681e29b0b51bde9a67a2593d78a7f1c",
-    "fs/9p/hfs_session.c": "559a87bc7d6fd18e154bb4c16a03ab7786ee2e36a5034445b632903fccd99b7f",
+    "fs/9p/hfs_session.c": "c372da07f57ddcb63517737f73ddb5172cd5946b663f6fa2af4e38ed5f17dcd8",
     "fs/9p/hfs_view.c": "cb175faebe5de9bbab2f5504c0b0805c8ea7c959de56a4b7229e9bd7955749b0",
     "fs/9p/hfs_view.h": "5b7ececa37bc486b4900b26567168bb19d8e07350f1ef5d1b3721826ecdbbd5f",
     "fs/9p/vfs_super.c": "1c85dd57e9f27b324cbf4b8a35e9b4cbaf9f2259533754602220f2b2e60f449f",
@@ -119,15 +119,15 @@
     "mm/huge_memory.c": "f2dadde3c6cb2a468913c5b4c3658f62091e43e1e8c16efeb10e2bebf922ae4d",
     "mm/memory.c": "afc1442fe6483b42239b158b3760649250857cb2dc0fd5dcf9497f1ee846559b",
     "mm/mremap.c": "2b961657bb9b07ea8c25dbbf523f783031da496ecda11fa706a4eb2afb355a24",
-    "net/9p/client.c": "f5bf36042525f31105dcf5ed2cf33570dd74e01a47ea022afcc6dc048954ae8a",
+    "net/9p/client.c": "94fc4c7a880c87d0b947ccabbd79a8d87141d6b32323ba2917468c8e714f0570",
     "net/9p/protocol.c": "9a0b548ed15ec7e194b391a9cef010541d02c992277c34ba2386c4d8c74092f8",
     "net/9p/trans_virtio.c": "d54273836cab0f0c0a07de30b98c9eb13793022f0a129c5c5e571a35ca025ed6"
   },
   "patches": [
     {
-      "bytes": 14547,
+      "bytes": 15177,
       "file": "0001-9p-hfs1-transport.patch",
-      "sha256": "5b0dbbd58022be0d7687473144a46d6e477b61acc3e34be1ac5ad1e22ccd8244"
+      "sha256": "7a7761192b75f2331e9d95032e1695f20d0a3761b9e6a4276a8b6f51249a511f"
     },
     {
       "bytes": 79079,
@@ -135,14 +135,14 @@
       "sha256": "11b322486e060f89e5f116e7acd78298c23a994f553907f0896ae109ed903eab"
     },
     {
-      "bytes": 165910,
+      "bytes": 166401,
       "file": "0003-hfs1-guest-vfs.patch",
-      "sha256": "e287211a7ed9542767faa2fff47e933006f89089e4dce43b3bd7fe01dca3df66"
+      "sha256": "3d6193eca2d0eff0c6799344b38b036d2964e9921e397266afffd5b65aa964fb"
     },
     {
-      "bytes": 170341,
+      "bytes": 169008,
       "file": "0004-hfs1-physical-views.patch",
-      "sha256": "90c9c8ca046f7cae536596a8080602ee392fdc5c68a830e3639749daa5fddf17"
+      "sha256": "531903f1f68feccde98e84a39e2c4870cc9cd7a68186b8a6e3074b6987c267ec"
     },
     {
       "bytes": 343903,

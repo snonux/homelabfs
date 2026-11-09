@@ -210,7 +210,8 @@ static int back_to_back(void)
 }
 
 /* A reference that never drops must not hang the owner: the bounded wait
- * returns -EBUSY after about one second, and nothing is sent.
+ * returns -EBUSY after about one second, and nothing is sent. On a
+ * disconnected client the same stuck tag reports -EIO at once.
  */
 static int stuck_tag(void)
 {
@@ -218,23 +219,36 @@ static int stuck_tag(void)
 	unsigned long before = sent_requests, start = now_ms(), elapsed;
 	u8 frame[89] = { 0 }, reply[64];
 	u32 len = sizeof(reply);
-	int err;
+	int err, failures = 0;
 
 	spin_lock_irq(&client.lock);
 	client.reqs.slots[65533] = &stuck;
 	spin_unlock_irq(&client.lock);
 	err = p9_client_hfs_exchange(&client, 65533, 1, 1, 1, 0, frame, sizeof(frame), reply, &len);
 	elapsed = now_ms() - start;
+	if (err == -EBUSY && elapsed >= 1000 && elapsed < 5000 && sent_requests == before) {
+		printf("PASS stuck-tag-bounded-ebusy elapsed_ms=%lu\n", elapsed);
+	} else {
+		printf("FAIL stuck-tag-bounded-ebusy: returned %d after %lu ms, sent %lu\n", err,
+		       elapsed, sent_requests - before);
+		failures++;
+	}
+	/* A disconnected client reports EIO at once rather than waiting. */
+	client.status = Disconnected;
+	start = now_ms();
+	err = p9_client_hfs_exchange(&client, 65533, 1, 1, 1, 0, frame, sizeof(frame), reply, &len);
+	elapsed = now_ms() - start;
+	client.status = Connected;
 	spin_lock_irq(&client.lock);
 	client.reqs.slots[65533] = NULL;
 	spin_unlock_irq(&client.lock);
-	if (err == -EBUSY && elapsed >= 1000 && elapsed < 5000 && sent_requests == before) {
-		printf("PASS stuck-tag-bounded-ebusy elapsed_ms=%lu\n", elapsed);
-		return 0;
+	if (err == -EIO && elapsed < 500 && sent_requests == before) {
+		printf("PASS stuck-tag-disconnected-eio elapsed_ms=%lu\n", elapsed);
+	} else {
+		printf("FAIL stuck-tag-disconnected-eio: returned %d after %lu ms\n", err, elapsed);
+		failures++;
 	}
-	printf("FAIL stuck-tag-bounded-ebusy: returned %d after %lu ms, sent %lu\n", err,
-	       elapsed, sent_requests - before);
-	return 1;
+	return failures;
 }
 
 static void receiver_stop(pthread_t receiver)
@@ -263,6 +277,6 @@ int main(void)
 	failures += back_to_back();
 	failures += stuck_tag();
 	receiver_stop(receiver);
-	printf("fixed_tag cases=3 failures=%d requests=%lu\n", failures, sent_requests);
+	printf("fixed_tag cases=4 failures=%d requests=%lu\n", failures, sent_requests);
 	return failures ? 1 : 0;
 }

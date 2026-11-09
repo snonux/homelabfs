@@ -542,7 +542,7 @@ the lab oops (ASan SEGV at 0xbd in `hfs_completion_reserve` ←
 `hfs_controlled_begin_close` ← `v9fs_hfs_kill_super`), and the provisioning
 case accepts 32.
 
-## Fixed-tag reuse and ACK resend (`964`)
+## Fixed-tag reuse (`964`)
 
 In the fifth lab mount (zq3-r5, R5-1) the guest accepted the RECALL. It sent
 STOPPED and INSTALLED_DRAIN, and the daemon ACCEPTED both. The guest then
@@ -553,24 +553,31 @@ release loop kept polling VIEW_QUERY (PENDING). Both exchanges use fixed tag
 `wake_up`. The next owner of the tag could therefore call `p9_tag_alloc` while
 the old request still held the idr slot. `idr_alloc` then returned ENOSPC,
 which became ENOMEM. `hfs_control` treated that as a transport fault and marked
-the session blocked. The event worker retries only EAGAIN/EBUSY, so it stopped
-silently, and DRAINED was never sent. Reserved VIEW_QUERY bypasses the blocked
-check, so the release loop kept running.
+the session blocked for good, so capture, view entry and new mmaps refuse from
+then on. The event worker retries only EAGAIN/EBUSY, so it stopped silently,
+and DRAINED was never sent. Reserved VIEW_QUERY bypasses the blocked check, so
+the release loop kept running.
 
 Patch 0001 now waits, bounded at one second and under the per-tag mutex, until
 the fixed tag's previous request is fully released (`p9_client_hfs_tag_idle`).
-It drops its own reference before unlocking. Nothing is sent while it waits;
-expiry returns EBUSY. `p9_tag_alloc` reports a busy wanted tag as EBUSY instead
-of ENOMEM. Dynamic tags stay in 0..65532, so only the mutex holder can take
-a free fixed slot. The fix is in the exchange, so it covers every fixed-tag
-user: all reserved/RELEASE_CELL control traffic on 65533, the VIEW_WAIT poll
-worker on 65534, and each SEND followed at once by its FETCH on the same tag.
+It drops its own reference before unlocking. Nothing is sent while it waits.
+Expiry returns EBUSY, and a disconnecting client returns EIO first. EBUSY from
+the exchange always means "not sent": with the tag idle under its mutex,
+`p9_tag_alloc` cannot find it busy, and any other EBUSY from the RPC is
+reported as EIO. Dynamic tags stay in 0..65532, so only the mutex holder can
+take a free fixed slot. The fix is in the exchange, so it covers every
+fixed-tag user: all reserved/RELEASE_CELL control traffic on 65533, the
+VIEW_WAIT poll worker on 65534, and each SEND followed at once by its FETCH on
+the same tag.
 
-Patch 0004 resends a VIEW_ACK that failed locally (ENOMEM/EBUSY) with
-identical bytes in a new cell, at most three sends in all
-(`hfs_mmap_ack_send`). The daemon archive accepts identical resends. Each
-failed send stays retained as an uncertain candidate. `hfs_mmap_fail` now logs
-the errno (`pr_warn_ratelimited`) whenever the view control worker stops.
+Patch 0003's `hfs_transport` treats that EBUSY like a refused packet. A SEND is
+retried with the exact frame of the same cell and chunk after yielding the
+writer, and a FETCH polls again. Both stay under the command's existing
+30-second deadline, which ends in ETIMEDOUT. The error never reaches the
+`hfs_control` fault path, so no uncertain candidate is kept and the session is
+not blocked. The view event worker needs no resend of its own. Patch 0004 only
+makes `hfs_mmap_fail` log the errno (`pr_warn_ratelimited`) whenever the view
+control worker stops.
 
 ```sh
 python3 tools/integration/linux9p/tests/tag/run.py \
@@ -581,11 +588,25 @@ It compiles the tag allocator, request lifetime, `p9_client_cb`, the RPC wait
 and the hfs exchange verbatim from `net/9p/client.c`. Only the idr, slab, wait
 queue, locks, PDU marshalling and a virtio-like receive thread are substituted.
 The receive thread holds its last reference after `wake_up` until another owner
-probes a tag, as a preempted vCPU would. Cases: a VIEW_QUERY loop and a
-VIEW_ACK worker on 65533, back-to-back VIEW_WAIT on 65534, and a never-released
-reference, which must return EBUSY after about one second without sending. On
-the pre-964 source all three fail: both owners and the poll get ENOMEM at once,
-and the stuck tag gets ENOMEM after 0 ms.
+probes a tag, as a preempted vCPU would. The cases are:
+
+* a VIEW_QUERY loop and a VIEW_ACK worker on 65533;
+* back-to-back VIEW_WAIT on 65534;
+* a never-released reference, which must return EBUSY after about one second
+  without sending;
+* the same stuck tag on a disconnected client, which must return EIO at once.
+
+On the pre-964 source the first three fail: both owners and the poll get
+ENOMEM at once, and the stuck tag gets ENOMEM after 0 ms.
+
+The transport suite also returns EBUSY at a SEND (the retry must carry the
+identical frame) and at two FETCHes; pre-964 `hfs_transport` returns EBUSY
+instead. The `controlled_received` terminal-smoke scenario arms `BUSY_TAG` on
+the second session. The next QUERY's SEND and FETCH each first get the bounded
+EBUSY from the substituted idle wait, before any native byte. The actual
+`hfs_control`/`hfs_transport` then complete the ROOT request on the same native
+QUERY cells as a plain request. `BUSY_TAG_CHECK` asserts that the session is
+not blocked and has no uncertain candidate, and a further request succeeds.
 
 The same task fixed the GCC 16 `-Wunused-parameter` error in the
 `hfs_received_exclusive` stub of `hfs_received.h`, which stopped the codec,

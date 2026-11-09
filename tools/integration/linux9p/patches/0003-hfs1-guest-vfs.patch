@@ -522,7 +522,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,2964 @@
+@@ -0,0 +1,2973 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -889,9 +889,15 @@ new file mode 100644
 +		len = HFS_HEADER_SIZE + HFS_CHUNK_MAX + 1;
 +		err = p9_client_hfs_exchange(session->client, tag, 1, 1, cell, chunk, frame,
 +					     frame_len, packet, &len);
-+		if (err)
-+			goto out;
-+		err = hfs_send_reply(packet, len, time_after_eq(jiffies, deadline));
++		/* -EBUSY: a fixed tag stayed held past the exchange's bounded wait
++       * and nothing was sent (net/9p p9_client_hfs_exchange). Retry the same
++       * frame like a refused packet, under the same deadline. It is never a
++       * transport fault, so the session is not blocked (zq3-r5 R5-1, 964).
++       */
++		if (err == -EBUSY)
++			err = -EAGAIN;
++		else if (!err)
++			err = hfs_send_reply(packet, len, time_after_eq(jiffies, deadline));
 +		if (err == -EAGAIN) {
 +			/* No bytes of this packet were copied. Retain its exact frame
 +       * and chunk; yield the writer so reserved drains can progress.
@@ -920,9 +926,12 @@ new file mode 100644
 +			len = HFS_HEADER_SIZE + HFS_CHUNK_MAX + 1;
 +			err = p9_client_hfs_exchange(session->client, tag, 2, response.channel,
 +						     cell, chunk, NULL, 0, packet, &len);
-+			if (err)
++			/* A busy fixed tag sent no FETCH (see above): poll again
++	   * like AGAIN, same chunk and deadline.
++	   */
++			if (err && err != -EBUSY)
 +				goto out;
-+			if (len != 1 || *(u8 *)packet != 2)
++			if (!err && (len != 1 || *(u8 *)packet != 2))
 +				break;
 +			if (time_after_eq(jiffies, deadline)) {
 +				err = -ETIMEDOUT;

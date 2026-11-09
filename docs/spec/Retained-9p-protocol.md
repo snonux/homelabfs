@@ -57,7 +57,11 @@ exchange owns it exclusively, and the next owner waits, bounded and without
 sending, until the previous request is released. In Linux the transport
 receive path drops its request reference only after waking the waiter.
 Finding the tag still allocated is local backpressure, not a transport fault
-(zq3-r5 R5-1, task 964). Large messages use H9B chunks under independently completed tags.
+(zq3-r5 R5-1, task 964). Each wait is bounded at one second. If it expires,
+nothing was sent, and the guest retries the same cell and chunk as for SEND
+AGAIN (a refused packet) or FETCH AGAIN, within the command's 30-second
+deadline. Only that deadline ends the command as an uncertain transport
+result. Large messages use H9B chunks under independently completed tags.
 The native FUSE path carries the H9B frame alone at its positional offset.
 
 Both guest↔backend and backend↔FUSE perform HELLO before any capability, attach

@@ -38,10 +38,7 @@ type blockedACK struct {
 // acknowledge answers one VIEW_ACK with the spec reply {status:ACCEPTED|STALE|
 // BLOCKED}; c.mu is held. The guest kernel (patch 0004 hfs_mmap_ack) treats
 // BLOCKED as -EAGAIN and resends the identical ACK after 10 ms, STALE as
-// -ESTALE and fences its view. A local guest failure (-ENOMEM, or -EBUSY for
-// a fixed tag that stayed held) is resent identically in a new cell, at most
-// three sends in all (hfs_mmap_ack_send, task 964), which the archive below
-// accepts; any other transport error is a failed call.
+// -ESTALE and fences its view, and a transport error as a failed call.
 //
 //   - STALE: the ACK cannot acknowledge current work (wrong or finished recall,
 //     session, sequence, phase, hashes, manifest or target), or its session
