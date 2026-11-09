@@ -691,7 +691,7 @@ primitives, and keeps the Go tools (`hfs-runtime-prep`,
 | Step | Kind | What happens |
 |---|---|---|
 | `host-preflight` | read | f3: guard script and runtime match their pins; guard run dir, OwnerDirectory and EnrollmentFile absent; handoff directory root-private |
-| `launch` | launch | `doas -n python3.12 -I -B runtime-guard.py … -- hfs-controlled-runtime --config …` in one long-lived f3 SSH session, detached from this terminal; the 120 s start here |
+| `launch` | launch | `doas -n python3.12 -I -B runtime-guard.py … -- hfs-controlled-runtime --config … --disposable-validation` in one long-lived f3 SSH session, detached from this terminal; the 120 s start here |
 | `proposal` | read | runtime stdout's first record is `AWAITING_OPERATOR_ENROLLMENT` naming `OwnerDirectory/proposal.json`; a private copy of its bytes |
 | `guest-ready` | read | Rocky answers SSH, runs the plan's test kernel release (GRUB consumed `next_entry`), boot ID |
 | `admission` | remote | one SSH round trip: pinned `rocky_kernel.py admission`, then manifest SHA256 readback, boot ID, provider nonce from `admission_v1`, `virtioN` of each share tag |

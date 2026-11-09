@@ -494,7 +494,8 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
   --disk-root /var/tmp/hfs-fdescfs-windows/zq3-r1 --skip-path <native
   mountpoint from the run config> --
   /var/tmp/hfs-validation-xz3/zq3-r1/bin/hfs-controlled-runtime --config
-  <private config>`. Runtime stdout (READY) and stderr go to `guard/runtime.stdout`
+  <private config> --disposable-validation` (the runtime refuses to start
+  without that flag; q54, zq3-r2 Phase 8). Runtime stdout (READY) and stderr go to `guard/runtime.stdout`
   and `guard/runtime.stderr`. The guard refuses unless no VM context exists
   and every limit already holds. On the first breach (limits table, a foreign
   VM context such as `rocky`, an unobservable sample, or a SIGHUP/SIGINT/SIGTERM
