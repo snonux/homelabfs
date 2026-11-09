@@ -37,7 +37,7 @@ Two rules from zq3-r1 apply throughout:
 source /home/paul/tmp/claude/hfs-zq3-r2-fill/session.sh
 ```
 
-`session.sh` (`33018c31…`, [pins](pins.json) `fill_helpers`) defines, adapted
+`session.sh` (`b4eccf6c…`, [pins](pins.json) `fill_helpers`) defines, adapted
 from zq3-r1's:
 
 ```bash
@@ -52,7 +52,7 @@ RKKH="-oUserKnownHostsFile=$S/docs/lab/rocky-known_hosts -oHostKeyAlias=rocky"
 f3()    { /usr/bin/ssh $O $F3KH -- paul@10.20.0.133 "$@"; }
 rocky() { /usr/bin/ssh $O $RKKH -oProxyCommand="/usr/bin/ssh $O $F3KH -W 10.20.0.123:22 -- paul@10.20.0.133" -- root@10.20.0.123 "$@"; }
 okpin() { …observer_key.py cd7f38c2… check… }   # before every stdin invocation of observer_key.py
-hpin()  { …sha256sum -c of bin/sign_watch.py and sh/*… }   # before using a fill helper
+hpin()  { …sha256sum -c of bin/sign_watch.py, sh/* and the signer bin/hfs-retained9p-operator (22e5fb90…)… }   # before using a fill helper or signing
 K='/usr/bin/python3.9 -I -B /root/hfs-zq3-zq3-r2-kernel-stage/rocky_kernel.py'
 KP='--plan /root/hfs-zq3-zq3-r2-kernel-stage/rocky-kernel-plan.json --plan-sha256 adf62fc8a5d5f6bf89831aca421b4f6ac0a59f7f170f83be7501fc14d2c36552 --state /root/hfs-zq3-zq3-r2-kernel-state'
 NG="doas -n /usr/local/bin/python3.12 -B /var/tmp/hfs-20261109-zq3r2-fdq/native-test-guard.py --root /var/tmp/hfs-20261109-zq3r2-fdq --local-reserved-bytes 4294967296 --profile host --rocky-pid 31625 --rocky-birth 'Mon Nov  9 11:42:19 2026' --rocky-config-sha256 c101adf10d58d8e021faaa1c3dd98ccb7777c2b78b7931f478e71b526814c581 --max-seconds 60"
@@ -86,7 +86,7 @@ bd7de8b8a0ab140fb114a79ea27561b103882363d56b1c5d6a2af8dca470c368  /home/paul/tmp
 adf62fc8a5d5f6bf89831aca421b4f6ac0a59f7f170f83be7501fc14d2c36552  /home/paul/tmp/claude/hfs-zq3-r2-fill/kernel/rocky-kernel-plan.json
 d6923aa2e3ee0dad1a3c2ba48ae53d80630b8d7704de40b9f7a68541a7dc2f48  /home/paul/tmp/claude/hfs-zq3-r2-fill/controller/batch-plan.TEMPLATE.json
 d64487fa93bfac88c9baea56256430c088ffab86cfd88423ab01a170727c30d6  /home/paul/tmp/claude/hfs-zq3-r2-fill/fdescfs-pins/pins.json
-33018c31aaf7af1258dc630f698bc686b67dd472955b5b78be16a5a3b7e0a7dd  /home/paul/tmp/claude/hfs-zq3-r2-fill/session.sh
+b4eccf6ca4402967d195ba4d1737d97123f8da6223d2fa2895ea73476dc66b43  /home/paul/tmp/claude/hfs-zq3-r2-fill/session.sh
 EOF
 ```
 
@@ -304,10 +304,10 @@ supported `fdescfs` report with the owned FSID). Then the memory
 pre-estimate and the disk-level reference:
 
 ```bash
-f3 'doas -n vm list; swapinfo; sysctl -n hw.pagesize vm.stats.vm.v_free_count vm.stats.vm.v_inactive_count kstat.zfs.misc.arcstats.size vfs.zfs.arc_min; ps -p 31625 -o rss=; zfs list -t snapshot -o name,guid -s creation zroot/bhyve/rocky | tail -1' > $E/p5-prestop.txt
+f3 'doas -n vm list; swapinfo; sysctl -n hw.pagesize vm.stats.vm.v_free_count vm.stats.vm.v_inactive_count kstat.zfs.misc.arcstats.size kstat.zfs.misc.arcstats.c_min; ps -p 31625 -o rss=; zfs list -t snapshot -o name,guid -s creation zroot/bhyve/rocky | tail -1' > $E/p5-prestop.txt
 ```
 
-Pre-estimate: (free + inactive) × 4096 + (ARC − arc_min) + Rocky RSS (KiB) ×
+Pre-estimate: (free + inactive) × 4096 + (ARC − `arcstats.c_min`) + Rocky RSS (KiB) ×
 1024 should exceed the Phase 6 bar of 14,763,950,080 bytes; Phase 6 is the
 binding check. At 11:57Z free + inactive + ARC was only 4,985,882,880 bytes
 with Rocky running (zq3-r1's Phase 5 had 14.3 GB free), so Rocky's bhyve now
@@ -348,7 +348,7 @@ is still set, recovery is U3 (below).
 ```bash
 hpin
 f3 'swapinfo; doas -n vm list; test -e /dev/vmm && doas -n ls /dev/vmm || echo no-vmm; mount -p | grep /dev/fd' > $E/p6-admission.txt
-f3 'sysctl -n hw.pagesize vm.stats.vm.v_free_count vm.stats.vm.v_inactive_count kstat.zfs.misc.arcstats.size vfs.zfs.arc_min' > $E/p6-mem.txt
+f3 'sysctl -n hw.pagesize vm.stats.vm.v_free_count vm.stats.vm.v_inactive_count kstat.zfs.misc.arcstats.size kstat.zfs.misc.arcstats.c_min' > $E/p6-mem.txt
 python3 -I -B $D/sh/p6-admission.py $E/p6-mem.txt | tee $E/p6-bar.json
 f3 "doas -n $R/bin/hfs-controlled-runtime --check-descriptor-exec" > $E/p6-descriptor.json
 python3 -I -c 'import json,sys; a, b = (json.load(open(p)) for p in sys.argv[1:]); print("descriptor-equals-owned:", a == b); sys.exit(a != b)' $E/p6-descriptor.json $E/p5-owned.json
@@ -363,12 +363,14 @@ The bar (g54) is the enforced guard ceilings plus a 3 GiB host reserve:
 | host reserve, 3 GiB | 3,221,225,472 |
 | **bar, 13.75 GiB** | **14,763,950,080** (= 3,604,480 pages of 4096) |
 
-Required: reclaimable = (free + inactive) × 4096 + (ARC − arc_min) ≥
-14,763,950,080 (`p6-bar.json` `"pass": true`; `vfs.zfs.arc_min` was 0, so the
-whole ARC counts); swap unused; all VMs stopped and `no-vmm`; `/dev/fd` still
+Required: reclaimable = (free + inactive) × 4096 + (ARC − `arcstats.c_min`) ≥
+14,763,950,080 (`p6-bar.json` `"pass": true`). `c_min` is the effective ARC
+floor that `runtime-guard.py` also subtracts (about 527 MB on f3);
+`vfs.zfs.arc_min` 0 only means "default floor"; swap unused; all VMs stopped and `no-vmm`; `/dev/fd` still
 the owned fdescfs mount (`descriptor-equals-owned: True`). For reference,
-zq3-r1's fresh-boot measurement, 16,003,514,952 bytes, passes this bar with
-1,239,564,872 bytes to spare. Else: restore the window (Phase 11, `$W
+zq3-r1's fresh-boot measurement (free + inactive 15,310,299,136 bytes, ARC
+693 MB of which about 166 MB above `c_min`) gives about 15.48 GB, passing this
+bar with about 0.7 GB to spare. Else: restore the window (Phase 11, `$W
 restore`), then U3.
 
 ## Phase 7: host setup (A4, about 3 min)
@@ -389,7 +391,7 @@ edit. Failure with no child started: `host.py cleanup --record … --record-sha2
 ## Phase 8: runtime launch and bootstrap (A3, A4, A7; at most 120 s, about 5 min with prep)
 
 Signing is delegated to Claude (A7, Paul's decision): the driver's stdout goes
-through the watcher `bin/sign_watch.py` (`b92dbfc6…`). It copies every line
+through the watcher `bin/sign_watch.py` (`1eba4df3…`). It copies every line
 through and, for an `operator_action` line, runs the signer only if the
 printed command is exactly one of the two commands below and the request
 file's SHA256 equals the printed `request_sha256`; each action at most once.
@@ -536,6 +538,12 @@ Not run: PTE/TLB/GUP (G14), distributed writers (ov3/pv3).
 
 ## Phase 11: cleanup (within A1/A4/A5/A6; about 5-10 min)
 
+If T10 ended RESTARTED, the runtime still serves under the guard (r1 finding
+F5): the `child-gone` check also matches the guard's `--vm-name hfs-zq3-r2`,
+and `vms.sh start-rocky` refuses while the guard lives. End it first with one
+SIGTERM to the guard (its own bounded stop), wait for the guard to exit, then
+continue; otherwise Phase 12 waits up to the 3600 s bound.
+
 ```bash
 f3 "doas -n tar -c -f - --exclude control.sock -C $R guard records runtime/owner launch" > $E/f3-evidence.tar   # private; runtime-config.json is not included
 f3 "doas -n tar -c -f - -C /var/tmp/hfs-fdescfs-windows zq3-r2" > $E/f3-window-evidence.tar
@@ -545,7 +553,8 @@ rocky "grub2-editenv - list"                     # next_entry empty; if set: $K 
 rocky 'systemctl poweroff'
 f3 'ps -ax -ww | grep "[h]fs-zq3-r2" || echo child-gone; test -e /dev/vmm && doas -n ls /dev/vmm || echo no-vmm'
 f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/host.py cleanup --record $R/records/bhyve-argv.json --record-sha256 0a7e36f3b88429efe8ef62b33abdef1f60532858c8ca4ed6655153ba28ec9c44 --child-pid <EXPORTER_PID>" | tee $E/p11-host-cleanup.json
-f3 "mount -p | grep $R/runtime/mnt && doas -n umount $R/runtime/mnt || echo no-native-mount"
+f3 "mount -p | grep $R/runtime/mnt || echo no-native-mount"   # only if listed, next line
+f3 "doas -n umount $R/runtime/mnt"   # normal unmount; busy or error: stop and preserve
 f3 "doas -n rm -- $R/observer/id_ed25519 $R/observer/id_ed25519.pub"
 f3 "doas -n /usr/local/bin/python3.12 -I -B $W restore" | tee $E/p11-window-restore.txt
 ```

@@ -46,8 +46,8 @@ that contain it stay private and are never committed.
 | 5. Guard argv | derived, then compared with `bootstrap.py`'s own `SshRemote.guard_argv()` for the filled plan: equal | in [pins](pins.json) |
 | 6. Observer and staging pins | unchanged script pins (`observer_key.py` `cd7f38c2…`, `observer.py` `2e1449dd…`, `installed.py` `c824b183…`); all 17 f3 and 18 Rocky staged files, two tarballs (recipe below), a verification extract matched every expected hash | f3 tar `87ba6b4a…`, Rocky tar `bd7de8b8…` |
 | 7. Window pins | `docs/lab/zq3-fdescfs-window/pins.json` with `zq3-r1` → `zq3-r2` (run ID and five paths); `fdescfs-window-plan.py`'s `check_pins` passes, and a synthetic fill from zq3-r1's renamed facts passes (not a pin) | r2 pins `d64487fa…` |
-| 8. Signing watcher | Claude's zq3-r1 watcher copied to `bin/sign_watch.py`, only `D` and the docstring run ID changed; tested locally with a fake signer (wrong hash, wrong command and a repeat refused; both exact requests signed) | `b92dbfc6…` |
-| 9. Run sheet | [run-sheet.md](run-sheet.md), Phases 0-12 plus U1-U3; session helpers `session.sh` (`33018c31…`) and four pinned helper scripts | [pins](pins.json) `fill_helpers` |
+| 8. Signing watcher | Claude's zq3-r1 watcher copied to `bin/sign_watch.py`, only `D` and the docstring run ID changed; tested locally with a fake signer (wrong hash, wrong command and a repeat refused; both exact requests signed); after review it also re-hashes the signer binary (`22e5fb90…`) and logs any watcher error as a refusal while relaying | `1eba4df3…` |
+| 9. Run sheet | [run-sheet.md](run-sheet.md), Phases 0-12 plus U1-U3; session helpers `session.sh` (`b4eccf6c…`) and four pinned helper scripts | [pins](pins.json) `fill_helpers` |
 
 Staging recipe (both tarballs, deterministic):
 `tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=2026-11-09T00:00:00Z --format=gnu`.
@@ -59,7 +59,7 @@ binaries `0500`, other files `0400`, owner `0/0`.
 ## Signing
 
 Paul delegated both signatures (A7) to Claude. In Phase 8 the driver's stdout
-goes through `bin/sign_watch.py` (`b92dbfc6…`), which runs the signer only if
+goes through `bin/sign_watch.py` (`1eba4df3…`), which runs the signer only if
 the printed command is exactly one of these and the request file's SHA256
 equals the printed `request_sha256`, each at most once; anything else is
 refused and the driver times out (fails closed):
@@ -153,3 +153,15 @@ At `ea55eb5` in a clean clone: retained9p 280 tests, directlaunch 26,
 ./internal/runtimeprep`, all passing. `shellcheck` is clean for `build-stage.sh`
 and `sh/*.sh`, and for `session.sh` apart from SC2034/SC2086 (its variables
 are used by the sheet, and `$O` is split on purpose). No code was changed.
+
+## Round-1 review fixes (2026-11-09)
+
+- Phase 5 and 6 subtract `kstat.zfs.misc.arcstats.c_min` (the effective ARC
+  floor the runtime guard also uses, about 527 MB on f3), not
+  `vfs.zfs.arc_min`, whose 0 means "default floor".
+- `hpin` (run in Phase 0 and Phase 8) also pins the signer binary
+  `22e5fb90…`; the watcher re-hashes it before each signature.
+- The watcher catches its own errors, logs them as refusals and keeps
+  relaying, so a watcher failure cannot end the driver mid-bootstrap.
+- Phase 11 splits the native unmount check from the action and states how
+  to end a runtime left serving after a RESTARTED T10 (r1 finding F5).

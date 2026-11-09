@@ -402,7 +402,8 @@ which an abort leaves an unconsumed `next_entry` is as short as possible.
 ### Phase 6: post-stop admission (f3, B)
 
 - Actions: re-check memory now that Rocky's 12 GiB are free: free + inactive +
-  reclaimable ARC (above `arc_min`) must cover the enforced guard ceilings,
+  reclaimable ARC (above `kstat.zfs.misc.arcstats.c_min`, the effective floor
+  `runtime-guard.py` also uses) must cover the enforced guard ceilings,
   bhyve 6 GiB + 512 MiB and runtime 4 GiB + 256 MiB, plus a 3 GiB host
   reserve: 13.75 GiB (14,763,950,080 bytes). The earlier 15 GiB bar counted the
   proposal's 6 GiB runtime envelope, which the 4 GiB `Budget.HostBytes` cap and
@@ -735,7 +736,7 @@ refuses); admission and reboot-to-stock require exactly the test kernel.
   Phases 5 step 3 to 8 before the controlled boot reached GRUB). There is no way
   to edit grubenv while Rocky is stopped without touching its disk from f3,
   which this plan does not do. Honest recovery path, approved as part of A3:
-  1. Confirm no candidate bhyve child or `/dev/vmm/hfs-zq3-r1` exists.
+  1. Confirm no candidate bhyve child or `/dev/vmm/hfs-zq3-<run>` exists.
   2. `tools/lab/vms.sh --approved-action start-rocky`: the normal 12 GiB
      config. GRUB consumes `next_entry` and boots `6.1.190-hfs-xz3` **once**,
      now under the normal config (with the unused PoC 9p device and normal
@@ -788,10 +789,10 @@ also stops until Paul decides on a forced power-off.
 ## Risks
 
 - R1 Memory: the 13.75 GiB bar (enforced guard ceilings plus 3 GiB reserve)
-  left about 1.15 GiB over the zq3-r1 fresh-boot measurement of 14.9 GiB
-  reclaimable (with `vfs.zfs.arc_min` 0 on f3 the whole ARC counted; a
-  nonzero `arc_min` lowers the reclaimable part). Phase 6 measures it and
-  refuses otherwise.
+  leaves about 0.7 GB over the zq3-r1 fresh-boot measurement: free +
+  inactive 15.31 GB plus about 166 MB of ARC above `arcstats.c_min` (about
+  527 MB; `vfs.zfs.arc_min` 0 means the default floor, not none). Phase 6
+  measures it and refuses otherwise.
 - R2 The custom kernel fails to boot (initramfs/LVM). The one-shot entry was
   consumed when GRUB ran, so the next normal start boots stock. But a hung or
   panicked guest cannot be shut down from inside; ending that child (in Phase 8

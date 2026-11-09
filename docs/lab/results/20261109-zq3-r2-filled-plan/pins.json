@@ -57,7 +57,7 @@
   "sign_watch": {
    "derived_from": "Claude's zq3-r1 watcher, only D (fill path) and the docstring run ID changed",
    "path": "/home/paul/tmp/claude/hfs-zq3-r2-fill/bin/sign_watch.py",
-   "sha256": "b92dbfc6d316630fa844f3658080e9558bab928488efa44e358af14a4c8d1714"
+   "sha256": "1eba4df389d7522facfd211cfff2cbf98a9bbcba914e95c95f94a0e813832dbf"
   },
   "signer_bind": "/home/paul/tmp/claude/hfs-zq3-r2-fill/bin/hfs-retained9p-operator bind --request /home/paul/tmp/claude/hfs-zq3-r2-fill/bootstrap-run/work/bind-request.json --output /home/paul/tmp/claude/hfs-zq3-r2-fill/bootstrap-run/work/signer-binding",
   "signer_enroll": "/home/paul/tmp/claude/hfs-zq3-r2-fill/bin/hfs-retained9p-operator enroll --request /home/paul/tmp/claude/hfs-zq3-r2-fill/bootstrap-run/work/enroll-request.json --output /home/paul/tmp/claude/hfs-zq3-r2-fill/bootstrap-run/work/signer-enrollment",
@@ -105,11 +105,11 @@
  "fill_helpers": {
   "build-stage.sh": "98353191a2ad33ce25c31ce5ab4a5886de2c8bcd18d52b02ec1015f97f2e22d6",
   "derive-templates.py": "9beaff4f86ed4411945b1d3ded632c654d25df6867a2f0fe6618c391ad80bea4",
-  "session.sh": "33018c31aaf7af1258dc630f698bc686b67dd472955b5b78be16a5a3b7e0a7dd",
+  "session.sh": "b4eccf6ca4402967d195ba4d1737d97123f8da6223d2fa2895ea73476dc66b43",
   "sh/p1-f3.sh": "6cc24c1d73b46a51eafc345dcea5693242422be06ed47a5c45ff7ba1ef6608af",
   "sh/p4-libs.sh": "a10107710f03c3b084eef87c88db413de8a11225e942532aa8618f50cc0df557",
   "sh/p5-recheck.py": "25390199bd752bb26ed7235b38db7da163bee525b88979f14a62ee91b5cd329a",
-  "sh/p6-admission.py": "cbc8fbbaa25e5fe016f47cef6e23bc46e09131746ac077f27102a90340b169a3"
+  "sh/p6-admission.py": "7739515d0cd19812fc91455decb497503f35033aa0aaaea2a8bc9a875120c572"
  },
  "filled_utc": "2026-11-09T12:10Z",
  "native_guard": {
