@@ -535,5 +535,17 @@ class HostBoundaryTests(unittest.TestCase):
                 GUARD.allocated_bytes(root / "missing-root")
 
 
+
+class PlanAdmissionBarTests(unittest.TestCase):
+    """zq3's Phase 6 bar is the enforced ceilings plus a 3 GiB host reserve (g54)."""
+
+    def test_plan_bar_matches_ceilings(self):
+        bar = (GUARD.CEILINGS["runtime_rss_bytes"] + GUARD.CEILINGS["exporter_rss_bytes"]
+               + 3 * GIB)
+        plan = (HERE.parents[1] / "docs" / "lab" / "zq3-run-plan.md")
+        if not plan.exists():  # tools-only snapshots carry no docs
+            self.skipTest("run plan not present")
+        self.assertIn("{:,} bytes".format(bar), plan.read_text())
+
 if __name__ == "__main__":
     unittest.main()

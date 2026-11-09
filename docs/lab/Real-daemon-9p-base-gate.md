@@ -246,7 +246,8 @@ start the normal12GiB Rocky while a retained/uncertain6GiB child may still run.
 
 The proposal's6GiB host runtime +6GiB configured Rocky +3GiB host reserve is
 15GiB, and the signed provider/workload ceiling remains2GiB. This is arithmetic,
-not measured allocation/MM pressure admission. The original4MiB canary and
+not measured allocation/MM pressure admission. (Superseded for zq3 admission by g54: Phase 6 of the
+[run plan](zq3-run-plan.md) counts the enforced guard ceilings, 13.75 GiB.) The original4MiB canary and
 every native guest's2GiB allocation remain unchanged. Retain a60-minute total
 window,4GiB host run disk and2GiB guest run disk ceiling, plus8GiB unreserved
 host and2GiB guest free headroom. Count all retained old/new/cache/tmp/remote
