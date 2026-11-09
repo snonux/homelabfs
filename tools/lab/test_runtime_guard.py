@@ -153,7 +153,8 @@ class GuardTests(unittest.TestCase):
         self.host.exit_after = 5
 
     def argv(self, *extra, command=None):
-        command = command or ["/var/tmp/x/bin/hfs-controlled-runtime", "--config", "/var/tmp/x/config.json"]
+        command = command or ["/var/tmp/x/bin/hfs-controlled-runtime", "--config", "/var/tmp/x/config.json",
+                              "--disposable-validation"]
         return ["--run-dir", str(self.root / "guard"), "--runtime-sha256", PIN,
                 "--vm-name", "hfs-zq3-r1", "--disk-root", str(self.root),
                 "--interval", "1", "--stop-grace", "3", "--observe-after-stop", "4",
@@ -315,7 +316,9 @@ class GuardTests(unittest.TestCase):
     def test_command_and_directory_refusals(self):
         bad_commands = {
             "RUNTIME --config": ["/r", "--config", "/c", "--extra"],
-            "clean absolute": ["/r", "--config", "relative.json"],
+            "--disposable-validation": ["/r", "--config", "/c"],
+            "argv must be": ["/r", "--disposable-validation", "/c", "--config"],
+            "clean absolute": ["/r", "--config", "relative.json", "--disposable-validation"],
         }
         for pattern, command in bad_commands.items():
             with self.subTest(pattern=pattern), self.assertRaisesRegex(GUARD.Refused, pattern):

@@ -373,7 +373,7 @@ class SequenceTests(Case):
             "--run-dir", RUN + "/guard", "--runtime-sha256", "5" * 64, "--vm-name", "hfs-zq3-r1",
             "--disk-root", RUN, "--disk-root", "/var/tmp/hfs-fdescfs-windows/zq3-r1",
             "--skip-path", RUN + "/volume/mnt", "--", RUN + "/bin/hfs-controlled-runtime",
-            "--config", RUN + "/runtime/runtime-config.json"]))
+            "--config", RUN + "/runtime/runtime-config.json", "--disposable-validation"]))
 
 
 class FailureTests(Case):

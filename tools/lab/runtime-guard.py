@@ -330,9 +330,14 @@ def check_limits(args):
 
 
 def check_command(args, host):
-    """Exactly the pinned runtime with one absolute --config argument."""
+    """Exactly the pinned runtime, one absolute --config and --disposable-validation.
+
+    hfs-controlled-runtime refuses to start without --disposable-validation
+    (internal/controlledruntime/driver.go); zq3-r2 Phase 8 exited 1 on that.
+    """
     argv = args.command
-    require(len(argv) == 3 and argv[1] == "--config", "argv must be RUNTIME --config CONFIG")
+    require(len(argv) == 4 and argv[1] == "--config" and argv[3] == "--disposable-validation",
+            "argv must be RUNTIME --config CONFIG --disposable-validation")
     for path in (argv[0], argv[2]):
         require(os.path.isabs(path) and os.path.normpath(path) == path, "clean absolute paths")
     require(re.fullmatch(r"[0-9a-f]{64}", args.runtime_sha256) is not None, "runtime pin")

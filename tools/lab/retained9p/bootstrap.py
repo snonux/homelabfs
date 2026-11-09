@@ -409,7 +409,9 @@ class SshRemote:
             command += ["--disk-root", root]
         for path in g["skip_paths"]:
             command += ["--skip-path", path]
-        command += ["--", r["executable"], "--config", r["config"]]
+        # The runtime refuses to start without --disposable-validation, and
+        # runtime-guard.py accepts exactly this argv shape (zq3-r2 Phase 8).
+        command += ["--", r["executable"], "--config", r["config"], "--disposable-validation"]
         return self.base("host", keepalive=True) + ["--", self.destination("host"), " ".join(safe_tokens(command))]
 
 
