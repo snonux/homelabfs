@@ -36,6 +36,7 @@ type sourceRig struct {
 	mappingTransport      *guestbridge.Transport
 	mappingDirectory      string
 	mappingNativeCell     *uint64
+	mappingLastNative     *guestbridge.Ack // last native response, for a WAIT continuation reclaim
 	t                     *testing.T
 	supervisor            *Supervisor
 	service               *fsservice.Service

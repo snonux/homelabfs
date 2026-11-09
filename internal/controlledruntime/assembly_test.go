@@ -183,14 +183,7 @@ func TestRuntimeAssemblyTwoDomainsRealFraming(t *testing.T) {
 		t.Fatal("provisioned but unbound sessions became ready")
 	}
 	for index, peer := range r.peers {
-		peer.bridge = a.Bridge
-		peer.producer = a.Producer
-		peer.controller = a.Controller
-		peer.facts = a.Facts
-		peer.provider = a.Providers[peer.scope.Session]
-		peer.mappingTransport = a.Transport
-		peer.mappingNativeCell = &counter
-		peer.cells = 0
+		attachAssembly(peer, a, &counter)
 		payload, _, err := peer.execute("HELLO", guestbridge.TerminalProtocol())
 		require(t, err)
 		if !bytes.Contains(payload, []byte(`"status":"ACCEPTED"`)) {
@@ -236,6 +229,92 @@ func TestRuntimeAssemblyTwoDomainsRealFraming(t *testing.T) {
 	if _, err = router.Resolve(t.Context(), wrong, guestbridge.Claim{}); err == nil {
 		t.Fatal("partial-scope fallback")
 	}
+}
+
+// attachAssembly points a fixture peer at the assembled runtime's actual
+// owners; all peers share the endpoint's one native cell allocator.
+func attachAssembly(peer *sourceRig, a *Assembly, counter *uint64) {
+	peer.bridge = a.Bridge
+	peer.producer = a.Producer
+	peer.controller = a.Controller
+	peer.facts = a.Facts
+	peer.provider = a.Providers[peer.scope.Session]
+	peer.mappingTransport = a.Transport
+	peer.mappingNativeCell = counter
+	peer.cells = 0
+}
+
+// The zq3-r4 guest mount sequence against the assembled runtime while the
+// second peer has not sent HELLO yet, so the runtime is not ready. The guest
+// kernel posts VIEW_WAIT (native VIEW_POLL) before its first VIEW_ACQUIRE;
+// that poll must be answered EMPTY, not left as a silent blocked cell. The
+// same logical wait then continues and delivers the RECALL started by the
+// guest's own VIEW_RELEASE.
+func TestRuntimeAssemblyMountSequenceBeforeReady(t *testing.T) {
+	r, c := assemblyFixture(t)
+	a, err := Assemble(t.Context(), c)
+	t.Cleanup(func() { require(t, a.Close()) })
+	require(t, err)
+	r.supervisor.record.Stage = "claimed" // declared native-export/INIT primitive
+	counter := uint64(0)
+	controller := r.supervisor.record.Controller
+	notReady := func(step string) {
+		t.Helper()
+		err := a.Transport.CheckControlledSessions(t.Context(), controller, []guestbridge.Context{r.scope, r.peers[1].scope}, guestbridge.TerminalProtocol())
+		if !errors.Is(err, fsapi.WouldBlock) {
+			t.Fatalf("%s: runtime readiness %v with peer 1 missing HELLO", step, err)
+		}
+	}
+	for _, peer := range r.peers {
+		attachAssembly(peer, a, &counter)
+	}
+	peer := r.peers[0]
+	_, _, err = peer.execute("HELLO", guestbridge.TerminalProtocol())
+	require(t, err)
+	var root struct{ Capabilities []guestbridge.Capability }
+	require(t, json.Unmarshal(peer.call("ROOT", map[string]any{}), &root))
+	domain := root.Capabilities[1]
+	notReady("ROOT")
+
+	wait := map[string]any{"domain": domain, "after_sequence": 0}
+	payload, receipt, _, _, err := peer.mappedExecute("VIEW_WAIT", wait)
+	require(t, err)
+	if string(payload) != `{"event":null,"status":"EMPTY"}` || receipt != nil {
+		t.Fatalf("VIEW_WAIT before ACQUIRE: %s", payload)
+	}
+	guestWait, emptyLeg := peer.cells, peer.mappingLastNative
+	notReady("VIEW_WAIT")
+
+	families := c.Authorization.Enrollment.TicketFamilies[0]
+	ticket := guestbridge.Ticket{Anchor: families.Acquisition.Anchor, Nonce: families.Acquisition.Nonce, Number: 1, Credentials: peer.credentials}
+	payload, _, _, _, err = peer.mappedExecute("VIEW_ACQUIRE", map[string]any{"request": ticket, "domain": domain, "access": guestbridge.ViewAccess{Kind: "DOMAIN"}, "mode": "READ", "target": nil})
+	require(t, err)
+	var acquisition struct {
+		Status string
+		Lease  guestbridge.ViewLease
+	}
+	require(t, json.Unmarshal(payload, &acquisition))
+	if acquisition.Status != "GRANTED" {
+		t.Fatalf("VIEW_ACQUIRE: %s", payload)
+	}
+	control := guestbridge.Ticket{Anchor: families.Control.Anchor, Nonce: families.Control.Nonce, Number: 1, Credentials: peer.credentials}
+	payload, _, _, _, err = peer.mappedExecute("VIEW_RELEASE", map[string]any{"request": control, "lease": acquisition.Lease})
+	require(t, err)
+	if !bytes.Contains(payload, []byte(`"status":"PENDING"`)) {
+		t.Fatalf("VIEW_RELEASE: %s", payload)
+	}
+	notReady("VIEW_RELEASE")
+
+	// The wait that arrived before the acquire continues with its next leg.
+	payload, receipt, _, _, err = peer.mappedWaitContinuation(guestWait, 1, wait, emptyLeg)
+	require(t, err)
+	if !bytes.Contains(payload, []byte(`"status":"EVENT"`)) || !bytes.Contains(payload, []byte(`"phase":"RECALL"`)) {
+		t.Fatalf("continued VIEW_WAIT: %s", payload)
+	}
+	if receipt == nil || receipt.Kind != "EVENT" || receipt.PollCount != 2 {
+		t.Fatalf("continued VIEW_WAIT receipt %+v", receipt)
+	}
+	notReady("EVENT")
 }
 
 func TestRuntimeAssemblyMissingAdaptersRefuse(t *testing.T) {
