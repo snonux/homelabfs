@@ -70,10 +70,14 @@ def host_invariant(rocky_pid, birth, config_hash):
     if len(config) > 65536 or hashlib.sha256(config).hexdigest() != config_hash or [line for line in config.decode().splitlines() if line.startswith('memory=')] != ['memory=12G']:
         raise ValueError('configured12GiB VM allocation changed')
     # Host profile (zq3-r2): Rocky's guest pages count as Active on f3, so free
-    # pages alone fell to 2.87 GB with 2.6 GB inactive while the host had ample
-    # reclaimable memory. Keep a hard 1 GiB free floor and require 3.5 GiB of
-    # free plus inactive (reclaimable) pages, the same accounting the zq3 Phase
-    # 6 bar uses. The test itself stays bounded to 512 MiB RSS.
+    # pages alone fell to 2.87 GB (2.6 GB inactive) and the old 3.5 GiB
+    # free-only floor refused. The protection for Rocky is the hard 1 GiB free
+    # floor: the pagedaemon starts reclaiming inactive pages only below
+    # v_free_target (about 340 MB on f3), and the child is bounded to 512 MiB
+    # RSS, so a run admitted at 1 GiB free never forces reclaim. The 3.5 GiB
+    # free+inactive floor is a sanity check on overall headroom; inactive
+    # pages may still hold dirty or idle guest memory, so they are not counted
+    # as freely reclaimable.
     return free_pages(1 * GIB, reclaimable_floor=3 * GIB + 512 * MIB)
 
 
@@ -90,9 +94,9 @@ def guest_invariant(hostname):
 def free_pages(floor, reclaimable_floor=None):
     """Check the free-page floor and, if given, the free+inactive floor.
 
-    Inactive pages are reclaimable without swapping out active memory, so the
-    optional second floor accepts them; the first floor always counts only
-    free pages.
+    The first floor counts only free pages and is the real safety margin. The
+    optional second floor adds inactive pages as a headroom sanity check; it
+    does not assume they can be reclaimed without cost.
     """
     values = subprocess.check_output(['/sbin/sysctl', '-n', 'hw.pagesize',
         'vm.stats.vm.v_free_count', 'vm.stats.vm.v_inactive_count'],

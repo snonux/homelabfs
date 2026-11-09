@@ -224,7 +224,6 @@ class GuardTests(unittest.TestCase):
             GUARD.check_request(argparse.Namespace(stage="bad/stage", command=["/bin/true"], local_reserved_bytes=1))
 
 
-
 class MemoryFloorTests(unittest.TestCase):
     """free_pages floors, including the host profile's reclaimable floor (o54)."""
 
@@ -245,6 +244,11 @@ class MemoryFloorTests(unittest.TestCase):
     def test_reclaimable_floor_refuses(self):
         with self.assertRaisesRegex(ValueError, "free\\+inactive reserve below floor"):
             self.check(300000, 300000, 1 << 30, 3 * (1 << 30) + 512 * (1 << 20))
+
+    def test_exact_boundaries_pass(self):
+        gib = 1 << 30
+        self.check(gib // 4096, (3 * gib + 512 * (1 << 20)) // 4096 - gib // 4096,
+                   gib, 3 * gib + 512 * (1 << 20))
 
     def test_without_reclaimable_floor_only_free_counts(self):
         with self.assertRaisesRegex(ValueError, "free-page reserve below floor"):

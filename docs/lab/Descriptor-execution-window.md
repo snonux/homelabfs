@@ -262,7 +262,7 @@ workstation's, so the filler checks it against both and refuses a skew above
 300 s. Review the printed hash, then run `setup`, `qualify` and `restore` with exactly that plan
 and hash. `qualify` runs under the bounded native guard's host profile
 (512 MiB aggregate RSS, one CPU, Rocky pinned, because Rocky still runs during
-Phase 4), staged together with its `runner_process.py` in a fresh 0700 root
+Phase 4; at least 1 GiB free and 3.5 GiB free plus inactive pages, o54), staged together with its `runner_process.py` in a fresh 0700 root
 as `native-test-drive.py` does. The guard imports that sibling module, so it
 runs with `-B` but without `-I` (which would drop the script directory from
 the import path); the controller below keeps `-I -B`:
