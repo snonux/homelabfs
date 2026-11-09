@@ -363,9 +363,9 @@ which an abort leaves an unconsumed `next_entry` is as short as possible.
 
 1. Final pre-stop checks (B): Phase 1 facts unchanged; `sysctl -n
    kern.boottime` equal to the Phase 1 value; `ps -p <Rocky bhyve PID> -o
-   lstart=` (with `TZ=UTC`) equal to the Phase 1 value; `fdescfs-window.py
-   facts --inspector …` with its `descriptor` equal to the window's
-   `owned.json` (zq3-r1, R5: an unnoticed external f3 reboot during a pause
+   lstart=` (with `TZ=UTC`) equal to the Phase 1 value; `doas -n
+   /usr/local/bin/python3.12 -I -B fdescfs-window.py facts --inspector …`,
+   whose parsed `descriptor` must equal the parsed `owned.json` (zq3-r1, R5: an unnoticed external f3 reboot during a pause
    restarted Rocky and dropped the window, and select/stop then ran on the new
    instance). Any difference stops the run before step 2: nothing is selected
    yet, so U1 is not needed; see the failure rule below. Memory pre-estimate (current free +
@@ -380,12 +380,17 @@ which an abort leaves an unconsumed `next_entry` is as short as possible.
 3. f3, immediately after step 2: `tools/lab/vms.sh --approved-action stop-rocky`
    (clean ACPI `vm stop`, waits, never forces). Then verify `vm list` shows
    Rocky Stopped, no `bhyve: rocky` process, no `/dev/vmm/rocky`, its tap gone.
-- Failure in step 1: nothing is selected. If Rocky runs: U2, then restore the
-  window (Phase 11 step 5) when the owned mount is intact. If the host
-  rebooted (R5), Rocky may be down or restarted and the window gone: inspect,
-  record, and let root reconcile (owned mount absent, modules unloaded); start
-  Rocky normally only if `next_entry` was never set (Phase 3 recorded it
-  empty).
+- Failure in step 1: step 2 has not run, so `next_entry` is still empty
+  (confirm with `grub2-editenv - list` once Rocky answers, and the
+  `rocky_kernel.py` state journal shows no select). Two cases:
+  - f3 booted since Phase 1 (R5): the window mount and modules are gone.
+    Record the retained window directory by hand (`fdescfs-window.py` has no
+    action for a vanished mount). Rocky has AUTO yes, so it normally runs
+    again: then U2. If it is down, start it normally (`vms.sh --approved-action
+    start-rocky`, after the R6 PoC share check), then U2.
+  - Otherwise (same boot, Rocky runs, a PID or mount mismatch): inspect and
+    stop; U2, then restore the window (Phase 11 step 5) only if `facts` still
+    shows the owned FSID.
 - Failure in step 2, or if step 3 refuses before stopping anything: Rocky
   still runs, so run **U1** (cancel the one-shot) and verify, then U2.
 - Failure in step 3 (timeout or SSH loss is not success): keep waiting within
@@ -784,7 +789,9 @@ also stops until Paul decides on a forced power-off.
 
 - R1 Memory: the 13.75 GiB bar (enforced guard ceilings plus 3 GiB reserve)
   left about 1.15 GiB over the zq3-r1 fresh-boot measurement of 14.9 GiB
-  reclaimable. Phase 6 measures it and refuses otherwise.
+  reclaimable (with `vfs.zfs.arc_min` 0 on f3 the whole ARC counted; a
+  nonzero `arc_min` lowers the reclaimable part). Phase 6 measures it and
+  refuses otherwise.
 - R2 The custom kernel fails to boot (initramfs/LVM). The one-shot entry was
   consumed when GRUB ran, so the next normal start boots stock. But a hung or
   panicked guest cannot be shut down from inside; ending that child (in Phase 8
