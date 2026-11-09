@@ -364,14 +364,15 @@ The bar (g54) is the enforced guard ceilings plus a 3 GiB host reserve:
 | **bar, 13.75 GiB** | **14,763,950,080** (= 3,604,480 pages of 4096) |
 
 Required: reclaimable = (free + inactive) × 4096 + (ARC − `arcstats.c_min`) ≥
-14,763,950,080 (`p6-bar.json` `"pass": true`). `c_min` is the effective ARC
-floor that `runtime-guard.py` also subtracts (about 527 MB on f3);
-`vfs.zfs.arc_min` 0 only means "default floor"; swap unused; all VMs stopped and `no-vmm`; `/dev/fd` still
+14,763,950,080 (`p6-bar.json` `"pass": true`); swap unused; all VMs stopped and `no-vmm`; `/dev/fd` still
 the owned fdescfs mount (`descriptor-equals-owned: True`). For reference,
 zq3-r1's fresh-boot measurement (free + inactive 15,310,299,136 bytes, ARC
 693 MB of which about 166 MB above `c_min`) gives about 15.48 GB, passing this
 bar with about 0.7 GB to spare. Else: restore the window (Phase 11, `$W
 restore`), then U3.
+
+`c_min` is the effective ARC floor that `runtime-guard.py` also subtracts
+(about 527 MB on f3); `vfs.zfs.arc_min` 0 only means "default floor".
 
 ## Phase 7: host setup (A4, about 3 min)
 
@@ -541,8 +542,17 @@ Not run: PTE/TLB/GUP (G14), distributed writers (ov3/pv3).
 If T10 ended RESTARTED, the runtime still serves under the guard (r1 finding
 F5): the `child-gone` check also matches the guard's `--vm-name hfs-zq3-r2`,
 and `vms.sh start-rocky` refuses while the guard lives. End it first with one
-SIGTERM to the guard (its own bounded stop), wait for the guard to exit, then
-continue; otherwise Phase 12 waits up to the 3600 s bound.
+SIGTERM to the guard (its own bounded stop: one SIGTERM to the runtime, 30 s
+grace, up to 300 s observation), then wait for the guard to exit:
+
+```bash
+f3 'pgrep -lf runtime-guard.py'                 # exactly one guard; note <GUARD_PID>
+f3 "doas -n kill -TERM <GUARD_PID>"
+```
+
+Exit status 0 with the runtime gone: continue. Exit status 3
+(`stop-uncertain.json`, runtime still running): stop and preserve; no further
+signal without Paul's decision. Otherwise Phase 12 waits up to the 3600 s bound.
 
 ```bash
 f3 "doas -n tar -c -f - --exclude control.sock -C $R guard records runtime/owner launch" > $E/f3-evidence.tar   # private; runtime-config.json is not included
