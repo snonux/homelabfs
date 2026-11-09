@@ -196,7 +196,7 @@
   "reused": {
     "files": 122,
     "from_manifest": "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
-    "justification": "git diff defd974..HEAD touches only internal/guestbridge/README.md and a runtimeprep test in internal/cmd/lib9p, and go.mod only drops an // indirect marker; each reused file was hash-checked against the f44 manifest (re-admitted first), Linux notices and patches also against the current source and repository",
+    "justification": "git diff defd974..HEAD touches only internal/guestbridge/README.md and one runtimeprep test (internal/runtimeprep/bootstrap_fixture_test.go), and go.mod only drops an // indirect marker; each reused file was hash-checked against the f44 manifest (re-admitted first), Linux notices and patches also against the current source and repository",
     "list": "reused-files.json",
     "scope": "83 native FreeBSD files, 5 native source-bundle/notice files, 7 daemon files, 22 Linux license notices, patches 0001/0002/0004/0005 and series"
   },

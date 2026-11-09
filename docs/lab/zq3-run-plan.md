@@ -623,7 +623,9 @@ d44 therefore adds per-operation arming to the runtime: ARM operation code 2,
 `correlate.py command --operation arm-lost-reply --lost-intent MKDIR`, drops
 only a CALL whose guest intent opcode is MKDIR and lets the earlier CALLs
 through. The superseded `e0cca0c` candidate refuses the flag; the f44 rebuild
-(`b203799e…`, source `defd974`) carries it, with its window pins rebuilt too.
+(`b203799e…`, source `defd974`) carries it, with its window pins rebuilt too,
+and so does the current r54 candidate (`5eb42c50…`, t54), which reuses that
+daemon byte for byte.
 With it, the T9 expectation becomes `dropped-reply-effect-committed-and-visible`
 (record `armed_intent`/`dropped_opcode` MKDIR, mkdir fails in m0, m1 sees the
 directory, m0 still blocked), and T10 is still expected to FENCE because the

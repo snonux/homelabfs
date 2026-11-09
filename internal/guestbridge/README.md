@@ -208,7 +208,8 @@ non-matching CALL is exposed normally while the fixture stays armed. The
 evidence adds `intent` and the actual `dropped_opcode`. The lifecycle endpoint
 maps ARM operation code 2 to the MKDIR filter without changing the 57-byte
 frame; the client spells it `--lost-operation CALL --lost-intent MKDIR`.
-This is runtime code: the admitted xz3 candidate does not have it, so using
-the filter in zq3 needs a rebuilt, re-admitted candidate. The guest still
+This is runtime code. The f44 rebuild (`b203799e…`) added it, and the
+current r54 candidate (`5eb42c50…`) carries the same daemon, so zq3 can use
+the filter. The guest still
 blocks m0 after the dropped MKDIR reply, so T10 is still expected to FENCE;
 the difference is that m1 then shows the committed directory.
