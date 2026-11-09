@@ -209,8 +209,9 @@ evidence adds `intent` and the actual `dropped_opcode`. The lifecycle endpoint
 maps ARM operation code 2 to the MKDIR filter without changing the 57-byte
 frame; the client spells it `--lost-operation CALL --lost-intent MKDIR`.
 This is runtime code. The f44 rebuild (`b203799e…`) added it, the r54
-(`5eb42c50…`) and w54 (`89c928d5…`) candidates carried the same daemon, and
-the current z54 daemon rebuild (`2e0412a6…`, daemon `39c92d01…`) keeps it,
-so zq3 can use the filter. The guest still
+(`5eb42c50…`) and w54 (`89c928d5…`) candidates carried the same daemon, the
+z54 daemon rebuild (`2e0412a6…`, daemon `39c92d01…`) keeps it, and the current
+964 kernel rebuild (`e01fab21…`) reuses that daemon, so zq3 can use the
+filter. The guest still
 blocks m0 after the dropped MKDIR reply, so T10 is still expected to FENCE;
 the difference is that m1 then shows the committed directory.

@@ -197,7 +197,10 @@ below fills everything that can be pinned offline for the zq3 run.
 Prepared offline by task v34 (zq3 gap G12) from source `e0cca0c`, then rebuilt
 for f44 from `defd974` (d44 MKDIR-targeted lost reply) and on 2026-11-09 for
 the z54 daemon rebuild from `a20aca1` (z54 VIEW_POLL/VIEW_ACK answers), so the
-test bytes match the final daemon source. Nothing used
+test bytes match the final daemon source. The 964 kernel rebuild (2026-11-10,
+`e01fab21…`) reuses that daemon, so these artifacts stay pinned unchanged; a
+check build from `06c27a8` gave the same daemon and a different test binary
+only because a non-window test file changed. Nothing used
 SSH, the lab, a VM, a mount or a module. It grants no authority: the window is
 zq3 approval class A5 and still needs Paul's explicit yes at run time.
 

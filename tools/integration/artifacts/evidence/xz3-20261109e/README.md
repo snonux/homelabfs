@@ -1,5 +1,13 @@
 # xz3 z54 daemon rebuild (2026-11-09): every VIEW_POLL answered
 
+**Superseded on 2026-11-10** by the [964 kernel rebuild](../xz3-20261110f/README.md)
+(`e01fab21…`, source `06c27a8`). This package's w54 guest kernel let the
+next owner of fixed 9p tag 65533 allocate it before the previous request was
+released, so in zq3-r5 the release loop blocked the session and DRAINED was
+never sent (R5-1). Its daemon `39c92d01…` passed the f3 observer check in
+zq3-r5 and is reused unchanged, with the window artifacts and native parts.
+The tooling refuses this manifest as superseded.
+
 This candidate supersedes the [w54 candidate](../xz3-20261109d/README.md)
 (`89c928d5…`, source `ff866c5`) only because its CGO daemon predates z54. In
 lab run zq3-r4 (R4-1) the f44 daemon `174949c1…` left a VIEW_POLL that arrived

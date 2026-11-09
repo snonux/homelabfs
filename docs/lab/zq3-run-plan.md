@@ -23,11 +23,11 @@ preparation used SSH, the lab, a VM, a mount or a private key.
 | Input | Value |
 |---|---|
 | Run ID | `zq3-r1` (guest/controller regex `[a-z0-9][a-z0-9-]{0,23}`); a retry gets a new ID |
-| Candidate | `/home/paul/tmp/claude/hfs-xz3-20261109e/package` (z54 daemon rebuild, 2026-11-09), manifest SHA256 `2e0412a62d1c1f0aa0b29865c521bf3df7a925ea5ef293428fa9b38b647d8f2f`, source `a20aca192911e380f3863897e1e6774b1fc46e0e`, CGO daemon `39c92d01…`; only the daemon was rebuilt (z54 answers every VIEW_POLL/VIEW_ACK, zq3-r4 R4-1). The w54 guest kernel (failed-bind kill_sb fence, zq3-r3 R3-1; r54 mount HELLO fix, zq3-r2 R2-4), its modules, the Linux source records and the exporter and native parts are byte-identical reuses from the w54 candidate (`89c928d5…`, `ff866c5`), now refused as superseded together with r54 (`5eb42c50…`), f44 (`b203799e…`) and `3f770a88…` |
+| Candidate | `/home/paul/tmp/claude/hfs-xz3-20261110f/package` (964 kernel rebuild, 2026-11-10), manifest SHA256 `e01fab21cd7a47822d7b56d84e15150cdc7a36c939fceb23852d4fdef0121ec2`, source `06c27a88e1f95cdde8c2a858fe8d1310d5bfcaba`; only the guest kernel was rebuilt (964: a fixed 9p tag is reused only after its previous request is released, and a busy tag is retried inside `hfs_transport` without blocking the session, zq3-r5 R5-1). The z54 CGO daemon `39c92d01…` (answers every VIEW_POLL/VIEW_ACK, zq3-r4 R4-1), the modules and the exporter and native parts are byte-identical reuses from the z54 candidate (`2e0412a6…`, `a20aca1`), now refused as superseded together with w54 (`89c928d5…`), r54 (`5eb42c50…`), f44 (`b203799e…`) and `3f770a88…`. The kernel keeps the w54 failed-bind kill_sb fence (zq3-r3 R3-1) and the r54 mount HELLO fix (zq3-r2 R2-4) |
 | Quarantined, never installed | `7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b` (CGO-disabled daemon); the probe controller refuses it |
-| Daemon | `freebsd/hfs-controlled-runtime` `39c92d016f17b4c480c3c3bfac266f284123413ea4d95697b935d80bdf98a521` (z54, from `a20aca1`; two forced builds and the window build reproduced it. The f3 native observer check passed for the f44 bytes `174949c1…` and has not yet run on these bytes) |
+| Daemon | `freebsd/hfs-controlled-runtime` `39c92d016f17b4c480c3c3bfac266f284123413ea4d95697b935d80bdf98a521` (z54, from `a20aca1`; two forced builds and the window build reproduced it, and a window build from `06c27a8` gave the same bytes. These exact bytes passed the f3 native observer check in zq3-r5 Phase 4 step 1a) |
 | Patched bhyve (exporter) | `freebsd/bhyve` `36423b6d4f68dc1b05299b1c379a164035e7db5b06ca64b47f2a8571d823fb5c`; the system `/usr/sbin/bhyve` (`c54a6361…`) is never replaced |
-| Guest kernel | `6.1.190-hfs-xz3`: `linux/bzImage` `5c46f218…`, `linux/config` `d88b4c56…`, `System.map` `d544349f…`, five modules (`virtio_net`, `net_failover`, `failover`, `efivarfs`, `x86_pkg_temp_thermal`) with hashes in the package's `installation-proposal.json` |
+| Guest kernel | `6.1.190-hfs-xz3` (964): `linux/bzImage` `704b17be…`, `linux/vmlinux` `a65f1c45…` (GNU build ID `a470c7a8…`), `linux/config` `d88b4c56…` (unchanged), `System.map` `efb43b79…`, five modules (unchanged since w54) (`virtio_net`, `net_failover`, `failover`, `efivarfs`, `x86_pkg_temp_thermal`) with hashes in the package's `installation-proposal.json` |
 | Operator public key | `2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635` (built into the guest kernel config) |
 | Probe tools | `tools/lab/retained9p/{controller,guest,observer}.py` at the commit that adds this plan; the controller pins only the candidate above |
 | Staging prefix (f3) | `/var/tmp/hfs-validation-xz3/zq3-r1` (from the installation proposal) |
@@ -152,7 +152,7 @@ or vmm context could still exist.
 
 - Actions: the FreeBSD CGO `controlledruntime.test` binary (for the host FD
   rerun) and the `fdescfs-namespace` helper are already rebuilt from `a20aca1`
-  (z54 daemon rebuild) and pinned (`97fb5c07…`, `cc92bcde…`, reproducible; recipe
+  (z54 daemon rebuild, reused unchanged by the 964 kernel rebuild) and pinned (`97fb5c07…`, `cc92bcde…`, reproducible; recipe
   `tools/lab/build-fdescfs-window-artifacts.sh`, record
   `docs/lab/zq3-fdescfs-window/build-record.json`); rebuild only to re-verify.
   The fdescfs window pins are reviewed in `docs/lab/zq3-fdescfs-window/pins.json`;
@@ -625,8 +625,9 @@ only a CALL whose guest intent opcode is MKDIR and lets the earlier CALLs
 through. The superseded `e0cca0c` candidate refuses the flag; the f44 rebuild
 (`b203799e…`, source `defd974`) carries it, with its window pins rebuilt too,
 and so do the r54 (`5eb42c50…`, t54) and w54 (`89c928d5…`, y54) candidates,
-which reuse that daemon byte for byte, and the current z54 daemon rebuild
-(`2e0412a6…`, daemon `39c92d01…` from `a20aca1`), whose source keeps d44.
+which reuse that daemon byte for byte, the z54 daemon rebuild (`2e0412a6…`,
+daemon `39c92d01…` from `a20aca1`), whose source keeps d44, and the current
+964 kernel rebuild (`e01fab21…`), which reuses that z54 daemon.
 With it, the T9 expectation becomes `dropped-reply-effect-committed-and-visible`
 (record `armed_intent`/`dropped_opcode` MKDIR, mkdir fails in m0, m1 sees the
 directory, m0 still blocked), and T10 is still expected to FENCE because the
@@ -910,7 +911,7 @@ reviewed and pinned, and this plan is re-filled:
   runtime's FUSE mount point path from the G2 config at fill time.
 - G12 *Prepared (v34)*: rebuilt, reproducible `controlledruntime.test`
   `97fb5c07…` and `fdescfs-namespace` `cc92bcde…` from `a20aca1`, z54 daemon
-  rebuild (earlier `9e046c20…`/`a773f3ef…` from `defd974`, f44; recipe
+  rebuild, reused unchanged by the 964 kernel rebuild (earlier `9e046c20…`/`a773f3ef…` from `defd974`, f44; recipe
   cross-checked by reproducing the candidate daemon), reviewed window pins and
   the run-time plan filler. Open until run time: the read-only host facts
   (python3.12 and base command hashes, `ldd` closure, controller `facts`)
