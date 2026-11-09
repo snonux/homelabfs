@@ -102,7 +102,9 @@ record, the SSH key script, the tool that checks the daemon's records against
 what Rocky did, the pod test, the lost-reply and restart steps, the host-side
 "empty folder" check, the `/dev/fd` plan with rebuilt test programs, and a
 memory/time watchdog for the daemon. The test bundle was rebuilt so it contains
-all of this (`b203799e…`), and its daemon passed a read-only self-check on f3.
+all of this, and its daemon passed a read-only self-check on f3. On 2026-11-09
+its guest kernel was rebuilt once more (`5eb42c50…`) to fix the mount error
+that stopped the second attempt (zq3-r2); the daemon is unchanged.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
