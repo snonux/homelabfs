@@ -89,6 +89,31 @@ delete through a mount), preserve failed resources, report. Values written
   rerun the Phase 8 command once (the watcher only signs below
   `$D/bootstrap-run`). Any later stop is never rerun.
 
+## Execution notes after review round 1 (2026-11-09)
+
+These override the lines they name:
+
+- **Guard SIGTERM (Phase 11 RESTARTED/serving branch):** find the guard with
+  `f3 'pgrep -U root -lf runtime-guard.py'`. The remote csh wrapper of the
+  guard's SSH session also carries the guard argv (zq3-r2 R2-2), so a plain
+  `pgrep -lf` lists two processes. Signal only the root python process.
+- **Guest unmounts are bounded locally:** use `timeout 150 rocky "umount
+  $G/m0"` and `timeout 150 rocky "umount $G/m1"`, with T8's unmount bounded
+  the same way. SSH keepalives do not end a blocked `umount`, because sshd
+  keeps answering. A timeout means a blocked 9p session (the expected FENCED
+  state): record it, never use `-f`/`-l`, and continue to the poweroff.
+- **T10 abort paths:** if `correlate.py command --operation restart`
+  refuses, or `t10-restart.json` reports `REFUSED`, treat the runtime as
+  still serving. Run T8 first, as the ARM-refused path does, then Phase 11
+  through its guard-SIGTERM branch.
+- **Missing exporter:** if the guard receipt's `exporter` is null, step 7 is
+  `host.py cleanup --record … --record-sha256 … --no-child`, not
+  `--child-pid`.
+- **Phase 0 recheck:** also `sha256sum /usr/bin/ssh` on the workstation. The
+  batch template pins it (`16cb2c6a…`); an openssh update since the fill
+  would make the batch fill refuse after READY, so stop and refill if it
+  differs.
+
 ## Session setup (workstation, bash)
 
 ```bash
