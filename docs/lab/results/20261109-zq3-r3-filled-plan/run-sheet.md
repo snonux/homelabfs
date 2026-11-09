@@ -52,6 +52,22 @@ else is exact.
   attempt needs a new guest boot, which means a new run (new run ID, new
   sessions and a fresh fill).
 
+## Execution notes after review round 1 (2026-11-09)
+
+- **D1-a runs right after Phase 1**, before Phase 2 staging and the Phase 3
+  kernel install. If a `kldunload` is refused (busy), stop with nothing staged
+  or installed. If only `fusefs` unloaded, that state is harmless: stop and
+  report. This changes plan item A5 ("no unload"). Paul's standing
+  2026-11-09 auto-approval of all project changes covers it; it is named here
+  so the change is explicit.
+- **Every abort after Phase 4 step 5 also removes the observer key**: on
+  Rocky, with `observer_key.py remove --expect-sha256 <ENROL_AFTER_SHA256>`
+  while Rocky (or the test guest on Rocky's disk) answers, and on f3 with
+  `doas -n rm` of `$R/observer/id_ed25519{,.pub}`. Phase 12's `e08542dc…`
+  check must hold on every path.
+- The guard's exit status is read from `$R/guard/receipt.json` and
+  `stop-uncertain.json`, not from the operator shell.
+
 ## Session setup (workstation, bash)
 
 ```bash
