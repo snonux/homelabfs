@@ -620,6 +620,12 @@ domain; native reader domains have their own bindings and remain in the same
 closure inventory. Delivery uses VIEW_WAIT guest requests and VIEW_POLL native
 commands. Their payload is `{domain:Cap,after_sequence:u64}`. The response is
 `{status:EMPTY|EVENT,event:Event|null}` with Event only for EVENT.
+A domain enters the inventory with its first VIEW_ACQUIRE, yet a guest may
+poll before that (its first release must be able to recall it). A poll from a
+not yet inventoried domain whose granted DOMAIN capability names its own
+session scope is answered EMPTY and changes no state or `inventory_hash`; an
+inventoried domain must present exactly its acquired capability. A valid poll
+is never left unanswered.
 
 `Event={sequence:n64,recall:uuid,phase:RECALL|INSTALL_DRAIN|INSTALL_FINAL|REOPEN,
 domain:Cap,authority_hash:hash,closure_hash:hash,inventory_hash:hash,

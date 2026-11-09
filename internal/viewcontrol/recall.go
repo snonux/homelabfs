@@ -57,35 +57,7 @@ func (c *Controller) Exchange(ctx context.Context, scope guestbridge.Context, op
 		return canonical(map[string]any{"status": "BLOCKED", "ledger_hash": digest(c.state)})
 	}
 	if op == "VIEW_POLL" {
-		var p struct {
-			Domain guestbridge.Capability
-			After  uint64 `json:"after_sequence"`
-		}
-		if err := json.Unmarshal(raw, &p); err != nil {
-			return nil, err
-		}
-		domain, ok := c.state.Domains[scope.Session]
-		if !ok || !equal(domain.Domain, p.Domain) {
-			return nil, fsapi.Permission
-		}
-		if err := c.progress(ctx); err != nil {
-			return nil, err
-		}
-		var event json.RawMessage
-		if c.state.Recall != nil {
-			event = c.state.Recall.Events[scope.Session]
-		}
-		if len(event) == 0 {
-			return canonical(map[string]any{"status": "EMPTY", "event": nil})
-		}
-		var e struct{ Sequence uint64 }
-		if err := json.Unmarshal(event, &e); err != nil {
-			return nil, err
-		}
-		if p.After >= e.Sequence {
-			return canonical(map[string]any{"status": "EMPTY", "event": nil})
-		}
-		return canonical(map[string]any{"status": "EVENT", "event": event})
+		return c.poll(ctx, scope, raw)
 	}
 	if op != "VIEW_ACK" {
 		return nil, fsapi.Unsupported
@@ -104,6 +76,64 @@ func (c *Controller) Exchange(ctx context.Context, scope guestbridge.Context, op
 		return nil, err
 	}
 	return canonical(map[string]any{"status": "ACCEPTED"})
+}
+
+// poll answers one nonblocking VIEW_POLL. The spec requires every poll to be
+// answered with {status:EMPTY|EVENT}; it never parks or leaves a cell silent.
+//
+// A domain becomes part of the recall inventory only through its first
+// VIEW_ACQUIRE. The guest kernel nevertheless starts polling as soon as its
+// view control exists, before that acquire (an empty unbound domain is already
+// polling so its own first release can recall it). Such an unregistered domain
+// has no event to receive and no lease to stop, so it gets EMPTY once its
+// capability passes the same kind/scope checks a registered domain implies.
+// Answering EMPTY changes no state: registering the domain here would add an
+// idle domain to every later inventory_hash and require its ACKs, so the
+// inventory remains exactly the acquired domains. The backend reposts the
+// poll (same logical VIEW_WAIT continuation or a new VIEW_WAIT), and the poll
+// after a later ACQUIRE/RELEASE delivers the RECALL event.
+func (c *Controller) poll(ctx context.Context, scope guestbridge.Context, raw json.RawMessage) (json.RawMessage, error) {
+	var p struct {
+		Domain guestbridge.Capability
+		After  uint64 `json:"after_sequence"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return nil, err
+	}
+	domain, registered := c.state.Domains[scope.Session]
+	if !registered {
+		if p.Domain.Token == "" || p.Domain.Kind != "DOMAIN" || p.Domain.Scope != scope {
+			return nil, fsapi.Permission
+		}
+		return emptyPoll()
+	}
+	// A registered domain must present exactly the capability it acquired with.
+	if !equal(domain.Domain, p.Domain) {
+		return nil, fsapi.Permission
+	}
+	if err := c.progress(ctx); err != nil {
+		return nil, err
+	}
+	var event json.RawMessage
+	if c.state.Recall != nil {
+		event = c.state.Recall.Events[scope.Session]
+	}
+	if len(event) == 0 {
+		return emptyPoll()
+	}
+	var e struct{ Sequence uint64 }
+	if err := json.Unmarshal(event, &e); err != nil {
+		return nil, err
+	}
+	if p.After >= e.Sequence {
+		return emptyPoll()
+	}
+	return canonical(map[string]any{"status": "EVENT", "event": event})
+}
+
+// emptyPoll is the canonical EMPTY reply: {"event":null,"status":"EMPTY"}.
+func emptyPoll() (json.RawMessage, error) {
+	return canonical(map[string]any{"status": "EMPTY", "event": nil})
 }
 
 // ValidateDrain checks complete immutable original call bytes, provenance and

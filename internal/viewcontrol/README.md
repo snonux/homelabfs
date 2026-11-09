@@ -109,6 +109,17 @@ REOPENED close the recall. No query, timeout, cell release, disconnect or new UU
 retires rights. Disconnect invalidates learned acknowledgements; recovery needs
 full live continuity/exclusion and fresh exact acknowledgements.
 
+VIEW_POLL is nonblocking and always answers `{status:EMPTY|EVENT}`. A domain joins
+the recall inventory only through its first VIEW_ACQUIRE, but the guest kernel
+starts polling as soon as its view control exists. A poll from such a not yet
+registered domain whose DOMAIN capability names the session's own scope gets
+the canonical `{"event":null,"status":"EMPTY"}` and changes no ledger state, so
+`inventory_hash` still covers exactly the acquired domains. The backend reposts
+the poll and the next one after a later ACQUIRE/RELEASE delivers the RECALL.
+A registered domain presenting a different capability is still refused. Before
+zq3-r4 this poll was refused with PERMISSION, the endpoint left the cell
+silently `blocked`, and the guest's first release could never be recalled.
+
 Signed finite bounds cover permanent identities/tombstones, separate live/control
 tickets, reservation/freeze/manifests, complete source archives and peak source/
 ledger serialization memory. Source slots for outstanding drains and final
