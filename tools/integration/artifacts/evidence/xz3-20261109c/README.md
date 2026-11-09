@@ -1,5 +1,11 @@
 # xz3 r54 kernel rebuild (2026-11-09): mount HELLO after enrollment
 
+**Superseded on 2026-11-09** by the [w54 kernel rebuild](../xz3-20261109d/README.md)
+(`89c928d5…`, source `ff866c5`). This package's guest kernel oopses when
+`hfs_fill_super` fails: its `v9fs_hfs_kill_super` cleanup dereferences
+uninitialised completion state (zq3-r3 R3-1). Its daemon and native parts are
+reused unchanged; the tooling refuses this manifest as superseded.
+
 This candidate supersedes the [f44 candidate](../xz3-20261108b/README.md)
 (`b203799e…`, source `defd974`) only because its guest kernel predates r54.
 That kernel's `v9fs_hfs_mount` built the HELLO before enrollment, so every
