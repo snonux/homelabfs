@@ -310,6 +310,28 @@ def load_module(plan, directory, executable, before):
     return after
 
 
+# Exact option lists accepted on the new `mount -p` row for /dev/fd.
+# FreeBSD's fdesc_statfs (sys/fs/fdescfs/fdesc_vfsops.c, releng/15.1 line 220)
+# reports only `mnt_flag & MNT_IGNORE`, so statfs, `mount -p` and the
+# inspector's mount_flags never show nosuid on fdescfs, even though the pinned
+# helper's nmount(..., MNT_NOSUID) sets it in mnt_flag (vfs_domount_first keeps
+# MNT_UPDATEMASK bits). zq3-r1 observed exactly `rw` on f3. nosuid therefore
+# rests on the pinned helper bytes, not on this row; a kernel that does show
+# the flag yields `rw,nosuid`. Anything else (ro, noexec, ignore, extra or
+# repeated options) refuses. The fdescfs nosuid flag is defence in depth only:
+# with nodup, /dev/fd/N resolves to the held file's own vnode, so exec applies
+# the setuid rules of that file's filesystem, not of fdescfs.
+MOUNTED_PROFILES = (["rw"], ["rw", "nosuid"])
+
+
+def mounted_profile_ok(row):
+    """Return whether one added `mount -p` row is the helper's fdescfs mount."""
+    fields = row.split()
+    return (len(fields) == 6 and fields[0] == "fdescfs" and
+            fields[1:3] == ["/dev/fd", "fdescfs"] and
+            fields[3].split(",") in MOUNTED_PROFILES)
+
+
 def execute(plan, directory, executable):
     require(not directory.exists(), "run directory already exists; no replay")
     require(directory.parent.is_dir() and not directory.parent.is_symlink(), "private staging parent")
@@ -341,10 +363,7 @@ def execute(plan, directory, executable):
     added = [row for row in new_rows if row not in old_rows]
     require(all(row in new_rows for row in old_rows) and len(added) == 1,
             "unexpected concurrent mount change; retain for inspection")
-    fields = added[0].split()
-    require(len(fields) == 6 and fields[1:3] == ["/dev/fd", "fdescfs"] and
-            "nosuid" in fields[3].split(",") and "noexec" not in fields[3].split(","),
-            "unexpected mounted profile; retain for inspection")
+    require(mounted_profile_ok(added[0]), "unexpected mounted profile; retain for inspection")
     # Private nodup flags are not exported by statfs/mount -p. The semantic
     # same-regular-vnode check is independent of guessed printable flags.
     helper = json.loads(result["stdout"], object_pairs_hook=unique)

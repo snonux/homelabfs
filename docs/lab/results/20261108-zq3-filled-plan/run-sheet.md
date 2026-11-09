@@ -52,7 +52,7 @@ cd $S/tools/lab/directlaunch && python3 -I -B argv.py verify --record $D/argv/bh
 $D/bin/hfs-runtime-prep check-argv --bundle $D/bundle --record $D/argv/bhyve-argv.json \
   --record-sha256 ba493bf67f9dbd6570074c9f4ec29e4f60ddb3ef7a75e6a0ffeb5546fe243589
 sha256sum -c <<'EOF'
-c51cac6df8b5fb9453d85b6975af3d1090c7dc2cf5ed0bf14e96eeaeea2d5aca  /home/paul/tmp/claude/hfs-zq3-r1-fill/stage/f3-stage.tar
+2b4370bacdc330077d1ef52568a6a9107bfc0b330650becb6d8d600bd5a1c8ea  /home/paul/tmp/claude/hfs-zq3-r1-fill/stage/f3-stage.tar
 2d7fd06c9d5456f550d8a7cabee243b007b424432e6dddc757fa2c23ccc86d6d  /home/paul/tmp/claude/hfs-zq3-r1-fill/stage/rocky-stage.tar
 ac3a0e754ac59a165398bad44bc73185fd18eb5cf0cc842112f7883f766bc46a  /home/paul/tmp/claude/hfs-zq3-r1-fill/kernel/rocky-kernel-plan.json
 EOF
@@ -183,19 +183,54 @@ python3 -I -B $S/tools/lab/retained9p/fill_plan.py bootstrap --template $D/boots
 python3 -I -B $S/tools/lab/retained9p/bootstrap.py check --plan $D/bootstrap/bootstrap-plan.json --plan-sha256 $(sha256sum $D/bootstrap/bootstrap-plan.json | cut -c1-64)
 ```
 
-Step 1, negative before setup (B; a skip counts as unrun):
+Step 1, negative before setup (B; a skip counts as unrun). No `--` before
+the command: the guard's `argparse.REMAINDER` under Python 3.12 keeps a
+leading `--` as the program name (zq3-r1 attempt 1 tried to exec `--`; p44).
+Each `--stage` name is single use; a refused stage directory is kept and the
+retry takes a new name (zq3-r1 used `unsupported-before-r2`):
 
 ```bash
 NG="doas -n /usr/local/bin/python3.12 -B /var/tmp/hfs-20261108-zq3r1-fdq/native-test-guard.py --root /var/tmp/hfs-20261108-zq3r1-fdq --local-reserved-bytes 4294967296 --profile host --rocky-pid 80203 --rocky-birth 'Sun Nov  8 16:05:53 2026' --rocky-config-sha256 c101adf10d58d8e021faaa1c3dd98ccb7777c2b78b7931f478e71b526814c581 --max-seconds 60"
-f3 "$NG --stage unsupported-before -- $R/bin/controlledruntime.test '-test.run=^TestDescriptorExecNativeUnsupported\$' -test.count=1 -test.timeout=60s -test.v"
+f3 "$NG --stage unsupported-before $R/bin/controlledruntime.test '-test.run=^TestDescriptorExecNativeUnsupported\$' -test.count=1 -test.timeout=60s -test.v"
 ```
 
-Steps 2-4 (A5): setup, qualify (under the guard), fusefs:
+Resume of zq3-r1 after p44 (only for that run). The first setup mounted
+`/dev/fd` and refused the masked `rw` row; it was undone with the pinned
+helper's `unmount EXACT_FSID` and a normal `kldunload fdescfs`, after which
+`facts` equalled `p4-facts.json`. Before rerunning setup:
+
+1. Refresh the tools snapshot `$S` to the main commit that merged p44 (same
+   recipe as the j44 refresh above), so the plan filler and the staged file
+   both use the p44 controller `b00b19d1…`.
+2. Replace the staged controller, keep the refused window directory under a
+   new name (setup refuses an existing run directory, and the directory name
+   must equal the plan's `run_id`), and skip the parent creation below (it
+   exists).
+3. Rerun step 0 and the window plan fill with `-resume` names so the refused
+   attempt's evidence and plan stay untouched: `p4-*-resume.*` evidence,
+   `--out $D/fdescfs-plan-resume`, remote plan
+   `$R/records/fdescfs-plan-resume.json`, and `W`'s `--plan` pointing at it.
+   The bootstrap plan fill (F1) and step 1 already passed and are not rerun.
 
 ```bash
+f3 "doas -n sh -c 'umask 277; test ! -e $R/bin/fdescfs-window.py.p44 && cat > $R/bin/fdescfs-window.py.p44'" < $S/tools/lab/fdescfs-window.py
+f3 doas -n sha256 -r $R/bin/fdescfs-window.py.p44     # must equal b00b19d1… (README, pin refresh after p44); stop otherwise
+f3 doas -n mv $R/bin/fdescfs-window.py.p44 $R/bin/fdescfs-window.py
+f3 "stat -f '%Sp %Su %Sg %N' $R/bin/fdescfs-window.py"   # -r-------- root wheel
+printf '%s\n' 'set -e' 'mv /var/tmp/hfs-fdescfs-windows/zq3-r1 /var/tmp/hfs-fdescfs-windows/zq3-r1.refused-setup-1' | f3 doas -n sh -s
+```
+
+Steps 2-4 (A5): setup, qualify (under the guard), fusefs. `setup` requires
+the root-private parent `/var/tmp/hfs-fdescfs-windows` to exist
+([Descriptor-execution-window](../../Descriptor-execution-window.md)); the
+first line creates it (missing from Phase 2 before p44). The stdin script
+avoids nested quoting through f3's csh login shell:
+
+```bash
+printf '%s\n' 'set -e' 'test ! -e /var/tmp/hfs-fdescfs-windows' 'install -d -m 0700 -o root -g wheel /var/tmp/hfs-fdescfs-windows' | f3 doas -n sh -s
 W="$R/bin/fdescfs-window.py --inspector $R/bin/hfs-controlled-runtime --plan $R/records/fdescfs-plan.json --plan-sha256 <WINDOW_PLAN_SHA256> --directory /var/tmp/hfs-fdescfs-windows/zq3-r1"
 f3 "doas -n /usr/local/bin/python3.12 -I -B $W setup" | tee $E/p4-window-setup.txt
-f3 "$NG --stage qualify -- /usr/local/bin/python3.12 -I -B $W qualify" | tee $E/p4-window-qualify.txt
+f3 "$NG --stage qualify /usr/local/bin/python3.12 -I -B $W qualify" | tee $E/p4-window-qualify.txt
 f3 "doas -n $R/bin/hfs-controlled-runtime --check-descriptor-exec" | tee $E/p4-check-descriptor-exec.txt   # must report fdescfs, supported
 f3 'kldstat; kldstat -q -n fusefs || doas -n kldload /boot/kernel/fusefs.ko; kldstat' | tee $E/p4-fusefs.txt
 ```

@@ -253,10 +253,11 @@ class WindowTests(unittest.TestCase):
             with self.subTest(name=name), self.assertRaises(RuntimeError):
                 WINDOW.module_files(text)
 
-    def setup_attempt(self, before, after, helper_fsid="00000000:00000001"):
+    def setup_attempt(self, before, after, helper_fsid="00000000:00000001", name="new-run"):
         # Only the root-UID admission boundary is substituted. Real private
         # directories and durable evidence are exercised; no host command runs.
-        directory = Path(self.temp.name) / "new-run"
+        # `name` gives each subtest its own fresh run directory (no replay).
+        directory = Path(self.temp.name) / name
         plan = dict(self.plan, before=before)
         original_stat = Path.stat
 
@@ -280,6 +281,34 @@ class WindowTests(unittest.TestCase):
         self.assertIsNone(failure)
         self.assertEqual(calls, 1)
         self.assertEqual(WINDOW.load(directory / "owned.json"), after["descriptor"])
+
+    def test_masked_freebsd_151_row_gets_ownership(self):
+        # Exact row zq3-r1 recorded on f3: fdesc_statfs masks nosuid, so
+        # `mount -p` shows only rw although the helper set MNT_NOSUID.
+        before = baseline()
+        after = copy.deepcopy(before)
+        after.update(descriptor=descriptor(True),
+                     mounts=before["mounts"] + "fdescfs\t\t\t/dev/fd\t\t\tfdescfs\trw\t\t0 0\n")
+        directory, calls, failure = self.setup_attempt(before, after)
+        self.assertIsNone(failure)
+        self.assertEqual(calls, 1)
+        self.assertEqual(WINDOW.load(directory / "owned.json"), after["descriptor"])
+
+    def test_other_mounted_profiles_refuse_without_ownership(self):
+        rows = ("fdescfs /dev/fd fdescfs ro 0 0", "fdescfs /dev/fd fdescfs rw,noexec 0 0",
+                "fdescfs /dev/fd fdescfs rw,nosuid,noexec 0 0", "fdescfs /dev/fd fdescfs rw,ignore 0 0",
+                "fdescfs /dev/fd fdescfs rw,nosuid,nosuid 0 0", "fdescfs /dev/fd fdescfs nosuid,rw 0 0",
+                "other /dev/fd fdescfs rw 0 0", "fdescfs /dev/fd devfs rw 0 0", "fdescfs /dev/fd fdescfs rw 0")
+        for index, row in enumerate(rows):
+            with self.subTest(row=row):
+                before = baseline()
+                after = copy.deepcopy(before)
+                after.update(descriptor=descriptor(True), mounts=before["mounts"] + row + "\n")
+                directory, calls, failure = self.setup_attempt(before, after, name="run-%d" % index)
+                self.assertIn("unexpected mounted profile", str(failure))
+                self.assertEqual(calls, 1)
+                self.assertFalse((directory / "owned.json").exists())
+                self.assertTrue((directory / "after.json").exists())
 
     def test_mismatched_helper_fsid_preserves_without_claiming_ownership(self):
         before = baseline()
