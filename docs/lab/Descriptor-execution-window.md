@@ -243,7 +243,9 @@ after staging, at the start of Phase 4):
    `controller`). The `collect` values (interpreter, kernel, the six base
    commands) are new facts; the others, including `/boot/kernel/fusefs.ko`,
    must equal their pins.
-2. `ldd /usr/local/bin/python3.12` and `sha256 -r` of each library it lists
+2. `ldd /usr/local/bin/python3.12` and `sha256 -r` of the `realpath` of each
+   library it lists (the controller hashes with `O_NOFOLLOW`, so a symlink
+   such as `/usr/local/lib/libintl.so.8` refuses validation; zq3-r1, R4)
    (optional extra pins; the filler accepts them only under `/lib`, `/usr/lib`,
    `/usr/local/lib` or `/libexec`).
 3. `stat -f '%Sp %Su %Sg %N'` of `/usr/local/bin/python3.12` and its

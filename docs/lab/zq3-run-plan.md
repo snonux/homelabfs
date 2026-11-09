@@ -57,7 +57,9 @@ the run and needs a revised plan.
 | Rocky OCI | `podman` 5.8.2 and `crun` 1.27 installed; `runc`, `buildah`, `skopeo` not installed; no image pinned |
 | Rocky resources | 11.7 GiB RAM visible, 7 GiB swap unused, 36G free on `/` |
 
-*New facts Phase 1 must add* (not in the baseline): f3 ARC size/limits and
+*New facts Phase 1 must add* (not in the baseline): f3 `kern.boottime`
+and Rocky's bhyve PID with `TZ=UTC ps -o lstart=` (Phase 5 compares both,
+zq3-r1 R5); f3 ARC size/limits and
 wired/free/inactive pages; whether the host path of the old PoC line,
 `/var/tmp/homelabfs-9p-poc/share` on **f3**, still exists (vm-bhyve's normal
 Rocky start in Phase 12 depends on it, see Risk R6); `/usr/local/bin/python3.12`
@@ -124,7 +126,7 @@ unmounts of run-owned mounts.
 |---|---|---|
 | Total critical window | 60 minutes from runtime start to runtime exit; the probe controller refuses commands 3600 s after its run started, and the outer runtime guard sends the runtime one SIGTERM (its retained stop, bhyve untouched) at 3600 s | proposal `seconds: 3600`; controller `RUN_WINDOW`; `runtime-guard.py` |
 | Restoration budget | 15 minutes after runtime exit (estimate, not enforced) | this plan |
-| Host runtime envelope | 6 GiB (signed), plus 6 GiB guest and 3 GiB host reserve = 15 GiB of 15.7 GiB physical | installation proposal |
+| Host runtime envelope | 6 GiB (signed); admission counts the enforced guard ceilings instead (runtime 4.25 GiB + bhyve 6.5 GiB + 3 GiB host reserve = 13.75 GiB, measured against the reclaimable memory in Phase 6: 14.9 GiB on a fresh f3 boot) | installation proposal, `runtime-guard.py` |
 | Runtime admission accounting | `Budget.HostBytes` at most 4 GiB (the admission package's aggregate pool ceiling), inside the 6 GiB physical envelope; the example spec uses 4 GiB with a 1 GiB service share | `admission/budget.go`, `runtimeprep` |
 | Guest workload ceiling | 2 GiB signed provider/workload ceiling; logical canary 4 MiB | proposal |
 | Guest kdump reservation | the copied default arguments carry `crashkernel=…,2G-64G:256M,…`, i.e. 256 MiB of the 6 GiB VM under a kernel that honours it. The test kernel's config has `CONFIG_KEXEC`, `CONFIG_KEXEC_FILE` and `CONFIG_CRASH_DUMP` unset, so it should reserve nothing and `kdump.service` should fail in that boot (an expected failed unit); budget the 256 MiB anyway until Phase 8 confirms it | Phase 1 kdump fact, package `linux/config` |
@@ -359,9 +361,16 @@ controller `tools/lab/fdescfs-window.py` with the explicit prefix
 The one-shot selection is the last action before the stop, so the window in
 which an abort leaves an unconsumed `next_entry` is as short as possible.
 
-1. Final pre-stop checks (B): Phase 1 facts unchanged; memory pre-estimate
-   (current free + inactive + reclaimable ARC + Rocky's resident bhyve memory
-   must cover the 15 GiB requirement); latest zrepl snapshot of
+1. Final pre-stop checks (B): Phase 1 facts unchanged; `sysctl -n
+   kern.boottime` equal to the Phase 1 value; `ps -p <Rocky bhyve PID> -o
+   lstart=` (with `TZ=UTC`) equal to the Phase 1 value; `doas -n
+   /usr/local/bin/python3.12 -I -B fdescfs-window.py facts --inspector …`,
+   whose parsed `descriptor` must equal the parsed `owned.json` (zq3-r1, R5: an unnoticed external f3 reboot during a pause
+   restarted Rocky and dropped the window, and select/stop then ran on the new
+   instance). Any difference stops the run before step 2: nothing is selected
+   yet, so U1 is not needed; see the failure rule below. Memory pre-estimate (current free +
+   inactive + reclaimable ARC + Rocky's resident bhyve memory must cover the
+   Phase 6 requirement); latest zrepl snapshot of
    `zroot/bhyve/rocky` recorded (disk-level reference only; no manual snapshot
    and no automatic rollback).
 2. Rocky: `grub2-reboot <entry id recorded in Phase 3>`; verify `next_entry`
@@ -371,7 +380,18 @@ which an abort leaves an unconsumed `next_entry` is as short as possible.
 3. f3, immediately after step 2: `tools/lab/vms.sh --approved-action stop-rocky`
    (clean ACPI `vm stop`, waits, never forces). Then verify `vm list` shows
    Rocky Stopped, no `bhyve: rocky` process, no `/dev/vmm/rocky`, its tap gone.
-- Failure in step 1 or 2, or if step 3 refuses before stopping anything: Rocky
+- Failure in step 1: step 2 has not run, so `next_entry` is still empty
+  (confirm with `grub2-editenv - list` once Rocky answers, and the
+  `rocky_kernel.py` state journal shows no select). Two cases:
+  - f3 booted since Phase 1 (R5): the window mount and modules are gone.
+    Record the retained window directory by hand (`fdescfs-window.py` has no
+    action for a vanished mount). Rocky has AUTO yes, so it normally runs
+    again: then U2. If it is down, start it normally (`vms.sh --approved-action
+    start-rocky`, after the R6 PoC share check), then U2.
+  - Otherwise (same boot, Rocky runs, a PID or mount mismatch): inspect and
+    stop; U2, then restore the window (Phase 11 step 5) only if `facts` still
+    shows the owned FSID.
+- Failure in step 2, or if step 3 refuses before stopping anything: Rocky
   still runs, so run **U1** (cancel the one-shot) and verify, then U2.
 - Failure in step 3 (timeout or SSH loss is not success): keep waiting within
   the helper's bound, then stop and inspect; never `vm poweroff`. If Rocky still
@@ -382,8 +402,14 @@ which an abort leaves an unconsumed `next_entry` is as short as possible.
 ### Phase 6: post-stop admission (f3, B)
 
 - Actions: re-check memory now that Rocky's 12 GiB are free: free + inactive +
-  reclaimable ARC (above `arc_min`) must cover 6 GiB guest + 6 GiB runtime +
-  3 GiB reserve; swap unused; all FreeBSD VMs still stopped; `/dev/fd` still the
+  reclaimable ARC (above `arc_min`) must cover the enforced guard ceilings,
+  bhyve 6 GiB + 512 MiB and runtime 4 GiB + 256 MiB, plus a 3 GiB host
+  reserve: 13.75 GiB (14,763,950,080 bytes). The earlier 15 GiB bar counted the
+  proposal's 6 GiB runtime envelope, which the 4 GiB `Budget.HostBytes` cap and
+  the guard never let the runtime use; on a freshly booted f3 it was
+  unreachable (zq3-r1, R6: 16,003,514,952 bytes measured against
+  16,106,127,360). The guard still stops the runtime if available memory drops
+  below 512 MiB. Swap unused; all FreeBSD VMs still stopped; `/dev/fd` still the
   owned fdescfs FSID.
 - Failure: restore the fdescfs window (Phase 11 step 5), then **U3**, not a
   plain normal start: `next_entry` is still set, so a plain start would boot
@@ -761,8 +787,11 @@ also stops until Paul decides on a forced power-off.
 
 ## Risks
 
-- R1 Memory: the 15 GiB arithmetic leaves about 0.7 GiB physical headroom; ARC
-  and kernel use must fit. Phase 6 measures it and refuses otherwise.
+- R1 Memory: the 13.75 GiB bar (enforced guard ceilings plus 3 GiB reserve)
+  left about 1.15 GiB over the zq3-r1 fresh-boot measurement of 14.9 GiB
+  reclaimable (with `vfs.zfs.arc_min` 0 on f3 the whole ARC counted; a
+  nonzero `arc_min` lowers the reclaimable part). Phase 6 measures it and
+  refuses otherwise.
 - R2 The custom kernel fails to boot (initramfs/LVM). The one-shot entry was
   consumed when GRUB ran, so the next normal start boots stock. But a hung or
   panicked guest cannot be shut down from inside; ending that child (in Phase 8
