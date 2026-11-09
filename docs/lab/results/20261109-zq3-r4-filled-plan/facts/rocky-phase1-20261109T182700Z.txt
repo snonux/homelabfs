@@ -1,0 +1,88 @@
+== time
+Mon Nov  9 06:27:01 PM UTC 2026
+93655c8a-b591-483e-a902-ae824e82f2a8
+== kernel
+5.14.0-687.66.1.el9_8.x86_64
+/boot/vmlinuz-5.14.0-687.66.1.el9_8.x86_64
+saved_entry=b26c0ac534534d7fb81b3e0698558bc3-5.14.0-687.66.1.el9_8.x86_64
+menu_auto_hide=1
+boot_success=0
+boot_indeterminate=4
+next_entry=
+== selinux
+Enforcing
+== kdump
+enabled
+active
+initramfs-5.14.0-687.65.1.el9_8.x86_64kdump.img
+initramfs-5.14.0-687.66.1.el9_8.x86_64kdump.img
+initramfs-6.1.190-1.el9.elrepo.x86_64kdump.img
+initramfs-7.0.3-1.el9.elrepo.x86_64kdump.img
+crashkernel=1G-2G:192M,2G-64G:256M,64G-:512M
+== tools
+-rwxr-xr-x. 1 root root 260 Dec 26  2025 /usr/sbin/grubby
+855b73af80947dc58c3b25740e6ea1bd09dc441bd6f143aeb62ce2f4c7c06dc5  /usr/sbin/grubby
+-rwxr-xr-x. 1 root root 498384 Oct 28 15:35 /usr/bin/grub2-editenv
+ac8e7c334310d811814416b7b35bc22952263f8848a140059888e3ceafdb72ca  /usr/bin/grub2-editenv
+-rwxr-xr-x. 1 root root 4814 Oct 28 15:35 /usr/sbin/grub2-reboot
+218fde37a15659c3d187531985e0336584ef5e53cb136703739ef91cc00aace9  /usr/sbin/grub2-reboot
+lrwxrwxrwx. 1 root root 11 Nov  6  2025 /usr/sbin/depmod -> ../bin/kmod
+09a6fb76688caafa90ea72bcc1670ff533a1904bb0404a8a608968dc64b73290  /usr/sbin/depmod
+-rwxr-xr-x. 1 root root 100917 Aug 14 06:21 /usr/bin/dracut
+8c0c4cfe092c1456a29d664e7c86e67861d955c79b6c26f3a5b87ac6110b762d  /usr/bin/dracut
+-rwxr-xr-x. 1 root root 305600 Sep 16 07:40 /usr/bin/systemctl
+2c990ab292835a49aaf38fe72cc7b98f4271d6bc0fea890657787580c19b0191  /usr/bin/systemctl
+-rwxr-xr-x. 1 root root 601960 Sep 16 07:40 /usr/bin/udevadm
+f4dad15780b87c8e668078788d89f9a8801f957635a5e564cd2eaf6d6924a09c  /usr/bin/udevadm
+-rwxr-xr-x. 1 root root 51911600 Oct 26 23:19 /usr/bin/podman
+5da9ba810c1bd5144fcb738379d3b49171a84d9f3e7c86159fc23d2985607d19  /usr/bin/podman
+-rwxr-xr-x. 1 root root 574128 Apr  7  2026 /usr/bin/crun
+53d75706aeadd091ca7fa4df0be5967601de554eef849de3318700e0a2931f15  /usr/bin/crun
+-rwxr-xr-x. 1 root root 158728 Aug  5 00:30 /usr/bin/conmon
+1ac2a8db88daa908fa37911960d9e27215b1d9acfb6d4bf07a4ef32ee658742e  /usr/bin/conmon
+-rw-r--r--. 1 root root 17719 Feb 20  2026 /usr/share/containers/seccomp.json
+7dd441197a3e60c424a6e7844667eafc09c1b7ed3d635e62789fc77447388e9b  /usr/share/containers/seccomp.json
+podman-5.8.2-8.el9_8.x86_64
+crun-1.27-1.el9_7.x86_64
+conmon-2.2.1-2.el9_8.x86_64
+== python
+lrwxrwxrwx. 1 root root 9 Oct 26 17:44 /usr/bin/python3 -> python3.9
+/usr/bin/python3.9
+1143733d3cbc738039e938d5875bb694641cf898f4f39f22c956e5b4d974c278  /usr/bin/python3.9
+== authorized_keys
+-rw-------. 1 root root system_u:object_r:ssh_home_t:s0 567 Nov  9 18:35 /root/.ssh/authorized_keys
+e08542dccf25c758af2a9dce35428c9680101cd015295d92499f4d6859866855  /root/.ssh/authorized_keys
+1
+== audit
+-rw-------. 1 root root 3921639 Nov  9 20:27 /var/log/audit/audit.log
+audit-readable
+== mem/disk
+               total        used        free      shared  buff/cache   available
+Mem:           11697         503       11008           8         452       11193
+Swap:           7051           0        7051
+Filesystem                   1B-blocks        Used   Available Use% Mounted on
+/dev/mapper/rlm_rocky-root 65963819008 26242220032 39721598976  40% /
+/dev/nvme0n1p2              1006632960   636956672   369676288  64% /boot
+== state
+ls: cannot access '/etc/homelabfs': No such file or directory
+0
+0
+/root/hfs-zq3-zq3-r1-incoming
+/root/hfs-zq3-zq3-r1-kernel-stage
+/root/hfs-zq3-zq3-r1-kernel-state
+/root/hfs-zq3-zq3-r1-pod
+/root/hfs-zq3-zq3-r1-tools
+/root/hfs-zq3-zq3-r2-incoming
+/root/hfs-zq3-zq3-r2-kernel-stage
+/root/hfs-zq3-zq3-r2-kernel-state
+/root/hfs-zq3-zq3-r2-pod
+/root/hfs-zq3-zq3-r2-tools
+/root/hfs-zq3-zq3-r3-incoming
+/root/hfs-zq3-zq3-r3-kernel-stage
+/root/hfs-zq3-zq3-r3-kernel-state
+/root/hfs-zq3-zq3-r3-pod
+/root/hfs-zq3-zq3-r3-tools
+/var/tmp/hfs-zq3-zq3-r1
+/var/tmp/hfs-zq3-zq3-r2
+/var/tmp/hfs-zq3-zq3-r3
+end
