@@ -143,7 +143,13 @@ do not select an interpreter from PATH or run an editable workstation copy.
    `nodup` vnode lookup and `MNT_NOSUID`, without mountd notification. It verifies
    the sole new mount, actual regular FD vnode semantics, and matching helper/
    inspector FSID, then protects `owned.json`. Private `nodup` flags are not
-   inferred from mount's printed standard flags. Existing supported mounts
+   inferred from mount's printed standard flags. Neither is `MNT_NOSUID`:
+   FreeBSD's `fdesc_statfs` reports only `mnt_flag & MNT_IGNORE`, so the new
+   `mount -p` row on 15.1 reads exactly `rw` (observed in zq3-r1). Setup
+   accepts the option list `rw` or `rw,nosuid` and refuses anything else;
+   nosuid rests on the pinned helper bytes. It is defence in depth only: with
+   `nodup`, `/dev/fd/N` resolves to the held file's own vnode, so exec applies
+   that file's filesystem setuid rules, not fdescfs's. Existing supported mounts
    receive `existing.json` instead.
 4. `qualify` with the same arguments checks that exact FSID/profile and runs
    only the pinned bounded native test commands. The positive test starts the

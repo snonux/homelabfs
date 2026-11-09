@@ -318,6 +318,10 @@ controller `tools/lab/fdescfs-window.py` with the explicit prefix
    loads the stock `fdescfs.ko` (`847cd1f2…`) only if absent, mounts fdescfs
    `nodup,nosuid` on `/dev/fd` via `nmount` with `MNT_NOCOVER`, writes
    `owned.json`. **Disclosed: the module stays loaded after restoration.**
+   FreeBSD's `fdesc_statfs` masks `f_flags` to `MNT_IGNORE`, so the new
+   `mount -p` row shows only `rw` although `MNT_NOSUID` is set; setup accepts
+   exactly `rw` or `rw,nosuid` there and nosuid rests on the pinned helper
+   (p44, after zq3-r1's first setup refused the masked row).
 3. `qualify` (B, under `native-test-guard.py --profile host`): rerun
    `TestDescriptorExecNativeQualification` on the **f3 host** with the final
    test bytes from source `defd974` (`9e046c20…`), plus
