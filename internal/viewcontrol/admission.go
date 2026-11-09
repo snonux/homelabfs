@@ -215,6 +215,9 @@ func (c *Controller) Disconnect(ctx context.Context, scope guestbridge.Context) 
 	if c.state.Recall != nil {
 		c.state.Recall.Acks = map[string]json.RawMessage{}
 	}
+	// Learned ACKs are invalidated, so the in-memory BLOCKED bound must restart
+	// too: a resent ACK after Recover gets a fresh BlockedACKBound window.
+	c.blockedACKs = nil
 	return c.save()
 }
 
@@ -240,6 +243,8 @@ func (c *Controller) Recover(ctx context.Context) error {
 		return err
 	}
 	c.state.Recovery = false
+	// Fresh ACKs follow a reconciled RESUME; no BLOCKED window carries over.
+	c.blockedACKs = nil
 	return c.save()
 }
 
