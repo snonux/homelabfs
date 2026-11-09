@@ -48,8 +48,9 @@ See [observer evidence](results/20261105-r24-observer/README.md). This qualifies
 those observer bytes only. On 2026-11-08 the rebuilt xz3 daemon `53598737…`
 (now superseded) and then the f44 daemon `174949c1…` each passed the same
 exact-byte native observer check (see the xz3 evidence below). The current z54
-daemon `39c92d01…` (2026-11-09) has not yet run that check; f3-host
-descriptor execution still awaits the approved zq3 fdescfs window. The old candidate remains unchanged.
+daemon `39c92d01…` (2026-11-09) passed it in zq3-r5 (Phase 4 step 1a), and the
+964 kernel rebuild reuses those bytes; f3-host descriptor execution still
+awaits the approved zq3 fdescfs window. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
 any SSH. All old build proofs remain preserved, and no different digest alone
 establishes native eligibility. This preparation changes no runtime APIs.
@@ -158,24 +159,28 @@ SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
 
 ## Exact installation plan inputs
 
-The current xz3 candidate (z54 daemon rebuild, 2026-11-09) is retained at
-`/home/paul/tmp/claude/hfs-xz3-20261109e/package`, manifest SHA256
-`2e0412a62d1c1f0aa0b29865c521bf3df7a925ea5ef293428fa9b38b647d8f2f`, assembled from source checkout
-`a20aca192911e380f3863897e1e6774b1fc46e0e`; see its
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261109e/README.md).
-Only the CGO FreeBSD daemon was rebuilt (`39c92d01…`; z54 answers every
-VIEW_POLL/VIEW_ACK, so a pre-acquire poll no longer blocks the first mount,
-zq3-r4 R4-1). Its exact bytes have not yet run native
-`--check-process-observer` on f3; the f44 daemon `174949c1…` passed it. The
-w54 guest kernel, its modules and Linux source records come byte for byte from
-the w54 candidate (`89c928d5…`, source `ff866c5`,
+The current xz3 candidate (964 kernel rebuild, 2026-11-10) is retained at
+`/home/paul/tmp/claude/hfs-xz3-20261110f/package`, manifest SHA256
+`e01fab21cd7a47822d7b56d84e15150cdc7a36c939fceb23852d4fdef0121ec2`, assembled from source checkout
+`06c27a88e1f95cdde8c2a858fe8d1310d5bfcaba`; see its
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261110f/README.md).
+Only the guest kernel was rebuilt (`bzImage` `704b17be…`, `vmlinux`
+`a65f1c45…`; 964 reuses a fixed 9p tag only after its previous request is
+released and retries a busy tag inside `hfs_transport`, so the release loop no
+longer blocks the session, zq3-r5 R5-1). The five modules came out
+byte-identical. The CGO FreeBSD daemon `39c92d01…` (z54 answers every
+VIEW_POLL/VIEW_ACK, zq3-r4 R4-1) is reused byte for byte from the z54
+candidate (`2e0412a6…`, source `a20aca1`,
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261109e/README.md)),
+and its exact bytes passed native `--check-process-observer` on f3 in zq3-r5.
+The w54 kernel fixes are kept (`89c928d5…`, source `ff866c5`,
 [evidence](../../tools/integration/artifacts/evidence/xz3-20261109d/README.md)),
-and the native FreeBSD parts from the f44 candidate (`b203799e…`, source
+and the native FreeBSD parts come from the f44 candidate (`b203799e…`, source
 `defd974`, [evidence](../../tools/integration/artifacts/evidence/xz3-20261108b/README.md)),
 carried through r54 (`5eb42c50…`, source `ca920a2`,
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261109c/README.md))
-and w54. All three are now refused as superseded together with the earlier
-`3f770a88…`.
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261109c/README.md)),
+w54 and z54. The z54, w54, r54 and f44 candidates are now refused as superseded
+together with the earlier `3f770a88…`.
 The earlier `7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b`
 candidate (CGO-disabled daemon) stays quarantined and must not be installed.
 Any later source change requires a new rebuild and admission.
@@ -265,7 +270,7 @@ footprints in the independent global preparation budget. Swap is telemetry.
 
 ## Staged critical-window proposal
 
-The concrete phased proposal for one disposable run with candidate `2e0412a6…`,
+The concrete phased proposal for one disposable run with candidate `e01fab21…`,
 including the remaining implementation gaps and Paul's decisions, is
 [zq3-run-plan.md](zq3-run-plan.md) ([plain-language summary](zq3-plan-summary.md)).
 The guest probe now retains each successful payload until an authenticated
