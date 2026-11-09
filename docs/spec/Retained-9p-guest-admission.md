@@ -172,7 +172,10 @@ reused across distinct groups initially refuse.
 4. Enroll an exact device tag once, then create the actual 9p client.
 5. Bind the real in-use virtio channel/client/device and copied bounded name/tag.
 6. Permit only fixed typed HELLO before superblock binding. HELLO grants no
-   source, capability, map or ordinary-allocation authority.
+   source, capability, map or ordinary-allocation authority. Its payload is
+   the exact tuple for the enrolled features (16383 or 32767), so the guest
+   builds it only after step 4 succeeds, and the ACCEPTED selection must echo
+   that same enrolled tuple.
 7. `hfs_fill_super` captures the actual superblock pointer, `s_dev` and namespace
    before credential capture, ALLOCATE and ROOT. Ordinary, capability and source
    use requires the full signed group, controller, client/device and sb binding.
