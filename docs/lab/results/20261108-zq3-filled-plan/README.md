@@ -149,3 +149,19 @@ The f3 tarball was rebuilt deterministically from the private stage tree with
 `*.pre-j44`). After extraction, all 17 staged files matched the expected
 hash list. The private tools snapshot was refreshed to `a05b7f2` (the
 previous one kept as `snapshot.08831e7`). Every other pin is unchanged.
+
+## Pin refresh after p44 (2026-11-09, during zq3-r1)
+
+zq3-r1 Phase 4 setup refused on f3: FreeBSD 15.1's `fdesc_statfs` masks
+`f_flags` to `MNT_IGNORE`, so the new `/dev/fd` row reads `rw` without a
+visible `nosuid`, and the controller required one. Task p44 accepts exactly
+`rw` or `rw,nosuid`. Only `fdescfs-window.py` changed below `tools/` among the
+staged files; the window plan filler and window `pins.json` are unchanged.
+
+| Item | Old | New |
+|---|---|---|
+| `fdescfs-window.py` (staged on f3) | `1cceeb33…` | `b00b19d1bfa0b88392e0a1cf6695ba444568ea29247eaf1a0e3c7c56152975e4` |
+
+The private f3 staging tarball is rebuilt with the same recipe (previous kept
+as `*.pre-p44`). Because f3 was already staged, only that one file is replaced
+in `$R/bin` (`0400 root:wheel`), see the run sheet's resume note.
