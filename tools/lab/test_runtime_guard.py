@@ -257,6 +257,27 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(self.breach_kinds(), ["observation-failed"])
         self.assert_only_runtime_signalled()
 
+    def test_own_lineage_with_vm_name_is_not_foreign(self):
+        # zq3-r2 Phase 8: the guard and its remote shell carry --vm-name.
+        me, shell = os.getpid(), 900
+        self.host.extra_rows.update({
+            me: (shell, 30 << 20, LSTART, "/usr/local/bin/python3.12 -I -B runtime-guard.py --vm-name hfs-zq3-r1 --"),
+            shell: (1, 4 << 20, LSTART, "tcsh -c /usr/local/bin/doas -n python3.12 runtime-guard.py --vm-name hfs-zq3-r1")})
+        self.assertEqual(self.run_guard(), 0)
+        self.assertIsNone(self.receipt()["breach"])
+        self.assertNotIn("refused", {k for k, v in self.receipt().items() if v})
+
+    def test_unrelated_process_with_vm_name_is_still_foreign(self):
+        self.host.extra_rows.update({901: (1, 4 << 20, LSTART, "sh -c launch hfs-zq3-r1")})
+        self.assertEqual(self.run_guard(), 1)
+        self.assertIn("foreign-bhyve", self.receipt()["refused"])
+
+    def test_own_lineage_stops_on_cycles_and_gaps(self):
+        rows = {10: (11, 0, LSTART, ""), 11: (10, 0, LSTART, ""), 20: (99, 0, LSTART, "")}
+        self.assertEqual(GUARD.own_lineage(rows, 10), {10, 11})
+        self.assertEqual(GUARD.own_lineage(rows, 20), {20})
+        self.assertEqual(GUARD.own_lineage(rows, 5), set())
+
     def test_preflight_refuses_before_launch(self):
         cases = {"VM context exists": lambda h: setattr(h, "contexts", ["rocky"]),
                  "already violated": lambda h: setattr(h, "free", GIB),

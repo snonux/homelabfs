@@ -104,6 +104,19 @@ def title_tokens(args_text):
     return {token for token in re.split(r"[\s:]+", args_text) if token}
 
 
+def own_lineage(rows, pid):
+    """The guard's pid and its ancestors present in one process sample.
+
+    Follows ppid links from `pid` up to init; stops at a pid missing from the
+    sample or at a cycle, so a malformed sample cannot loop.
+    """
+    lineage = set()
+    while pid in rows and pid not in lineage and pid > 1:
+        lineage.add(pid)
+        pid = rows[pid][0]
+    return lineage
+
+
 def parse_mount_table(text, roots):
     """Mountpoints strictly below any disk root, from `mount -p` output.
 
@@ -421,8 +434,13 @@ class Guard:
             self.exporter = {"pid": pid, "lstart": exporter[pid][2]}
         # Rocky's vm-bhyve bhyve titles itself "bhyve: rocky (bhyve)"; a second
         # process carrying our VM name outside our tree is foreign as well.
-        foreign = sorted(pid for pid, row in rows.items() if pid not in tree and (
-            row[3].startswith("bhyve: ") or self.is_exporter(row[3])))
+        # The guard's own process and its ancestors (doas, the remote shell)
+        # carry `--vm-name NAME` in their argv; zq3-r2 Phase 8 refused itself
+        # for that before launch, so that lineage is never foreign.
+        lineage = own_lineage(rows, os.getpid())
+        foreign = sorted(pid for pid, row in rows.items()
+                         if pid not in tree and pid not in lineage and (
+                             row[3].startswith("bhyve: ") or self.is_exporter(row[3])))
         return {"runtime_rss": sum(row[1] for pid, row in tree.items() if pid not in exporter),
                 "exporter_rss": sum(row[1] for row in exporter.values()),
                 "tree": sorted(tree), "foreign_bhyve": foreign}
