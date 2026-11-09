@@ -56,8 +56,13 @@ static inline void put_pid(struct pid *pid) { assert(pid->refs>0);pid->refs--; }
 struct cred;
 struct device;
 struct user_namespace;
-struct super_block { void *s_fs_info; dev_t s_dev; struct user_namespace *s_user_ns; };
-struct inode { struct address_space *i_mapping; struct super_block *i_sb; int refs; };
+struct super_operations;
+struct dentry;
+/* s_magic..s_root are the fields the actual hfs_fill_super sets (w54). */
+struct super_block { void *s_fs_info; dev_t s_dev; struct user_namespace *s_user_ns;
+ unsigned long s_magic; const struct super_operations *s_op; long long s_maxbytes;
+ unsigned long s_blocksize; unsigned char s_blocksize_bits; u32 s_time_gran; struct dentry *s_root; };
+struct inode { struct address_space *i_mapping; struct super_block *i_sb; int refs; unsigned short i_mode; };
 struct file { struct inode *inode; void *private_data; };
 struct vm_area_struct { struct file *vm_file; };
 struct address_space { bool exiting; const struct address_space_operations *a_ops; };

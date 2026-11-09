@@ -461,6 +461,87 @@ EPROTO after one HELLO; an unselected mask refuses before any HELLO or client.
 Each case runs in its own child. The pre-r54 source fails the 32767 cases and
 crashes on the unselected mask.
 
+## Failed bind_super close and slot floor (`w54`)
+
+The second lab mount (zq3-r3, R3-1) had an accepted HELLO, then failed
+`hfs_fill_super` at its first step. The lab provisioned `reservations` 32, so
+each partition (control and ordinary) held at most 16 credits, while one
+completion package needs 17 (parent plus `HFS_COMPLETION_SLOTS`). bind_super's
+first progress lane returned ENOSPC before ROOT. The offline harness provisions
+8192 and could not see this. `mount_nodev` then ran kill_sb.
+`v9fs_hfs_kill_super` → `hfs_controlled_begin_close` passed the never-created
+terminal lane to `hfs_completion_reserve`, which read `->closed` at offset
+0xbd and oopsed.
+
+Patch 0005 now refuses that state. `begin_close` returns ESTALE without a
+terminal lane, and kill_sb fences the retained session as blocked.
+`hfs_completion_reserve` also refuses a NULL lane. The other close and
+retirement paths already tolerate absent lanes (`hfs_completion_close`,
+`_idle`, `_owns_credit`, the terminal inventory/publish checks and
+`hfs_controlled_progress_reserve`). The failed bind keeps `mount->claimed` and
+`mount->session` on purpose: the accepted HELLO consumed a native cell under
+that enrollment, kill_sb retains the session, and registry rows are never
+re-enrolled. Recovery is a fresh boot and provision.
+
+Provisioning now also refuses a slot budget below the mount floor
+(`hfs_controlled_slot_floor`, derived in `hfs_controlled_internal.h`). The floor
+is what stays charged while every mount is bound, bootstrapped and serving one
+first operation. A package is 17 slots; an owner (request or ticket reservation
+plus its package) is 18:
+
+| Per mount | Control credits | Ordinary credits |
+|---|---|---|
+| bind_super progress lanes | 3 × 17 (32767) or 2 × 17 (16383) | |
+| process identity, view, mmap actor, bootstrap cleanup | 4 | |
+| ROOT request | | 18 |
+| discovery lease: ticket owner + family | 19 (release) | 19 (acquire) |
+| first `hfs_begin_cap` from a new process | 21: identity, observation cleanup, release ticket owner, family | 38: cookie, acquire ticket owner, family, request owner |
+| total | 95 (32767) or 78 (16383) | 75 |
+
+Received slots per mount are 15 (or 14) control and 12 ordinary: event lane 6,
+retirement 2, terminal 1 and 3 per ticket or request package. Both partition
+counters are global, so `reservations / 2` must cover the larger summed
+partition, and `received / 2` likewise. The lab's two 32767 mounts therefore
+need **reservations ≥ 2 × 2 × 95 = 380** and **received ≥ 2 × 2 × 15 = 60**.
+The HELLO carrier is freed before bind_super and does not add to the peak.
+More concurrent operations, open descriptions, mapped pages and discovery
+retries (18 + 18 per retry until the bootstrap cleanup retires them) are not
+in the floor; budgets need a margin. Since `reservations` is at most 8192,
+a registry with more than 43 terminal mounts can no longer be provisioned.
+
+Bytes are not part of the provisioning floor; they depend on kernel struct
+sizes and remain checked at reserve time. The actual accounting in the
+`controlled_received` harness charged 80,962,137 control bytes per 32767
+bind_super, 36,559,105 ordinary bytes per request owner and 26,802,997 bytes
+per lease ticket owner in each partition. That is about 132 MiB control and
+121 MiB ordinary per mount, plus a 9 MiB control base for two mounts. zq3-r3's
+128 MiB control budget could not even bind both mounts.
+`hfs-runtime-prep generate` refuses specs below both floors
+([`internal/runtimeprep/guestfloor.go`](../../../internal/runtimeprep/guestfloor.go)).
+
+The `controlled_received` startup runs the regressions in disposable children
+after the actual accepted HELLO. Any scenario runs them, and a 32767 scenario
+reaches the terminal close path:
+
+```sh
+python3 tools/integration/linux9p/tests/controlled_received/run.py \
+  --source "$SOURCE" --output "$RUN/w54" --budget-root "$RUN" \
+  --host-tree "$PWD" --scenario terminal-smoke
+```
+
+`failed-bind-kill-sb` runs the actual `hfs_fill_super` with reservations 32,
+which returns ENOSPC with every lane credit returned. It then runs the actual
+`v9fs_hfs_kill_super` and checks the retained, fenced and still-claimed
+session. `provision-slot-floor` runs `hfs_controlled_base_charge` with an
+independent oracle of the floor: 32 and floor − 1 are refused, the exact floor
+is accepted. The startup also checks the floor's units against the actual
+accounting: bind_super charges exactly its lane packages, a new process one
+credit, each `hfs_call` request and each lease exactly one owner per class
+plus new families. On the pre-w54 source the terminal scenario reproduces
+the lab oops (ASan SEGV at 0xbd in `hfs_completion_reserve` ←
+`hfs_controlled_begin_close` ← `v9fs_hfs_kill_super`), and the provisioning
+case accepts 32.
+
 ## Explicit terminal tuple (`614`)
 
 The maintained provider also supports explicitly enrolled features32767 with
