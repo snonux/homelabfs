@@ -69,7 +69,7 @@ are never committed:
 | 7. Window pins | `docs/lab/zq3-fdescfs-window/pins.json` at main (664: daemon, helper and test re-pinned) with `zq3-r1` → `zq3-r5`; `check_pins` passes. Synthetic fills, which are not pins: zq3-r4's Phase 4 facts (after its D1-a), with the host hashes renamed and the three z54 artifact hashes, **pass**. Post-restore facts with both modules loaded (f3's state now) **refuse** with `fdescfs module present`; Phase 1a resolves that | r5 pins `a59015b9…` |
 | 8. Signing watcher | zq3-r4's `bin/sign_watch.py` with `D`, the docstring run ID and the signer pin and its comment changed. The new signer pin `89905914…` is in the watcher and in `hpin`. Tested locally with a fake signer: a wrong request hash, a wrong command, an unknown action, a repeat and a wrong signer hash were refused; both exact requests were signed | `1e8bf643…` |
 | 9. Process observer check | New helper `sh/p4-observer.py` for Phase 4 step 1a (below). Tested locally: it passed a synthetic good record and refused nine bad ones | `c8db0160…` |
-| 10. Run sheet | [run-sheet.md](run-sheet.md): Phases 0-12, 1a, the new 4/1a and U1-U3. `session.sh` (`7c816466…`) and eleven pinned helper scripts. The Phase 8-10 helpers were dry-run again against the committed correlator and controller (below) | [pins](pins.json) `fill_helpers` |
+| 10. Run sheet | [run-sheet.md](run-sheet.md): Phases 0-12, 1a, the new 4/1a and U1-U3. `session.sh` (`923c6539…`) and eleven pinned helper scripts. The Phase 8-10 helpers were dry-run again against the committed correlator and controller (below) | [pins](pins.json) `fill_helpers` |
 
 Staging recipe (both tarballs, deterministic):
 `tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=2026-11-09T00:00:00Z --format=gnu`.

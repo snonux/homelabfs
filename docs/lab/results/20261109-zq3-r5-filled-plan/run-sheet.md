@@ -100,8 +100,8 @@ them into those lines (Phase 10 T8 and T10, Phase 11 before step 0 and steps
   `f3 'pgrep -U root -lf runtime-guard.py'`. The remote csh wrapper of the
   guard's SSH session also carries the guard argv (zq3-r2 R2-2), so a plain
   `pgrep -lf` lists two processes. Signal only the root python process.
-- **Guest unmounts are bounded locally:** use `timeout 150 rocky "umount
-  $G/m0"` and `timeout 150 rocky "umount $G/m1"`, with T8's unmount bounded
+- **Guest unmounts are bounded locally:** use `rockyt "umount
+  $G/m0"` and `rockyt "umount $G/m1"` (session.sh `rockyt`: `timeout 150` around the real ssh; `timeout` cannot run the `rocky` function), with T8's unmount bounded
   the same way. SSH keepalives do not end a blocked `umount`, because sshd
   keeps answering. A timeout means a blocked 9p session (the expected FENCED
   state): record it, never use `-f`/`-l`, and continue to the poweroff.
@@ -143,7 +143,7 @@ them into those lines (Phase 10 T8 and T10, Phase 11 before step 0 and steps
 source /home/paul/tmp/claude/hfs-zq3-r5-fill/session.sh
 ```
 
-`session.sh` (`7c816466…`, [pins](pins.json) `fill_helpers`) defines, adapted
+`session.sh` (`923c6539…`, [pins](pins.json) `fill_helpers`) defines, adapted
 from zq3-r4's:
 
 ```bash
@@ -213,7 +213,7 @@ d72352465bd2596c5bd5296f457cc9cc25064a2c6fea5ab385294bdfe1700758  /home/paul/tmp
 cbe1799a91adfe66c89f4afda9b8e7322e6450c082787cd260c5573b0baebaab  /home/paul/tmp/claude/hfs-zq3-r5-fill/kernel/rocky-kernel-plan.json
 d07cd45b37b68cfa719c0440332bcea1daf2065826b3ea146ab70ee6d41008d0  /home/paul/tmp/claude/hfs-zq3-r5-fill/controller/batch-plan.TEMPLATE.json
 a59015b9592d866e5f64541dbceef36dbf38ab3de15a8fa1534fa2a2007ba9f4  /home/paul/tmp/claude/hfs-zq3-r5-fill/fdescfs-pins/pins.json
-7c8164663cd464c730e76ae269068e17186110d075e75d4f10ffedbaa0e22b4a  /home/paul/tmp/claude/hfs-zq3-r5-fill/session.sh
+923c6539e9ad0a4534b9a718dd131db02719dca0aed6bd493c77002bd7a92c91  /home/paul/tmp/claude/hfs-zq3-r5-fill/session.sh
 EOF
 cd $D
 ```
@@ -969,7 +969,7 @@ T8, K04 guest side, last (needs no live runtime; m1 must still be mounted):
 
 ```bash
 rocky 'findmnt -t 9p' | tee $E/t8-before.txt
-timeout 150 rocky "umount $G/m1" | tee $E/t8-umount.txt   # normal only; refused or timed out (exit 124): T8 unrun, Phase 11
+rockyt "umount $G/m1" | tee $E/t8-umount.txt   # normal only; refused or timed out (exit 124): T8 unrun, Phase 11
 rocky '/usr/bin/python3.9 -I -B /root/hfs-zq3-zq3-r5-tools/guest-lock-probe.py' < $E/lock-m1-t8.json | tee $E/t8-lock-refusal.json
 rocky "ls -A $G/m1" | tee $E/t8-ls.txt          # must print nothing
 ```
@@ -1024,14 +1024,15 @@ Steps, in this order:
 # 0. guard receipt: the exporter (bhyve child) PID for step 7
 f3 "doas -n cat $R/guard/receipt.json" > $E/p11-guard-receipt.json
 jf $E/p11-guard-receipt.json runtime_running_at_guard_exit   # must print False
-XP=$(jf $E/p11-guard-receipt.json exporter pid); echo "$XP"     # null exporter (no child ever seen): step 7 uses --no-child
+jf $E/p11-guard-receipt.json exporter    # prints None when no child was ever seen: then step 7 uses --no-child and XP stays unset
+XP=$(jf $E/p11-guard-receipt.json exporter pid); echo "$XP"     # only when the line above did not print None
 # 1. evidence tars (private; runtime-config.json is not included)
 f3 "doas -n tar -c -f - --exclude control.sock -C $R guard records runtime/owner launch" > $E/f3-evidence.tar
 f3 "doas -n tar -c -f - -C /var/tmp/hfs-fdescfs-windows zq3-r5" > $E/f3-window-evidence.tar
 # 2. guest 9p mounts: list, then unmount each listed one on its own line
 rocky "findmnt -t 9p || echo no-9p"
-timeout 150 rocky "umount $G/m0"                 # only if m0 is listed; timeout (exit 124): record, continue
-timeout 150 rocky "umount $G/m1"                 # only if m1 is listed; same
+rockyt "umount $G/m0"                 # only if m0 is listed; timeout (exit 124): record, continue
+rockyt "umount $G/m1"                 # only if m1 is listed; same
 rocky "findmnt -t 9p || echo no-9p"              # no-9p expected; see below if not
 # 3. observer removal (banner timeout: check authorized_keys is still $EA before the one retry)
 okpin && rocky "/usr/bin/python3.9 -I -B - remove --run-id zq3-r5 --expect-sha256 $EA" < $S/tools/lab/retained9p/observer_key.py | tee $E/p11-observer-remove.json   # restored_pre_run: true
@@ -1043,7 +1044,7 @@ rocky 'systemctl poweroff'
 f3 'ps -ax -ww | grep "[h]fs-zq3-r5" || echo child-gone; test -e /dev/vmm && doas -n ls /dev/vmm || echo no-vmm'
 # 7. host cleanup (tap, VM context, vars copy)
 f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/host.py cleanup --record $R/records/bhyve-argv.json --record-sha256 0382e2f157ef2b9dd0943c633855a66f948a08a9ef3ad4b54086fffa60c1cc66 --child-pid $XP" | tee $E/p11-host-cleanup.json   # only if XP is a PID
-f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/host.py cleanup --record $R/records/bhyve-argv.json --record-sha256 0382e2f157ef2b9dd0943c633855a66f948a08a9ef3ad4b54086fffa60c1cc66 --no-child" | tee $E/p11-host-cleanup.json   # only if XP is None (null exporter)
+f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/host.py cleanup --record $R/records/bhyve-argv.json --record-sha256 0382e2f157ef2b9dd0943c633855a66f948a08a9ef3ad4b54086fffa60c1cc66 --no-child" | tee $E/p11-host-cleanup.json   # only if the exporter line above printed None
 # 8. native FUSE mount: check, then unmount if listed
 f3 "mount -p | grep $R/runtime/mnt || echo no-native-mount" | tee $E/p11-native-check.txt
 f3 "doas -n umount $R/runtime/mnt"               # only if step 8's check listed it; busy or error: stop and preserve
