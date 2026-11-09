@@ -52,7 +52,7 @@ cd $S/tools/lab/directlaunch && python3 -I -B argv.py verify --record $D/argv/bh
 $D/bin/hfs-runtime-prep check-argv --bundle $D/bundle --record $D/argv/bhyve-argv.json \
   --record-sha256 ba493bf67f9dbd6570074c9f4ec29e4f60ddb3ef7a75e6a0ffeb5546fe243589
 sha256sum -c <<'EOF'
-c51cac6df8b5fb9453d85b6975af3d1090c7dc2cf5ed0bf14e96eeaeea2d5aca  /home/paul/tmp/claude/hfs-zq3-r1-fill/stage/f3-stage.tar
+2b4370bacdc330077d1ef52568a6a9107bfc0b330650becb6d8d600bd5a1c8ea  /home/paul/tmp/claude/hfs-zq3-r1-fill/stage/f3-stage.tar
 2d7fd06c9d5456f550d8a7cabee243b007b424432e6dddc757fa2c23ccc86d6d  /home/paul/tmp/claude/hfs-zq3-r1-fill/stage/rocky-stage.tar
 ac3a0e754ac59a165398bad44bc73185fd18eb5cf0cc842112f7883f766bc46a  /home/paul/tmp/claude/hfs-zq3-r1-fill/kernel/rocky-kernel-plan.json
 EOF
@@ -197,16 +197,24 @@ f3 "$NG --stage unsupported-before $R/bin/controlledruntime.test '-test.run=^Tes
 Resume of zq3-r1 after p44 (only for that run). The first setup mounted
 `/dev/fd` and refused the masked `rw` row; it was undone with the pinned
 helper's `unmount EXACT_FSID` and a normal `kldunload fdescfs`, after which
-`facts` equalled `p4-facts.json`. Before rerunning setup: replace the staged
-controller with the p44 bytes, keep the refused window directory under a new
-name (setup refuses an existing run directory, and the directory name must
-equal the plan's `run_id`), skip the parent creation below (it exists), and
-refill the window plan from fresh facts (step 0, the old plan's expiry is
-gone):
+`facts` equalled `p4-facts.json`. Before rerunning setup:
+
+1. Refresh the tools snapshot `$S` to the main commit that merged p44 (same
+   recipe as the j44 refresh above), so the plan filler and the staged file
+   both use the p44 controller `b00b19d1…`.
+2. Replace the staged controller, keep the refused window directory under a
+   new name (setup refuses an existing run directory, and the directory name
+   must equal the plan's `run_id`), and skip the parent creation below (it
+   exists).
+3. Rerun step 0 and the window plan fill with `-resume` names so the refused
+   attempt's evidence and plan stay untouched: `p4-*-resume.*` evidence,
+   `--out $D/fdescfs-plan-resume`, remote plan
+   `$R/records/fdescfs-plan-resume.json`, and `W`'s `--plan` pointing at it.
+   The bootstrap plan fill (F1) and step 1 already passed and are not rerun.
 
 ```bash
 f3 "doas -n sh -c 'umask 277; test ! -e $R/bin/fdescfs-window.py.p44 && cat > $R/bin/fdescfs-window.py.p44'" < $S/tools/lab/fdescfs-window.py
-f3 doas -n sha256 -r $R/bin/fdescfs-window.py.p44     # must equal b00b19d1… (README, pin refresh after p44)
+f3 doas -n sha256 -r $R/bin/fdescfs-window.py.p44     # must equal b00b19d1… (README, pin refresh after p44); stop otherwise
 f3 doas -n mv $R/bin/fdescfs-window.py.p44 $R/bin/fdescfs-window.py
 f3 "stat -f '%Sp %Su %Sg %N' $R/bin/fdescfs-window.py"   # -r-------- root wheel
 printf '%s\n' 'set -e' 'mv /var/tmp/hfs-fdescfs-windows/zq3-r1 /var/tmp/hfs-fdescfs-windows/zq3-r1.refused-setup-1' | f3 doas -n sh -s

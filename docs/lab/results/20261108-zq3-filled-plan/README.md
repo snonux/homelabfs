@@ -38,7 +38,7 @@ private and are never committed.
 | 3. Controller batch | template with all fixed fields; the real plan needs Phase 8 values, so `check` on the template refuses as designed (`probe/installed-manifest pin`); a synthetic copy (zero IDs) passes `check` | template `24f7116e…` |
 | 4. Bootstrap plan | template with every pin (`remote_sha256` `121ee0cc…`, prep, template, runtime config, `bootstrap_seconds` 120 = `BootstrapSeconds`); `check` refuses only `observer.ssh_sha256` (f3 `/usr/bin/ssh` hash, a Phase 4 fact); a synthetic copy passes `check` | template `8996f535…` |
 | 5. Guard argv | exact argv as `bootstrap.py` builds it; limits are the guard defaults, which equal the plan ceilings | in [pins](pins.json) |
-| 6. Observer and staging pins | interpreter, pre-run `authorized_keys`, `observer_key.py` `cd7f38c2…`, and SHA256 of all 17 f3 and 18 Rocky staged files, plus two staging tarballs | f3 tar `c51cac6d…`, Rocky tar `2d7fd06c…` |
+| 6. Observer and staging pins | interpreter, pre-run `authorized_keys`, `observer_key.py` `cd7f38c2…`, and SHA256 of all 17 f3 and 18 Rocky staged files, plus two staging tarballs | f3 tar `2b4370ba…` (after p44), Rocky tar `2d7fd06c…` |
 | 8. Run sheet | [run-sheet.md](run-sheet.md), Phases 0-12 plus U1-U3 | |
 
 The synthetic copies only prove that the fixed fields pass the real
@@ -93,8 +93,9 @@ the step that consumes it:
   accepts the post-load baseline plus exactly that file (any other
   difference still refuses). This changes the bytes of `fdescfs-window.py`
   and `fdescfs-window-plan.py`, so their hashes in [pins](pins.json)
-  (`1cceeb33…`, `56ef5bb4…`) and the f3 staging tarball `c51cac6d…` are
-  stale: re-pin them from the commit used for the run before staging.
+  (`20e0e2ea…`, `07791469…` then) and the f3 staging tarball were stale and
+  were re-pinned below (later superseded for the controller and tarball by
+  p44, see the last section).
 - **F2, manual steps without a dedicated tool.** No reviewed tool fills the
   controller batch plan after READY: it is a manual edit of four fields under
   time pressure, followed by `check`. No staging tool exists either: this fill
@@ -163,5 +164,6 @@ staged files; the window plan filler and window `pins.json` are unchanged.
 | `fdescfs-window.py` (staged on f3) | `1cceeb33…` | `b00b19d1bfa0b88392e0a1cf6695ba444568ea29247eaf1a0e3c7c56152975e4` |
 
 The private f3 staging tarball is rebuilt with the same recipe (previous kept
-as `*.pre-p44`). Because f3 was already staged, only that one file is replaced
+as `*.pre-p44`): `c51cac6d…` becomes
+`2b4370bacdc330077d1ef52568a6a9107bfc0b330650becb6d8d600bd5a1c8ea`. Because f3 was already staged, only that one file is replaced
 in `$R/bin` (`0400 root:wheel`), see the run sheet's resume note.
