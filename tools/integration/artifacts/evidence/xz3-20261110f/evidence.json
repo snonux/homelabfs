@@ -1,0 +1,258 @@
+{
+  "candidate": {
+    "admission": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "assembled_from": "the worker worktree at 06c27a8, byte-identical to the main checkout (also at 06c27a8) for all 3953 tracked files with no untracked files under cmd, internal, pkg, tools/integration or tools/lab; the worker sandbox refuses git in the main checkout. The reused daemon builder bindings named the 664 worktree, so they were re-keyed to this worktree after checking that daemon.py (57083443...) and daemon_cgo.py (6538e95f...) hash exactly to the bound values; the original binding files are kept in the run root",
+    "files": 195,
+    "independent_admit": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "manifest_sha256": "e01fab21cd7a47822d7b56d84e15150cdc7a36c939fceb23852d4fdef0121ec2",
+    "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+    "path": "/home/paul/tmp/claude/hfs-xz3-20261110f/package",
+    "repository_baseline": "a20aca192911e380f3863897e1e6774b1fc46e0e",
+    "repository_changes_patch": "git diff a20aca1 (the daemon build revision) of the tracked Linux/native inputs assemble.py records: the 964 source.json and patch 0004",
+    "source_checkout": "06c27a88e1f95cdde8c2a858fe8d1310d5bfcaba"
+  },
+  "controls": {
+    "all_refused": true,
+    "case_names": [
+      "external operator mismatch",
+      "external repository mismatch",
+      "old negotiated features",
+      "old source revision",
+      "different packaged Linux patch",
+      "different native owned source",
+      "wrong actual bundled source with consistent container hashes",
+      "daemon ELF labelled as full exporter",
+      "native helper ELF lacks production controllers",
+      "invented stock shared9p runtime",
+      "installed success claim",
+      "missing actual Go build version",
+      "real CGO_ENABLED=0 daemon with nocgo observer stub",
+      "record claims CGO0 build",
+      "nocgo stub in recorded source closure",
+      "renamed cgo process observer symbols",
+      "foreign dynamic loader",
+      "extra recorded DT_NEEDED",
+      "missing recorded DT_NEEDED",
+      "sysroot library hash differs from recorded closure",
+      "unlinked sysroot capture",
+      "unrecorded clang resource headers",
+      "unrecorded clang shared-library closure",
+      "foreign cgo compiler wrapper",
+      "installation authority claim",
+      "false forced rebuild witness"
+    ],
+    "cases": 26,
+    "cgo0_control_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+    "original_passed_after": true,
+    "restored_passed": true
+  },
+  "daemon": {
+    "native_qualification": "carries over: zq3-r5 Phase 4 step 1a passed --check-process-observer on f3 for these exact bytes",
+    "nontest_go_diff_a20aca1_to_06c27a8": "empty (git diff a20aca1 HEAD -- *.go :!*_test.go go.mod go.sum)",
+    "repository": "a20aca192911e380f3863897e1e6774b1fc46e0e",
+    "reused_from": "2e0412a62d1c1f0aa0b29865c521bf3df7a925ea5ef293428fa9b38b647d8f2f byte for byte (binary, daemon-build.json, daemon-preparation.json, four Go licences)",
+    "sha256": "39c92d016f17b4c480c3c3bfac266f284123413ea4d95697b935d80bdf98a521"
+  },
+  "init_helper": {
+    "kept": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80 from e0cca0c",
+    "reason": "not in the package; no Go source change since a20aca1"
+  },
+  "kernel": {
+    "abi_negative_controls": [
+      "different-kernel-module-layout-crc",
+      "different-operator-config-identity",
+      "missing-kernel-module-layout-crc",
+      "stock-kernel-release"
+    ],
+    "artifacts": {
+      "linux/Module.symvers": "7602f7ec6d56f3e861dbb43d624b3dfe59e63c08b1fb8c4220b86d4547733078",
+      "linux/System.map": "efb43b79e074791524aaac95d66a7fc1d7f64f0fbfd906d4dfa884f5bff3fb75",
+      "linux/abi-negative.json": "f7c4aa9efbe87a6e18eae268097b01c7cb333b1b72ceefbfa93448d6e7417da0",
+      "linux/abi.json": "141f5deef9e046ea508b817916ad303cd806d89cf4fe1d363246b948defc1c4e",
+      "linux/build.json": "f151742351106e56cdca74bbe5e08b5efe9c119fbb12aa1bd10752918bee8c52",
+      "linux/bzImage": "704b17be7e7bcd9ac72a30cd6fb69f392f9cf9d3ef63cfba9f07329c0b2ad892",
+      "linux/clean-repro.json": "2a766c960de6ebb4eec0f1976c30daa42647c275eb97aa4f6ee3198a8ad9c419",
+      "linux/config": "d88b4c567e5676be1ab9c9d8a317978f0fd2b6976a6b3f24be51407b848ef5ff",
+      "linux/kernel.release": "50bb45b1af138cf586adddcde600f85e256a19336c861654e6ce76c20eb034e3",
+      "linux/modules.builtin": "1f33442939e7faf978dc707cb69f99015328b39b3125cea6d6de25715f8bebf1",
+      "linux/modules.builtin.modinfo": "c53973bb5c4498e6fc6e61d0143353782a5628374b2b00624f422ed6f2236cf2",
+      "linux/modules.order": "f820618416411197b17fe7795d067e9687d905c487bffb207589bec3c173019a",
+      "linux/modules/drivers/net/net_failover.ko": "cc9755c71cc1d0776f5efd61198b1ebe99741cff877104879b8658db469f9143",
+      "linux/modules/drivers/net/virtio_net.ko": "39de7e933fa325b2c6b576004213f34bee04085191ea94e141a6c2aeeaf7fef1",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko": "6b98068988086d3b1b5c7a1e3b71f5f0ac4378f2d907c0e3a8c50a22bcde53fa",
+      "linux/modules/fs/efivarfs/efivarfs.ko": "6dd0679c5a026189f4feef51fcdcf4d0542fbc9cba7f3e552cb8a0324e68974f",
+      "linux/modules/net/core/failover.ko": "b1aa98beb495be131c06a02775109cba97de2ecacae227c4932909166b88cf5a",
+      "linux/vmlinux": "a65f1c456cbb5101ed4d1bc4efc83ea2f36ad1993fa65c57a583f9e250ccf172"
+    },
+    "changed_from_z54": [
+      "linux/System.map",
+      "linux/abi.json",
+      "linux/build.json",
+      "linux/bzImage",
+      "linux/clean-repro.json",
+      "linux/vmlinux"
+    ],
+    "clean_repro_equal_artifacts": 13,
+    "clean_repro_modules": 5,
+    "clean_repro_record_sha256": "2a766c960de6ebb4eec0f1976c30daa42647c275eb97aa4f6ee3198a8ad9c419",
+    "gnu_build_id": "a470c7a8cc695b8efabc78ea3f5e5c6e374b5a0b",
+    "initramfs": "none built or packaged; the recipe builds bzImage and modules",
+    "module_build_ids": {
+      "drivers/net/net_failover.ko": "3255e434a34a125cd9251bebddaaf6bdf98c68bb",
+      "drivers/net/virtio_net.ko": "072995182e1a95b83cf3ec794649ce05adf8a59d",
+      "drivers/thermal/intel/x86_pkg_temp_thermal.ko": "da295c7cb8ec345542f4ad350ebe6b4ab30ce306",
+      "fs/efivarfs/efivarfs.ko": "c7dca1ae388661db98a1b00f73a39cc2c2d88539",
+      "net/core/failover.ko": "3b9f54841993c81600f6794137822622987c4f9d"
+    },
+    "note": "both builds used the same canonical O path (first tree moved to kernel-build-first before the repeat); abi.py collect ran on both packages before compare_kernel, which passed first time",
+    "release": "6.1.190-hfs-xz3",
+    "source": {
+      "archive_path": "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/source/linux-79807e970724c1f90cee1316361d61b80db4eef6.tar.gz (cached, not downloaded)",
+      "archive_sha256": "4f3c00db43ece26e00b83da8cee938e544ba89e10dc10aecc45209ab03554a17",
+      "patch_sha256": {
+        "0001-9p-hfs1-transport.patch": "7a7761192b75f2331e9d95032e1695f20d0a3761b9e6a4276a8b6f51249a511f",
+        "0003-hfs1-guest-vfs.patch": "3d6193eca2d0eff0c6799344b38b036d2964e9921e397266afffd5b65aa964fb",
+        "0004-hfs1-physical-views.patch": "531903f1f68feccde98e84a39e2c4870cc9cd7a68186b8a6e3074b6987c267ec",
+        "0005-hfs1-controlled-guest-provider.patch": "fa3db492df86cf796e36aaf4db1b565a0943896bb175fda8fcd5281041a879c2"
+      },
+      "prepared": "/home/paul/tmp/claude/hfs-xz3-20261110f/linux-source",
+      "project_task": "964 (merge 06c27a8)",
+      "source_inventory_sha256": "f9e788b0dc21fbbe5edef454050aa49cf641991832c473ad72857903c11c407c",
+      "source_json_sha256": "2929aba212e4496319a81fb5b05501584cc69cff6d76ec9c1f78a6348993b608"
+    },
+    "stage_seconds": [
+      [
+        "first",
+        "configure",
+        0,
+        8
+      ],
+      [
+        "first",
+        "vmlinux",
+        0,
+        664
+      ],
+      [
+        "first",
+        "image-modules",
+        0,
+        37
+      ],
+      [
+        "first",
+        "collect",
+        0,
+        8
+      ],
+      [
+        "repro",
+        "configure",
+        0,
+        12
+      ],
+      [
+        "repro",
+        "vmlinux",
+        0,
+        541
+      ],
+      [
+        "repro",
+        "image-modules",
+        0,
+        20
+      ],
+      [
+        "repro",
+        "collect",
+        0,
+        5
+      ]
+    ],
+    "unchanged_from_z54": [
+      "linux/Module.symvers",
+      "linux/abi-negative.json",
+      "linux/config",
+      "linux/kernel.release",
+      "linux/modules.builtin",
+      "linux/modules.builtin.modinfo",
+      "linux/modules.order",
+      "linux/modules/drivers/net/net_failover.ko",
+      "linux/modules/drivers/net/virtio_net.ko",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko",
+      "linux/modules/fs/efivarfs/efivarfs.ko",
+      "linux/modules/net/core/failover.ko"
+    ]
+  },
+  "mount_hello": {
+    "cases": 5,
+    "command": "tools/integration/linux9p/tests/mount_hello/run.py --source <prepared> --output <root>/mount-hello --sanitize",
+    "failures": 0
+  },
+  "not_claimed": [
+    "installed",
+    "booted",
+    "native acceptance",
+    "VM/exporter execution",
+    "normal publication",
+    "a working hfs1.4 mount on Rocky (zq3)"
+  ],
+  "reason": "zq3-r5 R5-1: the release loop VIEW_QUERY and the event worker VIEW_ACK share fixed 9p tag 65533; p9_client_hfs_exchange let the next owner allocate the still-held tag (ENOMEM), hfs_control blocked the session and DRAINED was never sent. 964 waits (bounded) for a released fixed tag and retries a busy tag inside hfs_transport without blocking the session; the z54 package carries the pre-964 kernel",
+  "recorded": "2026-11-10",
+  "reused": {
+    "files": 119,
+    "from_manifest": "2e0412a62d1c1f0aa0b29865c521bf3df7a925ea5ef293428fa9b38b647d8f2f",
+    "justification": "git diff a20aca1..06c27a8 changes no non-test Go source, go.mod or go.sum, nothing under tools/integration/artifacts or tools/integration/lib9p, and under tools/integration/linux9p only patches 0001/0003/0004/0005, source.json, tests and the README; each reused file was hash-checked against the z54 manifest (re-admitted first), patches 0002/series against the repository and Linux notices against the prepared 964 source",
+    "list": "reused-files.json",
+    "scope": "83 native FreeBSD files, 5 native source-bundle/notice files, 7 daemon files (binary, build record, preparation record, four Go licences), 22 Linux license notices, patch 0002 and series"
+  },
+  "superseded_candidate": {
+    "manifest_sha256": "2e0412a62d1c1f0aa0b29865c521bf3df7a925ea5ef293428fa9b38b647d8f2f",
+    "status": "refused as superseded (pre-964 guest kernel: fixed 9p tag reuse before release blocks the session, zq3-r5 R5-1)"
+  },
+  "tag": {
+    "cases": 4,
+    "command": "tools/integration/linux9p/tests/tag/run.py --source <prepared> --output <root>/tag --sanitize",
+    "failures": 0
+  },
+  "task": "xz3 964 kernel rebuild",
+  "terminal_smoke": {
+    "command": "tools/integration/linux9p/tests/controlled_received/run.py --source <prepared> --output <root>/controlled-received/terminal-smoke --budget-root <root>/controlled-received --host-tree <worktree> --scenario terminal-smoke",
+    "result": "PASS TestControlledReceivedActualTerminalClean"
+  },
+  "version": "homelabfs-xz3-evidence/2",
+  "window_artifacts": {
+    "controlledruntime.test": "97fb5c074465bfaf6c92b39a66a6823247e9dd12f2f9f7e27e8bc6433440bdc9",
+    "decision": "reused, not rebuilt: the f44/664 rule is that the window test bytes match the daemon source; the daemon is the z54 39c92d01 built from a20aca1, and the pinned window artifacts were built from that same revision, so they still match it",
+    "fdescfs-namespace": "cc92bcded8a056ab9bfd6091f8a93245e8adcec941c58217613d315678735940",
+    "head_probe": {
+      "builds_byte_identical": true,
+      "controlledruntime.test": "33ccc12fd3aca3a6b83cdfb689bb1180dfa0c18b7746999b731856299d84308d",
+      "daemon_equals_candidate": true,
+      "fdescfs-namespace": "bce1c95a7b16fedbbea347bd1af6bc7afeded25b6e854fbe846b25cb0d2423bc",
+      "helper_difference": "fdescfs-namespace.c is unchanged; the helper differs only in DWARF (the probe out_dir), as in 664: llvm-objcopy --strip-debug gives 07c9f5a19fb38031bfbfda438b3f659a8fdc03ecc656f8f20791d120f9364a96, the same as the 664 builds",
+      "hfs-controlled-runtime": "39c92d016f17b4c480c3c3bfac266f284123413ea4d95697b935d80bdf98a521",
+      "invocation": "tools/lab/build-fdescfs-window-artifacts.sh /home/paul/tmp/claude/hfs-xz3-20261110f/window-probe 06c27a88e1f95cdde8c2a858fe8d1310d5bfcaba",
+      "purpose": "check only, not pinned: would the window artifacts change at 06c27a8?",
+      "qualification_tests_unchanged": "TestDescriptorExecNativeQualification/Unsupported live in descriptor_exec_freebsd_test.go, unchanged since a20aca1",
+      "test_changed_because": "only internal/controlledruntime/assembly_test.go changed (964 zq3-r5 acknowledgement-order test); internal/viewcontrol test changes are not linked into controlledruntime.test"
+    },
+    "hfs-controlled-runtime": "39c92d016f17b4c480c3c3bfac266f284123413ea4d95697b935d80bdf98a521",
+    "source": "a20aca1 (z54 window build, reused byte for byte)"
+  }
+}
