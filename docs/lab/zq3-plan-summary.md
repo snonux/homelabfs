@@ -106,7 +106,11 @@ all of this, and its daemon passed a read-only self-check on f3. On 2026-11-09
 its guest kernel was rebuilt once more (`5eb42c50…`) to fix the mount error
 that stopped the second attempt (zq3-r2), and then again (`89c928d5…`) so a
 failed mount no longer crashes the guest kernel, as it did in the third
-attempt (zq3-r3); the daemon is unchanged.
+attempt (zq3-r3). Then the daemon was rebuilt (`2e0412a6…`, daemon
+`39c92d01…`) so it answers every guest view poll, including one that arrives
+before the daemon has taken the domain, which hung the fourth attempt
+(zq3-r4); the guest kernel is unchanged. The f3 self-check has not yet run on
+these new daemon bytes.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a

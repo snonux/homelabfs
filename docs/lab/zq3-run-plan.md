@@ -23,9 +23,9 @@ preparation used SSH, the lab, a VM, a mount or a private key.
 | Input | Value |
 |---|---|
 | Run ID | `zq3-r1` (guest/controller regex `[a-z0-9][a-z0-9-]{0,23}`); a retry gets a new ID |
-| Candidate | `/home/paul/tmp/claude/hfs-xz3-20261109d/package` (w54 kernel rebuild, 2026-11-09), manifest SHA256 `89c928d5072838bb509ec19e471109b549ce7b06c59451fab64a6d09250bec66`, source `ff866c59e8fe779c7db6aa03e22a7b098dafab5b`, CGO daemon `174949c1…`; only the guest kernel and Linux source records were rebuilt (w54 failed-bind kill_sb fence, zq3-r3 R3-1; r54 mount HELLO fix, zq3-r2 R2-4), and its modules are byte-identical; daemon, exporter and native parts are byte-identical reuses from f44 (`b203799e…`, `defd974`) via r54 (`5eb42c50…`, `ca920a2`), both now refused as superseded together with `3f770a88…` |
+| Candidate | `/home/paul/tmp/claude/hfs-xz3-20261109e/package` (z54 daemon rebuild, 2026-11-09), manifest SHA256 `2e0412a62d1c1f0aa0b29865c521bf3df7a925ea5ef293428fa9b38b647d8f2f`, source `a20aca192911e380f3863897e1e6774b1fc46e0e`, CGO daemon `39c92d01…`; only the daemon was rebuilt (z54 answers every VIEW_POLL/VIEW_ACK, zq3-r4 R4-1). The w54 guest kernel (failed-bind kill_sb fence, zq3-r3 R3-1; r54 mount HELLO fix, zq3-r2 R2-4), its modules, the Linux source records and the exporter and native parts are byte-identical reuses from the w54 candidate (`89c928d5…`, `ff866c5`), now refused as superseded together with r54 (`5eb42c50…`), f44 (`b203799e…`) and `3f770a88…` |
 | Quarantined, never installed | `7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b` (CGO-disabled daemon); the probe controller refuses it |
-| Daemon | `freebsd/hfs-controlled-runtime` `174949c1ebf97d483d49e41f1ade7bce88f63013cb943be794276bb1ddd417a7` (f44; native observer check passed on f3) |
+| Daemon | `freebsd/hfs-controlled-runtime` `39c92d016f17b4c480c3c3bfac266f284123413ea4d95697b935d80bdf98a521` (z54, from `a20aca1`; two forced builds and the window build reproduced it. The f3 native observer check passed for the f44 bytes `174949c1…` and has not yet run on these bytes) |
 | Patched bhyve (exporter) | `freebsd/bhyve` `36423b6d4f68dc1b05299b1c379a164035e7db5b06ca64b47f2a8571d823fb5c`; the system `/usr/sbin/bhyve` (`c54a6361…`) is never replaced |
 | Guest kernel | `6.1.190-hfs-xz3`: `linux/bzImage` `5c46f218…`, `linux/config` `d88b4c56…`, `System.map` `d544349f…`, five modules (`virtio_net`, `net_failover`, `failover`, `efivarfs`, `x86_pkg_temp_thermal`) with hashes in the package's `installation-proposal.json` |
 | Operator public key | `2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635` (built into the guest kernel config) |
@@ -151,8 +151,8 @@ or vmm context could still exist.
 ### Phase 0: local preparation (workstation, B)
 
 - Actions: the FreeBSD CGO `controlledruntime.test` binary (for the host FD
-  rerun) and the `fdescfs-namespace` helper are already rebuilt from `defd974`
-  (f44) and pinned (`9e046c20…`, `a773f3ef…`, reproducible; recipe
+  rerun) and the `fdescfs-namespace` helper are already rebuilt from `a20aca1`
+  (z54 daemon rebuild) and pinned (`97fb5c07…`, `cc92bcde…`, reproducible; recipe
   `tools/lab/build-fdescfs-window-artifacts.sh`, record
   `docs/lab/zq3-fdescfs-window/build-record.json`); rebuild only to re-verify.
   The fdescfs window pins are reviewed in `docs/lab/zq3-fdescfs-window/pins.json`;
@@ -326,7 +326,7 @@ controller `tools/lab/fdescfs-window.py` with the explicit prefix
    (p44, after zq3-r1's first setup refused the masked row).
 3. `qualify` (B, under `native-test-guard.py --profile host`): rerun
    `TestDescriptorExecNativeQualification` on the **f3 host** with the final
-   test bytes from source `defd974` (`9e046c20…`), plus
+   test bytes from source `a20aca1` (`97fb5c07…`), plus
    `hfs-controlled-runtime --check-descriptor-exec` (must now report
    `fdescfs`, supported). This closes the host rerun transferred from w24.
 4. `kldload /boot/kernel/fusefs.ko` (`b207adf6…`) only if absent, with
@@ -489,7 +489,7 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
   The guard command is:
   `doas -n /usr/local/bin/python3.12 -I -B
   /var/tmp/hfs-validation-xz3/zq3-r1/bin/runtime-guard.py --run-dir
-  /var/tmp/hfs-validation-xz3/zq3-r1/guard --runtime-sha256 174949c1…
+  /var/tmp/hfs-validation-xz3/zq3-r1/guard --runtime-sha256 39c92d01…
   --vm-name hfs-zq3-r1 --disk-root /var/tmp/hfs-validation-xz3/zq3-r1
   --disk-root /var/tmp/hfs-fdescfs-windows/zq3-r1 --skip-path <native
   mountpoint from the run config> --
@@ -624,8 +624,9 @@ d44 therefore adds per-operation arming to the runtime: ARM operation code 2,
 only a CALL whose guest intent opcode is MKDIR and lets the earlier CALLs
 through. The superseded `e0cca0c` candidate refuses the flag; the f44 rebuild
 (`b203799e…`, source `defd974`) carries it, with its window pins rebuilt too,
-and so do the r54 candidate (`5eb42c50…`, t54) and the current w54 candidate
-(`89c928d5…`), which reuse that daemon byte for byte.
+and so do the r54 (`5eb42c50…`, t54) and w54 (`89c928d5…`, y54) candidates,
+which reuse that daemon byte for byte, and the current z54 daemon rebuild
+(`2e0412a6…`, daemon `39c92d01…` from `a20aca1`), whose source keeps d44.
 With it, the T9 expectation becomes `dropped-reply-effect-committed-and-visible`
 (record `armed_intent`/`dropped_opcode` MKDIR, mkdir fails in m0, m1 sees the
 directory, m0 still blocked), and T10 is still expected to FENCE because the
@@ -908,7 +909,8 @@ reviewed and pinned, and this plan is re-filled:
   and flagging a probe the guest refused locally as vacuous. Needs the
   runtime's FUSE mount point path from the G2 config at fill time.
 - G12 *Prepared (v34)*: rebuilt, reproducible `controlledruntime.test`
-  `9e046c20…` and `fdescfs-namespace` `a773f3ef…` from `defd974`, f44 (recipe
+  `97fb5c07…` and `fdescfs-namespace` `cc92bcde…` from `a20aca1`, z54 daemon
+  rebuild (earlier `9e046c20…`/`a773f3ef…` from `defd974`, f44; recipe
   cross-checked by reproducing the candidate daemon), reviewed window pins and
   the run-time plan filler. Open until run time: the read-only host facts
   (python3.12 and base command hashes, `ldd` closure, controller `facts`)

@@ -27,13 +27,15 @@ def module(name):
 controller = module("controller")
 guest = module("guest")
 observer = module("observer")
-# xz3 w54 kernel rebuild (2026-11-09); see controller.ADMITTED.
-ADMITTED = "89c928d5072838bb509ec19e471109b549ce7b06c59451fab64a6d09250bec66"
-# e0cca0c (no d44 MKDIR-only lost reply), f44 (pre-r54 guest kernel) and r54
-# (pre-w54 guest kernel, failed-bind kill_sb oops).
+# xz3 z54 daemon rebuild (2026-11-09); see controller.ADMITTED.
+ADMITTED = "2e0412a62d1c1f0aa0b29865c521bf3df7a925ea5ef293428fa9b38b647d8f2f"
+# e0cca0c (no d44 MKDIR-only lost reply), f44 (pre-r54 guest kernel), r54
+# (pre-w54 guest kernel, failed-bind kill_sb oops) and w54 (pre-z54 daemon,
+# pre-acquire VIEW_POLL left unanswered).
 SUPERSEDED = ("3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
-              "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99")
+              "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
+              "89c928d5072838bb509ec19e471109b549ce7b06c59451fab64a6d09250bec66")
 QUARANTINED = "7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b"
 LAB = Path(__file__).resolve().parents[3] / "docs/lab"
 HOST_PIN = (LAB / "f3-host-known_hosts").read_bytes()
@@ -295,7 +297,8 @@ class PreparationTests(unittest.TestCase):
     def test_superseded_candidate_refuses_with_reason(self):
         # Superseded candidates are not defective but each lacks a fix the run
         # needs (e0cca0c: d44 MKDIR-only lost reply; f44: r54 mount HELLO;
-        # r54: w54 failed-bind kill_sb fence).
+        # r54: w54 failed-bind kill_sb fence; w54: z54 pre-acquire VIEW_POLL
+        # answer).
         # They must refuse distinctly from an unknown digest.
         for value in SUPERSEDED:
             with self.subTest(candidate=value), \
