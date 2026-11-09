@@ -1,0 +1,157 @@
+{
+  "candidate": {
+    "admission": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "assembled_from": "the worker worktree at a20aca1, byte-identical to the main checkout for all 3937 tracked files with no untracked files under cmd, internal, pkg, tools/integration or tools/lab; the worker sandbox refuses git in the main checkout. Nothing reused is path-tied: the daemon builder bindings are new and name the worktree path, every other binding is a hash",
+    "files": 194,
+    "independent_admit": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "manifest_sha256": "2e0412a62d1c1f0aa0b29865c521bf3df7a925ea5ef293428fa9b38b647d8f2f",
+    "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+    "path": "/home/paul/tmp/claude/hfs-xz3-20261109e/package",
+    "repository_baseline": "a20aca192911e380f3863897e1e6774b1fc46e0e",
+    "repository_changes_patch": "absent: the baseline is now the daemon build revision a20aca1, which already contains the w54 source.json and patches, so git diff against it is empty (89c928d5 carried the source.json diff against defd974)",
+    "source_checkout": "a20aca192911e380f3863897e1e6774b1fc46e0e"
+  },
+  "controls": {
+    "all_refused": true,
+    "case_names": [
+      "external operator mismatch",
+      "external repository mismatch",
+      "old negotiated features",
+      "old source revision",
+      "different packaged Linux patch",
+      "different native owned source",
+      "wrong actual bundled source with consistent container hashes",
+      "daemon ELF labelled as full exporter",
+      "native helper ELF lacks production controllers",
+      "invented stock shared9p runtime",
+      "installed success claim",
+      "missing actual Go build version",
+      "real CGO_ENABLED=0 daemon with nocgo observer stub",
+      "record claims CGO0 build",
+      "nocgo stub in recorded source closure",
+      "renamed cgo process observer symbols",
+      "foreign dynamic loader",
+      "extra recorded DT_NEEDED",
+      "missing recorded DT_NEEDED",
+      "sysroot library hash differs from recorded closure",
+      "unlinked sysroot capture",
+      "unrecorded clang resource headers",
+      "unrecorded clang shared-library closure",
+      "foreign cgo compiler wrapper",
+      "installation authority claim",
+      "false forced rebuild witness"
+    ],
+    "cases": 26,
+    "cgo0_control_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+    "original_passed_after": true,
+    "restored_passed": true
+  },
+  "daemon": {
+    "bytes": 10768088,
+    "forced_builds_equal": true,
+    "gnu_build_id": "5d99b0daaea917fafe77f7dda6c49ce846c44d9a",
+    "go_build_id": "NBshozLuhwCUvt8pbHAn/_h5qVU7IkijMqscABXwo/dJTz9ZhRVGVUV8FTECq5/qrcgKqFa7qT_dGO36uEn",
+    "go_mod_changed_since_defd974": true,
+    "go_sum_unchanged": true,
+    "module_cache": "private cache seeded from the f44 cache (same go.sum); no dependency was downloaded. The only new cache entry is the main module pseudo-version info that Go derives locally from git for a20aca1",
+    "native_qualification": "not run: the exact bytes still need --check-process-observer on f3 (the f44 daemon 174949c1 passed it); local-only task",
+    "repository": "a20aca192911e380f3863897e1e6774b1fc46e0e",
+    "sha256": "39c92d016f17b4c480c3c3bfac266f284123413ea4d95697b935d80bdf98a521",
+    "source_closure_added_since_y54": [
+      "github.com/snonux/homelabfs/internal/viewcontrol/ack_reply.go"
+    ],
+    "source_closure_changed_since_y54": [
+      "github.com/snonux/homelabfs/internal/controlledruntime/facts.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/endpoint.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/transport_ledger.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/admission.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/controller.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/recall.go"
+    ],
+    "source_closure_files": 1282,
+    "steps": [
+      [
+        "prepare",
+        "0",
+        "3"
+      ],
+      [
+        "build-first",
+        "0",
+        "35"
+      ],
+      [
+        "build-second",
+        "0",
+        "36"
+      ]
+    ],
+    "toolchain_cgo_toolchain_sysroot_runtime_closure_unchanged": true,
+    "window_build_cross_check_equal": true,
+    "z54_symbols_present": [
+      "viewcontrol.(*Controller).acknowledge",
+      "viewcontrol.(*Controller).ackReply",
+      "viewcontrol.(*Controller).ackRefusal"
+    ]
+  },
+  "init_helper": {
+    "kept": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80 from e0cca0c",
+    "reason": "not in the package; cmd/homelabfs imports internal/guestbridge but not viewcontrol, and the z54 guestbridge changes (endpoint VIEW_POLL/VIEW_ACK replies, transport ledger) are never reached by node-init/volume-init"
+  },
+  "kernel": {
+    "linux/System.map": "d544349f5b628424f0d5a12318e37c0cd8f0be0d9daa963b25edb5f92b194bec",
+    "linux/bzImage": "5c46f218aa1ca391e7fd057cfbace693e8138b4199f3fe74a905d9cc5f2795e5",
+    "linux/config": "d88b4c567e5676be1ab9c9d8a317978f0fd2b6976a6b3f24be51407b848ef5ff",
+    "linux/vmlinux": "086f6b9030d1986dadb0956bf2ad847b471f4b6c1fdf521a9f0d95dd05c82e4f",
+    "release": "6.1.190-hfs-xz3",
+    "reused_from": "89c928d5 (w54, source ff866c5), byte for byte: vmlinux, bzImage, config, System.map, Module.symvers, modules.*, kernel.release, five modules, build/abi/abi-negative/clean-repro records"
+  },
+  "not_claimed": [
+    "installed",
+    "booted",
+    "native acceptance",
+    "native observer qualification of these daemon bytes",
+    "VM/exporter execution",
+    "normal publication",
+    "a working hfs1.4 mount on Rocky (zq3)"
+  ],
+  "reason": "zq3-r4 R4-1: the f44 daemon 174949c1 left a VIEW_POLL that arrived before the domain was acquired unanswered, so the first mount blocked in the transport; z54 (merge a20aca1) answers every VIEW_POLL/VIEW_ACK (EMPTY before acquire, ACCEPTED|STALE|BLOCKED acks) and never strands a transport cell",
+  "recorded": "2026-11-09",
+  "reused": {
+    "files": 136,
+    "from_manifest": "89c928d5072838bb509ec19e471109b549ce7b06c59451fab64a6d09250bec66",
+    "justification": "git diff ff866c5..a20aca1 touches only evidence docs under tools/integration and nothing under tools/integration/linux9p or lib9p; each reused file was hash-checked against the y54 manifest (and patches, source.json, source inventory and Linux notices against the current repository and prepared w54 source); the 4 Go licences the daemon build wrote are identical to y54",
+    "list": "reused-files.json",
+    "scope": "83 native FreeBSD files, 5 native source-bundle/notice files, 18 Linux kernel/module/record files, 2 Linux source records, 6 Linux patches and series, 22 Linux license notices"
+  },
+  "superseded_candidate": {
+    "manifest_sha256": "89c928d5072838bb509ec19e471109b549ce7b06c59451fab64a6d09250bec66",
+    "status": "refused as superseded (pre-z54 daemon 174949c1: unanswered pre-acquire VIEW_POLL, zq3-r4 R4-1)"
+  },
+  "task": "xz3 z54 daemon rebuild",
+  "version": "homelabfs-xz3-evidence/2",
+  "window_artifacts": {
+    "builds_byte_identical": true,
+    "controlledruntime.test": "97fb5c074465bfaf6c92b39a66a6823247e9dd12f2f9f7e27e8bc6433440bdc9",
+    "fdescfs-namespace": "cc92bcded8a056ab9bfd6091f8a93245e8adcec941c58217613d315678735940",
+    "helper_difference": "fdescfs-namespace.c is unchanged (e59cde41...). The helper differs from the f44 a773f3ef only in DWARF: 487 bytes in .debug_str (the new out_dir as comp_dir, which reorders the merged string pool) and .debug_info (string offsets). llvm-objcopy --strip-debug of both builds gives identical bytes 07c9f5a19fb38031bfbfda438b3f659a8fdc03ecc656f8f20791d120f9364a96",
+    "hfs-controlled-runtime": "39c92d016f17b4c480c3c3bfac266f284123413ea4d95697b935d80bdf98a521",
+    "recipe_sha256": "f894b64a4f9e2e9e725e794061917be79af94ed9a651ccff152bb2412b9fd000",
+    "source": "a20aca192911e380f3863897e1e6774b1fc46e0e",
+    "test_changed_because": "internal/controlledruntime/facts.go and the z54 guestbridge/viewcontrol packages it links changed since defd974"
+  }
+}
