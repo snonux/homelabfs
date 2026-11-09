@@ -26,13 +26,27 @@ func (r *sourceRig) mappedExecute(op string, value any) (json.RawMessage, *guest
 
 func (r *sourceRig) mappedExecuteReclaim(op string, value any, guestAck, nativeAck *guestbridge.Ack, donorControl *bool) (json.RawMessage, *guestbridge.VerificationReceiptV2, []byte, []byte, error) {
 	r.cells++
+	return r.mappedLeg(r.cells, 0, op, value, guestAck, nativeAck, donorControl)
+}
+
+// mappedWaitContinuation sends the next native VIEW_POLL leg of the same
+// logical guest VIEW_WAIT (guestCell), transport-acknowledging the prior EMPTY
+// native snapshot in reclaim exactly as the 9p backend does within one wait.
+func (r *sourceRig) mappedWaitContinuation(guestCell, index uint64, value any, emptyLeg *guestbridge.Ack) (json.RawMessage, *guestbridge.VerificationReceiptV2, []byte, []byte, error) {
+	return r.mappedLeg(guestCell, index, "VIEW_WAIT", value, nil, emptyLeg, nil)
+}
+
+// mappedLeg writes one native command delegated from the original guest
+// command at guestCell, reads its native response and translates it back.
+// r.mappingLastNative names the exact native response for a later reclaim.
+func (r *sourceRig) mappedLeg(guestCell, pollIndex uint64, op string, value any, guestAck, nativeAck *guestbridge.Ack, donorControl *bool) (json.RawMessage, *guestbridge.VerificationReceiptV2, []byte, []byte, error) {
 	*r.mappingNativeCell++
 	p := r.installed.Admission.Protocols[r.scope.Session]
 	payload, err := canonicalJSON(value)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	original := guestbridge.Command{Cell: r.cells, Context: r.scope, Protocol: &p, Op: op, Payload: payload, Reclaim: guestAck}
+	original := guestbridge.Command{Cell: guestCell, Context: r.scope, Protocol: &p, Op: op, Payload: payload, Reclaim: guestAck}
 	guestRaw, err := canonicalJSON(original)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -46,11 +60,21 @@ func (r *sourceRig) mappedExecuteReclaim(op string, value any, guestAck, nativeA
 	if op == "RELEASE_CELL" && nativeAck != nil {
 		native.Payload, _ = canonicalJSON(nativeAck)
 	}
-	native.Delegation = &guestbridge.Delegation{Version: guestbridge.DelegationVersion, GuestCell: original.Cell, GuestOp: op, GuestReclaim: guestAck}
-	nativeRaw, err := canonicalJSON(native)
+	native.Delegation = &guestbridge.Delegation{Version: guestbridge.DelegationVersion, GuestCell: original.Cell, GuestOp: op, GuestReclaim: guestAck, PollIndex: pollIndex}
+	if err = r.mappedWriteNative(native, mappedFlags(op, nativeAck, donorControl)); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	raw, err := r.mappedReadNative(native)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
+	r.mappingLastNative = &guestbridge.Ack{Cell: native.Cell, ResponseHash: hashBytes(raw)}
+	return r.mappedTranslate(original, guestRaw, raw)
+}
+
+// mappedFlags selects the native lane: acquisition/ordinary commands use the
+// ordinary lane (bit 0 clear) and a reclaim sets bit 1, keeping the donor lane.
+func mappedFlags(op string, nativeAck *guestbridge.Ack, donorControl *bool) uint16 {
 	flags := uint16(1)
 	if op == "HELLO" || op == "CALL" || op == "ALLOCATE" || op == "VIEW_ACQUIRE" || op == "DIRTY_RESERVE" {
 		flags = 0
@@ -61,58 +85,74 @@ func (r *sourceRig) mappedExecuteReclaim(op string, value any, guestAck, nativeA
 			flags &^= 1
 		}
 	}
+	return flags
+}
+
+func (r *sourceRig) mappedWriteNative(native guestbridge.Command, flags uint16) error {
+	nativeRaw, err := canonicalJSON(native)
+	if err != nil {
+		return err
+	}
 	hash := sha256.Sum256(nativeRaw)
 	for offset := 0; offset < len(nativeRaw); offset += guestbridge.ChunkBytes {
 		frame, err := guestbridge.EncodeFrame(guestbridge.Frame{Minor: 4, Kind: 1, Flags: flags, Total: uint32(len(nativeRaw)), Offset: uint32(offset), Session: parseRuntimeUUID(r.scope.Session), Cell: native.Cell, Hash: hash, Data: nativeRaw[offset:min(offset+guestbridge.ChunkBytes, len(nativeRaw))]})
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return err
 		}
 		_, err = r.mappingTransport.Write(r.t.Context(), r.native, r.native.Endpoint.CommandNode, native.Cell*guestbridge.CellStride+uint64(offset/guestbridge.ChunkBytes)*(guestbridge.HeaderBytes+guestbridge.ChunkBytes), frame)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return err
 		}
 	}
+	return nil
+}
+
+// mappedReadNative waits up to 5 s for the complete native response; a cell
+// the endpoint never answers (for example "blocked") fails here.
+func (r *sourceRig) mappedReadNative(native guestbridge.Command) ([]byte, error) {
 	raw := []byte{}
 	total := 1
 	deadline := time.Now().Add(5 * time.Second)
+	node := r.native.Endpoint.ResultNode
+	if native.Op == "VIEW_POLL" {
+		node = r.native.Endpoint.RecallNode
+	}
 	for chunk := 0; len(raw) < total; chunk++ {
 		position := native.Cell*guestbridge.CellStride + uint64(chunk)*(guestbridge.HeaderBytes+guestbridge.ChunkBytes)
-		var wire []byte
-		node := r.native.Endpoint.ResultNode
-		if native.Op == "VIEW_POLL" {
-			node = r.native.Endpoint.RecallNode
-		}
-		for {
+		wire, err := r.mappingTransport.Read(r.t.Context(), r.native, node, position, 32768)
+		for errors.Is(err, fsapi.WouldBlock) && time.Now().Before(deadline) {
+			runtime.Gosched()
 			wire, err = r.mappingTransport.Read(r.t.Context(), r.native, node, position, 32768)
-			if errors.Is(err, fsapi.WouldBlock) && time.Now().Before(deadline) {
-				runtime.Gosched()
-				continue
-			}
-			break
 		}
 		if err != nil || len(wire) < guestbridge.HeaderBytes {
-			return nil, nil, nil, nil, fmt.Errorf("mapped response unavailable: %w", err)
+			return nil, fmt.Errorf("mapped response unavailable: %w", err)
 		}
 		total = int(binary.LittleEndian.Uint32(wire[16:]))
 		size := guestbridge.HeaderBytes + min(guestbridge.ChunkBytes, total-chunk*guestbridge.ChunkBytes)
 		for len(wire) < size {
 			more, e := r.mappingTransport.Read(r.t.Context(), r.native, node, position+uint64(len(wire)), uint32(size-len(wire)))
 			if e != nil {
-				return nil, nil, nil, nil, e
+				return nil, e
 			}
 			wire = append(wire, more...)
 		}
 		frame, e := guestbridge.DecodeFrame(wire)
 		if e != nil || frame.Cell != native.Cell || frame.Minor != 4 {
-			return nil, nil, nil, nil, fsapi.Stale
+			return nil, fsapi.Stale
 		}
 		raw = append(raw, frame.Data...)
 		if len(raw) == total && sha256.Sum256(raw) != frame.Hash {
-			return nil, nil, nil, nil, fsapi.Stale
+			return nil, fsapi.Stale
 		}
 	}
+	return raw, nil
+}
+
+// mappedTranslate restores the guest cell/op in the native response and
+// verifies any mapped receipt against the original guest command bytes.
+func (r *sourceRig) mappedTranslate(original guestbridge.Command, guestRaw, raw []byte) (json.RawMessage, *guestbridge.VerificationReceiptV2, []byte, []byte, error) {
 	var fields map[string]json.RawMessage
-	if err = json.Unmarshal(raw, &fields); err != nil {
+	if err := json.Unmarshal(raw, &fields); err != nil {
 		return nil, nil, nil, nil, err
 	}
 	fields["cell"], _ = canonicalJSON(original.Cell)

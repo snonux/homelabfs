@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -19,20 +20,24 @@ type CellReservation struct {
 	Release func()
 }
 type cell struct {
-	frame          Frame
-	body           []byte
-	chunks         []bool
-	count          int
-	reservation    CellReservation
-	command        *Command
-	response       []byte
-	wire           [][]byte
-	seen           [][]byte
-	unread         int
-	resultKind     uint16
-	released       bool
-	native         Native // Historical accepted callback, never restored authentication.
-	jobPhase       string
+	frame       Frame
+	body        []byte
+	chunks      []bool
+	count       int
+	reservation CellReservation
+	command     *Command
+	response    []byte
+	wire        [][]byte
+	seen        [][]byte
+	unread      int
+	resultKind  uint16
+	released    bool
+	native      Native // Historical accepted callback, never restored authentication.
+	jobPhase    string
+	// blockedError names the semantic error class that left jobPhase
+	// "blocked". The cell is never answered, so this is the only durable
+	// record of why a guest request stays without a reply.
+	blockedError   string
 	observations   []Native
 	mapping        *ProtectedMapping
 	guestWatermark uint64
@@ -74,6 +79,9 @@ type Transport struct {
 	// (see lost_reply.go); nil unless explicitly armed. It is not protocol
 	// state and is never written to or restored from the C8 ledger.
 	lostReply *LostReplyEvidence
+	// respondFailpoint is private failure injection for tests: it may replace
+	// Execute's response bytes before bounds/framing. Production leaves it nil.
+	respondFailpoint func(Command, []byte) []byte
 }
 
 // NewTransport reserves independent bounded ordinary/control workers. Admission
@@ -493,6 +501,12 @@ func (t *Transport) Read(ctx context.Context, n Native, node, offset uint64, cou
 	if c.released {
 		return nil, fsapi.Stale
 	}
+	// A blocked cell is never answered or redispatched. Report that as a
+	// definitive error (EIO through FUSE, Rbridge ERROR to the guest) rather
+	// than WouldBlock, which every reader would retry until its deadline.
+	if c.response == nil && c.jobPhase == "blocked" {
+		return nil, fsapi.IO
+	}
 	if c.response == nil || kind != c.resultKind {
 		return nil, fsapi.WouldBlock
 	}
@@ -626,45 +640,27 @@ func (t *Transport) worker(queue <-chan job) {
 		}
 		t.mu.Unlock()
 		if e != nil {
-			retryable := errors.Is(e, fsapi.WouldBlock) || errors.Is(e, fsapi.NoSpace)
-			t.mu.Lock()
-			if c = t.cells[j.id]; c != nil && t.failed == nil {
-				c.jobPhase = "blocked"
-				if retryable {
-					c.jobPhase = "pending"
-				}
-				_ = t.protectLocked(j.id)
-			}
-			t.mu.Unlock()
-			if retryable {
+			if t.recordExecuteFailure(j.id, e) {
 				pending = append(pending, j)
 			}
 			continue
 		}
+		if t.respondFailpoint != nil {
+			raw = t.respondFailpoint(j.command, raw)
+		}
+		// A response that cannot be framed must not leave the cell "executing"
+		// forever: it becomes blocked with a class and reads answer an error.
 		if len(raw) == 0 || len(raw) > BodyBytes {
+			t.recordResponseFailure(j.id, responseBoundsClass(raw))
 			continue
 		}
 		kind := uint16(2)
 		if j.command.Op == "VIEW_POLL" {
 			kind = 3
 		}
-		frames := [][]byte{}
-		seen := [][]byte{}
-		hash := sha256.Sum256(raw)
-		session := parseID(j.command.Context.Session)
-		unread := 0
-		valid := true
-		for offset := 0; offset < len(raw); offset += ChunkBytes {
-			wire, e := EncodeFrame(Frame{Minor: commandMinor(j.command), Flags: t.flags(j.id), Kind: kind, Total: uint32(len(raw)), Offset: uint32(offset), Session: session, Cell: j.id, Hash: hash, Data: raw[offset:min(offset+ChunkBytes, len(raw))]})
-			if e != nil {
-				valid = false
-				break
-			}
-			frames = append(frames, wire)
-			seen = append(seen, make([]byte, len(wire)))
-			unread += len(wire)
-		}
+		frames, seen, unread, valid := t.responseFrames(j, kind, raw)
 		if !valid {
+			t.recordResponseFailure(j.id, "FRAME_ENCODE")
 			continue
 		}
 		t.mu.Lock()
@@ -696,6 +692,105 @@ func (t *Transport) worker(queue <-chan job) {
 		t.mu.Unlock()
 	}
 }
+
+// recordExecuteFailure protects the cell phase after Service.Execute failed and
+// reports whether the job is retried. WouldBlock/NoSpace are transient capacity
+// refusals and stay "pending" in the retry ring unless wrapped by Final. Every
+// other error is final for this dispatch: the cell becomes "blocked", its row
+// records the error class for transport.db analysis, and Read answers it with
+// an explicit error instead of WouldBlock (zq3-r4: a silent blocked VIEW_POLL
+// left the guest retrying FETCH until its 30 s deadline).
+func (t *Transport) recordExecuteFailure(id uint64, e error) bool {
+	retryable := retryableExecuteError(e)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if c := t.cells[id]; c != nil && t.failed == nil {
+		c.jobPhase = "blocked"
+		c.blockedError = blockedErrorClass(e)
+		if retryable {
+			c.jobPhase = "pending"
+			c.blockedError = ""
+		}
+		_ = t.protectLocked(id)
+	}
+	return retryable
+}
+
+// recordResponseFailure makes a cell whose successful Execute produced bytes
+// that cannot be framed (empty, over BodyBytes, or unencodable) terminally
+// blocked under the given class. The effect may already be protected by the
+// service ledger; only this transport reply is unavailable.
+func (t *Transport) recordResponseFailure(id uint64, class string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if c := t.cells[id]; c != nil && t.failed == nil && c.response == nil {
+		c.jobPhase = "blocked"
+		c.blockedError = class
+		_ = t.protectLocked(id)
+	}
+}
+
+func responseBoundsClass(raw []byte) string {
+	if len(raw) == 0 {
+		return "RESPONSE_EMPTY"
+	}
+	return "RESPONSE_TOO_LARGE"
+}
+
+// FinalError marks an Execute error as definitive for its cell even when the
+// wrapped class (WouldBlock/NoSpace) would otherwise be retried. Callers use
+// it when retrying the identical command cannot succeed, so the guest gets an
+// error reply promptly instead of FETCH AGAIN until its deadline.
+type FinalError struct{ Err error }
+
+func (e FinalError) Error() string { return "final: " + e.Err.Error() }
+func (e FinalError) Unwrap() error { return e.Err }
+
+// Final wraps err as a FinalError; nil stays nil.
+func Final(err error) error {
+	if err == nil {
+		return nil
+	}
+	return FinalError{Err: err}
+}
+
+func retryableExecuteError(e error) bool {
+	var final FinalError
+	if errors.As(e, &final) {
+		return false
+	}
+	return errors.Is(e, fsapi.WouldBlock) || errors.Is(e, fsapi.NoSpace)
+}
+
+// blockedErrorClass returns a bounded, content-free error class: the semantic
+// fsapi errno name when one is wrapped, otherwise the Go error type. Error text
+// is never stored because it may echo request bytes and is unbounded.
+func blockedErrorClass(e error) string {
+	var code fsapi.Errno
+	if errors.As(e, &code) {
+		return code.Error()
+	}
+	class := fmt.Sprintf("UNCLASSIFIED:%T", e)
+	return class[:min(len(class), blockedErrorLimit)]
+}
+
+// responseFrames splits one immutable response into wire frames plus their
+// unread byte bitmaps. valid is false when any frame cannot be encoded.
+func (t *Transport) responseFrames(j job, kind uint16, raw []byte) (frames, seen [][]byte, unread int, valid bool) {
+	hash := sha256.Sum256(raw)
+	session := parseID(j.command.Context.Session)
+	for offset := 0; offset < len(raw); offset += ChunkBytes {
+		wire, e := EncodeFrame(Frame{Minor: commandMinor(j.command), Flags: t.flags(j.id), Kind: kind, Total: uint32(len(raw)), Offset: uint32(offset), Session: session, Cell: j.id, Hash: hash, Data: raw[offset:min(offset+ChunkBytes, len(raw))]})
+		if e != nil {
+			return nil, nil, 0, false
+		}
+		frames = append(frames, wire)
+		seen = append(seen, make([]byte, len(wire)))
+		unread += len(wire)
+	}
+	return frames, seen, unread, true
+}
+
 func (t *Transport) scope(session string) *Context {
 	t.service.mu.Lock()
 	defer t.service.mu.Unlock()

@@ -36,6 +36,7 @@ type sourceRig struct {
 	mappingTransport      *guestbridge.Transport
 	mappingDirectory      string
 	mappingNativeCell     *uint64
+	mappingLastNative     *guestbridge.Ack // last native response, for a WAIT continuation reclaim
 	t                     *testing.T
 	supervisor            *Supervisor
 	service               *fsservice.Service
@@ -459,8 +460,10 @@ func testRealControlledProducerSignsSourceEventAndRefusesForgedACK(t *testing.T,
 	entries, err := canonicalJSON([]any{})
 	require(t, err)
 	ack := map[string]any{"domain": domain, "sequence": poll.Event["sequence"], "recall": poll.Event["recall"], "phase": "STOPPED", "authority_hash": poll.Event["authority_hash"], "closure_hash": poll.Event["closure_hash"], "inventory_hash": poll.Event["inventory_hash"], "session": r.scope.Session, "manifest": map[string]any{"entries": []any{}, "hash": hashBytes(entries)}, "target": nil}
-	if _, _, err = r.execute("VIEW_ACK", ack); err == nil {
-		t.Fatal("wire ACK without actual observed kernel completion accepted")
+	// Without the observer's measurement the ACK is not acceptable yet; the spec
+	// reply is BLOCKED, which the kernel resends unchanged (never ACCEPTED).
+	if reply, _, err := r.execute("VIEW_ACK", ack); err != nil || !bytes.Equal(reply, []byte(`{"status":"BLOCKED"}`)) {
+		t.Fatalf("wire ACK without actual observed kernel completion: %s %v", reply, err)
 	}
 	ackRaw, err := canonicalJSON(ack)
 	require(t, err)
@@ -470,8 +473,11 @@ func testRealControlledProducerSignsSourceEventAndRefusesForgedACK(t *testing.T,
 	updated, err := canonicalJSON(r.installed)
 	require(t, err)
 	require(t, os.WriteFile(r.observationFile, updated, 0600))
-	_, _, err = r.execute("VIEW_ACK", ack)
+	accepted, _, err := r.execute("VIEW_ACK", ack)
 	require(t, err)
+	if !bytes.Equal(accepted, []byte(`{"status":"ACCEPTED"}`)) {
+		t.Fatalf("observed STOPPED ACK %s", accepted)
+	}
 	// Protected exact old ACK retries remain valid after the host advances phase.
 	_, _, err = r.execute("VIEW_ACK", ack)
 	require(t, err)
@@ -645,8 +651,8 @@ func testRealControlledProducerRejectsFalseFrozenOmission(t *testing.T, protocol
 	require(t, err)
 	ack := map[string]any{"domain": domain, "sequence": poll.Event["sequence"], "recall": recall, "phase": "STOPPED", "authority_hash": poll.Event["authority_hash"], "closure_hash": poll.Event["closure_hash"], "inventory_hash": poll.Event["inventory_hash"], "session": r.scope.Session, "manifest": map[string]any{"entries": []any{}, "hash": hashBytes(empty)}, "target": nil}
 	r.observeACK(poll.Event, ack, 1)
-	if _, _, err = r.execute("VIEW_ACK", ack); err == nil {
-		t.Fatal("authenticated kernel primitive falsely omitted an actual frozen bound reservation")
+	if reply, _, err := r.execute("VIEW_ACK", ack); err != nil || !bytes.Equal(reply, []byte(`{"status":"STALE"}`)) {
+		t.Fatalf("authenticated kernel primitive falsely omitted an actual frozen bound reservation: %s %v", reply, err)
 	}
 	entries := []json.RawMessage{frozen.Entry}
 	entriesRaw, err := canonicalJSON(entries)

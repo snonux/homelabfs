@@ -128,6 +128,10 @@ type Controller struct {
 	closed                      atomic.Bool
 	poisoned                    atomic.Bool
 	sealed                      sync.Map
+	// blockedACKs bounds repeated BLOCKED VIEW_ACK replies per session (see
+	// BlockedACKBound); guarded by mu. now is a test clock, nil in production.
+	blockedACKs map[string]blockedACK
+	now         func() time.Time
 }
 
 type ledger struct {
@@ -475,8 +479,14 @@ func (c *Controller) provider(scope guestbridge.Context) *controlledvalidation.P
 	return nil
 }
 
+// capture reads the current controlled source on the service worker. A full
+// service queue refuses with fsapi.NoSpace (fsservice.Controlled), which is
+// transient contention, not a fault.
 func (c *Controller) capture(ctx context.Context) (fsservice.ControlledViewSource, error) {
 	var source fsservice.ControlledViewSource
+	if err := c.fail("view-capture"); err != nil {
+		return source, err
+	}
 	err := c.config.Service.Controlled(ctx, c.config.Authorization.Enrollment.Domains[0].Profile, func(ctx context.Context, cut *fsservice.ControlledCut) error {
 		var err error
 		source, err = cut.ViewSource(ctx, c.config.Authorization.Enrollment.Bounds.SourceBytes)

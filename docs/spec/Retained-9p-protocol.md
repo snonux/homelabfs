@@ -620,6 +620,12 @@ domain; native reader domains have their own bindings and remain in the same
 closure inventory. Delivery uses VIEW_WAIT guest requests and VIEW_POLL native
 commands. Their payload is `{domain:Cap,after_sequence:u64}`. The response is
 `{status:EMPTY|EVENT,event:Event|null}` with Event only for EVENT.
+A domain enters the inventory with its first VIEW_ACQUIRE, yet a guest may
+poll before that (its first release must be able to recall it). A poll from a
+not yet inventoried domain whose granted DOMAIN capability names its own
+session scope is answered EMPTY and changes no state or `inventory_hash`; an
+inventoried domain must present exactly its acquired capability. A valid poll
+is never left unanswered.
 
 `Event={sequence:n64,recall:uuid,phase:RECALL|INSTALL_DRAIN|INSTALL_FINAL|REOPEN,
 domain:Cap,authority_hash:hash,closure_hash:hash,inventory_hash:hash,
@@ -637,7 +643,12 @@ phase:STOPPED|DRAINED|INSTALLED_DRAIN|INSTALLED_FINAL|REOPENED,
 authority_hash:hash,closure_hash:hash,inventory_hash:hash,session:uuid,
 manifest:Manifest|null,target:Publication|null}`; response is
 `{status:ACCEPTED|STALE|BLOCKED}`. It must match the live Context/session, event,
-domain, phase and exact hashes/cut. Manifest is mandatory for STOPPED/DRAINED,
+domain, phase and exact hashes/cut. A mismatch (or a sealed session) is STALE;
+an ACK that may become acceptable unchanged (physical facts not yet observed,
+owner busy) is BLOCKED and is resent unchanged, for a bounded time (the host
+answers an error after 30 s of BLOCKED for the same ACK). Both are replies. A command the host can never answer, VIEW_POLL included (no
+`{status}` exists for a closed or uncertain owner), gets an explicit transport
+error for its cell, never a cell left without a reply. Manifest is mandatory for STOPPED/DRAINED,
 target for installation/reopen. STOPPED uses null target; DRAINED uses the last
 intermediate installed target, or null when its manifest needed no drains. The
 other acknowledgement phases use null manifest. Manifest is

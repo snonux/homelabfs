@@ -275,7 +275,9 @@ func TestTerminalProducerActualOpenClaimRefusesSeal(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("actual terminal worker did not run")
 	}
-	if _, err := r.mappingTransport.Read(t.Context(), r.native, r.native.Endpoint.ResultNode, cell*guestbridge.CellStride, 32768); !errors.Is(err, fsapi.WouldBlock) {
+	// The refused attempt exposes no terminal result: its blocked cell answers
+	// with an explicit error reply instead of a silent WouldBlock.
+	if _, err := r.mappingTransport.Read(t.Context(), r.native, r.native.Endpoint.ResultNode, cell*guestbridge.CellStride, 32768); !errors.Is(err, fsapi.IO) {
 		t.Fatalf("open claim exposed a terminal result: %v", err)
 	}
 	_, _, _, _, err = r.peers[1].mappedExecute("HELLO", guestbridge.TerminalProtocol())

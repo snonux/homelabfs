@@ -22,18 +22,25 @@ func (r *rig) useTransport() {
 	r.transport = make([]*guestbridge.Transport, len(r.bridges))
 	r.transportReclaim = make([]*guestbridge.Ack, len(r.bridges))
 	for i := range r.bridges {
-		var config admission.Config
-		for class, size := range map[admission.Class]uint64{admission.Live: 512 << 20, admission.Control: 128 << 20, admission.Memory: 12 << 20} {
-			resources := admission.Resources{Bytes: size, Operations: 80, Workers: 4}
-			config.Pools[class] = admission.Limits{Global: resources, PerPeer: resources, PerVolume: resources}
-		}
-		budget, err := admission.New(config)
-		must(r.t, err)
-		r.transport[i], err = guestbridge.NewTransport(r.bridges[i], budget)
+		var err error
+		r.transport[i], err = guestbridge.NewTransport(r.bridges[i], r.transportBudget(12<<20))
 		must(r.t, err)
 		r.t.Cleanup(r.transport[i].Close)
 		r.cells[i] = 0
 	}
+}
+
+// transportBudget funds one endpoint's live/control pools and the given memory
+// pool (a durable ledger additionally needs TransportLedgerMemoryBytes).
+func (r *rig) transportBudget(memory uint64) *admission.Budget {
+	var config admission.Config
+	for class, size := range map[admission.Class]uint64{admission.Live: 512 << 20, admission.Control: 128 << 20, admission.Memory: memory} {
+		resources := admission.Resources{Bytes: size, Operations: 80, Workers: 4}
+		config.Pools[class] = admission.Limits{Global: resources, PerPeer: resources, PerVolume: resources}
+	}
+	budget, err := admission.New(config)
+	must(r.t, err)
+	return budget
 }
 func (r *rig) transportWrite(i int, c guestbridge.Command) {
 	r.t.Helper()

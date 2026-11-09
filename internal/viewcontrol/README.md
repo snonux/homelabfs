@@ -109,6 +109,47 @@ REOPENED close the recall. No query, timeout, cell release, disconnect or new UU
 retires rights. Disconnect invalidates learned acknowledgements; recovery needs
 full live continuity/exclusion and fresh exact acknowledgements.
 
+VIEW_POLL is nonblocking and always answers `{status:EMPTY|EVENT}`. A domain joins
+the recall inventory only through its first VIEW_ACQUIRE, but the guest kernel
+starts polling as soon as its view control exists. A poll from such a not yet
+registered domain whose DOMAIN capability names the session's own scope gets
+the canonical `{"event":null,"status":"EMPTY"}` and changes no ledger state, so
+`inventory_hash` still covers exactly the acquired domains. The backend reposts
+the poll and the next one after a later ACQUIRE/RELEASE delivers the RECALL.
+A registered domain presenting a different capability is still refused. Before
+zq3-r4 this poll was refused with PERMISSION, the endpoint left the cell
+silently `blocked`, and the guest's first release could never be recalled.
+
+A poll for a recovering, poisoned or closed controller has no spec reply and
+returns an error, which the endpoint answers with an explicit transport error.
+Event issuance commits domain sequences and events only after all of them were
+built, and the recall phase advances only after that, so a failed progress step
+leaves the in-memory ledger equal to the protected one. A poll whose progress
+meets contention (NoSpace from a full service queue in `fsservice.Controlled`,
+WouldBlock, Busy) therefore still answers EMPTY/EVENT from the current state
+and the next poll retries. Any other progress failure, or any failure that
+poisoned the controller, is an error (`guestbridge.Final`, never retried).
+
+VIEW_ACK always answers `{status:ACCEPTED|STALE|BLOCKED}` or, where the spec has
+no reply, an error:
+
+- STALE: the ACK does not match the current recall, session, sequence, phase,
+  hashes, manifest or target, or the session is sealed.
+- BLOCKED: only classes that clear with the identical ACK: WouldBlock, Busy and
+  `ErrNotObserved` (Facts report that the fixed observer has not measured the
+  phase or exclusion yet, distinct from a real Permission refusal).
+- Error: recovery (the disconnect discarded learned ACKs and guest RESUME stays
+  blocked), closed/poisoned controllers, real Permission refusals, Unavailable,
+  IO, NoSpace bounds, undecodable payloads, unknown phases and failed protected
+  writes.
+
+The guest kernel resends BLOCKED every 10 ms without a limit of its own, so one
+exact ACK may stay BLOCKED for at most `BlockedACKBound` (30 s, the guest's
+transport deadline); afterwards it gets an error reply. The bound is per
+session, in memory only, and restarts on different ACK bytes or any other
+reply. An ACCEPTED ACK is protected first; a later progress failure does not
+change that reply.
+
 Signed finite bounds cover permanent identities/tombstones, separate live/control
 tickets, reservation/freeze/manifests, complete source archives and peak source/
 ledger serialization memory. Source slots for outstanding drains and final
