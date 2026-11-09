@@ -98,7 +98,11 @@ func (c *Controller) poll(ctx context.Context, scope guestbridge.Context, raw js
 	}
 	domain, registered := c.state.Domains[scope.Session]
 	if !registered {
-		if p.Domain.Token == "" || p.Domain.Kind != "DOMAIN" || p.Domain.Scope != scope {
+		// The structural checks of the bridge's validateDomain: a DOMAIN
+		// capability (no description) for this exact session scope. Its grant
+		// and release state live only in the bridge, whose validateDomain runs
+		// on every dispatch before Exchange.
+		if p.Domain.Token == "" || p.Domain.Kind != "DOMAIN" || p.Domain.Description != nil || p.Domain.Scope != scope {
 			return nil, fsapi.Permission
 		}
 		return emptyPoll()
@@ -107,14 +111,18 @@ func (c *Controller) poll(ctx context.Context, scope guestbridge.Context, raw js
 	if !equal(domain.Domain, p.Domain) {
 		return nil, fsapi.Permission
 	}
-	// progress only advances an already protected recall. Its failures leave
-	// the ledger unchanged (events are committed atomically after capture), so
-	// transient contention still answers from the current state and the next
-	// poll or ACK retries it. Any other failure has no poll reply: answer it
-	// with a definitive error rather than retrying the identical poll forever.
-	// A failed protected write poisons the controller; its in-memory state is
-	// then no longer the protected one, so that is never answered from.
-	if err := c.progress(ctx); err != nil && (c.poisoned.Load() || !errors.Is(err, fsapi.WouldBlock)) {
+	// progress only advances an already protected recall. events() builds every
+	// event before committing anything and the phase moves only afterwards, so
+	// a failed step leaves the ledger unchanged. Contention is therefore
+	// answered from the current state and the next poll or ACK retries it:
+	// capture refuses a full service queue with NoSpace (fsservice.Controlled),
+	// lock contention is WouldBlock and a busy provider Busy. Any other failure
+	// has no poll reply and gets a definitive error. (A NoSpace that is really
+	// a permanent bound only stalls the recall; the poll is still answered.)
+	// A failed protected write
+	// poisons the controller; its memory is then not the protected ledger, so
+	// that is never answered from, whatever the class.
+	if err := c.progress(ctx); err != nil && (c.poisoned.Load() || !transientProgress(err)) {
 		return nil, guestbridge.Final(err)
 	}
 	var event json.RawMessage
@@ -132,6 +140,11 @@ func (c *Controller) poll(ctx context.Context, scope guestbridge.Context, raw js
 		return emptyPoll()
 	}
 	return canonical(map[string]any{"status": "EVENT", "event": event})
+}
+
+// transientProgress reports contention that clears without changing state.
+func transientProgress(err error) bool {
+	return errors.Is(err, fsapi.WouldBlock) || errors.Is(err, fsapi.NoSpace) || errors.Is(err, fsapi.Busy)
 }
 
 // emptyPoll is the canonical EMPTY reply: {"event":null,"status":"EMPTY"}.

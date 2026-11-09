@@ -644,9 +644,9 @@ authority_hash:hash,closure_hash:hash,inventory_hash:hash,session:uuid,
 manifest:Manifest|null,target:Publication|null}`; response is
 `{status:ACCEPTED|STALE|BLOCKED}`. It must match the live Context/session, event,
 domain, phase and exact hashes/cut. A mismatch (or a sealed session) is STALE;
-an ACK that may become acceptable unchanged (facts not yet observed, drains
-unresolved, owner recovering or busy) is BLOCKED and is resent unchanged. Both
-are replies. A command the host can never answer, VIEW_POLL included (no
+an ACK that may become acceptable unchanged (physical facts not yet observed,
+owner busy) is BLOCKED and is resent unchanged, for a bounded time (the host
+answers an error after 30 s of BLOCKED for the same ACK). Both are replies. A command the host can never answer, VIEW_POLL included (no
 `{status}` exists for a closed or uncertain owner), gets an explicit transport
 error for its cell, never a cell left without a reply. Manifest is mandatory for STOPPED/DRAINED,
 target for installation/reopen. STOPPED uses null target; DRAINED uses the last

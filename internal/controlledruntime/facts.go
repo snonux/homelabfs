@@ -419,7 +419,9 @@ func (f *Facts) checkACK(_ context.Context, scope guestbridge.Context, raw json.
 			return nil
 		}
 	}
-	return fsapi.Permission
+	// The fixed observer has not measured this exact phase (yet). The
+	// controller answers BLOCKED, bounded, rather than a permanent refusal.
+	return viewcontrol.ErrNotObserved
 }
 func (f *Facts) checkCancellation(ctx context.Context, scope guestbridge.Context, original json.RawMessage, l factsLedger) error {
 	var r struct {

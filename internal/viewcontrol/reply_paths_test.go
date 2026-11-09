@@ -1,6 +1,7 @@
 package viewcontrol
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -16,7 +17,7 @@ import (
 // WouldBlock until the guest's 30 s transport deadline.
 
 // transportAttempt is execute over the transport, returning the payload or the
-// definitive read error. A refused control cell keeps the prior reclaim donor.
+// definitive read error.
 func (r *rig) transportAttempt(i int, op string, payload any) (json.RawMessage, error) {
 	r.t.Helper()
 	r.cells[i]++
@@ -43,6 +44,11 @@ func (r *rig) transportAttempt(i int, op string, payload any) (json.RawMessage, 
 			continue
 		}
 		if err != nil {
+			// The refused cell already consumed the donor it reclaimed, and
+			// holds its own credit without a response to reclaim later.
+			if command.Reclaim != nil {
+				r.transportReclaim[i] = nil
+			}
 			return nil, err
 		}
 		frame, err := guestbridge.DecodeFrame(wire)
@@ -82,13 +88,15 @@ func TestTransportViewAckRepliesSpecStatus(t *testing.T) {
 	// The observer has not measured STOPPED yet: BLOCKED, resent unchanged.
 	raw, err := r.transportAttempt(0, "VIEW_ACK", stopped)
 	requireAckStatus(t, raw, err, "BLOCKED")
-	// A recovering controller cannot accept now, but may later.
+	// Recovery follows a disconnect that discarded learned ACKs; guest RESUME
+	// stays blocked, so it cannot clear for this session: error reply.
 	r.controller.mu.Lock()
 	r.controller.state.Recovery = true
 	r.controller.mu.Unlock()
 	r.physical("VIEW_ACK", json.RawMessage(stopped))
-	raw, err = r.transportAttempt(0, "VIEW_ACK", stopped)
-	requireAckStatus(t, raw, err, "BLOCKED")
+	if _, err = r.transportAttempt(0, "VIEW_ACK", stopped); !errors.Is(err, fsapi.IO) {
+		t.Fatalf("recovering VIEW_ACK %v, want error reply", err)
+	}
 	r.controller.mu.Lock()
 	r.controller.state.Recovery = false
 	r.controller.mu.Unlock()
@@ -156,15 +164,102 @@ func TestTransportViewPollProgressFailureIsErrorReply(t *testing.T) {
 	}
 }
 
-// ackRefusal keeps protocol violations as definitive errors.
+// Only classes that clear without changing the ACK are BLOCKED; a real
+// Permission refusal, bounds, IO, Unavailable and protocol violations are
+// definitive errors so the guest fails promptly instead of resending forever.
 func TestAckRefusalClassification(t *testing.T) {
-	for err, want := range map[error]string{fsapi.Stale: "STALE", fsapi.Unavailable: "BLOCKED", fsapi.Permission: "BLOCKED", fsapi.WouldBlock: "BLOCKED", fsapi.NoSpace: "BLOCKED"} {
-		raw, e := ackRefusal(err)
-		requireAckStatus(t, raw, e, want)
+	r := newRig(t)
+	raw := json.RawMessage(`{"phase":"STOPPED"}`)
+	r.controller.mu.Lock()
+	defer r.controller.mu.Unlock()
+	for err, want := range map[error]string{fsapi.Stale: "STALE", ErrNotObserved: "BLOCKED", fsapi.WouldBlock: "BLOCKED", fsapi.Busy: "BLOCKED"} {
+		reply, e := r.controller.ackRefusal(r.scopes[0], raw, err)
+		requireAckStatus(t, reply, e, want)
 	}
-	for _, err := range []error{fsapi.Invalid, fsapi.Unsupported, errors.New("undecodable manifest")} {
-		if _, e := ackRefusal(err); e == nil || !errors.Is(e, err) {
-			t.Fatalf("protocol violation %v answered as a reply: %v", err, e)
+	for _, err := range []error{fsapi.Permission, fsapi.Unavailable, fsapi.IO, fsapi.NoSpace, fsapi.Invalid, fsapi.Unsupported, errors.New("undecodable manifest")} {
+		if reply, e := r.controller.ackRefusal(r.scopes[0], raw, err); e == nil || !errors.Is(e, err) {
+			t.Fatalf("%v answered as a reply %s: %v", err, reply, e)
 		}
+	}
+}
+
+// One exact ACK may answer BLOCKED for at most BlockedACKBound; then it gets
+// an error reply. Other bytes or a non-BLOCKED reply restart the bound.
+func TestTransportBlockedACKIsBounded(t *testing.T) {
+	r := newRig(t)
+	r.useDurableTransport()
+	stopped := r.startReleaseRecall() // no observation: ErrNotObserved
+	clock := time.Unix(1_000_000, 0)
+	r.controller.mu.Lock()
+	r.controller.now = func() time.Time { return clock }
+	r.controller.mu.Unlock()
+	advance := func(d time.Duration) {
+		r.controller.mu.Lock()
+		clock = clock.Add(d)
+		r.controller.mu.Unlock()
+	}
+	raw, err := r.transportAttempt(0, "VIEW_ACK", stopped)
+	requireAckStatus(t, raw, err, "BLOCKED")
+	advance(BlockedACKBound)
+	raw, err = r.transportAttempt(0, "VIEW_ACK", stopped)
+	requireAckStatus(t, raw, err, "BLOCKED") // exactly at the bound
+	// A different ACK (another session's bytes) restarts the clock.
+	var other map[string]json.RawMessage
+	must(t, json.Unmarshal(stopped, &other))
+	other["sequence"] = json.RawMessage("7")
+	stale := mustRaw(t, other)
+	raw, err = r.transportAttempt(0, "VIEW_ACK", stale)
+	requireAckStatus(t, raw, err, "STALE")
+	raw, err = r.transportAttempt(0, "VIEW_ACK", stopped)
+	requireAckStatus(t, raw, err, "BLOCKED") // fresh bound after the STALE reply
+	advance(BlockedACKBound + time.Millisecond)
+	if _, err = r.transportAttempt(0, "VIEW_ACK", stopped); !errors.Is(err, fsapi.IO) {
+		t.Fatalf("ACK blocked past the bound %v, want error reply", err)
+	}
+	r.controller.mu.Lock()
+	tracked := len(r.controller.blockedACKs)
+	r.controller.mu.Unlock()
+	if tracked != 0 {
+		t.Fatal("bound state retained after its error reply")
+	}
+}
+
+// A poll whose progress meets a full service queue (NoSpace) or a busy
+// provider (Busy) answers from the unchanged state, and progress resumes on
+// the next poll. Before, NoSpace became a blocked cell and killed the session.
+func TestTransportViewPollTransientProgressStillAnswers(t *testing.T) {
+	for _, class := range []error{fsapi.NoSpace, fsapi.Busy} {
+		t.Run(class.Error(), func(t *testing.T) {
+			r := newRig(t)
+			r.useDurableTransport()
+			stopped := r.startReleaseRecall()
+			r.physical("VIEW_ACK", json.RawMessage(stopped))
+			raw, err := r.transportAttempt(0, "VIEW_ACK", stopped)
+			requireAckStatus(t, raw, err, "ACCEPTED") // recall now in DRAIN
+			r.controller.mu.Lock()
+			r.controller.config.Failpoint = func(point string) error {
+				if point == "view-capture" {
+					return class
+				}
+				return nil
+			}
+			r.controller.mu.Unlock()
+			poll := map[string]any{"domain": r.domains[0], "after_sequence": 0}
+			raw, err = r.transportAttempt(0, "VIEW_POLL", poll)
+			if err != nil || status(raw) != "EVENT" {
+				t.Fatalf("poll under %v: %s %v", class, raw, err)
+			}
+			r.controller.mu.Lock()
+			phase, poisoned := r.controller.state.Recall.Phase, r.controller.poisoned.Load()
+			r.controller.config.Failpoint = nil
+			r.controller.mu.Unlock()
+			if phase != "DRAIN" || poisoned {
+				t.Fatalf("failed progress changed state: phase %s poisoned %v", phase, poisoned)
+			}
+			raw, err = r.transportAttempt(0, "VIEW_POLL", poll)
+			if err != nil || !bytes.Contains(raw, []byte(`"phase":"INSTALL_DRAIN"`)) {
+				t.Fatalf("progress did not resume: %s %v", raw, err)
+			}
+		})
 	}
 }

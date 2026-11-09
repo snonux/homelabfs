@@ -162,7 +162,15 @@ func (p *primitiveFacts) Authorize(_ context.Context, s guestbridge.Context, op 
 func (p *primitiveFacts) CheckPhysical(_ context.Context, _ guestbridge.Context, op string, raw, ledger json.RawMessage) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.deny || !p.physical[op+hash(raw)] || len(ledger) == 0 {
+	if p.deny || len(ledger) == 0 {
+		return fsapi.Unavailable
+	}
+	if !p.physical[op+hash(raw)] {
+		// Like the runtime Facts, only an ACK's missing measurement is the
+		// "observer has not measured it yet" class; other ops stay Unavailable.
+		if op == "VIEW_ACK" {
+			return ErrNotObserved
+		}
 		return fsapi.Unavailable
 	}
 	return nil
@@ -913,8 +921,11 @@ func (p *primitiveFacts) CheckUnadopted(_ context.Context, statement Unadopted) 
 		return err
 	}
 	expected := p.exclusions[digest(statement)]
-	if p.deny || len(expected) == 0 || !bytes.Equal(expected, actual) {
+	if p.deny {
 		return fsapi.Unavailable
+	}
+	if len(expected) == 0 || !bytes.Equal(expected, actual) {
+		return ErrNotObserved // exclusion proof not observed yet
 	}
 	return nil
 }
