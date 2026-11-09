@@ -217,7 +217,7 @@
   "reused": {
     "files": 119,
     "from_manifest": "2e0412a62d1c1f0aa0b29865c521bf3df7a925ea5ef293428fa9b38b647d8f2f",
-    "justification": "git diff a20aca1..06c27a8 changes no non-test Go source, go.mod or go.sum, nothing under tools/integration/artifacts or tools/integration/lib9p, and under tools/integration/linux9p only patches 0001/0003/0004/0005, source.json, tests and the README; each reused file was hash-checked against the z54 manifest (re-admitted first), patches 0002/series against the repository and Linux notices against the prepared 964 source",
+    "justification": "git diff a20aca1..06c27a8 changes no non-test Go source, go.mod or go.sum, no code under tools/integration/artifacts (only four evidence documents) or tools/integration/lib9p, and under tools/integration/linux9p only patches 0001/0003/0004/0005, source.json, tests and the README; each reused file was hash-checked against the z54 manifest (re-admitted first), patches 0002/series against the repository and Linux notices against the prepared 964 source",
     "list": "reused-files.json",
     "scope": "83 native FreeBSD files, 5 native source-bundle/notice files, 7 daemon files (binary, build record, preparation record, four Go licences), 22 Linux license notices, patch 0002 and series"
   },

@@ -51,7 +51,7 @@ No initramfs is part of the package; the recipe builds `bzImage` and modules.
   also against the prepared 964 source and the patches against the
   repository. [reused-files.json](reused-files.json) lists them.
   `git diff a20aca1 06c27a8 -- '*.go' ':!*_test.go' go.mod go.sum` is empty,
-  and nothing under `tools/integration/artifacts` or `tools/integration/lib9p`
+  no code under `tools/integration/artifacts` (only four evidence documents) or `tools/integration/lib9p`
   changed, so the daemon's source closure is unchanged.
 - **Window artifacts: reused, not rebuilt.** The f44/664 rule is that the
   window test bytes match the daemon source. The daemon is still the z54
@@ -93,10 +93,17 @@ assembly ran from the worker worktree at `06c27a8`. All 3953 tracked files
 are byte-identical to the main checkout, which is also at `06c27a8`. The main
 checkout has no untracked files under `cmd`, `internal`, `pkg`,
 `tools/integration` or `tools/lab`. The reused daemon's builder bindings
-named the 664 worktree. They were re-keyed to this worktree, but only after
-checking that `daemon.py` (`57083443…`) and `daemon_cgo.py` (`6538e95f…`)
-there hash exactly to the bound values. The original binding files are kept
-in the run root. Every other reused proof record is a byte copy.
+named the 664 worktree (`.claude/worktrees/agent-a6a14d11158c35366`), where
+the daemon was actually built. They were re-keyed to this worktree, but only
+after checking that `daemon.py` (`57083443…`) and `daemon_cgo.py`
+(`6538e95f…`) there hash exactly to the bound values. **This departs from
+w54/z54 practice**, where `assemble.py` ran from the checkout that built the
+daemon, so the bindings named the real build path. Here the bindings name a
+path where the daemon was never built. That is harmless because the daemon
+bytes and both recipe hashes are identical, but it is a deviation. The
+original binding files (naming the real build path) are kept in the run root
+under `daemon-binding-origin/`. Every other reused proof record is a byte
+copy.
 
 `assemble.py` sealed and admitted the package. An independent `admit.py` run
 against the pinned manifest passed. `check_candidate.py` refused all
