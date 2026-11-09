@@ -468,7 +468,11 @@ func (r *rig) open(i int, name string) guestbridge.Capability {
 	}
 	return opened.Capabilities[0]
 }
-func (r *rig) ack(i int, phase string, manifest json.RawMessage) {
+
+// ack sends one VIEW_ACK built from the current recall event, requires
+// ACCEPTED and returns the exact canonical payload (so a test can prove that a
+// guest resend is byte-identical).
+func (r *rig) ack(i int, phase string, manifest json.RawMessage) json.RawMessage {
 	r.t.Helper()
 	r.controller.mu.Lock()
 	event := bytes.Clone(r.controller.state.Recall.Events[r.scopes[i].Session])
@@ -492,6 +496,7 @@ func (r *rig) ack(i int, phase string, manifest json.RawMessage) {
 	if status(reply) != "ACCEPTED" {
 		r.t.Fatalf("%s ACK %s", phase, reply)
 	}
+	return raw
 }
 func (r *rig) emptyManifest() json.RawMessage {
 	raw, _ := canonical(map[string]any{"entries": []any{}, "hash": digest([]any{})})

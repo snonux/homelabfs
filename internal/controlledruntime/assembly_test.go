@@ -249,7 +249,9 @@ func attachAssembly(peer *sourceRig, a *Assembly, counter *uint64) {
 // kernel posts VIEW_WAIT (native VIEW_POLL) before its first VIEW_ACQUIRE;
 // that poll must be answered EMPTY, not left as a silent blocked cell. The
 // same logical wait then continues and delivers the RECALL started by the
-// guest's own VIEW_RELEASE.
+// guest's own VIEW_RELEASE. The acknowledgements then follow the zq3-r5 order
+// (task 964), including the identical INSTALLED_DRAIN resend, until the
+// release is RELEASED; the runtime stays not ready throughout.
 func TestRuntimeAssemblyMountSequenceBeforeReady(t *testing.T) {
 	r, c := assemblyFixture(t)
 	a, err := Assemble(t.Context(), c)
@@ -315,6 +317,91 @@ func TestRuntimeAssemblyMountSequenceBeforeReady(t *testing.T) {
 		t.Fatalf("continued VIEW_WAIT receipt %+v", receipt)
 	}
 	notReady("EVENT")
+	r5RecallAcks(t, peer, domain, control, payload, notReady)
+}
+
+// r5Chain sends control commands the way the guest kernel reuses its 16
+// reserved control slots: each command reclaims the previous control response
+// (guest and native cell), so a long VIEW_QUERY loop never exhausts the lane.
+type r5Chain struct {
+	peer          *sourceRig
+	guest, native *guestbridge.Ack
+}
+
+func (c *r5Chain) exec(t *testing.T, op string, value any) json.RawMessage {
+	t.Helper()
+	payload, _, _, translated, err := c.peer.mappedExecuteReclaim(op, value, c.guest, c.native, nil)
+	require(t, err)
+	c.guest = &guestbridge.Ack{Cell: c.peer.cells, ResponseHash: hashBytes(translated)}
+	c.native = c.peer.mappingLastNative
+	return payload
+}
+
+// r5RecallAcks acknowledges the delivered RECALL in the zq3-r5 order:
+// STOPPED, INSTALLED_DRAIN, about 20 release VIEW_QUERY polls that stay
+// PENDING, an identical INSTALLED_DRAIN resend in a new cell (the guest's
+// bounded resend after a local transport failure), then DRAINED,
+// INSTALLED_FINAL and REOPENED, and finally the RELEASED release query.
+func r5RecallAcks(t *testing.T, peer *sourceRig, domain guestbridge.Capability, control guestbridge.Ticket, recall json.RawMessage, notReady func(string)) {
+	t.Helper()
+	chain := &r5Chain{peer: peer}
+	chain.phaseAck(t, domain, "STOPPED", recall)
+	notReady("STOPPED")
+	installed := chain.phaseAck(t, domain, "INSTALLED_DRAIN", nil)
+	notReady("INSTALLED_DRAIN")
+	for range 20 {
+		if payload := chain.exec(t, "VIEW_QUERY", map[string]any{"request": control}); !bytes.Contains(payload, []byte(`"status":"PENDING"`)) {
+			t.Fatalf("release query while waiting for DRAINED: %s", payload)
+		}
+	}
+	notReady("VIEW_QUERY PENDING")
+	chain.ack(t, "INSTALLED_DRAIN resend", installed)
+	notReady("INSTALLED_DRAIN resend")
+	for _, phase := range []string{"DRAINED", "INSTALLED_FINAL", "REOPENED"} {
+		chain.phaseAck(t, domain, phase, nil)
+		notReady(phase)
+	}
+	if payload := chain.exec(t, "VIEW_QUERY", map[string]any{"request": control}); !bytes.Contains(payload, []byte(`"status":"RELEASED"`)) {
+		t.Fatalf("release after REOPENED: %s", payload)
+	}
+	notReady("RELEASED")
+}
+
+// phaseAck acknowledges one recall phase: it polls the phase's event unless
+// the caller already holds it, records the declared kernel observation for the
+// exact ACK and sends it. It returns the ACK so that it can be resent as is.
+func (c *r5Chain) phaseAck(t *testing.T, domain guestbridge.Capability, phase string, event json.RawMessage) map[string]any {
+	t.Helper()
+	if event == nil {
+		event = c.exec(t, "VIEW_WAIT", map[string]any{"domain": domain, "after_sequence": 0})
+	}
+	var poll struct{ Event map[string]json.RawMessage }
+	require(t, json.Unmarshal(event, &poll))
+	if len(poll.Event) == 0 {
+		t.Fatalf("missing %s event %s", phase, event)
+	}
+	ack := map[string]any{"domain": domain, "sequence": poll.Event["sequence"], "recall": poll.Event["recall"], "phase": phase, "authority_hash": poll.Event["authority_hash"], "closure_hash": poll.Event["closure_hash"], "inventory_hash": poll.Event["inventory_hash"], "session": c.peer.scope.Session, "manifest": nil, "target": poll.Event["target"]}
+	if phase == "STOPPED" {
+		ack["target"] = nil
+	}
+	if phase == "STOPPED" || phase == "DRAINED" {
+		ack["manifest"] = map[string]any{"entries": []any{}, "hash": hashBytes([]byte("[]"))}
+	}
+	revision := uint64(1)
+	if phase == "REOPENED" {
+		revision = 2
+	}
+	c.peer.observeACK(poll.Event, ack, revision)
+	c.ack(t, phase, ack)
+	return ack
+}
+
+// ack sends one VIEW_ACK and requires ACCEPTED.
+func (c *r5Chain) ack(t *testing.T, phase string, ack map[string]any) {
+	t.Helper()
+	if payload := c.exec(t, "VIEW_ACK", ack); !bytes.Equal(payload, []byte(`{"status":"ACCEPTED"}`)) {
+		t.Fatalf("%s VIEW_ACK: %s", phase, payload)
+	}
 }
 
 func TestRuntimeAssemblyMissingAdaptersRefuse(t *testing.T) {
