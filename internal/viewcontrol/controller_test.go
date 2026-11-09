@@ -479,8 +479,11 @@ func (r *rig) ack(i int, phase string, manifest json.RawMessage) {
 	r.facts.mu.Lock()
 	r.facts.physical["VIEW_ACK"+hash(raw)] = true
 	r.facts.mu.Unlock()
-	_, err = r.execute(i, "VIEW_ACK", json.RawMessage(raw))
+	reply, err := r.execute(i, "VIEW_ACK", json.RawMessage(raw))
 	must(r.t, err)
+	if status(reply) != "ACCEPTED" {
+		r.t.Fatalf("%s ACK %s", phase, reply)
+	}
 }
 func (r *rig) emptyManifest() json.RawMessage {
 	raw, _ := canonical(map[string]any{"entries": []any{}, "hash": digest([]any{})})

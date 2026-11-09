@@ -120,6 +120,24 @@ A registered domain presenting a different capability is still refused. Before
 zq3-r4 this poll was refused with PERMISSION, the endpoint left the cell
 silently `blocked`, and the guest's first release could never be recalled.
 
+A poll for a recovering, poisoned or closed controller, or one whose
+opportunistic recall progress fails other than by transient capture contention,
+has no spec reply. It returns an error (wrapped `guestbridge.Final` where the
+class would otherwise be retried), which the endpoint answers with an explicit
+transport error. Event issuance commits domain sequences and events only after
+all of them were built, and the recall phase advances only after that, so a
+failed progress step leaves the in-memory ledger equal to the protected one.
+
+VIEW_ACK always answers `{status:ACCEPTED|STALE|BLOCKED}`. STALE: the ACK does
+not match the current recall, session, sequence, phase, hashes, manifest or
+target, or the session is sealed. BLOCKED: it may become acceptable unchanged
+later (controller recovering, physical or unadopted-exclusion facts not
+observed yet, drains or frozen results unresolved, a provider or bound busy).
+The guest kernel resends BLOCKED after 10 ms and fences its view on STALE. Only
+an undecodable payload or unknown phase, a closed or poisoned controller, or a
+failed protected write is an error. An ACCEPTED ACK is protected first; a later
+progress failure does not change that reply.
+
 Signed finite bounds cover permanent identities/tombstones, separate live/control
 tickets, reservation/freeze/manifests, complete source archives and peak source/
 ledger serialization memory. Source slots for outstanding drains and final

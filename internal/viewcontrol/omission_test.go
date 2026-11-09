@@ -60,15 +60,20 @@ func TestStoppedOmissionRequiresActualExclusionAndClosesExactTypedGap(t *testing
 	}
 	ack := r.stoppedPayload(0, r.emptyManifest())
 	r.physical("VIEW_ACK", ack)
-	if _, err := r.execute(0, "VIEW_ACK", ack); !errors.Is(err, fsapi.Unavailable) {
-		t.Fatalf("omission/hash alone supplied exclusion %v", err)
+	// The unadopted exclusion is not verified yet: the spec reply is BLOCKED,
+	// which the guest resends unchanged until the evidence exists.
+	if reply, err := r.execute(0, "VIEW_ACK", ack); err != nil || status(reply) != "BLOCKED" {
+		t.Fatalf("omission/hash alone supplied exclusion %s %v", reply, err)
 	}
 	if r.controller.state.Reservations[reserved.Reservation.ID].Status != "RESERVED" {
 		t.Fatal("false omission changed durable obligation")
 	}
 	r.proveExclusion(0, ack, *reserved.Reservation)
-	_, err := r.execute(0, "VIEW_ACK", ack)
+	accepted, err := r.execute(0, "VIEW_ACK", ack)
 	must(t, err)
+	if status(accepted) != "ACCEPTED" {
+		t.Fatalf("proven omission ACK %s", accepted)
+	}
 	cancelled := r.view(0, "VIEW_QUERY", map[string]any{"request": ticket})
 	if cancelled.Status != "CANCELLED" {
 		t.Fatalf("missing protected no-effect outcome %+v", cancelled)
@@ -81,9 +86,11 @@ func TestStoppedOmissionRequiresActualExclusionAndClosesExactTypedGap(t *testing
 		t.Fatal("late immutable grant reactivated old physical epoch")
 	}
 	// A changed STOPPED manifest is never substituted after the protected ACK.
-	changed := bytes.Replace(ack, []byte(`"sequence":1`), []byte(`"sequence":2`), 1)
-	if _, err = r.execute(0, "VIEW_ACK", changed); err == nil {
-		t.Fatal("changed stopped binding advanced state")
+	// json.RawMessage keeps the payload an object: a plain []byte would marshal
+	// as a base64 string and only exercise the schema refusal.
+	changed := json.RawMessage(bytes.Replace(ack, []byte(`"sequence":1`), []byte(`"sequence":2`), 1))
+	if reply, err := r.execute(0, "VIEW_ACK", changed); err != nil || status(reply) != "STALE" {
+		t.Fatalf("changed stopped binding %s %v", reply, err)
 	}
 }
 
@@ -186,8 +193,8 @@ func TestStoppedCannotOmitBoundOrFrozenSource(t *testing.T) {
 			ack := r.stoppedPayload(0, r.emptyManifest())
 			r.physical("VIEW_ACK", ack)
 			r.proveExclusion(0, ack, *reserved.Reservation)
-			if _, err = r.execute(0, "VIEW_ACK", ack); !errors.Is(err, fsapi.Stale) {
-				t.Fatalf("bound source omitted despite concrete frozen call %v", err)
+			if reply, err := r.execute(0, "VIEW_ACK", ack); err != nil || status(reply) != "STALE" {
+				t.Fatalf("bound source omitted despite concrete frozen call %s %v", reply, err)
 			}
 		})
 	}

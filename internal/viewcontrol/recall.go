@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 	"strconv"
 
@@ -28,6 +29,12 @@ type acknowledgement struct {
 
 // Exchange dispatches the retained recall protocol. Every acknowledgement is
 // protected before phase advance and must independently pass physical Facts.
+//
+// Every spec-defined outcome is a reply: VIEW_POLL answers EMPTY|EVENT and
+// VIEW_ACK answers ACCEPTED|STALE|BLOCKED. An error is returned only where the
+// spec defines no reply (protocol/authorization violations, a closed or
+// poisoned controller); the endpoint then answers the cell with an explicit
+// transport error instead of leaving it silent.
 func (c *Controller) Exchange(ctx context.Context, scope guestbridge.Context, op string, raw json.RawMessage) (json.RawMessage, error) {
 	if err := c.CheckRequest(ctx, scope, op, raw); err != nil {
 		return nil, err
@@ -47,9 +54,14 @@ func (c *Controller) Exchange(ctx context.Context, scope guestbridge.Context, op
 		return nil, fsapi.WouldBlock
 	}
 	defer c.mu.Unlock()
+	if op == "VIEW_ACK" {
+		return c.acknowledge(ctx, scope, raw)
+	}
 	if _, sealed := c.state.Terminal[scope.Session]; sealed {
 		return nil, fsapi.Permission
 	}
+	// No VIEW_POLL reply exists for a controller that cannot vouch for its
+	// events; the explicit error lets the guest's transport call fail promptly.
 	if c.closed.Load() || c.poisoned.Load() || c.state.Recovery {
 		return nil, fsapi.Unavailable
 	}
@@ -59,23 +71,7 @@ func (c *Controller) Exchange(ctx context.Context, scope guestbridge.Context, op
 	if op == "VIEW_POLL" {
 		return c.poll(ctx, scope, raw)
 	}
-	if op != "VIEW_ACK" {
-		return nil, fsapi.Unsupported
-	}
-	var ack acknowledgement
-	if err := json.Unmarshal(raw, &ack); err != nil {
-		return nil, err
-	}
-	if err := c.ack(ctx, scope, ack, raw); err != nil {
-		return nil, err
-	}
-	if err := c.save(); err != nil {
-		return nil, err
-	}
-	if err := c.progress(ctx); err != nil {
-		return nil, err
-	}
-	return canonical(map[string]any{"status": "ACCEPTED"})
+	return nil, fsapi.Unsupported
 }
 
 // poll answers one nonblocking VIEW_POLL. The spec requires every poll to be
@@ -111,8 +107,15 @@ func (c *Controller) poll(ctx context.Context, scope guestbridge.Context, raw js
 	if !equal(domain.Domain, p.Domain) {
 		return nil, fsapi.Permission
 	}
-	if err := c.progress(ctx); err != nil {
-		return nil, err
+	// progress only advances an already protected recall. Its failures leave
+	// the ledger unchanged (events are committed atomically after capture), so
+	// transient contention still answers from the current state and the next
+	// poll or ACK retries it. Any other failure has no poll reply: answer it
+	// with a definitive error rather than retrying the identical poll forever.
+	// A failed protected write poisons the controller; its in-memory state is
+	// then no longer the protected one, so that is never answered from.
+	if err := c.progress(ctx); err != nil && (c.poisoned.Load() || !errors.Is(err, fsapi.WouldBlock)) {
+		return nil, guestbridge.Final(err)
 	}
 	var event json.RawMessage
 	if c.state.Recall != nil {
@@ -236,20 +239,24 @@ func (c *Controller) startRecall(ctx context.Context) error {
 	inventory := digest(c.state.Domains)
 	c.state.Recall = &recallState{ID: id, Phase: "RECALL", Inventory: inventory, Closure: digest(struct{ Enrollment, Inventory, Recall string }{c.enrollmentHash, inventory, id}), Events: map[string]json.RawMessage{}, Acks: map[string]json.RawMessage{}, Manifests: map[string]json.RawMessage{}}
 	if err = c.events(ctx, "RECALL"); err != nil {
+		c.state.Recall = nil // nothing else was committed by the failed events
 		return err
 	}
 	return c.save()
 }
 
+// events issues the next event of phase to every live inventoried domain. It
+// builds all events first and commits domain sequences and recall events only
+// when every one succeeded, so a failure (capture contention, bound or
+// sequence exhaustion) leaves the in-memory ledger equal to the protected one.
 func (c *Controller) events(ctx context.Context, phase string) error {
 	recall := c.state.Recall
 	source, err := c.capture(ctx)
 	if err != nil {
 		return err
 	}
-	if err = c.remember(source); err != nil {
-		return err
-	}
+	domains := map[string]domainState{}
+	issued := map[string]json.RawMessage{}
 	for session, domain := range c.state.Domains {
 		if _, sealed := c.state.Terminal[session]; sealed {
 			continue
@@ -258,7 +265,6 @@ func (c *Controller) events(ctx context.Context, phase string) error {
 			return fsapi.NoSpace
 		}
 		domain.Sequence++
-		c.state.Domains[session] = domain
 		var target any
 		var manifest any
 		if phase != "RECALL" {
@@ -270,7 +276,14 @@ func (c *Controller) events(ctx context.Context, phase string) error {
 		if err != nil {
 			return err
 		}
-		recall.Events[session] = raw
+		domains[session], issued[session] = domain, raw
+	}
+	if err = c.remember(source); err != nil {
+		return err
+	}
+	for session, domain := range domains {
+		c.state.Domains[session] = domain
+		recall.Events[session] = issued[session]
 	}
 	return nil
 }
@@ -395,10 +408,10 @@ func (c *Controller) progress(ctx context.Context) error {
 		if err := c.drained(ctx); err != nil {
 			return nil
 		}
-		r.Phase = "INSTALL_DRAIN"
 		if err := c.events(ctx, "INSTALL_DRAIN"); err != nil {
-			return err
+			return err // phase unchanged: events committed nothing
 		}
+		r.Phase = "INSTALL_DRAIN"
 		changed = true
 	case "INSTALL_DRAIN":
 		if !c.allAcked("INSTALLED_DRAIN") {
@@ -410,19 +423,19 @@ func (c *Controller) progress(ctx context.Context) error {
 		if !c.allAcked("INSTALLED_DRAIN") || !c.allAcked("DRAINED") {
 			return nil
 		}
-		r.Phase = "INSTALL_FINAL"
 		if err := c.events(ctx, "INSTALL_FINAL"); err != nil {
-			return err
+			return err // phase unchanged: events committed nothing
 		}
+		r.Phase = "INSTALL_FINAL"
 		changed = true
 	case "INSTALL_FINAL":
 		if !c.allAcked("INSTALLED_FINAL") {
 			return nil
 		}
-		r.Phase = "REOPEN"
 		if err := c.events(ctx, "REOPEN"); err != nil {
-			return err
+			return err // phase unchanged: events committed nothing
 		}
+		r.Phase = "REOPEN"
 		changed = true
 	case "REOPEN":
 		if !c.allAcked("REOPENED") {
