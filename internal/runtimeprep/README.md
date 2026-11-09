@@ -37,10 +37,19 @@ against `sockaddr_un`, the parent of `--output` must be at most about 75
 characters long; a longer one refuses with a clear message. The generator itself checks the real paths (clean, absolute,
 disjoint, lifecycle socket within `sockaddr_un`) and the view controller's
 enrollment-time work rule, which the runtime applies only inside the bootstrap
-window. On FreeBSD `generate` refuses: there `Run` would continue natively.
+window. It also checks `Budget.Guest` against the guest floors
+(`guestfloor.go`, w54), which the runtime does not check at all. zq3-r3's
+`reservations` 32 failed every mount at bind_super. Two terminal mounts need
+reservations ≥ 380 and received ≥ 60; the kernel provider refuses less at
+provisioning. They also need about 280 MiB control and 242 MiB ordinary bytes,
+a floor measured from the guest accounting, which the kernel enforces only at
+mount. The example spec uses 1024/256 slots and 512/512 MiB, which raises
+the guest accounting checked against `GuestBytes` from 772.5 to 1665.25 of
+2048 MiB. On FreeBSD `generate` refuses: there `Run` would continue natively.
 Build the tool from a commit whose `internal/` equals the candidate source
 `e0cca0c` (true for `main` at `975cf80`); `generation.json` records the VCS
-revision when stamped.
+revision when stamped. The w54 floors change only `internal/runtimeprep`,
+which the runtime daemon does not import, so its validation is unchanged.
 
 Scopes: Session, GuestMount, Cluster, Export, OriginNode/OriginIncarnation,
 user namespace, realm and ticket anchor/nonce are fresh UUIDs; VM is the argv

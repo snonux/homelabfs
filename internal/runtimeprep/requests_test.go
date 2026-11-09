@@ -256,7 +256,7 @@ func TestFillBindRefusals(t *testing.T) {
 		"duplicate key":    {f.template, strings.Replace(valid, `{"stage"`, `{"stage":"x","stage"`, 1), provision},
 		"unknown field":    {f.template, strings.Replace(valid, `{"stage"`, `{"extra":1,"stage"`, 1), provision},
 		"foreign template": {other.template, valid, provision},
-		"altered payload":  {f.template, valid, bytes.Replace(provision, []byte(`"reservations":32`), []byte(`"reservations":33`), 1)},
+		"altered payload":  {f.template, valid, bytes.Replace(provision, []byte(`"reservations":1024`), []byte(`"reservations":1025`), 1)},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
