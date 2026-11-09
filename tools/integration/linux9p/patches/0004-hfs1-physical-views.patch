@@ -3422,7 +3422,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,1755 @@
+@@ -0,0 +1,1786 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -3790,6 +3790,33 @@ new file mode 100644
 +	return session->provider->view_event(session, json, event);
 +}
 +
++/* Send one VIEW_ACK, resending the identical bytes after a local failure.
++ * -ENOMEM and -EBUSY are guest-local results, not daemon verdicts: the
++ * transport could not allocate, or could not obtain the fixed control tag
++ * (net/9p p9_client_hfs_exchange), typically before any reply was read. The
++ * daemon archives every acknowledgement and accepts an identical resend
++ * (internal/viewcontrol recall.go ack), so a resend is safe even if the first
++ * copy was delivered. Without it, one transient local failure stopped the
++ * control worker and the recall waited for DRAINED forever (zq3-r5 R5-1).
++ * Protocol and stale results are never resent. Each failed send stays retained
++ * by hfs_control as an uncertain candidate, which is why the count is small.
++ */
++static int hfs_mmap_ack_send(struct hfs_session *session, const struct hfs_buf *payload,
++			     const char *phase, struct hfs_json **reply)
++{
++	const int attempts = 3; /* total sends, including the first */
++	int attempt, err;
++
++	for (attempt = 1;; attempt++) {
++		err = hfs_control(session, "VIEW_ACK", payload, true, reply);
++		if ((err != -ENOMEM && err != -EBUSY) || attempt == attempts)
++			return err;
++		pr_warn_ratelimited("9p hfs: VIEW_ACK %s local failure %d, resend %d of %d\n",
++				    phase, err, attempt, attempts - 1);
++		msleep(10);
++	}
++}
++
 +static int hfs_mmap_ack(struct hfs_mmap_control *control, const struct hfs_json *event,
 +			int body, const char *phase, bool manifest, bool target)
 +{
@@ -3826,7 +3853,7 @@ new file mode 100644
 +	hfs_buf_literal(payload, "}");
 +	err = payload->error ?: hfs_controlled_before_ack(view, event, body, phase, payload);
 +	if (!err)
-+		err = hfs_control(session, "VIEW_ACK", payload, true, &reply);
++		err = hfs_mmap_ack_send(session, payload, phase, &reply);
 +	if (err)
 +		return err;
 +	result = hfs_json_field(reply, 0, "payload");
@@ -3850,6 +3877,10 @@ new file mode 100644
 +
 +static void hfs_mmap_fail(struct hfs_mmap_control *control, int error)
 +{
++	/* The worker stops for good here (no further VIEW_WAIT or ACK), so the
++	 * cause must be visible in the guest log of a lab run.
++	 */
++	pr_warn_ratelimited("9p hfs: view control worker stopped, error %d\n", error);
 +	WRITE_ONCE(control->error, error);
 +	WRITE_ONCE(control->view->session->blocked, true);
 +	/* This closes admission, not a declaration of physical STOPPED. All

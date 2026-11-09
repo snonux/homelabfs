@@ -56,7 +56,8 @@ All later host commands have an integer ID. Responses are
   STOPPED calls actual `hfs_view_stop` and `hfs_view_seal`; INSTALLED_DRAIN and
   INSTALLED_FINAL call actual `hfs_mmap_install`; DRAINED calls actual
   `hfs_mmap_finish_drained`; REOPENED calls actual `hfs_view_reopen`. Each then
-  uses actual `hfs_mmap_ack`, including before/after provider callbacks. No
+  uses actual `hfs_mmap_ack` and its bounded identical resend after a local
+  failure (`hfs_mmap_ack_send`), including before/after provider callbacks. No
   command sets a physical phase, revision or ACK hash directly. Response has no
   body; the independently emitted observation supplies the resulting record.
 * `CHECK ID SESSION CASE` exercises the actual stored-object callbacks. Cases

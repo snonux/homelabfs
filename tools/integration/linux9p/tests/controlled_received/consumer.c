@@ -262,6 +262,10 @@ static struct p9_req_t *p9_client_rpc_tag(struct p9_client *client,s8 type,int w
  request->rc.size=count;request->rc.id=P9_RBRIDGE;request->rc.tag=request->tc.tag=tag;return request;
 }
 static void p9_req_put(struct p9_client *client,struct p9_req_t *request) { (void)client;free(request->rc.sdata);free(request); }
+/* The substituted RPC owns no idr slot, so a fixed tag is always idle here;
+ * tools/integration/linux9p/tests/tag runs the actual idle wait (964).
+ */
+static int p9_client_hfs_tag_idle(struct p9_client *client,u16 tag) { (void)client;(void)tag;return 0; }
 #include "client_exchange.inc"
 static void command(char *line);
 void primitive_sleep(unsigned long lower,unsigned long upper) {

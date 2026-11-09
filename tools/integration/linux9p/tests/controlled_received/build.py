@@ -119,7 +119,7 @@ def main():
     (out/'control_struct.inc').write_text(mmap[control_start:control_end])
     control_names = ['hfs_mmap_control_release', 'hfs_mmap_control_get',
                      'hfs_mmap_control_put', 'hfs_mmap_hash32', 'hfs_mmap_token',
-                     'hfs_mmap_event_check', 'hfs_mmap_ack', 'hfs_mmap_fail',
+                     'hfs_mmap_event_check', 'hfs_mmap_ack_send', 'hfs_mmap_ack', 'hfs_mmap_fail',
                      'hfs_mmap_drains', 'hfs_mmap_process', 'hfs_mmap_drained',
                      'hfs_mmap_events', 'hfs_mmap_poll', 'hfs_mmap_pressure',
                      'hfs_mmap_pressure_work', 'hfs_mmap_start',
