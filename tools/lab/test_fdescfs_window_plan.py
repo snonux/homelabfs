@@ -21,8 +21,9 @@ SPEC.loader.exec_module(FILLER)
 WINDOW = FILLER.WINDOW
 PINS = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/pins.json"
 RECORD = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/build-record.json"
-# Daemon of the admitted xz3 r54 kernel rebuild (5eb42c50), built for f44 from
-# defd974 and reused byte for byte (only the guest kernel was rebuilt).
+# Daemon of the admitted xz3 w54 kernel rebuild (89c928d5), built for f44 from
+# defd974 and reused byte for byte by r54 and w54 (only the guest kernel was
+# rebuilt each time).
 ADMITTED_DAEMON_SHA256 = "174949c1ebf97d483d49e41f1ade7bce88f63013cb943be794276bb1ddd417a7"
 CONTROLLER_SHA = "c" * 64
 # f3 stock fusefs.ko, docs/lab/results/20261108-zq3-phase1 (task j44).
@@ -94,7 +95,8 @@ class FillerTests(unittest.TestCase):
             self.assertEqual(pinned[path], value)
         # The window artifacts follow the admitted daemon source: rebuilt for
         # f44 from defd974 (d44 MKDIR-targeted lost reply) on 2026-11-08 and
-        # reused by the r54 kernel rebuild, whose daemon is the same bytes.
+        # reused by the r54 and w54 kernel rebuilds, whose daemon is the same
+        # bytes.
         self.assertEqual(record["source_commit"], "defd974af3721614b1a52d24fd949822ef5cd735")
 
     def test_filled_plan_is_accepted_by_actual_controller_validate(self):

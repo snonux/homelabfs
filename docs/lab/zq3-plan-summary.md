@@ -104,7 +104,9 @@ what Rocky did, the pod test, the lost-reply and restart steps, the host-side
 memory/time watchdog for the daemon. The test bundle was rebuilt so it contains
 all of this, and its daemon passed a read-only self-check on f3. On 2026-11-09
 its guest kernel was rebuilt once more (`5eb42c50…`) to fix the mount error
-that stopped the second attempt (zq3-r2); the daemon is unchanged.
+that stopped the second attempt (zq3-r2), and then again (`89c928d5…`) so a
+failed mount no longer crashes the guest kernel, as it did in the third
+attempt (zq3-r3); the daemon is unchanged.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
