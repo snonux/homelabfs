@@ -44,7 +44,7 @@ to stock. Cleanup, all verified:
 | 6 | passed: 15,457,831,824 bytes reclaimable against the 14,763,950,080 bar (after the UMA drain below) |
 | 7 | passed: tap100, vars copy, volume `a6e4d458-…` initialised, K04 baseline |
 | 8 | attempt 1 refused by the guard (R2-2), attempt 2 runtime exit 1 (R2-3), attempt 3 reached bind, then mount-0 EPROTO (R2-4) |
-| 11-12 | completed (see above); window restore refused only because the native FUSE mount was still present, see R2-6 |
+| 11-12 | completed (see above); window restore refused only because a skipped unmount left the native FUSE mount, see R2-6 |
 
 ## Findings
 
@@ -79,11 +79,14 @@ to stock. Cleanup, all verified:
   "Connection timed out during banner exchange". The guest had been up about
   1.5 minutes. The calls just before and after succeeded, and nothing ran, so
   the single retry was safe.
-- **R2-6, run-sheet cleanup order.** Phase 11's window restore must run
-  after the native FUSE unmount. A runtime that exits at its deadline leaves
-  its `fusefs.homelabfs` mount, and the restore then refuses its final
-  comparison (the `/dev/fd` unmount itself succeeded). Checked by hand: the
-  facts equal the post-load baseline except for the declared `fusefs.ko`.
+- **R2-6, cleanup step skipped by the operator.** The sheet orders the
+  native FUSE unmount (`umount $R/runtime/mnt`) before the window restore.
+  When batching Phase 11, the operator (Claude) ran only the "is it mounted"
+  check and went on to the restore. The runtime, which had exited at its
+  deadline, had left its `fusefs.homelabfs` mount behind. The restore still
+  unmounted `/dev/fd`, then refused its final comparison because of that
+  mount. After the normal unmount, the facts were checked by hand: they equal
+  the post-load baseline except for the declared `fusefs.ko`.
 
 ## Re-pinned during the run
 
