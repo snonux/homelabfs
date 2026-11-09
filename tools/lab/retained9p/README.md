@@ -13,15 +13,16 @@ qualified corrected artifacts. Existing offline build proofs remain preserved;
 neither a successful old metadata admission nor a different digest establishes
 native eligibility. These preparation commands never grant deployment eligibility.
 
-**The controller pins exactly one candidate:** the f44 xz3 rebuild (2026-11-08),
-manifest `b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2`
-(source `defd974`, CGO daemon `174949c1…`; see its
-[evidence](../../integration/artifacts/evidence/xz3-20261108b/README.md)). The
-earlier `3f770a88…` candidate is refused as superseded (it cannot arm the d44
-MKDIR-only lost reply). Its guest kernel predates r54 (the mount
-HELLO built before enrollment, so every hfs1.4 mount returns EPROTO,
-zq3-r2 R2-4): the next lab run needs a candidate rebuilt from the r54
-patch series and this pin moved to it. Any
+**The controller pins exactly one candidate:** the xz3 r54 kernel rebuild
+(2026-11-09), manifest `5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99`
+(source `ca920a2`; see its
+[evidence](../../integration/artifacts/evidence/xz3-20261109c/README.md)). Its
+guest kernel is rebuilt from the r54 patch series, so the mount builds HELLO
+after enrollment; the CGO daemon `174949c1…`, native exporter and window
+artifacts are byte-identical reuses from f44. Two earlier candidates are
+refused as superseded: `3f770a88…` cannot arm the d44 MKDIR-only lost reply,
+and the f44 `b203799e…` has the pre-r54 guest kernel (every hfs1.4 mount
+returns EPROTO, zq3-r2 R2-4). Any
 other digest refuses before reading inputs or contacting the lab. This pin is a
 dispatch precondition only; installed/booted/native acceptance remains zq3.
 
@@ -615,7 +616,7 @@ depmod, dracut, systemctl and GRUB's one-shot consumption at boot). Every
 Rocky-side command still needs Paul's explicit A3 approval of the filled plan.
 
 1. Workstation, Phase 0:
-   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 b203799e… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
+   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 5eb42c50… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
    It refuses any manifest other than the pinned candidate, checks every
    Linux file's size and SHA256 against the manifest and the installation
    proposal, requires `modules.order` to name exactly the manifest's modules,

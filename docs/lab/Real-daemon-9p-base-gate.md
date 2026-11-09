@@ -157,15 +157,18 @@ SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
 
 ## Exact installation plan inputs
 
-The current xz3 candidate (f44, 2026-11-08) is retained at
-`/home/paul/tmp/claude/hfs-xz3-20261108b/package`, manifest SHA256
-`b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2`, built from source checkout
-`defd974af3721614b1a52d24fd949822ef5cd735` with a CGO FreeBSD daemon (`174949c1…`) whose
-exact bytes passed native `--check-process-observer` on f3; see its
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261108b/README.md).
-It adds the d44 MKDIR-targeted lost reply; its kernel and native FreeBSD parts
-are byte-identical reuses of the superseded `3f770a88…` candidate (source
-`e0cca0c`, [evidence](../../tools/integration/artifacts/evidence/xz3-20261108/README.md)).
+The current xz3 candidate (r54 kernel rebuild, 2026-11-09) is retained at
+`/home/paul/tmp/claude/hfs-xz3-20261109c/package`, manifest SHA256
+`5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99`, assembled from source checkout
+`ca920a2ab7346cbcacb4e7bcc9148e213edd7fc4`; see its
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261109c/README.md).
+Only the guest kernel, its modules and Linux source records were rebuilt, from
+the r54 patch series (the mount builds HELLO after enrollment; zq3-r2 R2-4).
+The CGO FreeBSD daemon (`174949c1…`, whose exact bytes passed native
+`--check-process-observer` on f3) and the native FreeBSD parts are byte-identical
+reuses of the f44 candidate (`b203799e…`, source `defd974`,
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261108b/README.md)),
+which is now refused as superseded together with the earlier `3f770a88…`.
 The earlier `7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b`
 candidate (CGO-disabled daemon) stays quarantined and must not be installed.
 Any later source change requires a new rebuild and admission.
@@ -255,7 +258,7 @@ footprints in the independent global preparation budget. Swap is telemetry.
 
 ## Staged critical-window proposal
 
-The concrete phased proposal for one disposable run with candidate `b203799e…`,
+The concrete phased proposal for one disposable run with candidate `5eb42c50…`,
 including the remaining implementation gaps and Paul's decisions, is
 [zq3-run-plan.md](zq3-run-plan.md) ([plain-language summary](zq3-plan-summary.md)).
 The guest probe now retains each successful payload until an authenticated

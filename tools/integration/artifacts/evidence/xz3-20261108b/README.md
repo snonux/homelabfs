@@ -1,5 +1,11 @@
 # xz3 f44 rebuild (2026-11-08): MKDIR-targeted lost reply
 
+**Superseded on 2026-11-09** by the [r54 kernel rebuild](../xz3-20261109c/README.md)
+(`5eb42c50…`, source `ca920a2`). This package's guest kernel builds the mount
+HELLO before enrollment, so every hfs1.4 mount returned EPROTO in zq3-r2
+(R2-4). Its daemon and native parts are reused unchanged; the tooling refuses
+this manifest as superseded.
+
 This candidate supersedes the [earlier 2026-11-08 candidate](../xz3-20261108/README.md)
 (`3f770a88…`, source `e0cca0c`) only because task d44 changed runtime code: the
 v24 lost-reply fixture can now be armed on the MKDIR CALL alone (ARM code 2),
