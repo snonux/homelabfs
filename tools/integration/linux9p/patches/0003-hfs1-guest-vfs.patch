@@ -522,7 +522,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,2951 @@
+@@ -0,0 +1,2964 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -2959,8 +2959,6 @@ new file mode 100644
 +				hfs_provider->features == HFS_CONTROLLED_FEATURES ? 2 :
 +				hfs_provider->features == HFS_VIEW_FEATURES	  ? 1 :
 +										    0;
-+	hello = hfs_protocol_selected_text(session->bridge_minor,
-+					   session->enrollment.protocol_features);
 +	atomic_inc(&hfs_active_sessions);
 +	mutex_init(&session->lock);
 +	mutex_init(&session->writer);
@@ -2990,6 +2988,17 @@ new file mode 100644
 +	err = hfs_enrollment_lanes(&session->enrollment, session->bridge_minor);
 +	if (err)
 +		goto unlock_fail;
++	/* HELLO carries the enrolled selection, so it exists only after enroll.
++	 * The kzalloc'd features (0) would select the minor-4 default text and the
++	 * controlled provider refuses that for a features 32767 enrollment. An
++	 * enrolled mask without a selected text refuses before any native bytes.
++	 */
++	hello = hfs_protocol_selected_text(session->bridge_minor,
++					   session->enrollment.protocol_features);
++	if (!hello) {
++		err = -EPROTO;
++		goto unlock_fail;
++	}
 +	if (!hfs_trace_registered) {
 +		check_trace_callback_type_sched_process_exit(hfs_process_exit);
 +		for_each_kernel_tracepoint(hfs_find_exit_tracepoint, &hfs_exit_tracepoint);
@@ -3031,11 +3040,15 @@ new file mode 100644
 +	hfs_buf_free(&payload);
 +	if (err)
 +		goto fail;
++	/* The runtime echoes the sent HELLO as its selection. Match the enrolled
++	 * tuple (features 16383 or 32767 at minor 4), not only the minor default.
++	 */
 +	token = hfs_json_field(reply, 0, "payload");
 +	selection = hfs_json_field(reply, token, "selection");
 +	if (hfs_json_exact(reply, token, "selection,status") ||
 +	    !hfs_json_is(reply, hfs_json_field(reply, token, "status"), "\"ACCEPTED\"") ||
-+	    hfs_protocol_match(reply, selection, session->bridge_minor))
++	    hfs_protocol_selected_match(reply, selection, session->bridge_minor,
++					session->enrollment.protocol_features))
 +		err = -EPROTO;
 +	hfs_json_free(reply);
 +	if (err)

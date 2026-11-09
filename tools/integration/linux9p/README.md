@@ -438,10 +438,37 @@ objects remain explicit OS substitutions in these component tests. Actual
 kernel translation-unit/frame/link checks do not prove installed PTE/TLB,
 native deployment, terminal closure or normal/distributed publication.
 
+## Mount HELLO ordering regression (`r54`)
+
+The first real lab mount (zq3-r2, R2-4) returned EPROTO: the mount built HELLO
+from the still-zero features before enrollment, so it carried the features 16383
+default and the controlled pre-send check refused it for a features 32767
+enrollment. The reply check also accepted only that default selection.
+The `controlled_received` harness builds its own HELLO after enrollment and
+copies only the mount's `fail:` tail, so it could not see this.
+
+```sh
+python3 tools/integration/linux9p/tests/mount_hello/run.py \
+  --source "$SOURCE" --output "$RUN/mount-hello" --sanitize
+```
+
+It compiles the complete production `v9fs_hfs_mount`, the enrollment
+validators and `hfs_controlled_before_send` verbatim. Kernel/VFS, p9 client,
+transport binding and controlled registry lookups are substituted; the native
+exchange echoes the sent HELLO as the runtime does. Cases: features 16383 and
+32767 mount; a default echo for 32767 and a terminal echo for 16383 refuse with
+EPROTO after one HELLO; an unselected mask refuses before any HELLO or client.
+Each case runs in its own child. The pre-r54 source fails the 32767 cases and
+crashes on the unselected mask.
+
 ## Explicit terminal tuple (`614`)
 
 The maintained provider also supports explicitly enrolled features32767 with
-the same hfs1.4 token/schema. Features16383 remains unchanged. SESSION_RETIRE
+the same hfs1.4 token/schema. Features16383 remains unchanged.
+`v9fs_hfs_mount` builds its HELLO from the enrolled features only after
+`provider->enroll`, `hfs_enrollment_validate` and `hfs_enrollment_lanes`
+succeed, and accepts only a selection equal to that enrolled tuple. An
+enrolled mask without a selected tuple refuses before any native bytes. SESSION_RETIRE
 uses a preowned completion package, the actual complete known-Ack set, immutable
 read-only terminal observation, and private SESSION_RETIRED receipt validation.
 The exact candidate/cell/full credentials survive pre-send uncertainty and lost
