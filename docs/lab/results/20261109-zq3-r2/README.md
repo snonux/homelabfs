@@ -65,7 +65,15 @@ to stock. Cleanup, all verified:
   requires the flag. `bootstrap.py` never passed it, and `runtime-guard.py`
   accepted only `RUNTIME --config CONFIG`. Both now use exactly `RUNTIME
   --config CONFIG --disposable-validation`.
-- **R2-4, first real 9p mount returns EPROTO (open, the main finding).**
+- **R2-4, first real 9p mount returns EPROTO (main finding; cause found and
+  fixed in the source by r54, `5e51fe1`).** `v9fs_hfs_mount` built the HELLO
+  text before `provider->enroll()`, from zeroed `protocol_features`, so it
+  carried the default features 16383 text. `hfs_controlled_before_send`
+  compared it with the enrolled 32767 text and returned `-EPROTO` before any
+  Tbridge frame left the guest. The reply check also accepted only the
+  default text. A new `tests/mount_hello` regression test fails on the old
+  source. A rebuilt guest kernel candidate is needed before the next run.
+  Original observations:
   - Admission advertised bridge protocol 1.4, normal 3.0 and msize 65536 for
     both domains, matching `version=9P2000.L.hfs1.4`.
   - `bind_v1` was written about 4 ms before the mount.

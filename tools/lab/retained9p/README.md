@@ -18,7 +18,10 @@ manifest `b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2`
 (source `defd974`, CGO daemon `174949c1…`; see its
 [evidence](../../integration/artifacts/evidence/xz3-20261108b/README.md)). The
 earlier `3f770a88…` candidate is refused as superseded (it cannot arm the d44
-MKDIR-only lost reply). Any
+MKDIR-only lost reply). Its guest kernel predates r54 (the mount
+HELLO built before enrollment, so every hfs1.4 mount returns EPROTO,
+zq3-r2 R2-4): the next lab run needs a candidate rebuilt from the r54
+patch series and this pin moved to it. Any
 other digest refuses before reading inputs or contacting the lab. This pin is a
 dispatch precondition only; installed/booted/native acceptance remains zq3.
 
