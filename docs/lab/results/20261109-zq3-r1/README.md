@@ -41,7 +41,11 @@ hosts ended in their pre-run state.
   sheet should say "pin `realpath` of each library".
 - **R5, external f3 reboot during the pause (open).** f3 shut down at 09:19
   and booted at 10:30 while the run waited for operator decisions; the run had
-  sent nothing then. Cause unknown. Rocky auto-started (new process), the
+  sent nothing then. Cause (f3 `/var/log/auth.log`, `messages`): at 09:19:30
+  user `f3sctl` from 10.20.0.125 ran `/usr/local/bin/f3sctl agent-root
+  poweroff` via doas, and `shutdown` logged `power-down by f3sctl` at 09:19:37:
+  a deliberate power-off through the homelab control tool, not a crash. Rocky
+  auto-started (new process), the
   window mount and modules vanished. Phase 5 has no recheck of the f3 boot
   time, the Rocky PID/lstart pin or the owned `/dev/fd` mount, so select and
   stop ran on the new Rocky before Phase 6 noticed. Phase 5 must start with
