@@ -216,8 +216,9 @@ def fixture_cases(original):
         copy.deepcopy(p['groups'][0]['local_mounts'][0])))
     for field in ['boot_id', 'provider_nonce']:
         payload_case('stale-' + field, lambda p, f=field: p.update({f: uuid(9999)}))
-    for field, value in [('reservations', 0), ('reservations', 8193),
-                         ('cookies', 4097), ('received', 0),
+    # 32 is below the w54 mount slot floor for this fixture's four mounts.
+    for field, value in [('reservations', 0), ('reservations', 32), ('reservations', 8193),
+                         ('cookies', 4097), ('received', 0), ('received', 32),
                          ('ordinary_bytes', 1 << 30)]:
         payload_case('budget-' + field + '-' + str(value),
                      lambda p, f=field, v=value: p['budget'].update({f: v}))
@@ -360,6 +361,10 @@ subprocess.run([str(out/'installer-test'), str(out/'fixture.json'), 'budget-refu
                check=True, timeout=120)
 funded_input = copy.deepcopy(original_fixture)
 funded_input['provision']['payload']['budget']['control_bytes'] = 16 << 20
+# Its 32 reservations/received are also below the w54 slot floor (four
+# mounts need at most 760/120); fund those too.
+funded_input['provision']['payload']['budget']['reservations'] = 1024
+funded_input['provision']['payload']['budget']['received'] = 256
 enrollments = [json.loads(bytes.fromhex(group['enrollment_bytes']))
                for group in original_fixture['provision']['payload']['groups']]
 funded_fixture = FixtureSigner().fixture(funded_input, enrollments)

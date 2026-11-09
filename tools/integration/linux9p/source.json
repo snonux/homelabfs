@@ -72,11 +72,11 @@
     "fs/9p/hfs.h": "25805233703be952e38aacaac83cbb28b768ec52df2866bcc198c5dacd428786",
     "fs/9p/hfs_admission.c": "a608e6c8f9bf3b3b36eccfac65ae967e2d72972a88488ed9728d34441b80151f",
     "fs/9p/hfs_admission.h": "52365264648d9b2087bafb036b3495f0523a0778533322398405c802da13df7c",
-    "fs/9p/hfs_completion.inc": "b9728e0b46a78fb861cbbb0559cde5759ccf6cdfbe06d5939fc27b1f33b6b237",
-    "fs/9p/hfs_controlled.c": "daea8cc20e6675d478390dae66659e9cbaae092115774337d00717e8a45c9e72",
+    "fs/9p/hfs_completion.inc": "7f60863b2eb93bd69902b609c1c4ec188d12fac27f3c3f04a38751ca0cdde09b",
+    "fs/9p/hfs_controlled.c": "5d2843e6a3b57635b89c83fd903b54f22ca50d5c1b02f3964422bda2fd6846f2",
     "fs/9p/hfs_controlled.h": "9a09273e6c1b3bca469553ab0607fafc0fedb3a194579b9d5defd9e94d850b25",
-    "fs/9p/hfs_controlled_artifacts.c": "eedb3da3d7cdd1b92a5751da376c6460711eca0de6b9c2d5cb082c8bb1df7f43",
-    "fs/9p/hfs_controlled_internal.h": "8172e514621373d7d4816063b9e89254d0db71058e15878ac955d9d08cb35c59",
+    "fs/9p/hfs_controlled_artifacts.c": "0442d53994626fe776b59304608b3d39a2f049d3bdf2ffe37b9da34f263ec149",
+    "fs/9p/hfs_controlled_internal.h": "af9505f7b577069c9ef81c598b80ced65b6a454d29471243bd8c43247a33bbf1",
     "fs/9p/hfs_controlled_lifetime.inc": "4b2744575cc000f5ce85fcb47cbb3a1aff532ce862c8ac16db8b681d2815d579",
     "fs/9p/hfs_crypto.h": "ea8d21f49cd50de1299202d91c6b6d818ca0aae3ab6e5d36c114e3479cf0d42c",
     "fs/9p/hfs_crypto/kernel_include/stddef.h": "1ac26964d7dd28ce67ff44eca865fa343e426956e6902d611c1d702548935781",
@@ -145,12 +145,12 @@
       "sha256": "b0a521a926780ee4c278e771def03fa12eea16c17d897d03d2328cdd146ce080"
     },
     {
-      "bytes": 338279,
+      "bytes": 343818,
       "file": "0005-hfs1-controlled-guest-provider.patch",
-      "sha256": "debe155cfe8712fef33b5aea820d6842e0d3e4d5a18906279c7d2cbf890178ff"
+      "sha256": "00751f393d2d48c306bf3da5466147182d687019676d11ec53385b23a58b9da6"
     }
   ],
-  "project_task": "r54",
+  "project_task": "w54",
   "source_kind": "upstream Linux reference",
   "tag": "v6.1.190",
   "tag_object": "9ad12a4c0c7a36f365c13ea17d88499618440a7b",

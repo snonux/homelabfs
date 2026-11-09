@@ -99,6 +99,9 @@ def main():
         definitions.append(function(read('fs/9p/hfs_file.c'), name))
     definitions.append(function(read('fs/9p/hfs_inode.c'), 'hfs_forget_work'))
     (out/'session.inc').write_text('\n'.join(definitions))
+    # w54: the actual fill_super/kill_sb pair for the failed-bind regression.
+    (out/'super.inc').write_text(function(session, 'hfs_fill_super') +
+                                 function(session, 'v9fs_hfs_kill_super'))
     mount = function(session, 'v9fs_hfs_mount')
     fail = mount.index('\nfail:\n')
     (out/'mount_fail.inc').write_text('static void *fixture_actual_mount_fail(struct hfs_session *session,int err) {\nunsigned long irqflags;\n' + mount[fail+len('\nfail:\n'):])

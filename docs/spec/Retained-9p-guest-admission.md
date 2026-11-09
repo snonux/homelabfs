@@ -88,7 +88,8 @@ ordinary family. Closed older protocol bytes and behavior remain unchanged.
 
 Budget has exactly `{ordinary_bytes,control_bytes,reservations,cookies,received}`.
 Each byte capacity is1..1GiB and their checked sum is at most1GiB. Reservation
-slots are1..8192; cookie and received-owner slots are each1..4096. No zero,
+slots are1..8192; cookie and received-owner slots are each1..4096. Reservation
+and received-owner slots must also cover the mount slot floor (below). No zero,
 overflow, duplicate fields or defaults are accepted. Charge actual bookkeeping
 or explicitly bounded fixed storage. Ordinary resources never borrow control.
 These caps establish finite component ownership, not C7 funded-progress or full
@@ -139,6 +140,22 @@ The unchanged reviewed214 example artifact signs only1MiB of control budget and
 therefore refuses this implementation's staging base. Tests preserve its bytes
 and hash as an insufficient-budget negative and derive a separately signed16MiB
 positive, preserving every original enrollment byte and original signature.
+That positive also raises its 32 reservations/received to 1024/256, above the
+mount slot floor of its four mounts.
+
+### Mount slot floor (`w54`)
+
+zq3-r3 provisioned 32 reservations. bind_super's first progress lane needs 17
+slots in one partition (a completion parent plus 16 children) and refused with
+ENOSPC before ROOT. After installing the groups, provisioning therefore also
+refuses, with ENOSPC, any budget whose `floor(reservations/2)` or
+`floor(received/2)` cannot hold the credits that stay charged while every local
+mount is bound, bootstrapped and serving one first operation. Per mount this is
+95 (features32767) or 78 (16383) control and 75 ordinary credits, and 15 or 14
+control and 12 ordinary Received slots. Two32767 mounts need reservations ≥380
+and received ≥60. The derivation is in `hfs_controlled_internal.h` and the
+[guest integration README](../../tools/integration/linux9p/README.md#failed-bind_super-close-and-slot-floor-w54).
+Bytes are not part of this floor; they remain checked at reserve time.
 
 ## One-time controller binding
 
@@ -179,6 +196,9 @@ reused across distinct groups initially refuse.
 7. `hfs_fill_super` captures the actual superblock pointer, `s_dev` and namespace
    before credential capture, ALLOCATE and ROOT. Ordinary, capability and source
    use requires the full signed group, controller, client/device and sb binding.
+   If creating the progress lanes fails, the sb binding is undone and no lane
+   exists. kill_sb still runs; its terminal close preparation then refuses
+   with ESTALE and the session stays retained, blocked and claimed (`w54`).
 
 The transport getter checks live channel membership and the actual in-use
 client/trans/vdev relationship under its existing lock. It retains a device
@@ -252,7 +272,8 @@ previous event only after processing/ACK; these lifetimes determine the bound.
 The installer's existing re-signed16MiB positive fixture proves only installation
 and immutable metadata admission. Actual SB/operation admission additionally
 requires these computed packages; that fixture is not a full runtime capacity
-claim and no signed fixture budget is raised to pass C7.
+claim and no signed fixture budget is raised to pass C7. Its w54 slot raise
+only satisfies the provisioning slot floor.
 
 Carrier credit covers command/raw/parsed response/token/frame packages before
 allocation. Received bytes and a Received slot are also admitted before response

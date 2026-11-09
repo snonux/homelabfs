@@ -334,8 +334,17 @@ static void session_init(unsigned i) {
  hello_parse=response;hello_tokens=response->tokens;hello_data=response->data;hello_candidate=response->owner;hello_freed=0;
  hfs_json_free(response);assert(hello_freed==15&&hfs_controlled_control_used==hello_before&&hfs_controlled_nr_control_credits==hello_credits);
  hello_parse=hello_data=hello_tokens=hello_candidate=NULL;
+ w54_regressions(f,!i);
  f->super=(struct super_block){.s_fs_info=s,.s_dev=1000+i,.s_user_ns=&init_user_ns};
+ /* Floor unit: bind_super charges exactly its 2|3 progress lane packages. */
+ bool terminal=s->enrollment.protocol_features==HFS_TERMINAL_FEATURES;
+ struct floor_mark lanes=floor_mark(s);
  assert(!hfs_controlled_bind_super(s,&f->super));
+ {
+  struct floor_mark bound=floor_mark(s);
+  assert(bound.control-lanes.control==(terminal?3U:2U)*(1U+HFS_COMPLETION_SLOTS)&&bound.ordinary==lanes.ordinary);
+  assert(bound.control_received-lanes.control_received==HFS_MMAP_EVENTS_MAX+3U+2U+terminal&&bound.ordinary_received==lanes.ordinary_received);
+ }
  {
   struct hfs_session profile={0};const char *ops[]={"DESCRIPTION_CLOSE","DESCRIPTION_RELEASE","FORGET","PROCESS_EXIT"};
   const u64 features[]={HFS_MAPPED_FEATURES,HFS_TERMINAL_FEATURES,HFS_CONTROLLED_FEATURES,HFS_CLEANUP_FEATURES,0,32766};
@@ -351,7 +360,9 @@ static void session_init(unsigned i) {
  if(s->enrollment.protocol_features==HFS_TERMINAL_FEATURES){
   struct hfs_cred *captured=NULL;struct hfs_buf bytes={0};fixture_set_current(f);
   primitive_process_uuid=f->credential.process;primitive_process_uuid_pending=true;
+  u32 identities=hfs_controlled_mount(s)->control_credits; /* floor unit: one per new process */
   assert(!hfs_capture(s,&init_user_ns,&captured)&&!primitive_process_uuid_pending);
+  assert(hfs_controlled_mount(s)->control_credits==identities+1);
   assert(!hfs_buf_init(&bytes,HFS_TERMINAL_OBJECT_MAX));hfs_cred_write(&bytes,captured);
   assert(!bytes.error&&bytes.len==f->credentials.len&&!memcmp(bytes.data,f->credentials.data,bytes.len));
   hfs_buf_free(&bytes);hfs_cred_free(captured);
@@ -411,7 +422,7 @@ static int fixture_check(struct fixture_session *f,const char *check) {
 static void command(char *line) {
  char operation[32];unsigned id,index;int consumed=0;
  assert(sscanf(line,"%31s %u %u %n",operation,&id,&index,&consumed)>=3&&index<(getenv("HFS_C6_BACKEND_ONLY")?carrier->session_count:hfs_controlled_registry->nr_mounts));
- current_command=id;struct fixture_session *f=&fixtures[index];
+ current_command=id;struct fixture_session *f=&fixtures[index];fixture_commands++;
  /* Backend-only component mode deliberately has no Linux session/Received
   * authority. It uses the same real native carrier and protected exporter. */
  if(!strcmp(operation,"BACKEND_ADD")){
@@ -886,7 +897,9 @@ static void command(char *line) {
   char op[32];int used=0;assert(sscanf(line+consumed,"%31s %n",op,&used)==1);
   struct hfs_buf args={0};assert(!hfs_args_init(&args));args.len=decode_hex(line+consumed+used,args.data,args.cap);
   if(f->ordinary_result){assert(f->nr_held_results<ARRAY_SIZE(f->held_results));f->held_results[f->nr_held_results++]=f->ordinary_result;}f->ordinary_result=NULL;f->actual_result=true;
+  struct floor_mark before=floor_mark(f->session);
   int err=hfs_call(&(*f->session),op,&args,&f->credential,false,&f->ordinary_result);hfs_buf_free(&args);
+  if(!err)floor_owner_check(f->session,&before,1,0);
   if(!err){struct hfs_request *request=f->ordinary_result->owner;assert(request&&request->response);hfs_json_free(f->latest);f->latest=NULL;err=hfs_received_copy(request->response,0,&f->latest);}
   done(id,err,f->latest?f->latest->data:NULL,f->latest?f->latest->len:0);return;
  }
@@ -940,7 +953,9 @@ static void command(char *line) {
   done(id,err,err?NULL:f->description->json->data,err?0:f->description->json->len);return;
  }
  if(!strcmp(operation,"ACQUIRE")||!strcmp(operation,"ACQUIRE_PAGE")){
+  struct floor_mark before=floor_mark(f->session);
   struct hfs_lease *lease=NULL;int err=hfs_lease_acquire(&(*f->session),&f->credential,NULL,!strcmp(operation,"ACQUIRE_PAGE")?f->description:NULL,0,false,NULL,&lease);
+  if(!err)floor_owner_check(f->session,&before,0,1);
   if(!err){
    /* Consumption is checked BEFORE initial physical binding; no phase
     * exception is invented to keep an old grant fresh afterwards. */

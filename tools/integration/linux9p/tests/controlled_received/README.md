@@ -266,3 +266,29 @@ completion bytes/slots. Setup and completed replies are adopted/reaped between
 operations to stay within existing budgets. These are portable production-source
 component checks with declared OS/MM primitives; they establish no installed
 kernel, native PTE/TLB, ABI or deployment acceptance.
+
+## Failed bind and slot floor (`w54`)
+
+Each startup, after the actual accepted HELLO and before the real sb binding,
+runs two disposable children; each reports `w54 regression NAME FAILED` and the
+parent then aborts. `failed-bind-kill-sb` provisions the zq3-r3 value of 32
+reservations in the child, runs the actual `hfs_fill_super` (extracted with
+`v9fs_hfs_kill_super` into `super.inc`) and requires ENOSPC with no lane and
+every credit returned. It then runs the actual `v9fs_hfs_kill_super`. The
+session must end retained, closing, blocked and still claimed, and a NULL lane
+reserve must refuse with ESTALE. `provision-slot-floor` (first mount only)
+checks `hfs_controlled_base_charge` against an independent oracle of the mount
+floor: 32 and floor − 1 refuse, the exact floor is accepted. VFS primitives that
+fill_super reaches only after a successful bind abort.
+
+The fixture also checks the floor's units against the actual accounting.
+bind_super must charge exactly its 2 or 3 progress lane packages and
+`HFS_MMAP_EVENTS_MAX + 3 + 2 [+ 1]` Received slots. A new process identity must
+charge one control credit. Each successful `REQUEST` must charge one ordinary
+owner (reservation plus 17-slot package, 3 Received). Each `ACQUIRE` must
+charge one ordinary acquire and one control release ticket owner, plus one
+credit per new family. A nested command or a pressure retirement changes the
+request or ticket counts; the check is then skipped. On the pre-w54 source a
+features32767 scenario such as `terminal-smoke` reproduces the zq3-r3 oops
+(SEGV at 0xbd in `hfs_completion_reserve` ← `hfs_controlled_begin_close` ←
+`v9fs_hfs_kill_super`), and the provisioning case accepts 32.

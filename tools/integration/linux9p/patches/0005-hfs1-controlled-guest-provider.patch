@@ -252,7 +252,7 @@ diff --git a/fs/9p/hfs_controlled.c b/fs/9p/hfs_controlled.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_controlled.c
-@@ -0,0 +1,1331 @@
+@@ -0,0 +1,1345 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* Registered controlled-only provider and finite retained ownership. */
 +#include "hfs_controlled.h"
@@ -573,6 +573,14 @@ new file mode 100644
 +	return err;
 +}
 +
++/* Binds the sb and creates the preowned progress lanes (control, retirement
++ * and, for features 32767, terminal). A failure leaves every lane NULL and
++ * returns all of their credits; mount_nodev then still calls kill_sb, so the
++ * close path must accept that partial state (zq3-r3 R3-1). mount->claimed and
++ * mount->session deliberately stay set: the accepted HELLO already consumed a
++ * native cell under this enrollment, kill_sb retains the session, and a
++ * registry row is never re-enrolled. Recovery is a fresh boot and provision.
++ */
 +int hfs_controlled_bind_super(struct hfs_session *session, struct super_block *super)
 +{
 +	struct hfs_controlled_mount *mount;
@@ -622,6 +630,12 @@ new file mode 100644
 +		return 0;
 +	if (session->terminal_credentials.data)
 +		return 0;
++	/* A failed bind_super never created the terminal lane, and fill_super
++	 * admitted nothing to settle. Refuse rather than dereference it; the
++	 * caller fences the retained session as blocked.
++	 */
++	if (!session->terminal_completion)
++		return -ESTALE;
 +	err = hfs_completion_reserve(session->terminal_completion, 3ULL * HFS_TERMINAL_OBJECT_MAX,
 +				     false, &session->terminal_storage);
 +	if (err)
@@ -2308,7 +2322,7 @@ diff --git a/fs/9p/hfs_completion.inc b/fs/9p/hfs_completion.inc
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_completion.inc
-@@ -0,0 +1,454 @@
+@@ -0,0 +1,465 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* Preowned completion capacity, independently retained by actual descendants. */
 +#define HFS_COMPLETION_SLOTS 16U
@@ -2316,6 +2330,12 @@ new file mode 100644
 +#define HFS_EVENT_BODY_MAX 65536U
 +#define HFS_FLOOR_BODY_MAX 32768U
 +#define HFS_COMMAND_FIXED_MAX 1024U
++/* The provisioned slot floor (hfs_controlled_internal.h) counts these exact
++ * packages; keep both in step.
++ */
++_Static_assert(HFS_FLOOR_PACKAGE == 1U + HFS_COMPLETION_SLOTS, "floor package");
++_Static_assert(HFS_FLOOR_PACKAGE_RECEIVED == HFS_COMPLETION_RECEIVED, "floor received");
++_Static_assert(HFS_FLOOR_EVENT_RECEIVED == HFS_MMAP_EVENTS_MAX + 3U, "floor event lane");
 +struct hfs_completion {
 + struct kref refs;
 + struct hfs_session *session;
@@ -2626,6 +2646,11 @@ new file mode 100644
 + int err;
 +
 + *out = NULL;
++ /* An absent lane (failed bind_super, or one already closed and cleared)
++  * owns no capacity; never dereference it.
++  */
++ if (!completion)
++  return -ESTALE;
 + if (check_add_overflow(bytes, (u64)sizeof(*credit), &total))
 +  return -EOVERFLOW;
 + mutex_lock(&hfs_controlled_lock);
@@ -2767,7 +2792,7 @@ diff --git a/fs/9p/hfs_controlled_artifacts.c b/fs/9p/hfs_controlled_artifacts.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_controlled_artifacts.c
-@@ -0,0 +1,658 @@
+@@ -0,0 +1,686 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* Transactional signed local provisioning and complete boot-owned inventory. */
 +#include "hfs_controlled_internal.h"
@@ -3147,6 +3172,32 @@ new file mode 100644
 +		(u64)json->count * sizeof(*json->tokens);
 +}
 +
++/* Refuse a slot budget below the documented mount floor (see
++ * hfs_controlled_internal.h) before any mount can consume an enrollment.
++ * At most 64 mounts of at most 95 credits each: no overflow.
++ */
++static int hfs_controlled_slot_floor(const struct hfs_controlled_registry *registry)
++{
++	u32 control = 0, ordinary = 0, control_received = 0, ordinary_received = 0, i;
++
++	for (i = 0; i < registry->nr_mounts; i++) {
++		bool terminal = registry->mounts[i]->enrollment.protocol_features ==
++				HFS_TERMINAL_FEATURES;
++
++		control += (terminal ? 3U : 2U) * HFS_FLOOR_PACKAGE + HFS_FLOOR_CONTROL_BASE;
++		control_received += HFS_FLOOR_CONTROL_RECEIVED_BASE + (terminal ? 1U : 0U);
++		ordinary += HFS_FLOOR_ORDINARY;
++		ordinary_received += HFS_FLOOR_ORDINARY_RECEIVED;
++	}
++	if (registry->budget.reservations / 2 < control ||
++	    registry->budget.reservations / 2 < ordinary ||
++	    registry->budget.received / 2 < control_received ||
++	    registry->budget.received / 2 < ordinary_received)
++		return -ENOSPC;
++	return 0;
++}
++
++/* Permanent control bytes of the accepted registry, then the slot floor. */
 +static int hfs_controlled_base_charge(struct hfs_controlled_registry *registry)
 +{
 +	u64 total = HFS_CONTROLLED_STAGING_BYTES + HFS_CONTROLLED_BOOT_BYTES +
@@ -3173,6 +3224,8 @@ new file mode 100644
 +	}
 +	if (!err && total >= registry->budget.control_bytes)
 +		err = -ENOSPC;
++	if (!err)
++		err = hfs_controlled_slot_floor(registry);
 +	if (!err)
 +		registry->control_base_bytes = total;
 +	return err;
@@ -3430,7 +3483,7 @@ diff --git a/fs/9p/hfs_controlled_internal.h b/fs/9p/hfs_controlled_internal.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_controlled_internal.h
-@@ -0,0 +1,104 @@
+@@ -0,0 +1,154 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_CONTROLLED_INTERNAL_H
 +#define FS_9P_HFS_CONTROLLED_INTERNAL_H
@@ -3510,6 +3563,56 @@ new file mode 100644
 +	sizeof(struct hfs_token))
 +#define HFS_CONTROLLED_STAGING_REQUIRED (2ULL * HFS_CONTROLLED_PARSER_BYTES + \
 +	3ULL * HFS_ADMISSION_MAX + 128ULL)
++
++/* Provisioned slot floor (w54; zq3-r3 R3-1 provisioned reservations 32 and
++ * bind_super's first progress lane hit ENOSPC). reserve_owned refuses a new
++ * credit once its partition (control or ordinary) holds reservations / 2;
++ * received_reserve likewise refuses at received / 2. Both counters are
++ * global across every registry mount. Each credit below is an actual
++ * hfs_controlled_reserve that stays charged while a mount is bound,
++ * bootstrapped and serving its first operation. Suballocations from an
++ * existing completion (carriers, Received owners and descendants) spend no
++ * slot, and the bootstrap HELLO carrier is freed before bind_super.
++ *
++ *   package = one hfs_completion: parent + HFS_COMPLETION_SLOTS children = 17
++ *   owner   = request/ticket reservation + its completion package     = 18
++ *
++ * Control credits per mount:
++ *   progress lanes (bind_super): control, retirement [, terminal] 2|3 x 17
++ *   mount process identity (hfs_capture), view, mmap control
++ *   actor and bootstrap cleanup packet                                4
++ *   discovery lease: release ticket owner + control family           19
++ *   first operation (hfs_begin_cap from a new process): process
++ *   identity, observation cleanup, release ticket owner, family      21
++ *   = 78 (features 16383) or 95 (features 32767)
++ * Ordinary credits per mount:
++ *   ROOT request owner                                               18
++ *   discovery lease: acquire ticket owner + acquisition family       19
++ *   first operation: cookie, acquire ticket owner + family, request  38
++ *   = 75
++ * Received slots per mount (reserved with each package):
++ *   control: event lane 6 (HFS_MMAP_EVENTS_MAX + 3), retirement 2
++ *   [, terminal 1], two release ticket packages 2 x 3 = 14 or 15
++ *   ordinary: ROOT, two acquire ticket and one request package 4 x 3 = 12
++ *
++ * Floor: reservations / 2 >= max(sum control, sum ordinary) and
++ * received / 2 >= max(sum control received, sum ordinary received). The zq3
++ * lab's two features 32767 mounts need reservations >= 380, received >= 60.
++ * Not covered, by design: more concurrent operations, open descriptions,
++ * mapped pages/dirty packages and discovery retries (each retry adds one
++ * 18 + 18 ticket pair until the bootstrap cleanup retires it). Runtime
++ * retirement recovers ordinary owners under pressure; this floor only makes
++ * a budget that cannot even mount every enrolled domain fail at provision.
++ */
++#define HFS_FLOOR_PACKAGE 17U
++#define HFS_FLOOR_PACKAGE_RECEIVED 3U
++#define HFS_FLOOR_EVENT_RECEIVED 6U
++#define HFS_FLOOR_OWNER (1U + HFS_FLOOR_PACKAGE)
++#define HFS_FLOOR_CONTROL_BASE (4U + (HFS_FLOOR_OWNER + 1U) + (3U + HFS_FLOOR_OWNER))
++#define HFS_FLOOR_ORDINARY (HFS_FLOOR_OWNER + (HFS_FLOOR_OWNER + 1U) + (2U + 2U * HFS_FLOOR_OWNER))
++#define HFS_FLOOR_CONTROL_RECEIVED_BASE (HFS_FLOOR_EVENT_RECEIVED + 2U + \
++	2U * HFS_FLOOR_PACKAGE_RECEIVED)
++#define HFS_FLOOR_ORDINARY_RECEIVED (4U * HFS_FLOOR_PACKAGE_RECEIVED)
 +
 +struct hfs_controlled_registry {
 +	struct hfs_json *provision;

@@ -88,8 +88,9 @@ type PinnedExecutable struct {
 	Path, SHA256 string
 }
 
-// validateSpec checks generator-owned invariants. Runtime-owned config rules
-// are checked separately by the actual runtime validation (see validate_*.go).
+// validateSpec checks generator-owned invariants, including the guest slot
+// and byte floors (guestfloor.go). Runtime-owned config rules are checked separately by
+// the actual runtime validation (see validate_*.go).
 func validateSpec(s Spec) (ed25519.PublicKey, error) {
 	if s.Version != SpecVersion || !runIDPattern.MatchString(s.RunID) {
 		return nil, fmt.Errorf("spec requires Version %q and a run ID matching %s", SpecVersion, runIDPattern)
@@ -110,6 +111,13 @@ func validateSpec(s Spec) (ed25519.PublicKey, error) {
 		}
 	}
 	if err := checkControllerWork(s.Views); err != nil {
+		return nil, err
+	}
+	// The runtime accepts any guest count above zero; the guest provider
+	// refuses one below its slot floor only once the signed provision reaches
+	// it, and a too-small byte budget only at mount (zq3-r3 failed there).
+	// Refuse both here first.
+	if err := checkGuestFloor(s.Budget.Guest, sessionCount); err != nil {
 		return nil, err
 	}
 	return ed25519.PublicKey(operator), nil

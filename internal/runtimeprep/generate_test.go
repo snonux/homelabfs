@@ -271,7 +271,12 @@ func specRefusals() map[string]func(*Spec) {
 		"runtime canary":    func(s *Spec) { s.Service.LogicalBytes = 8 << 20 },
 		"runtime bootstrap": func(s *Spec) { s.BootstrapSeconds = 121 },
 		"runtime host":      func(s *Spec) { s.Budget.HostBytes = 2 << 30 },
-		"runtime guest":     func(s *Spec) { s.Budget.Guest.Reservations = 0 },
+		"guest slot floor":  func(s *Spec) { s.Budget.Guest.Reservations = 32 }, // zq3-r3
+		"guest floor - 1":   func(s *Spec) { s.Budget.Guest.Reservations = 379 },
+		"guest received":    func(s *Spec) { s.Budget.Guest.Received = 59 },
+		"guest control":     func(s *Spec) { s.Budget.Guest.ControlBytes = 128 << 20 }, // zq3-r3
+		"guest ordinary":    func(s *Spec) { s.Budget.Guest.OrdinaryBytes = 128 << 20 },
+		"runtime guest":     func(s *Spec) { s.Budget.Guest.Cookies = 0 },
 		"runtime views":     func(s *Spec) { s.Views.Sources = 1 },
 	}
 }

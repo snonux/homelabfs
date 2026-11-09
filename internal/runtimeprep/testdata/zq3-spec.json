@@ -73,11 +73,11 @@
     "GuestBytes": 2147483648,
     "GuestBaseBytes": 536870912,
     "Guest": {
-      "ordinary_bytes": 134217728,
-      "control_bytes": 134217728,
-      "reservations": 32,
+      "ordinary_bytes": 536870912,
+      "control_bytes": 536870912,
+      "reservations": 1024,
       "cookies": 64,
-      "received": 64
+      "received": 256
     }
   },
   "BootstrapSeconds": 120
