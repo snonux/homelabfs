@@ -62,6 +62,10 @@ func TestViewPollBeforeAcquireIsEmpty(t *testing.T) {
 // delivers RECALL, and the acknowledgements complete the release. Peer 1
 // never acquires, as in the lab where it had not sent HELLO yet. Every cell
 // must end "responded"; a silent "blocked" cell is what stranded the mount.
+// The acknowledgements replay zq3-r5 (R5-1, task 964): the release loop keeps
+// querying PENDING after INSTALLED_DRAIN, and the guest resends the identical
+// INSTALLED_DRAIN in a new cell before DRAINED, as its event worker does when
+// it re-runs the event after EAGAIN/EBUSY (hfs_mmap_events).
 func TestTransportPollBeforeAcquireDeliversReleaseRecall(t *testing.T) {
 	r := newRig(t)
 	roots := r.useDurableTransport()
@@ -80,7 +84,7 @@ func TestTransportPollBeforeAcquireDeliversReleaseRecall(t *testing.T) {
 	if event := r.poll(0); !bytes.Contains(event, []byte(`"status":"EVENT"`)) || !bytes.Contains(event, []byte(`"phase":"RECALL"`)) {
 		t.Fatalf("release recall not delivered %s", event)
 	}
-	r.completeCleanRecall()
+	r.replayR5Recall(ticket)
 	r.physical("VIEW_RELEASE", payload)
 	if released := r.view(0, "VIEW_QUERY", map[string]any{"request": ticket}); released.Status != "RELEASED" {
 		t.Fatalf("release not completed %+v", released)
@@ -128,4 +132,33 @@ func (r *rig) ledgerBytes() []byte {
 	raw, err := r.controller.rawState()
 	must(r.t, err)
 	return raw
+}
+
+// replayR5Recall completes a clean single-domain recall in the zq3-r5 order:
+// STOPPED, poll INSTALL_DRAIN, INSTALLED_DRAIN, about 20 VIEW_QUERY polls that
+// stay PENDING while the ledger waits for DRAINED, an identical INSTALLED_DRAIN
+// resend that is ACCEPTED again, then DRAINED, INSTALLED_FINAL and REOPENED.
+func (r *rig) replayR5Recall(ticket guestbridge.Ticket) {
+	r.t.Helper()
+	r.ack(0, "STOPPED", r.emptyManifest())
+	if event := r.poll(0); !bytes.Contains(event, []byte(`"phase":"INSTALL_DRAIN"`)) {
+		r.t.Fatalf("INSTALL_DRAIN not delivered %s", event)
+	}
+	first := r.ack(0, "INSTALLED_DRAIN", nil)
+	for range 20 {
+		if query := r.view(0, "VIEW_QUERY", map[string]any{"request": ticket}); query.Status != "PENDING" {
+			r.t.Fatalf("release query while waiting for DRAINED %+v", query)
+		}
+	}
+	if resend := r.ack(0, "INSTALLED_DRAIN", nil); !bytes.Equal(first, resend) {
+		r.t.Fatalf("INSTALLED_DRAIN resend differs:\n%s\n%s", first, resend)
+	}
+	r.ack(0, "DRAINED", r.emptyManifest())
+	r.ack(0, "INSTALLED_FINAL", nil)
+	r.ack(0, "REOPENED", nil)
+	r.controller.mu.Lock()
+	defer r.controller.mu.Unlock()
+	if r.controller.state.Recall != nil {
+		r.t.Fatal("r5 recall did not close")
+	}
 }

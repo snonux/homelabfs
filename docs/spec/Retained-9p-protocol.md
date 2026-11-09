@@ -48,10 +48,20 @@ owned by the receiver remains COPIED while its native forwarding is capacity
 blocked; later FETCH exchanges retry/query that retained mapping. FETCH AGAIN
 is bounded readiness backpressure, not an empty or terminal filesystem result.
 
-Responses echo the 9p tag, but tags may be reused only after that response;
-they never identify an operation. Tag 65534 is reserved for VIEW_WAIT's
-SEND/FETCH loop and 65533 for drain/control exchanges; ordinary traffic uses
-0..65532. Large messages use H9B chunks under independently completed tags.
+Responses echo the 9p tag, but tags may be reused only after that response
+has been fully released; they never identify an operation. Tag 65534 is
+reserved for VIEW_WAIT's SEND/FETCH loop and 65533 for drain/control exchanges;
+ordinary traffic uses 0..65532. Several guest workers share a fixed tag
+(65533: the release loop's VIEW_QUERY and the event worker's VIEW_ACK), so each
+exchange owns it exclusively, and the next owner waits, bounded and without
+sending, until the previous request is released. In Linux the transport
+receive path drops its request reference only after waking the waiter.
+Finding the tag still allocated is local backpressure, not a transport fault
+(zq3-r5 R5-1, task 964). Each wait is bounded at one second. If it expires,
+nothing was sent, and the guest retries the same cell and chunk as for SEND
+AGAIN (a refused packet) or FETCH AGAIN, within the command's 30-second
+deadline. Only that deadline ends the command as an uncertain transport
+result. Large messages use H9B chunks under independently completed tags.
 The native FUSE path carries the H9B frame alone at its positional offset.
 
 Both guest↔backend and backend↔FUSE perform HELLO before any capability, attach

@@ -4152,7 +4152,7 @@ diff --git a/fs/9p/hfs_received.h b/fs/9p/hfs_received.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_received.h
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,61 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_RECEIVED_H
 +#define FS_9P_HFS_RECEIVED_H
@@ -4192,7 +4192,11 @@ new file mode 100644
 +int hfs_received_copy(const struct hfs_json *json, int token, struct hfs_json **out);
 +void hfs_received_forget(struct hfs_json *json);
 +#else
-+static inline int hfs_received_exclusive(struct hfs_session *session, const struct hfs_json *json) { return -EOPNOTSUPP; }
++static inline int hfs_received_exclusive(struct hfs_session *session, const struct hfs_json *json)
++{
++	(void)session; (void)json; /* -Wextra userspace codec builds use this stub. */
++	return -EOPNOTSUPP;
++}
 +static inline int hfs_received_source(struct hfs_session *session,
 +		const struct hfs_json *json, int token)
 +{

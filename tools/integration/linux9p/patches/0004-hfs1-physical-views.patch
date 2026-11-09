@@ -3422,7 +3422,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,1755 @@
+@@ -0,0 +1,1759 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -3850,6 +3850,10 @@ new file mode 100644
 +
 +static void hfs_mmap_fail(struct hfs_mmap_control *control, int error)
 +{
++	/* The worker stops for good here (no further VIEW_WAIT or ACK), so the
++	 * cause must be visible in the guest log of a lab run.
++	 */
++	pr_warn_ratelimited("9p hfs: view control worker stopped, error %d\n", error);
 +	WRITE_ONCE(control->error, error);
 +	WRITE_ONCE(control->view->session->blocked, true);
 +	/* This closes admission, not a declaration of physical STOPPED. All

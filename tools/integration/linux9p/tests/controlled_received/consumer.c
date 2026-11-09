@@ -195,6 +195,12 @@ static char fault_operation[32];
 static unsigned fault_mode;
 static bool fault_reply;
 static size_t fault_scratch, pending_scratch;
+/* 964 busy fixed tag: BUSY_TAG arms local -EBUSY results from the idle wait
+ * of one client's control tag 65533; native_exchanges proves none was sent. */
+static struct p9_client *busy_client;
+static unsigned busy_remaining, busy_injected;
+static bool busy_retry_pending;
+static unsigned long native_exchanges, busy_mark;
 bool primitive_allocation_size_failure(size_t length) {
  if(fault_scratch&&length==fault_scratch){fault_scratch=0;return true;}return false;
 }
@@ -228,6 +234,7 @@ static int claim_cb(void *arg,const Hfs9pEndpoint *e,const u8 hash[32]) { return
 static int protect_cb(void *arg,const u8 *p,size_t n) { return hfs9p_ledger_protect(arg,p,n); }
 static int primitive_rpc_exchange(struct p9_client *client,u16 tag,u8 op,u8 channel,u64 cell,u32 chunk,const void *request,u32 request_len,void *reply,u32 *reply_len) {
  unsigned index;for(index=0;index<64;index++)if(client==&(*fixtures[index].client))break;assert(index<carrier->session_count);
+ native_exchanges++;
  int err;if(op==1){
   if(fault_mode){
    const void *body=NULL;u32 total=0,body_len=0;u8 hash[32];struct hfs_json *original=NULL;
@@ -262,6 +269,22 @@ static struct p9_req_t *p9_client_rpc_tag(struct p9_client *client,s8 type,int w
  request->rc.size=count;request->rc.id=P9_RBRIDGE;request->rc.tag=request->tc.tag=tag;return request;
 }
 static void p9_req_put(struct p9_client *client,struct p9_req_t *request) { (void)client;free(request->rc.sdata);free(request); }
+/* The substituted RPC owns no idr slot, so a fixed tag is normally idle here;
+ * tools/integration/linux9p/tests/tag runs the actual idle wait (964). When
+ * armed, alternate attempts on the control tag return the wait's bounded
+ * -EBUSY (first a SEND, then its FETCH). The actual exchange then returns
+ * before any native byte; the retry must find native_exchanges unchanged.
+ */
+static int p9_client_hfs_tag_idle(struct p9_client *client,u16 tag) {
+ if(client!=busy_client||tag!=65533)return 0;
+ if(busy_retry_pending){
+  assert(native_exchanges==busy_mark);busy_retry_pending=false;
+  if(!busy_remaining)busy_client=NULL;
+  return 0;
+ }
+ assert(busy_remaining);busy_remaining--;busy_injected++;
+ busy_mark=native_exchanges;busy_retry_pending=true;return -EBUSY;
+}
 #include "client_exchange.inc"
 static void command(char *line);
 void primitive_sleep(unsigned long lower,unsigned long upper) {
@@ -665,6 +688,15 @@ static void command(char *line) {
   assert(hfs_controlled_request_hash(request,(u8[32]){0})==0); /* Inert hash decoding alone grants no floor. */
   assert(hfs_received_require(&(*f->session),request->gap_response,0)<0);request->gap_response->data[offset]=old;
   assert((*f->session).provider->resolve_gap(&(*f->session),request)==-EBUSY);done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"BUSY_TAG")){assert(!busy_client&&!busy_retry_pending);busy_remaining=(unsigned)strtoul(line+consumed,NULL,10);assert(busy_remaining);busy_injected=0;busy_client=f->client;done(id,0,NULL,0);return;}
+ if(!strcmp(operation,"BUSY_TAG_CHECK")){
+  /* Every injected busy tag was retried in place: no fault, no uncertain
+   * candidate, session admission still open (964). */
+  struct hfs_session *session=&(*f->session);
+  assert(!busy_client&&!busy_retry_pending&&!busy_remaining&&busy_injected);
+  assert(!READ_ONCE(session->blocked)&&!session->allocation_uncertain&&list_empty(&session->uncertain));
+  done(id,0,NULL,0);return;
  }
  if(!strcmp(operation,"ISSUER")){unsigned capture=(unsigned)strtoul(line+consumed,NULL,10);assert(capture<f->nr_captures);f->credential=f->captures[capture];f->credentials=f->capture_bytes[capture];fixture_set_current(f);done(id,0,NULL,0);return;}
  if(!strcmp(operation,"FAULT")){assert(!fault_mode&&!fault_reply&&!fault_scratch&&!pending_scratch);assert(sscanf(line+consumed,"%31s %u",fault_operation,&fault_mode)==2&&fault_mode>=1&&fault_mode<=3);if(fault_mode==3)assert(!strcmp(fault_operation,"RETIRE")||!strcmp(fault_operation,"VIEW_RETIRE"));done(id,0,NULL,0);return;}

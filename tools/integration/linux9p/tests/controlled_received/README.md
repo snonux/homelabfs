@@ -142,6 +142,12 @@ C7 adds these test-only commands, all invoking the maintained production helpers
   of that operation's actual size. The complete reply and exact old cut remain
   owned while a later real request or acquisition arrives. Deadlines are unchanged.
   Lost candidates and their exact credits remain in the actual uncertain list.
+* `BUSY_TAG ID SESSION COUNT` (964) makes alternate attempts on that session's
+  control tag 65533 get the bounded EBUSY of the substituted
+  `p9_client_hfs_tag_idle`. The actual `p9_client_hfs_exchange` then returns
+  before any native byte, which the retry checks. `BUSY_TAG_CHECK` requires
+  every injection to have been retried, the session unblocked and no
+  uncertain candidate.
 * `LATE_BORROW` schedules a real production result borrow at the mutex primitive
   boundary after the actual provider accepted its floor. The first reap refuses
   that live owner; freeing the result permits exact old-cut revalidation at the

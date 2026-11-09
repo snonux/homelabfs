@@ -1181,8 +1181,31 @@ func TestControlledReceivedActualTerminalClean(t *testing.T) {
 	raw := c.action("TOMBSTONE", 0, "", 0)
 	var admission kernelAdmission
 	require(t, strictJSON(raw, &admission))
+	// 964 (zq3-r5 R5-1): the QUERY's SEND and FETCH each first find the
+	// control tag still held. The actual hfs_transport retries the same cell
+	// and chunk, so actual hfs_control never faults or blocks the session.
+	root := "ROOT " + hex.EncodeToString(mustRuntimeJSON(t, map[string]any{}))
+	cells := func() int {
+		count := 0
+		for _, command := range c.commands {
+			if command.Op == "QUERY" {
+				count++
+			}
+		}
+		return count
+	}
+	before := cells()
+	c.action("BUSY_TAG", 1, "2", 0)
 	// The other scope still uses the same actual native endpoint.
-	receivedResult(t, c.action("REQUEST", 1, "ROOT "+hex.EncodeToString(mustRuntimeJSON(t, map[string]any{})), 0))
+	receivedResult(t, c.action("REQUEST", 1, root, 0))
+	c.action("BUSY_TAG_CHECK", 1, "", 0)
+	busy := cells() - before
+	// The next exchange on the same session succeeds as usual, and the busy
+	// retries consumed no extra native QUERY cell.
+	receivedResult(t, c.action("REQUEST", 1, root, 0))
+	if plain := cells() - before - busy; busy != plain || busy == 0 {
+		t.Fatalf("busy-tag REQUEST used %d native QUERY cells, plain REQUEST %d", busy, plain)
+	}
 	c.close()
 }
 

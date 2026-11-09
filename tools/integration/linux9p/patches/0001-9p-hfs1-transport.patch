@@ -76,7 +76,15 @@ diff --git a/include/net/9p/client.h b/include/net/9p/client.h
 diff --git a/net/9p/client.c b/net/9p/client.c
 --- a/net/9p/client.c
 +++ b/net/9p/client.c
-@@ -62,6 +62,15 @@
+@@ -15,6 +15,7 @@
+ #include <linux/idr.h>
+ #include <linux/mutex.h>
+ #include <linux/slab.h>
++#include <linux/delay.h>
+ #include <linux/sched/signal.h>
+ #include <linux/uaccess.h>
+ #include <linux/uio.h>
+@@ -62,6 +63,15 @@
  }
  EXPORT_SYMBOL(p9_is_proto_dotu);
  
@@ -92,7 +100,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  int p9_show_client_options(struct seq_file *m, struct p9_client *clnt)
  {
  	if (clnt->msize != DEFAULT_MSIZE)
-@@ -69,6 +78,21 @@
+@@ -69,6 +79,21 @@
  	seq_printf(m, ",trans=%s", clnt->trans_mod->name);
  
  	switch (clnt->proto_version) {
@@ -114,7 +122,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	case p9_proto_legacy:
  		seq_puts(m, ",noextend");
  		break;
-@@ -103,7 +127,19 @@
+@@ -103,7 +128,19 @@
  {
  	int version = -EINVAL;
  
@@ -135,7 +143,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  		version = p9_proto_legacy;
  		p9_debug(P9_DEBUG_9P, "Protocol version: Legacy\n");
  	} else if (!strcmp(s, "9p2000.u")) {
-@@ -271,7 +307,7 @@
+@@ -271,11 +308,12 @@
   */
  static struct p9_req_t *
  p9_tag_alloc(struct p9_client *c, int8_t type, uint t_size, uint r_size,
@@ -144,7 +152,12 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  {
  	struct p9_req_t *req = kmem_cache_alloc(p9_req_cache, GFP_NOFS);
  	int alloc_tsize;
-@@ -312,8 +348,13 @@
+ 	int alloc_rsize;
++	int err = -ENOMEM;
+ 	int tag;
+ 	va_list apc;
+ 
+@@ -312,13 +350,28 @@
  	if (type == P9_TVERSION)
  		tag = idr_alloc(&c->reqs, req, P9_NOTAG, P9_NOTAG + 1,
  				GFP_NOWAIT);
@@ -159,7 +172,32 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	req->tc.tag = tag;
  	spin_unlock_irq(&c->lock);
  	idr_preload_end();
-@@ -535,6 +576,9 @@
+-	if (tag < 0)
++	if (tag < 0) {
++		/* A wanted fixed hfs tag is still held by an earlier request that
++		 * has not dropped all of its references (p9_client_cb puts its
++		 * reference only after waking the waiter). Report that as busy
++		 * rather than as an allocation failure: nothing was sent, and the
++		 * per-tag owner may wait for the release instead of treating the
++		 * exchange as an uncertain transport fault.
++		 */
++		if (tag == -ENOSPC && wanted_tag >= 0)
++			err = -EBUSY;
+ 		goto free;
++	}
+ 
+ 	/* Init ref to two because in the general case there is one ref
+ 	 * that is put asynchronously by a writer thread, one ref
+@@ -339,7 +392,7 @@
+ 	p9_fcall_fini(&req->rc);
+ free_req:
+ 	kmem_cache_free(p9_req_cache, req);
+-	return ERR_PTR(-ENOMEM);
++	return ERR_PTR(err);
+ }
+ 
+ /**
+@@ -535,6 +588,9 @@
  		p9_debug(P9_DEBUG_ERROR, "couldn't parse header %d\n", err);
  		return err;
  	}
@@ -169,7 +207,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	if (type != P9_RERROR && type != P9_RLERROR)
  		return 0;
  
-@@ -620,13 +664,17 @@
+@@ -620,13 +676,17 @@
  
  static struct p9_req_t *p9_client_prepare_req(struct p9_client *c,
  					      int8_t type, uint t_size, uint r_size,
@@ -188,7 +226,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  	/* we allow for any status other than disconnected */
  	if (c->status == Disconnected)
-@@ -637,7 +685,7 @@
+@@ -637,7 +697,7 @@
  		return ERR_PTR(-EIO);
  
  	va_copy(apc, ap);
@@ -197,7 +235,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	va_end(apc);
  	if (IS_ERR(req))
  		return req;
-@@ -667,9 +715,9 @@
+@@ -667,9 +727,9 @@
   */
  
  static struct p9_req_t *
@@ -210,7 +248,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	int sigpending, err;
  	unsigned long flags;
  	struct p9_req_t *req;
-@@ -683,9 +731,8 @@
+@@ -683,9 +743,8 @@
  	const uint tsize = 0;
  	const uint rsize = c->trans_mod->pooled_rbuffers ? c->msize : 0;
  
@@ -222,7 +260,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	if (IS_ERR(req))
  		return req;
  
-@@ -706,8 +753,15 @@
+@@ -706,8 +765,15 @@
  	}
  again:
  	/* Wait for the response */
@@ -240,7 +278,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  	/* Make sure our req is coherent with regard to updates in other
  	 * threads - echoes to wmb() in the callback
-@@ -756,6 +810,70 @@
+@@ -756,6 +822,123 @@
  	p9_req_put(c, req);
  	return ERR_PTR(safe_errno(err));
  }
@@ -270,11 +308,45 @@ diff --git a/net/9p/client.c b/net/9p/client.c
 +	return req;
 +}
 +
++/* Fixed hfs tags (65533 control, 65534 VIEW_WAIT) are serialized by their
++ * per-tag mutex, but a completed request can outlive its exchange: the
++ * transport receive path (p9_client_cb) wakes the waiter first and drops its
++ * own reference afterwards, possibly on another CPU or a preempted vCPU. Until
++ * that last p9_req_put the old request still owns the idr slot, and a new
++ * allocation of the same tag would fail. Wait, bounded and under the per-tag
++ * mutex, until the previous request is fully released, so a fixed tag is
++ * reused only after its response is fully released. Dynamic tags never fall
++ * in this range, so once the slot is empty only the mutex holder can take it.
++ * Nothing is sent while waiting; -EBUSY after the bound is a local no-send
++ * that hfs_transport retries on the same cell and chunk. A disconnecting
++ * client reports -EIO first, as p9_client_prepare_req would.
++ */
++static int p9_client_hfs_tag_idle(struct p9_client *c, u16 tag)
++{
++	unsigned long deadline = jiffies + HZ;
++	bool busy;
++
++	for (;;) {
++		if (READ_ONCE(c->status) == Disconnected ||
++		    READ_ONCE(c->status) == BeginDisconnect)
++			return -EIO;
++		spin_lock_irq(&c->lock);
++		busy = idr_find(&c->reqs, tag) != NULL;
++		spin_unlock_irq(&c->lock);
++		if (!busy)
++			return 0;
++		if (time_after_eq(jiffies, deadline))
++			return -EBUSY;
++		usleep_range(50, 100);
++	}
++}
++
 +int p9_client_hfs_exchange(struct p9_client *c, u16 tag, u8 method,
 +			   u8 channel, u64 cell, u32 chunk,
 +			   const void *frame, u32 frame_len,
 +			   void *reply, u32 *reply_len)
 +{
++	struct mutex *owner = NULL;
 +	struct p9_req_t *req;
 +	u32 len;
 +	int err = 0;
@@ -287,15 +359,28 @@ diff --git a/net/9p/client.c b/net/9p/client.c
 +	       frame_len >= 89 && frame_len <= 32856) ||
 +	      (method == 2 && (channel == 2 || channel == 3) && !frame_len)))
 +		return -EINVAL;
-+	if (tag != P9_NOTAG)
-+		mutex_lock(tag == 65533 ? &c->hfs_control_tag : &c->hfs_wait_tag);
++	if (tag != P9_NOTAG) {
++		owner = tag == 65533 ? &c->hfs_control_tag : &c->hfs_wait_tag;
++		mutex_lock(owner);
++		err = p9_client_hfs_tag_idle(c, tag);
++		if (err) {
++			mutex_unlock(owner);
++			return err;
++		}
++	}
 +	req = p9_client_rpc_tag(c, (s8)P9_TBRIDGE,
 +			      tag == P9_NOTAG ? -1 : tag, "bbqdB",
 +			      method, channel, cell, chunk, frame_len, frame);
-+	if (tag != P9_NOTAG)
-+		mutex_unlock(tag == 65533 ? &c->hfs_control_tag : &c->hfs_wait_tag);
-+	if (IS_ERR(req))
-+		return PTR_ERR(req);
++	if (IS_ERR(req)) {
++		/* -EBUSY from this exchange must mean "nothing sent": only the idle
++		 * wait above returns it. With the tag idle under its mutex,
++		 * p9_tag_alloc cannot find it busy, so any -EBUSY here would come
++		 * from after the request reached the transport. Report it as an
++		 * I/O error so that callers never retry a possibly sent packet.
++		 */
++		err = PTR_ERR(req) == -EBUSY ? -EIO : PTR_ERR(req);
++		goto unlock;
++	}
 +	len = req->rc.size - req->rc.offset;
 +	if (req->rc.id != P9_RBRIDGE || req->rc.tag != req->tc.tag ||
 +	    len > *reply_len || !len) {
@@ -304,14 +389,20 @@ diff --git a/net/9p/client.c b/net/9p/client.c
 +		memcpy(reply, req->rc.sdata + req->rc.offset, len);
 +		*reply_len = len;
 +	}
++	/* Drop this waiter's reference while still owning the fixed tag. The
++	 * receive callback's reference is covered by the next owner's idle wait.
++	 */
 +	p9_req_put(c, req);
++unlock:
++	if (owner)
++		mutex_unlock(owner);
 +	return err;
 +}
 +EXPORT_SYMBOL_GPL(p9_client_hfs_exchange);
  
  /**
   * p9_client_zc_rpc - issue a request and wait for a response
-@@ -785,7 +903,8 @@
+@@ -785,7 +968,8 @@
  	/* We allocate a inline protocol data of only 4k bytes.
  	 * The actual content is passed in zero-copy fashion.
  	 */
@@ -321,7 +412,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	va_end(ap);
  	if (IS_ERR(req))
  		return req;
-@@ -910,6 +1029,20 @@
+@@ -910,6 +1094,20 @@
  		 c->msize, c->proto_version);
  
  	switch (c->proto_version) {
@@ -342,7 +433,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	case p9_proto_2000L:
  		req = p9_client_rpc(c, P9_TVERSION, "ds",
  				    c->msize, "9P2000.L");
-@@ -937,7 +1070,18 @@
+@@ -937,7 +1135,18 @@
  	}
  
  	p9_debug(P9_DEBUG_9P, "<<< RVERSION msize %d %s\n", msize, version);
@@ -362,7 +453,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  		c->proto_version = p9_proto_2000L;
  	} else if (!strncmp(version, "9P2000.u", 8)) {
  		c->proto_version = p9_proto_2000u;
-@@ -989,10 +1133,19 @@
+@@ -989,10 +1198,19 @@
  	spin_lock_init(&clnt->lock);
  	idr_init(&clnt->fids);
  	idr_init(&clnt->reqs);

@@ -29,6 +29,10 @@ static u16 fetch_channel, fetch_kind;
 static const u64 cell = 0x12345678;
 static u16 tag = 65533;
 static u32 pending_before_reply, pending_fetches, progress_signals;
+/* 964: FETCHes that find the fixed tag still held; the actual exchange then
+ * returns -EBUSY without sending, and hfs_transport must poll again.
+ */
+static u32 busy_fetches, busy_fetched;
 static struct hfs_session *active;
 static const struct hfs_buf *command;
 static const char result[] = "{\"reply\":true}";
@@ -101,6 +105,10 @@ static int p9_client_hfs_exchange(void *client, u16 selected_tag, u8 method,
 	CHECK(method == 2 && channel == fetch_channel && !active->writer);
 	CHECK(next_chunk == 3 && !frame && !frame_len && chunk == 0);
 	fetches++;
+	if (busy_fetched < busy_fetches) {
+		busy_fetched++;
+		return -EBUSY;
+	}
 	if (pending_fetches < pending_before_reply) {
 		pending_fetches++;
 		*(u8 *)packet = 2;
@@ -136,7 +144,7 @@ static void run_case(u32 chunk, int expected)
 	command = &body;
 	refused_chunk = chunk;
 	sends = fetches = yields = retries = next_chunk = saved_len = 0;
-	pending_fetches = progress_signals = 0;
+	pending_fetches = progress_signals = busy_fetched = 0;
 	refused = false;
 	/* Exercise wrap-safe kernel deadline comparisons as well. */
 	jiffies = ULONG_MAX - 100;
@@ -146,8 +154,9 @@ static void run_case(u32 chunk, int expected)
 	CHECK(error == expected);
 	CHECK(held == !!session.writer);
 	if (!error) {
-		CHECK(!held && sends == 4 && retries == 1 && yields == 1 + pending_before_reply);
-		CHECK(fetches == 1 + pending_before_reply && next_chunk == 3);
+		CHECK(!held && sends == 4 && retries == 1 &&
+		      yields == 1 + pending_before_reply + busy_fetches);
+		CHECK(fetches == 1 + pending_before_reply + busy_fetches && next_chunk == 3);
 		CHECK(reply_len == sizeof(result) - 1 && !memcmp(reply, result, reply_len));
 	} else {
 		CHECK(held && !reply && !reply_len && !fetches && next_chunk == chunk);
@@ -192,6 +201,13 @@ int main(void)
 		always_refuse = false;
 		exchange_error = -EIO;
 		run_case(chunk, -EIO);
+		/* 964: a busy fixed tag (nothing sent) at SEND retries the exact
+		 * frame of this chunk and cell; at FETCH it polls again.
+		 */
+		exchange_error = -EBUSY;
+		busy_fetches = 2;
+		run_case(chunk, 0);
+		busy_fetches = 0;
 		exchange_error = 0;
 		for (i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
 			memcpy(response, bad[i], sizeof(response));
@@ -225,6 +241,6 @@ int main(void)
 	fetch_channel = 2; fetch_kind = 2;
 	run_case(2, 0);
 	CHECK(progress_signals == 0);
-	puts("PASS: actual hfs_transport + policy/codec; chunk0/1/last exact frame/session/cell/tag/body retry; no advance/rebind; yielding writer/control progress; fixed/wrapped deadline at reply/sleep/relock/repeated refusal; malformed status/code/length and I/O errors; result2/recall3");
+	puts("PASS: actual hfs_transport + policy/codec; chunk0/1/last exact frame/session/cell/tag/body retry; no advance/rebind; yielding writer/control progress; fixed/wrapped deadline at reply/sleep/relock/repeated refusal; malformed status/code/length and I/O errors; busy fixed tag retried at SEND/FETCH (964); result2/recall3");
 	return 0;
 }
