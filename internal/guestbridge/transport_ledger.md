@@ -51,6 +51,15 @@ protected semantic effect with its actual authoritative ledger and reauthenticat
 any preserved work. A close or process loss may leave `executing` even when an
 external service ledger has protected the effect; that is deliberate uncertainty.
 
+WouldBlock/NoSpace refusals stay `pending` and are retried. Any other Execute
+error makes the cell `blocked`: it gets no reply and is never redispatched. Its
+row then also records `BlockedError`, the semantic fsapi errno name (for example
+`PERMISSION`) or `UNCLASSIFIED:<Go type>`, bounded to 96 bytes and never the
+error text. The field is omitted for every other phase, so older rows and
+non-blocked rows keep their exact bytes, and a legacy blocked row without it
+still validates. Readers built before the field existed decode rows strictly
+and refuse only rows that carry it (blocked cells, which are never restorable).
+
 Serialization uses per-cell deltas, never a full transport JSON copy or an append
 history. There are at most 80 live rows and one workspace, each encoded row is
 limited to 8 MiB, the index to 128 KiB, and one transaction puts at most two cell

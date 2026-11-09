@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -19,20 +20,24 @@ type CellReservation struct {
 	Release func()
 }
 type cell struct {
-	frame          Frame
-	body           []byte
-	chunks         []bool
-	count          int
-	reservation    CellReservation
-	command        *Command
-	response       []byte
-	wire           [][]byte
-	seen           [][]byte
-	unread         int
-	resultKind     uint16
-	released       bool
-	native         Native // Historical accepted callback, never restored authentication.
-	jobPhase       string
+	frame       Frame
+	body        []byte
+	chunks      []bool
+	count       int
+	reservation CellReservation
+	command     *Command
+	response    []byte
+	wire        [][]byte
+	seen        [][]byte
+	unread      int
+	resultKind  uint16
+	released    bool
+	native      Native // Historical accepted callback, never restored authentication.
+	jobPhase    string
+	// blockedError names the semantic error class that left jobPhase
+	// "blocked". The cell is never answered, so this is the only durable
+	// record of why a guest request stays without a reply.
+	blockedError   string
 	observations   []Native
 	mapping        *ProtectedMapping
 	guestWatermark uint64
@@ -626,17 +631,7 @@ func (t *Transport) worker(queue <-chan job) {
 		}
 		t.mu.Unlock()
 		if e != nil {
-			retryable := errors.Is(e, fsapi.WouldBlock) || errors.Is(e, fsapi.NoSpace)
-			t.mu.Lock()
-			if c = t.cells[j.id]; c != nil && t.failed == nil {
-				c.jobPhase = "blocked"
-				if retryable {
-					c.jobPhase = "pending"
-				}
-				_ = t.protectLocked(j.id)
-			}
-			t.mu.Unlock()
-			if retryable {
+			if t.recordExecuteFailure(j.id, e) {
 				pending = append(pending, j)
 			}
 			continue
@@ -648,22 +643,7 @@ func (t *Transport) worker(queue <-chan job) {
 		if j.command.Op == "VIEW_POLL" {
 			kind = 3
 		}
-		frames := [][]byte{}
-		seen := [][]byte{}
-		hash := sha256.Sum256(raw)
-		session := parseID(j.command.Context.Session)
-		unread := 0
-		valid := true
-		for offset := 0; offset < len(raw); offset += ChunkBytes {
-			wire, e := EncodeFrame(Frame{Minor: commandMinor(j.command), Flags: t.flags(j.id), Kind: kind, Total: uint32(len(raw)), Offset: uint32(offset), Session: session, Cell: j.id, Hash: hash, Data: raw[offset:min(offset+ChunkBytes, len(raw))]})
-			if e != nil {
-				valid = false
-				break
-			}
-			frames = append(frames, wire)
-			seen = append(seen, make([]byte, len(wire)))
-			unread += len(wire)
-		}
+		frames, seen, unread, valid := t.responseFrames(j, kind, raw)
 		if !valid {
 			continue
 		}
@@ -696,6 +676,58 @@ func (t *Transport) worker(queue <-chan job) {
 		t.mu.Unlock()
 	}
 }
+
+// recordExecuteFailure protects the cell phase after Service.Execute failed and
+// reports whether the job is retried. WouldBlock/NoSpace are transient capacity
+// refusals and stay "pending" in the retry ring. Every other error is final for
+// this dispatch: the cell becomes "blocked" and gets no reply, so the protected
+// row also records the error class for later transport.db analysis (zq3-r4
+// showed that a silent blocked VIEW_POLL is otherwise hard to diagnose).
+func (t *Transport) recordExecuteFailure(id uint64, e error) bool {
+	retryable := errors.Is(e, fsapi.WouldBlock) || errors.Is(e, fsapi.NoSpace)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if c := t.cells[id]; c != nil && t.failed == nil {
+		c.jobPhase = "blocked"
+		c.blockedError = blockedErrorClass(e)
+		if retryable {
+			c.jobPhase = "pending"
+			c.blockedError = ""
+		}
+		_ = t.protectLocked(id)
+	}
+	return retryable
+}
+
+// blockedErrorClass returns a bounded, content-free error class: the semantic
+// fsapi errno name when one is wrapped, otherwise the Go error type. Error text
+// is never stored because it may echo request bytes and is unbounded.
+func blockedErrorClass(e error) string {
+	var code fsapi.Errno
+	if errors.As(e, &code) {
+		return code.Error()
+	}
+	class := fmt.Sprintf("UNCLASSIFIED:%T", e)
+	return class[:min(len(class), blockedErrorLimit)]
+}
+
+// responseFrames splits one immutable response into wire frames plus their
+// unread byte bitmaps. valid is false when any frame cannot be encoded.
+func (t *Transport) responseFrames(j job, kind uint16, raw []byte) (frames, seen [][]byte, unread int, valid bool) {
+	hash := sha256.Sum256(raw)
+	session := parseID(j.command.Context.Session)
+	for offset := 0; offset < len(raw); offset += ChunkBytes {
+		wire, e := EncodeFrame(Frame{Minor: commandMinor(j.command), Flags: t.flags(j.id), Kind: kind, Total: uint32(len(raw)), Offset: uint32(offset), Session: session, Cell: j.id, Hash: hash, Data: raw[offset:min(offset+ChunkBytes, len(raw))]})
+		if e != nil {
+			return nil, nil, 0, false
+		}
+		frames = append(frames, wire)
+		seen = append(seen, make([]byte, len(wire)))
+		unread += len(wire)
+	}
+	return frames, seen, unread, true
+}
+
 func (t *Transport) scope(session string) *Context {
 	t.service.mu.Lock()
 	defer t.service.mu.Unlock()

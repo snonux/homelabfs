@@ -63,15 +63,19 @@ type ProtectedTransportState struct {
 // observations. These values cannot construct a VerifiedRequest or grant native
 // authority; a future coordinator must reconcile all other authoritative ledgers.
 type ProtectedTransportCell struct {
-	Header         Frame
-	Body           []byte
-	Chunks         []bool
-	Observations   []Native
-	Count          int
-	Control        bool
-	Command        *Command
-	Native         Native
-	JobPhase       string
+	Header       Frame
+	Body         []byte
+	Chunks       []bool
+	Observations []Native
+	Count        int
+	Control      bool
+	Command      *Command
+	Native       Native
+	JobPhase     string
+	// BlockedError is the error class (fsapi errno name or UNCLASSIFIED:<type>)
+	// that left JobPhase "blocked". It is omitted otherwise, so rows written
+	// before it existed and rows of non-blocked cells keep their exact bytes.
+	BlockedError   string `json:",omitempty"`
 	Response       []byte
 	Wire, Seen     [][]byte
 	Unread         int
@@ -290,7 +294,7 @@ func protectedCell(c *cell) ProtectedTransportCell {
 	// The complete body plus the chunk bitmap owns these bytes; keeping the first
 	// frame's borrowed Data slice would duplicate a callback buffer and alias it.
 	h.Data = nil
-	return ProtectedTransportCell{Header: h, Body: c.body, Chunks: c.chunks, Observations: c.observations, Count: c.count, Control: c.reservation.Control, Command: c.command, Native: c.native, JobPhase: c.jobPhase, Response: c.response, Wire: c.wire, Seen: c.seen, Unread: c.unread, ResultKind: c.resultKind, GuestWatermark: c.guestWatermark, Mapping: c.mapping, Terminal: c.terminal}
+	return ProtectedTransportCell{Header: h, Body: c.body, Chunks: c.chunks, Observations: c.observations, Count: c.count, Control: c.reservation.Control, Command: c.command, Native: c.native, JobPhase: c.jobPhase, BlockedError: c.blockedError, Response: c.response, Wire: c.wire, Seen: c.seen, Unread: c.unread, ResultKind: c.resultKind, GuestWatermark: c.guestWatermark, Mapping: c.mapping, Terminal: c.terminal}
 }
 func (t *Transport) protectedIndex() ProtectedTransportState {
 	s := ProtectedTransportState{RuntimeHellos: t.runtimeHellos, BridgeSessions: true, Version: 1, Endpoint: t.Endpoint(), Controller: t.service.controller, High: t.high, Terminal: t.terminal, GuestHigh: t.guestHigh, GuestRecent: t.guestRecent, Ordinary: t.ordinary, Control: t.control, Workspace: t.workspace != nil, Cells: make([]uint64, 0, len(t.cells))}
@@ -487,6 +491,9 @@ func validateTransportIndex(s ProtectedTransportState) error {
 	return nil
 }
 
+// blockedErrorLimit bounds the protected BlockedError diagnostic.
+const blockedErrorLimit = 96
+
 func validateProtectedCell(c ProtectedTransportCell, workspace bool) error {
 	if c.Header.Cell < 1 || c.Header.Cell > MaxCell || c.Header.Total == 0 || c.Header.Total > BodyBytes || len(c.Header.Data) != 0 || len(c.Body) != int(c.Header.Total) || len(c.Chunks) != (len(c.Body)+ChunkBytes-1)/ChunkBytes || len(c.Observations) != len(c.Chunks) || len(c.Chunks) > 32 || c.Control != (c.Header.Flags&1 != 0) && !workspace {
 		return fsapi.Stale
@@ -516,6 +523,10 @@ func validateProtectedCell(c ProtectedTransportCell, workspace bool) error {
 		if workspace || count != len(c.Chunks) || c.Command.Cell != c.Header.Cell || len(c.Native.Groups) > 1024 || !validUUID(c.Native.Process) || !oneOf(c.JobPhase, "accepted", "executing", "pending", "blocked", "responded") {
 			return fsapi.Stale
 		}
+	}
+	// Only a blocked cell may name its error class; legacy blocked rows have none.
+	if c.BlockedError != "" && (c.JobPhase != "blocked" || len(c.BlockedError) > blockedErrorLimit) {
+		return fsapi.Stale
 	}
 	if err := validateProtectedMapping(c); err != nil {
 		return err
