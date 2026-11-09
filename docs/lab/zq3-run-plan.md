@@ -23,11 +23,11 @@ preparation used SSH, the lab, a VM, a mount or a private key.
 | Input | Value |
 |---|---|
 | Run ID | `zq3-r1` (guest/controller regex `[a-z0-9][a-z0-9-]{0,23}`); a retry gets a new ID |
-| Candidate | `/home/paul/tmp/claude/hfs-xz3-20261109c/package` (r54 kernel rebuild, 2026-11-09), manifest SHA256 `5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99`, source `ca920a2ab7346cbcacb4e7bcc9148e213edd7fc4`, CGO daemon `174949c1…`; only the guest kernel/modules and Linux source records were rebuilt (r54 mount HELLO fix, zq3-r2 R2-4); daemon, exporter and native parts are byte-identical reuses from f44 (`b203799e…`, `defd974`), which is now refused as superseded together with `3f770a88…` |
+| Candidate | `/home/paul/tmp/claude/hfs-xz3-20261109d/package` (w54 kernel rebuild, 2026-11-09), manifest SHA256 `89c928d5072838bb509ec19e471109b549ce7b06c59451fab64a6d09250bec66`, source `ff866c59e8fe779c7db6aa03e22a7b098dafab5b`, CGO daemon `174949c1…`; only the guest kernel and Linux source records were rebuilt (w54 failed-bind kill_sb fence, zq3-r3 R3-1; r54 mount HELLO fix, zq3-r2 R2-4), and its modules are byte-identical; daemon, exporter and native parts are byte-identical reuses from f44 (`b203799e…`, `defd974`) via r54 (`5eb42c50…`, `ca920a2`), both now refused as superseded together with `3f770a88…` |
 | Quarantined, never installed | `7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b` (CGO-disabled daemon); the probe controller refuses it |
 | Daemon | `freebsd/hfs-controlled-runtime` `174949c1ebf97d483d49e41f1ade7bce88f63013cb943be794276bb1ddd417a7` (f44; native observer check passed on f3) |
 | Patched bhyve (exporter) | `freebsd/bhyve` `36423b6d4f68dc1b05299b1c379a164035e7db5b06ca64b47f2a8571d823fb5c`; the system `/usr/sbin/bhyve` (`c54a6361…`) is never replaced |
-| Guest kernel | `6.1.190-hfs-xz3`: `linux/bzImage` `98cc02d5…`, `linux/config` `d88b4c56…`, `System.map` `69b6c7bc…`, five modules (`virtio_net`, `net_failover`, `failover`, `efivarfs`, `x86_pkg_temp_thermal`) with hashes in the package's `installation-proposal.json` |
+| Guest kernel | `6.1.190-hfs-xz3`: `linux/bzImage` `5c46f218…`, `linux/config` `d88b4c56…`, `System.map` `d544349f…`, five modules (`virtio_net`, `net_failover`, `failover`, `efivarfs`, `x86_pkg_temp_thermal`) with hashes in the package's `installation-proposal.json` |
 | Operator public key | `2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635` (built into the guest kernel config) |
 | Probe tools | `tools/lab/retained9p/{controller,guest,observer}.py` at the commit that adds this plan; the controller pins only the candidate above |
 | Staging prefix (f3) | `/var/tmp/hfs-validation-xz3/zq3-r1` (from the installation proposal) |
@@ -624,8 +624,8 @@ d44 therefore adds per-operation arming to the runtime: ARM operation code 2,
 only a CALL whose guest intent opcode is MKDIR and lets the earlier CALLs
 through. The superseded `e0cca0c` candidate refuses the flag; the f44 rebuild
 (`b203799e…`, source `defd974`) carries it, with its window pins rebuilt too,
-and so does the current r54 candidate (`5eb42c50…`, t54), which reuses that
-daemon byte for byte.
+and so do the r54 candidate (`5eb42c50…`, t54) and the current w54 candidate
+(`89c928d5…`), which reuse that daemon byte for byte.
 With it, the T9 expectation becomes `dropped-reply-effect-committed-and-visible`
 (record `armed_intent`/`dropped_opcode` MKDIR, mkdir fails in m0, m1 sees the
 directory, m0 still blocked), and T10 is still expected to FENCE because the

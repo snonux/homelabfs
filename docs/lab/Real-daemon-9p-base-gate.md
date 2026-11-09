@@ -157,18 +157,21 @@ SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
 
 ## Exact installation plan inputs
 
-The current xz3 candidate (r54 kernel rebuild, 2026-11-09) is retained at
-`/home/paul/tmp/claude/hfs-xz3-20261109c/package`, manifest SHA256
-`5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99`, assembled from source checkout
-`ca920a2ab7346cbcacb4e7bcc9148e213edd7fc4`; see its
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261109c/README.md).
-Only the guest kernel, its modules and Linux source records were rebuilt, from
-the r54 patch series (the mount builds HELLO after enrollment; zq3-r2 R2-4).
-The CGO FreeBSD daemon (`174949c1…`, whose exact bytes passed native
-`--check-process-observer` on f3) and the native FreeBSD parts are byte-identical
-reuses of the f44 candidate (`b203799e…`, source `defd974`,
+The current xz3 candidate (w54 kernel rebuild, 2026-11-09) is retained at
+`/home/paul/tmp/claude/hfs-xz3-20261109d/package`, manifest SHA256
+`89c928d5072838bb509ec19e471109b549ce7b06c59451fab64a6d09250bec66`, assembled from source checkout
+`ff866c59e8fe779c7db6aa03e22a7b098dafab5b`; see its
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261109d/README.md).
+Only the guest kernel and Linux source records were rebuilt, from the w54
+patch series (a failed `hfs_fill_super` no longer oopses in kill_sb; zq3-r3
+R3-1); the five modules came out byte-identical. The CGO FreeBSD daemon
+(`174949c1…`, whose exact bytes passed native `--check-process-observer` on
+f3) and the native FreeBSD parts are byte-identical reuses of the f44 candidate
+(`b203799e…`, source `defd974`,
 [evidence](../../tools/integration/artifacts/evidence/xz3-20261108b/README.md)),
-which is now refused as superseded together with the earlier `3f770a88…`.
+carried through the r54 candidate (`5eb42c50…`, source `ca920a2`,
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261109c/README.md)).
+Both are now refused as superseded together with the earlier `3f770a88…`.
 The earlier `7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b`
 candidate (CGO-disabled daemon) stays quarantined and must not be installed.
 Any later source change requires a new rebuild and admission.
@@ -258,7 +261,7 @@ footprints in the independent global preparation budget. Swap is telemetry.
 
 ## Staged critical-window proposal
 
-The concrete phased proposal for one disposable run with candidate `5eb42c50…`,
+The concrete phased proposal for one disposable run with candidate `89c928d5…`,
 including the remaining implementation gaps and Paul's decisions, is
 [zq3-run-plan.md](zq3-run-plan.md) ([plain-language summary](zq3-plan-summary.md)).
 The guest probe now retains each successful payload until an authenticated

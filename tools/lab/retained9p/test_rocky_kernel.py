@@ -36,8 +36,8 @@ def module(name):
 rk = module("rocky_kernel")
 REPOSITORY = Path(__file__).resolve().parents[3]
 PROBE = REPOSITORY / "internal/controlledruntime/probe/installed.py"
-# The admitted xz3 r54 kernel rebuild (manifest 5eb42c50..., 2026-11-09).
-REAL_PACKAGE = Path("/home/paul/tmp/claude/hfs-xz3-20261109c/package")
+# The admitted xz3 w54 kernel rebuild (manifest 89c928d5..., 2026-11-09).
+REAL_PACKAGE = Path("/home/paul/tmp/claude/hfs-xz3-20261109d/package")
 RELEASE = "6.1.190-hfs-xz3"
 STOCK = "5.14.0-687.66.1.el9_8.x86_64"
 MID = "b26c0ac534534d7fb81b3e0698558bc3"
@@ -462,14 +462,14 @@ class PlanTests(Rig):
     @unittest.skipUnless((REAL_PACKAGE / "manifest.json").exists(), "candidate package absent")
     def test_real_candidate_package_plan(self):
         """Read-only: the pinned xz3 package yields the build IDs readelf reports."""
-        sha = "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99"
+        sha = "89c928d5072838bb509ec19e471109b549ce7b06c59451fab64a6d09250bec66"
         with mock.patch.object(rk, "ADMITTED", {sha}):
             plan = json.loads(rk.build_plan(REAL_PACKAGE, sha, "zq3-r1",
                                             "/boot/vmlinuz-" + STOCK, 64 << 20))
         self.assertEqual(plan["kernel_release"], RELEASE)
-        # r54 rebuilt vmlinux (new build ID); the modules are byte-identical
-        # to the f44 package, so virtio_net keeps its build ID.
-        self.assertEqual(plan["kernel"]["build_id"], "1f7808b8960571ffada903a53010fe12e8f54a2d")
+        # w54 rebuilt vmlinux (new build ID); the modules are byte-identical
+        # to the r54 and f44 packages, so virtio_net keeps its build ID.
+        self.assertEqual(plan["kernel"]["build_id"], "806cfbb2ae4998fdb990af8cd35ef1068eda6314")
         self.assertEqual(plan["modules"]["virtio_net"]["build_id"],
                          "072995182e1a95b83cf3ec794649ce05adf8a59d")
         self.assertEqual(len(plan["modules"]), 5)
