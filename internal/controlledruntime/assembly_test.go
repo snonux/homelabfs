@@ -339,8 +339,8 @@ func (c *r5Chain) exec(t *testing.T, op string, value any) json.RawMessage {
 
 // r5RecallAcks acknowledges the delivered RECALL in the zq3-r5 order:
 // STOPPED, INSTALLED_DRAIN, about 20 release VIEW_QUERY polls that stay
-// PENDING, an identical INSTALLED_DRAIN resend in a new cell (the guest's
-// bounded resend after a local transport failure), then DRAINED,
+// PENDING, an identical INSTALLED_DRAIN resend in a new cell (the guest event
+// worker re-runs an event after EAGAIN/EBUSY), then DRAINED,
 // INSTALLED_FINAL and REOPENED, and finally the RELEASED release query.
 func r5RecallAcks(t *testing.T, peer *sourceRig, domain guestbridge.Capability, control guestbridge.Ticket, recall json.RawMessage, notReady func(string)) {
 	t.Helper()

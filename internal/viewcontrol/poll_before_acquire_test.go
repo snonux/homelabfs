@@ -64,8 +64,8 @@ func TestViewPollBeforeAcquireIsEmpty(t *testing.T) {
 // must end "responded"; a silent "blocked" cell is what stranded the mount.
 // The acknowledgements replay zq3-r5 (R5-1, task 964): the release loop keeps
 // querying PENDING after INSTALLED_DRAIN, and the guest resends the identical
-// INSTALLED_DRAIN in a new cell before DRAINED, as its hardened event worker
-// does after a local transport failure.
+// INSTALLED_DRAIN in a new cell before DRAINED, as its event worker does when
+// it re-runs the event after EAGAIN/EBUSY (hfs_mmap_events).
 func TestTransportPollBeforeAcquireDeliversReleaseRecall(t *testing.T) {
 	r := newRig(t)
 	roots := r.useDurableTransport()
