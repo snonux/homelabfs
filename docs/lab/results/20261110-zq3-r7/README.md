@@ -82,3 +82,32 @@ The test kernel was then removed. fdescfs and fusefs stay loaded on f3.
   - Phase 11 step 6 waits for `child-gone` **and** `no-vmm`, but the run's
     vmm context stays until step 7's `host.py cleanup` destroys it. Wait for
     `child-gone` only, as zq3-r6 effectively did.
+
+## Root causes (from the decoded evidence)
+
+- **R7-2 is a source-capacity bound that no non-read operation can pass.**
+  - The zq3 spec sets `Views.Sources: 2`, and validation accepts it. But
+    `viewcontrol.sourceCapacity` (`internal/viewcontrol/tickets.go:778`)
+    counts `len(Sources) + extra + 2`, so a non-read Admit needs at least 3
+    even with no sources. Every PROCESS_EXIT, OPEN, CREATE or WRITE got
+    `NoSpace` (`admission.go:81`).
+  - `guestbridge/service.go:514` answers that pre-PREPARING refusal as
+    `ADMITTED/OK`, so the claim stays `RESERVED/UNPREPARED` and every QUERY
+    reports `INDETERMINATE`.
+  - After 30 s the guest gives up (-ETIMEDOUT) and marks the session
+    blocked, silently. From then on `hfs_capture_owned` returns `-EACCES`
+    for every operation, including `getattr` on the mount root.
+  - Evidence: the provider ledgers hold the mount(8) PROCESS_EXIT claims
+    `RESERVED/UNPREPARED` for both domains. T1's own root GETATTR is
+    TERMINAL, and its PROCESS_EXIT is unprepared. The ledgers are
+    byte-identical before and after T6, so T6's `ls` and open never left
+    the guest.
+  - zq3-r6 hit the same wall: its `p8-guest-m0.txt` already shows
+    `Permission denied`.
+  - Fix: raise `Sources` and add a derived floor in validation (task i64).
+    Never leave a definite admission refusal as an unresolved claim, and
+    log the guest's block (task j64). Add a post-READY bootstrap check
+    that stats both roots and requires the mount PROCESS_EXITs to reach
+    TERMINAL (task k64).
+- **R7-1 confirmed:** `hfs_super_ops` has no `.show_options`. The hfs mount
+  also does not parse `cache=`, so `cache=mmap` is not enforced. Task g64.
