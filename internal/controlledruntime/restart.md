@@ -68,6 +68,12 @@ The channel has no guest listener/reconnect, accepts no descriptor rights, and
 checks its actual peer process. It permits one recovery attempt. Active exchanges
 have finite deadlines and the private grant expires; failure leaves forwarding
 paused. The ordinary fd3 HSM1 reader and heartbeat continue independently.
+The backend PAUSE and RESUME steps take the backend mutex with a trylock, so
+they see EAGAIN whenever another backend thread (the 4 ms wait worker, a FETCH
+or a SEND) holds it at that instant. That contention changes nothing, so the
+recovery thread retries the same authenticated step every 1 ms within the same
+10 s bound as each frame transfer. Under CPU load, treating it as final failed
+the one-shot restart, and the host saw EOF on fd5 (task 564).
 
 The C recovery thread has a fixed128KiB stack. Its paused ledger staging uses
 the existing at-most65MiB snapshot and protection buffers, separate from the

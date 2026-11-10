@@ -124,10 +124,31 @@ func lifecycleCommand(ctx context.Context, socket string, r lifecycleRequest) (u
 	if err = conn.SetDeadline(deadline); err != nil {
 		return 0, nil, err
 	}
-	if err = writeLifecycleFrame(conn, r.opcode, r.sequence, encodeLifecyclePayload(r)); err != nil {
-		return 0, nil, err
+	return lifecycleExchange(conn, r)
+}
+
+// lifecycleExchange writes one request on a connected, deadline-bounded
+// endpoint connection and reads its single reply.
+//
+// The endpoint authenticates the kernel peer before it reads any request byte
+// (lifecycleServer.handle): an unauthorized peer gets a REFUSED frame and the
+// connection is closed at once. Whether our request write lands before that
+// close or fails with EPIPE depends only on scheduling, so under load the write
+// can fail while the refusal already sits in our receive queue (task 564). A
+// failed write is therefore not final: the queued reply is still read and
+// returned when it is a refusal. Nothing else is accepted after a failed write,
+// because the endpoint answers a request it never received only by refusing.
+// The read stays bounded by the caller's deadline.
+func lifecycleExchange(conn net.Conn, r lifecycleRequest) (uint8, []byte, error) {
+	writeErr := writeLifecycleFrame(conn, r.opcode, r.sequence, encodeLifecyclePayload(r))
+	op, raw, err := readLifecycleReply(conn)
+	if writeErr == nil {
+		return op, raw, err
 	}
-	return readLifecycleReply(conn)
+	if err == nil && op == LifecycleRefused {
+		return op, raw, nil
+	}
+	return 0, nil, writeErr
 }
 
 func readLifecycleReply(r io.Reader) (uint8, []byte, error) {

@@ -87,33 +87,53 @@ _recovery_protected(Hfs9pSupervisor *s) {
    free(bytes); return (error);
 }
 
-static void *
-_recovery_cb(void *arg) {
-   Hfs9pSupervisor *s = arg;
-   uint8_t op, payload[PAYLOAD], barrier[16], digest[32], cut[32];
+/* hfs9p_pause_owned/hfs9p_resume_owned take the backend mutex with trylock and
+ * report EAGAIN whenever another backend thread holds it at that instant: the
+ * 4 ms wait worker's scan (_wait_worker_cb), a guest FETCH or a SEND. That is
+ * momentary contention, not a refusal, and nothing changed. fd5 is one-shot,
+ * so treating it as final would fail the whole restart permanently; under CPU
+ * load a preempted lock holder made that observable (task 564). The same
+ * authenticated step is therefore retried every 1 ms within the 10 s bound
+ * each fd5 frame transfer already has, which stays inside the host's 60 s
+ * restart deadline. Every other error is still final. */
+#define RECOVERY_CONTENTION_MS 10000
+
+static bool
+_recovery_contended(int error, int64_t deadline) {
+   if (error != EAGAIN) return (false);
+   int64_t now = _now();
+   if (now < 0 || now >= deadline) return (false);
+   struct timespec delay = {0, 1000000};
+   (void)nanosleep(&delay, NULL);
+   return (true);
+}
+
+/* Step 1: authenticate the pause request, pause the backend, checkpoint the
+ * paused cut and stream it to the host. Returns the cut digest in digest. */
+static int
+_recovery_pause(Hfs9pSupervisor *s, const struct stat *original,
+    uint8_t barrier[16], uint8_t digest[32]) {
+   uint8_t op, payload[PAYLOAD];
    size_t length;
-   struct stat original, observed_socket;
-   int error = fstat(RECOVERY, &original) ? errno : 0;
-   /* No request is pending during ordinary operation. This one waiting thread
-    * owns fd5 for the whole lifetime; frame reads themselves are bounded. */
-   struct pollfd wait = {RECOVERY, POLLIN, 0};
-   while (!error && poll(&wait, 1, -1) < 0) if (errno != EINTR) error = errno;
-   if (!error) error = _recovery_request(&op, 1, payload, &length);
+   struct stat observed_socket;
+   int error = _recovery_request(&op, 1, payload, &length);
    if (!error && (op != 1 || length != 72 || memcmp(payload, s->tuple, 56))) error = EACCES;
    if (!error) {
       memcpy(barrier, payload + 56, 16);
       uint8_t zero[16] = {0}; if (!memcmp(barrier, zero, 16)) error = EINVAL;
    }
    uint8_t *bytes = NULL; size_t total = 0;
-   if (!error) error = hfs9p_pause_owned(s->backend, &bytes, &total);
+   int64_t deadline = _now() + RECOVERY_CONTENTION_MS;
+   if (!error) do error = hfs9p_pause_owned(s->backend, &bytes, &total);
+      while (_recovery_contended(error, deadline));
    /* FETCH coverage can advance after the last ordinary protection. First
     * require the exact last protected file owned by this live backend, then
     * checkpoint the fully paused current cut, without executing any effect. */
    if (!error) error = _recovery_protected(s);
    if (!error) error = _protect_cb(s, bytes, total);
    if (!error) error = hfs9p_ledger_matches(s->ledger, bytes, total);
-   if (!error && (fstat(RECOVERY, &observed_socket) || original.st_dev != observed_socket.st_dev ||
-       original.st_ino != observed_socket.st_ino)) error = ESTALE;
+   if (!error && (fstat(RECOVERY, &observed_socket) || original->st_dev != observed_socket.st_dev ||
+       original->st_ino != observed_socket.st_ino)) error = ESTALE;
    if (!error) {
       memcpy(digest, bytes + total - 32, 32);
       _put(payload, total, 8); memcpy(payload + 8, digest, 32);
@@ -125,7 +145,17 @@ _recovery_cb(void *arg) {
       error = _recovery_frame(0x83, 1, payload, n + 8); offset += n;
    }
    free(bytes); /* Single existing snapshot staging copy, no second65MiB copy. */
-   if (!error) error = _recovery_request(&op, 2, payload, &length);
+   return (error);
+}
+
+/* Steps 2 and 3: bind the host's cut to the paused digest, then resume the
+ * backend only for that exact barrier, cut and digest. */
+static int
+_recovery_bind_resume(Hfs9pSupervisor *s, const uint8_t barrier[16],
+    const uint8_t digest[32]) {
+   uint8_t op, payload[PAYLOAD], cut[32];
+   size_t length;
+   int error = _recovery_request(&op, 2, payload, &length);
    if (!error && (op != 2 || length != 80 || memcmp(payload, barrier, 16) ||
        memcmp(payload + 48, digest, 32))) error = ESTALE;
    if (!error) error = _recovery_protected(s);
@@ -137,10 +167,29 @@ _recovery_cb(void *arg) {
    if (!error && (op != 3 || length != 80 || memcmp(payload, barrier, 16) ||
        memcmp(payload + 16, cut, 32) || memcmp(payload + 48, digest, 32))) error = ESTALE;
    if (!error) error = _recovery_protected(s);
-   if (!error) error = hfs9p_resume_owned(s->backend, digest);
+   int64_t deadline = _now() + RECOVERY_CONTENTION_MS;
+   if (!error) do error = hfs9p_resume_owned(s->backend, digest);
+      while (_recovery_contended(error, deadline));
    if (!error) error = _recovery_frame(0x84, 3, payload, 80);
-   /* No retry/replacement channel is accepted. A failed barrier remains paused
-    * and owns all original ledger/resources. Successful fd5 is also one-shot. */
+   return (error);
+}
+
+static void *
+_recovery_cb(void *arg) {
+   Hfs9pSupervisor *s = arg;
+   uint8_t barrier[16], digest[32];
+   struct stat original;
+   int error = fstat(RECOVERY, &original) ? errno : 0;
+   /* No request is pending during ordinary operation. This one waiting thread
+    * owns fd5 for the whole lifetime; frame reads themselves are bounded. */
+   struct pollfd wait = {RECOVERY, POLLIN, 0};
+   while (!error && poll(&wait, 1, -1) < 0) if (errno != EINTR) error = errno;
+   if (!error) error = _recovery_pause(s, &original, barrier, digest);
+   if (!error) error = _recovery_bind_resume(s, barrier, digest);
+   /* No retry of a failed step and no replacement channel is accepted (the
+    * bounded EAGAIN wait above is not a failure). A failed barrier remains
+    * paused and owns all original ledger/resources. Successful fd5 is also
+    * one-shot. */
    (void)shutdown(RECOVERY, SHUT_RDWR);
    return (NULL);
 }
