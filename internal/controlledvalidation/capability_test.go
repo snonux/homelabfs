@@ -251,6 +251,108 @@ func TestBridgeForgetAfterUnlinkPreservesOpenDescription(t *testing.T) {
 	requireCode(t, stale, "Permission")
 }
 
+// TestBridgeDescriptionBackedTruncateSyncAfterRenameUnlink pins r64 against
+// the durable provider: ftruncate after rename and fsync of an open unlinked
+// file carry the open description, so the outdated object capability is only
+// checked as a live grant. A null description keeps the path re-check.
+func TestBridgeDescriptionBackedTruncateSyncAfterRenameUnlink(t *testing.T) {
+	times := map[string]any{"atime": nil, "mtime": nil, "ctime": nil, "atime_now": false, "mtime_now": false}
+	for _, change := range []string{"RENAME", "UNLINK"} {
+		t.Run(change, func(t *testing.T) {
+			h := newBridgeHarness(t)
+			_, created := h.create()
+			requireCode(t, created, "OK")
+			object, description := created.Capabilities[0], created.Capabilities[1]
+			_, written := h.call("WRITE", map[string]any{"description": description, "offset": 0, "max_end": int64(1<<63 - 1), "data": "616263646566"})
+			requireCode(t, written, "OK")
+			root := h.root.Capabilities[0]
+			var changed wireResult
+			if change == "RENAME" {
+				_, changed = h.call("RENAME", map[string]any{"source_parent": root, "source_name": "66696c65", "destination_parent": root, "destination_name": "6e6577", "no_replace": false})
+			} else {
+				_, changed = h.call("UNLINK", map[string]any{"parent": root, "name": "66696c65"})
+			}
+			requireCode(t, changed, "OK")
+			_, r := h.call("TRUNCATE", map[string]any{"object": object, "description": nil, "size": 2, "times": times})
+			requireCode(t, r, "Stale")
+			_, r = h.call("SYNC", map[string]any{"object": object, "description": nil, "scope": "FILE"})
+			requireCode(t, r, "Stale")
+			_, r = h.call("TRUNCATE", map[string]any{"object": object, "description": description, "size": 2, "times": times})
+			requireCode(t, r, "OK")
+			_, r = h.call("SYNC", map[string]any{"object": object, "description": description, "scope": "FILE"})
+			requireCode(t, r, "OK")
+			_, r = h.call("READ", map[string]any{"description": description, "offset": 0, "count": 6})
+			requireCode(t, r, "OK")
+			if r.Data != "6162" {
+				t.Fatalf("read after truncate: %q", r.Data)
+			}
+		})
+	}
+}
+
+// TestBridgeDescriptionBackedTruncateRejectsMismatchAndDeadTokens: an object
+// other than the description's is Stale; a forged or released object token is
+// Permission even though the description itself is live.
+func TestBridgeDescriptionBackedTruncateRejectsMismatchAndDeadTokens(t *testing.T) {
+	times := map[string]any{"atime": nil, "mtime": nil, "ctime": nil, "atime_now": false, "mtime_now": false}
+	h := newBridgeHarness(t)
+	_, created := h.create()
+	requireCode(t, created, "OK")
+	object, description := created.Capabilities[0], created.Capabilities[1]
+	truncate := func(obj guestbridge.Capability) wireResult {
+		_, r := h.call("TRUNCATE", map[string]any{"object": obj, "description": description, "size": 0, "times": times})
+		return r
+	}
+	// The live root grant names another object than the description.
+	requireCode(t, truncate(h.root.Capabilities[0]), "Stale")
+	forged := object
+	forged.Token = hash([]byte("never-issued"))
+	requireCode(t, truncate(forged), "Permission")
+	_, r := h.forget(object)
+	requireCode(t, r, "OK")
+	requireCode(t, truncate(object), "Permission")
+}
+
+// TestBridgeDescriptionBackedCallsRefuseWeakForeignOrDeadDescriptions: with
+// the description as sole authority (r64), a read-only description cannot
+// truncate, a description re-scoped to another session is refused, and a
+// released description backs neither TRUNCATE nor SYNC.
+func TestBridgeDescriptionBackedCallsRefuseWeakForeignOrDeadDescriptions(t *testing.T) {
+	times := map[string]any{"atime": nil, "mtime": nil, "ctime": nil, "atime_now": false, "mtime_now": false}
+	h := newBridgeHarness(t)
+	_, created := h.create()
+	requireCode(t, created, "OK")
+	object, description := created.Capabilities[0], created.Capabilities[1]
+	truncate := func(d guestbridge.Capability) wireResult {
+		_, r := h.call("TRUNCATE", map[string]any{"object": object, "description": d, "size": 0, "times": times})
+		return r
+	}
+	sync := func(d guestbridge.Capability) wireResult {
+		_, r := h.call("SYNC", map[string]any{"object": object, "description": d, "scope": "FILE"})
+		return r
+	}
+	_, opened := h.call("OPEN", map[string]any{"object": object, "flags": map[string]any{"access": "READ", "append": false, "create": false, "exclusive": false, "sync": "ORDINARY", "truncate": false}})
+	requireCode(t, opened, "OK")
+	var reader guestbridge.Capability
+	for _, c := range opened.Capabilities {
+		if c.Kind == "DESCRIPTION" {
+			reader = c
+		}
+	}
+	if reader.Kind != "DESCRIPTION" || reader.Rights&2 != 0 {
+		t.Fatalf("read-only open: %+v", opened.Capabilities)
+	}
+	requireCode(t, truncate(reader), "Permission")
+	foreign := description
+	foreign.Scope.Session = "00000000-0000-4000-8000-0000000000ff"
+	requireCode(t, truncate(foreign), "Permission")
+	requireCode(t, sync(foreign), "Permission")
+	_, released := h.call("DESCRIPTION_RELEASE", map[string]any{"description": description, "release_sequence": 1})
+	requireCode(t, released, "OK")
+	requireCode(t, truncate(description), "Permission")
+	requireCode(t, sync(description), "Permission")
+}
+
 func TestBridgeExitedIssuerCanOnlyCloseExactOriginalGrants(t *testing.T) {
 	h := newBridgeHarness(t)
 	_, created := h.create()

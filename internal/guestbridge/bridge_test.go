@@ -671,6 +671,215 @@ func TestDelegatedDescriptionKeepsGrantAfterChmodUnlinkAndFinalRelease(t *testin
 	}
 }
 
+// truncateTimes is a TRUNCATE "times" argument that changes no timestamps.
+var truncateTimes = map[string]any{"atime": nil, "mtime": nil, "ctime": nil, "atime_now": false, "mtime_now": false}
+
+// TestDescriptionBackedTruncateSyncSurviveRenameAndUnlink pins r64: an open
+// file keeps the object capability it had before rename/unlink, so TRUNCATE
+// (ftruncate) and SYNC (fsync) carrying its description must succeed even
+// though the object's recorded path no longer resolves. POSIX requires both.
+func TestDescriptionBackedTruncateSyncSurviveRenameAndUnlink(t *testing.T) {
+	for _, change := range []string{"RENAME", "UNLINK"} {
+		t.Run(change, func(t *testing.T) {
+			f := newBridge(t)
+			f.hello(t)
+			cred := f.cred()
+			cred.FSUID = 0
+			_, root := f.call(t, cred, "ROOT", map[string]any{})
+			parent := capabilityAt(t, root, 0)
+			flags := map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}
+			_, created := f.call(t, cred, "CREATE", map[string]any{"parent": parent, "name": "6f6c64", "mode": 384, "umask": 0, "flags": flags})
+			object, description := capabilityAt(t, created, 0), capabilityAt(t, created, 1)
+			if _, w := f.call(t, cred, "WRITE", map[string]any{"description": description, "offset": 0, "max_end": int64(1<<63 - 1), "data": "616263646566"}); w["code"] != "OK" {
+				t.Fatal(w)
+			}
+			var changed map[string]any
+			if change == "RENAME" {
+				_, changed = f.call(t, cred, "RENAME", map[string]any{"source_parent": parent, "source_name": "6f6c64", "destination_parent": parent, "destination_name": "6e6577", "no_replace": false})
+			} else {
+				_, changed = f.call(t, cred, "UNLINK", map[string]any{"parent": parent, "name": "6f6c64"})
+			}
+			if changed["code"] != "OK" {
+				t.Fatal(changed)
+			}
+			// Reuse the old name for another file: the path re-check now finds
+			// a different target (Stale in every cut, where a vanished name may
+			// surface as NotFound), and the description-backed calls below must
+			// still reach the original object, not whatever owns the name now.
+			if _, r := f.call(t, cred, "CREATE", map[string]any{"parent": parent, "name": "6f6c64", "mode": 384, "umask": 0, "flags": flags}); r["code"] != "OK" {
+				t.Fatal(r)
+			}
+			// Without a description the outdated path capability stays Stale.
+			if _, r := f.call(t, cred, "TRUNCATE", map[string]any{"object": object, "description": nil, "size": 2, "times": truncateTimes}); r["code"] != "Stale" {
+				t.Fatal("null-description truncate:", r)
+			}
+			if _, r := f.call(t, cred, "SYNC", map[string]any{"object": object, "description": nil, "scope": "FILE"}); r["code"] != "Stale" {
+				t.Fatal("null-description sync:", r)
+			}
+			if _, r := f.call(t, cred, "TRUNCATE", map[string]any{"object": object, "description": description, "size": 2, "times": truncateTimes}); r["code"] != "OK" {
+				t.Fatal("description truncate:", r)
+			}
+			if _, r := f.call(t, cred, "SYNC", map[string]any{"object": object, "description": description, "scope": "FILE"}); r["code"] != "OK" {
+				t.Fatal("description sync:", r)
+			}
+			if _, r := f.call(t, cred, "READ", map[string]any{"description": description, "offset": 0, "count": 6}); r["code"] != "OK" || r["data"] != "6162" {
+				t.Fatal("read after truncate:", r)
+			}
+		})
+	}
+}
+
+// TestDescriptionBackedTruncateRejectsMismatchAndDeadTokens covers the r64
+// negatives: an object that is not the description's object is Stale, and a
+// released or forged object token is Permission.
+func TestDescriptionBackedTruncateRejectsMismatchAndDeadTokens(t *testing.T) {
+	f := newBridge(t)
+	f.hello(t)
+	cred := f.cred()
+	cred.FSUID = 0
+	_, root := f.call(t, cred, "ROOT", map[string]any{})
+	parent := capabilityAt(t, root, 0)
+	flags := map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}
+	_, a := f.call(t, cred, "CREATE", map[string]any{"parent": parent, "name": "61", "mode": 384, "umask": 0, "flags": flags})
+	_, b := f.call(t, cred, "CREATE", map[string]any{"parent": parent, "name": "62", "mode": 384, "umask": 0, "flags": flags})
+	objectA, descriptionA := capabilityAt(t, a, 0), capabilityAt(t, a, 1)
+	objectB := capabilityAt(t, b, 0)
+	truncate := func(object, description Capability) any {
+		_, r := f.call(t, cred, "TRUNCATE", map[string]any{"object": object, "description": description, "size": 0, "times": truncateTimes})
+		return r["code"]
+	}
+	if got := truncate(objectB, descriptionA); got != "Stale" {
+		t.Fatal("mismatched object:", got)
+	}
+	forged := objectA
+	forged.Token = digest([]byte("never-issued"))
+	if got := truncate(forged, descriptionA); got != "Permission" {
+		t.Fatal("forged object:", got)
+	}
+	if _, r := f.call(t, cred, "FORGET", map[string]any{"object": objectA, "count": 1}); r["code"] != "OK" {
+		t.Fatal(r)
+	}
+	if got := truncate(objectA, descriptionA); got != "Permission" {
+		t.Fatal("released object:", got)
+	}
+}
+
+// descriptionIn returns the DESCRIPTION capability of a reply.
+func descriptionIn(t *testing.T, reply map[string]any) Capability {
+	t.Helper()
+	caps, _ := reply["capabilities"].([]any)
+	for i := range caps {
+		if c := capabilityAt(t, reply, i); c.Kind == "DESCRIPTION" {
+			return c
+		}
+	}
+	t.Fatal("no description in", reply)
+	return Capability{}
+}
+
+// TestDescriptionBackedCallsRefuseWeakOrDeadDescriptions: once the
+// description is the sole authority for TRUNCATE/SYNC (r64), a read-only
+// description cannot truncate and a released description authorizes nothing.
+func TestDescriptionBackedCallsRefuseWeakOrDeadDescriptions(t *testing.T) {
+	f := newBridge(t)
+	f.hello(t)
+	cred := f.cred()
+	cred.FSUID = 0
+	_, root := f.call(t, cred, "ROOT", map[string]any{})
+	parent := capabilityAt(t, root, 0)
+	flags := map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}
+	_, created := f.call(t, cred, "CREATE", map[string]any{"parent": parent, "name": "61", "mode": 384, "umask": 0, "flags": flags})
+	object, description := capabilityAt(t, created, 0), capabilityAt(t, created, 1)
+	readOnly := map[string]any{"access": "READ", "append": false, "create": false, "exclusive": false, "sync": "ORDINARY", "truncate": false}
+	_, opened := f.call(t, cred, "OPEN", map[string]any{"object": object, "flags": readOnly})
+	if opened["code"] != "OK" {
+		t.Fatal(opened)
+	}
+	reader := descriptionIn(t, opened)
+	if reader.Rights&2 != 0 {
+		t.Fatal("read-only open issued write rights:", reader.Rights)
+	}
+	if _, r := f.call(t, cred, "TRUNCATE", map[string]any{"object": object, "description": reader, "size": 0, "times": truncateTimes}); r["code"] != "Permission" {
+		t.Fatal("read-only truncate:", r)
+	}
+	if _, r := f.call(t, cred, "DESCRIPTION_RELEASE", map[string]any{"description": description, "release_sequence": 1}); r["code"] != "OK" {
+		t.Fatal(r)
+	}
+	if _, r := f.call(t, cred, "TRUNCATE", map[string]any{"object": object, "description": description, "size": 0, "times": truncateTimes}); r["code"] != "Permission" {
+		t.Fatal("released truncate:", r)
+	}
+	if _, r := f.call(t, cred, "SYNC", map[string]any{"object": object, "description": description, "scope": "FILE"}); r["code"] != "Permission" {
+		t.Fatal("released sync:", r)
+	}
+}
+
+// TestPathAuthorityExemptsOnlyDescribedTruncateSync pins the defence in
+// depth: even if the schema let OPEN, SETATTR or LINK carry a description,
+// their object would still be path-revalidated.
+func TestPathAuthorityExemptsOnlyDescribedTruncateSync(t *testing.T) {
+	for _, op := range []string{"TRUNCATE", "SYNC"} {
+		if pathAuthority(op, "object", true) || !pathAuthority(op, "object", false) {
+			t.Fatal(op)
+		}
+	}
+	for _, op := range []string{"OPEN", "SETATTR", "LINK", "GETATTR", "READDIR"} {
+		if !pathAuthority(op, "object", true) {
+			t.Fatal(op, "skipped the path re-check")
+		}
+	}
+	if pathAuthority("FORGET", "object", false) {
+		t.Fatal("FORGET")
+	}
+}
+
+// TestDescriptionBackedCallsRefuseForeignSessionDescription: a genuine
+// description issued to another session (scope) cannot back TRUNCATE/SYNC
+// here, neither as issued nor re-scoped to this session.
+func TestDescriptionBackedCallsRefuseForeignSessionDescription(t *testing.T) {
+	f := newBridge(t)
+	second := f.c
+	second.Session = uid(150).String()
+	second.GuestBoot = uid(151).String()
+	second.GuestMount = uid(152).String()
+	second.VM = uid(153).String()
+	second.OriginNode = uid(21).String()
+	second.OriginIncarnation = uid(154).String()
+	second.OriginJournal = uid(155).String()
+	f.driver.allowed = map[Context]bool{second: true}
+	config := f.s.config
+	config.Scopes = []Context{f.c, second}
+	service, e := New(t.Context(), config)
+	if e != nil {
+		t.Fatal(e)
+	}
+	f.s = service
+	first := f.c
+	flags := map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}
+	f.hello(t)
+	_, root := f.call(t, f.cred(), "ROOT", map[string]any{})
+	_, own := f.call(t, f.cred(), "CREATE", map[string]any{"parent": capabilityAt(t, root, 0), "name": "61", "mode": 384, "umask": 0, "flags": flags})
+	object := capabilityAt(t, own, 0)
+	f.c = second
+	f.hello(t)
+	_, root = f.call(t, f.cred(), "ROOT", map[string]any{})
+	_, foreign := f.call(t, f.cred(), "CREATE", map[string]any{"parent": capabilityAt(t, root, 0), "name": "62", "mode": 384, "umask": 0, "flags": flags})
+	if foreign["code"] != "OK" {
+		t.Fatal(foreign)
+	}
+	issued := capabilityAt(t, foreign, 1)
+	rescoped := issued
+	rescoped.Scope = first
+	f.c = first
+	for _, d := range []Capability{issued, rescoped} {
+		if _, r := f.call(t, f.cred(), "TRUNCATE", map[string]any{"object": object, "description": d, "size": 0, "times": truncateTimes}); r["code"] != "Permission" {
+			t.Fatal("foreign truncate:", r)
+		}
+		if _, r := f.call(t, f.cred(), "SYNC", map[string]any{"object": object, "description": d, "scope": "FILE"}); r["code"] != "Permission" {
+			t.Fatal("foreign sync:", r)
+		}
+	}
+}
+
 func TestDelegatedTwoIndependentlyWritableGuestDomains(t *testing.T) {
 	f := newBridge(t)
 	second := f.c
