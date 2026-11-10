@@ -100,8 +100,8 @@ Since task e64 the exporter allocates native numbers to one session's originals
 in guest order and waits up to one second for a lower cell that is missing or
 incomplete. Only a cell it gave up on after that hold, or a complete ordinary
 cell that later traffic bypassed because it could not be written (no credit,
-EAGAIN on its first write, or another error), can still arrive below the
-highwater. A cell is refused as stale once any cell 16 or more guest numbers
+EAGAIN on the first chunk of a multi-chunk cell, or an error before its write),
+can still arrive below the highwater. A cell is refused as stale once any cell 16 or more guest numbers
 above it was admitted (a distance rule). Since task p64 the exporter fails such
 a refused cell back to the guest instead of keeping it as its pinned writer.
 Because the runtime allocates a non-donor cell's native number at its first

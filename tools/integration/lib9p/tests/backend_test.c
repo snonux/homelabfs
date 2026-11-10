@@ -61,12 +61,14 @@ static int refuse_errno;
 static unsigned refused_writes;
 /* Nonzero (p64): every ordinary non-donor chunk (flags 0) at or above byte
  * refuse_ordinary_from of its cell is refused with this errno. EAGAIN models
- * the runtime's credit refusal before it allocates the native number. Any
+ * the runtime's credit refusal before it allocates the native number, unless
+ * refuse_allocated is set (a full dispatch queue after allocation). Any
  * other errno models a refusal after allocation: the runtime keeps the cell
  * in its table, so the frame is recorded and a later different frame at
  * the same native number is refused EINVAL, as the runtime does. */
 static int refuse_ordinary_errno;
 static uint32_t refuse_ordinary_from;
+static bool refuse_allocated;
 /* Default preserves deliberate short-read coverage; pressure tests can select
  * bounded full chunks without hashing a whole large reply per seven bytes. */
 static size_t fixture_read_limit = 7;
@@ -138,7 +140,8 @@ fixture_pwrite(int fd, const void *buffer, size_t length, off_t position) {
    }
    bool refuse_ordinary = refuse_ordinary_errno && !flags &&
        offset >= refuse_ordinary_from;
-   if (refuse_ordinary && refuse_ordinary_errno == EAGAIN) {
+   if (refuse_ordinary && refuse_ordinary_errno == EAGAIN &&
+       !refuse_allocated) {
       refused_writes++;
       errno = EAGAIN;
       return (-1);
@@ -369,6 +372,7 @@ reset_fixtures(void) {
    refused_writes = 0;
    refuse_ordinary_errno = 0;
    refuse_ordinary_from = 0;
+   refuse_allocated = false;
    last_accepted_length = 0;
 }
 
@@ -1735,8 +1739,9 @@ refusal_permanent_test(const char *base) {
 
 /* e64: a transient (EAGAIN) or uncertain (EIO, EHOSTDOWN, unclassified
  * EPERM) refusal, and EACCES on a replay, keep the exact candidate pinned
- * and protected; the identical replay is then admitted. This is a no-change
- * guard: it also passes on the pre-e64 exporter, which pinned every refusal. */
+ * and protected; the identical replay is then admitted. p64: ESTALE on a
+ * replay stays pinned too, since it could be the authentication ESTALE of
+ * a send an earlier attempt admitted; e64 failed it back. */
 static void
 refusal_transient_test(const char *base) {
    const int errors[] = {EAGAIN, EIO, EHOSTDOWN, EPERM};
@@ -1753,6 +1758,8 @@ refusal_transient_test(const char *base) {
       assert(e && e->uncertain && !e->issued && e->native_cell == 3);
       assert(h->pending == (int)(e - h->entries) && h->high == 2);
       refuse_errno = EACCES; /* A replay may follow a lost admission. */
+      assert(fetch_once(c, 3) == 2 && h->pending == (int)(e - h->entries));
+      refuse_errno = ESTALE;
       assert(fetch_once(c, 3) == 2 && h->pending == (int)(e - h->entries));
       refuse_errno = 0;
       Hfs9p *restored = restored_ledger(ledger, h);
@@ -1771,17 +1778,21 @@ refusal_transient_test(const char *base) {
    }
 }
 
-/* Bypasses c's ordinary guest cell 2 (p64): its first native write is
- * refused EAGAIN (no runtime credit, so no native number), and control QUERY
- * guest cell 3 then takes the next native number. Cell 2 stays complete and
- * unforwarded, with no candidate. */
+/* Bypasses c's ordinary multi-chunk guest cell 2 (p64): the first chunk of
+ * its native write is refused EAGAIN (no runtime credit, so no native
+ * number), and control QUERY guest cell 3 then takes the next native
+ * number. Cell 2 stays complete and unforwarded, with no candidate. */
 static void
 bypass_ordinary(Hfs9pConnection *c) {
    Hfs9p *h = c->endpoint;
+   char *body = rewrite_body(large_write, 2, NULL);
+   char *scoped = scope_body(c, body);
    refuse_ordinary_errno = EAGAIN;
-   send_cell(c, golden_create, 2, NULL, 1);
+   assert(send_body(c, scoped, 2) == 1);
    send_query(c, 3);
    refuse_ordinary_errno = 0;
+   free(scoped);
+   free(body);
    Hfs9pEntry *bypassed = session_entry(h, c->session, 2);
    Hfs9pEntry *query = session_entry(h, c->session, 3);
    assert(bypassed && bypassed->complete && !bypassed->issued &&
@@ -1855,6 +1866,32 @@ refusal_original_inserted_test(void) {
    reset_fixtures();
 }
 
+/* p64: a single-chunk ordinary cell refused WouldBlock may already hold its
+ * native number (the fixture models a full dispatch queue after
+ * allocation), so it stays pinned and replays with the same number, and a
+ * later control does not take that number. Before p64 the exporter dropped
+ * the candidate and the control took the spent number. */
+static void
+refusal_single_chunk_eagain_test(void) {
+   Hfs9p *h = new_endpoint();
+   Hfs9pConnection *c = hello_session(h);
+   refuse_ordinary_errno = EAGAIN;
+   refuse_allocated = true;
+   send_cell(c, golden_create, 2, NULL, 1);
+   Hfs9pEntry *e = entry(h, 2);
+   assert(e && e->native && e->native_cell == 2 && e->uncertain &&
+       h->pending == (int)(e - h->entries) && h->high == 1);
+   send_query(c, 3);
+   assert(!entry(h, 3)->issued && h->high == 1);
+   refuse_ordinary_errno = 0;
+   assert(fetch(c, 2, 2) == 3 && e->issued && e->native_cell == 2);
+   assert(fetch(c, 3, 2) == 3 && entry(h, 3)->native_cell == 3);
+   assert(rejected_writes == 0);
+   hfs9p_connection_delete(c);
+   shutdown_endpoint(h);
+   reset_fixtures();
+}
+
 /* p64: a bypassed ordinary cell keeps the writer pinned when its refusal is
  * transient, uncertain or leaves its native number unknown: EIO, EHOSTDOWN,
  * EPERM, EACCES (an authentication refusal before allocation or a content
@@ -1921,6 +1958,7 @@ main(int argc, char **argv) {
    refusal_original_permanent_test(argv[1]);
    refusal_original_inserted_test();
    refusal_original_pinned_test(argv[1]);
+   refusal_single_chunk_eagain_test();
    assert(atomic_load(&io_begins) > 0);
    assert(atomic_load(&io_begins) == atomic_load(&io_ends));
    puts("PASS: C parser/backend transport boundaries (no FUSE/runtime proof)");

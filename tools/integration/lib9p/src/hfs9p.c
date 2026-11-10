@@ -1337,7 +1337,8 @@ _native_body(Hfs9p *h, Hfs9pEntry *e) {
  *    at most HFS9P_ORDER_HOLD_MS. An abandoned or never completed cell (the
  *    guest's own SEND deadline is 30 s) must not stall the session.
  *  - A complete lower cell that cannot go for its own reasons (no ordinary
- *    credit, EAGAIN on its first write, any other error) is not waited for.
+ *    credit, EAGAIN on the first chunk of a multi-chunk cell, an error before
+ *    its write) is not waited for.
  *    Control, replacement and donor traffic keeps bypassing ordinary traffic,
  *    as before e64.
  * A bypassed or given-up cell that arrives below the high-water relies on the
@@ -1529,17 +1530,18 @@ _forward_protect(Hfs9p *h, Hfs9pEntry *e) {
  * Donor send (e64): reclaim, poll index 0, not SESSION_RETIRE. The runtime
  * builds it in its reclaim workspace and advances its native high-water
  * only on admission, so a refusal never consumes the native number.
- * Permanent are ESTALE (stale guest cell, released or spent native cell)
- * and EINVAL on any attempt, and EACCES only on a first attempt. Failing a
- * first-attempt EACCES back is safe, since nothing was admitted, but it
- * drops a cell that a retry might have delivered. e64 accepted ESTALE on a
- * replay; the authentication race above could make that an admitted send
- * (the guest treats the ERROR reply as an uncertain result). */
+ * Permanent are EINVAL on any attempt, and ESTALE (stale guest cell,
+ * released or spent native cell) and EACCES only on a first attempt. A
+ * replay could see the authentication ESTALE or EACCES of a send that an
+ * earlier attempt admitted, so a replay stays pinned (p64 narrowed e64's
+ * ESTALE rule to first attempts). Failing a first-attempt EACCES back is
+ * safe, since nothing was admitted, but it drops a cell that a retry might
+ * have delivered. */
 static bool
 _permanent_donor(int error, bool replay) {
-   if (error == ESTALE || error == EINVAL)
+   if (error == EINVAL)
       return (true);
-   return (error == EACCES && !replay);
+   return ((error == ESTALE || error == EACCES) && !replay);
 }
 
 /* Non-donor original (p64), for example a complete ordinary cell that later
@@ -1642,9 +1644,37 @@ _native_write(Hfs9p *h, Hfs9pEntry *e, uint32_t offset, int *refusal) {
    return (0);
 }
 
-/* Writes every chunk of the protected candidate. A native refusal is EAGAIN
- * without a native number for a first ordinary chunk, a fail-back for a
- * permanent refusal, and otherwise a pinned uncertain candidate. replay is
+/* True when a refused native write certainly left the runtime without
+ * this candidate's native number, so the candidate may be dropped and later
+ * cells may take the number. That holds only for WouldBlock (EAGAIN) on the
+ * first chunk of a first, non-donor, non-terminal, non-poll write of a cell
+ * with more than one chunk. Transport.Write allocates a non-donor cell's
+ * number at its first chunk, after the credit, incomplete-cell,
+ * recent-marker and workspace checks that return WouldBlock, and validates
+ * the command only once every chunk is in. A single-chunk cell is validated
+ * in the same call, after allocation, and can then also get WouldBlock, when
+ * its dispatch queue is full (the drain and acquisition queues are smaller
+ * than the credits that can reach them) or for the recent-marker limit. The
+ * exporter cannot tell the two apart: the same errno, and a result-node read
+ * of the number returns WouldBlock both for an allocated cell without a
+ * response and for an unallocated number above the high-water. So a
+ * single-chunk cell refused EAGAIN stays pinned and replays its exact bytes
+ * with the same number (p64). If the number was allocated, the resend
+ * revalidates the stored cell; if not, it allocates the number again. The
+ * cost: such a cell no longer lets control or donor traffic bypass it while
+ * the runtime refuses it, and a refusal that persists (for example ordinary
+ * credit held by a cell failed back after allocation) blocks the writer. */
+static bool
+_unallocated_refusal(const Hfs9pEntry *e, uint32_t offset, int refusal) {
+   return (offset == 0 && e->native_total > HFS9P_CHUNK && !e->terminal &&
+       !e->uncertain && e->donor < 0 && !e->polls &&
+       (refusal == EAGAIN || refusal == EWOULDBLOCK));
+}
+
+/* Writes every chunk of the protected candidate. A native refusal drops the
+ * candidate without a native number when _unallocated_refusal says nothing
+ * was allocated, fails it back when it is permanent, and otherwise pins the
+ * exact uncertain candidate. replay is
  * true when an earlier attempt already reached protection. A refusal after
  * an accepted chunk of this write (offset > 0) proves that the runtime
  * allocated the candidate's native number (p64, _permanent_original). */
@@ -1662,8 +1692,7 @@ _forward_write(Hfs9p *h, Hfs9pEntry *e, bool replay) {
          e->uncertain = true;
          continue;
       }
-      if (offset == 0 && !e->terminal && !e->uncertain && e->donor < 0 &&
-          !e->polls && (refusal == EAGAIN || refusal == EWOULDBLOCK)) {
+      if (_unallocated_refusal(e, offset, refusal)) {
          free(e->native);
          e->native = NULL;
          e->native_cell = 0;
@@ -1708,8 +1737,9 @@ _forward_issued(Hfs9p *h, Hfs9pEntry *e) {
 }
 
 /* The sole framing writer never holds a vnode lock across semantic work. All
- * native callbacks are bounded copy/readiness operations. EAGAIN on a first
- * ordinary write consumes no native number, so controls may bypass it. Any
+ * native callbacks are bounded copy/readiness operations. EAGAIN on the
+ * first chunk of a multi-chunk non-donor write consumes no native number, so
+ * controls may bypass it (_unallocated_refusal). Any
  * uncertain/partially copied candidate pins the writer to its exact bytes,
  * except a permanently refused original cell, which fails back (e64 for
  * donor sends, p64 for the rest, see _permanent_refusal). */
