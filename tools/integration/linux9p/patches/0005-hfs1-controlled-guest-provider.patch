@@ -252,7 +252,7 @@ diff --git a/fs/9p/hfs_controlled.c b/fs/9p/hfs_controlled.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_controlled.c
-@@ -0,0 +1,1345 @@
+@@ -0,0 +1,1349 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* Registered controlled-only provider and finite retained ownership. */
 +#include "hfs_controlled.h"
@@ -1441,8 +1441,11 @@ new file mode 100644
 +	int err = -EBUSY;
 +	bool cookies;
 +
-+	/* Close admission BEFORE inspecting or joining any existing owner. */
-+	WRITE_ONCE(session->blocked, true);
++	/* Close admission BEFORE inspecting or joining any existing owner.
++	 * From kill_sb this is the silent clean-unmount fence; kill_sb logs a
++	 * failed stop itself (m64).
++	 */
++	hfs_session_fence(session, "controlled stop", "STOP");
 +	mutex_lock(&hfs_controlled_lock);
 +	mount = hfs_controlled_mount(session);
 +	if (mount)
@@ -1544,7 +1547,8 @@ new file mode 100644
 +	struct hfs_view *view;
 +	u32 i;
 +
-+	WRITE_ONCE(session->blocked, true);
++	/* Silent at a clean kill_sb; logged once after a failed mount (m64). */
++	hfs_session_fence(session, "controlled retain", "RETAIN");
 +	mutex_lock(&hfs_controlled_lock);
 +	if (hfs_controlled_registry)
 +		for (i = 0; i < hfs_controlled_registry->nr_mounts; i++) {
@@ -3642,7 +3646,7 @@ diff --git a/fs/9p/hfs_enrollment.c b/fs/9p/hfs_enrollment.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_enrollment.c
-@@ -0,0 +1,469 @@
+@@ -0,0 +1,505 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* Exact original Go struct decoding, separate from canonical network JSON. */
 +#include "hfs_enrollment.h"
@@ -3881,18 +3885,25 @@ new file mode 100644
 +		-EPROTO : 0;
 +}
 +
-+/* Lower bound for Bounds.Sources, mirrored from viewcontrol validation.
++/* Bounds.Sources must lie in [HFS_GO_SOURCES_MIN(domains), HFS_GO_SOURCES_MAX],
++ * exactly as viewcontrol.CheckSourceFloor (internal/viewcontrol/
++ * source_floor.go) requires, which every host validator of the same
++ * enrollment calls (viewcontrol.New/validBounds, controlledruntime and
++ * runtimeprep). MinSources(domains) is 1 baseline cut + 2 cuts per domain
++ * (one non-read op and one DRAIN_WRITE each) + 1 admitted cut + the 2-cut
++ * sourceCapacity reserve. zq3-r7 R7-2 enrolled Sources 2 for two domains; both
++ * sides accepted it and every non-read admission then got NoSpace (i64).
++ * The guest must accept exactly what the daemon accepts, so the formula is
++ * mirrored here rather than chosen independently (m64).
 + *
-+ * TODO(i64): the Go side is replacing its bare "Sources >= 2" check with a
-+ * derived floor (zq3-r7 R7-2: viewcontrol.sourceCapacity counts
-+ * len(Sources) + extra + 2, so Sources 2 admits no non-read operation). Mirror
-+ * that exact floor here once it is defined there; until then this keeps the
-+ * old value so guest and host refuse the same specs. Do not pick a number
-+ * here independently: the two validators must stay identical.
++ * Since MinSources(63) > 128, at most 62 domains can enroll; the 64-domain
++ * array limit below is therefore never the binding one.
 + */
-+#define HFS_GO_SOURCES_MIN 2
++#define HFS_GO_SOURCES_MIN(domains) (1ULL + 2ULL * (domains) + 1ULL + 2ULL)
++#define HFS_GO_SOURCES_MAX 128ULL
 +
-+static int hfs_go_bounds(const struct hfs_json *json, int object)
++/* domains is the enrolled Domains count, already parsed and nonzero. */
++static int hfs_go_bounds(const struct hfs_json *json, int object, u32 domains)
 +{
 +	static const char *const names[] = {
 +		"WorkBytes", "Tickets", "ControlTickets", "Reservations",
@@ -3914,7 +3925,7 @@ new file mode 100644
 +	    !values[1] || values[1] > 65536 || values[2] < 4 || values[2] > 16384 ||
 +	    !values[3] || values[3] > 64 || values[4] > 65536 ||
 +	    values[4] < values[1] + values[2] ||
-+	    values[5] < HFS_GO_SOURCES_MIN || values[5] > 128 ||
++	    values[5] < HFS_GO_SOURCES_MIN(domains) || values[5] > HFS_GO_SOURCES_MAX ||
 +	    values[6] < 4096 || values[6] > (16ULL << 20) || values[7] > (512ULL << 20))
 +		return -EPROTO;
 +	minimum = values[3] * (128U << 10) + values[6] * values[5] * 3 +
@@ -4024,67 +4035,69 @@ new file mode 100644
 +	return 0;
 +}
 +
-+int hfs_signed_enrollment_decode(const void *bytes, u32 length,
-+				 struct hfs_signed_enrollment **out)
++/* The top-level object: fixed fields, then the Domains/TicketFamilies counts,
++ * then the Bounds, whose Sources floor depends on that count (m64).
++ */
++static int hfs_go_header(struct hfs_signed_enrollment *enrollment,
++			 int domains, int families)
 +{
-+	struct hfs_signed_enrollment *enrollment;
-+	struct hfs_json *json;
-+	struct hfs_buf profile;
-+	u32 count, families_count, i, j, domain, family, hash_length = 32;
++	const struct hfs_json *json = enrollment->json;
++	u32 count, families_count, hash_length = 32;
 +	u8 hash[32];
-+	int domains, families, err;
 +
-+	*out = NULL;
-+	if (!length || length > 128U * 1024U)
-+		return -E2BIG;
-+	enrollment = kzalloc(sizeof(*enrollment), GFP_KERNEL);
-+	if (!enrollment)
-+		return -ENOMEM;
-+	err = hfs_json_parse_go_enrollment(bytes, length, &enrollment->json);
-+	if (err)
-+		goto fail;
-+	json = enrollment->json;
-+	domains = hfs_json_field(json, 0, "Domains");
-+	families = hfs_json_field(json, 0, "TicketFamilies");
 +	if (hfs_json_exact(json, 0,
 +		"TicketFamilies,Version,ID,Domains,PageSize,Bounds,Baseline,BaselineStateHash") ||
 +	    !hfs_json_is(json, hfs_json_field(json, 0, "Version"),
 +			 "\"homelabfs-private-viewcontrol/1\"") ||
 +	    hfs_go_uuid(json, hfs_json_field(json, 0, "ID"), &enrollment->id, false) ||
 +	    hfs_go_number(json, 0, "PageSize", 4096, 4096) ||
-+	    hfs_go_bounds(json, hfs_json_field(json, 0, "Bounds")) ||
 +	    hfs_go_baseline(json, hfs_json_field(json, 0, "Baseline")) ||
 +	    hfs_json_hex(json, hfs_json_field(json, 0, "BaselineStateHash"), hash, &hash_length) ||
 +	    hash_length != 32 ||
 +	    hfs_enrollment_array(json, domains, HFS_ENROLLED_DOMAINS_MAX, &count) ||
 +	    !count || hfs_enrollment_array(json, families, count, &families_count) ||
-+	    count != families_count) {
-+		err = -EPROTO;
-+		goto fail;
-+	}
++	    count != families_count ||
++	    hfs_go_bounds(json, hfs_json_field(json, 0, "Bounds"), count))
++		return -EPROTO;
 +	enrollment->count = count;
-+	domain = domains + 1;
-+	family = families + 1;
-+	for (i = 0; i < count; i++) {
++	return 0;
++}
++
++/* Each domain with its ticket families; enrolled sessions must be distinct. */
++static int hfs_go_domains(struct hfs_signed_enrollment *enrollment,
++			  int domains, int families)
++{
++	const struct hfs_json *json = enrollment->json;
++	u32 domain = domains + 1, family = families + 1, i, j;
++	int err;
++
++	for (i = 0; i < enrollment->count; i++) {
 +		err = hfs_go_domain(json, domain, &enrollment->domains[i]);
 +		if (!err)
 +			err = hfs_go_families(json, family, &enrollment->domains[i]);
 +		if (err)
-+			goto fail;
++			return err;
 +		for (j = 0; j < i; j++)
 +			if (!memcmp(enrollment->domains[j].session.b,
-+				     enrollment->domains[i].session.b, 16)) {
-+				err = -EPROTO;
-+				goto fail;
-+			}
++				     enrollment->domains[i].session.b, 16))
++				return -EPROTO;
 +		domain = hfs_enrollment_next(json, domain);
 +		family = hfs_enrollment_next(json, family);
 +	}
-+	hfs_hash(bytes, length, enrollment->enrollment_hash);
++	return 0;
++}
++
++/* Exact recursively canonicalized existing host profile-hash structure. */
++static int hfs_go_profile_hash(struct hfs_signed_enrollment *enrollment,
++			       u32 length, int domains, int families)
++{
++	const struct hfs_json *json = enrollment->json;
++	struct hfs_buf profile;
++	int err;
++
 +	err = hfs_buf_init(&profile, length + 128);
 +	if (err)
-+		goto fail;
-+	/* Exact recursively canonicalized existing host profile-hash structure. */
++		return err;
 +	hfs_buf_literal(&profile, "{\"Bounds\":");
 +	hfs_go_canonical(&profile, json, hfs_json_field(json, 0, "Bounds"));
 +	hfs_buf_literal(&profile, ",\"Domains\":");
@@ -4096,6 +4109,33 @@ new file mode 100644
 +	if (!err)
 +		hfs_hash(profile.data, profile.len, enrollment->profile_hash);
 +	hfs_buf_free(&profile);
++	return err;
++}
++
++int hfs_signed_enrollment_decode(const void *bytes, u32 length,
++				 struct hfs_signed_enrollment **out)
++{
++	struct hfs_signed_enrollment *enrollment;
++	int domains, families, err;
++
++	*out = NULL;
++	if (!length || length > 128U * 1024U)
++		return -E2BIG;
++	enrollment = kzalloc(sizeof(*enrollment), GFP_KERNEL);
++	if (!enrollment)
++		return -ENOMEM;
++	err = hfs_json_parse_go_enrollment(bytes, length, &enrollment->json);
++	if (err)
++		goto fail;
++	domains = hfs_json_field(enrollment->json, 0, "Domains");
++	families = hfs_json_field(enrollment->json, 0, "TicketFamilies");
++	err = hfs_go_header(enrollment, domains, families);
++	if (!err)
++		err = hfs_go_domains(enrollment, domains, families);
++	if (err)
++		goto fail;
++	hfs_hash(bytes, length, enrollment->enrollment_hash);
++	err = hfs_go_profile_hash(enrollment, length, domains, families);
 +	if (err)
 +		goto fail;
 +	*out = enrollment;

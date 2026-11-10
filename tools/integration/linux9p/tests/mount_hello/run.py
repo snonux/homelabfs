@@ -8,10 +8,17 @@ p9_show_client_options are copied verbatim from the owned source tree. Only kern
 creation, transport binding and the native exchange are substituted. The
 substituted exchange echoes the sent HELLO as the runtime does
 (internal/guestbridge/service.go). No kernel, VM or service is used.
+
+Since m64 it also copies hfs_go_bounds (the signed enrollment Bounds check),
+v9fs_hfs_kill_super, hfs_session_fence, hfs_controlled_stop and
+hfs_controlled_retain verbatim. The Bounds cases use the daemon's own
+Sources floor constants from internal/viewcontrol/source_floor.go and the
+real Bounds of the zq3 spec and the controlledruntime guest artifacts.
 """
 import argparse
 import hashlib
 import importlib.util
+import json
 import os
 from pathlib import Path
 import re
@@ -33,13 +40,54 @@ def enrollment_struct(header):
     return limit + '\n' + header[start:end]
 
 
+def go_source_floor(repo):
+    """The daemon's Sources floor constants, read from viewcontrol (m64).
+
+    The kernel test compares hfs_go_bounds against these, not against a copy
+    of the kernel macro, so a change on either side fails the harness.
+    """
+    text = (repo / 'internal/viewcontrol/source_floor.go').read_text()
+    if not re.search(r'return baselineSources \+ 2\*domains \+ admittedSources \+ sourceReserve\n',
+                     text):
+        raise ValueError('viewcontrol.MinSources formula changed; update the m64 oracle')
+    names = ('baselineSources', 'admittedSources', 'sourceReserve', 'MaxSources')
+    return {name: int(re.search(r'^\t' + name + r' = (\d+)$', text, re.M).group(1))
+            for name in names}
+
+
+def bounds_fixtures(repo, output):
+    """Real Bounds the daemon accepts: the zq3 spec Views (two sessions) and the
+    regenerated controlledruntime guest artifacts (3-domain groups)."""
+    floor = go_source_floor(repo)
+    spec = json.loads((repo / 'internal/runtimeprep/testdata/zq3-spec.json').read_text())
+    artifacts = json.loads(
+        (repo / 'internal/controlledruntime/testdata/guest-artifacts.json').read_text())
+    sessions = sum(1 for arg in spec['Exporter']['Args'] if 'hfs-controller={{session:' in arg)
+    groups = [json.loads(bytes.fromhex(group['enrollment_bytes']))
+              for group in artifacts['provision']['payload']['groups']]
+
+    def literal(bounds):
+        text = json.dumps(bounds, separators=(',', ':'))
+        return '"' + text.replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+    rows = [('zq3-spec', sessions, spec['Views'])]
+    rows += [(f'guest-artifacts-{i}', len(group['Domains']), group['Bounds'])
+             for i, group in enumerate(groups)]
+    lines = [f'#define GO_{name.upper()} {value}' for name, value in floor.items()]
+    lines.append('static const struct { const char *name; u32 domains; const char *bounds; } '
+                 'real_bounds[] = {')
+    lines += [f'\t{{ "{name}", {domains}, {literal(bounds)} }},' for name, domains, bounds in rows]
+    lines.append('};')
+    (output / 'bounds_fixtures.inc').write_text('\n'.join(lines) + '\n')
+
+
 def extract(source, output):
     """Write verbatim production definitions and return their source hashes."""
     here = Path(__file__).resolve().parent
     build = load('controlled_received_build', here.parent / 'controlled_received/build.py')
     texts = {name: (source / name).read_text()
              for name in ('fs/9p/hfs.h', 'fs/9p/hfs_session.c', 'fs/9p/hfs_controlled.c',
-                          'fs/9p/hfs_inode.c', 'net/9p/client.c')}
+                          'fs/9p/hfs_inode.c', 'fs/9p/hfs_enrollment.c', 'net/9p/client.c')}
     session = texts['fs/9p/hfs_session.c']
     (output / 'enrollment_struct.inc').write_text(enrollment_struct(texts['fs/9p/hfs.h']))
     (output / 'validate.inc').write_text(''.join(build.function(session, name) for name in (
@@ -49,7 +97,7 @@ def extract(source, output):
     # The complete mount with every helper it calls (g64 split it), not only
     # its failure tail (compare controlled_received).
     (output / 'mount.inc').write_text(''.join(build.function(session, name) for name in (
-        'hfs_session_block', 'hfs_cache_option', 'hfs_session_new', 'hfs_mount_enroll', 'hfs_trace_register',
+        'hfs_session_block', 'hfs_session_fence', 'hfs_cache_option', 'hfs_session_new', 'hfs_mount_enroll', 'hfs_trace_register',
         'hfs_mount_client', 'hfs_mount_hello', 'hfs_mount_fail', 'v9fs_hfs_mount')))
     # g64: the mountinfo super options of an hfs superblock.
     client = texts['net/9p/client.c']
@@ -57,6 +105,16 @@ def extract(source, output):
         build.function(client, 'p9_client_is_hfs') +
         build.function(client, 'p9_show_client_options') +
         build.function(texts['fs/9p/hfs_inode.c'], 'hfs_show_options'))
+    # m64: the enrollment Bounds check with its Sources floor macros, and the
+    # unmount path: kill_sb with the real controlled stop and retain fences.
+    enrollment = texts['fs/9p/hfs_enrollment.c']
+    macros = re.findall(r'^#define HFS_GO_SOURCES_\w+.*$', enrollment, re.M)
+    (output / 'bounds.inc').write_text('\n'.join(macros) + '\n' +
+                                       build.function(enrollment, 'hfs_go_bounds'))
+    (output / 'stop.inc').write_text(''.join(
+        build.function(texts['fs/9p/hfs_controlled.c'], name)
+        for name in ('hfs_controlled_stop', 'hfs_controlled_retain')))
+    (output / 'kill_sb.inc').write_text(build.function(session, 'v9fs_hfs_kill_super'))
     return {name: hashlib.sha256(text.encode()).hexdigest() for name, text in texts.items()}
 
 
@@ -72,6 +130,7 @@ def main():
     output.mkdir(parents=True, exist_ok=False)
     runner = load('codec_runner', here.parent / 'codec/run.py')
     hashes = extract(source, output)
+    bounds_fixtures(here.parents[4], output)
     log = output / 'mount-hello.log'
     log.write_text(''.join(f'{name}_sha256={value}\n' for name, value in sorted(hashes.items())))
     command = ['cc', '-std=gnu11', '-O1', '-g', '-Wall', '-Wextra', '-Werror',

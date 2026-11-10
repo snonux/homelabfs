@@ -107,7 +107,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,414 @@
+@@ -0,0 +1,420 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -381,6 +381,10 @@ new file mode 100644
 +	bool blocked;
 +	bool allocation_uncertain;
 +	bool closing;
++	/* Set by kill_sb before stop/retain: their fence is then the expected
++	 * clean-unmount close, not a fault, and hfs_session_fence stays silent.
++	 */
++	bool unmounting;
 +	bool retained;
 +	bool retired; /* actual protected whole-session provider proof */
 +	/* Bit 0: hfs_session_block already logged why this session blocked. */
@@ -513,6 +517,8 @@ new file mode 100644
 +void hfs_description_discard(struct hfs_session *session,
 +			     struct hfs_description *description);
 +void hfs_flags_write(struct hfs_buf *args, unsigned int flags, bool create);
++void hfs_session_fence(struct hfs_session *session, const char *reason,
++		       const char *operation);
 +void hfs_session_block(struct hfs_session *session, const char *reason,
 +		       const char *operation, int err);
 +extern const struct inode_operations hfs_dir_iops;
@@ -526,7 +532,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,3097 @@
+@@ -0,0 +1,3128 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -621,9 +627,19 @@ new file mode 100644
 + * first reason is normally the root cause: a caller whose hfs_call failed
 + * because hfs_request_run already blocked the session adds nothing.
 + *
-+ * Teardown (kill_sb, a failed mount) and the view/lease paths still set the
-+ * flag directly: closing fences are expected there, and hfs_mmap_fail already
-+ * logs the view control errno.
++ * The line is a plain pr_warn, not ratelimited (m64). The once bit is set
++ * before printing, so a ratelimited printk that dropped the line (another
++ * 9p-hfs warning in the same burst is enough) would have lost this
++ * session's only explanation for good. The bit already bounds the output to
++ * one line per session, and only root mounts create sessions, so the global
++ * ratelimit adds no protection here.
++ *
++ * Since m64 the view/lease faults (patch 0004) also come through here, and
++ * the controlled stop and retain fences (patch 0005) through
++ * hfs_session_fence. kill_sb logs a failed close or stop here; a failed
++ * mount and the close/release sequence-wrap guards still set the flag
++ * directly (a retained failed mount reaches the retain fence, which logs),
++ * and hfs_mmap_fail logs the view control errno.
 + */
 +void hfs_session_block(struct hfs_session *session, const char *reason,
 +		       const char *operation, int err)
@@ -631,9 +647,25 @@ new file mode 100644
 +	WRITE_ONCE(session->blocked, true);
 +	if (test_and_set_bit(0, &session->block_reported))
 +		return;
-+	pr_warn_ratelimited("9p-hfs: session %pUb blocked by %s on %s (%d); later operations on this mount fail with EACCES or EHOSTDOWN\n",
-+			    &session->enrollment.session, reason,
-+			    operation ? operation : "-", err);
++	pr_warn("9p-hfs: session %pUb blocked by %s on %s (%d); later operations on this mount fail with EACCES or EHOSTDOWN\n",
++		&session->enrollment.session, reason,
++		operation ? operation : "-", err);
++}
++
++/* A provider stop/retain fence. During kill_sb (session->unmounting) it is
++ * the expected close of a clean unmount: the flag is set silently and the
++ * once bit stays clear, so zq3 dmesg evidence shows no fault for it and a
++ * later real fault (a failed stop) still logs. Anywhere else, e.g. retaining
++ * after a failed mount, it is logged like any other block (m64 review).
++ */
++void hfs_session_fence(struct hfs_session *session, const char *reason,
++		       const char *operation)
++{
++	if (READ_ONCE(session->unmounting)) {
++		WRITE_ONCE(session->blocked, true);
++		return;
++	}
++	hfs_session_block(session, reason, operation, 0);
 +}
 +
 +/* Non-sleeping trace hook: all work and credentials were reserved at capture.
@@ -3231,13 +3263,18 @@ new file mode 100644
 +{
 +	struct hfs_session *session = sb->s_fs_info;
 +	unsigned long flags;
++	int err;
 +
-+	if (hfs_controlled_begin_close(session))
-+		WRITE_ONCE(session->blocked, true);
++	/* A clean unmount fences silently; only a failed close or stop logs. */
++	WRITE_ONCE(session->unmounting, true);
++	err = hfs_controlled_begin_close(session);
++	if (err)
++		hfs_session_block(session, "failed controlled close", "UNMOUNT", err);
 +	WRITE_ONCE(session->closing, true);
 +	WRITE_ONCE(session->blocked, true);
-+	if (session->provider->stop(session))
-+		WRITE_ONCE(session->blocked, true);
++	err = session->provider->stop(session);
++	if (err)
++		hfs_session_block(session, "failed provider stop", "STOP", err);
 +	spin_lock_irqsave(&hfs_sessions_lock, flags);
 +	list_del_init(&session->global);
 +	spin_unlock_irqrestore(&hfs_sessions_lock, flags);
