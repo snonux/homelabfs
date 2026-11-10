@@ -500,10 +500,15 @@ snapshot first; a first attempt does not (that would cost one protection
 per cell), and its mark reaches the ledger with the next snapshot. The mark
 is ledger entry bit 4096, accepted in every ledger format but only on the
 pending candidate, and cleared on issue; an exporter from before w64
-refuses a ledger that carries it. On restore, a pending candidate without
-the uncertain mark was interrupted in its first attempt, which may have
-written its final chunk unprotected, so it is restored as sent and keeps
-the replay rules.
+refuses a ledger that carries it. Every pin after a refused chunk is
+protected too (`_forward_pin`, one ledger write per refusal), so `uncertain`
+and the mark are durable before the attempt ends, also across a normal
+restart. Only a pending candidate restored without `uncertain` is guessed
+at: it was interrupted inside its first attempt's writes (a crash before
+its pin or issue), or stopped before writing anything, so it may have
+written its final chunk unprotected and is restored as sent with the
+replay rules. An offset-0 ESTALE is never permanent for a multi-chunk cell:
+the replay of an admitted cell can get an authentication ESTALE there.
 
 **Residual cases.** An authentication ESTALE or credential EACCES on the
 final chunk looks the same as a validation refusal. A first attempt then
@@ -537,8 +542,10 @@ multi-chunk cell is now pinned. `refusal_final_after_mid_test` (a middle-chunk
 ESTALE or EACCES, then a final-chunk validation refusal on the replay, fails
 back, numbered and donor) and `refusal_final_sent_restore_test` (the mark
 survives a restart and keeps a crash replay pinned; a crash in the first
-attempt is restored as sent; two middle-chunk refusals restore without it
-and the final-chunk refusal fails back) fail on the first w64 commit. A
+attempt is restored as sent; one or two middle-chunk refusals restore
+without it and the final-chunk refusal fails back) fail on the first w64
+commit; its one-refusal case (`single-mid-restart`) also fails on round 1,
+before the pin was protected. A
 native rebuild must pick this source up before any lab run can show it.
 
 ## Controlled terminal owner (`614`)

@@ -78,6 +78,10 @@ static bool refuse_allocated;
  * another frame there is refused EINVAL). */
 static int refuse_chunk_errno;
 static uint32_t refuse_chunk_offset;
+/* w64 review round 2: with lose_pin, the first protection after a
+ * refuse_chunk or refuse_ordinary refusal (the exporter's protected pin)
+ * fails, as if the exporter crashed before the pin reached its ledger. */
+static bool lose_pin, pin_armed;
 /* Default preserves deliberate short-read coverage; pressure tests can select
  * bounded full chunks without hashing a whole large reply per seven bytes. */
 static size_t fixture_read_limit = 7;
@@ -119,6 +123,10 @@ protect_cb(void *arg, const uint8_t *bytes, size_t length) {
    _hash(bytes, length - 32, hash);
    assert(!memcmp(hash, bytes + length - 32, 32));
    protects++;
+   if (pin_armed) {
+      pin_armed = false;
+      return (EIO);
+   }
    return (fail_protect ? EIO :
        (arg ? hfs9p_ledger_protect(arg, bytes, length) : 0));
 }
@@ -173,11 +181,13 @@ fixture_pwrite(int fd, const void *buffer, size_t length, off_t position) {
    }
    if (refuse_ordinary) {
       refused_writes++;
+      pin_armed = lose_pin;
       errno = refuse_ordinary_errno;
       return (-1);
    }
    if (refuse_chunk_errno && offset == refuse_chunk_offset) {
       refused_writes++;
+      pin_armed = lose_pin;
       if ((flags & 2) && offset + HFS9P_CHUNK >= f->total) {
          free(f->request);
          free(f->reply);
@@ -394,6 +404,7 @@ reset_fixtures(void) {
    refuse_allocated = false;
    refuse_chunk_errno = 0;
    refuse_chunk_offset = 0;
+   lose_pin = pin_armed = false;
    last_accepted_length = 0;
 }
 
@@ -2005,8 +2016,10 @@ restart_endpoint(Hfs9p *h, Hfs9pLedger **ledger, int directory,
 }
 
 /* p64 review: a multi-chunk cell whose later chunk got WouldBlock after
- * allocation is pinned. After an exporter restart the restored candidate
- * has uncertain false and only pending marks it. Its replayed first chunk
+ * allocation is pinned. After an exporter restart that lost the pin's
+ * protection (a crash inside the attempt; since w64 the pin itself is
+ * protected) the restored candidate has uncertain false and only pending
+ * marks it. Its replayed first chunk
  * revalidates the complete runtime cell and gets WouldBlock again; it must
  * stay pinned with its number, not be dropped for a later cell to reuse. */
 static void
@@ -2020,7 +2033,9 @@ refusal_restart_eagain_test(const char *base) {
    refuse_ordinary_errno = EAGAIN;
    refuse_allocated = true;
    refuse_ordinary_from = HFS9P_CHUNK;
-   assert(send_body(c, scoped, 2) == 1);
+   lose_pin = true;
+   (void)send_body(c, scoped, 2);
+   lose_pin = false;
    assert(entry(h, 2)->uncertain && entry(h, 2)->native_cell == 2);
    h = restart_endpoint(h, &ledger, directory, &c);
    Hfs9pEntry *e = entry(h, 2);
@@ -2262,12 +2277,13 @@ refusal_final_after_mid_test(void) {
 /* One restore case of refusal_final_sent_restore_test: the numbered
  * multi-chunk cell 2 is refused EIO (uncertain) on its final chunk
  * (first_final) or on its second chunk, then optionally once more on its
- * second chunk (second), and the exporter restarts from its ledger. The
+ * second chunk (second), and the exporter restarts from its ledger. With
+ * crash, the first attempt's pin never reaches the ledger (lose_pin). The
  * restored final_sent must equal sent, and a final-chunk ESTALE then must
  * keep the cell pinned (sent) or fail it back. */
 static void
 final_sent_case(const char *base, const char *name, bool first_final,
-    bool second, bool sent) {
+    bool second, bool crash, bool sent) {
    int directory;
    Hfs9pLedger *ledger = refusal_ledger(base, name, &directory);
    Hfs9p *h = new_endpoint_with_ledger(ledger);
@@ -2277,7 +2293,10 @@ final_sent_case(const char *base, const char *name, bool first_final,
    uint32_t final = final_chunk(scoped);
    refuse_chunk_errno = EIO;
    refuse_chunk_offset = first_final ? final : HFS9P_CHUNK;
-   assert(send_body(c, scoped, 2) == 1);
+   lose_pin = crash;
+   unsigned status = send_body(c, scoped, 2);
+   assert(crash || status == 1);
+   lose_pin = false;
    if (second) {
       refuse_chunk_offset = HFS9P_CHUNK;
       assert(fetch_once(c, 2) == 2);
@@ -2307,17 +2326,24 @@ final_sent_case(const char *base, const char *name, bool first_final,
  *  - The final chunk was written (EIO, so possibly admitted) and a later
  *    attempt's protection persisted the mark: the restored cell keeps the
  *    replay rules, and a final-chunk ESTALE stays pinned.
+ *  - The first attempt's final chunk refused EIO and a restart: the
+ *    protected pin carries the mark, so it stays pinned.
  *  - A crash right after the first attempt wrote its final chunk, before
- *    any later snapshot: the restored pending candidate has no uncertain
+ *    its pin was protected: the restored pending candidate has no uncertain
  *    mark, so it is treated as sent and stays pinned too.
  *  - Two attempts refused on a middle chunk: the restored candidate is
  *    uncertain without the mark, so the first final-chunk ESTALE after the
- *    restart fails it back. */
+ *    restart fails it back.
+ *  - One first attempt refused on a middle chunk, then a restart (round 2):
+ *    the protected pin makes uncertain durable, so the candidate is not
+ *    mistaken for a crash during its first attempt and fails back too. */
 static void
 refusal_final_sent_restore_test(const char *base) {
-   final_sent_case(base, "final-sent-persisted", true, true, true);
-   final_sent_case(base, "final-sent-crash", true, false, true);
-   final_sent_case(base, "final-sent-clear", false, true, false);
+   final_sent_case(base, "final-sent-persisted", true, true, false, true);
+   final_sent_case(base, "final-sent-pinned", true, false, false, true);
+   final_sent_case(base, "final-sent-crash", true, false, true, true);
+   final_sent_case(base, "final-sent-clear", false, true, false, false);
+   final_sent_case(base, "single-mid-restart", false, false, false, false);
 }
 
 int

@@ -1766,13 +1766,30 @@ _final_mark(Hfs9p *h, Hfs9pEntry *e, bool replay, bool *earlier) {
    return (error);
 }
 
-/* After a restore, the pending candidate's final_sent cannot be clear by
- * mistake only if its attempt was a replay, which protects the mark before
- * its final chunk (_final_mark), and the restored uncertain flag shows that:
- * each attempt sets it, and the next attempt's _forward_protect persists it.
- * A pending candidate restored without uncertain was interrupted in its
- * first attempt (or before any chunk was accepted), which may have written
- * its final chunk unprotected, so it is treated as sent. */
+/* Pins the refused candidate e: even an error can lose a transport receipt,
+ * so the exact candidate bytes and writer ownership stay, and its number is
+ * never allocated to others. The pin is protected (w64 review round 2): it
+ * makes uncertain and the in-memory final_sent durable, so a restart before
+ * the next attempt restores exactly how far the attempts got
+ * (_final_restore). Without it a first attempt refused on a middle chunk was
+ * restored as if it had sent its final chunk, and a later validation
+ * refusal there stayed pinned for good. One protection per refusal; a
+ * protection failure is returned instead of EAGAIN and keeps the pin. */
+static int
+_forward_pin(Hfs9p *h, Hfs9pEntry *e) {
+   e->uncertain = true;
+   int protection = _protect_snapshot(h);
+   return (protection ? protection : EAGAIN);
+}
+
+/* After a restore, the pending candidate's final_sent is exact whenever the
+ * restored uncertain flag is set: every ended attempt that wrote a chunk
+ * protected its pin (_forward_pin), and a replay protects the mark before
+ * its final chunk (_final_mark). A pending candidate restored without
+ * uncertain was interrupted during its first attempt's writes (a crash or
+ * an exit inside _forward_write, before the pin or issue), or stopped before
+ * writing anything; the ledger cannot show whether its final chunk went
+ * out, so it is treated as sent and keeps the replay rules. */
 static void
 _final_restore(Hfs9p *h) {
    if (h->pending >= 0 && !h->entries[h->pending].uncertain)
@@ -1818,10 +1835,7 @@ _forward_write(Hfs9p *h, Hfs9pEntry *e, bool replay) {
       }
       if (_permanent_refusal(e, refusal, earlier, offset))
          return (_fail_back(h, e, refusal));
-      /* Even an error can lose a transport receipt. Keep exact candidate
-       * bytes and writer ownership; never allocate its number to others. */
-      e->uncertain = true;
-      return (EAGAIN);
+      return (_forward_pin(h, e));
    }
    return (0);
 }
