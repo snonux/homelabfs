@@ -115,20 +115,31 @@ describes a 6 GiB host envelope. `Views` uses 6 MiB sources (room for the
 
 `Views.Sources` must be at least `viewcontrol.MinSources(domains) = 2*domains
 + 4`, which is 8 for the two zq3 sessions (derivation in
-`internal/viewcontrol/source_floor.go`). The ledger keeps one source cut per
-committed mutation until a VIEW_RETIRE compacts it. Below the floor, every
-non-read op of the reference sequence gets `NoSpace`: zq3-r7 had 2 and
-refused even mount(8)'s PROCESS_EXIT. The generator refuses such a spec, and
-so do the runtime and the controller. The example uses 12: the floor plus
-4 more mutations before a retirement.
+`internal/viewcontrol/source_floor.go`). zq3-r7 had 2 and refused even
+mount(8)'s PROCESS_EXIT with `NoSpace`. The generator refuses such a spec,
+and so do the runtime and the controller.
+
+The floor is not a workload budget. Admissions outside a recall drop cuts
+that no lease or recall event pins, so lease-free I/O holds one cut however
+long it runs (zq3 T1's nine mutations peak at 1 of 12). What uses Sources is
+cuts pinned by leases that a VIEW_RETIRE has not compacted yet, and the drains
+of one recall. The example uses 12, the floor plus 4.
 
 Each source unit costs `3*SourceBytes` = 18 MiB of `LedgerBytes`. Its runtime
 cost is 5x that (3x through `WorkBytes`, 2x through the lifecycle endpoint),
 so 90 MiB of the 4 GiB host budget. Other fixed owners already take most of
 that budget: the 1 GiB transport ledger, the 652 MiB C8 arenas, 4x64.25 MiB
-provider copies per domain, the 274 MiB exporter and the 64 MiB guest copy. So the example cuts the service share
-from 1 GiB to 192 MiB, which is accounting only (nothing else reserves from
-it). With 1 GiB, at most 3 Sources would fit. The numbers:
+provider copies per domain, the 274 MiB exporter and the 64 MiB guest copy.
+So the example cuts the service share from 1 GiB to 192 MiB. With 1 GiB, at
+most 3 Sources would fit.
+
+`Budget.ServiceBytes` is accounting only. No runtime owner reserves from it,
+and neither the old 1 GiB nor the new 192 MiB has a measurement behind it. To
+revisit it, measure the runtime's semantic-service memory during a zq3 batch
+(peak RSS of the runtime minus its other owners, or a Go heap profile of
+`fsservice`). Then set the share to that peak plus a margin, and take any
+increase from `Views.Sources` at 90 MiB per unit, keeping the host total
+within 4 GiB. The numbers:
 
 | Bound | Rule | Example |
 |---|---|---|

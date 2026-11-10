@@ -513,8 +513,10 @@ func (c *Controller) target(scope guestbridge.Context, source fsservice.Controll
 	return guestbridge.ViewTarget{Kind: "CONTROLLED_LOCAL", Cut: &guestbridge.LocalViewCut{EnrollmentHash: c.enrollmentHash, ProfileHash: c.profileHash, ContextHash: digest(scope), JournalIncarnation: source.Journal.Incarnation.String(), JournalEpoch: source.Through.Position.Epoch, JournalPosition: source.Through.Position.Sequence, JournalHash: hex.EncodeToString(source.Through.SHA256[:]), StateHash: hash(source.State), VisibilityGeneration: source.Visibility.String()}}
 }
 
+// remember retains a captured cut (deduplicated by sourceKey) within the
+// Sources bound; admissions prune unpinned cuts first (source_pruning.go).
 func (c *Controller) remember(source fsservice.ControlledViewSource) error {
-	key := digest(source.Through) + hash(source.State)
+	key := sourceKey(source)
 	if _, ok := c.state.Sources[key]; ok {
 		return nil
 	}

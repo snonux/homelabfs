@@ -283,11 +283,8 @@ func guestDecodeAuthorization(g guestArtifactGroup) (viewcontrol.Authorization, 
 }
 func guestAuthorization(a viewcontrol.Authorization, operator ed25519.PublicKey) ([]byte, error) {
 	e := a.Enrollment
-	// Name a below-floor Sources bound instead of a bare Invalid: it would
-	// otherwise sign cleanly and refuse every non-read op at run time.
-	if err := viewcontrol.CheckSourceFloor(e.Bounds, len(e.Domains)); err != nil {
-		return nil, err
-	}
+	// guestViewBounds includes the MinSources floor; the runtime config and
+	// run-prep generator name a below-floor Sources before anything is signed.
 	if e.Version != viewcontrol.EnrollmentVersion || !e.ID.Valid() || e.PageSize != 4096 || !guestBaselineValid(e) || !guestViewBounds(e.Bounds, len(e.Domains)) || len(e.Domains) < 1 || len(e.Domains) > 64 || len(e.Domains) != len(a.Domains) || len(e.TicketFamilies) != len(e.Domains) {
 		return nil, fsapi.Invalid
 	}

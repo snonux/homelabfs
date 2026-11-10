@@ -145,17 +145,16 @@ func TestZQ3SpecBoundsAdmitAfterTwoDomainRecall(t *testing.T) {
 	r.exit(0)
 }
 
-// TestZQ3SourceFloorIsExact runs the MinSources sequence at exactly
-// MinSources(2): the parked CREATE's admission then charges every source
-// cut of the floor, so one Sources fewer would have refused it with NoSpace.
-func TestZQ3SourceFloorIsExact(t *testing.T) {
-	floor := MinSources(2)
-	r := newZQ3Rig(t, floor)
-	parked := r.parkCreateAfterDirtyPair()
-	if charged := len(r.controller.state.Sources) + admittedSources + sourceReserve; charged != floor {
-		t.Fatalf("post-recall admission charges %d source cuts, floor %d", charged, floor)
+// TestZQ3SourceFloorCoversReferenceSequence runs the MinSources sequence at
+// exactly MinSources(2). Without pruning its post-recall admission charged
+// all 8 cuts (the floor is that peak); pruning only lowers the count, so here
+// the recall's retained cuts are pruned to the pinned lease cut plus current.
+func TestZQ3SourceFloorCoversReferenceSequence(t *testing.T) {
+	r := newZQ3Rig(t, MinSources(2))
+	r.requireTerminal(r.parkCreateAfterDirtyPair())
+	if n := len(r.controller.state.Sources); n != 2 {
+		t.Fatalf("%d cuts after the post-recall admission, want the lease cut plus current", n)
 	}
-	r.requireTerminal(parked)
 }
 
 func (r *rig) requireTerminal(call guestbridge.Call) {

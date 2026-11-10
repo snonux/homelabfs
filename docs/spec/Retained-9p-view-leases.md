@@ -259,13 +259,21 @@ anything. Finite number/identity/source exhaustion blocks new admissions.
 **Source-cut floor (i64).** `Bounds.Sources` counts the retained source cuts.
 There is one per distinct journal position and state that a capture
 remembered: the baseline, admissions, acquisitions, recall events and
-Recover. Only VIEW_RETIRE compacts unpinned cuts, so every committed mutation
-uses up one cut until then. A non-read admission needs `len(Sources) + 1 + 2`
-(its own cut plus a two-cut reserve) within the bound. DIRTY_RESERVE also
-charges each unfrozen reservation, and DRAIN_WRITE charges 0 instead of 1.
-Enrollment therefore requires
-`Sources >= MinSources(domains) = 2*domains + 4`. That is the peak of a
-sequence that starts at READY, before any VIEW_RETIRE:
+Recover. A cut is needed only while a lease in the ledger or a current recall
+event targets it. So VIEW_RETIRE's compaction drops unpinned cuts, and so
+does every admission outside a recall (CALL, native command, DIRTY_RESERVE):
+it keeps only pinned cuts plus the cut it admits, and persists the pruned set
+in the same ledger write as its own change. Lease-free I/O therefore holds
+one cut however many mutations it makes. Leases pin their cuts until a
+VIEW_RETIRE compacts them.
+
+A non-read admission needs `len(Sources) + extra + 2` within the bound:
+`extra` is 1 for a new cut and 0 when its capture deduplicates, plus a
+two-cut reserve. DIRTY_RESERVE also charges each unfrozen reservation, and
+DRAIN_WRITE charges 0. Enrollment requires
+`Sources >= MinSources(domains) = 2*domains + 4`. That is the peak of the
+following sequence, counted without pruning; pruning only lowers it. The
+sequence starts at READY, before any VIEW_RETIRE:
 
 1. Each domain admits one non-read op.
 2. Each domain takes one write lease with one dirty reservation.
@@ -276,9 +284,12 @@ The peak is 1 baseline, plus 2 cuts per domain, plus 1 for the op's own
 cut, plus the 2-cut reserve. For the two-domain lab the floor is 8.
 viewcontrol, the controlled runtime, the guest-artifact signer and the
 run-prep generator all refuse a lower value at enrollment. The guest's
-`hfs_go_bounds` is to mirror the same floor (a separate kernel-patch task). zq3-r7's `Sources: 2` passed validation and then refused every
-non-read op with NoSpace. Sources above the floor buy more mutations between
-retirements.
+`hfs_go_bounds` is to mirror the same floor (a separate kernel-patch task).
+zq3-r7's `Sources: 2` passed validation and then refused every non-read op
+with NoSpace.
+
+The floor is not a workload budget. Sources above it pay for cuts pinned by
+leases that are not yet retired, and for the drains inside one recall.
 
 ## Physical ordering, recovery and bounded progress
 

@@ -340,16 +340,22 @@ func TestGuestArtifactsResignedSemanticRefusals(t *testing.T) {
 	}
 }
 
-// TestGuestArtifactsRefuseSourcesBelowFloor checks the signer names a
+// TestGuestArtifactsRefuseSourcesBelowFloor checks the signer refuses a
 // Sources bound below viewcontrol.MinSources for the group's domain count
 // (i64; zq3-r7 signed 2 and every non-read op then failed with NoSpace).
+// Also checks that the bound at the floor itself still signs.
 func TestGuestArtifactsRefuseSourcesBelowFloor(t *testing.T) {
 	g, b, k := artifactFixture(t)
 	e := &g[0].Authorization.Enrollment
 	e.Bounds.Sources = viewcontrol.MinSources(len(e.Domains)) - 1
 	resignArtifact(t, &g[0], k)
-	if _, err := SignGuestProvision(artifactUUID(5), artifactUUID(16), g, b, k); !errors.Is(err, fsapi.Invalid) || !strings.Contains(err.Error(), "Bounds.Sources") {
+	if _, err := SignGuestProvision(artifactUUID(5), artifactUUID(16), g, b, k); !errors.Is(err, fsapi.Invalid) {
 		t.Fatalf("below-floor Sources: %v", err)
+	}
+	e.Bounds.Sources++
+	resignArtifact(t, &g[0], k)
+	if _, err := SignGuestProvision(artifactUUID(5), artifactUUID(16), g, b, k); err != nil {
+		t.Fatalf("Sources at the floor refused: %v", err)
 	}
 }
 
