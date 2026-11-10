@@ -313,6 +313,46 @@ func TestBridgeDescriptionBackedTruncateRejectsMismatchAndDeadTokens(t *testing.
 	requireCode(t, truncate(object), "Permission")
 }
 
+// TestBridgeDescriptionBackedCallsRefuseWeakForeignOrDeadDescriptions: with
+// the description as sole authority (r64), a read-only description cannot
+// truncate, a description re-scoped to another session is refused, and a
+// released description backs neither TRUNCATE nor SYNC.
+func TestBridgeDescriptionBackedCallsRefuseWeakForeignOrDeadDescriptions(t *testing.T) {
+	times := map[string]any{"atime": nil, "mtime": nil, "ctime": nil, "atime_now": false, "mtime_now": false}
+	h := newBridgeHarness(t)
+	_, created := h.create()
+	requireCode(t, created, "OK")
+	object, description := created.Capabilities[0], created.Capabilities[1]
+	truncate := func(d guestbridge.Capability) wireResult {
+		_, r := h.call("TRUNCATE", map[string]any{"object": object, "description": d, "size": 0, "times": times})
+		return r
+	}
+	sync := func(d guestbridge.Capability) wireResult {
+		_, r := h.call("SYNC", map[string]any{"object": object, "description": d, "scope": "FILE"})
+		return r
+	}
+	_, opened := h.call("OPEN", map[string]any{"object": object, "flags": map[string]any{"access": "READ", "append": false, "create": false, "exclusive": false, "sync": "ORDINARY", "truncate": false}})
+	requireCode(t, opened, "OK")
+	var reader guestbridge.Capability
+	for _, c := range opened.Capabilities {
+		if c.Kind == "DESCRIPTION" {
+			reader = c
+		}
+	}
+	if reader.Kind != "DESCRIPTION" || reader.Rights&2 != 0 {
+		t.Fatalf("read-only open: %+v", opened.Capabilities)
+	}
+	requireCode(t, truncate(reader), "Permission")
+	foreign := description
+	foreign.Scope.Session = "00000000-0000-4000-8000-0000000000ff"
+	requireCode(t, truncate(foreign), "Permission")
+	requireCode(t, sync(foreign), "Permission")
+	_, released := h.call("DESCRIPTION_RELEASE", map[string]any{"description": description, "release_sequence": 1})
+	requireCode(t, released, "OK")
+	requireCode(t, truncate(description), "Permission")
+	requireCode(t, sync(description), "Permission")
+}
+
 func TestBridgeExitedIssuerCanOnlyCloseExactOriginalGrants(t *testing.T) {
 	h := newBridgeHarness(t)
 	_, created := h.create()

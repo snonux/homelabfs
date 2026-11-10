@@ -210,11 +210,17 @@ func (s *Service) resolveInputs(ctx context.Context, b Binding, a arguments, c *
 //
 // A null description keeps the path re-check: truncate(2) or a path-based
 // sync names the file through its current path.
+//
+// The description exemption is limited to TRUNCATE and SYNC by name, not
+// inferred from the argument shape: today only validateArgs' exact field
+// sets stop OPEN, SETATTR or LINK from carrying a description, and a later
+// schema change must not silently turn their object into possession
+// authority (defence in depth).
 func pathAuthority(op, key string, described bool) bool {
 	if op == "FORGET" {
 		return false
 	}
-	return !(key == "object" && described)
+	return !(key == "object" && described && oneOf(op, "TRUNCATE", "SYNC"))
 }
 
 // checkNameDepth bounds the ancestry a new entry name would extend.
