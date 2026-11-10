@@ -528,7 +528,20 @@ future public multi-volume transactions need separately negotiated representatio
 CALL response payload is `{status:ADMITTED|REJECTED,claim:Claim,code:Code}`.
 ADMITTED uses OK and transfers immutable ownership, not success of the syscall.
 REJECTED is before claim reservation and has no effects; after reservation all
-failures resolve through the protected claim/result path and QUERY.
+failures resolve through the protected claim/result path and QUERY. The host
+never synthesizes no-effect after reservation or dispatch uncertainty: an
+uncertain post-reservation error stays RESERVED and QUERY reports
+INDETERMINATE. One exception is a definite admission refusal (j64): a refusal
+proven to precede every effect, dispatch and durable intent, and deterministic
+(no later state of the same enrollment could admit the binding). The provider
+protects it, in one ledger write, as the same TERMINAL failed Result a
+preparer refusal yields (Code such as NoSpace, zero count, empty data). CALL
+still answers ADMITTED/OK, never REJECTED, because the claim was reserved.
+QUERY, CALL replay and restart return those protected bytes, and RETIRE covers
+the number like any other terminal result. Whoever classifies a refusal as
+definite must show both properties from the code. Contention (a full service
+queue, source cuts that pruning or VIEW_RETIRE can free), WouldBlock, recovery,
+ledger I/O and re-checked ingress stay uncertain.
 QUERY and CANCEL payloads are `{claim:Claim}`. QUERY response payload is
 `{status:PENDING|INDETERMINATE|TERMINAL|RETIRED_ID,claim:Claim,result:Result|null}`;
 only TERMINAL has Result. CANCEL response has the same shape: cancellation

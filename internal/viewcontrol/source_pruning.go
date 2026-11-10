@@ -3,7 +3,9 @@ package viewcontrol
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
+	"github.com/snonux/homelabfs/internal/controlledvalidation"
 	"github.com/snonux/homelabfs/internal/fsapi"
 	"github.com/snonux/homelabfs/internal/fsservice"
 	"github.com/snonux/homelabfs/internal/guestbridge"
@@ -116,12 +118,35 @@ func (c *Controller) admitCut(ctx context.Context, read, drain bool) (fsservice.
 	key := sourceKey(source)
 	pruned := c.pruneSources(key)
 	if !read && !c.sourceCapacity(ctx, c.cutCharge(key, drain)) {
-		return source, c.refuseAfterPrune(pruned, fsapi.NoSpace)
+		return source, c.refuseAfterPrune(pruned, c.capacityRefusal(drain))
 	}
 	if err = c.remember(source); err != nil {
 		return source, c.refuseAfterPrune(pruned, err)
 	}
 	return source, c.save()
+}
+
+// capacityRefusal classifies a failed non-read source charge (task j64).
+// sourceCapacity counts len(Sources) + extra + sourceReserve + unfrozen
+// reservations; every term but the reserve and the admitted cut's own charge
+// can shrink (admissions prune, VIEW_RETIRE compacts, reservations close).
+// A non-drain admission's own cut is charged either as extra
+// (admittedSources) or, when already retained, inside len(Sources), so its
+// minimum in ANY ledger state is admittedSources + sourceReserve. When even
+// that exceeds Bounds.Sources (zq3-r7 R7-2: Sources 2) no later state can
+// admit it: a deterministic refusal, made before PREPARING with nothing
+// planned or dispatched, so it is a definite controlledvalidation
+// AdmissionRefusal the provider answers terminally. Anything else is
+// contention that a retry may pass, a plain NoSpace that leaves the claim
+// RESERVED for QUERY to resume. DRAIN_WRITE never gets the definite form: a
+// drain carries a frozen dirty obligation that only the recall path closes.
+// CheckSourceFloor refuses such bounds at New, so the definite branch is
+// defence in depth for a ledger whose bounds bypassed enrollment checks.
+func (c *Controller) capacityRefusal(drain bool) error {
+	if !drain && admittedSources+sourceReserve > c.config.Authorization.Enrollment.Bounds.Sources {
+		return &controlledvalidation.AdmissionRefusal{Code: fsapi.NoSpace, Reason: fmt.Sprintf("Bounds.Sources %d is below the %d cuts any non-read admission charges", c.config.Authorization.Enrollment.Bounds.Sources, admittedSources+sourceReserve)}
+	}
+	return fsapi.NoSpace
 }
 
 // refuseAfterPrune persists a pruned ledger before returning a refusal, so

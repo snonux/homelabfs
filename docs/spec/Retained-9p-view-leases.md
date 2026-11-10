@@ -286,7 +286,9 @@ viewcontrol, the controlled runtime, the guest-artifact signer and the
 run-prep generator all refuse a lower value at enrollment. The guest's
 `hfs_go_bounds` is to mirror the same floor (a separate kernel-patch task).
 zq3-r7's `Sources: 2` passed validation and then refused every non-read op
-with NoSpace.
+with NoSpace. Each refused claim stayed RESERVED/UNPREPARED, and the guest
+blocked the session after its 30 s QUERY deadline. Such a below-floor refusal
+is now a definite, terminal NoSpace (see the resume rules below).
 
 The floor is not a workload budget. Sources above it pay for cuts pinned by
 leases that are not yet retired, and for the drains inside one recall.
@@ -329,6 +331,20 @@ and plan protection stays closed across reopen. Existing protected plans use
 original-outcome recovery, never fresh preparation. This marker alone proves
 no cancellation or no-effect closure and changes no claim identity, wire
 status, pending snapshot version or historical credentials.
+
+A definite admission refusal (j64) is the one way such a never-prepared claim
+becomes terminal without preparation. viewcontrol returns
+`controlledvalidation.AdmissionRefusal` only when a non-drain non-read
+admission's minimum charge (`1 + 2` reserved cuts) exceeds `Bounds.Sources`.
+In that case no ledger state can admit the binding. Admit runs before
+PREPARING, so nothing was planned or dispatched. The provider then re-checks
+the exact RESERVED/UNPREPARED entry under the execution lock. In one write it
+records stage ADMISSION_REFUSED, a command-less failed plan, its outcome, the
+bridge's proposed Result and snapshot, and TERMINAL. A crash leaves either the
+untouched entry, whose resume refuses again, or the complete terminal record.
+Every other Admit error leaves the claim RESERVED for QUERY to resume.
+CheckSourceFloor makes the definite case unreachable for a valid enrollment;
+it keeps a bypassed bound from wedging the session as zq3-r7 did.
 
 The guest receives an actual GRANTED lease, then joins physical access only
 after rechecking exact target visibility_generation/fence/revision locally. The guest local cache revision
