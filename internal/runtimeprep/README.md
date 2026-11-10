@@ -176,11 +176,25 @@ reserves the limit against both grant bounds for the call, so the old 64 /
 128 refused every listing. A full 256-entry directory page would not fit
 `ClaimCreditBytes`; the zq3 directories hold a few entries.
 
-Not covered: T5's mapped dirtying. Each of its 1024 dirty pages takes a
-DIRTY_RESERVE and a DIRTY_FREEZE view ticket, and `Views.Identities` (64)
-counts every ticket the controller ever admits, so about 2050 would be needed;
-at 32 KiB of `LedgerBytes` each that is about 630 MiB of host budget. It
-needs view ticket recycling first (see the o64 inventory).
+`ClaimCreditBytes` depends on the bridge snapshot, which every claim entry
+stores twice (the planned entry and the protected snapshot copy). The plan
+check is `entry + proposed result + snapshot + outcome + 4 KiB`, about
+`2*S + 2*R + 4 KiB` with S the session snapshot (about 2 KiB per grant row,
+0.6 KiB per credential row, 8.5 KiB for one with 1024 groups) and R the
+result (128 KiB hex plus 87 KiB decoded for a 64 KiB READ). At 1.25 MiB, S
+must stay below about 400 KiB, about 200 grant rows. `CapabilityIdentities`
+1024 does not bound S that tightly, and it cannot: the READDIR reservation
+forces it above 256 although the rows stay small (24 peak, S 101 KiB peak).
+So the generator does not reject the pair; this dependency is the reason a
+spec change must rerun `TestZQ3RunWorkloadFitsLifetimeBounds`.
+
+Coverage: this spec covers a zq3-r8 run through bootstrap, the k64 gate,
+Phase 9, T1-T4 and T6-T11 with 2x margin. It does not cover T5's mapped
+dirtying, which needs task q64 (view identity recycling): each of its 1024
+dirty pages takes a DIRTY_RESERVE and a DIRTY_FREEZE view ticket, and
+`Views.Identities` (64) counts every ticket the controller ever admits, so
+about 2050 would be needed; at 32 KiB of `LedgerBytes` each that is about
+630 MiB of host budget.
 
 | Bound | Rule | Example |
 |---|---|---|

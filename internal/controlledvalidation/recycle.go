@@ -32,6 +32,16 @@ import (
 //     High+1, so a retired number is never admitted or allocated again;
 //   - Cancel answers the RETIRED_ID state and ResolveGap Stale for it (both
 //     check the floor first), never Permission or a new proof;
+//   - a replayed Allocate of a recycled number now gets Stale (it used to
+//     succeed against the kept entry), and a replayed CloseEarmark of one
+//     gets Stale (it used to return the same proof): with the entry or
+//     earmark gone, the number is no longer High+1. Neither replay can
+//     happen after retirement: the guest allocates each number once and
+//     retires only terminal, adopted requests whose ALLOCATE/CALL exchanges
+//     are complete; the transport answers a duplicate cell from its stored
+//     response instead of executing it again; and view-controller crash
+//     recovery re-closes only earmarks of unclosed reservations, while a
+//     retirement covers an earmark only once it is closed;
 //   - a Retire replay returns its protected receipt before reading entries;
 //     RetireOriginal's owner check passes absent numbers (it did already);
 //   - a READDIR_CLEANUP replay of a recycled READDIR returns its original
@@ -40,7 +50,10 @@ import (
 //     only together with the exact protected receipt of that request, which
 //     Retire wrote after checking every covered number's result or gap hash;
 //   - terminalEmpty requires every remaining entry and earmark to be at or
-//     below the floor, which recycled numbers trivially satisfy.
+//     below the floor, which recycled numbers trivially satisfy;
+//   - endpoint restore: the pruned snapshot and the bridge's persisted rows
+//     agree (guestbridge Service.retire reloads it before the reply), and a
+//     row saved before the prune is accepted by checkRestoredSnapshot.
 //
 // One entry is kept: the session's snapshot owner (the bridge bucket's
 // "/owner"), whose BridgeState is the protected bridge snapshot that

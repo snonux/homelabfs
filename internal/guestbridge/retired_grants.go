@@ -1,6 +1,8 @@
 package guestbridge
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"strings"
 
@@ -27,7 +29,13 @@ import (
 //     retirement requires its READDIR_CLEANUP to be closed, so no cleanup
 //     replay can still need them;
 //   - tokens are 256 random bits, so dropping a tombstone does not make an
-//     old token reusable in practice (issuance still refuses a live one).
+//     old token reusable in practice (issuance still refuses a live one);
+//   - endpoint restore stays consistent: after a RETIRED reply the bridge
+//     reloads the pruned snapshot (Service.retire) before the reply and its
+//     session rows are persisted, and a session row persisted before the
+//     prune (a crash between the provider commit and that persist) still
+//     restores, because the provider's CheckRestoredBridge prunes the row by
+//     the same rule (PruneRetiredSession) before comparing it.
 //
 // The close sequences of a pruned description go with it: a CLOSE naming it
 // is refused at resolve before its sequence is read. Credentials and exited
@@ -42,24 +50,85 @@ func PruneRetiredGrants(scope Context, snapshot json.RawMessage, retired ClaimNu
 	if json.Unmarshal(snapshot, &state) != nil || state.CapabilityLifetimes != 2 || state.Context != scope {
 		return nil, 0, fsapi.Stale
 	}
-	pruned := map[string]bool{}
-	for token, g := range state.Grants {
-		if g != nil && g.Released && retiredOwner(g.Owner, retired) {
-			pruned[token] = true
-			delete(state.Grants, token)
-		}
-	}
-	if len(pruned) == 0 {
+	pruned := pruneGrantRows(state.Grants, state.CloseSequences, []ClaimNumber{retired})
+	if pruned == 0 {
 		return snapshot, 0, nil
 	}
-	for key := range state.CloseSequences {
-		token, _, _ := strings.Cut(key, ":")
-		if pruned[token] {
-			delete(state.CloseSequences, key)
+	raw, err := json.Marshal(state)
+	return raw, pruned, err
+}
+
+// PruneRetiredSession applies the same rule to a persisted bridge session row
+// (its Grants and CloseSequences) for every family floor in floors, and
+// returns both maps re-encoded, so a row saved before a prune compares with
+// the provider's pruned snapshot.
+func PruneRetiredSession(row json.RawMessage, floors []ClaimNumber) (grants, closes json.RawMessage, err error) {
+	var state struct {
+		Grants         map[string]*grant
+		CloseSequences map[string]uint64
+	}
+	if err = json.Unmarshal(row, &state); err != nil {
+		return nil, nil, err
+	}
+	pruneGrantRows(state.Grants, state.CloseSequences, floors)
+	if grants, err = json.Marshal(state.Grants); err != nil {
+		return nil, nil, err
+	}
+	closes, err = json.Marshal(state.CloseSequences)
+	return grants, closes, err
+}
+
+// pruneGrantRows deletes the released grants owned by a retired claim of any
+// floor's family, and their close sequences; it returns how many it deleted.
+func pruneGrantRows(grants map[string]*grant, closes map[string]uint64, floors []ClaimNumber) int {
+	pruned := map[string]bool{}
+	for token, g := range grants {
+		for _, floor := range floors {
+			if g != nil && g.Released && retiredOwner(g.Owner, floor) {
+				pruned[token] = true
+				delete(grants, token)
+				break
+			}
 		}
 	}
-	raw, err := json.Marshal(state)
-	return raw, len(pruned), err
+	for key := range closes {
+		token, _, _ := strings.Cut(key, ":")
+		if pruned[token] {
+			delete(closes, key)
+		}
+	}
+	return len(pruned)
+}
+
+// retire runs RETIRE. On a private-validation bridge a RETIRED reply means
+// the provider pruned its protected snapshot in the same transaction, so the
+// session is reloaded from it (as after READDIR_CLEANUP) before the reply and
+// the session rows that go with it are persisted. resultMu keeps a CALL from
+// protecting a snapshot copied from the pre-prune state meanwhile.
+func (s *Service) retire(ctx context.Context, c Command) (json.RawMessage, error) {
+	private := s.privateValidation()
+	if private {
+		s.resultMu.Lock()
+		defer s.resultMu.Unlock()
+	}
+	var b json.RawMessage
+	var err error
+	if c.Protocol != nil && IsControlledProtocol(*c.Protocol) {
+		b, err = s.retireControlled(ctx, c)
+	} else {
+		b, err = s.config.Claims.Retire(ctx, c.Context, bytes.Clone(c.Payload))
+	}
+	if err == nil {
+		err = validateControlResponse(c, b)
+	}
+	if err != nil || !private {
+		return b, err
+	}
+	var reply struct{ Status string }
+	if json.Unmarshal(b, &reply) == nil && reply.Status == "RETIRED" {
+		err = s.restoreValidation(context.WithoutCancel(ctx), c.Context)
+	}
+	return b, err
 }
 
 // retiredOwner reports whether owner is a claim of retired's principal at or

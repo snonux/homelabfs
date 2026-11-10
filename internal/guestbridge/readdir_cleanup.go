@@ -173,14 +173,20 @@ func (s *Service) cleanupReaddir(ctx context.Context, c Command) (json.RawMessag
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ss := s.sessions[c.Context.Session]
+	// A grant already pruned by retirement (o64) is skipped: the provider
+	// answered from the exact protected closure of this request, which a
+	// READDIR's retirement requires to be closed, so the replay only repeats
+	// an applied release. Any grant still present must match.
 	for _, cap := range request.Capabilities {
 		g := ss.Grants[cap.Token]
-		if g == nil || !g.NoLookup || !equalCap(g.Cap, cap) {
+		if g != nil && (!g.NoLookup || !equalCap(g.Cap, cap)) {
 			return nil, fsapi.Stale
 		}
 	}
 	for _, cap := range request.Capabilities {
-		ss.Grants[cap.Token].Released = true
+		if g := ss.Grants[cap.Token]; g != nil {
+			g.Released = true
+		}
 	}
 	return receipt, nil
 }

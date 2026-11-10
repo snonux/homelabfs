@@ -54,7 +54,9 @@ later claim owns the snapshot. A recycled number still answers `RETIRED_ID`
 `VerifyRetirementReceipt` against that receipt) and its READDIR cleanup receipt
 (kept in `readdir-receipts`); `ResolveGap` refuses it as Stale. The same
 retirement also prunes the bridge snapshot's grant tombstones that retired
-claims released (`guestbridge.PruneRetiredGrants`). The `processes` bucket of
+claims released (`guestbridge.PruneRetiredGrants`); the bridge reloads the
+pruned snapshot before its RETIRE reply is persisted, and `CheckRestoredBridge`
+also accepts a session row saved before the prune (pruned by the same rule). The `processes` bucket of
 lock-owner tokens stays a lifetime count bounded by `MaxClaims`.
 
 The sealed service worker serializes capture and append with every other local

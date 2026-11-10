@@ -43,7 +43,7 @@ import (
 // transient grants are released by FORGETs instead of one READDIR_CLEANUP
 // (more CALLs, not fewer). The mapped dirtying of T5 (1024 dirty pages, each
 // a DIRTY_RESERVE earmark and a DRAIN_WRITE claim) is not driven: it needs
-// view identities the spec cannot hold (see the o64 bound inventory).
+// view identities the spec cannot hold (task q64, view identity recycling).
 
 // rigLimits carries the spec's provider and bridge values into newRigWith.
 type rigLimits struct {
