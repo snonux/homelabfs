@@ -113,6 +113,11 @@ func validateSpec(s Spec) (ed25519.PublicKey, error) {
 	if err := checkControllerWork(s.Views); err != nil {
 		return nil, err
 	}
+	// The runtime refuses a below-floor Sources as well; zq3-r7 shows what
+	// the floor prevents (Sources 2 refused every non-read op with NoSpace).
+	if err := viewcontrol.CheckSourceFloor(s.Views, sessionCount); err != nil {
+		return nil, fmt.Errorf("spec Views: %w", err)
+	}
 	// The runtime accepts any guest count above zero; the guest provider
 	// refuses one below its slot floor only once the signed provision reaches
 	// it, and a too-small byte budget only at mount (zq3-r3 failed there).

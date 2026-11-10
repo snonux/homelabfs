@@ -11,6 +11,7 @@ import (
 
 	"github.com/snonux/homelabfs/internal/controlledruntime"
 	"github.com/snonux/homelabfs/internal/retained9plab"
+	"github.com/snonux/homelabfs/internal/viewcontrol"
 )
 
 // bootstrapFixtureDir is the committed export of TestExportBootstrapFixture,
@@ -36,7 +37,9 @@ const bootstrapFixtureDir = "../../tools/lab/retained9p/testdata/bootstrap"
 //
 //	HFS_BOOTSTRAP_FIXTURE_DIR=$(mktemp -u) go test ./internal/runtimeprep -run TestExportBootstrapFixture
 //
-// and copy the nine files over; TestBootstrapFixtureAboveGuestFloor guards it.
+// and copy the nine files over; TestBootstrapFixtureAboveGuestFloor and
+// TestBootstrapFixtureAboveSourceFloor guard it. i64 regenerated it again when
+// the example spec's Views.Sources rose from 2 to 12 (viewcontrol.MinSources).
 func TestExportBootstrapFixture(t *testing.T) {
 	target := os.Getenv("HFS_BOOTSTRAP_FIXTURE_DIR")
 	if target == "" {
@@ -126,6 +129,28 @@ func TestBootstrapFixtureAboveGuestFloor(t *testing.T) {
 	}
 	if err := checkGuestFloor(template.Budget, len(template.Mounts)); err != nil {
 		t.Fatalf("committed bootstrap fixture is below the guest floor; regenerate it (see TestExportBootstrapFixture): %v", err)
+	}
+}
+
+// TestBootstrapFixtureAboveSourceFloor is the i64 counterpart for the view
+// bounds: the committed proposal and signed enrollment must carry one shared
+// Views budget that clears viewcontrol.CheckSourceFloor, so the fixture can
+// never again replay the zq3-r7 Sources 2 that refused every non-read op.
+func TestBootstrapFixtureAboveSourceFloor(t *testing.T) {
+	var proposal viewcontrol.Enrollment
+	var enrollment struct {
+		Authorization struct{ Enrollment viewcontrol.Enrollment }
+	}
+	readFixtureJSON(t, "proposal.json", &proposal)
+	readFixtureJSON(t, "enrollment.json", &enrollment)
+	if enrollment.Authorization.Enrollment.Bounds != proposal.Bounds {
+		t.Fatalf("fixture bounds differ: proposal %+v, enrollment %+v", proposal.Bounds, enrollment.Authorization.Enrollment.Bounds)
+	}
+	if proposal.Bounds != exampleSpec(t).Views {
+		t.Fatalf("fixture bounds %+v are not the example spec's %+v; regenerate it (see TestExportBootstrapFixture)", proposal.Bounds, exampleSpec(t).Views)
+	}
+	if err := viewcontrol.CheckSourceFloor(proposal.Bounds, len(proposal.Domains)); err != nil {
+		t.Fatalf("committed bootstrap fixture is below the source floor; regenerate it (see TestExportBootstrapFixture): %v", err)
 	}
 }
 

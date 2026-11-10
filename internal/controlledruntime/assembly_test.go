@@ -131,6 +131,13 @@ func TestRuntimeProposalStagedExternalConsent(t *testing.T) {
 	config.Service = fsservice.Limits{Queue: 8, IOBytes: 65536, Handles: 64, Lookups: 128, Reservations: 128, Locks: 64, LogicalBytes: 4 << 20}
 	config.Budget = RuntimeBudget{HostBytes: 4 << 30, ServiceBytes: 64 << 20, ExporterBytes: 274 << 20, GuestCopyBytes: 16 << 20, GuestBytes: 2 << 30, GuestBaseBytes: 256 << 20, Guest: GuestArtifactBudget{OrdinaryBytes: 64 << 20, ControlBytes: 32 << 20, Reservations: 32, Cookies: 32, Received: 32}}
 	require(t, validateRuntimeConfig(t.Context(), config))
+	// i64: one Sources below MinSources(scopes) is refused by name, not
+	// accepted to refuse every non-read op at run time (zq3-r7 R7-2).
+	starved := config
+	starved.Views.Sources = viewcontrol.MinSources(len(config.Scopes)) - 1
+	if err := validateRuntimeConfig(t.Context(), starved); !errors.Is(err, fsapi.Invalid) || !strings.Contains(err.Error(), "Bounds.Sources") {
+		t.Fatalf("below-floor Views.Sources: %v", err)
+	}
 	long := config
 	long.OwnerDirectory = filepath.Join(short, strings.Repeat("o", 104))
 	if validateRuntimeConfig(t.Context(), long) == nil {

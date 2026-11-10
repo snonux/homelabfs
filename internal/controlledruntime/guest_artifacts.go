@@ -283,7 +283,12 @@ func guestDecodeAuthorization(g guestArtifactGroup) (viewcontrol.Authorization, 
 }
 func guestAuthorization(a viewcontrol.Authorization, operator ed25519.PublicKey) ([]byte, error) {
 	e := a.Enrollment
-	if e.Version != viewcontrol.EnrollmentVersion || !e.ID.Valid() || e.PageSize != 4096 || !guestBaselineValid(e) || !guestViewBounds(e.Bounds) || len(e.Domains) < 1 || len(e.Domains) > 64 || len(e.Domains) != len(a.Domains) || len(e.TicketFamilies) != len(e.Domains) {
+	// Name a below-floor Sources bound instead of a bare Invalid: it would
+	// otherwise sign cleanly and refuse every non-read op at run time.
+	if err := viewcontrol.CheckSourceFloor(e.Bounds, len(e.Domains)); err != nil {
+		return nil, err
+	}
+	if e.Version != viewcontrol.EnrollmentVersion || !e.ID.Valid() || e.PageSize != 4096 || !guestBaselineValid(e) || !guestViewBounds(e.Bounds, len(e.Domains)) || len(e.Domains) < 1 || len(e.Domains) > 64 || len(e.Domains) != len(a.Domains) || len(e.TicketFamilies) != len(e.Domains) {
 		return nil, fsapi.Invalid
 	}
 	raw, err := json.Marshal(e)
@@ -396,8 +401,10 @@ func (inventory *guestArtifactInventory) check(e viewcontrol.Enrollment, mounts 
 	return nil
 }
 
-func guestViewBounds(b viewcontrol.Bounds) bool {
-	if b.Tickets < 1 || b.Tickets > 65536 || b.ControlTickets < 4 || b.ControlTickets > 16384 || b.Reservations < 1 || b.Reservations > 64 || b.Identities < b.Tickets+b.ControlTickets || b.Identities > 65536 || b.Sources < 2 || b.Sources > 128 || b.SourceBytes < 4096 || b.SourceBytes > 16<<20 || b.LedgerBytes < 0 || b.LedgerBytes > 512<<20 || b.WorkBytes < 1 || b.WorkBytes > 2<<30 {
+// guestViewBounds mirrors viewcontrol.validBounds for the guest artifacts,
+// including the MinSources(domains) source-cut floor (viewcontrol/source_floor.go).
+func guestViewBounds(b viewcontrol.Bounds, domains int) bool {
+	if b.Tickets < 1 || b.Tickets > 65536 || b.ControlTickets < 4 || b.ControlTickets > 16384 || b.Reservations < 1 || b.Reservations > 64 || b.Identities < b.Tickets+b.ControlTickets || b.Identities > 65536 || viewcontrol.CheckSourceFloor(b, domains) != nil || b.SourceBytes < 4096 || b.SourceBytes > 16<<20 || b.LedgerBytes < 0 || b.LedgerBytes > 512<<20 || b.WorkBytes < 1 || b.WorkBytes > 2<<30 {
 		return false
 	}
 	needed := int64(b.Reservations)*(128<<10) + b.SourceBytes*int64(b.Sources)*3 + int64(b.Tickets+b.ControlTickets)*(128<<10) + int64(b.Identities)*(32<<10)

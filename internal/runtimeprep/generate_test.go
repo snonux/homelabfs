@@ -17,6 +17,7 @@ import (
 
 	"github.com/snonux/homelabfs/internal/controlledruntime"
 	"github.com/snonux/homelabfs/internal/daemoncli"
+	"github.com/snonux/homelabfs/internal/viewcontrol"
 )
 
 const exampleVM = "e10b6225-44d0-11f1-882a-e8ff1ed7f3d7"
@@ -277,7 +278,10 @@ func specRefusals() map[string]func(*Spec) {
 		"guest control":     func(s *Spec) { s.Budget.Guest.ControlBytes = 128 << 20 }, // zq3-r3
 		"guest ordinary":    func(s *Spec) { s.Budget.Guest.OrdinaryBytes = 128 << 20 },
 		"runtime guest":     func(s *Spec) { s.Budget.Guest.Cookies = 0 },
-		"runtime views":     func(s *Spec) { s.Views.Sources = 1 },
+		"runtime views":     func(s *Spec) { s.Views.Tickets = 0 },
+		// i64: below MinSources every non-read op got NoSpace at run time.
+		"sources zq3-r7":    func(s *Spec) { s.Views.Sources = 2 },
+		"sources floor - 1": func(s *Spec) { s.Views.Sources = viewcontrol.MinSources(sessionCount) - 1 },
 	}
 }
 

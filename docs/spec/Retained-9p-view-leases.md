@@ -256,6 +256,30 @@ frozen claim, source pin and recall obligation before a permanent protected
 floor/tombstone advances. Replies/cell release/close/disconnect/TTL do not retire
 anything. Finite number/identity/source exhaustion blocks new admissions.
 
+**Source-cut floor (i64).** `Bounds.Sources` counts the retained source cuts.
+There is one per distinct journal position and state that a capture
+remembered: the baseline, admissions, acquisitions, recall events and
+Recover. Only VIEW_RETIRE compacts unpinned cuts, so every committed mutation
+uses up one cut until then. A non-read admission needs `len(Sources) + 1 + 2`
+(its own cut plus a two-cut reserve) within the bound. DIRTY_RESERVE also
+charges each unfrozen reservation, and DRAIN_WRITE charges 0 instead of 1.
+Enrollment therefore requires
+`Sources >= MinSources(domains) = 2*domains + 4`. That is the peak of a
+sequence that starts at READY, before any VIEW_RETIRE:
+
+1. Each domain admits one non-read op.
+2. Each domain takes one write lease with one dirty reservation.
+3. A recall drains every reservation.
+4. The op that started the recall is admitted after REOPEN.
+
+The peak is 1 baseline, plus 2 cuts per domain, plus 1 for the op's own
+cut, plus the 2-cut reserve. For the two-domain lab the floor is 8.
+viewcontrol, the controlled runtime, the guest-artifact signer and the
+run-prep generator all refuse a lower value at enrollment. The guest's
+`hfs_go_bounds` is to mirror the same floor (a separate kernel-patch task). zq3-r7's `Sources: 2` passed validation and then refused every
+non-read op with NoSpace. Sources above the floor buy more mutations between
+retirements.
+
 ## Physical ordering, recovery and bounded progress
 
 Acquisition, renew and reserve must not wait for recall completion while holding

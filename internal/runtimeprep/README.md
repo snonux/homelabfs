@@ -110,11 +110,31 @@ one VM name, more than 64 arguments or 64 KiB.
 
 The admission package caps the runtime's aggregate pools at 4 GiB, so
 `Budget.HostBytes` cannot exceed 4 GiB although the xz3 installation proposal
-describes a 6 GiB host envelope. The example uses 4 GiB with a 1 GiB service
-reservation. `Views` uses 6 MiB sources (room for the 4 MiB canary plus
-metadata). The controller rule is `WorkBytes >= 3*LedgerBytes + 6*SourceBytes
-+ 128 MiB`, so with the example's 44 MiB ledger `WorkBytes` must be at least
-296 MiB; the example uses 320 MiB.
+describes a 6 GiB host envelope. `Views` uses 6 MiB sources (room for the
+4 MiB canary plus metadata).
+
+`Views.Sources` must be at least `viewcontrol.MinSources(domains) = 2*domains
++ 4`, which is 8 for the two zq3 sessions (derivation in
+`internal/viewcontrol/source_floor.go`). The ledger keeps one source cut per
+committed mutation until a VIEW_RETIRE compacts it. Below the floor, every
+non-read op of the reference sequence gets `NoSpace`: zq3-r7 had 2 and
+refused even mount(8)'s PROCESS_EXIT. The generator refuses such a spec, and
+so do the runtime and the controller. The example uses 12: the floor plus
+4 more mutations before a retirement.
+
+Each source unit costs `3*SourceBytes` = 18 MiB of `LedgerBytes`. Its runtime
+cost is 5x that (3x through `WorkBytes`, 2x through the lifecycle endpoint),
+so 90 MiB of the 4 GiB host budget. Other fixed owners already take most of
+that budget: the 1 GiB transport ledger, the 652 MiB C8 arenas, 4x64.25 MiB
+provider copies per domain, the 274 MiB exporter and the 64 MiB guest copy. So the example cuts the service share
+from 1 GiB to 192 MiB, which is accounting only (nothing else reserves from
+it). With 1 GiB, at most 3 Sources would fit. The numbers:
+
+| Bound | Rule | Example |
+|---|---|---|
+| `LedgerBytes` | >= 128 KiB x (Reservations + Tickets + ControlTickets) + 32 KiB x Identities + 3 x SourceBytes x Sources = 221.5 MiB | 224 MiB |
+| `WorkBytes` | >= 3 x LedgerBytes + 6 x SourceBytes + 128 MiB = 836 MiB | 844 MiB |
+| host total | <= `HostBytes` 4 GiB | about 4047 MiB (49 MiB spare) |
 
 ## Filling the signer requests (after the runtime started)
 

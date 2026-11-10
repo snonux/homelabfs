@@ -775,8 +775,11 @@ func (c *Controller) retired(t ticketState) bool {
 	return t.Request.Number <= c.state.Families[family].Floor
 }
 
+// sourceCapacity charges retained cuts, the caller's extra, sourceReserve and
+// one future cut per reservation whose drain result is not yet frozen. The
+// accounting and the floor it implies are in source_floor.go.
 func (c *Controller) sourceCapacity(ctx context.Context, extra int) bool {
-	used := len(c.state.Sources) + extra + 2
+	used := len(c.state.Sources) + extra + sourceReserve
 	for _, r := range c.state.Reservations {
 		if r.Status == "CLOSED" {
 			continue
