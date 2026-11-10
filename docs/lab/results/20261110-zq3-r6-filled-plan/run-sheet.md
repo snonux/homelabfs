@@ -174,6 +174,32 @@ them into those lines (Phase 10 T8 and T10, Phase 11 before step 0 and steps
   `correlate.py`, `guest.py` and `guest-lock-probe.py` and dry-run end to end
   ([README](README.md#phases-9-10-recheck)).
 
+## Execution notes after review round 1 (2026-11-10): run as option (b)
+
+The review found that the guest test kernel (candidate `e01fab21…`) boots
+**without SELinux**: `CONFIG_LSM` omits selinux, and the stock command line
+has no `security=`/`lsm=`. `guest.py` `admit_identity` requires
+`/sys/fs/selinux/enforce` = 1 for every case and lifecycle step, and
+`pod_fixture.py` refuses T7. The fix (task c64) is a kernel config change that
+needs a new candidate. This run is taken as **option (b)**, so that the main
+open question (does the 964 kernel get through mount-0, mount-1 and READY?) is
+answered now:
+
+- **Phase 9:** `getenforce` `Disabled` (or a missing `/sys/fs/selinux`) is
+  recorded as a finding, not a stop. Only the OBSERVE checks gate.
+- **Phase 10:** run only T6 and T8. T1-T5, T7 and T9-T11 are recorded
+  **unrun (blocked by the guest SELinux gate, task c64)**; nothing is retried
+  around it.
+- **Then Phase 11** through its guard-SIGTERM branch, because the runtime is
+  still serving.
+- **`rockyt … | tee`:** read the exit status with `; echo
+  rc=${PIPESTATUS[0]}` (124 = bound expired).
+- **Phase 12/U3 reboot:** a test-kernel boot (SELinux disabled) marks
+  `/.autorelabel`. The next stock boot then does a full relabel and reboots
+  once, which shows as vm-bhyve "run 1 exit 0" about 5 minutes after
+  `start-rocky`. Expect about 10 minutes until pinned SSH. The test guest
+  itself does not reboot.
+
 ## Session setup (workstation, bash)
 
 ```bash
