@@ -26,16 +26,19 @@ const mappingRecentLimit = 80
 // window (high-window, high). A hole is admitted at most once; a cell that
 // falls out of the window without arriving can never be admitted. This is a
 // bound on retained state, not evidence that the cell retired at the guest.
-// 16 is a stopgap, not derived from an exporter in-flight bound: a cell
-// arriving after more than 15 later cells is still refused as stale.
+// 16 is a stopgap, not derived from an exporter in-flight bound: a cell is
+// refused as stale once any cell 16 or more guest numbers above it was
+// admitted (a distance rule, not a count of overtaking cells).
 //
 // Task e64 made the lib9p exporter forward each session's originals in guest
 // order (tools/integration/lib9p/src/hfs9p.c, _guest_order). It waits up to
 // one second (HFS9P_ORDER_HOLD_MS) for a missing or incomplete lower cell and
 // fails a permanently refused donor send back to the guest instead of pinning
 // it. Only a cell the exporter gave up on after that hold, or a complete
-// ordinary cell that control or donor traffic bypassed while it had no
-// credit, can still arrive below the high-water. The window stays the
+// ordinary cell that later traffic bypassed because it could not be written
+// (no credit, EAGAIN on its first write, or another error), can still arrive
+// below the high-water. Once bypassed it is exposed to every later cell, not
+// only control or donor traffic. The window stays the
 // fallback for those; its size can now be revisited once a rebuilt exporter
 // has run in the lab.
 const guestReorderWindow = 16
