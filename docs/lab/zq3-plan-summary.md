@@ -118,7 +118,14 @@ together (`66b5bb2b…`): the guest kernel now really starts SELinux (earlier
 test kernels had it built in but never switched on), and the daemon (`9b7eed8d…`)
 keeps a separate view counter per domain and accepts a guest message that
 arrives slightly out of order, the two faults of the sixth attempt (zq3-r6).
-The new daemon must pass the f3 self-check again.
+After the seventh attempt (zq3-r7) all three parts were rebuilt
+(`867ede36…`): the guest kernel reports its mount options, keeps the
+`cache=mmap` setting exactly and logs every blocked request; the daemon
+(`34fb05b2…`) sizes and recycles its bookkeeping and cleans up refused
+requests; and the patched bhyve (`ef8f17de…`, built on f3 itself, twice, with
+identical results) forwards guest messages in order and hands permanently
+refused ones back to the guest. The new daemon must pass the f3 self-check
+again.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
