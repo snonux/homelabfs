@@ -31,7 +31,8 @@ forward/reverse bindings; FETCH is implicitly scoped by the connection.
 * One native writer preserves exact guest/native bytes, body cell rewriting,
   chunk/hash identity and monotonically increasing endpoint cells. Lost/short
   native writes retain the identical candidate; uncertain candidates exclude
-  another allocator. A first ordinary EAGAIN consumes no native number and lets
+  another allocator. The one exception is a permanently refused donor send,
+  which fails back to the guest (`e64`). A first ordinary EAGAIN consumes no native number and lets
   control/replacement traffic progress. All result reads accumulate bounded
   short preads and verify kind/flags/session/native cell/body hash and context/op
   before reversing the mapping. Endpoint mutex contention returns an exact
@@ -68,7 +69,8 @@ forward/reverse bindings; FETCH is implicitly scoped by the connection.
   pressure backpressures before another allocation. Serialization temporarily
   duplicates owned bytes; persisted ledger inputs are capped at65MiB. Sessions are capped at16, contexts at4096bytes,
   VIEW_WAIT commands at16384bytes and native cells at2^31-1. Session-local guest
-  cells may arrive out of order. A bounded 256-range seen-cell ledger per session
+  cells may arrive out of order, but each session's originals are forwarded in
+  guest order (see `e64` below). A bounded 256-range seen-cell ledger per session
   retains permanent nonreuse evidence, backpressuring before another disjoint
   range would exceed its budget. Exact active retries and arbitrary chunk order
   are supported. Retired cell numbers never reuse.
@@ -224,6 +226,76 @@ recorded before m34, including the l34 receipts and the xz3 quarantined
 artifact, describes the old sources. `supervisor_test.c` checks both address
 forms as pure cases on every platform, plus real socketpair, datagram,
 pathname and Linux abstract sockets, and fd5.
+
+## Guest order and permanent refusals (`e64`)
+
+zq3-r6 finding R6-2: mount-0's VIEW_WAIT guest cell 48 reached the runtime as
+native 108, after QUERY guest cell 49 as native 107. The runtime refuses an
+original at or below the session's captured guest high-water, so it refused
+cell 48. The exporter then pinned that donor send as its pending writer for
+good, and both sessions stalled until the guest's 30 s view-control timeout.
+
+**Why cells were reordered.** The guest allocates a session's cells in order
+under its writer mutex. When a SEND gets CAPACITY (this backend's endpoint
+mutex is busy, for example with the 4 ms wait worker) or EBUSY (task 964's
+bounded wait for a fixed tag), the guest yields the writer for 10-12 ms before
+it retries. A later cell can then be copied completely first. The exporter
+forwarded each cell when its own SEND completed, so native order followed
+arrival. It could also reorder by itself: a complete cell blocked by another
+candidate's writer pin or by credit was retried only by its own FETCH or the
+wait worker, while a later cell's SEND or FETCH could find the writer free
+first.
+
+**Ordering.** Native numbers now go to each session's originals in guest
+order (`_guest_order` in `src/hfs9p.c`). A complete original waits while a
+lower original above the session's order floor is present but has no native
+number yet (the lowest is forwarded first, in the same call) or was never
+seen. Replacement polls and replays of an existing candidate never wait. The
+wait is bounded at 1 s (`HFS9P_ORDER_HOLD_MS`) so that an abandoned or never
+completed cell cannot stall its session. After the hold the cell is forwarded
+anyway, the floor moves past what it gave up on, and such a cell, if it still
+arrives, relies on the runtime's 16-cell guest reorder window (task d64),
+which now acts as a bounded fallback. The floor and hold deadlines are not
+persisted: restore puts the floor below the lowest restored original without
+a native number, or at the session's highest seen cell. 964's tag-reuse wait
+and 564's recovery busy retry are unchanged.
+
+**Permanent refusals.** Only an original donor send (reclaim, poll index 0,
+not SESSION_RETIRE) is classified. The runtime builds such a send in its
+reclaim workspace and advances its native high-water only on admission, so a
+refusal consumed no native number. These native write errnos fail the cell
+back to the guest (the SEND or FETCH gets an ERROR reply, later FETCHes and
+resends get ESTALE through the seen ledger, the donor entry stays, and a
+fresh snapshot is protected so that recovery does not replay it):
+
+| errno | runtime source | permanent because |
+|---|---|---|
+| ESTALE | `fsapi.Stale` | an identical resend of an admitted cell returns the full length, never Stale |
+| EINVAL | `fsapi.Invalid` | the same; a protection failure that wraps Invalid also fences the runtime transport |
+| EACCES | `fsapi.Permission` | only on a first attempt: authentication, node and scope checks run before the cell lookup |
+
+EPERM is never produced (the FUSE adapter maps `fsapi.Permission` to EACCES),
+so it stays uncertain. EAGAIN is transient. EACCES on a replay, EHOSTDOWN,
+ENOSPC, EIO, EINTR and every other errno are uncertain, because a protection
+or transport failure may follow admission. All of these keep the exact
+candidate pinned and protected, as before. Non-donor sends are unchanged: the
+runtime allocates their native number at the first chunk, before validation.
+
+**Known runtime limit (follow-up, not changed here).** The runtime keeps a
+refused donor frame in its single reclaim workspace
+(`internal/guestbridge/endpoint.go`, `Transport.Write`). Every later new
+native cell, from any session, then gets WouldBlock until that exact frame is
+admitted. Failing the cell back frees the exporter, but the runtime still
+needs to drop the workspace on a final-chunk refusal before a permanent donor
+refusal is fully survivable.
+
+`backend_test.c` covers ordering behind another session's pinned writer,
+eight concurrent SENDs of one session, the R6-2 gap shape with hold expiry and
+a late cell, permanent refusals (ESTALE, EINVAL, first-attempt EACCES) with a
+real ledger reload, and transient or uncertain refusals (EAGAIN, EIO,
+EHOSTDOWN, EPERM, replay EACCES) that stay pinned and then replay unchanged.
+The fixtures prove exporter behaviour only. A native rebuild of the bhyve
+backend must pick this source up before any lab run can show it.
 
 ## Controlled terminal owner (`614`)
 

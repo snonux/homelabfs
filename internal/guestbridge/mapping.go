@@ -27,8 +27,15 @@ const mappingRecentLimit = 80
 // falls out of the window without arriving can never be admitted. This is a
 // bound on retained state, not evidence that the cell retired at the guest.
 // 16 is a stopgap, not derived from an exporter in-flight bound: a cell
-// arriving after more than 15 later cells is still refused as stale, so the
-// R6-2 stall can recur until the exporter forwards in guest order (task e64).
+// arriving after more than 15 later cells is still refused as stale.
+//
+// Task e64 made the lib9p exporter forward each session's originals in guest
+// order (tools/integration/lib9p/src/hfs9p.c, _guest_order). It waits up to
+// one second (HFS9P_ORDER_HOLD_MS) for a missing or incomplete lower cell and
+// fails a permanently refused donor send back to the guest instead of pinning
+// it. Only a cell the exporter gave up on after that hold can still arrive
+// below the high-water, so this window can now be revisited (kept as a
+// bounded fallback, or removed) once a rebuilt exporter has run in the lab.
 const guestReorderWindow = 16
 
 // MappingLeg is inert protected evidence for one actually admitted native leg.

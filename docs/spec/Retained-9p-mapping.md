@@ -89,15 +89,19 @@ Independent control and ordinary workers may execute accepted requests out of
 order. Each native cell/workspace captures the scope's guest highwater on its
 first accepted header. A fresh original must exceed that captured watermark,
 not a later worker's watermark, **or** be an unissued hole of the scope's
-reorder window. The exporter may forward one session's guest cells out of guest
-order (zq3-r6 R6-2: VIEW_WAIT guest cell 48 arrived as native 108, after QUERY
-guest cell 49 as native 107), so raising the highwater past skipped cells keeps
-those inside a 16-cell window below it as holes. A hole is admitted at most once
-(admission removes it). A hole that falls out of the window is not admitted
+reorder window. The exporter used to forward one session's guest cells out of
+guest order (zq3-r6 R6-2: VIEW_WAIT guest cell 48 arrived as native 108, after
+QUERY guest cell 49 as native 107), so raising the highwater past skipped cells
+keeps those inside a 16-cell window below it as holes. A hole is admitted at most
+once (admission removes it). A hole that falls out of the window is not admitted
 as a hole (a cell can still enter above an older captured watermark, which is
-safe). The 16-cell window is a stopgap, not derived from an exporter bound;
-reorders beyond it stay refused until the exporter forwards in guest order
-(task e64). This bounds retained state and is not evidence that the guest retired
+safe). The 16-cell window is a stopgap, not derived from an exporter bound.
+Since task e64 the exporter allocates native numbers to one session's originals
+in guest order and waits up to one second for a lower cell that is missing or
+incomplete. Only a cell it gave up on after that hold can still arrive below the
+highwater, so the window is now a bounded fallback and can be revisited once the
+rebuilt exporter has run (see the [lib9p README](../../tools/integration/lib9p/README.md)).
+This bounds retained state and is not evidence that the guest retired
 it. A SESSION_RETIRE drops its scope's holes. The C8 index protects holes as
 `GuestHoles` (omitted when empty, so an index without it means every cell
 through the highwater is spent); restore and inspection validate them as sorted,

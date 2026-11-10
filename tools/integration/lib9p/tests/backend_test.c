@@ -55,6 +55,10 @@ static bool eof;
 static bool deny;
 static bool fail_protect;
 static bool pending_read;
+/* Nonzero: every well-formed native write is refused with this errno, as the
+ * runtime refuses a cell before admission (e64 refusal classification). */
+static int refuse_errno;
+static unsigned refused_writes;
 /* Default preserves deliberate short-read coverage; pressure tests can select
  * bounded full chunks without hashing a whole large reply per seven bytes. */
 static size_t fixture_read_limit = 7;
@@ -116,6 +120,12 @@ fixture_pwrite(int fd, const void *buffer, size_t length, off_t position) {
        (offset / HFS9P_CHUNK) * (HFS9P_HEADER + HFS9P_CHUNK)) {
       rejected_writes++;
       errno = EINVAL;
+      return (-1);
+   }
+   if (refuse_errno) {
+      /* e64: the runtime refused this chunk before admission; no bytes kept. */
+      refused_writes++;
+      errno = refuse_errno;
       return (-1);
    }
    Fixture *f = &fixtures[cell];
@@ -335,6 +345,8 @@ reset_fixtures(void) {
    fixture_read_limit = 7;
    hold_receipts = false;
    rejected_writes = 0;
+   refuse_errno = 0;
+   refused_writes = 0;
    last_accepted_length = 0;
 }
 
@@ -444,6 +456,44 @@ entry(Hfs9p *h, uint64_t cell) {
          return (&h->entries[i]);
    }
    return (NULL);
+}
+
+/* One FETCH on the ordinary result channel; returns the reply kind. */
+static unsigned
+fetch_once(Hfs9pConnection *c, uint64_t cell) {
+   uint8_t request[21] = {0}, response[HFS9P_MSIZE];
+   size_t n;
+   _put(request, 21, 4);
+   request[4] = 240;
+   _put(request + 5, 1, 2);
+   request[7] = 2;
+   request[8] = 2;
+   _put(request + 9, cell, 8);
+   assert(!exchange_retry(c, request, sizeof(request), response,
+       sizeof(response), &n));
+   return (response[7]);
+}
+
+static Hfs9pEntry *
+session_entry(Hfs9p *h, unsigned session, uint64_t cell) {
+   for (unsigned i = 0; i < HFS9P_ENTRIES; i++) {
+      Hfs9pEntry *e = &h->entries[i];
+      if (e->guest && e->session == session && e->guest_cell == cell)
+         return (e);
+   }
+   return (NULL);
+}
+
+/* Ends every armed or future guest-order hold (e64) as if it had run out. */
+static void
+expire_order(Hfs9p *h) {
+   pthread_mutex_lock(&h->mutex);
+   for (unsigned i = 0; i < HFS9P_ENTRIES; i++) {
+      Hfs9pEntry *e = &h->entries[i];
+      if (e->guest && !e->issued)
+         e->order_deadline = _now() - 1;
+   }
+   pthread_mutex_unlock(&h->mutex);
 }
 
 static void
@@ -890,6 +940,14 @@ session_tests(void) {
    body = rewrite_body(golden_create, 3, NULL);
    assert(send_body(one, body, 3) == 1); /* Out-of-order first cells. */
    free(body);
+   /* e64: arrival is accepted out of order, but both cells wait for the
+    * never-seen guest cell 2. Once the hold runs out, 9's expiry first
+    * forwards the lower 3, so native order still follows guest order. */
+   Hfs9pEntry *third = entry(h, 3), *ninth = entry(h, 9);
+   assert(h->high == 2 && third && ninth && !third->issued && !ninth->issued);
+   expire_order(h);
+   assert(fetch(one, 9, 2) == 3);
+   assert(third->native_cell == 3 && ninth->native_cell == 4);
    assert(h->high == 4);
    uint8_t request[21] = {0}, response[16];
    size_t n;
@@ -945,6 +1003,7 @@ contention_tests(void) {
    Hfs9p *h = new_endpoint();
    Hfs9pConnection *c = connection(h, large_write);
    h->sessions[0].hello = true; /* Real routing with transport-only fixtures. */
+   h->sessions[0].order_high = 2; /* Guest cells 1-2 settled (e64 order). */
    Hfs9pConnection *version;
    assert(!connection_retry(h, h->sessions[0].id, &version));
    uint8_t packet[HFS9P_MSIZE], reply[HFS9P_MSIZE], saved[HFS9P_MSIZE];
@@ -1399,6 +1458,255 @@ controlled_protocol_tests(void) {
    }
 }
 
+/* Session two (golden_write's scope) with its own HELLO at guest cell 1, as
+ * session_tests builds it. */
+static Hfs9pConnection *
+second_session(Hfs9p *h) {
+   Hfs9pConnection *two = connection(h, golden_write);
+   Hfs9pToken tokens[HFS9P_TOKENS];
+   Hfs9pJson j = {(const uint8_t *)golden_hello, strlen(golden_hello), tokens, 0};
+   uint32_t payload;
+   assert(!hfs9p_json_parse(&j) && !hfs9p_json_key(&j, 0, "payload", &payload));
+   Hfs9pToken p = tokens[payload];
+   char hello[8192];
+   (void)snprintf(hello, sizeof(hello),
+       "{\"cell\":1,\"context\":%.*s,\"op\":\"HELLO\","
+       "\"payload\":%.*s,\"reclaim\":null}",
+       (int)h->sessions[two->session].length, h->sessions[two->session].context,
+       (int)(p.end - p.start), j.bytes + p.start);
+   assert(send_body(two, hello, 1) == 1 && fetch(two, 1, 2) == 3);
+   return (two);
+}
+
+static Hfs9pConnection *
+hello_session(Hfs9p *h) {
+   Hfs9pConnection *c = connection(h, golden_hello);
+   assert(send_body(c, golden_hello, 1) == 1 && fetch(c, 1, 2) == 3);
+   return (c);
+}
+
+static void
+send_cell(Hfs9pConnection *c, const char *template, uint64_t cell,
+    const char *reclaim, unsigned status) {
+   char *body = rewrite_body(template, cell, reclaim);
+   assert(send_body(c, body, cell) == status);
+   free(body);
+}
+
+/* e64, inside the exporter: a complete cell blocked by another session's
+ * pinned writer must not be overtaken by a later cell of its own session
+ * whose FETCH finds the writer free first. Before e64, guest cell 3 took
+ * the lower native number and cell 2 stayed unforwarded. */
+static void
+order_pinned_writer_test(void) {
+   Hfs9p *h = new_endpoint();
+   Hfs9pConnection *one = hello_session(h), *two = second_session(h);
+   hold_receipts = true;
+   send_cell(two, golden_write, 2, NULL, 1);
+   hold_receipts = false;
+   Hfs9pEntry *pin = session_entry(h, two->session, 2);
+   assert(pin && h->pending == (int)(pin - h->entries));
+   send_cell(one, golden_create, 2, NULL, 1);
+   send_cell(one, golden_create, 3, NULL, 1);
+   Hfs9pEntry *second = session_entry(h, one->session, 2);
+   Hfs9pEntry *third = session_entry(h, one->session, 3);
+   assert(second && third && second->complete && third->complete &&
+       !second->issued && !third->issued);
+   assert(fetch(two, 2, 2) == 3 && h->pending == -1 && !second->issued);
+   assert(fetch(one, 3, 2) == 3);
+   assert(second->issued && third->issued &&
+       second->native_cell < third->native_cell);
+   hfs9p_connection_delete(one);
+   hfs9p_connection_delete(two);
+   shutdown_endpoint(h);
+   reset_fixtures();
+}
+
+typedef struct {
+   Hfs9pConnection *connection;
+   pthread_barrier_t *start;
+   uint64_t cell;
+} OrderSender;
+
+/* One guest worker: waits for the others, then sends its own cell. Higher
+ * cells start a little earlier, as a guest whose lower cell's SEND yielded
+ * the writer after CAPACITY or a busy fixed tag. */
+static void *
+order_sender_cb(void *arg) {
+   OrderSender *s = arg;
+   (void)pthread_barrier_wait(s->start);
+   struct timespec delay = {0, (long)(9 - s->cell) * 300000L};
+   (void)nanosleep(&delay, NULL);
+   send_cell(s->connection, golden_create, s->cell, NULL, 1);
+   return (NULL);
+}
+
+/* e64: concurrent SENDs of one session's guest cells 2..9 arrive in any
+ * order and contend for the endpoint mutex (CAPACITY retries), yet native
+ * numbers follow guest order. Before e64 each cell was forwarded when its
+ * own SEND completed, so the native order followed arrival. */
+static void
+order_concurrent_test(void) {
+   Hfs9p *h = new_endpoint();
+   Hfs9pConnection *one = hello_session(h);
+   pthread_barrier_t start;
+   pthread_t threads[8];
+   OrderSender senders[8];
+   assert(!pthread_barrier_init(&start, NULL, 8));
+   for (unsigned i = 0; i < 8; i++) {
+      senders[i] = (OrderSender){one, &start, 9 - i};
+      assert(!pthread_create(&threads[i], NULL, order_sender_cb, &senders[i]));
+   }
+   for (unsigned i = 0; i < 8; i++)
+      assert(!pthread_join(threads[i], NULL));
+   assert(!pthread_barrier_destroy(&start));
+   for (uint64_t cell = 9; cell >= 2; cell--)
+      assert(fetch(one, cell, 2) == 3);
+   for (uint64_t cell = 2; cell < 9; cell++)
+      assert(entry(h, cell)->native_cell < entry(h, cell + 1)->native_cell);
+   assert(h->high == 9);
+   hfs9p_connection_delete(one);
+   shutdown_endpoint(h);
+   reset_fixtures();
+}
+
+/* e64, the zq3-r6 R6-2 shape: a later cell arrives before an earlier donor
+ * send of its session and waits for it; an unseen cell is waited for only
+ * until the hold runs out, and then arrives late without a hold. */
+static void
+order_gap_test(void) {
+   Hfs9p *h = new_endpoint();
+   Hfs9pConnection *c = hello_session(h);
+   send_cell(c, golden_create, 2, NULL, 1);
+   assert(fetch(c, 2, 2) == 3);
+   char ack[128];
+   ack_string(entry(h, 2), ack);
+   send_cell(c, golden_create, 4, NULL, 1); /* The QUERY 49 of R6-2. */
+   assert(!entry(h, 4)->issued && h->high == 2);
+   send_cell(c, golden_create, 3, ack, 1); /* The donor VIEW_WAIT 48. */
+   assert(entry(h, 3)->issued && entry(h, 3)->native_cell == 3 && !entry(h, 2));
+   assert(fetch(c, 4, 2) == 3 && entry(h, 4)->native_cell == 4);
+   send_cell(c, golden_create, 6, NULL, 1);
+   assert(!entry(h, 6)->issued && h->high == 4);
+   expire_order(h);
+   assert(fetch(c, 6, 2) == 3 && entry(h, 6)->native_cell == 5);
+   send_cell(c, golden_create, 5, NULL, 1);
+   assert(entry(h, 5)->issued && entry(h, 5)->native_cell == 6);
+   hfs9p_connection_delete(c);
+   shutdown_endpoint(h);
+   reset_fixtures();
+}
+
+static Hfs9pLedger *
+refusal_ledger(const char *base, const char *name, int *directory) {
+   char path[4096];
+   (void)snprintf(path, sizeof(path), "%s-%s", base, name);
+   assert(!mkdir(path, 0700));
+   *directory = open(path, O_RDONLY | O_DIRECTORY);
+   assert(*directory >= 0);
+   Hfs9pLedger *ledger;
+   assert(!hfs9p_ledger_new(&ledger, *directory, "bridge"));
+   return (ledger);
+}
+
+/* Restores the last protected ledger bytes into a detached decoder. */
+static Hfs9p *
+restored_ledger(Hfs9pLedger *ledger, const Hfs9p *h) {
+   uint8_t *bytes;
+   size_t length;
+   assert(!hfs9p_ledger_load(ledger, &bytes, &length));
+   Hfs9p *restored = calloc(1, sizeof(*restored));
+   assert(restored);
+   restored->endpoint = h->endpoint;
+   for (unsigned i = 0; i < HFS9P_ENTRIES; i++)
+      restored->entries[i].donor = -1;
+   assert(!_restore_bytes(restored, bytes, length));
+   free(bytes);
+   return (restored);
+}
+
+/* Session with HELLO 1 and a responded guest cell 2, the donor that guest
+ * cell 3 reclaims. */
+static Hfs9pConnection *
+donor_session(Hfs9p *h, char ack[128]) {
+   Hfs9pConnection *c = hello_session(h);
+   send_cell(c, golden_create, 2, NULL, 1);
+   assert(fetch(c, 2, 2) == 3);
+   ack_string(entry(h, 2), ack);
+   return (c);
+}
+
+/* e64: ESTALE, EINVAL and a first-attempt EACCES for a donor send fail the
+ * guest cell back. The writer is free, the donor and the native number stay,
+ * the cell is refused for good, and the ledger no longer replays it. */
+static void
+refusal_permanent_test(const char *base) {
+   const int errors[] = {ESTALE, EINVAL, EACCES};
+   const char *names[] = {"estale", "einval", "eacces"};
+   for (unsigned k = 0; k < 3; k++) {
+      int directory;
+      Hfs9pLedger *ledger = refusal_ledger(base, names[k], &directory);
+      Hfs9p *h = new_endpoint_with_ledger(ledger);
+      char ack[128];
+      Hfs9pConnection *c = donor_session(h, ack);
+      refuse_errno = errors[k];
+      send_cell(c, golden_create, 3, ack, 4);
+      refuse_errno = 0;
+      assert(refused_writes == 1 && !entry(h, 3) && h->pending == -1);
+      assert(h->high == 2 && entry(h, 2) && entry(h, 2)->responded);
+      assert(_seen(&h->sessions[0], 3) && fetch(c, 3, 2) == 4);
+      Hfs9p *restored = restored_ledger(ledger, h);
+      assert(restored->pending == -1 && !entry(restored, 3) &&
+          entry(restored, 2) && restored->high == 2 &&
+          _seen(&restored->sessions[0], 3));
+      _discard_recovery(restored);
+      send_cell(c, golden_create, 4, ack, 1);
+      assert(entry(h, 4)->issued && entry(h, 4)->native_cell == 3 && !entry(h, 2));
+      hfs9p_connection_delete(c);
+      shutdown_endpoint(h);
+      hfs9p_ledger_delete(ledger);
+      assert(!close(directory));
+      reset_fixtures();
+   }
+}
+
+/* e64: a transient (EAGAIN) or uncertain (EIO, EHOSTDOWN, unclassified
+ * EPERM) refusal, and EACCES on a replay, keep the exact candidate pinned
+ * and protected; the identical replay is then admitted. */
+static void
+refusal_transient_test(const char *base) {
+   const int errors[] = {EAGAIN, EIO, EHOSTDOWN, EPERM};
+   const char *names[] = {"eagain", "eio", "ehostdown", "eperm"};
+   for (unsigned k = 0; k < 4; k++) {
+      int directory;
+      Hfs9pLedger *ledger = refusal_ledger(base, names[k], &directory);
+      Hfs9p *h = new_endpoint_with_ledger(ledger);
+      char ack[128];
+      Hfs9pConnection *c = donor_session(h, ack);
+      refuse_errno = errors[k];
+      send_cell(c, golden_create, 3, ack, 1);
+      Hfs9pEntry *e = entry(h, 3);
+      assert(e && e->uncertain && !e->issued && e->native_cell == 3);
+      assert(h->pending == (int)(e - h->entries) && h->high == 2);
+      refuse_errno = EACCES; /* A replay may follow a lost admission. */
+      assert(fetch_once(c, 3) == 2 && h->pending == (int)(e - h->entries));
+      refuse_errno = 0;
+      Hfs9p *restored = restored_ledger(ledger, h);
+      Hfs9pEntry *kept = entry(restored, 3);
+      assert(kept && restored->pending == (int)(kept - restored->entries) &&
+          kept->native_total == e->native_total &&
+          !memcmp(kept->native, e->native, e->native_total));
+      _discard_recovery(restored);
+      assert(fetch(c, 3, 2) == 3 && e->issued && !entry(h, 2) &&
+          h->high == 3 && h->pending == -1);
+      hfs9p_connection_delete(c);
+      shutdown_endpoint(h);
+      hfs9p_ledger_delete(ledger);
+      assert(!close(directory));
+      reset_fixtures();
+   }
+}
+
 int
 main(int argc, char **argv) {
    assert(argc == 2);
@@ -1414,6 +1722,11 @@ main(int argc, char **argv) {
    session_tests();
    contention_tests();
    assembly_accounting_tests();
+   order_pinned_writer_test();
+   order_concurrent_test();
+   order_gap_test();
+   refusal_permanent_test(argv[1]);
+   refusal_transient_test(argv[1]);
    assert(atomic_load(&io_begins) > 0);
    assert(atomic_load(&io_begins) == atomic_load(&io_ends));
    puts("PASS: C parser/backend transport boundaries (no FUSE/runtime proof)");
