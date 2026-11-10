@@ -34,7 +34,8 @@ const version = EnrollmentVersion
 
 // Bounds are signed, finite, separate capacities. Reservations preown 128KiB of
 // manifest/freeze/control bytes plus actual provider claim/result/source credit.
-// Sources preown three complete snapshot copies before any capture starts.
+// Sources preown three complete snapshot copies before any capture starts, and
+// must be at least MinSources(domains) (source_floor.go).
 type Bounds struct {
 	WorkBytes                                                  int64
 	Tickets, ControlTickets, Reservations, Identities, Sources int
@@ -213,7 +214,12 @@ func New(ctx context.Context, c Config) (*Controller, error) {
 		return nil, err
 	}
 	e := c.Authorization.Enrollment
-	if e.Version != version || !e.ID.Valid() || e.PageSize != 4096 || len(e.Domains) < 1 || len(e.Domains) > 64 || len(e.Domains) != len(c.Authorization.Domains) || len(e.TicketFamilies) != len(e.Domains) || !ed25519.Verify(c.Operator, raw, c.Authorization.Operator) || !validBounds(e.Bounds) {
+	// A Sources bound below the floor would pass every signature and then
+	// refuse non-read ops with NoSpace at run time; refuse it by name here.
+	if err = CheckSourceFloor(e.Bounds, len(e.Domains)); err != nil {
+		return nil, err
+	}
+	if e.Version != version || !e.ID.Valid() || e.PageSize != 4096 || len(e.Domains) < 1 || len(e.Domains) > 64 || len(e.Domains) != len(c.Authorization.Domains) || len(e.TicketFamilies) != len(e.Domains) || !ed25519.Verify(c.Operator, raw, c.Authorization.Operator) || !validBounds(e.Bounds, len(e.Domains)) {
 		return nil, fsapi.Permission
 	}
 	seen := map[string]bool{}
@@ -507,8 +513,10 @@ func (c *Controller) target(scope guestbridge.Context, source fsservice.Controll
 	return guestbridge.ViewTarget{Kind: "CONTROLLED_LOCAL", Cut: &guestbridge.LocalViewCut{EnrollmentHash: c.enrollmentHash, ProfileHash: c.profileHash, ContextHash: digest(scope), JournalIncarnation: source.Journal.Incarnation.String(), JournalEpoch: source.Through.Position.Epoch, JournalPosition: source.Through.Position.Sequence, JournalHash: hex.EncodeToString(source.Through.SHA256[:]), StateHash: hash(source.State), VisibilityGeneration: source.Visibility.String()}}
 }
 
+// remember retains a captured cut (deduplicated by sourceKey) within the
+// Sources bound; admissions prune unpinned cuts first (source_pruning.go).
 func (c *Controller) remember(source fsservice.ControlledViewSource) error {
-	key := digest(source.Through) + hash(source.State)
+	key := sourceKey(source)
 	if _, ok := c.state.Sources[key]; ok {
 		return nil
 	}
@@ -547,8 +555,12 @@ func (c *Controller) fail(name string) error {
 	return nil
 }
 
-func validBounds(b Bounds) bool {
-	return b.Tickets > 0 && b.Tickets <= 65536 && b.ControlTickets >= 4 && b.ControlTickets <= 16384 && b.Reservations > 0 && b.Reservations <= 64 && b.Identities >= b.Tickets+b.ControlTickets && b.Identities <= 65536 && b.Sources >= 2 && b.Sources <= 128 && b.SourceBytes >= 4096 && b.SourceBytes <= 16<<20 && b.LedgerBytes >= b.Reservations*(128<<10)+int(b.SourceBytes)*b.Sources*3+(b.Tickets+b.ControlTickets)*(128<<10)+b.Identities*(32<<10) && b.LedgerBytes <= 512<<20 && b.WorkBytes > 0 && b.WorkBytes <= 2<<30
+// validBounds checks every signed capacity. Sources must lie in
+// [MinSources(domains), MaxSources] (source_floor.go); the ledger preowns
+// three complete copies of each source plus fixed per-reservation, ticket and
+// identity bytes.
+func validBounds(b Bounds, domains int) bool {
+	return b.Tickets > 0 && b.Tickets <= 65536 && b.ControlTickets >= 4 && b.ControlTickets <= 16384 && b.Reservations > 0 && b.Reservations <= 64 && b.Identities >= b.Tickets+b.ControlTickets && b.Identities <= 65536 && CheckSourceFloor(b, domains) == nil && b.SourceBytes >= 4096 && b.SourceBytes <= 16<<20 && b.LedgerBytes >= b.Reservations*(128<<10)+int(b.SourceBytes)*b.Sources*3+(b.Tickets+b.ControlTickets)*(128<<10)+b.Identities*(32<<10) && b.LedgerBytes <= 512<<20 && b.WorkBytes > 0 && b.WorkBytes <= 2<<30
 }
 
 func privateDirectory(path string) error {

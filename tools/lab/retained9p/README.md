@@ -922,9 +922,15 @@ files exported; regenerate with `HFS_BOOTSTRAP_FIXTURE_DIR=NEW_DIR go test
 files over). Its guest budget is the example spec's (reservations 1024,
 received 256, 512/512 MiB ordinary/control, as in the zq3-r4 bundle); x54
 regenerated it after w54's guest floors refused the original 32 / 128 MiB.
-`TestBootstrapFixtureAboveGuestFloor` in the same Go file checks the
-committed budget against `checkGuestFloor` (`guestfloor.go`), so the fixture
-cannot fall below the floors silently; the Python tests only replay it.
+Its view bounds are also the example spec's: `Sources` 12, `LedgerBytes`
+224 MiB, `WorkBytes` 844 MiB, `SourceBytes` 6 MiB. i64 regenerated it when
+`Sources` rose from zq3-r7's 2, which refused every non-read op, to clear
+the `2*domains + 4` = 8 floor (`viewcontrol.MinSources`).
+`TestBootstrapFixtureAboveGuestFloor` and
+`TestBootstrapFixtureAboveSourceFloor` in the same Go file check the
+committed budget against `checkGuestFloor` (`guestfloor.go`) and
+`viewcontrol.CheckSourceFloor`, so the fixture cannot fall below either floor
+silently; the Python tests only replay it.
 `test_bootstrap_remote.py` covers every remote action against a temporary
 root, including the `--seconds` bound, and runs the `guest-stat` lstat
 program for real there. Not covered:

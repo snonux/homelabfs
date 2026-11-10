@@ -113,9 +113,20 @@ func terminal(raw json.RawMessage) bool {
 	return false
 }
 
+// compact runs only after VIEW_RETIRE advanced a protected floor: it
+// tombstones retired tickets, drops closed reservations and inactive leases no
+// unretired ticket still names, then every source cut nothing pins any more.
+// Admissions prune unpinned cuts too (source_pruning.go), with the same pins.
 func (c *Controller) compact() {
-	// Tombstones retain the original operation/hash and complete principal key.
-	// Only an already protected floor permits discarding full request/reply bytes.
+	c.tombstoneRetired()
+	c.dropUnreferencedLeases()
+	c.dropUnpinnedSources("")
+}
+
+// tombstoneRetired keeps the original operation/hash and complete principal
+// key of retired tickets. Only an already protected floor permits discarding
+// full request/reply bytes.
+func (c *Controller) tombstoneRetired() {
 	for key, t := range c.state.Tickets {
 		if c.retired(t) {
 			t.Payload = nil
@@ -127,8 +138,12 @@ func (c *Controller) compact() {
 			c.state.Tickets[key] = t
 		}
 	}
-	leases := map[string]bool{}
-	reservations := map[string]bool{}
+}
+
+// ticketReferences collects the leases and reservations that unretired
+// tickets' requests and replies still name, so a replay can resolve them.
+func (c *Controller) ticketReferences() (leases, reservations map[string]bool) {
+	leases, reservations = map[string]bool{}, map[string]bool{}
 	for _, t := range c.state.Tickets {
 		if c.retired(t) {
 			continue
@@ -162,6 +177,13 @@ func (c *Controller) compact() {
 			}
 		}
 	}
+	return leases, reservations
+}
+
+// dropUnreferencedLeases deletes closed reservations and inactive leases that
+// no unretired ticket or retained reservation names.
+func (c *Controller) dropUnreferencedLeases() {
+	leases, reservations := c.ticketReferences()
 	for id, r := range c.state.Reservations {
 		if r.Status == "CLOSED" && !reservations[id] {
 			delete(c.state.Reservations, id)
@@ -172,30 +194,6 @@ func (c *Controller) compact() {
 	for id, l := range c.state.Leases {
 		if !l.Active && !leases[id] {
 			delete(c.state.Leases, id)
-		}
-	}
-	targets := map[string]bool{}
-	for _, l := range c.state.Leases {
-		targets[digest(l.Lease.Target)] = true
-	}
-	if c.state.Recall != nil {
-		for _, raw := range c.state.Recall.Events {
-			var e struct{ Target *guestbridge.ViewTarget }
-			if json.Unmarshal(raw, &e) == nil && e.Target != nil {
-				targets[digest(*e.Target)] = true
-			}
-		}
-	}
-	for key, source := range c.state.Sources {
-		pinned := false
-		for _, enrollment := range c.config.Authorization.Enrollment.Domains {
-			if targets[digest(c.target(enrollment.Scope, source))] {
-				pinned = true
-				break
-			}
-		}
-		if !pinned {
-			delete(c.state.Sources, key)
 		}
 	}
 }

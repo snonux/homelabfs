@@ -38,7 +38,7 @@ func artifactFixture(t *testing.T) ([]GuestProvisionGroup, GuestArtifactBudget, 
 	operator := artifactKey(1)
 	groups := make([]GuestProvisionGroup, 2)
 	for gi := range groups {
-		e := viewcontrol.Enrollment{Version: viewcontrol.EnrollmentVersion, ID: artifactID(100 + gi), PageSize: 4096, Bounds: viewcontrol.Bounds{WorkBytes: 64 << 20, Tickets: 8, ControlTickets: 8, Reservations: 2, Identities: 32, Sources: 4, SourceBytes: 4096, LedgerBytes: 8 << 20}, BaselineStateHash: hashBytes([]byte("baseline"))}
+		e := viewcontrol.Enrollment{Version: viewcontrol.EnrollmentVersion, ID: artifactID(100 + gi), PageSize: 4096, Bounds: viewcontrol.Bounds{WorkBytes: 64 << 20, Tickets: 8, ControlTickets: 8, Reservations: 2, Identities: 32, Sources: viewcontrol.MinSources(3), SourceBytes: 4096, LedgerBytes: 8 << 20}, BaselineStateHash: hashBytes([]byte("baseline"))}
 		e.Baseline = record.FrameRef{StreamKind: 1, Position: fsapi.Position{Volume: artifactID(10), Generation: artifactID(11), Configuration: artifactID(12), Epoch: 1, Sequence: 1}, SHA256: record.Hash{1}}
 		for di := range 3 {
 			n := gi*3 + di
@@ -337,6 +337,25 @@ func TestGuestArtifactsResignedSemanticRefusals(t *testing.T) {
 				t.Fatal("signed malformed original")
 			}
 		})
+	}
+}
+
+// TestGuestArtifactsRefuseSourcesBelowFloor checks the signer refuses a
+// Sources bound below viewcontrol.MinSources for the group's domain count
+// (i64; zq3-r7 signed 2 and every non-read op then failed with NoSpace).
+// Also checks that the bound at the floor itself still signs.
+func TestGuestArtifactsRefuseSourcesBelowFloor(t *testing.T) {
+	g, b, k := artifactFixture(t)
+	e := &g[0].Authorization.Enrollment
+	e.Bounds.Sources = viewcontrol.MinSources(len(e.Domains)) - 1
+	resignArtifact(t, &g[0], k)
+	if _, err := SignGuestProvision(artifactUUID(5), artifactUUID(16), g, b, k); !errors.Is(err, fsapi.Invalid) {
+		t.Fatalf("below-floor Sources: %v", err)
+	}
+	e.Bounds.Sources++
+	resignArtifact(t, &g[0], k)
+	if _, err := SignGuestProvision(artifactUUID(5), artifactUUID(16), g, b, k); err != nil {
+		t.Fatalf("Sources at the floor refused: %v", err)
 	}
 }
 

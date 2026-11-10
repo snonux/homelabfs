@@ -174,7 +174,12 @@ func validateRuntimeConfig(ctx context.Context, c RuntimeConfig) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if c.Version != "homelabfs-controlled-runtime/1" || len(c.Operator) != ed25519.PublicKeySize || len(c.Scopes) < 1 || len(c.Scopes) > 16 || len(c.HostKeys) != len(c.Scopes) || len(c.GuestKeys) != len(c.Scopes) || c.BootstrapSeconds < 1 || c.BootstrapSeconds > 120 || c.Capabilities < 1 || c.CapabilityIdentities < c.Capabilities || c.CredentialRevisions < 2 || !guestViewBounds(c.Views) {
+	// Each scope is one enrolled domain; a Views.Sources below the floor
+	// would start and then refuse every non-read op (zq3-r7 R7-2).
+	if err := viewcontrol.CheckSourceFloor(c.Views, len(c.Scopes)); err != nil {
+		return fmt.Errorf("runtime Views: %w", err)
+	}
+	if c.Version != "homelabfs-controlled-runtime/1" || len(c.Operator) != ed25519.PublicKeySize || len(c.Scopes) < 1 || len(c.Scopes) > 16 || len(c.HostKeys) != len(c.Scopes) || len(c.GuestKeys) != len(c.Scopes) || c.BootstrapSeconds < 1 || c.BootstrapSeconds > 120 || c.Capabilities < 1 || c.CapabilityIdentities < c.Capabilities || c.CredentialRevisions < 2 || !guestViewBounds(c.Views, len(c.Scopes)) {
 		return fsapi.Invalid
 	}
 	if c.Service.LogicalBytes != 4<<20 || c.Service.Queue < 1 || c.Service.Queue > 64 || c.Service.IOBytes < 1 || c.Service.IOBytes > 65536 || c.Service.Handles < 1 || c.Service.Handles > 1024 || c.Service.Lookups < 1 || c.Service.Lookups > 4096 || c.Service.Reservations < 1 || c.Service.Reservations > 4096 || c.Service.Locks < 1 || c.Service.Locks > 4096 {

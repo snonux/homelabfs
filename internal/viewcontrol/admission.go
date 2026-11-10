@@ -40,59 +40,60 @@ func (c *Controller) Admit(ctx context.Context, b guestbridge.Binding) (controll
 			c.mu.Unlock()
 		}
 	}()
-	if _, sealed := c.state.Terminal[b.Context.Session]; sealed {
-		return nil, fsapi.Permission
-	}
-	if c.closed.Load() || c.poisoned.Load() || c.state.Recovery {
-		return nil, fsapi.Unavailable
-	}
-	recovery, err := c.provider(b.Context).IsRecoveryBinding(ctx, b)
-	if err != nil {
+	if err := c.admissionBarrier(ctx, b); err != nil {
 		return nil, err
-	}
-	if !recovery {
-		if err = c.viewReady(ctx); err != nil {
-			return nil, err
-		}
 	}
 	drain := b.Call.Intent.Opcode == "DRAIN_WRITE"
-	if drain {
-		if err := c.validateDrain(b); err != nil {
-			return nil, err
-		}
-		if c.state.Recall.Phase != "DRAIN" || !c.allAcked("STOPPED") {
-			return nil, fsapi.WouldBlock
-		}
-	} else {
-		if c.state.Recall != nil {
-			return nil, fsapi.WouldBlock
-		}
-		if c.conflicts(readOperation(b.Call.Intent.Opcode)) {
-			if err := c.startRecall(ctx); err != nil {
-				return nil, err
-			}
-			return nil, fsapi.WouldBlock
-		}
-	}
-	if drain {
-		if !c.sourceCapacity(ctx, 0) {
-			return nil, fsapi.NoSpace
-		}
-	} else if !readOperation(b.Call.Intent.Opcode) && !c.sourceCapacity(ctx, 1) {
-		return nil, fsapi.NoSpace
-	}
-	source, err := c.capture(ctx)
+	// The cut is captured, unpinned cuts are pruned and capacity is charged
+	// only for a cut not yet retained (source_pruning.go).
+	source, err := c.admitCut(ctx, !drain && readOperation(b.Call.Intent.Opcode), drain)
 	if err != nil {
-		return nil, err
-	}
-	if err = c.remember(source); err != nil {
-		return nil, err
-	}
-	if err = c.save(); err != nil {
 		return nil, err
 	}
 	allowed = true
 	return &permit{controller: c, source: source, drain: &b}, nil
+}
+
+// admissionBarrier refuses sealed, closed or recovering controllers, waits
+// for view readiness (except provider recovery bindings) and applies the
+// all-domain barrier: a DRAIN_WRITE only in the DRAIN phase after every
+// STOPPED, anything else only outside a recall and after a conflicting lease
+// or reservation started one (WouldBlock until REOPEN).
+func (c *Controller) admissionBarrier(ctx context.Context, b guestbridge.Binding) error {
+	if _, sealed := c.state.Terminal[b.Context.Session]; sealed {
+		return fsapi.Permission
+	}
+	if c.closed.Load() || c.poisoned.Load() || c.state.Recovery {
+		return fsapi.Unavailable
+	}
+	recovery, err := c.provider(b.Context).IsRecoveryBinding(ctx, b)
+	if err != nil {
+		return err
+	}
+	if !recovery {
+		if err = c.viewReady(ctx); err != nil {
+			return err
+		}
+	}
+	if b.Call.Intent.Opcode == "DRAIN_WRITE" {
+		if err := c.validateDrain(b); err != nil {
+			return err
+		}
+		if c.state.Recall.Phase != "DRAIN" || !c.allAcked("STOPPED") {
+			return fsapi.WouldBlock
+		}
+		return nil
+	}
+	if c.state.Recall != nil {
+		return fsapi.WouldBlock
+	}
+	if c.conflicts(readOperation(b.Call.Intent.Opcode)) {
+		if err := c.startRecall(ctx); err != nil {
+			return err
+		}
+		return fsapi.WouldBlock
+	}
+	return nil
 }
 
 // AdmitNative applies the same all-domain barrier to actual native commands.
@@ -101,15 +102,7 @@ func (c *Controller) Admit(ctx context.Context, b guestbridge.Binding) (controll
 // the controller admission lane or resources required by dirty drains.
 func (c *Controller) AdmitNative(ctx context.Context, cred fsapi.Cred, command fsapi.Command) (fsservice.ControlledPermit, error) {
 	scope := c.config.Authorization.Enrollment.Domains[0].Scope
-	authorization := command.Clone()
-	authorization.Name = ""
-	authorization.NewName = ""
-	authorization.After = ""
-	raw, err := canonical(struct {
-		Credentials                   fsapi.Cred
-		Command                       fsapi.Command
-		NameHex, NewNameHex, AfterHex string
-	}{cred, authorization, hex.EncodeToString([]byte(command.Name)), hex.EncodeToString([]byte(command.NewName)), hex.EncodeToString([]byte(command.After))})
+	raw, err := nativeAuthorization(cred, command)
 	if err != nil {
 		return nil, err
 	}
@@ -147,21 +140,26 @@ func (c *Controller) AdmitNative(ctx context.Context, cred fsapi.Cred, command f
 		}
 		return nil, fsapi.WouldBlock
 	}
-	if !read && !c.sourceCapacity(ctx, 1) {
-		return nil, fsapi.NoSpace
-	}
-	source, err := c.capture(ctx)
+	source, err := c.admitCut(ctx, read, false)
 	if err != nil {
-		return nil, err
-	}
-	if err = c.remember(source); err != nil {
-		return nil, err
-	}
-	if err = c.save(); err != nil {
 		return nil, err
 	}
 	allowed = true
 	return &permit{controller: c, source: source, nativeCommand: command}, nil
+}
+
+// nativeAuthorization is the canonical request a native command is
+// authorized as: names travel hex-encoded beside the cleared command.
+func nativeAuthorization(cred fsapi.Cred, command fsapi.Command) (json.RawMessage, error) {
+	authorization := command.Clone()
+	authorization.Name = ""
+	authorization.NewName = ""
+	authorization.After = ""
+	return canonical(struct {
+		Credentials                   fsapi.Cred
+		Command                       fsapi.Command
+		NameHex, NewNameHex, AfterHex string
+	}{cred, authorization, hex.EncodeToString([]byte(command.Name)), hex.EncodeToString([]byte(command.NewName)), hex.EncodeToString([]byte(command.After))})
 }
 
 // Check verifies the exact admitted durable/state cut on the worker. No fresh

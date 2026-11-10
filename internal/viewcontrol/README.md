@@ -10,6 +10,10 @@ Construction requires a real `fsservice.Service` with immutable
 `RequireControlledViews: true`, one or more real `controlledvalidation.Provider`
 instances over that exact service, operator/host/guest signatures over the full
 inventory/bounds/baseline, and every method of the external `Facts` interface.
+`Bounds.Sources` must be at least `MinSources(domains) = 2*domains + 4`.
+Construction refuses a lower value with a named `fsapi.Invalid` error;
+`source_floor.go` derives the floor from `sourceCapacity`. Admissions outside
+a recall prune cuts that no lease or recall event pins (`source_pruning.go`).
 Each domain's origin_journal must identify the actual admitted local journal
 incarnation. Missing native/platform/source continuity facts refuse construction
 or keep operations blocked. A new controller never resets a bridge endpoint:

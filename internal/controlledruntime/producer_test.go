@@ -212,7 +212,7 @@ func newSourceRigDomainsOwnedSupervisor(t *testing.T, protocol guestbridge.Proto
 	r.artifactGuest = append(ed25519.PrivateKey(nil), guest...)
 	r.key = key()
 	enrolled := controlledvalidation.Enrollment{Protocol: &protocol, Profile: profile, Scope: r.scope, Endpoint: endpoint, ServingGeneration: c.Workspace.ID, Ledger: testUUID(65), Journal: journal, HostKey: r.key.Public().(ed25519.PublicKey), GuestKey: guest.Public().(ed25519.PublicKey)}
-	e := viewcontrol.Enrollment{Version: viewcontrol.EnrollmentVersion, ID: testUUID(99), Domains: []controlledvalidation.Enrollment{enrolled}, TicketFamilies: []viewcontrol.TicketFamilies{{Acquisition: viewcontrol.TicketFamily{Anchor: testUUID(110).String(), Nonce: testUUID(111).String()}, Control: viewcontrol.TicketFamily{Anchor: testUUID(110).String(), Nonce: testUUID(112).String()}}}, PageSize: 4096, Bounds: viewcontrol.Bounds{Tickets: 16, ControlTickets: 8, Reservations: 4, Identities: 64, Sources: 8, SourceBytes: 64 << 10, LedgerBytes: 12 << 20, WorkBytes: 192 << 20}}
+	e := viewcontrol.Enrollment{Version: viewcontrol.EnrollmentVersion, ID: testUUID(99), Domains: []controlledvalidation.Enrollment{enrolled}, TicketFamilies: []viewcontrol.TicketFamilies{{Acquisition: viewcontrol.TicketFamily{Anchor: testUUID(110).String(), Nonce: testUUID(111).String()}, Control: viewcontrol.TicketFamily{Anchor: testUUID(110).String(), Nonce: testUUID(112).String()}}}, PageSize: 4096, Bounds: viewcontrol.Bounds{Tickets: 16, ControlTickets: 8, Reservations: 4, Identities: 64, Sources: max(8, viewcontrol.MinSources(count)), SourceBytes: 64 << 10, LedgerBytes: 16 << 20, WorkBytes: 192 << 20}}
 	for i, peer := range r.peers[1:] {
 		peer.key = key()
 		domain := enrolled

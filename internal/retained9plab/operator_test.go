@@ -71,7 +71,7 @@ func fixture(t *testing.T) (string, EnrollmentRequest, ed25519.PrivateKey) {
 	h := hex.EncodeToString(hash[:])
 	e := viewcontrol.Enrollment{Version: viewcontrol.EnrollmentVersion, ID: testID(100), PageSize: 4096,
 		Bounds: viewcontrol.Bounds{WorkBytes: 64 << 20, Tickets: 8, ControlTickets: 8,
-			Reservations: 2, Identities: 32, Sources: 4, SourceBytes: 4096, LedgerBytes: 8 << 20},
+			Reservations: 2, Identities: 32, Sources: viewcontrol.MinSources(2), SourceBytes: 4096, LedgerBytes: 8 << 20},
 		BaselineStateHash: h,
 		Baseline: record.FrameRef{StreamKind: 1, Position: fsapi.Position{Volume: testID(10),
 			Generation: testID(11), Configuration: testID(12), Epoch: 1, Sequence: 1}, SHA256: record.Hash{1}}}
