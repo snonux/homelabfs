@@ -486,10 +486,33 @@ chunk of a multi-chunk cell, which can only be refused before allocation
 single-chunk cell's only chunk is its final chunk, so its rules are
 unchanged.
 
-**Residual race.** An authentication ESTALE or credential EACCES on the
+**First attempt to reach the final chunk.** After a middle-chunk refusal
+every retry is a replay, but the replay rules (ESTALE and EACCES stay
+pinned) exist only because an earlier attempt could have been admitted, and
+only an attempt that wrote the final chunk can be. So the final-chunk
+classification asks whether an earlier attempt wrote the final chunk
+(`final_sent`), not whether this is a replay. Without that, a replay whose
+final chunk validation refuses (guest-freshness ESTALE, a donor's
+`checkReclaim` EACCES) stayed pinned while the runtime discarded the cell,
+and every later replay was refused for good. `final_sent` is set before the
+final chunk is written. A replay that is the first to reach it protects a
+snapshot first; a first attempt does not (that would cost one protection
+per cell), and its mark reaches the ledger with the next snapshot. The mark
+is ledger entry bit 4096, accepted in every ledger format but only on the
+pending candidate, and cleared on issue; an exporter from before w64
+refuses a ledger that carries it. On restore, a pending candidate without
+the uncertain mark was interrupted in its first attempt, which may have
+written its final chunk unprotected, so it is restored as sent and keeps
+the replay rules.
+
+**Residual cases.** An authentication ESTALE or credential EACCES on the
 final chunk looks the same as a validation refusal. A first attempt then
 still fails back although the runtime kept the other chunks. The window is
-now one chunk write instead of every chunk after the first.
+now one chunk write instead of every chunk after the first. A final-chunk
+EINVAL from a frame, cell or chunk check (`writeFrame`, `writeCell`,
+`storeChunk`) also still fails back although the runtime discards nothing;
+the exporter's frames are deterministic, so only an exporter bug can
+produce one.
 
 **What the runtime's refusal record is for.** `discardRefused` keeps the
 latest removed numbered cell (`Refused` in the C8 index) so that a write to
@@ -508,8 +531,15 @@ order) fail on the pre-w64 exporter, which failed them back.
 final chunk still fail back and the next donor send takes the number) is a
 no-change guard. `refusal_original_permanent_test` and
 `refusal_original_inserted_test` now refuse the final chunk, where a
-validation refusal happens. A native rebuild must pick this source up before
-any lab run can show it.
+validation refusal happens (derived from the actual scoped body).
+`refusal_first_chunk_pinned_test` shows that ESTALE on the first chunk of a
+multi-chunk cell is now pinned. `refusal_final_after_mid_test` (a middle-chunk
+ESTALE or EACCES, then a final-chunk validation refusal on the replay, fails
+back, numbered and donor) and `refusal_final_sent_restore_test` (the mark
+survives a restart and keeps a crash replay pinned; a crash in the first
+attempt is restored as sent; two middle-chunk refusals restore without it
+and the final-chunk refusal fails back) fail on the first w64 commit. A
+native rebuild must pick this source up before any lab run can show it.
 
 ## Controlled terminal owner (`614`)
 

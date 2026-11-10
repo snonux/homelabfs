@@ -1809,8 +1809,9 @@ final_chunk(const char *body) {
 /* Bypasses c's ordinary multi-chunk guest cell 2 (p64): the first chunk of
  * its native write is refused EAGAIN (no runtime credit, so no native
  * number), and control QUERY guest cell 3 then takes the next native
- * number. Cell 2 stays complete and unforwarded, with no candidate. */
-static void
+ * number. Cell 2 stays complete and unforwarded, with no candidate. Returns
+ * the offset of the final chunk of cell 2's scoped body. */
+static uint32_t
 bypass_ordinary(Hfs9pConnection *c) {
    Hfs9p *h = c->endpoint;
    char *body = rewrite_body(large_write, 2, NULL);
@@ -1819,6 +1820,7 @@ bypass_ordinary(Hfs9pConnection *c) {
    assert(send_body(c, scoped, 2) == 1);
    send_query(c, 3);
    refuse_ordinary_errno = 0;
+   uint32_t final = final_chunk(scoped);
    free(scoped);
    free(body);
    Hfs9pEntry *bypassed = session_entry(h, c->session, 2);
@@ -1828,6 +1830,7 @@ bypass_ordinary(Hfs9pConnection *c) {
    assert(query && query->issued && query->native_cell == h->high);
    assert(h->pending == -1 && refused_writes == 2);
    refused_writes = 0;
+   return (final);
 }
 
 /* p64: a bypassed ordinary cell is refused as a stale guest cell when it is
@@ -1844,10 +1847,10 @@ refusal_original_permanent_test(const char *base) {
    Hfs9pLedger *ledger = refusal_ledger(base, "original-estale", &directory);
    Hfs9p *h = new_endpoint_with_ledger(ledger);
    Hfs9pConnection *one = hello_session(h), *two = second_session(h);
-   bypass_ordinary(one);
+   uint32_t final = bypass_ordinary(one);
    assert(h->high == 3);
    refuse_ordinary_errno = ESTALE;
-   refuse_ordinary_from = final_chunk(large_write); /* After validation. */
+   refuse_ordinary_from = final; /* After validation. */
    assert(fetch_once(one, 2) == 4);
    refuse_ordinary_errno = 0;
    assert(refused_writes == 1 && h->pending == -1 && h->high == 4);
@@ -2181,6 +2184,142 @@ refusal_final_chunk_donor_test(void) {
    }
 }
 
+/* w64 review: a first-attempt ESTALE on the first chunk of a multi-chunk
+ * cell comes before allocation (authentication), so it no longer fails the
+ * cell back and moves the high-water past an unspent number. The cell stays
+ * pinned with its number and is admitted once the refusal clears. */
+static void
+refusal_first_chunk_pinned_test(void) {
+   Hfs9p *h = new_endpoint();
+   Hfs9pConnection *c = hello_session(h);
+   char *body = rewrite_body(large_write, 2, NULL);
+   char *scoped = scope_body(c, body);
+   refuse_chunk_errno = ESTALE;
+   refuse_chunk_offset = 0;
+   assert(send_body(c, scoped, 2) == 1);
+   Hfs9pEntry *e = entry(h, 2);
+   assert(e && e->uncertain && !e->final_sent && e->native_cell == 2 &&
+       h->pending == (int)(e - h->entries) && h->high == 1);
+   assert(fetch_once(c, 2) == 2 && h->pending == (int)(e - h->entries));
+   refuse_chunk_errno = 0;
+   assert(fetch(c, 2, 2) == 3 && e->issued && e->native_cell == 2);
+   assert(rejected_writes == 0);
+   free(scoped);
+   free(body);
+   hfs9p_connection_delete(c);
+   shutdown_endpoint(h);
+   reset_fixtures();
+}
+
+/* w64 review: after a middle-chunk authentication or credential refusal
+ * pins a cell, every retry is a replay. If the retry is the first attempt
+ * to reach the final chunk and validation refuses it there (guest freshness
+ * ESTALE for a numbered cell, checkReclaim EACCES for a donor send), the
+ * runtime discards the cell, so the exporter must fail it back: no earlier
+ * attempt can have been admitted. Before the review fix the replay rules
+ * kept it pinned for good. */
+static void
+refusal_final_after_mid_test(void) {
+   Hfs9p *h = new_endpoint();
+   Hfs9pConnection *c = hello_session(h);
+   char *body = rewrite_body(large_write, 2, NULL);
+   char *scoped = scope_body(c, body);
+   refuse_chunk_errno = ESTALE;
+   refuse_chunk_offset = HFS9P_CHUNK;
+   assert(send_body(c, scoped, 2) == 1 && entry(h, 2)->uncertain);
+   refuse_chunk_offset = final_chunk(scoped);
+   assert(fetch_once(c, 2) == 4);
+   refuse_chunk_errno = 0;
+   assert(h->pending == -1 && h->high == 2 && !entry(h, 2) &&
+       _seen(&h->sessions[c->session], 2));
+   send_cell(c, golden_create, 3, NULL, 1);
+   assert(fetch(c, 3, 2) == 3 && entry(h, 3)->native_cell == 3);
+   free(scoped);
+   free(body);
+   hfs9p_connection_delete(c);
+   shutdown_endpoint(h);
+   reset_fixtures();
+
+   h = new_endpoint();
+   char ack[128];
+   c = donor_session(h, ack);
+   refuse_chunk_errno = EACCES;
+   refuse_chunk_offset = HFS9P_CHUNK;
+   uint32_t final;
+   assert(send_large_donor(c, ack, &final) == 1 && entry(h, 3)->uncertain);
+   refuse_chunk_offset = final;
+   assert(fetch_once(c, 3) == 4);
+   refuse_chunk_errno = 0;
+   assert(h->pending == -1 && h->high == 2 && !entry(h, 3) && entry(h, 2));
+   send_cell(c, golden_create, 4, ack, 1);
+   assert(entry(h, 4)->issued && entry(h, 4)->native_cell == 3);
+   assert(rejected_writes == 0);
+   hfs9p_connection_delete(c);
+   shutdown_endpoint(h);
+   reset_fixtures();
+}
+
+/* One restore case of refusal_final_sent_restore_test: the numbered
+ * multi-chunk cell 2 is refused EIO (uncertain) on its final chunk
+ * (first_final) or on its second chunk, then optionally once more on its
+ * second chunk (second), and the exporter restarts from its ledger. The
+ * restored final_sent must equal sent, and a final-chunk ESTALE then must
+ * keep the cell pinned (sent) or fail it back. */
+static void
+final_sent_case(const char *base, const char *name, bool first_final,
+    bool second, bool sent) {
+   int directory;
+   Hfs9pLedger *ledger = refusal_ledger(base, name, &directory);
+   Hfs9p *h = new_endpoint_with_ledger(ledger);
+   Hfs9pConnection *c = hello_session(h);
+   char *body = rewrite_body(large_write, 2, NULL);
+   char *scoped = scope_body(c, body);
+   uint32_t final = final_chunk(scoped);
+   refuse_chunk_errno = EIO;
+   refuse_chunk_offset = first_final ? final : HFS9P_CHUNK;
+   assert(send_body(c, scoped, 2) == 1);
+   if (second) {
+      refuse_chunk_offset = HFS9P_CHUNK;
+      assert(fetch_once(c, 2) == 2);
+   }
+   h = restart_endpoint(h, &ledger, directory, &c);
+   Hfs9pEntry *e = entry(h, 2);
+   assert(e && h->pending == (int)(e - h->entries) && e->final_sent == sent);
+   refuse_chunk_errno = ESTALE;
+   refuse_chunk_offset = final;
+   assert(fetch_once(c, 2) == (sent ? 2 : 4));
+   refuse_chunk_errno = 0;
+   if (sent)
+      assert(fetch(c, 2, 2) == 3 && e->issued && e->native_cell == 2);
+   else
+      assert(!entry(h, 2) && h->pending == -1 && h->high == 2);
+   assert(rejected_writes == 0);
+   free(scoped);
+   free(body);
+   hfs9p_connection_delete(c);
+   shutdown_endpoint(h);
+   hfs9p_ledger_delete(ledger);
+   assert(!close(directory));
+   reset_fixtures();
+}
+
+/* w64 review: final_sent survives an exporter restart.
+ *  - The final chunk was written (EIO, so possibly admitted) and a later
+ *    attempt's protection persisted the mark: the restored cell keeps the
+ *    replay rules, and a final-chunk ESTALE stays pinned.
+ *  - A crash right after the first attempt wrote its final chunk, before
+ *    any later snapshot: the restored pending candidate has no uncertain
+ *    mark, so it is treated as sent and stays pinned too.
+ *  - Two attempts refused on a middle chunk: the restored candidate is
+ *    uncertain without the mark, so the first final-chunk ESTALE after the
+ *    restart fails it back. */
+static void
+refusal_final_sent_restore_test(const char *base) {
+   final_sent_case(base, "final-sent-persisted", true, true, true);
+   final_sent_case(base, "final-sent-crash", true, false, true);
+   final_sent_case(base, "final-sent-clear", false, true, false);
+}
+
 int
 main(int argc, char **argv) {
    assert(argc == 2);
@@ -2211,6 +2350,9 @@ main(int argc, char **argv) {
    refusal_mid_chunk_donor_test();
    refusal_mid_chunk_numbered_test();
    refusal_final_chunk_donor_test();
+   refusal_first_chunk_pinned_test();
+   refusal_final_after_mid_test();
+   refusal_final_sent_restore_test(argv[1]);
    assert(atomic_load(&io_begins) > 0);
    assert(atomic_load(&io_begins) == atomic_load(&io_ends));
    puts("PASS: C parser/backend transport boundaries (no FUSE/runtime proof)");
