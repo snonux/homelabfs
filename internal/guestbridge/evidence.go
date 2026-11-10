@@ -34,6 +34,9 @@ func (t *Transport) ProtectedEvidence() (ProtectedTransportState, error) {
 // bounded by bridgeSessionLimit; it lets a caller check that bridge state
 // agrees with another owner's protected copy (u64: after a pruning RETIRE
 // both must equal the provider's snapshot) without restoring anything.
+// The rows include grant capability tokens and credentials, so this is for
+// tests and offline evidence only: never log or publish its result. It is
+// exported because its caller (controlledruntime tests) is another package.
 func (t *Transport) SessionEvidence() (live, committed map[string]ProtectedBridgeSession, err error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
