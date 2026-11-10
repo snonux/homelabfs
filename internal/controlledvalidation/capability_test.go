@@ -290,6 +290,58 @@ func TestBridgeDescriptionBackedTruncateSyncAfterRenameUnlink(t *testing.T) {
 	}
 }
 
+// TestBridgePathRecheckOfVanishedPathIsStale pins v64 against the durable
+// provider: a path grant whose own name or ancestor directory no longer
+// resolves (renamed or removed, name left free) is Stale on GETATTR, on a
+// null-description TRUNCATE and, for a vanished directory, as LOOKUP parent,
+// matching the logical test cut.
+func TestBridgePathRecheckOfVanishedPathIsStale(t *testing.T) {
+	times := map[string]any{"atime": nil, "mtime": nil, "ctime": nil, "atime_now": false, "mtime_now": false}
+	flags := map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}
+	for _, change := range []string{"RENAME", "UNLINK", "ANCESTOR_RENAME", "ANCESTOR_RMDIR"} {
+		t.Run(change, func(t *testing.T) {
+			h := newBridgeHarness(t)
+			top := h.root.Capabilities[0]
+			_, made := h.call("MKDIR", map[string]any{"parent": top, "name": "64", "mode": 0700, "umask": 0})
+			requireCode(t, made, "OK")
+			dir := made.Capabilities[0]
+			_, created := h.call("CREATE", map[string]any{"parent": dir, "name": "66", "mode": 0600, "umask": 0, "flags": flags})
+			requireCode(t, created, "OK")
+			object := created.Capabilities[0]
+			// Retire the unused description: the harness admits only five
+			// capabilities, and the LOOKUP below must reach its path re-check
+			// rather than stop at the capability budget.
+			_, released := h.call("DESCRIPTION_RELEASE", map[string]any{"description": created.Capabilities[1], "release_sequence": 1})
+			requireCode(t, released, "OK")
+			var steps []map[string]any
+			switch change {
+			case "RENAME":
+				steps = []map[string]any{{"op": "RENAME", "source_parent": dir, "source_name": "66", "destination_parent": dir, "destination_name": "67", "no_replace": false}}
+			case "UNLINK":
+				steps = []map[string]any{{"op": "UNLINK", "parent": dir, "name": "66"}}
+			case "ANCESTOR_RENAME":
+				steps = []map[string]any{{"op": "RENAME", "source_parent": top, "source_name": "64", "destination_parent": top, "destination_name": "65", "no_replace": false}}
+			case "ANCESTOR_RMDIR":
+				steps = []map[string]any{{"op": "UNLINK", "parent": dir, "name": "66"}, {"op": "RMDIR", "parent": top, "name": "64"}}
+			}
+			for _, step := range steps {
+				op := step["op"].(string)
+				delete(step, "op")
+				_, r := h.call(op, step)
+				requireCode(t, r, "OK")
+			}
+			_, r := h.call("GETATTR", map[string]any{"object": object})
+			requireCode(t, r, "Stale")
+			_, r = h.call("TRUNCATE", map[string]any{"object": object, "description": nil, "size": 0, "times": times})
+			requireCode(t, r, "Stale")
+			if change == "ANCESTOR_RENAME" || change == "ANCESTOR_RMDIR" {
+				_, r = h.call("LOOKUP", map[string]any{"parent": dir, "name": "66"})
+				requireCode(t, r, "Stale")
+			}
+		})
+	}
+}
+
 // TestBridgeDescriptionBackedTruncateRejectsMismatchAndDeadTokens: an object
 // other than the description's is Stale; a forged or released object token is
 // Permission even though the description itself is live.

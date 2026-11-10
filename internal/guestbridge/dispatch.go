@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"strconv"
 
 	"github.com/snonux/homelabfs/internal/fsapi"
@@ -305,25 +306,50 @@ func (s *Service) liveGrant(b Binding, cap Capability, rights uint32, descriptio
 // every ancestor directory must still be searchable by the caller (else
 // Permission) and every entry must still name the same object at the same
 // entry revision (else Stale). Possession is not timeless path permission.
+//
+// A recorded path that no longer resolves is Stale too, as the capability
+// re-check rule in Retained-9p-protocol.md requires, whichever way the cut
+// reports it (see pathGone). Every other Stat/Lookup error is a real failure
+// at this cut and passes through unchanged.
 func (s *Service) revalidatePath(ctx context.Context, b Binding, g grant, o Captured) error {
 	cred := guestCred(b.Call.Credentials)
 	for _, a := range g.Ancestors {
 		parent, e := o.Stat(ctx, a.Parent)
 		if e != nil {
-			return e
+			return pathGone(e)
 		}
 		if !search(cred, parent.Attr) {
 			return fsapi.Permission
 		}
 		entry, e := o.Lookup(ctx, a.Parent, a.Name)
 		if e != nil {
-			return e
+			return pathGone(e)
 		}
 		if entry.Target == nil || *entry.Target != a.Object || entry.Revision != a.EntryRevision {
 			return fsapi.Stale
 		}
 	}
 	return nil
+}
+
+// pathGone maps a Stat/Lookup error met while re-walking a recorded path.
+// NotFound means the path is gone: Stat reports it for a reclaimed ancestor
+// object, and Lookup (storage.Store, logicalview.Observation and the
+// fsservice controlled plan alike) for a removed (Nlink 0) or reclaimed
+// parent directory and for a vanished name. The ControlledCut instead
+// returns a nil-target entry for a vanished name, already Stale above, so
+// without this mapping the same cut answered NotFound or Stale depending on
+// the provider. Every other code passes through: Unavailable (store not
+// ready), Stale (closed observation or revoked controlled access, already
+// right), CrossDevice (the ancestor's home volume is outside this cut, a
+// topology fact, not a vanished path), NotDirectory and Invalid (object kinds
+// and recorded names are immutable, so these signal a corrupt grant or cut,
+// not a rename), IO and context cancellation.
+func pathGone(e error) error {
+	if errors.Is(e, fsapi.NotFound) {
+		return fsapi.Stale
+	}
+	return e
 }
 func (s *Service) lifetime(b Binding, a arguments, g grant) error {
 	op := b.Call.Intent.Opcode
