@@ -840,7 +840,13 @@ loader through `/bin/sh` and `bash` with tampered bytes, bounded local
 children. The signed files it checks are real signer output from
 `internal/runtimeprep/bootstrap_fixture_test.go` (throwaway keys, no key
 files exported; regenerate with `HFS_BOOTSTRAP_FIXTURE_DIR=NEW_DIR go test
--run TestExportBootstrapFixture ./internal/runtimeprep`).
+-run TestExportBootstrapFixture ./internal/runtimeprep` and copy the nine
+files over). Its guest budget is the example spec's (reservations 1024,
+received 256, 512/512 MiB ordinary/control, as in the zq3-r4 bundle); x54
+regenerated it after w54's guest floors refused the original 32 / 128 MiB.
+`TestBootstrapFixtureAboveGuestFloor` in the same Go file checks the
+committed budget against `checkGuestFloor` (`guestfloor.go`), so the fixture
+cannot fall below the floors silently; the Python tests only replay it.
 `test_bootstrap_remote.py` covers every remote action against a temporary
 root. Not covered: real SSH/doas, FreeBSD rename semantics, Rocky's sysfs
 and 9p mount behaviour, the runtime itself and real timing of the 120 s.

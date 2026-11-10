@@ -4,12 +4,18 @@ package runtimeprep
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/snonux/homelabfs/internal/controlledruntime"
 	"github.com/snonux/homelabfs/internal/retained9plab"
 )
+
+// bootstrapFixtureDir is the committed export of TestExportBootstrapFixture,
+// relative to this package directory (go test runs in it).
+const bootstrapFixtureDir = "../../tools/lab/retained9p/testdata/bootstrap"
 
 // TestExportBootstrapFixture writes the real signer-shaped files that the
 // zq3 G1 bootstrap orchestrator verifies (tools/lab/retained9p/bootstrap.py,
@@ -22,6 +28,15 @@ import (
 // awaiting record, bind); the throwaway key files stay in the temporary root
 // and are deleted with it. Request files still name those temporary key
 // paths, which the Python tests never open.
+//
+// The budget comes from exampleSpec (testdata/zq3-spec.json), which
+// validateSpec holds above the guest floors (guestfloor.go), so a fresh export
+// always carries a provisionable budget. Regenerate the committed fixture
+// (x54 did, after w54 raised the floors past its old 32/128 MiB budget) with
+//
+//	HFS_BOOTSTRAP_FIXTURE_DIR=$(mktemp -u) go test ./internal/runtimeprep -run TestExportBootstrapFixture
+//
+// and copy the nine files over; TestBootstrapFixtureAboveGuestFloor guards it.
 func TestExportBootstrapFixture(t *testing.T) {
 	target := os.Getenv("HFS_BOOTSTRAP_FIXTURE_DIR")
 	if target == "" {
@@ -78,5 +93,50 @@ func exportFixture(t *testing.T, target string, files map[string]string) {
 		if err := os.WriteFile(filepath.Join(target, name), raw, 0o644); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// TestBootstrapFixtureAboveGuestFloor fails when the committed G1 bootstrap
+// fixture carries a guest budget the generator would now refuse. The Python
+// tests replay that fixture byte for byte, so a stale below-floor budget
+// (x54: reservations 32, 128 MiB control/ordinary, refused since w54) would
+// otherwise keep passing there while no real bundle could produce it. The
+// check calls checkGuestFloor itself, so it follows any floor change.
+func TestBootstrapFixtureAboveGuestFloor(t *testing.T) {
+	var template, request struct {
+		Mounts []controlledruntime.GuestArtifactMount
+		Budget controlledruntime.GuestArtifactBudget
+	}
+	var provision struct {
+		Payload struct {
+			Budget controlledruntime.GuestArtifactBudget `json:"budget"`
+		} `json:"payload"`
+	}
+	readFixtureJSON(t, "request-template.json", &template)
+	readFixtureJSON(t, "enroll-request.json", &request)
+	readFixtureJSON(t, "provision.json", &provision)
+	if len(template.Mounts) != sessionCount || len(request.Mounts) != sessionCount {
+		t.Fatalf("fixture mounts %d/%d, generator emits %d", len(template.Mounts), len(request.Mounts), sessionCount)
+	}
+	// The signer copies the template budget into the request and the signed
+	// provision unchanged; a mismatch means the files came from different runs.
+	if request.Budget != template.Budget || provision.Payload.Budget != template.Budget {
+		t.Fatalf("fixture budgets differ: template %+v, request %+v, provision %+v",
+			template.Budget, request.Budget, provision.Payload.Budget)
+	}
+	if err := checkGuestFloor(template.Budget, len(template.Mounts)); err != nil {
+		t.Fatalf("committed bootstrap fixture is below the guest floor; regenerate it (see TestExportBootstrapFixture): %v", err)
+	}
+}
+
+// readFixtureJSON decodes one committed bootstrap fixture file.
+func readFixtureJSON(t *testing.T, name string, value any) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(bootstrapFixtureDir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, value); err != nil {
+		t.Fatalf("%s: %v", name, err)
 	}
 }

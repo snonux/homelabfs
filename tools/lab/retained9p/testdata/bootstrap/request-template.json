@@ -1,61 +1,61 @@
 {
   "Version": "homelabfs-runtime-request-template/1",
   "RunID": "zq3-r1",
-  "Volume": "df6bd606-8f73-42c3-a2d5-7614f629431e",
-  "OperatorKey": "/home/paul/tmp/claude/rp1360094917/operator.pem",
+  "Volume": "277f0376-3670-4085-ac43-39c293dc9510",
+  "OperatorKey": "/home/paul/tmp/claude/rp2300223732/operator.pem",
   "Keys": [
     {
-      "Session": "42593ba3-a425-4d5f-b511-c5f1c4b537db",
-      "Host": "/home/paul/tmp/claude/rp1360094917/bundle/keys/host-0.key",
-      "Guest": "/home/paul/tmp/claude/rp1360094917/bundle/keys/guest-0.key"
+      "Session": "aedd7c72-fdbc-4e50-b71c-98c418fd6da8",
+      "Host": "/home/paul/tmp/claude/rp2300223732/bundle/keys/host-0.key",
+      "Guest": "/home/paul/tmp/claude/rp2300223732/bundle/keys/guest-0.key"
     },
     {
-      "Session": "dcf66640-e1cb-4eb8-8090-658528f62912",
-      "Host": "/home/paul/tmp/claude/rp1360094917/bundle/keys/host-1.key",
-      "Guest": "/home/paul/tmp/claude/rp1360094917/bundle/keys/guest-1.key"
+      "Session": "3351325f-bf86-456f-9f70-ccb9744ca9a0",
+      "Host": "/home/paul/tmp/claude/rp2300223732/bundle/keys/host-1.key",
+      "Guest": "/home/paul/tmp/claude/rp2300223732/bundle/keys/guest-1.key"
     }
   ],
   "HostPublicKeys": [
-    "8c2e8651bdc81ac57fcb2e00ab3af02620ff12734a0129229f8e3b12949f06cc",
-    "0a7f4ebe6f1ac1ea618cc74ce1925935f386fa491da1a9e31642cd1adedddbd1"
+    "031615eb3ed5f428ba8ed1d5d275c9cfa292482569ce29d4269c7aa14f509f63",
+    "5531673d14bbadb67d197dc005c68a97bd2de723bab487f1004342c8b8f817b3"
   ],
   "GuestPublicKeys": [
-    "c441084a0474ccd9c1d5ec017885b55d776add691163369a2819c93bd9714d24",
-    "71a4294b2bc1e8d6105bf0a84b2d5bc998b00d67c706adb7e0d81c330e8596e9"
+    "22de81da9e0ce12df0e59af62054f7ee4134b3f0601105da3d5b7d1fe39264db",
+    "44ef8e8538b8e86c0393ea47c21c2146037d841c09056f6d7e8d068d5fdf5579"
   ],
   "Mounts": [
     {
       "domain_index": 0,
-      "session": "42593ba3-a425-4d5f-b511-c5f1c4b537db",
+      "session": "aedd7c72-fdbc-4e50-b71c-98c418fd6da8",
       "device_tag": "hfs0",
       "device_name": "",
-      "user_namespace": "5cc69297-82cd-4f45-9946-8371a546fd50",
+      "user_namespace": "0d780849-8792-4b1f-8d9a-71c3ccc5d552",
       "idmap_hash": "063ee717c983abc52c8cdeaeaee32c62ecb93c8fc88e6f887313db9a6c471f98",
-      "realm": "a92b5769-37fe-4464-b870-84cde25730fc",
+      "realm": "f00199e2-5176-4978-8413-e080080cda99",
       "subject": "686f6d656c616266732d636f6e74726f6c6c65642d7a71332d7231",
-      "anchor": "7ae7bd23-4b12-4603-b973-01157d2fbb56",
-      "nonce": "4531fa42-57b1-489c-8753-a51c704fc472",
+      "anchor": "2c5d0200-d078-44a2-8413-a027d84226aa",
+      "nonce": "4a640a24-1fc7-4748-8c33-2818848a4271",
       "view_control_nonce": ""
     },
     {
       "domain_index": 1,
-      "session": "dcf66640-e1cb-4eb8-8090-658528f62912",
+      "session": "3351325f-bf86-456f-9f70-ccb9744ca9a0",
       "device_tag": "hfs1",
       "device_name": "",
-      "user_namespace": "5cc69297-82cd-4f45-9946-8371a546fd50",
+      "user_namespace": "0d780849-8792-4b1f-8d9a-71c3ccc5d552",
       "idmap_hash": "063ee717c983abc52c8cdeaeaee32c62ecb93c8fc88e6f887313db9a6c471f98",
-      "realm": "a92b5769-37fe-4464-b870-84cde25730fc",
+      "realm": "f00199e2-5176-4978-8413-e080080cda99",
       "subject": "686f6d656c616266732d636f6e74726f6c6c65642d7a71332d7231",
-      "anchor": "e0cb5bdd-aa32-4b49-af69-f9f9eac41fdc",
-      "nonce": "823b8597-921d-4e9b-8f9a-26bed391d18f",
+      "anchor": "ce6fa377-5328-43a5-acd2-8c11342092b0",
+      "nonce": "94c02892-1286-4308-84c8-f68208b74175",
       "view_control_nonce": ""
     }
   ],
   "Budget": {
-    "ordinary_bytes": 134217728,
-    "control_bytes": 134217728,
-    "reservations": 32,
+    "ordinary_bytes": 536870912,
+    "control_bytes": 536870912,
+    "reservations": 1024,
     "cookies": 64,
-    "received": 64
+    "received": 256
   }
 }
