@@ -219,13 +219,40 @@ the full plan. These notes from that run are written into the lines they name:
   - `p9-ready.py` and `p9-observe.py` were also run on zq3-r6's real READY and
     OBSERVE records ([README](README.md#phases-9-10-recheck)).
 
+## Decisions from the zq3-r7 run-sheet review round 1 (2026-11-10)
+
+- **Main moved after the fill: accepted, outside the pins.** The tools
+  snapshot stays `ba25486`. Main is now `174ffcf` (x54 and 564). The Phase 0
+  drift diff lists `tools/integration/lib9p/src/hfs9p_recovery.inc` and
+  `owned-inputs.json` (564), plus x54's regenerated bootstrap testdata, its
+  test and the README. The lib9p sources are neither staged nor executed: the
+  candidate's native exporter `36423b6d…` is fixed bytes, so the drift rule's
+  "plan revision" does not apply. Phase 0 compares against `174ffcf`, and
+  any further movement still needs the rule. The candidate therefore keeps
+  the pre-564 behaviour: a REFUSED reply can be lost after a write EPIPE, and
+  a "busy" pause/resume in lib9p recovery fails a restart instead of being
+  retried. If T10's RESTART fails with EOF and the f3 evidence shows a
+  "busy" recovery reply, record it as this known race (task 564, which needs
+  the next native rebuild), not as a new defect.
+- **`sh/p5-recheck.py`:** its comment named the wrong run (zq3-r6's Phase 12
+  start-rocky, not zq3-r7's). Fixed and re-pinned: `cf4845ed…`. `session.sh`
+  re-pinned to `d3c904ce…`.
+- **SELinux denials:** Phase 11 step 4a now captures the guest's AVC records
+  before the poweroff (`p11-guest-avc.txt`). This is evidence for the first
+  guest boot with SELinux enforcing. Denials are a finding; on their own they
+  are not a failure.
+- **Relabel detection:** Phase 12's `/.autorelabel` check runs at the first
+  SSH answer, after any relabel reboot has already happened. The vm-bhyve log
+  (a second "starting bhyve" run) is therefore the evidence that decides
+  whether a relabel happened.
+
 ## Session setup (workstation, bash)
 
 ```bash
 source /home/paul/tmp/claude/hfs-zq3-r7-fill/session.sh
 ```
 
-`session.sh` (`2bd3f894…`, [pins](pins.json) `fill_helpers`) defines, adapted
+`session.sh` (`d3c904ce…`, [pins](pins.json) `fill_helpers`) defines, adapted
 from zq3-r6's:
 
 ```bash
@@ -298,7 +325,7 @@ hpin && okpin && sha256sum -c <<'EOF'
 4b2e2212622ddac153abf4aa508feceeca8a0f95737672ce6a0777449c0dbcf3  /home/paul/tmp/claude/hfs-zq3-r7-fill/kernel/rocky-kernel-plan.json
 9fbe2c3ac344dd7ab93333a82c9e07ecadeb01d1652518ea663e7f6c17da04aa  /home/paul/tmp/claude/hfs-zq3-r7-fill/controller/batch-plan.TEMPLATE.json
 1947e81c5252203c83dcd280812ea21e28ca48078173db2993617f9293233339  /home/paul/tmp/claude/hfs-zq3-r7-fill/fdescfs-pins/pins.json
-2bd3f894115b9768bf9e905557246281bdf5f88fadfb38062202c970283d3e27  /home/paul/tmp/claude/hfs-zq3-r7-fill/session.sh
+d3c904cebf9779fb9c5034184dd4d6b98fbeb9d896a400e3210bd100c1cc3793  /home/paul/tmp/claude/hfs-zq3-r7-fill/session.sh
 EOF
 cd $D
 ```
@@ -1189,6 +1216,8 @@ rocky "findmnt -t 9p || echo no-9p"              # no-9p expected; see below if 
 okpin && rocky "/usr/bin/python3.9 -I -B - remove --run-id zq3-r7 --expect-sha256 $EA" < $S/tools/lab/retained9p/observer_key.py | tee $E/p11-observer-remove.json   # restored_pre_run: true
 # 4. grub check
 rocky "grub2-editenv - list"                     # next_entry empty; if set: rocky "$K cancel $KP" (U1) on its own line
+# 4a. SELinux denials in the guest (evidence only; "<no matches>" with rc=1 is the good case)
+rockyt "ausearch -m AVC,USER_AVC,SELINUX_ERR -ts boot -i; dmesg | grep -i -e avc: -e selinux" > $E/p11-guest-avc.txt 2>&1; echo rc=$?
 # 5. guest poweroff
 rocky 'systemctl poweroff'
 # 6. wait for the child: repeat this line every 10 s, at most 60 times (10 min), until child-gone and no-vmm
@@ -1247,7 +1276,8 @@ f3 'doas -n vm list; doas -n ls /dev/vmm; ifconfig -l; mount -p | grep -E "fdesc
 5 minutes after `start-rocky`. Each test kernel had booted without SELinux
 and left `/.autorelabel` behind, so the stock boot relabelled and rebooted
 once. That reboot shows as a vm-bhyve "bhyve exited with status 0" followed
-by "starting bhyve (run 2)". The c64 test kernel boots with SELinux
+by "starting bhyve (run 2)". That vm-bhyve line is the deciding evidence,
+because the `/.autorelabel` check below only runs after any relabel reboot. The c64 test kernel boots with SELinux
 enforcing, so **no relabel reboot is expected**. Write the result into the
 run log from three lines:
 - `p12-vm-bhyve-log.txt`: the runs since `start-rocky`;
