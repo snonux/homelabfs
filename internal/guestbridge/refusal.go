@@ -11,7 +11,10 @@ import (
 //
 // The lib9p exporter (tools/integration/lib9p/src/hfs9p.c, _permanent_refusal)
 // fails some refused native writes back to the guest instead of pinning its
-// single writer on bytes that will never be admitted:
+// single writer on bytes that will never be admitted. Since w64 only a
+// refusal of the final chunk qualifies, the one that completes the cell and
+// reaches validation here; a refusal of an earlier chunk keeps the candidate
+// pinned, because this transport still holds the chunks it accepted:
 //
 //   - a donor send (reclaim workspace, e64) on EINVAL, or on ESTALE or EACCES
 //     of a first attempt. Its native number was not spent: the exporter keeps
@@ -20,6 +23,10 @@ import (
 //     an earlier chunk of the same write was accepted. Its number was spent at
 //     the first chunk: the exporter moves its high-water past it, never writes
 //     it again and no longer counts its credit.
+//
+// The exporter cannot tell an authentication ESTALE or credential EACCES of
+// the final chunk, which comes before validation and leaves the cell here,
+// from a validation refusal; that residual race stays one chunk wide.
 //
 // Before n64 the runtime kept both kinds of refused cell for good. A refused
 // donor frame stayed in the single reclaim workspace, so every later new cell
@@ -34,7 +41,10 @@ import (
 // complete cell whose validation failed (acceptCell), never on a refused chunk
 // of an incomplete cell, a frame or numbering refusal, or WouldBlock, so an
 // uncertain or transient outcome stays exactly as it was and an identical
-// replay revalidates the kept cell.
+// replay revalidates the kept cell. The exporter fails back only on the final
+// chunk (w64) for the same reason. A replay can also revalidate a complete,
+// still unadmitted cell from an earlier chunk (storeChunk) and be discarded
+// here; the exporter keeps that replay pinned (see refusedResend).
 
 // pinnedByExporter reports whether the exporter never fails the decoded
 // command back and keeps it pinned on any refusal (e64, p64:
@@ -85,7 +95,8 @@ func donorPermanent(e error) bool {
 //     and the exporter pins terminal cells, so it stays (pinnedByExporter).
 //   - Invalid on a chunk after the first: the content of a complete cell
 //     (hash, decode, frame binding) is refused for good, and the exporter
-//     fails it back because an earlier chunk of its write was accepted. A
+//     fails it back when this is its final chunk (w64), because an earlier
+//     chunk of its write was accepted. A
 //     single-chunk cell refused Invalid stays: the exporter cannot tell that
 //     from a refusal before allocation and pins it.
 //
@@ -107,8 +118,9 @@ func numberedPermanent(f Frame, e error) fsapi.Errno {
 // removed and its credit returned, so incomplete-cell limits, credit and
 // guest-marker pruning no longer count it, and its number stays spent (the
 // high-water does not move back). The refusal is kept in t.refused so that a
-// resend of the cell gets the same errno (refusedResend). Write protects the
-// removal and the record with the rest of the call (commitWrite).
+// later write to that number sees what it would have seen had the cell been
+// kept (refusedResend). Write protects the removal and the record with the
+// rest of the call (commitWrite).
 func (t *Transport) discardRefused(c *cell, f Frame, command *Command, e error, w *writeEffects) {
 	if pinnedByExporter(c.body, command) {
 		return
@@ -138,10 +150,20 @@ func (t *Transport) discardRefused(c *cell, f Frame, command *Command, e error, 
 // refusedResend answers a write to a number at or below the high-water that
 // has no cell. The most recently removed refused cell answers its own errno
 // for an identical frame (Invalid for another frame, as a kept cell did), so
-// an exporter replay after a crash before its fail-back was protected sees
-// the refusal it saw before. Every other spent or released number is Stale.
-// Only the latest refusal is kept: the exporter's single writer replays only
-// its pending candidate, before it writes any later number.
+// removing the cell does not change the answer for its number, also after a
+// restore, and the answer still names the original refusal. Every other
+// spent or released number is Stale.
+//
+// The record does not unpin the exporter. The case it answers is a replay
+// after an exporter crash before its fail-back was protected. That replay
+// resends from the first chunk, so it gets Stale (which the exporter keeps
+// pinned on a replay, since authentication can return Stale for an admitted
+// cell) or Invalid at offset 0 (which it keeps pinned, since a frame or
+// numbering refusal before allocation looks the same). The candidate then
+// stays pinned until an operator or a later exporter change resolves it; the
+// record only keeps the runtime's answer consistent and attributable. Only
+// the latest refusal is kept: the exporter's single writer replays only its
+// pending candidate, before it writes any later number.
 func (t *Transport) refusedResend(f Frame) error {
 	if r := t.refused; r != nil && r.Header.Cell == f.Cell {
 		if !sameFrame(r.Header, f) {
@@ -155,8 +177,9 @@ func (t *Transport) refusedResend(f Frame) error {
 // ProtectedRefusal records the most recent numbered cell that Transport.Write
 // removed after a permanent refusal (n64): its frame header without data and
 // the errno it was refused with, Stale or Invalid. It is part of the transport
-// index so that a restored transport answers a resend of that cell the same.
-// It is evidence of a refusal, not of any admitted state.
+// index so that a restored transport answers a resend of that cell the same
+// (refusedResend; it does not let a pinned exporter replay through). It is
+// evidence of a refusal, not of any admitted state.
 type ProtectedRefusal struct {
 	Header Frame
 	Error  fsapi.Errno

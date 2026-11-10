@@ -31,8 +31,9 @@ forward/reverse bindings; FETCH is implicitly scoped by the connection.
 * One native writer preserves exact guest/native bytes, body cell rewriting,
   chunk/hash identity and monotonically increasing endpoint cells. Lost/short
   native writes retain the identical candidate; uncertain candidates exclude
-  another allocator. The exception is a permanently refused original cell,
-  which fails back to the guest (`e64` for donor sends, `p64` for the rest).
+  another allocator. The exception is an original cell whose final chunk is
+  refused permanently, which fails back to the guest (`e64` for donor sends,
+  `p64` for the rest, `w64` for the final-chunk rule).
   EAGAIN on the first chunk of a multi-chunk non-donor write consumes no
   native number and lets control/replacement traffic progress; a single-chunk
   cell refused EAGAIN stays pinned (`p64`). All result reads accumulate bounded
@@ -281,8 +282,8 @@ not issued, or at the session's highest seen cell. 964's tag-reuse wait and
 **Permanent refusals.** Only an original donor send (reclaim, poll index 0,
 not SESSION_RETIRE) is classified. The runtime builds such a send in its
 reclaim workspace and advances its native high-water only on admission, so a
-refusal consumed no native number. These native write errnos fail the cell
-back to the guest (the SEND or FETCH gets an ERROR reply, later FETCHes and
+refusal consumed no native number. These native write errnos, on the final
+chunk only (`w64`, below), fail the cell back to the guest (the SEND or FETCH gets an ERROR reply, later FETCHes and
 resends get ESTALE through the seen ledger, the donor entry stays, and a
 fresh snapshot is protected so that recovery does not replay it):
 
@@ -341,7 +342,8 @@ it removes it with its credit, but the number stays spent. A fail-back
 must therefore know that the number was spent. If the exporter guessed wrong,
 the next cell would reuse a spent number or leave a gap in the native
 numbers, and the runtime would refuse it and every later cell. So a refusal
-fails back only when it is permanent **and** shows that the number was spent:
+fails back only when it is permanent **and** shows that the number was spent,
+and since `w64` only on the final chunk:
 
 | errno | when | permanent and spent because |
 |---|---|---|
@@ -453,6 +455,60 @@ WouldBlock again; it stays pinned with its number.
 `refusal_donor_replay_einval_test` shows that a donor send's replay EINVAL
 fails back. All but the pinned and replay-EINVAL tests fail on the pre-p64
 exporter; those two are no-change guards. A native rebuild must pick this source up before
+any lab run can show it.
+
+## Fail back only on the final chunk (`w64`)
+
+Found in the n64 review: the exporter failed a first-attempt refusal back on
+any chunk, but the runtime cleans up (`discardRefused` in
+`internal/guestbridge/refusal.go`) only after it validated a complete cell,
+which happens on the final chunk of an in-order write. A refusal of an
+earlier chunk comes before validation: authentication (the FreeBSD
+mount-change ESTALE), the FUSE adapter's per-request credential snapshot
+(EACCES), or a frame, cell or chunk check. The runtime then still holds the
+chunks it accepted:
+
+* a multi-chunk donor send refused ESTALE or EACCES on chunk 1 or later left
+  its half-filled reclaim workspace, so the next cell at that number got
+  WouldBlock for good (the n64 wedge);
+* a numbered cell refused ESTALE on chunk 1 or later stayed incomplete with
+  its credit, while the exporter moved its high-water past the number (p64's
+  stuck credit).
+
+`_permanent_refusal` now classifies only a refusal of the final chunk, with
+the e64/p64 errno rules unchanged; they match `discardRefused` (the same
+excluded SESSION_RETIRE and continuation polls, the donor errnos, and for a
+numbered cell ESTALE or EINVAL after an earlier chunk). Every refusal of an
+earlier chunk keeps the exact candidate pinned, and the replay resends every
+chunk from the first into what the runtime kept. That includes the first
+chunk of a multi-chunk cell, which can only be refused before allocation
+(EAGAIN there still drops the candidate, `_unallocated_refusal`). A
+single-chunk cell's only chunk is its final chunk, so its rules are
+unchanged.
+
+**Residual race.** An authentication ESTALE or credential EACCES on the
+final chunk looks the same as a validation refusal. A first attempt then
+still fails back although the runtime kept the other chunks. The window is
+now one chunk write instead of every chunk after the first.
+
+**What the runtime's refusal record is for.** `discardRefused` keeps the
+latest removed numbered cell (`Refused` in the C8 index) so that a write to
+that number gets the same answer as if the cell had been kept, also after a
+restore. It does not unpin an exporter that crashed before its fail-back was
+protected: that replay resends from the first chunk and gets ESTALE, which a
+replay keeps pinned, or EINVAL at offset 0, which is kept pinned as well.
+
+`backend_test.c`: `refusal_mid_chunk_donor_test` (a multi-chunk donor send
+refused EACCES or ESTALE on its second of five chunks stays pinned with its
+number, replays from the first chunk and is admitted) and
+`refusal_mid_chunk_numbered_test` (a numbered cell refused ESTALE on its
+second chunk stays pinned, a later control waits, both are then issued in
+order) fail on the pre-w64 exporter, which failed them back.
+`refusal_final_chunk_donor_test` (EACCES, ESTALE, EINVAL on a donor send's
+final chunk still fail back and the next donor send takes the number) is a
+no-change guard. `refusal_original_permanent_test` and
+`refusal_original_inserted_test` now refuse the final chunk, where a
+validation refusal happens. A native rebuild must pick this source up before
 any lab run can show it.
 
 ## Controlled terminal owner (`614`)

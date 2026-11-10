@@ -69,6 +69,15 @@ static unsigned refused_writes;
 static int refuse_ordinary_errno;
 static uint32_t refuse_ordinary_from;
 static bool refuse_allocated;
+/* Nonzero (w64): the chunk at byte refuse_chunk_offset of any cell, donor or
+ * not, is refused with this errno after the earlier chunks were kept, as the
+ * runtime refuses a chunk on authentication or the adapter's credential
+ * snapshot. A refused final chunk models a refusal after validation, so a
+ * donor frame's kept chunks are dropped (discardRefused frees the reclaim
+ * workspace) while a numbered cell's record stays (its number is spent and
+ * another frame there is refused EINVAL). */
+static int refuse_chunk_errno;
+static uint32_t refuse_chunk_offset;
 /* Default preserves deliberate short-read coverage; pressure tests can select
  * bounded full chunks without hashing a whole large reply per seven bytes. */
 static size_t fixture_read_limit = 7;
@@ -165,6 +174,16 @@ fixture_pwrite(int fd, const void *buffer, size_t length, off_t position) {
    if (refuse_ordinary) {
       refused_writes++;
       errno = refuse_ordinary_errno;
+      return (-1);
+   }
+   if (refuse_chunk_errno && offset == refuse_chunk_offset) {
+      refused_writes++;
+      if ((flags & 2) && offset + HFS9P_CHUNK >= f->total) {
+         free(f->request);
+         free(f->reply);
+         memset(f, 0, sizeof(*f));
+      }
+      errno = refuse_chunk_errno;
       return (-1);
    }
    uint32_t bit = UINT32_C(1) << (offset / HFS9P_CHUNK);
@@ -373,6 +392,8 @@ reset_fixtures(void) {
    refuse_ordinary_errno = 0;
    refuse_ordinary_from = 0;
    refuse_allocated = false;
+   refuse_chunk_errno = 0;
+   refuse_chunk_offset = 0;
    last_accepted_length = 0;
 }
 
@@ -1778,6 +1799,13 @@ refusal_transient_test(const char *base) {
    }
 }
 
+/* Offset of the final chunk of body's native write (w64: only a refusal of
+ * that chunk can follow the runtime's validation). */
+static uint32_t
+final_chunk(const char *body) {
+   return ((uint32_t)((strlen(body) - 1) / HFS9P_CHUNK) * HFS9P_CHUNK);
+}
+
 /* Bypasses c's ordinary multi-chunk guest cell 2 (p64): the first chunk of
  * its native write is refused EAGAIN (no runtime credit, so no native
  * number), and control QUERY guest cell 3 then takes the next native
@@ -1819,6 +1847,7 @@ refusal_original_permanent_test(const char *base) {
    bypass_ordinary(one);
    assert(h->high == 3);
    refuse_ordinary_errno = ESTALE;
+   refuse_ordinary_from = final_chunk(large_write); /* After validation. */
    assert(fetch_once(one, 2) == 4);
    refuse_ordinary_errno = 0;
    assert(refused_writes == 1 && h->pending == -1 && h->high == 4);
@@ -1843,8 +1872,11 @@ refusal_original_permanent_test(const char *base) {
 }
 
 /* p64: EINVAL for a later chunk of an ordinary cell proves that the runtime
- * allocated the cell's native number at its accepted first chunk, so the
- * cell fails back at once and the next cell takes the following number. */
+ * allocated the cell's native number at its accepted first chunk. On the
+ * final chunk it is the runtime's content refusal after validation, which
+ * removes the cell (n64), so the cell fails back at once and the next cell
+ * takes the following number. Since w64 only the final chunk qualifies
+ * (refusal_mid_chunk_numbered_test). */
 static void
 refusal_original_inserted_test(void) {
    Hfs9p *h = new_endpoint();
@@ -1852,7 +1884,7 @@ refusal_original_inserted_test(void) {
    char *body = rewrite_body(large_write, 2, NULL);
    char *scoped = scope_body(c, body);
    refuse_ordinary_errno = EINVAL;
-   refuse_ordinary_from = HFS9P_CHUNK;
+   refuse_ordinary_from = final_chunk(scoped);
    assert(send_body(c, scoped, 2) == 4);
    refuse_ordinary_errno = 0;
    assert(refused_writes == 1 && h->pending == -1 && h->high == 2 &&
@@ -2034,6 +2066,121 @@ refusal_donor_replay_einval_test(void) {
    reset_fixtures();
 }
 
+/* Sends c's multi-chunk donor send, guest cell 3 reclaiming ack's cell 2
+ * (large_write, so its native write has several chunks), and returns the
+ * SEND reply kind. *final is the offset of its final chunk. */
+static unsigned
+send_large_donor(Hfs9pConnection *c, const char *ack, uint32_t *final) {
+   char *body = rewrite_body(large_write, 3, ack);
+   char *scoped = scope_body(c, body);
+   *final = final_chunk(scoped);
+   assert(*final >= 2 * HFS9P_CHUNK);
+   unsigned status = send_body(c, scoped, 3);
+   free(scoped);
+   free(body);
+   return (status);
+}
+
+/* w64: a donor send's first-attempt EACCES or ESTALE on a chunk after the
+ * first and before the final one comes before the runtime's validation,
+ * which keeps the chunks it accepted in its reclaim workspace. The send
+ * stays pinned with its native number and replays from the first chunk;
+ * the replay is admitted. Before w64 the exporter failed it back, and the
+ * next cell met the kept workspace (WouldBlock, the n64 wedge). */
+static void
+refusal_mid_chunk_donor_test(void) {
+   const int errors[] = {EACCES, ESTALE};
+   for (unsigned k = 0; k < 2; k++) {
+      Hfs9p *h = new_endpoint();
+      char ack[128];
+      Hfs9pConnection *c = donor_session(h, ack);
+      refuse_chunk_errno = errors[k];
+      refuse_chunk_offset = HFS9P_CHUNK;
+      uint32_t final;
+      assert(send_large_donor(c, ack, &final) == 1);
+      Hfs9pEntry *e = entry(h, 3);
+      assert(refused_writes == 1 && e && e->uncertain && !e->issued &&
+          e->native_cell == 3 && e->donor >= 0);
+      assert(h->pending == (int)(e - h->entries) && h->high == 2);
+      unsigned before = writes;
+      assert(fetch_once(c, 3) == 2 && h->pending == (int)(e - h->entries));
+      assert(writes == before + 1); /* The replay starts at the first chunk. */
+      refuse_chunk_errno = 0;
+      assert(fetch(c, 3, 2) == 3 && e->issued && e->native_cell == 3 &&
+          !entry(h, 2) && h->high == 3 && h->pending == -1);
+      assert(rejected_writes == 0);
+      hfs9p_connection_delete(c);
+      shutdown_endpoint(h);
+      reset_fixtures();
+   }
+}
+
+/* w64: a numbered cell's first-attempt ESTALE on a chunk after the first and
+ * before the final one comes before validation (authentication), and the
+ * runtime keeps the incomplete cell with its credit. The cell stays pinned
+ * with its number, a later control waits behind it, and the replay is
+ * admitted. Before w64 the exporter failed it back and moved its high-water
+ * past the number, leaving the runtime's credit stuck (p64). */
+static void
+refusal_mid_chunk_numbered_test(void) {
+   Hfs9p *h = new_endpoint();
+   Hfs9pConnection *c = hello_session(h);
+   char *body = rewrite_body(large_write, 2, NULL);
+   char *scoped = scope_body(c, body);
+   assert(final_chunk(scoped) >= 2 * HFS9P_CHUNK);
+   refuse_chunk_errno = ESTALE;
+   refuse_chunk_offset = HFS9P_CHUNK;
+   assert(send_body(c, scoped, 2) == 1);
+   Hfs9pEntry *e = entry(h, 2);
+   assert(refused_writes == 1 && e && e->uncertain && !e->issued &&
+       e->native_cell == 2 && h->pending == (int)(e - h->entries) &&
+       h->high == 1);
+   assert(fetch_once(c, 2) == 2 && h->pending == (int)(e - h->entries));
+   send_query(c, 3);
+   assert(!entry(h, 3)->issued && h->high == 1);
+   refuse_chunk_errno = 0;
+   assert(fetch(c, 2, 2) == 3 && e->issued && e->native_cell == 2);
+   assert(fetch(c, 3, 2) == 3 && entry(h, 3)->native_cell == 3);
+   assert(rejected_writes == 0);
+   free(scoped);
+   free(body);
+   hfs9p_connection_delete(c);
+   shutdown_endpoint(h);
+   reset_fixtures();
+}
+
+/* w64: a first-attempt EACCES, ESTALE or EINVAL of a multi-chunk donor
+ * send's final chunk is the runtime's refusal after validation, which frees
+ * the reclaim workspace (n64; the fixture drops the kept chunks), so the
+ * send still fails back. The donor entry and the native number stay, and
+ * the next donor send takes that number. */
+static void
+refusal_final_chunk_donor_test(void) {
+   const int errors[] = {EACCES, ESTALE, EINVAL};
+   for (unsigned k = 0; k < 3; k++) {
+      Hfs9p *h = new_endpoint();
+      char ack[128];
+      Hfs9pConnection *c = donor_session(h, ack);
+      char *body = rewrite_body(large_write, 3, ack);
+      char *scoped = scope_body(c, body);
+      refuse_chunk_errno = errors[k];
+      refuse_chunk_offset = final_chunk(scoped);
+      assert(send_body(c, scoped, 3) == 4);
+      refuse_chunk_errno = 0;
+      assert(refused_writes == 1 && !entry(h, 3) && h->pending == -1 &&
+          h->high == 2 && entry(h, 2) && _seen(&h->sessions[0], 3));
+      send_cell(c, golden_create, 4, ack, 1);
+      assert(entry(h, 4)->issued && entry(h, 4)->native_cell == 3 &&
+          !entry(h, 2));
+      assert(rejected_writes == 0);
+      free(scoped);
+      free(body);
+      hfs9p_connection_delete(c);
+      shutdown_endpoint(h);
+      reset_fixtures();
+   }
+}
+
 int
 main(int argc, char **argv) {
    assert(argc == 2);
@@ -2061,6 +2208,9 @@ main(int argc, char **argv) {
    refusal_single_chunk_eagain_test();
    refusal_restart_eagain_test(argv[1]);
    refusal_donor_replay_einval_test();
+   refusal_mid_chunk_donor_test();
+   refusal_mid_chunk_numbered_test();
+   refusal_final_chunk_donor_test();
    assert(atomic_load(&io_begins) > 0);
    assert(atomic_load(&io_begins) == atomic_load(&io_ends));
    puts("PASS: C parser/backend transport boundaries (no FUSE/runtime proof)");

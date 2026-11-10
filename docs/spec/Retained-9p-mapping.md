@@ -108,7 +108,10 @@ Because the runtime allocates a non-donor cell's native number at its first
 chunk, the exporter fails a non-donor cell back only
 when the refusal also shows that the number was spent (ESTALE on a first
 attempt, or EINVAL after an accepted earlier chunk) and then treats that number
-as spent. Since task n64 the runtime matches that: a complete cell refused
+as spent. Since task w64 any fail-back (donor or not) needs a refusal of the
+final chunk, where the runtime validates the complete cell; a refusal of an
+earlier chunk comes before validation, leaves the accepted chunks in the
+runtime, and keeps the candidate pinned for a replay from the first chunk. Since task n64 the runtime matches that: a complete cell refused
 Stale by validation (except a SESSION_RETIRE), or Invalid on a chunk after the
 first, is removed with its credit, so it no longer counts as incomplete or
 pins markers (see the marker rule below). Its number stays spent, and the C8
