@@ -480,3 +480,51 @@ func observationSequence(t *testing.T, file string, first, later []byte) func() 
 	})
 	return func() int { return int(served.Load()) }
 }
+
+// closedPeerPair returns the client end of a connected unix stream pair whose
+// endpoint end already queued reply (when non-nil) and closed, so the
+// client's request write deterministically fails with EPIPE.
+func closedPeerPair(t *testing.T, reply func(net.Conn) error) net.Conn {
+	t.Helper()
+	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
+	require(t, err)
+	conns := make([]net.Conn, 2)
+	for i, fd := range fds {
+		file := os.NewFile(uintptr(fd), "lifecycle-pair")
+		conns[i], err = net.FileConn(file)
+		require(t, errors.Join(err, file.Close()))
+	}
+	t.Cleanup(func() { _ = conns[0].Close() })
+	if reply != nil {
+		require(t, reply(conns[1]))
+	}
+	require(t, conns[1].Close())
+	require(t, conns[0].SetDeadline(time.Now().Add(5*time.Second)))
+	return conns[0]
+}
+
+// TestLifecycleExchangeRefusalBeforeRequest pins task 564: the endpoint may
+// refuse an unauthorized peer and close before the client's request write, so
+// the write fails with EPIPE while the refusal is already queued. The client
+// must return that refusal, and nothing but a refusal, after a failed write.
+func TestLifecycleExchangeRefusalBeforeRequest(t *testing.T) {
+	request := lifecycleRequest{opcode: LifecycleObserve, sequence: 1, runtime: testUUID(1)}
+	refused := closedPeerPair(t, func(c net.Conn) error {
+		return writeLifecycleReply(c, LifecycleRefused, 0, refusal("peer credentials unauthorized"))
+	})
+	op, raw, err := lifecycleExchange(refused, request)
+	if err != nil || op != LifecycleRefused || !bytes.Contains(raw, []byte("peer credentials unauthorized")) {
+		t.Fatalf("queued refusal lost after failed write: op=%x %s %v", op, raw, err)
+	}
+	// No reply at all: the write error stands.
+	if _, _, err = lifecycleExchange(closedPeerPair(t, nil), request); !errors.Is(err, unix.EPIPE) {
+		t.Fatalf("closed endpoint without reply: %v", err)
+	}
+	// A non-refusal reply cannot answer an unreceived request: still the write error.
+	answered := closedPeerPair(t, func(c net.Conn) error {
+		return writeLifecycleReply(c, LifecycleObserve|0x80, 1, map[string]string{"status": "OBSERVED"})
+	})
+	if _, _, err = lifecycleExchange(answered, request); !errors.Is(err, unix.EPIPE) {
+		t.Fatalf("non-refusal accepted after failed write: %v", err)
+	}
+}

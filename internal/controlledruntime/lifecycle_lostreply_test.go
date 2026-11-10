@@ -349,6 +349,9 @@ func TestLifecycleLostReplyArmingRefusals(t *testing.T) {
 func checkArmRefusals(t *testing.T, run *lifecycleRun, session string) {
 	t.Helper()
 	other := fsapi.UUID{7}.String()
+	// The endpoint refuses a foreign peer before reading any request byte and
+	// closes, so the client's ARM write may hit EPIPE; lifecycleExchange still
+	// returns the queued refusal (task 564).
 	run.foreign.Store(true)
 	refused := run.arm(1, run.ready.Runtime, run.ready.Cut, 1, session, lostReplyOperationCall)
 	run.foreign.Store(false)
