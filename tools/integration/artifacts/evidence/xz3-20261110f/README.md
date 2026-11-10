@@ -1,5 +1,14 @@
 # xz3 964 kernel rebuild (2026-11-10): fixed 9p tag reused only after release
 
+**Superseded on 2026-11-10** by the [c64+d64 rebuild](../xz3-20261110g/README.md)
+(`66b5bb2b…`, source `060dea0`). This package's guest kernel has
+`CONFIG_SECURITY_SELINUX=y` but no `selinux` in `CONFIG_LSM`, so it boots
+without SELinux, and the current `admit.py` refuses its config (c64). Its z54
+daemon `39c92d01…` keeps one view fence for all domains and refuses an
+unissued out-of-order guest cell (zq3-r6 R6-1/R6-2, fixed by d64). Its
+modules, Linux source records and native parts are reused unchanged. The
+tooling refuses this manifest as superseded.
+
 This candidate supersedes the [z54 candidate](../xz3-20261109e/README.md)
 (`2e0412a6…`, source `a20aca1`) only because its guest kernel predates 964.
 In lab run zq3-r5 (R5-1) the release loop's VIEW_QUERY and the event worker's

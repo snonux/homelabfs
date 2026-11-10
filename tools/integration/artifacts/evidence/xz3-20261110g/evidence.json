@@ -1,0 +1,294 @@
+{
+  "candidate": {
+    "admission": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "assembled_from": "the worker worktree at 060dea0 (/home/paul/git/homelabfs/.claude/worktrees/agent-a84989cfc31713e36), byte-identical to the main checkout (also at 060dea0) for all 3969 tracked files with no untracked files under cmd, internal, pkg, tools/integration or tools/lab; the worker sandbox refuses git in the main checkout. The daemon was built in this worktree, so the new daemon builder bindings name the real build path; nothing was re-keyed. The three native proof records are byte copies",
+    "files": 194,
+    "independent_admit": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "manifest_sha256": "66b5bb2b6c1dd1a663f26c50d0d9b3bfeebd620127c4a5859ca146074f2c2e2d",
+    "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+    "path": "/home/paul/tmp/claude/hfs-xz3-20261110g/package",
+    "repository_baseline": "060dea03bb6fffad2353dfa70461dd860e5b1db4",
+    "repository_changes_patch": "absent: the baseline is now the daemon build revision 060dea0, which already contains the 964 source.json and patches and the c64 kernel.config, so git diff against it is empty (e01fab21 carried the source.json/0004 diff against a20aca1)",
+    "source_checkout": "060dea03bb6fffad2353dfa70461dd860e5b1db4"
+  },
+  "controls": {
+    "all_refused": true,
+    "case_names": [
+      "external operator mismatch",
+      "external repository mismatch",
+      "old negotiated features",
+      "old source revision",
+      "different packaged Linux patch",
+      "different native owned source",
+      "wrong actual bundled source with consistent container hashes",
+      "daemon ELF labelled as full exporter",
+      "native helper ELF lacks production controllers",
+      "invented stock shared9p runtime",
+      "installed success claim",
+      "missing actual Go build version",
+      "real CGO_ENABLED=0 daemon with nocgo observer stub",
+      "record claims CGO0 build",
+      "nocgo stub in recorded source closure",
+      "renamed cgo process observer symbols",
+      "foreign dynamic loader",
+      "extra recorded DT_NEEDED",
+      "missing recorded DT_NEEDED",
+      "sysroot library hash differs from recorded closure",
+      "unlinked sysroot capture",
+      "unrecorded clang resource headers",
+      "unrecorded clang shared-library closure",
+      "foreign cgo compiler wrapper",
+      "installation authority claim",
+      "false forced rebuild witness"
+    ],
+    "cases": 26,
+    "cgo0_control_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+    "original_passed_after": true,
+    "restored_passed": true
+  },
+  "daemon": {
+    "bytes": 10781432,
+    "forced_builds_equal": true,
+    "gnu_build_id": "17d8621dca4f2445f119cc6cf68d31aeaa849a80",
+    "go_build_id": "nUBsoJXP43n2DKxuVbKR/C5l9lYeacnimbKSCX815/3ex30hOLEtBBQDbveeul/s-QtYPgUj8-lqTHj1C4H",
+    "go_mod_unchanged": true,
+    "go_sum_unchanged": true,
+    "module_cache": "private cache seeded from the z54 cache (go.mod and go.sum unchanged since a20aca1); no dependency was downloaded",
+    "native_qualification": "not run: the exact new bytes still need --check-process-observer on f3 under the bounded host guard (the z54 daemon 39c92d01 passed it in zq3-r5); local-only task",
+    "repository": "060dea03bb6fffad2353dfa70461dd860e5b1db4",
+    "sha256": "9b7eed8dc9b98f4a61af000bb17b5008672a7083075e206951fc96b53577088b",
+    "source_closure_added_since_z54": [
+      "github.com/snonux/homelabfs/internal/viewcontrol/fence.go"
+    ],
+    "source_closure_changed_since_z54": [
+      "github.com/snonux/homelabfs/internal/controlledruntime/facts.go",
+      "github.com/snonux/homelabfs/internal/controlledruntime/restart.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/endpoint.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/mapping.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/restore.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/transport_ledger.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/controller.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/recall.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/tickets.go"
+    ],
+    "source_closure_files": 1283,
+    "source_closure_removed_since_z54": [],
+    "steps": [
+      [
+        "prepare",
+        "0",
+        "1"
+      ],
+      [
+        "build-first",
+        "0",
+        "21"
+      ],
+      [
+        "build-second",
+        "0",
+        "22"
+      ]
+    ],
+    "superseded_daemon": "39c92d016f17b4c480c3c3bfac266f284123413ea4d95697b935d80bdf98a521 (z54, a20aca1)",
+    "toolchain_cgo_toolchain_sysroot_runtime_closure_unchanged": true,
+    "window_build_cross_check_equal": true
+  },
+  "init_helper": {
+    "kept": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80 from e0cca0c",
+    "reason": "not in the package; cmd/homelabfs imports internal/guestbridge but not viewcontrol, and the d64 guestbridge changes (guest-cell reorder window, transport ledger, endpoint) are guest transport paths that node-init/volume-init never reach"
+  },
+  "kernel": {
+    "abi_negative_controls": [
+      "different-kernel-module-layout-crc",
+      "different-operator-config-identity",
+      "missing-kernel-module-layout-crc",
+      "stock-kernel-release"
+    ],
+    "artifacts": {
+      "linux/Module.symvers": "7602f7ec6d56f3e861dbb43d624b3dfe59e63c08b1fb8c4220b86d4547733078",
+      "linux/System.map": "3d11cf227ad0950b5c20a3e811ba62598ce4684e7818b325e3137ae83459b3f9",
+      "linux/abi-negative.json": "f7c4aa9efbe87a6e18eae268097b01c7cb333b1b72ceefbfa93448d6e7417da0",
+      "linux/abi.json": "2591c6a0af32f974b0eae8091bfd7a444d84e111eb55399e1c5d4a062fa26279",
+      "linux/build.json": "71abb4c96aee93796e98fc6ddc1b5e1c24fb1eb0134c9b4a22d611b0ad1ec453",
+      "linux/bzImage": "6f59b593ae626e5f6466b07eb5dd3f4dcfeceeac5a68da7efcca313c265dec4c",
+      "linux/clean-repro.json": "575374c0871b1967c037c5c91afbf6160327b7e091d527fe8bbc67f0f8611ade",
+      "linux/config": "28fe4a8ec759cfa7ecfdc373753082ec6981ecdffc6a25e074b6fac048906282",
+      "linux/kernel.release": "50bb45b1af138cf586adddcde600f85e256a19336c861654e6ce76c20eb034e3",
+      "linux/modules.builtin": "1f33442939e7faf978dc707cb69f99015328b39b3125cea6d6de25715f8bebf1",
+      "linux/modules.builtin.modinfo": "c53973bb5c4498e6fc6e61d0143353782a5628374b2b00624f422ed6f2236cf2",
+      "linux/modules.order": "f820618416411197b17fe7795d067e9687d905c487bffb207589bec3c173019a",
+      "linux/modules/drivers/net/net_failover.ko": "cc9755c71cc1d0776f5efd61198b1ebe99741cff877104879b8658db469f9143",
+      "linux/modules/drivers/net/virtio_net.ko": "39de7e933fa325b2c6b576004213f34bee04085191ea94e141a6c2aeeaf7fef1",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko": "6b98068988086d3b1b5c7a1e3b71f5f0ac4378f2d907c0e3a8c50a22bcde53fa",
+      "linux/modules/fs/efivarfs/efivarfs.ko": "6dd0679c5a026189f4feef51fcdcf4d0542fbc9cba7f3e552cb8a0324e68974f",
+      "linux/modules/net/core/failover.ko": "b1aa98beb495be131c06a02775109cba97de2ecacae227c4932909166b88cf5a",
+      "linux/vmlinux": "cef27ad737b091c1e9e64346aa6636a7662d0df5280b9d731a5250d6d0661fa0"
+    },
+    "changed_from_a64": [
+      "linux/System.map",
+      "linux/abi.json",
+      "linux/build.json",
+      "linux/bzImage",
+      "linux/clean-repro.json",
+      "linux/config",
+      "linux/vmlinux"
+    ],
+    "clean_repro_equal_artifacts": 13,
+    "clean_repro_modules": 5,
+    "clean_repro_record_sha256": "575374c0871b1967c037c5c91afbf6160327b7e091d527fe8bbc67f0f8611ade",
+    "config_diff_from_a64": "only the CONFIG_LSM line (diff of linux/config against e01fab21: receipts/config-diff.txt)",
+    "gnu_build_id": "2ce818d94ce5990da73dec32a1f60190c24107e7",
+    "initramfs": "none built or packaged; the recipe builds bzImage and modules",
+    "module_build_ids": {
+      "drivers/net/net_failover.ko": "3255e434a34a125cd9251bebddaaf6bdf98c68bb",
+      "drivers/net/virtio_net.ko": "072995182e1a95b83cf3ec794649ce05adf8a59d",
+      "drivers/thermal/intel/x86_pkg_temp_thermal.ko": "da295c7cb8ec345542f4ad350ebe6b4ab30ce306",
+      "fs/efivarfs/efivarfs.ko": "c7dca1ae388661db98a1b00f73a39cc2c2d88539",
+      "net/core/failover.ko": "3b9f54841993c81600f6794137822622987c4f9d"
+    },
+    "note": "both builds used the same canonical O path (first tree moved to kernel-build-first before the repeat); abi.py collect ran on both packages before compare_kernel, which passed first time",
+    "release": "6.1.190-hfs-xz3",
+    "resolved_config_lsm": "lockdown,yama,integrity,selinux,bpf,landlock",
+    "source": {
+      "archive_path": "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/source/linux-79807e970724c1f90cee1316361d61b80db4eef6.tar.gz (cached, not downloaded)",
+      "archive_sha256": "4f3c00db43ece26e00b83da8cee938e544ba89e10dc10aecc45209ab03554a17",
+      "kernel_config_fragment_sha256": "f2d2a203daa49dd454de90b932e04e17f1532a22b9184140da136ff97d468bc7",
+      "prepared": "/home/paul/tmp/claude/hfs-xz3-20261110g/linux-source",
+      "project_task": "c64 (merge dbce45c); the 964 patch series and source.json are unchanged",
+      "source_inventory_equals_a64": true,
+      "source_inventory_sha256": "f9e788b0dc21fbbe5edef454050aa49cf641991832c473ad72857903c11c407c"
+    },
+    "stage_seconds": [
+      [
+        "first",
+        "configure",
+        0,
+        10
+      ],
+      [
+        "first",
+        "vmlinux",
+        0,
+        535
+      ],
+      [
+        "first",
+        "image-modules",
+        0,
+        20
+      ],
+      [
+        "first",
+        "collect",
+        0,
+        5
+      ],
+      [
+        "repro",
+        "configure",
+        0,
+        10
+      ],
+      [
+        "repro",
+        "vmlinux",
+        0,
+        540
+      ],
+      [
+        "repro",
+        "image-modules",
+        0,
+        29
+      ],
+      [
+        "repro",
+        "collect",
+        0,
+        6
+      ]
+    ],
+    "unchanged_from_a64": [
+      "linux/Module.symvers",
+      "linux/abi-negative.json",
+      "linux/kernel.release",
+      "linux/modules.builtin",
+      "linux/modules.builtin.modinfo",
+      "linux/modules.order",
+      "linux/modules/drivers/net/net_failover.ko",
+      "linux/modules/drivers/net/virtio_net.ko",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko",
+      "linux/modules/fs/efivarfs/efivarfs.ko",
+      "linux/modules/net/core/failover.ko"
+    ]
+  },
+  "mount_hello": {
+    "cases": 5,
+    "command": "tools/integration/linux9p/tests/mount_hello/run.py --source <prepared> --output <root>/mount-hello --sanitize",
+    "failures": 0
+  },
+  "not_claimed": [
+    "installed",
+    "booted",
+    "native acceptance",
+    "native observer qualification of these daemon bytes",
+    "SELinux enforcing on the booted guest",
+    "VM/exporter execution",
+    "normal publication",
+    "a working hfs1.4 mount on Rocky (zq3)"
+  ],
+  "reason": "c64: candidates up to e01fab21 had SECURITY_SELINUX=y but CONFIG_LSM without selinux, so the guest booted without SELinux; kernel.config now sets CONFIG_LSM=\"lockdown,yama,integrity,selinux,bpf,landlock\" and assert_config refuses a config without selinux, so e01fab21 no longer admits. d64 (zq3-r6 R6-1/R6-2): the daemon kept one view fence for all domains while the guest keeps one per domain, and refused an unissued out-of-order guest cell; d64 keeps the fence per domain and admits a bounded (16-cell) out-of-order guest cell once",
+  "recorded": "2026-11-10",
+  "reused": {
+    "files": 118,
+    "from_manifest": "e01fab21cd7a47822d7b56d84e15150cdc7a36c939fceb23852d4fdef0121ec2",
+    "justification": "git diff 06c27a8..060dea0 changes nothing under tools/integration/linux9p, tools/integration/lib9p or the native recipes; under tools/integration/artifacts only kernel.config, kernel.py, test_artifacts.py, README and evidence documents. Each reused file was hash-checked against the e01fab21 manifest (re-admitted first), patches and source.json against the repository, and the source inventory and Linux notices against the freshly prepared source",
+    "list": "reused-files.json",
+    "scope": "83 native FreeBSD files, 5 native source-bundle/notice files, 2 Linux source records, patches 0001-0005 and series, 22 Linux license notices; the 4 Go licences the daemon build wrote are identical to a64"
+  },
+  "superseded_candidate": {
+    "manifest_sha256": "e01fab21cd7a47822d7b56d84e15150cdc7a36c939fceb23852d4fdef0121ec2",
+    "status": "refused as superseded (guest kernel boots without SELinux, c64; daemon 39c92d01 has a single cross-domain view fence and refuses an out-of-order guest cell, zq3-r6 R6-1/R6-2)"
+  },
+  "tag": {
+    "cases": 4,
+    "command": "tools/integration/linux9p/tests/tag/run.py --source <prepared> --output <root>/tag --sanitize",
+    "failures": 0
+  },
+  "task": "xz3 c64+d64 kernel and daemon rebuild",
+  "terminal_smoke": {
+    "command": "tools/integration/linux9p/tests/controlled_received/run.py --source <prepared> --output <root>/controlled-received/terminal-smoke --budget-root <root>/controlled-received --host-tree <worktree> --scenario terminal-smoke",
+    "result": "PASS TestControlledReceivedActualTerminalClean"
+  },
+  "version": "homelabfs-xz3-evidence/2",
+  "window_artifacts": {
+    "builds_byte_identical": true,
+    "controlledruntime.test": "56e87332bb2ec179881f4ebff8f736f7bf57e2916a81dccf9b10461ce9e30ab5",
+    "fdescfs-namespace": "45f2d59aa1d0970f1d74b6d19dc5178d2b33543e30ca86b711680029538ae2cb",
+    "helper_difference": "fdescfs-namespace.c is unchanged (e59cde41...). The helper differs from the z54 cc92bcde only in DWARF (the new out_dir as comp_dir); llvm-objcopy --strip-debug gives 07c9f5a19fb38031bfbfda438b3f659a8fdc03ecc656f8f20791d120f9364a96, the same as the 664 builds",
+    "hfs-controlled-runtime": "9b7eed8dc9b98f4a61af000bb17b5008672a7083075e206951fc96b53577088b",
+    "invocation": "tools/lab/build-fdescfs-window-artifacts.sh /home/paul/tmp/claude/hfs-xz3-20261110g/window-build 060dea03bb6fffad2353dfa70461dd860e5b1db4",
+    "recipe_sha256": "1f827da2f4b1c1a27d22ce641cf689679392b8bbe7b50bac65fcd803964dbde7",
+    "source": "060dea03bb6fffad2353dfa70461dd860e5b1db4",
+    "superseded": {
+      "controlledruntime.test": "97fb5c074465bfaf6c92b39a66a6823247e9dd12f2f9f7e27e8bc6433440bdc9",
+      "fdescfs-namespace": "cc92bcded8a056ab9bfd6091f8a93245e8adcec941c58217613d315678735940"
+    },
+    "test_changed_because": "d64 changed internal/controlledruntime (facts.go, restart.go) and the guestbridge/viewcontrol packages it links"
+  }
+}
