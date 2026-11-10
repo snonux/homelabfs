@@ -56,20 +56,28 @@ QUARANTINED = {"7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b
 #   fixed 9p tag allocate it before the previous request is released, so the
 #   release loop's VIEW_QUERY and the event worker's VIEW_ACK on tag 65533
 #   collide, the session blocks and DRAINED is never sent (zq3-r5 R5-1,
-#   fixed by 964).
+#   fixed by 964);
+# - e01fab21 (964, 06c27a8) has a guest kernel whose CONFIG_LSM lacks selinux,
+#   so the guest boots without SELinux (c64; kernel.py/admit.py now refuse its
+#   config), and the z54 daemon 39c92d01, which keeps one view fence for all
+#   domains and refuses an unissued out-of-order guest cell (zq3-r6 R6-1/R6-2,
+#   fixed by d64).
 SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
               "89c928d5072838bb509ec19e471109b549ce7b06c59451fab64a6d09250bec66",
-              "2e0412a62d1c1f0aa0b29865c521bf3df7a925ea5ef293428fa9b38b647d8f2f"}
-# The only candidate this controller pins: the xz3 964 kernel rebuild
-# (2026-11-10, source 06c27a8). Its guest kernel carries the 964 patch series
-# (a fixed 9p tag is reused only after release; a busy tag is retried inside
-# hfs_transport without blocking the session). The CGO daemon 39c92d01 (z54,
-# observer-qualified on f3 in zq3-r5), the native exporter and the window
-# artifacts are byte-identical reuses from 2e0412a6. Admission here is a
-# dispatch precondition, never deployment eligibility.
-ADMITTED = {"e01fab21cd7a47822d7b56d84e15150cdc7a36c939fceb23852d4fdef0121ec2"}
+              "2e0412a62d1c1f0aa0b29865c521bf3df7a925ea5ef293428fa9b38b647d8f2f",
+              "e01fab21cd7a47822d7b56d84e15150cdc7a36c939fceb23852d4fdef0121ec2"}
+# The only candidate this controller pins: the xz3 c64+d64 rebuild
+# (2026-11-10, source 060dea0). Its guest kernel is built from the c64 recipe
+# (CONFIG_LSM includes selinux, so SELinux is an active LSM) with the
+# unchanged 964 patch series; its CGO daemon 9b7eed8d keeps the view fence per
+# domain and admits a bounded out-of-order guest cell once (d64). The modules,
+# the native exporter and the Linux source records are byte-identical reuses
+# from e01fab21; the window artifacts were rebuilt from 060dea0. The new
+# daemon bytes still need the f3 observer check. Admission here is a dispatch
+# precondition, never deployment eligibility.
+ADMITTED = {"66b5bb2b6c1dd1a663f26c50d0d9b3bfeebd620127c4a5859ca146074f2c2e2d"}
 CASES = ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
 RELEASE_VERSION = "homelabfs-retained9p-release/1"  # Same as guest.py.
 CORRELATION_VERSION = "homelabfs-retained9p-host-correlation/1"
@@ -224,9 +232,10 @@ def require_candidate(manifest_hash):
     if manifest_hash in SUPERSEDED:
         # Each superseded digest lacks a fix the run needs (d44 lost-reply
         # arming, the r54 mount HELLO, the w54 failed-bind kill_sb fence, the
-        # z54 pre-acquire VIEW_POLL answer or the 964 fixed-tag release wait);
-        # the comment at SUPERSEDED says which.
-        raise Refused("superseded xz3 candidate: use the 964 kernel rebuild (d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag)")
+        # z54 pre-acquire VIEW_POLL answer, the 964 fixed-tag release wait, or
+        # the c64 SELinux LSM and the d64 per-domain fence); the comment at
+        # SUPERSEDED says which.
+        raise Refused("superseded xz3 candidate: use the c64+d64 rebuild (d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence)")
     if manifest_hash not in ADMITTED:
         # Fail closed: an unknown digest is not a qualified candidate.
         raise Refused("candidate manifest is not the pinned admitted xz3 candidate")

@@ -60,7 +60,10 @@ operator refusal text is unchanged. A `configure` run on the pinned source
 that differs from candidate `e01fab21`'s `linux/config` only in the
 `CONFIG_LSM` line. Only `security/security.c` (built in) reads `CONFIG_LSM`,
 so the kernel image changes; the in-tree modules and `Module.symvers` should
-not, which the next rebuild must confirm.
+not. The c64+d64 rebuild (candidate `66b5bb2b…`,
+[evidence](evidence/xz3-20261110g/README.md)) confirmed both: the resolved
+config is that same `28fe4a8e…`, and the five modules, `Module.symvers` and
+`abi-negative.json` came out byte-identical to `e01fab21`.
 
 The ordinary namespace fixture selects a rootful OCI runtime in the initial
 user namespace, VFS image storage and a newly created private network namespace

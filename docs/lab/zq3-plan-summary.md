@@ -113,7 +113,12 @@ before the daemon has taken the domain, which hung the fourth attempt
 self-check in the fifth attempt (zq3-r5). On 2026-11-10 the guest kernel was
 rebuilt once more (`e01fab21…`) so two guest requests that share one fixed
 message slot no longer collide and stop the mount, as they did in the fifth
-attempt (zq3-r5); the daemon is unchanged.
+attempt (zq3-r5); the daemon is unchanged. Later that day both were rebuilt
+together (`66b5bb2b…`): the guest kernel now really starts SELinux (earlier
+test kernels had it built in but never switched on), and the daemon (`9b7eed8d…`)
+keeps a separate view counter per domain and accepts a guest message that
+arrives slightly out of order, the two faults of the sixth attempt (zq3-r6).
+The new daemon must pass the f3 self-check again.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
