@@ -53,6 +53,10 @@ typedef struct {
    const Hfs9pConnection *terminal_channel;
    uint64_t terminal_guest, terminal_native;
    uint8_t minor;
+   /* Guest-order floor (e64, not persisted): every guest cell at or below it
+    * was forwarded, failed back or given up after the order hold. A higher
+    * original is forwarded only after all lower cells above the floor. */
+   uint64_t order_high;
 } Hfs9pSession;
 
 typedef struct Hfs9pPoll_ {
@@ -151,6 +155,9 @@ typedef struct {
    uint64_t next_poll;
    Hfs9pPoll *polls;
    int donor;
+   /* When this original stops waiting for lower guest cells (e64, ms, armed
+    * on its first hold, not persisted: a restored entry re-arms it). */
+   uint64_t order_deadline;
 } Hfs9pEntry;
 
 struct Hfs9p_ {
@@ -169,6 +176,9 @@ struct Hfs9p_ {
    unsigned ordinary;
    unsigned control;
    int pending;
+   /* Set while _guest_order walks one session's lower cells (e64), so a
+    * nested call for a lower cell only checks that cell's own gaps. */
+   bool ordering;
    bool revoked;
    Hfs9pToken tokens[HFS9P_TOKENS];
    uint8_t scratch[HFS9P_HEADER + HFS9P_CHUNK];
@@ -1306,47 +1316,165 @@ _native_body(Hfs9p *h, Hfs9pEntry *e) {
    return (0);
 }
 
-/* The sole framing writer never holds a vnode lock across semantic work. All
- * native callbacks are bounded copy/readiness operations. EAGAIN on a first
- * ordinary write consumes no native number, so controls may bypass it. Any
- * uncertain/partially copied candidate pins the writer to its exact bytes. */
-static int
-_forward(Hfs9p *h, Hfs9pEntry *e) {
-   unsigned index = (unsigned)(e - h->entries);
-   if (e->issued)
-      return (0);
-   if (h->pending >= 0 && (unsigned)h->pending != index)
-      return (EAGAIN);
-   if (!e->native) {
-      if (e->terminal && !e->terminal_state) {
-         int error = _terminal_capture(h, e);
-         if (error)
-            return (error);
-      }
-      if (e->donor >= 0) {
-         Hfs9pJson j = {e->guest, e->total, h->tokens, 0};
-         uint32_t reclaim;
-         int donor = -1;
-         if (hfs9p_json_parse(&j) ||
-             hfs9p_json_key(&j, 0, "reclaim", &reclaim) ||
-             _ack(h, &j, reclaim, e->session, &donor) || donor != e->donor)
-            return (EACCES);
-      }
-      if (e->donor < 0 && !e->polls &&
-          (e->control ? h->control >= 16 : h->ordinary >= 64))
-         return (EAGAIN);
-      if (h->high == HFS9P_MAX_CELL)
-         return (ENOSPC);
-      e->native_cell = h->high + 1;
-      int error = _native_body(h, e);
-      if (error) {
-         e->native_cell = 0;
-         return (error);
-      }
+/* Guest order (e64, zq3-r6 R6-2). The guest allocates a session's cells in
+ * order under its writer mutex, but a SEND refused with CAPACITY (endpoint
+ * mutex contention) or EBUSY (a fixed tag still held, task 964) yields that
+ * writer for 10-12 ms before the retry. A later cell of the same session can
+ * then be copied completely first. Inside the exporter a complete cell could
+ * also be overtaken: one blocked by another candidate's writer pin was
+ * retried only by its own FETCH or the wait worker, while a later cell's SEND
+ * or FETCH found the writer free. The runtime captures the session's guest
+ * high-water at each native cell's first header and refuses an original at
+ * or below it unless it is a hole of its 16-cell reorder window, so arrival
+ * order made it refuse VIEW_WAIT guest cell 48 as native 108 after QUERY
+ * guest cell 49 as native 107.
+ *
+ * Native numbers therefore go to one session's originals in guest order:
+ *  - A complete lower original is forwarded first, in the same call. If a
+ *    pinned writer blocks it, this cell is blocked by the same pin, and the
+ *    first call after the pin clears forwards the lower cell first.
+ *  - A lower cell that was never seen, or is still incomplete, is waited for,
+ *    at most HFS9P_ORDER_HOLD_MS. An abandoned or never completed cell (the
+ *    guest's own SEND deadline is 30 s) must not stall the session.
+ *  - A complete lower cell that cannot go for its own reasons (no ordinary
+ *    credit, EAGAIN on its first write, any other error) is not waited for.
+ *    Control, replacement and donor traffic keeps bypassing ordinary traffic,
+ *    as before e64.
+ * A bypassed or given-up cell that arrives below the high-water relies on the
+ * runtime's reorder window (it admits an unissued cell once, inside 16 cells
+ * below the high-water). Replacement polls and replays of an existing
+ * candidate are not originals and never wait. */
+#define HFS9P_ORDER_HOLD_MS 1000u
+
+/* Lowest present original of e's session above after and below e that is not
+ * issued and not a replacement poll. A pinned candidate qualifies: it already
+ * holds its native number but has not been issued. */
+static Hfs9pEntry *
+_order_lower(Hfs9p *h, const Hfs9pEntry *e, uint64_t after) {
+   Hfs9pEntry *lowest = NULL;
+   for (unsigned i = 0; i < HFS9P_ENTRIES; i++) {
+      Hfs9pEntry *l = &h->entries[i];
+      if (!l->guest || l == e || l->session != e->session || l->issued ||
+          l->polls || l->guest_cell <= after || l->guest_cell >= e->guest_cell)
+         continue;
+      if (!lowest || l->guest_cell < lowest->guest_cell)
+         lowest = l;
    }
-   /* Protect exact candidate and donor snapshots before any possible native
-    * effect. The persisted pending candidate is replayed unchanged on recovery. */
-   h->pending = (int)index;
+   return (lowest);
+}
+
+/* True when some guest cell strictly between from and to was never seen in
+ * this session, or is present but still incomplete. */
+static bool
+_order_missing(Hfs9p *h, const Hfs9pEntry *e, uint64_t from) {
+   const Hfs9pSession *s = &h->sessions[e->session];
+   uint64_t next = from + 1;
+   for (unsigned i = 0; i < s->seen_count && next < e->guest_cell; i++) {
+      if (s->seen[i].last < next)
+         continue;
+      if (s->seen[i].first > next)
+         return (true);
+      next = s->seen[i].last + 1;
+   }
+   if (next < e->guest_cell)
+      return (true);
+   for (Hfs9pEntry *l = _order_lower(h, e, from); l;
+       l = _order_lower(h, e, l->guest_cell)) {
+      if (!l->complete)
+         return (true);
+   }
+   return (false);
+}
+
+/* Arms e's hold on its first wait; true once the hold has run out. */
+static bool
+_order_expired(Hfs9pEntry *e) {
+   uint64_t now = _now();
+   if (!e->order_deadline)
+      e->order_deadline = now + HFS9P_ORDER_HOLD_MS;
+   return (now >= e->order_deadline);
+}
+
+static int _forward(Hfs9p *, Hfs9pEntry *);
+
+/* 0 when original e may take the next native number of its session, EAGAIN
+ * while it waits for a missing or incomplete lower cell. Complete lower cells
+ * are offered the writer first, lowest first. An expired e hands its deadline
+ * down, so a lower cell that only waits for a gap below it still goes first.
+ * The nested _guest_order of such a lower cell only checks its own gaps
+ * (h->ordering): this walk already offers every complete cell below it, so
+ * each cell is tried once per call and the recursion is one level deep. */
+static int
+_guest_order(Hfs9p *h, Hfs9pEntry *e) {
+   Hfs9pSession *s = &h->sessions[e->session];
+   if (e->guest_cell <= s->order_high)
+      return (0); /* A late cell: nothing below it is still awaited. */
+   bool expired = _order_expired(e);
+   if (!h->ordering) {
+      h->ordering = true;
+      uint64_t after = s->order_high;
+      Hfs9pEntry *l;
+      while ((l = _order_lower(h, e, after)) != NULL) {
+         after = l->guest_cell;
+         if (expired && (!l->order_deadline ||
+             l->order_deadline > e->order_deadline))
+            l->order_deadline = e->order_deadline;
+         if (l->complete)
+            (void)_forward(h, l); /* It may fail back and be cleared. */
+         if (h->pending >= 0)
+            break; /* A pinned writer blocks every later cell, e too. */
+      }
+      h->ordering = false;
+   }
+   if (!expired && _order_missing(h, e, s->order_high))
+      return (EAGAIN);
+   return (0);
+}
+
+/* Builds e's native candidate: guest order, donor recheck, credit and the
+ * next native number. Nothing here writes to the native endpoint. */
+static int
+_forward_candidate(Hfs9p *h, Hfs9pEntry *e) {
+   unsigned index = (unsigned)(e - h->entries);
+   if (e->terminal && !e->terminal_state) {
+      int error = _terminal_capture(h, e);
+      if (error)
+         return (error);
+   }
+   if (!e->polls) {
+      int error = _guest_order(h, e);
+      if (error)
+         return (error);
+      /* Forwarding a lower cell may have left it pinned as the writer. */
+      if (h->pending >= 0 && (unsigned)h->pending != index)
+         return (EAGAIN);
+   }
+   if (e->donor >= 0) {
+      Hfs9pJson j = {e->guest, e->total, h->tokens, 0};
+      uint32_t reclaim;
+      int donor = -1;
+      if (hfs9p_json_parse(&j) ||
+          hfs9p_json_key(&j, 0, "reclaim", &reclaim) ||
+          _ack(h, &j, reclaim, e->session, &donor) || donor != e->donor)
+         return (EACCES);
+   }
+   if (e->donor < 0 && !e->polls &&
+       (e->control ? h->control >= 16 : h->ordinary >= 64))
+      return (EAGAIN);
+   if (h->high == HFS9P_MAX_CELL)
+      return (ENOSPC);
+   e->native_cell = h->high + 1;
+   int error = _native_body(h, e);
+   if (error)
+      e->native_cell = 0;
+   return (error);
+}
+
+/* Protect exact candidate and donor snapshots before any possible native
+ * effect. The persisted pending candidate is replayed unchanged on recovery. */
+static int
+_forward_protect(Hfs9p *h, Hfs9pEntry *e) {
+   h->pending = (int)(e - h->entries);
    if (e->terminal) {
       Hfs9pSession *session = &h->sessions[e->session];
       if (session->terminal_phase &&
@@ -1362,53 +1490,144 @@ _forward(Hfs9p *h, Hfs9pEntry *e) {
    if (!protection)
       protection = h->verifier.protect_cb(h->verifier.arg, ledger, ledger_length);
    free(ledger);
-   if (protection) {
-      if (e->terminal) h->revoked = true;
-      return (protection);
-   }
+   if (protection && e->terminal)
+      h->revoked = true;
+   return (protection);
+}
+
+/* Permanent refusal (e64). Only an original donor send (reclaim, poll index
+ * 0, not SESSION_RETIRE) is classified; every other candidate keeps the
+ * pre-e64 pin. The runtime (internal/guestbridge Transport.Write, through the
+ * FUSE adapter's errno map in internal/fuseadapter) builds such a send in its
+ * reclaim workspace and advances its native high-water only when the send is
+ * admitted, so a refused one consumed no native number. Permanent are:
+ *  - ESTALE (fsapi.Stale): stale guest cell, released or spent native cell;
+ *  - EINVAL (fsapi.Invalid): malformed or mismatched frame, body or chunk.
+ *    An admitted cell stays in the runtime's table, unreleased until its own
+ *    response is reclaimed, and an identical resend of it returns the full
+ *    length, so neither errno can mean "admitted, receipt lost". A ledger
+ *    protection failure after admission can wrap Invalid, but it also fences
+ *    the whole runtime transport, whose durable ledger never held the cell.
+ *  - EACCES (fsapi.Permission), but only on a first attempt. The runtime
+ *    checks native authentication, node and scope before it looks the cell
+ *    up, so a resend of a cell admitted with a lost receipt could see EACCES.
+ *    The FUSE adapter (internal/fuseadapter, PrivateControl.native) also
+ *    returns EACCES when its per-request credential snapshot fails, which
+ *    may be transient. Failing such a first attempt back is safe, since
+ *    nothing was admitted, but it drops a cell that a retry might have
+ *    delivered.
+ * EPERM is not classified: the adapter maps fsapi.Permission to EACCES and
+ * nothing in the runtime's write path produces EPERM, so its meaning is
+ * unknown. EAGAIN (WouldBlock: workspace, queue or recent-marker pressure) is
+ * transient. EHOSTDOWN, ENOSPC, EIO, EINTR and anything else are uncertain,
+ * because a protection or transport failure may follow admission. Transient
+ * and uncertain outcomes stay pinned as before. */
+static bool
+_permanent_refusal(const Hfs9pEntry *e, int error, bool replay) {
+   if (e->donor < 0 || e->polls || e->terminal || e->terminal_funded)
+      return (false);
+   if (error == ESTALE || error == EINVAL)
+      return (true);
+   return (error == EACCES && !replay);
+}
+
+/* Fails a permanently refused cell back to the guest (e64) instead of
+ * pinning the native writer on bytes the runtime will never admit. The donor
+ * entry stays: the runtime did not reclaim it. The guest assembly is dropped
+ * but its seen mark stays, so the guest's FETCH or resend of the cell gets
+ * ESTALE and the cell number is never reused. A fresh snapshot is protected
+ * so that recovery does not replay the refused candidate. */
+static int
+_fail_back(Hfs9p *h, Hfs9pEntry *e, int error) {
+   Hfs9pSession *s = &h->sessions[e->session];
+   if (e->guest_cell > s->order_high)
+      s->order_high = e->guest_cell;
+   h->pending = -1;
+   _entry_clear(e);
+   uint8_t *ledger = NULL;
+   size_t ledger_length = 0;
+   int protection = _snapshot(h, &ledger, &ledger_length);
+   if (!protection)
+      protection = h->verifier.protect_cb(h->verifier.arg, ledger, ledger_length);
+   free(ledger);
+   return (protection ? protection : error);
+}
+
+/* One positional native chunk write between the paired I/O hooks. The return
+ * value is a verify or hook refusal from before pwrite. *refusal is 0 after a
+ * complete write, else the native errno (EIO for a short write). */
+static int
+_native_write(Hfs9p *h, Hfs9pEntry *e, uint32_t offset, int *refusal) {
+   uint32_t length = e->native_total - offset;
+   if (length > HFS9P_CHUNK)
+      length = HFS9P_CHUNK;
+   *refusal = 0;
+   _make_frame(h->scratch, e, offset, false);
+   memcpy(h->scratch + 32, h->sessions[e->session].id, 16);
+   int error = _verify(h);
+   if (error)
+      return (error);
+   if (h->verifier.begin_io_cb &&
+       (error = h->verifier.begin_io_cb(h->verifier.arg,
+       &h->endpoint, h->fd)))
+      return (error);
+   ssize_t written = pwrite(h->fd[0], h->scratch, HFS9P_HEADER + length,
+       (off_t)(e->native_cell * HFS9P_STRIDE +
+       (offset / HFS9P_CHUNK) * (HFS9P_HEADER + HFS9P_CHUNK)));
+   int native_errno = errno;
+   if (h->verifier.end_io_cb)
+      h->verifier.end_io_cb(h->verifier.arg);
+   if (written != (ssize_t)(HFS9P_HEADER + length))
+      *refusal = written < 0 ? native_errno : EIO;
+   return (0);
+}
+
+/* Writes every chunk of the protected candidate. A native refusal is EAGAIN
+ * without a native number for a first ordinary chunk, a fail-back for a
+ * permanent refusal, and otherwise a pinned uncertain candidate. replay is
+ * true when an earlier attempt already reached protection. */
+static int
+_forward_write(Hfs9p *h, Hfs9pEntry *e, bool replay) {
+   int index = (int)(e - h->entries);
    for (uint32_t offset = 0; offset < e->native_total;
        offset += HFS9P_CHUNK) {
-      uint32_t length = e->native_total - offset;
-      if (length > HFS9P_CHUNK)
-         length = HFS9P_CHUNK;
-      _make_frame(h->scratch, e, offset, false);
-      memcpy(h->scratch + 32, h->sessions[e->session].id, 16);
-      int error = _verify(h);
+      int refusal;
+      int error = _native_write(h, e, offset, &refusal);
       if (error)
          return (error);
-      if (h->verifier.begin_io_cb &&
-          (error = h->verifier.begin_io_cb(h->verifier.arg,
-          &h->endpoint, h->fd)))
-         return (error);
-      ssize_t written = pwrite(h->fd[0], h->scratch, HFS9P_HEADER + length,
-          (off_t)(e->native_cell * HFS9P_STRIDE +
-          (offset / HFS9P_CHUNK) * (HFS9P_HEADER + HFS9P_CHUNK)));
-      int native_errno = errno;
-      if (h->verifier.end_io_cb)
-         h->verifier.end_io_cb(h->verifier.arg);
-      errno = native_errno;
-      if (written != (ssize_t)(HFS9P_HEADER + length)) {
-         error = written < 0 ? errno : EIO;
-         if (offset == 0 && !e->terminal && !e->uncertain && e->donor < 0 && !e->polls &&
-             written < 0 && (error == EAGAIN || error == EWOULDBLOCK)) {
-            free(e->native);
-            e->native = NULL;
-            e->native_cell = 0;
-            h->pending = -1;
-            return (EAGAIN);
-         }
-         /* Even an error can lose a transport receipt. Keep exact candidate
-          * bytes and writer ownership; never allocate its number to others. */
-         h->pending = (int)index;
+      h->pending = index;
+      if (!refusal) {
          e->uncertain = true;
+         continue;
+      }
+      if (offset == 0 && !e->terminal && !e->uncertain && e->donor < 0 &&
+          !e->polls && (refusal == EAGAIN || refusal == EWOULDBLOCK)) {
+         free(e->native);
+         e->native = NULL;
+         e->native_cell = 0;
+         h->pending = -1;
          return (EAGAIN);
       }
-      h->pending = (int)index;
+      if (_permanent_refusal(e, refusal, replay))
+         return (_fail_back(h, e, refusal));
+      /* Even an error can lose a transport receipt. Keep exact candidate
+       * bytes and writer ownership; never allocate its number to others. */
       e->uncertain = true;
+      return (EAGAIN);
    }
+   return (0);
+}
+
+/* Commits a fully written candidate: native high-water, the session's guest
+ * order floor, and the credit, poll or donor transition. */
+static void
+_forward_issued(Hfs9p *h, Hfs9pEntry *e) {
+   Hfs9pSession *s = &h->sessions[e->session];
    h->high = e->native_cell;
    h->pending = -1;
    e->issued = true;
+   if (e->guest_cell > s->order_high)
+      s->order_high = e->guest_cell;
    if (e->wait)
       e->poll_count++;
    if (e->terminal && e->terminal_state->count) {
@@ -1424,7 +1643,32 @@ _forward(Hfs9p *h, Hfs9pEntry *e) {
    } else {
       h->ordinary++;
    }
-   return (0);
+}
+
+/* The sole framing writer never holds a vnode lock across semantic work. All
+ * native callbacks are bounded copy/readiness operations. EAGAIN on a first
+ * ordinary write consumes no native number, so controls may bypass it. Any
+ * uncertain/partially copied candidate pins the writer to its exact bytes,
+ * except a permanently refused donor send, which fails back (e64). */
+static int
+_forward(Hfs9p *h, Hfs9pEntry *e) {
+   unsigned index = (unsigned)(e - h->entries);
+   if (e->issued)
+      return (0);
+   if (h->pending >= 0 && (unsigned)h->pending != index)
+      return (EAGAIN);
+   bool replay = h->pending == (int)index || e->uncertain;
+   if (!e->native) {
+      int error = _forward_candidate(h, e);
+      if (error)
+         return (error);
+   }
+   int error = _forward_protect(h, e);
+   if (!error)
+      error = _forward_write(h, e, replay);
+   if (!error)
+      _forward_issued(h, e);
+   return (error);
 }
 
 static int
@@ -2982,6 +3226,26 @@ _unpack_hash(Hfs9pReader *b, uint8_t out[32]) {
       memcpy(out, p, 32);
 }
 
+/* The guest order floor is not persisted (e64), so it is rebuilt from what
+ * the ledger proves. A restored original without a native number keeps the
+ * floor below itself, so restored cells are still forwarded in guest order.
+ * Without one, every seen cell is settled and the floor is the session's
+ * highest seen cell. An unseen cell below the floor is no longer awaited;
+ * if it arrives it relies on the runtime's bounded guest reorder window. */
+static void
+_order_restore(Hfs9p *h) {
+   for (unsigned i = 0; i < h->session_count; i++)
+      h->sessions[i].order_high = h->sessions[i].high;
+   for (unsigned i = 0; i < HFS9P_ENTRIES; i++) {
+      Hfs9pEntry *e = &h->entries[i];
+      if (!e->guest || e->issued || e->polls || e->session >= h->session_count)
+         continue;
+      Hfs9pSession *s = &h->sessions[e->session];
+      if (e->guest_cell - 1 < s->order_high)
+         s->order_high = e->guest_cell - 1;
+   }
+}
+
 /* Pure ledger decoder. Its bytes become authority only through claim_cb's
  * protected-storage and real-host-ledger verification, never their checksum. */
 static int
@@ -3257,6 +3521,7 @@ _restore_bytes(Hfs9p *h, const uint8_t *bytes, size_t length) {
        !_memory(h, 0, true) ||
        (h->pending >= 0 && !h->entries[h->pending].native))
       return (EINVAL);
+   _order_restore(h);
    return (0);
 }
 

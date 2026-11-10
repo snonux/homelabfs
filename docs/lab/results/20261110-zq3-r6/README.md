@@ -79,4 +79,7 @@ The test kernel was then removed (23 files).
   view-control timeout (-110). Fixed in d64: the runtime admits an unissued
   guest cell within a 16-cell reorder window below the high-water exactly
   once. Exporter-side ordering and not pinning on a permanent refusal are
-  task e64.
+  task e64, now in the exporter source (see the
+  [lib9p README](../../../../tools/integration/lib9p/README.md), "Guest order
+  and permanent refusals"). It takes effect only after the next native
+  exporter rebuild.
