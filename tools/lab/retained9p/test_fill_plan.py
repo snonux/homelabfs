@@ -198,6 +198,15 @@ class BatchEvidenceTests(BatchCase):
         self.assertEqual((steps["ready"], steps["usable"]), ("ok", "failed"))
         self.refuses(self.argv(plan_sha256), "bootstrap steps did not end ok: usable=failed")
 
+    def test_journal_of_the_previous_step_list_refuses_by_version(self):
+        _, plan_sha256 = self.bootstrap_run()
+        self.assertEqual(fill.bootstrap.JOURNAL_VERSION, "homelabfs-zq3-bootstrap-journal/2")
+        path = self.run_dir / "journal.jsonl"
+        records = [json.loads(line) for line in path.read_text().splitlines()]
+        records[0]["version"] = "homelabfs-zq3-bootstrap-journal/1"
+        path.write_bytes(b"".join(controller.canonical(record) for record in records))
+        self.refuses(self.argv(plan_sha256), "journal version 'homelabfs-zq3-bootstrap-journal/1' is not")
+
     def test_summary_must_say_ready(self):
         _, plan_sha256 = self.bootstrap_run()
         summary = self.run_dir / "summary.json"

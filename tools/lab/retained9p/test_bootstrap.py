@@ -594,7 +594,20 @@ class UsableTests(Case):
         self.world.overrides["guest-stat"] = lambda o, p: bootstrap.Reply(None, b"", b"", True, "deadline")
         self.assertEqual(self.run_plan(), 1)
         self.assert_stopped("usable", "failed", "guest-stat: transport deadline")
+        detail = self.usable()
+        self.assertEqual((detail["probe"], detail["roots"], detail["errno"]), ("first", None, None))
         self.assert_preserved()
+
+    def test_usable_deadline_failure_names_its_probe(self):
+        def stall(seconds):
+            self.world.clock += seconds
+            if self.world.stat_clocks:  # During the settle: overrun the gate's own bound.
+                self.world.clock += 100
+        self.world.sleep = stall
+        self.assertEqual(self.run_plan(), 1)
+        self.assert_stopped("usable", "failed", "usable gate deadline")
+        detail = self.usable()
+        self.assertEqual((detail["probe"], detail["roots"], detail["errno"]), ("settle", None, None))
 
     def test_lost_mount_or_missing_root_fails(self):
         for outcomes, text in [([[{}, {"outcome": "not-mounted"}]], "no longer exactly one 9p mount"),
@@ -615,6 +628,7 @@ class UsableTests(Case):
         self.assertEqual(self.run_plan(), 1)
         self.assert_stopped("usable", "failed", "runtime guard finished")
         self.assertEqual(self.world.actions().count("guest-stat"), 1)
+        self.assertEqual(self.usable()["probe"], "settle")
 
     def test_late_ready_still_gets_its_final_probe(self):
         original = self.world.on_host_poll

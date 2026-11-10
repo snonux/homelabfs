@@ -287,6 +287,22 @@ class GuestTests(RemoteCase):
         code, result = self.act(self.stat_argv(boot=NONCE))
         self.assertEqual((code, "boot changed" in result["error"]), (2, True))
 
+    def test_child_seconds_must_be_bounded(self):
+        self.both_mounted()
+        for seconds in ("0", "-1", str(remote.SECONDS_MAX + 1)):
+            with self.subTest(seconds=seconds):
+                argv = self.stat_argv()
+                argv[-1] = seconds
+                code, result = self.act(argv)
+                self.assertEqual((code, result["changed"]), (2, False))
+                self.assertIn("--seconds must be 1..", result["error"])
+        self.assertEqual(self.system.children, [])  # Refused before any child.
+        (self.root / "var/tmp/hfs-zq3-zq3-r1/m0").mkdir(parents=True, mode=0o700)
+        argv = self.mount_argv()
+        argv[-1] = "0"
+        self.assertEqual(self.act(argv)[0], 2)
+        self.assertEqual(self.system.children, [])
+
     def test_stat_child_garbage_or_file_root_is_not_ok(self):
         self.both_mounted()
         regular = json.dumps({"mode": 0o100644, "uid": 0, "gid": 0, "ino": 1, "dev": 55}).encode()

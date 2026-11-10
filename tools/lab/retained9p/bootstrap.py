@@ -12,9 +12,11 @@ handoff to the runtime's EnrollmentFile (the runtime then runs
 ObserveAdmission), AWAITING_GUEST_BIND, the bind request, the operator's
 signed bind, the bind sysfs write, both guest mounts and READY, all inside
 `bootstrap_seconds` (at most 120) from launch. Then the post-READY usability
-gate (`usable`, k64): both mount roots must still answer a read-only lstat
-after the guest's 30 s QUERY timeout has passed for the mounts' own claims,
-under its own bound counted from mount-1. See the run plan
+gate (`usable`, k64): both mount roots must still answer an lstat after the
+guest's 30 s QUERY timeout has passed for the mounts' own claims, under its
+own bound counted from mount-1. The lstat writes nothing into the mounts,
+but each one adds GETATTR and PROCESS_EXIT claims to the runtime's provider
+ledgers. See the run plan
 docs/lab/zq3-run-plan.md, Phase 8.
 
 It never reads the operator private key and never signs. At each signing
@@ -72,7 +74,8 @@ controller = _sibling("retained9p_controller", "controller.py")
 digest, canonical, parse, read = controller.digest, controller.canonical, controller.parse, controller.read
 
 VERSION = "homelabfs-zq3-bootstrap-plan/1"
-JOURNAL_VERSION = "homelabfs-zq3-bootstrap-journal/1"
+# /2: the step list gained `usable` (k64); fill_plan.py refuses /1 journals.
+JOURNAL_VERSION = "homelabfs-zq3-bootstrap-journal/2"
 OBSERVER_VERSION = "homelabfs-runtime-observer-input/1"  # internal/runtimeprep
 REMOTE = HERE / "bootstrap_remote.py"
 MOUNT_OPTIONS = "trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,msize=65536"
@@ -88,12 +91,22 @@ MIN_REMOTE_SECONDS = {"admission": 40.0, "mount-0": 10.0, "mount-1": 10.0}
 # Post-READY usability gate (k64). In zq3-r6/r7 READY came with every step ok
 # while the mount(8) PROCESS_EXIT claims stayed RESERVED/UNPREPARED: the guest
 # QUERYs such a claim for GUEST_QUERY_SECONDS (its `jiffies + 30 * HZ`
-# exchange deadline), then blocks the session, and every later operation,
-# even getattr on the root, returns EACCES. A root stat right after READY can
+# deadline), then blocks the session, and every later operation, even
+# getattr on the root, returns EACCES. A root stat right after READY can
 # still pass, so the final probe waits until that window has closed for the
-# later mount, plus a margin. The runtime's claim states are not visible to
-# the driver (OBSERVE carries only a provider ledger digest), so the gate
-# observes the guest's own behaviour instead.
+# later mount, plus a margin. The guest checks its deadline only after each
+# QUERY reply, and each QUERY has its own 30 s transport deadline, so the
+# block lands at 30 s plus one QUERY round trip. r7's round trips took
+# milliseconds, so 10 s of margin covers it. A QUERY stalled for longer than
+# the margin would let the final probe run before the block; such a stall
+# would most likely also stall the probe's own GETATTR past STAT_SECONDS,
+# which fails the gate as a timeout. The gate narrows the r7 failure, it is
+# not a proof.
+# Not implemented (k64 follow-up, needs a daemon feature): requiring that
+# each mount's PROCESS_EXIT claim reached TERMINAL on the host. OBSERVE
+# carries only a provider ledger digest and transport counts, so the driver
+# cannot see claim states. It would need OBSERVE to list non-TERMINAL claims,
+# or READY to wait for the mount claims.
 GUEST_QUERY_SECONDS = 30
 USABLE_SETTLE_SECONDS = GUEST_QUERY_SECONDS + 10   # final probe, counted from mount-1's end
 STAT_SECONDS = 8               # one guest lstat child per root; a healthy root answers in ms
@@ -1163,8 +1176,16 @@ class Bootstrap:
         return {"record": self.stage_lines[2], "seconds_from_launch": round(self.io.clock.now() - self.launched, 3)}
 
     def step_usable(self):
-        """Post-READY usability gate (k64): read-only, never retried, never
-        mounts, writes or unmounts anything; a failure preserves everything.
+        """Post-READY usability gate (k64): never retried, never mounts,
+        writes into or unmounts anything; a failure preserves everything.
+
+        Read-only for the mounts' contents, but NOT for the runtime: each
+        guest lstat is an hfs operation. hfs_capture registers the lstat
+        child as an hfs process and sends a GETATTR claim, and the child's
+        exit queues its own PROCESS_EXIT claim (patch 0003). The two probes
+        therefore add about four durable claims to each provider ledger
+        before T1, and in an r7-type failure the probes' own claims stay
+        unresolved too.
 
         READY ends the runtime's launch-to-READY bootstrap timeout, so this
         step replaces the driver's deadline with its own fixed bound through
@@ -1173,14 +1194,26 @@ class Bootstrap:
         USABLE_PROBE_SECONDS. A first probe right away fails fast on a root
         that is already refused; the final probe after the settle point
         catches a session the guest blocked when its QUERY window ran out.
+        Every failure's journal detail carries `probe` (first, settle or
+        final), `roots` and `errno` (null where no lstat reported one).
         """
         settle_at = self.mounted_at + USABLE_SETTLE_SECONDS
         self.deadline = max(settle_at, self.io.clock.now()) + USABLE_PROBE_SECONDS
         self.deadline_text = "usable gate deadline ({:.0f} s after mount-1)".format(self.deadline - self.mounted_at)
-        first = self.stat_roots("first")
-        self.settle(settle_at)
-        self.runtime_still_ready()
-        final = self.stat_roots("final")
+        phase = "first"
+        try:
+            first = self.stat_roots(phase)
+            phase = "settle"
+            self.settle(settle_at)
+            self.runtime_still_ready()
+            phase = "final"
+            final = self.stat_roots(phase)
+        except StepFailed as failure:
+            # Transport, deadline, guard and runtime failures carry no probe
+            # result of their own: name where the gate stopped.
+            if "probe" not in failure.detail:
+                failure.detail = dict(failure.detail, probe=phase, roots=None, errno=None)
+            raise
         return {"first": first, "final": final, "settle_seconds": USABLE_SETTLE_SECONDS,
                 "final_seconds_after_mount": round(self.io.clock.now() - self.mounted_at, 3)}
 

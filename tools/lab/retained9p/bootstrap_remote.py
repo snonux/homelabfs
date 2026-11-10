@@ -49,15 +49,19 @@ FILE_LIMIT = 64 << 10        # guard records, manifest, mount_tag
 PROPOSAL_LIMIT = 512 << 10   # the runtime's handoff/config bound
 PAYLOAD_LIMIT = 512 << 10    # enrollment.json; provision/bind are smaller
 OUTPUT_LIMIT = 1 << 20       # captured child output per stream
+SECONDS_MAX = 120            # any remote child bound: at most the whole bootstrap
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
 HASH = re.compile(r"[0-9a-f]{64}\Z")
 DEVICE = re.compile(r"virtio(0|[1-9][0-9]{0,3})\Z")
 CHILD_ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
 # The one program guest-stat runs per mount root (k64): os.lstat of the root
-# only, no open, no create, nothing written. It runs in its own process so a
-# getattr stuck in the hfs transport (the guest waits up to 30 s per exchange)
-# cannot hold the action past its bound. An OSError is a result, not a crash:
-# the errno is exactly what the usability gate reports.
+# only, no open, no create, nothing written into the mount. It is still an
+# hfs operation: the guest registers the child as an hfs process and sends a
+# GETATTR claim, and the child's exit queues a PROCESS_EXIT claim, so each
+# probe adds durable claims to the provider ledger (patch 0003). It runs in
+# its own process so a getattr stuck in the hfs transport (the guest waits up
+# to 30 s per exchange) cannot hold the action past its bound. An OSError is
+# a result, not a crash: the errno is exactly what the usability gate reports.
 STAT_PROGRAM = ("import json,os,sys\n"
                 "try:\n"
                 " s=os.lstat(sys.argv[1])\n"
@@ -348,7 +352,11 @@ def guest_mount(system, args, payload):
 
 
 def guest_stat(system, args, payload):
-    """Read-only usability probe of the mount roots (k64, after READY).
+    """Usability probe of the mount roots (k64, after READY).
+
+    Read-only for the mounts' contents and in the remote-action sense (never
+    exit 1), but each lstat adds a GETATTR and a PROCESS_EXIT claim to the
+    runtime's provider ledger (see STAT_PROGRAM).
 
     For each (tag, mount point) pair: the mount point must still be exactly
     one 9p mount of that tag in mountinfo, otherwise its root is never
@@ -433,6 +441,10 @@ def dispatch(args, system, stdin):
     """Run one action; map its outcome to (exit status, JSON result)."""
     try:
         action = READ_ONLY.get(args.action) or MUTATING[args.action]
+        # A remote child bound outside 1..SECONDS_MAX is a caller bug: refuse
+        # before anything runs (exit 2, nothing changed).
+        require(not hasattr(args, "seconds") or 0 < args.seconds <= SECONDS_MAX,
+                "--seconds must be 1..{}".format(SECONDS_MAX))
         payload = read_payload(args, stdin)
         return 0, dict(action(system, args, payload), ok=True)
     except Refused as failure:

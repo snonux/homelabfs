@@ -121,8 +121,12 @@ def journal_details(run_dir, plan_sha256):
     """
     journal = bootstrap.Journal.open(run_dir / "journal.jsonl")
     header, records = (journal.records or [{}])[0], journal.records[1:]
-    require(header.get("kind") == "run" and header.get("version") == bootstrap.JOURNAL_VERSION,
-            "journal does not start with a bootstrap run record")
+    require(header.get("kind") == "run", "journal does not start with a bootstrap run record")
+    # The version names the step list: a /1 journal predates the usable gate
+    # and is refused for that reason, not as an incomplete run.
+    require(header.get("version") == bootstrap.JOURNAL_VERSION,
+            "journal version {!r} is not {} (written by a bootstrap.py with another step list)".format(
+                header.get("version"), bootstrap.JOURNAL_VERSION))
     require(header.get("plan_sha256") == plan_sha256, "journal is not for the pinned bootstrap plan")
     intents = [r.get("step") for r in records if r.get("kind") == "intent"]
     results = [r for r in records if r.get("kind") == "result"]

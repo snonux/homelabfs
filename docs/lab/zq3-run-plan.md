@@ -554,21 +554,35 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
      gate (k64) [`usable`]. zq3-r6 and r7 reached READY with every step `ok`,
      but the guest had already blocked both sessions, so every operation
      returned `EACCES`.
-     - Root lstats both mount roots, read-only, in one guest SSH round trip.
-       A root is stat'ed only while it is still exactly one `9p` mount of its
-       tag. Each lstat runs in a child bounded by 8 s that is never killed.
+     - Root lstats both mount roots in one guest SSH round trip. A root is
+       stat'ed only while it is still exactly one `9p` mount of its tag. Each
+       lstat runs in a child bounded by 8 s that is never killed.
+     - Nothing is written into the mounts, but the gate is **not read-only on
+       the host**. Each lstat registers its child as an hfs process and sends
+       a GETATTR claim, and the child's exit queues a PROCESS_EXIT claim. The
+       two probes add about four durable claims to each provider ledger
+       before T1. In an r7-type failure these claims stay unresolved too.
      - The first probe runs right away. The final probe runs once 40 s have
-       passed since `mount-1` ended, which is the guest's 30 s QUERY timeout
-       plus 10 s. A host poll in between confirms the guard is unbreached and
-       READY is still the last record. The step's bound is the settle point
-       plus 30 s.
-     - Both roots must answer every probe. Otherwise `usable` ends `failed`
-       with each root's result and the errno (13 for `EACCES`). The run
-       exits 1 (`stopped_at: usable`), and `fill_plan.py batch` refuses it.
+       passed since `mount-1` ended. A host poll in between confirms the
+       guard is unbreached and READY is still the last record. The step's
+       bound is the settle point plus 30 s.
+     - Why 40 s: the guest checks its 30 s QUERY deadline only after each
+       QUERY reply, and each QUERY has its own 30 s transport deadline, so
+       the block lands at 30 s plus one QUERY round trip. r7's round trips
+       took milliseconds, so 10 s of margin is enough. A QUERY stalled
+       longer would most likely also stall the probe's GETATTR past 8 s,
+       which fails the gate.
+     - Both roots must answer every probe. Otherwise `usable` ends `failed`.
+       The journal detail names `probe` (`first`, `settle` or `final`),
+       `roots` and `errno` (13 for `EACCES`, null when no lstat reported one).
+       The run exits 1 (`stopped_at: usable`), and `fill_plan.py batch`
+       refuses it, as it refuses a pre-k64 `/1` journal.
      - Nothing is retried, remounted, written or unmounted. Go to Phase 11
        with inspection first.
-     - Whether each mount's PROCESS_EXIT claim reached TERMINAL is not
-       checked: the driver has no host-side source for it (see the
+     - **Not implemented:** requiring that each mount's PROCESS_EXIT claim
+       reached TERMINAL on the host. The driver has no host-side source for
+       it. The follow-up needs a daemon feature: OBSERVE listing non-TERMINAL
+       claims, or READY waiting for the mount claims (see the
        [README](../../tools/lab/retained9p/README.md#phase-8-bootstrap-orchestrator-zq3-g1)).
 - Changes on Rocky's disk (A3): `/etc/homelabfs/installed-admission-v1.json`
   (and `/etc/homelabfs/` if absent), the G5 journal lines; kdump may create
