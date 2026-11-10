@@ -1529,7 +1529,9 @@ _forward_protect(Hfs9p *h, Hfs9pEntry *e) {
  *
  * Donor send (e64): reclaim, poll index 0, not SESSION_RETIRE. The runtime
  * builds it in its reclaim workspace and advances its native high-water
- * only on admission, so a refusal never consumes the native number.
+ * only on admission, so a refusal never consumes the native number. Since
+ * n64 it also frees the workspace when it refuses the complete send ESTALE,
+ * EINVAL or EACCES, so the next cell can take that number.
  * Permanent are EINVAL on any attempt, and ESTALE (stale guest cell,
  * released or spent native cell) and EACCES only on a first attempt. A
  * replay could see the authentication ESTALE or EACCES of a send that an
@@ -1548,11 +1550,12 @@ _permanent_donor(int error, bool replay) {
  * control or donor traffic bypassed and that the runtime then refused as a
  * stale guest cell (prepareMapping: the cell fell out of the 16-cell guest
  * reorder window). The runtime allocates such a cell's native number at its
- * first chunk, before any content check, and keeps a refused cell in its
- * table for good (incomplete, never dispatched, holding its credit). A fail
- * back must therefore know that the number was spent, or the next cell
- * collides with the stuck cell or leaves a gap, and every later cell would
- * then be refused too. Permanent, with the number spent, are:
+ * first chunk, before any content check. Since n64 it removes a complete
+ * cell refused this way with its credit but keeps the number spent (before,
+ * the cell stayed incomplete in its table for good). A fail back must
+ * therefore know that the number was spent, or the next cell reuses a spent
+ * number or leaves a gap, and every later cell would then be refused too.
+ * Permanent, with the number spent, are:
  *  - ESTALE on a first attempt. It comes from the guest freshness check or
  *    a duplicate guest cell (after allocation), or from a native number at
  *    or below the runtime's high-water (spent already). A replay could see
@@ -1593,10 +1596,11 @@ _permanent_refusal(const Hfs9pEntry *e, int error, bool replay,
  * cell gets ESTALE and the cell number is never reused. A donor send's donor
  * entry stays (e64): the runtime did not reclaim it and did not spend the
  * native number. A non-donor original's native number was spent (p64, see
- * _permanent_original), so the native high-water moves to it. Its runtime
- * cell keeps an ordinary or control credit that the exporter no longer
- * counts; the guest treats the ERROR as an uncertain result and keeps that
- * cell's slot reserved, so it does not reuse the credit either. A fresh
+ * _permanent_original), so the native high-water moves to it. Since n64 the
+ * runtime removes such a refused cell with its ordinary or control credit
+ * (internal/guestbridge/refusal.go), so neither side counts that credit any
+ * more; the guest treats the ERROR as an uncertain result and keeps that
+ * cell's slot reserved. A fresh
  * snapshot is protected so that recovery does not replay the refused
  * candidate. */
 static int
@@ -1664,8 +1668,10 @@ _native_write(Hfs9p *h, Hfs9pEntry *e, uint32_t offset, int *refusal) {
  * with the same number (p64). If the number was allocated, the resend
  * revalidates the stored cell; if not, it allocates the number again. The
  * cost: such a cell no longer lets control or donor traffic bypass it while
- * the runtime refuses it, and a refusal that persists (for example ordinary
- * credit held by a cell failed back after allocation) blocks the writer.
+ * the runtime refuses it, and a refusal that persists blocks the writer.
+ * (Before n64 cells failed back after allocation kept their runtime credit
+ * and caused exactly such persistent refusals; the runtime now removes
+ * them.)
  *
  * "First write" needs replay as well as e->uncertain: _forward_protect
  * persists the candidate before its write, so after an exporter restart a

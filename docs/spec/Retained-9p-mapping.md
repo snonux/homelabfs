@@ -105,11 +105,17 @@ can still arrive below the highwater. A cell is refused as stale once any cell 1
 above it was admitted (a distance rule). Since task p64 the exporter fails such
 a refused cell back to the guest instead of keeping it as its pinned writer.
 Because the runtime allocates a non-donor cell's native number at its first
-chunk and keeps a refused cell, the exporter fails a non-donor cell back only
+chunk, the exporter fails a non-donor cell back only
 when the refusal also shows that the number was spent (ESTALE on a first
 attempt, or EINVAL after an accepted earlier chunk) and then treats that number
-as spent. The refused cell stays in the runtime as a permanently incomplete cell
-(see the marker rule below). The window is now a bounded fallback whose size
+as spent. Since task n64 the runtime matches that: a complete cell refused
+Stale by validation (except a SESSION_RETIRE), or Invalid on a chunk after the
+first, is removed with its credit, so it no longer counts as incomplete or
+pins markers (see the marker rule below). Its number stays spent, and the C8
+index keeps the latest such refusal as `Refused` (omitted until one happens)
+so that a resend gets the same errno. A donor send refused Stale, Invalid or
+Permission leaves the reclaim workspace free (not a SESSION_RETIRE or a
+continuation poll, which the exporter pins). The window is now a bounded fallback whose size
 can be revisited once the rebuilt exporter has run (see the [lib9p README](../../tools/integration/lib9p/README.md)).
 This bounds retained state and is not evidence that the guest retired
 it. A SESSION_RETIRE drops its scope's holes. The C8 index protects holes as

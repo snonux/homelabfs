@@ -304,13 +304,16 @@ candidate pinned and protected, as before. Non-donor cells are classified
 separately (`p64`, below), because the runtime allocates their native number
 at the first chunk, before validation.
 
-**Known runtime limit (follow-up, not changed here).** The runtime keeps a
+**Runtime workspace (fixed by `n64`).** Before n64 the runtime kept a
 refused donor frame in its single reclaim workspace
-(`internal/guestbridge/endpoint.go`, `Transport.Write`). Every later new
-native cell, from any session, then gets WouldBlock until that exact frame is
-admitted. Failing the cell back frees the exporter, but the runtime still
-needs to drop the workspace on a final-chunk refusal before a permanent donor
-refusal is fully survivable.
+(`internal/guestbridge/endpoint.go`, `Transport.Write`), so every later new
+native cell, from any session, got WouldBlock until that exact frame was
+admitted. The runtime now frees the workspace when it refuses the complete
+send ESTALE, EINVAL or EACCES (`internal/guestbridge/refusal.go`), and the
+next cell takes the unspent number. EAGAIN keeps the workspace for the
+replay, and so does any refusal of a SESSION_RETIRE or a continuation poll,
+which this exporter always pins. A replay resends every chunk from the first, so it rebuilds the
+workspace and revalidates the identical bytes.
 
 `backend_test.c` covers ordering behind another session's pinned writer,
 eight concurrent SENDs of one session, the R6-2 gap shape with hold expiry and
@@ -332,10 +335,11 @@ R6-2 symptom in another shape.
 
 **What differs from a donor send.** The runtime allocates a non-donor cell's
 native number and credit at its first chunk, before any content check
-(`Transport.Write`, `t.high = f.Cell`), and keeps a refused cell in its table
-for good: incomplete, never dispatched, still holding its credit. A fail-back
+(`Transport.allocateCell`). Before `n64` it kept a refused cell in its table
+for good (incomplete, never dispatched, still holding its credit); since n64
+it removes it with its credit, but the number stays spent. A fail-back
 must therefore know that the number was spent. If the exporter guessed wrong,
-the next cell would collide with the stuck cell or leave a gap in the native
+the next cell would reuse a spent number or leave a gap in the native
 numbers, and the runtime would refuse it and every later cell. So a refusal
 fails back only when it is permanent **and** shows that the number was spent:
 
@@ -368,33 +372,38 @@ Everything else keeps the exact candidate pinned, as before:
 
 A failed-back non-donor cell is handled like a failed-back donor send (ERROR
 reply, ESTALE afterwards through the seen ledger, fresh protected snapshot),
-and the native high-water moves to its spent number. Its runtime cell keeps an
-ordinary or control credit that the exporter no longer counts. The guest
+and the native high-water moves to its spent number. Since `n64` the runtime
+has removed that cell with its ordinary or control credit (see below). The guest
 (`hfs_control` in the linux9p 0003 patch) treats the ERROR like any uncertain
 transport result: it keeps the cell's slot reserved, so it does not reuse the
 credit either, and blocks the session's unreserved traffic (an ALLOCATE only
 marks allocation uncertain) until it reconciles. Other sessions proceed.
 
-**Known runtime limits (follow-up, not changed here).** The stuck runtime
-cell stays incomplete for good. It counts against its session's incomplete
-limits (16, and 12 ordinary), and for minor 4 it keeps every later guest
-issuance marker of its session from being pruned, so after about 80 more
-admitted cells of that session fresh minor-4 admission closes for every
-session (`pruneGuestRecent`,
-`mappingRecentLimit`). The runtime needs to drop a cell that it refuses for
-good after allocation.
+**Runtime cleanup of refused cells (`n64`).** Before n64 each failed-back
+non-donor cell left a stuck runtime cell: incomplete for good, holding an
+ordinary or control credit that the exporter no longer counted, counting
+against its session's incomplete limits (16, and 12 ordinary), and for minor 4
+keeping every later issuance marker of its session from being pruned. Once k
+stuck cells used up the credit the exporter believed free, or 12 filled a
+session's incomplete limit, the next fresh cell got WouldBlock before
+allocation; a single-chunk cell refused that way was pinned (see below) and
+pinned the writer for good, and a SESSION_RETIRE could not pass it. For minor
+4 fresh admission closed for every session after about 80 more admitted cells
+of the stuck cell's session (`pruneGuestRecent`, `mappingRecentLimit`).
 
-**p64 delays the stall; it does not remove it.** Until the runtime's
-stuck-cell cleanup (task n64) lands, each failed-back non-donor cell leaves a
-stuck runtime cell that keeps its ordinary or control credit, which the
-exporter no longer counts. Once k stuck cells use up the runtime credit that
-the exporter believes is free, or 12 stuck ordinary cells fill a session's
-incomplete limit, the runtime refuses the next fresh cell WouldBlock before
-allocation. A single-chunk cell refused that way is pinned (see below) and
-pins the writer for good. For minor 4, the marker rule closes fresh
-admission for every session after about 80 more admitted cells of the stuck
-cell's session. p64 turns an immediate stall into one error per refused cell
-and a later stall.
+The runtime now mirrors the fail-back (`internal/guestbridge/refusal.go`). It
+removes a complete cell that validation refuses Stale (except a
+SESSION_RETIRE, whose Stale depends on later state and which the exporter
+pins), or Invalid on a chunk after the first, and returns its credit. The
+number stays spent, and the protected transport index records the latest
+such refusal (`Refused`, omitted until one happens), so a resend of that cell,
+also after a restore, gets the same errno, while an identical resend of an
+admitted cell still succeeds. The removal and the record are protected with
+the refusing write, and since no incomplete row stays behind, Suspend and
+restore work after a refusal. Refusals the exporter keeps pinned (EACCES,
+first-chunk EINVAL, EAGAIN, ENOSPC) keep the runtime cell too, so their replay
+revalidates the same bytes.
+
 
 **WouldBlock before or after allocation.** The exporter used to drop any
 first-write candidate refused EAGAIN and let later cells take its number.
@@ -421,9 +430,9 @@ allocates the number again. The trade-off is that such a cell no longer lets
 control or donor traffic bypass it while the runtime refuses it, and a
 refusal that never clears blocks the writer. In a healthy runtime the
 exporter's own credit check runs before any write, so a pre-allocation
-WouldBlock needs runtime state the exporter does not mirror, mainly cells
-failed back after allocation, which keep their runtime credit and count as
-incomplete. Those cases are covered by the runtime follow-up above.
+WouldBlock needs runtime state the exporter does not mirror. Before `n64`
+that was mainly cells failed back after allocation, which kept their runtime
+credit and counted as incomplete; the runtime now removes them (above).
 
 **Exposure.** No change was needed to prefer the lowest bypassed cell:
 `_guest_order` already offers every complete lower cell of the session the
