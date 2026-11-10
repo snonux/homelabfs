@@ -3642,7 +3642,7 @@ diff --git a/fs/9p/hfs_enrollment.c b/fs/9p/hfs_enrollment.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_enrollment.c
-@@ -0,0 +1,457 @@
+@@ -0,0 +1,469 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* Exact original Go struct decoding, separate from canonical network JSON. */
 +#include "hfs_enrollment.h"
@@ -3881,6 +3881,17 @@ new file mode 100644
 +		-EPROTO : 0;
 +}
 +
++/* Lower bound for Bounds.Sources, mirrored from viewcontrol validation.
++ *
++ * TODO(i64): the Go side is replacing its bare "Sources >= 2" check with a
++ * derived floor (zq3-r7 R7-2: viewcontrol.sourceCapacity counts
++ * len(Sources) + extra + 2, so Sources 2 admits no non-read operation). Mirror
++ * that exact floor here once it is defined there; until then this keeps the
++ * old value so guest and host refuse the same specs. Do not pick a number
++ * here independently: the two validators must stay identical.
++ */
++#define HFS_GO_SOURCES_MIN 2
++
 +static int hfs_go_bounds(const struct hfs_json *json, int object)
 +{
 +	static const char *const names[] = {
@@ -3902,7 +3913,8 @@ new file mode 100644
 +	if (!values[0] || values[0] > (2ULL << 30) ||
 +	    !values[1] || values[1] > 65536 || values[2] < 4 || values[2] > 16384 ||
 +	    !values[3] || values[3] > 64 || values[4] > 65536 ||
-+	    values[4] < values[1] + values[2] || values[5] < 2 || values[5] > 128 ||
++	    values[4] < values[1] + values[2] ||
++	    values[5] < HFS_GO_SOURCES_MIN || values[5] > 128 ||
 +	    values[6] < 4096 || values[6] > (16ULL << 20) || values[7] > (512ULL << 20))
 +		return -EPROTO;
 +	minimum = values[3] * (128U << 10) + values[6] * values[5] * 3 +

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-only
-"""Run actual v9fs_hfs_mount from enroll through the HELLO selection check.
+"""Run actual v9fs_hfs_mount from its cache= check through the HELLO selection.
 
-The production mount, enrollment validators and controlled HELLO pre-send
-check are copied verbatim from the owned source tree. Only kernel/VFS, p9
-client creation, transport binding and the native exchange are substituted.
-The substituted exchange echoes the sent HELLO as the runtime does
+The production mount and its helpers, the enrollment validators, the
+controlled HELLO pre-send check, hfs_session_block, hfs_show_options and
+p9_show_client_options are copied verbatim from the owned source tree. Only kernel/VFS, p9 client
+creation, transport binding and the native exchange are substituted. The
+substituted exchange echoes the sent HELLO as the runtime does
 (internal/guestbridge/service.go). No kernel, VM or service is used.
 """
 import argparse
@@ -37,15 +38,25 @@ def extract(source, output):
     here = Path(__file__).resolve().parent
     build = load('controlled_received_build', here.parent / 'controlled_received/build.py')
     texts = {name: (source / name).read_text()
-             for name in ('fs/9p/hfs.h', 'fs/9p/hfs_session.c', 'fs/9p/hfs_controlled.c')}
+             for name in ('fs/9p/hfs.h', 'fs/9p/hfs_session.c', 'fs/9p/hfs_controlled.c',
+                          'fs/9p/hfs_inode.c', 'net/9p/client.c')}
     session = texts['fs/9p/hfs_session.c']
     (output / 'enrollment_struct.inc').write_text(enrollment_struct(texts['fs/9p/hfs.h']))
     (output / 'validate.inc').write_text(''.join(build.function(session, name) for name in (
         'hfs_uuid', 'hfs_enrollment_validate', 'hfs_enrollment_lanes')))
     (output / 'before_send.inc').write_text(
         build.function(texts['fs/9p/hfs_controlled.c'], 'hfs_controlled_before_send'))
-    # The complete mount, not only its fail: tail (compare controlled_received).
-    (output / 'mount.inc').write_text(build.function(session, 'v9fs_hfs_mount'))
+    # The complete mount with every helper it calls (g64 split it), not only
+    # its failure tail (compare controlled_received).
+    (output / 'mount.inc').write_text(''.join(build.function(session, name) for name in (
+        'hfs_session_block', 'hfs_cache_option', 'hfs_session_new', 'hfs_mount_enroll', 'hfs_trace_register',
+        'hfs_mount_client', 'hfs_mount_hello', 'hfs_mount_fail', 'v9fs_hfs_mount')))
+    # g64: the mountinfo super options of an hfs superblock.
+    client = texts['net/9p/client.c']
+    (output / 'show_options.inc').write_text(
+        build.function(client, 'p9_client_is_hfs') +
+        build.function(client, 'p9_show_client_options') +
+        build.function(texts['fs/9p/hfs_inode.c'], 'hfs_show_options'))
     return {name: hashlib.sha256(text.encode()).hexdigest() for name, text in texts.items()}
 
 
