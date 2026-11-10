@@ -26,7 +26,9 @@ import (
 //
 // The exporter cannot tell an authentication ESTALE or credential EACCES of
 // the final chunk, which comes before validation and leaves the cell here,
-// from a validation refusal; that residual race stays one chunk wide.
+// from a validation refusal, so a first attempt fails such a cell back while
+// this transport still holds its other chunks. Since x64 the next frame
+// replaces that abandoned cell (replaceAbandoned).
 //
 // Before n64 the runtime kept both kinds of refused cell for good. A refused
 // donor frame stayed in the single reclaim workspace, so every later new cell
@@ -147,12 +149,85 @@ func (t *Transport) discardRefused(c *cell, f Frame, command *Command, e error, 
 	w.dropped = c
 }
 
+// Replacement of abandoned cells (task x64).
+//
+// A refusal of the final chunk before validation (authentication ESTALE,
+// credential-snapshot EACCES) leaves an incomplete cell here, but a first
+// attempt of the exporter fails it back (w64, _permanent_refusal):
+//   - a donor send: the half-filled reclaim workspace stays, its number stays
+//     unallocated, and the exporter's next cell arrives at that same number
+//     (high+1) with a different frame;
+//   - a numbered cell: its number and credit were taken at the first chunk,
+//     the exporter moves its high-water to that number (p64) and its next
+//     cell arrives at high+1.
+//
+// The exporter's single writer finishes or abandons one candidate before it
+// writes any other frame: every retry of a pinned candidate replays the
+// identical frame from its first chunk, and it drops a candidate only after a
+// fail-back (or an EAGAIN before allocation, which leaves nothing here). So a
+// different frame at high+1 proves that the incomplete cell at high, and an
+// incomplete workspace with another frame, will never be written again.
+//
+// Only a cell that never completed is replaced: it was never validated,
+// never admitted and has no command. A complete cell that validation refused
+// and kept (WouldBlock, Permission, a pinned SESSION_RETIRE, ...) is one the
+// exporter keeps pinned and replays, so it stays, and so does an identical
+// frame's partial cell or workspace.
+
+// abandonedCell reports whether c never received all of its chunks, so it was
+// never validated or admitted.
+func abandonedCell(c *cell) bool {
+	return c != nil && !c.released && c.command == nil && c.count < len(c.chunks)
+}
+
+// replaceAbandoned runs before frame f, at native number high+1, takes a
+// workspace or cell. It removes an incomplete numbered cell at high with its
+// credit (its number stays spent and later reads as Stale, refusedResend) and
+// frees an incomplete workspace that holds a different frame (its number
+// stays unallocated, f takes it). The removal is protected in its own ledger
+// transaction before f changes anything, so a terminal or donor admission by
+// f keeps its own bounded transaction (terminalDeletionDelta). A protection
+// failure fences the transport and retains the old cells (uncertainReclaims).
+func (t *Transport) replaceAbandoned(f Frame) error {
+	var gone []*cell
+	var ids []uint64
+	if c := t.cells[t.high]; abandonedCell(c) {
+		delete(t.cells, t.high)
+		if c.reservation.Control {
+			t.control--
+		} else {
+			t.ordinary--
+		}
+		ids = append(ids, t.high)
+		gone = append(gone, c)
+	}
+	if w := t.workspace; abandonedCell(w) && !sameFrame(w.frame, f) {
+		t.workspace = nil
+		gone = append(gone, w)
+	}
+	if len(gone) == 0 {
+		return nil
+	}
+	if e := t.protectLocked(ids...); e != nil {
+		t.uncertainReclaims = append(t.uncertainReclaims, gone...)
+		return e
+	}
+	for _, c := range gone {
+		if c.reservation.Release == nil {
+			// A workspace holds no credit until takeReclaim, so it has no release.
+			c.reservation.Release = func() {}
+		}
+		releaseCell(c)
+	}
+	return nil
+}
+
 // refusedResend answers a write to a number at or below the high-water that
 // has no cell. The most recently removed refused cell answers its own errno
 // for an identical frame (Invalid for another frame, as a kept cell did), so
 // removing the cell does not change the answer for its number, also after a
 // restore, and the answer still names the original refusal. Every other
-// spent or released number is Stale.
+// spent, released or abandoned (replaceAbandoned) number is Stale.
 //
 // The record does not unpin the exporter. The case it answers is a replay
 // after an exporter crash before its fail-back was protected. That replay

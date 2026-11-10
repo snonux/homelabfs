@@ -210,23 +210,27 @@ func TestMappedIncompleteWatermarksAndIssuedHazards(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = fetchNative(t, tr, f.native, 3)
-	if err := mappingWrite(t, tr, f.native, a, 0, ChunkBytes, -1); err != nil {
-		t.Fatal("older accepted partial rejected after higher guest", err)
+	// The exporter's sole writer never interleaves cells: a frame at the next
+	// number proves that the incomplete cell before it was abandoned (x64,
+	// replaceAbandoned). So native 1 was removed when native 2 began, and
+	// native 2 when native 3 began; neither can complete under an old
+	// watermark capture after the higher guest cell 6 was admitted.
+	if err := mappingWrite(t, tr, f.native, a, 0, ChunkBytes, -1); !errors.Is(err, fsapi.Stale) {
+		t.Fatal("abandoned partial completed after higher guest", err)
 	}
 	if err := mappingWrite(t, tr, f.native, replay, 0, ChunkBytes, -1); !errors.Is(err, fsapi.Stale) {
 		t.Fatal("old-capture duplicate admitted", err)
 	}
 	tr.mu.Lock()
-	badBinding := tr.cells[1].mapping == nil || tr.guestHigh[f.c.Session] != 6
+	badBinding := len(tr.cells) != 1 || tr.ordinary != 1 || tr.guestHigh[f.c.Session] != 6
 	tr.mu.Unlock()
 	if badBinding {
-		t.Fatal("pending binding lost")
+		t.Fatal("abandoned partials kept or admitted binding lost")
 	}
 	tr.Close()
-	// The refused duplicate (native 2) was removed with its credit (n64); its
-	// number stays spent and the index keeps its refusal for a resend.
+	// Both abandoned numbers stay spent without a refusal record.
 	state, cells := inspectCells(t, root)
-	if state.GuestHigh[f.c.Session] != 6 || len(cells) != 2 || state.High != 3 || state.Refused == nil || state.Refused.Header.Cell != 2 || state.Refused.Error != fsapi.Stale {
+	if state.GuestHigh[f.c.Session] != 6 || len(cells) != 1 || state.High != 3 || state.Refused != nil {
 		t.Fatal(state)
 	}
 }
@@ -395,13 +399,18 @@ func TestMappedWaitGuestClosureAndContinuationNegatives(t *testing.T) {
 	}
 }
 func TestMappedRecentCapacityReservesIncompleteCompletion(t *testing.T) {
+	// The exporter's sole writer finishes or abandons one cell before the
+	// next (x64), so the only incomplete cell is the one at the high-water,
+	// started here after 79 admitted cells. Without an older incomplete cell
+	// their markers are pruned, so the marker limit is not reached; the test
+	// checks that the partial still completes and that a later header is
+	// admitted. Before x64 an interleaved partial reserved the last marker
+	// credit; a new header now abandons such a partial (replaceAbandoned),
+	// which frees that credit.
 	f, tr, _ := mappedFixture(t)
-	partial := mappingLongCall(t, f, 1, 1)
-	if err := mappingWrite(t, tr, f.native, partial, 0, 0, ChunkBytes); err != nil {
-		t.Fatal(err)
-	}
+	partial := mappingLongCall(t, f, 80, 80)
 	var nativeAck, guestAck *Ack
-	for guest := uint64(2); guest <= 80; guest++ {
+	for guest := uint64(1); guest <= 79; guest++ {
 		command := mappedHello(t, f, guest, guest)
 		command.Reclaim = nativeAck
 		command.Delegation.GuestReclaim = guestAck
@@ -417,8 +426,8 @@ func TestMappedRecentCapacityReservesIncompleteCompletion(t *testing.T) {
 		nativeAck = &Ack{Cell: guest, ResponseHash: digest(response)}
 		guestAck = &Ack{Cell: guest, ResponseHash: translated}
 	}
-	if err := mappingWrite(t, tr, f.native, mappedHello(t, f, 81, 81), 0, 0, -1); !errors.Is(err, fsapi.WouldBlock) {
-		t.Fatal("new header admitted without marker credit", err)
+	if err := mappingWrite(t, tr, f.native, partial, 0, 0, ChunkBytes); err != nil {
+		t.Fatal("partial header within the marker limit", err)
 	}
 	if err := mappingWrite(t, tr, f.native, partial, 0, ChunkBytes, -1); err != nil {
 		t.Fatal("funded incomplete completion deadlocked", err)
@@ -674,17 +683,16 @@ func TestMappedRecentRejectsReplayAfterActualDonorDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = fetchNative(t, tr, f.native, 3)
+	// The older header was abandoned when native 2 began (x64: the exporter's
+	// sole writer never interleaves cells), so no old-capture header is left
+	// that could replay the deleted guest key, and the marker need not be
+	// retained for it. Its completion reads its spent number as Stale.
 	tr.mu.Lock()
 	active := tr.cells[2] != nil
-	retained := false
-	for _, issued := range tr.guestRecent {
-		if issued.Session == f.c.Session && issued.Cell == 2 {
-			retained = true
-		}
-	}
+	abandoned := tr.cells[1] == nil
 	tr.mu.Unlock()
-	if active || !retained {
-		t.Fatal("oracle did not delete active donor while retaining old-capture hazard")
+	if active || !abandoned {
+		t.Fatal("oracle did not delete active donor or kept the abandoned header")
 	}
 	if err := mappingWrite(t, tr, f.native, older, 0, ChunkBytes, -1); !errors.Is(err, fsapi.Stale) {
 		t.Fatal("deleted guest key replayed through older accepted header", err)

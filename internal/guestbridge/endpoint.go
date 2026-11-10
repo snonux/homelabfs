@@ -340,7 +340,9 @@ func (t *Transport) commitWrite(id uint64, w *writeEffects, written uint32, err 
 // writeCell finds or allocates the cell that frame f writes into. admitted is
 // true for an identical resend of an already admitted cell, which succeeds
 // without any change. A number at or below the high-water without a cell was
-// released or permanently refused (refusedResend).
+// released, permanently refused or abandoned (refusedResend). A different
+// frame at an existing cell's own number stays Invalid; only a frame at the
+// next number replaces an abandoned cell (nextCell).
 func (t *Transport) writeCell(f Frame, scope *Context) (c *cell, admitted bool, err error) {
 	if final := t.terminal[scope.Session]; final != 0 && final != f.Cell {
 		return nil, false, fsapi.Permission
@@ -366,6 +368,18 @@ func (t *Transport) writeCell(f Frame, scope *Context) (c *cell, admitted bool, 
 	}
 	if f.Cell != t.high+1 {
 		return nil, false, fsapi.Invalid
+	}
+	return t.nextCell(f)
+}
+
+// nextCell finds or creates the cell of a frame at the next native number
+// (high+1). It first replaces a cell or workspace the exporter abandoned
+// (x64, replaceAbandoned), then continues an identical workspace (a
+// different frame over a complete, validated workspace still waits) or
+// starts a new workspace or numbered cell.
+func (t *Transport) nextCell(f Frame) (c *cell, admitted bool, err error) {
+	if err = t.replaceAbandoned(f); err != nil {
+		return nil, false, err
 	}
 	if f.Minor == 4 && t.workspace == nil {
 		t.pruneGuestRecent()
