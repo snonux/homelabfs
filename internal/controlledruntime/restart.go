@@ -475,11 +475,15 @@ func (r *Restart) checkIdlePhysical(l factsLedger) error {
 		for _, row := range a.installed.Admission.Observations {
 			switch row.Phase {
 			case "LIVE":
-				if row.Fence > l.Fence {
+				// Fences are per domain, as in the guest: a registered domain's
+				// mount must report exactly its ledger fence, and an unregistered
+				// one (never recalled, DomainFence 1) can be no further.
+				fence := viewcontrol.DomainFence(l.Fences, row.Scope.Session)
+				if row.Fence > fence {
 					a.mu.Unlock()
 					return fsapi.Stale
 				}
-				if _, known := l.Domains[row.Scope.Session]; known && row.Fence != l.Fence {
+				if _, known := l.Domains[row.Scope.Session]; known && row.Fence != fence {
 					a.mu.Unlock()
 					return fsapi.Stale
 				}

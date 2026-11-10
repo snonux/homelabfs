@@ -315,7 +315,7 @@ func (c *Controller) acquire(ctx context.Context, scope guestbridge.Context, r r
 	if err = c.remember(source); err != nil {
 		return c.reply(t, "BLOCKED", nil, nil, nil)
 	}
-	lease := guestbridge.ViewLease{Scope: scope, Domain: r.Domain, Access: r.Access, CredentialHash: digest(r.Request.Credentials), Mode: r.Mode, Target: target, Fence: c.state.Fence, Revision: 1}
+	lease := guestbridge.ViewLease{Scope: scope, Domain: r.Domain, Access: r.Access, CredentialHash: digest(r.Request.Credentials), Mode: r.Mode, Target: target, Fence: c.fence(scope.Session), Revision: 1}
 	for _, existing := range c.state.Leases {
 		if existing.Active && sameLineage(existing.Lease, lease) {
 			copyLease := existing.Lease

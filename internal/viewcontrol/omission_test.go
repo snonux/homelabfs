@@ -23,7 +23,7 @@ func (r *rig) proveExclusion(i int, ack json.RawMessage, reservations ...guestbr
 	r.t.Helper()
 	ledger, err := r.controller.rawState()
 	must(r.t, err)
-	statement := Unadopted{Enrollment: r.controller.config.Authorization.Enrollment, Event: r.controller.state.Recall.Events[r.scopes[i].Session], Acknowledgement: ack, Ledger: ledger, Scope: r.scopes[i], OldFence: r.controller.state.Fence, Omitted: reservations}
+	statement := Unadopted{Enrollment: r.controller.config.Authorization.Enrollment, Event: r.controller.state.Recall.Events[r.scopes[i].Session], Acknowledgement: ack, Ledger: ledger, Scope: r.scopes[i], OldFence: r.controller.fence(r.scopes[i].Session), Omitted: reservations}
 	raw, err := canonical(statement)
 	must(r.t, err)
 	r.facts.mu.Lock()

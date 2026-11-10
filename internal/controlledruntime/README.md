@@ -223,7 +223,8 @@ no plain cancellation request is treated as quiescence proof.
 
 `NewFacts` verifies the complete signed-domain/service inventory;
 `Authorize` requires the private actual `Service.Execute` observation and native
-recheck. Physical checks bind exact observed ACK/event/phase/fence and complete
+recheck. Physical checks bind exact observed ACK/event/phase and the domain's own
+ledger fence (`viewcontrol.DomainFence`, as the guest keeps one per mount), and complete
 reservation/manifest/source obligations. Universal unadopted exclusion checks
 every omitted reservation, refusing bound/frozen omissions. Initial recovery
 accepts only an empty fresh controller; existing ownership requires C9.

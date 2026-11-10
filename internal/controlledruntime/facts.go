@@ -21,9 +21,13 @@ type Facts struct {
 	restart    *Restart
 }
 
+// factsLedger decodes the protected viewcontrol ledger (schema
+// viewcontrol.LedgerSchema). Fences holds per-domain fences; read them only
+// through viewcontrol.DomainFence, since a domain without an entry is at 1.
 type factsLedger struct {
 	Recovery bool
-	Fence    uint64
+	Schema   int
+	Fences   map[string]uint64
 	Sources  map[string]fsservice.ControlledViewSource
 	Domains  map[string]struct {
 		Domain   guestbridge.Capability
@@ -243,7 +247,7 @@ func (f *Facts) CheckRecovery(ctx context.Context, enrollment viewcontrol.Enroll
 		}
 		return f.restart.controller.CheckCut(raw)
 	}
-	if l.Fence != 1 || len(l.Sources)+len(l.Domains)+len(l.Leases)+len(l.Reservations)+len(l.Tickets) != 0 || l.Recall != nil {
+	if len(l.Fences) != 0 || len(l.Sources)+len(l.Domains)+len(l.Leases)+len(l.Reservations)+len(l.Tickets) != 0 || l.Recall != nil {
 		return fsapi.Unavailable
 	}
 	return nil
@@ -262,7 +266,7 @@ func (f *Facts) CheckUnadopted(ctx context.Context, u viewcontrol.Unadopted) err
 	if err != nil {
 		return err
 	}
-	if l.Fence != u.OldFence || l.Recall == nil || hashBytes(l.Recall.Events[u.Scope.Session]) != hashBytes(u.Event) {
+	if viewcontrol.DomainFence(l.Fences, u.Scope.Session) != u.OldFence || l.Recall == nil || hashBytes(l.Recall.Events[u.Scope.Session]) != hashBytes(u.Event) {
 		return fsapi.Stale
 	}
 	if err = f.checkACK(ctx, u.Scope, u.Acknowledgement, l); err != nil {
@@ -359,7 +363,7 @@ func (f *Facts) ledger(ctx context.Context, raw json.RawMessage) (factsLedger, e
 	if err := f.CheckEnrollment(ctx, f.enrollment); err != nil {
 		return l, err
 	}
-	if len(raw) > f.enrollment.Bounds.LedgerBytes || json.Unmarshal(raw, &l) != nil || l.Fence == 0 {
+	if len(raw) > f.enrollment.Bounds.LedgerBytes || json.Unmarshal(raw, &l) != nil || l.Schema != viewcontrol.LedgerSchema || l.Fences == nil {
 		return l, fsapi.Invalid
 	}
 	if err := viewcontrol.VerifyRetainedSources(ctx, f.service, raw); err != nil {
@@ -415,7 +419,7 @@ func (f *Facts) checkACK(_ context.Context, scope guestbridge.Context, raw json.
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for _, observation := range a.installed.Admission.Observations {
-		if observation.Scope == scope && observation.Fence == l.Fence && observation.Phase == ack.Phase && observation.EventHash == hashBytes(issued) && observation.AcknowledgementHash == hashBytes(raw) {
+		if observation.Scope == scope && observation.Fence == viewcontrol.DomainFence(l.Fences, scope.Session) && observation.Phase == ack.Phase && observation.EventHash == hashBytes(issued) && observation.AcknowledgementHash == hashBytes(raw) {
 			return nil
 		}
 	}

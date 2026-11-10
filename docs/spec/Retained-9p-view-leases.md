@@ -128,7 +128,12 @@ hashes original full Credentials. READ accepts any Access; EXCLUSIVE_DIRTY
 requires PAGE with write right2. PAGE READ requires read right1. Live issuance
 and Unix rights/ancestor authorization must be verified before grant, separately
 from syntactic capability validation. A pending response is never a lease.
-Fence identifies the controller's monotone physical cache lifetime; revision
+Fence identifies the domain's monotone physical cache lifetime. Like the guest
+kernel, which keeps one fence per mount, the controller keeps one per domain:
+it starts at 1 and advances only when a recall that included that domain
+completes with its REOPENED acknowledgement. Another domain's recall never
+changes it, so a domain's first lease carries fence 1 however many recalls
+other domains completed before it (zq3-r6 R6-1). Revision
 advances exactly once per successful renewal, without wrap, with scope/domain/
 access/credentials/mode/target/fence unchanged. Exact replay returns the same
 revision bytes. A new revision has a new content id, while provider lineage
@@ -349,7 +354,7 @@ STOPPED's complete adopted manifest and authenticated kernel ACK universally
 exclude future adoption of all old local revisions. Host-issued but unadopted
 RESERVED/RESERVING entries can close only through mandatory typed physical Facts
 binding that exact running-kernel/source contract and ACK provenance, exact STOP
-event/domain/session/old fence, full issued ledger and exact omitted IDs. The
+event/domain/session/that domain's old fence, full issued ledger and exact omitted IDs. The
 admitted running kernel captures revision before dispatch, requires LIVE and the
 same revision/target at adoption and final writable PTE, closes before taking its
 complete adopted snapshot, and increments revision before reopening. Missing
