@@ -319,8 +319,10 @@ func TestReaddirCleanupAtomicFailureReopenAndRetirement(t *testing.T) {
 	if allocationPayload(t, raw)["status"] != "RETIRED" {
 		t.Fatal("closed complete coverage did not retire")
 	}
-	// Old receipt remains immutable after floor advancement; charges stay owned.
+	// Old receipt remains immutable after floor advancement. Retirement
+	// recycled the ROOT claim's credits (o64); the READDIR keeps its charge
+	// because it owns the session's protected bridge snapshot.
 	_, err = h.send("READDIR_CLEANUP", request)
 	mustAllocation(t, err)
-	assertCleanupCredits(t, h.f.provider, 2)
+	assertCleanupCredits(t, h.f.provider, 1)
 }

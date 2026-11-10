@@ -922,10 +922,12 @@ files exported; regenerate with `HFS_BOOTSTRAP_FIXTURE_DIR=NEW_DIR go test
 files over). Its guest budget is the example spec's (reservations 1024,
 received 256, 512/512 MiB ordinary/control, as in the zq3-r4 bundle); x54
 regenerated it after w54's guest floors refused the original 32 / 128 MiB.
-Its view bounds are also the example spec's: `Sources` 12, `LedgerBytes`
-224 MiB, `WorkBytes` 844 MiB, `SourceBytes` 6 MiB. i64 regenerated it when
+Its view bounds are also the example spec's: `Sources` 10, `LedgerBytes`
+188 MiB, `WorkBytes` 736 MiB, `SourceBytes` 6 MiB. i64 regenerated it when
 `Sources` rose from zq3-r7's 2, which refused every non-read op, to clear
-the `2*domains + 4` = 8 floor (`viewcontrol.MinSources`).
+the `2*domains + 4` = 8 floor (`viewcontrol.MinSources`); o64 regenerated it
+when `Sources` went from 12 to 10 to fund the provider window budgets
+(`internal/runtimeprep/README.md`, capacity notes).
 `TestBootstrapFixtureAboveGuestFloor` and
 `TestBootstrapFixtureAboveSourceFloor` in the same Go file check the
 committed budget against `checkGuestFloor` (`guestfloor.go`) and

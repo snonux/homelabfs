@@ -95,6 +95,11 @@ func (p *Provider) EarmarkNumber(ctx context.Context, e Earmark) error {
 		if err = p.putPrincipal(tx, c, ps); err != nil {
 			return err
 		}
+		// The earmark owns these credits until BindFrozen moves them to its
+		// claim entry; retirement recycling returns them (recycle.go).
+		if err = put(p.bucket(tx, earmarkCreditBucket), claimKey(c), earmarkCredit{p.config.ClaimCreditBytes, p.config.SourceCreditBytes}); err != nil {
+			return err
+		}
 		return put(bucket, claimKey(c), e)
 	})
 }
@@ -159,6 +164,11 @@ func (p *Provider) BindFrozen(ctx context.Context, scope guestbridge.Context, re
 		}
 		e.Bound = &call
 		if err := put(bucket, claimKey(call.Claim), e); err != nil {
+			return err
+		}
+		// The earmark's credits now belong to the claim entry (its
+		// RetainedCredit/SourceCredit), so recycling returns them only once.
+		if err := p.bucket(tx, earmarkCreditBucket).Delete(claimKey(call.Claim)); err != nil {
 			return err
 		}
 		return put(p.bucket(tx, "claims"), claimKey(call.Claim), entry{Version: ledgerVersion, Claim: call.Claim, Status: "ALLOCATED", RetainedCredit: p.config.ClaimCreditBytes, SourceCredit: p.config.SourceCreditBytes})

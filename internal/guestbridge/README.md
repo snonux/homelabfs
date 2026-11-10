@@ -74,7 +74,13 @@ unlink and trusted transfers. Sequenced process exit and final description
 release are distinct from native fh close. Retained capability, revision and
 close-sequence maps have finite limits and never evict unresolved identities.
 `MaxCapabilities` bounds live grants; `MaxCapabilityIdentities` separately bounds
-all nonreused issuance rows (default 65536), including released tombstones. Exact
+all nonreused issuance rows (default 65536), including released tombstones. A
+controlled provider's retirement prunes a tombstone once the claim that released
+it (for a READDIR transient grant, that READDIR) is retired
+(`PruneRetiredGrants`, task o64), so rows are live grants plus tombstones that
+await retirement, not every grant ever issued. A READDIR reserves its whole
+`limit` against both bounds while it runs; the guest kernel always asks for 256,
+so both must exceed 256 plus the live grants or every listing gets NoSpace. Exact
 FORGET/count1 closes one PATH token, with an optional lookup pin belonging only
 to that token. READDIR grants use the typed `TransientForgetCaptured` preparation
 seam to protect a grant-only closure without dropping a service lookup. Native

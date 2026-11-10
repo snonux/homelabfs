@@ -34,12 +34,15 @@ func (p *Provider) VerifyRetirementReceipt(ctx context.Context, scope guestbridg
 		return fsapi.Permission
 	}
 	return p.db.View(func(tx *bolt.Tx) error {
-		if err := p.checkRetirementOwners(tx, scope, original, true); err != nil {
-			return err
-		}
+		// The receipt is read first: only the exact protected receipt lets
+		// checkRetirementOwners accept a covered number that recycling
+		// already removed (o64).
 		protected := p.bucket(tx, "retirements").Get([]byte(hash(request)))
 		if protected == nil {
 			return fsapi.Stale
+		}
+		if err := p.checkRetirementOwners(tx, scope, original, true); err != nil {
+			return err
 		}
 		a, err := canonicalJSON(json.RawMessage(protected))
 		if err != nil {
@@ -92,58 +95,88 @@ func (p *Provider) RetireOriginal(ctx context.Context, scope guestbridge.Context
 	return p.Retire(ctx, scope, raw)
 }
 
+// checkRetirementOwners binds each covered number to the request's original
+// credentials and, with coverage, to its result or gap hash. With coverage
+// (VerifyRetirementReceipt, which already holds the exact protected receipt)
+// an absent number at or below the floor is accepted: Retire checked its
+// hash before recycling removed it (recycle.go). Without coverage
+// (RetireOriginal) absent numbers pass, as before.
 func (p *Provider) checkRetirementOwners(tx *bolt.Tx, scope guestbridge.Context, request originalRetirement, coverage bool) error {
 	claim := guestbridge.Claim{Realm: request.Realm, Subject: request.Subject, Anchor: request.Anchor, Nonce: request.Nonce}
+	family, err := p.principal(tx, claim)
+	if err != nil {
+		return err
+	}
 	start := request.Through - uint64(len(request.Hashes)) + 1
-	for i := range request.Hashes {
+	for i, want := range request.Hashes {
 		claim.Number = start + uint64(i)
 		e, exists, err := p.load(tx, claim)
 		if err != nil {
 			return err
 		}
 		if exists {
-			binding := e.Binding
-			if e.Original != nil {
-				binding = *e.Original
-			}
-			if binding.Context != scope || !equalJSON(binding.Call.Credentials, request.Credentials) {
-				return fsapi.Permission
-			}
-			if coverage {
-				var result struct{ ID string }
-				var expected string
-				if e.Status == "TERMINAL" {
-					if err := json.Unmarshal(e.Result, &result); err != nil {
-						return err
-					}
-					expected = result.ID
-				} else if e.Gap && e.Status == "DECLINED" {
-					encoded, err := json.Marshal(e)
-					if err != nil {
-						return err
-					}
-					expected = hash(encoded)
-				} else {
-					return fsapi.Stale
-				}
-				if expected != request.Hashes[i] {
-					return fsapi.Stale
-				}
-			}
+			err = checkEntryOwner(scope, request, e, coverage, want)
 		} else if raw := p.bucket(tx, "earmarks").Get(claimKey(claim)); raw != nil {
-			var earmark Earmark
-			if err := json.Unmarshal(raw, &earmark); err != nil {
-				return err
-			}
-			if coverage && (!earmark.Closed || earmark.Bound != nil || earmark.GapProof != request.Hashes[i]) {
-				return fsapi.Stale
-			}
-			if earmark.Scope != scope || !equalJSON(earmark.Credentials, request.Credentials) {
-				return fsapi.Permission
-			}
-		} else if coverage {
-			return fsapi.Stale
+			err = checkEarmarkOwner(scope, request, raw, coverage, want)
+		} else if coverage && claim.Number > family.Floor {
+			err = fsapi.Stale
 		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkEntryOwner checks one retained entry: its original binding's scope and
+// credentials and, with coverage, its terminal result id or gap hash.
+func checkEntryOwner(scope guestbridge.Context, request originalRetirement, e entry, coverage bool, want string) error {
+	binding := e.Binding
+	if e.Original != nil {
+		binding = *e.Original
+	}
+	if binding.Context != scope || !equalJSON(binding.Call.Credentials, request.Credentials) {
+		return fsapi.Permission
+	}
+	if !coverage {
+		return nil
+	}
+	var expected string
+	switch {
+	case e.Status == "TERMINAL":
+		var result struct{ ID string }
+		if err := json.Unmarshal(e.Result, &result); err != nil {
+			return err
+		}
+		expected = result.ID
+	case e.Gap && e.Status == "DECLINED":
+		encoded, err := json.Marshal(e)
+		if err != nil {
+			return err
+		}
+		expected = hash(encoded)
+	default:
+		return fsapi.Stale
+	}
+	if expected != want {
+		return fsapi.Stale
+	}
+	return nil
+}
+
+// checkEarmarkOwner checks one earmark-only number: with coverage it must be
+// a closed unbound gap with the named proof; its scope and credentials must
+// be the request's.
+func checkEarmarkOwner(scope guestbridge.Context, request originalRetirement, raw []byte, coverage bool, want string) error {
+	var earmark Earmark
+	if err := json.Unmarshal(raw, &earmark); err != nil {
+		return err
+	}
+	if coverage && (!earmark.Closed || earmark.Bound != nil || earmark.GapProof != want) {
+		return fsapi.Stale
+	}
+	if earmark.Scope != scope || !equalJSON(earmark.Credentials, request.Credentials) {
+		return fsapi.Permission
 	}
 	return nil
 }

@@ -210,7 +210,13 @@ func (s *Service) issue(b Binding, a fsapi.Attr, kind string, rights uint32, han
 	if _, exists := ss.Grants[token]; exists {
 		return Capability{}, fsapi.NoSpace
 	}
-	ss.Grants[token] = &grant{Cap: cap, Ancestors: append([]ancestor(nil), path...), Handle: handle, NoLookup: b.Call.Intent.Opcode == "READDIR" || kind == "ROOT" || kind == "DOMAIN"}
+	issued := &grant{Cap: cap, Ancestors: append([]ancestor(nil), path...), Handle: handle, NoLookup: b.Call.Intent.Opcode == "READDIR" || kind == "ROOT" || kind == "DOMAIN"}
+	if b.Call.Intent.Opcode == "READDIR" {
+		// READDIR_CLEANUP must not grow the snapshot, so a transient grant
+		// names its releasing READDIR when it is issued.
+		issued.Owner = claimNumber(b.Call.Claim)
+	}
+	ss.Grants[token] = issued
 	if err := s.checkpointAdmissionLocked(false); err != nil {
 		delete(ss.Grants, token)
 		return Capability{}, err
@@ -225,6 +231,7 @@ func (s *Service) finishLifetime(b Binding, a arguments) {
 	case "FORGET":
 		if g := ss.Grants[a.cap("object").Token]; g != nil {
 			g.Released = true
+			g.Owner = claimNumber(b.Call.Claim)
 		}
 	case "DESCRIPTION_RELEASE":
 		if g := ss.Grants[a.cap("description").Token]; g != nil {
@@ -232,6 +239,7 @@ func (s *Service) finishLifetime(b Binding, a arguments) {
 				g.Sequence = a.number("release_sequence")
 			}
 			g.Released = true
+			g.Owner = claimNumber(b.Call.Claim)
 		}
 	case "DESCRIPTION_CLOSE":
 		if s.privateValidation() {

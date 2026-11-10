@@ -37,14 +37,14 @@
   "OperatorPublicKey": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
   "OperatorKey": "/private/zq3/operator-signing-key",
   "Views": {
-    "WorkBytes": 884998144,
+    "WorkBytes": 771751936,
     "Tickets": 16,
     "ControlTickets": 8,
     "Reservations": 4,
     "Identities": 64,
-    "Sources": 12,
+    "Sources": 10,
     "SourceBytes": 6291456,
-    "LedgerBytes": 234881024
+    "LedgerBytes": 197132288
   },
   "Service": {
     "Queue": 8,
@@ -56,15 +56,15 @@
     "LogicalBytes": 4194304
   },
   "Providers": {
-    "Claims": 64,
-    "RetainedBytes": 33554432,
-    "SourceBytes": 16777216,
-    "ClaimCreditBytes": 1048576,
-    "SourceCreditBytes": 1048576
+    "Claims": 128,
+    "RetainedBytes": 68157440,
+    "SourceBytes": 6815744,
+    "ClaimCreditBytes": 1310720,
+    "SourceCreditBytes": 131072
   },
-  "Capabilities": 64,
-  "CapabilityIdentities": 128,
-  "CredentialRevisions": 32,
+  "Capabilities": 640,
+  "CapabilityIdentities": 1024,
+  "CredentialRevisions": 128,
   "Budget": {
     "HostBytes": 4294967296,
     "ServiceBytes": 201326592,

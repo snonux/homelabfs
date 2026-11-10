@@ -35,6 +35,7 @@ type primitiveFacts struct {
 	credentials      map[string]guestbridge.Credentials
 	caps             map[string]guestbridge.Capability
 	physical         map[string]bool
+	processes        *processRegistry
 	recovery         string
 	deny             bool
 	initialExclusion bool
@@ -49,6 +50,9 @@ type nativePrimitive struct {
 type attestorPrimitive struct {
 	scope       guestbridge.Context
 	credentials guestbridge.Credentials
+	// processes optionally admits further guest processes of this scope (the
+	// zq3 workload model); nil keeps the single enrolled credential.
+	processes *processRegistry
 }
 type rig struct {
 	transportResponseWait time.Duration
@@ -66,14 +70,22 @@ type rig struct {
 	credentials           []guestbridge.Credentials
 	natives               []guestbridge.Native
 	domains               []guestbridge.Capability
-	next, tickets, cells  []uint64
-	facts                 *primitiveFacts
+	// roots are the mount ROOT capabilities (claim 1 of each domain).
+	roots                []guestbridge.Capability
+	next, tickets, cells []uint64
+	facts                *primitiveFacts
+	// processes holds the extra guest process credentials of a workload model.
+	processes *processRegistry
 }
 type result struct {
+	// ID is the result's self id, which a RETIRE names as its result hash.
+	ID           string
 	Code, Data   string
 	Count        uint64
 	Capabilities []guestbridge.Capability
-	Publication  json.RawMessage
+	// Entries are a READDIR page; each entry carries a transient grant.
+	Entries     []struct{ Capability guestbridge.Capability }
+	Publication json.RawMessage
 }
 type viewReply struct {
 	ID, Status, Operation string
@@ -102,7 +114,7 @@ func (n *nativePrimitive) Verify(_ context.Context, actual guestbridge.Native, i
 	return nil
 }
 func (a attestorPrimitive) Verify(_ context.Context, scope guestbridge.Context, credentials guestbridge.Credentials) error {
-	if scope != a.scope || !equal(credentials, a.credentials) {
+	if scope != a.scope || !equal(credentials, a.credentials) && !a.processes.has(scope.Session, credentials) {
 		return fsapi.Permission
 	}
 	return nil
@@ -139,7 +151,7 @@ func (p *primitiveFacts) Authorize(_ context.Context, s guestbridge.Context, op 
 			if _, ok := v["credential_revision"]; ok {
 				b, _ := json.Marshal(v)
 				var credential guestbridge.Credentials
-				if json.Unmarshal(b, &credential) != nil || !equal(credential, p.credentials[s.Session]) {
+				if json.Unmarshal(b, &credential) != nil || !equal(credential, p.credentials[s.Session]) && !p.processes.has(s.Session, credential) {
 					return fsapi.Permission
 				}
 			}
@@ -223,11 +235,54 @@ func keys(t *testing.T) ed25519.PrivateKey {
 }
 func newRig(t *testing.T, overrides ...func(*Config)) *rig {
 	t.Helper()
-	r := &rig{controlTickets: make([]uint64, 2), t: t, next: make([]uint64, 2), tickets: make([]uint64, 2), cells: make([]uint64, 2)}
-	permissions, err := fsservice.NewUnixPermissions(uid(20))
-	must(t, err)
+	return newRigWith(t, nil, overrides...)
+}
+
+// newRigWith is newRig with explicit provider and bridge limits (nil keeps the
+// component defaults), as the controlled runtime passes them from its spec.
+func newRigWith(t *testing.T, limits *rigLimits, overrides ...func(*Config)) *rig {
+	t.Helper()
+	r := &rig{controlTickets: make([]uint64, 2), t: t, next: make([]uint64, 2), tickets: make([]uint64, 2), cells: make([]uint64, 2), processes: &processRegistry{allowed: map[string]bool{}}}
 	object := fsapi.ObjectID{Home: uid(1), Allocation: uid(4)}
 	profile := &fsservice.ValidationProfile{Disposable: true, Name: "viewcontrol-real-local"}
+	r.startService(object, profile)
+	k := rigKeys{operator: keys(t), hosts: []ed25519.PrivateKey{keys(t), keys(t)}, guests: []ed25519.PrivateKey{keys(t), keys(t)}}
+	r.enrollProviders(profile, k, limits)
+	r.signEnrollment(profile, k, overrides)
+	// Native and provider effects are closed before the mandatory controller binds.
+	req := fsapi.NewRequest(fsapi.Cred{UID: 1000, GID: 1001, Groups: []uint32{200}})
+	if err := r.service.Dispatch(t.Context(), req, fsapi.Command{Operation: fsapi.Getattr, Mount: uid(1), Object: object}); !errors.Is(err, fsapi.Unavailable) {
+		t.Fatalf("unguarded native: %v", err)
+	}
+	var err error
+	r.controller, err = New(t.Context(), r.cc)
+	must(t, err)
+	r.cc.Initialize = false
+	r.startBridges(profile, limits)
+	t.Cleanup(func() {
+		if r.controller != nil {
+			_ = r.controller.Close()
+		}
+		for _, p := range r.providers {
+			_ = p.Close()
+		}
+		_ = r.service.Close()
+	})
+	return r
+}
+
+// rigKeys are the operator and per-domain host/guest signing keys.
+type rigKeys struct {
+	operator      ed25519.PrivateKey
+	hosts, guests []ed25519.PrivateKey
+}
+
+// startService writes the volume's initial journal and starts the real
+// controlled-view service on it.
+func (r *rig) startService(object fsapi.ObjectID, profile *fsservice.ValidationProfile) {
+	t := r.t
+	permissions, err := fsservice.NewUnixPermissions(uid(20))
+	must(t, err)
 	r.config = fsservice.Config{Stream: segment.Stream{Volume: uid(1), Generation: uid(2), Configuration: uid(3), Epoch: 1, Kind: 1}, Storage: storage.Config{Volume: uid(1), Root: object, OwnerUID: uint32(os.Getuid())}, Validation: profile, RequireControlledViews: true, Permissions: permissions, Source: root(t), Reservations: root(t), Workspace: fsservice.Workspace{ID: uid(30), Data: root(t), Journal: root(t), Progress: root(t)}}
 	r.config.Authority = record.Authority{Volume: uid(1), Generation: uid(2), Configuration: uid(3), Epoch: 1, Owner: uid(6), Partner: uid(8), Members: []fsapi.UUID{uid(6), uid(8), uid(9)}, CoordinatorTerm: 1, OwnerIncarnation: uid(7), PartnerIncarnation: uid(10)}
 	directory := "."
@@ -247,20 +302,25 @@ func newRig(t *testing.T, overrides ...func(*Config)) *rig {
 	must(t, writer.Close())
 	r.service, err = fsservice.New(t.Context(), r.config)
 	must(t, err)
-	operator := keys(t)
-	hosts := []ed25519.PrivateKey{keys(t), keys(t)}
-	guests := []ed25519.PrivateKey{keys(t), keys(t)}
+}
+
+// enrollProviders creates both domains' signed private providers (limits
+// applied) and their scopes, credentials and native peers.
+func (r *rig) enrollProviders(profile *fsservice.ValidationProfile, k rigKeys, limits *rigLimits) {
+	t := r.t
 	journal, err := r.service.ControlledJournalInfo(t.Context(), *profile)
 	must(t, err)
-	r.cc = Config{Directory: private(t), Initialize: true, Service: r.service, Operator: operator.Public().(ed25519.PublicKey), Providers: map[string]*controlledvalidation.Provider{}}
+	r.cc = Config{Directory: private(t), Initialize: true, Service: r.service, Operator: k.operator.Public().(ed25519.PublicKey), Providers: map[string]*controlledvalidation.Provider{}}
 	for i := range 2 {
 		n := byte(i)
 		scope := guestbridge.Context{AuthorityHash: hash([]byte("authority")), Cluster: uid(40).String(), Configuration: uid(3).String(), Export: uid(41 + n).String(), ExporterIncarnation: uid(42 + n).String(), FuseSession: uid(43 + n).String(), Generation: uid(2).String(), GuestBoot: uid(44 + n).String(), GuestMount: uid(45 + n).String(), OriginIncarnation: uid(46 + n).String(), OriginJournal: journal.Incarnation.String(), OriginNode: uid(48 + n).String(), PolicyHash: hash([]byte("policy")), RegistryHash: hash([]byte("registry")), Session: uid(50 + n).String(), VM: uid(52 + n).String(), Volume: uid(1).String()}
 		credential := guestbridge.Credentials{FSUID: 1000, FSGID: 1001, Groups: []uint32{200}, Process: uid(63 + n).String(), Revision: 1, IDMapHash: hash([]byte("map")), UserNamespace: uid(64).String()}
 		endpoint := guestbridge.Endpoint{FuseSession: scope.FuseSession, CommandNode: 2, ResultNode: 3, RecallNode: 4}
-		enrollment := controlledvalidation.Enrollment{Profile: *profile, Scope: scope, Endpoint: endpoint, ServingGeneration: uid(30), Ledger: uid(65 + n), Journal: journal, HostKey: hosts[i].Public().(ed25519.PublicKey), GuestKey: guests[i].Public().(ed25519.PublicKey)}
+		enrollment := controlledvalidation.Enrollment{Profile: *profile, Scope: scope, Endpoint: endpoint, ServingGeneration: uid(30), Ledger: uid(65 + n), Journal: journal, HostKey: k.hosts[i].Public().(ed25519.PublicKey), GuestKey: k.guests[i].Public().(ed25519.PublicKey)}
 		raw, _ := json.Marshal(enrollment)
-		p, err := controlledvalidation.New(t.Context(), controlledvalidation.Config{Directory: private(t), Initialize: true, Service: r.service, Operator: r.cc.Operator, Authorization: controlledvalidation.Authorization{Enrollment: enrollment, OperatorSignature: ed25519.Sign(operator, raw), HostSignature: ed25519.Sign(hosts[i], raw), GuestSignature: ed25519.Sign(guests[i], raw)}, Facts: providerPrimitive{enrollment}})
+		pc := controlledvalidation.Config{Directory: private(t), Initialize: true, Service: r.service, Operator: r.cc.Operator, Authorization: controlledvalidation.Authorization{Enrollment: enrollment, OperatorSignature: ed25519.Sign(k.operator, raw), HostSignature: ed25519.Sign(k.hosts[i], raw), GuestSignature: ed25519.Sign(k.guests[i], raw)}, Facts: providerPrimitive{enrollment}}
+		limits.provider(&pc)
+		p, err := controlledvalidation.New(t.Context(), pc)
 		must(t, err)
 		r.providers = append(r.providers, p)
 		r.scopes = append(r.scopes, scope)
@@ -269,6 +329,12 @@ func newRig(t *testing.T, overrides ...func(*Config)) *rig {
 		r.cc.Providers[scope.Session] = p
 		r.cc.Authorization.Enrollment.Domains = append(r.cc.Authorization.Enrollment.Domains, enrollment)
 	}
+}
+
+// signEnrollment completes the controller enrollment (default bounds, then
+// the caller's overrides), signs it and installs the primitive facts.
+func (r *rig) signEnrollment(profile *fsservice.ValidationProfile, k rigKeys, overrides []func(*Config)) {
+	t := r.t
 	e := &r.cc.Authorization.Enrollment
 	for range 2 {
 		e.TicketFamilies = append(e.TicketFamilies, TicketFamilies{Acquisition: TicketFamily{uid(110).String(), uid(111).String()}, Control: TicketFamily{uid(110).String(), uid(112).String()}})
@@ -289,27 +355,26 @@ func newRig(t *testing.T, overrides ...func(*Config)) *rig {
 	e.Baseline = source.Through
 	e.BaselineStateHash = hash(source.State)
 	raw, _ := json.Marshal(*e)
-	r.cc.Authorization.Operator = ed25519.Sign(operator, raw)
+	r.cc.Authorization.Operator = ed25519.Sign(k.operator, raw)
 	for i := range 2 {
-		r.cc.Authorization.Domains = append(r.cc.Authorization.Domains, Signatures{Host: ed25519.Sign(hosts[i], raw), Guest: ed25519.Sign(guests[i], raw)})
+		r.cc.Authorization.Domains = append(r.cc.Authorization.Domains, Signatures{Host: ed25519.Sign(k.hosts[i], raw), Guest: ed25519.Sign(k.guests[i], raw)})
 	}
-	r.facts = &primitiveFacts{enrollment: *e, scopes: map[string]guestbridge.Context{}, credentials: map[string]guestbridge.Credentials{}, caps: map[string]guestbridge.Capability{}, physical: map[string]bool{}, exclusions: map[string]json.RawMessage{}, initialExclusion: true}
+	r.facts = &primitiveFacts{enrollment: *e, scopes: map[string]guestbridge.Context{}, credentials: map[string]guestbridge.Credentials{}, caps: map[string]guestbridge.Capability{}, physical: map[string]bool{}, exclusions: map[string]json.RawMessage{}, initialExclusion: true, processes: r.processes}
 	for i, s := range r.scopes {
 		r.facts.scopes[s.Session] = s
 		r.facts.credentials[s.Session] = r.credentials[i]
 	}
 	r.cc.Facts = r.facts
-	// Native and provider effects are closed before the mandatory controller binds.
-	req := fsapi.NewRequest(fsapi.Cred{UID: 1000, GID: 1001, Groups: []uint32{200}})
-	if err = r.service.Dispatch(t.Context(), req, fsapi.Command{Operation: fsapi.Getattr, Mount: uid(1), Object: object}); !errors.Is(err, fsapi.Unavailable) {
-		t.Fatalf("unguarded native: %v", err)
-	}
-	r.controller, err = New(t.Context(), r.cc)
-	must(t, err)
-	r.cc.Initialize = false
+}
+
+// startBridges binds one view-protocol bridge per domain (limits applied),
+// checks that a substituted view binding is refused, HELLOs and ROOTs.
+func (r *rig) startBridges(profile *fsservice.ValidationProfile, limits *rigLimits) {
+	t := r.t
 	for i, p := range r.providers {
 		protocol := guestbridge.ViewProtocol()
-		config := guestbridge.Config{Validation: profile, Protocol: &protocol, ViewProtocol: r.controller, Endpoint: r.natives[i].Endpoint, Native: &nativePrimitive{native: r.natives[i]}, Attestor: attestorPrimitive{r.scopes[i], r.credentials[i]}, Claims: p, Execution: p, Views: r.controller, Scopes: []guestbridge.Context{r.scopes[i]}}
+		config := guestbridge.Config{Validation: profile, Protocol: &protocol, ViewProtocol: r.controller, Endpoint: r.natives[i].Endpoint, Native: &nativePrimitive{native: r.natives[i]}, Attestor: attestorPrimitive{r.scopes[i], r.credentials[i], r.processes}, Claims: p, Execution: p, Views: r.controller, Scopes: []guestbridge.Context{r.scopes[i]}}
+		limits.bridge(&config)
 		for _, changed := range []func(*guestbridge.Config){func(c *guestbridge.Config) { c.Views = &Controller{} }, func(c *guestbridge.Config) { c.ViewProtocol = &Controller{} }, func(c *guestbridge.Config) { c.Protocol = nil; c.ViewProtocol = nil }} {
 			wrong := config
 			changed(&wrong)
@@ -327,17 +392,8 @@ func newRig(t *testing.T, overrides ...func(*Config)) *rig {
 			t.Fatalf("ROOT: %+v", result)
 		}
 		r.domains = append(r.domains, result.Capabilities[1])
+		r.roots = append(r.roots, result.Capabilities[0])
 	}
-	t.Cleanup(func() {
-		if r.controller != nil {
-			_ = r.controller.Close()
-		}
-		for _, p := range r.providers {
-			_ = p.Close()
-		}
-		_ = r.service.Close()
-	})
-	return r
 }
 func split(s string) []string {
 	out := []string{}
