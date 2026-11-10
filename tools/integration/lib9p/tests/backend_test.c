@@ -1934,6 +1934,106 @@ refusal_original_pinned_test(const char *base) {
    }
 }
 
+/* Restarts the exporter from h's last protected ledger, as
+ * protected_retry_test does: the old endpoint is shut down, the ledger is
+ * reopened and claimed, and a new endpoint restores the protected bytes.
+ * The native fixtures (the runtime's state) are kept. *c becomes a new
+ * negotiated connection of session 0. */
+static Hfs9p *
+restart_endpoint(Hfs9p *h, Hfs9pLedger **ledger, int directory,
+    Hfs9pConnection **c) {
+   uint8_t *bytes;
+   size_t length;
+   assert(!hfs9p_ledger_load(*ledger, &bytes, &length));
+   Hfs9pEndpoint endpoint = h->endpoint;
+   hfs9p_connection_delete(*c);
+   shutdown_endpoint(h);
+   hfs9p_ledger_delete(*ledger);
+   assert(!hfs9p_ledger_new(ledger, directory, "bridge"));
+   assert(hfs9p_ledger_claim(*ledger, &endpoint, (uint8_t[32]){0}) == ESTALE);
+   h = calloc(1, sizeof(*h));
+   assert(h);
+   h->endpoint = endpoint;
+   h->verifier = (Hfs9pVerifier){*ledger, claim_cb, protect_cb, verify_cb,
+       begin_io_cb, end_io_cb, NULL};
+   h->fd[0] = 10;
+   h->fd[1] = 11;
+   h->fd[2] = 12;
+   assert(!_restore_bytes(h, bytes, length));
+   assert(!hfs9p_ledger_claim(*ledger, &endpoint, bytes + length - 32));
+   free(bytes);
+   assert(!pthread_mutex_init(&h->mutex, NULL));
+   assert(!pthread_create(&h->worker, NULL, _wait_worker_cb, h));
+   assert(!connection_retry(h, h->sessions[0].id, c));
+   (*c)->negotiated = true;
+   return (h);
+}
+
+/* p64 review: a multi-chunk cell whose later chunk got WouldBlock after
+ * allocation is pinned. After an exporter restart the restored candidate
+ * has uncertain false and only pending marks it. Its replayed first chunk
+ * revalidates the complete runtime cell and gets WouldBlock again; it must
+ * stay pinned with its number, not be dropped for a later cell to reuse. */
+static void
+refusal_restart_eagain_test(const char *base) {
+   int directory;
+   Hfs9pLedger *ledger = refusal_ledger(base, "restart-eagain", &directory);
+   Hfs9p *h = new_endpoint_with_ledger(ledger);
+   Hfs9pConnection *c = hello_session(h);
+   char *body = rewrite_body(large_write, 2, NULL);
+   char *scoped = scope_body(c, body);
+   refuse_ordinary_errno = EAGAIN;
+   refuse_allocated = true;
+   refuse_ordinary_from = HFS9P_CHUNK;
+   assert(send_body(c, scoped, 2) == 1);
+   assert(entry(h, 2)->uncertain && entry(h, 2)->native_cell == 2);
+   h = restart_endpoint(h, &ledger, directory, &c);
+   Hfs9pEntry *e = entry(h, 2);
+   assert(e && !e->uncertain && h->pending == (int)(e - h->entries));
+   refuse_ordinary_from = 0;
+   assert(fetch_once(c, 2) == 2);
+   assert(e->native && e->native_cell == 2 &&
+       h->pending == (int)(e - h->entries) && h->high == 1);
+   send_query(c, 3);
+   assert(!entry(h, 3)->issued);
+   refuse_ordinary_errno = 0;
+   assert(fetch(c, 2, 2) == 3 && e->issued && e->native_cell == 2);
+   assert(fetch(c, 3, 2) == 3 && entry(h, 3)->native_cell == 3);
+   assert(rejected_writes == 0);
+   free(scoped);
+   free(body);
+   hfs9p_connection_delete(c);
+   shutdown_endpoint(h);
+   hfs9p_ledger_delete(ledger);
+   assert(!close(directory));
+   reset_fixtures();
+}
+
+/* e64/p64: EINVAL fails a donor send back on a replay too. An identical
+ * resend of an admitted send returns the full length, and authentication
+ * never returns Invalid, so a replay EINVAL cannot hide an admission. The
+ * donor entry and the native high-water stay. */
+static void
+refusal_donor_replay_einval_test(void) {
+   Hfs9p *h = new_endpoint();
+   char ack[128];
+   Hfs9pConnection *c = donor_session(h, ack);
+   refuse_errno = EIO;
+   send_cell(c, golden_create, 3, ack, 1);
+   Hfs9pEntry *e = entry(h, 3);
+   assert(e && e->uncertain && h->pending == (int)(e - h->entries));
+   refuse_errno = EINVAL;
+   assert(fetch_once(c, 3) == 4);
+   refuse_errno = 0;
+   assert(!entry(h, 3) && h->pending == -1 && h->high == 2 &&
+       entry(h, 2) && _seen(&h->sessions[0], 3));
+   send_cell(c, golden_create, 4, ack, 1);
+   assert(entry(h, 4)->issued && entry(h, 4)->native_cell == 3);
+   hfs9p_connection_delete(c);
+   shutdown_endpoint(h);
+   reset_fixtures();
+}
+
 int
 main(int argc, char **argv) {
    assert(argc == 2);
@@ -1959,6 +2059,8 @@ main(int argc, char **argv) {
    refusal_original_inserted_test();
    refusal_original_pinned_test(argv[1]);
    refusal_single_chunk_eagain_test();
+   refusal_restart_eagain_test(argv[1]);
+   refusal_donor_replay_einval_test();
    assert(atomic_load(&io_begins) > 0);
    assert(atomic_load(&io_begins) == atomic_load(&io_ends));
    puts("PASS: C parser/backend transport boundaries (no FUSE/runtime proof)");

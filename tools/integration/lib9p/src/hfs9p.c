@@ -1557,9 +1557,11 @@ _permanent_donor(int error, bool replay) {
  *    a duplicate guest cell (after allocation), or from a native number at
  *    or below the runtime's high-water (spent already). A replay could see
  *    the authentication ESTALE of an admitted cell, so a replay stays
- *    pinned. If a first attempt's ESTALE was that authentication race, the
- *    number was not spent, and the next cell's first write is refused
- *    EINVAL for the gap and stays pinned: the pre-p64 stall, nothing worse.
+ *    pinned. A first attempt's ESTALE can also be that race (the mount
+ *    changes before the second or third check of one request). The number
+ *    was then not spent, but the cell is failed back and the high-water
+ *    moves past it anyway, so the next cell's first write is refused EINVAL
+ *    for the gap and stays pinned for good. The race is narrow but real.
  *  - EINVAL once an earlier chunk of this write was accepted (inserted):
  *    the runtime allocated the number at that chunk. On the first chunk
  *    EINVAL is either a content refusal after allocation or a frame or
@@ -1663,19 +1665,27 @@ _native_write(Hfs9p *h, Hfs9pEntry *e, uint32_t offset, int *refusal) {
  * revalidates the stored cell; if not, it allocates the number again. The
  * cost: such a cell no longer lets control or donor traffic bypass it while
  * the runtime refuses it, and a refusal that persists (for example ordinary
- * credit held by a cell failed back after allocation) blocks the writer. */
+ * credit held by a cell failed back after allocation) blocks the writer.
+ *
+ * "First write" needs replay as well as e->uncertain: _forward_protect
+ * persists the candidate before its write, so after an exporter restart a
+ * pinned candidate comes back with uncertain false and only pending marks
+ * it. If an earlier attempt's later chunks completed the runtime cell, an
+ * identical first chunk revalidates it and can get WouldBlock after
+ * allocation, so a replay is never dropped. */
 static bool
-_unallocated_refusal(const Hfs9pEntry *e, uint32_t offset, int refusal) {
+_unallocated_refusal(const Hfs9pEntry *e, uint32_t offset, int refusal,
+    bool replay) {
    return (offset == 0 && e->native_total > HFS9P_CHUNK && !e->terminal &&
-       !e->uncertain && e->donor < 0 && !e->polls &&
+       !replay && !e->uncertain && e->donor < 0 && !e->polls &&
        (refusal == EAGAIN || refusal == EWOULDBLOCK));
 }
 
 /* Writes every chunk of the protected candidate. A native refusal drops the
  * candidate without a native number when _unallocated_refusal says nothing
  * was allocated, fails it back when it is permanent, and otherwise pins the
- * exact uncertain candidate. replay is
- * true when an earlier attempt already reached protection. A refusal after
+ * exact uncertain candidate. replay is true when an earlier attempt already
+ * reached protection (pending, also after a restart). A refusal after
  * an accepted chunk of this write (offset > 0) proves that the runtime
  * allocated the candidate's native number (p64, _permanent_original). */
 static int
@@ -1692,7 +1702,7 @@ _forward_write(Hfs9p *h, Hfs9pEntry *e, bool replay) {
          e->uncertain = true;
          continue;
       }
-      if (_unallocated_refusal(e, offset, refusal)) {
+      if (_unallocated_refusal(e, offset, refusal, replay)) {
          free(e->native);
          e->native = NULL;
          e->native_cell = 0;

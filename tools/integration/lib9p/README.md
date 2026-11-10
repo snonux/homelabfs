@@ -352,9 +352,11 @@ Everything else keeps the exact candidate pinned, as before:
   `internal/controlledruntime`). The adapter's credential snapshot runs the
   same check first and maps its failure to EACCES, so this needs the mount to
   change between two checks of one request, but a replay of an admitted cell
-  could see it. If a first attempt's ESTALE was that race, its number was not
-  spent: the next cell's first write is refused EINVAL for the gap and stays
-  pinned, which is the pre-p64 stall and nothing worse. The same race could
+  could see it. A first attempt can see it too: the mount changes before the
+  second or third `nativeConnection.check` of one request. Its number was then
+  not spent, but p64 still fails the cell back and moves the high-water past
+  it, so the next cell's first write is refused EINVAL for the gap and stays
+  pinned for good. The race is narrow but real. The same race could
   make a donor send's replay ESTALE an admitted send, so p64 also narrowed
   e64's donor rule: ESTALE fails a donor send back only on a first attempt.
 * EINVAL on the first chunk: a content refusal after allocation and a frame
@@ -382,6 +384,18 @@ session (`pruneGuestRecent`,
 `mappingRecentLimit`). The runtime needs to drop a cell that it refuses for
 good after allocation.
 
+**p64 delays the stall; it does not remove it.** Until the runtime's
+stuck-cell cleanup (task n64) lands, each failed-back non-donor cell leaves a
+stuck runtime cell that keeps its ordinary or control credit, which the
+exporter no longer counts. Once k stuck cells use up the runtime credit that
+the exporter believes is free, or 12 stuck ordinary cells fill a session's
+incomplete limit, the runtime refuses the next fresh cell WouldBlock before
+allocation. A single-chunk cell refused that way is pinned (see below) and
+pins the writer for good. For minor 4, the marker rule closes fresh
+admission for every session after about 80 more admitted cells of the stuck
+cell's session. p64 turns an immediate stall into one error per refused cell
+and a later stall.
+
 **WouldBlock before or after allocation.** The exporter used to drop any
 first-write candidate refused EAGAIN and let later cells take its number.
 `Transport.Write` returns WouldBlock before allocation (credit, incomplete
@@ -395,8 +409,12 @@ result-node read of the number returns WouldBlock both for an allocated cell
 without a response and for an unallocated number above the high-water. Before
 p64 a later cell then took the spent number and was refused EINVAL for good.
 
-So only EAGAIN on the first chunk of a multi-chunk cell, which can only come
-before allocation, drops the candidate. A single-chunk cell refused EAGAIN
+So only EAGAIN on the first chunk of a first write of a multi-chunk cell,
+which can only come before allocation, drops the candidate. A replay never
+qualifies, including a candidate restored as pending after an exporter
+restart (it was protected before its write, so its uncertain flag is
+clear): if an earlier attempt completed the runtime cell, the identical first
+chunk revalidates it and can get WouldBlock after allocation. A single-chunk cell refused EAGAIN
 stays pinned and replays its exact bytes with the same number: if the number
 was allocated, the resend revalidates the stored cell, and if not, it
 allocates the number again. The trade-off is that such a cell no longer lets
@@ -420,8 +438,12 @@ then replay unchanged (EIO, EHOSTDOWN, EPERM, EACCES, first-chunk EINVAL, and
 ESTALE on a replay), a single-chunk cell refused EAGAIN after allocation that
 stays pinned and replays with its number while a later control waits, and a
 donor send whose replay ESTALE stays pinned (in `refusal_transient_test`).
-All but the pinned test fail on the pre-p64 exporter; the pinned test is a
-no-change guard. A native rebuild must pick this source up before
+`refusal_restart_eagain_test` restarts the exporter from its real ledger
+with a pinned multi-chunk candidate whose replayed first chunk gets
+WouldBlock again; it stays pinned with its number.
+`refusal_donor_replay_einval_test` shows that a donor send's replay EINVAL
+fails back. All but the pinned and replay-EINVAL tests fail on the pre-p64
+exporter; those two are no-change guards. A native rebuild must pick this source up before
 any lab run can show it.
 
 ## Controlled terminal owner (`614`)
