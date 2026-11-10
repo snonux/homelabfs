@@ -236,7 +236,7 @@ func (p *Provider) terminalEmpty(tx *bolt.Tx) error {
 
 func (p *Provider) terminalStateHash(tx *bolt.Tx) (string, error) {
 	h := sha256.New()
-	for _, name := range []string{"principals", "claims", "earmarks", "bridge", "processes", "retirements", "operations", "allocations"} {
+	for _, name := range []string{"principals", "claims", "earmarks", "bridge", "processes", "retirements", "operations", "allocations", earmarkCreditBucket, readdirReceiptBucket} {
 		_, _ = h.Write([]byte(name))
 		if err := p.bucket(tx, name).ForEach(func(key, value []byte) error {
 			var size [8]byte

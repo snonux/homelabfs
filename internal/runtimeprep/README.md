@@ -121,17 +121,17 @@ and so do the runtime and the controller.
 
 The floor is not a workload budget. Admissions outside a recall drop cuts
 that no lease or recall event pins, so lease-free I/O holds one cut however
-long it runs (zq3 T1's nine mutations peak at 1 of 12). What uses Sources is
-cuts pinned by leases that a VIEW_RETIRE has not compacted yet, and the drains
-of one recall. The example uses 12, the floor plus 4.
+long it runs. What uses Sources is cuts pinned by leases that a VIEW_RETIRE
+has not compacted yet, and the drains of one recall. The o64 workload model
+(below) peaks at 2 cuts. The example uses 10, the floor plus 2 (i64 used 12;
+o64 moved two units to the provider window budgets).
 
 Each source unit costs `3*SourceBytes` = 18 MiB of `LedgerBytes`. Its runtime
 cost is 5x that (3x through `WorkBytes`, 2x through the lifecycle endpoint),
 so 90 MiB of the 4 GiB host budget. Other fixed owners already take most of
-that budget: the 1 GiB transport ledger, the 652 MiB C8 arenas, 4x64.25 MiB
-provider copies per domain, the 274 MiB exporter and the 64 MiB guest copy.
-So the example cuts the service share from 1 GiB to 192 MiB. With 1 GiB, at
-most 3 Sources would fit.
+that budget: the 1 GiB transport ledger, the 652 MiB C8 arenas, 4 copies of
+each provider's budgets, the 274 MiB exporter and the 64 MiB guest copy.
+So the example cuts the service share from 1 GiB to 192 MiB.
 
 `Budget.ServiceBytes` is accounting only. No runtime owner reserves from it,
 and neither the old 1 GiB nor the new 192 MiB has a measurement behind it. To
@@ -139,13 +139,69 @@ revisit it, measure the runtime's semantic-service memory during a zq3 batch
 (peak RSS of the runtime minus its other owners, or a Go heap profile of
 `fsservice`). Then set the share to that peak plus a margin, and take any
 increase from `Views.Sources` at 90 MiB per unit, keeping the host total
-within 4 GiB. The numbers:
+within 4 GiB.
+
+#### Provider and bridge bounds (task o64)
+
+zq3-r8 would have failed early in T1: every CALL, reads included, takes one
+provider claim with `SourceCreditBytes` and `ClaimCreditBytes`, and before o64
+nothing ever returned them, so 16 MiB / 1 MiB refused m0's 17th CALL.
+Retirement now recycles retired claims (`internal/controlledvalidation`
+README), so the provider budgets bound the unretired window, and it prunes
+the bridge's released grant tombstones, so `CapabilityIdentities` bounds live
+grants plus tombstones awaiting retirement. `CredentialRevisions` (one row
+per guest process and credential revision) and the provider's `processes`
+bucket (one row per process that closes or exits, bounded by `Claims`) stay
+lifetime counts.
+
+`TestZQ3RunWorkloadFitsLifetimeBounds` (`internal/viewcontrol`) drives one
+zq3 run's CALLs at this spec's exact values and requires each bound to hold
+twice the measured need. Measured per domain (m0, the busier one; about
++-25% against the guest kernel, see `zq3_workload_model_test.go`): 1076
+CALLs over the run, 258 grants issued, 42 processes. With a 24-claim guest
+window (the guest retires only when its own reserve fails):
+
+| Bound | Need (m0) | Value |
+|---|---|---|
+| unretired claims: `RetainedBytes / ClaimCreditBytes`, `SourceBytes / SourceCreditBytes` | 24 + the kept snapshot owner = 25 | 65 MiB / 1.25 MiB = 6.5 MiB / 128 KiB = 52 |
+| `ClaimCreditBytes` (one entry: plan, result, outcome, 2 bridge snapshot copies) | 610 KiB (a 64 KiB cross-domain READ) | 1.25 MiB |
+| `SourceCreditBytes` (one mutation encoding) | 5.4 KiB measured; a full 64 KiB WRITE is about 69 KiB | 128 KiB |
+| `Claims` (unretired entries and the lifetime `processes` bucket) | 42 processes | 128 |
+| `CapabilityIdentities` (grant rows; each READDIR reserves 256) | 24 rows + 256 | 1024 |
+| `Capabilities` (live grants; each READDIR reserves 256) | 22 live + 256 | 640 |
+| `CredentialRevisions` (lifetime; the terminal tuple keeps 1) | 42 | 128 |
+
+The guest kernel always sends READDIR with `"limit":256`, and the bridge
+reserves the limit against both grant bounds for the call, so the old 64 /
+128 refused every listing. A full 256-entry directory page would not fit
+`ClaimCreditBytes`; the zq3 directories hold a few entries.
+
+`ClaimCreditBytes` depends on the bridge snapshot, which every claim entry
+stores twice (the planned entry and the protected snapshot copy). The plan
+check is `entry + proposed result + snapshot + outcome + 4 KiB`, about
+`2*S + 2*R + 4 KiB` with S the session snapshot (about 2 KiB per grant row,
+0.6 KiB per credential row, 8.5 KiB for one with 1024 groups) and R the
+result (128 KiB hex plus 87 KiB decoded for a 64 KiB READ). At 1.25 MiB, S
+must stay below about 400 KiB, about 200 grant rows. `CapabilityIdentities`
+1024 does not bound S that tightly, and it cannot: the READDIR reservation
+forces it above 256 although the rows stay small (24 peak, S 101 KiB peak).
+So the generator does not reject the pair; this dependency is the reason a
+spec change must rerun `TestZQ3RunWorkloadFitsLifetimeBounds`.
+
+Coverage: this spec covers a zq3-r8 run through bootstrap, the k64 gate,
+Phase 9, T1-T4 and T6-T11 with 2x margin. It does not cover T5's mapped
+dirtying, which needs task q64 (view identity recycling): each of its 1024
+dirty pages takes a DIRTY_RESERVE and a DIRTY_FREEZE view ticket, and
+`Views.Identities` (64) counts every ticket the controller ever admits, so
+about 2050 would be needed; at 32 KiB of `LedgerBytes` each that is about
+630 MiB of host budget.
 
 | Bound | Rule | Example |
 |---|---|---|
-| `LedgerBytes` | >= 128 KiB x (Reservations + Tickets + ControlTickets) + 32 KiB x Identities + 3 x SourceBytes x Sources = 221.5 MiB | 224 MiB |
-| `WorkBytes` | >= 3 x LedgerBytes + 6 x SourceBytes + 128 MiB = 836 MiB | 844 MiB |
-| host total | <= `HostBytes` 4 GiB | about 4047 MiB (49 MiB spare) |
+| `LedgerBytes` | >= 128 KiB x (Reservations + Tickets + ControlTickets) + 32 KiB x Identities + 3 x SourceBytes x Sources = 185.5 MiB | 188 MiB |
+| `WorkBytes` | >= 3 x LedgerBytes + 6 x SourceBytes + 128 MiB = 728 MiB | 736 MiB |
+| providers | 4 x (RetainedBytes + SourceBytes + 4 KiB x Claims + 16 MiB) per domain = 352 MiB | 704 MiB for 2 |
+| host total | <= `HostBytes` 4 GiB | 4057.2 MiB (38.8 MiB spare) |
 
 ## Filling the signer requests (after the runtime started)
 

@@ -279,6 +279,12 @@ type grant struct {
 	// NoLookup distinguishes transient READDIR paths from lookup-pinned paths.
 	NoLookup bool
 	Sequence uint64
+	// Owner (o64) is the claim whose retirement ends every use of this grant
+	// once it is released: the FORGET or DESCRIPTION_RELEASE that released
+	// it, or, for a READDIR transient grant, that READDIR (its cleanup must
+	// close before the READDIR retires). PruneRetiredGrants drops released
+	// grants whose Owner is retired. Nil (older snapshots) is never pruned.
+	Owner *ClaimNumber `json:",omitempty"`
 }
 type session struct {
 	Terminal       *TerminalSeal `json:",omitempty"`

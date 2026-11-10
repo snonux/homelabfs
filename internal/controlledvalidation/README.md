@@ -42,8 +42,22 @@ claims and reserve 4 MiB of retained state plus 2 MiB of source accounting per
 admitted claim, within 256/128 MiB budgets. Actual encoded plan, exact wire result,
 capability snapshot and planned outcome must fit those credits before effects.
 These are logical accounting budgets; storage I/O errors remain uncertainty and
-never become proof of absence. Retired entries and credits are conservatively
-retained, so exhausting a budget closes admission instead of recycling identities.
+never become proof of absence. Every CALL, reads included, holds one claim and
+both credits until it is retired. A successful retirement recycles every number
+at or below the new floor (task o64, `recycle.go`): its entry and earmark are
+deleted and their credits return, so `MaxClaims` and the two credit budgets
+bound the unretired window, not the session's lifetime. Before o64 they were
+lifetime budgets: the zq3 spec's 16 MiB / 1 MiB source credit refused the 17th
+CALL of a domain. The session's protected bridge snapshot owner is kept until a
+later claim owns the snapshot. A recycled number still answers `RETIRED_ID`
+(Resolve, Cancel), its exact retirement receipt (Retire, and
+`VerifyRetirementReceipt` against that receipt) and its READDIR cleanup receipt
+(kept in `readdir-receipts`); `ResolveGap` refuses it as Stale. The same
+retirement also prunes the bridge snapshot's grant tombstones that retired
+claims released (`guestbridge.PruneRetiredGrants`); the bridge reloads the
+pruned snapshot before its RETIRE reply is persisted, and `CheckRestoredBridge`
+also accepts a session row saved before the prune (pruned by the same rule). The `processes` bucket of
+lock-owner tokens stays a lifetime count bounded by `MaxClaims`.
 
 The sealed service worker serializes capture and append with every other local
 origin. WRITE resolves the actual append offset before selecting its `max_end`

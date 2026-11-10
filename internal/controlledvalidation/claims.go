@@ -218,6 +218,11 @@ func (p *Provider) Cancel(ctx context.Context, scope guestbridge.Context, claim 
 	p.execution.Lock()
 	defer p.execution.Unlock()
 	err := p.updateOpen(func(tx *bolt.Tx) error {
+		// A retired number may be recycled (no entry); Resolve answers its
+		// RETIRED_ID state, as it did when the entry was still there.
+		if retired, err := p.retired(tx, claim); err != nil || retired {
+			return err
+		}
 		if raw := p.bucket(tx, "earmarks").Get(claimKey(claim)); raw != nil {
 			var earmark Earmark
 			if err := json.Unmarshal(raw, &earmark); err != nil {
@@ -260,6 +265,14 @@ func (p *Provider) ResolveGap(ctx context.Context, scope guestbridge.Context, cl
 	defer p.execution.Unlock()
 	var proof string
 	err := p.updateOpen(func(tx *bolt.Tx) error {
+		// A retired number's gap proof was already consumed by its Retire and
+		// its entry may be recycled: refuse instead of answering a new proof.
+		if retired, err := p.retired(tx, claim); err != nil || retired {
+			if err == nil {
+				err = fsapi.Stale
+			}
+			return err
+		}
 		if raw := p.bucket(tx, "earmarks").Get(claimKey(claim)); raw != nil {
 			var earmark Earmark
 			if err := json.Unmarshal(raw, &earmark); err != nil {
@@ -289,113 +302,4 @@ func (p *Provider) ResolveGap(ctx context.Context, scope guestbridge.Context, cl
 		return put(p.bucket(tx, "claims"), claimKey(claim), e)
 	})
 	return proof, err
-}
-
-// Retire advances a durable permanent floor only across complete exact terminal
-// result or protected gap coverage. No allocation, timeout or absence is skipped.
-func (p *Provider) Retire(ctx context.Context, scope guestbridge.Context, raw json.RawMessage) (json.RawMessage, error) {
-	if err := p.Check(ctx, scope); err != nil {
-		return nil, err
-	}
-	var req struct {
-		Realm, Subject, Anchor, Nonce string
-		Through                       uint64
-		Hashes                        []string `json:"result_hashes"`
-	}
-	if err := json.Unmarshal(raw, &req); err != nil {
-		return nil, err
-	}
-	claim := guestbridge.Claim{Realm: req.Realm, Subject: req.Subject, Anchor: req.Anchor, Nonce: req.Nonce}
-	status := "BLOCKED"
-	var floor uint64
-	var proof any
-	var receipt []byte
-	receiptKey := []byte(hash(raw))
-	err := p.updateOpen(func(tx *bolt.Tx) error {
-		if old := p.bucket(tx, "retirements").Get(receiptKey); old != nil {
-			receipt = bytes.Clone(old)
-			return nil
-		}
-		ps, err := p.principal(tx, claim)
-		if err != nil {
-			return err
-		}
-		floor = ps.Floor
-		if req.Through <= floor || req.Through > ps.High || req.Through-floor > 1024 || uint64(len(req.Hashes)) != req.Through-floor {
-			return nil
-		}
-		for n := floor + 1; ; n++ {
-			claim.Number = n
-			e, ok, err := p.load(tx, claim)
-			if err != nil {
-				return err
-			}
-			var expected string
-			if !ok {
-				raw := p.bucket(tx, "earmarks").Get(claimKey(claim))
-				if raw == nil {
-					return nil
-				}
-				var earmark Earmark
-				if err := json.Unmarshal(raw, &earmark); err != nil {
-					return err
-				}
-				if !earmark.Closed || earmark.Scope != scope || earmark.Bound != nil {
-					return nil
-				}
-				expected = earmark.GapProof
-				if len(expected) != 64 {
-					return fsapi.Stale
-				}
-			}
-
-			if !ok {
-				// Exact typed unbound gap proof was checked above.
-			} else if e.Status == "TERMINAL" {
-				if e.ReaddirClosure != nil && !e.ReaddirClosure.Closed {
-					return nil
-				}
-				var r struct {
-					ID string `json:"id"`
-				}
-				if err = json.Unmarshal(e.Result, &r); err != nil {
-					return err
-				}
-				expected = r.ID
-			} else if e.Gap && e.Status == "DECLINED" {
-				b, err := json.Marshal(e)
-				if err != nil {
-					return err
-				}
-				expected = hash(b)
-			} else {
-				return nil
-			}
-			if req.Hashes[n-floor-1] != expected {
-				return nil
-			}
-			if n == req.Through {
-				break
-			}
-		}
-		ps.Floor = req.Through
-		if err = p.putPrincipal(tx, claim, ps); err != nil {
-			return err
-		}
-		floor = ps.Floor
-		status = "RETIRED"
-		proof = hash(append(bytes.Clone(raw), []byte(ledgerVersion)...))
-		receipt, err = json.Marshal(map[string]any{"status": status, "floor": floor, "proof_hash": proof})
-		if err != nil {
-			return err
-		}
-		return p.bucket(tx, "retirements").Put(receiptKey, receipt)
-	})
-	if err != nil {
-		return nil, err
-	}
-	if len(receipt) > 0 {
-		return receipt, nil
-	}
-	return json.Marshal(map[string]any{"status": status, "floor": floor, "proof_hash": proof})
 }

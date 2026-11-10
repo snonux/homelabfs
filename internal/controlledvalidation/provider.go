@@ -98,7 +98,15 @@ type entry struct {
 	RetainedCredit, SourceCredit uint64
 	ReaddirClosure               *guestbridge.ReaddirClosure `json:",omitempty"`
 }
-type principal struct{ High, Floor uint64 }
+
+// principal is one claim family: High is the last allocated number and Floor
+// the retirement floor. Recycled (o64) is the number through which every
+// retired entry, earmark and credit has been recycled (recycle.go); numbers
+// above it and at or below Floor can still wait for recycling.
+type principal struct {
+	High, Floor uint64
+	Recycled    uint64 `json:",omitempty"`
+}
 type captured struct {
 	cut      *fsservice.ControlledCut
 	plan     *fsservice.ControlledPlan
@@ -243,7 +251,7 @@ func New(ctx context.Context, c Config) (*Provider, error) {
 		if err = b.Put([]byte("scope"), scope); err != nil {
 			return err
 		}
-		for _, name := range []string{"claims", "principals", "bridge", "processes", "retirements", "operations", "allocations", "earmarks"} {
+		for _, name := range []string{"claims", "principals", "bridge", "processes", "retirements", "operations", "allocations", "earmarks", earmarkCreditBucket, readdirReceiptBucket} {
 			if _, err = b.CreateBucketIfNotExists([]byte(name)); err != nil {
 				return err
 			}

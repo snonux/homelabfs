@@ -216,7 +216,7 @@ func TestRequiredRealProviderRejectsMixedLegacyScopeOmission(t *testing.T) {
 	r := newRig(t)
 	protocol := guestbridge.ViewProtocol()
 	p := r.providers[0]
-	config := guestbridge.Config{Validation: r.config.Validation, SessionProtocols: map[string]guestbridge.Protocol{r.scopes[1].Session: protocol}, ViewProtocol: r.controller, Endpoint: r.natives[0].Endpoint, Native: &nativePrimitive{native: r.natives[0]}, Attestor: attestorPrimitive{r.scopes[0], r.credentials[0]}, Claims: p, Execution: p, Views: r.controller, Scopes: append([]guestbridge.Context(nil), r.scopes...)}
+	config := guestbridge.Config{Validation: r.config.Validation, SessionProtocols: map[string]guestbridge.Protocol{r.scopes[1].Session: protocol}, ViewProtocol: r.controller, Endpoint: r.natives[0].Endpoint, Native: &nativePrimitive{native: r.natives[0]}, Attestor: attestorPrimitive{r.scopes[0], r.credentials[0], nil}, Claims: p, Execution: p, Views: r.controller, Scopes: append([]guestbridge.Context(nil), r.scopes...)}
 	// prepareProtocols accepts the mixed selection, but real required p0 refuses
 	// the other scope through CheckValidation before any endpoint enrollment. A
 	// real single-scope provider cannot hide a legacy default in this configuration.

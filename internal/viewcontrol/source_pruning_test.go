@@ -100,13 +100,16 @@ func (m *mutator) cleanTwoDomainRecall(other guestbridge.Capability) {
 }
 
 // TestZQ3LeaseFreeMutationsOutliveSources runs 111 lease-free mutations at
-// the real zq3 bounds (Sources 12), with an OPEN/CLOSE, a two-domain recall
-// and both PROCESS_EXITs mixed in. Before admissions pruned unpinned cuts,
-// every mutation kept its cut until a VIEW_RETIRE that ordinary I/O never
-// sends: after the CREATE and nine more (Sources-3), the next mutation got
-// NoSpace and stayed INDETERMINATE (zq3 T1 alone does nine).
-// Each domain stays within the rig provider's 64 unretired claims, because
-// claim retirement is the guest's separate job.
+// the zq3 spec's view bounds, with an OPEN/CLOSE, a two-domain recall and
+// both PROCESS_EXITs mixed in. Before admissions pruned unpinned cuts (i64,
+// then at Sources 12), every mutation kept its cut until a VIEW_RETIRE that
+// ordinary I/O never sends: after the CREATE and nine more (Sources-3), the
+// next mutation got NoSpace and stayed INDETERMINATE (zq3 T1 alone makes
+// about 20 mutations).
+// This rig's providers keep their default credit budgets (256 MiB / 4 MiB
+// retained and 128 MiB / 2 MiB source credit, so 64 claims per domain), and
+// this test sends no RETIRE, so each domain's CALLs stay below 64; the zq3
+// provider values and retirement are TestZQ3RunWorkloadFitsLifetimeBounds'.
 func TestZQ3LeaseFreeMutationsOutliveSources(t *testing.T) {
 	r := newZQ3Rig(t, 0)
 	m0 := newMutator(r, 0)
@@ -153,10 +156,12 @@ func TestPruningIsDurableAcrossReopen(t *testing.T) {
 	}
 }
 
-// TestZQ3T1LikeCutUsage replays zq3 T1's nine mutations (mkdir, fchmod,
+// TestZQ3T1LikeCutUsage replays nine of zq3 T1's mutations (mkdir, fchmod,
 // create, fchown, fchmod, pwrite, create, fchown, fchmod) at the real bounds
 // and records the retained cuts after each: with pruning a lease-free
-// sequence never holds more than the one current cut.
+// sequence never holds more than the one current cut. T1 itself makes about
+// 20 mutations plus lookups and closes (TestZQ3RunWorkloadFitsLifetimeBounds
+// drives all of them).
 func TestZQ3T1LikeCutUsage(t *testing.T) {
 	r := newZQ3Rig(t, 0)
 	root := r.call(0, "ROOT", map[string]any{}).Capabilities[0]

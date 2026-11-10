@@ -284,16 +284,7 @@ func (s *Service) Execute(ctx context.Context, n Native, c Command) ([]byte, err
 			payload, err = queryPayload(p.Claim, state, declinedQuery)
 		}
 	case "RETIRE":
-		var b json.RawMessage
-		if c.Protocol != nil && IsControlledProtocol(*c.Protocol) {
-			b, err = s.retireControlled(ctx, c)
-		} else {
-			b, err = s.config.Claims.Retire(ctx, c.Context, bytes.Clone(c.Payload))
-		}
-		if err == nil {
-			err = validateControlResponse(c, b)
-		}
-		payload = b
+		payload, err = s.retire(ctx, c)
 	case "SESSION_RETIRE":
 		payload, err = s.retireSession(ctx, c)
 	case "RELEASE_CELL":
