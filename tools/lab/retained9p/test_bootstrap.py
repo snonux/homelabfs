@@ -7,7 +7,10 @@ plays f3 (guard records, runtime stdout, proposal, enrollment handoff), Rocky
 who runs the signer. The signed files are REAL signer output exported with
 throwaway keys by internal/runtimeprep/bootstrap_fixture_test.go
 (testdata/bootstrap/), so the binding checks run against the exact JSON the
-Go signer emits.
+Go signer emits. Its guest budget (reservations 1024, received 256, 512/512
+MiB, regenerated in x54) must stay above the w54 guest floors; Python cannot
+import those, so TestBootstrapFixtureAboveGuestFloor in the same Go file
+checks the committed files against internal/runtimeprep/guestfloor.go.
 """
 import base64
 import contextlib
