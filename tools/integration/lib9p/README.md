@@ -31,9 +31,11 @@ forward/reverse bindings; FETCH is implicitly scoped by the connection.
 * One native writer preserves exact guest/native bytes, body cell rewriting,
   chunk/hash identity and monotonically increasing endpoint cells. Lost/short
   native writes retain the identical candidate; uncertain candidates exclude
-  another allocator. The one exception is a permanently refused donor send,
-  which fails back to the guest (`e64`). A first ordinary EAGAIN consumes no native number and lets
-  control/replacement traffic progress. All result reads accumulate bounded
+  another allocator. The exception is a permanently refused original cell,
+  which fails back to the guest (`e64` for donor sends, `p64` for the rest).
+  EAGAIN on the first chunk of a multi-chunk non-donor write consumes no
+  native number and lets control/replacement traffic progress; a single-chunk
+  cell refused EAGAIN stays pinned (`p64`). All result reads accumulate bounded
   short preads and verify kind/flags/session/native cell/body hash and context/op
   before reversing the mapping. Endpoint mutex contention returns an exact
   wire AGAIN for FETCH or ERROR/CAPACITY for an uncopied SEND packet at any
@@ -257,7 +259,8 @@ order (`_guest_order` in `src/hfs9p.c`):
   most 1 s (`HFS9P_ORDER_HOLD_MS`), so that an abandoned or never completed
   cell cannot stall its session. After the hold the cell goes anyway.
 * A complete lower cell that cannot go for its own reasons (no ordinary
-  credit, EAGAIN on its first write, any other error) is not waited for.
+  credit, EAGAIN on the first chunk of a multi-chunk cell, an error before
+  its write) is not waited for.
   Control, replacement and donor traffic keeps bypassing ordinary traffic, as
   before e64.
 
@@ -265,9 +268,10 @@ A bypassed or given-up cell that arrives below the session's high-water relies
 on the runtime's guest reorder window (task d64): the runtime admits an
 unissued guest cell once while it is inside 16 cells below the high-water
 (`GuestHoles`, tested by `TestMappedOutOfOrderGuestWaitAcceptedReplayRefused`
-and `TestMappedGuestReorderWindowBounded`). A cell bypassed by more than 15
-later cells of its session is still refused as stale, so the window stays a
-bounded fallback. The R6-2 shape (QUERY 49 copied before VIEW_WAIT 48) is a
+and `TestMappedGuestReorderWindowBounded`). A cell is still refused as stale
+once a cell 16 or more guest numbers above it was admitted, so the window
+stays a bounded fallback. Since `p64` such a refused cell fails back to the
+guest instead of pinning the writer (see below). The R6-2 shape (QUERY 49 copied before VIEW_WAIT 48) is a
 missing lower cell, so 49 waits for 48. Replacement polls and replays of an
 existing candidate never wait. The floor and hold deadlines are not
 persisted: restore puts the floor below the lowest restored original that is
@@ -284,7 +288,7 @@ fresh snapshot is protected so that recovery does not replay it):
 
 | errno | runtime source | permanent because |
 |---|---|---|
-| ESTALE | `fsapi.Stale` | an identical resend of an admitted cell returns the full length, never Stale |
+| ESTALE | `fsapi.Stale` | only on a first attempt since `p64`: an identical resend of an admitted cell returns the full length, but authentication can return Stale before the cell lookup (see `p64`) |
 | EINVAL | `fsapi.Invalid` | the same; a protection failure that wraps Invalid also fences the runtime transport |
 | EACCES | `fsapi.Permission` | only on a first attempt: authentication, node and scope checks run before the cell lookup |
 
@@ -293,11 +297,12 @@ so it stays uncertain. A first-attempt EACCES can also come from a transient
 failure of the FUSE adapter's per-request credential snapshot
 (`PrivateControl.native` in `internal/fuseadapter`). Failing that cell back is
 safe, since nothing was admitted, but it drops a cell that a retry might have
-delivered. EAGAIN is transient. EACCES on a replay, EHOSTDOWN,
+delivered. EAGAIN is transient. ESTALE or EACCES on a replay, EHOSTDOWN,
 ENOSPC, EIO, EINTR and every other errno are uncertain, because a protection
 or transport failure may follow admission. All of these keep the exact
-candidate pinned and protected, as before. Non-donor sends are unchanged: the
-runtime allocates their native number at the first chunk, before validation.
+candidate pinned and protected, as before. Non-donor cells are classified
+separately (`p64`, below), because the runtime allocates their native number
+at the first chunk, before validation.
 
 **Known runtime limit (follow-up, not changed here).** The runtime keeps a
 refused donor frame in its single reclaim workspace
@@ -315,6 +320,131 @@ EHOSTDOWN, EPERM, replay EACCES) that stay pinned and then replay unchanged.
 The transient test is a no-change guard; it also passes on the pre-e64 code.
 The fixtures prove exporter behaviour only. A native rebuild of the bhyve
 backend must pick this source up before any lab run can show it.
+
+## Permanent refusals of non-donor cells (`p64`)
+
+Found in the e64 review: the exporter can bypass a complete ordinary cell (no
+credit, EAGAIN on its first write). If that cell is written only after a cell
+16 or more guest numbers above it was admitted, the runtime refuses it as a
+stale guest cell. Before p64 the exporter pinned every non-donor refusal, so
+that cell stayed the pinned writer for good and every session stalled: the
+R6-2 symptom in another shape.
+
+**What differs from a donor send.** The runtime allocates a non-donor cell's
+native number and credit at its first chunk, before any content check
+(`Transport.Write`, `t.high = f.Cell`), and keeps a refused cell in its table
+for good: incomplete, never dispatched, still holding its credit. A fail-back
+must therefore know that the number was spent. If the exporter guessed wrong,
+the next cell would collide with the stuck cell or leave a gap in the native
+numbers, and the runtime would refuse it and every later cell. So a refusal
+fails back only when it is permanent **and** shows that the number was spent:
+
+| errno | when | permanent and spent because |
+|---|---|---|
+| ESTALE | first attempt only | it comes from the guest freshness check or a duplicate guest cell (`prepareMapping`, after allocation), or from a native number at or below the runtime's high-water (spent already) |
+| EINVAL | after an earlier chunk of the same write was accepted | that chunk allocated the number; an identical resend of an admitted cell never returns Invalid |
+
+Everything else keeps the exact candidate pinned, as before:
+
+* ESTALE on a replay. Authentication runs before the cell lookup, and on
+  FreeBSD the runtime's native connection check returns `fsapi.Stale` when
+  the mount on the endpoint path changes (`nativeConnection.check` in
+  `internal/controlledruntime`). The adapter's credential snapshot runs the
+  same check first and maps its failure to EACCES, so this needs the mount to
+  change between two checks of one request, but a replay of an admitted cell
+  could see it. A first attempt can see it too: the mount changes before the
+  second or third `nativeConnection.check` of one request. Its number was then
+  not spent, but p64 still fails the cell back and moves the high-water past
+  it, so the next cell's first write is refused EINVAL for the gap and stays
+  pinned for good. The race is narrow but real. The same race could
+  make a donor send's replay ESTALE an admitted send, so p64 also narrowed
+  e64's donor rule: ESTALE fails a donor send back only on a first attempt.
+* EINVAL on the first chunk: a content refusal after allocation and a frame
+  or numbering refusal before it look the same.
+* EACCES: an authentication refusal before allocation (possibly transient,
+  `PrivateControl.native`) or a content refusal after it.
+* EAGAIN, EPERM, EHOSTDOWN, ENOSPC, EIO, EINTR and every other errno, as for
+  donor sends.
+
+A failed-back non-donor cell is handled like a failed-back donor send (ERROR
+reply, ESTALE afterwards through the seen ledger, fresh protected snapshot),
+and the native high-water moves to its spent number. Its runtime cell keeps an
+ordinary or control credit that the exporter no longer counts. The guest
+(`hfs_control` in the linux9p 0003 patch) treats the ERROR like any uncertain
+transport result: it keeps the cell's slot reserved, so it does not reuse the
+credit either, and blocks the session's unreserved traffic (an ALLOCATE only
+marks allocation uncertain) until it reconciles. Other sessions proceed.
+
+**Known runtime limits (follow-up, not changed here).** The stuck runtime
+cell stays incomplete for good. It counts against its session's incomplete
+limits (16, and 12 ordinary), and for minor 4 it keeps every later guest
+issuance marker of its session from being pruned, so after about 80 more
+admitted cells of that session fresh minor-4 admission closes for every
+session (`pruneGuestRecent`,
+`mappingRecentLimit`). The runtime needs to drop a cell that it refuses for
+good after allocation.
+
+**p64 delays the stall; it does not remove it.** Until the runtime's
+stuck-cell cleanup (task n64) lands, each failed-back non-donor cell leaves a
+stuck runtime cell that keeps its ordinary or control credit, which the
+exporter no longer counts. Once k stuck cells use up the runtime credit that
+the exporter believes is free, or 12 stuck ordinary cells fill a session's
+incomplete limit, the runtime refuses the next fresh cell WouldBlock before
+allocation. A single-chunk cell refused that way is pinned (see below) and
+pins the writer for good. For minor 4, the marker rule closes fresh
+admission for every session after about 80 more admitted cells of the stuck
+cell's session. p64 turns an immediate stall into one error per refused cell
+and a later stall.
+
+**WouldBlock before or after allocation.** The exporter used to drop any
+first-write candidate refused EAGAIN and let later cells take its number.
+`Transport.Write` returns WouldBlock before allocation (credit, incomplete
+cells, recent markers, an occupied reclaim workspace), but it validates a
+command only once all chunks are in. A single-chunk cell is validated in the
+same call, after allocation, and can then get WouldBlock too: its dispatch
+queue is full (the 16-slot drain queue and the 64-slot acquisition queue are
+smaller than the 80 credits that can reach them), or the recent-marker limit.
+The exporter cannot tell the two apart: the errno is the same, and a
+result-node read of the number returns WouldBlock both for an allocated cell
+without a response and for an unallocated number above the high-water. Before
+p64 a later cell then took the spent number and was refused EINVAL for good.
+
+So only EAGAIN on the first chunk of a first write of a multi-chunk cell,
+which can only come before allocation, drops the candidate. A replay never
+qualifies, including a candidate restored as pending after an exporter
+restart (it was protected before its write, so its uncertain flag is
+clear): if an earlier attempt completed the runtime cell, the identical first
+chunk revalidates it and can get WouldBlock after allocation. A single-chunk cell refused EAGAIN
+stays pinned and replays its exact bytes with the same number: if the number
+was allocated, the resend revalidates the stored cell, and if not, it
+allocates the number again. The trade-off is that such a cell no longer lets
+control or donor traffic bypass it while the runtime refuses it, and a
+refusal that never clears blocks the writer. In a healthy runtime the
+exporter's own credit check runs before any write, so a pre-allocation
+WouldBlock needs runtime state the exporter does not mirror, mainly cells
+failed back after allocation, which keep their runtime credit and count as
+incomplete. Those cases are covered by the runtime follow-up above.
+
+**Exposure.** No change was needed to prefer the lowest bypassed cell:
+`_guest_order` already offers every complete lower cell of the session the
+writer before a later cell of that session takes a number. Control and donor
+traffic still overtakes a lower cell that cannot be written.
+
+`backend_test.c` covers a bypassed ordinary cell refused ESTALE that fails
+back (the writer is released, another session proceeds, the spent number is
+not reused, and a real ledger reload no longer has the cell), a multi-chunk
+cell refused EINVAL after its first chunk, and refusals that stay pinned and
+then replay unchanged (EIO, EHOSTDOWN, EPERM, EACCES, first-chunk EINVAL, and
+ESTALE on a replay), a single-chunk cell refused EAGAIN after allocation that
+stays pinned and replays with its number while a later control waits, and a
+donor send whose replay ESTALE stays pinned (in `refusal_transient_test`).
+`refusal_restart_eagain_test` restarts the exporter from its real ledger
+with a pinned multi-chunk candidate whose replayed first chunk gets
+WouldBlock again; it stays pinned with its number.
+`refusal_donor_replay_einval_test` shows that a donor send's replay EINVAL
+fails back. All but the pinned and replay-EINVAL tests fail on the pre-p64
+exporter; those two are no-change guards. A native rebuild must pick this source up before
+any lab run can show it.
 
 ## Controlled terminal owner (`614`)
 
