@@ -1,0 +1,80 @@
+== time
+Mon Nov  9 23:56:01 UTC 2026
+1794268561
+{ sec = 1794212992, usec = 931825 } Mon Nov  9 10:29:52 2026
+== os
+15.1-RELEASE-p2
+15.1-RELEASE-p2
+FreeBSD 15.1-RELEASE-p2 releng/15.1-n283596-aadd58dddcbc GENERIC
+f3.lan.buetow.org
+== vms
+NAME       DATASTORE  LOADER     CPU  MEMORY  VNC             AUTO     STATE
+freebsd    default    bhyveload  4    1G      -               No       Stopped
+rocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (21428)
+hfs-test0  hfslab     bhyveload  2    2G      -               No       Stopped
+hfs-test1  hfslab     bhyveload  2    2G      -               No       Stopped
+hfs-test2  hfslab     bhyveload  2    2G      -               No       Stopped
+rocky
+21428 Mon Nov  9 22:04:03 2026 bhyve: rocky (bhyve)
+21434 Mon Nov  9 22:04:03 2026 bhyve: system.pwd (bhyve)
+21435 Mon Nov  9 22:04:03 2026 bhyve: system.grp (bhyve)
+c101adf10d58d8e021faaa1c3dd98ccb7777c2b78b7931f478e71b526814c581
+== mem
+16879837184
+4096
+1221684
+1925309
+822385736
+0
+0
+/dev/ada0p3       2097152        0  2097152     0%
+== pool
+zroot	ONLINE	352G
+zroot/var/tmp	337G
+== modules
+19    1 0xffffffff85000000   340438 vmm.ko
+20    1 0xffffffff84f87000     21dc nmdm.ko
+21    1 0xffffffff84f8a000     8810 if_bridge.ko
+28    1 0xffffffff84fcd000     3578 fdescfs.ko
+29    1 0xffffffff84fd1000    15ae0 fusefs.ko
+no-fuse-fdesc-mounts
+devfd #C:0x7100ff00 84
+== route
+  interface: re0
+	inet 10.20.0.133 netmask 0xffffff00 broadcast 10.20.0.255
+	inet 192.168.1.133 netmask 0xffffff00 broadcast 192.168.1.255
+	inet 10.98.0.133 netmask 0xffffff00 broadcast 10.98.0.255
+	member: tap0 flags=143<LEARNING,DISCOVER,AUTOEDGE,AUTOPTP>
+	member: re0 flags=143<LEARNING,DISCOVER,AUTOEDGE,AUTOPTP>
+re0 lo0 pflog0 vm-public vm-hfslab tap0 wg0
+== poc
+drwxrwxrwx  3 root wheel 3 Oct 25 11:23 /var/tmp/homelabfs-9p-poc/share
+== python
+-r-xr-xr-x  1 root wheel 4160 Oct 15 04:17 /usr/local/bin/python3.12
+a66eb370e5b80ffccfee0a7b3259b33dadd13fb0821ea8547ce7463d11afd01a
+== fdesc-module
+847cd1f2dc47db32d56dcf5352b65bad2b174b339e8aa89a8d114299311856d2
+b207adf6383bee8e022fa6115044508b7c64da07e73865e5ea71594d524cc4bd
+== run-dirs
+/var/tmp/hfs-20261108-f44-observer
+/var/tmp/hfs-20261108-host-r1
+/var/tmp/hfs-20261108-xz3-observer
+/var/tmp/hfs-20261108-zq3r1-fdq
+/var/tmp/hfs-20261109-zq3r2-fdq
+/var/tmp/hfs-20261109-zq3r3-fdq
+/var/tmp/hfs-20261109-zq3r4-fdq
+/var/tmp/hfs-20261109-zq3r5-fdq
+/var/tmp/hfs-fdescfs-windows/zq3-r1
+/var/tmp/hfs-fdescfs-windows/zq3-r1.refused-setup-1
+/var/tmp/hfs-fdescfs-windows/zq3-r2
+/var/tmp/hfs-fdescfs-windows/zq3-r3
+/var/tmp/hfs-fdescfs-windows/zq3-r4
+/var/tmp/hfs-fdescfs-windows/zq3-r5
+/var/tmp/hfs-validation-xz3/zq3-r1
+/var/tmp/hfs-validation-xz3/zq3-r2
+/var/tmp/hfs-validation-xz3/zq3-r3
+/var/tmp/hfs-validation-xz3/zq3-r4
+/var/tmp/hfs-validation-xz3/zq3-r5
+== ssh
+6a9e5573eda7dfaef1addf1b199872fe41af2027ef19430d4aa7e0a7919a369b /usr/bin/ssh
+end
