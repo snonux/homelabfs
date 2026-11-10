@@ -142,6 +142,12 @@ typedef struct {
    bool responded;
    bool terminal;
    bool terminal_funded;
+   /* An attempt of this candidate wrote, or was about to write, its final
+    * native chunk (w64). Only then can an earlier attempt have been
+    * admitted, so only then does a final-chunk refusal follow the replay
+    * rules (_permanent_refusal). Persisted as bit 4096; see _final_mark for
+    * when it is protected and _final_restore for a crash replay. */
+   bool final_sent;
    Hfs9pTerminal *terminal_state;
    uint64_t guest_watermark;
    bool release;
@@ -1474,6 +1480,18 @@ _forward_candidate(Hfs9p *h, Hfs9pEntry *e) {
    return (error);
 }
 
+/* Protects a fresh snapshot of the whole exporter state. */
+static int
+_protect_snapshot(Hfs9p *h) {
+   uint8_t *ledger = NULL;
+   size_t ledger_length = 0;
+   int protection = _snapshot(h, &ledger, &ledger_length);
+   if (!protection)
+      protection = h->verifier.protect_cb(h->verifier.arg, ledger, ledger_length);
+   free(ledger);
+   return (protection);
+}
+
 /* Protect exact candidate and donor snapshots before any possible native
  * effect. The persisted pending candidate is replayed unchanged on recovery. */
 static int
@@ -1488,12 +1506,7 @@ _forward_protect(Hfs9p *h, Hfs9pEntry *e) {
       session->terminal_guest = e->guest_cell;
       session->terminal_native = e->native_cell;
    }
-   uint8_t *ledger = NULL;
-   size_t ledger_length = 0;
-   int protection = _snapshot(h, &ledger, &ledger_length);
-   if (!protection)
-      protection = h->verifier.protect_cb(h->verifier.arg, ledger, ledger_length);
-   free(ledger);
+   int protection = _protect_snapshot(h);
    if (protection && e->terminal)
       h->revoked = true;
    return (protection);
@@ -1532,8 +1545,9 @@ _forward_protect(Hfs9p *h, Hfs9pEntry *e) {
  * only on admission, so a refusal never consumes the native number. Since
  * n64 it also frees the workspace when it refuses the complete send ESTALE,
  * EINVAL or EACCES, so the next cell can take that number.
- * Permanent are EINVAL on any attempt, and ESTALE (stale guest cell,
- * released or spent native cell) and EACCES only on a first attempt. A
+ * Permanent, on the final chunk only (w64, see _permanent_refusal), are
+ * EINVAL on any attempt, and ESTALE (stale guest cell, released or spent
+ * native cell) and EACCES only on a first attempt. A
  * replay could see the authentication ESTALE or EACCES of a send that an
  * earlier attempt admitted, so a replay stays pinned (p64 narrowed e64's
  * ESTALE rule to first attempts). Failing a first-attempt EACCES back is
@@ -1555,7 +1569,8 @@ _permanent_donor(int error, bool replay) {
  * the cell stayed incomplete in its table for good). A fail back must
  * therefore know that the number was spent, or the next cell reuses a spent
  * number or leaves a gap, and every later cell would then be refused too.
- * Permanent, with the number spent, are:
+ * Permanent, with the number spent, on the final chunk only (w64, see
+ * _permanent_refusal), are:
  *  - ESTALE on a first attempt. It comes from the guest freshness check or
  *    a duplicate guest cell (after allocation), or from a native number at
  *    or below the runtime's high-water (spent already). A replay could see
@@ -1579,15 +1594,65 @@ _permanent_original(int error, bool replay, bool inserted) {
    return (error == EINVAL && inserted);
 }
 
-/* True when the refused candidate e is failed back instead of pinned. */
+/* True when the refused candidate e is failed back instead of pinned. offset
+ * is the refused chunk. replay is true when an earlier attempt wrote the
+ * final chunk (final_sent before this attempt reached it, w64 review): only
+ * such an attempt can have been admitted, so only then can this refusal be
+ * the authentication ESTALE or EACCES of an admitted cell. An attempt that
+ * is the first to reach the final chunk uses the first-attempt rules even
+ * after earlier attempts failed on an earlier chunk; otherwise a validation
+ * refusal there (the runtime discards the cell, whatever the attempt) would
+ * stay pinned for good, refused ESTALE at chunk 0 or, for a donor, at the
+ * final chunk on every replay.
+ *
+ * Only a refusal of the final chunk qualifies (w64). The runtime validates a
+ * cell, and cleans up after a permanent refusal (discardRefused in
+ * internal/guestbridge/refusal.go), only once every chunk is in, which is
+ * the final chunk of an in-order write. A refusal of an earlier chunk came
+ * before validation: from authentication (the mount-change ESTALE), the
+ * adapter's credential snapshot (EACCES), or a frame, cell or chunk check.
+ * The runtime then still holds the chunks accepted so far: a donor send's
+ * half-filled reclaim workspace, on which the next cell at that number gets
+ * WouldBlock (the n64 wedge), or a numbered cell that stays incomplete with
+ * its credit while a fail-back would move the high-water past it (p64's
+ * stuck credit). So such a refusal keeps the exact candidate pinned, and the
+ * replay resends every chunk from the first into what the runtime kept.
+ * This also pins the first chunk of a multi-chunk cell, which can only be
+ * refused before allocation: a donor send has nothing in the workspace yet,
+ * and a non-donor ESTALE there cannot prove its number spent (except
+ * _unallocated_refusal's EAGAIN, which drops the candidate). A single-chunk
+ * cell's only chunk is its final chunk, so its rules are unchanged.
+ *
+ * On the final chunk the errno rules below match discardRefused: the same
+ * excluded commands (pinnedByExporter), the donor errnos (donorPermanent),
+ * and for a numbered cell ESTALE or EINVAL after an earlier chunk
+ * (numberedPermanent, Offset > 0). A residual race stays: the authentication
+ * ESTALE or credential EACCES can also hit the final chunk, before
+ * validation, and looks the same. A first attempt then fails back although
+ * the runtime kept the other chunks; the window is one chunk write instead
+ * of every chunk after the first. A final-chunk EINVAL from a frame, cell
+ * or chunk check (writeFrame, writeCell, storeChunk) also fails back
+ * without the runtime discarding anything; the exporter's frames are
+ * deterministic, so only an exporter bug produces one.
+ *
+ * On a replay an earlier chunk can also revalidate: a resend of a stored
+ * chunk of a complete runtime cell that is still unadmitted (kept after
+ * EAGAIN, for example) validates it again, and the runtime may then discard
+ * it. That needs no fail-back here: final_sent is set (the cell was
+ * complete), so a refusal stays pinned under the replay rules, as before
+ * w64, and after a donor replay EINVAL on an earlier chunk the next replay
+ * rebuilds the freed workspace and meets the same refusal on the final
+ * chunk, which then fails back. */
 static bool
 _permanent_refusal(const Hfs9pEntry *e, int error, bool replay,
-    bool inserted) {
+    uint32_t offset) {
    if (e->polls || e->terminal || e->terminal_funded)
+      return (false);
+   if (e->native_total - offset > HFS9P_CHUNK)
       return (false);
    if (e->donor >= 0)
       return (_permanent_donor(error, replay));
-   return (_permanent_original(error, replay, inserted));
+   return (_permanent_original(error, replay, offset > 0));
 }
 
 /* Fails a permanently refused cell back to the guest instead of pinning the
@@ -1612,12 +1677,7 @@ _fail_back(Hfs9p *h, Hfs9pEntry *e, int error) {
       h->high = e->native_cell;
    h->pending = -1;
    _entry_clear(e);
-   uint8_t *ledger = NULL;
-   size_t ledger_length = 0;
-   int protection = _snapshot(h, &ledger, &ledger_length);
-   if (!protection)
-      protection = h->verifier.protect_cb(h->verifier.arg, ledger, ledger_length);
-   free(ledger);
+   int protection = _protect_snapshot(h);
    return (protection ? protection : error);
 }
 
@@ -1687,12 +1747,64 @@ _unallocated_refusal(const Hfs9pEntry *e, uint32_t offset, int refusal,
        (refusal == EAGAIN || refusal == EWOULDBLOCK));
 }
 
-/* Writes every chunk of the protected candidate. A native refusal drops the
- * candidate without a native number when _unallocated_refusal says nothing
- * was allocated, fails it back when it is permanent, and otherwise pins the
- * exact uncertain candidate. replay is true when an earlier attempt already
- * reached protection (pending, also after a restart). A refusal after
- * an accepted chunk of this write (offset > 0) proves that the runtime
+/* Marks e's final chunk as sent before it is written and returns whether an
+ * earlier attempt sent it already (*earlier). A replay that is the first to
+ * reach the final chunk protects the mark before the write, so a restored
+ * replay that finds it clear knows that no attempt after the first reached
+ * the final chunk (_final_restore). A first attempt saves that protection:
+ * its mark reaches the ledger with the next snapshot, and a crash before
+ * one is covered by _final_restore. */
+static int
+_final_mark(Hfs9p *h, Hfs9pEntry *e, bool replay, bool *earlier) {
+   *earlier = e->final_sent;
+   if (e->final_sent)
+      return (0);
+   e->final_sent = true;
+   int error = replay ? _protect_snapshot(h) : 0;
+   if (error)
+      e->final_sent = false;
+   return (error);
+}
+
+/* Pins the refused candidate e: even an error can lose a transport receipt,
+ * so the exact candidate bytes and writer ownership stay, and its number is
+ * never allocated to others. The pin is protected (w64 review round 2): it
+ * makes uncertain and the in-memory final_sent durable, so a restart before
+ * the next attempt restores exactly how far the attempts got
+ * (_final_restore). Without it a first attempt refused on a middle chunk was
+ * restored as if it had sent its final chunk, and a later validation
+ * refusal there stayed pinned for good. One protection per refusal; a
+ * protection failure is returned instead of EAGAIN and keeps the pin. */
+static int
+_forward_pin(Hfs9p *h, Hfs9pEntry *e) {
+   e->uncertain = true;
+   int protection = _protect_snapshot(h);
+   return (protection ? protection : EAGAIN);
+}
+
+/* After a restore, the pending candidate's final_sent is exact whenever the
+ * restored uncertain flag is set: every ended attempt that wrote a chunk
+ * protected its pin (_forward_pin), and a replay protects the mark before
+ * its final chunk (_final_mark). A pending candidate restored without
+ * uncertain was interrupted during its first attempt's writes (a crash or
+ * an exit inside _forward_write, before the pin or issue), or stopped before
+ * writing anything; the ledger cannot show whether its final chunk went
+ * out, so it is treated as sent and keeps the replay rules. */
+static void
+_final_restore(Hfs9p *h) {
+   if (h->pending >= 0 && !h->entries[h->pending].uncertain)
+      h->entries[h->pending].final_sent = true;
+}
+
+/* Writes every chunk of the protected candidate, always from the first. A
+ * native refusal drops the candidate without a native number when
+ * _unallocated_refusal says nothing was allocated, fails it back when it is
+ * permanent (only on the final chunk, w64), and otherwise pins the exact
+ * uncertain candidate. replay is true when an earlier attempt already
+ * reached protection (pending, also after a restart); the final-chunk
+ * classification asks instead whether an earlier attempt wrote the final
+ * chunk (_final_mark). A refusal after an
+ * accepted chunk of this write (offset > 0) proves that the runtime
  * allocated the candidate's native number (p64, _permanent_original). */
 static int
 _forward_write(Hfs9p *h, Hfs9pEntry *e, bool replay) {
@@ -1700,9 +1812,15 @@ _forward_write(Hfs9p *h, Hfs9pEntry *e, bool replay) {
    for (uint32_t offset = 0; offset < e->native_total;
        offset += HFS9P_CHUNK) {
       int refusal;
-      int error = _native_write(h, e, offset, &refusal);
-      if (error)
+      bool final = e->native_total - offset <= HFS9P_CHUNK, earlier = false;
+      int error = final ? _final_mark(h, e, replay, &earlier) : 0;
+      if (!error)
+         error = _native_write(h, e, offset, &refusal);
+      if (error) {
+         if (final && !earlier)
+            e->final_sent = false; /* Nothing was written. */
          return (error);
+      }
       h->pending = index;
       if (!refusal) {
          e->uncertain = true;
@@ -1715,12 +1833,9 @@ _forward_write(Hfs9p *h, Hfs9pEntry *e, bool replay) {
          h->pending = -1;
          return (EAGAIN);
       }
-      if (_permanent_refusal(e, refusal, replay, offset > 0))
+      if (_permanent_refusal(e, refusal, earlier, offset))
          return (_fail_back(h, e, refusal));
-      /* Even an error can lose a transport receipt. Keep exact candidate
-       * bytes and writer ownership; never allocate its number to others. */
-      e->uncertain = true;
-      return (EAGAIN);
+      return (_forward_pin(h, e));
    }
    return (0);
 }
@@ -1733,6 +1848,7 @@ _forward_issued(Hfs9p *h, Hfs9pEntry *e) {
    h->high = e->native_cell;
    h->pending = -1;
    e->issued = true;
+   e->final_sent = false;
    if (e->guest_cell > s->order_high)
       s->order_high = e->guest_cell;
    if (e->wait)
@@ -1757,8 +1873,9 @@ _forward_issued(Hfs9p *h, Hfs9pEntry *e) {
  * first chunk of a multi-chunk non-donor write consumes no native number, so
  * controls may bypass it (_unallocated_refusal). Any
  * uncertain/partially copied candidate pins the writer to its exact bytes,
- * except a permanently refused original cell, which fails back (e64 for
- * donor sends, p64 for the rest, see _permanent_refusal). */
+ * except an original cell whose final chunk is refused permanently, which
+ * fails back (e64 for donor sends, p64 for the rest, w64 for the final-chunk
+ * rule, see _permanent_refusal). */
 static int
 _forward(Hfs9p *h, Hfs9pEntry *e) {
    unsigned index = (unsigned)(e - h->entries);
@@ -3016,6 +3133,7 @@ _wait_step(Hfs9p *h, Hfs9pEntry *e) {
    e->responded = false;
    e->issued = false;
    e->uncertain = false;
+   e->final_sent = false;
    e->flags = 3;
    e->native_cell = 0;
    e->next_poll = now + 67;
@@ -3163,7 +3281,8 @@ _snapshot_cut(Hfs9p *h, uint8_t **out, size_t *length, Hfs9pEntry *cut) {
       uint32_t bits = e->complete | e->issued << 1 | e->uncertain << 2 |
           e->responded << 3 | e->release << 4 | e->control << 5 |
           e->hello << 6 | e->wait << 7 | e->final << 8 |
-          e->assembly_control << 9 | e->terminal << 10 | e->terminal_funded << 11;
+          e->assembly_control << 9 | e->terminal << 10 | e->terminal_funded << 11 |
+          e->final_sent << 12;
       _pack(&b, bits, 4);
       if (terminal_format) {
          _pack(&b, e->guest_watermark, 8);
@@ -3464,6 +3583,7 @@ _restore_bytes(Hfs9p *h, const uint8_t *bytes, size_t length) {
       uint32_t bits = (uint32_t)_unpack(&b, 4);
       e->terminal = bits & 1024;
       e->terminal_funded = bits & 2048;
+      e->final_sent = bits & 4096;
       Hfs9pTerminalPackage *package = h->sessions[e->session].terminal_package;
       if (e->terminal_funded && (!package || _terminal_usage(h, e->session)))
          return (EINVAL);
@@ -3539,7 +3659,13 @@ _restore_bytes(Hfs9p *h, const uint8_t *bytes, size_t length) {
              HFS9P_BODY);
       }
       unsigned count = (unsigned)_unpack(&b, 1);
-      if (count > 15 || e->poll_count > 16 || bits > (terminal_format ? 4095u : 1023u) ||
+      /* Bit 4096 is final_sent (w64), valid in every format but only on the
+       * pending candidate: _forward_issued and _fail_back clear it. An
+       * exporter from before w64 refuses a ledger that carries it. */
+      if ((bits & 4096u && (int)i != h->pending) ||
+          (bits & ~4096u) > (terminal_format ? 4095u : 1023u))
+         return (EINVAL);
+      if (count > 15 || e->poll_count > 16 ||
           e->session >= h->session_count || !e->guest_cell ||
           !_seen(&h->sessions[e->session], e->guest_cell) ||
           e->native_cell > h->high + 1 || e->donor < -1 ||
@@ -3630,6 +3756,7 @@ _restore_bytes(Hfs9p *h, const uint8_t *bytes, size_t length) {
        !_memory(h, 0, true) ||
        (h->pending >= 0 && !h->entries[h->pending].native))
       return (EINVAL);
+   _final_restore(h);
    _order_restore(h);
    return (0);
 }
