@@ -510,10 +510,33 @@ written its final chunk unprotected and is restored as sent with the
 replay rules. An offset-0 ESTALE is never permanent for a multi-chunk cell:
 the replay of an admitted cell can get an authentication ESTALE there.
 
-**Residual cases.** An authentication ESTALE or credential EACCES on the
-final chunk looks the same as a validation refusal. A first attempt then
-still fails back although the runtime kept the other chunks. The window is
-now one chunk write instead of every chunk after the first. A final-chunk
+**Final-chunk refusals before validation (`x64`).** An authentication ESTALE
+or credential EACCES on the final chunk looks the same as a validation
+refusal, so a first attempt still fails back although the runtime kept the
+other chunks. Before x64 that left the n64/p64 wedges one chunk wide: a donor
+send's half-filled workspace made every new cell WouldBlock, and a numbered
+cell kept its credit and its place in the incomplete counts. The runtime now
+replaces such an abandoned cell (`replaceAbandoned` in
+`internal/guestbridge/refusal.go`). The exporter's single writer replays a
+pinned candidate as the identical frame from its first chunk and writes a
+different frame only after a fail-back (or an EAGAIN before allocation, which
+leaves nothing in the runtime). So when a frame arrives at the next native
+number (high+1), the runtime removes an incomplete numbered cell at the
+high-water with its credit (its number stays spent and later reads ESTALE)
+and frees an incomplete workspace that holds a different frame (its number
+stays unallocated, and the new frame takes it). Only a cell that never
+received all its chunks, so was never validated or admitted, is replaced; a
+complete cell kept after a refusal stays, and an identical frame still
+continues the kept chunks. The removal commits in its own ledger
+transaction before the new frame changes anything; a failure fences the
+transport and keeps the old cells. Since no incomplete row stays behind,
+Suspend and restore work afterwards. `internal/guestbridge/abandoned_test.go`
+covers the donor and numbered cases (both failed before x64: WouldBlock, and
+the thirteenth abandoned cell's allocation WouldBlock), identical replays,
+validated cells, restore and a failed replacement commit. Three mapping tests
+that interleaved a partial cell with later cells, which the sole writer never
+does, now expect the partial to be abandoned (Stale on completion) or write in
+single-writer order. A final-chunk
 EINVAL from a frame, cell or chunk check (`writeFrame`, `writeCell`,
 `storeChunk`) also still fails back although the runtime discards nothing;
 the exporter's frames are deterministic, so only an exporter bug can

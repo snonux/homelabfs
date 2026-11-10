@@ -118,7 +118,15 @@ pins markers (see the marker rule below). Its number stays spent, and the C8
 index keeps the latest such refusal as `Refused` (omitted until one happens)
 so that a resend gets the same errno. A donor send refused Stale, Invalid or
 Permission leaves the reclaim workspace free (not a SESSION_RETIRE or a
-continuation poll, which the exporter pins). The window is now a bounded fallback whose size
+continuation poll, which the exporter pins). An authentication ESTALE or
+credential EACCES of the final chunk comes before validation, yet a first
+attempt still fails the cell back. Since task x64 the runtime then replaces
+the abandoned, never-completed cell when the exporter's single writer sends a
+different frame at the next native number: an incomplete numbered cell at the
+high-water is removed with its credit (its number stays spent), and an
+incomplete workspace holding another frame is freed (its number stays
+unallocated). Identical replays still continue the kept chunks, and a complete
+(validated) cell is never replaced. The window is now a bounded fallback whose size
 can be revisited once the rebuilt exporter has run (see the [lib9p README](../../tools/integration/lib9p/README.md)).
 This bounds retained state and is not evidence that the guest retired
 it. A SESSION_RETIRE drops its scope's holes. The C8 index protects holes as
@@ -132,7 +140,10 @@ freshness guards, never evidence that unseen holes retired. A marker is pruned
 only when no older incomplete capture can reuse it. New headers reserve capacity
 for `recent + incomplete <=80` before their first ACK; completion spends its
 already owned slot. A permanently incomplete cell may eventually close fresh
-admission. No marker is evicted to make room.
+admission. No marker is evicted to make room. Since task x64 the exporter's
+sole writer leaves an incomplete cell only at the highwater, and the next
+header replaces it as abandoned, so these rules guard ledgers written before
+x64 and do not limit a single-writer exporter.
 
 ## Hashes and receipt2
 
