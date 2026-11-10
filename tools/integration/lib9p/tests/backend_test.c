@@ -1597,6 +1597,39 @@ order_gap_test(void) {
    reset_fixtures();
 }
 
+/* e64 review: a control behind a complete ordinary cell that has no credit
+ * is not held. It bypasses the ordinary cell at once, as before e64, and
+ * the bypassed cell relies on the runtime's guest reorder window. */
+static void
+order_credit_bypass_test(void) {
+   Hfs9p *h = new_endpoint();
+   Hfs9pConnection *c = hello_session(h);
+   for (uint64_t cell = 2; cell <= 64; cell++)
+      send_cell(c, golden_create, cell, NULL, 1);
+   assert(h->ordinary == 64 && h->high == 64);
+   send_cell(c, golden_create, 65, NULL, 1);
+   assert(!entry(h, 65)->issued && h->high == 64);
+   Hfs9pToken tokens[HFS9P_TOKENS];
+   Hfs9pJson j = {(const uint8_t *)golden_create, strlen(golden_create), tokens, 0};
+   uint32_t payload, claim;
+   assert(!hfs9p_json_parse(&j) && !hfs9p_json_key(&j, 0, "payload", &payload) &&
+       !hfs9p_json_key(&j, payload, "claim", &claim));
+   char query[16384];
+   (void)snprintf(query, sizeof(query),
+       "{\"cell\":66,\"context\":%.*s,\"op\":\"QUERY\","
+       "\"payload\":{\"claim\":%.*s},\"reclaim\":null}",
+       (int)h->sessions[0].length, h->sessions[0].context,
+       (int)(tokens[claim].end - tokens[claim].start), j.bytes + tokens[claim].start);
+   uint64_t before = _now();
+   assert(send_body(c, query, 66) == 1);
+   assert(_now() - before < HFS9P_ORDER_HOLD_MS);
+   assert(entry(h, 66)->control && entry(h, 66)->issued &&
+       entry(h, 66)->native_cell == 65 && !entry(h, 65)->issued);
+   hfs9p_connection_delete(c);
+   shutdown_endpoint(h);
+   reset_fixtures();
+}
+
 static Hfs9pLedger *
 refusal_ledger(const char *base, const char *name, int *directory) {
    char path[4096];
@@ -1672,7 +1705,8 @@ refusal_permanent_test(const char *base) {
 
 /* e64: a transient (EAGAIN) or uncertain (EIO, EHOSTDOWN, unclassified
  * EPERM) refusal, and EACCES on a replay, keep the exact candidate pinned
- * and protected; the identical replay is then admitted. */
+ * and protected; the identical replay is then admitted. This is a no-change
+ * guard: it also passes on the pre-e64 exporter, which pinned every refusal. */
 static void
 refusal_transient_test(const char *base) {
    const int errors[] = {EAGAIN, EIO, EHOSTDOWN, EPERM};
@@ -1725,6 +1759,7 @@ main(int argc, char **argv) {
    order_pinned_writer_test();
    order_concurrent_test();
    order_gap_test();
+   order_credit_bypass_test();
    refusal_permanent_test(argv[1]);
    refusal_transient_test(argv[1]);
    assert(atomic_load(&io_begins) > 0);

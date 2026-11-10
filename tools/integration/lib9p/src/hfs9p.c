@@ -176,6 +176,9 @@ struct Hfs9p_ {
    unsigned ordinary;
    unsigned control;
    int pending;
+   /* Set while _guest_order walks one session's lower cells (e64), so a
+    * nested call for a lower cell only checks that cell's own gaps. */
+   bool ordering;
    bool revoked;
    Hfs9pToken tokens[HFS9P_TOKENS];
    uint8_t scratch[HFS9P_HEADER + HFS9P_CHUNK];
@@ -1318,35 +1321,41 @@ _native_body(Hfs9p *h, Hfs9pEntry *e) {
  * mutex contention) or EBUSY (a fixed tag still held, task 964) yields that
  * writer for 10-12 ms before the retry. A later cell of the same session can
  * then be copied completely first. Inside the exporter a complete cell could
- * also be overtaken: one blocked by another candidate's writer pin or by
- * credit was retried only by its own FETCH or the wait worker, while a later
- * cell's SEND or FETCH found the writer free. The runtime captures the
- * session's guest high-water at each native cell's first header and refuses
- * an original at or below it, so forwarding in arrival order made it refuse
- * VIEW_WAIT guest cell 48 as native 108 after QUERY guest cell 49 as 107.
+ * also be overtaken: one blocked by another candidate's writer pin was
+ * retried only by its own FETCH or the wait worker, while a later cell's SEND
+ * or FETCH found the writer free. The runtime captures the session's guest
+ * high-water at each native cell's first header and refuses an original at
+ * or below it unless it is a hole of its 16-cell reorder window, so arrival
+ * order made it refuse VIEW_WAIT guest cell 48 as native 108 after QUERY
+ * guest cell 49 as native 107.
  *
- * Native numbers therefore go to one session's originals in guest order. A
- * complete original waits while a lower original above the session's order
- * floor is present but has no native number yet (the lowest is forwarded
- * first, in the same call) or was never seen. Replacement polls and replays
- * of an existing candidate are not originals and never wait. The wait is
- * bounded by HFS9P_ORDER_HOLD_MS: a cell the guest abandoned (its own SEND
- * deadline is 30 s) or that never completes must not stall the session. After
- * the hold the cell is forwarded anyway, the floor moves past the cells it
- * gave up on, and such a cell, if it still arrives, relies on the runtime's
- * bounded guest reorder window. */
+ * Native numbers therefore go to one session's originals in guest order:
+ *  - A complete lower original is forwarded first, in the same call. If a
+ *    pinned writer blocks it, this cell is blocked by the same pin, and the
+ *    first call after the pin clears forwards the lower cell first.
+ *  - A lower cell that was never seen, or is still incomplete, is waited for,
+ *    at most HFS9P_ORDER_HOLD_MS. An abandoned or never completed cell (the
+ *    guest's own SEND deadline is 30 s) must not stall the session.
+ *  - A complete lower cell that cannot go for its own reasons (no ordinary
+ *    credit, EAGAIN on its first write, any other error) is not waited for.
+ *    Control, replacement and donor traffic keeps bypassing ordinary traffic,
+ *    as before e64.
+ * A bypassed or given-up cell that arrives below the high-water relies on the
+ * runtime's reorder window (it admits an unissued cell once, inside 16 cells
+ * below the high-water). Replacement polls and replays of an existing
+ * candidate are not originals and never wait. */
 #define HFS9P_ORDER_HOLD_MS 1000u
 
-/* Lowest present original of e's session above the order floor and below e
- * that has no native number yet: not issued and not a replacement poll. */
+/* Lowest present original of e's session above after and below e that is not
+ * issued and not a replacement poll. A pinned candidate qualifies: it already
+ * holds its native number but has not been issued. */
 static Hfs9pEntry *
-_order_lower(Hfs9p *h, const Hfs9pEntry *e) {
-   uint64_t floor = h->sessions[e->session].order_high;
+_order_lower(Hfs9p *h, const Hfs9pEntry *e, uint64_t after) {
    Hfs9pEntry *lowest = NULL;
    for (unsigned i = 0; i < HFS9P_ENTRIES; i++) {
       Hfs9pEntry *l = &h->entries[i];
       if (!l->guest || l == e || l->session != e->session || l->issued ||
-          l->polls || l->guest_cell <= floor || l->guest_cell >= e->guest_cell)
+          l->polls || l->guest_cell <= after || l->guest_cell >= e->guest_cell)
          continue;
       if (!lowest || l->guest_cell < lowest->guest_cell)
          lowest = l;
@@ -1355,18 +1364,26 @@ _order_lower(Hfs9p *h, const Hfs9pEntry *e) {
 }
 
 /* True when some guest cell strictly between from and to was never seen in
- * this session. The seen ranges are sorted and disjoint. */
+ * this session, or is present but still incomplete. */
 static bool
-_order_gap(const Hfs9pSession *s, uint64_t from, uint64_t to) {
+_order_missing(Hfs9p *h, const Hfs9pEntry *e, uint64_t from) {
+   const Hfs9pSession *s = &h->sessions[e->session];
    uint64_t next = from + 1;
-   for (unsigned i = 0; i < s->seen_count && next < to; i++) {
+   for (unsigned i = 0; i < s->seen_count && next < e->guest_cell; i++) {
       if (s->seen[i].last < next)
          continue;
       if (s->seen[i].first > next)
          return (true);
       next = s->seen[i].last + 1;
    }
-   return (next < to);
+   if (next < e->guest_cell)
+      return (true);
+   for (Hfs9pEntry *l = _order_lower(h, e, from); l;
+       l = _order_lower(h, e, l->guest_cell)) {
+      if (!l->complete)
+         return (true);
+   }
+   return (false);
 }
 
 /* Arms e's hold on its first wait; true once the hold has run out. */
@@ -1381,29 +1398,35 @@ _order_expired(Hfs9pEntry *e) {
 static int _forward(Hfs9p *, Hfs9pEntry *);
 
 /* 0 when original e may take the next native number of its session, EAGAIN
- * while it must wait. An expired e hands its deadline down, so a lower cell
- * that only waits for a gap below it still goes first. A lower cell that
- * cannot be forwarded even then is given up on: the floor moves to it, which
- * also bounds this loop and the recursion through _forward to one pass. */
+ * while it waits for a missing or incomplete lower cell. Complete lower cells
+ * are offered the writer first, lowest first. An expired e hands its deadline
+ * down, so a lower cell that only waits for a gap below it still goes first.
+ * The nested _guest_order of such a lower cell only checks its own gaps
+ * (h->ordering): this walk already offers every complete cell below it, so
+ * each cell is tried once per call and the recursion is one level deep. */
 static int
 _guest_order(Hfs9p *h, Hfs9pEntry *e) {
    Hfs9pSession *s = &h->sessions[e->session];
    if (e->guest_cell <= s->order_high)
       return (0); /* A late cell: nothing below it is still awaited. */
    bool expired = _order_expired(e);
-   Hfs9pEntry *lower;
-   while ((lower = _order_lower(h, e)) != NULL) {
-      if (expired && (!lower->order_deadline ||
-          lower->order_deadline > e->order_deadline))
-         lower->order_deadline = e->order_deadline;
-      int error = lower->complete ? _forward(h, lower) : EAGAIN;
-      if (!error || !lower->guest)
-         continue; /* Forwarded, or failed back: either way settled. */
-      if (!expired)
-         return (EAGAIN);
-      s->order_high = lower->guest_cell;
+   if (!h->ordering) {
+      h->ordering = true;
+      uint64_t after = s->order_high;
+      Hfs9pEntry *l;
+      while ((l = _order_lower(h, e, after)) != NULL) {
+         after = l->guest_cell;
+         if (expired && (!l->order_deadline ||
+             l->order_deadline > e->order_deadline))
+            l->order_deadline = e->order_deadline;
+         if (l->complete)
+            (void)_forward(h, l); /* It may fail back and be cleared. */
+         if (h->pending >= 0)
+            break; /* A pinned writer blocks every later cell, e too. */
+      }
+      h->ordering = false;
    }
-   if (!expired && _order_gap(s, s->order_high, e->guest_cell))
+   if (!expired && _order_missing(h, e, s->order_high))
       return (EAGAIN);
    return (0);
 }
@@ -1488,6 +1511,11 @@ _forward_protect(Hfs9p *h, Hfs9pEntry *e) {
  *  - EACCES (fsapi.Permission), but only on a first attempt. The runtime
  *    checks native authentication, node and scope before it looks the cell
  *    up, so a resend of a cell admitted with a lost receipt could see EACCES.
+ *    The FUSE adapter (internal/fuseadapter, PrivateControl.native) also
+ *    returns EACCES when its per-request credential snapshot fails, which
+ *    may be transient. Failing such a first attempt back is safe, since
+ *    nothing was admitted, but it drops a cell that a retry might have
+ *    delivered.
  * EPERM is not classified: the adapter maps fsapi.Permission to EACCES and
  * nothing in the runtime's write path produces EPERM, so its meaning is
  * unknown. EAGAIN (WouldBlock: workspace, queue or recent-marker pressure) is

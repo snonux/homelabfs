@@ -98,9 +98,10 @@ as a hole (a cell can still enter above an older captured watermark, which is
 safe). The 16-cell window is a stopgap, not derived from an exporter bound.
 Since task e64 the exporter allocates native numbers to one session's originals
 in guest order and waits up to one second for a lower cell that is missing or
-incomplete. Only a cell it gave up on after that hold can still arrive below the
-highwater, so the window is now a bounded fallback and can be revisited once the
-rebuilt exporter has run (see the [lib9p README](../../tools/integration/lib9p/README.md)).
+incomplete. Only a cell it gave up on after that hold, or a complete ordinary
+cell that control or donor traffic bypassed while it had no credit, can still
+arrive below the highwater, so the window is now a bounded fallback whose size
+can be revisited once the rebuilt exporter has run (see the [lib9p README](../../tools/integration/lib9p/README.md)).
 This bounds retained state and is not evidence that the guest retired
 it. A SESSION_RETIRE drops its scope's holes. The C8 index protects holes as
 `GuestHoles` (omitted when empty, so an index without it means every cell

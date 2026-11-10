@@ -247,18 +247,32 @@ wait worker, while a later cell's SEND or FETCH could find the writer free
 first.
 
 **Ordering.** Native numbers now go to each session's originals in guest
-order (`_guest_order` in `src/hfs9p.c`). A complete original waits while a
-lower original above the session's order floor is present but has no native
-number yet (the lowest is forwarded first, in the same call) or was never
-seen. Replacement polls and replays of an existing candidate never wait. The
-wait is bounded at 1 s (`HFS9P_ORDER_HOLD_MS`) so that an abandoned or never
-completed cell cannot stall its session. After the hold the cell is forwarded
-anyway, the floor moves past what it gave up on, and such a cell, if it still
-arrives, relies on the runtime's 16-cell guest reorder window (task d64),
-which now acts as a bounded fallback. The floor and hold deadlines are not
-persisted: restore puts the floor below the lowest restored original without
-a native number, or at the session's highest seen cell. 964's tag-reuse wait
-and 564's recovery busy retry are unchanged.
+order (`_guest_order` in `src/hfs9p.c`):
+
+* A complete lower original is forwarded first, lowest first, in the same
+  call. If another cell's pinned writer blocks it, the later cell is blocked
+  by the same pin, and the first call after the pin clears forwards the lower
+  cell first, so a pin never lets a later cell overtake.
+* A lower cell that was never seen, or is still incomplete, is waited for, at
+  most 1 s (`HFS9P_ORDER_HOLD_MS`), so that an abandoned or never completed
+  cell cannot stall its session. After the hold the cell goes anyway.
+* A complete lower cell that cannot go for its own reasons (no ordinary
+  credit, EAGAIN on its first write, any other error) is not waited for.
+  Control, replacement and donor traffic keeps bypassing ordinary traffic, as
+  before e64.
+
+A bypassed or given-up cell that arrives below the session's high-water relies
+on the runtime's guest reorder window (task d64): the runtime admits an
+unissued guest cell once while it is inside 16 cells below the high-water
+(`GuestHoles`, tested by `TestMappedOutOfOrderGuestWaitAcceptedReplayRefused`
+and `TestMappedGuestReorderWindowBounded`). A cell bypassed by more than 15
+later cells of its session is still refused as stale, so the window stays a
+bounded fallback. The R6-2 shape (QUERY 49 copied before VIEW_WAIT 48) is a
+missing lower cell, so 49 waits for 48. Replacement polls and replays of an
+existing candidate never wait. The floor and hold deadlines are not
+persisted: restore puts the floor below the lowest restored original that is
+not issued, or at the session's highest seen cell. 964's tag-reuse wait and
+564's recovery busy retry are unchanged.
 
 **Permanent refusals.** Only an original donor send (reclaim, poll index 0,
 not SESSION_RETIRE) is classified. The runtime builds such a send in its
@@ -275,7 +289,11 @@ fresh snapshot is protected so that recovery does not replay it):
 | EACCES | `fsapi.Permission` | only on a first attempt: authentication, node and scope checks run before the cell lookup |
 
 EPERM is never produced (the FUSE adapter maps `fsapi.Permission` to EACCES),
-so it stays uncertain. EAGAIN is transient. EACCES on a replay, EHOSTDOWN,
+so it stays uncertain. A first-attempt EACCES can also come from a transient
+failure of the FUSE adapter's per-request credential snapshot
+(`PrivateControl.native` in `internal/fuseadapter`). Failing that cell back is
+safe, since nothing was admitted, but it drops a cell that a retry might have
+delivered. EAGAIN is transient. EACCES on a replay, EHOSTDOWN,
 ENOSPC, EIO, EINTR and every other errno are uncertain, because a protection
 or transport failure may follow admission. All of these keep the exact
 candidate pinned and protected, as before. Non-donor sends are unchanged: the
@@ -291,9 +309,10 @@ refusal is fully survivable.
 
 `backend_test.c` covers ordering behind another session's pinned writer,
 eight concurrent SENDs of one session, the R6-2 gap shape with hold expiry and
-a late cell, permanent refusals (ESTALE, EINVAL, first-attempt EACCES) with a
+a late cell, a control bypassing an ordinary cell that has no credit, permanent refusals (ESTALE, EINVAL, first-attempt EACCES) with a
 real ledger reload, and transient or uncertain refusals (EAGAIN, EIO,
 EHOSTDOWN, EPERM, replay EACCES) that stay pinned and then replay unchanged.
+The transient test is a no-change guard; it also passes on the pre-e64 code.
 The fixtures prove exporter behaviour only. A native rebuild of the bhyve
 backend must pick this source up before any lab run can show it.
 

@@ -33,9 +33,11 @@ const mappingRecentLimit = 80
 // order (tools/integration/lib9p/src/hfs9p.c, _guest_order). It waits up to
 // one second (HFS9P_ORDER_HOLD_MS) for a missing or incomplete lower cell and
 // fails a permanently refused donor send back to the guest instead of pinning
-// it. Only a cell the exporter gave up on after that hold can still arrive
-// below the high-water, so this window can now be revisited (kept as a
-// bounded fallback, or removed) once a rebuilt exporter has run in the lab.
+// it. Only a cell the exporter gave up on after that hold, or a complete
+// ordinary cell that control or donor traffic bypassed while it had no
+// credit, can still arrive below the high-water. The window stays the
+// fallback for those; its size can now be revisited once a rebuilt exporter
+// has run in the lab.
 const guestReorderWindow = 16
 
 // MappingLeg is inert protected evidence for one actually admitted native leg.
