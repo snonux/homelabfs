@@ -685,12 +685,13 @@ with EACCES, and dmesg said nothing (R7-2).
   CREATE, namespace and READDIR result checks. Teardown fences (kill_sb, a
   failed mount), the sequence-wrap guards and the 0004/0005 view, lease and
   controlled-stop paths still set the flag directly. `hfs_mmap_fail` already
-  logs its errno.
+  logs its errno. (m64 routes the view, lease and controlled-stop paths too
+  and drops the ratelimit; see below.)
 - **Sources floor hook.** Patch 0005's `hfs_go_bounds` now names its
   `Sources` lower bound `HFS_GO_SOURCES_MIN`. The value is still 2, with a
   `TODO(i64)`: it must mirror the derived floor that viewcontrol validation
   defines. Choosing a different number here alone would let the guest and
-  the host validators disagree.
+  the host validators disagree. (m64 replaced it with that floor.)
 - **Mount split.** `v9fs_hfs_mount` is split into `hfs_session_new`,
   `hfs_mount_enroll`, `hfs_trace_register`, `hfs_mount_client`,
   `hfs_mount_hello` and `hfs_mount_fail`, in the same order. The
@@ -719,3 +720,57 @@ On GCC 16, policy, cursor, transport, tag, mount_hello, requests,
 readdir_cleanup, huge and controlled_received `terminal-smoke` pass. codec
 (`test.c:366`), capture, root, reclaim and view fail exactly as they did
 before g64 (s54). No candidate was rebuilt or admitted.
+
+## Sources floor and the remaining blocked sites (`m64`)
+
+- **Sources floor.** Patch 0005's `hfs_go_bounds` now takes the enrolled
+  domain count and refuses `Bounds.Sources` outside
+  `[2 * domains + 4, 128]`, exactly `viewcontrol.CheckSourceFloor`
+  (`MinSources` in `internal/viewcontrol/source_floor.go`, i64). The guest
+  previously accepted any Sources from 2, so a signed enrollment the daemon
+  refuses could still provision. `hfs_signed_enrollment_decode` therefore
+  counts Domains before it checks Bounds; the decode is split into
+  `hfs_go_header`, `hfs_go_domains` and `hfs_go_profile_hash`. The other
+  `hfs_go_bounds` limits already matched `viewcontrol.validBounds`; o64
+  changed spec values, not bound rules. The zq3 spec (2 sessions, Sources 10)
+  and the controlledruntime guest artifacts (3-domain groups, Sources 10, the
+  exact floor) are accepted.
+- **Blocked sites.** The remaining silent `session->blocked` sites now go
+  through `hfs_session_block` with a reason: in patch 0004 the VIEW_QUERY /
+  VIEW_CANCEL reply checks, the uncertain view ticket in
+  `hfs_view_exchange` (the operation is VIEW_QUERY once the initial command
+  was admitted), VIEW_ACQUIRE, both VIEW_RELEASE checks, a busy ticket at
+  VIEW_RETIRE, DIRTY_RESERVE and DIRTY_FREEZE; in patch 0005 the controlled
+  stop and retain fences. Blocking semantics are unchanged. kill_sb sets the
+  flag silently and then reaches the stop fence, so a session that never
+  faulted now logs `blocked by controlled stop on STOP (0)` once at unmount;
+  after an earlier fault the first reason stays the only line. Only kill_sb,
+  a failed mount and the close/release sequence-wrap guards still set the
+  flag directly.
+- **Log reliability.** The once-per-session line is a plain `pr_warn`. With
+  `pr_warn_ratelimited`, a drop inside a printk burst still set the once
+  bit, so that session could never explain itself. The bit bounds the output
+  to one line per session, and only root mounts create sessions.
+
+`mount_hello` adds three cases. `enrollment-sources-floor` runs the verbatim
+`hfs_go_bounds` against the daemon's constants, which `run.py` reads from
+`source_floor.go` (it fails if the `MinSources` formula changes), and the real
+Bounds of the zq3 spec and guest artifacts. It accepts each signed Bounds,
+then checks floor - 1 refused, floor, 128 accepted and 129 refused for 1, 2,
+3, 62 and 63 domains. `session-block-ratelimit` blocks while the ratelimit
+substitute drops every line and requires the line anyway.
+`controlled-stop-block` runs the verbatim `hfs_controlled_stop` on a clean
+and an already faulted session. The pre-m64 source fails to compile the
+harness (`hfs_go_bounds` takes two arguments). `controlled_received/compat.h`
+gains a `pr_warn` substitute.
+
+The series was regenerated with `export.py --task m64` (0001 and 0002
+unchanged). A fresh `prepare.py` tree applies it with fuzz zero and the
+touched objects compile without warnings under `kernel.py configure`
+(`make fs/9p/ net/9p/ drivers/char/random.o`). On GCC 16 policy, cursor,
+transport, tag, mount_hello, requests, readdir_cleanup, huge and
+controlled_received `terminal-smoke` pass. codec (`test.c:366`), capture,
+root, reclaim and view fail with the same errors on the pre-m64 tree (s54).
+controlled_provider also fails before running, on both trees, in its own
+struct extraction (`struct hfs_terminal_ack` incomplete in
+`session_struct.inc`). No candidate was rebuilt or admitted.

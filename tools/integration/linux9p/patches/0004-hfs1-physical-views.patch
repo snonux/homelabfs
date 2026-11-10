@@ -1886,7 +1886,7 @@ diff --git a/fs/9p/hfs_lease.c b/fs/9p/hfs_lease.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.c
-@@ -0,0 +1,1531 @@
+@@ -0,0 +1,1534 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Exact bridge1.1 ticket/lease transport; no physical or source-proof defaults. */
 +#include <linux/slab.h>
@@ -2455,7 +2455,7 @@ new file mode 100644
 +	if (err) {
 +		hfs_json_free(reply);
 +		if (err == -EPROTO)
-+			WRITE_ONCE(session->blocked, true);
++			hfs_session_block(session, "invalid view ticket reply", operation, err);
 +		return err;
 +	}
 +	if (!err)
@@ -2474,7 +2474,7 @@ new file mode 100644
 +	}
 +	hfs_json_free(reply);
 +	if (err == -EPROTO)
-+		WRITE_ONCE(session->blocked, true);
++		hfs_session_block(session, "invalid view ticket closure", operation, err);
 +	return err;
 +}
 +
@@ -2621,8 +2621,11 @@ new file mode 100644
 +		control = true;
 +	}
 +invalid:
++	/* op is VIEW_QUERY once the initial command was admitted (the zq3
++	 * "VIEW_QUERY uncertain" case), otherwise the command itself.
++	 */
 +	ticket->uncertain = true;
-+	WRITE_ONCE(session->blocked, true);
++	hfs_session_block(session, "uncertain view ticket", op, err);
 +	hfs_json_free(reply);
 +	return err;
 +}
@@ -2773,7 +2776,7 @@ new file mode 100644
 +		ticket = NULL;
 +	}
 +	if (err == -EPROTO || err == -ESTALE)
-+		WRITE_ONCE(session->blocked, true);
++		hfs_session_block(session, "invalid or stale lease grant", "VIEW_ACQUIRE", err);
 +free:
 +	if (err)
 +		hfs_view_ticket_put(ticket);
@@ -2815,7 +2818,7 @@ new file mode 100644
 +	     !hfs_json_is(response, hfs_json_field(response, 0, "lease"), "null") ||
 +	     !hfs_json_is(response, hfs_json_field(response, 0, "reservation"), "null"))) {
 +		err = -EPROTO;
-+		WRITE_ONCE(session->blocked, true);
++		hfs_session_block(session, "unexpected lease release status", "VIEW_RELEASE", err);
 +	}
 +	if (!err && READ_ONCE(lease->published) && !READ_ONCE(lease->revoked)) {
 +		struct hfs_view *view = hfs_view_get(session);
@@ -2824,8 +2827,8 @@ new file mode 100644
 +			hfs_view_fence(view);
 +			hfs_view_put(view);
 +		}
-+		WRITE_ONCE(session->blocked, true);
 +		err = -EPROTO;
++		hfs_session_block(session, "lease released while still published", "VIEW_RELEASE", err);
 +	}
 +	hfs_json_free(response);
 +	return err;
@@ -3002,8 +3005,8 @@ new file mode 100644
 +			if (ticket->family != family || !ticket->number || ticket->number > through)
 +				continue;
 +			if (WARN_ON_ONCE(ticket->users)) {
-+				WRITE_ONCE(session->blocked, true);
 +				err = -EBUSY;
++				hfs_session_block(session, "retired view ticket still in use", "VIEW_RETIRE", err);
 +				break;
 +			}
 +			list_move_tail(&ticket->list, &released);
@@ -3154,7 +3157,7 @@ new file mode 100644
 +done:
 +	hfs_json_free(reply);
 +	if (err == -EPROTO)
-+		WRITE_ONCE(session->blocked, true);
++		hfs_session_block(session, "invalid dirty reservation", "DIRTY_RESERVE", err);
 +	return err;
 +}
 +
@@ -3340,7 +3343,7 @@ new file mode 100644
 +	hfs_json_free(reply);
 +	hfs_json_free(expected_entry);
 +	if (err == -EPROTO)
-+		WRITE_ONCE(session->blocked, true);
++		hfs_session_block(session, "invalid dirty freeze entry", "DIRTY_FREEZE", err);
 +	return err;
 +}
 +

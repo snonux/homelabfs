@@ -179,29 +179,29 @@ numbers; 0004/0005 do not change these functions):
 
 * The hfs mount does not use v9fs caching at all: `v9fs_mount` hands any
   `version=9P2000.L.hfs1*` mount to `v9fs_hfs_mount` (line 88, selector at
-  2740-2761), whose superblock uses `hfs_super_ops`/`hfs_dir_iops`
-  (4607-4628). v9fs dentry/attribute caching therefore plays no part. Since
+  2749-2770), whose superblock uses `hfs_super_ops`/`hfs_dir_iops`
+  (4616-4637). v9fs dentry/attribute caching therefore plays no part. Since
   g64 the mount requires `cache=mmap`, which names this behaviour (uncached
   read/write, page cache only for mappings); it enables no v9fs cache.
-* `hfs_permission` (3989-3998) refuses RCU mode (`MAY_NOT_BLOCK` gives
-  `-ECHILD`) and otherwise always calls `hfs_refresh` (3965-3987), a GETATTR
-  CALL (3978). In one `mkdir(2)` the VFS calls it twice on the parent:
+* `hfs_permission` (3998-4007) refuses RCU mode (`MAY_NOT_BLOCK` gives
+  `-ECHILD`) and otherwise always calls `hfs_refresh` (3974-3996), a GETATTR
+  CALL (3987). In one `mkdir(2)` the VFS calls it twice on the parent:
   `may_lookup` during the path walk and `may_create` inside `vfs_mkdir`,
   immediately before `->mkdir`. No attribute timeout or cached permission
   exists.
-* `hfs_d_revalidate` (3950-3953) returns `-ECHILD` in RCU mode and 0
+* `hfs_d_revalidate` (3959-3962) returns `-ECHILD` in RCU mode and 0
   (invalid) otherwise, so a cached positive or negative dentry is never kept:
-  `filename_create` always reaches `hfs_lookup`, a LOOKUP CALL (4024), for
+  `filename_create` always reaches `hfs_lookup`, a LOOKUP CALL (4033), for
   the new name, even right after a `stat` of that name.
-* Only then does `hfs_namespace` send MKDIR (4219). So every guest mkdir
+* Only then does `hfs_namespace` send MKDIR (4228). So every guest mkdir
   sends, in order, GETATTR(parent), LOOKUP(name), GETATTR(parent), MKDIR in
   the armed session, and an unfiltered fixture drops the first GETATTR.
 * Background CALLs can also race in: inode eviction (`drop_inode =
-  generic_delete_inode`, 4612) queues FORGET CALLs on the control workqueue
-  (3919-3948, 3891-3917), and every exiting guest process that used the mount
-  queues a PROCESS_EXIT CALL (590-660).
+  generic_delete_inode`, 4621) queues FORGET CALLs on the control workqueue
+  (3928-3957, 3900-3926), and every exiting guest process that used the mount
+  queues a PROCESS_EXIT CALL (590-669).
 * After any failed CALL fetch the guest marks the session blocked
-  (`hfs_request_run` `retained:`, 2027-2034; since g64 `hfs_session_block`
+  (`hfs_request_run` `retained:`, 2036-2043; since g64 `hfs_session_block`
   logs the first block of each session), and later ordinary CALLs get
   `-EHOSTDOWN` (`hfs_request_admit`, 0002 line 2195). There is no second
   attempt, so a warm-up that lost the race cannot be repeated in the same run.

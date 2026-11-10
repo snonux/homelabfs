@@ -118,6 +118,8 @@ static inline unsigned long primitive_milliseconds(void) { struct timespec t;ass
 void primitive_sleep(unsigned long,unsigned long);
 #define usleep_range(a,b) primitive_sleep(a,b)
 #define pr_warn_ratelimited(...) fprintf(stderr,__VA_ARGS__)
+/* hfs_session_block's once-per-session line is a plain pr_warn since m64. */
+#define pr_warn(...) fprintf(stderr,__VA_ARGS__)
 static inline void kref_init(struct kref *k) { atomic_init(&k->refcount,1); }
 static inline void kref_get(struct kref *k) { atomic_fetch_add(&k->refcount,1); }
 static inline void kref_put(struct kref *k,void (*release)(struct kref *)) { if(atomic_fetch_sub(&k->refcount,1)==1)release(k); }

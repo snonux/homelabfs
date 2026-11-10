@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Actual v9fs_hfs_mount ordering: cache option, enroll, validate, HELLO,
  * selection check; then the mounted superblock's mountinfo options (g64).
- * hfs_session_block's once-per-session log is checked directly.
+ * hfs_session_block's once-per-session log is checked directly, also under a
+ * dropping ratelimit and through the controlled stop fence (m64), and so is
+ * the enrollment Bounds Sources floor (hfs_go_bounds, m64).
  *
- * mount.inc, validate.inc, before_send.inc and show_options.inc are verbatim
- * production definitions. The VFS/module/tracepoint/p9 primitives, the
+ * mount.inc, validate.inc, before_send.inc, show_options.inc, stop.inc and
+ * bounds.inc are verbatim production definitions; bounds_fixtures.inc holds
+ * the daemon's Sources floor constants and real Bounds (see run.py). The VFS/module/tracepoint/p9 primitives, the
  * controlled registry lookups and the native exchange are explicit
  * substitutions. The exchange applies the real controlled pre-send HELLO
  * check and then echoes the sent payload as the runtime selection, exactly
@@ -58,7 +61,14 @@ static __attribute__((format(printf, 1, 2))) void test_warn(const char *f, ...)
 	warnings++;
 	fputs(last_warning, stderr);
 }
-#define pr_warn_ratelimited test_warn
+/* printk_ratelimited substitute. With ratelimit_drops set it drops the line,
+ * as the kernel does inside a burst; hfs_session_block must not depend on it
+ * (m64), since its once bit would otherwise hide the session's only line.
+ */
+static bool ratelimit_drops;
+static unsigned int ratelimit_dropped;
+#define pr_warn_ratelimited(...) (ratelimit_drops ? (void)ratelimit_dropped++ : test_warn(__VA_ARGS__))
+#define pr_warn test_warn
 #define test_and_set_bit(n, p) ((__atomic_fetch_or((p), 1UL << (n), __ATOMIC_SEQ_CST) >> (n)) & 1UL)
 static void seq_puts(struct seq_file *m, const char *s)
 {
@@ -133,7 +143,18 @@ struct hfs_session {
 	bool closing, blocked, retained, terminal_pending;
 	unsigned long block_reported;
 };
-struct hfs_controlled_mount { struct super_block *super; };
+struct hfs_controlled_mount { struct super_block *super; bool stopping; u32 cookies; };
+/* Only the hfs_view fields hfs_controlled_stop reads (m64). */
+typedef int wait_queue_head_t;
+enum hfs_view_phase { HFS_VIEW_UNBOUND, HFS_VIEW_QUIESCENT };
+struct hfs_view {
+	spinlock_t lock;
+	wait_queue_head_t wait;
+	u32 active, nr_dirty, nr_cached, nr_observations, nr_mappings;
+	bool quiescent;
+	enum hfs_view_phase phase;
+};
+#define wake_up_all(w) ((void)(w))
 
 /* Per-case fixture state; each case is a fresh forked child. */
 enum echo { ECHO_SENT, ECHO_MAPPED, ECHO_TERMINAL };
@@ -341,6 +362,16 @@ static int fixture_enroll(const char *device, struct hfs_enrollment *enrollment)
 #include "mount.inc"
 #include "show_options.inc"
 
+/* hfs_controlled_stop's view: one quiescent unbound view, so a stop with no
+ * cookies succeeds and only its blocked fence is observed.
+ */
+static struct hfs_view stop_view = { .quiescent = true, .phase = HFS_VIEW_UNBOUND };
+static struct hfs_view *hfs_view_get(struct hfs_session *session) { return &stop_view; }
+static void hfs_view_put(struct hfs_view *view) { CHECK(view == &stop_view); }
+#include "stop.inc"
+#include "bounds.inc"
+#include "bounds_fixtures.inc"
+
 /* The zq3 mount (tools/lab/retained9p/bootstrap.py MOUNT_OPTIONS) and the
  * super options hfs_show_options must append to the VFS's "rw" for it.
  */
@@ -506,6 +537,131 @@ static void run_block_case(void)
 	free(second);
 }
 
+/* m64: the once-per-session line survives a ratelimit burst. The pre-m64
+ * pr_warn_ratelimited dropped it here and the once bit then hid it for good.
+ */
+static void run_block_ratelimit_case(void)
+{
+	struct hfs_session *session = calloc(1, sizeof(*session));
+
+	CHECK(session);
+	ratelimit_drops = true;
+	hfs_session_block(session, "QUERY timeout", "GETATTR", -ETIMEDOUT);
+	CHECK(session->blocked && warnings == 1 && !ratelimit_dropped);
+	CHECK(strstr(last_warning, "blocked by QUERY timeout on GETATTR (-110)"));
+	free(session);
+}
+
+/* m64: a formerly silent site. The controlled stop fence logs once on a
+ * session that never faulted; after an earlier fault the first reason stays
+ * the only line, and the stop still fences the session.
+ */
+static void run_stop_block_case(void)
+{
+	struct hfs_session *clean = calloc(1, sizeof(*clean));
+	struct hfs_session *faulted = calloc(1, sizeof(*faulted));
+
+	CHECK(clean && faulted);
+	CHECK(!hfs_controlled_stop(clean));
+	CHECK(clean->blocked && controlled_mount.stopping && warnings == 1);
+	CHECK(strstr(last_warning, "blocked by controlled stop on STOP (0)"));
+	hfs_session_block(faulted, "uncertain view ticket", "VIEW_QUERY", -EPROTO);
+	CHECK(warnings == 2);
+	CHECK(!hfs_controlled_stop(faulted));
+	CHECK(faulted->blocked && warnings == 2);
+	CHECK(strstr(last_warning, "blocked by uncertain view ticket on VIEW_QUERY (-71)"));
+	free(clean);
+	free(faulted);
+}
+
+/* hfs_go_bounds on a Bounds JSON object for an enrollment of `domains`,
+ * parsed as production parses the signed enrollment (original Go key order).
+ */
+static int bounds_check(const char *text, u32 domains)
+{
+	struct hfs_json *json;
+	int err;
+
+	CHECK(!hfs_json_parse_go_enrollment(text, strlen(text), &json));
+	err = hfs_go_bounds(json, 0, domains);
+	hfs_json_free(json);
+	return err;
+}
+
+/* The same Bounds with only Sources replaced. */
+static void with_sources(char *out, size_t size, const char *bounds, u32 sources)
+{
+	const char *field = strstr(bounds, "\"Sources\":");
+	const char *rest;
+
+	CHECK(field);
+	rest = field + strlen("\"Sources\":");
+	while (*rest >= '0' && *rest <= '9')
+		rest++;
+	CHECK(snprintf(out, size, "%.*s\"Sources\":%u%s", (int)(field - bounds), bounds,
+		       sources, rest) < (int)size);
+}
+
+/* viewcontrol.MinSources, from the Go constants run.py read. */
+static u32 go_min_sources(u32 domains)
+{
+	return GO_BASELINESOURCES + 2 * domains + GO_ADMITTEDSOURCES + GO_SOURCERESERVE;
+}
+
+/* The kernel accepts Sources exactly in [MinSources(domains), MaxSources]. */
+static void check_sources(const char *name, const char *bounds, u32 domains, u32 sources)
+{
+	bool accept = sources >= go_min_sources(domains) && sources <= GO_MAXSOURCES;
+	char text[512];
+	int err;
+
+	with_sources(text, sizeof(text), bounds, sources);
+	err = bounds_check(text, domains);
+	printf("bounds %s domains=%u Sources=%u: %s\n", name, domains, sources,
+	       err ? "refused" : "accepted");
+	if (accept ? err != 0 : err != -EPROTO) {
+		fprintf(stderr, "bounds %s domains=%u Sources=%u: got %d\n",
+			name, domains, sources, err);
+		_exit(1);
+	}
+}
+
+/* m64: hfs_go_bounds mirrors viewcontrol.CheckSourceFloor. The real zq3 spec
+ * Views and the guest-artifact enrollments are accepted at their own domain
+ * counts; the floor is accepted and floor - 1 refused for 2 and 3 domains
+ * (and 1, 62, 63), and MaxSources + 1 is refused.
+ */
+static void run_bounds_case(void)
+{
+	static const u32 domain_counts[] = { 1, 2, 3, 62, 63 };
+	const char *artifacts = NULL;
+	unsigned int i;
+
+	CHECK(go_min_sources(2) == 8 && go_min_sources(3) == 10);
+	for (i = 0; i < ARRAY_SIZE(real_bounds); i++) {
+		CHECK(!bounds_check(real_bounds[i].bounds, real_bounds[i].domains));
+		printf("bounds %s domains=%u: accepted as signed\n",
+		       real_bounds[i].name, real_bounds[i].domains);
+		if (!strcmp(real_bounds[i].name, "zq3-spec")) {
+			CHECK(real_bounds[i].domains == 2);
+			check_sources("zq3-spec", real_bounds[i].bounds, 2, go_min_sources(2));
+			check_sources("zq3-spec", real_bounds[i].bounds, 2, go_min_sources(2) - 1);
+		} else {
+			CHECK(real_bounds[i].domains == 3);
+			artifacts = real_bounds[i].bounds;
+		}
+	}
+	CHECK(artifacts);
+	for (i = 0; i < ARRAY_SIZE(domain_counts); i++) {
+		u32 floor = go_min_sources(domain_counts[i]);
+
+		check_sources("guest-artifacts", artifacts, domain_counts[i], floor - 1);
+		check_sources("guest-artifacts", artifacts, domain_counts[i], floor);
+		check_sources("guest-artifacts", artifacts, domain_counts[i], GO_MAXSOURCES);
+		check_sources("guest-artifacts", artifacts, domain_counts[i], GO_MAXSOURCES + 1);
+	}
+}
+
 /* Fork one child per case so a crash is reported without hiding the rest. */
 static bool run_child(const char *name, const struct mount_case *c, void (*body)(void))
 {
@@ -540,6 +696,9 @@ int main(void)
 		failures += !run_child(cases[i].name, &cases[i], NULL);
 	failures += !run_child("stock-default-msize", NULL, run_stock_case);
 	failures += !run_child("session-block-once", NULL, run_block_case);
-	printf("mount_hello cases=%zu failures=%u\n", ARRAY_SIZE(cases) + 2, failures);
+	failures += !run_child("session-block-ratelimit", NULL, run_block_ratelimit_case);
+	failures += !run_child("controlled-stop-block", NULL, run_stop_block_case);
+	failures += !run_child("enrollment-sources-floor", NULL, run_bounds_case);
+	printf("mount_hello cases=%zu failures=%u\n", ARRAY_SIZE(cases) + 5, failures);
 	return failures ? 1 : 0;
 }

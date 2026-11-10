@@ -526,7 +526,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,3097 @@
+@@ -0,0 +1,3106 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -621,9 +621,18 @@ new file mode 100644
 + * first reason is normally the root cause: a caller whose hfs_call failed
 + * because hfs_request_run already blocked the session adds nothing.
 + *
-+ * Teardown (kill_sb, a failed mount) and the view/lease paths still set the
-+ * flag directly: closing fences are expected there, and hfs_mmap_fail already
-+ * logs the view control errno.
++ * The line is a plain pr_warn, not ratelimited (m64). The once bit is set
++ * before printing, so a ratelimited printk that dropped the line (another
++ * 9p-hfs warning in the same burst is enough) would have lost this
++ * session's only explanation for good. The bit already bounds the output to
++ * one line per session, and only root mounts create sessions, so the global
++ * ratelimit adds no protection here.
++ *
++ * Since m64 the view/lease faults (patch 0004) and the controlled stop and
++ * retain fences (patch 0005) also come through here. Only kill_sb, a failed
++ * mount and the close/release sequence-wrap guards still set the flag
++ * directly: kill_sb and a retained failed mount reach the controlled stop or
++ * retain fence, which logs, and hfs_mmap_fail logs the view control errno.
 + */
 +void hfs_session_block(struct hfs_session *session, const char *reason,
 +		       const char *operation, int err)
@@ -631,9 +640,9 @@ new file mode 100644
 +	WRITE_ONCE(session->blocked, true);
 +	if (test_and_set_bit(0, &session->block_reported))
 +		return;
-+	pr_warn_ratelimited("9p-hfs: session %pUb blocked by %s on %s (%d); later operations on this mount fail with EACCES or EHOSTDOWN\n",
-+			    &session->enrollment.session, reason,
-+			    operation ? operation : "-", err);
++	pr_warn("9p-hfs: session %pUb blocked by %s on %s (%d); later operations on this mount fail with EACCES or EHOSTDOWN\n",
++		&session->enrollment.session, reason,
++		operation ? operation : "-", err);
 +}
 +
 +/* Non-sleeping trace hook: all work and credentials were reserved at capture.
