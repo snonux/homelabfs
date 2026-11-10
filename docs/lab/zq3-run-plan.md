@@ -29,6 +29,7 @@ preparation used SSH, the lab, a VM, a mount or a private key.
 | Patched bhyve (exporter) | `freebsd/bhyve` `36423b6d4f68dc1b05299b1c379a164035e7db5b06ca64b47f2a8571d823fb5c`; the system `/usr/sbin/bhyve` (`c54a6361…`) is never replaced |
 | Guest kernel | `6.1.190-hfs-xz3` (964): `linux/bzImage` `704b17be…`, `linux/vmlinux` `a65f1c45…` (GNU build ID `a470c7a8…`), `linux/config` `d88b4c56…` (unchanged), `System.map` `efb43b79…`, five modules (unchanged since w54) (`virtio_net`, `net_failover`, `failover`, `efivarfs`, `x86_pkg_temp_thermal`) with hashes in the package's `installation-proposal.json` |
 | Operator public key | `2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635` (built into the guest kernel config) |
+| Guest SELinux | The test kernel must boot with SELinux as an active LSM and Rocky's policy enforcing, as the stock kernel does (`guest.py` and `pod_fixture.py` refuse T1-T5, T7 and T9-T11 otherwise). **The pinned `e01fab21` kernel does not:** its `linux/config` has `CONFIG_SECURITY_SELINUX=y` but `CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,bpf"`, and the copied Rocky command line has no `lsm=`/`security=`, so SELinux never initialises (zq3-r5 guest dmesg has no `SELinux:  Initializing`). c64 sets the recipe's `CONFIG_LSM` to the RHEL 9 order `lockdown,yama,integrity,selinux,bpf,landlock` (resolved config `28fe4a8e…` for this operator key; only that line differs from `d88b4c56…`) and `kernel.py`/`admit.py` now refuse a config without `selinux` in `CONFIG_LSM`, so `e01fab21` no longer admits. The run needs a candidate rebuilt from that recipe; its pins replace the kernel row above |
 | Probe tools | `tools/lab/retained9p/{controller,guest,observer}.py` at the commit that adds this plan; the controller pins only the candidate above |
 | Staging prefix (f3) | `/var/tmp/hfs-validation-xz3/zq3-r1` (from the installation proposal) |
 | Guest run directory | `/var/tmp/hfs-zq3-zq3-r1` with mount points `m0`, `m1` |
@@ -211,7 +212,7 @@ or vmm context could still exist.
   `10.20.0.123` still directly connected on the interface carrying
   `10.20.0.133` (else the observer key's `from=` would refuse), PoC share path on f3 present
   (R6), Rocky default kernel/grubenv unchanged, SELinux enforcing, one-line
-  `authorized_keys` hash recorded.
+  `authorized_keys` hash recorded, and `/.autorelabel` absent on Rocky (R7).
 - Evidence: `f3-facts.json`, `rocky-facts.json` with timestamps.
 - Failure: any mismatch stops; produce a revised plan.
 
@@ -693,7 +694,8 @@ Order matters; each step needs the previous one confirmed.
    could not be inspected), use U3 instead of this step.
 2. Rocky: verify running kernel equals the Phase 1 default, `saved_entry`
    unchanged, `next_entry` empty, SELinux enforcing, `authorized_keys` hash
-   equals pre-run, memory as before.
+   equals pre-run, memory as before, `/.autorelabel` absent (R7: a mark here
+   means a boot ran without SELinux).
 3. Remove the custom kernel (U2), unless Paul chose to keep it.
 4. f3: delete the staging prefix after evidence is safe (or keep, if chosen).
 5. Final inventory: Rocky running with a new PID, `freebsd` and `hfs-test0..2`
@@ -821,6 +823,21 @@ also stops until Paul decides on a forced power-off.
   Rocky normally in Phase 12. Phase 1 must confirm it exists, or the run waits
   for a separately approved config decision. This plan does not edit
   `rocky.conf`.
+- R7 Guest SELinux. Rocky marks `/.autorelabel` on every boot that runs
+  without SELinux (`selinux-autorelabel-mark.service`), and the next boot with
+  SELinux then relabels the whole root filesystem and reboots. The pre-c64
+  kernels (through `e01fab21`) booted without SELinux, so each earlier test
+  boot left that mark and forced a relabel plus an extra reboot on the next
+  stock start. With the c64 recipe the test kernel initialises SELinux and
+  should leave no mark. If a mark is present before the run, the Phase 8 test
+  boot itself would relabel and reboot, consuming the one-shot boot: Phase 1
+  stops and the relabel needs its own approved stock reboot first. In the
+  booted test kernel, `/sys/kernel/security/lsm` must list `selinux` and
+  `/sys/fs/selinux/enforce` must read `1`; otherwise the gate cases refuse
+  and the run stops with the guest preserved. The 9p mounts carry no
+  `security.selinux` xattr support (`CONFIG_9P_FS_SECURITY` off); they get
+  their label from the policy's `genfscon 9p` rule, checked only against the
+  workstation's Fedora targeted policy, not Rocky's (see T7).
 
 ## Implementation gaps
 

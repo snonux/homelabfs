@@ -40,6 +40,28 @@ loader dependencies, source inventory, timestamps, kernel/module outputs and
 GNU build IDs. It does not assert that candidate firmware/storage/rootfs/security
 choices match a currently running target.
 
+SELinux must be an active LSM, not only built. `kernel.py configure` appends
+the fragment to an allnoconfig `.config`; allnoconfig has already written
+`CONFIG_LSM` with its DAC-only default (no `selinux`), and olddefconfig keeps an
+already-set string, so candidates up to `e01fab21` had `SECURITY_SELINUX=y`
+but booted without SELinux (zq3-r6 preparation, c64). The fragment now assigns
+`CONFIG_LSM="lockdown,yama,integrity,selinux,bpf,landlock"`, the RHEL 9 order
+(Rocky's stock config excerpt in the 9p-boundary inventory has no `CONFIG_LSM`
+line). Listed LSMs that are not built (lockdown, yama, landlock, bpf) are
+skipped, so the active set is capability, integrity and selinux. The other
+SELinux values (`BOOTPARAM`, `DEVELOP`, `AVC_STATS`, no runtime `DISABLE`,
+`CHECKREQPROT_VALUE=0`, sidtab/sid2str sizes) are pinned to Rocky's stock values;
+`DEVELOP` boots permissive until systemd loads the policy and applies
+`/etc/selinux/config`. `assert_config` (shared by `kernel.py`, `abi.py` and
+`admit.py`) refuses a resolved config whose quoted `CONFIG_LSM` lacks
+`selinux`. It runs after the operator-key check, so the abi-negative
+operator refusal text is unchanged. A `configure` run on the pinned source
+(`/home/paul/tmp/claude/c64-config`, operator `2f6d909c…`) resolved a `.config`
+that differs from candidate `e01fab21`'s `linux/config` only in the
+`CONFIG_LSM` line. Only `security/security.c` (built in) reads `CONFIG_LSM`,
+so the kernel image changes; the in-tree modules and `Module.symvers` should
+not, which the next rebuild must confirm.
+
 The ordinary namespace fixture selects a rootful OCI runtime in the initial
 user namespace, VFS image storage and a newly created private network namespace
 with loopback only. Mount, PID, network, UTS and IPC namespaces must actually

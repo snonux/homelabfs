@@ -32,6 +32,10 @@ REQUIRED = ('64BIT', 'X86_64', 'FILE_LOCKING', 'MODULES', 'MODVERSIONS', 'SYSFS'
             'TRANSPARENT_HUGEPAGE', 'SHMEM', 'READ_ONLY_THP_FOR_FS',
             'EFI', 'EFI_STUB', 'BLK_DEV_NVME', 'BLK_DEV_DM', 'EXT4_FS', 'XFS_FS',
             'SECURITY_SELINUX', 'AUDIT', 'DEVTMPFS', 'BLK_DEV_INITRD') + POD_REQUIRED
+# A built LSM initialises only when CONFIG_LSM names it (no lsm= on the copied
+# Rocky command line). zq3-r6 preparation found SECURITY_SELINUX=y with a
+# DAC-only CONFIG_LSM, so the guest booted without SELinux.
+ACTIVE_LSMS = ('selinux',)
 
 
 def write_new(path, value):
@@ -94,6 +98,14 @@ def assert_config(path, key):
             raise ValueError('required full-kernel configuration: ' + symbol)
     if values.get('CONFIG_9P_FS_HOMELABFS_OPERATOR_KEY') != '"' + key + '"' or values.get('CONFIG_LOCALVERSION') != '"-hfs-xz3"' or values.get('CONFIG_VIRTIO_NET') != 'm':
         raise ValueError('candidate operator, kernel release or in-tree module selection')
+    # Checked after the operator identity so the abi-negative operator control
+    # keeps refusing with the same message.
+    order = values.get('CONFIG_LSM', '')
+    if not (order.startswith('"') and order.endswith('"') and len(order) > 1):
+        raise ValueError('quoted CONFIG_LSM order required')
+    for lsm in ACTIVE_LSMS:
+        if lsm not in order[1:-1].split(','):
+            raise ValueError('CONFIG_LSM must enable ' + lsm)
     if values.get('CONFIG_DEBUG_INFO_BTF') == 'y' or values.get('CONFIG_LOCALVERSION_AUTO') == 'y':
         raise ValueError('unselected build configuration')
 

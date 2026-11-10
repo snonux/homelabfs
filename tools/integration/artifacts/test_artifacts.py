@@ -25,7 +25,8 @@ class KernelConfigTests(unittest.TestCase):
         # Parser/admission fixture, not Kconfig resolution or a boot claim.
         self.values = {'CONFIG_' + symbol: 'y' for symbol in kernel.REQUIRED}
         self.values.update(CONFIG_9P_FS_HOMELABFS_OPERATOR_KEY='"' + self.key + '"',
-                           CONFIG_LOCALVERSION='"-hfs-xz3"', CONFIG_VIRTIO_NET='m')
+                           CONFIG_LOCALVERSION='"-hfs-xz3"', CONFIG_VIRTIO_NET='m',
+                           CONFIG_LSM='"lockdown,yama,integrity,selinux,bpf,landlock"')
 
     def write(self, extra=''):
         self.path.write_text(''.join(key + '=' + value + '\n'
@@ -59,6 +60,47 @@ class KernelConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, symbol):
                 kernel.assert_config(self.path, self.key)
             self.values[name] = 'y'
+
+    def test_selinux_must_be_an_active_lsm(self):
+        # zq3-r6 preparation: SECURITY_SELINUX=y alone booted without SELinux
+        # because allnoconfig's DAC-only CONFIG_LSM omitted it.
+        for order in (None, '"landlock,lockdown,yama,loadpin,safesetid,integrity,bpf"',
+                      '"selinuxfs,bpf"', 'lockdown,selinux', '""'):
+            with self.subTest(order=order):
+                if order is None:
+                    del self.values['CONFIG_LSM']
+                else:
+                    self.values['CONFIG_LSM'] = order
+                self.write()
+                with self.assertRaisesRegex(ValueError, 'CONFIG_LSM'):
+                    kernel.assert_config(self.path, self.key)
+        self.values['CONFIG_LSM'] = '"selinux"'
+        self.write()
+        kernel.assert_config(self.path, self.key)
+
+    def test_operator_mismatch_message_precedes_lsm_check(self):
+        # abi-negative.json records this refusal text; keep it stable.
+        del self.values['CONFIG_LSM']
+        self.write()
+        with self.assertRaisesRegex(ValueError, 'candidate operator'):
+            kernel.assert_config(self.path, 'cd' * 32)
+
+    def test_fragment_selects_selinux_as_active_lsm(self):
+        # The maintained fragment itself, before Kconfig resolution: it must
+        # assign CONFIG_LSM explicitly (allnoconfig froze a DAC-only order)
+        # and keep the Rocky stock SELinux values.
+        values = kernel.config_values(kernel.HERE / 'kernel.config')
+        self.assertEqual(values['CONFIG_SECURITY_SELINUX'], 'y')
+        self.assertEqual(values['CONFIG_DEFAULT_SECURITY_SELINUX'], 'y')
+        self.assertEqual(values['CONFIG_LSM'], '"lockdown,yama,integrity,selinux,bpf,landlock"')
+        for lsm in kernel.ACTIVE_LSMS:
+            self.assertIn(lsm, values['CONFIG_LSM'].strip('"').split(','))
+        for symbol, value in (('BOOTPARAM', 'y'), ('DEVELOP', 'y'), ('AVC_STATS', 'y'),
+                              ('DISABLE', 'n'), ('CHECKREQPROT_VALUE', '0'),
+                              ('SIDTAB_HASH_BITS', '9'), ('SID2STR_CACHE_SIZE', '256')):
+            self.assertEqual(values['CONFIG_SECURITY_SELINUX_' + symbol], value, symbol)
+        for symbol in ('AUDIT', 'AUDITSYSCALL', 'SECURITY', 'SECURITYFS', 'SECURITY_NETWORK'):
+            self.assertEqual(values['CONFIG_' + symbol], 'y', symbol)
 
     def test_ambiguous_and_malformed_config_refuses(self):
         for entry in ('CONFIG_UTS_NS=y\n', 'CONFIG_UTS_NS=n\n',
