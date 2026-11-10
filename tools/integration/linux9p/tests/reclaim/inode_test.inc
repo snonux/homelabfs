@@ -10,6 +10,14 @@ static void hfs_view_unregister_inode(struct inode *inode) { (void)inode; }
 static void truncate_inode_pages_final(int *mapping) { (void)mapping; }
 static void clear_inode(struct inode *inode) { (void)inode; }
 static void hfs_cred_free(struct hfs_cred *cred) { free(cred); }
+/* hfs_session_block substitute (g64): only its blocked flag; the real one
+ * also logs once per session, which this fixture's session cannot name.
+ */
+static void hfs_session_block(struct hfs_session *session, const char *reason,
+                              const char *operation, int err) {
+   (void)reason; (void)operation; (void)err;
+   session->blocked = true;
+}
 static struct work_struct *queued[2];
 static unsigned nr_queued;
 static void queue_work(int control, struct work_struct *work) {

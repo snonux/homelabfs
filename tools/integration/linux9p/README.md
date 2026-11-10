@@ -34,7 +34,8 @@ The profile remains Linux kernel 9p → virtio → lib9p → real FreeBSD FUSE. 
 is no guest daemon, Linux FUSE replacement, alternate RPC client or stock-fid
 fallback. `CONFIG_9P_FS_HOMELABFS` defaults off and depends on tracepoints.
 When built, exact `version=9P2000.L.hfs1,trans=virtio,msize=65536` or
-`version=9P2000.L.hfs1.1,trans=virtio,msize=65536` selection uses separate inode/file/super operations inside the 9p filesystem. The network
+`version=9P2000.L.hfs1.1,trans=virtio,msize=65536` selection uses separate inode/file/super operations inside the 9p filesystem.
+Since `g64` the hfs mount also requires exactly one `cache=mmap` (see below). The network
 client accepts only exact version/msize replies, sends only Tbridge after
 Tversion, and reserves independent ordinary/control/wait tag classes. Raw
 bridge bytes do not acquire a stock counted-data prefix. The assigned private
@@ -445,15 +446,16 @@ from the still-zero features before enrollment, so it carried the features 16383
 default and the controlled pre-send check refused it for a features 32767
 enrollment. The reply check also accepted only that default selection.
 The `controlled_received` harness builds its own HELLO after enrollment and
-copies only the mount's `fail:` tail, so it could not see this.
+uses only the mount's failure tail (now `hfs_mount_fail`), so it could not
+see this.
 
 ```sh
 python3 tools/integration/linux9p/tests/mount_hello/run.py \
   --source "$SOURCE" --output "$RUN/mount-hello" --sanitize
 ```
 
-It compiles the complete production `v9fs_hfs_mount`, the enrollment
-validators and `hfs_controlled_before_send` verbatim. Kernel/VFS, p9 client,
+It compiles the complete production `v9fs_hfs_mount` with its helpers, the
+enrollment validators and `hfs_controlled_before_send` verbatim. Kernel/VFS, p9 client,
 transport binding and controlled registry lookups are substituted; the native
 exchange echoes the sent HELLO as the runtime does. Cases: features 16383 and
 32767 mount; a default echo for 32767 and a terminal echo for 16383 refuse with
@@ -649,3 +651,71 @@ Other sessions remain usable. The [614 evidence](evidence/614/evidence.json)
 separates the real dirty-session lifetime test from the80-cell exporter/host
 composition with a substituted OS observer. Neither establishes an installed
 kernel, native PTE/TLB exclusion, deployed ABI acceptance or C9 restoration.
+
+## Mount options, cache mode and blocked-session log (`g64`)
+
+zq3-r7 showed two silent guest gaps. `hfs_super_ops` had no `.show_options`,
+so mountinfo showed only `rw` and `guest.py` refused the mount tuple (R7-1).
+A session marked blocked after a QUERY timeout then refused every operation
+with EACCES, and dmesg said nothing (R7-2).
+
+- **Super options.** Patch 0003 adds `hfs_show_options`. It prints
+  `,cache=mmap` and then calls `p9_show_client_options` on the live client,
+  which prints the transport and the negotiated version. Patch 0001 now
+  prints msize for hfs clients even when it equals `DEFAULT_MSIZE`; stock 9p
+  still omits it. For the zq3 options
+  `trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,msize=65536` the super
+  options are
+  `rw,cache=mmap,msize=65536,trans=virtio,version=9P2000.L.hfs1.4`.
+- **Cache mode.** hfs implements the stock `cache=mmap` contract, and only
+  that. read/write always go over the bridge, dentries are never kept,
+  attributes are refreshed for every permission check, and the only guest
+  page cache is the retained-view mmap cache. `v9fs_hfs_mount` now requires
+  exactly one `cache=mmap` and refuses, with EINVAL before enrollment, a
+  missing or repeated `cache=`, any other mode, and the legacy cache options
+  `loose`, `fscache`, `mmap` and `cachetag=`. Before g64 the options went
+  unparsed to `p9_client_create`, which ignores `cache=`. The lab tools
+  already pass `cache=mmap`, so they need no change.
+- **Blocked log.** `hfs_session_block` sets `blocked` and logs the first
+  block of each session once (`pr_warn_ratelimited` behind a per-session
+  bit). The log gives the session UUID, the reason, the operation and the
+  errno, for example `blocked by QUERY timeout on GETATTR (-110)`. It covers
+  the core paths in patch 0003: the QUERY/CALL `retained:` path, the
+  control-transport fault, PROCESS_EXIT, FORGET, DESCRIPTION_RELEASE, and the
+  CREATE, namespace and READDIR result checks. Teardown fences (kill_sb, a
+  failed mount), the sequence-wrap guards and the 0004/0005 view, lease and
+  controlled-stop paths still set the flag directly. `hfs_mmap_fail` already
+  logs its errno.
+- **Sources floor hook.** Patch 0005's `hfs_go_bounds` now names its
+  `Sources` lower bound `HFS_GO_SOURCES_MIN`. The value is still 2, with a
+  `TODO(i64)`: it must mirror the derived floor that viewcontrol validation
+  defines. Choosing a different number here alone would let the guest and
+  the host validators disagree.
+- **Mount split.** `v9fs_hfs_mount` is split into `hfs_session_new`,
+  `hfs_mount_enroll`, `hfs_trace_register`, `hfs_mount_client`,
+  `hfs_mount_hello` and `hfs_mount_fail`, in the same order. The
+  `controlled_received` failure regression now compiles `hfs_mount_fail`
+  directly.
+
+The `mount_hello` harness (command above) now also covers this work. Mounts
+use the zq3 option string. After each successful mount it compares the
+verbatim `hfs_show_options`/`p9_show_client_options` output exactly. It also
+checks that the guest.py `check_tuple` set is a subset of `rw` plus that
+output, and that msize 131072 (the default) is still printed. Eleven
+refusal cases must fail with EINVAL before enroll, with no session, HELLO or
+client. A stock-client case checks that the default msize is still omitted
+there, and a direct `hfs_session_block` case checks one log line per
+session. The pre-g64 source fails extraction (`hfs_session_block`,
+`hfs_cache_option` and `hfs_show_options` are absent).
+
+The series was regenerated with `export.py --task g64`; 0002 and 0004 are
+byte-identical. A fresh `prepare.py` tree applies it with fuzz zero. The
+touched objects compile without warnings under the candidate configuration
+(`tools/integration/artifacts/kernel.py configure`, which includes
+`HOMELABFS_CONTROLLED`, plus `make fs/9p/ net/9p/ drivers/char/random.o`).
+`build.py --module-objects` fails in `hfs_session.c` on its non-controlled
+configuration (`hfs_controlled_owns` undeclared), the same as before g64.
+On GCC 16, policy, cursor, transport, tag, mount_hello, requests,
+readdir_cleanup, huge and controlled_received `terminal-smoke` pass. codec
+(`test.c:366`), capture, root, reclaim and view fail exactly as they did
+before g64 (s54). No candidate was rebuilt or admitted.

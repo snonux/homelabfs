@@ -92,6 +92,8 @@ extern void primitive_after_mutex_unlock(struct mutex *);
 #define spin_unlock_irqrestore(m,f) ((void)(f),spin_unlock(m))
 #define READ_ONCE(p) __atomic_load_n(&(p),__ATOMIC_ACQUIRE)
 #define WRITE_ONCE(p,v) __atomic_store_n(&(p),v,__ATOMIC_RELEASE)
+/* hfs_session_block's once-per-session flag (g64). */
+#define test_and_set_bit(n,p) ((__atomic_fetch_or((p),1UL<<(n),__ATOMIC_SEQ_CST)>>(n))&1UL)
 #define WARN_ON_ONCE(p) ((p)?(fprintf(stderr,"unexpected WARN %s\n",#p),abort(),1):0)
 #define EXPORT_SYMBOL_GPL(name)
 #define __init

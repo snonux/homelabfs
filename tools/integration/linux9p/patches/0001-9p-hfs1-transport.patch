@@ -84,7 +84,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  #include <linux/sched/signal.h>
  #include <linux/uaccess.h>
  #include <linux/uio.h>
-@@ -62,6 +63,15 @@
+@@ -62,13 +63,40 @@
  }
  EXPORT_SYMBOL(p9_is_proto_dotu);
  
@@ -99,8 +99,12 @@ diff --git a/net/9p/client.c b/net/9p/client.c
 +
  int p9_show_client_options(struct seq_file *m, struct p9_client *clnt)
  {
- 	if (clnt->msize != DEFAULT_MSIZE)
-@@ -69,6 +79,21 @@
+-	if (clnt->msize != DEFAULT_MSIZE)
++	/* hfs always prints msize: the guest tools admit an hfs mount only on
++	 * its exact msize, which must not vanish when it equals the default.
++	 */
++	if (clnt->msize != DEFAULT_MSIZE || p9_client_is_hfs(clnt))
+ 		seq_printf(m, ",msize=%u", clnt->msize);
  	seq_printf(m, ",trans=%s", clnt->trans_mod->name);
  
  	switch (clnt->proto_version) {
@@ -122,7 +126,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	case p9_proto_legacy:
  		seq_puts(m, ",noextend");
  		break;
-@@ -103,7 +128,19 @@
+@@ -103,7 +131,19 @@
  {
  	int version = -EINVAL;
  
@@ -143,7 +147,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  		version = p9_proto_legacy;
  		p9_debug(P9_DEBUG_9P, "Protocol version: Legacy\n");
  	} else if (!strcmp(s, "9p2000.u")) {
-@@ -271,11 +308,12 @@
+@@ -271,11 +311,12 @@
   */
  static struct p9_req_t *
  p9_tag_alloc(struct p9_client *c, int8_t type, uint t_size, uint r_size,
@@ -157,7 +161,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	int tag;
  	va_list apc;
  
-@@ -312,13 +350,28 @@
+@@ -312,13 +353,28 @@
  	if (type == P9_TVERSION)
  		tag = idr_alloc(&c->reqs, req, P9_NOTAG, P9_NOTAG + 1,
  				GFP_NOWAIT);
@@ -188,7 +192,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  	/* Init ref to two because in the general case there is one ref
  	 * that is put asynchronously by a writer thread, one ref
-@@ -339,7 +392,7 @@
+@@ -339,7 +395,7 @@
  	p9_fcall_fini(&req->rc);
  free_req:
  	kmem_cache_free(p9_req_cache, req);
@@ -197,7 +201,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  }
  
  /**
-@@ -535,6 +588,9 @@
+@@ -535,6 +591,9 @@
  		p9_debug(P9_DEBUG_ERROR, "couldn't parse header %d\n", err);
  		return err;
  	}
@@ -207,7 +211,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	if (type != P9_RERROR && type != P9_RLERROR)
  		return 0;
  
-@@ -620,13 +676,17 @@
+@@ -620,13 +679,17 @@
  
  static struct p9_req_t *p9_client_prepare_req(struct p9_client *c,
  					      int8_t type, uint t_size, uint r_size,
@@ -226,7 +230,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  	/* we allow for any status other than disconnected */
  	if (c->status == Disconnected)
-@@ -637,7 +697,7 @@
+@@ -637,7 +700,7 @@
  		return ERR_PTR(-EIO);
  
  	va_copy(apc, ap);
@@ -235,7 +239,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	va_end(apc);
  	if (IS_ERR(req))
  		return req;
-@@ -667,9 +727,9 @@
+@@ -667,9 +730,9 @@
   */
  
  static struct p9_req_t *
@@ -248,7 +252,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	int sigpending, err;
  	unsigned long flags;
  	struct p9_req_t *req;
-@@ -683,9 +743,8 @@
+@@ -683,9 +746,8 @@
  	const uint tsize = 0;
  	const uint rsize = c->trans_mod->pooled_rbuffers ? c->msize : 0;
  
@@ -260,7 +264,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	if (IS_ERR(req))
  		return req;
  
-@@ -706,8 +765,15 @@
+@@ -706,8 +768,15 @@
  	}
  again:
  	/* Wait for the response */
@@ -278,7 +282,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  	/* Make sure our req is coherent with regard to updates in other
  	 * threads - echoes to wmb() in the callback
-@@ -756,6 +822,123 @@
+@@ -756,6 +825,123 @@
  	p9_req_put(c, req);
  	return ERR_PTR(safe_errno(err));
  }
@@ -402,7 +406,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  /**
   * p9_client_zc_rpc - issue a request and wait for a response
-@@ -785,7 +968,8 @@
+@@ -785,7 +971,8 @@
  	/* We allocate a inline protocol data of only 4k bytes.
  	 * The actual content is passed in zero-copy fashion.
  	 */
@@ -412,7 +416,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	va_end(ap);
  	if (IS_ERR(req))
  		return req;
-@@ -910,6 +1094,20 @@
+@@ -910,6 +1097,20 @@
  		 c->msize, c->proto_version);
  
  	switch (c->proto_version) {
@@ -433,7 +437,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	case p9_proto_2000L:
  		req = p9_client_rpc(c, P9_TVERSION, "ds",
  				    c->msize, "9P2000.L");
-@@ -937,7 +1135,18 @@
+@@ -937,7 +1138,18 @@
  	}
  
  	p9_debug(P9_DEBUG_9P, "<<< RVERSION msize %d %s\n", msize, version);
@@ -453,7 +457,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  		c->proto_version = p9_proto_2000L;
  	} else if (!strncmp(version, "9P2000.u", 8)) {
  		c->proto_version = p9_proto_2000u;
-@@ -989,10 +1198,19 @@
+@@ -989,10 +1201,19 @@
  	spin_lock_init(&clnt->lock);
  	idr_init(&clnt->fids);
  	idr_init(&clnt->reqs);

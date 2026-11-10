@@ -107,7 +107,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,410 @@
+@@ -0,0 +1,414 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -383,6 +383,8 @@ new file mode 100644
 +	bool closing;
 +	bool retained;
 +	bool retired; /* actual protected whole-session provider proof */
++	/* Bit 0: hfs_session_block already logged why this session blocked. */
++	unsigned long block_reported;
 +};
 +
 +struct hfs_forget {
@@ -511,6 +513,8 @@ new file mode 100644
 +void hfs_description_discard(struct hfs_session *session,
 +			     struct hfs_description *description);
 +void hfs_flags_write(struct hfs_buf *args, unsigned int flags, bool create);
++void hfs_session_block(struct hfs_session *session, const char *reason,
++		       const char *operation, int err);
 +extern const struct inode_operations hfs_dir_iops;
 +extern const struct inode_operations hfs_file_iops;
 +extern const struct inode_operations hfs_symlink_iops;
@@ -522,7 +526,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,2973 @@
+@@ -0,0 +1,3097 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -600,9 +604,36 @@ new file mode 100644
 +			       true, &result);
 +	}
 +	if (err)
-+		WRITE_ONCE(session->blocked, true);
++		hfs_session_block(session, "process-exit failure", "PROCESS_EXIT", err);
 +	hfs_json_free(result);
 +	hfs_buf_free(&args);
++}
++
++/* Mark the session blocked and log why, once per session (g64).
++ *
++ * A blocked session refuses every later capture with EACCES and every
++ * ordinary request with EHOSTDOWN, without any further message. zq3-r7 R7-2
++ * was invisible in dmesg for that reason: the guest gave up on a QUERY, every
++ * later operation on the mount (including getattr on its root) returned
++ * EACCES and nothing said why. The first fault therefore names its reason,
++ * the operation and errno, and the enrolled session UUID; later blocks of the
++ * same session stay silent, so a retained session cannot flood the log. The
++ * first reason is normally the root cause: a caller whose hfs_call failed
++ * because hfs_request_run already blocked the session adds nothing.
++ *
++ * Teardown (kill_sb, a failed mount) and the view/lease paths still set the
++ * flag directly: closing fences are expected there, and hfs_mmap_fail already
++ * logs the view control errno.
++ */
++void hfs_session_block(struct hfs_session *session, const char *reason,
++		       const char *operation, int err)
++{
++	WRITE_ONCE(session->blocked, true);
++	if (test_and_set_bit(0, &session->block_reported))
++		return;
++	pr_warn_ratelimited("9p-hfs: session %pUb blocked by %s on %s (%d); later operations on this mount fail with EACCES or EHOSTDOWN\n",
++			    &session->enrollment.session, reason,
++			    operation ? operation : "-", err);
 +}
 +
 +/* Non-sleeping trace hook: all work and credentials were reserved at capture.
@@ -1520,7 +1551,7 @@ new file mode 100644
 +	if (allocate)
 +		WRITE_ONCE(session->allocation_uncertain, true);
 +	else
-+		WRITE_ONCE(session->blocked, true);
++		hfs_session_block(session, "uncertain control result", operation, err);
 +	/* The command is owned by the retained session until reconciliation. */
 +	candidate->command = command;
 +	candidate->slot = slot;
@@ -1994,8 +2025,13 @@ new file mode 100644
 +	hfs_json_free(reply);
 +	return err;
 +retained:
-+	/* An uncertain claim outlives caller cancellation and process exit. */
-+	WRITE_ONCE(session->blocked, true);
++	/* An uncertain claim outlives caller cancellation and process exit.
++	 * ETIMEDOUT is the 30 s QUERY deadline (zq3-r7 R7-2: a claim the host
++	 * left RESERVED/UNPREPARED stays INDETERMINATE); anything else is a
++	 * failed or malformed CALL/QUERY exchange.
++	 */
++	hfs_session_block(session, err == -ETIMEDOUT ? "QUERY timeout" :
++			  "uncertain claim result", opcode, err);
 +	hfs_json_free(reply);
 +	hfs_json_free(result);
 +	return err;
@@ -2724,6 +2760,43 @@ new file mode 100644
 +	return false;
 +}
 +
++/* hfs implements exactly the stock cache=mmap contract, so a mount must ask
++ * for exactly that (zq3-r7 R7-1, g64).
++ *
++ * The hfs superblock replaces the v9fs inode, file and dentry operations:
++ * read_iter and write_iter always go over the bridge (hfs_io), dentries are
++ * never kept (hfs_d_revalidate) and attributes are refreshed for every
++ * permission check. The only guest page cache is the mapped-file cache
++ * (hfs_cache_aops), owned by the retained-view recall protocol. Before g64
++ * the options went unparsed to p9_client_create, which ignores cache=, so any
++ * mode was silently accepted while the guest tools treat cache=mmap as a
++ * guaranteed property. Now exactly one "cache=mmap" is required, and
++ * hfs_show_options reports it. A missing or repeated cache=, any other mode
++ * and the legacy selectors (loose, fscache, mmap, cachetag=) are refused with
++ * EINVAL, the errno v9fs uses for an unknown cache mode.
++ */
++static int hfs_cache_option(const char *options)
++{
++	static const char wanted[] = "cache=mmap";
++	const char *p = options;
++	unsigned int found = 0;
++	size_t len;
++
++	while (p && *p) {
++		len = strcspn(p, ",");
++		if (len == sizeof(wanted) - 1 && !memcmp(p, wanted, len))
++			found++;
++		else if ((len >= 6 && !memcmp(p, "cache=", 6)) ||
++			 (len == 5 && !memcmp(p, "loose", 5)) ||
++			 (len == 7 && !memcmp(p, "fscache", 7)) ||
++			 (len == 4 && !memcmp(p, "mmap", 4)) ||
++			 (len >= 9 && !memcmp(p, "cachetag=", 9)))
++			return -EINVAL;
++		p = p[len] ? p + len + 1 : NULL;
++	}
++	return found == 1 ? 0 : -EINVAL;
++}
++
 +static int hfs_enrollment_validate(struct hfs_enrollment *enrollment)
 +{
 +	struct hfs_json *context = NULL;
@@ -2938,36 +3011,21 @@ new file mode 100644
 +	return err;
 +}
 +
-+struct dentry *v9fs_hfs_mount(struct file_system_type *type, int flags, const char *device,
-+			      void *options)
++/* A fresh session for the registered provider. The caller holds
++ * hfs_provider_lock and a module reference; NULL means no memory.
++ */
++static struct hfs_session *hfs_session_new(const struct hfs_provider *provider)
 +{
-+	const char *hello;
-+	struct hfs_session *session;
-+	struct hfs_buf payload;
-+	struct hfs_json *reply = NULL;
-+	struct dentry *root;
-+	unsigned long irqflags;
-+	int err, token, selection;
++	struct hfs_session *session = kzalloc(sizeof(*session), GFP_KERNEL);
 +
-+	if (current_user_ns() != &init_user_ns || flags & SB_POSIXACL)
-+		return ERR_PTR(-EOPNOTSUPP);
-+	mutex_lock(&hfs_provider_lock);
-+	if (!hfs_provider || !try_module_get(hfs_provider->owner)) {
-+		mutex_unlock(&hfs_provider_lock);
-+		return ERR_PTR(-EOPNOTSUPP);
-+	}
-+	session = kzalloc(sizeof(*session), GFP_KERNEL);
-+	if (!session) {
-+		module_put(hfs_provider->owner);
-+		mutex_unlock(&hfs_provider_lock);
-+		return ERR_PTR(-ENOMEM);
-+	}
-+	session->provider = hfs_provider;
-+	session->bridge_minor = hfs_provider->features == HFS_MAPPED_FEATURES	  ? 4 :
-+				hfs_provider->features == HFS_CLEANUP_FEATURES	  ? 3 :
-+				hfs_provider->features == HFS_CONTROLLED_FEATURES ? 2 :
-+				hfs_provider->features == HFS_VIEW_FEATURES	  ? 1 :
-+										    0;
++	if (!session)
++		return NULL;
++	session->provider = provider;
++	session->bridge_minor = provider->features == HFS_MAPPED_FEATURES	  ? 4 :
++				provider->features == HFS_CLEANUP_FEATURES	  ? 3 :
++				provider->features == HFS_CONTROLLED_FEATURES ? 2 :
++				provider->features == HFS_VIEW_FEATURES	  ? 1 :
++									    0;
 +	atomic_inc(&hfs_active_sessions);
 +	mutex_init(&session->lock);
 +	mutex_init(&session->writer);
@@ -2984,74 +3042,91 @@ new file mode 100644
 +	INIT_LIST_HEAD(&session->global);
 +	session->next_claim = session->next_cell = session->next_inode = 1;
 +	session->next_close = session->next_release = 1;
-+	session->control = alloc_workqueue("9p-hfs-control", WQ_MEM_RECLAIM, 2);
-+	if (!session->control) {
-+		err = -ENOMEM;
-+		goto unlock_fail;
-+	}
-+	err = session->provider->enroll(device, &session->enrollment);
++	return session;
++}
++
++/* Enroll, validate the enrollment and its lanes, then pick the HELLO text.
++ *
++ * HELLO carries the enrolled selection, so it exists only after enroll. The
++ * kzalloc'd features (0) would select the minor-4 default text and the
++ * controlled provider refuses that for a features 32767 enrollment. An
++ * enrolled mask without a selected text refuses before any native bytes.
++ */
++static int hfs_mount_enroll(struct hfs_session *session, const char *device,
++			    const char **hello)
++{
++	int err = session->provider->enroll(device, &session->enrollment);
++
 +	if (!err)
 +		err = hfs_enrollment_validate(&session->enrollment);
++	if (!err)
++		err = hfs_enrollment_lanes(&session->enrollment, session->bridge_minor);
 +	if (err)
-+		goto unlock_fail;
-+	err = hfs_enrollment_lanes(&session->enrollment, session->bridge_minor);
++		return err;
++	*hello = hfs_protocol_selected_text(session->bridge_minor,
++					    session->enrollment.protocol_features);
++	return *hello ? 0 : -EPROTO;
++}
++
++/* Register the process-exit tracepoint once; hfs_provider_lock is held. */
++static int hfs_trace_register(void)
++{
++	int err;
++
++	if (hfs_trace_registered)
++		return 0;
++	check_trace_callback_type_sched_process_exit(hfs_process_exit);
++	for_each_kernel_tracepoint(hfs_find_exit_tracepoint, &hfs_exit_tracepoint);
++	if (!hfs_exit_tracepoint)
++		return -EOPNOTSUPP;
++	err = tracepoint_probe_register(hfs_exit_tracepoint, hfs_process_exit, NULL);
 +	if (err)
-+		goto unlock_fail;
-+	/* HELLO carries the enrolled selection, so it exists only after enroll.
-+	 * The kzalloc'd features (0) would select the minor-4 default text and the
-+	 * controlled provider refuses that for a features 32767 enrollment. An
-+	 * enrolled mask without a selected text refuses before any native bytes.
-+	 */
-+	hello = hfs_protocol_selected_text(session->bridge_minor,
-+					   session->enrollment.protocol_features);
-+	if (!hello) {
-+		err = -EPROTO;
-+		goto unlock_fail;
-+	}
-+	if (!hfs_trace_registered) {
-+		check_trace_callback_type_sched_process_exit(hfs_process_exit);
-+		for_each_kernel_tracepoint(hfs_find_exit_tracepoint, &hfs_exit_tracepoint);
-+		if (!hfs_exit_tracepoint) {
-+			err = -EOPNOTSUPP;
-+			goto unlock_fail;
-+		}
-+		err = tracepoint_probe_register(hfs_exit_tracepoint, hfs_process_exit, NULL);
-+		if (err)
-+			goto unlock_fail;
-+		hfs_trace_registered = true;
-+	}
-+	spin_lock_irqsave(&hfs_sessions_lock, irqflags);
-+	list_add_tail(&session->global, &hfs_sessions);
-+	spin_unlock_irqrestore(&hfs_sessions_lock, irqflags);
-+	mutex_unlock(&hfs_provider_lock);
++		return err;
++	hfs_trace_registered = true;
++	return 0;
++}
++
++/* Create the p9 client and require the exact negotiated hfs version for the
++ * provider's minor before binding the controlled transport. A failed create
++ * leaves session->client NULL for hfs_mount_fail.
++ */
++static int hfs_mount_client(struct hfs_session *session, const char *device, void *options)
++{
++	int err;
++
 +	session->client = p9_client_create(device, options);
 +	if (IS_ERR(session->client)) {
 +		err = PTR_ERR(session->client);
 +		session->client = NULL;
-+		goto fail;
++		return err;
 +	}
 +	if (session->client->proto_version != (session->bridge_minor == 4 ? p9_proto_hfs14 :
 +					       session->bridge_minor == 3 ? p9_proto_hfs13 :
 +					       session->bridge_minor == 2 ? p9_proto_hfs12 :
 +					       session->bridge_minor	  ? p9_proto_hfs11 :
-+									    p9_proto_hfs1)) {
-+		err = -EPROTO;
-+		goto fail;
-+	}
-+	err = hfs_controlled_bind_transport(session);
-+	if (err)
-+		goto fail;
++									    p9_proto_hfs1))
++		return -EPROTO;
++	return hfs_controlled_bind_transport(session);
++}
++
++/* Send the enrolled HELLO and accept only its exact echo. The runtime echoes
++ * the sent HELLO as its selection. Match the enrolled tuple (features 16383
++ * or 32767 at minor 4), not only the minor default.
++ */
++static int hfs_mount_hello(struct hfs_session *session, const char *hello)
++{
++	struct hfs_buf payload;
++	struct hfs_json *reply = NULL;
++	int err, token, selection;
++
 +	err = hfs_buf_init(&payload, strlen(hello) + 1);
 +	if (err)
-+		goto fail;
++		return err;
 +	hfs_buf_literal(&payload, hello);
 +	err = hfs_control(session, "HELLO", &payload, false, &reply);
 +	hfs_buf_free(&payload);
 +	if (err)
-+		goto fail;
-+	/* The runtime echoes the sent HELLO as its selection. Match the enrolled
-+	 * tuple (features 16383 or 32767 at minor 4), not only the minor default.
-+	 */
++		return err;
 +	token = hfs_json_field(reply, 0, "payload");
 +	selection = hfs_json_field(reply, token, "selection");
 +	if (hfs_json_exact(reply, token, "selection,status") ||
@@ -3060,20 +3135,17 @@ new file mode 100644
 +					session->enrollment.protocol_features))
 +		err = -EPROTO;
 +	hfs_json_free(reply);
-+	if (err)
-+		goto fail;
-+	root = mount_nodev(type, flags, session, hfs_fill_super);
-+	if (IS_ERR(root)) {
-+		/* mount_nodev already invokes kill_sb after fill_super failure. */
-+		if (session->closing)
-+			return root;
-+		err = PTR_ERR(root);
-+		goto fail;
-+	}
-+	return root;
-+unlock_fail:
-+	mutex_unlock(&hfs_provider_lock);
-+fail:
++	return err;
++}
++
++/* Close a session whose mount failed after it was created; the provider lock
++ * is no longer held. A failed attach cannot discard admitted claims or
++ * control cells, so such a session is retained rather than freed.
++ */
++static struct dentry *hfs_mount_fail(struct hfs_session *session, int err)
++{
++	unsigned long irqflags;
++
 +	WRITE_ONCE(session->closing, true);
 +	if (hfs_controlled_consumed(session))
 +		WRITE_ONCE(session->blocked, true);
@@ -3092,6 +3164,62 @@ new file mode 100644
 +		session->provider->retain(session);
 +	}
 +	return ERR_PTR(err);
++}
++
++/* Mount order: cache option, provider, session, enrollment and its HELLO
++ * text, tracepoint, client and controlled transport, HELLO, then fill_super.
++ * Every failure after the session exists goes through hfs_mount_fail.
++ */
++struct dentry *v9fs_hfs_mount(struct file_system_type *type, int flags, const char *device,
++			      void *options)
++{
++	const char *hello = NULL;
++	struct hfs_session *session;
++	struct dentry *root;
++	unsigned long irqflags;
++	int err;
++
++	if (current_user_ns() != &init_user_ns || flags & SB_POSIXACL)
++		return ERR_PTR(-EOPNOTSUPP);
++	/* Before enrollment, so a refused cache mode consumes no identity. */
++	err = hfs_cache_option(options);
++	if (err) {
++		pr_warn_ratelimited("9p-hfs: mount refused: exactly one cache=mmap is required\n");
++		return ERR_PTR(err);
++	}
++	mutex_lock(&hfs_provider_lock);
++	if (!hfs_provider || !try_module_get(hfs_provider->owner)) {
++		mutex_unlock(&hfs_provider_lock);
++		return ERR_PTR(-EOPNOTSUPP);
++	}
++	session = hfs_session_new(hfs_provider);
++	if (!session) {
++		module_put(hfs_provider->owner);
++		mutex_unlock(&hfs_provider_lock);
++		return ERR_PTR(-ENOMEM);
++	}
++	session->control = alloc_workqueue("9p-hfs-control", WQ_MEM_RECLAIM, 2);
++	err = session->control ? hfs_mount_enroll(session, device, &hello) : -ENOMEM;
++	if (!err)
++		err = hfs_trace_register();
++	if (err) {
++		mutex_unlock(&hfs_provider_lock);
++		return hfs_mount_fail(session, err);
++	}
++	spin_lock_irqsave(&hfs_sessions_lock, irqflags);
++	list_add_tail(&session->global, &hfs_sessions);
++	spin_unlock_irqrestore(&hfs_sessions_lock, irqflags);
++	mutex_unlock(&hfs_provider_lock);
++	err = hfs_mount_client(session, device, options);
++	if (!err)
++		err = hfs_mount_hello(session, hello);
++	if (err)
++		return hfs_mount_fail(session, err);
++	root = mount_nodev(type, flags, session, hfs_fill_super);
++	/* mount_nodev already invokes kill_sb after fill_super failure. */
++	if (IS_ERR(root) && !session->closing)
++		return hfs_mount_fail(session, PTR_ERR(root));
++	return root;
 +}
 +
 +bool v9fs_hfs_super(const struct super_block *sb)
@@ -3500,13 +3628,14 @@ diff --git a/fs/9p/hfs_inode.c b/fs/9p/hfs_inode.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_inode.c
-@@ -0,0 +1,986 @@
+@@ -0,0 +1,1009 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Authoritative retained-9p attributes and namespace VFS operations. */
 +#include <linux/magic.h>
 +#include <linux/iversion.h>
 +#include <linux/namei.h>
 +#include <linux/pagemap.h>
++#include <linux/seq_file.h>
 +#include <linux/slab.h>
 +#include <linux/statfs.h>
 +#include <linux/user_namespace.h>
@@ -3776,7 +3905,7 @@ new file mode 100644
 +	hfs_json_free(result);
 +	hfs_buf_free(&args);
 +	if (err) {
-+		WRITE_ONCE(session->blocked, true);
++		hfs_session_block(session, "FORGET failure", "FORGET", err);
 +		return;
 +	}
 +	mutex_lock(&session->lock);
@@ -4023,7 +4152,7 @@ new file mode 100644
 +	    !uuid_equal(&description->cap->allocation, &HFS_I(inode)->object->allocation)) {
 +		iput(inode);
 +		err = -EPROTO;
-+		WRITE_ONCE(HFS_S(dir)->blocked, true);
++		hfs_session_block(HFS_S(dir), "mismatched create result", "CREATE", err);
 +		goto out;
 +	}
 +	/* Never call inode_init_owner: returned creator UID, parent GID and all
@@ -4041,7 +4170,7 @@ new file mode 100644
 +	file->f_mode |= FMODE_CREATED;
 +	err = finish_open(file, dentry, generic_file_open);
 +	if (err)
-+		WRITE_ONCE(HFS_S(dir)->blocked, true);
++		hfs_session_block(HFS_S(dir), "local open failure after CREATE", "CREATE", err);
 +out:
 +	hfs_description_discard(HFS_S(dir), description);
 +	hfs_cap_free(cap);
@@ -4102,7 +4231,7 @@ new file mode 100644
 +	    (symlink && !S_ISLNK(inode->i_mode))) {
 +		iput(inode);
 +		err = -EPROTO;
-+		WRITE_ONCE(HFS_S(dir)->blocked, true);
++		hfs_session_block(HFS_S(dir), "mismatched object type", opcode, err);
 +		goto free_args;
 +	}
 +	d_set_d_op(dentry, &hfs_dops);
@@ -4454,12 +4583,34 @@ new file mode 100644
 +	return err;
 +}
 +
++/* Super options in mountinfo, after the VFS's own "rw"/"ro" (g64).
++ *
++ * Without this callback mountinfo showed only "rw" (zq3-r7 R7-1), so the
++ * guest tools could not see the admitted tuple. cache=mmap is the only mode
++ * hfs_cache_option admits and the one hfs implements, so it is printed as an
++ * enforced fact. msize, trans and the negotiated version come from the live
++ * client: p9_show_client_options prints msize unconditionally for hfs, and the
++ * mount already refused any version other than the provider's exact minor.
++ * For the zq3 mount this gives
++ * ",cache=mmap,msize=65536,trans=virtio,version=9P2000.L.hfs1.4".
++ */
++static int hfs_show_options(struct seq_file *m, struct dentry *root)
++{
++	struct hfs_session *session = root->d_sb->s_fs_info;
++
++	seq_puts(m, ",cache=mmap");
++	if (!session || !session->client)
++		return 0;
++	return p9_show_client_options(m, session->client);
++}
++
 +const struct super_operations hfs_super_ops = {
 +	.alloc_inode = hfs_alloc_inode,
 +	.free_inode = hfs_free_inode,
 +	.evict_inode = hfs_evict_inode,
 +	.statfs = hfs_statfs,
 +	.drop_inode = generic_delete_inode,
++	.show_options = hfs_show_options,
 +};
 +
 +const struct inode_operations hfs_dir_iops = {
@@ -4491,7 +4642,7 @@ diff --git a/fs/9p/hfs_file.c b/fs/9p/hfs_file.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_file.c
-@@ -0,0 +1,631 @@
+@@ -0,0 +1,633 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Description-bound retained-9p I/O. Advisory locks stay in this kernel mount. */
 +#include <linux/file.h>
@@ -4861,7 +5012,8 @@ new file mode 100644
 +	hfs_buf_free(&args);
 +	if (err) {
 +		/* Retain the exact description/grant after uncertain release. */
-+		WRITE_ONCE(session->blocked, true);
++		hfs_session_block(session, "DESCRIPTION_RELEASE failure",
++				  "DESCRIPTION_RELEASE", err);
 +		return err;
 +	}
 +	hfs_description_discard(session, description);
@@ -5059,7 +5211,7 @@ new file mode 100644
 +	goto free_args;
 +malformed:
 +	if (err == -EPROTO || err == -EINVAL)
-+		WRITE_ONCE(HFS_S(inode)->blocked, true);
++		hfs_session_block(HFS_S(inode), "malformed READDIR page", "READDIR", err);
 +free_args:
 +	hfs_buf_free(&args);
 +	/* Forget is a protected lifetime command and may need recall progress.
@@ -5073,7 +5225,8 @@ new file mode 100644
 +		int forgotten = hfs_readdir_forget(HFS_S(inode), result, cred);
 +
 +		if (forgotten) {
-+			WRITE_ONCE(HFS_S(inode)->blocked, true);
++			hfs_session_block(HFS_S(inode), "READDIR forget failure",
++					  "FORGET", forgotten);
 +			err = forgotten;
 +		}
 +	}
