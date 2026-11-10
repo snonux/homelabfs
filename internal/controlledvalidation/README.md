@@ -56,7 +56,10 @@ later claim owns the snapshot. A recycled number still answers `RETIRED_ID`
 retirement also prunes the bridge snapshot's grant tombstones that retired
 claims released (`guestbridge.PruneRetiredGrants`); the bridge reloads the
 pruned snapshot before its RETIRE reply is persisted, and `CheckRestoredBridge`
-also accepts a session row saved before the prune (pruned by the same rule). The `processes` bucket of
+also accepts a session row saved before the prune: it prunes both the row and
+its own snapshot by the same rule at every family's floor (read from its own
+`principals` in the same transaction) before comparing, so a multi-family
+session restores too. Any live-grant difference stays Stale. The `processes` bucket of
 lock-owner tokens stays a lifetime count bounded by `MaxClaims`.
 
 The sealed service worker serializes capture and append with every other local

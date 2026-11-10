@@ -34,8 +34,9 @@ import (
 //     reloads the pruned snapshot (Service.retire) before the reply and its
 //     session rows are persisted, and a session row persisted before the
 //     prune (a crash between the provider commit and that persist) still
-//     restores, because the provider's CheckRestoredBridge prunes the row by
-//     the same rule (PruneRetiredSession) before comparing it.
+//     restores, because the provider's CheckRestoredBridge prunes the row
+//     and its own snapshot by the same rule at every family's floor
+//     (PruneRetiredSession) before comparing them.
 //
 // The close sequences of a pruned description go with it: a CLOSE naming it
 // is refused at resolve before its sequence is read. Credentials and exited
@@ -58,10 +59,11 @@ func PruneRetiredGrants(scope Context, snapshot json.RawMessage, retired ClaimNu
 	return raw, pruned, err
 }
 
-// PruneRetiredSession applies the same rule to a persisted bridge session row
-// (its Grants and CloseSequences) for every family floor in floors, and
-// returns both maps re-encoded, so a row saved before a prune compares with
-// the provider's pruned snapshot.
+// PruneRetiredSession applies the same rule for every family floor in floors
+// to the Grants and CloseSequences of a persisted bridge session row or of a
+// protected provider snapshot, and returns both maps re-encoded. The
+// provider's restore check prunes both sides this way before comparing them
+// (u64), so a row saved before a prune still matches the pruned snapshot.
 func PruneRetiredSession(row json.RawMessage, floors []ClaimNumber) (grants, closes json.RawMessage, err error) {
 	var state struct {
 		Grants         map[string]*grant
