@@ -550,12 +550,33 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
      `mount -t 9p -o trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,msize=65536
      hfs0 /var/tmp/hfs-zq3-zq3-r1/m0` and the same for `hfs1` on `m1`; both
      HELLOs; runtime prints READY with the control binding [`ready`].
+  6. After READY, under its own bound rather than the 120 s: the usability
+     gate (k64) [`usable`]. zq3-r6 and r7 reached READY with every step `ok`,
+     but the guest had already blocked both sessions, so every operation
+     returned `EACCES`.
+     - Root lstats both mount roots, read-only, in one guest SSH round trip.
+       A root is stat'ed only while it is still exactly one `9p` mount of its
+       tag. Each lstat runs in a child bounded by 8 s that is never killed.
+     - The first probe runs right away. The final probe runs once 40 s have
+       passed since `mount-1` ended, which is the guest's 30 s QUERY timeout
+       plus 10 s. A host poll in between confirms the guard is unbreached and
+       READY is still the last record. The step's bound is the settle point
+       plus 30 s.
+     - Both roots must answer every probe. Otherwise `usable` ends `failed`
+       with each root's result and the errno (13 for `EACCES`). The run
+       exits 1 (`stopped_at: usable`), and `fill_plan.py batch` refuses it.
+     - Nothing is retried, remounted, written or unmounted. Go to Phase 11
+       with inspection first.
+     - Whether each mount's PROCESS_EXIT claim reached TERMINAL is not
+       checked: the driver has no host-side source for it (see the
+       [README](../../tools/lab/retained9p/README.md#phase-8-bootstrap-orchestrator-zq3-g1)).
 - Changes on Rocky's disk (A3): `/etc/homelabfs/installed-admission-v1.json`
   (and `/etc/homelabfs/` if absent), the G5 journal lines; kdump may create
   `/boot/initramfs-6.1.190-hfs-xz3kdump.img`. U2 removes them.
 - Evidence: runtime stdout/stderr (bounded drains), READY record,
   `runtime-budget.json`, observer receipts, the signed files, the admission
-  command output and manifest SHA256, the driver's `journal.jsonl`, `calls/`,
+  command output and manifest SHA256, the `usable` probe results (both
+  roots, both probes), the driver's `journal.jsonl`, `calls/`,
   `work/` and `summary.json`, and the guard's `intent.json`,
   `observations.jsonl`, any `breach.json`/`stop-*.json` and `receipt.json`
   (written when the runtime exits).
@@ -782,7 +803,7 @@ figures are estimates counted from that stop; no tool enforces them:
 | Part | Expected |
 |---|---|
 | Clean stop | 1-2 min |
-| Host setup, runtime start, bootstrap | 5 min (120 s bootstrap bound) |
+| Host setup, runtime start, bootstrap | 5 min (120 s bootstrap bound, then about 70 s for the `usable` gate) |
 | Gate matrix T1-T11 | 25-35 min |
 | Cleanup | 5-10 min |
 | Normal start | 2 min |
@@ -848,7 +869,8 @@ reviewed and pinned, and this plan is re-filled:
 - G1 Bootstrap orchestrator for Phase 8, inside 120 s: the root SSH round
   trip running `rocky_kernel.py admission` (manifest SHA256, boot ID, provider
   nonce), filling the enrollment request, sign, provision, enrollment
-  transfer, the runtime's observation, bind, two mounts. **Implemented (x34),
+  transfer, the runtime's observation, bind, two mounts, then the post-READY
+  `usable` gate (k64). **Implemented (x34),
   locally tested only**: `tools/lab/retained9p/bootstrap.py` with its remote
   half `bootstrap_remote.py` ([README](../../tools/lab/retained9p/README.md#phase-8-bootstrap-orchestrator-zq3-g1));
   tests `test_bootstrap.py` (against real signer output) and

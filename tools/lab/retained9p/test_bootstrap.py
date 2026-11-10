@@ -150,6 +150,7 @@ class World:
         self.launched, self.guard_code, self.ping_failures = False, None, 1
         self.overrides, self.tamper, self.extra, self.sign = {}, {}, {}, True
         self.prep_tamper, self.mounted = None, []
+        self.stat_outcomes, self.stat_clocks, self.mount_clock = [], [], None
 
     # -- Boundaries factory (bootstrap.run calls it with the run's inputs)
 
@@ -215,9 +216,22 @@ class World:
 
     def on_guest_mount(self, options, payload):
         self.mounted.append(options["--tag"])
+        self.mount_clock = self.clock  # The usable gate counts from the later mount.
         if len(self.mounted) == 2:
             self.pending.append(READY_LINE)
         return {"tag": options["--tag"], "mountpoint": options["--mountpoint"], "mountinfo": "row"}
+
+    def on_guest_stat(self, options, payload):
+        """Both roots answer the lstat; `stat_outcomes` scripts a failing probe
+        (one list of per-root changes per guest-stat call, in call order)."""
+        self.stat_clocks.append(self.clock)
+        changes = self.stat_outcomes.pop(0) if self.stat_outcomes else [{}, {}]
+        roots = []
+        for tag, mountpoint, change in zip(options["--tags"].split(","), options["--mountpoints"].split(","), changes):
+            root = {"tag": tag, "mountpoint": mountpoint, "mountinfo": ["row"], "outcome": "ok",
+                    "stat": {"mode": 0o40755, "uid": 0, "gid": 0, "ino": 1, "dev": 55}}
+            roots.append(dict(root, **change))
+        return {"boot_id": options["--boot-id"], "roots": roots}
 
     # -- guard launcher
 
@@ -356,6 +370,10 @@ class SequenceTests(Case):
         self.assertEqual((summary["outcome"], summary["acceptance"]), ("ready", False))
         ready = [r for r in records(self.output) if r.get("step") == "ready" and r["kind"] == "result"][0]
         self.assertLess(ready["detail"]["seconds_from_launch"], 120)
+        # The usable gate (k64) is read-only: no further mutating action above.
+        usable = [r for r in records(self.output) if r.get("step") == "usable" and r["kind"] == "result"][0]
+        self.assertEqual([root["outcome"] for root in usable["detail"]["final"]], ["ok", "ok"])
+        self.assertGreaterEqual(usable["detail"]["final_seconds_after_mount"], bootstrap.USABLE_SETTLE_SECONDS)
 
     def test_enrollment_request_carries_measured_manifest_and_devices(self):
         self.assertEqual(self.run_plan(), 0)
@@ -512,6 +530,102 @@ class FailureTests(Case):
             return original(plan_value, inputs_dir, program)
         self.assertEqual(bootstrap.run(plan, digest, self.output, boundaries=boundaries), 1)
         self.assert_stopped("enroll-request", "failed", "pin")
+
+
+EACCES = {"outcome": "errno", "errno": 13, "error": "Permission denied"}
+
+
+class UsableTests(Case):
+    """The post-READY usability gate (k64), against zq3-r7's failure shape:
+    READY with every earlier step ok, then the mount roots refuse root."""
+
+    def usable(self):
+        return [r for r in records(self.output) if r.get("step") == "usable" and r["kind"] == "result"][0]["detail"]
+
+    def assert_preserved(self):
+        """Nothing was retried, remounted or written after READY."""
+        self.assertEqual(self.world.mutating()[-2:], [("guest-mount", "hfs0"), ("guest-mount", "hfs1")])
+        self.assertEqual(len(self.world.mutating()), 6)
+        summary = json.loads((self.output / "summary.json").read_text())
+        self.assertEqual((summary["outcome"], summary["stopped_at"]), ("failed", "usable"))
+        self.assertIn("never remount or retry", summary["usable_note"])
+
+    def test_success_probes_twice_and_waits_past_the_query_timeout(self):
+        self.assertEqual(self.run_plan(), 0)
+        self.assertEqual(self.world.actions().count("guest-stat"), 2)
+        final = self.world.stat_clocks[-1] - self.world.mount_clock
+        self.assertGreaterEqual(final, bootstrap.USABLE_SETTLE_SECONDS)
+        self.assertGreater(bootstrap.USABLE_SETTLE_SECONDS, bootstrap.GUEST_QUERY_SECONDS)
+        self.assertLessEqual(self.world.clock - self.world.mount_clock,
+                             bootstrap.USABLE_SETTLE_SECONDS + bootstrap.USABLE_PROBE_SECONDS)
+        options = [o for _, a, o, _ in self.world.calls if a == "guest-stat"][0]
+        self.assertEqual(options, {"--tags": "hfs0,hfs1", "--boot-id": BOOT, "--python": "/usr/bin/python3",
+                                   "--mountpoints": "/var/tmp/hfs-zq3-zq3-r1/m0,/var/tmp/hfs-zq3-zq3-r1/m1",
+                                   "--seconds": str(bootstrap.STAT_SECONDS)})
+
+    def test_eacces_on_the_final_root_stat_fails_with_the_errno(self):
+        self.world.stat_outcomes = [[{}, {}], [EACCES, EACCES]]
+        self.assertEqual(self.run_plan(), 1)
+        self.assert_stopped("usable", "failed", "final probe: mount root unusable: hfs0")
+        self.assert_stopped("usable", "failed", "errno 13 (EACCES, Permission denied)")
+        detail = self.usable()
+        self.assertEqual((detail["errno"], detail["probe"]), (13, "final"))
+        self.assertEqual([root["outcome"] for root in detail["roots"]], ["errno", "errno"])
+        self.assertGreaterEqual(self.world.stat_clocks[-1] - self.world.mount_clock,
+                                bootstrap.USABLE_SETTLE_SECONDS)
+        self.assert_preserved()
+
+    def test_eacces_on_the_first_probe_fails_without_waiting(self):
+        self.world.stat_outcomes = [[{}, EACCES]]
+        self.assertEqual(self.run_plan(), 1)
+        self.assert_stopped("usable", "failed", "first probe: mount root unusable: hfs1")
+        self.assertEqual((self.usable()["errno"], self.world.actions().count("guest-stat")), (13, 1))
+        self.assertLess(self.world.clock - self.world.mount_clock, bootstrap.USABLE_SETTLE_SECONDS)
+        self.assert_preserved()
+
+    def test_lstat_timeout_fails(self):
+        self.world.stat_outcomes = [[{}, {}], [{}, {"outcome": "timeout", "seconds": 8}]]
+        self.assertEqual(self.run_plan(), 1)
+        self.assert_stopped("usable", "failed", "hfs1 /var/tmp/hfs-zq3-zq3-r1/m1: lstat did not return within 8 s")
+        self.assertIsNone(self.usable()["errno"])
+        self.assert_preserved()
+
+    def test_probe_transport_timeout_fails_not_uncertain(self):
+        self.world.overrides["guest-stat"] = lambda o, p: bootstrap.Reply(None, b"", b"", True, "deadline")
+        self.assertEqual(self.run_plan(), 1)
+        self.assert_stopped("usable", "failed", "guest-stat: transport deadline")
+        self.assert_preserved()
+
+    def test_lost_mount_or_missing_root_fails(self):
+        for outcomes, text in [([[{}, {"outcome": "not-mounted"}]], "no longer exactly one 9p mount"),
+                               ([[{}, {"tag": "hfs9"}]], "did not report exactly the plan's mount roots")]:
+            with self.subTest(text=text):
+                self.setUp()
+                self.world.stat_outcomes = outcomes
+                self.assertEqual(self.run_plan(), 1)
+                self.assert_stopped("usable", "failed", text)
+                self.assert_preserved()
+
+    def test_runtime_exit_during_the_settle_fails(self):
+        def stat(options, payload):
+            self.world.guard_files = {"receipt.json": json.dumps({"refused": None, "breach": None,
+                                                                  "runtime_exit": 1})}
+            return self.world.on_guest_stat(options, payload)
+        self.world.overrides["guest-stat"] = stat
+        self.assertEqual(self.run_plan(), 1)
+        self.assert_stopped("usable", "failed", "runtime guard finished")
+        self.assertEqual(self.world.actions().count("guest-stat"), 1)
+
+    def test_late_ready_still_gets_its_final_probe(self):
+        original = self.world.on_host_poll
+
+        def slow(options, payload):
+            if len(self.world.mounted) == 2 and not self.world.stat_clocks:
+                self.world.clock += 50  # READY seen well after the settle point.
+            return original(options, payload)
+        self.world.overrides["host-poll"] = slow
+        self.assertEqual(self.run_plan(), 0)
+        self.assertEqual(self.world.actions().count("guest-stat"), 2)
 
 
 class SignerTests(Case):

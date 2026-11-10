@@ -691,7 +691,8 @@ whether the hostonly initramfs boots under bhyve (risk R2).
 ## Phase 8 bootstrap orchestrator (zq3 G1)
 
 [`bootstrap.py`](bootstrap.py) drives the run plan's Phase 8 from the
-workstation, inside `bootstrap_seconds` (at most 120) from launch to READY.
+workstation, inside `bootstrap_seconds` (at most 120) from launch to READY,
+followed by the post-READY `usable` gate under its own bound.
 **It has only run against simulated f3, Rocky, runtime and operator.**
 Running it needs Paul's explicit approval of the filled plan (A3, A4, A7);
 the plan pin is no authority.
@@ -721,6 +722,7 @@ primitives, and keeps the Go tools (`hfs-runtime-prep`,
 | `bind` | remote | one write of `bind.json` to `/sys/kernel/homelabfs/bind_v1` |
 | `mount-0`, `mount-1` | remote | `mount -t 9p -o trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,msize=65536 hfsN /var/tmp/hfs-zq3-RUN/mN`, checked in `/proc/self/mountinfo` |
 | `ready` | read | third record `READY`, `CONTROLLED_LOCAL`, two domains, control binding |
+| `usable` | read | post-READY usability gate (k64): `guest-stat` lstats both mount roots as root right away and again once 40 s have passed since `mount-1` ended (the guest's 30 s QUERY timeout plus 10 s), with a host poll in between; both roots must answer every time |
 
 ```
 python3 -I -B bootstrap.py check --plan PLAN --plan-sha256 SHA
@@ -729,7 +731,7 @@ python3 -I -B bootstrap.py status --output DIR
 ```
 
 **Plan.** Closed JSON (`homelabfs-zq3-bootstrap-plan/1`, `PLAN_SHAPE` in the
-source): run ID, `bootstrap_seconds` (30-120, and equal to the bundle runtime
+source): run ID, `bootstrap_seconds` (60-120, and equal to the bundle runtime
 config's `BootstrapSeconds`), `remote_sha256` (the reviewed
 `bootstrap_remote.py`), the signer path (only printed),
 SSH executable and both pin files (the G8 targets and fingerprints, exactly
@@ -794,6 +796,53 @@ arguments, exit status and streams are kept in `OUT/calls/`, the signed and
 request files in `OUT/work/`, the guard transport's streams beside them, and
 `OUT/summary.json` at the end (`acceptance: false`).
 
+**Usability gate (`usable`, k64).** In zq3-r6 and zq3-r7 the driver
+reported READY with every step `ok` while the guest had already blocked
+both sessions. The runtime answered each mount(8) PROCESS_EXIT claim
+`ADMITTED/OK` but left it `RESERVED/UNPREPARED`, so every QUERY returned
+`INDETERMINATE`. After 30 s the guest blocked the session, and every later
+operation, even `getattr` on the root, returned `EACCES`. The failure
+surfaced only in T1/T6. So READY is no longer the last step.
+
+- The `usable` step runs `guest-stat` over both plan mounts in one SSH round
+  trip. For each root it checks that the mount point is still exactly one
+  `9p` mount of its tag in `/proc/self/mountinfo`; a root that is not is
+  never stat'ed. Then it runs one `os.lstat` of the root in a child process
+  bounded by 8 s. The child is read-only, never opens or creates anything,
+  and is never killed if it hangs.
+- A first probe runs right after READY, so a root that is already refused
+  fails at once. The final probe runs once 40 s have passed since `mount-1`
+  ended. That is the guest's 30 s QUERY timeout plus a 10 s margin, so a
+  stat that only passed because the claim had not yet timed out cannot pass.
+  Between the two probes the step watches the guard transport, then one
+  `host-poll` confirms that the guard reports no breach or exit and that
+  READY is still the last runtime record.
+- READY ends the runtime's launch-to-READY bootstrap timeout, so the step
+  gets its own fixed bound in place of the driver's deadline, using the same
+  deadline mechanism: the settle point (or now, if READY came later) plus
+  30 s. In practice that is at most about 70 s after `mount-1`.
+- An errno, a timeout, a lost mount, a non-directory root or a missing root
+  ends `usable` as `failed`. The journal detail keeps both roots' results,
+  the probe (`first` or `final`) and the first failing root's `errno`
+  (13 for zq3-r7's `EACCES`, null for a timeout). The run exits 1 with
+  `summary.json` `stopped_at: usable` and a `usable_note`. Nothing is
+  retried, remounted, written or unmounted: go to Phase 11 with inspection
+  first. `fill_plan.py batch` refuses such a run, because it requires every
+  step in `STEP_NAMES` to be `ok`.
+- **Not checked: claim TERMINAL on the host.** The driver cannot see whether
+  each mount's PROCESS_EXIT claim reached TERMINAL. OBSERVE's `providers[]`
+  carries only the provider ledger's digest, inode and size
+  (`controlledvalidation.LedgerEvidence`), and its `transport` section only
+  carries counts. Claim status and preparation stage exist only inside the
+  bbolt ledgers in the OwnerDirectory, which r7 decoded offline. The driver
+  has no guarded path that reads them, and none that calls OBSERVE.
+  - A host-side gate would need a new daemon feature: a per-provider claim
+    summary in OBSERVE (per session, each non-TERMINAL claim's kind such as
+    PROCESS_EXIT, status, preparation stage and age), or a READY condition
+    that the bootstrap mount claims are TERMINAL.
+  - Until then the guest-side stat is the only gate, and it detects the
+    consequence (the blocked session), not the cause.
+
 **Remote half.** [`bootstrap_remote.py`](bootstrap_remote.py) holds the fixed
 f3/Rocky actions (Python 3.9 compatible). It is not staged: each SSH command
 is `PYTHON -I -B -c "LOADER" ACTION ARGS`, where the loader reads exactly the
@@ -837,7 +886,10 @@ guard transport loss, plan refusals (remote, prep and config pins, a
 non-private template, `BootstrapSeconds` and path mismatches), runtime stage
 order violations, journal order, plan refusals, the SSH argv and pins, the
 loader through `/bin/sh` and `bash` with tampered bytes, bounded local
-children. The signed files it checks are real signer output from
+children, and the `usable` gate (success only after the settle point, `EACCES`
+on the first or the final probe, an lstat timeout, a probe transport timeout
+as `failed` not `uncertain`, a lost mount, a missing root, a runtime exit
+during the settle, a READY later than the settle point). The signed files it checks are real signer output from
 `internal/runtimeprep/bootstrap_fixture_test.go` (throwaway keys, no key
 files exported; regenerate with `HFS_BOOTSTRAP_FIXTURE_DIR=NEW_DIR go test
 -run TestExportBootstrapFixture ./internal/runtimeprep` and copy the nine
@@ -848,8 +900,10 @@ regenerated it after w54's guest floors refused the original 32 / 128 MiB.
 committed budget against `checkGuestFloor` (`guestfloor.go`), so the fixture
 cannot fall below the floors silently; the Python tests only replay it.
 `test_bootstrap_remote.py` covers every remote action against a temporary
-root. Not covered: real SSH/doas, FreeBSD rename semantics, Rocky's sysfs
-and 9p mount behaviour, the runtime itself and real timing of the 120 s.
+root, and runs the `guest-stat` lstat program for real there. Not covered:
+real SSH/doas, FreeBSD rename semantics, Rocky's sysfs and 9p mount
+behaviour, the guest's real QUERY timing after READY, the runtime itself and
+real timing of the 120 s.
 
 ## Run-time plan fills (zq3 F1, F6-F8)
 
@@ -878,7 +932,8 @@ it, and refuses unless all of these hold: `journal.jsonl` (no torn tail)
 starts with the run record for the pinned bootstrap plan SHA256 and holds
 exactly one intent and one `ok` result per bootstrap step, in order;
 `plan.json` has that SHA256 and the journal's run ID; `summary.json` says
-`ready`; the boot ID and provider nonce are UUIDs and the manifest is
+`ready` (a run that reached READY but failed the post-READY `usable` gate
+therefore refuses); the boot ID and provider nonce are UUIDs and the manifest is
 SHA256 hex; `work/enroll-request.json` still has its journaled SHA256 and
 carries the same boot ID, provider nonce and `Observer.ManifestHash`; each
 `mountinfo` is one row of a `9p` mount of the plan's tag on the plan's
@@ -903,8 +958,8 @@ running the real `bootstrap.run` against `test_bootstrap.py`'s simulated
 world (only the mount replies carry realistic `mountinfo` rows), fills the
 batch plan and checks it with `plan_snapshot` and `controller.py check` as
 a child process, and fills the bootstrap plan and checks it with
-`bootstrap.py check`. Negatives: a run stopped before READY, a non-READY
-summary, another bootstrap plan, a torn journal, malformed, foreign, non-9p
+`bootstrap.py check`. Negatives: a run stopped before READY, a READY run
+whose `usable` gate failed with `EACCES`, a non-READY summary, another bootstrap plan, a torn journal, malformed, foreign, non-9p
 or multi-row `mountinfo`, zero or leading-zero IDs, duplicate IDs,
 disagreeing admission/enrollment evidence, a changed enrollment request,
 template pin, filled, moved and unknown placeholders, a template of another

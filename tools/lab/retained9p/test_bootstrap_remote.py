@@ -3,9 +3,10 @@
 
 The f3 and Rocky sides run against a temporary root: sysfs, /proc, the
 EnrollmentFile directory and the guard records are plain files there, and the
-two remote children (rocky_kernel.py admission, mount) are scripted. Root
-ownership is substituted by the test user's UID. Nothing touches the real
-system, a VM or the network.
+remote children (rocky_kernel.py admission, mount, the guest-stat lstat) are
+scripted; only the lstat program itself also runs for real against the
+temporary root. Root ownership is substituted by the test user's UID.
+Nothing touches the real system, a VM or the network.
 """
 import hashlib
 import importlib.util
@@ -14,6 +15,8 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -237,6 +240,59 @@ class GuestTests(RemoteCase):
         self.assertEqual((code, result["changed"]), (2, False))
         code, result = self.act(self.mount_argv("hfs1", "/var/tmp/hfs-zq3-zq3-r1/m1"))
         self.assertEqual((code, result["uncertain"]), (1, True))
+
+    def stat_argv(self, boot=BOOT):
+        return ["guest-stat", "--tags", "hfs0,hfs1", "--mountpoints",
+                "/var/tmp/hfs-zq3-zq3-r1/m0,/var/tmp/hfs-zq3-zq3-r1/m1", "--boot-id", boot,
+                "--python", "/usr/bin/python3", "--seconds", "8"]
+
+    def both_mounted(self):
+        with open(self.root / "proc/self/mountinfo", "a") as stream:
+            for index in (0, 1):
+                stream.write("9{0} 22 0:5{0} / /var/tmp/hfs-zq3-zq3-r1/m{0} rw - 9p hfs{0} rw\n".format(index))
+
+    def test_stat_reports_each_root_and_runs_only_lstat(self):
+        self.both_mounted()
+        ok = json.dumps({"mode": 0o40755, "uid": 0, "gid": 0, "ino": 1, "dev": 55}).encode()
+        denied = json.dumps({"errno": 13, "error": "Permission denied"}).encode()
+        self.system.outcomes = [(0, ok, b""), (0, denied, b"")]
+        code, result = self.act(self.stat_argv())
+        self.assertEqual(code, 0, result)
+        self.assertEqual([(r["tag"], r["outcome"]) for r in result["roots"]], [("hfs0", "ok"), ("hfs1", "errno")])
+        self.assertEqual((result["roots"][1]["errno"], result["roots"][1]["error"]), (13, "Permission denied"))
+        argv, seconds = self.system.children[0]
+        self.assertEqual((argv[:4], argv[4], argv[5], seconds),
+                         (["/usr/bin/python3", "-I", "-B", "-c"], remote.STAT_PROGRAM, "/var/tmp/hfs-zq3-zq3-r1/m0", 8))
+        # The program itself: lstat only, and an OSError becomes its errno.
+        for forbidden in ("open(", "mkdir", "write", "unlink", "chmod"):
+            self.assertNotIn(forbidden, remote.STAT_PROGRAM)
+
+    def test_stat_program_reports_the_errno_of_a_real_lstat(self):
+        missing = str(self.root / "absent")
+        done = subprocess.run([sys.executable, "-I", "-B", "-c", remote.STAT_PROGRAM, missing],
+                              capture_output=True, timeout=30)
+        self.assertEqual((done.returncode, json.loads(done.stdout)["errno"]), (0, 2))
+        done = subprocess.run([sys.executable, "-I", "-B", "-c", remote.STAT_PROGRAM, str(self.root)],
+                              capture_output=True, timeout=30)
+        self.assertTrue(stat.S_ISDIR(json.loads(done.stdout)["mode"]))
+
+    def test_stat_timeout_unmounted_root_and_boot_change(self):
+        with open(self.root / "proc/self/mountinfo", "a") as stream:
+            stream.write("90 22 0:50 / /var/tmp/hfs-zq3-zq3-r1/m0 rw - 9p hfs0 rw\n")
+        self.system.outcomes = [(None, b"", b"")]
+        code, result = self.act(self.stat_argv())
+        self.assertEqual(code, 0, result)
+        self.assertEqual([r["outcome"] for r in result["roots"]], ["timeout", "not-mounted"])
+        self.assertEqual(len(self.system.children), 1)  # The unmounted root is never stat'ed.
+        code, result = self.act(self.stat_argv(boot=NONCE))
+        self.assertEqual((code, "boot changed" in result["error"]), (2, True))
+
+    def test_stat_child_garbage_or_file_root_is_not_ok(self):
+        self.both_mounted()
+        regular = json.dumps({"mode": 0o100644, "uid": 0, "gid": 0, "ino": 1, "dev": 55}).encode()
+        self.system.outcomes = [(1, b"", b"Traceback"), (0, regular, b"")]
+        code, result = self.act(self.stat_argv())
+        self.assertEqual([r["outcome"] for r in result["roots"]], ["error", "not-directory"])
 
     def test_ping_reports_release_and_boot(self):
         code, result = self.act(["guest-ping"])
