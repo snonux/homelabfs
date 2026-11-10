@@ -55,10 +55,10 @@ BASELINE = {
                 "-s", FBUF_DEVICE],
     "console": ["-l", "com1,/dev/nmdm-rocky.1A"],
 }
-# Candidate exporter (xz3 964 kernel rebuild, manifest e01fab21...; the
-# bhyve bytes are unchanged since the 3f770a88... package because every later
+# Candidate exporter (xz3 c64+d64 rebuild, manifest 66b5bb2b...; the bhyve
+# bytes are unchanged since the 3f770a88... package because every later
 # candidate (f44 b203799e..., r54 5eb42c50..., w54 89c928d5..., z54
-# 2e0412a6..., then 964) reused the native build).
+# 2e0412a6..., 964 e01fab21..., then c64+d64) reused the native build).
 EXPORTER_SHA256 = "36423b6d4f68dc1b05299b1c379a164035e7db5b06ca64b47f2a8571d823fb5c"
 STAGING_PARENT = "/var/tmp/hfs-validation-xz3"
 GUEST_MEMORY = "6G"

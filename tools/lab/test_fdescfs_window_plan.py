@@ -21,10 +21,10 @@ SPEC.loader.exec_module(FILLER)
 WINDOW = FILLER.WINDOW
 PINS = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/pins.json"
 RECORD = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/build-record.json"
-# Daemon of the admitted xz3 964 kernel rebuild (e01fab21), the z54 daemon
-# reused byte for byte from 2e0412a6: built from a20aca1 (z54 answers every
-# VIEW_POLL/VIEW_ACK); the window build reproduced it.
-ADMITTED_DAEMON_SHA256 = "39c92d016f17b4c480c3c3bfac266f284123413ea4d95697b935d80bdf98a521"
+# Daemon of the admitted xz3 c64+d64 rebuild (66b5bb2b), built from 060dea0
+# (d64 keeps the view fence per domain and admits a bounded out-of-order guest
+# cell once); the window build reproduced it.
+ADMITTED_DAEMON_SHA256 = "9b7eed8dc9b98f4a61af000bb17b5008672a7083075e206951fc96b53577088b"
 CONTROLLER_SHA = "c" * 64
 # f3 stock fusefs.ko, docs/lab/results/20261108-zq3-phase1 (task j44).
 FUSEFS_SHA256 = "b207adf6383bee8e022fa6115044508b7c64da07e73865e5ea71594d524cc4bd"
@@ -94,11 +94,10 @@ class FillerTests(unittest.TestCase):
         for path, value in record["captured_base_closure_sha256"].items():
             self.assertEqual(pinned[path], value)
         # The window artifacts follow the admitted daemon source: rebuilt from
-        # a20aca1 for the z54 daemon rebuild on 2026-11-09 (earlier from
-        # defd974 for f44, reused by r54 and w54), so the qualification test
-        # bytes match the daemon source. The 964 kernel rebuild reuses the z54
-        # daemon and therefore these artifacts unchanged.
-        self.assertEqual(record["source_commit"], "a20aca192911e380f3863897e1e6774b1fc46e0e")
+        # 060dea0 for the c64+d64 rebuild on 2026-11-10 (earlier from a20aca1
+        # for z54, reused by 964, and from defd974 for f44, reused by r54 and
+        # w54), so the qualification test bytes match the daemon source.
+        self.assertEqual(record["source_commit"], "060dea03bb6fffad2353dfa70461dd860e5b1db4")
 
     def test_filled_plan_is_accepted_by_actual_controller_validate(self):
         plan = self.fill()

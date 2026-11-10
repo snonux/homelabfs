@@ -13,26 +13,28 @@ qualified corrected artifacts. Existing offline build proofs remain preserved;
 neither a successful old metadata admission nor a different digest establishes
 native eligibility. These preparation commands never grant deployment eligibility.
 
-**The controller pins exactly one candidate:** the xz3 964 kernel rebuild
-(2026-11-10), manifest `e01fab21cd7a47822d7b56d84e15150cdc7a36c939fceb23852d4fdef0121ec2`
-(source `06c27a8`; see its
-[evidence](../../integration/artifacts/evidence/xz3-20261110f/README.md)). Its
-guest kernel carries 964: a fixed 9p tag is reused only after its previous
-request is released, and a busy tag is retried inside `hfs_transport` without
-blocking the session (zq3-r5 R5-1). It keeps the earlier kernel fixes: the
-mount builds HELLO after enrollment (r54), and a failed `hfs_fill_super` no
-longer oopses in `v9fs_hfs_kill_super` (w54). Its CGO daemon `39c92d01…`, reused
-byte for byte from z54, answers every VIEW_POLL and VIEW_ACK, including a poll
-that arrives before the domain is acquired. The native exporter is a
-byte-identical reuse from f44; the window artifacts are the z54 build from
-`a20aca1`, reused unchanged. Five earlier candidates are refused as
+**The controller pins exactly one candidate:** the xz3 c64+d64 rebuild
+(2026-11-10), manifest `66b5bb2b6c1dd1a663f26c50d0d9b3bfeebd620127c4a5859ca146074f2c2e2d`
+(source `060dea0`; see its
+[evidence](../../integration/artifacts/evidence/xz3-20261110g/README.md)). Its
+guest kernel is built from the c64 recipe: `CONFIG_LSM` includes `selinux`, so
+SELinux is an active LSM at boot. It keeps the 964 fixed-tag release wait
+(zq3-r5 R5-1), the r54 mount HELLO after enrollment and the w54 failed-bind
+`kill_sb` fence. Its CGO daemon `9b7eed8d…` was rebuilt for d64: the view
+fence is kept per domain, as the guest keeps it (zq3-r6 R6-1), and an
+unissued out-of-order guest cell inside a bounded 16-cell window is admitted
+once (R6-2). These daemon bytes still need the f3 observer check. The modules
+and the native exporter are byte-identical reuses; the window artifacts were
+rebuilt from `060dea0`. Six earlier candidates are refused as
 superseded: `3f770a88…` cannot arm the d44 MKDIR-only lost reply, the f44
 `b203799e…` has the pre-r54 guest kernel (every hfs1.4 mount returns EPROTO,
 zq3-r2 R2-4), the r54 `5eb42c50…` has the pre-w54 guest kernel (kill_sb oops
-after a failed bind, zq3-r3 R3-1), and the w54 `89c928d5…` has the pre-z54
+after a failed bind, zq3-r3 R3-1), the w54 `89c928d5…` has the pre-z54
 daemon `174949c1…` (an unanswered pre-acquire VIEW_POLL blocks the first
-mount, zq3-r4 R4-1), and the z54 `2e0412a6…` has the pre-964 guest kernel
-(fixed tag 65533 reused before release blocks the session, zq3-r5 R5-1). Any
+mount, zq3-r4 R4-1), the z54 `2e0412a6…` has the pre-964 guest kernel
+(fixed tag 65533 reused before release blocks the session, zq3-r5 R5-1), and
+the 964 `e01fab21…` has a guest kernel that boots without SELinux (c64) and
+the pre-d64 daemon `39c92d01…` (zq3-r6 R6-1/R6-2). Any
 other digest refuses before reading inputs or contacting the lab. This pin is a
 dispatch precondition only; installed/booted/native acceptance remains zq3.
 
@@ -626,7 +628,7 @@ depmod, dracut, systemctl and GRUB's one-shot consumption at boot). Every
 Rocky-side command still needs Paul's explicit A3 approval of the filled plan.
 
 1. Workstation, Phase 0:
-   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 e01fab21… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
+   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 66b5bb2b… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
    It refuses any manifest other than the pinned candidate, checks every
    Linux file's size and SHA256 against the manifest and the installation
    proposal, requires `modules.order` to name exactly the manifest's modules,
