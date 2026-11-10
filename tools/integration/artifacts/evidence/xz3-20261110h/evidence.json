@@ -1,0 +1,541 @@
+{
+  "candidate": {
+    "admission": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "assembled_from": "the y64 worktree at b869710 (/home/paul/git/homelabfs/.claude/worktrees/y64-xz3h), byte-identical to the main checkout (also at b869710) for all 4002 tracked files with no untracked files under cmd, internal, pkg, tools/integration or tools/lab; the worker sandbox refuses git in the main checkout. The daemon was built in this worktree, so the new daemon builder bindings name the real build path; nothing was re-keyed. The three native proof records were written by collect-native.py from the f3 build of this run",
+    "files": 194,
+    "independent_admit": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "manifest_sha256": "867ede3630e4ee0a609f88b0752670fac5b7a0c0e0f9d2a340031110da32c334",
+    "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+    "path": "/home/paul/tmp/claude/hfs-xz3-20261110h/package",
+    "repository_baseline": "b8697101df601d7748bae85721e91c0e01aae474",
+    "repository_changes_patch": "absent: the baseline is the daemon build revision b869710, which already contains the g64+m64 source.json and patches and the owned lib9p sources, so git diff against it is empty",
+    "source_checkout": "b8697101df601d7748bae85721e91c0e01aae474"
+  },
+  "controls": {
+    "all_refused": true,
+    "case_names": [
+      "external operator mismatch",
+      "external repository mismatch",
+      "old negotiated features",
+      "old source revision",
+      "different packaged Linux patch",
+      "different native owned source",
+      "wrong actual bundled source with consistent container hashes",
+      "daemon ELF labelled as full exporter",
+      "native helper ELF lacks production controllers",
+      "invented stock shared9p runtime",
+      "installed success claim",
+      "missing actual Go build version",
+      "real CGO_ENABLED=0 daemon with nocgo observer stub",
+      "record claims CGO0 build",
+      "nocgo stub in recorded source closure",
+      "renamed cgo process observer symbols",
+      "foreign dynamic loader",
+      "extra recorded DT_NEEDED",
+      "missing recorded DT_NEEDED",
+      "sysroot library hash differs from recorded closure",
+      "unlinked sysroot capture",
+      "unrecorded clang resource headers",
+      "unrecorded clang shared-library closure",
+      "foreign cgo compiler wrapper",
+      "installation authority claim",
+      "false forced rebuild witness"
+    ],
+    "cases": 26,
+    "cgo0_control_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+    "original_passed_after": true,
+    "restored_passed": true
+  },
+  "daemon": {
+    "bytes": 10878480,
+    "forced_builds_equal": true,
+    "gnu_build_id": "30c41c9a539cdb95a3e5a312e4f3441a6e9fbd0a",
+    "go_build_id": "__jnceOy7xLINUFV0qAn/pdFdT2FWL5LsOK0BlsyR/SmdczL92BQBoWxXX-lsV/777wcxrC3akVftEZ8f1B",
+    "go_mod_unchanged": true,
+    "go_sum_unchanged": true,
+    "module_cache": "private cache seeded from the f64 cache (go.mod and go.sum unchanged since a20aca1); no dependency was downloaded",
+    "native_qualification": "not run: the exact new bytes still need --check-process-observer on f3 under the bounded host guard (the z54 daemon 39c92d01 passed it in zq3-r5; d64 9b7eed8d was never checked); this task ran only the native exporter build on f3",
+    "repository": "b8697101df601d7748bae85721e91c0e01aae474",
+    "sha256": "34fb05b28357b42e37816370f9bb6c0ec046ff2e98763dafff87c3680021694c",
+    "source_closure_added_since_f64": [
+      "github.com/snonux/homelabfs/internal/controlledvalidation/admission_refusal.go",
+      "github.com/snonux/homelabfs/internal/controlledvalidation/recycle.go",
+      "github.com/snonux/homelabfs/internal/controlledvalidation/retire.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/refusal.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/retired_grants.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/source_floor.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/source_pruning.go"
+    ],
+    "source_closure_changed_since_f64": [
+      "github.com/snonux/homelabfs/internal/controlledruntime/guest_artifacts.go",
+      "github.com/snonux/homelabfs/internal/controlledruntime/lifecycle_client.go",
+      "github.com/snonux/homelabfs/internal/controlledruntime/runtime_config.go",
+      "github.com/snonux/homelabfs/internal/controlledvalidation/claims.go",
+      "github.com/snonux/homelabfs/internal/controlledvalidation/earmark.go",
+      "github.com/snonux/homelabfs/internal/controlledvalidation/execution.go",
+      "github.com/snonux/homelabfs/internal/controlledvalidation/provider.go",
+      "github.com/snonux/homelabfs/internal/controlledvalidation/readdir_cleanup.go",
+      "github.com/snonux/homelabfs/internal/controlledvalidation/restore_bridge.go",
+      "github.com/snonux/homelabfs/internal/controlledvalidation/retirement.go",
+      "github.com/snonux/homelabfs/internal/controlledvalidation/terminal.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/dispatch.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/endpoint.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/evidence.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/mapping.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/readdir_cleanup.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/restore.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/result.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/service.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/transport_ledger.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/types.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/admission.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/controller.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/retirement.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/tickets.go"
+    ],
+    "source_closure_files": 1290,
+    "source_closure_removed_since_f64": [],
+    "steps": [
+      [
+        "prepare",
+        "0",
+        "4"
+      ],
+      [
+        "build-first",
+        "0",
+        "49"
+      ],
+      [
+        "build-second",
+        "0",
+        "70"
+      ]
+    ],
+    "superseded_daemon": "9b7eed8dc9b98f4a61af000bb17b5008672a7083075e206951fc96b53577088b (d64, 060dea0)",
+    "toolchain_cgo_toolchain_sysroot_runtime_closure_unchanged": true,
+    "window_build_cross_check_equal": true
+  },
+  "init_helper": {
+    "kept": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80 from e0cca0c",
+    "reason": "not in the package; cmd/homelabfs links guestbridge only through fuseadapter (mount path) and does not import viewcontrol or controlledvalidation; node-init/volume-init never mount, so the i64..x64 guestbridge transport changes are not reached"
+  },
+  "kernel": {
+    "abi_negative_controls": [
+      "different-kernel-module-layout-crc",
+      "different-operator-config-identity",
+      "missing-kernel-module-layout-crc",
+      "stock-kernel-release"
+    ],
+    "artifacts": {
+      "linux/Module.symvers": "0bb2f15bf26efcd03049fee7be0ce317f6446dcdae636622b17fdf9269d35572",
+      "linux/System.map": "1ffea83fab4dc34060d3cbf437612891415582eff384b8c8630c69795455170c",
+      "linux/abi-negative.json": "f7c4aa9efbe87a6e18eae268097b01c7cb333b1b72ceefbfa93448d6e7417da0",
+      "linux/abi.json": "66d5b28663394b8a1b6d99f75801567fdcc5b452c10a1ccd37987fe4f4ebd8ad",
+      "linux/build.json": "c6260e1a487478aae15ef1fa76b0419db7f4428b389c28eef4338d923ee1b526",
+      "linux/bzImage": "40afad22f44e770bb18d55cd8b6c23570aaa056a62a88a86b7cb82ae2c227afe",
+      "linux/clean-repro.json": "e8ba5f3582deddb3031144ca4d6b6dffd4758a436ae34cbdb0622551a3cf99b7",
+      "linux/config": "28fe4a8ec759cfa7ecfdc373753082ec6981ecdffc6a25e074b6fac048906282",
+      "linux/kernel.release": "50bb45b1af138cf586adddcde600f85e256a19336c861654e6ce76c20eb034e3",
+      "linux/modules.builtin": "1f33442939e7faf978dc707cb69f99015328b39b3125cea6d6de25715f8bebf1",
+      "linux/modules.builtin.modinfo": "c53973bb5c4498e6fc6e61d0143353782a5628374b2b00624f422ed6f2236cf2",
+      "linux/modules.order": "f820618416411197b17fe7795d067e9687d905c487bffb207589bec3c173019a",
+      "linux/modules/drivers/net/net_failover.ko": "cc9755c71cc1d0776f5efd61198b1ebe99741cff877104879b8658db469f9143",
+      "linux/modules/drivers/net/virtio_net.ko": "39de7e933fa325b2c6b576004213f34bee04085191ea94e141a6c2aeeaf7fef1",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko": "6b98068988086d3b1b5c7a1e3b71f5f0ac4378f2d907c0e3a8c50a22bcde53fa",
+      "linux/modules/fs/efivarfs/efivarfs.ko": "6dd0679c5a026189f4feef51fcdcf4d0542fbc9cba7f3e552cb8a0324e68974f",
+      "linux/modules/net/core/failover.ko": "b1aa98beb495be131c06a02775109cba97de2ecacae227c4932909166b88cf5a",
+      "linux/vmlinux": "d2d3e5ab589366ccdd166c475e665239db27b72d3228aa8c7db8cb1ebf1a0f41"
+    },
+    "changed_from_f64": [
+      "linux/Module.symvers",
+      "linux/System.map",
+      "linux/abi.json",
+      "linux/build.json",
+      "linux/bzImage",
+      "linux/clean-repro.json",
+      "linux/vmlinux"
+    ],
+    "clean_repro_equal_artifacts": 13,
+    "clean_repro_modules": 5,
+    "clean_repro_record_sha256": "e8ba5f3582deddb3031144ca4d6b6dffd4758a436ae34cbdb0622551a3cf99b7",
+    "config_equals_f64": true,
+    "gnu_build_id": "870bb9d1d61ca10ecbbdb0a494a2fb5c449b92ee",
+    "initramfs": "none built or packaged; the recipe builds bzImage and modules",
+    "module_build_ids": {
+      "drivers/net/net_failover.ko": "3255e434a34a125cd9251bebddaaf6bdf98c68bb",
+      "drivers/net/virtio_net.ko": "072995182e1a95b83cf3ec794649ce05adf8a59d",
+      "drivers/thermal/intel/x86_pkg_temp_thermal.ko": "da295c7cb8ec345542f4ad350ebe6b4ab30ce306",
+      "fs/efivarfs/efivarfs.ko": "c7dca1ae388661db98a1b00f73a39cc2c2d88539",
+      "net/core/failover.ko": "3b9f54841993c81600f6794137822622987c4f9d"
+    },
+    "module_symvers_note": "Module.symvers differs from f64 only in the CRCs of the 8 hfs exports (struct layouts changed by g64/m64); the five modules import none of them and came out byte-identical",
+    "note": "both builds used the same canonical O path (first tree moved to kernel-build-first before the repeat); abi.py collect ran on both packages before compare_kernel, which passed first time",
+    "release": "6.1.190-hfs-xz3",
+    "resolved_config_lsm": "lockdown,yama,integrity,selinux,bpf,landlock",
+    "source": {
+      "archive_path": "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/source/linux-79807e970724c1f90cee1316361d61b80db4eef6.tar.gz (cached, not downloaded)",
+      "archive_sha256": "4f3c00db43ece26e00b83da8cee938e544ba89e10dc10aecc45209ab03554a17",
+      "kernel_config_fragment_sha256": "f2d2a203daa49dd454de90b932e04e17f1532a22b9184140da136ff97d468bc7",
+      "prepared": "/home/paul/tmp/claude/hfs-xz3-20261110h/linux-source",
+      "project_task": "g64 (merge e4e2620) and m64 (merges da292aa/91cdde6) changed patches 0001, 0003, 0004, 0005 and source.json; c64 kernel.config unchanged",
+      "source_inventory_equals_f64": false,
+      "source_inventory_sha256": "04bc45c5d19d63be63af9be8c4cccf9bb6116d2abf6e87e35c95d726ab082055"
+    },
+    "stage_seconds": [
+      [
+        "first",
+        "configure",
+        0,
+        9
+      ],
+      [
+        "first",
+        "vmlinux",
+        0,
+        710
+      ],
+      [
+        "first",
+        "image-modules",
+        0,
+        28
+      ],
+      [
+        "first",
+        "collect",
+        0,
+        4
+      ],
+      [
+        "repro",
+        "configure",
+        0,
+        10
+      ],
+      [
+        "repro",
+        "vmlinux",
+        0,
+        717
+      ],
+      [
+        "repro",
+        "image-modules",
+        0,
+        25
+      ],
+      [
+        "repro",
+        "collect",
+        0,
+        6
+      ]
+    ],
+    "unchanged_from_f64": [
+      "linux/abi-negative.json",
+      "linux/config",
+      "linux/kernel.release",
+      "linux/modules.builtin",
+      "linux/modules.builtin.modinfo",
+      "linux/modules.order",
+      "linux/modules/drivers/net/net_failover.ko",
+      "linux/modules/drivers/net/virtio_net.ko",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko",
+      "linux/modules/fs/efivarfs/efivarfs.ko",
+      "linux/modules/net/core/failover.ko"
+    ]
+  },
+  "mount_hello": {
+    "cases": 22,
+    "command": "tools/integration/linux9p/tests/mount_hello/run.py --source <prepared> --output <root>/mount-hello --sanitize",
+    "failures": 0
+  },
+  "native": {
+    "archive": "cached pinned archive copied from /var/tmp/hfs-xz3-20261108-r1 and re-hashed: 044a42ccc657d4c3b31499e2cb713c3f9d6ec0e51c1b288c46b13106c148d84e (capture record 445f5043fcbbd1bdb6e5439578a2d47c605f834fc9cad4051f5a960e929c0649)",
+    "changed_from_f64": [
+      "freebsd/bhyve",
+      "freebsd/build.json",
+      "freebsd/lib9p.a",
+      "freebsd/lib9p_pie.a",
+      "inputs/freebsd-selected-source.tar.gz",
+      "inputs/freebsd-source-bundle.json",
+      "inputs/freebsd-source-inventory.json"
+    ],
+    "clean_repro_equal": true,
+    "clean_repro_files": 83,
+    "exporter": {
+      "gnu_build_id": "6870705eb183a88166b18418c71a6940e7391b00",
+      "sha256": "ef8f17de8754f8bdd6d5d517f15a859e87a2f4a8ca1542394f5608a8e40823b1",
+      "superseded_sha256": "36423b6d4f68dc1b05299b1c379a164035e7db5b06ca64b47f2a8571d823fb5c"
+    },
+    "first_seal_sha256": "038d152bb43958d62124b5fb8e0fa6140826f99b2eb581a98fda0cf90e0b2a86",
+    "guard": "tools/integration/artifacts/native_guard.py 228c91f3 for every stage: one CPU, 512 MiB aggregate RSS, 20 min/stage, 8 GiB disk (1 GiB local reservation), pinned Rocky pid 6472 lstart Tue Nov 10 09:35:04 2026 UTC, rocky.conf c101adf1",
+    "host": "f3 FreeBSD 15.1-RELEASE-p2, pinned-key SSH (docs/lab/f3-host-known_hosts), unprivileged",
+    "lib9p_native_verify": "native-verify.sh on f3 under the guard (stage lib9p-native-verify): PASS native component objects/tests (production_api, backend, ledger, supervisor)",
+    "owned_seed": {
+      "0001-dedicated-backend.patch": "df00a6b0f576532da0a43373b971017410b7e7f35db560395d42571fb953f264",
+      "src/hfs9p.c": "7e6a118278298daccfb1b4a457419de51c848694ed24a0ecfc82d720d4e13acb",
+      "src/hfs9p.h": "4700a75263d87dc8d17f292f2a716ac6cdb626054852d26a3243f06fdebbee67",
+      "src/hfs9p_bootstrap.inc": "5fca1f2e18818805253d116b2d64a1d5079d235b2242a0100da4c575a95a6685",
+      "src/hfs9p_json.c": "bff0d0a125a822834218b574ff111ce0c7c8974816011e97c151be576f825e0a",
+      "src/hfs9p_json.h": "d5c59818a2a39da141eedd23fab8d9f1462d79414833e822da7e9df41dcc4980",
+      "src/hfs9p_ledger.c": "d64f06c10e9f117f2d301e5cf7614b78a28890ae4487075108926302a90298bd",
+      "src/hfs9p_ledger.h": "567c4d534094fc6de8705004615ec64930f22d4c679709410deeffcb13a1e7b7",
+      "src/hfs9p_recovery.inc": "18afeeb9062536d6b78769b4dc3a292d55b90493507f932d104f45920e60dc34",
+      "src/hfs9p_supervisor.c": "39eff2ea2c104f614a34e5e6afbcc05dd4ae1b7eb2bc89f7157495c329350a4b",
+      "src/hfs9p_supervisor.h": "dcc30297332b2766a43489e03f0720f846e527e7775a259c28e548c53f920b92"
+    },
+    "preflight_sha256": "96cb759f74b91ba5949b795e4c6230d542fde5ced7ecb468c05852ff057143a9",
+    "recipe_sha256": {
+      "elf.py": "1a4ef154e9e228417df8e9cfa163b7e54ce7ac9a5677d1c9cc375b739243cf17",
+      "native_build_v3.py": "263775fd727085e7b9c60eeac74fa713327a99b85de8db67475647182453c601",
+      "native_guard_v3.py": "228c91f3489fd1a49a15a5d837883f44fc521005185096eef624e5ba3f11b04b",
+      "native_source_v2.py": "31f9ce908cdb11bc76e9594484f747b1d9615578c13d3407f755bf016d740271",
+      "runner_process.py": "91310cb7aac7c58e7a16271e69cd88c0443fa3be84d7843b2dd2b9a577ca4c10"
+    },
+    "root": "/var/tmp/hfs-xz3-20261110h-r1 (fresh, 0700, left in place as evidence; r2 not created, see README)",
+    "source_inventory_sha256": "8ad5ca2c011423c5e47fdf229c1c5d6176b106c4fb850d5dce30eb514bbdd7a0",
+    "stages": {
+      "build-first-bhyve": {
+        "exit": 0,
+        "peak_global_allocated_disk": 1524155904,
+        "peak_rss": 262955008,
+        "seconds": 38.0
+      },
+      "build-first-collect": {
+        "exit": 0,
+        "peak_global_allocated_disk": 1524211712,
+        "peak_rss": 168304640,
+        "seconds": 13.6
+      },
+      "build-first-library9p": {
+        "exit": 0,
+        "peak_global_allocated_disk": 1522130432,
+        "peak_rss": 268099584,
+        "seconds": 32.7
+      },
+      "build-first-libraryvmmapi": {
+        "exit": 0,
+        "peak_global_allocated_disk": 1522310656,
+        "peak_rss": 258772992,
+        "seconds": 23.4
+      },
+      "build-first-preflight": {
+        "exit": 0,
+        "peak_global_allocated_disk": 1519158784,
+        "peak_rss": 207536128,
+        "seconds": 27.2
+      },
+      "build-second-bhyve": {
+        "exit": 0,
+        "peak_global_allocated_disk": 1531609600,
+        "peak_rss": 263507968,
+        "seconds": 38.2
+      },
+      "build-second-collect": {
+        "exit": 0,
+        "peak_global_allocated_disk": 1531665408,
+        "peak_rss": 214724608,
+        "seconds": 13.8
+      },
+      "build-second-library9p": {
+        "exit": 0,
+        "peak_global_allocated_disk": 1529584128,
+        "peak_rss": 272064512,
+        "seconds": 32.1
+      },
+      "build-second-libraryvmmapi": {
+        "exit": 0,
+        "peak_global_allocated_disk": 1529764352,
+        "peak_rss": 258854912,
+        "seconds": 23.5
+      },
+      "build-second-preflight": {
+        "exit": 0,
+        "peak_global_allocated_disk": 1526612480,
+        "peak_rss": 226852864,
+        "seconds": 19.7
+      },
+      "lib9p-native-verify": {
+        "exit": 0,
+        "peak_global_allocated_disk": 1562994176,
+        "peak_rss": 416821248,
+        "seconds": 17.3
+      },
+      "native-bundle": {
+        "exit": 0,
+        "peak_global_allocated_disk": 1557561344,
+        "peak_rss": 127504384,
+        "seconds": 38.9
+      },
+      "seal-first": {
+        "exit": 0,
+        "peak_global_allocated_disk": 1529496576,
+        "peak_rss": 180510720,
+        "seconds": 1.5
+      },
+      "source-copy-cached": {
+        "exit": 0,
+        "peak_global_allocated_disk": 1198880768,
+        "peak_rss": 115593216,
+        "seconds": 1.8
+      },
+      "source-extract": {
+        "exit": 0,
+        "peak_global_allocated_disk": 1517797888,
+        "peak_rss": 145465344,
+        "seconds": 37.9
+      }
+    },
+    "superseded_source_inventory_sha256": "524a414a42936ca2133bbe17989cbf98fefc047774102b1b32ca3c86cd9db451",
+    "unchanged_from_f64": [
+      "freebsd/bhyve-slirp-helper",
+      "freebsd/libvmmapi.a",
+      "freebsd/libvmmapi_pie.a",
+      "freebsd/share/bhyve/gdb/aarch64-core.xml",
+      "freebsd/share/bhyve/gdb/amd64.xml",
+      "freebsd/share/bhyve/gdb/target.xml",
+      "freebsd/share/bhyve/kbdlayout/am",
+      "freebsd/share/bhyve/kbdlayout/be",
+      "freebsd/share/bhyve/kbdlayout/be_acc",
+      "freebsd/share/bhyve/kbdlayout/bg_bds",
+      "freebsd/share/bhyve/kbdlayout/bg_phonetic",
+      "freebsd/share/bhyve/kbdlayout/br",
+      "freebsd/share/bhyve/kbdlayout/br_noacc",
+      "freebsd/share/bhyve/kbdlayout/centraleuropean",
+      "freebsd/share/bhyve/kbdlayout/ch",
+      "freebsd/share/bhyve/kbdlayout/ch-fr",
+      "freebsd/share/bhyve/kbdlayout/ch-fr_acc",
+      "freebsd/share/bhyve/kbdlayout/ch_acc",
+      "freebsd/share/bhyve/kbdlayout/ch_macbook_acc",
+      "freebsd/share/bhyve/kbdlayout/cz",
+      "freebsd/share/bhyve/kbdlayout/de",
+      "freebsd/share/bhyve/kbdlayout/de_acc",
+      "freebsd/share/bhyve/kbdlayout/de_noacc",
+      "freebsd/share/bhyve/kbdlayout/default",
+      "freebsd/share/bhyve/kbdlayout/dk",
+      "freebsd/share/bhyve/kbdlayout/dk_macbook",
+      "freebsd/share/bhyve/kbdlayout/ee",
+      "freebsd/share/bhyve/kbdlayout/es",
+      "freebsd/share/bhyve/kbdlayout/es_acc",
+      "freebsd/share/bhyve/kbdlayout/es_dvorak",
+      "freebsd/share/bhyve/kbdlayout/fi",
+      "freebsd/share/bhyve/kbdlayout/fr",
+      "freebsd/share/bhyve/kbdlayout/fr_acc",
+      "freebsd/share/bhyve/kbdlayout/fr_dvorak",
+      "freebsd/share/bhyve/kbdlayout/fr_dvorak_acc",
+      "freebsd/share/bhyve/kbdlayout/fr_macbook",
+      "freebsd/share/bhyve/kbdlayout/gr",
+      "freebsd/share/bhyve/kbdlayout/gr_101_acc",
+      "freebsd/share/bhyve/kbdlayout/gr_elot_acc",
+      "freebsd/share/bhyve/kbdlayout/hr",
+      "freebsd/share/bhyve/kbdlayout/hu_101",
+      "freebsd/share/bhyve/kbdlayout/hu_102",
+      "freebsd/share/bhyve/kbdlayout/is",
+      "freebsd/share/bhyve/kbdlayout/is_acc",
+      "freebsd/share/bhyve/kbdlayout/it",
+      "freebsd/share/bhyve/kbdlayout/jp",
+      "freebsd/share/bhyve/kbdlayout/jp_capsctrl",
+      "freebsd/share/bhyve/kbdlayout/kz_io",
+      "freebsd/share/bhyve/kbdlayout/kz_kst",
+      "freebsd/share/bhyve/kbdlayout/latinamerican",
+      "freebsd/share/bhyve/kbdlayout/latinamerican_acc",
+      "freebsd/share/bhyve/kbdlayout/lt",
+      "freebsd/share/bhyve/kbdlayout/nl",
+      "freebsd/share/bhyve/kbdlayout/no",
+      "freebsd/share/bhyve/kbdlayout/no_dvorak",
+      "freebsd/share/bhyve/kbdlayout/nordic_asus-eee",
+      "freebsd/share/bhyve/kbdlayout/pl_dvorak",
+      "freebsd/share/bhyve/kbdlayout/pt",
+      "freebsd/share/bhyve/kbdlayout/pt_acc",
+      "freebsd/share/bhyve/kbdlayout/ru",
+      "freebsd/share/bhyve/kbdlayout/ru_shift",
+      "freebsd/share/bhyve/kbdlayout/ru_win",
+      "freebsd/share/bhyve/kbdlayout/se",
+      "freebsd/share/bhyve/kbdlayout/si",
+      "freebsd/share/bhyve/kbdlayout/tr",
+      "freebsd/share/bhyve/kbdlayout/tr_f",
+      "freebsd/share/bhyve/kbdlayout/ua",
+      "freebsd/share/bhyve/kbdlayout/ua_shift_alt",
+      "freebsd/share/bhyve/kbdlayout/uk",
+      "freebsd/share/bhyve/kbdlayout/uk_capsctrl",
+      "freebsd/share/bhyve/kbdlayout/uk_dvorak",
+      "freebsd/share/bhyve/kbdlayout/uk_macbook",
+      "freebsd/share/bhyve/kbdlayout/us_dvorak",
+      "freebsd/share/bhyve/kbdlayout/us_dvorakl",
+      "freebsd/share/bhyve/kbdlayout/us_dvorakp",
+      "freebsd/share/bhyve/kbdlayout/us_dvorakr",
+      "freebsd/share/bhyve/kbdlayout/us_dvorakx",
+      "freebsd/share/bhyve/kbdlayout/us_emacs",
+      "freebsd/share/bhyve/kbdlayout/us_unix",
+      "licenses/freebsd/COPYRIGHT",
+      "licenses/freebsd/lib9p-COPYRIGHT"
+    ],
+    "vm_invariant_after": " 6472 Tue Nov 10 09:35:04 2026 bhyve: rocky (bhyve)"
+  },
+  "not_claimed": [
+    "installed",
+    "booted",
+    "native acceptance",
+    "native observer qualification of these daemon bytes",
+    "exporter execution",
+    "SELinux enforcing on the booted guest",
+    "VM execution",
+    "normal publication",
+    "a working hfs1.4 mount on Rocky (zq3)"
+  ],
+  "reason": "66b5bb2b predates the zq3-r7 fixes. Kernel: g64 (hfs show_options, exact cache=mmap, once-per-session block log) and m64 (Sources floor in hfs_go_bounds, every fault block logged, clean unmount silent). Daemon: i64, o64, r64, n64, j64, u64, v64, x64 (internal/viewcontrol, controlledvalidation, guestbridge, controlledruntime). Native exporter and lib9p: 564, e64, p64, w64 (hfs9p.c, hfs9p_recovery.inc)",
+  "recorded": "2026-11-10",
+  "reused": {
+    "files": 24,
+    "from_manifest": "66b5bb2b6c1dd1a663f26c50d0d9b3bfeebd620127c4a5859ca146074f2c2e2d",
+    "justification": "git diff 060dea0..b869710 leaves patch 0002 and series unchanged and the Linux notices come from the unchanged pinned archive; 66b5bb2b passed package.py check and admit.py under the current tooling first (receipts/f64-container.*, f64-readmit.*), each reused file was hash-checked against its manifest, patches against the repository and notices against the freshly prepared source",
+    "list": "reused-files.json",
+    "scope": "22 Linux license notices, patch 0002 and series; every other component file was rebuilt (96 rebuilt files came out byte-identical to 66b5bb2b and are listed separately)"
+  },
+  "superseded_candidate": {
+    "manifest_sha256": "66b5bb2b6c1dd1a663f26c50d0d9b3bfeebd620127c4a5859ca146074f2c2e2d",
+    "status": "refused as superseded (pre-g64/m64 guest kernel, pre-i64..x64 daemon 9b7eed8d, pre-564/e64/p64/w64 exporter 36423b6d)"
+  },
+  "tag": {
+    "cases": 4,
+    "command": "tools/integration/linux9p/tests/tag/run.py --source <prepared> --output <root>/tag --sanitize",
+    "failures": 0
+  },
+  "task": "y64: xz3 kernel, daemon, native exporter and window rebuild for zq3-r8",
+  "terminal_smoke": {
+    "command": "tools/integration/linux9p/tests/controlled_received/run.py --source <prepared> --output <root>/controlled-received/terminal-smoke --budget-root <root>/controlled-received --host-tree <worktree> --scenario terminal-smoke",
+    "result": "PASS TestControlledReceivedActualTerminalClean"
+  },
+  "version": "homelabfs-xz3-evidence/2",
+  "window_artifacts": {
+    "builds_byte_identical": true,
+    "controlledruntime.test": "f71f0bb85bdd5518fbeea441c834b366ca8008893c8cae003db26856af92e985",
+    "fdescfs-namespace": "3d992cdf7a08a737fc5ae6ac9969e0b9ddf9f484a989f9f1aa2b71311dbf7745",
+    "helper_difference": "fdescfs-namespace.c is unchanged (e59cde41...). The helper differs from the 060dea0 45f2d59a only in DWARF (the new out_dir as comp_dir); llvm-objcopy --strip-debug gives 07c9f5a19fb38031bfbfda438b3f659a8fdc03ecc656f8f20791d120f9364a96, the same as the stripped 060dea0 helper (receipts/helper-stripped-f64) and the 664 builds",
+    "hfs-controlled-runtime": "34fb05b28357b42e37816370f9bb6c0ec046ff2e98763dafff87c3680021694c",
+    "invocation": "tools/lab/build-fdescfs-window-artifacts.sh /home/paul/tmp/claude/hfs-xz3-20261110h/window-build b8697101df601d7748bae85721e91c0e01aae474",
+    "recipe_sha256": "a37ea98fab503f164ab3619867bbd427d79b7fa4d1893bd00998e4c227a5a008",
+    "source": "b8697101df601d7748bae85721e91c0e01aae474",
+    "superseded": {
+      "controlledruntime.test": "56e87332bb2ec179881f4ebff8f736f7bf57e2916a81dccf9b10461ce9e30ab5",
+      "fdescfs-namespace": "45f2d59aa1d0970f1d74b6d19dc5178d2b33543e30ca86b711680029538ae2cb"
+    },
+    "test_changed_because": "i64..x64 changed internal/controlledruntime (guest_artifacts, lifecycle_client, runtime_config and tests) and the controlledvalidation/guestbridge/viewcontrol packages it links"
+  }
+}

@@ -63,7 +63,11 @@ so the kernel image changes; the in-tree modules and `Module.symvers` should
 not. The c64+d64 rebuild (candidate `66b5bb2b…`,
 [evidence](evidence/xz3-20261110g/README.md)) confirmed both: the resolved
 config is that same `28fe4a8e…`, and the five modules, `Module.symvers` and
-`abi-negative.json` came out byte-identical to `e01fab21`.
+`abi-negative.json` came out byte-identical to `e01fab21`. The y64 rebuild
+(candidate `867ede36…`, [evidence](evidence/xz3-20261110h/README.md)) kept
+that config; its g64+m64 patch series changed the image and the CRCs of the
+hfs exports in `Module.symvers`, while the five modules and
+`abi-negative.json` again came out byte-identical.
 
 The ordinary namespace fixture selects a rootful OCI runtime in the initial
 user namespace, VFS image storage and a newly created private network namespace

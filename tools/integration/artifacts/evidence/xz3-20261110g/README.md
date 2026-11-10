@@ -1,5 +1,15 @@
 # xz3 c64+d64 rebuild (2026-11-10): SELinux LSM guest kernel, per-domain fence daemon
 
+**Superseded on 2026-11-10** by the [y64 rebuild](../xz3-20261110h/README.md)
+(`867ede36…`, source `b869710`). This package predates the zq3-r7 fixes: its
+guest kernel lacks g64 (hfs `show_options`, exact `cache=mmap`) and m64 (the
+Sources floor, fault-block logs), its daemon `9b7eed8d…` lacks i64 through
+x64, and its exporter `36423b6d…` lacks the 564, e64, p64 and w64 lib9p fixes.
+Its modules, Linux notices and the unchanged native files came out
+byte-identical in the y64 rebuild. The tooling refuses this manifest as
+superseded. It still passes `package.py check` and `admit.py` under the
+current tooling.
+
 This candidate supersedes the [964 kernel rebuild](../xz3-20261110f/README.md)
 (`e01fab21…`, source `06c27a8`) for two reasons, so both the guest kernel and
 the CGO daemon were rebuilt:
