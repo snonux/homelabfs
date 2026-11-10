@@ -502,7 +502,14 @@ func (s *Service) executeCall(ctx context.Context, binding Binding, resume bool)
 	} else {
 		out, err = s.config.Execution.Execute(ctx, binding, prepare)
 	}
-	// Never synthesize no-effect after reservation or dispatch uncertainty.
+	// Never synthesize no-effect after reservation or dispatch uncertainty:
+	// the claim is already reserved, so CALL answers ADMITTED/OK and QUERY
+	// reports what the provider protected. An uncertain error leaves the
+	// claim RESERVED (QUERY reports INDETERMINATE and resumes it). A definite
+	// admission refusal (controlledvalidation.AdmissionRefusal, task j64) is
+	// not synthesized here either: the private provider has already protected
+	// it as a TERMINAL failed result, with this snapshot, before returning
+	// without error and without calling prepare.
 	if err != nil || !prepared.Load() {
 		return callPayload(binding.Call.Claim, "ADMITTED", "OK"), nil
 	}
