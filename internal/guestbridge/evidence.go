@@ -1,6 +1,11 @@
 package guestbridge
 
-import "github.com/snonux/homelabfs/internal/fsapi"
+import (
+	"encoding/json"
+	"strings"
+
+	"github.com/snonux/homelabfs/internal/fsapi"
+)
 
 // ProtectedEvidence reads the actual live C8 ledger cut owned by this Transport
 // and returns its inert, fully validated index, including the digest over the
@@ -20,4 +25,37 @@ func (t *Transport) ProtectedEvidence() (ProtectedTransportState, error) {
 		return ProtectedTransportState{}, fsapi.Unavailable
 	}
 	return inspectEndpointLedger(t.ledger, nil, nil)
+}
+
+// SessionEvidence returns, keyed by session, every bridge session as it is in
+// memory now (encoded exactly as the next commit would persist it) and as it
+// is committed in the owned ledger, both under the transport mutex so no
+// commit falls between the two reads. Like ProtectedEvidence it is inert and
+// bounded by bridgeSessionLimit; it lets a caller check that bridge state
+// agrees with another owner's protected copy (u64: after a pruning RETIRE
+// both must equal the provider's snapshot) without restoring anything.
+func (t *Transport) SessionEvidence() (live, committed map[string]ProtectedBridgeSession, err error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed || t.failed != nil || t.ledger == nil {
+		return nil, nil, fsapi.Unavailable
+	}
+	rows, err := t.service.protectedSessions()
+	if err != nil {
+		return nil, nil, err
+	}
+	live = make(map[string]ProtectedBridgeSession, len(rows))
+	for key, raw := range rows {
+		var row ProtectedBridgeSession
+		if err = json.Unmarshal(raw, &row); err != nil {
+			return nil, nil, err
+		}
+		live[strings.TrimPrefix(key, string(bridgeSessionKey("")))] = row
+	}
+	committed = map[string]ProtectedBridgeSession{}
+	_, err = inspectEndpointLedger(t.ledger, nil, func(scope Context, row ProtectedBridgeSession) error {
+		committed[scope.Session] = row
+		return nil
+	})
+	return live, committed, err
 }

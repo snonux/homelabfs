@@ -60,11 +60,24 @@ func (p *Provider) CheckRestoredBridge(ctx context.Context, scope guestbridge.Co
 }
 
 // checkRestoredSnapshot compares the restored bridge row with the protected
-// snapshot. Grants and CloseSequences may differ only by the tombstones that
-// retirement pruned from the snapshot (o64): a row persisted before the
-// pruning Retire's reply (a crash between the provider commit and the bridge
-// persist) is pruned by the same rule at this provider's family floors and
-// must then match exactly. No live grant or other difference is accepted.
+// snapshot. Grants and CloseSequences may differ only by tombstones that
+// retirement prunes (o64): a row persisted before a pruning Retire's reply (a
+// crash between the provider commit and the bridge persist) still holds them.
+//
+// The comparison prunes both sides at every family's floor (u64). Pruning
+// only the row is not enough for a multi-family session: Retire prunes the
+// snapshot at the retiring family's floor alone, and pruneRetiredSnapshot
+// skips the prune when the snapshot owner's entry does not match the
+// snapshot, so the snapshot can still hold a tombstone at another family's
+// floor. The all-floor row prune drops that tombstone, and a row saved in a
+// later family's retire window would be refused Stale.
+//
+// Integrity: the floors come only from this provider's own principals,
+// read in the caller's transaction; pruneGrantRows drops only Released
+// grants owned by a claim at or below its family's floor, and their close
+// sequences. A missing, extra or changed live grant, or a live grant marked
+// released on one side only, survives the prune on at least one side and so
+// still compares Stale.
 func (p *Provider) checkRestoredSnapshot(tx *bolt.Tx, controller fsapi.UUID, saved []byte, complete map[string]json.RawMessage, raw json.RawMessage) error {
 	var snapshot map[string]json.RawMessage
 	if json.Unmarshal(saved, &snapshot) != nil {
@@ -86,8 +99,12 @@ func (p *Provider) checkRestoredSnapshot(tx *bolt.Tx, controller fsapi.UUID, sav
 	if err != nil {
 		return err
 	}
+	savedGrants, savedCloses, err := guestbridge.PruneRetiredSession(saved, floors)
+	if err != nil {
+		return fsapi.Stale
+	}
 	grants, closes, err := guestbridge.PruneRetiredSession(raw, floors)
-	if err != nil || !sameDecodedJSON(snapshot["Grants"], grants) || !sameDecodedJSON(snapshot["CloseSequences"], closes) {
+	if err != nil || !sameDecodedJSON(savedGrants, grants) || !sameDecodedJSON(savedCloses, closes) {
 		return fsapi.Stale
 	}
 	return nil
