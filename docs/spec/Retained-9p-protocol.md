@@ -407,7 +407,15 @@ ordered list of `(object ID,object revision,entry revision,raw component)` whose
 canonical hash is ancestors_hash. A root has the empty list. Revalidate cached
 search/path capabilities and current logical metadata at the captured committed
 cut; possession is not timeless pathname permission. DESCRIPTION grants retain
-issued rights across chmod/unlink, not across generation/session revocation.
+issued rights across chmod/rename/unlink, not across generation/session revocation.
+TRUNCATE and SYNC are the only opcodes carrying both `object` and an optional
+`description`. With a nonnull description the description is the authority:
+`object` must be a live issued grant (token, scope, rights) naming the
+description's own object (else Stale), and its recorded ancestry is not
+re-walked, so ftruncate after rename and fsync of an open unlinked file
+succeed. With a null description `object` is path authority and is
+revalidated as above. FORGET likewise closes its exact live token without a
+path re-check.
 dup/fork/transfer retain the description; final reference retirement closes it.
 Delayed mapped writes retain that exact grant and per-page provenance, never a
 root writeback fid's rights. Process-exit/close are sequenced kernel assertions,

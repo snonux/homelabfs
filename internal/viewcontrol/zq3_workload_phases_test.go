@@ -218,12 +218,12 @@ func (w *zq3World) metadata() {
 		m0.write(p, f, []byte("metadata-receipt"), 0)
 		m0.rename(p, d.obj, "original", "renamed")
 		m0.link(p, d.obj, "renamed", "linked")
-		// The open file's dentry was renamed but keeps its pre-rename
-		// capability (hfs_rename installs no new one, hfs_setattr writes the
-		// dentry's), so the host refuses this ftruncate as Stale: guest.py's
-		// "truncate" step would fail T3 here. Not a budget wall; the model
-		// counts the CALL and continues so the later budgets are measured.
-		m0.truncate(p, f, 8, "Stale")
+		// The open file's dentry was renamed but keeps its pre-rename object
+		// capability (hfs_rename installs no new one). ftruncate also sends
+		// the open description, so the bridge checks that object only as a
+		// live grant equal to the description's object, not by its outdated
+		// path (r64), and the call succeeds as POSIX requires.
+		m0.truncate(p, f, 8)
 		m1.stat(p, m1.root, leaf+"/linked")
 		m0.fsync(p, d, "DIRECTORY")
 		m0.close(p, f)
@@ -231,8 +231,9 @@ func (w *zq3World) metadata() {
 		m0.remove(p, d.obj, "unlinked", false)
 		m0.write(p, u, []byte("retained"), 0)
 		// Same for fsync of the open-unlinked file: SYNC names the inode's
-		// object capability, whose ancestry ended with the unlink.
-		m0.fsync(p, u, "FILE", "Stale")
+		// object capability, whose ancestry ended with the unlink, but its
+		// description keeps the issued rights across unlink (r64).
+		m0.fsync(p, u, "FILE")
 		m0.read(p, u, 0, 8)
 		m0.close(p, u)
 	})
