@@ -242,7 +242,7 @@ func (c *Controller) startRecall(ctx context.Context) error {
 	if c.state.Recall != nil {
 		return nil
 	}
-	if c.state.Fence == ^uint64(0) || len(c.state.AckArchive)+8*len(c.config.Authorization.Enrollment.Domains) > c.config.Authorization.Enrollment.Bounds.Identities*8 {
+	if c.fenceExhausted() || len(c.state.AckArchive)+8*len(c.config.Authorization.Enrollment.Domains) > c.config.Authorization.Enrollment.Bounds.Identities*8 {
 		return fsapi.NoSpace
 	}
 	id, err := c.newUUID()
@@ -460,7 +460,9 @@ func (c *Controller) progress(ctx context.Context) error {
 				c.state.Reservations[id] = s
 			}
 		}
-		c.state.Fence++
+		// Each participant's guest mount advanced its own fence when its
+		// REOPENED ACK was accepted; mirror exactly those domains.
+		c.advanceFences(r)
 		c.state.Recall = nil
 		changed = true
 	}
@@ -563,7 +565,7 @@ func (c *Controller) closeUnadopted(ctx context.Context, scope guestbridge.Conte
 	if err != nil {
 		return err
 	}
-	statement := Unadopted{Enrollment: c.config.Authorization.Enrollment, Event: bytes.Clone(c.state.Recall.Events[scope.Session]), Acknowledgement: bytes.Clone(raw), Ledger: ledger, Scope: scope, OldFence: c.state.Fence, Omitted: omitted}
+	statement := Unadopted{Enrollment: c.config.Authorization.Enrollment, Event: bytes.Clone(c.state.Recall.Events[scope.Session]), Acknowledgement: bytes.Clone(raw), Ledger: ledger, Scope: scope, OldFence: c.fence(scope.Session), Omitted: omitted}
 	if err = c.config.Facts.CheckUnadopted(c.factsContext(ctx), statement); err != nil {
 		return err
 	}

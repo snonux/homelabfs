@@ -56,7 +56,13 @@ type ProtectedTransportState struct {
 	Cells             []uint64
 	Ordinary, Control int
 	Workspace         bool
-	Digest            string `json:"-"`
+	// GuestHoles lists, per session, the sorted unissued guest cells below
+	// GuestHigh that may still be admitted once (guestReorderWindow). It is
+	// omitted when no session has a hole, so histories without one keep their
+	// exact index bytes, and an index written before it existed means what
+	// it always meant: every guest cell through GuestHigh is spent.
+	GuestHoles map[string][]uint64 `json:",omitempty"`
+	Digest     string              `json:"-"`
 }
 
 // ProtectedTransportCell retains exact transport bytes and historical callback
@@ -297,7 +303,7 @@ func protectedCell(c *cell) ProtectedTransportCell {
 	return ProtectedTransportCell{Header: h, Body: c.body, Chunks: c.chunks, Observations: c.observations, Count: c.count, Control: c.reservation.Control, Command: c.command, Native: c.native, JobPhase: c.jobPhase, BlockedError: c.blockedError, Response: c.response, Wire: c.wire, Seen: c.seen, Unread: c.unread, ResultKind: c.resultKind, GuestWatermark: c.guestWatermark, Mapping: c.mapping, Terminal: c.terminal}
 }
 func (t *Transport) protectedIndex() ProtectedTransportState {
-	s := ProtectedTransportState{RuntimeHellos: t.runtimeHellos, BridgeSessions: true, Version: 1, Endpoint: t.Endpoint(), Controller: t.service.controller, High: t.high, Terminal: t.terminal, GuestHigh: t.guestHigh, GuestRecent: t.guestRecent, Ordinary: t.ordinary, Control: t.control, Workspace: t.workspace != nil, Cells: make([]uint64, 0, len(t.cells))}
+	s := ProtectedTransportState{RuntimeHellos: t.runtimeHellos, BridgeSessions: true, Version: 1, Endpoint: t.Endpoint(), Controller: t.service.controller, High: t.high, Terminal: t.terminal, GuestHigh: t.guestHigh, GuestHoles: t.guestHoles, GuestRecent: t.guestRecent, Ordinary: t.ordinary, Control: t.control, Workspace: t.workspace != nil, Cells: make([]uint64, 0, len(t.cells))}
 	for id := range t.cells {
 		s.Cells = append(s.Cells, id)
 	}
@@ -472,6 +478,9 @@ func validateTransportIndex(s ProtectedTransportState) error {
 			return fsapi.Stale
 		}
 		seenGuest[issued] = true
+	}
+	if err := validateGuestHoles(s, seenGuest); err != nil {
+		return err
 	}
 	var previous uint64
 	for _, id := range s.Cells {
@@ -767,6 +776,10 @@ func validateTransportCellBinding(s ProtectedTransportState, c ProtectedTranspor
 	if c.GuestWatermark > s.GuestHigh[c.Header.Session.String()] {
 		return fsapi.Stale
 	}
+	// A row's guest cell is issued, so it can never also be an open hole.
+	if c.Mapping != nil && slices.Contains(s.GuestHoles[c.Header.Session.String()], c.Mapping.GuestCell) {
+		return fsapi.Stale
+	}
 	if c.Header.Minor != minor || c.Header.Kind != 1 || c.Header.Flags > 3 || c.Header.Offset%ChunkBytes != 0 || c.Header.Offset >= c.Header.Total {
 		return fsapi.Stale
 	}
@@ -790,4 +803,28 @@ func openWritableTransportLedger(root string) (*transportLedger, error) {
 		return nil, err
 	}
 	return openTransportLedgerDirectory(root, fd, false, true)
+}
+
+// validateGuestHoles checks the per-session reorder holes against the index:
+// only known, unretired sessions with a high-water have holes; each list is
+// nonempty, strictly increasing, below GuestHigh but inside the reorder
+// window, and disjoint from the issued recent markers.
+func validateGuestHoles(s ProtectedTransportState, issued map[GuestIssuance]bool) error {
+	if len(s.GuestHoles) > 64 {
+		return fsapi.Stale
+	}
+	for session, holes := range s.GuestHoles {
+		high, known := s.GuestHigh[session]
+		if !known || s.Terminal[session] != 0 || len(holes) == 0 || len(holes) >= guestReorderWindow {
+			return fsapi.Stale
+		}
+		var previous uint64
+		for _, h := range holes {
+			if h <= previous || h >= high || h+guestReorderWindow <= high || issued[GuestIssuance{session, h}] {
+				return fsapi.Stale
+			}
+			previous = h
+		}
+	}
+	return nil
 }

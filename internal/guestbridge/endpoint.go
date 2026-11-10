@@ -75,6 +75,9 @@ type Transport struct {
 	terminal                    map[string]uint64
 	guestHigh                   map[string]uint64
 	guestRecent                 []GuestIssuance
+	// guestHoles holds, per session, the unissued guest cells below guestHigh
+	// that may still arrive out of guest order (see guestReorderWindow).
+	guestHoles map[string][]uint64
 	// lostReply is the disposable one-shot response-exposure fixture record
 	// (see lost_reply.go); nil unless explicitly armed. It is not protocol
 	// state and is never written to or restored from the C8 ledger.
@@ -138,7 +141,7 @@ func newTransport(s *Service, budget *admission.Budget, root string, hook func(s
 	}
 	s.transportAttached = true
 	s.mu.Unlock()
-	t := &Transport{runtimeHellos: map[string]runtimeHelloWitness{}, terminal: map[string]uint64{}, guestHigh: map[string]uint64{}, service: s, cells: map[uint64]*cell{}, ordinaryQueue: make(chan job, 64), controlQueue: make(chan job, 16), replacementQueue: make(chan job, 1), drainQueue: make(chan job, 16), acquisitionQueue: make(chan job, 64), done: make(chan struct{})}
+	t := &Transport{runtimeHellos: map[string]runtimeHelloWitness{}, terminal: map[string]uint64{}, guestHigh: map[string]uint64{}, guestHoles: map[string][]uint64{}, service: s, cells: map[uint64]*cell{}, ordinaryQueue: make(chan job, 64), controlQueue: make(chan job, 16), replacementQueue: make(chan job, 1), drainQueue: make(chan job, 16), acquisitionQueue: make(chan job, 64), done: make(chan struct{})}
 	// Reserve complete request/reply/receipt bitmap and bounded decode copies for
 	// every active credit before any callback allocation. Workspace is independent.
 	pools := []struct {

@@ -59,3 +59,24 @@ The test kernel was then removed (23 files).
 - **R6-3, guest SELinux disabled (task c64, fixed in the recipe, pending a
   rebuild).** Also explains Rocky's relabel reboot after each test boot (task
   b64).
+
+## Root causes (task d64, from the decoded evidence)
+
+- **R6-1 was a fence mismatch, not enrollment or bind.** The runtime's view
+  controller kept one controller-wide fence and advanced it after every
+  completed recall, so after mount-0's bootstrap recall its ledger fence was
+  2. The guest kernel keeps a fence per mount that starts at 1 and advances
+  only on that mount's own REOPENED. Mount-1's first lease therefore carried
+  fence 2, the guest's `fence != expected_fence` check refused it, and
+  `hfs_received_source` returned -EKEYREJECTED. Fixed in d64: the controller
+  now keeps one fence per domain (ledger schema 2; schema-1 ledgers are
+  refused on reopen).
+- **R6-2 was an out-of-order guest cell refused as stale.** Mount-0's
+  VIEW_WAIT guest cell 48 reached the runtime as native 108, after QUERY guest
+  cell 49 as native 107. The runtime refused any guest cell at or below the
+  session's guest high-water, so cell 48 was refused, the exporter pinned that
+  donor send and both sessions' VIEW_WAITs stalled until the guest's 30 s
+  view-control timeout (-110). Fixed in d64: the runtime admits an unissued
+  guest cell within a 16-cell reorder window below the high-water exactly
+  once. Exporter-side ordering and not pinning on a permanent refusal are
+  task e64.

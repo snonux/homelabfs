@@ -75,6 +75,8 @@ type Authorization struct {
 // Unadopted binds the universal old-epoch exclusion statement. Its verifier must
 // obtain actual authenticated ACK provenance and the admitted running kernel's
 // adoption-barrier evidence; this structure/list/hash supplies no such proof.
+// OldFence is the acknowledging domain's own fence (DomainFence) during the
+// recall, the value its guest mount reports, not any other domain's.
 type Unadopted struct {
 	Enrollment                     Enrollment
 	Event, Acknowledgement, Ledger json.RawMessage
@@ -148,9 +150,13 @@ type ledger struct {
 	Reservations            map[string]reservationState
 	Domains                 map[string]domainState
 	Recall                  *recallState
-	Fence                   uint64
-	Identities              int
-	Recovery                bool
+	// Schema is LedgerSchema; Fences holds each domain's fence once it has
+	// completed a recall (see DomainFence). Neither is optional: a ledger
+	// without them is an older layout and is refused on reopen.
+	Schema     int
+	Fences     map[string]uint64
+	Identities int
+	Recovery   bool
 }
 type family struct{ High, Floor uint64 }
 type ticketState struct {
@@ -292,7 +298,7 @@ func New(ctx context.Context, c Config) (*Controller, error) {
 			if !c.Initialize {
 				return fsapi.Unavailable
 			}
-			controller.state = ledger{UUIDs: map[string]bool{}, Revisions: map[string]uint64{}, AckArchive: map[string]string{}, Retirements: map[string]json.RawMessage{}, Version: version, EnrollmentHash: controller.enrollmentHash, Sources: map[string]fsservice.ControlledViewSource{}, Tickets: map[string]ticketState{}, Families: map[string]family{}, Leases: map[string]leaseState{}, Reservations: map[string]reservationState{}, Domains: map[string]domainState{}, Fence: 1}
+			controller.state = ledger{UUIDs: map[string]bool{}, Revisions: map[string]uint64{}, AckArchive: map[string]string{}, Retirements: map[string]json.RawMessage{}, Version: version, EnrollmentHash: controller.enrollmentHash, Sources: map[string]fsservice.ControlledViewSource{}, Tickets: map[string]ticketState{}, Families: map[string]family{}, Leases: map[string]leaseState{}, Reservations: map[string]reservationState{}, Domains: map[string]domainState{}, Schema: LedgerSchema, Fences: map[string]uint64{}}
 		} else {
 			if c.Initialize {
 				return fsapi.Permission
@@ -303,7 +309,9 @@ func New(ctx context.Context, c Config) (*Controller, error) {
 			if err = json.Unmarshal(old, &controller.state); err != nil {
 				return err
 			}
-			if controller.state.Version != version || controller.state.EnrollmentHash != controller.enrollmentHash {
+			// An older ledger layout (no per-domain fences) is refused here,
+			// before any recovery work, rather than migrated: see LedgerSchema.
+			if controller.state.Version != version || controller.state.Schema != LedgerSchema || controller.state.EnrollmentHash != controller.enrollmentHash {
 				return fsapi.Permission
 			}
 		}
@@ -662,7 +670,7 @@ func sameSource(a, b fsservice.ControlledViewSource) bool {
 func (c *Controller) validateLedger() error {
 	s := c.state
 	b := c.config.Authorization.Enrollment.Bounds
-	if s.UUIDs == nil || len(s.UUIDs) > 2*b.Identities || s.Revisions == nil || len(s.Revisions) > b.Identities || s.Sources == nil || s.Tickets == nil || s.Families == nil || s.Leases == nil || s.Reservations == nil || s.Domains == nil || s.AckArchive == nil || s.Retirements == nil || len(s.Sources) > b.Sources || len(s.Tickets) > b.Identities || len(s.Reservations) > b.Reservations || len(s.Leases) > b.Identities || len(s.Domains) > len(c.config.Authorization.Enrollment.Domains) || len(s.AckArchive) > b.Identities*8 || s.Identities > b.Identities || s.Fence == 0 {
+	if s.UUIDs == nil || len(s.UUIDs) > 2*b.Identities || s.Revisions == nil || len(s.Revisions) > b.Identities || s.Sources == nil || s.Tickets == nil || s.Families == nil || s.Leases == nil || s.Reservations == nil || s.Domains == nil || s.AckArchive == nil || s.Retirements == nil || len(s.Sources) > b.Sources || len(s.Tickets) > b.Identities || len(s.Reservations) > b.Reservations || len(s.Leases) > b.Identities || len(s.Domains) > len(c.config.Authorization.Enrollment.Domains) || len(s.AckArchive) > b.Identities*8 || s.Identities > b.Identities || !s.validFences() {
 		return fsapi.Stale
 	}
 	for key, source := range s.Sources {

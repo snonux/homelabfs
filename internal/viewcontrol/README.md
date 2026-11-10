@@ -32,7 +32,17 @@ outcomes, lease versions, actual sealed source snapshots, reservations and
 frozen calls, events/ack digests/manifests and permanent floors. Query may grant a
 previously pending acquisition without changing its original PENDING replay.
 Revoked grants never regain host authority when their old reply is replayed.
-Physical fence advances after all exact REOPENED acknowledgements; per-lineage
+The physical fence is kept **per domain**, exactly as the guest kernel keeps it
+per mount: every domain starts at fence 1, and a recall advances the fence of
+each domain that received its events once all exact REOPENED acknowledgements
+are in. A domain outside that recall keeps its fence, so a mount that joins
+after another mount's recall is still issued fence 1 (zq3-r6 R6-1: one
+controller-wide fence stamped 2 there and the guest refused the mount with
+EKEYREJECTED). Leases, the unadopted-exclusion statement's old fence and the
+physical observation checks all use the acknowledging domain's own fence. The
+ledger records this as schema `LedgerSchema` (2); an older ledger with one
+controller-wide `Fence` is refused on reopen (Permission), never migrated,
+because its fence cannot be split per domain. Per-lineage
 revision high-water survives compaction, preventing content-id reuse even when a
 released unchanged cut is reacquired in the same physical fence.
 
@@ -72,7 +82,7 @@ physical/source facts. Issued but unreceived/unadopted reservations may be omitt
 only after the separate mandatory `CheckUnadopted` verifies a typed universal
 old-epoch exclusion statement. Omission or a hash/list alone establishes nothing.
 The statement binds the signed admitted running-kernel/source contract, exact
-observed STOP event and authenticated ACK bytes, domain/session/old host fence,
+observed STOP event and authenticated ACK bytes, domain/session/that domain's old host fence,
 complete host ledger and every exact omitted reservation. Runtime verification
 must obtain actual ACK provenance via the native/guest supervised endpoint and
 live installation/boot/session evidence for that running component. The admitted
