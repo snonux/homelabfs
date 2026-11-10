@@ -406,7 +406,11 @@ the command context exactly. Alias/view ancestors are a separately retained
 ordered list of `(object ID,object revision,entry revision,raw component)` whose
 canonical hash is ancestors_hash. A root has the empty list. Revalidate cached
 search/path capabilities and current logical metadata at the captured committed
-cut; possession is not timeless pathname permission. DESCRIPTION grants retain
+cut; possession is not timeless pathname permission. Each recorded ancestor must
+stay searchable (else Permission) and each recorded entry must still name the
+same object at the same entry revision, else Stale; a renamed, removed or
+reclaimed ancestor or name is likewise Stale, never NotFound, while I/O,
+unavailability and other real failures keep their own code. DESCRIPTION grants retain
 issued rights across chmod/rename/unlink, not across generation/session revocation.
 TRUNCATE and SYNC are the only opcodes carrying both `object` and an optional
 `description`. With a nonnull description the description is the authority:

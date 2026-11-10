@@ -703,9 +703,10 @@ func TestDescriptionBackedTruncateSyncSurviveRenameAndUnlink(t *testing.T) {
 				t.Fatal(changed)
 			}
 			// Reuse the old name for another file: the path re-check now finds
-			// a different target (Stale in every cut, where a vanished name may
-			// surface as NotFound), and the description-backed calls below must
-			// still reach the original object, not whatever owns the name now.
+			// a different target (Stale), and the description-backed calls
+			// below must still reach the original object, not whatever owns
+			// the name now. The plain vanished-name case, without reuse, is
+			// TestPathRecheckOfVanishedPathIsStale (v64).
 			if _, r := f.call(t, cred, "CREATE", map[string]any{"parent": parent, "name": "6f6c64", "mode": 384, "umask": 0, "flags": flags}); r["code"] != "OK" {
 				t.Fatal(r)
 			}
@@ -726,6 +727,79 @@ func TestDescriptionBackedTruncateSyncSurviveRenameAndUnlink(t *testing.T) {
 				t.Fatal("read after truncate:", r)
 			}
 		})
+	}
+}
+
+// TestPathRecheckOfVanishedPathIsStale pins v64: when a path grant's
+// recorded name or ancestor no longer resolves (rename or removal, with the
+// name left free), the re-check answers Stale, as the capability re-check
+// rule requires, never the NotFound the logical cut's Lookup reports for a
+// missing name. It covers the object's own entry, an ancestor directory's
+// entry and a removed directory used as LOOKUP parent.
+func TestPathRecheckOfVanishedPathIsStale(t *testing.T) {
+	flags := map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}
+	for _, change := range []string{"RENAME", "UNLINK", "ANCESTOR_RENAME", "ANCESTOR_RMDIR"} {
+		t.Run(change, func(t *testing.T) {
+			f := newBridge(t)
+			f.hello(t)
+			cred := f.cred()
+			cred.FSUID = 0
+			_, root := f.call(t, cred, "ROOT", map[string]any{})
+			top := capabilityAt(t, root, 0)
+			_, made := f.call(t, cred, "MKDIR", map[string]any{"parent": top, "name": "64", "mode": 448, "umask": 0})
+			if made["code"] != "OK" {
+				t.Fatal(made)
+			}
+			dir := capabilityAt(t, made, 0)
+			_, created := f.call(t, cred, "CREATE", map[string]any{"parent": dir, "name": "66", "mode": 384, "umask": 0, "flags": flags})
+			if created["code"] != "OK" {
+				t.Fatal(created)
+			}
+			object := capabilityAt(t, created, 0)
+			var steps [][2]any
+			switch change {
+			case "RENAME":
+				steps = [][2]any{{"RENAME", map[string]any{"source_parent": dir, "source_name": "66", "destination_parent": dir, "destination_name": "67", "no_replace": false}}}
+			case "UNLINK":
+				steps = [][2]any{{"UNLINK", map[string]any{"parent": dir, "name": "66"}}}
+			case "ANCESTOR_RENAME":
+				steps = [][2]any{{"RENAME", map[string]any{"source_parent": top, "source_name": "64", "destination_parent": top, "destination_name": "65", "no_replace": false}}}
+			case "ANCESTOR_RMDIR":
+				steps = [][2]any{{"UNLINK", map[string]any{"parent": dir, "name": "66"}}, {"RMDIR", map[string]any{"parent": top, "name": "64"}}}
+			}
+			for _, step := range steps {
+				if _, r := f.call(t, cred, step[0].(string), step[1].(map[string]any)); r["code"] != "OK" {
+					t.Fatal(step[0], r)
+				}
+			}
+			if _, r := f.call(t, cred, "GETATTR", map[string]any{"object": object}); r["code"] != "Stale" {
+				t.Fatal("getattr:", r)
+			}
+			if _, r := f.call(t, cred, "TRUNCATE", map[string]any{"object": object, "description": nil, "size": 0, "times": truncateTimes}); r["code"] != "Stale" {
+				t.Fatal("null-description truncate:", r)
+			}
+			if change == "ANCESTOR_RENAME" || change == "ANCESTOR_RMDIR" {
+				if _, r := f.call(t, cred, "LOOKUP", map[string]any{"parent": dir, "name": "66"}); r["code"] != "Stale" {
+					t.Fatal("lookup under vanished directory:", r)
+				}
+			}
+		})
+	}
+}
+
+// TestPathGoneMapsOnlyVanishedPaths: only NotFound (also wrapped) means the
+// recorded path is gone; real failures keep their code.
+func TestPathGoneMapsOnlyVanishedPaths(t *testing.T) {
+	if e := pathGone(fmt.Errorf("lookup: %w", fsapi.NotFound)); e != fsapi.Stale {
+		t.Fatal("wrapped NotFound:", e)
+	}
+	for _, code := range []fsapi.Errno{fsapi.IO, fsapi.Permission, fsapi.Unavailable, fsapi.CrossDevice, fsapi.NotDirectory, fsapi.Invalid, fsapi.Stale} {
+		if e := pathGone(code); e != code {
+			t.Fatal(code, "became", e)
+		}
+	}
+	if e := pathGone(context.Canceled); !errors.Is(e, context.Canceled) {
+		t.Fatal("cancel:", e)
 	}
 }
 
