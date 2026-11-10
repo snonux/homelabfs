@@ -102,8 +102,14 @@ incomplete. Only a cell it gave up on after that hold, or a complete ordinary
 cell that later traffic bypassed because it could not be written (no credit,
 EAGAIN on its first write, or another error), can still arrive below the
 highwater. A cell is refused as stale once any cell 16 or more guest numbers
-above it was admitted (a distance rule). A refused non-donor cell is not
-failed back by the exporter and stays its pinned writer (task p64), so the window is now a bounded fallback whose size
+above it was admitted (a distance rule). Since task p64 the exporter fails such
+a refused cell back to the guest instead of keeping it as its pinned writer.
+Because the runtime allocates a non-donor cell's native number at its first
+chunk and keeps a refused cell, the exporter fails a non-donor cell back only
+when the refusal also shows that the number was spent (ESTALE on a first
+attempt, or EINVAL after an accepted earlier chunk) and then treats that number
+as spent. The refused cell stays in the runtime as a permanently incomplete cell
+(see the marker rule below). The window is now a bounded fallback whose size
 can be revisited once the rebuilt exporter has run (see the [lib9p README](../../tools/integration/lib9p/README.md)).
 This bounds retained state and is not evidence that the guest retired
 it. A SESSION_RETIRE drops its scope's holes. The C8 index protects holes as

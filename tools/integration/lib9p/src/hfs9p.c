@@ -1342,8 +1342,11 @@ _native_body(Hfs9p *h, Hfs9pEntry *e) {
  *    as before e64.
  * A bypassed or given-up cell that arrives below the high-water relies on the
  * runtime's reorder window (it admits an unissued cell once, inside 16 cells
- * below the high-water). Replacement polls and replays of an existing
- * candidate are not originals and never wait. */
+ * below the high-water). Once a cell 16 or more guest numbers above it was
+ * admitted, the runtime refuses it as stale, and the exporter fails it back
+ * to the guest instead of pinning the writer (p64, _permanent_original).
+ * Replacement polls and replays of an existing candidate are not originals
+ * and never wait. */
 #define HFS9P_ORDER_HOLD_MS 1000u
 
 /* Lowest present original of e's session above after and below e that is not
@@ -1495,53 +1498,110 @@ _forward_protect(Hfs9p *h, Hfs9pEntry *e) {
    return (protection);
 }
 
-/* Permanent refusal (e64). Only an original donor send (reclaim, poll index
- * 0, not SESSION_RETIRE) is classified; every other candidate keeps the
- * pre-e64 pin. The runtime (internal/guestbridge Transport.Write, through the
- * FUSE adapter's errno map in internal/fuseadapter) builds such a send in its
- * reclaim workspace and advances its native high-water only when the send is
- * admitted, so a refused one consumed no native number. Permanent are:
- *  - ESTALE (fsapi.Stale): stale guest cell, released or spent native cell;
- *  - EINVAL (fsapi.Invalid): malformed or mismatched frame, body or chunk.
- *    An admitted cell stays in the runtime's table, unreleased until its own
- *    response is reclaimed, and an identical resend of it returns the full
- *    length, so neither errno can mean "admitted, receipt lost". A ledger
- *    protection failure after admission can wrap Invalid, but it also fences
- *    the whole runtime transport, whose durable ledger never held the cell.
- *  - EACCES (fsapi.Permission), but only on a first attempt. The runtime
- *    checks native authentication, node and scope before it looks the cell
- *    up, so a resend of a cell admitted with a lost receipt could see EACCES.
- *    The FUSE adapter (internal/fuseadapter, PrivateControl.native) also
- *    returns EACCES when its per-request credential snapshot fails, which
- *    may be transient. Failing such a first attempt back is safe, since
- *    nothing was admitted, but it drops a cell that a retry might have
- *    delivered.
- * EPERM is not classified: the adapter maps fsapi.Permission to EACCES and
- * nothing in the runtime's write path produces EPERM, so its meaning is
- * unknown. EAGAIN (WouldBlock: workspace, queue or recent-marker pressure) is
- * transient. EHOSTDOWN, ENOSPC, EIO, EINTR and anything else are uncertain,
- * because a protection or transport failure may follow admission. Transient
- * and uncertain outcomes stay pinned as before. */
+/* Permanent refusals of original cells (e64 for donor sends, p64 for the
+ * rest). Replacement polls and terminal cells are never classified and keep
+ * the pre-e64 pin. The runtime is internal/guestbridge Transport.Write,
+ * reached through the FUSE adapter's errno map in internal/fuseadapter.
+ *
+ * What both kinds share: an admitted cell stays in the runtime's table,
+ * unreleased until the exporter reads its response and a later cell
+ * reclaims it, and an identical resend of an admitted cell returns the full
+ * length. So ESTALE (fsapi.Stale) and EINVAL (fsapi.Invalid) never mean
+ * "admitted, receipt lost", with two exceptions:
+ *  - A ledger protection failure after admission can wrap Invalid, but it
+ *    also fences the whole runtime transport and the cell is not
+ *    dispatched; its durable ledger never held the cell.
+ *  - Authentication runs before the cell lookup. On FreeBSD the native
+ *    connection check returns fsapi.Stale when the mount on the endpoint
+ *    path changed (controlledruntime nativeConnection.check). The adapter's
+ *    own credential snapshot runs the same check first and maps its failure
+ *    to EACCES, so this ESTALE needs the mount to change between two checks
+ *    of one request. A resend of an admitted cell could see it.
+ * EACCES (fsapi.Permission) also comes from those checks before the lookup,
+ * and from the adapter when its per-request credential snapshot fails
+ * (PrivateControl.native), which may be transient. EPERM is never produced
+ * (the adapter maps Permission to EACCES), so its meaning is unknown.
+ * EAGAIN (WouldBlock) is transient. EHOSTDOWN, ENOSPC, EIO, EINTR and every
+ * other errno are uncertain: a protection or transport failure may follow
+ * admission. Transient and uncertain outcomes keep the exact candidate
+ * pinned.
+ *
+ * Donor send (e64): reclaim, poll index 0, not SESSION_RETIRE. The runtime
+ * builds it in its reclaim workspace and advances its native high-water
+ * only on admission, so a refusal never consumes the native number.
+ * Permanent are ESTALE (stale guest cell, released or spent native cell)
+ * and EINVAL on any attempt, and EACCES only on a first attempt. Failing a
+ * first-attempt EACCES back is safe, since nothing was admitted, but it
+ * drops a cell that a retry might have delivered. e64 accepted ESTALE on a
+ * replay; the authentication race above could make that an admitted send
+ * (the guest treats the ERROR reply as an uncertain result). */
 static bool
-_permanent_refusal(const Hfs9pEntry *e, int error, bool replay) {
-   if (e->donor < 0 || e->polls || e->terminal || e->terminal_funded)
-      return (false);
+_permanent_donor(int error, bool replay) {
    if (error == ESTALE || error == EINVAL)
       return (true);
    return (error == EACCES && !replay);
 }
 
-/* Fails a permanently refused cell back to the guest (e64) instead of
- * pinning the native writer on bytes the runtime will never admit. The donor
- * entry stays: the runtime did not reclaim it. The guest assembly is dropped
- * but its seen mark stays, so the guest's FETCH or resend of the cell gets
- * ESTALE and the cell number is never reused. A fresh snapshot is protected
- * so that recovery does not replay the refused candidate. */
+/* Non-donor original (p64), for example a complete ordinary cell that later
+ * control or donor traffic bypassed and that the runtime then refused as a
+ * stale guest cell (prepareMapping: the cell fell out of the 16-cell guest
+ * reorder window). The runtime allocates such a cell's native number at its
+ * first chunk, before any content check, and keeps a refused cell in its
+ * table for good (incomplete, never dispatched, holding its credit). A fail
+ * back must therefore know that the number was spent, or the next cell
+ * collides with the stuck cell or leaves a gap, and every later cell would
+ * then be refused too. Permanent, with the number spent, are:
+ *  - ESTALE on a first attempt. It comes from the guest freshness check or
+ *    a duplicate guest cell (after allocation), or from a native number at
+ *    or below the runtime's high-water (spent already). A replay could see
+ *    the authentication ESTALE of an admitted cell, so a replay stays
+ *    pinned. If a first attempt's ESTALE was that authentication race, the
+ *    number was not spent, and the next cell's first write is refused
+ *    EINVAL for the gap and stays pinned: the pre-p64 stall, nothing worse.
+ *  - EINVAL once an earlier chunk of this write was accepted (inserted):
+ *    the runtime allocated the number at that chunk. On the first chunk
+ *    EINVAL is either a content refusal after allocation or a frame or
+ *    numbering refusal before it, which the exporter cannot tell apart, so
+ *    a single-chunk cell refused EINVAL stays pinned.
+ * EACCES is never classified here: it is either an authentication refusal
+ * before allocation (possibly transient) or a content refusal after it. */
+static bool
+_permanent_original(int error, bool replay, bool inserted) {
+   if (error == ESTALE)
+      return (!replay);
+   return (error == EINVAL && inserted);
+}
+
+/* True when the refused candidate e is failed back instead of pinned. */
+static bool
+_permanent_refusal(const Hfs9pEntry *e, int error, bool replay,
+    bool inserted) {
+   if (e->polls || e->terminal || e->terminal_funded)
+      return (false);
+   if (e->donor >= 0)
+      return (_permanent_donor(error, replay));
+   return (_permanent_original(error, replay, inserted));
+}
+
+/* Fails a permanently refused cell back to the guest instead of pinning the
+ * native writer on bytes the runtime will never admit. The guest assembly is
+ * dropped but its seen mark stays, so the guest's FETCH or resend of the
+ * cell gets ESTALE and the cell number is never reused. A donor send's donor
+ * entry stays (e64): the runtime did not reclaim it and did not spend the
+ * native number. A non-donor original's native number was spent (p64, see
+ * _permanent_original), so the native high-water moves to it. Its runtime
+ * cell keeps an ordinary or control credit that the exporter no longer
+ * counts; the guest treats the ERROR as an uncertain result and keeps that
+ * cell's slot reserved, so it does not reuse the credit either. A fresh
+ * snapshot is protected so that recovery does not replay the refused
+ * candidate. */
 static int
 _fail_back(Hfs9p *h, Hfs9pEntry *e, int error) {
    Hfs9pSession *s = &h->sessions[e->session];
    if (e->guest_cell > s->order_high)
       s->order_high = e->guest_cell;
+   if (e->donor < 0 && e->native_cell > h->high)
+      h->high = e->native_cell;
    h->pending = -1;
    _entry_clear(e);
    uint8_t *ledger = NULL;
@@ -1585,7 +1645,9 @@ _native_write(Hfs9p *h, Hfs9pEntry *e, uint32_t offset, int *refusal) {
 /* Writes every chunk of the protected candidate. A native refusal is EAGAIN
  * without a native number for a first ordinary chunk, a fail-back for a
  * permanent refusal, and otherwise a pinned uncertain candidate. replay is
- * true when an earlier attempt already reached protection. */
+ * true when an earlier attempt already reached protection. A refusal after
+ * an accepted chunk of this write (offset > 0) proves that the runtime
+ * allocated the candidate's native number (p64, _permanent_original). */
 static int
 _forward_write(Hfs9p *h, Hfs9pEntry *e, bool replay) {
    int index = (int)(e - h->entries);
@@ -1608,7 +1670,7 @@ _forward_write(Hfs9p *h, Hfs9pEntry *e, bool replay) {
          h->pending = -1;
          return (EAGAIN);
       }
-      if (_permanent_refusal(e, refusal, replay))
+      if (_permanent_refusal(e, refusal, replay, offset > 0))
          return (_fail_back(h, e, refusal));
       /* Even an error can lose a transport receipt. Keep exact candidate
        * bytes and writer ownership; never allocate its number to others. */
@@ -1649,7 +1711,8 @@ _forward_issued(Hfs9p *h, Hfs9pEntry *e) {
  * native callbacks are bounded copy/readiness operations. EAGAIN on a first
  * ordinary write consumes no native number, so controls may bypass it. Any
  * uncertain/partially copied candidate pins the writer to its exact bytes,
- * except a permanently refused donor send, which fails back (e64). */
+ * except a permanently refused original cell, which fails back (e64 for
+ * donor sends, p64 for the rest, see _permanent_refusal). */
 static int
 _forward(Hfs9p *h, Hfs9pEntry *e) {
    unsigned index = (unsigned)(e - h->entries);
