@@ -21,10 +21,10 @@ SPEC.loader.exec_module(FILLER)
 WINDOW = FILLER.WINDOW
 PINS = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/pins.json"
 RECORD = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/build-record.json"
-# Daemon of the admitted xz3 c64+d64 rebuild (66b5bb2b), built from 060dea0
-# (d64 keeps the view fence per domain and admits a bounded out-of-order guest
-# cell once); the window build reproduced it.
-ADMITTED_DAEMON_SHA256 = "9b7eed8dc9b98f4a61af000bb17b5008672a7083075e206951fc96b53577088b"
+# Daemon of the admitted xz3 y64 rebuild (867ede36), built from b869710
+# (i64..x64: Sources floor, claim/grant recycling, refusal clean-up, Stale
+# re-check, abandoned-cell replacement); the window build reproduced it.
+ADMITTED_DAEMON_SHA256 = "34fb05b28357b42e37816370f9bb6c0ec046ff2e98763dafff87c3680021694c"
 CONTROLLER_SHA = "c" * 64
 # f3 stock fusefs.ko, docs/lab/results/20261108-zq3-phase1 (task j44).
 FUSEFS_SHA256 = "b207adf6383bee8e022fa6115044508b7c64da07e73865e5ea71594d524cc4bd"
@@ -94,10 +94,11 @@ class FillerTests(unittest.TestCase):
         for path, value in record["captured_base_closure_sha256"].items():
             self.assertEqual(pinned[path], value)
         # The window artifacts follow the admitted daemon source: rebuilt from
-        # 060dea0 for the c64+d64 rebuild on 2026-11-10 (earlier from a20aca1
-        # for z54, reused by 964, and from defd974 for f44, reused by r54 and
-        # w54), so the qualification test bytes match the daemon source.
-        self.assertEqual(record["source_commit"], "060dea03bb6fffad2353dfa70461dd860e5b1db4")
+        # b869710 for the y64 rebuild on 2026-11-10 (earlier from 060dea0 for
+        # c64+d64, from a20aca1 for z54, reused by 964, and from defd974 for
+        # f44, reused by r54 and w54), so the qualification test bytes match
+        # the daemon source.
+        self.assertEqual(record["source_commit"], "b8697101df601d7748bae85721e91c0e01aae474")
 
     def test_filled_plan_is_accepted_by_actual_controller_validate(self):
         plan = self.fill()

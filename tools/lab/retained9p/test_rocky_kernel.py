@@ -36,9 +36,9 @@ def module(name):
 rk = module("rocky_kernel")
 REPOSITORY = Path(__file__).resolve().parents[3]
 PROBE = REPOSITORY / "internal/controlledruntime/probe/installed.py"
-# The admitted xz3 c64+d64 rebuild (manifest 66b5bb2b..., 2026-11-10); its
+# The admitted xz3 y64 rebuild (manifest 867ede36..., 2026-11-10); its
 # rebuilt modules are byte-identical to the w54 bytes of 89c928d5.
-REAL_PACKAGE = Path("/home/paul/tmp/claude/hfs-xz3-20261110g/package")
+REAL_PACKAGE = Path("/home/paul/tmp/claude/hfs-xz3-20261110h/package")
 RELEASE = "6.1.190-hfs-xz3"
 STOCK = "5.14.0-687.66.1.el9_8.x86_64"
 MID = "b26c0ac534534d7fb81b3e0698558bc3"
@@ -463,16 +463,16 @@ class PlanTests(Rig):
     @unittest.skipUnless((REAL_PACKAGE / "manifest.json").exists(), "candidate package absent")
     def test_real_candidate_package_plan(self):
         """Read-only: the pinned xz3 package yields the build IDs readelf reports."""
-        sha = "66b5bb2b6c1dd1a663f26c50d0d9b3bfeebd620127c4a5859ca146074f2c2e2d"
+        sha = "867ede3630e4ee0a609f88b0752670fac5b7a0c0e0f9d2a340031110da32c334"
         with mock.patch.object(rk, "ADMITTED", {sha}):
             plan = json.loads(rk.build_plan(REAL_PACKAGE, sha, "zq3-r1",
                                             "/boot/vmlinuz-" + STOCK, 64 << 20))
         self.assertEqual(plan["kernel_release"], RELEASE)
-        # The c64 rebuild (selinux in CONFIG_LSM) gave vmlinux a new build ID
-        # (964's was a470c7a8, w54's 806cfbb2); the modules are byte-identical
-        # to the 964, z54, w54, r54 and f44 packages, so virtio_net keeps its
-        # build ID.
-        self.assertEqual(plan["kernel"]["build_id"], "2ce818d94ce5990da73dec32a1f60190c24107e7")
+        # The y64 rebuild (g64+m64 patch series) gave vmlinux a new build ID
+        # (c64's was 2ce818d9, 964's a470c7a8, w54's 806cfbb2); the modules
+        # are byte-identical to the c64, 964, z54, w54, r54 and f44 packages,
+        # so virtio_net keeps its build ID.
+        self.assertEqual(plan["kernel"]["build_id"], "870bb9d1d61ca10ecbbdb0a494a2fb5c449b92ee")
         self.assertEqual(plan["modules"]["virtio_net"]["build_id"],
                          "072995182e1a95b83cf3ec794649ce05adf8a59d")
         self.assertEqual(len(plan["modules"]), 5)

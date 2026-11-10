@@ -219,8 +219,9 @@ frame; the client spells it `--lost-operation CALL --lost-intent MKDIR`.
 This is runtime code. The f44 rebuild (`b203799e…`) added it, the r54
 (`5eb42c50…`) and w54 (`89c928d5…`) candidates carried the same daemon, the
 z54 daemon rebuild (`2e0412a6…`, daemon `39c92d01…`) keeps it, the 964 kernel
-rebuild (`e01fab21…`) reused that daemon, and the current c64+d64 rebuild
-(`66b5bb2b…`, daemon `9b7eed8d…` from `060dea0`) keeps it, so zq3 can use the
+rebuild (`e01fab21…`) reused that daemon, the c64+d64 rebuild (`66b5bb2b…`,
+daemon `9b7eed8d…` from `060dea0`) kept it, and the current y64 rebuild
+(`867ede36…`, daemon `34fb05b2…` from `b869710`) keeps it, so zq3 can use the
 filter. The guest still
 blocks m0 after the dropped MKDIR reply, so T10 is still expected to FENCE;
 the difference is that m1 then shows the committed directory.
