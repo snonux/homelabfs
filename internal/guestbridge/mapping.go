@@ -26,6 +26,9 @@ const mappingRecentLimit = 80
 // window (high-window, high). A hole is admitted at most once; a cell that
 // falls out of the window without arriving can never be admitted. This is a
 // bound on retained state, not evidence that the cell retired at the guest.
+// 16 is a stopgap, not derived from an exporter in-flight bound: a cell
+// arriving after more than 15 later cells is still refused as stale, so the
+// R6-2 stall can recur until the exporter forwards in guest order (task e64).
 const guestReorderWindow = 16
 
 // MappingLeg is inert protected evidence for one actually admitted native leg.

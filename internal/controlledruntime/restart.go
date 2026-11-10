@@ -477,7 +477,7 @@ func (r *Restart) checkIdlePhysical(l factsLedger) error {
 			case "LIVE":
 				// Fences are per domain, as in the guest: a registered domain's
 				// mount must report exactly its ledger fence, and an unregistered
-				// one (never recalled, DomainFence 1) can be no further.
+				// one (never registered/acquired, DomainFence 1) can be no further.
 				fence := viewcontrol.DomainFence(l.Fences, row.Scope.Session)
 				if row.Fence > fence {
 					a.mu.Unlock()
