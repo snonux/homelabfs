@@ -17,7 +17,9 @@ is error-prone, so this tool writes the final plans from recorded evidence:
 Both refuse on a missing, ambiguous or mismatched value: a template or run
 plan that differs from its pinned SHA256, a placeholder that is not exactly
 where it is expected (already filled, moved) or one this tool does not know,
-a bootstrap run that is not READY with every step `ok`, and evidence that
+a bootstrap run that is not READY with every step `ok` (including the
+post-READY `usable` gate: READY with an unusable mount root refuses), and
+evidence that
 disagrees with itself. The filled plan must then pass the consuming tool's
 own validation (`controller.py check`'s `plan_snapshot`, `bootstrap.py
 check`'s `load_plan`) before it appears at the output path, which is never
@@ -112,11 +114,19 @@ def filled_bytes(plan):
 
 
 def journal_details(run_dir, plan_sha256):
-    """step -> result detail of a complete run: every step once, in order, ok."""
+    """step -> result detail of a complete run: every step once, in order, ok.
+
+    The order is bootstrap.STEP_NAMES itself, so a new driver step (such as
+    the post-READY `usable` gate) is required here without a second list.
+    """
     journal = bootstrap.Journal.open(run_dir / "journal.jsonl")
     header, records = (journal.records or [{}])[0], journal.records[1:]
-    require(header.get("kind") == "run" and header.get("version") == bootstrap.JOURNAL_VERSION,
-            "journal does not start with a bootstrap run record")
+    require(header.get("kind") == "run", "journal does not start with a bootstrap run record")
+    # The version names the step list: a /1 journal predates the usable gate
+    # and is refused for that reason, not as an incomplete run.
+    require(header.get("version") == bootstrap.JOURNAL_VERSION,
+            "journal version {!r} is not {} (written by a bootstrap.py with another step list)".format(
+                header.get("version"), bootstrap.JOURNAL_VERSION))
     require(header.get("plan_sha256") == plan_sha256, "journal is not for the pinned bootstrap plan")
     intents = [r.get("step") for r in records if r.get("kind") == "intent"]
     results = [r for r in records if r.get("kind") == "result"]

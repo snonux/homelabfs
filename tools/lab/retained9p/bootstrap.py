@@ -11,7 +11,12 @@ operator's signed enrollment, the provision sysfs write, the enrollment
 handoff to the runtime's EnrollmentFile (the runtime then runs
 ObserveAdmission), AWAITING_GUEST_BIND, the bind request, the operator's
 signed bind, the bind sysfs write, both guest mounts and READY, all inside
-`bootstrap_seconds` (at most 120) from launch. See the run plan
+`bootstrap_seconds` (at most 120) from launch. Then the post-READY usability
+gate (`usable`, k64): both mount roots must still answer an lstat after the
+guest's 30 s QUERY timeout has passed for the mounts' own claims, under its
+own bound counted from mount-1. The lstat writes nothing into the mounts,
+but each one adds GETATTR and PROCESS_EXIT claims to the runtime's provider
+ledgers. See the run plan
 docs/lab/zq3-run-plan.md, Phase 8.
 
 It never reads the operator private key and never signs. At each signing
@@ -38,6 +43,7 @@ import argparse
 import base64
 import copy
 import datetime
+import errno
 import importlib.util
 import json
 import os
@@ -68,7 +74,8 @@ controller = _sibling("retained9p_controller", "controller.py")
 digest, canonical, parse, read = controller.digest, controller.canonical, controller.parse, controller.read
 
 VERSION = "homelabfs-zq3-bootstrap-plan/1"
-JOURNAL_VERSION = "homelabfs-zq3-bootstrap-journal/1"
+# /2: the step list gained `usable` (k64); fill_plan.py refuses /1 journals.
+JOURNAL_VERSION = "homelabfs-zq3-bootstrap-journal/2"
 OBSERVER_VERSION = "homelabfs-runtime-observer-input/1"  # internal/runtimeprep
 REMOTE = HERE / "bootstrap_remote.py"
 MOUNT_OPTIONS = "trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,msize=65536"
@@ -81,6 +88,29 @@ MIN_DISPATCH = 3.0             # never start a mutating call with less left
 # waits up to 30 s for `udevadm settle` (+5 s remote margin); a 9p mount must
 # have time to complete its HELLO. Below the floor the step fails undispatched.
 MIN_REMOTE_SECONDS = {"admission": 40.0, "mount-0": 10.0, "mount-1": 10.0}
+# Post-READY usability gate (k64). In zq3-r6/r7 READY came with every step ok
+# while the mount(8) PROCESS_EXIT claims stayed RESERVED/UNPREPARED: the guest
+# QUERYs such a claim for GUEST_QUERY_SECONDS (its `jiffies + 30 * HZ`
+# deadline), then blocks the session, and every later operation, even
+# getattr on the root, returns EACCES. A root stat right after READY can
+# still pass, so the final probe waits until that window has closed for the
+# later mount, plus a margin. The guest checks its deadline only after each
+# QUERY reply, and each QUERY has its own 30 s transport deadline, so the
+# block lands at 30 s plus one QUERY round trip. r7's round trips took
+# milliseconds, so 10 s of margin covers it. A QUERY stalled for longer than
+# the margin would let the final probe run before the block; such a stall
+# would most likely also stall the probe's own GETATTR past STAT_SECONDS,
+# which fails the gate as a timeout. The gate narrows the r7 failure, it is
+# not a proof.
+# Not implemented (k64 follow-up, needs a daemon feature): requiring that
+# each mount's PROCESS_EXIT claim reached TERMINAL on the host. OBSERVE
+# carries only a provider ledger digest and transport counts, so the driver
+# cannot see claim states. It would need OBSERVE to list non-TERMINAL claims,
+# or READY to wait for the mount claims.
+GUEST_QUERY_SECONDS = 30
+USABLE_SETTLE_SECONDS = GUEST_QUERY_SECONDS + 10   # final probe, counted from mount-1's end
+STAT_SECONDS = 8               # one guest lstat child per root; a healthy root answers in ms
+USABLE_PROBE_SECONDS = 30      # per-call cap, and the slack after the settle point
 # Ending of the local guard SSH process says little about f3: the guard may
 # have finished (its receipt says why) or only the connection was lost.
 TRANSPORT_LOST = ("The local guard SSH transport ended. If the guard itself finished, its receipt.json on f3 "
@@ -88,6 +118,9 @@ TRANSPORT_LOST = ("The local guard SSH transport ended. If the guard itself fini
                   "no SIGHUP) under the guard's own bounds; the runtime's bootstrap timeout or the guard limits "
                   "end the runtime. Dependent steps were stopped; reconnect to f3 and inspect the guard run "
                   "directory before anything else.")
+USABLE_FAILED = ("The runtime reached READY, but a mount root failed the usable gate (see the journal's usable "
+                 "result for each root and the errno). The runtime, both mounts and any stuck lstat child were "
+                 "left as they are: go to Phase 11 with inspection first; never remount or retry.")
 STREAM_LIMIT = 1 << 20         # per stream of one SSH/local child
 SAFE_TOKEN = re.compile(r"[A-Za-z0-9_./=:,+-]+\Z")
 SAFE_PATH = re.compile(r"/[A-Za-z0-9_./-]+\Z")
@@ -106,7 +139,8 @@ STEPS = (("host-preflight", "read", 30), ("launch", "launch", 0), ("proposal", "
          ("signed-enrollment", "read", 0), ("provision", "remote", 15),
          ("enrollment-handoff", "remote", 15), ("awaiting-bind", "read", 10),
          ("bind-request", "local", 15), ("signed-bind", "read", 0), ("bind", "remote", 15),
-         ("mount-0", "remote", 35), ("mount-1", "remote", 35), ("ready", "read", 10))
+         ("mount-0", "remote", 35), ("mount-1", "remote", 35), ("ready", "read", 10),
+         ("usable", "read", USABLE_PROBE_SECONDS))
 STEP_NAMES = tuple(name for name, _, _ in STEPS)
 
 
@@ -115,7 +149,15 @@ class Refused(RuntimeError):
 
 
 class StepFailed(RuntimeError):
-    """The step ended with a known state; dependent steps do not run."""
+    """The step ended with a known state; dependent steps do not run.
+
+    `detail` adds journal fields beside `error`, such as the usable gate's
+    errno and per-root probe results.
+    """
+
+    def __init__(self, message, detail=None):
+        super().__init__(message)
+        self.detail = detail or {}
 
 
 class StepUncertain(RuntimeError):
@@ -722,6 +764,41 @@ def check_signed_bind(raw, facts):
         raise StepFailed("signer output mismatch: bind payload {!r} is not {!r}".format(payload, expected))
 
 
+def root_problem(root):
+    """One guest-stat root result as (text, errno or None); None when ok."""
+    outcome = root.get("outcome")
+    if outcome == "ok":
+        return None
+    if outcome == "errno":
+        number = root.get("errno")
+        name = errno.errorcode.get(number, "?") if type(number) is int else "?"
+        return "lstat failed with errno {} ({}, {})".format(number, name, root.get("error")), number
+    reasons = {"timeout": "lstat did not return within {} s (left running, never killed)".format(root.get("seconds")),
+               "not-mounted": "no longer exactly one 9p mount of its tag (root not stat'ed)",
+               "not-directory": "root is not a directory", "error": "lstat child failed: {}".format(root.get("stderr"))}
+    return reasons.get(outcome, "unknown probe outcome {!r}".format(outcome)), None
+
+
+def check_usable(result, mounts, probe):
+    """Both plan mount roots, in plan order, must have answered the lstat.
+
+    Raises StepFailed whose journal detail keeps every root's result and the
+    first failing root's errno (`errno`, null for a timeout or lost mount).
+    """
+    roots = result.get("roots")
+    pairs = [(r.get("tag"), r.get("mountpoint")) for r in roots if isinstance(r, dict)] \
+        if isinstance(roots, list) else None
+    if pairs != [(m["tag"], m["mountpoint"]) for m in mounts]:
+        raise StepFailed("{} probe: guest-stat did not report exactly the plan's mount roots".format(probe),
+                         {"probe": probe, "roots": roots, "errno": None})
+    problems = [(root, root_problem(root)) for root in roots]
+    problems = [(root, found) for root, found in problems if found]
+    if problems:
+        text = "; ".join("{} {}: {}".format(root["tag"], root["mountpoint"], found[0]) for root, found in problems)
+        raise StepFailed("{} probe: mount root unusable: {}".format(probe, text),
+                         {"probe": probe, "roots": roots, "errno": problems[0][1][1]})
+
+
 def remote_seconds(seconds):
     """Remote child deadline, ending before the SSH deadline so it can report."""
     return str(max(1, int(seconds) - 5))
@@ -762,11 +839,16 @@ class Bootstrap:
         self.plan, self.inputs, self.output, self.journal, self.io = plan, inputs, output, journal, io
         self.work, self.calls = output / "work", output / "calls"
         self.facts, self.stage_lines = {}, []
-        self.deadline = self.launched = self.guard = None
+        self.deadline = self.launched = self.guard = self.mounted_at = None
         self.step_name, self.cap, self.calls_made, self.last_retry = "", 0, 0, ""
+        # What the current deadline is, for its refusal text: the launch-to-
+        # READY bootstrap deadline, then the usable gate's own bound.
+        self.deadline_text = ""
 
     def run(self):
-        """(exit status, step that stopped the run): 0 READY, 1 failed, 3 uncertain."""
+        """(exit status, step that stopped the run): 0 READY with both mount
+        roots usable, 1 failed (including READY with an unusable root),
+        3 uncertain."""
         for name, kind, cap in STEPS:
             outcome = self.step(name, kind, cap)
             if outcome != "ok":
@@ -779,7 +861,7 @@ class Bootstrap:
         try:
             detail, outcome = getattr(self, "step_" + name.replace("-", "_"))(), "ok"
         except StepFailed as failure:
-            detail, outcome = {"error": str(failure)}, "failed"
+            detail, outcome = dict(failure.detail, error=str(failure)), "failed"
         except StepUncertain as failure:
             detail, outcome = {"error": str(failure)}, "uncertain"
         except Exception as failure:  # noqa: BLE001 - a bug or local I/O error
@@ -798,8 +880,8 @@ class Bootstrap:
             return cap
         remaining = self.deadline - self.io.clock.now()
         if remaining <= 0:
-            raise StepFailed("bootstrap deadline ({} s from launch) passed during {}{}".format(
-                self.plan["bootstrap_seconds"], self.step_name, "; last: " + self.last_retry if self.last_retry else ""))
+            raise StepFailed("{} passed during {}{}".format(
+                self.deadline_text, self.step_name, "; last: " + self.last_retry if self.last_retry else ""))
         return min(cap, remaining) if cap else remaining
 
     def remote(self, target, action, args, payload=b"", mutating=False, seconds=None):
@@ -936,6 +1018,7 @@ class Bootstrap:
             raise StepFailed("guard command refused before launch: " + str(failure)) from None
         self.launched = self.io.clock.now()
         self.deadline = self.launched + self.plan["bootstrap_seconds"]
+        self.deadline_text = "bootstrap deadline ({} s from launch)".format(self.plan["bootstrap_seconds"])
         try:
             self.guard = self.io.launcher.start(argv, self.output / "guard-transport.stdout",
                                                 self.output / "guard-transport.stderr")
@@ -1073,6 +1156,9 @@ class Bootstrap:
                              mutating=True, seconds=seconds)
         if result.get("tag") != mount["tag"] or result.get("mountpoint") != mount["mountpoint"]:
             raise StepUncertain("guest mount report differs from the requested mount")
+        # mount(8) has exited by now, so its PROCESS_EXIT claim exists; the
+        # usable gate counts the guest's QUERY window from the later mount.
+        self.mounted_at = self.io.clock.now()
         return {"tag": mount["tag"], "mountpoint": mount["mountpoint"], "mountinfo": result.get("mountinfo")}
 
     def step_mount_0(self):
@@ -1088,6 +1174,74 @@ class Bootstrap:
                 not isinstance(control, dict) or set(control) != {"socket", "runtime", "cut", "epoch"}):
             raise StepFailed("READY record is not CONTROLLED_LOCAL with two domains and a control binding")
         return {"record": self.stage_lines[2], "seconds_from_launch": round(self.io.clock.now() - self.launched, 3)}
+
+    def step_usable(self):
+        """Post-READY usability gate (k64): never retried, never mounts,
+        writes into or unmounts anything; a failure preserves everything.
+
+        Read-only for the mounts' contents, but NOT for the runtime: each
+        guest lstat is an hfs operation. hfs_capture registers the lstat
+        child as an hfs process and sends a GETATTR claim, and the child's
+        exit queues its own PROCESS_EXIT claim (patch 0003). The two probes
+        therefore add about four durable claims to each provider ledger
+        before T1, and in an r7-type failure the probes' own claims stay
+        unresolved too.
+
+        READY ends the runtime's launch-to-READY bootstrap timeout, so this
+        step replaces the driver's deadline with its own fixed bound through
+        the same `seconds()` machinery: the settle point (mount-1's end plus
+        USABLE_SETTLE_SECONDS, or now if READY came later) plus
+        USABLE_PROBE_SECONDS. A first probe right away fails fast on a root
+        that is already refused; the final probe after the settle point
+        catches a session the guest blocked when its QUERY window ran out.
+        Every failure's journal detail carries `probe` (first, settle or
+        final), `roots` and `errno` (null where no lstat reported one).
+        """
+        settle_at = self.mounted_at + USABLE_SETTLE_SECONDS
+        self.deadline = max(settle_at, self.io.clock.now()) + USABLE_PROBE_SECONDS
+        self.deadline_text = "usable gate deadline ({:.0f} s after mount-1)".format(self.deadline - self.mounted_at)
+        phase = "first"
+        try:
+            first = self.stat_roots(phase)
+            phase = "settle"
+            self.settle(settle_at)
+            self.runtime_still_ready()
+            phase = "final"
+            final = self.stat_roots(phase)
+        except StepFailed as failure:
+            # Transport, deadline, guard and runtime failures carry no probe
+            # result of their own: name where the gate stopped.
+            if "probe" not in failure.detail:
+                failure.detail = dict(failure.detail, probe=phase, roots=None, errno=None)
+            raise
+        return {"first": first, "final": final, "settle_seconds": USABLE_SETTLE_SECONDS,
+                "final_seconds_after_mount": round(self.io.clock.now() - self.mounted_at, 3)}
+
+    def stat_roots(self, probe):
+        """One guest-stat round trip over both plan mounts; their roots."""
+        mounts = self.plan["mounts"]
+        result = self.read_once("guest", "guest-stat", [
+            "--tags", ",".join(m["tag"] for m in mounts), "--mountpoints", ",".join(m["mountpoint"] for m in mounts),
+            "--boot-id", self.facts["boot_id"], "--python", self.plan["guest"]["python"],
+            "--seconds", str(STAT_SECONDS)])
+        check_usable(result, mounts, probe)
+        return result["roots"]
+
+    def settle(self, until):
+        """Wait for the settle point, watching only the local guard transport."""
+        while self.io.clock.now() < until:
+            self.seconds(0)
+            self.guard_alive()
+            self.io.clock.sleep(min(POLL_SECONDS, until - self.io.clock.now()))
+
+    def runtime_still_ready(self):
+        """The guard reports no breach or exit and READY is still the last record."""
+        try:
+            records = self.runtime_records(len(STAGES))
+        except Retry as failure:
+            raise StepFailed(str(failure)) from None
+        if records is None:
+            raise StepFailed("runtime stdout no longer holds its READY record")
 
     def final_evidence(self):
         """One read-only poll after the run for the record; never a step."""
@@ -1144,6 +1298,8 @@ def run(plan_path, expected_sha256, output, boundaries=real_boundaries):
                "acceptance": False, "note": "READY is not gate acceptance; Phases 9-11 follow"}
     if guard and guard.poll() is not None:
         summary["guard_transport_note"] = TRANSPORT_LOST
+    if stopped == "usable":
+        summary["usable_note"] = USABLE_FAILED
     controller.persist(output / "summary.json", summary)
     io.notify(summary)
     return code
