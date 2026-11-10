@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -508,6 +509,15 @@ func TestMappedIndexFundingWorstScopeAndFreshnessFields(t *testing.T) {
 	for i := 0; i < 80; i++ {
 		state.Cells = append(state.Cells, MaxCell-uint64(79-i))
 		state.GuestRecent = append(state.GuestRecent, GuestIssuance{Session: state.Scopes[i%64].Session, Cell: MaxCell - uint64(i)})
+	}
+	// Worst-case reorder holes: every unissued cell of each session's window.
+	state.GuestHoles = map[string][]uint64{}
+	for _, scope := range state.Scopes {
+		for h := MaxCell - guestReorderWindow + 1; h < MaxCell; h++ {
+			if !slices.Contains(state.GuestRecent, GuestIssuance{Session: scope.Session, Cell: h}) {
+				state.GuestHoles[scope.Session] = append(state.GuestHoles[scope.Session], h)
+			}
+		}
 	}
 	state.High = MaxCell
 	state.Ordinary = 64

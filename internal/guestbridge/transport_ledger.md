@@ -25,6 +25,11 @@ sorted live IDs and workspace presence. All IDs through High outside that live
 set are released: this encodes the exact released floor and holes in bounded
 space. A replacement workspace is the unissued High+1 candidate. No historical
 ID is recycled and no per-released-cell tombstone grows indefinitely.
+Guest cell freshness is indexed per session by its guest highwater, the bounded
+recent issuance markers and the optional `GuestHoles` (unissued guest cells in
+the 16-cell reorder window below the highwater that may still arrive out of
+order once; see [mapping](../../docs/spec/Retained-9p-mapping.md)). An admitted
+guest cell is never admitted again.
 
 Each cell/workspace row owns its original header and complete body, chunk bitmap
 and historical native observation per accepted chunk, class, exact decoded

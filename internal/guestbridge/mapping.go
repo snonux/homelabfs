@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"slices"
 	"sort"
 	"strconv"
 
@@ -16,6 +17,16 @@ import (
 // within the existing 8MiB cell and replacement workspace, never another arena.
 const MappingMaxBytes = 16 << 10
 const mappingRecentLimit = 80
+
+// guestReorderWindow bounds how far below a session's guest high-water a
+// never-admitted guest cell may still arrive. The exporter can forward one
+// session's guest cells out of guest order (zq3-r6 R6-2: VIEW_WAIT guest
+// cell 48 reached the runtime as native 108, after QUERY guest cell 49 as
+// native 107), so each session keeps the unissued cells ("holes") of the
+// window (high-window, high). A hole is admitted at most once; a cell that
+// falls out of the window without arriving can never be admitted. This is a
+// bound on retained state, not evidence that the cell retired at the guest.
+const guestReorderWindow = 16
 
 // MappingLeg is inert protected evidence for one actually admitted native leg.
 // ResponseHash hashes the response base, avoiding signature recursion.
@@ -164,13 +175,8 @@ func (t *Transport) prepareMapping(c *cell, command Command) (*ProtectedMapping,
 		}
 		m.MappingHash = old.MappingHash
 	} else {
-		if existing != nil || d.GuestCell <= c.guestWatermark {
+		if existing != nil || !t.guestFresh(c, command.Context.Session, d.GuestCell) {
 			return nil, fsapi.Stale
-		}
-		for _, issued := range t.guestRecent {
-			if issued.Session == command.Context.Session && issued.Cell == d.GuestCell {
-				return nil, fsapi.Stale
-			}
 		}
 		if (d.GuestReclaim == nil) != (command.Reclaim == nil) {
 			return nil, fsapi.Permission
@@ -202,8 +208,53 @@ func (t *Transport) acceptMapping(c *cell, command Command, m *ProtectedMapping)
 	if m == nil || m.PollIndex != 0 {
 		return
 	}
-	t.guestHigh[command.Context.Session] = max(t.guestHigh[command.Context.Session], m.GuestCell)
+	t.issueGuestCell(command.Context.Session, m.GuestCell, command.Op == "SESSION_RETIRE")
 	t.guestRecent = append(t.guestRecent, GuestIssuance{command.Context.Session, m.GuestCell})
+}
+
+// guestFresh reports whether guest cell g of session may be admitted as a new
+// original (poll index 0) through cell c. A guest cell is admitted at most
+// once, so a replay stays refused: a cell above c's captured watermark is
+// fresh unless a recent marker shows it was issued meanwhile (markers above
+// any incomplete cell's capture are never pruned), and a cell at or below
+// the watermark is fresh only while it is still an unissued hole of the
+// session's reorder window (issuance removes it, see issueGuestCell).
+func (t *Transport) guestFresh(c *cell, session string, g uint64) bool {
+	for _, issued := range t.guestRecent {
+		if issued.Session == session && issued.Cell == g {
+			return false
+		}
+	}
+	return g > c.guestWatermark || slices.Contains(t.guestHoles[session], g)
+}
+
+// issueGuestCell records the admission of guest cell g: it fills g's hole or
+// raises the high-water, opening holes for the skipped cells that are still
+// inside the reorder window, and drops holes that fell below the window. A
+// SESSION_RETIRE admits no later cell of its session, so it drops them all.
+func (t *Transport) issueGuestCell(session string, g uint64, terminal bool) {
+	high := t.guestHigh[session]
+	holes := slices.DeleteFunc(slices.Clone(t.guestHoles[session]), func(h uint64) bool { return h == g })
+	if g > high {
+		start := high + 1
+		if g > guestReorderWindow && g-guestReorderWindow+1 > start {
+			start = g - guestReorderWindow + 1
+		}
+		for h := start; h < g; h++ {
+			holes = append(holes, h)
+		}
+		high = g
+	}
+	holes = slices.DeleteFunc(holes, func(h uint64) bool { return h+guestReorderWindow <= high })
+	t.guestHigh[session] = high
+	if t.guestHoles == nil {
+		t.guestHoles = map[string][]uint64{}
+	}
+	if terminal || len(holes) == 0 {
+		delete(t.guestHoles, session)
+		return
+	}
+	t.guestHoles[session] = holes
 }
 func (t *Transport) admitMapping(ctx context.Context, command Command) error {
 	worker, ok := ctx.Value(mappingWorkerKey{}).(mappingWorker)
