@@ -62,7 +62,12 @@ type ProtectedTransportState struct {
 	// exact index bytes, and an index written before it existed means what
 	// it always meant: every guest cell through GuestHigh is spent.
 	GuestHoles map[string][]uint64 `json:",omitempty"`
-	Digest     string              `json:"-"`
+	// Refused is the latest numbered cell removed after a permanent refusal
+	// (n64, refusal.go). Its number is spent and absent from Cells, like any
+	// released ID; the record only lets a resend get the same errno. It is
+	// omitted until a first such refusal, so older indexes keep their bytes.
+	Refused *ProtectedRefusal `json:",omitempty"`
+	Digest  string            `json:"-"`
 }
 
 // ProtectedTransportCell retains exact transport bytes and historical callback
@@ -303,7 +308,7 @@ func protectedCell(c *cell) ProtectedTransportCell {
 	return ProtectedTransportCell{Header: h, Body: c.body, Chunks: c.chunks, Observations: c.observations, Count: c.count, Control: c.reservation.Control, Command: c.command, Native: c.native, JobPhase: c.jobPhase, BlockedError: c.blockedError, Response: c.response, Wire: c.wire, Seen: c.seen, Unread: c.unread, ResultKind: c.resultKind, GuestWatermark: c.guestWatermark, Mapping: c.mapping, Terminal: c.terminal}
 }
 func (t *Transport) protectedIndex() ProtectedTransportState {
-	s := ProtectedTransportState{RuntimeHellos: t.runtimeHellos, BridgeSessions: true, Version: 1, Endpoint: t.Endpoint(), Controller: t.service.controller, High: t.high, Terminal: t.terminal, GuestHigh: t.guestHigh, GuestHoles: t.guestHoles, GuestRecent: t.guestRecent, Ordinary: t.ordinary, Control: t.control, Workspace: t.workspace != nil, Cells: make([]uint64, 0, len(t.cells))}
+	s := ProtectedTransportState{RuntimeHellos: t.runtimeHellos, BridgeSessions: true, Version: 1, Endpoint: t.Endpoint(), Controller: t.service.controller, High: t.high, Terminal: t.terminal, GuestHigh: t.guestHigh, GuestHoles: t.guestHoles, Refused: t.refused, GuestRecent: t.guestRecent, Ordinary: t.ordinary, Control: t.control, Workspace: t.workspace != nil, Cells: make([]uint64, 0, len(t.cells))}
 	for id := range t.cells {
 		s.Cells = append(s.Cells, id)
 	}
@@ -480,6 +485,9 @@ func validateTransportIndex(s ProtectedTransportState) error {
 		seenGuest[issued] = true
 	}
 	if err := validateGuestHoles(s, seenGuest); err != nil {
+		return err
+	}
+	if err := validateRefusal(s); err != nil {
 		return err
 	}
 	var previous uint64

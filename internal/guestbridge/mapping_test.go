@@ -168,26 +168,17 @@ func TestMappedTransportDurablePrivateCandidateAndDonor(t *testing.T) {
 	wrong.ResponseHash = digest([]byte("wrong"))
 	d.GuestReclaim = &wrong
 	bad.Delegation = &d
-	if err = mappingWrite(t, tr, f.native, bad, 2, 0, -1); err == nil {
-		t.Fatal("wrong guest donor accepted")
+	if err = mappingWrite(t, tr, f.native, bad, 2, 0, -1); !errors.Is(err, fsapi.Permission) {
+		t.Fatal("wrong guest donor accepted", err)
 	}
-	// A failed candidate's immutable chunks cannot be rewritten. Use a fresh
-	// transport to exercise the valid exact donor transfer independently.
-	tr.Close()
-	_, cells := inspectCells(t, root)
-	if len(cells) != 2 || cells[0].Mapping.GuestCommandHash != digest(mustJSON(t, original)) {
-		t.Fatal("donor lost before validated transfer")
+	// The refused donor send left the reclaim workspace (n64): the donor is
+	// kept, and the valid exact donor transfer takes the same native number.
+	tr.mu.Lock()
+	kept := tr.workspace == nil && tr.high == 1 && tr.cells[1] != nil && tr.cells[1].mapping.GuestCommandHash == digest(mustJSON(t, original))
+	tr.mu.Unlock()
+	if !kept {
+		t.Fatal("donor lost or workspace kept after a refused donor send")
 	}
-	f, tr, root = mappedFixture(t)
-	command = mappedHello(t, f, 1, 5)
-	if err = mappingWrite(t, tr, f.native, command, 0, 0, -1); err != nil {
-		t.Fatal(err)
-	}
-	response = fetchNative(t, tr, f.native, 1)
-	guestHash, _ = translatedResponseHash(response, 5, "HELLO", false)
-	ack = &Ack{Cell: 1, ResponseHash: digest(response)}
-	guestAck = &Ack{Cell: 5, ResponseHash: guestHash}
-	release = Command{Cell: 2, Context: f.c, Protocol: &p, Op: "RELEASE_CELL", Payload: mustJSON(t, ack), Reclaim: ack, Delegation: &Delegation{Version: DelegationVersion, GuestCell: 6, GuestOp: "RELEASE_CELL", GuestReclaim: guestAck}}
 	if err = mappingWrite(t, tr, f.native, release, 2, 0, -1); err != nil {
 		t.Fatal(err)
 	}
@@ -232,8 +223,10 @@ func TestMappedIncompleteWatermarksAndIssuedHazards(t *testing.T) {
 		t.Fatal("pending binding lost")
 	}
 	tr.Close()
+	// The refused duplicate (native 2) was removed with its credit (n64); its
+	// number stays spent and the index keeps its refusal for a resend.
 	state, cells := inspectCells(t, root)
-	if state.GuestHigh[f.c.Session] != 6 || len(cells) != 3 {
+	if state.GuestHigh[f.c.Session] != 6 || len(cells) != 2 || state.High != 3 || state.Refused == nil || state.Refused.Header.Cell != 2 || state.Refused.Error != fsapi.Stale {
 		t.Fatal(state)
 	}
 }

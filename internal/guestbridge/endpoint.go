@@ -78,6 +78,9 @@ type Transport struct {
 	// guestHoles holds, per session, the unissued guest cells below guestHigh
 	// that may still arrive out of guest order (see guestReorderWindow).
 	guestHoles map[string][]uint64
+	// refused is the latest numbered cell removed after a permanent refusal,
+	// so that a resend gets the same errno (n64, see refusal.go).
+	refused *ProtectedRefusal
 	// lostReply is the disposable one-shot response-exposure fixture record
 	// (see lost_reply.go); nil unless explicitly armed. It is not protocol
 	// state and is never written to or restored from the C8 ledger.
@@ -217,143 +220,210 @@ func newTransport(s *Service, budget *admission.Budget, root string, hook func(s
 	return t, nil
 }
 
+// writeEffects collects what one Transport.Write changed under the owner lock
+// and must protect before anything leaves it: the accepted job and its queue,
+// the reclaimed or terminal donor cells, and a permanently refused cell that
+// was removed (n64, discardRefused). Their memory is released only after the
+// commit.
+type writeEffects struct {
+	dispatch  *job
+	queue     chan job
+	reclaimed []*cell
+	dropped   *cell
+}
+
 // Write validates and copies one positional chunk without awaiting any service,
 // recall, grant or vnode. An error never conveys filesystem success.
 func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b []byte) (written uint32, err error) {
-	if e := t.service.Authenticate(ctx, n); e != nil {
-		return 0, e
-	}
-	if node != t.service.config.Endpoint.CommandNode {
-		return 0, fsapi.Permission
-	}
-	f, e := DecodeFrame(b)
+	f, scope, e := t.writeFrame(ctx, n, node, offset, b)
 	if e != nil {
 		return 0, e
-	}
-	expectedMinor := uint16(0)
-	if protocol := t.service.config.sessionProtocol(f.Session.String()); protocol != nil {
-		expectedMinor = uint16(protocol.BridgeMinor)
-	}
-	if f.Minor != expectedMinor {
-		return 0, fsapi.Unsupported
-	}
-	cellID, index, within, e := position(offset)
-	if e != nil || cellID != f.Cell || within != 0 || uint64(f.Offset/ChunkBytes) != index || f.Kind != 1 {
-		return 0, fsapi.Invalid
-	}
-	scope := t.scope(f.Session.String())
-	if scope == nil {
-		return 0, fsapi.Permission
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.closed || t.failed != nil {
 		return 0, fsapi.Unavailable
 	}
-	var dispatch *job
-	var dispatchQueue chan job
-	var reclaimed []*cell
+	w := &writeEffects{}
 	// Workers cannot execute, and ownership cannot be released, before the exact
-	// accepted state has committed. Error paths also protect workspace changes.
-	defer func() {
-		ids := []uint64{f.Cell}
-		for _, old := range reclaimed {
-			ids = append(ids, old.frame.Cell)
-		}
-		if e := t.protectLocked(ids...); e != nil {
-			t.uncertainReclaims = append(t.uncertainReclaims, reclaimed...)
-			written, err = 0, e
-			return
-		}
-		if len(reclaimed) != 0 {
-			for _, old := range reclaimed {
-				releaseCell(old)
-			}
-			if e := t.protectedPoint("reclaim"); e != nil {
-				written, err = 0, e
-				return
-			}
-		}
-		if dispatch != nil {
-			dispatchQueue <- *dispatch
-		}
-		if e := t.protectedPoint("write"); e != nil {
-			written, err = 0, e
-		}
-	}()
-	if final := t.terminal[scope.Session]; final != 0 && final != f.Cell {
-		return 0, fsapi.Permission
+	// accepted state has committed. Error paths also protect workspace changes
+	// and the removal of a permanently refused cell.
+	defer func() { written, err = t.commitWrite(f.Cell, w, written, err) }()
+	c, admitted, e := t.writeCell(f, scope)
+	if e != nil {
+		return 0, e
 	}
-	c := t.cells[f.Cell]
+	if admitted {
+		return uint32(len(b)), nil
+	}
+	complete, e := storeChunk(c, f, n)
+	if e != nil {
+		return 0, e
+	}
+	if !complete {
+		return uint32(len(b)), nil
+	}
+	if command, e := t.acceptCell(c, f, scope, n, w); e != nil {
+		t.discardRefused(c, f, command, e, w)
+		return 0, e
+	}
+	return uint32(len(b)), nil
+}
+
+// writeFrame runs the lock-free checks of one native chunk write:
+// authentication, the command node, the frame codec, the session's minor, the
+// positional offset and the session's registered scope.
+func (t *Transport) writeFrame(ctx context.Context, n Native, node, offset uint64, b []byte) (Frame, *Context, error) {
+	if e := t.service.Authenticate(ctx, n); e != nil {
+		return Frame{}, nil, e
+	}
+	if node != t.service.config.Endpoint.CommandNode {
+		return Frame{}, nil, fsapi.Permission
+	}
+	f, e := DecodeFrame(b)
+	if e != nil {
+		return Frame{}, nil, e
+	}
+	expectedMinor := uint16(0)
+	if protocol := t.service.config.sessionProtocol(f.Session.String()); protocol != nil {
+		expectedMinor = uint16(protocol.BridgeMinor)
+	}
+	if f.Minor != expectedMinor {
+		return Frame{}, nil, fsapi.Unsupported
+	}
+	cellID, index, within, e := position(offset)
+	if e != nil || cellID != f.Cell || within != 0 || uint64(f.Offset/ChunkBytes) != index || f.Kind != 1 {
+		return Frame{}, nil, fsapi.Invalid
+	}
+	scope := t.scope(f.Session.String())
+	if scope == nil {
+		return Frame{}, nil, fsapi.Permission
+	}
+	return f, scope, nil
+}
+
+// commitWrite protects every change of one Write before its job is queued or
+// any released cell's memory is freed. A protection failure fences the
+// transport and retains the old owners (uncertainReclaims).
+func (t *Transport) commitWrite(id uint64, w *writeEffects, written uint32, err error) (uint32, error) {
+	ids := []uint64{id}
+	for _, old := range w.reclaimed {
+		ids = append(ids, old.frame.Cell)
+	}
+	if e := t.protectLocked(ids...); e != nil {
+		t.uncertainReclaims = append(t.uncertainReclaims, w.reclaimed...)
+		if w.dropped != nil {
+			t.uncertainReclaims = append(t.uncertainReclaims, w.dropped)
+		}
+		return 0, e
+	}
+	if w.dropped != nil {
+		releaseCell(w.dropped)
+	}
+	if len(w.reclaimed) != 0 {
+		for _, old := range w.reclaimed {
+			releaseCell(old)
+		}
+		if e := t.protectedPoint("reclaim"); e != nil {
+			return 0, e
+		}
+	}
+	if w.dispatch != nil {
+		w.queue <- *w.dispatch
+	}
+	if e := t.protectedPoint("write"); e != nil {
+		return 0, e
+	}
+	return written, err
+}
+
+// writeCell finds or allocates the cell that frame f writes into. admitted is
+// true for an identical resend of an already admitted cell, which succeeds
+// without any change. A number at or below the high-water without a cell was
+// released or permanently refused (refusedResend).
+func (t *Transport) writeCell(f Frame, scope *Context) (c *cell, admitted bool, err error) {
+	if final := t.terminal[scope.Session]; final != 0 && final != f.Cell {
+		return nil, false, fsapi.Permission
+	}
+	c = t.cells[f.Cell]
 	if c == nil && f.Cell <= t.high {
-		return 0, fsapi.Stale
+		return nil, false, t.refusedResend(f)
 	}
 	if c != nil {
 		if c.released {
-			return 0, fsapi.Stale
+			return nil, false, fsapi.Stale
 		}
 		if !sameFrame(c.frame, f) {
-			return 0, fsapi.Invalid
+			return nil, false, fsapi.Invalid
 		}
 		if c.command != nil {
 			if !bytes.Equal(c.body[f.Offset:f.Offset+uint32(len(f.Data))], f.Data) {
-				return 0, fsapi.Invalid
+				return nil, false, fsapi.Invalid
 			}
-			return uint32(len(b)), nil
+			return c, true, nil
+		}
+		return c, false, nil
+	}
+	if f.Cell != t.high+1 {
+		return nil, false, fsapi.Invalid
+	}
+	if f.Minor == 4 && t.workspace == nil {
+		t.pruneGuestRecent()
+		if len(t.guestRecent)+t.mappingIncomplete() >= mappingRecentLimit {
+			return nil, false, fsapi.WouldBlock
 		}
 	}
-	if c == nil {
-		if f.Cell != t.high+1 {
-			return 0, fsapi.Invalid
+	if t.workspace != nil {
+		if !sameFrame(t.workspace.frame, f) {
+			return nil, false, fsapi.WouldBlock
 		}
-		if f.Minor == 4 && t.workspace == nil {
-			t.pruneGuestRecent()
-			if len(t.guestRecent)+t.mappingIncomplete() >= mappingRecentLimit {
-				return 0, fsapi.WouldBlock
-			}
-		}
-		if t.workspace != nil {
-			if !sameFrame(t.workspace.frame, f) {
-				return 0, fsapi.WouldBlock
-			}
-			c = t.workspace
-		} else {
-			// A first chunk containing reclaim can use the independent workspace. Full
-			// schema validation still precedes atomic release and allocator advancement.
-			if f.Flags&2 != 0 {
-				c = newCell(f)
-				c.guestWatermark = t.guestWatermark(f.Session.String())
-				t.workspace = c
-			} else {
-				r := CellReservation{Control: f.Flags&1 != 0, Release: func() {}}
-				if r.Control && t.control >= 16 || !r.Control && t.ordinary >= 64 {
-					return 0, fsapi.WouldBlock
-				}
-				if t.incomplete(f.Session.String()) >= 16 ||
-					f.Minor >= 1 && !r.Control && t.incompleteOrdinary(f.Session.String()) >= 12 {
-					r.Release()
-					return 0, fsapi.WouldBlock
-				}
-				c = newCell(f)
-				c.guestWatermark = t.guestWatermark(f.Session.String())
-				c.reservation = r
-				t.cells[f.Cell] = c
-				t.high = f.Cell
-				if r.Control {
-					t.control++
-				} else {
-					t.ordinary++
-				}
-			}
-		}
+		return t.workspace, false, nil
 	}
-	index = intIndex(f.Offset)
+	// A first chunk containing reclaim can use the independent workspace. Full
+	// schema validation still precedes atomic release and allocator advancement.
+	if f.Flags&2 != 0 {
+		c = newCell(f)
+		c.guestWatermark = t.guestWatermark(f.Session.String())
+		t.workspace = c
+		return c, false, nil
+	}
+	c, err = t.allocateCell(f)
+	return c, false, err
+}
+
+// allocateCell gives a non-donor cell its native number and one ordinary or
+// control credit at its first chunk, before any content check. A permanent
+// content refusal later removes it again (discardRefused).
+func (t *Transport) allocateCell(f Frame) (*cell, error) {
+	r := CellReservation{Control: f.Flags&1 != 0, Release: func() {}}
+	if r.Control && t.control >= 16 || !r.Control && t.ordinary >= 64 {
+		return nil, fsapi.WouldBlock
+	}
+	if t.incomplete(f.Session.String()) >= 16 ||
+		f.Minor >= 1 && !r.Control && t.incompleteOrdinary(f.Session.String()) >= 12 {
+		return nil, fsapi.WouldBlock
+	}
+	c := newCell(f)
+	c.guestWatermark = t.guestWatermark(f.Session.String())
+	c.reservation = r
+	t.cells[f.Cell] = c
+	t.high = f.Cell
+	if r.Control {
+		t.control++
+	} else {
+		t.ordinary++
+	}
+	return c, nil
+}
+
+// storeChunk copies one chunk into c, or checks an identical resend of a
+// stored chunk, and reports whether every chunk of c is in. A resend of a
+// stored chunk of a complete cell revalidates the whole cell.
+func storeChunk(c *cell, f Frame, n Native) (bool, error) {
+	index := intIndex(f.Offset)
 	if c.chunks[index] {
 		if !bytes.Equal(c.body[f.Offset:f.Offset+uint32(len(f.Data))], f.Data) {
-			return 0, fsapi.Invalid
-		}
-		if c.count != len(c.chunks) {
-			return uint32(len(b)), nil
+			return false, fsapi.Invalid
 		}
 	} else {
 		copy(c.body[f.Offset:], f.Data)
@@ -361,107 +431,139 @@ func (t *Transport) Write(ctx context.Context, n Native, node, offset uint64, b 
 		c.observations[index] = cloneNative(n)
 		c.count++
 	}
-	if c.count != len(c.chunks) {
-		return uint32(len(b)), nil
-	}
+	return c.count == len(c.chunks), nil
+}
+
+// decodeCell checks a complete cell's hash, decodes its command and binds it
+// to the frame and the session's registered scope.
+func (t *Transport) decodeCell(c *cell, f Frame, scope *Context) (Command, error) {
 	if sha256.Sum256(c.body) != f.Hash {
-		return 0, fsapi.Invalid
+		return Command{}, fsapi.Invalid
 	}
 	command, e := DecodeCommandVersion(c.body, f.Minor)
 	if e != nil || command.Cell != f.Cell || command.Context != *scope {
-		return 0, fsapi.Invalid
+		return Command{}, fsapi.Invalid
 	}
 	if e = t.service.CheckScope(command.Context); e != nil {
-		return 0, e
+		return Command{}, e
+	}
+	return command, nil
+}
+
+// acceptCell validates a complete cell and, if every check passes, admits it:
+// a donor send takes its reclaim target's credit and the next native number,
+// a terminal manifest stages its donors, and the job is staged for dispatch.
+// It returns the decoded command (nil when decoding failed) so that a refusal
+// can be classified (discardRefused). Every refusal leaves the transport
+// unchanged.
+func (t *Transport) acceptCell(c *cell, f Frame, scope *Context, n Native, w *writeEffects) (*Command, error) {
+	command, e := t.decodeCell(c, f, scope)
+	if e != nil {
+		return nil, e
 	}
 	control := controlCommand(command)
 	if (command.Reclaim != nil) != (f.Flags&2 != 0) {
-		return 0, fsapi.Permission
+		return &command, fsapi.Permission
 	}
-
 	mappingCandidate, e := t.prepareMapping(c, command)
 	if e != nil {
-		return 0, e
+		return &command, e
 	}
 	terminal, e := t.prepareTerminal(c, command, mappingCandidate)
 	if e != nil {
-		return 0, e
+		return &command, e
 	}
 	if c == t.workspace {
-		if command.Reclaim == nil {
-			return 0, fsapi.Invalid
+		if e = t.checkReclaim(f, command, control); e != nil {
+			return &command, e
 		}
-		target := t.cells[command.Reclaim.Cell]
-		if target == nil || target.released || target.frame.Session != f.Session || target.unread != 0 || target.response == nil || digest(target.response) != command.Reclaim.ResponseHash || target.frame.Cell == f.Cell {
-			return 0, fsapi.Permission
-		}
-		if !oneOf(command.Op, "RELEASE_CELL", "SESSION_RETIRE") && target.reservation.Control != control {
-			return 0, fsapi.Permission
-		}
-		r := CellReservation{Control: f.Flags&1 != 0, Release: func() {}}
-		if r.Control != target.reservation.Control {
-			return 0, fsapi.Permission
-		}
-		queue := t.ordinaryQueue
-		if oneOf(command.Op, "RELEASE_CELL", "SESSION_RETIRE") {
-			queue = t.replacementQueue
-		} else if oneOf(command.Op, "VIEW_ACQUIRE", "DIRTY_RESERVE") {
-			queue = t.acquisitionQueue
-		} else if drainCommand(command) {
-			queue = t.drainQueue
-		} else if r.Control {
-			queue = t.controlQueue
-		}
-		if len(queue) == cap(queue) {
-			r.Release()
-			return 0, fsapi.WouldBlock
-		}
-		reclaimed = append(reclaimed, target)
-		delete(t.cells, command.Reclaim.Cell)
-		c.reservation = r
-		t.cells[f.Cell] = c
-		t.high = f.Cell
-		t.workspace = nil
 	} else if c.reservation.Control != control || command.Reclaim != nil {
-		return 0, fsapi.Permission
+		return &command, fsapi.Permission
 	}
-	queue := t.ordinaryQueue
-	if oneOf(command.Op, "RELEASE_CELL", "SESSION_RETIRE") {
-		queue = t.replacementQueue
-	} else if oneOf(command.Op, "VIEW_ACQUIRE", "DIRTY_RESERVE") {
-		queue = t.acquisitionQueue
-	} else if drainCommand(command) {
-		queue = t.drainQueue
-	} else if c.reservation.Control {
-		queue = t.controlQueue
-	}
+	// The frame's control flag is the cell's credit class: allocateCell sets it
+	// from the flag, and checkReclaim requires the donor's target to match it.
+	queue := t.commandQueue(command, f.Flags&1 != 0)
 	if len(queue) == cap(queue) {
-		return 0, fsapi.WouldBlock
+		return &command, fsapi.WouldBlock
+	}
+	if c == t.workspace {
+		t.takeReclaim(c, f, command, w)
 	}
 	if terminal != nil {
-		// Only the exact prevalidated terminal manifest may remove multiple old
-		// cells. Stage post-index counters under the owner lock; no credit is
-		// released until the complete deletion/candidate/fence transaction commits.
-		for _, donor := range terminal.Donors {
-			old := t.cells[donor.NativeCell]
-			reclaimed = append(reclaimed, old)
-			delete(t.cells, donor.NativeCell)
-			if old.reservation.Control {
-				t.control--
-			} else {
-				t.ordinary--
-			}
-		}
-		c.terminal = terminal
-		t.terminal[command.Context.Session] = f.Cell
+		t.stageTerminal(c, f, command, terminal, w)
 	}
 	t.acceptMapping(c, command, mappingCandidate)
 	c.command = &command
 	c.native = cloneNative(n)
 	c.jobPhase = "accepted"
-	dispatch = &job{id: f.Cell, command: command, native: cloneNative(n)}
-	dispatchQueue = queue
-	return uint32(len(b)), nil
+	w.dispatch = &job{id: f.Cell, command: command, native: cloneNative(n)}
+	w.queue = queue
+	return &command, nil
+}
+
+// checkReclaim refuses a donor send whose reclaim target is not a fully read,
+// responded cell of the same session with the same credit class.
+func (t *Transport) checkReclaim(f Frame, command Command, control bool) error {
+	if command.Reclaim == nil {
+		return fsapi.Invalid
+	}
+	target := t.cells[command.Reclaim.Cell]
+	if target == nil || target.released || target.frame.Session != f.Session || target.unread != 0 || target.response == nil || digest(target.response) != command.Reclaim.ResponseHash || target.frame.Cell == f.Cell {
+		return fsapi.Permission
+	}
+	if !oneOf(command.Op, "RELEASE_CELL", "SESSION_RETIRE") && target.reservation.Control != control {
+		return fsapi.Permission
+	}
+	if (f.Flags&1 != 0) != target.reservation.Control {
+		return fsapi.Permission
+	}
+	return nil
+}
+
+// takeReclaim admits the workspace cell: it takes the target's credit and the
+// next native number, and the target is released after the commit.
+func (t *Transport) takeReclaim(c *cell, f Frame, command Command, w *writeEffects) {
+	target := t.cells[command.Reclaim.Cell]
+	w.reclaimed = append(w.reclaimed, target)
+	delete(t.cells, command.Reclaim.Cell)
+	c.reservation = CellReservation{Control: f.Flags&1 != 0, Release: func() {}}
+	t.cells[f.Cell] = c
+	t.high = f.Cell
+	t.workspace = nil
+}
+
+// stageTerminal removes the donors of an exact prevalidated terminal manifest,
+// the only admission that may remove multiple old cells. Post-index counters
+// are staged under the owner lock; no credit is released until the complete
+// deletion/candidate/fence transaction commits.
+func (t *Transport) stageTerminal(c *cell, f Frame, command Command, terminal *ProtectedTerminal, w *writeEffects) {
+	for _, donor := range terminal.Donors {
+		old := t.cells[donor.NativeCell]
+		w.reclaimed = append(w.reclaimed, old)
+		delete(t.cells, donor.NativeCell)
+		if old.reservation.Control {
+			t.control--
+		} else {
+			t.ordinary--
+		}
+	}
+	c.terminal = terminal
+	t.terminal[command.Context.Session] = f.Cell
+}
+
+// commandQueue selects the worker queue of an accepted command.
+func (t *Transport) commandQueue(command Command, control bool) chan job {
+	switch {
+	case oneOf(command.Op, "RELEASE_CELL", "SESSION_RETIRE"):
+		return t.replacementQueue
+	case oneOf(command.Op, "VIEW_ACQUIRE", "DIRTY_RESERVE"):
+		return t.acquisitionQueue
+	case drainCommand(command):
+		return t.drainQueue
+	case control:
+		return t.controlQueue
+	}
+	return t.ordinaryQueue
 }
 
 // Read returns immutable positional chunk bytes, EAGAIN, ESTALE or exact EOF.

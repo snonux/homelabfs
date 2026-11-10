@@ -41,6 +41,13 @@ const mappingRecentLimit = 80
 // only control or donor traffic. The window stays the
 // fallback for those; its size can now be revisited once a rebuilt exporter
 // has run in the lab.
+//
+// Task p64 made the exporter fail back a non-donor cell that this window
+// refuses as stale (ESTALE on a first attempt) instead of pinning its writer
+// on it; the exporter moves its native high-water past the spent number.
+// Task n64 removes such a refused cell here as well, with its credit
+// (discardRefused in refusal.go), so that it no longer counts as incomplete
+// and no longer keeps its session's issuance markers from being pruned.
 const guestReorderWindow = 16
 
 // MappingLeg is inert protected evidence for one actually admitted native leg.
