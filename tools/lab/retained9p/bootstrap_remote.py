@@ -16,10 +16,11 @@ Exit status is the contract bootstrap.py classifies:
      modified, e.g. a manifest written but measured wrong);
   1  uncertain: a change was attempted and its outcome was not observed. The
      orchestrator never replays such a step; root inspects.
-Read-only actions (host-poll, host-proposal, host-preflight, guest-ping) never
-exit 1. Remote child processes (rocky_kernel.py admission, mount) are never
-killed on a deadline: a hung mount(2) cannot be killed reliably anyway, so
-the action reports uncertain and leaves the child for inspection.
+Read-only actions (host-poll, host-proposal, host-preflight, guest-ping,
+guest-stat) never exit 1. Remote child processes (rocky_kernel.py admission,
+mount, the guest-stat lstat) are never killed on a deadline: a hung mount(2)
+or getattr cannot be killed reliably anyway, so the action reports uncertain
+(or, for the read-only lstat, `timeout`) and leaves the child for inspection.
 """
 import argparse
 import base64
@@ -48,10 +49,26 @@ FILE_LIMIT = 64 << 10        # guard records, manifest, mount_tag
 PROPOSAL_LIMIT = 512 << 10   # the runtime's handoff/config bound
 PAYLOAD_LIMIT = 512 << 10    # enrollment.json; provision/bind are smaller
 OUTPUT_LIMIT = 1 << 20       # captured child output per stream
+SECONDS_MAX = 120            # any remote child bound: at most the whole bootstrap
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
 HASH = re.compile(r"[0-9a-f]{64}\Z")
 DEVICE = re.compile(r"virtio(0|[1-9][0-9]{0,3})\Z")
 CHILD_ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
+# The one program guest-stat runs per mount root (k64): os.lstat of the root
+# only, no open, no create, nothing written into the mount. It is still an
+# hfs operation: the guest registers the child as an hfs process and sends a
+# GETATTR claim, and the child's exit queues a PROCESS_EXIT claim, so each
+# probe adds durable claims to the provider ledger (patch 0003). It runs in
+# its own process so a getattr stuck in the hfs transport (the guest waits up
+# to 30 s per exchange) cannot hold the action past its bound. An OSError is
+# a result, not a crash: the errno is exactly what the usability gate reports.
+STAT_PROGRAM = ("import json,os,sys\n"
+                "try:\n"
+                " s=os.lstat(sys.argv[1])\n"
+                " print(json.dumps({'mode':s.st_mode,'uid':s.st_uid,'gid':s.st_gid,"
+                "'ino':s.st_ino,'dev':s.st_dev}))\n"
+                "except OSError as e:\n"
+                " print(json.dumps({'errno':e.errno,'error':os.strerror(e.errno)}))\n")
 
 
 class Refused(RuntimeError):
@@ -334,11 +351,57 @@ def guest_mount(system, args, payload):
     return {"tag": args.tag, "mountpoint": args.mountpoint, "mountinfo": rows[0]["line"]}
 
 
+def guest_stat(system, args, payload):
+    """Usability probe of the mount roots (k64, after READY).
+
+    Read-only for the mounts' contents and in the remote-action sense (never
+    exit 1), but each lstat adds a GETATTR and a PROCESS_EXIT claim to the
+    runtime's provider ledger (see STAT_PROGRAM).
+
+    For each (tag, mount point) pair: the mount point must still be exactly
+    one 9p mount of that tag in mountinfo, otherwise its root is never
+    stat'ed (an lstat would only see the empty directory below and pass for
+    the wrong reason). Then one lstat of the root in a child process bounded
+    by `--seconds`. Every per-root failure (errno, timeout, not mounted, not a
+    directory) is a reported result with exit 0: the orchestrator decides.
+    """
+    require(system.boot_id() == args.boot_id, "guest boot changed")
+    tags, mountpoints = args.tags.split(","), args.mountpoints.split(",")
+    require(0 < len(tags) == len(mountpoints) <= 2, "one or two tag/mount point pairs")
+    roots = [stat_root(system, args, tag, mountpoint) for tag, mountpoint in zip(tags, mountpoints)]
+    return {"boot_id": args.boot_id, "roots": roots}
+
+
+def stat_root(system, args, tag, mountpoint):
+    """One root's probe result; `outcome` is ok, errno, timeout, error,
+    not-mounted or not-directory."""
+    rows = mounted(system, mountpoint)
+    found = {"tag": tag, "mountpoint": mountpoint, "mountinfo": [row["line"] for row in rows]}
+    if len(rows) != 1 or rows[0]["fstype"] != "9p" or rows[0]["source"] != tag:
+        return dict(found, outcome="not-mounted")
+    code, out, err = system.run([args.python, "-I", "-B", "-c", STAT_PROGRAM, mountpoint], args.seconds)
+    if code is None:
+        # Left running, never killed: a hung getattr is evidence.
+        return dict(found, outcome="timeout", seconds=args.seconds)
+    try:
+        result = json.loads(out.decode("utf-8")) if code == 0 else None
+    except ValueError:
+        result = None
+    if not isinstance(result, dict):
+        return dict(found, outcome="error", exit=code, stderr=err.decode("utf-8", "replace")[-2000:])
+    if "errno" in result:
+        return dict(found, outcome="errno", errno=result.get("errno"), error=result.get("error"))
+    mode = result.get("mode")
+    outcome = "ok" if type(mode) is int and stat.S_ISDIR(mode) else "not-directory"
+    return dict(found, outcome=outcome, stat=result)
+
+
 # --------------------------------------------------------------------------
 # CLI
 
 READ_ONLY = {"host-preflight": host_preflight, "host-poll": host_poll,
-             "host-proposal": host_proposal, "guest-ping": guest_ping}
+             "host-proposal": host_proposal, "guest-ping": guest_ping,
+             "guest-stat": guest_stat}
 MUTATING = {"host-install": host_install, "guest-admission": guest_admission,
             "guest-write": guest_write, "guest-mount": guest_mount}
 
@@ -354,7 +417,8 @@ def parser():
         "guest-admission": ["release", "boot-id", "python", "script", "script-sha256", "plan",
                             "plan-sha256", "state", "tags", "seconds"],
         "guest-write": ["target", "sha256", "size", "boot-id"],
-        "guest-mount": ["tag", "mountpoint", "boot-id", "seconds"]}
+        "guest-mount": ["tag", "mountpoint", "boot-id", "seconds"],
+        "guest-stat": ["tags", "mountpoints", "boot-id", "python", "seconds"]}
     for action, names in options.items():
         command = sub.add_parser(action, allow_abbrev=False)
         for name in names:
@@ -377,6 +441,10 @@ def dispatch(args, system, stdin):
     """Run one action; map its outcome to (exit status, JSON result)."""
     try:
         action = READ_ONLY.get(args.action) or MUTATING[args.action]
+        # A remote child bound outside 1..SECONDS_MAX is a caller bug: refuse
+        # before anything runs (exit 2, nothing changed).
+        require(not hasattr(args, "seconds") or 0 < args.seconds <= SECONDS_MAX,
+                "--seconds must be 1..{}".format(SECONDS_MAX))
         payload = read_payload(args, stdin)
         return 0, dict(action(system, args, payload), ok=True)
     except Refused as failure:

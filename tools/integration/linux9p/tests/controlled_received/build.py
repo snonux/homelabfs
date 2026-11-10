@@ -78,7 +78,7 @@ def main():
     (out/'controlled_compat.h').write_text(admin)
     session = read('fs/9p/hfs_session.c')
     selected = ['hfs_field_u64', 'hfs_uuid', 'hfs_cred_write', 'hfs_cred_free',
-                'hfs_process_exit_work', 'hfs_cred_equal', 'hfs_process_find',
+                'hfs_process_exit_work', 'hfs_session_block', 'hfs_cred_equal', 'hfs_process_find',
                 'hfs_capture_owned', 'hfs_capture', 'hfs_capture_terminal',
                 'hfs_reply_scope', 'hfs_transport', 'hfs_result_needs_adoption',
                 'hfs_operation', 'hfs_allocation_candidate', 'hfs_terminal_candidate', 'hfs_candidate_parse_put', 'hfs_control',
@@ -102,9 +102,9 @@ def main():
     # w54: the actual fill_super/kill_sb pair for the failed-bind regression.
     (out/'super.inc').write_text(function(session, 'hfs_fill_super') +
                                  function(session, 'v9fs_hfs_kill_super'))
-    mount = function(session, 'v9fs_hfs_mount')
-    fail = mount.index('\nfail:\n')
-    (out/'mount_fail.inc').write_text('static void *fixture_actual_mount_fail(struct hfs_session *session,int err) {\nunsigned long irqflags;\n' + mount[fail+len('\nfail:\n'):])
+    # g64 moved the mount failure tail into its own production function.
+    (out/'mount_fail.inc').write_text(function(session, 'hfs_mount_fail') +
+                                      '#define fixture_actual_mount_fail hfs_mount_fail\n')
     lease = read('fs/9p/hfs_lease.c')
     (out/'lease.inc').write_text(portable(lease))
     exchange = function(lease, 'hfs_view_exchange')

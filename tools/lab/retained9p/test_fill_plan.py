@@ -185,6 +185,28 @@ class BatchEvidenceTests(BatchCase):
         self.assertEqual(code, 3)
         self.refuses(self.argv(plan_sha256), "incomplete run")
 
+    def test_ready_run_whose_usable_gate_failed_refuses(self):
+        """zq3-r7's shape: READY with every earlier step ok, then EACCES on
+        the mount roots. The batch plan must never be filled from it."""
+        denied = {"outcome": "errno", "errno": 13, "error": "Permission denied"}
+
+        def refuse_roots(world):
+            world.stat_outcomes = [[{}, {}], [denied, denied]]
+        code, plan_sha256 = self.bootstrap_run(world_change=refuse_roots)
+        self.assertEqual(code, 1)
+        steps = {r["step"]: r["outcome"] for r in world_fixtures.records(self.run_dir) if r["kind"] == "result"}
+        self.assertEqual((steps["ready"], steps["usable"]), ("ok", "failed"))
+        self.refuses(self.argv(plan_sha256), "bootstrap steps did not end ok: usable=failed")
+
+    def test_journal_of_the_previous_step_list_refuses_by_version(self):
+        _, plan_sha256 = self.bootstrap_run()
+        self.assertEqual(fill.bootstrap.JOURNAL_VERSION, "homelabfs-zq3-bootstrap-journal/2")
+        path = self.run_dir / "journal.jsonl"
+        records = [json.loads(line) for line in path.read_text().splitlines()]
+        records[0]["version"] = "homelabfs-zq3-bootstrap-journal/1"
+        path.write_bytes(b"".join(controller.canonical(record) for record in records))
+        self.refuses(self.argv(plan_sha256), "journal version 'homelabfs-zq3-bootstrap-journal/1' is not")
+
     def test_summary_must_say_ready(self):
         _, plan_sha256 = self.bootstrap_run()
         summary = self.run_dir / "summary.json"
