@@ -155,7 +155,7 @@ The tooling now admits only this manifest. The c64+d64 `66b5bb2b…`, 964
 example spec `internal/runtimeprep/testdata/zq3-spec.json` follows it, because
 `TestCheckArgvRecordAgreesWithG4` requires the generated runtime config's
 exporter digest to match the argv record. Only `Exporter.SHA256` changed
-there. The i64/o64 view bounds (Sources 12 and the zq3 lifetime budgets) are
+there. The i64/o64 view bounds (Sources 10 after o64, and the zq3 lifetime budgets) are
 untouched. The candidate package and pins embed no view bounds: they come
 from the run spec at fill time.
 
