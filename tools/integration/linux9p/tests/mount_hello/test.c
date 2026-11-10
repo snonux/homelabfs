@@ -2,11 +2,11 @@
 /* Actual v9fs_hfs_mount ordering: cache option, enroll, validate, HELLO,
  * selection check; then the mounted superblock's mountinfo options (g64).
  * hfs_session_block's once-per-session log is checked directly, also under a
- * dropping ratelimit and through the controlled stop fence (m64), and so is
+ * dropping ratelimit and through kill_sb's stop/retain fences (m64), and so is
  * the enrollment Bounds Sources floor (hfs_go_bounds, m64).
  *
- * mount.inc, validate.inc, before_send.inc, show_options.inc, stop.inc and
- * bounds.inc are verbatim production definitions; bounds_fixtures.inc holds
+ * mount.inc, validate.inc, before_send.inc, show_options.inc, stop.inc,
+ * kill_sb.inc and bounds.inc are verbatim production definitions; bounds_fixtures.inc holds
  * the daemon's Sources floor constants and real Bounds (see run.py). The VFS/module/tracepoint/p9 primitives, the
  * controlled registry lookups and the native exchange are explicit
  * substitutions. The exchange applies the real controlled pre-send HELLO
@@ -125,6 +125,7 @@ struct hfs_provider {
 	u32 features;
 	int (*enroll)(const char *device, struct hfs_enrollment *enrollment);
 	void (*retain)(struct hfs_session *session);
+	int (*stop)(struct hfs_session *session);
 };
 /* Only the fields the mount and the controlled pre-send check touch. */
 struct hfs_session {
@@ -140,10 +141,21 @@ struct hfs_session {
 	struct workqueue_struct *control;
 	struct p9_client *client;
 	void *control_completion, *retirement_completion;
-	bool closing, blocked, retained, terminal_pending;
+	bool closing, unmounting, blocked, retained, terminal_pending;
 	unsigned long block_reported;
 };
-struct hfs_controlled_mount { struct super_block *super; bool stopping; u32 cookies; };
+struct hfs_controlled_mount {
+	struct super_block *super;
+	struct hfs_enrollment enrollment;
+	struct hfs_session *session;
+	bool stopping, retained;
+	u32 cookies;
+};
+/* hfs_controlled_retain's registry walk; empty here (no rows to mark). */
+static struct hfs_controlled_registry {
+	u32 nr_mounts;
+	struct hfs_controlled_mount *mounts[64];
+} *hfs_controlled_registry;
 /* Only the hfs_view fields hfs_controlled_stop reads (m64). */
 typedef int wait_queue_head_t;
 enum hfs_view_phase { HFS_VIEW_UNBOUND, HFS_VIEW_QUIESCENT };
@@ -155,6 +167,7 @@ struct hfs_view {
 	enum hfs_view_phase phase;
 };
 #define wake_up_all(w) ((void)(w))
+#define WARN_ON_ONCE(p) ((p) ? (fprintf(stderr, "unexpected WARN %s\n", #p), abort(), 1) : 0)
 
 /* Per-case fixture state; each case is a fresh forked child. */
 enum echo { ECHO_SENT, ECHO_MAPPED, ECHO_TERMINAL };
@@ -369,6 +382,29 @@ static struct hfs_view stop_view = { .quiescent = true, .phase = HFS_VIEW_UNBOUN
 static struct hfs_view *hfs_view_get(struct hfs_session *session) { return &stop_view; }
 static void hfs_view_put(struct hfs_view *view) { CHECK(view == &stop_view); }
 #include "stop.inc"
+
+/* kill_sb primitives. begin_close and stop results come from the case. */
+static int unmount_close_err, unmount_stop_err;
+static unsigned int unmount_retains;
+static int hfs_controlled_begin_close(struct hfs_session *session) { return unmount_close_err; }
+static int unmount_stop(struct hfs_session *session)
+{
+	int err = hfs_controlled_stop(session);
+
+	return unmount_stop_err ? unmount_stop_err : err;
+}
+static void unmount_retain(struct hfs_session *session)
+{
+	unmount_retains++;
+	hfs_controlled_retain(session);
+}
+static const struct hfs_provider unmount_provider = {
+	.retain = unmount_retain, .stop = unmount_stop,
+};
+#define tracepoint_synchronize_unregister() ((void)0)
+#define kill_anon_super(sb) ((void)(sb))
+#define flush_workqueue(wq) ((void)(wq))
+#include "kill_sb.inc"
 #include "bounds.inc"
 #include "bounds_fixtures.inc"
 
@@ -552,26 +588,50 @@ static void run_block_ratelimit_case(void)
 	free(session);
 }
 
-/* m64: a formerly silent site. The controlled stop fence logs once on a
- * session that never faulted; after an earlier fault the first reason stays
- * the only line, and the stop still fences the session.
+/* m64 review: kill_sb of a session, through the real stop and retain fences.
+ * Returns the session (kept: kill_sb retains it) after checking it is fenced.
+ */
+static struct hfs_session *unmount(int close_err, int stop_err)
+{
+	struct hfs_session *session = calloc(1, sizeof(*session));
+	struct super_block sb = { session };
+
+	CHECK(session);
+	session->provider = &unmount_provider;
+	INIT_LIST_HEAD(&session->global);
+	unmount_close_err = close_err;
+	unmount_stop_err = stop_err;
+	v9fs_hfs_kill_super(&sb);
+	CHECK(session->blocked && session->closing && session->retained);
+	CHECK(controlled_mount.stopping && !sb.s_fs_info);
+	return session;
+}
+
+/* A clean unmount fences silently: no warn line for an expected close. A
+ * failed stop or close in kill_sb still logs, and a retain outside kill_sb
+ * (after a failed mount) logs as before.
  */
 static void run_stop_block_case(void)
 {
-	struct hfs_session *clean = calloc(1, sizeof(*clean));
-	struct hfs_session *faulted = calloc(1, sizeof(*faulted));
+	struct hfs_session *clean, *stop_fault, *close_fault, *failed_mount;
 
-	CHECK(clean && faulted);
-	CHECK(!hfs_controlled_stop(clean));
-	CHECK(clean->blocked && controlled_mount.stopping && warnings == 1);
-	CHECK(strstr(last_warning, "blocked by controlled stop on STOP (0)"));
-	hfs_session_block(faulted, "uncertain view ticket", "VIEW_QUERY", -EPROTO);
+	clean = unmount(0, 0);
+	CHECK(warnings == 0 && unmount_retains == 1 && !clean->block_reported);
+	stop_fault = unmount(0, -EBUSY);
+	CHECK(warnings == 1 && unmount_retains == 2);
+	CHECK(strstr(last_warning, "blocked by failed provider stop on STOP (-16)"));
+	close_fault = unmount(-ESTALE, 0);
 	CHECK(warnings == 2);
-	CHECK(!hfs_controlled_stop(faulted));
-	CHECK(faulted->blocked && warnings == 2);
-	CHECK(strstr(last_warning, "blocked by uncertain view ticket on VIEW_QUERY (-71)"));
+	CHECK(strstr(last_warning, "blocked by failed controlled close on UNMOUNT (-116)"));
+	failed_mount = calloc(1, sizeof(*failed_mount));
+	CHECK(failed_mount);
+	hfs_controlled_retain(failed_mount);
+	CHECK(failed_mount->blocked && warnings == 3);
+	CHECK(strstr(last_warning, "blocked by controlled retain on RETAIN (0)"));
 	free(clean);
-	free(faulted);
+	free(stop_fault);
+	free(close_fault);
+	free(failed_mount);
 }
 
 /* hfs_go_bounds on a Bounds JSON object for an enrollment of `domains`,
@@ -697,7 +757,7 @@ int main(void)
 	failures += !run_child("stock-default-msize", NULL, run_stock_case);
 	failures += !run_child("session-block-once", NULL, run_block_case);
 	failures += !run_child("session-block-ratelimit", NULL, run_block_ratelimit_case);
-	failures += !run_child("controlled-stop-block", NULL, run_stop_block_case);
+	failures += !run_child("unmount-fence-log", NULL, run_stop_block_case);
 	failures += !run_child("enrollment-sources-floor", NULL, run_bounds_case);
 	printf("mount_hello cases=%zu failures=%u\n", ARRAY_SIZE(cases) + 5, failures);
 	return failures ? 1 : 0;

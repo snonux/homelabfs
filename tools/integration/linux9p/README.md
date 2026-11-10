@@ -740,11 +740,14 @@ before g64 (s54). No candidate was rebuilt or admitted.
   VIEW_CANCEL reply checks, the uncertain view ticket in
   `hfs_view_exchange` (the operation is VIEW_QUERY once the initial command
   was admitted), VIEW_ACQUIRE, both VIEW_RELEASE checks, a busy ticket at
-  VIEW_RETIRE, DIRTY_RESERVE and DIRTY_FREEZE; in patch 0005 the controlled
-  stop and retain fences. Blocking semantics are unchanged. kill_sb sets the
-  flag silently and then reaches the stop fence, so a session that never
-  faulted now logs `blocked by controlled stop on STOP (0)` once at unmount;
-  after an earlier fault the first reason stays the only line. Only kill_sb,
+  VIEW_RETIRE, DIRTY_RESERVE and DIRTY_FREEZE. In patch 0005 the controlled
+  stop and retain fences use `hfs_session_fence`. kill_sb sets
+  `session->unmounting` first, so a clean unmount fences silently (zq3 run
+  sheets collect dmesg as evidence, and a warn line there would read as a
+  fault). kill_sb itself logs a failed controlled close
+  (`failed controlled close on UNMOUNT`) or a failed provider stop
+  (`failed provider stop on STOP`); a retain after a failed mount logs
+  `controlled retain on RETAIN (0)`. Blocking semantics are unchanged. Only
   a failed mount and the close/release sequence-wrap guards still set the
   flag directly.
 - **Log reliability.** The once-per-session line is a plain `pr_warn`. With
@@ -759,10 +762,12 @@ Bounds of the zq3 spec and guest artifacts. It accepts each signed Bounds,
 then checks floor - 1 refused, floor, 128 accepted and 129 refused for 1, 2,
 3, 62 and 63 domains. `session-block-ratelimit` blocks while the ratelimit
 substitute drops every line and requires the line anyway.
-`controlled-stop-block` runs the verbatim `hfs_controlled_stop` on a clean
-and an already faulted session. The pre-m64 source fails to compile the
-harness (`hfs_go_bounds` takes two arguments). `controlled_received/compat.h`
-gains a `pr_warn` substitute.
+`unmount-fence-log` runs the verbatim `v9fs_hfs_kill_super` with the real
+`hfs_controlled_stop` and `hfs_controlled_retain`: a clean unmount logs
+nothing, a failed stop or close logs one warn line, and a retain outside
+kill_sb logs. The pre-m64 source fails to compile the
+harness (`hfs_go_bounds` takes two arguments). `controlled_received` gains a `pr_warn`
+substitute and compiles `hfs_session_fence`.
 
 The series was regenerated with `export.py --task m64` (0001 and 0002
 unchanged). A fresh `prepare.py` tree applies it with fuzz zero and the

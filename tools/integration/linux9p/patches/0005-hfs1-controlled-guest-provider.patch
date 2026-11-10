@@ -252,7 +252,7 @@ diff --git a/fs/9p/hfs_controlled.c b/fs/9p/hfs_controlled.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_controlled.c
-@@ -0,0 +1,1350 @@
+@@ -0,0 +1,1349 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* Registered controlled-only provider and finite retained ownership. */
 +#include "hfs_controlled.h"
@@ -1442,11 +1442,10 @@ new file mode 100644
 +	bool cookies;
 +
 +	/* Close admission BEFORE inspecting or joining any existing owner.
-+	 * kill_sb sets the flag silently just before this, so on a session
-+	 * that never faulted this logs the unmount fence once (m64); after an
-+	 * earlier fault the first reason stays the only line.
++	 * From kill_sb this is the silent clean-unmount fence; kill_sb logs a
++	 * failed stop itself (m64).
 +	 */
-+	hfs_session_block(session, "controlled stop", "STOP", 0);
++	hfs_session_fence(session, "controlled stop", "STOP");
 +	mutex_lock(&hfs_controlled_lock);
 +	mount = hfs_controlled_mount(session);
 +	if (mount)
@@ -1548,8 +1547,8 @@ new file mode 100644
 +	struct hfs_view *view;
 +	u32 i;
 +
-+	/* Retained at kill_sb or after a failed mount; logged once (m64). */
-+	hfs_session_block(session, "controlled retain", "RETAIN", 0);
++	/* Silent at a clean kill_sb; logged once after a failed mount (m64). */
++	hfs_session_fence(session, "controlled retain", "RETAIN");
 +	mutex_lock(&hfs_controlled_lock);
 +	if (hfs_controlled_registry)
 +		for (i = 0; i < hfs_controlled_registry->nr_mounts; i++) {

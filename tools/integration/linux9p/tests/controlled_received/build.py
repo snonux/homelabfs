@@ -78,7 +78,7 @@ def main():
     (out/'controlled_compat.h').write_text(admin)
     session = read('fs/9p/hfs_session.c')
     selected = ['hfs_field_u64', 'hfs_uuid', 'hfs_cred_write', 'hfs_cred_free',
-                'hfs_process_exit_work', 'hfs_session_block', 'hfs_cred_equal', 'hfs_process_find',
+                'hfs_process_exit_work', 'hfs_session_block', 'hfs_session_fence', 'hfs_cred_equal', 'hfs_process_find',
                 'hfs_capture_owned', 'hfs_capture', 'hfs_capture_terminal',
                 'hfs_reply_scope', 'hfs_transport', 'hfs_result_needs_adoption',
                 'hfs_operation', 'hfs_allocation_candidate', 'hfs_terminal_candidate', 'hfs_candidate_parse_put', 'hfs_control',

@@ -9,8 +9,9 @@ creation, transport binding and the native exchange are substituted. The
 substituted exchange echoes the sent HELLO as the runtime does
 (internal/guestbridge/service.go). No kernel, VM or service is used.
 
-Since m64 it also copies hfs_go_bounds (the signed enrollment Bounds check)
-and hfs_controlled_stop verbatim. The Bounds cases use the daemon's own
+Since m64 it also copies hfs_go_bounds (the signed enrollment Bounds check),
+v9fs_hfs_kill_super, hfs_session_fence, hfs_controlled_stop and
+hfs_controlled_retain verbatim. The Bounds cases use the daemon's own
 Sources floor constants from internal/viewcontrol/source_floor.go and the
 real Bounds of the zq3 spec and the controlledruntime guest artifacts.
 """
@@ -96,7 +97,7 @@ def extract(source, output):
     # The complete mount with every helper it calls (g64 split it), not only
     # its failure tail (compare controlled_received).
     (output / 'mount.inc').write_text(''.join(build.function(session, name) for name in (
-        'hfs_session_block', 'hfs_cache_option', 'hfs_session_new', 'hfs_mount_enroll', 'hfs_trace_register',
+        'hfs_session_block', 'hfs_session_fence', 'hfs_cache_option', 'hfs_session_new', 'hfs_mount_enroll', 'hfs_trace_register',
         'hfs_mount_client', 'hfs_mount_hello', 'hfs_mount_fail', 'v9fs_hfs_mount')))
     # g64: the mountinfo super options of an hfs superblock.
     client = texts['net/9p/client.c']
@@ -104,14 +105,16 @@ def extract(source, output):
         build.function(client, 'p9_client_is_hfs') +
         build.function(client, 'p9_show_client_options') +
         build.function(texts['fs/9p/hfs_inode.c'], 'hfs_show_options'))
-    # m64: the enrollment Bounds check with its Sources floor macros, and one
-    # routed blocked site (the controlled stop fence).
+    # m64: the enrollment Bounds check with its Sources floor macros, and the
+    # unmount path: kill_sb with the real controlled stop and retain fences.
     enrollment = texts['fs/9p/hfs_enrollment.c']
     macros = re.findall(r'^#define HFS_GO_SOURCES_\w+.*$', enrollment, re.M)
     (output / 'bounds.inc').write_text('\n'.join(macros) + '\n' +
                                        build.function(enrollment, 'hfs_go_bounds'))
-    (output / 'stop.inc').write_text(
-        build.function(texts['fs/9p/hfs_controlled.c'], 'hfs_controlled_stop'))
+    (output / 'stop.inc').write_text(''.join(
+        build.function(texts['fs/9p/hfs_controlled.c'], name)
+        for name in ('hfs_controlled_stop', 'hfs_controlled_retain')))
+    (output / 'kill_sb.inc').write_text(build.function(session, 'v9fs_hfs_kill_super'))
     return {name: hashlib.sha256(text.encode()).hexdigest() for name, text in texts.items()}
 
 

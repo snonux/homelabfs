@@ -69,11 +69,11 @@
     "drivers/char/random.c": "27c47ba7886b54b5b6a021c165238de0d5d5f9ea29d22888e3d4cca48f4edfe8",
     "fs/9p/Kconfig": "b775679a976451178fb663b2c9b70cbd040bea8be6b061a69b930a67a77087d3",
     "fs/9p/Makefile": "8e952a6cc9a66bbcc3bd9c39a49f3b5c5a1bae8f71a5345ba31b080e8f5c605f",
-    "fs/9p/hfs.h": "8c4cb55ddb211ab0642391db8e08cd134100b6f36506cbb9bda867c2de1e0006",
+    "fs/9p/hfs.h": "d37e7ccd513db6ac35cd978181eff96cb05ea8c8d178230c7474cf5b577d9be4",
     "fs/9p/hfs_admission.c": "a608e6c8f9bf3b3b36eccfac65ae967e2d72972a88488ed9728d34441b80151f",
     "fs/9p/hfs_admission.h": "52365264648d9b2087bafb036b3495f0523a0778533322398405c802da13df7c",
     "fs/9p/hfs_completion.inc": "7f60863b2eb93bd69902b609c1c4ec188d12fac27f3c3f04a38751ca0cdde09b",
-    "fs/9p/hfs_controlled.c": "a32c6332d4de361edd1b5e505a8c30683b8eae37254bc3a25a3cc2ab0eea4ed8",
+    "fs/9p/hfs_controlled.c": "7460e62f39e7a798f6fa37dd8327a0c46c68c77853698960a0691ed8565d45b1",
     "fs/9p/hfs_controlled.h": "9a09273e6c1b3bca469553ab0607fafc0fedb3a194579b9d5defd9e94d850b25",
     "fs/9p/hfs_controlled_artifacts.c": "0442d53994626fe776b59304608b3d39a2f049d3bdf2ffe37b9da34f263ec149",
     "fs/9p/hfs_controlled_internal.h": "af9505f7b577069c9ef81c598b80ced65b6a454d29471243bd8c43247a33bbf1",
@@ -105,7 +105,7 @@
     "fs/9p/hfs_protocol.h": "20c87fc0c4ff2d06921addfbcbabcc3b8239c9607563c2fd9e10fe15ef821907",
     "fs/9p/hfs_received.h": "d6b1a1fe74ed749151ef8c9327e24b9fcfce082ddf03cc67cefd8cc2479dad03",
     "fs/9p/hfs_received.inc": "dc13c92ba0aaf251ccc692b71d0f013b9681e29b0b51bde9a67a2593d78a7f1c",
-    "fs/9p/hfs_session.c": "29eb0fe367af261e4356fd38e2ba976de8c3a06ac4f075f0581a84caffb10544",
+    "fs/9p/hfs_session.c": "f537bd82b8bdb33680513dc0315152cd8f7ee04ec78b47b2495e253c3581ebba",
     "fs/9p/hfs_view.c": "cb175faebe5de9bbab2f5504c0b0805c8ea7c959de56a4b7229e9bd7955749b0",
     "fs/9p/hfs_view.h": "5b7ececa37bc486b4900b26567168bb19d8e07350f1ef5d1b3721826ecdbbd5f",
     "fs/9p/vfs_super.c": "1c85dd57e9f27b324cbf4b8a35e9b4cbaf9f2259533754602220f2b2e60f449f",
@@ -135,9 +135,9 @@
       "sha256": "11b322486e060f89e5f116e7acd78298c23a994f553907f0896ae109ed903eab"
     },
     {
-      "bytes": 173831,
+      "bytes": 175006,
       "file": "0003-hfs1-guest-vfs.patch",
-      "sha256": "3b239a3a3944564d2636c32a9d4c2dd9cfa26631eefc013319e4c5f4512f9e22"
+      "sha256": "8cfbaad03436da836de5096e36deebb2d7ed4f40397844141eb8f63ad5992b10"
     },
     {
       "bytes": 169530,
@@ -145,9 +145,9 @@
       "sha256": "c2a1faf484dc0eff88988b19ed58b49ab57efcf85f1607dce3bc51b10df6826b"
     },
     {
-      "bytes": 346306,
+      "bytes": 346207,
       "file": "0005-hfs1-controlled-guest-provider.patch",
-      "sha256": "7e17060576645727ecc73069128606c99144cdd2b10b4e490296a16d00669cd5"
+      "sha256": "82a6ae6548455f6fb30dffaee56bd0c2ce039c085a446b6a3ca33604f75f81b5"
     }
   ],
   "project_task": "m64",
