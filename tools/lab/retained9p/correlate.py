@@ -26,6 +26,11 @@ records; every record says acceptance:false.
               step and an OBSERVE showing the C9 cut precondition. It prints
               argv and executes nothing.
 
+A plan's declared deferrals (controller.py `deferred`, z64; T5
+mapped-pressure per q64) are repeated as `deferred` in the lost-reply and k04
+records and the command output: "after the released batch" then means every
+PLANNED case released, and nothing here lets a deferred case look run.
+
 A binding problem (wrong run, digest, runtime, stale cut, wrong case) refuses
 and writes nothing. For T9/T11 the observed outcome, good or bad, is the
 record's content; it never becomes acceptance.
@@ -482,6 +487,7 @@ def lost_reply_record(output, plan_sha256, before, armed, after):
     call, reread = steps["lost-reply-call"], steps["lost-reply-reread"]
     seen = effect_seen(reread["observation"])
     return {"version": LOST_REPLY_VERSION, "run_id": plan["run_id"], "acceptance": False,
+            "deferred": plan.get("deferred", []),
             "classification": classify(exposure, committed, call["observation"], seen),
             "fixture": view["fixture"], "session": session, "exposure": exposure,
             "armed_intent": view["exposure"].get("intent"),
@@ -612,6 +618,7 @@ def k04_record(output, plan_sha256, snapshot_args):
         "guest_io_refused", "marker_absent", "raw_directory_unchanged",
         "host_path_unchanged_during_attempt"])
     return {"version": K04_VERSION, "run_id": plan["run_id"], "acceptance": False,
+            "deferred": plan.get("deferred", []),
             "k04_refusal_observed": held, "probe": probe, "checks": checks,
             "guest": steps["after-loss"], "snapshots": snapshots, "limits": K04_LIMITS}
 
@@ -641,6 +648,10 @@ def last_bound_sequence(output, state):
 
 def command_preconditions(operation, observe, output, state):
     """ARM once before any step; RESTART only on an OBSERVE after the quiesce.
+
+    The controller sets `syscall_batch_success` once every planned case is
+    released, so a plan with a declared deferral can ARM after its fewer
+    cases; an undeclared missing case never reaches that state.
 
     OBSERVE carries no timestamp, so "after the quiesce" is checkable only in
     part: the reply must be later than every OBSERVE bound in this run, and the
@@ -690,6 +701,7 @@ def client_command(args):
             argv += ["--lost-intent", args.lost_intent]
     return {"argv": argv, "operation": args.operation, "sequence": last["sequence"] + 1,
             "lost_intent": args.lost_intent, "quiesce": quiesce,
+            "deferred": plan.get("deferred", []),
             "execution_authorized": False, "acceptance": False}
 
 
@@ -766,8 +778,13 @@ def main(argv=None):
         return 0
     value = build(args)
     sha256 = write_record(args.record, value)
-    print(json.dumps({"record": args.record, "record_sha256": sha256, "version": value["version"],
-                      "acceptance": False}, sort_keys=True))
+    # Case records keep their closed host-correlation/1 shape (controller.py
+    # binds it); the T9/T11 records carry the plan's deferral, echoed here.
+    summary = {"record": args.record, "record_sha256": sha256, "version": value["version"],
+               "acceptance": False}
+    if "deferred" in value:
+        summary["deferred"] = value["deferred"]
+    print(json.dumps(summary, sort_keys=True))
     return 0
 
 

@@ -125,10 +125,29 @@ time against already installed/admitted mounts:
    checks that binding and the retained stdout digest, persists the record and
    dispatches the guest release.
 4. `next --output ABS --sha256 SHA` dispatches the following case only after the
-   previous payload is released. `syscall_batch_success` needs all five released.
-5. `lifecycle --output ABS --sha256 SHA --step STEP` (after all five releases)
-   dispatches one zq3 T9-T11 guest step with the same intent journal: see
-   [lifecycle steps](#guest-lifecycle-steps-zq3-g10-g11).
+   previous payload is released. `syscall_batch_success` needs every planned
+   case released: all five, or the five minus a declared deferral (below).
+5. `lifecycle --output ABS --sha256 SHA --step STEP` (after every planned
+   release) dispatches one zq3 T9-T11 guest step with the same intent journal:
+   see [lifecycle steps](#guest-lifecycle-steps-zq3-g10-g11).
+
+**Deferred cases (z64).** A plan runs `credentials, sync, metadata,
+namespace, mapped-pressure` in that order unless it carries an optional
+`deferred` list of `{"case", "reason"}` entries. Its `requests` must then be
+exactly the five minus the deferred cases, in canonical order. Only
+`mapped-pressure` (zq3 T5) may be deferred: its full 4 MiB canary needs more
+view lifetimes than the 4 GiB host budget funds until q64 recycles view
+tickets (Paul's 2026-11-10 decision); the other four are cheap and are the
+T1-T4 evidence the lifecycle steps build on, so no general rule lets a plan
+skip them. Unknown, duplicate or non-deferrable entries, an empty `deferred`
+list (omit the key instead), a missing, blank, non-printable or over-512-character
+reason, a declared case still present, a case missing without a declaration and
+an empty batch all refuse. The declaration is part of the plan bytes and
+digest; `check` prints `cases_planned` and `deferred`, the run state (and so
+`status` and every command's report) repeats both and lists each deferred
+case in `missing`, and `zq3_acceptance_complete` stays false. A plan without
+the key is the five-case batch, byte-identical to a pre-z64 plan, so its digest
+does not change.
 
 `status --output ABS` reads retained state. Refusals before a dispatch change no
 state; a failed or uncertain dispatch records `error`, after which every later
@@ -206,7 +225,8 @@ these exercise controller transport safety only, not guest filesystem acceptance
 
 ## Guest lifecycle steps (zq3 G10, G11)
 
-After all five payloads are released, `controller.py lifecycle --step` sends
+After every planned payload is released (all five, or four with T5 deferred),
+`controller.py lifecycle --step` sends
 `homelabfs-retained9p-lifecycle-step/1` requests to the same pinned `guest.py`:
 the plan's boot/provider/manifest/mount identity plus `step` and a 30 s alarm.
 Steps run at most once, in the order below (skipping is allowed, going back
@@ -991,6 +1011,12 @@ output is never replaced. It prints one JSON line with the filled values
 and the plan's `sha256` for the next pinned command. Filling grants no
 authority.
 
+A case deferral (z64) is declared in the batch template itself: the
+`deferred` list with its reasons and only the remaining requests. `batch`
+copies it unchanged, so the template pin, the filled plan and its SHA256 all
+carry it, the controller validation decides whether it is allowed, and the
+report adds `cases_planned` and `deferred` (`[]` for the five-case batch).
+
 **Local evidence.** `test_fill_plan.py` produces its bootstrap evidence by
 running the real `bootstrap.run` against `test_bootstrap.py`'s simulated
 world (only the mount replies carry realistic `mountinfo` rows), fills the
@@ -1001,7 +1027,8 @@ whose `usable` gate failed with `EACCES`, a `/1` journal, a non-READY summary, a
 or multi-row `mountinfo`, zero or leading-zero IDs, duplicate IDs,
 disagreeing admission/enrollment evidence, a changed enrollment request,
 template pin, filled, moved and unknown placeholders, a template of another
-bundle or run, consumer validation refusals (no output, no `.next`), an
+bundle or run, consumer validation refusals (no output, no `.next`; including
+an undeclared missing case and a deferred `credentials`), an
 existing output, and malformed or foreign `sha256 -r` fact files.
 
 ## Required work before an executable exact plan

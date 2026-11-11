@@ -19,7 +19,7 @@ import unittest
 from unittest import mock
 
 from test_lifecycle_steps import quiet, step_stdout
-from test_preparation import batch_fixture, controller, guest, guest_stdout, module
+from test_preparation import DEFER_T5, batch_fixture, controller, guest, guest_stdout, module
 
 correlate = module("correlate")
 host_snapshot = module("host_snapshot")
@@ -89,11 +89,13 @@ def case_stdout(request):
 
 
 class CorrelatorBase(unittest.TestCase):
+    DEFERRED = None  # The five-case plan; a subclass may declare a z64 deferral.
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        self.path, self.plan, probe = batch_fixture(self.root)
+        self.path, self.plan, probe = batch_fixture(self.root, self.DEFERRED)
         self.hash = controller.digest(self.path.read_bytes())
         self.output = self.root / "run"
         self.observations, self.count = {}, 0
@@ -137,10 +139,10 @@ class CorrelatorBase(unittest.TestCase):
         return quiet(controller.release, self.output, self.hash, path, sha)
 
     def release_all(self):
-        """Five cases, each correlated by the real correlator and released."""
+        """Every planned case, each correlated by the real correlator and released."""
         quiet(controller.probe, self.path, self.hash, self.output)
         sequence = 0
-        for index, case in enumerate(controller.CASES):
+        for index, case in enumerate(request["case"] for request in self.plan["requests"]):
             if index:
                 quiet(controller.next_case, self.output, self.hash)
             base = 2 * index + 1
@@ -592,9 +594,9 @@ class CommandTests(CorrelatorBase):
             self.command("arm-lost-reply", observed(21, 11))
 
     def release_all_from_probe(self):
-        """Release the already probed first case and the remaining four."""
+        """Release the already probed first case and the remaining planned ones."""
         sequence = 0
-        for index, case in enumerate(controller.CASES):
+        for index, case in enumerate(request["case"] for request in self.plan["requests"]):
             if index:
                 quiet(controller.next_case, self.output, self.hash)
             base = 2 * index + 1
@@ -634,6 +636,48 @@ class CommandTests(CorrelatorBase):
             self.command("observe", observed(sequence + 1, 11), control="/var/tmp/$HOME/control.sock")
         with self.assertRaisesRegex(correlate.Refused, "OBSERVED reply"):
             self.command("observe", armed(sequence + 1, 11))
+
+
+class DeferredCommandTests(CommandTests):
+    """Every command test again on a plan declaring T5 deferred (z64, q64):
+    the ARM precondition holds after the four planned releases."""
+    DEFERRED = DEFER_T5
+
+    def test_arm_after_four_planned_releases_repeats_the_deferral(self):
+        sequence = self.release_all()
+        self.assertEqual(sequence, 8)
+        state = self.state()
+        self.assertTrue(state["syscall_batch_success"])
+        self.assertFalse(state["zq3_acceptance_complete"])
+        result = self.command("arm-lost-reply", observed(sequence + 1, 11))
+        self.assertEqual(result["argv"][3:5], ["--operation", "arm-lost-reply"])
+        self.assertEqual((result["deferred"], result["acceptance"]), (DEFER_T5, False))
+
+    def test_arm_refuses_with_a_planned_case_unreleased(self):
+        quiet(controller.probe, self.path, self.hash, self.output)
+        record = self.correlate_case("credentials", observed(1, 1), observed(2, 2))
+        self.assertEqual(self.release("credentials", record), 0)
+        with self.assertRaisesRegex(correlate.Refused, "ARM only once"):
+            self.command("arm-lost-reply", observed(3, 3))
+
+
+class DeferredLostReplyCorrelationTests(LostReplyCorrelationTests):
+    """T9 records of a plan with T5 deferred carry the declaration."""
+    DEFERRED = DEFER_T5
+
+    def test_record_repeats_the_deferral(self):
+        self.steps()
+        record = self.record()
+        self.assertEqual((record["deferred"], record["acceptance"]), (DEFER_T5, False))
+
+
+class DeferredK04CorrelationTests(K04CorrelationTests):
+    """T11 records of a plan with T5 deferred carry the declaration."""
+    DEFERRED = DEFER_T5
+
+    def test_record_repeats_the_deferral(self):
+        record = self.k04(self.triple(dead=True))
+        self.assertEqual((record["deferred"], record["acceptance"]), (DEFER_T5, False))
 
 
 class HostSnapshotTests(unittest.TestCase):

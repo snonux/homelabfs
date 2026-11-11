@@ -15,8 +15,9 @@ inventory digest and the host correlation digest; only then are the exact known
 payload entries unlinked. Missing, changed or replayed releases refuse and
 preserve the payload for inspection.
 
-After the five released cases, lifecycle step requests (zq3 T9-T11) run one
-bounded, never-retried guest action each: the lost-reply mkdir CALL, its
+After the batch's cases are released (all five, or the five minus a deferral
+the controller plan declares, z64), lifecycle step requests (zq3 T9-T11) run
+one bounded, never-retried guest action each: the lost-reply mkdir CALL, its
 re-read, the quiesce before RESTART and the after-host-loss I/O attempt. They
 record each errno as an observation; only host correlation interprets them.
 """
@@ -48,7 +49,9 @@ REQUEST_FIELDS = {"version", "run_id", "boot_id", "provider_nonce", "manifest_sh
 # inventory digest it expects and the digest of the host correlation captured
 # while the payload was still present.
 RELEASE_FIELDS = REQUEST_FIELDS | {"token", "inventory_sha256", "correlation_sha256"}
-# Lifecycle steps (zq3 T9-T11) run after all five cases were released. They
+# Lifecycle steps (zq3 T9-T11) run after every case of the controller's batch
+# was released; the guest accepts each case on its own and never counts them,
+# so a deferral (controller.py `deferred`, z64) needs no guest change. They
 # carry the same boot/provider/manifest/mount identity, name a step instead of
 # a case and only record what the guest kernel returned: a step never decides
 # a gate; the host correlator compares it with lifecycle OBSERVE evidence.

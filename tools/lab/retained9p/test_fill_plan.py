@@ -158,6 +158,32 @@ class BatchTests(BatchCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(json.loads(done.stdout)["plan_sha256"], report["sha256"])
 
+    def test_template_deferral_is_filled_into_the_plan_and_its_digest(self):
+        """z64: a template declaring T5 deferred yields a four-case plan whose
+        bytes, digest and report carry the declaration."""
+        deferred = [{"case": "mapped-pressure", "reason": "q64: view lifetimes exceed the 4 GiB budget"}]
+
+        def defer(plan):
+            plan["requests"].pop()
+            plan["deferred"] = deferred
+        _, plan_sha256 = self.bootstrap_run()
+        template, template_sha256 = batch_template(self.root, defer)
+        code, report = self.fill(*self.argv(plan_sha256, template, template_sha256))
+        self.assertEqual(code, 0, report)
+        plan = json.loads(self.out.read_bytes())
+        self.assertEqual((plan["deferred"], [r["case"] for r in plan["requests"]]),
+                         (deferred, controller.CASES[:4]))
+        self.assertEqual((report["deferred"], report["cases_planned"]), (deferred, controller.CASES[:4]))
+        self.assertEqual(report["sha256"], sha(self.out.read_bytes()))
+        controller.plan_snapshot(str(self.out), report["sha256"])
+
+    def test_five_case_report_states_no_deferral(self):
+        _, plan_sha256 = self.bootstrap_run()
+        code, report = self.fill(*self.argv(plan_sha256))
+        self.assertEqual(code, 0, report)
+        self.assertEqual((report["deferred"], report["cases_planned"]), ([], controller.CASES))
+        self.assertNotIn(b"deferred", self.out.read_bytes())
+
     def test_template_itself_is_refused_by_the_controller(self):
         template, _ = batch_template(self.root)
         with self.assertRaisesRegex(controller.Refused, "installed-manifest pin"):
@@ -299,6 +325,9 @@ class BatchTemplateTests(BatchCase):
     def test_controller_validation_refusal_leaves_no_output(self):
         self.template_refuses(lambda p: p.update(candidate_manifest_sha256="3" * 64), "pinned admitted")
         self.template_refuses(lambda p: p["requests"].pop(), "exact five-case")
+        # A deferral the controller refuses (not DEFERRABLE) leaves no output either.
+        self.template_refuses(lambda p: p.update(deferred=[{"case": "credentials", "reason": "r"}]),
+                              "may not be deferred: credentials")
 
 
 class BootstrapFillTests(Case):
