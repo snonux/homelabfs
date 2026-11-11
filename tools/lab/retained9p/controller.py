@@ -12,9 +12,18 @@ inventory digests dispatches the guest's authenticated one-shot release, and
 only `next` after a completed release dispatches the following case, so the
 4MiB logical canary never holds two cases' payloads.
 
-After all five releases, `lifecycle --step` dispatches the zq3 T9-T11 guest
-steps (lost-reply CALL, re-read, quiesce, after-loss) once each and in order,
-with the same intent journal and no replay. correlate.py interprets them.
+After every planned case is released, `lifecycle --step` dispatches the zq3
+T9-T11 guest steps (lost-reply CALL, re-read, quiesce, after-loss) once each
+and in order, with the same intent journal and no replay. correlate.py
+interprets them.
+
+A plan runs all five CASES unless it carries an explicit `deferred` list
+(z64): each entry names a case from DEFERRABLE and the reason it is not run.
+The plan then holds exactly the remaining cases in canonical order, so the
+deferral is bound into the plan digest, and every state, status and check
+output repeats it. A deferred case is never run and never counted as passed:
+zq3 acceptance stays incomplete while anything is deferred (and this
+controller never claims it anyway).
 """
 import argparse
 import base64
@@ -85,6 +94,20 @@ SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
 # precondition, never deployment eligibility.
 ADMITTED = {"867ede3630e4ee0a609f88b0752670fac5b7a0c0e0f9d2a340031110da32c334"}
 CASES = ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
+# Cases a plan may defer (z64). Only T5 mapped-pressure: its full 4 MiB
+# canary needs more view lifetimes (tickets, UUIDs, revisions, ack archive)
+# than the 4 GiB host budget funds until q64 recycles view tickets, so it is
+# the one case with a recorded reason it cannot run (Paul's 2026-11-10 q64
+# decision, option 4). The other four are cheap, run within budget and are the
+# T1-T4 evidence the lifecycle steps build on. No general rule ("any case",
+# "any suffix") is used: it would let a plan skip a cheap case whose failure
+# it would rather not see. Extending this set is a code review, not a plan edit.
+DEFERRABLE = frozenset({"mapped-pressure"})
+DEFERRAL_REASON_LIMIT = 512  # Characters; a reason is a sentence, not evidence.
+# Required plan keys; `deferred` is optional so a plan that defers nothing keeps
+# the exact pre-z64 shape and digest.
+PLAN_FIELDS = ["version", "run_id", "ssh", "host", "guest", "probe_sha256",
+               "candidate_manifest_sha256", "installed_manifest_sha256", "requests", "seconds"]
 RELEASE_VERSION = "homelabfs-retained9p-release/1"  # Same as guest.py.
 CORRELATION_VERSION = "homelabfs-retained9p-host-correlation/1"
 STEP_VERSION = "homelabfs-retained9p-lifecycle-step/1"  # Same as guest.py.
@@ -304,8 +327,8 @@ def check_pin(raw, target):
 
 
 def validate_shape(plan):
-    closed(plan, ["version", "run_id", "ssh", "host", "guest", "probe_sha256",
-                  "candidate_manifest_sha256", "installed_manifest_sha256", "requests", "seconds"])
+    optional = ["deferred"] if isinstance(plan, dict) and "deferred" in plan else []
+    closed(plan, PLAN_FIELDS + optional)
     require_candidate(plan["candidate_manifest_sha256"])
     if plan["version"] != VERSION or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,23}", plan["run_id"]):
         raise Refused("batch version/run ID")
@@ -338,39 +361,93 @@ def validate_targets(plan):
             raise Refused("only the recorded f3/standalone Rocky lab path is in scope")
 
 
-def validate_requests(plan):
-    if plan["guest"]["user"] != "root" or len(plan["requests"]) != 5:
-        raise Refused("trusted-root exact five-case syscall batch")
+def validate_deferred(plan):
+    """The declared deferrals' case names, canonical order; [] when absent.
+
+    Absent means nothing is deferred. A present list must be non-empty (an
+    empty one would be a second digest for the same five-case plan), name each
+    DEFERRABLE case at most once in CASES order and give each a reason.
+    """
+    if "deferred" not in plan:
+        return []
+    deferred = plan["deferred"]
+    if not isinstance(deferred, list) or not deferred:
+        raise Refused("deferred must be a non-empty list; omit it to defer nothing")
     names = []
+    for item in deferred:
+        closed(item, ["case", "reason"])
+        name, reason = item["case"], item["reason"]
+        if not isinstance(name, str) or name not in CASES:
+            raise Refused("unknown deferred case: " + repr(name))
+        if name in names:
+            raise Refused("duplicate deferred case: " + name)
+        if name not in DEFERRABLE:
+            raise Refused("case may not be deferred: " + name + " (only " +
+                          ", ".join(sorted(DEFERRABLE)) + ", per q64)")
+        if (not isinstance(reason, str) or not reason.strip() or not reason.isprintable() or
+                len(reason) > DEFERRAL_REASON_LIMIT):
+            raise Refused("deferred case needs a printable reason of at most 512 characters: " + name)
+        names.append(name)
+    if names != [case for case in CASES if case in names]:
+        raise Refused("deferred cases must follow the canonical case order")
+    return names
+
+
+def planned_cases(plan):
+    """The cases a validated plan runs: CASES minus its deferrals, in order."""
+    deferred = [item["case"] for item in plan.get("deferred", [])]
+    return [case for case in CASES if case not in deferred]
+
+
+def deferral_record(plan):
+    """What every state, status and check output repeats about the deferral."""
+    return {"cases_planned": planned_cases(plan), "deferred": plan.get("deferred", [])}
+
+
+def validate_requests(plan):
+    """Exactly CASES minus the declared deferrals, one shared identity, in order."""
+    expected = [case for case in CASES if case not in validate_deferred(plan)]
+    requests = plan["requests"]
+    if not expected:
+        raise Refused("empty syscall batch: at least one case must run")
+    if (plan["guest"]["user"] != "root" or not isinstance(requests, list) or
+            len(requests) != len(expected)):
+        raise Refused("trusted-root exact five-case syscall batch minus declared deferrals")
     original = None
-    for request in plan["requests"]:
-        if len(canonical(request)) > REQUEST_LIMIT:
-            raise Refused("guest request exceeds 16KiB wire bound")
-        closed(request, ["version", "run_id", "boot_id", "provider_nonce", "manifest_sha256",
-                         "mounts", "case", "seconds"])
-        if (request.get("run_id") != plan["run_id"] or
-                request.get("version") != "homelabfs-retained9p-syscalls/1" or
-                request.get("manifest_sha256") != plan["installed_manifest_sha256"] or
-                type(request["seconds"]) is not int or not 1 <= request["seconds"] <= 60):
-            raise Refused("case differs from exact batch")
-        identity = {key: value for key, value in request.items() if key not in {"case", "seconds"}}
-        if original is not None and original != identity:
-            raise Refused("boot/provider/mount identity changes within batch")
-        original = identity
-        if len(request["mounts"]) != 2:
-            raise Refused("two exact independent domain rows required")
-        for i, mount in enumerate(request["mounts"]):
-            closed(mount, ["path", "tag", "mount_id", "session"])
-            if mount["path"] != "/var/tmp/hfs-zq3-" + plan["run_id"] + "/m" + str(i):
-                raise Refused("mount path outside exact run")
-            if type(mount["mount_id"]) is not int or mount["mount_id"] <= 0:
-                raise Refused("actual positive mount ID required")
-        for field in ["path", "tag", "mount_id", "session"]:
-            if request["mounts"][0][field] == request["mounts"][1][field]:
-                raise Refused("duplicate independent mount/domain identity")
-        names.append(request.get("case"))
-    if names != CASES:
-        raise Refused("exact ordered syscall cases required")
+    for request in requests:
+        original = validate_request(plan, request, original)
+    # A missing case without its declaration refuses here (or on the length
+    # above): a case is never dropped silently.
+    if [request["case"] for request in requests] != expected:
+        raise Refused("exact ordered syscall cases required (CASES minus declared deferrals)")
+
+
+def validate_request(plan, request, original):
+    """One case request of the batch; returns its boot/provider/mount identity."""
+    if len(canonical(request)) > REQUEST_LIMIT:
+        raise Refused("guest request exceeds 16KiB wire bound")
+    closed(request, ["version", "run_id", "boot_id", "provider_nonce", "manifest_sha256",
+                     "mounts", "case", "seconds"])
+    if (request.get("run_id") != plan["run_id"] or
+            request.get("version") != "homelabfs-retained9p-syscalls/1" or
+            request.get("manifest_sha256") != plan["installed_manifest_sha256"] or
+            type(request["seconds"]) is not int or not 1 <= request["seconds"] <= 60):
+        raise Refused("case differs from exact batch")
+    identity = {key: value for key, value in request.items() if key not in {"case", "seconds"}}
+    if original is not None and original != identity:
+        raise Refused("boot/provider/mount identity changes within batch")
+    if len(request["mounts"]) != 2:
+        raise Refused("two exact independent domain rows required")
+    for i, mount in enumerate(request["mounts"]):
+        closed(mount, ["path", "tag", "mount_id", "session"])
+        if mount["path"] != "/var/tmp/hfs-zq3-" + plan["run_id"] + "/m" + str(i):
+            raise Refused("mount path outside exact run")
+        if type(mount["mount_id"]) is not int or mount["mount_id"] <= 0:
+            raise Refused("actual positive mount ID required")
+    for field in ["path", "tag", "mount_id", "session"]:
+        if request["mounts"][0][field] == request["mounts"][1][field]:
+            raise Refused("duplicate independent mount/domain identity")
+    return identity
 
 
 def plan_snapshot(path, expected_hash=None):
@@ -590,11 +667,15 @@ def check_step_terminal(path, step):
 
 
 def check_step_order(state, step):
-    """All five payloads released, then STEPS strictly in order, each once."""
+    """Every planned (non-deferred) payload released, then STEPS in order, each once.
+
+    A deferred case never ran, so it holds no payload that could still be
+    retained; the steps need only the planned cases released.
+    """
     if step not in STEPS:
         raise Refused("unknown lifecycle step")
     if not state.get("syscall_batch_success"):
-        raise Refused("lifecycle steps require all five case payloads released")
+        raise Refused("lifecycle steps require every planned (non-deferred) case payload released")
     done = [item["step"] for item in state.get("lifecycle", [])]
     if done and STEPS.index(done[-1]) >= STEPS.index(step):
         raise Refused("lifecycle step repeated or out of order: " + step)
@@ -626,15 +707,22 @@ def dispatch_seconds(plan, request):
     return min(request["seconds"] + 15, plan["seconds"])
 
 
-def new_state(expected_hash):
+def new_state(expected_hash, plan):
+    """Fresh run state. `syscall_batch_success` will mean every PLANNED case
+    released; the deferral is repeated here and in `missing`, so status shows
+    which cases never ran and acceptance can never look complete."""
+    missing = ["independent verification of host journal/source/error correlation",
+               "funded drains/PTE/TLB/old-client fences",
+               "ordinary pod namespaces/securityContext/SELinux audit", "same-mount advisory locks",
+               "C9 same-owner lost-reply recovery", "replacement/RESUME refusals", "K04"]
+    missing += ["deferred case not run: " + item["case"] + " (" + item["reason"] + ")"
+                for item in plan.get("deferred", [])]
     return {"version": VERSION, "plan_sha256": expected_hash,
             "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "started_epoch": time.time(), "cases": [], "syscall_batch_success": False,
+            **deferral_record(plan),
             "zq3_acceptance_complete": False, "deployment_eligible": False, "publication": None,
-            "missing": ["independent verification of host journal/source/error correlation",
-                        "funded drains/PTE/TLB/old-client fences",
-                        "ordinary pod namespaces/securityContext/SELinux audit", "same-mount advisory locks",
-                        "C9 same-owner lost-reply recovery", "replacement/RESUME refusals", "K04"]}
+            "missing": missing}
 
 
 class Run:
@@ -686,7 +774,7 @@ class Run:
 
     def next_index(self):
         cases = self.state["cases"]
-        if not cases or cases[-1]["state"] != "released" or len(cases) >= len(CASES):
+        if not cases or cases[-1]["state"] != "released" or len(cases) >= len(self.plan["requests"]):
             raise Refused("next case requires the previous payload released and a remaining case")
         return len(cases)
 
@@ -719,8 +807,12 @@ class Run:
         case["release"] = self.dispatch(request, folder / "release", "release",
                                         request["correlation_sha256"])
         case["state"] = "released"
+        # Success of the PLANNED batch: every request released, in plan order.
+        # With a declared deferral that is fewer than five cases; the state's
+        # `deferred` and `missing` keep saying so, and zq3 acceptance stays
+        # false regardless.
         self.state["syscall_batch_success"] = (
-            len(self.state["cases"]) == len(CASES) and
+            [item["name"] for item in self.state["cases"]] == planned_cases(self.plan) and
             all(item["state"] == "released" for item in self.state["cases"]))
         self.save()
 
@@ -782,7 +874,7 @@ def probe(plan_path, expected_hash, output):
     lock = open(output / "owner.lock", "xb")
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     os.fsync(lock.fileno())
-    run = Run(output, plan, new_state(expected_hash), lock, None, verified["probe.py"])
+    run = Run(output, plan, new_state(expected_hash, plan), lock, None, verified["probe.py"])
     persist_bytes(output / "plan.json", raw)
     run.save()
 
@@ -850,8 +942,8 @@ def arguments():
 def main():
     args = arguments()
     if args.action == "check":
-        raw, _, _ = plan_snapshot(args.plan)
-        print(json.dumps({"plan_sha256": digest(raw),
+        raw, plan, _ = plan_snapshot(args.plan)
+        print(json.dumps({"plan_sha256": digest(raw), **deferral_record(plan),
                           "execution_authorized": False, "deployment_eligible": False,
                           "acceptance": False}))
         return 0

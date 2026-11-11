@@ -10,7 +10,12 @@ is error-prone, so this tool writes the final plans from recorded evidence:
   the boot ID, provider nonce and admission manifest SHA256 from the
   `guest-ready` and `admission` journal results, cross-checked against the
   run's own `work/enroll-request.json`, and the m0/m1 mount IDs (first field)
-  from the `mount-0`/`mount-1` results' `mountinfo` rows.
+  from the `mount-0`/`mount-1` results' `mountinfo` rows. A case deferral
+  (controller.py `deferred`, z64) is declared in the template itself: a
+  `deferred` list of {case, reason} and only the remaining requests. The fill
+  copies it unchanged, so the reviewed template pin, the filled plan and its
+  SHA256 all carry it, and the report repeats it. A template without the key
+  is the five-case batch, filled exactly as before.
 * `bootstrap` fills the bootstrap plan's `observer.ssh_sha256` (F1) from the
   Phase 4 fact file `sha256 -r /usr/bin/ssh` printed on f3.
 
@@ -221,7 +226,12 @@ def run_evidence(run_dir, plan_sha256):
 
 
 def fill_batch(template, facts):
-    """The controller batch plan with every Phase 8 placeholder replaced."""
+    """The controller batch plan with every Phase 8 placeholder replaced.
+
+    Only the requests present are filled; a template's `deferred` declaration
+    passes through untouched and controller validation (in `publish`) decides
+    whether the requests and the deferral agree.
+    """
     plan = copy.deepcopy(template)
     require(plan.get("run_id") == facts["run_id"], "template run ID differs from the bootstrap run")
     put(plan, "installed_manifest_sha256", MANIFEST, facts["manifest_sha256"], "plan")
@@ -286,9 +296,13 @@ def publish(output, raw, check):
 def batch(args):
     template = load_template(args.template, args.template_sha256)
     facts = run_evidence(args.bootstrap_run, args.bootstrap_plan_sha256)
-    raw = filled_bytes(fill_batch(template, facts))
+    plan = fill_batch(template, facts)
+    raw = filled_bytes(plan)
     sha256 = publish(args.output, raw, lambda path, expected: controller.plan_snapshot(path, expected))
-    return {"output": args.output, "sha256": sha256, "boot_id": facts["boot_id"],
+    # The validated plan's planned cases and deferrals, so the operator sees a
+    # deferral in the same report that gives the digest to pin.
+    return {"output": args.output, "sha256": sha256, **controller.deferral_record(plan),
+            "boot_id": facts["boot_id"],
             "provider_nonce": facts["provider_nonce"], "manifest_sha256": facts["manifest_sha256"],
             "mount_ids": [mount["mount_id"] for mount in facts["mounts"]]}
 

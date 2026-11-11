@@ -160,7 +160,11 @@ or vmm context could still exist.
   the exact plan JSON is filled in Phase 4 from fresh facts with
   `tools/lab/fdescfs-window-plan.py`. Write the run config, the G5 kernel plan
   (`rocky_kernel.py plan`), enrollment request *templates* and the controller
-  batch plan (`check-retained9p.sh check --plan` gives its hash). The
+  batch plan (`check-retained9p.sh check --plan` gives its hash). While T5
+  stays deferred (q64, below), the batch template declares it: a `deferred`
+  entry `{"case": "mapped-pressure", "reason": ...}` and only the four other
+  requests (z64); `check` must print `cases_planned` without and `deferred`
+  with `mapped-pressure`. The
   enrollment requests cannot be complete here: `BootID`, `ProviderNonce` and
   `Observer.ManifestHash` exist only in the controlled boot and are filled in
   Phase 8 step 0.
@@ -617,8 +621,8 @@ unsupported, unrun or uncertain; a partial result never completes zq3.
 | T1 | UID/GID incl. full 1024-entry groups, setgid/umask create, sticky, special bits, cross-domain metadata | `check-retained9p.sh probe` (case `credentials`), then host correlation (`correlate.py case` from an OBSERVE taken right before the dispatch and one while the payload is retained), then `release`, then `next` |
 | T2 | write acknowledgement and sync propagation (O_SYNC/O_DSYNC/fdatasync/fsync, directory fsync, mmap MS_SYNC) | case `sync` + correlation of journal `Through/Applied` via OBSERVE + `release`, `next` |
 | T3 | metadata: rename, hardlink, truncate, open-unlinked, cross-domain freshness | case `metadata` + correlation + `release`, `next` |
-| T4 | foreign user namespace refusal (boundary only) | case `namespace` + correlation + `release`, `next` |
-| T5 | `cache=mmap`: full 4 MiB mapped canary, cross-domain hash | case `mapped-pressure` + correlation + `release` |
+| T4 | foreign user namespace refusal (boundary only) | case `namespace` + correlation + `release`, then `next` only if T5 is planned (with T5 deferred, T4's release completes the batch and `next` refuses: no remaining case) |
+| T5 | `cache=mmap`: full 4 MiB mapped canary, cross-domain hash | **deferred (q64)**: the canary's view lifetimes exceed the 4 GiB budget and running it would block both sessions for T6-T11, so the batch plan declares `mapped-pressure` in `deferred` (z64) and runs T1-T4 only; recorded as deferred, never as a pass. Once q64 is fixed: case `mapped-pressure` + correlation + `release` |
 | T6 | locks within one guest mount | `tools/lab/guest-lock-probe.py` on `m0` (POSIX/flock conflicts, blocking waits, GETLK, close/exit cleanup) |
 | T6b | locks across clients | same probe across `m0`/`m1`: **recorded as unsupported** per the accepted lock scope, never as a pass |
 | T7 | ordinary pod namespace profile: separate mount/PID/net/UTS/IPC namespaces in `init_user_ns`, numeric IDs/full groups, SELinux enforcing, two workloads bind-sharing `m0` | under A8, after T6: `pod_fixture.py run --request ABS` (rootfs built earlier with `build`, see G9); pass = `t7_pass: true`, which also removes the two exited containers and the pod payload normally; any failure or `uncertain` preserves both. The SELinux access of `container_t` to the 9p label is only known now: a denial is a T7 failure, never relabelled or disabled |
@@ -627,7 +631,7 @@ unsupported, unrun or uncertain; a partial result never completes zq3.
 | T11 | remount / VM restart need, K04 host side | after the runtime exited (FENCED T10), with m1 still mounted: root takes `host_snapshot.py --label before` of the runtime's FUSE mount point on f3, `lifecycle --step after-loss` (lstat, list, exclusive create in **m1**, never retried), `host_snapshot.py --label after`; `correlate.py k04` (with the Phase 7 `baseline` snapshot of the empty mount point, required) records whether guest I/O failed and nothing reached a raw directory. **Limitation:** m0 cannot be probed (T9 blocked its session, so its refusals are local); if m1 also shows the guest's own `EHOSTDOWN` (T9 re-read, T10 quiesce or the first after-loss attempt) the record flags the probe as vacuous and K04 is not observed. If T10 is RESTARTED, the runtime keeps serving, no supported stop exists here and T11 is unrun. Replacement FUSE/exporter and guest RESUME are blocked by design, so the recorded answer is "VM restart required", with the refusals as evidence |
 | T8 | K04 guest side: no writes to an empty fallback | **runs last, after T11** (orchestrator decision: T9 before T8; T11 needs m1 mounted): normal `umount m1`; a probe naming `m1` must refuse at admission ("exact mountpoint not present once") before any open; the empty directory stays empty. Needs no live runtime; if the unmount refuses or hangs after host loss, T8 is unrun and Phase 11 handles the mount |
 
-Execution order: **T1-T7, T9, T10, T11, T8** (table order).
+Execution order: **T1-T7, T9, T10, T11, T8** (table order; T5 is skipped while it is deferred, q64).
 
 Mid-release failure (T1-T5): the guest consumes the retention record before
 its first unlink. If an unlink or the deadline then fails, part of the payload
@@ -636,7 +640,11 @@ can remain, `released-CASE.json` exists and the controller stays at
 root inspects the leaf against the inventory in `released-CASE.json`, keeps the
 leftovers and evidence, marks T1-T5 incomplete, and any repeat uses a new run ID.
 
-T9-T11 guest steps (u34) run only after all five releases, once each and in
+T9-T11 guest steps (u34) run only after every planned release (T1-T4 while
+T5 is deferred: the controller's `syscall_batch_success` and the
+`correlate.py` ARM precondition count the plan's cases, and the run state,
+`status` and the T9/T11 records repeat the deferral while
+`zq3_acceptance_complete` stays false), once each and in
 order, through the same pinned `guest.py`. They admit their own domain (m0 for
 T9/T10, m1 for T11) from mountinfo without touching it and record the other
 as present or absent. Expect T9 not to show a clean MKDIR lost reply with the

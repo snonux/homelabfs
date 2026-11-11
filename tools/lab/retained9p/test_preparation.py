@@ -81,7 +81,17 @@ def correlation_for(root, output, name, **changes):
     return str(path), controller.digest(path.read_bytes())
 
 
-def batch_fixture(root):
+# The z64 declaration a zq3 plan uses while T5 stays deferred (q64).
+DEFER_T5 = [{"case": "mapped-pressure",
+             "reason": "q64: T5 full 4 MiB canary view lifetimes exceed the 4 GiB host budget"}]
+
+
+def batch_fixture(root, deferred=None):
+    """A valid batch plan file; `deferred` declares cases left out (z64).
+
+    Without `deferred` the plan is the five-case batch with no `deferred` key,
+    exactly the pre-z64 shape.
+    """
     ssh = root / "ssh-original"
     ssh.write_text("#!" + sys.executable + "\nimport json,pathlib,sys\n"
                    "sys.stdin.buffer.read()\n"
@@ -101,7 +111,8 @@ def batch_fixture(root):
     requests = [{"version": guest.VERSION, "run_id": "test", "boot_id": "boot",
                  "provider_nonce": "provider", "manifest_sha256": "b" * 64,
                  "mounts": mounts, "case": name, "seconds": 1}
-                for name in ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]]
+                for name in ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
+                if name not in [item["case"] for item in deferred or []]]
     plan = {"version": controller.VERSION, "run_id": "test", "seconds": 120,
             "candidate_manifest_sha256": ADMITTED, "installed_manifest_sha256": "b" * 64,
             "ssh": {"path": str(ssh), "sha256": controller.digest(ssh.read_bytes())},
@@ -110,6 +121,8 @@ def batch_fixture(root):
                      "known_hosts": str(host), "known_hosts_sha256": controller.digest(host.read_bytes())},
             "guest": {"address": "10.20.0.123", "alias": "rocky", "user": "root",
                       "known_hosts": str(guest_pin), "known_hosts_sha256": controller.digest(guest_pin.read_bytes())}}
+    if deferred is not None:
+        plan["deferred"] = deferred
     path = root / "plan.json"
     # Preserve a deliberately noncanonical but valid original plan byte image.
     path.write_text(json.dumps(plan, indent=2) + "\n\n")
@@ -613,6 +626,97 @@ class RetainedReleaseControllerTests(unittest.TestCase):
             fcntl.flock(holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
             with self.assertRaises(BlockingIOError):
                 controller.next_case(self.output, self.hash)
+
+
+class CaseDeferralPlanTests(unittest.TestCase):
+    """z64: a plan may leave out only a declared, DEFERRABLE case (T5, q64)."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.guest = mock.patch.object(controller, "GUEST", self.root / "guest-original.py")
+        self.guest.start()
+        self.addCleanup(self.guest.stop)
+
+    def plan(self, deferred=None, change=None):
+        """A fixture plan (optionally changed after the fixture wrote it)."""
+        path, plan, _ = batch_fixture(self.root, deferred)
+        if change:
+            change(plan)
+            path.write_text(json.dumps(plan))
+        return path, plan
+
+    def refuses(self, text, deferred=None, change=None):
+        path, plan = self.plan(deferred, change)
+        with self.assertRaisesRegex(controller.Refused, text):
+            controller.validate_shape(plan)
+        with self.assertRaisesRegex(controller.Refused, text):
+            controller.plan_snapshot(str(path))
+
+    def check(self, path):
+        printed = io.StringIO()
+        with mock.patch.object(sys, "argv", ["controller.py", "check", "--plan", str(path)]), \
+                contextlib.redirect_stdout(printed):
+            self.assertEqual(controller.main(), 0)
+        return json.loads(printed.getvalue())
+
+    def test_declared_t5_deferral_validates_and_check_reports_it(self):
+        path, plan = self.plan(DEFER_T5)
+        self.assertEqual([request["case"] for request in plan["requests"]], controller.CASES[:4])
+        controller.plan_snapshot(str(path), controller.digest(path.read_bytes()))
+        report = self.check(path)
+        self.assertEqual((report["cases_planned"], report["deferred"], report["acceptance"]),
+                         (controller.CASES[:4], DEFER_T5, False))
+
+    def test_five_case_plan_is_unchanged(self):
+        # No `deferred` key: the pre-z64 shape and bytes, so the digest of an
+        # existing five-case plan does not move.
+        path, plan = self.plan()
+        self.assertNotIn("deferred", plan)
+        self.assertEqual([request["case"] for request in plan["requests"]], controller.CASES)
+        report = self.check(path)
+        self.assertEqual(report["plan_sha256"], controller.digest(path.read_bytes()))
+        self.assertEqual((report["cases_planned"], report["deferred"]), (controller.CASES, []))
+        self.assertEqual(controller.new_state("0" * 64, plan)["deferred"], [])
+
+    def test_missing_case_without_declaration_refuses(self):
+        self.refuses("exact five-case", change=lambda plan: plan["requests"].pop())
+        self.refuses("exact ordered", change=lambda plan: plan["requests"].pop(0) and
+                     plan["requests"].append(plan["requests"][0]))
+
+    def test_declared_case_still_present_refuses(self):
+        def keep_t5(plan):
+            plan["requests"].append({**plan["requests"][0], "case": "mapped-pressure"})
+        self.refuses("exact five-case", DEFER_T5, keep_t5)
+
+    def test_only_mapped_pressure_may_be_deferred(self):
+        reason = DEFER_T5[0]["reason"]
+        for case in controller.CASES[:4]:
+            with self.subTest(case=case):
+                self.refuses("may not be deferred: " + case, [{"case": case, "reason": reason}])
+        self.refuses("unknown deferred case", [{"case": "mapped", "reason": reason}])
+        self.refuses("unknown deferred case", [{"case": ["mapped-pressure"], "reason": reason}])
+
+    def test_malformed_deferral_refuses(self):
+        for text, deferred in [
+                ("duplicate deferred case", DEFER_T5 * 2),
+                ("non-empty list", []),
+                ("non-empty list", {"case": "mapped-pressure"}),
+                ("closed input shape", [{"case": "mapped-pressure"}]),
+                ("closed input shape", [{**DEFER_T5[0], "until": "q64"}]),
+                ("printable reason", [{"case": "mapped-pressure", "reason": " "}]),
+                ("printable reason", [{"case": "mapped-pressure", "reason": "a\nb"}]),
+                ("printable reason", [{"case": "mapped-pressure", "reason": "x" * 513}]),
+                ("printable reason", [{"case": "mapped-pressure", "reason": None}])]:
+            with self.subTest(text=text, deferred=deferred):
+                # The four-case plan, its declaration then replaced.
+                self.refuses(text, DEFER_T5, lambda plan: plan.update(deferred=deferred))
+
+    def test_deferring_every_case_is_an_empty_batch(self):
+        everything = [{"case": case, "reason": "test"} for case in controller.CASES]
+        with mock.patch.object(controller, "DEFERRABLE", frozenset(controller.CASES)):
+            self.refuses("empty syscall batch", everything)
 
 
 class GuestRetentionTests(unittest.TestCase):

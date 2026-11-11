@@ -17,7 +17,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from test_preparation import batch_fixture, controller, guest, guest_stdout
+from test_preparation import DEFER_T5, batch_fixture, controller, guest, guest_stdout
 
 MOUNTS = [{"path": "/var/tmp/hfs-zq3-test/m" + str(i), "tag": "hfs" + str(i),
            "mount_id": i + 10, "session": "session" + str(i)} for i in range(2)]
@@ -301,12 +301,13 @@ class GuestStepMainTests(unittest.TestCase):
 
 class LifecycleDispatchTests(unittest.TestCase):
     """Controller lifecycle state machine; dispatch is a guest-shaped stand-in."""
+    DEFERRED = None  # The five-case plan; DeferredLifecycleDispatchTests defers T5.
 
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        self.path, self.plan, probe = batch_fixture(self.root)
+        self.path, self.plan, probe = batch_fixture(self.root, self.DEFERRED)
         self.hash = controller.digest(self.path.read_bytes())
         self.output = self.root / "run"
         self.dispatched, self.step_success = [], True
@@ -331,7 +332,7 @@ class LifecycleDispatchTests(unittest.TestCase):
     def release_all(self):
         from test_preparation import correlation_for
         quiet(controller.probe, self.path, self.hash, self.output)
-        for index, case in enumerate(controller.CASES):
+        for index, case in enumerate(request["case"] for request in self.plan["requests"]):
             if index:
                 quiet(controller.next_case, self.output, self.hash)
             correlation, sha = correlation_for(self.root, self.output, case)
@@ -343,7 +344,7 @@ class LifecycleDispatchTests(unittest.TestCase):
     def test_steps_refuse_until_all_payloads_released(self):
         quiet(controller.probe, self.path, self.hash, self.output)
         before = (self.output / "state.json").read_bytes()
-        with self.assertRaisesRegex(controller.Refused, "five case payloads released"):
+        with self.assertRaisesRegex(controller.Refused, r"every planned \(non-deferred\) case payload released"):
             self.lifecycle("lost-reply-call")
         self.assertEqual((self.output / "state.json").read_bytes(), before)
         self.assertEqual(len(self.dispatched), 1)
@@ -408,6 +409,56 @@ class LifecycleDispatchTests(unittest.TestCase):
         path.write_text("".join(json.dumps(event) + "\n" for event in [events[0], events[1], events[1], events[2]]))
         with self.assertRaisesRegex(controller.Refused, "exactly one observation"):
             controller.check_step_terminal(path, "quiesce")
+
+
+class DeferredLifecycleDispatchTests(LifecycleDispatchTests):
+    """The same state machine for a plan that declares T5 deferred (z64, q64).
+
+    Every inherited test runs again on the four-case plan; the tests below pin
+    what the deferral changes and what it must never change.
+    """
+    DEFERRED = DEFER_T5
+
+    def test_four_planned_releases_succeed_and_record_the_deferral(self):
+        self.release_all()
+        state = self.state()
+        self.assertEqual([case["name"] for case in state["cases"]], controller.CASES[:4])
+        self.assertTrue(state["syscall_batch_success"])
+        self.assertEqual(state["cases_planned"], controller.CASES[:4])
+        self.assertEqual(state["deferred"], DEFER_T5)
+        self.assertIn("deferred case not run: mapped-pressure (" + DEFER_T5[0]["reason"] + ")", state["missing"])
+        self.assertFalse(state["zq3_acceptance_complete"])
+        self.assertFalse(state["deployment_eligible"])
+        self.assertNotIn("mapped-pressure", [request.get("case") for request in self.dispatched])
+        with self.assertRaisesRegex(controller.Refused, "remaining case"):
+            controller.next_case(self.output, self.hash)
+
+    def test_steps_refuse_until_the_fourth_payload_is_released(self):
+        from test_preparation import correlation_for
+        quiet(controller.probe, self.path, self.hash, self.output)
+        for index, case in enumerate(controller.CASES[:4]):
+            if index:
+                quiet(controller.next_case, self.output, self.hash)
+            with self.subTest(case=case), self.assertRaisesRegex(controller.Refused, "every planned"):
+                self.lifecycle("lost-reply-call")
+            self.assertFalse(self.state()["syscall_batch_success"])
+            correlation, sha = correlation_for(self.root, self.output, case)
+            self.assertEqual(quiet(controller.release, self.output, self.hash, correlation, sha), 0)
+        for step in controller.STEPS:
+            self.assertEqual(self.lifecycle(step), 0)
+        final = self.state()
+        self.assertEqual([item["step"] for item in final["lifecycle"]], controller.STEPS)
+        self.assertEqual(final["deferred"], DEFER_T5)
+        self.assertFalse(final["zq3_acceptance_complete"])
+
+    def test_status_repeats_the_deferral(self):
+        self.release_all()
+        printed = io.StringIO()
+        with mock.patch.object(sys, "argv", ["controller.py", "status", "--output", str(self.output)]), \
+                contextlib.redirect_stdout(printed):
+            self.assertEqual(controller.main(), 0)
+        status = json.loads(printed.getvalue())
+        self.assertEqual((status["deferred"], status["zq3_acceptance_complete"]), (DEFER_T5, False))
 
 
 if __name__ == "__main__":
