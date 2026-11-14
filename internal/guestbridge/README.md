@@ -111,10 +111,16 @@ canonical command. Guest flags stay zero. A release/replacement atomically
 transfers its donor credit without an 81st active cell. RELEASE_CELL has its own
 bounded worker so an ordinary operation awaiting a recall cannot block snapshot
 release. Drain execution has a separate worker from view/query controls, so an
-intermediate installation acknowledgement cannot sit behind its own drain. Endpoint construction pre-reserves 64 ordinary and 16 control arenas
-(8 MiB per maximum-sized cell, including decoder/receipt copies) plus the
-independent 12 MiB replacement workspace through `admission.Budget`; deployments
-must separately budget actual kernel/runtime and public-claim/source resources.
+intermediate installation acknowledgement cannot sit behind its own drain.
+VIEW_ACK has its own worker too (task d84): its preparation may run a guest
+observation of up to ten seconds, which must not hold up
+QUERY/CANCEL/RETIRE/VIEW_POLL cells (zq3-r8 R8-1). Both lanes still spend
+control credits, and the Control admission pool funds three workers (control,
+drain, VIEW_ACK). Endpoint construction pre-reserves 64 ordinary and 16
+control arenas (8 MiB per maximum-sized cell, including decoder/receipt
+copies) plus the independent 12 MiB replacement workspace through
+`admission.Budget`; deployments must separately budget actual kernel/runtime
+and public-claim/source resources.
 Closing workers does not destroy or reset this enrollment or retire any claim.
 
 The wrapper reserves `.homelabfs-control-v1` against ordinary namespace mutation;

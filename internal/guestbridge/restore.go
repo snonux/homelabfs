@@ -285,7 +285,8 @@ func (s *Service) restoreSessions(ctx context.Context, r *endpointRestore) error
 }
 
 func restoreTransport(s *Service, r *endpointRestore) (*Transport, error) {
-	t := &Transport{predecessor: r.funding.predecessor, service: s, arenas: r.funding.arenas, ledger: r.ledger, high: r.index.High, ordinary: r.index.Ordinary, control: r.index.Control, runtimeHellos: r.index.RuntimeHellos, terminal: r.index.Terminal, guestHigh: r.index.GuestHigh, guestHoles: r.index.GuestHoles, refused: r.index.Refused, guestRecent: r.index.GuestRecent, cells: map[uint64]*cell{}, ordinaryQueue: make(chan job, 64), controlQueue: make(chan job, 16), replacementQueue: make(chan job, 1), drainQueue: make(chan job, 16), acquisitionQueue: make(chan job, 64), done: make(chan struct{})}
+	t := &Transport{predecessor: r.funding.predecessor, service: s, arenas: r.funding.arenas, ledger: r.ledger, high: r.index.High, ordinary: r.index.Ordinary, control: r.index.Control, runtimeHellos: r.index.RuntimeHellos, terminal: r.index.Terminal, guestHigh: r.index.GuestHigh, guestHoles: r.index.GuestHoles, refused: r.index.Refused, guestRecent: r.index.GuestRecent, cells: map[uint64]*cell{}}
+	t.makeQueues()
 	for _, v := range r.cells {
 		c := &cell{frame: v.Header, body: v.Body, chunks: v.Chunks, observations: v.Observations, count: v.Count, reservation: CellReservation{Control: v.Control, Release: func() {}}, command: v.Command, native: v.Native, jobPhase: v.JobPhase, response: v.Response, wire: v.Wire, seen: v.Seen, unread: v.Unread, resultKind: v.ResultKind, guestWatermark: v.GuestWatermark, mapping: v.Mapping, terminal: v.Terminal}
 		t.cells[c.frame.Cell] = c
@@ -297,12 +298,7 @@ func restoreTransport(s *Service, r *endpointRestore) (*Transport, error) {
 			return nil, err
 		}
 	}
-	t.workers.Add(5)
-	go t.worker(t.ordinaryQueue)
-	go t.worker(t.controlQueue)
-	go t.worker(t.replacementQueue)
-	go t.worker(t.drainQueue)
-	go t.worker(t.acquisitionQueue)
+	t.startWorkers()
 	return t, nil
 }
 

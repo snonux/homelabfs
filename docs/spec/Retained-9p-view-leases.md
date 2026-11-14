@@ -332,7 +332,10 @@ a guest physical inflight cookie, global RPC worker, vnode lock, drain credit or
 a service serialization lock. The Go transport reserves 64 ordinary/16 control
 cells and a separate bounded acquisition queue/worker, in addition to existing
 ordinary, control, release and drain workers. VIEW_ACQUIRE/DIRTY_RESERVE route as
-ordinary; freeze, poll, ack, query and release use control. Provider admission
+ordinary; freeze, poll, ack, query and release use control credits. VIEW_ACK
+executes on its own bounded control-credit worker, because its preparation may
+wait for a guest observation that must not delay other control cells; nothing
+orders an ACK's execution against another control cell's. Provider admission
 must reserve separate bounded ticket/lease/frozen-manifest/source arenas and
 return PENDING/BLOCKED rather than accumulating waiters. For1.1 incomplete assemblies, at most12 ordinary candidates per session leave
 four of the16 per-session assembly slots for control; the endpoint also retains

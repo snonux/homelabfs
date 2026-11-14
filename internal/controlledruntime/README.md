@@ -235,8 +235,12 @@ commits under it, and a separate refresh lock orders whole refreshes so that a
 waiting request reuses a probe that started late enough instead of starting
 another. Waiting for that lock is not cancellable; a waiter whose context
 expired meanwhile returns without probing, so a dead deadline never fences a
-healthy guest. This per-barrier SSH latency still runs on the bridge's control worker
-and has no native calibration or pressure acceptance claim.
+healthy guest. The bridge runs VIEW_ACK cells on their own funded worker
+(task d84), so an ACK's probe no longer holds up the guest QUERY, CANCEL,
+RETIRE or VIEW_POLL cells on the control worker; a request whose own reuse
+rule needs a fresh observation still waits for (and reuses) the in-flight
+probe. The per-barrier SSH latency itself has no native calibration or
+pressure acceptance claim.
 Failures, identity changes, revision rollback and old-revision reopen fence
 admission and retain obligations. The fifteen-second admission freshness limit
 never retires resources. An exact old ACK retry succeeds only through the
