@@ -1,0 +1,328 @@
+{
+  "candidate": {
+    "admission": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "assembled_from": "the r84 worktree at cc6beed (/home/paul/git/homelabfs/.claude/worktrees/agent-ad2930d10d4e102b5; clean: no edits before assembly, HEAD equal to main). The kernel, the daemon and the window artifacts were built from this worktree, so the new daemon builder bindings name the worktree path; every other binding is a hash. The three native proof records were copied from the l84 run root and checked against the y64 originals (the native parts are reused)",
+    "files": 194,
+    "independent_admit": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "manifest_sha256": "4712e4793e67007a65b293dd62dceb16d16a2f2322705f7f0a5f81c261442cf0",
+    "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+    "path": "/home/paul/tmp/claude/hfs-xz3-20261114-r10/package",
+    "repository_baseline": "cc6beedd74c18df7eefbbcc189934035b8267e91",
+    "repository_changes_patch": "absent: the baseline is the build revision cc6beed, which already contains the p84 source.json and patch 0004 and the unchanged owned lib9p sources, so git diff against it is empty",
+    "source_checkout": "cc6beedd74c18df7eefbbcc189934035b8267e91"
+  },
+  "controls": {
+    "all_refused": true,
+    "case_names": [
+      "external operator mismatch",
+      "external repository mismatch",
+      "old negotiated features",
+      "old source revision",
+      "different packaged Linux patch",
+      "different native owned source",
+      "wrong actual bundled source with consistent container hashes",
+      "daemon ELF labelled as full exporter",
+      "native helper ELF lacks production controllers",
+      "invented stock shared9p runtime",
+      "installed success claim",
+      "missing actual Go build version",
+      "real CGO_ENABLED=0 daemon with nocgo observer stub",
+      "record claims CGO0 build",
+      "nocgo stub in recorded source closure",
+      "renamed cgo process observer symbols",
+      "foreign dynamic loader",
+      "extra recorded DT_NEEDED",
+      "missing recorded DT_NEEDED",
+      "sysroot library hash differs from recorded closure",
+      "unlinked sysroot capture",
+      "unrecorded clang resource headers",
+      "unrecorded clang shared-library closure",
+      "foreign cgo compiler wrapper",
+      "installation authority claim",
+      "false forced rebuild witness"
+    ],
+    "cases": 26,
+    "cgo0_control_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+    "original_passed_after": true,
+    "restored_passed": true
+  },
+  "daemon": {
+    "bytes": 10963936,
+    "changes": "o84 (a QUERY may resume any never-prepared claim, query_continuation.go replaces cleanup_continuation.go, controlledruntime facts.go calls VerifyQueryContinuation and attestor.go changed only in comments; zq3-r9 R9-1), q84 (a shared DOMAIN lease is released per holder and only the last holder recalls, viewcontrol lease_holders.go), i84 (one unexported clock hook in controlledruntime guest_observer.go, used only by tests)",
+    "forced_builds_equal": true,
+    "gnu_build_id": "b7679dc700e454c7db0bbc73a08d575ac08efff4",
+    "go_build_id": "1PRVyyvmPfxj4sG_M0e7/iFETej2Z1SgdGml05TVg/z-EMIXHCTRSUxQ1aJxpE/eKDSk6eLiYIngTR5k1pr",
+    "go_mod_unchanged": true,
+    "go_sum_unchanged": true,
+    "module_cache": "private cache seeded from the l84 cache (go.mod and go.sum unchanged since e92eaa1); no dependency was downloaded",
+    "native_qualification": "not run: the exact new bytes still need --check-process-observer on f3 under the bounded host guard (the l84 daemon 868dc045 passed it in zq3-r9); this task built locally only",
+    "repository": "cc6beedd74c18df7eefbbcc189934035b8267e91",
+    "sha256": "34a5360bcb43ff7516062c096ab247b122febe6653d9510277730e968cae5230",
+    "source_closure_added_since_l84": [
+      "github.com/snonux/homelabfs/internal/controlledvalidation/query_continuation.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/lease_holders.go"
+    ],
+    "source_closure_changed_since_l84": [
+      "github.com/snonux/homelabfs/internal/controlledruntime/attestor.go",
+      "github.com/snonux/homelabfs/internal/controlledruntime/facts.go",
+      "github.com/snonux/homelabfs/internal/controlledruntime/guest_observer.go",
+      "github.com/snonux/homelabfs/internal/controlledvalidation/execution.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/controller.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/tickets.go"
+    ],
+    "source_closure_files": 1295,
+    "source_closure_removed_since_l84": [
+      "github.com/snonux/homelabfs/internal/controlledvalidation/cleanup_continuation.go"
+    ],
+    "steps": [
+      [
+        "prepare",
+        "0",
+        "2"
+      ],
+      [
+        "build-first",
+        "0",
+        "33"
+      ],
+      [
+        "build-second",
+        "0",
+        "34"
+      ]
+    ],
+    "superseded_daemon": "868dc045907d5979c56b090b76b5b03515b1e149e7c7273bf50505f06e4627a6 (l84, e92eaa1)",
+    "toolchain_cgo_toolchain_sysroot_runtime_closure_unchanged": true,
+    "window_build_cross_check_equal": true
+  },
+  "init_helper": {
+    "kept": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80 from e0cca0c",
+    "reason": "not in the package; cmd/homelabfs reaches guestbridge only through fuseadapter (mount path) and does not import viewcontrol or controlledvalidation; node-init/volume-init never mount, and o84/q84/i84 do not touch guestbridge runtime code"
+  },
+  "kernel": {
+    "abi_negative_controls": [
+      "different-kernel-module-layout-crc",
+      "different-operator-config-identity",
+      "missing-kernel-module-layout-crc",
+      "stock-kernel-release"
+    ],
+    "artifacts": {
+      "linux/Module.symvers": "b6766591a5ac84ac3c384cdc5ed659b07ced204ad4c6465fc5f1d5e838e3d60f",
+      "linux/System.map": "a720bd4abce33f1ebb2216dd0afa06b68bfb125514b836d3c647a67018afaa62",
+      "linux/abi-negative.json": "f7c4aa9efbe87a6e18eae268097b01c7cb333b1b72ceefbfa93448d6e7417da0",
+      "linux/abi.json": "3adcaa8e2b92f14fdc36af885c54202e816b89f50b855b70622c3f6690719ccc",
+      "linux/build.json": "a10b60934f6fade31cb0b8004bffe67c87f9616ede34b89e10f10ee9e77d820d",
+      "linux/bzImage": "10f2da29f3a1517c186c339d9defcd6c3ffdee4eeaf9ab00cf7dbf3283f445af",
+      "linux/clean-repro.json": "ce1b10400dfa22e250334f167f8081f4bb8bbf23b87a8017f44d4ce830c71832",
+      "linux/config": "28fe4a8ec759cfa7ecfdc373753082ec6981ecdffc6a25e074b6fac048906282",
+      "linux/kernel.release": "50bb45b1af138cf586adddcde600f85e256a19336c861654e6ce76c20eb034e3",
+      "linux/modules.builtin": "1f33442939e7faf978dc707cb69f99015328b39b3125cea6d6de25715f8bebf1",
+      "linux/modules.builtin.modinfo": "c53973bb5c4498e6fc6e61d0143353782a5628374b2b00624f422ed6f2236cf2",
+      "linux/modules.order": "f820618416411197b17fe7795d067e9687d905c487bffb207589bec3c173019a",
+      "linux/modules/drivers/net/net_failover.ko": "cc9755c71cc1d0776f5efd61198b1ebe99741cff877104879b8658db469f9143",
+      "linux/modules/drivers/net/virtio_net.ko": "39de7e933fa325b2c6b576004213f34bee04085191ea94e141a6c2aeeaf7fef1",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko": "6b98068988086d3b1b5c7a1e3b71f5f0ac4378f2d907c0e3a8c50a22bcde53fa",
+      "linux/modules/fs/efivarfs/efivarfs.ko": "6dd0679c5a026189f4feef51fcdcf4d0542fbc9cba7f3e552cb8a0324e68974f",
+      "linux/modules/net/core/failover.ko": "b1aa98beb495be131c06a02775109cba97de2ecacae227c4932909166b88cf5a",
+      "linux/vmlinux": "e26684e970a017eb3991f0a8797612edd636a2eb01efef4cc6991dd212d70706"
+    },
+    "changed_from_l84": [
+      "linux/Module.symvers",
+      "linux/System.map",
+      "linux/abi.json",
+      "linux/build.json",
+      "linux/bzImage",
+      "linux/clean-repro.json",
+      "linux/vmlinux"
+    ],
+    "clean_repro_equal_artifacts": 13,
+    "clean_repro_modules": 5,
+    "clean_repro_record_sha256": "ce1b10400dfa22e250334f167f8081f4bb8bbf23b87a8017f44d4ce830c71832",
+    "config_equals_l84": true,
+    "gnu_build_id": "d73c85da5f0667e9dc6e4abf6b73e4c84c03b9a2",
+    "initramfs": "none built or packaged; the recipe builds bzImage and modules",
+    "module_build_ids": {
+      "drivers/net/net_failover.ko": "3255e434a34a125cd9251bebddaaf6bdf98c68bb",
+      "drivers/net/virtio_net.ko": "072995182e1a95b83cf3ec794649ce05adf8a59d",
+      "drivers/thermal/intel/x86_pkg_temp_thermal.ko": "da295c7cb8ec345542f4ad350ebe6b4ab30ce306",
+      "fs/efivarfs/efivarfs.ko": "c7dca1ae388661db98a1b00f73a39cc2c2d88539",
+      "net/core/failover.ko": "3b9f54841993c81600f6794137822622987c4f9d"
+    },
+    "module_build_ids_equal_l84": true,
+    "note": "both builds used the same canonical O path (first tree moved to kernel-build-first before the repeat); abi.py collect ran on both packages before compare_kernel; check_abi_mismatch.py refused its negative controls",
+    "release": "6.1.190-hfs-xz3",
+    "resolved_config_lsm": "lockdown,yama,integrity,selinux,bpf,landlock",
+    "source": {
+      "archive_path": "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/source/linux-79807e970724c1f90cee1316361d61b80db4eef6.tar.gz (cached, not downloaded)",
+      "archive_sha256": "4f3c00db43ece26e00b83da8cee938e544ba89e10dc10aecc45209ab03554a17",
+      "kernel_config_fragment_sha256": "f2d2a203daa49dd454de90b932e04e17f1532a22b9184140da136ff97d468bc7",
+      "prepared": "/home/paul/tmp/claude/hfs-xz3-20261114-r10/linux-source",
+      "project_task": "p84 (merge b38b09b) changed patch 0004 (fs/9p/hfs_mmap.c, fs/9p/hfs_view.h) and source.json; c64 kernel.config, patches 0001/0002/0003/0005 and series unchanged",
+      "source_inventory_equals_l84": false,
+      "source_inventory_sha256": "567adc9142a42d7b9b1774f6d578b3f86df9b9534955885fd96b83d1ccc04f46"
+    },
+    "stage_seconds": [
+      [
+        "first",
+        "configure",
+        0,
+        13
+      ],
+      [
+        "first",
+        "vmlinux",
+        0,
+        651
+      ],
+      [
+        "first",
+        "image-modules",
+        0,
+        25
+      ],
+      [
+        "first",
+        "collect",
+        0,
+        6
+      ],
+      [
+        "repro",
+        "configure",
+        0,
+        17
+      ],
+      [
+        "repro",
+        "vmlinux",
+        0,
+        663
+      ],
+      [
+        "repro",
+        "image-modules",
+        0,
+        26
+      ],
+      [
+        "repro",
+        "collect",
+        0,
+        6
+      ]
+    ],
+    "superseded_gnu_build_id": "870bb9d1d61ca10ecbbdb0a494a2fb5c449b92ee",
+    "unchanged_from_l84": [
+      "linux/abi-negative.json",
+      "linux/config",
+      "linux/kernel.release",
+      "linux/modules.builtin",
+      "linux/modules.builtin.modinfo",
+      "linux/modules.order",
+      "linux/modules/drivers/net/net_failover.ko",
+      "linux/modules/drivers/net/virtio_net.ko",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko",
+      "linux/modules/fs/efivarfs/efivarfs.ko",
+      "linux/modules/net/core/failover.ko"
+    ]
+  },
+  "native_exporter": {
+    "exporter_sha256": "ef8f17de8754f8bdd6d5d517f15a859e87a2f4a8ca1542394f5608a8e40823b1",
+    "owned_sources_checked": 11,
+    "proof_records": {
+      "native-bundle-helper-transfer.json": "1f9352e688d0378d3c8705d1be98ef557a693be11f90ad86e567559ac76f07f1",
+      "native-clean-repro-evidence.json": "7e668642fdb844a61e5c08e7fb3f49fafe2aa3d7441c3719264afe1b036acac9",
+      "native-final-source-and-first-seal.json": "81c2e6d8eebf3dd0b5177dea9c6f67b92f60b85428960cfbe9e1f97baaca8f3e"
+    },
+    "reused_from": "e585206aa26dcd5724065467ebb716ced7c421db0979c25290fed8c37551b213 (l84, which reused the y64 native f3 build, root /var/tmp/hfs-xz3-20261110h-r1)",
+    "why_not_rebuilt": "git diff e92eaa1 cc6beed -- tools/integration/lib9p is empty (hfs9p.c, hfs9p_recovery.inc, the other owned sources and the dedicated-backend patch unchanged); stage-package.py re-hashed all packaged owned inputs against the repository; native recipes unchanged"
+  },
+  "not_claimed": [
+    "installed",
+    "booted",
+    "native acceptance",
+    "native observer qualification of these daemon bytes",
+    "VM/exporter execution",
+    "SELinux enforcing on the booted guest",
+    "normal publication",
+    "a working hfs1.4 mount on Rocky (zq3)"
+  ],
+  "reason": "e585206a predates the zq3-r9 fixes. Kernel: p84 (guest pressure never releases an in-flight observation lease; the background pressure pass holds, bounded to 5 s, while observations are in flight). Daemon: o84 (a QUERY may resume any never-prepared claim, zq3-r9 R9-1), q84 (shared DOMAIN lease released per holder; only the last holder recalls), i84 (test-only clock hook in controlledruntime)",
+  "recorded": "2026-11-14",
+  "reused": {
+    "checked_against_current_source": 27,
+    "files": 115,
+    "from_manifest": "e585206aa26dcd5724065467ebb716ced7c421db0979c25290fed8c37551b213",
+    "list": "reused-files.json",
+    "previous_still_admits": "package.py check and a full admit.py of e585206a pass under the cc6beed tooling (receipts l84-container, l84-readmit)"
+  },
+  "source_tests": {
+    "mount_hello": {
+      "cases": 22,
+      "command": "tools/integration/linux9p/tests/mount_hello/run.py --source <prepared> --output <root>/mount-hello --sanitize",
+      "exit": 0
+    },
+    "tag": {
+      "cases": 4,
+      "command": "tools/integration/linux9p/tests/tag/run.py --source <prepared> --output <root>/tag --sanitize",
+      "exit": 0
+    },
+    "terminal_smoke": {
+      "command": "tools/integration/linux9p/tests/controlled_received/run.py --source <prepared> --output <root>/controlled-received/terminal-smoke --budget-root <root>/controlled-received --host-tree <worktree> --scenario terminal-smoke",
+      "exit": 0
+    },
+    "view": {
+      "view": {
+        "command": "tools/integration/linux9p/tests/view/run.py --source <prepared> --output <root>/view",
+        "exit": 0
+      },
+      "view-pressure": {
+        "command": "tools/integration/linux9p/tests/view/run.py --source <prepared> --output <root>/view-pressure --pressure",
+        "exit": 0
+      },
+      "view-pressure-sanitize": {
+        "command": "tools/integration/linux9p/tests/view/run.py --source <prepared> --output <root>/view-pressure-sanitize --pressure --sanitize",
+        "exit": 0
+      },
+      "view-sanitize": {
+        "command": "tools/integration/linux9p/tests/view/run.py --source <prepared> --output <root>/view-sanitize --sanitize",
+        "exit": 0
+      }
+    }
+  },
+  "superseded_candidate": {
+    "manifest_sha256": "e585206aa26dcd5724065467ebb716ced7c421db0979c25290fed8c37551b213",
+    "status": "refused as superseded (pre-p84 guest kernel 870bb9d1 whose pressure pass can release an in-flight observation lease; pre-o84 daemon 868dc045 refusing a QUERY resume of a never-prepared claim, zq3-r9 R9-1; pre-q84 shared-lease recall)"
+  },
+  "task": "r84: xz3 kernel, daemon and window rebuild for zq3-r10",
+  "version": "homelabfs-xz3-evidence/2",
+  "window_artifacts": {
+    "builds_byte_identical": true,
+    "controlledruntime.test": "72fffd3a27feb976f43fe33bed5273005729650f4a95129a1eae8bd03316d69d",
+    "fdescfs-namespace": "5c709a358b2cd8336cce66c65293cf9554eb5155afcc571911f5c52a11f36cb2",
+    "helper_difference": "fdescfs-namespace.c is unchanged (e59cde41...). The helper differs from the l84 50d823be only in DWARF (the new out_dir as comp_dir); llvm-objcopy --strip-debug of both gives 07c9f5a19fb38031bfbfda438b3f659a8fdc03ecc656f8f20791d120f9364a96 (l84: 07c9f5a19fb38031bfbfda438b3f659a8fdc03ecc656f8f20791d120f9364a96)",
+    "hfs-controlled-runtime": "34a5360bcb43ff7516062c096ab247b122febe6653d9510277730e968cae5230",
+    "invocation": "tools/lab/build-fdescfs-window-artifacts.sh /home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build cc6beedd74c18df7eefbbcc189934035b8267e91",
+    "recipe_sha256": "a478bd8acb80bb1a564c41a591c09d42b0da5107d3cde42451375e5b2f2e422d",
+    "source": "cc6beedd74c18df7eefbbcc189934035b8267e91",
+    "superseded": {
+      "controlledruntime.test": "30ba40be11bba014ecdf746c833f722f6b8d969fe8a0836d4b2cf0d9eb9b8b98",
+      "fdescfs-namespace": "50d823bed9cd1f6b92ebb67e1c1e7293f19a227069e1937eff899c607fd952d2"
+    },
+    "test_changed_because": "i84 changed internal/controlledruntime (guest_observer.go clock hook and its tests) and o84/q84 changed the controlledvalidation and viewcontrol packages it links"
+  }
+}

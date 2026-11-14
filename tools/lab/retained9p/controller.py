@@ -83,7 +83,13 @@ QUARANTINED = {"7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b
 #   shared control worker under the Admission lock, so zq3-r8's usable probe
 #   claims stayed RESERVED past the guest's 30 s QUERY window (R8-1, fixed by
 #   784, 884 and d84); it also lacks g84, h84, the b84 OBSERVE claim summary
-#   (evidence /2) the usable gate now requires, and q64/f84 recycling.
+#   (evidence /2) the usable gate now requires, and q64/f84 recycling;
+# - e585206a (l84, e92eaa1) has the y64 guest kernel 870bb9d1, whose memory
+#   pressure pass can release the lease of an observation still in flight
+#   (fixed by p84), and the daemon 868dc045, which refuses the guest's QUERY
+#   resume of a claim that was never prepared, so zq3-r9's final usable probe
+#   parked (R9-1, fixed by o84), and which recalls a shared DOMAIN lease on
+#   the first holder's release instead of the last (fixed by q84).
 SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
@@ -91,16 +97,17 @@ SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
               "2e0412a62d1c1f0aa0b29865c521bf3df7a925ea5ef293428fa9b38b647d8f2f",
               "e01fab21cd7a47822d7b56d84e15150cdc7a36c939fceb23852d4fdef0121ec2",
               "66b5bb2b6c1dd1a663f26c50d0d9b3bfeebd620127c4a5859ca146074f2c2e2d",
-              "867ede3630e4ee0a609f88b0752670fac5b7a0c0e0f9d2a340031110da32c334"}
-# The only candidate this controller pins: the xz3 l84 rebuild for zq3-r9
-# (2026-11-14, source e92eaa1). Only the CGO daemon was rebuilt: 868dc045
-# (784, 884, d84, g84, h84, b84, q64/f84). The y64 guest kernel (c64 recipe,
-# g64+m64 patch series, build ID 870bb9d1), its five modules and the y64
-# native exporter ef8f17de (564/e64/p64/w64) are byte-identical reuses from
-# 867ede36; the window artifacts were rebuilt from e92eaa1. The new daemon
-# bytes still need the f3 observer check. Admission here is a dispatch
-# precondition, never deployment eligibility.
-ADMITTED = {"e585206aa26dcd5724065467ebb716ced7c421db0979c25290fed8c37551b213"}
+              "867ede3630e4ee0a609f88b0752670fac5b7a0c0e0f9d2a340031110da32c334",
+              "e585206aa26dcd5724065467ebb716ced7c421db0979c25290fed8c37551b213"}
+# The only candidate this controller pins: the xz3 r84 rebuild for zq3-r10
+# (2026-11-14, source cc6beed). The guest kernel was rebuilt for p84 (c64
+# recipe, g64+m64+p84 patch series, build ID d73c85da; the five modules came
+# out byte-identical) and the CGO daemon for o84, q84 and i84 (34a5360b). The
+# y64 native exporter ef8f17de (564/e64/p64/w64) is a byte-identical reuse;
+# the window artifacts were rebuilt from cc6beed. The new daemon bytes still
+# need the f3 observer check. Admission here is a dispatch precondition,
+# never deployment eligibility.
+ADMITTED = {"4712e4793e67007a65b293dd62dceb16d16a2f2322705f7f0a5f81c261442cf0"}
 CASES = ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
 # Cases a plan may defer (z64). Only T5 mapped-pressure: its full 4 MiB
 # canary needs more view lifetimes (tickets, UUIDs, revisions, ack archive)
@@ -271,9 +278,10 @@ def require_candidate(manifest_hash):
         # arming, the r54 mount HELLO, the w54 failed-bind kill_sb fence, the
         # z54 pre-acquire VIEW_POLL answer, the 964 fixed-tag release wait, the
         # c64 SELinux LSM and the d64 per-domain fence, the y64 kernel,
-        # daemon and exporter fixes, or the l84 daemon's recall scope, ACK
-        # lane and OBSERVE claim summary); the comment at SUPERSEDED says which.
-        raise Refused("superseded xz3 candidate: use the l84 rebuild (d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims)")
+        # daemon and exporter fixes, the l84 daemon's recall scope, ACK lane
+        # and OBSERVE claim summary, or the r84 p84 pressure hold, o84 QUERY
+        # resume and q84 lease holders); the comment at SUPERSEDED says which.
+        raise Refused("superseded xz3 candidate: use the r84 rebuild (d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims, r84 pressure hold/QUERY resume/lease holders)")
     if manifest_hash not in ADMITTED:
         # Fail closed: an unknown digest is not a qualified candidate.
         raise Refused("candidate manifest is not the pinned admitted xz3 candidate")

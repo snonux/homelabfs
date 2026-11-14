@@ -13,27 +13,25 @@ qualified corrected artifacts. Existing offline build proofs remain preserved;
 neither a successful old metadata admission nor a different digest establishes
 native eligibility. These preparation commands never grant deployment eligibility.
 
-**The controller pins exactly one candidate:** the xz3 l84 rebuild for
-zq3-r9 (2026-11-14), manifest `e585206aa26dcd5724065467ebb716ced7c421db0979c25290fed8c37551b213`
-(source `e92eaa1`; see its
-[evidence](../../integration/artifacts/evidence/xz3-20261114-r9/README.md)).
-Only the CGO daemon was rebuilt: `868dc045…` adds 784 (recalls scoped to the
-releasing domain; lock-only reductions never recall), 884 (VIEW_ACK reuses a
-matching observation, no Admission lock across SSH), d84 (VIEW_ACK on its own
-transport worker lane), g84 (per-lease VIEW_RELEASE), h84 (a retrying cell
-cannot starve its lane), b84 (OBSERVE carries a bounded provider claim
-summary, evidence `/2`) and q64/f84 (retired view tickets recycled, recall
-history pruned) to the y64 daemon. These daemon bytes still need the f3
-observer check. The guest kernel, its five modules and the native exporter
-are byte-identical reuses from the y64 rebuild (`867ede36…`, source
-`b869710`): its guest kernel (c64 recipe, so SELinux is an active LSM) adds
-g64 (hfs `show_options`, exact `cache=mmap`, one block log per session) and
-m64 (the Sources floor, every fault block logged, a clean unmount silent) to
-the 964 fixed-tag release wait (zq3-r5 R5-1), the r54 mount HELLO after
-enrollment and the w54 failed-bind `kill_sb` fence, and its native exporter
-`ef8f17de…` carries the 564, e64, p64 and w64 lib9p fixes. The window
-artifacts were rebuilt from `e92eaa1`. Eight earlier candidates are refused as
-superseded: `3f770a88…` cannot arm the d44 MKDIR-only lost reply, the f44
+**The controller pins exactly one candidate:** the xz3 r84 rebuild for
+zq3-r10 (2026-11-14), manifest `4712e4793e67007a65b293dd62dceb16d16a2f2322705f7f0a5f81c261442cf0`
+(source `cc6beed`; see its
+[evidence](../../integration/artifacts/evidence/xz3-20261114-r10/README.md)).
+The guest kernel and the CGO daemon were rebuilt. The kernel (build ID
+`d73c85da…`, c64 recipe, so SELinux is an active LSM) adds p84 (memory
+pressure never releases the lease of an observation in flight; the background
+pressure pass holds, bounded to 5 s, while observations are in flight) to g64
+(hfs `show_options`, exact `cache=mmap`, one block log per session), m64 (the
+Sources floor, every fault block logged, a clean unmount silent), the 964
+fixed-tag release wait (zq3-r5 R5-1), the r54 mount HELLO after enrollment
+and the w54 failed-bind `kill_sb` fence; its five modules came out
+byte-identical. The daemon `34a5360b…` adds o84 (a QUERY may resume any
+never-prepared claim, zq3-r9 R9-1) and q84 (a shared DOMAIN lease is released
+per holder; only the last holder recalls) to the l84 daemon (784, 884, d84,
+g84, h84, b84, q64/f84). These daemon bytes still need the f3 observer check.
+The native exporter `ef8f17de…` (564, e64, p64 and w64 lib9p fixes) is a
+byte-identical reuse from the y64 build. The window artifacts were rebuilt
+from `cc6beed`. Nine earlier candidates are refused as superseded: `3f770a88…` cannot arm the d44 MKDIR-only lost reply, the f44
 `b203799e…` has the pre-r54 guest kernel (every hfs1.4 mount returns EPROTO,
 zq3-r2 R2-4), the r54 `5eb42c50…` has the pre-w54 guest kernel (kill_sb oops
 after a failed bind, zq3-r3 R3-1), the w54 `89c928d5…` has the pre-z54
@@ -43,9 +41,12 @@ mount, zq3-r4 R4-1), the z54 `2e0412a6…` has the pre-964 guest kernel
 the 964 `e01fab21…` has a guest kernel that boots without SELinux (c64) and
 the pre-d64 daemon `39c92d01…` (zq3-r6 R6-1/R6-2), the c64+d64
 `66b5bb2b…` predates the zq3-r7 kernel, daemon and exporter fixes (g64, m64,
-i64 to x64, 564, e64, p64, w64), and the y64 `867ede36…` has the daemon
+i64 to x64, 564, e64, p64, w64), the y64 `867ede36…` has the daemon
 `34fb05b2…` whose recalls parked the `usable` probe's claims past the guest's
-30 s QUERY window (zq3-r8 R8-1) and whose OBSERVE has no claim summary. Any
+30 s QUERY window (zq3-r8 R8-1) and whose OBSERVE has no claim summary, and
+the l84 `e585206a…` has the pre-p84 guest kernel and the daemon `868dc045…`,
+which refused the guest's QUERY resume of a never-prepared claim (zq3-r9
+R9-1) and recalled a shared lease on the first holder's release. Any
 other digest refuses before reading inputs or contacting the lab. This pin is a
 dispatch precondition only; installed/booted/native acceptance remains zq3.
 
@@ -659,7 +660,7 @@ depmod, dracut, systemctl and GRUB's one-shot consumption at boot). Every
 Rocky-side command still needs Paul's explicit A3 approval of the filled plan.
 
 1. Workstation, Phase 0:
-   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 e585206a… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
+   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 4712e479… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
    It refuses any manifest other than the pinned candidate, checks every
    Linux file's size and SHA256 against the manifest and the installation
    proposal, requires `modules.order` to name exactly the manifest's modules,

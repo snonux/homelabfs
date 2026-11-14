@@ -1,5 +1,16 @@
 # xz3 l84 daemon rebuild (2026-11-14): zq3-r8 recall and usable-gate fixes
 
+**Superseded on 2026-11-14** by the [r84 rebuild](../xz3-20261114-r10/README.md)
+(`4712e479…`, source `cc6beed`) for zq3-r10. Its daemon `868dc045…` (which
+passed the f3 observer check in zq3-r9) refuses the guest's QUERY resume of
+a claim that was never prepared, so zq3-r9's final `usable` probe parked
+(R9-1, fixed by o84), and it recalls a shared DOMAIN lease on the first
+holder's release (fixed by q84). Its guest kernel `870bb9d1…` predates p84:
+its pressure pass can release the lease of an observation in flight. Its
+native exporter `ef8f17de…` and the native, notice and unchanged patch files
+are reused byte for byte. The tooling refuses this manifest as superseded.
+It still passes `package.py check` and `admit.py` under the current tooling.
+
 This candidate supersedes the [y64 rebuild](../xz3-20261110h/README.md)
 (`867ede36…`, source `b869710`) only because its CGO daemon predates the
 zq3-r8 fixes. In zq3-r8 (R8-1) the y64 daemon `34fb05b2…` parked the

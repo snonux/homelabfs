@@ -130,9 +130,14 @@ long behind its own housekeeping, so the guest gave up on them. After it only
 the daemon was rebuilt (`e585206a…`, daemon `868dc045…`): that housekeeping
 now touches only the domain concerned, runs on its own lane and reuses the
 latest guest observation, and the daemon reports open requests so the
-"usable" check can wait for them to finish. The guest kernel and the patched
-bhyve are the same bytes as before. The new daemon must pass the f3
-self-check again.
+"usable" check can wait for them to finish. The ninth attempt (zq3-r9) passed
+the first "usable" check, but the last one hung: under memory pressure the
+guest dropped the permission of a file check that was still waiting, and the
+daemon then refused every retry of that check. After it the guest kernel and
+the daemon were rebuilt (`4712e479…`, daemon `34a5360b…`): the guest keeps
+the permission of a check that is still in flight, and the daemon lets the
+guest retry any check that never started. The patched bhyve is the same
+bytes as before. The new daemon must pass the f3 self-check again.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
