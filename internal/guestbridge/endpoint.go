@@ -65,16 +65,22 @@ type Transport struct {
 	replacementQueue            chan job
 	drainQueue                  chan job
 	acquisitionQueue            chan job
-	done                        chan struct{}
-	workers                     sync.WaitGroup
-	closed                      bool
-	ledger                      *transportLedger
-	failed                      error
-	uncertainReclaims           []*cell // Original owners retained after uncertain atomic protection.
-	runtimeHellos               map[string]runtimeHelloWitness
-	terminal                    map[string]uint64
-	guestHigh                   map[string]uint64
-	guestRecent                 []GuestIssuance
+	// viewAckQueue is the VIEW_ACK lane (d84). A VIEW_ACK's preparation may
+	// run a guest observation (an SSH probe of up to ten seconds, see the
+	// controlled runtime's Producer.Prepare); on the shared control worker
+	// every QUERY/CANCEL/RETIRE/VIEW_POLL queued behind it waited for that
+	// probe (zq3-r8 R8-1). It still spends control credits.
+	viewAckQueue      chan job
+	done              chan struct{}
+	workers           sync.WaitGroup
+	closed            bool
+	ledger            *transportLedger
+	failed            error
+	uncertainReclaims []*cell // Original owners retained after uncertain atomic protection.
+	runtimeHellos     map[string]runtimeHelloWitness
+	terminal          map[string]uint64
+	guestHigh         map[string]uint64
+	guestRecent       []GuestIssuance
 	// guestHoles holds, per session, the unissued guest cells below guestHigh
 	// that may still arrive out of guest order (see guestReorderWindow).
 	guestHoles map[string][]uint64
@@ -144,13 +150,14 @@ func newTransport(s *Service, budget *admission.Budget, root string, hook func(s
 	}
 	s.transportAttached = true
 	s.mu.Unlock()
-	t := &Transport{runtimeHellos: map[string]runtimeHelloWitness{}, terminal: map[string]uint64{}, guestHigh: map[string]uint64{}, guestHoles: map[string][]uint64{}, service: s, cells: map[uint64]*cell{}, ordinaryQueue: make(chan job, 64), controlQueue: make(chan job, 16), replacementQueue: make(chan job, 1), drainQueue: make(chan job, 16), acquisitionQueue: make(chan job, 64), done: make(chan struct{})}
+	t := &Transport{runtimeHellos: map[string]runtimeHelloWitness{}, terminal: map[string]uint64{}, guestHigh: map[string]uint64{}, guestHoles: map[string][]uint64{}, service: s, cells: map[uint64]*cell{}}
+	t.makeQueues()
 	// Reserve complete request/reply/receipt bitmap and bounded decode copies for
 	// every active credit before any callback allocation. Workspace is independent.
 	pools := []struct {
 		class               admission.Class
 		bytes, ops, workers uint64
-	}{{admission.Live, 64 * 8 << 20, 64, 2}, {admission.Control, 16 * 8 << 20, 16, 2}, {admission.Memory, 12 << 20, 1, 1}}
+	}{{admission.Live, 64 * 8 << 20, 64, 2}, {admission.Control, 16 * 8 << 20, 16, controlWorkers}, {admission.Memory, 12 << 20, 1, 1}}
 	if root != "" {
 		// Ledger mappings, freelist and per-row encoding/transaction copies need
 		// their own finite owner. This is not another parser workspace.
@@ -211,13 +218,37 @@ func newTransport(s *Service, budget *admission.Budget, root string, hook func(s
 	s.mu.Lock()
 	s.transport = t
 	s.mu.Unlock()
-	t.workers.Add(5)
-	go t.worker(t.ordinaryQueue)
-	go t.worker(t.controlQueue)
-	go t.worker(t.replacementQueue)
-	go t.worker(t.drainQueue)
-	go t.worker(t.acquisitionQueue)
+	t.startWorkers()
 	return t, nil
+}
+
+// controlWorkers is the number of funded workers that serve control-credit
+// cells: the control worker, the drain worker and the VIEW_ACK worker (d84).
+// The Live pool funds the ordinary and acquisition workers and the Memory
+// pool the replacement worker.
+const controlWorkers = 3
+
+// makeQueues creates the bounded per-lane job queues. A queue never holds
+// more jobs than its lane has credits, so commitWrite's send never blocks.
+func (t *Transport) makeQueues() {
+	t.ordinaryQueue = make(chan job, 64)
+	t.controlQueue = make(chan job, 16)
+	t.replacementQueue = make(chan job, 1)
+	t.drainQueue = make(chan job, 16)
+	t.acquisitionQueue = make(chan job, 64)
+	t.viewAckQueue = make(chan job, 16)
+	t.done = make(chan struct{})
+}
+
+// startWorkers starts one worker per lane. Lanes are independent: workers
+// execute accepted cells out of order across lanes (Retained-9p-mapping.md),
+// and each cell still has exactly one dispatch and one immutable response.
+func (t *Transport) startWorkers() {
+	queues := []chan job{t.ordinaryQueue, t.controlQueue, t.replacementQueue, t.drainQueue, t.acquisitionQueue, t.viewAckQueue}
+	t.workers.Add(len(queues))
+	for _, queue := range queues {
+		go t.worker(queue)
+	}
 }
 
 // writeEffects collects what one Transport.Write changed under the owner lock
@@ -565,7 +596,18 @@ func (t *Transport) stageTerminal(c *cell, f Frame, command Command, terminal *P
 	t.terminal[command.Context.Session] = f.Cell
 }
 
-// commandQueue selects the worker queue of an accepted command.
+// commandQueue selects the worker queue of an accepted command. The lane
+// only picks the worker; the credit class stays the frame's control flag.
+//
+// VIEW_ACK has its own lane so that its guest observation cannot hold up the
+// other control cells (d84). That is safe because nothing orders a VIEW_ACK
+// against another control cell's execution: the guest sends its VIEW_ACK and
+// the VIEW_QUERY of the release loop on one shared tag, so they are never
+// outstanding together; the event worker reposts its VIEW_WAIT before the
+// ACK, so that poll and the ACK are already concurrent requests; and a QUERY
+// only reads claim state, which a later QUERY rereads. The ACK itself still
+// runs preparation (the measured observation) before its exchange, and the
+// ACK lane is one FIFO worker, so ACKs keep their order among themselves.
 func (t *Transport) commandQueue(command Command, control bool) chan job {
 	switch {
 	case oneOf(command.Op, "RELEASE_CELL", "SESSION_RETIRE"):
@@ -574,6 +616,8 @@ func (t *Transport) commandQueue(command Command, control bool) chan job {
 		return t.acquisitionQueue
 	case drainCommand(command):
 		return t.drainQueue
+	case command.Op == "VIEW_ACK":
+		return t.viewAckQueue
 	case control:
 		return t.controlQueue
 	}
@@ -692,6 +736,7 @@ func (t *Transport) stopWorkers() {
 		close(t.replacementQueue)
 		close(t.drainQueue)
 		close(t.acquisitionQueue)
+		close(t.viewAckQueue)
 	}
 	t.mu.Unlock()
 	t.workers.Wait()

@@ -101,7 +101,7 @@ func reserveRuntimeFunding(host, owner, control uint64) (*runtimeFunding, error)
 	var config admission.Config
 	for class, resources := range map[admission.Class]admission.Resources{
 		admission.Live:    {Bytes: 512 << 20, Operations: 64, Workers: 2},
-		admission.Control: {Bytes: 128 << 20, Operations: 16, Workers: 2},
+		admission.Control: {Bytes: 128 << 20, Operations: 16, Workers: 3}, // control, drain and VIEW_ACK workers (guestbridge controlWorkers)
 		admission.Memory:  {Bytes: host - (640 << 20), Operations: 3 + 1 + 1, Workers: 1 + exporterDiagnosticWorkers + lifecycleWorkers, Connections: exporterDiagnosticPipes + lifecycleConnections},
 	} {
 		config.Pools[class] = admission.Limits{Global: resources, PerPeer: resources, PerVolume: resources}
