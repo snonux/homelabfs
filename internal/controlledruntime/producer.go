@@ -106,10 +106,11 @@ func (p *Producer) Prepare(ctx context.Context, c guestbridge.Command) error {
 //   - VIEW_ACK on the admission that owns its scope reuses an observation
 //     whose probe started within admissionReuse and already records these
 //     exact ACK bytes (measuredACK states what that proves and the reboot/
-//     identity window it accepts), and probes otherwise. Resends and the second domain's ACK of a phase usually hit;
-//     an ACK's first send usually misses, because the kernel publishes the
-//     phase just before sending it. Probing every ACK used to cost one SSH
-//     round trip per ACK and per resend (zq3-r8 R8-1).
+//     identity window it accepts), and probes otherwise. Resends and the
+//     second domain's ACK of a phase usually hit; an ACK's first send
+//     usually misses, because the kernel publishes the phase just before
+//     sending it. Probing every ACK used to cost one SSH round trip per ACK
+//     and per resend (zq3-r8 R8-1).
 //   - Everything else, including a VIEW_ACK for another admission's scope,
 //     reuses an observation younger than admissionReuse.
 func (p *Producer) refreshFor(ctx context.Context, a *Admission, c guestbridge.Command) error {
