@@ -51,8 +51,12 @@ import (
 // host, and after d84 it remains the conservative bound (d84 takes the
 // observation off the control worker, not the five observations of a recall
 // off each other), so the model cannot show what d84 gains. Observation
-// latency is real time (latencyProbe), because the admission's five-second
-// reuse rule (admissionReuse) runs on the wall clock.
+// latency is real time (latencyProbe), but the admission's five-second reuse
+// rule (admissionReuse) runs on the model's clock (modelClock): it advances by
+// the model latency per observation and by the guest's idle retry sleeps,
+// not by host work. On the wall clock a loaded test host expired reuse
+// windows early and paid extra observations: 12 instead of 10 for the
+// foreground-first m1 release, which failed the 30 s verdict (i84).
 //
 // The guest's retry loops and its probe processes race. Two schedules bound
 // that race:
@@ -94,8 +98,9 @@ const guestQueryWindow = 30 * time.Second
 // wait" (11*2 s + 6 s < 30 s, 12 would not fit). The lab passes therefore
 // only if one SSH observation costs less than about 2.4 s (10 observations
 // plus the allowance in 30 s); that cost is unknown (zq3-r8 README). The
-// observation counts themselves drift slightly with host speed, because the
-// five-second admissionReuse rule decides whether a request refreshes.
+// observation counts do not depend on host speed: the five-second
+// admissionReuse rule that decides whether a request refreshes reads the
+// model clock, which host work does not advance.
 const hostOverheadAllowance = 6 * time.Second
 
 // usableSettle is bootstrap.py's USABLE_SETTLE_SECONDS (GUEST_QUERY_SECONDS
@@ -142,6 +147,7 @@ type recallModel struct {
 	probes    atomic.Int32
 	latency   time.Duration
 	idle      time.Duration // scheduler retry sleeps (guest time)
+	clock     *modelClock   // the admission's reuse clock
 	phase     *modelPhase
 	phases    []*modelPhase
 	processes byte
@@ -356,6 +362,7 @@ func newRecallModel(t *testing.T, values zq3Values, latency time.Duration) *reca
 	var slow atomic.Bool
 	slow.Store(true)
 	latencyProbe(r.admission, latency, &slow, &m.probes, nil)
+	m.clock = installModelClock(r.admission, latency)
 	a, err := Assemble(t.Context(), c)
 	if err != nil {
 		if a != nil {
