@@ -84,17 +84,7 @@ func TestRetryingControlCellDoesNotStarveQueuedCells(t *testing.T) {
 	waitStalls(t, views, 2) // the cell is in the retry ring and retrying
 	stalls := views.stalled.Load()
 	for cell := uint64(3); cell < 8; cell++ {
-		before := views.stalled.Load()
-		poll(cell, 0)
-		var dispatched int64
-		select {
-		case dispatched = <-views.fresh:
-		case <-time.After(answerBound):
-			t.Fatalf("queued control cell %d never dispatched behind a retrying cell (%d retries)", cell, views.stalled.Load()-before)
-		}
-		if ahead := dispatched - before; ahead > 1 {
-			t.Fatalf("queued control cell %d dispatched after %d retries of the stalled cell, want at most 1", cell, ahead)
-		}
+		requireDispatchedNext(t, views, cell, func() { poll(cell, 0) })
 		_ = fetchNativeAt(t, tr, f.native, cell, f.native.Endpoint.RecallNode)
 	}
 	// The stalled cell is still retried, not dropped or blocked. Its phase is
@@ -107,6 +97,24 @@ func TestRetryingControlCellDoesNotStarveQueuedCells(t *testing.T) {
 	tr.mu.Unlock()
 	if !retried {
 		t.Fatal("stalled cell left the retry ring")
+	}
+}
+
+// requireDispatchedNext queues a fresh control cell with send and requires
+// the worker to dispatch it with at most one stalled retry ahead of it (see
+// TestRetryingControlCellDoesNotStarveQueuedCells for why one).
+func requireDispatchedNext(t *testing.T, views *stallingViews, cell uint64, send func()) {
+	t.Helper()
+	before := views.stalled.Load()
+	send()
+	var dispatched int64
+	select {
+	case dispatched = <-views.fresh:
+	case <-time.After(answerBound):
+		t.Fatalf("queued control cell %d never dispatched behind a retrying cell (%d retries)", cell, views.stalled.Load()-before)
+	}
+	if ahead := dispatched - before; ahead > 1 {
+		t.Fatalf("queued control cell %d dispatched after %d retries of the stalled cell, want at most 1", cell, ahead)
 	}
 }
 
