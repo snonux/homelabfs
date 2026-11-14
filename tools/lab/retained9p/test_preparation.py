@@ -27,16 +27,18 @@ def module(name):
 controller = module("controller")
 guest = module("guest")
 observer = module("observer")
-# xz3 l84 rebuild for zq3-r9 (2026-11-14); see controller.ADMITTED.
-ADMITTED = "e585206aa26dcd5724065467ebb716ced7c421db0979c25290fed8c37551b213"
+# xz3 r84 rebuild for zq3-r10 (2026-11-14); see controller.ADMITTED.
+ADMITTED = "4712e4793e67007a65b293dd62dceb16d16a2f2322705f7f0a5f81c261442cf0"
 # e0cca0c (no d44 MKDIR-only lost reply), f44 (pre-r54 guest kernel), r54
 # (pre-w54 guest kernel, failed-bind kill_sb oops), w54 (pre-z54 daemon,
 # pre-acquire VIEW_POLL left unanswered), z54 (pre-964 guest kernel, fixed
 # 9p tag reused before release, zq3-r5 R5-1), 964 (guest kernel without
 # SELinux in CONFIG_LSM, c64; pre-d64 daemon, zq3-r6 R6-1/R6-2), c64+d64
-# (pre-g64/m64 kernel, pre-i64..x64 daemon, pre-564/e64/p64/w64 exporter) and
+# (pre-g64/m64 kernel, pre-i64..x64 daemon, pre-564/e64/p64/w64 exporter),
 # y64 (pre-784/884/d84 daemon whose recalls parked the usable probe's claims,
-# zq3-r8 R8-1; no b84 OBSERVE claim summary).
+# zq3-r8 R8-1; no b84 OBSERVE claim summary) and l84 (pre-p84 kernel
+# pressure hold, pre-o84 daemon refusing a never-prepared QUERY resume,
+# zq3-r9 R9-1; pre-q84 shared-lease recall).
 SUPERSEDED = ("3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
@@ -44,7 +46,8 @@ SUPERSEDED = ("3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
               "2e0412a62d1c1f0aa0b29865c521bf3df7a925ea5ef293428fa9b38b647d8f2f",
               "e01fab21cd7a47822d7b56d84e15150cdc7a36c939fceb23852d4fdef0121ec2",
               "66b5bb2b6c1dd1a663f26c50d0d9b3bfeebd620127c4a5859ca146074f2c2e2d",
-              "867ede3630e4ee0a609f88b0752670fac5b7a0c0e0f9d2a340031110da32c334")
+              "867ede3630e4ee0a609f88b0752670fac5b7a0c0e0f9d2a340031110da32c334",
+              "e585206aa26dcd5724065467ebb716ced7c421db0979c25290fed8c37551b213")
 QUARANTINED = "7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b"
 LAB = Path(__file__).resolve().parents[3] / "docs/lab"
 HOST_PIN = (LAB / "f3-host-known_hosts").read_bytes()
@@ -323,7 +326,8 @@ class PreparationTests(unittest.TestCase):
         # answer; z54: 964 fixed-tag release wait; 964: c64 SELinux LSM and
         # d64 per-domain fence; c64+d64: the y64 kernel, daemon and exporter
         # fixes; y64: the l84 daemon's recall scope, ACK lane and OBSERVE
-        # claim summary).
+        # claim summary; l84: the r84 p84 pressure hold, o84 QUERY resume
+        # and q84 lease holders).
         # They must refuse distinctly from an unknown digest.
         for value in SUPERSEDED:
             with self.subTest(candidate=value), \

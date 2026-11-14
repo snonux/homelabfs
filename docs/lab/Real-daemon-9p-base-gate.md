@@ -51,8 +51,9 @@ exact-byte native observer check (see the xz3 evidence below). The z54
 daemon `39c92d01…` (2026-11-09) passed it in zq3-r5 (Phase 4 step 1a), and the
 964 kernel rebuild reused those bytes. The d64 daemon `9b7eed8d…` (c64+d64
 rebuild) was never checked. The y64 daemon `34fb05b2…` passed it in zq3-r8
-(Phase 4 step 1a). The current l84 daemon `868dc045…` (l84 rebuild for
-zq3-r9, 2026-11-14) is new bytes and has **not** passed it yet; the next run
+(Phase 4 step 1a), and the l84 daemon `868dc045…` passed it in zq3-r9. The
+current r84 daemon `34a5360b…` (r84 rebuild for zq3-r10, 2026-11-14) is new
+bytes and has **not** passed it yet; the next run
 must repeat the check. f3-host descriptor execution still awaits the
 approved zq3 fdescfs window. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
@@ -163,19 +164,28 @@ SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
 
 ## Exact installation plan inputs
 
-The current xz3 candidate (l84 rebuild for zq3-r9, 2026-11-14) is retained at
-`/home/paul/tmp/claude/hfs-xz3-20261114-r9/package`, manifest SHA256
-`e585206aa26dcd5724065467ebb716ced7c421db0979c25290fed8c37551b213`, assembled from source checkout
-`e92eaa1d1fbbe387c20dc063afc0d6655560cd9c` (also the repository baseline); see its
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261114-r9/README.md).
-Only the CGO daemon was rebuilt: `868dc045…` carries 784, 884, d84, g84,
-h84, b84 (OBSERVE claim summary, evidence `/2`) and q64/f84; two forced
-builds and the window build gave the same bytes, but they still need native
-`--check-process-observer` on f3. The guest kernel, modules and native
-exporter are byte-identical reuses from the y64 rebuild (`867ede36…`, source
-`b869710`,
+The current xz3 candidate (r84 rebuild for zq3-r10, 2026-11-14) is retained at
+`/home/paul/tmp/claude/hfs-xz3-20261114-r10/package`, manifest SHA256
+`4712e4793e67007a65b293dd62dceb16d16a2f2322705f7f0a5f81c261442cf0`, assembled from source checkout
+`cc6beedd74c18df7eefbbcc189934035b8267e91` (also the repository baseline); see its
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261114-r10/README.md).
+The guest kernel and the CGO daemon were rebuilt. The kernel (`bzImage`
+`10f2da29…`, `vmlinux` `e26684e9…`, GNU build ID `d73c85da…`, `config`
+`28fe4a8e…` unchanged) adds p84 (pressure never releases an in-flight
+observation's lease; the background pass holds, bounded to 5 s); two builds
+at the same O path were identical, and the five modules came out
+byte-identical. The daemon `34a5360b…` adds o84 (a QUERY may resume any
+never-prepared claim) and q84 (shared DOMAIN lease holders) to the l84
+daemon; two forced builds and the window build gave the same bytes, but they
+still need native `--check-process-observer` on f3. The native exporter is a
+byte-identical reuse. Before it came the l84 rebuild (`e585206a…`, source
+`e92eaa1`,
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261114-r9/README.md)),
+which rebuilt only the daemon (`868dc045…`: 784, 884, d84, g84, h84, b84,
+q64/f84) and reused the y64 kernel and exporter, and the y64 rebuild
+(`867ede36…`, source `b869710`,
 [evidence](../../tools/integration/artifacts/evidence/xz3-20261110h/README.md)),
-now refused as superseded. In y64 the guest kernel, the daemon and the native
+both now refused as superseded. In y64 the guest kernel, the daemon and the native
 exporter were all rebuilt. The kernel (`bzImage` `40afad22…`, `vmlinux` `d2d3e5ab…`, GNU build ID
 `870bb9d1…`, `config` `28fe4a8e…` unchanged from c64) carries the g64 and m64
 patch series (hfs `show_options`, exact `cache=mmap`, the Sources floor and
@@ -287,7 +297,7 @@ footprints in the independent global preparation budget. Swap is telemetry.
 
 ## Staged critical-window proposal
 
-The concrete phased proposal for one disposable run with candidate `e585206a…`,
+The concrete phased proposal for one disposable run with candidate `4712e479…`,
 including the remaining implementation gaps and Paul's decisions, is
 [zq3-run-plan.md](zq3-run-plan.md) ([plain-language summary](zq3-plan-summary.md)).
 The guest probe now retains each successful payload until an authenticated
