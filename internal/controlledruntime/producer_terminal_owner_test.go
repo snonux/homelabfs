@@ -172,6 +172,24 @@ func TestTerminalProducerActualMultipleCellOwnerTransfer(t *testing.T) {
 	}
 }
 
+// terminalAnsweredResult reads cell's first result chunk once the worker has
+// answered it. A worker publishes its reply asynchronously after the attempt
+// returns, so an immediate read can still see WouldBlock under scheduler load
+// (i84). The bound only detects a cell that is never answered; it is generous
+// because a loaded host can delay the worker by seconds, and it never turns a
+// silent WouldBlock into success: the final WouldBlock is returned.
+func terminalAnsweredResult(t *testing.T, r *sourceRig, cell uint64) ([]byte, error) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		raw, err := r.mappingTransport.Read(t.Context(), r.native, r.native.Endpoint.ResultNode, cell*guestbridge.CellStride, 32768)
+		if !errors.Is(err, fsapi.WouldBlock) || time.Now().After(deadline) {
+			return raw, err
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 // Send the actual mapped command without consuming a result or using absence
 // as proof. Refusal tests synchronize with the actual private worker hook.
 func terminalSend(t *testing.T, r *sourceRig, request guestbridge.TerminalRequest, guestAck, nativeAck *guestbridge.Ack, donorControl *bool) (uint64, error) {
@@ -276,8 +294,10 @@ func TestTerminalProducerActualOpenClaimRefusesSeal(t *testing.T) {
 		t.Fatal("actual terminal worker did not run")
 	}
 	// The refused attempt exposes no terminal result: its blocked cell answers
-	// with an explicit error reply instead of a silent WouldBlock.
-	if _, err := r.mappingTransport.Read(t.Context(), r.native, r.native.Endpoint.ResultNode, cell*guestbridge.CellStride, 32768); !errors.Is(err, fsapi.IO) {
+	// with an explicit error reply instead of a silent WouldBlock. The failpoint
+	// reports the seal check before it returns, so the worker publishes that
+	// reply only afterwards; wait for the answer rather than racing it.
+	if _, err := terminalAnsweredResult(t, r, cell); !errors.Is(err, fsapi.IO) {
 		t.Fatalf("open claim exposed a terminal result: %v", err)
 	}
 	_, _, _, _, err = r.peers[1].mappedExecute("HELLO", guestbridge.TerminalProtocol())
