@@ -467,6 +467,10 @@ func TestZQ3RunWorkloadFitsLifetimeBounds(t *testing.T) {
 	if testing.Short() {
 		t.Skip("drives about 1300 CALLs through the real daemon stack")
 	}
+	// One of the package's four long, fsync-bound workloads: they run in
+	// parallel so the package stays well inside go test -timeout 20m on a
+	// loaded host, where it took 24 min serially (i84). Each owns its rig.
+	t.Parallel()
 	limits, bounds := zq3SpecLimits(t), zq3SpecBounds(t)
 	r := newRigWith(t, limits, func(c *Config) { c.Authorization.Enrollment.Bounds = bounds })
 	w := newZQ3World(r, zq3GuestWindow)

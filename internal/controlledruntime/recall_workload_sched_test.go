@@ -4,7 +4,9 @@ package controlledruntime
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"sync/atomic"
 	"time"
 )
 
@@ -141,7 +143,43 @@ func (m *recallModel) step() {
 	if !progressed {
 		time.Sleep(guestRetry)
 		m.idle += guestRetry
+		m.clock.advance(guestRetry)
 	}
+}
+
+// modelClock is the admission's reuse and freshness clock in the model: its
+// base wall time plus the modelled time paid since, i.e. the observations at
+// the model latency and the guest's idle retry sleeps. Host work does not move
+// it, so whether a request reuses an observation (admissionReuse) is decided
+// by the modelled schedule, not by how loaded the test host is (i84).
+type modelClock struct {
+	base     time.Time
+	advanced atomic.Int64 // nanoseconds
+}
+
+func (c *modelClock) now() time.Time {
+	return c.base.Add(time.Duration(c.advanced.Load()))
+}
+
+func (c *modelClock) advance(d time.Duration) { c.advanced.Add(int64(d)) }
+
+// installModelClock puts a's reuse rule on a new model clock and advances it
+// by latency after each observation of the installed (latencyProbe) probe.
+// The clock starts at the wall time a's current observation was committed:
+// that observation keeps the age it had at commit, and wall time since then
+// is not counted.
+func installModelClock(a *Admission, latency time.Duration) *modelClock {
+	a.mu.Lock()
+	clock := &modelClock{base: a.refreshed}
+	a.mu.Unlock()
+	probe := a.probe
+	a.probe = func(ctx context.Context) (installedObservation, error) {
+		observed, err := probe(ctx)
+		clock.advance(latency)
+		return observed, err
+	}
+	a.now = clock.now
+	return clock
 }
 
 // await runs the scheduler until w is done.

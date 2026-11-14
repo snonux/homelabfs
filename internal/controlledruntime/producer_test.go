@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/snonux/homelabfs/internal/admission"
@@ -31,12 +32,16 @@ import (
 )
 
 type sourceRig struct {
-	producer              *Producer
-	temporary             func() string
-	mappingTransport      *guestbridge.Transport
-	mappingDirectory      string
-	mappingNativeCell     *uint64
-	mappingLastNative     *guestbridge.Ack // last native response, for a WAIT continuation reclaim
+	producer          *Producer
+	temporary         func() string
+	mappingTransport  *guestbridge.Transport
+	mappingDirectory  string
+	mappingNativeCell *uint64
+	mappingLastNative *guestbridge.Ack // last native response, for a WAIT continuation reclaim
+	// replyWait is how long mappedReadNative waits for a native response;
+	// zero means answerBound. The recall workload model sets a short wait
+	// because it reads an unanswered cell as "no reply" (noReply).
+	replyWait             time.Duration
 	t                     *testing.T
 	supervisor            *Supervisor
 	service               *fsservice.Service

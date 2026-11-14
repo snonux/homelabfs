@@ -109,7 +109,7 @@ func startRestartChild(t *testing.T, binary string) *restartChild {
 		if supervisor.child != nil {
 			select {
 			case <-supervisor.child.exited:
-			case <-time.After(5 * time.Second):
+			case <-time.After(answerBound):
 				t.Error("managed C child failed to exit on original management EOF")
 			}
 			_ = supervisor.child.executable.Close()

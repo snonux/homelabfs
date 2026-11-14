@@ -98,6 +98,19 @@ type Admission struct {
 	// probe is a private test seam for the guest observation; nil (every
 	// runtime constructor) runs the pinned observer's phase probe.
 	probe func(context.Context) (installedObservation, error)
+	// now is a private test seam for the reuse and freshness clock after
+	// construction; nil (every runtime constructor) reads the wall clock. The
+	// recall workload model drives it on modelled time, so a loaded test host
+	// cannot change which requests reuse an observation (i84).
+	now func() time.Time
+}
+
+// clock is the time the reuse and freshness rules compare against.
+func (a *Admission) clock() time.Time {
+	if a.now != nil {
+		return a.now()
+	}
+	return time.Now()
 }
 
 // ObserveAdmission measures an actual running guest through the pinned SSH
@@ -168,7 +181,7 @@ func ObserveAdmission(ctx context.Context, s *Supervisor, observer GuestObserver
 // own, or one that another caller started later and committed first (both
 // measure the guest after the call began).
 func (a *Admission) Refresh(ctx context.Context) error {
-	return a.refreshSince(ctx, time.Now())
+	return a.refreshSince(ctx, a.clock())
 }
 
 // refreshIfOlder is the ordinary-request reuse rule: an observation committed
@@ -181,12 +194,12 @@ func (a *Admission) Refresh(ctx context.Context) error {
 // a probe's start says when the guest was measured.
 func (a *Admission) refreshIfOlder(ctx context.Context, maxAge time.Duration) error {
 	a.mu.Lock()
-	fresh := time.Since(a.refreshed) < maxAge
+	fresh := a.clock().Sub(a.refreshed) < maxAge
 	a.mu.Unlock()
 	if fresh {
 		return nil
 	}
-	return a.refreshSince(ctx, time.Now().Add(-maxAge))
+	return a.refreshSince(ctx, a.clock().Add(-maxAge))
 }
 
 // refreshSince ensures the installed observation comes from a probe that
@@ -216,7 +229,7 @@ func (a *Admission) refreshSince(ctx context.Context, notBefore time.Time) error
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	started := time.Now()
+	started := a.clock()
 	observed, err := a.runPhaseProbe(ctx)
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -258,7 +271,7 @@ func (a *Admission) commit(observed installedObservation, err error, started tim
 		a.fenced = true
 		return err
 	}
-	a.installed, a.refreshed, a.observedAt = observed, time.Now(), started
+	a.installed, a.refreshed, a.observedAt = observed, a.clock(), started
 	return nil
 }
 
@@ -290,7 +303,7 @@ func (a *Admission) measuredACK(scope guestbridge.Context, ack []byte, maxAge ti
 	hash := hashBytes(ack)
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.fenced || time.Since(a.observedAt) >= maxAge {
+	if a.fenced || a.clock().Sub(a.observedAt) >= maxAge {
 		return false
 	}
 	for _, observation := range a.installed.Admission.Observations {
@@ -467,7 +480,7 @@ func (a *Admission) native() error {
 func (a *Admission) check(scope guestbridge.Context) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.fenced || time.Since(a.refreshed) > 15*time.Second {
+	if a.fenced || a.clock().Sub(a.refreshed) > 15*time.Second {
 		return fsapi.Unavailable
 	}
 	if err := a.native(); err != nil {

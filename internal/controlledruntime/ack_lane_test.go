@@ -14,7 +14,8 @@ import (
 
 // TestQueryAnsweredWhileACKObservationInFlight is the d84 regression for
 // zq3-r8 R8-1. A VIEW_ACK whose bytes no observation records yet needs a
-// guest probe (2 s here) before the host may accept it. That probe used to
+// guest probe (held here until the QUERY is answered, then at least 2 s from
+// the ACK's send) before the host may accept it. That probe used to
 // run on the transport's one shared control worker, so a guest QUERY queued
 // behind the ACK waited for the whole probe. With the VIEW_ACK lane the
 // QUERY, in the same session, is answered while the probe is still running,
@@ -28,7 +29,8 @@ func TestQueryAnsweredWhileACKObservationInFlight(t *testing.T) {
 	sent, pending := x.sendACK(t)
 	// call("ROOT") runs ALLOCATE and CALL (ordinary lane) and then QUERY, the
 	// only one of the three on the control lane that the ACK used to block.
-	quick(t, "QUERY behind an in-flight VIEW_ACK observation", func() { x.r.peers[0].call("ROOT", map[string]any{}) })
+	quick(t, x.gate, "QUERY behind an in-flight VIEW_ACK observation", func() { x.r.peers[0].call("ROOT", map[string]any{}) })
+	x.releaseProbe(sent)
 	x.finishACK(t, sent, pending)
 	if n := x.probes.Load(); n != 1 {
 		t.Fatalf("%d slow observations, want 1 (the ACK's)", n)
@@ -53,16 +55,20 @@ func TestStaleObservationQueryReusesACKProbe(t *testing.T) {
 	a.mu.Unlock()
 	x.slow.Store(true)
 	sent, pending := x.sendACK(t)
-	started := time.Now()
+	// The ACK's probe is held; it is released 2 s after the send, while the
+	// QUERY below is (or should be) waiting on the refresh lock.
+	release := time.AfterFunc(time.Until(sent.Add(slowObservation)), x.gate.open)
+	defer release.Stop()
 	x.r.peers[0].call("ROOT", map[string]any{})
 	// It must have waited for the in-flight probe (else the observation was
-	// not stale and this test proves nothing), but only for that one probe.
-	waited := time.Since(started)
-	if waited < slowObservation/2 {
-		t.Fatalf("QUERY took %s: it did not wait for the in-flight probe", waited)
-	}
-	if waited >= slowObservation+slowObservation/2 {
-		t.Fatalf("QUERY waited %s, more than the one in-flight probe", waited)
+	// not stale and this test proves nothing): a QUERY that did not wait
+	// returns while the probe is still held. That it waited for only that one
+	// probe is the probe count below, not an elapsed-time upper bound, which a
+	// loaded host exceeded (i84: "QUERY waited 3.27s" with one probe). On a
+	// host so slow that the QUERY takes over 2 s without waiting, the gate
+	// opens anyway and this check passes vacuously; it never fails falsely.
+	if !x.gate.released.Load() {
+		t.Fatal("QUERY answered while the ACK's probe was held: it did not wait for the in-flight probe")
 	}
 	x.finishACK(t, sent, pending)
 	if n := x.probes.Load(); n != 1 {
@@ -81,13 +87,14 @@ type ackLaneFixture struct {
 	slow    atomic.Bool
 	probes  atomic.Int32
 	entered chan struct{}
+	gate    *probeGate
 }
 
 func newACKLaneFixture(t *testing.T) *ackLaneFixture {
 	t.Helper()
 	r, c := assemblyFixture(t)
-	x := &ackLaneFixture{r: r, entered: make(chan struct{}, 4)}
-	slowProbe(r.admission, &x.slow, &x.probes, x.entered)
+	x := &ackLaneFixture{r: r, entered: make(chan struct{}, 4), gate: newProbeGate(t)}
+	heldProbe(r.admission, &x.slow, &x.probes, x.entered, x.gate)
 	a, err := Assemble(t.Context(), c)
 	t.Cleanup(func() { require(t, a.Close()) })
 	require(t, err)
@@ -118,6 +125,14 @@ func (x *ackLaneFixture) sendACK(t *testing.T) (time.Time, pendingLeg) {
 	<-x.entered
 	observeMountACK(t, x.r, 0, x.event, x.ack, 2, 2)
 	return sent, pending
+}
+
+// releaseProbe opens the probe gate no earlier than slowObservation after the
+// ACK was sent, so finishACK's lower bound still shows the ACK waited for its
+// probe. A lower bound cannot fail spuriously on a slow host.
+func (x *ackLaneFixture) releaseProbe(sent time.Time) {
+	time.Sleep(time.Until(sent.Add(slowObservation)))
+	x.gate.open()
 }
 
 // finishACK requires ACCEPTED, and no earlier than the ACK's probe could end.

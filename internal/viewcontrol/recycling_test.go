@@ -31,6 +31,10 @@ func TestZQ3LeaseCyclesRecycleViewIdentities(t *testing.T) {
 	if testing.Short() {
 		cycles, afterReopen = 110, 10
 	}
+	// One of the package's four long, fsync-bound workloads: they run in
+	// parallel so the package stays well inside go test -timeout 20m on a
+	// loaded host, where it took 24 min serially (i84). Each owns its rig.
+	t.Parallel()
 	// HFS_Q64_CYCLES runs a longer workload by hand: each cycle re-reads
 	// the journal several times through the real stack (0.1 s and more, so
 	// 1000 cycles took about 12 minutes).

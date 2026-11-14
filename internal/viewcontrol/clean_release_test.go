@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/snonux/homelabfs/internal/fsapi"
 	"github.com/snonux/homelabfs/internal/guestbridge"
@@ -116,6 +115,10 @@ func mustRaw(t *testing.T, value any) json.RawMessage {
 }
 
 func TestTransportClean128PressureReclaimsBefore129thGrant(t *testing.T) {
+	// One of the package's four long, fsync-bound workloads: they run in
+	// parallel so the package stays well inside go test -timeout 20m on a
+	// loaded host, where it took 24 min serially (i84). Each owns its rig.
+	t.Parallel()
 	r := newRig(t, func(c *Config) {
 		b := &c.Authorization.Enrollment.Bounds
 		b.Tickets = 128
@@ -125,9 +128,8 @@ func TestTransportClean128PressureReclaimsBefore129thGrant(t *testing.T) {
 		b.WorkBytes = 512 << 20
 	})
 	// The explicit enrollment oracle serializes two active retry lanes under the
-	// race detector. This is a bounded component progress check, not a native
-	// latency promise; other transport tests retain their three-second deadline.
-	r.transportResponseWait = 20 * time.Second
+	// race detector. transportRead's answerBound is a bounded component
+	// progress check, not a native latency promise.
 	r.useTransport()
 	_, description := r.create(0, "clean-window", false)
 	reads := make([]viewReply, 128)

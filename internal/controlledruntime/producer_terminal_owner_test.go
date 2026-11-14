@@ -172,6 +172,23 @@ func TestTerminalProducerActualMultipleCellOwnerTransfer(t *testing.T) {
 	}
 }
 
+// terminalAnsweredResult reads cell's first result chunk once the worker has
+// answered it. A worker publishes its reply asynchronously after the attempt
+// returns, so an immediate read can still see WouldBlock under scheduler load
+// (i84). answerBound only detects a cell that is never answered, and it never
+// turns a silent WouldBlock into success: the final WouldBlock is returned.
+func terminalAnsweredResult(t *testing.T, r *sourceRig, cell uint64) ([]byte, error) {
+	t.Helper()
+	deadline := time.Now().Add(answerBound)
+	for {
+		raw, err := r.mappingTransport.Read(t.Context(), r.native, r.native.Endpoint.ResultNode, cell*guestbridge.CellStride, 32768)
+		if !errors.Is(err, fsapi.WouldBlock) || time.Now().After(deadline) {
+			return raw, err
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 // Send the actual mapped command without consuming a result or using absence
 // as proof. Refusal tests synchronize with the actual private worker hook.
 func terminalSend(t *testing.T, r *sourceRig, request guestbridge.TerminalRequest, guestAck, nativeAck *guestbridge.Ack, donorControl *bool) (uint64, error) {
@@ -272,12 +289,14 @@ func TestTerminalProducerActualOpenClaimRefusesSeal(t *testing.T) {
 		if !errors.Is(err, fsapi.WouldBlock) {
 			t.Fatalf("actual open claim did not block provider seal: %v", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(answerBound):
 		t.Fatal("actual terminal worker did not run")
 	}
 	// The refused attempt exposes no terminal result: its blocked cell answers
-	// with an explicit error reply instead of a silent WouldBlock.
-	if _, err := r.mappingTransport.Read(t.Context(), r.native, r.native.Endpoint.ResultNode, cell*guestbridge.CellStride, 32768); !errors.Is(err, fsapi.IO) {
+	// with an explicit error reply instead of a silent WouldBlock. The failpoint
+	// reports the seal check before it returns, so the worker publishes that
+	// reply only afterwards; wait for the answer rather than racing it.
+	if _, err := terminalAnsweredResult(t, r, cell); !errors.Is(err, fsapi.IO) {
 		t.Fatalf("open claim exposed a terminal result: %v", err)
 	}
 	_, _, _, _, err = r.peers[1].mappedExecute("HELLO", guestbridge.TerminalProtocol())
@@ -314,7 +333,7 @@ func TestTerminalProducerOtherScopeContinuesDuringBridgeProtection(t *testing.T)
 	require(t, err)
 	select {
 	case <-entered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(answerBound):
 		t.Fatal("actual bridge lifetime writer was not reached")
 	}
 	// This is the real other-scope framing/worker/response path while the first
@@ -327,7 +346,7 @@ func TestTerminalProducerOtherScopeContinuesDuringBridgeProtection(t *testing.T)
 	select {
 	case err := <-finished:
 		require(t, err)
-	case <-time.After(5 * time.Second):
+	case <-time.After(answerBound):
 		unblock()
 		finishedErr := <-finished
 		t.Fatalf("other scope blocked behind terminal bridge persistence: %v", finishedErr)
@@ -338,18 +357,10 @@ func TestTerminalProducerOtherScopeContinuesDuringBridgeProtection(t *testing.T)
 	unblock()
 	// Observe actual committed bytes before Close, which deliberately prevents
 	// further signing/worker use rather than authorizing completion itself.
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		raw, err := r.mappingTransport.Read(t.Context(), r.native, r.native.Endpoint.ResultNode, cell*guestbridge.CellStride, 32768)
-		if errors.Is(err, fsapi.WouldBlock) && time.Now().Before(deadline) {
-			time.Sleep(time.Millisecond)
-			continue
-		}
-		require(t, err)
-		if len(raw) <= guestbridge.HeaderBytes {
-			t.Fatal("terminal worker exposed no actual result frame")
-		}
-		break
+	raw, err := terminalAnsweredResult(t, r, cell)
+	require(t, err)
+	if len(raw) <= guestbridge.HeaderBytes {
+		t.Fatal("terminal worker exposed no actual result frame")
 	}
 	state, cells := terminalInspect(t, r)
 	if len(cells) != 2 || state.Terminal[r.scope.Session] != cell {
@@ -394,7 +405,7 @@ func TestTerminalProducerPartialSealsRetainSameLiveAttempt(t *testing.T) {
 			guestCell := r.cells
 			select {
 			case <-entered:
-			case <-time.After(5 * time.Second):
+			case <-time.After(answerBound):
 				t.Fatal("actual partial seal boundary not reached")
 			}
 			if raw, err := r.mappingTransport.Read(t.Context(), r.native, r.native.Endpoint.ResultNode, cell*guestbridge.CellStride, 32768); len(raw) != 0 || !errors.Is(err, fsapi.WouldBlock) {
@@ -403,17 +414,8 @@ func TestTerminalProducerPartialSealsRetainSameLiveAttempt(t *testing.T) {
 			_, _, _, _, err = r.peers[1].mappedExecute("HELLO", guestbridge.TerminalProtocol())
 			require(t, err)
 			unblock()
-			deadline := time.Now().Add(5 * time.Second)
-			var wire []byte
-			for {
-				wire, err = r.mappingTransport.Read(t.Context(), r.native, r.native.Endpoint.ResultNode, cell*guestbridge.CellStride, 32768)
-				if errors.Is(err, fsapi.WouldBlock) && time.Now().Before(deadline) {
-					time.Sleep(time.Millisecond)
-					continue
-				}
-				require(t, err)
-				break
-			}
+			wire, err := terminalAnsweredResult(t, r, cell)
+			require(t, err)
 			frame, err := guestbridge.DecodeFrame(wire)
 			require(t, err)
 			if frame.Cell != cell || frame.Offset != 0 || int(frame.Total) != len(frame.Data) {
@@ -476,7 +478,7 @@ func TestTerminalProducerProtectionCrashCutsExposeNoReply(t *testing.T) {
 			require(t, err)
 			select {
 			case <-fired:
-			case <-time.After(5 * time.Second):
+			case <-time.After(answerBound):
 				t.Fatal("actual C8 protection boundary not reached")
 			}
 			raw, err := r.mappingTransport.Read(t.Context(), r.native, r.native.Endpoint.ResultNode, cell*guestbridge.CellStride, 32768)

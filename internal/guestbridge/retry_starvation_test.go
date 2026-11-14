@@ -18,6 +18,10 @@ type stallingViews struct {
 	localViews
 	stall   time.Duration
 	stalled atomic.Int64
+	// fresh receives, for every other VIEW_POLL, how many stalled retries had
+	// started when the worker dispatched it. That orders the fresh cell
+	// against the retries by the worker's own schedule, not by wall time.
+	fresh chan int64
 }
 
 const stalledSequence = 7
@@ -31,6 +35,9 @@ func (v *stallingViews) Exchange(ctx context.Context, scope Context, op string, 
 		time.Sleep(v.stall)
 		return nil, fsapi.WouldBlock
 	}
+	if op == "VIEW_POLL" && v.fresh != nil {
+		v.fresh <- v.stalled.Load()
+	}
 	return localViews{}.Exchange(ctx, scope, op, raw)
 }
 
@@ -41,9 +48,19 @@ func (v *stallingViews) Exchange(ctx context.Context, scope Context, op string, 
 // cell ran again and again and freshly queued control cells (another mount's
 // VIEW_WAIT/VIEW_QUERY in the 984 workload model) were never answered. Each
 // fresh cell here must be answered while the stalled cell keeps retrying.
+//
+// The bound is counted in retries, not wall time (i84): an earlier 1 s
+// elapsed-time bound could fail spuriously when a loaded host delayed the
+// worker. The count is sampled after sendNative returns, which is after the
+// cell is queued (building and writing the command can take a slow host long
+// enough for several retries, which must not count). From then on at most one
+// retry, the one already running, can precede the queued cell: after a retry
+// the h84 schedule takes a waiting queued cell first. A cell dispatched before
+// the sample counts as zero ahead. The pre-h84 worker never dispatched the
+// fresh cell at all.
 func TestRetryingControlCellDoesNotStarveQueuedCells(t *testing.T) {
 	f := newBridge(t)
-	views := &stallingViews{stall: 25 * time.Millisecond}
+	views := &stallingViews{stall: 25 * time.Millisecond, fresh: make(chan int64, 8)}
 	config := f.s.config
 	config.Views = views
 	service, err := New(t.Context(), config)
@@ -70,14 +87,8 @@ func TestRetryingControlCellDoesNotStarveQueuedCells(t *testing.T) {
 	waitStalls(t, views, 2) // the cell is in the retry ring and retrying
 	stalls := views.stalled.Load()
 	for cell := uint64(3); cell < 8; cell++ {
-		start := time.Now()
-		poll(cell, 0)
-		// On the pre-h84 worker this fetch itself fails: it gives up after
-		// 2 s of WOULD_BLOCK, before the 1 s bound below is ever checked.
+		requireDispatchedNext(t, views, cell, func() { poll(cell, 0) })
 		_ = fetchNativeAt(t, tr, f.native, cell, f.native.Endpoint.RecallNode)
-		if elapsed := time.Since(start); elapsed > time.Second {
-			t.Fatalf("queued control cell %d answered after %v behind a retrying cell", cell, elapsed)
-		}
 	}
 	// The stalled cell is still retried, not dropped or blocked. Its phase is
 	// not sampled for "pending": with the queue empty it retries back to back,
@@ -89,6 +100,24 @@ func TestRetryingControlCellDoesNotStarveQueuedCells(t *testing.T) {
 	tr.mu.Unlock()
 	if !retried {
 		t.Fatal("stalled cell left the retry ring")
+	}
+}
+
+// requireDispatchedNext queues a fresh control cell with send and requires
+// the worker to dispatch it with at most one stalled retry ahead of it (see
+// TestRetryingControlCellDoesNotStarveQueuedCells for why one).
+func requireDispatchedNext(t *testing.T, views *stallingViews, cell uint64, send func()) {
+	t.Helper()
+	send()
+	before := views.stalled.Load() // after the enqueue; see the test's comment
+	var dispatched int64
+	select {
+	case dispatched = <-views.fresh:
+	case <-time.After(answerBound):
+		t.Fatalf("queued control cell %d never dispatched behind a retrying cell (%d retries)", cell, views.stalled.Load()-before)
+	}
+	if ahead := dispatched - before; ahead > 1 {
+		t.Fatalf("queued control cell %d dispatched after %d retries of the stalled cell, want at most 1", cell, ahead)
 	}
 }
 
@@ -107,7 +136,7 @@ func grantedDomain(t *testing.T, f *bridgeFixture) Capability {
 
 func waitStalls(t *testing.T, v *stallingViews, n int64) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(answerBound)
 	for v.stalled.Load() < n {
 		if time.Now().After(deadline) {
 			t.Fatalf("stalled cell executed %d times, want %d", v.stalled.Load(), n)

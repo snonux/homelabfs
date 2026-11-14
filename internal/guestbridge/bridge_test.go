@@ -513,9 +513,18 @@ func fetchNative(t *testing.T, tr *Transport, n Native, id uint64) []byte {
 	t.Helper()
 	return fetchNativeAt(t, tr, n, id, n.Endpoint.ResultNode)
 }
+
+// answerBound is how long a test waits for an asynchronous worker outcome
+// (an answered cell, a phase, a fence) before it declares the outcome missing.
+// It only detects a cell that is never answered and never lets a test pass by
+// timing out, so it is generous: a host loaded by parallel go test or -race
+// runs can delay a worker by seconds (i84), and short 2-3 s bounds failed
+// spuriously there.
+const answerBound = 30 * time.Second
+
 func fetchNativeAt(t *testing.T, tr *Transport, n Native, id, node uint64) []byte {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(answerBound)
 	for {
 		data, e := tr.Read(t.Context(), n, node, id*CellStride, 32768)
 		if errors.Is(e, fsapi.WouldBlock) && time.Now().Before(deadline) {
@@ -1133,7 +1142,7 @@ func TestBridgeViewControlsProgressWhileDrainExecutionWaits(t *testing.T) {
 	sendNative(t, tr, f.native, f.command(t, "CALL", Call{Claim: claim, Credentials: f.cred(), Intent: intent}), 1)
 	select {
 	case <-f.driver.entered:
-	case <-time.After(2 * time.Second):
+	case <-time.After(answerBound):
 		t.Fatal("drain execution did not start")
 	}
 	sendNative(t, tr, f.native, f.command(t, "VIEW_POLL", map[string]any{"domain": domain, "after_sequence": 0}), 1)

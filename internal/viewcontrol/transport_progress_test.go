@@ -65,7 +65,7 @@ func (r *rig) transportWrite(i int, c guestbridge.Command) {
 	for offset := 0; offset < len(raw); offset += guestbridge.ChunkBytes {
 		wire, err := guestbridge.EncodeFrame(guestbridge.Frame{Minor: 1, Kind: 1, Flags: flags, Total: uint32(len(raw)), Offset: uint32(offset), Session: session, Cell: c.Cell, Hash: sha256.Sum256(raw), Data: raw[offset:min(offset+guestbridge.ChunkBytes, len(raw))]})
 		must(r.t, err)
-		deadline := time.Now().Add(3 * time.Second)
+		deadline := time.Now().Add(answerBound)
 		for {
 			_, err = r.transport[i].Write(r.t.Context(), r.natives[i], r.natives[i].Endpoint.CommandNode, c.Cell*guestbridge.CellStride+uint64(offset/guestbridge.ChunkBytes)*(guestbridge.HeaderBytes+guestbridge.ChunkBytes), wire)
 			if !errors.Is(err, fsapi.WouldBlock) || time.Now().After(deadline) {
@@ -82,11 +82,7 @@ func (r *rig) transportRead(i int, c guestbridge.Command) []byte {
 	if c.Op == "VIEW_POLL" {
 		node = r.natives[i].Endpoint.RecallNode
 	}
-	responseWait := r.transportResponseWait
-	if responseWait == 0 {
-		responseWait = 3 * time.Second
-	}
-	deadline := time.NewTimer(responseWait)
+	deadline := time.NewTimer(answerBound)
 	defer deadline.Stop()
 	tick := time.NewTicker(time.Millisecond)
 	defer tick.Stop()
@@ -355,7 +351,9 @@ func TestTransportCloseDoesNotWaitForUnresolvedPressure(t *testing.T) {
 	}
 	done := make(chan struct{})
 	go func() { r.transport[0].Close(); close(done) }()
-	limit := time.NewTimer(time.Second)
+	// A Close that waited for the acquisition would wait until it resolves,
+	// which never happens here, so answerBound tells the two apart.
+	limit := time.NewTimer(answerBound)
 	defer limit.Stop()
 	select {
 	case <-done:

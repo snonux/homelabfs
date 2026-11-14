@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -25,6 +26,58 @@ const slowObservation = 2 * time.Second
 // slowObservation, honoring ctx.
 func slowProbe(a *Admission, slow *atomic.Bool, probes *atomic.Int32, entered chan<- struct{}) {
 	latencyProbe(a, slowObservation, slow, probes, entered)
+}
+
+// probeGate releases every probe heldProbe holds, once and for good. released
+// records whether the gate was open, so a caller can tell from an event, not a
+// wall-clock threshold, whether its call outlived a held probe (i84: the 1 s
+// "quick" bound and a 3 s upper bound failed spuriously on a loaded host).
+// left counts held probes that stopped holding, by the gate or because their
+// context ended (a Prepare bounds its probes to 10 s), so a call that only
+// finished because a probe gave up is caught as well.
+type probeGate struct {
+	ch       chan struct{}
+	once     sync.Once
+	released atomic.Bool
+	left     atomic.Int32
+}
+
+// newProbeGate returns a closed gate that the test's cleanup opens, so a
+// failing test never leaves a probe (and its admission refresh) parked.
+func newProbeGate(t *testing.T) *probeGate {
+	g := &probeGate{ch: make(chan struct{})}
+	t.Cleanup(g.open)
+	return g
+}
+
+func (g *probeGate) open() {
+	g.once.Do(func() {
+		g.released.Store(true)
+		close(g.ch)
+	})
+}
+
+// heldProbe is slowProbe with an event instead of a latency: while slow is set
+// every probe is counted, announced on entered (if not nil) and held until
+// gate opens, honoring ctx. A call that completes while the gate is still
+// closed provably did not wait for the probe.
+func heldProbe(a *Admission, slow *atomic.Bool, probes *atomic.Int32, entered chan<- struct{}, gate *probeGate) {
+	a.probe = func(ctx context.Context) (installedObservation, error) {
+		if slow.Load() {
+			probes.Add(1)
+			if entered != nil {
+				entered <- struct{}{}
+			}
+			select {
+			case <-gate.ch:
+				gate.left.Add(1)
+			case <-ctx.Done():
+				gate.left.Add(1)
+				return installedObservation{}, ctx.Err()
+			}
+		}
+		return a.observer.observePhase(ctx)
+	}
 }
 
 // latencyProbe is slowProbe with a caller-chosen per-observation latency; the
@@ -73,6 +126,11 @@ func TestRecallAcksReuseObservationWithSlowObserver(t *testing.T) {
 	domain, mount1 := mountBoth(t, r, families)
 	r.peers[1].call("CREATE", map[string]any{"parent": mount1[0], "name": hex.EncodeToString([]byte("slow-observer")), "mode": 0o660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}})
 
+	// Reuse (admissionReuse) is decided on a model clock that advances by the
+	// 2 s per observation, not by host work: on the wall clock a loaded or
+	// -race host aged an observation past 5 s within one phase and paid a
+	// second probe ("INSTALLED_DRAIN: four VIEW_ACKs ran 2 observations", i84).
+	installModelClock(r.admission, slowObservation)
 	slow.Store(true)
 	started := time.Now()
 	acks := doubledRecall(t, r, []guestbridge.Capability{domain, mount1[1]}, &probes)
@@ -149,10 +207,10 @@ func guestACK(event map[string]json.RawMessage, domain guestbridge.Capability, s
 	return ack
 }
 
-// TestAdmissionProbeHoldsNoAdmissionLock keeps a 2 s guest probe in flight and
+// TestAdmissionProbeHoldsNoAdmissionLock holds a guest probe in flight and
 // shows that admission checks, the ACK cache lookup and a real
 // ALLOCATE/CALL/QUERY through Producer.Prepare all complete while that probe is
-// still running, i.e. no lock they need is held across it. It also checks
+// still held, i.e. no lock they need is held across it. It also checks
 // refresh coalescing: a request satisfied by the in-flight probe waits for it,
 // while a strict Refresh issued after that probe started runs its own. Run it
 // with -race.
@@ -162,7 +220,8 @@ func TestAdmissionProbeHoldsNoAdmissionLock(t *testing.T) {
 	var slow atomic.Bool
 	var probes atomic.Int32
 	entered := make(chan struct{}, 4)
-	slowProbe(a, &slow, &probes, entered)
+	gate := newProbeGate(t)
+	heldProbe(a, &slow, &probes, entered, gate)
 	require(t, a.Refresh(t.Context())) // fresh cache, so the CALL below needs no probe
 	slow.Store(true)
 
@@ -172,19 +231,19 @@ func TestAdmissionProbeHoldsNoAdmissionLock(t *testing.T) {
 	go func() { defer close(firstDone); errs <- a.Refresh(context.Background()) }()
 	<-entered
 	ack := []byte(`{"never":"recorded"}`)
-	quick(t, "Admission.check", func() { require(t, a.check(r.scope)) })
-	quick(t, "Facts.checkScope", func() { require(t, r.facts.checkScope(t.Context(), r.scope)) })
-	quick(t, "Facts.admission", func() {
+	quick(t, gate, "Admission.check", func() { require(t, a.check(r.scope)) })
+	quick(t, gate, "Facts.checkScope", func() { require(t, r.facts.checkScope(t.Context(), r.scope)) })
+	quick(t, gate, "Facts.admission", func() {
 		if r.facts.admission(r.scope) != a {
 			t.Fatal("lost admission")
 		}
 	})
-	quick(t, "measuredACK", func() {
+	quick(t, gate, "measuredACK", func() {
 		if a.measuredACK(r.scope, ack, admissionReuse) {
 			t.Fatal("unrecorded ACK reported as measured")
 		}
 	})
-	quick(t, "ALLOCATE/CALL/QUERY", func() { r.call("ROOT", map[string]any{}) })
+	quick(t, gate, "ALLOCATE/CALL/QUERY", func() { r.call("ROOT", map[string]any{}) })
 	select {
 	case <-firstDone:
 		t.Fatal("probe finished before the checks; they did not overlap it")
@@ -192,9 +251,11 @@ func TestAdmissionProbeHoldsNoAdmissionLock(t *testing.T) {
 	}
 
 	// Coalescing: covered waits for the in-flight probe; strict needs a probe
-	// that started after it was called.
+	// that started after it was called. refreshMu serializes them, so the
+	// strict probe starts only after the in-flight one ends: open the gate.
 	go func() { errs <- a.refreshSince(context.Background(), inFlight) }()
 	go func() { errs <- a.Refresh(context.Background()) }()
+	gate.open()
 	for range 3 {
 		require(t, <-errs)
 	}
@@ -203,14 +264,23 @@ func TestAdmissionProbeHoldsNoAdmissionLock(t *testing.T) {
 	}
 }
 
-// quick runs fn on the test goroutine and fails when it took half a slow probe
-// or longer, i.e. when it waited for the in-flight probe.
-func quick(t *testing.T, name string, fn func()) {
+// quick runs fn on the test goroutine while gate holds the in-flight probe and
+// fails when fn could only finish because a held probe stopped holding (the
+// gate opened or the probe's context ended), i.e. when it waited for the
+// probe. A watchdog opens the gate after answerBound so such a call still
+// returns. No wall-clock threshold decides the result: a slow host only delays
+// fn, it cannot release the probe early.
+func quick(t *testing.T, gate *probeGate, name string, fn func()) {
 	t.Helper()
-	started := time.Now()
+	if gate.released.Load() {
+		t.Fatalf("%s: probe gate already open, nothing is in flight", name)
+	}
+	left := gate.left.Load()
+	watchdog := time.AfterFunc(answerBound, gate.open)
 	fn()
-	if elapsed := time.Since(started); elapsed >= slowObservation/2 {
-		t.Fatalf("%s blocked behind the in-flight probe (%s)", name, elapsed)
+	watchdog.Stop()
+	if gate.released.Load() || gate.left.Load() != left {
+		t.Fatalf("%s blocked behind the in-flight probe", name)
 	}
 }
 

@@ -33,7 +33,7 @@ func (r *rig) transportAttempt(i int, op string, payload any) (json.RawMessage, 
 	if op == "VIEW_POLL" {
 		node = r.natives[i].Endpoint.RecallNode
 	}
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(answerBound)
 	for {
 		wire, err := r.transport[i].Read(r.t.Context(), r.natives[i], node, command.Cell*guestbridge.CellStride, 32768)
 		if errors.Is(err, fsapi.WouldBlock) {

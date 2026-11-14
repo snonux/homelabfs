@@ -571,7 +571,9 @@ func TestControlledRealTransportAllocationRetry(t *testing.T) {
 		}
 		_, err = transport.Write(t.Context(), h.native, h.native.Endpoint.CommandNode, c.Cell*guestbridge.CellStride, wire)
 		mustAllocation(t, err)
-		deadline := time.Now().Add(5 * time.Second)
+		// Waits only for the worker to answer; generous because a loaded host
+		// can delay it by seconds (i84), and a timeout still fails below.
+		deadline := time.Now().Add(30 * time.Second)
 		for {
 			reply, err := transport.Read(t.Context(), h.native, h.native.Endpoint.ResultNode, c.Cell*guestbridge.CellStride, guestbridge.ChunkBytes)
 			if errors.Is(err, fsapi.WouldBlock) && time.Now().Before(deadline) {

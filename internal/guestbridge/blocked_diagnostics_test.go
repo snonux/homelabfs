@@ -66,7 +66,7 @@ func TestBlockedErrorClassIsBoundedAndContentFree(t *testing.T) {
 
 func waitCellPhase(t *testing.T, tr *Transport, id uint64, phase string) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(answerBound)
 	for {
 		tr.mu.Lock()
 		c := tr.cells[id]
