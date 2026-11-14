@@ -358,18 +358,10 @@ func TestTerminalProducerOtherScopeContinuesDuringBridgeProtection(t *testing.T)
 	unblock()
 	// Observe actual committed bytes before Close, which deliberately prevents
 	// further signing/worker use rather than authorizing completion itself.
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		raw, err := r.mappingTransport.Read(t.Context(), r.native, r.native.Endpoint.ResultNode, cell*guestbridge.CellStride, 32768)
-		if errors.Is(err, fsapi.WouldBlock) && time.Now().Before(deadline) {
-			time.Sleep(time.Millisecond)
-			continue
-		}
-		require(t, err)
-		if len(raw) <= guestbridge.HeaderBytes {
-			t.Fatal("terminal worker exposed no actual result frame")
-		}
-		break
+	raw, err := terminalAnsweredResult(t, r, cell)
+	require(t, err)
+	if len(raw) <= guestbridge.HeaderBytes {
+		t.Fatal("terminal worker exposed no actual result frame")
 	}
 	state, cells := terminalInspect(t, r)
 	if len(cells) != 2 || state.Terminal[r.scope.Session] != cell {
@@ -423,17 +415,8 @@ func TestTerminalProducerPartialSealsRetainSameLiveAttempt(t *testing.T) {
 			_, _, _, _, err = r.peers[1].mappedExecute("HELLO", guestbridge.TerminalProtocol())
 			require(t, err)
 			unblock()
-			deadline := time.Now().Add(5 * time.Second)
-			var wire []byte
-			for {
-				wire, err = r.mappingTransport.Read(t.Context(), r.native, r.native.Endpoint.ResultNode, cell*guestbridge.CellStride, 32768)
-				if errors.Is(err, fsapi.WouldBlock) && time.Now().Before(deadline) {
-					time.Sleep(time.Millisecond)
-					continue
-				}
-				require(t, err)
-				break
-			}
+			wire, err := terminalAnsweredResult(t, r, cell)
+			require(t, err)
 			frame, err := guestbridge.DecodeFrame(wire)
 			require(t, err)
 			if frame.Cell != cell || frame.Offset != 0 || int(frame.Total) != len(frame.Data) {
