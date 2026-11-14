@@ -250,9 +250,11 @@ name:
   - UEFI vars `49bdc1ef…`, hence a new argv record.
   - `fdescfs.ko` and `fusefs.ko` are not loaded, so Phase 1a is skipped.
   - **f3 network change (not ours):** `10.20.0.133` is no longer configured
-    on `re0`. `route -n get 10.20.0.123` reports interface `vm-public`, so
-    the address appears to sit on the bridge. The bridge members are still
-    `re0` and `tap0`.
+    on `re0`. `route -n get 10.20.0.123` reports interface `vm-public`. The
+    07:57Z facts did not print the bridge's `inet` line; a read-only check at
+    2026-11-14 08:36Z (review round 1) confirmed `inet 10.20.0.133` on
+    `vm-public` and no `inet` on `re0`. The bridge members are still `re0`
+    and `tap0`.
     - No line or tool in this sheet assumes that the host address is on
       `re0`: `host.py` checks the `vm-public` members, and the session
       addresses f3 by IP.
@@ -263,8 +265,11 @@ name:
   - both mounts complete, with mountinfo showing the exact options;
   - `usable` ok, then READY with every step `ok`;
   - the four cases T1-T4, then T6-T11, all get past admission.
-  - Any guest `hfs … blocked` dmesg line is a finding: m64 logs every fault
-    block, and a clean unmount is silent.
+  - Before T9, any guest `hfs … blocked` dmesg line is a finding: m64 logs
+    every fault block, and a clean unmount is silent. T9 blocks m0 on purpose
+    (`EHOSTDOWN`) and a FENCED T10/T11 blocks m1, so from T9 on only block
+    lines for an unexpected session or operation are findings. Phase 11 step
+    4b saves the full guest `dmesg` before the poweroff.
 
 ## Decisions kept from the zq3-r7 run-sheet review round 1 (2026-11-10)
 
@@ -285,9 +290,9 @@ source /home/paul/tmp/claude/hfs-zq3-r8-fill/session.sh
 ```
 
 `session.sh` (`3de08957…`, [pins](pins.json) `fill_helpers`) defines, adapted
-from zq3-r7's:
+from zq3-r7's (a summary, not runnable as written):
 
-```bash
+```text
 D=/home/paul/tmp/claude/hfs-zq3-r8-fill      # private 0700 fill dir
 S=$D/snapshot                                # git archive of 5a35150 (docs internal tools)
 R=/var/tmp/hfs-validation-xz3/zq3-r8         # f3 staging prefix (parent exists, holds zq3-r1 to zq3-r7)
@@ -312,9 +317,13 @@ obs()   { …Phase 10: obs PREV NEW [LAST], the next OBSERVE through correlate.p
 The guard's `--rocky-birth` is the UTC `lstart` (the guard runs `ps` with
 `TZ=UTC`). Run every phase in this one shell session: later phases reuse `K`,
 `KP`, `NG` and the variables set by earlier lines (`PM`, `F3_NOW`, `WP`, `W`,
-`EA`, `P`, `B`, `U`, `C`, `CTL`, `CR`, `OUT`). If the shell is lost, source
-`session.sh` again and recompute each variable from its line: every value
-comes from a file in `$E` or `$D`.
+`EA`, `P`, `B`, `U`, `C`, `CTL`, `CR`, `OUT`, `XP`, `ARM`, `RST`, and the
+guard PID `<GUARD_PID>`). When lines run one at a time through a wrapper
+(as in zq3-r7), append every `VAR=value` line's result to the run's
+`vars.env` immediately, and never rely on `set -o pipefail` persisting
+between lines: read exit codes with `PIPESTATUS` as written. If the shell is
+lost, source `session.sh` again and recompute each variable from its line:
+every value comes from a file in `$E` or `$D`.
 
 ## D1: f3 module state (not needed: both modules absent)
 
@@ -515,7 +524,7 @@ rocky "TZ=UTC LC_ALL=C /usr/bin/python3.9 -I -B /root/hfs-zq3-zq3-r8-pod/pod_fix
 install reports one new BLS entry (`<BLS_ENTRY_ID>`) for the y64 kernel
 (bzImage `40afad22…`, build ID `870bb9d1…`, System.map `1ffea83f…`, config
 `28fe4a8e…` with SELinux in `CONFIG_LSM`; same release `6.1.190-hfs-xz3` and
-the same five modules as zq3-r8), default still
+the same five modules as zq3-r7), default still
 `5.14.0-687.66.1.el9_8.x86_64`, `saved_entry` unchanged, `next_entry` empty;
 observer stage writes `$G/observer.py` and `$G/installed-probe.py` (`0400`)
 and creates `$G/m0`, `$G/m1`. zq3-r1 to zq3-r7 all got `f7f69339…` (82
@@ -1284,7 +1293,6 @@ Not run: PTE/TLB/busy-pin/GUP exclusion and funded drains (G14), distributed
 writers (ov3/pv3).
 
 ## Phase 11: cleanup (within A1/A4/A5/A6; about 5-15 min)
-## Phase 11: cleanup (within A1/A4/A5/A6; about 5-15 min)
 
 **The order below is mandatory. Run one command per line and never batch
 them** (zq3-r2 R2-6: a batched cleanup skipped the native unmount, and the
@@ -1345,6 +1353,8 @@ okpin && rocky "/usr/bin/python3.9 -I -B - remove --run-id zq3-r8 --expect-sha25
 rocky "grub2-editenv - list"                     # next_entry empty; if set: rocky "$K cancel $KP" (U1) on its own line
 # 4a. SELinux denials in the guest (evidence only; "<no matches>" with rc=1 is the good case)
 rockyt "ausearch -m AVC,USER_AVC,SELINUX_ERR -ts boot -i; dmesg | grep -i -e avc: -e selinux" > $E/p11-guest-avc.txt 2>&1; echo rc=$?
+# 4b. full guest kernel log (evidence only: keeps the m64 `9p-hfs: session … blocked` lines)
+rockyt "dmesg" > $E/p11-guest-dmesg.txt 2>&1; echo rc=$?
 # 5. guest poweroff
 rocky 'systemctl poweroff'
 # 6. wait for the child: repeat this line every 10 s, at most 60 times (10 min), until child-gone (h64: the vmm context stays until step 7)

@@ -48,7 +48,7 @@ are never committed:
 | Candidate | **y64 rebuild**: manifest `867ede36…`, package `/home/paul/tmp/claude/hfs-xz3-20261110h/package`, source `b869710`. All 194 manifest entries were checked against their files. Guest kernel `6.1.190-hfs-xz3` (g64 `.show_options` with an exact `cache=mmap`; m64 Sources floor and a log line for every fault block): bzImage `40afad22…`, System.map `1ffea83f…`, GNU build ID `870bb9d1…`. Daemon `34fb05b2…` (i64, o64, r64, n64, j64, u64, v64, x64). Native exporter `ef8f17de…` (564, e64, p64, w64), replacing `36423b6d…`. Window artifacts `f71f0bb8…` (test) and `3d992cdf…` (helper), rebuilt from `b869710`. **Unchanged:** config `28fe4a8e…` (SELinux in `CONFIG_LSM`), the five modules and `modules.*`, init helper `8c02b98f…` |
 | Phase 1 facts | [facts/](facts/), collected read-only 2026-11-14 07:57:09Z; they supersede the 20261110T201420Z and 20261111T063434Z sets. **f3:** boot `1794574308` (2026-11-13 12:51:48 UTC), neither module loaded, no fuse/fdesc mount, free 12.11 GB + inactive 1.36 GB, ARC 1.17 GB, `/usr/bin/ssh` `6a9e5573…`, python3.12 `a66eb370…` (same bytes, new mtime Nov 10). **Rocky:** PID `6388` (UTC lstart `Fri Nov 13 12:52:05 2026`), boot ID `6f6f61b0-…`, stock `5.14.0-687.66.1.el9_8`, `next_entry` empty, `boot_indeterminate=7`, SELinux Enforcing, `/.autorelabel` absent, python3.9 `1143733d…`, `authorized_keys` `e08542dc…`. The files hold no key material (grep for key headers and `ssh-*` lines) |
 | Host events since zq3-r7 | **2026-11-13 12:51:48 UTC: f3 reboot, done deliberately by Paul.** 2026-11-10 about 09:33 UTC: f3 reboot, **cause not established**. 2026-11-10 19:32 UTC: Rocky self-reboot (vm-bhyve exit 0, run 2), **cause not established**. The vm-bhyve log also shows a further Rocky self-reboot (2026-11-11 10:08 UTC) and many Rocky stops and starts on 2026-11-11 to 13 outside the zq3 work, with no recorded cause. None of them came from this fill |
-| f3 network (host change, not ours) | `10.20.0.133` is no longer configured on `re0`; `route -n get 10.20.0.123` reports interface `vm-public`, so the address appears to sit on the bridge. The bridge members are still `re0` and `tap0`. See the [check](#f3-network-change) below |
+| f3 network (host change, not ours) | `10.20.0.133` is no longer configured on `re0`; `route -n get 10.20.0.123` reports interface `vm-public`, and a read-only check at 2026-11-14 08:36Z (review round 1) confirmed `inet 10.20.0.133` on `vm-public` and none on `re0`. The bridge members are still `re0` and `tap0`. See the [check](#f3-network-change) below |
 | Launch facts | `f3-launch-facts-20261114T075709Z.json` (`4b603cdf…`): `rocky.conf` `c101adf1…`, vm-run `43753bc8…`, firmware `6b48e967…` unchanged; **UEFI vars `49bdc1ef…`** (zq3-r7: `00f82a83…`); launch logged `2026-11-13T14:52:06+02:00` |
 | Tap | `tap100` (bridge members `re0`, `tap0`) |
 | Run ID / staging | `zq3-r8`, `/var/tmp/hfs-validation-xz3/zq3-r8` (the parent exists and holds zq3-r1 to zq3-r7) |
@@ -186,9 +186,11 @@ New for zq3-r8:
   two 9p mountinfo lines, and no `hfs … blocked` dmesg line, in addition to
   SELinux.
 - **Phase 8 expects** both mounts, `usable` ok and READY with every step
-  `ok`. T1-T4 and T6-T11 should get past admission. Any guest `hfs …
-  blocked` line is a finding: m64 logs every fault block, and a clean
-  unmount is silent.
+  `ok`. T1-T4 and T6-T11 should get past admission. Before T9, any guest
+  `hfs … blocked` line is a finding: m64 logs every fault block, and a
+  clean unmount is silent. T9 (m0) and a FENCED T10/T11 (m1) block sessions
+  on purpose, so afterwards only unexpected block lines are findings. Phase
+  11 step 4b saves the full guest `dmesg`.
 - zq3-r7's T10 note about the 564 race is dropped, because the exporter now
   has 564. A "busy" recovery reply would be a finding.
 - Phase 1 expectations for the new f3 boot and Rocky incarnation, and for
@@ -261,9 +263,30 @@ ours). Nothing in the sheet assumes the address is on `re0`:
 
 One dependency remains. `observer_key.py` enrols the observer key with
 `from="10.20.0.133"`, so f3's connection to the guest must leave from that
-address. With the address on the bridge that the route uses, this should
-hold. `p1-f3.sh` now prints `route -n get 10.20.0.123` and `ifconfig
+address. The address is on the bridge that the route uses (confirmed
+read-only at 2026-11-14 08:36Z), so this should hold. `p1-f3.sh` now prints `route -n get 10.20.0.123` and `ifconfig
 vm-public`, and Phase 1 stops if `10.20.0.133` is not on `vm-public`.
+
+## Decisions from the zq3-r8 run-sheet review round 1 (2026-11-14)
+
+No must-fix items. Applied:
+- **f3 address:** the bridge `inet` line was confirmed read-only at 08:36Z
+  (`inet 10.20.0.133` on `vm-public`, none on `re0`), so the Phase 1 stop
+  should not fire.
+- **Persisted variables:** the run-sheet list now includes `XP`, `ARM`,
+  `RST` and the guard PID, and says to append each `VAR=` result to
+  `vars.env` and not to rely on `pipefail` between lines.
+- **Block-line rule:** only lines before T9, or for an unexpected session
+  or operation afterwards, are findings. The new Phase 11 step 4b saves the
+  full guest `dmesg` before the poweroff.
+- **Nits:** "five modules as zq3-r7", the duplicated Phase 11 heading
+  removed, and the `session.sh` summary fenced as `text`.
+
+Kept: the "zq3-r8" wording slips in the comments of the pinned
+`session.sh` and `sh/p4-observer.py` (fixing them would mean re-pinning).
+`tools/lab/vms.sh` still reaches f3 through `~/.ssh/config` (BatchMode,
+never accepting new keys), as in r1-r7. T9-T11, `obs` and `p10-argv.py`
+have only been dry-run so far.
 
 ## Findings and open questions
 
