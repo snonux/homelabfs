@@ -375,6 +375,9 @@ func newRecallModel(t *testing.T, values zq3Values, latency time.Duration) *reca
 	r.supervisor.record.Stage = "claimed" // declared native-export/INIT primitive
 	counter := uint64(0)
 	for i, peer := range r.peers {
+		// noReply reads an unanswered cell as the control lane's "no reply";
+		// keep the historical 5 s read bound for that instead of answerBound.
+		peer.replyWait = 5 * time.Second
 		attachAssembly(peer, a, &counter)
 		m.mounts = append(m.mounts, &modelMount{index: i, peer: peer, chain: &r5Chain{peer: peer}, fence: 1, revision: 1, acked: map[string]int{}, familyIndex: map[string]*familyRec{}})
 	}

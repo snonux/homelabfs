@@ -107,12 +107,18 @@ func (r *sourceRig) mappedWriteNative(native guestbridge.Command, flags uint16) 
 	return nil
 }
 
-// mappedReadNative waits up to 5 s for the complete native response; a cell
-// the endpoint never answers (for example "blocked") fails here.
+// mappedReadNative waits up to r.replyWait (default answerBound) for the
+// complete native response; a cell the endpoint never answers (for example
+// "blocked") fails here. The former fixed 5 s could expire before a loaded
+// host's worker answered (i84).
 func (r *sourceRig) mappedReadNative(native guestbridge.Command) ([]byte, error) {
 	raw := []byte{}
 	total := 1
-	deadline := time.Now().Add(5 * time.Second)
+	wait := r.replyWait
+	if wait == 0 {
+		wait = answerBound
+	}
+	deadline := time.Now().Add(wait)
 	node := r.native.Endpoint.ResultNode
 	if native.Op == "VIEW_POLL" {
 		node = r.native.Endpoint.RecallNode
