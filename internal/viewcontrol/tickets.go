@@ -279,7 +279,10 @@ func (c *Controller) acquire(ctx context.Context, scope guestbridge.Context, r r
 	if d.Domain.Token != "" && !equal(d.Domain, r.Domain) {
 		return nil, fsapi.Stale
 	}
-	if c.state.Recall != nil {
+	// A recall closes acquisition for its participants and for every
+	// EXCLUSIVE_DIRTY request; a READ acquisition from a domain outside a
+	// scoped recall proceeds against the stable current cut (recall_scope.go).
+	if c.recallHoldsLease(scope.Session, r.Mode) {
 		return c.reply(t, "PENDING", nil, nil, nil)
 	}
 	d.Domain = r.Domain
@@ -301,20 +304,39 @@ func (c *Controller) acquire(ctx context.Context, scope guestbridge.Context, r r
 	}
 	target := c.target(scope, source)
 	if r.Target != nil && !equal(*r.Target, target) {
-		if t.ExpectedMismatch {
-			return c.reply(t, "BLOCKED", nil, nil, nil)
-		}
-		key, _ := ticketKeys(scope, t.Request)
-		t.ExpectedMismatch = true
-		c.state.Tickets[key] = t
-		if err = c.startRecall(ctx); err != nil {
-			return nil, err
-		}
-		return c.reply(t, "PENDING", nil, nil, nil)
+		return c.expectedMismatch(ctx, scope, t)
 	}
 	if err = c.remember(source); err != nil {
 		return c.reply(t, "BLOCKED", nil, nil, nil)
 	}
+	return c.grantLease(scope, r, t, target)
+}
+
+// expectedMismatch answers an acquisition whose expected target is not the
+// current cut: the first time it starts the all-domain recall that installs
+// the current cut and answers PENDING, and once that recall ran it answers
+// BLOCKED for the old expectation. While another domain's scoped recall is
+// in progress no recall can start yet, so it stays PENDING without spending
+// that one recall.
+func (c *Controller) expectedMismatch(ctx context.Context, scope guestbridge.Context, t ticketState) (json.RawMessage, error) {
+	if t.ExpectedMismatch {
+		return c.reply(t, "BLOCKED", nil, nil, nil)
+	}
+	if c.state.Recall != nil {
+		return c.reply(t, "PENDING", nil, nil, nil)
+	}
+	key, _ := ticketKeys(scope, t.Request)
+	t.ExpectedMismatch = true
+	c.state.Tickets[key] = t
+	if err := c.startRecall(ctx); err != nil {
+		return nil, err
+	}
+	return c.reply(t, "PENDING", nil, nil, nil)
+}
+
+// grantLease returns the active lease of the same lineage, or issues the next
+// revision of a new lease on target within the identity and control bounds.
+func (c *Controller) grantLease(scope guestbridge.Context, r request, t ticketState, target guestbridge.ViewTarget) (json.RawMessage, error) {
 	lease := guestbridge.ViewLease{Scope: scope, Domain: r.Domain, Access: r.Access, CredentialHash: digest(r.Request.Credentials), Mode: r.Mode, Target: target, Fence: c.fence(scope.Session), Revision: 1}
 	for _, existing := range c.state.Leases {
 		if existing.Active && sameLineage(existing.Lease, lease) {
@@ -343,31 +365,48 @@ func (c *Controller) changeLease(ctx context.Context, scope guestbridge.Context,
 		return nil, fsapi.Permission
 	}
 	if op == "VIEW_RENEW" {
-		if !old.Active || c.state.Recall != nil {
-			return c.reply(t, "BLOCKED", nil, nil, nil)
-		}
-		if old.Lease.Revision == ^uint64(0) || len(c.state.Leases) >= c.config.Authorization.Enrollment.Bounds.Identities || !c.controlCapacity(1) || !c.identityCapacity(1) {
-			return c.reply(t, "BLOCKED", nil, nil, nil)
-		}
-		next := old.Lease
-		next.Revision++
-		c.state.Revisions[lineageID(next)] = next.Revision
-		next.ID = objectID(next)
-		old.Active = false
-		c.state.Leases[r.Lease.ID] = old
-		c.state.Leases[next.ID] = leaseState{Lease: next, Active: true, ReleaseCredit: true}
-		return c.reply(t, "GRANTED", &next, nil, nil)
+		return c.renewLease(r, t, old)
 	}
+	return c.releaseLease(ctx, scope, op, r, t, old)
+}
+
+// renewLease issues the next revision of an active lease. A recall blocks it
+// for its participants and for EXCLUSIVE_DIRTY leases; a READ lease of a
+// domain outside a scoped recall renews unchanged (same target and fence).
+func (c *Controller) renewLease(r request, t ticketState, old leaseState) (json.RawMessage, error) {
+	if !old.Active || c.recallHoldsLease(old.Lease.Scope.Session, old.Lease.Mode) {
+		return c.reply(t, "BLOCKED", nil, nil, nil)
+	}
+	if old.Lease.Revision == ^uint64(0) || len(c.state.Leases) >= c.config.Authorization.Enrollment.Bounds.Identities || !c.controlCapacity(1) || !c.identityCapacity(1) {
+		return c.reply(t, "BLOCKED", nil, nil, nil)
+	}
+	next := old.Lease
+	next.Revision++
+	c.state.Revisions[lineageID(next)] = next.Revision
+	next.ID = objectID(next)
+	old.Active = false
+	c.state.Leases[r.Lease.ID] = old
+	c.state.Leases[next.ID] = leaseState{Lease: next, Active: true, ReleaseCredit: true}
+	return c.reply(t, "GRANTED", &next, nil, nil)
+}
+
+// releaseLease answers a preowned VIEW_RELEASE: PENDING while any recall
+// runs or while the lineage still needs one, RELEASED once the lineage is
+// inactive, its reservations closed and the physical closure verified.
+func (c *Controller) releaseLease(ctx context.Context, scope guestbridge.Context, op string, r request, t ticketState, old leaseState) (json.RawMessage, error) {
 	if c.state.Recall != nil {
 		return c.reply(t, "PENDING", nil, nil, nil)
 	}
 	// A clean ACTIVE lease may still own readable PTEs. Its preowned release
-	// must start the same physical recall as dirty pressure; CheckPhysical
-	// cannot certify a live mapping as already closed. Include active renewed
-	// siblings so an old immutable lineage release cannot wait without progress.
+	// must start a physical recall; CheckPhysical cannot certify a live
+	// mapping as already closed. A clean READ lease of a domain without dirty
+	// or exclusive state recalls only that domain (startReleaseRecall); any
+	// other lease uses the all-domain recall of dirty pressure. Include active
+	// renewed siblings so an old immutable lineage release cannot wait
+	// without progress.
 	for _, lease := range c.state.Leases {
 		if lease.Active && sameLineage(lease.Lease, r.Lease) {
-			if err := c.startRecall(ctx); err != nil {
+			if err := c.startReleaseRecall(ctx, r.Lease); err != nil {
 				return nil, err
 			}
 			return c.reply(t, "PENDING", nil, nil, nil)
@@ -412,7 +451,8 @@ func (c *Controller) reserve(ctx context.Context, scope guestbridge.Context, r r
 		}
 	}
 	// Outside a recall (checked above) unpinned cuts can go first. The active
-	// lease pins the current cut: no mutation is admitted while it lives.
+	// lease pins its own cut: no observable mutation is admitted while it
+	// lives (only authority reductions, which change no observation).
 	// Every reply below, BLOCKED included, is saved by the ticket path in the
 	// same write as the pruned set (ExchangeView saves after admitTicket).
 	c.pruneSources("")
@@ -460,7 +500,10 @@ func (c *Controller) finishReserve(ctx context.Context, s reservationState, t ti
 func (c *Controller) freeze(ctx context.Context, scope guestbridge.Context, r request, t ticketState) (json.RawMessage, error) {
 	key, _ := ticketKeys(scope, t.Request)
 	s, ok := c.state.Reservations[r.Reservation.ID]
-	if !ok || !equal(s.Reservation, r.Reservation) || scope != s.Reservation.Scope || c.state.Recall == nil || c.state.Recall.ID != r.Recall {
+	// Only a participant of the recall may freeze into it: drained() skips a
+	// non-participant's reservations, so finishRecall would otherwise close
+	// a reservation whose bytes never drained.
+	if !ok || !equal(s.Reservation, r.Reservation) || scope != s.Reservation.Scope || c.state.Recall == nil || c.state.Recall.ID != r.Recall || !c.state.Recall.covers(scope.Session) {
 		return nil, fsapi.Stale
 	}
 	entry, call, err := frozen(r)
@@ -502,6 +545,9 @@ func (c *Controller) freeze(ctx context.Context, scope guestbridge.Context, r re
 	return outcome, nil
 }
 
+// cancel answers VIEW_CANCEL: the protected cancellation replays; a declined
+// DIRTY_RESERVE closes its earmarked gap; a pending release stays BLOCKED; a
+// never-granted ticket is cancelled outright; a grant goes to cancelGranted.
 func (c *Controller) cancel(ctx context.Context, key string, t ticketState) (json.RawMessage, error) {
 	if !absent(t.Cancelled) {
 		return bytes.Clone(t.Cancelled), nil
@@ -524,18 +570,30 @@ func (c *Controller) cancel(ctx context.Context, key string, t ticketState) (jso
 	}
 	if status(t.Current) == "PENDING" || status(t.Current) == "BLOCKED" {
 		// Admission was never a physical grant; recall obligations are retained.
-		reply, err := c.reply(t, "CANCELLED", nil, nil, nil)
-		if err != nil {
-			return nil, err
-		}
-		t.Cancelled = reply
-		t.Current = reply
-		c.state.Tickets[key] = t
-		if err = c.save(); err != nil {
-			return nil, err
-		}
-		return reply, nil
+		return c.protectCancelled(key, t)
 	}
+	return c.cancelGranted(ctx, key, t)
+}
+
+// protectCancelled records and saves the CANCELLED outcome of a ticket.
+func (c *Controller) protectCancelled(key string, t ticketState) (json.RawMessage, error) {
+	reply, err := c.reply(t, "CANCELLED", nil, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	t.Cancelled = reply
+	t.Current = reply
+	c.state.Tickets[key] = t
+	if err = c.save(); err != nil {
+		return nil, err
+	}
+	return reply, nil
+}
+
+// cancelGranted cancels a granted lease or reservation after the physical
+// cancel fact: it closes an unfrozen reservation and deactivates its lineage,
+// or answers BLOCKED while a frozen entry or open reservation remains.
+func (c *Controller) cancelGranted(ctx context.Context, key string, t ticketState) (json.RawMessage, error) {
 	ledger, err := c.rawState()
 	if err != nil {
 		return nil, err
@@ -552,54 +610,66 @@ func (c *Controller) cancel(ctx context.Context, key string, t ticketState) (jso
 		return nil, err
 	}
 	if granted.Reservation != nil {
-		s := c.state.Reservations[granted.Reservation.ID]
-		if s.Call != nil || (s.Status != "RESERVED" && s.Status != "RESERVING" && s.Status != "CANCELLING" && s.Status != "CLOSED") {
-			return c.blockedCancel(key, t)
-		}
-		if c.state.Recall != nil && (c.state.Recall.Phase != "RECALL" || !absent(c.state.Recall.Manifests[t.Scope.Session])) {
-			return c.blockedCancel(key, t)
-		}
-		if err = c.closeReservation(ctx, s); err != nil {
-			return nil, err
-		}
-		s = c.state.Reservations[s.Reservation.ID]
-
-		ancestor := c.state.Leases[s.Reservation.LeaseID].Lease
-		for id, l := range c.state.Leases {
-			if sameLineage(l.Lease, ancestor) {
-				l.Active = false
-				c.state.Leases[id] = l
+		if blocked, err := c.cancelReservation(ctx, t, *granted.Reservation); blocked || err != nil {
+			if err != nil {
+				return nil, err
 			}
+			return c.blockedCancel(key, t)
 		}
 	}
 	if len(granted.Entry) > 0 && string(granted.Entry) != "null" {
 		return c.blockedCancel(key, t)
 	}
-	if granted.Lease != nil {
-		for _, r := range c.state.Reservations {
-			if sameLineage(c.state.Leases[r.Reservation.LeaseID].Lease, *granted.Lease) && r.Status != "CLOSED" {
-				return c.blockedCancel(key, t)
-			}
+	if granted.Lease != nil && !c.cancelLease(*granted.Lease) {
+		return c.blockedCancel(key, t)
+	}
+	return c.protectCancelled(key, t)
+}
+
+// cancelReservation closes a granted, never frozen reservation and
+// deactivates its lease lineage; it reports blocked when the reservation was
+// frozen or its domain's recall already moved past RECALL or adopted it.
+func (c *Controller) cancelReservation(ctx context.Context, t ticketState, reservation guestbridge.DirtyReservation) (bool, error) {
+	s := c.state.Reservations[reservation.ID]
+	if s.Call != nil || (s.Status != "RESERVED" && s.Status != "RESERVING" && s.Status != "CANCELLING" && s.Status != "CLOSED") {
+		return true, nil
+	}
+	// A recall the reservation's domain does not participate in (another
+	// domain's scoped recall) never freezes it, so it cannot block the cancel.
+	if r := c.state.Recall; r != nil && r.covers(t.Scope.Session) && (r.Phase != "RECALL" || !absent(r.Manifests[t.Scope.Session])) {
+		return true, nil
+	}
+	if err := c.closeReservation(ctx, s); err != nil {
+		return false, err
+	}
+	s = c.state.Reservations[s.Reservation.ID]
+	ancestor := c.state.Leases[s.Reservation.LeaseID].Lease
+	for id, l := range c.state.Leases {
+		if sameLineage(l.Lease, ancestor) {
+			l.Active = false
+			c.state.Leases[id] = l
 		}
-		for id, l := range c.state.Leases {
-			if sameLineage(l.Lease, *granted.Lease) {
-				l.Active = false
-				l.ReleaseCredit = false
-				c.state.Leases[id] = l
-			}
+	}
+	return false, nil
+}
+
+// cancelLease deactivates a granted lease lineage and drops its release
+// credit; it reports false (blocked) while the lineage has an open
+// reservation.
+func (c *Controller) cancelLease(lease guestbridge.ViewLease) bool {
+	for _, r := range c.state.Reservations {
+		if sameLineage(c.state.Leases[r.Reservation.LeaseID].Lease, lease) && r.Status != "CLOSED" {
+			return false
 		}
 	}
-	reply, err := c.reply(t, "CANCELLED", nil, nil, nil)
-	if err != nil {
-		return nil, err
+	for id, l := range c.state.Leases {
+		if sameLineage(l.Lease, lease) {
+			l.Active = false
+			l.ReleaseCredit = false
+			c.state.Leases[id] = l
+		}
 	}
-	t.Cancelled = reply
-	t.Current = reply
-	c.state.Tickets[key] = t
-	if err = c.save(); err != nil {
-		return nil, err
-	}
-	return reply, nil
+	return true
 }
 
 func (c *Controller) reply(t ticketState, status string, lease *guestbridge.ViewLease, reservation *guestbridge.DirtyReservation, entry json.RawMessage) (json.RawMessage, error) {

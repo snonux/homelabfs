@@ -238,19 +238,32 @@ func (c *Controller) validateDrain(b guestbridge.Binding) error {
 	return fsapi.Permission
 }
 
+// startRecall starts the all-domain recall: every live inventoried domain
+// stops, drains and reinstalls, and admission is closed for every domain
+// until REOPEN. Dirty, exclusive, conflicting-admission and expected-target
+// recalls use it. It is a no-op while any recall exists.
 func (c *Controller) startRecall(ctx context.Context) error {
+	return c.beginRecall(ctx, "")
+}
+
+// beginRecall protects a new recall over all domains (scope "") or over the
+// single domain scope (startDomainRecall). The inventory and closure hashes
+// bind exactly the participants, so an ACK can never be replayed across a
+// scoped and an all-domain recall. For scope "" both hashes are computed
+// exactly as before scoped recalls existed.
+func (c *Controller) beginRecall(ctx context.Context, scope string) error {
 	if c.state.Recall != nil {
 		return nil
 	}
-	if c.fenceExhausted() || len(c.state.AckArchive)+8*len(c.config.Authorization.Enrollment.Domains) > c.config.Authorization.Enrollment.Bounds.Identities*8 {
+	if c.fenceExhausted(scope) || len(c.state.AckArchive)+8*len(c.config.Authorization.Enrollment.Domains) > c.config.Authorization.Enrollment.Bounds.Identities*8 {
 		return fsapi.NoSpace
 	}
 	id, err := c.newUUID()
 	if err != nil {
 		return err
 	}
-	inventory := digest(c.state.Domains)
-	c.state.Recall = &recallState{ID: id, Phase: "RECALL", Inventory: inventory, Closure: digest(struct{ Enrollment, Inventory, Recall string }{c.enrollmentHash, inventory, id}), Events: map[string]json.RawMessage{}, Acks: map[string]json.RawMessage{}, Manifests: map[string]json.RawMessage{}}
+	c.state.Recall = &recallState{ID: id, Phase: "RECALL", Domain: scope, Events: map[string]json.RawMessage{}, Acks: map[string]json.RawMessage{}, Manifests: map[string]json.RawMessage{}}
+	c.state.Recall.Inventory, c.state.Recall.Closure = c.recallHashes(id, scope)
 	if err = c.events(ctx, "RECALL"); err != nil {
 		c.state.Recall = nil // nothing else was committed by the failed events
 		return err
@@ -271,7 +284,9 @@ func (c *Controller) events(ctx context.Context, phase string) error {
 	domains := map[string]domainState{}
 	issued := map[string]json.RawMessage{}
 	for session, domain := range c.state.Domains {
-		if _, sealed := c.state.Terminal[session]; sealed {
+		// A scoped recall issues events to its one domain only; every other
+		// domain keeps its view, leases, sequence and fence untouched.
+		if _, sealed := c.state.Terminal[session]; sealed || !recall.covers(session) {
 			continue
 		}
 		if domain.Sequence == ^uint64(0) {
@@ -396,80 +411,101 @@ func (c *Controller) ack(ctx context.Context, scope guestbridge.Context, ack ack
 	return nil
 }
 
+// progress advances the protected recall by at most one phase and saves it.
+// Every phase waits for the exact ACKs of the recall's participants only
+// (allAcked iterates the issued events), so a scoped recall never waits for
+// a domain outside it.
 func (c *Controller) progress(ctx context.Context) error {
 	r := c.state.Recall
 	if r == nil {
 		return nil
 	}
-	changed := false
+	changed, err := c.advancePhase(ctx, r)
+	if err != nil || !changed {
+		return err
+	}
+	return c.save()
+}
+
+// advancePhase performs one phase transition when its ACKs are complete and
+// reports whether the ledger changed. A failed event issue leaves the phase
+// unchanged because events() commits nothing on failure; an undrained
+// reservation keeps DRAIN waiting without an error.
+func (c *Controller) advancePhase(ctx context.Context, r *recallState) (bool, error) {
 	switch r.Phase {
 	case "RECALL":
 		if !c.allAcked("STOPPED") {
-			return nil
+			return false, nil
 		}
-		// All physical rights are quiesced. Frozen drain provenance remains retained.
-		for id, l := range c.state.Leases {
+		c.quiesceParticipants(r)
+		r.Phase = "DRAIN"
+		return true, nil
+	case "DRAIN":
+		if !c.allAcked("STOPPED") || c.drained(ctx) != nil {
+			return false, nil
+		}
+		return c.issuePhase(ctx, r, "INSTALL_DRAIN")
+	case "INSTALL_DRAIN":
+		if !c.allAcked("INSTALLED_DRAIN") {
+			return false, nil
+		}
+		r.Phase = "WAIT_DRAINED"
+		return true, nil
+	case "WAIT_DRAINED":
+		if !c.allAcked("INSTALLED_DRAIN") || !c.allAcked("DRAINED") {
+			return false, nil
+		}
+		return c.issuePhase(ctx, r, "INSTALL_FINAL")
+	case "INSTALL_FINAL":
+		if !c.allAcked("INSTALLED_FINAL") {
+			return false, nil
+		}
+		return c.issuePhase(ctx, r, "REOPEN")
+	case "REOPEN":
+		if !c.allAcked("REOPENED") {
+			return false, nil
+		}
+		c.finishRecall(r)
+		return true, nil
+	}
+	return false, nil
+}
+
+// issuePhase issues phase's events to every participant and enters phase.
+func (c *Controller) issuePhase(ctx context.Context, r *recallState, phase string) (bool, error) {
+	if err := c.events(ctx, phase); err != nil {
+		return false, err // phase unchanged: events committed nothing
+	}
+	r.Phase = phase
+	return true, nil
+}
+
+// quiesceParticipants deactivates the leases of every participant once all
+// STOPPED ACKs are in: their physical rights are quiesced. Frozen drain
+// provenance remains retained. A scoped recall leaves every other domain's
+// leases active, because only the participant stopped.
+func (c *Controller) quiesceParticipants(r *recallState) {
+	for id, l := range c.state.Leases {
+		if r.covers(l.Lease.Scope.Session) {
 			l.Active = false
 			c.state.Leases[id] = l
 		}
-		r.Phase = "DRAIN"
-		changed = true
-	case "DRAIN":
-		if !c.allAcked("STOPPED") {
-			return nil
-		}
-		if err := c.drained(ctx); err != nil {
-			return nil
-		}
-		if err := c.events(ctx, "INSTALL_DRAIN"); err != nil {
-			return err // phase unchanged: events committed nothing
-		}
-		r.Phase = "INSTALL_DRAIN"
-		changed = true
-	case "INSTALL_DRAIN":
-		if !c.allAcked("INSTALLED_DRAIN") {
-			return nil
-		}
-		r.Phase = "WAIT_DRAINED"
-		changed = true
-	case "WAIT_DRAINED":
-		if !c.allAcked("INSTALLED_DRAIN") || !c.allAcked("DRAINED") {
-			return nil
-		}
-		if err := c.events(ctx, "INSTALL_FINAL"); err != nil {
-			return err // phase unchanged: events committed nothing
-		}
-		r.Phase = "INSTALL_FINAL"
-		changed = true
-	case "INSTALL_FINAL":
-		if !c.allAcked("INSTALLED_FINAL") {
-			return nil
-		}
-		if err := c.events(ctx, "REOPEN"); err != nil {
-			return err // phase unchanged: events committed nothing
-		}
-		r.Phase = "REOPEN"
-		changed = true
-	case "REOPEN":
-		if !c.allAcked("REOPENED") {
-			return nil
-		}
-		for id, s := range c.state.Reservations {
-			if s.Recall == r.ID {
-				s.Status = "CLOSED"
-				c.state.Reservations[id] = s
-			}
-		}
-		// Each participant's guest mount advanced its own fence when its
-		// REOPENED ACK was accepted; mirror exactly those domains.
-		c.advanceFences(r)
-		c.state.Recall = nil
-		changed = true
 	}
-	if changed {
-		return c.save()
+}
+
+// finishRecall closes the drained reservations of the recall, advances the
+// participants' fences and removes the recall. Each participant's guest mount
+// advanced its own fence when its REOPENED ACK was accepted; advanceFences
+// mirrors exactly those domains.
+func (c *Controller) finishRecall(r *recallState) {
+	for id, s := range c.state.Reservations {
+		if s.Recall == r.ID {
+			s.Status = "CLOSED"
+			c.state.Reservations[id] = s
+		}
 	}
-	return nil
+	c.advanceFences(r)
+	c.state.Recall = nil
 }
 
 func (c *Controller) allAcked(phase string) bool {
@@ -501,9 +537,15 @@ func (c *Controller) manifest(scope guestbridge.Context) (json.RawMessage, error
 	return canonical(map[string]any{"hash": digest(entries), "entries": entries})
 }
 
+// drained reports whether every open reservation of the recall's
+// participants is frozen in this recall and its drain result is protected.
+// A scoped recall starts only when its domain has no open reservation
+// (releaseRecallScope) and DIRTY_RESERVE stays closed during any recall, so
+// it has nothing to drain; another domain's open reservations are not its
+// obligation and must not hold it in DRAIN.
 func (c *Controller) drained(ctx context.Context) error {
 	for _, r := range c.state.Reservations {
-		if r.Status == "CLOSED" {
+		if r.Status == "CLOSED" || (c.state.Recall != nil && !c.state.Recall.covers(r.Reservation.Scope.Session)) {
 			continue
 		}
 		if r.Status != "FROZEN" || r.Call == nil || c.state.Recall == nil || r.Recall != c.state.Recall.ID {

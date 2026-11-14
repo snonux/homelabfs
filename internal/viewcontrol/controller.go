@@ -191,8 +191,15 @@ type domainState struct {
 	Domain   guestbridge.Capability
 	Sequence uint64
 }
+
+// recallState is the one recall in progress. Domain is empty for an
+// all-domain recall and names the single participating session for a
+// domain-scoped READ recall (recall_scope.go, task 784). omitempty keeps an
+// all-domain recall's ledger bytes, digests and replays identical to the
+// layout before scoped recalls existed, so schema-2 ledgers stay readable.
 type recallState struct {
 	ID, Phase, Inventory, Closure string
+	Domain                        string `json:",omitempty"`
 	Events                        map[string]json.RawMessage
 	Acks                          map[string]json.RawMessage
 	Manifests                     map[string]json.RawMessage

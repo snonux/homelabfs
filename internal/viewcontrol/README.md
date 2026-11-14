@@ -71,6 +71,26 @@ namespace dependencies conservatively recall all affected enrolled observations.
 Compatible disjoint page grants preserve all existing provenance. Optional
 fresh admissions cannot spend preowned freeze/release/permanent-identity credit.
 
+Recall scope (`recall_scope.go`, task 784 after zq3-r8 R8-1). Authority
+reductions (PROCESS_EXIT, DESCRIPTION_CLOSE, FORGET, DESCRIPTION_RELEASE)
+conflict with no lease and only with their own domain's open reservations, so
+a peer's lease never makes them start a recall; the lock-only PROCESS_EXIT and
+DESCRIPTION_CLOSE keep the cut and the recall barrier never holds them, while
+FORGET/DESCRIPTION_RELEASE may append lifetime state and wait while a recall
+installs a cut. A clean READ release of a domain without EXCLUSIVE_DIRTY leases
+or open reservations starts a recall of that domain only
+(`recallState.Domain`): other domains get no event, keep their leases and
+fences, and their cut-preserving reads (every read but LOOKUP, which may
+journal a HandlePin), READ acquisitions/renewals and lock-only reductions proceed.
+Anything that may change the cut, LOOKUP included, waits for any recall.
+Dirty, exclusive, conflict and expected-target recalls stay all-domain with the
+global barrier. The guest takes observation leases with expected_target = its
+installed view, so a cut move admitted under peer leases (FORGET, a final
+DESCRIPTION_RELEASE, a pinning LOOKUP) makes the peer's next observation hit
+the expected-target mismatch and start an all-domain recall (e84 tracks
+scoping it). `Domain` is `omitempty`, so all-domain recalls keep their exact
+schema-2 bytes; downgrading while a scoped recall is in flight is unsupported.
+
 DIRTY_RESERVE first protects RESERVING with complete original provenance and
 controller credit, then durably earmarks its future ordinary number plus actual
 provider claim/result/source credit, and only then protects GRANTED. Earmarks are
@@ -201,7 +221,8 @@ including a creation/truncate-open's following pin. The sizing path projects
 catalog metadata only and never allocates the future hole/payload. No accepted
 drain may make its final source cut unrepresentable or strand INSTALL_DRAIN.
 
-An issued dirty lease's funded VIEW_RELEASE starts recall when needed and returns
+An issued lease's funded VIEW_RELEASE starts recall when needed (scoped to the
+releasing domain for a clean READ lease, see above) and returns
 protected PENDING. Thus a guest can initiate pressure progress through its
 independent control family even while an unknown/refused acquisition-family
 number bars a pressure READ. RELEASED still requires actual old-epoch quiescence,

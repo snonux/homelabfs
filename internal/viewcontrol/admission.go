@@ -56,9 +56,14 @@ func (c *Controller) Admit(ctx context.Context, b guestbridge.Binding) (controll
 
 // admissionBarrier refuses sealed, closed or recovering controllers, waits
 // for view readiness (except provider recovery bindings) and applies the
-// all-domain barrier: a DRAIN_WRITE only in the DRAIN phase after every
-// STOPPED, anything else only outside a recall and after a conflicting lease
-// or reservation started one (WouldBlock until REOPEN).
+// recall barrier: a DRAIN_WRITE only in the DRAIN phase after every STOPPED;
+// anything else only when the current recall does not hold it and no
+// conflict starts one (WouldBlock until REOPEN). recallHoldsCall: an
+// all-domain recall holds every domain; a scoped READ recall holds its own
+// domain's cut-preserving reads; every recall holds each op that may change
+// the cut, LOOKUP included; lock-only reductions (PROCESS_EXIT,
+// DESCRIPTION_CLOSE) are never held. Authority reductions conflict only with
+// their own domain's open reservations (recall_scope.go).
 func (c *Controller) admissionBarrier(ctx context.Context, b guestbridge.Binding) error {
 	if _, sealed := c.state.Terminal[b.Context.Session]; sealed {
 		return fsapi.Permission
@@ -84,16 +89,27 @@ func (c *Controller) admissionBarrier(ctx context.Context, b guestbridge.Binding
 		}
 		return nil
 	}
-	if c.state.Recall != nil {
+	return c.recallBarrier(ctx, b.Context.Session, b.Call.Intent.Opcode)
+}
+
+// recallBarrier is the CALL half of admissionBarrier for every op except
+// DRAIN_WRITE. A conflicting op starts the all-domain recall only when none
+// exists; during a scoped recall it waits for that recall to finish first.
+func (c *Controller) recallBarrier(ctx context.Context, session, op string) error {
+	if c.recallHoldsCall(session, op) {
 		return fsapi.WouldBlock
 	}
-	if c.conflicts(readOperation(b.Call.Intent.Opcode)) {
-		if err := c.startRecall(ctx); err != nil {
-			return err
+	if authorityReduction(op) {
+		if !c.ownReservationOpen(session) {
+			return nil
 		}
-		return fsapi.WouldBlock
+	} else if !c.conflicts(readOperation(op)) {
+		return nil
 	}
-	return nil
+	if err := c.startRecall(ctx); err != nil {
+		return err
+	}
+	return fsapi.WouldBlock
 }
 
 // AdmitNative applies the same all-domain barrier to actual native commands.
@@ -115,37 +131,60 @@ func (c *Controller) AdmitNative(ctx context.Context, cred fsapi.Cred, command f
 	if !c.mu.TryLock() {
 		return nil, fsapi.WouldBlock
 	}
-	allowed := false
-	defer func() {
-		if !allowed {
-			c.mu.Unlock()
-		}
-	}()
+	source, err := c.nativeBarrier(ctx, scope, command)
+	if err != nil {
+		c.mu.Unlock()
+		return nil, err
+	}
+	return &permit{controller: c, source: source, nativeCommand: command}, nil
+}
+
+// nativeBarrier runs under the admission lane: it refuses sealed, closed or
+// recovering controllers, keeps the global recall barrier (a native command
+// belongs to no guest domain a scoped recall could exempt), waits for view
+// readiness, starts a recall on conflict and finally admits the cut.
+func (c *Controller) nativeBarrier(ctx context.Context, scope guestbridge.Context, command fsapi.Command) (fsservice.ControlledViewSource, error) {
+	var none fsservice.ControlledViewSource
 	if _, sealed := c.state.Terminal[scope.Session]; sealed {
-		return nil, fsapi.Permission
+		return none, fsapi.Permission
 	}
 	if c.closed.Load() || c.poisoned.Load() || c.state.Recovery {
-		return nil, fsapi.Unavailable
+		return none, fsapi.Unavailable
 	}
 	if c.state.Recall != nil {
-		return nil, fsapi.WouldBlock
+		return none, fsapi.WouldBlock
 	}
-	if err = c.viewReady(ctx); err != nil {
-		return nil, err
+	if err := c.viewReady(ctx); err != nil {
+		return none, err
 	}
-	read := command.Operation == fsapi.Read || command.Operation == fsapi.Getattr || command.Operation == fsapi.Lookup || command.Operation == fsapi.Readlink || command.Operation == fsapi.Readdir || command.Operation == fsapi.Statfs
-	if c.conflicts(read) {
-		if err = c.startRecall(ctx); err != nil {
-			return nil, err
+	read := nativeRead(command.Operation)
+	if c.nativeConflicts(command.Operation, read) {
+		if err := c.startRecall(ctx); err != nil {
+			return none, err
 		}
-		return nil, fsapi.WouldBlock
+		return none, fsapi.WouldBlock
 	}
-	source, err := c.admitCut(ctx, read, false)
-	if err != nil {
-		return nil, err
+	return c.admitCut(ctx, read, false)
+}
+
+// nativeRead reports the native read operations.
+func nativeRead(op fsapi.Operation) bool {
+	switch op {
+	case fsapi.Read, fsapi.Getattr, fsapi.Lookup, fsapi.Readlink, fsapi.Readdir, fsapi.Statfs:
+		return true
 	}
-	allowed = true
-	return &permit{controller: c, source: source, nativeCommand: command}, nil
+	return false
+}
+
+// nativeConflicts: native authority reductions conflict with no lease, as
+// for CALLs, but with any open reservation, because a native command belongs
+// to no guest domain and so no reservation can be shown to be another
+// domain's. Every other native op uses conflicts.
+func (c *Controller) nativeConflicts(op fsapi.Operation, read bool) bool {
+	if op == fsapi.ProcessExit || op == fsapi.DescriptorClose || op == fsapi.Forget || op == fsapi.Release {
+		return c.anyReservationOpen()
+	}
+	return c.conflicts(read)
 }
 
 // nativeAuthorization is the canonical request a native command is
@@ -273,6 +312,14 @@ func (p *permit) CheckDrain(ctx context.Context, command fsapi.Command) error {
 	return ctx.Err()
 }
 
+// conflicts reports whether admitting an op must first recall: a non-read op
+// conflicts with every active lease, whose cached observations it may change;
+// a read conflicts only with an active EXCLUSIVE_DIRTY lease; and every op
+// conflicts with an open reservation. Callers exempt authority reductions
+// (authorityReduction) before asking: they change no observation, at most
+// lifetime state, so a lease's target stays a correct view of the namespace
+// and data even when such an op moves the journal past it. They conflict
+// only with their own domain's open reservations (ownReservationOpen).
 func (c *Controller) conflicts(read bool) bool {
 	for _, l := range c.state.Leases {
 		if l.Active && (!read || l.Lease.Mode == "EXCLUSIVE_DIRTY") {
