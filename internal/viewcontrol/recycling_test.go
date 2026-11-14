@@ -286,3 +286,47 @@ func (c *Controller) makeLegacy(rows map[string]ticketState, revisions map[strin
 		c.state.Revisions[key] = revision
 	}
 }
+
+// TestLegacyTombstoneMatchesSynthesizedRetiredID requires the RETIRED_ID a
+// pre-q64 tombstone answers for the exact ACQUIRE and RELEASE retransmit to
+// be byte-identical to the one synthesized after the row is recycled
+// (retiredReply), both on reopened ledgers, so recycling changes no answer
+// to an exact retransmit.
+func TestLegacyTombstoneMatchesSynthesizedRetiredID(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	x := newRecycleRun(r)
+	rec := x.writeLegacyLedger()
+	r.reopen()
+	x.direct = true
+	legacy := [2]json.RawMessage{x.view(0, "VIEW_ACQUIRE", rec.acquire), x.view(0, "VIEW_RELEASE", rec.release)}
+	x.readCycle(0) // its VIEW_RETIRE recycles the tombstones
+	r.reopen()
+	r.controller.mu.Lock()
+	rows := len(r.controller.state.Tickets)
+	r.controller.mu.Unlock()
+	if rows != 0 {
+		t.Fatalf("%d tombstone rows left", rows)
+	}
+	synthesized := [2]json.RawMessage{x.view(0, "VIEW_ACQUIRE", rec.acquire), x.view(0, "VIEW_RELEASE", rec.release)}
+	for i := range legacy {
+		if status(legacy[i]) != "RETIRED_ID" || !bytes.Equal(legacy[i], synthesized[i]) {
+			t.Fatalf("retired replay %d: tombstone %s, synthesized %s", i, legacy[i], synthesized[i])
+		}
+	}
+}
+
+// TestRetiredReplayThroughBridge sends the exact retired ACQUIRE and RELEASE
+// through the real bridge, whose validateViewResponse and CheckResponse must
+// both accept the synthesized RETIRED_ID.
+func TestRetiredReplayThroughBridge(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	x := newRecycleRun(r)
+	rec := x.readCycle(0)
+	for op, payload := range map[string]map[string]any{"VIEW_ACQUIRE": rec.acquire, "VIEW_RELEASE": rec.release} {
+		reply, err := r.execute(0, op, payload)
+		must(t, err)
+		if status(reply) != "RETIRED_ID" {
+			t.Fatalf("%s replay through the bridge: %s", op, reply)
+		}
+	}
+}

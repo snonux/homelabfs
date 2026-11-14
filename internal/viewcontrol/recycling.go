@@ -107,11 +107,20 @@ func (c *Controller) recycleRetiredTickets() {
 // of this request. For an exact retransmit that is byte-identical to the
 // RETIRED_ID the pre-q64 tombstone answered, because the tombstone kept the
 // same operation and hash. RETIRED_ID carries no lease, reservation or entry,
-// so it grants nothing and cannot be mistaken for any holder's reply; a
-// changed request under the old number is told only that its number is
-// retired (the old tombstone answered it RETIRED_ID too, with the original
-// hash). QUERY and CANCEL carry only the ticket, so the original operation
-// and hash are gone with the row: they are refused as Stale.
+// so it grants nothing and cannot be mistaken for any holder's reply.
+//
+// Behaviour change for a CHANGED request under the old number: the pre-q64
+// tombstone answered it RETIRED_ID with the original operation and hash,
+// which guestbridge's validateViewResponse then refused as Stale (operation
+// or request_hash mismatch), so it was Stale end to end. Now it gets the
+// RETIRED_ID of its own bytes. That is harmless: the reply grants nothing,
+// it proves nothing about the earlier admission (CheckResponse vouches only
+// for these bytes), the guest accepts a ticket reply only when operation and
+// request_hash match its own ticket (hfs_ticket_reply), and its exchange
+// loop treats RETIRED_ID as -EAGAIN, never as success.
+//
+// QUERY and CANCEL carry only the ticket, so the original operation and hash
+// are gone with the row: they are refused as Stale.
 func (c *Controller) retiredReply(op string, ticket guestbridge.Ticket, raw json.RawMessage) (json.RawMessage, error) {
 	if queryOrCancel(op) {
 		return nil, fsapi.Stale

@@ -261,7 +261,9 @@ request_hash hashes canonical `{op:originalOp,payload:originalPayload}`.
 QUERY/CANCEL preserve this original lineage. Direct admissions check the exact
 operation/hash locally; the mandatory CheckResponse provider verifies actual
 protected original admission bytes and current outcome for every reply, including
-QUERY/CANCEL and retirement. An original admission retry of an unretired
+QUERY/CANCEL and retirement, except the rights-free RETIRED_ID of a recycled
+number, which binds only the presented bytes and proves nothing about an
+earlier admission. An original admission retry of an unretired
 number always replays its byte-identical initial reply, including PENDING; once
 the number is retired it gets RETIRED_ID instead (see identity recycling
 below). QUERY may return a separately
@@ -297,10 +299,18 @@ deletes retired ticket rows at VIEW_RETIRE and returns their identity charge
 (`Bounds.Identities` bounds the tickets alive at once). A retired number is
 never admitted as a new ticket. An admission op under it (exact retransmit or
 not) gets RETIRED_ID computed from its own operation and request bytes, which
-for an exact retransmit equals the tombstone's former answer; QUERY and CANCEL
-carry no original operation or hash, so they are refused (Stale). The guest
-never sends either, because it retires only tickets it no longer uses and
-frees them on RETIRED. Only a family's latest VIEW_RETIRE receipt is replayed; an
+for an exact retransmit equals the tombstone's former answer. This is a
+behaviour change for a *changed* admission under a retired number: before q64
+the tombstone answered RETIRED_ID with the original operation/hash, which the
+bridge's response validation refused as Stale; now it gets RETIRED_ID of its
+own bytes. That is harmless: RETIRED_ID carries no rights, the guest accepts a
+ticket reply only if operation and request_hash match its own ticket
+(hfs_ticket_reply), and its exchange loop treats RETIRED_ID as -EAGAIN. QUERY
+and CANCEL carry no original operation or hash, so they are refused (Stale).
+The guest's view code sends neither a retired admission nor a QUERY/CANCEL of
+a retired number, because it retires only tickets it no longer uses and frees
+them on RETIRED; only test harnesses (terminal-kernel80) replay retired
+admissions on purpose. Only a family's latest VIEW_RETIRE receipt is replayed; an
 older range is refused, since the guest builds each retirement from the
 previous RETIRED floor. Lease lineage revision high-waters are dropped once no
 lease of the lineage remains and the domain's fence passed it. Per session,

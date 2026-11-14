@@ -1562,6 +1562,7 @@ func TestControlledReceivedActualTerminalKernel80(t *testing.T) {
 	c.action("REPLIES_DROP", 0, "", 0)
 	c.action("RETIRE", 0, "", 0)
 	c.action("VIEW_RETIRE", 0, "", 0)
+	requireRetiredFloor(t, c, release)
 	type kernelStats struct {
 		Ordinary, Control, Reserved, Unknown, Links int
 		OrdinaryCredits                             int `json:"ordinary_credits"`
@@ -1624,6 +1625,38 @@ func TestControlledReceivedActualTerminalKernel80(t *testing.T) {
 	state, cells := terminalInspect(t, r)
 	if state.Ordinary != 1 || state.Control != 0 || len(cells) != 1 || cells[0].Terminal == nil || cells[0].Terminal.OldOrdinary != 64 || cells[0].Terminal.OldControl != 16 || len(cells[0].Terminal.Donors) != 79 {
 		t.Fatal("actual guest80 handoff lost retained native manifest/classes")
+	}
+}
+
+// requireRetiredFloor requires an actual RETIRED reply of the release
+// ticket's own control family whose floor covers the release's number.
+// Only then is the release row recycled, so its replays answer RETIRED_ID;
+// a still-live row would answer PENDING/RELEASED and consumer.c's RETIRED_ID
+// assert would fail without naming the cause.
+func requireRetiredFloor(t *testing.T, c *receivedCarrier, release json.RawMessage) {
+	t.Helper()
+	var original struct{ Request guestbridge.Ticket }
+	require(t, json.Unmarshal(release, &original))
+	floor := uint64(0)
+	for cell, command := range c.commands {
+		if command.Op != "VIEW_RETIRE" || command.Context != c.rig.scope {
+			continue
+		}
+		var cut struct{ Anchor, Nonce string }
+		require(t, json.Unmarshal(command.Payload, &cut))
+		var reply struct {
+			Payload struct {
+				Status string
+				Floor  uint64
+			}
+		}
+		if cut.Anchor != original.Request.Anchor || cut.Nonce != original.Request.Nonce || json.Unmarshal(c.responses[cell], &reply) != nil || reply.Payload.Status != "RETIRED" {
+			continue
+		}
+		floor = max(floor, reply.Payload.Floor)
+	}
+	if floor < original.Request.Number {
+		t.Fatalf("control family floor %d does not retire the release ticket %d: its replays would not answer RETIRED_ID", floor, original.Request.Number)
 	}
 }
 
