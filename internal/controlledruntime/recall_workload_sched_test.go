@@ -34,15 +34,20 @@ func (m *recallModel) startWait() waitStart {
 	return waitStart{at: time.Now(), probe: m.probes.Load(), idle: m.idle}
 }
 
-// elapsed is w's modelled time since its first send: the slow observations
-// paid meanwhile at the model latency, the guest's idle retry sleeps, and
-// the remaining host work capped at hostOverheadAllowance. The cap keeps a
-// slow or -race test host from deciding the outcome; up to the cap the
-// measured host work counts as the runtime's own.
+// elapsed is w's modelled time since its first send (since).
 func (m *recallModel) elapsed(w *guestWait) time.Duration {
-	observed := time.Duration(m.probes.Load()-w.start.probe) * m.latency
-	idle := m.idle - w.start.idle
-	host := time.Since(w.start.at) - observed - idle
+	return m.since(w.start)
+}
+
+// since is the modelled time since start: the slow observations paid
+// meanwhile at the model latency, the guest's idle retry sleeps, and the
+// remaining host work capped at hostOverheadAllowance. The cap keeps a slow
+// or -race test host from deciding the outcome; up to the cap the measured
+// host work counts as the runtime's own.
+func (m *recallModel) since(start waitStart) time.Duration {
+	observed := time.Duration(m.probes.Load()-start.probe) * m.latency
+	idle := m.idle - start.idle
+	host := time.Since(start.at) - observed - idle
 	return observed + idle + max(0, min(host, hostOverheadAllowance))
 }
 
@@ -91,6 +96,9 @@ func (m *recallModel) answer(w *guestWait, payload json.RawMessage) {
 	if w.latency > w.phase.worst {
 		w.phase.worst, w.phase.worstLabel = w.latency, w.label
 	}
+	if w.onDone != nil {
+		w.onDone()
+	}
 }
 
 // expireIfDue ends w as expired once its modelled time reached the window.
@@ -106,10 +114,10 @@ func (m *recallModel) expireIfDue(w *guestWait) {
 }
 
 // step is one scheduler round: one QUERY per pending wait, the cleanup
-// workers' next releases, then the event worker's ACKs. An expired wait is
-// dropped: the guest has blocked its session (and an expired release fails
-// its mount's cleanup worker, dispatchReleases). An idle round sleeps the
-// guest's retry interval, which counts as guest time.
+// workers' next exchanges, then the event worker's ACKs. An expired wait is
+// dropped: the guest has blocked its session (and an expired cleanup
+// exchange fails its mount's cleanup worker, runCleanup). An idle round
+// sleeps the guest's retry interval, which counts as guest time.
 func (m *recallModel) step() {
 	for _, w := range m.pending {
 		switch {
@@ -120,7 +128,7 @@ func (m *recallModel) step() {
 			m.answer(w, w.query())
 		}
 	}
-	m.dispatchReleases()
+	m.dispatchCleanup()
 	progressed := m.eventWorker()
 	still := m.pending[:0]
 	for _, w := range m.pending {
@@ -129,7 +137,7 @@ func (m *recallModel) step() {
 		}
 	}
 	m.pending = still
-	m.dispatchReleases()
+	m.dispatchCleanup()
 	if !progressed {
 		time.Sleep(guestRetry)
 		m.idle += guestRetry
@@ -147,11 +155,11 @@ func (m *recallModel) await(w *guestWait) {
 	}
 }
 
-// settle runs the scheduler until no wait is pending, no cleanup worker can
-// send another release and no recall exists.
+// settle runs the scheduler until no wait is pending, no cleanup worker has
+// work left and no recall exists.
 func (m *recallModel) settle() {
 	deadline := time.Now().Add(modelDeadline)
-	for len(m.pending) > 0 || m.releasesDispatchable() || m.recallActive() {
+	for len(m.pending) > 0 || m.cleanupPending() || m.recallActive() {
 		if time.Now().After(deadline) {
 			m.t.Fatalf("model deadline: %d waits pending, recall active %v", len(m.pending), m.recallActive())
 		}
@@ -162,7 +170,12 @@ func (m *recallModel) settle() {
 // recallActive reads the controller ledger's recall flag (read-only
 // LedgerEvidence). The guest's event worker learns the same from its
 // outstanding VIEW_WAIT; asking the ledger keeps idle polls, and the
-// observation refreshes they would cause, out of the model.
+// observation refreshes they would cause, out of the model. That omission
+// is optimistic but small: a poll leg refreshes only when nothing else
+// refreshed for five seconds (admissionReuse), i.e. while no recall runs
+// (every ACK refreshes) and no request arrives, so it costs at most one
+// observation per five idle seconds, and only a request arriving in those
+// two seconds waits behind it.
 func (m *recallModel) recallActive() bool {
 	evidence, err := m.a.Controller.LedgerEvidence(m.t.Context())
 	require(m.t, err)
@@ -181,8 +194,9 @@ type dueACK struct {
 // eventWorker sends every ACK the mounts owe for the current recall. Both
 // mounts' kernel records are published before the first ACK, as the guest
 // does when both finish a phase before the host answers. Each ACK's guest
-// observation runs inline, on the scheduler's one thread, as it runs on the
-// host's control worker before task d84.
+// observation runs inline on the scheduler's one thread, serial with every
+// other control command, as on the host's control worker before task d84;
+// the model keeps it serial on purpose, the conservative bound after d84.
 func (m *recallModel) eventWorker() bool {
 	if !m.recallActive() {
 		return false

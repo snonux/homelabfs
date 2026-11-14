@@ -39,39 +39,61 @@ func (m *recallModel) recallKinds(ids []string) map[string]int {
 	return kinds
 }
 
-// late returns the claims (claim true) or view exchanges (false) that never
-// ended (never sent, or still pending) or that the guest gave up on. A wait
-// that ended with a terminal reply counts as in time even past 30 s, as the
-// guest accepts a terminal reply to a query it sent before the deadline.
-func (m *recallModel) late(claim bool) []string {
-	var late []string
+// lateWaits returns the waits of kind that never ended (never sent, or
+// still pending) or that the guest gave up on. A wait that ended with a
+// terminal reply counts as in time even past 30 s, as the guest accepts a
+// terminal reply to a query it sent before the deadline.
+func (m *recallModel) lateWaits(kind string) []*guestWait {
+	var late []*guestWait
 	for _, p := range m.phases {
 		for _, w := range p.waits {
-			if w.claim == claim && (!w.done || w.expired) {
-				late = append(late, fmt.Sprintf("%s %s after %s (%d observations)", w.label, w.status, w.latency.Round(time.Millisecond), w.observations))
+			if w.kind == kind && (!w.done || w.expired) {
+				late = append(late, w)
 			}
 		}
 	}
 	return late
 }
 
-// checkWaits requires every claim (claim true) or view exchange (false) to
-// have ended in time, and, deterministically, its slow observations at the
-// model latency plus hostOverheadAllowance to fit the guest window, so the
-// verdict does not depend on how fast the test host is.
-func (m *recallModel) checkWaits(t *testing.T, claim bool) {
-	for _, label := range m.late(claim) {
-		t.Errorf("not terminal within the guest's %s window: %s", guestQueryWindow, label)
+// describe formats a wait for a failure or log line.
+func describe(w *guestWait) string {
+	return fmt.Sprintf("%s %s after %s (%d observations)", w.label, w.status, w.latency.Round(time.Millisecond), w.observations)
+}
+
+// checkWaits requires every wait of kind to have ended in time and to pass
+// checkObservations.
+func (m *recallModel) checkWaits(t *testing.T, kind string) {
+	for _, w := range m.lateWaits(kind) {
+		t.Errorf("not terminal within the guest's %s window: %s", guestQueryWindow, describe(w))
 	}
+	m.checkObservations(t, kind, false)
+}
+
+// checkObservations is the deterministic check: each wait's slow
+// observations at the model latency plus hostOverheadAllowance must fit the
+// guest window, so the verdict does not depend on how fast the test host is.
+// completed limits it to waits that ended with a terminal reply.
+func (m *recallModel) checkObservations(t *testing.T, kind string, completed bool) {
 	for _, p := range m.phases {
 		for _, w := range p.waits {
-			if w.claim != claim {
+			if w.kind != kind || (completed && (!w.done || w.expired)) {
 				continue
 			}
 			if paid := time.Duration(w.observations)*m.latency + hostOverheadAllowance; paid >= guestQueryWindow {
 				t.Errorf("%s: %d observations at %s plus %s host allowance = %s, not within the guest's %s window", w.label, w.observations, m.latency, hostOverheadAllowance, paid, guestQueryWindow)
 			}
 		}
+	}
+}
+
+// checkSettle requires round 1 of the gate to be quiet, measured from
+// mount-1's end, before bootstrap.py's fixed settle (usableSettle) ends,
+// less readyLag for the READY record and SSH lag the model does not replay.
+func (m *recallModel) checkSettle(t *testing.T) {
+	limit := usableSettle - readyLag
+	t.Logf("round 1 quiet %s after mount-1's end; settle allows %s (USABLE_SETTLE_SECONDS %s - %s READY/SSH lag), slack %s", m.round1.Round(time.Millisecond), limit, usableSettle, readyLag, (limit - m.round1).Round(time.Millisecond))
+	if m.round1 < 0 || m.round1 > limit {
+		t.Errorf("round 1 not quiet within the gate's settle: %s > %s; the final probe would overlap its cleanup", m.round1.Round(time.Millisecond), limit)
 	}
 }
 

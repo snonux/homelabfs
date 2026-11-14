@@ -48,7 +48,7 @@ Once approved, the scripts execute without routine LLM participation. Determinis
 workload model in `internal/controlledruntime` (`recall_workload*_test.go`,
 task 984). It replays the bootstrap and the k64 usable gate against the
 assembled runtime with a 2 s guest observer, so it pays real observation
-latency: about 75 s of wall time (about 135 s under `-race`), with its
+latency: about 85-90 s of wall time (about 135 s under `-race`), with its
 schedules in parallel. `go test -short` skips it. `HFS_RECALL_MODEL_LATENCY`
 (a Go duration) changes the observer latency.
 
