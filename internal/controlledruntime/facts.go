@@ -49,9 +49,12 @@ type factsLedger struct {
 		Operation                 string
 		Payload, Current, Initial json.RawMessage
 	}
+	// Recall.Domain is empty for an all-domain recall and names the one
+	// participating session of a domain-scoped READ recall (viewcontrol
+	// recall_scope.go).
 	Recall *struct {
-		ID, Phase, Inventory, Closure string
-		Events, Acks, Manifests       map[string]json.RawMessage
+		ID, Phase, Inventory, Closure, Domain string
+		Events, Acks, Manifests               map[string]json.RawMessage
 	}
 }
 
@@ -384,17 +387,31 @@ func (f *Facts) ledger(ctx context.Context, raw json.RawMessage) (factsLedger, e
 			return l, fsapi.Stale
 		}
 	}
-	if l.Recall != nil {
-		if len(l.Recall.Events) != len(l.Domains) {
-			return l, fsapi.Stale
-		}
-		for session := range l.Domains {
-			if len(l.Recall.Events[session]) == 0 {
-				return l, fsapi.Stale
-			}
-		}
+	if l.Recall != nil && !l.recallParticipantsComplete() {
+		return l, fsapi.Stale
 	}
 	return l, nil
+}
+
+// recallParticipantsComplete requires an event for exactly the recall's
+// participants: every registered domain for an all-domain recall, and only
+// the named registered domain for a scoped one.
+func (l factsLedger) recallParticipantsComplete() bool {
+	participants := map[string]bool{}
+	for session := range l.Domains {
+		if l.Recall.Domain == "" || session == l.Recall.Domain {
+			participants[session] = true
+		}
+	}
+	if (l.Recall.Domain != "" && len(participants) == 0) || len(l.Recall.Events) != len(participants) {
+		return false
+	}
+	for session := range participants {
+		if len(l.Recall.Events[session]) == 0 {
+			return false
+		}
+	}
+	return true
 }
 func (f *Facts) checkACK(_ context.Context, scope guestbridge.Context, raw json.RawMessage, l factsLedger) error {
 	var ack physicalACK

@@ -49,33 +49,39 @@ func TestRuntimeAssemblySecondDomainFirstLeaseAfterBootstrapRecall(t *testing.T)
 		t.Fatalf("mount 0 lease after its own recall: fence %d, want 2", again.Fence)
 	}
 
-	// A later recall over both domains: each mount's kernel observation
-	// reports its own fence (mount 0 at 2, mount 1 at 1) and the physical
-	// Facts must match each ACK against that domain's ledger fence.
+	// Mount 1's clean READ release recalls only mount 1 (task 784): mount 0
+	// gets no event and keeps fence 2. Mount 1's kernel observation reports
+	// its own fence 1 while mount 0 is at 2, and the physical Facts must match
+	// the ACK against the acknowledging domain's ledger fence.
 	control := guestbridge.Ticket{Anchor: families[1].Control.Anchor, Nonce: families[1].Control.Nonce, Number: 1, Credentials: second.credentials}
 	payload, _, _, _, err := second.mappedExecute("VIEW_RELEASE", map[string]any{"request": control, "lease": lease})
 	require(t, err)
 	if !bytes.Contains(payload, []byte(`"status":"PENDING"`)) {
 		t.Fatalf("mount 1 VIEW_RELEASE: %s", payload)
 	}
-	fencedRecall(t, r, []guestbridge.Capability{domain, root.Capabilities[1]}, []uint64{2, 1}, []uint64{2, 1})
+	idle := (&r5Chain{peer: r.peers[0]}).exec(t, "VIEW_WAIT", map[string]any{"domain": domain, "after_sequence": 0})
+	if bytes.Contains(idle, []byte(`"EVENT"`)) {
+		t.Fatalf("mount 0 received an event of mount 1's scoped recall: %s", idle)
+	}
+	fencedRecall(t, r, []int{1}, []guestbridge.Capability{root.Capabilities[1]}, []uint64{1}, []uint64{1})
 	if after := acquireDomainLease(t, second, families[1], 2, root.Capabilities[1]); after.Fence != 2 {
 		t.Fatalf("mount 1 lease after its first recall: fence %d, want 2", after.Fence)
 	}
-	if after := acquireDomainLease(t, r.peers[0], families[0], 3, domain); after.Fence != 3 {
-		t.Fatalf("mount 0 lease after its second recall: fence %d, want 3", after.Fence)
+	if after := acquireDomainLease(t, r.peers[0], families[0], 3, domain); after.Fence != 2 {
+		t.Fatalf("mount 0 lease after mount 1's scoped recall: fence %d, want 2", after.Fence)
 	}
 }
 
-// fencedRecall acknowledges every phase of the current recall from every
-// mount in turn. Mount i's kernel observation carries its own fence and
-// starts at revision revisions[i]; REOPENED advances that revision, as the
-// guest increments it before reopening.
-func fencedRecall(t *testing.T, r *sourceRig, domains []guestbridge.Capability, fences, revisions []uint64) {
+// fencedRecall acknowledges every phase of the current recall from each
+// participating mount in turn (mounts[i] is the peer index of domains[i]).
+// Its kernel observation carries its own fence and starts at revision
+// revisions[i]; REOPENED advances that revision, as the guest increments it
+// before reopening.
+func fencedRecall(t *testing.T, r *sourceRig, mounts []int, domains []guestbridge.Capability, fences, revisions []uint64) {
 	t.Helper()
 	chains := make([]*r5Chain, len(domains))
 	for i := range domains {
-		chains[i] = &r5Chain{peer: r.peers[i]}
+		chains[i] = &r5Chain{peer: r.peers[mounts[i]]}
 	}
 	for _, phase := range []string{"STOPPED", "INSTALLED_DRAIN", "DRAINED", "INSTALLED_FINAL", "REOPENED"} {
 		for i, chain := range chains {
@@ -83,7 +89,7 @@ func fencedRecall(t *testing.T, r *sourceRig, domains []guestbridge.Capability, 
 			var poll struct{ Event map[string]json.RawMessage }
 			require(t, json.Unmarshal(event, &poll))
 			if len(poll.Event) == 0 {
-				t.Fatalf("mount %d missing %s event %s", i, phase, event)
+				t.Fatalf("mount %d missing %s event %s", mounts[i], phase, event)
 			}
 			ack := map[string]any{"domain": domains[i], "sequence": poll.Event["sequence"], "recall": poll.Event["recall"], "phase": phase, "authority_hash": poll.Event["authority_hash"], "closure_hash": poll.Event["closure_hash"], "inventory_hash": poll.Event["inventory_hash"], "session": chain.peer.scope.Session, "manifest": nil, "target": poll.Event["target"]}
 			if phase == "STOPPED" {
@@ -96,7 +102,7 @@ func fencedRecall(t *testing.T, r *sourceRig, domains []guestbridge.Capability, 
 			if phase == "REOPENED" {
 				revision++
 			}
-			observeMountACK(t, r, i, poll.Event, ack, revision, fences[i])
+			observeMountACK(t, r, mounts[i], poll.Event, ack, revision, fences[i])
 			chain.ack(t, phase, ack)
 		}
 	}

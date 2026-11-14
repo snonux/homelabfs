@@ -23,8 +23,10 @@ func (r *rig) completeCleanRecall() {
 			r.t.Fatal("clean helper cannot omit a dirty obligation")
 		}
 	}
+	// Only the recall's participants received events: every registered
+	// domain for an all-domain recall, one domain for a scoped READ recall.
 	for i, scope := range r.scopes {
-		if _, ok := r.controller.state.Domains[scope.Session]; ok {
+		if r.controller.state.Recall != nil && len(r.controller.state.Recall.Events[scope.Session]) > 0 {
 			domains = append(domains, i)
 		}
 	}

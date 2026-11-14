@@ -86,7 +86,16 @@ description or origin. Concurrent READ leases may share a cut. EXCLUSIVE_DIRTY
 conflicts with every overlapping page read/dirty lease across every domain and
 origin. DOMAIN observations may conservatively conflict with all mutations of
 the domain. These rules close stale metadata/EOF bypasses without restricting
-publication to a preferred writer.
+publication to a preferred writer. Authority reductions (PROCESS_EXIT, FORGET,
+DESCRIPTION_RELEASE) are not mutations of any observation and conflict with no
+lease, so a peer's lease never makes them start a recall; only an open dirty
+reservation of their own domain still conflicts, so its bytes drain under the
+original process and description first. They only shrink existing
+authority, and a reclaimed unlinked object has no remaining reference through
+which any lease or mapping could observe it. PROCESS_EXIT also keeps the
+source cut (it only retires the owner and its fcntl locks) and the recall
+barrier never holds it; FORGET and DESCRIPTION_RELEASE may append lifetime state, so they
+wait while a recall installs a cut.
 
 `Target` is exactly one of:
 
@@ -172,10 +181,23 @@ open-unlinked mappings. This follows Retained-9p-protocol.md's DESCRIPTION
 contract and native Linux mapping authorization through the inherited file's
 f_mode; it does not require identifying the CPU thread performing each store.
 
-A preowned VIEW_RELEASE of an ACTIVE lease may initiate the existing all-domain
-recall and return protected PENDING even for a clean READ lease or an active
-renewed sibling of that lineage. Clean pressure and read-before-write upgrades
-must not need a fresh acquisition ticket to start physical progress. RELEASED
+A preowned VIEW_RELEASE of an ACTIVE lease may initiate a recall and return
+protected PENDING even for a clean READ lease or an active renewed sibling of
+that lineage. Clean pressure and read-before-write upgrades must not need a
+fresh acquisition ticket to start physical progress. A clean READ release whose
+domain holds no EXCLUSIVE_DIRTY lease and no open reservation recalls **only
+that domain** (task 784, zq3-r8 R8-1): it has no dirty bytes to freeze or drain,
+so it stops, reinstalls the current cut and reopens that one domain, and only
+that domain's fence advances. Its inventory/closure hashes bind just that
+domain. Its admission barrier is per domain: other domains keep their leases,
+their reads, READ acquisitions/renewals and PROCESS_EXITs proceed, and they
+receive no event. Every operation that may change the cut (any non-read CALL,
+including FORGET and DESCRIPTION_RELEASE, native commands, DIRTY_RESERVE and
+EXCLUSIVE_DIRTY acquisition) still waits for any recall, so the scoped install
+sequence sees one stable cut; the guest refuses a REOPEN whose target is not
+its INSTALL_FINAL cut. Every other recall (dirty or exclusive release,
+conflicting admission or acquisition, expected-target mismatch) remains the
+all-domain recall with the global barrier. RELEASED
 requires the actual STOPPED/install/DRAINED/final-install/reopen/source closure
 and mandatory exact physical verification; a LIVE readable PTE is not a closed
 lease. Exact initial PENDING replay remains immutable; QUERY reports the current
@@ -352,7 +374,8 @@ increments on every verified stopped install, even if visibility_generation
 stays unchanged; that local stamp is separate from the host lease fence/revision.
 Fetched data, attributes and PTEs require that same stamp recheck immediately
 before installation. An outstanding RPC is outside physical inflight: its own
-request may cause a recall. Recall closes new access and acquisition first,
+request may cause a recall. Recall closes new access and acquisition of its
+participating domains (all domains, or the one domain of a scoped READ recall) first,
 joins existing physical accesses, revokes all writable aliases/PTEs and proves
 TLB/MMU/pin/busy-page quiescence, then freezes exact bytes/provenance and emits
 STOPPED. Intermediate protected local or normal cuts install while stopped;
