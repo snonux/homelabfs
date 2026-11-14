@@ -271,6 +271,17 @@ releases on one cleanup worker, so waiting for them deadlocked until the guest's
 30 s exchange timeout failed the mount. Retirement still waits for every lease
 and reservation of the domain.
 
+Shared lease holders (`lease_holders.go`, task q84). grantLease hands the
+active lease of a lineage to every acquisition of that lineage, and the guest
+acquires a separate guest lease object per observation, each released on its
+own preowned control ticket. The lease state counts the extra holders
+(`Sharers`, omitted when zero so unshared ledger entries keep their bytes);
+each holder reserves one release credit. A release while another holder
+remains answers RELEASED without a recall and leaves the lease active; only
+the last holder's release recalls and is certified per lease as above. Before
+q84 the first release recalled the domain under the other observation still
+in flight (guest ESTALE, refused admission, as zq3-r9 R9-1).
+
 A DIRTY_RESERVE that was never granted and has protected BLOCKED history cannot
 be retired while its promised ordinary number remains unbound. CANCEL stages the
 exact original binding and proposed CANCELLED reply, closes the next typed number

@@ -208,7 +208,7 @@ func (c *Controller) admitNew(ctx context.Context, scope guestbridge.Context, op
 	if f.High == ^uint64(0) || r.Request.Number != f.High+1 {
 		return nil, fsapi.Stale
 	}
-	if err := c.ticketCapacity(op, r); err != nil {
+	if err := c.ticketCapacity(scope, op, r); err != nil {
 		return nil, err
 	}
 	saved := ticketState{PayloadHash: digest(map[string]any{"op": op, "payload": raw}), Scope: scope, Request: r.Request, Operation: op, Payload: bytes.Clone(raw)}
@@ -394,14 +394,15 @@ func (c *Controller) expectedMismatch(ctx context.Context, scope guestbridge.Con
 	return c.reply(t, "PENDING", nil, nil, nil)
 }
 
-// grantLease returns the active lease of the same lineage, or issues the next
-// revision of a new lease on target within the identity and control bounds.
+// grantLease shares the active lease of the same lineage with this ticket as
+// one more holder (shareLease, lease_holders.go), or issues the next revision
+// of a new lease on target. Both reserve the new holder's release credit
+// within the identity and control bounds.
 func (c *Controller) grantLease(scope guestbridge.Context, r request, t ticketState, target guestbridge.ViewTarget) (json.RawMessage, error) {
 	lease := guestbridge.ViewLease{Scope: scope, Domain: r.Domain, Access: r.Access, CredentialHash: digest(r.Request.Credentials), Mode: r.Mode, Target: target, Fence: c.fence(scope.Session), Revision: 1}
-	for _, existing := range c.state.Leases {
+	for id, existing := range c.state.Leases {
 		if existing.Active && sameLineage(existing.Lease, lease) {
-			copyLease := existing.Lease
-			return c.reply(t, "GRANTED", &copyLease, nil, nil)
+			return c.shareLease(id, existing, t)
 		}
 	}
 	if len(c.state.Leases) >= c.config.Authorization.Enrollment.Bounds.Identities || !c.controlCapacity(1) || !c.identityCapacity(1) {
@@ -452,10 +453,15 @@ func (c *Controller) renewLease(r request, t ticketState, old leaseState) (json.
 	return c.reply(t, "GRANTED", &next, nil, nil)
 }
 
-// releaseLease answers a preowned VIEW_RELEASE: PENDING while any recall
-// runs or while the lineage still needs one, RELEASED once the lineage is
+// releaseLease answers a preowned VIEW_RELEASE. While another holder still
+// holds the lease it only returns this holder's reference (releaseHolder,
+// lease_holders.go). The last holder's release is PENDING while any recall
+// runs or while the lineage still needs one, and RELEASED once the lineage is
 // inactive, its reservations closed and the physical closure verified.
 func (c *Controller) releaseLease(ctx context.Context, scope guestbridge.Context, op string, r request, t ticketState, old leaseState) (json.RawMessage, error) {
+	if old.Sharers > 0 {
+		return c.releaseHolder(scope, r, t, old)
+	}
 	if c.state.Recall != nil {
 		return c.reply(t, "PENDING", nil, nil, nil)
 	}
@@ -682,7 +688,8 @@ func (c *Controller) cancelGranted(ctx context.Context, key string, t ticketStat
 	if len(granted.Entry) > 0 && string(granted.Entry) != "null" {
 		return c.blockedCancel(key, t)
 	}
-	if granted.Lease != nil && !c.cancelLease(*granted.Lease) {
+	// A cancelled holder of a shared lease drops only its own reference.
+	if granted.Lease != nil && !c.cancelHolder(*granted.Lease) && !c.cancelLease(*granted.Lease) {
 		return c.blockedCancel(key, t)
 	}
 	return c.protectCancelled(key, t)
@@ -743,7 +750,10 @@ func (c *Controller) reply(t ticketState, status string, lease *guestbridge.View
 	return canonical(response)
 }
 
-func (c *Controller) ticketCapacity(op string, r request) error {
+// ticketCapacity admits one new ticket within the bounds. A VIEW_RELEASE
+// spends its lease's reserved credit instead: the unbound main credit, or
+// else one sharer credit while another holder remains (lease_holders.go).
+func (c *Controller) ticketCapacity(scope guestbridge.Context, op string, r request) error {
 	b := c.config.Authorization.Enrollment.Bounds
 	ordinary, control := 0, 0
 	for _, t := range c.state.Tickets {
@@ -778,6 +788,9 @@ func (c *Controller) ticketCapacity(op string, r request) error {
 			l.ReleaseTicket = key
 			c.state.Leases[r.Lease.ID] = l
 			return nil
+		}
+		if ok && sharerReleaseAdmissible(scope, l, r) {
+			return nil // releaseHolder gives back the sharer credit
 		}
 	}
 	if !c.controlCapacity(1) || !c.identityCapacity(1) {
@@ -882,6 +895,7 @@ func (c *Controller) controlCapacity(extra int) bool {
 		if l.ReleaseCredit && l.ReleaseTicket == "" {
 			used++
 		}
+		used += l.Sharers // each further holder's reserved release
 	}
 	for _, r := range c.state.Reservations {
 		if r.Status == "RESERVED" || r.Status == "RESERVING" {
@@ -937,6 +951,7 @@ func (c *Controller) identityCapacity(extra int) bool {
 		if l.ReleaseCredit && l.ReleaseTicket == "" {
 			used++
 		}
+		used += l.Sharers // each further holder's reserved release
 	}
 	for _, r := range c.state.Reservations {
 		if r.Status == "RESERVED" || r.Status == "RESERVING" {

@@ -205,11 +205,22 @@ type ticketState struct {
 	Payload                     json.RawMessage
 	Initial, Current, Cancelled json.RawMessage
 }
+
+// leaseState is one issued lease revision. ReleaseCredit/ReleaseTicket fund
+// one holder's VIEW_RELEASE. Sharers counts the further holders: acquisition
+// tickets that grantLease handed this same active lease (task q84). The guest
+// acquires a separate guest lease object per observation, each with its own
+// preowned release ticket, so a shared lease has 1+Sharers holders, each owns
+// one reserved release credit, and only the last holder's release recalls
+// (lease_holders.go). omitempty keeps an unshared lease's ledger bytes
+// identical to the layout before q84, so schema-2 ledgers open and replay
+// unchanged.
 type leaseState struct {
 	ReleaseTicket string
 	ReleaseCredit bool
 	Lease         guestbridge.ViewLease
 	Active        bool
+	Sharers       int `json:",omitempty"`
 }
 type reservationState struct {
 	ClosureReply json.RawMessage
@@ -766,7 +777,7 @@ func (c *Controller) validateLedger() error {
 		}
 	}
 	for key, l := range s.Leases {
-		if key != l.Lease.ID || key != objectID(l.Lease) || c.provider(l.Lease.Scope) == nil {
+		if key != l.Lease.ID || key != objectID(l.Lease) || c.provider(l.Lease.Scope) == nil || l.Sharers < 0 || l.Sharers > b.Identities {
 			return fsapi.Stale
 		}
 	}
