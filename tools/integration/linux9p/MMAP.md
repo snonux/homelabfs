@@ -88,14 +88,20 @@ Pressure releases only published cache-page leases, never an observation lease
 releasing it recalls the domain under that request: its first admission could
 be refused behind the recall and the moved fence could make its attribute
 install stale. Its normal end releases it. The transport-triggered pressure
-pass also releases no cache lease while any observation is in flight, because
-that recall would move the view under the same requests. The capacity callers
-(129th clean page, read-first mkwrite, dirty sync) still release a cache lease
-even then, so that hazard remains for them. Holding leases longer is safe: the
-host starts the recalls conflicts need, STOP revokes observation leases without
-waiting for their requests and the host deactivates them at STOPPED, so no
-recall waits on such a lease. An early release would not return its guest
-ticket capacity either; that comes back only when the lease is freed.
+pass also holds while any observation is in flight, because its recall would
+move the view under the same requests, but for at most five seconds
+(`HFS_PRESSURE_HOLD_MS`). Recalls never wait on a guest release: the host starts
+the recalls conflicts need, STOP revokes observation leases without waiting for
+their requests and the host deactivates them at STOPPED. Host acquisition
+capacity does wait on one: a held cache lease pins its ticket family's
+retirement floor, and a read()/write() that faults on an uncached HFS mapping
+acquires inside its own observation. An unbounded hold could outlast the 30 s
+acquisition window, which leaves an uncertain ticket pinning the floor; the
+bound leaves 25 s for the release, recall and retry. The capacity callers
+(129th clean page, read-first mkwrite, dirty sync) and the bounded release can
+still move the view under an in-flight request. An early observation release
+would not return its guest ticket capacity either; that comes back only when
+the lease is freed.
 
 Frozen DRAIN_WRITE uses its original prepared ordinary request. A terminal short
 or error result retains the exact bytes/provenance and mapping error; it cannot
@@ -219,8 +225,8 @@ the actual Linux set_page_dirty/folio_mark_dirty/registered aops chain;
 view --pressure additionally compiles actual mmap pressure/mkwrite, stopped
 installation and drain-result validation, covering128-clean capacity/129th retry,
 an in-flight observation lease that pressure never releases, a background
-pressure pass that releases nothing while an observation is in flight,
-read-first upgrade, source denial and short/error results never reaching
+pressure pass that releases nothing while an observation is in flight until
+its five-second bound, read-first upgrade, source denial and short/error results never reaching
 DRAINED;
 dirty covers freeze, immutable claim construction, deferred activation and
 PENDING/QUERY lineage; requests covers returned-result pins and protected floor

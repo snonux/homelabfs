@@ -796,13 +796,18 @@ likely released the GETATTR's own DOMAIN observation lease.
   `view->observations` belongs to a request still in flight;
   `hfs_mmap_end` removes it and its cleanup packet releases the lease, as
   before.
-- **Background passes hold while observing.** `hfs_mmap_pressure` takes a
-  `background` flag. The transport-triggered pass (`hfs_mmap_pressure_work`)
-  releases no cache lease while `view->nr_observations` is nonzero. A
-  cache-page release there would move the view under the in-flight requests
-  just like an observation release, and a 50 ms wait does not show that it
-  would help the waiting request. With no observation in flight the
-  background pass still releases a published cache lease.
+- **Background passes hold while observing, for at most 5 s.**
+  `hfs_mmap_pressure` takes a `background` flag. The transport-triggered pass
+  (`hfs_mmap_pressure_work`) releases no cache lease while
+  `view->nr_observations` is nonzero, for at most `HFS_PRESSURE_HOLD_MS`
+  (5000, `hfs_view.h`) since the first held pass. A cache-page release there
+  would move the view under the in-flight requests just like an observation
+  release, and a 50 ms wait does not show that it would help the waiting
+  request. After the bound one cache lease is released and the hold restarts,
+  so a busy view pays at most one such recall per 5 s; the hold also ends when
+  the last observation does. With no observation in flight the background
+  pass releases at once. A held pass still advances `pressure_after`, which
+  only rate-limits the next pass.
 - **Capacity callers are unchanged.** The 129th clean page
   (`hfs_mmap_fault_error` on ENOSPC), read-first `page_mkwrite` and dirty
   `hfs_mmap_sync` pass `background == false` and release a cache lease even
@@ -811,29 +816,53 @@ likely released the GETATTR's own DOMAIN observation lease.
 
 Limiting the transport pass to acquisition-lane waits instead was rejected:
 an observation's own VIEW_ACQUIRE wait would still release a cache lease
-under another thread's in-flight request. Holding leases longer is safe: the
-host starts the recall a conflict needs itself (`viewcontrol` admission and
-acquisition), `hfs_view_stop` revokes observation leases without waiting for
-their requests, the host deactivates leases at STOPPED, and an early
-observation release returns no guest ticket capacity.
+under another thread's in-flight request.
+
+Why the hold must be bounded: recalls never depend on a guest release (the
+host starts the recall a conflict needs itself in `viewcontrol` admission
+and acquisition, `hfs_view_stop` revokes observation leases without waiting
+for their requests, and the host deactivates leases at STOPPED). Host
+acquisition capacity does depend on it. A held cache lease pins its ticket
+family's retirement floor (`hfs_lease.c`, `viewcontrol` `identityCapacity`),
+so once identities are exhausted `grantLease` answers BLOCKED until a lease
+is released, and the background pass may be the only caller. `read()` and
+`write()` copy user buffers inside their own observation, so a fault on an
+uncached HFS `MAP_SHARED` buffer acquires while that observation is in
+flight. An unbounded hold could outlast the guest's 30 s acquisition
+window, and that timeout leaves an uncertain ticket that pins the floor for
+good. Five seconds covers a slow in-flight request (ordinary requests take
+milliseconds, a scoped clean recall well under a second) and leaves 25 s of
+the window for the release, its recall and a retried acquisition.
+
+The fault's own BLOCKED (`-EAGAIN`) is deliberately not made a capacity
+caller. BLOCKED also answers an expected-target mismatch after its recall and
+RETIRED_ID, so releasing a cache lease on every such retry would add a recall
+per stale fault; that path stays as before p84 and relies on the bounded
+background pass.
 
 Residual: two observations of the same lineage (domain, access, credentials,
 mode) share one host lease, so the normal end-path release of one still
-recalls under a concurrent one. A pressure pass that checked
-`nr_observations` can also race with an observation that begins during its
-release RPC.
+recalls under a concurrent one. A background pass that found no observation
+is exposed to one that begins after that check, until the guest processes
+the resulting STOP. The capacity callers and the bounded release can still
+move the view under an in-flight request.
 
 `view --pressure` adds the cases: an in-flight observation with no cache
 lease is never released (fails on the pre-p84 source); with 128 clean pages
-the background pass releases nothing while the observation is in flight
-(fails on the first p84 commit); ENOSPC pressure still releases a cache lease
-and the recall revokes, but does not release or wait for, the observation;
-with no observation the background pass releases a cache lease. The `view`
+the background pass releases nothing while the observation is in flight,
+still one jiffy before the bound (fails on the first p84 commit); ENOSPC
+pressure still releases a cache lease and the recall revokes, but does not
+release or wait for, the observation; at the bound the held pass releases one
+cache lease, never the observation lease; read-first mkwrite runs with the
+observation in flight, so a background flag there would fail; with no
+observation the background pass releases a cache lease. The `view`
 session shim gained `bridge_minor` (u16), `closing` and `blocked`, and the
 pressure build includes `hfs_received.h`, so both modes compile again; the
 fixtures keep `bridge_minor == 0`, so the minor4 gate is not exercised.
 
-The series was regenerated with `export.py --task p84` (only 0004 changes).
+The series was regenerated with `export.py --task p84` (only 0004 changes;
+round 2 adds two `struct hfs_view` fields and `HFS_PRESSURE_HOLD_MS` in
+`hfs_view.h`).
 A fresh `prepare.py` tree applies it with fuzz zero and `fs/9p/`, `net/9p/`
 and `random.o` compile without warnings under `kernel.py configure`. view,
 view --pressure, mount_hello, tag (all `--sanitize`) and controlled_received
