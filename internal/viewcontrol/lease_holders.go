@@ -25,17 +25,36 @@ import (
 // behind the recall, as zq3-r9 R9-1 showed for pressure releases.
 //
 // The host therefore counts holders. The lease state's Sharers is the number
-// of holders beyond the first. A release while Sharers > 0 only returns that
-// holder's reference: it answers RELEASED at once, starts no recall and
-// leaves the lease's activity untouched. Only the release of the last holder
-// takes the ordinary path (recall, then the per-lease physical certification
-// of task g84). A holder release must not answer PENDING and wait for the
-// others: the guest serializes a mount's releases on one cleanup worker, so a
-// waiting release would sit in front of the release it waits for (the g84
-// deadlock). A holder RELEASED certifies nothing physical: the host lease
-// stays active, every recall still covers it and its mappings stay
-// authorized by it. The guest independently refuses a RELEASED object it
-// still publishes (hfs_lease_release_locked).
+// of holders beyond the first, and the fast path depends on the access kind:
+//
+//   - DOMAIN lease (observation and bootstrap discovery leases). A release
+//     while Sharers > 0 only returns that holder's reference: it answers
+//     RELEASED at once, starts no recall and leaves the lease's activity
+//     untouched. It must not answer PENDING and wait for the others: the
+//     guest serializes a mount's releases on one cleanup worker, so a waiting
+//     release would sit in front of the release it waits for (the g84
+//     deadlock). This is safe because a DOMAIN lease authorizes no PTE and
+//     hfs_mmap_end revokes the observation's guest object before it queues
+//     the release. A holder RELEASED certifies nothing physical: the host
+//     lease stays active and every recall still covers it.
+//   - PAGE or OBJECT lease (cache page leases). Two faults of one page under
+//     one description and credentials share the lease; the guest publishes
+//     each cache object through hfs_view_page_enter and revokes it only at
+//     STOP or invalidation, and pressure may release such a published object.
+//     The guest's hfs_lease_release_locked blocks the whole session when a
+//     RELEASED object is still published and unrevoked, so an early RELEASED
+//     here is a liveness hazard, not something that check absorbs. These
+//     releases keep the ordinary path (PENDING, recall, per-lease
+//     certification of task g84); the recall revokes every holder's object
+//     and frees capacity. Only where that path answers RELEASED does a
+//     non-last holder give back its reference and credit instead of clearing
+//     the lease's release credit, so the remaining holders' releases are
+//     still funded.
+//
+// The last holder's release of any lease takes the ordinary path. The
+// guest's hfs_mmap_bootstrap discovery release relies on that path starting
+// a recall; at mount time no other same-lineage DOMAIN observation can hold
+// the discovery lease yet, so it is not shared in practice.
 //
 // Each holder owns one reserved release credit, as the protocol requires of a
 // preowned release: ReleaseCredit for one holder plus Sharers more, counted by
@@ -44,12 +63,18 @@ import (
 // arrives while the main credit is unbound binds it (ticketCapacity); a later
 // release while it is bound is admitted on a sharer credit. A holder release
 // gives back one sharer credit and, if it had bound the main credit, unbinds
-// it again for the remaining holders, so the reserved credits always equal
-// the holders that have not released.
+// it again for the remaining holders, so once every admitted release has
+// been answered the reserved credits equal the holders that have not
+// released. (Two PAGE releases PENDING at once reserve one credit too many
+// until they are answered, which only errs towards BLOCKED.)
 //
-// A renewal moves only its own holder to the new revision; the old revision
-// keeps its remaining holders, and its last holder's release recalls the
-// lineage as before (the guest never renews).
+// A renewal (renewLease) leaves the old revision's record as it was apart
+// from Active = false: its ReleaseCredit, ReleaseTicket and Sharers stay
+// there and keep funding every holder of the old revision, including the
+// renewing one, whose old-revision release the guest still owes. The new
+// revision starts with its own fresh ReleaseCredit and no sharers. The old
+// revision's last holder's release recalls the lineage while the renewed
+// sibling is active, as before (the guest never renews).
 
 // shareLease grants the active lease existing (stored under id) to one more
 // acquisition ticket, reserving that holder's release credit.
@@ -73,8 +98,10 @@ func sharerReleaseAdmissible(scope guestbridge.Context, l leaseState, r request)
 }
 
 // releaseHolder answers the release of one holder of a lease that other
-// holders still hold: it gives back that holder's credit and answers RELEASED
-// without a recall, leaving the lease as it is for the remaining holders.
+// holders still hold: it gives back that holder's credit and answers RELEASED,
+// leaving the lease's activity and release credit to the remaining holders.
+// releaseLease calls it at once for a DOMAIN lease and only after the
+// certified closure for a PAGE or OBJECT lease.
 func (c *Controller) releaseHolder(scope guestbridge.Context, r request, t ticketState, old leaseState) (json.RawMessage, error) {
 	old.Sharers--
 	if key, _ := ticketKeys(scope, t.Request); old.ReleaseTicket == key {

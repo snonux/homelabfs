@@ -218,12 +218,16 @@ releases on one cleanup worker, and waiting for it would deadlock). An active
 lease is shared by every acquisition of its lineage; each such acquisition is a
 holder with its own reserved release credit (a shared grant needs the same
 capacity as a new lease), because the guest acquires and releases a separate
-guest lease object per observation (task q84). A release while another holder
-remains answers RELEASED at once, starts no recall and certifies nothing
-physical: the lease stays active for the remaining holders. Only the last
-holder's release recalls and needs the verification above, so one ending
-observation never moves the view under a same-lineage observation still in
-flight. Exact initial PENDING replay remains immutable; QUERY reports the
+guest lease object per observation (task q84). For a DOMAIN lease, a release
+while another holder remains answers RELEASED at once, starts no recall and
+certifies nothing physical: the lease stays active for the remaining holders.
+Only the last holder's release recalls and needs the verification above, so
+one ending observation never moves the view under a same-lineage observation
+still in flight. A shared PAGE or OBJECT lease keeps the recall and
+verification for every holder: the guest keeps a published cache object
+unrevoked until STOP and blocks the session on a RELEASED object it still
+publishes. The guest's mount-time discovery release relies on its DOMAIN
+lease being unshared, so that its release starts a recall. Exact initial PENDING replay remains immutable; QUERY reports the
 current protected terminal outcome.
 
 ## Operation union and protected result union

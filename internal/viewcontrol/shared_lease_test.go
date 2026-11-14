@@ -173,3 +173,135 @@ func TestUnsharedLeaseStillRecalls(t *testing.T) {
 	}
 	r.lastHolderReleases(lease)
 }
+
+// TestSharedPageLeaseReleaseStillRecalls: a cache page lease shared by two
+// faults of one page keeps the ordinary path for every holder. The guest
+// keeps a published cache object unrevoked until STOP and blocks the session
+// on a RELEASED object it still publishes, so the first release must not
+// answer RELEASED early: it is PENDING and recalls, the second release waits
+// behind that recall, and both are RELEASED only after the certified closure,
+// with every credit returned at the end.
+func TestSharedPageLeaseReleaseStillRecalls(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	_, description := r.create(0, "shared-page", false)
+	_, a := r.acquire(0, page(description, 0), "READ")
+	_, b := r.acquire(0, page(description, 0), "READ")
+	if a.Status != "GRANTED" || b.Status != "GRANTED" || a.Lease.ID != b.Lease.ID {
+		t.Fatalf("same-page acquisitions not shared: %+v %+v", a, b)
+	}
+	shared := a.Lease
+	first := r.startRelease(0, shared)
+	if _, _, exists := r.recallSnapshot(); !exists {
+		t.Fatal("first PAGE holder release started no recall")
+	}
+	second := r.startRelease(0, shared)
+	r.completeCleanRecall()
+	for i, payload := range []map[string]any{first, second} {
+		r.physical("VIEW_RELEASE", payload)
+		if reply := r.view(0, "VIEW_QUERY", map[string]any{"request": payload["request"]}); reply.Status != "RELEASED" {
+			t.Fatalf("PAGE holder %d release: %+v", i, reply)
+		}
+	}
+	r.controller.mu.Lock()
+	l := r.controller.state.Leases[shared.ID]
+	r.controller.mu.Unlock()
+	if l.Active || l.ReleaseCredit || l.Sharers != 0 || r.reservedReleases(shared) != 0 {
+		t.Fatalf("released PAGE lease state %+v", l)
+	}
+}
+
+// capacityRig is the zq3 rig with only four control credits.
+func capacityRig(t *testing.T) *rig {
+	return newRig(t, func(c *Config) {
+		b := zq3SpecBounds(t)
+		b.ControlTickets = 4
+		c.Authorization.Enrollment.Bounds = b
+	})
+}
+
+// fillHolders shares one DOMAIN READ lease of m0 until the next acquisition
+// is BLOCKED, and returns the lease, the last granted holder's ticket and the
+// number of holders.
+func (r *rig) fillHolders() (*guestbridge.ViewLease, guestbridge.Ticket, int) {
+	r.t.Helper()
+	shared := r.domainRead(0)
+	holders := 1
+	var last guestbridge.Ticket
+	for {
+		ticket, next := r.acquire(0, guestbridge.ViewAccess{Kind: "DOMAIN"}, "READ")
+		if next.Status == "BLOCKED" {
+			return shared, last, holders
+		}
+		if next.Status != "GRANTED" || next.Lease.ID != shared.ID {
+			r.t.Fatalf("shared acquisition %+v", next)
+		}
+		last = ticket
+		holders++
+	}
+}
+
+// TestSharedGrantBlockedAtCapacity: each holder reserves a release credit, so
+// with four control credits the fifth same-lineage acquisition is BLOCKED.
+func TestSharedGrantBlockedAtCapacity(t *testing.T) {
+	r := capacityRig(t)
+	shared, _, holders := r.fillHolders()
+	if holders != 4 || r.reservedReleases(shared) != 4 {
+		t.Fatalf("holders %d reserve %d credits", holders, r.reservedReleases(shared))
+	}
+}
+
+// TestSharedHolderCancel: cancelling one granted holder of a shared lease
+// drops only its reference and credit; the lease stays active, the other
+// non-last releases answer RELEASED and the last holder still recalls and is
+// certified.
+func TestSharedHolderCancel(t *testing.T) {
+	r := capacityRig(t)
+	shared, cancelled, holders := r.fillHolders()
+	original := map[string]any{"request": cancelled, "domain": r.domains[0], "access": guestbridge.ViewAccess{Kind: "DOMAIN"}, "mode": "READ", "target": nil}
+	r.physical("VIEW_CANCEL", original)
+	if reply := r.view(0, "VIEW_CANCEL", map[string]any{"request": cancelled}); reply.Status != "CANCELLED" {
+		t.Fatalf("holder cancel: %+v", reply)
+	}
+	if r.reservedReleases(shared) != holders-1 || !r.leaseActive(shared) {
+		t.Fatalf("after cancel: %d credits, active %v", r.reservedReleases(shared), r.leaseActive(shared))
+	}
+	for i := 2; i < holders; i++ {
+		payload := map[string]any{"request": r.controlTicket(0), "lease": shared}
+		if reply := r.view(0, "VIEW_RELEASE", payload); reply.Status != "RELEASED" {
+			t.Fatalf("holder release %d: %+v", i, reply)
+		}
+	}
+	r.lastHolderReleases(shared)
+}
+
+// TestSharedLeaseRevokedByRecallBeforeRelease: a conflicting acquisition's
+// all-domain recall deactivates a shared DOMAIN lease before any holder
+// released. The first release then only returns its reference; the last
+// holder's release needs no further recall but still the per-lease physical
+// certification (g84).
+func TestSharedLeaseRevokedByRecallBeforeRelease(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	_, description := r.create(1, "dirty", false)
+	shared := r.sharedPair()
+	if _, dirty := r.acquire(1, page(description, 0), "EXCLUSIVE_DIRTY"); dirty.Status != "PENDING" {
+		t.Fatalf("conflicting acquisition: %+v", dirty)
+	}
+	r.completeCleanRecall()
+	if r.leaseActive(shared) {
+		t.Fatal("recall left the shared lease active")
+	}
+	if reply := r.view(0, "VIEW_RELEASE", map[string]any{"request": r.controlTicket(0), "lease": shared}); reply.Status != "RELEASED" {
+		t.Fatalf("first holder release after the recall: %+v", reply)
+	}
+	payload := map[string]any{"request": r.controlTicket(0), "lease": shared}
+	if raw, err := r.execute(0, "VIEW_RELEASE", payload); err == nil {
+		t.Fatalf("last holder released without the physical fact: %s", raw)
+	}
+	r.physical("VIEW_RELEASE", payload)
+	if reply := r.view(0, "VIEW_QUERY", map[string]any{"request": payload["request"]}); reply.Status != "RELEASED" {
+		t.Fatalf("last holder release after the recall: %+v", reply)
+	}
+	if _, _, exists := r.recallSnapshot(); exists || r.reservedReleases(shared) != 0 {
+		t.Fatal("last holder release recalled again or kept a credit")
+	}
+}

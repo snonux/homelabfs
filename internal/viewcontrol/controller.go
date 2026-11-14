@@ -777,7 +777,7 @@ func (c *Controller) validateLedger() error {
 		}
 	}
 	for key, l := range s.Leases {
-		if key != l.Lease.ID || key != objectID(l.Lease) || c.provider(l.Lease.Scope) == nil || l.Sharers < 0 || l.Sharers > b.Identities {
+		if key != l.Lease.ID || key != objectID(l.Lease) || c.provider(l.Lease.Scope) == nil || l.Sharers < 0 || l.Sharers > b.Identities || (l.Sharers > 0 && !l.ReleaseCredit) {
 			return fsapi.Stale
 		}
 	}

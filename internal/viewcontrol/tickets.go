@@ -453,40 +453,25 @@ func (c *Controller) renewLease(r request, t ticketState, old leaseState) (json.
 	return c.reply(t, "GRANTED", &next, nil, nil)
 }
 
-// releaseLease answers a preowned VIEW_RELEASE. While another holder still
-// holds the lease it only returns this holder's reference (releaseHolder,
-// lease_holders.go). The last holder's release is PENDING while any recall
-// runs or while the lineage still needs one, and RELEASED once the lineage is
-// inactive, its reservations closed and the physical closure verified.
+// releaseLease answers a preowned VIEW_RELEASE. A non-last holder of a
+// shared DOMAIN lease only returns its reference (releaseHolder,
+// lease_holders.go). Every other release is PENDING while any recall runs or
+// while the lineage still needs one, and RELEASED once the lineage is
+// inactive, its reservations closed and the physical closure verified; for a
+// non-last holder of a shared PAGE or OBJECT lease that RELEASED also only
+// returns its reference and its credit.
 func (c *Controller) releaseLease(ctx context.Context, scope guestbridge.Context, op string, r request, t ticketState, old leaseState) (json.RawMessage, error) {
-	if old.Sharers > 0 {
+	if old.Sharers > 0 && old.Lease.Access.Kind == "DOMAIN" {
 		return c.releaseHolder(scope, r, t, old)
 	}
 	if c.state.Recall != nil {
 		return c.reply(t, "PENDING", nil, nil, nil)
 	}
-	// A clean ACTIVE lease may still own readable PTEs. Its preowned release
-	// must start a physical recall; CheckPhysical cannot certify a live
-	// mapping as already closed. A clean READ lease of a domain without dirty
-	// or exclusive state recalls only that domain (startReleaseRecall); any
-	// other lease uses the all-domain recall of dirty pressure. Include active
-	// renewed siblings so an old immutable lineage release cannot wait
-	// without progress.
-	for _, lease := range c.state.Leases {
-		if lease.Active && sameLineage(lease.Lease, r.Lease) {
-			if err := c.startReleaseRecall(ctx, r.Lease); err != nil {
-				return nil, err
-			}
-			return c.reply(t, "PENDING", nil, nil, nil)
+	if pending, err := c.releaseNeedsRecall(ctx, r.Lease); pending || err != nil {
+		if err != nil {
+			return nil, err
 		}
-	}
-	for _, reservation := range c.state.Reservations {
-		if sameLineage(c.state.Leases[reservation.Reservation.LeaseID].Lease, r.Lease) && reservation.Status != "CLOSED" {
-			if err := c.startRecall(ctx); err != nil {
-				return nil, err
-			}
-			return c.reply(t, "PENDING", nil, nil, nil)
-		}
+		return c.reply(t, "PENDING", nil, nil, nil)
 	}
 	ledger, err := c.rawState()
 	if err != nil {
@@ -495,10 +480,38 @@ func (c *Controller) releaseLease(ctx context.Context, scope guestbridge.Context
 	if err = c.config.Facts.CheckPhysical(c.factsContext(ctx), scope, op, t.Payload, ledger); err != nil {
 		return nil, err
 	}
+	if old.Sharers > 0 {
+		// Certified closure of a shared PAGE/OBJECT lease: the remaining
+		// holders' releases still come and keep their reserved credits.
+		return c.releaseHolder(scope, r, t, old)
+	}
 	old.Active = false
 	old.ReleaseCredit = false
 	c.state.Leases[r.Lease.ID] = old
 	return c.reply(t, "RELEASED", nil, nil, nil)
+}
+
+// releaseNeedsRecall starts the recall a release of lease still needs and
+// reports whether it did. A clean ACTIVE lease may still own readable PTEs.
+// Its preowned release must start a physical recall; CheckPhysical cannot
+// certify a live mapping as already closed. A clean READ lease of a domain
+// without dirty or exclusive state recalls only that domain
+// (startReleaseRecall); any other lease uses the all-domain recall of dirty
+// pressure. Include active renewed siblings so an old immutable lineage
+// release cannot wait without progress. An open reservation of the lineage
+// needs the all-domain recall that freezes and drains it.
+func (c *Controller) releaseNeedsRecall(ctx context.Context, lease guestbridge.ViewLease) (bool, error) {
+	for _, l := range c.state.Leases {
+		if l.Active && sameLineage(l.Lease, lease) {
+			return true, c.startReleaseRecall(ctx, lease)
+		}
+	}
+	for _, reservation := range c.state.Reservations {
+		if sameLineage(c.state.Leases[reservation.Reservation.LeaseID].Lease, lease) && reservation.Status != "CLOSED" {
+			return true, c.startRecall(ctx)
+		}
+	}
+	return false, nil
 }
 
 func (c *Controller) reserve(ctx context.Context, scope guestbridge.Context, r request, t ticketState) (json.RawMessage, error) {
@@ -734,7 +747,10 @@ func (c *Controller) cancelLease(lease guestbridge.ViewLease) bool {
 	for id, l := range c.state.Leases {
 		if sameLineage(l.Lease, lease) {
 			l.Active = false
-			l.ReleaseCredit = false
+			// A record that other holders still hold keeps its credits for
+			// their releases (only a renewed sibling can get here with
+			// Sharers; cancelHolder took the cancelled lease's own holders).
+			l.ReleaseCredit = l.Sharers > 0
 			c.state.Leases[id] = l
 		}
 	}
