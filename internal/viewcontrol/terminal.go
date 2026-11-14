@@ -101,9 +101,44 @@ func (c *Controller) VerifyTerminalSeal(ctx context.Context, a *guestbridge.Term
 	return nil
 }
 
+// terminalSnapshot is the scope's complete, fully retired view state: its
+// families, its remaining ticket rows, closed leases and reservations and its
+// domain. A family's owner is its recorded Scope, or for a family written
+// before task q64 the scope of its tickets, which that binary never deleted;
+// since VIEW_RETIRE recycles retired rows (recycling.go), a fully retired
+// family of a newer ledger usually has no ticket left.
 func (c *Controller) terminalSnapshot(scope guestbridge.Context) (json.RawMessage, error) {
 	snapshot := terminalSnapshot{Scope: scope, Families: map[string]family{}, Tickets: map[string]ticketState{}, Leases: map[string]leaseState{}, Reservations: map[string]reservationState{}}
+	families, err := c.snapshotTickets(scope, &snapshot)
+	if err != nil {
+		return nil, err
+	}
+	for key, f := range c.state.Families {
+		owner, ok := families[key]
+		if !ok && (f.High != 0 || f.Floor != 0) {
+			return nil, fsapi.Permission
+		}
+		if owner == scope {
+			if f.High != f.Floor {
+				return nil, fsapi.WouldBlock
+			}
+			snapshot.Families[key] = f
+		}
+	}
+	return c.snapshotResources(scope, snapshot)
+}
+
+// snapshotTickets adds the scope's retained ticket rows to snapshot and
+// returns every family's owner. A family whose recorded owner and tickets
+// disagree is refused with Permission; an unretired ticket of the scope
+// keeps the seal waiting.
+func (c *Controller) snapshotTickets(scope guestbridge.Context, snapshot *terminalSnapshot) (map[string]guestbridge.Context, error) {
 	families := map[string]guestbridge.Context{}
+	for key, f := range c.state.Families {
+		if f.Scope != nil {
+			families[key] = *f.Scope
+		}
+	}
 	for key, t := range c.state.Tickets {
 		_, familyKey := ticketKeys(t.Scope, t.Request)
 		if old, ok := families[familyKey]; ok && old != t.Scope {
@@ -115,19 +150,15 @@ func (c *Controller) terminalSnapshot(scope guestbridge.Context) (json.RawMessag
 			if !ok || f.High != f.Floor || t.Request.Number > f.Floor || !c.retired(t) {
 				return nil, fsapi.WouldBlock
 			}
-			snapshot.Families[familyKey] = f
 			snapshot.Tickets[key] = t
 		}
 	}
-	for key, f := range c.state.Families {
-		owner, ok := families[key]
-		if !ok && (f.High != 0 || f.Floor != 0) {
-			return nil, fsapi.Permission
-		}
-		if owner == scope && f.High != f.Floor {
-			return nil, fsapi.WouldBlock
-		}
-	}
+	return families, nil
+}
+
+// snapshotResources adds the scope's closed leases and reservations and its
+// domain to snapshot; anything still open or recalled keeps the seal waiting.
+func (c *Controller) snapshotResources(scope guestbridge.Context, snapshot terminalSnapshot) (json.RawMessage, error) {
 	for key, l := range c.state.Leases {
 		if l.Lease.Scope == scope {
 			if l.Active {

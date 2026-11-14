@@ -77,6 +77,12 @@ func (c *Controller) ExchangeView(ctx context.Context, scope guestbridge.Context
 	key, familyKey := ticketKeys(scope, r.Request)
 	f := c.state.Families[familyKey]
 	saved, exists := c.state.Tickets[key]
+	// A number at or below the floor is retired and never admitted again:
+	// numbers are monotone per family and the family is never deleted. Its
+	// row is recycled at retirement (recycling.go), so the replay of a
+	// retired ticket is refused as Stale, never admitted as a new ticket.
+	// Only a tombstone of a ledger written before task q64 still answers
+	// RETIRED_ID, until the next VIEW_RETIRE recycles it.
 	if r.Request.Number <= f.Floor {
 		if !exists {
 			return nil, fsapi.Stale
@@ -178,6 +184,11 @@ func (c *Controller) ExchangeView(ctx context.Context, scope guestbridge.Context
 	}
 	saved = ticketState{PayloadHash: digest(map[string]any{"op": op, "payload": raw}), Scope: scope, Request: r.Request, Operation: op, Payload: bytes.Clone(raw)}
 	f.High = r.Request.Number
+	if f.Scope == nil {
+		// The owner outlives the family's tickets, which VIEW_RETIRE recycles.
+		owner := scope
+		f.Scope = &owner
+	}
 	c.state.Families[familyKey] = f
 	c.state.Identities++
 	c.state.Tickets[key] = saved
@@ -229,6 +240,7 @@ func (c *Controller) CheckResponse(ctx context.Context, scope guestbridge.Contex
 	key, familyKey := ticketKeys(scope, r.Request)
 	saved, ok := c.state.Tickets[key]
 	if !ok {
+		// Unknown, or retired and recycled: no reply of it is vouched for.
 		return fsapi.Permission
 	}
 	if r.Request.Number <= c.state.Families[familyKey].Floor {
@@ -354,6 +366,7 @@ func (c *Controller) grantLease(scope guestbridge.Context, r request, t ticketSt
 	}
 	lease.Revision = high + 1
 	c.state.Revisions[lineage] = lease.Revision
+	c.state.LineageFences[lineage] = lineageFence{Session: scope.Session, Fence: lease.Fence}
 	lease.ID = objectID(lease)
 	c.state.Leases[lease.ID] = leaseState{Lease: lease, Active: true, ReleaseCredit: true}
 	return c.reply(t, "GRANTED", &lease, nil, nil)
@@ -383,6 +396,7 @@ func (c *Controller) renewLease(r request, t ticketState, old leaseState) (json.
 	next := old.Lease
 	next.Revision++
 	c.state.Revisions[lineageID(next)] = next.Revision
+	c.state.LineageFences[lineageID(next)] = lineageFence{Session: next.Scope.Session, Fence: next.Fence}
 	next.ID = objectID(next)
 	old.Active = false
 	c.state.Leases[r.Lease.ID] = old

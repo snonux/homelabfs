@@ -189,12 +189,16 @@ So the generator does not reject the pair; this dependency is the reason a
 spec change must rerun `TestZQ3RunWorkloadFitsLifetimeBounds`.
 
 Coverage: this spec covers a zq3-r8 run through bootstrap, the k64 gate,
-Phase 9, T1-T4 and T6-T11 with 2x margin. It does not cover T5's mapped
-dirtying, which needs task q64 (view identity recycling): each of its 1024
-dirty pages takes a DIRTY_RESERVE and a DIRTY_FREEZE view ticket, and
-`Views.Identities` (64) counts every ticket the controller ever admits, so
-about 2050 would be needed; at 32 KiB of `LedgerBytes` each that is about
-630 MiB of host budget.
+Phase 9, T1-T4 and T6-T11 with 2x margin. T5's mapped dirtying (1024
+dirty pages, each a DIRTY_RESERVE and a DIRTY_FREEZE view ticket) used to
+need about 2050 view identities, because `Views.Identities` (64) counted
+every ticket the controller ever admitted (about 630 MiB of host budget at
+32 KiB of `LedgerBytes` each). Since task q64 VIEW_RETIRE recycles retired
+tickets, and since f84 the ACK archive and recall UUIDs are pruned
+(`viewcontrol/recycling.go`), so `Identities` bounds the view tickets alive
+at once, not a lifetime count; `TestZQ3LeaseCyclesRecycleViewIdentities`
+drives 1000+ lease cycles at these exact Views values. T5 itself stays
+deferred until it is re-planned and run; no T5 pass is claimed here.
 
 | Bound | Rule | Example |
 |---|---|---|

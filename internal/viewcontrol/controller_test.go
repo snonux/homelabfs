@@ -807,13 +807,15 @@ func TestDurableRenewReleaseRetirementCompactsOnlyClosedSources(t *testing.T) {
 	if len(r.controller.state.Sources) != 0 || len(r.controller.state.Leases) != 0 {
 		t.Fatal("closed source pins were not retired")
 	}
+	// Task q64: the retired rows are recycled with their identities; the
+	// family floor alone keeps the old numbers retired.
 	key, _ := ticketKeys(r.scopes[0], ticket)
-	tombstone := r.controller.state.Tickets[key]
-	if len(tombstone.Payload) > 0 || tombstone.PayloadHash == "" || tombstone.Operation != "VIEW_ACQUIRE" {
-		t.Fatal("missing protected compact identity")
+	if _, kept := r.controller.state.Tickets[key]; kept || r.controller.state.Identities != 0 || len(r.controller.state.Tickets) != 0 {
+		t.Fatalf("retired rows kept: %d identities, %d rows", r.controller.state.Identities, len(r.controller.state.Tickets))
 	}
-	if query := r.view(0, "VIEW_QUERY", map[string]any{"request": ticket}); query.Status != "RETIRED_ID" {
-		t.Fatal("old number revived")
+	r.requireRetiredRefused(ticket)
+	if replay := r.retire(0, 2, []string{first.ID, renewed.ID}); !bytes.Equal(receipt, replay) {
+		t.Fatal("changed latest protected floor replay")
 	}
 	_, next := r.acquire(0, page(description, 0), "READ")
 	if next.Lease.ID == first.Lease.ID || next.Lease.Fence <= renewed.Lease.Fence {
@@ -821,16 +823,35 @@ func TestDurableRenewReleaseRetirementCompactsOnlyClosedSources(t *testing.T) {
 	}
 	closed := r.release(0, next.Lease)
 	r.retireControl(0, 2, []string{closed.ID})
-	r.retire(0, 3, []string{next.ID})
-	if replay := r.retire(0, 2, []string{first.ID, renewed.ID}); !bytes.Equal(receipt, replay) {
-		t.Fatal("changed protected floor replay")
+	latest := r.retire(0, 3, []string{next.ID})
+	// The guest never resends a VIEW_RETIRE once a newer one of the family
+	// was answered, so only the latest receipt is kept; the older range is
+	// refused, never retired again or answered with a different floor.
+	r.physical("VIEW_RETIRE", map[string]any{"anchor": uid(110).String(), "nonce": uid(111).String(), "credentials": r.credentials[0], "through": 2, "result_hashes": []string{first.ID, renewed.ID}})
+	if _, err := r.execute(0, "VIEW_RETIRE", map[string]any{"anchor": uid(110).String(), "nonce": uid(111).String(), "credentials": r.credentials[0], "through": 2, "result_hashes": []string{first.ID, renewed.ID}}); err == nil {
+		t.Fatal("recycled retirement receipt answered")
 	}
+	// The reopened controller is reached directly: bridges keep pointing at
+	// their closed controller (there is no bridge restore here).
 	r.reopen()
-	raw, _ := canonical(map[string]any{"request": ticket})
-	reply, err := r.controller.ExchangeView(t.Context(), r.scopes[0], "VIEW_QUERY", raw)
+	r.requireRetiredRefused(ticket)
+	raw, _ := canonical(map[string]any{"anchor": uid(110).String(), "nonce": uid(111).String(), "credentials": r.credentials[0], "through": 3, "result_hashes": []string{next.ID}})
+	replay, err := r.controller.ExchangeView(t.Context(), r.scopes[0], "VIEW_RETIRE", raw)
 	must(t, err)
-	if status(reply) != "RETIRED_ID" {
-		t.Fatalf("forgot floor %s", reply)
+	if !bytes.Equal(latest, replay) {
+		t.Fatal("reopen changed the latest protected floor replay")
+	}
+}
+
+// requireRetiredRefused requires every op on a retired, recycled ticket to be
+// refused: never admitted again, never answered as a live ticket.
+func (r *rig) requireRetiredRefused(ticket guestbridge.Ticket) {
+	r.t.Helper()
+	raw, _ := canonical(map[string]any{"request": ticket})
+	for _, op := range []string{"VIEW_QUERY", "VIEW_CANCEL"} {
+		if reply, err := r.controller.ExchangeView(r.t.Context(), r.scopes[0], op, raw); !errors.Is(err, fsapi.Stale) {
+			r.t.Fatalf("%s of a recycled ticket: %s %v", op, reply, err)
+		}
 	}
 }
 

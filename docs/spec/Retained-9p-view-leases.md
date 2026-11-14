@@ -288,6 +288,24 @@ frozen claim, source pin and recall obligation before a permanent protected
 floor/tombstone advances. Replies/cell release/close/disconnect/TTL do not retire
 anything. Finite number/identity/source exhaustion blocks new admissions.
 
+**Identity recycling (q64, f84).** The protected floor, not a per-ticket
+tombstone, is what keeps a retired number retired: each family's High/Floor
+counters are permanent and numbers are never reused, so the controller
+deletes retired ticket rows at VIEW_RETIRE and returns their identity charge
+(`Bounds.Identities` bounds the tickets alive at once). A retired number's
+retransmit, QUERY, CANCEL or any other op under it is refused (Stale) rather
+than answered RETIRED_ID, and is never admitted as a new ticket; the guest
+never sends one, because it retires only tickets it no longer uses and frees
+them on RETIRED. Only a family's latest VIEW_RETIRE receipt is replayed; an
+older range is refused, since the guest builds each retirement from the
+previous RETIRED floor. Lease lineage revision high-waters are dropped once no
+lease of the lineage remains and the domain's fence passed it. Per session,
+only the ACKs of the last recall the session acknowledged stay archived for
+replay (ACCEPTED); an older recall's ACK is STALE, since the guest sends an
+ACK only after the previous one was ACCEPTED. Recall/provenance UUIDs nothing
+references are dropped. Details and the legacy-ledger rules:
+`internal/viewcontrol/recycling.go`.
+
 **Source-cut floor (i64).** `Bounds.Sources` counts the retained source cuts.
 There is one per distinct journal position and state that a capture
 remembered: the baseline, admissions, acquisitions, recall events and
