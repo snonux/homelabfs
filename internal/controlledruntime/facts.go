@@ -247,12 +247,16 @@ func (l factsLedger) checkRetire(scope guestbridge.Context) error {
 // more. That is proven per lease: its lineage (every revision; a renewal keeps
 // the old revision's mappings under the new one) is inactive, its lineage
 // holds no open reservation, and a recall of its domain completed after the
-// grant (lease fence below the domain fence). Leases deactivate only through
-// a recall's observed STOPPED (quiesceParticipants), the release itself, or a
-// renewal (whose active sibling the lineage check catches); a cancelled grant
-// needs separately observed exclusion (checkCancellation). The advanced fence
-// proves the fixed observer measured this domain's STOPPED and REOPENED after
-// the grant, and the guest never republishes under a lease of a stale fence.
+// grant (lease fence below the domain fence). The fence alone shows that: a
+// lease's fence is the domain fence at its grant, and a recall covering this
+// domain admits no acquisition or renewal from it (viewcontrol
+// recallHoldsLease, pinned by TestScopedRecallHoldsOwnDomain), so no lease of
+// the domain is granted between its STOPPED and its fence advance. Leases deactivate only through a recall's observed
+// STOPPED (quiesceParticipants), the release itself, or a renewal (whose
+// active sibling the lineage check catches); cancelling a grant is refused by
+// checkCancellation. The advanced fence proves the fixed observer measured
+// this domain's STOPPED and REOPENED after the grant, and the guest never
+// republishes under a lease of a stale fence.
 // The guest also independently refuses a RELEASED lease it still publishes
 // (hfs_lease_release_locked).
 //

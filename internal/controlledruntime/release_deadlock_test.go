@@ -5,17 +5,10 @@ package controlledruntime
 import (
 	"bytes"
 	"testing"
-	"time"
 
 	"github.com/snonux/homelabfs/internal/guestbridge"
 	"github.com/snonux/homelabfs/internal/viewcontrol"
 )
-
-// guestReleaseTimeout is the guest kernel's bound on one parked VIEW_RELEASE
-// exchange (patch 0004 hfs_view_exchange). A release still unresolved after
-// it fails with ETIMEDOUT, and hfs_mmap_cleanup's goto failed tears down the
-// whole mount's view control (hfs_mmap_fail).
-const guestReleaseTimeout = 30 * time.Second
 
 // TestRuntimeAssemblyOlderReleaseBesideNewerLease replays the serialized-
 // release deadlock of task g84 against the assembled runtime. The guest runs
@@ -56,11 +49,9 @@ func TestRuntimeAssemblyOlderReleaseBesideNewerLease(t *testing.T) {
 	if newer.Fence != 3 || newer.ID == older.ID {
 		t.Fatalf("newer lease %+v did not open a new lineage after the recall", newer)
 	}
-	start := time.Now()
+	// The bug answered WOULD_BLOCK here at once; the guest's retries then ran
+	// into its 30 s exchange timeout. One query must now answer RELEASED.
 	queryRelease(t, peer, olderControl, "RELEASED")
-	if elapsed := time.Since(start); elapsed >= guestReleaseTimeout {
-		t.Fatalf("older release took %s, guest bound %s", elapsed, guestReleaseTimeout)
-	}
 
 	// B's lease kept its authority: releasing it starts its own recall.
 	newerControl := sendRelease(t, peer, families, 3, newer)

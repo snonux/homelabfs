@@ -67,7 +67,7 @@ func TestFactsReleaseIsPerLease(t *testing.T) {
 		released := c.change(&l, older, newer)
 		raw, err := json.Marshal(map[string]any{"lease": released})
 		require(t, err)
-		if err := l.checkRelease(guestbridge.Context{Session: "a"}, raw); !errors.Is(err, c.want) || (c.want == nil && err != nil) {
+		if err := l.checkRelease(guestbridge.Context{Session: "a"}, raw); !errors.Is(err, c.want) {
 			t.Errorf("%s: got %v, want %v", c.name, err, c.want)
 		}
 	}
@@ -91,7 +91,10 @@ type releaseCase struct {
 func releaseCases() []releaseCase {
 	return []releaseCase{
 		{"newer lease active", func(_ *factsLedger, older, _ guestbridge.ViewLease) guestbridge.ViewLease { return older }, nil},
-		{"newer lease holds an open reservation", func(l *factsLedger, older, newer guestbridge.ViewLease) guestbridge.ViewLease {
+		{"newer dirty lease holds an open reservation", func(l *factsLedger, older, newer guestbridge.ViewLease) guestbridge.ViewLease {
+			delete(l.Leases, newer.ID)
+			newer.Mode = "EXCLUSIVE_DIRTY"
+			setLease(l, newer, true)
 			addReservation(l, newer.ID, "RESERVED")
 			return older
 		}, nil},
@@ -107,6 +110,13 @@ func releaseCases() []releaseCase {
 			sibling := older
 			sibling.ID, sibling.Revision = "sibling", 2
 			setLease(l, sibling, true)
+			return older
+		}, fsapi.WouldBlock},
+		{"inactive renewed sibling owns a frozen reservation", func(l *factsLedger, older, _ guestbridge.ViewLease) guestbridge.ViewLease {
+			sibling := older
+			sibling.ID, sibling.Revision = "sibling", 2
+			setLease(l, sibling, false)
+			addReservation(l, sibling.ID, "FROZEN")
 			return older
 		}, fsapi.WouldBlock},
 		{"own reservation open", func(l *factsLedger, older, _ guestbridge.ViewLease) guestbridge.ViewLease {
