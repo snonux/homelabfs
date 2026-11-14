@@ -227,6 +227,14 @@ protected PENDING. Thus a guest can initiate pressure progress through its
 independent control family even while an unknown/refused acquisition-family
 number bars a pressure READ. RELEASED still requires actual old-epoch quiescence,
 drain/install/reopen and exact source closure; PENDING replay cannot release it.
+That closure is per lease (task g84): the controlled runtime's Facts certify a
+release once the lease's lineage is inactive, holds no open reservation and a
+recall of its domain completed after the grant (lease fence below the domain
+fence). Newer leases of the same domain, granted after that REOPEN, keep their
+own authority and do not hold the older release; the guest serializes a mount's
+releases on one cleanup worker, so waiting for them deadlocked until the guest's
+30 s exchange timeout failed the mount. Retirement still waits for every lease
+and reservation of the domain.
 
 A DIRTY_RESERVE that was never granted and has protected BLOCKED history cannot
 be retired while its promised ordinary number remains unbound. CANCEL stages the
