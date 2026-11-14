@@ -111,6 +111,10 @@ func (m *mutator) cleanTwoDomainRecall(other guestbridge.Capability) {
 // this test sends no RETIRE, so each domain's CALLs stay below 64; the zq3
 // provider values and retirement are TestZQ3RunWorkloadFitsLifetimeBounds'.
 func TestZQ3LeaseFreeMutationsOutliveSources(t *testing.T) {
+	// One of the package's four long, fsync-bound workloads: they run in
+	// parallel so the package stays well inside go test -timeout 20m on a
+	// loaded host, where it took 24 min serially (i84). Each owns its rig.
+	t.Parallel()
 	r := newZQ3Rig(t, 0)
 	m0 := newMutator(r, 0)
 	m0.run(30)

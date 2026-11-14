@@ -115,6 +115,10 @@ func mustRaw(t *testing.T, value any) json.RawMessage {
 }
 
 func TestTransportClean128PressureReclaimsBefore129thGrant(t *testing.T) {
+	// One of the package's four long, fsync-bound workloads: they run in
+	// parallel so the package stays well inside go test -timeout 20m on a
+	// loaded host, where it took 24 min serially (i84). Each owns its rig.
+	t.Parallel()
 	r := newRig(t, func(c *Config) {
 		b := &c.Authorization.Enrollment.Bounds
 		b.Tickets = 128
