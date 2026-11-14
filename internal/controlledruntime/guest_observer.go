@@ -70,16 +70,34 @@ type installedObservation struct {
 // Admission owns one immutable admitted boot/provider/domain inventory. Refresh
 // requires the same complete observation; change or uncertainty fences it. The
 // protected file is evidence only: reopening cannot restore live authority.
+//
+// Two locks keep the guest probe (an SSH round trip of up to ten seconds) off
+// the admission path. mu guards the state below and is only ever held for
+// in-memory work: check, checkACK, Facts.admission and every QUERY/CALL
+// admission take it, so it is never held across a probe. refreshMu serializes
+// whole refreshes (probe plus commit) so that observations commit in the order
+// they were taken; advance rejects a revision/fence regression, and two
+// overlapping probes committing out of order would otherwise fence a healthy
+// guest. Lock order is refreshMu, then mu, then the supervisor's mu.
 type Admission struct {
+	refreshMu  sync.Mutex
 	mu         sync.Mutex
 	supervisor *Supervisor
 	observer   GuestObserver
 	installed  installedObservation
 	endpoint   guestbridge.Endpoint
 	process    fsapi.UUID
+	// refreshed is when installed was committed (the 5 s reuse and 15 s
+	// freshness bounds); observedAt is when the probe that produced it started.
+	// A refresh request coalesces onto a committed probe that started no
+	// earlier than the request needs, never onto an older one.
 	refreshed  time.Time
+	observedAt time.Time
 	fenced     bool
 	stopped    map[string]uint64
+	// probe is a private test seam for the guest observation; nil (every
+	// runtime constructor) runs the pinned observer's phase probe.
+	probe func(context.Context) (installedObservation, error)
 }
 
 // ObserveAdmission measures an actual running guest through the pinned SSH
@@ -96,6 +114,7 @@ func ObserveAdmission(ctx context.Context, s *Supervisor, observer GuestObserver
 	}
 	endpoint, process := s.record.Endpoint, s.record.ProcessID
 	s.mu.Unlock()
+	started := time.Now()
 	observed, err := observer.observe(ctx)
 	if err != nil {
 		return nil, err
@@ -138,20 +157,74 @@ func ObserveAdmission(ctx context.Context, s *Supervisor, observer GuestObserver
 	if err != nil {
 		return nil, err
 	}
-	a.installed, a.refreshed = observed, time.Now()
+	a.installed, a.refreshed, a.observedAt = observed, time.Now(), started
 	return a, nil
 }
 
 // Refresh performs read-only guest I/O before entering any controller or service
 // lock. A changed boot, module, inventory or native owner permanently fences it;
-// no time limit or disconnect retires its protected obligations.
+// no time limit or disconnect retires its protected obligations. On success the
+// installed observation comes from a probe that started after this call: its
+// own, or one that another caller started later and committed first (both
+// measure the guest after the call began).
 func (a *Admission) Refresh(ctx context.Context) error {
+	return a.refreshSince(ctx, time.Now())
+}
+
+// refreshIfOlder is the ordinary-request reuse rule: an observation committed
+// less than maxAge ago is reused, otherwise it refreshes. While another probe is
+// in flight it waits for that probe instead of starting a second SSH session,
+// because a probe that started within maxAge satisfies the same bound.
+func (a *Admission) refreshIfOlder(ctx context.Context, maxAge time.Duration) error {
+	a.mu.Lock()
+	fresh := time.Since(a.refreshed) < maxAge
+	a.mu.Unlock()
+	if fresh {
+		return nil
+	}
+	return a.refreshSince(ctx, time.Now().Add(-maxAge))
+}
+
+// refreshSince ensures the installed observation comes from a probe that
+// started at or after notBefore. It snapshots under mu, runs the probe with no
+// admission lock held (only refreshMu, which QUERY/CALL admission checks never
+// take), then revalidates and commits under mu. refreshMu makes snapshot, probe
+// and commit one ordered step, so commit compares against exactly the
+// observation the snapshot saw.
+func (a *Admission) refreshSince(ctx context.Context, notBefore time.Time) error {
+	a.refreshMu.Lock()
+	defer a.refreshMu.Unlock()
+	a.mu.Lock()
+	fenced, covered := a.fenced, !a.observedAt.Before(notBefore)
+	a.mu.Unlock()
+	if fenced {
+		return fsapi.Unavailable
+	}
+	if covered {
+		return nil
+	}
+	started := time.Now()
+	observed, err := a.runPhaseProbe(ctx)
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	return a.commit(observed, err, started)
+}
+
+// runPhaseProbe runs the guest phase observation; no admission lock is held.
+func (a *Admission) runPhaseProbe(ctx context.Context) (installedObservation, error) {
+	if a.probe != nil {
+		return a.probe(ctx)
+	}
+	return a.observer.observePhase(ctx)
+}
+
+// commit validates one probe result against the installed observation and
+// installs it; mu is held. Any failure, identity change, high-water regression
+// or native change fences the admission permanently.
+func (a *Admission) commit(observed installedObservation, err error, started time.Time) error {
 	if a.fenced {
 		return fsapi.Unavailable
 	}
-	observed, err := a.observer.observePhase(ctx)
 	if err == nil {
 		err = a.accept(observed, a.installed.Admission.Domains)
 	}
@@ -172,8 +245,31 @@ func (a *Admission) Refresh(ctx context.Context) error {
 		a.fenced = true
 		return err
 	}
-	a.installed, a.refreshed = observed, time.Now()
+	a.installed, a.refreshed, a.observedAt = observed, time.Now(), started
 	return nil
+}
+
+// measuredACK reports whether the installed observation, committed less than
+// maxAge ago, already records ack as scope's published acknowledgement. The
+// kernel publishes a phase record (with the exact ACK payload hash) only after
+// completing that phase's physical duties and before sending the ACK, and it
+// cannot leave the phase until the host issues the next event, which needs
+// this ACK. So a recent record of these exact bytes proves the same completed
+// phase a new probe would; checkACK still checks fence, phase and event hash
+// under mu. A miss (the usual case for an ACK's first send) needs a probe.
+func (a *Admission) measuredACK(scope guestbridge.Context, ack []byte, maxAge time.Duration) bool {
+	hash := hashBytes(ack)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.fenced || time.Since(a.refreshed) >= maxAge {
+		return false
+	}
+	for _, observation := range a.installed.Admission.Observations {
+		if observation.Scope == scope && observation.Phase != "LIVE" && observation.AcknowledgementHash == hash {
+			return true
+		}
+	}
+	return false
 }
 
 func (o GuestObserver) observe(ctx context.Context) (installedObservation, error) {

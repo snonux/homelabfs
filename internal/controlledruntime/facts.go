@@ -415,6 +415,10 @@ func (f *Facts) checkACK(_ context.Context, scope guestbridge.Context, raw json.
 	if phase == "" || event.Phase != phase || !sameJSON(event.Target, ack.Target) {
 		return fsapi.Stale
 	}
+	// The installed observation is either the probe Producer.Prepare ran for
+	// this ACK or a recent one that already recorded these exact ACK bytes
+	// (Admission.measuredACK). mu is never held across a probe, so this only
+	// waits for in-memory work.
 	a := f.admission(scope)
 	a.mu.Lock()
 	defer a.mu.Unlock()

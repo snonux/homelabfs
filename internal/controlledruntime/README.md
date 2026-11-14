@@ -211,9 +211,22 @@ complete inventory and phase records; it does not rehash large on-disk artifacts
 whose exact installed/running correspondence was established at initial admission.
 Ordinary requests reuse that bounded static admission for at most five seconds
 and still check the actual live native exporter/endpoint on every callback.
-Every VIEW_ACK refreshes before entering controller/service locks. One Prepare
-has a shared ten-second bound across all guest observers. This conservative
-per-barrier SSH latency has no native calibration or pressure acceptance claim.
+A VIEW_ACK reuses the owning admission's observation only when it was committed
+within those five seconds and already records that scope's acknowledgement hash
+for these exact ACK bytes; otherwise it refreshes before entering
+controller/service locks. The kernel publishes a phase record only after the
+phase's physical duties and before sending the ACK, and cannot leave the phase
+before the host issues the next event, so such a record proves the same
+completed phase a new probe would. Resends and a second domain's ACK of a phase
+therefore usually cost no SSH round trip, while an ACK's first send usually
+still does (the phase is published just before it). The physical check still
+binds the exact fence, phase and event hash. One Prepare has a shared
+ten-second bound across all guest observers. The admission state lock is never
+held across a probe: a refresh snapshots it, probes, then revalidates and
+commits under it, and a separate refresh lock orders whole refreshes so that a
+waiting request reuses a probe that started late enough instead of starting
+another. This per-barrier SSH latency still runs on the bridge's control worker
+and has no native calibration or pressure acceptance claim.
 Failures, identity changes, revision rollback and old-revision reopen fence
 admission and retain obligations. The fifteen-second admission freshness limit
 never retires resources. An exact old ACK retry succeeds only through the
