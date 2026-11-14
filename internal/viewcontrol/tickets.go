@@ -79,15 +79,14 @@ func (c *Controller) ExchangeView(ctx context.Context, scope guestbridge.Context
 	saved, exists := c.state.Tickets[key]
 	// A number at or below the floor is retired and never admitted again:
 	// numbers are monotone per family and the family is never deleted. Its
-	// row is recycled at retirement (recycling.go), so the replay of a
-	// retired ticket is refused as Stale, never admitted as a new ticket.
-	// Only a tombstone of a ledger written before task q64 still answers
-	// RETIRED_ID, until the next VIEW_RETIRE recycles it.
+	// row is recycled at retirement (recycling.go); see retiredReply for
+	// what a replay then gets. A tombstone of a ledger written before task
+	// q64 answers from its row until the next VIEW_RETIRE recycles it.
 	if r.Request.Number <= f.Floor {
-		if !exists {
-			return nil, fsapi.Stale
+		if exists {
+			return c.reply(saved, "RETIRED_ID", nil, nil, nil)
 		}
-		return c.reply(saved, "RETIRED_ID", nil, nil, nil)
+		return c.retiredReply(op, r.Request, raw)
 	}
 	if exists {
 		if op != "VIEW_QUERY" && op != "VIEW_CANCEL" && (saved.Operation != op || !bytes.Equal(saved.Payload, raw)) {
@@ -239,11 +238,23 @@ func (c *Controller) CheckResponse(ctx context.Context, scope guestbridge.Contex
 	}
 	key, familyKey := ticketKeys(scope, r.Request)
 	saved, ok := c.state.Tickets[key]
+	retired := r.Request.Number <= c.state.Families[familyKey].Floor
+	if !ok && retired && !queryOrCancel(op) {
+		// Recycled: only the RETIRED_ID of these exact request bytes.
+		expected, err := c.retiredReply(op, r.Request, request)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(expected, response) {
+			return fsapi.Stale
+		}
+		return nil
+	}
 	if !ok {
-		// Unknown, or retired and recycled: no reply of it is vouched for.
+		// Unknown, or a recycled QUERY/CANCEL target: no reply is vouched for.
 		return fsapi.Permission
 	}
-	if r.Request.Number <= c.state.Families[familyKey].Floor {
+	if retired {
 		expected, err := c.reply(saved, "RETIRED_ID", nil, nil, nil)
 		if err != nil {
 			return err

@@ -261,8 +261,10 @@ request_hash hashes canonical `{op:originalOp,payload:originalPayload}`.
 QUERY/CANCEL preserve this original lineage. Direct admissions check the exact
 operation/hash locally; the mandatory CheckResponse provider verifies actual
 protected original admission bytes and current outcome for every reply, including
-QUERY/CANCEL and retirement. An original admission retry always replays its
-byte-identical initial reply, including PENDING; QUERY may return a separately
+QUERY/CANCEL and retirement. An original admission retry of an unretired
+number always replays its byte-identical initial reply, including PENDING; once
+the number is retired it gets RETIRED_ID instead (see identity recycling
+below). QUERY may return a separately
 protected current/terminal observation. Cancellation keeps the original admission
 hash, protects one deterministic cancellation outcome and replays that exact
 outcome on retry. Retirement uses the protected **terminal outcome id**, never
@@ -272,7 +274,7 @@ Status-specific closed union:
 
 | status | Authority fields and operations |
 | --- | --- |
-| PENDING, INDETERMINATE, BLOCKED, RETIRED_ID | all three null; no cache/PTE rights |
+| PENDING, INDETERMINATE, BLOCKED, RETIRED_ID | all three null; no cache/PTE rights. RETIRED_ID answers an admission op (ACQUIRE/RENEW/RELEASE/RESERVE/FREEZE) under a retired number, bound to that request's own operation and hash; QUERY/CANCEL of a retired number are refused (Stale), except from a tombstone kept by a pre-q64 ledger |
 | GRANTED | exactly lease for ACQUIRE/RENEW, or reservation for DIRTY_RESERVE; QUERY returns that protected kind |
 | RELEASED, CANCELLED | all three null, matching RELEASE/CANCEL or QUERY |
 | FROZEN | entry only, exact frozen DIRTY_FREEZE binding; QUERY may replay it |
@@ -292,11 +294,13 @@ anything. Finite number/identity/source exhaustion blocks new admissions.
 tombstone, is what keeps a retired number retired: each family's High/Floor
 counters are permanent and numbers are never reused, so the controller
 deletes retired ticket rows at VIEW_RETIRE and returns their identity charge
-(`Bounds.Identities` bounds the tickets alive at once). A retired number's
-retransmit, QUERY, CANCEL or any other op under it is refused (Stale) rather
-than answered RETIRED_ID, and is never admitted as a new ticket; the guest
-never sends one, because it retires only tickets it no longer uses and frees
-them on RETIRED. Only a family's latest VIEW_RETIRE receipt is replayed; an
+(`Bounds.Identities` bounds the tickets alive at once). A retired number is
+never admitted as a new ticket. An admission op under it (exact retransmit or
+not) gets RETIRED_ID computed from its own operation and request bytes, which
+for an exact retransmit equals the tombstone's former answer; QUERY and CANCEL
+carry no original operation or hash, so they are refused (Stale). The guest
+never sends either, because it retires only tickets it no longer uses and
+frees them on RETIRED. Only a family's latest VIEW_RETIRE receipt is replayed; an
 older range is refused, since the guest builds each retirement from the
 previous RETIRED floor. Lease lineage revision high-waters are dropped once no
 lease of the lineage remains and the domain's fence passed it. Per session,

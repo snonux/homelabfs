@@ -201,23 +201,29 @@ at once, not every ticket a controller ever admits (before, a guest read's
 DOMAIN READ lease cost two never-returned identities, about 32 reads per
 controller lifetime at the zq3 spec). Replays stay safe because each ticket
 family's High/Floor counters are permanent: a recycled number is at or below
-the floor, so it is never admitted again; its exact retransmit, QUERY, CANCEL
-or a changed op under it is refused as Stale, and CheckResponse vouches for
-none of its replies (Permission). The guest never sends one: it retires only
-tickets it no longer uses and frees them once RETIRED arrives. The same
+the floor, so it is never admitted again. An admission op under it (exact
+retransmit or not) answers a rights-free RETIRED_ID bound to its own
+operation and request bytes, which for an exact retransmit is byte-identical
+to the old tombstone's answer, and CheckResponse vouches only for that reply;
+QUERY and CANCEL, which carry no original operation or hash, are refused as
+Stale. The guest's view code never sends one: it retires only tickets it no
+longer uses and frees them once RETIRED arrives (the terminal-kernel80
+harness replays retired admissions on purpose). The same
 compaction drops unreferenced closed leases/reservations/snapshots, a lease
 lineage's revision high-water once no lease of it remains and its domain's
 fence moved past it (no grant can mint it again, so no lease id can be
 reused), and every recall/provenance UUID nothing references. Only each
 family's latest VIEW_RETIRE receipt is kept; an older range is refused as
 Stale, because the guest builds the next retirement only from the previous
-RETIRED floor. The ACK archive keeps, per session, only the ACKs of the last
+RETIRED floor; receipts written before q64 name no family and are never
+pruned. The ACK archive keeps, per session, only the ACKs of the last
 recall it acknowledged: the guest's view control worker sends the next ACK
 only after the previous one was ACCEPTED, so an ACK of a later recall proves
 an earlier one will never be resent, and such a replay is answered STALE
 (its recall is gone and the session's event sequence only grows). Thus the
-ACK archive no longer caps lifetime recalls. A sealed session's records are
-left untouched for its terminal seal. The ledger only gains omitempty fields
+ACK archive no longer caps lifetime recalls. A sealed session's ticket rows
+are left untouched for its terminal seal (its closed leases and reservations
+can still be dropped by compaction, as before q64). The ledger only gains omitempty fields
 (`family.Scope`, `family.Receipt`, `LineageFences`): a schema-2 ledger written
 before q64 opens unchanged, its tombstones still answer RETIRED_ID until the
 next VIEW_RETIRE recycles them, and lineages without a recorded fence keep

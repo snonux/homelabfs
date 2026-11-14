@@ -234,9 +234,13 @@ terminal reply itself.
 
 `terminal-kernel80` complements the exporter test with all80 actual Linux
 transport slots and private Received associations. Retired, non-authoritative
-VIEW_ACQUIRE/VIEW_QUERY replies fill64 ordinary and16 control slots through
-actual hfs_control; a declared scheduling hook delays native delivery while the
-requests enter. Normal freeing returns transient carrier/Received charges to
+RETIRED_ID replies to the original VIEW_ACQUIRE and VIEW_RELEASE fill64
+ordinary and16 control slots through actual hfs_control (since task q64 the
+controller recycles retired rows and refuses a VIEW_QUERY of them, so the
+control lane replays the release admission); a declared scheduling hook delays
+native delivery while the requests enter. The kernel80 evidence recorded
+before q64 (VIEW_QUERY control fillers) must be re-recorded on the next
+guest-harness run. Normal freeing returns transient carrier/Received charges to
 baseline. Actual terminal capture enumerates all80, clears the transport and
 completion parents, and retains the tombstone through a forced post-proof
 teardown failure and normal retry. Its dedicated signed stress enrollment uses

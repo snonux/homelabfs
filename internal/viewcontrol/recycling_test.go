@@ -69,10 +69,10 @@ func TestZQ3LeaseCyclesRecycleViewIdentities(t *testing.T) {
 }
 
 // TestRecycledTicketReplaysAreRefused retransmits every view op of a cycle
-// whose tickets were retired and recycled. Each must be refused, never
-// admitted as a new ticket nor answered for the newer holder of the
-// domain's next lease, which must stay untouched. The replays repeat after
-// a reopen of the recycled ledger.
+// whose tickets were retired and recycled. None may be admitted as a new
+// ticket or answered for the newer holder of the domain's next lease, which
+// must stay untouched: admissions get a rights-free RETIRED_ID of their own
+// bytes, QUERY/CANCEL are Stale. The replays repeat after a reopen.
 func TestRecycledTicketReplaysAreRefused(t *testing.T) {
 	r := newZQ3Rig(t, 0)
 	x := newRecycleRun(r)
@@ -91,9 +91,9 @@ func TestRecycledTicketReplaysAreRefused(t *testing.T) {
 }
 
 // requireReplaysRefused sends a recycled cycle's ops again: the exact
-// admissions, QUERY and CANCEL of both tickets and a changed admission
-// under the old number are Stale, and CheckResponse vouches for none of
-// the old replies.
+// admissions and a different op under the old number answer RETIRED_ID
+// bound to their own bytes (which CheckResponse vouches for, but not for the
+// old GRANTED reply), and QUERY and CANCEL of both tickets are Stale.
 func (x *recycleRun) requireReplaysRefused(old readRecord) {
 	r := x.r
 	r.t.Helper()
@@ -102,26 +102,45 @@ func (x *recycleRun) requireReplaysRefused(old readRecord) {
 	for _, c := range []struct {
 		op      string
 		payload any
-	}{
-		{"VIEW_ACQUIRE", old.acquire},
-		{"VIEW_RELEASE", old.release},
-		{"VIEW_QUERY", map[string]any{"request": old.acquire["request"]}},
-		{"VIEW_QUERY", map[string]any{"request": old.release["request"]}},
-		{"VIEW_CANCEL", map[string]any{"request": old.acquire["request"]}},
-		{"VIEW_CANCEL", map[string]any{"request": old.release["request"]}},
-		{"VIEW_RENEW", changed},
-	} {
-		raw, err := canonical(c.payload)
-		must(r.t, err)
-		if reply, err := r.controller.ExchangeView(r.t.Context(), r.scopes[0], c.op, raw); !errors.Is(err, fsapi.Stale) {
-			r.t.Fatalf("%s of a recycled ticket: %s %v, want Stale", c.op, reply, err)
+	}{{"VIEW_ACQUIRE", old.acquire}, {"VIEW_RELEASE", old.release}, {"VIEW_RENEW", changed}} {
+		x.requireRetiredID(c.op, c.payload)
+	}
+	for _, request := range []any{old.acquire["request"], old.release["request"]} {
+		for _, op := range []string{"VIEW_QUERY", "VIEW_CANCEL"} {
+			raw, err := canonical(map[string]any{"request": request})
+			must(r.t, err)
+			if reply, err := r.controller.ExchangeView(r.t.Context(), r.scopes[0], op, raw); !errors.Is(err, fsapi.Stale) {
+				r.t.Fatalf("%s of a recycled ticket: %s %v, want Stale", op, reply, err)
+			}
 		}
 	}
 	raw, err := canonical(old.acquire)
 	must(r.t, err)
-	if err = r.controller.CheckResponse(r.t.Context(), r.scopes[0], "VIEW_ACQUIRE", raw, old.granted); !errors.Is(err, fsapi.Permission) {
-		r.t.Fatalf("CheckResponse vouched for a recycled ticket: %v", err)
+	if err = r.controller.CheckResponse(r.t.Context(), r.scopes[0], "VIEW_ACQUIRE", raw, old.granted); !errors.Is(err, fsapi.Stale) {
+		r.t.Fatalf("CheckResponse vouched for a recycled ticket's GRANTED reply: %v", err)
 	}
+}
+
+// requireRetiredID requires a retired admission replay to answer RETIRED_ID
+// with no rights, bound to this exact op and request, and CheckResponse to
+// vouch for exactly that reply.
+func (x *recycleRun) requireRetiredID(op string, payload any) {
+	r := x.r
+	r.t.Helper()
+	raw, err := canonical(payload)
+	must(r.t, err)
+	reply, err := r.controller.ExchangeView(r.t.Context(), r.scopes[0], op, raw)
+	must(r.t, err)
+	var got viewReply
+	must(r.t, json.Unmarshal(reply, &got))
+	var hashed struct {
+		Hash string `json:"request_hash"`
+	}
+	must(r.t, json.Unmarshal(reply, &hashed))
+	if got.Status != "RETIRED_ID" || got.Operation != op || got.Lease != nil || got.Reservation != nil || string(got.Entry) != "null" || hashed.Hash != digest(map[string]any{"op": op, "payload": json.RawMessage(raw)}) {
+		r.t.Fatalf("%s of a recycled ticket: %s", op, reply)
+	}
+	must(r.t, r.controller.CheckResponse(r.t.Context(), r.scopes[0], op, raw, reply))
 }
 
 // TestRecycledACKReplays checks the ACK archive rule: once a session ACKed a
@@ -190,26 +209,7 @@ func TestRecycledFamiliesStillSeal(t *testing.T) {
 func TestLegacyLedgerOpensAndRecycles(t *testing.T) {
 	r := newZQ3Rig(t, 0)
 	x := newRecycleRun(r)
-	rec := x.readUnretired(0)
-	r.controller.mu.Lock()
-	rows, revisions := map[string]ticketState{}, map[string]uint64{}
-	for key, ticket := range r.controller.state.Tickets {
-		rows[key] = ticket
-	}
-	for key, revision := range r.controller.state.Revisions {
-		revisions[key] = revision
-	}
-	r.controller.mu.Unlock()
-	x.retireAll(0)
-	r.controller.mu.Lock()
-	r.controller.makeLegacy(rows, revisions)
-	legacy, err := r.controller.rawState()
-	must(t, err)
-	must(t, r.controller.save())
-	r.controller.mu.Unlock()
-	if bytes.Contains(legacy, []byte("LineageFences")) || bytes.Contains(legacy, []byte("Receipt")) {
-		t.Fatal("legacy ledger still carries q64 fields")
-	}
+	rec := x.writeLegacyLedger()
 	r.reopen()
 	x.direct = true
 	if r.controller.state.Identities != 2 || len(r.controller.state.Tickets) != 2 {
@@ -237,6 +237,34 @@ func TestLegacyLedgerOpensAndRecycles(t *testing.T) {
 	if len(r.controller.state.Revisions) != legacyRevisions {
 		t.Fatalf("revisions %d, want the %d legacy ones kept", len(r.controller.state.Revisions), legacyRevisions)
 	}
+}
+
+// writeLegacyLedger runs one read cycle on m0, retires it, and saves the
+// ledger rewritten into the pre-q64 layout (makeLegacy), returning the cycle.
+func (x *recycleRun) writeLegacyLedger() readRecord {
+	r := x.r
+	r.t.Helper()
+	rec := x.readUnretired(0)
+	r.controller.mu.Lock()
+	rows, revisions := map[string]ticketState{}, map[string]uint64{}
+	for key, ticket := range r.controller.state.Tickets {
+		rows[key] = ticket
+	}
+	for key, revision := range r.controller.state.Revisions {
+		revisions[key] = revision
+	}
+	r.controller.mu.Unlock()
+	x.retireAll(0)
+	r.controller.mu.Lock()
+	defer r.controller.mu.Unlock()
+	r.controller.makeLegacy(rows, revisions)
+	legacy, err := r.controller.rawState()
+	must(r.t, err)
+	must(r.t, r.controller.save())
+	if bytes.Contains(legacy, []byte("LineageFences")) || bytes.Contains(legacy, []byte("Receipt")) {
+		r.t.Fatal("legacy ledger still carries q64 fields")
+	}
+	return rec
 }
 
 // makeLegacy rewrites the live ledger into the pre-q64 layout: the given

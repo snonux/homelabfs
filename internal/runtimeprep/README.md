@@ -193,10 +193,10 @@ Phase 9, T1-T4 and T6-T11 with 2x margin. T5's mapped dirtying (1024
 dirty pages, each a DIRTY_RESERVE and a DIRTY_FREEZE view ticket) used to
 need about 2050 view identities, because `Views.Identities` (64) counted
 every ticket the controller ever admitted (about 630 MiB of host budget at
-32 KiB of `LedgerBytes` each). Since task q64 VIEW_RETIRE recycles retired
+32 KiB of `LedgerBytes` each). Since task q64, VIEW_RETIRE recycles retired
 tickets, and since f84 the ACK archive and recall UUIDs are pruned
-(`viewcontrol/recycling.go`), so `Identities` bounds the view tickets alive
-at once, not a lifetime count; `TestZQ3LeaseCyclesRecycleViewIdentities`
+(`viewcontrol/recycling.go`). `Identities` therefore bounds the view tickets
+alive at once, not a lifetime count. `TestZQ3LeaseCyclesRecycleViewIdentities`
 drives hundreds of lease cycles (1100 measured) at these exact Views
 values. T5 itself stays deferred until it is re-planned and run; no T5
 pass is claimed here.

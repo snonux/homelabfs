@@ -22,6 +22,10 @@ type recycleRun struct {
 	peaks        recyclePeaks
 	cycles       int
 	recalls      int
+	// leases holds every granted lease id with the cycle that got it: the
+	// lineage-drop rule (recycleLineages) must never let a lease id recur,
+	// before or after reopen.
+	leases map[string]int
 }
 
 // recyclePeaks are the high-water marks of every record that used to grow
@@ -32,7 +36,7 @@ type recyclePeaks struct {
 }
 
 func newRecycleRun(r *rig) *recycleRun {
-	x := &recycleRun{r: r}
+	x := &recycleRun{r: r, leases: map[string]int{}}
 	for i := range 2 {
 		_, x.descriptions[i] = r.create(i, "q64-dirty-"+string(rune('0'+i)), false)
 	}
@@ -92,6 +96,7 @@ func (x *recycleRun) readUnretired(i int) readRecord {
 	if granted.Status != "GRANTED" || granted.Lease == nil {
 		x.r.t.Fatalf("cycle %d: DOMAIN READ %d: %+v", x.cycles, i, granted)
 	}
+	x.granted(granted.Lease)
 	rec.release = map[string]any{"request": x.r.controlTicket(i), "lease": granted.Lease}
 	x.r.physical("VIEW_RELEASE", rec.release)
 	if reply := x.view(i, "VIEW_RELEASE", rec.release); status(reply) != "PENDING" {
@@ -102,6 +107,16 @@ func (x *recycleRun) readUnretired(i int) readRecord {
 		x.r.t.Fatalf("cycle %d: release query %d: %s", x.cycles, i, reply)
 	}
 	return rec
+}
+
+// granted records a newly granted lease and fails if its id was granted in
+// an earlier cycle: a recycled lineage revision must never mint it again.
+func (x *recycleRun) granted(lease *guestbridge.ViewLease) {
+	x.r.t.Helper()
+	if cycle, seen := x.leases[lease.ID]; seen {
+		x.r.t.Fatalf("cycle %d: lease id %s already granted in cycle %d", x.cycles, lease.ID, cycle)
+	}
+	x.leases[lease.ID] = x.cycles
 }
 
 // finishRecall acknowledges every phase of the current clean recall for its
@@ -150,6 +165,7 @@ func (x *recycleRun) dirtyRound() {
 			r.t.Fatalf("round %d: reservation %d: %+v", x.cycles, i, reserved)
 		}
 		reservations[i], leases[i] = *reserved.Reservation, lease.Lease
+		x.granted(lease.Lease)
 	}
 	x.observe() // both write leases and reservations are live
 	release := map[string]any{"request": r.controlTicket(0), "lease": leases[0]}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/snonux/homelabfs/internal/fsapi"
 	"github.com/snonux/homelabfs/internal/guestbridge"
 )
 
@@ -22,17 +23,20 @@ import (
 //     tickets; compact deletes their rows and returns their Identities
 //     charge. A family's numbers stay monotone because the family (High,
 //     Floor) is never deleted, so a recycled number can never be admitted
-//     again: a replay at or below the floor is refused as Stale and
-//     CheckResponse refuses it with Permission. The guest never sends one:
-//     it retires only tickets it holds no reference to, with a terminal
-//     reply, and frees them once RETIRED arrives (hfs_view_retire).
+//     again: an admission op under it gets a rights-free RETIRED_ID bound
+//     to its own bytes, and QUERY/CANCEL of it are refused as Stale
+//     (retiredReply). The guest's view code never sends one: it retires
+//     only tickets it holds no reference to, with a terminal reply, and
+//     frees them once RETIRED arrives (hfs_view_retire); only test harnesses
+//     replay retired admissions (terminal-kernel80).
 //   - Lineage revisions: a lease lineage includes its domain's fence, which
 //     only grows. Once no lease of a lineage is in the ledger (so no RENEW
 //     can name it) and the domain's fence is past the lineage's, no grant can
 //     mint that lineage again, so its revision high-water can never prevent
 //     a content-id reuse and is dropped (recycleLineages).
 //   - Retirement receipts: only each family's latest receipt is kept (see
-//     retire).
+//     retire). Receipts a ledger wrote before q64 name no family and are
+//     never pruned.
 //   - ACK archive: per session only the ACKs of the recall that session
 //     acknowledged last are kept (pruneAckArchive).
 //   - Recall and reservation provenance UUIDs: a UUID is dropped once no
@@ -46,9 +50,11 @@ import (
 // HFS_VIEW_FAMILIES_MAX per session, and their counters are what makes
 // recycling safe.
 //
-// A sealed session's records are left alone: VerifyTerminalSeal compares its
-// frozen snapshot with the live ledger. Only a ledger written before q64 can
-// still hold such tombstones; a newer one recycles them before the seal.
+// A sealed session's ticket rows are left alone: VerifyTerminalSeal compares
+// its frozen snapshot with the live ledger. Only a ledger written before q64
+// can still hold such tombstones; a newer one recycles them before the seal.
+// (Its closed leases and reservations can still be dropped by
+// dropUnreferencedLeases, as before q64.)
 //
 // The ledger shape only gains omitempty fields (family.Scope,
 // family.Receipt, LineageFences), so a schema-2 ledger written before q64
@@ -92,6 +98,31 @@ func (c *Controller) recycleRetiredTickets() {
 		c.state.Identities--
 	}
 }
+
+// retiredReply answers an op on a retired number whose row was recycled.
+//
+// An admission op (VIEW_ACQUIRE, VIEW_RENEW, VIEW_RELEASE, DIRTY_RESERVE,
+// DIRTY_FREEZE) carries its complete original request, so it gets RETIRED_ID
+// bound to exactly the bytes it sent: operation and request_hash are those
+// of this request. For an exact retransmit that is byte-identical to the
+// RETIRED_ID the pre-q64 tombstone answered, because the tombstone kept the
+// same operation and hash. RETIRED_ID carries no lease, reservation or entry,
+// so it grants nothing and cannot be mistaken for any holder's reply; a
+// changed request under the old number is told only that its number is
+// retired (the old tombstone answered it RETIRED_ID too, with the original
+// hash). QUERY and CANCEL carry only the ticket, so the original operation
+// and hash are gone with the row: they are refused as Stale.
+func (c *Controller) retiredReply(op string, ticket guestbridge.Ticket, raw json.RawMessage) (json.RawMessage, error) {
+	if queryOrCancel(op) {
+		return nil, fsapi.Stale
+	}
+	t := ticketState{Request: ticket, Operation: op, PayloadHash: digest(map[string]any{"op": op, "payload": raw})}
+	return c.reply(t, "RETIRED_ID", nil, nil, nil)
+}
+
+// queryOrCancel reports the ops that address an existing ticket instead of
+// carrying an original admission.
+func queryOrCancel(op string) bool { return op == "VIEW_QUERY" || op == "VIEW_CANCEL" }
 
 // recycleLineages drops the revision high-water of every recorded lineage
 // that no lease in the ledger belongs to and whose domain fence has moved

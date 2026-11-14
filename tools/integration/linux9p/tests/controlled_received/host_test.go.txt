@@ -1519,9 +1519,6 @@ func TestControlledReceivedActualTerminalKernel80(t *testing.T) {
 	if len(acquire) == 0 {
 		t.Fatal("missing real acquisition original")
 	}
-	var acquired struct{ Request json.RawMessage }
-	require(t, json.Unmarshal(acquire, &acquired))
-	query := mustRuntimeJSON(t, map[string]any{"request": acquired.Request})
 	reopened := false
 	c.yields = func(_ uint64) {
 		var ready bool
@@ -1546,6 +1543,21 @@ func TestControlledReceivedActualTerminalKernel80(t *testing.T) {
 	c.yields = nil
 	if !reopened {
 		t.Fatal("actual lease release did not exercise recall")
+	}
+	// The release's original admission fills the control slots. Since task
+	// q64 the controller recycles retired ticket rows: an exact admission
+	// replay under a retired number still answers a rights-free RETIRED_ID
+	// of its own bytes, but VIEW_QUERY of it (which no longer names an
+	// original operation) is refused, so the control lane replays the
+	// original VIEW_RELEASE instead of a VIEW_QUERY.
+	var release json.RawMessage
+	for _, command := range c.commands {
+		if command.Context == r.scope && command.Op == "VIEW_RELEASE" {
+			release = bytes.Clone(command.Payload)
+		}
+	}
+	if len(release) == 0 {
+		t.Fatal("missing real release original")
 	}
 	c.action("REPLIES_DROP", 0, "", 0)
 	c.action("RETIRE", 0, "", 0)
@@ -1582,7 +1594,7 @@ func TestControlledReceivedActualTerminalKernel80(t *testing.T) {
 		}
 		reserved, op, payload := 0, "VIEW_ACQUIRE", acquire
 		if issued >= 64 {
-			reserved, op, payload = 1, "VIEW_QUERY", query
+			reserved, op, payload = 1, "VIEW_RELEASE", release
 		}
 		issued++
 		c.action("REPLAY_CONTROL", 0, fmt.Sprintf("%d %s %s", reserved, op, hex.EncodeToString(payload)), 0)
