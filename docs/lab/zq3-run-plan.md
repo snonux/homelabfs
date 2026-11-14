@@ -589,15 +589,18 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
        later). Root on f3 runs the pinned runtime once per poll in client
        mode (`--operation observe`, the READY socket and runtime UUID,
        sequences 1, 2, …). Before the final probe, neither provider ledger
-       may hold an open claim (`baseline`). After it, OBSERVE every 2 s until
+       may hold an open claim (`baseline`). After it, OBSERVE every 5 s until
        each provider shows a TERMINAL GETATTR and PROCESS_EXIT numbered after
-       the baseline and nothing open (`claims`), within 30 s more. A failure
-       names each open claim (number, opcode, status, stage) and the summary's
-       `usable_note` says a claim failed. Each OBSERVE refreshes the
-       Admissions through the guest observer and consumes a lifecycle
-       sequence: `summary.json` records `observe_sequence_last`, and Phase 9
-       starts above it. The gate's bound grows to the settle point plus 60 s
-       (see the
+       the baseline (opcode and number range, not process identity; retired
+       numbers count as TERMINAL) and nothing open (`claims`), within 30 s
+       of the final probe. A failure names each open claim (number, opcode,
+       status, stage) and the summary's `usable_note` says a claim failed;
+       an OBSERVE that is refused, incomplete or from a pre-b84 runtime fails
+       with its own cause and note. Each OBSERVE takes a fresh SSH
+       observation of the guest (a failed one fences the Admission) and
+       consumes a lifecycle sequence: `summary.json` records
+       `observe_sequence_last`, and Phase 9 starts above it. The gate's bound
+       grows to about 100 s after `mount-1` (see the
        [README](../../tools/lab/retained9p/README.md#phase-8-bootstrap-orchestrator-zq3-g1)).
 - Changes on Rocky's disk (A3): `/etc/homelabfs/installed-admission-v1.json`
   (and `/etc/homelabfs/` if absent), the G5 journal lines; kdump may create
@@ -625,6 +628,15 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
   `observe_sequence_last`, and the runtime refuses a sequence that is not
   strictly larger (a refusal consumes nothing; retry with the right N).
   Guest: `findmnt` shows exactly the two mounts.
+- Every later literal sequence shifts by the same `observe_sequence_last`
+  (call it L): the T1 baseline OBSERVE uses L + 2 (it was literal 2), and the
+  run sheet's expected-sequence table moves up by L (case baselines/retained
+  L+2/L+3 … L+8/L+9, T9 pre-arm L+10, ARM L+11, post-CALL L+12, T10
+  post-quiesce L+13, RESTART L+14 with T5 deferred). `correlate.py command`
+  already derives its sequence from the latest reply. A number at or below
+  the last accepted one is refused without being consumed
+  (`lifecycle_control.go` `dispatch`), so a stale literal costs a retry, not
+  the sequence.
 
 ### Phase 10: gate matrix (B inside the window)
 

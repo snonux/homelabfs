@@ -49,9 +49,11 @@ type ClaimEvidence struct {
 	// gap (the same settled test terminalEmpty uses): ALLOCATED, RESERVED
 	// and any other in-flight status.
 	Open int
-	// Pending lists up to claimEvidencePending open entries, oldest number
-	// first; Recent lists up to claimEvidenceRecent present entries, newest
-	// number first, whatever their status.
+	// Pending lists up to claimEvidencePending open entries, sorted by
+	// number; which ones are cut is bbolt key order (principal, then number),
+	// which is number order for the guest's single principal per session.
+	// Recent lists up to claimEvidenceRecent present entries, newest number
+	// first, whatever their status.
 	Pending []ClaimSummary
 	Recent  []ClaimSummary
 }
@@ -66,9 +68,10 @@ type ClaimSummary struct {
 	Stage  string
 }
 
-// claimEvidence reads the principals and claims buckets in one read
-// transaction. The caller holds the execution mutex, so no provider
-// transition is half applied.
+// claimEvidence reads the principals and claims buckets inside the caller's
+// read transaction. That transaction is the consistency boundary: Allocate,
+// Reserve and Retire do not take the execution mutex the caller holds, but
+// each commits atomically, so the snapshot never shows half a transition.
 func (p *Provider) claimEvidence(tx *bolt.Tx) (ClaimEvidence, error) {
 	// Empty, not nil, lists: a settled ledger encodes "Pending":[] so a
 	// reader can tell "nothing open" from a missing field.

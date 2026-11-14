@@ -14,9 +14,10 @@ signed bind, the bind sysfs write, both guest mounts and READY, all inside
 `bootstrap_seconds` (at most 120) from launch. Then the post-READY usability
 gate (`usable`, k64 + b84): both mount roots must still answer an lstat after
 the guest's 30 s QUERY timeout has passed for the mounts' own claims, and the
-runtime's OBSERVE must show every provider claim settled and the final
-probe's GETATTR and PROCESS_EXIT claims TERMINAL, under its own bound counted
-from mount-1. The lstat writes nothing into the mounts, but each one adds
+runtime's OBSERVE must show every provider claim settled and a GETATTR and a
+PROCESS_EXIT numbered after the pre-final-probe baseline TERMINAL (the final
+probe's, identified by opcode and number range), under its own bounds counted
+from mount-1 and from the final probe. The lstat writes nothing into the mounts, but each one adds
 GETATTR and PROCESS_EXIT claims to the runtime's provider ledgers. See the
 run plan docs/lab/zq3-run-plan.md, Phase 8.
 
@@ -117,17 +118,26 @@ MIN_REMOTE_SECONDS = {"admission": 40.0, "mount-0": 10.0, "mount-1": 10.0}
 #   - at the settle point, before the final probe: no open claim in either
 #     ledger (the mounts' and the first probe's claims all settled), the
 #     `baseline`;
-#   - after the final probe, polled until the gate's deadline: per provider
-#     at least CLAIMS_PER_PROBE numbers allocated since the baseline, no open
-#     claim, and both a GETATTR and a PROCESS_EXIT newer than the baseline
-#     TERMINAL (or already retired, which implies TERMINAL), the `claims`
-#     phase.
+#   - after the final probe, polled for at most USABLE_CLAIM_SECONDS: per
+#     provider at least CLAIMS_PER_PROBE numbers allocated since the
+#     baseline, no open claim, and a TERMINAL GETATTR and a TERMINAL
+#     PROCESS_EXIT numbered after the baseline, the `claims` phase. A number
+#     the guest already retired (at or below Retired) was TERMINAL first; its
+#     entry may be recycled, so each such number may stand in for one
+#     opcode the summary no longer shows.
+# The gate identifies claims by opcode and number range, not by process: in
+# the quiet bootstrap the only claims after the baseline are the final
+# probe's, but OBSERVE cannot prove that. Recent lists only the 8 newest
+# entries, so many unrelated new claims would hide the probe's and fail the
+# gate (fail safe, never a false pass).
 # Claim numbers are per principal; the guest uses one principal per session
 # (the enrolled realm/subject/anchor/nonce), so the gate requires exactly one
 # and compares numbers against the baseline's Allocated.
-# OBSERVE is not free: it refreshes each Admission through the guest
-# observer (a failed refresh fences that Admission, as any VIEW_ACK refresh
-# would) and consumes one lifecycle sequence per attempt. Phase 9 must use a
+# OBSERVE is not free: it refreshes the guest Admission (one fresh SSH
+# observation of the guest, never the cached one, serialized with the
+# VIEW_ACK observations on the admission's refresh lock) and captures a view
+# source, and a failed observation permanently fences that Admission. It
+# also consumes one lifecycle sequence per attempt; Phase 9 must use a
 # sequence above summary.json's `observe_sequence_last`.
 GUEST_QUERY_SECONDS = 30
 USABLE_SETTLE_SECONDS = GUEST_QUERY_SECONDS + 10   # final probe, counted from mount-1's end
@@ -136,7 +146,13 @@ USABLE_PROBE_SECONDS = 30      # per-call cap, and the slack after the settle po
 # After the final probe the claims get up to the guest's own QUERY window to
 # reach TERMINAL: a claim that takes longer blocks the session anyway.
 USABLE_CLAIM_SECONDS = GUEST_QUERY_SECONDS
-CLAIM_POLL_SECONDS = 2.0       # between OBSERVEs; each one also SSH-observes the guest
+# Between OBSERVEs. Each one forces a fresh guest SSH observation that
+# competes with the VIEW_ACK observations, the zq3-r8 recall-latency path,
+# and a failed one fences the Admission. So poll slowly: a healthy claim is
+# TERMINAL within one round trip, and 5 s gives about six OBSERVEs in a
+# failing 30 s claims window instead of fifteen. The 984 workload model does
+# not count these OBSERVEs yet.
+CLAIM_POLL_SECONDS = 5.0
 CLAIMS_PER_PROBE = 2           # the lstat child's GETATTR and its PROCESS_EXIT, per root
 # Ending of the local guard SSH process says little about f3: the guard may
 # have finished (its receipt says why) or only the connection was lost.
@@ -154,6 +170,12 @@ USABLE_CLAIMS_FAILED = ("The runtime reached READY and the mount roots answered,
                         "once the guest's 30 s QUERY window ends, as in zq3-r8. The runtime and both mounts were left "
                         "as they are: go to Phase 11 with inspection first; never remount or retry. Any later "
                         "OBSERVE needs a sequence above summary.json's observe_sequence_last.")
+USABLE_OBSERVE_FAILED = ("The runtime reached READY, but the usable gate could not read the provider claims: OBSERVE "
+                         "was refused, incomplete (a refresh error fences the Admission), not SERVING, from a runtime "
+                         "without the b84 claim summary, or never answered (see the journal's usable error). The "
+                         "runtime and both mounts were left as they are: go to Phase 11 with inspection first; never "
+                         "remount or retry. Any later OBSERVE needs a sequence above summary.json's "
+                         "observe_sequence_last.")
 STREAM_LIMIT = 1 << 20         # per stream of one SSH/local child
 SAFE_TOKEN = re.compile(r"[A-Za-z0-9_./=:,+-]+\Z")
 SAFE_PATH = re.compile(r"/[A-Za-z0-9_./-]+\Z")
@@ -191,6 +213,11 @@ class StepFailed(RuntimeError):
     def __init__(self, message, detail=None):
         super().__init__(message)
         self.detail = detail or {}
+
+
+class DeadlinePassed(StepFailed):
+    """The current deadline passed (raised by Bootstrap.seconds); a caller
+    may name what it was still waiting for."""
 
 
 class StepUncertain(RuntimeError):
@@ -914,20 +941,27 @@ def claims_problems(claims, base):
 
 
 def probe_claim_problems(tag, now, base):
-    """The final probe's own claims on one mount, numbered above the baseline."""
+    """One mount's claims numbered above the baseline (the final probe's, by
+    opcode and number range): a TERMINAL GETATTR and PROCESS_EXIT.
+
+    A new number at or below Retired was TERMINAL before the guest retired
+    it, and its entry may already be recycled out of Recent; each such number
+    can stand in for one opcode Recent does not show (zq3 review: GETATTR
+    retired, PROCESS_EXIT still listed, must pass).
+    """
     first, needed = base["Allocated"] + 1, base["Allocated"] + CLAIMS_PER_PROBE
     if now["Allocated"] < needed:
-        return ["{}: the final probe's GETATTR and PROCESS_EXIT are not both allocated yet ({} of {} numbers "
+        return ["{}: the GETATTR and PROCESS_EXIT after the baseline are not both allocated yet ({} of {} numbers "
                 "after #{})".format(tag, now["Allocated"] - base["Allocated"], CLAIMS_PER_PROBE, base["Allocated"])]
-    if now["Retired"] >= now["Allocated"]:
-        return []  # every number, the probe's included, was retired after it was TERMINAL
+    retired = max(0, min(now["Retired"], now["Allocated"]) - base["Allocated"])
     newer = [c for c in now["Recent"] if isinstance(c, dict) and type(c.get("Number")) is int and
              c["Number"] >= first]
     missing = [op for op in ("GETATTR", "PROCESS_EXIT")
                if not any(c.get("Opcode") == op and c.get("Status") == "TERMINAL" for c in newer)]
-    if missing:
-        return ["{}: no TERMINAL {} among the final probe's claims ({})".format(
-            tag, " or ".join(missing), ", ".join(claim_text(c) for c in newer) or "none listed")]
+    if len(missing) > retired:
+        return ["{}: no TERMINAL {} numbered after the baseline #{} ({}; {} new number(s) retired)".format(
+            tag, " or ".join(missing), base["Allocated"], ", ".join(claim_text(c) for c in newer) or "none listed",
+            retired)]
     return []
 
 
@@ -979,7 +1013,8 @@ class Bootstrap:
         # Lifecycle sequences this run consumed (b84): one per OBSERVE
         # attempt, sent or not answered. Phase 9 must start above it.
         self.observe_sequence = 0
-        self.usable_phase = self.last_claims = None  # where `usable` stopped, for its note
+        self.usable_phase = self.last_claims = None  # where `usable` stopped
+        self.usable_failure = None  # "claims" or "observe" when wait_claims failed, for the note
 
     def run(self):
         """(exit status, step that stopped the run): 0 READY with both mount
@@ -1016,7 +1051,7 @@ class Bootstrap:
             return cap
         remaining = self.deadline - self.io.clock.now()
         if remaining <= 0:
-            raise StepFailed("{} passed during {}{}".format(
+            raise DeadlinePassed("{} passed during {}{}".format(
                 self.deadline_text, self.step_name, "; last: " + self.last_retry if self.last_retry else ""))
         return min(cap, remaining) if cap else remaining
 
@@ -1321,27 +1356,29 @@ class Bootstrap:
         child as an hfs process and sends a GETATTR claim, and the child's
         exit queues its own PROCESS_EXIT claim (patch 0003). The two probes
         therefore add about four durable claims to each provider ledger
-        before T1. Each OBSERVE refreshes the Admissions through the guest
-        observer and consumes a lifecycle sequence.
+        before T1. Each OBSERVE refreshes the guest Admission through the
+        guest observer and consumes a lifecycle sequence.
 
         READY ends the runtime's launch-to-READY bootstrap timeout, so this
         step replaces the driver's deadline with its own fixed bound through
         the same `seconds()` machinery: the settle point (mount-1's end plus
         USABLE_SETTLE_SECONDS, or now if READY came later) plus
-        USABLE_PROBE_SECONDS and USABLE_CLAIM_SECONDS. Phases, in order:
-        `first` probe right away (a root already refused fails fast);
-        `settle` until the guest's QUERY window has closed for the mounts'
-        claims; `baseline` OBSERVE with no open claim; `final` probe; `claims`
-        OBSERVE polls until the final probe's GETATTR and PROCESS_EXIT are
-        TERMINAL on every mount (zq3-r8: an answered lstat whose
-        PROCESS_EXIT stayed RESERVED blocked the session 30 s later).
+        USABLE_PROBE_SECONDS for the baseline and the final probe, then the
+        final probe's end plus USABLE_CLAIM_SECONDS for the claims. Phases,
+        in order: `first` probe right away (a root already refused fails
+        fast); `settle` until the guest's QUERY window has closed for the
+        mounts' claims; `baseline` OBSERVE with no open claim; `final` probe;
+        `claims` OBSERVE polls until a GETATTR and a PROCESS_EXIT numbered
+        after the baseline are TERMINAL on every mount and nothing is open
+        (zq3-r8: an answered lstat whose PROCESS_EXIT stayed RESERVED
+        blocked the session 30 s later).
         Every failure's journal detail carries `probe` (the phase), `roots`
         and `errno` (null where no lstat reported one), `claims` (the last
         per-mount claim summary, null before any OBSERVE answered) and
         `observe_sequence_last`.
         """
         settle_at = self.mounted_at + USABLE_SETTLE_SECONDS
-        self.deadline = max(settle_at, self.io.clock.now()) + USABLE_PROBE_SECONDS + USABLE_CLAIM_SECONDS
+        self.deadline = max(settle_at, self.io.clock.now()) + USABLE_PROBE_SECONDS
         self.deadline_text = "usable gate deadline ({:.0f} s after mount-1)".format(self.deadline - self.mounted_at)
         try:
             return self.usable_phases(settle_at)
@@ -1366,6 +1403,10 @@ class Bootstrap:
         self.usable_phase = "final"
         final = self.stat_roots("final")
         final_at = self.io.clock.now()
+        # The claims get the guest's own QUERY window from the final probe's
+        # end, whatever the baseline and probe left of the first bound.
+        self.deadline = final_at + USABLE_CLAIM_SECONDS
+        self.deadline_text = "usable claim deadline ({} s after the final probe)".format(USABLE_CLAIM_SECONDS)
         self.usable_phase = "claims"
         claims = self.wait_claims(base)
         self.usable_phase = None
@@ -1375,16 +1416,21 @@ class Bootstrap:
                 "observe_sequence_last": self.observe_sequence}
 
     def usable_note(self):
-        """summary.json's note for a failed `usable`: claims or roots."""
-        return USABLE_CLAIMS_FAILED if self.usable_phase in ("baseline", "claims") else USABLE_FAILED
+        """summary.json's note for a failed `usable`: open claims, an OBSERVE
+        that could not be read, or (any other phase) a mount root."""
+        return {"claims": USABLE_CLAIMS_FAILED, "observe": USABLE_OBSERVE_FAILED}.get(
+            self.usable_failure, USABLE_FAILED)
 
     def wait_claims(self, base):
         """OBSERVE until claims_problems() is empty; the per-mount claims.
 
-        Polled every CLAIM_POLL_SECONDS within the gate's deadline. A
-        transport miss retries with a fresh sequence; an OBSERVE that is not
-        complete and SERVING, or lacks the claim summary, fails at once. At
-        the deadline the failure names the open claims of the last OBSERVE.
+        Polled every CLAIM_POLL_SECONDS within the current deadline. A
+        transport miss retries with a fresh sequence; an OBSERVE that is
+        refused, not complete and SERVING, or lacks the claim summary fails
+        at once with its own cause. Only when the deadline itself passes is
+        the failure restated as the open claims of the last answered OBSERVE
+        (a transport miss in between leaves those as the last known state).
+        `usable_failure` records which of the two it was, for the note.
         """
         sessions = {m["session"]: m["device_tag"] for m in self.facts["enroll_request"]["Mounts"]}
         problems = []
@@ -1398,11 +1444,16 @@ class Bootstrap:
             return claims
         try:
             return self.poll(attempt, CLAIM_POLL_SECONDS)
-        except StepFailed:
+        except DeadlinePassed:
             if not problems:
+                self.usable_failure = "observe"  # no OBSERVE answered in time
                 raise
+            self.usable_failure = "claims"
             raise StepFailed("{} OBSERVE: provider claims not TERMINAL by the {}: {}".format(
                 self.usable_phase, self.deadline_text, "; ".join(problems))) from None
+        except StepFailed:
+            self.usable_failure = "observe"
+            raise
 
     def observe(self):
         """One OBSERVE through the plan-pinned runtime client on f3."""

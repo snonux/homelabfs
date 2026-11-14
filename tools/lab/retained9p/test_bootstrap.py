@@ -691,14 +691,15 @@ class UsableClaimTests(UsableCase):
     def summary(self):
         return json.loads((self.output / "summary.json").read_text())
 
-    def assert_claims_failure(self, phase, text):
+    def assert_claims_failure(self, phase, text, note=None):
+        """`usable` failed in `phase` with `text`; the summary carries `note`
+        (default: the open-claims note)."""
         self.assertEqual(self.run_plan(), 1)
         self.assert_stopped("usable", "failed", text)
         detail = self.usable()
         self.assertEqual((detail["probe"], detail["roots"], detail["errno"]), (phase, None, None))
         self.assertEqual(detail["observe_sequence_last"], self.world.sequences[-1])
-        self.assertEqual(self.summary()["usable_note"], bootstrap.USABLE_CLAIMS_FAILED)
-        self.assertIn("PROCESS_EXIT", self.summary()["usable_note"])
+        self.assertEqual(self.summary()["usable_note"], note or bootstrap.USABLE_CLAIMS_FAILED)
         self.assert_preserved()
         return detail
 
@@ -727,8 +728,14 @@ class UsableClaimTests(UsableCase):
             "claims", "hfs0: 1 claim(s) not TERMINAL: #6 PROCESS_EXIT RESERVED/UNPREPARED")
         self.assertEqual(self.world.actions().count("guest-stat"), 2)  # both lstats answered
         self.assertEqual((detail["claims"]["hfs0"]["Open"], detail["claims"]["hfs1"]["Open"]), (1, 0))
-        self.assertIn("not TERMINAL by the usable gate deadline", self.usable()["error"])
-        self.assertGreaterEqual(self.world.clock - self.world.stat_clocks[-1], bootstrap.USABLE_CLAIM_SECONDS)
+        self.assertIn("not TERMINAL by the usable claim deadline (30 s after the final probe)",
+                      self.usable()["error"])
+        self.assertIn("PROCESS_EXIT", self.summary()["usable_note"])
+        # The claims window is the guest's QUERY window from the final probe,
+        # not whatever was left of the gate's first bound.
+        waited = self.world.clock - self.world.stat_clocks[-1]
+        self.assertGreaterEqual(waited, bootstrap.USABLE_CLAIM_SECONDS)
+        self.assertLessEqual(waited, bootstrap.USABLE_CLAIM_SECONDS + bootstrap.CLAIM_POLL_SECONDS + 1)
 
     def test_r8_shape_first_probe_exit_stranded_fails_at_the_baseline(self):
         self.world.strand[("hfs0", 1, "PROCESS_EXIT")] = None
@@ -740,6 +747,23 @@ class UsableClaimTests(UsableCase):
         self.assertEqual(self.run_plan(), 0)
         self.assertEqual(self.world.actions().count("host-observe"), 4)  # baseline + three claim polls
         self.assertGreaterEqual(self.usable()["claims_seconds_after_final"], 2 * bootstrap.CLAIM_POLL_SECONDS)
+
+    def test_open_claim_then_incomplete_observe_reports_the_real_cause(self):
+        """Review b84-1: the open claim of an earlier OBSERVE must not mask a
+        later OBSERVE failure as "not TERMINAL by the deadline"."""
+        self.world.strand[("hfs0", 1, "PROCESS_EXIT")] = None
+        seen = []
+
+        def fence_second(evidence):
+            seen.append(1)
+            if len(seen) >= 2:
+                evidence.update(complete=False)
+        self.world.evidence_change = fence_second
+        detail = self.assert_claims_failure("baseline", "is not complete, SERVING and unpublished",
+                                            bootstrap.USABLE_OBSERVE_FAILED)
+        self.assertNotIn("not TERMINAL", self.usable()["error"])
+        self.assertEqual(detail["claims"]["hfs0"]["Open"], 1)  # the last answered summary is kept
+        self.assertEqual(len(seen), 2)
 
     def test_observe_transport_miss_retries_with_a_fresh_sequence(self):
         original, misses = self.world.on_host_observe, []
@@ -763,7 +787,7 @@ class UsableClaimTests(UsableCase):
             with self.subTest(text=text):
                 self.setUp()
                 self.world.evidence_change = change
-                self.assert_claims_failure("baseline", text)
+                self.assert_claims_failure("baseline", text, bootstrap.USABLE_OBSERVE_FAILED)
                 self.assertEqual(self.world.actions().count("host-observe"), 1)
 
 
@@ -786,18 +810,29 @@ class ClaimProblemTests(unittest.TestCase):
     def test_unallocated_process_exit_is_not_settled(self):
         recent = [{"Number": 5, "Opcode": "GETATTR", "Status": "TERMINAL", "Stage": "PREPARED"}]
         problems = bootstrap.claims_problems({"hfs0": self.ledger(5, recent)}, self.BASE)
-        self.assertEqual(problems, ["hfs0: the final probe's GETATTR and PROCESS_EXIT are not both allocated yet "
-                                    "(1 of 2 numbers after #4)"])
+        self.assertEqual(problems, ["hfs0: the GETATTR and PROCESS_EXIT after the baseline are not both allocated "
+                                    "yet (1 of 2 numbers after #4)"])
 
     def test_missing_terminal_process_exit_among_new_claims(self):
         recent = [{"Number": 6, "Opcode": "FORGET", "Status": "TERMINAL"},
                   {"Number": 5, "Opcode": "GETATTR", "Status": "TERMINAL"}]
         problems = bootstrap.claims_problems({"hfs0": self.ledger(6, recent)}, self.BASE)
         self.assertEqual(len(problems), 1)
-        self.assertIn("no TERMINAL PROCESS_EXIT among the final probe's claims", problems[0])
+        self.assertIn("no TERMINAL PROCESS_EXIT numbered after the baseline #4", problems[0])
 
     def test_retired_numbers_count_as_terminal(self):
         self.assertEqual(bootstrap.claims_problems({"hfs0": self.ledger(6, [], retired=6)}, self.BASE), [])
+
+    def test_partly_retired_probe_claims_count_as_terminal(self):
+        """Review b84-4: GETATTR #5 retired and recycled, PROCESS_EXIT #6 still
+        listed TERMINAL: settled. Without the retirement it is not."""
+        recent = [{"Number": 6, "Opcode": "PROCESS_EXIT", "Status": "TERMINAL"}]
+        self.assertEqual(bootstrap.claims_problems({"hfs0": self.ledger(6, recent, retired=5)}, self.BASE), [])
+        problems = bootstrap.claims_problems({"hfs0": self.ledger(6, recent, retired=4)}, self.BASE)
+        self.assertIn("no TERMINAL GETATTR numbered after the baseline #4", problems[0])
+        # One retired number cannot stand in for two missing opcodes.
+        problems = bootstrap.claims_problems({"hfs0": self.ledger(7, [], retired=5)}, self.BASE)
+        self.assertIn("GETATTR or PROCESS_EXIT", problems[0])
 
     def test_more_than_one_principal_refuses_number_comparison(self):
         problems = bootstrap.claims_problems({"hfs0": self.ledger(6, [], principals=2)}, self.BASE)

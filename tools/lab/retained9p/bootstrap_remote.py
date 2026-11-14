@@ -196,8 +196,8 @@ def host_observe(system, args, payload):
     the plan-pinned runtime itself (`--control SOCKET --operation observe`);
     the socket must sit in a root-owned private directory, and the endpoint
     authenticates our peer UID (root, via doas) before reading a byte.
-    OBSERVE refreshes the Admissions through the guest observer and consumes
-    `--sequence`; it changes no file or mount. A client that does not return
+    OBSERVE refreshes the guest Admission through the guest observer and
+    consumes `--sequence`; it changes no file or mount. A client that does not return
     within `--seconds` is left running (it ends at its own I/O deadline) and
     reported as a known failure, never retried here.
     """

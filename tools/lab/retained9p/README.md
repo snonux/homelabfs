@@ -745,7 +745,7 @@ primitives, and keeps the Go tools (`hfs-runtime-prep`,
 | `bind` | remote | one write of `bind.json` to `/sys/kernel/homelabfs/bind_v1` |
 | `mount-0`, `mount-1` | remote | `mount -t 9p -o trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,msize=65536 hfsN /var/tmp/hfs-zq3-RUN/mN`, checked in `/proc/self/mountinfo` |
 | `ready` | read | third record `READY`, `CONTROLLED_LOCAL`, two domains, control binding |
-| `usable` | read | post-READY usability gate (k64, b84): `guest-stat` lstats both mount roots as root right away and again once 40 s have passed since `mount-1` ended (the guest's 30 s QUERY timeout plus 10 s), with a host poll and a `host-observe` baseline (no open provider claim) in between; both roots must answer every time, and `host-observe` polls until the final probe's GETATTR and PROCESS_EXIT claims are TERMINAL on both providers. Writes nothing into the mounts, but each lstat adds GETATTR and PROCESS_EXIT claims to the provider ledgers and each OBSERVE consumes a lifecycle sequence |
+| `usable` | read | post-READY usability gate (k64, b84): `guest-stat` lstats both mount roots as root right away and again once 40 s have passed since `mount-1` ended (the guest's 30 s QUERY timeout plus 10 s), with a host poll and a `host-observe` baseline (no open provider claim) in between; both roots must answer every time, and `host-observe` polls (every 5 s, at most 30 s) until a GETATTR and a PROCESS_EXIT numbered after the baseline are TERMINAL on both providers. Writes nothing into the mounts, but each lstat adds GETATTR and PROCESS_EXIT claims to the provider ledgers and each OBSERVE consumes a lifecycle sequence |
 
 ```
 python3 -I -B bootstrap.py check --plan PLAN --plan-sha256 SHA
@@ -900,26 +900,40 @@ surfaced only in T1/T6. So READY is no longer the last step.
     until neither provider has an open claim (the mounts' and the first
     probe's claims all settled). zq3-r8's stranded first-probe PROCESS_EXIT
     fails here, before the final probe runs.
-  - Phase `claims`, after the final probe: OBSERVE every 2 s until, per
-    provider, at least two numbers were allocated after the baseline's
-    `Allocated`, nothing is open, and a TERMINAL GETATTR and a TERMINAL
-    PROCESS_EXIT are among the newer numbers (or every number is already
-    retired, which implies TERMINAL). Claim numbers are per principal; the
-    guest uses one per session, and the gate requires exactly one.
+  - Phase `claims`, after the final probe and for at most 30 s from its
+    end: OBSERVE every 5 s until, per provider, at least two numbers were
+    allocated after the baseline's `Allocated`, nothing is open, and a
+    TERMINAL GETATTR and a TERMINAL PROCESS_EXIT are among the newer
+    numbers. A newer number the guest already retired (at or below
+    `Retired`) was TERMINAL first and may be recycled out of `Recent`, so
+    each one stands in for one opcode not shown. Claim numbers are per
+    principal; the guest uses one per session, and the gate requires
+    exactly one.
+  - The gate identifies the probe's claims by opcode and number range, not
+    by process: in the quiet bootstrap they are the only new ones, but
+    OBSERVE cannot prove it. `Recent` lists only the 8 newest entries, so
+    many unrelated new claims would hide the probe's and fail the gate
+    (fail safe, never a false pass).
   - An OBSERVE that is not `complete` and `SERVING`, has the wrong evidence
     version (a runtime without b84), lacks a provider's `Claims` or names
-    other sessions fails at once. A transport miss retries with a fresh
-    sequence. At the gate's deadline the failure names each open claim
-    (`hfs0: 1 claim(s) not TERMINAL: #6 PROCESS_EXIT RESERVED/UNPREPARED`);
-    the journal detail adds `claims` (the last per-mount summary) and
-    `observe_sequence_last`, and `summary.json`'s `usable_note` says a claim,
-    not a root, failed.
-  - Bound: the settle point plus 30 s (probes) plus 30 s (claims, the
-    guest's own QUERY window: a claim slower than that blocks the session
-    anyway), so about 100 s after `mount-1`.
-  - Side effects: each OBSERVE refreshes both Admissions through the guest
-    observer (a failed refresh fences that Admission, as any refresh does)
-    and consumes one lifecycle sequence, even when its reply is lost.
+    other sessions fails at once with that cause (an earlier OBSERVE's open
+    claims never mask it), and `usable_note` says OBSERVE could not be read.
+    A transport miss retries with a fresh sequence. Only when the deadline
+    itself passes does the failure name each open claim of the last answered
+    OBSERVE (`hfs0: 1 claim(s) not TERMINAL: #6 PROCESS_EXIT
+    RESERVED/UNPREPARED`), with the claims `usable_note`. The journal detail
+    adds `claims` (the last per-mount summary) and `observe_sequence_last`.
+  - Bound: baseline and final probe within the settle point plus 30 s, then
+    30 s from the final probe's end for the claims (the guest's own QUERY
+    window: a claim slower than that blocks the session anyway), so about
+    100 s after `mount-1`.
+  - Side effects: each OBSERVE refreshes the (single) guest Admission with
+    a fresh SSH observation of the guest (never the cached one, serialized
+    with the VIEW_ACK observations, the zq3-r8 recall-latency path) and
+    captures a view source; a failed observation permanently fences the
+    Admission. Hence the 5 s poll: about six OBSERVEs in a failing claims
+    window. The 984 workload model does not count them yet. Each OBSERVE
+    also consumes one lifecycle sequence, even when its reply is lost.
     `summary.json` records `observe_sequence_last`; Phase 9 and any later
     OBSERVE must use a larger sequence.
 
