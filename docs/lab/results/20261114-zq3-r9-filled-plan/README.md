@@ -165,8 +165,9 @@ New for zq3-r9:
   end + 40 s; a `baseline` OBSERVE with no open provider claim; the final
   probe; then a `claims` phase polling OBSERVE every 5 s for up to 30 s
   until each provider shows a TERMINAL GETATTR and PROCESS_EXIT numbered
-  after the baseline. It ends about 100 s after mount-1, so the Phase 8
-  budget grows from about 70 s to about 100 s for the gate. The sheet
+  after the baseline. It ends at most about 100 s after mount-1 (a healthy
+  gate ends after about 45-55 s), so the Phase 8 budget grows from about
+  70 s to about 100 s for the gate. The sheet
   describes the three failure notes (a root `lstat`, `USABLE_CLAIMS_FAILED`
   for claims, `USABLE_OBSERVE_FAILED` for OBSERVE) and one path for all:
   inspect with the live owner snapshot, never retry, Phase 11 through one
@@ -266,6 +267,17 @@ Every line passed with the expected results:
   usable=failed`) and a `/2` journal ("is not
   homelabfs-zq3-bootstrap-journal/3"); `p9-ready.py` refused the failed run
   and zq3-r8's real run directory (outcome `failed`).
+
+## Decisions from the zq3-r9 run-sheet review round 1 (2026-11-14)
+
+Verdict GO. Applied: a "tool timeouts for long lines" rule (Phase 8 in the
+background or with a tool timeout of at least 600 s; every `rockyt` and the
+Rocky stop/start lines with at least 300 s), `printf %q` quoting for
+`vars.env`, the Phase 11 timing summary shown as reference text in Phase 9,
+the `usable` timing stated as a deadline (healthy gate about 45-55 s), and
+`set -o pipefail` dropped from the Prepare block. Kept: Phase 1 infers
+`/dev/fd` on devfs from the absence of an fdescfs mount (as in r8); the
+Phase 7 failure path relies on the general abort rule for the observer key.
 
 ## Findings and open questions
 

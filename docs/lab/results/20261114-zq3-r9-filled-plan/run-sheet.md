@@ -33,6 +33,16 @@ delete through a mount), preserve failed resources, report. Values written
 
 ## Rules that apply throughout
 
+- **Tool timeouts for long lines (review round 1, M1).** The executing agent's
+  shell tool kills a command after 120 s by default. Run Phase 8's
+  `bootstrap.py run | sign_watch.py | tee` line in the background (or with a
+  tool timeout of at least 600 s) and watch `p8-bootstrap.jsonl` until the
+  driver exits: up to 120 s to READY plus at most about 100 s for `usable`.
+  A killed driver leaves an open journal intent (`uncertain`, never replayed)
+  while the guard and runtime keep running, so the window is lost. Every
+  `rockyt` line (its own bound is 150 s) and the `vms.sh stop-rocky` /
+  `start-rocky` lines in Phases 5 and 12 run with a tool timeout of at least
+  300 s, so their own bounds (and `rc=124`) are what end them.
 - **f3's login shell is csh.** Every `f3 '…'`/`f3 "…"` string below avoids
   `2>/dev/null` (csh reads `2` as an argument), `VAR=value cmd` prefixes (use
   `env VAR=value cmd`) and quotes nested more than one level. Anything more
@@ -348,7 +358,9 @@ The guard's `--rocky-birth` is the UTC `lstart` (the guard runs `ps` with
 `EA`, `P`, `B`, `U`, **`L`**, `C`, `CTL`, `CR`, `OUT`, `XP`, `ARM`, `RST`,
 and the guard PID `<GUARD_PID>`). When lines run one at a time through a
 wrapper (as in zq3-r7 and zq3-r8), append every `VAR=value` line's result to
-the run's `vars.env` immediately (`echo "L=$L" >> $D/vars.env`, and so on),
+the run's `vars.env` immediately with shell quoting, because `C` and `W`
+contain spaces and `$`-references: `printf '%s=%q\n' L "$L" >> $D/vars.env`
+(and so on for each variable),
 and never rely on `set -o pipefail` persisting between lines: read exit codes
 with `PIPESTATUS` as written. If the shell is lost, source `session.sh` again
 and recompute each variable from its line, or reload it from `vars.env`:
@@ -906,8 +918,12 @@ hpin
 stat -c '%a %U %h %s' $D/operator/operator-signing-key   # 600 paul 1 <size>; placed by Claude on Paul's instruction
 test ! -e $D/bootstrap-run && echo output-absent
 P=$D/bootstrap/bootstrap-plan.json
-set -o pipefail
 ```
+
+(`set -o pipefail` is not listed: it does not persist between wrapper lines.
+The driver's outcome is read from its journal and `summary.json`, not from
+the pipeline's exit status; in zq3-r8 the wrapper ran the Phase 8 line with
+`set -o pipefail;` prefixed and recorded `${PIPESTATUS[*]}` as evidence.)
 
 Run:
 
@@ -964,7 +980,8 @@ Expected order:
 7. mount-0, mount-1, READY;
 8. **usable** (k64 + b84).
 
-`usable` takes about 100 s after mount-1 (zq3-r8's sheet budgeted about 70 s
+`usable` ends at most about 100 s after mount-1 (its deadline: 40 + 30 + 30 s;
+a healthy gate ends after about 45-55 s; zq3-r8's sheet budgeted about 70 s
 for the k64 gate, which then failed at its first probe). Its phases (journal `/3`):
 1. `first`: an `lstat` of both roots right away (a root already refused
    fails fast);
@@ -1207,8 +1224,8 @@ T4 block ends with `p9-timing.py … | tee $E/p10-timing-after-t4.json`, and
 Phase 11 starts with the final summary, whichever step the matrix stopped
 at:
 
-```bash
-python3 -I -B $D/sh/p9-timing.py $E/obs-timing.tsv | tee $E/p10-timing-final.json
+```text
+python3 -I -B $D/sh/p9-timing.py $E/obs-timing.tsv | tee $E/p10-timing-final.json   # runs in Phase 11, shown here for reference
 ```
 
 `p9-timing.py` prints the ssh-noop median, each OBSERVE's wall and net
