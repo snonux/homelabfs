@@ -70,9 +70,9 @@ import (
 // recall; but that release sits behind it on the mount's cleanup worker and
 // is never sent, so the older one times out and fails the mount's cleanup
 // (task g84). Worse, the held release's VIEW_QUERY gets WouldBlock, which
-// the transport retries in the control worker's pending ring, and while it
-// does the control lane answered nothing else in the model (noReply), so
-// the other mount's pending release dies too. The gate's settle keeps its
+// the transport retries in the control worker's pending ring; before h84 the
+// control lane then answered nothing else in the model (noReply), so the
+// other mount's pending release died too. The gate's settle keeps its
 // two rounds apart, so the gate itself never queues two releases of one
 // mount; the back-to-back case is TestZQ3BackToBackSameMountReleasesG84.
 //
