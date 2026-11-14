@@ -500,7 +500,10 @@ func (c *Controller) finishReserve(ctx context.Context, s reservationState, t ti
 func (c *Controller) freeze(ctx context.Context, scope guestbridge.Context, r request, t ticketState) (json.RawMessage, error) {
 	key, _ := ticketKeys(scope, t.Request)
 	s, ok := c.state.Reservations[r.Reservation.ID]
-	if !ok || !equal(s.Reservation, r.Reservation) || scope != s.Reservation.Scope || c.state.Recall == nil || c.state.Recall.ID != r.Recall {
+	// Only a participant of the recall may freeze into it: drained() skips a
+	// non-participant's reservations, so finishRecall would otherwise close
+	// a reservation whose bytes never drained.
+	if !ok || !equal(s.Reservation, r.Reservation) || scope != s.Reservation.Scope || c.state.Recall == nil || c.state.Recall.ID != r.Recall || !c.state.Recall.covers(scope.Session) {
 		return nil, fsapi.Stale
 	}
 	entry, call, err := frozen(r)
@@ -596,7 +599,10 @@ func (c *Controller) cancel(ctx context.Context, key string, t ticketState) (jso
 		if s.Call != nil || (s.Status != "RESERVED" && s.Status != "RESERVING" && s.Status != "CANCELLING" && s.Status != "CLOSED") {
 			return c.blockedCancel(key, t)
 		}
-		if c.state.Recall != nil && (c.state.Recall.Phase != "RECALL" || !absent(c.state.Recall.Manifests[t.Scope.Session])) {
+		// A recall the reservation's domain does not participate in (another
+		// domain's scoped recall) never freezes it, so it cannot block the
+		// cancel.
+		if c.state.Recall != nil && c.state.Recall.covers(t.Scope.Session) && (c.state.Recall.Phase != "RECALL" || !absent(c.state.Recall.Manifests[t.Scope.Session])) {
 			return c.blockedCancel(key, t)
 		}
 		if err = c.closeReservation(ctx, s); err != nil {

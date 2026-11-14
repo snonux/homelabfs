@@ -59,8 +59,9 @@ func (c *Controller) Admit(ctx context.Context, b guestbridge.Binding) (controll
 // recall barrier: a DRAIN_WRITE only in the DRAIN phase after every STOPPED;
 // anything else only when the current recall does not hold it
 // (recallHoldsCall: an all-domain recall holds every domain, a scoped READ
-// recall only its own domain's reads, and every recall holds ops that may
-// change the cut, except PROCESS_EXIT) and after a conflicting lease or
+// recall only its own domain's cut-preserving reads, and every recall holds
+// ops that may change the cut, LOOKUP included, except PROCESS_EXIT) and
+// after a conflicting lease or
 // reservation started a recall (WouldBlock until REOPEN). Authority
 // reductions never conflict (recall_scope.go).
 func (c *Controller) admissionBarrier(ctx context.Context, b guestbridge.Binding) error {
@@ -130,42 +131,60 @@ func (c *Controller) AdmitNative(ctx context.Context, cred fsapi.Cred, command f
 	if !c.mu.TryLock() {
 		return nil, fsapi.WouldBlock
 	}
-	allowed := false
-	defer func() {
-		if !allowed {
-			c.mu.Unlock()
-		}
-	}()
+	source, err := c.nativeBarrier(ctx, scope, command)
+	if err != nil {
+		c.mu.Unlock()
+		return nil, err
+	}
+	return &permit{controller: c, source: source, nativeCommand: command}, nil
+}
+
+// nativeBarrier runs under the admission lane: it refuses sealed, closed or
+// recovering controllers, keeps the global recall barrier (a native command
+// belongs to no guest domain a scoped recall could exempt), waits for view
+// readiness, starts a recall on conflict and finally admits the cut.
+func (c *Controller) nativeBarrier(ctx context.Context, scope guestbridge.Context, command fsapi.Command) (fsservice.ControlledViewSource, error) {
+	var none fsservice.ControlledViewSource
 	if _, sealed := c.state.Terminal[scope.Session]; sealed {
-		return nil, fsapi.Permission
+		return none, fsapi.Permission
 	}
 	if c.closed.Load() || c.poisoned.Load() || c.state.Recovery {
-		return nil, fsapi.Unavailable
+		return none, fsapi.Unavailable
 	}
 	if c.state.Recall != nil {
-		return nil, fsapi.WouldBlock
+		return none, fsapi.WouldBlock
 	}
-	if err = c.viewReady(ctx); err != nil {
-		return nil, err
+	if err := c.viewReady(ctx); err != nil {
+		return none, err
 	}
-	read := command.Operation == fsapi.Read || command.Operation == fsapi.Getattr || command.Operation == fsapi.Lookup || command.Operation == fsapi.Readlink || command.Operation == fsapi.Readdir || command.Operation == fsapi.Statfs
-	// Native authority reductions conflict with no lease, as for CALLs, but
-	// with any open reservation: a native command belongs to no guest domain,
-	// so no reservation can be shown to be another domain's. Native commands
-	// also keep the global recall barrier above for the same reason.
-	reduction := command.Operation == fsapi.ProcessExit || command.Operation == fsapi.Forget || command.Operation == fsapi.Release
-	if (reduction && c.anyReservationOpen()) || (!reduction && c.conflicts(read)) {
-		if err = c.startRecall(ctx); err != nil {
-			return nil, err
+	read := nativeRead(command.Operation)
+	if c.nativeConflicts(command.Operation, read) {
+		if err := c.startRecall(ctx); err != nil {
+			return none, err
 		}
-		return nil, fsapi.WouldBlock
+		return none, fsapi.WouldBlock
 	}
-	source, err := c.admitCut(ctx, read, false)
-	if err != nil {
-		return nil, err
+	return c.admitCut(ctx, read, false)
+}
+
+// nativeRead reports the native read operations.
+func nativeRead(op fsapi.Operation) bool {
+	switch op {
+	case fsapi.Read, fsapi.Getattr, fsapi.Lookup, fsapi.Readlink, fsapi.Readdir, fsapi.Statfs:
+		return true
 	}
-	allowed = true
-	return &permit{controller: c, source: source, nativeCommand: command}, nil
+	return false
+}
+
+// nativeConflicts: native authority reductions conflict with no lease, as
+// for CALLs, but with any open reservation, because a native command belongs
+// to no guest domain and so no reservation can be shown to be another
+// domain's. Every other native op uses conflicts.
+func (c *Controller) nativeConflicts(op fsapi.Operation, read bool) bool {
+	if op == fsapi.ProcessExit || op == fsapi.Forget || op == fsapi.Release {
+		return c.anyReservationOpen()
+	}
+	return c.conflicts(read)
 }
 
 // nativeAuthorization is the canonical request a native command is

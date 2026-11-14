@@ -190,14 +190,22 @@ that domain** (task 784, zq3-r8 R8-1): it has no dirty bytes to freeze or drain,
 so it stops, reinstalls the current cut and reopens that one domain, and only
 that domain's fence advances. Its inventory/closure hashes bind just that
 domain. Its admission barrier is per domain: other domains keep their leases,
-their reads, READ acquisitions/renewals and PROCESS_EXITs proceed, and they
-receive no event. Every operation that may change the cut (any non-read CALL,
-including FORGET and DESCRIPTION_RELEASE, native commands, DIRTY_RESERVE and
+their cut-preserving reads (ROOT, GETATTR, READ, READLINK, READDIR, STATFS),
+READ acquisitions/renewals and PROCESS_EXITs proceed, and they receive no
+event. Every operation that may change the cut (LOOKUP, which journals a
+handle pin for an object without a lifetime; any non-read CALL, including
+FORGET and DESCRIPTION_RELEASE; native commands; DIRTY_RESERVE and
 EXCLUSIVE_DIRTY acquisition) still waits for any recall, so the scoped install
 sequence sees one stable cut; the guest refuses a REOPEN whose target is not
 its INSTALL_FINAL cut. Every other recall (dirty or exclusive release,
 conflicting admission or acquisition, expected-target mismatch) remains the
-all-domain recall with the global barrier. RELEASED
+all-domain recall with the global barrier. The guest takes each observation
+lease with expected_target = its installed view, so a cut move admitted under
+peer leases (FORGET, a final DESCRIPTION_RELEASE, a pinning LOOKUP) makes the
+peer's next observation acquire hit the expected-target mismatch and start an
+all-domain recall; scoping that recall is tracked as e84. Downgrading to a
+controller without scoped recalls while a scoped recall is in flight is
+unsupported. RELEASED
 requires the actual STOPPED/install/DRAINED/final-install/reopen/source closure
 and mandatory exact physical verification; a LIVE readable PTE is not a closed
 lease. Exact initial PENDING replay remains immutable; QUERY reports the current

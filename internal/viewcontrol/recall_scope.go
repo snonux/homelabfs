@@ -39,10 +39,23 @@ import (
 //     (releaseRecallScope). Such a recall has nothing to drain: it only stops
 //     the domain, reinstalls the current cut and reopens it, so its readable
 //     PTEs are closed before RELEASED. Its barrier is per domain: the other
-//     domains keep their leases, and their reads, READ acquisitions/renewals
-//     and PROCESS_EXITs proceed. Nothing that changes the cut is admitted
-//     during any recall (non-read CALLs, native commands, DIRTY_RESERVE), so
-//     the scoped recall's install sequence sees one stable cut.
+//     domains keep their leases, and their cut-preserving reads (every read
+//     but LOOKUP, which may journal a HandlePin), READ acquisitions/renewals
+//     and PROCESS_EXITs proceed. Nothing that may change the cut is admitted
+//     during any recall (LOOKUP and every non-read CALL, native commands,
+//     DIRTY_RESERVE, EXCLUSIVE_DIRTY acquisition), so the scoped recall's
+//     install sequence sees one stable cut.
+//
+// The guest takes each observation lease with expected_target = its installed
+// view. A cut move admitted under peer leases (FORGET, a final
+// DESCRIPTION_RELEASE, a pinning LOOKUP) therefore makes the peer's next
+// observation hit expectedMismatch, which starts an all-domain recall. That
+// is safe but costs a recall; scoping it is tracked separately (e84).
+//
+// recallState.Domain is omitempty, so all-domain recalls keep their exact
+// schema-2 bytes. A downgrade to a binary without scoped recalls while a
+// scoped recall is in flight is unsupported: the old binary would read it as
+// all-domain and its runtime Facts would refuse the single-domain events.
 //
 // Every other recall (dirty or exclusive release, conflicting admission or
 // acquisition, an expected-target mismatch) stays all-domain with the global
@@ -143,20 +156,34 @@ func authorityReduction(op string) bool {
 
 // recallHoldsCall reports whether the current recall makes a CALL of op from
 // session wait (WouldBlock until REOPEN). PROCESS_EXIT is never held by the
-// barrier: it keeps the cut and holds no cache/data authority (conflicts with
-// its own domain's open reservation are checked separately). Any other op that may change
-// the cut waits for every recall, because the recall installs one exact cut.
-// A read waits only for a recall its domain participates in.
+// barrier: it keeps the cut and holds no cache/data authority (a conflict
+// with its own domain's open reservation is checked separately). Every op
+// that may change the cut waits for every recall, because the recall
+// installs one exact cut. Only a cut-preserving read (cutPreservingRead)
+// skips a scoped recall its domain does not participate in.
 func (c *Controller) recallHoldsCall(session, op string) bool {
 	r := c.state.Recall
 	switch {
 	case r == nil || op == "PROCESS_EXIT":
 		return false
-	case !readOperation(op):
+	case !cutPreservingRead(op):
 		return true
 	default:
 		return r.covers(session)
 	}
+}
+
+// cutPreservingRead reports the read ops that never move the source cut.
+// LOOKUP is a read for conflicts, but it is not cut-preserving: the
+// controlled service journals a HandlePin for a looked-up object that has no
+// lifetime yet (fsservice planControlled), which advances journal_position
+// and state_hash, both part of the target. Admitted during a scoped recall
+// after INSTALL_FINAL, it made the REOPEN target differ from the installed
+// one, the guest refused REOPEN with ESTALE and the recall wedged (review of
+// task 784). ROOT, GETATTR, READ, READLINK, READDIR (transient grants only)
+// and STATFS plan no pin and no mutation; OPEN, which also pins, is no read.
+func cutPreservingRead(op string) bool {
+	return readOperation(op) && op != "LOOKUP"
 }
 
 // recallHoldsLease reports whether the current recall makes a READ/

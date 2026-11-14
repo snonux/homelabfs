@@ -80,10 +80,16 @@ FORGET/DESCRIPTION_RELEASE may append lifetime state and wait while a recall
 installs a cut. A clean READ release of a domain without EXCLUSIVE_DIRTY leases
 or open reservations starts a recall of that domain only
 (`recallState.Domain`): other domains get no event, keep their leases and
-fences, and their reads, READ acquisitions/renewals and PROCESS_EXITs proceed.
-Anything that may change the cut waits for any recall. Dirty, exclusive,
-conflict and expected-target recalls stay all-domain with the global barrier.
-`Domain` is `omitempty`, so all-domain recalls keep their exact schema-2 bytes.
+fences, and their cut-preserving reads (every read but LOOKUP, which may
+journal a HandlePin), READ acquisitions/renewals and PROCESS_EXITs proceed.
+Anything that may change the cut, LOOKUP included, waits for any recall.
+Dirty, exclusive, conflict and expected-target recalls stay all-domain with the
+global barrier. The guest takes observation leases with expected_target = its
+installed view, so a cut move admitted under peer leases (FORGET, a final
+DESCRIPTION_RELEASE, a pinning LOOKUP) makes the peer's next observation hit
+the expected-target mismatch and start an all-domain recall (e84 tracks
+scoping it). `Domain` is `omitempty`, so all-domain recalls keep their exact
+schema-2 bytes; downgrading while a scoped recall is in flight is unsupported.
 
 DIRTY_RESERVE first protects RESERVING with complete original provenance and
 controller credit, then durably earmarks its future ordinary number plus actual

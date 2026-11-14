@@ -2,6 +2,7 @@ package viewcontrol
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"testing"
 
@@ -257,10 +258,102 @@ func TestExclusiveDomainReadReleaseStaysGlobal(t *testing.T) {
 	}
 	r.startRelease(1, read.Lease)
 	r.requireGlobalRecallBlocksPeer(t)
+	// After both STOPPED ACKs every lease is inactive and no reservation is
+	// open, so nothing conflicts: only the all-domain barrier holds the read.
+	r.ack(0, "STOPPED", r.emptyManifest())
+	r.ack(1, "STOPPED", r.emptyManifest())
+	r.poll(0)
+	if r.leaseActive(write.Lease) {
+		t.Fatal("write lease still active after both STOPPED")
+	}
+	if _, status := r.pendingCall(0, "GETATTR", map[string]any{"object": r.roots[0]}); status != "INDETERMINATE" {
+		t.Fatalf("peer GETATTR after STOPPED in an all-domain recall: %s", status)
+	}
+}
+
+// TestExpectedMismatchRecallStaysGlobal isolates the all-domain barrier with
+// no exclusive lease and no reservation anywhere: the final
+// DESCRIPTION_RELEASE and FORGET of an object under the peer's lease move the
+// cut (lifetime state), m1's next observation acquire expects its old target,
+// and the expected-target mismatch starts an all-domain recall. m0's root
+// GETATTR conflicts with nothing, yet it waits; its PROCESS_EXIT does not.
+func TestExpectedMismatchRecallStaysGlobal(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	path, description := r.create(0, "moves-cut", false)
+	r.domainRead(0)
+	installed := r.domainRead(1)
+	for _, step := range []struct {
+		op   string
+		args map[string]any
+	}{
+		{"DESCRIPTION_RELEASE", map[string]any{"description": description, "release_sequence": 1}},
+		{"FORGET", map[string]any{"object": path, "count": 1}},
+	} {
+		if _, status := r.pendingCall(0, step.op, step.args); status != "TERMINAL" {
+			t.Fatalf("%s under peer leases: %s", step.op, status)
+		}
+	}
+	stale := r.view(1, "VIEW_ACQUIRE", map[string]any{"request": r.ticket(1), "domain": r.domains[1], "access": guestbridge.ViewAccess{Kind: "DOMAIN"}, "mode": "READ", "target": installed.Target})
+	if stale.Status != "PENDING" {
+		t.Fatalf("stale observation acquire %+v", stale)
+	}
+	r.requireGlobalRecallBlocksPeer(t)
+	if _, status := r.pendingCall(0, "PROCESS_EXIT", map[string]any{"process": r.credentials[0].Process, "exit_sequence": 1}); status != "TERMINAL" {
+		t.Fatalf("PROCESS_EXIT during an all-domain recall: %s", status)
+	}
+}
+
+// TestScopedRecallHoldsPeerLookup is the review repro of task 784: a peer
+// LOOKUP journals a HandlePin and so moves the cut. Admitted between a scoped
+// recall's INSTALL_FINAL and REOPEN it made the REOPEN target differ from the
+// installed one, which the guest refuses. It must wait, and the REOPEN
+// target must equal the INSTALL_FINAL target.
+func TestScopedRecallHoldsPeerLookup(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	path, description := r.create(0, "pinme", false)
+	// Drop every lifetime of the object, so the next LOOKUP must pin it.
+	r.call(0, "DESCRIPTION_RELEASE", map[string]any{"description": description, "release_sequence": 1})
+	r.call(0, "FORGET", map[string]any{"object": path, "count": 1})
+	root := r.call(0, "ROOT", map[string]any{}).Capabilities[0]
+	payload := r.startRelease(1, r.domainRead(1))
+	r.ack(1, "STOPPED", r.emptyManifest())
+	r.poll(1)
+	r.ack(1, "INSTALLED_DRAIN", nil)
+	r.ack(1, "DRAINED", r.emptyManifest())
+	r.poll(1)
+	final := r.eventTarget(1)
+	lookup, status := r.pendingCall(0, "LOOKUP", map[string]any{"parent": root, "name": hex.EncodeToString([]byte("pinme"))})
+	if status != "INDETERMINATE" {
+		t.Fatalf("peer LOOKUP during a scoped recall: %s", status)
+	}
+	r.ack(1, "INSTALLED_FINAL", nil)
+	r.poll(1)
+	if reopen := r.eventTarget(1); reopen != final {
+		t.Fatalf("REOPEN target %s differs from INSTALL_FINAL target %s", reopen, final)
+	}
+	r.ack(1, "REOPENED", nil)
+	r.physical("VIEW_RELEASE", payload)
+	if reply := r.view(1, "VIEW_QUERY", map[string]any{"request": payload["request"]}); reply.Status != "RELEASED" {
+		t.Fatalf("scoped release %+v", reply)
+	}
+	if status := r.queryStatus(0, lookup); status != "TERMINAL" {
+		t.Fatalf("peer LOOKUP after the scoped recall: %s", status)
+	}
+}
+
+// eventTarget returns the target of domain i's current recall event.
+func (r *rig) eventTarget(i int) string {
+	r.controller.mu.Lock()
+	defer r.controller.mu.Unlock()
+	var e map[string]json.RawMessage
+	must(r.t, json.Unmarshal(r.controller.state.Recall.Events[r.scopes[i].Session], &e))
+	return string(e["target"])
 }
 
 // requireGlobalRecallBlocksPeer requires an all-domain recall with events for
-// both domains, under which m0's root GETATTR waits.
+// both domains, under which m0's root GETATTR waits. (Where a lease or
+// reservation still conflicts, the conflict alone would also hold it; the
+// STOPPED and expected-mismatch tests isolate the barrier.)
 func (r *rig) requireGlobalRecallBlocksPeer(t *testing.T) {
 	t.Helper()
 	scope, participants, exists := r.recallSnapshot()
