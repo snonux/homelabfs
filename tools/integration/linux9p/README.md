@@ -289,6 +289,13 @@ source/config/compiler/object bindings, preserved failed batch, current primitiv
 checks and scope limits. Neither object compilation nor those helpers supplies a
 runtime native provider or proves actual physical recall on an installed kernel.
 
+Since `p84` (zq3-r9 R9-1) `hfs_mmap_pressure` releases only published
+cache-page leases. An observation lease stays held until its request ends; see
+[MMAP.md](MMAP.md). `view --pressure` covers it with an in-flight observation
+that pressure must neither release nor wait for. The `view` harness session
+shim gained the minor4 `bridge_minor`/`closing`/`blocked` fields and the
+pressure build includes `hfs_received.h`, so both modes compile again.
+
 ## Controlled successor forwarding (`o04`)
 
 Explicit `9P2000.L.hfs1.2` and `9P2000.L.hfs1.3` selections use their exact

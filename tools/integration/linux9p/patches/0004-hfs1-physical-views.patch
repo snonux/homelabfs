@@ -3425,7 +3425,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,1759 @@
+@@ -0,0 +1,1766 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -4566,10 +4566,23 @@ new file mode 100644
 +	return err;
 +}
 +
++/* Release one published cache-page lease to start recall progress while
++ * acquisition or cache capacity is blocked.
++ *
++ * Observation leases are never selected (p84, zq3-r9 R9-1). Every entry on
++ * view->observations is still in use: hfs_mmap_begin publishes it and only
++ * hfs_mmap_end, after the request completed, removes it and queues its
++ * release. Releasing it earlier recalled the domain under the in-flight
++ * request: the host refused its first admission behind that recall and the
++ * moved fence/revision made hfs_attr_install's stamped view entry ESTALE.
++ * Holding it until the end is safe. An early release returns no guest
++ * ticket capacity (that comes back only at lease free), and a host recall
++ * never waits for it: hfs_view_stop revokes observation leases without
++ * waiting for their requests, and the host deactivates them at STOPPED.
++ */
 +static int hfs_mmap_pressure(struct hfs_view *view)
 +{
 +	struct hfs_cache_page *entry;
-+	struct hfs_observation *observation;
 +	struct hfs_lease *lease = NULL;
 +	unsigned long flags;
 +	int err;
@@ -4581,12 +4594,6 @@ new file mode 100644
 +			lease = entry->lease;
 +			break;
 +		}
-+	if (!lease)
-+		list_for_each_entry(observation, &view->observations, list)
-+			if (observation->lease && !READ_ONCE(observation->lease->released)) {
-+				lease = observation->lease;
-+				break;
-+			}
 +	if (lease)
 +		hfs_lease_get(lease);
 +	spin_unlock_irqrestore(&view->lock, flags);

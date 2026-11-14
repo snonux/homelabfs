@@ -83,6 +83,14 @@ unlocks its original page before release and retries after stopped invalidation;
 a fresh EXCLUSIVE_DIRTY grant and reservation still precede its writable PTE.
 RELEASED requires actual physical/source closure.
 No temporary pressure lease may be exposed as cache authority.
+Pressure releases only published cache-page leases, never an observation lease
+(`p84`, zq3-r9 R9-1). Every observation is in use until its request ends, and
+releasing it recalled the domain under that request: the host refused the first
+admission and the moved fence made the attribute install stale. Its normal end
+releases it. Holding it is safe: STOP revokes observation leases without waiting
+for their requests and the host deactivates them at STOPPED, so no recall waits
+on such a lease. An early release would not return its guest ticket capacity
+either; that comes back only when the lease is freed.
 
 Frozen DRAIN_WRITE uses its original prepared ordinary request. A terminal short
 or error result retains the exact bytes/provenance and mapping error; it cannot
@@ -205,7 +213,7 @@ view covers physical admission/lifetime/revision/description/cancel/detach and
 the actual Linux set_page_dirty/folio_mark_dirty/registered aops chain;
 view --pressure additionally compiles actual mmap pressure/mkwrite, stopped
 installation and drain-result validation, covering128-clean capacity/129th retry,
-read-first upgrade, source denial and short/error results never reaching DRAINED;
+an in-flight observation lease that pressure never releases, read-first upgrade, source denial and short/error results never reaching DRAINED;
 dirty covers freeze, immutable claim construction, deferred activation and
 PENDING/QUERY lineage; requests covers returned-result pins and protected floor
 retirement; root consumes an actual production-host ROOT literal; transport and
