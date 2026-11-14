@@ -98,7 +98,7 @@
     "fs/9p/hfs_inode.c": "5a8adbf1d8febd97dc39aab7dbc06860757f1908bb02af9786b3ed9acd93bc47",
     "fs/9p/hfs_lease.c": "f651eac4751f0657b44d9fc10bbfb3938d0a7e6fa2a0f55b359569701e2e927c",
     "fs/9p/hfs_lease.h": "2064d1a0e291774889fdf1801db65c9f271b3a437e549f675d38c03eb2bf4ea8",
-    "fs/9p/hfs_mmap.c": "6449b82471e979823159c9afd18d6bb290174ef1388ae9e134dcbc74328f957b",
+    "fs/9p/hfs_mmap.c": "2ff6cdf77b1b84947fb58eebd824e72d3fa71948acf8c8ae1ef68a964dd8e129",
     "fs/9p/hfs_policy.c": "5537099c59641da5bf8809aaa59fb397d7fd9cc39db82a9190e5248119e84922",
     "fs/9p/hfs_policy.h": "1e45a64924ca25bed471d6f149d97cadb35c662dc9944699327ae91ade20f360",
     "fs/9p/hfs_protocol.c": "3e37db2361002ac2d7d52c6f8dc43be72918cd285bc596008b9d218021be14b0",
@@ -140,9 +140,9 @@
       "sha256": "8cfbaad03436da836de5096e36deebb2d7ed4f40397844141eb8f63ad5992b10"
     },
     {
-      "bytes": 170167,
+      "bytes": 170966,
       "file": "0004-hfs1-physical-views.patch",
-      "sha256": "7a05b7287fd572b063b2c14ddd0a9ef42e122be45d3af1ea3ef30028af2c071c"
+      "sha256": "4ba3c29fd224f031626776f26bad6f152604262ceb4d45130f7c230abc9946c4"
     },
     {
       "bytes": 346207,

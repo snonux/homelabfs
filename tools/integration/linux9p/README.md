@@ -289,13 +289,6 @@ source/config/compiler/object bindings, preserved failed batch, current primitiv
 checks and scope limits. Neither object compilation nor those helpers supplies a
 runtime native provider or proves actual physical recall on an installed kernel.
 
-Since `p84` (zq3-r9 R9-1) `hfs_mmap_pressure` releases only published
-cache-page leases. An observation lease stays held until its request ends; see
-[MMAP.md](MMAP.md). `view --pressure` covers it with an in-flight observation
-that pressure must neither release nor wait for. The `view` harness session
-shim gained the minor4 `bridge_minor`/`closing`/`blocked` fields and the
-pressure build includes `hfs_received.h`, so both modes compile again.
-
 ## Controlled successor forwarding (`o04`)
 
 Explicit `9P2000.L.hfs1.2` and `9P2000.L.hfs1.3` selections use their exact
@@ -782,7 +775,66 @@ touched objects compile without warnings under `kernel.py configure`
 (`make fs/9p/ net/9p/ drivers/char/random.o`). On GCC 16 policy, cursor,
 transport, tag, mount_hello, requests, readdir_cleanup, huge and
 controlled_received `terminal-smoke` pass. codec (`test.c:366`), capture,
-root, reclaim and view fail with the same errors on the pre-m64 tree (s54).
+root, reclaim and view fail with the same errors on the pre-m64 tree (s54);
+`p84` later repaired view (both modes).
 controlled_provider also fails before running, on both trees, in its own
 struct extraction (`struct hfs_terminal_ack` incomplete in
 `session_struct.inc`). No candidate was rebuilt or admitted.
+
+## Pressure and in-flight requests (`p84`)
+
+zq3-r9 R9-1: when an ordinary-lane exchange waits more than 50 ms,
+`hfs_transport` (patch 0003) calls `hfs_mmap_progress`, which queues
+`hfs_mmap_pressure` (patch 0004). Pressure releases one lease, and any release
+recalls the domain. The recall moves the view under every request still in
+flight: that request's first host admission can be refused behind the recall,
+and its stamped `hfs_view_enter` in `hfs_attr_install` can return ESTALE (the
+r9 refusal cause is not proven; the ESTALE comes from the 984 model). R9 most
+likely released the GETATTR's own DOMAIN observation lease.
+
+- **Observation leases are never selected.** Every entry on
+  `view->observations` belongs to a request still in flight;
+  `hfs_mmap_end` removes it and its cleanup packet releases the lease, as
+  before.
+- **Background passes hold while observing.** `hfs_mmap_pressure` takes a
+  `background` flag. The transport-triggered pass (`hfs_mmap_pressure_work`)
+  releases no cache lease while `view->nr_observations` is nonzero. A
+  cache-page release there would move the view under the in-flight requests
+  just like an observation release, and a 50 ms wait does not show that it
+  would help the waiting request. With no observation in flight the
+  background pass still releases a published cache lease.
+- **Capacity callers are unchanged.** The 129th clean page
+  (`hfs_mmap_fault_error` on ENOSPC), read-first `page_mkwrite` and dirty
+  `hfs_mmap_sync` pass `background == false` and release a cache lease even
+  while a request is in flight; they cannot progress otherwise. That
+  residual cost is accepted and documented in `hfs_mmap.c`.
+
+Limiting the transport pass to acquisition-lane waits instead was rejected:
+an observation's own VIEW_ACQUIRE wait would still release a cache lease
+under another thread's in-flight request. Holding leases longer is safe: the
+host starts the recall a conflict needs itself (`viewcontrol` admission and
+acquisition), `hfs_view_stop` revokes observation leases without waiting for
+their requests, the host deactivates leases at STOPPED, and an early
+observation release returns no guest ticket capacity.
+
+Residual: two observations of the same lineage (domain, access, credentials,
+mode) share one host lease, so the normal end-path release of one still
+recalls under a concurrent one. A pressure pass that checked
+`nr_observations` can also race with an observation that begins during its
+release RPC.
+
+`view --pressure` adds the cases: an in-flight observation with no cache
+lease is never released (fails on the pre-p84 source); with 128 clean pages
+the background pass releases nothing while the observation is in flight
+(fails on the first p84 commit); ENOSPC pressure still releases a cache lease
+and the recall revokes, but does not release or wait for, the observation;
+with no observation the background pass releases a cache lease. The `view`
+session shim gained `bridge_minor` (u16), `closing` and `blocked`, and the
+pressure build includes `hfs_received.h`, so both modes compile again; the
+fixtures keep `bridge_minor == 0`, so the minor4 gate is not exercised.
+
+The series was regenerated with `export.py --task p84` (only 0004 changes).
+A fresh `prepare.py` tree applies it with fuzz zero and `fs/9p/`, `net/9p/`
+and `random.o` compile without warnings under `kernel.py configure`. view,
+view --pressure, mount_hello, tag (all `--sanitize`) and controlled_received
+`terminal-smoke` pass. No candidate was rebuilt or admitted.

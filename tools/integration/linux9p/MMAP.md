@@ -85,12 +85,17 @@ RELEASED requires actual physical/source closure.
 No temporary pressure lease may be exposed as cache authority.
 Pressure releases only published cache-page leases, never an observation lease
 (`p84`, zq3-r9 R9-1). Every observation is in use until its request ends, and
-releasing it recalled the domain under that request: the host refused the first
-admission and the moved fence made the attribute install stale. Its normal end
-releases it. Holding it is safe: STOP revokes observation leases without waiting
-for their requests and the host deactivates them at STOPPED, so no recall waits
-on such a lease. An early release would not return its guest ticket capacity
-either; that comes back only when the lease is freed.
+releasing it recalls the domain under that request: its first admission could
+be refused behind the recall and the moved fence could make its attribute
+install stale. Its normal end releases it. The transport-triggered pressure
+pass also releases no cache lease while any observation is in flight, because
+that recall would move the view under the same requests. The capacity callers
+(129th clean page, read-first mkwrite, dirty sync) still release a cache lease
+even then, so that hazard remains for them. Holding leases longer is safe: the
+host starts the recalls conflicts need, STOP revokes observation leases without
+waiting for their requests and the host deactivates them at STOPPED, so no
+recall waits on such a lease. An early release would not return its guest
+ticket capacity either; that comes back only when the lease is freed.
 
 Frozen DRAIN_WRITE uses its original prepared ordinary request. A terminal short
 or error result retains the exact bytes/provenance and mapping error; it cannot
@@ -213,7 +218,10 @@ view covers physical admission/lifetime/revision/description/cancel/detach and
 the actual Linux set_page_dirty/folio_mark_dirty/registered aops chain;
 view --pressure additionally compiles actual mmap pressure/mkwrite, stopped
 installation and drain-result validation, covering128-clean capacity/129th retry,
-an in-flight observation lease that pressure never releases, read-first upgrade, source denial and short/error results never reaching DRAINED;
+an in-flight observation lease that pressure never releases, a background
+pressure pass that releases nothing while an observation is in flight,
+read-first upgrade, source denial and short/error results never reaching
+DRAINED;
 dirty covers freeze, immutable claim construction, deferred activation and
 PENDING/QUERY lineage; requests covers returned-result pins and protected floor
 retirement; root consumes an actual production-host ROOT literal; transport and

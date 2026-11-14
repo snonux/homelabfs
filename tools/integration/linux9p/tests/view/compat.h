@@ -85,12 +85,13 @@ struct hfs_provider {
    int (*reserve)(void *, u64, bool, void **);
    void (*unreserve)(void *, void *);
 };
-/* bridge_minor/closing/blocked: the minor4 controlled-session gate in
- * hfs_view_try_enter_locked and its wait. Zero keeps the legacy view path.
+/* bridge_minor (u16, as in hfs.h)/closing/blocked only let the minor4
+ * controlled-session gate in hfs_view_try_enter_locked and its wait compile.
+ * The fixtures keep bridge_minor == 0, so that gate is not exercised here.
  */
 struct hfs_session {
    struct hfs_view *view; struct hfs_provider *provider; struct mutex lock;
-   unsigned int bridge_minor; bool closing; bool blocked;
+   u16 bridge_minor; bool closing; bool blocked;
 };
 
 #define HFS_IDENTITIES_MAX 4096U
