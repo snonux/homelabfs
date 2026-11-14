@@ -197,8 +197,9 @@ every ticket the controller ever admitted (about 630 MiB of host budget at
 tickets, and since f84 the ACK archive and recall UUIDs are pruned
 (`viewcontrol/recycling.go`), so `Identities` bounds the view tickets alive
 at once, not a lifetime count; `TestZQ3LeaseCyclesRecycleViewIdentities`
-drives 1000+ lease cycles at these exact Views values. T5 itself stays
-deferred until it is re-planned and run; no T5 pass is claimed here.
+drives hundreds of lease cycles (1100 measured) at these exact Views
+values. T5 itself stays deferred until it is re-planned and run; no T5
+pass is claimed here.
 
 | Bound | Rule | Example |
 |---|---|---|

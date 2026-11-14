@@ -13,7 +13,7 @@ import (
 
 // TestZQ3LeaseCyclesRecycleViewIdentities is the q64/f84 workload: at the
 // committed zq3 spec's exact Views bounds (Identities 64, so 64 ticket
-// identities, 128 UUIDs and a 512-row ACK archive) it drives thousands of
+// identities, 128 UUIDs and a 512-row ACK archive) it drives hundreds of
 // DOMAIN READ acquire/release cycles, each with a scoped recall, plus dirty
 // rounds whose all-domain recall freezes and drains a reservation per
 // domain, then reopens the controller and keeps cycling against the
@@ -21,13 +21,19 @@ import (
 // (every ticket kept its identity), and before f84 the ACK archive refused
 // about the 100th recall. Every formerly lifetime record must now peak at
 // no more than half its bound.
+//
+// Measured with HFS_Q64_CYCLES=1000 (2026-11-14): 1100 cycles and recalls,
+// 2320 view tickets, peaks identities 8, ticket rows 8, UUIDs 5, ACK
+// archive 10, revisions 2, receipts 4, ledger 184 KB; the default 350
+// cycles reach the same peaks with a 169 KB ledger.
 func TestZQ3LeaseCyclesRecycleViewIdentities(t *testing.T) {
-	cycles, dirtyEvery, afterReopen := 1000, 50, 100
+	cycles, dirtyEvery, afterReopen := 300, 50, 50
 	if testing.Short() {
 		cycles, afterReopen = 110, 10
 	}
-	// HFS_Q64_CYCLES runs a longer workload by hand (each cycle re-reads
-	// the journal several times through the real stack, about 0.1 s).
+	// HFS_Q64_CYCLES runs a longer workload by hand: each cycle re-reads
+	// the journal several times through the real stack (0.1 s and more, so
+	// 1000 cycles took about 12 minutes).
 	if n, err := strconv.Atoi(os.Getenv("HFS_Q64_CYCLES")); err == nil && n > 0 {
 		cycles = n
 	}
