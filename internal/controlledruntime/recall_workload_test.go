@@ -70,9 +70,9 @@ import (
 // recall; but that release sits behind it on the mount's cleanup worker and
 // is never sent, so the older one times out and fails the mount's cleanup
 // (task g84). Worse, the held release's VIEW_QUERY gets WouldBlock, which
-// the transport retries in the control worker's pending ring, and while it
-// does the control lane answered nothing else in the model (noReply), so
-// the other mount's pending release dies too. The gate's settle keeps its
+// the transport retries in the control worker's pending ring; before h84 the
+// control lane then answered nothing else in the model (noReply), so the
+// other mount's pending release died too. The gate's settle keeps its
 // two rounds apart, so the gate itself never queues two releases of one
 // mount; the back-to-back case is TestZQ3BackToBackSameMountReleasesG84.
 //
@@ -285,16 +285,16 @@ func TestZQ3RecallWorkloadMeetsGuestQueryWindow(t *testing.T) {
 // TestZQ3BackToBackSameMountReleasesG84 runs the gate's two rounds back to
 // back under the foreground-first schedule, so each mount's second lstat
 // takes its lease right after the first one's release recall reopened the
-// view. Expected behaviour: every wait ends within the window. Today the
-// first release is held by Facts.CheckPhysical for the newer lease, whose
-// own release waits behind it on the mount's cleanup worker: the first
-// release gets no reply until its window ends and the mount's cleanup fails,
-// and the stalled control lane takes the other mount's pending release with
-// it (noReply). That signature, and only it, is skipped as blocked on g84:
-// every late view exchange is a VIEW_RELEASE that got no reply, or one never
-// sent behind a failed cleanup worker. Claims, retirements, the views and
-// the completed exchanges' observations are asserted either way, so once
-// g84 is in the test asserts everything.
+// view. Every wait must end within the window. Before g84 the first release
+// was held by Facts.CheckPhysical for the newer lease, whose own release
+// waited behind it on the mount's cleanup worker: the first release got no
+// reply until its window ended and the mount's cleanup failed. Before h84 the
+// held cell's retries also starved the control lane, so the other mount's
+// pending release died with it (noReply). g84 certifies a VIEW_RELEASE per
+// lease and h84 stops a retrying cell from starving its lane, so a late view
+// exchange now fails the test; the failure names whether it still has the
+// g84 signature (a VIEW_RELEASE that got no reply, or one never sent behind
+// a failed cleanup worker) to point at which fix regressed.
 func TestZQ3BackToBackSameMountReleasesG84(t *testing.T) {
 	if testing.Short() {
 		t.Skip("pays about a minute of modelled guest-observation latency")
@@ -311,12 +311,12 @@ func TestZQ3BackToBackSameMountReleasesG84(t *testing.T) {
 	}
 	for _, w := range late {
 		unsent := w.status == "UNSENT" && m.mounts[w.mount].cleanupFailed
-		if !w.release || !(w.stuck || unsent) {
-			t.Fatalf("not the g84 signature: %s", describe(w))
+		signature := "not the g84 signature"
+		if w.release && (w.stuck || unsent) {
+			signature = "g84 signature (held or unsent VIEW_RELEASE): g84 regressed"
 		}
-		t.Logf("blocked: %s", describe(w))
+		t.Errorf("late view exchange, %s: %s", signature, describe(w))
 	}
-	t.Skipf("blocked on g84: %d VIEW_RELEASE(s) got no reply or were never sent behind a failed cleanup worker", len(late))
 }
 
 // runRecallWorkload runs the bootstrap and the k64 gate once under one

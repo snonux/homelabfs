@@ -355,7 +355,11 @@ controller budget.
 
 An accepted transport cell whose service dispatch returns temporary WouldBlock
 or NoSpace retains its exact native identity, command and body in the existing
-worker's bounded pending ring. A timed FIFO retry gets priority when due; it
+worker's bounded pending ring. A timed FIFO retry gets priority when due,
+except directly after a retry: then a queued cell, if any, runs first, so
+retries and fresh cells alternate. A retry that outlasts the 10 ms tick
+therefore cannot starve the lane's queue (h84: a permanently WouldBlock control
+cell had kept other mounts' VIEW_WAIT/VIEW_QUERY unanswered). A retry
 allocates no new cell, claim, counter or capability credit. Independent control,
 drain and replacement workers remain available. Only the first published
 response becomes immutable; logical filesystem error results are not retried.

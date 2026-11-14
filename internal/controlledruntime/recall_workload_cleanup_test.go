@@ -215,8 +215,8 @@ func (m *recallModel) retireViews(mount *modelMount, phase *modelPhase, owner st
 
 // retireWait sends one RETIRE / VIEW_RETIRE. Any reply ends it: RETIRED
 // advances the floor (advance), BLOCKED leaves it (the guest tries again at
-// its next cleanup). No reply (Facts.CheckPhysical WouldBlock in the retry
-// ring, h84) expires it at the window.
+// its next cleanup). No reply (Facts.CheckPhysical WouldBlock retried in the
+// control worker's ring) expires it at the window.
 func (m *recallModel) retireWait(mount *modelMount, phase *modelPhase, label, op string, request map[string]any, advance func(uint64)) *guestWait {
 	w := &guestWait{label: label, phase: phase, mount: mount.index, kind: "retire", terminal: func(string) bool { return true }}
 	phase.waits = append(phase.waits, w)

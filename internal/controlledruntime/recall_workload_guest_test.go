@@ -157,12 +157,14 @@ func (m *recallModel) viewWait(label string, mount *modelMount, ticket guestbrid
 // without answering the cell (recordExecuteFailure); the fixture's read
 // gives up after 5 s. The chain keeps reclaiming its last answered cell.
 //
-// Observed while building the g84 case: while such a cell sits in the
+// Observed while building the g84 case: while such a cell sat in the
 // control worker's pending ring, the control lane answered nothing else
-// either; fresh VIEW_WAITs to both mounts got no reply within 5 s. The
-// worker gives a due retry priority over its queue (guestbridge endpoint.go
-// worker) and a retry takes longer than the 10 ms ticker, so the queue is
-// never read. That is why the peer mount's pending release also dies there.
+// either; fresh VIEW_WAITs to both mounts got no reply within 5 s, so the
+// peer mount's pending release died too. The worker gave a due retry
+// priority over its queue and a retry took longer than the 10 ms ticker, so
+// the queue was never read. h84 fixed that: after a retry a queued cell runs
+// first (guestbridge worker.go retryRing), so only the held cell itself
+// stays unanswered.
 func (m *recallModel) noReply(chain *r5Chain, op string, value any) json.RawMessage {
 	m.t.Helper()
 	payload, _, _, translated, err := chain.peer.mappedExecuteReclaim(op, value, chain.guest, chain.native, nil)

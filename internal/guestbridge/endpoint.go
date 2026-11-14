@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/snonux/homelabfs/internal/admission"
 	"github.com/snonux/homelabfs/internal/fsapi"
@@ -800,121 +799,6 @@ func (t *Transport) stopWorkers() {
 	}
 	t.mu.Unlock()
 	t.workers.Wait()
-}
-func (t *Transport) worker(queue <-chan job) {
-	defer t.workers.Done()
-	// The pending ring retains only already funded accepted jobs. Each cell has
-	// one dispatch, so aggregate pending storage is bounded by the 80 cell credits
-	// and independent replacement workspace; no retry allocates a claim or credit.
-	pending := make([]job, 0, 81)
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		var j job
-		retry := false
-		// A due retry gets priority over a continuously replenished queue.
-		// The pending ring itself is FIFO, so one refusal cannot starve peers.
-		if len(pending) > 0 {
-			select {
-			case <-ticker.C:
-				retry = true
-			default:
-			}
-		}
-		if !retry {
-			select {
-			case next, ok := <-queue:
-				if !ok {
-					return
-				}
-				j = next
-			case <-ticker.C:
-				if len(pending) == 0 {
-					continue
-				}
-				retry = true
-			}
-		}
-		if retry {
-			j = pending[0]
-			copy(pending, pending[1:])
-			pending[len(pending)-1] = job{}
-			pending = pending[:len(pending)-1]
-		}
-		invocation := &workerInvocation{live: true}
-		t.mu.Lock()
-		c := t.cells[j.id]
-		active := !t.closed && t.failed == nil && c != nil && !c.released && c.response == nil
-		if active {
-			c.jobPhase = "executing"
-			c.invocation = invocation
-			active = t.protectLocked(j.id) == nil
-		}
-		t.mu.Unlock()
-		if !active {
-			invocation.live = false
-			continue
-		}
-		executionContext := context.WithValue(context.Background(), mappingWorkerKey{}, mappingWorker{transport: t, cell: j.id, invocation: invocation})
-		raw, e := t.service.Execute(executionContext, j.native, j.command)
-		t.mu.Lock()
-		invocation.live = false
-		if c := t.cells[j.id]; c != nil && c.invocation == invocation {
-			c.invocation = nil
-		}
-		t.mu.Unlock()
-		if e != nil {
-			if t.recordExecuteFailure(j.id, e) {
-				pending = append(pending, j)
-			}
-			continue
-		}
-		if t.respondFailpoint != nil {
-			raw = t.respondFailpoint(j.command, raw)
-		}
-		// A response that cannot be framed must not leave the cell "executing"
-		// forever: it becomes blocked with a class and reads answer an error.
-		if len(raw) == 0 || len(raw) > BodyBytes {
-			t.recordResponseFailure(j.id, responseBoundsClass(raw))
-			continue
-		}
-		kind := uint16(2)
-		if j.command.Op == "VIEW_POLL" {
-			kind = 3
-		}
-		frames, seen, unread, valid := t.responseFrames(j, kind, raw)
-		if !valid {
-			t.recordResponseFailure(j.id, "FRAME_ENCODE")
-			continue
-		}
-		t.mu.Lock()
-		c = t.cells[j.id]
-		if !t.closed && t.failed == nil && c != nil && !c.released && c.response == nil {
-			if err := t.finishMappingFull(c, raw); err != nil {
-				t.failed = err
-				t.mu.Unlock()
-				continue
-			}
-			c.response = raw
-			c.wire = frames
-			c.seen = seen
-			c.unread = unread
-			c.resultKind = kind
-			c.jobPhase = "responded"
-			if err := t.protectRuntimeHello(c); err != nil {
-				t.failed = err
-				t.mu.Unlock()
-				continue
-			}
-			if c.terminal != nil {
-				c.terminal.Phase = "TERMINAL_RESPONDED"
-			}
-			if t.protectLocked(j.id) == nil {
-				_ = t.protectedPoint("response")
-			}
-		}
-		t.mu.Unlock()
-	}
 }
 
 // recordExecuteFailure protects the cell phase after Service.Execute failed and
