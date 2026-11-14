@@ -54,22 +54,29 @@ type attestorPrimitive struct {
 	// zq3 workload model); nil keeps the single enrolled credential.
 	processes *processRegistry
 }
+
+// answerBound is how long a transport test waits for an accepted cell's
+// answer (or a write's credit) before it declares the cell stranded. It only
+// ever fails a test, never passes one by timing out, so it is generous: a host
+// loaded by parallel go test or -race runs can delay workers past the former
+// 3 s bound (i84).
+const answerBound = 30 * time.Second
+
 type rig struct {
-	transportResponseWait time.Duration
-	transportReclaim      []*guestbridge.Ack
-	transport             []*guestbridge.Transport
-	controlTickets        []uint64
-	t                     *testing.T
-	service               *fsservice.Service
-	config                fsservice.Config
-	controller            *Controller
-	cc                    Config
-	providers             []*controlledvalidation.Provider
-	bridges               []*guestbridge.Service
-	scopes                []guestbridge.Context
-	credentials           []guestbridge.Credentials
-	natives               []guestbridge.Native
-	domains               []guestbridge.Capability
+	transportReclaim []*guestbridge.Ack
+	transport        []*guestbridge.Transport
+	controlTickets   []uint64
+	t                *testing.T
+	service          *fsservice.Service
+	config           fsservice.Config
+	controller       *Controller
+	cc               Config
+	providers        []*controlledvalidation.Provider
+	bridges          []*guestbridge.Service
+	scopes           []guestbridge.Context
+	credentials      []guestbridge.Credentials
+	natives          []guestbridge.Native
+	domains          []guestbridge.Capability
 	// roots are the mount ROOT capabilities (claim 1 of each domain).
 	roots                []guestbridge.Capability
 	next, tickets, cells []uint64
