@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -28,25 +29,28 @@ import (
 //     READ lease (expected_target NULL) and its VIEW_RELEASE, which waits for
 //     RELEASED (patch 0004 hfs_mmap_bootstrap loop), then the process exits
 //     (PROCESS_EXIT, sent asynchronously by the guest's exit work);
-//   - the k64 usable gate (bootstrap_remote.py guest-stat, twice per root,
-//     as o64's zq3World.bootstrap models it): one lstat child per root. Its
-//     hfs_getattr calls hfs_begin(mutation=false), so hfs_mmap_begin takes a
-//     DOMAIN READ lease with expected_target = the view's installed target
-//     (the last REOPEN target), then the GETATTR claim runs, hfs_mmap_end
-//     queues the cleanup work that sends VIEW_RELEASE, and the child exits
-//     (PROCESS_EXIT). Release and exit are asynchronous: the next child does
-//     not wait for them.
+//   - the k64 usable gate (tools/lab/retained9p/bootstrap.py step_usable):
+//     a first lstat of each root, a settle until mount-1's end plus
+//     USABLE_SETTLE_SECONDS (the guest QUERY window plus 10 s), then a final
+//     lstat of each root. Each lstat child's hfs_getattr calls
+//     hfs_begin(mutation=false), so hfs_mmap_begin takes a DOMAIN READ lease
+//     with expected_target = the view's installed target (the last REOPEN
+//     target), then the GETATTR claim runs, hfs_mmap_end queues the cleanup
+//     work that sends VIEW_RELEASE on the mount's one cleanup worker, and the
+//     child exits (PROCESS_EXIT). Release and exit are asynchronous.
 //
 // Concurrency. The host serializes every control-lane command (QUERY,
 // VIEW_QUERY, VIEW_WAIT, VIEW_RELEASE, VIEW_ACK) on one control worker, and
 // before task d84 a VIEW_ACK's guest observation runs on that worker. The
 // model is therefore one sequential scheduler (step): every outstanding
-// guest wait sends one QUERY / VIEW_QUERY, then the guest's event worker
+// guest wait sends one QUERY / VIEW_QUERY, each mount's cleanup worker sends
+// its next release (one at a time, in order), then the guest's event worker
 // sends the ACK each mount owes for its current recall event, publishing
-// both mounts' kernel records first as the guest does. A QUERY thus lands
-// between two ACKs, as the guest's 10 ms retry loop does on the real worker.
-// Observation latency is real time (latencyProbe), because the admission's
-// five-second reuse rule (admissionReuse) runs on the wall clock.
+// both mounts' kernel records first as the guest does. Each ACK's
+// observation runs inline on that one thread, so the model cannot show what
+// d84 changes: a d84 model would need the ACK path off the scheduler thread
+// too. Observation latency is real time (latencyProbe), because the
+// admission's five-second reuse rule (admissionReuse) runs on the wall clock.
 //
 // The guest's retry loops and its probe processes race. Two schedules bound
 // that race:
@@ -56,18 +60,37 @@ import (
 //   - foreground first: a process's requests run back to back and pending
 //     waits only advance while a process waits. The lstat thread parked in
 //     hfs_view_enter wakes on REOPEN and acquires before the release's next
-//     VIEW_QUERY. Facts.CheckPhysical refuses a VIEW_RELEASE while ANY lease
-//     of its domain is active, so that release then waits for the newer
-//     lease's own recall as well.
+//     VIEW_QUERY.
+//
+// Facts.CheckPhysical refuses a VIEW_RELEASE while ANY lease of its domain
+// is active. When a newer lease of the same mount is granted after the older
+// release's own recall, the older release waits for that lease's release
+// recall; but that release sits behind it on the mount's cleanup worker and
+// is never sent, so the older one times out and fails the mount's cleanup
+// (task g84). Worse, the held release's VIEW_QUERY gets WouldBlock, which
+// the transport retries in the control worker's pending ring, and while it
+// does the control lane answered nothing else in the model (noReply), so
+// the other mount's pending release dies too. The gate's settle keeps its
+// two rounds apart, so the gate itself never queues two releases of one
+// mount; the back-to-back case is TestZQ3BackToBackSameMountReleasesG84.
 //
 // The guest gives every claim (hfs_request_run) and every view ticket
-// exchange (hfs_view_exchange) 30 s from its first send until a terminal
-// reply, then blocks the session. The model measures each wait the same way.
-// Claims must end in time. A view exchange past the window is skipped as
-// blocked (checkViewExchanges) rather than weakened.
+// exchange (hfs_view_exchange) 30 s from its first send; it gives up only
+// when a non-terminal reply arrives at or after that point. The model
+// measures each wait in modelled time (recallModel.elapsed): observations at
+// the model latency, guest idle retry time, and other host work up to
+// hostOverheadAllowance. Every wait must end, and, deterministically, its
+// observations at the model latency plus that allowance must fit the window.
 
 // guestQueryWindow is the guest kernel's fixed QUERY / VIEW_QUERY deadline.
 const guestQueryWindow = 30 * time.Second
+
+// hostOverheadAllowance is the host work besides observations that a wait
+// may pay before the excess is blamed on the test host. On the reference
+// machine a wait paid about 0.25-0.55 s of such work per observation (at
+// most about 5.5 s per wait); -race and slow hosts pay more. f3's real
+// per-request cost was not measured.
+const hostOverheadAllowance = 6 * time.Second
 
 // recallModelLatency is the per-observation latency the model pays: 2 s by
 // default (about what zq3-r8 paid per SSH observation), or a Go duration in
@@ -102,19 +125,23 @@ type recallModel struct {
 	recalls   map[string]*modelRecall
 	order     []string // recall IDs in first-seen order
 	probes    atomic.Int32
+	latency   time.Duration
+	idle      time.Duration // scheduler retry sleeps (guest time)
 	phase     *modelPhase
 	phases    []*modelPhase
 	processes byte
 	// interleave runs one scheduler round before every request a process
 	// sends (the interleaved schedule); false is foreground first.
 	interleave bool
-	tickets    int // view tickets admitted (each spends one Views.Identities)
-	acks       int // accepted first ACKs (each adds one AckArchive row)
+	tickets    int      // view tickets sent (each spends one Views.Identities)
+	acks       int      // accepted first ACKs (each adds one AckArchive row)
+	viewMoves  []string // probes whose view moved under their GETATTR
 }
 
 // modelMount is one guest mount: its peer rig, the control-lane chain that
-// reclaims its previous control response, and the view state the guest keeps
-// (installed target, per-mount fence and kernel record revision).
+// reclaims its previous control response, the view state the guest keeps
+// (installed target, per-mount fence and kernel record revision) and its
+// cleanup worker (queued releases, the one in flight, failure).
 type modelMount struct {
 	index           int
 	peer            *sourceRig
@@ -124,6 +151,9 @@ type modelMount struct {
 	fence, revision uint64
 	registered      bool
 	acked           map[string]int // recall/sequence -> ACKs sent for that event
+	cleanup         []*guestWait
+	inflight        *guestWait
+	cleanupFailed   bool
 }
 
 // modelProcess is one guest process: its own credentials, hence its own
@@ -134,27 +164,28 @@ type modelProcess struct {
 	tickets map[string]uint64
 }
 
-// guestWait is one outstanding claim or view ticket exchange, timed from its
-// first send as the guest's 30 s deadline is. release marks a VIEW_RELEASE of
-// mount, so that the recall it starts is attributed to its step; quiesced
-// marks one whose lease a later recall of mount already stopped, so it can no
-// longer start one.
+// guestWait is one claim or view ticket exchange, timed from its first send
+// as the guest's 30 s deadline is. release marks a VIEW_RELEASE of mount,
+// sent by send (its window starts then), so that the recall it starts is
+// attributed to its step; quiesced marks one whose lease a later recall of
+// mount already stopped, so it can no longer start one.
 type guestWait struct {
-	label        string
-	phase        *modelPhase
-	mount        int
-	claim        bool
-	release      bool
-	quiesced     bool
-	start        waitStart
-	observations int32
-	query        func() json.RawMessage
-	terminal     func(status string) bool
-	payload      json.RawMessage
-	status       string
-	latency      time.Duration
-	done         bool
-	expired      bool
+	label         string
+	phase         *modelPhase
+	mount         int
+	claim         bool
+	release       bool
+	quiesced      bool
+	sent          bool
+	stuck         bool // its last query got no reply (noReply)
+	start         waitStart
+	observations  int32
+	send, query   func() json.RawMessage
+	terminal      func(status string) bool
+	payload       json.RawMessage
+	status        string
+	latency, wall time.Duration
+	done, expired bool
 }
 
 // modelPhase accounts one workload step: one mount(8) or one k64 lstat
@@ -195,16 +226,17 @@ func (rc *modelRecall) kind() string {
 
 // TestZQ3RecallWorkloadMeetsGuestQueryWindow replays zq3-r8's bootstrap and
 // k64 usable gate with a 2 s guest observer under both schedules (see the
-// top of this file). Each requires every claim to finish within the guest's
-// 30 s window, reports view exchanges past it, logs recalls (scoped,
-// all-domain), VIEW_ACKs and slow observations per probe and checks the
-// recall and ticket budgets at the zq3 spec's values (task f84 angle). The
-// schedules use separate fixtures and run in parallel: their time is almost
-// all modelled observation latency.
+// top of this file) and requires every claim and view exchange to end within
+// the guest's window, no probe's view to move under its GETATTR, and the
+// recall budgets to hold (task f84 angle). It logs recalls (scoped,
+// all-domain), VIEW_ACKs and slow observations per probe. The schedules use
+// separate fixtures and run in parallel: their time is almost all modelled
+// observation latency and the gate's settle.
 func TestZQ3RecallWorkloadMeetsGuestQueryWindow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("pays about a minute of modelled guest-observation latency")
 	}
+	t.Parallel()
 	values := readZQ3Values(t)
 	latency := recallModelLatency(t)
 	for _, schedule := range []struct {
@@ -213,18 +245,65 @@ func TestZQ3RecallWorkloadMeetsGuestQueryWindow(t *testing.T) {
 	}{{"interleaved", true}, {"foreground first", false}} {
 		t.Run(schedule.name, func(t *testing.T) {
 			t.Parallel()
-			runRecallWorkload(t, values, latency, schedule.interleave)
+			m := runRecallWorkload(t, values, latency, schedule.interleave, true)
+			t.Run("claims", func(t *testing.T) { m.checkWaits(t, true) })
+			t.Run("view exchanges", func(t *testing.T) { m.checkWaits(t, false) })
+			t.Run("views", m.checkViews)
+			t.Run("budgets", func(t *testing.T) { m.checkBudgets(t, values) })
 		})
 	}
 }
 
-// runRecallWorkload runs the workload once under one schedule and checks it.
-func runRecallWorkload(t *testing.T, values zq3Values, latency time.Duration, interleave bool) {
+// TestZQ3BackToBackSameMountReleasesG84 runs the gate's two rounds back to
+// back under the foreground-first schedule, so each mount's second lstat
+// takes its lease right after the first one's release recall reopened the
+// view. Expected behaviour: every wait ends within the window. Today the
+// first release is held by Facts.CheckPhysical for the newer lease, whose
+// own release waits behind it on the mount's cleanup worker: the first
+// release times out and the mount's cleanup fails, and the stalled control
+// lane takes the other mount's pending release with it (noReply). That
+// signature (only VIEW_RELEASEs late, a failed cleanup worker) is skipped as
+// blocked on g84; anything else fails.
+func TestZQ3BackToBackSameMountReleasesG84(t *testing.T) {
+	if testing.Short() {
+		t.Skip("pays about a minute of modelled guest-observation latency")
+	}
+	t.Parallel()
+	m := runRecallWorkload(t, readZQ3Values(t), recallModelLatency(t), false, false)
+	m.checkWaits(t, true)
+	late := m.late(false)
+	if len(late) == 0 {
+		return
+	}
+	failed := []string{}
+	for _, mount := range m.mounts {
+		if mount.cleanupFailed {
+			failed = append(failed, fmt.Sprintf("m%d", mount.index))
+		}
+	}
+	for _, label := range late {
+		if !strings.Contains(label, "VIEW_RELEASE") || len(failed) == 0 {
+			t.Fatalf("not the g84 signature: %v", late)
+		}
+		t.Logf("blocked: %s", label)
+	}
+	t.Skipf("blocked on g84: a release held by a newer same-mount lease timed out and failed the cleanup worker of %v; the newer lease's release was never sent", failed)
+}
+
+// runRecallWorkload runs the bootstrap and the k64 gate once under one
+// schedule. settle keeps the gate's two rounds apart as bootstrap.py
+// step_usable does (first probe, settle to mount-1's end plus
+// USABLE_SETTLE_SECONDS, final probe): every release and recall of the first
+// round has ended before the second starts.
+func runRecallWorkload(t *testing.T, values zq3Values, latency time.Duration, interleave, settle bool) *recallModel {
 	m := newRecallModel(t, values, latency)
 	m.interleave = interleave
 	m.mount(0)
 	m.mount(1)
 	for round := 1; round <= 2; round++ {
+		if round == 2 && settle {
+			m.settle()
+		}
 		for i := range m.mounts {
 			m.begin(fmt.Sprintf("k64 round %d m%d lstat", round, i))
 			m.usableProbe(i)
@@ -232,13 +311,7 @@ func runRecallWorkload(t *testing.T, values zq3Values, latency time.Duration, in
 	}
 	m.settle()
 	m.report()
-	t.Run("claims", func(t *testing.T) {
-		if late := m.late(true); len(late) > 0 {
-			t.Errorf("claims past the guest's %s QUERY window: %v", guestQueryWindow, late)
-		}
-	})
-	t.Run("view exchanges", m.checkViewExchanges)
-	t.Run("budgets", func(t *testing.T) { m.checkBudgets(t, values) })
+	return m
 }
 
 // newRecallModel assembles the runtime at the zq3 values, attaches both
@@ -246,13 +319,18 @@ func runRecallWorkload(t *testing.T, values zq3Values, latency time.Duration, in
 func newRecallModel(t *testing.T, values zq3Values, latency time.Duration) *recallModel {
 	r, c := assemblyFixture(t)
 	values.apply(t, &c)
-	m := &recallModel{t: t, r: r, families: c.Authorization.Enrollment.TicketFamilies, recalls: map[string]*modelRecall{}}
+	m := &recallModel{t: t, r: r, latency: latency, families: c.Authorization.Enrollment.TicketFamilies, recalls: map[string]*modelRecall{}}
 	var slow atomic.Bool
 	slow.Store(true)
 	latencyProbe(r.admission, latency, &slow, &m.probes, nil)
 	a, err := Assemble(t.Context(), c)
+	if err != nil {
+		if a != nil {
+			_ = a.Close() // partial owners are returned on error
+		}
+		t.Fatal(err)
+	}
 	t.Cleanup(func() { require(t, a.Close()) })
-	require(t, err)
 	m.a = a
 	r.supervisor.record.Stage = "claimed" // declared native-export/INIT primitive
 	counter := uint64(0)
@@ -260,7 +338,7 @@ func newRecallModel(t *testing.T, values zq3Values, latency time.Duration) *reca
 		attachAssembly(peer, a, &counter)
 		m.mounts = append(m.mounts, &modelMount{index: i, peer: peer, chain: &r5Chain{peer: peer}, fence: 1, revision: 1, acked: map[string]int{}})
 	}
-	t.Logf("guest observation latency %s, guest QUERY window %s", latency, guestQueryWindow)
+	t.Logf("guest observation latency %s, guest QUERY window %s, host overhead allowance %s", latency, guestQueryWindow, hostOverheadAllowance)
 	return m
 }
 
@@ -322,89 +400,4 @@ func (p *modelProcess) ticket(mount int, kind string, family viewcontrol.TicketF
 	key := fmt.Sprintf("%d/%s", mount, kind)
 	p.tickets[key]++
 	return guestbridge.Ticket{Anchor: family.Anchor, Nonce: family.Nonce, Number: p.tickets[key], Credentials: p.cred}
-}
-
-// report logs, per workload step, the recalls its release started (by kind)
-// with their VIEW_ACKs and slow observations, and every wait it sent.
-func (m *recallModel) report() {
-	m.t.Helper()
-	var ackObservations int32
-	for _, p := range m.phases {
-		kinds := m.recallKinds(p.recalls)
-		ackObservations += p.ackObservations
-		m.t.Logf("%-20s recalls scoped %d, all-domain %d, single %d; VIEW_ACKs %d (%d BLOCKED); slow observations %d; worst wait %s (%s)",
-			p.name, kinds["scoped"], kinds["all-domain"], kinds["single"], p.acks, p.blocked, p.ackObservations, p.worst.Round(time.Millisecond), p.worstLabel)
-		for _, w := range p.waits {
-			m.t.Logf("    %-44s %-8s %8s, %2d observations", w.label, w.status, w.latency.Round(time.Millisecond), w.observations)
-		}
-	}
-	kinds := m.recallKinds(m.order)
-	total := m.probes.Load()
-	m.t.Logf("total: %d recalls (scoped %d, all-domain %d, single %d), %d accepted ACKs, %d slow observations (%d for VIEW_ACKs, %d refreshes for other requests)", len(m.order), kinds["scoped"], kinds["all-domain"], kinds["single"], m.acks, total, ackObservations, total-ackObservations)
-}
-
-// recallKinds counts the recalls ids by kind.
-func (m *recallModel) recallKinds(ids []string) map[string]int {
-	kinds := map[string]int{}
-	for _, id := range ids {
-		kinds[m.recalls[id].kind()]++
-	}
-	return kinds
-}
-
-// late returns the claims (claim true) or view exchanges (false) that did
-// not end within the guest's window, measured from their first send.
-func (m *recallModel) late(claim bool) []string {
-	var late []string
-	for _, p := range m.phases {
-		for _, w := range p.waits {
-			if w.claim == claim && (!w.done || w.expired || w.latency > guestQueryWindow) {
-				late = append(late, fmt.Sprintf("%s %s after %s (%d observations)", w.label, w.status, w.latency.Round(time.Millisecond), w.observations))
-			}
-		}
-	}
-	return late
-}
-
-// checkViewExchanges requires every view ticket exchange to end within the
-// guest's 30 s hfs_view_exchange window. With today's code a VIEW_RELEASE
-// waits for every recall ahead of it (one recall at a time, beginRecall),
-// for its own recall, and, when a newer lease of its domain was granted
-// first, for that lease's recall too (Facts.CheckPhysical); every recall
-// serializes five ACK observations with all QUERY / VIEW_QUERY traffic on the
-// control worker. At 2 s per observation two or three recalls reach the
-// window. That case is skipped as blocked on d84 (observation off the
-// control worker, which takes the serialized host work out of each recall)
-// rather than weakened; the release-behind-a-newer-lease wait needs its own
-// follow-up.
-func (m *recallModel) checkViewExchanges(t *testing.T) {
-	late := m.late(false)
-	for _, label := range late {
-		t.Logf("past the window: %s", label)
-	}
-	if len(late) > 0 {
-		t.Skipf("blocked on d84: %d view exchange(s) exceeded the guest's %s window; a VIEW_RELEASE queued behind other recalls pays each one's serialized ACK observations on the control worker", len(late), guestQueryWindow)
-	}
-}
-
-// checkBudgets reports the controller-lifetime budgets that recalls and
-// leases spend at the zq3 values and requires the modelled workload to use at
-// most a quarter of each (task f84 angle). beginRecall (viewcontrol
-// recall.go) starts a recall only while AckArchive rows + 8 per domain stay
-// within Identities*8; every accepted first ACK adds a row (5 per
-// participant per recall) and nothing removes rows. Every recall also spends
-// one of 2*Identities ledger UUIDs, and every view ticket (VIEW_ACQUIRE,
-// VIEW_RELEASE) one of Identities; neither is recycled (q64).
-func (m *recallModel) checkBudgets(t *testing.T, v zq3Values) {
-	domains := len(m.mounts)
-	rows := v.Views.Identities * 8
-	headroom := rows - 8*domains
-	allDomain := headroom/(5*domains) + 1
-	scoped := min(headroom/5+1, 2*v.Views.Identities)
-	uuids := 2 * v.Views.Identities
-	t.Logf("AckArchive: %d of %d rows; recall budget per controller lifetime: %d all-domain or %d scoped recalls (recall UUIDs: %d used of %d)", m.acks, rows, allDomain, scoped, len(m.order), uuids)
-	t.Logf("Views.Identities: %d of %d view tickets; each guest read op that takes an observation lease spends 2 tickets and one scoped recall, so a controller lifetime holds about %d such ops", m.tickets, v.Views.Identities, min(v.Views.Identities/2, scoped))
-	if m.acks*4 > headroom || len(m.order)*4 > uuids || m.tickets*4 > v.Views.Identities {
-		t.Errorf("modelled bootstrap and k64 gate use more than a quarter of a lifetime budget: %d AckArchive rows of %d, %d recalls of %d UUIDs, %d tickets of %d", m.acks, headroom, len(m.order), uuids, m.tickets, v.Views.Identities)
-	}
 }
