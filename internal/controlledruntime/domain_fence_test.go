@@ -34,42 +34,57 @@ func TestRuntimeAssemblySecondDomainFirstLeaseAfterBootstrapRecall(t *testing.T)
 		attachAssembly(peer, a, &counter)
 	}
 	families := c.Authorization.Enrollment.TicketFamilies
+	domain, mount1 := mountBoth(t, r, families)
+	mixedFenceRecall(t, r, domain, mount1)
+	scopedFenceRecall(t, r, families, domain, mount1[1])
+}
+
+// mountBoth runs mount 0's bootstrap and mount 1's first lease, checks the
+// per-mount fences 2 and 1 and returns mount 0's domain capability and mount
+// 1's ROOT capabilities (root object, domain).
+func mountBoth(t *testing.T, r *sourceRig, families []viewcontrol.TicketFamilies) (guestbridge.Capability, []guestbridge.Capability) {
+	t.Helper()
 	first, domain := bootstrapMount(t, r.peers[0], families[0])
 	if first.Fence != 1 {
 		t.Fatalf("mount 0 bootstrap lease fence %d, want 1", first.Fence)
 	}
-
 	second := r.peers[1]
-	_, _, err = second.execute("HELLO", guestbridge.TerminalProtocol())
+	_, _, err := second.execute("HELLO", guestbridge.TerminalProtocol())
 	require(t, err)
 	var root struct{ Capabilities []guestbridge.Capability }
 	require(t, json.Unmarshal(second.call("ROOT", map[string]any{}), &root))
-	lease := acquireDomainLease(t, second, families[1], 1, root.Capabilities[1])
-	if lease.Fence != 1 {
+	if lease := acquireDomainLease(t, second, families[1], 1, root.Capabilities[1]); lease.Fence != 1 {
 		t.Fatalf("mount 1 first lease after mount 0's recall: fence %d, want 1", lease.Fence)
 	}
 	if again := acquireDomainLease(t, r.peers[0], families[0], 2, domain); again.Fence != 2 {
 		t.Fatalf("mount 0 lease after its own recall: fence %d, want 2", again.Fence)
 	}
+	return domain, root.Capabilities
+}
 
-	// A CREATE conflicts with both active leases and starts an all-domain
-	// recall: each mount's kernel observation reports its own fence (mount 0
-	// at 2, mount 1 at 1) and the physical Facts must match each ACK against
-	// that domain's ledger fence.
-	second.call("CREATE", map[string]any{"parent": root.Capabilities[0], "name": hex.EncodeToString([]byte("fence-conflict")), "mode": 0o660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}})
-	fencedRecall(t, r, []int{0, 1}, []guestbridge.Capability{domain, root.Capabilities[1]}, []uint64{2, 1}, []uint64{2, 1})
-	_ = lease // deactivated by the all-domain recall
+// mixedFenceRecall: a CREATE conflicts with both active leases and starts an
+// all-domain recall; each mount's kernel observation reports its own fence
+// (mount 0 at 2, mount 1 at 1) and the physical Facts must match each ACK
+// against that domain's ledger fence. The recall deactivates both leases.
+func mixedFenceRecall(t *testing.T, r *sourceRig, domain guestbridge.Capability, mount1 []guestbridge.Capability) {
+	t.Helper()
+	r.peers[1].call("CREATE", map[string]any{"parent": mount1[0], "name": hex.EncodeToString([]byte("fence-conflict")), "mode": 0o660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}})
+	fencedRecall(t, r, []int{0, 1}, []guestbridge.Capability{domain, mount1[1]}, []uint64{2, 1}, []uint64{2, 1})
+}
 
-	// Mount 1's clean READ release then recalls only mount 1 (task 784):
-	// mount 0 gets no event and keeps fence 3, while mount 1 acknowledges at
-	// its own fence 2.
-	scoped := acquireDomainLease(t, second, families[1], 2, root.Capabilities[1])
+// scopedFenceRecall: mount 1's clean READ release recalls only mount 1 (task
+// 784); mount 0 gets no event and keeps fence 3, while mount 1 acknowledges
+// at its own fence 2 and then moves to 3.
+func scopedFenceRecall(t *testing.T, r *sourceRig, families []viewcontrol.TicketFamilies, domain, domain1 guestbridge.Capability) {
+	t.Helper()
+	second := r.peers[1]
+	scoped := acquireDomainLease(t, second, families[1], 2, domain1)
 	if scoped.Fence != 2 {
 		t.Fatalf("mount 1 lease after the all-domain recall: fence %d, want 2", scoped.Fence)
 	}
 	scopedRelease(t, r, second, families[1], scoped, domain)
-	fencedRecall(t, r, []int{1}, []guestbridge.Capability{root.Capabilities[1]}, []uint64{2}, []uint64{2})
-	if after := acquireDomainLease(t, second, families[1], 3, root.Capabilities[1]); after.Fence != 3 {
+	fencedRecall(t, r, []int{1}, []guestbridge.Capability{domain1}, []uint64{2}, []uint64{2})
+	if after := acquireDomainLease(t, second, families[1], 3, domain1); after.Fence != 3 {
 		t.Fatalf("mount 1 lease after its scoped recall: fence %d, want 3", after.Fence)
 	}
 	if after := acquireDomainLease(t, r.peers[0], families[0], 3, domain); after.Fence != 3 {

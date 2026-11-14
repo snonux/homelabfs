@@ -66,7 +66,23 @@ const (
 //	= 2*domains + 4                   (8 for the two-domain zq3 lab)
 //
 // That is the sequence's peak: the reservations are all frozen and drained by
-// then, and a PROCESS_EXIT or a recall with nothing to drain adds no cut.
+// then, and a recall with nothing to drain adds no cut.
+//
+// Lock-only reductions (PROCESS_EXIT, DESCRIPTION_CLOSE; task 784) pass the
+// recall barrier, so one can be admitted inside an all-domain recall's DRAIN
+// phase, but only from a domain without its own open reservation
+// (ownReservationOpen). It captures the current cut between two drain writes,
+// is charged admittedSources for it and remembers it while pruning is off.
+// That cut is the one the next DRAIN_WRITE or the INSTALL_DRAIN event
+// remembers anyway, so the set of retained cuts is unchanged; only the next
+// drain's capacity check counts it one capture earlier. Counted unpruned as
+// above, with k drains (k <= D in the reference sequence: one reservation
+// per domain), the j-th drain's check sees len(Sources) <= 1 + D + (j-1),
+// extra 0, the reserve 2 and k-j+1 undrained reservations: D+k+3 <= 2D+3.
+// The early capture adds one: at most 2D+4 = MinSources, never above it. The
+// exit's own check may refuse it with a plain NoSpace, which QUERY resumes
+// after REOPEN.
+// TestZQ3SourceFloorCoversMidDrainExit runs that case at MinSources(2).
 // Pruning and the deduplicated charge only ever lower these counts (a pruned
 // set is a subset of the unpruned one, and extra drops from 1 to 0), so the
 // floor holds with them too; TestZQ3SourceFloorCoversReferenceSequence runs

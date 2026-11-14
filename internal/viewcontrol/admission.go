@@ -57,13 +57,13 @@ func (c *Controller) Admit(ctx context.Context, b guestbridge.Binding) (controll
 // admissionBarrier refuses sealed, closed or recovering controllers, waits
 // for view readiness (except provider recovery bindings) and applies the
 // recall barrier: a DRAIN_WRITE only in the DRAIN phase after every STOPPED;
-// anything else only when the current recall does not hold it
-// (recallHoldsCall: an all-domain recall holds every domain, a scoped READ
-// recall only its own domain's cut-preserving reads, and every recall holds
-// ops that may change the cut, LOOKUP included, except PROCESS_EXIT) and
-// after a conflicting lease or
-// reservation started a recall (WouldBlock until REOPEN). Authority
-// reductions never conflict (recall_scope.go).
+// anything else only when the current recall does not hold it and no
+// conflict starts one (WouldBlock until REOPEN). recallHoldsCall: an
+// all-domain recall holds every domain; a scoped READ recall holds its own
+// domain's cut-preserving reads; every recall holds each op that may change
+// the cut, LOOKUP included; lock-only reductions (PROCESS_EXIT,
+// DESCRIPTION_CLOSE) are never held. Authority reductions conflict only with
+// their own domain's open reservations (recall_scope.go).
 func (c *Controller) admissionBarrier(ctx context.Context, b guestbridge.Binding) error {
 	if _, sealed := c.state.Terminal[b.Context.Session]; sealed {
 		return fsapi.Permission
@@ -181,7 +181,7 @@ func nativeRead(op fsapi.Operation) bool {
 // to no guest domain and so no reservation can be shown to be another
 // domain's. Every other native op uses conflicts.
 func (c *Controller) nativeConflicts(op fsapi.Operation, read bool) bool {
-	if op == fsapi.ProcessExit || op == fsapi.Forget || op == fsapi.Release {
+	if op == fsapi.ProcessExit || op == fsapi.DescriptorClose || op == fsapi.Forget || op == fsapi.Release {
 		return c.anyReservationOpen()
 	}
 	return c.conflicts(read)

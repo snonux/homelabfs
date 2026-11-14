@@ -545,6 +545,9 @@ func (c *Controller) freeze(ctx context.Context, scope guestbridge.Context, r re
 	return outcome, nil
 }
 
+// cancel answers VIEW_CANCEL: the protected cancellation replays; a declined
+// DIRTY_RESERVE closes its earmarked gap; a pending release stays BLOCKED; a
+// never-granted ticket is cancelled outright; a grant goes to cancelGranted.
 func (c *Controller) cancel(ctx context.Context, key string, t ticketState) (json.RawMessage, error) {
 	if !absent(t.Cancelled) {
 		return bytes.Clone(t.Cancelled), nil
@@ -567,18 +570,30 @@ func (c *Controller) cancel(ctx context.Context, key string, t ticketState) (jso
 	}
 	if status(t.Current) == "PENDING" || status(t.Current) == "BLOCKED" {
 		// Admission was never a physical grant; recall obligations are retained.
-		reply, err := c.reply(t, "CANCELLED", nil, nil, nil)
-		if err != nil {
-			return nil, err
-		}
-		t.Cancelled = reply
-		t.Current = reply
-		c.state.Tickets[key] = t
-		if err = c.save(); err != nil {
-			return nil, err
-		}
-		return reply, nil
+		return c.protectCancelled(key, t)
 	}
+	return c.cancelGranted(ctx, key, t)
+}
+
+// protectCancelled records and saves the CANCELLED outcome of a ticket.
+func (c *Controller) protectCancelled(key string, t ticketState) (json.RawMessage, error) {
+	reply, err := c.reply(t, "CANCELLED", nil, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	t.Cancelled = reply
+	t.Current = reply
+	c.state.Tickets[key] = t
+	if err = c.save(); err != nil {
+		return nil, err
+	}
+	return reply, nil
+}
+
+// cancelGranted cancels a granted lease or reservation after the physical
+// cancel fact: it closes an unfrozen reservation and deactivates its lineage,
+// or answers BLOCKED while a frozen entry or open reservation remains.
+func (c *Controller) cancelGranted(ctx context.Context, key string, t ticketState) (json.RawMessage, error) {
 	ledger, err := c.rawState()
 	if err != nil {
 		return nil, err
@@ -595,57 +610,66 @@ func (c *Controller) cancel(ctx context.Context, key string, t ticketState) (jso
 		return nil, err
 	}
 	if granted.Reservation != nil {
-		s := c.state.Reservations[granted.Reservation.ID]
-		if s.Call != nil || (s.Status != "RESERVED" && s.Status != "RESERVING" && s.Status != "CANCELLING" && s.Status != "CLOSED") {
-			return c.blockedCancel(key, t)
-		}
-		// A recall the reservation's domain does not participate in (another
-		// domain's scoped recall) never freezes it, so it cannot block the
-		// cancel.
-		if c.state.Recall != nil && c.state.Recall.covers(t.Scope.Session) && (c.state.Recall.Phase != "RECALL" || !absent(c.state.Recall.Manifests[t.Scope.Session])) {
-			return c.blockedCancel(key, t)
-		}
-		if err = c.closeReservation(ctx, s); err != nil {
-			return nil, err
-		}
-		s = c.state.Reservations[s.Reservation.ID]
-
-		ancestor := c.state.Leases[s.Reservation.LeaseID].Lease
-		for id, l := range c.state.Leases {
-			if sameLineage(l.Lease, ancestor) {
-				l.Active = false
-				c.state.Leases[id] = l
+		if blocked, err := c.cancelReservation(ctx, t, *granted.Reservation); blocked || err != nil {
+			if err != nil {
+				return nil, err
 			}
+			return c.blockedCancel(key, t)
 		}
 	}
 	if len(granted.Entry) > 0 && string(granted.Entry) != "null" {
 		return c.blockedCancel(key, t)
 	}
-	if granted.Lease != nil {
-		for _, r := range c.state.Reservations {
-			if sameLineage(c.state.Leases[r.Reservation.LeaseID].Lease, *granted.Lease) && r.Status != "CLOSED" {
-				return c.blockedCancel(key, t)
-			}
+	if granted.Lease != nil && !c.cancelLease(*granted.Lease) {
+		return c.blockedCancel(key, t)
+	}
+	return c.protectCancelled(key, t)
+}
+
+// cancelReservation closes a granted, never frozen reservation and
+// deactivates its lease lineage; it reports blocked when the reservation was
+// frozen or its domain's recall already moved past RECALL or adopted it.
+func (c *Controller) cancelReservation(ctx context.Context, t ticketState, reservation guestbridge.DirtyReservation) (bool, error) {
+	s := c.state.Reservations[reservation.ID]
+	if s.Call != nil || (s.Status != "RESERVED" && s.Status != "RESERVING" && s.Status != "CANCELLING" && s.Status != "CLOSED") {
+		return true, nil
+	}
+	// A recall the reservation's domain does not participate in (another
+	// domain's scoped recall) never freezes it, so it cannot block the cancel.
+	if r := c.state.Recall; r != nil && r.covers(t.Scope.Session) && (r.Phase != "RECALL" || !absent(r.Manifests[t.Scope.Session])) {
+		return true, nil
+	}
+	if err := c.closeReservation(ctx, s); err != nil {
+		return false, err
+	}
+	s = c.state.Reservations[s.Reservation.ID]
+	ancestor := c.state.Leases[s.Reservation.LeaseID].Lease
+	for id, l := range c.state.Leases {
+		if sameLineage(l.Lease, ancestor) {
+			l.Active = false
+			c.state.Leases[id] = l
 		}
-		for id, l := range c.state.Leases {
-			if sameLineage(l.Lease, *granted.Lease) {
-				l.Active = false
-				l.ReleaseCredit = false
-				c.state.Leases[id] = l
-			}
+	}
+	return false, nil
+}
+
+// cancelLease deactivates a granted lease lineage and drops its release
+// credit; it reports false (blocked) while the lineage has an open
+// reservation.
+func (c *Controller) cancelLease(lease guestbridge.ViewLease) bool {
+	for _, r := range c.state.Reservations {
+		if sameLineage(c.state.Leases[r.Reservation.LeaseID].Lease, lease) && r.Status != "CLOSED" {
+			return false
 		}
 	}
-	reply, err := c.reply(t, "CANCELLED", nil, nil, nil)
-	if err != nil {
-		return nil, err
+	for id, l := range c.state.Leases {
+		if sameLineage(l.Lease, lease) {
+			l.Active = false
+			l.ReleaseCredit = false
+			c.state.Leases[id] = l
+		}
 	}
-	t.Cancelled = reply
-	t.Current = reply
-	c.state.Tickets[key] = t
-	if err = c.save(); err != nil {
-		return nil, err
-	}
-	return reply, nil
+	return true
 }
 
 func (c *Controller) reply(t ticketState, status string, lease *guestbridge.ViewLease, reservation *guestbridge.DirtyReservation, entry json.RawMessage) (json.RawMessage, error) {

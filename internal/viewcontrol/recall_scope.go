@@ -17,23 +17,26 @@ import (
 // sessions. Two rules now keep that traffic out of other domains' way while
 // every page/data safety invariant stays as it was:
 //
-//  1. Authority reductions (PROCESS_EXIT, FORGET, DESCRIPTION_RELEASE) never
-//     conflict with a lease, so a peer's lease never makes them start a
-//     recall. Only an open dirty reservation of their OWN domain still
-//     conflicts: its bytes must drain under the original process and
-//     description before either goes away (ownReservationOpen).
-//     They only shrink existing authority (Retained-9p-protocol.md: "This
-//     exception only reduces existing authority"): no cached page, attribute,
-//     directory entry or negative dentry of any domain changes. FORGET and a
-//     final DESCRIPTION_RELEASE may reclaim an unlinked object, but only once
-//     no reference remains, and every lease or mapping that could observe it
-//     holds such a reference. PROCESS_EXIT releases fcntl locks, which hold
-//     no cache/data authority (see AdmitNative), and leaves the source cut
-//     unchanged, so the recall barrier itself never holds it (only its own
-//     domain's open reservation can). FORGET and
-//     DESCRIPTION_RELEASE may append lifetime state and so change the cut;
-//     while a recall installs a cut they wait (recallHoldsCall), because the
-//     guest refuses a REOPEN whose target is not the INSTALL_FINAL cut.
+//  1. Authority reductions (PROCESS_EXIT, DESCRIPTION_CLOSE, FORGET,
+//     DESCRIPTION_RELEASE) never conflict with a lease, so a peer's lease
+//     never makes them start a recall. Only an open dirty reservation of
+//     their OWN domain still conflicts: its bytes must drain under the
+//     original process and description before either goes away
+//     (ownReservationOpen). They only shrink existing authority
+//     (Retained-9p-protocol.md: "This exception only reduces existing
+//     authority"): no cached page, attribute, directory entry or negative
+//     dentry of any domain changes. FORGET and a final DESCRIPTION_RELEASE may
+//     reclaim an unlinked object, but only once no reference remains, and
+//     every lease or mapping that could observe it holds such a reference.
+//     PROCESS_EXIT and DESCRIPTION_CLOSE are lock-only (fsservice executes
+//     both through lockCommand): they release fcntl locks, which hold no
+//     cache/data authority (see AdmitNative), close no description and leave
+//     the source cut unchanged, so the recall barrier itself never holds them
+//     (lockOnlyReduction; only their own domain's open reservation can).
+//     FORGET and DESCRIPTION_RELEASE may append lifetime state and so change
+//     the cut; while a recall installs a cut they wait (recallHoldsCall),
+//     because the guest refuses a REOPEN whose target is not the
+//     INSTALL_FINAL cut.
 //  2. Releasing a clean READ lease recalls only the releasing domain when
 //     that domain holds no EXCLUSIVE_DIRTY lease and no open reservation
 //     (releaseRecallScope). Such a recall has nothing to drain: it only stops
@@ -41,10 +44,27 @@ import (
 //     PTEs are closed before RELEASED. Its barrier is per domain: the other
 //     domains keep their leases, and their cut-preserving reads (every read
 //     but LOOKUP, which may journal a HandlePin), READ acquisitions/renewals
-//     and PROCESS_EXITs proceed. Nothing that may change the cut is admitted
-//     during any recall (LOOKUP and every non-read CALL, native commands,
-//     DIRTY_RESERVE, EXCLUSIVE_DIRTY acquisition), so the scoped recall's
-//     install sequence sees one stable cut.
+//     and lock-only reductions proceed. Nothing that may change the cut is
+//     admitted during any recall (LOOKUP and every non-read CALL, native
+//     commands, DIRTY_RESERVE, EXCLUSIVE_DIRTY acquisition), so the scoped
+//     recall's install sequence sees one stable cut.
+//
+// Residual cost, deliberately not narrowed: a peer's cut-changing op (LOOKUP
+// that pins, FORGET, DESCRIPTION_RELEASE) waits for the whole scoped recall,
+// although the guest compares only the REOPEN target with its INSTALL_FINAL
+// target (patch 0004 hfs_mmap_process; INSTALL_DRAIN/INSTALL_FINAL installs
+// check sequence/recall/phase and verify the target natively, and every ACK
+// is compared with its own issued event). Holding them only from the
+// INSTALL_FINAL capture to the REOPEN capture is not provably safe here:
+// pruneSources is off during a recall, so every cut such an op moves stays in
+// Sources until REOPEN. LOOKUP is a read and is charged no source capacity,
+// so a stream of pinning peer LOOKUPs during STOP/DRAIN could fill Sources
+// up to the bound; events() would then fail to remember the INSTALL_FINAL
+// cut with NoSpace on every retry, and nothing can prune until the recall
+// ends: the recall would wedge. Narrowing needs a bounded per-recall cut
+// budget first. Until then the peer op waits at most one scoped recall,
+// which has nothing to drain; a recall that outlasts the guest's 30 s QUERY
+// window can still park such a claim.
 //
 // The guest takes each observation lease with expected_target = its installed
 // view. A cut move admitted under peer leases (FORGET, a final
@@ -148,23 +168,31 @@ func (c *Controller) anyReservationOpen() bool {
 // open reservations.
 func authorityReduction(op string) bool {
 	switch op {
-	case "PROCESS_EXIT", "FORGET", "DESCRIPTION_RELEASE":
+	case "PROCESS_EXIT", "DESCRIPTION_CLOSE", "FORGET", "DESCRIPTION_RELEASE":
 		return true
 	}
 	return false
 }
 
+// lockOnlyReduction reports the reductions fsservice executes only through
+// lockCommand (fcntl owner/lock release): they close no description, journal
+// nothing and keep the source cut (TestLockOnlyReductionsKeepCut).
+func lockOnlyReduction(op string) bool {
+	return op == "PROCESS_EXIT" || op == "DESCRIPTION_CLOSE"
+}
+
 // recallHoldsCall reports whether the current recall makes a CALL of op from
-// session wait (WouldBlock until REOPEN). PROCESS_EXIT is never held by the
-// barrier: it keeps the cut and holds no cache/data authority (a conflict
-// with its own domain's open reservation is checked separately). Every op
-// that may change the cut waits for every recall, because the recall
-// installs one exact cut. Only a cut-preserving read (cutPreservingRead)
-// skips a scoped recall its domain does not participate in.
+// session wait (WouldBlock until REOPEN). A lock-only reduction is never held
+// by the barrier: it keeps the cut and holds no cache/data authority (a
+// conflict with its own domain's open reservation is checked separately).
+// Every op that may change the cut waits for every recall, because the
+// recall installs one exact cut. Only a cut-preserving read
+// (cutPreservingRead) skips a scoped recall its domain does not participate
+// in.
 func (c *Controller) recallHoldsCall(session, op string) bool {
 	r := c.state.Recall
 	switch {
-	case r == nil || op == "PROCESS_EXIT":
+	case r == nil || lockOnlyReduction(op):
 		return false
 	case !cutPreservingRead(op):
 		return true

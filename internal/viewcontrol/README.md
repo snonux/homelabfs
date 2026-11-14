@@ -72,16 +72,16 @@ Compatible disjoint page grants preserve all existing provenance. Optional
 fresh admissions cannot spend preowned freeze/release/permanent-identity credit.
 
 Recall scope (`recall_scope.go`, task 784 after zq3-r8 R8-1). Authority
-reductions (PROCESS_EXIT, FORGET, DESCRIPTION_RELEASE) conflict with no lease
-and only with their own domain's open reservations, so a peer's lease never
-makes them start a recall; PROCESS_EXIT keeps the cut and the recall barrier
-never holds it, while
+reductions (PROCESS_EXIT, DESCRIPTION_CLOSE, FORGET, DESCRIPTION_RELEASE)
+conflict with no lease and only with their own domain's open reservations, so
+a peer's lease never makes them start a recall; the lock-only PROCESS_EXIT and
+DESCRIPTION_CLOSE keep the cut and the recall barrier never holds them, while
 FORGET/DESCRIPTION_RELEASE may append lifetime state and wait while a recall
 installs a cut. A clean READ release of a domain without EXCLUSIVE_DIRTY leases
 or open reservations starts a recall of that domain only
 (`recallState.Domain`): other domains get no event, keep their leases and
 fences, and their cut-preserving reads (every read but LOOKUP, which may
-journal a HandlePin), READ acquisitions/renewals and PROCESS_EXITs proceed.
+journal a HandlePin), READ acquisitions/renewals and lock-only reductions proceed.
 Anything that may change the cut, LOOKUP included, waits for any recall.
 Dirty, exclusive, conflict and expected-target recalls stay all-domain with the
 global barrier. The guest takes observation leases with expected_target = its

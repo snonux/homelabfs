@@ -530,6 +530,19 @@ func (r *rig) open(i int, name string) guestbridge.Capability {
 // guest resend is byte-identical).
 func (r *rig) ack(i int, phase string, manifest json.RawMessage) json.RawMessage {
 	r.t.Helper()
+	raw := r.ackPayload(i, phase, manifest)
+	reply, err := r.execute(i, "VIEW_ACK", json.RawMessage(raw))
+	must(r.t, err)
+	if status(reply) != "ACCEPTED" {
+		r.t.Fatalf("%s ACK %s", phase, reply)
+	}
+	return raw
+}
+
+// ackPayload builds domain i's exact VIEW_ACK for phase from its current
+// recall event and records the physical fact the primitive Facts require.
+func (r *rig) ackPayload(i int, phase string, manifest json.RawMessage) json.RawMessage {
+	r.t.Helper()
 	r.controller.mu.Lock()
 	event := bytes.Clone(r.controller.state.Recall.Events[r.scopes[i].Session])
 	r.controller.mu.Unlock()
@@ -547,11 +560,6 @@ func (r *rig) ack(i int, phase string, manifest json.RawMessage) json.RawMessage
 	r.facts.mu.Lock()
 	r.facts.physical["VIEW_ACK"+hash(raw)] = true
 	r.facts.mu.Unlock()
-	reply, err := r.execute(i, "VIEW_ACK", json.RawMessage(raw))
-	must(r.t, err)
-	if status(reply) != "ACCEPTED" {
-		r.t.Fatalf("%s ACK %s", phase, reply)
-	}
 	return raw
 }
 func (r *rig) emptyManifest() json.RawMessage {

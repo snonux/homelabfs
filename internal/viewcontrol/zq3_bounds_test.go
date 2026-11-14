@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 
@@ -105,6 +106,13 @@ func (r *rig) query(i int, call guestbridge.Call) json.RawMessage {
 // drainPair freezes, drains and reopens both domains' reservations.
 func (r *rig) drainPair(reservations [2]guestbridge.DirtyReservation) {
 	r.t.Helper()
+	r.drainPairWith(reservations, nil)
+}
+
+// drainPairWith is drainPair with between, when not nil, run after the first
+// DRAIN_WRITE and before the second (mid-drain, pruning off).
+func (r *rig) drainPairWith(reservations [2]guestbridge.DirtyReservation, between func()) {
+	r.t.Helper()
 	recall := r.controller.state.Recall.ID
 	var manifests []json.RawMessage
 	var calls []guestbridge.Call
@@ -127,6 +135,9 @@ func (r *rig) drainPair(reservations [2]guestbridge.DirtyReservation) {
 		r.ack(i, "STOPPED", manifests[i])
 	}
 	for i, call := range calls {
+		if i == 1 && between != nil {
+			between()
+		}
 		if drained := r.sendCall(i, call); drained.Code != "OK" {
 			r.t.Fatalf("drain %d refused: %+v", i, drained)
 		}
@@ -149,12 +160,122 @@ func TestZQ3SpecBoundsAdmitAfterTwoDomainRecall(t *testing.T) {
 // exactly MinSources(2). Without pruning its post-recall admission charged
 // all 8 cuts (the floor is that peak); pruning only lowers the count, so here
 // the recall's retained cuts are pruned to the pinned lease cut plus current.
+//
+// A PROCESS_EXIT sent between the two DRAIN_WRITEs is not admitted there: its
+// own domain holds a frozen (not yet CLOSED) reservation, which conflicts
+// with an authority reduction, so it adds no mid-drain cut and reaches
+// TERMINAL after REOPEN. (A domain without its own reservation could exit
+// mid-drain; source_floor.go counts that case.)
 func TestZQ3SourceFloorCoversReferenceSequence(t *testing.T) {
 	r := newZQ3Rig(t, MinSources(2))
-	r.requireTerminal(r.parkCreateAfterDirtyPair())
+	root := r.call(0, "ROOT", map[string]any{}).Capabilities[0]
+	reservations := r.dirtyPair()
+	parked := r.parkCreate(root, "zq3-after-recall")
+	var exit guestbridge.Call
+	r.drainPairWith(reservations, func() {
+		sources := len(r.controller.state.Sources)
+		var status string
+		exit, status = r.pendingCall(0, "PROCESS_EXIT", map[string]any{"process": r.credentials[0].Process, "exit_sequence": 1})
+		if status != "INDETERMINATE" || len(r.controller.state.Sources) != sources {
+			t.Fatalf("mid-drain PROCESS_EXIT with its own frozen reservation: %s, cuts %d -> %d", status, sources, len(r.controller.state.Sources))
+		}
+	})
+	r.requireTerminal(parked)
 	if n := len(r.controller.state.Sources); n != 2 {
 		t.Fatalf("%d cuts after the post-recall admission, want the lease cut plus current", n)
 	}
+	if status := r.queryStatus(0, exit); status != "TERMINAL" {
+		t.Fatalf("PROCESS_EXIT after REOPEN: %s", status)
+	}
+}
+
+// TestZQ3SourceFloorCoversMidDrainExit is the case an authority reduction
+// adds a mid-drain cut in: m0 holds two reservations (two pages), m1 none, so
+// m1's PROCESS_EXIT is admitted inside the all-domain recall's DRAIN phase
+// after the first drain moved the cut. It remembers that cut while pruning is
+// off, one capture before the second DRAIN_WRITE would have, so that drain's
+// capacity check counts it: with D domains and k <= D drains the check sees
+// at most D+k+4 <= MinSources(D) (source_floor.go). At exactly MinSources(2)
+// the recall completes and the parked CREATE is admitted.
+func TestZQ3SourceFloorCoversMidDrainExit(t *testing.T) {
+	r := newZQ3Rig(t, MinSources(2))
+	root := r.call(0, "ROOT", map[string]any{}).Capabilities[0]
+	reservations := r.twoPageReservations()
+	parked := r.parkCreate(root, "zq3-after-recall")
+	calls, manifest := r.freezeAll(reservations)
+	r.ack(0, "STOPPED", manifest)
+	r.ack(1, "STOPPED", r.emptyManifest())
+	for i, call := range calls {
+		if i == 1 {
+			before := len(r.controller.state.Sources)
+			if _, status := r.pendingCall(1, "PROCESS_EXIT", map[string]any{"process": r.credentials[1].Process, "exit_sequence": 1}); status != "TERMINAL" {
+				t.Fatalf("mid-drain PROCESS_EXIT of a domain without reservation: %s", status)
+			}
+			// The exit remembered the post-drain cut early: exactly one more.
+			if after := len(r.controller.state.Sources); after != before+1 {
+				t.Fatalf("mid-drain PROCESS_EXIT cuts %d -> %d, want one more", before, after)
+			}
+		}
+		if drained := r.sendCall(0, call); drained.Code != "OK" {
+			t.Fatalf("drain %d refused at MinSources: %+v", i, drained)
+		}
+	}
+	r.poll(0)
+	for _, phase := range []string{"INSTALLED_DRAIN", "DRAINED", "INSTALLED_FINAL", "REOPENED"} {
+		r.ack(0, phase, manifest)
+		r.ack(1, phase, r.emptyManifest())
+	}
+	r.requireTerminal(parked)
+}
+
+// twoPageReservations writes two pages to a new m0 file (a dirty page must be
+// representable), registers m1 with a PAGE READ lease and grants m0 one
+// EXCLUSIVE_DIRTY lease and reservation per page.
+func (r *rig) twoPageReservations() []guestbridge.DirtyReservation {
+	r.t.Helper()
+	_, description := r.create(0, "zq3-two-pages", false)
+	data := hex.EncodeToString(bytes.Repeat([]byte("a"), 8192))
+	if written := r.call(0, "WRITE", map[string]any{"description": description, "offset": 0, "data": data, "max_end": 8192}); written.Code != "OK" {
+		r.t.Fatalf("WRITE %+v", written)
+	}
+	r.pageRead(1)
+	var reservations []guestbridge.DirtyReservation
+	for _, offset := range []uint64{0, 4096} {
+		_, write := r.acquire(0, page(description, offset), "EXCLUSIVE_DIRTY")
+		_, payload := r.reserve(0, write.Lease, description)
+		reserved := r.view(0, "DIRTY_RESERVE", payload)
+		if reserved.Reservation == nil {
+			r.t.Fatalf("reservation at %d: %+v", offset, reserved)
+		}
+		reservations = append(reservations, *reserved.Reservation)
+	}
+	return reservations
+}
+
+// freezeAll freezes m0's reservations into the current recall and returns
+// their drain calls plus m0's STOPPED/DRAINED manifest (entries sorted by id,
+// as the controller builds it).
+func (r *rig) freezeAll(reservations []guestbridge.DirtyReservation) ([]guestbridge.Call, json.RawMessage) {
+	r.t.Helper()
+	var calls []guestbridge.Call
+	var entries []json.RawMessage
+	for _, reservation := range reservations {
+		payload := freezeRequest(r.controlTicket(0), reservation, r.controller.state.Recall.ID, "61")
+		reply := r.view(0, "DIRTY_FREEZE", payload)
+		if reply.Status != "FROZEN" {
+			r.t.Fatalf("freeze %+v", reply)
+		}
+		entries = append(entries, reply.Entry)
+		raw, _ := canonical(payload)
+		var req request
+		must(r.t, json.Unmarshal(raw, &req))
+		_, call, err := frozen(req)
+		must(r.t, err)
+		calls = append(calls, call)
+	}
+	sort.Slice(entries, func(i, j int) bool { return entryID(entries[i]) < entryID(entries[j]) })
+	manifest, _ := canonical(map[string]any{"entries": entries, "hash": digest(entries)})
+	return calls, manifest
 }
 
 func (r *rig) requireTerminal(call guestbridge.Call) {

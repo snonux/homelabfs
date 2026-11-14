@@ -86,15 +86,17 @@ description or origin. Concurrent READ leases may share a cut. EXCLUSIVE_DIRTY
 conflicts with every overlapping page read/dirty lease across every domain and
 origin. DOMAIN observations may conservatively conflict with all mutations of
 the domain. These rules close stale metadata/EOF bypasses without restricting
-publication to a preferred writer. Authority reductions (PROCESS_EXIT, FORGET,
-DESCRIPTION_RELEASE) are not mutations of any observation and conflict with no
+publication to a preferred writer. Authority reductions (PROCESS_EXIT,
+DESCRIPTION_CLOSE, FORGET, DESCRIPTION_RELEASE) are not mutations of any
+observation and conflict with no
 lease, so a peer's lease never makes them start a recall; only an open dirty
 reservation of their own domain still conflicts, so its bytes drain under the
 original process and description first. They only shrink existing
 authority, and a reclaimed unlinked object has no remaining reference through
-which any lease or mapping could observe it. PROCESS_EXIT also keeps the
-source cut (it only retires the owner and its fcntl locks) and the recall
-barrier never holds it; FORGET and DESCRIPTION_RELEASE may append lifetime state, so they
+which any lease or mapping could observe it. PROCESS_EXIT and
+DESCRIPTION_CLOSE are lock-only: they keep the source cut (they only release
+the owner's fcntl locks and close no description) and the recall barrier never
+holds them; FORGET and DESCRIPTION_RELEASE may append lifetime state, so they
 wait while a recall installs a cut.
 
 `Target` is exactly one of:
@@ -191,7 +193,7 @@ so it stops, reinstalls the current cut and reopens that one domain, and only
 that domain's fence advances. Its inventory/closure hashes bind just that
 domain. Its admission barrier is per domain: other domains keep their leases,
 their cut-preserving reads (ROOT, GETATTR, READ, READLINK, READDIR, STATFS),
-READ acquisitions/renewals and PROCESS_EXITs proceed, and they receive no
+READ acquisitions/renewals and lock-only reductions proceed, and they receive no
 event. Every operation that may change the cut (LOOKUP, which journals a
 handle pin for an object without a lifetime; any non-read CALL, including
 FORGET and DESCRIPTION_RELEASE; native commands; DIRTY_RESERVE and
