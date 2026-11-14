@@ -42,4 +42,14 @@ Once approved, the scripts execute without routine LLM participation. Determinis
 - Produce a human-readable summary plus JSON/JUnit-style machine-readable results, package/kernel versions, seeds, timings, relevant logs, and remaining-resource inventory. Preserve useful diagnostics even when tests fail.
 - An LLM may help write the runner, review a plan, or analyze collected evidence afterward. It is not part of the test control loop and cannot approve tests on the user's behalf.
 
+## Offline recall workload model
+
+`mage test` (plain `go test ./...`, no `-short`) also runs the zq3-r8 recall
+workload model in `internal/controlledruntime` (`recall_workload*_test.go`,
+task 984). It replays the bootstrap and the k64 usable gate against the
+assembled runtime with a 2 s guest observer, so it pays real observation
+latency: about 85-90 s of wall time (about 135 s under `-race`), with its
+schedules in parallel. `go test -short` skips it. `HFS_RECALL_MODEL_LATENCY`
+(a Go duration) changes the observer latency.
+
 CI may build artifacts, lint the runner, and prepare test plans. Any job that runs either integration stage or live smoke stage requires a manual approval gate tied to the plan. There are no scheduled unattended runs of these suites without explicit per-run approval.
