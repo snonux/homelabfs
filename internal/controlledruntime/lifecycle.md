@@ -89,7 +89,15 @@ does; nothing is retried) and captures, from the current actual owners:
   complete view source (`Through`, `Applied`, visibility, state hash/bytes)
   taken on the service worker within the signed `SourceBytes`;
 * each provider's protected ledger digest (the digest C9 compares), inode and
-  size under its execution mutex;
+  size under its execution mutex, and (evidence `/2`, b84) a bounded claim
+  summary from the same read transaction: principal count, the sums of every
+  principal's allocated high-water and retirement floor, present entries, the
+  number of open entries (neither TERMINAL nor a declined gap), up to 16 open
+  entries oldest first and the 8 newest entries, each as number, guest
+  opcode, ledger status and preparation stage only (no binding, credential,
+  name or process identity). There is no age: the ledger stores no time. The
+  zq3 bootstrap's `usable` gate uses it to require that the probe children's
+  GETATTR and PROCESS_EXIT claims reached TERMINAL;
 * the view controller's protected ledger digest, size, whether the live state
   equals those protected bytes, and inert counts;
 * the live C8 ledger index (controller, endpoint, high-water, cells, classes,

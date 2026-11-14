@@ -226,12 +226,17 @@ class BatchEvidenceTests(BatchCase):
 
     def test_journal_of_the_previous_step_list_refuses_by_version(self):
         _, plan_sha256 = self.bootstrap_run()
-        self.assertEqual(fill.bootstrap.JOURNAL_VERSION, "homelabfs-zq3-bootstrap-journal/2")
+        self.assertEqual(fill.bootstrap.JOURNAL_VERSION, "homelabfs-zq3-bootstrap-journal/3")
         path = self.run_dir / "journal.jsonl"
-        records = [json.loads(line) for line in path.read_text().splitlines()]
-        records[0]["version"] = "homelabfs-zq3-bootstrap-journal/1"
-        path.write_bytes(b"".join(controller.canonical(record) for record in records))
-        self.refuses(self.argv(plan_sha256), "journal version 'homelabfs-zq3-bootstrap-journal/1' is not")
+        original = path.read_bytes()
+        # /1 predates the usable gate, /2 the b84 claim check: an `ok` usable
+        # in a /2 journal never saw the probes' PROCESS_EXIT claims TERMINAL.
+        for old in ("homelabfs-zq3-bootstrap-journal/1", "homelabfs-zq3-bootstrap-journal/2"):
+            with self.subTest(version=old):
+                records = [json.loads(line) for line in original.decode().splitlines()]
+                records[0]["version"] = old
+                path.write_bytes(b"".join(controller.canonical(record) for record in records))
+                self.refuses(self.argv(plan_sha256), "journal version '{}' is not".format(old))
 
     def test_summary_must_say_ready(self):
         _, plan_sha256 = self.bootstrap_run()

@@ -15,7 +15,7 @@ import (
 )
 
 // lifecycleEvidenceVersion names the closed observation record below.
-const lifecycleEvidenceVersion = "homelabfs-controlled-evidence/1"
+const lifecycleEvidenceVersion = "homelabfs-controlled-evidence/2"
 
 // lifecycleErrorBytes bounds every error text copied into evidence, so a
 // pathological error chain cannot grow a reply beyond its funded size.

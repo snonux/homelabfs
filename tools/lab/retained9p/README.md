@@ -745,7 +745,7 @@ primitives, and keeps the Go tools (`hfs-runtime-prep`,
 | `bind` | remote | one write of `bind.json` to `/sys/kernel/homelabfs/bind_v1` |
 | `mount-0`, `mount-1` | remote | `mount -t 9p -o trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,msize=65536 hfsN /var/tmp/hfs-zq3-RUN/mN`, checked in `/proc/self/mountinfo` |
 | `ready` | read | third record `READY`, `CONTROLLED_LOCAL`, two domains, control binding |
-| `usable` | read | post-READY usability gate (k64): `guest-stat` lstats both mount roots as root right away and again once 40 s have passed since `mount-1` ended (the guest's 30 s QUERY timeout plus 10 s), with a host poll in between; both roots must answer every time. Writes nothing into the mounts, but each lstat adds GETATTR and PROCESS_EXIT claims to the provider ledgers |
+| `usable` | read | post-READY usability gate (k64, b84): `guest-stat` lstats both mount roots as root right away and again once 40 s have passed since `mount-1` ended (the guest's 30 s QUERY timeout plus 10 s), with a host poll and a `host-observe` baseline (no open provider claim) in between; both roots must answer every time, and `host-observe` polls (every 5 s, at most 30 s) until a GETATTR and a PROCESS_EXIT numbered after the baseline are TERMINAL on both providers. Writes nothing into the mounts, but each lstat adds GETATTR and PROCESS_EXIT claims to the provider ledgers and each OBSERVE consumes a lifecycle sequence |
 
 ```
 python3 -I -B bootstrap.py check --plan PLAN --plan-sha256 SHA
@@ -856,11 +856,14 @@ surfaced only in T1/T6. So READY is no longer the last step.
 - READY ends the runtime's launch-to-READY bootstrap timeout, so the step
   gets its own fixed bound in place of the driver's deadline, using the same
   deadline mechanism: the settle point (or now, if READY came later) plus
-  30 s. In practice that is at most about 70 s after `mount-1`.
+  30 s for the probes and 30 s for the b84 claim check (below). In practice
+  that is at most about 100 s after `mount-1`.
 - An errno, a timeout, a lost mount, a non-directory root, a missing root, a
   probe transport failure, a guard or runtime exit, or the gate's own
   deadline ends `usable` as `failed`. Every failure's journal detail carries:
-  - `probe`: `first`, `settle` (waiting or the host poll) or `final`;
+  - `probe`: `first`, `settle` (waiting or the host poll), `baseline` (b84
+    OBSERVE before the final probe), `final` or `claims` (b84 OBSERVE after
+    it);
   - `roots`: both roots' results, or null when no probe result exists;
   - `errno`: the first failing root's errno (13 for zq3-r7's `EACCES`), or
     null for a timeout, a lost mount or a failure outside the lstat.
@@ -869,24 +872,70 @@ surfaced only in T1/T6. So READY is no longer the last step.
   `usable_note`. Nothing is retried, remounted, written into the mounts or
   unmounted: go to Phase 11 with inspection first. `fill_plan.py batch`
   refuses such a run, because it requires every step in `STEP_NAMES` to be
-  `ok`. The step list changed, so the journal version is now
-  `homelabfs-zq3-bootstrap-journal/2`, and `fill_plan.py` refuses a `/1`
-  journal by its version.
+  `ok`. The step list changed (k64), so the journal version became `/2`;
+  b84's claim check made it `homelabfs-zq3-bootstrap-journal/3`, and
+  `fill_plan.py` refuses `/1` and `/2` journals by their version.
 - Remote child bounds: every `--seconds` must be 1..120, or the remote half
   refuses with exit 2 before running anything.
-- **Not implemented (k64 follow-up): mount PROCESS_EXIT reached TERMINAL.**
-  The task also asked that each mount's PROCESS_EXIT claim be shown to have
-  reached TERMINAL on the host. The driver cannot check this:
-  - OBSERVE's `providers[]` carries only the provider ledger's digest, inode
-    and size (`controlledvalidation.LedgerEvidence`), and its `transport`
-    section only carries counts.
-  - Claim status and preparation stage exist only inside the bbolt ledgers
-    in the OwnerDirectory, which r7 decoded offline. The driver has no
-    guarded path that reads them, and none that calls OBSERVE.
-  - The follow-up needs a daemon feature: OBSERVE listing each provider's
-    non-TERMINAL claims (kind such as PROCESS_EXIT, status, preparation
-    stage, age), or READY waiting until the bootstrap mount claims are
-    TERMINAL.
+- **Host-side claim check (b84).** zq3-r8 showed the lstat is not enough:
+  m0's first-probe lstat returned, but the lstat child's own PROCESS_EXIT
+  claim stayed `RESERVED/UNPREPARED`, and the guest blocked m0 about 30 s
+  later ("blocked by QUERY timeout on PROCESS_EXIT"). The gate now also
+  reads the runtime's OBSERVE:
+  - `host-observe` (read-only remote action on f3, under `doas`) re-checks
+    the plan's runtime executable pin and runs it once in client mode,
+    `--control SOCKET --operation observe --runtime UUID --sequence N`, with
+    the socket and runtime UUID from the READY record (the socket must sit
+    directly in the plan's OwnerDirectory). The reply (at most 128 KiB) is
+    kept in `calls/`. A client that does not return within its bound is
+    left running and reported as a failure.
+  - OBSERVE evidence `/2` (b84, `internal/controlledvalidation/evidence_claims.go`)
+    gives each provider ledger a bounded `Claims` summary: principals, the
+    sums of allocated high-water and retirement floor, present entries, the
+    open count (neither TERMINAL nor a declined gap), up to 16 open and the 8
+    newest entries as number, opcode, status and stage. No binding,
+    credential, name or process identity, and no age (the ledger stores no
+    time; the driver records `claims_seconds_after_final` itself).
+  - Phase `baseline`, after the settle point and the host poll: OBSERVE
+    until neither provider has an open claim (the mounts' and the first
+    probe's claims all settled). zq3-r8's stranded first-probe PROCESS_EXIT
+    fails here, before the final probe runs.
+  - Phase `claims`, after the final probe and for at most 30 s from its
+    end: OBSERVE every 5 s until, per provider, at least two numbers were
+    allocated after the baseline's `Allocated`, nothing is open, and a
+    TERMINAL GETATTR and a TERMINAL PROCESS_EXIT are among the newer
+    numbers. A newer number the guest already retired (at or below
+    `Retired`) was TERMINAL first and may be recycled out of `Recent`, so
+    each one stands in for one opcode not shown. Claim numbers are per
+    principal; the guest uses one per session, and the gate requires
+    exactly one.
+  - The gate identifies the probe's claims by opcode and number range, not
+    by process: in the quiet bootstrap they are the only new ones, but
+    OBSERVE cannot prove it. `Recent` lists only the 8 newest entries, so
+    many unrelated new claims would hide the probe's and fail the gate
+    (fail safe, never a false pass).
+  - An OBSERVE that is not `complete` and `SERVING`, has the wrong evidence
+    version (a runtime without b84), lacks a provider's `Claims` or names
+    other sessions fails at once with that cause (an earlier OBSERVE's open
+    claims never mask it), and `usable_note` says OBSERVE could not be read.
+    A transport miss retries with a fresh sequence. Only when the deadline
+    itself passes does the failure name each open claim of the last answered
+    OBSERVE (`hfs0: 1 claim(s) not TERMINAL: #6 PROCESS_EXIT
+    RESERVED/UNPREPARED`), with the claims `usable_note`. The journal detail
+    adds `claims` (the last per-mount summary) and `observe_sequence_last`.
+  - Bound: baseline and final probe within the settle point plus 30 s, then
+    30 s from the final probe's end for the claims (the guest's own QUERY
+    window: a claim slower than that blocks the session anyway), so about
+    100 s after `mount-1`.
+  - Side effects: each OBSERVE refreshes the (single) guest Admission with
+    a fresh SSH observation of the guest (never the cached one, serialized
+    with the VIEW_ACK observations, the zq3-r8 recall-latency path) and
+    captures a view source; a failed observation permanently fences the
+    Admission. Hence the 5 s poll: about six OBSERVEs in a failing claims
+    window. The 984 workload model does not count them yet. Each OBSERVE
+    also consumes one lifecycle sequence, even when its reply is lost.
+    `summary.json` records `observe_sequence_last`; Phase 9 and any later
+    OBSERVE must use a larger sequence.
 
   Until then the guest-side stat is the only gate. It detects the
   consequence (the blocked session), not the cause.
@@ -938,7 +987,12 @@ children, and the `usable` gate (success only after the settle point, `EACCES`
 on the first or the final probe, an lstat timeout, a probe transport timeout
 as `failed` not `uncertain`, the gate's own deadline, a lost mount, a missing
 root, a runtime exit during the settle, a READY later than the settle point,
-each failure's `probe`/`roots`/`errno` detail). The signed files it checks are real signer output from
+each failure's `probe`/`roots`/`errno` detail; b84: the claim baseline and
+final check, a stranded final-probe PROCESS_EXIT, zq3-r8's stranded
+first-probe PROCESS_EXIT failing at the baseline, a slow PROCESS_EXIT that
+settles within the poll, an OBSERVE transport miss retried on a fresh
+sequence, an incomplete, `/1` or claim-less OBSERVE, and `claims_problems`
+on hand-made summaries; `test_bootstrap_remote.py` covers `host-observe`). The signed files it checks are real signer output from
 `internal/runtimeprep/bootstrap_fixture_test.go` (throwaway keys, no key
 files exported; regenerate with `HFS_BOOTSTRAP_FIXTURE_DIR=NEW_DIR go test
 -run TestExportBootstrapFixture ./internal/runtimeprep` and copy the nine
@@ -1023,7 +1077,7 @@ world (only the mount replies carry realistic `mountinfo` rows), fills the
 batch plan and checks it with `plan_snapshot` and `controller.py check` as
 a child process, and fills the bootstrap plan and checks it with
 `bootstrap.py check`. Negatives: a run stopped before READY, a READY run
-whose `usable` gate failed with `EACCES`, a `/1` journal, a non-READY summary, another bootstrap plan, a torn journal, malformed, foreign, non-9p
+whose `usable` gate failed with `EACCES`, a `/1` or `/2` journal, a non-READY summary, another bootstrap plan, a torn journal, malformed, foreign, non-9p
 or multi-row `mountinfo`, zero or leading-zero IDs, duplicate IDs,
 disagreeing admission/enrollment evidence, a changed enrollment request,
 template pin, filled, moved and unknown placeholders, a template of another

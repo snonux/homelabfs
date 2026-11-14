@@ -56,7 +56,7 @@ def load_controller():
 
 controller = load_controller()
 Refused = controller.Refused
-EVIDENCE_VERSION = "homelabfs-controlled-evidence/1"
+EVIDENCE_VERSION = "homelabfs-controlled-evidence/2"  # /2: provider ledgers carry Claims (b84)
 OBSERVE_FORMAT = "homelabfs-retained9p-host-observe/1"
 LOST_REPLY_VERSION = "homelabfs-retained9p-lost-reply-correlation/1"
 K04_VERSION = "homelabfs-retained9p-k04-after-loss/1"

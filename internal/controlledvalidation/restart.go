@@ -108,11 +108,17 @@ func (r *Restart) Reopen(ctx context.Context, service *fsservice.Service, facts 
 	return p, nil
 }
 
-func providerDigest(db *bolt.DB) (string, error) {
+func providerDigest(db *bolt.DB) (digest string, err error) {
+	err = db.View(func(tx *bolt.Tx) error { digest, err = providerDigestTx(tx); return err })
+	return digest, err
+}
+
+// providerDigestTx is providerDigest inside an existing read transaction, so
+// LedgerEvidence can take the digest, size and claim summary from one
+// snapshot.
+func providerDigestTx(tx *bolt.Tx) (string, error) {
 	h := sha256.New()
-	err := db.View(func(tx *bolt.Tx) error {
-		return tx.ForEach(func(k []byte, b *bolt.Bucket) error { hashPart(h, k); return hashBucket(h, b) })
-	})
+	err := tx.ForEach(func(k []byte, b *bolt.Bucket) error { hashPart(h, k); return hashBucket(h, b) })
 	return hex.EncodeToString(h.Sum(nil)), err
 }
 func hashPart(h hashpkg.Hash, p []byte) {
