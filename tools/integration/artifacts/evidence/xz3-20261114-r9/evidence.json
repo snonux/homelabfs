@@ -1,0 +1,184 @@
+{
+  "candidate": {
+    "admission": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "assembled_from": "the l84 worktree at e92eaa1 (clean: every tracked file equals the e92eaa1 tree, no edits before assembly). The daemon was built in this worktree, so the new daemon builder bindings name the worktree path; every other binding is a hash. The three native proof records were copied from the y64 run root (the native parts are reused)",
+    "files": 194,
+    "independent_admit": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "manifest_sha256": "e585206aa26dcd5724065467ebb716ced7c421db0979c25290fed8c37551b213",
+    "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+    "path": "package",
+    "repository_baseline": "e92eaa1d1fbbe387c20dc063afc0d6655560cd9c",
+    "repository_changes_patch": "absent: the baseline is the daemon build revision e92eaa1, and git diff b869710 e92eaa1 touches none of the tracked Linux/lib9p source files assemble.py diffs, so git diff against the baseline is empty",
+    "source_checkout": "e92eaa1d1fbbe387c20dc063afc0d6655560cd9c"
+  },
+  "controls": {
+    "all_refused": true,
+    "case_names": [
+      "external operator mismatch",
+      "external repository mismatch",
+      "old negotiated features",
+      "old source revision",
+      "different packaged Linux patch",
+      "different native owned source",
+      "wrong actual bundled source with consistent container hashes",
+      "daemon ELF labelled as full exporter",
+      "native helper ELF lacks production controllers",
+      "invented stock shared9p runtime",
+      "installed success claim",
+      "missing actual Go build version",
+      "real CGO_ENABLED=0 daemon with nocgo observer stub",
+      "record claims CGO0 build",
+      "nocgo stub in recorded source closure",
+      "renamed cgo process observer symbols",
+      "foreign dynamic loader",
+      "extra recorded DT_NEEDED",
+      "missing recorded DT_NEEDED",
+      "sysroot library hash differs from recorded closure",
+      "unlinked sysroot capture",
+      "unrecorded clang resource headers",
+      "unrecorded clang shared-library closure",
+      "foreign cgo compiler wrapper",
+      "installation authority claim",
+      "false forced rebuild witness"
+    ],
+    "cases": 26,
+    "cgo0_control_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+    "original_passed_after": true,
+    "restored_passed": true
+  },
+  "daemon": {
+    "bytes": 10953416,
+    "changes": "784 recall scope (clean READ release recalls only its domain; lock-only reductions such as PROCESS_EXIT never recall), 884 (VIEW_ACK reuses a matching observation; no Admission lock across SSH), d84 (VIEW_ACK on its own transport worker lane), g84 (VIEW_RELEASE certified per lease), h84 (a retrying cell cannot starve its lane), b84 (OBSERVE carries a bounded provider claim summary, evidence /2), q64/f84 (retired view tickets recycled, ACK archive and recall UUIDs pruned)",
+    "forced_builds_equal": true,
+    "gnu_build_id": "64858f7717a221295845f3e9d5d87e2fd1f0aed7",
+    "go_build_id": "Lwn_2vxwnwyboxb97qMF/AWl_nkW_Yd8C5RhAazRI/Xjqwecfm1E0FS4Uk7kPh/v6HJ2of_zs55wwv7rf0H",
+    "go_mod_unchanged": true,
+    "go_sum_unchanged": true,
+    "module_cache": "private cache seeded from the y64 cache (go.mod and go.sum unchanged since b869710); no dependency was downloaded",
+    "native_qualification": "not run: the exact new bytes still need --check-process-observer on f3 under the bounded host guard; this task built locally only",
+    "repository": "e92eaa1d1fbbe387c20dc063afc0d6655560cd9c",
+    "sha256": "868dc045907d5979c56b090b76b5b03515b1e149e7c7273bf50505f06e4627a6",
+    "source_closure_added_since_y64": [
+      "github.com/snonux/homelabfs/internal/controlledvalidation/evidence_claims.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/worker.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/recall_scope.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/recycling.go"
+    ],
+    "source_closure_changed_since_y64": [
+      "github.com/snonux/homelabfs/internal/controlledruntime/facts.go",
+      "github.com/snonux/homelabfs/internal/controlledruntime/guest_observer.go",
+      "github.com/snonux/homelabfs/internal/controlledruntime/lifecycle_evidence.go",
+      "github.com/snonux/homelabfs/internal/controlledruntime/producer.go",
+      "github.com/snonux/homelabfs/internal/controlledruntime/runtime_budget.go",
+      "github.com/snonux/homelabfs/internal/controlledvalidation/evidence.go",
+      "github.com/snonux/homelabfs/internal/controlledvalidation/restart.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/endpoint.go",
+      "github.com/snonux/homelabfs/internal/guestbridge/restore.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/admission.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/controller.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/fence.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/recall.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/retirement.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/source_floor.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/terminal.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/tickets.go"
+    ],
+    "source_closure_files": 1294,
+    "source_closure_removed_since_y64": [],
+    "steps": [
+      [
+        "prepare",
+        "0",
+        "4"
+      ],
+      [
+        "build-first",
+        "0",
+        "67"
+      ],
+      [
+        "build-second",
+        "0",
+        "81"
+      ]
+    ],
+    "superseded_daemon": "34fb05b28357b42e37816370f9bb6c0ec046ff2e98763dafff87c3680021694c (y64, b869710; passed --check-process-observer in zq3-r8)",
+    "toolchain_cgo_toolchain_sysroot_runtime_closure_unchanged": true,
+    "window_build_cross_check_equal": true
+  },
+  "init_helper": {
+    "kept": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80 from e0cca0c",
+    "reason": "not in the package; cmd/homelabfs reaches guestbridge only through fuseadapter (mount path) and does not import viewcontrol or controlledvalidation; node-init/volume-init never mount, so the d84/h84 guestbridge worker and endpoint changes are not reached"
+  },
+  "kernel": {
+    "gnu_build_id": "870bb9d1d61ca10ecbbdb0a494a2fb5c449b92ee",
+    "linux/System.map": "1ffea83fab4dc34060d3cbf437612891415582eff384b8c8630c69795455170c",
+    "linux/bzImage": "40afad22f44e770bb18d55cd8b6c23570aaa056a62a88a86b7cb82ae2c227afe",
+    "linux/config": "28fe4a8ec759cfa7ecfdc373753082ec6981ecdffc6a25e074b6fac048906282",
+    "linux/vmlinux": "d2d3e5ab589366ccdd166c475e665239db27b72d3228aa8c7db8cb1ebf1a0f41",
+    "release": "6.1.190-hfs-xz3",
+    "reused_from": "867ede3630e4ee0a609f88b0752670fac5b7a0c0e0f9d2a340031110da32c334 (y64, source b869710), byte for byte: vmlinux, bzImage, config, System.map, Module.symvers, modules.*, kernel.release, five modules, build/abi/abi-negative/clean-repro records",
+    "why_not_rebuilt": "git diff b869710 e92eaa1 -- tools/integration/linux9p touches only tests/controlled_received (README.md, host_test.go.txt: harness); patches, series, source.json, export.py, prepare.py and the kernel recipe/config are unchanged"
+  },
+  "native_exporter": {
+    "exporter_sha256": "ef8f17de8754f8bdd6d5d517f15a859e87a2f4a8ca1542394f5608a8e40823b1",
+    "owned_sources_checked": 11,
+    "proof_records": {
+      "native-bundle-helper-transfer.json": "1f9352e688d0378d3c8705d1be98ef557a693be11f90ad86e567559ac76f07f1",
+      "native-clean-repro-evidence.json": "7e668642fdb844a61e5c08e7fb3f49fafe2aa3d7441c3719264afe1b036acac9",
+      "native-final-source-and-first-seal.json": "81c2e6d8eebf3dd0b5177dea9c6f67b92f60b85428960cfbe9e1f97baaca8f3e"
+    },
+    "reused_from": "867ede3630e4ee0a609f88b0752670fac5b7a0c0e0f9d2a340031110da32c334 (y64 native f3 build, root /var/tmp/hfs-xz3-20261110h-r1)",
+    "why_not_rebuilt": "git diff b869710 e92eaa1 -- tools/integration/lib9p is empty (hfs9p.c, hfs9p_recovery.inc, the other owned sources and the dedicated-backend patch unchanged); stage-package.py re-hashed all 11 packaged owned inputs against the repository; native recipes (native_build/source/guard/bundle.py, elf.py, runner_process.py) unchanged"
+  },
+  "not_claimed": [
+    "installed",
+    "booted",
+    "native acceptance",
+    "native observer qualification of these daemon bytes",
+    "VM/exporter execution",
+    "normal publication",
+    "a working hfs1.4 mount on Rocky (zq3)",
+    "that the zq3-r8 recall wall is gone on real hardware (only offline models: 984)"
+  ],
+  "reason": "zq3-r8 R8-1: the y64 daemon 34fb05b2 parked the usable probe claims behind full two-domain recalls whose VIEW_ACKs ran synchronous SSH observations on the shared control worker, so both sessions blocked on the guest 30 s QUERY window; 784, 884, d84, g84, h84, b84 and q64/f84 changed the daemon (e92eaa1)",
+  "recorded": "2026-11-14",
+  "reused": {
+    "checked_against_current_source": 30,
+    "files": 136,
+    "from_manifest": "867ede3630e4ee0a609f88b0752670fac5b7a0c0e0f9d2a340031110da32c334",
+    "list": "reused-files.json",
+    "previous_still_admits": "package.py check and a full admit.py of 867ede36 pass under the e92eaa1 tooling (receipts y64-container, y64-readmit)",
+    "scope": "83 native FreeBSD files, 5 native source-bundle/notice files, 18 Linux kernel/module/record files, 2 Linux source records, 6 Linux patches and series, 22 Linux license notices"
+  },
+  "superseded_candidate": {
+    "manifest_sha256": "867ede3630e4ee0a609f88b0752670fac5b7a0c0e0f9d2a340031110da32c334",
+    "status": "refused as superseded (y64 daemon 34fb05b2: recalls parked the usable probe claims, zq3-r8 R8-1; no b84 OBSERVE claim summary)"
+  },
+  "task": "l84: xz3 daemon rebuild for zq3-r9",
+  "version": "homelabfs-xz3-evidence/2",
+  "window_artifacts": {
+    "builds_byte_identical": true,
+    "controlledruntime.test": "30ba40be11bba014ecdf746c833f722f6b8d969fe8a0836d4b2cf0d9eb9b8b98",
+    "fdescfs-namespace": "50d823bed9cd1f6b92ebb67e1c1e7293f19a227069e1937eff899c607fd952d2",
+    "helper_difference": "fdescfs-namespace.c is unchanged (e59cde41...). The helper differs from the y64 3d992cdf only in DWARF (the new out_dir as comp_dir); llvm-objcopy --strip-debug of both gives identical bytes 07c9f5a19fb38031bfbfda438b3f659a8fdc03ecc656f8f20791d120f9364a96",
+    "hfs-controlled-runtime": "868dc045907d5979c56b090b76b5b03515b1e149e7c7273bf50505f06e4627a6",
+    "recipe_sha256": "927b2102c51209e0e2366fc7e529440337d996ce87de9933533eec039a525100",
+    "source": "e92eaa1d1fbbe387c20dc063afc0d6655560cd9c",
+    "test_changed_because": "internal/controlledruntime (facts.go, guest_observer.go, producer.go, lifecycle_evidence.go, runtime_budget.go) and the guestbridge, viewcontrol and controlledvalidation packages it links changed since b869710"
+  }
+}
