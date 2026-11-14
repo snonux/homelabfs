@@ -23,7 +23,8 @@ Both refuse on a missing, ambiguous or mismatched value: a template or run
 plan that differs from its pinned SHA256, a placeholder that is not exactly
 where it is expected (already filled, moved) or one this tool does not know,
 a bootstrap run that is not READY with every step `ok` (including the
-post-READY `usable` gate: READY with an unusable mount root refuses), and
+post-READY `usable` gate: READY with an unusable mount root, or with a
+probe's PROCESS_EXIT or GETATTR claim not TERMINAL (b84), refuses), and
 evidence that
 disagrees with itself. The filled plan must then pass the consuming tool's
 own validation (`controller.py check`'s `plan_snapshot`, `bootstrap.py
@@ -127,8 +128,10 @@ def journal_details(run_dir, plan_sha256):
     journal = bootstrap.Journal.open(run_dir / "journal.jsonl")
     header, records = (journal.records or [{}])[0], journal.records[1:]
     require(header.get("kind") == "run", "journal does not start with a bootstrap run record")
-    # The version names the step list: a /1 journal predates the usable gate
-    # and is refused for that reason, not as an incomplete run.
+    # The version names the step list and what its steps prove: a /1 journal
+    # predates the usable gate and a /2 one its b84 claim check (an `ok`
+    # usable there never saw the probes' PROCESS_EXIT TERMINAL). Both are
+    # refused for that reason, not as an incomplete run.
     require(header.get("version") == bootstrap.JOURNAL_VERSION,
             "journal version {!r} is not {} (written by a bootstrap.py with another step list)".format(
                 header.get("version"), bootstrap.JOURNAL_VERSION))

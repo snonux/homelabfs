@@ -151,6 +151,12 @@ class World:
         self.overrides, self.tamper, self.extra, self.sign = {}, {}, {}, True
         self.prep_tamper, self.mounted = None, []
         self.stat_outcomes, self.stat_clocks, self.mount_clock = [], [], None
+        # Simulated provider ledgers (b84): tag -> claims, each TERMINAL once
+        # `observes` reaches its `ready`. `strand` maps (tag, guest-stat call
+        # number, opcode) to the OBSERVEs it stays RESERVED for (None: never
+        # settles, as zq3-r8's probe PROCESS_EXIT).
+        self.ledgers, self.strand, self.observes, self.sequences = {"hfs0": [], "hfs1": []}, {}, 0, []
+        self.evidence_change = None
 
     # -- Boundaries factory (bootstrap.run calls it with the run's inputs)
 
@@ -216,6 +222,7 @@ class World:
 
     def on_guest_mount(self, options, payload):
         self.mounted.append(options["--tag"])
+        self.add_claims(options["--tag"], ("ROOT", "PROCESS_EXIT"), None)  # mount(8)'s own claims
         self.mount_clock = self.clock  # The usable gate counts from the later mount.
         if len(self.mounted) == 2:
             self.pending.append(READY_LINE)
@@ -231,7 +238,36 @@ class World:
             root = {"tag": tag, "mountpoint": mountpoint, "mountinfo": ["row"], "outcome": "ok",
                     "stat": {"mode": 0o40755, "uid": 0, "gid": 0, "ino": 1, "dev": 55}}
             roots.append(dict(root, **change))
+            self.add_claims(tag, ("GETATTR", "PROCESS_EXIT"), len(self.stat_clocks))
         return {"boot_id": options["--boot-id"], "roots": roots}
+
+    def add_claims(self, tag, opcodes, probe):
+        ledger = self.ledgers[tag]
+        for opcode in opcodes:
+            delay = self.strand.get((tag, probe, opcode), 0)
+            ready = float("inf") if delay is None else self.observes + delay
+            ledger.append({"Number": len(ledger) + 1, "Opcode": opcode, "ready": ready})
+
+    def claim_summary(self, tag):
+        claims = [{"Number": c["Number"], "Opcode": c["Opcode"],
+                   "Status": "TERMINAL" if self.observes >= c["ready"] else "RESERVED",
+                   "Stage": "PREPARED" if self.observes >= c["ready"] else "UNPREPARED"} for c in self.ledgers[tag]]
+        pending = [c for c in claims if c["Status"] != "TERMINAL"]
+        return {"Principals": 1, "Allocated": len(claims), "Retired": 0, "Entries": len(claims),
+                "Open": len(pending), "Pending": pending[:16], "Recent": sorted(claims, key=lambda c: -c["Number"])[:8]}
+
+    def on_host_observe(self, options, payload):
+        """The runtime's OBSERVE: complete SERVING evidence with both ledgers."""
+        self.observes += 1
+        sequence = int(options["--sequence"])
+        self.sequences.append(sequence)
+        sessions = {m["device_tag"]: m["session"] for m in REQUEST["Mounts"]}
+        evidence = {"version": bootstrap.EVIDENCE_VERSION, "stage": "SERVING", "complete": True,
+                    "publication": None, "providers": [{"session": sessions[tag], "ledger": {
+                        "Digest": "d", "Claims": self.claim_summary(tag)}} for tag in ("hfs0", "hfs1")]}
+        if self.evidence_change:
+            self.evidence_change(evidence)
+        return {"sequence": sequence, "reply": {"status": "OBSERVED", "sequence": sequence, "evidence": evidence}}
 
     # -- guard launcher
 
@@ -535,9 +571,8 @@ class FailureTests(Case):
 EACCES = {"outcome": "errno", "errno": 13, "error": "Permission denied"}
 
 
-class UsableTests(Case):
-    """The post-READY usability gate (k64), against zq3-r7's failure shape:
-    READY with every earlier step ok, then the mount roots refuse root."""
+class UsableCase(Case):
+    """Journal and preservation checks shared by the usable gate tests."""
 
     def usable(self):
         return [r for r in records(self.output) if r.get("step") == "usable" and r["kind"] == "result"][0]["detail"]
@@ -550,14 +585,19 @@ class UsableTests(Case):
         self.assertEqual((summary["outcome"], summary["stopped_at"]), ("failed", "usable"))
         self.assertIn("never remount or retry", summary["usable_note"])
 
+
+class UsableTests(UsableCase):
+    """The post-READY usability gate (k64), against zq3-r7's failure shape:
+    READY with every earlier step ok, then the mount roots refuse root."""
+
     def test_success_probes_twice_and_waits_past_the_query_timeout(self):
         self.assertEqual(self.run_plan(), 0)
         self.assertEqual(self.world.actions().count("guest-stat"), 2)
         final = self.world.stat_clocks[-1] - self.world.mount_clock
         self.assertGreaterEqual(final, bootstrap.USABLE_SETTLE_SECONDS)
         self.assertGreater(bootstrap.USABLE_SETTLE_SECONDS, bootstrap.GUEST_QUERY_SECONDS)
-        self.assertLessEqual(self.world.clock - self.world.mount_clock,
-                             bootstrap.USABLE_SETTLE_SECONDS + bootstrap.USABLE_PROBE_SECONDS)
+        self.assertLessEqual(self.world.clock - self.world.mount_clock, bootstrap.USABLE_SETTLE_SECONDS +
+                             bootstrap.USABLE_PROBE_SECONDS + bootstrap.USABLE_CLAIM_SECONDS)
         options = [o for _, a, o, _ in self.world.calls if a == "guest-stat"][0]
         self.assertEqual(options, {"--tags": "hfs0,hfs1", "--boot-id": BOOT, "--python": "/usr/bin/python3",
                                    "--mountpoints": "/var/tmp/hfs-zq3-zq3-r1/m0,/var/tmp/hfs-zq3-zq3-r1/m1",
@@ -574,6 +614,8 @@ class UsableTests(Case):
         self.assertGreaterEqual(self.world.stat_clocks[-1] - self.world.mount_clock,
                                 bootstrap.USABLE_SETTLE_SECONDS)
         self.assert_preserved()
+        summary = json.loads((self.output / "summary.json").read_text())
+        self.assertEqual(summary["usable_note"], bootstrap.USABLE_FAILED)  # a root, not a claim, failed
 
     def test_eacces_on_the_first_probe_fails_without_waiting(self):
         self.world.stat_outcomes = [[{}, EACCES]]
@@ -640,6 +682,131 @@ class UsableTests(Case):
         self.world.overrides["host-poll"] = slow
         self.assertEqual(self.run_plan(), 0)
         self.assertEqual(self.world.actions().count("guest-stat"), 2)
+
+
+class UsableClaimTests(UsableCase):
+    """The b84 host-side claim check of the usable gate: zq3-r8 passed m0's
+    lstat while that probe child's PROCESS_EXIT stayed RESERVED/UNPREPARED."""
+
+    def summary(self):
+        return json.loads((self.output / "summary.json").read_text())
+
+    def assert_claims_failure(self, phase, text):
+        self.assertEqual(self.run_plan(), 1)
+        self.assert_stopped("usable", "failed", text)
+        detail = self.usable()
+        self.assertEqual((detail["probe"], detail["roots"], detail["errno"]), (phase, None, None))
+        self.assertEqual(detail["observe_sequence_last"], self.world.sequences[-1])
+        self.assertEqual(self.summary()["usable_note"], bootstrap.USABLE_CLAIMS_FAILED)
+        self.assertIn("PROCESS_EXIT", self.summary()["usable_note"])
+        self.assert_preserved()
+        return detail
+
+    def test_success_observes_baseline_and_final_claims_terminal(self):
+        self.assertEqual(self.run_plan(), 0)
+        detail = self.usable()
+        # hfs0: mount(8) ROOT #1 and exit #2, first probe #3/#4, final probe #5/#6.
+        self.assertEqual([c["Opcode"] for c in detail["claims"]["hfs0"]["Recent"][:2]], ["PROCESS_EXIT", "GETATTR"])
+        self.assertEqual((detail["baseline_claims"]["hfs0"]["Allocated"], detail["claims"]["hfs1"]["Allocated"]),
+                         (4, 6))
+        self.assertEqual(self.world.sequences, list(range(1, len(self.world.sequences) + 1)))
+        self.assertEqual(detail["observe_sequence_last"], self.world.sequences[-1])
+        self.assertEqual(self.summary()["observe_sequence_last"], self.world.sequences[-1])
+        # The baseline OBSERVE runs between the probes, after the settle point.
+        actions = [a for a in self.world.actions() if a in ("guest-stat", "host-observe")]
+        self.assertEqual(actions, ["guest-stat", "host-observe", "guest-stat", "host-observe"])
+        options = [o for _, a, o, _ in self.world.calls if a == "host-observe"][0]
+        self.assertEqual({k: options[k] for k in ("--executable", "--socket", "--runtime-id", "--sequence")},
+                         {"--executable": RUN + "/bin/hfs-controlled-runtime", "--socket": OWNER + "/lifecycle.sock",
+                          "--runtime-id": BOOT, "--sequence": "1"})
+        self.assertEqual(options["--executable-sha256"], "5" * 64)
+
+    def test_stranded_final_probe_process_exit_fails_with_a_claims_note(self):
+        self.world.strand[("hfs0", 2, "PROCESS_EXIT")] = None
+        detail = self.assert_claims_failure(
+            "claims", "hfs0: 1 claim(s) not TERMINAL: #6 PROCESS_EXIT RESERVED/UNPREPARED")
+        self.assertEqual(self.world.actions().count("guest-stat"), 2)  # both lstats answered
+        self.assertEqual((detail["claims"]["hfs0"]["Open"], detail["claims"]["hfs1"]["Open"]), (1, 0))
+        self.assertIn("not TERMINAL by the usable gate deadline", self.usable()["error"])
+        self.assertGreaterEqual(self.world.clock - self.world.stat_clocks[-1], bootstrap.USABLE_CLAIM_SECONDS)
+
+    def test_r8_shape_first_probe_exit_stranded_fails_at_the_baseline(self):
+        self.world.strand[("hfs0", 1, "PROCESS_EXIT")] = None
+        self.assert_claims_failure("baseline", "hfs0: 1 claim(s) not TERMINAL: #4 PROCESS_EXIT RESERVED/UNPREPARED")
+        self.assertEqual(self.world.actions().count("guest-stat"), 1)  # the final probe never ran
+
+    def test_slow_but_terminal_process_exit_passes_after_polling(self):
+        self.world.strand[("hfs1", 2, "PROCESS_EXIT")] = 3
+        self.assertEqual(self.run_plan(), 0)
+        self.assertEqual(self.world.actions().count("host-observe"), 4)  # baseline + three claim polls
+        self.assertGreaterEqual(self.usable()["claims_seconds_after_final"], 2 * bootstrap.CLAIM_POLL_SECONDS)
+
+    def test_observe_transport_miss_retries_with_a_fresh_sequence(self):
+        original, misses = self.world.on_host_observe, []
+
+        def flaky(options, payload):
+            if not misses:
+                misses.append(options["--sequence"])
+                return bootstrap.Reply(255, b"", b"ssh: connection reset")
+            return original(options, payload)
+        self.world.overrides["host-observe"] = flaky
+        self.assertEqual(self.run_plan(), 0)
+        self.assertEqual(misses, ["1"])
+        self.assertEqual(self.world.sequences[0], 2)  # the lost sequence 1 is never reused
+
+    def test_incomplete_old_or_summaryless_observe_fails_at_once(self):
+        cases = [(lambda e: e.update(complete=False), "is not complete, SERVING and unpublished"),
+                 (lambda e: e.update(version="homelabfs-controlled-evidence/1"), "without the b84 claim summary"),
+                 (lambda e: e["providers"][1]["ledger"].pop("Claims"), "has no claim summary"),
+                 (lambda e: e["providers"].pop(), "are not the enrolled sessions")]
+        for change, text in cases:
+            with self.subTest(text=text):
+                self.setUp()
+                self.world.evidence_change = change
+                self.assert_claims_failure("baseline", text)
+                self.assertEqual(self.world.actions().count("host-observe"), 1)
+
+
+class ClaimProblemTests(unittest.TestCase):
+    """claims_problems() on hand-made summaries (no run)."""
+
+    @staticmethod
+    def ledger(allocated, recent, open_claims=(), retired=0, principals=1):
+        pending = [dict(c) for c in open_claims]
+        return {"Principals": principals, "Allocated": allocated, "Retired": retired, "Entries": len(recent),
+                "Open": len(pending), "Pending": pending, "Recent": recent}
+
+    BASE = {"hfs0": {"Allocated": 4}}
+
+    def test_settled_final_probe(self):
+        recent = [{"Number": 6, "Opcode": "PROCESS_EXIT", "Status": "TERMINAL", "Stage": "PREPARED"},
+                  {"Number": 5, "Opcode": "GETATTR", "Status": "TERMINAL", "Stage": "PREPARED"}]
+        self.assertEqual(bootstrap.claims_problems({"hfs0": self.ledger(6, recent)}, self.BASE), [])
+
+    def test_unallocated_process_exit_is_not_settled(self):
+        recent = [{"Number": 5, "Opcode": "GETATTR", "Status": "TERMINAL", "Stage": "PREPARED"}]
+        problems = bootstrap.claims_problems({"hfs0": self.ledger(5, recent)}, self.BASE)
+        self.assertEqual(problems, ["hfs0: the final probe's GETATTR and PROCESS_EXIT are not both allocated yet "
+                                    "(1 of 2 numbers after #4)"])
+
+    def test_missing_terminal_process_exit_among_new_claims(self):
+        recent = [{"Number": 6, "Opcode": "FORGET", "Status": "TERMINAL"},
+                  {"Number": 5, "Opcode": "GETATTR", "Status": "TERMINAL"}]
+        problems = bootstrap.claims_problems({"hfs0": self.ledger(6, recent)}, self.BASE)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("no TERMINAL PROCESS_EXIT among the final probe's claims", problems[0])
+
+    def test_retired_numbers_count_as_terminal(self):
+        self.assertEqual(bootstrap.claims_problems({"hfs0": self.ledger(6, [], retired=6)}, self.BASE), [])
+
+    def test_more_than_one_principal_refuses_number_comparison(self):
+        problems = bootstrap.claims_problems({"hfs0": self.ledger(6, [], principals=2)}, self.BASE)
+        self.assertIn("2 claim principals", problems[0])
+
+    def test_open_claims_fail_the_baseline(self):
+        stuck = {"Number": 4, "Opcode": "PROCESS_EXIT", "Status": "RESERVED", "Stage": "UNPREPARED"}
+        problems = bootstrap.claims_problems({"hfs0": self.ledger(4, [stuck], [stuck])}, None)
+        self.assertEqual(problems, ["hfs0: 1 claim(s) not TERMINAL: #4 PROCESS_EXIT RESERVED/UNPREPARED"])
 
 
 class SignerTests(Case):

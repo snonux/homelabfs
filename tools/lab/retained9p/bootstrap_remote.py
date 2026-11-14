@@ -16,11 +16,12 @@ Exit status is the contract bootstrap.py classifies:
      modified, e.g. a manifest written but measured wrong);
   1  uncertain: a change was attempted and its outcome was not observed. The
      orchestrator never replays such a step; root inspects.
-Read-only actions (host-poll, host-proposal, host-preflight, guest-ping,
-guest-stat) never exit 1. Remote child processes (rocky_kernel.py admission,
-mount, the guest-stat lstat) are never killed on a deadline: a hung mount(2)
-or getattr cannot be killed reliably anyway, so the action reports uncertain
-(or, for the read-only lstat, `timeout`) and leaves the child for inspection.
+Read-only actions (host-poll, host-proposal, host-preflight, host-observe,
+guest-ping, guest-stat) never exit 1. Remote child processes (rocky_kernel.py
+admission, mount, the guest-stat lstat, the OBSERVE client) are never killed
+on a deadline: a hung mount(2) or getattr cannot be killed reliably anyway, so
+the action reports uncertain (or, for the read-only lstat, `timeout`; for
+OBSERVE, a known failure) and leaves the child for inspection.
 """
 import argparse
 import base64
@@ -186,6 +187,38 @@ def host_proposal(system, args, payload):
     require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, "proposal shape")
     raw = read_bounded(system.path(args.path), PROPOSAL_LIMIT)
     return {"sha256": digest(raw), "bytes": len(raw), "base64": base64.b64encode(raw).decode("ascii")}
+
+
+def host_observe(system, args, payload):
+    """One lifecycle OBSERVE through the pinned runtime's client mode (b84).
+
+    The usable gate reads provider claim states from it. The executable is
+    the plan-pinned runtime itself (`--control SOCKET --operation observe`);
+    the socket must sit in a root-owned private directory, and the endpoint
+    authenticates our peer UID (root, via doas) before reading a byte.
+    OBSERVE refreshes the Admissions through the guest observer and consumes
+    `--sequence`; it changes no file or mount. A client that does not return
+    within `--seconds` is left running (it ends at its own I/O deadline) and
+    reported as a known failure, never retried here.
+    """
+    pinned_file(system, args.executable, args.executable_sha256)
+    require(UUID.match(args.runtime_id) is not None, "--runtime-id must be a UUID")
+    require(0 < args.sequence <= 0xFFFFFFFF, "--sequence must be 1..2^32-1")
+    parent = trusted(system, os.path.dirname(args.socket), private=True)
+    require(stat.S_ISDIR(parent.st_mode), "control socket parent must be a private directory")
+    require(stat.S_ISSOCK(os.lstat(system.path(args.socket)).st_mode), "control socket is not a socket")
+    code, out, err = system.run([args.executable, "--control", args.socket, "--operation", "observe",
+                                 "--runtime", args.runtime_id, "--sequence", str(args.sequence)], args.seconds)
+    require(code is not None, "OBSERVE client did not return within {} s (left running)".format(args.seconds))
+    lines = [line for line in out.decode("utf-8", "replace").splitlines() if line.strip()]
+    try:
+        reply = json.loads(lines[-1]) if lines else None
+    except ValueError:
+        reply = None
+    require(code == 0 and isinstance(reply, dict),
+            "OBSERVE client exit {}: {} {}".format(code, (lines or [""])[-1][-2000:],
+                                                   err.decode("utf-8", "replace")[-2000:]))
+    return {"sequence": args.sequence, "reply": reply}
 
 
 def host_install(system, args, payload):
@@ -400,8 +433,8 @@ def stat_root(system, args, tag, mountpoint):
 # CLI
 
 READ_ONLY = {"host-preflight": host_preflight, "host-poll": host_poll,
-             "host-proposal": host_proposal, "guest-ping": guest_ping,
-             "guest-stat": guest_stat}
+             "host-proposal": host_proposal, "host-observe": host_observe,
+             "guest-ping": guest_ping, "guest-stat": guest_stat}
 MUTATING = {"host-install": host_install, "guest-admission": guest_admission,
             "guest-write": guest_write, "guest-mount": guest_mount}
 
@@ -413,6 +446,8 @@ def parser():
         "host-preflight": ["guard-script", "guard-sha256", "runtime", "runtime-sha256",
                            "guard-dir", "owner-dir", "enrollment-file"],
         "host-poll": ["guard-dir"], "host-proposal": ["path"], "guest-ping": [],
+        "host-observe": ["executable", "executable-sha256", "socket", "runtime-id", "sequence",
+                         "seconds"],
         "host-install": ["path", "sha256", "size"],
         "guest-admission": ["release", "boot-id", "python", "script", "script-sha256", "plan",
                             "plan-sha256", "state", "tags", "seconds"],
@@ -422,7 +457,7 @@ def parser():
     for action, names in options.items():
         command = sub.add_parser(action, allow_abbrev=False)
         for name in names:
-            kind = int if name in ("size", "seconds") else str
+            kind = int if name in ("size", "seconds", "sequence") else str
             command.add_argument("--" + name, required=True, type=kind)
     return result
 

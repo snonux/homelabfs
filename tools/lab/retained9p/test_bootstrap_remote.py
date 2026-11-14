@@ -14,6 +14,7 @@ import io
 import json
 import os
 from pathlib import Path
+import socket
 import stat
 import subprocess
 import sys
@@ -137,6 +138,59 @@ class HostTests(RemoteCase):
         (self.root / "run/owner/proposal.json").chmod(0o600)
         code, result = self.act(["host-proposal", "--path", "/run/owner/proposal.json"])
         self.assertEqual((code, result["sha256"]), (0, sha(b'{"Domains":[]}')))
+
+
+class ObserveTests(RemoteCase):
+    """host-observe (b84): one OBSERVE through the pinned runtime client."""
+
+    RUNTIME_ID = "0f6e3a52-58a5-4f1b-9d55-6a1c1ad0c0de"
+
+    def setUp(self):
+        super().setUp()
+        self.put("/run/bin/hfs-controlled-runtime", b"runtime", 0o500)
+        owner = self.root / "run/owner"
+        owner.mkdir(parents=True)
+        owner.chmod(0o700)
+        self.listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.addCleanup(self.listener.close)
+        self.listener.bind(str(owner / "control.sock"))
+
+    def argv(self, sequence="3", digest=None, sock="/run/owner/control.sock"):
+        return ["host-observe", "--executable", "/run/bin/hfs-controlled-runtime",
+                "--executable-sha256", digest or sha(b"runtime"), "--socket", sock,
+                "--runtime-id", self.RUNTIME_ID, "--sequence", sequence, "--seconds", "20"]
+
+    def test_observe_runs_the_pinned_client_once_and_returns_its_reply(self):
+        reply = {"status": "OBSERVED", "sequence": 3, "evidence": {"providers": []}}
+        self.system.outcomes = [(0, b"\n" + json.dumps(reply).encode() + b"\n", b"")]
+        code, result = self.act(self.argv())
+        self.assertEqual((code, result["sequence"], result["reply"]), (0, 3, reply))
+        self.assertEqual(self.system.children, [(["/run/bin/hfs-controlled-runtime", "--control",
+                                                  "/run/owner/control.sock", "--operation", "observe", "--runtime",
+                                                  self.RUNTIME_ID, "--sequence", "3"], 20)])
+
+    def test_observe_refusals_are_known_failures_never_uncertain(self):
+        refused = (1, b'{"status":"REFUSED","reason":"sequence not increasing"}\n', b"lifecycle command refused")
+        cases = [(self.argv(digest="0" * 64), [], "pinned file bytes differ"),
+                 (self.argv(sequence="0"), [], "--sequence must be"),
+                 (self.argv(sock="/run/bin/hfs-controlled-runtime"), [], "insecure mode"),
+                 (self.argv(), [refused], "OBSERVE client exit 1"),
+                 (self.argv(), [(None, b"", b"")], "did not return within 20 s"),
+                 (self.argv(), [(0, b"not json\n", b"")], "OBSERVE client exit 0")]
+        for argv, outcomes, text in cases:
+            with self.subTest(text=text):
+                self.system.children, self.system.outcomes = [], list(outcomes)
+                code, result = self.act(argv)
+                self.assertEqual((code, result["ok"], result.get("uncertain")), (2, False, None), result)
+                self.assertIn(text, result["error"])
+                self.assertEqual(len(self.system.children), len(outcomes))
+
+    def test_observe_needs_a_socket(self):
+        self.listener.close()
+        os.unlink(self.root / "run/owner/control.sock")
+        self.put("/run/owner/control.sock", "plain file")
+        code, result = self.act(self.argv())
+        self.assertEqual((code, "not a socket" in result["error"]), (2, True))
 
 
 class GuestTests(RemoteCase):

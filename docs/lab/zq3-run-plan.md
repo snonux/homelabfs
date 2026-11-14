@@ -577,16 +577,27 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
        longer would most likely also stall the probe's GETATTR past 8 s,
        which fails the gate.
      - Both roots must answer every probe. Otherwise `usable` ends `failed`.
-       The journal detail names `probe` (`first`, `settle` or `final`),
+       The journal detail names `probe` (`first`, `settle`, `baseline`,
+       `final` or `claims`),
        `roots` and `errno` (13 for `EACCES`, null when no lstat reported one).
        The run exits 1 (`stopped_at: usable`), and `fill_plan.py batch`
-       refuses it, as it refuses a pre-k64 `/1` journal.
+       refuses it, as it refuses a pre-k64 `/1` or pre-b84 `/2` journal.
      - Nothing is retried, remounted, written or unmounted. Go to Phase 11
        with inspection first.
-     - **Not implemented:** requiring that each mount's PROCESS_EXIT claim
-       reached TERMINAL on the host. The driver has no host-side source for
-       it. The follow-up needs a daemon feature: OBSERVE listing non-TERMINAL
-       claims, or READY waiting for the mount claims (see the
+     - Host-side claim check (b84; zq3-r8 passed m0's lstat while the
+       probe child's own PROCESS_EXIT stayed RESERVED and blocked m0 30 s
+       later). Root on f3 runs the pinned runtime once per poll in client
+       mode (`--operation observe`, the READY socket and runtime UUID,
+       sequences 1, 2, …). Before the final probe, neither provider ledger
+       may hold an open claim (`baseline`). After it, OBSERVE every 2 s until
+       each provider shows a TERMINAL GETATTR and PROCESS_EXIT numbered after
+       the baseline and nothing open (`claims`), within 30 s more. A failure
+       names each open claim (number, opcode, status, stage) and the summary's
+       `usable_note` says a claim failed. Each OBSERVE refreshes the
+       Admissions through the guest observer and consumes a lifecycle
+       sequence: `summary.json` records `observe_sequence_last`, and Phase 9
+       starts above it. The gate's bound grows to the settle point plus 60 s
+       (see the
        [README](../../tools/lab/retained9p/README.md#phase-8-bootstrap-orchestrator-zq3-g1)).
 - Changes on Rocky's disk (A3): `/etc/homelabfs/installed-admission-v1.json`
   (and `/etc/homelabfs/` if absent), the G5 journal lines; kdump may create
@@ -608,8 +619,12 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
 ### Phase 9: READY admission (B)
 
 - `hfs-controlled-runtime --control <owner>/control.sock --operation observe
-  --runtime <uuid> --sequence 1`: every section `complete`, publication null,
-  both domains admitted. Guest: `findmnt` shows exactly the two mounts.
+  --runtime <uuid> --sequence <N>`: every section `complete`, publication null,
+  both domains admitted. N is `observe_sequence_last + 1` from the bootstrap's
+  `summary.json`: the b84 `usable` gate already consumed sequences 1 to
+  `observe_sequence_last`, and the runtime refuses a sequence that is not
+  strictly larger (a refusal consumes nothing; retry with the right N).
+  Guest: `findmnt` shows exactly the two mounts.
 
 ### Phase 10: gate matrix (B inside the window)
 
@@ -826,7 +841,7 @@ figures are estimates counted from that stop; no tool enforces them:
 | Part | Expected |
 |---|---|
 | Clean stop | 1-2 min |
-| Host setup, runtime start, bootstrap | 5 min (120 s bootstrap bound, then about 70 s for the `usable` gate) |
+| Host setup, runtime start, bootstrap | 5 min (120 s bootstrap bound, then about 100 s for the `usable` gate with its b84 claim check) |
 | Gate matrix T1-T11 | 25-35 min |
 | Cleanup | 5-10 min |
 | Normal start | 2 min |
