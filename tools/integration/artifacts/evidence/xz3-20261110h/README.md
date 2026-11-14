@@ -1,5 +1,17 @@
 # xz3 y64 rebuild (2026-11-10): zq3-r7 kernel, daemon and exporter fixes
 
+**Superseded on 2026-11-14** by the [l84 rebuild](../xz3-20261114-r9/README.md)
+(`e585206a…`, source `e92eaa1`) for zq3-r9. Its daemon `34fb05b2…` (which
+passed the f3 observer check in zq3-r8) parks every CALL behind any active
+recall, recalls both domains on each clean READ release and on PROCESS_EXIT,
+and runs each VIEW_ACK's SSH observation on the shared control worker, so
+zq3-r8's `usable` probe claims stayed RESERVED past the guest's 30 s QUERY
+window (R8-1). Its OBSERVE also lacks the b84 claim summary the `usable` gate
+now requires. Its guest kernel, modules, Linux records and native exporter
+`ef8f17de…` are reused byte for byte. The tooling refuses this manifest as
+superseded. It still passes `package.py check` and `admit.py` under the
+current tooling.
+
 This candidate supersedes the [c64+d64 rebuild](../xz3-20261110g/README.md)
 (`66b5bb2b…`, source `060dea0`). After zq3-r7, fixes were merged in all three
 components, so the guest kernel, the CGO daemon and the native bhyve exporter

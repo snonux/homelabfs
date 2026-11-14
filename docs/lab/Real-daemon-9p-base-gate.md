@@ -50,8 +50,9 @@ those observer bytes only. On 2026-11-08 the rebuilt xz3 daemon `53598737…`
 exact-byte native observer check (see the xz3 evidence below). The z54
 daemon `39c92d01…` (2026-11-09) passed it in zq3-r5 (Phase 4 step 1a), and the
 964 kernel rebuild reused those bytes. The d64 daemon `9b7eed8d…` (c64+d64
-rebuild) was never checked, and the current y64 daemon `34fb05b2…` (y64
-rebuild, 2026-11-10) is new bytes and has **not** passed it yet; the next run
+rebuild) was never checked. The y64 daemon `34fb05b2…` passed it in zq3-r8
+(Phase 4 step 1a). The current l84 daemon `868dc045…` (l84 rebuild for
+zq3-r9, 2026-11-14) is new bytes and has **not** passed it yet; the next run
 must repeat the check. f3-host descriptor execution still awaits the
 approved zq3 fdescfs window. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
@@ -162,28 +163,32 @@ SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
 
 ## Exact installation plan inputs
 
-The current xz3 candidate (y64 rebuild, 2026-11-10) is retained at
-`/home/paul/tmp/claude/hfs-xz3-20261110h/package`, manifest SHA256
-`867ede3630e4ee0a609f88b0752670fac5b7a0c0e0f9d2a340031110da32c334`, assembled from source checkout
-`b8697101df601d7748bae85721e91c0e01aae474` (also the repository baseline); see its
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261110h/README.md).
-The guest kernel, the daemon and the native exporter were all rebuilt. The
-kernel (`bzImage` `40afad22…`, `vmlinux` `d2d3e5ab…`, GNU build ID
+The current xz3 candidate (l84 rebuild for zq3-r9, 2026-11-14) is retained at
+`/home/paul/tmp/claude/hfs-xz3-20261114-r9/package`, manifest SHA256
+`e585206aa26dcd5724065467ebb716ced7c421db0979c25290fed8c37551b213`, assembled from source checkout
+`e92eaa1d1fbbe387c20dc063afc0d6655560cd9c` (also the repository baseline); see its
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261114-r9/README.md).
+Only the CGO daemon was rebuilt: `868dc045…` carries 784, 884, d84, g84,
+h84, b84 (OBSERVE claim summary, evidence `/2`) and q64/f84; two forced
+builds and the window build gave the same bytes, but they still need native
+`--check-process-observer` on f3. The guest kernel, modules and native
+exporter are byte-identical reuses from the y64 rebuild (`867ede36…`, source
+`b869710`,
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261110h/README.md)),
+now refused as superseded. In y64 the guest kernel, the daemon and the native
+exporter were all rebuilt. The kernel (`bzImage` `40afad22…`, `vmlinux` `d2d3e5ab…`, GNU build ID
 `870bb9d1…`, `config` `28fe4a8e…` unchanged from c64) carries the g64 and m64
 patch series (hfs `show_options`, exact `cache=mmap`, the Sources floor and
 fault-block logging); the five modules came out byte-identical. The CGO
-FreeBSD daemon `34fb05b2…` carries i64 through x64; two forced builds and the
-window build gave the same bytes, but they still need native
-`--check-process-observer` on f3. The bhyve exporter `ef8f17de…` was built
+FreeBSD daemon `34fb05b2…` carried i64 through x64. The bhyve exporter `ef8f17de…` was built
 natively on f3 from the 564/e64/p64/w64 lib9p sources, and a second clean
-build matched it in all 83 files. The c64+d64 candidate (`66b5bb2b…`, source
+build matched it in all 83 files. Before y64 came the c64+d64 candidate (`66b5bb2b…`, source
 `060dea0`,
 [evidence](../../tools/integration/artifacts/evidence/xz3-20261110g/README.md)),
 the 964 candidate (`e01fab21…`, source `06c27a8`,
 [evidence](../../tools/integration/artifacts/evidence/xz3-20261110f/README.md))
 and the z54 daemon rebuild (`2e0412a6…`, source `a20aca1`,
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261109e/README.md))
-came before it. The w54 kernel fixes are kept (`89c928d5…`, source `ff866c5`,
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261109e/README.md)). The w54 kernel fixes are kept (`89c928d5…`, source `ff866c5`,
 [evidence](../../tools/integration/artifacts/evidence/xz3-20261109d/README.md)),
 and the earlier native FreeBSD exporter `36423b6d…` was carried from the f44
 candidate (`b203799e…`, source `defd974`,
@@ -282,7 +287,7 @@ footprints in the independent global preparation budget. Swap is telemetry.
 
 ## Staged critical-window proposal
 
-The concrete phased proposal for one disposable run with candidate `867ede36…`,
+The concrete phased proposal for one disposable run with candidate `e585206a…`,
 including the remaining implementation gaps and Paul's decisions, is
 [zq3-run-plan.md](zq3-run-plan.md) ([plain-language summary](zq3-plan-summary.md)).
 The guest probe now retains each successful payload until an authenticated

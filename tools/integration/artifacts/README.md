@@ -67,7 +67,9 @@ config is that same `28fe4a8e…`, and the five modules, `Module.symvers` and
 (candidate `867ede36…`, [evidence](evidence/xz3-20261110h/README.md)) kept
 that config; its g64+m64 patch series changed the image and the CRCs of the
 hfs exports in `Module.symvers`, while the five modules and
-`abi-negative.json` again came out byte-identical.
+`abi-negative.json` again came out byte-identical. The l84 rebuild for
+zq3-r9 (candidate `e585206a…`, [evidence](evidence/xz3-20261114-r9/README.md))
+rebuilt only the CGO daemon and reused that kernel package byte for byte.
 
 The ordinary namespace fixture selects a rootful OCI runtime in the initial
 user namespace, VFS image storage and a newly created private network namespace

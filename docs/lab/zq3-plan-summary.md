@@ -124,8 +124,15 @@ After the seventh attempt (zq3-r7) all three parts were rebuilt
 (`34fb05b2…`) sizes and recycles its bookkeeping and cleans up refused
 requests; and the patched bhyve (`ef8f17de…`, built on f3 itself, twice, with
 identical results) forwards guest messages in order and hands permanently
-refused ones back to the guest. The new daemon must pass the f3 self-check
-again.
+refused ones back to the guest. The eighth attempt (zq3-r8) got both mounts
+up with the right options, but the daemon held the first file checks too
+long behind its own housekeeping, so the guest gave up on them. After it only
+the daemon was rebuilt (`e585206a…`, daemon `868dc045…`): that housekeeping
+now touches only the domain concerned, runs on its own lane and reuses the
+latest guest observation, and the daemon reports open requests so the
+"usable" check can wait for them to finish. The guest kernel and the patched
+bhyve are the same bytes as before. The new daemon must pass the f3
+self-check again.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
