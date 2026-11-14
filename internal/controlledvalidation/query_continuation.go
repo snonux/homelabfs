@@ -47,16 +47,23 @@ import (
 //   - someone else's claim cannot be named: claims resolve per scope, the
 //     outer scope must equal the binding's, reconciled bindings never resume
 //     (recoverValidation) and the QUERY payload hash binds the full claim;
-//   - a claim of an exited process, or whose credentials changed, is not
-//     replayed blindly: the bridge's preparer re-runs the credential check
-//     (attestor, exact credential bytes, exit) and the service's Unix policy
-//     against the current state, so such a resume protects a TERMINAL failure
-//     (e.g. STALE) instead of an effect. Only the cleanup opcodes and
-//     DRAIN_WRITE tolerate an exited issuer, exactly as on first dispatch;
+//   - a claim of an exited issuer, or whose credential revision now has
+//     different bytes, is not replayed blindly: the bridge's preparer re-runs
+//     the credential check (attestor, exact bytes per revision, exit) and the
+//     service's Unix policy against the current state, so such a resume
+//     protects a TERMINAL failure (STALE) instead of an effect. An older but
+//     byte-identical credential revision is still accepted, exactly as for a
+//     repeated CALL: credentials are sampled when the guest issued the
+//     syscall (POSIX). Only the cleanup opcodes and DRAIN_WRITE tolerate an
+//     exited issuer, exactly as on first dispatch;
 //   - Admit itself runs again in full (terminal seal, readiness, recall
 //     barrier, drain validation, source floor), so a resumed op meets the
 //     same admission as a first one; a definite refusal (j64) still becomes
 //     TERMINAL and anything uncertain stays RESERVED for the next QUERY.
+//
+// Cost: every parked claim re-runs Admit, including the controller's
+// c.mu.TryLock, on each guest QUERY (about 100 Hz per claim while a recall
+// holds it). Watch that contention in the next lab run.
 //
 // Older protocols keep their unchanged behaviour: only the terminal protocol
 // (the one the controlled runtime enrolls) mints the token.
@@ -90,16 +97,23 @@ func VerifyQueryContinuation(ctx context.Context, service *fsservice.Service, fa
 // refuses as before.
 func (p *Provider) queryContinuationContext(ctx context.Context, b guestbridge.Binding, saved entry, live *atomic.Bool) context.Context {
 	outer, ok := guestbridge.VerifiedRequest(ctx)
-	if !ok || !p.terminalQuery(outer, b) || !exactUnprepared(saved, b) {
+	if !ok || !p.mintsFor(outer, b, saved) {
 		return ctx
+	}
+	return context.WithValue(ctx, queryContinuationKey{}, queryContinuation{p, outer, b, live})
+}
+
+// mintsFor is the mint's whole decision on an authenticated outer
+// observation: a terminal-protocol QUERY of b's own scope whose payload is
+// exactly {claim} of b's claim, for the exact never-prepared original.
+func (p *Provider) mintsFor(outer guestbridge.CommandObservation, b guestbridge.Binding, saved entry) bool {
+	if !p.terminalQuery(outer, b) || !exactUnprepared(saved, b) {
+		return false
 	}
 	query, err := canonicalJSON(struct {
 		Claim guestbridge.Claim `json:"claim"`
 	}{b.Call.Claim})
-	if err != nil || outer.PayloadHash != hash(query) {
-		return ctx
-	}
-	return context.WithValue(ctx, queryContinuationKey{}, queryContinuation{p, outer, b, live})
+	return err == nil && outer.PayloadHash == hash(query)
 }
 
 // terminalQuery: the outer request is a QUERY of the binding's own scope in

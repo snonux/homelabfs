@@ -93,9 +93,13 @@ func (a *kernelAttestor) Verify(ctx context.Context, scope guestbridge.Context, 
 			return fsapi.Permission
 		}
 	}
-	// Ensure the complete immutable credentials are part of this authenticated
-	// command's payload, rather than a separate caller-created credential object.
-	// The bridge closes the operation union and checks the exact request hash.
+	// Ensure the complete immutable credentials come from an authenticated
+	// guest request, rather than a separate caller-created credential object:
+	// normally this command's own payload (the bridge closes the operation
+	// union and checks the exact request hash). Under a QUERY resume the
+	// observed request is only {claim}; the credentials are those of the
+	// original CALL binding authenticated at Reserve, which the provider's
+	// QUERY continuation (controlledvalidation/query_continuation.go) binds.
 	if observed.PayloadHash == "" || observed.CommandHash == "" {
 		return fsapi.Permission
 	}

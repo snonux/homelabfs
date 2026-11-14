@@ -427,13 +427,21 @@ R9-1, probably zq3-r8 R8-1 too). Task o84 allows every opcode:
 - another session cannot name the claim: claims resolve per scope, the scopes
   must match, reconciled bindings never resume and the payload hash binds the
   full claim;
-- an exited issuer or changed credentials do not replay blindly: the bridge's
-  preparer re-runs the credential, exit and Unix checks against the current
-  state and protects a TERMINAL failure (e.g. STALE) instead. Only the cleanup
+- an exited issuer, or a same-revision credential byte mismatch, does not
+  replay blindly: the bridge's preparer re-runs the credential, exit and Unix
+  checks against the current state and protects a TERMINAL failure (STALE)
+  instead. An older byte-identical credential revision is accepted, as for a
+  repeated CALL (credentials are sampled at syscall entry). Only the cleanup
   opcodes and DRAIN_WRITE tolerate an exited issuer, as on first dispatch;
 - Admit runs again in full (seal, readiness, recall barrier, drain validation,
-  source floor). A stale DRAIN_WRITE stays refused by its frozen-reservation
-  check.
+  source floor). A DRAIN_WRITE matched to its recall's frozen reservation
+  cannot go stale, because `drained()` holds that recall until the drain is
+  TERMINAL; an unmatched one is refused with Unavailable/Permission, which are
+  not definite refusals, so it stays INDETERMINATE.
+
+Each parked claim re-runs Admit, including the controller's `TryLock`, on
+every guest QUERY (about 100 Hz per claim while a recall holds it); the next
+lab run should watch that contention.
 
 A definite admission refusal (j64) is the one way such a never-prepared claim
 becomes terminal without preparation. viewcontrol returns
