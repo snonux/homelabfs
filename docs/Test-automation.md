@@ -50,6 +50,16 @@ task 984). It replays the bootstrap and the k64 usable gate against the
 assembled runtime with a 2 s guest observer, so it pays real observation
 latency: about 85-90 s of wall time (about 135 s under `-race`), with its
 schedules in parallel. `go test -short` skips it. `HFS_RECALL_MODEL_LATENCY`
-(a Go duration) changes the observer latency.
+(a Go duration) changes the observer latency. The model's admission reuse
+rule runs on a model clock (observations plus guest idle time), so its
+observation counts do not drift with host load (i84).
+
+Package durations under load: `internal/viewcontrol` runs its four long,
+fsync-bound workloads (ZQ3RunWorkload, ZQ3LeaseCycles, ZQ3LeaseFreeMutations,
+TransportClean128) in parallel; at load ~17 on 8 cores the package took about
+14 min, inside `go test -timeout 20m ./...`. Under `-race` and load the four
+together took about 37 min, so race runs of that package need a larger
+`-timeout`. A package timeout skips test cleanup, so it can leave fixture
+directories under `$TMPDIR`.
 
 CI may build artifacts, lint the runner, and prepare test plans. Any job that runs either integration stage or live smoke stage requires a manual approval gate tied to the plan. There are no scheduled unattended runs of these suites without explicit per-run approval.

@@ -56,7 +56,11 @@ import (
 // the model latency per observation and by the guest's idle retry sleeps,
 // not by host work. On the wall clock a loaded test host expired reuse
 // windows early and paid extra observations: 12 instead of 10 for the
-// foreground-first m1 release, which failed the 30 s verdict (i84).
+// foreground-first m1 release, which failed the 30 s verdict (i84). The model
+// clock is optimistic: real host work (lab SSH, bbolt, the bridge) also ages
+// an observation, and ignoring it lets a request reuse one a little longer
+// than the lab would. Its observation counts are therefore a lower bound for
+// the lab's, exact only while host work stays small next to the 5 s window.
 //
 // The guest's retry loops and its probe processes race. Two schedules bound
 // that race:
@@ -100,7 +104,8 @@ const guestQueryWindow = 30 * time.Second
 // plus the allowance in 30 s); that cost is unknown (zq3-r8 README). The
 // observation counts do not depend on host speed: the five-second
 // admissionReuse rule that decides whether a request refreshes reads the
-// model clock, which host work does not advance.
+// model clock, which host work does not advance. That makes them a lower
+// bound (see the model clock note above), not the lab's exact count.
 const hostOverheadAllowance = 6 * time.Second
 
 // noReplyWait is how long noReply waits before it reads a cell as unanswered

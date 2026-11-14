@@ -165,8 +165,9 @@ func (c *modelClock) advance(d time.Duration) { c.advanced.Add(int64(d)) }
 
 // installModelClock puts a's reuse rule on a new model clock and advances it
 // by latency after each observation of the installed (latencyProbe) probe.
-// The clock starts at the wall time a's current observation was committed, so
-// that observation keeps its age.
+// The clock starts at the wall time a's current observation was committed:
+// that observation keeps the age it had at commit, and wall time since then
+// is not counted.
 func installModelClock(a *Admission, latency time.Duration) *modelClock {
 	a.mu.Lock()
 	clock := &modelClock{base: a.refreshed}

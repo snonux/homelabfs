@@ -64,7 +64,9 @@ func TestStaleObservationQueryReusesACKProbe(t *testing.T) {
 	// not stale and this test proves nothing): a QUERY that did not wait
 	// returns while the probe is still held. That it waited for only that one
 	// probe is the probe count below, not an elapsed-time upper bound, which a
-	// loaded host exceeded (i84: "QUERY waited 3.27s" with one probe).
+	// loaded host exceeded (i84: "QUERY waited 3.27s" with one probe). On a
+	// host so slow that the QUERY takes over 2 s without waiting, the gate
+	// opens anyway and this check passes vacuously; it never fails falsely.
 	if !x.gate.released.Load() {
 		t.Fatal("QUERY answered while the ACK's probe was held: it did not wait for the in-flight probe")
 	}

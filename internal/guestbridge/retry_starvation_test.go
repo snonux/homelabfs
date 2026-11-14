@@ -51,10 +51,13 @@ func (v *stallingViews) Exchange(ctx context.Context, scope Context, op string, 
 //
 // The bound is counted in retries, not wall time (i84): an earlier 1 s
 // elapsed-time bound could fail spuriously when a loaded host delayed the
-// worker. sendNative enqueues the cell before it returns, so at most one
-// retry can start between sampling the count and the enqueue (or already be
-// running); after that retry the h84 schedule runs the queued cell. The
-// pre-h84 worker never dispatched the fresh cell at all.
+// worker. The count is sampled after sendNative returns, which is after the
+// cell is queued (building and writing the command can take a slow host long
+// enough for several retries, which must not count). From then on at most one
+// retry, the one already running, can precede the queued cell: after a retry
+// the h84 schedule takes a waiting queued cell first. A cell dispatched before
+// the sample counts as zero ahead. The pre-h84 worker never dispatched the
+// fresh cell at all.
 func TestRetryingControlCellDoesNotStarveQueuedCells(t *testing.T) {
 	f := newBridge(t)
 	views := &stallingViews{stall: 25 * time.Millisecond, fresh: make(chan int64, 8)}
@@ -105,8 +108,8 @@ func TestRetryingControlCellDoesNotStarveQueuedCells(t *testing.T) {
 // TestRetryingControlCellDoesNotStarveQueuedCells for why one).
 func requireDispatchedNext(t *testing.T, views *stallingViews, cell uint64, send func()) {
 	t.Helper()
-	before := views.stalled.Load()
 	send()
+	before := views.stalled.Load() // after the enqueue; see the test's comment
 	var dispatched int64
 	select {
 	case dispatched = <-views.fresh:

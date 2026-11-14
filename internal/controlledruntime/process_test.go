@@ -26,9 +26,10 @@ import (
 // requires: a helper child ready or exited, a drain finished, a worker reply
 // or failpoint reached. Every such wait only fails the test on timeout and
 // never lets it pass, so the bound is generous: under parallel go test and
-// -race load the former 2-5 s bounds can be exceeded (i84). It is not used
-// where a timeout is the expected outcome: mappedReadNative keeps its 5 s
-// bound, which the recall workload model reads as "no reply".
+// -race load the former 2-5 s bounds can be exceeded (i84). mappedReadNative
+// waits r.replyWait, which defaults to answerBound; only the recall model's
+// noReply, where a timeout is the expected outcome ("no reply"), sets the
+// shorter noReplyWait (5 s) around its own read.
 const answerBound = 30 * time.Second
 
 func TestExporterHelper(t *testing.T) {
