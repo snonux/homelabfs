@@ -24,6 +24,12 @@ const slowObservation = 2 * time.Second
 // set every probe is counted, announced on entered (if not nil) and delayed by
 // slowObservation, honoring ctx.
 func slowProbe(a *Admission, slow *atomic.Bool, probes *atomic.Int32, entered chan<- struct{}) {
+	latencyProbe(a, slowObservation, slow, probes, entered)
+}
+
+// latencyProbe is slowProbe with a caller-chosen per-observation latency; the
+// recall workload model (recall_workload_test.go) makes it configurable.
+func latencyProbe(a *Admission, latency time.Duration, slow *atomic.Bool, probes *atomic.Int32, entered chan<- struct{}) {
 	a.probe = func(ctx context.Context) (installedObservation, error) {
 		if slow.Load() {
 			probes.Add(1)
@@ -31,7 +37,7 @@ func slowProbe(a *Admission, slow *atomic.Bool, probes *atomic.Int32, entered ch
 				entered <- struct{}{}
 			}
 			select {
-			case <-time.After(slowObservation):
+			case <-time.After(latency):
 			case <-ctx.Done():
 				return installedObservation{}, ctx.Err()
 			}
@@ -124,7 +130,16 @@ func recallACK(t *testing.T, chain *r5Chain, domain guestbridge.Capability, phas
 	if len(poll.Event) == 0 {
 		t.Fatalf("missing %s event %s", phase, event)
 	}
-	ack := map[string]any{"domain": domain, "sequence": poll.Event["sequence"], "recall": poll.Event["recall"], "phase": phase, "authority_hash": poll.Event["authority_hash"], "closure_hash": poll.Event["closure_hash"], "inventory_hash": poll.Event["inventory_hash"], "session": chain.peer.scope.Session, "manifest": nil, "target": poll.Event["target"], "event": poll.Event}
+	ack := guestACK(poll.Event, domain, chain.peer.scope.Session, phase)
+	ack["event"] = poll.Event
+	return ack
+}
+
+// guestACK builds the exact VIEW_ACK the guest kernel sends for phase of
+// the polled recall event: STOPPED carries no target, STOPPED and DRAINED
+// carry the (empty) dirty manifest, every other phase echoes the target.
+func guestACK(event map[string]json.RawMessage, domain guestbridge.Capability, session, phase string) map[string]any {
+	ack := map[string]any{"domain": domain, "sequence": event["sequence"], "recall": event["recall"], "phase": phase, "authority_hash": event["authority_hash"], "closure_hash": event["closure_hash"], "inventory_hash": event["inventory_hash"], "session": session, "manifest": nil, "target": event["target"]}
 	if phase == "STOPPED" {
 		ack["target"] = nil
 	}
