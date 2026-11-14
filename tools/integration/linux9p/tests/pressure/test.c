@@ -10,6 +10,7 @@ static struct hfs_lease leases[128];
 static struct hfs_view_ticket release_credits[128];
 static uuid_t generation={{1}},recall={{2}};
 static int releases,invalid_source,mapping_error;
+static struct hfs_lease *last_release;
 static struct hfs_json *target_event;
 static struct vm_area_struct *test_vma;
 static int reserve(void *s,u64 bytes,bool control,void **out)
@@ -50,7 +51,7 @@ static int hfs_lease_release(struct hfs_session *session,struct hfs_lease *lease
  assert(!view->active && !pthread_mutex_trylock(&view->transitions.native));pthread_mutex_unlock(&view->transitions.native);
  assert(!pthread_mutex_trylock(&view->lock));pthread_mutex_unlock(&view->lock);
  for(unsigned int i=0;i<ARRAY_SIZE(folios);i++)assert(!folios[i].page.locked);
- releases++;recall.b[0]++;
+ releases++;last_release=lease;recall.b[0]++;
  err=hfs_view_stop(view,&generation,&recall,seq++);if(err)return err;
  err=hfs_view_seal(view);if(err)return err;
  err=hfs_mmap_install(view,target_event,target,&recall,seq++,false);if(err)return err;
@@ -82,21 +83,58 @@ int main(void)
  test_vma=&vma;test_session=&session;mutex_init(&session.lock);INIT_LIST_HEAD(&inode.view_list);
  assert(!hfs_view_new(&session,&generation));observed_view=session.view;assert(!hfs_view_register_inode(&inode.inode));
  assert(!hfs_json_parse("{\"target\":{}}",13,&target_event));
+ // p84 (zq3-r9 R9-1): an in-flight request's published DOMAIN observation
+ // lease is never a pressure victim. With no cache lease pressure is a no-op;
+ // only hfs_mmap_end's cleanup releases it once the request has ended.
+ // Of the p84 observation-lease checks only this first assertion fails on the
+ // pre-p84 source; the later ones pin the recall semantics around it.
+ static struct hfs_lease observed_lease;static struct hfs_view_ticket observed_credit={.control=true};
+ struct hfs_observation observation={.view=session.view,.lease=&observed_lease};
+ kref_init(&observed_lease.refs);observed_lease.release_ticket=&observed_credit;observed_lease.published=true;
+ INIT_LIST_HEAD(&observation.list);list_add_tail(&observation.list,&session.view->observations);session.view->nr_observations++;
+ assert(hfs_mmap_pressure(session.view,false)==-EAGAIN && !releases && !observed_lease.released && !observed_lease.revoked);
  for(unsigned int i=0;i<128;i++)clean_page(session.view,&mapping,i);
  assert(session.view->nr_cached==128);struct hfs_view_stamp old_stamp;struct hfs_cache_page *extra=NULL;
+ // p84 review: a transport-triggered (background) pass releases no cache
+ // lease either while that observation is in flight; it would recall the
+ // domain under the request. This fails on the first p84 commit. The hold
+ // is bounded: it still holds one jiffy before HFS_PRESSURE_HOLD_MS.
+ jiffies=1000;
+ assert(hfs_mmap_pressure(session.view,true)==-EAGAIN && !releases && session.view->nr_cached==128 && !observed_lease.revoked);
+ assert(session.view->pressure_holding && session.view->pressure_held_since==1000);
+ jiffies=1000+msecs_to_jiffies(HFS_PRESSURE_HOLD_MS)-1;
+ assert(hfs_mmap_pressure(session.view,true)==-EAGAIN && !releases && session.view->nr_cached==128);
+ // A capacity caller (129th page ENOSPC) ignores the hold and releases now.
  assert(!hfs_view_snapshot(session.view,&old_stamp));assert(hfs_view_page_prepare(session.view,&old_stamp,&extra)==-ENOSPC && !extra);
  assert(hfs_mmap_fault_error(session.view,-ENOSPC)==VM_FAULT_NOPAGE);
  assert(releases==1 && session.view->phase==HFS_VIEW_LIVE && !session.view->nr_cached && session.view->revision>old_stamp.revision);
+ // Pressure released a cache lease. The recall it started still stopped the
+ // view and revoked the in-flight observation without waiting for it or
+ // releasing it: STOP never depends on an observation's request ending.
+ assert(last_release!=&observed_lease && !observed_lease.released && observed_lease.revoked);
  assert(!hfs_view_snapshot(session.view,&old_stamp));assert(!hfs_view_page_prepare(session.view,&old_stamp,&extra));hfs_view_page_put(extra);
+ // p84 round 2: past the bound the held background pass releases one cache
+ // lease although the observation is still in flight (host acquisition
+ // capacity may depend on it), never the observation lease, and restarts.
+ jiffies=1000+msecs_to_jiffies(HFS_PRESSURE_HOLD_MS);clean_page(session.view,&mapping,0);
+ assert(!hfs_mmap_pressure(session.view,true) && releases==2 && last_release==&leases[0] && !session.view->nr_cached);
+ assert(!session.view->pressure_holding && !observed_lease.released);
  // Read-first page_mkwrite uses the exact original page, unlocks before its
  // funded RELEASE, and retries only after actual stopped cache invalidation.
+ // The observation is still in flight, so a background flag on mkwrite would
+ // hold here and fail.
  clean_page(session.view,&mapping,0);struct vm_fault vmf={&vma,&folios[0].page};struct page *original=vmf.page;
  assert(hfs_mmap_mkwrite(&vmf)==VM_FAULT_NOPAGE && vmf.page==original);
- assert(releases==2 && session.view->phase==HFS_VIEW_LIVE && !session.view->nr_cached && !folios[0].page.private);
+ assert(releases==3 && session.view->phase==HFS_VIEW_LIVE && !session.view->nr_cached && !folios[0].page.private);
+ list_del(&observation.list);session.view->nr_observations--;
+ // With no observation in flight the background pass keeps its purpose and
+ // releases a published cache lease at once, starting the same recall.
+ clean_page(session.view,&mapping,0);
+ assert(!hfs_mmap_pressure(session.view,true) && releases==4 && last_release==&leases[0] && !session.view->nr_cached);
  // A source verifier refusal cannot manufacture DRAINED or reopen.
  clean_page(session.view,&mapping,0);invalid_source=1;
  assert(hfs_mmap_mkwrite(&vmf)==VM_FAULT_SIGBUS && session.view->phase==HFS_VIEW_STOPPED);
- assert(releases==3 && session.view->nr_cached==1);invalid_source=0;
+ assert(releases==5 && session.view->nr_cached==1);invalid_source=0;
  // Explicit fixture teardown of the denied stopped cache, not authority proof.
  assert(!invalidate_inode_pages2(&mapping));
  // Actual drain result validation and actual DRAINED registry gate: short and
@@ -114,5 +152,5 @@ int main(void)
  hfs_json_free(request.result);list_del_init(&dirty.list);session.view->nr_dirty=0;
  hfs_json_free(target_event);hfs_view_unregister_inode(&inode.inode);hfs_view_fence(session.view);assert(!hfs_view_free(&session));
  assert(!reservations && !module_refs);
- puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
+ puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
 }

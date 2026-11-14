@@ -33,6 +33,10 @@ def main():
         hashes[name] = hashlib.sha256(data).hexdigest()
         inputs[name] = data.decode()
     source = ['#include "hfs_protocol.h"']
+    if args.pressure:
+        # hfs_lease.c's hfs_copy_json uses the received-copy helper; without
+        # CONFIG_9P_FS_HOMELABFS_CONTROLLED the header supplies its plain stub.
+        source.append('#include "hfs_received.h"')
     declarations = inputs['fs/9p/hfs.h']
     first = declarations.index('struct hfs_request {')
     last = declarations.index('\n};', first) + len('\n};')

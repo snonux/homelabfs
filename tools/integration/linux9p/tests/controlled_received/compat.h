@@ -113,6 +113,8 @@ void primitive_module_put(void *);
 #define HZ 1000UL
 #define msecs_to_jiffies(n) (n)
 #define time_after_eq(a,b) ((long)((a)-(b))>=0)
+/* p84: the bounded background pressure hold in hfs_mmap_pressure. */
+#define time_before(a,b) ((long)((a)-(b))<0)
 static inline unsigned long primitive_milliseconds(void) { struct timespec t;assert(!clock_gettime(CLOCK_MONOTONIC,&t));return t.tv_sec*1000UL+t.tv_nsec/1000000; }
 #define jiffies primitive_milliseconds()
 void primitive_sleep(unsigned long,unsigned long);

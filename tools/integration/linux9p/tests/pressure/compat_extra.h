@@ -23,3 +23,7 @@ static void hfs_request_unhold(struct hfs_session *,struct hfs_request *);
 static int hfs_request_drain(struct hfs_session *,struct hfs_request *,struct hfs_json **);
 struct hfs_dirty;
 static void hfs_dirty_mapping_error(struct hfs_view *,struct hfs_dirty *,int);
+/* Settable clock for the bounded background pressure hold (p84). */
+static unsigned long jiffies;
+#define time_before(a,b) ((long)((a)-(b))<0)
+#define msecs_to_jiffies(m) ((unsigned long)(m))

@@ -451,7 +451,7 @@ diff --git a/fs/9p/hfs_view.h b/fs/9p/hfs_view.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.h
-@@ -0,0 +1,210 @@
+@@ -0,0 +1,225 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_VIEW_H
 +#define FS_9P_HFS_VIEW_H
@@ -495,6 +495,15 @@ new file mode 100644
 +
 +struct hfs_mmap_control;
 +
++/* A background pressure pass may hold for in-flight observations this long
++ * (p84, hfs_mmap_pressure). Ordinary requests finish in milliseconds and a
++ * scoped clean recall well within a second, so five seconds covers a slow
++ * in-flight request while leaving 25 s of the guest's 30 s acquisition and
++ * transport window for the held release, its recall and a retried
++ * acquisition.
++ */
++#define HFS_PRESSURE_HOLD_MS 5000
++
 +struct hfs_view {
 +	struct hfs_mmap_control *control;
 +	struct kref refs;
@@ -508,6 +517,12 @@ new file mode 100644
 +	struct list_head dirty;
 +	struct list_head observations;
 +	u32 nr_observations;
++	/* A background pressure pass is being held for in-flight observations
++	 * since pressure_held_since (jiffies). Cleared when nr_observations
++	 * reaches zero or the bounded hold releases (hfs_mmap_pressure).
++	 */
++	bool pressure_holding;
++	unsigned long pressure_held_since;
 +	u32 nr_dirty;
 +	u32 nr_dirty_packages;
 +	u32 nr_grants;
@@ -3425,7 +3440,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,1759 @@
+@@ -0,0 +1,1805 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -4566,25 +4581,69 @@ new file mode 100644
 +	return err;
 +}
 +
-+static int hfs_mmap_pressure(struct hfs_view *view)
++/* Release one published cache-page lease to start recall progress while
++ * acquisition or cache capacity is blocked.
++ *
++ * Any release recalls the domain, and the recall moves the view under every
++ * request still in flight: its first admission can be refused behind the
++ * recall and its stamped hfs_view_enter (hfs_attr_install) can see a moved
++ * fence/revision and return ESTALE (p84, zq3-r9 R9-1). Two rules keep that
++ * off requests that never asked for it:
++ *
++ * - Observation leases are never selected. Every entry on view->observations
++ *   is still in use: hfs_mmap_begin publishes it and only hfs_mmap_end, after
++ *   the request completed, removes it and queues its release.
++ * - A transport-triggered (background) pass holds while any observation is
++ *   in flight, for at most HFS_PRESSURE_HOLD_MS. hfs_transport queues it
++ *   after any 50 ms ordinary-lane wait, which does not show that a cache
++ *   release would help the waiting request.
++ *
++ * The hold must stay bounded. Recalls never depend on it: the host starts
++ * the recall a conflict needs itself, and hfs_view_stop revokes observation
++ * leases without waiting for their requests. Host acquisition capacity does:
++ * a held cache lease pins its ticket family's retirement floor, so once
++ * identities are exhausted only a release frees one, and the background
++ * pass may be the only caller. read()/write() copy user buffers inside
++ * their own observation, so a fault on an uncached HFS MAP_SHARED buffer
++ * acquires while that observation is in flight. An unbounded hold could
++ * then outlast the 30 s acquisition window, and that timeout leaves an
++ * uncertain ticket that pins the floor. After the bound one cache lease is
++ * released and the hold restarts, so a busy view pays at most one recall
++ * per HFS_PRESSURE_HOLD_MS. A held pass still advances pressure_after in
++ * hfs_mmap_progress; that only rate-limits retries.
++ *
++ * An early observation release would return no guest ticket capacity (that
++ * comes back only at lease free). Capacity callers (the 129th clean page,
++ * read-first mkwrite, dirty sync) pass background == false and release a
++ * cache lease at once, even under an in-flight request; they cannot
++ * progress otherwise, so that residual cost is accepted.
++ */
++static int hfs_mmap_pressure(struct hfs_view *view, bool background)
 +{
 +	struct hfs_cache_page *entry;
-+	struct hfs_observation *observation;
 +	struct hfs_lease *lease = NULL;
 +	unsigned long flags;
++	bool hold = false;
 +	int err;
 +
 +	spin_lock_irqsave(&view->lock, flags);
-+	list_for_each_entry(entry, &view->cache, list)
-+		if (entry->lease && READ_ONCE(entry->lease->published) &&
-+		    !READ_ONCE(entry->lease->released)) {
-+			lease = entry->lease;
-+			break;
++	if (!view->nr_observations) {
++		view->pressure_holding = false;
++	} else if (background) {
++		if (!view->pressure_holding) {
++			view->pressure_holding = true;
++			view->pressure_held_since = jiffies;
 +		}
-+	if (!lease)
-+		list_for_each_entry(observation, &view->observations, list)
-+			if (observation->lease && !READ_ONCE(observation->lease->released)) {
-+				lease = observation->lease;
++		hold = time_before(jiffies, view->pressure_held_since +
++				   msecs_to_jiffies(HFS_PRESSURE_HOLD_MS));
++		if (!hold)
++			view->pressure_holding = false;
++	}
++	if (!hold)
++		list_for_each_entry(entry, &view->cache, list)
++			if (entry->lease && READ_ONCE(entry->lease->published) &&
++			    !READ_ONCE(entry->lease->released)) {
++				lease = entry->lease;
 +				break;
 +			}
 +	if (lease)
@@ -4606,7 +4665,7 @@ new file mode 100644
 +						       struct hfs_mmap_control, pressure);
 +
 +	if (!READ_ONCE(control->error) && !READ_ONCE(control->stopping))
-+		hfs_mmap_pressure(control->view);
++		hfs_mmap_pressure(control->view, true);
 +	hfs_mmap_control_put(control); /* transferred by the successful queue */
 +}
 +
@@ -4687,7 +4746,7 @@ new file mode 100644
 +	if (err == -ENOSPC || err == -EAGAIN || err == -ESTALE ||
 +	    err == -ERESTARTSYS || err == -EINTR) {
 +		if (err == -ENOSPC)
-+			hfs_mmap_pressure(view);
++			hfs_mmap_pressure(view, false);
 +		usleep_range(1000, 2000);
 +		return VM_FAULT_NOPAGE;
 +	}
@@ -4913,7 +4972,7 @@ new file mode 100644
 +	 * exact page. Its next ordinary write fault obtains an EXCLUSIVE_DIRTY
 +	 * lease and full reservation before a new writable PTE can be installed.
 +	 */
-+	err = hfs_mmap_pressure(view);
++	err = hfs_mmap_pressure(view, false);
 +	result = !err ? VM_FAULT_NOPAGE : hfs_mmap_fault_error(view, err);
 +	hfs_view_put(view);
 +	return result;
@@ -4976,7 +5035,7 @@ new file mode 100644
 +	dirty = view->nr_dirty != 0;
 +	spin_unlock_irqrestore(&view->lock, flags);
 +	if (dirty)
-+		err = hfs_mmap_pressure(view);
++		err = hfs_mmap_pressure(view, false);
 +	/* Includes terminal short/error drains; never erase them with a later
 +	 * successful metadata SYNC. Standard errseq is per open file reference.
 +	 */
@@ -5171,7 +5230,9 @@ new file mode 100644
 +	cleanup = observation->cleanup;
 +	spin_lock_irqsave(&view->lock, flags);
 +	list_del(&observation->list);
-+	view->nr_observations--;
++	/* The last in-flight observation ends any background pressure hold. */
++	if (!--view->nr_observations)
++		view->pressure_holding = false;
 +	/* DOMAIN observations install only under separately stamped short MM
 +	 * tokens. No PTE is authorized by this lease. Closing its last observer
 +	 * excludes every future use; cached dentries revalidate through RPC and
