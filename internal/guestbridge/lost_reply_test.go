@@ -37,7 +37,7 @@ func callOf(t *testing.T, c Command) Call {
 // then returns the first non-EAGAIN Read outcome for the cell.
 func readResponded(t *testing.T, tr *Transport, n Native, id uint64) ([]byte, error) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(answerBound)
 	for {
 		data, err := tr.Read(t.Context(), n, n.Endpoint.ResultNode, id*CellStride, 32768)
 		if !errors.Is(err, fsapi.WouldBlock) || time.Now().After(deadline) {

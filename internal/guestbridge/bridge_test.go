@@ -1142,7 +1142,7 @@ func TestBridgeViewControlsProgressWhileDrainExecutionWaits(t *testing.T) {
 	sendNative(t, tr, f.native, f.command(t, "CALL", Call{Claim: claim, Credentials: f.cred(), Intent: intent}), 1)
 	select {
 	case <-f.driver.entered:
-	case <-time.After(2 * time.Second):
+	case <-time.After(answerBound):
 		t.Fatal("drain execution did not start")
 	}
 	sendNative(t, tr, f.native, f.command(t, "VIEW_POLL", map[string]any{"domain": domain, "after_sequence": 0}), 1)

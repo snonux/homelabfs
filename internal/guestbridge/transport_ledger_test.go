@@ -163,7 +163,7 @@ func TestDurableTransportFailureFencesBeforeExternalSuccess(t *testing.T) {
 func TestDurableTransportReadFailureRetainsProtectedOwnership(t *testing.T) {
 	f, tr, root := durableFixture(t)
 	sendNative(t, tr, f.native, helloCommand(t, f), 0)
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(answerBound)
 	for {
 		tr.mu.Lock()
 		ready := tr.cells[1].response != nil
@@ -308,7 +308,7 @@ func TestDurableTransportProcessLoss(t *testing.T) {
 			// Wait reports process exit, not necessarily final kernel release
 			// of every mmap-backed open-file description. Observe both actual
 			// locks after the known exit; no timeout or ledger error is success.
-			if err := waitCrashedTransportLocks(root, time.Second); err != nil {
+			if err := waitCrashedTransportLocks(root, answerBound); err != nil {
 				t.Fatal(err)
 			}
 			state, cells := inspectCells(t, root)
@@ -421,7 +421,7 @@ func durableCrashChild(t *testing.T, stage string) {
 		sendNative(t, tr, f.native, f.command(t, "CALL", Call{Claim: claim, Credentials: f.cred(), Intent: intent}), 0)
 		select {
 		case <-f.driver.entered:
-		case <-time.After(5 * time.Second):
+		case <-time.After(answerBound):
 			t.Fatal("pending job not entered")
 		}
 	default:
@@ -677,9 +677,10 @@ func transportCrashDirectory(t *testing.T) string {
 
 // waitCrashedTransportLocks is an oracle synchronization primitive used only
 // after the exact child has exited with status73. Linux may transiently retain
-// the database open-file lock after Wait while releasing its mapping. One second
-// bounds scheduler/kernel handoff, not authority: only both successful actual
-// nonblocking flocks prove release. Other errors and persistent contention fail.
+// the database open-file lock after Wait while releasing its mapping. Callers
+// pass answerBound for that scheduler/kernel handoff (generous because a
+// loaded host can delay it, i84). The bound is not authority: only both
+// successful actual nonblocking flocks prove release. Other errors and persistent contention fail.
 // Product InspectTransport remains one-shot and refuses any uncertain owner.
 func waitCrashedTransportLocks(root string, bound time.Duration) error {
 	open := func(name string) (*os.File, error) {
@@ -759,14 +760,14 @@ func TestDurableTransportCrashOracleRefusesActualHeldLocks(t *testing.T) {
 			} else {
 				tr.Close()
 			}
-			if err := waitCrashedTransportLocks(root, time.Second); err != nil {
+			if err := waitCrashedTransportLocks(root, answerBound); err != nil {
 				t.Fatal("released actual ownership not observed", err)
 			}
 			_, _ = inspectCells(t, root)
 		})
 	}
 	root := filepath.Join(t.TempDir(), "missing")
-	if err := waitCrashedTransportLocks(root, time.Second); !os.IsNotExist(err) {
+	if err := waitCrashedTransportLocks(root, answerBound); !os.IsNotExist(err) {
 		t.Fatal("non-contention error hidden", err)
 	}
 }

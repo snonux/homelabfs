@@ -456,7 +456,7 @@ func TestMappedProtectionFailuresFenceBeforeAuthorityAndExposure(t *testing.T) {
 			} else if err != nil {
 				t.Fatal(err)
 			}
-			deadline := time.Now().Add(2 * time.Second)
+			deadline := time.Now().Add(answerBound)
 			for {
 				tr.mu.Lock()
 				failed := tr.failed != nil
@@ -730,7 +730,7 @@ func TestMappedAcceptedOrdinaryExecutesAfterLaterControl(t *testing.T) {
 	}
 	select {
 	case <-producer.entered:
-	case <-time.After(2 * time.Second):
+	case <-time.After(answerBound):
 		t.Fatal("ordinary worker did not enter barrier")
 	}
 	if err := mappingWrite(t, tr, f.native, mappedHello(t, f, 2, 2), 0, 0, -1); err != nil {
