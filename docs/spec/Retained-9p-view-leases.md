@@ -210,8 +210,13 @@ controller without scoped recalls while a scoped recall is in flight is
 unsupported. RELEASED
 requires the actual STOPPED/install/DRAINED/final-install/reopen/source closure
 and mandatory exact physical verification; a LIVE readable PTE is not a closed
-lease. Exact initial PENDING replay remains immutable; QUERY reports the current
-protected terminal outcome.
+lease. That verification covers the released lease's own lineage and
+reservations, not the whole domain (task g84): a newer lease of the same domain
+granted after the recall's REOPEN holds its own authority and needs its own
+recall, so it never holds the older release (the guest serializes a mount's
+releases on one cleanup worker, and waiting for it would deadlock). Exact
+initial PENDING replay remains immutable; QUERY reports the current protected
+terminal outcome.
 
 ## Operation union and protected result union
 

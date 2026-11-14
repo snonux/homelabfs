@@ -212,11 +212,21 @@ func (f *Facts) CheckPhysical(ctx context.Context, scope guestbridge.Context, op
 	if op == "VIEW_CANCEL" {
 		return f.checkCancellation(ctx, scope, raw, l)
 	}
-	if op != "VIEW_RELEASE" && op != "VIEW_RETIRE" {
+	if op == "VIEW_RELEASE" {
+		return l.checkRelease(scope, raw)
+	}
+	if op != "VIEW_RETIRE" {
 		return fsapi.Unsupported
 	}
-	// Release/retirement cannot clear an active physical or dirty owner. The
-	// controller's actual STOP/install/reopen loop closes these first.
+	return l.checkRetire(scope)
+}
+
+// checkRetire: retirement cannot clear an active physical or dirty owner of
+// the domain. The controller's actual STOP/install/reopen loop closes these
+// first. A refused retirement only leaves the guest's protected ticket floor
+// where it is (the guest ignores hfs_view_retire's result), so it stays
+// domain-wide.
+func (l factsLedger) checkRetire(scope guestbridge.Context) error {
 	for _, lease := range l.Leases {
 		if lease.Lease.Scope == scope && lease.Active {
 			return fsapi.WouldBlock
@@ -228,6 +238,70 @@ func (f *Facts) CheckPhysical(ctx context.Context, scope guestbridge.Context, op
 		}
 	}
 	return nil
+}
+
+// checkRelease certifies the physical closure of exactly the lease a
+// VIEW_RELEASE names (raw is its original payload), not of its whole domain.
+//
+// A release asserts that this lease owns no PTE, mapping or dirty byte any
+// more. That is proven per lease: its lineage (every revision; a renewal keeps
+// the old revision's mappings under the new one) is inactive, its lineage
+// holds no open reservation, and a recall of its domain completed after the
+// grant (lease fence below the domain fence). The fence alone shows that: a
+// lease's fence is the domain fence at its grant, and a recall covering this
+// domain admits no acquisition or renewal from it (viewcontrol
+// recallHoldsLease, pinned by TestScopedRecallHoldsOwnDomain), so no lease of
+// the domain is granted between its STOPPED and its fence advance. Leases deactivate only through a recall's observed
+// STOPPED (quiesceParticipants), the release itself, or a renewal (whose
+// active sibling the lineage check catches); cancelling a grant is refused by
+// checkCancellation. The advanced fence proves the fixed observer measured
+// this domain's STOPPED and REOPENED after the grant, and the guest never
+// republishes under a lease of a stale fence.
+// The guest also independently refuses a RELEASED lease it still publishes
+// (hfs_lease_release_locked).
+//
+// Newer leases of the same domain are deliberately not consulted (task g84):
+// each holds its own authority, keeps it after this release, and still needs
+// its own recall before its own release. Refusing while any lease of the
+// domain was active deadlocked the guest, which serializes a mount's releases
+// on one cleanup worker: the older release waited for the newer lease, whose
+// release was queued behind it, until the 30 s exchange timeout failed the
+// mount's view control.
+func (l factsLedger) checkRelease(scope guestbridge.Context, raw json.RawMessage) error {
+	var r struct {
+		Lease guestbridge.ViewLease `json:"lease"`
+	}
+	if json.Unmarshal(raw, &r) != nil {
+		return fsapi.Invalid
+	}
+	saved, ok := l.Leases[r.Lease.ID]
+	if !ok || saved.Lease.Scope != scope || !sameJSON(saved.Lease, r.Lease) {
+		return fsapi.Stale
+	}
+	if saved.Lease.Fence >= viewcontrol.DomainFence(l.Fences, scope.Session) {
+		return fsapi.WouldBlock // no completed recall since the grant
+	}
+	for _, lease := range l.Leases {
+		if lease.Active && sameLineage(lease.Lease, r.Lease) {
+			return fsapi.WouldBlock
+		}
+	}
+	for _, reservation := range l.Reservations {
+		owner, known := l.Leases[reservation.Reservation.LeaseID]
+		// An open reservation of an unknown lease could be this lineage's.
+		if reservation.Status != "CLOSED" && (!known || sameLineage(owner.Lease, r.Lease)) {
+			return fsapi.WouldBlock
+		}
+	}
+	return nil
+}
+
+// sameLineage mirrors viewcontrol's lineage: a lease and all its renewals
+// differ only in ID and revision.
+func sameLineage(a, b guestbridge.ViewLease) bool {
+	a.ID, a.Revision = "", 0
+	b.ID, b.Revision = "", 0
+	return sameJSON(a, b)
 }
 
 // CheckRecovery only permits a genuinely initial empty controller. Live seals
