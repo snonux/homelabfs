@@ -154,12 +154,46 @@ type ledger struct {
 	// Schema is LedgerSchema; Fences holds each domain's fence once it has
 	// completed a recall (see DomainFence). Neither is optional: a ledger
 	// without them is an older layout and is refused on reopen.
-	Schema     int
-	Fences     map[string]uint64
+	Schema int
+	Fences map[string]uint64
+	// Identities is the number of ticket rows the ledger retains (unretired
+	// tickets plus the tombstones of sealed sessions). It is charged when a
+	// ticket is admitted and, since task q64, returned when VIEW_RETIRE
+	// recycles a retired ticket (recycling.go), so Bounds.Identities bounds
+	// the tickets alive at once, not every ticket a controller ever admits.
 	Identities int
 	Recovery   bool
+	// LineageFences names the domain and fence of every lease lineage in
+	// Revisions that this binary recorded, so compaction can recycle a
+	// lineage's revision high-water once no lease of it remains and its
+	// domain's fence moved past it (recycling.go). omitempty keeps a ledger
+	// without such lineages byte-identical to the schema-2 layout before q64;
+	// a Revisions entry without a LineageFences entry is never recycled.
+	LineageFences map[string]lineageFence `json:",omitempty"`
 }
-type family struct{ High, Floor uint64 }
+
+// family is one ticket family's permanent counters: High is the highest
+// admitted number and Floor the highest retired one; numbers are never
+// reused, so a family is never deleted. Scope names the owning session
+// (terminalSnapshot needs it once the family's retired tickets are
+// recycled) and Receipt the Retirements key of its latest VIEW_RETIRE, the
+// only receipt the guest can still be waiting for (recycling.go). Both are
+// omitempty: a family written before task q64 keeps its exact bytes until it
+// is next used, and terminalSnapshot then still derives its owner from its
+// tickets, which that binary never deleted.
+type family struct {
+	High, Floor uint64
+	Scope       *guestbridge.Context `json:",omitempty"`
+	Receipt     string               `json:",omitempty"`
+}
+
+// lineageFence is where a lease lineage was minted: a lineage includes its
+// domain's fence, which only grows, so once the domain's fence is past it no
+// grant can mint that lineage again.
+type lineageFence struct {
+	Session string
+	Fence   uint64
+}
 type ticketState struct {
 	DeclinedGap                 *controlledvalidation.Earmark
 	GapClosureReply             json.RawMessage
@@ -301,35 +335,7 @@ func New(ctx context.Context, c Config) (*Controller, error) {
 			controller.closed.Store(true)
 		}
 	}()
-	if err = db.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte(version))
-		if err != nil {
-			return err
-		}
-		old := b.Get([]byte("state"))
-		if old == nil {
-			if !c.Initialize {
-				return fsapi.Unavailable
-			}
-			controller.state = ledger{UUIDs: map[string]bool{}, Revisions: map[string]uint64{}, AckArchive: map[string]string{}, Retirements: map[string]json.RawMessage{}, Version: version, EnrollmentHash: controller.enrollmentHash, Sources: map[string]fsservice.ControlledViewSource{}, Tickets: map[string]ticketState{}, Families: map[string]family{}, Leases: map[string]leaseState{}, Reservations: map[string]reservationState{}, Domains: map[string]domainState{}, Schema: LedgerSchema, Fences: map[string]uint64{}}
-		} else {
-			if c.Initialize {
-				return fsapi.Permission
-			}
-			if len(old) > e.Bounds.LedgerBytes {
-				return fsapi.NoSpace
-			}
-			if err = json.Unmarshal(old, &controller.state); err != nil {
-				return err
-			}
-			// An older ledger layout (no per-domain fences) is refused here,
-			// before any recovery work, rather than migrated: see LedgerSchema.
-			if controller.state.Version != version || controller.state.Schema != LedgerSchema || controller.state.EnrollmentHash != controller.enrollmentHash {
-				return fsapi.Permission
-			}
-		}
-		return nil
-	}); err != nil {
+	if err = db.Update(controller.loadLedger); err != nil {
 		return nil, err
 	}
 	source, err := controller.capture(ctx)
@@ -682,6 +688,43 @@ func nilValue(v any) bool {
 	return false
 }
 
+// loadLedger creates the initial ledger (Initialize) or decodes the protected
+// one inside New's bbolt update. An older layout (no per-domain fences) is
+// refused here, before any recovery work, rather than migrated: see
+// LedgerSchema. A schema-2 ledger written before task q64 opens unchanged.
+func (c *Controller) loadLedger(tx *bolt.Tx) error {
+	b, err := tx.CreateBucketIfNotExists([]byte(version))
+	if err != nil {
+		return err
+	}
+	old := b.Get([]byte("state"))
+	if old == nil {
+		if !c.config.Initialize {
+			return fsapi.Unavailable
+		}
+		c.state = ledger{UUIDs: map[string]bool{}, Revisions: map[string]uint64{}, AckArchive: map[string]string{}, Retirements: map[string]json.RawMessage{}, Version: version, EnrollmentHash: c.enrollmentHash, Sources: map[string]fsservice.ControlledViewSource{}, Tickets: map[string]ticketState{}, Families: map[string]family{}, Leases: map[string]leaseState{}, Reservations: map[string]reservationState{}, Domains: map[string]domainState{}, Schema: LedgerSchema, Fences: map[string]uint64{}, LineageFences: map[string]lineageFence{}}
+		return nil
+	}
+	if c.config.Initialize {
+		return fsapi.Permission
+	}
+	if len(old) > c.config.Authorization.Enrollment.Bounds.LedgerBytes {
+		return fsapi.NoSpace
+	}
+	if err = json.Unmarshal(old, &c.state); err != nil {
+		return err
+	}
+	if c.state.Version != version || c.state.Schema != LedgerSchema || c.state.EnrollmentHash != c.enrollmentHash {
+		return fsapi.Permission
+	}
+	// A ledger written before task q64 has no lineage fences. An empty map
+	// is omitted on save again, so this adds nothing to the ledger bytes.
+	if c.state.LineageFences == nil {
+		c.state.LineageFences = map[string]lineageFence{}
+	}
+	return nil
+}
+
 func sameSource(a, b fsservice.ControlledViewSource) bool {
 	return a.Journal == b.Journal && a.Through == b.Through && a.Visibility == b.Visibility && a.Applied == b.Applied && bytes.Equal(a.State, b.State)
 }
@@ -689,7 +732,7 @@ func sameSource(a, b fsservice.ControlledViewSource) bool {
 func (c *Controller) validateLedger() error {
 	s := c.state
 	b := c.config.Authorization.Enrollment.Bounds
-	if s.UUIDs == nil || len(s.UUIDs) > 2*b.Identities || s.Revisions == nil || len(s.Revisions) > b.Identities || s.Sources == nil || s.Tickets == nil || s.Families == nil || s.Leases == nil || s.Reservations == nil || s.Domains == nil || s.AckArchive == nil || s.Retirements == nil || len(s.Sources) > b.Sources || len(s.Tickets) > b.Identities || len(s.Reservations) > b.Reservations || len(s.Leases) > b.Identities || len(s.Domains) > len(c.config.Authorization.Enrollment.Domains) || len(s.AckArchive) > b.Identities*8 || s.Identities > b.Identities || !s.validFences() {
+	if s.UUIDs == nil || len(s.UUIDs) > 2*b.Identities || s.Revisions == nil || len(s.Revisions) > b.Identities || s.Sources == nil || s.Tickets == nil || s.Families == nil || s.Leases == nil || s.Reservations == nil || s.Domains == nil || s.AckArchive == nil || s.Retirements == nil || len(s.Sources) > b.Sources || len(s.Tickets) > b.Identities || len(s.Reservations) > b.Reservations || len(s.Leases) > b.Identities || len(s.Domains) > len(c.config.Authorization.Enrollment.Domains) || len(s.AckArchive) > b.Identities*8 || s.Identities > b.Identities || !s.validRecycling() || !s.validFences() {
 		return fsapi.Stale
 	}
 	for key, source := range s.Sources {
@@ -735,7 +778,15 @@ func (c *Controller) validateLedger() error {
 	return nil
 }
 
+// newUUID allocates a recall or reservation provenance UUID that no retained
+// state uses. The set bounds them at 2*Identities; when it is full, the
+// UUIDs nothing references any more are recycled first (pruneUUIDs, task
+// f84), so the bound limits the UUIDs in use, not every UUID ever issued.
+// A crash before the caller's save leaves the larger, still valid set.
 func (c *Controller) newUUID() (string, error) {
+	if len(c.state.UUIDs) >= 2*c.config.Authorization.Enrollment.Bounds.Identities {
+		c.pruneUUIDs()
+	}
 	if len(c.state.UUIDs) >= 2*c.config.Authorization.Enrollment.Bounds.Identities {
 		return "", fsapi.NoSpace
 	}

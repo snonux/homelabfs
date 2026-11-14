@@ -266,8 +266,12 @@ request_hash hashes canonical `{op:originalOp,payload:originalPayload}`.
 QUERY/CANCEL preserve this original lineage. Direct admissions check the exact
 operation/hash locally; the mandatory CheckResponse provider verifies actual
 protected original admission bytes and current outcome for every reply, including
-QUERY/CANCEL and retirement. An original admission retry always replays its
-byte-identical initial reply, including PENDING; QUERY may return a separately
+QUERY/CANCEL and retirement, except the rights-free RETIRED_ID of a recycled
+number, which binds only the presented bytes and proves nothing about an
+earlier admission. An original admission retry of an unretired
+number always replays its byte-identical initial reply, including PENDING; once
+the number is retired it gets RETIRED_ID instead (see identity recycling
+below). QUERY may return a separately
 protected current/terminal observation. Cancellation keeps the original admission
 hash, protects one deterministic cancellation outcome and replays that exact
 outcome on retry. Retirement uses the protected **terminal outcome id**, never
@@ -277,7 +281,7 @@ Status-specific closed union:
 
 | status | Authority fields and operations |
 | --- | --- |
-| PENDING, INDETERMINATE, BLOCKED, RETIRED_ID | all three null; no cache/PTE rights |
+| PENDING, INDETERMINATE, BLOCKED, RETIRED_ID | all three null; no cache/PTE rights. RETIRED_ID answers an admission op (ACQUIRE/RENEW/RELEASE/RESERVE/FREEZE) under a retired number, bound to that request's own operation and hash; QUERY/CANCEL of a retired number are refused (Stale), except from a tombstone kept by a pre-q64 ledger |
 | GRANTED | exactly lease for ACQUIRE/RENEW, or reservation for DIRTY_RESERVE; QUERY returns that protected kind |
 | RELEASED, CANCELLED | all three null, matching RELEASE/CANCEL or QUERY |
 | FROZEN | entry only, exact frozen DIRTY_FREEZE binding; QUERY may replay it |
@@ -292,6 +296,34 @@ close every allocated gap, lost acquisition result, lease, dirty reservation,
 frozen claim, source pin and recall obligation before a permanent protected
 floor/tombstone advances. Replies/cell release/close/disconnect/TTL do not retire
 anything. Finite number/identity/source exhaustion blocks new admissions.
+
+**Identity recycling (q64, f84).** The protected floor, not a per-ticket
+tombstone, is what keeps a retired number retired: each family's High/Floor
+counters are permanent and numbers are never reused, so the controller
+deletes retired ticket rows at VIEW_RETIRE and returns their identity charge
+(`Bounds.Identities` bounds the tickets alive at once). A retired number is
+never admitted as a new ticket. An admission op under it (exact retransmit or
+not) gets RETIRED_ID computed from its own operation and request bytes, which
+for an exact retransmit equals the tombstone's former answer. This is a
+behaviour change for a *changed* admission under a retired number: before q64
+the tombstone answered RETIRED_ID with the original operation/hash, which the
+bridge's response validation refused as Stale; now it gets RETIRED_ID of its
+own bytes. That is harmless: RETIRED_ID carries no rights, the guest accepts a
+ticket reply only if operation and request_hash match its own ticket
+(hfs_ticket_reply), and its exchange loop treats RETIRED_ID as -EAGAIN. QUERY
+and CANCEL carry no original operation or hash, so they are refused (Stale).
+The guest's view code sends neither a retired admission nor a QUERY/CANCEL of
+a retired number, because it retires only tickets it no longer uses and frees
+them on RETIRED; only test harnesses (terminal-kernel80) replay retired
+admissions on purpose. Only a family's latest VIEW_RETIRE receipt is replayed; an
+older range is refused, since the guest builds each retirement from the
+previous RETIRED floor. Lease lineage revision high-waters are dropped once no
+lease of the lineage remains and the domain's fence passed it. Per session,
+only the ACKs of the last recall the session acknowledged stay archived for
+replay (ACCEPTED); an older recall's ACK is STALE, since the guest sends an
+ACK only after the previous one was ACCEPTED. Recall/provenance UUIDs nothing
+references are dropped. Details and the legacy-ledger rules:
+`internal/viewcontrol/recycling.go`.
 
 **Source-cut floor (i64).** `Bounds.Sources` counts the retained source cuts.
 There is one per distinct journal position and state that a capture

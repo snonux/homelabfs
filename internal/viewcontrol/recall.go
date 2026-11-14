@@ -251,6 +251,12 @@ func (c *Controller) startRecall(ctx context.Context) error {
 // bind exactly the participants, so an ACK can never be replayed across a
 // scoped and an all-domain recall. For scope "" both hashes are computed
 // exactly as before scoped recalls existed.
+//
+// The ACK archive must have room for the recall's ACKs. Since task f84 it
+// holds at most the last recall's ACKs per session (pruneAckArchive; an
+// older ledger's entries go at the session's next ACK), so this bound no
+// longer limits how many recalls a controller can run; the recall UUID is
+// recycled the same way (newUUID).
 func (c *Controller) beginRecall(ctx context.Context, scope string) error {
 	if c.state.Recall != nil {
 		return nil
@@ -316,39 +322,31 @@ func (c *Controller) events(ctx context.Context, phase string) error {
 	return nil
 }
 
+// issuedEvent is the part of a session's current recall event an ACK must match.
+type issuedEvent struct {
+	Sequence uint64
+	Domain   guestbridge.Capability
+	Target   *guestbridge.ViewTarget
+	Phase    string
+}
+
+// ack validates and records one VIEW_ACK. An archived ACK is a replay and
+// answers from the archive (replayACK). A new ACK must match the current
+// recall, the session's issued event and the phase rules (checkACKPhase)
+// and pass the physical Facts; it is then recorded in the recall and
+// archived, and the session's archived ACKs of earlier recalls are pruned
+// (pruneAckArchive, task f84).
 func (c *Controller) ack(ctx context.Context, scope guestbridge.Context, ack acknowledgement, raw json.RawMessage) error {
-	archiveKey := digest(scope) + "/" + ack.Recall + "/" + ack.Phase + "/" + stringNumber(ack.Sequence)
-	if prior := c.state.AckArchive[archiveKey]; prior != "" {
-		if prior != hash(raw) {
-			return fsapi.Stale
-		}
-		if c.state.Recall != nil && c.state.Recall.ID == ack.Recall {
-			key := scope.Session + "/" + ack.Phase + "/" + stringNumber(ack.Sequence)
-			if c.state.Recall.Acks[key] == nil {
-				state, err := c.rawState()
-				if err != nil {
-					return err
-				}
-				if err = c.config.Facts.CheckPhysical(c.factsContext(ctx), scope, "VIEW_ACK", raw, state); err != nil {
-					return err
-				}
-				c.state.Recall.Acks[key] = bytes.Clone(raw)
-			}
-		}
-		return nil
+	archived := archiveKey(scope, ack)
+	if prior := c.state.AckArchive[archived]; prior != "" {
+		return c.replayACK(ctx, scope, ack, raw, prior)
 	}
 	recall := c.state.Recall
 	if recall == nil || ack.Recall != recall.ID || ack.Session != scope.Session || ack.Domain.Scope != scope || ack.Authority != scope.AuthorityHash || ack.Closure != recall.Closure || ack.Inventory != recall.Inventory {
 		return fsapi.Stale
 	}
-	event := recall.Events[scope.Session]
-	var issued struct {
-		Sequence uint64
-		Domain   guestbridge.Capability
-		Target   *guestbridge.ViewTarget
-		Phase    string
-	}
-	if err := json.Unmarshal(event, &issued); err != nil {
+	var issued issuedEvent
+	if err := json.Unmarshal(recall.Events[scope.Session], &issued); err != nil {
 		return err
 	}
 	if ack.Sequence != issued.Sequence || !equal(ack.Domain, issued.Domain) {
@@ -368,6 +366,45 @@ func (c *Controller) ack(ctx context.Context, scope guestbridge.Context, ack ack
 	if err = c.config.Facts.CheckPhysical(c.factsContext(ctx), scope, "VIEW_ACK", raw, ledger); err != nil {
 		return err
 	}
+	if err = c.checkACKPhase(ctx, scope, ack, raw, recall, issued); err != nil {
+		return err
+	}
+	recall.Acks[key] = bytes.Clone(raw)
+	c.state.AckArchive[archived] = hash(raw)
+	c.pruneAckArchive(digest(scope), ack.Recall)
+	return nil
+}
+
+// replayACK answers an ACK whose exact bytes were archived: different bytes
+// are Stale, and an ACK of the current recall that recovery discarded from
+// its learned ACKs is relearned after the physical Facts pass again.
+func (c *Controller) replayACK(ctx context.Context, scope guestbridge.Context, ack acknowledgement, raw json.RawMessage, prior string) error {
+	if prior != hash(raw) {
+		return fsapi.Stale
+	}
+	if c.state.Recall == nil || c.state.Recall.ID != ack.Recall {
+		return nil
+	}
+	key := scope.Session + "/" + ack.Phase + "/" + stringNumber(ack.Sequence)
+	if c.state.Recall.Acks[key] != nil {
+		return nil
+	}
+	state, err := c.rawState()
+	if err != nil {
+		return err
+	}
+	if err = c.config.Facts.CheckPhysical(c.factsContext(ctx), scope, "VIEW_ACK", raw, state); err != nil {
+		return err
+	}
+	c.state.Recall.Acks[key] = bytes.Clone(raw)
+	return nil
+}
+
+// checkACKPhase applies the per-phase rules of a new ACK against the recall
+// phase and the issued event; STOPPED also closes positively excluded
+// unadopted reservations and records the session's exact manifest, and
+// DRAINED requires every drain result.
+func (c *Controller) checkACKPhase(ctx context.Context, scope guestbridge.Context, ack acknowledgement, raw json.RawMessage, recall *recallState, issued issuedEvent) error {
 	switch ack.Phase {
 	case "STOPPED":
 		if (recall.Phase != "RECALL" && recall.Phase != "DRAIN") || issued.Phase != "RECALL" || ack.Target != nil {
@@ -392,9 +429,7 @@ func (c *Controller) ack(ctx context.Context, scope guestbridge.Context, ack ack
 		if recall.Phase != "WAIT_DRAINED" || !equal(ack.Target, issued.Target) || !bytes.Equal(ack.Manifest, recall.Manifests[scope.Session]) {
 			return fsapi.Stale
 		}
-		if err = c.drained(ctx); err != nil {
-			return err
-		}
+		return c.drained(ctx)
 	case "INSTALLED_FINAL":
 		if recall.Phase != "INSTALL_FINAL" || issued.Phase != "INSTALL_FINAL" || !equal(ack.Target, issued.Target) || string(ack.Manifest) != "null" {
 			return fsapi.Stale
@@ -406,8 +441,6 @@ func (c *Controller) ack(ctx context.Context, scope guestbridge.Context, ack ack
 	default:
 		return fsapi.Invalid
 	}
-	recall.Acks[key] = bytes.Clone(raw)
-	c.state.AckArchive[archiveKey] = hash(raw)
 	return nil
 }
 

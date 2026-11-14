@@ -42,8 +42,11 @@ import (
 // The rig runs ViewProtocol, not the lab's terminal tuple, so a READDIR's
 // transient grants are released by FORGETs instead of one READDIR_CLEANUP
 // (more CALLs, not fewer). The mapped dirtying of T5 (1024 dirty pages, each
-// a DIRTY_RESERVE earmark and a DRAIN_WRITE claim) is not driven: it needs
-// view identities the spec cannot hold (task q64, view identity recycling).
+// a DIRTY_RESERVE earmark and a DRAIN_WRITE claim) is not driven here: T5
+// stays deferred. Its former blocker, view identities counted for the whole
+// controller lifetime, is gone since task q64 (recycling.go), and
+// TestZQ3LeaseCyclesRecycleViewIdentities drives view lease cycles, dirty
+// rounds and recalls at these Views values.
 
 // rigLimits carries the spec's provider and bridge values into newRigWith.
 type rigLimits struct {
@@ -412,8 +415,10 @@ func (w *zq3World) report(t *testing.T) {
 	t.Logf("view controller: ticket identities %d, lease/reservation UUIDs %d, ticket rows %d, source cuts peak %d", identities, uuids, tickets, w.peakSources)
 }
 
-// viewUsage is the controller's lifetime view counters: ticket identities
-// (Bounds.Identities) and lease/reservation UUIDs (2*Identities).
+// viewUsage is the controller's view counters at the end of the run: ticket
+// identities still charged (Bounds.Identities; VIEW_RETIRE recycles them
+// since task q64) and recall/provenance UUIDs still referenced
+// (2*Identities; pruned since task f84).
 func (w *zq3World) viewUsage() (identities, uuids, tickets int) {
 	c := w.r.controller
 	c.mu.Lock()

@@ -491,9 +491,13 @@ const zq3GuestWindow = 24
 const zq3ReaddirLimit = 256
 
 // assertMargins requires each bound to hold twice the run's measured need.
-// Lifetime bounds (credential rows, the provider's processes bucket, view
-// ticket identities and UUIDs) take the whole run's count; window bounds
-// (credits, MaxClaims, grant rows) take peaks, because retirement recycles.
+// Lifetime bounds (credential rows, the provider's processes bucket) take
+// the whole run's count; window bounds (credits, MaxClaims, grant rows) take
+// peaks, because retirement recycles. The view ticket identities and UUIDs
+// are recycled too since tasks q64/f84, but this model's few view tickets
+// (T2's two-domain recall) are never retired, so their end-of-run count is
+// checked; their peaks under thousands of retired lease cycles are
+// TestZQ3LeaseCyclesRecycleViewIdentities' job.
 func (w *zq3World) assertMargins(t *testing.T, l *rigLimits, b Bounds) {
 	t.Helper()
 	window := min(int(l.RetainedBytes/l.ClaimCreditBytes), int(l.SourceBytes/l.SourceCreditBytes), l.Claims)
@@ -516,7 +520,7 @@ func (w *zq3World) assertMargins(t *testing.T, l *rigLimits, b Bounds) {
 		check(prefix+"live grants + READDIR reservation (Capabilities)", s.peakLive+zq3ReaddirLimit, l.Capabilities)
 	}
 	identities, uuids, _ := w.viewUsage()
-	check("view ticket identities (Views.Identities, lifetime)", identities, b.Identities)
-	check("view lease/reservation UUIDs (2 x Views.Identities, lifetime)", uuids, 2*b.Identities)
+	check("view ticket identities (Views.Identities)", identities, b.Identities)
+	check("view recall/provenance UUIDs (2 x Views.Identities)", uuids, 2*b.Identities)
 	check("retained source cuts (Views.Sources)", w.peakSources, b.Sources)
 }

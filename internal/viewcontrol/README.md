@@ -184,17 +184,52 @@ session, in memory only, and restarts on different ACK bytes or any other
 reply. An ACCEPTED ACK is protected first; a later progress failure does not
 change that reply.
 
-Signed finite bounds cover permanent identities/tombstones, separate live/control
+Signed finite bounds cover retained ticket identities, separate live/control
 tickets, reservation/freeze/manifests, complete source archives and peak source/
 ledger serialization memory. Source slots for outstanding drains and final
 installs are reserved before granting a dirty reservation. Resource refusal is
-explicit. At verified terminal retirement, complete tombstones keep operation/
-request hash/full principal/floor, while retired bodies and unreferenced closed
-leases/reservations/snapshots can be reclaimed. Source snapshots are not freed
-on reply, disconnect or mere reopen. Identity/fence/revision exhaustion remains
-permanent and blocks new admissions. A runtime workload must enroll sufficient
-bounds and retire completed pressure windows; this component does not install
-or calibrate a runtime profile.
+explicit. Source snapshots are not freed on reply, disconnect or mere reopen.
+Fence, lease revision and per-family ticket number exhaustion remain permanent
+and block new admissions. A runtime workload must enroll sufficient bounds and
+retire completed pressure windows; this component does not install or
+calibrate a runtime profile.
+
+Identity recycling (`recycling.go`, tasks q64 and f84). A verified VIEW_RETIRE
+floor recycles the retired tickets: their rows are deleted and their
+`Identities` charge returns, so `Bounds.Identities` bounds the tickets alive
+at once, not every ticket a controller ever admits (before, a guest read's
+DOMAIN READ lease cost two never-returned identities, about 32 reads per
+controller lifetime at the zq3 spec). Replays stay safe because each ticket
+family's High/Floor counters are permanent: a recycled number is at or below
+the floor, so it is never admitted again. An admission op under it (exact
+retransmit or not) answers a rights-free RETIRED_ID bound to its own
+operation and request bytes, which for an exact retransmit is byte-identical
+to the old tombstone's answer, and CheckResponse vouches only for that reply;
+QUERY and CANCEL, which carry no original operation or hash, are refused as
+Stale. The guest's view code never sends one: it retires only tickets it no
+longer uses and frees them once RETIRED arrives (the terminal-kernel80
+harness replays retired admissions on purpose). The same
+compaction drops unreferenced closed leases/reservations/snapshots, a lease
+lineage's revision high-water once no lease of it remains and its domain's
+fence moved past it (no grant can mint it again, so no lease id can be
+reused), and every recall/provenance UUID nothing references. Only each
+family's latest VIEW_RETIRE receipt is kept; an older range is refused as
+Stale, because the guest builds the next retirement only from the previous
+RETIRED floor; receipts written before q64 name no family and are never
+pruned. The ACK archive keeps, per session, only the ACKs of the last
+recall it acknowledged: the guest's view control worker sends the next ACK
+only after the previous one was ACCEPTED, so an ACK of a later recall proves
+an earlier one will never be resent, and such a replay is answered STALE
+(its recall is gone and the session's event sequence only grows). Thus the
+ACK archive no longer caps lifetime recalls. A sealed session's ticket rows
+are left untouched for its terminal seal (its closed leases and reservations
+can still be dropped by compaction, as before q64). The ledger only gains omitempty fields
+(`family.Scope`, `family.Receipt`, `LineageFences`): a schema-2 ledger written
+before q64 opens unchanged, its tombstones still answer RETIRED_ID until the
+next VIEW_RETIRE recycles them, and lineages without a recorded fence keep
+their revision. Downgrading after recycling is unsupported. Ticket families
+themselves stay (per full credentials, bounded by the guest's
+HFS_VIEW_FAMILIES_MAX per session).
 
 Tests use actual temporary OS files, journals, service/planner, controlled claim
 providers and bridge dispatch. Physical/native/enrollment verifiers are explicit

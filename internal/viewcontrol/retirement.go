@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/snonux/homelabfs/internal/fsapi"
 	"github.com/snonux/homelabfs/internal/guestbridge"
 )
 
@@ -14,60 +15,45 @@ type retirement struct {
 	Hashes        []string `json:"result_hashes"`
 }
 
+// retirementKey is the Retirements key of one exact VIEW_RETIRE request.
+func retirementKey(scope guestbridge.Context, r retirement) string {
+	return digest(struct {
+		Scope   guestbridge.Context
+		Request retirement
+	}{scope, r})
+}
+
+// retire answers one VIEW_RETIRE: the protected receipt of an exact replay,
+// BLOCKED while any number in the range is not closed, or a new RETIRED
+// floor, which then recycles everything the floor retires (compact).
+//
+// Only the family's latest receipt is kept (family.Receipt). The guest
+// builds a family's next VIEW_RETIRE only from the previous one's RETIRED
+// floor (hfs_view_retire, patch 0004), so once a newer receipt exists it
+// never sends the older request again. A replay of a range at or below the
+// floor whose receipt was recycled is refused as Stale: retired numbers are
+// never retired again, and the floor alone cannot rebuild the old reply's
+// proof binding.
 func (c *Controller) retire(ctx context.Context, scope guestbridge.Context, raw json.RawMessage) (json.RawMessage, error) {
 	var r retirement
 	if err := json.Unmarshal(raw, &r); err != nil {
 		return nil, err
 	}
-	ticket := guestbridge.Ticket{Anchor: r.Anchor, Nonce: r.Nonce, Credentials: r.Credentials}
-	_, fk := ticketKeys(scope, ticket)
+	_, fk := ticketKeys(scope, guestbridge.Ticket{Anchor: r.Anchor, Nonce: r.Nonce, Credentials: r.Credentials})
 	f := c.state.Families[fk]
-	receiptKey := digest(struct {
-		Scope   guestbridge.Context
-		Request retirement
-	}{scope, r})
+	receiptKey := retirementKey(scope, r)
 	if receipt := c.state.Retirements[receiptKey]; receipt != nil {
 		return receipt, nil
 	}
-	blocked := func() (json.RawMessage, error) {
+	if r.Through < f.Floor || (r.Through == f.Floor && len(r.Hashes) > 0) {
+		return nil, fsapi.Stale
+	}
+	blocked, err := c.retirementBlocked(scope, r, f)
+	if err != nil {
+		return nil, err
+	}
+	if blocked {
 		return canonical(map[string]any{"status": "BLOCKED", "floor": f.Floor, "proof_hash": nil})
-	}
-	if r.Through > f.High || r.Through-f.Floor > 1024 || uint64(len(r.Hashes)) != r.Through-f.Floor {
-		return blocked()
-	}
-	if c.state.Recall != nil {
-		return blocked()
-	}
-	for _, lease := range c.state.Leases {
-		if lease.Active && lease.Lease.Scope == scope && lease.Lease.CredentialHash == digest(r.Credentials) {
-			return blocked()
-		}
-	}
-	for _, reservation := range c.state.Reservations {
-		if reservation.Status != "CLOSED" && reservation.Reservation.Scope == scope && equal(reservation.Reservation.Credentials, r.Credentials) {
-			return blocked()
-		}
-	}
-	for n := f.Floor + 1; n <= r.Through; n++ {
-		ticket.Number = n
-		key, _ := ticketKeys(scope, ticket)
-		t, ok := c.state.Tickets[key]
-		if ok && t.Operation == "DIRTY_RESERVE" && status(t.Current) == "BLOCKED" {
-			return blocked()
-		}
-		if !ok || !terminal(t.Current) {
-			return blocked()
-		}
-		var reply struct{ ID string }
-		if err := json.Unmarshal(t.Current, &reply); err != nil {
-			return nil, err
-		}
-		if reply.ID != r.Hashes[n-f.Floor-1] {
-			return blocked()
-		}
-		if n == ^uint64(0) {
-			break
-		}
 	}
 	state, err := c.rawState()
 	if err != nil {
@@ -76,13 +62,70 @@ func (c *Controller) retire(ctx context.Context, scope guestbridge.Context, raw 
 	if err = c.config.Facts.CheckPhysical(c.factsContext(ctx), scope, "VIEW_RETIRE", raw, state); err != nil {
 		return nil, err
 	}
+	return c.protectRetirement(scope, r, fk, receiptKey)
+}
+
+// retirementBlocked reports whether the range floor+1..through cannot be
+// retired yet: it is not exactly the family's next run of terminal tickets
+// with these protected terminal ids, a recall runs, or the credentials still
+// hold an active lease or an open reservation. A DIRTY_RESERVE with
+// protected BLOCKED history stays until CANCEL closed its promised number.
+func (c *Controller) retirementBlocked(scope guestbridge.Context, r retirement, f family) (bool, error) {
+	if r.Through > f.High || r.Through-f.Floor > 1024 || uint64(len(r.Hashes)) != r.Through-f.Floor || c.state.Recall != nil {
+		return true, nil
+	}
+	for _, lease := range c.state.Leases {
+		if lease.Active && lease.Lease.Scope == scope && lease.Lease.CredentialHash == digest(r.Credentials) {
+			return true, nil
+		}
+	}
+	for _, reservation := range c.state.Reservations {
+		if reservation.Status != "CLOSED" && reservation.Reservation.Scope == scope && equal(reservation.Reservation.Credentials, r.Credentials) {
+			return true, nil
+		}
+	}
+	ticket := guestbridge.Ticket{Anchor: r.Anchor, Nonce: r.Nonce, Credentials: r.Credentials}
+	for n := f.Floor + 1; n <= r.Through; n++ {
+		ticket.Number = n
+		key, _ := ticketKeys(scope, ticket)
+		t, ok := c.state.Tickets[key]
+		if !ok || !terminal(t.Current) || (t.Operation == "DIRTY_RESERVE" && status(t.Current) == "BLOCKED") {
+			return true, nil
+		}
+		var reply struct{ ID string }
+		if err := json.Unmarshal(t.Current, &reply); err != nil {
+			return false, err
+		}
+		if reply.ID != r.Hashes[n-f.Floor-1] {
+			return true, nil
+		}
+		if n == ^uint64(0) {
+			break
+		}
+	}
+	return false, nil
+}
+
+// protectRetirement advances the family floor, replaces the family's latest
+// receipt, recycles what the new floor retired and saves all of it in one
+// protected write. A crash before the write keeps the old floor, receipt and
+// rows, and a replay of this exact request then retires them again.
+func (c *Controller) protectRetirement(scope guestbridge.Context, r retirement, fk, receiptKey string) (json.RawMessage, error) {
+	f := c.state.Families[fk]
 	f.Floor = r.Through
-	c.state.Families[fk] = f
-	reply, _ := canonical(map[string]any{"status": "RETIRED", "floor": f.Floor, "proof_hash": digest(struct {
+	reply, err := canonical(map[string]any{"status": "RETIRED", "floor": f.Floor, "proof_hash": digest(struct {
 		Enrollment string
 		Scope      guestbridge.Context
 		Retirement retirement
 	}{c.enrollmentHash, scope, r})})
+	if err != nil {
+		return nil, err
+	}
+	if f.Receipt != "" {
+		delete(c.state.Retirements, f.Receipt)
+	}
+	f.Receipt = receiptKey
+	c.state.Families[fk] = f
 	c.state.Retirements[receiptKey] = reply
 	c.compact()
 	if err = c.save(); err != nil {
@@ -91,14 +134,12 @@ func (c *Controller) retire(ctx context.Context, scope guestbridge.Context, raw 
 	return c.retirementReply(scope, r), nil
 }
 
+// retirementReply is the reply CheckResponse expects for a VIEW_RETIRE: its
+// protected receipt, or BLOCKED at the current floor when none is kept.
 func (c *Controller) retirementReply(scope guestbridge.Context, r retirement) json.RawMessage {
 	_, key := ticketKeys(scope, guestbridge.Ticket{Anchor: r.Anchor, Nonce: r.Nonce, Credentials: r.Credentials})
 	f := c.state.Families[key]
-	receiptKey := digest(struct {
-		Scope   guestbridge.Context
-		Request retirement
-	}{scope, r})
-	if receipt := c.state.Retirements[receiptKey]; receipt != nil {
+	if receipt := c.state.Retirements[retirementKey(scope, r)]; receipt != nil {
 		return receipt
 	}
 	raw, _ := canonical(map[string]any{"status": "BLOCKED", "floor": f.Floor, "proof_hash": nil})
@@ -111,33 +152,6 @@ func terminal(raw json.RawMessage) bool {
 		return true
 	}
 	return false
-}
-
-// compact runs only after VIEW_RETIRE advanced a protected floor: it
-// tombstones retired tickets, drops closed reservations and inactive leases no
-// unretired ticket still names, then every source cut nothing pins any more.
-// Admissions prune unpinned cuts too (source_pruning.go), with the same pins.
-func (c *Controller) compact() {
-	c.tombstoneRetired()
-	c.dropUnreferencedLeases()
-	c.dropUnpinnedSources("")
-}
-
-// tombstoneRetired keeps the original operation/hash and complete principal
-// key of retired tickets. Only an already protected floor permits discarding
-// full request/reply bytes.
-func (c *Controller) tombstoneRetired() {
-	for key, t := range c.state.Tickets {
-		if c.retired(t) {
-			t.Payload = nil
-			t.Initial = nil
-			t.Current = nil
-			t.Cancelled = nil
-			t.DeclinedGap = nil
-			t.GapClosureReply = nil
-			c.state.Tickets[key] = t
-		}
-	}
 }
 
 // ticketReferences collects the leases and reservations that unretired

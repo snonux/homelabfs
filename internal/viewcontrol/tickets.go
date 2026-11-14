@@ -77,107 +77,147 @@ func (c *Controller) ExchangeView(ctx context.Context, scope guestbridge.Context
 	key, familyKey := ticketKeys(scope, r.Request)
 	f := c.state.Families[familyKey]
 	saved, exists := c.state.Tickets[key]
+	// A number at or below the floor is retired and never admitted again:
+	// numbers are monotone per family and the family is never deleted.
 	if r.Request.Number <= f.Floor {
-		if !exists {
-			return nil, fsapi.Stale
-		}
-		return c.reply(saved, "RETIRED_ID", nil, nil, nil)
+		return c.retiredAnswer(op, r.Request, saved, exists, raw)
 	}
 	if exists {
-		if op != "VIEW_QUERY" && op != "VIEW_CANCEL" && (saved.Operation != op || !bytes.Equal(saved.Payload, raw)) {
+		if !queryOrCancel(op) && (saved.Operation != op || !bytes.Equal(saved.Payload, raw)) {
 			return nil, fsapi.Stale
 		}
-		if saved.DeclinedGap != nil && status(saved.Current) != "CANCELLED" {
-			if err = c.finishDeclinedGap(ctx, key, saved); err != nil {
-				return nil, err
-			}
-			saved = c.state.Tickets[key]
-		}
-		for _, resource := range c.state.Reservations {
-			if resource.TicketKey == key && resource.Status == "CANCELLING" {
-				if err = c.closeReservation(ctx, resource); err != nil {
-					return nil, err
-				}
-				saved = c.state.Tickets[key]
-			}
+		if saved, err = c.resumeClosures(ctx, key, saved); err != nil {
+			return nil, err
 		}
 	}
-	if op == "VIEW_QUERY" || op == "VIEW_CANCEL" {
+	if queryOrCancel(op) {
 		if !exists {
 			return nil, fsapi.Permission
 		}
-		if op == "VIEW_QUERY" {
-			var live atomic.Bool
-			live.Store(true)
-			defer live.Store(false)
-			ctx = c.releaseQueryContext(ctx, scope, raw, r.Request, saved, &live)
-		}
-		if absent(saved.Initial) {
-			var original request
-			if err = json.Unmarshal(saved.Payload, &original); err != nil {
-				return nil, err
-			}
-			reply, err := c.admitTicket(ctx, scope, saved.Operation, original, saved)
-			if err != nil {
-				return nil, err
-			}
-			saved = c.state.Tickets[key]
-			saved.Initial = reply
-			saved.Current = reply
-			c.state.Tickets[key] = saved
-			if err = c.save(); err != nil {
-				return nil, err
-			}
-		}
-		if op == "VIEW_CANCEL" {
-			return c.cancel(ctx, key, saved)
-		}
-		if status(saved.Current) == "PENDING" {
-			var original request
-			if err = json.Unmarshal(saved.Payload, &original); err != nil {
-				return nil, err
-			}
-			outcome, err := c.admitTicket(ctx, scope, saved.Operation, original, saved)
-			if err != nil {
-				return nil, err
-			}
-			saved = c.state.Tickets[key]
-			saved.Current = outcome
-			c.state.Tickets[key] = saved
-			if err = c.save(); err != nil {
-				return nil, err
-			}
-		}
-		return bytes.Clone(saved.Current), nil
+		return c.queryOrCancelTicket(ctx, scope, op, raw, key, saved)
 	}
 	if exists {
-		if saved.Operation != op || !bytes.Equal(saved.Payload, raw) {
-			return nil, fsapi.Stale
+		return c.replayAdmission(ctx, scope, op, r, key, saved)
+	}
+	return c.admitNew(ctx, scope, op, r, raw, key, familyKey)
+}
+
+// retiredAnswer answers any op on a retired number. Its row is recycled at
+// retirement (recycling.go), so retiredReply decides what a replay gets; a
+// tombstone of a ledger written before task q64 still answers from its row
+// until the next VIEW_RETIRE recycles it.
+func (c *Controller) retiredAnswer(op string, ticket guestbridge.Ticket, saved ticketState, exists bool, raw json.RawMessage) (json.RawMessage, error) {
+	if exists {
+		return c.reply(saved, "RETIRED_ID", nil, nil, nil)
+	}
+	return c.retiredReply(op, ticket, raw)
+}
+
+// resumeClosures finishes an interrupted declined-gap or reservation closure
+// of an existing ticket under its original binding and returns the ticket.
+func (c *Controller) resumeClosures(ctx context.Context, key string, saved ticketState) (ticketState, error) {
+	if saved.DeclinedGap != nil && status(saved.Current) != "CANCELLED" {
+		if err := c.finishDeclinedGap(ctx, key, saved); err != nil {
+			return saved, err
 		}
-		if absent(saved.Initial) {
-			reply, err := c.admitTicket(ctx, scope, op, r, saved)
-			if err != nil {
-				return nil, err
+		saved = c.state.Tickets[key]
+	}
+	for _, resource := range c.state.Reservations {
+		if resource.TicketKey == key && resource.Status == "CANCELLING" {
+			if err := c.closeReservation(ctx, resource); err != nil {
+				return saved, err
 			}
 			saved = c.state.Tickets[key]
-			saved.Initial = reply
-			saved.Current = reply
-			c.state.Tickets[key] = saved
-			if err = c.save(); err != nil {
-				return nil, err
-			}
-			return reply, nil
 		}
+	}
+	return saved, nil
+}
+
+// queryOrCancelTicket answers VIEW_QUERY/VIEW_CANCEL of an existing ticket:
+// it first admits a never-answered original, then CANCEL protects its
+// cancellation outcome and QUERY reevaluates a PENDING outcome (a release
+// query may resume its protected physical continuation).
+func (c *Controller) queryOrCancelTicket(ctx context.Context, scope guestbridge.Context, op string, raw json.RawMessage, key string, saved ticketState) (json.RawMessage, error) {
+	if op == "VIEW_QUERY" {
+		var live atomic.Bool
+		live.Store(true)
+		defer live.Store(false)
+		ctx = c.releaseQueryContext(ctx, scope, raw, saved.Request, saved, &live)
+	}
+	var err error
+	if absent(saved.Initial) {
+		if saved, err = c.readmit(ctx, scope, key, saved, true); err != nil {
+			return nil, err
+		}
+	}
+	if op == "VIEW_CANCEL" {
+		return c.cancel(ctx, key, saved)
+	}
+	if status(saved.Current) == "PENDING" {
+		if saved, err = c.readmit(ctx, scope, key, saved, false); err != nil {
+			return nil, err
+		}
+	}
+	return bytes.Clone(saved.Current), nil
+}
+
+// readmit reruns the original admission of saved and protects the outcome as
+// its current reply, and as its initial reply too when initial is set.
+func (c *Controller) readmit(ctx context.Context, scope guestbridge.Context, key string, saved ticketState, initial bool) (ticketState, error) {
+	var original request
+	if err := json.Unmarshal(saved.Payload, &original); err != nil {
+		return saved, err
+	}
+	outcome, err := c.admitTicket(ctx, scope, saved.Operation, original, saved)
+	if err != nil {
+		return saved, err
+	}
+	saved = c.state.Tickets[key]
+	if initial {
+		saved.Initial = outcome
+	}
+	saved.Current = outcome
+	c.state.Tickets[key] = saved
+	return saved, c.save()
+}
+
+// replayAdmission answers the exact retry of an existing admission: its
+// byte-identical initial reply, or the first reply if none was protected.
+func (c *Controller) replayAdmission(ctx context.Context, scope guestbridge.Context, op string, r request, key string, saved ticketState) (json.RawMessage, error) {
+	if !absent(saved.Initial) {
 		return bytes.Clone(saved.Initial), nil
 	}
+	reply, err := c.admitTicket(ctx, scope, op, r, saved)
+	if err != nil {
+		return nil, err
+	}
+	saved = c.state.Tickets[key]
+	saved.Initial = reply
+	saved.Current = reply
+	c.state.Tickets[key] = saved
+	if err = c.save(); err != nil {
+		return nil, err
+	}
+	return reply, nil
+}
+
+// admitNew allocates the family's next number, charges one identity and
+// protects the admission's outcome as its initial and current reply.
+func (c *Controller) admitNew(ctx context.Context, scope guestbridge.Context, op string, r request, raw json.RawMessage, key, familyKey string) (json.RawMessage, error) {
+	f := c.state.Families[familyKey]
 	if f.High == ^uint64(0) || r.Request.Number != f.High+1 {
 		return nil, fsapi.Stale
 	}
-	if err = c.ticketCapacity(op, r); err != nil {
+	if err := c.ticketCapacity(op, r); err != nil {
 		return nil, err
 	}
-	saved = ticketState{PayloadHash: digest(map[string]any{"op": op, "payload": raw}), Scope: scope, Request: r.Request, Operation: op, Payload: bytes.Clone(raw)}
+	saved := ticketState{PayloadHash: digest(map[string]any{"op": op, "payload": raw}), Scope: scope, Request: r.Request, Operation: op, Payload: bytes.Clone(raw)}
 	f.High = r.Request.Number
+	if f.Scope == nil {
+		// The owner outlives the family's tickets, which VIEW_RETIRE recycles.
+		owner := scope
+		f.Scope = &owner
+	}
 	c.state.Families[familyKey] = f
 	c.state.Identities++
 	c.state.Tickets[key] = saved
@@ -214,8 +254,7 @@ func (c *Controller) CheckResponse(ctx context.Context, scope guestbridge.Contex
 		if err := json.Unmarshal(request, &r); err != nil {
 			return err
 		}
-		expected := c.retirementReply(scope, r)
-		if !bytes.Equal(expected, response) {
+		if !bytes.Equal(c.retirementReply(scope, r), response) {
 			return fsapi.Stale
 		}
 		return nil
@@ -226,20 +265,16 @@ func (c *Controller) CheckResponse(ctx context.Context, scope guestbridge.Contex
 	if err := json.Unmarshal(request, &r); err != nil {
 		return err
 	}
-	key, familyKey := ticketKeys(scope, r.Request)
-	saved, ok := c.state.Tickets[key]
-	if !ok {
+	if !c.validFamily(scope, r.Request.Anchor, r.Request.Nonce, op) {
 		return fsapi.Permission
 	}
-	if r.Request.Number <= c.state.Families[familyKey].Floor {
-		expected, err := c.reply(saved, "RETIRED_ID", nil, nil, nil)
-		if err != nil {
-			return err
-		}
-		if !bytes.Equal(expected, response) {
-			return fsapi.Stale
-		}
-		return nil
+	key, familyKey := ticketKeys(scope, r.Request)
+	saved, ok := c.state.Tickets[key]
+	if f, known := c.state.Families[familyKey]; known && r.Request.Number <= f.Floor {
+		return c.checkRetiredResponse(op, r.Request, saved, ok, request, response)
+	}
+	if !ok {
+		return fsapi.Permission // unknown: no reply is vouched for
 	}
 	var expected json.RawMessage
 	switch op {
@@ -254,6 +289,31 @@ func (c *Controller) CheckResponse(ctx context.Context, scope guestbridge.Contex
 		expected = saved.Initial
 	}
 	if absent(expected) || !bytes.Equal(expected, response) {
+		return fsapi.Stale
+	}
+	return nil
+}
+
+// checkRetiredResponse vouches for the one reply a retired number gets: a
+// legacy tombstone's RETIRED_ID, or for a recycled number the rights-free
+// RETIRED_ID of exactly these request bytes (retiredReply), which proves
+// nothing about the earlier admission. A recycled QUERY/CANCEL target has
+// no reply to vouch for (Permission).
+func (c *Controller) checkRetiredResponse(op string, ticket guestbridge.Ticket, saved ticketState, exists bool, request, response json.RawMessage) error {
+	var expected json.RawMessage
+	var err error
+	switch {
+	case exists:
+		expected, err = c.reply(saved, "RETIRED_ID", nil, nil, nil)
+	case queryOrCancel(op):
+		return fsapi.Permission
+	default:
+		expected, err = c.retiredReply(op, ticket, request)
+	}
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(expected, response) {
 		return fsapi.Stale
 	}
 	return nil
@@ -354,6 +414,7 @@ func (c *Controller) grantLease(scope guestbridge.Context, r request, t ticketSt
 	}
 	lease.Revision = high + 1
 	c.state.Revisions[lineage] = lease.Revision
+	c.state.LineageFences[lineage] = lineageFence{Session: scope.Session, Fence: lease.Fence}
 	lease.ID = objectID(lease)
 	c.state.Leases[lease.ID] = leaseState{Lease: lease, Active: true, ReleaseCredit: true}
 	return c.reply(t, "GRANTED", &lease, nil, nil)
@@ -383,6 +444,7 @@ func (c *Controller) renewLease(r request, t ticketState, old leaseState) (json.
 	next := old.Lease
 	next.Revision++
 	c.state.Revisions[lineageID(next)] = next.Revision
+	c.state.LineageFences[lineageID(next)] = lineageFence{Session: next.Scope.Session, Fence: next.Fence}
 	next.ID = objectID(next)
 	old.Active = false
 	c.state.Leases[r.Lease.ID] = old
