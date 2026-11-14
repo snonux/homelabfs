@@ -80,8 +80,13 @@ func (p *Producer) Bind(ctx context.Context, b guestbridge.VerificationBinding) 
 	return ctx.Err()
 }
 
-// Prepare refreshes all complete installed inventories before dispatch acquires
-// controller/service locks. Uncertainty fences the admission and retains owners.
+// admissionReuse bounds how long an ordinary request, or a VIEW_ACK whose exact
+// bytes the observation already records, may reuse a committed observation.
+const admissionReuse = 5 * time.Second
+
+// Prepare refreshes the complete installed inventories it needs before dispatch
+// acquires controller/service locks. Uncertainty fences the admission and
+// retains owners. One Prepare shares a ten-second bound across all observers.
 func (p *Producer) Prepare(ctx context.Context, c guestbridge.Command) error {
 	if err := p.observed(ctx, c); err != nil {
 		return err
@@ -89,16 +94,38 @@ func (p *Producer) Prepare(ctx context.Context, c guestbridge.Command) error {
 	bounded, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	for _, a := range p.facts.admissions {
-		a.mu.Lock()
-		refresh := c.Op == "SESSION_RETIRE" || c.Op == "VIEW_ACK" || time.Since(a.refreshed) >= 5*time.Second
-		a.mu.Unlock()
-		if refresh {
-			if err := a.Refresh(bounded); err != nil {
-				return err
-			}
+		if err := p.refreshFor(bounded, a, c); err != nil {
+			return err
 		}
 	}
 	return p.facts.Authorize(ctx, c.Context, c.Op, c.Payload)
+}
+
+// refreshFor applies one admission's refresh rule for command c:
+//   - SESSION_RETIRE always probes the guest.
+//   - VIEW_ACK on the admission that owns its scope reuses an observation
+//     whose probe started within admissionReuse and already records these
+//     exact ACK bytes (measuredACK states what that proves and the reboot/
+//     identity window it accepts), and probes otherwise. Resends and the second domain's ACK of a phase usually hit;
+//     an ACK's first send usually misses, because the kernel publishes the
+//     phase just before sending it. Probing every ACK used to cost one SSH
+//     round trip per ACK and per resend (zq3-r8 R8-1).
+//   - Everything else, including a VIEW_ACK for another admission's scope,
+//     reuses an observation younger than admissionReuse.
+func (p *Producer) refreshFor(ctx context.Context, a *Admission, c guestbridge.Command) error {
+	if a == nil {
+		return fsapi.Permission
+	}
+	switch {
+	case c.Op == "SESSION_RETIRE":
+		return a.Refresh(ctx)
+	case c.Op == "VIEW_ACK" && p.facts.admission(c.Context) == a:
+		if a.measuredACK(c.Context, c.Payload, admissionReuse) {
+			return nil
+		}
+		return a.Refresh(ctx)
+	}
+	return a.refreshIfOlder(ctx, admissionReuse)
 }
 
 // Produce verifies actual retained bytes/events or an exact protected full-
