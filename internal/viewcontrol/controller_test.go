@@ -39,6 +39,9 @@ type primitiveFacts struct {
 	recovery         string
 	deny             bool
 	initialExclusion bool
+	// claims are each session's provider, which borrowedCall reads the
+	// resumed claim's ledger entry from.
+	claims map[string]*controlledvalidation.Provider
 }
 type providerPrimitive struct {
 	expected controlledvalidation.Enrollment
@@ -134,11 +137,14 @@ func (p *primitiveFacts) CheckEnrollment(_ context.Context, e Enrollment) error 
 	}
 	return nil
 }
-func (p *primitiveFacts) Authorize(_ context.Context, s guestbridge.Context, op string, raw json.RawMessage) error {
+func (p *primitiveFacts) Authorize(ctx context.Context, s guestbridge.Context, op string, raw json.RawMessage) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.deny || p.scopes[s.Session] != s {
 		return fsapi.Permission
+	}
+	if err := p.borrowedCall(ctx, s, op, raw); err != nil {
+		return err
 	}
 	var value any
 	if err := json.Unmarshal(raw, &value); err != nil {
@@ -177,6 +183,43 @@ func (p *primitiveFacts) Authorize(_ context.Context, s guestbridge.Context, op 
 		return nil
 	}
 	return check(value)
+}
+
+// borrowedCall distinguishes the checked request from the observed one, as
+// the runtime Facts.Authorize does: the operation and payload must be the
+// observed request's, except for the inner CALL of a claim resumed under an
+// outer QUERY. Before task o84 this fake ignored the outer request, so
+// viewcontrol's QUERY resume tests passed while the runtime refused every
+// non-cleanup resume (zq3-r9 R9-1).
+//
+// The runtime accepts that inner CALL only with the provider's QUERY
+// continuation (controlledvalidation/query_continuation.go), which the
+// provider mints only for the terminal protocol. This rig runs the legacy
+// view tuple, so it checks the bindings the continuation proves instead: a
+// QUERY of the same scope whose payload is exactly {claim} for the CALL's
+// claim, and the provider's entry for that claim is the unreconciled RESERVED
+// original with exactly these bytes. The real token, including its terminal
+// protocol gate, is exercised by the controlled runtime's recall workload
+// model (TestZQ3R9PressureReleaseParksGetattr). A check without an
+// observation (a direct controller call) is not a borrowed one.
+func (p *primitiveFacts) borrowedCall(ctx context.Context, s guestbridge.Context, op string, raw json.RawMessage) error {
+	observed, ok := guestbridge.VerifiedRequest(ctx)
+	if !ok || observed.Operation == op && observed.PayloadHash == hash(raw) {
+		return nil
+	}
+	var call guestbridge.Call
+	if op != "CALL" || observed.Operation != "QUERY" || observed.Scope != s || json.Unmarshal(raw, &call) != nil {
+		return fsapi.Permission
+	}
+	query, err := canonical(map[string]any{"claim": call.Claim})
+	if err != nil || observed.PayloadHash != hash(query) || p.claims[s.Session] == nil {
+		return fsapi.Permission
+	}
+	state, err := p.claims[s.Session].Resolve(ctx, s, call.Claim)
+	if err != nil || state.Status != "RESERVED" || state.ReconciledScope != nil || state.Binding.Context != s || !bytes.Equal(state.Binding.Canonical, raw) {
+		return fsapi.Permission
+	}
+	return nil
 }
 func (p *primitiveFacts) CheckPhysical(_ context.Context, _ guestbridge.Context, op string, raw, ledger json.RawMessage) error {
 	p.mu.Lock()
@@ -366,10 +409,11 @@ func (r *rig) signEnrollment(profile *fsservice.ValidationProfile, k rigKeys, ov
 	for i := range 2 {
 		r.cc.Authorization.Domains = append(r.cc.Authorization.Domains, Signatures{Host: ed25519.Sign(k.hosts[i], raw), Guest: ed25519.Sign(k.guests[i], raw)})
 	}
-	r.facts = &primitiveFacts{enrollment: *e, scopes: map[string]guestbridge.Context{}, credentials: map[string]guestbridge.Credentials{}, caps: map[string]guestbridge.Capability{}, physical: map[string]bool{}, exclusions: map[string]json.RawMessage{}, initialExclusion: true, processes: r.processes}
+	r.facts = &primitiveFacts{claims: map[string]*controlledvalidation.Provider{}, enrollment: *e, scopes: map[string]guestbridge.Context{}, credentials: map[string]guestbridge.Credentials{}, caps: map[string]guestbridge.Capability{}, physical: map[string]bool{}, exclusions: map[string]json.RawMessage{}, initialExclusion: true, processes: r.processes}
 	for i, s := range r.scopes {
 		r.facts.scopes[s.Session] = s
 		r.facts.credentials[s.Session] = r.credentials[i]
+		r.facts.claims[s.Session] = r.providers[i]
 	}
 	r.cc.Facts = r.facts
 }
