@@ -126,6 +126,11 @@ func TestRecallAcksReuseObservationWithSlowObserver(t *testing.T) {
 	domain, mount1 := mountBoth(t, r, families)
 	r.peers[1].call("CREATE", map[string]any{"parent": mount1[0], "name": hex.EncodeToString([]byte("slow-observer")), "mode": 0o660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}})
 
+	// Reuse (admissionReuse) is decided on a model clock that advances by the
+	// 2 s per observation, not by host work: on the wall clock a loaded or
+	// -race host aged an observation past 5 s within one phase and paid a
+	// second probe ("INSTALLED_DRAIN: four VIEW_ACKs ran 2 observations", i84).
+	installModelClock(r.admission, slowObservation)
 	slow.Store(true)
 	started := time.Now()
 	acks := doubledRecall(t, r, []guestbridge.Capability{domain, mount1[1]}, &probes)

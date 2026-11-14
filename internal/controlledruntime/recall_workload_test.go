@@ -103,6 +103,10 @@ const guestQueryWindow = 30 * time.Second
 // model clock, which host work does not advance.
 const hostOverheadAllowance = 6 * time.Second
 
+// noReplyWait is how long noReply waits before it reads a cell as unanswered
+// (held in the transport's retry ring): the fixture's historical read bound.
+const noReplyWait = 5 * time.Second
+
 // usableSettle is bootstrap.py's USABLE_SETTLE_SECONDS (GUEST_QUERY_SECONDS
 // + 10): the gate's final probe starts that long after mount-1's end.
 const usableSettle = guestQueryWindow + 10*time.Second
@@ -375,9 +379,6 @@ func newRecallModel(t *testing.T, values zq3Values, latency time.Duration) *reca
 	r.supervisor.record.Stage = "claimed" // declared native-export/INIT primitive
 	counter := uint64(0)
 	for i, peer := range r.peers {
-		// noReply reads an unanswered cell as the control lane's "no reply";
-		// keep the historical 5 s read bound for that instead of answerBound.
-		peer.replyWait = 5 * time.Second
 		attachAssembly(peer, a, &counter)
 		m.mounts = append(m.mounts, &modelMount{index: i, peer: peer, chain: &r5Chain{peer: peer}, fence: 1, revision: 1, acked: map[string]int{}, familyIndex: map[string]*familyRec{}})
 	}

@@ -154,8 +154,10 @@ func (m *recallModel) viewWait(label string, mount *modelMount, ticket guestbrid
 // when the host never answered it. A release that Facts.CheckPhysical holds
 // (an active lease of its domain, no recall to clear it) fails with
 // WouldBlock, which the transport retries in its pending ring every 10 ms
-// without answering the cell (recordExecuteFailure); the fixture's read
-// gives up after 5 s. The chain keeps reclaiming its last answered cell.
+// without answering the cell (recordExecuteFailure); noReply's read gives
+// up after noReplyWait. Every other model exchange waits answerBound, so a
+// slow (-race, loaded) host does not turn a late answer into a failure (i84).
+// The chain keeps reclaiming its last answered cell.
 //
 // Observed while building the g84 case: while such a cell sat in the
 // control worker's pending ring, the control lane answered nothing else
@@ -167,7 +169,9 @@ func (m *recallModel) viewWait(label string, mount *modelMount, ticket guestbrid
 // stays unanswered.
 func (m *recallModel) noReply(chain *r5Chain, op string, value any) json.RawMessage {
 	m.t.Helper()
+	chain.peer.replyWait = noReplyWait
 	payload, _, _, translated, err := chain.peer.mappedExecuteReclaim(op, value, chain.guest, chain.native, nil)
+	chain.peer.replyWait = 0
 	if errors.Is(err, fsapi.WouldBlock) {
 		return nil
 	}
