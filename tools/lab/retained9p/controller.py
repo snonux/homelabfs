@@ -76,23 +76,31 @@ QUARANTINED = {"7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b
 #   fault-block logs, its daemon 9b7eed8d lacks i64..x64 (Sources floor,
 #   claim/grant recycling, refusal clean-up, Stale re-check, abandoned-cell
 #   replacement) and its exporter 36423b6d lacks the 564/e64/p64/w64 lib9p
-#   fixes (guest-order forwarding, fail-back of permanently refused cells).
+#   fixes (guest-order forwarding, fail-back of permanently refused cells);
+# - 867ede36 (y64, b869710) has the daemon 34fb05b2, which parks every CALL
+#   behind any active recall, recalls both domains on each clean READ release
+#   and on PROCESS_EXIT, and runs each VIEW_ACK's SSH observation on the
+#   shared control worker under the Admission lock, so zq3-r8's usable probe
+#   claims stayed RESERVED past the guest's 30 s QUERY window (R8-1, fixed by
+#   784, 884 and d84); it also lacks g84, h84, the b84 OBSERVE claim summary
+#   (evidence /2) the usable gate now requires, and q64/f84 recycling.
 SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
               "89c928d5072838bb509ec19e471109b549ce7b06c59451fab64a6d09250bec66",
               "2e0412a62d1c1f0aa0b29865c521bf3df7a925ea5ef293428fa9b38b647d8f2f",
               "e01fab21cd7a47822d7b56d84e15150cdc7a36c939fceb23852d4fdef0121ec2",
-              "66b5bb2b6c1dd1a663f26c50d0d9b3bfeebd620127c4a5859ca146074f2c2e2d"}
-# The only candidate this controller pins: the xz3 y64 rebuild (2026-11-10,
-# source b869710). All three components were rebuilt: the guest kernel
-# (c64 recipe, g64+m64 patch series, build ID 870bb9d1), the CGO daemon
-# 34fb05b2 (i64..x64) and the native exporter ef8f17de (564/e64/p64/w64,
-# built natively on f3 and reproduced). The five modules came out
-# byte-identical; the window artifacts were rebuilt from b869710. The new
-# daemon bytes still need the f3 observer check. Admission here is a dispatch
+              "66b5bb2b6c1dd1a663f26c50d0d9b3bfeebd620127c4a5859ca146074f2c2e2d",
+              "867ede3630e4ee0a609f88b0752670fac5b7a0c0e0f9d2a340031110da32c334"}
+# The only candidate this controller pins: the xz3 l84 rebuild for zq3-r9
+# (2026-11-14, source e92eaa1). Only the CGO daemon was rebuilt: 868dc045
+# (784, 884, d84, g84, h84, b84, q64/f84). The y64 guest kernel (c64 recipe,
+# g64+m64 patch series, build ID 870bb9d1), its five modules and the y64
+# native exporter ef8f17de (564/e64/p64/w64) are byte-identical reuses from
+# 867ede36; the window artifacts were rebuilt from e92eaa1. The new daemon
+# bytes still need the f3 observer check. Admission here is a dispatch
 # precondition, never deployment eligibility.
-ADMITTED = {"867ede3630e4ee0a609f88b0752670fac5b7a0c0e0f9d2a340031110da32c334"}
+ADMITTED = {"e585206aa26dcd5724065467ebb716ced7c421db0979c25290fed8c37551b213"}
 CASES = ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
 # Cases a plan may defer (z64). Only T5 mapped-pressure: its full 4 MiB
 # canary needs more view lifetimes (tickets, UUIDs, revisions, ack archive)
@@ -262,9 +270,10 @@ def require_candidate(manifest_hash):
         # Each superseded digest lacks a fix the run needs (d44 lost-reply
         # arming, the r54 mount HELLO, the w54 failed-bind kill_sb fence, the
         # z54 pre-acquire VIEW_POLL answer, the 964 fixed-tag release wait, the
-        # c64 SELinux LSM and the d64 per-domain fence, or the y64 kernel,
-        # daemon and exporter fixes); the comment at SUPERSEDED says which.
-        raise Refused("superseded xz3 candidate: use the y64 rebuild (d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter)")
+        # c64 SELinux LSM and the d64 per-domain fence, the y64 kernel,
+        # daemon and exporter fixes, or the l84 daemon's recall scope, ACK
+        # lane and OBSERVE claim summary); the comment at SUPERSEDED says which.
+        raise Refused("superseded xz3 candidate: use the l84 rebuild (d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims)")
     if manifest_hash not in ADMITTED:
         # Fail closed: an unknown digest is not a qualified candidate.
         raise Refused("candidate manifest is not the pinned admitted xz3 candidate")

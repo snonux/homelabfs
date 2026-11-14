@@ -21,10 +21,11 @@ SPEC.loader.exec_module(FILLER)
 WINDOW = FILLER.WINDOW
 PINS = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/pins.json"
 RECORD = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/build-record.json"
-# Daemon of the admitted xz3 y64 rebuild (867ede36), built from b869710
-# (i64..x64: Sources floor, claim/grant recycling, refusal clean-up, Stale
-# re-check, abandoned-cell replacement); the window build reproduced it.
-ADMITTED_DAEMON_SHA256 = "34fb05b28357b42e37816370f9bb6c0ec046ff2e98763dafff87c3680021694c"
+# Daemon of the admitted xz3 l84 rebuild for zq3-r9 (e585206a), built from
+# e92eaa1 (784 recall scope, 884 cached ACK observation, d84 ACK lane, g84
+# per-lease release, h84 retry starvation, b84 OBSERVE claim summary, q64/f84
+# recycling); the window build reproduced it.
+ADMITTED_DAEMON_SHA256 = "868dc045907d5979c56b090b76b5b03515b1e149e7c7273bf50505f06e4627a6"
 CONTROLLER_SHA = "c" * 64
 # f3 stock fusefs.ko, docs/lab/results/20261108-zq3-phase1 (task j44).
 FUSEFS_SHA256 = "b207adf6383bee8e022fa6115044508b7c64da07e73865e5ea71594d524cc4bd"
@@ -94,11 +95,11 @@ class FillerTests(unittest.TestCase):
         for path, value in record["captured_base_closure_sha256"].items():
             self.assertEqual(pinned[path], value)
         # The window artifacts follow the admitted daemon source: rebuilt from
-        # b869710 for the y64 rebuild on 2026-11-10 (earlier from 060dea0 for
-        # c64+d64, from a20aca1 for z54, reused by 964, and from defd974 for
-        # f44, reused by r54 and w54), so the qualification test bytes match
-        # the daemon source.
-        self.assertEqual(record["source_commit"], "b8697101df601d7748bae85721e91c0e01aae474")
+        # e92eaa1 for the l84 rebuild on 2026-11-14 (earlier from b869710 for
+        # y64, from 060dea0 for c64+d64, from a20aca1 for z54, reused by 964,
+        # and from defd974 for f44, reused by r54 and w54), so the
+        # qualification test bytes match the daemon source.
+        self.assertEqual(record["source_commit"], "e92eaa1d1fbbe387c20dc063afc0d6655560cd9c")
 
     def test_filled_plan_is_accepted_by_actual_controller_validate(self):
         plan = self.fill()
