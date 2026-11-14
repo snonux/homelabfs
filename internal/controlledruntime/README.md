@@ -211,21 +211,31 @@ complete inventory and phase records; it does not rehash large on-disk artifacts
 whose exact installed/running correspondence was established at initial admission.
 Ordinary requests reuse that bounded static admission for at most five seconds
 and still check the actual live native exporter/endpoint on every callback.
-A VIEW_ACK reuses the owning admission's observation only when it was committed
-within those five seconds and already records that scope's acknowledgement hash
-for these exact ACK bytes; otherwise it refreshes before entering
-controller/service locks. The kernel publishes a phase record only after the
-phase's physical duties and before sending the ACK, and cannot leave the phase
-before the host issues the next event, so such a record proves the same
-completed phase a new probe would. Resends and a second domain's ACK of a phase
-therefore usually cost no SSH round trip, while an ACK's first send usually
-still does (the phase is published just before it). The physical check still
-binds the exact fence, phase and event hash. One Prepare has a shared
+A VIEW_ACK reuses the owning admission's observation only when its probe
+started within those five seconds and it already records that scope's
+acknowledgement hash for these exact ACK bytes; otherwise it refreshes before
+entering controller/service locks. Such a record still proves the acknowledged
+phase: the kernel publishes it only after the phase's physical duties and
+before sending the ACK; the ACK bytes bind session, scope, recall, sequence and
+phase; per-domain phases are monotone within a revision. The guest advances
+without a new host event only from INSTALLED_DRAIN to DRAINED (one
+INSTALL_DRAIN event covers both), and its drain worker is queued only after the
+host ACCEPTED the INSTALLED_DRAIN ACK. Reuse does widen one window: a fresh
+probe would also catch a reboot, a module/provider-nonce/inventory change or a
+fenced guest, so a reused ACK can be accepted up to five seconds after its
+probe started (which is itself up to ten seconds before commit) even if the
+guest changed in between. Ordinary requests already accept that window, and the
+native endpoint is still checked on every callback. Resends and a second
+domain's ACK of a phase therefore usually cost no SSH round trip, while an
+ACK's first send usually still does (the phase is published just before it).
+The physical check still binds the exact fence, phase and event hash. One Prepare has a shared
 ten-second bound across all guest observers. The admission state lock is never
 held across a probe: a refresh snapshots it, probes, then revalidates and
 commits under it, and a separate refresh lock orders whole refreshes so that a
 waiting request reuses a probe that started late enough instead of starting
-another. This per-barrier SSH latency still runs on the bridge's control worker
+another. Waiting for that lock is not cancellable; a waiter whose context
+expired meanwhile returns without probing, so a dead deadline never fences a
+healthy guest. This per-barrier SSH latency still runs on the bridge's control worker
 and has no native calibration or pressure acceptance claim.
 Failures, identity changes, revision rollback and old-revision reopen fence
 admission and retain obligations. The fifteen-second admission freshness limit

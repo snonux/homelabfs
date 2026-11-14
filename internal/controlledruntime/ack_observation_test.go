@@ -6,11 +6,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/snonux/homelabfs/internal/fsapi"
 	"github.com/snonux/homelabfs/internal/guestbridge"
+	"github.com/snonux/homelabfs/internal/viewcontrol"
 )
 
 // slowObservation stands in for one SSH round trip of the guest observer. The
@@ -201,5 +204,190 @@ func quick(t *testing.T, name string, fn func()) {
 	fn()
 	if elapsed := time.Since(started); elapsed >= slowObservation/2 {
 		t.Fatalf("%s blocked behind the in-flight probe (%s)", name, elapsed)
+	}
+}
+
+// countingProbe installs a probe on a that counts calls and returns err, or
+// the admission's real (fixture SSH) phase observation when err is nil.
+func countingProbe(a *Admission, probes *atomic.Int32, err error) {
+	a.probe = func(ctx context.Context) (installedObservation, error) {
+		probes.Add(1)
+		if err != nil {
+			return installedObservation{}, err
+		}
+		return a.observer.observePhase(ctx)
+	}
+}
+
+// ackFixture is one recorded STOPPED ACK: scope's admission observation holds
+// the exact ACK and event hashes at fence 1, and the ledger issued that event.
+type ackFixture struct {
+	scope       guestbridge.Context
+	ack, issued json.RawMessage
+	admission   *Admission
+	ledger      factsLedger
+}
+
+func newACKFixture(t *testing.T) ackFixture {
+	t.Helper()
+	scope := guestbridge.Context{Session: testUUID(3).String(), AuthorityHash: hashBytes([]byte("authority"))}
+	domain := guestbridge.Capability{Kind: "DOMAIN", Scope: scope}
+	issued, err := canonicalJSON(map[string]any{"sequence": 1, "domain": domain, "phase": "RECALL", "target": nil})
+	require(t, err)
+	ack, err := canonicalJSON(physicalACK{Domain: domain, Sequence: 1, Recall: "recall", Phase: "STOPPED", Authority: scope.AuthorityHash, Closure: "closure", Inventory: "inventory", Session: scope.Session, Manifest: json.RawMessage("null")})
+	require(t, err)
+	now := time.Now()
+	a := &Admission{refreshed: now, observedAt: now}
+	a.installed.Admission.Domains = []guestbridge.Context{scope}
+	a.installed.Admission.Observations = []kernelDomainObservation{{Scope: scope, Revision: 1, Fence: 1, Phase: "STOPPED", EventHash: hashBytes(issued), AcknowledgementHash: hashBytes(ack)}}
+	f := ackFixture{scope: scope, ack: ack, issued: issued, admission: a}
+	f.ledger.Recall = &struct {
+		ID, Phase, Inventory, Closure string
+		Events, Acks, Manifests       map[string]json.RawMessage
+	}{ID: "recall", Phase: "RECALL", Inventory: "inventory", Closure: "closure", Events: map[string]json.RawMessage{scope.Session: issued}}
+	return f
+}
+
+// TestMeasuredACKRefusesWhatItCannotProve pins every measuredACK miss.
+func TestMeasuredACKRefusesWhatItCannotProve(t *testing.T) {
+	other := guestbridge.Context{Session: testUUID(9).String()}
+	tests := map[string]struct {
+		change func(*ackFixture)
+		hit    bool
+	}{
+		"recorded exact bytes": {func(*ackFixture) {}, true},
+		"probe older than reuse bound": {func(f *ackFixture) {
+			f.admission.observedAt = time.Now().Add(-admissionReuse)
+		}, false},
+		"commit fresh but probe started too early": {func(f *ackFixture) {
+			f.admission.observedAt = time.Now().Add(-admissionReuse - time.Second)
+		}, false},
+		"fenced":      {func(f *ackFixture) { f.admission.fenced = true }, false},
+		"other scope": {func(f *ackFixture) { f.scope = other }, false},
+		"LIVE row": {func(f *ackFixture) {
+			f.admission.installed.Admission.Observations[0].Phase = "LIVE"
+		}, false},
+		"different bytes": {func(f *ackFixture) { f.ack = append(json.RawMessage(nil), f.ack[:len(f.ack)-1]...) }, false},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			f := newACKFixture(t)
+			tc.change(&f)
+			if got := f.admission.measuredACK(f.scope, f.ack, admissionReuse); got != tc.hit {
+				t.Fatalf("measuredACK = %v, want %v", got, tc.hit)
+			}
+		})
+	}
+}
+
+// TestCachedACKHitStillNeedsLedgerMatch shows a measuredACK hit grants nothing
+// by itself: when the ledger's fence or issued event no longer matches the
+// recorded observation, checkACK still answers ErrNotObserved.
+func TestCachedACKHitStillNeedsLedgerMatch(t *testing.T) {
+	base := newACKFixture(t)
+	facts := &Facts{admissions: []*Admission{base.admission}}
+	require(t, facts.checkACK(t.Context(), base.scope, base.ack, base.ledger))
+	fenced := base.ledger
+	fenced.Fences = map[string]uint64{base.scope.Session: 2}
+	moved, err := canonicalJSON(map[string]any{"sequence": 1, "domain": guestbridge.Capability{Kind: "DOMAIN", Scope: base.scope}, "phase": "RECALL", "target": nil, "reissued": true})
+	require(t, err)
+	reissued := base.ledger
+	recall := *base.ledger.Recall
+	recall.Events = map[string]json.RawMessage{base.scope.Session: moved}
+	reissued.Recall = &recall
+	for name, l := range map[string]factsLedger{"ledger fence advanced": fenced, "issued event changed": reissued} {
+		if !base.admission.measuredACK(base.scope, base.ack, admissionReuse) {
+			t.Fatal("fixture lost its cache hit")
+		}
+		if err := facts.checkACK(t.Context(), base.scope, base.ack, l); !errors.Is(err, viewcontrol.ErrNotObserved) {
+			t.Fatalf("%s: checkACK = %v, want ErrNotObserved", name, err)
+		}
+	}
+}
+
+// TestRefreshForRules pins Prepare's per-admission rule on the real rig
+// admission: SESSION_RETIRE probes despite a fresh cache, and a VIEW_ACK for a
+// scope another admission owns follows the ordinary five-second rule.
+func TestRefreshForRules(t *testing.T) {
+	r := newSourceRigProtocol(t, guestbridge.ControlledProtocol())
+	a := r.admission
+	var probes atomic.Int32
+	countingProbe(a, &probes, nil)
+	p := &Producer{facts: r.facts}
+	require(t, a.Refresh(t.Context()))
+	probes.Store(0)
+	require(t, p.refreshFor(t.Context(), a, guestbridge.Command{Op: "SESSION_RETIRE", Context: r.scope}))
+	if n := probes.Load(); n != 1 {
+		t.Fatalf("SESSION_RETIRE ran %d probes on a fresh cache, want 1", n)
+	}
+	foreign := guestbridge.Command{Op: "VIEW_ACK", Context: guestbridge.Context{Session: testUUID(9).String()}, Payload: json.RawMessage(`{}`)}
+	require(t, p.refreshFor(t.Context(), a, foreign))
+	if n := probes.Load(); n != 1 {
+		t.Fatalf("foreign VIEW_ACK probed a fresh non-owning admission (%d probes)", n)
+	}
+	a.mu.Lock()
+	a.refreshed = time.Now().Add(-admissionReuse)
+	a.observedAt = a.refreshed
+	a.mu.Unlock()
+	require(t, p.refreshFor(t.Context(), a, foreign))
+	if n := probes.Load(); n != 2 {
+		t.Fatalf("foreign VIEW_ACK on a stale non-owning admission: %d probes in total, want 2", n)
+	}
+}
+
+// TestRefreshProbeErrorFencesWaitersWithoutProbing: a failed probe fences the
+// admission, and a refresh queued behind it returns Unavailable without
+// running another probe.
+func TestRefreshProbeErrorFencesWaitersWithoutProbing(t *testing.T) {
+	a := &Admission{}
+	var probes atomic.Int32
+	entered, release := make(chan struct{}), make(chan struct{})
+	a.probe = func(context.Context) (installedObservation, error) {
+		probes.Add(1)
+		close(entered)
+		<-release
+		return installedObservation{}, fsapi.IO
+	}
+	first := make(chan error, 1)
+	go func() { first <- a.Refresh(context.Background()) }()
+	<-entered
+	waiter := make(chan error, 1)
+	go func() { waiter <- a.Refresh(context.Background()) }()
+	close(release)
+	if err := <-first; !errors.Is(err, fsapi.IO) {
+		t.Fatalf("failed probe returned %v", err)
+	}
+	if err := <-waiter; !errors.Is(err, fsapi.Unavailable) {
+		t.Fatalf("waiter after a fencing probe returned %v, want Unavailable", err)
+	}
+	a.mu.Lock()
+	fenced := a.fenced
+	a.mu.Unlock()
+	if n := probes.Load(); n != 1 || !fenced {
+		t.Fatalf("%d probes, fenced %v; want 1 probe and a fenced admission", n, fenced)
+	}
+}
+
+// TestRefreshExpiredContextDoesNotProbeOrFence: a refresh whose context
+// expired while it waited for refreshMu returns the context error before
+// probing, so it never fences a healthy guest.
+func TestRefreshExpiredContextDoesNotProbeOrFence(t *testing.T) {
+	a := &Admission{}
+	var probes atomic.Int32
+	countingProbe(a, &probes, nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	a.refreshMu.Lock() // an in-flight refresh holds the lock ...
+	done := make(chan error, 1)
+	go func() { done <- a.Refresh(ctx) }()
+	cancel() // ... while the queued caller's deadline expires
+	a.refreshMu.Unlock()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("expired refresh returned %v, want context.Canceled", err)
+	}
+	a.mu.Lock()
+	fenced := a.fenced
+	a.mu.Unlock()
+	if n := probes.Load(); n != 0 || fenced {
+		t.Fatalf("%d probes, fenced %v; want neither", n, fenced)
 	}
 }

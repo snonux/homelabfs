@@ -104,9 +104,9 @@ func (p *Producer) Prepare(ctx context.Context, c guestbridge.Command) error {
 // refreshFor applies one admission's refresh rule for command c:
 //   - SESSION_RETIRE always probes the guest.
 //   - VIEW_ACK on the admission that owns its scope reuses an observation
-//     committed within admissionReuse that already records these exact ACK
-//     bytes (measuredACK explains why that is the same proof), and probes
-//     otherwise. Resends and the second domain's ACK of a phase usually hit;
+//     whose probe started within admissionReuse and already records these
+//     exact ACK bytes (measuredACK states what that proves and the reboot/
+//     identity window it accepts), and probes otherwise. Resends and the second domain's ACK of a phase usually hit;
 //     an ACK's first send usually misses, because the kernel publishes the
 //     phase just before sending it. Probing every ACK used to cost one SSH
 //     round trip per ACK and per resend (zq3-r8 R8-1).

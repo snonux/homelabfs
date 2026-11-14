@@ -174,7 +174,11 @@ func (a *Admission) Refresh(ctx context.Context) error {
 // refreshIfOlder is the ordinary-request reuse rule: an observation committed
 // less than maxAge ago is reused, otherwise it refreshes. While another probe is
 // in flight it waits for that probe instead of starting a second SSH session,
-// because a probe that started within maxAge satisfies the same bound.
+// because a probe that started within maxAge satisfies the same bound. The two
+// paths use different age bases on purpose: the fast path keeps the historical
+// commit-time (refreshed) rule that check's 15 s limit also uses, while the
+// slow path's coalescing compares probe start times (observedAt), because only
+// a probe's start says when the guest was measured.
 func (a *Admission) refreshIfOlder(ctx context.Context, maxAge time.Duration) error {
 	a.mu.Lock()
 	fresh := time.Since(a.refreshed) < maxAge
@@ -191,6 +195,12 @@ func (a *Admission) refreshIfOlder(ctx context.Context, maxAge time.Duration) er
 // take), then revalidates and commits under mu. refreshMu makes snapshot, probe
 // and commit one ordered step, so commit compares against exactly the
 // observation the snapshot saw.
+//
+// Waiting for refreshMu is not cancellable: a caller queued behind an in-flight
+// probe waits for it (each probe is bounded by its own ten-second timeout). If
+// ctx expired meanwhile, the caller returns ctx's error without probing; a probe
+// started on a dead context would fail and its commit would fence a healthy
+// guest.
 func (a *Admission) refreshSince(ctx context.Context, notBefore time.Time) error {
 	a.refreshMu.Lock()
 	defer a.refreshMu.Unlock()
@@ -202,6 +212,9 @@ func (a *Admission) refreshSince(ctx context.Context, notBefore time.Time) error
 	}
 	if covered {
 		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	started := time.Now()
 	observed, err := a.runPhaseProbe(ctx)
@@ -249,19 +262,35 @@ func (a *Admission) commit(observed installedObservation, err error, started tim
 	return nil
 }
 
-// measuredACK reports whether the installed observation, committed less than
-// maxAge ago, already records ack as scope's published acknowledgement. The
-// kernel publishes a phase record (with the exact ACK payload hash) only after
-// completing that phase's physical duties and before sending the ACK, and it
-// cannot leave the phase until the host issues the next event, which needs
-// this ACK. So a recent record of these exact bytes proves the same completed
-// phase a new probe would; checkACK still checks fence, phase and event hash
-// under mu. A miss (the usual case for an ACK's first send) needs a probe.
+// measuredACK reports whether the installed observation, from a probe that
+// started less than maxAge ago, already records ack as scope's published
+// acknowledgement. Why that record still proves the acknowledged phase:
+//   - the kernel publishes a phase record (with the exact ACK payload hash)
+//     only after completing that phase's physical duties, before sending it;
+//   - the ACK bytes bind session, scope, recall, sequence and phase, so the
+//     record cannot stand for another phase or recall;
+//   - per-domain phases are monotone within a revision (advance enforces the
+//     revision/fence high-water), so the completed duties are not undone; a
+//     later phase only means the guest went further. The guest can move on
+//     without a new host event in one case: after the host ACCEPTED an
+//     INSTALLED_DRAIN ACK its drain worker (patch 0004 hfs_mmap_drained)
+//     advances to DRAINED under the same INSTALL_DRAIN event. That worker is
+//     queued only after ACCEPTED, so it cannot advance past an ACK the host
+//     has not accepted yet.
+//
+// It is not everything a new probe would show. A fresh probe would also
+// catch a reboot (boot ID), a module/provider-nonce/inventory change or a
+// fenced guest; with reuse an ACK can be accepted up to maxAge after its
+// probe started even if the guest changed in between. That is the same
+// window ordinary requests already accept; the native endpoint is still
+// checked on every callback. checkACK still checks fence, phase and event
+// hash under mu. A miss (the usual case for an ACK's first send) needs a
+// probe.
 func (a *Admission) measuredACK(scope guestbridge.Context, ack []byte, maxAge time.Duration) bool {
 	hash := hashBytes(ack)
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.fenced || time.Since(a.refreshed) >= maxAge {
+	if a.fenced || time.Since(a.observedAt) >= maxAge {
 		return false
 	}
 	for _, observation := range a.installed.Admission.Observations {

@@ -420,6 +420,9 @@ func (f *Facts) checkACK(_ context.Context, scope guestbridge.Context, raw json.
 	// (Admission.measuredACK). mu is never held across a probe, so this only
 	// waits for in-memory work.
 	a := f.admission(scope)
+	if a == nil {
+		return fsapi.Permission
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for _, observation := range a.installed.Admission.Observations {
