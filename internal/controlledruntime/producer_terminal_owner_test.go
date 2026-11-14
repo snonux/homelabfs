@@ -175,12 +175,11 @@ func TestTerminalProducerActualMultipleCellOwnerTransfer(t *testing.T) {
 // terminalAnsweredResult reads cell's first result chunk once the worker has
 // answered it. A worker publishes its reply asynchronously after the attempt
 // returns, so an immediate read can still see WouldBlock under scheduler load
-// (i84). The bound only detects a cell that is never answered; it is generous
-// because a loaded host can delay the worker by seconds, and it never turns a
-// silent WouldBlock into success: the final WouldBlock is returned.
+// (i84). answerBound only detects a cell that is never answered, and it never
+// turns a silent WouldBlock into success: the final WouldBlock is returned.
 func terminalAnsweredResult(t *testing.T, r *sourceRig, cell uint64) ([]byte, error) {
 	t.Helper()
-	deadline := time.Now().Add(30 * time.Second)
+	deadline := time.Now().Add(answerBound)
 	for {
 		raw, err := r.mappingTransport.Read(t.Context(), r.native, r.native.Endpoint.ResultNode, cell*guestbridge.CellStride, 32768)
 		if !errors.Is(err, fsapi.WouldBlock) || time.Now().After(deadline) {
@@ -290,7 +289,7 @@ func TestTerminalProducerActualOpenClaimRefusesSeal(t *testing.T) {
 		if !errors.Is(err, fsapi.WouldBlock) {
 			t.Fatalf("actual open claim did not block provider seal: %v", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(answerBound):
 		t.Fatal("actual terminal worker did not run")
 	}
 	// The refused attempt exposes no terminal result: its blocked cell answers
@@ -334,7 +333,7 @@ func TestTerminalProducerOtherScopeContinuesDuringBridgeProtection(t *testing.T)
 	require(t, err)
 	select {
 	case <-entered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(answerBound):
 		t.Fatal("actual bridge lifetime writer was not reached")
 	}
 	// This is the real other-scope framing/worker/response path while the first
@@ -347,7 +346,7 @@ func TestTerminalProducerOtherScopeContinuesDuringBridgeProtection(t *testing.T)
 	select {
 	case err := <-finished:
 		require(t, err)
-	case <-time.After(5 * time.Second):
+	case <-time.After(answerBound):
 		unblock()
 		finishedErr := <-finished
 		t.Fatalf("other scope blocked behind terminal bridge persistence: %v", finishedErr)
@@ -406,7 +405,7 @@ func TestTerminalProducerPartialSealsRetainSameLiveAttempt(t *testing.T) {
 			guestCell := r.cells
 			select {
 			case <-entered:
-			case <-time.After(5 * time.Second):
+			case <-time.After(answerBound):
 				t.Fatal("actual partial seal boundary not reached")
 			}
 			if raw, err := r.mappingTransport.Read(t.Context(), r.native, r.native.Endpoint.ResultNode, cell*guestbridge.CellStride, 32768); len(raw) != 0 || !errors.Is(err, fsapi.WouldBlock) {
@@ -479,7 +478,7 @@ func TestTerminalProducerProtectionCrashCutsExposeNoReply(t *testing.T) {
 			require(t, err)
 			select {
 			case <-fired:
-			case <-time.After(5 * time.Second):
+			case <-time.After(answerBound):
 				t.Fatal("actual C8 protection boundary not reached")
 			}
 			raw, err := r.mappingTransport.Read(t.Context(), r.native, r.native.Endpoint.ResultNode, cell*guestbridge.CellStride, 32768)

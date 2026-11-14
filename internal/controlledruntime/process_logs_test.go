@@ -61,14 +61,14 @@ func TestActualExporterDiagnosticsDrainOverflowAndClose(t *testing.T) {
 	spec := helperSpec(t)
 	spec.Args = []string{"-test.run=^TestExporterDiagnosticsHelper$", "--", "hfs-diagnostics"}
 	require(t, s.Start(t.Context(), spec))
-	require(t, s.child.control.SetReadDeadline(time.Now().Add(5*time.Second)))
+	require(t, s.child.control.SetReadDeadline(time.Now().Add(answerBound)))
 	var b [1]byte
 	_, err := io.ReadFull(s.child.control, b[:])
 	require(t, err)
 	if b[0] != 'R' {
 		t.Fatal("child did not drain its actual overflow")
 	}
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(answerBound)
 	state, ok := s.Diagnostics()
 	for state.Stdout.Observed != exporterLogBytes+65536 && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
@@ -80,10 +80,10 @@ func TestActualExporterDiagnosticsDrainOverflowAndClose(t *testing.T) {
 	require(t, s.Close())
 	select {
 	case <-s.child.exited:
-	case <-time.After(5 * time.Second):
+	case <-time.After(answerBound):
 		t.Fatal("helper did not finish after ordinary management EOF")
 	}
-	deadline = time.Now().Add(5 * time.Second)
+	deadline = time.Now().Add(answerBound)
 	for {
 		state, _ = s.Diagnostics()
 		if state.ProcessExited && state.Stdout.EOF && state.Stderr.EOF {
@@ -164,7 +164,7 @@ func TestExporterDiagnosticsPreservesExistingAndFailedStart(t *testing.T) {
 func TestActualExporterDiagnosticsCompleteQuietExit(t *testing.T) {
 	s := runningFixture(t)
 	require(t, s.Close())
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(answerBound)
 	for {
 		state, ok := s.Diagnostics()
 		if ok && state.Complete {
@@ -229,7 +229,7 @@ func TestExporterDiagnosticsProcessExitDoesNotImplyPipeEOF(t *testing.T) {
 	for _, f := range inherited {
 		require(t, f.Close())
 	}
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(answerBound)
 	for {
 		logs.mu.Lock()
 		state = logs.snapshot()
@@ -282,7 +282,7 @@ func TestActualExporterDiagnosticsPartialWriteStillDrains(t *testing.T) {
 			spec := helperSpec(t)
 			spec.Args = []string{"-test.run=^TestExporterPartialDiagnosticsHelper$", "--", "hfs-partial-diagnostics"}
 			require(t, s.Start(t.Context(), spec))
-			require(t, s.child.control.SetDeadline(time.Now().Add(5*time.Second)))
+			require(t, s.child.control.SetDeadline(time.Now().Add(answerBound)))
 			var ready [1]byte
 			_, err := io.ReadFull(s.child.control, ready[:])
 			require(t, err)
@@ -332,7 +332,7 @@ func TestActualExporterDiagnosticsFinalStatusFailureRetained(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			s := diagnosticFaultOwner(t)
 			require(t, s.Start(t.Context(), helperSpec(t)))
-			require(t, s.child.control.SetReadDeadline(time.Now().Add(5*time.Second)))
+			require(t, s.child.control.SetReadDeadline(time.Now().Add(answerBound)))
 			var ready [1]byte
 			_, err := io.ReadFull(s.child.control, ready[:])
 			require(t, err)
@@ -418,7 +418,7 @@ func (s *failingDiagnosticStatus) Close() error {
 
 func waitDiagnosticFinal(t *testing.T, s *Supervisor) ExporterDiagnostics {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(answerBound)
 	for {
 		state, ok := s.Diagnostics()
 		if ok && state.ProcessExited && state.Stdout.EOF && state.Stderr.EOF {
@@ -447,7 +447,7 @@ func diagnosticFaultOwner(t *testing.T) *Supervisor {
 		if s.child != nil {
 			select {
 			case <-s.child.exited:
-			case <-time.After(5 * time.Second):
+			case <-time.After(answerBound):
 				t.Error("disposable fault child failed to exit after management EOF")
 			}
 			if err := s.child.executable.Close(); err != nil {

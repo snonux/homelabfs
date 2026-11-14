@@ -46,7 +46,7 @@ func TestExporterDetachedParent(t *testing.T) {
 		_, _ = fmt.Fprintf(os.Stderr, "detached owner Start: %v\n", err)
 		os.Exit(93)
 	}
-	if err = owner.child.control.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	if err = owner.child.control.SetReadDeadline(time.Now().Add(answerBound)); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "detached owner readiness deadline: %v\n", err)
 		os.Exit(94)
 	}
@@ -111,7 +111,7 @@ func TestDiagnosticComponentParent(t *testing.T) {
 		waited <- waitErr
 		logs.exited(waitErr)
 	}()
-	if err = control.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	if err = control.SetReadDeadline(time.Now().Add(answerBound)); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "component readiness deadline: %v\n", err)
 		os.Exit(87)
 	}
@@ -226,7 +226,7 @@ func checkDiagnosticParentExit(t *testing.T, helper, marker string) {
 			require(t, command.Start())
 			finished := make(chan error, 1)
 			go func() { finished <- command.Wait() }()
-			require(t, listener.SetDeadline(time.Now().Add(5*time.Second)))
+			require(t, listener.SetDeadline(time.Now().Add(answerBound)))
 			connection, err := listener.AcceptUnix()
 			if err != nil {
 				select {
@@ -237,7 +237,7 @@ func checkDiagnosticParentExit(t *testing.T, helper, marker string) {
 				}
 			}
 			defer func() { _ = connection.Close() }()
-			require(t, connection.SetDeadline(time.Now().Add(5*time.Second)))
+			require(t, connection.SetDeadline(time.Now().Add(answerBound)))
 			var ready [1]byte
 			_, err = io.ReadFull(connection, ready[:])
 			require(t, err)
@@ -249,7 +249,7 @@ func checkDiagnosticParentExit(t *testing.T, helper, marker string) {
 				if err != nil {
 					t.Fatalf("actual owner exit: %v\n%s", err, output.Bytes())
 				}
-			case <-time.After(5 * time.Second):
+			case <-time.After(answerBound):
 				t.Fatal("disposable owner failed to exit")
 			}
 			// Actual owner is already reaped. Only the independent test oracle

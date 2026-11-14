@@ -54,7 +54,7 @@ func runtimeDriverFixture(t *testing.T, binary string, devices int) (*sourceRig,
 	require(t, s.Start(t.Context(), spec))
 	d := &restartChild{t: t, originals: map[uint64][]byte{}, writes: map[uint64]int{}, writeBodies: map[uint64][]byte{}, keep: map[string]bool{}, cells: make([]uint64, 2), claims: make([]uint64, 2), lastCall: make([]uint64, 2)}
 	for i := 0; i < 2; i++ {
-		require(t, listener.SetDeadline(time.Now().Add(5*time.Second)))
+		require(t, listener.SetDeadline(time.Now().Add(answerBound)))
 		conn, e := listener.AcceptUnix()
 		require(t, e)
 		var kind [1]byte
@@ -76,7 +76,7 @@ func runtimeDriverFixture(t *testing.T, binary string, devices int) (*sourceRig,
 		_ = s.Close()
 		select {
 		case <-s.child.exited:
-		case <-time.After(5 * time.Second):
+		case <-time.After(answerBound):
 			t.Error("test C stand-in did not exit on explicit fixture Q")
 		}
 		_ = s.child.executable.Close()

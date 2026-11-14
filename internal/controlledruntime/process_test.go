@@ -22,6 +22,15 @@ import (
 	"github.com/snonux/homelabfs/internal/guestbridge"
 )
 
+// answerBound is how long a test waits for an asynchronous outcome it
+// requires: a helper child ready or exited, a drain finished, a worker reply
+// or failpoint reached. Every such wait only fails the test on timeout and
+// never lets it pass, so the bound is generous: under parallel go test and
+// -race load the former 2-5 s bounds can be exceeded (i84). It is not used
+// where a timeout is the expected outcome: mappedReadNative keeps its 5 s
+// bound, which the recall workload model reads as "no reply".
+const answerBound = 30 * time.Second
+
 func TestExporterHelper(t *testing.T) {
 	if len(os.Args) == 0 || os.Args[len(os.Args)-1] != "hfs-exporter" {
 		return
@@ -74,7 +83,7 @@ func ownerFixture(t *testing.T) *Supervisor {
 		if s.child != nil {
 			select {
 			case <-s.child.exited:
-			case <-time.After(5 * time.Second):
+			case <-time.After(answerBound):
 				t.Error("exporter did not exit after management EOF")
 			}
 			_ = s.child.executable.Close()
@@ -89,7 +98,7 @@ func runningFixture(t *testing.T) *Supervisor {
 	if err := s.Start(t.Context(), helperSpec(t)); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.child.control.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	if err := s.child.control.SetReadDeadline(time.Now().Add(answerBound)); err != nil {
 		t.Fatal(err)
 	}
 	var ready [1]byte
@@ -184,7 +193,7 @@ func TestLiveIdentityRejectsReplacementGroupsAndDeath(t *testing.T) {
 		if _, err := s.child.control.Write([]byte("E")); err != nil {
 			t.Fatal(err)
 		}
-		deadline := time.Now().Add(5 * time.Second)
+		deadline := time.Now().Add(answerBound)
 		for s.child.live() == nil && time.Now().Before(deadline) {
 			time.Sleep(time.Millisecond)
 		}
@@ -203,7 +212,7 @@ func TestLiveIdentityRejectsReplacementGroupsAndDeath(t *testing.T) {
 		}
 		select {
 		case <-s.child.exited:
-		case <-time.After(5 * time.Second):
+		case <-time.After(answerBound):
 			t.Fatal("child did not exit")
 		}
 		if err := s.child.live(); err == nil {
@@ -246,7 +255,7 @@ func TestProductionControlFramingAndBounds(t *testing.T) {
 	}
 	defer func() { _ = parent.Close() }()
 	defer func() { _ = child.Close() }()
-	if err = parent.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	if err = parent.SetDeadline(time.Now().Add(answerBound)); err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
@@ -494,7 +503,7 @@ func TestOwnerLockRejectsIndependentProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), answerBound)
 	defer cancel()
 	command := exec.CommandContext(ctx, executable, "-test.run=^TestRegistryContenderHelper$", "--", s.root, "hfs-registry-contender")
 	if output, err := command.CombinedOutput(); err != nil {
@@ -516,7 +525,7 @@ func TestServeControlRejectsSecondReaderWithoutDisturbingFirst(t *testing.T) {
 	}
 	defer func() { _ = file.Close() }()
 	s := &Supervisor{child: &exporter{control: parent}, mount: &nativeMount{files: [3]*os.File{file}}, record: issuance{Controller: fsapi.UUID{1}, Stage: "exported"}}
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), answerBound)
 	defer cancel()
 	first := make(chan error, 1)
 	go func() { first <- s.ServeControl(ctx) }()
