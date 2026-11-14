@@ -3,8 +3,8 @@
 package controlledruntime
 
 import (
-	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"sync/atomic"
@@ -40,8 +40,8 @@ func slowProbe(a *Admission, slow *atomic.Bool, probes *atomic.Int32, entered ch
 	}
 }
 
-// TestRecallAcksReuseObservationWithSlowObserver runs a full five-phase recall
-// over two domains against the assembled runtime with a 2 s guest observer.
+// TestRecallAcksReuseObservationWithSlowObserver runs a full five-phase
+// all-domain recall over two domains against the assembled runtime with a 2 s guest observer.
 // Every ACK is sent twice (the guest resends after EAGAIN/EBUSY or a lost
 // reply). Before the change each of those 20 VIEW_ACKs ran its own probe,
 // about 40 s of SSH on the control worker. Now an ACK reuses a recent
@@ -61,23 +61,15 @@ func TestRecallAcksReuseObservationWithSlowObserver(t *testing.T) {
 		attachAssembly(peer, a, &counter)
 	}
 	families := c.Authorization.Enrollment.TicketFamilies
-	_, domain := bootstrapMount(t, r.peers[0], families[0])
-	second := r.peers[1]
-	_, _, err = second.execute("HELLO", guestbridge.TerminalProtocol())
-	require(t, err)
-	var root struct{ Capabilities []guestbridge.Capability }
-	require(t, json.Unmarshal(second.call("ROOT", map[string]any{}), &root))
-	lease := acquireDomainLease(t, second, families[1], 1, root.Capabilities[1])
-	control := guestbridge.Ticket{Anchor: families[1].Control.Anchor, Nonce: families[1].Control.Nonce, Number: 1, Credentials: second.credentials}
-	payload, _, _, _, err := second.mappedExecute("VIEW_RELEASE", map[string]any{"request": control, "lease": lease})
-	require(t, err)
-	if !bytes.Contains(payload, []byte(`"status":"PENDING"`)) {
-		t.Fatalf("mount 1 VIEW_RELEASE: %s", payload)
-	}
+	// A clean READ release now recalls only its own domain (task 784), so the
+	// all-domain recall comes from mount 1's CREATE conflicting with both
+	// active leases (mount 0 at fence 2, mount 1 at 1), as in mixedFenceRecall.
+	domain, mount1 := mountBoth(t, r, families)
+	r.peers[1].call("CREATE", map[string]any{"parent": mount1[0], "name": hex.EncodeToString([]byte("slow-observer")), "mode": 0o660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}})
 
 	slow.Store(true)
 	started := time.Now()
-	acks := doubledRecall(t, r, []guestbridge.Capability{domain, root.Capabilities[1]}, &probes)
+	acks := doubledRecall(t, r, []guestbridge.Capability{domain, mount1[1]}, &probes)
 	total := probes.Load()
 	t.Logf("%d VIEW_ACKs, %d slow observations, recall took %s", acks, total, time.Since(started))
 	if acks != 20 || total > 5 {
@@ -242,8 +234,8 @@ func newACKFixture(t *testing.T) ackFixture {
 	a.installed.Admission.Observations = []kernelDomainObservation{{Scope: scope, Revision: 1, Fence: 1, Phase: "STOPPED", EventHash: hashBytes(issued), AcknowledgementHash: hashBytes(ack)}}
 	f := ackFixture{scope: scope, ack: ack, issued: issued, admission: a}
 	f.ledger.Recall = &struct {
-		ID, Phase, Inventory, Closure string
-		Events, Acks, Manifests       map[string]json.RawMessage
+		ID, Phase, Inventory, Closure, Domain string
+		Events, Acks, Manifests               map[string]json.RawMessage
 	}{ID: "recall", Phase: "RECALL", Inventory: "inventory", Closure: "closure", Events: map[string]json.RawMessage{scope.Session: issued}}
 	return f
 }
