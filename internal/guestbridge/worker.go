@@ -22,8 +22,9 @@ const retryTick = 10 * time.Millisecond
 // retry that took longer than the tick left the next tick already due, so a
 // permanently refused control cell (a held VIEW_RELEASE/VIEW_QUERY) ran back
 // to back and the lane never answered the other mounts' fresh VIEW_WAIT or
-// VIEW_QUERY cells (984 workload model). Every lane runs this same worker, so
-// the rule holds for each lane that has a retry ring.
+// VIEW_QUERY cells (984 workload model). All six lanes (ordinary, control,
+// replacement, drain, acquisition, VIEW_ACK) run this same worker, so the rule
+// holds for each of them.
 //
 // The ring itself stays FIFO, so one refused cell cannot starve its ring
 // peers either. Neither the queue nor the ring promised FIFO across the two:
@@ -75,6 +76,9 @@ func (r *retryRing) next(queue <-chan job) (j job, ok bool) {
 }
 
 // pop removes and returns the ring's head and records that a retry runs.
+// lastRetry is set even when beginJob then skips the popped cell (released,
+// answered or closed); that only gives the queue one extra turn, which is
+// harmless.
 func (r *retryRing) pop() job {
 	j := r.pending[0]
 	copy(r.pending, r.pending[1:])

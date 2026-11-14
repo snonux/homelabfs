@@ -68,15 +68,28 @@ func TestRetryingControlCellDoesNotStarveQueuedCells(t *testing.T) {
 	}
 	poll(2, stalledSequence)
 	waitStalls(t, views, 2) // the cell is in the retry ring and retrying
+	stalls := views.stalled.Load()
 	for cell := uint64(3); cell < 8; cell++ {
 		start := time.Now()
 		poll(cell, 0)
+		// On the pre-h84 worker this fetch itself fails: it gives up after
+		// 2 s of WOULD_BLOCK, before the 1 s bound below is ever checked.
 		_ = fetchNativeAt(t, tr, f.native, cell, f.native.Endpoint.RecallNode)
 		if elapsed := time.Since(start); elapsed > time.Second {
 			t.Fatalf("queued control cell %d answered after %v behind a retrying cell", cell, elapsed)
 		}
 	}
-	waitCellPhase(t, tr, 2, "pending") // the stalled cell is still retried, not dropped
+	// The stalled cell is still retried, not dropped or blocked. Its phase is
+	// not sampled for "pending": with the queue empty it retries back to back,
+	// so it is "pending" only between recordExecuteFailure and beginJob.
+	waitStalls(t, views, stalls+1)
+	tr.mu.Lock()
+	c := tr.cells[2]
+	retried := c != nil && c.response == nil && (c.jobPhase == "pending" || c.jobPhase == "executing")
+	tr.mu.Unlock()
+	if !retried {
+		t.Fatal("stalled cell left the retry ring")
+	}
 }
 
 // grantedDomain returns the DOMAIN capability ROOT grants this session, so a
