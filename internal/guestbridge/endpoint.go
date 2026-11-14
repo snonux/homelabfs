@@ -124,24 +124,17 @@ func NewDurableTransportWithFailureHook(s *Service, budget *admission.Budget, ro
 	return newTransport(s, budget, root, hook)
 }
 
+// newTransport attaches one transport to s: it checks mapped-protocol
+// prerequisites, claims the service, reserves the funded arenas, creates the
+// optional durable ledger, binds a mapped producer and only then starts the
+// workers.
 func newTransport(s *Service, budget *admission.Budget, root string, hook func(string) error) (*Transport, error) {
 	if s == nil || budget == nil {
 		return nil, fsapi.Invalid
 	}
-	needsMapped := false
-	for _, scope := range s.config.Scopes {
-		if p := s.config.sessionProtocol(scope.Session); p != nil && IsMappedProtocol(*p) {
-			needsMapped = true
-			if err := mappedCellFunding(); err != nil {
-				return nil, err
-			}
-			if root == "" {
-				return nil, fsapi.Permission
-			}
-			if _, ok := s.config.Verification.(MappedVerificationProducer); !ok || missing(s.config.Verification) {
-				return nil, fsapi.Permission
-			}
-		}
+	needsMapped, err := mappedPrerequisites(s, root)
+	if err != nil {
+		return nil, err
 	}
 	s.mu.Lock()
 	if s.transportAttached {
@@ -152,66 +145,19 @@ func newTransport(s *Service, budget *admission.Budget, root string, hook func(s
 	s.mu.Unlock()
 	t := &Transport{runtimeHellos: map[string]runtimeHelloWitness{}, terminal: map[string]uint64{}, guestHigh: map[string]uint64{}, guestHoles: map[string][]uint64{}, service: s, cells: map[uint64]*cell{}}
 	t.makeQueues()
-	// Reserve complete request/reply/receipt bitmap and bounded decode copies for
-	// every active credit before any callback allocation. Workspace is independent.
-	pools := []struct {
-		class               admission.Class
-		bytes, ops, workers uint64
-	}{{admission.Live, 64 * 8 << 20, 64, 2}, {admission.Control, 16 * 8 << 20, 16, controlWorkers}, {admission.Memory, 12 << 20, 1, 1}}
-	if root != "" {
-		// Ledger mappings, freelist and per-row encoding/transaction copies need
-		// their own finite owner. This is not another parser workspace.
-		pools = append(pools, struct {
-			class               admission.Class
-			bytes, ops, workers uint64
-		}{admission.Memory, TransportLedgerMemoryBytes, 1, 0})
-	}
-	for _, pool := range pools {
-		lease, e := budget.Reserve(admission.Request{Class: pool.class, Peer: s.config.Endpoint.FuseSession, Volume: s.config.Endpoint.FuseSession, Cost: admission.Resources{Bytes: pool.bytes, Operations: pool.ops, Workers: pool.workers}})
-		if e != nil {
-			for _, l := range t.arenas {
-				_ = l.Release()
-			}
-			s.mu.Lock()
-			s.transportAttached = false
-			s.mu.Unlock()
-			return nil, e
-		}
-		t.arenas = append(t.arenas, lease)
+	if err = t.reserveArenas(budget, root != ""); err != nil {
+		s.mu.Lock()
+		s.transportAttached = false
+		s.mu.Unlock()
+		return nil, err
 	}
 	if root != "" {
-		ledger, err := createTransportLedger(root)
-		if err == nil {
-			ledger.failpoint = hook
-			t.ledger = ledger
-			err = t.protectLocked()
-			if err == nil {
-				err = ledger.finishNamespace()
-			}
-		}
-		if err != nil {
-			if ledger != nil {
-				_ = ledger.close()
-			}
-			for _, l := range t.arenas {
-				_ = l.Release()
-			}
-			// The service remains attached after uncertain protection. A second
-			// constructor cannot silently abandon an issued private root.
+		if err = t.openLedger(root, hook); err != nil {
 			return nil, err
 		}
 	}
-	if p, ok := s.config.Verification.(MappedVerificationProducer); needsMapped && ok {
-		if err := p.BindTransport(context.Background(), t); err != nil {
-			t.failed = err
-			if t.ledger != nil {
-				_ = t.ledger.close()
-			}
-			// No worker started and no Transport will be returned. Retain the
-			// service/ledger claim, but return its unopened arena reservations.
-			for _, lease := range t.arenas {
-				_ = lease.Release()
-			}
+	if needsMapped {
+		if err = t.bindMapped(); err != nil {
 			return nil, err
 		}
 	}
@@ -220,6 +166,106 @@ func newTransport(s *Service, budget *admission.Budget, root string, hook func(s
 	s.mu.Unlock()
 	t.startWorkers()
 	return t, nil
+}
+
+// mappedPrerequisites reports whether any enrolled session uses the mapped
+// protocol and, if so, refuses unless mapped cells are funded, a durable
+// ledger root is given and a mapped verification producer is configured.
+func mappedPrerequisites(s *Service, root string) (bool, error) {
+	needsMapped := false
+	for _, scope := range s.config.Scopes {
+		if p := s.config.sessionProtocol(scope.Session); p != nil && IsMappedProtocol(*p) {
+			needsMapped = true
+			if err := mappedCellFunding(); err != nil {
+				return false, err
+			}
+			if root == "" {
+				return false, fsapi.Permission
+			}
+			if _, ok := s.config.Verification.(MappedVerificationProducer); !ok || missing(s.config.Verification) {
+				return false, fsapi.Permission
+			}
+		}
+	}
+	return needsMapped, nil
+}
+
+// reserveArenas reserves complete request/reply/receipt bitmaps and bounded
+// decode copies for every active credit, plus the funded workers, before any
+// callback allocation. The replacement workspace is independent. On failure
+// every lease already taken is released again.
+func (t *Transport) reserveArenas(budget *admission.Budget, durable bool) error {
+	type pool struct {
+		class               admission.Class
+		bytes, ops, workers uint64
+	}
+	pools := []pool{{admission.Live, 64 * 8 << 20, 64, 2}, {admission.Control, 16 * 8 << 20, 16, controlWorkers}, {admission.Memory, 12 << 20, 1, 1}}
+	if durable {
+		// Ledger mappings, freelist and per-row encoding/transaction copies need
+		// their own finite owner. This is not another parser workspace.
+		pools = append(pools, pool{admission.Memory, TransportLedgerMemoryBytes, 1, 0})
+	}
+	session := t.service.config.Endpoint.FuseSession
+	for _, p := range pools {
+		lease, e := budget.Reserve(admission.Request{Class: p.class, Peer: session, Volume: session, Cost: admission.Resources{Bytes: p.bytes, Operations: p.ops, Workers: p.workers}})
+		if e != nil {
+			t.releaseArenas()
+			return e
+		}
+		t.arenas = append(t.arenas, lease)
+	}
+	return nil
+}
+
+// releaseArenas returns every reserved arena lease.
+func (t *Transport) releaseArenas() {
+	for _, l := range t.arenas {
+		_ = l.Release()
+	}
+	t.arenas = nil
+}
+
+// openLedger exclusively creates the private transport ledger and protects
+// the empty initial state. On failure the arenas are released but the service
+// remains attached: after uncertain protection a second constructor cannot
+// silently abandon an issued private root.
+func (t *Transport) openLedger(root string, hook func(string) error) error {
+	ledger, err := createTransportLedger(root)
+	if err == nil {
+		ledger.failpoint = hook
+		t.ledger = ledger
+		err = t.protectLocked()
+		if err == nil {
+			err = ledger.finishNamespace()
+		}
+	}
+	if err != nil {
+		if ledger != nil {
+			_ = ledger.close()
+		}
+		t.releaseArenas()
+	}
+	return err
+}
+
+// bindMapped binds the mapped verification producer to this transport. On
+// failure no worker started and no Transport will be returned: the
+// service/ledger claim is retained, but the unopened arena reservations are
+// returned.
+func (t *Transport) bindMapped() error {
+	p, ok := t.service.config.Verification.(MappedVerificationProducer)
+	if !ok {
+		return nil
+	}
+	if err := p.BindTransport(context.Background(), t); err != nil {
+		t.failed = err
+		if t.ledger != nil {
+			_ = t.ledger.close()
+		}
+		t.releaseArenas()
+		return err
+	}
+	return nil
 }
 
 // controlWorkers is the number of funded workers that serve control-credit
@@ -600,14 +646,28 @@ func (t *Transport) stageTerminal(c *cell, f Frame, command Command, terminal *P
 // only picks the worker; the credit class stays the frame's control flag.
 //
 // VIEW_ACK has its own lane so that its guest observation cannot hold up the
-// other control cells (d84). That is safe because nothing orders a VIEW_ACK
-// against another control cell's execution: the guest sends its VIEW_ACK and
-// the VIEW_QUERY of the release loop on one shared tag, so they are never
-// outstanding together; the event worker reposts its VIEW_WAIT before the
-// ACK, so that poll and the ACK are already concurrent requests; and a QUERY
-// only reads claim state, which a later QUERY rereads. The ACK itself still
-// runs preparation (the measured observation) before its exchange, and the
-// ACK lane is one FIFO worker, so ACKs keep their order among themselves.
+// other control cells (d84). Moving it off the control worker is safe because
+// nothing relied on a VIEW_ACK executing in order with another control cell:
+//   - Any two control commands can already wait on the host together. The
+//     guest's shared tag 65533 is held per SEND/FETCH exchange, not per
+//     command: it is freed after SEND, and the reply is polled with FETCH.
+//   - QUERY, VIEW_QUERY, VIEW_POLL and VIEW_WAIT are re-read polls. A QUERY
+//     rereads claim state, VIEW_WAIT is keyed by after_sequence, and the guest
+//     retries a PENDING answer about every 10 ms, so a poll answered before a
+//     concurrent ACK is simply asked again.
+//   - Controller state changes are serialized by viewcontrol's own lock (a
+//     contended TryLock answers WouldBlock and the cell is retried), not by
+//     this worker.
+//   - FIFO within the control lane was never promised: the WouldBlock retry
+//     ring reorders cells (Retained-9p-view-leases.md), and the lanes already
+//     run accepted cells out of order (Retained-9p-mapping.md).
+//   - The guest sends a cell that depends on an ACK only after that ACK's reply
+//     (its drain is queued after hfs_mmap_ack returns).
+//
+// The ACK itself still runs preparation (the measured observation) before its
+// exchange. The single ACK worker dispatches ACKs in arrival order; a
+// WouldBlock retry may run after a later ACK, which is harmless because each
+// view's event worker has at most one ACK in flight.
 func (t *Transport) commandQueue(command Command, control bool) chan job {
 	switch {
 	case oneOf(command.Op, "RELEASE_CELL", "SESSION_RETIRE"):
