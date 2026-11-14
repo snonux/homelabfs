@@ -9,7 +9,7 @@
 # Usage: build-fdescfs-window-artifacts.sh OUT_DIR [COMMIT]
 #
 # OUT_DIR must not exist yet; its parent must. COMMIT defaults to the zq3 candidate source
-# e92eaa1d1fbbe387c20dc063afc0d6655560cd9c (l84 rebuild for zq3-r9; earlier b869710 for
+# cc6beedd74c18df7eefbbcc189934035b8267e91 (r84 rebuild for zq3-r10; earlier e92eaa1 for l84, b869710 for
 # y64, 060dea0 for c64+d64, a20aca1 for z54, defd974 for f44 and e0cca0c). The source is exported with
 # `git archive`, so no worktree state or VCS metadata reaches the build.
 # Every artifact is built twice with separate fresh Go caches; the script
@@ -22,7 +22,7 @@
 # rebuild needs the same OUT_DIR/src path.
 set -euo pipefail
 
-readonly CANDIDATE=e92eaa1d1fbbe387c20dc063afc0d6655560cd9c
+readonly CANDIDATE=cc6beedd74c18df7eefbbcc189934035b8267e91
 readonly TOOLROOT=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn
 readonly CC_WRAPPER=$TOOLROOT/freebsd-cc
 readonly SYSROOT=$TOOLROOT/sysroot-capture/root

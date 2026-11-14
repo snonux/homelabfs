@@ -1,13 +1,13 @@
 {
   "artifacts": {
     "controlledruntime.test": {
-      "bytes": 13951072,
+      "bytes": 13978584,
       "interpreter": "/libexec/ld-elf.so.1",
       "needed": [
         "libthr.so.3",
         "libc.so.7"
       ],
-      "sha256": "30ba40be11bba014ecdf746c833f722f6b8d969fe8a0836d4b2cf0d9eb9b8b98"
+      "sha256": "72fffd3a27feb976f43fe33bed5273005729650f4a95129a1eae8bd03316d69d"
     },
     "fdescfs-namespace": {
       "bytes": 22584,
@@ -15,16 +15,16 @@
       "needed": [
         "libc.so.7"
       ],
-      "sha256": "50d823bed9cd1f6b92ebb67e1c1e7293f19a227069e1937eff899c607fd952d2"
+      "sha256": "5c709a358b2cd8336cce66c65293cf9554eb5155afcc571911f5c52a11f36cb2"
     },
     "hfs-controlled-runtime": {
-      "bytes": 10953416,
+      "bytes": 10963936,
       "interpreter": "/libexec/ld-elf.so.1",
       "needed": [
         "libthr.so.3",
         "libc.so.7"
       ],
-      "sha256": "868dc045907d5979c56b090b76b5b03515b1e149e7c7273bf50505f06e4627a6"
+      "sha256": "34a5360bcb43ff7516062c096ab247b122febe6653d9510277730e968cae5230"
     }
   },
   "captured_base_closure_sha256": {
@@ -34,17 +34,17 @@
     "/libexec/ld-elf.so.1": "305a0b7947a890c653e32a1ed9fc50c100416658dc422f2ca8de9ebcda9ddb6f"
   },
   "commands": [
-    "env -i HOME=/home/paul PATH=/usr/bin:/bin LC_ALL=C TZ=UTC GOOS=freebsd GOARCH=amd64 CGO_ENABLED=1 CC=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/freebsd-cc CGO_CFLAGS=-O2\\ -g\\ -ffile-prefix-map=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/sysroot-capture/root/=/ CGO_CPPFLAGS= CGO_LDFLAGS=-O2\\ -g GOFLAGS=-p=1\\ -mod=readonly GOMAXPROCS=2 GOGC=50 GOENV=off GOPROXY=off GOTOOLCHAIN=local GOWORK=off GOMODCACHE=/home/paul/go/pkg/mod GOCACHE=/home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/cache-1/build GOTMPDIR=/home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/cache-1/tmp TMPDIR=/home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/cache-1/tmp /usr/bin/go test -c -a -trimpath -buildvcs=false -o /home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/run-1/controlledruntime.test ./internal/controlledruntime",
-    "env -i HOME=/home/paul PATH=/usr/bin:/bin LC_ALL=C TZ=UTC GOOS=freebsd GOARCH=amd64 CGO_ENABLED=1 CC=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/freebsd-cc CGO_CFLAGS=-O2\\ -g\\ -ffile-prefix-map=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/sysroot-capture/root/=/ CGO_CPPFLAGS= CGO_LDFLAGS=-O2\\ -g GOFLAGS=-p=1\\ -mod=readonly GOMAXPROCS=2 GOGC=50 GOENV=off GOPROXY=off GOTOOLCHAIN=local GOWORK=off GOMODCACHE=/home/paul/go/pkg/mod GOCACHE=/home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/cache-1/build GOTMPDIR=/home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/cache-1/tmp TMPDIR=/home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/cache-1/tmp /usr/bin/go build -a -trimpath -buildvcs=false -o /home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/run-1/hfs-controlled-runtime ./cmd/hfs-controlled-runtime",
-    "env -i PATH=/usr/bin:/bin LC_ALL=C TZ=UTC /home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/freebsd-cc -std=c11 -Wall -Wextra -Werror -O1 -g tools/lab/fdescfs-namespace.c -o /home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/run-1/fdescfs-namespace",
-    "env -i HOME=/home/paul PATH=/usr/bin:/bin LC_ALL=C TZ=UTC GOOS=freebsd GOARCH=amd64 CGO_ENABLED=1 CC=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/freebsd-cc CGO_CFLAGS=-O2\\ -g\\ -ffile-prefix-map=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/sysroot-capture/root/=/ CGO_CPPFLAGS= CGO_LDFLAGS=-O2\\ -g GOFLAGS=-p=1\\ -mod=readonly GOMAXPROCS=2 GOGC=50 GOENV=off GOPROXY=off GOTOOLCHAIN=local GOWORK=off GOMODCACHE=/home/paul/go/pkg/mod GOCACHE=/home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/cache-2/build GOTMPDIR=/home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/cache-2/tmp TMPDIR=/home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/cache-2/tmp /usr/bin/go test -c -a -trimpath -buildvcs=false -o /home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/run-2/controlledruntime.test ./internal/controlledruntime",
-    "env -i HOME=/home/paul PATH=/usr/bin:/bin LC_ALL=C TZ=UTC GOOS=freebsd GOARCH=amd64 CGO_ENABLED=1 CC=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/freebsd-cc CGO_CFLAGS=-O2\\ -g\\ -ffile-prefix-map=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/sysroot-capture/root/=/ CGO_CPPFLAGS= CGO_LDFLAGS=-O2\\ -g GOFLAGS=-p=1\\ -mod=readonly GOMAXPROCS=2 GOGC=50 GOENV=off GOPROXY=off GOTOOLCHAIN=local GOWORK=off GOMODCACHE=/home/paul/go/pkg/mod GOCACHE=/home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/cache-2/build GOTMPDIR=/home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/cache-2/tmp TMPDIR=/home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/cache-2/tmp /usr/bin/go build -a -trimpath -buildvcs=false -o /home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/run-2/hfs-controlled-runtime ./cmd/hfs-controlled-runtime",
-    "env -i PATH=/usr/bin:/bin LC_ALL=C TZ=UTC /home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/freebsd-cc -std=c11 -Wall -Wextra -Werror -O1 -g tools/lab/fdescfs-namespace.c -o /home/paul/tmp/claude/hfs-xz3-20261114-r9/window-build/run-2/fdescfs-namespace"
+    "env -i HOME=/home/paul PATH=/usr/bin:/bin LC_ALL=C TZ=UTC GOOS=freebsd GOARCH=amd64 CGO_ENABLED=1 CC=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/freebsd-cc CGO_CFLAGS=-O2\\ -g\\ -ffile-prefix-map=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/sysroot-capture/root/=/ CGO_CPPFLAGS= CGO_LDFLAGS=-O2\\ -g GOFLAGS=-p=1\\ -mod=readonly GOMAXPROCS=2 GOGC=50 GOENV=off GOPROXY=off GOTOOLCHAIN=local GOWORK=off GOMODCACHE=/home/paul/go/pkg/mod GOCACHE=/home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/cache-1/build GOTMPDIR=/home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/cache-1/tmp TMPDIR=/home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/cache-1/tmp /usr/bin/go test -c -a -trimpath -buildvcs=false -o /home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/run-1/controlledruntime.test ./internal/controlledruntime",
+    "env -i HOME=/home/paul PATH=/usr/bin:/bin LC_ALL=C TZ=UTC GOOS=freebsd GOARCH=amd64 CGO_ENABLED=1 CC=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/freebsd-cc CGO_CFLAGS=-O2\\ -g\\ -ffile-prefix-map=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/sysroot-capture/root/=/ CGO_CPPFLAGS= CGO_LDFLAGS=-O2\\ -g GOFLAGS=-p=1\\ -mod=readonly GOMAXPROCS=2 GOGC=50 GOENV=off GOPROXY=off GOTOOLCHAIN=local GOWORK=off GOMODCACHE=/home/paul/go/pkg/mod GOCACHE=/home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/cache-1/build GOTMPDIR=/home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/cache-1/tmp TMPDIR=/home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/cache-1/tmp /usr/bin/go build -a -trimpath -buildvcs=false -o /home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/run-1/hfs-controlled-runtime ./cmd/hfs-controlled-runtime",
+    "env -i PATH=/usr/bin:/bin LC_ALL=C TZ=UTC /home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/freebsd-cc -std=c11 -Wall -Wextra -Werror -O1 -g tools/lab/fdescfs-namespace.c -o /home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/run-1/fdescfs-namespace",
+    "env -i HOME=/home/paul PATH=/usr/bin:/bin LC_ALL=C TZ=UTC GOOS=freebsd GOARCH=amd64 CGO_ENABLED=1 CC=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/freebsd-cc CGO_CFLAGS=-O2\\ -g\\ -ffile-prefix-map=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/sysroot-capture/root/=/ CGO_CPPFLAGS= CGO_LDFLAGS=-O2\\ -g GOFLAGS=-p=1\\ -mod=readonly GOMAXPROCS=2 GOGC=50 GOENV=off GOPROXY=off GOTOOLCHAIN=local GOWORK=off GOMODCACHE=/home/paul/go/pkg/mod GOCACHE=/home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/cache-2/build GOTMPDIR=/home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/cache-2/tmp TMPDIR=/home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/cache-2/tmp /usr/bin/go test -c -a -trimpath -buildvcs=false -o /home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/run-2/controlledruntime.test ./internal/controlledruntime",
+    "env -i HOME=/home/paul PATH=/usr/bin:/bin LC_ALL=C TZ=UTC GOOS=freebsd GOARCH=amd64 CGO_ENABLED=1 CC=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/freebsd-cc CGO_CFLAGS=-O2\\ -g\\ -ffile-prefix-map=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/sysroot-capture/root/=/ CGO_CPPFLAGS= CGO_LDFLAGS=-O2\\ -g GOFLAGS=-p=1\\ -mod=readonly GOMAXPROCS=2 GOGC=50 GOENV=off GOPROXY=off GOTOOLCHAIN=local GOWORK=off GOMODCACHE=/home/paul/go/pkg/mod GOCACHE=/home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/cache-2/build GOTMPDIR=/home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/cache-2/tmp TMPDIR=/home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/cache-2/tmp /usr/bin/go build -a -trimpath -buildvcs=false -o /home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/run-2/hfs-controlled-runtime ./cmd/hfs-controlled-runtime",
+    "env -i PATH=/usr/bin:/bin LC_ALL=C TZ=UTC /home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/freebsd-cc -std=c11 -Wall -Wextra -Werror -O1 -g tools/lab/fdescfs-namespace.c -o /home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/run-2/fdescfs-namespace"
   ],
   "date": "2026-11-14",
   "go_version": "go version go1.26.10-X:nodwarf5 linux/amd64",
   "installed": false,
-  "invocation": "tools/lab/build-fdescfs-window-artifacts.sh window-build e92eaa1d1fbbe387c20dc063afc0d6655560cd9c",
+  "invocation": "tools/lab/build-fdescfs-window-artifacts.sh /home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build cc6beedd74c18df7eefbbcc189934035b8267e91",
   "notes": [
     "The helper keeps the merged gate flags (-std=c11 -Wall -Wextra -Werror -O1 -g); its DWARF records the source directory, so a byte-identical rebuild uses the same out_dir.",
     "Go artifacts use -trimpath and the sysroot -ffile-prefix-map, so their bytes do not depend on out_dir.",
@@ -56,17 +56,18 @@
     "2026-11-10 c64+d64: rebuilt from 060dea0 (d64 keeps the view fence per domain and admits a bounded out-of-order guest cell once; internal/controlledruntime, guestbridge and viewcontrol changed) so the qualification test and inspector bytes match the new candidate daemon. fdescfs-namespace.c is unchanged; the helper differs from the z54 build only in DWARF (the new out_dir as comp_dir); with --strip-debug it is byte-identical to the z54 and f44 builds (07c9f5a1...).",
     "2026-11-10 y64: rebuilt from b869710 (i64, o64, r64, n64, j64, u64, v64 and x64 changed internal/controlledruntime, controlledvalidation, guestbridge and viewcontrol) so the qualification test and inspector bytes match the new candidate daemon 34fb05b2. fdescfs-namespace.c is unchanged; the helper differs from the 060dea0 build only in DWARF (the new out_dir as comp_dir); with --strip-debug it is byte-identical to the 060dea0, z54 and f44 builds (07c9f5a1...).",
     "2026-11-14 l84 (zq3-r9): rebuilt from e92eaa1 (784, 884, d84, g84, h84, b84 and q64/f84 changed internal/controlledruntime, controlledvalidation, guestbridge and viewcontrol) so the qualification test and inspector bytes match the new candidate daemon 868dc045. fdescfs-namespace.c is unchanged; the helper differs from the b869710 build only in DWARF (the new out_dir as comp_dir); with --strip-debug it is byte-identical to the b869710, 060dea0, z54 and f44 builds (07c9f5a1...).",
-    "recipe_sha256 is the script that ran this build (explicit COMMIT argument e92eaa1). Afterwards only its default CANDIDATE commit and header comment were updated to e92eaa1; the build steps are unchanged."
+    "2026-11-14 r84 (zq3-r10): rebuilt from cc6beed (i84 changed internal/controlledruntime guest_observer.go and tests; o84 and q84 changed controlledvalidation and viewcontrol, which it links) so the qualification test and inspector bytes match the new candidate daemon 34a5360b. fdescfs-namespace.c is unchanged; the helper differs from the e92eaa1 build only in DWARF (the new out_dir as comp_dir); with --strip-debug it is byte-identical to the e92eaa1, b869710, 060dea0, z54 and f44 builds (07c9f5a1...).",
+    "recipe_sha256 is the script that ran this build (explicit COMMIT argument cc6beed). Afterwards only its default CANDIDATE commit and header comment were updated to cc6beed; the build steps are unchanged."
   ],
   "recipe": "tools/lab/build-fdescfs-window-artifacts.sh",
-  "recipe_sha256": "927b2102c51209e0e2366fc7e529440337d996ce87de9933533eec039a525100",
+  "recipe_sha256": "a478bd8acb80bb1a564c41a591c09d42b0da5107d3cde42451375e5b2f2e422d",
   "reproducible": {
     "builds": 2,
     "byte_identical": true,
     "separate_fresh_go_caches": true
   },
-  "source_commit": "e92eaa1d1fbbe387c20dc063afc0d6655560cd9c",
-  "source_export": "git archive --format=tar SOURCE_COMMIT | tar -x -C window-build/src",
+  "source_commit": "cc6beedd74c18df7eefbbcc189934035b8267e91",
+  "source_export": "git archive --format=tar SOURCE_COMMIT | tar -x -C /home/paul/tmp/claude/hfs-xz3-20261114-r10/window-build/src",
   "source_file_sha256": {
     "tools/lab/fdescfs-namespace.c": "e59cde412a23ca898e0d95e2f850d08b3595a8a719bb28311c6d3680efe6af86"
   },
@@ -74,12 +75,12 @@
   "sysroot_capture_sha256": "c16fdc1cf25a9c36a959dc935df7e4d40a2dd094fd565677961a445091197de8",
   "sysroot_platform": "FreeBSD f3.lan.buetow.org 15.1-RELEASE-p2 releng/15.1-n283596-aadd58dddcbc GENERIC amd64 (captured 2026-11-05)",
   "target_executed": false,
-  "task": "v34 (zq3 gap G12), rebuilt for f44 from the d44 source, for the z54 daemon rebuild from a20aca1 for the c64+d64 rebuild from 060dea0, for the y64 rebuild from b869710 and for the l84 (zq3-r9) rebuild from e92eaa1",
+  "task": "v34 (zq3 gap G12), rebuilt for f44 from the d44 source, for the z54 daemon rebuild from a20aca1 for the c64+d64 rebuild from 060dea0, for the y64 rebuild from b869710 for the l84 (zq3-r9) rebuild from e92eaa1 and for the r84 (zq3-r10) rebuild from cc6beed",
   "toolchain_cross_check": {
     "artifact": "hfs-controlled-runtime",
-    "candidate_manifest_sha256": "868dc045907d5979c56b090b76b5b03515b1e149e7c7273bf50505f06e4627a6",
+    "candidate_manifest_sha256": "34a5360bcb43ff7516062c096ab247b122febe6653d9510277730e968cae5230",
     "equal": true,
-    "rebuilt_sha256": "868dc045907d5979c56b090b76b5b03515b1e149e7c7273bf50505f06e4627a6"
+    "rebuilt_sha256": "34a5360bcb43ff7516062c096ab247b122febe6653d9510277730e968cae5230"
   },
   "toolchain_sha256": {
     "/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn/freebsd-cc": "ed9b79ddcabd4873e61d0e9a6a7950f1dae3fd9a0f62377f457ab8e794688f24",
