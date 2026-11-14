@@ -11,13 +11,16 @@ import (
 // LedgerEvidence is an inert, read-only description of the actual protected
 // provider ledger at one instant. It names the same complete key/value/sequence
 // digest SuspendRestart compares, plus the exact ledger inode. It is not a
-// restart token, restoration authority or claim/result acceptance.
+// restart token, restoration authority or claim/result acceptance. Claims
+// (b84) summarizes the claim states read in the same transaction as Bytes;
+// see evidence_claims.go.
 type LedgerEvidence struct {
 	Ledger string // enrolled ledger UUID, textual
 	Digest string
 	Device uint64
 	Inode  uint64
 	Bytes  int64
+	Claims ClaimEvidence
 }
 
 // LedgerEvidence captures the current protected ledger digest under the same
@@ -39,8 +42,14 @@ func (p *Provider) LedgerEvidence(ctx context.Context) (LedgerEvidence, error) {
 	}
 	e := LedgerEvidence{Ledger: p.config.Authorization.Enrollment.Ledger.String(), Digest: digest}
 	// The bbolt transaction size is the current mapped ledger, not the stale
-	// FileInfo captured when this owner opened its file.
-	if err = p.db.View(func(tx *bolt.Tx) error { e.Bytes = tx.Size(); return nil }); err != nil {
+	// FileInfo captured when this owner opened its file. The claim summary
+	// comes from the same read transaction.
+	if err = p.db.View(func(tx *bolt.Tx) error {
+		e.Bytes = tx.Size()
+		claims, claimErr := p.claimEvidence(tx)
+		e.Claims = claims
+		return claimErr
+	}); err != nil {
 		return LedgerEvidence{}, err
 	}
 	if st, ok := p.file.Sys().(*syscall.Stat_t); ok {
