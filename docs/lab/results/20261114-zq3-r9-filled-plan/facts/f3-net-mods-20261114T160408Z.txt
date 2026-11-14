@@ -1,0 +1,5 @@
+	inet 10.20.0.133 netmask 0xffffff00 broadcast 10.20.0.255
+	member: tap0 flags=143<LEARNING,DISCOVER,AUTOEDGE,AUTOPTP>
+	member: re0 flags=143<LEARNING,DISCOVER,AUTOEDGE,AUTOPTP>
+25    1 0xffffffff84fcd000     3578 fdescfs.ko
+26    1 0xffffffff84fd1000    15ae0 fusefs.ko
