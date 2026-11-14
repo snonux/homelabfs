@@ -408,6 +408,33 @@ original-outcome recovery, never fresh preparation. This marker alone proves
 no cancellation or no-effect closure and changes no claim identity, wire
 status, pending snapshot version or historical credentials.
 
+A repeated CALL is itself the authenticated request its Admit checks. A QUERY
+resume is not: the outer request is the QUERY, so `Facts.Authorize` accepts the
+inner CALL only with the provider's QUERY continuation
+(`controlledvalidation/query_continuation.go`). The provider mints it after the
+locked exact-entry check, for one execute invocation, only when the outer
+request is a verified terminal-protocol QUERY of the claim's own scope whose
+payload is exactly `{claim}` and the entry is the exact original binding,
+RESERVED/UNPREPARED. Facts still checks the outer request's protocol, scope,
+native process and controller. Task 614 limited the token to
+DESCRIPTION_RELEASE and FORGET, which its dirty-session closure needed; every
+other claim whose first Admit failed uncertainly (WouldBlock behind a recall)
+then got PERMISSION on every QUERY until the guest blocked the session (zq3-r9
+R9-1, probably zq3-r8 R8-1 too). Task o84 allows every opcode:
+
+- the resume executes only the bytes the original CALL already authenticated,
+  which a repeated identical CALL may already resume for every opcode;
+- another session cannot name the claim: claims resolve per scope, the scopes
+  must match, reconciled bindings never resume and the payload hash binds the
+  full claim;
+- an exited issuer or changed credentials do not replay blindly: the bridge's
+  preparer re-runs the credential, exit and Unix checks against the current
+  state and protects a TERMINAL failure (e.g. STALE) instead. Only the cleanup
+  opcodes and DRAIN_WRITE tolerate an exited issuer, as on first dispatch;
+- Admit runs again in full (seal, readiness, recall barrier, drain validation,
+  source floor). A stale DRAIN_WRITE stays refused by its frozen-reservation
+  check.
+
 A definite admission refusal (j64) is the one way such a never-prepared claim
 becomes terminal without preparation. viewcontrol returns
 `controlledvalidation.AdmissionRefusal` only when a non-drain non-read

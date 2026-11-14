@@ -172,13 +172,19 @@ func (f *Facts) CheckEnrollment(ctx context.Context, enrollment viewcontrol.Enro
 // Authorize requires Service.Execute's private observation and independently
 // rechecks its actual native process/controller. Credential/grant Unix policy
 // remains in the bridge/service; source/physical facts remain separate below.
+// The checked operation and payload must be the observed request's, except
+// for the inner CALL of a claim resumed under the guest's outer QUERY: that
+// one needs the provider's QUERY continuation for exactly that claim's
+// never-prepared original (controlledvalidation/query_continuation.go, any
+// opcode since task o84; before it only cleanup opcodes, which parked every
+// other WouldBlock-admitted claim until the guest's QUERY window ended).
 func (f *Facts) Authorize(ctx context.Context, scope guestbridge.Context, op string, raw json.RawMessage) error {
 	observed, ok := guestbridge.VerifiedRequest(ctx)
 	if !ok || observed.Scope != scope || observed.Protocol == nil || !f.matchesProtocol(scope, *observed.Protocol) {
 		return fsapi.Permission
 	}
 	if observed.Operation != op || observed.PayloadHash != hashBytes(raw) {
-		if controlledvalidation.VerifyCleanupQueryContinuation(ctx, f.service, f, scope, op, raw) != nil {
+		if controlledvalidation.VerifyQueryContinuation(ctx, f.service, f, scope, op, raw) != nil {
 			return fsapi.Permission
 		}
 	}

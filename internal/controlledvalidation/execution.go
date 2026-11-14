@@ -39,7 +39,9 @@ type prepareFunc = func(guestbridge.Captured) (guestbridge.Prepared, error)
 // applies it on the serialized worker. A definite Admit refusal (task j64,
 // AdmissionRefusal) is protected as a terminal failed result without a cut;
 // any other Admit error is returned uncertain and leaves the claim
-// RESERVED/UNPREPARED for QUERY's resume to retry.
+// RESERVED/UNPREPARED for QUERY's resume to retry. A resume under an outer
+// QUERY carries the one-invocation QUERY continuation (query_continuation.go)
+// so that Admit's inner CALL authorization can accept it, for every opcode.
 func (p *Provider) execute(ctx context.Context, b guestbridge.Binding, prepare prepareFunc, protect protectFunc, resume bool) (guestbridge.Outcome, error) {
 	if err := p.Check(ctx, b.Context); err != nil {
 		return guestbridge.Outcome{}, err
@@ -57,7 +59,7 @@ func (p *Provider) execute(ctx context.Context, b guestbridge.Binding, prepare p
 		live := new(atomic.Bool)
 		live.Store(true)
 		defer live.Store(false)
-		ctx = p.cleanupQueryContext(ctx, b, saved, live)
+		ctx = p.queryContinuationContext(ctx, b, saved, live)
 	}
 	admission, refusal, refused, err := p.admit(ctx, b, protect)
 	if refused || err != nil {
