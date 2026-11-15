@@ -21,6 +21,7 @@ one bounded, never-retried guest action each: the lost-reply mkdir CALL, its
 re-read, the quiesce before RESTART and the after-host-loss I/O attempt. They
 record each errno as an observation; only host correlation interprets them.
 """
+import contextlib
 import ctypes
 import errno
 import hashlib
@@ -101,6 +102,68 @@ class Deadline(Exception):
 
 def deadline(*_):
     raise Deadline("case/step deadline")
+
+
+# hfs syscalls wait uninterruptibly, so an expired SIGALRM stays pending and
+# its Python handler raises Deadline as soon as os.open returns, before
+# `fd = os.open(...)` even stores the result. zq3-r10 leaked T1's root fd that
+# way; it closed only at process exit, where the guest kernel then blocked the
+# session. Every descriptor this probe opens therefore goes through
+# open_registered/owned: SIGALRM is blocked across the open and the handoff to
+# the owner, and the pending alarm fires only once the cleanup path owns the fd.
+# Deliberately unmasked: os.scandir (its fd is closed by the iterator's own
+# refcounted cleanup), mmap's internal dup (closed with the mmap object) and
+# os.pipe2 in Probe.child (a local pipe, never an hfs descriptor).
+ALARM = {signal.SIGALRM}
+
+
+def block_alarm():
+    """Block SIGALRM and return the previous mask.
+
+    If the alarm arrived just before the block, the C handler has already
+    flagged it and pthread_sigmask raises Deadline after blocking; the mask
+    would then stay blocked with no previous value to restore. Unblock and
+    re-raise instead. The probe never nests this mask, so SIGALRM was
+    unblocked before the call.
+    """
+    try:
+        return signal.pthread_sigmask(signal.SIG_BLOCK, ALARM)
+    except Deadline:
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, ALARM)
+        raise
+
+
+def open_registered(register, path, flags, mode=0o777, *, dir_fd=None):
+    """os.open plus register(fd) as one step with respect to SIGALRM.
+
+    register must not fail (list.append). A Deadline pending since the open
+    is raised when the mask is restored, with the fd already registered, so
+    the caller's except/finally closes it. An OSError from the open passes
+    through unchanged unless a pending Deadline replaces it on unmask.
+    """
+    previous = block_alarm()
+    try:
+        fd = os.open(path, flags, mode, dir_fd=dir_fd)
+        register(fd)
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous)
+    return fd
+
+
+@contextlib.contextmanager
+def owned(path, flags, mode=0o777, *, dir_fd=None):
+    """A descriptor that is closed on every exit, including a Deadline.
+
+    The fd is registered in the local list inside the try, under the SIGALRM
+    mask, so no alarm can land between the open and the finally that closes it.
+    """
+    fds = []
+    try:
+        open_registered(fds.append, path, flags, mode, dir_fd=dir_fd)
+        yield fds[0]
+    finally:
+        for fd in fds:
+            os.close(fd)
 
 
 def unique(pairs):
@@ -186,12 +249,17 @@ def find_mount(lines, path):
     return matches[0] if matches else None
 
 
-def admit(request):
-    """Full admission for every case or release request; no reduced path."""
+def admit(request, roots):
+    """Full admission for every case or release request; no reduced path.
+
+    The two root fds are appended to the caller's roots list as they open, so
+    the caller owns and closes them on every path; returning a fresh list
+    would leave a window where a Deadline lands before the caller stores it.
+    """
     if request_kind(request) == "step":
         raise Refused("lifecycle steps use step admission")
     admit_identity(request)
-    return open_domains(request)
+    open_domains(request, roots)
 
 
 def admit_identity(request):
@@ -220,36 +288,54 @@ def admit_identity(request):
     scopes = observed["domains"]
     if sorted(row["session"] for row in scopes) != sorted(row["session"] for row in request["mounts"]):
         raise Refused("complete admitted domain inventory changed")
+    admission_step("identity-checked")
 
 
-def open_domains(request):
-    """Open both exact controlled 9p mounts as independent retained root fds."""
+def admission_step(stage, **fields):
+    """Progress marker emitted as each admission stage begins or completes.
+
+    A stage that waits (an hfs open or fstat can park behind recalls for
+    seconds) shows in stdout.log as the gap between its marker's monotonic_ns
+    and the next event. Evidence only: controller and correlator ignore it.
+    identity-checked comes from admit_identity, so lifecycle step output
+    (admit_step) carries it too, before admitted-step.
+    """
+    emit("admission-step", stage=stage, **fields)
+
+
+def open_domains(request, fds):
+    """Open both exact controlled 9p mounts as independent retained root fds.
+
+    fds is the caller's (main's) roots list and starts empty; every fd is
+    registered in it under the SIGALRM mask, and main's finally closes it after
+    cancelling the alarm, whether admission succeeds, refuses or times out.
+    """
     lines = read("/proc/self/mountinfo", 1 << 20).decode().splitlines()
-    fds, devices, ids = [], [], []
-    try:
-        for row in request["mounts"]:
-            check_row(request, row, len(fds))
-            path = row["path"]
-            if os.path.realpath(path) != path:
-                raise Refused("private canonical run mount path required")
-            mount_id = check_tuple(row, match_mount(lines, path))
-            fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-            fds.append(fd)
-            if fd_mount(fd) != mount_id:
-                raise Refused("opened descriptor differs from admitted mount")
-            devices.append(os.fstat(fd).st_dev)
-            ids.append(mount_id)
-        if len(set(ids)) != 2 or len(set(devices)) != 2:
-            raise Refused("two independent kernel mount/cache domains required")
-        emit("admitted", boot_id=request["boot_id"],
-             provider_nonce=request["provider_nonce"], mounts=request["mounts"],
-             devices=devices, user_namespace=os.readlink("/proc/self/ns/user"),
-             publication=None, acceptance=False)
-        return fds
-    except BaseException:
-        for fd in fds:
-            os.close(fd)
-        raise
+    checked(not fds, "admission starts without root fds")
+    devices, ids = [], []
+    for row in request["mounts"]:
+        index = len(fds)
+        check_row(request, row, index)
+        path = row["path"]
+        if os.path.realpath(path) != path:
+            raise Refused("private canonical run mount path required")
+        mount_id = check_tuple(row, match_mount(lines, path))
+        admission_step("open-root", domain=index, path=path)
+        # Registered in fds under the SIGALRM mask: a deadline that expired
+        # during the open is raised only once main's roots list owns the fd.
+        fd = open_registered(fds.append, path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        if fd_mount(fd) != mount_id:
+            raise Refused("opened descriptor differs from admitted mount")
+        admission_step("stat-root", domain=index, path=path)
+        devices.append(os.fstat(fd).st_dev)
+        ids.append(mount_id)
+        admission_step("root-admitted", domain=index, path=path)
+    if len(set(ids)) != 2 or len(set(devices)) != 2:
+        raise Refused("two independent kernel mount/cache domains required")
+    emit("admitted", boot_id=request["boot_id"],
+         provider_nonce=request["provider_nonce"], mounts=request["mounts"],
+         devices=devices, user_namespace=os.readlink("/proc/self/ns/user"),
+         publication=None, acceptance=False)
 
 
 def check_row(request, row, index):
@@ -342,15 +428,20 @@ class Probe:
         return "zq3-" + self.request["run_id"] + "-" + self.request["case"]
 
     def open_leaf(self):
-        return os.open(self.leaf_name(), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                       dir_fd=self.roots[0])
+        """Context manager owning the case leaf's directory fd (see owned)."""
+        return owned(self.leaf_name(), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                     dir_fd=self.roots[0])
 
+    @contextlib.contextmanager
     def directory(self):
+        """Create the case leaf exclusively and yield (owned leaf fd, leaf name)."""
         leaf = self.leaf_name()
         self.call("mkdir-exclusive", lambda: os.mkdir(leaf, 0o777, dir_fd=self.roots[0]), name=leaf)
-        return self.open_leaf(), leaf
+        with self.open_leaf() as fd:
+            yield fd, leaf
 
     def child(self, action, uid=None, gid=None, groups=None):
+        # Unmasked on purpose: a local pipe, not an hfs fd (see ALARM).
         receive, send = os.pipe2(os.O_CLOEXEC)
         pid = os.fork()
         if pid == 0:
@@ -421,20 +512,18 @@ class Retention:
     def record_name(self, prefix="release-"):
         return prefix + self.request["case"] + ".json"
 
+    @contextlib.contextmanager
     def run_directory(self):
+        """Yield the owned, checked root-private local run directory fd."""
         path = RUN_PARENT + self.request["run_id"]
-        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-        try:
+        with owned(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW) as fd:
             info = os.fstat(fd)
             domains = {os.fstat(root).st_dev for root in self.probe.roots}
             # Owner-only: no group/other bits, so no other account can even
             # list or traverse to the retention records.
             checked(info.st_uid == TRUSTED_UID and not info.st_mode & 0o077 and
                     info.st_dev not in domains, "root-private local run directory required")
-        except BaseException:
-            os.close(fd)
-            raise
-        return fd
+            yield fd
 
     def inventory(self, fd):
         """Exact payload identity: names, types, inode, owner, mode, size, links."""
@@ -453,26 +542,17 @@ class Retention:
                 "listing": sorted(os.listdir(fd)), "entries": entries}
 
     def current_inventory(self):
-        fd = self.probe.open_leaf()
-        try:
+        with self.probe.open_leaf() as fd:
             return self.inventory(fd)
-        finally:
-            os.close(fd)
 
     def write_record(self, record):
-        run = self.run_directory()
-        try:
-            out = os.open(self.record_name(), os.O_CREAT | os.O_EXCL | os.O_WRONLY |
-                          os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=run)
-            try:
+        with self.run_directory() as run:
+            with owned(self.record_name(), os.O_CREAT | os.O_EXCL | os.O_WRONLY |
+                       os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=run) as out:
                 raw = canonical(record)
                 checked(os.write(out, raw) == len(raw), "short retention record write")
                 os.fsync(out)
-            finally:
-                os.close(out)
             os.fsync(run)
-        finally:
-            os.close(run)
 
     def retain(self):
         """Keep the payload for host correlation; persist only the token hash."""
@@ -493,15 +573,13 @@ class Retention:
              required_host_correlation=True)
 
     def read_record(self, run):
-        fd = os.open(self.record_name(), os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=run)
-        try:
+        with owned(self.record_name(), os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                   dir_fd=run) as fd:
             info = os.fstat(fd)
             checked(stat.S_ISREG(info.st_mode) and info.st_uid == TRUSTED_UID and
                     not info.st_mode & 0o077 and info.st_size <= RECORD_LIMIT,
                     "root-private bounded retention record required")
             raw = os.read(fd, RECORD_LIMIT + 1)
-        finally:
-            os.close(fd)
         checked(len(raw) <= RECORD_LIMIT, "retention record bound")
         return json.loads(raw, object_pairs_hook=unique)
 
@@ -525,8 +603,7 @@ class Retention:
     def release(self):
         """One-shot release after authentication; any refusal preserves all."""
         case, p = self.request["case"], self.probe
-        run = self.run_directory()
-        try:
+        with self.run_directory() as run:
             self.authenticate(self.read_record(run))
             # Consume before deleting: a replay finds no record and refuses.
             # If an unlink below then fails, part of the payload remains with
@@ -535,165 +612,155 @@ class Retention:
             os.rename(self.record_name(), self.record_name("released-"),
                       src_dir_fd=run, dst_dir_fd=run)
             os.fsync(run)
-        finally:
-            os.close(run)
-        fd = p.open_leaf()
-        try:
+        with p.open_leaf() as fd:
             for name in PAYLOAD_FILES[case]:
                 p.call("unlink-released-payload", lambda n=name: os.unlink(n, dir_fd=fd), name=name)
             for name in PAYLOAD_DIRS.get(case, []):
                 p.call("rmdir-released-payload", lambda n=name: os.rmdir(n, dir_fd=fd), name=name)
-        finally:
-            os.close(fd)
         p.call("rmdir-released-leaf", lambda: os.rmdir(p.leaf_name(), dir_fd=p.roots[0]),
                name=p.leaf_name())
         emit("payload-released", leaf=p.leaf_name(), journal_preserved=True,
              correlation_sha256=self.request["correlation_sha256"])
 
 
+def read_child(directory, name):
+    """Child action: open name read-only through the leaf fd and read it."""
+    with owned(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory) as fd:
+        return os.read(fd, 64).decode()
+
+
+def create_owned_file(p, directory, name, uid, gid, data):
+    """Exclusive create with numeric owner, mode 0640 and one recorded write."""
+    with owned(name, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o640, dir_fd=directory) as fd:
+        os.fchown(fd, uid, gid)
+        os.fchmod(fd, 0o640)
+        p.write(fd, data)
+
+
 def credentials(p):
-    directory, leaf = p.directory()
-    try:
+    """T1: supplementary groups, setgid create, sticky denial, special bits.
+
+    Split into ordered stages; the syscall sequence is unchanged.
+    """
+    with p.directory() as (directory, leaf):
         os.fchmod(directory, 0o777)
-        fd = os.open("group", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o640, dir_fd=directory)
-        try:
+        credentials_groups(p, directory)
+        credentials_group_tail(p, directory)
+        credentials_setgid(p, directory, leaf)
+        credentials_sticky(p, directory)
+        credentials_special_bits(p, directory)
+
+
+def credentials_groups(p, directory):
+    """The complete supplementary group vector decides access, not the UID."""
+    create_owned_file(p, directory, "group", 41002, 42002, b"group-secret")
+
+    def access():
+        return read_child(directory, "group")
+
+    allowed, status = p.child(access, 41001, 42001, [42001, 42002, 42003])
+    checked(status == 0 and allowed["result"] == "group-secret" and
+            allowed["groups"] == [42001, 42002, 42003], "supplementary group access")
+    denied, status = p.child(access, 41001, 42001, [42001, 42003])
+    checked(status != 0 and denied.get("errno") == errno.EACCES,
+            "same UID different complete groups must deny")
+
+
+def credentials_group_tail(p, directory):
+    """All 1024 groups survive, including the final entry of the vector."""
+    create_owned_file(p, directory, "group-tail", 41002, 44022, b"full-group-tail")
+    full_groups = [42001, *range(43000, 44023)]
+    checked(len(full_groups) == 1024, "complete maximum group-vector fixture")
+
+    def access_tail():
+        return read_child(directory, "group-tail")
+
+    allowed, status = p.child(access_tail, 41001, 42001, full_groups)
+    checked(status == 0 and allowed["groups"] == full_groups and
+            allowed["result"] == "full-group-tail", "all 1024 groups including final entry must survive")
+    denied, status = p.child(access_tail, 41001, 42001, full_groups[:-1])
+    checked(status != 0 and denied.get("errno") == errno.EACCES,
+            "removing only the final supplementary group must deny")
+
+
+def credentials_setgid(p, directory, leaf):
+    """Atomic create in a setgid directory, then freshness through m1."""
+    os.mkdir("setgid", 0o2777, dir_fd=directory)
+    with owned("setgid", os.O_RDONLY | os.O_DIRECTORY, dir_fd=directory) as sg:
+        os.fchown(sg, 0, 42002)
+        os.fchmod(sg, 0o2777)
+
+        def create():
+            old = os.umask(0o027)
+            try:
+                with owned("created", os.O_CREAT | os.O_EXCL | os.O_RDWR,
+                           0o666, dir_fd=sg) as fd:
+                    value = os.fstat(fd)
+                    return [value.st_uid, value.st_gid, stat.S_IMODE(value.st_mode)]
+            finally:
+                os.umask(old)
+
+        result, status = p.child(create, 41001, 42001, [42001, 42002])
+        checked(status == 0 and result["result"] == [41001, 42002, 0o640],
+                "atomic create owner/group/setgid/umask")
+    # Record actual numeric ownership and permissions through the second domain.
+    seen = os.stat(leaf + "/setgid/created", dir_fd=p.roots[1], follow_symlinks=False)
+    checked((seen.st_uid, seen.st_gid, stat.S_IMODE(seen.st_mode)) ==
+            (41001, 42002, 0o640), "cross-domain credential metadata freshness")
+
+
+def credentials_sticky(p, directory):
+    """A sticky directory denies unlink of another owner's entry."""
+    os.mkdir("sticky", 0o1777, dir_fd=directory)
+    with owned("sticky", os.O_RDONLY | os.O_DIRECTORY, dir_fd=directory) as sticky:
+        os.fchmod(sticky, 0o1777)
+        with owned("owned", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o666, dir_fd=sticky) as fd:
             os.fchown(fd, 41002, 42002)
-            os.fchmod(fd, 0o640)
-            p.write(fd, b"group-secret")
-        finally:
-            os.close(fd)
+        denied, status = p.child(lambda: os.unlink("owned", dir_fd=sticky),
+                                 41001, 42001, [42001, 42002])
+        checked(status != 0 and denied.get("errno") in {errno.EACCES, errno.EPERM},
+                "sticky directory owner denial")
 
-        def access():
-            fd = os.open("group", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory)
-            try:
-                return os.read(fd, 64).decode()
-            finally:
-                os.close(fd)
 
-        allowed, status = p.child(access, 41001, 42001, [42001, 42002, 42003])
-        checked(status == 0 and allowed["result"] == "group-secret" and
-                allowed["groups"] == [42001, 42002, 42003], "supplementary group access")
-        denied, status = p.child(access, 41001, 42001, [42001, 42003])
-        checked(status != 0 and denied.get("errno") == errno.EACCES,
-                "same UID different complete groups must deny")
-        tail = os.open("group-tail", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o640,
-                       dir_fd=directory)
-        try:
-            os.fchown(tail, 41002, 44022)
-            os.fchmod(tail, 0o640)
-            p.write(tail, b"full-group-tail")
-        finally:
-            os.close(tail)
-        full_groups = [42001, *range(43000, 44023)]
-        checked(len(full_groups) == 1024, "complete maximum group-vector fixture")
-
-        def access_tail():
-            fd = os.open("group-tail", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory)
-            try:
-                return os.read(fd, 64).decode()
-            finally:
-                os.close(fd)
-
-        allowed, status = p.child(access_tail, 41001, 42001, full_groups)
-        checked(status == 0 and allowed["groups"] == full_groups and
-                allowed["result"] == "full-group-tail", "all 1024 groups including final entry must survive")
-        denied, status = p.child(access_tail, 41001, 42001, full_groups[:-1])
-        checked(status != 0 and denied.get("errno") == errno.EACCES,
-                "removing only the final supplementary group must deny")
-        os.mkdir("setgid", 0o2777, dir_fd=directory)
-        sg = os.open("setgid", os.O_RDONLY | os.O_DIRECTORY, dir_fd=directory)
-        try:
-            os.fchown(sg, 0, 42002)
-            os.fchmod(sg, 0o2777)
-
-            def create():
-                old = os.umask(0o027)
-                try:
-                    fd = os.open("created", os.O_CREAT | os.O_EXCL | os.O_RDWR,
-                                 0o666, dir_fd=sg)
-                    try:
-                        value = os.fstat(fd)
-                        return [value.st_uid, value.st_gid, stat.S_IMODE(value.st_mode)]
-                    finally:
-                        os.close(fd)
-                finally:
-                    os.umask(old)
-
-            result, status = p.child(create, 41001, 42001, [42001, 42002])
-            checked(status == 0 and result["result"] == [41001, 42002, 0o640],
-                    "atomic create owner/group/setgid/umask")
-        finally:
-            os.close(sg)
-        # Record actual numeric ownership and permissions through the second domain.
-        seen = os.stat(leaf + "/setgid/created", dir_fd=p.roots[1], follow_symlinks=False)
-        checked((seen.st_uid, seen.st_gid, stat.S_IMODE(seen.st_mode)) ==
-                (41001, 42002, 0o640), "cross-domain credential metadata freshness")
-        os.mkdir("sticky", 0o1777, dir_fd=directory)
-        sticky = os.open("sticky", os.O_RDONLY | os.O_DIRECTORY, dir_fd=directory)
-        try:
-            os.fchmod(sticky, 0o1777)
-            owned = os.open("owned", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o666, dir_fd=sticky)
-            try:
-                os.fchown(owned, 41002, 42002)
-            finally:
-                os.close(owned)
-            denied, status = p.child(lambda: os.unlink("owned", dir_fd=sticky),
-                                     41001, 42001, [42001, 42002])
-            checked(status != 0 and denied.get("errno") in {errno.EACCES, errno.EPERM},
-                    "sticky directory owner denial")
-        finally:
-            os.close(sticky)
-        owner = os.open("group", os.O_RDWR, dir_fd=directory)
-        try:
-            p.call("chmod-special-bits", lambda: os.fchmod(owner, 0o6750))
-            checked(stat.S_IMODE(os.fstat(owner).st_mode) == 0o6750, "special bits round trip")
-            p.call("chown-clears-special-bits", lambda: os.fchown(owner, 41001, 42001))
-            checked(stat.S_IMODE(os.fstat(owner).st_mode) & 0o6000 == 0,
-                    "chown must clear setuid/setgid")
-        finally:
-            os.close(owner)
-    finally:
-        os.close(directory)
+def credentials_special_bits(p, directory):
+    """Setuid/setgid bits round trip and chown clears them."""
+    with owned("group", os.O_RDWR, dir_fd=directory) as owner:
+        p.call("chmod-special-bits", lambda: os.fchmod(owner, 0o6750))
+        checked(stat.S_IMODE(os.fstat(owner).st_mode) == 0o6750, "special bits round trip")
+        p.call("chown-clears-special-bits", lambda: os.fchown(owner, 41001, 42001))
+        checked(stat.S_IMODE(os.fstat(owner).st_mode) & 0o6000 == 0,
+                "chown must clear setuid/setgid")
 
 
 def sync(p):
-    directory, _ = p.directory()
-    try:
+    with p.directory() as (directory, _):
         for name, flag in (("ordinary", 0), ("sync", os.O_SYNC), ("dsync", os.O_DSYNC)):
-            fd = os.open(name, os.O_CREAT | os.O_EXCL | os.O_RDWR | flag, 0o600,
-                         dir_fd=directory)
-            try:
+            with owned(name, os.O_CREAT | os.O_EXCL | os.O_RDWR | flag, 0o600,
+                       dir_fd=directory) as fd:
                 checked(p.write(fd, (name + "-receipt").encode()) == len(name) + 8,
                         "short regular write")
                 p.call("fdatasync", lambda: os.fdatasync(fd), file=name, open_flags=flag)
                 p.call("fsync", lambda: os.fsync(fd), file=name, open_flags=flag)
                 checked(os.pread(fd, 64, 0) == (name + "-receipt").encode(), "sync readback")
-            finally:
-                os.close(fd)
         p.call("directory-fsync", lambda: os.fsync(directory))
-        fd = os.open("mapped", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600, dir_fd=directory)
-        try:
+        with owned("mapped", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600, dir_fd=directory) as fd:
             os.ftruncate(fd, 4096)
             # Slice and readback lengths derive from the receipt itself: a fixed
             # 16-byte slice of this 17-byte receipt raised IndexError locally.
             receipt = b"mmap-receipt-0001"
+            # mmap's internal dup is closed with the mmap object (see ALARM).
             with mmap.mmap(fd, 4096, flags=mmap.MAP_SHARED,
                            prot=mmap.PROT_READ | mmap.PROT_WRITE) as view:
                 view[:len(receipt)] = receipt
                 p.call("MS_SYNC", view.flush, bytes=4096)
                 p.call("mapped-fsync", lambda: os.fsync(fd))
                 checked(os.pread(fd, len(receipt), 0) == receipt, "mapped readback")
-        finally:
-            os.close(fd)
-    finally:
-        os.close(directory)
 
 
 def namespace(p):
-    directory, _ = p.directory()
-    try:
-        fd = os.open("namespace", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o666, dir_fd=directory)
-        os.close(fd)
+    with p.directory() as (directory, _):
+        with owned("namespace", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o666, dir_fd=directory):
+            pass
 
         def isolated():
             libc = ctypes.CDLL(None, use_errno=True)
@@ -703,26 +770,21 @@ def namespace(p):
             after = os.readlink("/proc/self/ns/user")
             checked(before != after, "user namespace did not change")
             try:
-                fd = os.open("namespace", os.O_RDWR, dir_fd=directory)
+                with owned("namespace", os.O_RDWR, dir_fd=directory):
+                    pass
             except OSError as failure:
                 return {"before": before, "after": after, "errno": failure.errno}
-            else:
-                os.close(fd)
-                raise Refused("foreign user namespace unexpectedly authorized")
+            raise Refused("foreign user namespace unexpectedly authorized")
 
         result, status = p.child(isolated)
         checked(status == 0 and result["result"]["errno"] in DENIED,
                 "actual foreign namespace denial required; unshare failure is not a pass")
-    finally:
-        os.close(directory)
 
 
 def metadata(p):
-    directory, leaf = p.directory()
-    try:
-        fd = os.open("original", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600,
-                     dir_fd=directory)
-        try:
+    with p.directory() as (directory, leaf):
+        with owned("original", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600,
+                   dir_fd=directory) as fd:
             checked(p.write(fd, b"metadata-receipt") == 16, "metadata initial write")
             p.call("rename", lambda: os.rename("original", "renamed",
                                               src_dir_fd=directory, dst_dir_fd=directory))
@@ -732,27 +794,19 @@ def metadata(p):
             seen = os.stat(leaf + "/linked", dir_fd=p.roots[1], follow_symlinks=False)
             checked(seen.st_size == 8 and seen.st_nlink == 2, "hardlink/size fresh through other domain")
             p.call("directory-fsync", lambda: os.fsync(directory))
-        finally:
-            os.close(fd)
-        unlinked = os.open("unlinked", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600,
-                           dir_fd=directory)
-        try:
+        with owned("unlinked", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600,
+                   dir_fd=directory) as unlinked:
             p.call("unlink-open", lambda: os.unlink("unlinked", dir_fd=directory))
             checked(p.write(unlinked, b"retained") == 8, "open-unlinked write")
             p.call("fsync-open-unlinked", lambda: os.fsync(unlinked))
             checked(os.pread(unlinked, 8, 0) == b"retained", "open-unlinked read")
-        finally:
-            os.close(unlinked)
-    finally:
-        os.close(directory)
 
 
 def mapped_pressure(p):
-    directory, leaf = p.directory()
-    try:
-        fd = os.open("full", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600, dir_fd=directory)
-        try:
+    with p.directory() as (directory, leaf):
+        with owned("full", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600, dir_fd=directory) as fd:
             p.call("ftruncate", lambda: os.ftruncate(fd, PAYLOAD), bytes=PAYLOAD)
+            # mmap's internal dup is closed with the mmap object (see ALARM).
             with mmap.mmap(fd, PAYLOAD, flags=mmap.MAP_SHARED,
                            prot=mmap.PROT_READ | mmap.PROT_WRITE) as view:
                 # Deterministic full 4MiB payload; no reduced canary or SIGBUS pass.
@@ -761,21 +815,19 @@ def mapped_pressure(p):
                 p.call("MS_SYNC-full-canary", view.flush, bytes=PAYLOAD)
                 p.call("fsync-full-canary", lambda: os.fsync(fd))
                 expected = hashlib.sha256(view).hexdigest()
-            other = os.open(leaf + "/full", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=p.roots[1])
-            try:
-                digest = hashlib.sha256()
-                for offset in range(0, PAYLOAD, 65536):
-                    data = os.pread(other, min(65536, PAYLOAD - offset), offset)
-                    checked(len(data) == min(65536, PAYLOAD - offset), "short cross-domain canary read")
-                    digest.update(data)
-                checked(digest.hexdigest() == expected, "full canary cross-domain hash")
-                emit("canary", bytes=PAYLOAD, sha256=expected)
-            finally:
-                os.close(other)
-        finally:
-            os.close(fd)
-    finally:
-        os.close(directory)
+            check_canary(p, leaf, expected)
+
+
+def check_canary(p, leaf, expected):
+    """Read the full canary back through the second domain and compare hashes."""
+    with owned(leaf + "/full", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=p.roots[1]) as other:
+        digest = hashlib.sha256()
+        for offset in range(0, PAYLOAD, 65536):
+            data = os.pread(other, min(65536, PAYLOAD - offset), offset)
+            checked(len(data) == min(65536, PAYLOAD - offset), "short cross-domain canary read")
+            digest.update(data)
+        checked(digest.hexdigest() == expected, "full canary cross-domain hash")
+        emit("canary", bytes=PAYLOAD, sha256=expected)
 
 
 CASES = {"credentials": credentials, "sync": sync, "metadata": metadata,
@@ -829,6 +881,7 @@ def reread_domain(p, mount, leaf):
     names = []
 
     def listing():
+        # The scandir iterator closes its own fd when released (see ALARM).
         with os.scandir(mount["path"]) as entries:
             for entry in entries:
                 checked(len(names) < LISTING_LIMIT, "re-read listing bound")
@@ -863,16 +916,24 @@ def syncfs(fd):
 
 
 def sync_domain(p, mount):
-    """Open, syncfs and close one domain root; every errno is recorded."""
-    code, fd = attempt(p, "open-root-quiesce", lambda: os.open(
-        mount["path"], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW), path=mount["path"])
-    row = {"index": mount["index"], "open_errno": code, "syncfs_errno": None}
-    if fd is not None:
-        try:
-            row["syncfs_errno"], _ = attempt(p, "syncfs", lambda: syncfs(fd), path=mount["path"])
-        finally:
+    """Open, syncfs and close one domain root; every errno is recorded.
+
+    The root fd is registered in fds under the SIGALRM mask inside the try, so
+    a Deadline raised as the open returns still closes it.
+    """
+    fds = []
+    try:
+        code, _ = attempt(p, "open-root-quiesce", lambda: open_registered(
+            fds.append, mount["path"], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW),
+            path=mount["path"])
+        row = {"index": mount["index"], "open_errno": code, "syncfs_errno": None}
+        if fds:
+            row["syncfs_errno"], _ = attempt(p, "syncfs", lambda: syncfs(fds[0]),
+                                             path=mount["path"])
+        return row
+    finally:
+        for fd in fds:
             os.close(fd)
-    return row
 
 
 def drop_caches(p, label):
@@ -916,7 +977,8 @@ def after_loss(p, mounts):
     root, marker = mounts[domain]["path"], step_leaf(p, "after-loss")
 
     def create():
-        os.close(os.open(root + "/" + marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+        with owned(root + "/" + marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600):
+            pass
 
     attempts = []
     for operation, function in [
@@ -977,7 +1039,7 @@ def main():
             step = request["step"]
             p = run_step(request)
         else:
-            roots = admit(request)
+            admit(request, roots)
             p = run_case(request, roots)
         success = True
     except BaseException as failure:
