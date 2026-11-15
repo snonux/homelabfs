@@ -867,3 +867,95 @@ A fresh `prepare.py` tree applies it with fuzz zero and `fs/9p/`, `net/9p/`
 and `random.o` compile without warnings under `kernel.py configure`. view,
 view --pressure, mount_hello, tag (all `--sanitize`) and controlled_received
 `terminal-smoke` pass. No candidate was rebuilt or admitted.
+
+## Pending-allocation wait and the unmount stop (`x84`, `z84`)
+
+zq3-r10 R10-1 (x84, patch 0003): a request may not be numbered while
+another request's ALLOCATE is unacknowledged (`session->allocation_pending`).
+`hfs_call` used to answer that with an immediate local `-EAGAIN`. No VFS
+caller retries it: userspace saw a spurious EAGAIN, and `hfs_release`,
+`hfs_flush` and the FORGET and PROCESS_EXIT workers treat any error as
+uncertain and block the session. At process exit the PROCESS_EXIT work
+(queued from `do_exit` before `exit_files`) holds the fence while the
+exiting task's final `fput` sends DESCRIPTION_RELEASE, which is how r10's T1
+blocked its session without the release ever reaching the host.
+
+- **Wait while the fence is still clearing.** `hfs_call` now polls in
+  uninterruptible 10 ms sleeps (`HFS_ALLOCATION_POLL_MS`) for at most 30 s
+  (`HFS_ALLOCATION_WAIT_MS`, the guest's request window, both in `hfs.h`),
+  before any reservation, and again if a fence appears between its two
+  admission checks; that attempt then drops its reservation and view stamp
+  and starts over. At the deadline it returns the old `-EAGAIN`.
+- **Not for an allocation nothing will clear.** An uncertain ALLOCATE
+  (`allocation_uncertain`) still refuses at once, so cleanup callers still
+  block the session on it. A failed ALLOCATE (new
+  `hfs_request.allocation_failed`; nobody retries it) and a closing session
+  also refuse at once.
+- **Ordinary opcodes wait only for an ordinary owner.** That owner's window
+  is the ALLOCATE exchange `hfs_request_run` starts at once: one host round
+  trip that takes no VFS, page or mmap lock, waits on no workqueue and is
+  not parked behind recalls (`guestbridge` `Service.allocation`), so a
+  waiter holding `i_rwsem` or `mmap_lock` cannot stall it. An earmark
+  (`hfs_dirty_reserve`) holds the fence across DIRTY_RESERVE and, after a
+  refusal, until the mmap cleanup worker resumes or cancels it, which
+  depends on recalls and view STOP; ordinary callers keep the immediate
+  `-EAGAIN` there (the mmap fault path retries it itself). The four cleanup
+  opcodes also wait for an earmark: their callers (`__fput`, `filp_close`,
+  the control workqueue; READDIR's FORGET holds only the directory's shared
+  `i_rwsem`) hold nothing an earmark needs.
+- **No lasting deadlock.** The wait is bounded and then fails as before.
+  An ordinary owner is a running thread past its admission check, never a
+  work item queued behind the waiter, so a waiter on the control workqueue
+  (max_active 2) cannot hold back its own owner; earmarks are resolved by
+  the faulting thread or `cleanup_queue`, never `session->control`.
+  `hfs_call` is never entered with `session->lock` or `session->writer`
+  held, and the waiter holds neither while it sleeps.
+
+`hfs_call` was split into `hfs_call_admit[_locked]`, `hfs_call_reserve`,
+`hfs_call_prepare`, `hfs_call_number_locked` and `hfs_call_once`; the request
+setup itself is unchanged. The CALLERS_UNFUNDED/ENOSPC behaviour is
+unchanged: reservation failures are not fence waits.
+
+Residual (host, not changed): the daemon's ALLOCATE admits credentials with
+`allowExited` only for GAP_RESOLVE (`internal/guestbridge/controlled_protocol.go`
+`allocation`), while the CALL accepts an exited issuer for
+DESCRIPTION_RELEASE and FORGET (`originalCleanup`). A release whose issuer
+already completed PROCESS_EXIT (an fd inherited by a child that outlives the
+opener, or the r10 race if PROCESS_EXIT's CALL executes before the waiting
+release allocates) is refused at ALLOCATE and still blocks the session.
+
+zq3-r10 R10-2 (z84, patches 0003 and 0005): `hfs_controlled_stop` accepted
+only an UNBOUND or quiescent view, but a recall's REOPEN leaves the view LIVE
+with `quiescent` false, and `v9fs_hfs_kill_super` ran the stop before
+`kill_anon_super` and the control flush. Every clean unmount of a
+once-reopened mount logged `blocked by failed provider stop on STOP (-16)`.
+kill_sb now sets closing/blocked, tears the superblock down, flushes the
+control workqueue and only then stops. `hfs_controlled_view_idle` accepts,
+besides the old cases, a LIVE hfs1.4 view whose admission is closed
+(`hfs_view_try_enter_locked` refuses tokens, cache pages and observations
+once the session is closing or blocked) with zero active, dirty, cached,
+observation and mapping counts and no cookies. Any remaining owner, RECALLING
+and the drain phases still refuse and log.
+
+Tests: controlled_received `x84_test.inc` (every scenario) checks the
+decision matrix, the bounded wait and the unchanged `hfs_release` against a
+concurrent fence owner (waits, then numbers) and an uncertain one (refuses at
+once, blocks); `--scenario cleanup` makes every production cleanup caller
+wait for a pending ALLOCATE and still reach the host exactly once (run with a
+900 s timeout, see its README). A no-wait mutant fails `x84_test.inc:57`.
+mount_hello `unmount-reopened-view`: an idle LIVE view and one whose clean
+pages the teardown releases stop silently, a surviving cached page, an
+active token and RECALLING still log, and kill_sb must stop after the
+teardown and flush; reverting the order, the LIVE acceptance or the
+`nr_cached` check each fails it. The rotted tests/controlled harness (s54)
+gained the extraction span and `msleep`; it still fails to build on its
+pre-existing errors.
+
+The series was regenerated with `export.py --task x84-z84` (0003 and 0005
+change). A fresh `prepare.py` tree applies it with fuzz zero and `fs/9p/`,
+`net/9p/` and `random.o` compile without warnings under `kernel.py
+configure`. mount_hello, tag, view and view --pressure (plain and
+`--sanitize`), controlled_received `terminal-smoke` and `cleanup`, requests,
+readdir_cleanup, transport, huge, policy and cursor pass; root, capture,
+reclaim and codec fail as on the unchanged tree (s54). No candidate was
+rebuilt or admitted.

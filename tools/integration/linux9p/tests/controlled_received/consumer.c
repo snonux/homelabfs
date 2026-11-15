@@ -313,6 +313,7 @@ static void credential_init(struct fixture_session *f,const struct hfs_json *j,i
  assert(f->credentials.len==j->tokens[token].end-j->tokens[token].start&&!memcmp(f->credentials.data,j->data+j->tokens[token].start,f->credentials.len));
 }
 #include "bootstrap_test.inc"
+#include "x84_test.inc"
 static void fixture_set_current(struct fixture_session *f) {
  f->groups.ngroups=f->credential.ngroups;
  memcpy(f->groups.gid,f->credential.groups,f->credential.ngroups*sizeof(f->groups.gid[0]));
@@ -377,6 +378,7 @@ static void session_init(unsigned i) {
    assert(hfs_call_control_bytes(&profile,"DRAIN_WRITE",true));assert(hfs_call_control_bytes(&profile,"ROOT",true));
   }
  }
+ if(!i)x84_admission_regression(f);
  accounting_regression(s);
  uuid_t user_namespace;u8 map[32];assert(!s->provider->map(s,&f->native_cred,&init_user_ns,&user_namespace,map));
  assert(uuid_equal(&user_namespace,&f->credential.user_namespace)&&!memcmp(map,f->credential.idmap_hash,32));
@@ -871,6 +873,12 @@ static void command(char *line) {
  }
  if(!strcmp(operation,"CLEANUP_CALLER")){
   struct hfs_session *s=f->session;int err=0;u64 control=hfs_controlled_control_used;
+  /* x84: each production cleanup caller first meets another request's
+   * pending ALLOCATE (an earmark for the worker opcodes) and must wait for
+   * it to clear instead of failing; the host still sees one CALL each. */
+  bool x84_earmark=strcmp(line+consumed,"DESCRIPTION_CLOSE")&&strcmp(line+consumed,"DESCRIPTION_RELEASE");
+  struct hfs_request x84_owner={.session=s,.earmarked=x84_earmark};struct x84_clearer x84;
+  x84_clear_start(&x84,s,&x84_owner,30,false);
   if(!strcmp(line+consumed,"PROCESS_EXIT")){
    struct hfs_process *process=hfs_process_find(s,&f->pid);assert(process&&process->last&&uuid_equal(&process->id,&f->credential.process));
    hfs_process_exit_work(&process->exit_work);err=s->blocked?-EHOSTDOWN:0;
@@ -882,6 +890,7 @@ static void command(char *line) {
    if(!strcmp(line+consumed,"DESCRIPTION_CLOSE"))err=hfs_flush(&file,NULL);
    else {assert(!strcmp(line+consumed,"DESCRIPTION_RELEASE"));err=hfs_release(&inode,&file);if(!err){assert(!file.private_data);f->cleanup_description=NULL;}}
   }
+  assert(atomic_load(&x84.cleared));x84_clear_join(&x84);
   assert(control==hfs_controlled_control_used);done(id,err,NULL,0);return;
  }
  if(!strcmp(operation,"BYTE_PRESSURE")||!strcmp(operation,"BYTE_UNPRESSURE")){

@@ -55,6 +55,8 @@ struct p9_client {
 };
 #define HFS_CONTEXT_MAX 4096U
 #define HFS_CAP_MAX 8192U
+#define HFS_ALLOCATION_WAIT_MS 30000U /* hfs.h, x84 */
+#define HFS_ALLOCATION_POLL_MS 10U
 #define HZ 100UL
 #define P9_NOTAG 65535
 #define READ_ONCE(x) (x)
@@ -113,6 +115,14 @@ static void usleep_range(unsigned int a, unsigned int b) {
    (void)b;
    jiffies++;
    usleep(1000);
+}
+/* x84: hfs_call's pending-allocation poll advances the fixture clock. The
+ * earmark-pending ROOT and uncertain cases below still refuse at once (an
+ * ordinary opcode does not wait for an earmark, nobody for uncertainty).
+ */
+static void msleep(unsigned int ms) {
+   jiffies += msecs_to_jiffies(ms);
+   usleep(ms * 1000);
 }
 static void uuid_gen(uuid_t *id) {
    static u8 next = 90;

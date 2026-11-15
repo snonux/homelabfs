@@ -119,6 +119,11 @@ static inline unsigned long primitive_milliseconds(void) { struct timespec t;ass
 #define jiffies primitive_milliseconds()
 void primitive_sleep(unsigned long,unsigned long);
 #define usleep_range(a,b) primitive_sleep(a,b)
+/* x84: hfs_call's uninterruptible pending-allocation poll. A plain sleep, not
+ * the host-yielding primitive_sleep: the wait is local, and the test thread
+ * that clears the fence runs concurrently.
+ */
+#define msleep(ms) usleep((ms)*1000UL)
 #define pr_warn_ratelimited(...) fprintf(stderr,__VA_ARGS__)
 /* hfs_session_block's once-per-session line is a plain pr_warn since m64. */
 #define pr_warn(...) fprintf(stderr,__VA_ARGS__)

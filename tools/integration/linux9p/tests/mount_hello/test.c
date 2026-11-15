@@ -3,7 +3,8 @@
  * selection check; then the mounted superblock's mountinfo options (g64).
  * hfs_session_block's once-per-session log is checked directly, also under a
  * dropping ratelimit and through kill_sb's stop/retain fences (m64), and so is
- * the enrollment Bounds Sources floor (hfs_go_bounds, m64).
+ * the enrollment Bounds Sources floor (hfs_go_bounds, m64). z84 adds the
+ * unmount stop of a once-reopened LIVE view, after the superblock teardown.
  *
  * mount.inc, validate.inc, before_send.inc, show_options.inc, stop.inc,
  * kill_sb.inc and bounds.inc are verbatim production definitions; bounds_fixtures.inc holds
@@ -158,7 +159,8 @@ static struct hfs_controlled_registry {
 } *hfs_controlled_registry;
 /* Only the hfs_view fields hfs_controlled_stop reads (m64). */
 typedef int wait_queue_head_t;
-enum hfs_view_phase { HFS_VIEW_UNBOUND, HFS_VIEW_QUIESCENT };
+/* z84: LIVE is the phase a recall's REOPEN leaves behind; RECALLING one in flight. */
+enum hfs_view_phase { HFS_VIEW_UNBOUND, HFS_VIEW_QUIESCENT, HFS_VIEW_LIVE, HFS_VIEW_RECALLING };
 struct hfs_view {
 	spinlock_t lock;
 	wait_queue_head_t wait;
@@ -375,22 +377,36 @@ static int fixture_enroll(const char *device, struct hfs_enrollment *enrollment)
 #include "mount.inc"
 #include "show_options.inc"
 
-/* hfs_controlled_stop's view: one quiescent unbound view, so a stop with no
- * cookies succeeds and only its blocked fence is observed.
+/* hfs_controlled_stop's view: by default one quiescent unbound view, so a
+ * stop with no cookies succeeds and only its blocked fence is observed. The
+ * z84 cases replace it with a once-reopened LIVE view.
  */
 static struct hfs_view stop_view = { .quiescent = true, .phase = HFS_VIEW_UNBOUND };
 static struct hfs_view *hfs_view_get(struct hfs_session *session) { return &stop_view; }
 static void hfs_view_put(struct hfs_view *view) { CHECK(view == &stop_view); }
 #include "stop.inc"
 
-/* kill_sb primitives. begin_close and stop results come from the case. */
+/* kill_sb primitives. begin_close and stop results come from the case.
+ * kill_anon_super models eviction/truncation: it drops the cached pages the
+ * case says the superblock teardown releases (z84), and the stop records
+ * whether the teardown and the control flush already ran.
+ */
 static int unmount_close_err, unmount_stop_err;
-static unsigned int unmount_retains;
+static unsigned int unmount_retains, unmount_kills, unmount_flushes;
+static u32 unmount_kill_releases;
+static bool unmount_stop_after_flush;
 static int hfs_controlled_begin_close(struct hfs_session *session) { return unmount_close_err; }
+static void fixture_kill_anon_super(struct super_block *sb)
+{
+	unmount_kills++;
+	stop_view.nr_cached -= unmount_kill_releases;
+}
 static int unmount_stop(struct hfs_session *session)
 {
-	int err = hfs_controlled_stop(session);
+	int err;
 
+	unmount_stop_after_flush = unmount_kills && unmount_flushes;
+	err = hfs_controlled_stop(session);
 	return unmount_stop_err ? unmount_stop_err : err;
 }
 static void unmount_retain(struct hfs_session *session)
@@ -402,8 +418,8 @@ static const struct hfs_provider unmount_provider = {
 	.retain = unmount_retain, .stop = unmount_stop,
 };
 #define tracepoint_synchronize_unregister() ((void)0)
-#define kill_anon_super(sb) ((void)(sb))
-#define flush_workqueue(wq) ((void)(wq))
+#define kill_anon_super(sb) fixture_kill_anon_super(sb)
+#define flush_workqueue(wq) ((void)(wq), unmount_flushes++)
 #include "kill_sb.inc"
 #include "bounds.inc"
 #include "bounds_fixtures.inc"
@@ -598,12 +614,14 @@ static struct hfs_session *unmount(int close_err, int stop_err)
 
 	CHECK(session);
 	session->provider = &unmount_provider;
+	session->bridge_minor = 4; /* the zq3 mounts are hfs1.4 */
 	INIT_LIST_HEAD(&session->global);
 	unmount_close_err = close_err;
 	unmount_stop_err = stop_err;
 	v9fs_hfs_kill_super(&sb);
 	CHECK(session->blocked && session->closing && session->retained);
 	CHECK(controlled_mount.stopping && !sb.s_fs_info);
+	CHECK(unmount_stop_after_flush); /* z84: stop follows teardown and flush */
 	return session;
 }
 
@@ -632,6 +650,44 @@ static void run_stop_block_case(void)
 	free(stop_fault);
 	free(close_fault);
 	free(failed_mount);
+}
+
+/* z84 (zq3-r10 R10-2): a recall's REOPEN leaves the view LIVE and not
+ * quiescent. Once kill_sb has closed admission and torn the superblock down,
+ * such a view with no remaining owner must stop silently; any remaining
+ * owner must still refuse and log. Fails on the pre-z84 source (the stop
+ * accepted only UNBOUND or quiescent views and ran before kill_anon_super).
+ */
+static void run_reopened_stop_case(void)
+{
+	struct hfs_session *idle, *torn_down, *cached, *active, *recalling;
+
+	stop_view = (struct hfs_view){ .phase = HFS_VIEW_LIVE };
+	idle = unmount(0, 0);
+	CHECK(warnings == 0 && !idle->block_reported);
+	/* Clean pages the teardown truncates no longer count. */
+	stop_view = (struct hfs_view){ .phase = HFS_VIEW_LIVE, .nr_cached = 2 };
+	unmount_kill_releases = 2;
+	torn_down = unmount(0, 0);
+	CHECK(warnings == 0 && !torn_down->block_reported && !stop_view.nr_cached);
+	unmount_kill_releases = 0;
+	/* A page that survives the teardown still refuses. */
+	stop_view = (struct hfs_view){ .phase = HFS_VIEW_LIVE, .nr_cached = 1 };
+	cached = unmount(0, 0);
+	CHECK(warnings == 1 && cached->block_reported);
+	CHECK(strstr(last_warning, "blocked by failed provider stop on STOP (-16)"));
+	stop_view = (struct hfs_view){ .phase = HFS_VIEW_LIVE, .active = 1 };
+	active = unmount(0, 0);
+	CHECK(warnings == 2 && active->block_reported);
+	/* Only LIVE is accepted without quiescence; a recall in flight is not. */
+	stop_view = (struct hfs_view){ .phase = HFS_VIEW_RECALLING };
+	recalling = unmount(0, 0);
+	CHECK(warnings == 3 && recalling->block_reported);
+	free(idle);
+	free(torn_down);
+	free(cached);
+	free(active);
+	free(recalling);
 }
 
 /* hfs_go_bounds on a Bounds JSON object for an enrollment of `domains`,
@@ -758,7 +814,8 @@ int main(void)
 	failures += !run_child("session-block-once", NULL, run_block_case);
 	failures += !run_child("session-block-ratelimit", NULL, run_block_ratelimit_case);
 	failures += !run_child("unmount-fence-log", NULL, run_stop_block_case);
+	failures += !run_child("unmount-reopened-view", NULL, run_reopened_stop_case);
 	failures += !run_child("enrollment-sources-floor", NULL, run_bounds_case);
-	printf("mount_hello cases=%zu failures=%u\n", ARRAY_SIZE(cases) + 5, failures);
+	printf("mount_hello cases=%zu failures=%u\n", ARRAY_SIZE(cases) + 6, failures);
 	return failures ? 1 : 0;
 }

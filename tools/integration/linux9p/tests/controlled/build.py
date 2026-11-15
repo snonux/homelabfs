@@ -42,7 +42,9 @@ spans = [('static int hfs_field_u64(', '\nvoid hfs_cred_write('),
          ('static int hfs_reply_scope(', '\nstatic int hfs_copy_token('),
          ('static int hfs_copy_token(', '\nstatic int hfs_result_validate('),
          ('static void hfs_request_result_put(', '\nint hfs_request_cancel_earmark('),
-         ('int hfs_call(', '\nint hfs_args_init(')]
+         # x84: hfs_call with its admission/wait helpers. hfs_call_control_bytes
+         # was already outside the old 'int hfs_call(' span (s54 harness rot).
+         ('static bool hfs_cleanup_opcode(', '\nint hfs_args_init(')]
 parts=[]
 for first,last in spans:
     start=session.index(first)

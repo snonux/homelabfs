@@ -277,6 +277,32 @@ operations to stay within existing budgets. These are portable production-source
 component checks with declared OS/MM primitives; they establish no installed
 kernel, native PTE/TLB, ABI or deployment acceptance.
 
+## Pending-allocation wait (`x84`)
+
+zq3-r10 R10-1: `hfs_call` answered every request issued while another
+request's ALLOCATE was unacknowledged with a local `-EAGAIN`, and the cleanup
+callers blocked the session on it. `x84_test.inc` runs in every scenario
+(first fixture session, before READY):
+
+* the actual `hfs_call_admit_locked` decision matrix: an ordinary owner makes
+  every caller wait, an earmark only cleanup callers, and an uncertain or
+  failed allocation or a closing session nobody;
+* the actual `hfs_call_admit`: it waits for a concurrent thread that clears
+  the fence, returns the old `-EAGAIN` at its deadline, and refuses an
+  uncertain allocation at once;
+* in disposable children, the unchanged `hfs_release`: with a concurrent
+  owner it waits and reaches its own numbering (an injected allocation
+  failure then ends it locally; before x84 it returned `-EAGAIN` at once and
+  blocked), and with an uncertain allocation it still refuses at once and
+  blocks.
+
+`--scenario cleanup` additionally starts each `CLEANUP_CALLER` with another
+request's pending ALLOCATE (an earmark for FORGET and PROCESS_EXIT), cleared
+by a thread after 30 ms: every production caller must wait and the host must
+still see exactly one CALL each. run.py's 180 s test timeout is too short for
+that scenario on a two-CPU race build (two subtests of about 35-80 s plus
+setup); x84 ran it through the same overlay with a 900 s timeout.
+
 ## Failed bind and slot floor (`w54`)
 
 Each startup, after the actual accepted HELLO and before the real sb binding,

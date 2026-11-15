@@ -114,7 +114,7 @@ for relative in ['internal/controlledruntime/producer_test.go', 'tools/integrati
 overlay=out/'overlay.json'
 overlay.write_text(json.dumps({'Replace':replacements},indent=2)+'\n')
 inputs=[here.parent/'common/runner_process.py',here/'build.py',here/'consumer.c',here/'compat.h',here/'README.md',*sorted(frozen.iterdir()),*sorted((source/'fs/9p').rglob('*')),source/'net/9p/trans_virtio.c',source/'net/9p/client.c',
-        here/'run.py',here/'bootstrap_test.inc',here.parent/'controlled_provider/compat.h',here.parent/'codec/compat.h',
+        here/'run.py',here/'bootstrap_test.inc',here/'x84_test.inc',here.parent/'controlled_provider/compat.h',here.parent/'codec/compat.h',
         here.parent/'common/kernel_format.h',here.parent/'common/kernel_format.c',
         *sorted((repo/'tools/integration/lib9p').rglob('*.c')),
         *sorted((repo/'tools/integration/lib9p').rglob('*.h')),
