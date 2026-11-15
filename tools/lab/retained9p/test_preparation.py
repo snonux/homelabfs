@@ -414,9 +414,10 @@ class PreparationTests(unittest.TestCase):
                   "/proc/self/mountinfo": b"1 0 0:1 / / rw - ext4 root rw\n"}
         with mock.patch.object(guest, "read", side_effect=lambda path, _: values[path]), \
                 mock.patch.object(guest.os, "geteuid", return_value=0), \
-                mock.patch.object(guest.os, "open") as opened:
+                mock.patch.object(guest.os, "open") as opened, \
+                contextlib.redirect_stdout(io.StringIO()):
             with self.assertRaisesRegex(guest.Refused, "exact mountpoint"):
-                guest.admit(request)
+                guest.admit(request, [])
             opened.assert_not_called()
 
     def test_forced_observer_allows_only_exact_full_or_phase_command(self):
@@ -836,14 +837,17 @@ class GuestRetentionTests(unittest.TestCase):
             self.run_dir.chmod(mode)
             with self.subTest(mode=oct(mode)), \
                     self.assertRaisesRegex(guest.Refused, "root-private local run directory"):
-                guest.Retention(probe).run_directory()
+                with guest.Retention(probe).run_directory():
+                    pass
         self.run_dir.chmod(0o700)
-        os.close(guest.Retention(probe).run_directory())
+        with guest.Retention(probe).run_directory():
+            pass
         with mock.patch.object(guest, "RUN_PARENT", str(self.domain / "m1" / "hfs-zq3-")):
             (self.domain / "m1" / "hfs-zq3-test").mkdir(mode=0o700)
             probe = guest.Probe(self.request, self.roots)
             with self.assertRaisesRegex(guest.Refused, "root-private local run directory"):
-                guest.Retention(probe).run_directory()
+                with guest.Retention(probe).run_directory():
+                    pass
 
     def test_existing_retention_record_is_never_overwritten(self):
         (self.run_dir / "release-sync.json").write_text("{}")
@@ -864,14 +868,13 @@ class GuestRetentionTests(unittest.TestCase):
 
     def test_main_retains_on_case_and_releases_only_on_release_request(self):
         def stub_case(probe):
-            directory, _ = probe.directory()
-            os.close(os.open("namespace", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600, dir_fd=directory))
-            os.close(directory)
+            with probe.directory() as (directory, _):
+                os.close(os.open("namespace", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600, dir_fd=directory))
 
         def main(request):
             printed = io.StringIO()
             stdin = io.TextIOWrapper(io.BytesIO(json.dumps(request).encode()))
-            with mock.patch.object(guest, "admit", return_value=list(self.roots)), \
+            with mock.patch.object(guest, "admit", side_effect=lambda _, roots: roots.extend(self.roots)), \
                     mock.patch.object(guest.os, "close", side_effect=lambda fd: None if fd in self.roots else real_close(fd)), \
                     mock.patch.object(guest.resource, "setrlimit"), \
                     mock.patch.dict(guest.CASES, {"namespace": stub_case}), \

@@ -103,11 +103,20 @@ def validate_request(request):
         raise Refused("budget outside overall 5..60 / case 1..5 seconds")
 
 
-def admit(request):
-    """All checks precede creation. Keep this descriptor until fixture completion."""
+def admit(request, owned):
+    """All checks precede creation. Keep this descriptor until fixture completion.
+
+    The root fd is appended to the caller's owned list with the raising
+    handlers deferred (child_bookkeeping): an hfs open waits uninterruptibly,
+    so an expired alarm would otherwise raise as os.open returns and leak the
+    fd until process exit. A refusal closes and removes it again, also with the
+    handlers deferred, so the caller never closes it twice.
+    """
     validate_request(request)
     observed = mount_record(request["mountpoint"], request["tag"], request["mount_id"])
-    fd = os.open(request["mountpoint"], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    with child_bookkeeping():
+        owned.append(os.open(request["mountpoint"], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW))
+    fd = owned[-1]
     try:
         if fd_mount_id(fd) != request["mount_id"]:
             raise Refused("retained descriptor mount ID differs")
@@ -116,7 +125,8 @@ def admit(request):
             raise Refused("mountpoint identity changed")
         return fd, observed
     except BaseException:
-        os.close(fd)
+        with child_bookkeeping():
+            os.close(owned.pop())
         raise
 
 
@@ -225,7 +235,11 @@ CHILD_SIGNALS = {signal.SIGALRM, signal.SIGTERM, signal.SIGINT}
 
 @contextmanager
 def child_bookkeeping():
-    """Defer raising handlers until kernel child state is durably tracked here."""
+    """Defer raising handlers until kernel child or fd state is durably tracked here.
+
+    Also used around every os.open of the tested mount and the store of its
+    fd: a pending alarm then raises only once the cleanup path owns the fd.
+    """
     previous = signal.pthread_sigmask(signal.SIG_BLOCK, CHILD_SIGNALS)
     try:
         yield previous
@@ -368,8 +382,13 @@ class Fixture:
     def family(self, family):
         self.begin(family + "-setup")
         filename = family + ".lock"
-        fd = os.open(filename, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=self.directory)
+        owned = []
         try:
+            # Registered with raising handlers deferred; the finally closes it.
+            with child_bookkeeping():
+                owned.append(os.open(filename, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                                     0o600, dir_fd=self.directory))
+            fd = owned[0]
             self.file_identity = identity(fd)
             contender = Child(self, filename, family)
             holder = Child(self, filename, family)
@@ -421,7 +440,8 @@ class Fixture:
                 self.checks.append("flock-shared-shared-exclusive-conflict")
             contender.exit()
         finally:
-            os.close(fd)
+            for each in owned:
+                os.close(each)
 
     def run(self):
         check_abi()
@@ -429,7 +449,10 @@ class Fixture:
         try:
             os.mkdir(self.leaf, 0o700, dir_fd=self.root_fd)
             self.created_leaf = True
-            self.directory = os.open(self.leaf, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=self.root_fd)
+            # Stored with raising handlers deferred so the finally always closes it.
+            with child_bookkeeping():
+                self.directory = os.open(self.leaf, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                         dir_fd=self.root_fd)
             self.family("posix")
             self.family("flock")
         except BaseException as failure:
@@ -480,7 +503,7 @@ def main():
     result = {"protocol": PROTOCOL, "passed": False, "scope": "same-guest-same-9p-mount",
               "publication_identity_verified": False, "security_admission_verified": False,
               "parent_guard_oracle_required": True}
-    fd = None
+    owned = []  # The retained root fd; admit appends it with handlers deferred.
     started = time.monotonic()
     try:
         if len(sys.argv) != 1:
@@ -500,7 +523,7 @@ def main():
         if remaining <= 0:
             raise TimeoutError("request exhausted approved overall budget")
         signal.setitimer(signal.ITIMER_REAL, remaining)
-        fd, observed = admit(request)
+        fd, observed = admit(request, owned)
         remaining = work_deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("admission exhausted approved overall budget")
@@ -509,9 +532,10 @@ def main():
     except BaseException as error:
         result["error"] = type(error).__name__ + ": " + str(error)
     finally:
-        if fd is not None:
-            os.close(fd)
+        # Cancel the alarm first so no deadline can interrupt the close.
         signal.setitimer(signal.ITIMER_REAL, 0)
+        for each in owned:
+            os.close(each)
     encoded = json.dumps(result, sort_keys=True)
     if len(encoded.encode()) > MAX_REPORT:
         encoded = json.dumps({"protocol": PROTOCOL, "passed": False, "error": "report exceeded bound; resources uncertain"})
