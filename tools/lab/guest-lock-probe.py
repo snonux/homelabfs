@@ -239,8 +239,17 @@ def child_bookkeeping():
 
     Also used around every os.open of the tested mount and the store of its
     fd: a pending alarm then raises only once the cleanup path owns the fd.
+
+    A signal that arrived just before the block is already flagged, so its
+    handler raises from pthread_sigmask after the block took effect; unblock
+    and re-raise rather than leave the signals blocked. This mask is never
+    nested, so the signals were unblocked before the call.
     """
-    previous = signal.pthread_sigmask(signal.SIG_BLOCK, CHILD_SIGNALS)
+    try:
+        previous = signal.pthread_sigmask(signal.SIG_BLOCK, CHILD_SIGNALS)
+    except BaseException:
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, CHILD_SIGNALS)
+        raise
     try:
         yield previous
     finally:
@@ -379,69 +388,119 @@ class Fixture:
         child.receive("acquired")
         child.command("lock", "unlocked", mode="unlock")
 
-    def family(self, family):
-        self.begin(family + "-setup")
-        filename = family + ".lock"
+    @contextmanager
+    def lock_file(self, filename):
+        """Create the case's lock file; yield its fd and always close it.
+
+        The fd is registered with raising handlers deferred (child_bookkeeping),
+        so an alarm pending since the open still reaches the finally (R10-1).
+        """
         owned = []
         try:
-            # Registered with raising handlers deferred; the finally closes it.
             with child_bookkeeping():
                 owned.append(os.open(filename, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
                                      0o600, dir_fd=self.directory))
-            fd = owned[0]
-            self.file_identity = identity(fd)
-            contender = Child(self, filename, family)
-            holder = Child(self, filename, family)
-            self.begin(family + "-nonblocking")
-            lock(fd, family, "exclusive")
-            self.conflict(contender)
-            if family == "posix":
-                contender.command("lock", "acquired", mode="exclusive", start=16, length=8)
-                contender.command("lock", "unlocked", mode="unlock", start=16, length=8)
-                result = contender.command("getlk", "getlk")["result"]
-                if result != {"type": fcntl.F_WRLCK, "whence": os.SEEK_SET, "start": 0, "length": 8, "pid": os.getpid()}:
-                    raise Refused("GETLK failed conflicting type/range/PID oracle")
-            self.checks.append(family + "-conflict" + ("-disjoint-getlk" if family == "posix" else ""))
-            self.begin(family + "-blocking")
-            self.wait_then_release(contender, family, lambda: lock(fd, family, "unlock"))
-            self.checks.append(family + "-blocking-wakeup")
-            self.begin(family + "-lifetime")
-            holder.command("lock", "acquired", mode="exclusive")
-            if family == "posix":
-                holder.command("close-other", "closed-other")
-                contender.command("lock", "acquired", mode="exclusive")
-                contender.command("lock", "unlocked", mode="unlock")
-                self.checks.append("posix-close-any-fd")
-                holder.command("lock", "acquired", mode="exclusive")
-            else:
-                holder.command("dup", "duplicated")
-                holder.command("close-original", "closed-original")
-                self.conflict(contender)
-                holder.command("close-other", "closed-other")
-                self.conflict(contender)
-                self.checks.append("flock-dup-and-unrelated-close-retain")
-                holder.command("close-final", "closed-final")
-                contender.command("lock", "acquired", mode="exclusive")
-                contender.command("lock", "unlocked", mode="unlock")
-                self.checks.append("flock-final-description-close")
-                holder.command("reopen", "reopened")
-                holder.command("lock", "acquired", mode="exclusive")
-            holder.exit()
-            contender.command("lock", "acquired", mode="exclusive")
-            contender.command("lock", "unlocked", mode="unlock")
-            self.checks.append(family + "-exit-cleanup")
-            if family == "flock":
-                self.begin("flock-shared")
-                lock(fd, family, "shared")
-                contender.command("lock", "acquired", mode="shared")
-                self.conflict(contender)
-                contender.command("lock", "unlocked", mode="unlock")
-                lock(fd, family, "unlock")
-                self.checks.append("flock-shared-shared-exclusive-conflict")
-            contender.exit()
+            yield owned[0]
         finally:
             for each in owned:
                 os.close(each)
+
+    def family(self, family):
+        self.begin(family + "-setup")
+        filename = family + ".lock"
+        with self.lock_file(filename) as fd:
+            self.file_identity = identity(fd)
+            contender = Child(self, filename, family)
+            holder = Child(self, filename, family)
+            self.nonblocking_and_blocking(fd, family, contender)
+            self.lifetime(family, holder, contender)
+            if family == "flock":
+                self.flock_shared(fd, contender)
+            contender.exit()
+
+    def nonblocking_and_blocking(self, fd, family, contender):
+        """Conflict (plus POSIX disjoint range and GETLK), then a blocking wakeup."""
+        self.begin(family + "-nonblocking")
+        lock(fd, family, "exclusive")
+        self.conflict(contender)
+        if family == "posix":
+            contender.command("lock", "acquired", mode="exclusive", start=16, length=8)
+            contender.command("lock", "unlocked", mode="unlock", start=16, length=8)
+            result = contender.command("getlk", "getlk")["result"]
+            if result != {"type": fcntl.F_WRLCK, "whence": os.SEEK_SET, "start": 0, "length": 8, "pid": os.getpid()}:
+                raise Refused("GETLK failed conflicting type/range/PID oracle")
+        self.checks.append(family + "-conflict" + ("-disjoint-getlk" if family == "posix" else ""))
+        self.begin(family + "-blocking")
+        self.wait_then_release(contender, family, lambda: lock(fd, family, "unlock"))
+        self.checks.append(family + "-blocking-wakeup")
+
+    def lifetime(self, family, holder, contender):
+        """Lock lifetime across close/dup/reopen, then holder exit cleanup."""
+        self.begin(family + "-lifetime")
+        holder.command("lock", "acquired", mode="exclusive")
+        if family == "posix":
+            holder.command("close-other", "closed-other")
+            contender.command("lock", "acquired", mode="exclusive")
+            contender.command("lock", "unlocked", mode="unlock")
+            self.checks.append("posix-close-any-fd")
+            holder.command("lock", "acquired", mode="exclusive")
+        else:
+            holder.command("dup", "duplicated")
+            holder.command("close-original", "closed-original")
+            self.conflict(contender)
+            holder.command("close-other", "closed-other")
+            self.conflict(contender)
+            self.checks.append("flock-dup-and-unrelated-close-retain")
+            holder.command("close-final", "closed-final")
+            contender.command("lock", "acquired", mode="exclusive")
+            contender.command("lock", "unlocked", mode="unlock")
+            self.checks.append("flock-final-description-close")
+            holder.command("reopen", "reopened")
+            holder.command("lock", "acquired", mode="exclusive")
+        holder.exit()
+        contender.command("lock", "acquired", mode="exclusive")
+        contender.command("lock", "unlocked", mode="unlock")
+        self.checks.append(family + "-exit-cleanup")
+
+    def flock_shared(self, fd, contender):
+        self.begin("flock-shared")
+        lock(fd, "flock", "shared")
+        contender.command("lock", "acquired", mode="shared")
+        self.conflict(contender)
+        contender.command("lock", "unlocked", mode="unlock")
+        lock(fd, "flock", "unlock")
+        self.checks.append("flock-shared-shared-exclusive-conflict")
+
+    def _cleanup(self, error):
+        """TERM and reap every live child, close the leaf; return the first error."""
+        # The production work alarm has a two-second cleanup reservation.
+        # Never let that same handler interrupt cleanup and discard PID inventory.
+        if self.scope == "same-guest-same-9p-mount":
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+        cleanup_deadline = time.monotonic() + 1.5
+        for child in self.children:
+            if not child.reaped:
+                try:
+                    os.kill(child.pid, signal.SIGTERM)
+                    self.cleanup.append({"pid": child.pid, "term_sent": True})
+                except ProcessLookupError:
+                    pass
+                except OSError as failure:
+                    error = error or "TERM cleanup failed: " + str(failure)
+        for child in self.children:
+            if not child.reaped:
+                try:
+                    child.reap(cleanup_deadline)
+                except OSError as failure:
+                    error = error or "reap cleanup failed: " + str(failure)
+        if self.directory is not None:
+            try:
+                os.close(self.directory)
+            except OSError as failure:
+                error = error or "directory close failed: " + str(failure)
+        return error
 
     def run(self):
         check_abi()
@@ -458,33 +517,7 @@ class Fixture:
         except BaseException as failure:
             error = type(failure).__name__ + ": " + str(failure)
         finally:
-            # The production work alarm has a two-second cleanup reservation.
-            # Never let that same handler interrupt cleanup and discard PID inventory.
-            if self.scope == "same-guest-same-9p-mount":
-                signal.setitimer(signal.ITIMER_REAL, 0)
-                signal.signal(signal.SIGTERM, signal.SIG_IGN)
-                signal.signal(signal.SIGINT, signal.SIG_IGN)
-            cleanup_deadline = time.monotonic() + 1.5
-            for child in self.children:
-                if not child.reaped:
-                    try:
-                        os.kill(child.pid, signal.SIGTERM)
-                        self.cleanup.append({"pid": child.pid, "term_sent": True})
-                    except ProcessLookupError:
-                        pass
-                    except OSError as failure:
-                        error = error or "TERM cleanup failed: " + str(failure)
-            for child in self.children:
-                if not child.reaped:
-                    try:
-                        child.reap(cleanup_deadline)
-                    except OSError as failure:
-                        error = error or "reap cleanup failed: " + str(failure)
-            if self.directory is not None:
-                try:
-                    os.close(self.directory)
-                except OSError as failure:
-                    error = error or "directory close failed: " + str(failure)
+            error = self._cleanup(error)
         uncertain = [child.pid for child in self.children if not child.reaped]
         if uncertain or any(item.get("status", 0) != 0 or item.get("term_sent") for item in self.cleanup):
             error = error or "child cleanup/nonzero exit failure"

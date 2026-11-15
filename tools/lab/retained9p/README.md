@@ -268,7 +268,8 @@ SIGALRM across every open and its registration (`open_registered`/`owned`),
 so the pending deadline fires with the fd already owned by a cleanup path.
 `guest-lock-probe.py` defers its raising handlers the same way. Admission
 also emits `admission-step` events (`identity-checked`, then `open-root`,
-`stat-root` and `root-admitted` per domain), so a slow stage shows in
+`stat-root` and `root-admitted` per domain; step requests emit only
+`identity-checked`, before `admitted-step`), so a slow stage shows in
 `stdout.log` as the gap to the next event; the controller and correlator
 ignore them.
 

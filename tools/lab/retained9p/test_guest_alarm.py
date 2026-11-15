@@ -100,6 +100,21 @@ class OwnedDescriptorTests(AlarmTestCase):
         self.assertEqual(fds, [])
         self.assert_alarm_unblocked()
 
+    def test_alarm_flagged_during_block_leaves_alarm_unblocked(self):
+        """The handler raises from pthread_sigmask after the block took effect."""
+        real = signal.pthread_sigmask
+
+        def late(how, mask):
+            previous = real(how, mask)
+            if how == signal.SIG_BLOCK and mask == guest.ALARM:
+                guest.deadline()
+            return previous
+        with mock.patch.object(guest.signal, "pthread_sigmask", late), \
+                mock.patch.object(guest.os, "open") as opened, self.assertRaises(guest.Deadline):
+            guest.open_registered([].append, self.temp, os.O_RDONLY)
+        opened.assert_not_called()
+        self.assert_alarm_unblocked()
+
     def test_owned_without_alarm_yields_and_closes(self):
         with guest.owned(self.temp, os.O_RDONLY | os.O_DIRECTORY) as fd:
             self.assertTrue(is_open(fd))
@@ -251,9 +266,13 @@ class CaseDescriptorTests(AlarmTestCase):
                            ("metadata", "unlinked"), ("namespace", "namespace"),
                            ("mapped-pressure", "full")]:
             with self.subTest(case=case, name=name):
-                fake = self.run_case(case, lambda path, n=name: path == n)
-                self.assertGreaterEqual(len(fake.opened), 2)
-                shutil.rmtree(os.path.join(self.temp, "m0", "zq3-test-" + case))
+                leaf = os.path.join(self.temp, "m0", "zq3-test-" + case)
+                try:
+                    fake = self.run_case(case, lambda path, n=name: path == n)
+                    self.assertGreaterEqual(len(fake.opened), 2)
+                finally:
+                    # A failing subtest must not leave the leaf (EEXIST next time).
+                    shutil.rmtree(leaf, ignore_errors=True)
 
     def test_deadline_on_cross_domain_canary_open_closes_all(self):
         fake = self.run_case("mapped-pressure", lambda path: path.endswith("/full"))
@@ -270,6 +289,52 @@ class CaseDescriptorTests(AlarmTestCase):
         last = json.loads(printed.getvalue().splitlines()[-1])
         self.assertEqual((last["event"], last["operation"], last["timeout"]),
                          ("reply", "open-root-quiesce", True))
+        self.assert_all_closed(fake)
+
+    def test_deadline_on_after_loss_create_closes_marker(self):
+        fake = AlarmingOpen(trigger=lambda path: path.endswith("after-loss"))
+        probe = guest.Probe(step_request("after-loss"), [])
+        mounts = [{"index": 0, "path": "", "present": False},
+                  {"index": 1, "path": os.path.join(self.temp, "m0"), "present": True}]
+        with mock.patch.object(guest.os, "open", fake), \
+                contextlib.redirect_stdout(io.StringIO()), self.assertRaises(guest.Deadline):
+            guest.after_loss(probe, mounts)
+        self.assertEqual(len(fake.opened), 1)
+        self.assert_all_closed(fake)
+        # The marker stays as evidence; only its descriptor is closed.
+        self.assertTrue(os.path.exists(os.path.join(self.temp, "m0", "zq3-test-after-loss")))
+
+    def test_deadline_on_retention_opens_closes_them(self):
+        """Run directory, record create and record read each close on a deadline."""
+        os.mkdir(os.path.join(self.temp, "local"))
+        run = os.path.join(self.temp, "local", "hfs-zq3-test")
+        os.mkdir(run, 0o700)
+        for name, value in [("RUN_PARENT", os.path.join(self.temp, "local", "hfs-zq3-")),
+                            ("TRUSTED_UID", os.geteuid())]:
+            patcher = mock.patch.object(guest, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        # No roots: the stand-in run directory shares the temp filesystem with
+        # m0, which run_directory would rightly refuse as a tested domain.
+        retention = guest.Retention(guest.Probe(case_request("sync"), []))
+        for target, action in [(run, lambda: retention.write_record({"version": "x"})),
+                               ("release-sync.json", lambda: retention.write_record({"version": "x"}))]:
+            with self.subTest(target=target):
+                fake = AlarmingOpen(trigger=lambda path, t=target: path == t)
+                with mock.patch.object(guest.os, "open", fake), self.assertRaises(guest.Deadline):
+                    action()
+                self.assert_all_closed(fake)
+        with open(os.path.join(run, "release-sync.json"), "rb") as stream:
+            self.assertEqual(stream.read(), b"")
+        os.chmod(os.path.join(run, "release-sync.json"), 0o600)
+        fake = AlarmingOpen(trigger=lambda path: path == "release-sync.json")
+
+        def read_record():
+            with retention.run_directory() as fd:
+                return retention.read_record(fd)
+        with mock.patch.object(guest.os, "open", fake), self.assertRaises(guest.Deadline):
+            read_record()
+        self.assertEqual(len(fake.opened), 2)
         self.assert_all_closed(fake)
 
     def test_quiesce_root_without_alarm_records_open_and_syncfs(self):

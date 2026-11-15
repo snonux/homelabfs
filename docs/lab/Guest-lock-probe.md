@@ -71,8 +71,11 @@ entry reserves two seconds from its 60-second ceiling for cleanup; the requested
 overall budget is 5–60 seconds including stdin, admission and cleanup. A budget-aware
 work alarm leaves that reservation before bounded cleanup starts. Each case/handshake deadline is 1–5
 seconds; cleanup shares at most 1.5 seconds for normal TERM and nonblocking reaping.
-SIGALRM, SIGTERM and SIGINT are masked only across fork/PID registration and
-waitpid/reap bookkeeping; child handlers are reset and the prior mask restored
+SIGALRM, SIGTERM and SIGINT are masked only across fork/PID registration,
+waitpid/reap bookkeeping and the parent's root, leaf and lock-file opens with
+the store of each new descriptor (y84: an hfs open waits uninterruptibly, so an
+alarm raised as it returned used to leak the fd until exit, zq3-r10 R10-1);
+child handlers are reset and the prior mask restored
 before work, with SIGTERM unblocked for supervised cleanup. There is no SIGKILL, forced
 unmount, or VM lifecycle action. Kernel operations stuck
 in uninterruptible I/O cannot be guaranteed to terminate by a userspace deadline;

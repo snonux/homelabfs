@@ -111,7 +111,26 @@ def deadline(*_):
 # session. Every descriptor this probe opens therefore goes through
 # open_registered/owned: SIGALRM is blocked across the open and the handoff to
 # the owner, and the pending alarm fires only once the cleanup path owns the fd.
+# Deliberately unmasked: os.scandir (its fd is closed by the iterator's own
+# refcounted cleanup), mmap's internal dup (closed with the mmap object) and
+# os.pipe2 in Probe.child (a local pipe, never an hfs descriptor).
 ALARM = {signal.SIGALRM}
+
+
+def block_alarm():
+    """Block SIGALRM and return the previous mask.
+
+    If the alarm arrived just before the block, the C handler has already
+    flagged it and pthread_sigmask raises Deadline after blocking; the mask
+    would then stay blocked with no previous value to restore. Unblock and
+    re-raise instead. The probe never nests this mask, so SIGALRM was
+    unblocked before the call.
+    """
+    try:
+        return signal.pthread_sigmask(signal.SIG_BLOCK, ALARM)
+    except Deadline:
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, ALARM)
+        raise
 
 
 def open_registered(register, path, flags, mode=0o777, *, dir_fd=None):
@@ -122,7 +141,7 @@ def open_registered(register, path, flags, mode=0o777, *, dir_fd=None):
     the caller's except/finally closes it. An OSError from the open passes
     through unchanged unless a pending Deadline replaces it on unmask.
     """
-    previous = signal.pthread_sigmask(signal.SIG_BLOCK, ALARM)
+    previous = block_alarm()
     try:
         fd = os.open(path, flags, mode, dir_fd=dir_fd)
         register(fd)
@@ -278,6 +297,8 @@ def admission_step(stage, **fields):
     A stage that waits (an hfs open or fstat can park behind recalls for
     seconds) shows in stdout.log as the gap between its marker's monotonic_ns
     and the next event. Evidence only: controller and correlator ignore it.
+    identity-checked comes from admit_identity, so lifecycle step output
+    (admit_step) carries it too, before admitted-step.
     """
     emit("admission-step", stage=stage, **fields)
 
@@ -420,6 +441,7 @@ class Probe:
             yield fd, leaf
 
     def child(self, action, uid=None, gid=None, groups=None):
+        # Unmasked on purpose: a local pipe, not an hfs fd (see ALARM).
         receive, send = os.pipe2(os.O_CLOEXEC)
         pid = os.fork()
         if pid == 0:
@@ -726,6 +748,7 @@ def sync(p):
             # Slice and readback lengths derive from the receipt itself: a fixed
             # 16-byte slice of this 17-byte receipt raised IndexError locally.
             receipt = b"mmap-receipt-0001"
+            # mmap's internal dup is closed with the mmap object (see ALARM).
             with mmap.mmap(fd, 4096, flags=mmap.MAP_SHARED,
                            prot=mmap.PROT_READ | mmap.PROT_WRITE) as view:
                 view[:len(receipt)] = receipt
@@ -783,6 +806,7 @@ def mapped_pressure(p):
     with p.directory() as (directory, leaf):
         with owned("full", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600, dir_fd=directory) as fd:
             p.call("ftruncate", lambda: os.ftruncate(fd, PAYLOAD), bytes=PAYLOAD)
+            # mmap's internal dup is closed with the mmap object (see ALARM).
             with mmap.mmap(fd, PAYLOAD, flags=mmap.MAP_SHARED,
                            prot=mmap.PROT_READ | mmap.PROT_WRITE) as view:
                 # Deterministic full 4MiB payload; no reduced canary or SIGBUS pass.
@@ -857,6 +881,7 @@ def reread_domain(p, mount, leaf):
     names = []
 
     def listing():
+        # The scandir iterator closes its own fd when released (see ALARM).
         with os.scandir(mount["path"]) as entries:
             for entry in entries:
                 checked(len(names) < LISTING_LIMIT, "re-read listing bound")
