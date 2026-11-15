@@ -425,7 +425,7 @@ func (s *Service) call(ctx context.Context, c Command) (any, error) {
 			return nil, err
 		}
 	}
-	if err = s.credentials(ctx, c.Context, call.Credentials, call.Intent.Opcode == "DRAIN_WRITE" || s.originalCleanup(binding)); err != nil {
+	if err = s.credentials(ctx, c.Context, call.Credentials, s.callToleratesExited(binding)); err != nil {
 		return callPayload(call.Claim, "REJECTED", code(err)), nil
 	}
 	state, err := s.config.Claims.Reserve(ctx, binding)
@@ -476,7 +476,7 @@ func (s *Service) executeCall(ctx context.Context, binding Binding, resume bool)
 			return Prepared{}, fsapi.NoSpace
 		}
 		if s.privateValidation() {
-			if err := s.credentials(ctx, binding.Context, binding.Call.Credentials, binding.Call.Intent.Opcode == "DRAIN_WRITE" || s.originalCleanup(binding)); err != nil {
+			if err := s.credentials(ctx, binding.Context, binding.Call.Credentials, s.callToleratesExited(binding)); err != nil {
 				return Prepared{}, err
 			}
 		}
@@ -530,9 +530,22 @@ func (s *Service) executeCall(ctx context.Context, binding Binding, resume bool)
 	return callPayload(binding.Call.Claim, "ADMITTED", "OK"), nil
 }
 
+// callToleratesExited reports whether CALL (and the private preparer, which
+// rechecks credentials before effects) accepts an issuer whose PROCESS_EXIT
+// already completed: the originalCleanup shapes, and DRAIN_WRITE, which flushes
+// bytes the process wrote into a dirty earmark while it was live (the write
+// itself was admitted then). ALLOCATE applies the matching rule in
+// allocationToleratesExited (controlled_protocol.go).
+func (s *Service) callToleratesExited(b Binding) bool {
+	return b.Call.Intent.Opcode == "DRAIN_WRITE" || s.originalCleanup(b)
+}
+
 // originalCleanup permits only authority reduction by the exact retained issuer
 // after process exit. It cannot admit a fresh credential revision or revive any
 // ordinary request, and preparation rechecks the same live grant before effects.
+// ALLOCATE, CALL and the private preparer all apply this same predicate, so an
+// exited issuer's release is either accepted end to end or refused at the first
+// layer (task 194).
 func (s *Service) originalCleanup(b Binding) bool {
 	var a arguments
 	if json.Unmarshal(b.Call.Intent.Args, &a) != nil {

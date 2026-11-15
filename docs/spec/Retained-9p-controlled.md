@@ -45,6 +45,19 @@ acknowledgement loss, exact retry returns the same protected identity. Changed
 credentials/intent/scope/claim refuse. ALLOCATE uses ordinary cells/workers, so
 it cannot consume the reserved STOP/drain lane.
 
+After PROCESS_EXIT, ALLOCATE accepts the issuer's already retained exact
+original credential snapshot only for the cleanup shapes CALL accepts from an
+exited issuer (protocol spec, FORGET/DESCRIPTION_RELEASE): FORGET `count=1` of
+a still-live PATH grant, or DESCRIPTION_RELEASE of a still-live DESCRIPTION
+grant, whose capability hash binds those exact credential bytes in the same
+scope. The guest's final release can legitimately follow a completed
+PROCESS_EXIT (an inherited descriptor outliving its opener, or the exit racing
+the release), so refusing it at ALLOCATE while CALL would accept it blocked the
+session. Every other exited-issuer ALLOCATE, including OPEN, READ, any
+mutation, DESCRIPTION_CLOSE (the completed PROCESS_EXIT already released the
+same per-process lock owner) and any fresh credential revision, refuses STALE
+without consuming a number. DRAIN_WRITE is never allocated by ALLOCATE.
+
 GAP_RESOLVE success is `{claim:Claim,status:GAP,proof_hash:hash}`. The real
 provider protects exact no-effect only for a never-prepared ordinary allocation.
 Unissued numbers, changed originals, PENDING/planned/effected operations, and
