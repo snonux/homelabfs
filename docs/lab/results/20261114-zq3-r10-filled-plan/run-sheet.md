@@ -45,8 +45,15 @@ delete through a mount), preserve failed resources, report. Values written
   A killed driver leaves an open journal intent (`uncertain`, never replayed)
   while the guard and runtime keep running, so the window is lost. Every
   `rockyt` line (its own bound is 150 s) and the `vms.sh stop-rocky` /
-  `start-rocky` lines in Phases 5 and 12 run with a tool timeout of at least
-  300 s, so their own bounds (and `rc=124`) are what end them.
+  `start-rocky` lines in Phases 5 and 12 (and U3's `start-rocky`) run with a
+  tool timeout of at least 300 s, so their own bounds (and `rc=124`) are what
+  end them. The same 300 s minimum applies to every line that has never run
+  for real before zq3-r10 or can take more than a minute: every `$CTL`
+  controller line (`probe`, `next`, `release`, `lifecycle`; up to 60 + 15 s
+  per dispatch), the T6/T8 guest lock-probe lines, T7's `pod_fixture.py run`
+  (its own `RUN_SECONDS = 120` plus setup and teardown; a killed ssh would
+  leave containers and an uncertain T7), and Phase 3's kernel `install` and
+  pod `build` (zq3-r10 review round 1).
 - **f3's login shell is csh.** Every `f3 '…'`/`f3 "…"` string below avoids
   `2>/dev/null` (csh reads `2` as an argument), `VAR=value cmd` prefixes (use
   `env VAR=value cmd`) and quotes nested more than one level. Anything more
@@ -379,7 +386,7 @@ rockyt(){ …rocky with a local `timeout 150` around the real ssh, </dev/null; e
 hpin()  { …sha256sum -c of bin/sign_watch.py (153be7f5…), the signer bin/hfs-retained9p-operator (ac8e32c4…, rebuilt at 5a95ad4) and the twelve sh/* helpers… }
 K='/usr/bin/python3.9 -I -B /root/hfs-zq3-zq3-r10-kernel-stage/rocky_kernel.py'
 KP='--plan /root/hfs-zq3-zq3-r10-kernel-stage/rocky-kernel-plan.json --plan-sha256 dd6d0d881b58dca348e792caadfb5ec3137c68d509a96013f972eea56955d472 --state /root/hfs-zq3-zq3-r10-kernel-state'
-NG="doas -n /usr/local/bin/python3.12 -B /var/tmp/hfs-20261114-zq3r10-fdq/native-test-guard.py --root /var/tmp/hfs-20261114-zq3r10-fdq --local-reserved-bytes 4294967296 --profile host --rocky-pid 13234 --rocky-birth 'Sat Nov 14 16:55:47 2026' --rocky-config-sha256 c101adf10d58d8e021faaa1c3dd98ccb7777c2b78b7931f478e71b526814c581 --max-seconds 60"
+NG="doas -n /usr/local/bin/python3.12 -B /var/tmp/hfs-20261114-zq3r10-fdq/native-test-guard.py --root /var/tmp/hfs-20261114-zq3r10-fdq --local-reserved-bytes 4294967296 --profile host --rocky-pid 56842 --rocky-birth 'Sat Nov 14 16:55:47 2026' --rocky-config-sha256 c101adf10d58d8e021faaa1c3dd98ccb7777c2b78b7931f478e71b526814c581 --max-seconds 60"
 sha()   { …SHA256 of one local file… }
 jf()    { …one field of a recorded JSON file: jf FILE KEY…… }
 tf3()   { …tf3 LABEL SEQUENCE F3-ARGS: one f3 call, its wall time appended to $E/obs-timing.tsv (984 measurement)… }
@@ -1240,7 +1247,9 @@ It also prints each provider's claim counts (`Allocated`, `Retired`,
 
 A refused OBSERVE consumes nothing (the runtime refuses a sequence that is
 not above the last accepted one): if it says the sequence is stale, check
-`L` against `summary.json` and rerun the line once with the right value. A
+`L` against `summary.json` and rerun the line once with the right value,
+writing to `$E/observe-p9-2.json` (not over `observe-p9.json`) and recording
+that `obs-timing.tsv` then has one extra row. A
 lost reply may have consumed `L+1`: then the T1 baseline below uses `L+3`
 instead of `L+2` (record it), never `L+1` again.
 

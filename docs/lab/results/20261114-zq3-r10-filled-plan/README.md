@@ -246,6 +246,16 @@ Every line passed with the expected results:
   usable=failed`) and a `/2` journal; `p9-ready.py` refused the failed run
   and zq3-r9's real run directory (outcome `failed`).
 
+## Decisions from the zq3-r10 run-sheet review round 1 (2026-11-15)
+
+No must-fix. Applied: the illustrative `NG` line now shows Rocky PID
+`56842` (the real `session.sh` already did); the tool-timeout rule now also
+covers every `$CTL` controller line, the T6/T8 lock-probe lines, T7's
+`pod_fixture.py run`, Phase 3's kernel install and pod build, and U3's
+`start-rocky` (at least 300 s); a Phase 9 OBSERVE rerun writes
+`observe-p9-2.json`. Kept: the dry run's `__pycache__` folders in the
+snapshot are harmless (the sheet runs every tool with `-I -B`).
+
 ## Findings and open questions
 
 - **Q1 T5 deferred.** The run cannot complete zq3 acceptance. T5 needs a
