@@ -51,9 +51,10 @@ exact-byte native observer check (see the xz3 evidence below). The z54
 daemon `39c92d01…` (2026-11-09) passed it in zq3-r5 (Phase 4 step 1a), and the
 964 kernel rebuild reused those bytes. The d64 daemon `9b7eed8d…` (c64+d64
 rebuild) was never checked. The y64 daemon `34fb05b2…` passed it in zq3-r8
-(Phase 4 step 1a), and the l84 daemon `868dc045…` passed it in zq3-r9. The
-current r84 daemon `34a5360b…` (r84 rebuild for zq3-r10, 2026-11-14) is new
-bytes and has **not** passed it yet; the next run
+(Phase 4 step 1a), the l84 daemon `868dc045…` passed it in zq3-r9 and the
+r84 daemon `34a5360b…` in zq3-r10. The current b94 daemon `bf86d805…` (b94
+rebuild for zq3-r11, 2026-11-17) is new bytes and has **not** passed it yet;
+the next run
 must repeat the check. f3-host descriptor execution still awaits the
 approved zq3 fdescfs window. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
@@ -164,28 +165,33 @@ SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
 
 ## Exact installation plan inputs
 
-The current xz3 candidate (r84 rebuild for zq3-r10, 2026-11-14) is retained at
-`/home/paul/tmp/claude/hfs-xz3-20261114-r10/package`, manifest SHA256
-`4712e4793e67007a65b293dd62dceb16d16a2f2322705f7f0a5f81c261442cf0`, assembled from source checkout
-`cc6beedd74c18df7eefbbcc189934035b8267e91` (also the repository baseline); see its
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261114-r10/README.md).
+The current xz3 candidate (b94 rebuild for zq3-r11, 2026-11-17) is retained at
+`/home/paul/tmp/claude/hfs-xz3-20261117-r11/package`, manifest SHA256
+`3b128cc68e4a4e6c43c8411437df5b7671c003a5f9e7ae6c11700f918440a47a`, assembled from source checkout
+`dfdcdd9635b9bae91b9d074eb86227ca85395b75` (also the repository baseline); see its
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261117-r11/README.md).
 The guest kernel and the CGO daemon were rebuilt. The kernel (`bzImage`
-`10f2da29…`, `vmlinux` `e26684e9…`, GNU build ID `d73c85da…`, `config`
-`28fe4a8e…` unchanged) adds p84 (pressure never releases an in-flight
-observation's lease; the background pass holds, bounded to 5 s); two builds
-at the same O path were identical, and the five modules came out
-byte-identical. The daemon `34a5360b…` adds o84 (a QUERY may resume any
-never-prepared claim) and q84 (shared DOMAIN lease holders) to the l84
-daemon; two forced builds and the window build gave the same bytes, but they
-still need native `--check-process-observer` on f3. The native exporter is a
-byte-identical reuse. Before it came the l84 rebuild (`e585206a…`, source
+`5b08b3d2…`, `vmlinux` `6e489f38…`, GNU build ID `c4e08f6f…`, `config`
+`28fe4a8e…` unchanged) adds x84 (a request refused only because another
+allocation is pending waits, FIFO and bounded, for the fence to clear;
+zq3-r10 R10-1) and z84 (the unmount stop check runs after teardown and a
+bounded settle and accepts an idle reopened view; R10-2); two builds at the
+same O path were identical, and the five modules came out byte-identical.
+The daemon `bf86d805…` adds 194 (ALLOCATE accepts an exited issuer's exact
+original cleanup; R10-1 host side) to the r84 daemon; two forced builds and
+the window build gave the same bytes, but they still need native
+`--check-process-observer` on f3. The native exporter is a byte-identical
+reuse. Before it came the r84 rebuild (`4712e479…`, source `cc6beed`,
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261114-r10/README.md)),
+which rebuilt the kernel for p84 (build ID `d73c85da…`) and the daemon for
+o84 and q84 (`34a5360b…`), the l84 rebuild (`e585206a…`, source
 `e92eaa1`,
 [evidence](../../tools/integration/artifacts/evidence/xz3-20261114-r9/README.md)),
 which rebuilt only the daemon (`868dc045…`: 784, 884, d84, g84, h84, b84,
 q64/f84) and reused the y64 kernel and exporter, and the y64 rebuild
 (`867ede36…`, source `b869710`,
 [evidence](../../tools/integration/artifacts/evidence/xz3-20261110h/README.md)),
-both now refused as superseded. In y64 the guest kernel, the daemon and the native
+all now refused as superseded. In y64 the guest kernel, the daemon and the native
 exporter were all rebuilt. The kernel (`bzImage` `40afad22…`, `vmlinux` `d2d3e5ab…`, GNU build ID
 `870bb9d1…`, `config` `28fe4a8e…` unchanged from c64) carries the g64 and m64
 patch series (hfs `show_options`, exact `cache=mmap`, the Sources floor and
@@ -297,7 +303,7 @@ footprints in the independent global preparation budget. Swap is telemetry.
 
 ## Staged critical-window proposal
 
-The concrete phased proposal for one disposable run with candidate `4712e479…`,
+The concrete phased proposal for one disposable run with candidate `3b128cc6…`,
 including the remaining implementation gaps and Paul's decisions, is
 [zq3-run-plan.md](zq3-run-plan.md) ([plain-language summary](zq3-plan-summary.md)).
 The guest probe now retains each successful payload until an authenticated

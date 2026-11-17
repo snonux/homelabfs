@@ -23,13 +23,13 @@ preparation used SSH, the lab, a VM, a mount or a private key.
 | Input | Value |
 |---|---|
 | Run ID | `zq3-r1` (guest/controller regex `[a-z0-9][a-z0-9-]{0,23}`); a retry gets a new ID |
-| Candidate | `/home/paul/tmp/claude/hfs-xz3-20261114-r10/package` (r84 rebuild for zq3-r10, 2026-11-14), manifest SHA256 `4712e4793e67007a65b293dd62dceb16d16a2f2322705f7f0a5f81c261442cf0`, source `cc6beedd74c18df7eefbbcc189934035b8267e91`; the guest kernel was rebuilt for p84 (pressure never releases an in-flight observation's lease; the background pass holds, bounded to 5 s) on top of g64 (`show_options`, exact `cache=mmap`, once-per-session block log) and m64 (Sources floor, every fault block logged, clean unmount silent) on the c64 recipe, and the CGO daemon for o84 (QUERY resumes any never-prepared claim, zq3-r9 R9-1) and q84 (shared DOMAIN lease holders) on top of l84 (784, 884, d84, g84, h84, b84, q64/f84). The five modules and the native bhyve exporter are byte-identical to the y64 build; the exporter carries the 564, e64, p64 and w64 lib9p fixes (built natively on f3 and reproduced). The l84 (`e585206a…`, `e92eaa1`) and y64 (`867ede36…`, `b869710`) candidates are now refused as superseded together with c64+d64 (`66b5bb2b…`), 964 (`e01fab21…`), z54 (`2e0412a6…`), w54 (`89c928d5…`), r54 (`5eb42c50…`), f44 (`b203799e…`) and `3f770a88…`. The kernel keeps the c64 SELinux LSM, the 964 fixed-tag release wait (zq3-r5 R5-1), the w54 failed-bind kill_sb fence (zq3-r3 R3-1) and the r54 mount HELLO fix (zq3-r2 R2-4) |
+| Candidate | `/home/paul/tmp/claude/hfs-xz3-20261117-r11/package` (b94 rebuild for zq3-r11, 2026-11-17), manifest SHA256 `3b128cc68e4a4e6c43c8411437df5b7671c003a5f9e7ae6c11700f918440a47a`, source `dfdcdd9635b9bae91b9d074eb86227ca85395b75`; the guest kernel was rebuilt for x84 (a request refused only by a pending allocation waits, FIFO and bounded, for the fence to clear; zq3-r10 R10-1) and z84 (the unmount stop check runs after teardown and a bounded settle; R10-2) on top of p84 (pressure never releases an in-flight observation's lease; the background pass holds, bounded to 5 s), g64 (`show_options`, exact `cache=mmap`, once-per-session block log) and m64 (Sources floor, every fault block logged, clean unmount silent) on the c64 recipe, and the CGO daemon for 194 (ALLOCATE accepts an exited issuer's exact original cleanup; R10-1 host side) on top of r84 (o84 QUERY resume of never-prepared claims, q84 shared DOMAIN lease holders) and l84 (784, 884, d84, g84, h84, b84, q64/f84). The five modules and the native bhyve exporter are byte-identical to the y64 build; the exporter carries the 564, e64, p64 and w64 lib9p fixes (built natively on f3 and reproduced). The r84 (`4712e479…`, `cc6beed`), l84 (`e585206a…`, `e92eaa1`) and y64 (`867ede36…`, `b869710`) candidates are now refused as superseded together with c64+d64 (`66b5bb2b…`), 964 (`e01fab21…`), z54 (`2e0412a6…`), w54 (`89c928d5…`), r54 (`5eb42c50…`), f44 (`b203799e…`) and `3f770a88…`. The kernel keeps the c64 SELinux LSM, the 964 fixed-tag release wait (zq3-r5 R5-1), the w54 failed-bind kill_sb fence (zq3-r3 R3-1) and the r54 mount HELLO fix (zq3-r2 R2-4) |
 | Quarantined, never installed | `7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b` (CGO-disabled daemon); the probe controller refuses it |
-| Daemon | `freebsd/hfs-controlled-runtime` `34a5360bcb43ff7516062c096ab247b122febe6653d9510277730e968cae5230` (r84, from `cc6beed`; two forced builds and the window build gave the same bytes). **New bytes: they have not passed the f3 native observer check yet** (the l84 `868dc045…` passed it in zq3-r9, the y64 `34fb05b2…` in zq3-r8 and the z54 `39c92d01…` in zq3-r5; the d64 `9b7eed8d…` was never checked); the filled run sheet's Phase 4 step 1a (`--check-process-observer` under the bounded host guard) must run for these bytes. Its OBSERVE reports evidence `/2` with a provider claim summary (b84), which the `usable` gate requires |
+| Daemon | `freebsd/hfs-controlled-runtime` `bf86d805732cc79a94f8d5023729396d48343d9dd7102be43598ee8992be232c` (b94, from `dfdcdd9`; two forced builds and the window build gave the same bytes). **New bytes: they have not passed the f3 native observer check yet** (the r84 `34a5360b…` passed it in zq3-r10, the l84 `868dc045…` in zq3-r9, the y64 `34fb05b2…` in zq3-r8 and the z54 `39c92d01…` in zq3-r5; the d64 `9b7eed8d…` was never checked); the filled run sheet's Phase 4 step 1a (`--check-process-observer` under the bounded host guard) must run for these bytes. Its OBSERVE reports evidence `/2` with a provider claim summary (b84), which the `usable` gate requires |
 | Patched bhyve (exporter) | `freebsd/bhyve` `ef8f17de8754f8bdd6d5d517f15a859e87a2f4a8ca1542394f5608a8e40823b1` (GNU build ID `6870705e…`; y64 native f3 build of the 564/e64/p64/w64 lib9p sources, two clean builds equal in all 83 files; every earlier candidate carried `36423b6d…`); the system `/usr/sbin/bhyve` (`c54a6361…`) is never replaced |
-| Guest kernel | `6.1.190-hfs-xz3` (c64 recipe, g64+m64+p84 series): `linux/bzImage` `10f2da29…`, `linux/vmlinux` `e26684e9…` (GNU build ID `d73c85da…`), `linux/config` `28fe4a8e…` (unchanged from c64: `CONFIG_LSM="lockdown,yama,integrity,selinux,bpf,landlock"`), `System.map` `a720bd4a…`, five modules (unchanged since w54) (`virtio_net`, `net_failover`, `failover`, `efivarfs`, `x86_pkg_temp_thermal`) with hashes in the package's `installation-proposal.json` |
+| Guest kernel | `6.1.190-hfs-xz3` (c64 recipe, g64+m64+p84+x84+z84 series): `linux/bzImage` `5b08b3d2…`, `linux/vmlinux` `6e489f38…` (GNU build ID `c4e08f6f…`), `linux/config` `28fe4a8e…` (unchanged from c64: `CONFIG_LSM="lockdown,yama,integrity,selinux,bpf,landlock"`), `System.map` `341071f6…`, five modules (unchanged since w54) (`virtio_net`, `net_failover`, `failover`, `efivarfs`, `x86_pkg_temp_thermal`) with hashes in the package's `installation-proposal.json` |
 | Operator public key | `2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635` (built into the guest kernel config) |
-| Guest SELinux | The test kernel must boot with SELinux as an active LSM and Rocky's policy enforcing, as the stock kernel does (`guest.py` and `pod_fixture.py` refuse T1-T5, T7 and T9-T11 otherwise). The pre-c64 kernels (through `e01fab21`) had `CONFIG_SECURITY_SELINUX=y` but `CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,bpf"`, and the copied Rocky command line has no `lsm=`/`security=`, so SELinux never initialised (zq3-r5 guest dmesg has no `SELinux:  Initializing`). The pinned `4712e479` kernel is built from the c64 recipe (`CONFIG_LSM` above, RHEL 9 order) and `kernel.py`/`admit.py` refuse a config without `selinux` in `CONFIG_LSM`. The boot itself is still unverified: Phase 9's `getenforce` = `Enforcing` and a dmesg `SELinux:  Initializing` line are real checks again |
+| Guest SELinux | The test kernel must boot with SELinux as an active LSM and Rocky's policy enforcing, as the stock kernel does (`guest.py` and `pod_fixture.py` refuse T1-T5, T7 and T9-T11 otherwise). The pre-c64 kernels (through `e01fab21`) had `CONFIG_SECURITY_SELINUX=y` but `CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,bpf"`, and the copied Rocky command line has no `lsm=`/`security=`, so SELinux never initialised (zq3-r5 guest dmesg has no `SELinux:  Initializing`). The pinned `3b128cc6` kernel is built from the c64 recipe (`CONFIG_LSM` above, RHEL 9 order) and `kernel.py`/`admit.py` refuse a config without `selinux` in `CONFIG_LSM`. The boot itself is still unverified: Phase 9's `getenforce` = `Enforcing` and a dmesg `SELinux:  Initializing` line are real checks again |
 | Probe tools | `tools/lab/retained9p/{controller,guest,observer}.py` at the commit that adds this plan; the controller pins only the candidate above |
 | Staging prefix (f3) | `/var/tmp/hfs-validation-xz3/zq3-r1` (from the installation proposal) |
 | Guest run directory | `/var/tmp/hfs-zq3-zq3-r1` with mount points `m0`, `m1` |
@@ -152,8 +152,8 @@ or vmm context could still exist.
 ### Phase 0: local preparation (workstation, B)
 
 - Actions: the FreeBSD CGO `controlledruntime.test` binary (for the host FD
-  rerun) and the `fdescfs-namespace` helper are already rebuilt from `cc6beed`
-  (r84 rebuild) and pinned (`72fffd3a…`, `5c709a35…`, reproducible; recipe
+  rerun) and the `fdescfs-namespace` helper are already rebuilt from `dfdcdd9`
+  (b94 rebuild) and pinned (`8abf53bc…`, `62d0d3fa…`, reproducible; recipe
   `tools/lab/build-fdescfs-window-artifacts.sh`, record
   `docs/lab/zq3-fdescfs-window/build-record.json`); rebuild only to re-verify.
   The fdescfs window pins are reviewed in `docs/lab/zq3-fdescfs-window/pins.json`;
@@ -331,7 +331,7 @@ controller `tools/lab/fdescfs-window.py` with the explicit prefix
    (p44, after zq3-r1's first setup refused the masked row).
 3. `qualify` (B, under `native-test-guard.py --profile host`): rerun
    `TestDescriptorExecNativeQualification` on the **f3 host** with the final
-   test bytes from source `cc6beed` (`72fffd3a…`), plus
+   test bytes from source `dfdcdd9` (`8abf53bc…`), plus
    `hfs-controlled-runtime --check-descriptor-exec` (must now report
    `fdescfs`, supported). This closes the host rerun transferred from w24.
 4. `kldload /boot/kernel/fusefs.ko` (`b207adf6…`) only if absent, with
@@ -494,7 +494,7 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
   The guard command is:
   `doas -n /usr/local/bin/python3.12 -I -B
   /var/tmp/hfs-validation-xz3/zq3-r1/bin/runtime-guard.py --run-dir
-  /var/tmp/hfs-validation-xz3/zq3-r1/guard --runtime-sha256 34a5360b…
+  /var/tmp/hfs-validation-xz3/zq3-r1/guard --runtime-sha256 bf86d805…
   --vm-name hfs-zq3-r1 --disk-root /var/tmp/hfs-validation-xz3/zq3-r1
   --disk-root /var/tmp/hfs-fdescfs-windows/zq3-r1 --skip-path <native
   mountpoint from the run config> --
@@ -701,8 +701,9 @@ daemon `39c92d01…` from `a20aca1`), whose source keeps d44, the 964 kernel
 rebuild (`e01fab21…`), which reused that z54 daemon, the c64+d64 rebuild
 (`66b5bb2b…`, daemon `9b7eed8d…` from `060dea0`), the y64 rebuild
 (`867ede36…`, daemon `34fb05b2…` from `b869710`), the l84 rebuild
-(`e585206a…`, daemon `868dc045…` from `e92eaa1`) and the current r84 rebuild
-(`4712e479…`, daemon `34a5360b…` from `cc6beed`), whose sources keep d44.
+(`e585206a…`, daemon `868dc045…` from `e92eaa1`), the r84 rebuild
+(`4712e479…`, daemon `34a5360b…` from `cc6beed`) and the current b94 rebuild
+(`3b128cc6…`, daemon `bf86d805…` from `dfdcdd9`), whose sources keep d44.
 With it, the T9 expectation becomes `dropped-reply-effect-committed-and-visible`
 (record `armed_intent`/`dropped_opcode` MKDIR, mkdir fails in m0, m1 sees the
 directory, m0 still blocked), and T10 is still expected to FENCE because the
@@ -1002,8 +1003,9 @@ reviewed and pinned, and this plan is re-filled:
   and flagging a probe the guest refused locally as vacuous. Needs the
   runtime's FUSE mount point path from the G2 config at fill time.
 - G12 *Prepared (v34)*: rebuilt, reproducible `controlledruntime.test`
-  `72fffd3a…` and `fdescfs-namespace` `5c709a35…` from `cc6beed`, r84
-  rebuild (earlier `30ba40be…`/`50d823be…` from `e92eaa1`, l84,
+  `8abf53bc…` and `fdescfs-namespace` `62d0d3fa…` from `dfdcdd9`, b94
+  rebuild (earlier `72fffd3a…`/`5c709a35…` from `cc6beed`, r84,
+  `30ba40be…`/`50d823be…` from `e92eaa1`, l84,
   `f71f0bb8…`/`3d992cdf…` from `b869710`, y64,
   `56e87332…`/`45f2d59a…` from `060dea0`, c64+d64,
   `97fb5c07…`/`cc92bcde…` from `a20aca1`, z54, reused by 964,

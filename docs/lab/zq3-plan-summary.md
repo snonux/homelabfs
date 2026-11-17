@@ -136,8 +136,16 @@ guest dropped the permission of a file check that was still waiting, and the
 daemon then refused every retry of that check. After it the guest kernel and
 the daemon were rebuilt (`4712e479…`, daemon `34a5360b…`): the guest keeps
 the permission of a check that is still in flight, and the daemon lets the
-guest retry any check that never started. The patched bhyve is the same
-bytes as before. The new daemon must pass the f3 self-check again.
+guest retry any check that never started. The tenth attempt (zq3-r10)
+passed the "usable" check and the post-mount checks for the first time, but
+the first test case hung: a file closed while its process was exiting was
+refused inside the guest because another request was still being set up, and
+the guest then blocked the mount. After it the guest kernel and the daemon
+were rebuilt again (`3b128cc6…`, daemon `bf86d805…`): the guest now waits its
+turn instead of refusing, a clean unmount no longer reports a false error,
+and the daemon accepts the closing of a file whose process has already
+exited. The patched bhyve is the same bytes as before. The new daemon must
+pass the f3 self-check again.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
