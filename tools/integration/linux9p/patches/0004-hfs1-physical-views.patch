@@ -3441,7 +3441,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,1854 @@
+@@ -0,0 +1,1860 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -4678,16 +4678,19 @@ new file mode 100644
 +	       (view->phase == HFS_VIEW_UNBOUND || view->phase == HFS_VIEW_LIVE || view->quiescent);
 +}
 +
-+/* z84: let an unmounting view settle before the controlled stop. kill_sb
-+ * calls this after kill_anon_super and the control flush, with admission
-+ * closed. The last I/O's observation ends and cache cleanups queue their
-+ * lease releases on cleanup_queue; one flush sends them. Each release
-+ * recalls the domain, so then wait, at most HFS_UNMOUNT_SETTLE_MS, for the
-+ * event worker to finish that recall and for the counts to drain. A cleanup
-+ * that requeues itself (a refused release retried every 10 ms) is not
-+ * chased, and an unsettled view still makes the stop refuse and log. The
-+ * flush is bounded by the releases' own exchange timeouts; cleanup work
-+ * takes no superblock or inode lock.
++/* z84: best-effort settle of an unmounting view before the controlled stop.
++ * kill_sb calls this after kill_anon_super and the control flush, with
++ * admission closed. The last I/O's observation ends and cache cleanups
++ * queue their lease releases on cleanup_queue; one flush sends them. A
++ * release can recall the domain, so then wait, at most
++ * HFS_UNMOUNT_SETTLE_MS, while a recall or remaining owner is visible. The
++ * host may start that recall only after this returns; that is harmless,
++ * since no physical owner remains to stop and the stop's verdict only
++ * decides whether kill_sb logs. A FENCED view never settles, so the wait
++ * ends at once there. A cleanup that requeues itself (a refused release
++ * retried every 10 ms) is not chased, and an unsettled view still makes
++ * the stop refuse and log. The flush is bounded by the releases' own
++ * exchange timeouts; cleanup work takes no superblock or inode lock.
 + */
 +void hfs_mmap_settle(struct hfs_session *session)
 +{
@@ -4710,7 +4713,10 @@ new file mode 100644
 +	deadline = jiffies + msecs_to_jiffies(HFS_UNMOUNT_SETTLE_MS);
 +	for (;;) {
 +		spin_lock_irqsave(&view->lock, flags);
-+		settled = hfs_view_settled(view);
++		/* FENCED is terminal; the recall phases (STOPPED, drains,
++		 * FINAL) still progress to LIVE and are worth the wait.
++		 */
++		settled = hfs_view_settled(view) || view->phase == HFS_VIEW_FENCED;
 +		spin_unlock_irqrestore(&view->lock, flags);
 +		if (settled || !time_before(jiffies, deadline))
 +			break;

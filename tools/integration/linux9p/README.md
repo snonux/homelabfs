@@ -892,10 +892,14 @@ blocked its session without the release ever reaching the host.
   (`struct hfs_allocation_waiter` on the caller's stack); with the fence free
   only the queue head may number, and new earmarks also yield to a non-empty
   queue (the fault path retries their `-EAGAIN`). A stream of new callers
-  therefore cannot starve a cleanup waiter. The head keeps its place through
-  request preparation, so its second admission check can only lose to a
-  foreign fence; then it drops the reservation and view stamp, keeps its
-  queue place and waits again (no per-loss reallocation in practice).
+  therefore cannot starve an `hfs_call` waiter. Only `hfs_call` waiters are
+  starvation-free: under sustained ordinary `hfs_call` load an earmark can
+  keep losing, and its fault retries via `VM_FAULT_NOPAGE` indefinitely
+  (slow, not a deadlock). The head keeps its place through request
+  preparation. Two callers that both found the fence free and the queue
+  empty prepare concurrently, and the second's re-check routinely loses to
+  the first's numbering; it then drops the reservation and view stamp,
+  takes its queue place and waits again.
 - **Not for an allocation nothing will clear.** An uncertain ALLOCATE
   (`allocation_uncertain`) still refuses at once, so cleanup callers still
   block the session on it. A failed ALLOCATE (new
@@ -916,7 +920,10 @@ blocked its session without the release ever reaching the host.
   needs.
 - **Signals.** Ordinary callers sleep killable and return the old `-EAGAIN`
   on a fatal signal; cleanup callers sleep uninterruptibly (they cannot
-  retry). Neither sleep is freezable. A syscall can now take up to 30 s of
+  retry). Neither sleep is freezable and the freezer does not wake them,
+  so a suspend during such a wait can fail (the default 20 s freeze timeout
+  is below the 30 s bound; irrelevant on the lab guests). A syscall can now
+  take up to 30 s of
   fence wait plus its own 30 s request window (docs/Test-automation.md).
 - **No lasting deadlock.** The wait is bounded and then fails as before.
   An ordinary owner is a running thread past its admission check, never a
@@ -948,8 +955,8 @@ controlled_received `--scenario exit-cleanup`
 (`TestControlledReceivedActualExitThenCleanup`) runs PROCESS_EXIT, then
 the same process's DESCRIPTION_RELEASE and FORGET through the production
 callers against the real host, and requires both to succeed without
-blocking. **It fails until task 194 is merged** (expected on this branch
-alone).
+blocking. It requires host task 194 (merged in 10b76df) and passes on
+main.
 
 DESCRIPTION_CLOSE after PROCESS_EXIT (194 refuses it with STALE at
 ALLOCATE): `hfs_process_exit` marks the process exited before queueing
@@ -975,13 +982,18 @@ once-reopened mount logged `blocked by failed provider stop on STOP (-16)`.
 - kill_sb now sets closing/blocked (waking fence waiters), tears the
   superblock down, flushes the control workqueue, settles the view
   (`hfs_mmap_settle`, patch 0004) and only then stops.
-- `hfs_mmap_settle` flushes the mmap `cleanup_queue` once, which sends the
-  lease releases the last I/O queued (observation ends are released
-  asynchronously there), then waits at most `HFS_UNMOUNT_SETTLE_MS` (2 s)
-  for the recall those releases start to finish and the counts to drain.
-  Cleanup work takes no superblock or inode lock and the flush is bounded
-  by the releases' own exchange timeouts. A cleanup that requeues itself
-  (a refused release retried every 10 ms) is not chased.
+- `hfs_mmap_settle` is best-effort. It flushes the mmap `cleanup_queue`
+  once, which sends the lease releases the last I/O queued (observation
+  ends are released asynchronously there), then waits at most
+  `HFS_UNMOUNT_SETTLE_MS` (2 s) while a recall or remaining owner is
+  visible. The host may start a release's recall only after it returns;
+  that is harmless, since no physical owner remains and the stop's verdict
+  only decides whether kill_sb logs. A FENCED view ends the wait at once
+  (it never settles); the recall phases (STOPPED, drains, FINAL) still
+  progress to LIVE and are waited for. Cleanup work takes no superblock or
+  inode lock and the flush is bounded by the releases' own exchange
+  timeouts. A cleanup that requeues itself (a refused release retried
+  every 10 ms) is not chased.
 - `hfs_controlled_view_idle` accepts, besides the old cases, a LIVE hfs1.4
   view with zero active, dirty, cached, observation and mapping counts and
   no cookies. Zero is final because no inode, file, mapping or page of the

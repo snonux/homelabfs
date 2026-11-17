@@ -308,18 +308,18 @@ callers blocked the session on it. `x84_test.inc` runs in every scenario
 `--scenario cleanup` additionally starts each `CLEANUP_CALLER` with another
 request's pending ALLOCATE (an earmark for FORGET and PROCESS_EXIT), cleared
 by a thread after 30 ms: every production caller must wait and the host must
-still see exactly one CALL each. run.py's 180 s test timeout is too short for
-that scenario on a two-CPU race build (two subtests of about 35-80 s plus
-setup); x84 ran it through the same overlay with a 900 s timeout.
+still see exactly one CALL each. run.py gives `cleanup` and `exit-cleanup`
+a 900 s Go test timeout (two subtests of about 35-80 s each plus setup on a
+two-CPU race build); the other scenarios keep 180 s.
 
 `--scenario exit-cleanup` (`TestControlledReceivedActualExitThenCleanup`)
 runs the production PROCESS_EXIT worker first and then the same process's
 DESCRIPTION_RELEASE and FORGET callers against the real host; both must
 succeed without blocking the session and each CALL must run once. This is
-the normal exit order (PROCESS_EXIT reaches the host first). **It requires
-host task 194** (ALLOCATE accepts an exited issuer for cleanup intents) and
-fails without it: the release's ALLOCATE is refused Stale and `hfs_release`
-blocks the session.
+the normal exit order (PROCESS_EXIT reaches the host first). It requires
+host task 194 (ALLOCATE accepts an exited issuer for cleanup intents,
+merged in 10b76df) and passes on main; without 194 the release's ALLOCATE
+is refused Stale and `hfs_release` blocks the session.
 
 ## Failed bind and slot floor (`w54`)
 

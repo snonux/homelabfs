@@ -128,7 +128,7 @@ pattern={'cleanup':'^TestControlledReceivedActualCleanupByteFunding$','exit-clea
 if a.receipt_tests:
     run('view-floor-policy',['go','test','-p','1','-run','^Test(MappedViewFloorBinding|ProtectedGapQueryEncoding)$','-count=1','./internal/guestbridge'])
     run('release-query-continuation',['go','test','-race','-p','1','-run','^TestPhysicalReleaseQueryContinuation$','-count=1','./internal/viewcontrol'])
-run('actual-c6-host',['go','test','-race','-overlay',str(overlay),'-p','1','-run',pattern,'-count=1','-timeout=180s','-v','./internal/controlledruntime'])
+run('actual-c6-host',['go','test','-race','-overlay',str(overlay),'-p','1','-run',pattern,'-count=1','-timeout='+{'cleanup':'900s','exit-cleanup':'900s'}.get(a.scenario,'180s'),'-v','./internal/controlledruntime'])
 if a.final_focus:
     run('old-producer-fixtures',['go','test','-race','-p','1','-run','^TestRealControlledProducer','-count=1','-timeout=180s','./internal/controlledruntime'])
     run('vet',['go','vet','./internal/controlledruntime'])

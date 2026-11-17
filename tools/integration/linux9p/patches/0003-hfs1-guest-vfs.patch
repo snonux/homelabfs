@@ -107,7 +107,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,447 @@
+@@ -0,0 +1,449 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -383,8 +383,10 @@ new file mode 100644
 +	struct hfs_request *allocation_pending;
 +	/* x84: hfs_call callers waiting for the fence, FIFO (struct
 +	 * hfs_allocation_waiter, under lock). allocation_epoch changes under
-+	 * lock whenever the fence clears, becomes non-clearing or the queue
-+	 * head leaves; allocation_wait is woken after each change.
++	 * lock whenever an ALLOCATE attempt ends (acknowledged, failed or
++	 * uncertain), an earmark is admitted or cancelled, a retired owner is
++	 * cleared, any queued waiter leaves, or kill_sb closes the session;
++	 * allocation_wait is woken after each change.
 +	 */
 +	struct list_head allocation_waiters;
 +	unsigned long allocation_epoch;
@@ -559,7 +561,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,3412 @@
+@@ -0,0 +1,3414 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -2399,9 +2401,10 @@ new file mode 100644
 + *
 + * Ordinary callers sleep killable and give up with -EAGAIN on a fatal
 + * signal; cleanup callers sleep uninterruptibly, since they cannot retry.
-+ * Neither sleep is freezable: a freeze waits for the bound like any other
-+ * in-flight request. A syscall can now take up to this wait plus its own
-+ * 30 s request window.
++ * Neither sleep is freezable and the freezer does not wake them: a
++ * suspend or freeze during such a wait can fail (the default freeze timeout
++ * of 20 s is shorter than the 30 s bound; irrelevant on the lab guests). A
++ * syscall can now take up to this wait plus its own 30 s request window.
 + *
 + * Waiting can never deadlock for good: it is bounded and then fails exactly
 + * as before. An ordinary fence owner is a running thread past its admission
@@ -2623,12 +2626,13 @@ new file mode 100644
 +		session->nr_control_requests++;
 +}
 +
-+/* One admission attempt. *retry: a foreign fence appeared after
-+ * hfs_call_admit (only hfs_call and earmarks set it, and both respect the
-+ * queue head, so normally impossible). The waiter keeps its queue place;
-+ * the reservation and view stamp are dropped rather than held across the
-+ * wait: a held stamp would go stale and the credit may be what the fence
-+ * owner's exchange needs.
++/* One admission attempt. *retry: a fence appeared after hfs_call_admit.
++ * That is routine: two callers that both found the fence free and the
++ * queue empty prepare concurrently and the second loses to the first's
++ * numbering. The waiter keeps (or takes) its queue place; the reservation
++ * and view stamp are dropped rather than held across the wait: a held
++ * stamp would go stale and the credit may be what the fence owner's
++ * exchange needs.
 + */
 +static int hfs_call_once(struct hfs_session *session, const char *opcode,
 +			 const struct hfs_buf *args, const struct hfs_cred *cred, bool control,
