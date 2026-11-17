@@ -103,7 +103,15 @@ func (s *Service) allocation(ctx context.Context, c Command) (any, error) {
 //     inherited by a longer-lived child, or the exit race where PROCESS_EXIT's
 //     CALL ran before the release allocated). CALL and the private preparer
 //     already accepted that release, but ALLOCATE refused it, so the claim was
-//     never allocated and the guest blocked its session.
+//     never allocated and the guest blocked its session. The predicate is
+//     evaluated at ALLOCATE time only; CALL and the preparer recheck it, so a
+//     grant released in between still refuses the CALL (STALE) and the claim
+//     is then closed by GAP_RESOLVE.
+//
+// Exited cleanup gets no budget exemption and no per-grant cap: it consumes
+// ordinary claim numbers and credits like any allocation, and a live process
+// could already spend claims on repeated releases of one grant (only the first
+// CALL can succeed; the rest refuse STALE and are gap-resolved).
 //
 // Everything else stays refused for an exited issuer: such a process may only
 // give up authority it already held, never cause a new effect. DRAIN_WRITE, the

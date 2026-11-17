@@ -543,9 +543,12 @@ func (s *Service) callToleratesExited(b Binding) bool {
 // originalCleanup permits only authority reduction by the exact retained issuer
 // after process exit. It cannot admit a fresh credential revision or revive any
 // ordinary request, and preparation rechecks the same live grant before effects.
-// ALLOCATE, CALL and the private preparer all apply this same predicate, so an
-// exited issuer's release is either accepted end to end or refused at the first
-// layer (task 194).
+// ALLOCATE, CALL and the private preparer each evaluate this same predicate
+// against the grant state at their own moment, with no lock held in between
+// (task 194). A grant released after ALLOCATE (for example by a second release
+// of the same description allocated earlier) makes the later CALL REJECTED
+// STALE; the guest then closes that allocated claim with GAP_RESOLVE, which
+// tolerates an exited issuer, so no number is stranded.
 func (s *Service) originalCleanup(b Binding) bool {
 	var a arguments
 	if json.Unmarshal(b.Call.Intent.Args, &a) != nil {

@@ -434,11 +434,14 @@ credentials, but does not rewalk an ancestor that may already have been removed.
 It cannot close DESCRIPTION, DOMAIN or ROOT. After PROCESS_EXIT, only the exact
 retained original credential bytes/revision whose hash bound the still-live
 grant may submit FORGET or final DESCRIPTION_RELEASE as cleanup, at controlled
-ALLOCATE as well as at CALL and preparation (the same predicate on every layer).
-The full grant and scope must match; a changed credential, unknown/released
-token, DESCRIPTION_CLOSE (PROCESS_EXIT already released that process's locks) or
-ordinary path/data/issuance request remains refused. This exception only reduces existing
-authority and never removes the exited marker or revives a process. Existing
+ALLOCATE as well as at CALL and preparation. Each layer evaluates the same
+predicate against the grant state at its own moment: a grant released after
+ALLOCATE refuses the later CALL STALE, and GAP_RESOLVE closes that claim. The
+full grant and scope must match; a changed credential, unknown/released token,
+DESCRIPTION_CLOSE (PROCESS_EXIT already released that process's locks) or
+ordinary path/data/issuance request remains refused. This exception only
+reduces existing authority and never removes the exited marker or revives a
+process. Existing
 original terminal claims remain replayable. Inode aliases retain each issued
 path token separately until their last local reference disappears. READDIR
 consumers close every returned transient token, including entries not emitted
