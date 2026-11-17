@@ -68,7 +68,7 @@ func (s *Service) allocation(ctx context.Context, c Command) (any, error) {
 	if err := json.Unmarshal(c.Payload, &call); err != nil {
 		return nil, fsapi.Invalid
 	}
-	if err := s.credentials(ctx, c.Context, call.Credentials, c.Op == "GAP_RESOLVE"); err != nil {
+	if err := s.credentials(ctx, c.Context, call.Credentials, s.allocationToleratesExited(c, call)); err != nil {
 		return nil, err
 	}
 	if c.Op == "ALLOCATE" {
@@ -85,6 +85,46 @@ func (s *Service) allocation(ctx context.Context, c Command) (any, error) {
 		return nil, fsapi.Invalid
 	}
 	return map[string]any{"claim": call.Claim, "proof_hash": proof, "status": "GAP"}, nil
+}
+
+// allocationToleratesExited reports whether an issuer whose PROCESS_EXIT already
+// completed may still pass the credential check of this ALLOCATE/GAP_RESOLVE.
+// It never admits a fresh credential revision (admitCredentials refuses an
+// unknown revision of an exited process unconditionally); it only lets the
+// exact bytes already bound for that revision through. Scope, enrollment,
+// attestation, the provider's exact original binding and claim budgets are
+// checked as for a live issuer.
+//
+//   - GAP_RESOLVE only closes an exact never-prepared original as no-effect.
+//   - ALLOCATE is tolerated exactly for the CALL path's originalCleanup shapes
+//     (DESCRIPTION_RELEASE of a live DESCRIPTION grant, FORGET count 1 of a live
+//     PATH grant, both bound to these exact credentials). Task 194: the guest's
+//     final release can follow its issuer's completed PROCESS_EXIT (an fd
+//     inherited by a longer-lived child, or the exit race where PROCESS_EXIT's
+//     CALL ran before the release allocated). CALL and the private preparer
+//     already accepted that release, but ALLOCATE refused it, so the claim was
+//     never allocated and the guest blocked its session. The predicate is
+//     evaluated at ALLOCATE time only; CALL and the preparer recheck it, so a
+//     grant released in between still refuses the CALL (STALE) and the claim
+//     is then closed by GAP_RESOLVE.
+//
+// Exited cleanup gets no budget exemption and no per-grant cap: it consumes
+// ordinary claim numbers and credits like any allocation, and a live process
+// could already spend claims on repeated releases of one grant (only the first
+// CALL can succeed; the rest refuse STALE and are gap-resolved).
+//
+// Everything else stays refused for an exited issuer: such a process may only
+// give up authority it already held, never cause a new effect. DRAIN_WRITE, the
+// other opcode CALL tolerates, never arrives here: its claim comes from the
+// dirty earmark (DIRTY_RESERVE + BindFrozen) and the codec refuses it at
+// ALLOCATE. DESCRIPTION_CLOSE is refused on every path: its only extra effect,
+// releasing the process's fcntl locks, was already performed by the completed
+// PROCESS_EXIT for the same per-process lock owner.
+func (s *Service) allocationToleratesExited(c Command, call Call) bool {
+	if c.Op == "GAP_RESOLVE" {
+		return true
+	}
+	return s.originalCleanup(Binding{Context: c.Context, Call: call})
 }
 
 func validateControlledRetirement(v any) error {

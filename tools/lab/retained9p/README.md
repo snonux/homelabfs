@@ -260,6 +260,19 @@ and T11 is recorded unrun.
 keeps it uncertain (never a refusal, never a pass). An `OSError` without an
 errno also ends the step instead of being recorded as EIO.
 
+**No descriptor outlives a deadline (y84).** hfs syscalls wait
+uninterruptibly, so an expired alarm stays pending and used to raise
+`Deadline` right after `os.open` returned, before the fd was registered; the
+fd then closed only at process exit (zq3-r10 R10-1). `guest.py` now blocks
+SIGALRM across every open and its registration (`open_registered`/`owned`),
+so the pending deadline fires with the fd already owned by a cleanup path.
+`guest-lock-probe.py` defers its raising handlers the same way. Admission
+also emits `admission-step` events (`identity-checked`, then `open-root`,
+`stat-root` and `root-admitted` per domain; step requests emit only
+`identity-checked`, before `admitted-step`), so a slow stage shows in
+`stdout.log` as the gap to the next event; the controller and correlator
+ignore them.
+
 Step admission checks the full guest identity but reads the mount tuples from
 mountinfo only, without opening or resolving anything inside a domain. The
 step's own domain (m0 for T9/T10, m1 for T11) must be the exact admitted

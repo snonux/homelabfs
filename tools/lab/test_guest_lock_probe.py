@@ -275,7 +275,7 @@ class GuestLockProbeTests(unittest.TestCase):
 
     def test_real_non9p_mount_refused_before_mutation(self):
         with self.assertRaises(probe.Refused):
-            probe.admit(self.request())
+            probe.admit(self.request(), [])
         self.assertEqual(self.root_entries(), [])
 
     def test_invalid_missing_and_symlink_mounts_refused_before_mutation(self):
@@ -283,18 +283,77 @@ class GuestLockProbeTests(unittest.TestCase):
                         {"mountpoint": self.temp.name + "/missing"},
                         {"budgets": {"overall_seconds": 61, "case_seconds": 1}}):
             with self.subTest(changed=changed), self.assertRaises(probe.Refused):
-                probe.admit(self.request(**changed))
+                probe.admit(self.request(**changed), [])
         Path(self.temp.name, "link").symlink_to(self.temp.name)
         with self.assertRaises(probe.Refused):
-            probe.admit(self.request(mountpoint=self.temp.name + "/link"))
+            probe.admit(self.request(mountpoint=self.temp.name + "/link"), [])
         self.assertEqual(self.root_entries(), ["link"])
+
+    def alarming_open(self, trigger):
+        """os.open stand-in queuing SIGALRM before returning, as an hfs open
+        that waited uninterruptibly past the alarm does (zq3-r10 R10-1)."""
+        real_open, opened = os.open, []
+
+        def fake(path, flags, mode=0o777, *, dir_fd=None):
+            fd = real_open(path, flags, mode, dir_fd=dir_fd)
+            opened.append(fd)
+            if trigger(path):
+                os.kill(os.getpid(), signal.SIGALRM)
+            return fd
+        return fake, opened
+
+    def raising_alarm(self):
+        previous = signal.signal(signal.SIGALRM, lambda *_: (_ for _ in ()).throw(TimeoutError("deadline")))
+        self.addCleanup(signal.signal, signal.SIGALRM, previous)
+
+    @staticmethod
+    def is_open(fd):
+        try:
+            os.fstat(fd)
+        except OSError:
+            return False
+        return True
+
+    def test_alarm_during_root_open_leaves_fd_owned_by_caller(self):
+        self.raising_alarm()
+        fake, opened = self.alarming_open(lambda path: True)
+        owned = []
+        with mock.patch.object(probe, "mount_record", return_value={}), \
+                mock.patch.object(probe.os, "open", fake), self.assertRaises(TimeoutError):
+            probe.admit(self.request(), owned)
+        self.assertEqual(owned, opened)
+        self.assertTrue(self.is_open(owned[0]))
+        os.close(owned[0])
+
+    def test_refused_admission_closes_and_unregisters_root_fd(self):
+        owned, request = [], self.request()
+        with mock.patch.object(probe, "mount_record", return_value={}), \
+                mock.patch.object(probe, "fd_mount_id", return_value=-1), \
+                self.assertRaisesRegex(probe.Refused, "retained descriptor mount ID differs"):
+            probe.admit(request, owned)
+        self.assertEqual(owned, [])
+
+    def test_alarm_during_leaf_or_lock_file_open_closes_it(self):
+        self.raising_alarm()
+        for target, opens in (("leaf", 1), ("posix.lock", 2)):
+            with self.subTest(target=target):
+                self.last_fixture = fixture = self.fixture()
+                fixture.leaf += "-alarm-" + target.split(".")[0]
+                trigger = fixture.leaf if target == "leaf" else target
+                fake, opened = self.alarming_open(lambda path, n=trigger: path == n)
+                with mock.patch.object(probe.os, "open", fake):
+                    result = fixture.run()
+                self.assert_failure(result)
+                self.assertIn("TimeoutError", result["error"])
+                self.assertEqual(len(opened), opens)
+                self.assertFalse(any(self.is_open(fd) for fd in opened))
 
     def test_retained_descriptor_mount_mismatch_refused(self):
         request = self.request()
         with mock.patch.object(probe, "mount_record", return_value={}), \
                 mock.patch.object(probe, "fd_mount_id", return_value=-1):
             with self.assertRaises(probe.Refused):
-                probe.admit(request)
+                probe.admit(request, [])
         self.assertEqual(self.root_entries(), [])
 
     def test_kernel_waiter_native_and_9p_flock_representations(self):

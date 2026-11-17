@@ -90,7 +90,7 @@ class StepAdmissionTests(unittest.TestCase):
             with self.subTest(changed=sorted(changed)), self.assertRaises(guest.Refused):
                 guest.request_kind(changed)
         with self.assertRaisesRegex(guest.Refused, "step admission"):
-            guest.admit(request)
+            guest.admit(request, [])
         case_shaped = {**{key: value for key, value in request.items() if key != "step"},
                        "case": "sync", "version": guest.VERSION}
         with self.assertRaisesRegex(guest.Refused, "step admission requires"):
