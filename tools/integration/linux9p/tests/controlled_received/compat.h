@@ -119,9 +119,8 @@ static inline unsigned long primitive_milliseconds(void) { struct timespec t;ass
 #define jiffies primitive_milliseconds()
 void primitive_sleep(unsigned long,unsigned long);
 #define usleep_range(a,b) primitive_sleep(a,b)
-/* x84: hfs_call's uninterruptible pending-allocation poll. A plain sleep, not
- * the host-yielding primitive_sleep: the wait is local, and the test thread
- * that clears the fence runs concurrently.
+/* z84: hfs_mmap_settle's bounded poll. A plain sleep, not the host-yielding
+ * primitive_sleep: the wait is local to kill_sb.
  */
 #define msleep(ms) usleep((ms)*1000UL)
 #define pr_warn_ratelimited(...) fprintf(stderr,__VA_ARGS__)
@@ -135,6 +134,11 @@ static inline void kref_put(struct kref *k,void (*release)(struct kref *)) { if(
 #define wake_up_all(q) ((void)(q))
 #define wait_event(q,p) do { (void)(q);while(!(p))usleep(100); } while(0)
 #define wait_event_killable(q,p) ({wait_event(q,p);0;})
+/* x84: hfs_call's fence wait. wake_up_all is a no-op here, so poll the
+ * condition until it holds or the timeout passes. */
+#define wait_event_timeout(q,p,t) ({ unsigned long __end=jiffies+(t);(void)(q); \
+ while(!(p)&&time_before(jiffies,__end))usleep(100); (long)((p)?1:0); })
+#define wait_event_killable_timeout(q,p,t) wait_event_timeout(q,p,t)
 typedef int gfp_t;
 enum migrate_mode { MIGRATE_ASYNC };
 struct address_space_operations {

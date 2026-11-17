@@ -86,10 +86,12 @@ def main():
                 'hfs_args_init', 'hfs_cap_write', 'hfs_args_object',
                 'hfs_cap_free', 'hfs_cap_parse', 'hfs_reply_cap',
                 'hfs_request_unhold', 'hfs_request_result_put', 'hfs_request_payload',
+                'hfs_allocation_changed_locked', 'hfs_allocation_wake',
                 'hfs_request_allocate', 'hfs_request_resolve_gap', 'hfs_request_result_borrow', 'hfs_request_run',
                 'hfs_request_earmark', 'hfs_request_cancel_earmark', 'hfs_request_earmark_admitted',
                 'hfs_request_bind_drain', 'hfs_request_drain', 'hfs_cleanup_opcode', 'hfs_call_control_bytes',
-                'hfs_call_admit_locked', 'hfs_call_admit', 'hfs_call_request_free', 'hfs_call_reserve',
+                'hfs_call_admit_locked', 'hfs_call_dequeue', 'hfs_call_woken', 'hfs_call_sleep',
+                'hfs_call_admit', 'hfs_call_request_free', 'hfs_call_reserve',
                 'hfs_call_prepare', 'hfs_call_number_locked', 'hfs_call_once', 'hfs_call', 'hfs_retirement_cut_new', 'hfs_retirement_cut_free', 'hfs_retire', 'hfs_result_adopt',
                 'hfs_readdir_cleanup', 'hfs_readdir_forget', 'hfs_session_free', 'hfs_session_destroy', 'hfs_enrollment_validate', 'hfs_enrollment_lanes', 'v9fs_hfs_register_provider']
     definitions = []
@@ -126,7 +128,8 @@ def main():
                      'hfs_mmap_events', 'hfs_mmap_poll', 'hfs_mmap_pressure',
                      'hfs_mmap_pressure_work', 'hfs_mmap_start',
                      'hfs_mmap_quiesce_control', 'hfs_mmap_prepare_retire',
-                     'hfs_mmap_terminal_prepare', 'hfs_mmap_stop']
+                     'hfs_mmap_terminal_prepare', 'hfs_mmap_stop',
+                     'hfs_view_settled', 'hfs_mmap_settle']
     (out/'control.inc').write_text('static void hfs_mmap_drained(struct work_struct *);\n' +
                                  '\n'.join(function(mmap, name) for name in control_names))
     (out/'virtio_identity.inc').write_text(function(read('net/9p/trans_virtio.c'), 'p9_client_hfs_virtio_identity'))

@@ -58,7 +58,15 @@ struct hfs_session {
       u32 subject_len;
    } enrollment;
    struct hfs_provider *provider;
+   /* x84: hfs_retire clears a retired fence owner and wakes waiters. */
+   struct hfs_request *allocation_pending;
+   unsigned long allocation_epoch;
+   int allocation_wait;
 };
+#define wake_up_all(q) ((void)(q))
+static inline void hfs_allocation_changed_locked(struct hfs_session *session) {
+   session->allocation_epoch++;
+}
 struct hfs_buf;
 struct hfs_json;
 static int hfs_control(struct hfs_session *, const char *, const struct hfs_buf *,

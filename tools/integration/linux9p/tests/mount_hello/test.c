@@ -137,6 +137,8 @@ struct hfs_session {
 	spinlock_t processes_lock;
 	struct list_head processes, requests, uncertain, descriptions, forgets;
 	struct list_head object_numbers, view_tickets, view_families, global;
+	struct list_head allocation_waiters; /* x84; hfs_session_new initializes */
+	int allocation_wait;
 	u64 next_claim, next_cell, next_inode, next_close, next_release;
 	u32 nr_requests;
 	struct workqueue_struct *control;
@@ -169,6 +171,7 @@ struct hfs_view {
 	enum hfs_view_phase phase;
 };
 #define wake_up_all(w) ((void)(w))
+#define init_waitqueue_head(w) ((void)(w))
 #define WARN_ON_ONCE(p) ((p) ? (fprintf(stderr, "unexpected WARN %s\n", #p), abort(), 1) : 0)
 
 /* Per-case fixture state; each case is a fresh forked child. */
@@ -401,11 +404,15 @@ static void fixture_kill_anon_super(struct super_block *sb)
 	unmount_kills++;
 	stop_view.nr_cached -= unmount_kill_releases;
 }
+/* x84 waiter wake-up and z84 view settle: no waiter or view here. */
+static unsigned int unmount_settles;
+static void hfs_allocation_wake(struct hfs_session *session) { }
+static void hfs_mmap_settle(struct hfs_session *session) { unmount_settles++; }
 static int unmount_stop(struct hfs_session *session)
 {
 	int err;
 
-	unmount_stop_after_flush = unmount_kills && unmount_flushes;
+	unmount_stop_after_flush = unmount_kills && unmount_flushes && unmount_settles;
 	err = hfs_controlled_stop(session);
 	return unmount_stop_err ? unmount_stop_err : err;
 }

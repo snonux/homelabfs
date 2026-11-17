@@ -201,7 +201,10 @@ static struct p9_client *busy_client;
 static unsigned busy_remaining, busy_injected;
 static bool busy_retry_pending;
 static unsigned long native_exchanges, busy_mark;
+/* x84: observes allocations without failing them (x84_test.inc). */
+static void (*x84_allocation_hook)(size_t);
 bool primitive_allocation_size_failure(size_t length) {
+ if(x84_allocation_hook)x84_allocation_hook(length);
  if(fault_scratch&&length==fault_scratch){fault_scratch=0;return true;}return false;
 }
 static char *read_line(void) { char *line=NULL;size_t cap=0;ssize_t n=getline(&line,&cap,stdin);assert(n>0);if(line[n-1]=='\n')line[n-1]=0;return line; }
@@ -313,7 +316,6 @@ static void credential_init(struct fixture_session *f,const struct hfs_json *j,i
  assert(f->credentials.len==j->tokens[token].end-j->tokens[token].start&&!memcmp(f->credentials.data,j->data+j->tokens[token].start,f->credentials.len));
 }
 #include "bootstrap_test.inc"
-#include "x84_test.inc"
 static void fixture_set_current(struct fixture_session *f) {
  f->groups.ngroups=f->credential.ngroups;
  memcpy(f->groups.gid,f->credential.groups,f->credential.ngroups*sizeof(f->groups.gid[0]));
@@ -324,6 +326,7 @@ static void fixture_set_current(struct fixture_session *f) {
  primitive_current_task=(struct task_struct){.pid=&f->pid};
  primitive_current_cred=primitive_real_cred=&f->native_cred;
 }
+#include "x84_test.inc"
 static void session_init(unsigned i) {
  struct fixture_session *f=&fixtures[i];
  f->session=calloc(1,sizeof(*f->session));f->client=calloc(1,sizeof(*f->client));assert(f->session&&f->client);
@@ -334,6 +337,7 @@ static void session_init(unsigned i) {
  mutex_init(&s->lock);mutex_init(&s->writer);mutex_init(&s->retirement);spin_lock_init(&s->processes_lock);
  INIT_LIST_HEAD(&s->global);INIT_LIST_HEAD(&s->descriptions);INIT_LIST_HEAD(&s->processes);INIT_LIST_HEAD(&s->forgets);INIT_LIST_HEAD(&s->object_numbers);
  INIT_LIST_HEAD(&s->uncertain);INIT_LIST_HEAD(&s->requests);INIT_LIST_HEAD(&s->view_tickets);INIT_LIST_HEAD(&s->view_families);
+ INIT_LIST_HEAD(&s->allocation_waiters);init_waitqueue_head(&s->allocation_wait);
  assert(!s->provider->enroll(mount->device_tag,&s->enrollment));
  assert(!hfs_enrollment_validate(&s->enrollment));
  assert(!hfs_enrollment_lanes(&s->enrollment,s->bridge_minor));

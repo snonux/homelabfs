@@ -285,16 +285,25 @@ callers blocked the session on it. `x84_test.inc` runs in every scenario
 (first fixture session, before READY):
 
 * the actual `hfs_call_admit_locked` decision matrix: an ordinary owner makes
-  every caller wait, an earmark only cleanup callers, and an uncertain or
-  failed allocation or a closing session nobody;
+  every caller wait, an earmark only cleanup callers, an uncertain or failed
+  allocation or a closing session nobody; with the fence free only the FIFO
+  queue head may number;
 * the actual `hfs_call_admit`: it waits for a concurrent thread that clears
-  the fence, returns the old `-EAGAIN` at its deadline, and refuses an
-  uncertain allocation at once;
+  the fence (epoch bump), leaves the queue with the old `-EAGAIN` at its
+  deadline, and refuses an uncertain allocation at once;
+* a concurrent owner whose actual `hfs_request_allocate` fails locally:
+  the waiter returns at once (fails if `allocation_failed` is not set);
 * in disposable children, the unchanged `hfs_release`: with a concurrent
   owner it waits and reaches its own numbering (an injected allocation
   failure then ends it locally; before x84 it returned `-EAGAIN` at once and
-  blocked), and with an uncertain allocation it still refuses at once and
-  blocks.
+  blocked); with a fence injected between `hfs_call`'s two admission checks
+  (from the allocation hook, mid preparation) it retries once and numbers
+  after the clear; with an uncertain allocation it still refuses at once
+  and blocks;
+* the unchanged `hfs_flush` after its process is marked exited (as
+  `hfs_process_exit` does before queueing PROCESS_EXIT): `-ESTALE` from
+  capture, also for a non-last exiting thread, and 0 for the last thread,
+  with no claim, cell or close sequence used and the session unblocked.
 
 `--scenario cleanup` additionally starts each `CLEANUP_CALLER` with another
 request's pending ALLOCATE (an earmark for FORGET and PROCESS_EXIT), cleared
@@ -302,6 +311,15 @@ by a thread after 30 ms: every production caller must wait and the host must
 still see exactly one CALL each. run.py's 180 s test timeout is too short for
 that scenario on a two-CPU race build (two subtests of about 35-80 s plus
 setup); x84 ran it through the same overlay with a 900 s timeout.
+
+`--scenario exit-cleanup` (`TestControlledReceivedActualExitThenCleanup`)
+runs the production PROCESS_EXIT worker first and then the same process's
+DESCRIPTION_RELEASE and FORGET callers against the real host; both must
+succeed without blocking the session and each CALL must run once. This is
+the normal exit order (PROCESS_EXIT reaches the host first). **It requires
+host task 194** (ALLOCATE accepts an exited issuer for cleanup intents) and
+fails without it: the release's ALLOCATE is refused Stale and `hfs_release`
+blocks the session.
 
 ## Failed bind and slot floor (`w54`)
 
