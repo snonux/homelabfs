@@ -1796,3 +1796,57 @@ func TestControlledReceivedActualCleanupByteFunding(t *testing.T) {
 		})
 	}
 }
+
+// x84 review (zq3-r10 R10-1): at process exit PROCESS_EXIT normally reaches
+// the host first; the exiting process's own DESCRIPTION_RELEASE and a FORGET
+// queued later (hfs_evict_inode) then carry the credentials of an exited
+// process. Both must still succeed through the unchanged production callers,
+// without blocking the session.
+//
+// REQUIRES host task 194 (ALLOCATE accepts an exited issuer for cleanup
+// intents). Without it the release's ALLOCATE is refused Stale by
+// admitCredentials, hfs_release blocks the session and this test fails.
+func TestControlledReceivedActualExitThenCleanup(t *testing.T) {
+	for _, protocol := range []guestbridge.Protocol{guestbridge.MappedProtocol(), guestbridge.TerminalProtocol()} {
+		t.Run(fmt.Sprint(protocol.Features), func(t *testing.T) {
+			r := newSourceRigDomainsUnstarted(t, protocol, 2, receivedInitialIDMap)
+			c := startReceivedCarrier(t, r)
+			request := func(op string, args any) []byte {
+				return c.action("REQUEST", 0, op+" "+hex.EncodeToString(mustRuntimeJSON(t, args)), 0)
+			}
+			root := receivedResult(t, request("ROOT", map[string]any{}))
+			c.action("ADOPT_ROOT_PREPARE", 0, "", 0)
+			caps := receivedResult(t, request("CREATE", map[string]any{"parent": root[0], "name": "657869742d636c65616e7570", "mode": 0660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}}))
+			kinds := map[string]bool{}
+			for _, cap := range caps {
+				kinds[cap.Kind] = true
+			}
+			if !kinds["DESCRIPTION"] || !kinds["PATH"] {
+				t.Fatal("missing actual CREATE capability")
+			}
+			c.action("CLEANUP_OWNERS", 0, "", 0)
+			c.action("REPLIES_DROP", 0, "", 0)
+			c.action("RETIRE", 0, "", 0)
+			for _, op := range []string{"PROCESS_EXIT", "DESCRIPTION_RELEASE", "FORGET"} {
+				c.action("CLEANUP_CALLER", 0, op, 0)
+				c.action("REPLIES_DROP", 0, "", 0)
+				c.action("RETIRE", 0, "", 0)
+			}
+			seen := map[string]int{}
+			for _, command := range c.commands {
+				if command.Context != r.scope || command.Op != "CALL" {
+					continue
+				}
+				var call guestbridge.Call
+				require(t, json.Unmarshal(command.Payload, &call))
+				seen[call.Intent.Opcode]++
+			}
+			for _, op := range []string{"PROCESS_EXIT", "DESCRIPTION_RELEASE", "FORGET"} {
+				if seen[op] != 1 {
+					t.Fatalf("exit-time cleanup %s executed %d times", op, seen[op])
+				}
+			}
+			c.close()
+		})
+	}
+}

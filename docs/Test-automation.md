@@ -39,6 +39,7 @@ Once approved, the scripts execute without routine LLM participation. Determinis
 - Use bounded retries and deadlines. An unexpected condition stops dependent work and invokes the already approved safe cleanup/restoration path; it does not ask an LLM to invent live repairs.
 - Keep run state and artifacts outside the disposable cluster. Record started/completed steps durably so execution and cleanup can resume idempotently after interruption.
 - Separate assertion failures, infrastructure/resource failures, test timeouts, cleanup failures, and restoration failures. Provide a nonzero exit status for an incomplete or unsuccessful run.
+- Size guest-side syscall deadlines for the HomelabFS guest (x84): a request issued while another request's ALLOCATE is pending now waits up to 30 s for it before its own 30 s request window, so one syscall can take about 60 s. Cleanup paths (close, the final release, process exit) wait uninterruptibly; other callers stop waiting on a fatal signal. An unmount also waits up to 2 s for the view to settle (z84). A shorter harness alarm reports such a wait as a failure.
 - Produce a human-readable summary plus JSON/JUnit-style machine-readable results, package/kernel versions, seeds, timings, relevant logs, and remaining-resource inventory. Preserve useful diagnostics even when tests fail.
 - An LLM may help write the runner, review a plan, or analyze collected evidence afterward. It is not part of the test control loop and cannot approve tests on the user's behalf.
 

@@ -867,3 +867,170 @@ A fresh `prepare.py` tree applies it with fuzz zero and `fs/9p/`, `net/9p/`
 and `random.o` compile without warnings under `kernel.py configure`. view,
 view --pressure, mount_hello, tag (all `--sanitize`) and controlled_received
 `terminal-smoke` pass. No candidate was rebuilt or admitted.
+
+## Pending-allocation wait and the unmount stop (`x84`, `z84`)
+
+zq3-r10 R10-1 (x84, patch 0003): a request may not be numbered while
+another request's ALLOCATE is unacknowledged (`session->allocation_pending`).
+`hfs_call` used to answer that with an immediate local `-EAGAIN`. No VFS
+caller retries it: userspace saw a spurious EAGAIN, and `hfs_release`,
+`hfs_flush` and the FORGET and PROCESS_EXIT workers treat any error as
+uncertain and block the session. At process exit the PROCESS_EXIT work
+(queued from `do_exit` before `exit_files`) holds the fence while the
+exiting task's final `fput` sends DESCRIPTION_RELEASE, which is how r10's T1
+blocked its session without the release ever reaching the host.
+
+- **Wait while the fence is still clearing.** `hfs_call` sleeps on
+  `session->allocation_wait` for at most 30 s (`HFS_ALLOCATION_WAIT_MS` in
+  `hfs.h`, the guest's request window) and then returns the old `-EAGAIN`.
+  Every place the fence clears or becomes non-clearing bumps
+  `allocation_epoch` under `session->lock` and wakes the queue: the end of
+  each ALLOCATE attempt (acknowledged, failed or uncertain), earmark
+  admission and cancellation, retirement of the owner (defensive, for
+  minor < 4), a waiter leaving the queue, and kill_sb's closing.
+- **FIFO.** Waiters queue on `session->allocation_waiters`
+  (`struct hfs_allocation_waiter` on the caller's stack); with the fence free
+  only the queue head may number, and new earmarks also yield to a non-empty
+  queue (the fault path retries their `-EAGAIN`). A stream of new callers
+  therefore cannot starve an `hfs_call` waiter. Only `hfs_call` waiters are
+  starvation-free: under sustained ordinary `hfs_call` load an earmark can
+  keep losing, and its fault retries via `VM_FAULT_NOPAGE` indefinitely
+  (slow, not a deadlock). The head keeps its place through request
+  preparation. Two callers that both found the fence free and the queue
+  empty prepare concurrently, and the second's re-check routinely loses to
+  the first's numbering; it then drops the reservation and view stamp,
+  takes its queue place and waits again.
+- **Not for an allocation nothing will clear.** An uncertain ALLOCATE
+  (`allocation_uncertain`) still refuses at once, so cleanup callers still
+  block the session on it. A failed ALLOCATE (new
+  `hfs_request.allocation_failed`; nobody retries it) and a closing session
+  also refuse at once.
+- **Ordinary opcodes wait only for an ordinary owner** (or a free fence with
+  an earlier queued caller). That owner's window is the ALLOCATE exchange
+  `hfs_request_run` starts at once: one host round trip that takes no VFS,
+  page or mmap lock, waits on no workqueue and is not parked behind recalls
+  (`guestbridge` skips `ViewProtocol.CheckRequest` for ALLOCATE), so a
+  waiter holding `i_rwsem` or `mmap_lock` cannot stall it. An earmark
+  (`hfs_dirty_reserve`) holds the fence across DIRTY_RESERVE and, after a
+  refusal, until the mmap cleanup worker resumes or cancels it, which
+  depends on recalls and view STOP; ordinary callers keep the immediate
+  `-EAGAIN` there. The four cleanup opcodes also wait for an earmark: their
+  callers (`__fput`, `filp_close`, the control workqueue; READDIR's FORGET
+  holds only the directory's shared `i_rwsem`) hold nothing an earmark
+  needs.
+- **Signals.** Ordinary callers sleep killable and return the old `-EAGAIN`
+  on a fatal signal; cleanup callers sleep uninterruptibly (they cannot
+  retry). Neither sleep is freezable and the freezer does not wake them,
+  so a suspend during such a wait can fail (the default 20 s freeze timeout
+  is below the 30 s bound; irrelevant on the lab guests). A syscall can now
+  take up to 30 s of
+  fence wait plus its own 30 s request window (docs/Test-automation.md).
+- **No lasting deadlock.** The wait is bounded and then fails as before.
+  An ordinary owner is a running thread past its admission check, never a
+  work item queued behind the waiter, so a waiter on the control workqueue
+  (max_active 2) cannot hold back its own owner; earmarks are resolved by
+  the faulting thread or `cleanup_queue`, never `session->control`.
+  `hfs_call` is never entered with `session->lock` or `session->writer`
+  held, and the waiter holds neither while it sleeps.
+
+`hfs_call` was split into `hfs_call_admit[_locked]`, `hfs_call_sleep`,
+`hfs_call_dequeue`, `hfs_call_reserve`, `hfs_call_prepare`,
+`hfs_call_number_locked` and `hfs_call_once`; the request setup itself is
+unchanged. The CALLERS_UNFUNDED/ENOSPC behaviour is unchanged: reservation
+failures are not fence waits. Waiting widens a pre-existing race:
+`hfs_flush` takes its `close_sequence` before `hfs_call`, so two concurrent
+closes of one description can reach the host out of sequence order.
+
+Host dependency (task 194): the daemon's ALLOCATE admitted credentials with
+`allowExited` only for GAP_RESOLVE (`internal/guestbridge/controlled_protocol.go`
+`allocation`), while the CALL accepts an exited issuer for
+DESCRIPTION_RELEASE and FORGET (`originalCleanup`). At exit the waiting
+release normally *loses* that race: PROCESS_EXIT's CALL runs first on the
+host's single ordinary-lane worker, `finishLifetime` records the process as
+exited, and the release's ALLOCATE then gets Stale. The same holds for a
+FORGET queued later from `hfs_evict_inode` and for an fd inherited by a
+child that outlives its opener. Without 194 such a release or FORGET still
+blocks the session; x84 only removes the guest-local refusal.
+controlled_received `--scenario exit-cleanup`
+(`TestControlledReceivedActualExitThenCleanup`) runs PROCESS_EXIT, then
+the same process's DESCRIPTION_RELEASE and FORGET through the production
+callers against the real host, and requires both to succeed without
+blocking. It requires host task 194 (merged in 10b76df) and passes on
+main.
+
+DESCRIPTION_CLOSE after PROCESS_EXIT (194 refuses it with STALE at
+ALLOCATE): `hfs_process_exit` marks the process exited before queueing
+PROCESS_EXIT (`hfs_session.c` sched_process_exit hook, `atomic_cmpxchg` on
+`process->exited`), and `hfs_capture_owned` then refuses that process with
+`-ESTALE`, so a later `hfs_flush` sends nothing (`hfs_file.c`, the
+`hfs_capture` call); the last exiting thread skips the close (`PF_EXITING`
+with `signal->live == 0`), and a child closing an inherited fd uses its own
+live process. A thread in an uninterruptible cleanup wait cannot let its
+process's `live` count reach zero. Residual: a non-last thread with its own
+file table (CLONE_THREAD without CLONE_FILES, or `unshare(CLONE_FILES)`)
+that captured before the exit mark can send its close after PROCESS_EXIT.
+The host then refuses its ALLOCATE; like any refused ALLOCATE today that
+leaves the fence held (failed or uncertain): close(2) gets the error and
+later requests on the mount refuse with `-EAGAIN`. Not exercised here.
+
+zq3-r10 R10-2 (z84, patches 0003, 0004 and 0005): `hfs_controlled_stop`
+accepted only an UNBOUND or quiescent view, but a recall's REOPEN leaves the
+view LIVE with `quiescent` false, and `v9fs_hfs_kill_super` ran the stop
+before `kill_anon_super` and the control flush. Every clean unmount of a
+once-reopened mount logged `blocked by failed provider stop on STOP (-16)`.
+
+- kill_sb now sets closing/blocked (waking fence waiters), tears the
+  superblock down, flushes the control workqueue, settles the view
+  (`hfs_mmap_settle`, patch 0004) and only then stops.
+- `hfs_mmap_settle` is best-effort. It flushes the mmap `cleanup_queue`
+  once, which sends the lease releases the last I/O queued (observation
+  ends are released asynchronously there), then waits at most
+  `HFS_UNMOUNT_SETTLE_MS` (2 s) while a recall or remaining owner is
+  visible. The host may start a release's recall only after it returns;
+  that is harmless, since no physical owner remains and the stop's verdict
+  only decides whether kill_sb logs. A FENCED view ends the wait at once
+  (it never settles); the recall phases (STOPPED, drains, FINAL) still
+  progress to LIVE and are waited for. Cleanup work takes no superblock or
+  inode lock and the flush is bounded by the releases' own exchange
+  timeouts. A cleanup that requeues itself (a refused release retried
+  every 10 ms) is not chased.
+- `hfs_controlled_view_idle` accepts, besides the old cases, a LIVE hfs1.4
+  view with zero active, dirty, cached, observation and mapping counts and
+  no cookies. Zero is final because no inode, file, mapping or page of the
+  superblock survives `kill_anon_super` to take a new token, page or
+  observation. Any remaining owner, RECALLING (a recall still running after
+  the settle bound) and the drain phases still refuse and log.
+
+Tests:
+
+- controlled_received `x84_test.inc` (every scenario): the decision matrix
+  including FIFO order; the bounded wait (admits after a concurrent clear,
+  leaves the queue at its deadline, refuses uncertainty at once); a failed
+  ALLOCATE through the actual `hfs_request_allocate` wakes a waiter, which
+  returns at once (removing `allocation_failed = true` makes it sleep to its
+  deadline and fail); the unchanged `hfs_release` against a concurrent
+  owner (waits, then numbers), a fence injected between `hfs_call`'s two
+  checks (retries once and numbers after the clear; removing the retry
+  fails it) and an uncertain owner (refuses at once, blocks); after the
+  process is marked exited `hfs_flush` sends nothing (-ESTALE, or 0 for the
+  last thread) and the session stays usable. A no-wait mutant fails the
+  matrix.
+- `--scenario cleanup`: every production cleanup caller waits for a pending
+  ALLOCATE and still reaches the host exactly once (run with a 900 s
+  timeout, see its README). `--scenario exit-cleanup`: see above.
+- mount_hello `unmount-reopened-view`: an idle LIVE view and one whose clean
+  pages the teardown releases stop silently, a surviving cached page, an
+  active token and RECALLING still log, and kill_sb must stop after the
+  teardown, flush and settle; reverting the order, the LIVE acceptance or
+  the `nr_cached` check each fails it.
+- The rotted tests/controlled harness (s54) gained the extraction span and
+  wait stubs; it still fails to build on its pre-existing errors.
+
+The series was regenerated with `export.py --task x84-z84` (0003, 0004 and
+0005 change). A fresh `prepare.py` tree applies it with fuzz zero and
+`fs/9p/`, `net/9p/` and `random.o` compile without warnings under
+`kernel.py configure`. mount_hello, tag, view and view --pressure (plain and
+`--sanitize`), controlled_received `terminal-smoke` and `cleanup`, requests,
+readdir_cleanup, transport, huge, policy and cursor pass; root, capture,
+reclaim and codec fail as on the unchanged tree (s54). No candidate was
+rebuilt or admitted.

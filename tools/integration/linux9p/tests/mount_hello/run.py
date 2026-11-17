@@ -14,6 +14,10 @@ v9fs_hfs_kill_super, hfs_session_fence, hfs_controlled_stop and
 hfs_controlled_retain verbatim. The Bounds cases use the daemon's own
 Sources floor constants from internal/viewcontrol/source_floor.go and the
 real Bounds of the zq3 spec and the controlledruntime guest artifacts.
+
+Since z84 it also copies hfs_controlled_view_idle: kill_sb stops after
+kill_anon_super and the control flush, and a once-reopened LIVE view with
+closed admission and no remaining owner stops silently.
 """
 import argparse
 import hashlib
@@ -113,7 +117,8 @@ def extract(source, output):
                                        build.function(enrollment, 'hfs_go_bounds'))
     (output / 'stop.inc').write_text(''.join(
         build.function(texts['fs/9p/hfs_controlled.c'], name)
-        for name in ('hfs_controlled_stop', 'hfs_controlled_retain')))
+        for name in ('hfs_controlled_view_idle', 'hfs_controlled_stop',
+                     'hfs_controlled_retain')))
     (output / 'kill_sb.inc').write_text(build.function(session, 'v9fs_hfs_kill_super'))
     return {name: hashlib.sha256(text.encode()).hexdigest() for name, text in texts.items()}
 

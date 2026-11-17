@@ -107,7 +107,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,420 @@
+@@ -0,0 +1,449 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -130,6 +130,12 @@ new file mode 100644
 +#define HFS_IDENTITIES_MAX 4096U
 +#define HFS_CONTEXT_MAX 4096U
 +#define HFS_CAP_MAX 8192U
++/* hfs_call's bounded wait for another request's pending ALLOCATE (x84):
++ * at most the guest's 30 s request window.
++ */
++#define HFS_ALLOCATION_WAIT_MS 30000U
++/* kill_sb's bounded wait for a view to settle before the stop (z84). */
++#define HFS_UNMOUNT_SETTLE_MS 2000U
 +
 +struct hfs_controlled_mount;
 +struct hfs_session;
@@ -284,6 +290,14 @@ new file mode 100644
 +	struct hfs_json *gap_response;
 +	bool allocated;
 +	bool allocating;
++	/* The last ALLOCATE attempt returned without the exact acknowledgement
++	 * (set under session->lock when it returns). Nothing in the guest
++	 * retries it, so its allocation_pending fence stays, and hfs_call stops
++	 * waiting for it (x84). An exact retry that succeeds clears the fence,
++	 * which makes this flag irrelevant; a retry still in progress leaves it
++	 * set until that attempt returns.
++	 */
++	bool allocation_failed;
 +	bool gap;
 +	bool earmarked;
 +	bool view_stamped;
@@ -367,6 +381,16 @@ new file mode 100644
 +	struct workqueue_struct *control;
 +	/* Non-NULL until the exact protected ALLOCATE acknowledgement. */
 +	struct hfs_request *allocation_pending;
++	/* x84: hfs_call callers waiting for the fence, FIFO (struct
++	 * hfs_allocation_waiter, under lock). allocation_epoch changes under
++	 * lock whenever an ALLOCATE attempt ends (acknowledged, failed or
++	 * uncertain), an earmark is admitted or cancelled, a retired owner is
++	 * cleared, any queued waiter leaves, or kill_sb closes the session;
++	 * allocation_wait is woken after each change.
++	 */
++	struct list_head allocation_waiters;
++	unsigned long allocation_epoch;
++	wait_queue_head_t allocation_wait;
 +	u64 next_claim;
 +	u64 next_cell;
 +	u64 next_inode;
@@ -389,6 +413,11 @@ new file mode 100644
 +	bool retired; /* actual protected whole-session provider proof */
 +	/* Bit 0: hfs_session_block already logged why this session blocked. */
 +	unsigned long block_reported;
++};
++
++/* An hfs_call caller queued for the allocation fence (x84), on its stack. */
++struct hfs_allocation_waiter {
++	struct list_head list;
 +};
 +
 +struct hfs_forget {
@@ -532,7 +561,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,3128 @@
+@@ -0,0 +1,3414 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -1791,6 +1820,23 @@ new file mode 100644
 +	return 0;
 +}
 +
++/* Caller holds session->lock: the allocation fence or its waiter queue
++ * changed. The caller wakes allocation_wait after unlocking (x84).
++ */
++static void hfs_allocation_changed_locked(struct hfs_session *session)
++{
++	session->allocation_epoch++;
++}
++
++/* Wake every hfs_call waiter to re-check the fence (x84). */
++static void hfs_allocation_wake(struct hfs_session *session)
++{
++	mutex_lock(&session->lock);
++	hfs_allocation_changed_locked(session);
++	mutex_unlock(&session->lock);
++	wake_up_all(&session->allocation_wait);
++}
++
 +int hfs_request_allocate(struct hfs_session *session,
 +			 struct hfs_request *request, struct hfs_buf *payload)
 +{
@@ -1840,8 +1886,17 @@ new file mode 100644
 +out:
 +	mutex_lock(&session->lock);
 +	request->allocating = false;
++	if (err)
++		request->allocation_failed = true;
++	/* Cleared, failed or uncertain: waiters re-check either way (x84). */
++	hfs_allocation_changed_locked(session);
 +	mutex_unlock(&session->lock);
-+	/* Never clear pending on uncertain acknowledgement or change its bytes. */
++	wake_up_all(&session->allocation_wait);
++	/* Never clear pending on uncertain acknowledgement or change its bytes.
++	 * allocation_failed only tells waiting hfs_call callers (x84) that this
++	 * fence no longer clears by itself; a later exact retry (the controlled
++	 * harnesses replay one) still clears pending normally.
++	 */
 +	hfs_json_free(reply);
 +	return err;
 +}
@@ -2113,7 +2168,10 @@ new file mode 100644
 +		goto free;
 +	}
 +	mutex_lock(&session->lock);
-+	err = session->allocation_pending ?
++	/* An earmark also yields to queued hfs_call waiters (x84 FIFO); the
++	 * faulting caller retries -EAGAIN itself.
++	 */
++	err = session->allocation_pending || !list_empty(&session->allocation_waiters) ?
 +		      -EAGAIN :
 +		      hfs_request_admit(session->blocked, true,
 +					session->nr_requests - session->nr_control_requests,
@@ -2205,10 +2263,13 @@ new file mode 100644
 +		request->gap = true;
 +		request->terminal = true;
 +		request->adopted = true;
-+		if (session->allocation_pending == request)
++		if (session->allocation_pending == request) {
 +			session->allocation_pending = NULL;
++			hfs_allocation_changed_locked(session);
++		}
 +	}
 +	mutex_unlock(&session->lock);
++	wake_up_all(&session->allocation_wait);
 +	hfs_json_free(response);
 +	return 0;
 +}
@@ -2220,9 +2281,12 @@ new file mode 100644
 +				struct hfs_request *request)
 +{
 +	mutex_lock(&session->lock);
-+	if (request->earmarked && session->allocation_pending == request)
++	if (request->earmarked && session->allocation_pending == request) {
 +		session->allocation_pending = NULL;
++		hfs_allocation_changed_locked(session);
++	}
 +	mutex_unlock(&session->lock);
++	wake_up_all(&session->allocation_wait);
 +}
 +
 +void hfs_request_unhold(struct hfs_session *session, struct hfs_request *request)
@@ -2272,6 +2336,15 @@ new file mode 100644
 +			       &request->drain_payload, out);
 +}
 +
++/* The four cleanup opcodes. Their callers (final fput, flush, the FORGET and
++ * PROCESS_EXIT workers) cannot retry and treat any failure as uncertain.
++ */
++static bool hfs_cleanup_opcode(const char *opcode)
++{
++	return !strcmp(opcode, "DESCRIPTION_CLOSE") || !strcmp(opcode, "DESCRIPTION_RELEASE") ||
++	       !strcmp(opcode, "FORGET") || !strcmp(opcode, "PROCESS_EXIT");
++}
++
 +/* Cleanup's local request slot is independent of its semantic byte class.
 + * Both admitted controlled tuples send these normal CALLs on the ordinary
 + * lane with full immutable replies. Fresh ordinary funding still requires
@@ -2281,78 +2354,233 @@ new file mode 100644
 +static bool hfs_call_control_bytes(const struct hfs_session *session, const char *opcode,
 +				   bool control)
 +{
-+	bool normal_cleanup = !strcmp(opcode, "DESCRIPTION_CLOSE") ||
-+		!strcmp(opcode, "DESCRIPTION_RELEASE") || !strcmp(opcode, "FORGET") ||
-+		!strcmp(opcode, "PROCESS_EXIT");
 +	bool controlled = session->bridge_minor == 4 &&
 +		(session->enrollment.protocol_features == HFS_MAPPED_FEATURES ||
 +		 session->enrollment.protocol_features == HFS_TERMINAL_FEATURES);
 +
-+	return control && !(controlled && normal_cleanup);
++	return control && !(controlled && hfs_cleanup_opcode(opcode));
 +}
 +
-+int hfs_call(struct hfs_session *session, const char *opcode, const struct hfs_buf *args,
-+	     const struct hfs_cred *cred, bool control, struct hfs_json **out)
++/* x84 (zq3-r10 R10-1): a request may not be numbered while another request's
++ * ALLOCATE is unacknowledged (session->allocation_pending). Before x84 that
++ * was an immediate local -EAGAIN. No VFS caller retries it: userspace saw a
++ * spurious EAGAIN, and the cleanup callers blocked the session. At process
++ * exit the PROCESS_EXIT work (queued from do_exit before exit_files) holds
++ * the fence while the exiting task's final fput sends DESCRIPTION_RELEASE.
++ *
++ * A pending fence that is still clearing makes the caller sleep on
++ * session->allocation_wait, at most HFS_ALLOCATION_WAIT_MS (the guest's 30 s
++ * request window) in all; at the deadline the old -EAGAIN is returned.
++ * Waiters queue FIFO on session->allocation_waiters and only the head may
++ * number, so a stream of new callers cannot starve a cleanup waiter; new
++ * earmarks also yield to the queue. Every place the fence clears or turns
++ * non-clearing bumps allocation_epoch and wakes the queue: the end of each
++ * ALLOCATE attempt (acknowledged, failed or uncertain), the earmark
++ * admission and cancellation, retirement of the owner, a waiter leaving
++ * the queue, and kill_sb's closing. "Still clearing" means:
++ *
++ * - not allocation_uncertain: an uncertain ALLOCATE keeps its exact bytes
++ *   until reconciliation and must still fence (cleanup callers then block
++ *   the session as before);
++ * - not allocation_failed: nobody retries a failed ALLOCATE, waiting cannot
++ *   help;
++ * - not closing: kill_sb and its workqueue flush keep today's behaviour;
++ * - for an ordinary opcode, the owner is an ordinary hfs_call request (or
++ *   the fence is free and an earlier queued caller is about to number).
++ *   Its window is the ALLOCATE exchange that hfs_request_run starts at
++ *   once: one host round trip that takes no VFS, page or mmap lock, waits
++ *   on no workqueue and is not parked behind recalls on the host, so a
++ *   waiter holding i_rwsem or mmap_lock cannot stall it. An earmarked owner
++ *   (hfs_dirty_reserve) holds the fence across DIRTY_RESERVE and, after a
++ *   refusal, until the cleanup worker resumes or cancels it, which depends
++ *   on recalls and view STOP; an ordinary caller holding VFS locks keeps
++ *   the immediate -EAGAIN there (the mmap fault path retries it itself).
++ *   Cleanup callers hold no VFS lock (__fput, filp_close, the control
++ *   workqueue; READDIR's FORGET holds only the directory's shared i_rwsem,
++ *   which no earmark path takes), so they also wait for an earmark.
++ *
++ * Ordinary callers sleep killable and give up with -EAGAIN on a fatal
++ * signal; cleanup callers sleep uninterruptibly, since they cannot retry.
++ * Neither sleep is freezable and the freezer does not wake them: a
++ * suspend or freeze during such a wait can fail (the default freeze timeout
++ * of 20 s is shorter than the 30 s bound; irrelevant on the lab guests). A
++ * syscall can now take up to this wait plus its own 30 s request window.
++ *
++ * Waiting can never deadlock for good: it is bounded and then fails exactly
++ * as before. An ordinary fence owner is a running thread past its admission
++ * check, never a work item still queued behind the waiter, so a waiter on
++ * the control workqueue (max_active 2) cannot hold back its own owner. An
++ * earmark is resolved by its faulting thread or the mmap cleanup worker on
++ * its own cleanup_queue, never on session->control. hfs_call is never
++ * entered with session->lock or session->writer held, and the waiter holds
++ * neither while it sleeps. No request is issued from inside the ALLOCATE
++ * path itself (transport pressure is queued, never run inline).
++ *
++ * Waiting widens a pre-existing race: hfs_flush takes its close_sequence
++ * before hfs_call, so two concurrent closes of one description may still
++ * reach the host out of sequence order (the later one is then Stale).
++ *
++ * Host side (task 194): the daemon's ALLOCATE refused the credentials of a
++ * process whose PROCESS_EXIT already executed (allowExited only for
++ * GAP_RESOLVE), while the CALL accepts them for DESCRIPTION_RELEASE and
++ * FORGET. At exit PROCESS_EXIT normally wins: its CALL runs on the host's
++ * ordinary lane before the waiting release (or a FORGET queued later from
++ * hfs_evict_inode) allocates, so without 194 that release is refused.
++ */
++
++/* Caller holds session->lock. *wait reports a fence worth waiting for. A
++ * caller behind the queue head also waits: only the head may number.
++ */
++static int hfs_call_admit_locked(struct hfs_session *session, bool control, bool cleanup,
++				 struct hfs_allocation_waiter *waiter, bool *wait)
 +{
-+	struct hfs_request *request;
-+	struct hfs_buf payload = {};
-+	u8 digest[32];
++	const struct hfs_request *pending = session->allocation_pending;
++	bool behind = !list_empty(&session->allocation_waiters) &&
++		      session->allocation_waiters.next != &waiter->list;
++
++	*wait = false;
++	if (pending) {
++		*wait = !session->allocation_uncertain && !pending->allocation_failed &&
++			!session->closing && (cleanup || !pending->earmarked);
++		return -EAGAIN;
++	}
++	if (behind) {
++		*wait = !session->closing;
++		return -EAGAIN;
++	}
++	return hfs_request_admit(session->blocked, control,
++				 session->nr_requests - session->nr_control_requests,
++				 session->nr_control_requests, session->next_claim);
++}
++
++/* Leave the waiter queue (if queued) and let the next head re-check. */
++static void hfs_call_dequeue(struct hfs_session *session, struct hfs_allocation_waiter *waiter)
++{
++	bool queued;
++
++	mutex_lock(&session->lock);
++	queued = !list_empty(&waiter->list);
++	if (queued) {
++		list_del_init(&waiter->list);
++		hfs_allocation_changed_locked(session);
++	}
++	mutex_unlock(&session->lock);
++	if (queued)
++		wake_up_all(&session->allocation_wait);
++}
++
++static bool hfs_call_woken(struct hfs_session *session, unsigned long epoch)
++{
++	return READ_ONCE(session->allocation_epoch) != epoch || READ_ONCE(session->closing);
++}
++
++/* Sleep until the fence or queue changes, the session closes or the
++ * deadline passes. Ordinary callers also stop on a fatal signal (-EINTR).
++ */
++static int hfs_call_sleep(struct hfs_session *session, unsigned long epoch, bool cleanup,
++			  unsigned long deadline)
++{
++	long left = (long)(deadline - jiffies);
++
++	if (left <= 0)
++		return 0;
++	if (cleanup) {
++		wait_event_timeout(session->allocation_wait, hfs_call_woken(session, epoch), left);
++		return 0;
++	}
++	if (wait_event_killable_timeout(session->allocation_wait,
++					hfs_call_woken(session, epoch), left) < 0)
++		return -EINTR;
++	return 0;
++}
++
++/* Admission before any reservation: waits (x84) while a pending fence clears
++ * or an earlier queued caller numbers. On success a queued waiter stays at
++ * the head until hfs_call_once numbers or gives up.
++ */
++static int hfs_call_admit(struct hfs_session *session, bool control, bool cleanup,
++			  struct hfs_allocation_waiter *waiter, unsigned long deadline)
++{
++	unsigned long epoch;
++	bool wait;
++	int err;
++
++	for (;;) {
++		mutex_lock(&session->lock);
++		err = hfs_call_admit_locked(session, control, cleanup, waiter, &wait);
++		if (!err || !wait || !time_before(jiffies, deadline)) {
++			mutex_unlock(&session->lock);
++			if (err)
++				hfs_call_dequeue(session, waiter);
++			return err;
++		}
++		if (list_empty(&waiter->list))
++			list_add_tail(&waiter->list, &session->allocation_waiters);
++		epoch = session->allocation_epoch;
++		mutex_unlock(&session->lock);
++		if (hfs_call_sleep(session, epoch, cleanup, deadline)) {
++			hfs_call_dequeue(session, waiter);
++			return -EAGAIN; /* fatal signal: the old refusal */
++		}
++	}
++}
++
++static void hfs_call_request_free(struct hfs_session *session, struct hfs_request *request)
++{
++	hfs_buf_free(&request->claim);
++	hfs_buf_free(&request->intent);
++	hfs_buf_free(&request->credentials);
++	hfs_buf_free(&request->original_context);
++	hfs_buf_free(&request->earmark_number);
++	hfs_buf_free(&request->drain_payload);
++	hfs_buf_free(&request->readdir_cleanup);
++	hfs_completion_close(request->completion);
++	session->provider->unreserve(session, request->reservation);
++	kfree(request);
++}
++
++/* The request's full transport credit, retrying once after retirement. */
++static int hfs_call_reserve(struct hfs_session *session, struct hfs_request *request,
++			    bool resource_control)
++{
++	u64 bytes = (hfs_controlled_consumed(session) ? 4ULL : 16ULL) * 1024 * 1024;
++	int err;
++
++	request->session = session;
++	err = session->provider->reserve(session, bytes, resource_control, &request->reservation);
++	if ((err == -ENOSPC || err == -EAGAIN) && !hfs_retire(session))
++		err = session->provider->reserve(session, bytes, resource_control,
++						 &request->reservation);
++	return err;
++}
++
++/* Fill a reserved request; nothing is numbered or published yet. */
++static int hfs_call_prepare(struct hfs_session *session, const char *opcode,
++			    const struct hfs_buf *args, const struct hfs_cred *cred, bool control,
++			    struct hfs_request *request, struct hfs_buf *payload, u8 digest[32])
++{
 +	bool resource_control = hfs_call_control_bytes(session, opcode, control);
 +	int err;
 +
-+	*out = NULL;
-+	if (!hfs_operation(opcode, true))
-+		return -EOPNOTSUPP;
-+	if (session->bridge_minor >= 2 && !strcmp(opcode, "DRAIN_WRITE"))
-+		return -EOPNOTSUPP;
-+	if (!cred || args->error)
-+		return args->error ?: -EINVAL;
-+	mutex_lock(&session->lock);
-+	err = session->allocation_pending ? -EAGAIN :
-+		hfs_request_admit(session->blocked, control,
-+			session->nr_requests - session->nr_control_requests,
-+			session->nr_control_requests, session->next_claim);
-+	mutex_unlock(&session->lock);
-+	if (err)
-+		return err;
-+	request = kzalloc(sizeof(*request), GFP_KERNEL);
-+	if (!request)
-+		return -ENOMEM;
-+	request->session = session;
-+	err = session->provider->reserve(session, (hfs_controlled_consumed(session) ? 4ULL : 16ULL) * 1024 * 1024,
-+					 resource_control, &request->reservation);
-+	if (err == -ENOSPC || err == -EAGAIN) {
-+		if (!hfs_retire(session))
-+			err = session->provider->reserve(session, (hfs_controlled_consumed(session) ? 4ULL : 16ULL) * 1024 * 1024,
-+						 resource_control, &request->reservation);
-+	}
-+	if (err) {
-+		kfree(request);
-+		return err;
-+	}
 +	err = hfs_completion_new(session, resource_control, false, HFS_BODY_MAX, &request->completion);
 +	if (err)
-+		goto free;
++		return err;
 +	if (hfs_buf_init(&request->claim, 4096) ||
 +	    hfs_buf_init(&request->intent, args->len + 64) ||
 +	    hfs_buf_init(&request->credentials, 16384) ||
 +	    hfs_buf_init(&request->original_context, HFS_CONTEXT_MAX) ||
-+	    hfs_buf_init(&payload, HFS_BODY_MAX)) {
-+		err = -ENOMEM;
-+		goto free;
-+	}
++	    hfs_buf_init(payload, HFS_BODY_MAX))
++		return -ENOMEM;
 +	hfs_buf_literal(&request->intent, "{\"args\":");
 +	hfs_buf_add(&request->intent, args->data, args->len);
 +	hfs_buf_printf(&request->intent, ",\"opcode\":\"%s\"}", opcode);
 +	hfs_cred_write(&request->credentials, cred);
-+	if (request->intent.error || request->credentials.error) {
-+		err = request->intent.error ?: request->credentials.error;
-+		goto free;
-+	}
++	if (request->intent.error || request->credentials.error)
++		return request->intent.error ?: request->credentials.error;
 +	if (session->bridge_minor >= 3 && !strcmp(opcode, "READDIR")) {
 +		err = hfs_buf_init(&request->readdir_cleanup, HFS_BODY_MAX);
 +		if (err)
-+			goto free;
++			return err;
 +	}
 +	request->cache_observation = !strcmp(opcode, "GETATTR") || !strcmp(opcode, "LOOKUP") ||
 +		!strcmp(opcode, "READDIR") || !strcmp(opcode, "READLINK") || !strcmp(opcode, "STATFS");
@@ -2363,20 +2591,18 @@ new file mode 100644
 +			err = hfs_view_snapshot(view, &request->view_stamp);
 +			hfs_view_put(view);
 +			if (err)
-+				goto free;
++				return err;
 +			request->view_stamped = true;
 +		}
 +	}
 +	hfs_hash(request->intent.data, request->intent.len, digest);
-+	mutex_lock(&session->lock);
-+	err = session->allocation_pending ? -EAGAIN :
-+		hfs_request_admit(session->blocked, control,
-+			session->nr_requests - session->nr_control_requests,
-+			session->nr_control_requests, session->next_claim);
-+	if (err) {
-+		mutex_unlock(&session->lock);
-+		goto free;
-+	}
++	return 0;
++}
++
++/* Caller holds session->lock and admitted the request: number and publish it. */
++static void hfs_call_number_locked(struct hfs_session *session, struct hfs_request *request,
++				   bool control, const u8 digest[32])
++{
 +	request->control = control;
 +	if (session->bridge_minor >= 2)
 +		session->allocation_pending = request;
@@ -2398,23 +2624,87 @@ new file mode 100644
 +	session->nr_requests++;
 +	if (control)
 +		session->nr_control_requests++;
++}
++
++/* One admission attempt. *retry: a fence appeared after hfs_call_admit.
++ * That is routine: two callers that both found the fence free and the
++ * queue empty prepare concurrently and the second loses to the first's
++ * numbering. The waiter keeps (or takes) its queue place; the reservation
++ * and view stamp are dropped rather than held across the wait: a held
++ * stamp would go stale and the credit may be what the fence owner's
++ * exchange needs.
++ */
++static int hfs_call_once(struct hfs_session *session, const char *opcode,
++			 const struct hfs_buf *args, const struct hfs_cred *cred, bool control,
++			 bool cleanup, struct hfs_allocation_waiter *waiter, bool *retry,
++			 struct hfs_json **out)
++{
++	struct hfs_request *request;
++	struct hfs_buf payload = {};
++	u8 digest[32];
++	int err;
++
++	*retry = false;
++	request = kzalloc(sizeof(*request), GFP_KERNEL);
++	if (!request) {
++		err = -ENOMEM;
++		goto leave;
++	}
++	err = hfs_call_reserve(session, request, hfs_call_control_bytes(session, opcode, control));
++	if (err) {
++		kfree(request);
++		goto leave;
++	}
++	err = hfs_call_prepare(session, opcode, args, cred, control, request, &payload, digest);
++	if (err)
++		goto free;
++	mutex_lock(&session->lock);
++	err = hfs_call_admit_locked(session, control, cleanup, waiter, retry);
++	if (err) {
++		mutex_unlock(&session->lock);
++		goto free;
++	}
++	hfs_call_number_locked(session, request, control, digest);
 +	mutex_unlock(&session->lock);
++	hfs_call_dequeue(session, waiter);
 +	err = hfs_request_run(session, request, opcode, &payload, out);
 +	hfs_buf_free(&payload);
 +	return err;
 +free:
-+	hfs_buf_free(&request->claim);
-+	hfs_buf_free(&request->intent);
-+	hfs_buf_free(&request->credentials);
-+	hfs_buf_free(&request->original_context);
-+	hfs_buf_free(&request->earmark_number);
-+	hfs_buf_free(&request->drain_payload);
-+	hfs_buf_free(&request->readdir_cleanup);
 +	hfs_buf_free(&payload);
-+	hfs_completion_close(request->completion);
-+	session->provider->unreserve(session, request->reservation);
-+	kfree(request);
++	hfs_call_request_free(session, request);
++leave:
++	if (!*retry)
++		hfs_call_dequeue(session, waiter);
 +	return err;
++}
++
++int hfs_call(struct hfs_session *session, const char *opcode, const struct hfs_buf *args,
++	     const struct hfs_cred *cred, bool control, struct hfs_json **out)
++{
++	unsigned long deadline = jiffies + msecs_to_jiffies(HFS_ALLOCATION_WAIT_MS);
++	bool cleanup = hfs_cleanup_opcode(opcode);
++	struct hfs_allocation_waiter waiter;
++	bool retry;
++	int err;
++
++	*out = NULL;
++	if (!hfs_operation(opcode, true))
++		return -EOPNOTSUPP;
++	if (session->bridge_minor >= 2 && !strcmp(opcode, "DRAIN_WRITE"))
++		return -EOPNOTSUPP;
++	if (!cred || args->error)
++		return args->error ?: -EINVAL;
++	INIT_LIST_HEAD(&waiter.list);
++	for (;;) {
++		err = hfs_call_admit(session, control, cleanup, &waiter, deadline);
++		if (err)
++			return err;
++		err = hfs_call_once(session, opcode, args, cred, control, cleanup, &waiter,
++				    &retry, out);
++		if (!retry)
++			return err;
++	}
 +}
 +EXPORT_SYMBOL_GPL(hfs_call);
 +
@@ -3072,6 +3362,8 @@ new file mode 100644
 +	INIT_LIST_HEAD(&session->view_tickets);
 +	INIT_LIST_HEAD(&session->view_families);
 +	INIT_LIST_HEAD(&session->global);
++	INIT_LIST_HEAD(&session->allocation_waiters);
++	init_waitqueue_head(&session->allocation_wait);
 +	session->next_claim = session->next_cell = session->next_inode = 1;
 +	session->next_close = session->next_release = 1;
 +	return session;
@@ -3270,17 +3562,31 @@ new file mode 100644
 +	err = hfs_controlled_begin_close(session);
 +	if (err)
 +		hfs_session_block(session, "failed controlled close", "UNMOUNT", err);
++	/* closing and blocked close every admission (ordinary ingress, view
++	 * tokens, cache pages, observations) before the superblock goes away.
++	 */
 +	WRITE_ONCE(session->closing, true);
 +	WRITE_ONCE(session->blocked, true);
-+	err = session->provider->stop(session);
-+	if (err)
-+		hfs_session_block(session, "failed provider stop", "STOP", err);
++	/* Queued hfs_call waiters see closing and leave (x84). */
++	hfs_allocation_wake(session);
 +	spin_lock_irqsave(&hfs_sessions_lock, flags);
 +	list_del_init(&session->global);
 +	spin_unlock_irqrestore(&hfs_sessions_lock, flags);
 +	tracepoint_synchronize_unregister();
 +	kill_anon_super(sb);
 +	flush_workqueue(session->control);
++	hfs_mmap_settle(session);
++	/* z84 (zq3-r10 R10-2): stop only after eviction, truncation, the
++	 * queued FORGET/PROCESS_EXIT work and a bounded settle of the view's
++	 * lease releases and their recall. Checked earlier, a LIVE view still
++	 * counted the mount's inodes and clean pages, so every clean unmount
++	 * of a once-reopened mount logged a failed stop. A real remaining
++	 * owner (a dirty or still-referenced page, a cookie, a recall still
++	 * running after the settle bound) still fails it.
++	 */
++	err = session->provider->stop(session);
++	if (err)
++		hfs_session_block(session, "failed provider stop", "STOP", err);
 +	/* Protected claim/result retirement is separate from close or unmount. */
 +	__module_get(THIS_MODULE);
 +	session->retained = true;
@@ -3522,6 +3828,14 @@ new file mode 100644
 +		if (request->number > through)
 +			break;
 +		list_del(&request->list);
++		/* Defensive (x84): a retired request can no longer hold the
++		 * fence; never leave waiters on a freed owner (minor < 4 has
++		 * no adoption check above).
++		 */
++		if (session->allocation_pending == request) {
++			session->allocation_pending = NULL;
++			hfs_allocation_changed_locked(session);
++		}
 +		if (request->earmark_ticket) {
 +			if (!WARN_ON_ONCE(!request->earmark_ticket->users))
 +				request->earmark_ticket->users--;
@@ -3546,6 +3860,7 @@ new file mode 100644
 +		session->provider->unreserve(session, reservation);
 +	}
 +	mutex_unlock(&session->lock);
++	wake_up_all(&session->allocation_wait);
 +	if (cut) {
 +		session->retirement_cut = NULL;
 +		hfs_retirement_cut_free(session, cut);
@@ -4679,7 +4994,7 @@ diff --git a/fs/9p/hfs_file.c b/fs/9p/hfs_file.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_file.c
-@@ -0,0 +1,633 @@
+@@ -0,0 +1,640 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Description-bound retained-9p I/O. Advisory locks stay in this kernel mount. */
 +#include <linux/file.h>
@@ -4996,7 +5311,14 @@ new file mode 100644
 +
 +	if (!description)
 +		return -ESTALE;
-+	/* Last-thread exit is the independently sequenced process event. */
++	/* Last-thread exit is the independently sequenced process event. Its
++	 * PROCESS_EXIT already released the process's locks, and the host
++	 * refuses DESCRIPTION_CLOSE from an exited process (task 194). Once
++	 * hfs_process_exit has marked the process exited, hfs_capture refuses
++	 * it (-ESTALE) and nothing is sent. Residual: a non-last thread with
++	 * its own file table that captured before that mark can still send
++	 * its close after PROCESS_EXIT; the host refuses its ALLOCATE.
++	 */
 +	if ((current->flags & PF_EXITING) && !atomic_read(&current->signal->live))
 +		return 0;
 +	err = hfs_capture(session, &init_user_ns, &cred);

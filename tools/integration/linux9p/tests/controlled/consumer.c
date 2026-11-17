@@ -55,6 +55,8 @@ struct p9_client {
 };
 #define HFS_CONTEXT_MAX 4096U
 #define HFS_CAP_MAX 8192U
+#define HFS_ALLOCATION_WAIT_MS 30000U /* hfs.h, x84 */
+typedef int wait_queue_head_t; /* x84 session allocation_wait */
 #define HZ 100UL
 #define P9_NOTAG 65535
 #define READ_ONCE(x) (x)
@@ -113,6 +115,26 @@ static void usleep_range(unsigned int a, unsigned int b) {
    (void)b;
    jiffies++;
    usleep(1000);
+}
+/* x84: hfs_call's fence wait. The earmark-pending ROOT and uncertain cases
+ * below still refuse at once (an ordinary opcode does not wait for an
+ * earmark, nobody for uncertainty), so the wait only polls the fixture clock.
+ */
+#define init_waitqueue_head(q) ((void)(q))
+#define wake_up_all(q) ((void)(q))
+#define time_before(a, b) ((long)((a) - (b)) < 0)
+#define wait_event_timeout(q, p, t)                                            \
+   ({                                                                          \
+      unsigned long __end = jiffies + (t);                                     \
+      (void)(q);                                                               \
+      while (!(p) && time_before(jiffies, __end))                              \
+         usleep_range(1000, 1000);                                             \
+      (long)((p) ? 1 : 0);                                                     \
+   })
+#define wait_event_killable_timeout(q, p, t) wait_event_timeout(q, p, t)
+static void list_del_init(struct list_head *p) {
+   list_del(p);
+   INIT_LIST_HEAD(p);
 }
 static void uuid_gen(uuid_t *id) {
    static u8 next = 90;
@@ -222,6 +244,8 @@ static bool uuid_is_null(const uuid_t *id) {
    return !memcmp(id->b, zero, 16);
 }
 int hfs_uuid(const struct hfs_json *, int, uuid_t *);
+/* x84: the earmark admission (decoder.inc) wakes fence waiters. */
+static void hfs_allocation_changed_locked(struct hfs_session *session);
 #include "decoder.inc"
 #include "dirty-fixture.inc"
 #include "production.inc"
@@ -407,6 +431,7 @@ int main(void) {
    mutex_init(&session.retirement);
    INIT_LIST_HEAD(&session.requests);
    INIT_LIST_HEAD(&session.uncertain);
+   INIT_LIST_HEAD(&session.allocation_waiters);
    struct hfs_buf context = {};
    copy_buf(fixture, 0, "context", &context);
    memcpy(session.enrollment.context, context.data, context.len);

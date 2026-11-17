@@ -201,7 +201,10 @@ static struct p9_client *busy_client;
 static unsigned busy_remaining, busy_injected;
 static bool busy_retry_pending;
 static unsigned long native_exchanges, busy_mark;
+/* x84: observes allocations without failing them (x84_test.inc). */
+static void (*x84_allocation_hook)(size_t);
 bool primitive_allocation_size_failure(size_t length) {
+ if(x84_allocation_hook)x84_allocation_hook(length);
  if(fault_scratch&&length==fault_scratch){fault_scratch=0;return true;}return false;
 }
 static char *read_line(void) { char *line=NULL;size_t cap=0;ssize_t n=getline(&line,&cap,stdin);assert(n>0);if(line[n-1]=='\n')line[n-1]=0;return line; }
@@ -323,6 +326,7 @@ static void fixture_set_current(struct fixture_session *f) {
  primitive_current_task=(struct task_struct){.pid=&f->pid};
  primitive_current_cred=primitive_real_cred=&f->native_cred;
 }
+#include "x84_test.inc"
 static void session_init(unsigned i) {
  struct fixture_session *f=&fixtures[i];
  f->session=calloc(1,sizeof(*f->session));f->client=calloc(1,sizeof(*f->client));assert(f->session&&f->client);
@@ -333,6 +337,7 @@ static void session_init(unsigned i) {
  mutex_init(&s->lock);mutex_init(&s->writer);mutex_init(&s->retirement);spin_lock_init(&s->processes_lock);
  INIT_LIST_HEAD(&s->global);INIT_LIST_HEAD(&s->descriptions);INIT_LIST_HEAD(&s->processes);INIT_LIST_HEAD(&s->forgets);INIT_LIST_HEAD(&s->object_numbers);
  INIT_LIST_HEAD(&s->uncertain);INIT_LIST_HEAD(&s->requests);INIT_LIST_HEAD(&s->view_tickets);INIT_LIST_HEAD(&s->view_families);
+ INIT_LIST_HEAD(&s->allocation_waiters);init_waitqueue_head(&s->allocation_wait);
  assert(!s->provider->enroll(mount->device_tag,&s->enrollment));
  assert(!hfs_enrollment_validate(&s->enrollment));
  assert(!hfs_enrollment_lanes(&s->enrollment,s->bridge_minor));
@@ -377,6 +382,7 @@ static void session_init(unsigned i) {
    assert(hfs_call_control_bytes(&profile,"DRAIN_WRITE",true));assert(hfs_call_control_bytes(&profile,"ROOT",true));
   }
  }
+ if(!i)x84_admission_regression(f);
  accounting_regression(s);
  uuid_t user_namespace;u8 map[32];assert(!s->provider->map(s,&f->native_cred,&init_user_ns,&user_namespace,map));
  assert(uuid_equal(&user_namespace,&f->credential.user_namespace)&&!memcmp(map,f->credential.idmap_hash,32));
@@ -871,6 +877,12 @@ static void command(char *line) {
  }
  if(!strcmp(operation,"CLEANUP_CALLER")){
   struct hfs_session *s=f->session;int err=0;u64 control=hfs_controlled_control_used;
+  /* x84: each production cleanup caller first meets another request's
+   * pending ALLOCATE (an earmark for the worker opcodes) and must wait for
+   * it to clear instead of failing; the host still sees one CALL each. */
+  bool x84_earmark=strcmp(line+consumed,"DESCRIPTION_CLOSE")&&strcmp(line+consumed,"DESCRIPTION_RELEASE");
+  struct hfs_request x84_owner={.session=s,.earmarked=x84_earmark};struct x84_clearer x84;
+  x84_clear_start(&x84,s,&x84_owner,30,false);
   if(!strcmp(line+consumed,"PROCESS_EXIT")){
    struct hfs_process *process=hfs_process_find(s,&f->pid);assert(process&&process->last&&uuid_equal(&process->id,&f->credential.process));
    hfs_process_exit_work(&process->exit_work);err=s->blocked?-EHOSTDOWN:0;
@@ -882,6 +894,7 @@ static void command(char *line) {
    if(!strcmp(line+consumed,"DESCRIPTION_CLOSE"))err=hfs_flush(&file,NULL);
    else {assert(!strcmp(line+consumed,"DESCRIPTION_RELEASE"));err=hfs_release(&inode,&file);if(!err){assert(!file.private_data);f->cleanup_description=NULL;}}
   }
+  assert(atomic_load(&x84.cleared));x84_clear_join(&x84);
   assert(control==hfs_controlled_control_used);done(id,err,NULL,0);return;
  }
  if(!strcmp(operation,"BYTE_PRESSURE")||!strcmp(operation,"BYTE_UNPRESSURE")){

@@ -252,7 +252,7 @@ diff --git a/fs/9p/hfs_controlled.c b/fs/9p/hfs_controlled.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_controlled.c
-@@ -0,0 +1,1349 @@
+@@ -0,0 +1,1377 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* Registered controlled-only provider and finite retained ownership. */
 +#include "hfs_controlled.h"
@@ -1433,6 +1433,34 @@ new file mode 100644
 +	return err;
 +}
 +
++/* Caller holds view->lock. A view with nothing left to stop (z84).
++ *
++ * No active token, dirty, cached, observation or mapping owner may remain in
++ * any phase. Then an UNBOUND view never installed anything and a quiescent
++ * one completed its STOP. A LIVE view is also idle here: zq3-r10 R10-2,
++ * after any recall's REOPEN the view is LIVE with quiescent false
++ * (hfs_view_reopen), so before z84 every clean unmount of a once-reopened
++ * mount was refused and logged. What makes zero counts final is that kill_sb
++ * calls the stop after kill_anon_super: no inode, file, mapping or page of
++ * the superblock survives to take a new view token, cache page or
++ * observation. (hfs_view_try_enter_locked also refuses new tokens once an
++ * hfs1.4 session is closing or blocked; the closing || blocked clause below
++ * is always true from kill_sb and only keeps the rule explicit.) RECALLING,
++ * FENCED and the drain phases still refuse: their recall worker owns the
++ * state.
++ */
++static bool hfs_controlled_view_idle(const struct hfs_session *session,
++				     const struct hfs_view *view)
++{
++	if (view->active || view->nr_dirty || view->nr_cached || view->nr_observations ||
++	    view->nr_mappings)
++		return false;
++	if (view->phase == HFS_VIEW_UNBOUND || view->quiescent)
++		return true;
++	return view->phase == HFS_VIEW_LIVE && session->bridge_minor == 4 &&
++	       (READ_ONCE(session->closing) || READ_ONCE(session->blocked));
++}
++
 +static int hfs_controlled_stop(struct hfs_session *session)
 +{
 +	struct hfs_controlled_mount *mount;
@@ -1461,10 +1489,10 @@ new file mode 100644
 +	spin_lock_irqsave(&view->lock, flags);
 +	/* A bare FENCED phase never proves all-alias physical quiescence.
 +   * The authenticated recall worker retains and drains busy/dirty state.
++   * kill_sb calls this after kill_anon_super and the control flush (z84),
++   * so evicted inodes and truncated clean pages no longer count.
 +   */
-+	if (!cookies && !view->active && !view->nr_dirty && !view->nr_cached &&
-+	    !view->nr_observations && !view->nr_mappings &&
-+	    (view->phase == HFS_VIEW_UNBOUND || view->quiescent))
++	if (!cookies && hfs_controlled_view_idle(session, view))
 +		err = 0;
 +	spin_unlock_irqrestore(&view->lock, flags);
 +	hfs_view_put(view);

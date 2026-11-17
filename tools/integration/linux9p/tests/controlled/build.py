@@ -30,7 +30,7 @@ def structure(name):
     start = header.index('struct '+name+' {')
     return header[start:header.index('\n};',start)+3]
 parts = [structure(n) for n in ['hfs_enrollment','hfs_provider','hfs_cap','hfs_cred',
-                               'hfs_cell','hfs_candidate','hfs_request','hfs_session']]
+                               'hfs_cell','hfs_candidate','hfs_request','hfs_allocation_waiter','hfs_session']]
 
 for filename, name in [('hfs_view.h', 'hfs_cache_page'), ('hfs_view.h', 'hfs_dirty'), ('hfs_lease.h', 'hfs_lease')]:
     raw=(src/'fs/9p'/filename).read_text()
@@ -42,7 +42,9 @@ spans = [('static int hfs_field_u64(', '\nvoid hfs_cred_write('),
          ('static int hfs_reply_scope(', '\nstatic int hfs_copy_token('),
          ('static int hfs_copy_token(', '\nstatic int hfs_result_validate('),
          ('static void hfs_request_result_put(', '\nint hfs_request_cancel_earmark('),
-         ('int hfs_call(', '\nint hfs_args_init(')]
+         # x84: hfs_call with its admission/wait helpers. hfs_call_control_bytes
+         # was already outside the old 'int hfs_call(' span (s54 harness rot).
+         ('static bool hfs_cleanup_opcode(', '\nint hfs_args_init(')]
 parts=[]
 for first,last in spans:
     start=session.index(first)
@@ -95,7 +97,7 @@ fixtures.append('static const char *dirty_bad[] = {'+','.join(json.dumps(v) for 
 compat=(here.parent/'codec/compat.h').read_text().replace('typedef uint64_t u64;', 'typedef unsigned long long u64;')
 compat += '\n#include <sys/stat.h>\n#define MAX_NON_LFS 2147483647UL\nstatic inline void sort(void *b,size_t n,size_t s,int (*cmp)(const void *,const void *),void (*swap)(void *,void *,int)) { (void)swap;qsort(b,n,s,cmp); }\n'
 (out/'hfs_codec_compat.h').write_text(compat)
-command=['cc','-std=gnu11','-O1','-g','-Wall','-Wextra','-Werror','-Wno-sign-compare',
+command=['cc','-std=gnu11','-O1','-g','-Wall','-Wextra','-Werror','-Wno-sign-compare','-Wno-unused-function',
          '-D_GNU_SOURCE','-D_DEFAULT_SOURCE','-D_POSIX_C_SOURCE=200809L','-DHFS_CODEC_USERSPACE',
          '-include',str(out/'hfs_codec_compat.h'),'-include',str(here.parent/'common/kernel_format.h'),'-I',str(src/'fs/9p'),'-I',str(out),
          '-I',str(here.parent/'common'),'-I',str(repo),str(here/'consumer.c'),
