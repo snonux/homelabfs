@@ -1,5 +1,17 @@
 # xz3 r84 rebuild (2026-11-14): zq3-r9 kernel pressure and daemon QUERY fixes
 
+**Superseded on 2026-11-17** by the [b94 rebuild](../xz3-20261117-r11/README.md)
+(`3b128cc6…`, source `dfdcdd9`) for zq3-r11. Its guest kernel `d73c85da…`
+fails a release with `-EAGAIN` while another allocation of the session is
+pending and then blocks the session (zq3-r10 R10-1, fixed by x84), and its
+unmount stop check refuses a once-reopened LIVE view (R10-2, fixed by z84).
+Its daemon `34a5360b…` (which passed the f3 observer check in zq3-r10)
+refuses ALLOCATE of an exited issuer's exact original cleanup (R10-1 host
+side, fixed by 194). Its native exporter `ef8f17de…`, the five modules and
+the native, notice and unchanged patch files are reused byte for byte. The
+tooling refuses this manifest as superseded. It still passes
+`package.py check` and `admit.py` under the current tooling.
+
 This candidate supersedes the [l84 rebuild](../xz3-20261114-r9/README.md)
 (`e585206a…`, source `e92eaa1`). After zq3-r9, fixes were merged in the
 guest kernel and in the CGO daemon, so both were rebuilt (task r84, the
