@@ -444,7 +444,8 @@ R9-1, probably zq3-r8 R8-1 too). Task o84 allows every opcode:
   checks against the current state and protects a TERMINAL failure (STALE)
   instead. An older byte-identical credential revision is accepted, as for a
   repeated CALL (credentials are sampled at syscall entry). Only the cleanup
-  opcodes and DRAIN_WRITE tolerate an exited issuer, as on first dispatch;
+  opcodes (FORGET, DESCRIPTION_RELEASE) and DRAIN_WRITE tolerate an exited
+  issuer, as on first dispatch (and, for the cleanup opcodes, at ALLOCATE);
 - Admit runs again in full (seal, readiness, recall barrier, drain validation,
   source floor). A DRAIN_WRITE matched to its recall's frozen reservation
   cannot go stale, because `drained()` holds that recall until the drain is
