@@ -96,7 +96,14 @@ QUARANTINED = {"7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b
 #   the session (zq3-r10 R10-1, fixed by x84), and whose unmount stop check
 #   runs before kill_anon_super and refuses a once-reopened LIVE view
 #   (R10-2, fixed by z84); its daemon 34a5360b refuses ALLOCATE of an exited
-#   issuer's exact original cleanup (R10-1 host side, fixed by 194).
+#   issuer's exact original cleanup (R10-1 host side, fixed by 194);
+# - 3b128cc6 (b94, dfdcdd9) has the x84+z84 guest kernel c4e08f6f, whose
+#   hfs_view_enter waits without a time bound, so a recall wedged in
+#   WAIT_DRAINED kept m1's stat and umount in D (zq3-r11 R11-2, fixed by
+#   1a4), and the daemon bf86d805, which answers a guest's early DRAINED
+#   (sent while the recall still waits for a peer's INSTALLED_DRAIN) STALE,
+#   so the guest stopped its view worker and blocked the session and T1's
+#   OPEN timed out (R11-1, fixed by y94).
 SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
@@ -106,19 +113,20 @@ SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
               "66b5bb2b6c1dd1a663f26c50d0d9b3bfeebd620127c4a5859ca146074f2c2e2d",
               "867ede3630e4ee0a609f88b0752670fac5b7a0c0e0f9d2a340031110da32c334",
               "e585206aa26dcd5724065467ebb716ced7c421db0979c25290fed8c37551b213",
-              "4712e4793e67007a65b293dd62dceb16d16a2f2322705f7f0a5f81c261442cf0"}
-# The only candidate this controller pins: the xz3 b94 rebuild for zq3-r11
-# (2026-11-17, source dfdcdd9). The guest kernel was rebuilt for x84 (a
-# request refused only by a pending allocation waits, FIFO and bounded, for
-# the fence to clear) and z84 (unmount stop after teardown and settle) (c64
-# recipe, g64+m64+p84+x84+z84 patch series, build ID c4e08f6f; the five modules
-# came out byte-identical) and the CGO daemon for 194 (ALLOCATE accepts an
-# exited issuer's exact original cleanup; bf86d805). The y64 native exporter
+              "4712e4793e67007a65b293dd62dceb16d16a2f2322705f7f0a5f81c261442cf0",
+              "3b128cc68e4a4e6c43c8411437df5b7671c003a5f9e7ae6c11700f918440a47a"}
+# The only candidate this controller pins: the xz3 5a4 rebuild for zq3-r12
+# (2026-11-18, source 1b0a306). The guest kernel was rebuilt for 1a4
+# (hfs_view_enter waits at most 30 s, then -ETIMEDOUT; final mmap faults get
+# SIGBUS; the view-worker stop log names session, phase and status) (c64
+# recipe, g64+m64+p84+x84+z84+1a4 patch series, build ID 8c1de1ed; the five
+# modules came out byte-identical) and the CGO daemon for y94 (an early
+# DRAINED is answered BLOCKED, not STALE; e0981a0a). The y64 native exporter
 # ef8f17de (564/e64/p64/w64) is a byte-identical reuse; the window artifacts
-# were rebuilt from dfdcdd9. The new daemon bytes still need the f3 observer
+# were rebuilt from 1b0a306. The new daemon bytes still need the f3 observer
 # check. Admission here is a dispatch precondition, never deployment
 # eligibility.
-ADMITTED = {"3b128cc68e4a4e6c43c8411437df5b7671c003a5f9e7ae6c11700f918440a47a"}
+ADMITTED = {"150deb2993cda12cc2ad6cee2f118fe0f2e334b0ddb9afaf09a8e22f27b0b88a"}
 CASES = ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
 # Cases a plan may defer (z64). Only T5 mapped-pressure: its full 4 MiB
 # canary needs more view lifetimes (tickets, UUIDs, revisions, ack archive)
@@ -291,10 +299,11 @@ def require_candidate(manifest_hash):
         # c64 SELinux LSM and the d64 per-domain fence, the y64 kernel,
         # daemon and exporter fixes, the l84 daemon's recall scope, ACK lane
         # and OBSERVE claim summary, the r84 p84 pressure hold, o84 QUERY
-        # resume and q84 lease holders, or the b94 x84 allocation-fence wait,
-        # z84 unmount stop and 194 exited-issuer cleanup ALLOCATE); the
+        # resume and q84 lease holders, the b94 x84 allocation-fence wait,
+        # z84 unmount stop and 194 exited-issuer cleanup ALLOCATE, or the 5a4
+        # 1a4 bounded view wait and y94 early-DRAINED BLOCKED answer); the
         # comment at SUPERSEDED says which.
-        raise Refused("superseded xz3 candidate: use the b94 rebuild (d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims, r84 pressure hold/QUERY resume/lease holders, b94 fence wait/unmount stop/exited cleanup)")
+        raise Refused("superseded xz3 candidate: use the 5a4 rebuild (d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims, r84 pressure hold/QUERY resume/lease holders, b94 fence wait/unmount stop/exited cleanup, 5a4 bounded view wait/early DRAINED)")
     if manifest_hash not in ADMITTED:
         # Fail closed: an unknown digest is not a qualified candidate.
         raise Refused("candidate manifest is not the pinned admitted xz3 candidate")

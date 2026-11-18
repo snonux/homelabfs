@@ -228,9 +228,10 @@ z54 daemon rebuild (`2e0412a6…`, daemon `39c92d01…`) keeps it, the 964 kerne
 rebuild (`e01fab21…`) reused that daemon, the c64+d64 rebuild (`66b5bb2b…`,
 daemon `9b7eed8d…` from `060dea0`), the y64 rebuild (`867ede36…`, daemon
 `34fb05b2…` from `b869710`), the l84 rebuild (`e585206a…`, daemon
-`868dc045…` from `e92eaa1`) and the r84 rebuild (`4712e479…`, daemon
-`34a5360b…` from `cc6beed`) kept it, and the current b94 rebuild
-(`3b128cc6…`, daemon `bf86d805…` from `dfdcdd9`) keeps it, so zq3 can use the
+`868dc045…` from `e92eaa1`), the r84 rebuild (`4712e479…`, daemon
+`34a5360b…` from `cc6beed`) and the b94 rebuild (`3b128cc6…`, daemon
+`bf86d805…` from `dfdcdd9`) kept it, and the current 5a4 rebuild
+(`150deb29…`, daemon `e0981a0a…` from `1b0a306`) keeps it, so zq3 can use the
 filter. The guest still
 blocks m0 after the dropped MKDIR reply, so T10 is still expected to FENCE;
 the difference is that m1 then shows the committed directory.
