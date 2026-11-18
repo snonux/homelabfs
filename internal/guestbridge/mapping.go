@@ -315,8 +315,12 @@ func (t *Transport) finishMappingBase(ctx context.Context, command Command, raw 
 	}
 	m := c.mapping
 	if m.NativeBaseHash != "" {
+		// A protected base is immutable. A retry reaches here with the
+		// retained base (Service.Execute skips the operation, see
+		// retainedBase), so a different base means the retained bytes were
+		// lost or the operation ran again; the leg chain cannot change.
 		if m.NativeBaseHash != nativeHash || m.GuestBaseHash != guestHash {
-			t.failed = fsapi.Stale
+			t.failLocked(callerSite(0)+" base changed on retry", fsapi.Stale, command.Cell)
 			return ctx, fsapi.Stale
 		}
 	} else {
@@ -337,6 +341,14 @@ func (t *Transport) finishMappingBase(ctx context.Context, command Command, raw 
 			return ctx, e
 		}
 		m.Empty = command.Op == "VIEW_POLL" && bytes.Equal(fields["payload"], []byte(`{"event":null,"status":"EMPTY"}`))
+		// Retain the exact base until publication. Signing the receipt runs
+		// after this protection and may answer a transient WouldBlock (the
+		// view controller's TryLock in ReceiptEvidence while another lane
+		// holds it): the worker then retries the cell, and the retry must
+		// not run the operation again. A re-executed VIEW_POLL can see a
+		// newer event than the protected EMPTY base, which used to fence the
+		// whole transport here (zq3-r12 R12-1, nc4).
+		c.base = bytes.Clone(raw)
 	}
 	if err = t.protectLocked(command.Cell); err != nil {
 		return ctx, err
@@ -346,6 +358,24 @@ func (t *Transport) finishMappingBase(ctx context.Context, command Command, raw 
 	}
 	o := MappingObservation{NativeCell: command.Cell, NativeCommandHash: observed.CommandHash, NativeResponseHash: m.NativeBaseHash, Transport: t, GuestCell: m.GuestCell, GuestCommandHash: m.GuestCommandHash, GuestResponseHash: m.GuestBaseHash, MappingHash: m.MappingHash, PollCount: m.PollIndex + 1}
 	return context.WithValue(ctx, mappingObservationKey{}, o), nil
+}
+
+// retainedBase returns a copy of the protected response base of the cell
+// that this live worker invocation executes, if finishMappingBase already
+// protected one in an earlier attempt. Only the exact executing worker gets
+// it, and only while the bytes still hash to the protected NativeBaseHash.
+func (t *Transport) retainedBase(ctx context.Context, command Command) ([]byte, bool) {
+	worker, ok := ctx.Value(mappingWorkerKey{}).(mappingWorker)
+	if !ok || worker.transport != t || worker.cell != command.Cell {
+		return nil, false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	c := t.cells[command.Cell]
+	if worker.invocation == nil || !worker.invocation.live || c == nil || c.invocation != worker.invocation || c.jobPhase != "executing" || t.failed != nil || t.closed || c.mapping == nil || !c.mapping.Admitted || c.mapping.NativeBaseHash == "" || c.base == nil || digest(c.base) != c.mapping.NativeBaseHash {
+		return nil, false
+	}
+	return bytes.Clone(c.base), true
 }
 func (t *Transport) finishMappingFull(c *cell, raw []byte) error {
 	if c.mapping == nil {

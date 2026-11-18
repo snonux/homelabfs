@@ -45,7 +45,30 @@ protect `executing` before calling the existing authenticated Service.Execute;
 response bytes commit before readers can see them. Read commits coverage before
 returning newly seen bytes. Reclaim commits before releasing old cell ownership.
 An error or uncertain commit fences all subsequent traffic and dispatch; a
-surviving ledger is not automatic recovery. Rejected replacement candidates
+surviving ledger is not automatic recovery.
+
+Every fence records its first reason exactly once (nc4, `failure.go`): one
+line on the runtime's stderr, `Transport.Failure` (the `failure` section of
+the lifecycle evidence's transport record) and a best-effort `failure` row in
+`transport.db`. The record holds the fencing code location (for a failed
+protection, the step that called it, such as `commitWrite`), the protected
+cells, the errno class, at most 256 bytes of error text and the UTC time; no
+request or response bytes. The row is written in its own transaction next to
+the last protected cut and changes neither the index nor any cell row. If the
+ledger itself refused the commit it may refuse this row too; stderr and
+evidence still carry the reason. Inspection validates and returns the row
+(`ProtectedTransportState.Failure`, included in the digest); restoration
+refuses a ledger that has one. Before nc4 the zq3-r12 fence left no trace
+beyond the cut where traffic stopped.
+
+A mapped cell's response base is protected (its hash enters the leg chain)
+before the receipt is signed. Signing can answer a transient WouldBlock, for
+example the view controller's TryLock while another lane holds it. The worker
+retries such a cell, and the retry reuses the exact retained base instead of
+running the operation again; the base is kept in memory only until the
+response replaces it. A re-executed VIEW_POLL could otherwise answer a newer
+event than its protected EMPTY base, and a changed base still fences the
+transport (zq3-r12 R12-1). Rejected replacement candidates
 retain already acknowledged chunks in the single funded workspace. Complete
 commands that encountered a full queue can retry dispatch using the same bytes.
 

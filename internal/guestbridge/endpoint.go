@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 
 	"github.com/snonux/homelabfs/internal/admission"
@@ -42,6 +43,12 @@ type cell struct {
 	guestWatermark uint64
 	terminal       *ProtectedTerminal
 	invocation     *workerInvocation
+	// base is the exact response base whose hash finishMappingBase protected
+	// (mapping.NativeBaseHash) while the cell has no response yet. A retry of
+	// the cell reuses it instead of executing the operation again (nc4). It
+	// is in memory only: the response that replaces it at publication spends
+	// the same funded response arena, and an executing cell is never restored.
+	base []byte
 }
 type job struct {
 	native  Native
@@ -69,12 +76,17 @@ type Transport struct {
 	// controlled runtime's Producer.Prepare); on the shared control worker
 	// every QUERY/CANCEL/RETIRE/VIEW_POLL queued behind it waited for that
 	// probe (zq3-r8 R8-1). It still spends control credits.
-	viewAckQueue      chan job
-	done              chan struct{}
-	workers           sync.WaitGroup
-	closed            bool
-	ledger            *transportLedger
+	viewAckQueue chan job
+	done         chan struct{}
+	workers      sync.WaitGroup
+	closed       bool
+	ledger       *transportLedger
+	// failed fences the transport; it is set only through failLocked, which
+	// also records failure (the first reason, see failure.go) and reports it
+	// once on failureLog (os.Stderr when nil; tests may replace it).
 	failed            error
+	failure           *TransportFailure
+	failureLog        io.Writer
 	uncertainReclaims []*cell // Original owners retained after uncertain atomic protection.
 	runtimeHellos     map[string]runtimeHelloWitness
 	terminal          map[string]uint64
@@ -257,7 +269,7 @@ func (t *Transport) bindMapped() error {
 		return nil
 	}
 	if err := p.BindTransport(context.Background(), t); err != nil {
-		t.failed = err
+		t.failLocked(callerSite(0), err)
 		if t.ledger != nil {
 			_ = t.ledger.close()
 		}
@@ -816,8 +828,11 @@ func (t *Transport) recordExecuteFailure(id uint64, e error) bool {
 		c.jobPhase = "blocked"
 		c.blockedError = blockedErrorClass(e)
 		if retryable {
+			// A pending mapped cell keeps its retained base for the retry.
 			c.jobPhase = "pending"
 			c.blockedError = ""
+		} else {
+			c.base = nil // never redispatched
 		}
 		_ = t.protectLocked(id)
 	}
@@ -834,6 +849,7 @@ func (t *Transport) recordResponseFailure(id uint64, class string) {
 	if c := t.cells[id]; c != nil && t.failed == nil && c.response == nil {
 		c.jobPhase = "blocked"
 		c.blockedError = class
+		c.base = nil
 		_ = t.protectLocked(id)
 	}
 }
@@ -954,6 +970,7 @@ func releaseCell(c *cell) {
 	c.released = true
 	c.body = nil
 	c.response = nil
+	c.base = nil
 	c.wire = nil
 	c.seen = nil
 	c.chunks = nil
