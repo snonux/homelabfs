@@ -107,7 +107,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,449 @@
+@@ -0,0 +1,455 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -136,6 +136,8 @@ new file mode 100644
 +#define HFS_ALLOCATION_WAIT_MS 30000U
 +/* kill_sb's bounded wait for a view to settle before the stop (z84). */
 +#define HFS_UNMOUNT_SETTLE_MS 2000U
++/* session->block_reported bit of hfs_mmap_fail's once-per-session line (1a4). */
++#define HFS_REPORTED_VIEW_STOP 1
 +
 +struct hfs_controlled_mount;
 +struct hfs_session;
@@ -411,7 +413,11 @@ new file mode 100644
 +	bool unmounting;
 +	bool retained;
 +	bool retired; /* actual protected whole-session provider proof */
-+	/* Bit 0: hfs_session_block already logged why this session blocked. */
++	/* Bit 0: hfs_session_block already logged why this session blocked.
++	 * Bit HFS_REPORTED_VIEW_STOP: hfs_mmap_fail logged the view control
++	 * worker stop (1a4). The bits are independent: a later block still
++	 * logs its own line.
++	 */
 +	unsigned long block_reported;
 +};
 +
@@ -561,7 +567,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,3414 @@
+@@ -0,0 +1,3417 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -668,7 +674,10 @@ new file mode 100644
 + * hfs_session_fence. kill_sb logs a failed close or stop here; a failed
 + * mount and the close/release sequence-wrap guards still set the flag
 + * directly (a retained failed mount reaches the retain fence, which logs),
-+ * and hfs_mmap_fail logs the view control errno.
++ * and hfs_mmap_fail logs the view control worker stop with its own once bit
++ * (session, step, host event/ACK phase and reply status, view phase and
++ * recall; 1a4). Its bit is separate, so a later block of the same session
++ * still logs its own line.
 + */
 +void hfs_session_block(struct hfs_session *session, const char *reason,
 +		       const char *operation, int err)
@@ -3980,7 +3989,7 @@ diff --git a/fs/9p/hfs_inode.c b/fs/9p/hfs_inode.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_inode.c
-@@ -0,0 +1,1009 @@
+@@ -0,0 +1,1042 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Authoritative retained-9p attributes and namespace VFS operations. */
 +#include <linux/magic.h>
@@ -3998,6 +4007,37 @@ new file mode 100644
 +	spin_lock(&dentry->d_lock);
 +	hfs_cap_write(buf, dentry->d_fsdata ?: HFS_I(d_inode(dentry))->object);
 +	spin_unlock(&dentry->d_lock);
++}
++
++/* 1a4 review: the wait for a committed result's initial attributes timed
++ * out (HFS_VIEW_ENTER_WAIT_MS). For CREATE, MKDIR or SYMLINK the host has
++ * already made the object, but the guest neither installs nor adopts it:
++ * iget_failed sends no FORGET, hfs_create discards its description locally,
++ * hfs_result_adopt never runs, so the request stays terminal and unadopted
++ * and pins its retirement floor, while userspace gets ETIMEDOUT. That is not
++ * a session block (the session stays usable); one line per occurrence names
++ * the session and opcode so a lab run can account for the object. The opcode
++ * comes from the request's own intent; only an [A-Z_] word is printed.
++ */
++static void hfs_attr_timeout_warn(struct hfs_session *session,
++				  const struct hfs_request *request)
++{
++	static const char key[] = "\"opcode\":\"";
++	const char *at = NULL, *end = request->intent.data + request->intent.len;
++	char opcode[24] = "?";
++	u32 i;
++
++	if (request->intent.data)
++		at = strnstr(request->intent.data, key, request->intent.len);
++	if (at) {
++		at += sizeof(key) - 1;
++		for (i = 0; i < sizeof(opcode) - 1 && at + i < end &&
++		     ((at[i] >= 'A' && at[i] <= 'Z') || at[i] == '_'); i++)
++			opcode[i] = at[i];
++		opcode[i ? i : 1] = 0;
++	}
++	pr_warn_ratelimited("9p-hfs: session %pUb %s committed but its initial attributes timed out behind a recall (-ETIMEDOUT); result retained unadopted, retirement floor pinned\n",
++			    &session->enrollment.session, opcode);
 +}
 +
 +int hfs_attr_install(struct inode *inode, const struct hfs_json *json, int token)
@@ -4034,6 +4074,8 @@ new file mode 100644
 +			 * actual protected result. Subsequent observations revalidate.
 +			 */
 +			err = hfs_view_enter(view, NULL, true, &cookie);
++			if (err == -ETIMEDOUT && request)
++				hfs_attr_timeout_warn(session, request);
 +		}
 +		if (err) {
 +			hfs_view_put(view);

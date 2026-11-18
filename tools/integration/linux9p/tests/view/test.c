@@ -44,6 +44,95 @@ static void *stop_thread(void *p)
    return NULL;
 }
 
+/* 1a4 (zq3-r11 R11-2): hfs_view_enter(wait) is bounded. The hooks below play
+ * the recall: they run after each simulated sleep (view_wait_hook).
+ */
+static unsigned long wait_started;
+static enum hfs_view_phase settle_to;
+static unsigned long settle_after;
+static void settle_hook(void)
+{
+   if (jiffies - wait_started == settle_after)
+      observed_view->phase = settle_to;
+}
+
+static void wander_hook(void)
+{
+   /* Intermediate recall steps wake the waiter without settling it. */
+   observed_view->phase = observed_view->phase == HFS_VIEW_STOPPED ?
+       HFS_VIEW_INSTALLED_DRAIN : HFS_VIEW_STOPPED;
+}
+
+static void bounded_enter_checks(struct hfs_view *view)
+{
+   const unsigned long bound = msecs_to_jiffies(HFS_VIEW_ENTER_WAIT_MS);
+   int modules = module_refs, krefs = atomic_load(&view->refs.refcount);
+   u32 active = view->active;
+   void *cookie;
+
+   assert(HFS_VIEW_ENTER_WAIT_MS == 30000U); /* x84's request window */
+   assert(view->phase == HFS_VIEW_STOPPED);
+   view_wait_bounded = true;
+   /* A recall that never completes: -ETIMEDOUT exactly at the bound, also
+    * across a jiffies wrap, holding nothing afterwards. Before 1a4 this
+    * slept untimed (view_wait_bounded aborts there).
+    */
+   jiffies = wait_started = ULONG_MAX - 5;
+   view_wait_step = 1000;
+   view_wait_sleeps = 0;
+   cookie = &cookie;
+   assert(hfs_view_enter(view, NULL, true, &cookie) == -ETIMEDOUT);
+   assert(cookie == NULL && jiffies - wait_started == bound);
+   assert(view_wait_sleeps == bound / 1000);
+   assert(module_refs == modules && atomic_load(&view->refs.refcount) == krefs);
+   assert(view->active == active && view->phase == HFS_VIEW_STOPPED);
+   /* Intermediate wake-ups do not extend the deadline. */
+   wait_started = jiffies;
+   view_wait_hook = wander_hook;
+   assert(hfs_view_enter(view, NULL, true, &cookie) == -ETIMEDOUT);
+   assert(jiffies - wait_started == bound);
+   view->phase = HFS_VIEW_STOPPED;
+   /* Without wait nothing sleeps. */
+   wait_started = jiffies;
+   assert(hfs_view_enter(view, NULL, false, &cookie) == -EAGAIN);
+   assert(jiffies == wait_started);
+   /* Reopened one jiffy before the bound, and exactly at it: admitted. */
+   view_wait_hook = settle_hook;
+   settle_to = HFS_VIEW_LIVE;
+   for (unsigned long at = bound - 1; at <= bound; at++) {
+      wait_started = jiffies;
+      settle_after = at;
+      view_wait_step = at;
+      assert(hfs_view_enter(view, NULL, true, &cookie) == 0);
+      assert(cookie == view && view->active == active + 1);
+      assert(jiffies - wait_started == at);
+      hfs_view_leave(cookie);
+      view->phase = HFS_VIEW_STOPPED;
+   }
+   /* Fenced during the wait: the permanent refusal, not the timeout. */
+   wait_started = jiffies;
+   settle_to = HFS_VIEW_FENCED;
+   settle_after = 2000;
+   view_wait_step = 1000;
+   assert(hfs_view_enter(view, NULL, true, &cookie) == -ESTALE);
+   assert(jiffies - wait_started == 2000);
+   view->phase = HFS_VIEW_STOPPED;
+   /* A fatal signal still ends the wait at once. */
+   view_wait_hook = NULL;
+   view_wait_fatal = true;
+   wait_started = jiffies;
+   assert(hfs_view_enter(view, NULL, true, &cookie) == -ERESTARTSYS);
+   assert(jiffies == wait_started && cookie == NULL);
+   view_wait_fatal = false;
+   view_wait_bounded = false;
+   view_wait_step = 0;
+   assert(module_refs == modules && atomic_load(&view->refs.refcount) == krefs);
+   assert(view->active == active);
+   assert(!strcmp(hfs_view_phase_name(HFS_VIEW_DRAINED), "DRAINED"));
+   assert(!strcmp(hfs_view_phase_name(HFS_VIEW_FENCED), "FENCED"));
+   assert(!strcmp(hfs_view_phase_name((enum hfs_view_phase)99), "?"));
+}
+
 int main(void)
 {
    struct hfs_provider provider = {reserve, unreserve};
@@ -149,6 +238,7 @@ int main(void)
    assert(unmaps == 2); /* Exact already-quiescent replay does not zap again. */
    assert(hfs_view_seal(session.view) == 0);
    assert(session.view->phase == HFS_VIEW_STOPPED);
+   bounded_enter_checks(session.view);
    const char empty_manifest[] =
        "{\"entries\":[],\"hash\":\"4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945\"}";
    assert(session.view->manifest.len == sizeof(empty_manifest) - 1);

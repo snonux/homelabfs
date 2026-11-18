@@ -88,10 +88,13 @@ struct hfs_provider {
 /* bridge_minor (u16, as in hfs.h)/closing/blocked only let the minor4
  * controlled-session gate in hfs_view_try_enter_locked and its wait compile.
  * The fixtures keep bridge_minor == 0, so that gate is not exercised here.
+ * enrollment.session and block_reported feed hfs_mmap_fail's
+ * once-per-session line (1a4, view --pressure).
  */
 struct hfs_session {
    struct hfs_view *view; struct hfs_provider *provider; struct mutex lock;
    u16 bridge_minor; bool closing; bool blocked;
+   struct { uuid_t session; } enrollment; unsigned long block_reported;
 };
 
 #define HFS_IDENTITIES_MAX 4096U
@@ -118,7 +121,45 @@ struct hfs_session {
 #define init_waitqueue_head(p) ((void)(p))
 #define wake_up_all(p) ((void)(p))
 #define wait_event(q, cond) do { (void)(q); while (!(cond)) usleep(100); } while (0)
-#define wait_event_killable(q, cond) ({ wait_event(q, cond); 0; })
+/* view_wait_bounded: a case that requires a bounded wait (1a4) fails at once
+ * on an untimed sleep instead of spinning until the stage limit.
+ */
+static bool view_wait_bounded __attribute__((unused));
+#define wait_event_killable(q, cond) ({ \
+   if (view_wait_bounded && !(cond)) { fprintf(stderr, "untimed wait_event_killable\n"); abort(); } \
+   wait_event(q, cond); 0; })
+/* Settable clock (p84's pressure hold, 1a4's hfs_view_enter bound). */
+static unsigned long jiffies;
+#define time_before(a,b) ((long)((a)-(b))<0)
+#define msecs_to_jiffies(m) ((unsigned long)(m))
+#define ERESTARTSYS 512
+/* wait_event_killable_timeout substitute (1a4). Nothing wakes a test sleeper,
+ * so each simulated sleep advances jiffies by view_wait_step (0: the whole
+ * remaining timeout) and then calls view_wait_hook, which may change the
+ * view like a recall step would. view_wait_fatal stands for a pending fatal
+ * signal. A wait that keeps sleeping (a deadline restarted on every wake-up)
+ * aborts after 100000 sleeps. The result follows the kernel macro: -ERESTARTSYS, 0 when the
+ * condition is still false at the timeout, otherwise the jiffies left (at
+ * least 1).
+ */
+static unsigned long view_wait_step, view_wait_sleeps;
+static bool view_wait_fatal;
+static void (*view_wait_hook)(void);
+#define wait_event_killable_timeout(q, cond, timeout) ({ \
+   long __left = (long)(timeout); \
+   (void)(q); \
+   while (!(cond)) { \
+      unsigned long __step; \
+      if (view_wait_fatal) { __left = -ERESTARTSYS; break; } \
+      if (__left <= 0) { __left = 0; break; } \
+      __step = view_wait_step && view_wait_step < (unsigned long)__left ? \
+               view_wait_step : (unsigned long)__left; \
+      jiffies += __step; __left -= (long)__step; \
+      if (++view_wait_sleeps > 100000) { fprintf(stderr, "unbounded wait\n"); abort(); } \
+      if (view_wait_hook) view_wait_hook(); \
+   } \
+   if (__left == 0 && (cond)) __left = 1; \
+   __left; })
 #define refcount_read(p) atomic_load(p)
 static struct hfs_session *test_session;
 static atomic_int module_refs, unmaps, reservations;
