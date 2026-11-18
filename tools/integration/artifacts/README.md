@@ -74,7 +74,11 @@ The r84 rebuild for zq3-r10 (candidate `4712e479…`,
 [evidence](evidence/xz3-20261114-r10/README.md)) kept the config again; its
 p84 patch 0004 changed the image (build ID `d73c85da…`) and the CRCs of the
 hfs exports, while the five modules and `abi-negative.json` came out
-byte-identical once more.
+byte-identical once more. The b94 rebuild for zq3-r11 (candidate
+`3b128cc6…`, [evidence](evidence/xz3-20261117-r11/README.md)) kept the
+config too; its x84+z84 patches 0003-0005 changed the image (build ID
+`c4e08f6f…`) and the same eight hfs export CRCs, and the five modules and
+`abi-negative.json` again came out byte-identical.
 
 The ordinary namespace fixture selects a rootful OCI runtime in the initial
 user namespace, VFS image storage and a newly created private network namespace

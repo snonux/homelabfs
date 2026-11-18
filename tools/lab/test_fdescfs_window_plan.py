@@ -21,11 +21,10 @@ SPEC.loader.exec_module(FILLER)
 WINDOW = FILLER.WINDOW
 PINS = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/pins.json"
 RECORD = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/build-record.json"
-# Daemon of the admitted xz3 r84 rebuild for zq3-r10 (4712e479), built from
-# cc6beed (o84 QUERY resume of never-prepared claims, q84 shared-lease
-# holders, i84 test clock hook, on top of the l84 daemon); the window build
-# reproduced it.
-ADMITTED_DAEMON_SHA256 = "34a5360bcb43ff7516062c096ab247b122febe6653d9510277730e968cae5230"
+# Daemon of the admitted xz3 b94 rebuild for zq3-r11 (3b128cc6), built from
+# dfdcdd9 (194 ALLOCATE of an exited issuer's exact original cleanup, on top
+# of the r84 daemon); the window build reproduced it.
+ADMITTED_DAEMON_SHA256 = "bf86d805732cc79a94f8d5023729396d48343d9dd7102be43598ee8992be232c"
 CONTROLLER_SHA = "c" * 64
 # f3 stock fusefs.ko, docs/lab/results/20261108-zq3-phase1 (task j44).
 FUSEFS_SHA256 = "b207adf6383bee8e022fa6115044508b7c64da07e73865e5ea71594d524cc4bd"
@@ -95,11 +94,12 @@ class FillerTests(unittest.TestCase):
         for path, value in record["captured_base_closure_sha256"].items():
             self.assertEqual(pinned[path], value)
         # The window artifacts follow the admitted daemon source: rebuilt from
-        # cc6beed for the r84 rebuild on 2026-11-14 (earlier from e92eaa1 for
-        # l84, from b869710 for y64, from 060dea0 for c64+d64, from a20aca1
-        # for z54, reused by 964, and from defd974 for f44, reused by r54 and
-        # w54), so the qualification test bytes match the daemon source.
-        self.assertEqual(record["source_commit"], "cc6beedd74c18df7eefbbcc189934035b8267e91")
+        # dfdcdd9 for the b94 rebuild on 2026-11-17 (earlier from cc6beed for
+        # r84, from e92eaa1 for l84, from b869710 for y64, from 060dea0 for
+        # c64+d64, from a20aca1 for z54, reused by 964, and from defd974 for
+        # f44, reused by r54 and w54), so the qualification test bytes match
+        # the daemon source.
+        self.assertEqual(record["source_commit"], "dfdcdd9635b9bae91b9d074eb86227ca85395b75")
 
     def test_filled_plan_is_accepted_by_actual_controller_validate(self):
         plan = self.fill()
