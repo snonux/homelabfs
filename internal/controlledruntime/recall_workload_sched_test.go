@@ -242,6 +242,11 @@ type dueACK struct {
 // while the recall still waits in INSTALL_DRAIN for the peer and is BLOCKED;
 // it is resent on a later round (zq3-r11, task y94). Sending every
 // INSTALLED_DRAIN before any DRAINED never produced that early DRAINED.
+// Today's schedules only start scoped recalls (one participant, whose
+// DRAINED is never early), so this order is exercised only once a schedule
+// drives an all-domain recall (task 2a4's credentials-admission replay);
+// the early DRAINED itself is covered in internal/viewcontrol
+// (early_drained_test.go).
 func (m *recallModel) eventWorker() bool {
 	if !m.recallActive() {
 		return false

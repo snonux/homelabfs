@@ -428,7 +428,7 @@ func (c *Controller) checkACKPhase(ctx context.Context, scope guestbridge.Contex
 		}
 	case "DRAINED":
 		if c.earlyDrained(scope, ack, recall, issued) {
-			return fsapi.WouldBlock
+			return errEarlyDrained
 		}
 		if recall.Phase != "WAIT_DRAINED" || !equal(ack.Target, issued.Target) || !bytes.Equal(ack.Manifest, recall.Manifests[scope.Session]) {
 			return fsapi.Stale
@@ -453,21 +453,23 @@ func (c *Controller) checkACKPhase(ctx context.Context, scope guestbridge.Contex
 // hfs_mmap_drained as soon as its own INSTALLED_DRAIN is ACCEPTED, while an
 // all-domain recall stays in INSTALL_DRAIN until every peer's INSTALLED_DRAIN
 // is in. That DRAINED becomes acceptable unchanged once the recall reaches
-// WAIT_DRAINED, so the spec requires BLOCKED (the caller maps WouldBlock to
-// BLOCKED, bounded by BlockedACKBound), not STALE: the guest treats STALE as
-// -ESTALE and stops its view worker for good, which wedged the recall in
-// zq3-r11. Only an ACK that matches everything WAIT_DRAINED would check
-// qualifies: this session's INSTALL_DRAIN event and target, its frozen
-// manifest and its own accepted INSTALLED_DRAIN of that recall and sequence
-// (ack has already matched the event's recall, hashes and sequence). The
-// INSTALLED_DRAIN is looked up in the protected AckArchive rather than in
-// recall.Acks, because a Disconnect or controller restart discards learned
-// ACKs while the guest, whose INSTALLED_DRAIN was ACCEPTED, goes on to its
-// DRAINED; its INSTALLED_DRAIN resend relearns the ACK (replayACK). Anything
-// else stays STALE.
+// WAIT_DRAINED, so the spec requires BLOCKED (errEarlyDrained, which the
+// caller answers BLOCKED with a bound derived from the peers' own BLOCKED
+// waits, BlockedACKBound), not STALE: the guest treats STALE as -ESTALE and
+// stops its view worker for good, which wedged the recall in zq3-r11. Only
+// an ACK that matches everything WAIT_DRAINED would check qualifies: this
+// session's INSTALL_DRAIN event and target, its frozen manifest and its own
+// accepted INSTALLED_DRAIN of that recall and sequence (ack has already
+// matched the event's recall, hashes and sequence). Anything else stays
+// STALE.
 //
-// A peer that takes longer than BlockedACKBound to install turns the early
-// DRAINED into an error reply, as for any other BLOCKED ACK.
+// The INSTALLED_DRAIN is looked up in the protected AckArchive rather than
+// in recall.Acks: a Disconnect or controller restart discards learned ACKs,
+// but the INSTALLED_DRAIN was ACCEPTED and the DRAINED may still become
+// acceptable unchanged if the guest resends its INSTALLED_DRAIN (replayACK
+// relearns it). Patch 0004 sends INSTALLED_DRAIN once and does not resend
+// it, so in that case the recall cannot progress either way and the early
+// DRAINED ends with the bound's error instead of an immediate STALE.
 //
 // No other ACK phase can arrive early: STOPPED, INSTALLED_DRAIN,
 // INSTALLED_FINAL and REOPENED are each sent only in reply to the event of

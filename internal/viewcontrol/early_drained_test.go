@@ -2,8 +2,11 @@ package viewcontrol
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
+	"time"
 
+	"github.com/snonux/homelabfs/internal/fsapi"
 	"github.com/snonux/homelabfs/internal/guestbridge"
 )
 
@@ -37,8 +40,8 @@ func TestEarlyDrainedIsBlockedNotStale(t *testing.T) {
 // controller restart (New) discards the recall's learned ACKs, but m0's
 // INSTALLED_DRAIN stays in the protected AckArchive and the guest, which saw
 // it ACCEPTED, goes on to its DRAINED. That DRAINED is still BLOCKED, not
-// STALE; m0's INSTALLED_DRAIN resend relearns the ACK (replayACK) and the
-// recall completes. The rig's bridges cannot follow a reopened controller,
+// STALE; if the guest resends its INSTALLED_DRAIN (patch 0004 does not
+// today), the resend relearns the ACK (replayACK) and the recall completes. The rig's bridges cannot follow a reopened controller,
 // so the discard is applied to the ledger directly, exactly as both do it.
 func TestEarlyDrainedBlockedAfterLearnedACKsDiscarded(t *testing.T) {
 	r := newZQ3Rig(t, 0)
@@ -54,6 +57,90 @@ func TestEarlyDrainedBlockedAfterLearnedACKsDiscarded(t *testing.T) {
 	r.ack(1, "INSTALLED_DRAIN", nil)
 	r.ack(1, "DRAINED", r.emptyManifest())
 	r.finishEarlyDrainRecall(early, open)
+}
+
+// TestEarlyDrainedBoundFollowsBlockedPeer: m0's early DRAINED is first
+// BLOCKED at t0; m1's INSTALLED_DRAIN arrives 20 s later and is itself
+// BLOCKED for an observation gap until it is ACCEPTED 25 s after that, i.e.
+// 45 s after t0 and past BlockedACKBound counted from t0. m0's DRAINED waits
+// for that peer, so its bound runs from m1's first BLOCKED and it must still
+// be BLOCKED at t0+35 s and ACCEPTED once m1 installed. Counting from t0
+// would have failed m0's guest view worker and wedged the recall again.
+func TestEarlyDrainedBoundFollowsBlockedPeer(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	advance := r.testClock()
+	open := r.startEarlyDrainRecall()
+	r.ack(0, "INSTALLED_DRAIN", nil)
+	early := r.requireEarlyDrainedBlocked(open)
+	advance(20 * time.Second)
+	installed := r.unobservedACK(1, "INSTALLED_DRAIN", nil)
+	if got := r.ackStatus(1, installed); got != "BLOCKED" {
+		t.Fatalf("unobserved peer INSTALLED_DRAIN answered %s, want BLOCKED", got)
+	}
+	advance(15 * time.Second) // t0+35 s, m1's wait 15 s old
+	if got := r.ackStatus(0, early); got != "BLOCKED" {
+		t.Fatalf("early DRAINED behind a BLOCKED peer answered %s, want BLOCKED", got)
+	}
+	advance(10 * time.Second) // t0+45 s, m1's wait 25 s old
+	if got := r.ackStatus(1, installed); got != "BLOCKED" {
+		t.Fatalf("peer INSTALLED_DRAIN within its bound answered %s, want BLOCKED", got)
+	}
+	r.observe(installed)
+	if got := r.ackStatus(1, installed); got != "ACCEPTED" {
+		t.Fatalf("observed peer INSTALLED_DRAIN answered %s, want ACCEPTED", got)
+	}
+	r.ack(1, "DRAINED", r.emptyManifest())
+	r.finishEarlyDrainRecall(early, open)
+}
+
+// TestEarlyDrainedBoundedWithoutPeer: a peer that sends nothing gives the
+// early DRAINED no later start, so it gets the bound's error reply after
+// BlockedACKBound, as any other BLOCKED ACK does.
+func TestEarlyDrainedBoundedWithoutPeer(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	advance := r.testClock()
+	open := r.startEarlyDrainRecall()
+	r.ack(0, "INSTALLED_DRAIN", nil)
+	early := r.requireEarlyDrainedBlocked(open)
+	advance(BlockedACKBound)
+	if got := r.ackStatus(0, early); got != "BLOCKED" {
+		t.Fatalf("early DRAINED at the bound answered %s, want BLOCKED", got)
+	}
+	advance(time.Millisecond)
+	if _, err := r.execute(0, "VIEW_ACK", early); !errors.Is(err, fsapi.Unavailable) {
+		t.Fatalf("early DRAINED past the bound with a silent peer: %v, want an error reply", err)
+	}
+}
+
+// testClock installs a controller test clock and returns its advance func.
+func (r *rig) testClock() func(time.Duration) {
+	clock := time.Unix(1_000_000, 0)
+	r.controller.mu.Lock()
+	r.controller.now = func() time.Time { return clock }
+	r.controller.mu.Unlock()
+	return func(d time.Duration) {
+		r.controller.mu.Lock()
+		clock = clock.Add(d)
+		r.controller.mu.Unlock()
+	}
+}
+
+// unobservedACK builds domain i's exact VIEW_ACK for phase without the
+// physical fact, so it is BLOCKED (ErrNotObserved) until observe records it.
+func (r *rig) unobservedACK(i int, phase string, manifest json.RawMessage) json.RawMessage {
+	r.t.Helper()
+	raw := r.ackPayload(i, phase, manifest)
+	r.facts.mu.Lock()
+	delete(r.facts.physical, "VIEW_ACK"+hash(raw))
+	r.facts.mu.Unlock()
+	return raw
+}
+
+// observe records the physical fact for the exact ACK bytes raw.
+func (r *rig) observe(raw json.RawMessage) {
+	r.facts.mu.Lock()
+	r.facts.physical["VIEW_ACK"+hash(raw)] = true
+	r.facts.mu.Unlock()
 }
 
 // startEarlyDrainRecall starts an all-domain recall of both domains, parks
