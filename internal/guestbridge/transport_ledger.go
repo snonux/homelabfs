@@ -68,6 +68,9 @@ type ProtectedTransportState struct {
 	// omitted until a first such refusal, so older indexes keep their bytes.
 	Refused *ProtectedRefusal `json:",omitempty"`
 	Digest  string            `json:"-"`
+	// Failure is the optional failure row (failure.go), not part of the index
+	// bytes: it records why the owner fenced after this cut was protected.
+	Failure *TransportFailure `json:"-"`
 }
 
 // ProtectedTransportCell retains exact transport bytes and historical callback
@@ -322,7 +325,10 @@ func (t *Transport) protectedIndex() ProtectedTransportState {
 
 // protectLocked uses bounded per-cell deltas. The index, changed cell, workspace
 // and deleted reclaim target commit together. There is no append-only history,
-// full-state JSON copy or reader held across writer transactions.
+// full-state JSON copy or reader held across writer transactions. A failed
+// protection fences the transport; the recorded site is protectLocked's
+// caller (commitWrite, publishResponse, coverLocked, ...), which names the
+// step whose state could not be saved, and the cells are the ones it saved.
 func (t *Transport) protectLocked(ids ...uint64) error {
 	if t.ledger == nil {
 		return nil
@@ -331,15 +337,18 @@ func (t *Transport) protectLocked(ids ...uint64) error {
 		return fsapi.Unavailable
 	}
 	if err := t.ledger.protect(t, ids); err != nil {
-		t.failed = err
+		t.failLocked("protection from "+callerSite(1), err, ids...)
 		return fmt.Errorf("transport protection fenced: %w", err)
 	}
 	return nil
 }
+
+// protectedPoint runs a test failpoint after a protected step. An injected
+// error fences the transport like a failed protection.
 func (t *Transport) protectedPoint(name string) error {
 	if t.ledger != nil && t.ledger.failpoint != nil {
 		if err := t.ledger.failpoint("protected-" + name); err != nil {
-			t.failed = err
+			t.failLocked("failpoint protected-"+name+" from "+callerSite(1), err)
 			return err
 		}
 	}
@@ -659,25 +668,9 @@ func inspectEndpointLedger(l *transportLedger, visit func(ProtectedTransportCell
 		}
 		hash := sha256.New()
 		_, _ = hash.Write(raw)
-		expected := len(state.Cells) + 1
-		if state.BridgeSessions {
-			expected += len(state.Scopes)
-		}
-		if state.Workspace {
-			expected++
-		}
-		count := 0
-		if e := b.ForEach(func(_, v []byte) error {
-			if v == nil {
-				return fsapi.Stale
-			}
-			count++
-			return nil
-		}); e != nil {
+		failure, e := checkTransportRows(b, state)
+		if e != nil {
 			return e
-		}
-		if count != expected {
-			return fsapi.Stale
 		}
 		if state.BridgeSessions {
 			total := 0
@@ -747,10 +740,49 @@ func inspectEndpointLedger(l *transportLedger, visit func(ProtectedTransportCell
 		if ordinary != state.Ordinary || control != state.Control || mappingPending+len(state.GuestRecent) > mappingRecentLimit {
 			return fsapi.Stale
 		}
+		if failure != nil {
+			_, _ = hash.Write(transportFailureKey)
+			_, _ = hash.Write(b.Get(transportFailureKey))
+			state.Failure = failure
+		}
 		state.Digest = hex.EncodeToString(hash.Sum(nil))
 		return nil
 	})
 	return state, err
+}
+
+// checkTransportRows requires exactly the rows the index names: the index,
+// one row per bridge session, per live cell and for a workspace, plus the
+// optional failure row (failure.go), which it decodes and returns.
+func checkTransportRows(b *bolt.Bucket, state ProtectedTransportState) (*TransportFailure, error) {
+	failure, err := inspectFailure(b.Get(transportFailureKey))
+	if err != nil {
+		return nil, err
+	}
+	expected := len(state.Cells) + 1
+	if state.BridgeSessions {
+		expected += len(state.Scopes)
+	}
+	if state.Workspace {
+		expected++
+	}
+	if failure != nil {
+		expected++
+	}
+	count := 0
+	if err = b.ForEach(func(_, v []byte) error {
+		if v == nil {
+			return fsapi.Stale
+		}
+		count++
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if count != expected {
+		return nil, fsapi.Stale
+	}
+	return failure, nil
 }
 
 func validateTransportCellBinding(s ProtectedTransportState, c ProtectedTransportCell, workspace bool) error {

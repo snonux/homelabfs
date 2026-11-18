@@ -251,7 +251,7 @@ func (a *TerminalAttempt) ProtectOwnership(ctx context.Context, coordinator Term
 		raw, _ := marshal(owner)
 		old, _ := marshal(c.terminal.Ownership)
 		if string(raw) != string(old) {
-			t.failed = fsapi.Stale
+			t.failLocked(callerSite(0)+" ownership changed", fsapi.Stale, a.cell)
 			return TerminalOwnership{}, fsapi.Stale
 		}
 		return owner, nil

@@ -168,7 +168,8 @@ func (t *Transport) beginJob(id uint64) (*workerInvocation, bool) {
 
 // publishResponse makes the first framed response of a still-live cell its
 // immutable reply and protects it. A mapping or runtime HELLO protection
-// failure fails the whole transport instead.
+// failure fails the whole transport instead. The response replaces the
+// retained mapping base (see finishMappingBase), which is dropped here.
 func (t *Transport) publishResponse(id uint64, raw []byte, frames, seen [][]byte, unread int, kind uint16) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -176,8 +177,9 @@ func (t *Transport) publishResponse(id uint64, raw []byte, frames, seen [][]byte
 	if t.closed || t.failed != nil || c == nil || c.released || c.response != nil {
 		return
 	}
+	c.base = nil
 	if err := t.finishMappingFull(c, raw); err != nil {
-		t.failed = err
+		t.failLocked(callerSite(0)+" mapping full hash", err, id)
 		return
 	}
 	c.response = raw
@@ -187,7 +189,7 @@ func (t *Transport) publishResponse(id uint64, raw []byte, frames, seen [][]byte
 	c.resultKind = kind
 	c.jobPhase = "responded"
 	if err := t.protectRuntimeHello(c); err != nil {
-		t.failed = err
+		t.failLocked(callerSite(0)+" runtime HELLO", err, id)
 		return
 	}
 	if c.terminal != nil {

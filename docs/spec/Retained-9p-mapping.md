@@ -69,7 +69,11 @@ Execute creates the existing private authenticated request observation and admit
 that exact protected mapping before producer preparation or service/controller
 effects. The private worker token and matching actual observation are both
 required. After dispatch, the host protects the actual response-base hashes and
-chain before receipt signing. The worker protects immutable native response,
+chain before receipt signing. A protected base is immutable: when signing is
+refused transiently (WouldBlock) and the worker retries the cell, the retry
+reuses the retained base bytes and does not repeat the operation (nc4; a
+repeated VIEW_POLL could answer a newer event than its protected EMPTY base,
+which fenced the transport in zq3-r12). The worker protects immutable native response,
 translated full response hash, frames and coverage before exposure or reclaim.
 Failures retain/fence uncertain ownership. Inert durable inspection does not
 restore a controller, authenticate recorded callbacks, or authorize RESUME.

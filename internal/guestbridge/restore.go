@@ -343,6 +343,11 @@ func checkRestorationCapacity(l *transportLedger) error {
 		if b == nil {
 			return fsapi.Stale
 		}
+		// A fenced owner (failure row, failure.go) is inspection evidence
+		// only; its cut is never restored.
+		if b.Get(transportFailureKey) != nil {
+			return fsapi.Unavailable
+		}
 		total := 0
 		return b.ForEach(func(k, v []byte) error {
 			total += len(k) + len(v)

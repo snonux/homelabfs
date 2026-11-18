@@ -123,6 +123,9 @@ type transportEvidence struct {
 	Hellos     int               `json:"hellos"`
 	GuestHigh  map[string]uint64 `json:"guest_high,omitempty"`
 	Digest     string            `json:"digest,omitempty"`
+	// Failure says why a fenced transport stopped (nc4): Error alone only
+	// reports the resulting Unavailable. It is bounded and content-free.
+	Failure *guestbridge.TransportFailure `json:"failure,omitempty"`
 }
 
 // evidenceError truncates error text to its funded bound.
@@ -248,7 +251,11 @@ func captureTransport(t *guestbridge.Transport) transportEvidence {
 	}
 	state, err := t.ProtectedEvidence()
 	if err != nil {
-		return transportEvidence{Error: evidenceError(err)}
+		e := transportEvidence{Error: evidenceError(err)}
+		if failure, ok := t.Failure(); ok {
+			e.Failure = &failure
+		}
+		return e
 	}
 	return transportEvidence{Controller: state.Controller.String(), Session: state.Endpoint.FuseSession, High: state.High, Cells: len(state.Cells), Ordinary: state.Ordinary, Control: state.Control, Workspace: state.Workspace, Terminal: len(state.Terminal), Hellos: len(state.RuntimeHellos), GuestHigh: state.GuestHigh, Digest: state.Digest}
 }
