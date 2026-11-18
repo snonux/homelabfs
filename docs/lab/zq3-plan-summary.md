@@ -144,8 +144,16 @@ the guest then blocked the mount. After it the guest kernel and the daemon
 were rebuilt again (`3b128cc6…`, daemon `bf86d805…`): the guest now waits its
 turn instead of refusing, a clean unmount no longer reports a false error,
 and the daemon accepts the closing of a file whose process has already
-exited. The patched bhyve is the same bytes as before. The new daemon must
-pass the f3 self-check again.
+exited. The eleventh attempt (zq3-r11) passed the setup and the "usable"
+check again, but the first test case hung once more: the guest reported
+that it had finished its part of a housekeeping round a little early, the
+daemon rejected that report as out of date, and the guest gave up on the
+mount. A later unmount then waited forever. After it the guest kernel and
+the daemon were rebuilt again (`150deb29…`, daemon `e0981a0a…`): the daemon
+now tells the guest to wait instead of rejecting the early report, and the
+guest never waits more than 30 seconds for a housekeeping round. The
+patched bhyve is the same bytes as before. The new daemon must pass the f3
+self-check again.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a

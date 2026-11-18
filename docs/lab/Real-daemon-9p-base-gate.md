@@ -51,10 +51,10 @@ exact-byte native observer check (see the xz3 evidence below). The z54
 daemon `39c92d01…` (2026-11-09) passed it in zq3-r5 (Phase 4 step 1a), and the
 964 kernel rebuild reused those bytes. The d64 daemon `9b7eed8d…` (c64+d64
 rebuild) was never checked. The y64 daemon `34fb05b2…` passed it in zq3-r8
-(Phase 4 step 1a), the l84 daemon `868dc045…` passed it in zq3-r9 and the
-r84 daemon `34a5360b…` in zq3-r10. The current b94 daemon `bf86d805…` (b94
-rebuild for zq3-r11, 2026-11-17) is new bytes and has **not** passed it yet;
-the next run
+(Phase 4 step 1a), the l84 daemon `868dc045…` passed it in zq3-r9, the
+r84 daemon `34a5360b…` in zq3-r10 and the b94 daemon `bf86d805…` in
+zq3-r11. The current 5a4 daemon `e0981a0a…` (5a4 rebuild for zq3-r12,
+2026-11-18) is new bytes and has **not** passed it yet; the next run
 must repeat the check. f3-host descriptor execution still awaits the
 approved zq3 fdescfs window. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
@@ -165,23 +165,27 @@ SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
 
 ## Exact installation plan inputs
 
-The current xz3 candidate (b94 rebuild for zq3-r11, 2026-11-17) is retained at
-`/home/paul/tmp/claude/hfs-xz3-20261117-r11/package`, manifest SHA256
-`3b128cc68e4a4e6c43c8411437df5b7671c003a5f9e7ae6c11700f918440a47a`, assembled from source checkout
-`dfdcdd9635b9bae91b9d074eb86227ca85395b75` (also the repository baseline); see its
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261117-r11/README.md).
+The current xz3 candidate (5a4 rebuild for zq3-r12, 2026-11-18) is retained at
+`/home/paul/tmp/claude/hfs-xz3-20261118-r12/package`, manifest SHA256
+`150deb2993cda12cc2ad6cee2f118fe0f2e334b0ddb9afaf09a8e22f27b0b88a`, assembled from source checkout
+`1b0a306bde2831d487f287af5fde82e80f7cedc7` (also the repository baseline); see its
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261118-r12/README.md).
 The guest kernel and the CGO daemon were rebuilt. The kernel (`bzImage`
-`5b08b3d2…`, `vmlinux` `6e489f38…`, GNU build ID `c4e08f6f…`, `config`
-`28fe4a8e…` unchanged) adds x84 (a request refused only because another
-allocation is pending waits, FIFO and bounded, for the fence to clear;
-zq3-r10 R10-1) and z84 (the unmount stop check runs after teardown and a
-bounded settle and accepts an idle reopened view; R10-2); two builds at the
-same O path were identical, and the five modules came out byte-identical.
-The daemon `bf86d805…` adds 194 (ALLOCATE accepts an exited issuer's exact
-original cleanup; R10-1 host side) to the r84 daemon; two forced builds and
-the window build gave the same bytes, but they still need native
-`--check-process-observer` on f3. The native exporter is a byte-identical
-reuse. Before it came the r84 rebuild (`4712e479…`, source `cc6beed`,
+`803a35b9…`, `vmlinux` `862b41a9…`, GNU build ID `8c1de1ed…`, `config`
+`28fe4a8e…` unchanged) adds 1a4 (`hfs_view_enter` waits at most 30 s and
+then fails `-ETIMEDOUT`, so a wedged recall no longer holds stat and
+`umount` in D, zq3-r11 R11-2; final mmap faults get SIGBUS; the view-worker
+stop log names session, phase and status); two builds at the same O path
+were identical, and `Module.symvers` and the five modules came out
+byte-identical. The daemon `e0981a0a…` adds y94 (an early DRAINED during
+INSTALL_DRAIN is answered BLOCKED, not STALE; R11-1/R11-2 host side) to the
+b94 daemon; two forced builds and the window build gave the same bytes, but
+they still need native `--check-process-observer` on f3. The native exporter
+is a byte-identical reuse. Before it came the b94 rebuild (`3b128cc6…`,
+source `dfdcdd9`,
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261117-r11/README.md)),
+which rebuilt the kernel for x84 and z84 (build ID `c4e08f6f…`) and the
+daemon for 194 (`bf86d805…`), the r84 rebuild (`4712e479…`, source `cc6beed`,
 [evidence](../../tools/integration/artifacts/evidence/xz3-20261114-r10/README.md)),
 which rebuilt the kernel for p84 (build ID `d73c85da…`) and the daemon for
 o84 and q84 (`34a5360b…`), the l84 rebuild (`e585206a…`, source
@@ -303,7 +307,7 @@ footprints in the independent global preparation budget. Swap is telemetry.
 
 ## Staged critical-window proposal
 
-The concrete phased proposal for one disposable run with candidate `3b128cc6…`,
+The concrete phased proposal for one disposable run with candidate `150deb29…`,
 including the remaining implementation gaps and Paul's decisions, is
 [zq3-run-plan.md](zq3-run-plan.md) ([plain-language summary](zq3-plan-summary.md)).
 The guest probe now retains each successful payload until an authenticated
