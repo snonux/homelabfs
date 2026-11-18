@@ -26,7 +26,8 @@ daemon after zq3-r11's R11-1 and R11-2:
   this fill's Rocky facts, so **T7 runs again** (zq3-r11 skipped it).
 
 **Rocky upgrades itself nightly** ([N1](#n1-rockys-nightly-upgrade)): a
-`dnf -y upgrade` runs at 00:55 UTC (Rocky's clock is UTC). The run must start
+`dnf -y upgrade` runs at 00:55 Rocky-local = 22:55 UTC (Rocky's clock is
+Europe/Sofia, EET, UTC+2; run-time revision R1 below). The run must start
 and finish before the next one; a gate before Phase 5 enforces it. If it does not, Phase 1 must recheck the pod-runtime
 NEVRAs and SHA256s and the kernel facts, and any drift means a refill.
 
@@ -505,9 +506,18 @@ test kernel removed (U2). Kept, and written into the lines they name:
 
 ## N1: Rocky's nightly upgrade
 
-Rocky runs a nightly `dnf -y upgrade` at 00:55 Rocky-local, which is 00:55
-UTC: Rocky's clock is UTC (the facts print `01:50:57 PM UTC`; Phase 1 records
-`date -u` and `timedatectl`). On 2026-11-17
+Rocky runs a nightly `dnf -y upgrade` at 00:55 Rocky-local. **Run-time
+revision R1 (2026-11-18 17:20Z, Phase 1):** Rocky's time zone is
+`Europe/Sofia (EET, +0200)`, not UTC (the fill read `date -u` output), so
+the upgrade runs at **22:55 UTC**. Read-only checks in Phase 1 also showed
+the mechanism: `unattended-upgrade-rocky.timer` fires hourly at :55 local,
+but `/usr/local/sbin/unattended-upgrade-rocky daily` runs `dnf upgrade` only
+once per local calendar day (stamp `/var/lib/unattended-upgrade/last-daily`,
+`2026-11-18` at Phase 1), i.e. at the first tick after local midnight, and it
+never reboots Rocky ("reboot deferred: standalone rocky requires explicit
+maintenance approval"). The test guest that boots Rocky's disk also starts
+the timer (`OnBootSec=10min`), but the stamp already holds today's local
+date, so it only logs the deferred reboot. On 2026-11-17
 it applied the EL9.9 update without a reboot (zq3-r11's S1: the running
 kernel and the grub default differed, and podman, crun and python3.9
 changed). Nothing changed since zq3-r11's facts: Rocky still runs
@@ -516,7 +526,7 @@ python3.9 is `729ac37f…`, and podman, crun, conmon and seccomp.json hash as
 in zq3-r11. Their NEVRAs are now pins too (e94).
 
 **The run must start and finish before the next nightly upgrade** (planned
-for 2026-11-18, well before 00:55 UTC). If it does not, the upgrade can replace
+for 2026-11-18, well before 22:55 UTC). If it does not, the upgrade can replace
 the kernel, python3.9, podman or crun:
 - Phase 1 then must recheck the pod-runtime NEVRAs and SHA256s (the
   `p1-pod-runtime.txt` line) and the kernel facts (boot ID, running and
@@ -526,10 +536,11 @@ the kernel, python3.9, podman or crun:
 
 **Go/no-go gate before Phase 5 (review round 1).** Phase 5 step 0 runs a
 local check before anything stops Rocky. It stops the run if Phase 1 ran
-before the last 00:55 UTC upgrade, if it is less than 35 minutes after
-00:55 UTC (the upgrade may still run), or if it is later than 23:25 UTC
-(00:55 minus the 90 minutes Phases 5-12 may take, so the run would span
-00:55 UTC). On `STOP` nothing is selected and Rocky still runs: the run
+before the last 00:55 Rocky-local upgrade, if it is less than 35 minutes
+after 00:55 Rocky-local (the upgrade may still run), or if it is later than
+23:25 Rocky-local = 21:25 UTC (00:55 minus the 90 minutes Phases 5-12 may
+take, so the run would span the upgrade). R1: the gate computes in
+`Europe/Sofia`. On `STOP` nothing is selected and Rocky still runs: the run
 aborts cleanly (observer key removed on Rocky and f3, U2, window restored)
 and is rescheduled with fresh Phase 1 facts.
 
@@ -715,9 +726,10 @@ Continue only if all of these hold:
     nightly upgrade without a reboot splits them). A mismatch, or a boot ID
     other than the one above (for example after the nightly 00:55 `dnf -y
     upgrade` and a reboot), stops here;
-  - `date -u` and `timedatectl` show Rocky's clock in UTC (`Time zone:
-    UTC`, synchronized), so its nightly `dnf -y upgrade` runs at 00:55 UTC
-    (N1). Another time zone stops here: the Phase 5 nightly gate assumes UTC;
+  - `timedatectl` shows `Time zone: Europe/Sofia (EET, +0200)` and
+    `System clock synchronized: yes`, so its nightly `dnf -y upgrade` runs
+    at 00:55 EET = 22:55 UTC (N1, R1). Another time zone stops here: the
+    Phase 5 nightly gate computes in `Europe/Sofia`;
   - `Enforcing`, and `/etc/selinux/config` has `SELINUX=enforcing`;
   - **`/.autorelabel` absent** (`ls` reports "No such file or directory");
   - `authorized_keys` `e08542dc…` and python3.9 `729ac37f…`;
@@ -998,12 +1010,13 @@ Step 0, **nightly-upgrade gate** (B, N1, review round 1), before anything
 else in Phase 5 and so before Rocky is stopped:
 
 ```bash
-python3 -I -c 'import datetime as t, os, sys; u=t.timezone.utc; now=t.datetime.now(u); p1=t.datetime.fromtimestamp(os.stat(sys.argv[1]).st_mtime, u); last=now.replace(hour=0, minute=55, second=0, microsecond=0); last=last if last <= now else last - t.timedelta(days=1); nxt=last + t.timedelta(days=1); why=[w for w, bad in (("Phase 1 predates the last 00:55 UTC upgrade", p1 < last), ("less than 35 min after 00:55 UTC (upgrade may still run)", now < last + t.timedelta(minutes=35)), ("after 23:25 UTC (the run would span 00:55 UTC)", now > nxt - t.timedelta(minutes=90))) if bad]; print("nightly-gate:", "STOP" if why else "GO", now.strftime("%H:%MZ"), why); sys.exit(1 if why else 0)' $E/p1-rocky.txt | tee $E/p5-nightly-gate.txt; echo rc=${PIPESTATUS[0]}
+python3 -I -c 'import datetime as t, os, sys, zoneinfo; u=zoneinfo.ZoneInfo("Europe/Sofia"); now=t.datetime.now(u); p1=t.datetime.fromtimestamp(os.stat(sys.argv[1]).st_mtime, u); last=now.replace(hour=0, minute=55, second=0, microsecond=0); last=last if last <= now else last - t.timedelta(days=1); nxt=last + t.timedelta(days=1); why=[w for w, bad in (("Phase 1 predates the last 00:55 local upgrade", p1 < last), ("less than 35 min after 00:55 local (upgrade may still run)", now < last + t.timedelta(minutes=35)), ("after 23:25 local = 21:25 UTC (the run would span the upgrade)", now > nxt - t.timedelta(minutes=90))) if bad]; print("nightly-gate:", "STOP" if why else "GO", now.strftime("%H:%M %Z"), now.astimezone(t.timezone.utc).strftime("%H:%MZ"), why); sys.exit(1 if why else 0)' $E/p1-rocky.txt | tee $E/p5-nightly-gate.txt; echo rc=${PIPESTATUS[0]}
 ```
 
 It prints `nightly-gate: GO` and `rc=0` only if Phase 1 (`p1-rocky.txt`)
-ran after the last 00:55 UTC upgrade, it is at least 35 minutes after that
-upgrade, and it is not later than 23:25 UTC (00:55 minus 90 minutes, the
+ran after the last 00:55 Rocky-local upgrade, it is at least 35 minutes after
+that upgrade, and it is not later than 23:25 Rocky-local = 21:25 UTC (00:55
+minus 90 minutes, the
 budget from Phase 5 to the end of Phase 12). **`STOP` (`rc=1`; the `rc`
 is the check's own, not `tee`'s): do not proceed.** Abort cleanly while Rocky still runs its stock kernel: nothing
 is selected yet. Each on its own line: remove the observer key on Rocky
@@ -2064,7 +2077,7 @@ them), so a later run in the same f3 boot meets D1 again.
 time, as in zq3-r11. The lines new or changed for zq3-r12:
 
 ```text
-- <UTC> N1: Rocky clock UTC (timedatectl): yes|no; Phase 5 nightly-gate GO|STOP at ..Z; Phase 1 pod runtime (p1-pod-runtime.txt) unchanged: True|False; kernel facts unchanged: yes|no.
+- <UTC> N1: Rocky clock Europe/Sofia (timedatectl, R1): yes|no; Phase 5 nightly-gate GO|STOP at ..Z; Phase 1 pod runtime (p1-pod-runtime.txt) unchanged: True|False; kernel facts unchanged: yes|no.
 - <UTC> Phase 1 passed: ... fusefs.ko (id ..) and fdescfs.ko (id ..) loaded, no fuse/fdesc mount, inet 10.20.0.133 on vm-public, vars .., Rocky PID 3146 running .. = default ..
 - <UTC> Phase 1a: before-unload Refs 1/1, no-fuse-fdesc-mounts; kldunload fusefs rc .., kldunload fdescfs rc ..; after-unload kldstat lists neither.
 - <UTC> Phase 3: kernel install BLS .. for build ID 8c1de1ed (bzImage 803a35b9); pod manifest PM=.. (zq3-r1 to zq3-r10: f7f69339); pod build ..

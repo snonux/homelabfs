@@ -37,6 +37,15 @@ acceptance stays incomplete by design**, because T5 does not run.
 
 ## N1: Rocky upgrades itself nightly
 
+**Run-time revision R1 (2026-11-18, Phase 1).** The UTC times below are
+wrong: Rocky's time zone is `Europe/Sofia (EET, +0200)` (the fill read
+`date -u` output), so the nightly upgrade runs at 00:55 EET = **22:55 UTC**,
+once per local day (stamp `/var/lib/unattended-upgrade/last-daily`), and
+never reboots Rocky. The run revised N1, the Phase 1 expectation and the
+Phase 5 step 0 gate to compute in `Europe/Sofia` (latest Phase 5 start
+21:25 UTC); [run-sheet.md](run-sheet.md) is the revised sheet the run used.
+Outcome: [zq3-r12 record](../20261118-zq3-r12/README.md).
+
 Rocky runs `dnf -y upgrade` at 00:55 Rocky-local, which is **00:55 UTC**
 (Rocky's clock is UTC; Phase 1 now records `date -u` and `timedatectl`).
 **The run must start and finish before the next one.** A go/no-go gate in
