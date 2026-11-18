@@ -94,6 +94,8 @@ extern void primitive_after_mutex_unlock(struct mutex *);
 #define WRITE_ONCE(p,v) __atomic_store_n(&(p),v,__ATOMIC_RELEASE)
 /* hfs_session_block's once-per-session flag (g64). */
 #define test_and_set_bit(n,p) ((__atomic_fetch_or((p),1UL<<(n),__ATOMIC_SEQ_CST)>>(n))&1UL)
+/* hfs_mmap_fail also marks hfs_session_block's bit (1a4). */
+#define set_bit(n,p) ((void)__atomic_fetch_or((p),1UL<<(n),__ATOMIC_SEQ_CST))
 #define WARN_ON_ONCE(p) ((p)?(fprintf(stderr,"unexpected WARN %s\n",#p),abort(),1):0)
 #define EXPORT_SYMBOL_GPL(name)
 #define __init

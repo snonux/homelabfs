@@ -42,6 +42,53 @@ int hfs_view_target(struct hfs_session *session,const struct hfs_json *event,int
  if(invalid_source)return -EACCES;
  *visibility=generation;memset(hash,0,32);return 0;
 }
+/* 1a4: hfs_mmap_fail's once-per-session line names the session, the worker
+ * step, the host event and ACK phases, the host's reply status, the view
+ * phase and the recall. zq3-r11's case: DRAINED for an INSTALL_DRAIN event,
+ * answered STALE (-116). The event executor's record is filled by the actual
+ * hfs_mmap_note_event and hfs_mmap_word, as hfs_mmap_events and hfs_mmap_ack
+ * do; the ACK exchange itself is not run here.
+ */
+static void view_worker_log_checks(struct hfs_session *session)
+{
+ static const char event[]="{\"payload\":{\"event\":{\"phase\":\"INSTALL_DRAIN\"}}}";
+ static const char stale[]="{\"payload\":{\"status\":\"STALE\"}}";
+ static const char hostile[]="{\"payload\":{\"status\":\"OK fake%n\"}}";
+ struct hfs_mmap_control control={.view=session->view};
+ struct hfs_json *json;int body;
+ uuid_t recall_id={{0x12,0x34}};
+ session->enrollment.session=(uuid_t){{0xab,0xcd,[15]=0xef}};
+ session->block_reported=0;session->blocked=false;warnings=0;
+ assert(!hfs_json_parse(event,strlen(event),&json));
+ hfs_mmap_note_event(&control,json);hfs_json_free(json);
+ assert(!strcmp(control.event_phase,"INSTALL_DRAIN") && !control.ack_phase && !control.ack_status[0]);
+ control.ack_phase="DRAINED";
+ assert(!hfs_json_parse(stale,strlen(stale),&json));body=hfs_json_field(json,0,"payload");
+ hfs_mmap_word(json,hfs_json_field(json,body,"status"),control.ack_status,sizeof(control.ack_status));hfs_json_free(json);
+ control.recall=recall_id;control.have_recall=true;
+ hfs_mmap_fail_event(&control,-ESTALE,"DRAINED");
+ assert(warnings==1 && control.error==-ESTALE && session->blocked && session->view->phase==HFS_VIEW_FENCED);
+ assert(!strcmp(last_warning,"9p-hfs: session abcd0000-0000-0000-0000-0000000000ef view control worker stopped, error -116, at DRAINED (event INSTALL_DRAIN, ack DRAINED, host status STALE, view phase INSTALLED_DRAIN, recall 12340000-0000-0000-0000-000000000000); later operations on this mount fail\n"));
+ // Bit 0 too: a later hfs_session_block of this session stays silent.
+ assert(session->block_reported==3UL);
+ // Once per session: another worker's stop logs nothing.
+ hfs_mmap_fail(&control,-ETIMEDOUT,&(struct hfs_mmap_where){.step="VIEW_WAIT"});
+ assert(warnings==1 && control.error==-ETIMEDOUT);
+ // A session that already logged a block still logs its worker stop. A
+ // VIEW_WAIT failure without a reply prints "-" for what it lacks, and host
+ // text that is not a plain [A-Z_] word is never copied into the log.
+ session->block_reported=1;
+ char status[24]="";
+ assert(!hfs_json_parse(hostile,strlen(hostile),&json));body=hfs_json_field(json,0,"payload");
+ hfs_mmap_word(json,hfs_json_field(json,body,"status"),status,sizeof(status));
+ assert(!strcmp(status,"?"));
+ hfs_mmap_word(json,hfs_json_field(json,body,"missing"),status,sizeof(status));hfs_json_free(json);
+ assert(!strcmp(status,"?"));
+ status[0]=0;
+ hfs_mmap_fail(&control,-ETIMEDOUT,&(struct hfs_mmap_where){.step="VIEW_WAIT",.status=status});
+ assert(warnings==2 && session->block_reported==3UL);
+ assert(!strcmp(last_warning,"9p-hfs: session abcd0000-0000-0000-0000-0000000000ef view control worker stopped, error -110, at VIEW_WAIT (event -, ack -, host status -, view phase FENCED, recall (null)); later operations on this mount fail\n"));
+}
 static void hfs_lease_get(struct hfs_lease *lease) { kref_get(&lease->refs); }
 static void hfs_lease_free(struct hfs_lease *lease) { assert(atomic_fetch_sub(&lease->refs.refcount,1)>1); }
 static int hfs_lease_release(struct hfs_session *session,struct hfs_lease *lease)
@@ -150,6 +197,10 @@ int main(void)
  assert(hfs_dirty_drain(session.view,&dirty)==-EIO && !dirty.resolved);
  assert(hfs_mmap_finish_drained(session.view)==-EBUSY && session.view->phase!=HFS_VIEW_DRAINED);
  hfs_json_free(request.result);list_del_init(&dirty.list);session.view->nr_dirty=0;
+ // 1a4: a fault parked behind a recall that never finishes gets SIGBUS once
+ // hfs_view_enter times out; retrying it would restore the unbounded wait.
+ assert(hfs_mmap_fault_error(session.view,-ETIMEDOUT)==VM_FAULT_SIGBUS);
+ view_worker_log_checks(&session);
  hfs_json_free(target_event);hfs_view_unregister_inode(&inode.inode);hfs_view_fence(session.view);assert(!hfs_view_free(&session));
  assert(!reservations && !module_refs);
  puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;

@@ -184,6 +184,27 @@ contract disallows sleeping when a page is supplied; page-less fork/move entry
 may wait before admission, with an independent view/module reference already
 held. No RPC or barrier wait occurs inside an admitted physical bracket.
 
+A waiting entrant (`hfs_view_enter` with wait: page faults on an uncached page,
+observation begin for getattr/lookup/readdir and other requests, initial
+attribute install, page-less fork/move entry) waits at most
+`HFS_VIEW_ENTER_WAIT_MS` (30 s, the guest's request window, as x84's
+allocation-fence wait) for LIVE, FENCED or a closing/blocked hfs1.4 session,
+measured from entry, and then fails with `-ETIMEDOUT` (1a4, zq3-r11 R11-2).
+Before 1a4 the wait was untimed: a recall the host never finished left every
+stat of the mount, and umount(8)'s stat of the mount point, in D state until
+the guest was powered off. The timeout admits and sends nothing, so it is a
+plain error: syscalls return it, a fault raises SIGBUS (retrying would restore
+the unbounded wait), fork and mremap fail; no caller blocks the session on it.
+umount(2) itself enters no view (hfs_d_revalidate is local), and kill_sb's
+settle wakes any parked entrant before its own 2 s bound.
+
+When the view control worker stops for good (`hfs_mmap_fail`), it logs one line
+per session naming the enrolled session UUID, the worker step (VIEW_WAIT,
+EVENT, DRAINED, DRAIN_WRITE, CLEANUP), the host event and ACK phases, the host
+reply status (only `[A-Z_]` words are copied from the host), the view phase
+and the recall. r11's line said only `error -116`; it was the host's STALE to
+an early DRAINED.
+
 ## Locks, independent lifetimes and retirement
 
 Session lock protects the view owner pointer; get takes its kref/module lifetime
@@ -227,7 +248,8 @@ installation and drain-result validation, covering128-clean capacity/129th retry
 an in-flight observation lease that pressure never releases, a background
 pressure pass that releases nothing while an observation is in flight until
 its five-second bound, read-first upgrade, source denial and short/error results never reaching
-DRAINED;
+DRAINED, a timed-out fault raising SIGBUS and the worker-stop log line;
+view also covers the bounded hfs_view_enter wait with a settable clock;
 dirty covers freeze, immutable claim construction, deferred activation and
 PENDING/QUERY lineage; requests covers returned-result pins and protected floor
 retirement; root consumes an actual production-host ROOT literal; transport and

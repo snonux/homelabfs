@@ -1034,3 +1034,85 @@ The series was regenerated with `export.py --task x84-z84` (0003, 0004 and
 readdir_cleanup, transport, huge, policy and cursor pass; root, capture,
 reclaim and codec fail as on the unchanged tree (s54). No candidate was
 rebuilt or admitted.
+
+## Bounded view entry and the worker-stop log (`1a4`)
+
+zq3-r11 R11-2 (patch 0004, `hfs_view.c`): `hfs_view_enter(wait=true)` slept
+in `wait_event_killable` until the view was LIVE, FENCED or its hfs1.4
+session closing or blocked, with no time bound. In r11 the host's recall
+stayed in WAIT_DRAINED for about nine minutes and never finished, so m1's
+stat stayed in D and the umount of m1 hung (umount(8) stats the mount point
+first); the guest poweroff took about 530 s.
+
+- **Bounded wait.** The wait now ends after `HFS_VIEW_ENTER_WAIT_MS` (30 s,
+  `hfs_view.h`; the guest's request window and x84's
+  `HFS_ALLOCATION_WAIT_MS`) with `-ETIMEDOUT`. The deadline is fixed at
+  entry, so intermediate recall phases that wake the waiter do not extend
+  it; a view that settles exactly at the deadline is still admitted. A
+  fatal signal still ends the wait with `-ERESTARTSYS`. A clean recall
+  takes well under a second, so the bound only fires on a stuck one.
+- **Callers.** The timeout admits and sends nothing, so every caller treats
+  it as a plain error and none blocks the session: observation begin
+  (`hfs_mmap_begin`, i.e. getattr, lookup, readdir, open, read/write and
+  the other requests through `hfs_begin`) and the initial attribute install
+  return it to userspace (readdir blocks only on EPROTO/EINVAL); a page
+  fault raises SIGBUS (`hfs_mmap_fault_error`; retrying it with
+  `VM_FAULT_NOPAGE` would restore the unbounded wait); page-less fork and
+  mremap entry (`hfs_view_page_enter`) fail the fork or the move.
+- **Unmount.** umount(2) enters no view (`hfs_d_revalidate` is local and the
+  mount point walk calls no hfs operation); umount(8)'s stat of the mount
+  point now returns ETIMEDOUT after 30 s instead of hanging. kill_sb is
+  unchanged and bounded as before (z84's settle waits at most 2 s); the
+  settle now also wakes any parked entrant, which then sees `closing` and
+  refuses at once instead of at its bound. Normally none is parked, since a
+  syscall holds the mount busy until it returns.
+
+`hfs_mmap_fail` (patch 0004): the ratelimited `view control worker stopped,
+error -116` named neither the session nor what failed. It now logs once per
+session, as m64's `hfs_session_block` (plain `pr_warn`, own once bit
+`HFS_REPORTED_VIEW_STOP` in `hfs.h`):
+
+```
+9p-hfs: session <uuid> view control worker stopped, error -116, at DRAINED (event INSTALL_DRAIN, ack DRAINED, host status STALE, view phase INSTALLED_DRAIN, recall <uuid>); later operations on this mount fail
+```
+
+The step is VIEW_WAIT, EVENT, DRAINED, DRAIN_WRITE or CLEANUP. The event
+executor (`hfs_mmap_events`, `hfs_mmap_drained`; one item at a time on its
+max_active-1 queue) records the event phase it is processing, the ACK it
+sent and the host's reply status in `struct hfs_mmap_control`; "-" means
+none (an ACK that got no reply, e.g. a transport timeout, has status "-").
+Only `[A-Z_]` words are copied from host replies (`hfs_mmap_word`). The
+stop blocks the session, so it also sets `hfs_session_block`'s bit 0: a
+later block of the same session stays silent, since this line already names
+the cause; a session that already logged a block still logs the stop. The
+recall is printed for event executor failures only (other workers would
+race with its writer).
+
+Tests:
+
+- `view`: a STOPPED view that never reopens times out after exactly
+  `HFS_VIEW_ENTER_WAIT_MS` (also across a jiffies wrap, holding no module,
+  kref or active token afterwards); intermediate phase changes do not extend
+  the deadline; a reopen one jiffy before and exactly at the bound is
+  admitted; FENCED during the wait gives `-ESTALE`; a fatal signal gives
+  `-ERESTARTSYS` at once. The view compat gained a settable `jiffies`
+  (moved from the pressure harness) and a `wait_event_killable_timeout`
+  substitute that advances it. The pre-1a4 untimed wait aborts the case
+  (`untimed wait_event_killable`), and so does a deadline restarted on
+  every wake-up (`unbounded wait`).
+- `view --pressure`: `hfs_mmap_fault_error(-ETIMEDOUT)` is SIGBUS (fails if
+  the fault retries it); the worker-stop line for r11's case is checked
+  byte for byte, with the actual `hfs_mmap_note_event`/`hfs_mmap_word`
+  filling the record, once per session, bit 0 set, a VIEW_WAIT stop without
+  a reply printing "-", and non-word host text replaced by "?". Dropping the
+  once bit or the word filter fails it.
+- controlled_received `build.py` extracts the new helpers and struct.
+
+The series was regenerated with `export.py --task 1a4` (0003 and 0004
+change: `hfs.h`, `hfs_session.c` comment; `hfs_view.[ch]`, `hfs_mmap.c`).
+A fresh `prepare.py` tree applies it with fuzz zero and `fs/9p/`, `net/9p/`
+and `random.o` compile without warnings under `kernel.py configure`.
+view and view --pressure (plain and `--sanitize`), mount_hello and tag
+(`--sanitize`), controlled_received `terminal-smoke`, `cleanup` and
+`exit-cleanup`, requests, huge, transport, policy and cursor pass. No
+candidate was rebuilt or admitted.

@@ -107,7 +107,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,449 @@
+@@ -0,0 +1,455 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -136,6 +136,8 @@ new file mode 100644
 +#define HFS_ALLOCATION_WAIT_MS 30000U
 +/* kill_sb's bounded wait for a view to settle before the stop (z84). */
 +#define HFS_UNMOUNT_SETTLE_MS 2000U
++/* session->block_reported bit of hfs_mmap_fail's once-per-session line (1a4). */
++#define HFS_REPORTED_VIEW_STOP 1
 +
 +struct hfs_controlled_mount;
 +struct hfs_session;
@@ -411,7 +413,11 @@ new file mode 100644
 +	bool unmounting;
 +	bool retained;
 +	bool retired; /* actual protected whole-session provider proof */
-+	/* Bit 0: hfs_session_block already logged why this session blocked. */
++	/* Bit 0: hfs_session_block already logged why this session blocked.
++	 * Bit HFS_REPORTED_VIEW_STOP: hfs_mmap_fail logged the view control
++	 * worker stop (1a4); it also sets bit 0, since that stop blocks the
++	 * session and its line already names the cause.
++	 */
 +	unsigned long block_reported;
 +};
 +
@@ -561,7 +567,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,3414 @@
+@@ -0,0 +1,3417 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -668,7 +674,10 @@ new file mode 100644
 + * hfs_session_fence. kill_sb logs a failed close or stop here; a failed
 + * mount and the close/release sequence-wrap guards still set the flag
 + * directly (a retained failed mount reaches the retain fence, which logs),
-+ * and hfs_mmap_fail logs the view control errno.
++ * and hfs_mmap_fail logs the view control worker stop with its own once bit
++ * (session, step, host event/ACK phase and reply status, view phase and
++ * recall; 1a4). That stop also sets bit 0, so a later block of the same
++ * session stays silent.
 + */
 +void hfs_session_block(struct hfs_session *session, const char *reason,
 +		       const char *operation, int err)

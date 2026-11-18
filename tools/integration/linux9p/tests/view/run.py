@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import resource
 import signal
@@ -66,6 +67,17 @@ def main():
                 ('fs/9p/hfs_lease.c', 'int hfs_dirty_drain(', None)):
             start = inputs[filename].index(first)
             source.append(inputs[filename][start:inputs[filename].index(last, start)] if last else inputs[filename][start:])
+        # 1a4: hfs_mmap_fail's once-per-session line, with its control
+        # struct, its once bit and the event executor's record helpers.
+        mmap = inputs['fs/9p/hfs_mmap.c']
+        bit = re.search(r'^#define HFS_REPORTED_VIEW_STOP .*$', inputs['fs/9p/hfs.h'], re.M)
+        source.append(bit.group(0))
+        start = mmap.index('struct hfs_mmap_control {')
+        source.append(mmap[start:mmap.index('\n};\n', start) + 4])
+        for first, last in (('static void hfs_mmap_word(', '\nstatic int hfs_mmap_ack('),
+                            ('struct hfs_mmap_where {', '\nstatic void hfs_mmap_drains(')):
+            start = mmap.index(first)
+            source.append(mmap[start:mmap.index(last, start)])
     (args.output / 'production.c').write_text('\n'.join(source) + '\n')
     (args.output / 'test.c').write_bytes(b'#include \"compat.h\"\n' + ((here.parent / 'pressure' if args.pressure else here) / 'test.c').read_bytes())
     (args.output / 'compat.h').write_bytes((here / 'compat.h').read_bytes() + ((here.parent / 'pressure/compat_extra.h').read_bytes() if args.pressure else b''))

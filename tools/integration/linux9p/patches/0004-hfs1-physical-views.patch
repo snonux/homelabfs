@@ -451,7 +451,7 @@ diff --git a/fs/9p/hfs_view.h b/fs/9p/hfs_view.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.h
-@@ -0,0 +1,226 @@
+@@ -0,0 +1,240 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_VIEW_H
 +#define FS_9P_HFS_VIEW_H
@@ -503,6 +503,19 @@ new file mode 100644
 + * acquisition.
 + */
 +#define HFS_PRESSURE_HOLD_MS 5000
++
++/* A waiting hfs_view_enter gives up after this long with -ETIMEDOUT (1a4,
++ * zq3-r11 R11-2). Before 1a4 the wait had no time bound: a recall the host
++ * never completes (r11's stayed in WAIT_DRAINED for about nine minutes) left
++ * every getattr, stat and lookup of that mount, and umount(8)'s own stat of
++ * the mount point, in D state until the guest was powered off. A clean
++ * recall takes well under a second, so the bound only fires on a recall that
++ * is stuck. It is the same 30 s as the guest's request window and the x84
++ * allocation-fence wait (HFS_ALLOCATION_WAIT_MS in hfs.h): a waiter gets the
++ * same bound as any other exchange of that mount, and a syscall still pays
++ * at most one such window per wait.
++ */
++#define HFS_VIEW_ENTER_WAIT_MS 30000U
 +
 +struct hfs_view {
 +	struct hfs_mmap_control *control;
@@ -652,6 +665,7 @@ new file mode 100644
 +int hfs_view_snapshot(struct hfs_view *view, struct hfs_view_stamp *stamp);
 +int hfs_view_enter(struct hfs_view *view, const struct hfs_view_stamp *stamp,
 +		   bool wait, void **cookie);
++const char *hfs_view_phase_name(enum hfs_view_phase phase);
 +void hfs_view_leave(void *cookie);
 +int hfs_view_stop(struct hfs_view *view, const uuid_t *generation,
 +		  const uuid_t *recall, u64 sequence);
@@ -682,7 +696,7 @@ diff --git a/fs/9p/hfs_view.c b/fs/9p/hfs_view.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.c
-@@ -0,0 +1,1089 @@
+@@ -0,0 +1,1140 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Physical retained-cache admission and all-alias PTE/TLB/MMU quiescence. */
 +#include <linux/mm.h>
@@ -977,10 +991,33 @@ new file mode 100644
 +	return 0;
 +}
 +
++/* A parked entrant's wake-up condition: a phase that admits (LIVE) or
++ * refuses for good (FENCED, or a closing/blocked hfs1.4 session).
++ */
++static bool hfs_view_enter_settled(struct hfs_view *view)
++{
++	return READ_ONCE(view->phase) == HFS_VIEW_LIVE ||
++	       READ_ONCE(view->phase) == HFS_VIEW_FENCED ||
++	       (view->session->bridge_minor == 4 &&
++		(READ_ONCE(view->session->closing) ||
++		 READ_ONCE(view->session->blocked)));
++}
++
++/* With wait, a non-LIVE view (a recall in progress) parks the caller until
++ * the view settles, a fatal signal arrives (-ERESTARTSYS) or
++ * HFS_VIEW_ENTER_WAIT_MS has passed since entry (-ETIMEDOUT, 1a4). The
++ * deadline is fixed at entry, so wake-ups by intermediate recall phases do
++ * not extend it. -ETIMEDOUT is a plain error for the caller: nothing was
++ * admitted or sent, and no caller blocks the session on it (getattr,
++ * lookup and the other observations return it to userspace, a page fault
++ * raises SIGBUS, fork and mremap fail).
++ */
 +int hfs_view_enter(struct hfs_view *view, const struct hfs_view_stamp *stamp,
 +		   bool wait, void **cookie)
 +{
-+	unsigned long flags;
++	unsigned long flags, now;
++	unsigned long deadline = jiffies + msecs_to_jiffies(HFS_VIEW_ENTER_WAIT_MS);
++	long left;
 +	int err;
 +
 +	*cookie = NULL;
@@ -994,17 +1031,45 @@ new file mode 100644
 +		spin_unlock_irqrestore(&view->lock, flags);
 +		if (!wait || err != -EAGAIN)
 +			break;
-+		err = wait_event_killable(view->wait,
-+					  READ_ONCE(view->phase) == HFS_VIEW_LIVE ||
-+					  READ_ONCE(view->phase) == HFS_VIEW_FENCED ||
-+					  (view->session->bridge_minor == 4 &&
-+					   (READ_ONCE(view->session->closing) ||
-+					    READ_ONCE(view->session->blocked))));
-+		if (err)
++		now = jiffies;
++		if (!time_before(now, deadline)) {
++			err = -ETIMEDOUT;
 +			break;
++		}
++		/* A timed-out sleep (0) loops once more: that last try still
++		 * admits a view that settled at the deadline, then the check
++		 * above ends the wait.
++		 */
++		left = wait_event_killable_timeout(view->wait,
++						   hfs_view_enter_settled(view),
++						   deadline - now);
++		if (left < 0) {
++			err = left;
++			break;
++		}
 +	}
 +	hfs_view_put(view);
 +	return err;
++}
++
++/* For log lines only (hfs_mmap_fail). */
++const char *hfs_view_phase_name(enum hfs_view_phase phase)
++{
++	static const char *const names[] = {
++		[HFS_VIEW_UNBOUND] = "UNBOUND",
++		[HFS_VIEW_LIVE] = "LIVE",
++		[HFS_VIEW_RECALLING] = "RECALLING",
++		[HFS_VIEW_QUIESCENT] = "QUIESCENT",
++		[HFS_VIEW_STOPPED] = "STOPPED",
++		[HFS_VIEW_INSTALLED_DRAIN] = "INSTALLED_DRAIN",
++		[HFS_VIEW_DRAINED] = "DRAINED",
++		[HFS_VIEW_FINAL] = "FINAL",
++		[HFS_VIEW_FENCED] = "FENCED",
++	};
++
++	if ((unsigned int)phase >= sizeof(names) / sizeof(names[0]) || !names[phase])
++		return "?";
++	return names[phase];
 +}
 +
 +void hfs_view_leave(void *cookie)
@@ -3441,7 +3506,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,1860 @@
+@@ -0,0 +1,1978 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -3712,6 +3777,16 @@ new file mode 100644
 +	void *credit;
 +	bool stopping;
 +	int error;
++	/* 1a4: what the event executor was doing, for hfs_mmap_fail's line.
++	 * Only event_queue work (hfs_mmap_events, hfs_mmap_drained) writes
++	 * these; that unbound queue has max_active 1, so it runs one item at a
++	 * time. event_phase is the host event being processed, ack_phase the
++	 * ACK sent for it (NULL before one) and ack_status the host's reply
++	 * status ("" while no reply arrived, e.g. a transport timeout).
++	 */
++	char event_phase[24];
++	const char *ack_phase;
++	char ack_status[24];
 +};
 +
 +static void hfs_mmap_control_release(struct kref *refs)
@@ -3809,6 +3884,24 @@ new file mode 100644
 +	return session->provider->view_event(session, json, event);
 +}
 +
++/* Copy a host status or phase word for a log line (1a4). The text comes from
++ * the host, so only [A-Z_] is printed; anything else (or a missing or
++ * oversized string) becomes "?".
++ */
++static void hfs_mmap_word(const struct hfs_json *json, int token, char *out, u32 cap)
++{
++	int len = hfs_json_string(json, token, out, cap);
++	int i;
++
++	for (i = 0; i < len; i++)
++		if (!(out[i] >= 'A' && out[i] <= 'Z') && out[i] != '_')
++			break;
++	if (len <= 0 || i < len) {
++		out[0] = '?';
++		out[1] = 0;
++	}
++}
++
 +static int hfs_mmap_ack(struct hfs_mmap_control *control, const struct hfs_json *event,
 +			int body, const char *phase, bool manifest, bool target)
 +{
@@ -3843,12 +3936,16 @@ new file mode 100644
 +	else
 +		hfs_buf_literal(payload, "null");
 +	hfs_buf_literal(payload, "}");
++	control->ack_phase = phase;
++	control->ack_status[0] = 0;
 +	err = payload->error ?: hfs_controlled_before_ack(view, event, body, phase, payload);
 +	if (!err)
 +		err = hfs_control(session, "VIEW_ACK", payload, true, &reply);
 +	if (err)
 +		return err;
 +	result = hfs_json_field(reply, 0, "payload");
++	hfs_mmap_word(reply, hfs_json_field(reply, result, "status"),
++		      control->ack_status, sizeof(control->ack_status));
 +	if (hfs_json_exact(reply, result, "status"))
 +		err = -EPROTO;
 +	else if (hfs_json_is(reply, hfs_json_field(reply, result, "status"), "\"BLOCKED\""))
@@ -3867,18 +3964,84 @@ new file mode 100644
 +	return err;
 +}
 +
-+static void hfs_mmap_fail(struct hfs_mmap_control *control, int error)
++/* Where the view control worker stopped (1a4); NULL fields print as "-". */
++struct hfs_mmap_where {
++	const char *step;	/* VIEW_WAIT, EVENT, DRAINED, DRAIN_WRITE or CLEANUP */
++	const char *event;	/* host event phase being processed */
++	const char *ack;	/* ACK phase sent for it */
++	const char *status;	/* host reply status */
++	const uuid_t *recall;	/* recall in progress, event executor only */
++};
++
++static const char *hfs_mmap_or_dash(const char *text)
 +{
-+	/* The worker stops for good here (no further VIEW_WAIT or ACK), so the
-+	 * cause must be visible in the guest log of a lab run.
-+	 */
-+	pr_warn_ratelimited("9p hfs: view control worker stopped, error %d\n", error);
++	return text && text[0] ? text : "-";
++}
++
++/* The worker stops for good here (no further VIEW_WAIT or ACK), so the
++ * cause must be visible in the guest log of a lab run. Before 1a4 the line
++ * was a ratelimited "view control worker stopped, error %d": zq3-r11's -116
++ * did not say which session, which recall step or what the host answered
++ * (it was the host's STALE to an early DRAINED). The line now names the
++ * enrolled session UUID, the worker step, the host event and ACK phases, the
++ * host's reply status, the view phase and the recall, and keeps the old
++ * prefix text so earlier run notes still match.
++ *
++ * Once per session, as hfs_session_block (m64): a plain pr_warn bounded by
++ * its own once bit (HFS_REPORTED_VIEW_STOP), so a burst cannot drop the
++ * session's only explanation and two failing workers of one session log
++ * once. The worker stop blocks the session, so it also takes
++ * hfs_session_block's bit 0: a later block of the same session stays
++ * silent, since this line already names the root cause. A session that
++ * already logged a block still logs its worker stop.
++ */
++static void hfs_mmap_fail(struct hfs_mmap_control *control, int error,
++			  const struct hfs_mmap_where *where)
++{
++	struct hfs_view *view = control->view;
++	struct hfs_session *session = view->session;
++
 +	WRITE_ONCE(control->error, error);
-+	WRITE_ONCE(control->view->session->blocked, true);
++	WRITE_ONCE(session->blocked, true);
++	if (!test_and_set_bit(HFS_REPORTED_VIEW_STOP, &session->block_reported)) {
++		set_bit(0, &session->block_reported);
++		pr_warn("9p-hfs: session %pUb view control worker stopped, error %d, at %s (event %s, ack %s, host status %s, view phase %s, recall %pUb); later operations on this mount fail\n",
++			&session->enrollment.session, error,
++			hfs_mmap_or_dash(where->step), hfs_mmap_or_dash(where->event),
++			hfs_mmap_or_dash(where->ack), hfs_mmap_or_dash(where->status),
++			hfs_view_phase_name(READ_ONCE(view->phase)), where->recall);
++	}
 +	/* This closes admission, not a declaration of physical STOPPED. All
 +	 * original grants/bytes/tickets and canonical evidence remain retained.
 +	 */
-+	hfs_view_fence(control->view);
++	hfs_view_fence(view);
++}
++
++/* An event executor failure: its own record says how far it got. */
++static void hfs_mmap_fail_event(struct hfs_mmap_control *control, int error,
++				const char *step)
++{
++	struct hfs_mmap_where where = {
++		.step = step,
++		.event = control->event_phase,
++		.ack = control->ack_phase,
++		.status = control->ack_status,
++		.recall = control->have_recall ? &control->recall : NULL,
++	};
++
++	hfs_mmap_fail(control, error, &where);
++}
++
++/* The event executor starts on a host event: forget the previous ACK. */
++static void hfs_mmap_note_event(struct hfs_mmap_control *control,
++				const struct hfs_json *json)
++{
++	int event = hfs_json_field(json, hfs_json_field(json, 0, "payload"), "event");
++
++	hfs_mmap_word(json, hfs_json_field(json, event, "phase"),
++		      control->event_phase, sizeof(control->event_phase));
++	control->ack_phase = NULL;
++	control->ack_status[0] = 0;
 +}
 +
 +static void hfs_mmap_drains(struct work_struct *work)
@@ -3896,7 +4059,8 @@ new file mode 100644
 +	list_for_each_entry(dirty, &view->dirty, list) {
 +		if (count == ARRAY_SIZE(ordered)) {
 +			spin_unlock_irqrestore(&view->lock, flags);
-+			hfs_mmap_fail(control, -EOVERFLOW);
++			hfs_mmap_fail(control, -EOVERFLOW,
++				      &(struct hfs_mmap_where){ .step = "DRAIN_WRITE" });
 +			return;
 +		}
 +		ordered[count++] = dirty;
@@ -3914,7 +4078,8 @@ new file mode 100644
 +	for (i = 0; i < count; i++) {
 +		err = hfs_dirty_drain(view, ordered[i]);
 +		if (err) {
-+			hfs_mmap_fail(control, err);
++			hfs_mmap_fail(control, err,
++				      &(struct hfs_mmap_where){ .step = "DRAIN_WRITE" });
 +			return;
 +		}
 +	}
@@ -4031,6 +4196,7 @@ new file mode 100644
 +	if (!json || control->drained_acked || READ_ONCE(control->stopping) ||
 +	    READ_ONCE(control->error))
 +		return;
++	hfs_mmap_note_event(control, json);
 +	err = READ_ONCE(view->phase) == HFS_VIEW_DRAINED ? 0 : hfs_mmap_finish_drained(view);
 +	if (!err) {
 +		body = hfs_json_field(json, 0, "payload");
@@ -4041,7 +4207,7 @@ new file mode 100644
 +		if (!READ_ONCE(control->stopping))
 +			queue_delayed_work(control->event_queue, &control->drained, msecs_to_jiffies(10));
 +	} else if (err) {
-+		hfs_mmap_fail(control, err);
++		hfs_mmap_fail_event(control, err, "DRAINED");
 +	} else {
 +		control->drained_acked = true;
 +	}
@@ -4061,6 +4227,7 @@ new file mode 100644
 +	spin_unlock_irqrestore(&control->lock, flags);
 +	if (!json || READ_ONCE(control->stopping) || READ_ONCE(control->error))
 +		return;
++	hfs_mmap_note_event(control, json);
 +	err = hfs_mmap_process(control, json);
 +	if (err == -EAGAIN || err == -EBUSY) {
 +		if (!READ_ONCE(control->stopping))
@@ -4068,14 +4235,14 @@ new file mode 100644
 +		return;
 +	}
 +	if (err) {
-+		hfs_mmap_fail(control, err);
++		hfs_mmap_fail_event(control, err, "EVENT");
 +		return;
 +	}
 +	body = hfs_json_field(json, 0, "payload");
 +	event = hfs_json_field(json, body, "event");
 +	err = hfs_json_u64(json, hfs_json_field(json, event, "sequence"), &sequence);
 +	if (err) {
-+		hfs_mmap_fail(control, err);
++		hfs_mmap_fail_event(control, err, "EVENT");
 +		return;
 +	}
 +	spin_lock_irqsave(&control->lock, flags);
@@ -4102,6 +4269,7 @@ new file mode 100644
 +	unsigned long flags;
 +	uuid_t recall;
 +	u64 after, sequence;
++	char status[24] = "";
 +	int body, event, err;
 +
 +	if (READ_ONCE(control->stopping) || READ_ONCE(control->error))
@@ -4160,12 +4328,15 @@ new file mode 100644
 +failed:
 +	/* The canonical unexpected response remains retained for inspection. */
 +	if (reply) {
++		hfs_mmap_word(reply, hfs_json_field(reply, hfs_json_field(reply, 0, "payload"),
++						    "status"), status, sizeof(status));
 +		spin_lock_irqsave(&control->lock, flags);
 +		control->pending[(control->head + control->count) % ARRAY_SIZE(control->pending)] = reply;
 +		control->count++;
 +		spin_unlock_irqrestore(&control->lock, flags);
 +	}
-+	hfs_mmap_fail(control, err);
++	hfs_mmap_fail(control, err,
++		      &(struct hfs_mmap_where){ .step = "VIEW_WAIT", .status = status });
 +}
 +
 +static void hfs_mmap_pressure_work(struct work_struct *work);
@@ -4524,7 +4695,7 @@ new file mode 100644
 +		queue_delayed_work(control->cleanup_queue, &cleanup->work, msecs_to_jiffies(10));
 +		return;
 +	}
-+	hfs_mmap_fail(control, err);
++	hfs_mmap_fail(control, err, &(struct hfs_mmap_where){ .step = "CLEANUP" });
 +}
 +
 +static void hfs_mmap_dispose(struct hfs_cache_page *entry)
@@ -4701,6 +4872,12 @@ new file mode 100644
 +
 +	if (!view)
 +		return;
++	/* kill_sb has set closing and blocked, but nothing woke a parked
++	 * hfs_view_enter (1a4): wake it so it refuses now instead of at its
++	 * HFS_VIEW_ENTER_WAIT_MS bound. Normally none is parked, since a caller
++	 * in a syscall holds the mount busy until it returns.
++	 */
++	wake_up_all(&view->wait);
 +	spin_lock_irqsave(&view->lock, flags);
 +	control = view->control;
 +	if (control)
@@ -4795,6 +4972,12 @@ new file mode 100644
 +	return err;
 +}
 +
++/* Transient refusals retry the fault. -ETIMEDOUT (a recall that did not
++ * finish within HFS_VIEW_ENTER_WAIT_MS, 1a4) is not retried: retrying would
++ * restore the unbounded wait, so the access gets SIGBUS (a kernel access,
++ * e.g. read() into such a mapping, gets EFAULT), as for any other mapping
++ * whose backing cannot be reached.
++ */
 +static vm_fault_t hfs_mmap_fault_error(struct hfs_view *view, int err)
 +{
 +	if (err == -ENOMEM)
