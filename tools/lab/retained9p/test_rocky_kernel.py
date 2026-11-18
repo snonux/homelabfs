@@ -36,10 +36,10 @@ def module(name):
 rk = module("rocky_kernel")
 REPOSITORY = Path(__file__).resolve().parents[3]
 PROBE = REPOSITORY / "internal/controlledruntime/probe/installed.py"
-# The admitted xz3 5a4 rebuild for zq3-r12 (manifest 150deb29..., 2026-11-18).
-# Its 1a4 kernel was rebuilt; its rebuilt modules are byte-identical to the
-# b94, r84 and y64 ones and to the w54 bytes of 89c928d5.
-REAL_PACKAGE = Path("/home/paul/tmp/claude/hfs-xz3-20261118-r12/package")
+# The admitted xz3 xc4 rebuild for zq3-r13 (manifest e9c77e5b..., 2026-11-18).
+# It reuses the 5a4 1a4 kernel byte for byte; its modules are byte-identical
+# to the b94, r84 and y64 ones and to the w54 bytes of 89c928d5.
+REAL_PACKAGE = Path("/home/paul/tmp/claude/hfs-xz3-20261118-r13/package")
 RELEASE = "6.1.190-hfs-xz3"
 STOCK = "5.14.0-687.66.1.el9_8.x86_64"
 MID = "b26c0ac534534d7fb81b3e0698558bc3"
@@ -464,13 +464,13 @@ class PlanTests(Rig):
     @unittest.skipUnless((REAL_PACKAGE / "manifest.json").exists(), "candidate package absent")
     def test_real_candidate_package_plan(self):
         """Read-only: the pinned xz3 package yields the build IDs readelf reports."""
-        sha = "150deb2993cda12cc2ad6cee2f118fe0f2e334b0ddb9afaf09a8e22f27b0b88a"
+        sha = "e9c77e5bbe68f565240ef82ef3842ae713cb082e15e593036174ec4e735a1df6"
         with mock.patch.object(rk, "ADMITTED", {sha}):
             plan = json.loads(rk.build_plan(REAL_PACKAGE, sha, "zq3-r1",
                                             "/boot/vmlinuz-" + STOCK, 64 << 20))
         self.assertEqual(plan["kernel_release"], RELEASE)
         # The 5a4 rebuild (1a4 patches 0003 and 0004) gave vmlinux a new
-        # build ID (b94's c4e08f6f; r84's d73c85da; y64's 870bb9d1, reused
+        # build ID, which the xc4 daemon-only rebuild reuses (b94's c4e08f6f; r84's d73c85da; y64's 870bb9d1, reused
         # by l84; c64's was 2ce818d9, 964's a470c7a8, w54's 806cfbb2); the
         # modules are byte-identical to the b94, r84, y64, c64, 964, z54,
         # w54, r54 and f44 packages, so virtio_net keeps its build ID.

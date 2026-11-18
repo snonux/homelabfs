@@ -1,0 +1,52 @@
+{
+  "abi_negative_record_sha256": "f7c4aa9efbe87a6e18eae268097b01c7cb333b1b72ceefbfa93448d6e7417da0",
+  "abi_negative_stdout": [
+    "actual module release/CRC/config mismatch controls refused; no runtime claim"
+  ],
+  "compare_kernel_record_sha256": "bf7f43932a8741f8931123f2db3536727856b183913e95126a8de5e907b78460",
+  "compare_stdout": [
+    "actual clean full kernel, bzImage, all modules/config/symvers and ABI byte-identical; unbooted"
+  ],
+  "linux_files": {
+    "linux/Module.symvers": "31d98264f88e8c8a3d2cef032e497e731a854e574abe8af8eae7fce8a0dc0d4b",
+    "linux/System.map": "5989d2a5590b226db905a5672389d84eb82aa9d116483aa870ba2b2c2b21c184",
+    "linux/abi-negative.json": "f7c4aa9efbe87a6e18eae268097b01c7cb333b1b72ceefbfa93448d6e7417da0",
+    "linux/abi.json": "f77f1fc644121aad2dd4883d027427dad22b02825817314111bf2ecebf647c76",
+    "linux/build.json": "8891d8acf8559487bb3ff33d6cde5c946533b00df88743f6be26df7942b6186a",
+    "linux/bzImage": "803a35b9ca8b1e3ab9554f8ef372ad0d66bacc3d7956f6de84263c5551c19fa5",
+    "linux/clean-repro.json": "bf7f43932a8741f8931123f2db3536727856b183913e95126a8de5e907b78460",
+    "linux/config": "28fe4a8ec759cfa7ecfdc373753082ec6981ecdffc6a25e074b6fac048906282",
+    "linux/kernel.release": "50bb45b1af138cf586adddcde600f85e256a19336c861654e6ce76c20eb034e3",
+    "linux/modules.builtin": "1f33442939e7faf978dc707cb69f99015328b39b3125cea6d6de25715f8bebf1",
+    "linux/modules.builtin.modinfo": "c53973bb5c4498e6fc6e61d0143353782a5628374b2b00624f422ed6f2236cf2",
+    "linux/modules.order": "f820618416411197b17fe7795d067e9687d905c487bffb207589bec3c173019a",
+    "linux/modules/drivers/net/net_failover.ko": "cc9755c71cc1d0776f5efd61198b1ebe99741cff877104879b8658db469f9143",
+    "linux/modules/drivers/net/virtio_net.ko": "39de7e933fa325b2c6b576004213f34bee04085191ea94e141a6c2aeeaf7fef1",
+    "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko": "6b98068988086d3b1b5c7a1e3b71f5f0ac4378f2d907c0e3a8c50a22bcde53fa",
+    "linux/modules/fs/efivarfs/efivarfs.ko": "6dd0679c5a026189f4feef51fcdcf4d0542fbc9cba7f3e552cb8a0324e68974f",
+    "linux/modules/net/core/failover.ko": "b1aa98beb495be131c06a02775109cba97de2ecacae227c4932909166b88cf5a",
+    "linux/vmlinux": "862b41a921da455682c063775632ac5862ef6f6e2dc3cafd631e56ebd5b3f444"
+  },
+  "steps": [
+    [
+      "linux-equals-150deb29",
+      "0"
+    ],
+    [
+      "compare-kernel",
+      "0"
+    ],
+    [
+      "compare-record-equals-packaged-clean-repro",
+      "0"
+    ],
+    [
+      "abi-negative",
+      "0"
+    ],
+    [
+      "abi-negative-record-equals-packaged",
+      "0"
+    ]
+  ]
+}

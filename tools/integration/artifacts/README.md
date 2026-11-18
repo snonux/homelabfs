@@ -83,7 +83,11 @@ zq3-r12 (candidate `150deb29…`,
 [evidence](evidence/xz3-20261118-r12/README.md)) kept the config as well;
 its 1a4 patches 0003 and 0004 changed only the image (build ID
 `8c1de1ed…`), while `Module.symvers`, the five modules and
-`abi-negative.json` came out byte-identical.
+`abi-negative.json` came out byte-identical. The xc4 rebuild for zq3-r13
+(candidate `e9c77e5b…`, [evidence](evidence/xz3-20261118-r13/README.md))
+rebuilt only the CGO daemon and reused that kernel package byte for byte,
+after `compare_kernel.py` and `check_abi_mismatch.py` reproduced its
+`clean-repro.json` and `abi-negative.json` under the current tooling.
 
 The ordinary namespace fixture selects a rootful OCI runtime in the initial
 user namespace, VFS image storage and a newly created private network namespace

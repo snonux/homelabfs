@@ -13,12 +13,16 @@ qualified corrected artifacts. Existing offline build proofs remain preserved;
 neither a successful old metadata admission nor a different digest establishes
 native eligibility. These preparation commands never grant deployment eligibility.
 
-**The controller pins exactly one candidate:** the xz3 5a4 rebuild for
-zq3-r12 (2026-11-18), manifest `150deb2993cda12cc2ad6cee2f118fe0f2e334b0ddb9afaf09a8e22f27b0b88a`
-(source `1b0a306`; see its
-[evidence](../../integration/artifacts/evidence/xz3-20261118-r12/README.md)).
-The guest kernel and the CGO daemon were rebuilt. The kernel (build ID
-`8c1de1ed…`, c64 recipe, so SELinux is an active LSM) adds 1a4
+**The controller pins exactly one candidate:** the xz3 xc4 rebuild for
+zq3-r13 (2026-11-18), manifest `e9c77e5bbe68f565240ef82ef3842ae713cb082e15e593036174ec4e735a1df6`
+(source `b7d107b`; see its
+[evidence](../../integration/artifacts/evidence/xz3-20261118-r13/README.md)).
+Only the CGO daemon was rebuilt. The daemon `c959b708…` adds nc4 (a retried
+mapped cell reuses the base recorded for it instead of fencing the guest
+transport; every transport fence records its reason; zq3-r12 R12-1) to the
+5a4 daemon. These daemon bytes still need the f3 observer check. The guest
+kernel is the 5a4 build, reused byte for byte (build ID
+`8c1de1ed…`, c64 recipe, so SELinux is an active LSM); it adds 1a4
 (`hfs_view_enter` waits at most 30 s, then fails `-ETIMEDOUT`, so a wedged
 recall no longer holds stat and `umount` in D, zq3-r11 R11-2; final mmap
 faults get SIGBUS; the view-worker stop log names session, phase and status)
@@ -31,16 +35,15 @@ flight; the background pressure pass holds, bounded to 5 s), g64
 Sources floor, every fault block logged, a clean unmount silent), the 964
 fixed-tag release wait (zq3-r5 R5-1), the r54 mount HELLO after enrollment
 and the w54 failed-bind `kill_sb` fence; its five modules came out
-byte-identical. The daemon `e0981a0a…` adds y94 (an early DRAINED during
-INSTALL_DRAIN is answered BLOCKED, not STALE; R11-1/R11-2 host side) to the
-b94 daemon (194: ALLOCATE accepts an exited issuer's exact original
+byte-identical. The 5a4 daemon `e0981a0a…` added y94 (an early DRAINED
+during INSTALL_DRAIN is answered BLOCKED, not STALE; R11-1/R11-2 host side)
+to the b94 daemon (194: ALLOCATE accepts an exited issuer's exact original
 cleanup), the r84 daemon (o84
 QUERY resume of never-prepared claims, q84 per-holder DOMAIN lease release)
-and the l84 daemon (784, 884, d84, g84, h84, b84, q64/f84). These daemon
-bytes still need the f3 observer check.
+and the l84 daemon (784, 884, d84, g84, h84, b84, q64/f84).
 The native exporter `ef8f17de…` (564, e64, p64 and w64 lib9p fixes) is a
 byte-identical reuse from the y64 build. The window artifacts were rebuilt
-from `1b0a306`. Eleven earlier candidates are refused as superseded: `3f770a88…` cannot arm the d44 MKDIR-only lost reply, the f44
+from `b7d107b`. Twelve earlier candidates are refused as superseded: `3f770a88…` cannot arm the d44 MKDIR-only lost reply, the f44
 `b203799e…` has the pre-r54 guest kernel (every hfs1.4 mount returns EPROTO,
 zq3-r2 R2-4), the r54 `5eb42c50…` has the pre-w54 guest kernel (kill_sb oops
 after a failed bind, zq3-r3 R3-1), the w54 `89c928d5…` has the pre-z54
@@ -58,10 +61,12 @@ which refused the guest's QUERY resume of a never-prepared claim (zq3-r9
 R9-1) and recalled a shared lease on the first holder's release, the
 r84 `4712e479…` has the pre-x84/z84 guest kernel (a release refused behind a
 pending allocation blocks the session, zq3-r10 R10-1; a false unmount stop
-error, R10-2) and the pre-194 daemon `34a5360b…`, and the b94 `3b128cc6…`
+error, R10-2) and the pre-194 daemon `34a5360b…`, the b94 `3b128cc6…`
 has the pre-1a4 guest kernel (an unbounded view wait kept stat and `umount`
 in D, zq3-r11 R11-2) and the pre-y94 daemon `bf86d805…` (an early DRAINED
-answered STALE blocked the session, R11-1). Any
+answered STALE blocked the session, R11-1), and the 5a4 `150deb29…` has the
+pre-nc4 daemon `e0981a0a…` (a retried mapped cell fenced the guest
+transport, so mount-1 came back uncertain, zq3-r12 R12-1). Any
 other digest refuses before reading inputs or contacting the lab. This pin is a
 dispatch precondition only; installed/booted/native acceptance remains zq3.
 
@@ -706,7 +711,7 @@ depmod, dracut, systemctl and GRUB's one-shot consumption at boot). Every
 Rocky-side command still needs Paul's explicit A3 approval of the filled plan.
 
 1. Workstation, Phase 0:
-   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 150deb29… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
+   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 e9c77e5b… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
    It refuses any manifest other than the pinned candidate, checks every
    Linux file's size and SHA256 against the manifest and the installation
    proposal, requires `modules.order` to name exactly the manifest's modules,

@@ -1,5 +1,15 @@
 # xz3 5a4 rebuild (2026-11-18): zq3-r11 bounded view wait and early-DRAINED fixes
 
+**Superseded on 2026-11-18** by the [xc4 rebuild](../xz3-20261118-r13/README.md)
+(`e9c77e5b…`, source `b7d107b`) for zq3-r13. Its daemon `e0981a0a…` (which
+passed the f3 observer check in zq3-r12) fences the whole guest transport
+when a mapped cell is retried, instead of reusing the base it recorded for
+that cell, and the fence names no reason (zq3-r12 R12-1, fixed by nc4). Its
+1a4 guest kernel `8c1de1ed…`, its native exporter `ef8f17de…` and every
+other non-daemon file are reused byte for byte. The tooling refuses this
+manifest as superseded. It still passes `package.py check` and `admit.py`
+under the current tooling.
+
 This candidate supersedes the [b94 rebuild](../xz3-20261117-r11/README.md)
 (`3b128cc6…`, source `dfdcdd9`). After zq3-r11, fixes were merged in the
 guest kernel and in the CGO daemon, so both were rebuilt (task 5a4, the
