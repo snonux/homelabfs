@@ -403,7 +403,8 @@ func (c *Controller) replayACK(ctx context.Context, scope guestbridge.Context, a
 // checkACKPhase applies the per-phase rules of a new ACK against the recall
 // phase and the issued event; STOPPED also closes positively excluded
 // unadopted reservations and records the session's exact manifest, and
-// DRAINED requires every drain result.
+// DRAINED requires every drain result. A DRAINED sent before the recall
+// left INSTALL_DRAIN is BLOCKED, not STALE (earlyDrained).
 func (c *Controller) checkACKPhase(ctx context.Context, scope guestbridge.Context, ack acknowledgement, raw json.RawMessage, recall *recallState, issued issuedEvent) error {
 	switch ack.Phase {
 	case "STOPPED":
@@ -426,6 +427,9 @@ func (c *Controller) checkACKPhase(ctx context.Context, scope guestbridge.Contex
 			return fsapi.Stale
 		}
 	case "DRAINED":
+		if c.earlyDrained(scope, ack, recall, issued) {
+			return fsapi.WouldBlock
+		}
 		if recall.Phase != "WAIT_DRAINED" || !equal(ack.Target, issued.Target) || !bytes.Equal(ack.Manifest, recall.Manifests[scope.Session]) {
 			return fsapi.Stale
 		}
@@ -442,6 +446,40 @@ func (c *Controller) checkACKPhase(ctx context.Context, scope guestbridge.Contex
 		return fsapi.Invalid
 	}
 	return nil
+}
+
+// earlyDrained reports a DRAINED that the guest legitimately sent ahead of
+// the host's phase advance: the guest (patch 0004 hfs_mmap_process) queues
+// hfs_mmap_drained as soon as its own INSTALLED_DRAIN is ACCEPTED, while an
+// all-domain recall stays in INSTALL_DRAIN until every peer's INSTALLED_DRAIN
+// is in. That DRAINED becomes acceptable unchanged once the recall reaches
+// WAIT_DRAINED, so the spec requires BLOCKED (the caller maps WouldBlock to
+// BLOCKED, bounded by BlockedACKBound), not STALE: the guest treats STALE as
+// -ESTALE and stops its view worker for good, which wedged the recall in
+// zq3-r11. Only an ACK that matches everything WAIT_DRAINED would check
+// qualifies: this session's INSTALL_DRAIN event and target, its frozen
+// manifest and its own accepted INSTALLED_DRAIN of that recall and sequence
+// (ack has already matched the event's recall, hashes and sequence). The
+// INSTALLED_DRAIN is looked up in the protected AckArchive rather than in
+// recall.Acks, because a Disconnect or controller restart discards learned
+// ACKs while the guest, whose INSTALLED_DRAIN was ACCEPTED, goes on to its
+// DRAINED; its INSTALLED_DRAIN resend relearns the ACK (replayACK). Anything
+// else stays STALE.
+//
+// A peer that takes longer than BlockedACKBound to install turns the early
+// DRAINED into an error reply, as for any other BLOCKED ACK.
+//
+// No other ACK phase can arrive early: STOPPED, INSTALLED_DRAIN,
+// INSTALLED_FINAL and REOPENED are each sent only in reply to the event of
+// that phase, and events() issues an event together with entering its phase.
+// Only DRAINED comes from a separate guest worker rather than a new event.
+func (c *Controller) earlyDrained(scope guestbridge.Context, ack acknowledgement, recall *recallState, issued issuedEvent) bool {
+	installed := ack
+	installed.Phase = "INSTALLED_DRAIN"
+	return recall.Phase == "INSTALL_DRAIN" && issued.Phase == "INSTALL_DRAIN" &&
+		equal(ack.Target, issued.Target) &&
+		bytes.Equal(ack.Manifest, recall.Manifests[scope.Session]) &&
+		c.state.AckArchive[archiveKey(scope, installed)] != ""
 }
 
 // progress advances the protected recall by at most one phase and saves it.

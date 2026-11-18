@@ -44,7 +44,8 @@ type blockedACK struct {
 //     session, sequence, phase, hashes, manifest or target), or its session
 //     is already sealed.
 //   - BLOCKED: only classes that clear without changing the ACK: lock or
-//     provider contention (WouldBlock, Busy) and ErrNotObserved, bounded by
+//     provider contention (WouldBlock, Busy), ErrNotObserved and a DRAINED
+//     sent before the recall left INSTALL_DRAIN (earlyDrained), bounded by
 //     BlockedACKBound.
 //   - error: everything else, including recovery (the disconnect discarded
 //     learned ACKs and guest RESUME stays blocked, so it cannot clear for this

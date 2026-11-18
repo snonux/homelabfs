@@ -590,6 +590,14 @@ func (r *rig) ack(i int, phase string, manifest json.RawMessage) json.RawMessage
 	return raw
 }
 
+// ackStatus sends domain i's exact VIEW_ACK bytes and returns its reply status.
+func (r *rig) ackStatus(i int, raw json.RawMessage) string {
+	r.t.Helper()
+	reply, err := r.execute(i, "VIEW_ACK", raw)
+	must(r.t, err)
+	return status(reply)
+}
+
 // ackPayload builds domain i's exact VIEW_ACK for phase from its current
 // recall event and records the physical fact the primitive Facts require.
 func (r *rig) ackPayload(i int, phase string, manifest json.RawMessage) json.RawMessage {
@@ -623,15 +631,13 @@ func (r *rig) poll(i int) json.RawMessage {
 	must(r.t, err)
 	return raw
 }
+
+// completeRecall drives an all-domain recall of both domains from DRAIN to
+// its end in the guest's real ACK order (drainInGuestOrder).
 func (r *rig) completeRecall(manifests []json.RawMessage) {
 	r.t.Helper()
 	r.poll(0)
-	for i := range 2 {
-		r.ack(i, "INSTALLED_DRAIN", nil)
-	}
-	for i := range 2 {
-		r.ack(i, "DRAINED", manifests[i])
-	}
+	r.drainInGuestOrder([]int{0, 1}, manifests)
 	for i := range 2 {
 		r.ack(i, "INSTALLED_FINAL", nil)
 	}
@@ -640,6 +646,40 @@ func (r *rig) completeRecall(manifests []json.RawMessage) {
 	}
 	if r.controller.state.Recall != nil {
 		r.t.Fatal("recall retained after exact reopen")
+	}
+}
+
+// drainInGuestOrder acknowledges the INSTALL_DRAIN event of every recall
+// participant in domains (manifests[k] is domains[k]'s frozen manifest) in
+// the guest's real order (patch 0004): a domain sends DRAINED right after its
+// own INSTALLED_DRAIN is ACCEPTED, before the next domain has installed. Every
+// DRAINED but the last therefore arrives while the recall still waits in
+// INSTALL_DRAIN and must be BLOCKED (task y94); the guest resends the
+// identical bytes, which are ACCEPTED once the last INSTALLED_DRAIN moved the
+// recall to WAIT_DRAINED.
+func (r *rig) drainInGuestOrder(domains []int, manifests []json.RawMessage) {
+	r.t.Helper()
+	early := map[int]json.RawMessage{}
+	for k, i := range domains {
+		r.ack(i, "INSTALLED_DRAIN", nil)
+		raw := r.ackPayload(i, "DRAINED", manifests[k])
+		want := "BLOCKED"
+		if k == len(domains)-1 {
+			want = "ACCEPTED"
+		}
+		if got := r.ackStatus(i, raw); got != want {
+			r.t.Fatalf("m%d DRAINED after its own INSTALLED_DRAIN answered %s, want %s", i, got, want)
+		}
+		if want == "BLOCKED" {
+			early[i] = raw
+		}
+	}
+	for _, i := range domains {
+		if raw, ok := early[i]; ok {
+			if got := r.ackStatus(i, raw); got != "ACCEPTED" {
+				r.t.Fatalf("m%d resent DRAINED answered %s, want ACCEPTED", i, got)
+			}
+		}
 	}
 }
 func (r *rig) reopen() {

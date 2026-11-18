@@ -235,6 +235,13 @@ type dueACK struct {
 // observation runs inline on the scheduler's one thread, serial with every
 // other control command, as on the host's control worker before task d84;
 // the model keeps it serial on purpose, the conservative bound after d84.
+//
+// A mount whose INSTALLED_DRAIN is ACCEPTED sends its DRAINED at once, before
+// the peer gets its turn, as the guest's hfs_mmap_drained worker does (patch
+// 0004). In an all-domain recall the first mount's DRAINED therefore arrives
+// while the recall still waits in INSTALL_DRAIN for the peer and is BLOCKED;
+// it is resent on a later round (zq3-r11, task y94). Sending every
+// INSTALLED_DRAIN before any DRAINED never produced that early DRAINED.
 func (m *recallModel) eventWorker() bool {
 	if !m.recallActive() {
 		return false
@@ -246,16 +253,32 @@ func (m *recallModel) eventWorker() bool {
 		}
 	}
 	for _, d := range due {
-		revision := d.mount.revision
-		if d.ack["phase"] == "REOPENED" {
-			revision++ // the guest advances its revision before reopening
-		}
-		observeMountACK(m.t, m.r, d.mount.index, d.event, d.ack, revision, d.mount.fence)
+		m.observeACK(d)
 	}
 	for _, d := range due {
-		m.sendACK(d)
+		if m.sendACK(d) && d.ack["phase"] == "INSTALLED_DRAIN" {
+			m.sendDrained(d)
+		}
 	}
 	return len(due) > 0
+}
+
+// observeACK publishes d's guest kernel record for the fixed observer.
+func (m *recallModel) observeACK(d dueACK) {
+	revision := d.mount.revision
+	if d.ack["phase"] == "REOPENED" {
+		revision++ // the guest advances its revision before reopening
+	}
+	observeMountACK(m.t, m.r, d.mount.index, d.event, d.ack, revision, d.mount.fence)
+}
+
+// sendDrained sends the DRAINED that follows d's accepted INSTALLED_DRAIN
+// immediately, from the same retained INSTALL_DRAIN event and without a new
+// VIEW_WAIT, as hfs_mmap_drained does.
+func (m *recallModel) sendDrained(d dueACK) {
+	drained := dueACK{mount: d.mount, recall: d.recall, key: d.key, event: d.event, ack: guestACK(d.event, d.mount.domain, d.mount.peer.scope.Session, "DRAINED")}
+	m.observeACK(drained)
+	m.sendACK(drained)
 }
 
 // nextACK polls mount's current recall event and returns the next ACK it
@@ -283,10 +306,11 @@ func (m *recallModel) nextACK(mount *modelMount) (dueACK, bool) {
 	return dueACK{mount: mount, recall: id, key: key, event: poll.Event, ack: guestACK(poll.Event, mount.domain, mount.peer.scope.Session, phases[n])}, true
 }
 
-// sendACK sends one VIEW_ACK. ACCEPTED advances the mount (REOPENED installs
-// the event's target and the next fence and revision); BLOCKED is resent on a
-// later round, as the guest resends after EAGAIN.
-func (m *recallModel) sendACK(d dueACK) {
+// sendACK sends one VIEW_ACK and reports whether it was ACCEPTED. ACCEPTED
+// advances the mount (REOPENED installs the event's target and the next
+// fence and revision); BLOCKED is resent on a later round, as the guest
+// resends after EAGAIN.
+func (m *recallModel) sendACK(d dueACK) bool {
 	owner := m.recalls[d.recall].phase
 	before := m.probes.Load()
 	payload := d.mount.chain.exec(m.t, "VIEW_ACK", d.ack)
@@ -295,7 +319,7 @@ func (m *recallModel) sendACK(d dueACK) {
 	switch {
 	case bytes.Equal(payload, []byte(`{"status":"BLOCKED"}`)):
 		owner.blocked++
-		return
+		return false
 	case !bytes.Equal(payload, []byte(`{"status":"ACCEPTED"}`)):
 		m.t.Fatalf("m%d %s VIEW_ACK: %s", d.mount.index, d.ack["phase"], payload)
 	}
@@ -316,6 +340,7 @@ func (m *recallModel) sendACK(d dueACK) {
 		d.mount.fence++
 		d.mount.revision++
 	}
+	return true
 }
 
 // noteRecall records mount as a participant of recall id. A recall seen for
