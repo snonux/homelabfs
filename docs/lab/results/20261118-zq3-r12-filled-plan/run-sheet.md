@@ -26,8 +26,8 @@ daemon after zq3-r11's R11-1 and R11-2:
   this fill's Rocky facts, so **T7 runs again** (zq3-r11 skipped it).
 
 **Rocky upgrades itself nightly** ([N1](#n1-rockys-nightly-upgrade)): a
-`dnf -y upgrade` runs at 00:55 Rocky-local. The run must start and finish
-before the next one. If it does not, Phase 1 must recheck the pod-runtime
+`dnf -y upgrade` runs at 00:55 UTC (Rocky's clock is UTC). The run must start
+and finish before the next one; a gate before Phase 5 enforces it. If it does not, Phase 1 must recheck the pod-runtime
 NEVRAs and SHA256s and the kernel facts, and any drift means a refill.
 
 **T5 `mapped-pressure` stays deferred** (z64 mechanism). q64/f84 fixed the
@@ -56,7 +56,7 @@ delete through a mount), preserve failed resources, report. Values written
   driver exits: up to 120 s to READY plus at most about 100 s for `usable`.
   A killed driver leaves an open journal intent (`uncertain`, never replayed)
   while the guard and runtime keep running, so the window is lost. Every
-  `rockyt` line (its own bound is 150 s) and the `vms.sh stop-rocky` /
+  `rockyt` line (its own bound is 270 s) and the `vms.sh stop-rocky` /
   `start-rocky` lines in Phases 5 and 12 (and U3's `start-rocky`) run with a
   tool timeout of at least 300 s, so their own bounds (and `rc=124`) are what
   end them. The same 300 s minimum applies to every line that has never run
@@ -157,7 +157,7 @@ them into those lines (Phase 10 T8 and T10, Phase 11 before step 0 and steps
   guard's SSH session also carries the guard argv (zq3-r2 R2-2), so a plain
   `pgrep -lf` lists two processes. Signal only the root python process.
 - **Guest unmounts are bounded locally:** use `rockyt "umount
-  $G/m0"` and `rockyt "umount $G/m1"` (session.sh `rockyt`: `timeout 150`
+  $G/m0"` and `rockyt "umount $G/m1"` (session.sh `rockyt`: `timeout 270`
   around the real ssh; `timeout` cannot run the `rocky` function), with T8's
   unmount bounded the same way. SSH keepalives do not end a blocked `umount`,
   because sshd keeps answering. A timeout means a blocked 9p session (the
@@ -445,10 +445,11 @@ test kernel removed (U2). Kept, and written into the lines they name:
     syscall that waits longer ends the dispatch `dispatching-uncertain`, as
     in zq3-r10 and zq3-r11. Both outcomes are findings to record, never a
     retry;
-  - `rockyt`'s **150 s** bound covers one worst-case getattr (120 s) plus
-    about 30 s. An unmount whose mount-point stat and own view wait both run
-    to their limits can still reach it (`rc=124`): record it and continue,
-    as before.
+  - `rockyt`'s bound is **270 s** (raised from 150 s in review round 1), so
+    one worst-case getattr (about 120 s) plus the unmount's own 30 s view
+    wait fits with room to spare; `rockyt` lines keep a tool timeout of at
+    least 300 s. An `rc=124` is recorded as a finding, not necessarily a 1a4
+    failure, and the run continues as before.
 - **Facts (2026-11-18 13:50:55Z):**
   - f3 boot unchanged (`1794574308`, Paul's deliberate 2026-11-13 reboot);
   - Rocky's bhyve PID `3146`, UTC lstart `Wed Nov 18 09:01:00 2026`
@@ -504,7 +505,9 @@ test kernel removed (U2). Kept, and written into the lines they name:
 
 ## N1: Rocky's nightly upgrade
 
-Rocky runs a nightly `dnf -y upgrade` at 00:55 Rocky-local. On 2026-11-17
+Rocky runs a nightly `dnf -y upgrade` at 00:55 Rocky-local, which is 00:55
+UTC: Rocky's clock is UTC (the facts print `01:50:57 PM UTC`; Phase 1 records
+`date -u` and `timedatectl`). On 2026-11-17
 it applied the EL9.9 update without a reboot (zq3-r11's S1: the running
 kernel and the grub default differed, and podman, crun and python3.9
 changed). Nothing changed since zq3-r11's facts: Rocky still runs
@@ -513,13 +516,22 @@ python3.9 is `729ac37f…`, and podman, crun, conmon and seccomp.json hash as
 in zq3-r11. Their NEVRAs are now pins too (e94).
 
 **The run must start and finish before the next nightly upgrade** (planned
-for 2026-11-18, well before 00:55). If it does not, the upgrade can replace
+for 2026-11-18, well before 00:55 UTC). If it does not, the upgrade can replace
 the kernel, python3.9, podman or crun:
 - Phase 1 then must recheck the pod-runtime NEVRAs and SHA256s (the
   `p1-pod-runtime.txt` line) and the kernel facts (boot ID, running and
   default kernel, `next_entry`), as it does anyway;
 - any drift stops before Phase 1a and needs a refill (new facts, a new pod
   template and possibly a new kernel plan), never an edit of a request.
+
+**Go/no-go gate before Phase 5 (review round 1).** Phase 5 step 0 runs a
+local check before anything stops Rocky. It stops the run if Phase 1 ran
+before the last 00:55 UTC upgrade, if it is less than 35 minutes after
+00:55 UTC (the upgrade may still run), or if it is later than 23:25 UTC
+(00:55 minus the 90 minutes Phases 5-12 may take, so the run would span
+00:55 UTC). On `STOP` nothing is selected and Rocky still runs: the run
+aborts cleanly (observer key removed on Rocky and f3, U2, window restored)
+and is rescheduled with fresh Phase 1 facts.
 
 `pod_fixture.py` itself refuses at `check_runtime` if podman or crun changed
 between Phase 1 and T7 (SHA256 or `runtime_nevra` differs): then T7 is
@@ -531,7 +543,7 @@ unrun, never edited around.
 source /home/paul/tmp/claude/hfs-zq3-r12-fill/session.sh
 ```
 
-`session.sh` (`11e4155a…`, [pins](pins.json) `fill_helpers`) defines, adapted
+`session.sh` (`be80a19e…`, [pins](pins.json) `fill_helpers`) defines, adapted
 from zq3-r11's (a summary, not runnable as written):
 
 ```text
@@ -546,7 +558,7 @@ RKKH="-oUserKnownHostsFile=$S/docs/lab/rocky-known_hosts -oHostKeyAlias=rocky"
 f3()    { /usr/bin/ssh $O $F3KH -- paul@10.20.0.133 "$@"; }
 rocky() { /usr/bin/ssh $O $RKKH -oProxyCommand="/usr/bin/ssh $O $F3KH -W 10.20.0.123:22 -- paul@10.20.0.133" -- root@10.20.0.123 "$@"; }
 okpin() { …observer_key.py cd7f38c2… check… }   # before every stdin invocation of observer_key.py
-rockyt(){ …rocky with a local `timeout 150` around the real ssh, </dev/null; exit 124 = bound expired (read it with `; echo rc=${PIPESTATUS[0]}`)… }
+rockyt(){ …rocky with a local `timeout 270` around the real ssh, </dev/null; exit 124 = bound expired (read it with `; echo rc=${PIPESTATUS[0]}`)… }
 hpin()  { …sha256sum -c of bin/sign_watch.py (90bde567…), the signer bin/hfs-retained9p-operator (a7f1f847…, rebuilt at 637dc11) and the thirteen sh/* helpers… }
 K='/usr/bin/python3.9 -I -B /root/hfs-zq3-zq3-r12-kernel-stage/rocky_kernel.py'
 KP='--plan /root/hfs-zq3-zq3-r12-kernel-stage/rocky-kernel-plan.json --plan-sha256 5fae1a7781a22b1de1537b3ce9fe951c99084892c4f7fb935aad5aa28831cf7e --state /root/hfs-zq3-zq3-r12-kernel-state'
@@ -628,7 +640,7 @@ b37c5d6f410d77a456b06a1b887047fe9ffc15105d6d8dea21ebc996258e037c  /home/paul/tmp
 5fae1a7781a22b1de1537b3ce9fe951c99084892c4f7fb935aad5aa28831cf7e  /home/paul/tmp/claude/hfs-zq3-r12-fill/kernel/rocky-kernel-plan.json
 7d3b1c5218d44c472bd1bec335077a05e6e3e7d9e8a4e184c306b06c1abede5e  /home/paul/tmp/claude/hfs-zq3-r12-fill/controller/batch-plan.TEMPLATE.json
 da22551daa4f194a3f51a2e4be4b99bc0c371f1cede9fbe71fd6506629447658  /home/paul/tmp/claude/hfs-zq3-r12-fill/fdescfs-pins/pins.json
-11e4155a8842f331b9a93eddfa62e15deee6abe470235e6de741a41af8362e1a  /home/paul/tmp/claude/hfs-zq3-r12-fill/session.sh
+be80a19ef0bd1b023cd999e41329e22cfa7278b9bbcf190ffeb564d0da6fe42f  /home/paul/tmp/claude/hfs-zq3-r12-fill/session.sh
 EOF
 cd $D
 ```
@@ -666,7 +678,7 @@ hpin
 f3 doas -n /usr/local/bin/python3.12 -I -B - facts < $S/tools/lab/directlaunch/host.py > $E/p1-launch-facts.json
 python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); f=d["files"]; print([f[p]["sha256"] for p in ("/zroot/bhyve/rocky/rocky.conf", "/usr/local/lib/vm-bhyve/vm-run", "/usr/local/share/uefi-firmware/BHYVE_UEFI.fd", "/zroot/bhyve/rocky/uefi-vars.fd")], f["/usr/local/share/uefi-firmware/BHYVE_UEFI.fd"]["link"], d["bridge_members"], d["vmm"], d["interfaces"])' $E/p1-launch-facts.json
 f3 sh -s < $D/sh/p1-f3.sh > $E/p1-f3.txt
-rocky 'cat /proc/sys/kernel/random/boot_id; uname -r; grubby --default-kernel; grub2-editenv - list; getenforce; sha256sum /root/.ssh/authorized_keys /usr/bin/python3.9; df -B1 /boot /; ls /boot | grep -c hfs-xz3; ls -d /etc/homelabfs /root/hfs-zq3-zq3-r12-* /var/tmp/hfs-zq3-zq3-r12 2>&1; ls -l /.autorelabel 2>&1; grep -E "^SELINUX(TYPE)?=" /etc/selinux/config' > $E/p1-rocky.txt
+rocky 'date -u; timedatectl; cat /proc/sys/kernel/random/boot_id; uname -r; grubby --default-kernel; grub2-editenv - list; getenforce; sha256sum /root/.ssh/authorized_keys /usr/bin/python3.9; df -B1 /boot /; ls /boot | grep -c hfs-xz3; ls -d /etc/homelabfs /root/hfs-zq3-zq3-r12-* /var/tmp/hfs-zq3-zq3-r12 2>&1; ls -l /.autorelabel 2>&1; grep -E "^SELINUX(TYPE)?=" /etc/selinux/config' > $E/p1-rocky.txt
 rocky "sha256sum /usr/bin/podman /usr/bin/crun /usr/bin/conmon /usr/share/containers/seccomp.json; rpm -qf --qf '%{NEVRA}\n' -- /usr/bin/podman /usr/bin/crun" > $E/p1-pod-runtime.txt
 python3 -I -c 'import json,sys; t=json.load(open(sys.argv[1])); w=open(sys.argv[2]).read().split(); h=dict(zip(w[1:8:2], w[0:8:2])); now=[h[p] for p in ("/usr/bin/podman", "/usr/bin/crun", "/usr/bin/conmon", "/usr/share/containers/seccomp.json")] + w[8:]; pin=[t["runtime_sha256"][n] for n in ("podman", "crun", "conmon", "seccomp")] + [t["runtime_nevra"][n] for n in ("podman", "crun")]; print("pod-runtime-unchanged:", now == pin)' $D/pod/pod-request.TEMPLATE.json $E/p1-pod-runtime.txt
 ```
@@ -703,6 +715,9 @@ Continue only if all of these hold:
     nightly upgrade without a reboot splits them). A mismatch, or a boot ID
     other than the one above (for example after the nightly 00:55 `dnf -y
     upgrade` and a reboot), stops here;
+  - `date -u` and `timedatectl` show Rocky's clock in UTC (`Time zone:
+    UTC`, synchronized), so its nightly `dnf -y upgrade` runs at 00:55 UTC
+    (N1). Another time zone stops here: the Phase 5 nightly gate assumes UTC;
   - `Enforcing`, and `/etc/selinux/config` has `SELINUX=enforcing`;
   - **`/.autorelabel` absent** (`ls` reports "No such file or directory");
   - `authorized_keys` `e08542dc…` and python3.9 `729ac37f…`;
@@ -978,6 +993,27 @@ kernel; restore the window (Phase 11 step 10); remove the observer key if it
 was enrolled (execution notes).
 
 ## Phase 5: pre-stop rechecks, memory, one-shot select and stop Rocky (A1, A3; about 6 min)
+
+Step 0, **nightly-upgrade gate** (B, N1, review round 1), before anything
+else in Phase 5 and so before Rocky is stopped:
+
+```bash
+python3 -I -c 'import datetime as t, os, sys; u=t.timezone.utc; now=t.datetime.now(u); p1=t.datetime.fromtimestamp(os.stat(sys.argv[1]).st_mtime, u); last=now.replace(hour=0, minute=55, second=0, microsecond=0); last=last if last <= now else last - t.timedelta(days=1); nxt=last + t.timedelta(days=1); why=[w for w, bad in (("Phase 1 predates the last 00:55 UTC upgrade", p1 < last), ("less than 35 min after 00:55 UTC (upgrade may still run)", now < last + t.timedelta(minutes=35)), ("after 23:25 UTC (the run would span 00:55 UTC)", now > nxt - t.timedelta(minutes=90))) if bad]; print("nightly-gate:", "STOP" if why else "GO", now.strftime("%H:%MZ"), why); sys.exit(1 if why else 0)' $E/p1-rocky.txt | tee $E/p5-nightly-gate.txt; echo rc=${PIPESTATUS[0]}
+```
+
+It prints `nightly-gate: GO` and `rc=0` only if Phase 1 (`p1-rocky.txt`)
+ran after the last 00:55 UTC upgrade, it is at least 35 minutes after that
+upgrade, and it is not later than 23:25 UTC (00:55 minus 90 minutes, the
+budget from Phase 5 to the end of Phase 12). **`STOP` (`rc=1`; the `rc`
+is the check's own, not `tee`'s): do not proceed.** Abort cleanly while Rocky still runs its stock kernel: nothing
+is selected yet. Each on its own line: remove the observer key on Rocky
+(`okpin && rocky "/usr/bin/python3.9 -I -B - remove --run-id zq3-r12
+--expect-sha256 $EA" < $S/tools/lab/retained9p/observer_key.py | tee
+$E/p5-abort-observer-remove.json`), then on f3 with Phase 11 step 9's plain
+literal line; U2 (`rocky "$K remove $KP"`); restore the window (Phase 11
+step 10, the `$W restore` line and the `restoration-summary.json` line).
+Record the gate output and the abort in the run log; a new attempt needs
+fresh Phase 1 facts after the upgrade (and a refill on any drift).
 
 Step 1, pre-stop rechecks (B, g54, zq3-r1 R5). In zq3-r1 an external f3
 power-off during a pause restarted Rocky and dropped the window, and select
@@ -1573,7 +1609,9 @@ expect all-domain recalls during admission: they show as a gap at
 `open-root` → `stat-root` in `p10-admission.py` (evidence, not a stop).
 Each case's `ctrl-run/$CASE/stdout.log` carries the y84 `admission-step`
 events; `p10-admission.py` summarises them after T4 (below) and flags
-`deadline_hit` and `etimedout`. **If a case fails or is uncertain**, before
+`deadline_hit` and `etimedout` (errno 110 in the failure, in any `reply` event
+or in any `errno`/`*_errno` observation field). **If a case fails or is
+uncertain**, before
 Phase 11 run, each on its own line (the second shows whether a block line, a
 `view control worker stopped` line or an `initial attributes timed out
 behind a recall` line appeared):
@@ -1590,8 +1628,9 @@ retry:
 - `deadline_hit` with `admission_ms` null: admission took over guest.py's
   10 s alarm (one getattr can take about 90-120 s; the alarm fires only
   when the syscall returns);
-- `etimedout` true: a syscall waited 30 s for a view stuck in a recall
-  (1a4) and failed `ETIMEDOUT`;
+- `etimedout` true (`etimedout_at` names the event and field): a syscall
+  waited 30 s for a view stuck in a recall (1a4) and failed `ETIMEDOUT`,
+  whether the step failed on it or recorded it as an observation;
 - a `view control worker stopped` line: the guest stopped a view worker;
   the line names the session, the worker step, the host event and ACK
   phase and the host status (an `ack DRAINED, host status STALE` pair would
@@ -1768,7 +1807,7 @@ probe is flagged vacuous. The record also repeats the plan's `deferred` list
 T8, K04 guest side, last (needs no live runtime; m1 must still be mounted).
 **One line at a time, and read each line's result before the next** (the
 zq3-r11 slip): the lock probe and the `ls` run **only if** the unmount line
-printed `rc=0`. On `rc=124` (the 150 s bound) or any other `rc`, record the
+printed `rc=0`. On `rc=124` (the 270 s bound) or any other `rc`, record the
 `rc`, capture the guest state with the two lines after the block, mark T8
 unrun and go to Phase 11; never start the probe behind a stuck unmount.
 
@@ -1794,10 +1833,12 @@ f3 "doas -n tar -c -f - --exclude control.sock -C $R runtime/owner" > $E/t8-owne
 ```
 
 With 1a4 the stat in front of the unmount fails with `ETIMEDOUT` after its
-30 s view wait instead of hanging, so `rc=124` should no longer happen; one
-worst-case getattr (about 90-120 s) still fits the 150 s bound, but a stat
-and the unmount's own view wait together can reach it. A `D`-state `umount`
-in `hfs_view_enter` after 1a4 is a finding against 1a4.
+30 s view wait instead of hanging, and one worst-case getattr (about
+90-120 s) plus the unmount's own 30 s view wait fits the 270 s bound, so
+`rc=124` should not happen. If it does, record it as a finding, not
+necessarily a 1a4 failure (the capture above shows where the unmount waits:
+a `D`-state `umount` still in `hfs_view_enter` after 270 s would point at
+1a4, anything else at another wait).
 
 **R10-2 check (z84):** compare `t8-block-after.txt` with
 `t8-block-before.txt`. In zq3-r10 T8's unmount added `session … blocked by
@@ -1824,7 +1865,15 @@ summary (local, read-only; it never changes the cleanup):
 
 ```bash
 python3 -I -B $D/sh/p9-timing.py $E/obs-timing.tsv | tee $E/p10-timing-final.json
+python3 -I -B $D/sh/p10-admission.py $(ls $OUT/*/release/stdout.log $OUT/lifecycle-*/stdout.log $E/t6-lock.json $E/t7-pod.json $E/t8-lock-refusal.json 2>/dev/null) | tee $E/p11-etimedout-scan.jsonl   # releases, T6-T11: etimedout per file
 ```
+
+The second line (review round 1) scans every release log, the T9-T11
+lifecycle step logs and the T6, T7 and T8 probe reports that exist for
+errno 110: lifecycle steps record an `OSError` errno as an observation and
+continue, and the probes report errnos in their JSON. Any `"etimedout":
+true` line is a finding (write `etimedout_at` into the run log); it changes
+nothing in the cleanup.
 
 Before step 1, settle the runtime's state from the guard and journal evidence
 (`f3 'pgrep -U root -lf runtime-guard.py'`, `$D/bootstrap-run/journal.jsonl`):
@@ -1886,7 +1935,7 @@ rockyt "ausearch -m AVC,USER_AVC,SELINUX_ERR -ts boot -i; dmesg | grep -i -e avc
 rockyt "dmesg" > $E/p11-guest-dmesg.txt 2>&1; echo rc=$?
 # 5. guest poweroff
 rocky 'systemctl poweroff'
-# 6. wait for the child: repeat this line every 10 s, at most 60 times (10 min), until child-gone (h64: the vmm context stays until step 7)
+# 6. wait for the child: repeat this line every 10 s, at most 90 times (15 min), until child-gone (h64: the vmm context stays until step 7)
 f3 'ps -ax -ww | grep "[h]fs-zq3-r12" || echo child-gone'
 # 7. host cleanup (tap, VM context, vars copy)
 f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/host.py cleanup --record $R/records/bhyve-argv.json --record-sha256 fc6df445b54c95a14b6c3493bb9803796a3b53f14b7e4fc77d74e4bbbd08f4e6 --child-pid $XP" | tee $E/p11-host-cleanup.json   # only if XP is a PID
@@ -1905,7 +1954,7 @@ f3 "doas -n cat /var/tmp/hfs-fdescfs-windows/zq3-r12/restoration-summary.json" |
 
 Step 2 after a FENCED T10: m0's session is blocked since T9 and the host is
 gone, so its unmount may refuse or not return. A normal `umount` only, never
-`-f` or `-l`: if it refuses, or `timeout 150` ends it (`rc=124`; SSH
+`-f` or `-l`: if it refuses, or `timeout 270` ends it (`rc=124`; SSH
 keepalives alone do not, because sshd keeps answering), record that and
 continue with step 3;
 the guest poweroff in step 5 takes the mount down with the guest. A
@@ -1918,7 +1967,7 @@ line. Step 4b's full `dmesg` shows it; a new such line is a finding against
 z84 (R10-2 again). With 1a4 an unmount behind a stuck recall ends after its
 30 s view wait instead of staying in D (zq3-r11's R11-2: m1's unmount hit
 the 150 s bound and the guest poweroff took about 530 s); `rc=124` here is
-a finding against 1a4.
+recorded as a finding, not necessarily a 1a4 failure.
 
 Step 6 waits for `child-gone` only (h64). The run's vmm context
 `/dev/vmm/hfs-zq3-r12` is still there after the child exits; step 7's
@@ -1926,8 +1975,8 @@ Step 6 waits for `child-gone` only (h64). The run's vmm context
 `no-vmm` as well, which could never appear before step 7.
 
 Step 6: zq3-r3's guest needed about 3.5 minutes to power off after its oops
-(R3-4), and zq3-r11's about 530 s behind its stuck m1 unmount, hence 60
-tries. If the child is still there after them, stop: no
+(R3-4), and zq3-r11's about 530 s behind its stuck m1 unmount, hence 90
+tries (review round 1; still no forced power-off). If the child is still there after them, stop: no
 forced power-off without Paul's decision (risk R2). Release tokens in case
 `stdout.log` files are redacted or marked spent before anything is copied
 into `docs/lab/results`. Expected restore outcome (j44, first run in
@@ -2015,7 +2064,7 @@ them), so a later run in the same f3 boot meets D1 again.
 time, as in zq3-r11. The lines new or changed for zq3-r12:
 
 ```text
-- <UTC> N1: run started before Rocky's next nightly upgrade: yes|no; Phase 1 pod runtime (p1-pod-runtime.txt) unchanged: True|False; kernel facts unchanged: yes|no.
+- <UTC> N1: Rocky clock UTC (timedatectl): yes|no; Phase 5 nightly-gate GO|STOP at ..Z; Phase 1 pod runtime (p1-pod-runtime.txt) unchanged: True|False; kernel facts unchanged: yes|no.
 - <UTC> Phase 1 passed: ... fusefs.ko (id ..) and fdescfs.ko (id ..) loaded, no fuse/fdesc mount, inet 10.20.0.133 on vm-public, vars .., Rocky PID 3146 running .. = default ..
 - <UTC> Phase 1a: before-unload Refs 1/1, no-fuse-fdesc-mounts; kldunload fusefs rc .., kldunload fdescfs rc ..; after-unload kldstat lists neither.
 - <UTC> Phase 3: kernel install BLS .. for build ID 8c1de1ed (bzImage 803a35b9); pod manifest PM=.. (zq3-r1 to zq3-r10: f7f69339); pod build ..
@@ -2027,7 +2076,7 @@ time, as in zq3-r11. The lines new or changed for zq3-r12:
 - <UTC> o84 contention: slow OBSERVEs or long-open claims none|..
 - <UTC> T1..T4: sequences (L+2, L+3) .. (L+8, L+9) as expected|differences ..; syscall_batch_success ..
 - <UTC> admission steps (p10-admission.py): credentials .. ms (largest gap ..), sync .., metadata .., namespace ..; deadline_hit none|..; etimedout none|..
-- <UTC> R11-1 check: no early-DRAINED STALE / worker-stopped line|..; z94 recalls visible as open-root gaps: ..; R10-2/1a4 check: T8 unmount rc .., new block/worker-stopped/timed-out lines none|..
+- <UTC> ETIMEDOUT scan (p11-etimedout-scan.jsonl, releases and T6-T11): none|..; R11-1 check: no early-DRAINED STALE / worker-stopped line|..; z94 recalls visible as open-root gaps: ..; R10-2/1a4 check: T8 unmount rc .., new block/worker-stopped/timed-out lines none|..
 - <UTC> T5 unrun (deferred, re-plan pending).
 - <UTC> T7: pod_fixture run t7_pass ..|refused at check_runtime (N1 drift)|..
 - <UTC> T9 pre-arm L+10, ARM L+11, post-CALL L+12; classification ..

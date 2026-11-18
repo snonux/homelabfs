@@ -111,7 +111,7 @@
   "source": "1b0a306bde2831d487f287af5fde82e80f7cedc7",
   "superseded_check": "rocky_kernel.py plan and controller.py check refuse 3b128cc6 as superseded",
   "system_map_sha256": "5989d2a5590b226db905a5672389d84eb82aa9d116483aa870ba2b2c2b21c184",
-  "timing_note": "one hfs getattr can take about 90-120 s (1a4 view wait, observation lease exchange, x84 allocation wait, request window; docs/Test-automation.md). guest.py's 10 s admission alarm, the plan's 60 s case alarm and the controller's 75 s dispatch bound are all shorter: a slow syscall ends as a Deadline (once it returns) or a dispatching-uncertain dispatch, both findings; rockyt's 150 s bound covers one worst-case getattr plus about 30 s",
+  "timing_note": "one hfs getattr can take about 90-120 s (1a4 view wait, observation lease exchange, x84 allocation wait, request window; docs/Test-automation.md). guest.py's 10 s admission alarm, the plan's 60 s case alarm and the controller's 75 s dispatch bound are all shorter: a slow syscall ends as a Deadline (once it returns) or a dispatching-uncertain dispatch, both findings; rockyt's bound is 270 s (review round 1; was 150 s), so one worst-case getattr plus the unmount's own 30 s view wait fits; rc=124 is a finding, not necessarily a 1a4 failure",
   "unchanged_from_3b128cc6": "config, five modules, modules.*, exporter; init helper 8c02b98f...",
   "window_artifacts": {
    "controlledruntime.test": "dafcc1218deac8ee22b08b233755a2301e29255e2eb546e2be0a8a36dbca72a9",
@@ -161,9 +161,10 @@
  },
  "decisions": {
   "D1": "D1-a (Phase 1a): fdescfs.ko and fusefs.ko are loaded (left by zq3-r11's window in the current f3 boot); normal kldunload fusefs then fdescfs, never -f, right after Phase 1; a refusal stops before staging (D1-b/D1-c are plan revisions)",
-  "N1": "Rocky's nightly dnf -y upgrade (00:55 Rocky-local): the run must start and finish before the next one; otherwise Phase 1 rechecks the pod-runtime NEVRAs/SHA256s and the kernel facts, and any drift means a refill (zq3-r11's S1 was such a drift)",
+  "N1": "Rocky's nightly dnf -y upgrade (00:55 UTC, Rocky's clock is UTC): the run must start and finish before the next one; Phase 1 rechecks the pod-runtime NEVRAs/SHA256s and the kernel facts (drift means a refill), and Phase 5 step 0's nightly gate (review round 1) stops before Rocky is stopped if Phase 1 predates the last 00:55 UTC, it is within 35 min after 00:55 UTC or later than 23:25 UTC; STOP aborts cleanly (observer key removed on Rocky and f3, U2, window restored)",
   "T5": "deferred (z64): q64/f84 fixed the lifetime wall, but T5 is not yet re-planned or sized; the batch template declares it; T6 follows T4; T9-T11 after the four released cases; acceptance incomplete by design",
-  "T7": "runs (e94 moved the podman/crun NEVRA pins into the request; zq3-r11 skipped T7)"
+  "T7": "runs (e94 moved the podman/crun NEVRA pins into the request; zq3-r11 skipped T7)",
+  "review_round_1": "no MUST-FIX; SHOULD-FIX 1 etimedout over replies/observations and the Phase 11 scan of releases and T6-T11; SHOULD-FIX 2 the nightly gate; NITs rockyt 270 s (rc=124 a finding, not necessarily 1a4) and Phase 11 step 6 90 tries x 10 s"
  },
  "fdescfs_window": {
   "directory": "/var/tmp/hfs-fdescfs-windows/zq3-r12",
@@ -182,14 +183,14 @@
   "dryrun/ctl.py": "bb5c7a04ca777927d36c21de69c5b745d3b0d1879bdfdb66bcff36dd1720af78",
   "dryrun/f3stub.py": "d51271ec31386487410d743872c65ab9e501e336a0afa388cfcae4ce514c3265",
   "dryrun/genrun.py": "e2669f985a696bfc3cb39ef154d7902c2db05fa4e6368ff140d268cf16d8940b",
-  "dryrun/helpers-dryrun.py": "ab3576a425d980bc56a653d746f5846f44c50b397cb38da2d59515937ac6a56c",
+  "dryrun/helpers-dryrun.py": "47d56593cce276566db8f3968fa043129e53b33aa25e1894ab45cdc80f3dffa5",
   "dryrun/mkrun.py": "0151ddacc411a6ba8d3391dd1f651980e3ef4da6f53759ec4923133cc909e7ed",
   "dryrun/rockystub.py": "bcb32bfd691fff3e83cb06600dfdc11b8664da21b334fd3ead67ebbbdbff43f5",
-  "make-pins.py": "adb5ad85a7a9f0bda51dac1ac21b900bf029c916229f42aedc9ace0e3b85110f",
+  "make-pins.py": "16c408d658336c3b4a9e9d4ab97bb50f31406fe26b98938853183e33fa2bc5f3",
   "make-spec.py": "dccd6123e2303cfd6ff01003ce5e9dbb115da6d12b09b38e2745be342db5e8d7",
-  "session.sh": "11e4155a8842f331b9a93eddfa62e15deee6abe470235e6de741a41af8362e1a",
+  "session.sh": "be80a19ef0bd1b023cd999e41329e22cfa7278b9bbcf190ffeb564d0da6fe42f",
   "sh/p1-f3.sh": "37acb258c9a7b7b396e94366d8c95aca593ff3612022f60b79e6cc0cc25a8d4a",
-  "sh/p10-admission.py": "cc378f4b93717827e68eb7b0d520731ad5b3642fbca6a8fbd40ae50497b93373",
+  "sh/p10-admission.py": "85c5919fd71dfaf2198a80f8d9217780c7a3398ece6eddc0c9dfc9340bc57576",
   "sh/p10-argv.py": "942ac1b71ac4e5cb3b21cfaa9213749713558e0ae71181df127805fcb0421e1b",
   "sh/p10-requests.py": "b2023b0a330ce9c5ca49c7a368a81f613bb639c0499808667feabfc91b3fdc6f",
   "sh/p4-libs.sh": "be0d13e1b7173e317c1313a1da869cadce32c8b12cc6c440fd92c701007d18d4",
@@ -293,7 +294,7 @@
   "host_events_since_r11": {
    "2026-11-18 08:38:38-09:01:00 UTC": "zq3-r11 stopped Rocky (Phase 5) and started it normally (Phase 12): PID 3146, boot ID c8f80bb2, no relabel reboot; its U2 removed the r11 test kernel",
    "note": "no f3 reboot since Paul's deliberate 2026-11-13 reboot",
-   "warning": "Rocky runs dnf -y upgrade nightly at 00:55 Rocky-local; the run must start and finish before the next one, else Phase 1 rechecks the pod-runtime NEVRAs/SHA256s and the kernel facts and any drift means a refill (N1)"
+   "warning": "Rocky runs dnf -y upgrade nightly at 00:55 Rocky-local = 00:55 UTC (Rocky's clock is UTC; Phase 1 records date -u and timedatectl); the Phase 5 nightly gate stops the run after 23:25 UTC, within 35 min after 00:55 UTC or if Phase 1 predates the last 00:55 UTC (N1)"
   },
   "rocky_authorized_keys_sha256_pre_run": "e08542dccf25c758af2a9dce35428c9680101cd015295d92499f4d6859866855",
   "rocky_autorelabel": "absent (ls: cannot access '/.autorelabel')",
@@ -332,8 +333,9 @@
  "phase6_bar_bytes": 14763950080,
  "phase9_10": {
   "case_failure_capture": "p10-admission.py on the failed case's stdout.log (deadline_hit, etimedout), the guest block/worker-stopped/timed-out lines and live owner snapshots before Phase 11",
-  "dry_run_refusals": "helpers-dryrun.py: p9-ready refused a wrong socket, a missing or failed usable result, a /2 journal, a missing L, L = 1 and a usable/summary L mismatch; p9-observe refused sequence 1 (the r8 literal), L+2, a READY_JSON without L, a fenced admission, a rotated cut, an incomplete OBSERVE, evidence /1 and a wrong plan hash; p9-timing refused a malformed TSV and one without an observe line; p10-argv and p10-requests refused as in r8. fill_plan.py batch refused a run that stopped at usable with the b84 claims note ('bootstrap steps did not end ok: usable=failed') and a /2 journal; p9-ready.py refused the failed run and zq3-r11's real run directory (control socket of zq3-r11), and fill_plan.py refused zq3-r11's real run for the r12 plan pin; p10-admission.py on zq3-r11's real T1 stdout.log reported deadline_hit true (open-root -> failure gap 43594.8 ms) and on a synthetic errno-110 failure etimedout true",
+  "dry_run_refusals": "helpers-dryrun.py: p9-ready refused a wrong socket, a missing or failed usable result, a /2 journal, a missing L, L = 1 and a usable/summary L mismatch; p9-observe refused sequence 1 (the r8 literal), L+2, a READY_JSON without L, a fenced admission, a rotated cut, an incomplete OBSERVE, evidence /1 and a wrong plan hash; p9-timing refused a malformed TSV and one without an observe line; p10-argv and p10-requests refused as in r8. fill_plan.py batch refused a run that stopped at usable with the b84 claims note ('bootstrap steps did not end ok: usable=failed') and a /2 journal; p9-ready.py refused the failed run and zq3-r11's real run directory (control socket of zq3-r11), and fill_plan.py refused zq3-r11's real run for the r12 plan pin; p10-admission.py on zq3-r11's real T1 stdout.log reported deadline_hit true (open-root -> failure gap 43594.8 ms) and on a synthetic errno-110 failure etimedout true; review round 1 adds seven p10-admission.py etimedout cases (clean case and a string errno '110' false; failure, reply, step-observed mkdir_errno, nested lstat_errno and a lock-probe report true): 38 cases, all as expected",
   "dry_run_sheet_lines": "all 77 command lines of the r12 sheet from Phase 8 'After READY' to T8 (the case-failure block, which names $CASE, and the T8 hang capture, a text block, are skipped), plus the Phase 7 k04 baseline and the Phase 11 984 summary line (79 in all), were extracted from run-sheet.md and executed in scratch (dryrun/genrun.py) with stub f3/Rocky, the real fill_plan.py, check-retained9p.sh check, correlate.py, session.sh tf3/obs/sha/jf and the sh/ helpers, controller.py with faked guest dispatch, and a synthetic READY run with journal /3, an ok usable step and L = 5 (the stub's last accepted sequence primed with 5): Phase 9 at 6 (L+1), case pairs 7/8 .. 13/14, T9 15/16/17, T10 18/19 as expected; T1-T4 correlated and released; syscall_batch_success True with cases_planned the four and the deferral repeated; T9 dropped-reply-effect-committed-and-visible; T10 FENCED; T11 k04_refusal_observed true with deferred repeated; T6/T8 lock requests parsed; p9-timing.py summarised 12 timed OBSERVEs; the faked guest stdout carried y84 admission-step events, which controller.py accepted and p10-admission.py summarised (admission_ms 2000, deadline_hit and etimedout false) for all four cases; the T7 request p10-requests.py wrote (pod /2 with runtime_nevra) passed the committed pod_fixture.py parse_request in the Rocky stub",
+  "etimedout_scan": "Phase 11 (before step 1): p10-admission.py over every release log, the T9-T11 lifecycle step logs and the T6/T7/T8 probe reports; any etimedout true is a finding",
   "expected_sequences": {
    "cases_baseline_retained": [
     [
@@ -366,7 +368,7 @@
   "helpers": {
    "session.sh obs": "obs PREV NEW [LAST]: correlate.py command -> p10-argv.py -> one timed f3 OBSERVE",
    "session.sh tf3": "tf3 LABEL SEQUENCE F3-ARGS: one f3 call, its workstation wall time appended to $E/obs-timing.tsv",
-   "sh/p10-admission.py": "per-case y84 admission-step offsets and gaps from ctrl-run/<case>/stdout.log, admission_ms, deadline_hit and (new for r12, 1a4) etimedout (failure errno 110); evidence only",
+   "sh/p10-admission.py": "per-case y84 admission-step offsets and gaps from ctrl-run/<case>/stdout.log, admission_ms, deadline_hit and (new for r12, 1a4) etimedout: errno 110 in the failure, in any reply event or in any errno/*_errno field (lifecycle observations, T6-T8 probe reports), listed in etimedout_at; evidence only",
    "sh/p10-argv.py": "checks a correlate.py command argv (staged runtime, control socket, safe tokens, MKDIR ARM)",
    "sh/p10-requests.py": "T6/T7/T8 requests from the checked batch plan's mount IDs and the Phase 3 pod digest",
    "sh/p9-observe.py": "the committed correlator's checks on the Phase 9 OBSERVE (sequence L+1, evidence /2); reports each provider's claim counts without gating",

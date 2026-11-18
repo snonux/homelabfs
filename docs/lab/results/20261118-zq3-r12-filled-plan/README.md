@@ -37,8 +37,14 @@ acceptance stays incomplete by design**, because T5 does not run.
 
 ## N1: Rocky upgrades itself nightly
 
-Rocky runs `dnf -y upgrade` at 00:55 Rocky-local. **The run must start and
-finish before the next one.** If it does not, Phase 1 must recheck the
+Rocky runs `dnf -y upgrade` at 00:55 Rocky-local, which is **00:55 UTC**
+(Rocky's clock is UTC; Phase 1 now records `date -u` and `timedatectl`).
+**The run must start and finish before the next one.** A go/no-go gate in
+Phase 5 step 0, before Rocky is stopped, enforces it: `STOP` if Phase 1
+predates the last 00:55 UTC, within 35 minutes after 00:55 UTC, or later
+than 23:25 UTC (00:55 minus the 90 minutes Phases 5-12 may take); a `STOP`
+aborts cleanly (observer key removed on Rocky and f3, U2, window
+restored). If it does not, Phase 1 must recheck the
 pod-runtime NEVRAs and SHA256s (`p1-pod-runtime.txt`, compared with the pod
 template) and the kernel facts (boot ID, running and default kernel,
 `next_entry`), and any drift means a refill. The 13:50:55Z facts match
@@ -84,8 +90,8 @@ are never committed:
 | 8. Window pins | `docs/lab/zq3-fdescfs-window/pins.json` at main (`90845252…`, as 5a4 left it) with `zq3-r1` → `zq3-r12`; `check_pins` passes. Synthetic fills, which are not pins: zq3-r8's real Phase 4 facts and host hashes (modules absent) **pass**, with paths renamed and the three artifact hashes swapped for the 5a4 ones. The same facts with the b94 artifact hashes zq3-r11 staged **refuse** (`pinned artifact differs or missing`). Post-restore facts with both modules loaded, the state on f3 now, **refuse** (`fdescfs module present`): hence Phase 1a | r12 pins `da22551d…` |
 | 9. Signing watcher | zq3-r11's `bin/sign_watch.py` (it signed both requests in zq3-r11) with `D`, the docstring run ID, the signer comment and **the signer pin `a7f1f847…`** changed. Tested locally with a fake signer: a wrong request hash, a wrong command, an unknown action, a repeat and a wrong signer hash were refused; both exact requests were signed | `90bde567…` |
 | 10. Process observer check | `sh/p4-observer.py` from zq3-r11 with the run ID and **the daemon pin `e0981a0a…`** changed (Phase 4 step 1a, **required**: new daemon bytes). zq3-r11's real records (renamed) are refused only for the b94 `sha256` and pass with `e0981a0a…` substituted. The `$NG` line parses and passes the native guard's own `parse_args` and `check_request` | `173e4da6…` |
-| 11. Admission-step helper | `sh/p10-admission.py` from zq3-r11, with `errno` in `failure` and a new **`etimedout`** flag (errno 110, 1a4). On zq3-r11's real T1 `stdout.log` it reports `deadline_hit` true and the 43.6 s `open-root` → `failure` gap; on a synthetic errno-110 failure `etimedout` true | `cc378f4b…` |
-| 12. Run sheet | [run-sheet.md](run-sheet.md): Phases 0-12, 1a (**runs**), 4/1a and U1-U3, N1, the SELinux gates in Phases 1, 9 and 12, the R11-1/R11-2 checks, T7 back in, and a run log template. `session.sh` (`11e4155a…`) and thirteen pinned helper scripts (the r11 ones, renamed; `p4-observer.py` and `p10-admission.py` changed); `p10-requests.py` re-pins the three r12 request templates. The Phase 8-10 lines were dry-run end to end (below) | [pins](pins.json) `fill_helpers` |
+| 11. Admission-step helper | `sh/p10-admission.py` from zq3-r11, with `errno` in `failure` and a new **`etimedout`** flag (1a4): errno 110 in the failure, in any `reply` event or in any `errno`/`*_errno` field (lifecycle observations, T6-T8 probe reports), listed in `etimedout_at` (review round 1). On zq3-r11's real T1 `stdout.log` it reports `deadline_hit` true and the 43.6 s `open-root` → `failure` gap; seven synthetic cases (below) behave as expected | `85c5919f…` |
+| 12. Run sheet | [run-sheet.md](run-sheet.md): Phases 0-12, 1a (**runs**), 4/1a and U1-U3, N1, the SELinux gates in Phases 1, 9 and 12, the R11-1/R11-2 checks, T7 back in, and a run log template. `session.sh` (`be80a19e…`, `rockyt` bound 270 s) and thirteen pinned helper scripts (the r11 ones, renamed; `p4-observer.py` and `p10-admission.py` changed); `p10-requests.py` re-pins the three r12 request templates. The Phase 8-10 lines were dry-run end to end (below) | [pins](pins.json) `fill_helpers` |
 
 Staging recipe (both tarballs, deterministic):
 `tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=2026-11-18T00:00:00Z --format=gnu`.
@@ -147,7 +153,7 @@ All zq3-r7 to zq3-r11 rules are kept:
 - Phase 4 step 1a, the process observer check: **required**, because the
   daemon bytes changed (`e0981a0a…`);
 - the UMA drain decision in Phase 5;
-- `rockyt` bounded guest unmounts (Phase 11 step 2 and T8);
+- `rockyt` bounded guest unmounts (Phase 11 step 2 and T8; now 270 s);
 - `pgrep -U root -lf runtime-guard.py` for the guard SIGTERM;
 - the T10 abort paths to T8, then the guard-SIGTERM branch;
 - the explicit `--no-child` line for a null exporter;
@@ -240,12 +246,13 @@ wait and request window, each up to 30 s):
 - the controller's dispatch bound (min(60 + 15, 120) = 75 s) is shorter
   too, so a long wait ends `dispatching-uncertain`, as in zq3-r10 and
   zq3-r11;
-- `rockyt` (150 s) covers one worst-case getattr plus about 30 s; a stat and
-  the unmount's own view wait both at their limits can still reach it
-  (`rc=124`, recorded, never retried).
+- `rockyt` is raised from 150 s to **270 s** (review round 1; its lines
+  keep a tool timeout of at least 300 s), so one worst-case getattr plus the
+  unmount's own 30 s view wait fits; an `rc=124` is recorded as a finding,
+  not necessarily a 1a4 failure, never retried.
 
-None of these bounds was changed (no code changes); the sheet records each
-outcome as a finding.
+The guest and controller bounds are unchanged (no code changes); the sheet
+records each outcome as a finding.
 
 ## Phases 9-10 recheck
 
@@ -260,8 +267,11 @@ change. No CLI the sheet uses changed shape.
 
 **Sheet dry run** (`dryrun/` in the private fill; scratch output). A
 harness extracted the 77 command lines of this sheet from Phase 8 "After
-READY" to T8, plus the Phase 7 `k04` baseline line and the Phase 11 984
-summary line (79 in all), from `run-sheet.md` itself and ran them in order.
+READY" to T8, plus the Phase 7 `k04` baseline line and the two Phase 11
+evidence lines (the 984 summary and the review-round-1 ETIMEDOUT scan; 80 in
+all), from `run-sheet.md` itself and ran them in order. The scan read the
+four release logs, the four lifecycle step logs and the T6/T7/T8 reports
+(`etimedout` false for all eleven).
 The case-failure block (it names `$CASE`) and the T8 hang capture (a text
 block) only run on a failure and are skipped. The harness used:
 - the real `fill_plan.py batch`, `check-retained9p.sh check`,
@@ -294,8 +304,12 @@ Every line passed with the expected results:
 - T8 `rc=0`;
 - `p9-timing.py` summarised 12 timed OBSERVEs and 3 no-ops.
 
-**Negative and real-record checks** (`helpers-dryrun.py`: 31 cases, all as
+**Negative and real-record checks** (`helpers-dryrun.py`: 38 cases, all as
 expected):
+- `p10-admission.py` (review round 1): `etimedout` false for a clean case
+  and for a string `"110"` errno; true for errno 110 in a failure, a
+  `reply` event, a `step-observed` `mkdir_errno`, a nested `lstat_errno`
+  and a lock-probe report;
 - `p9-ready.py` refused a wrong socket, a missing or failed `usable`
   result, a `/2` journal header, a missing `observe_sequence_last`, L = 1,
   and a `usable`/summary L mismatch;
@@ -310,11 +324,26 @@ expected):
   for the pinned bootstrap plan`); `p9-ready.py` refused the failed run and
   zq3-r11's real run directory (its control socket is zq3-r11's).
 
+## Decisions from the zq3-r12 run-sheet review round 1 (2026-11-18)
+
+No MUST-FIX. Applied to this fill and the public copy:
+- **SHOULD-FIX 1:** `p10-admission.py` sets `etimedout` for errno 110
+  anywhere in a file (failure, `reply` events, `errno`/`*_errno` fields),
+  because lifecycle steps record an `OSError` errno as an observation and
+  continue; Phase 11 now scans every release log, the T9-T11 step logs and
+  the T6/T7/T8 reports (`p11-etimedout-scan.jsonl`).
+- **SHOULD-FIX 2:** the nightly-upgrade go/no-go gate (N1 above; Phase 1
+  records Rocky's clock, Phase 5 step 0 runs the gate).
+- **NITs:** `rockyt` 270 s with `rc=124` worded as a finding, not
+  necessarily a 1a4 failure; Phase 11 step 6 waits 90 × 10 s for
+  `child-gone` (still no forced power-off).
+
 ## Findings and open questions
 
-- **Q0 N1.** The run must start and finish before Rocky's next 00:55
-  nightly upgrade. If it slips, Phase 1's pod-runtime and kernel rechecks
-  decide, and drift means a refill.
+- **Q0 N1.** The run must start and finish before Rocky's next 00:55 UTC
+  nightly upgrade. The Phase 5 gate stops it before Rocky is stopped if it
+  would not; Phase 1's pod-runtime and kernel rechecks catch an upgrade that
+  already ran, and drift means a refill.
 - **Q1 T5 deferred.** The run cannot complete zq3 acceptance. T5 needs a
   re-plan and sizing first.
 - **Q2 the 5a4 fixes are untested on f3.** The kernel `8c1de1ed…` and the
