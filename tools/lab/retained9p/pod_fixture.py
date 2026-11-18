@@ -5,8 +5,11 @@ Runs ON ROCKY AS ROOT inside the approved zq3 window, after Phase 8 mounted m0.
 It never pulls an image, installs a package, mounts, unmounts, kills or forces
 anything. Python 3.9 compatible; the staged file is pinned by SHA256.
 
-Runtime choice (A8): the podman 5.8.2 / crun 1.27 already installed on Rocky,
-pinned by NEVRA and SHA256, rootful, VFS storage in fresh run-owned roots. The
+Runtime choice (A8): the podman and crun already installed on Rocky, pinned by
+NEVRA and SHA256, rootful, VFS storage in fresh run-owned roots. Both kinds of
+pin come from the run request, which the fill derives from that run's
+read-only Rocky facts: Rocky upgrades itself nightly, so NEVRAs hard-coded
+here went stale with the EL9.9 update and refused T7 regardless (e94). The
 rootfs is not an image: it is built from Rocky's own installed files, and each
 file must equal the signed RPM database digest. Why: buildah/skopeo are absent,
 any registry pull would add a network dependency and unpinned bytes, and
@@ -39,7 +42,8 @@ import subprocess
 import sys
 import time
 
-VERSION = "homelabfs-retained9p-pod/1"
+# /2 (e94): the request carries `runtime_nevra`, the podman/crun package pins.
+VERSION = "homelabfs-retained9p-pod/2"
 MANIFEST_VERSION = "homelabfs-retained9p-pod-rootfs/1"
 RUN_PARENT = "/var/tmp/hfs-zq3-"  # Same root-private run directory as guest.py.
 TRUSTED_UID, TRUSTED_GID = 0, 0
@@ -50,14 +54,19 @@ WORKLOAD = "pod_workload.py"
 # SHA256 of the sibling pod_workload.py; pinning this file pins the workload.
 WORKLOAD_SHA256 = "a35449c6762772d57309ad8639e57ea9ae09b78cd2af94fcc2ee0adec2d54b75"
 WORKLOAD_PATH = "/hfs/pod_workload.py"  # Inside the rootfs.
-# Rocky facts 2026-11-08: podman/crun NEVRAs are pinned here; every SHA256
-# (and conmon/seccomp, not in that fact list) comes from the Phase 1 request.
+# Runtime files the pod uses. Every SHA256 comes from the request's
+# `runtime_sha256` and the podman/crun package NEVRAs from its `runtime_nevra`,
+# both filled from the run's Rocky facts. conmon and seccomp.json stay pinned
+# by SHA256 only, as before; their owning packages are recorded, not judged.
 RUNTIME = {
-    "podman": ("/usr/bin/podman", "podman-5.8.2-8.el9_8.x86_64"),
-    "crun": ("/usr/bin/crun", "crun-1.27-1.el9_7.x86_64"),
-    "conmon": ("/usr/bin/conmon", None),
-    "seccomp": ("/usr/share/containers/seccomp.json", None),
+    "podman": "/usr/bin/podman",
+    "crun": "/usr/bin/crun",
+    "conmon": "/usr/bin/conmon",
+    "seccomp": "/usr/share/containers/seccomp.json",
 }
+NEVRA_PINNED = ("crun", "podman")  # Exact, sorted key set of the request's runtime_nevra.
+# name-[epoch:]version-release.arch, as `rpm -qf --qf '%{NEVRA}\n'` prints it.
+NEVRA = re.compile(r"[A-Za-z0-9._+-]+-[0-9][A-Za-z0-9._+:~^]*-[A-Za-z0-9._+~^]+\.(x86_64|noarch)\Z")
 LABEL = b"system_u:object_r:container_file_t:s0"  # podman's documented --rootfs label.
 LEVEL = "s0:c731,c914"  # Fixed MCS pair: a numeric, reviewable container context.
 CAPS = ("CHOWN", "FOWNER", "SETGID", "SETUID")  # Matrix setup and ID switching only.
@@ -495,15 +504,22 @@ def label_or_error(host, path):
 
 
 def check_runtime(host, request):
-    """podman/crun/conmon/seccomp bytes and package identities equal their pins."""
+    """podman/crun/conmon/seccomp bytes and podman/crun package identities equal their pins.
+
+    The NEVRA pins are the request's `runtime_nevra` (filled from the run's
+    Rocky facts) and the owner must be exactly that one package, so an upgrade
+    between fill and run refuses here instead of running another podman/crun.
+    """
     record = {}
-    for name, (path, nevra) in sorted(RUNTIME.items()):
+    for name, path in sorted(RUNTIME.items()):
         sha = host.hash_file(path)
         require(sha == request["runtime_sha256"][name], name + " SHA256 differs from its pin")
         code, out, _ = host.run(["rpm", "-qf", "--qf", "%{NEVRA}\n", "--", path], 30)
         owners = out.decode().split()
+        nevra = request["runtime_nevra"].get(name)  # None: conmon/seccomp, recorded only.
         require(code == 0 and (nevra is None or owners == [nevra]),
-                name + " package identity differs: " + " ".join(owners))
+                "%s package identity differs from its runtime_nevra pin %s: %s"
+                % (name, nevra, " ".join(owners)))
         record[name] = {"path": path, "sha256": sha, "packages": owners}
     return record
 
@@ -519,12 +535,30 @@ def check_rootfs(host, request, pod):
     return manifest
 
 
+def check_nevra_pins(pins):
+    """runtime_nevra is exactly {crun, podman}, each a full NEVRA of that package.
+
+    The name check refuses swapped pins and sibling packages such as
+    podman-docker: the character after "<name>-" must start the version.
+    """
+    require(isinstance(pins, dict) and sorted(pins) == list(NEVRA_PINNED),
+            "runtime_nevra pin set must be exactly " + "/".join(NEVRA_PINNED))
+    for name, value in sorted(pins.items()):
+        require(isinstance(value, str) and NEVRA.match(value) is not None and
+                value.startswith(name + "-") and value[len(name) + 1:len(name) + 2].isdigit(),
+                "runtime_nevra " + name + " must be a full " + name + " NEVRA")
+
+
 def parse_request(raw):
     require(len(raw) <= 16384, "request bound")
     request = json.loads(raw)
-    require(isinstance(request, dict) and request.get("version") == VERSION and
+    # Checked first so a pre-e94 template (pod/1, no NEVRA pins) says what to fill.
+    require(isinstance(request, dict) and "runtime_nevra" in request,
+            "request lacks runtime_nevra: fill the podman and crun NEVRAs from the run's "
+            "Rocky facts (rpm -qf --qf '%{NEVRA}\\n' -- /usr/bin/podman /usr/bin/crun)")
+    require(request.get("version") == VERSION and
             set(request) == {"version", "run_id", "fixture_sha256", "rootfs_manifest_sha256",
-                             "runtime_sha256", "m0"}, "request shape/version")
+                             "runtime_sha256", "runtime_nevra", "m0"}, "request shape/version")
     require(isinstance(request["run_id"], str) and RUN_ID.match(request["run_id"]), "run ID bound")
     for key in ("fixture_sha256", "rootfs_manifest_sha256"):
         require_hash(request[key], key)
@@ -532,6 +566,7 @@ def parse_request(raw):
             set(request["runtime_sha256"]) == set(RUNTIME), "runtime pin set")
     for name, value in request["runtime_sha256"].items():
         require_hash(value, name)
+    check_nevra_pins(request["runtime_nevra"])
     m0 = request["m0"]
     require(isinstance(m0, dict) and set(m0) == {"tag", "mount_id"} and
             m0["tag"] in ("hfs0",) and type(m0["mount_id"]) is int, "m0 pin shape")
@@ -561,7 +596,7 @@ def podman_files(pod):
             "events_logfile_path = \"%s/events.log\"\nruntime = \"crun\"\n"
             "static_dir = \"%s/storage/libpod\"\ntmp_dir = \"%s/tmp\"\n"
             "volume_path = \"%s/storage/volumes\"\n[engine.runtimes]\ncrun = [\"%s\"]\n"
-            % (RUNTIME["seccomp"][0], pod, pod, pod, pod, RUNTIME["crun"][0])),
+            % (RUNTIME["seccomp"], pod, pod, pod, pod, RUNTIME["crun"])),
         "storage.conf": ("[storage]\ndriver = \"vfs\"\ngraphroot = \"%s/storage\"\n"
                          "runroot = \"%s/runroot\"\n" % (pod, pod)),
         "registries.conf": "unqualified-search-registries = []\n",
@@ -583,9 +618,9 @@ def prepare_podman(pod):
 
 
 def global_args(pod):
-    return [RUNTIME["podman"][0], "--root", pod + "/storage", "--runroot", pod + "/runroot",
-            "--storage-driver", "vfs", "--runtime", RUNTIME["crun"][0],
-            "--conmon", RUNTIME["conmon"][0], "--cgroup-manager", "systemd",
+    return [RUNTIME["podman"], "--root", pod + "/storage", "--runroot", pod + "/runroot",
+            "--storage-driver", "vfs", "--runtime", RUNTIME["crun"],
+            "--conmon", RUNTIME["conmon"], "--cgroup-manager", "systemd",
             "--events-backend", "file", "--tmpdir", pod + "/tmp", "--log-level", "warn"]
 
 
@@ -602,7 +637,7 @@ def run_args(pod, run_id, role, version):
         "--read-only", "--read-only-tmpfs=true", "--userns=host", "--user=0:0",
         "--passwd=false", "--cgroupns=private", "--cap-drop=all"]
     args += ["--cap-add=" + cap for cap in CAPS]
-    args += ["--security-opt=no-new-privileges", "--security-opt=seccomp=" + RUNTIME["seccomp"][0],
+    args += ["--security-opt=no-new-privileges", "--security-opt=seccomp=" + RUNTIME["seccomp"],
              "--security-opt=label=level:" + LEVEL, "--memory=%d" % MEMORY,
              "--memory-swap=%d" % MEMORY, "--pids-limit=%d" % PIDS,
              "--mount=type=bind,source=%s/m0,destination=/hfs/m0,bind-propagation=rprivate"

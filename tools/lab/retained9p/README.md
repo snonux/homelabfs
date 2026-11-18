@@ -464,10 +464,14 @@ package, mounts, unmounts or forces anything, and it never kills a container
 or the VM (see the timeout note under **Results**).
 
 **Runtime choice (A8, agent judgement under Paul's 2026-11-08 delegation).**
-Use the podman `5.8.2-8.el9_8` and crun `1.27-1.el9_7` already installed on
-Rocky. Both NEVRAs are pinned in the script. The SHA256 of podman, crun,
-conmon and `/usr/share/containers/seccomp.json` comes from Phase 1 in the
-request. Containers are rootful, use `--userns=host` (`init_user_ns`), VFS
+Use the podman and crun already installed on Rocky. The run request pins
+them twice, both filled from the run's read-only Rocky facts: the SHA256 of
+podman, crun, conmon and `/usr/share/containers/seccomp.json`
+(`runtime_sha256`), and the exact podman and crun package NEVRAs
+(`runtime_nevra`, from `rpm -qf`). The script hard-codes no package version:
+Rocky upgrades itself nightly (`dnf -y upgrade` at 00:55), and the
+NEVRAs once hard-coded here went stale with the EL9.9 update, so zq3-r11
+had to skip T7 (e94). Containers are rootful, use `--userns=host` (`init_user_ns`), VFS
 storage in fresh run-owned roots, and run-owned `containers.conf`,
 `storage.conf` and an empty `registries.conf`. The rootfs is **not an image**.
 It is a directory built from Rocky's own installed files and started with
@@ -503,7 +507,15 @@ It is a directory built from Rocky's own installed files and started with
   `--rootfs`. The command also writes `RUN/pod/rootfs-manifest.json` and
   re-verifies the whole tree.
 - `run --request ABS` takes a closed request:
-  `{version, run_id, fixture_sha256, rootfs_manifest_sha256, runtime_sha256{podman,crun,conmon,seccomp}, m0{tag:"hfs0", mount_id}}`.
+  `{version: "homelabfs-retained9p-pod/2", run_id, fixture_sha256, rootfs_manifest_sha256, runtime_sha256{podman,crun,conmon,seccomp}, runtime_nevra{podman,crun}, m0{tag:"hfs0", mount_id}}`.
+  `runtime_nevra` holds exactly the two keys `podman` and `crun`, each the
+  full `name-[epoch:]version-release.arch` that
+  `rpm -qf --qf '%{NEVRA}\n' -- /usr/bin/podman` (and `/usr/bin/crun`) prints,
+  for example `podman-5.8.5-3.el9_9.x86_64` and `crun-1.29.1-1.el9.x86_64`
+  (the zq3-r11 facts). A request without `runtime_nevra` (a pre-e94 `pod/1`
+  template) refuses with `request lacks runtime_nevra`, naming the `rpm -qf`
+  fact to fill. conmon and `seccomp.json` stay pinned by SHA256 only; their
+  owning packages are recorded, not judged.
   It admits only if all of these hold:
   - it runs as root on Linux;
   - SELinux is enforcing;
@@ -511,7 +523,9 @@ It is a directory built from Rocky's own installed files and started with
   - init has the identity uid/gid map;
   - `m0` has the exact controlled 9p tuple, as `guest.py` admits it;
   - the run directory is root-private and not on `m0`;
-  - the runtime hashes and NEVRAs and the rootfs equal their pins;
+  - the runtime hashes and the rootfs equal their pins, and `rpm -qf` names
+    exactly one owner for podman and for crun, equal to its `runtime_nevra`
+    pin (an upgrade between fill and run refuses here);
   - `/var/log/audit/audit.log` exists and is readable. Admission stats it and
     reads its last byte; the AVC delta is read after the containers exit.
 
@@ -600,8 +614,12 @@ processes. Negative cases include:
 - an unshared pod namespace, extra links, missing limits or rootfs changes;
 - unattested, unowned, non-SHA256 or out-of-tree closure files;
 - admission refusals;
-- runtime pin mismatches;
-- request shape errors;
+- runtime pin mismatches: a SHA256, or a podman/crun owner that differs from
+  its `runtime_nevra` pin (newer or older package, no owner, two owners, rpm
+  failure); the same installed package passes once the request pins it;
+- request shape errors, including a missing `runtime_nevra` (pre-e94 template)
+  and a pin set other than podman/crun, a swapped, sibling-package,
+  arch-less or placeholder NEVRA;
 - a timeout that must not kill;
 - single-use evidence.
 

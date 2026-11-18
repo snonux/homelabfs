@@ -108,8 +108,10 @@ check that both hosts still present the keys in
 - A7 Use of the operator signing key `2f6d909c…` for the enrollment and bind
   signatures during bootstrap (Phase 8): who holds and runs it.
 - A8 Pod fixture inside Rocky (Phase 10, T7), or skip. Runtime/rootfs chosen by
-  agent judgement (w34): the installed podman `5.8.2-8.el9_8` and crun
-  `1.27-1.el9_7`, rootful in `init_user_ns`, VFS storage in run-owned roots, and a
+  agent judgement (w34): the podman and crun installed on Rocky at fill time
+  (pinned by NEVRA and SHA256 in the pod request from that run's Rocky facts,
+  e94; the 2026-11-08 baseline was podman `5.8.2-8.el9_8` and crun
+  `1.27-1.el9_7`, zq3-r11 had `5.8.5-3.el9_9` and `1.29.1-1.el9`), rootful in `init_user_ns`, VFS storage in run-owned roots, and a
   `--rootfs` tree built on Rocky from its own RPM-attested files. No image pull,
   install or registry. The yes covers building `RUN/pod/rootfs` and running two
   disposable containers that bind-share `m0`
@@ -210,6 +212,12 @@ or vmm context could still exist.
   retained one is from 2026-11-02, PID 6444; Rocky has since restarted as PID
   80203), `vm list`, `/dev/vmm`, interfaces, `vm-public` members, nmdm nodes,
   processes. Choose a free tap unit (`tap100`..`tap999`) from it.
+  Unless T7 is skipped (`PM=skip`), the Rocky batch records the pod runtime
+  pins in one labelled section:
+  `echo '== pod-runtime'; for p in /usr/bin/podman /usr/bin/crun /usr/bin/conmon
+  /usr/share/containers/seccomp.json; do sha256sum -- "$p"; printf '%s\t' "$p";
+  rpm -qf --qf '%{NEVRA}\n' -- "$p"; done` (each NEVRA line names its path, so
+  the fill never relies on line order).
 - Preconditions to continue: Rocky running PID matches, all four FreeBSD VMs
   stopped, swap unused, pool ONLINE with the disk headroom above, `fusefs` and
   `fdescfs` state as recorded, `/dev/fd` is devfs, f3's route to
@@ -219,6 +227,43 @@ or vmm context could still exist.
   `authorized_keys` hash recorded, and `/.autorelabel` absent on Rocky (R7).
 - Evidence: `f3-facts.json`, `rocky-facts.json` with timestamps.
 - Failure: any mismatch stops; produce a revised plan.
+
+#### Pod request runtime pins (e94)
+
+`pod_fixture.py` hard-codes no package version (Rocky runs `dnf -y upgrade`
+nightly at 00:55; the NEVRAs once in the script went stale with EL9.9 and
+zq3-r11 skipped T7). The fill derives both runtime pin sets of the T7 request
+template (`pod/pod-request.TEMPLATE.json`) from the Rocky facts that serve as
+the run's baseline, the `== pod-runtime` section above:
+
+```json
+{
+  "version": "homelabfs-retained9p-pod/2",
+  "run_id": "<run ID>",
+  "fixture_sha256": "<sha256 of tools/lab/retained9p/pod_fixture.py>",
+  "rootfs_manifest_sha256": "PHASE3_POD_MANIFEST_SHA256",
+  "runtime_sha256": {"podman": "<sha256sum /usr/bin/podman>", "crun": "<sha256sum /usr/bin/crun>",
+                     "conmon": "<sha256sum /usr/bin/conmon>",
+                     "seccomp": "<sha256sum /usr/share/containers/seccomp.json>"},
+  "runtime_nevra": {"podman": "<rpm -qf /usr/bin/podman, e.g. podman-5.8.5-3.el9_9.x86_64>",
+                    "crun": "<rpm -qf /usr/bin/crun, e.g. crun-1.29.1-1.el9.x86_64>"},
+  "m0": {"tag": "hfs0", "mount_id": "PHASE8_M0_MOUNT_ID"}
+}
+```
+
+- `version` is now `homelabfs-retained9p-pod/2`; a `pod/1` template copied
+  from zq3-r11 or earlier refuses (`request lacks runtime_nevra`).
+- `runtime_nevra` has exactly the keys `podman` and `crun`, each the full
+  `rpm -qf --qf '%{NEVRA}\n'` output for that path (one owner, no trailing
+  newline). conmon and seccomp stay SHA256-only.
+- The fill's template check (in the private fill dir, `derive-templates.py`
+  through zq3-r11) must compare `runtime_nevra` with the facts exactly as it
+  already compares the four `runtime_sha256` values, and the filled-plan
+  README records both. `p10-requests.py` copies the template and only
+  replaces the `PHASE3_`/`PHASE8_` placeholders, so it needs no change.
+- If Rocky upgrades podman or crun between the fill's facts and T7 (a nightly
+  run crossed), T7 refuses at `check_runtime` (SHA256 or `runtime_nevra`
+  differs); re-collect the facts and refill instead of editing the request.
 
 ### Phase 2: stage the candidate on f3 (A2)
 
@@ -986,7 +1031,9 @@ reviewed and pinned, and this plan is re-filled:
   driver; stage both side by side); local tests in `test_pod_fixture.py`. At run time it still needs,
   from Phase 1: the SHA256 of `pod_fixture.py` (the operator checks it before
   each invocation) and of `/usr/bin/podman`, `/usr/bin/crun`, `/usr/bin/conmon`,
-  `/usr/share/containers/seccomp.json`; conmon's NEVRA; a readable
+  `/usr/share/containers/seccomp.json`; the podman and crun NEVRAs (`rpm -qf`,
+  filled into the request's `runtime_nevra`, see
+  [the pod request fields](#pod-request-runtime-pins-e94)); conmon's NEVRA; a readable
   `/var/log/audit/audit.log`; and the read-only `pod_fixture.py manifest` digest
   for Paul's review. `build` must later reproduce that exact digest (Phase 3 or
   before T7). The request also needs `m0`'s Phase 8 mount ID. Plus Paul's A8

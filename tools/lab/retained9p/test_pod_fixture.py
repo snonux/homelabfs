@@ -303,13 +303,19 @@ class Sandbox(unittest.TestCase):
 
 
 class PinTests(unittest.TestCase):
-    def test_workload_pin_python39_syntax_and_runtime_nevras(self):
+    def test_workload_pin_and_python39_syntax(self):
         self.assertEqual(pod.WORKLOAD_SHA256, sha(HERE / "pod_workload.py"))
         for name in ("pod_fixture.py", "pod_workload.py"):
             ast.parse((HERE / name).read_text(), feature_version=(3, 9))
-        facts = "podman-5.8.2-8.el9_8.x86_64\ncrun-1.27-1.el9_7.x86_64\n"  # zq3-facts/rocky.txt
-        self.assertIn(pod.RUNTIME["podman"][1], facts)
-        self.assertIn(pod.RUNTIME["crun"][1], facts)
+
+    def test_no_hard_coded_runtime_nevras(self):
+        """e94: package pins live in the request, never in the fixture (Rocky upgrades nightly)."""
+        text = (HERE / "pod_fixture.py").read_text()
+        for stale in ("podman-5.", "crun-1.", ".el9_"):
+            self.assertNotIn(stale, text)
+        self.assertEqual(set(pod.RUNTIME.values()), {"/usr/bin/podman", "/usr/bin/crun",
+                                                     "/usr/bin/conmon",
+                                                     "/usr/share/containers/seccomp.json"})
 
     def test_workload_imports_avoid_openssl(self):
         tree = ast.parse((HERE / "pod_workload.py").read_text())
@@ -605,7 +611,11 @@ def request_for(manifest_sha256):
     return {"version": pod.VERSION, "run_id": "r1", "fixture_sha256": sha(HERE / "pod_fixture.py"),
             "rootfs_manifest_sha256": manifest_sha256,
             "runtime_sha256": {name: hashlib.sha256(name.encode()).hexdigest() for name in pod.RUNTIME},
-            "m0": {"tag": "hfs0", "mount_id": 77}}
+            "runtime_nevra": dict(NEVRAS), "m0": {"tag": "hfs0", "mount_id": 77}}
+
+
+# zq3-r11 Rocky facts (rpm -qf after the EL9.9 update), as a fill would pin them.
+NEVRAS = {"podman": "podman-5.8.5-3.el9_9.x86_64", "crun": "crun-1.29.1-1.el9.x86_64"}
 
 
 FAKE_CONTAINER = textwrap.dedent("""
@@ -638,11 +648,12 @@ class AdmissionTests(Sandbox):
             self.host.links["/proc/self/ns/" + name] = GUEST_NS[name]
             self.host.links["/proc/1/ns/" + name] = GUEST_NS[name]
         self.host.stats[m0] = types.SimpleNamespace(st_dev=DEV)
-        for name, (path, nevra) in pod.RUNTIME.items():
+        for name, path in pod.RUNTIME.items():
             self.host.hashes[path] = hashlib.sha256(name.encode()).hexdigest()
 
     def runtime_rpm(self, argv):
-        owners = {path: nevra or name + "-1.0-1.el9.x86_64" for name, (path, nevra) in pod.RUNTIME.items()}
+        """rpm -qf as Rocky answers it: the facts' NEVRAs for podman/crun, any owner otherwise."""
+        owners = {path: NEVRAS.get(name, name + "-1.0-1.el9.x86_64") for name, path in pod.RUNTIME.items()}
         if argv[:3] == ["rpm", "-qf", "--qf"] and len(argv) == 6 and argv[5] in owners:
             return 0, (owners[argv[5]] + "\n").encode(), b""
         return None
@@ -683,14 +694,79 @@ class AdmissionTests(Sandbox):
         self.guest()
         self.host.handlers.insert(0, self.runtime_rpm)
         record = pod.check_runtime(self.host, request_for("0" * 64))
-        self.assertEqual(record["podman"]["packages"], ["podman-5.8.2-8.el9_8.x86_64"])
+        self.assertEqual(record["podman"]["packages"], [NEVRAS["podman"]])
+        self.assertEqual(record["crun"]["packages"], [NEVRAS["crun"]])
+        self.assertEqual(record["conmon"]["packages"], ["conmon-1.0-1.el9.x86_64"])  # Recorded only.
         self.host.hashes["/usr/bin/crun"] = "1" * 64
         self.refuses("crun SHA256 differs", pod.check_runtime, self.host, request_for("0" * 64))
+
+    def test_runtime_nevra_must_match_request_pin(self):
+        """Installed package differs from the filled pin, e.g. a nightly upgrade after the fill."""
+        for name, installed in (("podman", "podman-5.8.6-1.el9_9.x86_64"),
+                                ("crun", "crun-1.27-1.el9_7.x86_64")):
+            with self.subTest(name=name):
+                self.guest()
+                self.host.handlers.insert(0, lambda argv, path=pod.RUNTIME[name], nevra=installed:
+                                          (0, (nevra + "\n").encode(), b"")
+                                          if argv[-1] == path else None)
+                self.host.handlers.insert(1, self.runtime_rpm)
+                self.refuses(name + " package identity differs from its runtime_nevra pin " +
+                             NEVRAS[name] + ": " + installed,
+                             pod.check_runtime, self.host, request_for("0" * 64))
+                del self.host.handlers[:2]
+        # The same installed packages pass once the request pins them.
         self.guest()
-        self.host.handlers.insert(0, lambda argv: (0, b"podman-5.6.0-1.el9.x86_64\n", b"")
-                                  if argv[-1] == "/usr/bin/podman" else None)
-        self.refuses("podman package identity differs", pod.check_runtime, self.host,
-                     request_for("0" * 64))
+        self.host.handlers.insert(0, self.runtime_rpm)
+        request = request_for("0" * 64)
+        request["runtime_nevra"]["crun"] = "crun-1.0-1.el9.x86_64"
+        self.refuses("crun package identity differs", pod.check_runtime, self.host, request)
+        self.host.handlers.insert(0, lambda argv: (0, b"crun-1.0-1.el9.x86_64\n", b"")
+                                  if argv[-1] == "/usr/bin/crun" else None)
+        self.assertEqual(pod.check_runtime(self.host, request)["crun"]["packages"],
+                         ["crun-1.0-1.el9.x86_64"])
+
+    def test_runtime_nevra_owner_count_and_rpm_failure(self):
+        self.guest()
+        for answer in ((0, b"", b""), (1, b"", b"not owned"),
+                       (0, ("%s\n%s\n" % (NEVRAS["podman"], NEVRAS["podman"])).encode(), b"")):
+            with self.subTest(answer=answer):
+                self.host.handlers.insert(0, lambda argv, answer=answer:
+                                          answer if argv[-1] == "/usr/bin/podman" else None)
+                self.host.handlers.insert(1, self.runtime_rpm)
+                self.refuses("podman package identity differs", pod.check_runtime, self.host,
+                             request_for("0" * 64))
+                del self.host.handlers[:2]
+
+    def test_request_without_runtime_nevra_names_the_missing_pins(self):
+        old = request_for("0" * 64)
+        del old["runtime_nevra"]
+        old["version"] = "homelabfs-retained9p-pod/1"  # A pre-e94 template.
+        self.refuses("request lacks runtime_nevra", pod.parse_request, json.dumps(old).encode())
+        try:
+            pod.parse_request(json.dumps(old).encode())
+        except pod.Refused as failure:
+            self.assertIn("rpm -qf", str(failure))
+
+    def test_runtime_nevra_shape(self):
+        good = request_for("0" * 64)
+        self.assertEqual(pod.parse_request(json.dumps(good).encode())["runtime_nevra"], NEVRAS)
+        bad = [("missing crun", {"podman": NEVRAS["podman"]}, "pin set must be exactly crun/podman"),
+               ("extra conmon", {**NEVRAS, "conmon": "conmon-2.2.1-2.el9_8.x86_64"}, "pin set"),
+               ("not a dict", [NEVRAS["podman"], NEVRAS["crun"]], "pin set"),
+               ("swapped", {"podman": NEVRAS["crun"], "crun": NEVRAS["podman"]}, "crun NEVRA"),
+               ("sibling package", {**NEVRAS, "podman": "podman-docker-5.8.5-3.el9_9.noarch"},
+                "podman NEVRA"),
+               ("no arch", {**NEVRAS, "crun": "crun-1.29.1-1.el9"}, "crun NEVRA"),
+               ("name only", {**NEVRAS, "crun": "crun"}, "crun NEVRA"),
+               ("placeholder", {**NEVRAS, "podman": "PHASE1_PODMAN_NEVRA"}, "podman NEVRA"),
+               ("whitespace", {**NEVRAS, "podman": NEVRAS["podman"] + "\n"}, "podman NEVRA"),
+               ("not a string", {**NEVRAS, "crun": 1}, "crun NEVRA")]
+        for label, pins, text in bad:
+            with self.subTest(label=label):
+                self.refuses(text, pod.parse_request, json.dumps({**good, "runtime_nevra": pins}).encode())
+        epoch = {**NEVRAS, "podman": "podman-2:5.8.5-3.el9_9.x86_64"}
+        self.assertEqual(pod.parse_request(json.dumps({**good, "runtime_nevra": epoch}).encode())
+                         ["runtime_nevra"], epoch)
 
     def test_request_shape(self):
         good = request_for("0" * 64)
@@ -698,6 +774,7 @@ class AdmissionTests(Sandbox):
         for label, change in [("extra key", {"seconds": 5}), ("fixture pin", {"fixture_sha256": "1" * 64}),
                               ("tag", {"m0": {"tag": "hfs1", "mount_id": 77}}),
                               ("run id", {"run_id": "R1"}),
+                              ("old version", {"version": "homelabfs-retained9p-pod/1"}),
                               ("runtime set", {"runtime_sha256": {"podman": "0" * 64}})]:
             with self.subTest(label=label):
                 with self.assertRaises(pod.Refused):
