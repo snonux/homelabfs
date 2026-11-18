@@ -103,7 +103,12 @@ QUARANTINED = {"7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b
 #   1a4), and the daemon bf86d805, which answers a guest's early DRAINED
 #   (sent while the recall still waits for a peer's INSTALLED_DRAIN) STALE,
 #   so the guest stopped its view worker and blocked the session and T1's
-#   OPEN timed out (R11-1, fixed by y94).
+#   OPEN timed out (R11-1, fixed by y94);
+# - 150deb29 (5a4, 1b0a306) has the pre-nc4 daemon e0981a0a: a retried
+#   mapped cell fenced the whole guest transport instead of reusing the base
+#   recorded for it, so both sessions' VIEW_WAITs failed -EPROTO and mount-1
+#   came back uncertain, and the fence named no reason (zq3-r12 R12-1, fixed
+#   by nc4).
 SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
@@ -114,19 +119,19 @@ SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
               "867ede3630e4ee0a609f88b0752670fac5b7a0c0e0f9d2a340031110da32c334",
               "e585206aa26dcd5724065467ebb716ced7c421db0979c25290fed8c37551b213",
               "4712e4793e67007a65b293dd62dceb16d16a2f2322705f7f0a5f81c261442cf0",
-              "3b128cc68e4a4e6c43c8411437df5b7671c003a5f9e7ae6c11700f918440a47a"}
-# The only candidate this controller pins: the xz3 5a4 rebuild for zq3-r12
-# (2026-11-18, source 1b0a306). The guest kernel was rebuilt for 1a4
-# (hfs_view_enter waits at most 30 s, then -ETIMEDOUT; final mmap faults get
-# SIGBUS; the view-worker stop log names session, phase and status) (c64
-# recipe, g64+m64+p84+x84+z84+1a4 patch series, build ID 8c1de1ed; the five
-# modules came out byte-identical) and the CGO daemon for y94 (an early
-# DRAINED is answered BLOCKED, not STALE; e0981a0a). The y64 native exporter
-# ef8f17de (564/e64/p64/w64) is a byte-identical reuse; the window artifacts
-# were rebuilt from 1b0a306. The new daemon bytes still need the f3 observer
-# check. Admission here is a dispatch precondition, never deployment
-# eligibility.
-ADMITTED = {"150deb2993cda12cc2ad6cee2f118fe0f2e334b0ddb9afaf09a8e22f27b0b88a"}
+              "3b128cc68e4a4e6c43c8411437df5b7671c003a5f9e7ae6c11700f918440a47a",
+              "150deb2993cda12cc2ad6cee2f118fe0f2e334b0ddb9afaf09a8e22f27b0b88a"}
+# The only candidate this controller pins: the xz3 xc4 rebuild for zq3-r13
+# (2026-11-18, source b7d107b). Only the CGO daemon was rebuilt, for nc4 (a
+# retried mapped cell reuses its recorded base instead of fencing the guest
+# transport; every transport fence records its reason; c959b708). The 5a4
+# guest kernel (1a4 bounded hfs_view_enter wait, c64 recipe,
+# g64+m64+p84+x84+z84+1a4 patch series, build ID 8c1de1ed) with its five
+# modules and the y64 native exporter ef8f17de (564/e64/p64/w64) are
+# byte-identical reuses; the window artifacts were rebuilt from b7d107b. The
+# new daemon bytes still need the f3 observer check. Admission here is a
+# dispatch precondition, never deployment eligibility.
+ADMITTED = {"e9c77e5bbe68f565240ef82ef3842ae713cb082e15e593036174ec4e735a1df6"}
 CASES = ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
 # Cases a plan may defer (z64). Only T5 mapped-pressure: its full 4 MiB
 # canary needs more view lifetimes (tickets, UUIDs, revisions, ack archive)
@@ -300,10 +305,11 @@ def require_candidate(manifest_hash):
         # daemon and exporter fixes, the l84 daemon's recall scope, ACK lane
         # and OBSERVE claim summary, the r84 p84 pressure hold, o84 QUERY
         # resume and q84 lease holders, the b94 x84 allocation-fence wait,
-        # z84 unmount stop and 194 exited-issuer cleanup ALLOCATE, or the 5a4
-        # 1a4 bounded view wait and y94 early-DRAINED BLOCKED answer); the
+        # z84 unmount stop and 194 exited-issuer cleanup ALLOCATE, the 5a4
+        # 1a4 bounded view wait and y94 early-DRAINED BLOCKED answer, or the
+        # xc4 nc4 retried-cell base reuse instead of a transport fence); the
         # comment at SUPERSEDED says which.
-        raise Refused("superseded xz3 candidate: use the 5a4 rebuild (d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims, r84 pressure hold/QUERY resume/lease holders, b94 fence wait/unmount stop/exited cleanup, 5a4 bounded view wait/early DRAINED)")
+        raise Refused("superseded xz3 candidate: use the xc4 rebuild (d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims, r84 pressure hold/QUERY resume/lease holders, b94 fence wait/unmount stop/exited cleanup, 5a4 bounded view wait/early DRAINED, xc4 retried-cell base without transport fence)")
     if manifest_hash not in ADMITTED:
         # Fail closed: an unknown digest is not a qualified candidate.
         raise Refused("candidate manifest is not the pinned admitted xz3 candidate")

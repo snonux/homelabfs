@@ -152,8 +152,15 @@ mount. A later unmount then waited forever. After it the guest kernel and
 the daemon were rebuilt again (`150deb29…`, daemon `e0981a0a…`): the daemon
 now tells the guest to wait instead of rejecting the early report, and the
 guest never waits more than 30 seconds for a housekeeping round. The
-patched bhyve is the same bytes as before. The new daemon must pass the f3
-self-check again.
+twelfth attempt (zq3-r12) passed the setup again, but the second mount
+failed: the daemon's link to the guest shut itself down while that mount
+was still starting, so both mounts lost their connection, and the daemon
+never logged why. After it only the daemon was rebuilt (`e9c77e5b…`, daemon
+`c959b708…`): when it repeats a step it has already recorded, it reuses
+the recorded starting point instead of shutting the link down, and every
+shutdown now records its reason. The guest kernel and the patched bhyve
+are the same bytes as before. The new daemon must pass the f3 self-check
+again.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
