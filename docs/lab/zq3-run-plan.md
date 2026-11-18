@@ -218,6 +218,18 @@ or vmm context could still exist.
   /usr/share/containers/seccomp.json; do sha256sum -- "$p"; printf '%s\t' "$p";
   rpm -qf --qf '%{NEVRA}\n' -- "$p"; done` (each NEVRA line names its path, so
   the fill never relies on line order).
+  The Rocky batch also records Rocky's clock and nightly upgrade (N1, the
+  Phase 5 nightly gate): `timedatectl` (the `Time zone:` and `System clock
+  synchronized:` lines), `systemctl list-timers --all
+  unattended-upgrade-rocky.timer`, `systemctl cat
+  unattended-upgrade-rocky.timer` and the stamp `cat
+  /var/lib/unattended-upgrade/last-daily`. The fill takes the time zone from
+  `timedatectl`, never from `date -u` output (which always prints UTC):
+  zq3-r12's fill did and wrongly assumed Rocky runs on UTC; Rocky is on
+  `Europe/Sofia`, so the 00:55 local upgrade is 22:55 UTC in winter (run-time
+  revision R1, [zq3-r12 record](results/20261118-zq3-r12/README.md#run-time-revision-r1)).
+  The gate must compute in that zone, and the stamp shows whether today's
+  local run already happened.
 - Preconditions to continue: Rocky running PID matches, all four FreeBSD VMs
   stopped, swap unused, pool ONLINE with the disk headroom above, `fusefs` and
   `fdescfs` state as recorded, `/dev/fd` is devfs, f3's route to
@@ -231,7 +243,7 @@ or vmm context could still exist.
 #### Pod request runtime pins (e94)
 
 `pod_fixture.py` hard-codes no package version (Rocky runs `dnf -y upgrade`
-nightly at 00:55; the NEVRAs once in the script went stale with EL9.9 and
+nightly at 00:55 Rocky-local, which is `Europe/Sofia`; the NEVRAs once in the script went stale with EL9.9 and
 zq3-r11 skipped T7). The fill derives both runtime pin sets of the T7 request
 template (`pod/pod-request.TEMPLATE.json`) from the Rocky facts that serve as
 the run's baseline, the `== pod-runtime` section above:

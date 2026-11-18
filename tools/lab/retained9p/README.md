@@ -477,7 +477,7 @@ them twice, both filled from the run's read-only Rocky facts: the SHA256 of
 podman, crun, conmon and `/usr/share/containers/seccomp.json`
 (`runtime_sha256`), and the exact podman and crun package NEVRAs
 (`runtime_nevra`, from `rpm -qf`). The script hard-codes no package version:
-Rocky upgrades itself nightly (`dnf -y upgrade` at 00:55), and the
+Rocky upgrades itself nightly (`dnf -y upgrade` at 00:55 Rocky-local, `Europe/Sofia`), and the
 NEVRAs once hard-coded here went stale with the EL9.9 update, so zq3-r11
 had to skip T7 (e94). Containers are rootful, use `--userns=host` (`init_user_ns`), VFS
 storage in fresh run-owned roots, and run-owned `containers.conf`,
