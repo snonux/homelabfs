@@ -1,6 +1,6 @@
 == time
-Wed Nov 18 07:31:51 UTC 2026
-1794987111
+Wed Nov 18 08:21:46 UTC 2026
+1794990106
 { sec = 1794574308, usec = 469376 } Fri Nov 13 14:51:48 2026
 == os
 15.1-RELEASE-p2
@@ -10,21 +10,21 @@ f3.lan.buetow.org
 == vms
 NAME       DATASTORE  LOADER     CPU  MEMORY  VNC             AUTO     STATE
 freebsd    default    bhyveload  4    1G      -               No       Stopped
-rocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (38959)
+rocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (92402)
 hfs-test0  hfslab     bhyveload  2    2G      -               No       Stopped
 hfs-test1  hfslab     bhyveload  2    2G      -               No       Stopped
 hfs-test2  hfslab     bhyveload  2    2G      -               No       Stopped
 rocky
-38959 Sun Nov 15 08:21:01 2026 bhyve: rocky (bhyve)
-38982 Sun Nov 15 08:21:01 2026 bhyve: system.pwd (bhyve)
-38983 Sun Nov 15 08:21:01 2026 bhyve: system.grp (bhyve)
+92402 Wed Nov 18 08:21:19 2026 bhyve: rocky (bhyve)
+92424 Wed Nov 18 08:21:19 2026 bhyve: system.pwd (bhyve)
+92426 Wed Nov 18 08:21:19 2026 bhyve: system.grp (bhyve)
 c101adf10d58d8e021faaa1c3dd98ccb7777c2b78b7931f478e71b526814c581
 == mem
 16879837184
 4096
-1265461
-1306193
-3807830960
+2533231
+75583
+3978209848
 0
 0
 /dev/ada0p3       2097152        0  2097152     0%
@@ -43,7 +43,7 @@ devfd #C:0x7100ff00 84
   interface: vm-public
 	member: tap0 flags=143<LEARNING,DISCOVER,AUTOEDGE,AUTOPTP>
 	member: re0 flags=143<LEARNING,DISCOVER,AUTOEDGE,AUTOPTP>
-re0 lo0 vm-public pflog0 vm-hfslab tap0 wg0
+re0 lo0 vm-public pflog0 vm-hfslab wg0 tap0
 == poc
 drwxrwxrwx  3 root wheel 3 Oct 25 11:23 /var/tmp/homelabfs-9p-poc/share
 == python
