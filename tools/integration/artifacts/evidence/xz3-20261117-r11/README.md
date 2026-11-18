@@ -1,5 +1,17 @@
 # xz3 b94 rebuild (2026-11-17): zq3-r10 allocation-fence, unmount-stop and exited-cleanup fixes
 
+**Superseded on 2026-11-18** by the [5a4 rebuild](../xz3-20261118-r12/README.md)
+(`150deb29…`, source `1b0a306`) for zq3-r12. Its guest kernel `c4e08f6f…`
+waits in `hfs_view_enter` without a time bound, so a recall wedged in
+WAIT_DRAINED kept m1's stat and `umount` in D state (zq3-r11 R11-2, fixed by
+1a4). Its daemon `bf86d805…` (which passed the f3 observer check in zq3-r11)
+answers an early DRAINED STALE, so the guest stopped its view worker and
+blocked the session and T1's OPEN timed out (R11-1, fixed by y94). Its
+native exporter `ef8f17de…`, the five modules and the native, notice and
+unchanged patch files are reused byte for byte. The tooling refuses this
+manifest as superseded. It still passes `package.py check` and `admit.py`
+under the current tooling.
+
 This candidate supersedes the [r84 rebuild](../xz3-20261114-r10/README.md)
 (`4712e479…`, source `cc6beed`). After zq3-r10, fixes were merged in the
 guest kernel and in the CGO daemon, so both were rebuilt (task b94, the
