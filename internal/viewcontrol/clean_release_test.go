@@ -10,8 +10,9 @@ import (
 	"github.com/snonux/homelabfs/internal/guestbridge"
 )
 
-// Complete the actual host empty-inventory protocol. Facts for each exact ACK
-// are explicit primitive fixtures, never running-kernel quiescence evidence.
+// Complete the actual host empty-inventory protocol, acknowledging in the
+// guest's real order (drainInGuestOrder). Facts for each exact ACK are
+// explicit primitive fixtures, never running-kernel quiescence evidence.
 func (r *rig) completeCleanRecall() {
 	r.t.Helper()
 	r.controller.mu.Lock()
@@ -37,12 +38,11 @@ func (r *rig) completeCleanRecall() {
 		r.ack(i, "STOPPED", r.emptyManifest())
 	}
 	r.poll(domains[0])
-	for _, i := range domains {
-		r.ack(i, "INSTALLED_DRAIN", nil)
+	manifests := make([]json.RawMessage, len(domains))
+	for k := range domains {
+		manifests[k] = r.emptyManifest()
 	}
-	for _, i := range domains {
-		r.ack(i, "DRAINED", r.emptyManifest())
-	}
+	r.drainInGuestOrder(domains, manifests)
 	for _, i := range domains {
 		r.ack(i, "INSTALLED_FINAL", nil)
 	}

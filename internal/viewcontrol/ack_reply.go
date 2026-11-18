@@ -25,7 +25,20 @@ var ErrACKBlockedTooLong = fmt.Errorf("%w: VIEW_ACK blocked beyond its bound", f
 // (patch 0004 hfs_mmap_events/hfs_mmap_drained), so an observation that never
 // arrives would otherwise livelock. 30 s matches the guest's transport
 // deadline; afterwards the ACK gets an error reply and the guest fails.
+//
+// An early DRAINED (earlyDrained) waits for its peers' INSTALLED_DRAIN, not
+// for anything of its own, so its bound runs from the latest point at which
+// a peer still owing INSTALLED_DRAIN started its own current BLOCKED wait,
+// when that is later than the DRAINED's own first BLOCKED
+// (earlyDrainedSince). A peer whose INSTALLED_DRAIN is itself BLOCKED for up
+// to the bound and then ACCEPTED therefore never times the early DRAINED out
+// first, which would fail the guest's view worker and wedge the recall as in
+// zq3-r11. A peer that sends nothing still ends the wait after the bound.
 const BlockedACKBound = 30 * time.Second
+
+// errEarlyDrained marks a DRAINED sent before the recall left INSTALL_DRAIN
+// (earlyDrained): BLOCKED like WouldBlock, but bounded from its peers' waits.
+var errEarlyDrained = fmt.Errorf("%w: DRAINED before every INSTALLED_DRAIN", fsapi.WouldBlock)
 
 // blockedACK remembers when one session's current ACK bytes were first BLOCKED.
 // It is in memory only: a refusal never changes the protected ledger, and a
@@ -44,8 +57,9 @@ type blockedACK struct {
 //     session, sequence, phase, hashes, manifest or target), or its session
 //     is already sealed.
 //   - BLOCKED: only classes that clear without changing the ACK: lock or
-//     provider contention (WouldBlock, Busy) and ErrNotObserved, bounded by
-//     BlockedACKBound.
+//     provider contention (WouldBlock, Busy), ErrNotObserved and a DRAINED
+//     sent before the recall left INSTALL_DRAIN (earlyDrained,
+//     errEarlyDrained), bounded by BlockedACKBound.
 //   - error: everything else, including recovery (the disconnect discarded
 //     learned ACKs and guest RESUME stays blocked, so it cannot clear for this
 //     session), real authorization refusals, bounds, IO and protocol
@@ -80,6 +94,8 @@ func (c *Controller) ackRefusal(scope guestbridge.Context, raw json.RawMessage, 
 	switch {
 	case errors.Is(err, fsapi.Stale):
 		return c.ackReply(scope, raw, "STALE")
+	case errors.Is(err, errEarlyDrained):
+		return c.blockedReply(scope, raw, c.earlyDrainedSince(scope))
 	case errors.Is(err, ErrNotObserved), errors.Is(err, fsapi.WouldBlock), errors.Is(err, fsapi.Busy):
 		return c.ackReply(scope, raw, "BLOCKED")
 	default:
@@ -95,6 +111,13 @@ func (c *Controller) ackReply(scope guestbridge.Context, raw json.RawMessage, st
 		delete(c.blockedACKs, scope.Session)
 		return canonical(map[string]any{"status": status})
 	}
+	return c.blockedReply(scope, raw, time.Time{})
+}
+
+// blockedReply answers BLOCKED for raw unless it stayed BLOCKED longer than
+// BlockedACKBound. The bound runs from the ACK's own first BLOCKED, or from
+// peerSince when that is later (an early DRAINED, earlyDrainedSince).
+func (c *Controller) blockedReply(scope guestbridge.Context, raw json.RawMessage, peerSince time.Time) (json.RawMessage, error) {
 	now := time.Now()
 	if c.now != nil {
 		now = c.now()
@@ -107,9 +130,35 @@ func (c *Controller) ackReply(scope guestbridge.Context, raw json.RawMessage, st
 		current = blockedACK{hash: hash(raw), since: now}
 		c.blockedACKs[scope.Session] = current
 	}
-	if now.Sub(current.since) > BlockedACKBound {
+	start := current.since
+	if peerSince.After(start) {
+		start = peerSince
+	}
+	if now.Sub(start) > BlockedACKBound {
 		delete(c.blockedACKs, scope.Session)
 		return nil, guestbridge.Final(ErrACKBlockedTooLong)
 	}
-	return canonical(map[string]any{"status": status})
+	return canonical(map[string]any{"status": "BLOCKED"})
+}
+
+// earlyDrainedSince returns the latest first-BLOCKED time of a recall peer
+// of scope that still owes its INSTALLED_DRAIN and whose current ACK is
+// BLOCKED, or the zero time if there is none. A blockedACKs entry exists
+// only while that session's latest ACK reply was BLOCKED.
+func (c *Controller) earlyDrainedSince(scope guestbridge.Context) time.Time {
+	var latest time.Time
+	r := c.state.Recall
+	if r == nil {
+		return latest
+	}
+	for session, event := range r.Events {
+		var e struct{ Sequence uint64 }
+		if session == scope.Session || json.Unmarshal(event, &e) != nil || len(r.Acks[session+"/INSTALLED_DRAIN/"+stringNumber(e.Sequence)]) != 0 {
+			continue
+		}
+		if b, ok := c.blockedACKs[session]; ok && b.since.After(latest) {
+			latest = b.since
+		}
+	}
+	return latest
 }
