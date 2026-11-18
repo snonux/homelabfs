@@ -304,6 +304,27 @@ expected):
   for the pinned bootstrap plan`); `p9-ready.py` refused the failed run and
   zq3-r10's real run directory (its control socket is zq3-r10's).
 
+## Decisions from the zq3-r11 run-sheet review round 1 (2026-11-18)
+
+- **M1, T7 skipped (`PM=skip`).** `pod_fixture.py` hard-codes the
+  pre-EL9.9 podman/crun package versions (`podman-5.8.2-8.el9_8`,
+  `crun-1.27-1.el9_7`); Rocky now has `podman-5.8.5-3.el9_9` and
+  `crun-1.29.1-1.el9`, so T7 would be refused regardless. A code change
+  plus refill could not safely finish before Rocky's 00:55 nightly upgrade,
+  so r11 runs without T7 and a follow-up task fixes the pin.
+- **S1, expectation for T1.** A slow admission does not necessarily end as
+  a clean `Deadline`: the root `open` is uninterruptible (with x84 it can
+  park up to about 60 s) and the controller's dispatch bound is 75 s, so T1
+  can still end `dispatching-uncertain` as in zq3-r10. Both outcomes are
+  findings to record; the case-failure block handles them.
+- **Nits applied:** Phase 11 step 2 now captures guest block lines right
+  before and after the unmounts (R10-2); the `<case>` placeholders became
+  `$CASE`; the r9 daemon hash in the execution notes is corrected.
+- **Kept:** Phase 1 does not recheck podman/crun/conmon (T7 does not run);
+  the run window must not include Rocky-local 00:55, since the test guest
+  boots Rocky's own disk with network (run today); /boot has about 369 MB
+  free for the first EL9.9-dracut install.
+
 ## Findings and open questions
 
 - **Q0 S1 (resolved by S1-a).** The nightly 00:55 `dnf -y upgrade` must

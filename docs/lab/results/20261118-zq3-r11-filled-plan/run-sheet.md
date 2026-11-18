@@ -287,7 +287,7 @@ Phase 11 (guard-SIGTERM branch) and Phase 12 ran cleanly; Phase 9 and the
 984 timing never ran, so no timing sample exists yet. Kept, and written into
 the lines they name:
 - **Phase 1a (D1-a)** again: zq3-r9's window left both modules loaded.
-- **Phase 4 step 1a** again: new daemon bytes (`bf86d805…`).
+- **Phase 4 step 1a** again: new daemon bytes (zq3-r9: `868dc045…`).
 - **The tool-timeout rule** and **`printf %q` for `vars.env`** (zq3-r9
   review round 1), the Phase 9-10 helpers (`p9-ready.py`, `p9-observe.py`,
   `p9-timing.py`, `p10-*.py`), the L sequence shift and OBSERVE evidence
@@ -371,7 +371,7 @@ lines they name:
   `stat-root` and `root-admitted` for each domain; a lifecycle step emits
   only `identity-checked` before `admitted-step`), each with
   `monotonic_ns`. The controller and correlator ignore them.
-  `p10-admission.py` turns `ctrl-run/<case>/stdout.log` into per-stage
+  `p10-admission.py` turns `ctrl-run/$CASE/stdout.log` into per-stage
   offsets and gaps (a slow root open or fstat shows as the gap from
   `open-root` or `stat-root` to the next event), the admission time and
   whether guest.py's `Deadline` fired. Phase 10 runs it after T4, and on
@@ -752,7 +752,16 @@ and creates `$G/m0`, `$G/m1`. zq3-r1 to zq3-r10 all got `f7f69339…` (82
 entries); a different digest is not a failure but should be explained before
 `build` (the updated podman and crun may change nothing in the image; the
 manifest digest is of the pod rootfs). `PM` feeds the pod request in Phase 8. If Paul declines A8, skip both
-pod lines and use `PM=skip` (T7 unrun). Failure: stop before Phase 5 and run
+pod lines and use `PM=skip` (T7 unrun).
+
+**zq3-r11 decision (review round 1, M1): T7 is skipped, `PM=skip`.**
+`tools/lab/retained9p/pod_fixture.py:56-57` hard-codes
+`podman-5.8.2-8.el9_8` and `crun-1.27-1.el9_7`, and `check_runtime`
+requires `rpm -qf` to match exactly; Rocky's EL9.9 update now has
+`podman-5.8.5-3.el9_9` and `crun-1.29.1-1.el9`. T7 would be refused
+whatever happens, so both pod lines above are not run, `PM=skip` is
+persisted in `vars.env`, and T7 is recorded "unrun (pod_fixture package
+pins predate the EL9.9 update; follow-up task)". Failure: stop before Phase 5 and run
 U2 (`$K remove $KP`) while Rocky still runs.
 
 ## Phase 4: f3 window, fusefs, observer key (A5, A6; B for facts/tests; about 10 min)
@@ -1488,19 +1497,19 @@ serving.
 (`probe` refused after 16.9 s; guest `Deadline`; m0 blocked by
 `DESCRIPTION_RELEASE failure on DESCRIPTION_RELEASE (-11)`). With b94 each
 case should be admitted inside guest.py's 10 s admission alarm and pass.
-Each case's `ctrl-run/<case>/stdout.log` now carries `admission-step`
+Each case's `ctrl-run/$CASE/stdout.log` now carries `admission-step`
 events; `p10-admission.py` summarises them after T4 (below). **If a case
 fails or is uncertain**, before Phase 11 run, each on its own line (the
 second shows whether R10-1's local release failure came back):
 
 ```bash
-python3 -I -B $D/sh/p10-admission.py $OUT/<case>/stdout.log | tee $E/p10-admission-<case>.json
+python3 -I -B $D/sh/p10-admission.py $OUT/$CASE/stdout.log | tee $E/p10-admission-$CASE.json   # set CASE=credentials (or the failing case) on the line before
 rocky 'dmesg | grep -E "hfs.*blocked" || echo no-hfs-block' | tee $E/t-fail-guest-block.txt
 ```
 
 and take the live owner snapshots before and after, as zq3-r10 did for T1
 (`f3 "doas -n tar -c -f - --exclude control.sock -C $R runtime/owner" >
-$E/<case>-owner-live.tar`). A `deadline_hit` with `admission_ms` null means
+$E/$CASE-owner-live.tar`). A `deadline_hit` with `admission_ms` null means
 admission took over 10 s (one syscall may now wait about 60 s: 30 s
 allocation fence plus the 30 s request window); record it as a finding,
 never retry. A `DESCRIPTION_RELEASE … (-11)` block line again is a finding
@@ -1747,11 +1756,13 @@ XP=$(jf $E/p11-guard-receipt.json exporter pid); echo "$XP"     # only when the 
 # 1. evidence tars (private; runtime-config.json is not included)
 f3 "doas -n tar -c -f - --exclude control.sock -C $R guard records runtime/owner launch" > $E/f3-evidence.tar
 f3 "doas -n tar -c -f - -C /var/tmp/hfs-fdescfs-windows zq3-r11" > $E/f3-window-evidence.tar
-# 2. guest 9p mounts: list, then unmount each listed one on its own line
+# 2. guest 9p mounts: list, then unmount each listed one on its own line (R10-2 block lines captured before and after)
+rocky 'dmesg | grep -E "hfs.*blocked" || echo no-hfs-block' | tee $E/p11-block-before-umount.txt
 rocky "grep ' 9p ' /proc/self/mountinfo; grep -c ' 9p ' /proc/self/mountinfo"
 rockyt "umount $G/m0" | tee $E/p11-umount-m0.txt; echo rc=${PIPESTATUS[0]}   # only if m0 is listed; rc=124 (timeout): record, continue
 rockyt "umount $G/m1" | tee $E/p11-umount-m1.txt; echo rc=${PIPESTATUS[0]}   # only if m1 is listed; same
 rocky "grep ' 9p ' /proc/self/mountinfo; grep -c ' 9p ' /proc/self/mountinfo"   # count 0 expected; see below if not
+rocky 'dmesg | grep -E "hfs.*blocked" || echo no-hfs-block' | tee $E/p11-block-after-umount.txt   # a new line here after a NORMAL unmount is an R10-2 finding
 # 3. observer removal (banner timeout: check authorized_keys is still $EA before the one retry)
 okpin && rocky "/usr/bin/python3.9 -I -B - remove --run-id zq3-r11 --expect-sha256 $EA" < $S/tools/lab/retained9p/observer_key.py | tee $E/p11-observer-remove.json   # restored_pre_run: true
 # 4. grub check
