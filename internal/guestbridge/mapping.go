@@ -323,32 +323,8 @@ func (t *Transport) finishMappingBase(ctx context.Context, command Command, raw 
 			t.failLocked(callerSite(0)+" base changed on retry", fsapi.Stale, command.Cell)
 			return ctx, fsapi.Stale
 		}
-	} else {
-		if len(m.Legs) != int(m.PollIndex) || len(m.Legs) >= 16 {
-			return ctx, fsapi.Stale
-		}
-		leg := MappingLeg{Index: m.PollIndex, Cell: command.Cell, CommandHash: observed.CommandHash, ResponseHash: nativeHash}
-		chain, e := mappingStep(m.MappingHash, leg)
-		if e != nil {
-			return ctx, e
-		}
-		m.Legs = append(m.Legs, leg)
-		m.MappingHash = chain
-		m.NativeBaseHash = nativeHash
-		m.GuestBaseHash = guestHash
-		fields, e := envelopeFields(raw)
-		if e != nil {
-			return ctx, e
-		}
-		m.Empty = command.Op == "VIEW_POLL" && bytes.Equal(fields["payload"], []byte(`{"event":null,"status":"EMPTY"}`))
-		// Retain the exact base until publication. Signing the receipt runs
-		// after this protection and may answer a transient WouldBlock (the
-		// view controller's TryLock in ReceiptEvidence while another lane
-		// holds it): the worker then retries the cell, and the retry must
-		// not run the operation again. A re-executed VIEW_POLL can see a
-		// newer event than the protected EMPTY base, which used to fence the
-		// whole transport here (zq3-r12 R12-1, nc4).
-		c.base = bytes.Clone(raw)
+	} else if err = recordMappingBase(c, command, observed.CommandHash, raw, nativeHash, guestHash); err != nil {
+		return ctx, err
 	}
 	if err = t.protectLocked(command.Cell); err != nil {
 		return ctx, err
@@ -358,6 +334,39 @@ func (t *Transport) finishMappingBase(ctx context.Context, command Command, raw 
 	}
 	o := MappingObservation{NativeCell: command.Cell, NativeCommandHash: observed.CommandHash, NativeResponseHash: m.NativeBaseHash, Transport: t, GuestCell: m.GuestCell, GuestCommandHash: m.GuestCommandHash, GuestResponseHash: m.GuestBaseHash, MappingHash: m.MappingHash, PollCount: m.PollIndex + 1}
 	return context.WithValue(ctx, mappingObservationKey{}, o), nil
+}
+
+// recordMappingBase appends the first-time leg of cell c's response base to
+// its mapping chain and records the base hashes; the caller protects them.
+// Every check runs before the mapping changes, so a refusal leaves it intact.
+func recordMappingBase(c *cell, command Command, commandHash string, raw []byte, nativeHash, guestHash string) error {
+	m := c.mapping
+	if len(m.Legs) != int(m.PollIndex) || len(m.Legs) >= 16 {
+		return fsapi.Stale
+	}
+	leg := MappingLeg{Index: m.PollIndex, Cell: command.Cell, CommandHash: commandHash, ResponseHash: nativeHash}
+	chain, err := mappingStep(m.MappingHash, leg)
+	if err != nil {
+		return err
+	}
+	fields, err := envelopeFields(raw)
+	if err != nil {
+		return err
+	}
+	m.Legs = append(m.Legs, leg)
+	m.MappingHash = chain
+	m.NativeBaseHash = nativeHash
+	m.GuestBaseHash = guestHash
+	m.Empty = command.Op == "VIEW_POLL" && bytes.Equal(fields["payload"], []byte(`{"event":null,"status":"EMPTY"}`))
+	// Retain the exact base until publication. Signing the receipt runs
+	// after this protection and may answer a transient WouldBlock (the view
+	// controller's TryLock in ReceiptEvidence while another lane holds it):
+	// the worker then retries the cell, and the retry must not run the
+	// operation again. A re-executed VIEW_POLL can see a newer event than the
+	// protected EMPTY base, which used to fence the whole transport in
+	// finishMappingBase (zq3-r12 R12-1, nc4).
+	c.base = bytes.Clone(raw)
+	return nil
 }
 
 // retainedBase returns a copy of the protected response base of the cell

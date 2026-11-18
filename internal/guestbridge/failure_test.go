@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/snonux/homelabfs/internal/fsapi"
 )
@@ -102,6 +103,17 @@ func TestTransportFailureRowBounds(t *testing.T) {
 	raw := mustJSON(t, record)
 	if got, err := inspectFailure(raw); err != nil || got.Site != record.Site {
 		t.Fatal("bounded record refused", err)
+	}
+	// A multi-byte rune across the limit, or invalid UTF-8, must not grow the
+	// text past the limit, or inspection would refuse the evidence row.
+	for _, text := range []string{strings.Repeat("a", transportFailureTextLimit-1) + "é", strings.Repeat("\xff", transportFailureTextLimit+8), strings.Repeat("é", transportFailureTextLimit)} {
+		record = newTransportFailure("site", errors.New(text), nil)
+		if len(record.Error) > transportFailureTextLimit || !utf8.ValidString(record.Error) {
+			t.Fatalf("error text not bounded: %d bytes %q", len(record.Error), record.Error)
+		}
+		if _, err := inspectFailure(mustJSON(t, record)); err != nil {
+			t.Fatalf("bounded record %q refused: %v", record.Error, err)
+		}
 	}
 	for _, bad := range []string{`{"Site":"","Class":"STALE","Error":"","Time":""}`, `{"Site":"s","Class":"STALE","Error":"","Time":"","Extra":1}`} {
 		if _, err := inspectFailure([]byte(bad)); err == nil {

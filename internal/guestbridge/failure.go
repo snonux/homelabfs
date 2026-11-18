@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	bolt "go.etcd.io/bbolt"
 
@@ -126,18 +127,26 @@ func callerSite(skip int) string {
 	return fmt.Sprintf("%s (%s:%d)", name, filepath.Base(file), line)
 }
 
-// boundText truncates s to limit bytes and replaces control characters, so
-// one record stays one log line.
+// boundText replaces control characters and invalid UTF-8 with '?', so one
+// record stays one log line, and then truncates at a rune boundary to at most
+// limit bytes. Sanitizing first matters: cutting first could split a rune,
+// and strings.Map would turn the fragment into a 3-byte U+FFFD, pushing the
+// text over the limit that inspectFailure enforces on the durable row.
 func boundText(s string, limit int) string {
-	if len(s) > limit {
-		s = s[:limit]
-	}
-	return strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || r == utf8.RuneError {
 			return '?'
 		}
 		return r
-	}, s)
+	}, strings.ToValidUTF8(s, "?"))
+	if len(s) <= limit {
+		return s
+	}
+	end := limit
+	for end > 0 && !utf8.RuneStart(s[end]) {
+		end--
+	}
+	return s[:end]
 }
 
 // recordFailure writes the failure row in its own transaction. It never

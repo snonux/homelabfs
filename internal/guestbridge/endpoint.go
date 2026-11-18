@@ -46,8 +46,11 @@ type cell struct {
 	// base is the exact response base whose hash finishMappingBase protected
 	// (mapping.NativeBaseHash) while the cell has no response yet. A retry of
 	// the cell reuses it instead of executing the operation again (nc4). It
-	// is in memory only: the response that replaces it at publication spends
-	// the same funded response arena, and an executing cell is never restored.
+	// is in memory only and never restored (an executing cell is not
+	// restorable). It is held in addition to the funded response arena, not
+	// charged to it: at most one base of at most BodyBytes per live cell, and
+	// it is dropped when the response is published or the cell is blocked or
+	// released.
 	base []byte
 }
 type job struct {

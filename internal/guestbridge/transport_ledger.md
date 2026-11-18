@@ -53,8 +53,10 @@ the lifecycle evidence's transport record) and a best-effort `failure` row in
 `transport.db`. The record holds the fencing code location (for a failed
 protection, the step that called it, such as `commitWrite`), the protected
 cells, the errno class, at most 256 bytes of error text and the UTC time; no
-request or response bytes. The row is written in its own transaction next to
-the last protected cut and changes neither the index nor any cell row. If the
+request or response bytes. The row is written after the fence on purpose, in
+its own bbolt commit that touches neither the index nor any cell or session
+row: the protected cut stays exactly what the last successful protection
+committed, and the row only explains why nothing followed it. If the
 ledger itself refused the commit it may refuse this row too; stderr and
 evidence still carry the reason. Inspection validates and returns the row
 (`ProtectedTransportState.Failure`, included in the digest); restoration
