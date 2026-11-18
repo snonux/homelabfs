@@ -451,7 +451,7 @@ diff --git a/fs/9p/hfs_view.h b/fs/9p/hfs_view.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.h
-@@ -0,0 +1,240 @@
+@@ -0,0 +1,246 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_VIEW_H
 +#define FS_9P_HFS_VIEW_H
@@ -512,8 +512,14 @@ new file mode 100644
 + * recall takes well under a second, so the bound only fires on a recall that
 + * is stuck. It is the same 30 s as the guest's request window and the x84
 + * allocation-fence wait (HFS_ALLOCATION_WAIT_MS in hfs.h): a waiter gets the
-+ * same bound as any other exchange of that mount, and a syscall still pays
-+ * at most one such window per wait.
++ * same bound as any other exchange of that mount.
++ *
++ * It is one of several 30 s windows a syscall can pay in sequence. A getattr
++ * can wait here (30 s), then for its observation's VIEW_ACQUIRE exchange
++ * (hfs_view_exchange, 30 s), then for another request's pending ALLOCATE
++ * (30 s) and its own request window (30 s): about 90-120 s in the worst
++ * case. read()/write() into an hfs MAP_SHARED buffer pays more, since the
++ * fault inside its observation pays another view wait and its exchanges.
 + */
 +#define HFS_VIEW_ENTER_WAIT_MS 30000U
 +
@@ -696,7 +702,7 @@ diff --git a/fs/9p/hfs_view.c b/fs/9p/hfs_view.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.c
-@@ -0,0 +1,1140 @@
+@@ -0,0 +1,1145 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Physical retained-cache admission and all-alias PTE/TLB/MMU quiescence. */
 +#include <linux/mm.h>
@@ -1007,10 +1013,15 @@ new file mode 100644
 + * the view settles, a fatal signal arrives (-ERESTARTSYS) or
 + * HFS_VIEW_ENTER_WAIT_MS has passed since entry (-ETIMEDOUT, 1a4). The
 + * deadline is fixed at entry, so wake-ups by intermediate recall phases do
-+ * not extend it. -ETIMEDOUT is a plain error for the caller: nothing was
-+ * admitted or sent, and no caller blocks the session on it (getattr,
-+ * lookup and the other observations return it to userspace, a page fault
-+ * raises SIGBUS, fork and mremap fail).
++ * not extend it. No caller blocks the session on -ETIMEDOUT: getattr,
++ * lookup and the other observations return it to userspace before sending
++ * anything, a page fault raises SIGBUS, fork and mremap fail. One caller
++ * comes after the host already committed: hfs_attr_install's initial
++ * install of a new inode from CREATE, MKDIR or SYMLINK. There the object
++ * exists on the host, but the guest neither installs nor adopts it
++ * (iget_failed sends no FORGET, the result stays retained unadopted and
++ * pins its retirement floor) and userspace gets ETIMEDOUT; that path logs
++ * a line (hfs_attr_timeout_warn).
 + */
 +int hfs_view_enter(struct hfs_view *view, const struct hfs_view_stamp *stamp,
 +		   bool wait, void **cookie)
@@ -3506,7 +3517,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,1978 @@
+@@ -0,0 +1,2002 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -3990,10 +4001,10 @@ new file mode 100644
 + * Once per session, as hfs_session_block (m64): a plain pr_warn bounded by
 + * its own once bit (HFS_REPORTED_VIEW_STOP), so a burst cannot drop the
 + * session's only explanation and two failing workers of one session log
-+ * once. The worker stop blocks the session, so it also takes
-+ * hfs_session_block's bit 0: a later block of the same session stays
-+ * silent, since this line already names the root cause. A session that
-+ * already logged a block still logs its worker stop.
++ * once. hfs_session_block's bit 0 is left alone: a later independent block
++ * of the same session (a QUERY timeout, a failed FORGET) still logs its own
++ * line, which is evidence of its own; that costs at most one extra line.
++ * A missing recall prints "-".
 + */
 +static void hfs_mmap_fail(struct hfs_mmap_control *control, int error,
 +			  const struct hfs_mmap_where *where)
@@ -4004,12 +4015,18 @@ new file mode 100644
 +	WRITE_ONCE(control->error, error);
 +	WRITE_ONCE(session->blocked, true);
 +	if (!test_and_set_bit(HFS_REPORTED_VIEW_STOP, &session->block_reported)) {
-+		set_bit(0, &session->block_reported);
-+		pr_warn("9p-hfs: session %pUb view control worker stopped, error %d, at %s (event %s, ack %s, host status %s, view phase %s, recall %pUb); later operations on this mount fail\n",
-+			&session->enrollment.session, error,
-+			hfs_mmap_or_dash(where->step), hfs_mmap_or_dash(where->event),
-+			hfs_mmap_or_dash(where->ack), hfs_mmap_or_dash(where->status),
-+			hfs_view_phase_name(READ_ONCE(view->phase)), where->recall);
++		if (where->recall)
++			pr_warn("9p-hfs: session %pUb view control worker stopped, error %d, at %s (event %s, ack %s, host status %s, view phase %s, recall %pUb); later operations on this mount fail\n",
++				&session->enrollment.session, error,
++				hfs_mmap_or_dash(where->step), hfs_mmap_or_dash(where->event),
++				hfs_mmap_or_dash(where->ack), hfs_mmap_or_dash(where->status),
++				hfs_view_phase_name(READ_ONCE(view->phase)), where->recall);
++		else
++			pr_warn("9p-hfs: session %pUb view control worker stopped, error %d, at %s (event %s, ack %s, host status %s, view phase %s, recall -); later operations on this mount fail\n",
++				&session->enrollment.session, error,
++				hfs_mmap_or_dash(where->step), hfs_mmap_or_dash(where->event),
++				hfs_mmap_or_dash(where->ack), hfs_mmap_or_dash(where->status),
++				hfs_view_phase_name(READ_ONCE(view->phase)));
 +	}
 +	/* This closes admission, not a declaration of physical STOPPED. All
 +	 * original grants/bytes/tickets and canonical evidence remain retained.
@@ -4972,16 +4989,34 @@ new file mode 100644
 +	return err;
 +}
 +
-+/* Transient refusals retry the fault. -ETIMEDOUT (a recall that did not
-+ * finish within HFS_VIEW_ENTER_WAIT_MS, 1a4) is not retried: retrying would
-+ * restore the unbounded wait, so the access gets SIGBUS (a kernel access,
-+ * e.g. read() into such a mapping, gets EFAULT), as for any other mapping
-+ * whose backing cannot be reached.
++/* No retry can succeed: the view is fenced for good (hfs_mmap_fail, a
++ * failed recall), the session is closing or blocked, or the task is dying.
++ */
++static bool hfs_mmap_fault_final(struct hfs_view *view)
++{
++	return READ_ONCE(view->phase) == HFS_VIEW_FENCED ||
++	       READ_ONCE(view->session->closing) || READ_ONCE(view->session->blocked) ||
++	       fatal_signal_pending(current);
++}
++
++/* Transient refusals retry the fault with VM_FAULT_NOPAGE. Two cases get
++ * SIGBUS instead (a kernel access, e.g. read() into such a mapping, gets
++ * EFAULT), as for any other mapping whose backing cannot be reached:
++ *
++ * - -ETIMEDOUT, a recall that did not finish within HFS_VIEW_ENTER_WAIT_MS
++ *   (1a4): retrying would restore the unbounded wait.
++ * - A final refusal (hfs_mmap_fault_final; 1a4 review, pre-existing). Before,
++ *   -ESTALE/-ERESTARTSYS were retried even then, so every fault on an
++ *   uncached page of a fenced view retried forever, and a kernel uaccess
++ *   fault (read(2) into an hfs mapping) looped unkillably: x86 checks
++ *   signals only on VM_FAULT_RETRY, not on NOPAGE.
 + */
 +static vm_fault_t hfs_mmap_fault_error(struct hfs_view *view, int err)
 +{
 +	if (err == -ENOMEM)
 +		return VM_FAULT_OOM;
++	if (hfs_mmap_fault_final(view))
++		return VM_FAULT_SIGBUS;
 +	if (err == -ENOSPC || err == -EAGAIN || err == -ESTALE ||
 +	    err == -ERESTARTSYS || err == -EINTR) {
 +		if (err == -ENOSPC)

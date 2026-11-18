@@ -1051,17 +1051,44 @@ first); the guest poweroff took about 530 s.
   it; a view that settles exactly at the deadline is still admitted. A
   fatal signal still ends the wait with `-ERESTARTSYS`. A clean recall
   takes well under a second, so the bound only fires on a stuck one.
-- **Callers.** The timeout admits and sends nothing, so every caller treats
-  it as a plain error and none blocks the session: observation begin
-  (`hfs_mmap_begin`, i.e. getattr, lookup, readdir, open, read/write and
-  the other requests through `hfs_begin`) and the initial attribute install
-  return it to userspace (readdir blocks only on EPROTO/EINVAL); a page
-  fault raises SIGBUS (`hfs_mmap_fault_error`; retrying it with
-  `VM_FAULT_NOPAGE` would restore the unbounded wait); page-less fork and
-  mremap entry (`hfs_view_page_enter`) fail the fork or the move.
+- **Callers.** No caller blocks the session on the timeout. Observation
+  begin (`hfs_mmap_begin`, i.e. getattr, lookup, readdir, open, read/write
+  and the other requests through `hfs_begin`) returns it to userspace
+  before anything is sent; a page fault raises SIGBUS
+  (`hfs_mmap_fault_error`; retrying it with `VM_FAULT_NOPAGE` would
+  restore the unbounded wait); page-less fork and mremap entry
+  (`hfs_view_page_enter`) fail the fork or the move.
+- **Committed but not adopted.** One waiting caller runs after the host
+  committed: `hfs_attr_install`'s initial install of a new inode from
+  CREATE, MKDIR or SYMLINK. On a timeout the object exists on the host but
+  the guest neither installs nor adopts it: `iget_failed` sends no FORGET,
+  `hfs_create` discards its description locally and `hfs_result_adopt`
+  never runs, so the request stays terminal and unadopted, its result is
+  retained and it pins its retirement floor; userspace gets ETIMEDOUT
+  although the object exists. The session is not blocked. That path logs
+  (ratelimited) `9p-hfs: session <uuid> MKDIR committed but its initial
+  attributes timed out behind a recall (-ETIMEDOUT); result retained
+  unadopted, retirement floor pinned`, the opcode taken from the request's
+  intent (`hfs_attr_timeout_warn`).
+- **Total syscall bound.** The view wait is one of several 30 s windows: a
+  getattr can pay the view wait, its observation's VIEW_ACQUIRE exchange
+  (`hfs_view_exchange`), x84's allocation wait and its own request window,
+  about 90-120 s in the worst case. read()/write() into an hfs `MAP_SHARED`
+  buffer pays more: the fault inside its observation pays another view wait
+  and its exchanges.
+- **Faults that cannot succeed (pre-existing, same liveness class).**
+  `hfs_mmap_fault_error` retried -ESTALE, -EAGAIN and -ERESTARTSYS with
+  `VM_FAULT_NOPAGE` even when no retry could succeed. After `hfs_mmap_fail`
+  fenced the view, every fault on an uncached page retried forever, and a
+  kernel uaccess fault (read(2) into an hfs mapping) looped unkillably
+  (x86 checks signals only on `VM_FAULT_RETRY`). It now returns SIGBUS when
+  the view is FENCED, the session closing or blocked, or a fatal signal is
+  pending (`hfs_mmap_fault_final`); transient refusals still retry.
 - **Unmount.** umount(2) enters no view (`hfs_d_revalidate` is local and the
   mount point walk calls no hfs operation); umount(8)'s stat of the mount
-  point now returns ETIMEDOUT after 30 s instead of hanging. kill_sb is
+  point now returns ETIMEDOUT after 30 s instead of hanging (not verified:
+  what util-linux umount does after such a stat; `umount -c` skips the
+  canonicalizing stat). kill_sb is
   unchanged and bounded as before (z84's settle waits at most 2 s); the
   settle now also wakes any parked entrant, which then sees `closing` and
   refuses at once instead of at its bound. Normally none is parked, since a
@@ -1081,12 +1108,12 @@ executor (`hfs_mmap_events`, `hfs_mmap_drained`; one item at a time on its
 max_active-1 queue) records the event phase it is processing, the ACK it
 sent and the host's reply status in `struct hfs_mmap_control`; "-" means
 none (an ACK that got no reply, e.g. a transport timeout, has status "-").
-Only `[A-Z_]` words are copied from host replies (`hfs_mmap_word`). The
-stop blocks the session, so it also sets `hfs_session_block`'s bit 0: a
-later block of the same session stays silent, since this line already names
-the cause; a session that already logged a block still logs the stop. The
-recall is printed for event executor failures only (other workers would
-race with its writer).
+Only `[A-Z_]` words are copied from host replies (`hfs_mmap_word`). The once
+bit is independent of `hfs_session_block`'s: a later independent block of
+the same session (a QUERY timeout, a failed FORGET) still logs its own line,
+and a session that already logged a block still logs the stop. The recall
+is printed for event executor failures only (other workers would race with
+its writer); otherwise it is "-".
 
 Tests:
 
@@ -1103,13 +1130,20 @@ Tests:
 - `view --pressure`: `hfs_mmap_fault_error(-ETIMEDOUT)` is SIGBUS (fails if
   the fault retries it); the worker-stop line for r11's case is checked
   byte for byte, with the actual `hfs_mmap_note_event`/`hfs_mmap_word`
-  filling the record, once per session, bit 0 set, a VIEW_WAIT stop without
-  a reply printing "-", and non-word host text replaced by "?". Dropping the
-  once bit or the word filter fails it.
+  filling the record, once per session, bit 0 untouched, a VIEW_WAIT stop
+  without a reply printing "-" (also for the recall), and non-word host
+  text replaced by "?". Dropping the once bit or the word filter fails it.
+  Review round 1 adds: the committed-result line names the session and
+  MKDIR from the intent and does not block the session ("?" for a non-word
+  opcode); `hfs_mmap_fault_error` returns SIGBUS for -ESTALE/-EAGAIN/
+  -ERESTARTSYS/-ENOSPC once the view is FENCED, the session closing or
+  blocked, or a fatal signal is pending (no pressure release then), and
+  still NOPAGE for a transient -ESTALE/-EAGAIN.
 - controlled_received `build.py` extracts the new helpers and struct.
 
 The series was regenerated with `export.py --task 1a4` (0003 and 0004
-change: `hfs.h`, `hfs_session.c` comment; `hfs_view.[ch]`, `hfs_mmap.c`).
+change: `hfs.h`, `hfs_session.c` comment, `hfs_inode.c`; `hfs_view.[ch]`,
+`hfs_mmap.c`); review round 1 regenerated it again.
 A fresh `prepare.py` tree applies it with fuzz zero and `fs/9p/`, `net/9p/`
 and `random.o` compile without warnings under `kernel.py configure`.
 view and view --pressure (plain and `--sanitize`), mount_hello and tag

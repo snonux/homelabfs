@@ -69,8 +69,8 @@ static void view_worker_log_checks(struct hfs_session *session)
  hfs_mmap_fail_event(&control,-ESTALE,"DRAINED");
  assert(warnings==1 && control.error==-ESTALE && session->blocked && session->view->phase==HFS_VIEW_FENCED);
  assert(!strcmp(last_warning,"9p-hfs: session abcd0000-0000-0000-0000-0000000000ef view control worker stopped, error -116, at DRAINED (event INSTALL_DRAIN, ack DRAINED, host status STALE, view phase INSTALLED_DRAIN, recall 12340000-0000-0000-0000-000000000000); later operations on this mount fail\n"));
- // Bit 0 too: a later hfs_session_block of this session stays silent.
- assert(session->block_reported==3UL);
+ // Only its own bit: a later independent hfs_session_block still logs.
+ assert(session->block_reported==2UL);
  // Once per session: another worker's stop logs nothing.
  hfs_mmap_fail(&control,-ETIMEDOUT,&(struct hfs_mmap_where){.step="VIEW_WAIT"});
  assert(warnings==1 && control.error==-ETIMEDOUT);
@@ -87,7 +87,20 @@ static void view_worker_log_checks(struct hfs_session *session)
  status[0]=0;
  hfs_mmap_fail(&control,-ETIMEDOUT,&(struct hfs_mmap_where){.step="VIEW_WAIT",.status=status});
  assert(warnings==2 && session->block_reported==3UL);
- assert(!strcmp(last_warning,"9p-hfs: session abcd0000-0000-0000-0000-0000000000ef view control worker stopped, error -110, at VIEW_WAIT (event -, ack -, host status -, view phase FENCED, recall (null)); later operations on this mount fail\n"));
+ assert(!strcmp(last_warning,"9p-hfs: session abcd0000-0000-0000-0000-0000000000ef view control worker stopped, error -110, at VIEW_WAIT (event -, ack -, host status -, view phase FENCED, recall -); later operations on this mount fail\n"));
+ // 1a4 review: a committed CREATE/MKDIR/SYMLINK whose initial attributes
+ // timed out names the session and the opcode from the request's intent,
+ // without blocking the session; a non-word opcode prints "?".
+ struct hfs_request committed={0};
+ static char mkdir_intent[]="{\"args\":{},\"opcode\":\"MKDIR\"}",odd_intent[]="{\"opcode\":\"mk\"}";
+ session->blocked=false;
+ committed.intent=(struct hfs_buf){.data=mkdir_intent,.len=sizeof(mkdir_intent)-1,.cap=sizeof(mkdir_intent)};
+ hfs_attr_timeout_warn(session,&committed);
+ assert(warnings==3 && !session->blocked);
+ assert(!strcmp(last_warning,"9p-hfs: session abcd0000-0000-0000-0000-0000000000ef MKDIR committed but its initial attributes timed out behind a recall (-ETIMEDOUT); result retained unadopted, retirement floor pinned\n"));
+ committed.intent=(struct hfs_buf){.data=odd_intent,.len=sizeof(odd_intent)-1,.cap=sizeof(odd_intent)};
+ hfs_attr_timeout_warn(session,&committed);
+ assert(warnings==4 && strstr(last_warning," ? committed "));
 }
 static void hfs_lease_get(struct hfs_lease *lease) { kref_get(&lease->refs); }
 static void hfs_lease_free(struct hfs_lease *lease) { assert(atomic_fetch_sub(&lease->refs.refcount,1)>1); }
@@ -200,6 +213,24 @@ int main(void)
  // 1a4: a fault parked behind a recall that never finishes gets SIGBUS once
  // hfs_view_enter times out; retrying it would restore the unbounded wait.
  assert(hfs_mmap_fault_error(session.view,-ETIMEDOUT)==VM_FAULT_SIGBUS);
+ // 1a4 review (pre-existing): a refusal no retry can cure gets SIGBUS, not
+ // NOPAGE. Before, a fault on a fenced view retried forever, and a kernel
+ // uaccess fault could not even be killed. A transient one still retries.
+ assert(hfs_mmap_fault_error(session.view,-ESTALE)==VM_FAULT_NOPAGE);
+ assert(hfs_mmap_fault_error(session.view,-EAGAIN)==VM_FAULT_NOPAGE);
+ test_fatal_signal=true;
+ assert(hfs_mmap_fault_error(session.view,-ERESTARTSYS)==VM_FAULT_SIGBUS);
+ assert(hfs_mmap_fault_error(session.view,-ESTALE)==VM_FAULT_SIGBUS);
+ test_fatal_signal=false;
+ session.blocked=true;assert(hfs_mmap_fault_error(session.view,-ESTALE)==VM_FAULT_SIGBUS);session.blocked=false;
+ session.closing=true;assert(hfs_mmap_fault_error(session.view,-EAGAIN)==VM_FAULT_SIGBUS);session.closing=false;
+ {
+  enum hfs_view_phase phase=session.view->phase;int before=releases;
+  session.view->phase=HFS_VIEW_FENCED;
+  assert(hfs_mmap_fault_error(session.view,-ESTALE)==VM_FAULT_SIGBUS);
+  assert(hfs_mmap_fault_error(session.view,-ENOSPC)==VM_FAULT_SIGBUS && releases==before);
+  session.view->phase=phase;
+ }
  view_worker_log_checks(&session);
  hfs_json_free(target_event);hfs_view_unregister_inode(&inode.inode);hfs_view_fence(session.view);assert(!hfs_view_free(&session));
  assert(!reservations && !module_refs);

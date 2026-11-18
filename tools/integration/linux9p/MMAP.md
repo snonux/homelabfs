@@ -192,9 +192,17 @@ allocation-fence wait) for LIVE, FENCED or a closing/blocked hfs1.4 session,
 measured from entry, and then fails with `-ETIMEDOUT` (1a4, zq3-r11 R11-2).
 Before 1a4 the wait was untimed: a recall the host never finished left every
 stat of the mount, and umount(8)'s stat of the mount point, in D state until
-the guest was powered off. The timeout admits and sends nothing, so it is a
-plain error: syscalls return it, a fault raises SIGBUS (retrying would restore
-the unbounded wait), fork and mremap fail; no caller blocks the session on it.
+the guest was powered off. No caller blocks the session on the timeout:
+syscalls return it, a fault raises SIGBUS (retrying would restore the
+unbounded wait), fork and mremap fail. Observation begin sends nothing first.
+The initial attribute install of a new inode from CREATE, MKDIR or SYMLINK
+runs after the host committed: on a timeout the object is committed but not
+adopted (result retained, retirement floor pinned, no FORGET) and userspace
+gets ETIMEDOUT; that path logs a line naming the session and opcode. A fault
+also gets SIGBUS, instead of an endless NOPAGE retry, once the view is
+FENCED, the session closing or blocked, or a fatal signal is pending.
+Together with the lease exchange, x84's allocation wait and the request
+window, one getattr can take about 90-120 s in the worst case.
 umount(2) itself enters no view (hfs_d_revalidate is local), and kill_sb's
 settle wakes any parked entrant before its own 2 s bound.
 
@@ -202,7 +210,7 @@ When the view control worker stops for good (`hfs_mmap_fail`), it logs one line
 per session naming the enrolled session UUID, the worker step (VIEW_WAIT,
 EVENT, DRAINED, DRAIN_WRITE, CLEANUP), the host event and ACK phases, the host
 reply status (only `[A-Z_]` words are copied from the host), the view phase
-and the recall. r11's line said only `error -116`; it was the host's STALE to
+and the recall ("-" when unknown). r11's line said only `error -116`; it was the host's STALE to
 an early DRAINED.
 
 ## Locks, independent lifetimes and retirement

@@ -26,7 +26,8 @@ def main():
              'fs/9p/hfs_protocol.h', 'fs/9p/hfs_protocol.c', 'fs/9p/hfs_lease.h',
              'fs/9p/hfs.h', 'mm/page-writeback.c', 'mm/folio-compat.c')
     if args.pressure:
-        names += ('fs/9p/hfs_mmap.c', 'fs/9p/hfs_lease.c', 'fs/9p/hfs_session.c')
+        names += ('fs/9p/hfs_mmap.c', 'fs/9p/hfs_lease.c', 'fs/9p/hfs_session.c',
+                  'fs/9p/hfs_inode.c')
     hashes = {}
     inputs = {}
     for name in names:
@@ -59,7 +60,7 @@ def main():
         for filename, first, last in (
                 ('fs/9p/hfs_mmap.c', 'static int hfs_mmap_invalidate_stopped(', '\n/* Independent poll,'),
                 ('fs/9p/hfs_mmap.c', 'static int hfs_mmap_pressure(', '\nstatic void hfs_mmap_pressure_work('),
-                ('fs/9p/hfs_mmap.c', 'static vm_fault_t hfs_mmap_fault_error(', '\nstatic vm_fault_t hfs_mmap_fault('),
+                ('fs/9p/hfs_mmap.c', 'static bool hfs_mmap_fault_final(', '\nstatic vm_fault_t hfs_mmap_fault('),
                 ('fs/9p/hfs_mmap.c', 'static vm_fault_t hfs_mmap_mkwrite(', '\nstatic const struct vm_operations_struct'),
                 ('fs/9p/hfs_session.c', 'int hfs_result_code(', '\nstatic int hfs_result_validate('),
                 ('fs/9p/hfs_lease.c', 'static int hfs_copy_json(', '\nstatic bool hfs_token_equal('),
@@ -78,6 +79,10 @@ def main():
                             ('struct hfs_mmap_where {', '\nstatic void hfs_mmap_drains(')):
             start = mmap.index(first)
             source.append(mmap[start:mmap.index(last, start)])
+        # 1a4 review: the committed-result timeout line of hfs_attr_install.
+        inode = inputs['fs/9p/hfs_inode.c']
+        start = inode.index('static void hfs_attr_timeout_warn(')
+        source.append(inode[start:inode.index('\nint hfs_attr_install(', start)])
     (args.output / 'production.c').write_text('\n'.join(source) + '\n')
     (args.output / 'test.c').write_bytes(b'#include \"compat.h\"\n' + ((here.parent / 'pressure' if args.pressure else here) / 'test.c').read_bytes())
     (args.output / 'compat.h').write_bytes((here / 'compat.h').read_bytes() + ((here.parent / 'pressure/compat_extra.h').read_bytes() if args.pressure else b''))

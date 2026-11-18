@@ -26,6 +26,10 @@ static void hfs_dirty_mapping_error(struct hfs_view *,struct hfs_dirty *,int);
  * of the bounded pressure hold, p84) live in view/compat.h since 1a4, which
  * also needs them for hfs_view_enter's bound.
  */
+/* A pending fatal signal for hfs_mmap_fault_final (1a4 review). */
+static bool test_fatal_signal;
+#define current NULL
+#define fatal_signal_pending(t) ((void)(t),test_fatal_signal)
 /* hfs_mmap_fail and its control struct (1a4): workqueue items are opaque. */
 struct workqueue_struct;
 struct work_struct { int unused; };
@@ -38,6 +42,10 @@ struct delayed_work { int unused; };
  */
 static char last_warning[512];
 static unsigned int warnings;
+static void pr_warn(const char *f,...);
+#define pr_warn_ratelimited pr_warn
+static inline const char *strnstr(const char *s,const char *find,size_t len)
+{ return memmem(s,len,find,strlen(find)); }
 static void pr_warn(const char *f,...)
 {
  va_list args;size_t n=0;
