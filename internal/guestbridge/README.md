@@ -232,8 +232,9 @@ daemon `9b7eed8d…` from `060dea0`), the y64 rebuild (`867ede36…`, daemon
 `34a5360b…` from `cc6beed`), the b94 rebuild (`3b128cc6…`, daemon
 `bf86d805…` from `dfdcdd9`) and the 5a4 rebuild (`150deb29…`, daemon
 `e0981a0a…` from `1b0a306`) and the xc4 rebuild (`e9c77e5b…`, daemon
-`c959b708…` from `b7d107b`) kept it, and the current xd4 rebuild
-(`3a7131dd…`) reuses that xc4 daemon, so zq3 can use the
+`c959b708…` from `b7d107b`) kept it, the xd4 rebuild (`3a7131dd…`) reused
+that xc4 daemon, and the current r15 rebuild (`ac8020aa…`, daemon
+`8668e5f0…` from `2f34b60`) keeps it, so zq3 can use the
 filter. The guest still
 blocks m0 after the dropped MKDIR reply, so T10 is still expected to FENCE;
 the difference is that m1 then shows the committed directory.

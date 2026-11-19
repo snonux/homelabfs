@@ -1,5 +1,16 @@
 # xz3 xd4 rebuild (2026-11-19): zq3-r13 guest kernel and exporter fixes
 
+**Superseded on 2026-11-19** by the [r15 rebuild](../xz3-20261119-r15/README.md)
+(`ac8020aa…`, source `2f34b60`) for zq3-r15. Its daemon `c959b708…` (which
+passed the f3 observer check in zq3-r13 and zq3-r14) treats a read-only OPEN
+as a non-read for conflicts and journals HandlePins for the volume root. So
+a guest root OPEN recalled every domain, and T1's m0 root OPEN waited about
+14 s behind three recalls (zq3-r14 R14-1, fixed by z94). Its oc4 guest
+kernel `9b167690…`, its pc4 exporter `2fd7e32f…` and every other non-daemon
+file are reused byte for byte. The tooling refuses this manifest as
+superseded. It still passes `package.py check` and `admit.py` under the
+current tooling.
+
 This candidate supersedes the [xc4 rebuild](../xz3-20261118-r13/README.md)
 (`e9c77e5b…`, source `b7d107b`). In zq3-r13 (R13-1) m0's `umount` hung in D
 after the host runtime had stopped. The exporter's endpoint check failed and

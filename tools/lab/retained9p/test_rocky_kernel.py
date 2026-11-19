@@ -36,10 +36,10 @@ def module(name):
 rk = module("rocky_kernel")
 REPOSITORY = Path(__file__).resolve().parents[3]
 PROBE = REPOSITORY / "internal/controlledruntime/probe/installed.py"
-# The admitted xz3 xd4 rebuild for zq3-r14 (manifest 3a7131dd..., 2026-11-19).
-# Its oc4 kernel was rebuilt; its rebuilt modules are byte-identical to the
-# xc4, 5a4, b94, r84 and y64 ones and to the w54 bytes of 89c928d5.
-REAL_PACKAGE = Path("/home/paul/tmp/claude/hfs-xz3-20261119-r14/package")
+# The admitted xz3 r15 rebuild for zq3-r15 (manifest ac8020aa..., 2026-11-19).
+# It reuses the xd4 oc4 kernel byte for byte; its modules are byte-identical
+# to the xc4, 5a4, b94, r84 and y64 ones and to the w54 bytes of 89c928d5.
+REAL_PACKAGE = Path("/home/paul/tmp/claude/hfs-xz3-20261119-r15/package")
 RELEASE = "6.1.190-hfs-xz3"
 STOCK = "5.14.0-687.66.1.el9_8.x86_64"
 MID = "b26c0ac534534d7fb81b3e0698558bc3"
@@ -464,13 +464,13 @@ class PlanTests(Rig):
     @unittest.skipUnless((REAL_PACKAGE / "manifest.json").exists(), "candidate package absent")
     def test_real_candidate_package_plan(self):
         """Read-only: the pinned xz3 package yields the build IDs readelf reports."""
-        sha = "3a7131ddc0bfad96762421122027d63aa5c736ace1ef61f4cb9eff14b5379f6f"
+        sha = "ac8020aa0012550d83b4ab15ffd79900a31338330513e2af7d4f5e58b910c1c6"
         with mock.patch.object(rk, "ADMITTED", {sha}):
             plan = json.loads(rk.build_plan(REAL_PACKAGE, sha, "zq3-r1",
                                             "/boot/vmlinuz-" + STOCK, 64 << 20))
         self.assertEqual(plan["kernel_release"], RELEASE)
         # The xd4 rebuild (oc4 patches 0001-0004) gave vmlinux a new build
-        # ID (5a4's 8c1de1ed, reused by xc4; b94's c4e08f6f; r84's d73c85da;
+        # ID, which the r15 daemon-only rebuild reuses (5a4's 8c1de1ed, reused by xc4; b94's c4e08f6f; r84's d73c85da;
         # y64's 870bb9d1, reused by l84; c64's was 2ce818d9, 964's a470c7a8,
         # w54's 806cfbb2); the modules are byte-identical to the xc4, 5a4,
         # b94, r84, y64, c64, 964, z54, w54, r54 and f44 packages, so

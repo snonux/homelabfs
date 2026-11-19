@@ -180,6 +180,11 @@ stopped, both mounts reported "host unavailable" and unmounted in a second,
 so the hang from the thirteenth attempt is fixed. Before the next attempt
 (zq3-r15), a plain read-only open should no longer pause every mount (task
 z94), and the test's timer should allow for the documented worst case.
+z94 is merged, and only the daemon was rebuilt for it (`ac8020aa…`, daemon
+`8668e5f0…`): opening a mount's top folder read-only no longer pauses the
+other mounts. The guest kernel and the patched bhyve are the same bytes as
+in the fourteenth attempt. The new daemon still has to pass the f3
+self-check.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a

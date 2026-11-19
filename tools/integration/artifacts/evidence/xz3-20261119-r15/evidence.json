@@ -1,0 +1,226 @@
+{
+  "candidate": {
+    "admission": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "assembled_from": "the r15 worktree at 2f34b60 (/home/paul/git/homelabfs/.claude/worktrees/agent-a22525fa898b1170d; clean: no edits before assembly, HEAD equal to main). The daemon and the window artifacts were built from this worktree, so the new daemon builder bindings name the worktree path; every other binding is a hash. The three native proof records were copied from the xd4 run root; the clean-repro proof was checked against the record packaged in 3a7131dd (the native parts are reused)",
+    "files": 194,
+    "independent_admit": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "manifest_sha256": "ac8020aa0012550d83b4ab15ffd79900a31338330513e2af7d4f5e58b910c1c6",
+    "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+    "path": "/home/paul/tmp/claude/hfs-xz3-20261119-r15/package",
+    "repository_baseline": "2f34b60b346aa597134b27ddf9ee29c266a17954",
+    "repository_changes_patch": "absent: the baseline is the build revision 2f34b60, which already contains the z94 daemon sources, the oc4 Linux inputs and the pc4 owned lib9p sources, so git diff against it is empty (3a7131dd carried 400c8749 against b7d107b)",
+    "source_checkout": "2f34b60b346aa597134b27ddf9ee29c266a17954"
+  },
+  "controls": {
+    "all_refused": true,
+    "case_names": [
+      "external operator mismatch",
+      "external repository mismatch",
+      "old negotiated features",
+      "old source revision",
+      "different packaged Linux patch",
+      "different native owned source",
+      "wrong actual bundled source with consistent container hashes",
+      "daemon ELF labelled as full exporter",
+      "native helper ELF lacks production controllers",
+      "invented stock shared9p runtime",
+      "installed success claim",
+      "missing actual Go build version",
+      "real CGO_ENABLED=0 daemon with nocgo observer stub",
+      "record claims CGO0 build",
+      "nocgo stub in recorded source closure",
+      "renamed cgo process observer symbols",
+      "foreign dynamic loader",
+      "extra recorded DT_NEEDED",
+      "missing recorded DT_NEEDED",
+      "sysroot library hash differs from recorded closure",
+      "unlinked sysroot capture",
+      "unrecorded clang resource headers",
+      "unrecorded clang shared-library closure",
+      "foreign cgo compiler wrapper",
+      "installation authority claim",
+      "false forced rebuild witness"
+    ],
+    "cases": 26,
+    "cgo0_control_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+    "original_passed_after": true,
+    "restored_passed": true
+  },
+  "daemon": {
+    "bytes": 11005736,
+    "changes": "z94 (internal/viewcontrol: a read-only CALL OPEN, access READ without create, exclusive, truncate or append, conflicts like a read, so it recalls only against EXCLUSIVE_DIRTY leases and open reservations (read_open.go, admission.go, recall_scope.go); internal/fsservice: the volume root's lifetime is pinless, so a root OPEN/RELEASE cycle journals no HandlePin and keeps the source cut (controlled.go, execute.go, types.go); zq3-r14 R14-1, zq3-r11 R11-1)",
+    "forced_builds_equal": true,
+    "gnu_build_id": "24a8935e6c91ae731659547a4bebda629fe8ce40",
+    "go_build_id": "YSMG8cXzGZBUVIAZePFJ/TEwgac4EWB8OPeyFRBG2/u7FUvC6T7i9RaRRMkB2T/AuqS81jUmilHQQSS7epp",
+    "go_mod_unchanged": true,
+    "go_sum_unchanged": true,
+    "module_cache": "private cache seeded from the xc4 cache (go.mod and go.sum unchanged since b7d107b); no dependency was downloaded",
+    "native_qualification": "not run: the exact new bytes still need --check-process-observer on f3 under the bounded host guard (the xc4 daemon c959b708 passed it in zq3-r13 and zq3-r14); this task built locally only",
+    "repository": "2f34b60b346aa597134b27ddf9ee29c266a17954",
+    "sha256": "8668e5f085e4d53126ac382dd435339e15c8b7a5085d36d953f4432d9c7eb7cf",
+    "source_closure_added_since_xc4": [
+      "github.com/snonux/homelabfs/internal/viewcontrol/read_open.go"
+    ],
+    "source_closure_changed_since_xc4": [
+      "github.com/snonux/homelabfs/internal/fsservice/controlled.go",
+      "github.com/snonux/homelabfs/internal/fsservice/execute.go",
+      "github.com/snonux/homelabfs/internal/fsservice/types.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/admission.go",
+      "github.com/snonux/homelabfs/internal/viewcontrol/recall_scope.go"
+    ],
+    "source_closure_files": 1298,
+    "source_closure_removed_since_xc4": [],
+    "steps": [
+      [
+        "prepare",
+        "0",
+        "3"
+      ],
+      [
+        "build-first",
+        "0",
+        "49"
+      ],
+      [
+        "build-second",
+        "0",
+        "36"
+      ]
+    ],
+    "superseded_daemon": "c959b708f93876a5a4c620f33e64587bc0235dc4cf994de2154eb26710c4bc9b (xc4, b7d107b; carried by e9c77e5b and 3a7131dd)",
+    "toolchain_cgo_toolchain_sysroot_runtime_closure_unchanged": true,
+    "window_build_cross_check_equal": true
+  },
+  "init_helper": {
+    "kept": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80 from e0cca0c",
+    "reason": "not in the package; cmd/homelabfs does not link internal/viewcontrol and reaches internal/fsservice only through fuseadapter (mount path); node-init and volume-init never mount, so the z94 root-pin change is not on the helper paths"
+  },
+  "kernel": {
+    "all_equal_3a7131dd": true,
+    "artifacts": {
+      "linux/Module.symvers": "53b8a659a524159fba5c8580cdda0f67dbd90142885cfd675f9bc697f6cbaf07",
+      "linux/System.map": "dd88dfcb2ab0b57a7e4f5cae9cc972460ec1be1b2f6fe8f2b255be39ccffe622",
+      "linux/abi-negative.json": "f7c4aa9efbe87a6e18eae268097b01c7cb333b1b72ceefbfa93448d6e7417da0",
+      "linux/abi.json": "637baadb55a63e34b0e29ddf1b687e55cea822df26cccadb81b0de29fc453e06",
+      "linux/build.json": "e13878952ec5e1aaa95b3068f98c6dbe5dd91392c09877397899924c9a582758",
+      "linux/bzImage": "e0daa57eaa51d727a86417c8a82b29fc1143f066ca0b806657ae61ffcccc849f",
+      "linux/clean-repro.json": "86a56912613f9524cc84f44da4b250fffdba3b68313957d55e5eedbe6bae7bf9",
+      "linux/config": "28fe4a8ec759cfa7ecfdc373753082ec6981ecdffc6a25e074b6fac048906282",
+      "linux/kernel.release": "50bb45b1af138cf586adddcde600f85e256a19336c861654e6ce76c20eb034e3",
+      "linux/modules.builtin": "1f33442939e7faf978dc707cb69f99015328b39b3125cea6d6de25715f8bebf1",
+      "linux/modules.builtin.modinfo": "c53973bb5c4498e6fc6e61d0143353782a5628374b2b00624f422ed6f2236cf2",
+      "linux/modules.order": "f820618416411197b17fe7795d067e9687d905c487bffb207589bec3c173019a",
+      "linux/modules/drivers/net/net_failover.ko": "cc9755c71cc1d0776f5efd61198b1ebe99741cff877104879b8658db469f9143",
+      "linux/modules/drivers/net/virtio_net.ko": "39de7e933fa325b2c6b576004213f34bee04085191ea94e141a6c2aeeaf7fef1",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko": "6b98068988086d3b1b5c7a1e3b71f5f0ac4378f2d907c0e3a8c50a22bcde53fa",
+      "linux/modules/fs/efivarfs/efivarfs.ko": "6dd0679c5a026189f4feef51fcdcf4d0542fbc9cba7f3e552cb8a0324e68974f",
+      "linux/modules/net/core/failover.ko": "b1aa98beb495be131c06a02775109cba97de2ecacae227c4932909166b88cf5a",
+      "linux/vmlinux": "d2690b4257f4454c7b1e81250c9c28bca7763bdb32bdb46b6ae09c35cb6c7f8c"
+    },
+    "gnu_build_id": "9b167690f6cd2f0538ecb6df06ab76121736eacb",
+    "module_build_ids": {
+      "drivers/net/net_failover.ko": "3255e434a34a125cd9251bebddaaf6bdf98c68bb",
+      "drivers/net/virtio_net.ko": "072995182e1a95b83cf3ec794649ce05adf8a59d",
+      "drivers/thermal/intel/x86_pkg_temp_thermal.ko": "da295c7cb8ec345542f4ad350ebe6b4ab30ce306",
+      "fs/efivarfs/efivarfs.ko": "c7dca1ae388661db98a1b00f73a39cc2c2d88539",
+      "net/core/failover.ko": "3b9f54841993c81600f6794137822622987c4f9d"
+    },
+    "rechecked_under_2f34b60": {
+      "abi_negative": "check_abi_mismatch.py on a copy of the reused linux/ tree without abi-negative.json refused its four controls; the record it wrote is byte-identical to the packaged linux/abi-negative.json f7c4aa9efbe87a6e18eae268097b01c7cb333b1b72ceefbfa93448d6e7417da0",
+      "admit": "assemble.py and the independent admit.py re-observed the kernel/module ABI against linux/abi.json",
+      "all_passed": true,
+      "compare_kernel": "compare_kernel.py --first <new package> --second <xd4 kernel-repro-package>: equal; the record it wrote is byte-identical to the packaged linux/clean-repro.json 86a56912613f9524cc84f44da4b250fffdba3b68313957d55e5eedbe6bae7bf9",
+      "steps": {
+        "abi-negative": 0,
+        "abi-negative-record-equals-packaged": 0,
+        "compare-kernel": 0,
+        "compare-record-equals-packaged-clean-repro": 0,
+        "linux-equals-3a7131dd": 0
+      }
+    },
+    "release": "6.1.190-hfs-xz3",
+    "reused_from": "3a7131ddc0bfad96762421122027d63aa5c736ace1ef61f4cb9eff14b5379f6f (xd4, source 942614a), byte for byte: vmlinux, bzImage, config, System.map, Module.symvers, modules.*, kernel.release, five modules, build/abi/abi-negative/clean-repro records; also the Linux source records, patches 0001-0005 with series and the Linux notices",
+    "source_tests": "not rerun: the prepared oc4 source is unchanged and xd4 ran mount_hello, tag, transport, dirty, controlled_received and view against it (see xz3-20261119-r14)",
+    "why_not_rebuilt": "git diff 942614a 2f34b60 -- tools/integration/linux9p is empty (patches, series, source.json, prepare.py, export.py and the tests unchanged); in tools/integration/artifacts only README.md and the evidence records changed"
+  },
+  "native_exporter": {
+    "exporter_sha256": "2fd7e32f5cc8762ae0ff4d5ec6c046d7d49b95c97e4b9150dd17b2ac52c39fd3",
+    "owned_sources_checked": 11,
+    "proof_records": {
+      "native-bundle-helper-transfer.json": "1f9352e688d0378d3c8705d1be98ef557a693be11f90ad86e567559ac76f07f1",
+      "native-clean-repro-evidence.json": "e0404d85dd9409768e54b69a501d33b4d8d24785e6224632b536dc1ace5c6fdd",
+      "native-final-source-and-first-seal.json": "7298253e74845177d88c69881ce8a76e17b4fde3339c90004f258d57747d6474"
+    },
+    "reused_from": "3a7131ddc0bfad96762421122027d63aa5c736ace1ef61f4cb9eff14b5379f6f (xd4, native f3 build root /var/tmp/hfs-xz3-20261119-r14-r1)",
+    "why_not_rebuilt": "git diff 942614a 2f34b60 -- tools/integration/lib9p is empty (hfs9p.c, hfs9p.h, the other owned sources and the dedicated-backend patch unchanged); stage-package.py re-hashed all packaged owned inputs against the repository; native recipes unchanged"
+  },
+  "not_claimed": [
+    "installed",
+    "booted",
+    "native acceptance",
+    "native observer qualification of these daemon bytes",
+    "VM/exporter execution",
+    "SELinux enforcing on the booted guest",
+    "normal publication",
+    "a working hfs1.4 mount on Rocky (zq3)"
+  ],
+  "reason": "3a7131dd predates z94: its daemon c959b708 treats a read-only OPEN as a non-read for conflicts and journals HandlePins for the volume root, so a guest root OPEN recalled every domain and T1's m0 root OPEN waited ~14 s behind three recalls (zq3-r14 R14-1, zq3-r11 R11-1). Kernel and native exporter are unchanged",
+  "recorded": "2026-11-19",
+  "reused": {
+    "checked_against_current_source": 30,
+    "files": 136,
+    "from_manifest": "3a7131ddc0bfad96762421122027d63aa5c736ace1ef61f4cb9eff14b5379f6f",
+    "list": "reused-files.json",
+    "previous_still_admits": "package.py check and a full admit.py of 3a7131dd pass under the 2f34b60 tooling (receipts r14-container, r14-readmit)"
+  },
+  "superseded_candidate": {
+    "manifest_sha256": "3a7131ddc0bfad96762421122027d63aa5c736ace1ef61f4cb9eff14b5379f6f",
+    "status": "refused as superseded (pre-z94 daemon c959b708: a read-only root OPEN recalled every domain, zq3-r14 R14-1)"
+  },
+  "task": "r15: xz3 daemon and window rebuild for zq3-r15 (kernel and exporter reused; xc4 method)",
+  "version": "homelabfs-xz3-evidence/2",
+  "window_artifacts": {
+    "builds_byte_identical": true,
+    "controlledruntime.test": "9d9f0f01e821bdeee101b88b3f0ef20853f339e97ddaff6bbe08984da6157319",
+    "fdescfs-namespace": "d6f2e4d0a41073cb151f0f1c312607bc386726f55dac0ca71cf584902e067cd7",
+    "helper_difference": "fdescfs-namespace.c is unchanged (e59cde41...). The helper differs from the xc4 8c43fd06 only in DWARF (the new out_dir as comp_dir); llvm-objcopy --strip-debug of both gives 07c9f5a19fb38031bfbfda438b3f659a8fdc03ecc656f8f20791d120f9364a96 (xc4: 07c9f5a19fb38031bfbfda438b3f659a8fdc03ecc656f8f20791d120f9364a96)",
+    "hfs-controlled-runtime": "8668e5f085e4d53126ac382dd435339e15c8b7a5085d36d953f4432d9c7eb7cf",
+    "invocation": "tools/lab/build-fdescfs-window-artifacts.sh /home/paul/tmp/claude/hfs-xz3-20261119-r15/window-build 2f34b60b346aa597134b27ddf9ee29c266a17954",
+    "recipe_sha256": "8afbc660335cd1b8c793a9e55da0d15c31737fa300a15d25e42ad8ba3c5ebe82",
+    "source": "2f34b60b346aa597134b27ddf9ee29c266a17954",
+    "superseded": {
+      "controlledruntime.test": "8194ebe0f95b32bfc6e19aa5c594b0091c15b1f8782b430d64cc63ff1820e91b",
+      "fdescfs-namespace": "8c43fd06c6254da1bdde9d1cec8f759e4a4bdf1827b1708165ae0f72885c5d33"
+    },
+    "test_changed_because": "z94 changed internal/viewcontrol and internal/fsservice, which internal/controlledruntime links"
+  },
+  "workstation_tools": {
+    "hfs-runtime-prep_and_signer": "cmd/hfs-runtime-prep and cmd/hfs-retained9p-operator both link internal/viewcontrol and internal/fsservice (go list -deps), whose non-test files z94 changed, so the zq3-r15 fill must rebuild both at its fill commit; they are not package content",
+    "links_fsservice": {
+      "hfs-controlled-runtime": true,
+      "hfs-retained9p-operator": true,
+      "hfs-runtime-prep": true,
+      "homelabfs": true
+    },
+    "links_viewcontrol": {
+      "hfs-controlled-runtime": true,
+      "hfs-retained9p-operator": true,
+      "hfs-runtime-prep": true,
+      "homelabfs": false
+    }
+  }
+}
