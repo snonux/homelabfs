@@ -188,7 +188,7 @@ setup and the f3 self-check with the new daemon, and the top-folder open
 now worked (in about 7 seconds instead of 14). The first test still
 failed at its next step: asking for the open folder's details returned
 "stale file handle". The daemon never saw that request. The guest kernel
-refused it itself, because the daemon had briefly paused the mount to
+refused it itself, most likely because the daemon had briefly paused the mount to
 bring its cache up to date (a routine step after each short operation)
 while the request was getting ready, and the kernel treats that as an
 error instead of simply trying again. The fix is in the guest kernel: try

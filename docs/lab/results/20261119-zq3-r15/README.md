@@ -99,7 +99,9 @@ the second try (16:34:12Z), `check --expect stock` ok, `Enforcing`,
    0.385 s, so these are approximate UTC times): `identity-checked` 99.62 s
    (about 16:31:47.4Z), `open-root` m0 100.50 s, `stat-root` m0 107.88 s,
    `failure` (`[Errno 116] Stale file handle`) 115.79 s, `terminal`
-   122.79 s. Between the `open-root` and `stat-root` markers guest.py only
+   122.79 s. The mapping is off by at least 0.25 s: it puts
+   `identity-checked` at 16:31:47.4Z, before the controller's probe start
+   (16:31:47.62Z). Between the `open-root` and `stat-root` markers guest.py only
    runs `os.open` and a local `/proc` mount check; between `stat-root` and
    the failure only `os.fstat(fd)`.
 2. **The host never received the fstat's GETATTR.** The provider ledger of
@@ -108,8 +110,9 @@ the second try (16:34:12Z), `check --expect stock` ok, `Enforcing`,
    process) they show #9 OPEN (TERMINAL OK, handle 1), #10
    DESCRIPTION_CLOSE, #11 DESCRIPTION_RELEASE and #12 PROCESS_EXIT, all
    TERMINAL OK. Claims 1-6 were the three earlier guest processes of
-   Phase 8 (GETATTR + PROCESS_EXIT each, per the `usable` claim
-   summaries; Phase 9 still showed 6 allocated); #7 and #8 are not retained (most likely the realpath
+   Phase 8 (GETATTR + PROCESS_EXIT each; the `usable` claim summaries
+   show #3-#6, #1-#2 were already retired; Phase 9 still showed 6
+   allocated). #7 and #8 are not retained (most likely the realpath
    `lstat` GETATTR and the open's permission refresh). The guest numbers a
    claim only when it admits a CALL (`hfs_call_number_locked`, patch 0003)
    and never reuses a number, so with #9 OPEN followed directly by #10
@@ -133,7 +136,10 @@ the second try (16:34:12Z), `check --expect stock` ok, `Enforcing`,
 ### Where the ESTALE came from (inference from the code)
 
 - `hfs_getattr` (patch 0003) first runs `hfs_begin(…, mutation=false)`.
-  Under the controlled provider that is `hfs_mmap_begin` (patch 0004): wait
+  That calls the provider's enter first (patch 0005
+  `hfs_controlled_enter`); its errors are immediate checks (capability,
+  scope, credit, blocked/closing session), so they cannot account for the
+  7.91 s and are ruled out. Then comes `hfs_mmap_begin` (patch 0004): wait
   for a LIVE view, capture the view stamp (generation, revision) and the
   installed target, take a DOMAIN READ observation lease with
   `VIEW_ACQUIRE` (`expected_target` = that target), and then **re-check
@@ -211,17 +217,22 @@ host; both mounts unmounted in 1 s. Most likely just shutdown ordering
 
 1. **Guest kernel, patch 0004 `hfs_mmap_begin`** (oc4 follow-up, needs a
    kernel rebuild): when the re-check after `hfs_lease_acquire` fails only
-   because the view moved on (a recall completed: revision, generation or
-   target hash changed, or the phase is not LIVE), release the just-granted
-   lease through the existing cleanup path and retry the observation from
-   `hfs_view_enter`, bounded by the existing `HFS_VIEW_ENTER_WAIT_MS` (30 s)
-   deadline, then `-ETIMEDOUT`. Keep `-ESTALE` for a FENCED view or a
+   because the view moved on (a recall completed), do not release the lease
+   when the view is LIVE and the granted lease's `target_hash` equals the
+   view's: re-capture the stamp under the held lease and keep the
+   observation. Release the lease and retry from `hfs_view_enter` only when
+   the target differs, bounded by the existing `HFS_VIEW_ENTER_WAIT_MS`
+   (30 s) deadline, then `-ETIMEDOUT`. Releasing a clean READ lease itself
+   starts a scoped recall, so release-and-retry on every mismatch could
+   loop on its own recalls until `-ETIMEDOUT`. Keep `-ESTALE` for a FENCED view or a
    closing or blocked session. Apply the same rule to `hfs_attr_install`'s
    stamp check for a cache observation (GETATTR, LOOKUP and the others):
    retry the observation instead of returning `-ESTALE`. A recall is
    routine, so no syscall may fail because one completed under it. Add a
    view test (`tools/integration/linux9p/tests/view`) in which a recall
-   completes while `VIEW_ACQUIRE` is PENDING.
+   completes while `VIEW_ACQUIRE` is PENDING, including the self-recall
+   loop (a lease release that recalls its own domain must not make the
+   retried observation fail again).
 2. **Fewer recalls (performance, host):** every short-lived guest operation
    ends with a scoped release recall of about 7 s. Either the guest keeps
    its DOMAIN READ lease across a process's consecutive operations
