@@ -470,7 +470,8 @@ class PlanTests(Rig):
                                             "/boot/vmlinuz-" + STOCK, 64 << 20))
         self.assertEqual(plan["kernel_release"], RELEASE)
         # The xd4 rebuild (oc4 patches 0001-0004) gave vmlinux a new build
-        # ID, which the r15 daemon-only rebuild reuses (5a4's 8c1de1ed, reused by xc4; b94's c4e08f6f; r84's d73c85da;
+        # ID (9b167690, reused by the r15 daemon-only rebuild; before it
+        # 5a4's 8c1de1ed, reused by xc4; b94's c4e08f6f; r84's d73c85da;
         # y64's 870bb9d1, reused by l84; c64's was 2ce818d9, 964's a470c7a8,
         # w54's 806cfbb2); the modules are byte-identical to the xc4, 5a4,
         # b94, r84, y64, c64, 964, z54, w54, r54 and f44 packages, so
