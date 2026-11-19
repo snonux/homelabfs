@@ -88,6 +88,13 @@ ADMISSION_SECONDS = 150
 SECONDS_AFTER_ADMISSION = 30
 REQUEST_SECONDS_MIN = ADMISSION_SECONDS + SECONDS_AFTER_ADMISSION  # 180
 REQUEST_SECONDS_MAX = 240
+# A credential/namespace child (Probe.child) runs hfs syscalls (access, create,
+# unlink) as another UID, so its own alarm is one worst-case syscall plus
+# margin too, never the old 8 s. It is capped by what is left of the request
+# deadline minus CHILD_RESERVE (the parent's reply wait, reap and terminal), so
+# child alarm < parent reply wait (child + 1 s) < request deadline < dispatch.
+CHILD_SECONDS = ADMISSION_SECONDS
+CHILD_RESERVE = 5
 RECORD_LIMIT = 65536
 REQUEST_LIMIT = 16384
 REPLY_LIMIT = 65536
@@ -412,8 +419,11 @@ def checked(condition, message):
 
 
 class Probe:
-    def __init__(self, request, roots):
+    def __init__(self, request, roots, ends=None):
+        """ends: monotonic end of the request deadline (limit's return value);
+        local tests that build a Probe directly get now + the request seconds."""
         self.request, self.roots = request, roots
+        self.ends = ends if ends is not None else time.monotonic() + request["seconds"]
         self.sequence = 0
         self.writes = 0
         self.children = set()
@@ -459,14 +469,28 @@ class Probe:
         with self.open_leaf() as fd:
             yield fd, leaf
 
+    def child_seconds(self):
+        """The child's alarm: CHILD_SECONDS, capped by the request's time left.
+
+        The cap only bites after a slow admission or slow earlier children; the
+        parent's own request alarm would end the case at that point anyway, so
+        the child must end (or be left uncertain) first. No time left raises
+        Deadline before any fork: the request ran out, nothing was refused.
+        """
+        left = math.floor(self.ends - time.monotonic()) - CHILD_RESERVE
+        if left < 1:
+            raise Deadline("request deadline leaves no time for a child")
+        return min(CHILD_SECONDS, left)
+
     def child(self, action, uid=None, gid=None, groups=None):
+        seconds = self.child_seconds()
         # Unmasked on purpose: a local pipe, not an hfs fd (see ALARM).
         receive, send = os.pipe2(os.O_CLOEXEC)
         pid = os.fork()
         if pid == 0:
             os.close(receive)
             try:
-                signal.alarm(8)
+                signal.alarm(seconds)
                 if groups is not None:
                     os.setgroups(groups)
                     os.setgid(gid)
@@ -487,7 +511,9 @@ class Probe:
         self.children.add(pid)
         try:
             chunks, total = [], 0
-            deadline = time.monotonic() + 9
+            # One second past the child's alarm, so a child whose syscall
+            # returned at its deadline still reports its Deadline here.
+            deadline = time.monotonic() + seconds + 1
             while True:
                 remaining = deadline - time.monotonic()
                 checked(remaining > 0 and select.select([receive], [], [], remaining)[0],
@@ -1017,8 +1043,8 @@ STEP_ACTIONS = {"lost-reply-call": lost_reply_call, "lost-reply-reread": lost_re
 def run_step(request, started):
     """Step admission, then the step; its observation leaves through stdout."""
     mounts = admit_step(request)
-    limit(request, started)
-    p = Probe(request, [])  # Steps fork no children; p.children stays empty.
+    ends = limit(request, started)
+    p = Probe(request, [], ends)  # Steps fork no children; p.children stays empty.
     observation = STEP_ACTIONS[request["step"]](p, mounts)
     emit("step-observed", step=request["step"], observation=observation,
          acceptance=False, publication=None)
@@ -1032,18 +1058,19 @@ def limit(request, started):
     the request ends at started + seconds however long admission took. At least
     one second is armed: admit_identity's bound keeps the deadline at least
     SECONDS_AFTER_ADMISSION past the admission alarm, so this floor only
-    matters if the clock and the alarm disagree by rounding.
+    matters if the clock and the alarm disagree by rounding. Returns that
+    deadline's monotonic end, which caps every Probe.child alarm.
     """
-    left = request["seconds"] - (time.monotonic() - started)
-    signal.alarm(max(1, math.ceil(left)))
+    ends = started + request["seconds"]
+    signal.alarm(max(1, math.ceil(ends - time.monotonic())))
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
+    return ends
 
 
 def run_case(request, roots, started):
     """Case or release after full admission; a case retains its payload."""
-    limit(request, started)
-    p = Probe(request, roots)
+    p = Probe(request, roots, limit(request, started))
     if request_kind(request) == "release":
         Retention(p).release()
     else:

@@ -18,6 +18,7 @@ import shutil
 import signal
 import sys
 import tempfile
+import time
 import types
 import unittest
 from unittest import mock
@@ -265,6 +266,32 @@ class DeadlineBoundTests(unittest.TestCase):
             request = dict(case_request(), seconds=seconds)
             with self.subTest(seconds=seconds), self.assertRaisesRegex(guest.Refused, "case deadline bound"):
                 guest.admit_identity(request)
+
+    def test_child_alarm_covers_one_worst_case_syscall(self):
+        """be4: the credential child's alarm was 8 s; it runs hfs syscalls in T1."""
+        self.assertGreaterEqual(guest.CHILD_SECONDS, guest.ADMISSION_SECONDS)
+        # A maximal request deadline holds one full child, its 1 s reply slack
+        # and the parent's reserve.
+        self.assertLessEqual(guest.CHILD_SECONDS + 1 + guest.CHILD_RESERVE,
+                             guest.REQUEST_SECONDS_MAX)
+        now = 1000.0
+        with mock.patch.object(guest.time, "monotonic", return_value=now):
+            self.assertEqual(guest.Probe(case_request(), [], now + 240).child_seconds(),
+                             guest.CHILD_SECONDS)
+            # Capped by the request's time left minus the parent's reserve.
+            self.assertEqual(guest.Probe(case_request(), [], now + 100.7).child_seconds(),
+                             100 - guest.CHILD_RESERVE)
+            with self.assertRaises(guest.Deadline):
+                guest.Probe(case_request(), [], now + guest.CHILD_RESERVE + 0.5).child_seconds()
+
+    def test_child_arms_its_alarm_and_parent_waits_past_it(self):
+        """A real fork: the child reports the alarm it armed (signal.alarm(0))."""
+        probe = guest.Probe(case_request(), [], time.monotonic() + 240)
+        with contextlib.redirect_stdout(io.StringIO()):
+            result, status = probe.child(lambda: signal.alarm(0))
+        self.assertEqual(status, 0)
+        self.assertIn(result["result"], {guest.CHILD_SECONDS, guest.CHILD_SECONDS - 1})
+        self.assertEqual(probe.children, set())
 
     def test_main_arms_the_admission_alarm_first(self):
         armed = []

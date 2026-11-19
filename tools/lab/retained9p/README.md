@@ -134,7 +134,8 @@ admission alone has at most 150 seconds (be4: one hfs syscall can wait about
 90-120 s, and zq3-r14's root OPEN took about 14 s behind three recalls, past
 the old 10 s admission alarm). Each case also has at most 256 recorded
 operations, 12MiB issued writes, 128 descriptors and one concurrently active
-credential child.
+credential child, whose alarm is 150 s capped by the request's time left
+minus 5 s (it runs hfs syscalls as another UID; the parent waits 1 s longer).
 The full mapped case dirties all4MiB; SIGBUS is a failure.
 
 The guest terminal record always says `acceptance:false` and requires host

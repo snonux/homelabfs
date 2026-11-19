@@ -154,6 +154,7 @@ now hold this order, each with margin:
 | Admission alarm (stdin read + admission, from guest start) | 10 s | 150 s (one worst-case syscall + 30 s) | `guest.py` `ADMISSION_SECONDS` |
 | Request deadline (whole request, from guest start; was a fresh case alarm after admission) | 1-60 s | 180-240 s (admission alarm + at least 30 s) | `guest.py`/`controller.py` `REQUEST_SECONDS_MIN/MAX` |
 | Lifecycle step deadline | 30 s | 180 s | `controller.py` `STEP_SECONDS` |
+| Credential/namespace child alarm (parent waits + 1 s) | 8 s | 150 s, capped by the request's time left minus 5 s | `guest.py` `CHILD_SECONDS` |
 | SSH dispatch bound | request + 15 = 75 s (steps 45 s) | request + 15 = 195-255 s (steps 195 s) | `controller.py` `dispatch_seconds` |
 | Plan `seconds` (dispatch cap) | 60-600 | 255-600, so it never cuts below a guest deadline | `controller.py` `PLAN_SECONDS_MIN` |
 
@@ -162,11 +163,13 @@ Unchanged on purpose: T7's `pod_fixture.py` bounds (`RUN_SECONDS` 120,
 `controller.py`, and stay inside T7's 420 s budget; a workload syscall that
 waits behind recalls past them is a T7 finding, as before. `rockyt`'s 270 s
 already covers one worst-case getattr plus the unmount's 30 s view wait.
-Still short and not changed by be4: the credential/namespace child's own alarm
-in `guest.py` (8 s, parent wait 9 s) covers hfs syscalls (access, create,
-unlink) run as another UID, so a child that waits behind recalls ends as a
-case failure; T1 runs up to six such children, so raising it means sizing
-them against the 240 s request deadline (a follow-up, not this change).
+The credential/namespace child in `guest.py` runs hfs syscalls (access,
+create, unlink) as another UID, six times in T1, so its alarm moved from 8 s
+(parent wait 9 s) to `CHILD_SECONDS` 150 s, capped by what is left of the
+request deadline minus a 5 s reserve; the parent waits one second past the
+child's alarm. Order: child alarm < parent wait < request deadline <
+dispatch. The six children share the request's 240 s, so several slow ones end
+the case at its deadline, as any slow case syscall does.
 
 **What the next fill must do.** `guest.py` and `controller.py` changed, so
 the fill re-pins both (`probe_sha256`, helper pins); no committed test pins
