@@ -775,7 +775,7 @@ rocky() { /usr/bin/ssh $O $RKKH -oProxyCommand="/usr/bin/ssh $O $F3KH -W 10.20.0
 okpin() { …observer_key.py cd7f38c2… check… }   # before every stdin invocation of observer_key.py
 rockyt(){ …rocky with a local `timeout 270` around the real ssh, </dev/null; exit 124 = bound expired (read it with `; echo rc=${PIPESTATUS[0]}`)… }
 hpin()  { …sha256sum -c of bin/sign_watch.py (55fbcc15…), the signer bin/hfs-retained9p-operator (5e284fda…, rebuilt at c0e8ea2) and the sixteen sh/* helpers… }
-rockywait() { …Phase 12/U3: `rocky true` every 10 s until it answers, at most TRIES (default 36) tries; run it in this shell, never inside bash -c… }
+rockywait() { …Phase 12/U3: `rocky true` every 10 s until it answers, at most TRIES (default 36) tries; run it in bash that sourced session.sh (the bash-only wrapper is fine), never in a bare bash -c that did not source it… }
 K='/usr/bin/python3.9 -I -B /root/hfs-zq3-zq3-r14-kernel-stage/rocky_kernel.py'
 KP='--plan /root/hfs-zq3-zq3-r14-kernel-stage/rocky-kernel-plan.json --plan-sha256 39e9b962d69fcf9294c0cb901618e56fe03b0255440e16d993c05600d44a07b6 --state /root/hfs-zq3-zq3-r14-kernel-state'
 NG="doas -n /usr/local/bin/python3.12 -B /var/tmp/hfs-20261119-zq3r14-fdq/native-test-guard.py --root /var/tmp/hfs-20261119-zq3r14-fdq --local-reserved-bytes 4294967296 --profile host --rocky-pid 46923 --rocky-birth 'Thu Nov 19 08:24:51 2026' --rocky-config-sha256 c101adf10d58d8e021faaa1c3dd98ccb7777c2b78b7931f478e71b526814c581 --max-seconds 60"
@@ -2458,7 +2458,7 @@ leftover mount first (zq3-r2's cause was the skipped step 8).
 ```bash
 f3 'ls -ld /var/tmp/homelabfs-9p-poc/share'           # R6: vm-bhyve's normal start needs it
 $S/tools/lab/vms.sh --approved-action start-rocky    # only after Phase 11 verified next_entry empty and the child gone
-rockywait 36                                         # in THIS shell, never inside bash -c; tool timeout >= 900 s (up to about 720 s); prints rocky-ssh-up try N HH:MM:SSZ
+rockywait 36                                         # in bash that sourced session.sh (the wrapper is fine), never a bare bash -c; tool timeout >= 900 s (up to about 720 s); prints rocky-ssh-up try N HH:MM:SSZ
 rocky "$K check --expect stock $KP; getenforce; sha256sum /root/.ssh/authorized_keys; free -m"   # authorized_keys must be e08542dc…
 rocky 'ls -l /.autorelabel 2>&1; cat /proc/sys/kernel/random/boot_id; journalctl --list-boots --no-pager | tail -n 4' | tee $E/p12-relabel.txt
 f3 'doas -n tail -n 30 /zroot/bhyve/rocky/vm-bhyve.log' > $E/p12-vm-bhyve-log.txt
@@ -2523,7 +2523,7 @@ them), so a later run in the same f3 boot meets D1 again.
 - **U3** (Rocky stopped with `next_entry` set, no candidate child or
   `/dev/vmm/hfs-zq3-r14`): `$S/tools/lab/vms.sh --approved-action start-rocky`
   (test kernel boots once under the normal config); wait for pinned SSH
-  with `rockywait 36` in this shell (never inside `bash -c`; tool timeout
+  with `rockywait 36` in bash that sourced `session.sh` (the wrapper is fine; never a bare `bash -c`; tool timeout
   at least 900 s; once more on a timeout); `rocky "$K check --expect test $KP"`; `rocky "$K
   reboot-to-stock $KP"`; then `rocky "$K check --expect stock $KP"`, U2 and
   the Phase 12 checks. zq3-r1 exercised U3 end to end (16 s to SSH). If the
@@ -2563,3 +2563,5 @@ time, as in zq3-r13. The lines new or changed for zq3-r14:
 - <UTC> Phase 11 step 2 (R13-1 check): umount m0 rc .. seconds .., umount m1 rc .. seconds ..; mountinfo after ..; poweroff to child-gone .. s.
 - <UTC> Phase 12: start-rocky ..; rockywait: rocky-ssh-up try .. at ..Z (in the session shell); vm-bhyve runs ..; relabel none|..
 ```
+
+**Review round 1 (2026-11-19):** no blocking findings. Applied: the `rockywait` wording now matches the bash-only wrapper rule (three places). Recorded, not changed: `guard-budget.py`'s `--now` without a `Z` is read as local time (the run never passes `--now`); the 5-minute READY-to-Phase-9 rule is reported as `late_after_ready` and lateness is a finding, while the budget alone decides GO/STOP.
