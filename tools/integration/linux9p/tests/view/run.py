@@ -79,7 +79,14 @@ def main():
                             ('struct hfs_mmap_where {', '\nstatic void hfs_mmap_drains(')):
             start = mmap.index(first)
             source.append(mmap[start:mmap.index(last, start)])
-        # 1a4 review: the committed-result timeout line of hfs_attr_install.
+        # ie4: hfs_mmap_begin with its re-check retry, hfs_mmap_end and the
+        # cleanup packet they queue (the worker itself is a fixture).
+        start = mmap.index('struct hfs_cache_cleanup {')
+        source.append(mmap[start:mmap.index('\nstatic void hfs_mmap_cleanup(', start)])
+        source.append(mmap[mmap.index('static void hfs_mmap_recheck_note('):])
+        # 1a4 review: the committed-result timeout line of hfs_attr_install,
+        # and since ie4 hfs_attr_restamp, which sits between it and
+        # hfs_attr_install.
         inode = inputs['fs/9p/hfs_inode.c']
         start = inode.index('static void hfs_attr_timeout_warn(')
         source.append(inode[start:inode.index('\nint hfs_attr_install(', start)])

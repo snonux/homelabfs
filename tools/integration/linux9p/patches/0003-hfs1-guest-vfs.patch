@@ -107,7 +107,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,482 @@
+@@ -0,0 +1,484 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -305,6 +305,8 @@ new file mode 100644
 +	bool view_stamped;
 +	bool cache_observation;
 +	struct hfs_view_stamp view_stamp;
++	/* The view's target hash taken with view_stamp (ie4, hfs_attr_restamp). */
++	u8 view_target[32];
 +	struct hfs_view_ticket *earmark_ticket;
 +	struct hfs_buf earmark_number;
 +	struct hfs_buf drain_payload;
@@ -594,7 +596,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,3598 @@
+@@ -0,0 +1,3599 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -2800,7 +2802,8 @@ new file mode 100644
 +		struct hfs_view *view = hfs_view_get(session);
 +
 +		if (view) {
-+			err = hfs_view_snapshot(view, &request->view_stamp);
++			err = hfs_view_snapshot_target(view, &request->view_stamp,
++						       request->view_target);
 +			hfs_view_put(view);
 +			if (err)
 +				return err;
@@ -4197,7 +4200,7 @@ diff --git a/fs/9p/hfs_inode.c b/fs/9p/hfs_inode.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_inode.c
-@@ -0,0 +1,1042 @@
+@@ -0,0 +1,1085 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Authoritative retained-9p attributes and namespace VFS operations. */
 +#include <linux/magic.h>
@@ -4248,6 +4251,47 @@ new file mode 100644
 +			    &session->enrollment.session, opcode);
 +}
 +
++/* ie4 (zq3-r15 R15-1): a cache observation's stamp no longer admits it, but
++ * the view is not refused (the caller's stamped entry returned -ESTALE for a
++ * moved revision or -EAGAIN for a recall in progress). Wait for a LIVE view
++ * (HFS_VIEW_ENTER_WAIT_MS) and keep the observation if the view's target is
++ * still the one the request was stamped at: the recall reinstalled the same
++ * cut, so the attributes are as current as before it. If the target moved,
++ * the attributes may predate a change in the new cut; they are not
++ * installed and the syscall still gets -ESTALE; re-issuing that request is
++ * left to the caller's retry of the whole syscall. A refused view (FENCED,
++ * closing or blocked hfs1.4 session) is -ESTALE at once, without a line;
++ * every other failed stamp check logs one rate-limited line.
++ */
++static int hfs_attr_restamp(struct hfs_session *session, struct hfs_view *view,
++			    const struct hfs_request *request, void **cookie)
++{
++	unsigned long flags;
++	bool same;
++	int err;
++
++	if (hfs_view_refused(view))
++		return -ESTALE;
++	err = hfs_view_enter(view, NULL, true, cookie);
++	if (err) {
++		pr_warn_ratelimited("9p-hfs: session %pUb attribute re-check failed and the view did not settle (%d)\n",
++				    &session->enrollment.session, err);
++		return err;
++	}
++	spin_lock_irqsave(&view->lock, flags);
++	same = !memcmp(view->target_hash, request->view_target, 32);
++	spin_unlock_irqrestore(&view->lock, flags);
++	pr_info_ratelimited("9p-hfs: session %pUb attribute re-check failed (%s); %s\n",
++			    &session->enrollment.session,
++			    same ? "recall completed at the same target" : "target moved",
++			    same ? "re-stamped" : "not installed (-ESTALE)");
++	if (same)
++		return 0;
++	hfs_view_leave(*cookie);
++	*cookie = NULL;
++	return -ESTALE;
++}
++
 +int hfs_attr_install(struct inode *inode, const struct hfs_json *json, int token)
 +{
 +	struct hfs_attr attr;
@@ -4266,7 +4310,8 @@ new file mode 100644
 +		view = hfs_view_get(session);
 +		if (!view)
 +			return -ESTALE;
-+		if (request && request->view_stamped && !(inode->i_state & I_NEW)) {
++		if (request && request->view_stamped &&
++		    (request->cache_observation || !(inode->i_state & I_NEW))) {
 +			err = hfs_view_enter(view, &request->view_stamp, false, &cookie);
 +			if (err && !request->cache_observation) {
 +				/* A mutation's immutable result remains its result; never
@@ -4275,8 +4320,9 @@ new file mode 100644
 +				hfs_view_put(view);
 +				return 0;
 +			}
-+		} else if (request && request->view_stamped && request->cache_observation) {
-+			err = hfs_view_enter(view, &request->view_stamp, false, &cookie);
++			/* ie4: a recall under a cache observation is routine. */
++			if (err == -ESTALE || err == -EAGAIN)
++				err = hfs_attr_restamp(session, view, request, &cookie);
 +		} else {
 +			/* Initial immutable identity/creation attributes come from the
 +			 * actual protected result. Subsequent observations revalidate.

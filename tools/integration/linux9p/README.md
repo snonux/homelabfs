@@ -1287,3 +1287,83 @@ transport, policy, cursor, tag, mount_hello, view and view --pressure
 (`--sanitize`), requests, huge, dirty and controlled_received `terminal-smoke`,
 `cleanup` and `exit-cleanup` pass. codec (`test.c:366`), capture, root and
 reclaim fail as before (s54). No candidate was rebuilt or admitted.
+
+## Observation re-check retry (`ie4`)
+
+zq3-r15 R15-1: T1's `os.fstat` of the m0 root failed with `ESTALE` before
+its GETATTR was numbered. `hfs_mmap_begin` (patch 0004) captured the view
+stamp, took its DOMAIN READ lease with VIEW_ACQUIRE (PENDING while a recall
+ran, most likely the scoped recall started by the open's own lease release),
+and then re-checked the stamp. The recall had reinstalled the same cut, so
+the host granted the lease at the expected target, but the view revision
+had moved and the re-check returned `-ESTALE` without a log line.
+
+Patch 0004, `hfs_mmap_begin`, now split into `hfs_mmap_observation_new`,
+`hfs_mmap_observe`, `hfs_mmap_publish` and `hfs_mmap_retry_allowed`:
+
+- **Same target:** a view that is LIVE again with the granted lease's target
+  keeps the lease and the observation takes the view's current stamp
+  (re-stamp). Releasing and acquiring again would loop: the release of a
+  clean READ lease starts a scoped recall of its own domain (task 784), whose
+  end fails the next attempt's re-check the same way, until `-ETIMEDOUT`.
+- **Recall still running** (not LIVE): wait for it (`hfs_view_enter_until`)
+  and check again, keeping the lease. Without a lease (a mutation) a moved
+  stamp captures the view again.
+- **Other target:** release and acquire again. The stale lease's cleanup
+  packet is queued only after the retry's own acquisition, so while the new
+  DOMAIN READ lease is held the old release is not the last holder and starts
+  no recall. Every packet is queued exactly once, so nothing leaks and
+  nothing is released twice. A held lease is never published, so recall
+  ACKs neither wait for nor revoke it.
+- **Refused:** a FENCED view or a closing or blocked hfs1.4 session
+  (`hfs_view_refused`, now shared with `hfs_view_try_enter_locked`) keeps
+  `-ESTALE`. A retry also stops on `transport_failed` (oc4; `-ESTALE`) or a
+  fatal signal (`-EINTR`).
+- **Bound:** the retries share one `HFS_VIEW_ENTER_WAIT_MS` (30 s) deadline
+  from the call's start (`hfs_view_enter_until` takes it; 1a4's
+  `hfs_view_enter` is now its wrapper). Exhaustion is `-ETIMEDOUT`.
+- **Logs:** each failed re-check logs a rate-limited `pr_info` line
+  (`observation re-check failed (<reason>); <action>`), and exhaustion a
+  rate-limited `pr_warn` (`observation retries exhausted after <n> failed
+  re-checks (-ETIMEDOUT)`).
+
+Patch 0003, `hfs_attr_install`: a cache observation (GETATTR, LOOKUP,
+READDIR, READLINK, STATFS) whose request stamp no longer admits it, on a view
+that is not refused, waits for a LIVE view (`hfs_attr_restamp`, 30 s) and
+installs if the view still has the target the request was stamped at
+(`hfs_request.view_target`, taken by `hfs_view_snapshot_target` in
+`hfs_call_prepare`). A moved target still returns `-ESTALE` without
+installing; re-issuing that request is not done here. Both cases log a
+rate-limited line.
+
+Tests (`view --pressure`, which now extracts `hfs_mmap_begin` through
+`hfs_mmap_end`, `struct hfs_cache_cleanup` and `hfs_attr_restamp`; the
+acquisition and cleanup worker are fixtures):
+
+- a whole recall at the same target completes while VIEW_ACQUIRE is PENDING:
+  one acquisition, no release during the call, the observation carries the
+  new revision and the lease is published;
+- self-recall loop: every acquisition meets a recall and every release
+  starts one; three operations take one acquisition each;
+- a grant at another target: a second acquisition, during which the first
+  lease is still held; it is queued once afterwards;
+- a fence, a blocked hfs1.4 session and `transport_failed` during the
+  acquisition: `-ESTALE`, one acquisition, its lease released once;
+- deadline: three stale grants 10 s apart, and a recall that never ends,
+  give `-ETIMEDOUT` with the exhaustion line and every packet queued once;
+- every case ends with no lease, packet, credit or control reference left;
+- `hfs_attr_restamp`: same target re-stamps, a moved target is `-ESTALE`
+  with no entry held, a fenced view `-ESTALE` without a line.
+
+On the pre-ie4 re-check (a moved stamp is `-ESTALE`) the first case fails;
+with "release and retry" for the same target the self-recall case loops
+until the fixture's acquisition limit aborts.
+
+The series was regenerated with `export.py --task ie4` (0003: `hfs.h`,
+`hfs_session.c`, `hfs_inode.c`; 0004: `hfs_view.[ch]`, `hfs_mmap.c`).
+A fresh `prepare.py` tree applies it with fuzz zero and `fs/9p/`, `net/9p/`
+and `random.o` compile without warnings under `kernel.py configure`.
+transport, policy, cursor, tag, mount_hello, view and view --pressure
+(`--sanitize`), requests, huge, dirty and controlled_received `terminal-smoke`,
+`cleanup` and `exit-cleanup` pass. codec, capture, root and reclaim were not
+run (broken before, s54). No candidate was rebuilt or admitted.

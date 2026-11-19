@@ -44,6 +44,18 @@ static char last_warning[512];
 static unsigned int warnings;
 static void pr_warn(const char *f,...);
 #define pr_warn_ratelimited pr_warn
+#define pr_info_ratelimited pr_warn
+/* ie4: hfs_mmap_begin's control reference and cleanup packets are fixtures
+ * (test.c). Queueing a packet records it; the test then plays the cleanup
+ * worker's release, so a packet queued twice or never is caught.
+ */
+struct hfs_mmap_control;
+static struct hfs_mmap_control *hfs_mmap_control_get(struct hfs_view *view);
+static void hfs_mmap_control_put(struct hfs_mmap_control *control);
+static void hfs_mmap_cleanup(struct work_struct *work);
+static bool test_queue_cleanup(struct delayed_work *work);
+#define INIT_DELAYED_WORK(w,f) ((void)(w),(void)(f))
+#define queue_delayed_work(q,w,d) ((void)(q),(void)(d),test_queue_cleanup(w))
 static inline const char *strnstr(const char *s,const char *find,size_t len)
 { return memmem(s,len,find,strlen(find)); }
 static void pr_warn(const char *f,...)
