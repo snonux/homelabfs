@@ -267,7 +267,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	if (IS_ERR(req))
  		return req;
  
-@@ -706,8 +771,24 @@
+@@ -706,8 +771,26 @@
  	}
  again:
  	/* Wait for the response */
@@ -279,10 +279,12 @@ diff --git a/net/9p/client.c b/net/9p/client.c
 +		 * that sent no reply made bhyve complete the request empty,
 +		 * virtio 9p dropped that completion (req_done ignores len 0),
 +		 * and the sender waited forever holding session->writer, so
-+		 * umount hung in hfs_control. On expiry the request stays
-+		 * allocated (its tag stays busy; the callback reference is
-+		 * never dropped) and the caller gets -ETIMEDOUT, which
-+		 * hfs_transport treats as a lost host (transport_failed).
++		 * umount hung in hfs_control. On expiry the caller gets
++		 * -ETIMEDOUT, which hfs_transport treats as a lost host
++		 * (transport_failed). The request stays allocated, with its tag
++		 * busy, and the transport still owns its reply buffer: the
++		 * callback reference is dropped only if a late reply arrives.
++		 * p9_client_destroy then keeps the client (p9_client_hfs_owned).
 +		 */
 +		err = wait_event_timeout(req->wq,
 +					 READ_ONCE(req->status) >= REQ_STATUS_RCVD,
@@ -294,7 +296,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  	/* Make sure our req is coherent with regard to updates in other
  	 * threads - echoes to wmb() in the callback
-@@ -756,6 +837,123 @@
+@@ -756,6 +839,123 @@
  	p9_req_put(c, req);
  	return ERR_PTR(safe_errno(err));
  }
@@ -418,7 +420,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  /**
   * p9_client_zc_rpc - issue a request and wait for a response
-@@ -785,7 +983,8 @@
+@@ -785,7 +985,8 @@
  	/* We allocate a inline protocol data of only 4k bytes.
  	 * The actual content is passed in zero-copy fashion.
  	 */
@@ -428,7 +430,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	va_end(ap);
  	if (IS_ERR(req))
  		return req;
-@@ -910,6 +1109,20 @@
+@@ -910,6 +1111,20 @@
  		 c->msize, c->proto_version);
  
  	switch (c->proto_version) {
@@ -449,7 +451,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	case p9_proto_2000L:
  		req = p9_client_rpc(c, P9_TVERSION, "ds",
  				    c->msize, "9P2000.L");
-@@ -937,7 +1150,18 @@
+@@ -937,7 +1152,18 @@
  	}
  
  	p9_debug(P9_DEBUG_9P, "<<< RVERSION msize %d %s\n", msize, version);
@@ -469,7 +471,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  		c->proto_version = p9_proto_2000L;
  	} else if (!strncmp(version, "9P2000.u", 8)) {
  		c->proto_version = p9_proto_2000u;
-@@ -989,10 +1213,19 @@
+@@ -989,10 +1215,19 @@
  	spin_lock_init(&clnt->lock);
  	idr_init(&clnt->fids);
  	idr_init(&clnt->reqs);
@@ -489,6 +491,52 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  	if (!clnt->trans_mod)
  		clnt->trans_mod = v9fs_get_default_trans();
+@@ -1059,12 +1294,45 @@
+ }
+ EXPORT_SYMBOL(p9_client_create);
+ 
++/* True when an hfs client still has requests in its idr at destroy: a
++ * request whose bounded reply wait expired (p9_client_rpc_v, zq3-r13) is
++ * still owned by the transport, which may write a late reply into its rc
++ * buffer and call p9_client_cb on it.
++ */
++static bool p9_client_hfs_owned(struct p9_client *c)
++{
++	bool owned;
++
++	if (!p9_client_is_hfs(c))
++		return false;
++	spin_lock_irq(&c->lock);
++	owned = !idr_is_empty(&c->reqs);
++	spin_unlock_irq(&c->lock);
++	return owned;
++}
++
+ void p9_client_destroy(struct p9_client *clnt)
+ {
+ 	struct p9_fid *fid;
+ 	int id;
+ 
+ 	p9_debug(P9_DEBUG_MUX, "clnt %p\n", clnt);
++
++	/* oc4 review round 2: freeing such requests (p9_tag_cleanup) and
++	 * releasing the channel (the transport close clears virtio's inuse,
++	 * so the next mount takes it) would let a late reply write freed
++	 * memory and run p9_client_cb on a freed request. Keep the whole
++	 * client instead: the channel stays in use, the transport module
++	 * reference, the fids, the fcall cache and the requests stay
++	 * allocated. A late reply then completes its request normally. This
++	 * leaks one client per affected unmount until reboot, which only
++	 * happens after the host stopped answering.
++	 */
++	if (p9_client_hfs_owned(clnt)) {
++		pr_warn("9p-hfs: client %p keeps timed-out requests owned by its transport; channel and client stay allocated\n",
++			clnt);
++		return;
++	}
+ 
+ 	if (clnt->trans_mod)
+ 		clnt->trans_mod->close(clnt);
 diff --git a/net/9p/protocol.c b/net/9p/protocol.c
 --- a/net/9p/protocol.c
 +++ b/net/9p/protocol.c

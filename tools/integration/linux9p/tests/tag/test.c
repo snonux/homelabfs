@@ -159,6 +159,16 @@ static void idr_remove(struct idr *idr, unsigned long id)
 {
 	idr->slots[id] = NULL;
 }
+/* Review round 2: p9_client_hfs_owned asks whether any request remains. */
+static bool idr_is_empty(struct idr *idr)
+{
+	unsigned long id;
+
+	for (id = 0; id < 65536; id++)
+		if (idr->slots[id])
+			return false;
+	return true;
+}
 
 /* Slab: counted so the test can prove every request was freed. */
 static long live_objects;

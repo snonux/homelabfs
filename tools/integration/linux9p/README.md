@@ -1210,8 +1210,18 @@ session was then blocked, but mount-1 hung for the full 30 s, because
   now sets `session->transport_failed`, and `hfs_session_poll_halt` then
   stops every later retry or poll at its first retry, exempt and teardown
   traffic included. An unmount after the host is gone therefore waits at
-  most one deadline. A CAPACITY refusal at the deadline does not set it
-  (the exporter answered).
+  most one deadline. Retries that reach the deadline (30 s of CAPACITY
+  or FETCH AGAIN) set it too, also against a live but refusing exporter.
+  That is acceptable: after host loss the exporter pins the refused native
+  write and answers AGAIN forever, so the deadline is the only signal of
+  that loss, and a session that waited 30 s is blocked by `hfs_control`
+  anyway. Only a refusal whose own reply crosses the deadline does not set
+  it. ALLOCATE's deadline never does (review round 2,
+  `HFS_TRANSPORT_ALLOCATE`): it only sets `allocation_uncertain`, and a
+  healthy session must keep working after it. ERROR 5, a 9p reply-wait
+  timeout and a failed endpoint still set it for ALLOCATE. The flag is
+  never cleared within a session, by design: a session that lost its host
+  is blocked and retained, not resumed; a new mount gets a new session.
 - **Bounded reply wait (zq3-r13 R13-1).** The hfs wait in
   `p9_client_rpc_v` (0001, `net/9p/client.c`) was an unbounded
   `wait_event`: when the exporter sent no reply, virtio dropped bhyve's
@@ -1221,7 +1231,13 @@ session was then blocked, but mount-1 hung for the full 30 s, because
   cancel an admitted claim). On expiry the exchange returns `-ETIMEDOUT`,
   the request stays allocated (a fixed tag then stays busy and later
   exchanges on it get the bounded `-EBUSY`), and `hfs_transport` sets
-  `transport_failed`. The exporter (pc4) now always replies to a
+  `transport_failed`. The transport still owns that request's reply
+  buffer, and its callback reference is dropped only if a late reply
+  arrives. So `p9_client_destroy` keeps an hfs client whose idr still holds
+  requests (`p9_client_hfs_owned`, review round 2): it neither frees them
+  nor closes the transport (virtio's channel stays `inuse`, so no later
+  mount takes it), and leaks the client until reboot. Freeing them let a
+  late reply write freed memory and run `p9_client_cb` on a freed request. The exporter (pc4) now always replies to a
   well-formed exchange, so this is the backstop.
 
 Tests:
@@ -1254,7 +1270,11 @@ Tests:
   in the harness, which defines `P9_HFS_REPLY_WAIT` itself).
 - `transport`: an exchange that times out, gets UNAVAILABLE or no 9p reply
   sets `transport_failed`; afterwards exempt unmounting traffic stops at
-  its first retry. A CAPACITY refusal at the deadline does not set it.
+  its first retry. A refusal whose own reply crosses the deadline and an
+  ALLOCATE that reaches it do not set it.
+- `tag`: after the silent request times out, `p9_client_hfs_owned` keeps
+  the client; a late reply then completes and frees the request, and the
+  client is no longer owned.
 - controlled_received `build.py` extracts the new helpers and
   `hfs_control_flagged`.
 

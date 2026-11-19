@@ -55,6 +55,8 @@ static u32 block_at_yield;
 static bool start_blocked, start_unmounting, start_closing, exempt;
 /* zq3-r13: preset transport_failed; the flag after the last exchange. */
 static bool start_failed, last_transport_failed;
+/* Review round 2: the exchange is an ALLOCATE (HFS_TRANSPORT_ALLOCATE). */
+static bool allocate;
 static u8 fetch_reply[4];
 static u32 fetch_reply_len;
 static u16 last_exporter_error;
@@ -188,7 +190,8 @@ static int exchange(u32 chunk, bool *held)
 	*held = true;
 	error = hfs_transport(&session, &body, cell, tag,
 		(struct hfs_response_profile){fetch_channel, fetch_kind, HFS_BODY_MAX},
-		exempt, &reply, &reply_len, held);
+		(exempt ? HFS_TRANSPORT_EXEMPT : 0) | (allocate ? HFS_TRANSPORT_ALLOCATE : 0),
+		&reply, &reply_len, held);
 	CHECK(*held == !!session.writer);
 	CHECK(!error || (!reply && !reply_len));
 	if (!error)
@@ -370,11 +373,20 @@ static void transport_failed_cases(void)
 	CHECK(exchange(3, &held) == -EHOSTDOWN && !held && fetches == 1 && yields == 1);
 	pending_before_reply = 0;
 	start_failed = start_unmounting = start_blocked = exempt = false;
-	/* A CAPACITY refusal at the deadline means the exporter answered. */
+	/* Retries that reach the deadline in hfs_transport_stop (above) set
+	 * it: after host loss a pinned write answers AGAIN forever. Only a
+	 * refusal whose own reply crosses the deadline (hfs_send_reply's
+	 * expired CAPACITY) does not, and an ALLOCATE's deadline never does
+	 * (review round 2: it only makes the allocation uncertain).
+	 */
 	always_refuse = true;
 	expire_reply = true;
 	CHECK(exchange(1, &held) == -ETIMEDOUT && !last_transport_failed);
-	expire_reply = always_refuse = false;
+	expire_reply = false;
+	allocate = true;
+	CHECK(exchange(1, &held) == -ETIMEDOUT && held && !last_transport_failed);
+	CHECK(sends == 1 + 30 * HZ && yields == 30 * HZ);
+	allocate = always_refuse = false;
 	memcpy(fetch_reply, unavailable, sizeof(unavailable));
 	fetch_reply_len = sizeof(unavailable);
 	CHECK(exchange(3, &held) == -EHOSTDOWN && last_transport_failed);

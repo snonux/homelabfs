@@ -12,6 +12,7 @@ static bool receiver_stopping;
  * drops bhyve's empty completion when the exporter sent no reply.
  */
 static bool drop_next;
+static struct p9_req_t *dropped; /* the request drop_next swallowed */
 
 /* Like a preempted vCPU between wake_up and the callback's p9_req_put, keep
  * the callback's reference until some owner probes a tag after this wake-up
@@ -89,6 +90,7 @@ static void *receive_thread(void *unused)
 			in_flight[req->tc.tag]--;
 		if (drop_next) {
 			drop_next = false;
+			dropped = req;
 			CHECK(!pthread_mutex_unlock(&queue_lock));
 			continue; /* never completed: the waiter must time out */
 		}
@@ -278,12 +280,27 @@ static int silent_reply(void)
 	err = p9_client_hfs_exchange(&client, P9_NOTAG, 1, 1, 7, 0, frame, sizeof(frame), reply,
 				     &len);
 	elapsed = now_ms() - start;
-	if (err == -ETIMEDOUT && elapsed >= P9_HFS_REPLY_WAIT && elapsed < 5000) {
-		printf("PASS silent-reply-bounded elapsed_ms=%lu\n", elapsed);
-		return 0;
+	if (err != -ETIMEDOUT || elapsed < P9_HFS_REPLY_WAIT || elapsed >= 5000) {
+		printf("FAIL silent-reply-bounded: returned %d after %lu ms\n", err, elapsed);
+		return 1;
 	}
-	printf("FAIL silent-reply-bounded: returned %d after %lu ms\n", err, elapsed);
-	return 1;
+	printf("PASS silent-reply-bounded elapsed_ms=%lu\n", elapsed);
+	/* Review round 2: destroy must keep this client, because the
+	 * transport still owns the request; a late reply then completes and
+	 * frees it, after which the client is no longer owned.
+	 */
+	if (!p9_client_hfs_owned(&client) || !dropped) {
+		printf("FAIL silent-reply-owned-at-destroy\n");
+		return 1;
+	}
+	fake_reply(dropped);
+	p9_client_cb(&client, dropped, REQ_STATUS_RCVD);
+	if (p9_client_hfs_owned(&client) || live_objects) {
+		printf("FAIL silent-reply-late-reply-frees: live %ld\n", live_objects);
+		return 1;
+	}
+	printf("PASS silent-reply-owned-until-late-reply\n");
+	return 0;
 }
 
 static void receiver_stop(pthread_t receiver)

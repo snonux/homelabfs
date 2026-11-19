@@ -1955,7 +1955,7 @@ diff --git a/fs/9p/hfs_policy.h b/fs/9p/hfs_policy.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_policy.h
-@@ -0,0 +1,91 @@
+@@ -0,0 +1,99 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_POLICY_H
 +#define FS_9P_HFS_POLICY_H
@@ -2038,6 +2038,14 @@ new file mode 100644
 + * and lease releases must still finish).
 + */
 +int hfs_transport_halt(bool exempt, bool blocked, bool teardown);
++
++/* hfs_transport flags (oc4). EXEMPT: may keep retrying on a blocked
++ * session (hfs_control_flagged decides it). ALLOCATE: the exchange is an
++ * ALLOCATE, whose deadline only makes the allocation uncertain and so must
++ * not mark the session transport_failed (review round 2).
++ */
++#define HFS_TRANSPORT_EXEMPT 1U
++#define HFS_TRANSPORT_ALLOCATE 2U
 +
 +/* Operations (control operations or CALL opcodes) that may keep retrying
 + * on a blocked session: retirement, release, cancel and cleanup traffic,
