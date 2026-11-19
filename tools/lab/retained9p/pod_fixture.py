@@ -52,7 +52,7 @@ PYTHON = "/usr/bin/python3.9"
 STDLIB = "/usr/lib64/python3.9/"  # Rocky's platlibdir; -I -S keeps site-packages out.
 WORKLOAD = "pod_workload.py"
 # SHA256 of the sibling pod_workload.py; pinning this file pins the workload.
-WORKLOAD_SHA256 = "a35449c6762772d57309ad8639e57ea9ae09b78cd2af94fcc2ee0adec2d54b75"
+WORKLOAD_SHA256 = "c714370f38685c2d79ba55e84d0f25096e9a9c755417b8aca3cca8e4e842deb0"
 WORKLOAD_PATH = "/hfs/pod_workload.py"  # Inside the rootfs.
 # Runtime files the pod uses. Every SHA256 comes from the request's
 # `runtime_sha256` and the podman/crun package NEVRAs from its `runtime_nevra`,
@@ -71,7 +71,12 @@ LABEL = b"system_u:object_r:container_file_t:s0"  # podman's documented --rootfs
 LEVEL = "s0:c731,c914"  # Fixed MCS pair: a numeric, reviewable container context.
 CAPS = ("CHOWN", "FOWNER", "SETGID", "SETUID")  # Matrix setup and ID switching only.
 CAP_HEX = "%016x" % ((1 << 0) | (1 << 3) | (1 << 6) | (1 << 7))
-MEMORY, PIDS, WORKLOAD_SECONDS, RUN_SECONDS = 256 << 20, 64, 45, 120
+# be4: a workload may wait behind recalls like any hfs client (one syscall
+# about 90-120 s), so it gets 240 s, as long as a guest.py request, and its
+# matrix children 150 s each (pod_workload.py). RUN_SECONDS keeps the old
+# 75 s on top for container start, outside observation and exit, so
+# workload deadline < RUN_SECONDS.
+MEMORY, PIDS, WORKLOAD_SECONDS, RUN_SECONDS = 256 << 20, 64, 240, 315
 NAMESPACES = ("mnt", "pid", "net", "uts", "ipc", "user", "cgroup")
 ISOLATED = ("mnt", "pid", "net", "uts", "ipc")
 SHARED_IN_POD = ("pid", "net", "uts", "ipc")

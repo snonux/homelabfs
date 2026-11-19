@@ -79,11 +79,15 @@ HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 # - ADMISSION_SECONDS, armed at process start, bounds reading the request and
 #   admission: one worst-case syscall plus margin.
 # - A request's `seconds` is its whole deadline, also counted from process
-#   start (limit re-arms the alarm with what is left after admission). It must
-#   exceed the admission alarm by at least SECONDS_AFTER_ADMISSION, so the case
-#   or step body keeps time even after a worst-case admission.
+#   start (limit re-arms the alarm with what is left after admission). It
+#   exceeds the admission alarm by at least SECONDS_AFTER_ADMISSION; after a
+#   worst-case admission those 30 s cannot fit another slow syscall, they only
+#   catch a body that hangs.
 # - controller.py mirrors these bounds and bounds each SSH dispatch at
 #   `seconds` + 15 s, so admission alarm < request deadline < dispatch bound.
+#   That orders when the alarm FIRES, not when the guest finishes: a blocked
+#   hfs syscall returns only when it returns (up to about 120 s later), and
+#   only then does the Deadline end the request.
 ADMISSION_SECONDS = 150
 SECONDS_AFTER_ADMISSION = 30
 REQUEST_SECONDS_MIN = ADMISSION_SECONDS + SECONDS_AFTER_ADMISSION  # 180
@@ -483,63 +487,81 @@ class Probe:
         return min(CHILD_SECONDS, left)
 
     def child(self, action, uid=None, gid=None, groups=None):
+        """Run action in a forked child, optionally as uid/gid/groups.
+
+        The child arms its own alarm (child_seconds); the parent waits one
+        second past it (child_reply). A child that has not exited stays in
+        self.children and is reported as uncertain, never killed.
+        """
         seconds = self.child_seconds()
         # Unmasked on purpose: a local pipe, not an hfs fd (see ALARM).
         receive, send = os.pipe2(os.O_CLOEXEC)
         pid = os.fork()
         if pid == 0:
             os.close(receive)
-            try:
-                signal.alarm(seconds)
-                if groups is not None:
-                    os.setgroups(groups)
-                    os.setgid(gid)
-                    os.setuid(uid)
-                result = {"uid": os.getuid(), "gid": os.getgid(),
-                          "groups": os.getgroups(), "result": action()}
-                raw = json.dumps(result).encode()
-                checked(len(raw) < 16384, "child reply size")
-                os.write(send, raw)
-                os._exit(0)
-            except BaseException as failure:
-                raw = json.dumps({"error": type(failure).__name__,
-                                  "errno": getattr(failure, "errno", None),
-                                  "detail": str(failure)[:256]}).encode()
-                os.write(send, raw)
-                os._exit(1)
+            child_body(send, seconds, action, uid, gid, groups)
         os.close(send)
         self.children.add(pid)
         try:
-            chunks, total = [], 0
-            # One second past the child's alarm, so a child whose syscall
-            # returned at its deadline still reports its Deadline here.
-            deadline = time.monotonic() + seconds + 1
-            while True:
-                remaining = deadline - time.monotonic()
-                checked(remaining > 0 and select.select([receive], [], [], remaining)[0],
-                        "child reply timeout")
-                chunk = os.read(receive, 16384)
-                if not chunk:
-                    break
-                total += len(chunk)
-                checked(total <= 16384, "child reply bound")
-                chunks.append(chunk)
-            raw = b"".join(chunks)
-            reaped, status = os.waitpid(pid, os.WNOHANG)
-            if reaped == 0:
-                # A complete reply precedes normal exit by a bounded instant.
-                deadline = time.monotonic() + 0.5
-                while reaped == 0 and time.monotonic() < deadline:
-                    time.sleep(0.01)
-                    reaped, status = os.waitpid(pid, os.WNOHANG)
-            checked(reaped == pid, "child has not exited; preserve for inspection")
-            self.children.remove(pid)
-            result = json.loads(raw, object_pairs_hook=unique)
-            emit("child", pid=pid, status=status, observed=result)
-            return result, status
+            raw, status = child_reply(pid, receive, seconds)
         finally:
             os.close(receive)
+        self.children.remove(pid)
+        result = json.loads(raw, object_pairs_hook=unique)
+        emit("child", pid=pid, status=status, observed=result)
+        return result, status
 
+
+def child_body(send, seconds, action, uid, gid, groups):
+    """Forked child: switch IDs, run action, write one JSON reply; never returns."""
+    try:
+        signal.alarm(seconds)
+        if groups is not None:
+            os.setgroups(groups)
+            os.setgid(gid)
+            os.setuid(uid)
+        result = {"uid": os.getuid(), "gid": os.getgid(),
+                  "groups": os.getgroups(), "result": action()}
+        raw = json.dumps(result).encode()
+        checked(len(raw) < 16384, "child reply size")
+        os.write(send, raw)
+        os._exit(0)
+    except BaseException as failure:
+        raw = json.dumps({"error": type(failure).__name__,
+                          "errno": getattr(failure, "errno", None),
+                          "detail": str(failure)[:256]}).encode()
+        os.write(send, raw)
+        os._exit(1)
+
+
+def child_reply(pid, receive, seconds):
+    """Parent side: read the child's bounded reply, then reap it; (raw, status).
+
+    The wait ends one second past the child's alarm, so a child whose syscall
+    returned at its deadline still reports its Deadline here. A child that has
+    not exited raises Refused and the caller keeps it as uncertain.
+    """
+    chunks, total = [], 0
+    deadline = time.monotonic() + seconds + 1
+    while True:
+        remaining = deadline - time.monotonic()
+        checked(remaining > 0 and select.select([receive], [], [], remaining)[0],
+                "child reply timeout")
+        chunk = os.read(receive, 16384)
+        if not chunk:
+            break
+        total += len(chunk)
+        checked(total <= 16384, "child reply bound")
+        chunks.append(chunk)
+    reaped, status = os.waitpid(pid, os.WNOHANG)
+    if reaped == 0:
+        # A complete reply precedes normal exit by a bounded instant.
+        deadline = time.monotonic() + 0.5
+        while reaped == 0 and time.monotonic() < deadline:
+            time.sleep(0.01)
+            reaped, status = os.waitpid(pid, os.WNOHANG)
+    checked(reaped == pid, "child has not exited; preserve for inspection")
+    return b"".join(chunks), status
 
 class Retention:
     """Retain a successful payload until an authenticated post-correlation release.

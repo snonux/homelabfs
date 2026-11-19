@@ -132,7 +132,8 @@ lock assertions. Each guest request has a whole deadline of 180-240 seconds
 (the request's `seconds`, counted from guest.py's start), inside which
 admission alone has at most 150 seconds (be4: one hfs syscall can wait about
 90-120 s, and zq3-r14's root OPEN took about 14 s behind three recalls, past
-the old 10 s admission alarm). Each case also has at most 256 recorded
+the old 10 s admission alarm). The at least 30 s left after a worst-case
+admission cannot fit another slow syscall; they only catch a hang. Each case also has at most 256 recorded
 operations, 12MiB issued writes, 128 descriptors and one concurrently active
 credential child, whose alarm is 150 s capped by the request's time left
 minus 5 s (it runs hfs syscalls as another UID; the parent waits 1 s longer).
@@ -195,8 +196,12 @@ run started, leaving any retained payload for inspection. The plan's `seconds`
 (255-600) caps each single SSH dispatch: its local deadline is
 `min(request seconds + 15, plan seconds)`, at most 255 s, so the ordering is
 admission alarm (150 s) < request deadline (180-240 s) < dispatch bound
-(195-255 s). The plan's minimum keeps its cap from ever cutting a dispatch
-below the guest's own deadline. Each reopen verifies
+(195-255 s). That orders when the guest alarm fires, not when the guest
+finishes: a blocked hfs syscall returns, and lets the Deadline end the
+request, up to about 120 s after the alarm, so such a guest can outlive the
+dispatch bound and the controller records `error` (uncertain; preserved,
+never replayed). The plan's minimum keeps its cap from ever cutting a
+dispatch before the guest's own alarm fires. Each reopen verifies
 the owned lock, exact plan digest and every staged input snapshot. These commands
 provide no VM lifecycle, package installation, mounting, fencing or normal
 publication.

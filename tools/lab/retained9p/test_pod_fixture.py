@@ -513,7 +513,9 @@ class LockProtocolTests(unittest.TestCase):
         for raw in ("{}", json.dumps({"version": workload.VERSION, "run_id": "r1", "role": "w2",
                                       "seconds": 30}),
                     json.dumps({"version": workload.VERSION, "run_id": "r1", "role": "w0",
-                                "seconds": 600})):
+                                "seconds": 600}),
+                    json.dumps({"version": workload.VERSION, "run_id": "r1", "role": "w0",
+                                "seconds": 241})):
             with self.subTest(raw=raw):
                 with self.assertRaises(workload.Refused):
                     workload.parse_params(raw)
@@ -521,10 +523,37 @@ class LockProtocolTests(unittest.TestCase):
         self.assertEqual(set(report["namespaces"]), set(workload.NAMESPACES))
         root = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
         try:
-            reply, status = workload.child(lambda: workload.try_read(root, "absent"))
+            reply, status = workload.child(lambda: workload.try_read(root, "absent"),
+                                           time.monotonic() + 60)
         finally:
             os.close(root)
         self.assertEqual((status, reply["result"]["errno"]), (0, 2))
+
+
+class WorkloadDeadlineTests(unittest.TestCase):
+    """be4: T7's workloads and matrix children do hfs I/O on m0 (one syscall
+    can wait about 90-120 s); child < parent wait < workload < run bound."""
+
+    def test_bounds_are_ordered(self):
+        self.assertGreaterEqual(workload.CHILD_SECONDS, 150)
+        self.assertLessEqual(workload.CHILD_SECONDS + 1 + workload.CHILD_RESERVE,
+                             pod.WORKLOAD_SECONDS)
+        self.assertLessEqual(pod.WORKLOAD_SECONDS, workload.WORKLOAD_SECONDS_MAX)
+        self.assertLess(pod.WORKLOAD_SECONDS, pod.RUN_SECONDS)
+        params = json.loads(pod.workload_params("r1", "w0", workload.VERSION))
+        self.assertEqual(workload.parse_params(json.dumps(params))["seconds"], pod.WORKLOAD_SECONDS)
+
+    def test_child_alarm_is_capped_by_the_workload_deadline(self):
+        with mock.patch.object(workload.time, "monotonic", return_value=1000.0):
+            self.assertEqual(workload.child_seconds(1240.0), workload.CHILD_SECONDS)
+            self.assertEqual(workload.child_seconds(1100.7), 100 - workload.CHILD_RESERVE)
+            with self.assertRaises(TimeoutError):
+                workload.child_seconds(1000.0 + workload.CHILD_RESERVE + 0.5)
+
+    def test_real_child_arms_its_capped_alarm(self):
+        reply, status = workload.child(lambda: workload.signal.alarm(0), time.monotonic() + 240)
+        self.assertEqual(status, 0)
+        self.assertIn(reply["result"], {workload.CHILD_SECONDS, workload.CHILD_SECONDS - 1})
 
 
 class ManifestTests(Sandbox):
