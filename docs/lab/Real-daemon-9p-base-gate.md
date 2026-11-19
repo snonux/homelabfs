@@ -54,7 +54,8 @@ rebuild) was never checked. The y64 daemon `34fb05b2…` passed it in zq3-r8
 (Phase 4 step 1a), the l84 daemon `868dc045…` passed it in zq3-r9, the
 r84 daemon `34a5360b…` in zq3-r10, the b94 daemon `bf86d805…` in
 zq3-r11, the 5a4 daemon `e0981a0a…` in zq3-r12 and the current xc4 daemon
-`c959b708…` (xc4 rebuild for zq3-r13, 2026-11-18) in zq3-r13
+`c959b708…` (xc4 rebuild for zq3-r13, 2026-11-18, reused byte for byte by
+the xd4 rebuild for zq3-r14) in zq3-r13
 ([record](results/20261119-zq3-r13/README.md)); every run still repeats the
 check. f3-host descriptor execution still awaits the
 approved zq3 fdescfs window. The old candidate remains unchanged.
@@ -166,17 +167,26 @@ SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
 
 ## Exact installation plan inputs
 
-The current xz3 candidate (xc4 rebuild for zq3-r13, 2026-11-18) is retained at
-`/home/paul/tmp/claude/hfs-xz3-20261118-r13/package`, manifest SHA256
-`e9c77e5bbe68f565240ef82ef3842ae713cb082e15e593036174ec4e735a1df6`, assembled from source checkout
-`b7d107b073a017280b107168042ad6372c59dbbe` (also the repository baseline); see its
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261118-r13/README.md).
-Only the CGO daemon was rebuilt. The daemon `c959b708…` adds nc4 (a retried
+The current xz3 candidate (xd4 rebuild for zq3-r14, 2026-11-19) is retained at
+`/home/paul/tmp/claude/hfs-xz3-20261119-r14/package`, manifest SHA256
+`3a7131ddc0bfad96762421122027d63aa5c736ace1ef61f4cb9eff14b5379f6f`, assembled from source checkout
+`942614a` (repository baseline `b7d107b`, the reused daemon's build
+revision); see its
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261119-r14/README.md).
+The guest kernel was rebuilt for oc4 (the guest maps the exporter's ERROR reason to an errno, RETIRED_CELL `-ESTALE` and the new UNAVAILABLE `-EHOSTDOWN`, and logs it; retries and polls stop once the session is blocked or its transport failed, with an explicit teardown exemption; the 9p reply wait is bounded to 30 s, so an unmount after the host is gone waits at most one deadline; zq3-r13 R13-1, zq3-r12 R12-1 guest side) (`bzImage` `e0daa57e…`, `vmlinux` `d2690b42…`, GNU build ID
+`9b167690…`, `System.map` `dd88dfcb…`, `config` `28fe4a8e…` unchanged; two
+builds at the same O path were identical and the five modules came out
+byte-identical), and the native exporter on f3 for pc4 (a failed result read answers ERROR UNAVAILABLE (5) for EHOSTDOWN, and a well-formed exchange whose endpoint check fails gets ERROR UNAVAILABLE instead of no reply) (`bhyve`
+`2fd7e32f…`, two clean builds equal). The daemon and the window artifacts
+are byte-identical reuses from the xc4 rebuild for zq3-r13 (`e9c77e5b…`,
+source `b7d107b`,
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261118-r13/README.md)),
+now refused as superseded. Its daemon `c959b708…` adds nc4 (a retried
 mapped cell reuses the base recorded for it instead of fencing the guest
 transport, and every transport fence records its reason; zq3-r12 R12-1) to
 the 5a4 daemon; two forced builds and the window build gave the same bytes,
-but they still need native `--check-process-observer` on f3. The guest
-kernel and the native exporter are byte-identical reuses from the 5a4
+and they passed native `--check-process-observer` on f3 in zq3-r13. Its
+guest kernel and native exporter were byte-identical reuses from the 5a4
 rebuild (`150deb29…`, source `1b0a306`,
 [evidence](../../tools/integration/artifacts/evidence/xz3-20261118-r12/README.md)),
 now refused as superseded. Its kernel (`bzImage` `803a35b9…`, `vmlinux`
@@ -315,7 +325,7 @@ footprints in the independent global preparation budget. Swap is telemetry.
 
 ## Staged critical-window proposal
 
-The concrete phased proposal for one disposable run with candidate `e9c77e5b…`,
+The concrete phased proposal for one disposable run with candidate `3a7131dd…`,
 including the remaining implementation gaps and Paul's decisions, is
 [zq3-run-plan.md](zq3-run-plan.md) ([plain-language summary](zq3-plan-summary.md)).
 The guest probe now retains each successful payload until an authenticated

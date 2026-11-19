@@ -24,7 +24,8 @@ RECORD = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/build-record.json"
 # Daemon of the admitted xz3 xc4 rebuild for zq3-r13 (e9c77e5b), built from
 # b7d107b (nc4: a retried mapped cell reuses its recorded base instead of
 # fencing the guest transport, on top of the 5a4 daemon); the window build
-# reproduced it.
+# reproduced it. The xd4 rebuild for zq3-r14 (3a7131dd) reuses this daemon
+# and the window artifacts byte for byte.
 ADMITTED_DAEMON_SHA256 = "c959b708f93876a5a4c620f33e64587bc0235dc4cf994de2154eb26710c4bc9b"
 CONTROLLER_SHA = "c" * 64
 # f3 stock fusefs.ko, docs/lab/results/20261108-zq3-phase1 (task j44).
@@ -99,7 +100,8 @@ class FillerTests(unittest.TestCase):
         # 5a4, from dfdcdd9 for b94, from cc6beed for r84, from e92eaa1 for
         # l84, from b869710 for y64, from 060dea0 for c64+d64, from a20aca1
         # for z54, reused by 964, and from defd974 for f44, reused by r54 and
-        # w54), so the qualification test bytes match the daemon source.
+        # w54; xd4 reuses the b7d107b build), so the qualification test bytes
+        # match the daemon source.
         self.assertEqual(record["source_commit"], "b7d107b073a017280b107168042ad6372c59dbbe")
 
     def test_filled_plan_is_accepted_by_actual_controller_validate(self):

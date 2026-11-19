@@ -211,7 +211,9 @@ from `1b0a306` for the 5a4 rebuild for zq3-r12 (`150deb29…`, daemon y94: an
 early DRAINED is answered BLOCKED, not STALE), and again from `b7d107b` for
 the xc4 rebuild for zq3-r13 (`e9c77e5b…`, daemon nc4: a retried mapped cell
 reuses its recorded base instead of fencing the guest transport), so the
-test bytes match the final daemon source again. Nothing used
+test bytes match the final daemon source again. The xd4 rebuild for zq3-r14
+(`3a7131dd…`, 2026-11-19) rebuilt only the guest kernel and the exporter
+and reuses that daemon and these artifacts unchanged. Nothing used
 SSH, the lab, a VM, a mount or a module. It grants no authority: the window is
 zq3 approval class A5 and still needs Paul's explicit yes at run time.
 
