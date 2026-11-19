@@ -194,7 +194,12 @@ of `guest.py`, `controller.py` or the lock probe. The request templates must car
 (recommended 240) and the plan `seconds` 255-600 (recommended 255): zq3-r14's
 60 and 120 are now refused. The fill must also **recompute every per-step
 guard budget** (its `sh/guard-budget.py` and the Phase 10 budget table) from
-these bounds instead of reusing zq3-r14's 300 s per case. Worst cases with
+these bounds instead of reusing zq3-r14's 300 s per case, and raise the run
+sheet's **tool-timeout rule**: T7's `pod_fixture.py run` line needs a tool
+timeout of at least 420 s (`RUN_SECONDS` 315 plus setup and teardown; the old
+300 s would kill the ssh mid-run and leave containers and an uncertain T7),
+and the T6 lock-probe lines and every `$CTL` line (up to 255 s per dispatch)
+at least 300 s, with the rule stated in the sheet. Worst cases with
 the recommended values (the old operator slack kept):
 
 | Step | Old budget | Worst case now | Latest start (launch +), 300 s reserve |

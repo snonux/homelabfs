@@ -563,6 +563,7 @@ def child_reply(pid, receive, seconds):
     checked(reaped == pid, "child has not exited; preserve for inspection")
     return b"".join(chunks), status
 
+
 class Retention:
     """Retain a successful payload until an authenticated post-correlation release.
 
