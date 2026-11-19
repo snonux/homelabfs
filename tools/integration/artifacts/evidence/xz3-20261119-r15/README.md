@@ -1,5 +1,15 @@
 # xz3 r15 daemon rebuild (2026-11-19): zq3-r14 read-only root OPEN fix
 
+**Superseded on 2026-11-19** by the [r16 rebuild](../xz3-20261119-r16/README.md)
+(`a1af0bd7…`, source `707f3d1`) for zq3-r16. Its oc4 guest kernel
+`9b167690…` fails an observation with `-ESTALE` when a recall moves the view
+while the observation's VIEW_ACQUIRE is PENDING, so T1's root `fstat` failed
+before its GETATTR was sent (zq3-r15 R15-1, fixed by ie4). Its z94 daemon
+`8668e5f0…` (which passed the f3 observer check in zq3-r15), the window
+artifacts, its pc4 exporter `2fd7e32f…` and every other non-kernel file are
+reused byte for byte. The tooling refuses this manifest as superseded. It
+still passes `package.py check` and `admit.py` under the current tooling.
+
 This candidate supersedes the [xd4 rebuild](../xz3-20261119-r14/README.md)
 (`3a7131dd…`, source `942614a`) only because its CGO daemon predates the
 zq3-r14 fix. In zq3-r14 (R14-1) T1's m0 root OPEN waited about 14 s behind

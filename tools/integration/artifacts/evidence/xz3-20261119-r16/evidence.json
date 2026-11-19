@@ -1,0 +1,325 @@
+{
+  "candidate": {
+    "admission": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "assembled_from": "the r16 worktree at 707f3d1 (/home/paul/git/homelabfs/.claude/worktrees/agent-ad164035d05f9e407; no edits before assembly, HEAD equal to main). assemble.py takes the repository baseline from the reused daemon build record, so it stays 2f34b60 (xd4/964 precedent) and inputs/repository-changes.patch records the tracked ie4 diff since then. The reused daemon builder bindings were re-keyed from the r15 worktree to this worktree after checking daemon.py and daemon_cgo.py hash to the bound values (originals kept in daemon-binding-origin/); the three native proof records are the xd4 ones (via r15, checked equal); every other binding is a hash",
+    "files": 195,
+    "independent_admit": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "manifest_sha256": "a1af0bd700396a44edbd631087d1303d85a390008771903e13937309a65c2e0d",
+    "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+    "path": "/home/paul/tmp/claude/hfs-xz3-20261119-r16/package",
+    "repository_baseline": "2f34b60b346aa597134b27ddf9ee29c266a17954",
+    "repository_changes_patch_sha256": "60a66f058ac17f2b483b91b21cad611c96d5e97789d4a55335ed23e92deda58e",
+    "source_checkout": "707f3d18699e08de784f83dda8eaea30f32dc909"
+  },
+  "controls": {
+    "all_refused": true,
+    "case_names": [
+      "external operator mismatch",
+      "external repository mismatch",
+      "old negotiated features",
+      "old source revision",
+      "different packaged Linux patch",
+      "different native owned source",
+      "wrong actual bundled source with consistent container hashes",
+      "daemon ELF labelled as full exporter",
+      "native helper ELF lacks production controllers",
+      "invented stock shared9p runtime",
+      "installed success claim",
+      "missing actual Go build version",
+      "real CGO_ENABLED=0 daemon with nocgo observer stub",
+      "record claims CGO0 build",
+      "nocgo stub in recorded source closure",
+      "renamed cgo process observer symbols",
+      "foreign dynamic loader",
+      "extra recorded DT_NEEDED",
+      "missing recorded DT_NEEDED",
+      "sysroot library hash differs from recorded closure",
+      "unlinked sysroot capture",
+      "unrecorded clang resource headers",
+      "unrecorded clang shared-library closure",
+      "foreign cgo compiler wrapper",
+      "installation authority claim",
+      "false forced rebuild witness"
+    ],
+    "cases": 26,
+    "cgo0_control_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+    "original_passed_after": true,
+    "restored_passed": true
+  },
+  "daemon": {
+    "gnu_build_id": "24a8935e6c91ae731659547a4bebda629fe8ce40",
+    "native_qualification": "carries over: zq3-r15 Phase 4 step 1a qualified exactly these bytes with --check-process-observer on f3 (docs/lab/results/20261119-zq3-r15); every run still repeats Phase 4 step 1a",
+    "repository": "2f34b60b346aa597134b27ddf9ee29c266a17954",
+    "reused_from": "ac8020aa0012550d83b4ab15ffd79900a31338330513e2af7d4f5e58b910c1c6 (r15), byte for byte with daemon-build.json, daemon-preparation.json, the four Go licences and the r15 daemon-clean-repro.json",
+    "sha256": "8668e5f085e4d53126ac382dd435339e15c8b7a5085d36d953f4432d9c7eb7cf",
+    "why_not_rebuilt": "git diff 2f34b60 707f3d1 -- internal cmd go.mod go.sum touches only internal/guestbridge/README.md; tools/integration/artifacts daemon.py and daemon_cgo.py are unchanged"
+  },
+  "init_helper": {
+    "kept": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80 from e0cca0c",
+    "reason": "not in the package; no Go source changed since 2f34b60"
+  },
+  "kernel": {
+    "abi_negative_controls": [
+      "different-kernel-module-layout-crc",
+      "different-operator-config-identity",
+      "missing-kernel-module-layout-crc",
+      "stock-kernel-release"
+    ],
+    "artifacts": {
+      "linux/Module.symvers": "11fbad114ed0d5bdf835ed61d90aa330e7bb3f32c7932c3569e88cadeaf51cab",
+      "linux/System.map": "95802ae3d5752d49342103a32bb80281ca072f2ac57cba5589ab02c7dec6f17e",
+      "linux/abi-negative.json": "f7c4aa9efbe87a6e18eae268097b01c7cb333b1b72ceefbfa93448d6e7417da0",
+      "linux/abi.json": "52a7bd8b877b6ac5397582df8f939424c2c073e6b3bc0db72625de3b2c50094e",
+      "linux/build.json": "cf2ff14cdf543670f78e8b336bd59166fbc513fb935907819b5376d4436ebe95",
+      "linux/bzImage": "7109ac494eb924408173251cb79bbceb4a570006bfe1fdfe6c45e5ec7864ebf5",
+      "linux/clean-repro.json": "9db4be414d00f9e6870a00ac9e2203a8424ccdd8ac4b40b14637493c328b2547",
+      "linux/config": "28fe4a8ec759cfa7ecfdc373753082ec6981ecdffc6a25e074b6fac048906282",
+      "linux/kernel.release": "50bb45b1af138cf586adddcde600f85e256a19336c861654e6ce76c20eb034e3",
+      "linux/modules.builtin": "1f33442939e7faf978dc707cb69f99015328b39b3125cea6d6de25715f8bebf1",
+      "linux/modules.builtin.modinfo": "c53973bb5c4498e6fc6e61d0143353782a5628374b2b00624f422ed6f2236cf2",
+      "linux/modules.order": "f820618416411197b17fe7795d067e9687d905c487bffb207589bec3c173019a",
+      "linux/modules/drivers/net/net_failover.ko": "cc9755c71cc1d0776f5efd61198b1ebe99741cff877104879b8658db469f9143",
+      "linux/modules/drivers/net/virtio_net.ko": "39de7e933fa325b2c6b576004213f34bee04085191ea94e141a6c2aeeaf7fef1",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko": "6b98068988086d3b1b5c7a1e3b71f5f0ac4378f2d907c0e3a8c50a22bcde53fa",
+      "linux/modules/fs/efivarfs/efivarfs.ko": "6dd0679c5a026189f4feef51fcdcf4d0542fbc9cba7f3e552cb8a0324e68974f",
+      "linux/modules/net/core/failover.ko": "b1aa98beb495be131c06a02775109cba97de2ecacae227c4932909166b88cf5a",
+      "linux/vmlinux": "3979898b83e478bb0e4b496fb577e280f9cb2d19e0a26f99675a9d27e33c488a"
+    },
+    "changed_from_r15": [
+      "linux/Module.symvers",
+      "linux/System.map",
+      "linux/abi.json",
+      "linux/build.json",
+      "linux/bzImage",
+      "linux/clean-repro.json",
+      "linux/vmlinux"
+    ],
+    "changes": "ie4 (patches 0003/0004 and source.json: hfs_mmap_begin, split into observation_new/observe/publish/retry_allowed, no longer fails -ESTALE when a recall moved the view during VIEW_ACQUIRE: it acquires again and releases the old lease only afterwards (never re-stamps a held lease), returns a host BLOCKED/RETIRED_ID -EAGAIN at once, keeps -ESTALE for a FENCED view or a closing/blocked session or transport_failed, and shares one 30 s deadline (-ETIMEDOUT); hfs_attr_install re-stamps a cache observation whose view still has the request target, and hfs_getattr/hfs_refresh/hfs_lookup re-issue on a moved target (-HFS_ETARGET_MOVED) within 30 s, a moved LOOKUP balanced with FORGET; READDIR maps a moved target to -ESTALE; zq3-r15 R15-1)",
+    "clean_repro_equal_artifacts": 13,
+    "clean_repro_modules": 5,
+    "clean_repro_record_sha256": "9db4be414d00f9e6870a00ac9e2203a8424ccdd8ac4b40b14637493c328b2547",
+    "config_equals_r15": true,
+    "gnu_build_id": "7a5bb8dccbc1c89ed44c221e9b80deaf9baf70fe",
+    "initramfs": "none built or packaged; the recipe builds bzImage and modules",
+    "module_build_ids": {
+      "drivers/net/net_failover.ko": "3255e434a34a125cd9251bebddaaf6bdf98c68bb",
+      "drivers/net/virtio_net.ko": "072995182e1a95b83cf3ec794649ce05adf8a59d",
+      "drivers/thermal/intel/x86_pkg_temp_thermal.ko": "da295c7cb8ec345542f4ad350ebe6b4ab30ce306",
+      "fs/efivarfs/efivarfs.ko": "c7dca1ae388661db98a1b00f73a39cc2c2d88539",
+      "net/core/failover.ko": "3b9f54841993c81600f6794137822622987c4f9d"
+    },
+    "module_symvers": {
+      "added": [],
+      "changed_crc": [
+        "hfs_call",
+        "hfs_control",
+        "hfs_control_flagged",
+        "hfs_request_allocate",
+        "hfs_request_resolve_gap",
+        "hfs_retire",
+        "hfs_session_destroy",
+        "v9fs_hfs_register_provider",
+        "v9fs_hfs_unregister_provider"
+      ],
+      "imported_by_packaged_modules": [],
+      "removed": []
+    },
+    "note": "both builds used the same canonical O path (first tree moved to kernel-build-first before the repeat); abi.py collect ran on both packages before compare_kernel",
+    "release": "6.1.190-hfs-xz3",
+    "resolved_config_lsm": "lockdown,yama,integrity,selinux,bpf,landlock",
+    "source": {
+      "archive_path": "/home/paul/tmp/claude/c64-config/linux-pinned.tar.gz (link to the cached xd4 archive, not downloaded)",
+      "archive_sha256": "4f3c00db43ece26e00b83da8cee938e544ba89e10dc10aecc45209ab03554a17",
+      "kernel_config_fragment_sha256": "f2d2a203daa49dd454de90b932e04e17f1532a22b9184140da136ff97d468bc7",
+      "prepared": "/home/paul/tmp/claude/hfs-xz3-20261119-r16/linux-source",
+      "source_inventory_sha256": "b59675cfc35c1d49716933f3aedec5288710f892645132340e2921061db9aed4"
+    },
+    "stage_seconds": [
+      [
+        "first",
+        "configure",
+        0,
+        14
+      ],
+      [
+        "first",
+        "vmlinux",
+        0,
+        778
+      ],
+      [
+        "first",
+        "image-modules",
+        0,
+        27
+      ],
+      [
+        "first",
+        "collect",
+        0,
+        9
+      ],
+      [
+        "repro",
+        "configure",
+        0,
+        17
+      ],
+      [
+        "repro",
+        "vmlinux",
+        0,
+        723
+      ],
+      [
+        "repro",
+        "image-modules",
+        0,
+        21
+      ],
+      [
+        "repro",
+        "collect",
+        0,
+        5
+      ]
+    ],
+    "superseded_gnu_build_id": "9b167690f6cd2f0538ecb6df06ab76121736eacb",
+    "unchanged_from_r15": [
+      "linux/abi-negative.json",
+      "linux/config",
+      "linux/kernel.release",
+      "linux/modules.builtin",
+      "linux/modules.builtin.modinfo",
+      "linux/modules.order",
+      "linux/modules/drivers/net/net_failover.ko",
+      "linux/modules/drivers/net/virtio_net.ko",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko",
+      "linux/modules/fs/efivarfs/efivarfs.ko",
+      "linux/modules/net/core/failover.ko"
+    ]
+  },
+  "native_exporter": {
+    "exporter_sha256": "2fd7e32f5cc8762ae0ff4d5ec6c046d7d49b95c97e4b9150dd17b2ac52c39fd3",
+    "owned_sources_checked": 11,
+    "proof_records": {
+      "native-bundle-helper-transfer.json": "1f9352e688d0378d3c8705d1be98ef557a693be11f90ad86e567559ac76f07f1",
+      "native-clean-repro-evidence.json": "e0404d85dd9409768e54b69a501d33b4d8d24785e6224632b536dc1ace5c6fdd",
+      "native-final-source-and-first-seal.json": "7298253e74845177d88c69881ce8a76e17b4fde3339c90004f258d57747d6474"
+    },
+    "reused_from": "ac8020aa0012550d83b4ab15ffd79900a31338330513e2af7d4f5e58b910c1c6 (r15, which reused the xd4 native f3 build from /var/tmp/hfs-xz3-20261119-r14-r1)",
+    "why_not_rebuilt": "git diff 2f34b60 707f3d1 -- tools/integration/lib9p is empty; stage-package.py re-hashed all packaged owned inputs against the repository; native recipes unchanged; no f3 action"
+  },
+  "not_claimed": [
+    "installed",
+    "booted",
+    "native acceptance",
+    "exporter execution",
+    "VM execution",
+    "SELinux enforcing on the booted guest",
+    "normal publication",
+    "a working hfs1.4 mount on Rocky (zq3)"
+  ],
+  "reason": "ac8020aa predates ie4: its guest kernel 9b167690 fails a root fstat with -ESTALE when a recall completes while the observation's VIEW_ACQUIRE is PENDING, and never sends the GETATTR (zq3-r15 R15-1). The daemon and the exporter are unchanged",
+  "recorded": "2026-11-19",
+  "reused": {
+    "checked_against_current_source": 26,
+    "files": 121,
+    "from_manifest": "ac8020aa0012550d83b4ab15ffd79900a31338330513e2af7d4f5e58b910c1c6",
+    "list": "reused-files.json",
+    "previous_still_admits": "package.py check and a full admit.py of ac8020aa pass under the 707f3d1 tooling (receipts r15-container, r15-readmit)"
+  },
+  "source_tests": {
+    "last_lines": {
+      "cleanup": "ok  \tgithub.com/snonux/homelabfs/internal/controlledruntime\t98.636s",
+      "dirty": "exit=0 peak_child_rss_kib=92428",
+      "exit-cleanup": "ok  \tgithub.com/snonux/homelabfs/internal/controlledruntime\t105.288s",
+      "mount-hello": "exit=0 peak_child_rss_kib=92596",
+      "tag": "exit=0 peak_child_rss_kib=56876",
+      "terminal-smoke": "ok  \tgithub.com/snonux/homelabfs/internal/controlledruntime\t33.241s",
+      "transport": "exit=0 peak_child_rss_kib=92520",
+      "view": "physical admission production-C checks passed; no VFS/PTE execution",
+      "view-pressure": "PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (recall before/after grant re-acquires,no release recall,no self-recall loop,moved target,refusals,d",
+      "view-pressure-sanitize": "PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (recall before/after grant re-acquires,no release recall,no self-recall loop,moved target,refusals,d",
+      "view-sanitize": "physical admission production-C checks passed; no VFS/PTE execution"
+    },
+    "note": "against the freshly prepared ie4 source: mount_hello/tag/transport --sanitize, dirty (docs/spec/retained9p-fixtures/views.json), controlled_received terminal-smoke/cleanup/exit-cleanup (worktree as host tree), view and view --pressure plain and --sanitize",
+    "suites": {
+      "cleanup": {
+        "exit": 0,
+        "seconds": 99
+      },
+      "dirty": {
+        "exit": 0,
+        "seconds": 5
+      },
+      "exit-cleanup": {
+        "exit": 0,
+        "seconds": 107
+      },
+      "mount-hello": {
+        "exit": 0,
+        "seconds": 3
+      },
+      "tag": {
+        "exit": 0,
+        "seconds": 2
+      },
+      "terminal-smoke": {
+        "exit": 0,
+        "seconds": 68
+      },
+      "transport": {
+        "exit": 0,
+        "seconds": 5
+      },
+      "view": {
+        "exit": 0,
+        "seconds": 5
+      },
+      "view-pressure": {
+        "exit": 0,
+        "seconds": 4
+      },
+      "view-pressure-sanitize": {
+        "exit": 0,
+        "seconds": 13
+      },
+      "view-sanitize": {
+        "exit": 0,
+        "seconds": 7
+      }
+    }
+  },
+  "superseded_candidate": {
+    "manifest_sha256": "ac8020aa0012550d83b4ab15ffd79900a31338330513e2af7d4f5e58b910c1c6",
+    "status": "refused as superseded (pre-ie4 guest kernel 9b167690: an observation re-check after a recall during VIEW_ACQUIRE returned -ESTALE; zq3-r15 R15-1)"
+  },
+  "task": "r16: xz3 guest kernel rebuild for zq3-r16 (ie4; daemon, window artifacts and native exporter reused)",
+  "version": "homelabfs-xz3-evidence/2",
+  "window_artifacts": {
+    "artifacts": {
+      "controlledruntime.test": "9d9f0f01e821bdeee101b88b3f0ef20853f339e97ddaff6bbe08984da6157319",
+      "fdescfs-namespace": "d6f2e4d0a41073cb151f0f1c312607bc386726f55dac0ca71cf584902e067cd7",
+      "hfs-controlled-runtime": "8668e5f085e4d53126ac382dd435339e15c8b7a5085d36d953f4432d9c7eb7cf"
+    },
+    "reused": true,
+    "source": "2f34b60b346aa597134b27ddf9ee29c266a17954",
+    "why": "the window test and inspector bytes follow the daemon source; the daemon is the reused r15 build from 2f34b60 and these artifacts were built from that same revision (xd4/964 precedent)"
+  },
+  "workstation_tools": "hfs-runtime-prep and the signer hfs-retained9p-operator are not package content; no Go source changed since 2f34b60, so the zq3-r15 builds keep their inputs; the zq3-r16 fill still pins what it runs. directlaunch/argv.py and the runtimeprep example spec are unchanged (exporter 2fd7e32f unchanged)"
+}

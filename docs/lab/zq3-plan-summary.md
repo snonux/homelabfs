@@ -195,6 +195,10 @@ error instead of simply trying again. The fix is in the guest kernel: try
 again after such a pause (a kernel rebuild before zq3-r16). Nothing was
 left stuck, both mounts unmounted in a second, and Rocky was down about
 four minutes ([record](results/20261119-zq3-r15/README.md)).
+ie4 is merged, and only the guest kernel was rebuilt for it (`a1af0bd7…`,
+kernel build ID `7a5bb8dc…`): after such a pause the kernel now asks again
+instead of reporting "stale file handle". The daemon, the patched bhyve and
+the window test files are the same bytes as in the fifteenth attempt.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
