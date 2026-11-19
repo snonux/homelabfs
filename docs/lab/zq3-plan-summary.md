@@ -159,8 +159,13 @@ never logged why. After it only the daemon was rebuilt (`e9c77e5b…`, daemon
 `c959b708…`): when it repeats a step it has already recorded, it reuses
 the recorded starting point instead of shutting the link down, and every
 shutdown now records its reason. The guest kernel and the patched bhyve
-are the same bytes as before. The new daemon must pass the f3 self-check
-again.
+are the same bytes as before. The thirteenth attempt (zq3-r13) passed the
+f3 self-check with the new daemon and brought both mounts up and usable,
+so that fix works. The test cases still did not run: the session running
+the attempt paused for about an hour after the mounts were ready, which
+used up the time limit. While cleaning up, unmounting one mount hung
+most likely because the daemon had already stopped and the guest never got an answer (medium-high confidence);
+that needs fixing (task oc4) before or alongside the rerun (zq3-r14).
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
