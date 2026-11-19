@@ -18,6 +18,19 @@
 #define HFS9P_STRIDE UINT64_C(2097152)
 #define HFS9P_VSIZE (UINT64_C(1) << 52)
 
+/* Rbridge ERROR reasons, the u16 after status 4 (docs/spec/
+ * Retained-9p-protocol.md). The Linux guest has no header in common with
+ * this library and spells the same values out as HFS_ERROR_* (linux9p patch
+ * 0002, fs/9p/hfs_policy.h). UNAVAILABLE (pc4, zq3-r12 R12-1) is a native
+ * EHOSTDOWN: the host runtime's guest transport failed or was fenced
+ * (fsapi.Unavailable), which the guest maps to -EHOSTDOWN instead of the
+ * -EPROTO of INVALID. */
+#define HFS9P_ERROR_INVALID 1u
+#define HFS9P_ERROR_SCOPE 2u
+#define HFS9P_ERROR_CAPACITY 3u
+#define HFS9P_ERROR_RETIRED_CELL 4u
+#define HFS9P_ERROR_UNAVAILABLE 5u
+
 typedef struct {
    uint8_t session[16];
    uint64_t node[3];

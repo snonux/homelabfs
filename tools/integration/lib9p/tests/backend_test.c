@@ -55,6 +55,10 @@ static bool eof;
 static bool deny;
 static bool fail_protect;
 static bool pending_read;
+/* Nonzero (pc4): every native read fails with this errno, as a FUSE read of
+ * the runtime's result nodes does once its guest transport has failed
+ * (fsapi.Unavailable is EHOSTDOWN). */
+static int read_errno;
 /* Nonzero: every well-formed native write is refused with this errno, as the
  * runtime refuses a cell before admission (e64 refusal classification). */
 static int refuse_errno;
@@ -273,8 +277,8 @@ ssize_t
 fixture_pread(int fd, void *buffer, size_t length, off_t position) {
    assert(io_active);
    assert(fd == 11 || fd == 12);
-   if (pending_read) {
-      errno = EAGAIN;
+   if (pending_read || read_errno) {
+      errno = read_errno ? read_errno : EAGAIN;
       return (-1);
    }
    if (eof)
@@ -394,6 +398,7 @@ reset_fixtures(void) {
    writes = protects = verifies = poll_count = event_after = 0;
    lose_receipt = wrong_flags = eof = deny = fail_protect = false;
    pending_read = false;
+   read_errno = 0;
    fixture_read_limit = 7;
    hold_receipts = false;
    rejected_writes = 0;
@@ -739,6 +744,59 @@ ack_string(Hfs9pEntry *e, char ack[128]) {
       (void)snprintf(hash + i * 2, 3, "%02x", e->response_guest_hash[i]);
    (void)snprintf(ack, 128, "{\"cell\":%llu,\"response_hash\":\"%s\"}",
        (unsigned long long)e->guest_cell, hash);
+}
+
+/* One FETCH that must get an ERROR reply; returns its u16 reason. */
+static unsigned
+fetch_error_reason(Hfs9pConnection *c, uint64_t cell, unsigned channel) {
+   uint8_t request[21] = {0}, response[HFS9P_MSIZE];
+   size_t n;
+   _put(request, 21, 4);
+   request[4] = 240;
+   _put(request + 5, 1, 2);
+   request[7] = 2;
+   request[8] = (uint8_t)channel;
+   _put(request + 9, cell, 8);
+   assert(!exchange_retry(c, request, sizeof(request), response,
+       sizeof(response), &n));
+   assert(n == 10 && _get(response, 4) == 10 && response[4] == 241 &&
+       response[7] == 4);
+   return ((unsigned)_get(response + 8, 2));
+}
+
+/* pc4 (zq3-r12 R12-1): a FETCH whose native result read fails EHOSTDOWN,
+ * the host runtime's guest transport having failed, gets ERROR UNAVAILABLE
+ * (5), on the result channel (a VIEW_QUERY or any ordinary result) and on
+ * the recall channel (VIEW_WAIT). Other read errnos keep INVALID (1). The
+ * reply keeps the cell retained: once reads work again the same FETCH gets
+ * its frame. */
+static void
+unavailable_tests(void) {
+   Hfs9p *h = new_endpoint();
+   Hfs9pConnection *c = connection(h, golden_hello);
+   read_errno = EHOSTDOWN;
+   assert(send_body(c, golden_hello, 1) == 1);
+   assert(fetch_error_reason(c, 1, 2) == HFS9P_ERROR_UNAVAILABLE);
+   read_errno = EIO;
+   assert(fetch_error_reason(c, 1, 2) == HFS9P_ERROR_INVALID);
+   read_errno = 0;
+   assert(fetch(c, 1, 2) == 3);
+   char *body = wait_body(h, 2);
+   event_after = 1;
+   read_errno = EHOSTDOWN;
+   assert(send_body(c, body, 2) == 1);
+   assert(fetch_error_reason(c, 2, 3) == HFS9P_ERROR_UNAVAILABLE);
+   read_errno = 0;
+   unsigned kind, attempts = 0;
+   while ((kind = fetch(c, 2, 3)) == 2) {
+      assert(attempts++ < 5000);
+      pause_retry();
+   }
+   assert(kind == 3);
+   free(body);
+   hfs9p_connection_delete(c);
+   shutdown_endpoint(h);
+   reset_fixtures();
 }
 
 static void
@@ -2356,6 +2414,7 @@ main(int argc, char **argv) {
    routing_cases();
    wait_tests();
    capacity_tests();
+   unavailable_tests();
    protected_retry_test(argv[1]);
    deadline_tests();
    session_tests();

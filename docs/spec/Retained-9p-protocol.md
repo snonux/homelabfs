@@ -35,7 +35,17 @@ RECALL=3. SEND is valid only for COMMAND; cell/chunk must match its H9B header.
 FETCH=2 has no trailing bytes and selects one RESULT/RECALL cell/chunk. Rbridge
 is `status:u8` followed by: nothing for COPIED=1 or AGAIN=2; one complete H9B
 frame for FRAME=3; reason:u16 for ERROR=4 (INVALID=1,SCOPE=2,CAPACITY=3,
-RETIRED_CELL=4). SEND returns COPIED or ERROR; FETCH returns FRAME/AGAIN/ERROR.
+RETIRED_CELL=4,UNAVAILABLE=5). SEND returns COPIED or ERROR; FETCH returns FRAME/AGAIN/ERROR.
+UNAVAILABLE (pc4, zq3-r12 R12-1) means that the host runtime's guest
+transport has failed or been fenced (a native EHOSTDOWN, `fsapi.Unavailable`);
+before pc4 that was INVALID like every other exporter errno. The exporter
+keeps the cell retained, so a later FETCH can still get its frame. The Linux
+guest (oc4) fails the exchange with -EHOSTDOWN for UNAVAILABLE, -ESTALE for
+RETIRED_CELL and -EPROTO for any other reason (and still retries only a SEND
+CAPACITY), and logs the raw reason in its session-block and view-stop lines.
+Its SEND/FETCH retry loops also stop with -EHOSTDOWN once the session is
+blocked while they retry; work issued on an already blocked session and a
+clean unmount still retry to the 30 s deadline.
 Size includes the seven-byte 9p header and must be exact. No concatenated frames,
 trailing bytes or partial chunks are permitted. The selected H9B cell/chunk and
 kind must match FETCH. COPIED is transport receipt, never filesystem success.
