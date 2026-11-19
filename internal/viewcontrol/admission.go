@@ -89,13 +89,15 @@ func (c *Controller) admissionBarrier(ctx context.Context, b guestbridge.Binding
 		}
 		return nil
 	}
-	return c.recallBarrier(ctx, b.Context.Session, b.Call.Intent.Opcode)
+	return c.recallBarrier(ctx, b.Context.Session, b.Call.Intent)
 }
 
 // recallBarrier is the CALL half of admissionBarrier for every op except
 // DRAIN_WRITE. A conflicting op starts the all-domain recall only when none
 // exists; during a scoped recall it waits for that recall to finish first.
-func (c *Controller) recallBarrier(ctx context.Context, session, op string) error {
+// Reads and read-only OPENs conflict as reads (readConflict, read_open.go).
+func (c *Controller) recallBarrier(ctx context.Context, session string, intent guestbridge.Intent) error {
+	op := intent.Opcode
 	if c.recallHoldsCall(session, op) {
 		return fsapi.WouldBlock
 	}
@@ -103,7 +105,7 @@ func (c *Controller) recallBarrier(ctx context.Context, session, op string) erro
 		if !c.ownReservationOpen(session) {
 			return nil
 		}
-	} else if !c.conflicts(readOperation(op)) {
+	} else if !c.conflicts(readConflict(intent)) {
 		return nil
 	}
 	if err := c.startRecall(ctx); err != nil {
@@ -314,7 +316,8 @@ func (p *permit) CheckDrain(ctx context.Context, command fsapi.Command) error {
 
 // conflicts reports whether admitting an op must first recall: a non-read op
 // conflicts with every active lease, whose cached observations it may change;
-// a read conflicts only with an active EXCLUSIVE_DIRTY lease; and every op
+// a read (readConflict: a read opcode or a read-only OPEN) conflicts only
+// with an active EXCLUSIVE_DIRTY lease; and every op
 // conflicts with an open reservation. Callers exempt authority reductions
 // (authorityReduction) before asking: they change no observation, at most
 // lifetime state, so a lease's target stays a correct view of the namespace

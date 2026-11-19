@@ -91,6 +91,15 @@ the expected-target mismatch and start an all-domain recall (e84 tracks
 scoping it). `Domain` is `omitempty`, so all-domain recalls keep their exact
 schema-2 bytes; downgrading while a scoped recall is in flight is unsupported.
 
+Read-only OPEN (`read_open.go`, task z94 after zq3-r11 R11-1/zq3-r14 R14-1).
+An OPEN with access READ and no create/exclusive/truncate/append flag conflicts
+like a read: only with EXCLUSIVE_DIRTY leases and open reservations, never with
+a READ lease (the caller's own observation lease included). fsservice plans no
+mutation for it and has no access-time update, so its only effects are a
+HandlePin and an open handle, lifetime state no lease observes. Because the pin
+may move the cut, it is not cut-preserving: every recall still holds it, and it
+is charged source capacity as a non-read. Native OPENs are unchanged.
+
 DIRTY_RESERVE first protects RESERVING with complete original provenance and
 controller credit, then durably earmarks its future ordinary number plus actual
 provider claim/result/source credit, and only then protects GRANTED. Earmarks are

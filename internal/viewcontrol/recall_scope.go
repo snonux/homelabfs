@@ -209,7 +209,9 @@ func (c *Controller) recallHoldsCall(session, op string) bool {
 // after INSTALL_FINAL, it made the REOPEN target differ from the installed
 // one, the guest refused REOPEN with ESTALE and the recall wedged (review of
 // task 784). ROOT, GETATTR, READ, READLINK, READDIR (transient grants only)
-// and STATFS plan no pin and no mutation; OPEN, which also pins, is no read.
+// and STATFS plan no pin and no mutation. OPEN also pins, so even a
+// read-only OPEN, which conflicts like a read (readConflict), is never
+// cut-preserving and every recall holds it.
 func cutPreservingRead(op string) bool {
 	return readOperation(op) && op != "LOOKUP"
 }
