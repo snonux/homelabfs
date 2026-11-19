@@ -741,7 +741,7 @@ rocky requires explicit maintenance approval"). The test guest that boots
 Rocky's disk also starts the timer (`OnBootSec=10min`), but the stamp
 already holds today's local date, so it only logs the deferred reboot.
 
-The fill's facts (2026-11-19 16:01:29Z = 13:31:26 EET,
+The fill's facts (2026-11-19 16:01:29Z = 18:01:29 EET,
 `rocky-upgrade-20261119T160129Z.txt`): stamp `2026-11-19`, written
 00:55:04 EET; the newest dnf transaction is still #64 (2026-11-18 00:55,
 5 packages), so that day's run changed nothing. Rocky runs
@@ -868,7 +868,7 @@ bash -c 'source /home/paul/tmp/claude/hfs-zq3-r15-fill/session.sh && { test ! -e
 
 ## D1: f3 module state (decided: D1-a, Phase 1a)
 
-The 16:01Z facts show `fdescfs.ko` (id 30) and `fusefs.ko` (id 31) loaded on
+The 16:01Z facts show `fdescfs.ko` (id 31) and `fusefs.ko` (id 32) loaded on
 f3, left by zq3-r14 (its Phase 4 loaded them, its window restore kept them,
 and f3 has not rebooted since Paul's deliberate 2026-11-13 reboot), with no
 fuse or fdesc mount and `/dev/fd` on devfs. The window plan filler
@@ -2115,10 +2115,10 @@ T1, `credentials`:
 ```bash
 gbudget T1 | tee $E/t1-budget.json; echo rc=${PIPESTATUS[0]}   # guard budget: GO and rc=0 required; STOP: T1 and the rest unrun, Phase 11 (guard-SIGTERM branch)
 tf3 observe $((L+2)) "doas -n $C --operation observe --runtime $U --sequence $((L+2))" > $E/obs-credentials-baseline.json
-$CTL probe --plan $D/controller/batch-plan.json --sha256 $B --output $OUT | tee $E/t1-probe.json
+$CTL probe --plan $D/controller/batch-plan.json --sha256 $B --output $OUT | tee $E/t1-probe.json  # tool timeout >= 300 s
 obs obs-credentials-baseline obs-credentials-retained
 python3 -I -B $CR case --output $OUT --sha256 $B --case credentials --baseline $E/obs-credentials-baseline.json --baseline-sha256 $(sha $E/obs-credentials-baseline.json) --retained $E/obs-credentials-retained.json --retained-sha256 $(sha $E/obs-credentials-retained.json) --record $E/corr-credentials.json
-$CTL release --output $OUT --sha256 $B --correlation $E/corr-credentials.json --correlation-sha256 $(sha $E/corr-credentials.json) | tee $E/t1-release.json
+$CTL release --output $OUT --sha256 $B --correlation $E/corr-credentials.json --correlation-sha256 $(sha $E/corr-credentials.json) | tee $E/t1-release.json  # tool timeout >= 300 s
 ```
 
 T2, `sync`:
@@ -2126,10 +2126,10 @@ T2, `sync`:
 ```bash
 gbudget T2 | tee $E/t2-budget.json; echo rc=${PIPESTATUS[0]}   # guard budget: GO and rc=0 required; STOP: T2 and the rest unrun, Phase 11 (guard-SIGTERM branch)
 obs obs-credentials-retained obs-sync-baseline
-$CTL next --output $OUT --sha256 $B | tee $E/t2-next.json
+$CTL next --output $OUT --sha256 $B | tee $E/t2-next.json  # tool timeout >= 300 s
 obs obs-sync-baseline obs-sync-retained
 python3 -I -B $CR case --output $OUT --sha256 $B --case sync --baseline $E/obs-sync-baseline.json --baseline-sha256 $(sha $E/obs-sync-baseline.json) --retained $E/obs-sync-retained.json --retained-sha256 $(sha $E/obs-sync-retained.json) --record $E/corr-sync.json
-$CTL release --output $OUT --sha256 $B --correlation $E/corr-sync.json --correlation-sha256 $(sha $E/corr-sync.json) | tee $E/t2-release.json
+$CTL release --output $OUT --sha256 $B --correlation $E/corr-sync.json --correlation-sha256 $(sha $E/corr-sync.json) | tee $E/t2-release.json  # tool timeout >= 300 s
 ```
 
 T3, `metadata`:
@@ -2137,10 +2137,10 @@ T3, `metadata`:
 ```bash
 gbudget T3 | tee $E/t3-budget.json; echo rc=${PIPESTATUS[0]}   # guard budget: GO and rc=0 required; STOP: T3 and the rest unrun, Phase 11 (guard-SIGTERM branch)
 obs obs-sync-retained obs-metadata-baseline
-$CTL next --output $OUT --sha256 $B | tee $E/t3-next.json
+$CTL next --output $OUT --sha256 $B | tee $E/t3-next.json  # tool timeout >= 300 s
 obs obs-metadata-baseline obs-metadata-retained
 python3 -I -B $CR case --output $OUT --sha256 $B --case metadata --baseline $E/obs-metadata-baseline.json --baseline-sha256 $(sha $E/obs-metadata-baseline.json) --retained $E/obs-metadata-retained.json --retained-sha256 $(sha $E/obs-metadata-retained.json) --record $E/corr-metadata.json
-$CTL release --output $OUT --sha256 $B --correlation $E/corr-metadata.json --correlation-sha256 $(sha $E/corr-metadata.json) | tee $E/t3-release.json
+$CTL release --output $OUT --sha256 $B --correlation $E/corr-metadata.json --correlation-sha256 $(sha $E/corr-metadata.json) | tee $E/t3-release.json  # tool timeout >= 300 s
 ```
 
 T4, `namespace`:
@@ -2148,10 +2148,10 @@ T4, `namespace`:
 ```bash
 gbudget T4 | tee $E/t4-budget.json; echo rc=${PIPESTATUS[0]}   # guard budget: GO and rc=0 required; STOP: T4 and the rest unrun, Phase 11 (guard-SIGTERM branch)
 obs obs-metadata-retained obs-namespace-baseline
-$CTL next --output $OUT --sha256 $B | tee $E/t4-next.json
+$CTL next --output $OUT --sha256 $B | tee $E/t4-next.json  # tool timeout >= 300 s
 obs obs-namespace-baseline obs-namespace-retained
 python3 -I -B $CR case --output $OUT --sha256 $B --case namespace --baseline $E/obs-namespace-baseline.json --baseline-sha256 $(sha $E/obs-namespace-baseline.json) --retained $E/obs-namespace-retained.json --retained-sha256 $(sha $E/obs-namespace-retained.json) --record $E/corr-namespace.json
-$CTL release --output $OUT --sha256 $B --correlation $E/corr-namespace.json --correlation-sha256 $(sha $E/corr-namespace.json) | tee $E/t4-release.json
+$CTL release --output $OUT --sha256 $B --correlation $E/corr-namespace.json --correlation-sha256 $(sha $E/corr-namespace.json) | tee $E/t4-release.json  # tool timeout >= 300 s
 $CTL status --output $OUT > $E/t4-status.json
 jf $E/t4-status.json syscall_batch_success      # must print True (every PLANNED case released)
 jf $E/t4-status.json cases_planned              # ['credentials', 'sync', 'metadata', 'namespace']
@@ -2176,7 +2176,7 @@ T6, same-mount locks on m0 (needs T5 only for the order; with T5 deferred it fol
 
 ```bash
 gbudget T6 | tee $E/t6-budget.json; echo rc=${PIPESTATUS[0]}   # guard budget: GO and rc=0 required; STOP: T6 and the rest unrun, Phase 11 (guard-SIGTERM branch)
-rocky '/usr/bin/python3.9 -I -B /root/hfs-zq3-zq3-r15-tools/guest-lock-probe.py' < $E/lock-m0.json | tee $E/t6-lock.json
+rocky '/usr/bin/python3.9 -I -B /root/hfs-zq3-zq3-r15-tools/guest-lock-probe.py' < $E/lock-m0.json | tee $E/t6-lock.json  # tool timeout >= 300 s
 ```
 
 Pass only with `"passed": true` (exit 0; exit 10 is a fail, recorded with its
@@ -2191,7 +2191,7 @@ gbudget T7 | tee $E/t7-budget.json; echo rc=${PIPESTATUS[0]}   # guard budget: G
 rocky 'test ! -e /root/hfs-zq3-zq3-r15-pod/request.json && (umask 077; cat > /root/hfs-zq3-zq3-r15-pod/request.json)' < $E/pod-request.json
 rocky 'sha256sum /root/hfs-zq3-zq3-r15-pod/request.json'   # must equal the next line
 sha $E/pod-request.json
-rocky 'TZ=UTC LC_ALL=C /usr/bin/python3.9 -I -B /root/hfs-zq3-zq3-r15-pod/pod_fixture.py run --request /root/hfs-zq3-zq3-r15-pod/request.json' | tee $E/t7-pod.json
+rocky 'TZ=UTC LC_ALL=C /usr/bin/python3.9 -I -B /root/hfs-zq3-zq3-r15-pod/pod_fixture.py run --request /root/hfs-zq3-zq3-r15-pod/request.json' | tee $E/t7-pod.json  # tool timeout >= 420 s
 ```
 
 Pass only with `t7_pass: true` (which also removes the two exited containers
@@ -2218,9 +2218,9 @@ obs obs-namespace-retained t9-pre-arm
 python3 -I -B $CR command --operation arm-lost-reply --lost-intent MKDIR --output $OUT --sha256 $B --observe $E/t9-pre-arm.json --observe-sha256 $(sha $E/t9-pre-arm.json) --runtime-binary $R/bin/hfs-controlled-runtime --control $R/runtime/owner/control.sock > $E/cmd-t9-arm.json
 ARM=$(python3 -I -B $D/sh/p10-argv.py --operation arm-lost-reply $E/cmd-t9-arm.json); echo "$ARM"
 f3 "doas -n $ARM" > $E/t9-armed.json
-$CTL lifecycle --output $OUT --sha256 $B --step lost-reply-call | tee $E/t9-call.json
+$CTL lifecycle --output $OUT --sha256 $B --step lost-reply-call | tee $E/t9-call.json  # tool timeout >= 300 s
 obs t9-pre-arm t9-post-call t9-armed
-$CTL lifecycle --output $OUT --sha256 $B --step lost-reply-reread | tee $E/t9-reread.json
+$CTL lifecycle --output $OUT --sha256 $B --step lost-reply-reread | tee $E/t9-reread.json  # tool timeout >= 300 s
 python3 -I -B $CR lost-reply --output $OUT --sha256 $B --before $E/t9-pre-arm.json --before-sha256 $(sha $E/t9-pre-arm.json) --armed $E/t9-armed.json --armed-sha256 $(sha $E/t9-armed.json) --after $E/t9-post-call.json --after-sha256 $(sha $E/t9-post-call.json) --record $E/t9.json
 ```
 
@@ -2239,7 +2239,7 @@ T10, daemon restart via u24 (last step that needs the live runtime):
 
 ```bash
 gbudget T10 | tee $E/t10-budget.json; echo rc=${PIPESTATUS[0]}   # guard budget: GO and rc=0 required; STOP: T10 and T11 unrun, T8 by its own budget line, Phase 11 (guard-SIGTERM branch)
-$CTL lifecycle --output $OUT --sha256 $B --step quiesce | tee $E/t10-quiesce.json
+$CTL lifecycle --output $OUT --sha256 $B --step quiesce | tee $E/t10-quiesce.json  # tool timeout >= 300 s
 obs t9-post-call t10-post-quiesce
 python3 -I -B $CR command --operation restart --output $OUT --sha256 $B --observe $E/t10-post-quiesce.json --observe-sha256 $(sha $E/t10-post-quiesce.json) --runtime-binary $R/bin/hfs-controlled-runtime --control $R/runtime/owner/control.sock > $E/cmd-t10-restart.json
 RST=$(python3 -I -B $D/sh/p10-argv.py --operation restart $E/cmd-t10-restart.json); echo "$RST"
@@ -2282,7 +2282,7 @@ f3 "doas -n test -e $R/guard/receipt.json && doas -n cat $R/guard/receipt.json |
 f3 "doas -n cat $R/guard/receipt.json" > $E/p10-guard-receipt.json
 jf $E/p10-guard-receipt.json runtime_running_at_guard_exit    # must print False
 f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/host_snapshot.py --run-id zq3-r15 --path $R/runtime/mnt --label before" > $E/k04-before.json
-$CTL lifecycle --output $OUT --sha256 $B --step after-loss | tee $E/t11-after-loss.json
+$CTL lifecycle --output $OUT --sha256 $B --step after-loss | tee $E/t11-after-loss.json  # tool timeout >= 300 s
 f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/host_snapshot.py --run-id zq3-r15 --path $R/runtime/mnt --label after" > $E/k04-after.json
 python3 -I -B $CR k04 --output $OUT --sha256 $B --baseline $E/k04-baseline.json --baseline-sha256 $(sha $E/k04-baseline.json) --before $E/k04-before.json --before-sha256 $(sha $E/k04-before.json) --after $E/k04-after.json --after-sha256 $(sha $E/k04-after.json) --record $E/t11.json
 ```
@@ -2311,7 +2311,7 @@ rocky "grep ' 9p ' /proc/self/mountinfo; grep -c ' 9p ' /proc/self/mountinfo" | 
 rocky 'dmesg | grep -E "hfs.*blocked|view control worker stopped|timed out behind a recall" || echo no-hfs-block' | tee $E/t8-block-before.txt
 T0=$(date +%s); rockyt "umount $G/m1" | tee $E/t8-umount.txt; echo rc=${PIPESTATUS[0]} seconds=$(( $(date +%s) - T0 ))   # normal only; read rc before the next line: anything but rc=0 means T8 unrun
 rocky 'dmesg | grep -E "hfs.*blocked|view control worker stopped|timed out behind a recall" || echo no-hfs-block' | tee $E/t8-block-after.txt   # R10-2/1a4 check: no new line
-rocky '/usr/bin/python3.9 -I -B /root/hfs-zq3-zq3-r15-tools/guest-lock-probe.py' < $E/lock-m1-t8.json | tee $E/t8-lock-refusal.json   # only if the unmount printed rc=0
+rocky '/usr/bin/python3.9 -I -B /root/hfs-zq3-zq3-r15-tools/guest-lock-probe.py' < $E/lock-m1-t8.json | tee $E/t8-lock-refusal.json   # only if the unmount printed rc=0; tool timeout >= 300 s
 rocky "ls -A $G/m1" | tee $E/t8-ls.txt          # only if the unmount printed rc=0; must print nothing
 ```
 
@@ -2632,3 +2632,5 @@ time, as in zq3-r14. The lines new or changed for zq3-r15:
 - <UTC> Phase 11 step 2 (R13-1 check): umount m0 rc .. seconds .., umount m1 rc .. seconds ..; mountinfo after ..; poweroff to child-gone .. s (step 6 line as written, pattern [h]fs-zq3-r15).
 - <UTC> Phase 12: start-rocky ..; rockywait: rocky-ssh-up try .. at ..Z (in the session shell); vm-bhyve runs ..; relabel none|..
 ```
+
+**Review round 1 (2026-11-19):** no blocking findings. Applied: tool-timeout comments on every $CTL, lock-probe (>= 300 s) and T7 pod run (>= 420 s) line; D1 module ids 31/32; the facts time in EET.
