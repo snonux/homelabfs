@@ -41,7 +41,7 @@ stays null.
 | Candidate | `/home/paul/tmp/claude/hfs-xz3-20261119-r14/package` |
 | Manifest SHA256 | `3a7131ddc0bfad96762421122027d63aa5c736ace1ef61f4cb9eff14b5379f6f` (195 files) |
 | Source checkout | `942614af75db2f83855ba50b85a67c9c7accf763` |
-| Repository baseline | `b7d107b073a017280b107168042ad6372c59dbbe` (the reused daemon's build revision; `inputs/repository-changes.patch` `400c8749…` records the tracked oc4/pc4 diff since then) |
+| Repository baseline | `b7d107b073a017280b107168042ad6372c59dbbe` (the reused daemon's build revision; `inputs/repository-changes.patch` `400c8749…` records the oc4/pc4 diff since then over `assemble.py`'s tracked list: patch 0004, `source.json`, `hfs9p.c`, `owned-inputs.json`, `backend_test.c`; patches 0001-0003 and `hfs9p.h` are pinned elsewhere in the package) |
 | Kernel | `6.1.190-hfs-xz3`: `linux/bzImage` `e0daa57eaa51d727a86417c8a82b29fc1143f066ca0b806657ae61ffcccc849f`, `linux/vmlinux` `d2690b4257f4454c7b1e81250c9c28bca7763bdb32bdb46b6ae09c35cb6c7f8c` (GNU build ID `9b167690f6cd2f0538ecb6df06ab76121736eacb`), `linux/config` `28fe4a8e…` (unchanged), `System.map` `dd88dfcb2ab0b57a7e4f5cae9cc972460ec1be1b2f6fe8f2b255be39ccffe622` |
 | Modules | the five modules are byte-identical to `e9c77e5b` (same GNU build IDs; `virtio_net` `39de7e93…`) |
 | Native exporter | `freebsd/bhyve` `2fd7e32f5cc8762ae0ff4d5ec6c046d7d49b95c97e4b9150dd17b2ac52c39fd3` (GNU build ID `43f2ae41…`), owned-source inventory `35714a7f…` |
@@ -67,7 +67,8 @@ with `HostKeyAlias=f3`. The native recipes are unchanged since y64.
 
 - **Rocky pin, checked read-only first:** bhyve PID 46923, lstart
   `Thu Nov 19 08:24:51 2026` UTC, `rocky.conf` `c101adf1…`, `memory=12G`,
-  `/dev/vmm` only `rocky`. The facts after the build were the same.
+  `/dev/vmm` only `rocky`. After the build the Rocky PID, lstart, `/dev/vmm` and the `rocky.conf`
+  hash were unchanged (the after-check is narrower than the before-check).
 - **Root and guard:** one fresh private 0700 root,
   `/var/tmp/hfs-xz3-20261119-r14-r1`, left in place as evidence. Every stage
   ran under `native_guard.py` (one CPU, 512 MiB aggregate RSS, 20 minutes per
@@ -115,8 +116,8 @@ with `HostKeyAlias=f3`. The native recipes are unchanged since y64.
     `v9fs_hfs_register_provider`). It also gained the export
     `hfs_control_flagged`. No module imports them.
 - **Daemon, reused byte for byte:** the binary, `daemon-build.json`,
-  `daemon-preparation.json`, the four Go licences and the xc4
-  `daemon-clean-repro.json`.
+  `daemon-preparation.json` and the four Go licences (7 files), plus the xc4
+  `daemon-clean-repro.json`, which came out identical rather than reused.
   - The xc4 builder bindings name the xc4 worktree, where the daemon was
     really built. They were re-keyed to the xd4 worktree, but only after
     checking that `daemon.py` and `daemon_cgo.py` there hash to the bound
@@ -124,14 +125,15 @@ with `HostKeyAlias=f3`. The native recipes are unchanged since y64.
     in the run root under `daemon-binding-origin/`.
   - Because `assemble.py` takes the repository baseline from the daemon's
     build record, the baseline stays `b7d107b`. `inputs/repository-changes.patch`
-    records the tracked oc4/pc4 diff since then.
+    records the oc4/pc4 diff since then, over `assemble.py`'s tracked list
+    only (patches 0001-0003 and `hfs9p.h` are pinned elsewhere).
 - **Window artifacts, reused:** they follow the daemon source, and the daemon
   is the `b7d107b` build. `docs/lab/zq3-fdescfs-window/pins.json` is
   unchanged; the build record gained a note.
 - **31 files reused** from `e9c77e5b`, each checked against its manifest:
   - the daemon files above (7);
   - patch 0005 with `series`;
-  - the 22 Linux notices.
+  - the 22 notices (21 Linux notices and `monocypher-LICENCE.md`).
 
   24 of them were also checked against their current source: the
   repository patches, and the notices in the freshly prepared Linux tree.
