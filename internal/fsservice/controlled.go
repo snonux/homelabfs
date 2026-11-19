@@ -398,7 +398,10 @@ func (c *ControlledCut) planControlled(ctx context.Context, cred fsapi.Cred, com
 			return cp, err
 		}
 	}
-	if cp.Object.Valid() && (command.Operation == fsapi.Create || command.Operation == fsapi.Mkdir || command.Operation == fsapi.SymlinkOp || command.Operation == fsapi.Lookup || command.Operation == fsapi.Open) && s.lifetimes[cp.Object] == nil {
+	// The first reference plans its HandlePin, except the volume root's: a
+	// read-only root OPEN thus journals nothing and keeps the source cut
+	// (pinlessLifetime, task z94).
+	if cp.Object.Valid() && (command.Operation == fsapi.Create || command.Operation == fsapi.Mkdir || command.Operation == fsapi.SymlinkOp || command.Operation == fsapi.Lookup || command.Operation == fsapi.Open) && s.lifetimes[cp.Object] == nil && !s.pinlessLifetime(cp.Object) {
 		op, err := s.newUUID()
 		if err != nil {
 			return cp, err

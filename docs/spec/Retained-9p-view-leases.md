@@ -81,7 +81,13 @@ EOF and permission observations. PAGE covers the physical object and page range
 resolved from the description, independent of path, aliases, description token,
 process or origin. Metadata/EOF/truncate/permissions/OPEN-grant and namespace
 transitions recall all affected page/object/domain observations, including
-negative entry and ancestor dependencies. Conflict identity cannot be merely a
+negative entry and ancestor dependencies. A read-only OPEN (access READ, no
+create/exclusive/truncate/append) is not such a transition: it changes no
+data, metadata or atime, only lifetime state (a handle pin and an open handle),
+so it conflicts like a read, with EXCLUSIVE_DIRTY leases and open
+reservations only, never with a READ lease of any domain including the
+caller's own; because a pin may move the cut, every recall still holds it
+(task z94). Conflict identity cannot be merely a
 description or origin. Concurrent READ leases may share a cut. EXCLUSIVE_DIRTY
 conflicts with every overlapping page read/dirty lease across every domain and
 origin. DOMAIN observations may conservatively conflict with all mutations of
@@ -203,9 +209,12 @@ its INSTALL_FINAL cut. Every other recall (dirty or exclusive release,
 conflicting admission or acquisition, expected-target mismatch) remains the
 all-domain recall with the global barrier. The guest takes each observation
 lease with expected_target = its installed view, so a cut move admitted under
-peer leases (FORGET, a final DESCRIPTION_RELEASE, a pinning LOOKUP) makes the
-peer's next observation acquire hit the expected-target mismatch and start an
-all-domain recall; scoping that recall is tracked as e84. Downgrading to a
+peer leases (FORGET, a final DESCRIPTION_RELEASE, a pinning LOOKUP or
+read-only OPEN of a non-root object) makes the peer's next observation acquire
+hit the expected-target mismatch and start an all-domain recall; scoping that
+recall is tracked as e84. The volume root is exempt: it is never reaped and
+cannot be unlinked, so its lifetime journals no handle pin or release, and the
+root OPEN/close every guest process performs keeps the cut (task z94). Downgrading to a
 controller without scoped recalls while a scoped recall is in flight is
 unsupported. RELEASED
 requires the actual STOPPED/install/DRAINED/final-install/reopen/source closure
