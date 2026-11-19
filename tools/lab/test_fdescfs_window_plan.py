@@ -21,7 +21,8 @@ SPEC.loader.exec_module(FILLER)
 WINDOW = FILLER.WINDOW
 PINS = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/pins.json"
 RECORD = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/build-record.json"
-# Daemon of the admitted xz3 r15 rebuild for zq3-r15 (ac8020aa), built from
+# Daemon of the r15 rebuild (ac8020aa, now superseded; reused by the
+# admitted r16 a1af0bd7), built from
 # 2f34b60 (z94: a read-only OPEN conflicts like a read and the volume root's
 # lifetime journals no pins, on top of the xc4 nc4 daemon c959b708 that
 # e9c77e5b and 3a7131dd carried); the window build reproduced it. The r16
