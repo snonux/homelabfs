@@ -139,6 +139,11 @@ type command struct {
 	controlled func(context.Context)
 	permit     ControlledPermit
 }
+
+// lifetime counts an object's lookup and open-handle references in this
+// serving generation. pin is the journaled HandlePin that keeps the object
+// from being reaped while referenced; it is the zero UUID for the volume
+// root, which journals no pin (pinlessLifetime).
 type lifetime struct {
 	pin     fsapi.UUID
 	lookups uint64

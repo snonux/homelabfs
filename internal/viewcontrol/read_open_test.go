@@ -124,6 +124,7 @@ func TestReadOnlyOpenClassification(t *testing.T) {
 		{"write", map[string]any{"flags": flags("WRITE", false)}, false},
 		{"readwrite", map[string]any{"flags": flags("READWRITE", false)}, false},
 		{"create", map[string]any{"flags": withFlag("create")}, false},
+		{"exclusive without create", map[string]any{"flags": withFlag("exclusive")}, false},
 		{"truncate", map[string]any{"flags": withFlag("truncate")}, false},
 		{"append", map[string]any{"flags": withFlag("append")}, false},
 		{"no flags", map[string]any{}, false},
@@ -140,23 +141,74 @@ func TestReadOnlyOpenClassification(t *testing.T) {
 	}
 }
 
+// observeInstalled is a guest observation acquire of domain i: a DOMAIN READ
+// VIEW_ACQUIRE whose expected target is the domain's installed view, as the
+// guest sends it (Retained-9p-view-leases.md), unlike rig.acquire's nil.
+func (r *rig) observeInstalled(i int, installed guestbridge.ViewTarget) viewReply {
+	r.t.Helper()
+	return r.view(i, "VIEW_ACQUIRE", map[string]any{"request": r.ticket(i), "domain": r.domains[i], "access": guestbridge.ViewAccess{Kind: "DOMAIN"}, "mode": "READ", "target": installed})
+}
+
+// requireObserved requires that both domains' observations of their
+// installed views are granted without a recall.
+func (r *rig) requireObserved(t *testing.T, what string, installed [2]guestbridge.ViewTarget) {
+	t.Helper()
+	for i := range installed {
+		if reply := r.observeInstalled(i, installed[i]); reply.Status != "GRANTED" {
+			t.Fatalf("%s: m%d observation of its installed view: %+v", what, i, reply)
+		}
+	}
+	r.requireNoRecall(t, what)
+}
+
 // TestZQ3CredentialsAdmissionKeepsLeases replays T1 (credentials)
-// admission at the zq3 spec limits: with both domains holding their DOMAIN
-// READ observation leases, as guest.py's processes do, the request process
-// opens and fstats both mount roots. Before z94 each root OPEN recalled
-// every domain (call walls on the parked claim); now neither recalls.
+// admission at the zq3 spec limits with real expected targets: both domains
+// hold DOMAIN READ observation leases on their installed views; the guest.py
+// request process opens and fstats both mount roots, then both domains
+// observe again with expected_target = the installed view, inside the
+// process and after its closes and exit. Before z94 each root OPEN recalled
+// every domain (a conflict with the observation leases), and with that fixed
+// the root's HandlePin/HandleRelease still moved the cut, so the next
+// observation hit the expected-target mismatch and recalled every domain.
+// The mount(8) processes stay alive (no bootstrap): the rig's view tickets
+// carry their credentials.
 func TestZQ3CredentialsAdmissionKeepsLeases(t *testing.T) {
 	limits, bounds := zq3SpecLimits(t), zq3SpecBounds(t)
 	r := newRigWith(t, limits, func(c *Config) { c.Authorization.Enrollment.Bounds = bounds })
 	w := newZQ3World(r, zq3GuestWindow)
-	// The rig's view tickets carry the mount(8) credentials, which the
-	// bootstrap exits, so the leases are taken first; the bootstrap's exits
-	// and stats run under them, as authority reductions and reads.
-	leases := []*guestbridge.ViewLease{r.domainRead(0), r.domainRead(1)}
-	w.bootstrap()
+	installed := [2]guestbridge.ViewTarget{r.domainRead(0).Target, r.domainRead(1).Target}
 	w.begin("T credentials admission")
 	w.guestPy(func(p *zq3Proc, roots [2]*zq3File) {
-		r.requireNoRecall(t, "credentials admission root OPENs", leases...)
+		r.requireObserved(t, "after the root OPENs", installed)
 	})
-	r.requireNoRecall(t, "credentials admission", leases...)
+	r.requireObserved(t, "after the root closes and exit", installed)
+}
+
+// TestRootOpenKeepsInstalledTarget contrasts the pinless root with a real
+// namespace change: after m1's clean release recall installed the current
+// cut, a root OPEN and its final DESCRIPTION_RELEASE by m0 leave that cut, so
+// m1's observation of it is granted; a CREATE by m0 moves it, so the same
+// observation hits the expected-target mismatch and starts the all-domain
+// recall.
+func TestRootOpenKeepsInstalledTarget(t *testing.T) {
+	for _, change := range []string{"root-open", "create"} {
+		t.Run(change, func(t *testing.T) {
+			r := newZQ3Rig(t, 0)
+			lease := r.domainRead(1)
+			if reply := r.release(1, lease); reply.Status != "RELEASED" {
+				t.Fatalf("release %+v", reply)
+			}
+			if change == "create" {
+				r.create(0, "moves-target", false)
+			} else {
+				opened := r.call(0, "OPEN", map[string]any{"object": r.roots[0], "flags": flags("READ", false)})
+				r.call(0, "DESCRIPTION_RELEASE", map[string]any{"description": opened.Capabilities[0], "release_sequence": 1})
+			}
+			reply := r.observeInstalled(1, lease.Target)
+			_, _, recall := r.recallSnapshot()
+			if want := change == "root-open"; (reply.Status == "GRANTED") != want || recall == want {
+				t.Fatalf("%s: observation %+v recall %v", change, reply, recall)
+			}
+		})
+	}
 }

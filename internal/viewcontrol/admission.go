@@ -317,8 +317,8 @@ func (p *permit) CheckDrain(ctx context.Context, command fsapi.Command) error {
 // conflicts reports whether admitting an op must first recall: a non-read op
 // conflicts with every active lease, whose cached observations it may change;
 // a read (readConflict: a read opcode or a read-only OPEN) conflicts only
-// with an active EXCLUSIVE_DIRTY lease; and every op
-// conflicts with an open reservation. Callers exempt authority reductions
+// with an active EXCLUSIVE_DIRTY lease; and every op conflicts with an open
+// reservation. Callers exempt authority reductions
 // (authorityReduction) before asking: they change no observation, at most
 // lifetime state, so a lease's target stays a correct view of the namespace
 // and data even when such an op moves the journal past it. They conflict

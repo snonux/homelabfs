@@ -8,6 +8,7 @@ import (
 	"github.com/snonux/homelabfs/internal/apply"
 	"github.com/snonux/homelabfs/internal/fsapi"
 	"github.com/snonux/homelabfs/internal/journal/record"
+	"github.com/snonux/homelabfs/internal/storage"
 	"github.com/snonux/homelabfs/internal/vfs"
 )
 
@@ -268,5 +269,36 @@ func TestReapReleasesExclusiveLeaseBeforeNextOrphan(t *testing.T) {
 				assertCode(t, f.request(fsapi.Command{Operation: fsapi.Getattr, Object: id}), fsapi.NotFound)
 			}
 		})
+	}
+}
+
+// TestRootLifetimeIsPinless (task z94): opening and releasing the volume root
+// journals no HandlePin/HandleRelease, so it leaves the store image (and the
+// controlled source cut) unchanged, while a non-root object's first
+// reference still pins it.
+func TestRootLifetimeIsPinless(t *testing.T) {
+	f := setup(t, "sim")
+	f.start()
+	pins := func() []storage.Pin {
+		image, err := f.service.applied.Store.Export(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return image.Pins
+	}
+	before := len(pins())
+	for range 2 {
+		root := f.ok(fsapi.Command{Operation: fsapi.Open, Object: f.c.Storage.Root, Flags: fsapi.OpenFlags{Access: fsapi.ReadOnly}})
+		if got := len(pins()); got != before {
+			t.Fatalf("root OPEN journaled a pin: %d -> %d", before, got)
+		}
+		f.ok(fsapi.Command{Operation: fsapi.Release, Handle: root.Handle})
+		if got := len(pins()); got != before {
+			t.Fatalf("root RELEASE journaled a pin change: %d -> %d", before, got)
+		}
+	}
+	f.create(f.c.Storage.Root, "file")
+	if got := len(pins()); got != before+1 {
+		t.Fatalf("non-root CREATE pins: %d -> %d", before, got)
 	}
 }

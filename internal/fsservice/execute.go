@@ -255,22 +255,10 @@ func (s *Service) acquire(ctx context.Context, id fsapi.ObjectID, lookup bool, f
 	}
 	life := s.lifetimes[id]
 	if life == nil {
-		op, err := s.newUUID()
-		if err != nil {
+		var err error
+		if life, err = s.newLifetime(ctx, id); err != nil {
 			return err
 		}
-		pin, err := s.newUUID()
-		if err != nil {
-			return err
-		}
-		// A conservative pin covers lookup and open obligations together. Each pin
-		// command gets its own operation UUID; it never aliases the creating COMMIT.
-		payload := record.HandlePin{Pin: pin, Object: id, ServingGeneration: s.config.Workspace.ID, Incarnation: s.config.Authority.OwnerIncarnation, Reasons: 5}
-		if err = s.protect(ctx, op, payload); err != nil {
-			return err
-		}
-		life = &lifetime{pin: pin}
-		s.lifetimes[id] = life
 	}
 	if lookup {
 		life.lookups++
@@ -283,6 +271,50 @@ func (s *Service) acquire(ctx context.Context, id fsapi.ObjectID, lookup bool, f
 	}
 	return nil
 }
+
+// newLifetime registers the first reference of id in this serving
+// generation. Every object but the volume root first journals a HandlePin:
+// a conservative pin covers lookup and open obligations together, and each
+// pin command gets its own operation UUID; it never aliases the creating
+// COMMIT. The root's lifetime is pinless (pinlessLifetime).
+func (s *Service) newLifetime(ctx context.Context, id fsapi.ObjectID) (*lifetime, error) {
+	life := &lifetime{}
+	if !s.pinlessLifetime(id) {
+		op, err := s.newUUID()
+		if err != nil {
+			return nil, err
+		}
+		pin, err := s.newUUID()
+		if err != nil {
+			return nil, err
+		}
+		payload := record.HandlePin{Pin: pin, Object: id, ServingGeneration: s.config.Workspace.ID, Incarnation: s.config.Authority.OwnerIncarnation, Reasons: 5}
+		if err = s.protect(ctx, op, payload); err != nil {
+			return nil, err
+		}
+		life.pin = pin
+	}
+	s.lifetimes[id] = life
+	return life, nil
+}
+
+// pinlessLifetime reports the objects whose references journal no
+// HandlePin/HandleRelease: only the volume root (task z94). A pin exists
+// only to keep a referenced object from being reaped once unlinked, and the
+// root is never reaped (reap skips it unconditionally) and cannot be
+// unlinked (it has no parent entry). Its pin records therefore had no
+// consumer, yet each moved the journal and the source cut: every guest
+// process opens both mount roots, so under the controlled views the first
+// root OPEN and last root RELEASE of each process moved the cut under every
+// domain's observation leases, whose next acquisitions then hit the
+// expected-target mismatch and recalled all domains (zq3-r14 R14-1). The
+// in-memory lookup/handle counts are kept exactly as for any object.
+func (s *Service) pinlessLifetime(id fsapi.ObjectID) bool {
+	return id == s.config.Storage.Root
+}
+
+// drop releases count references of id; the last one journals the
+// HandleRelease of its pin, except for a pinless lifetime.
 func (s *Service) drop(ctx context.Context, id fsapi.ObjectID, lookup bool, count uint64) error {
 	life := s.lifetimes[id]
 	if life == nil || count == 0 {
@@ -300,7 +332,7 @@ func (s *Service) drop(ctx context.Context, id fsapi.ObjectID, lookup bool, coun
 		}
 		remainingHandles--
 	}
-	if remainingLookups == 0 && remainingHandles == 0 {
+	if remainingLookups == 0 && remainingHandles == 0 && !s.pinlessLifetime(id) {
 		op, err := s.newUUID()
 		if err != nil {
 			return err

@@ -28,6 +28,9 @@ import (
 //     no lifetime yet and one open handle (fsservice acquire). That is the
 //     same class of effect a LOOKUP has, and LOOKUP has always conflicted as
 //     a read. A pin only keeps an object alive longer; no lease observes it.
+//     The volume root journals no pin at all (fsservice pinlessLifetime), so
+//     a read-only root OPEN and its final DESCRIPTION_RELEASE leave the
+//     source cut unchanged.
 //   - The description capability the bridge issues is the calling domain's
 //     own grant state; no peer can see it.
 //
@@ -45,9 +48,17 @@ import (
 // Native (FUSE adapter) OPENs are unchanged: nativeRead still classifies
 // fsapi.Open as a non-read.
 //
-// Residual cost (e84): when the OPEN pins, the cut moves under the caller's
-// own observation lease, whose next acquisition may then hit
-// expectedMismatch, exactly as after a pinning LOOKUP.
+// The conflict rule alone did not close R14-1 (review round 1 of z94): the
+// guest acquires each observation with expected_target = its installed view,
+// and the root's HandlePin (first OPEN) and HandleRelease (last RELEASE)
+// moved the cut, so the next observation of every domain, the caller's
+// included, hit expectedMismatch and recalled all domains. The root is never
+// reaped and cannot be unlinked, so its pins had no consumer; fsservice now
+// keeps the root's lifetime pinless and a root OPEN/close cycle keeps the
+// cut (TestZQ3CredentialsAdmissionKeepsLeases, which observes with the real
+// installed targets). The general case stays as it was (e84): a read-only
+// OPEN of an unpinned non-root object still journals its pin, so a peer's
+// next observation hits the mismatch, exactly as after a pinning LOOKUP.
 
 // readConflict reports whether intent conflicts like a read: a read opcode
 // or a read-only OPEN.

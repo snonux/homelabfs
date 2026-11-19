@@ -98,7 +98,12 @@ a READ lease (the caller's own observation lease included). fsservice plans no
 mutation for it and has no access-time update, so its only effects are a
 HandlePin and an open handle, lifetime state no lease observes. Because the pin
 may move the cut, it is not cut-preserving: every recall still holds it, and it
-is charged source capacity as a non-read. Native OPENs are unchanged.
+is charged source capacity as a non-read. Native OPENs are unchanged. The
+guest observes with expected_target = its installed view, so a root pin would
+still have recalled every domain through the expected-target mismatch; the
+volume root, which is never reaped and cannot be unlinked, therefore keeps a
+pinless lifetime in fsservice (`pinlessLifetime`): a root OPEN/close cycle
+journals nothing and keeps the cut. Non-root pins still move it (e84).
 
 DIRTY_RESERVE first protects RESERVING with complete original provenance and
 controller credit, then durably earmarks its future ordinary number plus actual
