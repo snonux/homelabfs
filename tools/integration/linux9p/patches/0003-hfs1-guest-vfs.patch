@@ -4207,7 +4207,7 @@ diff --git a/fs/9p/hfs_inode.c b/fs/9p/hfs_inode.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_inode.c
-@@ -0,0 +1,1161 @@
+@@ -0,0 +1,1194 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Authoritative retained-9p attributes and namespace VFS operations. */
 +#include <linux/magic.h>
@@ -4331,11 +4331,41 @@ new file mode 100644
 +	return false;
 +}
 +
++/* Enters the view for hfs_attr_install. Returns 0 with *cookie admitted, 1
++ * when a mutation's delayed result must not be installed, or an error.
++ */
++static int hfs_attr_enter(struct inode *inode, struct hfs_session *session,
++			  struct hfs_view *view, const struct hfs_request *request,
++			  void **cookie)
++{
++	int err;
++
++	if (request && request->view_stamped &&
++	    (request->cache_observation || !(inode->i_state & I_NEW))) {
++		err = hfs_view_enter(view, &request->view_stamp, false, cookie);
++		/* A mutation's immutable result remains its result; never
++		 * overwrite newer cache metadata with its delayed reply.
++		 */
++		if (err && !request->cache_observation)
++			return 1;
++		/* ie4: a recall under a cache observation is routine. */
++		if (err == -ESTALE || err == -EAGAIN)
++			err = hfs_attr_restamp(session, view, request, cookie);
++		return err;
++	}
++	/* Initial immutable identity/creation attributes come from the
++	 * actual protected result. Subsequent observations revalidate.
++	 */
++	err = hfs_view_enter(view, NULL, true, cookie);
++	if (err == -ETIMEDOUT && request)
++		hfs_attr_timeout_warn(session, request);
++	return err;
++}
++
 +int hfs_attr_install(struct inode *inode, const struct hfs_json *json, int token)
 +{
 +	struct hfs_attr attr;
 +	struct hfs_session *session = HFS_S(inode);
-+	struct hfs_request *request = json->owner;
 +	struct hfs_view *view = NULL;
 +	void *cookie = NULL;
 +	int err;
@@ -4349,30 +4379,10 @@ new file mode 100644
 +		view = hfs_view_get(session);
 +		if (!view)
 +			return -ESTALE;
-+		if (request && request->view_stamped &&
-+		    (request->cache_observation || !(inode->i_state & I_NEW))) {
-+			err = hfs_view_enter(view, &request->view_stamp, false, &cookie);
-+			if (err && !request->cache_observation) {
-+				/* A mutation's immutable result remains its result; never
-+				 * overwrite newer cache metadata with its delayed reply.
-+				 */
-+				hfs_view_put(view);
-+				return 0;
-+			}
-+			/* ie4: a recall under a cache observation is routine. */
-+			if (err == -ESTALE || err == -EAGAIN)
-+				err = hfs_attr_restamp(session, view, request, &cookie);
-+		} else {
-+			/* Initial immutable identity/creation attributes come from the
-+			 * actual protected result. Subsequent observations revalidate.
-+			 */
-+			err = hfs_view_enter(view, NULL, true, &cookie);
-+			if (err == -ETIMEDOUT && request)
-+				hfs_attr_timeout_warn(session, request);
-+		}
++		err = hfs_attr_enter(inode, session, view, json->owner, &cookie);
 +		if (err) {
 +			hfs_view_put(view);
-+			return err;
++			return err > 0 ? 0 : err;
 +		}
 +	}
 +	spin_lock(&inode->i_lock);
@@ -4470,6 +4480,33 @@ new file mode 100644
 +	mutex_unlock(&session->lock);
 +}
 +
++/* hfs_inode_get after its attributes were not installed. Normally the seed
++ * (forget record, capability, issuer) dies with the failed inode and no
++ * FORGET is sent. A LOOKUP whose view target moved (-HFS_ETARGET_MOVED,
++ * ie4) is re-issued, so its host lookup count must not leak (it would pin
++ * the retirement floor): the seed is linked like a successful lookup's
++ * (count 1), and eviction sends its FORGET, at once for a new inode that
++ * iget_failed evicts, or with the existing inode's other references.
++ */
++static void hfs_inode_get_fail(struct inode *inode, struct hfs_inode_seed *seed,
++			       struct hfs_session *session, int err)
++{
++	bool keep = err == -HFS_ETARGET_MOVED && seed->forget->count;
++
++	if (keep)
++		hfs_inode_link_forget(inode, seed->forget, session);
++	if (inode->i_state & I_NEW) {
++		iget_failed(inode);
++		return;
++	}
++	iput(inode);
++	if (!keep) {
++		hfs_cap_free(seed->cap);
++		hfs_cred_free(seed->issuer);
++		kfree(seed->forget);
++	}
++}
++
 +struct inode *hfs_inode_get(struct super_block *sb, struct hfs_json *result,
 +			    const char *kind, const struct hfs_cred *issuer)
 +{
@@ -4525,14 +4562,7 @@ new file mode 100644
 +	err = hfs_attr_install(inode, result,
 +			       hfs_json_field(result, 0, "attributes"));
 +	if (err) {
-+		if (inode->i_state & I_NEW)
-+			iget_failed(inode);
-+		else {
-+			iput(inode);
-+			hfs_cap_free(cap);
-+			hfs_cred_free(seed.issuer);
-+			kfree(seed.forget);
-+		}
++		hfs_inode_get_fail(inode, &seed, session, err);
 +		return ERR_PTR(err);
 +	}
 +	if (inode->i_state & I_NEW) {
@@ -4733,7 +4763,10 @@ new file mode 100644
 +			}
 +		}
 +	}
-+	if (!err && inode)
++	/* ie4: a moved LOOKUP's count is owned by its forget record
++	 * (hfs_inode_get_fail), so its result is adopted as well.
++	 */
++	if ((!err && inode) || err == -HFS_ETARGET_MOVED)
 +		hfs_result_adopt(HFS_S(dir), result);
 +	hfs_json_free(result);
 +	hfs_buf_free(&args);

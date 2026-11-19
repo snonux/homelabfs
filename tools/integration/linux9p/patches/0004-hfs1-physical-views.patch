@@ -3578,7 +3578,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,2159 @@
+@@ -0,0 +1,2165 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -5625,12 +5625,18 @@ new file mode 100644
 +			err = hfs_lease_acquire(view->session, cred, NULL, NULL, 0, false,
 +						&observation->target, &observation->lease);
 +			cleanup->lease = observation->lease;
++			/* The host's BLOCKED or RETIRED_ID answer is -EAGAIN with no
++			 * lease (hfs_view_exchange). It is no re-check: returned as
++			 * before ie4, never retried back to back.
++			 */
++			if (err)
++				return err;
 +		}
 +		if (!err)
 +			err = hfs_mmap_publish(view, observation);
-+		/* -EAGAIN: hfs_view_capture or a mutation's re-check met a recall.
-+		 * A lease is never held here: capture fails before acquisition and
-+		 * a held lease's failed re-check is -EXDEV.
++		/* -EAGAIN here: hfs_view_capture met a view that left LIVE, or a
++		 * mutation's (lease-less) re-check met a moved view. A held lease's
++		 * failed re-check is -EXDEV instead.
 +		 */
 +		if (err != -EAGAIN)
 +			return err;

@@ -92,6 +92,16 @@ def main():
         inode = inputs['fs/9p/hfs_inode.c']
         start = inode.index('static void hfs_attr_timeout_warn(')
         source.append(inode[start:inode.index('\nint hfs_attr_install(', start)])
+        # ie4 final review: a moved LOOKUP's forget record (hfs_inode_get_fail)
+        # and the eviction that sends its FORGET.
+        hfs_h = inputs['fs/9p/hfs.h']
+        start = hfs_h.index('struct hfs_forget {')
+        source.append(hfs_h[start:hfs_h.index('\n};', start) + 3])
+        for first, last in (('struct hfs_inode_seed {', '\nstatic int hfs_test_inode('),
+                            ('static void hfs_inode_link_forget(', '\nstruct inode *hfs_inode_get('),
+                            ('static void hfs_evict_inode(', '\nstatic int hfs_d_revalidate(')):
+            start = inode.index(first)
+            source.append(inode[start:inode.index(last, start)])
     (args.output / 'production.c').write_text('\n'.join(source) + '\n')
     (args.output / 'test.c').write_bytes(b'#include \"compat.h\"\n' + ((here.parent / 'pressure' if args.pressure else here) / 'test.c').read_bytes())
     (args.output / 'compat.h').write_bytes((here / 'compat.h').read_bytes() + ((here.parent / 'pressure/compat_extra.h').read_bytes() if args.pressure else b''))

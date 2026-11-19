@@ -56,6 +56,22 @@ static void hfs_mmap_cleanup(struct work_struct *work);
 static bool test_queue_cleanup(struct delayed_work *work);
 #define INIT_DELAYED_WORK(w,f) ((void)(w),(void)(f))
 #define queue_delayed_work(q,w,d) ((void)(q),(void)(d),test_queue_cleanup(w))
+/* ie4: hfs_inode_get_fail and hfs_evict_inode. iget_failed evicts the new
+ * inode as the kernel's does (through iput); a queued FORGET is recorded by
+ * test_queue_forget. The capability and credential frees are counted.
+ */
+#define I_NEW 8UL
+struct hfs_cred;
+static void hfs_cap_free(struct hfs_cap *cap);
+static void hfs_cred_free(struct hfs_cred *cred);
+static void hfs_evict_inode(struct inode *inode);
+static void hfs_forget_work(struct work_struct *work);
+static bool test_queue_forget(struct work_struct *work);
+#define iget_failed(i) hfs_evict_inode(i)
+#define INIT_WORK(w,f) ((void)(w),(void)(f))
+#define queue_work(q,w) ((void)(q),test_queue_forget(w))
+#define clear_inode(i) ((void)(i))
+#define truncate_inode_pages_final(m) ((void)(m))
 static inline const char *strnstr(const char *s,const char *find,size_t len)
 { return memmem(s,len,find,strlen(find)); }
 static void pr_warn(const char *f,...)

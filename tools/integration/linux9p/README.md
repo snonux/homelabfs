@@ -1323,6 +1323,9 @@ Patch 0004, `hfs_mmap_begin`, now split into `hfs_mmap_observation_new`,
   it.
 - **Mutation** (no lease): a moved stamp or a view that is not LIVE captures
   the view again.
+- **Host BLOCKED** (or RETIRED_ID): the acquisition's own `-EAGAIN`, without
+  a lease, is returned at once as before ie4; it is not a re-check and is
+  never retried back to back (final review).
 - **Refused:** a FENCED view or a closing or blocked hfs1.4 session
   (`hfs_view_refused`, now shared with `hfs_view_try_enter_locked`) keeps
   `-ESTALE`. A retry also stops on `transport_failed` (oc4; `-ESTALE`) or a
@@ -1348,14 +1351,21 @@ their GETATTR or LOOKUP (`hfs_reissue`) within a 30 s deadline from the
 syscall's start, stopping on a fatal signal, `transport_failed` or the
 deadline (`-ETIMEDOUT`, one line). READDIR, whose cursor positions are
 already recorded, turns it into `-ESTALE`. Each failed check logs a
-rate-limited line. A LOOKUP that failed this way leaves its result
-unadopted, as any failed LOOKUP did before.
+rate-limited line. A moved LOOKUP's first result is not dropped (final
+review): `hfs_inode_get_fail` links its forget record (count 1) like a
+successful lookup's, so eviction sends its FORGET (at once for a new inode
+that `iget_failed` evicts, else with the existing inode), and
+`hfs_lookup_once` adopts the result; the host lookup count stays balanced
+and the request pins no retirement floor. `hfs_attr_install`'s view entry
+moved to `hfs_attr_enter`.
 
 Tests (`view --pressure`, which now extracts `hfs_mmap_begin` through
 `hfs_mmap_end`, `struct hfs_cache_cleanup`, `hfs_attr_restamp`,
-`hfs_reissue` and `HFS_ETARGET_MOVED`). The acquisition and release follow a
+`hfs_reissue`, `hfs_attr_enter`, `HFS_ETARGET_MOVED`, `struct hfs_forget`,
+`hfs_inode_link_forget`, `hfs_inode_get_fail` and `hfs_evict_inode`). The acquisition and release follow a
 model of the host controller: a recall deactivates the domain's leases and
-advances its fence, a grant shares the active lease of the same lineage, a
+advances its fence, a grant shares the active lease of the same lineage (fence
+and target), a
 non-last holder's release returns a reference, any other release of an
 active lineage starts a recall that runs during the next VIEW_ACQUIRE:
 
@@ -1368,10 +1378,17 @@ active lineage starts a recall that runs during the next VIEW_ACQUIRE:
 - self-recall loop: each operation's release recall runs during the next
   operation's acquisition; three operations, no release recall inside any
   of them;
-- a grant at another target: a second acquisition while the first lease is
-  still held (fails if the stale lease is released first);
+- a grant at another target: a second acquisition, a new lineage, while the
+  first lease is still held; the stale lease's release comes after the
+  publication;
 - a fence, a blocked hfs1.4 session and `transport_failed`: `-ESTALE`, one
   acquisition, its lease released once;
+- the host answers BLOCKED: `-EAGAIN` after one acquisition, no re-check
+  line (fails when the acquisition's `-EAGAIN` is retried);
+- a moved LOOKUP's forget record: a new inode's eviction sends its FORGET,
+  an existing inode keeps it and its eviction sends both, other failures
+  free the unlinked seed (fails when the moved record is dropped);
+  `hfs_attr_enter` skips a mutation's stale delayed result;
 - deadline: three stale grants 10 s apart, and a recall that never ends,
   give `-ETIMEDOUT` with the exhaustion line and every packet queued once;
 - every case ends with no lease, packet, credit or control reference left;
