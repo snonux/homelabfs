@@ -27,6 +27,7 @@ import errno
 import hashlib
 import hmac
 import json
+import math
 import mmap
 import os
 import re
@@ -70,6 +71,34 @@ LISTING_LIMIT = 1024  # Bounded root listing per domain in the re-read step.
 # prove nothing about the host. T8 (unmount of m1) runs after T11.
 STEP_DOMAIN = {"lost-reply-call": 0, "lost-reply-reread": 0, "quiesce": 0, "after-loss": 1}
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
+# Deadlines (be4, zq3-r14 R14-1). One hfs syscall can wait about 90-120 s
+# (docs/Test-automation.md: view wait, lease exchange, allocation wait and
+# request window, 30 s each), and each recall a root OPEN waits behind costs
+# seconds of host observation, so the old 10 s admission alarm turned a slow
+# but correct admission into a Deadline. The alarms only catch hangs:
+# - ADMISSION_SECONDS, armed at process start, bounds reading the request and
+#   admission: one worst-case syscall plus margin.
+# - A request's `seconds` is its whole deadline, also counted from process
+#   start (limit re-arms the alarm with what is left after admission). It
+#   exceeds the admission alarm by at least SECONDS_AFTER_ADMISSION; after a
+#   worst-case admission those 30 s cannot fit another slow syscall, they only
+#   catch a body that hangs.
+# - controller.py mirrors these bounds and bounds each SSH dispatch at
+#   `seconds` + 15 s, so admission alarm < request deadline < dispatch bound.
+#   That orders when the alarm FIRES, not when the guest finishes: a blocked
+#   hfs syscall returns only when it returns (up to about 120 s later), and
+#   only then does the Deadline end the request.
+ADMISSION_SECONDS = 150
+SECONDS_AFTER_ADMISSION = 30
+REQUEST_SECONDS_MIN = ADMISSION_SECONDS + SECONDS_AFTER_ADMISSION  # 180
+REQUEST_SECONDS_MAX = 240
+# A credential/namespace child (Probe.child) runs hfs syscalls (access, create,
+# unlink) as another UID, so its own alarm is one worst-case syscall plus
+# margin too, never the old 8 s. It is capped by what is left of the request
+# deadline minus CHILD_RESERVE (the parent's reply wait, reap and terminal), so
+# child alarm < parent reply wait (child + 1 s) < request deadline < dispatch.
+CHILD_SECONDS = ADMISSION_SECONDS
+CHILD_RESERVE = 5
 RECORD_LIMIT = 65536
 REQUEST_LIMIT = 16384
 REPLY_LIMIT = 65536
@@ -266,7 +295,8 @@ def admit_identity(request):
     """Bounds plus actual boot, installed manifest, SELinux and provider inventory."""
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,23}", request["run_id"]):
         raise Refused("run ID bound")
-    if type(request["seconds"]) is not int or not 1 <= request["seconds"] <= 60:
+    if (type(request["seconds"]) is not int or
+            not REQUEST_SECONDS_MIN <= request["seconds"] <= REQUEST_SECONDS_MAX):
         raise Refused("case deadline bound")
     known = request.get("step") in STEPS if "step" in request else request.get("case") in CASES
     if not known or len(request["mounts"]) != 2:
@@ -393,8 +423,11 @@ def checked(condition, message):
 
 
 class Probe:
-    def __init__(self, request, roots):
+    def __init__(self, request, roots, ends=None):
+        """ends: monotonic end of the request deadline (limit's return value);
+        local tests that build a Probe directly get now + the request seconds."""
         self.request, self.roots = request, roots
+        self.ends = ends if ends is not None else time.monotonic() + request["seconds"]
         self.sequence = 0
         self.writes = 0
         self.children = set()
@@ -440,60 +473,95 @@ class Probe:
         with self.open_leaf() as fd:
             yield fd, leaf
 
+    def child_seconds(self):
+        """The child's alarm: CHILD_SECONDS, capped by the request's time left.
+
+        The cap only bites after a slow admission or slow earlier children; the
+        parent's own request alarm would end the case at that point anyway, so
+        the child must end (or be left uncertain) first. No time left raises
+        Deadline before any fork: the request ran out, nothing was refused.
+        """
+        left = math.floor(self.ends - time.monotonic()) - CHILD_RESERVE
+        if left < 1:
+            raise Deadline("request deadline leaves no time for a child")
+        return min(CHILD_SECONDS, left)
+
     def child(self, action, uid=None, gid=None, groups=None):
+        """Run action in a forked child, optionally as uid/gid/groups.
+
+        The child arms its own alarm (child_seconds); the parent waits one
+        second past it (child_reply). A child that has not exited stays in
+        self.children and is reported as uncertain, never killed.
+        """
+        seconds = self.child_seconds()
         # Unmasked on purpose: a local pipe, not an hfs fd (see ALARM).
         receive, send = os.pipe2(os.O_CLOEXEC)
         pid = os.fork()
         if pid == 0:
             os.close(receive)
-            try:
-                signal.alarm(8)
-                if groups is not None:
-                    os.setgroups(groups)
-                    os.setgid(gid)
-                    os.setuid(uid)
-                result = {"uid": os.getuid(), "gid": os.getgid(),
-                          "groups": os.getgroups(), "result": action()}
-                raw = json.dumps(result).encode()
-                checked(len(raw) < 16384, "child reply size")
-                os.write(send, raw)
-                os._exit(0)
-            except BaseException as failure:
-                raw = json.dumps({"error": type(failure).__name__,
-                                  "errno": getattr(failure, "errno", None),
-                                  "detail": str(failure)[:256]}).encode()
-                os.write(send, raw)
-                os._exit(1)
+            child_body(send, seconds, action, uid, gid, groups)
         os.close(send)
         self.children.add(pid)
         try:
-            chunks, total = [], 0
-            deadline = time.monotonic() + 9
-            while True:
-                remaining = deadline - time.monotonic()
-                checked(remaining > 0 and select.select([receive], [], [], remaining)[0],
-                        "child reply timeout")
-                chunk = os.read(receive, 16384)
-                if not chunk:
-                    break
-                total += len(chunk)
-                checked(total <= 16384, "child reply bound")
-                chunks.append(chunk)
-            raw = b"".join(chunks)
-            reaped, status = os.waitpid(pid, os.WNOHANG)
-            if reaped == 0:
-                # A complete reply precedes normal exit by a bounded instant.
-                deadline = time.monotonic() + 0.5
-                while reaped == 0 and time.monotonic() < deadline:
-                    time.sleep(0.01)
-                    reaped, status = os.waitpid(pid, os.WNOHANG)
-            checked(reaped == pid, "child has not exited; preserve for inspection")
-            self.children.remove(pid)
-            result = json.loads(raw, object_pairs_hook=unique)
-            emit("child", pid=pid, status=status, observed=result)
-            return result, status
+            raw, status = child_reply(pid, receive, seconds)
         finally:
             os.close(receive)
+        self.children.remove(pid)
+        result = json.loads(raw, object_pairs_hook=unique)
+        emit("child", pid=pid, status=status, observed=result)
+        return result, status
+
+
+def child_body(send, seconds, action, uid, gid, groups):
+    """Forked child: switch IDs, run action, write one JSON reply; never returns."""
+    try:
+        signal.alarm(seconds)
+        if groups is not None:
+            os.setgroups(groups)
+            os.setgid(gid)
+            os.setuid(uid)
+        result = {"uid": os.getuid(), "gid": os.getgid(),
+                  "groups": os.getgroups(), "result": action()}
+        raw = json.dumps(result).encode()
+        checked(len(raw) < 16384, "child reply size")
+        os.write(send, raw)
+        os._exit(0)
+    except BaseException as failure:
+        raw = json.dumps({"error": type(failure).__name__,
+                          "errno": getattr(failure, "errno", None),
+                          "detail": str(failure)[:256]}).encode()
+        os.write(send, raw)
+        os._exit(1)
+
+
+def child_reply(pid, receive, seconds):
+    """Parent side: read the child's bounded reply, then reap it; (raw, status).
+
+    The wait ends one second past the child's alarm, so a child whose syscall
+    returned at its deadline still reports its Deadline here. A child that has
+    not exited raises Refused and the caller keeps it as uncertain.
+    """
+    chunks, total = [], 0
+    deadline = time.monotonic() + seconds + 1
+    while True:
+        remaining = deadline - time.monotonic()
+        checked(remaining > 0 and select.select([receive], [], [], remaining)[0],
+                "child reply timeout")
+        chunk = os.read(receive, 16384)
+        if not chunk:
+            break
+        total += len(chunk)
+        checked(total <= 16384, "child reply bound")
+        chunks.append(chunk)
+    reaped, status = os.waitpid(pid, os.WNOHANG)
+    if reaped == 0:
+        # A complete reply precedes normal exit by a bounded instant.
+        deadline = time.monotonic() + 0.5
+        while reaped == 0 and time.monotonic() < deadline:
+            time.sleep(0.01)
+            reaped, status = os.waitpid(pid, os.WNOHANG)
+    checked(reaped == pid, "child has not exited; preserve for inspection")
+    return b"".join(chunks), status
 
 
 class Retention:
@@ -995,27 +1063,37 @@ STEP_ACTIONS = {"lost-reply-call": lost_reply_call, "lost-reply-reread": lost_re
                 "quiesce": quiesce, "after-loss": after_loss}
 
 
-def run_step(request):
+def run_step(request, started):
     """Step admission, then the step; its observation leaves through stdout."""
     mounts = admit_step(request)
-    limit(request)
-    p = Probe(request, [])  # Steps fork no children; p.children stays empty.
+    ends = limit(request, started)
+    p = Probe(request, [], ends)  # Steps fork no children; p.children stays empty.
     observation = STEP_ACTIONS[request["step"]](p, mounts)
     emit("step-observed", step=request["step"], observation=observation,
          acceptance=False, publication=None)
     return p
 
 
-def limit(request):
-    signal.alarm(request["seconds"])
+def limit(request, started):
+    """Re-arm SIGALRM with what is left of the request's whole deadline.
+
+    started is main's monotonic start, when the admission alarm was armed, so
+    the request ends at started + seconds however long admission took. At least
+    one second is armed: admit_identity's bound keeps the deadline at least
+    SECONDS_AFTER_ADMISSION past the admission alarm, so this floor only
+    matters if the clock and the alarm disagree by rounding. Returns that
+    deadline's monotonic end, which caps every Probe.child alarm.
+    """
+    ends = started + request["seconds"]
+    signal.alarm(max(1, math.ceil(ends - time.monotonic())))
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
+    return ends
 
 
-def run_case(request, roots):
+def run_case(request, roots, started):
     """Case or release after full admission; a case retains its payload."""
-    limit(request)
-    p = Probe(request, roots)
+    p = Probe(request, roots, limit(request, started))
     if request_kind(request) == "release":
         Retention(p).release()
     else:
@@ -1027,20 +1105,22 @@ def run_case(request, roots):
 
 def main():
     roots, p, success, kind, step = [], None, False, None, None
+    started = time.monotonic()
     try:
         checked(len(sys.argv) == 1, "one stdin request; no arguments")
         signal.signal(signal.SIGALRM, deadline)
-        signal.alarm(10)
+        # Bounds the stdin read and admission (see ADMISSION_SECONDS).
+        signal.alarm(ADMISSION_SECONDS)
         raw = sys.stdin.buffer.read(REQUEST_LIMIT + 1)
         checked(len(raw) <= REQUEST_LIMIT, "request limit")
         request = json.loads(raw, object_pairs_hook=unique)
         kind = request_kind(request)
         if kind == "step":
             step = request["step"]
-            p = run_step(request)
+            p = run_step(request, started)
         else:
             admit(request, roots)
-            p = run_case(request, roots)
+            p = run_case(request, roots, started)
         success = True
     except BaseException as failure:
         emit("failure", error=type(failure).__name__, detail=str(failure)[:1024],

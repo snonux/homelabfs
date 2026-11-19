@@ -58,6 +58,15 @@ STATUS_KEYS = ("Uid", "Gid", "Groups", "CapInh", "CapPrm", "CapEff", "CapBnd",
 # Linux x86_64 struct flock: short type, short whence, 4 pad, off_t start,
 # off_t len, pid_t pid, 4 pad = 32 bytes (checked by check_abi before use).
 FLOCK = struct.Struct("=hhxxxxqqixxxx")
+# Deadlines (be4, zq3-r14 R14-1): one hfs syscall can wait about 90-120 s
+# (docs/Test-automation.md), so the alarms only catch hangs. A workload's
+# `seconds` (pod_fixture.py WORKLOAD_SECONDS) may be up to 240 s, as long as a
+# guest.py request; each matrix child (hfs reads as another UID) gets
+# CHILD_SECONDS, capped by the workload deadline minus CHILD_RESERVE, and the
+# parent waits one second past the child's alarm. Order: child alarm < parent
+# wait < workload deadline < pod_fixture.py RUN_SECONDS.
+WORKLOAD_SECONDS_MIN, WORKLOAD_SECONDS_MAX = 5, 240
+CHILD_SECONDS, CHILD_RESERVE = 150, 5
 # Matrix fixture files: owner UID, owner GID, mode. Numeric only: the rootfs
 # has no passwd entries for these IDs, nothing resolves names.
 FILES = {"uid-only": (41001, 41001, 0o600), "group": (41002, 42002, 0o640),
@@ -159,8 +168,20 @@ def identity(with_mount=True):
 
 # --- permission matrix (w0) ------------------------------------------------
 
-def child(action, timeout=8):
-    """Run action in a forked child; return (reply, status). Never kills."""
+def child_seconds(deadline):
+    """The child's alarm: CHILD_SECONDS, capped by the workload's time left."""
+    left = int(deadline - time.monotonic()) - CHILD_RESERVE
+    if left < 1:
+        raise TimeoutError("workload deadline leaves no time for a child")
+    return min(CHILD_SECONDS, left)
+
+
+def child(action, deadline):
+    """Run action in a forked child; return (reply, status). Never kills.
+
+    deadline is the workload's monotonic deadline (main); see child_seconds.
+    """
+    timeout = child_seconds(deadline)
     receive, send = os.pipe2(os.O_CLOEXEC)
     pid = os.fork()
     if pid == 0:
@@ -224,7 +245,7 @@ def create_fixture_files(leaf_fd):
             os.close(fd)
 
 
-def matrix_case(leaf_fd, case):
+def matrix_case(leaf_fd, case, deadline):
     name, filename, uid, gid, groups, allow = case
 
     def action():
@@ -236,12 +257,12 @@ def matrix_case(leaf_fd, case):
         observed.update(uid=os.getuid(), gid=os.getgid(), groups=os.getgroups())
         return observed
 
-    reply, status = child(action)
+    reply, status = child(action, deadline)
     return {"case": name, "file": filename, "uid": uid, "gid": gid,
             "groups": groups, "expected_allow": allow, "status": status, "reply": reply}
 
 
-def changing_groups(leaf_fd):
+def changing_groups(leaf_fd, deadline):
     """One process, fsuid/fsgid switched, groups changed between opens."""
     def action():
         libc = ctypes.CDLL(None, use_errno=True)
@@ -255,14 +276,14 @@ def changing_groups(leaf_fd):
                           **try_read(leaf_fd, "group")})
         return steps
 
-    reply, status = child(action)
+    reply, status = child(action, deadline)
     return {"case": "changing-groups-fsuid", "status": status, "reply": reply}
 
 
-def run_matrix(leaf_fd):
+def run_matrix(leaf_fd, deadline):
     create_fixture_files(leaf_fd)
-    cases = [matrix_case(leaf_fd, case) for case in MATRIX]
-    cases.append(changing_groups(leaf_fd))
+    cases = [matrix_case(leaf_fd, case, deadline) for case in MATRIX]
+    cases.append(changing_groups(leaf_fd, deadline))
     return cases
 
 
@@ -439,7 +460,8 @@ def parse_params(raw):
     params = json.loads(raw)
     if (not isinstance(params, dict) or set(params) != {"version", "run_id", "role", "seconds"} or
             params["version"] != VERSION or params["role"] not in ("w0", "w1") or
-            type(params["seconds"]) is not int or not 5 <= params["seconds"] <= 60):
+            type(params["seconds"]) is not int or
+            not WORKLOAD_SECONDS_MIN <= params["seconds"] <= WORKLOAD_SECONDS_MAX):
         raise Refused("params shape")
     return params
 
@@ -457,7 +479,7 @@ def role_w0(params, deadline):
     leaf_fd = os.open(leaf, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root)
     os.chmod(leaf_fd, 0o755)
     emit("leaf", name=leaf, identity=file_identity(leaf_fd))
-    emit("matrix", cases=run_matrix(leaf_fd))
+    emit("matrix", cases=run_matrix(leaf_fd, deadline))
     if not select.select([listener], [], [], max(0, deadline - time.monotonic()))[0]:
         raise Refused("w1 never connected")
     connection, _ = listener.accept()

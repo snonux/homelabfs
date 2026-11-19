@@ -18,6 +18,7 @@ import shutil
 import signal
 import sys
 import tempfile
+import time
 import types
 import unittest
 from unittest import mock
@@ -126,7 +127,7 @@ def case_request(case="sync"):
     return {"version": guest.VERSION, "run_id": "test", "boot_id": "boot",
             "provider_nonce": "provider",
             "manifest_sha256": hashlib.sha256(b"manifest").hexdigest(),
-            "mounts": MOUNTS, "case": case, "seconds": 30}
+            "mounts": MOUNTS, "case": case, "seconds": guest.REQUEST_SECONDS_MIN}
 
 
 class AdmissionTests(AlarmTestCase):
@@ -230,6 +231,77 @@ class AdmissionTests(AlarmTestCase):
         self.assertEqual(len(fake.opened), 1)
         self.assert_all_closed(fake)
         self.assert_alarm_unblocked()
+
+
+class DeadlineBoundTests(unittest.TestCase):
+    """be4 (zq3-r14 R14-1): admission alarm < request deadline < dispatch bound."""
+
+    def test_guest_and_controller_bounds_agree_and_are_ordered(self):
+        from test_preparation import controller
+        self.assertEqual(guest.ADMISSION_SECONDS, controller.ADMISSION_SECONDS)
+        self.assertEqual((guest.REQUEST_SECONDS_MIN, guest.REQUEST_SECONDS_MAX),
+                         (controller.REQUEST_SECONDS_MIN, controller.REQUEST_SECONDS_MAX))
+        # One worst-case hfs syscall is about 90-120 s (docs/Test-automation.md).
+        self.assertGreaterEqual(guest.ADMISSION_SECONDS, 120 + 30)
+        self.assertLess(guest.ADMISSION_SECONDS, guest.REQUEST_SECONDS_MIN)
+        self.assertLessEqual(guest.REQUEST_SECONDS_MIN, controller.STEP_SECONDS)
+        self.assertLessEqual(controller.STEP_SECONDS, guest.REQUEST_SECONDS_MAX)
+        plan = {"seconds": controller.PLAN_SECONDS_MIN}
+        for seconds in [guest.REQUEST_SECONDS_MIN, controller.STEP_SECONDS, guest.REQUEST_SECONDS_MAX]:
+            self.assertEqual(controller.dispatch_seconds(plan, {"seconds": seconds}),
+                             seconds + controller.DISPATCH_MARGIN)
+
+    def test_limit_arms_what_is_left_of_the_whole_deadline(self):
+        request = case_request()
+        armed = []
+        with mock.patch.object(guest.signal, "alarm", armed.append), \
+                mock.patch.object(guest.resource, "setrlimit"), \
+                mock.patch.object(guest.time, "monotonic", return_value=1000.0):
+            guest.limit(request, 1000.0 - 14.2)  # zq3-r14's T1 admission took ~14 s.
+            guest.limit(request, 1000.0 - request["seconds"] - 5)  # Overrun: floor.
+        self.assertEqual(armed, [request["seconds"] - 14, 1])
+
+    def test_admission_bound_refuses_short_or_long_deadlines(self):
+        for seconds in [10, 60, guest.REQUEST_SECONDS_MIN - 1, guest.REQUEST_SECONDS_MAX + 1]:
+            request = dict(case_request(), seconds=seconds)
+            with self.subTest(seconds=seconds), self.assertRaisesRegex(guest.Refused, "case deadline bound"):
+                guest.admit_identity(request)
+
+    def test_child_alarm_covers_one_worst_case_syscall(self):
+        """be4: the credential child's alarm was 8 s; it runs hfs syscalls in T1."""
+        self.assertGreaterEqual(guest.CHILD_SECONDS, guest.ADMISSION_SECONDS)
+        # A maximal request deadline holds one full child, its 1 s reply slack
+        # and the parent's reserve.
+        self.assertLessEqual(guest.CHILD_SECONDS + 1 + guest.CHILD_RESERVE,
+                             guest.REQUEST_SECONDS_MAX)
+        now = 1000.0
+        with mock.patch.object(guest.time, "monotonic", return_value=now):
+            self.assertEqual(guest.Probe(case_request(), [], now + 240).child_seconds(),
+                             guest.CHILD_SECONDS)
+            # Capped by the request's time left minus the parent's reserve.
+            self.assertEqual(guest.Probe(case_request(), [], now + 100.7).child_seconds(),
+                             100 - guest.CHILD_RESERVE)
+            with self.assertRaises(guest.Deadline):
+                guest.Probe(case_request(), [], now + guest.CHILD_RESERVE + 0.5).child_seconds()
+
+    def test_child_arms_its_alarm_and_parent_waits_past_it(self):
+        """A real fork: the child reports the alarm it armed (signal.alarm(0))."""
+        probe = guest.Probe(case_request(), [], time.monotonic() + 240)
+        with contextlib.redirect_stdout(io.StringIO()):
+            result, status = probe.child(lambda: signal.alarm(0))
+        self.assertEqual(status, 0)
+        self.assertIn(result["result"], {guest.CHILD_SECONDS, guest.CHILD_SECONDS - 1})
+        self.assertEqual(probe.children, set())
+
+    def test_main_arms_the_admission_alarm_first(self):
+        armed = []
+        stdin = io.TextIOWrapper(io.BytesIO(b"not json"))
+        with mock.patch.object(guest.signal, "alarm", armed.append), \
+                mock.patch.object(guest.signal, "signal"), \
+                mock.patch.object(sys, "argv", ["guest"]), mock.patch.object(sys, "stdin", stdin), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(guest.main(), 1)
+        self.assertEqual(armed, [guest.ADMISSION_SECONDS, 0])
 
 
 class CaseDescriptorTests(AlarmTestCase):

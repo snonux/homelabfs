@@ -281,13 +281,22 @@ class GuestLockProbeTests(unittest.TestCase):
     def test_invalid_missing_and_symlink_mounts_refused_before_mutation(self):
         for changed in ({"run_id": "../escape"}, {"mount_id": 0},
                         {"mountpoint": self.temp.name + "/missing"},
-                        {"budgets": {"overall_seconds": 61, "case_seconds": 1}}):
+                        {"budgets": {"overall_seconds": 241, "case_seconds": 1}},
+                        {"budgets": {"overall_seconds": 30, "case_seconds": 151}},
+                        {"budgets": {"overall_seconds": 4, "case_seconds": 1}}):
             with self.subTest(changed=changed), self.assertRaises(probe.Refused):
                 probe.admit(self.request(**changed), [])
         Path(self.temp.name, "link").symlink_to(self.temp.name)
         with self.assertRaises(probe.Refused):
             probe.admit(self.request(mountpoint=self.temp.name + "/link"), [])
         self.assertEqual(self.root_entries(), ["link"])
+
+    def test_budgets_cover_one_worst_case_hfs_syscall(self):
+        """be4: T6 runs on hfs m0, where one syscall can wait about 90-120 s."""
+        self.assertGreaterEqual(probe.CASE_SECONDS_MAX, 150)
+        self.assertLess(probe.CASE_SECONDS_MAX, probe.OVERALL_SECONDS_MAX)
+        self.assertEqual(probe.ENTRY_SECONDS, probe.OVERALL_SECONDS_MAX - 2)
+        probe.validate_request(self.request(budgets={"overall_seconds": 240, "case_seconds": 150}))
 
     def alarming_open(self, trigger):
         """os.open stand-in queuing SIGALRM before returning, as an hfs open

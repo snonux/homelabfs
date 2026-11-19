@@ -135,11 +135,100 @@ unmounts of run-owned mounts.
 | Guest kdump reservation | the copied default arguments carry `crashkernel=…,2G-64G:256M,…`, i.e. 256 MiB of the 6 GiB VM under a kernel that honours it. The test kernel's config has `CONFIG_KEXEC`, `CONFIG_KEXEC_FILE` and `CONFIG_CRASH_DUMP` unset, so it should reserve nothing and `kdump.service` should fail in that boot (an expected failed unit); budget the 256 MiB anyway until Phase 8 confirms it | Phase 1 kdump fact, package `linux/config` |
 | Disk | host run 4 GiB, guest run 2 GiB; keep 8 GiB unreserved host and 2 GiB guest free | proposal |
 | Bootstrap | 120 s from launch to READY | base gate |
-| Guest probe case | at most 60 s, 256 operations, 12 MiB issued writes, 128 fds | `guest.py` |
-| Controller dispatch | each SSH dispatch bounded by `min(case seconds + 15, plan seconds)`, plan seconds 60-600 (enforced); streams 256 KiB each | `controller.py` |
+| Guest probe request | whole deadline 180-240 s from guest.py's start (request `seconds`), of which admission at most 150 s; lifecycle steps 180 s; 256 operations, 12 MiB issued writes, 128 fds (be4, below) | `guest.py` |
+| Controller dispatch | each SSH dispatch bounded by `min(request seconds + 15, plan seconds)`, at most 255 s; plan seconds 255-600 (enforced) | `controller.py` |
 | fdescfs commands | 10 s each, 256 KiB output; Go test 5 s; native RSS 512 MiB, one CPU (`qualify` under `native-test-guard.py` host profile) | fdescfs window doc |
 | Runtime guard | runtime + non-bhyve descendants 4 GiB + 256 MiB RSS (the 4 GiB `Budget.HostBytes` cap plus observer/Go overhead); bhyve 6 GiB + 512 MiB; run disk 4 GiB (mounts below it never touched); 8 GiB free; no swap; 512 MiB available memory; 3600 s | `runtime-guard.py` |
 | Lifecycle endpoint | OBSERVE/ARM 30 s, RESTART 90 s, replies 128 KiB | `lifecycle.md` |
+
+### Guest deadlines and the guard budget (be4)
+
+zq3-r14 (R14-1) failed T1 because guest.py's 10 s admission alarm fired
+while the host was still, correctly, completing the m0 root OPEN behind three
+recalls (about 14 s). One hfs syscall can take about 90-120 s
+([Test-automation](../Test-automation.md)), so the alarms only catch hangs and
+now hold this order, each with margin:
+
+| Bound | Before | Now | Where |
+|---|---|---|---|
+| Admission alarm (stdin read + admission, from guest start) | 10 s | 150 s (one worst-case syscall + 30 s) | `guest.py` `ADMISSION_SECONDS` |
+| Request deadline (whole request, from guest start; was a fresh case alarm after admission) | 1-60 s | 180-240 s (admission alarm + at least 30 s) | `guest.py`/`controller.py` `REQUEST_SECONDS_MIN/MAX` |
+| Lifecycle step deadline | 30 s | 180 s | `controller.py` `STEP_SECONDS` |
+| Credential/namespace child alarm (parent waits + 1 s) | 8 s | 150 s, capped by the request's time left minus 5 s | `guest.py` `CHILD_SECONDS` |
+| SSH dispatch bound | request + 15 = 75 s (steps 45 s) | request + 15 = 195-255 s (steps 195 s) | `controller.py` `dispatch_seconds` |
+| Plan `seconds` (dispatch cap) | 60-600 | 255-600, so it never cuts below a guest deadline | `controller.py` `PLAN_SECONDS_MIN` |
+| T6 lock probe budgets (`overall_seconds` / `case_seconds`; entry timer) | 5-60 / 1-5 (58 s) | 5-240 / 1-150 (238 s) | `guest-lock-probe.py` |
+| T7 workload / its matrix children / `pod_fixture.py` run | 45 s / 8 s / 120 s | 240 s / 150 s capped by the workload's time left minus 5 s / 315 s | `pod_workload.py`, `pod_fixture.py` |
+
+**The order is about when an alarm fires, not when the guest finishes.** hfs
+syscalls wait uninterruptibly, so a syscall blocked past the guest's alarm
+returns, and lets the Deadline end the request, only when it returns: up to
+about 120 s later. Such a guest can outlive the controller's dispatch bound
+(request + 15 s); the controller then records the dispatch as
+error/uncertain. That is safe (the payload and evidence are preserved, the
+request is never replayed) and is accepted; the margin is not widened to
+cover it.
+
+T6 and T7 also do hfs I/O on m0, so their bounds follow the same rule. T6's
+lock probe accepts a case budget up to 150 s and a whole run up to 240 s
+(the next fill should use those values); its entry timer before the request
+is read is 238 s. T7's workloads get 240 s (`WORKLOAD_SECONDS`), each matrix
+child 150 s capped by the workload's time left minus 5 s (parent waits 1 s
+longer), and `pod_fixture.py`'s `RUN_SECONDS` keeps its old 75 s on top
+(315 s), so child alarm < parent wait < workload deadline < run bound. The
+`pod_workload.py` pin (`WORKLOAD_SHA256`) changed with it, so the next fill
+rebuilds the T7 rootfs manifest. Unchanged on purpose: `rockyt`'s 270 s
+already covers one worst-case getattr plus the unmount's 30 s view wait.
+The credential/namespace child in `guest.py` runs hfs syscalls (access,
+create, unlink) as another UID, six times in T1, so its alarm moved from 8 s
+(parent wait 9 s) to `CHILD_SECONDS` 150 s, capped by what is left of the
+request deadline minus a 5 s reserve; the parent waits one second past the
+child's alarm. Order: child alarm < parent wait < request deadline <
+dispatch. The six children share the request's 240 s, so several slow ones end
+the case at its deadline, as any slow case syscall does.
+
+**What the next fill must do.** `guest.py` and `controller.py` changed, so
+the fill re-pins both (`probe_sha256`, helper pins), and likewise
+`guest-lock-probe.py` and the T7 pod tools; no committed test pins the hashes
+of `guest.py`, `controller.py` or the lock probe. The request templates must carry `seconds` 180-240
+(recommended 240) and the plan `seconds` 255-600 (recommended 255): zq3-r14's
+60 and 120 are now refused. The fill must also **recompute every per-step
+guard budget** (its `sh/guard-budget.py` and the Phase 10 budget table) from
+these bounds instead of reusing zq3-r14's 300 s per case, and raise the run
+sheet's **tool-timeout rule**: T7's `pod_fixture.py run` line needs a tool
+timeout of at least 420 s (`RUN_SECONDS` 315 plus setup and teardown; the old
+300 s would kill the ssh mid-run and leave containers and an uncertain T7),
+and the T6 lock-probe lines and every `$CTL` line (up to 255 s per dispatch)
+at least 300 s, with the rule stated in the sheet. Worst cases with
+the recommended values (the old operator slack kept):
+
+| Step | Old budget | Worst case now | Latest start (launch +), 300 s reserve |
+|---|---|---|---|
+| Phase 9 | 180 | 180 (no guest.py dispatch) | 3120 s (52:00) |
+| T1-T4 (each: probe 255 + release 255 + two OBSERVEs 60 + slack 90) | 300 | 660 | 2640 s (44:00) |
+| T6 (lock probe run 240 + SSH and operator 60) | 180 | 300 | 3000 s (50:00) |
+| T7 (old 420 with `RUN_SECONDS` 120 -> 315) | 420 | 615 | 2685 s (44:45) |
+| T9 with T10 (three steps of 195 + ARM, OBSERVEs, RESTART, slack 405) | 540 | 990 | 2310 s (38:30) |
+| T10 (one step 195 + OBSERVE, RESTART, slack 195) | 240 | 390 | 2910 s (48:30) |
+| T8 while the runtime serves (`rockyt` 270 + one dispatch 255 + 15) | 360 | 540 | 2760 s (46:00) |
+
+**Does T1-T4 + T6-T11 + the Phase 11 reserve still fit 3600 s?** At the
+budgets above it does not: Phase 9 180 + T1-T4 2640 + T6 300 + T7 615 + T9
+with T10 990 + reserve 300 = 5025 s, plus the launch-to-Phase 9 time
+(zq3-r14: T1 started at launch + 114 s; the plan allows up to about 520 s),
+against 3600 s (the old budgets summed to 2820 s and fitted). With request
+seconds 180 it is still 4545 s. A healthy matrix fits easily: zq3-r14's
+admission took about 17 s, each case is expected well under a minute of
+guest time, so a healthy run should still end its live steps about 35
+minutes after launch with about 1000 s to spare, enough for roughly four
+dispatches that run to their full bound. The GO/STOP gate stays safe because
+each step's budget is its worst case: a run with more slow steps than that
+STOPs early and records the rest as unrun (guard budget), never overruns the
+reserve. **Decided (be4 review):** keep the 3600 s guard and the GO/STOP
+gate with the recomputed budgets above, and accept early stops on slow runs.
+A window large enough for every worst case (about 5400 s) was considered and
+not taken: it would change the proposal's `seconds`, `controller.py`
+`RUN_WINDOW`, `runtime-guard.py` and the Rocky downtime estimate.
 
 ## Phases
 

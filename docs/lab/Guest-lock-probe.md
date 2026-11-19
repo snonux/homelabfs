@@ -67,10 +67,12 @@ at most two concurrent children and at most twelve owned descriptors (including
 transient socket pairs and duplicate descriptors). Each child closes inherited data descriptors
 before independently opening its case file. Child commands and replies have fixed
 small bounds; the report and `/proc/locks` reads are bounded. The standalone
-entry reserves two seconds from its 60-second ceiling for cleanup; the requested
-overall budget is 5–60 seconds including stdin, admission and cleanup. A budget-aware
-work alarm leaves that reservation before bounded cleanup starts. Each case/handshake deadline is 1–5
-seconds; cleanup shares at most 1.5 seconds for normal TERM and nonblocking reaping.
+entry reserves two seconds from its 240-second ceiling for cleanup (a 238 s
+entry timer); the requested overall budget is 5–240 seconds including stdin,
+admission and cleanup. A budget-aware work alarm leaves that reservation before
+bounded cleanup starts. Each case/handshake deadline is 1–150 seconds (be4: on
+an hfs mount one syscall can wait about 90-120 s, so the alarms only catch
+hangs; the ceilings were 60 and 5 s before zq3-r14); cleanup shares at most 1.5 seconds for normal TERM and nonblocking reaping.
 SIGALRM, SIGTERM and SIGINT are masked only across fork/PID registration,
 waitpid/reap bookkeeping and the parent's root, leaf and lock-file opens with
 the store of each new descriptor (y84: an hfs open waits uninterruptibly, so an

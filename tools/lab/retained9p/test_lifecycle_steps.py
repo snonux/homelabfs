@@ -26,7 +26,7 @@ MOUNTS = [{"path": "/var/tmp/hfs-zq3-test/m" + str(i), "tag": "hfs" + str(i),
 def step_request(step, mounts=None):
     return {"version": guest.STEP_VERSION, "run_id": "test", "boot_id": "boot",
             "provider_nonce": "provider", "manifest_sha256": controller.digest(b"manifest"),
-            "mounts": mounts or MOUNTS, "step": step, "seconds": 30}
+            "mounts": mounts or MOUNTS, "step": step, "seconds": controller.STEP_SECONDS}
 
 
 def mountinfo(rows):

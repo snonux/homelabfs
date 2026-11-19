@@ -167,7 +167,23 @@ STEP_VERSION = "homelabfs-retained9p-lifecycle-step/1"  # Same as guest.py.
 # (a failed gate stops dependent work) but never repeated or run out of order;
 # the re-read additionally needs its lost-reply CALL.
 STEPS = ["lost-reply-call", "lost-reply-reread", "quiesce", "after-loss"]
-STEP_SECONDS = 30  # Guest alarm per step; quiesce needs syncfs plus a 2 s settle.
+# Guest deadlines, mirrored from guest.py (be4; a test pins the equality). A
+# request's `seconds` is the guest's whole deadline from its process start;
+# guest.py's 150 s admission alarm runs inside it, so a request allows
+# 180..240 s and each dispatch adds DISPATCH_MARGIN for SSH setup:
+# admission alarm 150 < request deadline <= 240 < dispatch <= 255. This orders
+# when the guest alarm fires; a syscall blocked past it can still outlive the
+# dispatch (see dispatch_seconds).
+ADMISSION_SECONDS = 150
+REQUEST_SECONDS_MIN, REQUEST_SECONDS_MAX = 180, 240
+DISPATCH_MARGIN = 15
+# A step's whole guest deadline: the admission alarm plus 30 s, the same body
+# time a step had before be4 (quiesce needs syncfs plus a 2 s settle).
+STEP_SECONDS = REQUEST_SECONDS_MIN
+# The plan's per-dispatch cap may never cut a dispatch below its guest
+# deadline plus margin, or the controller would give up before the guest's own
+# alarm even fired and record the request uncertain.
+PLAN_SECONDS_MIN, PLAN_SECONDS_MAX = REQUEST_SECONDS_MAX + DISPATCH_MARGIN, 600
 # Payload may stay retained at most this long after the run started (the base
 # gate's 60-minute total window); later commands refuse and preserve.
 RUN_WINDOW = 3600
@@ -393,8 +409,9 @@ def validate_shape(plan):
     if plan["version"] != VERSION or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,23}", plan["run_id"]):
         raise Refused("batch version/run ID")
     # plan["seconds"] caps every single SSH dispatch (see dispatch_seconds).
-    if type(plan["seconds"]) is not int or not 60 <= plan["seconds"] <= 600:
-        raise Refused("per-dispatch deadline cap60..600 seconds")
+    if (type(plan["seconds"]) is not int or
+            not PLAN_SECONDS_MIN <= plan["seconds"] <= PLAN_SECONDS_MAX):
+        raise Refused("per-dispatch deadline cap %d..%d seconds" % (PLAN_SECONDS_MIN, PLAN_SECONDS_MAX))
     closed(plan["ssh"], ["path", "sha256"])
     if not HASH.fullmatch(plan["installed_manifest_sha256"]):
         raise Refused("probe/installed-manifest pin")
@@ -491,7 +508,8 @@ def validate_request(plan, request, original):
     if (request.get("run_id") != plan["run_id"] or
             request.get("version") != "homelabfs-retained9p-syscalls/1" or
             request.get("manifest_sha256") != plan["installed_manifest_sha256"] or
-            type(request["seconds"]) is not int or not 1 <= request["seconds"] <= 60):
+            type(request["seconds"]) is not int or
+            not REQUEST_SECONDS_MIN <= request["seconds"] <= REQUEST_SECONDS_MAX):
         raise Refused("case differs from exact batch")
     identity = {key: value for key, value in request.items() if key not in {"case", "seconds"}}
     if original is not None and original != identity:
@@ -763,8 +781,19 @@ def check_correlation(value, run_id, case):
 
 
 def dispatch_seconds(plan, request):
-    """Local SSH deadline: guest case alarm plus 15 s margin, capped by the plan."""
-    return min(request["seconds"] + 15, plan["seconds"])
+    """Local SSH deadline: the guest's whole deadline plus DISPATCH_MARGIN.
+
+    The request's seconds already include guest.py's admission alarm (both
+    count from the guest process start), so the margin covers SSH setup and
+    the moment the guest alarm FIRES, not when the guest finishes: hfs
+    syscalls wait uninterruptibly, so a blocked one can return (and let the
+    Deadline end the request) up to about 120 s after the alarm. Such a guest
+    outlives this bound and the dispatch is recorded as error/uncertain:
+    preserved for inspection and never replayed, which is safe. The plan cap
+    is defence in depth: PLAN_SECONDS_MIN keeps it at or above every allowed
+    request deadline plus the margin.
+    """
+    return min(request["seconds"] + DISPATCH_MARGIN, plan["seconds"])
 
 
 def new_state(expected_hash, plan):

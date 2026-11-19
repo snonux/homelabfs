@@ -15,6 +15,14 @@ import sys
 import time
 
 PROTOCOL = "hfs-guest-lock-v1"
+# Budget bounds (be4, zq3-r14 R14-1). One hfs syscall can wait about 90-120 s
+# (docs/Test-automation.md), and T6 runs this probe on the hfs mount m0, so a
+# case may last one worst-case syscall plus margin and the whole run as long
+# as a guest.py request. The alarms only catch hangs. ENTRY_SECONDS bounds the
+# stdin read and validation before the request's own overall budget applies.
+OVERALL_SECONDS_MIN, OVERALL_SECONDS_MAX = 5, 240
+CASE_SECONDS_MIN, CASE_SECONDS_MAX = 1, 150
+ENTRY_SECONDS = OVERALL_SECONDS_MAX - 2
 MAX_REQUEST = 8192
 MAX_REPORT = 65536
 
@@ -99,8 +107,11 @@ def validate_request(request):
     budget = request["budgets"]
     if not isinstance(budget, dict) or set(budget) != {"overall_seconds", "case_seconds"}:
         raise Refused("invalid budgets")
-    if any(type(budget[n]) is not int for n in budget) or not 5 <= budget["overall_seconds"] <= 60 or not 1 <= budget["case_seconds"] <= 5:
-        raise Refused("budget outside overall 5..60 / case 1..5 seconds")
+    if (any(type(budget[n]) is not int for n in budget)
+            or not OVERALL_SECONDS_MIN <= budget["overall_seconds"] <= OVERALL_SECONDS_MAX
+            or not CASE_SECONDS_MIN <= budget["case_seconds"] <= CASE_SECONDS_MAX):
+        raise Refused("budget outside overall %d..%d / case %d..%d seconds" % (
+            OVERALL_SECONDS_MIN, OVERALL_SECONDS_MAX, CASE_SECONDS_MIN, CASE_SECONDS_MAX))
 
 
 def admit(request, owned):
@@ -543,7 +554,7 @@ def main():
             raise Refused("no CLI options; one bounded JSON request on stdin")
         signal.signal(signal.SIGALRM, lambda *_: (_ for _ in ()).throw(TimeoutError("entrypoint deadline")))
         signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(InterruptedError("entrypoint terminated")))
-        signal.setitimer(signal.ITIMER_REAL, 58)
+        signal.setitimer(signal.ITIMER_REAL, ENTRY_SECONDS)
         raw = sys.stdin.buffer.read(MAX_REQUEST + 1)
         if len(raw) > MAX_REQUEST:
             raise Refused("oversized request")

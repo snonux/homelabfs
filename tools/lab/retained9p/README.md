@@ -135,8 +135,15 @@ mount/PID/network namespaces may share that user namespace; they need separate
 actual fixtures. The accepted lock concession is only same-guest/same-mount
 advisory locks, including bind-shared pods; use the existing actual
 [`guest-lock-probe.py`](../guest-lock-probe.py), never independent-mount shared
-lock assertions. Each guest case has at most60 seconds,256 recorded operations,
-12MiB issued writes,128 descriptors and one concurrently active credential child.
+lock assertions. Each guest request has a whole deadline of 180-240 seconds
+(the request's `seconds`, counted from guest.py's start), inside which
+admission alone has at most 150 seconds (be4: one hfs syscall can wait about
+90-120 s, and zq3-r14's root OPEN took about 14 s behind three recalls, past
+the old 10 s admission alarm). The at least 30 s left after a worst-case
+admission cannot fit another slow syscall; they only catch a hang. Each case also has at most 256 recorded
+operations, 12MiB issued writes, 128 descriptors and one concurrently active
+credential child, whose alarm is 150 s capped by the request's time left
+minus 5 s (it runs hfs syscalls as another UID; the parent waits 1 s longer).
 The full mapped case dirties all4MiB; SIGBUS is a failure.
 
 The guest terminal record always says `acceptance:false` and requires host
@@ -193,8 +200,15 @@ does not change.
 state; a failed or uncertain dispatch records `error`, after which every later
 command refuses (inspect, never replay). Commands refuse 3600 seconds after the
 run started, leaving any retained payload for inspection. The plan's `seconds`
-(60-600) caps each single SSH dispatch: its local deadline is
-`min(case seconds + 15, plan seconds)`. Each reopen verifies
+(255-600) caps each single SSH dispatch: its local deadline is
+`min(request seconds + 15, plan seconds)`, at most 255 s, so the ordering is
+admission alarm (150 s) < request deadline (180-240 s) < dispatch bound
+(195-255 s). That orders when the guest alarm fires, not when the guest
+finishes: a blocked hfs syscall returns, and lets the Deadline end the
+request, up to about 120 s after the alarm, so such a guest can outlive the
+dispatch bound and the controller records `error` (uncertain; preserved,
+never replayed). The plan's minimum keeps its cap from ever cutting a
+dispatch before the guest's own alarm fires. Each reopen verifies
 the owned lock, exact plan digest and every staged input snapshot. These commands
 provide no VM lifecycle, package installation, mounting, fencing or normal
 publication.
@@ -268,7 +282,8 @@ these exercise controller transport safety only, not guest filesystem acceptance
 After every planned payload is released (all five, or four with T5 deferred),
 `controller.py lifecycle --step` sends
 `homelabfs-retained9p-lifecycle-step/1` requests to the same pinned `guest.py`:
-the plan's boot/provider/manifest/mount identity plus `step` and a 30 s alarm.
+the plan's boot/provider/manifest/mount identity plus `step` and a 180 s whole
+deadline (the 150 s admission alarm plus 30 s for the step, dispatch 195 s).
 Steps run at most once, in the order below (skipping is allowed, going back
 is not; the re-read needs the CALL directly before it). Each records every
 errno as data in one `step-observed` event; the terminal's `syscall_success`
