@@ -210,15 +210,18 @@ exited issuer's exact original cleanup). On 2026-11-18 they were rebuilt
 from `1b0a306` for the 5a4 rebuild for zq3-r12 (`150deb29…`, daemon y94: an
 early DRAINED is answered BLOCKED, not STALE), and again from `b7d107b` for
 the xc4 rebuild for zq3-r13 (`e9c77e5b…`, daemon nc4: a retried mapped cell
-reuses its recorded base instead of fencing the guest transport), so the
-test bytes match the final daemon source again. The xd4 rebuild for zq3-r14
-(`3a7131dd…`, 2026-11-19) rebuilt only the guest kernel and the exporter
-and reuses that daemon and these artifacts unchanged. Nothing used
+reuses its recorded base instead of fencing the guest transport). The xd4
+rebuild for zq3-r14 (`3a7131dd…`, 2026-11-19) rebuilt only the guest kernel
+and the exporter and reused that daemon and these artifacts unchanged. On
+2026-11-19 they were rebuilt from `2f34b60` for the r15 rebuild for zq3-r15
+(`ac8020aa…`, daemon z94: a read-only OPEN conflicts like a read and the
+volume root's lifetime journals no pins), so the test bytes match the final
+daemon source again. Nothing used
 SSH, the lab, a VM, a mount or a module. It grants no authority: the window is
 zq3 approval class A5 and still needs Paul's explicit yes at run time.
 
 **Rebuilt artifacts.** [`build-fdescfs-window-artifacts.sh`](../../tools/lab/build-fdescfs-window-artifacts.sh)
-exports the selected commit (now `b7d107b`) as a source archive and builds each artifact twice with
+exports the selected commit (now `2f34b60`) as a source archive and builds each artifact twice with
 fresh Go caches, using the pinned clang cross wrapper, the captured f3 sysroot
 (`c16fdc1c…`) and the candidate daemon's Go environment. Both builds were
 byte-identical. As a toolchain cross-check the same recipe reproduced the
@@ -227,9 +230,9 @@ ELF closure: [build record](zq3-fdescfs-window/build-record.json).
 
 | Artifact (staged under `/var/tmp/hfs-validation-xz3/zq3-r1/bin/`) | SHA256 | Bytes |
 |---|---|---|
-| `controlledruntime.test` (FreeBSD CGO test binary) | `8194ebe0f95b32bfc6e19aa5c594b0091c15b1f8782b430d64cc63ff1820e91b` | 14,014,368 |
-| `fdescfs-namespace` (helper, `-std=c11 -Wall -Wextra -Werror -O1 -g`) | `8c43fd06c6254da1bdde9d1cec8f759e4a4bdf1827b1708165ae0f72885c5d33` | 22,584 |
-| `hfs-controlled-runtime` (inspector, equals the candidate manifest) | `c959b708f93876a5a4c620f33e64587bc0235dc4cf994de2154eb26710c4bc9b` | 11,001,360 |
+| `controlledruntime.test` (FreeBSD CGO test binary) | `9d9f0f01e821bdeee101b88b3f0ef20853f339e97ddaff6bbe08984da6157319` | 14,018,904 |
+| `fdescfs-namespace` (helper, `-std=c11 -Wall -Wextra -Werror -O1 -g`) | `d6f2e4d0a41073cb151f0f1c312607bc386726f55dac0ca71cf584902e067cd7` | 22,584 |
+| `hfs-controlled-runtime` (inspector, equals the candidate manifest) | `8668e5f085e4d53126ac382dd435339e15c8b7a5085d36d953f4432d9c7eb7cf` | 11,005,736 |
 | `fdescfs-window.py` (controller) | SHA256 of the repository file at the reviewed commit | |
 
 All three binaries load through `/libexec/ld-elf.so.1` and need base
