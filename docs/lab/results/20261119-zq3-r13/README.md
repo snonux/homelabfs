@@ -82,7 +82,7 @@ try (08:25:07Z), `check --expect stock` ok, `Enforcing`, no
 
 What the evidence shows:
 
-1. The guard stopped the runtime at about 08:10:59Z (elapsed 3384.4 s). The
+1. The guard stopped the runtime at about 08:11:00Z (elapsed 3384.4 s). The
    exporter (bhyve, pid 25320) kept running.
 2. At guest uptime 3377.7 s, which is the same moment, m1 (session
    `a28f9517-…`) logged
@@ -110,7 +110,7 @@ What the evidence shows:
   (`tools/integration/lib9p/src/hfs9p.c` `hfs9p_exchange`). The supervisor's
   check (`hfs9p_supervisor.c` `_verify_locked`) sends a request to the
   runtime. With the runtime gone that request fails, the supervisor marks
-  itself fenced, and `_verify` returns `ESTALE`. `hfs9p_exchange` returns
+  itself fenced, and `_verify` returns an error (`ESTALE` once fenced; the first failure returns the supervisor's own error code). `hfs9p_exchange` returns
   that error **without encoding a reply** (`goto done`). The bhyve backend
   (`lib9p/patches/0001-dedicated-backend.patch`) then hands the chain back
   with `response_len 0`.

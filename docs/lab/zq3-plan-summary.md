@@ -164,7 +164,7 @@ f3 self-check with the new daemon and brought both mounts up and usable,
 so that fix works. The test cases still did not run: the session running
 the attempt paused for about an hour after the mounts were ready, which
 used up the time limit. While cleaning up, unmounting one mount hung
-because the daemon had already stopped and the guest never got an answer;
+most likely because the daemon had already stopped and the guest never got an answer (medium-high confidence);
 that needs fixing (task oc4) before or alongside the rerun (zq3-r14).
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
