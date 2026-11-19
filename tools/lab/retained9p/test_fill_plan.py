@@ -65,11 +65,11 @@ def batch_template(root, change=None):
     mounts = [{"mount_id": fill.MOUNT_IDS[i], "path": "{}/m{}".format(RUN_DIR, i), "session": SESSIONS[i],
                "tag": "hfs{}".format(i)} for i in range(2)]
     requests = [{"boot_id": fill.BOOT, "case": case, "manifest_sha256": fill.MANIFEST, "mounts": mounts,
-                 "provider_nonce": fill.NONCE, "run_id": "zq3-r1", "seconds": 60,
+                 "provider_nonce": fill.NONCE, "run_id": "zq3-r1", "seconds": 240,
                  "version": "homelabfs-retained9p-syscalls/1"} for case in controller.CASES]
     plan = {"candidate_manifest_sha256": next(iter(controller.ADMITTED)), "installed_manifest_sha256": fill.MANIFEST,
             "probe_sha256": sha(controller.GUEST.read_bytes()), "requests": json.loads(json.dumps(requests)),
-            "run_id": "zq3-r1", "seconds": 120, "version": controller.VERSION,
+            "run_id": "zq3-r1", "seconds": 255, "version": controller.VERSION,
             "ssh": {"path": str(ssh), "sha256": sha(ssh.read_bytes())},
             "host": {"address": "10.20.0.133", "alias": "f3", "user": "paul", "known_hosts": str(host),
                      "known_hosts_sha256": sha(host.read_bytes())},

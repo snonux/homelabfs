@@ -128,10 +128,10 @@ def batch_fixture(root, deferred=None):
                "mount_id": i + 10, "session": "session" + str(i)} for i in range(2)]
     requests = [{"version": guest.VERSION, "run_id": "test", "boot_id": "boot",
                  "provider_nonce": "provider", "manifest_sha256": "b" * 64,
-                 "mounts": mounts, "case": name, "seconds": 1}
+                 "mounts": mounts, "case": name, "seconds": 180}
                 for name in ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
                 if name not in [item["case"] for item in deferred or []]]
-    plan = {"version": controller.VERSION, "run_id": "test", "seconds": 120,
+    plan = {"version": controller.VERSION, "run_id": "test", "seconds": 255,
             "candidate_manifest_sha256": ADMITTED, "installed_manifest_sha256": "b" * 64,
             "ssh": {"path": str(ssh), "sha256": controller.digest(ssh.read_bytes())},
             "probe_sha256": controller.digest(probe.read_bytes()), "requests": requests,
@@ -417,7 +417,7 @@ class PreparationTests(unittest.TestCase):
                 controller.check_terminal(path, "sync", "release", "c" * 64)
 
     def test_plain_directory_fallback_refused_before_any_open_or_io(self):
-        request = {"version": guest.VERSION, "run_id": "test", "case": "sync", "seconds": 5,
+        request = {"version": guest.VERSION, "run_id": "test", "case": "sync", "seconds": 180,
                    "boot_id": "boot", "provider_nonce": "provider", "manifest_sha256": controller.digest(b"manifest"),
                    "mounts": [{"path": "/var/tmp/hfs-zq3-test/m" + str(i),
                                "tag": "hfs" + str(i), "mount_id": i + 10,
@@ -628,8 +628,9 @@ class RetainedReleaseControllerTests(unittest.TestCase):
         self.assertEqual(self.state()["cases"][0]["state"], "payload-retained-awaiting-correlation")
 
     def test_plan_seconds_caps_every_dispatch(self):
-        for plan_seconds, case_seconds, expected in [(60, 60, 60), (70, 60, 70),
-                                                     (600, 60, 75), (60, 1, 16)]:
+        """Dispatch = guest whole deadline + 15 s; the plan cap never cuts below it (be4)."""
+        for plan_seconds, case_seconds, expected in [(255, 240, 255), (255, 180, 195),
+                                                     (600, 240, 255), (300, 180, 195)]:
             with self.subTest(plan=plan_seconds, case=case_seconds):
                 self.plan["seconds"] = plan_seconds
                 for request in self.plan["requests"]:
@@ -641,10 +642,18 @@ class RetainedReleaseControllerTests(unittest.TestCase):
                 self.assertEqual(self.quiet(controller.probe, self.path, self.hash, self.output), 0)
                 self.assertEqual(self.release("credentials"), 0)
                 self.assertEqual(self.deadlines, [expected, expected])
-        for invalid in [59, 601, "60"]:
+        for invalid in [254, 601, "255"]:
             self.plan["seconds"] = invalid
             with self.subTest(invalid=invalid), self.assertRaisesRegex(controller.Refused, "deadline cap"):
                 controller.validate_shape(self.plan)
+
+    def test_request_deadline_must_outlast_admission_alarm(self):
+        """A case deadline at or under the 150 s admission alarm + 30 s refuses (be4)."""
+        self.plan["seconds"] = 255
+        for invalid in [60, 179, 241, "180"]:
+            request = dict(self.plan["requests"][0], seconds=invalid)
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(controller.Refused, "case differs"):
+                controller.validate_request(self.plan, request, None)
 
     def test_concurrent_owner_lock_refuses(self):
         self.quiet(controller.probe, self.path, self.hash, self.output)
@@ -775,7 +784,7 @@ class GuestRetentionTests(unittest.TestCase):
             self.addCleanup(patcher.stop)
         self.request = {"version": guest.VERSION, "run_id": "test", "boot_id": "boot",
                         "provider_nonce": "provider", "manifest_sha256": "b" * 64,
-                        "mounts": [], "case": "sync", "seconds": 5}
+                        "mounts": [], "case": "sync", "seconds": 180}
 
     def run_case(self):
         printed = io.StringIO()

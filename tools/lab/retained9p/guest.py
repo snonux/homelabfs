@@ -27,6 +27,7 @@ import errno
 import hashlib
 import hmac
 import json
+import math
 import mmap
 import os
 import re
@@ -70,6 +71,23 @@ LISTING_LIMIT = 1024  # Bounded root listing per domain in the re-read step.
 # prove nothing about the host. T8 (unmount of m1) runs after T11.
 STEP_DOMAIN = {"lost-reply-call": 0, "lost-reply-reread": 0, "quiesce": 0, "after-loss": 1}
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
+# Deadlines (be4, zq3-r14 R14-1). One hfs syscall can wait about 90-120 s
+# (docs/Test-automation.md: view wait, lease exchange, allocation wait and
+# request window, 30 s each), and each recall a root OPEN waits behind costs
+# seconds of host observation, so the old 10 s admission alarm turned a slow
+# but correct admission into a Deadline. The alarms only catch hangs:
+# - ADMISSION_SECONDS, armed at process start, bounds reading the request and
+#   admission: one worst-case syscall plus margin.
+# - A request's `seconds` is its whole deadline, also counted from process
+#   start (limit re-arms the alarm with what is left after admission). It must
+#   exceed the admission alarm by at least SECONDS_AFTER_ADMISSION, so the case
+#   or step body keeps time even after a worst-case admission.
+# - controller.py mirrors these bounds and bounds each SSH dispatch at
+#   `seconds` + 15 s, so admission alarm < request deadline < dispatch bound.
+ADMISSION_SECONDS = 150
+SECONDS_AFTER_ADMISSION = 30
+REQUEST_SECONDS_MIN = ADMISSION_SECONDS + SECONDS_AFTER_ADMISSION  # 180
+REQUEST_SECONDS_MAX = 240
 RECORD_LIMIT = 65536
 REQUEST_LIMIT = 16384
 REPLY_LIMIT = 65536
@@ -266,7 +284,8 @@ def admit_identity(request):
     """Bounds plus actual boot, installed manifest, SELinux and provider inventory."""
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,23}", request["run_id"]):
         raise Refused("run ID bound")
-    if type(request["seconds"]) is not int or not 1 <= request["seconds"] <= 60:
+    if (type(request["seconds"]) is not int or
+            not REQUEST_SECONDS_MIN <= request["seconds"] <= REQUEST_SECONDS_MAX):
         raise Refused("case deadline bound")
     known = request.get("step") in STEPS if "step" in request else request.get("case") in CASES
     if not known or len(request["mounts"]) != 2:
@@ -995,10 +1014,10 @@ STEP_ACTIONS = {"lost-reply-call": lost_reply_call, "lost-reply-reread": lost_re
                 "quiesce": quiesce, "after-loss": after_loss}
 
 
-def run_step(request):
+def run_step(request, started):
     """Step admission, then the step; its observation leaves through stdout."""
     mounts = admit_step(request)
-    limit(request)
+    limit(request, started)
     p = Probe(request, [])  # Steps fork no children; p.children stays empty.
     observation = STEP_ACTIONS[request["step"]](p, mounts)
     emit("step-observed", step=request["step"], observation=observation,
@@ -1006,15 +1025,24 @@ def run_step(request):
     return p
 
 
-def limit(request):
-    signal.alarm(request["seconds"])
+def limit(request, started):
+    """Re-arm SIGALRM with what is left of the request's whole deadline.
+
+    started is main's monotonic start, when the admission alarm was armed, so
+    the request ends at started + seconds however long admission took. At least
+    one second is armed: admit_identity's bound keeps the deadline at least
+    SECONDS_AFTER_ADMISSION past the admission alarm, so this floor only
+    matters if the clock and the alarm disagree by rounding.
+    """
+    left = request["seconds"] - (time.monotonic() - started)
+    signal.alarm(max(1, math.ceil(left)))
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
 
 
-def run_case(request, roots):
+def run_case(request, roots, started):
     """Case or release after full admission; a case retains its payload."""
-    limit(request)
+    limit(request, started)
     p = Probe(request, roots)
     if request_kind(request) == "release":
         Retention(p).release()
@@ -1027,20 +1055,22 @@ def run_case(request, roots):
 
 def main():
     roots, p, success, kind, step = [], None, False, None, None
+    started = time.monotonic()
     try:
         checked(len(sys.argv) == 1, "one stdin request; no arguments")
         signal.signal(signal.SIGALRM, deadline)
-        signal.alarm(10)
+        # Bounds the stdin read and admission (see ADMISSION_SECONDS).
+        signal.alarm(ADMISSION_SECONDS)
         raw = sys.stdin.buffer.read(REQUEST_LIMIT + 1)
         checked(len(raw) <= REQUEST_LIMIT, "request limit")
         request = json.loads(raw, object_pairs_hook=unique)
         kind = request_kind(request)
         if kind == "step":
             step = request["step"]
-            p = run_step(request)
+            p = run_step(request, started)
         else:
             admit(request, roots)
-            p = run_case(request, roots)
+            p = run_case(request, roots, started)
         success = True
     except BaseException as failure:
         emit("failure", error=type(failure).__name__, detail=str(failure)[:1024],
