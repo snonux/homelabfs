@@ -206,6 +206,19 @@ window, one getattr can take about 90-120 s in the worst case.
 umount(2) itself enters no view (hfs_d_revalidate is local), and kill_sb's
 settle wakes any parked entrant before its own 2 s bound.
 
+A recall under an observation is routine (ie4, zq3-r15 R15-1). After
+VIEW_ACQUIRE, observation begin re-checks the view. If the view moved past the
+granted lease (another stamp, not LIVE, or another target), it acquires again
+and releases the old lease only after that acquisition. The old lease is never
+re-stamped, because the host quiesces even unpublished leases at STOPPED. The
+retry shares a still-active old lease, or gets one at the next fence, so the old
+release starts no recall of its own. Only a FENCED view or a closing or blocked
+hfs1.4 session keeps `-ESTALE`; the retries share the first entry's 30 s
+deadline (`-ETIMEDOUT`). A cache observation whose stamp moved during its
+request installs its attributes only if the view still has the target the
+request was stamped at; otherwise GETATTR and LOOKUP are re-issued within a
+30 s deadline (READDIR returns `-ESTALE`).
+
 When the view control worker stops for good (`hfs_mmap_fail`), it logs one line
 per session naming the enrolled session UUID, the worker step (VIEW_WAIT,
 EVENT, DRAINED, DRAIN_WRITE, CLEANUP), the host event and ACK phases, the host

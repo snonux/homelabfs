@@ -78,25 +78,37 @@ static inline void folio_attach_private(struct folio *f, void *p) {
 static inline void folio_detach_private(struct folio *f) {
    assert(f->page.private); f->page.private = NULL; f->page.refs--;
 }
-struct inode { struct address_space *i_mapping; int refs; };
-struct hfs_inode { struct list_head view_list; struct inode inode; };
+/* i_lock, i_state and i_data, and hfs_inode's object and forget, serve the
+ * ie4 forget-record checks (hfs_inode_get_fail, hfs_evict_inode; view
+ * --pressure). A zeroed spinlock_t is an unlocked glibc mutex.
+ */
+struct inode { struct address_space *i_mapping; int refs; spinlock_t i_lock; unsigned long i_state; struct address_space i_data; };
+struct hfs_forget;
+struct hfs_inode { struct list_head view_list; struct inode inode; struct hfs_cap *object; struct hfs_forget *forget; };
 struct hfs_view;
+/* leave: hfs_mmap_end's provider exit (ie4, view --pressure). */
 struct hfs_provider {
    int (*reserve)(void *, u64, bool, void **);
    void (*unreserve)(void *, void *);
+   void (*leave)(void *, void *);
 };
 /* bridge_minor (u16, as in hfs.h)/closing/blocked only let the minor4
- * controlled-session gate in hfs_view_try_enter_locked and its wait compile.
- * The fixtures keep bridge_minor == 0, so that gate is not exercised here.
+ * controlled-session gate in hfs_view_refused (hfs_view_try_enter_locked and
+ * its wait) compile. The view fixtures keep bridge_minor == 0, so that gate
+ * is not exercised there.
  * enrollment.session and block_reported feed hfs_mmap_fail's
  * once-per-session line (1a4, view --pressure), and exporter_error its raw
- * exporter ERROR reason (oc4).
+ * exporter ERROR reason (oc4). transport_failed (oc4) ends hfs_mmap_begin's
+ * re-check retries (ie4, view --pressure); the ie4 cases set bridge_minor 4
+ * only for their blocked-session check. forgets and control (the FORGET
+ * queue) serve the ie4 forget-record checks.
  */
 struct hfs_session {
    struct hfs_view *view; struct hfs_provider *provider; struct mutex lock;
    u16 bridge_minor; bool closing; bool blocked;
    struct { uuid_t session; } enrollment; unsigned long block_reported;
-   u16 exporter_error;
+   u16 exporter_error; bool transport_failed;
+   struct list_head forgets; void *control;
 };
 
 #define HFS_IDENTITIES_MAX 4096U

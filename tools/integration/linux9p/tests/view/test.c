@@ -135,7 +135,7 @@ static void bounded_enter_checks(struct hfs_view *view)
 
 int main(void)
 {
-   struct hfs_provider provider = {reserve, unreserve};
+   struct hfs_provider provider = {reserve, unreserve, NULL};
    struct hfs_session session = {.provider = &provider};
    struct hfs_view_stamp stamp, bad;
    uuid_t generation = {{1}}, recall = {{2}}, zero = {{0}};
