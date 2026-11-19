@@ -1955,7 +1955,7 @@ diff --git a/fs/9p/hfs_policy.h b/fs/9p/hfs_policy.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_policy.h
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,91 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_POLICY_H
 +#define FS_9P_HFS_POLICY_H
@@ -2030,16 +2030,20 @@ new file mode 100644
 +/* Only definitive capacity refusal permits the identical SEND to be retried. */
 +int hfs_send_reply(const void *packet, u32 len, bool expired);
 +
-+/* hfs_transport's retry loops stop at once when the session was blocked
-+ * while the exchange was retrying (oc4, zq3-r12 R12-1: mount-1's VIEW_QUERY
-+ * kept retrying for 30 s after a VIEW_WAIT failure blocked its session),
-+ * returning -EHOSTDOWN like ordinary admission on a blocked session.
-+ * Work issued on an already blocked session (was_blocked: reserved
-+ * reconciliation, retirement and destroy traffic of a retained session)
-+ * and a clean unmount (kill_sb sets unmounting, then blocked, while FORGET
-+ * and lease releases may be in flight) still retry to the deadline.
++/* Retry and poll loops (hfs_transport, the VIEW_QUERY and CALL->QUERY
++ * polls) stop with -EHOSTDOWN once the session is blocked (oc4, zq3-r12
++ * R12-1: mount-1's VIEW_QUERY kept retrying for 30 s after a VIEW_WAIT
++ * failure blocked its session), unless the traffic is exempt or the session
++ * is in teardown (a clean unmount or a closing failed mount, whose FORGET
++ * and lease releases must still finish).
 + */
-+int hfs_transport_halt(bool was_blocked, bool blocked, bool unmounting);
++int hfs_transport_halt(bool exempt, bool blocked, bool teardown);
++
++/* Operations (control operations or CALL opcodes) that may keep retrying
++ * on a blocked session: retirement, release, cancel and cleanup traffic,
++ * which a retained session's destroy and close still need.
++ */
++bool hfs_after_block_operation(const char *operation);
 +
 +
 +#endif
@@ -2047,7 +2051,7 @@ diff --git a/fs/9p/hfs_policy.c b/fs/9p/hfs_policy.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_policy.c
-@@ -0,0 +1,224 @@
+@@ -0,0 +1,239 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Pure request identity and authoritative metadata validation. */
 +#include "hfs_policy.h"
@@ -2268,9 +2272,24 @@ new file mode 100644
 +	return hfs_bridge_error(reason);
 +}
 +
-+int hfs_transport_halt(bool was_blocked, bool blocked, bool unmounting)
++int hfs_transport_halt(bool exempt, bool blocked, bool teardown)
 +{
-+	return blocked && !was_blocked && !unmounting ? -EHOSTDOWN : 0;
++	return blocked && !exempt && !teardown ? -EHOSTDOWN : 0;
++}
++
++bool hfs_after_block_operation(const char *operation)
++{
++	static const char *const exempt[] = {
++		"RETIRE",	"CANCEL",	     "RELEASE_CELL",	  "SESSION_RETIRE",
++		"VIEW_RELEASE", "VIEW_CANCEL",	     "VIEW_RETIRE",	  "READDIR_CLEANUP",
++		"FORGET",	"DESCRIPTION_CLOSE", "DESCRIPTION_RELEASE", "PROCESS_EXIT",
++	};
++	size_t i;
++
++	for (i = 0; i < ARRAY_SIZE(exempt); i++)
++		if (!strcmp(operation, exempt[i]))
++			return true;
++	return false;
 +}
 diff --git a/fs/9p/hfs_cursor.h b/fs/9p/hfs_cursor.h
 new file mode 100644

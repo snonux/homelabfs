@@ -107,7 +107,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,460 @@
+@@ -0,0 +1,480 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -424,6 +424,16 @@ new file mode 100644
 +	 * hfs_session_block and hfs_mmap_fail lines print it (oc4).
 +	 */
 +	u16 exporter_error;
++	/* An exchange of this session hit its 30 s deadline, got no reply
++	 * within the bounded 9p wait, or got ERROR UNAVAILABLE: the host is not
++	 * answering. From then on every retry or
++	 * poll loop stops at its first retry, exempt and teardown traffic too
++	 * (hfs_session_poll_halt), so an unmount after the host is gone takes
++	 * at most one more deadline, not one per FORGET (oc4, zq3-r13: m0's
++	 * umount hung > 270 s in hfs_control). Never cleared: a session that
++	 * lost its host is retained, not resumed.
++	 */
++	bool transport_failed;
 +};
 +
 +/* An hfs_call caller queued for the allocation fence (x84), on its stack. */
@@ -510,6 +520,16 @@ new file mode 100644
 +int hfs_control(struct hfs_session *session, const char *operation,
 +		const struct hfs_buf *payload, bool reserved,
 +		struct hfs_json **out);
++/* hfs_control with an explicit after_block exemption (oc4): true lets the
++ * exchange keep retrying on a blocked session (hfs_after_block_operation of
++ * the operation that the exchange serves, e.g. VIEW_RELEASE for its
++ * VIEW_QUERY polls). hfs_control passes hfs_after_block_operation(operation).
++ */
++int hfs_control_flagged(struct hfs_session *session, const char *operation,
++			const struct hfs_buf *payload, bool reserved, bool after_block,
++			struct hfs_json **out);
++/* -EHOSTDOWN once a non-exempt retry or poll loop must stop (oc4). */
++int hfs_session_poll_halt(struct hfs_session *session, bool exempt);
 +int hfs_result_code(const struct hfs_json *json);
 +int hfs_readdir_forget(struct hfs_session *, const struct hfs_json *,
 +			const struct hfs_cred *);
@@ -572,7 +592,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,3495 @@
+@@ -0,0 +1,3587 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -989,21 +1009,50 @@ new file mode 100644
 +
 +	if (reason)
 +		WRITE_ONCE(session->exporter_error, reason);
++	if (reason == HFS_ERROR_UNAVAILABLE)
++		WRITE_ONCE(session->transport_failed, true);
++}
++
++/* -EHOSTDOWN when a retry or poll loop must stop because the session is
++ * blocked (oc4, zq3-r12 R12-1: mount-1 kept retrying its mount-time
++ * VIEW_QUERY for 30 s after its session was blocked). exempt is decided by
++ * the caller (hfs_control_flagged at admission, under session->lock): only
++ * retirement, release and cleanup traffic may continue on a blocked
++ * session. A clean unmount or a closing (failed, retained) mount is
++ * teardown and continues too.
++ *
++ * kill_sb and hfs_mount_fail write unmounting/closing, then smp_wmb(), then
++ * blocked; the smp_rmb() here pairs with that, so a reader that sees blocked
++ * also sees the teardown flag written before it and does not halt a FORGET
++ * or lease release that was in flight when the unmount started.
++ *
++ * A session whose host stopped answering (transport_failed) halts even
++ * exempt and teardown traffic, so unmount stays bounded (zq3-r13).
++ */
++int hfs_session_poll_halt(struct hfs_session *session, bool exempt)
++{
++	bool blocked = READ_ONCE(session->blocked);
++
++	if (READ_ONCE(session->transport_failed))
++		return -EHOSTDOWN;
++	if (!blocked)
++		return 0;
++	smp_rmb();
++	return hfs_transport_halt(exempt, blocked,
++				  READ_ONCE(session->unmounting) || READ_ONCE(session->closing));
 +}
 +
 +/* The retry-loop exit shared by SEND and FETCH: the original deadline, then
-+ * a block raised while this exchange was retrying (hfs_transport_halt, oc4).
-+ * Before oc4 the loops ignored session->blocked, so zq3-r12's mount-1
-+ * retried its mount-time VIEW_QUERY for the whole 30 s after its session was
-+ * blocked. was_blocked is the flag at the exchange's start.
++ * a blocked session (hfs_session_poll_halt).
 + */
-+static int hfs_transport_stop(struct hfs_session *session, unsigned long deadline,
-+			      bool was_blocked)
++static int hfs_transport_stop(struct hfs_session *session, unsigned long deadline, bool exempt)
 +{
-+	if (time_after_eq(jiffies, deadline))
++	if (time_after_eq(jiffies, deadline)) {
++		/* No answer for the whole window: the host is gone (zq3-r13). */
++		WRITE_ONCE(session->transport_failed, true);
 +		return -ETIMEDOUT;
-+	return hfs_transport_halt(was_blocked, READ_ONCE(session->blocked),
-+				  READ_ONCE(session->unmounting));
++	}
++	return hfs_session_poll_halt(session, exempt);
 +}
 +
 +/* SEND every chunk of body under the writer. Only a CAPACITY refusal (or a
@@ -1012,7 +1061,7 @@ new file mode 100644
 + */
 +static int hfs_transport_send(struct hfs_session *session, const struct hfs_buf *body, u64 cell,
 +			      u16 tag, unsigned long deadline, unsigned long pressure_at,
-+			      bool was_blocked, void *frame, void *packet, bool *writer_held)
++			      bool exempt, void *frame, void *packet, bool *writer_held)
 +{
 +	u32 chunk, len, frame_len;
 +	int err;
@@ -1028,6 +1077,9 @@ new file mode 100644
 +		len = HFS_HEADER_SIZE + HFS_CHUNK_MAX + 1;
 +		err = p9_client_hfs_exchange(session->client, tag, 1, 1, cell, chunk, frame,
 +					     frame_len, packet, &len);
++		/* No reply within the bounded wait (zq3-r13): the host is gone. */
++		if (err == -ETIMEDOUT)
++			WRITE_ONCE(session->transport_failed, true);
 +		/* -EBUSY: a fixed tag stayed held past the exchange's bounded wait
 +		 * and nothing was sent (net/9p p9_client_hfs_exchange). Retry the
 +		 * same frame like a refused packet, under the same deadline. It is
@@ -1055,7 +1107,7 @@ new file mode 100644
 +		usleep_range(10000, 12000);
 +		mutex_lock(&session->writer);
 +		*writer_held = true;
-+		err = hfs_transport_stop(session, deadline, was_blocked);
++		err = hfs_transport_stop(session, deadline, exempt);
 +		if (err)
 +			return err;
 +		goto retry_send;
@@ -1070,7 +1122,7 @@ new file mode 100644
 + */
 +static int hfs_transport_fetch(struct hfs_session *session, u64 cell, u16 tag, u8 channel,
 +			       u32 chunk, unsigned long deadline, unsigned long pressure_at,
-+			       bool was_blocked, void *packet, u32 *len)
++			       bool exempt, void *packet, u32 *len)
 +{
 +	int err;
 +
@@ -1078,6 +1130,8 @@ new file mode 100644
 +		*len = HFS_HEADER_SIZE + HFS_CHUNK_MAX + 1;
 +		err = p9_client_hfs_exchange(session->client, tag, 2, channel, cell, chunk, NULL, 0,
 +					     packet, len);
++		if (err == -ETIMEDOUT)
++			WRITE_ONCE(session->transport_failed, true); /* as for SEND */
 +		if (err && err != -EBUSY)
 +			return err;
 +		if (!err && (*len != 1 || *(u8 *)packet != 2))
@@ -1088,7 +1142,7 @@ new file mode 100644
 +		/* After the sleep, as for SEND: a block raised meanwhile sends
 +		 * no further FETCH.
 +		 */
-+		err = hfs_transport_stop(session, deadline, was_blocked);
++		err = hfs_transport_stop(session, deadline, exempt);
 +		if (err)
 +			return err;
 +	}
@@ -1098,60 +1152,57 @@ new file mode 100644
 +	return hfs_bridge_error(hfs_bridge_error_reason(packet, *len));
 +}
 +
-+/* One complete exchange: SEND the body (hfs_transport_send), release the
-+ * writer, then FETCH and verify every response chunk. Every retry shares one
-+ * 30 s deadline and stops once the session is blocked meanwhile (oc4).
++/* Decode one fetched FRAME chunk into *assembled: chunk 0 allocates the
++ * whole body and fixes its length and hash, later chunks must repeat them.
 + */
-+static int hfs_transport(struct hfs_session *session, const struct hfs_buf *body, u64 cell, u16 tag,
-+			 struct hfs_response_profile response, void **reply, u32 *reply_len,
-+			 bool *writer_held)
++static int hfs_transport_chunk(struct hfs_session *session, u64 cell, u32 chunk,
++			       struct hfs_response_profile response, const void *packet, u32 len,
++			       void **assembled, u32 *total, u8 expected[32])
 +{
-+	void *frame = NULL, *packet = NULL, *assembled = NULL;
-+	u8 expected[32], hash[32];
-+	u32 chunk, total = 0, len, body_len, frame_len;
-+	unsigned long deadline = jiffies + 30 * HZ;
-+	unsigned long pressure_at = jiffies + msecs_to_jiffies(50);
-+	bool was_blocked = READ_ONCE(session->blocked);
++	u32 body_len, frame_len;
 +	const void *bytes;
-+	int err = -ENOMEM;
++	u8 hash[32];
++	int err;
 +
-+	frame = kmalloc(HFS_HEADER_SIZE + HFS_CHUNK_MAX, GFP_KERNEL);
-+	packet = kmalloc(HFS_HEADER_SIZE + HFS_CHUNK_MAX + 1, GFP_KERNEL);
-+	if (!frame || !packet)
-+		goto out;
-+	err = hfs_transport_send(session, body, cell, tag, deadline, pressure_at, was_blocked,
-+				 frame, packet, writer_held);
++	err = hfs_frame_decode_version(session->bridge_minor, packet + 1, len - 1, response.kind,
++				       &session->enrollment.session, cell, chunk, &body_len, hash,
++				       &bytes, &frame_len);
 +	if (err)
-+		goto out;
-+	mutex_unlock(&session->writer);
-+	*writer_held = false;
++		return err;
++	if (response.max_body && body_len > response.max_body)
++		return -EPROTO;
++	if (!chunk) {
++		*total = body_len;
++		memcpy(expected, hash, 32);
++		*assembled = kvmalloc(*total, GFP_KERNEL);
++		if (!*assembled)
++			return -ENOMEM;
++	} else if (*total != body_len || memcmp(expected, hash, 32)) {
++		return -EPROTO;
++	}
++	memcpy(*assembled + chunk * HFS_CHUNK_MAX, bytes, frame_len);
++	return 0;
++}
++
++/* FETCH and verify every response chunk, then the whole body's hash. */
++static int hfs_transport_collect(struct hfs_session *session, u64 cell, u16 tag,
++				 struct hfs_response_profile response, unsigned long deadline,
++				 unsigned long pressure_at, bool exempt, void *packet,
++				 void **reply, u32 *reply_len)
++{
++	void *assembled = NULL;
++	u8 expected[32], hash[32];
++	u32 chunk, total = 0, len;
++	int err;
++
 +	for (chunk = 0;; chunk++) {
 +		err = hfs_transport_fetch(session, cell, tag, response.channel, chunk, deadline,
-+					  pressure_at, was_blocked, packet, &len);
++					  pressure_at, exempt, packet, &len);
++		if (!err)
++			err = hfs_transport_chunk(session, cell, chunk, response, packet, len,
++						  &assembled, &total, expected);
 +		if (err)
 +			goto out;
-+		err = hfs_frame_decode_version(session->bridge_minor, packet + 1, len - 1,
-+					       response.kind, &session->enrollment.session, cell,
-+					       chunk, &body_len, hash, &bytes, &frame_len);
-+		if (err)
-+			goto out;
-+		if (response.max_body && body_len > response.max_body) {
-+			err = -EPROTO;
-+			goto out;
-+		}
-+		if (!chunk) {
-+			total = body_len;
-+			memcpy(expected, hash, 32);
-+			assembled = kvmalloc(total, GFP_KERNEL);
-+			if (!assembled) {
-+				err = -ENOMEM;
-+				goto out;
-+			}
-+		} else if (total != body_len || memcmp(expected, hash, 32)) {
-+			err = -EPROTO;
-+			goto out;
-+		}
-+		memcpy(assembled + chunk * HFS_CHUNK_MAX, bytes, frame_len);
 +		if ((chunk + 1) * HFS_CHUNK_MAX >= total)
 +			break;
 +	}
@@ -1163,11 +1214,40 @@ new file mode 100644
 +	*reply = assembled;
 +	*reply_len = total;
 +	assembled = NULL;
-+	err = 0;
++out:
++	kvfree(assembled);
++	return err;
++}
++
++/* One complete exchange: SEND the body (hfs_transport_send), release the
++ * writer, then FETCH it back (hfs_transport_collect). Every retry shares
++ * one 30 s deadline and stops once the session is blocked, unless exempt
++ * (hfs_session_poll_halt, oc4).
++ */
++static int hfs_transport(struct hfs_session *session, const struct hfs_buf *body, u64 cell, u16 tag,
++			 struct hfs_response_profile response, bool exempt, void **reply,
++			 u32 *reply_len, bool *writer_held)
++{
++	unsigned long deadline = jiffies + 30 * HZ;
++	unsigned long pressure_at = jiffies + msecs_to_jiffies(50);
++	void *frame, *packet;
++	int err = -ENOMEM;
++
++	frame = kmalloc(HFS_HEADER_SIZE + HFS_CHUNK_MAX, GFP_KERNEL);
++	packet = kmalloc(HFS_HEADER_SIZE + HFS_CHUNK_MAX + 1, GFP_KERNEL);
++	if (!frame || !packet)
++		goto out;
++	err = hfs_transport_send(session, body, cell, tag, deadline, pressure_at, exempt, frame,
++				 packet, writer_held);
++	if (err)
++		goto out;
++	mutex_unlock(&session->writer);
++	*writer_held = false;
++	err = hfs_transport_collect(session, cell, tag, response, deadline, pressure_at, exempt,
++				    packet, reply, reply_len);
 +out:
 +	kfree(frame);
 +	kfree(packet);
-+	kvfree(assembled);
 +	return err;
 +}
 +
@@ -1339,8 +1419,9 @@ new file mode 100644
 +
 +#endif
 +
-+int hfs_control(struct hfs_session *session, const char *operation, const struct hfs_buf *payload,
-+		bool reserved, struct hfs_json **out)
++int hfs_control_flagged(struct hfs_session *session, const char *operation,
++			const struct hfs_buf *payload, bool reserved, bool after_block,
++			struct hfs_json **out)
 +{
 +	struct hfs_response_profile response = hfs_response_profile(operation);
 +#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
@@ -1365,6 +1446,7 @@ new file mode 100644
 +	bool allocate = !strcmp(operation, "ALLOCATE");
 +	bool terminal = !strcmp(operation, "SESSION_RETIRE");
 +	void *carrier_credit = NULL;
++	bool exempt = after_block;
 +	int err;
 +
 +	*out = NULL;
@@ -1551,6 +1633,10 @@ new file mode 100644
 +		err = -EHOSTDOWN;
 +		goto unlock;
 +	}
++	/* oc4: decided here, under session->lock, so a block raised after
++	 * admission is never mistaken for an exemption.
++	 */
++	exempt = after_block || session->closing || session->unmounting;
 +	if (terminal) {
 +		release_cell = session->terminal_donor;
 +		memcpy(release_hash, session->terminal_donor_hash, 32);
@@ -1634,7 +1720,14 @@ new file mode 100644
 +			    !strcmp(operation, "VIEW_WAIT") ? 65534 :
 +			    reserved || release		    ? 65533 :
 +							      P9_NOTAG,
-+			    response, &reply, &reply_len, &writer_held);
++			    response, exempt, &reply, &reply_len, &writer_held);
++	/* oc4 review: RETIRED_CELL keeps -EPROTO for ALLOCATE. Its session is
++	 * not blocked (allocation_uncertain instead), so a VFS caller seeing
++	 * -ESTALE could retry the lookup once and replay the uncertain
++	 * allocation fence; -EPROTO fails it as before oc4.
++	 */
++	if (allocate && err == -ESTALE)
++		err = -EPROTO;
 +	if (err)
 +		goto fault;
 +	err = hfs_json_parse(reply, reply_len, &json);
@@ -1736,6 +1829,14 @@ new file mode 100644
 +	hfs_completion_put(completion);
 +#endif
 +	return err;
++}
++EXPORT_SYMBOL_GPL(hfs_control_flagged);
++
++int hfs_control(struct hfs_session *session, const char *operation, const struct hfs_buf *payload,
++		bool reserved, struct hfs_json **out)
++{
++	return hfs_control_flagged(session, operation, payload, reserved,
++				   hfs_after_block_operation(operation), out);
 +}
 +EXPORT_SYMBOL_GPL(hfs_control);
 +
@@ -2088,7 +2189,8 @@ new file mode 100644
 +	err = hfs_request_payload(request, payload);
 +	if (err)
 +		goto retained;
-+	err = hfs_control(session, "CALL", payload, control, &reply);
++	err = hfs_control_flagged(session, "CALL", payload, control,
++				  hfs_after_block_operation(opcode), &reply);
 +	if (err)
 +		goto retained;
 +	token = hfs_json_field(reply, 0, "payload");
@@ -2129,7 +2231,8 @@ new file mode 100644
 +	hfs_buf_add(payload, request->claim.data, request->claim.len);
 +	hfs_buf_literal(payload, "}");
 +	for (;;) {
-+		err = hfs_control(session, "QUERY", payload, true, &reply);
++		err = hfs_control_flagged(session, "QUERY", payload, true,
++					  hfs_after_block_operation(opcode), &reply);
 +		if (err)
 +			goto retained;
 +		token = hfs_json_field(reply, 0, "payload");
@@ -2157,6 +2260,10 @@ new file mode 100644
 +			goto retained;
 +		}
 +		usleep_range(10000, 12000);
++		/* oc4: no further QUERY round once the session is blocked. */
++		err = hfs_session_poll_halt(session, hfs_after_block_operation(opcode));
++		if (err)
++			goto retained;
 +	}
 +	received = reply;
 +	if (session->bridge_minor >= 2) {
@@ -3563,6 +3670,7 @@ new file mode 100644
 +	unsigned long irqflags;
 +
 +	WRITE_ONCE(session->closing, true);
++	smp_wmb(); /* closing before blocked: hfs_session_poll_halt (oc4) */
 +	if (hfs_controlled_consumed(session))
 +		WRITE_ONCE(session->blocked, true);
 +	spin_lock_irqsave(&hfs_sessions_lock, irqflags);
@@ -3651,6 +3759,10 @@ new file mode 100644
 +
 +	/* A clean unmount fences silently; only a failed close or stop logs. */
 +	WRITE_ONCE(session->unmounting, true);
++	/* oc4: unmounting before any blocked store below (hfs_session_block,
++	 * the fences): pairs with smp_rmb() in hfs_session_poll_halt.
++	 */
++	smp_wmb();
 +	err = hfs_controlled_begin_close(session);
 +	if (err)
 +		hfs_session_block(session, "failed controlled close", "UNMOUNT", err);

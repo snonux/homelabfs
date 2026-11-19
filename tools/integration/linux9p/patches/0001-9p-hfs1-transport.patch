@@ -84,10 +84,13 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  #include <linux/sched/signal.h>
  #include <linux/uaccess.h>
  #include <linux/uio.h>
-@@ -62,13 +63,40 @@
+@@ -62,13 +63,43 @@
  }
  EXPORT_SYMBOL(p9_is_proto_dotu);
  
++/* Bound of one hfs reply wait: the guest's whole 30 s exchange window. */
++#define P9_HFS_REPLY_WAIT (30 * HZ)
++
 +static bool p9_client_is_hfs(const struct p9_client *client)
 +{
 +	return client->proto_version == p9_proto_hfs1 ||
@@ -126,7 +129,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	case p9_proto_legacy:
  		seq_puts(m, ",noextend");
  		break;
-@@ -103,7 +131,19 @@
+@@ -103,7 +134,19 @@
  {
  	int version = -EINVAL;
  
@@ -147,7 +150,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  		version = p9_proto_legacy;
  		p9_debug(P9_DEBUG_9P, "Protocol version: Legacy\n");
  	} else if (!strcmp(s, "9p2000.u")) {
-@@ -271,11 +311,12 @@
+@@ -271,11 +314,12 @@
   */
  static struct p9_req_t *
  p9_tag_alloc(struct p9_client *c, int8_t type, uint t_size, uint r_size,
@@ -161,7 +164,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	int tag;
  	va_list apc;
  
-@@ -312,13 +353,28 @@
+@@ -312,13 +356,28 @@
  	if (type == P9_TVERSION)
  		tag = idr_alloc(&c->reqs, req, P9_NOTAG, P9_NOTAG + 1,
  				GFP_NOWAIT);
@@ -192,7 +195,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  	/* Init ref to two because in the general case there is one ref
  	 * that is put asynchronously by a writer thread, one ref
-@@ -339,7 +395,7 @@
+@@ -339,7 +398,7 @@
  	p9_fcall_fini(&req->rc);
  free_req:
  	kmem_cache_free(p9_req_cache, req);
@@ -201,7 +204,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  }
  
  /**
-@@ -535,6 +591,9 @@
+@@ -535,6 +594,9 @@
  		p9_debug(P9_DEBUG_ERROR, "couldn't parse header %d\n", err);
  		return err;
  	}
@@ -211,7 +214,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	if (type != P9_RERROR && type != P9_RLERROR)
  		return 0;
  
-@@ -620,13 +679,17 @@
+@@ -620,13 +682,17 @@
  
  static struct p9_req_t *p9_client_prepare_req(struct p9_client *c,
  					      int8_t type, uint t_size, uint r_size,
@@ -230,7 +233,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  	/* we allow for any status other than disconnected */
  	if (c->status == Disconnected)
-@@ -637,7 +700,7 @@
+@@ -637,7 +703,7 @@
  		return ERR_PTR(-EIO);
  
  	va_copy(apc, ap);
@@ -239,7 +242,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	va_end(apc);
  	if (IS_ERR(req))
  		return req;
-@@ -667,9 +730,9 @@
+@@ -667,9 +733,9 @@
   */
  
  static struct p9_req_t *
@@ -252,7 +255,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	int sigpending, err;
  	unsigned long flags;
  	struct p9_req_t *req;
-@@ -683,9 +746,8 @@
+@@ -683,9 +749,8 @@
  	const uint tsize = 0;
  	const uint rsize = c->trans_mod->pooled_rbuffers ? c->msize : 0;
  
@@ -264,17 +267,26 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	if (IS_ERR(req))
  		return req;
  
-@@ -706,8 +768,15 @@
+@@ -706,8 +771,24 @@
  	}
  again:
  	/* Wait for the response */
 -	err = wait_event_killable(req->wq,
 -				  READ_ONCE(req->status) >= REQ_STATUS_RCVD);
 +	if (p9_client_is_hfs(c)) {
-+		/* No stock Tflush can cancel an admitted hfs claim. */
-+		wait_event(req->wq,
-+			   READ_ONCE(req->status) >= REQ_STATUS_RCVD);
-+		err = 0;
++		/* No stock Tflush can cancel an admitted hfs claim, so the wait
++		 * is not killable. It is bounded (zq3-r13 R13-1): an exporter
++		 * that sent no reply made bhyve complete the request empty,
++		 * virtio 9p dropped that completion (req_done ignores len 0),
++		 * and the sender waited forever holding session->writer, so
++		 * umount hung in hfs_control. On expiry the request stays
++		 * allocated (its tag stays busy; the callback reference is
++		 * never dropped) and the caller gets -ETIMEDOUT, which
++		 * hfs_transport treats as a lost host (transport_failed).
++		 */
++		err = wait_event_timeout(req->wq,
++					 READ_ONCE(req->status) >= REQ_STATUS_RCVD,
++					 P9_HFS_REPLY_WAIT) ? 0 : -ETIMEDOUT;
 +	} else {
 +		err = wait_event_killable(req->wq,
 +					  READ_ONCE(req->status) >= REQ_STATUS_RCVD);
@@ -282,7 +294,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  	/* Make sure our req is coherent with regard to updates in other
  	 * threads - echoes to wmb() in the callback
-@@ -756,6 +825,123 @@
+@@ -756,6 +837,123 @@
  	p9_req_put(c, req);
  	return ERR_PTR(safe_errno(err));
  }
@@ -406,7 +418,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  
  /**
   * p9_client_zc_rpc - issue a request and wait for a response
-@@ -785,7 +971,8 @@
+@@ -785,7 +983,8 @@
  	/* We allocate a inline protocol data of only 4k bytes.
  	 * The actual content is passed in zero-copy fashion.
  	 */
@@ -416,7 +428,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	va_end(ap);
  	if (IS_ERR(req))
  		return req;
-@@ -910,6 +1097,20 @@
+@@ -910,6 +1109,20 @@
  		 c->msize, c->proto_version);
  
  	switch (c->proto_version) {
@@ -437,7 +449,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  	case p9_proto_2000L:
  		req = p9_client_rpc(c, P9_TVERSION, "ds",
  				    c->msize, "9P2000.L");
-@@ -937,7 +1138,18 @@
+@@ -937,7 +1150,18 @@
  	}
  
  	p9_debug(P9_DEBUG_9P, "<<< RVERSION msize %d %s\n", msize, version);
@@ -457,7 +469,7 @@ diff --git a/net/9p/client.c b/net/9p/client.c
  		c->proto_version = p9_proto_2000L;
  	} else if (!strncmp(version, "9P2000.u", 8)) {
  		c->proto_version = p9_proto_2000u;
-@@ -989,10 +1201,19 @@
+@@ -989,10 +1213,19 @@
  	spin_lock_init(&clnt->lock);
  	idr_init(&clnt->fids);
  	idr_init(&clnt->reqs);

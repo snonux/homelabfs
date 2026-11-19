@@ -8,6 +8,10 @@ static struct p9_req_t *queue[64];
 static unsigned int queue_head, queue_count, in_flight[65536];
 static unsigned long sent_requests, next_cell = 1;
 static bool receiver_stopping;
+/* zq3-r13 R13-1: drop the next request without completing it, as virtio 9p
+ * drops bhyve's empty completion when the exporter sent no reply.
+ */
+static bool drop_next;
 
 /* Like a preempted vCPU between wake_up and the callback's p9_req_put, keep
  * the callback's reference until some owner probes a tag after this wake-up
@@ -83,6 +87,11 @@ static void *receive_thread(void *unused)
 		queue_count--;
 		if (req->tc.tag >= 65533)
 			in_flight[req->tc.tag]--;
+		if (drop_next) {
+			drop_next = false;
+			CHECK(!pthread_mutex_unlock(&queue_lock));
+			continue; /* never completed: the waiter must time out */
+		}
 		CHECK(!pthread_mutex_unlock(&queue_lock));
 		fake_reply(req);
 		p9_client_cb(&client, req, REQ_STATUS_RCVD); /* actual callback */
@@ -251,6 +260,32 @@ static int stuck_tag(void)
 	return failures;
 }
 
+/* zq3-r13 R13-1: a request whose reply never arrives returns -ETIMEDOUT
+ * after the bounded wait instead of blocking forever (the m0 umount hung in
+ * hfs_control behind such a sender). Its request stays allocated, as in the
+ * kernel, so this case runs last and uses a dynamic tag.
+ */
+static int silent_reply(void)
+{
+	u8 frame[89] = { 0 }, reply[64];
+	u32 len = sizeof(reply);
+	unsigned long start = now_ms(), elapsed;
+	int err;
+
+	CHECK(!pthread_mutex_lock(&queue_lock));
+	drop_next = true;
+	CHECK(!pthread_mutex_unlock(&queue_lock));
+	err = p9_client_hfs_exchange(&client, P9_NOTAG, 1, 1, 7, 0, frame, sizeof(frame), reply,
+				     &len);
+	elapsed = now_ms() - start;
+	if (err == -ETIMEDOUT && elapsed >= P9_HFS_REPLY_WAIT && elapsed < 5000) {
+		printf("PASS silent-reply-bounded elapsed_ms=%lu\n", elapsed);
+		return 0;
+	}
+	printf("FAIL silent-reply-bounded: returned %d after %lu ms\n", err, elapsed);
+	return 1;
+}
+
 static void receiver_stop(pthread_t receiver)
 {
 	CHECK(!pthread_mutex_lock(&queue_lock));
@@ -276,7 +311,8 @@ int main(void)
 	failures += two_owners();
 	failures += back_to_back();
 	failures += stuck_tag();
+	failures += silent_reply();
 	receiver_stop(receiver);
-	printf("fixed_tag cases=4 failures=%d requests=%lu\n", failures, sent_requests);
+	printf("fixed_tag cases=5 failures=%d requests=%lu\n", failures, sent_requests);
 	return failures ? 1 : 0;
 }

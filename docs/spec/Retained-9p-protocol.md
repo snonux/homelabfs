@@ -43,9 +43,14 @@ keeps the cell retained, so a later FETCH can still get its frame. The Linux
 guest (oc4) fails the exchange with -EHOSTDOWN for UNAVAILABLE, -ESTALE for
 RETIRED_CELL and -EPROTO for any other reason (and still retries only a SEND
 CAPACITY), and logs the raw reason in its session-block and view-stop lines.
-Its SEND/FETCH retry loops also stop with -EHOSTDOWN once the session is
-blocked while they retry; work issued on an already blocked session and a
-clean unmount still retry to the 30 s deadline.
+Its SEND/FETCH retry loops and its VIEW_QUERY/QUERY polls also stop with
+-EHOSTDOWN once the session is blocked; retirement, release and cleanup
+traffic and a session in teardown (unmount, failed mount) still retry to
+the 30 s deadline, unless an earlier exchange of the session timed out or
+got UNAVAILABLE, which bounds an unmount after the host is gone. ALLOCATE
+keeps -EPROTO for RETIRED_CELL. The exporter answers every well-formed
+exchange, ERROR UNAVAILABLE when its endpoint check fails (zq3-r13), and
+the guest bounds each reply wait at 30 s.
 Size includes the seven-byte 9p header and must be exact. No concatenated frames,
 trailing bytes or partial chunks are permitted. The selected H9B cell/chunk and
 kind must match FETCH. COPIED is transport receipt, never filesystem success.

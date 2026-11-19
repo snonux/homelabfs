@@ -95,6 +95,8 @@ static __attribute__((format(printf, 2, 3))) void seq_printf(struct seq_file *m,
 #define THIS_MODULE ((struct module *)NULL)
 #define WRITE_ONCE(x, v) ((x) = (v))
 #define READ_ONCE(x) (x)
+/* oc4: kill_sb/hfs_mount_fail order teardown flags before blocked. */
+#define smp_wmb() __atomic_thread_fence(__ATOMIC_RELEASE)
 #define ERR_PTR(e) ((void *)(intptr_t)(e))
 #define PTR_ERR(p) ((long)(intptr_t)(p))
 #define IS_ERR(p) ((uintptr_t)(p) >= (uintptr_t)-4095)

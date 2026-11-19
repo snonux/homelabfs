@@ -11,6 +11,7 @@ size_t hfs_test_last_allocation_size;
 #define time_after_eq(a, b) ((long)((a) - (b)) >= 0)
 #define kmalloc kvmalloc
 #define READ_ONCE(x) (x)
+#define smp_rmb() __atomic_thread_fence(__ATOMIC_ACQUIRE)
 #define WRITE_ONCE(x, v) ((x) = (v))
 struct hfs_session {
 	u16 bridge_minor;
@@ -22,6 +23,8 @@ struct hfs_session {
 	 */
 	bool blocked;
 	bool unmounting;
+	bool closing;
+	bool transport_failed;
 	u16 exporter_error;
 };
 static unsigned long jiffies;
@@ -43,12 +46,15 @@ static u32 pending_before_reply, pending_fetches, progress_signals;
 static u32 busy_fetches, busy_fetched;
 static struct hfs_session *active;
 /* oc4: block_at_yield blocks the session during that yield (another worker
- * failing); start_blocked/start_unmounting preset the flags; a nonzero
+ * failing); start_blocked/start_unmounting/start_closing preset the
+ * flags and exempt is hfs_transport's exemption argument; a nonzero
  * fetch_reply_len makes the first non-AGAIN FETCH return fetch_reply (an
  * injected ERROR packet) instead of the frame.
  */
 static u32 block_at_yield;
-static bool start_blocked, start_unmounting;
+static bool start_blocked, start_unmounting, start_closing, exempt;
+/* zq3-r13: preset transport_failed; the flag after the last exchange. */
+static bool start_failed, last_transport_failed;
 static u8 fetch_reply[4];
 static u32 fetch_reply_len;
 static u16 last_exporter_error;
@@ -157,7 +163,9 @@ static int exchange(u32 chunk, bool *held)
 {
 	struct hfs_session session = { .writer = 1, .bridge_minor = transport_minor,
 				       .blocked = start_blocked,
-				       .unmounting = start_unmounting };
+				       .unmounting = start_unmounting,
+				       .closing = start_closing,
+				       .transport_failed = start_failed };
 	struct hfs_buf body = { .len = 2 * HFS_CHUNK_MAX + 17 };
 	void *reply = NULL;
 	u32 reply_len = 0, i;
@@ -180,12 +188,13 @@ static int exchange(u32 chunk, bool *held)
 	*held = true;
 	error = hfs_transport(&session, &body, cell, tag,
 		(struct hfs_response_profile){fetch_channel, fetch_kind, HFS_BODY_MAX},
-		&reply, &reply_len, held);
+		exempt, &reply, &reply_len, held);
 	CHECK(*held == !!session.writer);
 	CHECK(!error || (!reply && !reply_len));
 	if (!error)
 		CHECK(reply_len == sizeof(result) - 1 && !memcmp(reply, result, reply_len));
 	last_exporter_error = session.exporter_error;
+	last_transport_failed = session.transport_failed;
 	free(reply);
 	free(body.data);
 	return error;
@@ -266,13 +275,14 @@ static void fetch_error_cases(void)
 	tag = 65533;
 }
 
-/* oc4 (zq3-r12 R12-1): once the session is blocked while an exchange is
- * retrying, neither retry loop sends again; the exchange fails -EHOSTDOWN
- * long before the 30 s deadline. A clean unmount (unmounting) keeps
- * retrying, and so does work issued on an already blocked session
- * (retirement/destroy traffic of a retained session).
+/* oc4 (zq3-r12 R12-1): once the session is blocked, neither retry loop
+ * sends again; the exchange fails -EHOSTDOWN long before the 30 s deadline,
+ * also when it was blocked before the exchange started (review round 1).
+ * Exempt traffic (retirement, release, cleanup: hfs_after_block_operation)
+ * and a session in teardown (unmounting, or closing after a failed mount)
+ * keep retrying.
  */
-static void blocked_cases(void)
+static void blocked_send_cases(void)
 {
 	bool held;
 	u32 chunk;
@@ -286,40 +296,113 @@ static void blocked_cases(void)
 		block_at_yield = 3;
 		CHECK(exchange(chunk, &held) == -EHOSTDOWN && held);
 		CHECK(sends == chunk + 3 && retries == 2 && yields == 3 && !fetches);
-		/* Unmounting: the retries run to the original deadline. */
+		/* Teardown or exempt: the retries run to the original deadline. */
 		start_unmounting = true;
 		CHECK(exchange(chunk, &held) == -ETIMEDOUT && held);
 		CHECK(sends == chunk + 30 * HZ && yields == 30 * HZ);
-		/* Already blocked at the start: likewise. */
-		block_at_yield = 0;
 		start_unmounting = false;
+		start_closing = true;
+		CHECK(exchange(chunk, &held) == -ETIMEDOUT && sends == chunk + 30 * HZ);
+		start_closing = false;
+		exempt = true;
+		CHECK(exchange(chunk, &held) == -ETIMEDOUT && sends == chunk + 30 * HZ);
+		exempt = false;
+		/* Already blocked at the start: one attempt, no retry. */
+		block_at_yield = 0;
 		start_blocked = true;
-		CHECK(exchange(chunk, &held) == -ETIMEDOUT && held);
-		CHECK(sends == chunk + 30 * HZ && yields == 30 * HZ);
+		CHECK(exchange(chunk, &held) == -EHOSTDOWN && held);
+		CHECK(sends == chunk + 1 && yields == 1 && !fetches);
 		start_blocked = always_refuse = false;
 	}
-	/* FETCH AGAIN polling stops at the block raised in yield 4, for the
-	 * VIEW_WAIT and the VIEW_QUERY tag and channel alike.
-	 */
+}
+
+/* FETCH AGAIN polling, for the VIEW_WAIT and the VIEW_QUERY tag and
+ * channel alike.
+ */
+static void blocked_fetch_cases(void)
+{
+	bool held;
+
 	pending_before_reply = 1000;
 	block_at_yield = 4;
 	tag = 65534; fetch_channel = fetch_kind = 3;
 	CHECK(exchange(3, &held) == -EHOSTDOWN && !held && fetches == 4 && yields == 4);
 	tag = 65533; fetch_channel = fetch_kind = 2;
 	CHECK(exchange(3, &held) == -EHOSTDOWN && !held && fetches == 4 && yields == 4);
-	/* Unmounting, or already blocked at the start: polling continues. */
+	/* Teardown or exempt: polling continues to the reply. */
 	start_unmounting = true;
 	CHECK(exchange(3, &held) == 0 && !held && fetches == 1001 && yields == 1000);
-	block_at_yield = 0;
 	start_unmounting = false;
-	start_blocked = true;
+	exempt = true;
 	CHECK(exchange(3, &held) == 0 && !held && fetches == 1001 && yields == 1000);
-	start_blocked = false;
+	exempt = false;
+	block_at_yield = 0;
+	start_blocked = true;
+	CHECK(exchange(3, &held) == -EHOSTDOWN && !held && fetches == 1 && yields == 1);
+	/* Blocked with nothing to retry: the first attempt completes. */
 	pending_before_reply = 0;
+	CHECK(exchange(3, &held) == 0 && !held && sends == 3 && fetches == 1 && !yields);
+	start_blocked = false;
+}
+
+/* zq3-r13: m0's umount hung > 270 s in hfs_control after the host was
+ * stopped, one deadline per exempt teardown exchange. An exchange that hits
+ * its deadline without an answer, or gets ERROR UNAVAILABLE, marks the
+ * session transport_failed; later exchanges then stop at their first retry
+ * even when exempt and unmounting.
+ */
+static void transport_failed_cases(void)
+{
+	static const u8 unavailable[] = {4, HFS_ERROR_UNAVAILABLE, 0};
+	bool held;
+
+	transport_minor = 1;
+	tag = 65533; fetch_channel = fetch_kind = 2;
+	response[0] = 4; response[1] = HFS_ERROR_CAPACITY; response[2] = 0;
+	response_len = 3;
+	always_refuse = true;
+	start_unmounting = start_blocked = exempt = true;
+	CHECK(exchange(1, &held) == -ETIMEDOUT && last_transport_failed);
+	start_failed = true;
+	CHECK(exchange(1, &held) == -EHOSTDOWN && held && sends == 2 && yields == 1);
+	always_refuse = false;
+	pending_before_reply = 1000;
+	CHECK(exchange(3, &held) == -EHOSTDOWN && !held && fetches == 1 && yields == 1);
+	pending_before_reply = 0;
+	start_failed = start_unmounting = start_blocked = exempt = false;
+	/* A CAPACITY refusal at the deadline means the exporter answered. */
+	always_refuse = true;
+	expire_reply = true;
+	CHECK(exchange(1, &held) == -ETIMEDOUT && !last_transport_failed);
+	expire_reply = always_refuse = false;
+	memcpy(fetch_reply, unavailable, sizeof(unavailable));
+	fetch_reply_len = sizeof(unavailable);
+	CHECK(exchange(3, &held) == -EHOSTDOWN && last_transport_failed);
+	fetch_reply_len = 0;
+	fetch_reply[1] = HFS_ERROR_INVALID;
+	fetch_reply_len = sizeof(unavailable);
+	CHECK(exchange(3, &held) == -EPROTO && !last_transport_failed);
+	fetch_reply_len = 0;
+	/* R13-1: no reply within the bounded 9p wait (net/9p -ETIMEDOUT). */
+	exchange_error = -ETIMEDOUT;
+	CHECK(exchange(1, &held) == -ETIMEDOUT && held && last_transport_failed);
+	exchange_error = 0;
+}
+
+static void blocked_cases(void)
+{
+	blocked_send_cases();
+	blocked_fetch_cases();
+	transport_failed_cases();
 	CHECK(!hfs_transport_halt(false, false, false) && !hfs_transport_halt(false, false, true));
 	CHECK(hfs_transport_halt(false, true, false) == -EHOSTDOWN);
 	CHECK(!hfs_transport_halt(false, true, true) && !hfs_transport_halt(true, true, false));
 	CHECK(!hfs_transport_halt(true, true, true));
+	CHECK(hfs_after_block_operation("VIEW_RELEASE") && hfs_after_block_operation("FORGET") &&
+	      hfs_after_block_operation("SESSION_RETIRE") && hfs_after_block_operation("RETIRE"));
+	CHECK(!hfs_after_block_operation("VIEW_QUERY") && !hfs_after_block_operation("VIEW_WAIT") &&
+	      !hfs_after_block_operation("QUERY") && !hfs_after_block_operation("CALL") &&
+	      !hfs_after_block_operation("DIRTY_FREEZE"));
 }
 
 int main(void)
@@ -412,7 +495,7 @@ int main(void)
 	CHECK(progress_signals == 0);
 	fetch_error_cases();
 	blocked_cases();
-	puts("PASS: oc4 FETCH ERROR on VIEW_WAIT/VIEW_QUERY maps UNAVAILABLE -EHOSTDOWN, RETIRED_CELL -ESTALE, others -EPROTO and records the raw reason; SEND ERROR likewise; a block raised while retrying stops SEND and FETCH retries (not while unmounting or for work issued already blocked)");
+	puts("PASS: oc4 FETCH ERROR on VIEW_WAIT/VIEW_QUERY maps UNAVAILABLE -EHOSTDOWN, RETIRED_CELL -ESTALE, others -EPROTO and records the raw reason; SEND ERROR likewise; a blocked session stops SEND and FETCH retries (not exempt or teardown traffic, unless the host stopped answering: zq3-r13)");
 	puts("PASS: actual hfs_transport + policy/codec; chunk0/1/last exact frame/session/cell/tag/body retry; no advance/rebind; yielding writer/control progress; fixed/wrapped deadline at reply/sleep/relock/repeated refusal; malformed status/code/length and I/O errors; busy fixed tag retried at SEND/FETCH (964); result2/recall3");
 	return 0;
 }

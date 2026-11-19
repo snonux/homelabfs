@@ -1978,7 +1978,7 @@ diff --git a/fs/9p/hfs_lease.c b/fs/9p/hfs_lease.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.c
-@@ -0,0 +1,1534 @@
+@@ -0,0 +1,1547 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Exact bridge1.1 ticket/lease transport; no physical or source-proof defaults. */
 +#include <linux/slab.h>
@@ -2580,6 +2580,10 @@ new file mode 100644
 +	const char *op = operation;
 +	unsigned long deadline = jiffies + 30 * HZ;
 +	bool control = hfs_view_command_control(operation);
++	/* oc4: the VIEW_QUERY polls serve operation, so they share its
++	 * exemption from stopping on a blocked session.
++	 */
++	bool after_block = hfs_after_block_operation(operation);
 +	int err, body, status;
 +
 +	*response = NULL;
@@ -2632,7 +2636,7 @@ new file mode 100644
 +
 +		if (initial)
 +			mutex_lock(&ticket->family->dispatch);
-+		err = hfs_control(session, op, sent, control, &reply);
++		err = hfs_control_flagged(session, op, sent, control, after_block, &reply);
 +		if (err) {
 +			if (initial)
 +				mutex_unlock(&ticket->family->dispatch);
@@ -2708,6 +2712,15 @@ new file mode 100644
 +			return -ETIMEDOUT;
 +		}
 +		usleep_range(10000, 12000);
++		/* oc4 (zq3-r12 R12-1): no further VIEW_QUERY round once the
++		 * session is blocked; the ticket stays uncertain, as for a
++		 * timeout.
++		 */
++		err = hfs_session_poll_halt(session, after_block);
++		if (err) {
++			ticket->uncertain = true;
++			return err;
++		}
 +		op = "VIEW_QUERY";
 +		sent = &ticket->query;
 +		control = true;
