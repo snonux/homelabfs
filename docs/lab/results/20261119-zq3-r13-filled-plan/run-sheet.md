@@ -635,7 +635,7 @@ unrun, never edited around.
 source /home/paul/tmp/claude/hfs-zq3-r13-fill/session.sh
 ```
 
-`session.sh` (`5830fd70…`, [pins](pins.json) `fill_helpers`) defines, adapted
+`session.sh` (`b788efe4…`, [pins](pins.json) `fill_helpers`) defines, adapted
 from zq3-r12's (a summary, not runnable as written):
 
 ```text
@@ -741,7 +741,7 @@ cb239d7049f5a461d6b839d5e5331e0df304aecbf34baff731b0e19de2a29748  /home/paul/tmp
 bdae65784d79171822db27327c308d78c15491f706c8d1ae0187c5b40ba0755a  /home/paul/tmp/claude/hfs-zq3-r13-fill/kernel/rocky-kernel-plan.json
 ba93a244722975e776a535114f5c6465bb920ebb041541dedf742c690ae35752  /home/paul/tmp/claude/hfs-zq3-r13-fill/controller/batch-plan.TEMPLATE.json
 114b6daa6cd7f543f6ecbcce0e503ee12474af0324d758c040243871452e10e1  /home/paul/tmp/claude/hfs-zq3-r13-fill/fdescfs-pins/pins.json
-5830fd70f6e7ee13e934654a877eb1e13d6be6f4083c18ea1a7b2f1619e36c37  /home/paul/tmp/claude/hfs-zq3-r13-fill/session.sh
+b788efe41039580e004b3f38dabc1ee66a17d686735d2a48fe926d108e34802b  /home/paul/tmp/claude/hfs-zq3-r13-fill/session.sh
 EOF
 cd $D
 ```
@@ -782,6 +782,7 @@ f3 sh -s < $D/sh/p1-f3.sh > $E/p1-f3.txt
 rocky 'date -u; timedatectl; cat /proc/sys/kernel/random/boot_id; uname -r; grubby --default-kernel; grub2-editenv - list; getenforce; sha256sum /root/.ssh/authorized_keys /usr/bin/python3.9; df -B1 /boot /; ls /boot | grep -c hfs-xz3; ls -d /etc/homelabfs /root/hfs-zq3-zq3-r13-* /var/tmp/hfs-zq3-zq3-r13 2>&1; ls -l /.autorelabel 2>&1; grep -E "^SELINUX(TYPE)?=" /etc/selinux/config' > $E/p1-rocky.txt
 rocky 'echo "== stamp"; cat /var/lib/unattended-upgrade/last-daily; echo "== dnf-history"; dnf history list | head -n 3; echo "== timer"; systemctl list-timers --all --no-pager unattended-upgrade-rocky.timer | sed -n 2p' > $E/p1-upgrade.txt
 python3 -I -B $D/sh/n1-gate.py phase1 $E/p1-upgrade.txt | tee $E/p1-upgrade.json   # stamp = today (Europe/Sofia), dnf_unchanged: true (newest #64)
+python3 -I -B $D/sh/n1-gate.py gate $E/p1-rocky.txt $E/p1-upgrade.txt | tee $E/p1-nightly-gate.txt; echo rc=${PIPESTATUS[0]}   # early go/no-go (review round 1): STOP stops here, before Phase 1a
 rocky "sha256sum /usr/bin/podman /usr/bin/crun /usr/bin/conmon /usr/share/containers/seccomp.json; rpm -qf --qf '%{NEVRA}\n' -- /usr/bin/podman /usr/bin/crun" > $E/p1-pod-runtime.txt
 python3 -I -c 'import json,sys; t=json.load(open(sys.argv[1])); w=open(sys.argv[2]).read().split(); h=dict(zip(w[1:8:2], w[0:8:2])); now=[h[p] for p in ("/usr/bin/podman", "/usr/bin/crun", "/usr/bin/conmon", "/usr/share/containers/seccomp.json")] + w[8:]; pin=[t["runtime_sha256"][n] for n in ("podman", "crun", "conmon", "seccomp")] + [t["runtime_nevra"][n] for n in ("podman", "crun")]; print("pod-runtime-unchanged:", now == pin)' $D/pod/pod-request.TEMPLATE.json $E/p1-pod-runtime.txt
 ```
@@ -830,6 +831,10 @@ Continue only if all of these hold:
     pod-runtime and kernel checks below then decide, and any drift stops
     (refill). An older stamp means today's run has not happened yet: wait
     for it (the Phase 5 gate refuses that Phase 1 anyway) and redo Phase 1;
+  - **`p1-nightly-gate.txt`: `nightly-gate: GO` and `rc=0`** (review round
+    1: the Phase 5 gate run early, so a run that would span the upgrade
+    stops before Phase 1a changes anything). `STOP` stops here with nothing
+    changed on any host; Phase 5 step 0 still runs the gate again;
   - `Enforcing`, and `/etc/selinux/config` has `SELINUX=enforcing`;
   - **`/.autorelabel` absent** (`ls` reports "No such file or directory");
   - `authorized_keys` `e08542dc…` and python3.9 `729ac37f…`;
@@ -1123,7 +1128,10 @@ that upgrade, it is not later than 23:25 Rocky-local = 21:25 UTC (00:55
 minus 90 minutes, the budget from Phase 5 to the end of Phase 12; on
 2026-11-19 the latest GO is 21:25 UTC), and the Phase 1 stamp
 (`p1-upgrade.txt`) is the local date of the last 00:55 (that day's run had
-stamped). **`STOP` (`rc=1`; the `rc`
+stamped). The gate only admits the start: from Phase 8 on, the in-run
+cutoff applies (no new case or step after 22:15 UTC on 2026-11-19; Phase 11
+step 5's guest poweroff before 22:45 UTC; see the top of Phase 8).
+**`STOP` (`rc=1`; the `rc`
 is the check's own, not `tee`'s): do not proceed.** Abort cleanly while Rocky still runs its stock kernel: nothing
 is selected yet. Each on its own line: remove the observer key on Rocky
 (`okpin && rocky "/usr/bin/python3.9 -I -B - remove --run-id zq3-r13
@@ -1291,6 +1299,17 @@ with no child started: `host.py cleanup --record … --record-sha256 …
 required baseline (the empty mount point before the runtime starts).
 
 ## Phase 8: runtime launch and bootstrap (A3, A4, A7; at most 120 s to READY plus about 100 s for `usable`, about 7 min with prep)
+
+**In-run cutoff (review round 1).** No new case or lifecycle step (T1-T11,
+T8 included) starts after **22:15 UTC on 2026-11-19** (00:55 EET minus
+40 minutes on the run day). At 22:15 UTC go straight to Phase 11 (the
+guard-SIGTERM branch while the runtime serves), so that Phase 11 step 5's
+guest poweroff is done **before 22:45 UTC**: Rocky's daily `dnf upgrade` at
+22:55 UTC must never run against Rocky's disk while the test guest boots it
+(the guest starts the same timer, and its stamp is the previous local day
+after midnight). If step 5 has not run by 22:35 UTC, run step 3 (observer
+removal) and step 5 at once, record the skipped evidence steps (4a, 4b) in
+the run log, and continue with step 6.
 
 Signing is delegated to Claude (A7, Paul's decision). The driver's stdout goes
 through the watcher `bin/sign_watch.py` (`9d5baaa4…`), which is zq3-r12's
@@ -1594,6 +1613,9 @@ still serving).
 
 ## Phase 9: READY admission, mount tuple and the SELinux gate (B, 1 min)
 
+**In-run cutoff:** after 22:15 UTC on 2026-11-19 do not start Phase 9; go
+to Phase 11 (top of Phase 8).
+
 ```bash
 C="$R/bin/hfs-controlled-runtime --control $R/runtime/owner/control.sock"
 tf3 ssh-noop 0 'doas -n true'      # 984 baseline 1 of 3: SSH + doas wall time (each on its own line)
@@ -1693,6 +1715,10 @@ journal records only the step); `summary.json` gives their count
 
 ## Phase 10: gate matrix (B inside the window, about 20-30 min)
 
+**In-run cutoff:** no new case or lifecycle step after 22:15 UTC on
+2026-11-19; the remaining steps are recorded unrun and Phase 11 starts at
+once, with its step 5 poweroff before 22:45 UTC (top of Phase 8).
+
 Order **T1-T4, T6, T7, T9, T10, T11, T8**; T5 is **unrun (deferred, re-plan pending)**.
 Stop dependent steps on the first failure (dependencies are named per step). Results are pass, fail, unsupported, unrun
 or uncertain; none of the correlator records is acceptance. Two clocks run:
@@ -1768,14 +1794,16 @@ behind a recall` line appeared):
 ```bash
 python3 -I -B $D/sh/p10-admission.py $OUT/$CASE/stdout.log | tee $E/p10-admission-$CASE.json   # set CASE=credentials (or the failing case) on the line before
 rocky 'dmesg | grep -E "hfs.*blocked|view control worker stopped|timed out behind a recall" || echo no-hfs-block' | tee $E/t-fail-guest-block.txt
+f3 "doas -n tar -c -f - --exclude control.sock -C $R runtime/owner" > $E/$CASE-owner-live.tar   # live owner snapshot first (holds transport.db)
 f3 "doas -n cat $R/guard/runtime.stderr" > $E/t-fail-runtime-stderr.txt
-python3 -I -B $D/sh/p11-fence.py $E/t-fail-runtime-stderr.txt $(ls $E/observe-p9*.json $E/obs-*.json) | tee $E/t-fail-fence.json   # nc4 fence record: "fenced" false expected
+python3 -I -B $D/sh/p11-fence.py $E/t-fail-runtime-stderr.txt $E/$CASE-owner-live.tar $(ls $E/observe-p9*.json $E/obs-*.json) | tee $E/t-fail-fence.json   # nc4 fence record: "fenced" false expected
 ```
 
-and take the live owner snapshots before and after, as zq3-r10 and
-zq3-r11 did for T1 (`f3 "doas -n tar -c -f - --exclude control.sock -C $R
-runtime/owner" > $E/$CASE-owner-live.tar`). Record as findings, never
-retry:
+(the block takes the live owner snapshot `$E/$CASE-owner-live.tar` first and
+feeds it to `p11-fence.py`, review round 1), and take a second snapshot
+after the block lines, as zq3-r10 and zq3-r11 did for T1 (`f3 "doas -n tar
+-c -f - --exclude control.sock -C $R runtime/owner" >
+$E/$CASE-owner-after.tar`). Record as findings, never retry:
 - `deadline_hit` with `admission_ms` null: admission took over guest.py's
   10 s alarm (one getattr can take about 90-120 s; the alarm fires only
   when the syscall returns);
@@ -2180,7 +2208,7 @@ leftover mount first (zq3-r2's cause was the skipped step 8).
 ```bash
 f3 'ls -ld /var/tmp/homelabfs-9p-poc/share'           # R6: vm-bhyve's normal start needs it
 $S/tools/lab/vms.sh --approved-action start-rocky    # only after Phase 11 verified next_entry empty and the child gone
-rockywait 36                                         # in THIS shell, never inside bash -c; tool timeout >= 600 s; prints rocky-ssh-up try N HH:MM:SSZ
+rockywait 36                                         # in THIS shell, never inside bash -c; tool timeout >= 900 s (up to about 720 s); prints rocky-ssh-up try N HH:MM:SSZ
 rocky "$K check --expect stock $KP; getenforce; sha256sum /root/.ssh/authorized_keys; free -m"   # authorized_keys must be e08542dc…
 rocky 'ls -l /.autorelabel 2>&1; cat /proc/sys/kernel/random/boot_id; journalctl --list-boots --no-pager | tail -n 4' | tee $E/p12-relabel.txt
 f3 'doas -n tail -n 30 /zroot/bhyve/rocky/vm-bhyve.log' > $E/p12-vm-bhyve-log.txt
@@ -2206,7 +2234,9 @@ A relabel reboot, or an `/.autorelabel` still present, is a **finding, not
 a failure**. It would mean the test boot ran without SELinux after all, or
 something else marked a relabel. Record it and continue.
 
-`rockywait 36` waits up to about 9 minutes for pinned SSH (zq3-r12's
+`rockywait 36` waits up to about 12 minutes for pinned SSH (each failed
+try is a bounded SSH attempt through f3 plus 10 s, up to about 20 s; give
+the line a tool timeout of at least 900 s, review round 1) (zq3-r12's
 slip: its loop ran `bash -c "rocky true"`, where the function does not
 exist, and waited 10 minutes for nothing; Rocky's journal began 8 s after
 the start). Without a relabel, a stock boot answers in about a minute or
@@ -2241,8 +2271,8 @@ them), so a later run in the same f3 boot meets D1 again.
 - **U3** (Rocky stopped with `next_entry` set, no candidate child or
   `/dev/vmm/hfs-zq3-r13`): `$S/tools/lab/vms.sh --approved-action start-rocky`
   (test kernel boots once under the normal config); wait for pinned SSH
-  with `rockywait 36` in this shell (never inside `bash -c`; once more on a
-  timeout); `rocky "$K check --expect test $KP"`; `rocky "$K
+  with `rockywait 36` in this shell (never inside `bash -c`; tool timeout
+  at least 900 s; once more on a timeout); `rocky "$K check --expect test $KP"`; `rocky "$K
   reboot-to-stock $KP"`; then `rocky "$K check --expect stock $KP"`, U2 and
   the Phase 12 checks. zq3-r1 exercised U3 end to end (16 s to SSH). If the
   first boot reboots itself before the `check --expect test` line (a relabel

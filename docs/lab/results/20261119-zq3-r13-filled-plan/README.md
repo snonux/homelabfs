@@ -102,8 +102,8 @@ are never committed:
 | 9. Signing watcher | zq3-r12's `bin/sign_watch.py` (it signed both requests in zq3-r12) with `D`, the docstring run ID, the signer comment and **the signer pin `bba12e52…`** changed. Tested locally with a fake signer: a wrong request hash, a wrong command, an unknown action, a repeat and a wrong signer hash were refused; both exact requests were signed | `9d5baaa4…` |
 | 10. Process observer check | `sh/p4-observer.py` from zq3-r12 with the run ID and **the daemon pin `c959b708…`** changed (Phase 4 step 1a, **required**: new daemon bytes). zq3-r12's real records (renamed) are refused only for the 5a4 `sha256` and pass with `c959b708…` substituted. The `$NG` line parses and passes the native guard's own `parse_args` and `check_request` | `1739c6a2…` |
 | 11. N1 gate helper (new) | `sh/n1-gate.py`: `phase1` parses the Phase 1 upgrade record (stamp, newest dnf transaction, `dnf_unchanged` against #64); `gate` is zq3-r12's R1 gate (Europe/Sofia; Phase 1 before the last 00:55 local, within 35 min after it, after 23:25 local) plus the stamp rule. Tested at fixed times (`--now`, tests only): 08:30Z GO (also with the real upgrade record), 21:20Z and 21:25Z GO, 21:30Z, 22:56Z and 23:10Z STOP, the next day with the old Phase 1 STOP, the next day with a fresh Phase 1 and stamp GO, a stale stamp STOP; `phase1` reports `dnf_unchanged` true for the facts and false for a synthetic #65 | `3ac1eb91…` |
-| 12. Fence record helper (new) | `sh/p11-fence.py` (nc4): the `guestbridge: transport failed at …` stderr line, `transport.failure` in any OBSERVE/JSON file and the `failure` row in `transport.db` (raw or inside a tar). Tested on a real nc4 row and stderr line written by the committed `guestbridge` code (a temporary test in the private clone, removed afterwards; `git status` clean) and on zq3-r12's real evidence (`fenced` false: pre-nc4, no record) | `95428e45…` |
-| 13. Run sheet | [run-sheet.md](run-sheet.md): Phases 0-12, 1a (**runs**), 4/1a and U1-U3, N1, the SELinux gates in Phases 1, 9 and 12, the R11 and R12-1 checks, the fence record capture, `rockywait`, and a run log template. `session.sh` (`5830fd70…`, `rockyt` bound 270 s, new `rockywait`) and fifteen pinned helper scripts (the r12 ones, renamed; `p4-observer.py` changed; `n1-gate.py` and `p11-fence.py` new); `p10-requests.py` re-pins the three r13 request templates. The Phase 8-10 lines were dry-run end to end (below) | [pins](pins.json) `fill_helpers` |
+| 12. Fence record helper (new) | `sh/p11-fence.py` (nc4): the `guestbridge: transport failed at …` stderr line, `transport.failure` in any OBSERVE/JSON file and the `failure` row in `transport.db` (raw or inside a tar). Tested on a real nc4 row and stderr line written by the committed `guestbridge` code (a temporary test in the private clone, removed afterwards; `git status` clean), on zq3-r12's real evidence (`fenced` false: pre-nc4, no record) and, since review round 1, on a synthetic `bootstrap-run/calls/*.json` record whose `stdout` holds the OBSERVE reply as a JSON string (found) | `3639529a…` |
+| 13. Run sheet | [run-sheet.md](run-sheet.md): Phases 0-12, 1a (**runs**), 4/1a and U1-U3, N1, the SELinux gates in Phases 1, 9 and 12, the R11 and R12-1 checks, the fence record capture, `rockywait`, and a run log template. `session.sh` (`b788efe4…`, `rockyt` bound 270 s, new `rockywait`) and fifteen pinned helper scripts (the r12 ones, renamed; `p4-observer.py` changed; `n1-gate.py` and `p11-fence.py` new); `p10-requests.py` re-pins the three r13 request templates. The Phase 8-10 lines were dry-run end to end (below) | [pins](pins.json) `fill_helpers` |
 
 Staging recipe (both tarballs, deterministic):
 `tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=2026-11-19T00:00:00Z --format=gnu`.
@@ -220,7 +220,38 @@ New for zq3-r13:
   (always) and the T10 note that a restore refuses a fenced ledger
   (expected, recorded, never worked around).
 - **The r12 lesson as a rule:** never call a session function inside `bash
-  -c`; Phase 12 and U3 wait with `rockywait` in the session shell.
+  -c`; Phase 12 and U3 wait with `rockywait` in the session shell (tool
+  timeout at least 900 s).
+- **Review round 1:** the early Phase 1 gate and the in-run cutoff (below).
+
+## Decisions from the zq3-r13 run-sheet review round 1 (2026-11-19)
+
+No blocking issues. Applied to this fill and the public copy:
+1. **`p11-fence.py` reads nested replies:** `bootstrap-run/calls/*.json`
+   keep a remote reply as a JSON string in `stdout` (`bootstrap.py`), so a
+   `transport.failure` in a `usable` gate OBSERVE sat one encoding level
+   down and was missed. String fields that start with `{` or `[` are now
+   decoded and scanned. A synthetic call record with a failure in its
+   `stdout` is found; the real nc4 row and zq3-r12's evidence give the same
+   results as before. New hash `3639529a…` (`session.sh` hpin, pins).
+2. **In-run cutoff:** no new case or lifecycle step after **22:15 UTC on
+   2026-11-19**; then Phase 11 at once, with its step 5 guest poweroff
+   before **22:45 UTC**, so Rocky's daily `dnf upgrade` at 22:55 UTC never
+   runs against Rocky's disk while the test guest boots it. Stated in the
+   Phase 5 gate text and at the top of Phases 8, 9 and 10 (with a 22:35 UTC
+   fallback: observer removal and poweroff at once, skipped evidence steps
+   recorded).
+3. **Case-failure fence capture:** the block takes `$E/$CASE-owner-live.tar`
+   first and passes it to `p11-fence.py` (the snapshot carries
+   `transport.db`).
+4. **`rockywait 36`** can take about 720 s: its lines (Phase 12, U3) need a
+   tool timeout of at least 900 s; `session.sh` (`b788efe4…`) says so.
+5. **Early gate:** Phase 1 runs `n1-gate.py gate` right after the upgrade
+   record (`p1-nightly-gate.txt`), so a `STOP` comes before Phase 1a
+   changes anything; Phase 5 step 0 still runs it again.
+
+Rechecked: the sheet dry run (80 lines, all as expected), the helper dry
+run (38 cases), the fence tests and `shellcheck` of `session.sh`.
 
 ## Expectations: what changed since zq3-r12
 
@@ -331,7 +362,8 @@ expected):
 
 - **Q0 N1.** The run must start after the 2026-11-19 daily run (stamped
   00:55:04 EET) and finish before 2026-11-19 22:55 UTC; the latest Phase 5
-  start is 21:25 UTC. A later attempt needs fresh Phase 1 facts (the gate
+  start is 21:25 UTC, no new case or step starts after 22:15 UTC, and the
+  guest is powered off before 22:45 UTC (review round 1). A later attempt needs fresh Phase 1 facts (the gate
   refuses an old Phase 1), and a new dnf transaction lets the pod/kernel
   rechecks decide (drift means a refill).
 - **Q1 T5 deferred.** The run cannot complete zq3 acceptance. T5 needs a
