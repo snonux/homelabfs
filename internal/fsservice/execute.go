@@ -309,6 +309,9 @@ func (s *Service) newLifetime(ctx context.Context, id fsapi.ObjectID) (*lifetime
 // domain's observation leases, whose next acquisitions then hit the
 // expected-target mismatch and recalled all domains (zq3-r14 R14-1). The
 // in-memory lookup/handle counts are kept exactly as for any object.
+// Journals written before this change may still hold active root pins;
+// nothing releases them and they count toward the catalog's pin limit, a
+// leak that predates the change and only affects existing lab journals.
 func (s *Service) pinlessLifetime(id fsapi.ObjectID) bool {
 	return id == s.config.Storage.Root
 }

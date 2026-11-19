@@ -138,7 +138,10 @@ root; subtree-view policy is future adapter/permission integration.
 Creation returns a lookup reference and Create also returns a handle. Lookup
 returns one lookup reference; Forget drops its explicit count. Readdir is plain
 readdir and does not silently acquire lookup references. Open and lookup first
-protect a conservative home HANDLE_PIN using a separate internal operation UUID.
+protect a conservative home HANDLE_PIN using a separate internal operation UUID,
+except for the volume root: its lifetime journals no pin or release (it is never
+reaped and has no parent entry), and its lookup/handle counts stay in memory
+only (task z94).
 The pin drains only after all local lookup/open obligations have drained. Old
 incarnation pins survive restart. Optional authenticated retirement, fencing and
 retention verification permits protected reclamation; absence of the verifier

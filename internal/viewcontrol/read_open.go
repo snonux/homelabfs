@@ -59,6 +59,9 @@ import (
 // installed targets). The general case stays as it was (e84): a read-only
 // OPEN of an unpinned non-root object still journals its pin, so a peer's
 // next observation hits the mismatch, exactly as after a pinning LOOKUP.
+// The fix therefore relies on each guest mount root being the volume root;
+// a mount of a subtree directory would still pin on its root OPEN and move
+// the cut (the e84 behaviour).
 
 // readConflict reports whether intent conflicts like a read: a read opcode
 // or a read-only OPEN.
