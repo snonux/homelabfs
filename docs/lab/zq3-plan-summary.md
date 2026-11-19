@@ -173,7 +173,7 @@ answer, and the logs say which error the host reported. The daemon is the
 same bytes as in the thirteenth attempt. The fourteenth attempt (zq3-r14)
 passed the setup again, and this time the tests started. The first test
 failed: opening the mount's top folder took about 14 seconds, because the
-daemon paused both mounts three times to bring their caches up to date,
+daemon paused the mounts three times (m1 twice) to bring their caches up to date,
 and the test's own 10-second safety timer gave up first. Nothing was left
 stuck. The new bhyve and guest kernel worked as intended: when the daemon
 stopped, both mounts reported "host unavailable" and unmounted in a second,

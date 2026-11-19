@@ -100,9 +100,10 @@ try (12:42:01Z), `check --expect stock` ok, `Enforcing`, `ak e08542dc…`, no
    process start and masks SIGALRM across `os.open` (y84), so the alarm
    fired about 10 s after start, during the open, and `Deadline` was raised
    only when the open returned. The m0 root open therefore took about
-   14.1 s. The guest clock matches f3's to within about a second (the
-   block lines at 177.7 s coincide with the guard stop at 183.6 s after
-   launch).
+   14.1 s. The guest clock matches f3's to within about a second (the dmesg
+   `audit(1795091836.266)` line at uptime 3.52 s puts guest boot at about
+   12:37:12.7Z, so the block lines at uptime 177.69 s fall at about
+   12:40:10.4Z, against the guard SIGTERM at about 12:40:09.6Z).
 2. **Three recalls during T1.** The baseline OBSERVE (12:39:00Z) showed
    both domains at fence 3 with no recall. In the owner snapshots after
    T1, m0 is at fence 6 (domain sequence 20) and m1 at fence 5 (sequence
@@ -161,7 +162,7 @@ try (12:42:01Z), `check --expect stock` ok, `Enforcing`, `ak e08542dc…`, no
   timing puts one at about 0.5 s. With five ACK phases per recall that is
   about 2.5 s per recall before event polling, QUERY turnaround and the
   lease acquire/release exchanges. Every idle native exchange took about
-  25-40 ms beyond the 67 ms poll pacing (about 15 native cells/s for both
+  30-60 ms beyond the 67 ms poll pacing (about 55 ms for m0, 30 ms for m1) (about 15 native cells/s for both
   domains, during and after T1).
 
 The forwarder ring and the transport ledger had already pruned everything
@@ -174,8 +175,11 @@ recovered**.
 - high: the root OPEN itself took about 14 s and outlasted the 10 s alarm;
   the host was not stuck (all three recalls completed, claims 7-12
   terminal and retired, no fence, no block);
-- high: three recalls ran during T1, one m0-only and two all-domain, all
-  started by m0's traffic;
+- high: three recalls ran during T1, all started by m0's traffic;
+  medium-high: one m0-only and two all-domain (this split assumes m1 had
+  no recall of its own; the baseline OBSERVE's `Leases 2, Tickets 4`,
+  empty afterwards, are most likely released leases whose tickets were not
+  yet retired);
 - high: a read-only OPEN under its own observation lease starts an
   all-domain recall (code, and the zq3-r11 offline repro), so at least one
   all-domain recall is z94's;
