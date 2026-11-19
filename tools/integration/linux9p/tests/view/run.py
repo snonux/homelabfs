@@ -85,8 +85,10 @@ def main():
         source.append(mmap[start:mmap.index('\nstatic void hfs_mmap_cleanup(', start)])
         source.append(mmap[mmap.index('static void hfs_mmap_recheck_note('):])
         # 1a4 review: the committed-result timeout line of hfs_attr_install,
-        # and since ie4 hfs_attr_restamp, which sits between it and
-        # hfs_attr_install.
+        # and since ie4 hfs_attr_restamp and hfs_reissue, which sit between
+        # it and hfs_attr_install, with their internal error code.
+        moved = re.search(r'^#define HFS_ETARGET_MOVED .*$', inputs['fs/9p/hfs.h'], re.M)
+        source.append(moved.group(0))
         inode = inputs['fs/9p/hfs_inode.c']
         start = inode.index('static void hfs_attr_timeout_warn(')
         source.append(inode[start:inode.index('\nint hfs_attr_install(', start)])

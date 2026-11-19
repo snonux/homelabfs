@@ -143,20 +143,31 @@ static void clean_page(struct hfs_view *view,struct address_space *mapping,unsig
  folios[index].page.mapped=true;unlock_page(&folios[index].page);hfs_view_page_put(entry);
 }
 /* ie4 (zq3-r15 R15-1): hfs_mmap_begin's re-check after VIEW_ACQUIRE. The
- * acquisition is a fixture: retry_hook plays what the host and the event
- * worker do while VIEW_ACQUIRE is PENDING (a whole recall, a fence, a
- * session block, a recall that never ends), and the first stale_targets
- * grants carry another target than the installed one. Queued cleanup
- * packets are recorded and released by run_cleanups, which plays
- * hfs_mmap_cleanup; with release_recalls each release starts a recall of its
- * own, like the host's scoped release recall (task 784).
+ * acquisition and release are a model of the host controller
+ * (internal/viewcontrol): a recall deactivates every lease of the domain
+ * (quiesceParticipants) and advances its fence; a grant shares the active
+ * lease of the same lineage (fence included, grantLease -> shareLease) or
+ * makes a new one; a release of a shared lease only returns a holder
+ * (releaseHolder), and any other release starts a recall while an active
+ * lease of its lineage remains (releaseNeedsRecall), counted in
+ * host_release_recalls. Such a recall runs while the next VIEW_ACQUIRE is
+ * PENDING (pending_recall), as the release recall of R15-1 did. retry_hook
+ * plays what else happens around one acquisition (a recall before or after
+ * the grant, a fence, a session block, a recall that never ends); the first
+ * stale_targets grants carry another target than the installed one. Queued
+ * cleanup packets are recorded and released by run_cleanups, which plays
+ * hfs_mmap_cleanup.
  */
-enum retry_hook { HOOK_NONE, HOOK_RECALL, HOOK_FENCE, HOOK_BLOCK, HOOK_STUCK };
+enum retry_hook { HOOK_NONE, HOOK_RECALL_BEFORE, HOOK_RECALL_AFTER, HOOK_FENCE, HOOK_BLOCK, HOOK_STUCK };
+struct host_lease { u64 fence; bool active; int sharers; };
+static struct host_lease host_leases[32];
+static unsigned int nr_host_leases, host_release_recalls;
+static u64 host_fence=1;
+static bool pending_recall;
 static enum retry_hook retry_hook;
 static unsigned int acquire_calls, stale_targets, nr_queued, queued_at_acquire[8];
 static unsigned long acquire_jiffies;
 static int leases_live, control_refs;
-static bool release_recalls;
 static struct hfs_lease *granted[8];
 static struct hfs_cache_cleanup *queued[8];
 static struct hfs_mmap_control control_fixture;
@@ -173,16 +184,34 @@ static bool test_queue_cleanup(struct delayed_work *work)
  assert(nr_queued<ARRAY_SIZE(queued));queued[nr_queued++]=cleanup;return true;
 }
 static void provider_leave(void *session,void *cookie) { assert(session==test_session && !cookie);provider_leaves++; }
-/* A complete recall that reinstalls the same target (as hfs_lease_release's fixture). */
+static struct host_lease *host_of(const struct hfs_lease *lease) { return &host_leases[lease->id[0]]; }
+/* A complete recall that reinstalls the same target (as hfs_lease_release's
+ * fixture), with the host's lease deactivation and fence advance.
+ */
 static void same_target_recall(struct hfs_view *view)
 {
  u64 seq=view->sequence+1;int target=hfs_json_field(target_event,0,"target");
  recall.b[0]++;
  assert(!hfs_view_stop(view,&generation,&recall,seq++));assert(!hfs_view_seal(view));
+ for(unsigned int i=0;i<nr_host_leases;i++)host_leases[i].active=false;
  assert(!hfs_mmap_install(view,target_event,target,&recall,seq++,false));
  assert(!hfs_mmap_finish_drained(view));
  assert(!hfs_mmap_install(view,target_event,target,&recall,seq++,true));
- assert(!hfs_view_reopen(view,&recall,seq));
+ assert(!hfs_view_reopen(view,&recall,seq));host_fence++;
+}
+static unsigned int host_grant(void)
+{
+ for(unsigned int i=0;i<nr_host_leases;i++)
+  if(host_leases[i].active && host_leases[i].fence==host_fence){host_leases[i].sharers++;return i;}
+ assert(nr_host_leases<ARRAY_SIZE(host_leases));
+ host_leases[nr_host_leases]=(struct host_lease){.fence=host_fence,.active=true};
+ return nr_host_leases++;
+}
+static void host_release(struct host_lease *lease)
+{
+ if(lease->sharers){lease->sharers--;return;}
+ for(unsigned int i=0;i<nr_host_leases;i++)
+  if(host_leases[i].active && host_leases[i].fence==lease->fence){host_release_recalls++;pending_recall=true;return;}
 }
 int hfs_lease_acquire(struct hfs_session *session,const struct hfs_cred *cred,
 		      const struct hfs_cap *object,const struct hfs_cap *description,
@@ -190,16 +219,19 @@ int hfs_lease_acquire(struct hfs_session *session,const struct hfs_cred *cred,
 		      struct hfs_lease **out)
 {
  struct hfs_view *view=session->view;struct hfs_lease *lease=calloc(1,sizeof(*lease));
+ enum retry_hook hook=acquire_calls ? HOOK_NONE : retry_hook;
  assert(session==test_session && cred && !object && !description && !offset && !dirty);
  assert(expected_target && expected_target->len && lease && acquire_calls<ARRAY_SIZE(granted));
  queued_at_acquire[acquire_calls]=nr_queued;
  jiffies+=acquire_jiffies;
- if(retry_hook==HOOK_RECALL)same_target_recall(view);
- else if(retry_hook==HOOK_FENCE)hfs_view_fence(view);
- else if(retry_hook==HOOK_BLOCK){session->bridge_minor=4;session->blocked=true;}
- else if(retry_hook==HOOK_STUCK)view->phase=HFS_VIEW_RECALLING;
+ if(pending_recall || hook==HOOK_RECALL_BEFORE){pending_recall=false;same_target_recall(view);}
+ else if(hook==HOOK_FENCE)hfs_view_fence(view);
+ else if(hook==HOOK_BLOCK){session->bridge_minor=4;session->blocked=true;}
  kref_init(&lease->refs);memcpy(lease->target_hash,view->target_hash,32);
+ lease->id[0]=(u8)host_grant();lease->fence=host_of(lease)->fence;
  if(acquire_calls<stale_targets)lease->target_hash[0]^=1;
+ if(hook==HOOK_RECALL_AFTER)same_target_recall(view);
+ else if(hook==HOOK_STUCK)view->phase=HFS_VIEW_RECALLING;
  granted[acquire_calls++]=lease;leases_live++;*out=lease;return 0;
 }
 /* hfs_mmap_cleanup's part for an observation packet: release the lease,
@@ -212,8 +244,7 @@ static void run_cleanups(void)
   assert(cleanup->control==&control_fixture && !cleanup->pending && list_empty(&cleanup->readers));
   if(cleanup->lease){
    assert(!cleanup->lease->published || cleanup->lease->revoked);
-   free(cleanup->lease);leases_live--;
-   if(release_recalls)same_target_recall(test_session->view);
+   host_release(host_of(cleanup->lease));free(cleanup->lease);leases_live--;
   }
   list_del(&cleanup->list);unreserve(test_session,cleanup->credit);free(cleanup);
   hfs_mmap_control_put(&control_fixture);
@@ -223,8 +254,18 @@ static void run_cleanups(void)
 static int retry_begin(enum retry_hook hook,unsigned int stale,void **cookie)
 {
  static struct inode inode;static int cred;
- retry_hook=hook;stale_targets=stale;acquire_calls=0;
+ retry_hook=hook;stale_targets=stale;acquire_calls=0;host_release_recalls=0;
  return hfs_mmap_begin(&inode,false,(const struct hfs_cred *)(void *)&cred,NULL,cookie);
+}
+/* The published observation holds an active host lease at the view's
+ * current stamp.
+ */
+static void retry_published(struct hfs_view *view,void *cookie)
+{
+ struct hfs_observation *observation=cookie;
+ assert(observation && observation->lease && observation->lease->published);
+ assert(host_of(observation->lease)->active && observation->stamp.revision==view->revision);
+ assert(view->nr_observations==1);
 }
 static void retry_end(void *cookie)
 {
@@ -235,48 +276,66 @@ static void retry_no_leaks(int reserved)
 {
  assert(!nr_queued && !leases_live && !control_refs && reservations==reserved);
  assert(list_empty(&control_fixture.cleanup) && !test_session->view->nr_observations);
+ // A release recall nobody waited for still runs before the next case.
+ if(pending_recall){pending_recall=false;same_target_recall(test_session->view);}
 }
 /* R15-1's case: a recall completes while VIEW_ACQUIRE is PENDING and the
- * host grants at the same target. Before ie4 this was -ESTALE. Now the
- * granted lease is kept and re-stamped: one acquisition, nothing released
- * during the call, the observation carries the new revision.
+ * host grants the lease after it. Before ie4 this was -ESTALE. Now the
+ * observation acquires again, sharing that lease, and only then releases
+ * the first reference, which starts no recall.
  */
-static void retry_same_target(struct hfs_view *view,int reserved)
+static void retry_recall_before_grant(struct hfs_view *view,int reserved)
 {
- struct hfs_observation *observation;void *cookie;u64 before=view->revision;unsigned int lines=warnings;
- assert(!retry_begin(HOOK_RECALL,0,&cookie));observation=cookie;
- assert(acquire_calls==1 && !nr_queued && view->revision>before);
- assert(observation->stamp.revision==view->revision && observation->lease==granted[0]);
- assert(granted[0]->published && view->nr_observations==1 && warnings==lines+1);
- assert(strstr(last_warning,"observation re-check failed (recall completed at the same target); re-stamped under the granted lease"));
- retry_end(cookie);assert(provider_leaves==1);retry_no_leaks(reserved);
+ void *cookie;u64 before=view->revision;
+ assert(!retry_begin(HOOK_RECALL_BEFORE,0,&cookie));retry_published(view,cookie);
+ assert(acquire_calls==2 && view->revision>before && !queued_at_acquire[1]);
+ assert(granted[0]->id[0]==granted[1]->id[0] && host_of(granted[1])->sharers==1);
+ assert(nr_queued==1 && queued[0]->lease==granted[0]);
+ assert(strstr(last_warning,"observation re-check failed (view moved past the granted lease); acquiring again before releasing it"));
+ run_cleanups();assert(!host_release_recalls && host_of(granted[1])->active);
+ retry_end(cookie);assert(provider_leaves==1 && host_release_recalls==1);retry_no_leaks(reserved);
 }
-/* The self-recall loop: every release starts a recall and every acquisition
- * waits for one. Releasing and acquiring again would fail each attempt the
- * same way until -ETIMEDOUT; each operation needs one acquisition here.
+/* Review round 1: a recall between the grant and the re-check quiesces the
+ * unpublished lease on the host although its target is unchanged. It must
+ * not be published: the observation acquires again (a new lease at the new
+ * fence) and the quiesced lease's release starts no recall.
  */
-static void retry_self_recall(int reserved)
+static void retry_recall_after_grant(struct hfs_view *view,int reserved)
 {
  void *cookie;
- release_recalls=true;
+ assert(!retry_begin(HOOK_RECALL_AFTER,0,&cookie));retry_published(view,cookie);
+ assert(acquire_calls==2 && !host_of(granted[0])->active && granted[1]->fence==granted[0]->fence+1);
+ assert(nr_queued==1 && queued[0]->lease==granted[0] && !granted[0]->published);
+ run_cleanups();assert(!host_release_recalls);
+ retry_end(cookie);retry_no_leaks(reserved);
+}
+/* The self-recall loop: each operation's final release starts a recall that
+ * runs during the next operation's VIEW_ACQUIRE. Each operation needs two
+ * acquisitions and its stale reference's release starts no recall, so the
+ * recalls never feed back into the same operation.
+ */
+static void retry_self_recall(struct hfs_view *view,int reserved)
+{
+ void *cookie;
  for(int i=0;i<3;i++) {
-  assert(!retry_begin(HOOK_RECALL,0,&cookie));
-  assert(acquire_calls==1 && !nr_queued);retry_end(cookie);
+  assert(!retry_begin(HOOK_NONE,0,&cookie));retry_published(view,cookie);
+  assert(acquire_calls==(i?2U:1U) && nr_queued==(i?1U:0U));
+  run_cleanups();assert(!host_release_recalls);
+  retry_end(cookie);assert(host_release_recalls==1 && pending_recall);
  }
- release_recalls=false;retry_no_leaks(reserved);
+ retry_no_leaks(reserved);
 }
 /* A grant at another target than the installed one: release and acquire
- * again, but the stale lease goes only after the retry's own acquisition,
- * so its release is not the domain's last holder.
+ * again, but the stale lease goes only after the retry's own acquisition.
  */
-static void retry_moved_target(int reserved)
+static void retry_moved_target(struct hfs_view *view,int reserved)
 {
- void *cookie;struct hfs_observation *observation;
- assert(!retry_begin(HOOK_NONE,1,&cookie));observation=cookie;
+ void *cookie;
+ assert(!retry_begin(HOOK_NONE,1,&cookie));retry_published(view,cookie);
  assert(acquire_calls==2 && !queued_at_acquire[0] && !queued_at_acquire[1]);
  assert(nr_queued==1 && queued[0]->lease==granted[0] && !granted[0]->published);
- assert(observation->lease==granted[1] && granted[1]->published);
- assert(strstr(last_warning,"(lease target differs from the view); acquiring again before releasing it"));
+ assert(((struct hfs_observation *)cookie)->lease==granted[1]);
+ run_cleanups();assert(!host_release_recalls);
  retry_end(cookie);retry_no_leaks(reserved);
 }
 /* Refusals keep -ESTALE (a fenced view, a blocked hfs1.4 session, a failed
@@ -287,9 +346,9 @@ static void retry_refused(struct hfs_view *view,int reserved)
  void *cookie=(void *)1;
  assert(retry_begin(HOOK_FENCE,0,&cookie)==-ESTALE && !cookie);
  assert(acquire_calls==1 && nr_queued==1 && queued[0]->lease==granted[0] && !granted[0]->published);
- run_cleanups();retry_no_leaks(reserved);view->phase=HFS_VIEW_LIVE; // fixture: unfence
+ run_cleanups();view->phase=HFS_VIEW_LIVE;retry_no_leaks(reserved); // fixture: unfence
  assert(retry_begin(HOOK_BLOCK,0,&cookie)==-ESTALE && acquire_calls==1 && nr_queued==1);
- run_cleanups();retry_no_leaks(reserved);test_session->bridge_minor=0;test_session->blocked=false;
+ run_cleanups();test_session->bridge_minor=0;test_session->blocked=false;retry_no_leaks(reserved);
  test_session->transport_failed=true;
  assert(retry_begin(HOOK_NONE,8,&cookie)==-ESTALE && acquire_calls==1 && nr_queued==1);
  run_cleanups();retry_no_leaks(reserved);test_session->transport_failed=false;
@@ -307,13 +366,15 @@ static void retry_deadline(struct hfs_view *view,int reserved)
  assert(strstr(last_warning,"observation retries exhausted after 3 failed re-checks (-ETIMEDOUT)"));
  run_cleanups();retry_no_leaks(reserved);acquire_jiffies=0;
  view_wait_step=0;
- assert(retry_begin(HOOK_STUCK,0,&cookie)==-ETIMEDOUT && acquire_calls==1 && nr_queued==1);
+ assert(retry_begin(HOOK_STUCK,0,&cookie)==-ETIMEDOUT && acquire_calls==1 && nr_queued==2);
+ assert(queued[0]->lease==granted[0] && !queued[1]->lease);
  assert(strstr(last_warning,"observation retries exhausted after 1 failed re-checks"));
- run_cleanups();retry_no_leaks(reserved);view->phase=HFS_VIEW_LIVE; // fixture: end the recall
+ run_cleanups();view->phase=HFS_VIEW_LIVE;retry_no_leaks(reserved); // fixture: end the recall
 }
 /* hfs_attr_install's cache-observation re-check: a request stamped before a
  * recall that reinstalled the same target is re-stamped and installs; a
- * moved target or a fenced view stays -ESTALE without an entry.
+ * moved target asks for a re-issue (-HFS_ETARGET_MOVED) without an entry
+ * held; a fenced view is -ESTALE without a line.
  */
 static void retry_attr(struct hfs_view *view)
 {
@@ -325,23 +386,41 @@ static void retry_attr(struct hfs_view *view)
  assert(strstr(last_warning,"attribute re-check failed (recall completed at the same target); re-stamped"));
  hfs_view_leave(cookie);
  request.view_target[0]^=1;
- assert(hfs_attr_restamp(test_session,view,&request,&cookie)==-ESTALE && !cookie && !view->active);
- assert(strstr(last_warning,"(target moved); not installed (-ESTALE)"));
+ assert(hfs_attr_restamp(test_session,view,&request,&cookie)==-HFS_ETARGET_MOVED && !cookie && !view->active);
+ assert(strstr(last_warning,"(target moved); not installed, re-issuing"));
  view->phase=HFS_VIEW_FENCED;lines=warnings;
  assert(hfs_attr_restamp(test_session,view,&request,&cookie)==-ESTALE && !cookie && warnings==lines);
  view->phase=HFS_VIEW_LIVE; // fixture: unfence
+}
+/* hfs_reissue: only -HFS_ETARGET_MOVED is re-issued, until the deadline, a
+ * failed transport or a fatal signal.
+ */
+static void retry_reissue(struct hfs_session *session)
+{
+ int err=-ESTALE;unsigned long deadline=jiffies+10;
+ assert(!hfs_reissue(session,&err,deadline,"GETATTR") && err==-ESTALE);
+ err=-HFS_ETARGET_MOVED;assert(hfs_reissue(session,&err,deadline,"GETATTR"));
+ session->transport_failed=true;
+ assert(!hfs_reissue(session,&err,deadline,"GETATTR") && err==-ESTALE);session->transport_failed=false;
+ err=-HFS_ETARGET_MOVED;test_fatal_signal=true;
+ assert(!hfs_reissue(session,&err,deadline,"LOOKUP") && err==-EINTR);test_fatal_signal=false;
+ err=-HFS_ETARGET_MOVED;jiffies=deadline;
+ assert(!hfs_reissue(session,&err,deadline,"LOOKUP") && err==-ETIMEDOUT);
+ assert(strstr(last_warning,"LOOKUP re-issues exhausted after the view target kept moving (-ETIMEDOUT)"));
 }
 static void observation_retry_checks(struct hfs_session *session)
 {
  struct hfs_view *view=session->view;int reserved=atomic_load(&reservations);
  spin_lock_init(&control_fixture.lock);INIT_LIST_HEAD(&control_fixture.cleanup);
  assert(view->phase==HFS_VIEW_LIVE && view->target.len && !view->active && !view->nr_observations);
- retry_same_target(view,reserved);
- retry_self_recall(reserved);
- retry_moved_target(reserved);
+ retry_recall_before_grant(view,reserved);
+ retry_recall_after_grant(view,reserved);
+ retry_self_recall(view,reserved);
+ retry_moved_target(view,reserved);
  retry_refused(view,reserved);
  retry_deadline(view,reserved);
  retry_attr(view);
+ retry_reissue(session);
 }
 int main(void)
 {
@@ -445,5 +524,5 @@ int main(void)
  view_worker_log_checks(&session);
  hfs_json_free(target_event);hfs_view_unregister_inode(&inode.inode);hfs_view_fence(session.view);assert(!hfs_view_free(&session));
  assert(!reservations && !module_refs);
- puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (same-target re-stamp,no self-recall loop,moved target,refusals,deadline,no leak),source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
+ puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (recall before/after grant re-acquires,no release recall,no self-recall loop,moved target,refusals,deadline,no leak,attr re-stamp/re-issue),source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
 }

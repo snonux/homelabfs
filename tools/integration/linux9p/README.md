@@ -1299,22 +1299,30 @@ the host granted the lease at the expected target, but the view revision
 had moved and the re-check returned `-ESTALE` without a log line.
 
 Patch 0004, `hfs_mmap_begin`, now split into `hfs_mmap_observation_new`,
-`hfs_mmap_observe`, `hfs_mmap_publish` and `hfs_mmap_retry_allowed`:
+`hfs_mmap_observe`, `hfs_mmap_publish` and `hfs_mmap_retry_allowed`
+(review round 1 applied):
 
-- **Same target:** a view that is LIVE again with the granted lease's target
-  keeps the lease and the observation takes the view's current stamp
-  (re-stamp). Releasing and acquiring again would loop: the release of a
-  clean READ lease starts a scoped recall of its own domain (task 784), whose
-  end fails the next attempt's re-check the same way, until `-ETIMEDOUT`.
-- **Recall still running** (not LIVE): wait for it (`hfs_view_enter_until`)
-  and check again, keeping the lease. Without a lease (a mutation) a moved
-  stamp captures the view again.
-- **Other target:** release and acquire again. The stale lease's cleanup
-  packet is queued only after the retry's own acquisition, so while the new
-  DOMAIN READ lease is held the old release is not the last holder and starts
-  no recall. Every packet is queued exactly once, so nothing leaks and
-  nothing is released twice. A held lease is never published, so recall
-  ACKs neither wait for nor revoke it.
+- **View moved past a held lease** (revision or generation changed, not
+  LIVE, or another target): acquire again, and release the old lease only
+  after that acquisition (`-EXDEV` path). The lease is never re-stamped
+  (review round 1): the host deactivates every lease of a recall
+  participant at STOPPED, published or not (`quiesceParticipants`,
+  `internal/viewcontrol/recall.go`), the guest's STOPPED revokes only
+  published ones, and an equal target cannot tell a grant after the recall
+  from one before it. Publishing under a quiesced lease would let a peer's
+  write pass the conflict check without a recall.
+- **No self-recall loop:** if the old lease is still active (granted after
+  the recall, the R15-1 case), the new acquisition shares it
+  (`grantLease` → `shareLease`) and the old release only returns a holder
+  (`releaseLease` → `releaseHolder`). If a recall quiesced it, the new
+  lease has the advanced fence, another lineage (`sameLineage` compares
+  `Fence`), so the old release finds no active sibling
+  (`releaseNeedsRecall`) and is RELEASED without a recall. Every packet is
+  queued exactly once, so nothing leaks and nothing is released twice. A
+  held lease is never published, so recall ACKs neither wait for nor revoke
+  it.
+- **Mutation** (no lease): a moved stamp or a view that is not LIVE captures
+  the view again.
 - **Refused:** a FENCED view or a closing or blocked hfs1.4 session
   (`hfs_view_refused`, now shared with `hfs_view_try_enter_locked`) keeps
   `-ESTALE`. A retry also stops on `transport_failed` (oc4; `-ESTALE`) or a
@@ -1329,35 +1337,53 @@ Patch 0004, `hfs_mmap_begin`, now split into `hfs_mmap_observation_new`,
 
 Patch 0003, `hfs_attr_install`: a cache observation (GETATTR, LOOKUP,
 READDIR, READLINK, STATFS) whose request stamp no longer admits it, on a view
-that is not refused, waits for a LIVE view (`hfs_attr_restamp`, 30 s) and
+that is not refused, waits for a LIVE view (`hfs_attr_restamp`, its own
+30 s: it has no handle on the observation's deadline, see `hfs_view.h`) and
 installs if the view still has the target the request was stamped at
 (`hfs_request.view_target`, taken by `hfs_view_snapshot_target` in
-`hfs_call_prepare`). A moved target still returns `-ESTALE` without
-installing; re-issuing that request is not done here. Both cases log a
-rate-limited line.
+`hfs_call_prepare`). A moved target (a peer's pinning LOOKUP, FORGET or
+DESCRIPTION_RELEASE moves the cut) answers the kernel-internal
+`-HFS_ETARGET_MOVED`: `hfs_getattr`, `hfs_refresh` and `hfs_lookup` re-issue
+their GETATTR or LOOKUP (`hfs_reissue`) within a 30 s deadline from the
+syscall's start, stopping on a fatal signal, `transport_failed` or the
+deadline (`-ETIMEDOUT`, one line). READDIR, whose cursor positions are
+already recorded, turns it into `-ESTALE`. Each failed check logs a
+rate-limited line. A LOOKUP that failed this way leaves its result
+unadopted, as any failed LOOKUP did before.
 
 Tests (`view --pressure`, which now extracts `hfs_mmap_begin` through
-`hfs_mmap_end`, `struct hfs_cache_cleanup` and `hfs_attr_restamp`; the
-acquisition and cleanup worker are fixtures):
+`hfs_mmap_end`, `struct hfs_cache_cleanup`, `hfs_attr_restamp`,
+`hfs_reissue` and `HFS_ETARGET_MOVED`). The acquisition and release follow a
+model of the host controller: a recall deactivates the domain's leases and
+advances its fence, a grant shares the active lease of the same lineage, a
+non-last holder's release returns a reference, any other release of an
+active lineage starts a recall that runs during the next VIEW_ACQUIRE:
 
-- a whole recall at the same target completes while VIEW_ACQUIRE is PENDING:
-  one acquisition, no release during the call, the observation carries the
-  new revision and the lease is published;
-- self-recall loop: every acquisition meets a recall and every release
-  starts one; three operations take one acquisition each;
-- a grant at another target: a second acquisition, during which the first
-  lease is still held; it is queued once afterwards;
-- a fence, a blocked hfs1.4 session and `transport_failed` during the
-  acquisition: `-ESTALE`, one acquisition, its lease released once;
+- a recall completes while VIEW_ACQUIRE is PENDING (R15-1): a second
+  acquisition shares the lease, the published lease is active, and the old
+  release starts no recall;
+- a recall between the grant and the re-check quiesces the unpublished
+  lease: it is not published, a new lease at the next fence is, and the old
+  release starts no recall (fails on round 0's re-stamp);
+- self-recall loop: each operation's release recall runs during the next
+  operation's acquisition; three operations, no release recall inside any
+  of them;
+- a grant at another target: a second acquisition while the first lease is
+  still held (fails if the stale lease is released first);
+- a fence, a blocked hfs1.4 session and `transport_failed`: `-ESTALE`, one
+  acquisition, its lease released once;
 - deadline: three stale grants 10 s apart, and a recall that never ends,
   give `-ETIMEDOUT` with the exhaustion line and every packet queued once;
 - every case ends with no lease, packet, credit or control reference left;
-- `hfs_attr_restamp`: same target re-stamps, a moved target is `-ESTALE`
-  with no entry held, a fenced view `-ESTALE` without a line.
+- `hfs_attr_restamp`: same target re-stamps, a moved target asks for a
+  re-issue with no entry held, a fenced view is `-ESTALE` without a line;
+  `hfs_reissue` re-issues only `-HFS_ETARGET_MOVED` and stops on
+  `transport_failed`, a fatal signal and the deadline.
 
 On the pre-ie4 re-check (a moved stamp is `-ESTALE`) the first case fails;
-with "release and retry" for the same target the self-recall case loops
-until the fixture's acquisition limit aborts.
+with round 0's re-stamp the published lease is not the one the re-check
+should have demanded, and releasing the stale lease before the retry's
+acquisition starts a release recall; both fail.
 
 The series was regenerated with `export.py --task ie4` (0003: `hfs.h`,
 `hfs_session.c`, `hfs_inode.c`; 0004: `hfs_view.[ch]`, `hfs_mmap.c`).

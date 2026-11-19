@@ -451,7 +451,7 @@ diff --git a/fs/9p/hfs_view.h b/fs/9p/hfs_view.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.h
-@@ -0,0 +1,256 @@
+@@ -0,0 +1,261 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_VIEW_H
 +#define FS_9P_HFS_VIEW_H
@@ -524,7 +524,12 @@ new file mode 100644
 + * ie4: hfs_mmap_begin's retries after a failed observation re-check
 + * (hfs_view_enter_until) share the deadline of its first view wait, so the
 + * re-check adds no further 30 s window; a retry that needs a fresh
-+ * VIEW_ACQUIRE still pays that exchange's own bound.
++ * VIEW_ACQUIRE still pays that exchange's own bound. hfs_attr_install's
++ * re-check of a cache observation (hfs_attr_restamp) waits its own 30 s,
++ * since it has no handle on the observation's deadline, and a GETATTR or
++ * LOOKUP whose view target moved is re-issued (hfs_reissue) only while a
++ * further 30 s deadline from the syscall's start has not passed; each
++ * re-issue pays the windows above again.
 + */
 +#define HFS_VIEW_ENTER_WAIT_MS 30000U
 +
@@ -3573,7 +3578,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,2160 @@
+@@ -0,0 +1,2159 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -5541,22 +5546,19 @@ new file mode 100644
 + * lease release, completed while its VIEW_ACQUIRE was PENDING). Now:
 + * - a refused view (hfs_view_refused: FENCED, closing or blocked) is
 + *   -ESTALE, as before;
-+ * - a view that is not LIVE (a recall still runs) is -EAGAIN: the caller
-+ *   waits for it and checks again, keeping the lease;
-+ * - a lease whose target differs from the installed one is -EXDEV: the
-+ *   caller releases it and acquires again at the new target;
-+ * - with a lease at the installed target, a moved revision or generation
-+ *   is a recall that reinstalled the same cut. The host granted the lease
-+ *   after that recall, at this target, so the observation adopts the
-+ *   view's current stamp (*restamped) and is published. Releasing the lease
-+ *   and acquiring again would loop instead: the release of a clean READ
-+ *   lease starts a scoped recall of its own domain (task 784), whose end
-+ *   fails the next attempt's re-check the same way;
-+ * - without a lease (a mutation) a moved stamp is -EAGAIN, and the caller
-+ *   captures the view again.
++ * - a held lease on a view that moved (revision or generation), is not LIVE
++ *   or has another target is -EXDEV: the caller acquires again and only
++ *   then releases this lease. The lease is never re-stamped: the host
++ *   deactivates every lease of a recall participant at STOPPED, published
++ *   or not (quiesceParticipants, internal/viewcontrol/recall.go), while the
++ *   guest's STOPPED revokes only published ones, and an equal target cannot
++ *   tell a grant after the recall from one before it (ie4 review round 1).
++ *   Publishing under a quiesced lease would let a peer's write pass the
++ *   host's conflict check without a recall;
++ * - without a lease (a mutation) a moved stamp or a view that is not LIVE is
++ *   -EAGAIN, and the caller captures the view again.
 + */
-+static int hfs_mmap_publish(struct hfs_view *view, struct hfs_observation *observation,
-+			    bool *restamped)
++static int hfs_mmap_publish(struct hfs_view *view, struct hfs_observation *observation)
 +{
 +	struct hfs_lease *lease = observation->lease;
 +	unsigned long flags;
@@ -5568,16 +5570,14 @@ new file mode 100644
 +		!uuid_equal(&view->generation, &observation->stamp.generation);
 +	if (hfs_view_refused(view))
 +		err = -ESTALE;
-+	else if (view->phase != HFS_VIEW_LIVE || (moved && !lease))
-+		err = -EAGAIN;
-+	else if (lease && memcmp(view->target_hash, lease->target_hash, 32))
++	else if (lease && (moved || view->phase != HFS_VIEW_LIVE ||
++			   memcmp(view->target_hash, lease->target_hash, 32)))
 +		err = -EXDEV;
++	else if (moved || view->phase != HFS_VIEW_LIVE)
++		err = -EAGAIN;
 +	else if (view->nr_observations == HFS_IDENTITIES_MAX)
 +		err = -ENOSPC;
 +	if (!err) {
-+		observation->stamp.generation = view->generation;
-+		observation->stamp.revision = view->revision;
-+		*restamped = moved;
 +		list_add_tail(&observation->list, &view->observations);
 +		view->nr_observations++;
 +		if (lease)
@@ -5604,15 +5604,15 @@ new file mode 100644
 +/* Enter (waiting for a LIVE view), capture, acquire and publish one
 + * observation. A granted lease stays with this observation's cleanup packet
 + * whatever happens. *rechecks counts failed re-checks for hfs_mmap_begin's
-+ * exhaustion line. Returns 0 (published), -EXDEV (unpublished lease at a
-+ * stale target) or another error.
++ * exhaustion line. Returns 0 (published), -EXDEV (an unpublished lease the
++ * view moved past) or another error.
 + */
 +static int hfs_mmap_observe(struct hfs_view *view, struct hfs_observation *observation,
 +			    bool mutation, const struct hfs_cred *cred,
 +			    unsigned long deadline, unsigned int *rechecks)
 +{
++	struct hfs_cache_cleanup *cleanup = observation->cleanup;
 +	void *physical = NULL;
-+	bool restamped = false;
 +	int err;
 +
 +	for (;;) {
@@ -5620,25 +5620,22 @@ new file mode 100644
 +		if (err)
 +			return err;
 +		hfs_view_leave(physical);
-+		if (!observation->lease)
-+			err = hfs_view_capture(view, &observation->stamp, &observation->target);
-+		if (!err && !mutation && !observation->lease) {
++		err = hfs_view_capture(view, &observation->stamp, &observation->target);
++		if (!err && !mutation) {
 +			err = hfs_lease_acquire(view->session, cred, NULL, NULL, 0, false,
 +						&observation->target, &observation->lease);
-+			((struct hfs_cache_cleanup *)observation->cleanup)->lease = observation->lease;
++			cleanup->lease = observation->lease;
 +		}
 +		if (!err)
-+			err = hfs_mmap_publish(view, observation, &restamped);
-+		if (!err && restamped) {
-+			(*rechecks)++;
-+			hfs_mmap_recheck_note(view, "recall completed at the same target",
-+					      "re-stamped under the granted lease");
-+		}
-+		/* -EAGAIN: hfs_view_capture or the re-check met a recall. */
++			err = hfs_mmap_publish(view, observation);
++		/* -EAGAIN: hfs_view_capture or a mutation's re-check met a recall.
++		 * A lease is never held here: capture fails before acquisition and
++		 * a held lease's failed re-check is -EXDEV.
++		 */
 +		if (err != -EAGAIN)
 +			return err;
 +		(*rechecks)++;
-+		hfs_mmap_recheck_note(view, "view not LIVE or moved", "waiting for the recall");
++		hfs_mmap_recheck_note(view, "view not LIVE or moved", "capturing it again");
 +		err = hfs_mmap_retry_allowed(view, deadline);
 +		if (err)
 +			return err;
@@ -5651,13 +5648,20 @@ new file mode 100644
 + * this call's start, and their exhaustion is -ETIMEDOUT with one
 + * rate-limited line.
 + *
-+ * On -EXDEV the stale lease is released only after the next attempt's own
-+ * acquisition: while the retry holds its new DOMAIN READ lease, the old
-+ * release is not the last holder and starts no recall that could fail the
-+ * retry again. Every attempt's cleanup packet is queued exactly once (held
-+ * at most one attempt, then hfs_mmap_cleanup_queue), so no lease, ticket or
-+ * credit leaks and none is released twice. A held lease is never published,
-+ * so a recall's QUIESCENT ACK neither waits for nor revokes it.
++ * On -EXDEV the old lease is released only after the next attempt's own
++ * acquisition, so its release starts no recall that could fail the retry
++ * again (no self-recall loop). Host semantics (internal/viewcontrol):
++ * - old lease still active (granted after the recall, R15-1): the new
++ *   acquisition shares it (grantLease -> shareLease) and the old release
++ *   only returns a holder reference (releaseLease -> releaseHolder);
++ * - old lease quiesced by a recall after its grant: the new lease carries
++ *   the advanced fence, a different lineage (sameLineage compares Fence),
++ *   so the old release finds no active sibling (releaseNeedsRecall) and is
++ *   RELEASED without a recall.
++ * Every attempt's cleanup packet is queued exactly once (held at most one
++ * attempt, then hfs_mmap_cleanup_queue), so no lease, ticket or credit
++ * leaks and none is released twice. A held lease is never published, so a
++ * recall's QUIESCENT ACK neither waits for nor revokes it.
 + */
 +int hfs_mmap_begin(struct inode *inode, bool mutation, const struct hfs_cred *cred,
 +		    void *native_cookie, void **cookie)
@@ -5691,7 +5695,7 @@ new file mode 100644
 +		}
 +		held = cleanup;
 +		rechecks++;
-+		hfs_mmap_recheck_note(view, "lease target differs from the view",
++		hfs_mmap_recheck_note(view, "view moved past the granted lease",
 +				      "acquiring again before releasing it");
 +		err = hfs_mmap_retry_allowed(view, deadline);
 +		if (err)

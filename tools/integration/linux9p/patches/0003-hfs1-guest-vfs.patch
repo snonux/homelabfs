@@ -107,7 +107,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,484 @@
+@@ -0,0 +1,491 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -134,6 +134,13 @@ new file mode 100644
 + * at most the guest's 30 s request window.
 + */
 +#define HFS_ALLOCATION_WAIT_MS 30000U
++
++/* ie4: hfs_attr_install's answer for a cache observation whose view moved to
++ * another target during its request. Kernel-internal and never returned to
++ * userspace: GETATTR and LOOKUP re-issue the request (hfs_reissue), every
++ * other caller turns it into -ESTALE. Above the kernel's internal 512-530.
++ */
++#define HFS_ETARGET_MOVED 600
 +/* kill_sb's bounded wait for a view to settle before the stop (z84). */
 +#define HFS_UNMOUNT_SETTLE_MS 2000U
 +/* session->block_reported bit of hfs_mmap_fail's once-per-session line (1a4). */
@@ -4200,7 +4207,7 @@ diff --git a/fs/9p/hfs_inode.c b/fs/9p/hfs_inode.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_inode.c
-@@ -0,0 +1,1085 @@
+@@ -0,0 +1,1161 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Authoritative retained-9p attributes and namespace VFS operations. */
 +#include <linux/magic.h>
@@ -4258,10 +4265,16 @@ new file mode 100644
 + * still the one the request was stamped at: the recall reinstalled the same
 + * cut, so the attributes are as current as before it. If the target moved,
 + * the attributes may predate a change in the new cut; they are not
-+ * installed and the syscall still gets -ESTALE; re-issuing that request is
-+ * left to the caller's retry of the whole syscall. A refused view (FENCED,
-+ * closing or blocked hfs1.4 session) is -ESTALE at once, without a line;
-+ * every other failed stamp check logs one rate-limited line.
++ * installed and the answer is -HFS_ETARGET_MOVED: GETATTR and LOOKUP
++ * re-issue the request (hfs_reissue), since a peer's pinning LOOKUP, FORGET
++ * or DESCRIPTION_RELEASE moves the cut without changing what the
++ * observation covers. A refused view (FENCED, closing or blocked hfs1.4
++ * session) is -ESTALE at once, without a line; every other failed stamp
++ * check logs one rate-limited line.
++ *
++ * Its view wait is its own HFS_VIEW_ENTER_WAIT_MS, not the deadline of the
++ * request's observation (hfs_mmap_begin): hfs_attr_install gets no handle
++ * on that observation. hfs_view.h counts it among a syscall's windows.
 + */
 +static int hfs_attr_restamp(struct hfs_session *session, struct hfs_view *view,
 +			    const struct hfs_request *request, void **cookie)
@@ -4284,12 +4297,38 @@ new file mode 100644
 +	pr_info_ratelimited("9p-hfs: session %pUb attribute re-check failed (%s); %s\n",
 +			    &session->enrollment.session,
 +			    same ? "recall completed at the same target" : "target moved",
-+			    same ? "re-stamped" : "not installed (-ESTALE)");
++			    same ? "re-stamped" : "not installed, re-issuing");
 +	if (same)
 +		return 0;
 +	hfs_view_leave(*cookie);
 +	*cookie = NULL;
-+	return -ESTALE;
++	return -HFS_ETARGET_MOVED;
++}
++
++/* ie4 review round 1: whether a GETATTR or LOOKUP whose attributes were not
++ * installed because the view moved to another target (-HFS_ETARGET_MOVED)
++ * is issued again. Re-issues share one HFS_VIEW_ENTER_WAIT_MS deadline from
++ * the syscall's start; they stop on a fatal signal (-EINTR), a failed
++ * transport (oc4, -ESTALE) or the deadline (-ETIMEDOUT, one rate-limited
++ * line). Any other *err is final as it is.
++ */
++static bool hfs_reissue(struct hfs_session *session, int *err, unsigned long deadline,
++			const char *opcode)
++{
++	if (*err != -HFS_ETARGET_MOVED)
++		return false;
++	if (fatal_signal_pending(current)) {
++		*err = -EINTR;
++	} else if (READ_ONCE(session->transport_failed)) {
++		*err = -ESTALE;
++	} else if (!time_before(jiffies, deadline)) {
++		*err = -ETIMEDOUT;
++		pr_warn_ratelimited("9p-hfs: session %pUb %s re-issues exhausted after the view target kept moving (-ETIMEDOUT)\n",
++				    &session->enrollment.session, opcode);
++	} else {
++		return true;
++	}
++	return false;
 +}
 +
 +int hfs_attr_install(struct inode *inode, const struct hfs_json *json, int token)
@@ -4610,7 +4649,7 @@ new file mode 100644
 +	.d_release = hfs_d_release,
 +};
 +
-+int hfs_refresh(struct inode *inode)
++static int hfs_refresh_once(struct inode *inode)
 +{
 +	struct hfs_cred *cred;
 +	struct hfs_buf args;
@@ -4634,6 +4673,17 @@ new file mode 100644
 +	return err;
 +}
 +
++int hfs_refresh(struct inode *inode)
++{
++	unsigned long deadline = jiffies + msecs_to_jiffies(HFS_VIEW_ENTER_WAIT_MS);
++	int err;
++
++	do {
++		err = hfs_refresh_once(inode);
++	} while (hfs_reissue(HFS_S(inode), &err, deadline, "GETATTR"));
++	return err;
++}
++
 +static int hfs_permission(struct user_namespace *mnt_userns,
 +			  struct inode *inode, int mask)
 +{
@@ -4645,23 +4695,23 @@ new file mode 100644
 +	return err ?: generic_permission(mnt_userns, inode, mask);
 +}
 +
-+static struct dentry *hfs_lookup(struct inode *dir, struct dentry *dentry,
-+				 unsigned int flags)
++/* One LOOKUP exchange: on success *capp and *inodep (both NULL for a missing
++ * name); on failure nothing is kept.
++ */
++static int hfs_lookup_once(struct inode *dir, struct dentry *dentry,
++			   struct hfs_cap **capp, struct inode **inodep)
 +{
 +	struct hfs_cred *cred;
 +	struct hfs_buf args;
 +	struct hfs_json *result = NULL;
 +	struct hfs_cap *cap = NULL;
 +	struct inode *inode = NULL;
-+	struct dentry *alias;
 +	void *cookie;
 +	int err;
 +
-+	if (!dentry->d_name.len || dentry->d_name.len > 255)
-+		return ERR_PTR(-ENAMETOOLONG);
 +	err = hfs_begin(dir, false, &cred, &cookie);
 +	if (err)
-+		return ERR_PTR(err);
++		return err;
 +	err = hfs_args_init(&args);
 +	if (!err) {
 +		hfs_buf_literal(&args, "{\"name\":");
@@ -4690,8 +4740,29 @@ new file mode 100644
 +	hfs_end(dir, cred, cookie);
 +	if (err) {
 +		hfs_cap_free(cap);
-+		return ERR_PTR(err);
++		return err;
 +	}
++	*capp = cap;
++	*inodep = inode;
++	return 0;
++}
++
++static struct dentry *hfs_lookup(struct inode *dir, struct dentry *dentry,
++				 unsigned int flags)
++{
++	unsigned long deadline = jiffies + msecs_to_jiffies(HFS_VIEW_ENTER_WAIT_MS);
++	struct hfs_cap *cap = NULL;
++	struct inode *inode = NULL;
++	struct dentry *alias;
++	int err;
++
++	if (!dentry->d_name.len || dentry->d_name.len > 255)
++		return ERR_PTR(-ENAMETOOLONG);
++	do {
++		err = hfs_lookup_once(dir, dentry, &cap, &inode);
++	} while (hfs_reissue(HFS_S(dir), &err, deadline, "LOOKUP"));
++	if (err)
++		return ERR_PTR(err);
 +	d_set_d_op(dentry, &hfs_dops);
 +	dentry->d_fsdata = cap;
 +	alias = d_splice_alias(inode, dentry);
@@ -4995,8 +5066,7 @@ new file mode 100644
 +	return err;
 +}
 +
-+static int hfs_getattr(struct user_namespace *ns, const struct path *path,
-+		       struct kstat *stat, u32 request, unsigned int flags)
++static int hfs_getattr_once(const struct path *path)
 +{
 +	struct inode *inode = d_inode(path->dentry);
 +	struct hfs_cred *cred;
@@ -5017,11 +5087,24 @@ new file mode 100644
 +	if (!err)
 +		err = hfs_attr_install(inode, result,
 +				       hfs_json_field(result, 0, "attributes"));
-+	if (!err)
-+		generic_fillattr(ns, inode, stat);
 +	hfs_json_free(result);
 +	hfs_buf_free(&args);
 +	hfs_end(inode, cred, cookie);
++	return err;
++}
++
++static int hfs_getattr(struct user_namespace *ns, const struct path *path,
++		       struct kstat *stat, u32 request, unsigned int flags)
++{
++	struct inode *inode = d_inode(path->dentry);
++	unsigned long deadline = jiffies + msecs_to_jiffies(HFS_VIEW_ENTER_WAIT_MS);
++	int err;
++
++	do {
++		err = hfs_getattr_once(path);
++	} while (hfs_reissue(HFS_S(inode), &err, deadline, "GETATTR"));
++	if (!err)
++		generic_fillattr(ns, inode, stat);
 +	return err;
 +}
 +
@@ -5290,7 +5373,7 @@ diff --git a/fs/9p/hfs_file.c b/fs/9p/hfs_file.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_file.c
-@@ -0,0 +1,640 @@
+@@ -0,0 +1,645 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Description-bound retained-9p I/O. Advisory locks stay in this kernel mount. */
 +#include <linux/file.h>
@@ -5850,6 +5933,11 @@ new file mode 100644
 +			goto free_args;
 +	}
 +	err = hfs_attr_install(inode, result, attributes);
++	/* ie4: READDIR's cursor positions are already recorded; it is not
++	 * re-issued (only GETATTR and LOOKUP are, hfs_reissue).
++	 */
++	if (err == -HFS_ETARGET_MOVED)
++		err = -ESTALE;
 +	if (err)
 +		goto malformed;
 +	description->revision = directory_attr.revision;
