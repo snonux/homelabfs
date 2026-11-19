@@ -87,7 +87,13 @@ its 1a4 patches 0003 and 0004 changed only the image (build ID
 (candidate `e9c77e5b…`, [evidence](evidence/xz3-20261118-r13/README.md))
 rebuilt only the CGO daemon and reused that kernel package byte for byte,
 after `compare_kernel.py` and `check_abi_mismatch.py` reproduced its
-`clean-repro.json` and `abi-negative.json` under the current tooling.
+`clean-repro.json` and `abi-negative.json` under the current tooling. The
+xd4 rebuild for zq3-r14 (candidate `3a7131dd…`,
+[evidence](evidence/xz3-20261119-r14/README.md)) kept the config; its oc4
+patches 0001-0004 changed the image (build ID `9b167690…`), seven hfs export
+CRCs in `Module.symvers` and added the `hfs_control_flagged` export, while
+the five modules and `abi-negative.json` came out byte-identical. It also
+rebuilt the native exporter on f3 for pc4 and reused the xc4 daemon.
 
 The ordinary namespace fixture selects a rootful OCI runtime in the initial
 user namespace, VFS image storage and a newly created private network namespace
