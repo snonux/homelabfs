@@ -3,6 +3,7 @@
 [Run sheet](run-sheet.md) · [Pins](pins.json) · [Phase 1 facts](facts/) ·
 [Run plan](../../zq3-run-plan.md) · [zq3-r14 fill](../20261119-zq3-r14-filled-plan/README.md) ·
 [zq3-r14 record](../20261119-zq3-r14/README.md) ·
+[zq3-r15 record](../20261119-zq3-r15/README.md) ·
 [r15 candidate](../../../../tools/integration/artifacts/evidence/xz3-20261119-r15/README.md)
 
 These are the exact run inputs for `zq3-r15`, the fifteenth attempt of zq3.

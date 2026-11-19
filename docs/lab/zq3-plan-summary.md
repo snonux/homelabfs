@@ -183,8 +183,18 @@ z94), and the test's timer should allow for the documented worst case.
 z94 is merged, and only the daemon was rebuilt for it (`ac8020aa…`, daemon
 `8668e5f0…`): opening a mount's top folder read-only no longer pauses the
 other mounts. The guest kernel and the patched bhyve are the same bytes as
-in the fourteenth attempt. The new daemon still has to pass the f3
-self-check.
+in the fourteenth attempt. The fifteenth attempt (zq3-r15) passed the
+setup and the f3 self-check with the new daemon, and the top-folder open
+now worked (in about 7 seconds instead of 14). The first test still
+failed at its next step: asking for the open folder's details returned
+"stale file handle". The daemon never saw that request. The guest kernel
+refused it itself, because the daemon had briefly paused the mount to
+bring its cache up to date (a routine step after each short operation)
+while the request was getting ready, and the kernel treats that as an
+error instead of simply trying again. The fix is in the guest kernel: try
+again after such a pause (a kernel rebuild before zq3-r16). Nothing was
+left stuck, both mounts unmounted in a second, and Rocky was down about
+four minutes ([record](results/20261119-zq3-r15/README.md)).
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
