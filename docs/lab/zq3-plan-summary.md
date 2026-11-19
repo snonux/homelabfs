@@ -170,7 +170,16 @@ bhyve `2fd7e32f…`): bhyve now always answers the guest, saying "host
 unavailable" when the daemon is gone, the guest kernel stops retrying once
 a mount's link has failed and never waits more than 30 seconds for an
 answer, and the logs say which error the host reported. The daemon is the
-same bytes as in the thirteenth attempt, but the new bhyve has never run.
+same bytes as in the thirteenth attempt. The fourteenth attempt (zq3-r14)
+passed the setup again, and this time the tests started. The first test
+failed: opening the mount's top folder took about 14 seconds, because the
+daemon paused both mounts three times to bring their caches up to date,
+and the test's own 10-second safety timer gave up first. Nothing was left
+stuck. The new bhyve and guest kernel worked as intended: when the daemon
+stopped, both mounts reported "host unavailable" and unmounted in a second,
+so the hang from the thirteenth attempt is fixed. Before the next attempt
+(zq3-r15), a plain read-only open should no longer pause every mount (task
+z94), and the test's timer should allow for the documented worst case.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
