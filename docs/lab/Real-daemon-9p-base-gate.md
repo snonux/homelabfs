@@ -53,9 +53,10 @@ daemon `39c92d01…` (2026-11-09) passed it in zq3-r5 (Phase 4 step 1a), and the
 rebuild) was never checked. The y64 daemon `34fb05b2…` passed it in zq3-r8
 (Phase 4 step 1a), the l84 daemon `868dc045…` passed it in zq3-r9, the
 r84 daemon `34a5360b…` in zq3-r10, the b94 daemon `bf86d805…` in
-zq3-r11 and the 5a4 daemon `e0981a0a…` in zq3-r12. The current xc4 daemon
-`c959b708…` (xc4 rebuild for zq3-r13, 2026-11-18) is new bytes and has
-**not** passed it yet; the next run must repeat the check. f3-host descriptor execution still awaits the
+zq3-r11, the 5a4 daemon `e0981a0a…` in zq3-r12 and the current xc4 daemon
+`c959b708…` (xc4 rebuild for zq3-r13, 2026-11-18) in zq3-r13
+([record](results/20261119-zq3-r13/README.md)); every run still repeats the
+check. f3-host descriptor execution still awaits the
 approved zq3 fdescfs window. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
 any SSH. All old build proofs remain preserved, and no different digest alone
