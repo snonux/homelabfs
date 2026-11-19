@@ -3013,10 +3013,17 @@ hfs9p_exchange(Hfs9pConnection *connection, const uint8_t *request, size_t lengt
       _put(reply, *reply_length, 4);
       return (0);
    }
-   error = _verify(h);
-   if (error)
-      goto done;
    size_t body_length = 0;
+   /* zq3-r13 R13-1: a failed endpoint check (the host runtime gone, a
+    * revoked or replaced endpoint) used to return its errno with no reply.
+    * bhyve then completed the request with an empty buffer, which Linux
+    * virtio 9p drops, so the guest sender waited forever holding its
+    * writer. A well-formed exchange now always gets a reply: ERROR
+    * UNAVAILABLE, which the guest fails at once with -EHOSTDOWN (pc4). */
+   if (_verify(h)) {
+      error = EHOSTDOWN;
+      goto encode;
+   }
    if (h->recovery_paused) { error = EAGAIN; goto encode; }
    Hfs9pSession *bound = &h->sessions[connection->session];
    if (bound->terminal_phase && (bound->terminal_channel != connection ||
@@ -3055,7 +3062,6 @@ hfs9p_exchange(Hfs9pConnection *connection, const uint8_t *request, size_t lengt
       error = 0;
    }
    _put(reply, *reply_length, 4);
- done:
    pthread_mutex_unlock(&h->mutex);
    return (error);
 }

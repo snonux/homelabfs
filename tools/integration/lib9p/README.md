@@ -594,6 +594,17 @@ pinned (`_forward_pin`) and its FETCH still gets AGAIN; only a failed read
 `unavailable_tests` in `backend_test.c` fails the result read of a HELLO
 (result channel 2) and of a VIEW_WAIT (recall channel 3) with EHOSTDOWN and
 checks ERROR 5, an EIO read for ERROR 1, and the frame once reads work again.
+**No silent exchange (zq3-r13 R13-1).** After the host runtime stopped,
+`hfs9p_exchange` failed its endpoint check (`_verify`) and returned that
+errno with no reply. bhyve then completed the request with an empty buffer,
+which Linux virtio 9p drops, and the guest sender waited forever (m0's
+umount hung in `hfs_control`). A well-formed exchange whose endpoint check
+fails now gets ERROR UNAVAILABLE. The check revokes the endpoint for good,
+so every later exchange gets UNAVAILABLE too. Malformed packets (bad
+framing, wrong session or version) still return an errno and no reply; they
+are guest bugs, not host outages. `unavailable_tests` refuses `verify_cb`
+and checks ERROR 5 on that FETCH and the next one.
+
 A native rebuild must pick this source up before any lab run can show it.
 
 ## Controlled terminal owner (`614`)

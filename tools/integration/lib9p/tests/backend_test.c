@@ -794,6 +794,14 @@ unavailable_tests(void) {
    }
    assert(kind == 3);
    free(body);
+   /* zq3-r13 R13-1: a failed endpoint check (verify_cb refuses, as with
+    * the host runtime gone) used to return an errno and no reply, which
+    * bhyve completed empty and Linux dropped. It is ERROR UNAVAILABLE, and
+    * stays so: a failed check revokes the endpoint for good. */
+   deny = true;
+   assert(fetch_error_reason(c, 1, 2) == HFS9P_ERROR_UNAVAILABLE);
+   deny = false;
+   assert(h->revoked && fetch_error_reason(c, 1, 2) == HFS9P_ERROR_UNAVAILABLE);
    hfs9p_connection_delete(c);
    shutdown_endpoint(h);
    reset_fixtures();

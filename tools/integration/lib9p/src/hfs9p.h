@@ -109,6 +109,9 @@ int hfs9p_add_session_protocol(Hfs9p *, const uint8_t *, size_t, uint16_t);
 /* Bounded nonblocking raw wire exchange, one 9p request/reply. A send receipt
  * never denotes filesystem success. Caller owns separate response storage.
  * Returns errno on malformed/authentication refusal, with *reply_length=0.
+ * A well-formed exchange always gets a reply: a failed endpoint check after
+ * parsing (host runtime gone, revoked endpoint) is ERROR UNAVAILABLE, never
+ * an empty completion the Linux guest would drop (zq3-r13 R13-1).
  * Allocator contention returns a wire AGAIN for FETCH or ERROR/CAPACITY for
  * SEND; consumers retry the identical packet at any chunk without advancing.
  * Exact Tversion selection is connection-local and does not take that lock. */
