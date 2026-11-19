@@ -107,7 +107,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,455 @@
+@@ -0,0 +1,460 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -419,6 +419,11 @@ new file mode 100644
 +	 * logs its own line.
 +	 */
 +	unsigned long block_reported;
++	/* The raw reason of the last ERROR reply an exchange of this session
++	 * failed on (hfs_transport_note; 0 none, else HFS_ERROR_*). The
++	 * hfs_session_block and hfs_mmap_fail lines print it (oc4).
++	 */
++	u16 exporter_error;
 +};
 +
 +/* An hfs_call caller queued for the allocation fence (x84), on its stack. */
@@ -567,7 +572,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,3417 @@
+@@ -0,0 +1,3495 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -678,16 +683,27 @@ new file mode 100644
 + * (session, step, host event/ACK phase and reply status, view phase and
 + * recall; 1a4). Its bit is separate, so a later block of the same session
 + * still logs its own line.
++ *
++ * Since oc4 both lines also print the raw reason of the last exporter ERROR
++ * reply the session failed on ("exporter ERROR 5" for UNAVAILABLE, "-" for
++ * none): zq3-r12 R12-1's "(-71)" did not show that the exporter had
++ * answered ERROR because the host transport was down. It is the session's
++ * latest ERROR, which is normally the exchange that caused the block.
 + */
 +void hfs_session_block(struct hfs_session *session, const char *reason,
 +		       const char *operation, int err)
 +{
++	u16 code = READ_ONCE(session->exporter_error);
++	char text[8] = "-";
++
 +	WRITE_ONCE(session->blocked, true);
 +	if (test_and_set_bit(0, &session->block_reported))
 +		return;
-+	pr_warn("9p-hfs: session %pUb blocked by %s on %s (%d); later operations on this mount fail with EACCES or EHOSTDOWN\n",
++	if (code)
++		snprintf(text, sizeof(text), "%u", code);
++	pr_warn("9p-hfs: session %pUb blocked by %s on %s (%d), exporter ERROR %s; later operations on this mount fail with EACCES or EHOSTDOWN\n",
 +		&session->enrollment.session, reason,
-+		operation ? operation : "-", err);
++		operation ? operation : "-", err, text);
 +}
 +
 +/* A provider stop/retain fence. During kill_sb (session->unmounting) it is
@@ -963,6 +979,129 @@ new file mode 100644
 +	return 0;
 +}
 +
++/* Record a failed exchange's ERROR reason for the block/stop log lines
++ * (oc4): hfs_session_block and hfs_mmap_fail print it, because their errno
++ * alone did not say what the exporter answered (zq3-r12 R12-1 logged -71).
++ */
++static void hfs_transport_note(struct hfs_session *session, const void *packet, u32 len)
++{
++	u16 reason = hfs_bridge_error_reason(packet, len);
++
++	if (reason)
++		WRITE_ONCE(session->exporter_error, reason);
++}
++
++/* The retry-loop exit shared by SEND and FETCH: the original deadline, then
++ * a block raised while this exchange was retrying (hfs_transport_halt, oc4).
++ * Before oc4 the loops ignored session->blocked, so zq3-r12's mount-1
++ * retried its mount-time VIEW_QUERY for the whole 30 s after its session was
++ * blocked. was_blocked is the flag at the exchange's start.
++ */
++static int hfs_transport_stop(struct hfs_session *session, unsigned long deadline,
++			      bool was_blocked)
++{
++	if (time_after_eq(jiffies, deadline))
++		return -ETIMEDOUT;
++	return hfs_transport_halt(was_blocked, READ_ONCE(session->blocked),
++				  READ_ONCE(session->unmounting));
++}
++
++/* SEND every chunk of body under the writer. Only a CAPACITY refusal (or a
++ * busy fixed tag) retries, with the identical frame and chunk; any other
++ * ERROR fails with its reason's errno (hfs_send_reply).
++ */
++static int hfs_transport_send(struct hfs_session *session, const struct hfs_buf *body, u64 cell,
++			      u16 tag, unsigned long deadline, unsigned long pressure_at,
++			      bool was_blocked, void *frame, void *packet, bool *writer_held)
++{
++	u32 chunk, len, frame_len;
++	int err;
++
++	for (chunk = 0; chunk * HFS_CHUNK_MAX < body->len; chunk++) {
++		frame_len = HFS_HEADER_SIZE + HFS_CHUNK_MAX;
++		err = hfs_frame_encode_version(session->bridge_minor, 1,
++					       &session->enrollment.session, cell, body->data,
++					       body->len, chunk, frame, &frame_len);
++		if (err)
++			return err;
++retry_send:
++		len = HFS_HEADER_SIZE + HFS_CHUNK_MAX + 1;
++		err = p9_client_hfs_exchange(session->client, tag, 1, 1, cell, chunk, frame,
++					     frame_len, packet, &len);
++		/* -EBUSY: a fixed tag stayed held past the exchange's bounded wait
++		 * and nothing was sent (net/9p p9_client_hfs_exchange). Retry the
++		 * same frame like a refused packet, under the same deadline. It is
++		 * never a transport fault, so the session is not blocked (zq3-r5
++		 * R5-1, 964).
++		 */
++		if (err == -EBUSY) {
++			err = -EAGAIN;
++		} else if (!err) {
++			err = hfs_send_reply(packet, len, time_after_eq(jiffies, deadline));
++			if (err && err != -EAGAIN)
++				hfs_transport_note(session, packet, len);
++		}
++		if (!err)
++			continue; /* COPIED: the next chunk. */
++		if (err != -EAGAIN)
++			return err;
++		/* No bytes of this packet were copied. Retain its exact frame and
++		 * chunk; yield the writer so reserved drains can progress.
++		 */
++		mutex_unlock(&session->writer);
++		*writer_held = false;
++		if (session->bridge_minor && tag == P9_NOTAG && time_after_eq(jiffies, pressure_at))
++			hfs_mmap_progress(session);
++		usleep_range(10000, 12000);
++		mutex_lock(&session->writer);
++		*writer_held = true;
++		err = hfs_transport_stop(session, deadline, was_blocked);
++		if (err)
++			return err;
++		goto retry_send;
++	}
++	return 0;
++}
++
++/* FETCH one chunk until it is no longer AGAIN (or a busy fixed tag, which
++ * sent no FETCH). Returns 0 with a FRAME packet in packet/len; an ERROR reply
++ * fails with its reason's errno (oc4: UNAVAILABLE is -EHOSTDOWN, RETIRED_CELL
++ * -ESTALE; before oc4 every non-FRAME reply was -EPROTO).
++ */
++static int hfs_transport_fetch(struct hfs_session *session, u64 cell, u16 tag, u8 channel,
++			       u32 chunk, unsigned long deadline, unsigned long pressure_at,
++			       bool was_blocked, void *packet, u32 *len)
++{
++	int err;
++
++	for (;;) {
++		*len = HFS_HEADER_SIZE + HFS_CHUNK_MAX + 1;
++		err = p9_client_hfs_exchange(session->client, tag, 2, channel, cell, chunk, NULL, 0,
++					     packet, len);
++		if (err && err != -EBUSY)
++			return err;
++		if (!err && (*len != 1 || *(u8 *)packet != 2))
++			break;
++		if (session->bridge_minor && tag == P9_NOTAG && time_after_eq(jiffies, pressure_at))
++			hfs_mmap_progress(session);
++		usleep_range(10000, 12000);
++		/* After the sleep, as for SEND: a block raised meanwhile sends
++		 * no further FETCH.
++		 */
++		err = hfs_transport_stop(session, deadline, was_blocked);
++		if (err)
++			return err;
++	}
++	if (*(u8 *)packet == 3 && *len > 1)
++		return 0;
++	hfs_transport_note(session, packet, *len);
++	return hfs_bridge_error(hfs_bridge_error_reason(packet, *len));
++}
++
++/* One complete exchange: SEND the body (hfs_transport_send), release the
++ * writer, then FETCH and verify every response chunk. Every retry shares one
++ * 30 s deadline and stops once the session is blocked meanwhile (oc4).
++ */
 +static int hfs_transport(struct hfs_session *session, const struct hfs_buf *body, u64 cell, u16 tag,
 +			 struct hfs_response_profile response, void **reply, u32 *reply_len,
 +			 bool *writer_held)
@@ -972,6 +1111,7 @@ new file mode 100644
 +	u32 chunk, total = 0, len, body_len, frame_len;
 +	unsigned long deadline = jiffies + 30 * HZ;
 +	unsigned long pressure_at = jiffies + msecs_to_jiffies(50);
++	bool was_blocked = READ_ONCE(session->blocked);
 +	const void *bytes;
 +	int err = -ENOMEM;
 +
@@ -979,74 +1119,17 @@ new file mode 100644
 +	packet = kmalloc(HFS_HEADER_SIZE + HFS_CHUNK_MAX + 1, GFP_KERNEL);
 +	if (!frame || !packet)
 +		goto out;
-+	for (chunk = 0; chunk * HFS_CHUNK_MAX < body->len; chunk++) {
-+		frame_len = HFS_HEADER_SIZE + HFS_CHUNK_MAX;
-+		err = hfs_frame_encode_version(session->bridge_minor, 1,
-+					       &session->enrollment.session, cell, body->data,
-+					       body->len, chunk, frame, &frame_len);
-+		if (err)
-+			goto out;
-+retry_send:
-+		len = HFS_HEADER_SIZE + HFS_CHUNK_MAX + 1;
-+		err = p9_client_hfs_exchange(session->client, tag, 1, 1, cell, chunk, frame,
-+					     frame_len, packet, &len);
-+		/* -EBUSY: a fixed tag stayed held past the exchange's bounded wait
-+       * and nothing was sent (net/9p p9_client_hfs_exchange). Retry the same
-+       * frame like a refused packet, under the same deadline. It is never a
-+       * transport fault, so the session is not blocked (zq3-r5 R5-1, 964).
-+       */
-+		if (err == -EBUSY)
-+			err = -EAGAIN;
-+		else if (!err)
-+			err = hfs_send_reply(packet, len, time_after_eq(jiffies, deadline));
-+		if (err == -EAGAIN) {
-+			/* No bytes of this packet were copied. Retain its exact frame
-+       * and chunk; yield the writer so reserved drains can progress.
-+       */
-+			mutex_unlock(&session->writer);
-+			*writer_held = false;
-+			if (session->bridge_minor && tag == P9_NOTAG &&
-+			    time_after_eq(jiffies, pressure_at))
-+				hfs_mmap_progress(session);
-+			usleep_range(10000, 12000);
-+			mutex_lock(&session->writer);
-+			*writer_held = true;
-+			if (time_after_eq(jiffies, deadline)) {
-+				err = -ETIMEDOUT;
-+				goto out;
-+			}
-+			goto retry_send;
-+		}
-+		if (err)
-+			goto out;
-+	}
++	err = hfs_transport_send(session, body, cell, tag, deadline, pressure_at, was_blocked,
++				 frame, packet, writer_held);
++	if (err)
++		goto out;
 +	mutex_unlock(&session->writer);
 +	*writer_held = false;
 +	for (chunk = 0;; chunk++) {
-+		for (;;) {
-+			len = HFS_HEADER_SIZE + HFS_CHUNK_MAX + 1;
-+			err = p9_client_hfs_exchange(session->client, tag, 2, response.channel,
-+						     cell, chunk, NULL, 0, packet, &len);
-+			/* A busy fixed tag sent no FETCH (see above): poll again
-+	   * like AGAIN, same chunk and deadline.
-+	   */
-+			if (err && err != -EBUSY)
-+				goto out;
-+			if (!err && (len != 1 || *(u8 *)packet != 2))
-+				break;
-+			if (time_after_eq(jiffies, deadline)) {
-+				err = -ETIMEDOUT;
-+				goto out;
-+			}
-+			if (session->bridge_minor && tag == P9_NOTAG &&
-+			    time_after_eq(jiffies, pressure_at))
-+				hfs_mmap_progress(session);
-+			usleep_range(10000, 12000);
-+		}
-+		if (*(u8 *)packet != 3 || len <= 1) {
-+			err = -EPROTO;
++		err = hfs_transport_fetch(session, cell, tag, response.channel, chunk, deadline,
++					  pressure_at, was_blocked, packet, &len);
++		if (err)
 +			goto out;
-+		}
 +		err = hfs_frame_decode_version(session->bridge_minor, packet + 1, len - 1,
 +					       response.kind, &session->enrollment.session, cell,
 +					       chunk, &body_len, hash, &bytes, &frame_len);

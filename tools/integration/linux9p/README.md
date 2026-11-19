@@ -1150,3 +1150,66 @@ view and view --pressure (plain and `--sanitize`), mount_hello and tag
 (`--sanitize`), controlled_received `terminal-smoke`, `cleanup` and
 `exit-cleanup`, requests, huge, transport, policy and cursor pass. No
 candidate was rebuilt or admitted.
+
+## Exporter ERROR reasons and blocked retries (`oc4`)
+
+zq3-r12 R12-1: the host runtime's guest transport failed, the exporter
+answered both sessions' outstanding VIEW_WAIT FETCHes with ERROR, and the
+guest mapped that, like every non-FRAME reply, to `-EPROTO` (-71). The
+session was then blocked, but mount-1 hung for the full 30 s, because
+`hfs_transport`'s retry loops ignored `session->blocked`.
+
+- **ERROR reasons.** `hfs_bridge_error_reason` (0002, `hfs_policy.c`) reads
+  the u16 reason of a well-formed ERROR reply (0 otherwise), and
+  `hfs_bridge_error` maps it: RETIRED_CELL (4) is `-ESTALE`, the new
+  UNAVAILABLE (5, the exporter's EHOSTDOWN, task `pc4`) is `-EHOSTDOWN`,
+  everything else stays `-EPROTO`. Both SEND (`hfs_send_reply`, CAPACITY is
+  still the only retried reason) and FETCH use it. The values are
+  `HFS_ERROR_*` in `hfs_policy.h`, matching the exporter's `HFS9P_ERROR_*`
+  (the trees share no header). Callers that block only on `-EPROTO` (view
+  ticket and dirty reservation replies) see no change in practice: a failed
+  transport already blocks the session in `hfs_control`.
+- **Raw reason in the log.** A failed exchange records its reason in
+  `session->exporter_error` (`hfs_transport_note`). `hfs_session_block`
+  now prints `blocked by <reason> on <op> (<errno>), exporter ERROR <n>;`
+  and `hfs_mmap_fail` `error <errno>, exporter ERROR <n>, at <step>`, with
+  `-` when the session never got an ERROR. It is the session's latest
+  ERROR, normally the exchange that caused the block.
+- **Blocked retries.** `hfs_transport` was split into
+  `hfs_transport_send` and `hfs_transport_fetch` (plus `hfs_transport_note`
+  and `hfs_transport_stop`). Both retry loops stop with `-EHOSTDOWN` when
+  the session becomes blocked while they retry (`hfs_transport_halt`). Work
+  issued on an already blocked session keeps retrying to the 30 s deadline:
+  a retained session's reserved retirement and destroy traffic needs that
+  (the first oc4 draft halted it and `controlled_received terminal-smoke`
+  failed with -112). A clean unmount (`unmounting`) also keeps retrying, so
+  FORGET and lease releases in flight when kill_sb sets `blocked` still
+  finish. The FETCH loop checks after its sleep, so a block raised then
+  sends no further FETCH.
+
+Tests:
+
+- `transport`: an injected ERROR reply to the FETCH of a VIEW_WAIT (tag
+  65534, recall channel 3) and of a VIEW_QUERY (tag 65533, result channel 2)
+  gives `-EHOSTDOWN` (5), `-ESTALE` (4) or `-EPROTO` (1, 2, 3, a high byte,
+  malformed lengths), records the raw reason (none for malformed replies)
+  and sends no further FETCH; a SEND ERROR 5 or 4 likewise. A block raised
+  in the third SEND CAPACITY retry or the fourth FETCH AGAIN poll stops the
+  exchange there with `-EHOSTDOWN`; unmounting or an already blocked start
+  keeps retrying (to the deadline, or to the reply). Making
+  `hfs_transport_halt` never halt fails it. `run.py` now extracts from
+  `hfs_transport_note` to `hfs_transport`.
+- `mount_hello`: the block line carries `exporter ERROR -` and, for a
+  session whose last ERROR was UNAVAILABLE, `(-112), exporter ERROR 5`.
+- `view --pressure`: the worker-stop lines carry `exporter ERROR -`, and an
+  UNAVAILABLE session prints `error -112, exporter ERROR 5`.
+- controlled_received `build.py` extracts the four new helpers.
+
+The series was regenerated with `export.py --task oc4` (0002, 0003 and
+0004 change: `hfs_policy.[ch]`; `hfs.h`, `hfs_session.c`; `hfs_mmap.c`).
+A fresh `prepare.py` tree applies it with fuzz zero and `fs/9p/`, `net/9p/`
+and `random.o` compile without warnings under `kernel.py configure`.
+transport, policy, cursor, tag, mount_hello, view and view --pressure
+(`--sanitize`), requests, huge and controlled_received `terminal-smoke`,
+`cleanup` and `exit-cleanup` pass. codec (`test.c:366`), capture, root and
+reclaim fail as before (s54). No candidate was rebuilt or admitted.

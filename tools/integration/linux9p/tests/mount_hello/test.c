@@ -146,6 +146,7 @@ struct hfs_session {
 	void *control_completion, *retirement_completion;
 	bool closing, unmounting, blocked, retained, terminal_pending;
 	unsigned long block_reported;
+	u16 exporter_error; /* oc4: printed by hfs_session_block */
 };
 struct hfs_controlled_mount {
 	struct super_block *super;
@@ -576,6 +577,8 @@ static void run_stock_case(void)
 
 /* hfs_session_block logs the first block of each session once, with its
  * reason, operation and errno (zq3-r7 R7-2 had none), then stays silent.
+ * Since oc4 it also logs the session's raw exporter ERROR reason ("-" none;
+ * zq3-r12 R12-1's "-71" hid the exporter's answer).
  */
 static void run_block_case(void)
 {
@@ -585,11 +588,13 @@ static void run_block_case(void)
 	CHECK(first && second);
 	hfs_session_block(first, "QUERY timeout", "GETATTR", -ETIMEDOUT);
 	CHECK(first->blocked && warnings == 1);
-	CHECK(strstr(last_warning, "blocked by QUERY timeout on GETATTR (-110)"));
+	CHECK(strstr(last_warning, "blocked by QUERY timeout on GETATTR (-110), exporter ERROR -; later"));
 	hfs_session_block(first, "process-exit failure", "PROCESS_EXIT", -EHOSTDOWN);
 	CHECK(first->blocked && warnings == 1);
-	hfs_session_block(second, "process-exit failure", "PROCESS_EXIT", -EHOSTDOWN);
-	CHECK(second->blocked && warnings == 2 && strstr(last_warning, "process-exit failure"));
+	second->exporter_error = HFS_ERROR_UNAVAILABLE;
+	hfs_session_block(second, "uncertain control result", "VIEW_WAIT", -EHOSTDOWN);
+	CHECK(second->blocked && warnings == 2 &&
+	      strstr(last_warning, "blocked by uncertain control result on VIEW_WAIT (-112), exporter ERROR 5; later"));
 	hfs_session_block(second, "uncertain claim result", NULL, -EPROTO);
 	CHECK(warnings == 2);
 	free(first);

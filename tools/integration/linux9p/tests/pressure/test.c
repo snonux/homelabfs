@@ -68,7 +68,7 @@ static void view_worker_log_checks(struct hfs_session *session)
  control.recall=recall_id;control.have_recall=true;
  hfs_mmap_fail_event(&control,-ESTALE,"DRAINED");
  assert(warnings==1 && control.error==-ESTALE && session->blocked && session->view->phase==HFS_VIEW_FENCED);
- assert(!strcmp(last_warning,"9p-hfs: session abcd0000-0000-0000-0000-0000000000ef view control worker stopped, error -116, at DRAINED (event INSTALL_DRAIN, ack DRAINED, host status STALE, view phase INSTALLED_DRAIN, recall 12340000-0000-0000-0000-000000000000); later operations on this mount fail\n"));
+ assert(!strcmp(last_warning,"9p-hfs: session abcd0000-0000-0000-0000-0000000000ef view control worker stopped, error -116, exporter ERROR -, at DRAINED (event INSTALL_DRAIN, ack DRAINED, host status STALE, view phase INSTALLED_DRAIN, recall 12340000-0000-0000-0000-000000000000); later operations on this mount fail\n"));
  // Only its own bit: a later independent hfs_session_block still logs.
  assert(session->block_reported==2UL);
  // Once per session: another worker's stop logs nothing.
@@ -87,7 +87,14 @@ static void view_worker_log_checks(struct hfs_session *session)
  status[0]=0;
  hfs_mmap_fail(&control,-ETIMEDOUT,&(struct hfs_mmap_where){.step="VIEW_WAIT",.status=status});
  assert(warnings==2 && session->block_reported==3UL);
- assert(!strcmp(last_warning,"9p-hfs: session abcd0000-0000-0000-0000-0000000000ef view control worker stopped, error -110, at VIEW_WAIT (event -, ack -, host status -, view phase FENCED, recall -); later operations on this mount fail\n"));
+ assert(!strcmp(last_warning,"9p-hfs: session abcd0000-0000-0000-0000-0000000000ef view control worker stopped, error -110, exporter ERROR -, at VIEW_WAIT (event -, ack -, host status -, view phase FENCED, recall -); later operations on this mount fail\n"));
+ // oc4: the raw reason of the session's last exporter ERROR (UNAVAILABLE,
+ // the host transport down, as in zq3-r12 R12-1) follows the errno.
+ session->block_reported=1;session->exporter_error=5; // HFS_ERROR_UNAVAILABLE (hfs_policy.h, not included here)
+ hfs_mmap_fail(&control,-EHOSTDOWN,&(struct hfs_mmap_where){.step="VIEW_WAIT"});
+ assert(warnings==3 && session->block_reported==3UL);
+ assert(!strcmp(last_warning,"9p-hfs: session abcd0000-0000-0000-0000-0000000000ef view control worker stopped, error -112, exporter ERROR 5, at VIEW_WAIT (event -, ack -, host status -, view phase FENCED, recall -); later operations on this mount fail\n"));
+ session->exporter_error=0;
  // 1a4 review: a committed CREATE/MKDIR/SYMLINK whose initial attributes
  // timed out names the session and the opcode from the request's intent,
  // without blocking the session; a non-word opcode prints "?".
@@ -96,11 +103,11 @@ static void view_worker_log_checks(struct hfs_session *session)
  session->blocked=false;
  committed.intent=(struct hfs_buf){.data=mkdir_intent,.len=sizeof(mkdir_intent)-1,.cap=sizeof(mkdir_intent)};
  hfs_attr_timeout_warn(session,&committed);
- assert(warnings==3 && !session->blocked);
+ assert(warnings==4 && !session->blocked);
  assert(!strcmp(last_warning,"9p-hfs: session abcd0000-0000-0000-0000-0000000000ef MKDIR committed but its initial attributes timed out behind a recall (-ETIMEDOUT); result retained unadopted, retirement floor pinned\n"));
  committed.intent=(struct hfs_buf){.data=odd_intent,.len=sizeof(odd_intent)-1,.cap=sizeof(odd_intent)};
  hfs_attr_timeout_warn(session,&committed);
- assert(warnings==4 && strstr(last_warning," ? committed "));
+ assert(warnings==5 && strstr(last_warning," ? committed "));
 }
 static void hfs_lease_get(struct hfs_lease *lease) { kref_get(&lease->refs); }
 static void hfs_lease_free(struct hfs_lease *lease) { assert(atomic_fetch_sub(&lease->refs.refcount,1)>1); }

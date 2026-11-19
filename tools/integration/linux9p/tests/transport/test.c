@@ -10,11 +10,19 @@ size_t hfs_test_last_allocation_size;
 #define P9_NOTAG 65535
 #define time_after_eq(a, b) ((long)((a) - (b)) >= 0)
 #define kmalloc kvmalloc
+#define READ_ONCE(x) (x)
+#define WRITE_ONCE(x, v) ((x) = (v))
 struct hfs_session {
 	u16 bridge_minor;
 	struct { uuid_t session; } enrollment;
 	int writer;
 	void *client;
+	/* oc4: the retry loops stop on blocked unless unmounting; a failed
+	 * exchange records its raw ERROR reason in exporter_error.
+	 */
+	bool blocked;
+	bool unmounting;
+	u16 exporter_error;
 };
 static unsigned long jiffies;
 static u16 transport_minor;
@@ -34,6 +42,16 @@ static u32 pending_before_reply, pending_fetches, progress_signals;
  */
 static u32 busy_fetches, busy_fetched;
 static struct hfs_session *active;
+/* oc4: block_at_yield blocks the session during that yield (another worker
+ * failing); start_blocked/start_unmounting preset the flags; a nonzero
+ * fetch_reply_len makes the first non-AGAIN FETCH return fetch_reply (an
+ * injected ERROR packet) instead of the frame.
+ */
+static u32 block_at_yield;
+static bool start_blocked, start_unmounting;
+static u8 fetch_reply[4];
+static u32 fetch_reply_len;
+static u16 last_exporter_error;
 static const struct hfs_buf *command;
 static const char result[] = "{\"reply\":true}";
 
@@ -56,6 +74,8 @@ static void usleep_range(unsigned int low, unsigned int high)
 	CHECK(low == 10000 && high == 12000 && !active->writer);
 	/* Models a reserved control exchange progressing while writer is yielded. */
 	yields++;
+	if (block_at_yield && yields == block_at_yield)
+		active->blocked = true;
 	jiffies += expire_sleep ? 30 * HZ : 1;
 }
 
@@ -115,6 +135,11 @@ static int p9_client_hfs_exchange(void *client, u16 selected_tag, u8 method,
 		*len = 1;
 		return 0;
 	}
+	if (fetch_reply_len) {
+		memcpy(packet, fetch_reply, fetch_reply_len);
+		*len = fetch_reply_len;
+		return 0;
+	}
 	*(u8 *)packet = 3;
 	part = *len - 1;
 	CHECK(!hfs_frame_encode_version(active->bridge_minor, fetch_kind, &active->enrollment.session, cell,
@@ -125,13 +150,17 @@ static int p9_client_hfs_exchange(void *client, u16 selected_tag, u8 method,
 
 #include "transport.inc"
 
-static void run_case(u32 chunk, int expected)
+/* One actual hfs_transport call whose SEND is refused at chunk (3: none).
+ * Returns its error; *held is the writer state it reported.
+ */
+static int exchange(u32 chunk, bool *held)
 {
-	struct hfs_session session = { .writer = 1, .bridge_minor = transport_minor };
+	struct hfs_session session = { .writer = 1, .bridge_minor = transport_minor,
+				       .blocked = start_blocked,
+				       .unmounting = start_unmounting };
 	struct hfs_buf body = { .len = 2 * HFS_CHUNK_MAX + 17 };
 	void *reply = NULL;
 	u32 reply_len = 0, i;
-	bool held = true;
 	int error;
 
 	body.data = malloc(body.len);
@@ -148,34 +177,159 @@ static void run_case(u32 chunk, int expected)
 	refused = false;
 	/* Exercise wrap-safe kernel deadline comparisons as well. */
 	jiffies = ULONG_MAX - 100;
+	*held = true;
 	error = hfs_transport(&session, &body, cell, tag,
 		(struct hfs_response_profile){fetch_channel, fetch_kind, HFS_BODY_MAX},
-		&reply, &reply_len, &held);
+		&reply, &reply_len, held);
+	CHECK(*held == !!session.writer);
+	CHECK(!error || (!reply && !reply_len));
+	if (!error)
+		CHECK(reply_len == sizeof(result) - 1 && !memcmp(reply, result, reply_len));
+	last_exporter_error = session.exporter_error;
+	free(reply);
+	free(body.data);
+	return error;
+}
+
+static void run_case(u32 chunk, int expected)
+{
+	bool held;
+	int error = exchange(chunk, &held);
+
 	CHECK(error == expected);
-	CHECK(held == !!session.writer);
 	if (!error) {
 		CHECK(!held && sends == 4 && retries == 1 &&
 		      yields == 1 + pending_before_reply + busy_fetches);
 		CHECK(fetches == 1 + pending_before_reply + busy_fetches && next_chunk == 3);
-		CHECK(reply_len == sizeof(result) - 1 && !memcmp(reply, result, reply_len));
 	} else {
-		CHECK(held && !reply && !reply_len && !fetches && next_chunk == chunk);
+		CHECK(held && !fetches && next_chunk == chunk);
 		if (always_refuse)
 			CHECK(sends == chunk + 30 * HZ && yields == 30 * HZ);
 		else
 			CHECK(sends == chunk + 1 && !retries);
 	}
-	free(reply);
-	free(body.data);
+}
+
+/* oc4: an injected ERROR reply to the FETCH of a VIEW_WAIT (tag 65534,
+ * recall channel 3) or a VIEW_QUERY (reserved tag 65533, result channel 2)
+ * fails at once with its reason's errno, records the raw reason, sends no
+ * further FETCH and leaves the writer released.
+ */
+static void fetch_error_case(u16 selected_tag, u16 channel, const u8 *packet, u32 len,
+			     int expected, u16 reason)
+{
+	bool held;
+	int error;
+
+	tag = selected_tag;
+	fetch_channel = fetch_kind = channel;
+	memcpy(fetch_reply, packet, len);
+	fetch_reply_len = len;
+	pending_before_reply = 2;
+	error = exchange(3, &held);
+	CHECK(error == expected && !held && last_exporter_error == reason);
+	CHECK(sends == 3 && fetches == 3 && yields == 2 && next_chunk == 3);
+	fetch_reply_len = 0;
+	pending_before_reply = 0;
+}
+
+static void fetch_error_cases(void)
+{
+	static const struct {
+		u8 packet[4];
+		u32 len;
+		int expected;
+		u16 reason;
+	} cases[] = {
+		{ {4, HFS_ERROR_UNAVAILABLE, 0}, 3, -EHOSTDOWN, HFS_ERROR_UNAVAILABLE },
+		{ {4, HFS_ERROR_RETIRED_CELL, 0}, 3, -ESTALE, HFS_ERROR_RETIRED_CELL },
+		{ {4, HFS_ERROR_INVALID, 0}, 3, -EPROTO, HFS_ERROR_INVALID },
+		{ {4, HFS_ERROR_SCOPE, 0}, 3, -EPROTO, HFS_ERROR_SCOPE },
+		{ {4, HFS_ERROR_CAPACITY, 0}, 3, -EPROTO, HFS_ERROR_CAPACITY },
+		/* High byte set: 0x0105 is not UNAVAILABLE. */
+		{ {4, HFS_ERROR_UNAVAILABLE, 1}, 3, -EPROTO, 0x105 },
+		/* Malformed ERROR replies record nothing and stay -EPROTO. */
+		{ {4, HFS_ERROR_UNAVAILABLE}, 2, -EPROTO, 0 },
+		{ {4, HFS_ERROR_UNAVAILABLE, 0, 0}, 4, -EPROTO, 0 },
+		{ {1}, 1, -EPROTO, 0 },
+		{ {3}, 1, -EPROTO, 0 },
+	};
+	u32 i;
+
+	for (transport_minor = 0; transport_minor < 4; transport_minor++)
+		for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+			fetch_error_case(65534, 3, cases[i].packet, cases[i].len,
+					 cases[i].expected, cases[i].reason);
+			fetch_error_case(65533, 2, cases[i].packet, cases[i].len,
+					 cases[i].expected, cases[i].reason);
+		}
+	tag = 65533;
+}
+
+/* oc4 (zq3-r12 R12-1): once the session is blocked while an exchange is
+ * retrying, neither retry loop sends again; the exchange fails -EHOSTDOWN
+ * long before the 30 s deadline. A clean unmount (unmounting) keeps
+ * retrying, and so does work issued on an already blocked session
+ * (retirement/destroy traffic of a retained session).
+ */
+static void blocked_cases(void)
+{
+	bool held;
+	u32 chunk;
+
+	transport_minor = 1;
+	response[0] = 4; response[1] = HFS_ERROR_CAPACITY; response[2] = 0;
+	response_len = 3;
+	for (chunk = 0; chunk < 3; chunk++) {
+		/* SEND CAPACITY retries stop at the block raised in yield 3. */
+		always_refuse = true;
+		block_at_yield = 3;
+		CHECK(exchange(chunk, &held) == -EHOSTDOWN && held);
+		CHECK(sends == chunk + 3 && retries == 2 && yields == 3 && !fetches);
+		/* Unmounting: the retries run to the original deadline. */
+		start_unmounting = true;
+		CHECK(exchange(chunk, &held) == -ETIMEDOUT && held);
+		CHECK(sends == chunk + 30 * HZ && yields == 30 * HZ);
+		/* Already blocked at the start: likewise. */
+		block_at_yield = 0;
+		start_unmounting = false;
+		start_blocked = true;
+		CHECK(exchange(chunk, &held) == -ETIMEDOUT && held);
+		CHECK(sends == chunk + 30 * HZ && yields == 30 * HZ);
+		start_blocked = always_refuse = false;
+	}
+	/* FETCH AGAIN polling stops at the block raised in yield 4, for the
+	 * VIEW_WAIT and the VIEW_QUERY tag and channel alike.
+	 */
+	pending_before_reply = 1000;
+	block_at_yield = 4;
+	tag = 65534; fetch_channel = fetch_kind = 3;
+	CHECK(exchange(3, &held) == -EHOSTDOWN && !held && fetches == 4 && yields == 4);
+	tag = 65533; fetch_channel = fetch_kind = 2;
+	CHECK(exchange(3, &held) == -EHOSTDOWN && !held && fetches == 4 && yields == 4);
+	/* Unmounting, or already blocked at the start: polling continues. */
+	start_unmounting = true;
+	CHECK(exchange(3, &held) == 0 && !held && fetches == 1001 && yields == 1000);
+	block_at_yield = 0;
+	start_unmounting = false;
+	start_blocked = true;
+	CHECK(exchange(3, &held) == 0 && !held && fetches == 1001 && yields == 1000);
+	start_blocked = false;
+	pending_before_reply = 0;
+	CHECK(!hfs_transport_halt(false, false, false) && !hfs_transport_halt(false, false, true));
+	CHECK(hfs_transport_halt(false, true, false) == -EHOSTDOWN);
+	CHECK(!hfs_transport_halt(false, true, true) && !hfs_transport_halt(true, true, false));
+	CHECK(!hfs_transport_halt(true, true, true));
 }
 
 int main(void)
 {
 	static const u8 bad[][4] = {
-		{2}, {3}, {4, 1, 0}, {4, 2, 0}, {4, 4, 0},
+		{2}, {3}, {4, 1, 0}, {4, 2, 0}, {4, 6, 0},
 		{4, 3}, {4, 3}, {4, 3, 1}, {1, 0}, {4, 3, 0, 0}, {0}, {0}, {255},
+		{4, 5}, {4, 5, 1},
 	};
-	static const u32 lengths[] = {1, 1, 3, 3, 3, 1, 2, 3, 2, 4, 0, 1, 1};
+	static const u32 lengths[] = {1, 1, 3, 3, 3, 1, 2, 3, 2, 4, 0, 1, 1, 2, 3};
 	u32 chunk, i;
 
 	CHECK(hfs_send_reply(NULL, 0, false) == -EPROTO);
@@ -216,6 +370,21 @@ int main(void)
 			CHECK(hfs_send_reply(response, response_len, true) == -EPROTO);
 			run_case(chunk, -EPROTO);
 		}
+		/* oc4: a SEND ERROR other than CAPACITY maps its reason
+		 * (UNAVAILABLE -EHOSTDOWN, RETIRED_CELL -ESTALE) and records it.
+		 */
+		response[0] = 4; response[1] = HFS_ERROR_UNAVAILABLE; response[2] = 0;
+		response_len = 3;
+		CHECK(hfs_send_reply(response, 3, false) == -EHOSTDOWN);
+		run_case(chunk, -EHOSTDOWN);
+		CHECK(last_exporter_error == HFS_ERROR_UNAVAILABLE);
+		response[1] = HFS_ERROR_RETIRED_CELL;
+		CHECK(hfs_send_reply(response, 3, true) == -ESTALE);
+		run_case(chunk, -ESTALE);
+		CHECK(last_exporter_error == HFS_ERROR_RETIRED_CELL);
+		response[1] = HFS_ERROR_CAPACITY;
+		run_case(chunk, 0);
+		CHECK(!last_exporter_error);
 	}
 	response[0] = 1;
 	CHECK(!hfs_send_reply(response, 1, true));
@@ -241,6 +410,9 @@ int main(void)
 	fetch_channel = 2; fetch_kind = 2;
 	run_case(2, 0);
 	CHECK(progress_signals == 0);
+	fetch_error_cases();
+	blocked_cases();
+	puts("PASS: oc4 FETCH ERROR on VIEW_WAIT/VIEW_QUERY maps UNAVAILABLE -EHOSTDOWN, RETIRED_CELL -ESTALE, others -EPROTO and records the raw reason; SEND ERROR likewise; a block raised while retrying stops SEND and FETCH retries (not while unmounting or for work issued already blocked)");
 	puts("PASS: actual hfs_transport + policy/codec; chunk0/1/last exact frame/session/cell/tag/body retry; no advance/rebind; yielding writer/control progress; fixed/wrapped deadline at reply/sleep/relock/repeated refusal; malformed status/code/length and I/O errors; busy fixed tag retried at SEND/FETCH (964); result2/recall3");
 	return 0;
 }

@@ -1955,7 +1955,7 @@ diff --git a/fs/9p/hfs_policy.h b/fs/9p/hfs_policy.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_policy.h
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,87 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_POLICY_H
 +#define FS_9P_HFS_POLICY_H
@@ -2004,8 +2004,42 @@ new file mode 100644
 +int hfs_request_admit(bool blocked, bool control, u32 ordinary_count,
 +		      u32 control_count, u64 next_claim);
 +
++/* Rbridge ERROR reasons (u16 after status 4; Retained-9p-protocol.md). The
++ * exporter (tools/integration/lib9p hfs9p.h, HFS9P_ERROR_*) has no header
++ * shared with this tree, so both sides spell the values out.
++ * UNAVAILABLE (oc4/pc4, zq3-r12 R12-1): the host runtime's guest transport
++ * failed or was fenced (a native EHOSTDOWN); nothing on this session can
++ * make progress until the host recovers, so it is never retried.
++ */
++#define HFS_ERROR_INVALID 1U
++#define HFS_ERROR_SCOPE 2U
++#define HFS_ERROR_CAPACITY 3U
++#define HFS_ERROR_RETIRED_CELL 4U
++#define HFS_ERROR_UNAVAILABLE 5U
++
++/* The reason of a well-formed ERROR reply (status 4, exactly one u16), else
++ * 0. hfs_transport records it for the block/stop log lines.
++ */
++u16 hfs_bridge_error_reason(const void *packet, u32 len);
++/* Errno of a failed exchange's ERROR reason: RETIRED_CELL is -ESTALE,
++ * UNAVAILABLE is -EHOSTDOWN, and every other reason (and 0, a malformed or
++ * unexpected reply) stays -EPROTO, as before oc4.
++ */
++int hfs_bridge_error(u16 reason);
++
 +/* Only definitive capacity refusal permits the identical SEND to be retried. */
 +int hfs_send_reply(const void *packet, u32 len, bool expired);
++
++/* hfs_transport's retry loops stop at once when the session was blocked
++ * while the exchange was retrying (oc4, zq3-r12 R12-1: mount-1's VIEW_QUERY
++ * kept retrying for 30 s after a VIEW_WAIT failure blocked its session),
++ * returning -EHOSTDOWN like ordinary admission on a blocked session.
++ * Work issued on an already blocked session (was_blocked: reserved
++ * reconciliation, retirement and destroy traffic of a retained session)
++ * and a clean unmount (kill_sb sets unmounting, then blocked, while FORGET
++ * and lease releases may be in flight) still retry to the deadline.
++ */
++int hfs_transport_halt(bool was_blocked, bool blocked, bool unmounting);
 +
 +
 +#endif
@@ -2013,7 +2047,7 @@ diff --git a/fs/9p/hfs_policy.c b/fs/9p/hfs_policy.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_policy.c
-@@ -0,0 +1,199 @@
+@@ -0,0 +1,224 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Pure request identity and authoritative metadata validation. */
 +#include "hfs_policy.h"
@@ -2200,18 +2234,43 @@ new file mode 100644
 +	return 0;
 +}
 +
-+/* COPIED acknowledges this packet only; AGAIN is never SEND acceptance. */
-+int hfs_send_reply(const void *packet, u32 len, bool expired)
++u16 hfs_bridge_error_reason(const void *packet, u32 len)
 +{
 +	const u8 *bytes = packet;
 +
-+	if (!packet)
-+		return -EPROTO;
-+	if (len == 1 && bytes[0] == 1)
++	if (!packet || len != 3 || bytes[0] != 4)
 +		return 0;
-+	if (len == 3 && bytes[0] == 4 && bytes[1] == 3 && bytes[2] == 0)
-+		return expired ? -ETIMEDOUT : -EAGAIN;
++	return bytes[1] | (u16)bytes[2] << 8;
++}
++
++int hfs_bridge_error(u16 reason)
++{
++	if (reason == HFS_ERROR_RETIRED_CELL)
++		return -ESTALE;
++	if (reason == HFS_ERROR_UNAVAILABLE)
++		return -EHOSTDOWN;
 +	return -EPROTO;
++}
++
++/* COPIED acknowledges this packet only; AGAIN is never SEND acceptance.
++ * CAPACITY retries the packet; any other ERROR fails it with its reason's
++ * errno (hfs_bridge_error), and anything else is -EPROTO.
++ */
++int hfs_send_reply(const void *packet, u32 len, bool expired)
++{
++	const u8 *bytes = packet;
++	u16 reason = hfs_bridge_error_reason(packet, len);
++
++	if (packet && len == 1 && bytes[0] == 1)
++		return 0;
++	if (reason == HFS_ERROR_CAPACITY)
++		return expired ? -ETIMEDOUT : -EAGAIN;
++	return hfs_bridge_error(reason);
++}
++
++int hfs_transport_halt(bool was_blocked, bool blocked, bool unmounting)
++{
++	return blocked && !was_blocked && !unmounting ? -EHOSTDOWN : 0;
 +}
 diff --git a/fs/9p/hfs_cursor.h b/fs/9p/hfs_cursor.h
 new file mode 100644
