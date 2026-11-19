@@ -111,6 +111,25 @@ static void wake_up(wait_queue_head_t *q);
 	CHECK(!pthread_mutex_unlock(&(q).lock));				\
 } while (0)
 #define wait_event_killable(q, condition) ({ wait_event(q, condition); 0; })
+/* zq3-r13: the hfs reply wait is bounded. Returns 0 on expiry, else the
+ * (nonzero) remaining time, as in the kernel.
+ */
+#define wait_event_timeout(q, condition, timeout) ({				\
+	unsigned long until_ms_ = now_ms() + (timeout);				\
+	long left_ = 1;								\
+	while (!(condition)) {							\
+		if (time_after_eq(now_ms(), until_ms_)) {			\
+			left_ = (condition) ? 1 : 0;				\
+			break;							\
+		}								\
+		usleep(200);							\
+	}									\
+	left_;									\
+})
+/* client.c's own value is 30 * HZ; run.py copies functions, not defines,
+ * so the harness bounds its silent-reply case at 300 ms.
+ */
+#define P9_HFS_REPLY_WAIT 300UL
 struct list_head { struct list_head *next, *prev; };
 #define INIT_LIST_HEAD(h) ((h)->next = (h)->prev = (h))
 
@@ -139,6 +158,16 @@ static void *idr_find(struct idr *idr, unsigned long id)
 static void idr_remove(struct idr *idr, unsigned long id)
 {
 	idr->slots[id] = NULL;
+}
+/* Review round 2: p9_client_hfs_owned asks whether any request remains. */
+static bool idr_is_empty(struct idr *idr)
+{
+	unsigned long id;
+
+	for (id = 0; id < 65536; id++)
+		if (idr->slots[id])
+			return false;
+	return true;
 }
 
 /* Slab: counted so the test can prove every request was freed. */

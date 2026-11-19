@@ -55,7 +55,8 @@ def main():
     (args.output/'fixture.h').write_text('\n'.join(fields)+'\n')
     names=['fs/9p/hfs_lease.c','fs/9p/hfs_session.c','fs/9p/hfs.h','fs/9p/hfs_view.h','fs/9p/hfs_lease.h']
     inputs={name:(args.source/name).read_text() for name in names}
-    body=['#include "hfs_protocol.h"']
+    # hfs_received.h's uncontrolled stubs supply hfs_received_copy.
+    body=['#include "hfs_policy.h"','#include "hfs_received.h"']
     for name in names[3:]:
         body.append('\n'.join(x for x in inputs[name].splitlines() if not x.startswith('#include')))
     header=inputs[names[2]];start=header.index('struct hfs_request {')
@@ -73,14 +74,22 @@ def main():
         start=source.index(first);body.append(source[start:source.index(last,start)])
     session=inputs[names[1]];start=session.index('int hfs_request_bind_drain(')
     bind=session[start:session.index('\nint hfs_request_drain(',start)]
+    # oc4: the VIEW_QUERY poll's actual blocked-session stop.
+    start=session.index('int hfs_session_poll_halt(')
+    bind+='\n'+session[start:session.index('\n/* The retry-loop exit',start)]
     # Freeze calls the actual immutable Claim builder before its definition.
     body.insert(1,'int hfs_request_bind_drain(struct hfs_session *, struct hfs_request *, const struct hfs_buf *);')
+    # The exchange's transport (test fixture), the actual oc4 poll halt and
+    # the session block (test fixture) are called before their definitions.
+    body.insert(1,'int hfs_control_flagged(struct hfs_session *, const char *, const struct hfs_buf *, bool, bool, struct hfs_json **);\n'
+                  'int hfs_session_poll_halt(struct hfs_session *, bool);\n'
+                  'void hfs_session_block(struct hfs_session *, const char *, const char *, int);')
     body.append(bind)
     (args.output/'production.c').write_text('\n'.join(body)+'\n')
     primitive=(here.parent/'codec/compat.h').read_text().replace('typedef uint64_t u64;','typedef unsigned long long u64;')
     (args.output/'hfs_codec_compat.h').write_text(primitive)
     compat=(here.parent/'requests/compat.h').read_text().replace('typedef int spinlock_t;','typedef pthread_mutex_t spinlock_t;')
-    compat=compat.replace('struct list_head requests;','struct list_head requests, view_tickets;\n   bool blocked;')
+    compat=compat.replace('struct list_head requests;','struct list_head requests, view_tickets;\n   bool blocked, unmounting, closing, transport_failed;')
     compat=compat.replace('#endif','''
 #define wake_up_all(q) ((void)(q))
 static inline long strscpy(char *d,const char *s,size_t n) { size_t len=strlen(s);if (!n) return -E2BIG;size_t copy=len<n ? len : n-1;memcpy(d,s,copy);d[copy]=0;return len<n ? (long)len : -E2BIG; }
@@ -92,6 +101,7 @@ static inline long strscpy(char *d,const char *s,size_t n) { size_t len=strlen(s
 #define spin_unlock_irqrestore(p,f) ((void)(f),assert(!pthread_mutex_unlock(p)))
 #define READ_ONCE(p) __atomic_load_n(&(p),__ATOMIC_ACQUIRE)
 #define WRITE_ONCE(p,v) __atomic_store_n(&(p),(v),__ATOMIC_RELEASE)
+#define smp_rmb() __atomic_thread_fence(__ATOMIC_ACQUIRE)
 #define wait_event_killable(q,c) ({ (void)(q); while (!(c)) usleep(100); 0; })
 static inline void list_move_tail(struct list_head *p, struct list_head *h) { list_del(p);list_add_tail(p,h); }
 static inline void usleep_range(int low,int high) { assert(low==10000 && high==12000); }
@@ -121,9 +131,13 @@ static inline bool uuid_equal(const uuid_t *a,const uuid_t *b) { return !memcmp(
     log=args.output/'dirty.log';log.write_text(json.dumps(binding)+'\n')
     runner.run(['cc','-std=gnu11','-O1','-g','-Wall','-Wextra','-Werror','-Wno-sign-compare','-Wno-unused-function',
                 '-DHFS_CODEC_USERSPACE','-include',str(args.output/'hfs_codec_compat.h'),
-                '-include',str(args.output/'kernel_format.h'),'-I',str(args.source/'fs/9p'),'-I',str(args.output),
+                '-include',str(args.output/'kernel_format.h'),
+                # oc4: hfs_policy.c (the poll halt) needs sort/S_IF*/MAX_NON_LFS.
+                '-include',str(here.parent/'policy/compat.h'),
+                '-I',str(args.source/'fs/9p'),'-I',str(args.output),
                 '-fsanitize=address,undefined','-fno-omit-frame-pointer','-fno-pie','-no-pie',
-                str(args.source/'fs/9p/hfs_protocol.c'),str(args.output/'kernel_format.c'),str(args.output/'test.c'),
+                str(args.source/'fs/9p/hfs_protocol.c'),str(args.source/'fs/9p/hfs_policy.c'),
+                str(args.output/'kernel_format.c'),str(args.output/'test.c'),
                 '-pthread','-lcrypto','-o',str(args.output/'dirty-test')],here,log)
     runner.run([str(args.output/'dirty-test')],here,log)
     text=log.read_text();line=next(l for l in text.splitlines() if l.startswith('FREEZE_PAYLOAD '))

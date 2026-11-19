@@ -1978,7 +1978,7 @@ diff --git a/fs/9p/hfs_lease.c b/fs/9p/hfs_lease.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.c
-@@ -0,0 +1,1534 @@
+@@ -0,0 +1,1547 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Exact bridge1.1 ticket/lease transport; no physical or source-proof defaults. */
 +#include <linux/slab.h>
@@ -2580,6 +2580,10 @@ new file mode 100644
 +	const char *op = operation;
 +	unsigned long deadline = jiffies + 30 * HZ;
 +	bool control = hfs_view_command_control(operation);
++	/* oc4: the VIEW_QUERY polls serve operation, so they share its
++	 * exemption from stopping on a blocked session.
++	 */
++	bool after_block = hfs_after_block_operation(operation);
 +	int err, body, status;
 +
 +	*response = NULL;
@@ -2632,7 +2636,7 @@ new file mode 100644
 +
 +		if (initial)
 +			mutex_lock(&ticket->family->dispatch);
-+		err = hfs_control(session, op, sent, control, &reply);
++		err = hfs_control_flagged(session, op, sent, control, after_block, &reply);
 +		if (err) {
 +			if (initial)
 +				mutex_unlock(&ticket->family->dispatch);
@@ -2708,6 +2712,15 @@ new file mode 100644
 +			return -ETIMEDOUT;
 +		}
 +		usleep_range(10000, 12000);
++		/* oc4 (zq3-r12 R12-1): no further VIEW_QUERY round once the
++		 * session is blocked; the ticket stays uncertain, as for a
++		 * timeout.
++		 */
++		err = hfs_session_poll_halt(session, after_block);
++		if (err) {
++			ticket->uncertain = true;
++			return err;
++		}
 +		op = "VIEW_QUERY";
 +		sent = &ticket->query;
 +		control = true;
@@ -3517,7 +3530,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,2002 @@
+@@ -0,0 +1,2008 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -4004,26 +4017,32 @@ new file mode 100644
 + * once. hfs_session_block's bit 0 is left alone: a later independent block
 + * of the same session (a QUERY timeout, a failed FORGET) still logs its own
 + * line, which is evidence of its own; that costs at most one extra line.
-+ * A missing recall prints "-".
++ * A missing recall prints "-". Since oc4 the line also prints the raw
++ * reason of the session's last exporter ERROR reply ("-" for none; see
++ * hfs_session_block), right after the errno.
 + */
 +static void hfs_mmap_fail(struct hfs_mmap_control *control, int error,
 +			  const struct hfs_mmap_where *where)
 +{
 +	struct hfs_view *view = control->view;
 +	struct hfs_session *session = view->session;
++	u16 code = READ_ONCE(session->exporter_error);
++	char text[8] = "-";
 +
 +	WRITE_ONCE(control->error, error);
 +	WRITE_ONCE(session->blocked, true);
 +	if (!test_and_set_bit(HFS_REPORTED_VIEW_STOP, &session->block_reported)) {
++		if (code)
++			snprintf(text, sizeof(text), "%u", code);
 +		if (where->recall)
-+			pr_warn("9p-hfs: session %pUb view control worker stopped, error %d, at %s (event %s, ack %s, host status %s, view phase %s, recall %pUb); later operations on this mount fail\n",
-+				&session->enrollment.session, error,
++			pr_warn("9p-hfs: session %pUb view control worker stopped, error %d, exporter ERROR %s, at %s (event %s, ack %s, host status %s, view phase %s, recall %pUb); later operations on this mount fail\n",
++				&session->enrollment.session, error, text,
 +				hfs_mmap_or_dash(where->step), hfs_mmap_or_dash(where->event),
 +				hfs_mmap_or_dash(where->ack), hfs_mmap_or_dash(where->status),
 +				hfs_view_phase_name(READ_ONCE(view->phase)), where->recall);
 +		else
-+			pr_warn("9p-hfs: session %pUb view control worker stopped, error %d, at %s (event %s, ack %s, host status %s, view phase %s, recall -); later operations on this mount fail\n",
-+				&session->enrollment.session, error,
++			pr_warn("9p-hfs: session %pUb view control worker stopped, error %d, exporter ERROR %s, at %s (event %s, ack %s, host status %s, view phase %s, recall -); later operations on this mount fail\n",
++				&session->enrollment.session, error, text,
 +				hfs_mmap_or_dash(where->step), hfs_mmap_or_dash(where->event),
 +				hfs_mmap_or_dash(where->ack), hfs_mmap_or_dash(where->status),
 +				hfs_view_phase_name(READ_ONCE(view->phase)));

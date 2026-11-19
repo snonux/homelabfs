@@ -23,8 +23,10 @@ def main():
     runner = importlib.util.module_from_spec(loader)
     loader.loader.exec_module(runner)
     session = (source / 'fs/9p/hfs_session.c').read_text()
-    # Compile the complete production function verbatim, never a modeled loop.
-    transport = session[session.index('static int hfs_transport('):session.index('\nstatic bool hfs_result_needs_adoption(')]
+    # Compile the complete production functions verbatim, never a modeled
+    # loop: since oc4 hfs_transport's SEND/FETCH loops are the helpers from
+    # hfs_transport_note up to hfs_transport itself.
+    transport = session[session.index('static void hfs_transport_note('):session.index('\nstatic bool hfs_result_needs_adoption(')]
     (output / 'transport.inc').write_text(transport)
     log = output / 'transport.log'
     log.write_text('hfs_session_sha256=' + hashlib.sha256(session.encode()).hexdigest() + '\n')

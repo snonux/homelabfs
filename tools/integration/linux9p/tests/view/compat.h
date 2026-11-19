@@ -89,12 +89,14 @@ struct hfs_provider {
  * controlled-session gate in hfs_view_try_enter_locked and its wait compile.
  * The fixtures keep bridge_minor == 0, so that gate is not exercised here.
  * enrollment.session and block_reported feed hfs_mmap_fail's
- * once-per-session line (1a4, view --pressure).
+ * once-per-session line (1a4, view --pressure), and exporter_error its raw
+ * exporter ERROR reason (oc4).
  */
 struct hfs_session {
    struct hfs_view *view; struct hfs_provider *provider; struct mutex lock;
    u16 bridge_minor; bool closing; bool blocked;
    struct { uuid_t session; } enrollment; unsigned long block_reported;
+   u16 exporter_error;
 };
 
 #define HFS_IDENTITIES_MAX 4096U

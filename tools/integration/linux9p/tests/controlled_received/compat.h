@@ -91,6 +91,9 @@ extern void primitive_after_mutex_unlock(struct mutex *);
 #define spin_lock_irqsave(m,f) ((void)(f),spin_lock(m))
 #define spin_unlock_irqrestore(m,f) ((void)(f),spin_unlock(m))
 #define READ_ONCE(p) __atomic_load_n(&(p),__ATOMIC_ACQUIRE)
+/* oc4: teardown flags before blocked (hfs_session_poll_halt). */
+#define smp_wmb() __atomic_thread_fence(__ATOMIC_RELEASE)
+#define smp_rmb() __atomic_thread_fence(__ATOMIC_ACQUIRE)
 #define WRITE_ONCE(p,v) __atomic_store_n(&(p),v,__ATOMIC_RELEASE)
 /* hfs_session_block's once-per-session flag (g64). */
 #define test_and_set_bit(n,p) ((__atomic_fetch_or((p),1UL<<(n),__ATOMIC_SEQ_CST)>>(n))&1UL)

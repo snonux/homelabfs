@@ -80,8 +80,11 @@ def main():
     selected = ['hfs_field_u64', 'hfs_uuid', 'hfs_cred_write', 'hfs_cred_free',
                 'hfs_process_exit_work', 'hfs_session_block', 'hfs_session_fence', 'hfs_cred_equal', 'hfs_process_find',
                 'hfs_capture_owned', 'hfs_capture', 'hfs_capture_terminal',
-                'hfs_reply_scope', 'hfs_transport', 'hfs_result_needs_adoption',
-                'hfs_operation', 'hfs_allocation_candidate', 'hfs_terminal_candidate', 'hfs_candidate_parse_put', 'hfs_control',
+                'hfs_reply_scope', 'hfs_transport_note', 'hfs_session_poll_halt', 'hfs_transport_stop',
+                'hfs_transport_send', 'hfs_transport_fetch', 'hfs_transport_chunk',
+                'hfs_transport_collect', 'hfs_transport',
+                'hfs_result_needs_adoption',
+                'hfs_operation', 'hfs_allocation_candidate', 'hfs_terminal_candidate', 'hfs_candidate_parse_put', 'hfs_control_flagged', 'hfs_control',
                 'hfs_copy_token', 'hfs_result_code', 'hfs_result_validate',
                 'hfs_args_init', 'hfs_cap_write', 'hfs_args_object',
                 'hfs_cap_free', 'hfs_cap_parse', 'hfs_reply_cap',
@@ -113,7 +116,7 @@ def main():
     (out/'lease.inc').write_text(portable(lease))
     exchange = function(lease, 'hfs_view_exchange')
     bound = exchange.index('\n\t/* Initial admissions')
-    (out/'release_prepare.inc').write_text(exchange[:bound].replace('int hfs_view_exchange(', 'static int fixture_prepare_exchange(') + '\n\t(void)reply;(void)sent;(void)op;(void)deadline;(void)control;(void)body;(void)status;return 0;\n}\n')
+    (out/'release_prepare.inc').write_text(exchange[:bound].replace('int hfs_view_exchange(', 'static int fixture_prepare_exchange(') + '\n\t(void)after_block;(void)reply;(void)sent;(void)op;(void)deadline;(void)control;(void)body;(void)status;return 0;\n}\n')
     mmap = read('fs/9p/hfs_mmap.c')
     first = mmap.index('static int hfs_mmap_invalidate_stopped(')
     last = mmap.index('/* Independent poll,', first)

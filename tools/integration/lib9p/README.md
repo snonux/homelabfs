@@ -571,6 +571,42 @@ commit; its one-refusal case (`single-mid-restart`) also fails on round 1,
 before the pin was protected. A
 native rebuild must pick this source up before any lab run can show it.
 
+## Host unavailable ERROR reason (`pc4`)
+
+In zq3-r12 (R12-1) the host runtime's guest transport marked itself failed,
+so every FUSE read of its result nodes returned EHOSTDOWN
+(`fsapi.Unavailable`). The exporter turned that, like any other fetch
+errno, into ERROR/INVALID, and the guest reported `-EPROTO` (-71): the run
+log could not tell a host outage from a malformed exchange.
+
+`hfs9p_exchange` now maps the error of a failed SEND or FETCH through
+`_error_reason`: EACCES is SCOPE (2), ENOSPC CAPACITY (3), ESTALE
+RETIRED_CELL (4), EHOSTDOWN the new **UNAVAILABLE (5)**, and everything else
+INVALID (1), as before. The values are `HFS9P_ERROR_*` in `hfs9p.h`; the
+Linux guest spells them out as `HFS_ERROR_*` (linux9p patch 0002,
+`hfs_policy.h`), since the two trees share no header. The protocol text is in
+[Retained-9p-protocol.md](../../../docs/spec/Retained-9p-protocol.md).
+Nothing else changes: the cell stays retained, so a FETCH after the host
+recovers still gets its frame. A native write refused EHOSTDOWN is still
+pinned (`_forward_pin`) and its FETCH still gets AGAIN; only a failed read
+(`_response`, also inside `_wait_step` for VIEW_WAIT) reaches the ERROR.
+
+`unavailable_tests` in `backend_test.c` fails the result read of a HELLO
+(result channel 2) and of a VIEW_WAIT (recall channel 3) with EHOSTDOWN and
+checks ERROR 5, an EIO read for ERROR 1, and the frame once reads work again.
+**No silent exchange (zq3-r13 R13-1).** After the host runtime stopped,
+`hfs9p_exchange` failed its endpoint check (`_verify`) and returned that
+errno with no reply. bhyve then completed the request with an empty buffer,
+which Linux virtio 9p drops, and the guest sender waited forever (m0's
+umount hung in `hfs_control`). A well-formed exchange whose endpoint check
+fails now gets ERROR UNAVAILABLE. The check revokes the endpoint for good,
+so every later exchange gets UNAVAILABLE too. Malformed packets (bad
+framing, wrong session or version) still return an errno and no reply; they
+are guest bugs, not host outages. `unavailable_tests` refuses `verify_cb`
+and checks ERROR 5 on that FETCH and the next one.
+
+A native rebuild must pick this source up before any lab run can show it.
+
 ## Controlled terminal owner (`614`)
 
 Explicit features32767 adds SESSION_RETIRE and preserves the exact16383 and

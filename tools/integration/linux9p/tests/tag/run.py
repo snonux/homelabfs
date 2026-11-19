@@ -27,10 +27,11 @@ FUNCTIONS = ('p9_client_is_hfs', 'safe_errno', 'p9_fcall_init', 'p9_fcall_fini',
              'p9_tag_alloc', 'p9_tag_remove', 'p9_req_put', 'p9_client_cb',
              'p9_parse_header', 'p9_check_errors', 'p9_client_flush',
              'p9_client_prepare_req', 'p9_client_rpc_v', 'p9_client_rpc_tag',
-             'p9_client_rpc', 'p9_client_hfs_tag_idle', 'p9_client_hfs_exchange')
+             'p9_client_rpc', 'p9_client_hfs_tag_idle', 'p9_client_hfs_exchange',
+             'p9_client_hfs_owned')
 # Introduced by task 964; absent from older sources, which this test must
 # still compile so that it can reproduce the original failure.
-OPTIONAL = {'p9_client_hfs_tag_idle'}
+OPTIONAL = {'p9_client_hfs_tag_idle', 'p9_client_hfs_owned'}
 
 
 def load(name, path):

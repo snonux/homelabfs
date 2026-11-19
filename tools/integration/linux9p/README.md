@@ -1150,3 +1150,140 @@ view and view --pressure (plain and `--sanitize`), mount_hello and tag
 (`--sanitize`), controlled_received `terminal-smoke`, `cleanup` and
 `exit-cleanup`, requests, huge, transport, policy and cursor pass. No
 candidate was rebuilt or admitted.
+
+## Exporter ERROR reasons and blocked retries (`oc4`)
+
+zq3-r12 R12-1: the host runtime's guest transport failed, the exporter
+answered both sessions' outstanding VIEW_WAIT FETCHes with ERROR, and the
+guest mapped that, like every non-FRAME reply, to `-EPROTO` (-71). The
+session was then blocked, but mount-1 hung for the full 30 s, because
+`hfs_transport`'s retry loops ignored `session->blocked`.
+
+- **ERROR reasons.** `hfs_bridge_error_reason` (0002, `hfs_policy.c`) reads
+  the u16 reason of a well-formed ERROR reply (0 otherwise), and
+  `hfs_bridge_error` maps it: RETIRED_CELL (4) is `-ESTALE`, the new
+  UNAVAILABLE (5, the exporter's EHOSTDOWN, task `pc4`) is `-EHOSTDOWN`,
+  everything else stays `-EPROTO`. Both SEND (`hfs_send_reply`, CAPACITY is
+  still the only retried reason) and FETCH use it. The values are
+  `HFS_ERROR_*` in `hfs_policy.h`, matching the exporter's `HFS9P_ERROR_*`
+  (the trees share no header). Callers that block only on `-EPROTO` (view
+  ticket and dirty reservation replies) see no change in practice: a failed
+  transport already blocks the session in `hfs_control`.
+- **Raw reason in the log.** A failed exchange records its reason in
+  `session->exporter_error` (`hfs_transport_note`). `hfs_session_block`
+  now prints `blocked by <reason> on <op> (<errno>), exporter ERROR <n>;`
+  and `hfs_mmap_fail` `error <errno>, exporter ERROR <n>, at <step>`, with
+  `-` when the session never got an ERROR. It is the session's latest
+  ERROR, normally the exchange that caused the block.
+- **Blocked retries.** `hfs_transport` was split into
+  `hfs_transport_send`, `hfs_transport_fetch`, `hfs_transport_chunk` and
+  `hfs_transport_collect` (plus `hfs_transport_note` and
+  `hfs_transport_stop`). Both retry loops, the VIEW_QUERY polls of
+  `hfs_view_exchange` and the CALL->QUERY polls of `hfs_request_run` stop
+  with `-EHOSTDOWN` once the session is blocked (`hfs_session_poll_halt`).
+  Exempt is only traffic that a blocked session still needs:
+  `hfs_after_block_operation` lists RETIRE, CANCEL, RELEASE_CELL,
+  SESSION_RETIRE, VIEW_RELEASE, VIEW_CANCEL, VIEW_RETIRE, READDIR_CLEANUP and
+  the cleanup CALL opcodes FORGET, DESCRIPTION_CLOSE, DESCRIPTION_RELEASE and
+  PROCESS_EXIT. Polls inherit the exemption of the operation they serve
+  (`hfs_control_flagged`; plain `hfs_control` passes the operation's own).
+  `hfs_control_flagged` decides the exemption under `session->lock` at
+  admission, also exempting a session in teardown (`closing`,
+  `unmounting`). A session in teardown is exempt at every check too:
+  kill_sb and `hfs_mount_fail` order `unmounting`/`closing` before
+  `blocked` with `smp_wmb()`, paired with `smp_rmb()` in
+  `hfs_session_poll_halt`. Review round 1 replaced the first version, which
+  exempted any exchange that started on an already blocked session: a
+  session blocked between two polls still ran the full 30 s, and a block
+  between admission and that read was mistaken for an exemption. (Halting
+  every exchange broke `controlled_received terminal-smoke` with -112, which
+  is why retirement traffic is exempt.) The FETCH loop checks after its
+  sleep, so a block raised then sends no further FETCH.
+- **ALLOCATE keeps -EPROTO** for RETIRED_CELL: its session is not blocked
+  (only `allocation_uncertain`), and a VFS caller seeing `-ESTALE` could
+  retry once and replay the uncertain allocation.
+- **Unmount stays bounded when the host is gone (zq3-r13).** After the
+  host runtime was stopped, m0's umount (its session not blocked) hung
+  > 270 s in `hfs_control`: each exempt teardown exchange retried to its
+  own 30 s deadline. An exchange that hits its deadline without an answer
+  (`hfs_transport_stop`) or gets ERROR UNAVAILABLE (`hfs_transport_note`)
+  now sets `session->transport_failed`, and `hfs_session_poll_halt` then
+  stops every later retry or poll at its first retry, exempt and teardown
+  traffic included. An unmount after the host is gone therefore waits at
+  most one deadline. Retries that reach the deadline (30 s of CAPACITY
+  or FETCH AGAIN) set it too, also against a live but refusing exporter.
+  That is acceptable: after host loss the exporter pins the refused native
+  write and answers AGAIN forever, so the deadline is the only signal of
+  that loss, and a session that waited 30 s is blocked by `hfs_control`
+  anyway. Only a refusal whose own reply crosses the deadline does not set
+  it. ALLOCATE's deadline never does (review round 2,
+  `HFS_TRANSPORT_ALLOCATE`): it only sets `allocation_uncertain`, and a
+  healthy session must keep working after it. ERROR 5, a 9p reply-wait
+  timeout and a failed endpoint still set it for ALLOCATE. The flag is
+  never cleared within a session, by design: a session that lost its host
+  is blocked and retained, not resumed; a new mount gets a new session.
+- **Bounded reply wait (zq3-r13 R13-1).** The hfs wait in
+  `p9_client_rpc_v` (0001, `net/9p/client.c`) was an unbounded
+  `wait_event`: when the exporter sent no reply, virtio dropped bhyve's
+  empty completion and the sender hung while holding `session->writer`, so
+  umount's `hfs_control` hung behind it in D state. The wait is now
+  `wait_event_timeout(..., 30 * HZ)` (still not killable: no Tflush may
+  cancel an admitted claim). On expiry the exchange returns `-ETIMEDOUT`,
+  the request stays allocated (a fixed tag then stays busy and later
+  exchanges on it get the bounded `-EBUSY`), and `hfs_transport` sets
+  `transport_failed`. The transport still owns that request's reply
+  buffer, and its callback reference is dropped only if a late reply
+  arrives. So `p9_client_destroy` keeps an hfs client whose idr still holds
+  requests (`p9_client_hfs_owned`, review round 2): it neither frees them
+  nor closes the transport (virtio's channel stays `inuse`, so no later
+  mount takes it), and leaks the client until reboot. Freeing them let a
+  late reply write freed memory and run `p9_client_cb` on a freed request. The exporter (pc4) now always replies to a
+  well-formed exchange, so this is the backstop.
+
+Tests:
+
+- `transport`: an injected ERROR reply to the FETCH of a VIEW_WAIT (tag
+  65534, recall channel 3) and of a VIEW_QUERY (tag 65533, result channel 2)
+  gives `-EHOSTDOWN` (5), `-ESTALE` (4) or `-EPROTO` (1, 2, 3, a high byte,
+  malformed lengths), records the raw reason (none for malformed replies)
+  and sends no further FETCH; a SEND ERROR 5 or 4 likewise. A block raised
+  in the third SEND CAPACITY retry or the fourth FETCH AGAIN poll stops the
+  exchange there with `-EHOSTDOWN`, and an exchange started on an already
+  blocked session stops at its first retry; unmounting, closing or exempt
+  traffic keeps retrying (to the deadline, or to the reply), unless an
+  earlier exchange timed out or got UNAVAILABLE (`transport_failed`): then
+  even exempt unmount traffic stops at its first retry. Making
+  `hfs_transport_halt` never halt fails it. `run.py` now extracts from
+  `hfs_transport_note` to `hfs_transport`.
+- `mount_hello`: the block line carries `exporter ERROR -` and, for a
+  session whose last ERROR was UNAVAILABLE, `(-112), exporter ERROR 5`.
+- `view --pressure`: the worker-stop lines carry `exporter ERROR -`, and an
+  UNAVAILABLE session prints `error -112, exporter ERROR 5`.
+- `dirty`: a session blocked while the first DIRTY_FREEZE reply (PENDING)
+  is out sends no VIEW_QUERY round and returns `-EHOSTDOWN` with the ticket
+  uncertain; disabling the poll check fails it. The harness did not
+  compile before (missing `hfs_received_copy`, `hfs_session_block` and
+  policy compat) and its fixture never set `family.anchor`; both are fixed,
+  and its earlier cases pass again.
+- `tag`: a request whose reply never arrives (`drop_next`, as virtio drops
+  an empty completion) returns `-ETIMEDOUT` after the bounded wait (300 ms
+  in the harness, which defines `P9_HFS_REPLY_WAIT` itself).
+- `transport`: an exchange that times out, gets UNAVAILABLE or no 9p reply
+  sets `transport_failed`; afterwards exempt unmounting traffic stops at
+  its first retry. A refusal whose own reply crosses the deadline and an
+  ALLOCATE that reaches it do not set it.
+- `tag`: after the silent request times out, `p9_client_hfs_owned` keeps
+  the client; a late reply then completes and frees the request, and the
+  client is no longer owned.
+- controlled_received `build.py` extracts the new helpers and
+  `hfs_control_flagged`.
+
+The series was regenerated with `export.py --task oc4` (0002, 0003 and
+0004 change: `hfs_policy.[ch]`; `hfs.h`, `hfs_session.c`; `hfs_mmap.c`, and since review round 1 `hfs_lease.c`;
+the zq3-r13 fix also changes 0001, `net/9p/client.c`).
+A fresh `prepare.py` tree applies it with fuzz zero and `fs/9p/`, `net/9p/`
+and `random.o` compile without warnings under `kernel.py configure`.
+transport, policy, cursor, tag, mount_hello, view and view --pressure
+(`--sanitize`), requests, huge, dirty and controlled_received `terminal-smoke`,
+`cleanup` and `exit-cleanup` pass. codec (`test.c:366`), capture, root and
+reclaim fail as before (s54). No candidate was rebuilt or admitted.

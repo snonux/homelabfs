@@ -10,13 +10,26 @@ static int calls, mode;
 #include "production.c"
 #include "fixture.h"
 
-static int hfs_control(struct hfs_session *session, const char *operation,
-                       const struct hfs_buf *payload, bool control,
-                       struct hfs_json **out)
+/* A real block only sets the flag here; its log line is mount_hello's. */
+void hfs_session_block(struct hfs_session *session, const char *reason,
+                       const char *operation, int err)
+{
+   (void)reason;(void)operation;(void)err;
+   session->blocked = true;
+}
+/* oc4: hfs_view_exchange calls hfs_control_flagged with the exemption of
+ * the operation it serves (DIRTY_FREEZE is not exempt). mode 2 blocks the
+ * session while the first reply (PENDING) is out, as zq3-r12 R12-1's failed
+ * VIEW_WAIT did: no further VIEW_QUERY round may follow.
+ */
+int hfs_control_flagged(struct hfs_session *session, const char *operation,
+                        const struct hfs_buf *payload, bool control, bool after_block,
+                        struct hfs_json **out)
 {
    const char *reply;
-   (void)session;
-   assert(control);
+   assert(control && !after_block);
+   if (mode == 2 && calls == 0)
+      session->blocked = true;
    if (calls++ == 0) {
       assert(!strcmp(operation,"DIRTY_FREEZE"));
       assert(payload->len == strlen(golden_payload));
@@ -64,7 +77,7 @@ static void run_case(int corrupt)
    uuid(&session.enrollment.nonce,claim_nonce);
    session.enrollment.subject[0]='a';session.enrollment.subject[1]='b';session.enrollment.subject[2]='c';
    session.enrollment.subject_len=3;
-   uuid(&family.nonce,control_nonce);uuid(&view.recall,recall);
+   uuid(&family.nonce,control_nonce);uuid(&family.anchor,anchor);uuid(&view.recall,recall);
    assert(!hfs_buf_init(&family.credentials,16384));
    hfs_buf_literal(&family.credentials,golden_credentials);
    assert(!hfs_buf_init(&ticket.request,32768));assert(!hfs_buf_init(&ticket.query,32768));
@@ -78,6 +91,12 @@ static void run_case(int corrupt)
    assert(!hfs_json_hex(dirty.reservation,hfs_json_field(dirty.reservation,0,"id"),dirty.id,&len));
    memcpy(page.bytes,"ABCD",4);
    err=hfs_dirty_freeze(&view,&dirty);
+   if (corrupt == 2) {
+      /* oc4: the PENDING reply was answered, then no second round. */
+      assert(err==-EHOSTDOWN && calls==1 && ticket.uncertain && ticket.admitted);
+      assert(!dirty.frozen && !dirty.frozen_entry && !ticket.response);
+      goto teardown;
+   }
    assert(calls==2 && ticket.number==5 && family.next==6 && family.prepared==0 && !family.initial);
    assert(ticket.admitted && ticket.initial_response && ticket.response);
    assert(hfs_json_is(ticket.initial_response,hfs_json_field(ticket.initial_response,0,"status"),"\"PENDING\""));
@@ -94,6 +113,7 @@ static void run_case(int corrupt)
       assert(!hfs_dirty_freeze(&view,&dirty) && calls==2 && !memcmp(dirty.data,"ABCD",4));
       printf("FREEZE_PAYLOAD %.*s\n",ticket.payload.len,ticket.payload.data);
    }
+teardown:
    /* Fixture teardown does not stand in for a live source retirement proof. */
    hfs_json_free(ticket.response);hfs_json_free(ticket.initial_response);
    hfs_json_free(dirty.reservation);hfs_json_free(dirty.frozen_entry);
@@ -106,7 +126,9 @@ static void run_case(int corrupt)
 }
 int main(void)
 {
+   run_case(2);
+   puts("PASS: oc4 VIEW_QUERY poll halt");
    run_case(0);run_case(1);
-   puts("PASS: actual freeze/claim/activation/exchange + pending QUERY lineage and wrapper-rehashed entry mismatch; no VFS/runtime/source proof");
+   puts("PASS: actual freeze/claim/activation/exchange + pending QUERY lineage and wrapper-rehashed entry mismatch; oc4: a session blocked between two VIEW_QUERY polls sends no further poll (-EHOSTDOWN); no VFS/runtime/source proof");
    return 0;
 }

@@ -2918,6 +2918,30 @@ _fetch(Hfs9p *h, unsigned session, uint64_t cell, uint32_t chunk, unsigned chann
    return (0);
 }
 
+/* The Rbridge ERROR reason of a failed SEND or FETCH. EHOSTDOWN is the
+ * native errno of fsapi.Unavailable: the host runtime's guest transport has
+ * failed or been fenced (internal/guestbridge Transport.Read/Write). Before
+ * pc4 it was INVALID like every other errno, so the guest could not tell a
+ * host outage from a malformed exchange and reported -EPROTO (zq3-r12
+ * R12-1). A write refused EHOSTDOWN stays pinned (_forward_pin) and FETCH
+ * then gets AGAIN; a read refused EHOSTDOWN (_response, _wait_step) reaches
+ * here. */
+static uint16_t
+_error_reason(int error) {
+   switch (error) {
+   case EACCES:
+      return (HFS9P_ERROR_SCOPE);
+   case ENOSPC:
+      return (HFS9P_ERROR_CAPACITY);
+   case ESTALE:
+      return (HFS9P_ERROR_RETIRED_CELL);
+   case EHOSTDOWN:
+      return (HFS9P_ERROR_UNAVAILABLE);
+   default:
+      return (HFS9P_ERROR_INVALID);
+   }
+}
+
 int
 hfs9p_exchange(Hfs9pConnection *connection, const uint8_t *request, size_t length,
     uint8_t *reply, size_t capacity, size_t *reply_length) {
@@ -2985,14 +3009,21 @@ hfs9p_exchange(Hfs9pConnection *connection, const uint8_t *request, size_t lengt
       reply[7] = send ? 4 : 2;
       *reply_length = send ? 10 : 8;
       if (send)
-         _put(reply + 8, 3, 2); /* CAPACITY, not claim rejection. */
+         _put(reply + 8, HFS9P_ERROR_CAPACITY, 2); /* Not claim rejection. */
       _put(reply, *reply_length, 4);
       return (0);
    }
-   error = _verify(h);
-   if (error)
-      goto done;
    size_t body_length = 0;
+   /* zq3-r13 R13-1: a failed endpoint check (the host runtime gone, a
+    * revoked or replaced endpoint) used to return its errno with no reply.
+    * bhyve then completed the request with an empty buffer, which Linux
+    * virtio 9p drops, so the guest sender waited forever holding its
+    * writer. A well-formed exchange now always gets a reply: ERROR
+    * UNAVAILABLE, which the guest fails at once with -EHOSTDOWN (pc4). */
+   if (_verify(h)) {
+      error = EHOSTDOWN;
+      goto encode;
+   }
    if (h->recovery_paused) { error = EAGAIN; goto encode; }
    Hfs9pSession *bound = &h->sessions[connection->session];
    if (bound->terminal_phase && (bound->terminal_channel != connection ||
@@ -3026,13 +3057,11 @@ hfs9p_exchange(Hfs9pConnection *connection, const uint8_t *request, size_t lengt
       error = 0;
    } else {
       reply[7] = 4;
-      _put(reply + 8, error == EACCES || error == ESTALE ?
-          (error == ESTALE ? 4 : 2) : (error == ENOSPC ? 3 : 1), 2);
+      _put(reply + 8, _error_reason(error), 2);
       *reply_length = 10;
       error = 0;
    }
    _put(reply, *reply_length, 4);
- done:
    pthread_mutex_unlock(&h->mutex);
    return (error);
 }

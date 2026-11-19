@@ -18,6 +18,19 @@
 #define HFS9P_STRIDE UINT64_C(2097152)
 #define HFS9P_VSIZE (UINT64_C(1) << 52)
 
+/* Rbridge ERROR reasons, the u16 after status 4 (docs/spec/
+ * Retained-9p-protocol.md). The Linux guest has no header in common with
+ * this library and spells the same values out as HFS_ERROR_* (linux9p patch
+ * 0002, fs/9p/hfs_policy.h). UNAVAILABLE (pc4, zq3-r12 R12-1) is a native
+ * EHOSTDOWN: the host runtime's guest transport failed or was fenced
+ * (fsapi.Unavailable), which the guest maps to -EHOSTDOWN instead of the
+ * -EPROTO of INVALID. */
+#define HFS9P_ERROR_INVALID 1u
+#define HFS9P_ERROR_SCOPE 2u
+#define HFS9P_ERROR_CAPACITY 3u
+#define HFS9P_ERROR_RETIRED_CELL 4u
+#define HFS9P_ERROR_UNAVAILABLE 5u
+
 typedef struct {
    uint8_t session[16];
    uint64_t node[3];
@@ -96,6 +109,9 @@ int hfs9p_add_session_protocol(Hfs9p *, const uint8_t *, size_t, uint16_t);
 /* Bounded nonblocking raw wire exchange, one 9p request/reply. A send receipt
  * never denotes filesystem success. Caller owns separate response storage.
  * Returns errno on malformed/authentication refusal, with *reply_length=0.
+ * A well-formed exchange always gets a reply: a failed endpoint check after
+ * parsing (host runtime gone, revoked endpoint) is ERROR UNAVAILABLE, never
+ * an empty completion the Linux guest would drop (zq3-r13 R13-1).
  * Allocator contention returns a wire AGAIN for FETCH or ERROR/CAPACITY for
  * SEND; consumers retry the identical packet at any chunk without advancing.
  * Exact Tversion selection is connection-local and does not take that lock. */
