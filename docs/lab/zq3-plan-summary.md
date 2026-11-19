@@ -164,8 +164,13 @@ f3 self-check with the new daemon and brought both mounts up and usable,
 so that fix works. The test cases still did not run: the session running
 the attempt paused for about an hour after the mounts were ready, which
 used up the time limit. While cleaning up, unmounting one mount hung
-most likely because the daemon had already stopped and the guest never got an answer (medium-high confidence);
-that needs fixing (task oc4) before or alongside the rerun (zq3-r14).
+most likely because the daemon had already stopped and the guest never got an answer (medium-high confidence).
+After it the guest kernel and the patched bhyve were rebuilt (`3a7131dd…`;
+bhyve `2fd7e32f…`): bhyve now always answers the guest, saying "host
+unavailable" when the daemon is gone, the guest kernel stops retrying once
+a mount's link has failed and never waits more than 30 seconds for an
+answer, and the logs say which error the host reported. The daemon is the
+same bytes as in the thirteenth attempt, but the new bhyve has never run.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a

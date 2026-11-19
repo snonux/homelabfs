@@ -1,5 +1,16 @@
 # xz3 xc4 daemon rebuild (2026-11-18): zq3-r12 transport-fence fix
 
+**Superseded on 2026-11-19** by the [xd4 rebuild](../xz3-20261119-r14/README.md)
+(`3a7131dd…`, source `942614a`) for zq3-r14. Its 1a4 guest kernel
+`8c1de1ed…` maps every exporter ERROR to `-EPROTO`, keeps retrying on a
+blocked session and waits without a bound for a 9p reply. Its exporter
+`ef8f17de…` sends no reply when its endpoint check fails. Together they left
+m0's `umount` hung in D after the host runtime stopped (zq3-r13 R13-1, fixed
+by oc4 and pc4). Its daemon `c959b708…` (which passed the f3 observer check
+in zq3-r13), the window artifacts, patch 0005, `series` and the Linux notices
+are reused byte for byte. The tooling refuses this manifest as superseded.
+It still passes `package.py check` and `admit.py` under the current tooling.
+
 This candidate supersedes the [5a4 rebuild](../xz3-20261118-r12/README.md)
 (`150deb29…`, source `1b0a306`) only because its CGO daemon predates the
 zq3-r12 fix. In zq3-r12 (R12-1) the host runtime's guest transport marked

@@ -1,0 +1,430 @@
+{
+  "candidate": {
+    "admission": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "assembled_from": "the xd4 worktree at 942614a (/home/paul/git/homelabfs/.claude/worktrees/agent-ad0680b47cd74f4ae; no edits before assembly, HEAD equal to main). assemble.py takes the repository baseline from the reused daemon build record, so it stays b7d107b (964 precedent) and inputs/repository-changes.patch records the tracked oc4/pc4 diff since then. The reused daemon builder bindings were re-keyed from the xc4 worktree to this worktree after checking daemon.py and daemon_cgo.py hash to the bound values (originals kept in daemon-binding-origin/); every other binding is a hash",
+    "files": 195,
+    "independent_admit": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "manifest_sha256": "3a7131ddc0bfad96762421122027d63aa5c736ace1ef61f4cb9eff14b5379f6f",
+    "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+    "path": "package",
+    "repository_baseline": "b7d107b073a017280b107168042ad6372c59dbbe",
+    "repository_changes_patch_sha256": "400c87499456939b1a09579df809ecc9c0609a14d4b625cf012f7f84fc8ba46c",
+    "source_checkout": "942614af75db2f83855ba50b85a67c9c7accf763"
+  },
+  "controls": {
+    "all_refused": true,
+    "case_names": [
+      "external operator mismatch",
+      "external repository mismatch",
+      "old negotiated features",
+      "old source revision",
+      "different packaged Linux patch",
+      "different native owned source",
+      "wrong actual bundled source with consistent container hashes",
+      "daemon ELF labelled as full exporter",
+      "native helper ELF lacks production controllers",
+      "invented stock shared9p runtime",
+      "installed success claim",
+      "missing actual Go build version",
+      "real CGO_ENABLED=0 daemon with nocgo observer stub",
+      "record claims CGO0 build",
+      "nocgo stub in recorded source closure",
+      "renamed cgo process observer symbols",
+      "foreign dynamic loader",
+      "extra recorded DT_NEEDED",
+      "missing recorded DT_NEEDED",
+      "sysroot library hash differs from recorded closure",
+      "unlinked sysroot capture",
+      "unrecorded clang resource headers",
+      "unrecorded clang shared-library closure",
+      "foreign cgo compiler wrapper",
+      "installation authority claim",
+      "false forced rebuild witness"
+    ],
+    "cases": 26,
+    "cgo0_control_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+    "original_passed_after": true,
+    "restored_passed": true
+  },
+  "daemon": {
+    "gnu_build_id": "eac40082a64bd782ba653ce865af47882423e628",
+    "native_qualification": "carries over: zq3-r13 Phase 4 step 1a qualified exactly these bytes with --check-process-observer on f3",
+    "repository": "b7d107b073a017280b107168042ad6372c59dbbe",
+    "reused_from": "e9c77e5bbe68f565240ef82ef3842ae713cb082e15e593036174ec4e735a1df6 (xc4), byte for byte with daemon-build.json, daemon-preparation.json, the four Go licences and the xc4 daemon-clean-repro.json",
+    "sha256": "c959b708f93876a5a4c620f33e64587bc0235dc4cf994de2154eb26710c4bc9b",
+    "why_not_rebuilt": "git diff b7d107b 942614a -- internal cmd go.mod go.sum touches only internal/guestbridge/README.md; tools/integration/artifacts daemon.py and daemon_cgo.py are unchanged"
+  },
+  "init_helper": {
+    "kept": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80 from e0cca0c",
+    "reason": "not in the package; no Go source changed since b7d107b"
+  },
+  "kernel": {
+    "abi_negative_controls": [
+      "different-kernel-module-layout-crc",
+      "different-operator-config-identity",
+      "missing-kernel-module-layout-crc",
+      "stock-kernel-release"
+    ],
+    "artifacts": {
+      "linux/Module.symvers": "53b8a659a524159fba5c8580cdda0f67dbd90142885cfd675f9bc697f6cbaf07",
+      "linux/System.map": "dd88dfcb2ab0b57a7e4f5cae9cc972460ec1be1b2f6fe8f2b255be39ccffe622",
+      "linux/abi-negative.json": "f7c4aa9efbe87a6e18eae268097b01c7cb333b1b72ceefbfa93448d6e7417da0",
+      "linux/abi.json": "637baadb55a63e34b0e29ddf1b687e55cea822df26cccadb81b0de29fc453e06",
+      "linux/build.json": "e13878952ec5e1aaa95b3068f98c6dbe5dd91392c09877397899924c9a582758",
+      "linux/bzImage": "e0daa57eaa51d727a86417c8a82b29fc1143f066ca0b806657ae61ffcccc849f",
+      "linux/clean-repro.json": "86a56912613f9524cc84f44da4b250fffdba3b68313957d55e5eedbe6bae7bf9",
+      "linux/config": "28fe4a8ec759cfa7ecfdc373753082ec6981ecdffc6a25e074b6fac048906282",
+      "linux/kernel.release": "50bb45b1af138cf586adddcde600f85e256a19336c861654e6ce76c20eb034e3",
+      "linux/modules.builtin": "1f33442939e7faf978dc707cb69f99015328b39b3125cea6d6de25715f8bebf1",
+      "linux/modules.builtin.modinfo": "c53973bb5c4498e6fc6e61d0143353782a5628374b2b00624f422ed6f2236cf2",
+      "linux/modules.order": "f820618416411197b17fe7795d067e9687d905c487bffb207589bec3c173019a",
+      "linux/modules/drivers/net/net_failover.ko": "cc9755c71cc1d0776f5efd61198b1ebe99741cff877104879b8658db469f9143",
+      "linux/modules/drivers/net/virtio_net.ko": "39de7e933fa325b2c6b576004213f34bee04085191ea94e141a6c2aeeaf7fef1",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko": "6b98068988086d3b1b5c7a1e3b71f5f0ac4378f2d907c0e3a8c50a22bcde53fa",
+      "linux/modules/fs/efivarfs/efivarfs.ko": "6dd0679c5a026189f4feef51fcdcf4d0542fbc9cba7f3e552cb8a0324e68974f",
+      "linux/modules/net/core/failover.ko": "b1aa98beb495be131c06a02775109cba97de2ecacae227c4932909166b88cf5a",
+      "linux/vmlinux": "d2690b4257f4454c7b1e81250c9c28bca7763bdb32bdb46b6ae09c35cb6c7f8c"
+    },
+    "changed_from_xc4": [
+      "linux/Module.symvers",
+      "linux/System.map",
+      "linux/abi.json",
+      "linux/build.json",
+      "linux/bzImage",
+      "linux/clean-repro.json",
+      "linux/vmlinux"
+    ],
+    "changes": "oc4 (patches 0001-0004 and source.json: hfs_bridge_error maps the exporter ERROR reason (RETIRED_CELL -ESTALE, UNAVAILABLE -EHOSTDOWN, else -EPROTO) and the session records it; hfs_transport, VIEW_QUERY and CALL->QUERY retries stop once the session is blocked or transport_failed, with an explicit teardown exemption; p9_client_rpc_v waits at most 30 s for an hfs reply and p9_client_destroy keeps a client that still owns requests; zq3-r12 R12-1 guest side, zq3-r13 R13-1)",
+    "clean_repro_equal_artifacts": 13,
+    "clean_repro_modules": 5,
+    "clean_repro_record_sha256": "86a56912613f9524cc84f44da4b250fffdba3b68313957d55e5eedbe6bae7bf9",
+    "config_equals_xc4": true,
+    "gnu_build_id": "9b167690f6cd2f0538ecb6df06ab76121736eacb",
+    "initramfs": "none built or packaged; the recipe builds bzImage and modules",
+    "module_build_ids": {
+      "drivers/net/net_failover.ko": "3255e434a34a125cd9251bebddaaf6bdf98c68bb",
+      "drivers/net/virtio_net.ko": "072995182e1a95b83cf3ec794649ce05adf8a59d",
+      "drivers/thermal/intel/x86_pkg_temp_thermal.ko": "da295c7cb8ec345542f4ad350ebe6b4ab30ce306",
+      "fs/efivarfs/efivarfs.ko": "c7dca1ae388661db98a1b00f73a39cc2c2d88539",
+      "net/core/failover.ko": "3b9f54841993c81600f6794137822622987c4f9d"
+    },
+    "note": "both builds used the same canonical O path (first tree moved to kernel-build-first before the repeat); abi.py collect ran on both packages before compare_kernel",
+    "release": "6.1.190-hfs-xz3",
+    "resolved_config_lsm": "lockdown,yama,integrity,selinux,bpf,landlock",
+    "source": {
+      "archive_path": "/home/paul/tmp/codex/hfs-tz3-20261102-2v0xchwe/source/linux-79807e970724c1f90cee1316361d61b80db4eef6.tar.gz (cached, not downloaded)",
+      "archive_sha256": "4f3c00db43ece26e00b83da8cee938e544ba89e10dc10aecc45209ab03554a17",
+      "kernel_config_fragment_sha256": "f2d2a203daa49dd454de90b932e04e17f1532a22b9184140da136ff97d468bc7",
+      "prepared": "linux-source",
+      "source_inventory_sha256": "276aba057097cb677b8fceddb1c8550a36d229a9f5da916f51aab7c9d92346d2"
+    },
+    "stage_seconds": [
+      [
+        "first",
+        "configure",
+        0,
+        16
+      ],
+      [
+        "first",
+        "vmlinux",
+        0,
+        1054
+      ],
+      [
+        "first",
+        "image-modules",
+        0,
+        28
+      ],
+      [
+        "first",
+        "collect",
+        0,
+        12
+      ],
+      [
+        "repro",
+        "configure",
+        0,
+        20
+      ],
+      [
+        "repro",
+        "vmlinux",
+        0,
+        962
+      ],
+      [
+        "repro",
+        "image-modules",
+        0,
+        32
+      ],
+      [
+        "repro",
+        "collect",
+        0,
+        6
+      ]
+    ],
+    "superseded_gnu_build_id": "8c1de1edc01d324e0fc2502e552fd42b709a120a",
+    "unchanged_from_xc4": [
+      "linux/abi-negative.json",
+      "linux/config",
+      "linux/kernel.release",
+      "linux/modules.builtin",
+      "linux/modules.builtin.modinfo",
+      "linux/modules.order",
+      "linux/modules/drivers/net/net_failover.ko",
+      "linux/modules/drivers/net/virtio_net.ko",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko",
+      "linux/modules/fs/efivarfs/efivarfs.ko",
+      "linux/modules/net/core/failover.ko"
+    ]
+  },
+  "native": {
+    "archive": "cached pinned archive copied from /var/tmp/hfs-xz3-20261108-r1 and re-hashed: 044a42ccc657d4c3b31499e2cb713c3f9d6ec0e51c1b288c46b13106c148d84e",
+    "changed_from_xc4": [
+      "freebsd/bhyve",
+      "freebsd/build.json",
+      "freebsd/lib9p.a",
+      "freebsd/lib9p_pie.a",
+      "inputs/freebsd-selected-source.tar.gz",
+      "inputs/freebsd-source-bundle.json",
+      "inputs/freebsd-source-inventory.json"
+    ],
+    "changes": "pc4 (hfs9p.c, hfs9p.h: a failed SEND/FETCH result read maps EHOSTDOWN to the new ERROR UNAVAILABLE (5), EACCES/ENOSPC/ESTALE to SCOPE/CAPACITY/RETIRED_CELL; a well-formed exchange whose endpoint check fails gets ERROR UNAVAILABLE instead of no reply; zq3-r12 R12-1, zq3-r13 R13-1)",
+    "clean_repro_equal": true,
+    "clean_repro_files": 83,
+    "exporter": {
+      "gnu_build_id": "43f2ae41279a74929d216270f2aaf3215732fc02",
+      "sha256": "2fd7e32f5cc8762ae0ff4d5ec6c046d7d49b95c97e4b9150dd17b2ac52c39fd3",
+      "superseded_sha256": "ef8f17de8754f8bdd6d5d517f15a859e87a2f4a8ca1542394f5608a8e40823b1"
+    },
+    "first_seal_sha256": "e237833ce483544e8e9cb0d2eeac3bea7db34627478c1c4aa317fad875a68660",
+    "guard": "tools/integration/artifacts/native_guard.py for every stage: one CPU, 512 MiB aggregate RSS, 20 min/stage, 8 GiB disk (1 GiB local reservation), pinned Rocky pid 46923 lstart Thu Nov 19 08:24:51 2026 UTC, rocky.conf c101adf1",
+    "host": "f3 FreeBSD 15.1-RELEASE-p2, pinned-key SSH (docs/lab/f3-host-known_hosts, -F /dev/null, StrictHostKeyChecking=yes, BatchMode), unprivileged",
+    "lib9p_native_verify": "native-verify.sh on f3 under the guard (stage lib9p-native-verify): PASS native component objects/tests (production_api, backend incl. pc4 unavailable_tests, ledger, supervisor)",
+    "owned_seed": {
+      "0001-dedicated-backend.patch": "df00a6b0f576532da0a43373b971017410b7e7f35db560395d42571fb953f264",
+      "src/hfs9p.c": "f823182c6dfa2479be6d56645e379a9c4c7a70d2ec4d43ac1788e902d3b4b1c6",
+      "src/hfs9p.h": "d7dedcbf198f911a005a38ecb536e164581a005f532fa18c1c6730b70d1fcfd6",
+      "src/hfs9p_bootstrap.inc": "5fca1f2e18818805253d116b2d64a1d5079d235b2242a0100da4c575a95a6685",
+      "src/hfs9p_json.c": "bff0d0a125a822834218b574ff111ce0c7c8974816011e97c151be576f825e0a",
+      "src/hfs9p_json.h": "d5c59818a2a39da141eedd23fab8d9f1462d79414833e822da7e9df41dcc4980",
+      "src/hfs9p_ledger.c": "d64f06c10e9f117f2d301e5cf7614b78a28890ae4487075108926302a90298bd",
+      "src/hfs9p_ledger.h": "567c4d534094fc6de8705004615ec64930f22d4c679709410deeffcb13a1e7b7",
+      "src/hfs9p_recovery.inc": "18afeeb9062536d6b78769b4dc3a292d55b90493507f932d104f45920e60dc34",
+      "src/hfs9p_supervisor.c": "39eff2ea2c104f614a34e5e6afbcc05dd4ae1b7eb2bc89f7157495c329350a4b",
+      "src/hfs9p_supervisor.h": "dcc30297332b2766a43489e03f0720f846e527e7775a259c28e548c53f920b92"
+    },
+    "preflight_sha256": "0818bc0b35619ad9f773803105030e32b4bb95c251e80e92d796b7d23e1dd19d",
+    "recipe_sha256": {
+      "elf.py": "1a4ef154e9e228417df8e9cfa163b7e54ce7ac9a5677d1c9cc375b739243cf17",
+      "native_build_v3.py": "263775fd727085e7b9c60eeac74fa713327a99b85de8db67475647182453c601",
+      "native_guard_v3.py": "228c91f3489fd1a49a15a5d837883f44fc521005185096eef624e5ba3f11b04b",
+      "native_source_v2.py": "31f9ce908cdb11bc76e9594484f747b1d9615578c13d3407f755bf016d740271",
+      "runner_process.py": "91310cb7aac7c58e7a16271e69cd88c0443fa3be84d7843b2dd2b9a577ca4c10"
+    },
+    "records": "native-build-records.json",
+    "retried_second_build": "the first second-build attempt was stopped by the guard (disk-walk race on a renamed make .tmp file) in its bhyve stage; its state was removed and the whole second build ran again from scratch (see native-build-records.json)",
+    "root": "/var/tmp/hfs-xz3-20261119-r14-r1 (fresh, 0700, left in place as evidence)",
+    "source_inventory_sha256": "35714a7fb23cbf93e6ef5dfbf24cbba00f0fd6ae6afb94f745daa52bec9fef46",
+    "unchanged_from_xc4": [
+      "freebsd/bhyve-slirp-helper",
+      "freebsd/libvmmapi.a",
+      "freebsd/libvmmapi_pie.a",
+      "freebsd/share/bhyve/gdb/aarch64-core.xml",
+      "freebsd/share/bhyve/gdb/amd64.xml",
+      "freebsd/share/bhyve/gdb/target.xml",
+      "freebsd/share/bhyve/kbdlayout/am",
+      "freebsd/share/bhyve/kbdlayout/be",
+      "freebsd/share/bhyve/kbdlayout/be_acc",
+      "freebsd/share/bhyve/kbdlayout/bg_bds",
+      "freebsd/share/bhyve/kbdlayout/bg_phonetic",
+      "freebsd/share/bhyve/kbdlayout/br",
+      "freebsd/share/bhyve/kbdlayout/br_noacc",
+      "freebsd/share/bhyve/kbdlayout/centraleuropean",
+      "freebsd/share/bhyve/kbdlayout/ch",
+      "freebsd/share/bhyve/kbdlayout/ch-fr",
+      "freebsd/share/bhyve/kbdlayout/ch-fr_acc",
+      "freebsd/share/bhyve/kbdlayout/ch_acc",
+      "freebsd/share/bhyve/kbdlayout/ch_macbook_acc",
+      "freebsd/share/bhyve/kbdlayout/cz",
+      "freebsd/share/bhyve/kbdlayout/de",
+      "freebsd/share/bhyve/kbdlayout/de_acc",
+      "freebsd/share/bhyve/kbdlayout/de_noacc",
+      "freebsd/share/bhyve/kbdlayout/default",
+      "freebsd/share/bhyve/kbdlayout/dk",
+      "freebsd/share/bhyve/kbdlayout/dk_macbook",
+      "freebsd/share/bhyve/kbdlayout/ee",
+      "freebsd/share/bhyve/kbdlayout/es",
+      "freebsd/share/bhyve/kbdlayout/es_acc",
+      "freebsd/share/bhyve/kbdlayout/es_dvorak",
+      "freebsd/share/bhyve/kbdlayout/fi",
+      "freebsd/share/bhyve/kbdlayout/fr",
+      "freebsd/share/bhyve/kbdlayout/fr_acc",
+      "freebsd/share/bhyve/kbdlayout/fr_dvorak",
+      "freebsd/share/bhyve/kbdlayout/fr_dvorak_acc",
+      "freebsd/share/bhyve/kbdlayout/fr_macbook",
+      "freebsd/share/bhyve/kbdlayout/gr",
+      "freebsd/share/bhyve/kbdlayout/gr_101_acc",
+      "freebsd/share/bhyve/kbdlayout/gr_elot_acc",
+      "freebsd/share/bhyve/kbdlayout/hr",
+      "freebsd/share/bhyve/kbdlayout/hu_101",
+      "freebsd/share/bhyve/kbdlayout/hu_102",
+      "freebsd/share/bhyve/kbdlayout/is",
+      "freebsd/share/bhyve/kbdlayout/is_acc",
+      "freebsd/share/bhyve/kbdlayout/it",
+      "freebsd/share/bhyve/kbdlayout/jp",
+      "freebsd/share/bhyve/kbdlayout/jp_capsctrl",
+      "freebsd/share/bhyve/kbdlayout/kz_io",
+      "freebsd/share/bhyve/kbdlayout/kz_kst",
+      "freebsd/share/bhyve/kbdlayout/latinamerican",
+      "freebsd/share/bhyve/kbdlayout/latinamerican_acc",
+      "freebsd/share/bhyve/kbdlayout/lt",
+      "freebsd/share/bhyve/kbdlayout/nl",
+      "freebsd/share/bhyve/kbdlayout/no",
+      "freebsd/share/bhyve/kbdlayout/no_dvorak",
+      "freebsd/share/bhyve/kbdlayout/nordic_asus-eee",
+      "freebsd/share/bhyve/kbdlayout/pl_dvorak",
+      "freebsd/share/bhyve/kbdlayout/pt",
+      "freebsd/share/bhyve/kbdlayout/pt_acc",
+      "freebsd/share/bhyve/kbdlayout/ru",
+      "freebsd/share/bhyve/kbdlayout/ru_shift",
+      "freebsd/share/bhyve/kbdlayout/ru_win",
+      "freebsd/share/bhyve/kbdlayout/se",
+      "freebsd/share/bhyve/kbdlayout/si",
+      "freebsd/share/bhyve/kbdlayout/tr",
+      "freebsd/share/bhyve/kbdlayout/tr_f",
+      "freebsd/share/bhyve/kbdlayout/ua",
+      "freebsd/share/bhyve/kbdlayout/ua_shift_alt",
+      "freebsd/share/bhyve/kbdlayout/uk",
+      "freebsd/share/bhyve/kbdlayout/uk_capsctrl",
+      "freebsd/share/bhyve/kbdlayout/uk_dvorak",
+      "freebsd/share/bhyve/kbdlayout/uk_macbook",
+      "freebsd/share/bhyve/kbdlayout/us_dvorak",
+      "freebsd/share/bhyve/kbdlayout/us_dvorakl",
+      "freebsd/share/bhyve/kbdlayout/us_dvorakp",
+      "freebsd/share/bhyve/kbdlayout/us_dvorakr",
+      "freebsd/share/bhyve/kbdlayout/us_dvorakx",
+      "freebsd/share/bhyve/kbdlayout/us_emacs",
+      "freebsd/share/bhyve/kbdlayout/us_unix",
+      "licenses/freebsd/COPYRIGHT",
+      "licenses/freebsd/lib9p-COPYRIGHT"
+    ]
+  },
+  "not_claimed": [
+    "installed",
+    "booted",
+    "native acceptance",
+    "exporter execution",
+    "VM execution",
+    "SELinux enforcing on the booted guest",
+    "normal publication",
+    "a working hfs1.4 mount on Rocky (zq3)"
+  ],
+  "reason": "e9c77e5b predates oc4 and pc4: its guest kernel 8c1de1ed maps every exporter ERROR to -EPROTO, keeps retrying on a blocked session and waits without a bound for a 9p reply, and its exporter ef8f17de sends no reply when its endpoint check fails, so m0's umount hung in D after the host runtime stopped (zq3-r13 R13-1; zq3-r12 R12-1 log gap). The daemon is unchanged",
+  "recorded": "2026-11-19",
+  "reused": {
+    "checked_against_current_source": 24,
+    "files": 31,
+    "from_manifest": "e9c77e5bbe68f565240ef82ef3842ae713cb082e15e593036174ec4e735a1df6",
+    "list": "reused-files.json",
+    "previous_still_admits": "package.py check and a full admit.py of e9c77e5b pass under the 942614a tooling (receipts r13-container, r13-readmit)"
+  },
+  "source_tests": {
+    "last_lines": {
+      "cleanup": "ok  \tgithub.com/snonux/homelabfs/internal/controlledruntime\t138.922s",
+      "dirty": "exit=0 peak_child_rss_kib=92648",
+      "exit-cleanup": "ok  \tgithub.com/snonux/homelabfs/internal/controlledruntime\t125.979s",
+      "mount-hello": "exit=0 peak_child_rss_kib=92160",
+      "tag": "exit=0 peak_child_rss_kib=57176",
+      "terminal-smoke": "ok  \tgithub.com/snonux/homelabfs/internal/controlledruntime\t50.581s",
+      "transport": "exit=0 peak_child_rss_kib=92632",
+      "view": "physical admission production-C checks passed; no VFS/PTE execution",
+      "view-pressure": "PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only",
+      "view-pressure-sanitize": "PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only",
+      "view-sanitize": "physical admission production-C checks passed; no VFS/PTE execution"
+    },
+    "note": "against the freshly prepared oc4 source: mount_hello/tag/transport --sanitize, dirty (docs/spec/retained9p-fixtures/views.json), controlled_received terminal-smoke/cleanup/exit-cleanup (worktree as host tree), view and view --pressure plain and --sanitize",
+    "suites": {
+      "cleanup": {
+        "exit": 0,
+        "seconds": 140
+      },
+      "dirty": {
+        "exit": 0,
+        "seconds": 4
+      },
+      "exit-cleanup": {
+        "exit": 0,
+        "seconds": 127
+      },
+      "mount-hello": {
+        "exit": 0,
+        "seconds": 3
+      },
+      "tag": {
+        "exit": 0,
+        "seconds": 3
+      },
+      "terminal-smoke": {
+        "exit": 0,
+        "seconds": 86
+      },
+      "transport": {
+        "exit": 0,
+        "seconds": 3
+      },
+      "view": {
+        "exit": 0,
+        "seconds": 3
+      },
+      "view-pressure": {
+        "exit": 0,
+        "seconds": 2
+      },
+      "view-pressure-sanitize": {
+        "exit": 0,
+        "seconds": 6
+      },
+      "view-sanitize": {
+        "exit": 0,
+        "seconds": 4
+      }
+    }
+  },
+  "superseded_candidate": {
+    "manifest_sha256": "e9c77e5bbe68f565240ef82ef3842ae713cb082e15e593036174ec4e735a1df6",
+    "status": "refused as superseded (pre-oc4 guest kernel 8c1de1ed, pre-pc4 exporter ef8f17de; zq3-r13 R13-1)"
+  },
+  "task": "xd4: xz3 kernel and native exporter rebuild for zq3-r14 (daemon and window artifacts reused)",
+  "version": "homelabfs-xz3-evidence/2",
+  "window_artifacts": {
+    "artifacts": {
+      "controlledruntime.test": "8194ebe0f95b32bfc6e19aa5c594b0091c15b1f8782b430d64cc63ff1820e91b",
+      "fdescfs-namespace": "8c43fd06c6254da1bdde9d1cec8f759e4a4bdf1827b1708165ae0f72885c5d33",
+      "hfs-controlled-runtime": "c959b708f93876a5a4c620f33e64587bc0235dc4cf994de2154eb26710c4bc9b"
+    },
+    "reused": true,
+    "source": "b7d107b073a017280b107168042ad6372c59dbbe",
+    "why": "the window test and inspector bytes follow the daemon source; the daemon is the reused xc4 build from b7d107b and these artifacts were built from that same revision (964 precedent)"
+  },
+  "workstation_tools": "hfs-runtime-prep and the signer hfs-retained9p-operator are not package content; no Go source changed since b7d107b, so the zq3-r13 builds keep their inputs; the zq3-r14 fill still pins what it runs. The runtimeprep example spec and directlaunch/argv.py now pin the new exporter"
+}

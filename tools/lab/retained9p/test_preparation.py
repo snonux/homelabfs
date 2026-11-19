@@ -27,8 +27,8 @@ def module(name):
 controller = module("controller")
 guest = module("guest")
 observer = module("observer")
-# xz3 xc4 rebuild for zq3-r13 (2026-11-18); see controller.ADMITTED.
-ADMITTED = "e9c77e5bbe68f565240ef82ef3842ae713cb082e15e593036174ec4e735a1df6"
+# xz3 xd4 rebuild for zq3-r14 (2026-11-19); see controller.ADMITTED.
+ADMITTED = "3a7131ddc0bfad96762421122027d63aa5c736ace1ef61f4cb9eff14b5379f6f"
 # e0cca0c (no d44 MKDIR-only lost reply), f44 (pre-r54 guest kernel), r54
 # (pre-w54 guest kernel, failed-bind kill_sb oops), w54 (pre-z54 daemon,
 # pre-acquire VIEW_POLL left unanswered), z54 (pre-964 guest kernel, fixed
@@ -42,9 +42,11 @@ ADMITTED = "e9c77e5bbe68f565240ef82ef3842ae713cb082e15e593036174ec4e735a1df6"
 # release fails behind a pending allocation, zq3-r10 R10-1; pre-z84 unmount
 # stop, R10-2; pre-194 daemon refusing an exited issuer's cleanup ALLOCATE)
 # b94 (pre-1a4 kernel whose view wait has no bound, zq3-r11 R11-2;
-# pre-y94 daemon answering an early DRAINED STALE, R11-1) and 5a4 (pre-nc4
+# pre-y94 daemon answering an early DRAINED STALE, R11-1), 5a4 (pre-nc4
 # daemon whose retried mapped cell fenced the guest transport, zq3-r12
-# R12-1).
+# R12-1) and xc4 (pre-oc4 kernel with an unbounded 9p reply wait and
+# retries on a blocked session, pre-pc4 exporter that sends no reply after a
+# failed endpoint check, zq3-r13 R13-1).
 SUPERSEDED = ("3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
@@ -56,7 +58,8 @@ SUPERSEDED = ("3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
               "e585206aa26dcd5724065467ebb716ced7c421db0979c25290fed8c37551b213",
               "4712e4793e67007a65b293dd62dceb16d16a2f2322705f7f0a5f81c261442cf0",
               "3b128cc68e4a4e6c43c8411437df5b7671c003a5f9e7ae6c11700f918440a47a",
-              "150deb2993cda12cc2ad6cee2f118fe0f2e334b0ddb9afaf09a8e22f27b0b88a")
+              "150deb2993cda12cc2ad6cee2f118fe0f2e334b0ddb9afaf09a8e22f27b0b88a",
+              "e9c77e5bbe68f565240ef82ef3842ae713cb082e15e593036174ec4e735a1df6")
 QUARANTINED = "7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b"
 LAB = Path(__file__).resolve().parents[3] / "docs/lab"
 HOST_PIN = (LAB / "f3-host-known_hosts").read_bytes()
@@ -339,7 +342,9 @@ class PreparationTests(unittest.TestCase):
         # and q84 lease holders; r84: the b94 x84 allocation-fence wait, z84
         # unmount stop and 194 exited-issuer cleanup ALLOCATE; b94: the 5a4
         # 1a4 bounded view wait and y94 early-DRAINED BLOCKED answer; 5a4:
-        # the xc4 nc4 retried-cell base reuse instead of a transport fence).
+        # the xc4 nc4 retried-cell base reuse instead of a transport fence;
+        # xc4: the xd4 oc4 ERROR mapping and bounded reply wait and the pc4
+        # always-reply exporter).
         # They must refuse distinctly from an unknown digest.
         for value in SUPERSEDED:
             with self.subTest(candidate=value), \

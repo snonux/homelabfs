@@ -55,11 +55,14 @@ BASELINE = {
                 "-s", FBUF_DEVICE],
     "console": ["-l", "com1,/dev/nmdm-rocky.1A"],
 }
-# Candidate exporter (xz3 y64 rebuild, manifest 867ede36...): rebuilt natively
-# on f3 from the 564/e64/p64/w64 lib9p sources and reproduced in a second
-# clean build. Every candidate from 3f770a88... through c64+d64 66b5bb2b...
-# reused the earlier native build 36423b6d..., which lacks those fixes.
-EXPORTER_SHA256 = "ef8f17de8754f8bdd6d5d517f15a859e87a2f4a8ca1542394f5608a8e40823b1"
+# Candidate exporter (xz3 xd4 rebuild for zq3-r14): rebuilt natively on f3
+# from the pc4 lib9p sources (a failed result read or endpoint check answers
+# ERROR UNAVAILABLE (5), so every well-formed exchange gets a reply; zq3-r12
+# R12-1, zq3-r13 R13-1) and reproduced in a second clean build. The y64
+# build ef8f17de... (564/e64/p64/w64), which every candidate from y64
+# 867ede36... through xc4 e9c77e5b... carried, lacks pc4; the build before it,
+# 36423b6d..., lacks 564/e64/p64/w64 too.
+EXPORTER_SHA256 = "2fd7e32f5cc8762ae0ff4d5ec6c046d7d49b95c97e4b9150dd17b2ac52c39fd3"
 STAGING_PARENT = "/var/tmp/hfs-validation-xz3"
 GUEST_MEMORY = "6G"
 SHARES = ("hfs0", "hfs1")
