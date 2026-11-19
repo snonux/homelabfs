@@ -21,10 +21,13 @@ SPEC.loader.exec_module(FILLER)
 WINDOW = FILLER.WINDOW
 PINS = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/pins.json"
 RECORD = HERE.parent.parent / "docs/lab/zq3-fdescfs-window/build-record.json"
-# Daemon of the admitted xz3 r15 rebuild for zq3-r15 (ac8020aa), built from
+# Daemon of the r15 rebuild (ac8020aa, now superseded; reused by the
+# admitted r16 a1af0bd7), built from
 # 2f34b60 (z94: a read-only OPEN conflicts like a read and the volume root's
 # lifetime journals no pins, on top of the xc4 nc4 daemon c959b708 that
-# e9c77e5b and 3a7131dd carried); the window build reproduced it.
+# e9c77e5b and 3a7131dd carried); the window build reproduced it. The r16
+# rebuild for zq3-r16 (a1af0bd7) reuses this daemon and the window artifacts
+# byte for byte.
 ADMITTED_DAEMON_SHA256 = "8668e5f085e4d53126ac382dd435339e15c8b7a5085d36d953f4432d9c7eb7cf"
 CONTROLLER_SHA = "c" * 64
 # f3 stock fusefs.ko, docs/lab/results/20261108-zq3-phase1 (task j44).
@@ -95,8 +98,9 @@ class FillerTests(unittest.TestCase):
         for path, value in record["captured_base_closure_sha256"].items():
             self.assertEqual(pinned[path], value)
         # The window artifacts follow the admitted daemon source: rebuilt from
-        # 2f34b60 for the r15 rebuild on 2026-11-19 (earlier from b7d107b for
-        # xc4, reused by xd4, from 1b0a306 for 5a4, from dfdcdd9 for b94,
+        # 2f34b60 for the r15 rebuild on 2026-11-19, reused by r16 (earlier
+        # from b7d107b for xc4, reused by xd4, from 1b0a306 for 5a4, from
+        # dfdcdd9 for b94,
         # from cc6beed for r84, from e92eaa1 for l84, from b869710 for y64,
         # from 060dea0 for c64+d64, from a20aca1 for z54, reused by 964, and
         # from defd974 for f44, reused by r54 and w54), so the qualification

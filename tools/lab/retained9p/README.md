@@ -13,17 +13,18 @@ qualified corrected artifacts. Existing offline build proofs remain preserved;
 neither a successful old metadata admission nor a different digest establishes
 native eligibility. These preparation commands never grant deployment eligibility.
 
-**The controller pins exactly one candidate:** the xz3 r15 rebuild for
-zq3-r15 (2026-11-19), manifest `ac8020aa0012550d83b4ab15ffd79900a31338330513e2af7d4f5e58b910c1c6`
-(source and repository baseline `2f34b60`; see its
-[evidence](../../integration/artifacts/evidence/xz3-20261119-r15/README.md)).
-Only the CGO daemon was rebuilt. The daemon `8668e5f0…` adds z94 (a
-read-only OPEN conflicts like a read, and the volume root's lifetime
-journals no pins, so a guest root OPEN starts no recall; zq3-r14 R14-1,
-zq3-r11 R11-1) to the xc4 daemon. These daemon bytes still need the f3
-observer check. The guest kernel and the native exporter are the xd4
-builds, reused byte for byte. The kernel (build ID
-`9b167690…`, c64 recipe, so SELinux is an active LSM) adds oc4 (the guest maps the exporter's ERROR reason to an errno, RETIRED_CELL `-ESTALE` and the new UNAVAILABLE `-EHOSTDOWN`, and logs it; retries and polls stop once the session is blocked or its transport failed, with an explicit teardown exemption; the 9p reply wait is bounded to 30 s, so an unmount after the host is gone waits at most one deadline; zq3-r13 R13-1, zq3-r12 R12-1 guest side) to the 5a4 kernel, which added 1a4
+**The controller pins exactly one candidate:** the xz3 r16 rebuild for
+zq3-r16 (2026-11-19), manifest `a1af0bd700396a44edbd631087d1303d85a390008771903e13937309a65c2e0d`
+(source `707f3d1`, repository baseline `2f34b60`; see its
+[evidence](../../integration/artifacts/evidence/xz3-20261119-r16/README.md)).
+Only the guest kernel was rebuilt. The kernel (build ID `7a5bb8dc…`, c64
+recipe, so SELinux is an active LSM) adds ie4 (an observation whose view a recall moved during VIEW_ACQUIRE acquires again instead of failing `-ESTALE`; GETATTR and LOOKUP re-issue on a moved target; zq3-r15 R15-1) to the xd4
+kernel `9b167690…`. The daemon `8668e5f0…` is the r15 build, reused byte
+for byte; it adds z94 (a read-only OPEN conflicts like a read, and the
+volume root's lifetime journals no pins, so a guest root OPEN starts no
+recall; zq3-r14 R14-1, zq3-r11 R11-1) to the xc4 daemon and passed the f3
+observer check in zq3-r15. The native exporter is the xd4 build, reused
+byte for byte. The xd4 kernel adds oc4 (the guest maps the exporter's ERROR reason to an errno, RETIRED_CELL `-ESTALE` and the new UNAVAILABLE `-EHOSTDOWN`, and logs it; retries and polls stop once the session is blocked or its transport failed, with an explicit teardown exemption; the 9p reply wait is bounded to 30 s, so an unmount after the host is gone waits at most one deadline; zq3-r13 R13-1, zq3-r12 R12-1 guest side) to the 5a4 kernel, which added 1a4
 (`hfs_view_enter` waits at most 30 s, then fails `-ETIMEDOUT`, so a wedged
 recall no longer holds stat and `umount` in D, zq3-r11 R11-2; final mmap
 faults get SIGBUS; the view-worker stop log names session, phase and status)
@@ -47,7 +48,7 @@ QUERY resume of never-prepared claims, q84 per-holder DOMAIN lease release)
 and the l84 daemon (784, 884, d84, g84, h84, b84, q64/f84).
 The native exporter `2fd7e32f…` was rebuilt on f3 for pc4 (a failed result read answers ERROR UNAVAILABLE (5) for EHOSTDOWN, and a well-formed exchange whose endpoint check fails gets ERROR UNAVAILABLE instead of no reply) on top of the 564, e64, p64 and w64 lib9p
 fixes of the y64 build `ef8f17de…`. The window artifacts were rebuilt
-from `2f34b60`. Fourteen earlier candidates are refused as superseded: `3f770a88…` cannot arm the d44 MKDIR-only lost reply, the f44
+from `2f34b60` for r15 and are reused. Fifteen earlier candidates are refused as superseded: `3f770a88…` cannot arm the d44 MKDIR-only lost reply, the f44
 `b203799e…` has the pre-r54 guest kernel (every hfs1.4 mount returns EPROTO,
 zq3-r2 R2-4), the r54 `5eb42c50…` has the pre-w54 guest kernel (kill_sb oops
 after a failed bind, zq3-r3 R3-1), the w54 `89c928d5…` has the pre-z54
@@ -77,7 +78,10 @@ wait and retries on a blocked session) and the pre-pc4 exporter
 in D after the host runtime stopped (zq3-r13 R13-1), and the xd4
 `3a7131dd…` has the pre-z94 daemon `c959b708…` (a read-only root OPEN
 recalled every domain, so T1's m0 root OPEN waited about 14 s behind three
-recalls, zq3-r14 R14-1). Any
+recalls, zq3-r14 R14-1), and the r15 `ac8020aa…` has the pre-ie4 guest
+kernel `9b167690…` (an observation re-check after a recall during
+VIEW_ACQUIRE failed `-ESTALE`, so T1's root `fstat` failed before its
+GETATTR was sent, zq3-r15 R15-1). Any
 other digest refuses before reading inputs or contacting the lab. This pin is a
 dispatch precondition only; installed/booted/native acceptance remains zq3.
 
@@ -737,7 +741,7 @@ depmod, dracut, systemctl and GRUB's one-shot consumption at boot). Every
 Rocky-side command still needs Paul's explicit A3 approval of the filled plan.
 
 1. Workstation, Phase 0:
-   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 ac8020aa… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
+   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 a1af0bd7… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
    It refuses any manifest other than the pinned candidate, checks every
    Linux file's size and SHA256 against the manifest and the installation
    proposal, requires `modules.order` to name exactly the manifest's modules,

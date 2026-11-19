@@ -216,7 +216,9 @@ and the exporter and reused that daemon and these artifacts unchanged. On
 2026-11-19 they were rebuilt from `2f34b60` for the r15 rebuild for zq3-r15
 (`ac8020aa…`, daemon z94: a read-only OPEN conflicts like a read and the
 volume root's lifetime journals no pins), so the test bytes match the final
-daemon source again. Nothing used
+daemon source again. The r16 rebuild for zq3-r16 (`a1af0bd7…`) rebuilt only
+the guest kernel and reuses that daemon and these artifacts unchanged.
+Nothing used
 SSH, the lab, a VM, a mount or a module. It grants no authority: the window is
 zq3 approval class A5 and still needs Paul's explicit yes at run time.
 

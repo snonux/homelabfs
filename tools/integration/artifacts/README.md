@@ -98,7 +98,13 @@ rebuild for zq3-r15 (candidate `ac8020aa…`,
 [evidence](evidence/xz3-20261119-r15/README.md)) rebuilt only the CGO
 daemon (z94) and reused that kernel package and exporter byte for byte, after
 `compare_kernel.py` and `check_abi_mismatch.py` reproduced its
-`clean-repro.json` and `abi-negative.json` under the current tooling.
+`clean-repro.json` and `abi-negative.json` under the current tooling. The r16
+rebuild for zq3-r16 (candidate `a1af0bd7…`,
+[evidence](evidence/xz3-20261119-r16/README.md)) kept the config; its ie4
+patches 0003/0004 changed the image (build ID `7a5bb8dc…`) and nine hfs
+export CRCs in `Module.symvers`, while the five modules and
+`abi-negative.json` came out byte-identical. It reused the r15 daemon and
+the xd4 exporter.
 
 The ordinary namespace fixture selects a rootful OCI runtime in the initial
 user namespace, VFS image storage and a newly created private network namespace
