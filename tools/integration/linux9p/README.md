@@ -1512,3 +1512,126 @@ without warnings under `kernel.py configure`. transport, policy, cursor, tag,
 mount_hello, view and view --pressure (`--sanitize`), requests, huge, dirty
 and controlled_received `terminal-smoke`, `cleanup` and `exit-cleanup` pass.
 No candidate was rebuilt or admitted.
+
+## Lease grant before the fence raise (`2f4`)
+
+zq3-r17 R17-1: T1's m1 root `fstat` failed with `EKEYREJECTED` and the guest
+blocked the session (`uncertain view ticket on VIEW_QUERY (-129)`). The host
+grants a PENDING VIEW_ACQUIRE lazily, on the first VIEW_QUERY after the recall
+(`queryOrCancelTicket` → `readmit`, `internal/viewcontrol/tickets.go`), right
+after it accepted the mount's REOPENED ACK. The guest raises its
+`current_fence` only when that ACK's reply arrives
+(`hfs_controlled_after_ack`), so the host's correct, verified GRANTED at the
+new fence (or one captured at the revision before the REOPEN) was not current
+at receipt. `hfs_received_new` kept it as a raw outcome and
+`hfs_received_source` reported it as unverified.
+
+Patch 0005:
+
+- A verified SOURCE that is not current at receipt is kept as its own state
+  (`owner->stale`, only when its lease target matches the receipt evidence);
+  its kind stays raw and its target unset, so no other gate adopts it.
+- `hfs_received_source_ex(..., &not_current)` (`hfs_received_source` is its
+  wrapper) returns `-ESTALE` with `not_current` for a verified SOURCE that is
+  not current at receipt or at consumption; `-EKEYREJECTED` again means only
+  "not verified" (no owner, another session/channel/frame, another token, never
+  a verified SOURCE). `hfs_controlled.h` gains the uncontrolled
+  `hfs_controlled_current_fence` stub.
+
+Patch 0004:
+
+- `hfs_view_exchange` (helpers `hfs_view_exchange_source`,
+  `hfs_view_grant_settle`, `hfs_view_grant_look`): only a lease VIEW_ACQUIRE
+  GRANTED that is verified but not current waits. Within the exchange's 30 s
+  deadline it waits event-driven (`hfs_view_reopen_wait` on `view->wait`,
+  woken by `hfs_view_reopen_acked` after each accepted REOPENED ACK in
+  `hfs_mmap_ack`; `view->reopen_acks` is read before each look) until the view
+  is LIVE (or UNBOUND) and the mount's fence equals the lease's, then sends
+  VIEW_QUERY again. The host returns the stored GRANTED (no new ticket,
+  identity or lease) and the fresh capture validates it. A re-query is sent
+  only after progress (another REOPENED ACK or a new view revision); a reply
+  that stays not current at a settled view is `-EPROTO` and blocks as before.
+- A lease fence behind the mount's (a later recall passed it) is `-EXDEV`;
+  the wait's stops are the deadline (`-ETIMEDOUT`), a fatal signal
+  (`-EINTR`), a refused view (FENCED, closing or blocked), a halted session or
+  a mount no longer admissible (all `-EHOSTDOWN`; not `-ESTALE`, which
+  `hfs_lease_acquire_ex` blocks on as a stale grant). None blocks. In every
+  one the exchange returns the GRANTED as its response with the ticket
+  terminal, not uncertain, because the host holds that lease and its
+  reserved release credit (review 1). `hfs_lease_acquire_ex` then builds it
+  **unadopted** (`lease->unadopted`): decoded without the provider's target
+  check (`hfs_controlled_target` → `hfs_received_selected` refuses a
+  not-current reply by design; before review 1 that made the `-EXDEV` path
+  fail with `EKEYREJECTED` and leak the lease), no verified visibility, and
+  refused by `hfs_view_bind_initial`, `hfs_view_page_lease`,
+  `hfs_view_page_grant` and `hfs_mmap_publish`, so it can only be released.
+  It is returned in `*out` with the error. The ie4 observation path
+  (`hfs_mmap_observe`) holds an `-EXDEV` lease unpublished and acquires again
+  (ie4's acquire-before-release, so its release starts no recall); any other
+  error's lease goes to the attempt's cleanup packet, as in the fault path
+  and the bootstrap discovery loop (which releases an `-EXDEV` lease and
+  retries). `hfs_lease_acquire_ex` blocks on `-ESTALE` only from decoding the
+  grant itself.
+- DIRTY_RESERVE/DIRTY_FREEZE replies (current only while QUIESCENT/STOPPED)
+  and unverified replies still block the session at once; the not-current
+  DIRTY case now logs `-ESTALE` instead of `-EKEYREJECTED`.
+- Rate-limited lines: `VIEW_ACQUIRE GRANTED at fence F is not current (mount
+  fence M, view P); querying again once the view settles`, `... was passed by
+  a later recall; releasing it and acquiring again (-EXDEV)` and `... view did
+  not settle before the exchange deadline (-ETIMEDOUT)`.
+
+ie4/re4/oc4/1a4 invariants hold: no held lease is re-stamped, every wait is
+bounded by the exchange deadline, and no lease, packet, credit or control
+reference leaks.
+
+Tests:
+
+- `view --pressure` compiles the actual `hfs_view_exchange` with its helpers
+  (transport, ticket reply, session block/poll halt, fence and a model of
+  0005's receipt are fixtures; `view_wait_hook` plays the REOPENED ACK reply):
+  R17-1's shape (PENDING, GRANTED at fence 6 while the mount is at 5) waits
+  for the ACK and re-queries to success (pre-2f4: blocked); a GRANTED
+  captured before the REOPEN re-queries at once; a reply that a recall made
+  not current at consumption and whose ACK passed the lease returns `-EXDEV`
+  (also without waiting when the mount is already past it); deadline,
+  signal, blocked session and failed transport stop without a block and
+  still hand out the GRANTED (ticket terminal); an unverified, a
+  never-current and a not-current DIRTY_RESERVE reply block, a current
+  DIRTY_RESERVE passes; an unadopted lease is refused by the initial bind and
+  the page lease. `retry_grant_passed`: an observation whose acquisition
+  returns `-EXDEV` with an unadopted lease re-acquires at the new fence, then
+  releases it without a recall. Twelve mutants (no settle, re-query before
+  the fence, DIRTY waits, no `-EXDEV`, no progress check, no ACK count, stops
+  block, stops left uncertain, refusal as `-ESTALE`, refusal ignored,
+  unadopted bindable, unadopted page lease) each fail a case. dirty's harness extracts the new helpers with aborting
+  view fixtures (its minor-0 cases never reach them).
+- controlled_received: the actual 0005 receipt on a real host GRANTED: the
+  unverified cases keep `-EKEYREJECTED` without `not_current`; after the
+  initial bind the lease is `-ESTALE` with `not_current` at consumption; a
+  VIEW_QUERY answered while the mount's fence is raised is stale at receipt
+  (`-ESTALE`, `not_current`; pre-2f4 `-EKEYREJECTED`), is adopted by no target
+  gate and stays stale. These run in the `provider` and `corruption`
+  scenarios, which still fail later at their own pre-existing points
+  (multipoll EVENT receipt; corrupted-source `IO`), as on the unchanged
+  baseline; a mutant that never marks a stale receipt aborts at the ACQUIRE.
+- controlled_received `passed-grant` (`TestControlledReceivedActualPassedGrant`,
+  review 1): the actual `hfs_lease_acquire_ex` with the real 0005 provider.
+  With the mount's fence raised past the held lease's, a second DOMAIN READ
+  acquisition (shared by the host) returns `-EXDEV` with an unadopted lease,
+  blocks nothing, is refused by the initial bind, and its release completes.
+  Decoding it through the provider target instead (the pre-review code)
+  returns `-129` there.
+- `internal/viewcontrol` `TestPendingAcquireGrantedLazilyAndStable`: a
+  PENDING acquisition is still PENDING after its recall completed (fence
+  advanced), the first VIEW_QUERY grants at the new fence, and repeated
+  queries return the stored GRANTED byte for byte without changing the
+  active leases.
+
+The series was regenerated with `export.py --task 2f4` (0004: `hfs_view.[ch]`,
+`hfs_lease.[ch]`, `hfs_mmap.c`; 0005: `hfs_received.{h,inc}`,
+`hfs_controlled.h`). A fresh `prepare.py` tree applies it with fuzz zero and
+`fs/9p/`, `net/9p/` and `random.o` compile without warnings under `kernel.py
+configure`. transport, policy, cursor, tag, mount_hello, view and view
+--pressure (`--sanitize`), requests, huge, dirty and controlled_received
+`terminal-smoke`, `cleanup`, `exit-cleanup` and `passed-grant` pass. No
+candidate was rebuilt or admitted.

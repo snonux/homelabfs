@@ -131,6 +131,8 @@ void primitive_sleep(unsigned long,unsigned long);
  */
 #define msleep(ms) usleep((ms)*1000UL)
 #define pr_warn_ratelimited(...) fprintf(stderr,__VA_ARGS__)
+/* 2f4: hfs_view_grant_settle's lines (rate-limited pr_info in the kernel). */
+#define pr_info_ratelimited(...) fprintf(stderr,__VA_ARGS__)
 /* hfs_session_block's once-per-session line is a plain pr_warn since m64. */
 #define pr_warn(...) fprintf(stderr,__VA_ARGS__)
 static inline void kref_init(struct kref *k) { atomic_init(&k->refcount,1); }

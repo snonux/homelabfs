@@ -448,6 +448,43 @@ static int fixture_check(struct fixture_session *f,const char *check) {
  else err=s->provider->view_event(s,json,token);
  hfs_json_free(forged);return detached?(err<0?0:-EUCLEAN):err;
 }
+/* 2f4 (zq3-r17 R17-1): hfs_received_source_ex keeps -EKEYREJECTED for an
+ * unverified source (another session, a detached copy, a token that is not
+ * the selected source) and reports none of them as not current.
+ */
+static void source_unverified_checks(struct fixture_session *f,struct hfs_lease *lease)
+{
+ struct hfs_session *s=&(*f->session),outsider={.bridge_minor=4};struct hfs_json *detached=NULL;
+ bool not_current=true;
+ assert(!hfs_received_source_ex(s,lease->json,0,&not_current)&&!not_current);
+ not_current=true;assert(hfs_received_source_ex(&outsider,lease->json,0,&not_current)==-EKEYREJECTED&&!not_current);
+ assert(!hfs_json_parse(lease->json->data,lease->json->len,&detached));detached->transported=true;
+ not_current=true;assert(hfs_received_source_ex(s,detached,0,&not_current)==-EKEYREJECTED&&!not_current);
+ hfs_json_free(detached);
+ not_current=true;
+ assert(hfs_received_source_ex(s,lease->json,hfs_json_field(lease->json,0,"target"),&not_current)==-EKEYREJECTED&&!not_current);
+}
+/* 2f4: a verified GRANTED that is not current AT RECEIPT. The mount's fence
+ * is raised past the lease's while the ticket's VIEW_QUERY is answered (the
+ * host repeats the stored GRANTED), as when R17-1's grant crossed the
+ * REOPENED ACK window in the other direction. Before 2f4 this was
+ * -EKEYREJECTED; now it is -ESTALE with not_current, the stale owner is
+ * adopted by no other gate, and it stays stale at the restored fence.
+ */
+static void source_stale_at_receipt(struct hfs_session *s,struct hfs_lease *lease)
+{
+ struct hfs_json *reply=NULL;bool not_current=false;int body,token;
+ mutex_lock(&hfs_controlled_lock);hfs_controlled_mount(s)->current_fence++;mutex_unlock(&hfs_controlled_lock);
+ assert(!hfs_control(s,"VIEW_QUERY",&lease->ticket->query,true,&reply));
+ body=hfs_json_field(reply,0,"payload");token=hfs_json_field(reply,body,"lease");
+ assert(hfs_json_is(reply,hfs_json_field(reply,body,"status"),"\"GRANTED\""));
+ assert(hfs_received_source_ex(s,reply,token,&not_current)==-ESTALE&&not_current);
+ assert(hfs_received_target(s,reply,hfs_json_field(reply,token,"target"))==-EKEYREJECTED);
+ mutex_lock(&hfs_controlled_lock);hfs_controlled_mount(s)->current_fence--;mutex_unlock(&hfs_controlled_lock);
+ not_current=false;assert(hfs_received_source_ex(s,reply,token,&not_current)==-ESTALE&&not_current);
+ not_current=true;assert(hfs_received_source_ex(s,reply,body,&not_current)==-EKEYREJECTED&&!not_current);
+ hfs_json_free(reply);
+}
 static void command(char *line) {
  char operation[32];unsigned id,index;int consumed=0;
  assert(sscanf(line,"%31s %u %u %n",operation,&id,&index,&consumed)>=3&&index<(getenv("HFS_C6_BACKEND_ONLY")?carrier->session_count:hfs_controlled_registry->nr_mounts));
@@ -1015,11 +1052,42 @@ static void command(char *line) {
    assert(hfs_received_source(&(*f->session),detached,0)<0);hfs_json_free(detached);
    assert(hfs_received_source(&(*f->session),lease->json,hfs_json_field(lease->json,0,"target"))<0);
    bool initial=(*f->session).view->phase==HFS_VIEW_UNBOUND;
+   source_unverified_checks(f,lease);
    err=hfs_view_bind_initial((*f->session).view,lease);
-   if(!err&&initial)assert(hfs_received_source(&(*f->session),lease->json,0)<0);
+   if(!err&&initial){
+    bool not_current=false;
+    assert(hfs_received_source(&(*f->session),lease->json,0)<0);
+    /* 2f4: the phase moved: verified but not current at consumption. */
+    assert(hfs_received_source_ex(&(*f->session),lease->json,0,&not_current)==-ESTALE&&not_current);
+    source_stale_at_receipt(&(*f->session),lease);
+   }
   }
   if(!err){assert(!f->lease);f->lease=lease;}
   done(id,err,err?NULL:lease->json->data,err?0:lease->json->len);return;
+ }
+ /* 2f4 review 1: the actual hfs_lease_acquire_ex through -EXDEV with the
+  * real 0005 provider. The mount's fence is raised past the lease's while a
+  * second DOMAIN READ acquisition is answered (the host shares the held
+  * f->lease: grantLease -> shareLease), so the verified GRANTED is stale at
+  * receipt and already passed: -EXDEV with an unadopted lease, no block, no
+  * initial bind; its release only returns the shared holder (RELEASED).
+  */
+ if(!strcmp(operation,"ACQUIRE_PASSED")){
+  struct hfs_session *s=&(*f->session);struct hfs_lease *lease=NULL;int err;
+  assert(f->lease&&!s->blocked);
+  mutex_lock(&hfs_controlled_lock);hfs_controlled_mount(s)->current_fence++;mutex_unlock(&hfs_controlled_lock);
+  err=hfs_lease_acquire(s,&f->credential,NULL,NULL,0,false,NULL,&lease);
+  mutex_lock(&hfs_controlled_lock);hfs_controlled_mount(s)->current_fence--;mutex_unlock(&hfs_controlled_lock);
+  if(err==-EXDEV){
+   assert(lease&&lease->unadopted&&!s->blocked&&lease->ticket->terminal&&!lease->ticket->uncertain);
+   assert(!memcmp(lease->id,f->lease->id,32)&&lease->fence==f->lease->fence);
+   assert(hfs_view_bind_initial(s->view,lease)==-ESTALE);
+   err=hfs_lease_release(s,lease);
+   if(!err)assert(lease->released&&!s->blocked);
+   hfs_lease_free(lease);
+   if(!err)err=-EXDEV;
+  } else assert(!lease);
+  done(id,err,NULL,0);return;
  }
  if(!strcmp(operation,"RELEASE_START")){
   struct hfs_lease *lease=f->lease;assert(lease);struct hfs_view_ticket *ticket=lease->release_ticket;struct hfs_buf *payload=&lease->release_payload;

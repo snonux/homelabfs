@@ -65,7 +65,8 @@ def main():
     spans=[('int hfs_json_hash_fields(', '\nint hfs_view_target('),
            ('int hfs_view_ticket_activate(', '\nstatic int hfs_ticket_union('),
            ('static int hfs_ticket_union(', '\nint hfs_view_query('),
-           ('int hfs_view_exchange(', '\nstatic int hfs_lease_decode('),
+           # 2f4: the exchange's grant-settle helpers precede it.
+           ('struct hfs_grant_settle {', '\nstatic int hfs_lease_decode('),
            ('int hfs_dirty_freeze(', '\nstatic void hfs_dirty_mapping_error(')]
     # First helper group excludes unrelated target parsing and its callbacks.
     start=source.index('int hfs_json_hash_fields(');end=source.index('\nstatic int hfs_normal_target(',start)
@@ -83,7 +84,10 @@ def main():
     # the session block (test fixture) are called before their definitions.
     body.insert(1,'int hfs_control_flagged(struct hfs_session *, const char *, const struct hfs_buf *, bool, bool, struct hfs_json **);\n'
                   'int hfs_session_poll_halt(struct hfs_session *, bool);\n'
-                  'void hfs_session_block(struct hfs_session *, const char *, const char *, int);')
+                  'void hfs_session_block(struct hfs_session *, const char *, const char *, int);\n'
+                  # 2f4: the lease-grant settle path (test fixtures that
+                  # abort: these minor-0 cases never verify a source).
+                  'u64 hfs_controlled_current_fence(struct hfs_session *);')
     body.append(bind)
     (args.output/'production.c').write_text('\n'.join(body)+'\n')
     primitive=(here.parent/'codec/compat.h').read_text().replace('typedef uint64_t u64;','typedef unsigned long long u64;')
@@ -96,6 +100,9 @@ static inline long strscpy(char *d,const char *s,size_t n) { size_t len=strlen(s
 #define U64_MAX UINT64_MAX
 #define HZ 100UL
 #define time_after_eq(a,b) ((long)((a)-(b))>=0)
+#define time_before(a,b) ((long)((a)-(b))<0)
+#define pr_info_ratelimited(...) abort()
+#define pr_warn_ratelimited(...) abort()
 #define spin_lock_init(p) assert(!pthread_mutex_init(p,NULL))
 #define spin_lock_irqsave(p,f) ((void)(f),assert(!pthread_mutex_lock(p)))
 #define spin_unlock_irqrestore(p,f) ((void)(f),assert(!pthread_mutex_unlock(p)))

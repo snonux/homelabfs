@@ -17,6 +17,16 @@ void hfs_session_block(struct hfs_session *session, const char *reason,
    (void)reason;(void)operation;(void)err;
    session->blocked = true;
 }
+/* 2f4: hfs_view_exchange's lease-grant settle path runs only for a verified
+ * hfs1.4 GRANTED that is not current; these minor-0 cases never reach it.
+ */
+struct hfs_view *hfs_view_get(struct hfs_session *session) { (void)session;abort(); }
+void hfs_view_put(struct hfs_view *view) { (void)view;abort(); }
+bool hfs_view_refused(const struct hfs_view *view) { (void)view;abort(); }
+const char *hfs_view_phase_name(enum hfs_view_phase phase) { (void)phase;abort(); }
+int hfs_view_reopen_wait(struct hfs_view *view, unsigned long acks, unsigned long deadline)
+{ (void)view;(void)acks;(void)deadline;abort(); }
+u64 hfs_controlled_current_fence(struct hfs_session *session) { (void)session;abort(); }
 /* oc4: hfs_view_exchange calls hfs_control_flagged with the exemption of
  * the operation it serves (DIRTY_FREEZE is not exempt). mode 2 blocks the
  * session while the first reply (PENDING) is out, as zq3-r12 R12-1's failed
