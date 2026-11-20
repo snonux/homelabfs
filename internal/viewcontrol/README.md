@@ -80,7 +80,8 @@ DESCRIPTION_CLOSE keep the cut and the recall barrier never holds them, while
 FORGET/DESCRIPTION_RELEASE may append lifetime state and wait while a recall
 installs a cut. A clean READ release of a domain without EXCLUSIVE_DIRTY leases
 or open reservations starts a recall of that domain only
-(`recallState.Domain`): other domains get no event, keep their leases and
+(`recallState.Domain`; a guest observation lease's release starts none since
+je4, see below): other domains get no event, keep their leases and
 fences, and their cut-preserving reads (every read but LOOKUP, which may
 journal a HandlePin), READ acquisitions/renewals and lock-only reductions proceed.
 Anything that may change the cut, LOOKUP included, waits for any recall.
@@ -91,6 +92,74 @@ DESCRIPTION_RELEASE, a pinning LOOKUP) makes the peer's next observation hit
 the expected-target mismatch and start an all-domain recall (e84 tracks
 scoping it). `Domain` is `omitempty`, so all-domain recalls keep their exact
 schema-2 bytes; downgrading while a scoped recall is in flight is unsupported.
+
+Recall-free observation release (`observation_release.go`, task je4 after
+zq3-r14..r17). Every guest VFS read takes a DOMAIN READ observation lease with
+expected_target = its installed view and releases it when the request ends.
+Before je4 the last holder's release started a scoped recall (four ACKs,
+each after a fresh guest observation, 4-7 s in the lab), so guest.py's
+credentials admission spent 10-12 s per mount root and raced those recalls
+(R17-1).
+
+*Why a release recalled.* RELEASED asserts that the lease owns no PTE,
+mapping or dirty byte, and the runtime Facts certified that only through the
+domain fence: a recall completed after the grant, so the observer measured
+STOPPED/REOPENED. That protects (1) the guest's cached view not outliving its
+lease, since a peer's later write no longer recalls the domain once the lease
+is inactive; (2) dirty bytes draining under their original authority; (3) the
+lease's pin on its cut, which keeps peers' cuts and source capacity
+consistent. A release never moves the cut and only unpins one, so (3) never
+needed the recall, and (2) is vacuous for a READ lease without an open
+reservation.
+
+*Why (1) holds without a recall for an observation lease.* A DOMAIN lease
+authorizes no PTE (mappings fault under PAGE leases); the observation
+installs attributes only while in flight under its stamped MM token;
+`hfs_mmap_end` removes the observation and marks its lease revoked under
+`view->lock` before queueing the release; dentries revalidate through RPC;
+`hfs_mmap_pressure` never selects an observation lease (p84); and
+`hfs_lease_release_locked` blocks the session on a RELEASED lease that is
+still published and not revoked. The host already relies on this for every
+non-last holder of a DOMAIN lease (q84). Once the lease is inactive, a peer
+write that moves the cut is caught by the next observation's expected-target
+mismatch (all-domain recall, e84), exactly as after the scoped recall.
+
+*Conditions.* The release is RELEASED at once, without a recall and without
+moving the fence, only when: the lease is active, DOMAIN, READ and this is
+its last holder; every holder acquired with expected_target equal to the
+granted target (`leaseState.Targeted`, omitempty; target:null discovery and
+renewals never qualify, because the `hfs_mmap_bootstrap` loop needs the
+recall to install the current cut when `hfs_view_bind_initial` refuses); no
+renewed sibling of the lineage is active; the domain holds no EXCLUSIVE_DIRTY
+lease and no open reservation; no recall runs (it is PENDING until then); and
+the current cut equals the lease target (if a peer FORGET, final
+DESCRIPTION_RELEASE or pinning LOOKUP moved it, the scoped recall is kept, as
+it installs the moved cut more cheaply than the later all-domain mismatch
+recall); and the domain holds fewer than `lineageBudget`
+(Identities/(2*domains), 16 at the zq3 spec) lease lineages at its current
+fence. A lineage includes the credentials (process UUID) and target, so
+nearly every guest process opens one, and its revision high-water may be
+recycled only after the domain fence moved past it (else a lease ID could be
+reused); without recalls they would pile up past the Identities bound on
+`Revisions` that reopen enforces. At the budget the release keeps its scoped
+recall, so a domain pays one recall per about 16 processes instead of one
+per observation. A recall-free release also needs `Revisions` as a whole below
+half of Identities, and grantLease BLOCKs a new lineage once `Revisions`
+holds Identities (the hard reopen bound; before je4 it was not enforced at
+grant). A capture failure falls back to the recall path. The lease is
+deactivated first and Facts.CheckPhysical still
+certifies the release: the runtime Facts accept a Targeted DOMAIN READ lease
+without a fence advance, with the same lineage and reservation checks
+(`controlledruntime/facts.go` `checkRelease`); a refusal restores the lease.
+PAGE and OBJECT leases, discovery leases and moved-cut observation leases
+keep their recall. The replay
+`TestZQ3CredentialsAdmissionReleasesWithoutRecall` counts 8 recalls for the
+credentials admission before je4 and 0 after it.
+
+*Guest follow-up.* The host trusts the guest's revoke-before-release for
+DOMAIN leases rather than measuring it. A release that carries the
+revocation, or an observer-measured observation count, would let Facts check
+it instead. No guest change is needed for the host change to be safe.
 
 Read-only OPEN (`read_open.go`, task z94 after zq3-r11 R11-1/zq3-r14 R14-1).
 An OPEN with access READ and no create/exclusive/truncate/append flag conflicts
@@ -315,7 +384,8 @@ own preowned control ticket. The lease state counts the extra holders
 each holder reserves one release credit. For a DOMAIN (observation) lease a
 release while another holder remains answers RELEASED without a recall and
 leaves the lease active; only the last holder's release recalls and is
-certified per lease as above. Before q84 the first release recalled the
+certified per lease as above (an observation lease's last holder needs no
+recall since je4, see above). Before q84 the first release recalled the
 domain under the other observation still in flight (guest ESTALE, refused
 admission, as zq3-r9 R9-1). A shared PAGE or OBJECT (cache) lease keeps the
 recall path for every holder, because the guest blocks its session on a

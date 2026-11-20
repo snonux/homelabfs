@@ -216,7 +216,20 @@ recall is tracked as e84. The volume root is exempt: it is never reaped and
 cannot be unlinked, so its lifetime journals no handle pin or release, and the
 root OPEN/close every guest process performs keeps the cut (task z94). Downgrading to a
 controller without scoped recalls while a scoped recall is in flight is
-unsupported. RELEASED
+unsupported. The last holder's release of a guest observation lease starts
+no recall at all (task je4, `internal/viewcontrol/observation_release.go`):
+a DOMAIN READ lease every holder of which acquired it with expected_target
+equal to the granted target, with no active renewed sibling, in a domain with
+no EXCLUSIVE_DIRTY lease and no open reservation, released while no recall
+runs, while the current cut still equals its target and while the domain
+holds fewer than Identities/(2*domains) lease lineages at its fence (their
+revision high-water is recycled only after a recall), is RELEASED at once
+and leaves the fence and the view unchanged. A DOMAIN lease authorizes no
+PTE and the guest revokes the observation's lease before it sends the release
+(patch 0004 `hfs_mmap_end`), so the physical verification needs no fence
+advance for it; its lineage and reservation checks still apply. Discovery
+(target:null) and renewed leases, PAGE and OBJECT leases, and an observation
+lease whose cut moved keep the recall. Otherwise RELEASED
 requires the actual STOPPED/install/DRAINED/final-install/reopen/source closure
 and mandatory exact physical verification; a LIVE readable PTE is not a closed
 lease. That verification covers the released lease's own lineage and
@@ -230,13 +243,14 @@ capacity as a new lease), because the guest acquires and releases a separate
 guest lease object per observation (task q84). For a DOMAIN lease, a release
 while another holder remains answers RELEASED at once, starts no recall and
 certifies nothing physical: the lease stays active for the remaining holders.
-Only the last holder's release recalls and needs the verification above, so
+Only the last holder's release recalls (unless it is an observation lease,
+above) and needs the verification above, so
 one ending observation never moves the view under a same-lineage observation
 still in flight. A shared PAGE or OBJECT lease keeps the recall and
 verification for every holder: the guest keeps a published cache object
 unrevoked until STOP and blocks the session on a RELEASED object it still
 publishes. The guest's mount-time discovery release relies on its DOMAIN
-lease being unshared, so that its release starts a recall. Exact initial PENDING replay remains immutable; QUERY reports the
+lease being unshared and untargeted, so that its release starts a recall. Exact initial PENDING replay remains immutable; QUERY reports the
 current protected terminal outcome.
 
 ## Operation union and protected result union

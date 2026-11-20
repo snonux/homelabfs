@@ -397,27 +397,32 @@ func (c *Controller) expectedMismatch(ctx context.Context, scope guestbridge.Con
 // grantLease shares the active lease of the same lineage with this ticket as
 // one more holder (shareLease, lease_holders.go), or issues the next revision
 // of a new lease on target. Both reserve the new holder's release credit
-// within the identity and control bounds.
+// within the identity and control bounds. acquire grants only when r.Target
+// is nil or equals target, so a non-nil r.Target marks the holder as an
+// observation of a view installed at target (leaseState.Targeted, task je4).
+// A new lineage is BLOCKED once Revisions holds Bounds.Identities lineages
+// (lineageCapacity): reopen refuses a ledger beyond that bound.
 func (c *Controller) grantLease(scope guestbridge.Context, r request, t ticketState, target guestbridge.ViewTarget) (json.RawMessage, error) {
 	lease := guestbridge.ViewLease{Scope: scope, Domain: r.Domain, Access: r.Access, CredentialHash: digest(r.Request.Credentials), Mode: r.Mode, Target: target, Fence: c.fence(scope.Session), Revision: 1}
+	targeted := r.Target != nil
 	for id, existing := range c.state.Leases {
 		if existing.Active && sameLineage(existing.Lease, lease) {
-			return c.shareLease(id, existing, t)
+			return c.shareLease(id, existing, t, targeted)
 		}
 	}
 	if len(c.state.Leases) >= c.config.Authorization.Enrollment.Bounds.Identities || !c.controlCapacity(1) || !c.identityCapacity(1) {
 		return c.reply(t, "BLOCKED", nil, nil, nil)
 	}
 	lineage := lineageID(lease)
-	high := c.state.Revisions[lineage]
-	if high == ^uint64(0) {
+	high, known := c.state.Revisions[lineage]
+	if high == ^uint64(0) || !known && !c.lineageCapacity() {
 		return c.reply(t, "BLOCKED", nil, nil, nil)
 	}
 	lease.Revision = high + 1
 	c.state.Revisions[lineage] = lease.Revision
 	c.state.LineageFences[lineage] = lineageFence{Session: scope.Session, Fence: lease.Fence}
 	lease.ID = objectID(lease)
-	c.state.Leases[lease.ID] = leaseState{Lease: lease, Active: true, ReleaseCredit: true}
+	c.state.Leases[lease.ID] = leaseState{Lease: lease, Active: true, ReleaseCredit: true, Targeted: targeted}
 	return c.reply(t, "GRANTED", &lease, nil, nil)
 }
 
@@ -435,6 +440,8 @@ func (c *Controller) changeLease(ctx context.Context, scope guestbridge.Context,
 // renewLease issues the next revision of an active lease. A recall blocks it
 // for its participants and for EXCLUSIVE_DIRTY leases; a READ lease of a
 // domain outside a scoped recall renews unchanged (same target and fence).
+// The new revision is never Targeted: a renewal carries no expected target,
+// so its release keeps the recall (the guest never renews).
 func (c *Controller) renewLease(r request, t ticketState, old leaseState) (json.RawMessage, error) {
 	if !old.Active || c.recallHoldsLease(old.Lease.Scope.Session, old.Lease.Mode) {
 		return c.reply(t, "BLOCKED", nil, nil, nil)
@@ -455,17 +462,23 @@ func (c *Controller) renewLease(r request, t ticketState, old leaseState) (json.
 
 // releaseLease answers a preowned VIEW_RELEASE. A non-last holder of a
 // shared DOMAIN lease only returns its reference (releaseHolder,
-// lease_holders.go). Every other release is PENDING while any recall runs or
-// while the lineage still needs one, and RELEASED once the lineage is
-// inactive, its reservations closed and the physical closure verified; for a
-// non-last holder of a shared PAGE or OBJECT lease that RELEASED also only
-// returns its reference and its credit.
+// lease_holders.go). Every other release is PENDING while any recall runs.
+// The last holder's release of a clean observation lease is RELEASED at once
+// without a recall when releaseSkipsRecall allows it (task je4,
+// observation_release.go). Any other release is PENDING while the lineage
+// still needs a recall, and RELEASED once the lineage is inactive, its
+// reservations closed and the physical closure verified; for a non-last
+// holder of a shared PAGE or OBJECT lease that RELEASED also only returns its
+// reference and its credit.
 func (c *Controller) releaseLease(ctx context.Context, scope guestbridge.Context, op string, r request, t ticketState, old leaseState) (json.RawMessage, error) {
 	if old.Sharers > 0 && old.Lease.Access.Kind == "DOMAIN" {
 		return c.releaseHolder(scope, r, t, old)
 	}
 	if c.state.Recall != nil {
 		return c.reply(t, "PENDING", nil, nil, nil)
+	}
+	if c.releaseSkipsRecall(ctx, old) {
+		return c.releaseWithoutRecall(ctx, scope, op, r, t, old)
 	}
 	if pending, err := c.releaseNeedsRecall(ctx, r.Lease, recallTrigger{Opcode: op, Domain: scope.Session}); pending || err != nil {
 		if err != nil {
@@ -494,10 +507,11 @@ func (c *Controller) releaseLease(ctx context.Context, scope guestbridge.Context
 // releaseNeedsRecall starts the recall a release of lease still needs and
 // reports whether it did. A clean ACTIVE lease may still own readable PTEs.
 // Its preowned release must start a physical recall; CheckPhysical cannot
-// certify a live mapping as already closed. A clean READ lease of a domain
-// without dirty or exclusive state recalls only that domain
-// (startReleaseRecall); any other lease uses the all-domain recall of dirty
-// pressure. Include active renewed siblings so an old immutable lineage
+// certify a live mapping as already closed. (A guest observation lease owns
+// none; releaseLease answers its release before this, observation_release.go.)
+// A clean READ lease of a domain without dirty or exclusive state recalls
+// only that domain (startReleaseRecall); any other lease uses the all-domain
+// recall of dirty pressure. Include active renewed siblings so an old immutable lineage
 // release cannot wait without progress. An open reservation of the lineage
 // needs the all-domain recall that freezes and drains it. trigger names the
 // release's opcode and domain for the recall history; its Kind is set here.

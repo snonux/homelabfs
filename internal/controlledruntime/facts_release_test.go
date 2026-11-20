@@ -22,18 +22,9 @@ func releaseLedger(t *testing.T) (factsLedger, guestbridge.ViewLease, guestbridg
 	newer.ID, newer.Fence = "newer", 3
 	var l factsLedger
 	l.Fences = map[string]uint64{"a": 3}
-	l.Leases = map[string]struct {
-		Lease  guestbridge.ViewLease
-		Active bool
-	}{}
-	l.Leases[older.ID] = struct {
-		Lease  guestbridge.ViewLease
-		Active bool
-	}{older, false}
-	l.Leases[newer.ID] = struct {
-		Lease  guestbridge.ViewLease
-		Active bool
-	}{newer, true}
+	l.Leases = map[string]factsLease{}
+	l.Leases[older.ID] = factsLease{Lease: older}
+	l.Leases[newer.ID] = factsLease{Lease: newer, Active: true}
 	return l, older, newer
 }
 
@@ -158,4 +149,83 @@ func TestFactsRetireStaysDomainWide(t *testing.T) {
 	if err := l.checkRetire(guestbridge.Context{Session: "a"}); !errors.Is(err, fsapi.WouldBlock) {
 		t.Fatalf("retire beside an open reservation: %v", err)
 	}
+}
+
+// observationLedger is releaseLedger with no recall since the older lease's
+// grant (domain fence 2 = its fence) and the older lease a Targeted DOMAIN
+// READ observation lease, as viewcontrol's recall-free release (task je4)
+// presents it: already inactive.
+func observationLedger(t *testing.T) (factsLedger, guestbridge.ViewLease) {
+	t.Helper()
+	l, older, newer := releaseLedger(t)
+	delete(l.Leases, newer.ID)
+	l.Fences["a"] = older.Fence
+	l.Leases[older.ID] = factsLease{Lease: older, Targeted: true}
+	return l, older
+}
+
+// TestFactsObservationReleaseWithoutRecall: only a Targeted DOMAIN READ lease
+// is certified without a recall since its grant, and still only while its
+// lineage is inactive and holds no open reservation (task je4).
+func TestFactsObservationReleaseWithoutRecall(t *testing.T) {
+	for _, c := range observationCases() {
+		l, older := observationLedger(t)
+		released := c.change(&l, older)
+		raw, err := json.Marshal(map[string]any{"lease": released})
+		require(t, err)
+		if err := l.checkRelease(guestbridge.Context{Session: "a"}, raw); !errors.Is(err, c.want) {
+			t.Errorf("%s: got %v, want %v", c.name, err, c.want)
+		}
+	}
+}
+
+type observationCase struct {
+	name string
+	// change edits the observationLedger and returns the lease to release.
+	change func(*factsLedger, guestbridge.ViewLease) guestbridge.ViewLease
+	want   error
+}
+
+// observationCases: the first is certified; every other lease kind and every
+// per-lease obligation still refuses without a recall since the grant.
+func observationCases() []observationCase {
+	return []observationCase{
+		{"observation lease", func(_ *factsLedger, l guestbridge.ViewLease) guestbridge.ViewLease { return l }, nil},
+		{"untargeted discovery lease", func(l *factsLedger, lease guestbridge.ViewLease) guestbridge.ViewLease {
+			l.Leases[lease.ID] = factsLease{Lease: lease}
+			return lease
+		}, fsapi.WouldBlock},
+		{"PAGE lease", func(l *factsLedger, lease guestbridge.ViewLease) guestbridge.ViewLease {
+			return retarget(l, lease, func(v *guestbridge.ViewLease) { v.Access.Kind = "PAGE" })
+		}, fsapi.WouldBlock},
+		{"OBJECT lease", func(l *factsLedger, lease guestbridge.ViewLease) guestbridge.ViewLease {
+			return retarget(l, lease, func(v *guestbridge.ViewLease) { v.Access.Kind = "OBJECT" })
+		}, fsapi.WouldBlock},
+		{"EXCLUSIVE_DIRTY lease", func(l *factsLedger, lease guestbridge.ViewLease) guestbridge.ViewLease {
+			return retarget(l, lease, func(v *guestbridge.ViewLease) { v.Mode = "EXCLUSIVE_DIRTY" })
+		}, fsapi.WouldBlock},
+		{"lease itself active", func(l *factsLedger, lease guestbridge.ViewLease) guestbridge.ViewLease {
+			l.Leases[lease.ID] = factsLease{Lease: lease, Active: true, Targeted: true}
+			return lease
+		}, fsapi.WouldBlock},
+		{"renewed sibling active", func(l *factsLedger, lease guestbridge.ViewLease) guestbridge.ViewLease {
+			sibling := lease
+			sibling.ID, sibling.Revision = "sibling", 2
+			setLease(l, sibling, true)
+			return lease
+		}, fsapi.WouldBlock},
+		{"own reservation open", func(l *factsLedger, lease guestbridge.ViewLease) guestbridge.ViewLease {
+			addReservation(l, lease.ID, "RESERVED")
+			return lease
+		}, fsapi.WouldBlock},
+	}
+}
+
+// retarget replaces the Targeted ledger lease with a changed copy and returns
+// the copy to release.
+func retarget(l *factsLedger, lease guestbridge.ViewLease, change func(*guestbridge.ViewLease)) guestbridge.ViewLease {
+	delete(l.Leases, lease.ID)
+	change(&lease)
+	l.Leases[lease.ID] = factsLease{Lease: lease, Targeted: true}
+	return lease
 }

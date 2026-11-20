@@ -25,6 +25,14 @@ import (
 // and FORGET) and the claim stayed INDETERMINATE until the 30 s window ended.
 // It must now reach TERMINAL inside the window.
 //
+// Since task je4 the release of a guest observation lease (acquired with
+// expected_target = the installed view) needs no recall, and since p84 the
+// guest's pressure path never releases an observation lease at all: it
+// releases a published cache-page lease, whose release still recalls. The
+// model's lease here is therefore acquired with target:null, the shape whose
+// release keeps the scoped recall, so the CALL is still held behind a
+// recall and QUERY resume is still exercised.
+//
 // The recall moves the view under the GETATTR (fence and revision 2 -> 3),
 // so the actual guest would still answer ESTALE from hfs_attr_install even
 // with a TERMINAL OK claim. That is the guest pressure path's bug (it must
@@ -44,7 +52,7 @@ func TestZQ3R9PressureReleaseParksGetattr(t *testing.T) {
 	child := m.process("lstat child pressure", nil)
 	m.enterView(mount)
 	fence, revision := mount.fence, mount.revision
-	lease, acquired := m.lease(mount, child, mount.target)
+	lease, acquired := m.lease(mount, child, nil) // keeps the recall (je4)
 	if lease == nil {
 		t.Fatal("observation lease refused")
 	}

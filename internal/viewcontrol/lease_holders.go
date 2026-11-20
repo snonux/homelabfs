@@ -51,10 +51,13 @@ import (
 //     the lease's release credit, so the remaining holders' releases are
 //     still funded.
 //
-// The last holder's release of any lease takes the ordinary path. The
-// guest's hfs_mmap_bootstrap discovery release relies on that path starting
-// a recall; at mount time no other same-lineage DOMAIN observation can hold
-// the discovery lease yet, so it is not shared in practice.
+// The last holder's release of any lease takes the ordinary path, except
+// that a guest observation lease (every holder Targeted, DOMAIN READ, current
+// cut) is RELEASED there without a recall (task je4, observation_release.go).
+// The guest's hfs_mmap_bootstrap discovery release relies on its release
+// starting a recall; it acquires with target:null, so its lease is never
+// Targeted, and a discovery holder that shares an observation lease clears
+// Targeted for good (shareLease), so the last holder's release recalls.
 //
 // Each holder owns one reserved release credit, as the protocol requires of a
 // preowned release: ReleaseCredit for one holder plus Sharers more, counted by
@@ -83,12 +86,16 @@ import (
 // sibling is active, as before (the guest never renews).
 
 // shareLease grants the active lease existing (stored under id) to one more
-// acquisition ticket, reserving that holder's release credit.
-func (c *Controller) shareLease(id string, existing leaseState, t ticketState) (json.RawMessage, error) {
+// acquisition ticket, reserving that holder's release credit. targeted says
+// whether this holder named the lease's target as its expected target; one
+// untargeted (discovery) holder clears Targeted for good, so the last
+// holder's release keeps its recall (observation_release.go).
+func (c *Controller) shareLease(id string, existing leaseState, t ticketState, targeted bool) (json.RawMessage, error) {
 	if !c.controlCapacity(1) || !c.identityCapacity(1) {
 		return c.reply(t, "BLOCKED", nil, nil, nil)
 	}
 	existing.Sharers++
+	existing.Targeted = existing.Targeted && targeted
 	c.state.Leases[id] = existing
 	lease := existing.Lease
 	return c.reply(t, "GRANTED", &lease, nil, nil)
