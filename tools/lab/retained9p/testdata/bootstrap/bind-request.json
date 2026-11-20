@@ -1,18 +1,18 @@
 {
-  "Provision": "/home/paul/tmp/claude/rp2771154025/enrolled/provision.json",
-  "OperatorKey": "/home/paul/tmp/claude/rp2771154025/operator.pem",
-  "GroupID": "fdac2cf7-2e23-4509-9937-39d8539da69c",
-  "Controller": "c5fee4f8-fe7e-43c0-bee4-45cdbbec959b",
+  "Provision": "/home/paul/tmp/claude/rp3070336529/enrolled/provision.json",
+  "OperatorKey": "/home/paul/tmp/claude/rp3070336529/operator.pem",
+  "GroupID": "7c788c5b-6ec7-4c84-a07e-160a71257725",
+  "Controller": "b92f1fe0-d36f-4640-afcf-a3dc87265224",
   "Keys": [
     {
-      "Session": "c709d3fa-7b8f-49e9-8a39-0f81efb5dc93",
-      "Host": "/home/paul/tmp/claude/rp2771154025/bundle/keys/host-0.key",
-      "Guest": "/home/paul/tmp/claude/rp2771154025/bundle/keys/guest-0.key"
+      "Session": "a493f727-7b59-4af8-810e-26f7975739ff",
+      "Host": "/home/paul/tmp/claude/rp3070336529/bundle/keys/host-0.key",
+      "Guest": "/home/paul/tmp/claude/rp3070336529/bundle/keys/guest-0.key"
     },
     {
-      "Session": "15ea6dd0-a11c-45c1-a8ec-1a031930a571",
-      "Host": "/home/paul/tmp/claude/rp2771154025/bundle/keys/host-1.key",
-      "Guest": "/home/paul/tmp/claude/rp2771154025/bundle/keys/guest-1.key"
+      "Session": "ca4f8484-c8ee-4ec2-80bb-19a7e08caa31",
+      "Host": "/home/paul/tmp/claude/rp3070336529/bundle/keys/host-1.key",
+      "Guest": "/home/paul/tmp/claude/rp3070336529/bundle/keys/guest-1.key"
     }
   ]
 }

@@ -68,6 +68,12 @@ import (
 // released. (Two PAGE releases PENDING at once reserve one credit too many
 // until they are answered, which only errs towards BLOCKED.)
 //
+// This is not an over-count (reviewed in task qe4, zq3-r16 R16-1): a lease
+// shared by N observations costs N control charges because each holder sends
+// its own VIEW_RELEASE on its own control ticket. A RELEASED holder ticket
+// keeps its charge only until a VIEW_RETIRE floor passes it
+// (retirementBlocked); the zq3 spec sizes ControlTickets for that.
+//
 // A renewal (renewLease) leaves the old revision's record as it was apart
 // from Active = false: its ReleaseCredit, ReleaseTicket and Sharers stay
 // there and keep funding every holder of the old revision, including the

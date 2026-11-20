@@ -1,46 +1,46 @@
 {
-  "Proposal": "/home/paul/tmp/claude/rp2771154025/proposal.json",
-  "OperatorKey": "/home/paul/tmp/claude/rp2771154025/operator.pem",
-  "BootID": "10dd2573-5743-42ac-9a50-aef3cdf7af86",
-  "ProviderNonce": "e384d525-de96-4003-81dc-ef65de950bed",
+  "Proposal": "/home/paul/tmp/claude/rp3070336529/proposal.json",
+  "OperatorKey": "/home/paul/tmp/claude/rp3070336529/operator.pem",
+  "BootID": "63f30271-f819-490a-ba2c-b270b7d9ca73",
+  "ProviderNonce": "615a8428-8107-4e2d-819d-f63689926e6b",
   "Keys": [
     {
-      "Session": "c709d3fa-7b8f-49e9-8a39-0f81efb5dc93",
-      "Host": "/home/paul/tmp/claude/rp2771154025/bundle/keys/host-0.key",
-      "Guest": "/home/paul/tmp/claude/rp2771154025/bundle/keys/guest-0.key"
+      "Session": "a493f727-7b59-4af8-810e-26f7975739ff",
+      "Host": "/home/paul/tmp/claude/rp3070336529/bundle/keys/host-0.key",
+      "Guest": "/home/paul/tmp/claude/rp3070336529/bundle/keys/guest-0.key"
     },
     {
-      "Session": "15ea6dd0-a11c-45c1-a8ec-1a031930a571",
-      "Host": "/home/paul/tmp/claude/rp2771154025/bundle/keys/host-1.key",
-      "Guest": "/home/paul/tmp/claude/rp2771154025/bundle/keys/guest-1.key"
+      "Session": "ca4f8484-c8ee-4ec2-80bb-19a7e08caa31",
+      "Host": "/home/paul/tmp/claude/rp3070336529/bundle/keys/host-1.key",
+      "Guest": "/home/paul/tmp/claude/rp3070336529/bundle/keys/guest-1.key"
     }
   ],
   "Mounts": [
     {
       "domain_index": 0,
-      "session": "c709d3fa-7b8f-49e9-8a39-0f81efb5dc93",
+      "session": "a493f727-7b59-4af8-810e-26f7975739ff",
       "device_tag": "hfs0",
       "device_name": "virtio2",
-      "user_namespace": "de4356af-3b6f-48de-b66d-3cb97fd0b02c",
+      "user_namespace": "e7ea4565-59db-4a27-84b8-4d065befef0c",
       "idmap_hash": "063ee717c983abc52c8cdeaeaee32c62ecb93c8fc88e6f887313db9a6c471f98",
-      "realm": "654f928e-98f1-47eb-85fc-e00ddcb832ca",
+      "realm": "5d0f1823-b955-445c-8a63-e42d9b2f0590",
       "subject": "686f6d656c616266732d636f6e74726f6c6c65642d7a71332d7231",
-      "anchor": "be96f72a-1697-48bc-8c31-6380bcf2ff04",
-      "nonce": "e45a6b5b-16b9-4ff6-a9d6-cac9db77a60a",
-      "view_control_nonce": "53ee5f6e-7e62-41a2-bf51-02f97f47d7bb"
+      "anchor": "1a94c1c0-5ab3-4f4b-9adb-336b60725ef5",
+      "nonce": "4610ea77-658a-46da-acfd-6899d15b7f4f",
+      "view_control_nonce": "acf4a944-08c2-4955-adff-385e4f740414"
     },
     {
       "domain_index": 1,
-      "session": "15ea6dd0-a11c-45c1-a8ec-1a031930a571",
+      "session": "ca4f8484-c8ee-4ec2-80bb-19a7e08caa31",
       "device_tag": "hfs1",
       "device_name": "virtio3",
-      "user_namespace": "de4356af-3b6f-48de-b66d-3cb97fd0b02c",
+      "user_namespace": "e7ea4565-59db-4a27-84b8-4d065befef0c",
       "idmap_hash": "063ee717c983abc52c8cdeaeaee32c62ecb93c8fc88e6f887313db9a6c471f98",
-      "realm": "654f928e-98f1-47eb-85fc-e00ddcb832ca",
+      "realm": "5d0f1823-b955-445c-8a63-e42d9b2f0590",
       "subject": "686f6d656c616266732d636f6e74726f6c6c65642d7a71332d7231",
-      "anchor": "af4587fd-dc7e-4aa7-8331-163a8d86b69b",
-      "nonce": "3a93384e-807a-48d9-bd4b-d49e43e87b1a",
-      "view_control_nonce": "074f0a72-2419-4871-b196-9cc984d186bb"
+      "anchor": "e166048f-db40-4bb0-9b1b-a17a3ddf91f6",
+      "nonce": "9f93d229-8d46-4f24-a6ec-04f7e5debc88",
+      "view_control_nonce": "4015b11b-b7f0-45de-9c83-dab1be464ddd"
     }
   ],
   "Budget": {
