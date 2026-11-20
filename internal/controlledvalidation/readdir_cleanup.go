@@ -123,7 +123,7 @@ func (p *Provider) releaseReaddirGrants(tx *bolt.Tx, scope guestbridge.Context, 
 		owner.ReaddirClosure.Closed = true
 	} else {
 		parent.ReaddirClosure.Closed = true
-		if err = put(p.bucket(tx, "claims"), claimKey(parent.Claim), parent); err != nil {
+		if err = p.putClaim(tx, claimKey(parent.Claim), parent); err != nil {
 			return err
 		}
 	}
@@ -137,7 +137,7 @@ func (p *Provider) releaseReaddirGrants(tx *bolt.Tx, scope guestbridge.Context, 
 	if len(encoded) > len(ownerRaw)+readdirSnapshotSequenceBytes || uint64(len(encoded)+len(updated)+4096-readdirSnapshotSequenceBytes) > owner.RetainedCredit {
 		return fsapi.NoSpace
 	}
-	if err = put(p.bucket(tx, "claims"), ownerKey, owner); err != nil {
+	if err = p.putClaim(tx, ownerKey, owner); err != nil {
 		return err
 	}
 	if err = p.protectSnapshot(tx, owner); err != nil {

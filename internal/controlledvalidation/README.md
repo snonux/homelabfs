@@ -86,7 +86,12 @@ Old descriptions are excluded when the serving generation changes. Snapshot
 versions prevent older recovery from rolling back newer grant/lifetime state.
 A durable unresolved staged PENDING operation blocks new Reserve in that session;
 new allocated numbers stay unadmitted and retained for authenticated no-effect
-resolution. Original queries and recovery remain available. The bridge serializes
+resolution. Original queries and recovery remain available. That exclusion and
+`CheckViewReady` read only the claims an in-memory pending index names
+(`pending_index.go`, task te4): it is seeded by one full ledger scan at open and
+kept by every claims write (eager add, commit-hook removal), so it always
+includes every committed PENDING entry with a plan; the exact predicate is still
+applied to the stored bytes. The bridge serializes
 private reserve/planning with recovery and reloads the latest protected terminal
 snapshot before preparing another, including after a failed live installation.
 Pre-plan RESERVED entries without effects remain eligible for no-effect resolution.

@@ -126,7 +126,7 @@ func (p *Provider) protectRefusal(tx *bolt.Tx, b guestbridge.Binding, plan fsser
 	if err = p.protectSnapshot(tx, e); err != nil {
 		return err
 	}
-	return put(p.bucket(tx, "claims"), claimKey(e.Claim), e)
+	return p.putClaim(tx, claimKey(e.Claim), e)
 }
 
 // neverPrepared is the exact RESERVED/UNPREPARED original with no protected

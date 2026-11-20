@@ -71,7 +71,7 @@ func (p *Provider) allocate(claim guestbridge.Claim, original *guestbridge.Bindi
 			}
 			e.RetainedCredit, e.SourceCredit = p.config.ClaimCreditBytes, p.config.SourceCreditBytes
 		}
-		return put(b, k, e)
+		return p.putClaim(tx, k, e)
 	})
 }
 
@@ -179,7 +179,7 @@ func (p *Provider) Reserve(ctx context.Context, b guestbridge.Binding) (guestbri
 		e.Binding = b
 		e.Status = "RESERVED"
 		e.PreparationStage = "UNPREPARED"
-		if err = put(p.bucket(tx, "claims"), claimKey(e.Claim), e); err != nil {
+		if err = p.putClaim(tx, claimKey(e.Claim), e); err != nil {
 			return err
 		}
 		out = state(e)
@@ -245,7 +245,7 @@ func (p *Provider) Cancel(ctx context.Context, scope guestbridge.Context, claim 
 			}
 			e.Gap = true
 			e.Status = "DECLINED"
-			return put(p.bucket(tx, "claims"), claimKey(claim), e)
+			return p.putClaim(tx, claimKey(claim), e)
 		}
 		return nil
 	})
@@ -299,7 +299,7 @@ func (p *Provider) ResolveGap(ctx context.Context, scope guestbridge.Context, cl
 			return err
 		}
 		proof = hash(raw)
-		return put(p.bucket(tx, "claims"), claimKey(claim), e)
+		return p.putClaim(tx, claimKey(claim), e)
 	})
 	return proof, err
 }

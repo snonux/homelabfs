@@ -314,7 +314,7 @@ func (p *Provider) applyAndRecord(owned context.Context, cut *fsservice.Controll
 				return err
 			}
 		}
-		return put(p.bucket(tx, "claims"), claimKey(e.Claim), e)
+		return p.putClaim(tx, claimKey(e.Claim), e)
 	})
 }
 

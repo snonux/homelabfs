@@ -77,6 +77,8 @@ type Provider struct {
 	admissionMu sync.RWMutex
 	admission   Admission
 	closed      atomic.Bool
+	// pending names the claims that may block admission (pending_index.go).
+	pending pendingIndex
 }
 
 // entry retains original bytes and exact recovery plan before any service effect.
@@ -259,6 +261,10 @@ func New(ctx context.Context, c Config) (*Provider, error) {
 		return nil
 	})
 	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err = p.scanPendingIndex(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}

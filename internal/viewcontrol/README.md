@@ -50,8 +50,9 @@ because its fence cannot be split per domain. Per-lineage
 revision high-water survives compaction, preventing content-id reuse even when a
 released unchanged cut is reacquired in the same physical fence.
 
-Every source capture flushes/rereads actual complete original journal frames on
-the serialized service worker, and captures complete canonical catalog plus exact
+Every source capture flushes/reverifies actual complete original journal frames on
+the serialized service worker (incrementally since te4: verified bytes are
+rehashed, only appended frames decoded, any change reruns full verification), and captures complete canonical catalog plus exact
 payload bytes. It binds stream epoch/incarnation/tail frame hash, actual installed
 storage position, signed enrollment/policy/source identity and serving generation.
 A journal tail may contain structural/lifetime records: it is never inferred to

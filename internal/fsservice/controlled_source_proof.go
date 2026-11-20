@@ -3,7 +3,6 @@ package fsservice
 import (
 	"context"
 	"crypto/sha256"
-	"io"
 
 	"github.com/snonux/homelabfs/internal/fsapi"
 	"github.com/snonux/homelabfs/internal/journal/record"
@@ -21,11 +20,18 @@ type sourceSeal struct {
 	state, prefix [32]byte
 }
 
-// VerifyControlledSource checks a live sealed capture and rereads its complete
+// VerifyControlledSource checks a live sealed capture against its complete
 // original journal prefix through the service's admitted backing OS root. It
 // never enters the service worker or touches a FUSE path, and can therefore run
 // from a controller Facts callback. The caller retains the source slot and
 // immutable State throughout this call. Reopened/unsealed sources refuse.
+//
+// The journal is reverified on every call (refreshJournal: verified bytes are
+// rehashed, appended frames decoded; any change reruns the complete
+// verification), and then every frame through the source's position must
+// carry the journal incarnation and hash to its reference, and the
+// cumulative digest of those frames must equal the sealed prefix digest:
+// the same conditions the former per-call full reread checked frame by frame.
 func (s *Service) VerifyControlledSource(ctx context.Context, profile ValidationProfile, source ControlledViewSource) error {
 	seal := source.seal
 	if seal == nil || seal.owner != s || !s.sourceServing() || source.Journal != seal.journal || source.Through != seal.through || source.Visibility != seal.visibility || source.Applied != seal.applied || sha256.Sum256(source.State) != seal.state {
@@ -39,31 +45,18 @@ func (s *Service) VerifyControlledSource(ctx context.Context, profile Validation
 	if err != nil || info != seal.journal || s.config.Workspace.ID != seal.visibility {
 		return fsapi.Stale
 	}
-	reader, err := s.reader(ctx)
+	view, err := s.refreshJournal(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = reader.Close() }()
-	prefix := sha256.New()
-	for {
-		entry, err := reader.Next(ctx)
-		if err != nil {
-			if err == io.EOF {
-				return fsapi.Stale
-			}
-			return err
-		}
-		if entry.Record.Header.Incarnation != info.Incarnation || record.Hash(sha256.Sum256(entry.Bytes)) != entry.Reference.SHA256 {
-			return fsapi.Stale
-		}
-		_, _ = prefix.Write(entry.Bytes)
-		if entry.Reference.Position == source.Through.Position {
-			if entry.Reference != seal.through || [32]byte(prefix.Sum(nil)) != seal.prefix || !s.sourceServing() {
-				return fsapi.Stale
-			}
-			return nil
-		}
+	i := view.find(source.Through.Position)
+	if i < 0 || i >= view.goodHash || i >= view.uniform || view.frames[0].incarnation != info.Incarnation {
+		return fsapi.Stale
 	}
+	if view.frames[i].ref != seal.through || view.frames[i].prefix != seal.prefix || !s.sourceServing() {
+		return fsapi.Stale
+	}
+	return nil
 }
 
 func (s *Service) flushSource(ctx context.Context) error {
