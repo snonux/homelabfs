@@ -300,7 +300,12 @@ func TestEtcdWatchDisconnect(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.daemon.store.(*etcdBackend).timeout = 100 * time.Millisecond
-	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	// The watch context only bounds the test; etcd's client would retry the
+	// lost server forever, so any bound distinguishes reporting from hiding.
+	// It used to be 3 s and also covered server.stop(), which can take that
+	// long on a loaded host: the context then ended the watch, which closes
+	// its channel without an event, read here as a zero Event (sd4).
+	ctx, cancel := context.WithTimeout(t.Context(), watchLossBound)
 	defer cancel()
 	events, err := f.daemon.WatchPolicy(ctx, snapshot.Revision)
 	if err != nil {
@@ -308,7 +313,10 @@ func TestEtcdWatchDisconnect(t *testing.T) {
 	}
 	server.stop()
 	select {
-	case event := <-events:
+	case event, ok := <-events:
+		if !ok {
+			t.Fatalf("watch closed without reporting server loss (context: %v)", ctx.Err())
+		}
 		if !errors.Is(event.Err, ErrUnavailable) {
 			t.Fatalf("disconnected watch: %+v", event)
 		}
@@ -316,3 +324,8 @@ func TestEtcdWatchDisconnect(t *testing.T) {
 		t.Fatal("watch hid server loss behind silent reconnect retries")
 	}
 }
+
+// watchLossBound is how long TestEtcdWatchDisconnect waits for the watch to
+// report server loss; the backend's probe reports it within about two
+// 100 ms ticks once the server is gone.
+const watchLossBound = 30 * time.Second

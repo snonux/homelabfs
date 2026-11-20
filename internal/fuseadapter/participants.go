@@ -45,6 +45,10 @@ type participant struct {
 // installed by exec before the helper runs. Stdin should keep it idle until
 // Start returns, allowing the parent to establish all fixture admission first.
 // No daemon status/readiness protocol is required of an ordinary helper.
+// Prefer *os.File stdio (os.Pipe), which exec hands to the child directly. A
+// non-file Stdout/Stderr is copied by exec goroutines that Wait (and so exit
+// retirement) awaits; exec's WaitDelay cannot interrupt a copier blocked in
+// the caller's Writer, so such a Writer must be drained continuously (sd4).
 type ParticipantSpec struct {
 	Executable     string
 	Args, Env      []string

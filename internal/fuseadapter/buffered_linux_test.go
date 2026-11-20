@@ -7,8 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"syscall"
 	"testing"
@@ -31,9 +33,13 @@ type fixtureReply struct{ Data, Error string }
 type fixtureChild struct {
 	process *Participant
 	input   *io.PipeWriter
-	output  *json.Decoder
-	reader  *io.PipeReader
+	replies <-chan fixtureReply
 }
+
+// fixtureReplyBacklog bounds replies a test sent for but never received (a
+// send whose outcome is observed elsewhere). It is far above any test's need;
+// the drainer only blocks once it is full.
+const fixtureReplyBacklog = 64
 
 func startFixtureChild(t *testing.T, p *Participants, credential *syscall.Credential) *fixtureChild {
 	return startFixtureExecutable(t, p, credential, "")
@@ -58,16 +64,89 @@ func startFixtureExecutable(t *testing.T, p *Participants, credential *syscall.C
 		_ = out.Close()
 		t.Fatal(err)
 	}
-	result := &fixtureChild{process: child, input: write, output: json.NewDecoder(read), reader: read}
+	replies := make(chan fixtureReply, fixtureReplyBacklog)
+	go drainFixtureOutput(read, replies)
+	result := &fixtureChild{process: child, input: write, replies: replies}
 	t.Cleanup(func() {
-		_ = write.Close()
+		// Signal before closing stdin: closing first let the helper read EOF
+		// and exit normally instead (sd4). stopFixtureChild bounds the wait.
+		// A Wait error (signal exit, failed notification) is the test's own
+		// subject; cleanup reports only a Wait that did not return.
 		_ = child.Signal(syscall.SIGTERM)
-		_ = child.Wait()
+		if err := stopFixtureChild(result); errors.Is(err, errFixtureStopTimeout) {
+			t.Error(err)
+		}
 		_ = in.Close()
 		_ = out.Close()
 		_ = read.Close()
 	})
 	return result
+}
+
+// drainFixtureOutput is the sole reader of a helper's stdout. It forwards
+// JSON replies and, after EOF or the first non-reply bytes (the go test
+// "PASS" trailer of a helper that returned instead of dying from a signal),
+// discards the rest. exec's stdout copier therefore never blocks on the
+// io.Pipe. Before sd4 nothing read the pipe between receives: a helper that
+// won the race between SIGTERM and stdin EOF printed "PASS" into it, parked
+// exec.Cmd.Wait inside Participant.Wait, and the test hung for 30 minutes.
+func drainFixtureOutput(read *io.PipeReader, replies chan<- fixtureReply) {
+	defer close(replies)
+	decoder := json.NewDecoder(read)
+	for {
+		var reply fixtureReply
+		if err := decoder.Decode(&reply); err != nil {
+			_, _ = io.Copy(io.Discard, io.MultiReader(decoder.Buffered(), read))
+			return
+		}
+		replies <- reply
+	}
+}
+
+// errFixtureStopTimeout marks a Participant.Wait that outlived answerBound.
+var errFixtureStopTimeout = errors.New("Participant.Wait did not return")
+
+// stopFixtureChild closes the helper's stdin, so exec's stdin copier ends,
+// and waits for Participant.Wait within answerBound. A timeout is reported as
+// an error naming the helper instead of parking the test until go test's
+// global timeout; the abandoned Wait goroutine is left for the dump.
+func stopFixtureChild(c *fixtureChild) error {
+	_ = c.input.Close()
+	done := make(chan error, 1)
+	go func() { done <- c.process.Wait() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(answerBound):
+		return fmt.Errorf("helper pid %d: %w within %v", c.process.PID(), errFixtureStopTimeout, answerBound)
+	}
+}
+
+// signalFixtureExit sends sig and returns only once the helper's exit is
+// observable (waitid WNOWAIT, so the child stays unreaped for Wait). Only then
+// may stdin close: closing it earlier races the signal against an EOF-driven
+// normal exit, which turns an expected signal exit into exit status 0.
+func signalFixtureExit(t *testing.T, c *fixtureChild, sig syscall.Signal) {
+	t.Helper()
+	if err := c.process.Signal(sig); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- waitParticipantExit(c.process.PID()) }()
+	select {
+	case err := <-exited:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(answerBound):
+		t.Fatalf("helper pid %d did not exit within %v of signal %v", c.process.PID(), answerBound, sig)
+	}
+}
+
+// signalExit reports whether a Participant.Wait error is a signal death.
+func signalExit(err error) bool {
+	var exit *exec.ExitError
+	return errors.As(err, &exit) && exit.Sys().(syscall.WaitStatus).Signaled()
 }
 
 func (c *fixtureChild) send(t *testing.T, command fixtureCommand) {
@@ -76,21 +155,19 @@ func (c *fixtureChild) send(t *testing.T, command fixtureCommand) {
 		t.Fatal(err)
 	}
 }
+
+// receive returns the next reply within answerBound. A closed reply stream
+// (helper exited or wrote non-JSON) is reported as a reply error.
 func (c *fixtureChild) receive(t *testing.T) fixtureReply {
 	t.Helper()
-	result := make(chan fixtureReply, 1)
-	go func() {
-		var reply fixtureReply
-		if err := c.output.Decode(&reply); err != nil {
-			reply.Error = err.Error()
-		}
-		result <- reply
-	}()
 	select {
-	case reply := <-result:
+	case reply, ok := <-c.replies:
+		if !ok {
+			reply.Error = "helper output ended without a reply"
+		}
 		return reply
-	case <-time.After(5 * time.Second):
-		t.Fatal("bounded participant response timed out")
+	case <-time.After(answerBound):
+		t.Fatalf("participant reply not received within %v", answerBound)
 		return fixtureReply{}
 	}
 }
@@ -351,7 +428,7 @@ func TestLinuxBufferedIntegration(t *testing.T) {
 		if cred.UID != uint32(os.Geteuid()) || cred.PID == 0 {
 			t.Fatal(cred)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(answerBound):
 		t.Fatal("msync did not send a service write")
 	}
 	if err := file.Sync(); err != nil {
@@ -488,22 +565,18 @@ func exerciseProcessLocks(t *testing.T, fd int, child, interrupted *fixtureChild
 	interrupted.send(t, fixtureCommand{Op: "fcntl-wait"})
 	select {
 	case <-waits:
-	case <-time.After(time.Second):
+	case <-time.After(answerBound):
 		t.Fatal("blocking process lock not admitted")
 	}
-	if err := interrupted.process.Signal(syscall.SIGTERM); err != nil {
-		t.Fatal(err)
-	}
-	// Close the parent pipe so exec's stdin copier cannot keep Wait parked.
-	if err := interrupted.input.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := interrupted.process.Wait(); err == nil {
-		t.Fatal("interrupted helper unexpectedly survived SIGTERM")
+	// Observe the signal exit before closing stdin (no EOF exit race), then
+	// close the parent pipe so exec's stdin copier cannot keep Wait parked.
+	signalFixtureExit(t, interrupted, syscall.SIGTERM)
+	if err := stopFixtureChild(interrupted); !signalExit(err) {
+		t.Fatal("interrupted helper did not die from SIGTERM", err)
 	}
 	select {
 	case <-cancels:
-	case <-time.After(time.Second):
+	case <-time.After(answerBound):
 		t.Fatal("kernel did not cancel interrupted lock")
 	}
 	lock.Type = unix.F_UNLCK
@@ -539,7 +612,7 @@ func exerciseProcessLocks(t *testing.T, fd int, child, interrupted *fixtureChild
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(answerBound):
 		t.Fatal("last mapping release retained flock")
 	}
 	if err := unix.Flock(fd, unix.LOCK_UN); err != nil {

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"math"
 	"os"
-	"os/exec"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -46,7 +45,7 @@ func awaitExitStatus(t *testing.T, done <-chan fuse.Status) fuse.Status {
 	select {
 	case code := <-done:
 		return code
-	case <-time.After(3 * time.Second):
+	case <-time.After(answerBound):
 		t.Fatal("bounded lock completion timed out")
 		return fuse.EIO
 	}
@@ -81,57 +80,107 @@ func TestParticipantExitDropsHeldPOSIXRangeBeforeReacquisition(t *testing.T) {
 // deliberately held back: this checks the ownership boundary independently of
 // native FLUSH/RELEASE scheduling, including requests authenticated before exit.
 func TestParticipantExitRetiresLocksBeforeKernelDescriptionDrain(t *testing.T) {
+	s := newExitLockScene(t)
+	pending := s.holdPendingRequests(t)
+	// The exit must be the signal's: observe it before stdin closes (sd4).
+	signalFixtureExit(t, s.departing, syscall.SIGTERM)
+	err := stopFixtureChild(s.departing)
+	if !signalExit(err) {
+		t.Fatal("expected observed signal exit", err)
+	}
+	if again := s.departing.process.Wait(); again != err || pending.exits.Load() != 1 {
+		t.Fatal("exit notification not exactly once", again, pending.exits.Load())
+	}
+	if code := awaitExitStatus(t, pending.waitDone); code != fuse.EINTR {
+		t.Fatal("exit did not cancel pending lock", code)
+	}
+	pending.release()
+	if code := awaitExitStatus(t, pending.lateDone); code != status(fsapi.Stale) {
+		t.Fatal("preauthenticated request acquired after exit", code)
+	}
+	parent := s.assertRangesRetired(t)
+	s.assertDescriptionOutlivesExit(t, parent)
+	if err := s.a.Err(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// exitLockScene is a departing and a surviving helper, each with its own
+// open description and POSIX range on one file; the departing helper also
+// holds a whole-file flock through its description.
+type exitLockScene struct {
+	a                   *Adapter
+	departing, survivor *fixtureChild
+	created             fuse.CreateOut
+	dead, live          fuse.LkIn
+}
+
+func newExitLockScene(t *testing.T) *exitLockScene {
+	t.Helper()
 	p, a := exitFixture(t)
-	departing := startFixtureChild(t, p, nil)
-	survivor := startFixtureChild(t, p, nil)
-	departing.call(t, fixtureCommand{Op: "ready"})
-	survivor.call(t, fixtureCommand{Op: "ready"})
-	var created fuse.CreateOut
-	if code := a.Create(nil, &fuse.CreateIn{InHeader: participantHeader(1, os.Getpid()), Flags: syscall.O_RDWR | syscall.O_CREAT, Mode: 0666}, "exit-locks", &created); code != fuse.OK {
+	s := &exitLockScene{a: a, departing: startFixtureChild(t, p, nil), survivor: startFixtureChild(t, p, nil)}
+	s.departing.call(t, fixtureCommand{Op: "ready"})
+	s.survivor.call(t, fixtureCommand{Op: "ready"})
+	if code := a.Create(nil, &fuse.CreateIn{InHeader: participantHeader(1, os.Getpid()), Flags: syscall.O_RDWR | syscall.O_CREAT, Mode: 0666}, "exit-locks", &s.created); code != fuse.OK {
 		t.Fatal(code)
 	}
-	open := func(pid int) (fuse.InHeader, uint64) {
-		h := participantHeader(created.NodeId, pid)
-		var out fuse.OpenOut
-		if code := a.Open(nil, &fuse.OpenIn{InHeader: h, Flags: syscall.O_RDWR}, &out); code != fuse.OK {
-			t.Fatal(code)
-		}
-		return h, out.Fh
-	}
-	deadHeader, deadHandle := open(departing.process.PID())
-	liveHeader, liveHandle := open(survivor.process.PID())
-	dead := fuse.LkIn{InHeader: deadHeader, Fh: deadHandle, Owner: uint64(deadHeader.Pid), Lk: fuse.FileLock{Start: 0, End: 9, Typ: syscall.F_WRLCK}}
-	live := fuse.LkIn{InHeader: liveHeader, Fh: liveHandle, Owner: uint64(liveHeader.Pid), Lk: fuse.FileLock{Start: 20, End: 29, Typ: syscall.F_WRLCK}}
-	for _, lock := range []*fuse.LkIn{&dead, &live} {
-		if code := a.SetLk(nil, lock); code != fuse.OK {
-			t.Fatal(code)
-		}
-	}
-	forged := dead
+	s.dead = s.openRange(t, s.departing.process.PID(), 0, 9)
+	s.live = s.openRange(t, s.survivor.process.PID(), 20, 29)
+	forged := s.dead
 	forged.Uid++
 	forged.Lk.Typ = syscall.F_UNLCK
 	if code := a.SetLk(nil, &forged); code != fuse.EACCES {
 		t.Fatal("wrong credentials could clear another owner's range", code)
 	}
-	flock := dead
+	flock := s.dead
 	flock.LkFlags = fuse.FUSE_LK_FLOCK
 	flock.Lk.End = math.MaxInt64
 	if code := a.SetLk(nil, &flock); code != fuse.OK {
 		t.Fatal(code)
 	}
-	service := a.service
+	return s
+}
+
+// openRange opens a description for pid and write-locks [start, end] on it.
+func (s *exitLockScene) openRange(t *testing.T, pid int, start, end uint64) fuse.LkIn {
+	t.Helper()
+	h := participantHeader(s.created.NodeId, pid)
+	var out fuse.OpenOut
+	if code := s.a.Open(nil, &fuse.OpenIn{InHeader: h, Flags: syscall.O_RDWR}, &out); code != fuse.OK {
+		t.Fatal(code)
+	}
+	lock := fuse.LkIn{InHeader: h, Fh: out.Fh, Owner: uint64(h.Pid), Lk: fuse.FileLock{Start: start, End: end, Typ: syscall.F_WRLCK}}
+	if code := s.a.SetLk(nil, &lock); code != fuse.OK {
+		t.Fatal(code)
+	}
+	return lock
+}
+
+// exitPending is the departing helper's two in-flight requests: a SetLkw
+// queued behind the survivor's range and a SetLk held after authentication.
+type exitPending struct {
+	waitDone, lateDone chan fuse.Status
+	release            func()
+	exits              *atomic.Int32
+}
+
+// holdPendingRequests admits the departing helper's waiter and parks a
+// preauthenticated SetLk in front of the service until release.
+func (s *exitLockScene) holdPendingRequests(t *testing.T) exitPending {
+	t.Helper()
+	service := s.a.service
 	waitAdmitted, lateAdmitted, releaseLate := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	var releaseOnce sync.Once
-	release := func() { releaseOnce.Do(func() { close(releaseLate) }) }
-	t.Cleanup(release)
-	var exits atomic.Int32
-	a.service = dispatchFunc(func(ctx context.Context, r *fsapi.Request, c fsapi.Command) error {
+	p := exitPending{waitDone: make(chan fuse.Status, 1), lateDone: make(chan fuse.Status, 1), exits: new(atomic.Int32)}
+	p.release = func() { releaseOnce.Do(func() { close(releaseLate) }) }
+	t.Cleanup(p.release)
+	s.a.service = dispatchFunc(func(ctx context.Context, r *fsapi.Request, c fsapi.Command) error {
 		if c.Operation == fsapi.TryLock && c.Lock.Start == 40 {
 			close(lateAdmitted)
 			<-releaseLate
 		}
 		if c.Operation == fsapi.ProcessExit {
-			exits.Add(1)
+			p.exits.Add(1)
 		}
 		err := service.Dispatch(ctx, r, c)
 		if err == nil && c.Operation == fsapi.WaitLock {
@@ -139,89 +188,83 @@ func TestParticipantExitRetiresLocksBeforeKernelDescriptionDrain(t *testing.T) {
 		}
 		return err
 	})
-	wait := dead
-	wait.Lk = live.Lk
-	waitDone := make(chan fuse.Status, 1)
-	go func() { waitDone <- a.SetLkw(nil, &wait) }()
-	select {
-	case <-waitAdmitted:
-	case <-time.After(3 * time.Second):
-		t.Fatal("wait not admitted")
-	}
-	late := dead
+	wait := s.dead
+	wait.Lk = s.live.Lk
+	go func() { p.waitDone <- s.a.SetLkw(nil, &wait) }()
+	awaitSignal(t, waitAdmitted, "wait not admitted")
+	late := s.dead
 	late.Lk.Start, late.Lk.End = 40, 49
-	lateDone := make(chan fuse.Status, 1)
-	go func() { lateDone <- a.SetLk(nil, &late) }()
+	go func() { p.lateDone <- s.a.SetLk(nil, &late) }()
+	awaitSignal(t, lateAdmitted, "late request not authenticated")
+	return p
+}
+
+// awaitSignal waits answerBound for ch to close and fails with what.
+func awaitSignal(t *testing.T, ch <-chan struct{}, what string) {
+	t.Helper()
 	select {
-	case <-lateAdmitted:
-	case <-time.After(3 * time.Second):
-		t.Fatal("late request not authenticated")
+	case <-ch:
+	case <-time.After(answerBound):
+		t.Fatalf("%s within %v", what, answerBound)
 	}
-	if err := departing.process.Signal(syscall.SIGTERM); err != nil {
-		t.Fatal(err)
-	}
-	_ = departing.input.Close()
-	err := departing.process.Wait()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || !exit.Sys().(syscall.WaitStatus).Signaled() {
-		t.Fatal("expected observed signal exit", err)
-	}
-	if again := departing.process.Wait(); again != err || exits.Load() != 1 {
-		t.Fatal("exit notification not exactly once", again, exits.Load())
-	}
-	if code := awaitExitStatus(t, waitDone); code != fuse.EINTR {
-		t.Fatal("exit did not cancel pending lock", code)
-	}
-	release()
-	if code := awaitExitStatus(t, lateDone); code != status(fsapi.Stale) {
-		t.Fatal("preauthenticated request acquired after exit", code)
-	}
-	if code := a.SetLk(nil, &dead); code != fuse.EACCES {
+}
+
+// assertRangesRetired checks the exit removed the dead process's range and
+// pending waiter but left the survivor's range. It returns the parent's lock
+// over the dead range, acquired on the parent's own description.
+func (s *exitLockScene) assertRangesRetired(t *testing.T) fuse.LkIn {
+	t.Helper()
+	if code := s.a.SetLk(nil, &s.dead); code != fuse.EACCES {
 		t.Fatal("exited identity admitted", code)
 	}
-	parent := dead
-	parent.InHeader = participantHeader(created.NodeId, os.Getpid())
-	parent.Owner, parent.Fh = uint64(os.Getpid()), created.Fh
-	if code := a.SetLk(nil, &parent); code != fuse.OK {
+	parent := s.dead
+	parent.InHeader = participantHeader(s.created.NodeId, os.Getpid())
+	parent.Owner, parent.Fh = uint64(os.Getpid()), s.created.Fh
+	if code := s.a.SetLk(nil, &parent); code != fuse.OK {
 		t.Fatal("dead process range survived positive Wait", code)
 	}
 	query := parent
-	query.Lk = live.Lk
+	query.Lk = s.live.Lk
 	var out fuse.LkOut
-	if code := a.GetLk(nil, &query, &out); code != fuse.OK || out.Lk.Pid != liveHeader.Pid {
+	if code := s.a.GetLk(nil, &query, &out); code != fuse.OK || out.Lk.Pid != s.live.Pid {
 		t.Fatal("surviving process lock erased", out, code)
 	}
-	liveUnlock := live
+	liveUnlock := s.live
 	liveUnlock.Lk.Typ = syscall.F_UNLCK
-	if code := a.SetLk(nil, &liveUnlock); code != fuse.OK {
+	if code := s.a.SetLk(nil, &liveUnlock); code != fuse.OK {
 		t.Fatal(code)
 	}
-	if code := a.SetLk(nil, &query); code != fuse.OK {
+	if code := s.a.SetLk(nil, &query); code != fuse.OK {
 		t.Fatal("dead pending waiter granted after survivor unlock", code)
 	}
+	return parent
+}
+
+// assertDescriptionOutlivesExit checks the dead helper's description, flock
+// and issued grant survive exit until the kernel's final RELEASE, and that
+// the late RELEASE does not erase another process's lock.
+func (s *exitLockScene) assertDescriptionOutlivesExit(t *testing.T, parent fuse.LkIn) {
+	t.Helper()
 	parentFlock := parent
 	parentFlock.LkFlags, parentFlock.Lk.End = fuse.FUSE_LK_FLOCK, math.MaxInt64
-	if code := a.SetLk(nil, &parentFlock); code != fuse.EAGAIN {
+	if code := s.a.SetLk(nil, &parentFlock); code != fuse.EAGAIN {
 		t.Fatal("exit closed retained description/flock", code)
 	}
-	d, ok := a.description(deadHandle, created.NodeId, false)
+	d, ok := s.a.description(s.dead.Fh, s.created.NodeId, false)
 	if !ok {
 		t.Fatal("exit discarded description")
 	}
-	if _, code := a.callAuthorized(context.Background(), d.grant, fsapi.Command{Operation: fsapi.Write, Object: d.object, Handle: d.handle, Data: []byte("x")}); code != fuse.OK {
+	if _, code := s.a.callAuthorized(context.Background(), d.grant, fsapi.Command{Operation: fsapi.Write, Object: d.object, Handle: d.handle, Data: []byte("x")}); code != fuse.OK {
 		t.Fatal("exit revoked issued write grant", code)
 	}
-	a.Release(nil, &fuse.ReleaseIn{InHeader: fuse.InHeader{NodeId: created.NodeId}, Fh: deadHandle})
-	if code := a.SetLk(nil, &parentFlock); code != fuse.OK {
+	s.a.Release(nil, &fuse.ReleaseIn{InHeader: fuse.InHeader{NodeId: s.created.NodeId}, Fh: s.dead.Fh})
+	if code := s.a.SetLk(nil, &parentFlock); code != fuse.OK {
 		t.Fatal("final description drain retained flock", code)
 	}
-	contender := live
+	contender := s.live
 	contender.Lk = parent.Lk
-	if code := a.SetLk(nil, &contender); code != fuse.EAGAIN {
+	if code := s.a.SetLk(nil, &contender); code != fuse.EAGAIN {
 		t.Fatal("late release erased another process lock", code)
-	}
-	if err := a.Err(); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -276,7 +319,7 @@ func TestParticipantExitBlockedNotificationAlreadyRevokedAndReaped(t *testing.T)
 	go func() { done <- child.process.Wait() }()
 	select {
 	case <-entered:
-	case <-time.After(3 * time.Second):
+	case <-time.After(answerBound):
 		t.Fatal("notification not reached")
 	}
 	if child.process.command.ProcessState == nil {
@@ -297,7 +340,7 @@ func TestParticipantExitBlockedNotificationAlreadyRevokedAndReaped(t *testing.T)
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(answerBound):
 		t.Fatal("Wait did not complete after retirement")
 	}
 }
