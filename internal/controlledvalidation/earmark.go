@@ -171,7 +171,7 @@ func (p *Provider) BindFrozen(ctx context.Context, scope guestbridge.Context, re
 		if err := p.bucket(tx, earmarkCreditBucket).Delete(claimKey(call.Claim)); err != nil {
 			return err
 		}
-		return put(p.bucket(tx, "claims"), claimKey(call.Claim), entry{Version: ledgerVersion, Claim: call.Claim, Status: "ALLOCATED", RetainedCredit: p.config.ClaimCreditBytes, SourceCredit: p.config.SourceCreditBytes})
+		return p.putClaim(tx, claimKey(call.Claim), entry{Version: ledgerVersion, Claim: call.Claim, Status: "ALLOCATED", RetainedCredit: p.config.ClaimCreditBytes, SourceCredit: p.config.SourceCreditBytes})
 	})
 }
 
@@ -279,16 +279,14 @@ func (p *Provider) UsesService(service *fsservice.Service) bool { return p.confi
 // CheckViewReady excludes new observations/mutations while an original effected
 // operation still lacks its protected result/session installation. Recovery of
 // that exact original binding remains available through IsRecoveryBinding.
+// Only pending-index candidates are read (pending_index.go): they cover
+// every PENDING entry with a plan in the latest committed state.
 func (p *Provider) CheckViewReady(ctx context.Context) error {
 	if err := p.Check(ctx, p.config.Authorization.Enrollment.Scope); err != nil {
 		return err
 	}
 	return p.db.View(func(tx *bolt.Tx) error {
-		return p.bucket(tx, "claims").ForEach(func(_, raw []byte) error {
-			var e entry
-			if err := json.Unmarshal(raw, &e); err != nil {
-				return err
-			}
+		return p.forEachPendingCandidate(tx, func(e entry) error {
 			if e.Status == "PENDING" && e.Plan != nil && e.Outcome == nil {
 				return fsapi.WouldBlock
 			}

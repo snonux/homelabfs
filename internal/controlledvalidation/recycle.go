@@ -108,7 +108,7 @@ func (p *Provider) recycleNumber(tx *bolt.Tx, key []byte) error {
 		if err := p.keepReaddirReceipt(tx, key, e); err != nil {
 			return err
 		}
-		if err := p.bucket(tx, "claims").Delete(key); err != nil {
+		if err := p.deleteClaim(tx, key); err != nil {
 			return err
 		}
 	} else if raw := credits.Get(key); raw != nil {
@@ -176,7 +176,7 @@ func (p *Provider) pruneRetiredSnapshot(tx *bolt.Tx, scope guestbridge.Context, 
 	if owner.SnapshotVersion, err = bridge.NextSequence(); err != nil {
 		return err
 	}
-	if err = put(p.bucket(tx, "claims"), ownerKey, owner); err != nil {
+	if err = p.putClaim(tx, ownerKey, owner); err != nil {
 		return err
 	}
 	return p.protectSnapshot(tx, owner)

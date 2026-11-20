@@ -259,8 +259,13 @@ accepts only an empty fresh controller; existing ownership requires C9.
 An actual worker `ControlledCut.ViewSource` capture mints a private live service
 seal over complete catalog/payload state, applied position, original journal
 prefix and visibility. `VerifyControlledSource` verifies the full retained bytes
-and rereads every original prefix frame through the backing OS roots under a
-nonblocking source read cut. Writers/capture/flush/close hold the matching write
+and reverifies every original prefix frame through the backing OS roots under a
+nonblocking source read cut. Since te4 the service keeps a verified journal
+index (`fsservice/journal_index.go`, `segment.Cursor`): each call rehashes the
+raw bytes of already verified segments and decodes only appended frames; any
+rewrite, truncation, reordering or bytes after a verified SEAL rerun the
+complete verification. The index keeps 64 B per frame up to 65536 frames;
+above that it is dropped and every call streams the journal as before. Writers/capture/flush/close hold the matching write
 cut. It never queues another service request or walks FUSE paths. This is trusted
 live-capture provenance, not independent historical replay. Serialized/reopened
 sources lose the seal. [C9](restart.md) can recapture and reseal exact current

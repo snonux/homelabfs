@@ -5,8 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
-	"errors"
-	"io"
 
 	"github.com/snonux/homelabfs/internal/storage"
 
@@ -26,7 +24,8 @@ type ControlledViewSource struct {
 }
 
 // ViewSource captures complete metadata and payload bytes on the service worker.
-// The original stream is flushed and reverified, including complete frame bytes.
+// The original stream is flushed and reverified, including complete frame bytes
+// (incrementally since te4, see journal_index.go).
 // It never returns invented position-zero evidence. maxBytes bounds payloads and
 // the serialized snapshot. Applied names the actual installed storage prefix;
 // Through names the flushed stream tail, which may include non-state structural
@@ -50,65 +49,16 @@ func (c *ControlledCut) ViewSource(ctx context.Context, maxBytes int64) (Control
 	if err = s.writer.Flush(ctx); err != nil {
 		return ControlledViewSource{}, s.block(err)
 	}
-	image, err := s.applied.Store.Export(ctx)
+	state, applied, err := s.captureState(ctx, maxBytes)
 	if err != nil {
 		return ControlledViewSource{}, err
 	}
-	catalog, err := storage.EncodeImage(image, s.config.Storage.Limits)
+	through, prefix, err := s.journalTail(ctx, info)
 	if err != nil {
 		return ControlledViewSource{}, err
 	}
-	total := int64(8 + len(catalog))
-	for _, p := range image.Payloads {
-		if p.Size < 0 || total > maxBytes-8 || p.Size > maxBytes-total-8 {
-			return ControlledViewSource{}, fsapi.NoSpace
-		}
-		total += 8 + p.Size
-	}
-	if total > maxBytes {
-		return ControlledViewSource{}, fsapi.NoSpace
-	}
-	snapshot, err := s.applied.Store.Capture(ctx, maxBytes)
-	if err != nil {
-		return ControlledViewSource{}, err
-	}
-	var buffer bytes.Buffer
-	buffer.Grow(int(total))
-	_ = binary.Write(&buffer, binary.BigEndian, uint64(len(catalog)))
-	_, _ = buffer.Write(catalog)
-	for _, data := range snapshot.Data {
-		_ = binary.Write(&buffer, binary.BigEndian, uint64(len(data)))
-		_, _ = buffer.Write(data)
-	}
-	state := buffer.Bytes()
-	reader, err := s.reader(ctx)
-	if err != nil {
-		return ControlledViewSource{}, err
-	}
-	defer func() { _ = reader.Close() }()
-	prefix := sha256.New()
-	var through record.FrameRef
-	var incarnation fsapi.UUID
-	for {
-		frame, e := reader.Next(ctx)
-		if errors.Is(e, io.EOF) {
-			break
-		}
-		if e != nil {
-			return ControlledViewSource{}, e
-		}
-		if record.Hash(sha256.Sum256(frame.Bytes)) != frame.Reference.SHA256 {
-			return ControlledViewSource{}, fsapi.IO
-		}
-		_, _ = prefix.Write(frame.Bytes)
-		through = frame.Reference
-		incarnation = frame.Record.Header.Incarnation
-	}
-	if incarnation != info.Incarnation || through.Position.Sequence == 0 || through.Position.Volume != info.Stream.Volume || through.Position.Generation != info.Stream.Generation || through.Position.Configuration != info.Stream.Configuration || through.Position.Epoch != info.Stream.Epoch {
-		return ControlledViewSource{}, fsapi.Unavailable
-	}
-	seal := &sourceSeal{owner: s, journal: info, through: through, visibility: s.config.Workspace.ID, applied: image.Position, state: sha256.Sum256(state), prefix: [32]byte(prefix.Sum(nil))}
-	return ControlledViewSource{seal: seal, Journal: info, Through: through, State: state, Visibility: s.config.Workspace.ID, Applied: image.Position}, nil
+	seal := &sourceSeal{owner: s, journal: info, through: through, visibility: s.config.Workspace.ID, applied: applied, state: sha256.Sum256(state), prefix: prefix}
+	return ControlledViewSource{seal: seal, Journal: info, Through: through, State: state, Visibility: s.config.Workspace.ID, Applied: applied}, nil
 }
 
 // ControlledViewMetadataBytes returns the immutable admitted catalog bound used
@@ -120,30 +70,78 @@ func (s *Service) ControlledViewMetadataBytes() int64 {
 	return s.config.Storage.Limits.FileBytes
 }
 
-// VerifyViewReference rereads the actual complete retained source, checking the
-// protected full frame identity. It performs no hash-only source substitution.
+// captureState serializes the applied catalog and every payload as the
+// source State (length-prefixed catalog, then each payload), refusing with
+// NoSpace before allocation when they exceed maxBytes. It returns the
+// applied storage position the bytes describe.
+func (s *Service) captureState(ctx context.Context, maxBytes int64) ([]byte, fsapi.Position, error) {
+	image, err := s.applied.Store.Export(ctx)
+	if err != nil {
+		return nil, fsapi.Position{}, err
+	}
+	catalog, err := storage.EncodeImage(image, s.config.Storage.Limits)
+	if err != nil {
+		return nil, fsapi.Position{}, err
+	}
+	total := int64(8 + len(catalog))
+	for _, p := range image.Payloads {
+		if p.Size < 0 || total > maxBytes-8 || p.Size > maxBytes-total-8 {
+			return nil, fsapi.Position{}, fsapi.NoSpace
+		}
+		total += 8 + p.Size
+	}
+	if total > maxBytes {
+		return nil, fsapi.Position{}, fsapi.NoSpace
+	}
+	snapshot, err := s.applied.Store.Capture(ctx, maxBytes)
+	if err != nil {
+		return nil, fsapi.Position{}, err
+	}
+	var buffer bytes.Buffer
+	buffer.Grow(int(total))
+	_ = binary.Write(&buffer, binary.BigEndian, uint64(len(catalog)))
+	_, _ = buffer.Write(catalog)
+	for _, data := range snapshot.Data {
+		_ = binary.Write(&buffer, binary.BigEndian, uint64(len(data)))
+		_, _ = buffer.Write(data)
+	}
+	return buffer.Bytes(), image.Position, nil
+}
+
+// journalTail verifies the flushed journal (journalFrame) and returns its
+// last frame and the cumulative digest of every frame. Every frame must hash
+// to its reference (else IO); the tail must carry the journal incarnation and
+// lie in the exact stream position, never position zero (else Unavailable).
+func (s *Service) journalTail(ctx context.Context, info ControlledJournal) (record.FrameRef, [32]byte, error) {
+	last, err := s.journalFrame(ctx, nil)
+	if err != nil {
+		return record.FrameRef{}, [32]byte{}, err
+	}
+	if last.live && !last.clean {
+		return record.FrameRef{}, [32]byte{}, fsapi.IO
+	}
+	through := last.ref
+	if !last.live || last.incarnation != info.Incarnation || through.Position.Sequence == 0 || through.Position.Volume != info.Stream.Volume || through.Position.Generation != info.Stream.Generation || through.Position.Configuration != info.Stream.Configuration || through.Position.Epoch != info.Stream.Epoch {
+		return record.FrameRef{}, [32]byte{}, fsapi.Unavailable
+	}
+	return through, last.prefix, nil
+}
+
+// VerifyViewReference reverifies the actual complete retained source
+// (journalFrame: verified bytes rehashed, appended frames decoded, any
+// change reruns the complete verification) and checks the protected full
+// frame identity at ref's position. It performs no hash-only source
+// substitution.
 func (c *ControlledCut) VerifyViewReference(ctx context.Context, ref record.FrameRef) error {
 	if !c.active || c.service.State() != Serving {
 		return fsapi.Unavailable
 	}
-	reader, err := c.service.reader(ctx)
+	f, err := c.service.journalFrame(ctx, &ref.Position)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = reader.Close() }()
-	for {
-		entry, err := reader.Next(ctx)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return fsapi.Stale
-			}
-			return err
-		}
-		if entry.Reference.Position == ref.Position {
-			if entry.Record.Header.Incarnation != c.service.config.Authority.OwnerIncarnation || entry.Reference != ref || record.Hash(sha256.Sum256(entry.Bytes)) != ref.SHA256 {
-				return fsapi.Stale
-			}
-			return nil
-		}
+	if !f.live || f.incarnation != c.service.config.Authority.OwnerIncarnation || f.ref != ref || !f.hashOK {
+		return fsapi.Stale
 	}
+	return nil
 }

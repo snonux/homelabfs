@@ -119,7 +119,7 @@ func keepTombstone(t *testing.T, h *allocationHarness, from []byte, token string
 			return err
 		}
 		owner.BridgeState = snapshot
-		if err = put(h.f.provider.bucket(tx, "claims"), ownerKey, owner); err != nil {
+		if err = h.f.provider.putClaim(tx, ownerKey, owner); err != nil {
 			return err
 		}
 		return bridge.Put([]byte(scope.Session), snapshot)

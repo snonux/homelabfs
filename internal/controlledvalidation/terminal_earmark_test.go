@@ -55,10 +55,10 @@ func TestTerminalConsumedEarmarkCut(t *testing.T) {
 					return err
 				}
 				if name == "missing-claim" {
-					if err := f.provider.bucket(tx, "claims").Delete(claimKey(c)); err != nil {
+					if err := f.provider.deleteClaim(tx, claimKey(c)); err != nil {
 						return err
 					}
-				} else if err := put(f.provider.bucket(tx, "claims"), claimKey(c), completed); err != nil {
+				} else if err := f.provider.putClaim(tx, claimKey(c), completed); err != nil {
 					return err
 				}
 				return put(f.provider.bucket(tx, "earmarks"), claimKey(c), e)

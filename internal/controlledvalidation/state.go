@@ -34,7 +34,7 @@ func (p *Provider) Finalize(ctx context.Context, b guestbridge.Binding, result, 
 		}
 		e.Result = bytes.Clone(result)
 		e.Status = "TERMINAL"
-		if err = put(p.bucket(tx, "claims"), claimKey(e.Claim), e); err != nil {
+		if err = p.putClaim(tx, claimKey(e.Claim), e); err != nil {
 			return err
 		}
 		e.BridgeState = bytes.Clone(snapshot)
@@ -44,7 +44,7 @@ func (p *Provider) Finalize(ctx context.Context, b guestbridge.Binding, result, 
 				return err
 			}
 		}
-		if err = put(p.bucket(tx, "claims"), claimKey(e.Claim), e); err != nil {
+		if err = p.putClaim(tx, claimKey(e.Claim), e); err != nil {
 			return err
 		}
 		return p.protectSnapshot(tx, e)

@@ -77,7 +77,7 @@ func (p *Provider) update(b guestbridge.Binding, change func(*entry) error) erro
 		if err = change(&e); err != nil {
 			return err
 		}
-		return put(p.bucket(tx, "claims"), claimKey(e.Claim), e)
+		return p.putClaim(tx, claimKey(e.Claim), e)
 	})
 }
 
@@ -274,13 +274,12 @@ func (p *Provider) reserveUUID(tx *bolt.Tx, namespace string) (fsapi.UUID, error
 }
 
 // checkPendingStage is durable session admission exclusion, independent of
-// Check so original claim queries and recovery remain available.
+// Check so original claim queries and recovery remain available. It reads
+// only the pending-index candidates (pending_index.go), which cover every
+// PENDING entry with a plan in the latest committed state, and applies the full predicate to
+// their stored bytes in tx.
 func (p *Provider) checkPendingStage(tx *bolt.Tx, scope guestbridge.Context, except fsapi.UUID) error {
-	return p.bucket(tx, "claims").ForEach(func(_, raw []byte) error {
-		var e entry
-		if err := json.Unmarshal(raw, &e); err != nil {
-			return err
-		}
+	return p.forEachPendingCandidate(tx, func(e entry) error {
 		if e.Binding.Context == scope && e.Binding.Operation != except && e.Status == "PENDING" && e.Plan != nil && len(e.BridgeState) > 0 {
 			return fsapi.WouldBlock
 		}

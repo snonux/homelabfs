@@ -159,7 +159,10 @@ type handle struct {
 // foreign-home coordination and explicit transactions remain a separate service.
 // It must not be copied. Close drains accepted commands without canceling them.
 type Service struct {
-	sourceCut         sync.RWMutex
+	sourceCut sync.RWMutex
+	// journalIndex caches the verified original journal for controlled
+	// source capture/verification (journal_index.go, task te4).
+	journalIndex      journalIndex
 	activePermit      ControlledPermit
 	viewAdmission     ControlledAdmission
 	controlledEffects map[fsapi.UUID][32]byte
