@@ -275,8 +275,8 @@ func (p *Provider) reserveUUID(tx *bolt.Tx, namespace string) (fsapi.UUID, error
 
 // checkPendingStage is durable session admission exclusion, independent of
 // Check so original claim queries and recovery remain available. It reads
-// only the pending-index candidates (pending_index.go), which include every
-// committed PENDING entry with a plan, and applies the full predicate to
+// only the pending-index candidates (pending_index.go), which cover every
+// PENDING entry with a plan in the latest committed state, and applies the full predicate to
 // their stored bytes in tx.
 func (p *Provider) checkPendingStage(tx *bolt.Tx, scope guestbridge.Context, except fsapi.UUID) error {
 	return p.forEachPendingCandidate(tx, func(e entry) error {

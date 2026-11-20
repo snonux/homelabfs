@@ -279,8 +279,8 @@ func (p *Provider) UsesService(service *fsservice.Service) bool { return p.confi
 // CheckViewReady excludes new observations/mutations while an original effected
 // operation still lacks its protected result/session installation. Recovery of
 // that exact original binding remains available through IsRecoveryBinding.
-// Only pending-index candidates are read (pending_index.go): they include
-// every committed PENDING entry with a plan.
+// Only pending-index candidates are read (pending_index.go): they cover
+// every PENDING entry with a plan in the latest committed state.
 func (p *Provider) CheckViewReady(ctx context.Context) error {
 	if err := p.Check(ctx, p.config.Authorization.Enrollment.Scope); err != nil {
 		return err

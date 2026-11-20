@@ -21,7 +21,7 @@ import (
 // Integrity is not weakened by remembering the verified prefix: every Refresh
 // first proves that the already verified bytes are unchanged, by rediscovering
 // the directory (same segment names and sizes, only the last segment may grow
-// or be renamed by its SEAL publication) and rehashing the raw bytes of every
+// or be renamed by its SEAL publication, and only while it is unsealed) and rehashing the raw bytes of every
 // verified segment against the SHA-256 recorded when they were decoded. Equal
 // bytes under the same stream and predecessor make every structural check
 // (sequence, OPEN/SEAL, digest, stream role, capacity) give the same result,
@@ -103,8 +103,12 @@ func (c *Cursor) rebuild(ctx context.Context, reset func(), visit func(Entry) er
 }
 
 // prefixIntact proves the verified bytes are still exactly on disk. Only the
-// last verified segment may have grown, or been renamed from its open name to
-// the closed name its SEAL publishes.
+// last verified segment, and only while it is still unsealed, may have grown
+// or been renamed from its open name to the closed name its SEAL publishes.
+// Every other verified segment, a sealed last one included, must keep its
+// exact name and size: bytes appended after a verified SEAL would otherwise
+// never be decoded (scan resumes after a sealed segment), whereas Recover
+// refuses them ("bytes after SEAL"), so they force the complete rebuild.
 func (c *Cursor) prefixIntact(ctx context.Context, names []segmentName) bool {
 	if len(names) < len(c.verified) {
 		return false
@@ -112,8 +116,9 @@ func (c *Cursor) prefixIntact(ctx context.Context, names []segmentName) bool {
 	last := len(c.verified) - 1
 	for i, v := range c.verified {
 		n := names[i]
-		renamed := i == last && v.name.open && !n.open && n.first == v.name.first
-		if n.base != v.name.base && !renamed || n.size < v.size || i < last && n.size != v.size {
+		growable := i == last && c.summary.Seal == nil
+		renamed := growable && v.name.open && !n.open && n.first == v.name.first
+		if n.base != v.name.base && !renamed || n.size < v.size || !growable && n.size != v.size {
 			return false
 		}
 		if !c.rawMatches(ctx, n.base, v) {

@@ -90,7 +90,7 @@ resolution. Original queries and recovery remain available. That exclusion and
 `CheckViewReady` read only the claims an in-memory pending index names
 (`pending_index.go`, task te4): it is seeded by one full ledger scan at open and
 kept by every claims write (eager add, commit-hook removal), so it always
-includes every committed PENDING entry with a plan; the exact predicate is still
+covers every PENDING entry with a plan in the latest committed state; the exact predicate is still
 applied to the stored bytes. The bridge serializes
 private reserve/planning with recovery and reloads the latest protected terminal
 snapshot before preparing another, including after a failed live installation.

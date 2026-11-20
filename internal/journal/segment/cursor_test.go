@@ -180,3 +180,46 @@ func TestCursorShorterOpenSegmentRestarts(t *testing.T) {
 		t.Fatal("cursor kept a removed frame")
 	}
 }
+
+// TestCursorRefusesBytesAfterVerifiedSeal appends a frame's worth of bytes
+// to a segment the cursor already verified up to and including its SEAL.
+// Recover refuses that ("bytes after SEAL"); Refresh must refuse too rather
+// than skip the sealed segment, and must recover once the bytes are gone.
+func TestCursorRefusesBytesAfterVerifiedSeal(t *testing.T) {
+	ctx := context.Background()
+	s := testStream(1)
+	sim := simulator(t, vfs.Config{}, s)
+	w := mustWriter(t, sim, s, testOptions(s))
+	mustAppend(t, w, s)
+	if err := w.Seal(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	c, log := NewCursor(sim, s, RecoveryOptions{}), &cursorLog{}
+	if err := log.refresh(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Recover(ctx, sim, s, RecoveryOptions{})
+	if err != nil || len(r.Segments) != 1 || r.Segments[0].Seal == nil {
+		t.Fatalf("fixture needs one sealed segment as the last one: %v", err)
+	}
+	name := r.Segments[0].Name
+	original := fileBytes(t, sim, name)
+	grown := append(bytes.Clone(original), log.entries[1].Bytes...)
+	replaceFile(t, sim, name, grown)
+	if _, err := Recover(ctx, sim, s, RecoveryOptions{}); err == nil {
+		t.Fatal("fixture: Recover accepted bytes after SEAL")
+	}
+	for range 2 {
+		if err := log.refresh(ctx, c); err == nil {
+			t.Fatal("cursor accepted bytes after a verified SEAL")
+		}
+	}
+	replaceFile(t, sim, name, original)
+	if err := log.refresh(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	requireSameAsReader(t, sim, s, log.entries)
+}

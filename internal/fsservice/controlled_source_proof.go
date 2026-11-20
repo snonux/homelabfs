@@ -26,7 +26,7 @@ type sourceSeal struct {
 // from a controller Facts callback. The caller retains the source slot and
 // immutable State throughout this call. Reopened/unsealed sources refuse.
 //
-// The journal is reverified on every call (refreshJournal: verified bytes are
+// The journal is reverified on every call (journalFrame: verified bytes are
 // rehashed, appended frames decoded; any change reruns the complete
 // verification), and then every frame through the source's position must
 // carry the journal incarnation and hash to its reference, and the
@@ -45,15 +45,14 @@ func (s *Service) VerifyControlledSource(ctx context.Context, profile Validation
 	if err != nil || info != seal.journal || s.config.Workspace.ID != seal.visibility {
 		return fsapi.Stale
 	}
-	view, err := s.refreshJournal(ctx)
+	f, err := s.journalFrame(ctx, &source.Through.Position)
 	if err != nil {
 		return err
 	}
-	i := view.find(source.Through.Position)
-	if i < 0 || i >= view.goodHash || i >= view.uniform || view.frames[0].incarnation != info.Incarnation {
+	if !f.live || !f.clean || !f.uniform || f.first != info.Incarnation {
 		return fsapi.Stale
 	}
-	if view.frames[i].ref != seal.through || view.frames[i].prefix != seal.prefix || !s.sourceServing() {
+	if f.ref != seal.through || f.prefix != seal.prefix || !s.sourceServing() {
 		return fsapi.Stale
 	}
 	return nil

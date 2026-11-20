@@ -108,31 +108,27 @@ func (s *Service) captureState(ctx context.Context, maxBytes int64) ([]byte, fsa
 	return buffer.Bytes(), image.Position, nil
 }
 
-// journalTail verifies the flushed journal (refreshJournal) and returns its
+// journalTail verifies the flushed journal (journalFrame) and returns its
 // last frame and the cumulative digest of every frame. Every frame must hash
 // to its reference (else IO); the tail must carry the journal incarnation and
 // lie in the exact stream position, never position zero (else Unavailable).
 func (s *Service) journalTail(ctx context.Context, info ControlledJournal) (record.FrameRef, [32]byte, error) {
-	view, err := s.refreshJournal(ctx)
+	last, err := s.journalFrame(ctx, nil)
 	if err != nil {
 		return record.FrameRef{}, [32]byte{}, err
 	}
-	if view.goodHash != len(view.frames) {
+	if last.live && !last.clean {
 		return record.FrameRef{}, [32]byte{}, fsapi.IO
 	}
-	if len(view.frames) == 0 {
-		return record.FrameRef{}, [32]byte{}, fsapi.Unavailable
-	}
-	last := view.frames[len(view.frames)-1]
 	through := last.ref
-	if last.incarnation != info.Incarnation || through.Position.Sequence == 0 || through.Position.Volume != info.Stream.Volume || through.Position.Generation != info.Stream.Generation || through.Position.Configuration != info.Stream.Configuration || through.Position.Epoch != info.Stream.Epoch {
+	if !last.live || last.incarnation != info.Incarnation || through.Position.Sequence == 0 || through.Position.Volume != info.Stream.Volume || through.Position.Generation != info.Stream.Generation || through.Position.Configuration != info.Stream.Configuration || through.Position.Epoch != info.Stream.Epoch {
 		return record.FrameRef{}, [32]byte{}, fsapi.Unavailable
 	}
 	return through, last.prefix, nil
 }
 
 // VerifyViewReference reverifies the actual complete retained source
-// (refreshJournal: verified bytes rehashed, appended frames decoded, any
+// (journalFrame: verified bytes rehashed, appended frames decoded, any
 // change reruns the complete verification) and checks the protected full
 // frame identity at ref's position. It performs no hash-only source
 // substitution.
@@ -140,15 +136,11 @@ func (c *ControlledCut) VerifyViewReference(ctx context.Context, ref record.Fram
 	if !c.active || c.service.State() != Serving {
 		return fsapi.Unavailable
 	}
-	view, err := c.service.refreshJournal(ctx)
+	f, err := c.service.journalFrame(ctx, &ref.Position)
 	if err != nil {
 		return err
 	}
-	i := view.find(ref.Position)
-	if i < 0 {
-		return fsapi.Stale
-	}
-	if f := view.frames[i]; f.incarnation != c.service.config.Authority.OwnerIncarnation || f.ref != ref || !f.hashOK {
+	if !f.live || f.incarnation != c.service.config.Authority.OwnerIncarnation || f.ref != ref || !f.hashOK {
 		return fsapi.Stale
 	}
 	return nil

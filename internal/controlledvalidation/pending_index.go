@@ -97,7 +97,12 @@ func (p *Provider) scanPendingIndex() error {
 }
 
 // forEachPendingCandidate calls fn with each candidate entry as stored in
-// tx, in key order. Keys absent from tx are skipped.
+// tx, in key order. Keys absent from tx are skipped. The candidates cover
+// every PENDING-with-plan entry of the latest committed state; a read
+// transaction on an older snapshot may therefore miss an entry that was
+// PENDING in its snapshot but has since settled (its removal hook already
+// ran). That is harmless: the caller's verdict then matches the newer
+// committed state, exactly as if it had started after that commit.
 func (p *Provider) forEachPendingCandidate(tx *bolt.Tx, fn func(entry) error) error {
 	p.pending.mu.Lock()
 	keys := make([]string, 0, len(p.pending.candidates))
