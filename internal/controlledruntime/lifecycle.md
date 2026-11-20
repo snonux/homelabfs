@@ -104,7 +104,12 @@ does; nothing is retried) and captures, from the current actual owners:
   decoders ignore it) the view controller's bounded in-memory recall history,
   reported even when the ledger read fails: `capacity` (64), `total` recalls
   started since this controller opened, and the newest records, oldest first,
-  that fit 32 KiB encoded (`omitted` counts the older ring records left out).
+  whose complete `recalls` encoding fits 32 KiB (`omitted` counts the older
+  ring records left out). The 32 KiB bound only caps the history's share of
+  the reply: should the other sections still overflow, an oversized OBSERVE
+  reply is refused and RESTART reports `EFFECT_UNREPORTABLE` as documented
+  below (moot right after RESTART, whose reopened controller starts with an
+  empty history).
   Each record has the recall `id`, trigger `kind` (`ACQUIRE_CONFLICT`,
   `EXPECTED_TARGET`, `RELEASE`, `RELEASE_RESERVATION`, `CALL_CONFLICT`,
   `AUTHORITY_REDUCTION`, `NATIVE_CONFLICT`), the requesting `opcode` and

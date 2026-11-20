@@ -202,10 +202,19 @@ func TestRecallHistoryRingBound(t *testing.T) {
 		t.Fatalf("newest record %+v", newest)
 	}
 	snap := h.snapshot()
-	raw, err := json.Marshal(snap.Recalls)
+	raw, err := json.Marshal(snap) // the complete evidence, wrapper included
 	must(t, err)
 	if snap.Omitted == 0 || len(raw) > RecallEvidenceBytes || len(snap.Recalls)+snap.Omitted != RecallHistoryLimit || snap.Recalls[len(snap.Recalls)-1].ID != newest.ID {
 		t.Fatalf("snapshot %d records (%d B), %d omitted", len(snap.Recalls), len(raw), snap.Omitted)
+	}
+	// Exact: one more (older) record, with its omitted count, no longer fits.
+	all := h.copyAll()
+	more := all
+	more.Omitted, more.Recalls = snap.Omitted-1, all.Recalls[snap.Omitted-1:]
+	raw, err = json.Marshal(more)
+	must(t, err)
+	if len(raw) <= RecallEvidenceBytes {
+		t.Fatalf("one more record still fits: %d B", len(raw))
 	}
 	snap.Recalls[len(snap.Recalls)-1].Acks[0].Sequence = 99
 	if newest.Acks[0].Sequence == 99 {

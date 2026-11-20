@@ -35,9 +35,13 @@ const (
 	// RecallAckLimit bounds the ACK rows of one record; further accepted ACKs
 	// are only counted in AcksDropped. 5 ACK phases x 3 domains need 15.
 	RecallAckLimit = 32
-	// RecallEvidenceBytes bounds the encoded records one OBSERVE carries, so
-	// the history can never push a lifecycle reply or the RESTART outcome
-	// (124 KiB) past its bound.
+	// RecallEvidenceBytes bounds the complete encoded RecallHistory one
+	// OBSERVE carries (wrapper fields and separators included). It bounds
+	// only the history's share of a lifecycle reply (128 KiB) or RESTART
+	// outcome (124 KiB); if the other sections still overflow those, the
+	// documented fallbacks apply: an oversized OBSERVE reply is refused and
+	// RESTART reports EFFECT_UNREPORTABLE. After a RESTART the reopened
+	// controller's history is empty anyway.
 	RecallEvidenceBytes = 32 << 10
 	// recallPhaseCount is the number of recall phases (RECALL, DRAIN,
 	// INSTALL_DRAIN, WAIT_DRAINED, INSTALL_FINAL, REOPEN).
@@ -95,7 +99,7 @@ const (
 
 // RecallRecord is one recall's history. Scope is "ALL" for the all-domain
 // recall or "DOMAIN" for a scoped one; Participants are the sessions that
-// received its events. EndMicros/DurationMicros are set once it ended.
+// received its events. EndMicros is set once it ended.
 type RecallRecord struct {
 	ID           string        `json:"id"`
 	Kind         string        `json:"kind"`
@@ -217,21 +221,12 @@ func (h *recallHistory) acked(id string, row RecallAck, at time.Time) {
 	record.Acks = append(record.Acks, row)
 }
 
-// snapshot copies the newest records whose encoding fits RecallEvidenceBytes,
-// oldest first; it shares no slice with the ring.
-func (h *recallHistory) snapshot() RecallHistory {
-	out := RecallHistory{Capacity: RecallHistoryLimit, Total: h.total, Recalls: []RecallRecord{}}
-	budget, first := RecallEvidenceBytes, len(h.records)
-	for first > 0 {
-		raw, err := json.Marshal(h.records[first-1])
-		if err != nil || len(raw) > budget {
-			break
-		}
-		budget -= len(raw)
-		first--
-	}
-	out.Omitted = first
-	for _, r := range h.records[first:] {
+// copyAll copies every ring record, oldest first, sharing no slice with the
+// ring. It only copies memory, so History can hold the controller mutex for
+// it and encode the copy after releasing it.
+func (h *recallHistory) copyAll() RecallHistory {
+	out := RecallHistory{Capacity: RecallHistoryLimit, Total: h.total, Recalls: make([]RecallRecord, 0, len(h.records))}
+	for _, r := range h.records {
 		row := *r
 		row.Participants = append([]string{}, r.Participants...)
 		row.Phases = append([]RecallPhase{}, r.Phases...)
@@ -241,8 +236,42 @@ func (h *recallHistory) snapshot() RecallHistory {
 	return out
 }
 
-// History returns the bounded recall history (task ce4) under the controller
-// mutex. Unlike LedgerEvidence it is also answered by a closed or poisoned
+// fitEvidence keeps the newest records of h whose complete encoding, wrapper
+// and separators included, fits RecallEvidenceBytes, and counts the others
+// in Omitted. The wrapper is measured with Omitted at its largest possible
+// value, so the actual (never longer) encoding stays within the bound.
+func fitEvidence(h RecallHistory) RecallHistory {
+	n := len(h.Recalls)
+	wrapper := RecallHistory{Capacity: h.Capacity, Total: h.Total, Omitted: n, Recalls: []RecallRecord{}}
+	base, err := json.Marshal(wrapper)
+	if err != nil {
+		h.Omitted, h.Recalls = n, []RecallRecord{}
+		return h
+	}
+	used, first := len(base), n
+	for first > 0 {
+		raw, err := json.Marshal(h.Recalls[first-1])
+		size := len(raw)
+		if first < n {
+			size++ // the comma between this record and the next kept one
+		}
+		if err != nil || used+size > RecallEvidenceBytes {
+			break
+		}
+		used += size
+		first--
+	}
+	h.Omitted, h.Recalls = first, h.Recalls[first:]
+	return h
+}
+
+// snapshot is the OBSERVE view of h: its copy trimmed to the evidence bound.
+func (h *recallHistory) snapshot() RecallHistory { return fitEvidence(h.copyAll()) }
+
+// History returns the bounded recall history (task ce4). It copies the ring
+// under the controller mutex and measures and encodes outside it: guest
+// calls take that mutex with TryLock, so a held mutex is their WouldBlock
+// window. Unlike LedgerEvidence it is also answered by a closed or poisoned
 // controller: the history is inert memory, and a failed controller is exactly
 // when its recent recalls matter. It never touches the protected ledger.
 func (c *Controller) History(ctx context.Context) (RecallHistory, error) {
@@ -250,8 +279,9 @@ func (c *Controller) History(ctx context.Context) (RecallHistory, error) {
 		return RecallHistory{}, err
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.history.snapshot(), nil
+	all := c.history.copyAll()
+	c.mu.Unlock()
+	return fitEvidence(all), nil
 }
 
 // recordAck records the ACK raw of scope accepted at now after a validation

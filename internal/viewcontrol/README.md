@@ -259,9 +259,13 @@ issue took, every accepted ACK (domain, phase, sequence, how many BLOCKED
 replies and how long the same bytes waited for their physical observation,
 and the accepting validation time) and the end. A record keeps at most
 `RecallAckLimit` (32) ACK rows of about 130 bytes, so the ring is at most
-about 320 KiB plus participant lists (about 160 KiB with three domains). `Controller.History` returns the newest records that fit
-`RecallEvidenceBytes` (32 KiB encoded), which the controlled runtime's OBSERVE
-reports as `controller.recalls`.
+about 320 KiB plus participant lists (about 160 KiB with three domains).
+`Controller.History` copies the ring under the controller mutex and, outside
+it, keeps the newest records whose complete encoding fits
+`RecallEvidenceBytes` (32 KiB), which the controlled runtime's OBSERVE reports
+as `controller.recalls`. That bounds only the history's share of a reply; an
+overflow from other sections still takes the documented fallbacks (oversized
+OBSERVE refused, RESTART `EFFECT_UNREPORTABLE`).
 
 Tests use actual temporary OS files, journals, service/planner, controlled claim
 providers and bridge dispatch. Physical/native/enrollment verifiers are explicit

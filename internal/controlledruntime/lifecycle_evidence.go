@@ -244,7 +244,10 @@ func captureProviders(ctx context.Context, providers map[string]*controlledvalid
 
 // captureController reads the controller's protected ledger evidence and,
 // independently, its recall history; a history error (only a cancelled
-// context) just leaves Recalls out.
+// context) just leaves Recalls out. The two reads take the controller mutex
+// separately, so a recall transition between them can make them disagree
+// momentarily (for example Ledger.Recall true while the newest history
+// record is already COMPLETED, or the reverse).
 func captureController(ctx context.Context, c *viewcontrol.Controller) controllerEvidence {
 	if c == nil {
 		return controllerEvidence{Error: "controller owner absent"}
