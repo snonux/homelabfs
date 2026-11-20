@@ -47,7 +47,12 @@ import (
 //     and lock-only reductions proceed. Nothing that may change the cut is
 //     admitted during any recall (LOOKUP and every non-read CALL, native
 //     commands, DIRTY_RESERVE, EXCLUSIVE_DIRTY acquisition), so the scoped
-//     recall's install sequence sees one stable cut.
+//     recall's install sequence sees one stable cut. Since task je4 the
+//     last holder's release of a guest observation lease (a Targeted DOMAIN
+//     READ lease on the current cut) starts no recall at all
+//     (observation_release.go); this scoped recall remains for discovery
+//     and PAGE/OBJECT READ releases and for an observation lease whose cut
+//     moved since its grant.
 //
 // Residual cost, deliberately not narrowed: a peer's cut-changing op (LOOKUP
 // that pins, FORGET, DESCRIPTION_RELEASE) waits for the whole scoped recall,

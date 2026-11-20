@@ -4,6 +4,7 @@ package controlledruntime
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -102,6 +103,20 @@ func (m *recallModel) checkSettle(t *testing.T) {
 func (m *recallModel) checkViews(t *testing.T) {
 	for _, move := range m.viewMoves {
 		t.Errorf("view moved under the probe (guest ESTALE): %s", move)
+	}
+}
+
+// checkProbeRecalls requires that no k64 probe step started a recall: each
+// probe's observation lease is released without one (task je4), and only
+// the mounts' bootstrap discovery releases recall.
+func (m *recallModel) checkProbeRecalls(t *testing.T) {
+	for _, p := range m.phases {
+		if strings.HasPrefix(p.name, "k64 ") && len(p.recalls) != 0 {
+			t.Errorf("%s started %d recalls; an observation release must not recall", p.name, len(p.recalls))
+		}
+	}
+	if len(m.order) != len(m.mounts) {
+		t.Errorf("%d recalls, want one per mount bootstrap (%d)", len(m.order), len(m.mounts))
 	}
 }
 

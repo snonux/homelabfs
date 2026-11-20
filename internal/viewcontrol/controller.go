@@ -215,15 +215,20 @@ type ticketState struct {
 // acquires a separate guest lease object per observation, each with its own
 // preowned release ticket, so a shared lease has 1+Sharers holders, each owns
 // one reserved release credit, and only the last holder's release recalls
-// (lease_holders.go). omitempty keeps an unshared lease's ledger bytes
-// identical to the layout before q84, so schema-2 ledgers open and replay
-// unchanged.
+// (lease_holders.go). Targeted records that every holder's VIEW_ACQUIRE named
+// the granted target as its expected target, i.e. every holder is a guest
+// observation of a view installed at exactly this cut and none is a
+// target:null discovery (task je4, observation_release.go). omitempty keeps
+// an unshared, untargeted lease's ledger bytes identical to the layout
+// before q84, so schema-2 ledgers open and replay unchanged; a ledger written
+// before je4 has no Targeted lease, so every release there keeps its recall.
 type leaseState struct {
 	ReleaseTicket string
 	ReleaseCredit bool
 	Lease         guestbridge.ViewLease
 	Active        bool
-	Sharers       int `json:",omitempty"`
+	Sharers       int  `json:",omitempty"`
+	Targeted      bool `json:",omitempty"`
 }
 type reservationState struct {
 	ClosureReply json.RawMessage

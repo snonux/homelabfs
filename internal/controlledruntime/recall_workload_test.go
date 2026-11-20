@@ -37,7 +37,11 @@ import (
 //     target), then the GETATTR claim runs, hfs_mmap_end queues the cleanup
 //     work on the mount's one cleanup worker (VIEW_RELEASE, then RETIRE and
 //     VIEW_RETIRE, recall_workload_cleanup_test.go), and the child exits
-//     (PROCESS_EXIT). Cleanup and exit are asynchronous.
+//     (PROCESS_EXIT). Cleanup and exit are asynchronous. Since task je4 a
+//     probe's VIEW_RELEASE is RELEASED at once without a recall (the real
+//     Facts certify the observation lease, facts.go checkRelease), so only
+//     the two bootstrap releases recall; before je4 each probe's release
+//     started a scoped recall too.
 //
 // Concurrency. The host serializes every control-lane command (QUERY,
 // VIEW_QUERY, VIEW_WAIT, VIEW_RELEASE, VIEW_ACK) on one control worker, and
@@ -268,8 +272,8 @@ func (rc *modelRecall) kind() string {
 // k64 usable gate with a 2 s guest observer under both schedules (see the
 // top of this file) and requires every claim, view exchange and retirement
 // to end within the guest's window, round 1 to be quiet before the gate's
-// fixed settle ends, no probe's view to move under its GETATTR, and the
-// recall budgets to hold (task f84 angle). It logs recalls (scoped,
+// fixed settle ends, no probe's view to move under its GETATTR, the recall
+// budgets to hold (task f84 angle) and no probe's release to recall (je4). It logs recalls (scoped,
 // all-domain), VIEW_ACKs and slow observations per probe. The schedules use
 // separate fixtures and run in parallel: their time is almost all modelled
 // observation latency and the gate's settle.
@@ -293,14 +297,17 @@ func TestZQ3RecallWorkloadMeetsGuestQueryWindow(t *testing.T) {
 			t.Run("settle", m.checkSettle)
 			t.Run("views", m.checkViews)
 			t.Run("budgets", func(t *testing.T) { m.checkBudgets(t, values) })
+			t.Run("probe recalls", m.checkProbeRecalls)
 		})
 	}
 }
 
 // TestZQ3BackToBackSameMountReleasesG84 runs the gate's two rounds back to
 // back under the foreground-first schedule, so each mount's second lstat
-// takes its lease right after the first one's release recall reopened the
-// view. Every wait must end within the window. Before g84 the first release
+// takes its lease right after the first one's release. Before task je4 that
+// release recalled and the second lease came right after the recall reopened
+// the view; now the release starts no recall, and the test keeps guarding
+// the serialized cleanup worker. Every wait must end within the window. Before g84 the first release
 // was held by Facts.CheckPhysical for the newer lease, whose own release
 // waited behind it on the mount's cleanup worker: the first release got no
 // reply until its window ended and the mount's cleanup failed. Before h84 the

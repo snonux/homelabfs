@@ -21,6 +21,15 @@ type Facts struct {
 	restart    *Restart
 }
 
+// factsLease is one ledger lease revision. Targeted (viewcontrol
+// leaseState, task je4) marks a lease every holder of which acquired it as
+// an observation of a view installed at its target.
+type factsLease struct {
+	Lease    guestbridge.ViewLease
+	Active   bool
+	Targeted bool
+}
+
 // factsLedger decodes the protected viewcontrol ledger (schema
 // viewcontrol.LedgerSchema). Fences holds per-domain fences; read them only
 // through viewcontrol.DomainFence, since a domain without an entry is at 1.
@@ -33,10 +42,7 @@ type factsLedger struct {
 		Domain   guestbridge.Capability
 		Sequence uint64
 	}
-	Leases map[string]struct {
-		Lease  guestbridge.ViewLease
-		Active bool
-	}
+	Leases       map[string]factsLease
 	Reservations map[string]struct {
 		Reservation               guestbridge.DirtyReservation
 		Status, Recall, TicketKey string
@@ -266,6 +272,18 @@ func (l factsLedger) checkRetire(scope guestbridge.Context) error {
 // The guest also independently refuses a RELEASED lease it still publishes
 // (hfs_lease_release_locked).
 //
+// One kind of lease needs no recall since the grant (task je4, viewcontrol
+// observation_release.go): a Targeted DOMAIN READ lease, i.e. a guest
+// observation lease. A DOMAIN lease never authorizes a PTE or mapping (guest
+// mappings fault under PAGE leases), a READ lease owns no dirty byte, and the
+// guest revokes the observation's lease object under view->lock before it
+// queues the release (hfs_mmap_end), so there is no physical state for a
+// recall to close; the reservation and lineage checks below still apply.
+// The host already accepts that guest guarantee for every non-last holder of
+// a DOMAIN lease (task q84). An untargeted (target:null discovery) or
+// renewed DOMAIN lease, and every PAGE, OBJECT or EXCLUSIVE_DIRTY lease,
+// still needs the advanced fence.
+//
 // Newer leases of the same domain are deliberately not consulted (task g84):
 // each holds its own authority, keeps it after this release, and still needs
 // its own recall before its own release. Refusing while any lease of the
@@ -284,7 +302,7 @@ func (l factsLedger) checkRelease(scope guestbridge.Context, raw json.RawMessage
 	if !ok || saved.Lease.Scope != scope || !sameJSON(saved.Lease, r.Lease) {
 		return fsapi.Stale
 	}
-	if saved.Lease.Fence >= viewcontrol.DomainFence(l.Fences, scope.Session) {
+	if saved.Lease.Fence >= viewcontrol.DomainFence(l.Fences, scope.Session) && !observationLease(saved) {
 		return fsapi.WouldBlock // no completed recall since the grant
 	}
 	for _, lease := range l.Leases {
@@ -300,6 +318,14 @@ func (l factsLedger) checkRelease(scope guestbridge.Context, raw json.RawMessage
 		}
 	}
 	return nil
+}
+
+// observationLease reports whether l is a guest observation lease, whose
+// release is certified without a recall since its grant (task je4): DOMAIN
+// access, READ mode, and every holder acquired it with its own target as the
+// expected target.
+func observationLease(l factsLease) bool {
+	return l.Targeted && l.Lease.Access.Kind == "DOMAIN" && l.Lease.Mode == "READ"
 }
 
 // sameLineage mirrors viewcontrol's lineage: a lease and all its renewals
