@@ -451,7 +451,7 @@ diff --git a/fs/9p/hfs_view.h b/fs/9p/hfs_view.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.h
-@@ -0,0 +1,283 @@
+@@ -0,0 +1,294 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_VIEW_H
 +#define FS_9P_HFS_VIEW_H
@@ -582,6 +582,14 @@ new file mode 100644
 +	 * READ_ONCE); a BLOCKED observation retries when it changed.
 +	 */
 +	unsigned long retire_progress;
++	/* 2f4 (zq3-r17 R17-1): counts accepted REOPENED ACKs, i.e. raises of
++	 * the mount's current_fence (hfs_view_reopen_acked, after
++	 * hfs_controlled_after_ack). Incremented under view->lock, read with
++	 * READ_ONCE; a VIEW_ACQUIRE whose GRANTED reply crossed this mount's
++	 * own REOPEN -> REOPENED ACK window waits for it to change
++	 * (hfs_view_reopen_wait) before it queries the ticket again.
++	 */
++	unsigned long reopen_acks;
 +	struct hfs_buf manifest;
 +	u8 manifest_hash[32];
 +	struct hfs_buf target;
@@ -709,6 +717,9 @@ new file mode 100644
 +int hfs_view_enter_until(struct hfs_view *view, const struct hfs_view_stamp *stamp,
 +			 bool wait, unsigned long deadline, void **cookie);
 +const char *hfs_view_phase_name(enum hfs_view_phase phase);
++void hfs_view_reopen_acked(struct hfs_view *view);
++int hfs_view_reopen_wait(struct hfs_view *view, unsigned long acks,
++			 unsigned long deadline);
 +void hfs_view_leave(void *cookie);
 +int hfs_view_stop(struct hfs_view *view, const uuid_t *generation,
 +		  const uuid_t *recall, u64 sequence);
@@ -739,7 +750,7 @@ diff --git a/fs/9p/hfs_view.c b/fs/9p/hfs_view.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.c
-@@ -0,0 +1,1178 @@
+@@ -0,0 +1,1218 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Physical retained-cache admission and all-alias PTE/TLB/MMU quiescence. */
 +#include <linux/mm.h>
@@ -1131,6 +1142,46 @@ new file mode 100644
 +	}
 +	hfs_view_put(view);
 +	return err;
++}
++
++/* 2f4 (zq3-r17 R17-1): the mount accepted a recall's REOPENED ACK and
++ * raised its current_fence (hfs_mmap_ack, after hfs_controlled_after_ack).
++ * Wakes hfs_view_reopen_wait.
++ */
++void hfs_view_reopen_acked(struct hfs_view *view)
++{
++	unsigned long flags;
++
++	spin_lock_irqsave(&view->lock, flags);
++	WRITE_ONCE(view->reopen_acks, view->reopen_acks + 1);
++	spin_unlock_irqrestore(&view->lock, flags);
++	wake_up_all(&view->wait);
++}
++
++/* 2f4: parks until another REOPENED ACK was accepted (view->reopen_acks is
++ * no longer acks, as read by the caller before it looked at the fence), the
++ * view refuses for good (hfs_view_refused) or the transport failed. Returns
++ * 0 for any of those (the caller looks again), -ETIMEDOUT at the deadline
++ * and -EINTR on a fatal signal. Event-driven: hfs_view_reopen_acked and the
++ * stop/fence paths wake view->wait. A session block alone does not wake
++ * it (hfs_session_block has no view), so that stop is seen at the next
++ * wake-up or at the deadline, as for hfs_view_enter_until.
++ */
++int hfs_view_reopen_wait(struct hfs_view *view, unsigned long acks,
++			 unsigned long deadline)
++{
++	unsigned long now = jiffies;
++	long left;
++
++	if (!time_before(now, deadline))
++		return -ETIMEDOUT;
++	left = wait_event_killable_timeout(view->wait,
++		READ_ONCE(view->reopen_acks) != acks || hfs_view_refused(view) ||
++		READ_ONCE(view->session->transport_failed),
++		deadline - now);
++	if (left < 0)
++		return -EINTR;
++	return left ? 0 : -ETIMEDOUT;
 +}
 +
 +/* For log lines only (hfs_mmap_fail). */
@@ -2053,7 +2104,7 @@ diff --git a/fs/9p/hfs_lease.c b/fs/9p/hfs_lease.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.c
-@@ -0,0 +1,1609 @@
+@@ -0,0 +1,1794 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Exact bridge1.1 ticket/lease transport; no physical or source-proof defaults. */
 +#include <linux/slab.h>
@@ -2645,6 +2696,164 @@ new file mode 100644
 +	return err;
 +}
 +
++/* 2f4 (zq3-r17 R17-1): the host grants a PENDING VIEW_ACQUIRE lazily, on
++ * the first VIEW_QUERY after the recall that held it completed (readmit,
++ * internal/viewcontrol/tickets.go), i.e. right after it accepted this
++ * mount's REOPENED ACK. The guest raises its current_fence only when that
++ * ACK's reply arrives (hfs_controlled_after_ack), so a GRANTED reply at the
++ * new fence, or one captured at the revision before the REOPEN, can be
++ * verified but not current (hfs_received_source_ex). Before 2f4 that was
++ * -EKEYREJECTED and blocked the session. Re-sending VIEW_QUERY for a
++ * GRANTED ticket returns the stored reply unchanged: no new ticket,
++ * identity or lease. One exchange's settle state: the view->reopen_acks
++ * and view->revision of the last re-query.
++ */
++struct hfs_grant_settle {
++	unsigned long acks;
++	u64 revision;
++	bool requeried;
++};
++
++/* Only a lease VIEW_ACQUIRE's GRANTED waits for the view to settle. A
++ * DIRTY_RESERVE/DIRTY_FREEZE source is current only while the view is
++ * QUIESCENT/STOPPED, so a wait for LIVE would only time out; those keep
++ * failing closed.
++ */
++static bool hfs_view_lease_grant(const struct hfs_view_ticket *ticket,
++				 const struct hfs_json *reply, int body)
++{
++	return !strcmp(ticket->operation, "VIEW_ACQUIRE") &&
++	       hfs_json_is(reply, hfs_json_field(reply, body, "status"), "\"GRANTED\"") &&
++	       !hfs_json_is(reply, hfs_json_field(reply, body, "lease"), "null");
++}
++
++/* One look at the view for a verified GRANTED lease at fence that is not
++ * current: 1 to query again (the view is LIVE or UNBOUND at the lease's
++ * fence and moved since the last re-query), -EXDEV (a later recall passed
++ * the lease: the mount's fence is beyond it), -EPROTO (settled and
++ * unchanged since a re-query that still was not current: fail closed as
++ * before 2f4), -EAGAIN (not settled yet: wait) or a stop (-ESTALE for a
++ * refused view or a mount no longer admissible, the poll halt's error).
++ */
++static int hfs_view_grant_look(struct hfs_session *session, struct hfs_view *view,
++			       u64 fence, struct hfs_grant_settle *settle,
++			       unsigned long acks)
++{
++	enum hfs_view_phase phase;
++	unsigned long flags;
++	u64 current_fence, revision;
++	int err;
++
++	if (hfs_view_refused(view))
++		return -ESTALE;
++	err = hfs_session_poll_halt(session, false);
++	if (err)
++		return err;
++	current_fence = hfs_controlled_current_fence(session);
++	if (!current_fence)
++		return -ESTALE;
++	if (current_fence > fence)
++		return -EXDEV;
++	spin_lock_irqsave(&view->lock, flags);
++	phase = view->phase;
++	revision = view->revision;
++	spin_unlock_irqrestore(&view->lock, flags);
++	if (current_fence < fence ||
++	    (phase != HFS_VIEW_LIVE && phase != HFS_VIEW_UNBOUND))
++		return -EAGAIN;
++	if (settle->requeried && settle->acks == acks && settle->revision == revision)
++		return -EPROTO;
++	settle->requeried = true;
++	settle->acks = acks;
++	settle->revision = revision;
++	return 1;
++}
++
++/* 2f4: wait (event-driven, hfs_view_reopen_wait) within the exchange's
++ * deadline until the view is LIVE and the mount's fence reached the lease's,
++ * then return 1 to query the ticket again; the fresh capture of that query
++ * validates the stored reply. -EXDEV: a later recall passed the lease (the
++ * caller keeps it, hfs_lease_acquire_ex hands it out for release).
++ * -EPROTO blocks as an invalid reply; any other error (-ETIMEDOUT, -EINTR,
++ * a refused view or halted session) leaves the ticket uncertain without a
++ * block, like a PENDING poll that ran out. One rate-limited line per
++ * outcome.
++ */
++static int hfs_view_grant_settle(struct hfs_session *session, const struct hfs_json *reply,
++				 int body, unsigned long deadline,
++				 struct hfs_grant_settle *settle)
++{
++	struct hfs_view *view = hfs_view_get(session);
++	unsigned long acks;
++	u64 fence;
++	int err;
++
++	if (!view)
++		return -ESTALE;
++	if (hfs_u64_field(reply, hfs_json_field(reply, body, "lease"), "fence", &fence) ||
++	    !fence) {
++		hfs_view_put(view);
++		return -EPROTO;
++	}
++	pr_info_ratelimited("9p-hfs: session %pUb VIEW_ACQUIRE GRANTED at fence %llu is not current (mount fence %llu, view %s); querying again once the view settles\n",
++			    &session->enrollment.session, fence,
++			    hfs_controlled_current_fence(session),
++			    hfs_view_phase_name(READ_ONCE(view->phase)));
++	for (;;) {
++		/* Read before the look: an ACK accepted after it still wakes. */
++		acks = READ_ONCE(view->reopen_acks);
++		err = hfs_view_grant_look(session, view, fence, settle, acks);
++		if (err == 1 && !time_before(jiffies, deadline))
++			err = -ETIMEDOUT;
++		if (err != -EAGAIN)
++			break;
++		err = hfs_view_reopen_wait(view, acks, deadline);
++		if (err)
++			break;
++	}
++	if (err == -EXDEV)
++		pr_info_ratelimited("9p-hfs: session %pUb VIEW_ACQUIRE GRANTED at fence %llu was passed by a later recall; releasing it and acquiring again (-EXDEV)\n",
++				    &session->enrollment.session, fence);
++	else if (err == -ETIMEDOUT)
++		pr_warn_ratelimited("9p-hfs: session %pUb VIEW_ACQUIRE GRANTED at fence %llu: view did not settle before the exchange deadline (-ETIMEDOUT)\n",
++				    &session->enrollment.session, fence);
++	hfs_view_put(view);
++	return err;
++}
++
++/* The hfs1.4 source check of a GRANTED/FROZEN reply (0 or older minors: no
++ * check). 2f4: a verified lease GRANTED that is not current goes to
++ * hfs_view_grant_settle (1: query again, -EXDEV, its stops); every other
++ * failure, DIRTY_RESERVE/DIRTY_FREEZE ones included, stays fatal (*fatal):
++ * the exchange blocks the session as before.
++ */
++static int hfs_view_exchange_source(struct hfs_session *session,
++				    const struct hfs_view_ticket *ticket,
++				    const struct hfs_json *reply, int body,
++				    unsigned long deadline,
++				    struct hfs_grant_settle *settle, bool *fatal)
++{
++	int status = hfs_json_field(reply, body, "status"), source, err;
++	bool not_current;
++
++	*fatal = true;
++	if (session->bridge_minor != 4 ||
++	    (!hfs_json_is(reply, status, "\"GRANTED\"") &&
++	     !hfs_json_is(reply, status, "\"FROZEN\"")))
++		return 0;
++	source = hfs_json_field(reply, body, "lease");
++	if (hfs_json_is(reply, source, "null"))
++		source = hfs_json_field(reply, body, "reservation");
++	if (hfs_json_is(reply, source, "null"))
++		source = hfs_json_field(reply, body, "entry");
++	err = hfs_received_source_ex(session, reply, source, &not_current);
++	if (!err || !not_current || !hfs_view_lease_grant(ticket, reply, body))
++		return err;
++	err = hfs_view_grant_settle(session, reply, body, deadline, settle);
++	*fatal = err == -EPROTO;
++	return err;
++}
++
 +int hfs_view_exchange(struct hfs_session *session, struct hfs_view_ticket *ticket,
 +		      const char *operation, const struct hfs_buf *payload,
 +		      struct hfs_json **response)
@@ -2659,6 +2868,8 @@ new file mode 100644
 +	 * exemption from stopping on a blocked session.
 +	 */
 +	bool after_block = hfs_after_block_operation(operation);
++	struct hfs_grant_settle settle = {};
++	bool fatal, passed;
 +	int err, body, status;
 +
 +	*response = NULL;
@@ -2738,18 +2949,27 @@ new file mode 100644
 +		    hfs_json_is(reply, status, "\"RELEASED\"") ||
 +		    hfs_json_is(reply, status, "\"CANCELLED\"") ||
 +		    hfs_json_is(reply, status, "\"BLOCKED\"")) {
-+			if (session->bridge_minor == 4 &&
-+			    (hfs_json_is(reply, status, "\"GRANTED\"") ||
-+			     hfs_json_is(reply, status, "\"FROZEN\""))) {
-+				int source = hfs_json_field(reply, body, "lease");
-+
-+				if (hfs_json_is(reply, source, "null"))
-+					source = hfs_json_field(reply, body, "reservation");
-+				if (hfs_json_is(reply, source, "null"))
-+					source = hfs_json_field(reply, body, "entry");
-+				err = hfs_received_source(session, reply, source);
-+				if (err)
++			err = hfs_view_exchange_source(session, ticket, reply, body,
++						       deadline, &settle, &fatal);
++			if (err == 1) {
++				/* 2f4: the view settled; query the ticket again. */
++				hfs_json_free(reply);
++				reply = NULL;
++				op = "VIEW_QUERY";
++				sent = &ticket->query;
++				control = true;
++				continue;
++			}
++			passed = err == -EXDEV;
++			if (err && !passed) {
++				if (fatal)
 +					goto invalid;
++				/* 2f4: the GRANTED stays the host's; uncertain
++				 * as for a PENDING poll that ran out.
++				 */
++				ticket->uncertain = true;
++				hfs_json_free(reply);
++				return err;
 +			}
 +			err = hfs_copy_json(reply, body, response);
 +			if (err)
@@ -2761,6 +2981,11 @@ new file mode 100644
 +				err = -ECANCELED;
 +			if (!err && hfs_json_is(reply, status, "\"BLOCKED\""))
 +				err = -EAGAIN;
++			/* 2f4: a GRANTED a later recall passed; the caller
++			 * gets the lease to release (hfs_lease_acquire_ex).
++			 */
++			if (!err && passed)
++				err = -EXDEV;
 +			hfs_json_free(reply);
 +			return err;
 +		}
@@ -2884,6 +3109,12 @@ new file mode 100644
 + * BLOCKED; for a VIEW_ACQUIRE it is mostly capacity (control tickets, lease
 + * or identity bounds, the Sources bound) or an expected target that a recall
 + * replaced, and both can clear: hfs_mmap_begin backs off and retries.
++ *
++ * 2f4 (zq3-r17 R17-1): -EXDEV with *out set is a GRANTED lease that a later
++ * recall passed before this mount's view settled (hfs_view_grant_settle).
++ * The host still counts it as active, so the caller owns *out and must
++ * release it: the ie4 observation path (hfs_mmap_observe) holds it and
++ * acquires again; the fault and bootstrap paths hand it to their cleanup.
 + */
 +int hfs_lease_acquire_ex(struct hfs_session *session, const struct hfs_cred *cred,
 +			 const struct hfs_cap *object, const struct hfs_cap *description,
@@ -2893,6 +3124,7 @@ new file mode 100644
 +	struct hfs_view_ticket *ticket;
 +	struct hfs_json *response = NULL;
 +	struct hfs_buf payload = {}, access = {};
++	bool passed = false;
 +	int err;
 +
 +	*out = NULL;
@@ -2943,6 +3175,10 @@ new file mode 100644
 +	err = access.error ?: hfs_view_exchange(session, ticket, "VIEW_ACQUIRE", &payload, &response);
 +	if (err == -EAGAIN && blocked && ticket->terminal)
 +		*blocked = true;
++	/* 2f4: a passed lease is still decoded and completed for its release. */
++	passed = err == -EXDEV;
++	if (passed)
++		err = 0;
 +	if (!err)
 +		err = hfs_lease_decode(session, ticket, response, &access, dirty, expected_target, out);
 +	if (!err && description)
@@ -2975,7 +3211,7 @@ new file mode 100644
 +	hfs_json_free(response);
 +	hfs_buf_free(&payload);
 +	hfs_buf_free(&access);
-+	return err;
++	return err ?: (passed ? -EXDEV : 0);
 +}
 +
 +int hfs_lease_acquire(struct hfs_session *session, const struct hfs_cred *cred,
@@ -3667,7 +3903,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,2387 @@
+@@ -0,0 +1,2406 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -4120,6 +4356,11 @@ new file mode 100644
 +		err = -ESTALE;
 +	if (!err)
 +		err = hfs_controlled_after_ack(session, phase, payload, reply);
++	/* 2f4: a REOPENED ACK raised the mount's fence; wake VIEW_ACQUIRE
++	 * exchanges whose GRANTED reply arrived before it (hfs_view_grant_settle).
++	 */
++	if (!err && !strcmp(phase, "REOPENED"))
++		hfs_view_reopen_acked(view);
 +	if (!err) {
 +		control->last_ack.len = 0;
 +		control->last_ack.error = 0;
@@ -5278,9 +5519,14 @@ new file mode 100644
 +	}
 +	err = hfs_lease_acquire(session, cred, NULL, description->cap,
 +				offset, write, &entry->target, &lease);
++	/* 2f4: -EXDEV still hands out a lease a later recall passed; the
++	 * cleanup packet releases it, and the fault fails as for any moved view.
++	 */
++	cleanup->lease = lease;
++	if (err == -EXDEV)
++		err = -ESTALE;
 +	if (err)
 +		goto failed;
-+	cleanup->lease = lease;
 +	err = hfs_view_page_lease(entry, lease);
 +	if (err)
 +		goto failed;
@@ -5537,10 +5783,16 @@ new file mode 100644
 +		 * domain is already polling and can close a necessary first recall.
 +		 */
 +		err = hfs_lease_acquire(session, cred, NULL, NULL, 0, false, NULL, &lease);
-+		if (err)
-+			break;
++		/* 2f4: a lease a later recall passed (-EXDEV) is released below
++		 * and acquired again, like a discovery lease of a moved view.
++		 */
 +		cleanup->lease = lease;
-+		err = hfs_view_bind_initial(view, lease);
++		if (err == -EXDEV)
++			err = -ESTALE;
++		else if (err)
++			break;
++		else
++			err = hfs_view_bind_initial(view, lease);
 +		if (err && err != -ESTALE && err != -EAGAIN)
 +			break;
 +		/* This discovery lease was never cache/PTE authority. Its actual
@@ -5887,6 +6139,9 @@ new file mode 100644
 +			 * (attempts->host_blocked; hfs_mmap_begin backs off and
 +			 * retries, re4) or RETIRED_ID (returned at once). It is
 +			 * no re-check, so it is never retried back to back here.
++			 * 2f4: -EXDEV with a lease a later recall passed before
++			 * the view settled (hfs_view_grant_settle): held and
++			 * acquired again, as for a failed re-check (ie4).
 +			 */
 +			if (err)
 +				return err;

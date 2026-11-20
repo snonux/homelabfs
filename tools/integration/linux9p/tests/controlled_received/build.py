@@ -115,8 +115,9 @@ def main():
     lease = read('fs/9p/hfs_lease.c')
     (out/'lease.inc').write_text(portable(lease))
     exchange = function(lease, 'hfs_view_exchange')
+    # 2f4: the prefix declares the grant-settle state too (voided below).
     bound = exchange.index('\n\t/* Initial admissions')
-    (out/'release_prepare.inc').write_text(exchange[:bound].replace('int hfs_view_exchange(', 'static int fixture_prepare_exchange(') + '\n\t(void)after_block;(void)reply;(void)sent;(void)op;(void)deadline;(void)control;(void)body;(void)status;return 0;\n}\n')
+    (out/'release_prepare.inc').write_text(exchange[:bound].replace('int hfs_view_exchange(', 'static int fixture_prepare_exchange(') + '\n\t(void)after_block;(void)reply;(void)sent;(void)op;(void)deadline;(void)control;(void)body;(void)status;(void)settle;(void)fatal;(void)passed;return 0;\n}\n')
     mmap = read('fs/9p/hfs_mmap.c')
     first = mmap.index('static int hfs_mmap_invalidate_stopped(')
     last = mmap.index('/* Independent poll,', first)

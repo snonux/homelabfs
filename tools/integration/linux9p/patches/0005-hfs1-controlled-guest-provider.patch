@@ -1634,7 +1634,7 @@ diff --git a/fs/9p/hfs_controlled.h b/fs/9p/hfs_controlled.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_controlled.h
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,82 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_CONTROLLED_H
 +#define FS_9P_HFS_CONTROLLED_H
@@ -1702,6 +1702,8 @@ new file mode 100644
 +static inline void hfs_completion_put(struct hfs_completion *completion) { }
 +static inline void hfs_completion_close(struct hfs_completion *completion) { }
 +static inline bool hfs_controlled_consumed(struct hfs_session *session) { return false; }
++/* 2f4: hfs_view_grant_settle's fence; no controlled mount has none. */
++static inline u64 hfs_controlled_current_fence(struct hfs_session *session) { return 0; }
 +static inline int hfs_controlled_before_send(struct hfs_session *session,
 +		const char *operation, const struct hfs_buf *payload, bool reserved) { return 0; }
 +static inline int hfs_controlled_bind_transport(struct hfs_session *session) { return 0; }
@@ -4232,7 +4234,7 @@ diff --git a/fs/9p/hfs_received.h b/fs/9p/hfs_received.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_received.h
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,73 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_RECEIVED_H
 +#define FS_9P_HFS_RECEIVED_H
@@ -4251,6 +4253,11 @@ new file mode 100644
 +			  int token);
 +int hfs_received_source(struct hfs_session *session, const struct hfs_json *json,
 +			int token);
++/* 2f4: as hfs_received_source; *not_current tells a verified SOURCE that is
++ * not current (-ESTALE) from every other error.
++ */
++int hfs_received_source_ex(struct hfs_session *session, const struct hfs_json *json,
++			   int token, bool *not_current);
 +int hfs_received_target(struct hfs_session *session, const struct hfs_json *json,
 +			 int token);
 +int hfs_received_publication(struct hfs_session *session, const struct hfs_json *json,
@@ -4283,6 +4290,13 @@ new file mode 100644
 +	(void)session; (void)json; (void)token;
 +	return -EOPNOTSUPP; /* Minor4 has no private SOURCE factory here. */
 +}
++static inline int hfs_received_source_ex(struct hfs_session *session,
++		const struct hfs_json *json, int token, bool *not_current)
++{
++	if (not_current)
++		*not_current = false;
++	return hfs_received_source(session, json, token);
++}
 +static inline int hfs_received_copy(const struct hfs_json *json, int token,
 +				   struct hfs_json **out)
 +{
@@ -4298,7 +4312,7 @@ diff --git a/fs/9p/hfs_received.inc b/fs/9p/hfs_received.inc
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_received.inc
-@@ -0,0 +1,738 @@
+@@ -0,0 +1,781 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* Included ONLY by hfs_session.c. The factory stays static beside the actual
 + * validated transport completion and is not part of any provider/caller API.
@@ -4317,6 +4331,13 @@ new file mode 100644
 +	struct hfs_json *response;
 +	struct hfs_received_capture capture;
 +	enum hfs_attestation_kind kind;
++	/* 2f4 (zq3-r17 R17-1): a verified SOURCE reply that was not current at
++	 * receipt (hfs_received_source_current), e.g. a GRANTED lease that
++	 * crossed the guest's own REOPEN -> REOPENED ACK window. kind stays raw
++	 * and target -1, so no other gate adopts it; only hfs_received_source
++	 * reports it, as -ESTALE with *not_current, never as -EKEYREJECTED.
++	 */
++	bool stale;
 +	int target;
 +	int source;
 +	int event;
@@ -4445,14 +4466,25 @@ new file mode 100644
 +
 +/* Consumption-time gate: exact selected private SOURCE, never merely a raw
 + * transported outcome or a caller-built/parsed receipt. No factory is exposed.
++ *
++ * 2f4 (zq3-r17 R17-1): -EKEYREJECTED means "not verified" only: no owner,
++ * another session, channel or frame, a token that is not the selected
++ * source, or a reply that was never a verified SOURCE. A verified SOURCE
++ * that is not current, at receipt (owner->stale) or now (the re-check
++ * below), is -ESTALE with *not_current set (when not NULL), so a caller can
++ * tell it apart from the -ESTALE of a mount that is no longer admissible.
++ * Before 2f4 a verified GRANTED that was not current at receipt came back
++ * as -EKEYREJECTED and blocked the session ("uncertain view ticket").
 + */
-+int hfs_received_source(struct hfs_session *session, const struct hfs_json *json,
-+			int token)
++int hfs_received_source_ex(struct hfs_session *session, const struct hfs_json *json,
++			   int token, bool *not_current)
 +{
 +	struct hfs_kernel_received *owner;
 +	u32 offset, length, start, span;
 +	int err = -EKEYREJECTED;
 +
++	if (not_current)
++		*not_current = false;
 +	if (!session)
 +		return -EINVAL;
 +	if (session->bridge_minor < 4)
@@ -4462,7 +4494,8 @@ new file mode 100644
 +	owner = hfs_received_get(json, &offset, &length);
 +	if (!owner)
 +		return err;
-+	if (owner->session != session || owner->kind != HFS_ATTESTATION_SOURCE ||
++	if (owner->session != session ||
++	    (owner->kind != HFS_ATTESTATION_SOURCE && !owner->stale) ||
 +	    owner->source < 0 || owner->channel != HFS_CHANNEL_RESULT ||
 +	    owner->frame_kind != HFS_FRAME_RESULT)
 +		goto out;
@@ -4473,11 +4506,20 @@ new file mode 100644
 +	if (!err)
 +		err = owner->cleanup ? hfs_controlled_control_admissible(session) :
 +			hfs_controlled_admissible(session);
-+	if (!err && !hfs_received_source_current(owner))
++	if (!err && (owner->stale || !hfs_received_source_current(owner))) {
 +		err = -ESTALE;
++		if (not_current)
++			*not_current = true;
++	}
 +out:
 +	hfs_received_put(owner);
 +	return err;
++}
++
++int hfs_received_source(struct hfs_session *session, const struct hfs_json *json,
++			int token)
++{
++	return hfs_received_source_ex(session, json, token, NULL);
 +}
 +
 +static int hfs_received_selected(struct hfs_session *session,
@@ -4886,6 +4928,26 @@ new file mode 100644
 +	return source_current;
 +}
 +
++/* The selected target (owner->target, a lease's target; none: true) equals
++ * the receipt evidence's target (verification.evidence.target).
++ */
++static bool hfs_received_evidence_target(const struct hfs_kernel_received *owner)
++{
++	const struct hfs_json *json = owner->response;
++	int receipt = hfs_json_field(json, 0, "verification");
++	int evidence = hfs_json_field(json, receipt, "evidence");
++	int expected = hfs_json_field(json, evidence, "target");
++	u32 start, length;
++
++	if (owner->target < 0)
++		return true;
++	start = json->tokens[owner->target].start;
++	length = json->tokens[owner->target].end - start;
++	return expected >= 0 &&
++	       json->tokens[expected].end - json->tokens[expected].start == length &&
++	       !memcmp(json->data + start, json->data + json->tokens[expected].start, length);
++}
++
 +/* Only the hfs_control transport-completion call site can invoke this factory.
 + * Missing/invalid evidence never becomes an authoritative received subtype.
 + */
@@ -4925,7 +4987,7 @@ new file mode 100644
 +	struct hfs_received_link *link;
 +	struct hfs_mapped_attestation attestation = { 0 };
 +	u64 bytes;
-+	int payload, lease, receipt, evidence, err;
++	int payload, lease, err;
 +	void *credit = *prepared;
 +
 +	*prepared = NULL;
@@ -4997,33 +5059,28 @@ new file mode 100644
 +			err = -EPROTO;
 +			goto fail;
 +		}
-+		if (hfs_received_source_current(owner))
++		if (hfs_received_source_current(owner)) {
 +			owner->kind = HFS_ATTESTATION_SOURCE;
-+		else {
-+			owner->target = owner->source = -1; /* Raw outcome, no stale adoption. */
++		} else {
++			/* Raw outcome, no stale adoption (kind stays raw, target
++			 * -1). 2f4: a verified SOURCE whose lease target, if any,
++			 * matches the receipt's evidence is still remembered as
++			 * stale, so hfs_received_source reports -ESTALE for it
++			 * (not -EKEYREJECTED); any other is unverified.
++			 */
++			owner->stale = hfs_received_evidence_target(owner);
++			owner->target = -1;
++			if (!owner->stale)
++				owner->source = -1;
 +		}
 +	}
 +	if (attestation.kind == HFS_ATTESTATION_FLOOR ||
 +	    attestation.kind == HFS_ATTESTATION_VIEW_FLOOR ||
 +	    attestation.kind == HFS_ATTESTATION_SESSION_RETIRED)
 +		owner->kind = attestation.kind;
-+	receipt = hfs_json_field(owner->response, 0, "verification");
-+	evidence = hfs_json_field(owner->response, receipt, "evidence");
-+	if (owner->target >= 0) {
-+		int expected = hfs_json_field(owner->response, evidence, "target");
-+		u32 start = owner->response->tokens[owner->target].start;
-+		u32 length = owner->response->tokens[owner->target].end - start;
-+
-+		if (expected < 0 ||
-+		    owner->response->tokens[expected].end -
-+				    owner->response->tokens[expected].start !=
-+			    length ||
-+		    memcmp(owner->response->data + start,
-+			   owner->response->data + owner->response->tokens[expected].start,
-+			   length)) {
-+			err = -ESTALE;
-+			goto fail;
-+		}
++	if (owner->target >= 0 && !hfs_received_evidence_target(owner)) {
++		err = -ESTALE;
++		goto fail;
 +	}
 +	link->json = json;
 +	link->owner = owner;

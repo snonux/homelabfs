@@ -38,7 +38,8 @@ struct delayed_work { int unused; };
 #define set_bit(n,p) ((void)__atomic_fetch_or((p),1UL<<(n),__ATOMIC_SEQ_CST))
 /* Kernel log substitute: keeps the last line and counts lines. It formats
  * the kernel's %pUb (a uuid_t pointer, "(null)" for NULL) besides the %d and
- * %s that hfs_mmap_fail's line uses; anything else aborts.
+ * %s that hfs_mmap_fail's line uses, and %llu (2f4's fences); anything else
+ * aborts.
  */
 static char last_warning[512];
 static unsigned int warnings;
@@ -84,6 +85,23 @@ static bool test_queue_forget(struct work_struct *work);
 #define queue_work(q,w) ((void)(q),test_queue_forget(w))
 #define clear_inode(i) ((void)(i))
 #define truncate_inode_pages_final(m) ((void)(m))
+/* 2f4: the actual hfs_view_exchange (zq3-r17 R17-1). Its transport, the
+ * ticket reply check, the hfs1.4 source receipt (patch 0005), the mount's
+ * current_fence, the session block and the poll halt are fixtures in
+ * test.c; HZ matches the one-jiffy-per-ms clock.
+ */
+#define HZ 1000UL
+struct hfs_buf;
+struct hfs_view_ticket;
+int hfs_control_flagged(struct hfs_session *,const char *,const struct hfs_buf *,bool,bool,struct hfs_json **);
+static int hfs_ticket_reply(struct hfs_view_ticket *,const struct hfs_json *,int,const char *);
+bool hfs_after_block_operation(const char *);
+u64 hfs_controlled_current_fence(struct hfs_session *);
+int hfs_session_poll_halt(struct hfs_session *,bool);
+void hfs_session_block(struct hfs_session *,const char *,const char *,int);
+static int test_received_source_ex(struct hfs_session *,const struct hfs_json *,int,bool *);
+static inline long strscpy(char *d,const char *s,size_t n)
+{ size_t len=strlen(s);assert(n);size_t copy=len<n?len:n-1;memcpy(d,s,copy);d[copy]=0;return len<n?(long)len:-7; }
 static inline const char *strnstr(const char *s,const char *find,size_t len)
 { return memmem(s,len,find,strlen(find)); }
 static void pr_warn(const char *f,...)
@@ -94,6 +112,7 @@ static void pr_warn(const char *f,...)
   if(*f!='%'){assert(n+1<sizeof(last_warning));last_warning[n++]=*f;continue;}
   f++;
   if(*f=='d')n+=snprintf(last_warning+n,sizeof(last_warning)-n,"%d",va_arg(args,int));
+  else if(f[0]=='l'&&f[1]=='l'&&f[2]=='u'){f+=2;n+=snprintf(last_warning+n,sizeof(last_warning)-n,"%llu",va_arg(args,unsigned long long));} // 2f4: fences
   else if(*f=='s')n+=snprintf(last_warning+n,sizeof(last_warning)-n,"%s",va_arg(args,const char *));
   else if(f[0]=='p'&&f[1]=='U'&&f[2]=='b'){
    const uuid_t *u=va_arg(args,const uuid_t *);f+=2;

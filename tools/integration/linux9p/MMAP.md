@@ -232,6 +232,17 @@ returns the host's `-EAGAIN` at once. A VIEW_RETIRE the host answered BLOCKED
 again after the recall's REOPENED and, at most once a second, at the next
 observation, not only at the next cleanup.
 
+A GRANTED reply to a lease VIEW_ACQUIRE can arrive before this mount's view
+settled (2f4, zq3-r17 R17-1): the host grants a PENDING acquisition lazily on
+the first VIEW_QUERY after the recall, right after it accepted the mount's
+REOPENED ACK, while the guest raises its fence only when that ACK's reply
+arrives. The verified reply is then not current; the exchange waits for the
+REOPENED ACK (event-driven, within its 30 s) and queries the ticket again,
+which returns the stored GRANTED. A lease a later recall already passed is
+handed out with `-EXDEV`, and observation begin releases it and acquires
+again. DIRTY_RESERVE/DIRTY_FREEZE sources and unverified replies still block
+the session.
+
 When the view control worker stops for good (`hfs_mmap_fail`), it logs one line
 per session naming the enrolled session UUID, the worker step (VIEW_WAIT,
 EVENT, DRAINED, DRAIN_WRITE, CLEANUP), the host event and ACK phases, the host

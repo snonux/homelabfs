@@ -63,7 +63,8 @@ def main():
                 ('fs/9p/hfs_mmap.c', 'static bool hfs_mmap_fault_final(', '\nstatic vm_fault_t hfs_mmap_fault('),
                 ('fs/9p/hfs_mmap.c', 'static vm_fault_t hfs_mmap_mkwrite(', '\nstatic const struct vm_operations_struct'),
                 ('fs/9p/hfs_session.c', 'int hfs_result_code(', '\nstatic int hfs_result_validate('),
-                ('fs/9p/hfs_lease.c', 'static int hfs_copy_json(', '\nstatic bool hfs_token_equal('),
+                # 2f4: hfs_token_equal too, for hfs_view_exchange.
+                ('fs/9p/hfs_lease.c', 'static int hfs_copy_json(', '\nstatic int hfs_hex32('),
                 ('fs/9p/hfs_lease.c', 'static int hfs_u64_field(', '\nstatic int hfs_normal_target('),
                 ('fs/9p/hfs_lease.c', 'int hfs_dirty_drain(', None)):
             start = inputs[filename].index(first)
@@ -102,6 +103,15 @@ def main():
                             ('static void hfs_evict_inode(', '\nstatic int hfs_d_revalidate(')):
             start = inode.index(first)
             source.append(inode[start:inode.index(last, start)])
+        # 2f4 (zq3-r17 R17-1): the actual hfs_view_exchange with its
+        # lease-grant settle helpers. The transport, the ticket reply check,
+        # the session block/poll halt, the mount fence and the 0005 source
+        # receipt are fixtures (pressure/test.c); the receipt's uncontrolled
+        # header stub is redirected to the fixture.
+        lease = inputs['fs/9p/hfs_lease.c']
+        start = lease.index('struct hfs_grant_settle {')
+        source.append('#define hfs_received_source_ex test_received_source_ex')
+        source.append(lease[start:lease.index('\nstatic int hfs_lease_decode(', start)])
     (args.output / 'production.c').write_text('\n'.join(source) + '\n')
     (args.output / 'test.c').write_bytes(b'#include \"compat.h\"\n' + ((here.parent / 'pressure' if args.pressure else here) / 'test.c').read_bytes())
     (args.output / 'compat.h').write_bytes((here / 'compat.h').read_bytes() + ((here.parent / 'pressure/compat_extra.h').read_bytes() if args.pressure else b''))

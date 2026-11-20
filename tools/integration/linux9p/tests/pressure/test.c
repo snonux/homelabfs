@@ -166,7 +166,11 @@ static void clean_page(struct hfs_view *view,struct address_space *mapping,unsig
  * cleanup packets are recorded and released by run_cleanups, which plays
  * hfs_mmap_cleanup.
  */
-enum retry_hook { HOOK_NONE, HOOK_RECALL_BEFORE, HOOK_RECALL_AFTER, HOOK_FENCE, HOOK_BLOCK, HOOK_STUCK, HOOK_RETIRED_ID };
+/* 2f4: HOOK_PASSED is hfs_lease_acquire_ex's -EXDEV: a GRANTED that a later
+ * recall passed before the view settled (hfs_view_grant_settle), handed out
+ * with its lease for release.
+ */
+enum retry_hook { HOOK_NONE, HOOK_RECALL_BEFORE, HOOK_RECALL_AFTER, HOOK_FENCE, HOOK_BLOCK, HOOK_STUCK, HOOK_RETIRED_ID, HOOK_PASSED };
 struct host_lease { u64 fence; u8 target; bool active; int sharers, holders; };
 static struct host_lease host_leases[32];
 static unsigned int nr_host_leases, host_release_recalls;
@@ -272,9 +276,9 @@ int hfs_lease_acquire_ex(struct hfs_session *session,const struct hfs_cred *cred
  kref_init(&lease->refs);memcpy(lease->target_hash,view->target_hash,32);
  if(acquire_calls<stale_targets)lease->target_hash[0]^=1;
  lease->id[0]=(u8)host_grant(lease->target_hash[0]);lease->fence=host_of(lease)->fence;
- if(hook==HOOK_RECALL_AFTER)same_target_recall(view);
+ if(hook==HOOK_RECALL_AFTER || hook==HOOK_PASSED)same_target_recall(view);
  else if(hook==HOOK_STUCK)view->phase=HFS_VIEW_RECALLING;
- granted[acquire_calls++]=lease;leases_live++;*out=lease;return 0;
+ granted[acquire_calls++]=lease;leases_live++;*out=lease;return hook==HOOK_PASSED ? -EXDEV : 0;
 }
 static bool host_retire_refused(void)
 {
@@ -387,6 +391,24 @@ static void retry_recall_after_grant(struct hfs_view *view,int reserved)
  assert(!retry_begin(HOOK_RECALL_AFTER,0,&cookie));retry_published(view,cookie);
  assert(acquire_calls==2 && !host_of(granted[0])->active && granted[1]->fence==granted[0]->fence+1);
  assert(nr_queued==1 && queued[0]->lease==granted[0] && !granted[0]->published);
+ run_cleanups();assert(!host_release_recalls);
+ retry_end(cookie);retry_no_leaks(reserved);
+}
+/* 2f4 (zq3-r17 R17-1): the observation's VIEW_ACQUIRE returns -EXDEV with
+ * a lease that a later recall passed before the view settled. The
+ * observation holds it unpublished, acquires again at the new fence and
+ * only then queues the passed lease, whose release starts no recall (it is
+ * no longer active on the host). Pre-2f4 there was no such return: the
+ * session was blocked instead.
+ */
+static void retry_grant_passed(struct hfs_view *view,int reserved)
+{
+ void *cookie;
+ assert(!retry_begin(HOOK_PASSED,0,&cookie));retry_published(view,cookie);
+ assert(acquire_calls==2 && !host_of(granted[0])->active && granted[1]->fence==granted[0]->fence+1);
+ assert(nr_queued==1 && queued[0]->lease==granted[0] && !granted[0]->published);
+ assert(!queued_at_acquire[1] && ((struct hfs_observation *)cookie)->lease==granted[1]);
+ assert(strstr(last_warning,"observation re-check failed (view moved past the granted lease); acquiring again before releasing it"));
  run_cleanups();assert(!host_release_recalls);
  retry_end(cookie);retry_no_leaks(reserved);
 }
@@ -742,6 +764,7 @@ static void observation_retry_checks(struct hfs_session *session)
  assert(view->phase==HFS_VIEW_LIVE && view->target.len && !view->active && !view->nr_observations);
  retry_recall_before_grant(view,reserved);
  retry_recall_after_grant(view,reserved);
+ retry_grant_passed(view,reserved);
  retry_self_recall(view,reserved);
  retry_moved_target(view,reserved);
  retry_host_blocked(reserved);
@@ -758,6 +781,216 @@ static void observation_retry_checks(struct hfs_session *session)
  retry_attr_enter(view);
  retry_lookup_forget();
  retry_reissue(session);
+}
+/* 2f4 (zq3-r17 R17-1): the actual hfs_view_exchange on a GRANTED reply that
+ * is verified but not current. The host grants a PENDING VIEW_ACQUIRE lazily
+ * on the first VIEW_QUERY after the recall (readmit, tickets.go), right after
+ * it accepted this mount's REOPENED ACK; the guest raises its fence only when
+ * that ACK's reply arrives. Fixtures: xq_steps is the host's answer per
+ * exchange (a re-sent VIEW_QUERY of a GRANTED ticket repeats the stored
+ * reply); hfs_control_flagged captures the view at send as
+ * hfs_received_capture does; test_received_source_ex is a model of patch
+ * 0005's receipt (hfs_received_source_current: a lease is current at the
+ * mount's fence, at the captured revision and phase, LIVE or UNBOUND; a
+ * reservation or entry while QUIESCENT/STOPPED); xq_fence is the mount's
+ * current_fence; view_wait_hook plays the REOPENED ACK's reply
+ * (hfs_view_reopen_acked) while the exchange waits.
+ */
+struct xq_step { const char *status; const char *source; u64 fence; void (*hook)(struct hfs_view *); };
+static const struct xq_step *xq_steps;
+static unsigned int xq_nr, xq_calls, xq_source_calls, xq_blocks;
+static u64 xq_fence, xq_capture_revision;
+static enum hfs_view_phase xq_capture_phase;
+static bool xq_unverified, xq_never_current;
+static int xq_block_err;
+static struct hfs_view_ticket xq_ticket;
+static struct hfs_view_family xq_family;
+int hfs_control_flagged(struct hfs_session *session,const char *operation,const struct hfs_buf *payload,
+                        bool control,bool after_block,struct hfs_json **out)
+{
+ const struct xq_step *step;char text[256],source[32];struct hfs_view *view=session->view;
+ assert(session==test_session && xq_calls<xq_nr && !after_block);
+ step=&xq_steps[xq_calls];
+ if(xq_ticket.admitted)assert(!strcmp(operation,"VIEW_QUERY") && payload==&xq_ticket.query && control);
+ else assert(!strcmp(operation,xq_ticket.operation) && payload==&xq_ticket.payload);
+ xq_capture_revision=view->revision;xq_capture_phase=view->phase; // hfs_received_capture
+ if(step->hook)step->hook(view);
+ xq_calls++;
+ snprintf(source,sizeof(source),"{\"fence\":%llu}",(unsigned long long)step->fence);
+ snprintf(text,sizeof(text),"{\"payload\":{\"entry\":%s,\"lease\":%s,\"reservation\":%s,\"status\":\"%s\"}}",
+          step->source && !strcmp(step->source,"entry")?source:"null",
+          step->source && !strcmp(step->source,"lease")?source:"null",
+          step->source && !strcmp(step->source,"reservation")?source:"null",step->status);
+ return hfs_json_parse(text,strlen(text),out);
+}
+static int hfs_ticket_reply(struct hfs_view_ticket *ticket,const struct hfs_json *json,int payload,const char *wire_operation)
+{
+ assert(ticket==&xq_ticket && payload==hfs_json_field(json,0,"payload"));
+ assert(!strcmp(wire_operation,ticket->admitted?"VIEW_QUERY":ticket->operation));
+ return 0;
+}
+bool hfs_after_block_operation(const char *operation)
+{ assert(!strcmp(operation,"VIEW_ACQUIRE") || !strcmp(operation,"DIRTY_RESERVE"));return false; }
+u64 hfs_controlled_current_fence(struct hfs_session *session) { assert(session==test_session);return xq_fence; }
+int hfs_session_poll_halt(struct hfs_session *session,bool exempt)
+{ return session->transport_failed || (session->blocked && !exempt) ? -EHOSTDOWN : 0; }
+void hfs_session_block(struct hfs_session *session,const char *reason,const char *operation,int err)
+{ assert(!strcmp(reason,"uncertain view ticket") && operation);session->blocked=true;xq_blocks++;xq_block_err=err; }
+static int test_received_source_ex(struct hfs_session *session,const struct hfs_json *json,int token,bool *not_current)
+{
+ struct hfs_view *view=session->view;int body=hfs_json_field(json,0,"payload"),lease=hfs_json_field(json,body,"lease");
+ bool captured=view->revision==xq_capture_revision && view->phase==xq_capture_phase,fresh;u64 fence=0;
+ *not_current=false;xq_source_calls++;
+ assert(session->bridge_minor==4 && token>=0);
+ if(xq_unverified)return -EKEYREJECTED;
+ if(token==lease){
+  assert(!hfs_json_u64(json,hfs_json_field(json,lease,"fence"),&fence));
+  fresh=captured && fence==xq_fence && (view->phase==HFS_VIEW_LIVE || view->phase==HFS_VIEW_UNBOUND);
+ } else fresh=captured && (view->phase==HFS_VIEW_QUIESCENT || view->phase==HFS_VIEW_STOPPED);
+ if(fresh && !xq_never_current)return 0;
+ *not_current=true;return -ESTALE;
+}
+static unsigned long xq_acks_at; // view_wait_sleeps at which the ACK's reply arrives
+static u64 xq_acked_fence;       // the fence that ACK raises the mount to
+static void xq_ack_hook(void)
+{
+ struct hfs_view *view=test_session->view;
+ if(view_wait_sleeps!=xq_acks_at)return;
+ if(view->phase!=HFS_VIEW_LIVE){view->phase=HFS_VIEW_LIVE;view->revision++;} // the REOPEN
+ xq_fence=xq_acked_fence;hfs_view_reopen_acked(view);
+}
+static void xq_reopened_in_flight(struct hfs_view *view) { view->revision++; }
+static void xq_recall_in_flight(struct hfs_view *view) { view->phase=HFS_VIEW_RECALLING;view->revision++; }
+static void xq_setup(const char *operation,bool admitted,const struct xq_step *steps,unsigned int nr,u64 fence)
+{
+ memset(&xq_ticket,0,sizeof(xq_ticket));memset(&xq_family,0,sizeof(xq_family));
+ mutex_init(&xq_family.dispatch);xq_ticket.family=&xq_family;xq_ticket.session=test_session;
+ xq_ticket.number=1;xq_ticket.control=hfs_view_command_control_family(operation);xq_ticket.bound=true;
+ xq_ticket.admitted=admitted;strcpy(xq_ticket.operation,operation);
+ assert(!hfs_buf_init(&xq_ticket.payload,64) && !hfs_buf_init(&xq_ticket.query,64));
+ hfs_buf_literal(&xq_ticket.payload,"{}");hfs_buf_literal(&xq_ticket.query,"{\"request\":1}");
+ xq_steps=steps;xq_nr=nr;xq_calls=xq_source_calls=xq_blocks=0;xq_block_err=0;xq_fence=fence;
+ xq_unverified=xq_never_current=false;xq_acks_at=0;view_wait_sleeps=0;view_wait_step=10;view_wait_hook=xq_ack_hook;
+ test_session->bridge_minor=4;test_session->blocked=false;warnings=0;
+}
+static int xq_run(struct hfs_json **response)
+{
+ return hfs_view_exchange(test_session,&xq_ticket,xq_ticket.operation,&xq_ticket.payload,response);
+}
+static bool xq_granted(const struct hfs_json *json)
+{ return json && hfs_json_is(json,hfs_json_field(json,0,"status"),"\"GRANTED\""); }
+static void xq_teardown(struct hfs_json *response)
+{
+ hfs_json_free(response);hfs_json_free(xq_ticket.response);hfs_json_free(xq_ticket.initial_response);
+ hfs_buf_free(&xq_ticket.payload);hfs_buf_free(&xq_ticket.query);
+ assert(!pthread_mutex_destroy(&xq_family.dispatch.native));
+ view_wait_hook=NULL;view_wait_step=0;view_wait_fatal=false;
+ test_session->bridge_minor=0;test_session->blocked=false;test_session->transport_failed=false;
+ test_session->view->phase=HFS_VIEW_LIVE;
+}
+/* R17-1's shape: PENDING, then a GRANTED at fence 6 while the mount is still
+ * at 5 (the host accepted the REOPENED ACK; its reply is not back yet). The
+ * exchange waits for the ACK's reply, queries again and gets the same
+ * stored GRANTED, now current. Pre-2f4: blocked by "uncertain view ticket".
+ */
+static void xq_grant_before_fence(void)
+{
+ static const struct xq_step steps[]={{"PENDING",NULL,0,NULL},{"GRANTED","lease",6,NULL},{"GRANTED","lease",6,NULL}};
+ struct hfs_json *response=NULL;unsigned long start=jiffies;
+ xq_setup("VIEW_ACQUIRE",false,steps,3,5);xq_acks_at=3;xq_acked_fence=6;
+ assert(!xq_run(&response) && xq_granted(response) && xq_calls==3 && xq_source_calls==2);
+ assert(xq_ticket.terminal && !xq_ticket.uncertain && xq_granted(xq_ticket.response) && !xq_blocks && !test_session->blocked);
+ assert(view_wait_sleeps==3 && jiffies-start>=30 && jiffies-start<100 && warnings==1);
+ assert(strstr(last_warning,"VIEW_ACQUIRE GRANTED at fence 6 is not current (mount fence 5, view LIVE); querying again once the view settles"));
+ assert(hfs_json_is(xq_ticket.initial_response,hfs_json_field(xq_ticket.initial_response,0,"status"),"\"PENDING\""));
+ xq_teardown(response);
+}
+/* The GRANTED was captured at the revision before this mount's REOPEN (the
+ * reopen happened while it was in flight), the fence already matches: query
+ * again at once, no wait; the fresh capture makes it current.
+ */
+static void xq_grant_old_revision(void)
+{
+ static const struct xq_step steps[]={{"GRANTED","lease",6,xq_reopened_in_flight},{"GRANTED","lease",6,NULL}};
+ struct hfs_json *response=NULL;
+ xq_setup("VIEW_ACQUIRE",true,steps,2,6);
+ assert(!xq_run(&response) && xq_granted(response) && xq_calls==2 && !view_wait_sleeps);
+ assert(xq_ticket.terminal && !xq_ticket.uncertain && !xq_blocks && warnings==1);
+ xq_teardown(response);
+}
+/* Not current at consumption: the reply left the host current, but a later
+ * recall started before the guest consumed it and its REOPENED ACK raised
+ * the mount past the lease's fence. The lease is handed out with -EXDEV
+ * (ie4 releases and acquires again), the ticket is terminal, not uncertain,
+ * and the session is not blocked. A mount already past the fence returns
+ * -EXDEV without waiting.
+ */
+static void xq_grant_passed(void)
+{
+ static const struct xq_step steps[]={{"GRANTED","lease",6,xq_recall_in_flight}};
+ struct hfs_json *response=NULL;
+ xq_setup("VIEW_ACQUIRE",true,steps,1,6);xq_acks_at=2;xq_acked_fence=7;
+ assert(xq_run(&response)==-EXDEV && xq_granted(response) && xq_calls==1 && view_wait_sleeps==2);
+ assert(xq_ticket.terminal && !xq_ticket.uncertain && xq_granted(xq_ticket.response) && !xq_blocks && !test_session->blocked);
+ assert(strstr(last_warning,"VIEW_ACQUIRE GRANTED at fence 6 was passed by a later recall; releasing it and acquiring again (-EXDEV)"));
+ xq_teardown(response);response=NULL;
+ xq_setup("VIEW_ACQUIRE",true,steps,1,7);
+ assert(xq_run(&response)==-EXDEV && xq_granted(response) && !view_wait_sleeps && !xq_blocks);
+ xq_teardown(response);
+}
+/* No REOPENED ACK reply within the exchange's 30 s: -ETIMEDOUT, the ticket
+ * uncertain (as a PENDING poll that ran out), no response, no block; a
+ * fatal signal, a blocked session and a failed transport stop the wait.
+ */
+static void xq_grant_stops(void)
+{
+ static const struct xq_step steps[]={{"GRANTED","lease",6,NULL}};
+ struct hfs_json *response=(void *)1;unsigned long start=jiffies;
+ xq_setup("VIEW_ACQUIRE",true,steps,1,5);
+ assert(xq_run(&response)==-ETIMEDOUT && !response && xq_calls==1);
+ assert(jiffies-start>=30*HZ && xq_ticket.uncertain && !xq_ticket.terminal && !xq_ticket.response && !xq_blocks);
+ assert(strstr(last_warning,"VIEW_ACQUIRE GRANTED at fence 6: view did not settle before the exchange deadline (-ETIMEDOUT)"));
+ xq_teardown(NULL);
+ xq_setup("VIEW_ACQUIRE",true,steps,1,5);view_wait_fatal=true;
+ assert(xq_run(&response)==-EINTR && xq_ticket.uncertain && !xq_blocks);xq_teardown(NULL);
+ xq_setup("VIEW_ACQUIRE",true,steps,1,5);test_session->blocked=true;
+ assert(xq_run(&response)==-ESTALE && xq_ticket.uncertain && !xq_blocks && !view_wait_sleeps);xq_teardown(NULL);
+ xq_setup("VIEW_ACQUIRE",true,steps,1,5);test_session->transport_failed=true;
+ assert(xq_run(&response)==-EHOSTDOWN && xq_ticket.uncertain && !xq_blocks && !view_wait_sleeps);xq_teardown(NULL);
+}
+/* Fail closed as before 2f4: an unverified GRANTED (-EKEYREJECTED), one that
+ * stays not current at a settled view after its re-query (-EPROTO), and a
+ * DIRTY_RESERVE reservation that is not current (its source needs
+ * QUIESCENT/STOPPED, so it never waits for LIVE) block the session at once.
+ * A current DIRTY_RESERVE still passes.
+ */
+static void xq_fail_closed(void)
+{
+ static const struct xq_step lease[]={{"GRANTED","lease",6,NULL},{"GRANTED","lease",6,NULL}};
+ static const struct xq_step dirty[]={{"GRANTED","reservation",1,NULL}};
+ struct hfs_json *response=NULL;
+ xq_setup("VIEW_ACQUIRE",true,lease,2,6);xq_unverified=true;
+ assert(xq_run(&response)==-EKEYREJECTED && !response && xq_calls==1 && xq_blocks==1 && xq_block_err==-EKEYREJECTED);
+ assert(xq_ticket.uncertain && !warnings);xq_teardown(NULL);
+ xq_setup("VIEW_ACQUIRE",true,lease,2,6);xq_never_current=true;
+ assert(xq_run(&response)==-EPROTO && xq_calls==2 && !view_wait_sleeps && xq_blocks==1 && xq_ticket.uncertain);
+ xq_teardown(NULL);
+ xq_setup("DIRTY_RESERVE",true,dirty,1,6);
+ assert(xq_run(&response)==-ESTALE && !response && xq_calls==1 && xq_blocks==1 && xq_block_err==-ESTALE);
+ assert(!view_wait_sleeps && !warnings && xq_ticket.uncertain);xq_teardown(NULL);
+ xq_setup("DIRTY_RESERVE",true,dirty,1,6);test_session->view->phase=HFS_VIEW_QUIESCENT;
+ assert(!xq_run(&response) && response && xq_calls==1 && !xq_blocks && xq_ticket.terminal);
+ xq_teardown(response);
+}
+static void grant_settle_checks(void)
+{
+ struct hfs_view *view=test_session->view;
+ assert(view->phase==HFS_VIEW_LIVE && !view->active);
+ xq_grant_before_fence();
+ xq_grant_old_revision();
+ xq_grant_passed();
+ xq_grant_stops();
+ xq_fail_closed();
 }
 int main(void)
 {
@@ -818,6 +1051,8 @@ int main(void)
  // ie4: hfs_mmap_begin's re-check retry and hfs_attr_restamp, on this
  // LIVE view with no cache page and no observation in flight.
  observation_retry_checks(&session);
+ // 2f4: the actual hfs_view_exchange on a verified GRANTED that is not current.
+ grant_settle_checks();
  // A source verifier refusal cannot manufacture DRAINED or reopen.
  clean_page(session.view,&mapping,0);invalid_source=1;
  assert(hfs_mmap_mkwrite(&vmf)==VM_FAULT_SIGBUS && session.view->phase==HFS_VIEW_STOPPED);
@@ -861,5 +1096,5 @@ int main(void)
  view_worker_log_checks(&session);
  hfs_json_free(target_event);hfs_view_unregister_inode(&inode.inode);hfs_view_fence(session.view);assert(!hfs_view_free(&session));
  assert(!reservations && !module_refs);
- puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (recall before/after grant re-acquires,no release recall,no self-recall loop,moved target,refusals,deadline,no leak,RETIRED_ID passed through,host BLOCKED retried only after retirement progress (held lease released first,at most 3 retries,ticket budget kept),progress by the cleanup worker during the pause or after a busy try,no progress/deadline -EAGAIN at once,BLOCKED retire re-sent after recall/next observation (rate-limited),attr re-stamp/re-issue,moved LOOKUP FORGET balanced),source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
+ puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (recall before/after grant re-acquires,no release recall,no self-recall loop,moved target,refusals,deadline,no leak,RETIRED_ID passed through,host BLOCKED retried only after retirement progress (held lease released first,at most 3 retries,ticket budget kept),progress by the cleanup worker during the pause or after a busy try,no progress/deadline -EAGAIN at once,BLOCKED retire re-sent after recall/next observation (rate-limited),attr re-stamp/re-issue,moved LOOKUP FORGET balanced,2f4 passed grant re-acquired),2f4 exchange: GRANTED before the fence raise re-queried after the REOPENED ACK,old revision re-queried at once,passed by a later recall -EXDEV,deadline/signal/block/transport stops without a block,unverified/never-current/DIRTY fail closed,source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
 }
