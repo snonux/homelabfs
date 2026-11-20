@@ -100,18 +100,18 @@ func (c *Controller) recallHashes(id, scope string) (string, string) {
 
 // startDomainRecall starts a recall of the single domain session; it is a
 // no-op while any recall exists.
-func (c *Controller) startDomainRecall(ctx context.Context, session string) error {
-	return c.beginRecall(ctx, session)
+func (c *Controller) startDomainRecall(ctx context.Context, session string, trigger recallTrigger) error {
+	return c.beginRecall(ctx, session, trigger)
 }
 
 // startReleaseRecall starts the recall a preowned VIEW_RELEASE of lease
 // needs: scoped to the releasing domain when releaseRecallScope allows it,
 // otherwise all-domain.
-func (c *Controller) startReleaseRecall(ctx context.Context, lease guestbridge.ViewLease) error {
+func (c *Controller) startReleaseRecall(ctx context.Context, lease guestbridge.ViewLease, trigger recallTrigger) error {
 	if scope := c.releaseRecallScope(lease); scope != "" {
-		return c.startDomainRecall(ctx, scope)
+		return c.startDomainRecall(ctx, scope, trigger)
 	}
-	return c.startRecall(ctx)
+	return c.startRecall(ctx, trigger)
 }
 
 // releaseRecallScope returns the session whose recall alone closes a release

@@ -246,6 +246,27 @@ their revision. Downgrading after recycling is unsupported. Ticket families
 themselves stay (per full credentials, bounded by the guest's
 HFS_VIEW_FAMILIES_MAX per session).
 
+Recall history (`recall_history.go`, task ce4). Because that pruning drops
+everything about finished recalls, zq3-r14..r16 could not reconstruct recall
+latency. The controller therefore keeps a diagnostic ring of its last
+`RecallHistoryLimit` (64) recalls in memory, outside the protected ledger: it
+changes no ledger byte, digest, reply or recall decision, and no pruning,
+compaction or recycling can drop it; a reopened controller starts empty. Each
+record names the trigger (kind, opcode, requesting domain), the scope (`ALL`
+or `DOMAIN`) and participants, the start (wall-clock UTC) and, as monotonic
+microsecond offsets, every protected phase start with the time its event
+issue took, every accepted ACK (domain, phase, sequence, how many BLOCKED
+replies and how long the same bytes waited for their physical observation,
+and the accepting validation time) and the end. A record keeps at most
+`RecallAckLimit` (32) ACK rows of about 130 bytes, so the ring is at most
+about 320 KiB plus participant lists (about 160 KiB with three domains).
+`Controller.History` copies the ring under the controller mutex and, outside
+it, keeps the newest records whose complete encoding fits
+`RecallEvidenceBytes` (32 KiB), which the controlled runtime's OBSERVE reports
+as `controller.recalls`. That bounds only the history's share of a reply; an
+overflow from other sections still takes the documented fallbacks (oversized
+OBSERVE refused, RESTART `EFFECT_UNREPORTABLE`).
+
 Tests use actual temporary OS files, journals, service/planner, controlled claim
 providers and bridge dispatch. Physical/native/enrollment verifiers are explicit
 primitive-boundary shims requiring exact declared observations; they prove no

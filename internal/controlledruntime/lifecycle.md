@@ -100,6 +100,30 @@ does; nothing is retried) and captures, from the current actual owners:
   GETATTR and PROCESS_EXIT claims reached TERMINAL;
 * the view controller's protected ledger digest, size, whether the live state
   equals those protected bytes, and inert counts;
+* (ce4, additive optional field `controller.recalls` of evidence `/2`; older
+  decoders ignore it) the view controller's bounded in-memory recall history,
+  reported even when the ledger read fails: `capacity` (64), `total` recalls
+  started since this controller opened, and the newest records, oldest first,
+  whose complete `recalls` encoding fits 32 KiB (`omitted` counts the older
+  ring records left out). The 32 KiB bound only caps the history's share of
+  the reply: should the other sections still overflow, an oversized OBSERVE
+  reply is refused and RESTART reports `EFFECT_UNREPORTABLE` as documented
+  below (moot right after RESTART, whose reopened controller starts with an
+  empty history).
+  Each record has the recall `id`, trigger `kind` (`ACQUIRE_CONFLICT`,
+  `EXPECTED_TARGET`, `RELEASE`, `RELEASE_RESERVATION`, `CALL_CONFLICT`,
+  `AUTHORITY_REDUCTION`, `NATIVE_CONFLICT`), the requesting `opcode` and
+  `domain` session (none for a native command), `scope` `ALL` or `DOMAIN`,
+  the `participants`, `started_utc` (wall clock, UTC) and, as monotonic
+  microsecond offsets from that start, every phase start (`at_us`, with
+  `issue_us`, the time the phase's event issue took), every accepted ACK
+  (`domain`, `phase`, `sequence`, `at_us`, the `blocked` replies and
+  `blocked_us` the same ACK bytes waited for their physical observation, and
+  `check_us`, the accepting validation including the physical Facts check)
+  and `end_us`; `outcome` is `OPEN`, `COMPLETED` or `ABANDONED`. At most 32
+  ACK rows per record (`acks_dropped` counts more). The history is outside
+  the protected ledger, so ACK-archive pruning, compaction and retirement
+  recycling never drop it; a reopened controller (RESTART) starts it empty;
 * the live C8 ledger index (controller, endpoint, high-water, cells, classes,
   workspace, terminal/HELLO witnesses, guest high-water) and its full digest,
   read under the transport mutex so the cut equals the last protected transition;

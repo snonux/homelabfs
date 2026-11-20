@@ -135,6 +135,9 @@ type Controller struct {
 	// BlockedACKBound); guarded by mu. now is a test clock, nil in production.
 	blockedACKs map[string]blockedACK
 	now         func() time.Time
+	// history is the bounded in-memory recall history (recall_history.go,
+	// task ce4); guarded by mu, never part of the protected ledger.
+	history recallHistory
 }
 
 type ledger struct {

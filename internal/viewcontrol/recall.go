@@ -242,8 +242,8 @@ func (c *Controller) validateDrain(b guestbridge.Binding) error {
 // stops, drains and reinstalls, and admission is closed for every domain
 // until REOPEN. Dirty, exclusive, conflicting-admission and expected-target
 // recalls use it. It is a no-op while any recall exists.
-func (c *Controller) startRecall(ctx context.Context) error {
-	return c.beginRecall(ctx, "")
+func (c *Controller) startRecall(ctx context.Context, trigger recallTrigger) error {
+	return c.beginRecall(ctx, "", trigger)
 }
 
 // beginRecall protects a new recall over all domains (scope "") or over the
@@ -257,10 +257,14 @@ func (c *Controller) startRecall(ctx context.Context) error {
 // older ledger's entries go at the session's next ACK), so this bound no
 // longer limits how many recalls a controller can run; the recall UUID is
 // recycled the same way (newUUID).
-func (c *Controller) beginRecall(ctx context.Context, scope string) error {
+//
+// trigger only feeds the in-memory recall history (task ce4), which records
+// the recall once it is protected; it never influences the recall.
+func (c *Controller) beginRecall(ctx context.Context, scope string, trigger recallTrigger) error {
 	if c.state.Recall != nil {
 		return nil
 	}
+	start := c.clock()
 	if c.fenceExhausted(scope) || len(c.state.AckArchive)+8*len(c.config.Authorization.Enrollment.Domains) > c.config.Authorization.Enrollment.Bounds.Identities*8 {
 		return fsapi.NoSpace
 	}
@@ -270,11 +274,17 @@ func (c *Controller) beginRecall(ctx context.Context, scope string) error {
 	}
 	c.state.Recall = &recallState{ID: id, Phase: "RECALL", Domain: scope, Events: map[string]json.RawMessage{}, Acks: map[string]json.RawMessage{}, Manifests: map[string]json.RawMessage{}}
 	c.state.Recall.Inventory, c.state.Recall.Closure = c.recallHashes(id, scope)
+	issue := c.clock()
 	if err = c.events(ctx, "RECALL"); err != nil {
 		c.state.Recall = nil // nothing else was committed by the failed events
 		return err
 	}
-	return c.save()
+	issued := c.clock().Sub(issue)
+	if err = c.save(); err != nil {
+		return err
+	}
+	c.history.begin(c.state.Recall, trigger, start, issued)
+	return nil
 }
 
 // events issues the next event of phase to every live inventoried domain. It
@@ -487,7 +497,9 @@ func (c *Controller) earlyDrained(scope guestbridge.Context, ack acknowledgement
 // progress advances the protected recall by at most one phase and saves it.
 // Every phase waits for the exact ACKs of the recall's participants only
 // (allAcked iterates the issued events), so a scoped recall never waits for
-// a domain outside it.
+// a domain outside it. A protected transition is then recorded in the
+// in-memory recall history (task ce4): the new phase, or the recall's end
+// when finishRecall removed it.
 func (c *Controller) progress(ctx context.Context) error {
 	r := c.state.Recall
 	if r == nil {
@@ -497,7 +509,11 @@ func (c *Controller) progress(ctx context.Context) error {
 	if err != nil || !changed {
 		return err
 	}
-	return c.save()
+	if err = c.save(); err != nil {
+		return err
+	}
+	c.history.phase(r.ID, r.Phase, c.state.Recall == nil, c.clock())
+	return nil
 }
 
 // advancePhase performs one phase transition when its ACKs are complete and
@@ -545,10 +561,13 @@ func (c *Controller) advancePhase(ctx context.Context, r *recallState) (bool, er
 }
 
 // issuePhase issues phase's events to every participant and enters phase.
+// How long the issue took is kept for the recall history's next phase row.
 func (c *Controller) issuePhase(ctx context.Context, r *recallState, phase string) (bool, error) {
+	start := c.clock()
 	if err := c.events(ctx, phase); err != nil {
 		return false, err // phase unchanged: events committed nothing
 	}
+	c.history.issue = c.clock().Sub(start)
 	r.Phase = phase
 	return true, nil
 }
