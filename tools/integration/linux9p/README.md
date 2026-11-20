@@ -1325,7 +1325,9 @@ Patch 0004, `hfs_mmap_begin`, now split into `hfs_mmap_observation_new`,
   the view again.
 - **Host BLOCKED** (or RETIRED_ID): the acquisition's own `-EAGAIN`, without
   a lease, is returned at once as before ie4; it is not a re-check and is
-  never retried back to back (final review).
+  never retried back to back (final review). Since re4 a BLOCKED is retried
+  after retirement progress instead (see below); RETIRED_ID still returns
+  at once.
 - **Refused:** a FENCED view or a closing or blocked hfs1.4 session
   (`hfs_view_refused`, now shared with `hfs_view_try_enter_locked`) keeps
   `-ESTALE`. A retry also stops on `transport_failed` (oc4; `-ESTALE`) or a
@@ -1410,3 +1412,103 @@ transport, policy, cursor, tag, mount_hello, view and view --pressure
 (`--sanitize`), requests, huge, dirty and controlled_received `terminal-smoke`,
 `cleanup` and `exit-cleanup` pass. codec, capture, root and reclaim were not
 run (broken before, s54). No candidate was rebuilt or admitted.
+
+## BLOCKED observation back-off (`re4`)
+
+zq3-r16 R16-1: T1's m1 root OPEN failed with `EAGAIN`. The host answered
+BLOCKED to m1's ie4 re-acquire because the shared `ControlTickets` budget (8)
+was full: unretired VIEW_RELEASE tickets (the guest offered retirement only at
+the end of a cleanup packet and dropped a BLOCKED VIEW_RETIRE), the holders of
+m0's shared lease and the lease ie4 still held. ie4 returned that BLOCKED as
+`-EAGAIN` at once.
+
+Patch 0004:
+
+- `hfs_lease_acquire_ex` (`hfs_lease_acquire` is its wrapper) reports the
+  host's terminal BLOCKED (`*blocked`) apart from RETIRED_ID and local
+  `-EAGAIN`. The host gives no reason with BLOCKED.
+- `hfs_mmap_begin` (split into `hfs_mmap_attempt`, `hfs_mmap_moved` and
+  `hfs_mmap_release_held`): on a BLOCKED observation acquisition the held
+  lease (ie4's stale lease, if any) is released at once, before the next
+  try, and its packet queued. `hfs_mmap_blocked_backoff` pauses 50 ms
+  (doubling), runs `hfs_view_retire_try` (a `mutex_trylock`) and retries
+  **only after progress**: the held release completed, or any floor advanced
+  since before the acquisition. Final review: the BLOCKED attempt's own
+  packet reaches the cleanup worker during the pause and its retirement
+  usually frees the tickets first, so the back-off's own try finds nothing
+  left or the mutex busy. `view->retire_progress` counts every floor
+  advance (`hfs_view_retire`, under `session->retirement`) and is read before
+  each acquisition; a changed counter is progress, and a busy try without it
+  pauses again (against the cap). Several threads may retry on one advance;
+  each stays within its own cap. Review round 1:
+  every BLOCKED acquisition still takes a host ticket number and an identity
+  until it is retired, and retirement is refused while a recall runs or the
+  same credentials hold an active lease, so a blind 30 s loop could spend
+  the 16-ticket budget, end in an uncertain NoSpace ticket and stall the
+  family. Retries are therefore capped at `HFS_BLOCKED_RETRIES_MAX` (3; at
+  most 4 ticket numbers per syscall). No progress, the cap or an exhausted
+  deadline (also when the retirement round ran past it) return the host's
+  `-EAGAIN` at once with one rate-limited `pr_warn` (`observation
+  VIEW_ACQUIRE BLOCKED, <reason> after <n> attempts (-EAGAIN)`); each pause
+  logs a rate-limited `pr_info`. It stops on a refused view (FENCED, a
+  closing or blocked hfs1.4 session) or `transport_failed` (`-ESTALE`) and a
+  fatal signal (`-EINTR`). RETIRED_ID still returns `-EAGAIN` at once;
+  without BLOCKED, ie4's acquire-before-release stays.
+- `hfs_view_retire` records whether its pass saw a BLOCKED VIEW_RETIRE
+  (`view->retire_blocked`, under `session->retirement`; a complete pass
+  replaces it). `hfs_mmap_retire_kick` queues `control->retire`
+  (`hfs_mmap_retire_work` on `cleanup_queue`, holding a control reference)
+  when it is set: forced after a recall's REOPENED ACK (`hfs_mmap_process`;
+  the host ends the recall at that ACK), and at the start of an observation
+  at most once per `HFS_RETIRE_KICK_MS` (1 s). `hfs_mmap_quiesce_control`
+  cancels a queued work and drops its reference.
+
+The fault path (`hfs_mmap_fault`) is unchanged: its `-EAGAIN` already
+re-faults (`VM_FAULT_NOPAGE`), and its packet's cleanup retires.
+
+Tests (`view --pressure`). The fixture host charges every acquisition,
+BLOCKED included, one of 16 ticket numbers until a retirement passes it
+(asserted at every acquisition), answers BLOCKED while its tickets are full,
+and refuses VIEW_RETIRE while a recall runs or is pending or a lease with
+holders is active, as `retirementBlocked`:
+
+- BLOCKED once for tickets: one 50 ms pause, one retirement, the second
+  acquisition is published (fails pre-re4: `-EAGAIN`);
+- R16-1's shape: the held stale lease is released at once (its release
+  recall refuses the first retirement; the completed release is the
+  progress), its packet is queued before the next acquisition, and the
+  retirement after the recall lets the fourth acquisition through;
+- persistent BLOCKED with advancing retirements: 4 acquisitions, 3 pauses
+  (350 ms), `-EAGAIN` with the retry-limit line, every packet queued once,
+  nothing leaked;
+- no progress: another observation holds an active lease, or the
+  retirement round runs past the deadline: `-EAGAIN` after one acquisition
+  with the matching line; a mutex that stays busy pauses three times, then
+  the retry-limit line, still one acquisition;
+- the cleanup worker (which retires after every packet, as
+  `hfs_mmap_cleanup`) retires during the pause; the back-off's own try then
+  gets `-EAGAIN` or `-EBUSY`, but the advanced counter lets the retry
+  through; a busy try before any progress pauses again and the next retires;
+- a fatal signal, `transport_failed` and a blocked hfs1.4 session end the
+  back-off before any pause or retirement;
+- a BLOCKED retirement during a recall is re-sent by the forced REOPENED
+  kick (a second kick drops its reference), after which the next observation
+  is granted; unforced kicks are rate-limited; a stopping control drops the
+  work's reference without an RPC; the next observation kicks it first;
+- RETIRED_ID returns at once; the ie4 cases are unchanged.
+
+Mutations (no progress check, no cap, a blocking retirement, no kick rate
+limit, no early held release, no progress counter, `-EBUSY` as a give-up, no
+counter snapshot) each fail a case. The flag itself is set by
+the production `hfs_view_retire`, which the pressure harness replaces with a
+host model; that wiring and the REOPENED kick in `hfs_mmap_process` are
+compiled by controlled_received (`build.py` extracts the two new functions;
+its `compat.h` gains `mutex_trylock`) and source-reviewed, not executed against a host recall.
+
+The series was regenerated with `export.py --task re4` (0004:
+`hfs_view.h`, `hfs_lease.[ch]`, `hfs_mmap.c`). A fresh `prepare.py` tree
+applies it with fuzz zero and `fs/9p/`, `net/9p/` and `random.o` compile
+without warnings under `kernel.py configure`. transport, policy, cursor, tag,
+mount_hello, view and view --pressure (`--sanitize`), requests, huge, dirty
+and controlled_received `terminal-smoke`, `cleanup` and `exit-cleanup` pass.
+No candidate was rebuilt or admitted.

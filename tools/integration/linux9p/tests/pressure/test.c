@@ -111,9 +111,17 @@ static void view_worker_log_checks(struct hfs_session *session)
 }
 static void hfs_lease_get(struct hfs_lease *lease) { kref_get(&lease->refs); }
 static void hfs_lease_free(struct hfs_lease *lease) { assert(atomic_fetch_sub(&lease->refs.refcount,1)>1); }
+struct host_lease;
+static struct host_lease *host_of(const struct hfs_lease *lease);
+static void host_release(struct host_lease *lease);
+static unsigned int sync_releases;
 static int hfs_lease_release(struct hfs_session *session,struct hfs_lease *lease)
 {
  struct hfs_view *view=session->view;u64 seq=view->sequence+1;int target=hfs_json_field(target_event,0,"target"),err;
+ if(lease<leases || lease>=leases+ARRAY_SIZE(leases)){ // re4: a held observation lease
+  assert(!lease->published && !lease->released);
+  host_release(host_of(lease));lease->released=true;sync_releases++;return 0;
+ }
  assert(lease->published && !lease->dirty && lease->release_ticket && lease->release_ticket->control);
  assert(!view->active && !pthread_mutex_trylock(&view->transitions.native));pthread_mutex_unlock(&view->transitions.native);
  assert(!pthread_mutex_trylock(&view->lock));pthread_mutex_unlock(&view->lock);
@@ -158,20 +166,40 @@ static void clean_page(struct hfs_view *view,struct address_space *mapping,unsig
  * cleanup packets are recorded and released by run_cleanups, which plays
  * hfs_mmap_cleanup.
  */
-enum retry_hook { HOOK_NONE, HOOK_RECALL_BEFORE, HOOK_RECALL_AFTER, HOOK_FENCE, HOOK_BLOCK, HOOK_STUCK, HOOK_HOST_BLOCKED };
-struct host_lease { u64 fence; u8 target; bool active; int sharers; };
+enum retry_hook { HOOK_NONE, HOOK_RECALL_BEFORE, HOOK_RECALL_AFTER, HOOK_FENCE, HOOK_BLOCK, HOOK_STUCK, HOOK_RETIRED_ID };
+struct host_lease { u64 fence; u8 target; bool active; int sharers, holders; };
 static struct host_lease host_leases[32];
 static unsigned int nr_host_leases, host_release_recalls;
 static u64 host_fence=1;
 static bool pending_recall;
 static enum retry_hook retry_hook;
-static unsigned int acquire_calls, stale_targets, nr_queued, queued_at_acquire[8];
+static unsigned int acquire_calls, stale_targets, nr_queued, queued_at_acquire[64];
 static unsigned long acquire_jiffies;
 static int leases_live, control_refs;
-static struct hfs_lease *granted[8];
-static struct hfs_cache_cleanup *queued[8];
+static struct hfs_lease *granted[64];
+static struct hfs_cache_cleanup *queued[64];
 static struct hfs_mmap_control control_fixture;
 static int provider_leaves;
+/* re4: the host's capacity model. While host_tickets_full, every
+ * acquisition from host_full_from on is answered BLOCKED;
+ * host_always_blocked answers BLOCKED whatever is retired. Every acquisition,
+ * BLOCKED included, takes one of HOST_TICKETS ticket numbers
+ * (host_tickets_used, admitNew) until a VIEW_RETIRE passes it. VIEW_RETIRE is
+ * BLOCKED (retirementBlocked) while a recall runs (host_recall_running, or a
+ * release recall pending) or a lease with holders is active (one credential
+ * in this model); blocked_until_retires: the recall ends after that many
+ * BLOCKED retirements. retire_busy: that many hfs_view_retire_try calls find
+ * another round holding the retirement mutex (-EBUSY). retire_jiffies: a
+ * round's duration. The cleanup worker (run_cleanups, the retire work) retires
+ * after each packet as hfs_mmap_cleanup does; its calls are counted apart
+ * (worker_retires), and test_pause_hook lets it run during a back-off pause.
+ */
+#define HOST_TICKETS 16U
+static bool host_tickets_full, host_always_blocked, host_recall_running, retire_queued, in_worker;
+static unsigned int retire_busy, worker_retires;
+static unsigned int host_full_from, retire_calls, retire_blocked_calls, blocked_until_retires;
+static unsigned int host_tickets_used;
+static unsigned long retire_jiffies;
 static struct hfs_mmap_control *hfs_mmap_control_get(struct hfs_view *view)
 { (void)view;control_refs++;return &control_fixture; }
 static void hfs_mmap_control_put(struct hfs_mmap_control *control)
@@ -180,6 +208,10 @@ static void hfs_mmap_cleanup(struct work_struct *work) { (void)work;abort(); }
 static bool test_queue_cleanup(struct delayed_work *work)
 {
  struct hfs_cache_cleanup *cleanup=container_of(work,struct hfs_cache_cleanup,work);
+ if(work==&control_fixture.retire){ // re4: the retire work, queued at most once
+  if(retire_queued)return false;
+  retire_queued=true;return true;
+ }
  for(unsigned int i=0;i<nr_queued;i++)assert(queued[i]!=cleanup); // never queued twice
  assert(nr_queued<ARRAY_SIZE(queued));queued[nr_queued++]=cleanup;return true;
 }
@@ -202,32 +234,41 @@ static void same_target_recall(struct hfs_view *view)
 static unsigned int host_grant(u8 target)
 {
  for(unsigned int i=0;i<nr_host_leases;i++)
-  if(host_leases[i].active && host_leases[i].fence==host_fence && host_leases[i].target==target){host_leases[i].sharers++;return i;}
+  if(host_leases[i].active && host_leases[i].fence==host_fence && host_leases[i].target==target){host_leases[i].sharers++;host_leases[i].holders++;return i;}
  assert(nr_host_leases<ARRAY_SIZE(host_leases));
- host_leases[nr_host_leases]=(struct host_lease){.fence=host_fence,.target=target,.active=true};
+ host_leases[nr_host_leases]=(struct host_lease){.fence=host_fence,.target=target,.active=true,.holders=1};
  return nr_host_leases++;
 }
 static void host_release(struct host_lease *lease)
 {
+ assert(lease->holders>0);lease->holders--;
  if(lease->sharers){lease->sharers--;return;}
  for(unsigned int i=0;i<nr_host_leases;i++)
   if(host_leases[i].active && host_leases[i].fence==lease->fence && host_leases[i].target==lease->target){host_release_recalls++;pending_recall=true;return;}
 }
-int hfs_lease_acquire(struct hfs_session *session,const struct hfs_cred *cred,
-		      const struct hfs_cap *object,const struct hfs_cap *description,
-		      u64 offset,bool dirty,const struct hfs_buf *expected_target,
-		      struct hfs_lease **out)
+/* hfs_lease_acquire_ex's host: -EAGAIN with no lease is BLOCKED (*blocked)
+ * or RETIRED_ID (not *blocked).
+ */
+int hfs_lease_acquire_ex(struct hfs_session *session,const struct hfs_cred *cred,
+			 const struct hfs_cap *object,const struct hfs_cap *description,
+			 u64 offset,bool dirty,const struct hfs_buf *expected_target,
+			 struct hfs_lease **out,bool *blocked)
 {
  struct hfs_view *view=session->view;struct hfs_lease *lease=calloc(1,sizeof(*lease));
  enum retry_hook hook=acquire_calls ? HOOK_NONE : retry_hook;
- assert(session==test_session && cred && !object && !description && !offset && !dirty);
+ assert(session==test_session && cred && !object && !description && !offset && !dirty && blocked);
  assert(expected_target && expected_target->len && lease && acquire_calls<ARRAY_SIZE(granted));
- queued_at_acquire[acquire_calls]=nr_queued;
+ queued_at_acquire[acquire_calls]=nr_queued;*blocked=false;
+ assert(++host_tickets_used<=HOST_TICKETS); // never past the host's ticket budget
  jiffies+=acquire_jiffies;
+ if(hook==HOOK_BLOCK){session->bridge_minor=4;session->blocked=true;}
+ // A recall runs on the host whatever the next acquisition is answered.
  if(pending_recall || hook==HOOK_RECALL_BEFORE){pending_recall=false;same_target_recall(view);}
  else if(hook==HOOK_FENCE)hfs_view_fence(view);
- else if(hook==HOOK_BLOCK){session->bridge_minor=4;session->blocked=true;}
- else if(hook==HOOK_HOST_BLOCKED){free(lease);acquire_calls++;*out=NULL;return -EAGAIN;} // BLOCKED: no lease
+ if(host_always_blocked || (host_tickets_full && acquire_calls>=host_full_from)){
+  free(lease);acquire_calls++;*out=NULL;*blocked=true;return -EAGAIN; // BLOCKED: no lease
+ }
+ if(hook==HOOK_RETIRED_ID){free(lease);acquire_calls++;*out=NULL;return -EAGAIN;} // no lease
  kref_init(&lease->refs);memcpy(lease->target_hash,view->target_hash,32);
  if(acquire_calls<stale_targets)lease->target_hash[0]^=1;
  lease->id[0]=(u8)host_grant(lease->target_hash[0]);lease->fence=host_of(lease)->fence;
@@ -235,6 +276,34 @@ int hfs_lease_acquire(struct hfs_session *session,const struct hfs_cred *cred,
  else if(hook==HOOK_STUCK)view->phase=HFS_VIEW_RECALLING;
  granted[acquire_calls++]=lease;leases_live++;*out=lease;return 0;
 }
+static bool host_retire_refused(void)
+{
+ if(host_recall_running || pending_recall)return true;
+ for(unsigned int i=0;i<nr_host_leases;i++)if(host_leases[i].active && host_leases[i].holders)return true;
+ return false;
+}
+/* hfs_view_retire's host (re4): a refusal is recorded in
+ * view->retire_blocked, as the production pass does; otherwise the tickets
+ * retire and their slots are free again (0 only when a floor advanced).
+ */
+static int host_retire(struct hfs_session *session,bool try)
+{
+ assert(session==test_session);
+ if(in_worker)worker_retires++;else retire_calls++;
+ if(try && retire_busy){retire_busy--;return -EBUSY;}
+ jiffies+=retire_jiffies;
+ if(host_retire_refused()){
+  if(!in_worker)retire_blocked_calls++;
+  session->view->retire_blocked=true;
+  if(blocked_until_retires && retire_blocked_calls==blocked_until_retires)host_recall_running=false;
+  return -EAGAIN;
+ }
+ session->view->retire_blocked=false;
+ if(!host_tickets_used)return -EAGAIN;
+ host_tickets_used=0;host_tickets_full=false;session->view->retire_progress++;return 0;
+}
+int hfs_view_retire(struct hfs_session *session) { return host_retire(session,false); }
+int hfs_view_retire_try(struct hfs_session *session) { return host_retire(session,true); }
 /* hfs_mmap_cleanup's part for an observation packet: release the lease,
  * return the credit and the control reference, free the packet.
  */
@@ -245,9 +314,11 @@ static void run_cleanups(void)
   assert(cleanup->control==&control_fixture && !cleanup->pending && list_empty(&cleanup->readers));
   if(cleanup->lease){
    assert(!cleanup->lease->published || cleanup->lease->revoked);
-   host_release(host_of(cleanup->lease));free(cleanup->lease);leases_live--;
+   if(!cleanup->lease->released)host_release(host_of(cleanup->lease)); // re4: released at once
+   free(cleanup->lease);leases_live--;
   }
   list_del(&cleanup->list);unreserve(test_session,cleanup->credit);free(cleanup);
+  in_worker=true;hfs_view_retire(test_session);in_worker=false; // as hfs_mmap_cleanup
   hfs_mmap_control_put(&control_fixture);
  }
  nr_queued=0;
@@ -256,6 +327,7 @@ static int retry_begin(enum retry_hook hook,unsigned int stale,void **cookie)
 {
  static struct inode inode;static int cred;
  retry_hook=hook;stale_targets=stale;acquire_calls=0;host_release_recalls=0;
+ retire_calls=retire_blocked_calls=test_sleeps=sync_releases=host_tickets_used=worker_retires=0;
  return hfs_mmap_begin(&inode,false,(const struct hfs_cred *)(void *)&cred,NULL,cookie);
 }
 /* The published observation holds an active host lease at the view's
@@ -275,10 +347,18 @@ static void retry_end(void *cookie)
 }
 static void retry_no_leaks(int reserved)
 {
- assert(!nr_queued && !leases_live && !control_refs && reservations==reserved);
- assert(list_empty(&control_fixture.cleanup) && !test_session->view->nr_observations);
- // A release recall nobody waited for still runs before the next case.
- if(pending_recall){pending_recall=false;same_target_recall(test_session->view);}
+ struct hfs_view *view=test_session->view;
+ // A release recall nobody waited for still runs before the next case, and
+ // its REOPENED kick re-sends a refused retirement (hfs_mmap_process); the
+ // worker also runs a retire work an observation queued.
+ if(pending_recall){pending_recall=false;same_target_recall(view);}
+ hfs_mmap_retire_kick(view,true);
+ if(retire_queued){
+  retire_queued=false;in_worker=true;
+  hfs_mmap_retire_work((struct work_struct *)(void *)&control_fixture.retire);in_worker=false;
+ }
+ assert(!nr_queued && !leases_live && !control_refs && reservations==reserved && !view->retire_blocked);
+ assert(list_empty(&control_fixture.cleanup) && !view->nr_observations);
 }
 /* R15-1's case: a recall completes while VIEW_ACQUIRE is PENDING and the
  * host grants the lease after it. Before ie4 this was -ESTALE. Now the
@@ -342,15 +422,175 @@ static void retry_moved_target(struct hfs_view *view,int reserved)
  run_cleanups();assert(host_release_recalls==1);
  retry_end(cookie);retry_no_leaks(reserved);
 }
-/* Final review S1: the host's BLOCKED answer (-EAGAIN, no lease) is returned
- * at once, as before ie4: no re-check line, no back-to-back VIEW_ACQUIRE.
+/* Final review S1, kept by re4: a RETIRED_ID (-EAGAIN, no lease, not BLOCKED)
+ * is returned at once: no re-check line, no back-off, no retirement, no
+ * back-to-back VIEW_ACQUIRE.
  */
 static void retry_host_blocked(int reserved)
 {
  void *cookie=(void *)1;unsigned int lines=warnings;
- assert(retry_begin(HOOK_HOST_BLOCKED,0,&cookie)==-EAGAIN && !cookie && acquire_calls==1);
- assert(nr_queued==1 && !queued[0]->lease && warnings==lines);
+ assert(retry_begin(HOOK_RETIRED_ID,0,&cookie)==-EAGAIN && !cookie && acquire_calls==1);
+ assert(nr_queued==1 && !queued[0]->lease && warnings==lines && !test_sleeps && !retire_calls);
  run_cleanups();retry_no_leaks(reserved);
+}
+/* re4 (zq3-r16 R16-1): the host answers BLOCKED for tickets that a
+ * VIEW_RETIRE can free. The observation pauses 50 ms, retires (progress) and
+ * acquires again within the same deadline (pre-re4: -EAGAIN at once).
+ */
+static void retry_blocked_tickets(struct hfs_view *view,int reserved)
+{
+ void *cookie;unsigned long start=jiffies;
+ host_tickets_full=true;host_full_from=0;
+ assert(!retry_begin(HOOK_NONE,0,&cookie));retry_published(view,cookie);
+ assert(acquire_calls==2 && retire_calls==1 && test_sleeps==1 && jiffies-start==50);
+ assert(nr_queued==1 && !queued[0]->lease && queued_at_acquire[1]==1);
+ assert(strstr(last_warning,"observation VIEW_ACQUIRE BLOCKED by the host (attempt 1); retiring, then retrying after 50 ms if that frees anything"));
+ run_cleanups();retry_end(cookie);retry_no_leaks(reserved);
+}
+/* R16-1's exact shape: ie4 holds a stale lease while it acquires again and
+ * that acquisition is BLOCKED. The held lease is released at once (its
+ * release starts a recall, which refuses the first retirement; the completed
+ * release is the progress), queued before the next acquisition, and the
+ * retirement after the recall frees the tickets. Every packet is queued once.
+ */
+static void retry_blocked_held(struct hfs_view *view,int reserved)
+{
+ void *cookie;
+ host_tickets_full=true;host_full_from=1;
+ assert(!retry_begin(HOOK_NONE,1,&cookie));retry_published(view,cookie);
+ assert(acquire_calls==4 && sync_releases==1 && granted[0]->released && host_release_recalls==1);
+ assert(retire_calls==2 && retire_blocked_calls==1 && test_sleeps==2 && !view->retire_blocked);
+ assert(!queued_at_acquire[1] && queued_at_acquire[2]==2);
+ assert(nr_queued==3 && queued[0]->lease==granted[0] && !granted[0]->published);
+ assert(!queued[1]->lease && !queued[2]->lease);
+ assert(((struct hfs_observation *)cookie)->lease==granted[3]);
+ run_cleanups();retry_end(cookie);retry_no_leaks(reserved);host_full_from=0;
+}
+/* A host that keeps answering BLOCKED although each retirement advances: at
+ * most HFS_BLOCKED_RETRIES_MAX retries (50+100+200 ms), then the host's
+ * -EAGAIN with one line; every packet queued once, nothing leaked, and the
+ * acquisition fixture asserts the 16-ticket budget throughout.
+ */
+static void retry_blocked_persistent(int reserved)
+{
+ void *cookie=(void *)1;unsigned long start=jiffies;
+ host_always_blocked=true;
+ assert(retry_begin(HOOK_NONE,0,&cookie)==-EAGAIN && !cookie);
+ assert(acquire_calls==HFS_BLOCKED_RETRIES_MAX+1 && nr_queued==acquire_calls);
+ assert(retire_calls==3 && test_sleeps==3 && jiffies-start==350);
+ for(unsigned int i=0;i<nr_queued;i++)assert(!queued[i]->lease);
+ assert(strstr(last_warning,"observation VIEW_ACQUIRE BLOCKED, retry limit reached after 4 attempts (-EAGAIN)"));
+ host_always_blocked=false;run_cleanups();retry_no_leaks(reserved);
+}
+/* Review round 1: a BLOCKED that retirement cannot clear is -EAGAIN after one
+ * acquisition and one short pause: another observation of the same
+ * credentials holds an active lease (retirementBlocked), the retirement mutex
+ * is busy (never waited for), or the retirement round ran past the deadline.
+ */
+static void retry_blocked_no_progress(struct hfs_view *view,int reserved)
+{
+ void *holder,*cookie=(void *)1;unsigned long start;
+ assert(!retry_begin(HOOK_NONE,0,&holder));retry_published(view,holder);
+ host_tickets_full=true;start=jiffies;
+ assert(retry_begin(HOOK_NONE,0,&cookie)==-EAGAIN && !cookie && acquire_calls==1);
+ assert(retire_calls==1 && retire_blocked_calls==1 && test_sleeps==1 && jiffies-start==50);
+ assert(strstr(last_warning,"observation VIEW_ACQUIRE BLOCKED, no retirement progress after 1 attempts (-EAGAIN)"));
+ assert(view->retire_blocked && nr_queued==1);
+ run_cleanups();retry_end(holder);retry_no_leaks(reserved);
+ // A retirement mutex that stays busy: each busy try pauses again, against
+ // the cap; still one acquisition.
+ retire_busy=~0U;host_tickets_full=true;
+ assert(retry_begin(HOOK_NONE,0,&cookie)==-EAGAIN && acquire_calls==1 && retire_calls==3 && test_sleeps==3);
+ assert(strstr(last_warning,"observation VIEW_ACQUIRE BLOCKED, retry limit reached after 4 attempts (-EAGAIN)"));
+ retire_busy=0;run_cleanups();retry_no_leaks(reserved);
+ retire_jiffies=HFS_VIEW_ENTER_WAIT_MS;host_tickets_full=true;
+ assert(retry_begin(HOOK_NONE,0,&cookie)==-EAGAIN && acquire_calls==1 && retire_calls==1 && !host_tickets_full);
+ assert(strstr(last_warning,"observation VIEW_ACQUIRE BLOCKED, deadline exhausted after 1 attempts (-EAGAIN)"));
+ retire_jiffies=0;run_cleanups();retry_no_leaks(reserved);
+}
+/* Final review S1: the BLOCKED attempt's own packet reaches the cleanup
+ * worker before the pause ends, and the worker's retirement frees the
+ * tickets. The back-off's own try then finds nothing left (-EAGAIN) or the
+ * mutex busy (-EBUSY), but the floor advanced since the acquisition
+ * (view->retire_progress), so it retries and is granted.
+ */
+static void retry_blocked_worker(struct hfs_view *view,int reserved)
+{
+ void *cookie;
+ host_tickets_full=true;test_pause_hook=run_cleanups;
+ assert(!retry_begin(HOOK_NONE,0,&cookie));retry_published(view,cookie);
+ assert(acquire_calls==2 && test_sleeps==1 && worker_retires==1 && retire_calls==1 && !nr_queued);
+ test_pause_hook=NULL;run_cleanups();retry_end(cookie);retry_no_leaks(reserved);
+ host_tickets_full=true;test_pause_hook=run_cleanups;retire_busy=1;
+ assert(!retry_begin(HOOK_NONE,0,&cookie));retry_published(view,cookie);
+ assert(acquire_calls==2 && test_sleeps==1 && worker_retires==1 && retire_calls==1 && !retire_busy);
+ test_pause_hook=NULL;run_cleanups();retry_end(cookie);retry_no_leaks(reserved);
+ // A busy try without progress yet pauses again; the next try retires.
+ host_tickets_full=true;retire_busy=1;
+ assert(!retry_begin(HOOK_NONE,0,&cookie));retry_published(view,cookie);
+ assert(acquire_calls==2 && test_sleeps==2 && retire_calls==2 && !retire_busy);
+ run_cleanups();retry_end(cookie);retry_no_leaks(reserved);
+}
+/* oc4's stop conditions end the back-off before any pause or retirement: a
+ * fatal signal (-EINTR), transport_failed and a blocked hfs1.4 session
+ * (-ESTALE).
+ */
+static void retry_blocked_stops(struct hfs_view *view,int reserved)
+{
+ void *cookie=(void *)1;
+ host_always_blocked=true;test_fatal_signal=true;
+ assert(retry_begin(HOOK_NONE,0,&cookie)==-EINTR && !cookie && acquire_calls==1);
+ assert(!test_sleeps && !retire_calls && nr_queued==1);
+ test_fatal_signal=false;run_cleanups();retry_no_leaks(reserved);
+ test_session->transport_failed=true;
+ assert(retry_begin(HOOK_NONE,0,&cookie)==-ESTALE && acquire_calls==1 && !test_sleeps && nr_queued==1);
+ test_session->transport_failed=false;run_cleanups();retry_no_leaks(reserved);
+ assert(retry_begin(HOOK_BLOCK,0,&cookie)==-ESTALE && acquire_calls==1 && !test_sleeps && nr_queued==1);
+ test_session->bridge_minor=0;test_session->blocked=false;
+ host_always_blocked=false;run_cleanups();retry_no_leaks(reserved);
+ assert(view->phase==HFS_VIEW_LIVE);
+}
+static void run_retire_work(void)
+{
+ assert(retire_queued);retire_queued=false;
+ hfs_mmap_retire_work((struct work_struct *)(void *)&control_fixture.retire);
+}
+/* A BLOCKED VIEW_RETIRE (a recall runs) is offered again, not only at the
+ * next cleanup: after the recall's REOPENED (hfs_mmap_process's forced
+ * kick) and by the next observation (at most once per HFS_RETIRE_KICK_MS).
+ */
+static void retry_blocked_retire(struct hfs_view *view,int reserved)
+{
+ void *cookie=(void *)1;
+ // BLOCKED during a recall: the retirement is refused too, so -EAGAIN at
+ // once with the refusal recorded; REOPENED's kick then retires, and the
+ // next observation is granted.
+ host_tickets_full=true;host_recall_running=true;
+ assert(retry_begin(HOOK_NONE,0,&cookie)==-EAGAIN && acquire_calls==1 && view->retire_blocked);
+ run_cleanups();host_recall_running=false;
+ hfs_mmap_retire_kick(view,true);hfs_mmap_retire_kick(view,true); // a second kick drops its reference
+ assert(retire_queued && control_refs==1 && retire_calls==1);
+ run_retire_work();assert(retire_calls==2 && !view->retire_blocked && !control_refs && !host_tickets_full);
+ hfs_mmap_retire_kick(view,true);assert(!retire_queued && !control_refs); // nothing owed
+ assert(!retry_begin(HOOK_NONE,0,&cookie));retry_published(view,cookie);
+ assert(acquire_calls==1 && !retire_queued);
+ run_cleanups();retry_end(cookie);retry_no_leaks(reserved);
+ // Unforced kicks are rate-limited while the refusal persists.
+ host_recall_running=true;retire_calls=0;
+ assert(hfs_view_retire(test_session)==-EAGAIN && view->retire_blocked);
+ jiffies+=HFS_RETIRE_KICK_MS;hfs_mmap_retire_kick(view,false);
+ run_retire_work();assert(retire_calls==2 && view->retire_blocked && !control_refs);
+ hfs_mmap_retire_kick(view,false);assert(!retire_queued && !control_refs);
+ jiffies+=HFS_RETIRE_KICK_MS;hfs_mmap_retire_kick(view,false);assert(retire_queued);
+ // A stopping control drops the work's reference without an RPC.
+ control_fixture.stopping=true;run_retire_work();
+ assert(retire_calls==2 && !control_refs);control_fixture.stopping=false;
+ // The next observation (a second later) kicks it before its acquisition.
+ host_recall_running=false;jiffies+=HFS_RETIRE_KICK_MS;
+ assert(!retry_begin(HOOK_NONE,0,&cookie));retry_published(view,cookie);
+ assert(retire_queued && acquire_calls==1 && control_refs==2);
+ run_retire_work();assert(retire_calls==1 && control_refs==1);
+ retry_end(cookie);retry_no_leaks(reserved);view->retire_blocked=false;
 }
 /* Refusals keep -ESTALE (a fenced view, a blocked hfs1.4 session, a failed
  * transport), and their one lease is released once.
@@ -498,13 +738,20 @@ static void retry_reissue(struct hfs_session *session)
 static void observation_retry_checks(struct hfs_session *session)
 {
  struct hfs_view *view=session->view;int reserved=atomic_load(&reservations);
- spin_lock_init(&control_fixture.lock);INIT_LIST_HEAD(&control_fixture.cleanup);
+ spin_lock_init(&control_fixture.lock);INIT_LIST_HEAD(&control_fixture.cleanup);control_fixture.view=view;
  assert(view->phase==HFS_VIEW_LIVE && view->target.len && !view->active && !view->nr_observations);
  retry_recall_before_grant(view,reserved);
  retry_recall_after_grant(view,reserved);
  retry_self_recall(view,reserved);
  retry_moved_target(view,reserved);
  retry_host_blocked(reserved);
+ retry_blocked_tickets(view,reserved);
+ retry_blocked_held(view,reserved);
+ retry_blocked_persistent(reserved);
+ retry_blocked_no_progress(view,reserved);
+ retry_blocked_worker(view,reserved);
+ retry_blocked_stops(view,reserved);
+ retry_blocked_retire(view,reserved);
  retry_refused(view,reserved);
  retry_deadline(view,reserved);
  retry_attr(view);
@@ -614,5 +861,5 @@ int main(void)
  view_worker_log_checks(&session);
  hfs_json_free(target_event);hfs_view_unregister_inode(&inode.inode);hfs_view_fence(session.view);assert(!hfs_view_free(&session));
  assert(!reservations && !module_refs);
- puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (recall before/after grant re-acquires,no release recall,no self-recall loop,moved target,refusals,deadline,no leak,host BLOCKED passed through,attr re-stamp/re-issue,moved LOOKUP FORGET balanced),source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
+ puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (recall before/after grant re-acquires,no release recall,no self-recall loop,moved target,refusals,deadline,no leak,RETIRED_ID passed through,host BLOCKED retried only after retirement progress (held lease released first,at most 3 retries,ticket budget kept),progress by the cleanup worker during the pause or after a busy try,no progress/deadline -EAGAIN at once,BLOCKED retire re-sent after recall/next observation (rate-limited),attr re-stamp/re-issue,moved LOOKUP FORGET balanced),source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
 }

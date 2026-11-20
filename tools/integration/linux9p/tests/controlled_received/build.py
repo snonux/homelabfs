@@ -129,7 +129,11 @@ def main():
     (out/'control_struct.inc').write_text(mmap[control_start:control_end] +
                                           mmap[where_start:where_end])
     control_names = ['hfs_mmap_control_release', 'hfs_mmap_control_get',
-                     'hfs_mmap_control_put', 'hfs_mmap_hash32', 'hfs_mmap_token',
+                     'hfs_mmap_control_put',
+                     # re4: the BLOCKED VIEW_RETIRE re-send that
+                     # hfs_mmap_process and hfs_mmap_start reference.
+                     'hfs_mmap_retire_work', 'hfs_mmap_retire_kick',
+                     'hfs_mmap_hash32', 'hfs_mmap_token',
                      'hfs_mmap_event_check', 'hfs_mmap_word', 'hfs_mmap_ack',
                      'hfs_mmap_or_dash', 'hfs_mmap_fail', 'hfs_mmap_fail_event',
                      'hfs_mmap_note_event',
