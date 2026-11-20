@@ -1,5 +1,18 @@
 # xz3 r16 kernel rebuild (2026-11-19): zq3-r15 observation re-check fix
 
+**Superseded on 2026-11-20** by the [r17 rebuild](../xz3-20261120-r17/README.md)
+(`f614d52a…`, source `3430758`) for zq3-r17. Its ie4 guest kernel
+`7a5bb8dc…` returns a host BLOCKED observation VIEW_ACQUIRE at once while
+still holding its lease, and the shared budget of 8 control tickets was
+full, so m1's root OPEN re-acquire was refused and T1 failed (zq3-r16
+R16-1, fixed by re4 and the qe4 ControlTickets bound of 24 in the runtime
+spec). r17 rebuilt the kernel (re4), the daemon (te4) with the window
+artifacts, and the exporter on f3 under the 7e4 guard recipe. The copy
+route used here no longer assembles at `3430758`, because `assemble.py`
+reads the guard binding from the xd4 native proof records. The tooling
+refuses this manifest as superseded. It still passes `package.py check`
+and `admit.py` under the `3430758` tooling.
+
 This candidate supersedes the [r15 rebuild](../xz3-20261119-r15/README.md)
 (`ac8020aa…`, source `2f34b60`) only because its guest kernel predates ie4.
 In zq3-r15 (R15-1) T1's `os.fstat` of the m0 root failed with `ESTALE`

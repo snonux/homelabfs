@@ -104,7 +104,13 @@ rebuild for zq3-r16 (candidate `a1af0bd7…`,
 patches 0003/0004 changed the image (build ID `7a5bb8dc…`) and nine hfs
 export CRCs in `Module.symvers`, while the five modules and
 `abi-negative.json` came out byte-identical. It reused the r15 daemon and
-the xd4 exporter.
+the xd4 exporter. The r17 rebuild for zq3-r17 (candidate `f614d52a…`,
+[evidence](evidence/xz3-20261120-r17/README.md)) kept the config; its re4
+patch 0004 changed the image (build ID `360fbc6d…`) and the CRCs of the
+same nine hfs exports, while the five modules and `abi-negative.json` came
+out byte-identical. It also rebuilt the te4 daemon and, because of the 7e4
+guard recipe change below, the native exporter on f3, which reproduced
+`2fd7e32f…` byte for byte.
 
 The ordinary namespace fixture selects a rootful OCI runtime in the initial
 user namespace, VFS image storage and a newly created private network namespace
@@ -268,10 +274,16 @@ this new hash; `assemble.py` compares the guard against that build's own
 bindings. Historical evidence keeps `228c91f3…` unchanged. Consequence:
 `assemble.py` at this revision refuses to assemble a candidate that reuses
 the xd4 exporter `2fd7e32f…` through its native build records, because those
-bindings still name `228c91f3…`; to keep reusing it, copy the packaged files
-byte for byte from the previous package (as r15 and r16 did) or rebuild
-natively. Within one sample the walk can still miss a file renamed into a
-directory it has already passed; the guard samples repeatedly.
+bindings still name `228c91f3…`. Copying the packaged files byte for byte
+from the previous package (as r15 and r16 did) does not avoid this:
+`copy_native_inputs` still reads the guard binding from the reused
+`native-final-source-and-first-seal.json`, as the r17 rebuild for zq3-r17
+found at `3430758`. r17 therefore rebuilt the exporter on f3 under
+`34ddf37c…`, which reproduced `2fd7e32f…` byte for byte
+([r17 evidence](evidence/xz3-20261120-r17/README.md)); later candidates can
+reuse it through that build's records. Within one sample the walk can still
+miss a file renamed into a directory it has already passed; the guard
+samples repeatedly.
 
 `proposal.py --physical-bytes N` emits inert memory arithmetic. Adding
 `--package ABS --operator-public HEX` pins the actual component artifacts to an
