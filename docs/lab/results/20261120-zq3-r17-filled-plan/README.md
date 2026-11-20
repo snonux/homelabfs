@@ -3,6 +3,7 @@
 [Run sheet](run-sheet.md) · [Pins](pins.json) · [Phase 1 facts](facts/) ·
 [Run plan](../../zq3-run-plan.md) · [zq3-r16 fill](../20261120-zq3-r16-filled-plan/README.md) ·
 [zq3-r16 record](../20261120-zq3-r16/README.md) ·
+[zq3-r17 record](../20261120-zq3-r17/README.md) ·
 [r17 candidate](../../../../tools/integration/artifacts/evidence/xz3-20261120-r17/README.md)
 
 These are the exact run inputs for `zq3-r17`, the seventeenth attempt of zq3.
