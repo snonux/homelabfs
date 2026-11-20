@@ -133,17 +133,25 @@ stock` ok, no `/.autorelabel`.
    lease `6d07798f…` fence 6 and a verified `SOURCE` receipt
    (`verification.kind` `SOURCE`, the expected target). Guest cell 334
    (native 1908), the poll of release #4, got `RELEASED` right after it:
-   the recall that release #4 started ended, and the host granted #5 at
-   the new fence in the same step. m1's `VIEW_WAIT` with `after_sequence`
+   the recall that release #4 started had ended. The host does not grant a
+   PENDING ticket when a recall ends (`finishRecall`/`advanceFences`,
+   `internal/viewcontrol/fence.go`, only raise the fences); it re-checks
+   the ticket lazily on the next `VIEW_QUERY` (`queryOrCancelTicket` →
+   `readmit`, `tickets.go`). So cell 333 itself produced the grant, after
+   the host had accepted m1's REOPENED ACK and raised the fence. m1's `VIEW_WAIT` with `after_sequence`
    20 (cell 329) was sent before cell 333, so m1 had already received the
    REOPEN event of that recall when it sent the query.
 5. **Where -129 comes from:** `hfs_view_exchange` (patch 0004) calls
    `hfs_received_source` (patch 0005) on every hfs1.4 `GRANTED`/`FROZEN`
    reply, and any error there goes to `invalid:`, which marks the ticket
-   uncertain and blocks the session ("uncertain view ticket"). The only
-   other `-EKEYREJECTED` sources fail earlier, in `hfs_received_new`, and
-   would not print this line. `hfs_received_source` returns `-EKEYREJECTED`
-   when the reply's receipt owner is not of kind SOURCE. `hfs_received_new`
+   uncertain and blocks the session ("uncertain view ticket").
+   `-EKEYREJECTED` from `hfs_received_new` (receipt verification) would
+   fail the exchange earlier and not print this line. Inside
+   `hfs_received_source`, `-EKEYREJECTED` has several exits: no owner found
+   for the reply, a session, channel or frame mismatch, a token span
+   mismatch, or an owner that is not of kind SOURCE. The last is the most
+   likely: grant #2 passed the same path with the same reply shape, so the
+   lookup, channel, frame and span checks work. `hfs_received_new`
    gives that kind only if `hfs_received_source_current` holds **at
    receipt**: the lease fence equals the mount's `current_fence`, the view
    revision and phase equal the ones captured when the command was sent,
@@ -151,19 +159,25 @@ stock` ok, no `/.autorelabel`.
    target. Otherwise it keeps the verified reply as a raw outcome
    (`/* Raw outcome, no stale adoption. */`), and the later consumption
    check reports it as if it were unverified.
+6. **A failed REOPENED ACK is ruled out:** `hfs_controlled_after_ack`
+   failing would stop m1's view worker at the ACK step. The worker-stop
+   line at 129.95 s, after the block, shows `at VIEW_WAIT` with `ack -`
+   and view phase `LIVE`: the worker stopped only because the session was
+   already blocked.
 
 ### Why the grant was not current (inference)
 
 The guest moves its view to `LIVE` with a new revision on the REOPEN
 event (`hfs_view_reopen`), then sends the REOPENED `VIEW_ACK`, and advances
 `current_fence` only after that ACK's reply (`hfs_controlled_after_ack`).
-The host advances both domains' fences (`advanceFences`,
-`internal/viewcontrol/fence.go`) and grants the waiting acquisition
-when the last REOPENED ACK completes the recall. So a PENDING acquisition
-is granted at fence N+1 exactly while the guest is between "view
-reopened" and "own ACK reply processed". A `VIEW_QUERY` that is in flight
-across that window comes back with a lease at fence 6 to a mount still at
-fence 5, or with a revision captured before the reopen. Either way it is
+The host raises both domains' fences (`advanceFences`,
+`internal/viewcontrol/fence.go`) when the last REOPENED ACK completes the
+recall, and the next `VIEW_QUERY` of the PENDING acquisition re-admits it
+at fence N+1. The guest re-queries a PENDING ticket every 10 ms, so a
+query is very likely to reach the host right after it accepted m1's ACK,
+while the guest is still between "view reopened" and "own ACK reply
+processed". That query comes back with a lease at fence 6 to a mount
+still at fence 5, or with a revision captured before the reopen. Either way it is
 not current at receipt, and the host's correct, verified grant becomes a
 fatal `-EKEYREJECTED`. Acquisition #2 took the same PENDING → GRANTED
 path one recall earlier and succeeded (as #2 did in zq3-r16), so this is
@@ -220,17 +234,29 @@ not reached before.
 1. **Guest (patch 0005 `hfs_received_new`/`hfs_received_source`):** keep a
    verified SOURCE that is merely not current as its own state (for
    example a `stale` flag on the owner) and return `-ESTALE` for it, so
-   `-EKEYREJECTED` again means only "not verified".
-2. **Guest (patch 0004 `hfs_view_exchange`):** on `-ESTALE` from a
-   `VIEW_QUERY` GRANTED/FROZEN reply, do not block the session or mark the
-   ticket uncertain. Wait (bounded by the exchange's 30 s deadline, stopping
-   on a blocked session or failed transport) until the view is `LIVE` and
-   the mount's `current_fence` is at least the lease fence, then send
-   `VIEW_QUERY` again: the host answers the same Current GRANTED lease, and
-   a fresh capture validates it. If the lease fence is behind
-   `current_fence` (a later recall passed it), hand the lease to the
+   `-EKEYREJECTED` again means only "not verified". `hfs_received_source`
+   already returns `-ESTALE` for a source that was current at receipt but
+   is not at consumption (the `hfs_received_source_current` re-check),
+   and that also blocks the session today. The new handling must cover
+   both cases, and the other `hfs_received_source` callers in patch 0004
+   (the reservation and frozen-entry paths) must be checked for the same
+   treatment.
+2. **Guest (patch 0004 `hfs_view_exchange`), lease `VIEW_ACQUIRE` replies
+   only:** on `-ESTALE` from a GRANTED lease reply, do not block the
+   session or mark the ticket uncertain. Wait on the REOPENED ACK path
+   (bounded by the exchange's 30 s deadline, stopping on a blocked session
+   or failed transport) until the view is `LIVE` and the mount's
+   `current_fence` has reached the lease fence, then send `VIEW_QUERY`
+   again. That is safe: a re-sent `VIEW_QUERY` on a GRANTED ticket returns
+   the stored reply and creates no new ticket, identity or lease, and a
+   fresh capture validates it. If the lease fence is behind
+   `current_fence` (a later recall passed it), give the lease to the
    observation's packet and return `-EXDEV`, so ie4 acquires again and the
    packet releases it (the host still counts the lease as active).
+   `-EXDEV` fits only the ie4 observation path (`hfs_mmap_observe`). The
+   same exchange also serves `DIRTY_RESERVE`/`DIRTY_FREEZE`, whose entry
+   sources are current only while the view is `QUIESCENT`/`STOPPED`; a
+   wait for `LIVE` would time out there, so those keep their own rule.
 3. **Tests:** a guest test that delivers a GRANTED reply at fence N+1
    before the REOPENED ACK reply (and one with a revision captured before
    the reopen) and expects a re-query, not a block; a host
