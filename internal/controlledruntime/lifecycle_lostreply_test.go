@@ -14,6 +14,7 @@ import (
 	"github.com/snonux/homelabfs/internal/admission"
 	"github.com/snonux/homelabfs/internal/fsapi"
 	"github.com/snonux/homelabfs/internal/guestbridge"
+	"github.com/snonux/homelabfs/internal/viewcontrol"
 	"golang.org/x/sys/unix"
 )
 
@@ -252,6 +253,21 @@ func checkSameEffect(t *testing.T, got, want *lifecycleEvidence, step string) {
 	}
 }
 
+// checkRecallHistory requires that OBSERVE reports the real release recall
+// prepareRestartCut ran (task ce4): completed, with its trigger, every phase
+// and every participant's ACKs, although the ledger no longer holds it.
+func checkRecallHistory(t *testing.T, e *lifecycleEvidence) {
+	t.Helper()
+	h := e.Controller.Recalls
+	if h == nil || h.Total == 0 || len(h.Recalls) == 0 || e.Controller.Ledger == nil || e.Controller.Ledger.Recall {
+		t.Fatalf("recall history evidence: %+v (ledger %+v)", h, e.Controller.Ledger)
+	}
+	last := h.Recalls[len(h.Recalls)-1]
+	if last.Kind != viewcontrol.TriggerRelease || last.Opcode != "VIEW_RELEASE" || last.Outcome != viewcontrol.RecallCompleted || len(last.Phases) != 6 || len(last.Acks) != 5*len(last.Participants) || last.StartedUTC == "" {
+		t.Fatalf("release recall history: %+v", last)
+	}
+}
+
 // prepareRestartCut performs the guest steps any C9 cut after a mutation
 // needs: drop the MKDIR lookup and refresh/retire the now historical view
 // source through the runtime's own ticket families and an actual recall.
@@ -276,6 +292,7 @@ func checkLostReplyRestart(t *testing.T, run *lifecycleRun, lost lostCall, resul
 	t.Helper()
 	d := run.d
 	before := run.observe(6)
+	checkRecallHistory(t, before)
 	_, restarted := run.command(LifecycleRestart, 7, run.ready.Runtime, run.ready.Cut, 1)
 	if restarted.Status != lifecycleRestarted || restarted.Evidence == nil {
 		t.Fatalf("C9 over reconciled lost reply: %+v", restarted)

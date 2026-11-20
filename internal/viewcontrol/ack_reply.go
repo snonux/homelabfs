@@ -40,12 +40,14 @@ const BlockedACKBound = 30 * time.Second
 // (earlyDrained): BLOCKED like WouldBlock, but bounded from its peers' waits.
 var errEarlyDrained = fmt.Errorf("%w: DRAINED before every INSTALLED_DRAIN", fsapi.WouldBlock)
 
-// blockedACK remembers when one session's current ACK bytes were first BLOCKED.
-// It is in memory only: a refusal never changes the protected ledger, and a
-// controller restart starts a fresh bound.
+// blockedACK remembers when one session's current ACK bytes were first BLOCKED
+// and how many BLOCKED replies they got (count feeds only the recall history,
+// recordAck). It is in memory only: a refusal never changes the protected
+// ledger, and a controller restart starts a fresh bound.
 type blockedACK struct {
 	hash  string
 	since time.Time
+	count int
 }
 
 // acknowledge answers one VIEW_ACK with the spec reply {status:ACCEPTED|STALE|
@@ -75,14 +77,19 @@ func (c *Controller) acknowledge(ctx context.Context, scope guestbridge.Context,
 	if err := json.Unmarshal(raw, &ack); err != nil {
 		return nil, guestbridge.Final(fsapi.Invalid)
 	}
+	checked := c.clock()
 	if err := c.ack(ctx, scope, ack, raw); err != nil {
 		return c.ackRefusal(scope, raw, err)
 	}
+	check := c.clock().Sub(checked)
 	// An ACK that passed every check is protected before it is answered. A
 	// failed write poisons the controller, so ACCEPTED would be uncertain.
 	if err := c.save(); err != nil {
 		return nil, err
 	}
+	// Diagnostics only (task ce4): recorded once the ACK is protected and
+	// before ackReply clears this session's BLOCKED history.
+	c.recordAck(ack, raw, check, c.clock())
 	// The ACK is durable now; progress is a separate advancement that the next
 	// poll or ACK retries, and a replay of these exact bytes is ACCEPTED.
 	_ = c.progress(ctx)
@@ -118,18 +125,16 @@ func (c *Controller) ackReply(scope guestbridge.Context, raw json.RawMessage, st
 // BlockedACKBound. The bound runs from the ACK's own first BLOCKED, or from
 // peerSince when that is later (an early DRAINED, earlyDrainedSince).
 func (c *Controller) blockedReply(scope guestbridge.Context, raw json.RawMessage, peerSince time.Time) (json.RawMessage, error) {
-	now := time.Now()
-	if c.now != nil {
-		now = c.now()
-	}
+	now := c.clock()
 	if c.blockedACKs == nil {
 		c.blockedACKs = map[string]blockedACK{}
 	}
 	current, ok := c.blockedACKs[scope.Session]
 	if !ok || current.hash != hash(raw) {
 		current = blockedACK{hash: hash(raw), since: now}
-		c.blockedACKs[scope.Session] = current
 	}
+	current.count++
+	c.blockedACKs[scope.Session] = current
 	start := current.since
 	if peerSince.After(start) {
 		start = peerSince

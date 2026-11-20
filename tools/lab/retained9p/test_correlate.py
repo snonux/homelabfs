@@ -29,6 +29,17 @@ def uuid(byte):
     return [byte] * 16  # Go marshals fsapi.UUID ([16]byte) as a number array.
 
 
+# The view controller's ce4 recall history (an additive optional field of
+# evidence /2). Every fixture carries it, so every correlation test shows the
+# consumers accept it; a completed recall in it is not a recall in the ledger.
+RECALLS = {"capacity": 64, "total": 1, "omitted": 0, "recalls": [{
+    "id": "recall-1", "kind": "RELEASE", "opcode": "VIEW_RELEASE", "domain": "session0", "scope": "DOMAIN",
+    "participants": ["session0"], "started_utc": "2026-11-20T01:02:03.000004Z", "end_us": 9000,
+    "outcome": "COMPLETED", "phases": [{"phase": "RECALL", "at_us": 0, "issue_us": 40}],
+    "acks": [{"domain": "session0", "phase": "STOPPED", "sequence": 1, "at_us": 650, "blocked": 2,
+              "blocked_us": 600, "check_us": 30}]}]}
+
+
 def evidence(applied, cut="cut-1", epoch=1, runtime="runtime-1"):
     """One complete SERVING OBSERVE evidence record of the plan's guest."""
     domains = [{"session": "session" + str(i), "phase": "ADMITTED", "revision": applied, "fence": 0}
@@ -44,7 +55,8 @@ def evidence(applied, cut="cut-1", epoch=1, runtime="runtime-1"):
                                       "Inode": 10 + i, "Bytes": applied}} for i in range(2)],
             "controller": {"ledger": {"Digest": "v", "Bytes": 1, "Matches": True, "Device": 1, "Inode": 20,
                                       "Sources": 1, "Leases": 0, "Reservations": 0, "Domains": 2,
-                                      "Tickets": 0, "Terminal": 0, "Recall": False}},
+                                      "Tickets": 0, "Terminal": 0, "Recall": False},
+                           "recalls": RECALLS},
             "transport": {"controller": "tc", "fuse_session": "fs", "high": applied, "cells": 1,
                           "ordinary": 1, "control": 0, "workspace": False, "terminal": 0, "hellos": 2,
                           "digest": "t" * 64}}

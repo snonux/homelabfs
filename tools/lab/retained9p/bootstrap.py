@@ -82,6 +82,7 @@ VERSION = "homelabfs-zq3-bootstrap-plan/1"
 # /2 journal's `ok` usable proves less; fill_plan.py refuses /2 by version.
 JOURNAL_VERSION = "homelabfs-zq3-bootstrap-journal/3"
 EVIDENCE_VERSION = "homelabfs-controlled-evidence/2"  # OBSERVE with provider Claims (b84)
+# The optional ce4 controller.recalls history of /2 is diagnostics; the gate ignores it.
 OBSERVER_VERSION = "homelabfs-runtime-observer-input/1"  # internal/runtimeprep
 REMOTE = HERE / "bootstrap_remote.py"
 MOUNT_OPTIONS = "trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,msize=65536"

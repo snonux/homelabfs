@@ -352,7 +352,7 @@ func (c *Controller) acquire(ctx context.Context, scope guestbridge.Context, r r
 	}
 	for _, l := range c.state.Leases {
 		if l.Active && accessConflict(l.Lease.Access, l.Lease.Mode, r.Access, r.Mode) {
-			if err := c.startRecall(ctx); err != nil {
+			if err := c.startRecall(ctx, recallTrigger{TriggerAcquireConflict, "VIEW_ACQUIRE", scope.Session}); err != nil {
 				return nil, err
 			}
 			return c.reply(t, "PENDING", nil, nil, nil)
@@ -388,7 +388,7 @@ func (c *Controller) expectedMismatch(ctx context.Context, scope guestbridge.Con
 	key, _ := ticketKeys(scope, t.Request)
 	t.ExpectedMismatch = true
 	c.state.Tickets[key] = t
-	if err := c.startRecall(ctx); err != nil {
+	if err := c.startRecall(ctx, recallTrigger{TriggerExpectedTarget, "VIEW_ACQUIRE", scope.Session}); err != nil {
 		return nil, err
 	}
 	return c.reply(t, "PENDING", nil, nil, nil)
@@ -467,7 +467,7 @@ func (c *Controller) releaseLease(ctx context.Context, scope guestbridge.Context
 	if c.state.Recall != nil {
 		return c.reply(t, "PENDING", nil, nil, nil)
 	}
-	if pending, err := c.releaseNeedsRecall(ctx, r.Lease); pending || err != nil {
+	if pending, err := c.releaseNeedsRecall(ctx, r.Lease, recallTrigger{Opcode: op, Domain: scope.Session}); pending || err != nil {
 		if err != nil {
 			return nil, err
 		}
@@ -499,16 +499,19 @@ func (c *Controller) releaseLease(ctx context.Context, scope guestbridge.Context
 // (startReleaseRecall); any other lease uses the all-domain recall of dirty
 // pressure. Include active renewed siblings so an old immutable lineage
 // release cannot wait without progress. An open reservation of the lineage
-// needs the all-domain recall that freezes and drains it.
-func (c *Controller) releaseNeedsRecall(ctx context.Context, lease guestbridge.ViewLease) (bool, error) {
+// needs the all-domain recall that freezes and drains it. trigger names the
+// release's opcode and domain for the recall history; its Kind is set here.
+func (c *Controller) releaseNeedsRecall(ctx context.Context, lease guestbridge.ViewLease, trigger recallTrigger) (bool, error) {
 	for _, l := range c.state.Leases {
 		if l.Active && sameLineage(l.Lease, lease) {
-			return true, c.startReleaseRecall(ctx, lease)
+			trigger.Kind = TriggerRelease
+			return true, c.startReleaseRecall(ctx, lease, trigger)
 		}
 	}
 	for _, reservation := range c.state.Reservations {
 		if sameLineage(c.state.Leases[reservation.Reservation.LeaseID].Lease, lease) && reservation.Status != "CLOSED" {
-			return true, c.startRecall(ctx)
+			trigger.Kind = TriggerReleaseReservation
+			return true, c.startRecall(ctx, trigger)
 		}
 	}
 	return false, nil

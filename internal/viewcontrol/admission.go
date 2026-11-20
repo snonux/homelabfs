@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"strconv"
 	"sync"
 
 	"github.com/snonux/homelabfs/internal/controlledvalidation"
@@ -101,14 +102,16 @@ func (c *Controller) recallBarrier(ctx context.Context, session string, intent g
 	if c.recallHoldsCall(session, op) {
 		return fsapi.WouldBlock
 	}
+	trigger := recallTrigger{Kind: TriggerCallConflict, Opcode: op, Domain: session}
 	if authorityReduction(op) {
 		if !c.ownReservationOpen(session) {
 			return nil
 		}
+		trigger.Kind = TriggerAuthority
 	} else if !c.conflicts(readConflict(intent)) {
 		return nil
 	}
-	if err := c.startRecall(ctx); err != nil {
+	if err := c.startRecall(ctx, trigger); err != nil {
 		return err
 	}
 	return fsapi.WouldBlock
@@ -161,7 +164,10 @@ func (c *Controller) nativeBarrier(ctx context.Context, scope guestbridge.Contex
 	}
 	read := nativeRead(command.Operation)
 	if c.nativeConflicts(command.Operation, read) {
-		if err := c.startRecall(ctx); err != nil {
+		// A native command belongs to no guest domain: the history names
+		// only its fsapi.Operation code.
+		trigger := recallTrigger{Kind: TriggerNativeConflict, Opcode: "NATIVE_" + strconv.Itoa(int(command.Operation))}
+		if err := c.startRecall(ctx, trigger); err != nil {
 			return none, err
 		}
 		return none, fsapi.WouldBlock

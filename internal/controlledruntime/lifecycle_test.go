@@ -307,6 +307,9 @@ func checkActualEvidence(t *testing.T, run *lifecycleRun, e *lifecycleEvidence) 
 	if e.Controller.Ledger == nil || !e.Controller.Ledger.Matches || e.Controller.Ledger.Digest == "" {
 		t.Fatalf("controller ledger evidence: %+v", e.Controller)
 	}
+	if r := e.Controller.Recalls; r == nil || r.Capacity != viewcontrol.RecallHistoryLimit || r.Recalls == nil || int(r.Total) != len(r.Recalls)+r.Omitted {
+		t.Fatalf("controller recall history evidence (ce4): %+v", r)
+	}
 	if e.Transport.Controller != s.record.Controller.String() || e.Transport.Digest == "" || e.Transport.Hellos != 2 || e.Transport.Session != s.record.Endpoint.FuseSession {
 		t.Fatalf("C8 evidence: %+v", e.Transport)
 	}

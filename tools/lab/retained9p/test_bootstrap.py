@@ -264,7 +264,9 @@ class World:
         sessions = {m["device_tag"]: m["session"] for m in REQUEST["Mounts"]}
         evidence = {"version": bootstrap.EVIDENCE_VERSION, "stage": "SERVING", "complete": True,
                     "publication": None, "providers": [{"session": sessions[tag], "ledger": {
-                        "Digest": "d", "Claims": self.claim_summary(tag)}} for tag in ("hfs0", "hfs1")]}
+                        "Digest": "d", "Claims": self.claim_summary(tag)}} for tag in ("hfs0", "hfs1")],
+                    # ce4: the controller's recall history must not disturb the gate.
+                    "controller": {"recalls": {"capacity": 64, "total": 0, "omitted": 0, "recalls": []}}}
         if self.evidence_change:
             self.evidence_change(evidence)
         return {"sequence": sequence, "reply": {"status": "OBSERVED", "sequence": sequence, "evidence": evidence}}
