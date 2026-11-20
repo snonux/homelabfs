@@ -236,7 +236,7 @@ them into those lines (Phase 10 T8 and T10, Phase 11 before step 0 and steps
   with literal paths and no variables, no script and no loop:
 
   ```bash
-  f3 "doas -n rm -- /var/tmp/hfs-validation-xz3/zq3-r16/observer/id_ed25519 /var/tmp/hfs-validation-xz3/zq3-r16/observer/id_ed25519.pub"
+  f3 "doas -n rm -- /var/tmp/hfs-validation-xz3/zq3-r17/observer/id_ed25519 /var/tmp/hfs-validation-xz3/zq3-r17/observer/id_ed25519.pub"
   ```
 
 - **The window restore's outcome is `restoration-summary.json`, not an exit
@@ -244,7 +244,7 @@ them into those lines (Phase 10 T8 and T10, Phase 11 before step 0 and steps
   `p11-window-restore.txt` is empty). An `rc` reported through `| tee` or any
   other output filter is the filter's status, not the restore's. Phase 11
   step 10 therefore reads
-  `/var/tmp/hfs-fdescfs-windows/zq3-r16/restoration-summary.json`: the restore
+  `/var/tmp/hfs-fdescfs-windows/zq3-r17/restoration-summary.json`: the restore
   succeeded only if it exists with `"mount_restored": true`.
 - **Rocky's first boot after `start-rocky` rebooted itself after about
   5 minutes** in zq3-r1 to zq3-r6. The zq3-r6 record explains it (R6-3): a
@@ -261,7 +261,7 @@ These notes are written into the lines they name:
   prints rockyt's own exit status (124 = bound expired), not tee's (Phase 10
   T8, Phase 11 step 2).
 - **Window restore:** judged only by
-  `/var/tmp/hfs-fdescfs-windows/zq3-r16/restoration-summary.json` (Phase 11
+  `/var/tmp/hfs-fdescfs-windows/zq3-r17/restoration-summary.json` (Phase 11
   step 10), as in the zq3-r5 notes. zq3-r6 to zq3-r13 all restored with
   `"mount_restored": true`.
 - **f3 observer key deletion:** the plain literal-path line of Phase 11
@@ -561,7 +561,7 @@ after READY, inside the new 5-minute budget, and passed (OBSERVE L+1 = 3;
   `hfs-zq3-r13` pattern; the child was then checked directly with
   `[h]fs-zq3-r14` and was already gone. From now on the step 6 line is run
   exactly as written in this sheet, with this run's pattern
-  `[h]fs-zq3-r16` (zq3-r15 followed this); a hand-written wait helper must name `zq3-r16` and be
+  `[h]fs-zq3-r16` (zq3-r15 followed this); a hand-written wait helper must name the current run ID (`zq3-r17`) and be
   checked against the sheet before use, and a `child-gone` from a pattern
   that names another run counts for nothing.
 
@@ -2759,3 +2759,5 @@ time, as in zq3-r16. The lines new or changed for zq3-r17:
 **zq3-r16 review round 1 (2026-11-20), kept:** the zq3-r14 note's boot ID (`b4d9ee31`), the git-diff scope wording, a tool-timeout comment on `$CTL status`.
 
 **zq3-r17 review:** pending.
+
+**Review round 1 (2026-11-20):** no blocking findings. Applied: the zq3-r5 execution notes' literal key-deletion line and restore-summary paths now name zq3-r17 (lines 239, 247, 264), and the wait-helper note names the current run ID.
