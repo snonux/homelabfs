@@ -1,0 +1,5 @@
+Packages Altered:
+    Upgrade  fd-find-10.5.2-1.el9.x86_64 @epel
+    Upgraded fd-find-10.4.2-6.el9.x86_64 @@System
+/boot/vmlinuz-5.14.0-741.22.1.el9_9.x86_64
+729ac37ffbf7f0ded4b08a9d49e95145c8e46717bf485f76a3675b27255054a8  /usr/bin/python3.9
