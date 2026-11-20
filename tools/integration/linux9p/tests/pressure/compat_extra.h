@@ -65,7 +65,9 @@ static bool test_queue_cleanup(struct delayed_work *work);
 #define jiffies_to_msecs(j) ((unsigned int)(j))
 #define time_after_eq(a,b) ((long)((a)-(b))>=0)
 static unsigned int test_sleeps;
-static inline long schedule_timeout_killable(long t) { test_sleeps++;jiffies+=t;return 0; }
+static void (*test_pause_hook)(void); // e.g. the cleanup worker runs meanwhile
+static inline long schedule_timeout_killable(long t)
+{ test_sleeps++;jiffies+=t;if(test_pause_hook)test_pause_hook();return 0; }
 /* ie4: hfs_inode_get_fail and hfs_evict_inode. iget_failed evicts the new
  * inode as the kernel's does (through iput); a queued FORGET is recorded by
  * test_queue_forget. The capability and credential frees are counted.

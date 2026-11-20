@@ -1431,9 +1431,16 @@ Patch 0004:
   `hfs_mmap_release_held`): on a BLOCKED observation acquisition the held
   lease (ie4's stale lease, if any) is released at once, before the next
   try, and its packet queued. `hfs_mmap_blocked_backoff` pauses 50 ms
-  (doubling), runs `hfs_view_retire_try` (a `mutex_trylock`; a busy
-  retirement mutex means the worker is retiring) and retries **only after
-  progress**: a floor advanced or the held release completed. Review round 1:
+  (doubling), runs `hfs_view_retire_try` (a `mutex_trylock`) and retries
+  **only after progress**: the held release completed, or any floor advanced
+  since before the acquisition. Final review: the BLOCKED attempt's own
+  packet reaches the cleanup worker during the pause and its retirement
+  usually frees the tickets first, so the back-off's own try finds nothing
+  left or the mutex busy. `view->retire_progress` counts every floor
+  advance (`hfs_view_retire`, under `session->retirement`) and is read before
+  each acquisition; a changed counter is progress, and a busy try without it
+  pauses again (against the cap). Several threads may retry on one advance;
+  each stays within its own cap. Review round 1:
   every BLOCKED acquisition still takes a host ticket number and an identity
   until it is retired, and retirement is refused while a recall runs or the
   same credentials hold an active lease, so a blind 30 s loop could spend
@@ -1474,9 +1481,14 @@ holders is active, as `retirementBlocked`:
 - persistent BLOCKED with advancing retirements: 4 acquisitions, 3 pauses
   (350 ms), `-EAGAIN` with the retry-limit line, every packet queued once,
   nothing leaked;
-- no progress: another observation holds an active lease, the retirement
-  mutex is busy, or the retirement round runs past the deadline: `-EAGAIN`
-  after one acquisition with the matching line;
+- no progress: another observation holds an active lease, or the
+  retirement round runs past the deadline: `-EAGAIN` after one acquisition
+  with the matching line; a mutex that stays busy pauses three times, then
+  the retry-limit line, still one acquisition;
+- the cleanup worker (which retires after every packet, as
+  `hfs_mmap_cleanup`) retires during the pause; the back-off's own try then
+  gets `-EAGAIN` or `-EBUSY`, but the advanced counter lets the retry
+  through; a busy try before any progress pauses again and the next retires;
 - a fatal signal, `transport_failed` and a blocked hfs1.4 session end the
   back-off before any pause or retirement;
 - a BLOCKED retirement during a recall is re-sent by the forced REOPENED
@@ -1486,7 +1498,8 @@ holders is active, as `retirementBlocked`:
 - RETIRED_ID returns at once; the ie4 cases are unchanged.
 
 Mutations (no progress check, no cap, a blocking retirement, no kick rate
-limit, no early held release) each fail a case. The flag itself is set by
+limit, no early held release, no progress counter, `-EBUSY` as a give-up, no
+counter snapshot) each fail a case. The flag itself is set by
 the production `hfs_view_retire`, which the pressure harness replaces with a
 host model; that wiring and the REOPENED kick in `hfs_mmap_process` are
 compiled by controlled_received (`build.py` extracts the two new functions;

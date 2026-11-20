@@ -223,8 +223,9 @@ A host BLOCKED answer to an observation's VIEW_ACQUIRE is back-pressure (re4,
 zq3-r16 R16-1: unretired release tickets filled the shared `ControlTickets`
 budget). Observation begin releases a lease it still holds, pauses (50 ms,
 doubling), offers released tickets for retirement without waiting for a busy
-retirement mutex, and acquires again only if that retired something or the
-held release completed, at most three times within the same 30 s deadline
+retirement mutex, and acquires again only if some floor advanced since the
+acquisition (by it or the cleanup worker) or the held release completed, at
+most three times within the same 30 s deadline
 (each BLOCKED acquisition itself holds a ticket until retired). Otherwise it
 returns the host's `-EAGAIN` at once. A VIEW_RETIRE the host answered BLOCKED
 (a recall runs, or the family's credentials hold an active lease) is offered
