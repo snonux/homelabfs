@@ -897,8 +897,20 @@ func sameLineage(a, b guestbridge.ViewLease) bool {
 	return equal(a, b)
 }
 
+// controlCapacity reports whether extra more control charges still fit
+// Bounds.ControlTickets (see controlCharge).
 func (c *Controller) controlCapacity(extra int) bool {
-	used := extra
+	return c.controlCharge()+extra <= c.config.Authorization.Enrollment.Bounds.ControlTickets
+}
+
+// controlCharge counts what Bounds.ControlTickets is charged for now: every
+// unretired control ticket (an answered VIEW_RELEASE stays charged until a
+// VIEW_RETIRE floor passes it), every lease's reserved but unbound release
+// credit, one reserved release per further holder of a shared lease (each
+// holder owns one preowned release, lease_holders.go) and every open
+// reservation's future DIRTY_FREEZE.
+func (c *Controller) controlCharge() int {
+	used := 0
 	for _, t := range c.state.Tickets {
 		if c.retired(t) {
 			continue
@@ -918,7 +930,7 @@ func (c *Controller) controlCapacity(extra int) bool {
 			used++
 		}
 	}
-	return used <= c.config.Authorization.Enrollment.Bounds.ControlTickets
+	return used
 }
 
 func (c *Controller) manifestCapacity(request request) bool {

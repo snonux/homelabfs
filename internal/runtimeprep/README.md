@@ -201,9 +201,18 @@ drives hundreds of lease cycles (1100 measured) at these exact Views
 values. T5 itself stays deferred until it is re-planned and run; no T5
 pass is claimed here.
 
+`Views.ControlTickets` rose from 8 to 24 in task qe4 (zq3-r16 R16-1: T1's
+m1 re-acquire met a control charge of 9 and was answered BLOCKED). 24 is
+below the `LedgerBytes` ceiling of 28 at the other values and leaves more
+than twice T1's peak. `TestZQ3SpecControlTicketsGrantT1Profile` and
+`TestZQ3SpecControlTicketsSurviveElevenSteps` (`internal/viewcontrol`) replay
+T1's control-ticket pattern at these exact Views values; they bound that
+pattern only, not the other steps' workloads.
+
 | Bound | Rule | Example |
 |---|---|---|
-| `LedgerBytes` | >= 128 KiB x (Reservations + Tickets + ControlTickets) + 32 KiB x Identities + 3 x SourceBytes x Sources = 185.5 MiB | 188 MiB |
+| `ControlTickets` | answered releases stay charged until a VIEW_RETIRE passes them, plus one reserved release per lease holder; zq3-r16 T1 needed 9 (R16-1) | 24 |
+| `LedgerBytes` | >= 128 KiB x (Reservations + Tickets + ControlTickets) + 32 KiB x Identities + 3 x SourceBytes x Sources = 187.5 MiB | 188 MiB |
 | `WorkBytes` | >= 3 x LedgerBytes + 6 x SourceBytes + 128 MiB = 728 MiB | 736 MiB |
 | providers | 4 x (RetainedBytes + SourceBytes + 4 KiB x Claims + 16 MiB) per domain = 352 MiB | 704 MiB for 2 |
 | host total | <= `HostBytes` 4 GiB | 4057.2 MiB (38.8 MiB spare) |

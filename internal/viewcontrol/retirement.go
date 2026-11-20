@@ -70,6 +70,29 @@ func (c *Controller) retire(ctx context.Context, scope guestbridge.Context, raw 
 // with these protected terminal ids, a recall runs, or the credentials still
 // hold an active lease or an open reservation. A DIRTY_RESERVE with
 // protected BLOCKED history stays until CANCEL closed its promised number.
+//
+// Both coarse clauses date from the first ledger (k04) and are kept on
+// purpose (reviewed in task qe4 after zq3-r16 R16-1, where the answered
+// release tickets they keep charged filled Bounds.ControlTickets):
+//
+//   - No retirement while a recall runs. Retiring runs compact(), which
+//     drops lease rows, lineage revisions, source cuts and recall-history
+//     UUIDs. Admissions already refuse to prune cuts during a recall
+//     (pruneSources), and compacting mid-recall has never been analysed or
+//     covered by recall, crash-replay and terminal-seal tests.
+//   - No retirement while the credentials hold an active lease or an open
+//     reservation. This is the host's only guard that the guest retires
+//     only tickets it no longer references: a GRANTED acquisition ticket of
+//     an active or shared lease must not be recycled while a holder may
+//     still use it. The physical side (controlledruntime
+//     factsLedger.checkRetire) refuses even domain-wide for the same reason.
+//
+// A per-ticket rule could free answered releases sooner, but only together
+// with those tests, a matching facts check and a guest that re-sends a
+// BLOCKED VIEW_RETIRE (today hfs_view_retire does not retry, so a relaxed
+// host would free nothing until the next cleanup packet). Until then the zq3
+// spec sizes ControlTickets for the charge this rule leaves
+// (zq3_control_tickets_test.go).
 func (c *Controller) retirementBlocked(scope guestbridge.Context, r retirement, f family) (bool, error) {
 	if r.Through > f.High || r.Through-f.Floor > 1024 || uint64(len(r.Hashes)) != r.Through-f.Floor || c.state.Recall != nil {
 		return true, nil
