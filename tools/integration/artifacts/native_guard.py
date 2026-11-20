@@ -80,18 +80,50 @@ def vm_invariant(rocky_pid, birth, config_hash):
             'free_plus_inactive_bytes': page * (free + inactive)}
 
 
+def entry_blocks(path):
+    """Allocated bytes of one entry, or 0 when it vanished before lstat().
+
+    make renames temporary objects (for example pci_fbuf-*.pieo.tmp) while the
+    guard samples; xd4's second build stopped on exactly that race. A name that
+    no longer exists owns no blocks, so counting 0 never under-counts a file
+    that still exists. Every other error still fails closed, because an
+    unreadable entry could hide real disk usage.
+    """
+    try:
+        return path.lstat().st_blocks * 512
+    except FileNotFoundError:
+        return 0
+
+
 def allocated(root):
+    """Conservative allocated bytes under root, tolerating concurrent removal.
+
+    Only entries that vanished mid-walk are skipped (counted as 0). os.walk's
+    default silently ignores scandir errors, which could hide a whole live
+    subtree, so walk_error re-raises anything except a vanished directory. A
+    directory replaced by a non-directory is counted as that entry. A rename
+    racing the walk can still move data past it; the next periodic sample
+    sees it again. A missing root still counts as 0, as before.
+    """
+    extra = []
+
+    def walk_error(error):
+        if isinstance(error, NotADirectoryError):
+            extra.append(entry_blocks(Path(error.filename)))
+        elif not isinstance(error, FileNotFoundError):
+            raise error
+
     total = 0
-    for directory, directories, files in os.walk(root, followlinks=False):
-        total += Path(directory).lstat().st_blocks * 512
+    for directory, directories, files in os.walk(root, onerror=walk_error, followlinks=False):
+        total += entry_blocks(Path(directory))
         for name in files:
-            total += (Path(directory) / name).lstat().st_blocks * 512
+            total += entry_blocks(Path(directory) / name)
         # os.walk omits symlink-directory bodies but they still own dirent blocks.
         for name in directories:
             path = Path(directory) / name
             if path.is_symlink():
-                total += path.lstat().st_blocks * 512
-    return total
+                total += entry_blocks(path)
+    return total + sum(extra)
 
 
 def check_build_outputs(root, limit=128 * MIB):

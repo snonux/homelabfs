@@ -9,7 +9,9 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
+import native_guard
 from native_guard import process_running, finish_process_group, processes, check_build_outputs
 
 
@@ -85,6 +87,82 @@ while True: time.sleep(1)
                         pass
                     os.waitpid(child, 0)
                 finish_process_group(unrelated, grace=.01)
+
+
+class RacingWalk:
+    """Wrap the real os.walk and run race() right after the first yield is
+    produced, before the guard lstat()s its entries or descends: the exact
+    window in which make renamed pci_fbuf-*.pieo.tmp during xd4."""
+
+    def __init__(self, race):
+        self.race, self.real = race, os.walk
+
+    def __call__(self, *args, **kwargs):
+        raced = False
+        for entry in self.real(*args, **kwargs):
+            if not raced:
+                raced = True
+                self.race()
+            yield entry
+
+
+class AllocatedRaceTests(unittest.TestCase):
+    """Disk walk skips only vanished entries and never drops live ones."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(subprocess.run, ['rm', '-rf', str(self.root)], check=True)
+        (self.root / 'kept').write_bytes(b'k' * 65536)
+        (self.root / 'object.pieo.tmp').write_bytes(b't' * 65536)
+        (self.root / 'sub').mkdir()
+        (self.root / 'sub' / 'inner').write_bytes(b'i' * 65536)
+
+    def walk_with(self, race):
+        with mock.patch.object(native_guard.os, 'walk', RacingWalk(race)):
+            return native_guard.allocated(self.root)
+
+    def live_bytes(self):
+        return native_guard.allocated(self.root)
+
+    def test_file_renamed_mid_walk_counts_live_files_only(self):
+        def race():
+            (self.root / 'object.pieo.tmp').rename(self.root / 'sub' / 'object.pieo')
+        total = self.walk_with(race)
+        kept = (self.root / 'kept').lstat().st_blocks * 512
+        self.assertGreaterEqual(total, kept)
+        # The renamed object landed in a not yet walked directory: still counted.
+        self.assertEqual(total, self.live_bytes())
+
+    def test_directory_vanishing_mid_walk_is_skipped(self):
+        def race():
+            subprocess.run(['rm', '-rf', str(self.root / 'sub')], check=True)
+        self.assertEqual(self.walk_with(race), self.live_bytes())
+
+    def test_directory_replaced_by_file_is_counted(self):
+        def race():
+            subprocess.run(['rm', '-rf', str(self.root / 'sub')], check=True)
+            (self.root / 'sub').write_bytes(b'f' * 65536)
+        total = self.walk_with(race)
+        self.assertEqual(total, self.live_bytes())
+        self.assertGreaterEqual(total, (self.root / 'sub').lstat().st_blocks * 512)
+
+    def test_missing_root_counts_zero(self):
+        self.assertEqual(native_guard.allocated(self.root / 'absent'), 0)
+
+    def test_unreadable_entry_still_fails_closed(self):
+        def denied(path):
+            raise PermissionError(13, 'denied', str(path))
+        with mock.patch.object(native_guard.Path, 'lstat', denied):
+            with self.assertRaises(PermissionError):
+                native_guard.allocated(self.root)
+
+    def test_walk_error_other_than_vanish_fails_closed(self):
+        def walk(top, onerror=None, followlinks=False):
+            onerror(PermissionError(13, 'denied', str(top)))
+            yield from ()
+        with mock.patch.object(native_guard.os, 'walk', walk):
+            with self.assertRaises(PermissionError):
+                native_guard.allocated(self.root)
 
 
 if __name__ == '__main__':

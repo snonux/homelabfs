@@ -256,6 +256,23 @@ configured 12 GiB Rocky plus 3 GiB host reserve leaves only about 738 MiB on
 f3; a 2 GiB compiler is inadmissible despite a transient free-page sample.
 Exact native commands/path/guard need coordinator review before remote writes.
 
+Guard recipe change (7e4, 2026-11-20): every native build up to xz3-r14 ran
+`native_guard.py` `228c91f3…` (recorded as `native_guard_v3.py` in the
+evidence bindings). Its disk walk failed closed when make renamed a temporary
+object mid-walk, which stopped xd4's first second-build attempt
+([r14 evidence](evidence/xz3-20261119-r14/README.md)). The current recipe,
+`34ddf37c98e4f634ada902fed708ec9dc3ec49baa3ec1f764017d0140d49b2ea`, counts
+an entry that vanished during the walk as 0 bytes and still fails closed on
+every other walk or `lstat()` error. The next native build stages and binds
+this new hash; `assemble.py` compares the guard against that build's own
+bindings. Historical evidence keeps `228c91f3…` unchanged. Consequence:
+`assemble.py` at this revision refuses to assemble a candidate that reuses
+the xd4 exporter `2fd7e32f…` through its native build records, because those
+bindings still name `228c91f3…`; to keep reusing it, copy the packaged files
+byte for byte from the previous package (as r15 and r16 did) or rebuild
+natively. Within one sample the walk can still miss a file renamed into a
+directory it has already passed; the guard samples repeatedly.
+
 `proposal.py --physical-bytes N` emits inert memory arithmetic. Adding
 `--package ABS --operator-public HEX` pins the actual component artifacts to an
 inert installation envelope, with proposed time/disk limits and a private host
