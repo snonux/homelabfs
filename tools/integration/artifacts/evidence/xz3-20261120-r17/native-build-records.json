@@ -257,6 +257,7 @@
     "15.1-RELEASE-p2",
     " 4:23PM  up 7 days,  1:31, 0 users, load averages: 0.15, 0.15, 0.10"
   ],
+  "f3_facts_note": "f3_facts_after lists processes with a narrower filter than f3_facts_before: only the rocky bhyve line (PID 78540, same start time); the system.pwd and system.grp helper lines of the before list are omitted, not gone",
   "guard_recipe_sha256": "34ddf37c98e4f634ada902fed708ec9dc3ec49baa3ec1f764017d0140d49b2ea",
   "lib9p_fixtures_h_sha256": "efc26e4be2f5f530a5e920beb4344aa07c885474315bcacebd6875d7960bfa7f",
   "lib9p_native_verify": {

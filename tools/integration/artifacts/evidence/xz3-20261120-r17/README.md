@@ -61,8 +61,15 @@ files that came out identical and the 23 that changed.
   - The first build timed out in `vmlinux` twice. Attempt 1 is kept in the
     run root's `timeout1/`. Attempt 2 timed out at 1204 s, after the final
     link. Its `vmlinux` stage was then rerun on the same O tree (53 s), and
-    the remaining stages followed. The systemd bound per stage was raised
-    from 20 to 40 minutes.
+    the remaining stages followed. That resume did **not** wait for `make`
+    children left running by the timeout; it started as soon as `kernel.py`
+    returned. The equal fresh repro build below covers the resulting bytes.
+  - The builder raised the local systemd scope bound per stage, the wrapper
+    around this local kernel build, from 20 to 40 minutes because of the
+    host load. `kernel.py`'s own 1190 s limit per `make` still applied and
+    caused every timeout. This is not the f3 `native_guard.py` bound, which
+    stays 20 minutes per stage (see the native section and
+    [the artifacts README](../../README.md)).
   - The first repro resume raced `make` children that the timeout had left
     running, and `fixdep` lost `net/ipv4/.datagram.o.d`. That tree is kept
     in `timeout2/`. The repro build then ran from a fresh O tree in one pass
@@ -122,7 +129,9 @@ build agent did no SSH.
   512 MiB, 20 minutes per stage, 8 GiB disk), pinned to the running Rocky.
   Rocky's bhyve PID 78540, start time `Fri Nov 20 05:05:29 2026` and
   `rocky.conf` `c101adf1…` were the same before and after, and `/dev/vmm`
-  held only `rocky`.
+  held only `rocky`. The after-facts process list uses a narrower filter
+  than the before-facts: it shows only the `rocky` bhyve line and omits the
+  `system.pwd` and `system.grp` helper lines.
 - **Builds:** two clean builds in the one root were equal in all 83 files,
   and `bhyve` reproduced `2fd7e32f…` byte for byte.
 - **Only file that differs:** `freebsd/build.json` differs from `a1af0bd7`
