@@ -1,5 +1,15 @@
 # xz3 r17 rebuild (2026-11-20): zq3-r16 control-ticket fix
 
+**Superseded on 2026-11-21** by the [r18 rebuild](../xz3-20261121-r18/README.md)
+(`b2a4f69e…`, source `633509e`) for zq3-r18. Its re4 guest kernel
+`360fbc6d…` blocked m1's session with `EKEYREJECTED` when a correct GRANTED
+VIEW_QUERY reply arrived before its REOPENED ACK had raised the fence
+(zq3-r17 R17-1, fixed by 2f4). r18 rebuilt the kernel (2f4) and the daemon
+(je4, ce4, e84) with the window artifacts, and reused this build's native
+exporter and its f3 records byte for byte. The tooling refuses this
+manifest as superseded. It still passes `package.py check` and `admit.py`
+under the `633509e` tooling.
+
 This candidate supersedes the [r16 rebuild](../xz3-20261119-r16/README.md)
 (`a1af0bd7…`, source `707f3d1`). In zq3-r16 (R16-1) T1's m1 root OPEN hit a
 routine recall. The ie4 guest kernel asked again as designed, but the host

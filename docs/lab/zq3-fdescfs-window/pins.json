@@ -12,9 +12,9 @@
     "sha256": "b207adf6383bee8e022fa6115044508b7c64da07e73865e5ea71594d524cc4bd"
   },
   "pinned": {
-    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/hfs-controlled-runtime": "85900893e07be37b363b9758fa5ae41184a34b6f45ef2218e26f191918c6733d",
-    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/fdescfs-namespace": "6d78b1debef478c5e29c4052888f36f5b689e1d09db7d59e7787ebc118fbc741",
-    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/controlledruntime.test": "1f042fd682cb1668a8cbcb7bafe7848fa0a02ffea95752c02e324307e151705d",
+    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/hfs-controlled-runtime": "086d7cde0e2bd2decc3b9527d0fd76ad62722430b70f74d6367e9a108a40a3df",
+    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/fdescfs-namespace": "f84bf4cfb6d1ab8cfe4f29e92afde3c939dfbaf45a26a7a80833e4c1a024ac28",
+    "/var/tmp/hfs-validation-xz3/zq3-r1/bin/controlledruntime.test": "42def98ffd76328154a93804df69c9781384490af4b165d07e67cf8d55e1274b",
     "/boot/kernel/fdescfs.ko": "847cd1f2dc47db32d56dcf5352b65bad2b174b339e8aa89a8d114299311856d2",
     "/boot/kernel/fusefs.ko": "b207adf6383bee8e022fa6115044508b7c64da07e73865e5ea71594d524cc4bd",
     "/libexec/ld-elf.so.1": "305a0b7947a890c653e32a1ed9fc50c100416658dc422f2ca8de9ebcda9ddb6f",

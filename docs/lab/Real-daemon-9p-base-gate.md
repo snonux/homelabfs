@@ -59,10 +59,11 @@ the xd4 rebuild for zq3-r14) in zq3-r13
 ([record](results/20261119-zq3-r13/README.md)) and again in zq3-r14
 ([record](results/20261119-zq3-r14/README.md)). The r15 daemon `8668e5f0…` (zq3-r15 candidate `ac8020aa…`, reused
 byte for byte by the r16 candidate `a1af0bd7…`) passed it in zq3-r15 ([record](results/20261119-zq3-r15/README.md))
-and again in zq3-r16 ([record](results/20261120-zq3-r16/README.md)). The current r17 daemon
-`85900893…` (zq3-r17 candidate `f614d52a…`, new bytes) passed it in zq3-r17
-([record](results/20261120-zq3-r17/README.md)); every run
-repeats the check. f3-host descriptor execution still awaits the
+and again in zq3-r16 ([record](results/20261120-zq3-r16/README.md)). The r17 daemon
+`85900893…` (zq3-r17 candidate `f614d52a…`) passed it in zq3-r17
+([record](results/20261120-zq3-r17/README.md)). The current r18 daemon
+`086d7cde…` (zq3-r18 candidate `b2a4f69e…`) is new bytes and has not been
+checked yet; every run repeats the check. f3-host descriptor execution still awaits the
 approved zq3 fdescfs window. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
 any SSH. All old build proofs remain preserved, and no different digest alone
@@ -172,12 +173,29 @@ SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
 
 ## Exact installation plan inputs
 
-The current xz3 candidate (r17 rebuild for zq3-r17, 2026-11-20) is retained at
-`/home/paul/tmp/claude/hfs-xz3-20261120-r17/package`, manifest SHA256
-`f614d52a84b43d455a20f2ee973f9e9346a00e26a25019e33a28ec7b8c14e313`, assembled from source checkout
-and repository baseline `3430758`; see its
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261120-r17/README.md).
-All three components were rebuilt. The guest kernel was rebuilt for re4 (a
+The current xz3 candidate (r18 rebuild for zq3-r18, 2026-11-21) is retained at
+`/home/paul/tmp/claude/hfs-xz3-20261121-r18/package`, manifest SHA256
+`b2a4f69e78190591bec038e269a73f93a6b39bc9e9091c7f6d7c1d5ab73ea6d7`, assembled from source checkout
+and repository baseline `633509e`; see its
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261121-r18/README.md).
+The guest kernel was rebuilt for 2f4 (a verified GRANTED VIEW_QUERY reply
+that is not yet current waits for the REOPENED ACK's fence raise and is
+queried again instead of blocking the session; passed grants are decoded
+unadopted and only released; zq3-r17 R17-1): `bzImage` `f04c03e0…`,
+`vmlinux` `a5d320c7…`, GNU build ID `020acb2e…`, `System.map` `8088881e…`,
+`config` `28fe4a8e…` unchanged; two builds at the same O path were
+identical and the five modules came out byte-identical. The CGO daemon was
+rebuilt for je4 (the last holder's release of a clean targeted DOMAIN READ
+observation lease answers RELEASED without a recall), ce4 (bounded recall
+history in OBSERVE) and e84 (a pin-only target mismatch recalls only the
+requesting domain): `086d7cde…`, GNU build ID `3fb0a610…`; two forced
+builds and the window build gave the same bytes, and the window artifacts
+were rebuilt with it (`controlledruntime.test` `42def98f…`,
+`fdescfs-namespace` `f84bf4cf…`). The pc4 native exporter `2fd7e32f…` and
+its r17 f3 build records were reused byte for byte. The r17 rebuild for
+zq3-r17 (`f614d52a…`, source and repository baseline `3430758`;
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261120-r17/README.md))
+is now refused as superseded. In r17 all three components were rebuilt. The guest kernel was rebuilt for re4 (a
 host BLOCKED observation VIEW_ACQUIRE releases the held lease and retries
 only after retirement progress, at most 3 retries and 4 tickets per
 syscall; refused retirements are re-sent; zq3-r16 R16-1): `bzImage`
@@ -366,7 +384,7 @@ footprints in the independent global preparation budget. Swap is telemetry.
 
 ## Staged critical-window proposal
 
-The concrete phased proposal for one disposable run with candidate `f614d52a…`,
+The concrete phased proposal for one disposable run with candidate `b2a4f69e…`,
 including the remaining implementation gaps and Paul's decisions, is
 [zq3-run-plan.md](zq3-run-plan.md) ([plain-language summary](zq3-plan-summary.md)).
 The guest probe now retains each successful payload until an authenticated

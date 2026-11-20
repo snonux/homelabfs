@@ -110,7 +110,12 @@ patch 0004 changed the image (build ID `360fbc6d…`) and the CRCs of the
 same nine hfs exports, while the five modules and `abi-negative.json` came
 out byte-identical. It also rebuilt the te4 daemon and, because of the 7e4
 guard recipe change below, the native exporter on f3, which reproduced
-`2fd7e32f…` byte for byte.
+`2fd7e32f…` byte for byte. The r18 rebuild for zq3-r18 (candidate
+`b2a4f69e…`, [evidence](evidence/xz3-20261121-r18/README.md)) kept the
+config; its 2f4 patches 0004/0005 changed the image (build ID
+`020acb2e…`) and `Module.symvers`, while the five modules and
+`abi-negative.json` came out byte-identical. It also rebuilt the daemon
+(je4, ce4, e84) and reused the r17 exporter through its records.
 
 The ordinary namespace fixture selects a rootful OCI runtime in the initial
 user namespace, VFS image storage and a newly created private network namespace
@@ -281,7 +286,9 @@ from the previous package (as r15 and r16 did) does not avoid this:
 found at `3430758`. r17 therefore rebuilt the exporter on f3 under
 `34ddf37c…`, which reproduced `2fd7e32f…` byte for byte
 ([r17 evidence](evidence/xz3-20261120-r17/README.md)); later candidates can
-reuse it through that build's records. Within one sample the walk can still
+reuse it through that build's records, as the r18 rebuild for zq3-r18
+did at `633509e` ([r18 evidence](evidence/xz3-20261121-r18/README.md)).
+Within one sample the walk can still
 miss a file renamed into a directory it has already passed; the guard
 samples repeatedly.
 
