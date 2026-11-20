@@ -144,7 +144,10 @@ Phase 12: `start-rocky` at 05:05:29Z, SSH at the second try (05:05:49Z),
    runs or while the family's credentials still hold an active lease
    (`retirementBlocked`, `retirement.go`). Of m0's two earlier release
    families one retired only after T1 (the after snapshot); the other and
-   m1's release family were still at floor 0 there.
+   m1's release family were still at floor 0 there. Why m0's older
+   families stayed unretired through T1 is inferred (a BLOCKED
+   retirement during a recall, never re-sent): the ledger keeps no
+   `VIEW_RETIRE` replies.
 
 ### Where the 8.3 s went (inference)
 
@@ -155,9 +158,12 @@ so this split is only approximate. The 7.4 s match one scoped release recall
 path) was released, its last-holder release started a recall of m1 (fence
 4 → 5), and #2, taken by the open's observation on the stamp captured
 before that recall, waited PENDING behind it (`recallHoldsLease`). It was
-granted after the REOPEN, so the re-check saw a moved revision (-EXDEV).
-The remaining 0.9 s is ticket #3: one control round trip (OBSERVE net
-0.52-0.83 s) answered BLOCKED. The later m1 fence 6 is most likely the
+granted after the REOPEN, so the re-check saw that the view had moved
+(the fence moved; leases #1 and #2 differ only in fence, 4 vs 5) and
+returned -EXDEV. The remaining 0.9 s is ticket #3: one control round
+trip (OBSERVE net 0.52-0.83 s) answered BLOCKED. #3 took the
+`shareLease` path (the held lease #2 was still active at the current
+fence), which needs the same control slot as a new lease. The later m1 fence 6 is most likely the
 recall that the held lease's own release started after the failure.
 
 ### Did ie4's acquire-before-release cause it?
@@ -181,34 +187,43 @@ once instead of waiting.
   `grantLease`/`shareLease`, not from e84's expected-target path, the
   Sources bound, the identity bound or a lease conflict (a conflict
   answers PENDING);
-- medium-high: the exact 9 = 3 + 4 + 1 + 1 breakdown at #3's arrival
-  (the ledger keeps the end state only, and m0's four holders were all
-  acquired before m1's open);
+- high: the 9 = 3 + 4 + 1 + 1 breakdown at #3's arrival (each holder of
+  m0's shared lease is always one release ticket or one reserved credit,
+  so 4 throughout; family floors only rise, so the 3 old release tickets
+  still present after T1 were present at #3);
 - medium: the 7.4 s + 0.9 s split and the recall sequence.
 
 ### Recommended fix
 
-1. **Control capacity that does not run out within a test step (host and
-   spec).** The structural fix is in `internal/viewcontrol/retirement.go`
-   `retirementBlocked`: a range of terminal tickets should not wait for
-   every recall to end or for an unrelated active lease of the same
-   credentials. Only a ticket that still binds an active lease or open
-   reservation should hold retirement back. Then answered release tickets
-   stop counting soon after their release. Until then, raise
-   `ControlTickets` in the zq3 spec (`internal/runtimeprep/testdata/zq3-spec.json`
-   and the run spec). At the current `LedgerBytes` (`validBounds`) the
-   ceiling is 28, and 24 fits. Add a `zq3_bounds_test.go` case with the
-   spec bounds that replays T1's profile: two mounts, four shared m0
-   observations, m1's first release and a held lease plus re-acquire. It
-   must grant at the spec bound.
-2. **Guest (patch 0004 `hfs_mmap_begin`/`hfs_mmap_observe`):** treat a
-   BLOCKED observation `VIEW_ACQUIRE` as back-pressure. Queue the held
-   packet's release, run `hfs_view_retire`, and retry with a short backoff
-   within the existing `HFS_VIEW_ENTER_WAIT_MS` deadline. Then return
-   `-ETIMEDOUT` with one log line, not an immediate `-EAGAIN`. Have the
-   cleanup worker retry a BLOCKED `hfs_view_retire` later instead of
+1. **Guest (patch 0004 `hfs_mmap_begin`/`hfs_mmap_observe`, task re4):**
+   treat a BLOCKED observation `VIEW_ACQUIRE` as back-pressure. Queue the
+   held packet's release, run `hfs_view_retire`, and retry with a short
+   backoff within the existing `HFS_VIEW_ENTER_WAIT_MS` deadline. Then
+   return `-ETIMEDOUT` with one log line, not an immediate `-EAGAIN`. Have
+   the cleanup worker re-send a BLOCKED `VIEW_RETIRE` later instead of
    leaving the family until the next cleanup.
-3. **Fewer release recalls** (zq3-r15 fix 2) would also shorten the 7.4 s
+2. **Raise `ControlTickets`** in the zq3 spec
+   (`internal/runtimeprep/testdata/zq3-spec.json` and the run spec). At
+   the current `LedgerBytes` (`validBounds`) the ceiling is 28, and 24
+   fits. No existing test models control tickets. A new
+   `zq3_bounds_test.go` case with the spec bounds should replay T1's
+   pattern: two mounts, four shared m0 observations, m1's first release,
+   and a held lease plus re-acquire. That case shows only that T1 fits. It
+   does not show that 24 suffices for T2-T11, which needs a per-step
+   control-ticket model.
+3. **Proposal, host (task qe4):** narrow `retirementBlocked`
+   (`internal/viewcontrol/retirement.go`). Today it refuses retirement
+   while a recall runs or while the family's credentials hold an active
+   lease (both clauses from k04). Both clauses protect state that
+   retirement would otherwise drop: retiring runs `compact()`, which
+   removes lease rows, lineages and recall history. The per-credential
+   check is the host's only guard that the guest retires only tickets it
+   no longer references. A narrower rule could hold back only a range
+   that still binds an active lease or open reservation. That needs
+   recall, crash-replay and seal tests before it can replace the current
+   rule. On its own it frees nothing: the guest must also re-send
+   `VIEW_RETIRE` (fix 1, re4).
+4. **Fewer release recalls** (zq3-r15 fix 2) would also shorten the 7.4 s
    and leave fewer recalls to block retirement.
 
 ## Host events and facts
@@ -236,10 +251,10 @@ once instead of waiting.
 
 ## Follow-up tasks
 
-- **R16-1 → control-ticket capacity:** host retirement that does not wait
-  for unrelated recalls or leases, a higher zq3 `ControlTickets` bound with
-  a T1-profile bounds test, and a guest BLOCKED back-off on observation
-  acquires (above). Then a rebuild and **zq3-r17** with a fresh fill to run
+- **R16-1 → control-ticket capacity:** re4 (guest BLOCKED back-off on
+  observation acquires and re-sent `VIEW_RETIRE`), a higher zq3
+  `ControlTickets` bound with a control-ticket bounds test, and qe4 (the
+  host retirement proposal, with recall, crash-replay and seal tests). Then a rebuild and **zq3-r17** with a fresh fill to run
   T1-T11.
 - Fewer release recalls (lease linger or a recall-free clean DOMAIN
   release), to bring each guest operation back under a second.

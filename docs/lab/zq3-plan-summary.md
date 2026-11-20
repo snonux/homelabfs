@@ -208,8 +208,10 @@ by both mounts, was full. Finished releases keep their slot until they
 are tidied up, and that tidying is put off while any pause or lease is
 still active, so slots ran out within a few operations. The kernel's
 re-ask was not the cause: it needed one slot, the same as releasing
-first would have. The fix is to let the daemon tidy up finished releases
-sooner and to raise the slot budget, with a test that replays this case.
+first would have. The fix is for the guest kernel to wait and retry when
+the daemon says "full", tidying up its finished releases as it goes, and
+to raise the slot budget. Letting the daemon tidy up sooner is a separate
+proposal that needs more testing first.
 Nothing was left stuck, both mounts unmounted at once, and Rocky was down
 about four minutes ([record](results/20261120-zq3-r16/README.md)).
 
