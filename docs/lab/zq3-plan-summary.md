@@ -223,6 +223,19 @@ journal check (te4), so its bytes are new and must pass the f3 self-check
 again. The patched bhyve was rebuilt on f3 under the updated build guard
 and came out byte-identical; the window test files were rebuilt with the
 daemon.
+The seventeenth attempt (zq3-r17) passed the setup, and the new daemon
+passed the f3 self-check. The slot shortage was gone: m0 was admitted,
+and m1's top folder opened too. Asking for m1's folder details then
+failed. Each open waits out a routine pause on both mounts, which made
+every open take 10 to 12 seconds. When m1's request was finally granted at
+the end of such a pause, the answer arrived while m1's kernel was still
+finishing that same pause. The kernel checked the (correct) answer
+against its not-yet-updated state, treated it as untrustworthy and shut
+the mount down ("key rejected"). It is a timing race in older code, not
+caused by the new retry fix, which never had to run. The fix is for the
+kernel to wait until it has caught up and ask again, instead of giving up.
+Nothing was left stuck, both mounts unmounted, and Rocky was down about
+four minutes ([record](results/20261120-zq3-r17/README.md)).
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a

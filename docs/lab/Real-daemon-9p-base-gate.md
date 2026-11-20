@@ -60,7 +60,8 @@ the xd4 rebuild for zq3-r14) in zq3-r13
 ([record](results/20261119-zq3-r14/README.md)). The r15 daemon `8668e5f0…` (zq3-r15 candidate `ac8020aa…`, reused
 byte for byte by the r16 candidate `a1af0bd7…`) passed it in zq3-r15 ([record](results/20261119-zq3-r15/README.md))
 and again in zq3-r16 ([record](results/20261120-zq3-r16/README.md)). The current r17 daemon
-`85900893…` (zq3-r17 candidate `f614d52a…`) is new bytes and has not been checked yet; every run
+`85900893…` (zq3-r17 candidate `f614d52a…`, new bytes) passed it in zq3-r17
+([record](results/20261120-zq3-r17/README.md)); every run
 repeats the check. f3-host descriptor execution still awaits the
 approved zq3 fdescfs window. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
