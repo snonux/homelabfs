@@ -206,13 +206,32 @@ FORGET and DESCRIPTION_RELEASE; native commands; DIRTY_RESERVE and
 EXCLUSIVE_DIRTY acquisition) still waits for any recall, so the scoped install
 sequence sees one stable cut; the guest refuses a REOPEN whose target is not
 its INSTALL_FINAL cut. Every other recall (dirty or exclusive release,
-conflicting admission or acquisition, expected-target mismatch) remains the
-all-domain recall with the global barrier. The guest takes each observation
-lease with expected_target = its installed view, so a cut move admitted under
-peer leases (FORGET, a final DESCRIPTION_RELEASE, a pinning LOOKUP or
-read-only OPEN of a non-root object) makes the peer's next observation acquire
-hit the expected-target mismatch and start an all-domain recall; scoping that
-recall is tracked as e84. The volume root is exempt: it is never reaped and
+conflicting admission or acquisition, an expected-target mismatch not scoped
+below) remains the all-domain recall with the global barrier. The guest takes
+each observation lease with expected_target = its installed view, so a cut
+move admitted under peer leases (FORGET, a final DESCRIPTION_RELEASE, a
+pinning LOOKUP or read-only OPEN of a non-root object) makes the peer's next
+observation acquire hit the expected-target mismatch. That recall is scoped
+to the requesting domain (task e84, `internal/viewcontrol/mismatch_scope.go`)
+when the move is pin-only and no peer needs it. The requester always needs a
+recall covering its domain to install the current cut. A peer without an
+active lease needs nothing: it cannot serve from its view before its own
+observation acquire, which hits its own mismatch. A peer with an active
+lease needs nothing when that lease's cut shows the same client-observable
+state as the current cut. Observable state is the catalog without applied
+position, handle pins and duplicate-operation receipts, plus every payload
+byte, in the same journal incarnation, epoch and serving generation;
+HandlePin/HandleRelease records change only pins, position and receipts,
+while every mutation and Reclaim changes observable state. So the recall is
+scoped exactly when the request is READ, the requesting domain holds no
+EXCLUSIVE_DIRTY lease and no open reservation, the expected cut and every
+active peer lease's cut have the current cut's observable digest, and the
+expected cut's digest is known: from the retained source or from the
+issuer's bounded in-memory record of recently retained cuts' digests, keyed
+by full cut identity including the state hash. An unknown expected cut (e.g.
+after an issuer reopen), an EXCLUSIVE_DIRTY request, a dirty requester or any
+observable change keeps the all-domain recall. The scoped recall follows the
+scoped release recall's barrier rules above. The volume root is exempt: it is never reaped and
 cannot be unlinked, so its lifetime journals no handle pin or release, and the
 root OPEN/close every guest process performs keeps the cut (task z94). Downgrading to a
 controller without scoped recalls while a scoped recall is in flight is
