@@ -211,7 +211,7 @@ pattern only, not the other steps' workloads.
 
 | Bound | Rule | Example |
 |---|---|---|
-| `ControlTickets` | answered releases stay charged until a VIEW_RETIRE passes them, plus one reserved release per lease holder; zq3-r16 T1 needed 9 (R16-1) | 24 |
+| `ControlTickets` | answered releases stay charged until a VIEW_RETIRE passes them, plus one reserved release per lease holder; zq3-r16 T1 peaked at a charge of 9, including the re-acquire itself (R16-1) | 24 |
 | `LedgerBytes` | >= 128 KiB x (Reservations + Tickets + ControlTickets) + 32 KiB x Identities + 3 x SourceBytes x Sources = 187.5 MiB | 188 MiB |
 | `WorkBytes` | >= 3 x LedgerBytes + 6 x SourceBytes + 128 MiB = 728 MiB | 736 MiB |
 | providers | 4 x (RetainedBytes + SourceBytes + 4 KiB x Claims + 16 MiB) per domain = 352 MiB | 704 MiB for 2 |

@@ -156,8 +156,9 @@ func TestZQ3OldControlTicketsReproduceR16(t *testing.T) {
 	b := zq3SpecBounds(t)
 	b.ControlTickets = 8
 	r := newRig(t, func(c *Config) { c.Authorization.Enrollment.Bounds = b })
-	if reply, _, _ := r.t1ControlProfile(); reply.Status != "BLOCKED" {
-		t.Fatalf("m1 re-acquire at ControlTickets 8: %+v", reply)
+	reply, charge, _ := r.t1ControlProfile()
+	if reply.Status != "BLOCKED" || charge != t1ProfilePeak {
+		t.Fatalf("m1 re-acquire at ControlTickets 8: %+v at charge %d", reply, charge)
 	}
 }
 
