@@ -190,7 +190,7 @@ func (run *lifecycleRun) rawExchange(frame []byte) (uint8, lifecycleReply, error
 		return 0, lifecycleReply{}, err
 	}
 	defer func() { _ = conn.Close() }()
-	require(run.t, conn.SetDeadline(time.Now().Add(15*time.Second)))
+	require(run.t, conn.SetDeadline(time.Now().Add(answerBound)))
 	if _, err = conn.Write(frame); err != nil {
 		return 0, lifecycleReply{}, err
 	}
@@ -346,7 +346,7 @@ func checkPeerRefusals(t *testing.T, run *lifecycleRun) {
 		flag.Store(true)
 		conn, err := net.Dial("unix", run.ready.Socket)
 		require(t, err)
-		require(t, conn.SetDeadline(time.Now().Add(10*time.Second)))
+		require(t, conn.SetDeadline(time.Now().Add(answerBound)))
 		op, raw, err := readLifecycleReply(conn)
 		_ = conn.Close()
 		flag.Store(false)
@@ -387,11 +387,15 @@ func checkStalledFrame(t *testing.T, run *lifecycleRun) {
 	require(t, err)
 	_, err = stalled.Write([]byte("HSC"))
 	require(t, err)
+	// The server must end the stall at lifecycleIOTimeout. stalledFrameSlack
+	// absorbs scheduling delay on a loaded host (sd4); the client deadline
+	// (answerBound) stays well beyond it, so an unbounded server still fails.
+	const stalledFrameSlack = 10 * time.Second
 	start := time.Now()
-	require(t, stalled.SetDeadline(time.Now().Add(15*time.Second)))
+	require(t, stalled.SetDeadline(time.Now().Add(answerBound)))
 	op, _, err := readLifecycleReply(stalled)
 	_ = stalled.Close()
-	if (err == nil && op != LifecycleRefused) || time.Since(start) > lifecycleIOTimeout+5*time.Second {
+	if (err == nil && op != LifecycleRefused) || time.Since(start) > lifecycleIOTimeout+stalledFrameSlack {
 		t.Fatalf("stalled frame not bounded: op=%x %v after %v", op, err, time.Since(start))
 	}
 }

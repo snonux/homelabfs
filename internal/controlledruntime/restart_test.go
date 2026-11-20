@@ -120,7 +120,7 @@ func startRestartChild(t *testing.T, binary string) *restartChild {
 	require(t, supervisor.Start(t.Context(), Executable{Path: binary, SHA256: sha256.Sum256(executable), Args: []string{filepath.Join(root, "io"), ledger}}))
 	driver := &restartChild{t: t, originals: map[uint64][]byte{}, writes: map[uint64]int{}, writeBodies: map[uint64][]byte{}}
 	for i := 0; i < 2; i++ {
-		require(t, listener.SetDeadline(time.Now().Add(10*time.Second)))
+		require(t, listener.SetDeadline(time.Now().Add(answerBound)))
 		connection, e := listener.AcceptUnix()
 		require(t, e)
 		var kind [1]byte
@@ -300,7 +300,7 @@ func (d *restartChild) send(session int, op string, payload any, reclaim *guestb
 	}
 	raw := mustRuntimeJSON(d.t, guestbridge.Command{Cell: cell, Context: scope, Protocol: &protocol, Op: op, Payload: mustRuntimeJSON(d.t, payload), Reclaim: reclaim})
 	d.originals[cell+uint64(session)*guestbridge.MaxCell] = bytes.Clone(raw)
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(answerBound)
 	for {
 		require(d.t, d.writePacket('S', append([]byte{byte(session)}, raw...)))
 		status, _, err := d.readResult()
@@ -339,7 +339,7 @@ func (d *restartChild) fetch(session int, cell uint64) []byte {
 	request := make([]byte, 9)
 	request[0] = byte(session)
 	binary.BigEndian.PutUint64(request[1:], cell)
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(answerBound)
 	for {
 		require(d.t, d.writePacket('F', request))
 		status, response, err := d.readResult()

@@ -33,6 +33,13 @@ func (f dispatchFunc) Dispatch(ctx context.Context, r *fsapi.Request, c fsapi.Co
 	return f(ctx, r, c)
 }
 
+// answerBound is how long a test waits for an asynchronous outcome it
+// requires: a waiter admitted, a helper reply or exit, a lock released. Such
+// a wait only fails the test on timeout and never lets it pass, so the bound
+// is generous; the former 1-5 s bounds could be exceeded under concurrent
+// go test -race load (sd4, as i84 found for the other packages).
+const answerBound = 30 * time.Second
+
 func testID(n byte) fsapi.UUID { return fsapi.UUID{0: n, 15: n} }
 func testHeader(node, process uint64) fuse.InHeader {
 	return fuse.InHeader{NodeId: node, Caller: fuse.Caller{Owner: fuse.Owner{Uid: 1000, Gid: 2000}, Pid: uint32(process)}}
@@ -301,7 +308,7 @@ func TestLockCancellationCloseAndConversion(t *testing.T) {
 	go func() { done <- a.SetLkw(cancel, &contender) }()
 	select {
 	case <-admitted:
-	case <-time.After(time.Second):
+	case <-time.After(answerBound):
 		t.Fatal("waiter not admitted")
 	}
 	close(cancel)
