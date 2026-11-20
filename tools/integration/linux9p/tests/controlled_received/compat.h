@@ -83,6 +83,8 @@ static inline void list_del_init(struct list_head *p) { list_del(p);INIT_LIST_HE
 #define DEFINE_MUTEX(name) struct mutex name = { PTHREAD_MUTEX_INITIALIZER }
 #define mutex_init(m) assert(!pthread_mutex_init(&(m)->native,NULL))
 #define mutex_lock(m) assert(!pthread_mutex_lock(&(m)->native))
+/* re4: hfs_view_retire_try. */
+#define mutex_trylock(m) (!pthread_mutex_trylock(&(m)->native))
 extern void primitive_after_mutex_unlock(struct mutex *);
 #define mutex_unlock(m) do { assert(!pthread_mutex_unlock(&(m)->native)); primitive_after_mutex_unlock(m); } while(0)
 #define spin_lock_init(m) assert(!pthread_mutex_init(m,NULL))

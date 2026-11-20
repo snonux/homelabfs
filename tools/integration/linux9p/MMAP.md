@@ -222,11 +222,14 @@ request was stamped at; otherwise GETATTR and LOOKUP are re-issued within a
 A host BLOCKED answer to an observation's VIEW_ACQUIRE is back-pressure (re4,
 zq3-r16 R16-1: unretired release tickets filled the shared `ControlTickets`
 budget). Observation begin releases a lease it still holds, pauses (50 ms,
-doubling to 1 s), offers released tickets for retirement and acquires again
-within the same 30 s deadline; only then does it return the host's `-EAGAIN`.
-A VIEW_RETIRE the host answered BLOCKED (a recall runs, or the family's
-credentials hold an active lease) is offered again after the recall's
-REOPENED and at the next observation, not only at the next cleanup.
+doubling), offers released tickets for retirement without waiting for a busy
+retirement mutex, and acquires again only if that retired something or the
+held release completed, at most three times within the same 30 s deadline
+(each BLOCKED acquisition itself holds a ticket until retired). Otherwise it
+returns the host's `-EAGAIN` at once. A VIEW_RETIRE the host answered BLOCKED
+(a recall runs, or the family's credentials hold an active lease) is offered
+again after the recall's REOPENED and, at most once a second, at the next
+observation, not only at the next cleanup.
 
 When the view control worker stops for good (`hfs_mmap_fail`), it logs one line
 per session naming the enrolled session UUID, the worker step (VIEW_WAIT,
