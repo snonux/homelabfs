@@ -199,6 +199,21 @@ ie4 is merged, and only the guest kernel was rebuilt for it (`a1af0bd7…`,
 kernel build ID `7a5bb8dc…`): after such a pause the kernel now asks again
 instead of reporting "stale file handle". The daemon, the patched bhyve and
 the window test files are the same bytes as in the fifteenth attempt.
+The sixteenth attempt (zq3-r16) passed the setup and the f3 self-check
+again, and the kernel fix worked: m0's top folder opened and its details
+came back. The first test then failed on the second mount (m1). Its
+open also hit a routine pause, so the kernel asked again as designed, but
+the daemon refused that request: its budget of 8 "release" slots, shared
+by both mounts, was full. Finished releases keep their slot until they
+are tidied up, and that tidying is put off while any pause or lease is
+still active, so slots ran out within a few operations. The kernel's
+re-ask was not the cause: it needed one slot, the same as releasing
+first would have. The fix is for the guest kernel to wait and retry when
+the daemon says "full", tidying up its finished releases as it goes, and
+to raise the slot budget. Letting the daemon tidy up sooner is a separate
+proposal that needs more testing first.
+Nothing was left stuck, both mounts unmounted at once, and Rocky was down
+about four minutes ([record](results/20261120-zq3-r16/README.md)).
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
