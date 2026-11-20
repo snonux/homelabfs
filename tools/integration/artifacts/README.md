@@ -265,7 +265,13 @@ object mid-walk, which stopped xd4's first second-build attempt
 an entry that vanished during the walk as 0 bytes and still fails closed on
 every other walk or `lstat()` error. The next native build stages and binds
 this new hash; `assemble.py` compares the guard against that build's own
-bindings. Historical evidence keeps `228c91f3…` unchanged.
+bindings. Historical evidence keeps `228c91f3…` unchanged. Consequence:
+`assemble.py` at this revision refuses to assemble a candidate that reuses
+the xd4 exporter `2fd7e32f…` through its native build records, because those
+bindings still name `228c91f3…`; to keep reusing it, copy the packaged files
+byte for byte from the previous package (as r15 and r16 did) or rebuild
+natively. Within one sample the walk can still miss a file renamed into a
+directory it has already passed; the guard samples repeatedly.
 
 `proposal.py --physical-bytes N` emits inert memory arithmetic. Adding
 `--package ABS --operator-public HEX` pins the actual component artifacts to an
