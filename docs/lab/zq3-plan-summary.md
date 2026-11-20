@@ -236,6 +236,14 @@ caused by the new retry fix, which never had to run. The fix is for the
 kernel to wait until it has caught up and ask again, instead of giving up.
 Nothing was left stuck, both mounts unmounted, and Rocky was down about
 four minutes ([record](results/20261120-zq3-r17/README.md)).
+That fix is merged (2f4), and the package was rebuilt for zq3-r18
+(`b2a4f69e…`, kernel build ID `020acb2e…`, daemon `086d7cde…`): the
+kernel now waits until it has caught up and asks again. The daemon was
+rebuilt too: a clean read-only lease is now released without a pause
+(je4), the daemon reports its recent pauses (ce4), and a mismatch that
+only concerns one mount's pin pauses only that mount (e84). Its bytes are
+new, so they must pass the f3 self-check again. The patched bhyve is
+reused unchanged; the window test files were rebuilt with the daemon.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a

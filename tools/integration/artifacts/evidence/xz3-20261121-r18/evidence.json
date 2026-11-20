@@ -1,0 +1,363 @@
+{
+  "candidate": {
+    "admission": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "assembled_from": "the r18 worktree at 633509e (/home/paul/git/homelabfs/.claude/worktrees/agent-a5b83039c7a0d48f9; no edits before assembly, HEAD equal to main). The daemon was rebuilt there, so the repository baseline is 633509e and there is no inputs/repository-changes.patch. The daemon builder bindings name this worktree; the three native proof records are the r17 f3 build's, copied byte for byte; every other binding is a hash",
+    "files": 194,
+    "independent_admit": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "manifest_sha256": "b2a4f69e78190591bec038e269a73f93a6b39bc9e9091c7f6d7c1d5ab73ea6d7",
+    "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+    "path": "/home/paul/tmp/claude/hfs-xz3-20261121-r18/package",
+    "repository_baseline": "633509e0e5893d6a1afe6600cd128f00c66138c3",
+    "repository_changes_patch_sha256": null,
+    "source_checkout": "633509e0e5893d6a1afe6600cd128f00c66138c3"
+  },
+  "controls": {
+    "all_refused": true,
+    "case_names": [
+      "external operator mismatch",
+      "external repository mismatch",
+      "old negotiated features",
+      "old source revision",
+      "different packaged Linux patch",
+      "different native owned source",
+      "wrong actual bundled source with consistent container hashes",
+      "daemon ELF labelled as full exporter",
+      "native helper ELF lacks production controllers",
+      "invented stock shared9p runtime",
+      "installed success claim",
+      "missing actual Go build version",
+      "real CGO_ENABLED=0 daemon with nocgo observer stub",
+      "record claims CGO0 build",
+      "nocgo stub in recorded source closure",
+      "renamed cgo process observer symbols",
+      "foreign dynamic loader",
+      "extra recorded DT_NEEDED",
+      "missing recorded DT_NEEDED",
+      "sysroot library hash differs from recorded closure",
+      "unlinked sysroot capture",
+      "unrecorded clang resource headers",
+      "unrecorded clang shared-library closure",
+      "foreign cgo compiler wrapper",
+      "installation authority claim",
+      "false forced rebuild witness"
+    ],
+    "cases": 26,
+    "cgo0_control_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+    "original_passed_after": true,
+    "restored_passed": true
+  },
+  "daemon": {
+    "builds": {
+      "clean_repro": {
+        "both_forced_rebuilds": true,
+        "equal": true,
+        "first_sha256": "086d7cde0e2bd2decc3b9527d0fd76ad62722430b70f74d6367e9a108a40a3df",
+        "repository": "633509e0e5893d6a1afe6600cd128f00c66138c3",
+        "second_sha256": "086d7cde0e2bd2decc3b9527d0fd76ad62722430b70f74d6367e9a108a40a3df",
+        "version": "homelabfs-daemon-clean-repro/1"
+      },
+      "first_output": "/home/paul/tmp/claude/hfs-xz3-20261121-r18/daemon-first",
+      "second_output": "/home/paul/tmp/claude/hfs-xz3-20261121-r18/daemon-repro",
+      "steps": [
+        [
+          "prepare",
+          "0",
+          "4"
+        ],
+        [
+          "build-first",
+          "0",
+          "42"
+        ],
+        [
+          "build-second",
+          "0",
+          "40"
+        ]
+      ],
+      "window_cross_check": {
+        "artifact": "hfs-controlled-runtime",
+        "candidate_manifest_sha256": "086d7cde0e2bd2decc3b9527d0fd76ad62722430b70f74d6367e9a108a40a3df",
+        "equal": true,
+        "rebuilt_sha256": "086d7cde0e2bd2decc3b9527d0fd76ad62722430b70f74d6367e9a108a40a3df"
+      }
+    },
+    "bytes": 11111304,
+    "changes": "je4 (the last holder's release of a clean targeted DOMAIN READ observation lease answers RELEASED without a recall; hard lineage bound at grant), ce4 (bounded timestamped recall history in internal/viewcontrol, reported in OBSERVE as controller.recalls) and e84 (a pin-only target mismatch, equal client-visible digest with targeted peer leases, recalls only the requesting domain; internal/storage ObservableCatalog and internal/fsservice ObservableDigest), on top of the te4/qe4 daemon 85900893",
+    "gnu_build_id": "3fb0a61065ebc2595fd62071f2aee6b56a188181",
+    "module_cache": "seeded from the r17 daemon cache (go.mod/go.sum unchanged since b7d107b); nothing downloaded",
+    "native_qualification": "new bytes: not checked on f3 yet; the zq3-r18 Phase 4 step 1a (--check-process-observer under the bounded host guard) must qualify them (85900893 passed it in zq3-r17)",
+    "repository": "633509e0e5893d6a1afe6600cd128f00c66138c3",
+    "sha256": "086d7cde0e2bd2decc3b9527d0fd76ad62722430b70f74d6367e9a108a40a3df",
+    "superseded_sha256": "85900893e07be37b363b9758fa5ae41184a34b6f45ef2218e26f191918c6733d"
+  },
+  "init_helper": {
+    "kept": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80 from e0cca0c",
+    "reason": "not in the package; cmd/homelabfs links internal/storage and internal/fsservice, but e84 only added storage.ObservableCatalog and ControlledViewSource.ObservableDigest, which node-init and volume-init never call"
+  },
+  "kernel": {
+    "abi_negative_controls": [
+      "different-kernel-module-layout-crc",
+      "different-operator-config-identity",
+      "missing-kernel-module-layout-crc",
+      "stock-kernel-release"
+    ],
+    "artifacts": {
+      "linux/Module.symvers": "4fd4c5d7b5b50186a57b2861dc1d065f3ec88209f37306df2cda4f89ec803655",
+      "linux/System.map": "8088881ec2b2e4d458cefb5d36bc59cff3cfd1188151654f510b6fb268ecfaf3",
+      "linux/abi-negative.json": "f7c4aa9efbe87a6e18eae268097b01c7cb333b1b72ceefbfa93448d6e7417da0",
+      "linux/abi.json": "cbfbf6f5b0d2c407c9023f76aeb7f163a2c55b0d7cc3210c41a25bfb5ef010ee",
+      "linux/build.json": "6b22123a931b84ff399d20a6aa25af138d911ffec1560b66cbdba8b9687f58e3",
+      "linux/bzImage": "f04c03e07ebd3afde89ad154a8b25391e70c895a334f77b03e14d2ec52127002",
+      "linux/clean-repro.json": "399e926516b671ede310f0d2d8ea92a59fdce5a6dc6ea69057d79345837bb611",
+      "linux/config": "28fe4a8ec759cfa7ecfdc373753082ec6981ecdffc6a25e074b6fac048906282",
+      "linux/kernel.release": "50bb45b1af138cf586adddcde600f85e256a19336c861654e6ce76c20eb034e3",
+      "linux/modules.builtin": "1f33442939e7faf978dc707cb69f99015328b39b3125cea6d6de25715f8bebf1",
+      "linux/modules.builtin.modinfo": "c53973bb5c4498e6fc6e61d0143353782a5628374b2b00624f422ed6f2236cf2",
+      "linux/modules.order": "f820618416411197b17fe7795d067e9687d905c487bffb207589bec3c173019a",
+      "linux/modules/drivers/net/net_failover.ko": "cc9755c71cc1d0776f5efd61198b1ebe99741cff877104879b8658db469f9143",
+      "linux/modules/drivers/net/virtio_net.ko": "39de7e933fa325b2c6b576004213f34bee04085191ea94e141a6c2aeeaf7fef1",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko": "6b98068988086d3b1b5c7a1e3b71f5f0ac4378f2d907c0e3a8c50a22bcde53fa",
+      "linux/modules/fs/efivarfs/efivarfs.ko": "6dd0679c5a026189f4feef51fcdcf4d0542fbc9cba7f3e552cb8a0324e68974f",
+      "linux/modules/net/core/failover.ko": "b1aa98beb495be131c06a02775109cba97de2ecacae227c4932909166b88cf5a",
+      "linux/vmlinux": "a5d320c7e81eb2de1fa9682dabe56fa72d9ca98fad1cd62b15f8c53d2094ec3d"
+    },
+    "changed_from_r17": [
+      "linux/Module.symvers",
+      "linux/System.map",
+      "linux/abi.json",
+      "linux/build.json",
+      "linux/bzImage",
+      "linux/clean-repro.json",
+      "linux/vmlinux"
+    ],
+    "changes": "2f4 (patches 0004 and 0005 and source.json: a verified GRANTED VIEW_QUERY reply that is not yet current waits for the guest's REOPENED-ACK fence raise and is queried again instead of blocking the session; passed grants are decoded unadopted and only released; zq3-r17 R17-1)",
+    "clean_repro_equal_artifacts": 13,
+    "clean_repro_modules": 5,
+    "clean_repro_record_sha256": "399e926516b671ede310f0d2d8ea92a59fdce5a6dc6ea69057d79345837bb611",
+    "config_equals_r17": true,
+    "gnu_build_id": "020acb2e2d6f61ffbaccc5b7f36b160107584e59",
+    "initramfs": "none built or packaged; the recipe builds bzImage and modules",
+    "module_build_ids": {
+      "drivers/net/net_failover.ko": "3255e434a34a125cd9251bebddaaf6bdf98c68bb",
+      "drivers/net/virtio_net.ko": "072995182e1a95b83cf3ec794649ce05adf8a59d",
+      "drivers/thermal/intel/x86_pkg_temp_thermal.ko": "da295c7cb8ec345542f4ad350ebe6b4ab30ce306",
+      "fs/efivarfs/efivarfs.ko": "c7dca1ae388661db98a1b00f73a39cc2c2d88539",
+      "net/core/failover.ko": "3b9f54841993c81600f6794137822622987c4f9d"
+    },
+    "module_symvers": {
+      "added": [],
+      "changed_crc": [
+        "hfs_call",
+        "hfs_control",
+        "hfs_control_flagged",
+        "hfs_request_allocate",
+        "hfs_request_resolve_gap",
+        "hfs_retire",
+        "hfs_session_destroy",
+        "v9fs_hfs_register_provider",
+        "v9fs_hfs_unregister_provider"
+      ],
+      "imported_by_packaged_modules": [],
+      "removed": []
+    },
+    "note": "both builds used the same canonical O path (first tree moved to kernel-build-first before the repeat); abi.py collect ran on both packages before compare_kernel",
+    "release": "6.1.190-hfs-xz3",
+    "resolved_config_lsm": "lockdown,yama,integrity,selinux,bpf,landlock",
+    "source": {
+      "archive_path": "/home/paul/tmp/claude/c64-config/linux-pinned.tar.gz (link to the cached archive, not downloaded)",
+      "archive_sha256": "4f3c00db43ece26e00b83da8cee938e544ba89e10dc10aecc45209ab03554a17",
+      "kernel_config_fragment_sha256": "f2d2a203daa49dd454de90b932e04e17f1532a22b9184140da136ff97d468bc7",
+      "prepared": "/home/paul/tmp/claude/hfs-xz3-20261121-r18/linux-source",
+      "prepared_from_commit": "41dd0c9 (2f4 merge); patches, source.json and tools/integration are unchanged at 633509e",
+      "source_inventory_sha256": "93cc122be3b41080476243aef35fc8e20abff5d166c869d9abf3761f95362980"
+    },
+    "source_suites": {
+      "commands": "transport, mount_hello, view and view --pressure with --sanitize; controlled_received --scenario passed-grant and terminal-smoke (budget root suites/, host tree the r18 worktree); run alongside the first kernel build",
+      "results": [
+        [
+          "transport",
+          "0",
+          "6"
+        ],
+        [
+          "mount_hello",
+          "0",
+          "7"
+        ],
+        [
+          "view",
+          "0",
+          "8"
+        ],
+        [
+          "view-pressure",
+          "0",
+          "13"
+        ],
+        [
+          "cr-passed-grant",
+          "0",
+          "102"
+        ],
+        [
+          "cr-terminal-smoke",
+          "0",
+          "67"
+        ]
+      ],
+      "source": "/home/paul/tmp/claude/hfs-xz3-20261121-r18/linux-source"
+    },
+    "stage_seconds": [
+      [
+        "prepare",
+        "0",
+        "80"
+      ],
+      [
+        "first",
+        "configure",
+        "0",
+        "26"
+      ],
+      [
+        "first",
+        "vmlinux",
+        "0",
+        "1064"
+      ],
+      [
+        "first",
+        "image-modules",
+        "0",
+        "56"
+      ],
+      [
+        "first",
+        "collect",
+        "0",
+        "11"
+      ],
+      [
+        "repro",
+        "configure",
+        "0",
+        "21"
+      ],
+      [
+        "repro",
+        "vmlinux",
+        "0",
+        "1142"
+      ],
+      [
+        "repro",
+        "image-modules",
+        "0",
+        "45"
+      ],
+      [
+        "repro",
+        "collect",
+        "0",
+        "9"
+      ],
+      [
+        "abi-collect both",
+        "0"
+      ],
+      [
+        "compare-repro (same O, after abi collect on both)",
+        "0"
+      ],
+      [
+        "abi-negative",
+        "0"
+      ]
+    ],
+    "superseded_gnu_build_id": "360fbc6d1608c03c6ff3d41ffb0dc7fadfccaee9",
+    "timeouts_and_resumes": "kernel.py bounds every make at 1190 s. No stage reached it: the first vmlinux took 1064 s and the repro vmlinux 1142 s, so no stage was resumed. The driver would have waited until no process used the O path and resumed a timed-out stage on the same O tree (at most twice); that path never ran. Every stage ran under a user systemd scope with the r17 40-minute bound",
+    "unchanged_from_r17": [
+      "linux/abi-negative.json",
+      "linux/config",
+      "linux/kernel.release",
+      "linux/modules.builtin",
+      "linux/modules.builtin.modinfo",
+      "linux/modules.order",
+      "linux/modules/drivers/net/net_failover.ko",
+      "linux/modules/drivers/net/virtio_net.ko",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko",
+      "linux/modules/fs/efivarfs/efivarfs.ko",
+      "linux/modules/net/core/failover.ko"
+    ]
+  },
+  "native_exporter": {
+    "differs_from_r17": [],
+    "exporter_sha256": "2fd7e32f5cc8762ae0ff4d5ec6c046d7d49b95c97e4b9150dd17b2ac52c39fd3",
+    "files": 88,
+    "guard_recipe_sha256": "34ddf37c98e4f634ada902fed708ec9dc3ec49baa3ec1f764017d0140d49b2ea",
+    "proof_records_sha256": {
+      "native-bundle-helper-transfer.json": "1f9352e688d0378d3c8705d1be98ef557a693be11f90ad86e567559ac76f07f1",
+      "native-clean-repro-evidence.json": "1d54d599c5ef9ae6993ef00f8becf646374816b0f129babad4f292eea37d8d40",
+      "native-final-source-and-first-seal.json": "5f97a3a8c8581a02c4ce7ef322eca98cf040f9f92307f9cb41959a41d404b4a0"
+    },
+    "rebuilt": false,
+    "records": "../xz3-20261120-r17/native-build-records.json (the r17 f3 build: facts, guard receipts, comparison)",
+    "reuse": "every native file copied byte for byte from f614d52a (each checked against its manifest) with the three r17 native proof records, which bind native_guard.py 34ddf37c; native_guard.py at 633509e is the same file, and the 11 owned lib9p inputs equal the repository, so assemble.py accepted them"
+  },
+  "not_claimed": [
+    "installed",
+    "booted",
+    "native acceptance",
+    "exporter execution",
+    "VM execution",
+    "SELinux enforcing on the booted guest",
+    "normal publication",
+    "f3 observer qualification of the new daemon",
+    "a working hfs1.4 mount on Rocky (zq3)"
+  ],
+  "reason": "f614d52a predates 2f4: its guest kernel 360fbc6d blocked m1's session with EKEYREJECTED when a correct GRANTED VIEW_QUERY reply arrived before its REOPENED ACK had raised the fence (zq3-r17 R17-1). Its daemon predates je4, ce4 and e84",
+  "recorded": "2026-11-21",
+  "reused": {
+    "checked_against_current_source": 26,
+    "from_manifest": "f614d52a84b43d455a20f2ee973f9e9346a00e26a25019e33a28ec7b8c14e313",
+    "linux_files": 26,
+    "list": "reused-files.json",
+    "native_files": 88,
+    "previous_still_admits": "package.py check and a full admit.py of f614d52a pass under the 633509e tooling (receipts r17-container, r17-readmit)"
+  },
+  "runtimeprep_spec": "internal/runtimeprep/testdata/zq3-spec.json is not package content and is unchanged since r17 (ControlTickets 24)",
+  "superseded_candidate": {
+    "manifest_sha256": "f614d52a84b43d455a20f2ee973f9e9346a00e26a25019e33a28ec7b8c14e313",
+    "status": "refused as superseded (pre-2f4 guest kernel 360fbc6d and pre-je4/ce4/e84 daemon 85900893; zq3-r17 R17-1)"
+  },
+  "task": "r18: xz3 rebuild for zq3-r18 (2f4 guest kernel, je4/ce4/e84 CGO daemon and window artifacts; pc4 native exporter reused with the r17 f3 records)",
+  "version": "homelabfs-xz3-evidence/2",
+  "window_artifacts": {
+    "artifacts": {
+      "controlledruntime.test": "42def98ffd76328154a93804df69c9781384490af4b165d07e67cf8d55e1274b",
+      "fdescfs-namespace": "f84bf4cfb6d1ab8cfe4f29e92afde3c939dfbaf45a26a7a80833e4c1a024ac28",
+      "hfs-controlled-runtime": "086d7cde0e2bd2decc3b9527d0fd76ad62722430b70f74d6367e9a108a40a3df"
+    },
+    "helper_stripped_sha256": "07c9f5a19fb38031bfbfda438b3f659a8fdc03ecc656f8f20791d120f9364a96",
+    "recipe_sha256": "0bbfd48218a0651ad7f1bbc01a91b9ee0ca2856afb392809c31cd49ce78c6c90",
+    "reused": false,
+    "source": "633509e0e5893d6a1afe6600cd128f00c66138c3",
+    "why": "the window test and inspector bytes follow the daemon source; both window builds were byte-identical and reproduced the candidate daemon. fdescfs-namespace.c is unchanged; the helper differs from the 3430758 build only in DWARF (comp_dir), and with llvm-objcopy --strip-debug it is 07c9f5a1..."
+  },
+  "workstation_tools": "hfs-runtime-prep and the signer hfs-retained9p-operator link internal/viewcontrol, fsservice, storage and controlledruntime (go list -deps), so je4, ce4 and e84 change their inputs; they are not package content and the zq3-r18 fill must rebuild both. The exporter bytes are unchanged"
+}
