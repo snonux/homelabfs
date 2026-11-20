@@ -28,11 +28,11 @@ import (
 // last grant or install, far fewer than 64 at the zq3 spec (Sources 10).
 const observedCutLimit = 64
 
-// observedCut is one remembered digest and the journal position used to
-// evict the oldest entry first.
+// observedCut is one remembered digest with the journal incarnation and
+// position used to evict the oldest entry first.
 type observedCut struct {
-	digest   string
-	position uint64
+	digest, incarnation string
+	position            uint64
 }
 
 // cutKey identifies a cut independently of the domain whose target names it.
@@ -52,24 +52,44 @@ func (c *Controller) observe(source fsservice.ControlledViewSource) (string, boo
 		c.observed = map[string]observedCut{}
 	}
 	cut := c.target(guestbridge.Context{}, source).Cut
-	c.observed[cutKey(*cut)] = observedCut{digest: sum, position: cut.JournalPosition}
+	c.observed[cutKey(*cut)] = observedCut{digest: sum, incarnation: cut.JournalIncarnation, position: cut.JournalPosition}
 	for len(c.observed) > observedCutLimit {
-		c.evictOldestObserved()
+		c.evictOldestObserved(cut.JournalIncarnation)
 	}
 	return sum, true
 }
 
-// evictOldestObserved drops the remembered cut with the lowest journal
+// digestOf returns the observable digest of source, from the cache when its
+// cut is remembered, else by computing and remembering it (observe).
+func (c *Controller) digestOf(source fsservice.ControlledViewSource) (string, bool) {
+	if o, ok := c.observed[cutKey(*c.target(guestbridge.Context{}, source).Cut)]; ok {
+		return o.digest, true
+	}
+	return c.observe(source)
+}
+
+// evictOldestObserved drops one remembered cut: a cut of a journal
+// incarnation other than current (an older incarnation, which no current
+// target can name any longer) first, else the one with the lowest journal
 // position.
-func (c *Controller) evictOldestObserved() {
+func (c *Controller) evictOldestObserved(current string) {
 	oldest, first := "", true
-	var position uint64
+	var best observedCut
 	for key, o := range c.observed {
-		if first || o.position < position {
-			oldest, position, first = key, o.position, false
+		if first || olderObserved(o, best, current) {
+			oldest, best, first = key, o, false
 		}
 	}
 	delete(c.observed, oldest)
+}
+
+// olderObserved reports whether a should be evicted before b: a foreign
+// incarnation before the current one, then the lower journal position.
+func olderObserved(a, b observedCut, current string) bool {
+	if (a.incarnation != current) != (b.incarnation != current) {
+		return a.incarnation != current
+	}
+	return a.position < b.position
 }
 
 // observedDigest returns the observable digest of the cut target names for

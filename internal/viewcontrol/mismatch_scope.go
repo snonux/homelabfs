@@ -25,12 +25,17 @@ import (
 //     expected_target = its installed view and so hits its own mismatch, and
 //     its mappings fault under PAGE leases (see observation_release.go for the
 //     guest-side reasons). It needs nothing from this recall.
-//   - A peer WITH an active lease observes that lease's cut. If that cut holds
-//     the same client-observable state as the current cut (same objects,
-//     attributes, names, tombstones, retired allocations and payload bytes;
-//     fsservice ControlledViewSource.ObservableDigest), reinstalling the
-//     current cut changes nothing the peer can see, so stopping it buys
-//     nothing either.
+//   - A peer WITH an active observation lease (leaseState.Targeted: every
+//     holder acquired it with expected_target equal to its target) has that
+//     target installed as its view. If that cut holds the same
+//     client-observable state as the current cut (same objects, attributes,
+//     names, tombstones, retired allocations and payload bytes; fsservice
+//     ControlledViewSource.ObservableDigest), reinstalling the current cut
+//     changes nothing the peer can see, so stopping it buys nothing either.
+//     An untargeted (discovery or renewed) lease says nothing about the
+//     installed view: in the hfs_mmap_bootstrap loop the view can be older
+//     than the lease target. Any such active peer lease keeps the
+//     all-domain recall.
 //
 // Cut moves therefore fall in two classes. A pin-only move (HandlePin/
 // HandleRelease records: a pinning LOOKUP or OPEN of a non-root object, a
@@ -41,7 +46,8 @@ import (
 //
 // The classification compares the endpoint cuts, not the journal records
 // between them: the expected target's cut must be observably equal to the
-// current cut, and so must the target of every active peer lease. Comparing
+// current cut, and every active peer lease must be Targeted with a target
+// of the current cut's digest. Comparing
 // endpoints is at least as strict as classifying the records: an
 // intermediate change that a later one undid leaves nothing observable, and
 // any surviving change fails the comparison. The comparison needs the
@@ -70,8 +76,8 @@ import (
 // classifying it would need the journal records between the two positions,
 // which the controller does not read), a different journal incarnation,
 // epoch or serving generation, any observable change between the expected
-// cut and the current one, and any active peer lease on an observably
-// different cut.
+// cut and the current one, and any active peer lease that is untargeted or
+// on an observably different cut.
 
 // mismatchRecallScope returns the session whose recall alone answers an
 // expected-target mismatch of request r from scope, or "" when the mismatch
@@ -81,7 +87,7 @@ func (c *Controller) mismatchRecallScope(scope guestbridge.Context, r request, c
 	if c.allDomainMismatch || r.Mode != "READ" || r.Target == nil || !c.cleanReadDomain(session) {
 		return ""
 	}
-	now, ok := c.observe(current)
+	now, ok := c.digestOf(current)
 	if !ok {
 		return ""
 	}
@@ -95,13 +101,17 @@ func (c *Controller) mismatchRecallScope(scope guestbridge.Context, r request, c
 }
 
 // peerLeasesObservablyCurrent reports whether every active lease of a domain
-// other than session sits on a cut whose observable digest is now, so
+// other than session is a Targeted observation lease, so its target is the
+// peer's installed view, on a cut whose observable digest is now: then
 // reinstalling the current cut in that domain would change nothing it can
-// observe.
+// observe. An untargeted lease's target need not be the installed view.
 func (c *Controller) peerLeasesObservablyCurrent(session, now string) bool {
 	for _, l := range c.state.Leases {
 		if !l.Active || l.Lease.Scope.Session == session {
 			continue
+		}
+		if !l.Targeted {
+			return false
 		}
 		if digest, known := c.observedDigest(l.Lease.Scope, l.Lease.Target); !known || digest != now {
 			return false

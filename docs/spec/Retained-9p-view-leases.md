@@ -225,7 +225,10 @@ HandlePin/HandleRelease records change only pins, position and receipts,
 while every mutation and Reclaim changes observable state. So the recall is
 scoped exactly when the request is READ, the requesting domain holds no
 EXCLUSIVE_DIRTY lease and no open reservation, the expected cut and every
-active peer lease's cut have the current cut's observable digest, and the
+active peer lease's cut have the current cut's observable digest, every
+active peer lease was acquired with expected_target equal to its target (an
+untargeted discovery lease's target need not be the peer's installed view),
+and the
 expected cut's digest is known: from the retained source or from the
 issuer's bounded in-memory record of recently retained cuts' digests, keyed
 by full cut identity including the state hash. An unknown expected cut (e.g.

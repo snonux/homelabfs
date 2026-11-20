@@ -106,9 +106,13 @@ A peer needs the recall only if its view could show something the current
 cut no longer holds. A peer without an active lease cannot serve from its
 view at all: every VFS read first takes its own observation lease on its
 installed view and so hits its own mismatch (and mappings fault under PAGE
-leases; see the je4 section). A peer with an active lease observes that
-lease's cut; if that cut shows the same client-observable state as the
-current cut, reinstalling the current cut changes nothing it can see.
+leases; see the je4 section). A peer with an active Targeted observation
+lease (every holder acquired it with expected_target equal to its target)
+has that target installed; if that cut shows the same client-observable
+state as the current cut, reinstalling the current cut changes nothing it
+can see. An untargeted (discovery or renewed) lease says nothing about the
+installed view: in the `hfs_mmap_bootstrap` loop the view can be older than
+the lease target, so such an active peer lease keeps the all-domain recall.
 
 *Pin-only moves versus observable changes.* HandlePin/HandleRelease records
 (a pinning LOOKUP or OPEN of a non-root object, a FORGET or final
@@ -116,6 +120,13 @@ DESCRIPTION_RELEASE that reclaims nothing) change only the catalog's
 position, pins and duplicate-operation receipts; storage validation lets them
 touch no object or entry. Every mutation (data, attributes, namespace) and
 every Reclaim changes an object, an entry, a retired allocation or a payload.
+In the controlled service a final DESCRIPTION_RELEASE or FORGET of an
+open-unlinked file journals only HandleRelease: the Reclaim comes from the
+fsservice reaper, which runs only with a ReclamationPolicy (the controlled
+service has none), so the unlinked object stays, unchanged and unreachable
+by name, and the move is pin-only. A Reclaim, once journaled, removes the
+object and retires its allocation, an observable change
+(`TestObservableCatalogOnRealStore`, `TestOpenUnlinkedFinalReleaseMismatch`).
 `fsservice.ControlledViewSource.ObservableDigest` hashes exactly the
 observable part (journal incarnation, epoch and serving generation, the
 catalog without position/pins/receipts, every payload byte), so equal
@@ -127,12 +138,14 @@ undone shows nothing, and any surviving change fails the comparison.
 is READ, the domain holds no EXCLUSIVE_DIRTY lease and no open reservation
 (nothing to freeze or drain, exactly like a scoped release recall), the
 expected cut's digest is known and equals the current cut's, and every
-active peer lease's cut has the current digest too. The scoped recall's
+active peer lease is Targeted with a cut of the current digest too. The scoped recall's
 barrier rules are those of task 784: every cut-changing op of every domain
 waits for it, so it installs one stable cut. Everything else (EXCLUSIVE_DIRTY
-request, dirty requester, any observable change, a peer lease on an
-observably different cut, an unknown expected cut) keeps the all-domain
-recall.
+request, dirty requester, any observable change, an untargeted active peer
+lease or one on an observably different cut, an unknown expected cut) keeps
+the all-domain recall. A peer lease that survives a scoped mismatch recall
+still sits on its pre-move cut, so its later release keeps the scoped
+release recall of the moved cut (je4's current-cut condition).
 
 *Remembered digests.* The guest retires answered tickets promptly (16 live
 tickets at the zq3 spec), compaction drops released leases, and pruning then
@@ -141,14 +154,16 @@ drops the cuts only they pinned, so the expected cut is usually gone from
 in memory only, the observable digest of the last `observedCutLimit` (64)
 cuts it retained, keyed by the full cut identity (including the SHA-256 of
 the complete State), so a target finds exactly the digest of its own bytes.
+The current cut's digest is taken from the cache when remembered. Eviction
+drops cuts of another journal incarnation first, then the lowest position.
 It is not part of the protected ledger: no ledger byte, digest or reply
 changes, and a reopened controller starts empty and falls back to all-domain
 until it has seen the cuts again. Classifying an unknown cut would need the
 journal records between the two positions, which the controller does not
 read. The replay `TestZQ3PinningObservationsScopeMismatchRecalls` (pinning
 LOOKUPs, GETATTRs and FORGETs on two mounts, retiring tickets after each
-observation) counts 6 all-domain + 3 scoped recalls before e84 and 0
-all-domain + 12 scoped with it: more recalls in total, because a peer's
+observation) goes from 9 recalls (6 all-domain + 3 scoped) before e84 to
+12 recalls, all scoped, with it: more recalls in total, because a peer's
 view is no longer refreshed by another domain's recall, but no global
 barrier and fewer domain stops (12 instead of 15). Without the remembered
 digests the same replay still needs 6 all-domain recalls.

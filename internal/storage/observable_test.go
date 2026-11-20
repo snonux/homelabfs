@@ -3,6 +3,8 @@ package storage
 import (
 	"bytes"
 	"testing"
+
+	"github.com/snonux/homelabfs/internal/fsapi"
 )
 
 // TestObservableCatalogDropsOnlyLifetimeState (task e84): position, pins and
@@ -28,5 +30,44 @@ func TestObservableCatalogDropsOnlyLifetimeState(t *testing.T) {
 		if _, ok := ObservableCatalog(bad); ok {
 			t.Fatalf("accepted %s", bad)
 		}
+	}
+}
+
+// TestObservableCatalogOnRealStore applies real primitives to a store (task
+// e84): a HandlePin and HandleRelease of an open-unlinked file leave the
+// observable catalog unchanged; the Reclaim that later retires it (the
+// fsservice reaper, which needs a ReclamationPolicy) changes it, so a
+// mismatch across a Reclaim keeps the all-domain recall.
+func TestObservableCatalogOnRealStore(t *testing.T) {
+	f := fixtureFor(t, "simulator")
+	f.apply(f.create("victim", fsapi.Regular, objectID(2)))
+	f.apply(f.unlink("victim"))
+	observable := func() []byte {
+		raw, err := EncodeImage(f.image(), f.config.Limits)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, ok := ObservableCatalog(raw)
+		if !ok {
+			t.Fatal("own catalog refused")
+		}
+		return out
+	}
+	unlinked := observable()
+	pin := Pin{ID: uuid(900), Object: objectID(2), Generation: uuid(901), Incarnation: uuid(902), Active: true}
+	pinned := f.op(HandlePin, objectID(2))
+	pinned.Pins = []PinChange{{After: pin}}
+	f.apply(pinned)
+	released := f.op(HandleRelease, objectID(2))
+	inactive := pin
+	inactive.Active = false
+	released.Pins = []PinChange{{Before: &pin, After: inactive}}
+	f.apply(released)
+	if !bytes.Equal(unlinked, observable()) {
+		t.Fatal("handle pin/release changed the observable catalog")
+	}
+	f.apply(f.op(Reclaim, objectID(2)))
+	if bytes.Equal(unlinked, observable()) {
+		t.Fatal("Reclaim left the observable catalog unchanged")
 	}
 }

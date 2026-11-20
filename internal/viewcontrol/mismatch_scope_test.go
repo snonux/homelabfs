@@ -1,6 +1,9 @@
 package viewcontrol
 
 import (
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
 	"maps"
 	"testing"
 
@@ -103,6 +106,96 @@ func TestPinOnlyMismatchRecallIsScoped(t *testing.T) {
 	if last := records[len(records)-1]; last.Kind != TriggerExpectedTarget || last.Scope != "DOMAIN" {
 		t.Fatalf("history %+v", last)
 	}
+	// The peer's lease survived the scoped recall on its pre-move target, so
+	// its release keeps the scoped release recall of the moved cut (je4's
+	// current-cut condition), exactly as without the mismatch.
+	r.requireReleaseRecall(t, 0, peer, r.scopes[0].Session)
+}
+
+// TestOpenUnlinkedFinalReleaseMismatch: the final DESCRIPTION_RELEASE and
+// FORGET of an open-unlinked file journal only HandleRelease records here:
+// the object is reclaimed only by fsservice's reaper (lifetimes.go reap),
+// which runs only with a ReclamationPolicy, and the controlled service has
+// none. The unlinked object stays in the catalog unchanged and unreachable
+// by name, so the move is pin-only and the peer's mismatch is scoped. Once
+// a reaper journals the Reclaim, the object leaves the catalog and its
+// allocation is retired, which changes the observable catalog
+// (storage TestObservableCatalogOnRealStore), and a mismatch across it
+// keeps the all-domain recall like any observable change: the test
+// evaluates mismatchRecallScope against that reclaimed catalog shape too.
+func TestOpenUnlinkedFinalReleaseMismatch(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	path, description := r.create(0, "unlinked", false)
+	root := r.call(0, "ROOT", map[string]any{}).Capabilities[0]
+	if res := r.call(0, "UNLINK", map[string]any{"parent": root, "name": hex.EncodeToString([]byte("unlinked"))}); res.Code != "OK" {
+		t.Fatalf("UNLINK %+v", res)
+	}
+	installed := r.observeReleased(1)
+	r.observeReleased(0)
+	before, err := r.controller.capture(t.Context())
+	must(t, err)
+	r.dropLifetimes(0, path, description)
+	after, err := r.controller.capture(t.Context())
+	must(t, err)
+	if sourceKey(before) == sourceKey(after) || !before.ObservablyEqual(after) {
+		t.Fatal("final release without a reaper is not a pin-only move")
+	}
+	reclaimed := after
+	reclaimed.State = withoutObject(t, after.State)
+	if after.ObservablyEqual(reclaimed) {
+		t.Fatal("a reclaimed object is not an observable change")
+	}
+	r.controller.mu.Lock()
+	scope := r.controller.mismatchRecallScope(r.scopes[1], request{Mode: "READ", Target: &installed.Target}, reclaimed)
+	r.controller.mu.Unlock()
+	if scope != "" {
+		t.Fatalf("mismatch across a Reclaim scoped to %q", scope)
+	}
+	ticket := r.staleAcquire(1, installed.Target)
+	r.requireRecallScope(t, r.scopes[1].Session, 1)
+	r.finishMismatch(t, 1, ticket)
+}
+
+// withoutObject returns State with its catalog's unlinked object (nlink 0)
+// moved to retired_allocations, the catalog shape a Reclaim leaves.
+func withoutObject(t *testing.T, state []byte) []byte {
+	t.Helper()
+	n := binary.BigEndian.Uint64(state[:8])
+	var catalog map[string]any
+	must(t, json.Unmarshal(state[8:8+n], &catalog))
+	var kept []any
+	retired, _ := catalog["retired_allocations"].([]any)
+	for _, o := range catalog["objects"].([]any) {
+		object := o.(map[string]any)
+		if object["attributes"].(map[string]any)["nlink"].(float64) == 0 {
+			retired = append(retired, object["descriptor"])
+			continue
+		}
+		kept = append(kept, object)
+	}
+	catalog["objects"], catalog["retired_allocations"] = kept, retired
+	raw, err := json.Marshal(catalog)
+	must(t, err)
+	out := binary.BigEndian.AppendUint64(nil, uint64(len(raw)))
+	return append(append(out, raw...), state[8+n:]...)
+}
+
+// TestObservedCutEviction: eviction drops cuts of another journal
+// incarnation before the lowest position of the current one.
+func TestObservedCutEviction(t *testing.T) {
+	c := &Controller{observed: map[string]observedCut{
+		"old-high": {incarnation: "old", position: 90},
+		"cur-low":  {incarnation: "cur", position: 1},
+		"cur-high": {incarnation: "cur", position: 50},
+	}}
+	c.evictOldestObserved("cur")
+	if _, ok := c.observed["old-high"]; ok {
+		t.Fatal("older incarnation kept")
+	}
+	c.evictOldestObserved("cur")
+	if _, ok := c.observed["cur-low"]; ok || len(c.observed) != 1 {
+		t.Fatalf("eviction left %v", c.observed)
+	}
 }
 
 // TestMixedMismatchSequences: a pin-only move followed by a mutation keeps
@@ -202,6 +295,11 @@ func TestMismatchScopeConditions(t *testing.T) {
 		{"expected cut retained, cache empty", "READ", func(c *Controller) { c.observed = nil }, session},
 		{"peer lease on an observably older cut", "READ", olderPeer(true), ""},
 		{"inactive peer lease on an older cut", "READ", olderPeer(false), session},
+		{"untargeted (discovery) peer lease", "READ", func(c *Controller) {
+			l := c.state.Leases[peer.ID]
+			l.Targeted = false
+			c.state.Leases[peer.ID] = l
+		}, ""},
 		{"pre-e84 ablation", "READ", func(c *Controller) { c.allDomainMismatch = true }, ""},
 	} {
 		if got := mismatchScopeAfter(r, installed.Target, tc.mode, tc.change); got != tc.want {
