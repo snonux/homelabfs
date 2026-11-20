@@ -138,6 +138,11 @@ func (x *journalIndex) add(e segment.Entry) error {
 	} else if x.uniform == i {
 		x.uniform++
 	}
+	// != compares the Reporter/ReporterIncarnation pointers by address. That
+	// is safe only because Config (service.go) forces stream kind 1, whose
+	// references carry nil pointers; an evidence stream would land every
+	// frame in odd. The exception maps are bounded by the frame ceiling
+	// (<= journalIndexFrames = 65536 entries) and empty in the normal case.
 	if e.Reference != x.reference(i, e.Reference.SHA256) {
 		x.odd[i] = e.Reference
 	}

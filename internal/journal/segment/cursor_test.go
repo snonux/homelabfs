@@ -223,3 +223,49 @@ func TestCursorRefusesBytesAfterVerifiedSeal(t *testing.T) {
 	}
 	requireSameAsReader(t, sim, s, log.entries)
 }
+
+// TestCursorDetectsTamperingWhileOpenSegmentGrows changes an already
+// verified byte of the open last segment and appends a new frame in the same
+// interval: the growth must not hide the rewrite, so Refresh must fail like
+// Recover, and after restoring the byte it must fully reverify and include
+// the new frame.
+func TestCursorDetectsTamperingWhileOpenSegmentGrows(t *testing.T) {
+	ctx := context.Background()
+	s := testStream(1)
+	sim := simulator(t, vfs.Config{}, s)
+	w := mustWriter(t, sim, s, testOptions(s))
+	mustAppend(t, w, s)
+	c, log := NewCursor(sim, s, RecoveryOptions{}), &cursorLog{}
+	if err := log.refresh(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	mustAppend(t, w, s)
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Recover(ctx, sim, s, RecoveryOptions{})
+	if err != nil || len(r.Segments) != 1 || r.Segments[0].Seal != nil {
+		t.Fatalf("fixture needs one open segment: %v", err)
+	}
+	name := r.Segments[0].Name
+	original := fileBytes(t, sim, name)
+	verified := len(log.entries[0].Bytes) + len(log.entries[1].Bytes)
+	if len(original) <= verified {
+		t.Fatal("fixture open segment did not grow")
+	}
+	bad := bytes.Clone(original)
+	bad[verified/2] ^= 0x10
+	replaceFile(t, sim, name, bad)
+	if _, err := Recover(ctx, sim, s, RecoveryOptions{}); err == nil {
+		t.Fatal("fixture: Recover accepted the tampered prefix")
+	}
+	if err := log.refresh(ctx, c); err == nil {
+		t.Fatal("growth hid a tampered verified byte of the open segment")
+	}
+	replaceFile(t, sim, name, original)
+	resets := log.resets
+	if err := log.refresh(ctx, c); err != nil || log.resets != resets+1 {
+		t.Fatalf("restored stream not fully reverified: %v", err)
+	}
+	requireSameAsReader(t, sim, s, log.entries)
+}

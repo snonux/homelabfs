@@ -65,7 +65,11 @@ func NewCursor(backend Backend, stream Stream, options RecoveryOptions) *Cursor 
 // visited, in stream order. reset is called first whenever the cursor had to
 // start over (first use or any change to verified bytes); the caller must
 // then forget every frame it was previously given. On error the cursor is
-// discarded, so the next call reverifies everything.
+// discarded, so the next call reverifies everything, and the caller must
+// likewise discard every frame already passed to visit: a failed rebuild may
+// have called reset and then visited some frames, or failed before reset, so
+// what the caller holds is not a verified stream (fsservice.journalIndex
+// clears its frames on any Refresh error).
 func (c *Cursor) Refresh(ctx context.Context, reset func(), visit func(Entry) error) error {
 	if c.valid {
 		names, err := discover(ctx, c.fs, c.stream.Directory(), c.options.Limits)
