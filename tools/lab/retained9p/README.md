@@ -13,18 +13,20 @@ qualified corrected artifacts. Existing offline build proofs remain preserved;
 neither a successful old metadata admission nor a different digest establishes
 native eligibility. These preparation commands never grant deployment eligibility.
 
-**The controller pins exactly one candidate:** the xz3 r16 rebuild for
-zq3-r16 (2026-11-19), manifest `a1af0bd700396a44edbd631087d1303d85a390008771903e13937309a65c2e0d`
-(source `707f3d1`, repository baseline `2f34b60`; see its
-[evidence](../../integration/artifacts/evidence/xz3-20261119-r16/README.md)).
-Only the guest kernel was rebuilt. The kernel (build ID `7a5bb8dc…`, c64
-recipe, so SELinux is an active LSM) adds ie4 (an observation whose view a recall moved during VIEW_ACQUIRE acquires again instead of failing `-ESTALE`; GETATTR and LOOKUP re-issue on a moved target; zq3-r15 R15-1) to the xd4
-kernel `9b167690…`. The daemon `8668e5f0…` is the r15 build, reused byte
-for byte; it adds z94 (a read-only OPEN conflicts like a read, and the
-volume root's lifetime journals no pins, so a guest root OPEN starts no
-recall; zq3-r14 R14-1, zq3-r11 R11-1) to the xc4 daemon and passed the f3
-observer check in zq3-r15. The native exporter is the xd4 build, reused
-byte for byte. The xd4 kernel adds oc4 (the guest maps the exporter's ERROR reason to an errno, RETIRED_CELL `-ESTALE` and the new UNAVAILABLE `-EHOSTDOWN`, and logs it; retries and polls stop once the session is blocked or its transport failed, with an explicit teardown exemption; the 9p reply wait is bounded to 30 s, so an unmount after the host is gone waits at most one deadline; zq3-r13 R13-1, zq3-r12 R12-1 guest side) to the 5a4 kernel, which added 1a4
+**The controller pins exactly one candidate:** the xz3 r17 rebuild for
+zq3-r17 (2026-11-20), manifest `f614d52a84b43d455a20f2ee973f9e9346a00e26a25019e33a28ec7b8c14e313`
+(source and repository baseline `3430758`; see its
+[evidence](../../integration/artifacts/evidence/xz3-20261120-r17/README.md)).
+All three components were rebuilt. The kernel (build ID `360fbc6d…`, c64
+recipe, so SELinux is an active LSM) adds re4 (a host BLOCKED observation VIEW_ACQUIRE releases the held lease and retries only after retirement progress, at most 3 retries and 4 tickets per syscall; refused retirements are re-sent; zq3-r16 R16-1) to the r16 kernel `7a5bb8dc…`, which added ie4 (an observation whose view a recall moved during VIEW_ACQUIRE acquires again instead of failing `-ESTALE`; GETATTR and LOOKUP re-issue on a moved target; zq3-r15 R15-1) to the xd4
+kernel `9b167690…`. The daemon `85900893…` adds te4 (incremental journal
+verification, indexed pending claims) and qe4's control-ticket accounting
+to the r15 daemon `8668e5f0…`, which added z94 (a read-only OPEN conflicts
+like a read, and the volume root's lifetime journals no pins, so a guest
+root OPEN starts no recall; zq3-r14 R14-1, zq3-r11 R11-1) to the xc4
+daemon; the new daemon bytes still need the f3 observer check. The native
+exporter was rebuilt on f3 under the 7e4 guard recipe and reproduced the
+xd4 build `2fd7e32f…` byte for byte. The xd4 kernel adds oc4 (the guest maps the exporter's ERROR reason to an errno, RETIRED_CELL `-ESTALE` and the new UNAVAILABLE `-EHOSTDOWN`, and logs it; retries and polls stop once the session is blocked or its transport failed, with an explicit teardown exemption; the 9p reply wait is bounded to 30 s, so an unmount after the host is gone waits at most one deadline; zq3-r13 R13-1, zq3-r12 R12-1 guest side) to the 5a4 kernel, which added 1a4
 (`hfs_view_enter` waits at most 30 s, then fails `-ETIMEDOUT`, so a wedged
 recall no longer holds stat and `umount` in D, zq3-r11 R11-2; final mmap
 faults get SIGBUS; the view-worker stop log names session, phase and status)
@@ -741,7 +743,7 @@ depmod, dracut, systemctl and GRUB's one-shot consumption at boot). Every
 Rocky-side command still needs Paul's explicit A3 approval of the filled plan.
 
 1. Workstation, Phase 0:
-   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 a1af0bd7… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
+   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 f614d52a… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
    It refuses any manifest other than the pinned candidate, checks every
    Linux file's size and SHA256 against the manifest and the installation
    proposal, requires `modules.order` to name exactly the manifest's modules,

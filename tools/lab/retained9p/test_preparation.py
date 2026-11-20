@@ -27,8 +27,8 @@ def module(name):
 controller = module("controller")
 guest = module("guest")
 observer = module("observer")
-# xz3 r16 rebuild for zq3-r16 (2026-11-19); see controller.ADMITTED.
-ADMITTED = "a1af0bd700396a44edbd631087d1303d85a390008771903e13937309a65c2e0d"
+# xz3 r17 rebuild for zq3-r17 (2026-11-20); see controller.ADMITTED.
+ADMITTED = "f614d52a84b43d455a20f2ee973f9e9346a00e26a25019e33a28ec7b8c14e313"
 # e0cca0c (no d44 MKDIR-only lost reply), f44 (pre-r54 guest kernel), r54
 # (pre-w54 guest kernel, failed-bind kill_sb oops), w54 (pre-z54 daemon,
 # pre-acquire VIEW_POLL left unanswered), z54 (pre-964 guest kernel, fixed
@@ -49,7 +49,8 @@ ADMITTED = "a1af0bd700396a44edbd631087d1303d85a390008771903e13937309a65c2e0d"
 # failed endpoint check, zq3-r13 R13-1), xd4 (pre-z94 daemon whose
 # read-only root OPEN recalled every domain, zq3-r14 R14-1) and r15
 # (pre-ie4 kernel whose observation re-check failed -ESTALE after a recall
-# during VIEW_ACQUIRE, zq3-r15 R15-1).
+# during VIEW_ACQUIRE, zq3-r15 R15-1) and r16 (pre-re4 kernel that returned
+# a host BLOCKED re-acquire at once while holding its lease, zq3-r16 R16-1).
 SUPERSEDED = ("3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
@@ -64,7 +65,8 @@ SUPERSEDED = ("3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
               "150deb2993cda12cc2ad6cee2f118fe0f2e334b0ddb9afaf09a8e22f27b0b88a",
               "e9c77e5bbe68f565240ef82ef3842ae713cb082e15e593036174ec4e735a1df6",
               "3a7131ddc0bfad96762421122027d63aa5c736ace1ef61f4cb9eff14b5379f6f",
-              "ac8020aa0012550d83b4ab15ffd79900a31338330513e2af7d4f5e58b910c1c6")
+              "ac8020aa0012550d83b4ab15ffd79900a31338330513e2af7d4f5e58b910c1c6",
+              "a1af0bd700396a44edbd631087d1303d85a390008771903e13937309a65c2e0d")
 QUARANTINED = "7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b"
 LAB = Path(__file__).resolve().parents[3] / "docs/lab"
 HOST_PIN = (LAB / "f3-host-known_hosts").read_bytes()
@@ -351,7 +353,7 @@ class PreparationTests(unittest.TestCase):
         # xc4: the xd4 oc4 ERROR mapping and bounded reply wait and the pc4
         # always-reply exporter; xd4: the r15 z94 read-only OPEN and
         # pinless volume root; r15: the r16 ie4 observation re-acquire
-        # after a recall).
+        # after a recall; r16: the r17 re4 BLOCKED back-off).
         # They must refuse distinctly from an unknown digest.
         for value in SUPERSEDED:
             with self.subTest(candidate=value), \

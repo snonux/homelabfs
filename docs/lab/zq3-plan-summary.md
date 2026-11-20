@@ -214,6 +214,15 @@ to raise the slot budget. Letting the daemon tidy up sooner is a separate
 proposal that needs more testing first.
 Nothing was left stuck, both mounts unmounted at once, and Rocky was down
 about four minutes ([record](results/20261120-zq3-r16/README.md)).
+Both fixes are merged (re4 for the guest kernel, qe4 for the slot budget,
+now 24), and the whole package was rebuilt for zq3-r17 (`f614d52a…`,
+kernel build ID `360fbc6d…`, daemon `85900893…`): when the daemon says
+"full", the kernel now lets go of its lease and asks again only after
+releases have been tidied up. The daemon was also rebuilt with a faster
+journal check (te4), so its bytes are new and must pass the f3 self-check
+again. The patched bhyve was rebuilt on f3 under the updated build guard
+and came out byte-identical; the window test files were rebuilt with the
+daemon.
 
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a

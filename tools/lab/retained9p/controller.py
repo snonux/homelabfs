@@ -124,7 +124,14 @@ QUARANTINED = {"7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b
 #   recall moved the view while an observation's VIEW_ACQUIRE was PENDING,
 #   the post-acquire stamp re-check returned -ESTALE without a log line, so
 #   T1's root fstat failed before its GETATTR was sent (zq3-r15 R15-1,
-#   fixed by ie4).
+#   fixed by ie4);
+# - a1af0bd7 (r16, 707f3d1) has the ie4 guest kernel 7a5bb8dc, which
+#   returns a host BLOCKED observation VIEW_ACQUIRE at once while still
+#   holding its lease, and ran with a shared budget of 8 control tickets,
+#   which was full, so m1's root OPEN re-acquire was refused and T1 failed
+#   (zq3-r16 R16-1, fixed by re4 and the qe4 ControlTickets bound of 24 in
+#   the runtime spec); its daemon 8668e5f0 also predates te4's incremental
+#   journal verification.
 SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
@@ -139,19 +146,20 @@ SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
               "150deb2993cda12cc2ad6cee2f118fe0f2e334b0ddb9afaf09a8e22f27b0b88a",
               "e9c77e5bbe68f565240ef82ef3842ae713cb082e15e593036174ec4e735a1df6",
               "3a7131ddc0bfad96762421122027d63aa5c736ace1ef61f4cb9eff14b5379f6f",
-              "ac8020aa0012550d83b4ab15ffd79900a31338330513e2af7d4f5e58b910c1c6"}
-# The only candidate this controller pins: the xz3 r16 rebuild for zq3-r16
-# (2026-11-19, source 707f3d1, repository baseline 2f34b60, the reused
-# daemon's build revision). Only the guest kernel was rebuilt, for ie4 (an
-# observation whose view a recall moved during VIEW_ACQUIRE acquires again
-# instead of failing -ESTALE, and GETATTR/LOOKUP re-issue on a moved target;
-# c64 recipe, g64+m64+p84+x84+z84+1a4+oc4+ie4 patch series, build ID
-# 7a5bb8dc; its five modules are byte-identical). The r15 z94 daemon
-# 8668e5f0 (it passed the f3 observer check in zq3-r15), the window
-# artifacts from 2f34b60 and the xd4 pc4 native exporter 2fd7e32f are
-# byte-identical reuses. Admission here is a dispatch precondition, never
-# deployment eligibility.
-ADMITTED = {"a1af0bd700396a44edbd631087d1303d85a390008771903e13937309a65c2e0d"}
+              "ac8020aa0012550d83b4ab15ffd79900a31338330513e2af7d4f5e58b910c1c6",
+              "a1af0bd700396a44edbd631087d1303d85a390008771903e13937309a65c2e0d"}
+# The only candidate this controller pins: the xz3 r17 rebuild for zq3-r17
+# (2026-11-20, source and repository baseline 3430758). The guest kernel was
+# rebuilt for re4 (a host BLOCKED observation VIEW_ACQUIRE releases the held
+# lease and retries only after retirement progress; refused retirements are
+# re-sent; c64 recipe, g64+m64+p84+x84+z84+1a4+oc4+ie4+re4 patch series,
+# build ID 360fbc6d; its five modules are byte-identical), the CGO daemon
+# for te4 (incremental journal verification, indexed pending claims;
+# 85900893) and the window artifacts with it. The pc4 native exporter was
+# rebuilt on f3 under the 7e4 native_guard recipe and reproduced 2fd7e32f
+# byte for byte. The new daemon bytes still need the f3 observer check.
+# Admission here is a dispatch precondition, never deployment eligibility.
+ADMITTED = {"f614d52a84b43d455a20f2ee973f9e9346a00e26a25019e33a28ec7b8c14e313"}
 CASES = ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
 # Cases a plan may defer (z64). Only T5 mapped-pressure: its full 4 MiB
 # canary needs more view lifetimes (tickets, UUIDs, revisions, ack archive)
@@ -345,10 +353,11 @@ def require_candidate(manifest_hash):
         # 1a4 bounded view wait and y94 early-DRAINED BLOCKED answer, the xc4
         # nc4 retried-cell base reuse instead of a transport fence, the xd4
         # oc4 ERROR mapping and bounded reply wait with the pc4 always-reply
-        # exporter, the r15 z94 read-only OPEN and pinless volume root, or
-        # the r16 ie4 observation re-acquire after a recall); the comment at
+        # exporter, the r15 z94 read-only OPEN and pinless volume root, the
+        # r16 ie4 observation re-acquire after a recall, or the r17 re4
+        # BLOCKED back-off and te4 journal check); the comment at
         # SUPERSEDED says which.
-        raise Refused("superseded xz3 candidate: use the r16 rebuild (d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims, r84 pressure hold/QUERY resume/lease holders, b94 fence wait/unmount stop/exited cleanup, 5a4 bounded view wait/early DRAINED, xc4 retried-cell base without transport fence, xd4 ERROR reasons/bounded reply wait/always-reply exporter, r15 read-only OPEN/pinless root, r16 observation re-acquire after recall)")
+        raise Refused("superseded xz3 candidate: use the r17 rebuild (d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims, r84 pressure hold/QUERY resume/lease holders, b94 fence wait/unmount stop/exited cleanup, 5a4 bounded view wait/early DRAINED, xc4 retried-cell base without transport fence, xd4 ERROR reasons/bounded reply wait/always-reply exporter, r15 read-only OPEN/pinless root, r16 observation re-acquire after recall, r17 BLOCKED back-off/incremental journal check)")
     if manifest_hash not in ADMITTED:
         # Fail closed: an unknown digest is not a qualified candidate.
         raise Refused("candidate manifest is not the pinned admitted xz3 candidate")

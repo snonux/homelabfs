@@ -57,10 +57,11 @@ PHYSICAL_CONTRACT = "homelabfs-stop-adoption/1"
 ADMISSION_PATH = "/etc/homelabfs/installed-admission-v1.json"
 # Same pins as controller.py (this file is staged alone on Rocky, so it
 # cannot import them; a local test asserts they stay equal).
-# r16 rebuild for zq3-r16 (2026-11-19, source 707f3d1): the ie4 guest kernel
-# (build ID 7a5bb8dc, c64 recipe, g64+m64+p84+x84+z84+1a4+oc4+ie4 series; the
-# five modules are byte-identical to y64's), with the r15 z94 daemon 8668e5f0
-# and the xd4 pc4 exporter 2fd7e32f reused byte for byte.
+# r17 rebuild for zq3-r17 (2026-11-20, source 3430758): the re4 guest kernel
+# (build ID 360fbc6d, c64 recipe, g64+m64+p84+x84+z84+1a4+oc4+ie4+re4
+# series; the five modules are byte-identical to y64's), the te4 daemon
+# 85900893 and the pc4 exporter 2fd7e32f, rebuilt on f3 under the 7e4 guard
+# and byte-identical to xd4's.
 # Superseded candidates refuse distinctly: e0cca0c cannot arm the d44
 # MKDIR-only lost reply, f44 (defd974) has the pre-r54 guest kernel whose
 # hfs1.4 mounts return EPROTO, r54 (ca920a2) has the pre-w54 guest kernel that
@@ -91,7 +92,10 @@ ADMISSION_PATH = "/etc/homelabfs/installed-admission-v1.json"
 # has the pre-z94 daemon whose read-only root OPEN recalled every domain
 # (zq3-r14 R14-1), and r15 (2f34b60) has the pre-ie4 guest kernel whose
 # observation re-check failed -ESTALE after a recall during VIEW_ACQUIRE
-# (zq3-r15 R15-1).
+# (zq3-r15 R15-1), and r16 (707f3d1) has the pre-re4 guest kernel, which
+# returned a host BLOCKED observation VIEW_ACQUIRE at once while holding its
+# lease, so m1's re-acquire was refused for control-ticket capacity
+# (zq3-r16 R16-1).
 SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
@@ -106,8 +110,9 @@ SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
               "150deb2993cda12cc2ad6cee2f118fe0f2e334b0ddb9afaf09a8e22f27b0b88a",
               "e9c77e5bbe68f565240ef82ef3842ae713cb082e15e593036174ec4e735a1df6",
               "3a7131ddc0bfad96762421122027d63aa5c736ace1ef61f4cb9eff14b5379f6f",
-              "ac8020aa0012550d83b4ab15ffd79900a31338330513e2af7d4f5e58b910c1c6"}
-ADMITTED = {"a1af0bd700396a44edbd631087d1303d85a390008771903e13937309a65c2e0d"}
+              "ac8020aa0012550d83b4ab15ffd79900a31338330513e2af7d4f5e58b910c1c6",
+              "a1af0bd700396a44edbd631087d1303d85a390008771903e13937309a65c2e0d"}
+ADMITTED = {"f614d52a84b43d455a20f2ee973f9e9346a00e26a25019e33a28ec7b8c14e313"}
 QUARANTINED = {"7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b"}
 HASH = re.compile(r"[0-9a-f]{64}\Z")
 BUILD_ID = re.compile(r"[0-9a-f]{16,128}\Z")  # Same bound as probe/installed.py.
@@ -336,7 +341,7 @@ def check_plan_shape(plan):
             not RELEASE.fullmatch(plan["kernel_release"]):
         raise Refused("plan run ID/kernel release")
     if plan["manifest_sha256"] in SUPERSEDED:
-        raise Refused("plan names a superseded xz3 candidate; use the r16 rebuild")
+        raise Refused("plan names a superseded xz3 candidate; use the r17 rebuild")
     if plan["manifest_sha256"] in QUARANTINED or plan["manifest_sha256"] not in ADMITTED:
         raise Refused("plan names a candidate manifest that is not admitted")
     stock = plan["stock_default_kernel"]
@@ -403,7 +408,7 @@ def stock_release(plan):
 
 def read_manifest(package, expected):
     if expected in SUPERSEDED:
-        raise Refused("superseded xz3 candidate manifest; use the r16 rebuild")
+        raise Refused("superseded xz3 candidate manifest; use the r17 rebuild")
     if expected in QUARANTINED or expected not in ADMITTED:
         raise Refused("candidate manifest is not admitted")
     raw = read_bounded(package / "manifest.json", JSON_LIMIT)

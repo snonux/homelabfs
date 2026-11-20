@@ -57,10 +57,11 @@ zq3-r11, the 5a4 daemon `e0981a0a…` in zq3-r12 and the xc4 daemon
 `c959b708…` (xc4 rebuild for zq3-r13, 2026-11-18, reused byte for byte by
 the xd4 rebuild for zq3-r14) in zq3-r13
 ([record](results/20261119-zq3-r13/README.md)) and again in zq3-r14
-([record](results/20261119-zq3-r14/README.md)). The current r15 daemon `8668e5f0…` (zq3-r15 candidate `ac8020aa…`, reused
+([record](results/20261119-zq3-r14/README.md)). The r15 daemon `8668e5f0…` (zq3-r15 candidate `ac8020aa…`, reused
 byte for byte by the r16 candidate `a1af0bd7…`) passed it in zq3-r15 ([record](results/20261119-zq3-r15/README.md))
-and again in zq3-r16 ([record](results/20261120-zq3-r16/README.md)); every run still repeats the
-check. f3-host descriptor execution still awaits the
+and again in zq3-r16 ([record](results/20261120-zq3-r16/README.md)). The current r17 daemon
+`85900893…` (zq3-r17 candidate `f614d52a…`) is new bytes and has not been checked yet; every run
+repeats the check. f3-host descriptor execution still awaits the
 approved zq3 fdescfs window. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
 any SSH. All old build proofs remain preserved, and no different digest alone
@@ -170,17 +171,33 @@ SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
 
 ## Exact installation plan inputs
 
-The current xz3 candidate (r16 rebuild for zq3-r16, 2026-11-19) is retained at
-`/home/paul/tmp/claude/hfs-xz3-20261119-r16/package`, manifest SHA256
-`a1af0bd700396a44edbd631087d1303d85a390008771903e13937309a65c2e0d`, assembled from source checkout
-`707f3d1` (repository baseline `2f34b60`, the reused daemon's build
-revision; `inputs/repository-changes.patch` records the ie4 diff); see its
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261119-r16/README.md).
-Only the guest kernel was rebuilt, for ie4 (an observation whose view a recall moved during VIEW_ACQUIRE acquires again instead of failing `-ESTALE`; GETATTR and LOOKUP re-issue on a moved target; zq3-r15 R15-1):
+The current xz3 candidate (r17 rebuild for zq3-r17, 2026-11-20) is retained at
+`/home/paul/tmp/claude/hfs-xz3-20261120-r17/package`, manifest SHA256
+`f614d52a84b43d455a20f2ee973f9e9346a00e26a25019e33a28ec7b8c14e313`, assembled from source checkout
+and repository baseline `3430758`; see its
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261120-r17/README.md).
+All three components were rebuilt. The guest kernel was rebuilt for re4 (a
+host BLOCKED observation VIEW_ACQUIRE releases the held lease and retries
+only after retirement progress, at most 3 retries and 4 tickets per
+syscall; refused retirements are re-sent; zq3-r16 R16-1): `bzImage`
+`bf789b06…`, `vmlinux` `0c3a4d14…`, GNU build ID `360fbc6d…`, `System.map`
+`fc2565c4…`, `config` `28fe4a8e…` unchanged; two builds at the same O path
+were identical and the five modules came out byte-identical. The CGO daemon
+was rebuilt for te4 (incremental journal verification, indexed pending
+claims; qe4's control-ticket accounting): `85900893…`, GNU build ID
+`1809f399…`; two forced builds and the window build gave the same bytes,
+and the window artifacts were rebuilt with it (`controlledruntime.test`
+`1f042fd6…`, `fdescfs-namespace` `6d78b1de…`). The pc4 native exporter was
+rebuilt on f3 under the 7e4 `native_guard.py` recipe `34ddf37c…` (two clean
+builds equal) and reproduced `bhyve` `2fd7e32f…` byte for byte. The r16
+rebuild for zq3-r16 (`a1af0bd7…`, source `707f3d1`, repository baseline
+`2f34b60`;
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261119-r16/README.md))
+is now refused as superseded. In r16 only the guest kernel was rebuilt, for ie4 (an observation whose view a recall moved during VIEW_ACQUIRE acquires again instead of failing `-ESTALE`; GETATTR and LOOKUP re-issue on a moved target; zq3-r15 R15-1):
 `bzImage` `7109ac49…`, `vmlinux` `3979898b…`, GNU build ID `7a5bb8dc…`,
 `System.map` `95802ae3…`, `config` `28fe4a8e…` unchanged; two builds at the
 same O path were identical and the five modules came out byte-identical.
-Everything else is a byte-identical reuse from the r15 rebuild for zq3-r15
+Everything else in r16 was a byte-identical reuse from the r15 rebuild for zq3-r15
 (`ac8020aa…`, source and repository baseline `2f34b60`;
 [evidence](../../tools/integration/artifacts/evidence/xz3-20261119-r15/README.md)),
 now refused as superseded. In r15 only the CGO daemon was rebuilt, for z94 (a read-only OPEN conflicts like a
@@ -348,7 +365,7 @@ footprints in the independent global preparation budget. Swap is telemetry.
 
 ## Staged critical-window proposal
 
-The concrete phased proposal for one disposable run with candidate `a1af0bd7…`,
+The concrete phased proposal for one disposable run with candidate `f614d52a…`,
 including the remaining implementation gaps and Paul's decisions, is
 [zq3-run-plan.md](zq3-run-plan.md) ([plain-language summary](zq3-plan-summary.md)).
 The guest probe now retains each successful payload until an authenticated

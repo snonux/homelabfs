@@ -36,10 +36,10 @@ def module(name):
 rk = module("rocky_kernel")
 REPOSITORY = Path(__file__).resolve().parents[3]
 PROBE = REPOSITORY / "internal/controlledruntime/probe/installed.py"
-# The admitted xz3 r16 rebuild for zq3-r16 (manifest a1af0bd7..., 2026-11-19).
-# Its ie4 kernel was rebuilt; its rebuilt modules are byte-identical to the
-# xd4, xc4, 5a4, b94, r84 and y64 ones and to the w54 bytes of 89c928d5.
-REAL_PACKAGE = Path("/home/paul/tmp/claude/hfs-xz3-20261119-r16/package")
+# The admitted xz3 r17 rebuild for zq3-r17 (manifest f614d52a..., 2026-11-20).
+# Its re4 kernel was rebuilt; its rebuilt modules are byte-identical to the
+# r16, xd4, xc4, 5a4, b94, r84 and y64 ones and to the w54 bytes of 89c928d5.
+REAL_PACKAGE = Path("/home/paul/tmp/claude/hfs-xz3-20261120-r17/package")
 RELEASE = "6.1.190-hfs-xz3"
 STOCK = "5.14.0-687.66.1.el9_8.x86_64"
 MID = "b26c0ac534534d7fb81b3e0698558bc3"
@@ -464,19 +464,19 @@ class PlanTests(Rig):
     @unittest.skipUnless((REAL_PACKAGE / "manifest.json").exists(), "candidate package absent")
     def test_real_candidate_package_plan(self):
         """Read-only: the pinned xz3 package yields the build IDs readelf reports."""
-        sha = "a1af0bd700396a44edbd631087d1303d85a390008771903e13937309a65c2e0d"
+        sha = "f614d52a84b43d455a20f2ee973f9e9346a00e26a25019e33a28ec7b8c14e313"
         with mock.patch.object(rk, "ADMITTED", {sha}):
             plan = json.loads(rk.build_plan(REAL_PACKAGE, sha, "zq3-r1",
                                             "/boot/vmlinuz-" + STOCK, 64 << 20))
         self.assertEqual(plan["kernel_release"], RELEASE)
-        # The r16 rebuild (ie4 patches 0003/0004) gave vmlinux a new build
-        # ID (7a5bb8dc; before it xd4's 9b167690, reused by the r15
+        # The r17 rebuild (re4 patch 0004) gave vmlinux a new build ID
+        # (360fbc6d; before it r16's 7a5bb8dc, xd4's 9b167690, reused by the r15
         # daemon-only rebuild; 5a4's 8c1de1ed, reused by xc4; b94's
         # c4e08f6f; r84's d73c85da; y64's 870bb9d1, reused by l84; c64's was
         # 2ce818d9, 964's a470c7a8, w54's 806cfbb2); the modules are
-        # byte-identical to the xd4, xc4, 5a4, b94, r84, y64, c64, 964, z54,
+        # byte-identical to the r16, xd4, xc4, 5a4, b94, r84, y64, c64, 964, z54,
         # w54, r54 and f44 packages, so virtio_net keeps its build ID.
-        self.assertEqual(plan["kernel"]["build_id"], "7a5bb8dccbc1c89ed44c221e9b80deaf9baf70fe")
+        self.assertEqual(plan["kernel"]["build_id"], "360fbc6d1608c03c6ff3d41ffb0dc7fadfccaee9")
         self.assertEqual(plan["modules"]["virtio_net"]["build_id"],
                          "072995182e1a95b83cf3ec794649ce05adf8a59d")
         self.assertEqual(len(plan["modules"]), 5)
