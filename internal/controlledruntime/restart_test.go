@@ -57,6 +57,12 @@ type restartChild struct {
 	// native boundary (for example a dropped response exposure). It is an
 	// observation of the real reply, never a substitute for one.
 	readEIO int
+	// runtime, when set, is the controlled runtime serving this fixture
+	// (runtimeDriverFixture users). The C fixture reports every unanswered
+	// SEND/FETCH as EAGAIN, including after the runtime gave up and closed its
+	// transport, so the retry loops consult it to fail at once with the
+	// runtime's own error instead of retrying a dead exchange for answerBound.
+	runtime *runtimeExit
 }
 
 func buildRestartChild(t *testing.T) string {
@@ -308,10 +314,7 @@ func (d *restartChild) send(session int, op string, payload any, reclaim *guestb
 		if status == 0 {
 			break
 		}
-		if time.Now().After(deadline) {
-			d.t.Fatalf("actual C SEND %s status=%d", op, status)
-		}
-		time.Sleep(time.Millisecond)
+		d.awaitRetry(deadline, "SEND "+op, status)
 	}
 	return cell, reclaim, control
 }
@@ -347,11 +350,25 @@ func (d *restartChild) fetch(session int, cell uint64) []byte {
 		if status == 0 {
 			return response
 		}
-		if time.Now().After(deadline) {
-			d.t.Fatalf("actual C FETCH %d status=%d", cell, status)
-		}
-		time.Sleep(time.Millisecond)
+		d.awaitRetry(deadline, fmt.Sprintf("FETCH %d", cell), status)
 	}
+}
+
+// awaitRetry paces one retry of a refused SEND or FETCH (status is the C
+// fixture's errno, EAGAIN while the reply is not yet published). It fails
+// the test with a clear message when the serving runtime has already ended,
+// since nothing can answer any more, or when deadline has passed.
+func (d *restartChild) awaitRetry(deadline time.Time, what string, status uint32) {
+	d.t.Helper()
+	if d.runtime != nil {
+		if ended, err := d.runtime.ended(); ended {
+			d.t.Fatalf("actual C %s status=%d: the controlled runtime ended before answering: %v", what, status, err)
+		}
+	}
+	if time.Now().After(deadline) {
+		d.t.Fatalf("actual C %s status=%d: no reply within %v", what, status, answerBound)
+	}
+	time.Sleep(time.Millisecond)
 }
 func (d *restartChild) hello() {
 	for i := range d.cells {
