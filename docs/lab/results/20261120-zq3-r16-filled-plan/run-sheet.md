@@ -567,7 +567,7 @@ after READY, inside the new 5-minute budget, and passed (OBSERVE L+1 = 3;
 
 Phase 11 and Phase 12 were otherwise clean: `fenced: false`, no AVC, the
 window restored (`mount_restored: true`), Rocky restarted at 12:41:44 UTC
-(PID 84753, boot `53cec809-…`), no relabel reboot, U2 done. Kept, and
+(PID 84753, boot `b4d9ee31-…`), no relabel reboot, U2 done. Kept, and
 written into the lines they name: Phase 1a (zq3-r14's window left both
 modules loaded again), Phase 4 step 1a (**required**, new daemon bytes),
 the guard budget (now with the be4 budgets), bash only, the R13-1 unmount
@@ -641,7 +641,8 @@ step 2 and T8, and every finding rule.
   `a1af0bd7…`) and `controller.py` `dfda3889` (r16 candidate pin).
   Unchanged since the zq3-r15 fill (`git diff 644e9fa 89af1cc -- tools
   docs/lab/zq3-fdescfs-window` touches only these two, their tests,
-  READMEs and the linux9p sources): `guest.py` `48d6ae81`,
+  READMEs, the linux9p sources, an unpinned note line in
+  `docs/lab/zq3-fdescfs-window/build-record.json` and the r16 evidence files): `guest.py` `48d6ae81`,
   `guest-lock-probe.py` `fd439897`, `pod_fixture.py` `07314543`,
   `pod_workload.py` `c714370f`, `bootstrap.py` `5e467fe6…` (journal `/3`),
   `bootstrap_remote.py` `0dcb0fe0…`, `correlate.py` `9cd55f2c…`
@@ -2208,7 +2209,7 @@ $CTL next --output $OUT --sha256 $B | tee $E/t4-next.json  # tool timeout >= 300
 obs obs-namespace-baseline obs-namespace-retained
 python3 -I -B $CR case --output $OUT --sha256 $B --case namespace --baseline $E/obs-namespace-baseline.json --baseline-sha256 $(sha $E/obs-namespace-baseline.json) --retained $E/obs-namespace-retained.json --retained-sha256 $(sha $E/obs-namespace-retained.json) --record $E/corr-namespace.json
 $CTL release --output $OUT --sha256 $B --correlation $E/corr-namespace.json --correlation-sha256 $(sha $E/corr-namespace.json) | tee $E/t4-release.json  # tool timeout >= 300 s
-$CTL status --output $OUT > $E/t4-status.json
+$CTL status --output $OUT > $E/t4-status.json  # tool timeout >= 300 s
 jf $E/t4-status.json syscall_batch_success      # must print True (every PLANNED case released)
 jf $E/t4-status.json cases_planned              # ['credentials', 'sync', 'metadata', 'namespace']
 jf $E/t4-status.json deferred                   # the mapped-pressure entry with its re-plan reason
@@ -2691,3 +2692,5 @@ time, as in zq3-r15. The lines new or changed for zq3-r16:
 ```
 
 **zq3-r15 review round 1 (2026-11-19), kept:** tool-timeout comments on every $CTL, lock-probe (>= 300 s) and T7 pod run (>= 420 s) line; the D1 module ids (now 32/33, from the 04:25Z facts); the facts time in EET.
+
+**Review round 1 (2026-11-20):** no blocking findings. Applied: the zq3-r14 note's boot ID (`b4d9ee31`), the git-diff scope wording, a tool-timeout comment on `$CTL status`; README row 14 now says the +1 s STOP was tested for T1-T4, T7 and T9 (not T6/T10).
