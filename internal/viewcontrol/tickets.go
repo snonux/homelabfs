@@ -11,6 +11,7 @@ import (
 
 	"github.com/snonux/homelabfs/internal/controlledvalidation"
 	"github.com/snonux/homelabfs/internal/fsapi"
+	"github.com/snonux/homelabfs/internal/fsservice"
 	"github.com/snonux/homelabfs/internal/guestbridge"
 )
 
@@ -364,7 +365,7 @@ func (c *Controller) acquire(ctx context.Context, scope guestbridge.Context, r r
 	}
 	target := c.target(scope, source)
 	if r.Target != nil && !equal(*r.Target, target) {
-		return c.expectedMismatch(ctx, scope, t)
+		return c.expectedMismatch(ctx, scope, r, t, source)
 	}
 	if err = c.remember(source); err != nil {
 		return c.reply(t, "BLOCKED", nil, nil, nil)
@@ -373,12 +374,15 @@ func (c *Controller) acquire(ctx context.Context, scope guestbridge.Context, r r
 }
 
 // expectedMismatch answers an acquisition whose expected target is not the
-// current cut: the first time it starts the all-domain recall that installs
-// the current cut and answers PENDING, and once that recall ran it answers
-// BLOCKED for the old expectation. While another domain's scoped recall is
-// in progress no recall can start yet, so it stays PENDING without spending
-// that one recall.
-func (c *Controller) expectedMismatch(ctx context.Context, scope guestbridge.Context, t ticketState) (json.RawMessage, error) {
+// current cut: the first time it starts the recall that installs the current
+// cut and answers PENDING, and once that recall ran it answers BLOCKED for
+// the old expectation. The recall is scoped to the requesting domain when
+// mismatchRecallScope proves the peers need nothing from it (a pin-only move
+// under observably current peer leases, task e84) and all-domain otherwise.
+// While any recall is in progress no recall can start yet, so it stays
+// PENDING without spending that one recall; its retry reclassifies against
+// the cut it then captures.
+func (c *Controller) expectedMismatch(ctx context.Context, scope guestbridge.Context, r request, t ticketState, current fsservice.ControlledViewSource) (json.RawMessage, error) {
 	if t.ExpectedMismatch {
 		return c.reply(t, "BLOCKED", nil, nil, nil)
 	}
@@ -388,7 +392,8 @@ func (c *Controller) expectedMismatch(ctx context.Context, scope guestbridge.Con
 	key, _ := ticketKeys(scope, t.Request)
 	t.ExpectedMismatch = true
 	c.state.Tickets[key] = t
-	if err := c.startRecall(ctx, recallTrigger{TriggerExpectedTarget, "VIEW_ACQUIRE", scope.Session}); err != nil {
+	trigger := recallTrigger{TriggerExpectedTarget, "VIEW_ACQUIRE", scope.Session}
+	if err := c.beginRecall(ctx, c.mismatchRecallScope(scope, r, current), trigger); err != nil {
 		return nil, err
 	}
 	return c.reply(t, "PENDING", nil, nil, nil)

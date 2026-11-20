@@ -48,8 +48,9 @@ import (
 // DOMAIN lease (q84, lease_holders.go). The one difference for the last
 // holder is that the host lease goes inactive, so a peer's later write no
 // longer recalls the domain: its stale installed view is then caught by the
-// next observation's expected-target mismatch, which starts the all-domain
-// recall (e84), exactly as after the scoped recall this replaces.
+// next observation's expected-target mismatch, which starts a recall
+// (all-domain, because a write changes observable state; mismatch_scope.go),
+// exactly as after the scoped recall this replaces.
 //
 // releaseSkipsRecall therefore answers RELEASED without a recall only when
 // all of these hold (anything else keeps the recall path unchanged):
@@ -72,9 +73,10 @@ import (
 //   - the current cut equals the lease's target. Then the guest's installed
 //     view is current and the recall would reinstall the same cut. If the
 //     cut moved (a peer FORGET, final DESCRIPTION_RELEASE or pinning
-//     LOOKUP), the scoped recall is kept: it is the cheapest way to bring
-//     this domain's view current, where skipping it would make the next
-//     observation start an all-domain expected-target recall;
+//     LOOKUP), the scoped recall is kept: it brings this domain's view
+//     current now, where skipping it would make the next observation start
+//     an expected-target recall instead (scoped too for a pin-only move
+//     since e84, mismatch_scope.go; all-domain for an observable change);
 //   - the domain has lineage headroom (lineageHeadroom). A lease lineage
 //     includes the credentials (with the process UUID) and the target, so
 //     nearly every guest process opens its own lineage, and its revision

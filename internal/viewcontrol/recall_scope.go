@@ -74,8 +74,10 @@ import (
 // The guest takes each observation lease with expected_target = its installed
 // view. A cut move admitted under peer leases (FORGET, a final
 // DESCRIPTION_RELEASE, a pinning LOOKUP) therefore makes the peer's next
-// observation hit expectedMismatch, which starts an all-domain recall. That
-// is safe but costs a recall; scoping it is tracked separately (e84).
+// observation hit expectedMismatch. Since task e84 that recall is scoped to
+// the requesting domain when the move was pin-only and every active peer
+// lease is on an observably equal cut (mismatch_scope.go); otherwise it is
+// all-domain.
 //
 // recallState.Domain is omitempty, so all-domain recalls keep their exact
 // schema-2 bytes. A downgrade to a binary without scoped recalls while a
@@ -83,8 +85,8 @@ import (
 // all-domain and its runtime Facts would refuse the single-domain events.
 //
 // Every other recall (dirty or exclusive release, conflicting admission or
-// acquisition, an expected-target mismatch) stays all-domain with the global
-// barrier, exactly as before.
+// acquisition, an expected-target mismatch that mismatchRecallScope does not
+// scope) stays all-domain with the global barrier, exactly as before.
 
 // covers reports whether session participates in the recall.
 func (r *recallState) covers(session string) bool {
@@ -121,25 +123,27 @@ func (c *Controller) startReleaseRecall(ctx context.Context, lease guestbridge.V
 
 // releaseRecallScope returns the session whose recall alone closes a release
 // of lease, or "" when the release needs the all-domain recall. Only a clean
-// READ lease qualifies, and only while its domain holds no EXCLUSIVE_DIRTY
-// lease and no open reservation: such a domain has no dirty bytes to freeze
-// and drain, so stopping it changes nothing another domain can observe.
+// READ lease qualifies, and only while its domain is clean (cleanReadDomain):
+// such a domain has no dirty bytes to freeze and drain, so stopping it
+// changes nothing another domain can observe.
 func (c *Controller) releaseRecallScope(lease guestbridge.ViewLease) string {
-	if lease.Mode != "READ" {
+	if lease.Mode != "READ" || !c.cleanReadDomain(lease.Scope.Session) {
 		return ""
 	}
-	session := lease.Scope.Session
+	return lease.Scope.Session
+}
+
+// cleanReadDomain reports whether session holds no active non-READ
+// (EXCLUSIVE_DIRTY) lease and no open reservation: a recall of that domain
+// alone has nothing to freeze or drain. Scoped release recalls (above) and
+// scoped expected-target recalls (mismatch_scope.go) both require it.
+func (c *Controller) cleanReadDomain(session string) bool {
 	for _, l := range c.state.Leases {
 		if l.Active && l.Lease.Scope.Session == session && l.Lease.Mode != "READ" {
-			return ""
+			return false
 		}
 	}
-	for _, r := range c.state.Reservations {
-		if r.Status != "CLOSED" && r.Reservation.Scope.Session == session {
-			return ""
-		}
-	}
-	return session
+	return !c.ownReservationOpen(session)
 }
 
 // ownReservationOpen reports whether session holds an open (not CLOSED)

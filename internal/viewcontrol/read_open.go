@@ -56,12 +56,12 @@ import (
 // reaped and cannot be unlinked, so its pins had no consumer; fsservice now
 // keeps the root's lifetime pinless and a root OPEN/close cycle keeps the
 // cut (TestZQ3CredentialsAdmissionKeepsLeases, which observes with the real
-// installed targets). The general case stays as it was (e84): a read-only
-// OPEN of an unpinned non-root object still journals its pin, so a peer's
-// next observation hits the mismatch, exactly as after a pinning LOOKUP.
-// The fix therefore relies on each guest mount root being the volume root;
-// a mount of a subtree directory would still pin on its root OPEN and move
-// the cut (the e84 behaviour).
+// installed targets). A read-only OPEN of an unpinned non-root object still
+// journals its pin, so a peer's next observation hits the mismatch, exactly
+// as after a pinning LOOKUP; since task e84 that mismatch recalls only the
+// observing domain, because the move is pin-only (mismatch_scope.go). A
+// mount of a subtree directory would likewise pin on its root OPEN and move
+// the cut, at the cost of those scoped mismatch recalls.
 
 // readConflict reports whether intent conflicts like a read: a read opcode
 // or a read-only OPEN.

@@ -272,26 +272,20 @@ func TestExclusiveDomainReadReleaseStaysGlobal(t *testing.T) {
 }
 
 // TestExpectedMismatchRecallStaysGlobal isolates the all-domain barrier with
-// no exclusive lease and no reservation anywhere: the final
-// DESCRIPTION_RELEASE and FORGET of an object under the peer's lease move the
-// cut (lifetime state), m1's next observation acquire expects its old target,
-// and the expected-target mismatch starts an all-domain recall. m0's root
-// GETATTR conflicts with nothing, yet it waits; its PROCESS_EXIT does not.
+// no active lease and no reservation anywhere: m1 installed its view and
+// released its observation lease (recall-free, je4), then m0 created a file
+// (a namespace mutation, conflicting with no active lease). m1's next
+// observation acquire expects its old target, the cut moved observably, so
+// the expected-target mismatch still starts an all-domain recall (a pin-only
+// move is scoped since e84, mismatch_scope_test.go). m0's root GETATTR
+// conflicts with nothing, yet it waits; its PROCESS_EXIT does not.
 func TestExpectedMismatchRecallStaysGlobal(t *testing.T) {
 	r := newZQ3Rig(t, 0)
-	path, description := r.create(0, "moves-cut", false)
-	r.domainRead(0)
-	installed := r.domainRead(1)
-	for _, step := range []struct {
-		op   string
-		args map[string]any
-	}{
-		{"DESCRIPTION_RELEASE", map[string]any{"description": description, "release_sequence": 1}},
-		{"FORGET", map[string]any{"object": path, "count": 1}},
-	} {
-		if _, status := r.pendingCall(0, step.op, step.args); status != "TERMINAL" {
-			t.Fatalf("%s under peer leases: %s", step.op, status)
-		}
+	installed := r.observeReleased(1)
+	r.observeReleased(0)
+	r.create(0, "mutates", false)
+	if total := r.recallTotal(); total != 0 {
+		t.Fatalf("setup started %d recalls", total)
 	}
 	stale := r.view(1, "VIEW_ACQUIRE", map[string]any{"request": r.ticket(1), "domain": r.domains[1], "access": guestbridge.ViewAccess{Kind: "DOMAIN"}, "mode": "READ", "target": installed.Target})
 	if stale.Status != "PENDING" {

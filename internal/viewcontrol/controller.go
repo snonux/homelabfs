@@ -138,6 +138,14 @@ type Controller struct {
 	// history is the bounded in-memory recall history (recall_history.go,
 	// task ce4); guarded by mu, never part of the protected ledger.
 	history recallHistory
+	// observed holds the observable digests of recently retained cuts
+	// (observed_cuts.go, task e84); guarded by mu, never part of the
+	// protected ledger.
+	observed map[string]observedCut
+	// allDomainMismatch is a test-only ablation that restores the pre-e84
+	// all-domain expected-target recall (mismatch_scope.go), so replays can
+	// count both behaviours; it is always false in production.
+	allDomainMismatch bool
 }
 
 type ledger struct {
@@ -547,6 +555,9 @@ func (c *Controller) target(scope guestbridge.Context, source fsservice.Controll
 
 // remember retains a captured cut (deduplicated by sourceKey) within the
 // Sources bound; admissions prune unpinned cuts first (source_pruning.go).
+// A newly retained cut also has its observable digest remembered in memory
+// (observe, task e84), so an expected-target mismatch naming it can still be
+// classified after the cut itself was pruned.
 func (c *Controller) remember(source fsservice.ControlledViewSource) error {
 	key := sourceKey(source)
 	if _, ok := c.state.Sources[key]; ok {
@@ -556,6 +567,7 @@ func (c *Controller) remember(source fsservice.ControlledViewSource) error {
 		return fsapi.NoSpace
 	}
 	c.state.Sources[key] = source
+	c.observe(source)
 	return nil
 }
 
