@@ -83,10 +83,13 @@ import (
 //     grant of that lineage reuse a lease ID. Before je4 every release moved
 //     the fence; without recalls the entries would pile up, and a ledger with
 //     more Revisions than Bounds.Identities is refused on reopen. So once
-//     the domain holds lineageBudget lineages at its current fence, the
-//     release keeps its scoped recall, which moves the fence and lets the
+//     the domain holds lineageBudget lineages at its current fence, or
+//     Revisions as a whole holds half of Bounds.Identities, the release
+//     keeps its scoped recall, which moves the fence and lets the
 //     next VIEW_RETIRE's compaction recycle them: one recall per
-//     lineageBudget processes instead of one per observation.
+//     lineageBudget processes instead of one per observation. The hard
+//     bound is enforced at grant: a new lineage is BLOCKED once Revisions
+//     holds Bounds.Identities (lineageCapacity), as reopen requires.
 //
 // The release then deactivates the lease and still asks Facts.CheckPhysical,
 // which certifies a DOMAIN READ Targeted lease without a fence advance
@@ -106,15 +109,14 @@ import (
 // releaseSkipsRecall reports whether the last holder's release of old needs
 // no recall (see the top of this file). The ledger conditions come first;
 // only then is the current cut captured to compare it with the lease target.
-func (c *Controller) releaseSkipsRecall(ctx context.Context, old leaseState) (bool, error) {
+// A failed capture (contention, a full queue) falls back to the recall path,
+// which reports its own progress failure as before je4.
+func (c *Controller) releaseSkipsRecall(ctx context.Context, old leaseState) bool {
 	if !c.observationReleasable(old) {
-		return false, nil
+		return false
 	}
 	source, err := c.capture(ctx)
-	if err != nil {
-		return false, err
-	}
-	return equal(c.target(old.Lease.Scope, source), old.Lease.Target), nil
+	return err == nil && equal(c.target(old.Lease.Scope, source), old.Lease.Target)
 }
 
 // observationReleasable checks the ledger conditions of a recall-free
@@ -144,10 +146,24 @@ func (c *Controller) lineageBudget() int {
 	return max(enrollment.Bounds.Identities/(2*len(enrollment.Domains)), 1)
 }
 
-// lineageHeadroom reports whether session holds fewer than lineageBudget
-// lineages at its current fence. Lineages at an older fence are not counted:
-// the next compaction recycles them without another recall (recycleLineages).
+// lineageCapacity reports whether Revisions may record one more lineage:
+// reopen (validateLedger) refuses a ledger holding more than
+// Bounds.Identities, so grantLease enforces that bound for a new lineage.
+func (c *Controller) lineageCapacity() bool {
+	return len(c.state.Revisions) < c.config.Authorization.Enrollment.Bounds.Identities
+}
+
+// lineageHeadroom reports whether Revisions as a whole is below half of
+// Bounds.Identities and session holds fewer than lineageBudget lineages at
+// its current fence. The global half leaves room for lineages granted
+// concurrently before the next recall and for those waiting for a delayed
+// compaction (a recall running, a BLOCKED retirement); lineages of session at
+// an older fence are not counted per domain, since the next compaction
+// recycles them without another recall (recycleLineages).
 func (c *Controller) lineageHeadroom(session string) bool {
+	if 2*len(c.state.Revisions) >= c.config.Authorization.Enrollment.Bounds.Identities {
+		return false
+	}
 	fence, n := c.fence(session), 0
 	for _, at := range c.state.LineageFences {
 		if at.Session == session && at.Fence >= fence {

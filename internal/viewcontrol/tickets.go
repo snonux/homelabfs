@@ -400,6 +400,8 @@ func (c *Controller) expectedMismatch(ctx context.Context, scope guestbridge.Con
 // within the identity and control bounds. acquire grants only when r.Target
 // is nil or equals target, so a non-nil r.Target marks the holder as an
 // observation of a view installed at target (leaseState.Targeted, task je4).
+// A new lineage is BLOCKED once Revisions holds Bounds.Identities lineages
+// (lineageCapacity): reopen refuses a ledger beyond that bound.
 func (c *Controller) grantLease(scope guestbridge.Context, r request, t ticketState, target guestbridge.ViewTarget) (json.RawMessage, error) {
 	lease := guestbridge.ViewLease{Scope: scope, Domain: r.Domain, Access: r.Access, CredentialHash: digest(r.Request.Credentials), Mode: r.Mode, Target: target, Fence: c.fence(scope.Session), Revision: 1}
 	targeted := r.Target != nil
@@ -412,8 +414,8 @@ func (c *Controller) grantLease(scope guestbridge.Context, r request, t ticketSt
 		return c.reply(t, "BLOCKED", nil, nil, nil)
 	}
 	lineage := lineageID(lease)
-	high := c.state.Revisions[lineage]
-	if high == ^uint64(0) {
+	high, known := c.state.Revisions[lineage]
+	if high == ^uint64(0) || !known && !c.lineageCapacity() {
 		return c.reply(t, "BLOCKED", nil, nil, nil)
 	}
 	lease.Revision = high + 1
@@ -475,10 +477,7 @@ func (c *Controller) releaseLease(ctx context.Context, scope guestbridge.Context
 	if c.state.Recall != nil {
 		return c.reply(t, "PENDING", nil, nil, nil)
 	}
-	if skip, err := c.releaseSkipsRecall(ctx, old); err != nil || skip {
-		if err != nil {
-			return nil, err
-		}
+	if c.releaseSkipsRecall(ctx, old) {
 		return c.releaseWithoutRecall(ctx, scope, op, r, t, old)
 	}
 	if pending, err := c.releaseNeedsRecall(ctx, r.Lease, recallTrigger{Opcode: op, Domain: scope.Session}); pending || err != nil {
@@ -509,10 +508,10 @@ func (c *Controller) releaseLease(ctx context.Context, scope guestbridge.Context
 // reports whether it did. A clean ACTIVE lease may still own readable PTEs.
 // Its preowned release must start a physical recall; CheckPhysical cannot
 // certify a live mapping as already closed. (A guest observation lease owns
-// none; releaseLease answers its release before this, observation_release.go.) A clean READ lease of a domain
-// without dirty or exclusive state recalls only that domain
-// (startReleaseRecall); any other lease uses the all-domain recall of dirty
-// pressure. Include active renewed siblings so an old immutable lineage
+// none; releaseLease answers its release before this, observation_release.go.)
+// A clean READ lease of a domain without dirty or exclusive state recalls
+// only that domain (startReleaseRecall); any other lease uses the all-domain
+// recall of dirty pressure. Include active renewed siblings so an old immutable lineage
 // release cannot wait without progress. An open reservation of the lineage
 // needs the all-domain recall that freezes and drains it. trigger names the
 // release's opcode and domain for the recall history; its Kind is set here.

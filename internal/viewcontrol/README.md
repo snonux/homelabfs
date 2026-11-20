@@ -143,7 +143,11 @@ recycled only after the domain fence moved past it (else a lease ID could be
 reused); without recalls they would pile up past the Identities bound on
 `Revisions` that reopen enforces. At the budget the release keeps its scoped
 recall, so a domain pays one recall per about 16 processes instead of one
-per observation. The lease is deactivated first and Facts.CheckPhysical still
+per observation. A recall-free release also needs `Revisions` as a whole below
+half of Identities, and grantLease BLOCKs a new lineage once `Revisions`
+holds Identities (the hard reopen bound; before je4 it was not enforced at
+grant). A capture failure falls back to the recall path. The lease is
+deactivated first and Facts.CheckPhysical still
 certifies the release: the runtime Facts accept a Targeted DOMAIN READ lease
 without a fence advance, with the same lineage and reservation checks
 (`controlledruntime/facts.go` `checkRelease`); a refusal restores the lease.
