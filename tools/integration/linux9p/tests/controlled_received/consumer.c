@@ -1065,6 +1065,30 @@ static void command(char *line) {
   if(!err){assert(!f->lease);f->lease=lease;}
   done(id,err,err?NULL:lease->json->data,err?0:lease->json->len);return;
  }
+ /* 2f4 review 1: the actual hfs_lease_acquire_ex through -EXDEV with the
+  * real 0005 provider. The mount's fence is raised past the lease's while a
+  * second DOMAIN READ acquisition is answered (the host shares the held
+  * f->lease: grantLease -> shareLease), so the verified GRANTED is stale at
+  * receipt and already passed: -EXDEV with an unadopted lease, no block, no
+  * initial bind; its release only returns the shared holder (RELEASED).
+  */
+ if(!strcmp(operation,"ACQUIRE_PASSED")){
+  struct hfs_session *s=&(*f->session);struct hfs_lease *lease=NULL;int err;
+  assert(f->lease&&!s->blocked);
+  mutex_lock(&hfs_controlled_lock);hfs_controlled_mount(s)->current_fence++;mutex_unlock(&hfs_controlled_lock);
+  err=hfs_lease_acquire(s,&f->credential,NULL,NULL,0,false,NULL,&lease);
+  mutex_lock(&hfs_controlled_lock);hfs_controlled_mount(s)->current_fence--;mutex_unlock(&hfs_controlled_lock);
+  if(err==-EXDEV){
+   assert(lease&&lease->unadopted&&!s->blocked&&lease->ticket->terminal&&!lease->ticket->uncertain);
+   assert(!memcmp(lease->id,f->lease->id,32)&&lease->fence==f->lease->fence);
+   assert(hfs_view_bind_initial(s->view,lease)==-ESTALE);
+   err=hfs_lease_release(s,lease);
+   if(!err)assert(lease->released&&!s->blocked);
+   hfs_lease_free(lease);
+   if(!err)err=-EXDEV;
+  } else assert(!lease);
+  done(id,err,NULL,0);return;
+ }
  if(!strcmp(operation,"RELEASE_START")){
   struct hfs_lease *lease=f->lease;assert(lease);struct hfs_view_ticket *ticket=lease->release_ticket;struct hfs_buf *payload=&lease->release_payload;
   int err=hfs_view_ticket_activate(ticket);payload->len=0;payload->error=0;

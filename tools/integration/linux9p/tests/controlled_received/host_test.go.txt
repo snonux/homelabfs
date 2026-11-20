@@ -427,6 +427,21 @@ func verifyReceivedWait(t *testing.T, c *receivedCarrier, session int, previous,
 	}
 }
 
+// TestControlledReceivedActualPassedGrant (2f4 review 1): the actual
+// hfs_lease_acquire_ex with the real provider on a GRANTED a later recall
+// passed (the guest fence is raised past it for the second acquisition): it
+// returns EXDEV (-18) with an unadopted lease, blocks nothing, and the
+// release of that shared holder completes.
+func TestControlledReceivedActualPassedGrant(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	c.call(0, "ROOT", map[string]any{})
+	c.action("ADOPT_ROOT", 0, "", 0)
+	c.action("ACQUIRE", 0, "", 0)
+	c.action("ACQUIRE_PASSED", 0, "", -18)
+	c.action("CHECK", 0, "cookie_balance", 0)
+}
+
 func TestControlledReceivedActualSourceCorruption(t *testing.T) {
 	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
 	c := startReceivedCarrier(t, r)

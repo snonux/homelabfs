@@ -278,6 +278,7 @@ int hfs_lease_acquire_ex(struct hfs_session *session,const struct hfs_cred *cred
  lease->id[0]=(u8)host_grant(lease->target_hash[0]);lease->fence=host_of(lease)->fence;
  if(hook==HOOK_RECALL_AFTER || hook==HOOK_PASSED)same_target_recall(view);
  else if(hook==HOOK_STUCK)view->phase=HFS_VIEW_RECALLING;
+ lease->unadopted=hook==HOOK_PASSED; // 2f4: release only, as hfs_lease_acquire_ex builds it
  granted[acquire_calls++]=lease;leases_live++;*out=lease;return hook==HOOK_PASSED ? -EXDEV : 0;
 }
 static bool host_retire_refused(void)
@@ -938,25 +939,52 @@ static void xq_grant_passed(void)
  assert(xq_run(&response)==-EXDEV && xq_granted(response) && !view_wait_sleeps && !xq_blocks);
  xq_teardown(response);
 }
-/* No REOPENED ACK reply within the exchange's 30 s: -ETIMEDOUT, the ticket
- * uncertain (as a PENDING poll that ran out), no response, no block; a
- * fatal signal, a blocked session and a failed transport stop the wait.
+/* No REOPENED ACK reply within the exchange's 30 s: -ETIMEDOUT, a fatal
+ * signal (-EINTR), a blocked session or a failed transport (-EHOSTDOWN, not
+ * -ESTALE, which hfs_lease_acquire_ex would block on: review 1) stop the
+ * wait without a block. The verified GRANTED is still handed out in the
+ * response with the ticket terminal, not uncertain: the host holds that
+ * lease and its release credit, so the caller must release it.
  */
-static void xq_grant_stops(void)
+static void xq_stop_case(int expected,bool timed)
 {
  static const struct xq_step steps[]={{"GRANTED","lease",6,NULL}};
- struct hfs_json *response=(void *)1;unsigned long start=jiffies;
+ struct hfs_json *response=NULL;unsigned long start=jiffies;
  xq_setup("VIEW_ACQUIRE",true,steps,1,5);
- assert(xq_run(&response)==-ETIMEDOUT && !response && xq_calls==1);
- assert(jiffies-start>=30*HZ && xq_ticket.uncertain && !xq_ticket.terminal && !xq_ticket.response && !xq_blocks);
- assert(strstr(last_warning,"VIEW_ACQUIRE GRANTED at fence 6: view did not settle before the exchange deadline (-ETIMEDOUT)"));
- xq_teardown(NULL);
- xq_setup("VIEW_ACQUIRE",true,steps,1,5);view_wait_fatal=true;
- assert(xq_run(&response)==-EINTR && xq_ticket.uncertain && !xq_blocks);xq_teardown(NULL);
- xq_setup("VIEW_ACQUIRE",true,steps,1,5);test_session->blocked=true;
- assert(xq_run(&response)==-ESTALE && xq_ticket.uncertain && !xq_blocks && !view_wait_sleeps);xq_teardown(NULL);
- xq_setup("VIEW_ACQUIRE",true,steps,1,5);test_session->transport_failed=true;
- assert(xq_run(&response)==-EHOSTDOWN && xq_ticket.uncertain && !xq_blocks && !view_wait_sleeps);xq_teardown(NULL);
+ if(expected==-EINTR)view_wait_fatal=true;
+ else if(expected==-EHOSTDOWN && !timed)test_session->blocked=true;
+ else if(expected==-EHOSTDOWN)test_session->transport_failed=true;
+ assert(xq_run(&response)==expected && xq_granted(response) && xq_calls==1 && !xq_blocks);
+ assert(xq_ticket.terminal && !xq_ticket.uncertain && xq_granted(xq_ticket.response));
+ if(expected==-ETIMEDOUT){
+  assert(jiffies-start>=30*HZ);
+  assert(strstr(last_warning,"VIEW_ACQUIRE GRANTED at fence 6: view did not settle before the exchange deadline (-ETIMEDOUT)"));
+ } else if(expected==-EHOSTDOWN)assert(!view_wait_sleeps);
+ xq_teardown(response);
+}
+static void xq_grant_stops(void)
+{
+ xq_stop_case(-ETIMEDOUT,true);
+ xq_stop_case(-EINTR,false);
+ xq_stop_case(-EHOSTDOWN,false); // blocked session: a refused view
+ xq_stop_case(-EHOSTDOWN,true);  // failed transport: the poll halt
+}
+/* 2f4 review 1: an unadopted lease (handed out only for release) is no
+ * authority: no initial bind and no page lease take it.
+ */
+static void xq_unadopted_refused(void)
+{
+ struct hfs_view *view=test_session->view;struct hfs_view_stamp stamp;struct hfs_cache_page *entry;
+ static struct hfs_view_ticket credit={.control=true};
+ struct hfs_lease lease={0};
+ assert(!hfs_json_parse("{\"target\":{}}",13,&lease.json));
+ kref_init(&lease.refs);lease.release_ticket=&credit;lease.unadopted=true;lease.visibility=generation;
+ memcpy(lease.target_hash,view->target_hash,32);
+ assert(hfs_view_bind_initial(view,&lease)==-ESTALE);
+ assert(!hfs_view_snapshot(view,&stamp) && !hfs_view_page_prepare(view,&stamp,&entry));
+ assert(hfs_view_page_lease(entry,&lease)==-ESTALE && !entry->lease);
+ lease.unadopted=false;assert(!hfs_view_page_lease(entry,&lease) && entry->lease==&lease);
+ entry->lease=NULL;hfs_view_page_put(entry);hfs_json_free(lease.json);
 }
 /* Fail closed as before 2f4: an unverified GRANTED (-EKEYREJECTED), one that
  * stays not current at a settled view after its re-query (-EPROTO), and a
@@ -991,6 +1019,7 @@ static void grant_settle_checks(void)
  xq_grant_passed();
  xq_grant_stops();
  xq_fail_closed();
+ xq_unadopted_refused();
 }
 int main(void)
 {
@@ -1096,5 +1125,5 @@ int main(void)
  view_worker_log_checks(&session);
  hfs_json_free(target_event);hfs_view_unregister_inode(&inode.inode);hfs_view_fence(session.view);assert(!hfs_view_free(&session));
  assert(!reservations && !module_refs);
- puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (recall before/after grant re-acquires,no release recall,no self-recall loop,moved target,refusals,deadline,no leak,RETIRED_ID passed through,host BLOCKED retried only after retirement progress (held lease released first,at most 3 retries,ticket budget kept),progress by the cleanup worker during the pause or after a busy try,no progress/deadline -EAGAIN at once,BLOCKED retire re-sent after recall/next observation (rate-limited),attr re-stamp/re-issue,moved LOOKUP FORGET balanced,2f4 passed grant re-acquired),2f4 exchange: GRANTED before the fence raise re-queried after the REOPENED ACK,old revision re-queried at once,passed by a later recall -EXDEV,deadline/signal/block/transport stops without a block,unverified/never-current/DIRTY fail closed,source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
+ puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (recall before/after grant re-acquires,no release recall,no self-recall loop,moved target,refusals,deadline,no leak,RETIRED_ID passed through,host BLOCKED retried only after retirement progress (held lease released first,at most 3 retries,ticket budget kept),progress by the cleanup worker during the pause or after a busy try,no progress/deadline -EAGAIN at once,BLOCKED retire re-sent after recall/next observation (rate-limited),attr re-stamp/re-issue,moved LOOKUP FORGET balanced,2f4 passed grant re-acquired),2f4 exchange: GRANTED before the fence raise re-queried after the REOPENED ACK,old revision re-queried at once,passed by a later recall -EXDEV,deadline/signal/block/transport stops hand the GRANTED out without a block,unadopted lease never bound or page-leased,unverified/never-current/DIRTY fail closed,source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
 }

@@ -1551,17 +1551,27 @@ Patch 0004:
   identity or lease) and the fresh capture validates it. A re-query is sent
   only after progress (another REOPENED ACK or a new view revision); a reply
   that stays not current at a settled view is `-EPROTO` and blocks as before.
-- A lease fence behind the mount's (a later recall passed it): the exchange
-  returns `-EXDEV` with the GRANTED as its response (ticket terminal, not
-  uncertain); `hfs_lease_acquire_ex` decodes and completes the lease and
-  returns it with `-EXDEV`. The ie4 observation path (`hfs_mmap_observe`)
-  holds it unpublished and acquires again (ie4's acquire-before-release, so
-  its release starts no recall); the fault path and the bootstrap discovery
-  loop hand it to their cleanup packets as `-ESTALE`.
-- Stops leave the ticket uncertain without a block, like a PENDING poll that
-  ran out: the deadline (`-ETIMEDOUT`), a fatal signal (`-EINTR`), a refused
-  view (FENCED, closing or blocked: `-ESTALE`), a halted session
-  (`-EHOSTDOWN`) or a mount no longer admissible (`-ESTALE`).
+- A lease fence behind the mount's (a later recall passed it) is `-EXDEV`;
+  the wait's stops are the deadline (`-ETIMEDOUT`), a fatal signal
+  (`-EINTR`), a refused view (FENCED, closing or blocked), a halted session or
+  a mount no longer admissible (all `-EHOSTDOWN`; not `-ESTALE`, which
+  `hfs_lease_acquire_ex` blocks on as a stale grant). None blocks. In every
+  one the exchange returns the GRANTED as its response with the ticket
+  terminal, not uncertain, because the host holds that lease and its
+  reserved release credit (review 1). `hfs_lease_acquire_ex` then builds it
+  **unadopted** (`lease->unadopted`): decoded without the provider's target
+  check (`hfs_controlled_target` → `hfs_received_selected` refuses a
+  not-current reply by design; before review 1 that made the `-EXDEV` path
+  fail with `EKEYREJECTED` and leak the lease), no verified visibility, and
+  refused by `hfs_view_bind_initial`, `hfs_view_page_lease`,
+  `hfs_view_page_grant` and `hfs_mmap_publish`, so it can only be released.
+  It is returned in `*out` with the error. The ie4 observation path
+  (`hfs_mmap_observe`) holds an `-EXDEV` lease unpublished and acquires again
+  (ie4's acquire-before-release, so its release starts no recall); any other
+  error's lease goes to the attempt's cleanup packet, as in the fault path
+  and the bootstrap discovery loop (which releases an `-EXDEV` lease and
+  retries). `hfs_lease_acquire_ex` blocks on `-ESTALE` only from decoding the
+  grant itself.
 - DIRTY_RESERVE/DIRTY_FREEZE replies (current only while QUIESCENT/STOPPED)
   and unverified replies still block the session at once; the not-current
   DIRTY case now logs `-ESTALE` instead of `-EKEYREJECTED`.
@@ -1584,14 +1594,16 @@ Tests:
   captured before the REOPEN re-queries at once; a reply that a recall made
   not current at consumption and whose ACK passed the lease returns `-EXDEV`
   (also without waiting when the mount is already past it); deadline,
-  signal, blocked session and failed transport stop without a block; an
-  unverified, a never-current and a not-current DIRTY_RESERVE reply block, a
-  current DIRTY_RESERVE passes. `retry_grant_passed`: an observation whose
-  acquisition returns `-EXDEV` with a passed lease re-acquires at the new
-  fence, then releases the passed lease without a recall. Nine mutants (no
-  settle, re-query before the fence, DIRTY waits, no `-EXDEV`, no progress
-  check, no ACK count, stops block, `-EXDEV` not terminal, refusal ignored)
-  each fail a case. dirty's harness extracts the new helpers with aborting
+  signal, blocked session and failed transport stop without a block and
+  still hand out the GRANTED (ticket terminal); an unverified, a
+  never-current and a not-current DIRTY_RESERVE reply block, a current
+  DIRTY_RESERVE passes; an unadopted lease is refused by the initial bind and
+  the page lease. `retry_grant_passed`: an observation whose acquisition
+  returns `-EXDEV` with an unadopted lease re-acquires at the new fence, then
+  releases it without a recall. Twelve mutants (no settle, re-query before
+  the fence, DIRTY waits, no `-EXDEV`, no progress check, no ACK count, stops
+  block, stops left uncertain, refusal as `-ESTALE`, refusal ignored,
+  unadopted bindable, unadopted page lease) each fail a case. dirty's harness extracts the new helpers with aborting
   view fixtures (its minor-0 cases never reach them).
 - controlled_received: the actual 0005 receipt on a real host GRANTED: the
   unverified cases keep `-EKEYREJECTED` without `not_current`; after the
@@ -1602,6 +1614,13 @@ Tests:
   scenarios, which still fail later at their own pre-existing points
   (multipoll EVENT receipt; corrupted-source `IO`), as on the unchanged
   baseline; a mutant that never marks a stale receipt aborts at the ACQUIRE.
+- controlled_received `passed-grant` (`TestControlledReceivedActualPassedGrant`,
+  review 1): the actual `hfs_lease_acquire_ex` with the real 0005 provider.
+  With the mount's fence raised past the held lease's, a second DOMAIN READ
+  acquisition (shared by the host) returns `-EXDEV` with an unadopted lease,
+  blocks nothing, is refused by the initial bind, and its release completes.
+  Decoding it through the provider target instead (the pre-review code)
+  returns `-129` there.
 - `internal/viewcontrol` `TestPendingAcquireGrantedLazilyAndStable`: a
   PENDING acquisition is still PENDING after its recall completed (fence
   advanced), the first VIEW_QUERY grants at the new fence, and repeated
@@ -1609,10 +1628,10 @@ Tests:
   active leases.
 
 The series was regenerated with `export.py --task 2f4` (0004: `hfs_view.[ch]`,
-`hfs_lease.c`, `hfs_mmap.c`; 0005: `hfs_received.{h,inc}`,
+`hfs_lease.[ch]`, `hfs_mmap.c`; 0005: `hfs_received.{h,inc}`,
 `hfs_controlled.h`). A fresh `prepare.py` tree applies it with fuzz zero and
 `fs/9p/`, `net/9p/` and `random.o` compile without warnings under `kernel.py
 configure`. transport, policy, cursor, tag, mount_hello, view and view
 --pressure (`--sanitize`), requests, huge, dirty and controlled_received
-`terminal-smoke`, `cleanup` and `exit-cleanup` pass. No candidate was rebuilt
-or admitted.
+`terminal-smoke`, `cleanup`, `exit-cleanup` and `passed-grant` pass. No
+candidate was rebuilt or admitted.

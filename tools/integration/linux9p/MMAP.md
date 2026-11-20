@@ -240,7 +240,9 @@ arrives. The verified reply is then not current; the exchange waits for the
 REOPENED ACK (event-driven, within its 30 s) and queries the ticket again,
 which returns the stored GRANTED. A lease a later recall already passed is
 handed out with `-EXDEV`, and observation begin releases it and acquires
-again. DIRTY_RESERVE/DIRTY_FREEZE sources and unverified replies still block
+again; a wait that stops (deadline, signal, refused view) hands its lease
+out too. Such a lease is unadopted: never bound, page-leased or published,
+only released. DIRTY_RESERVE/DIRTY_FREEZE sources and unverified replies still block
 the session.
 
 When the view control worker stops for good (`hfs_mmap_fail`), it logs one line
