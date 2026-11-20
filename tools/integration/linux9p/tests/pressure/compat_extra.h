@@ -56,6 +56,15 @@ static void hfs_mmap_cleanup(struct work_struct *work);
 static bool test_queue_cleanup(struct delayed_work *work);
 #define INIT_DELAYED_WORK(w,f) ((void)(w),(void)(f))
 #define queue_delayed_work(q,w,d) ((void)(q),(void)(d),test_queue_cleanup(w))
+/* re4: hfs_mmap_retire_work's container_of, the BLOCKED back-off's pause
+ * (a test sleep only advances jiffies, one jiffy per ms, and is counted) and
+ * hfs_view_retire, a host-model fixture in test.c.
+ */
+#define to_delayed_work(w) ((struct delayed_work *)(void *)(w))
+#define min(a,b) ((a)<(b)?(a):(b))
+#define jiffies_to_msecs(j) ((unsigned int)(j))
+static unsigned int test_sleeps;
+static inline long schedule_timeout_killable(long t) { test_sleeps++;jiffies+=t;return 0; }
 /* ie4: hfs_inode_get_fail and hfs_evict_inode. iget_failed evicts the new
  * inode as the kernel's does (through iput); a queued FORGET is recorded by
  * test_queue_forget. The capability and credential frees are counted.
