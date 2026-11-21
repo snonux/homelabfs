@@ -245,6 +245,19 @@ only concerns one mount's pin pauses only that mount (e84). Its bytes are
 new, so they must pass the f3 self-check again. The patched bhyve is
 reused unchanged; the window test files were rebuilt with the daemon.
 
+In zq3-r18 that fix worked: T1 got past admission for the first time, in
+7 s. It then failed on its first directory, because the guest kernel
+refused to change a file's owner (fchown answered "operation not
+supported"): every ownership change also asks to clear the set-user-ID
+bits, and the kernel rejected that part instead of handling it (R18-1,
+[record](results/20261121-zq3-r18/README.md)). That fix is merged (vf4),
+and the package was rebuilt for zq3-r19 (`09acd09d…`, kernel build ID
+`e3d474df…`, daemon `bb4ad73c…`). The daemon was rebuilt too: a pause for
+a mismatched view now covers only the asking mount when no other mount
+holds or is opening a view (wf4). Its bytes are new, so they must pass the
+f3 self-check again. The patched bhyve is again reused unchanged; the
+window test files were rebuilt with the daemon.
+
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
 written record of every step, not by a fully automatic runner. Right before the

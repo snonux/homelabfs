@@ -1,5 +1,14 @@
 # xz3 r18 rebuild (2026-11-21): zq3-r17 not-yet-current grant fix
 
+**Superseded on 2026-11-21** by the [r19 rebuild](../xz3-20261121-r19/README.md)
+(`09acd09d…`, source `e160370`) for zq3-r19. Its 2f4 guest kernel
+`020acb2e…` refused the `ATTR_KILL_*` bits in `hfs_setattr`, so fchown of a
+regular file returned `EOPNOTSUPP` (zq3-r18 R18-1, fixed by vf4). r19
+rebuilt the kernel (vf4) and the daemon (wf4) with the window artifacts,
+and reused the r17 native exporter and its f3 records byte for byte again.
+The tooling refuses this manifest as superseded. It still passes
+`package.py check` and `admit.py` under the `e160370` tooling.
+
 This candidate supersedes the [r17 rebuild](../xz3-20261120-r17/README.md)
 (`f614d52a…`, source `3430758`). In zq3-r17 (R17-1) T1's m1 root `fstat`
 failed with `EKEYREJECTED`. A correct GRANTED VIEW_QUERY reply, delayed by

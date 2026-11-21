@@ -9,7 +9,7 @@
 # Usage: build-fdescfs-window-artifacts.sh OUT_DIR [COMMIT]
 #
 # OUT_DIR must not exist yet; its parent must. COMMIT defaults to the zq3 candidate source
-# 633509e0e5893d6a1afe6600cd128f00c66138c3 (r18 rebuild for zq3-r18; earlier 3430758 for r17, 2f34b60 for r15, b7d107b for xc4, 1b0a306 for 5a4, dfdcdd9 for b94, cc6beed for r84, e92eaa1 for l84, b869710 for
+# e16037027633e5fcad8d4dc11f34788d4396c8fa (r19 rebuild for zq3-r19; earlier 633509e for r18, 3430758 for r17, 2f34b60 for r15, b7d107b for xc4, 1b0a306 for 5a4, dfdcdd9 for b94, cc6beed for r84, e92eaa1 for l84, b869710 for
 # y64, 060dea0 for c64+d64, a20aca1 for z54, defd974 for f44 and e0cca0c). The source is exported with
 # `git archive`, so no worktree state or VCS metadata reaches the build.
 # Every artifact is built twice with separate fresh Go caches; the script
@@ -22,7 +22,7 @@
 # rebuild needs the same OUT_DIR/src path.
 set -euo pipefail
 
-readonly CANDIDATE=633509e0e5893d6a1afe6600cd128f00c66138c3
+readonly CANDIDATE=e16037027633e5fcad8d4dc11f34788d4396c8fa
 readonly TOOLROOT=/home/paul/tmp/codex/hfs-r24-20261105-0h1d6esn
 readonly CC_WRAPPER=$TOOLROOT/freebsd-cc
 readonly SYSROOT=$TOOLROOT/sysroot-capture/root
