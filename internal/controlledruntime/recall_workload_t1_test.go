@@ -64,9 +64,10 @@ import (
 // Timing. Observations are virtual (newRecallModelVirtual): each costs the
 // model latency (2 s by default, HFS_RECALL_MODEL_LATENCY) in modelled time
 // only. A syscall's modelled time is its observations plus the guest's idle
-// retry sleeps and is what the verdicts use; the test host's own work is
-// measured and logged beside it, never judged, as the lab's per-request
-// cost is not modelled. The model clock (admissionReuse) does not age with
+// retry sleeps and is deterministic. The test host's own work is measured
+// beside it; the run's total is also judged as modelled plus that host
+// work (the advance budget check), although the lab's per-request cost is
+// not modelled. The model clock (admissionReuse) does not age with
 // host work either, so between recalls requests keep reusing one
 // observation; the lab refreshes once per five seconds of real time, so its
 // observation counts are higher (a lower bound, as in the gate model).

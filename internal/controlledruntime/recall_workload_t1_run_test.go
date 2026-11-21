@@ -75,6 +75,8 @@ type t1Stats struct {
 	stage     map[string]time.Duration // modelled time per stage
 	total     time.Duration            // modelled time of the whole run
 	host      time.Duration            // measured host work besides
+	measured  time.Duration            // total plus host: the run as this host paid it
+	obs       int32                    // the syscalls' slow observations (no bootstrap)
 	held      int
 	heldWorst time.Duration
 	worst     *t1Syscall // the syscall with the longest exchange
@@ -92,12 +94,14 @@ func (r *t1Replay) stats() t1Stats {
 		s.stage[c.stage] += c.latency
 		s.total += c.latency
 		s.host += c.host
+		s.obs += c.observations
 		s.held += c.held
 		s.heldWorst = max(s.heldWorst, c.heldWorst)
 		if s.worst == nil || c.worst > s.worst.worst {
 			s.worst = c
 		}
 	}
+	s.measured = s.total + s.host
 	for _, p := range r.syscallPhases() {
 		s.acks += p.acks
 		s.blocked += p.blocked
@@ -111,8 +115,9 @@ func (r *t1Replay) stats() t1Stats {
 // report logs every syscall (modelled time, measured host work, slow
 // observations, recalls by trigger, held claims, longest exchange) and the
 // run's totals against the guest's 30 s exchange window, the admission alarm
-// and T1's budget. The verdicts use the modelled time; this host's work is
-// logged beside it (the lab's per-request cost is not modelled).
+// and T1's budget, both as modelled (deterministic) and as measured on this
+// host (modelled plus this host's work). The lab's per-request cost is not
+// modelled, so neither figure is the lab's time.
 func (r *t1Replay) report(t *testing.T) t1Stats {
 	for _, c := range r.syscalls {
 		held := ""
@@ -122,11 +127,13 @@ func (r *t1Replay) report(t *testing.T) t1Stats {
 		t.Logf("  %-9s %-52s %7s (+%6s host) %2d obs, recalls %-18s longest %s%s", c.stage, c.name, c.latency.Round(time.Millisecond), c.host.Round(time.Millisecond), c.observations, kindsText(c.kinds), c.worst.Round(time.Millisecond), held)
 	}
 	s := r.stats()
-	t.Logf("modelled: admission %s (alarm %s; the old %s alarm %s), body %s, exit %s; total %s of T1's %s budget (this host's work: +%s)",
+	t.Logf("modelled: admission %s (alarm %s; the old %s alarm %s), body %s, exit %s; total %s of T1's %s budget, %s",
 		s.stage["admission"].Round(time.Millisecond), t1AdmissionAlarm, t1OldAdmissionAlarm, verdict(s.stage["admission"] <= t1OldAdmissionAlarm),
-		s.stage["body"].Round(time.Millisecond), s.stage["exit"].Round(time.Millisecond), s.total.Round(time.Millisecond), t1RequestBudget, s.host.Round(time.Millisecond))
+		s.stage["body"].Round(time.Millisecond), s.stage["exit"].Round(time.Millisecond), s.total.Round(time.Millisecond), t1RequestBudget, verdict(s.total <= t1RequestBudget))
+	t.Logf("measured: modelled %s + this host's work %s = %s of T1's %s budget, %s",
+		s.total.Round(time.Millisecond), s.host.Round(time.Millisecond), s.measured.Round(time.Millisecond), t1RequestBudget, verdict(s.measured <= t1RequestBudget))
 	t.Logf("%d syscalls, %d slow observations at %s; recalls %s; %d VIEW_ACKs (%d BLOCKED early DRAINED); %d advance grants; %d held claims (longest %s); longest exchange %s in %q (window %s)",
-		len(r.syscalls), r.m.probes.Load(), r.m.latency, kindsText(r.kinds), s.acks, s.blocked, s.advances, s.held, s.heldWorst.Round(time.Millisecond), s.worst.worst.Round(time.Millisecond), s.worst.name, guestQueryWindow)
+		len(r.syscalls), s.obs, r.m.latency, kindsText(r.kinds), s.acks, s.blocked, s.advances, s.held, s.heldWorst.Round(time.Millisecond), s.worst.worst.Round(time.Millisecond), s.worst.name, guestQueryWindow)
 	return s
 }
 
@@ -190,9 +197,11 @@ var t1Schedules = []struct {
 // and every claim TERMINAL. With advance no expected-target recall may run,
 // at most one release recall (a lineage budget, xf4 design "Lineages"), the
 // admission must fit guest.py's admission alarm and the whole case T1's
-// 240 s budget; without advance the expected-target recalls must show
-// (the model still exercises what advance removes), and the budget is only
-// logged.
+// 240 s budget, both modelled and measured (modelled plus this host's
+// work, about 80-120 s here, so the measured check has about 30-70 s of
+// slack on this laptop and may fail on a much slower or -race host);
+// without advance the expected-target recalls must show (the model still
+// exercises what advance removes), and the budget is only logged.
 func TestZQ3T1CredentialsReplay(t *testing.T) {
 	if testing.Short() {
 		t.Skip("replays T1 four times on the assembled runtime")
@@ -229,13 +238,12 @@ func checkT1Recalls(t *testing.T, r *t1Replay, s t1Stats) {
 		if expected == 0 {
 			t.Errorf("without advance no EXPECTED_TARGET recall ran: the replay no longer exercises what advance removes")
 		}
-		t.Logf("without advance: total %s, T1 budget %s %s", s.total.Round(time.Millisecond), t1RequestBudget, verdict(s.total <= t1RequestBudget))
-		return
+		return // its budget verdicts are only logged (report)
 	}
 	if expected != 0 || released > 1 || s.advances == 0 {
 		t.Errorf("with advance: EXPECTED_TARGET %d, RELEASE %d recalls, %d advance grants; want 0, at most 1 and some", expected, released, s.advances)
 	}
-	if s.stage["admission"] > t1AdmissionAlarm || s.total > t1RequestBudget {
-		t.Errorf("with advance: admission %s (alarm %s), total %s (budget %s)", s.stage["admission"], t1AdmissionAlarm, s.total, t1RequestBudget)
+	if s.stage["admission"] > t1AdmissionAlarm || s.total > t1RequestBudget || s.measured > t1RequestBudget {
+		t.Errorf("with advance: admission %s (alarm %s), total %s modelled, %s measured (budget %s)", s.stage["admission"], t1AdmissionAlarm, s.total, s.measured, t1RequestBudget)
 	}
 }

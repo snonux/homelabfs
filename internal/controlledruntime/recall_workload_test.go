@@ -178,9 +178,14 @@ type recallModel struct {
 
 // modelMount is one guest mount: its peer rig, the control-lane chain that
 // reclaims its previous control response and the ordinary-lane chain that
-// reclaims its previous ordinary response (ALLOCATE, CALL, VIEW_ACQUIRE: the
-// transport refuses a session's thirteenth unreclaimed ordinary cell with
-// WouldBlock, which the T1 replay's hundreds of claims reached), the view
+// reclaims its previous ordinary response (ALLOCATE, CALL, VIEW_ACQUIRE).
+// An ordinary cell keeps one of the shared transport's 64 ordinary credits
+// until a later frame reclaims it; with the credits spent, allocateCell
+// (guestbridge endpoint.go, "!r.Control && t.ordinary >= 64") refuses the
+// next ordinary cell of any session with WouldBlock. The T1 replay's
+// hundreds of claims hit exactly that (instrumented: ordinary 64, control 2)
+// before this chain existed; the per-session incomplete-cell bounds were
+// not involved, as they count cells still being received), the view
 // state the guest keeps (installed target, per-mount fence and kernel record
 // revision), its cleanup worker (queued jobs, the exchange in flight,
 // failure) and what RETIRE / VIEW_RETIRE retire (request list, ticket
