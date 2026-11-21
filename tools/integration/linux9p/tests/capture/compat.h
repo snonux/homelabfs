@@ -62,6 +62,13 @@ static atomic_int capture_allocations,capture_fail_at;
 static void *capture_zalloc(size_t n,int flags) { (void)flags;int number=atomic_fetch_add(&capture_allocations,1)+1;return number==atomic_load(&capture_fail_at)?NULL:calloc(1,n); }
 #define kzalloc capture_zalloc
 struct hfs_session;
+/* Production capture/ticket code calls the completion/controlled hooks; the
+ * non-controlled build selects the header's real inline stubs, whose
+ * parameters are unused by design (as in controlled/consumer.c). */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#include "hfs_controlled.h"
+#pragma GCC diagnostic pop
 struct hfs_provider {
  int (*map)(struct hfs_session *,const struct cred *,struct user_namespace *,uuid_t *,u8 *);
  int (*reserve)(struct hfs_session *,u64,bool,void **);
@@ -75,7 +82,10 @@ struct hfs_session {
  unsigned int nr_processes,nr_view_families,nr_view_tickets,nr_view_control_tickets;
  bool blocked,closing;
  u16 bridge_minor;
- struct { uuid_t nonce,view_control_nonce; } enrollment;
+ /* Terminal capture (minor 4) and the minor-4 view anchors; this fixture
+  * runs minor 1, so they stay zero and the legacy anchor is used. */
+ struct hfs_completion *terminal_completion;
+ struct { uuid_t nonce,view_control_nonce,anchor,acquisition_anchor,acquisition_nonce,control_anchor; u32 protocol_features; } enrollment;
 };
 static void hfs_process_exit_work(struct work_struct *work) { (void)work;abort(); }
 #endif
