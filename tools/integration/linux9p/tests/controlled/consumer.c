@@ -60,6 +60,7 @@ typedef int wait_queue_head_t; /* x84 session allocation_wait */
 #define HZ 100UL
 #define P9_NOTAG 65535
 #define READ_ONCE(x) (x)
+#define smp_rmb() __atomic_thread_fence(__ATOMIC_ACQUIRE)
 #define WRITE_ONCE(x, v) ((x) = (v))
 #define time_after_eq(a, b) ((long)((a) - (b)) >= 0)
 #define msecs_to_jiffies(ms) (((ms) * HZ + 999) / 1000)
@@ -156,6 +157,29 @@ static int hfs_view_snapshot(struct hfs_view *v, struct hfs_view_stamp *s) {
    (void)v;
    (void)s;
    return -EOPNOTSUPP;
+}
+/* hfs_request_init stamps its view target through this; hfs_view_get above
+ * never returns a view, so neither snapshot primitive is reached. */
+static int hfs_view_snapshot_target(struct hfs_view *v,
+                                    struct hfs_view_stamp *s, u8 *target) {
+   (void)target;
+   return hfs_view_snapshot(v, s);
+}
+/* The real hfs_session_block also logs once per session; this fixture keeps
+ * only its observable effect, the blocked flag. */
+static void hfs_session_block(struct hfs_session *session, const char *reason,
+                              const char *operation, int err) {
+   (void)reason;
+   (void)operation;
+   (void)err;
+   WRITE_ONCE(session->blocked, true);
+}
+/* No fixture session uses the controlled-local provider (the real test is
+ * session->provider == &hfs_controlled_provider); hfs_controlled.h declares
+ * this only for CONFIG_9P_FS_HOMELABFS_CONTROLLED builds. */
+static bool hfs_controlled_owns(struct hfs_session *session) {
+   (void)session;
+   return false;
 }
 static void hfs_mmap_progress(struct hfs_session *s) {
    (void)s;
@@ -392,6 +416,8 @@ static void check_dirty_decoder(void) {
       } else {
          assert(error == (mode == 2 ? -ENOMEM : -EPROTO));
          assert(!dirty.reservation && session.allocation_pending == &request);
+         /* Only a protocol refusal blocks the session (hfs_session_block). */
+         assert(session.blocked == (error == -EPROTO));
       }
       assert(request.earmarked && !request.allocated && !request.claim.len);
       hfs_json_free(dirty.reservation);
@@ -473,8 +499,9 @@ int main(void) {
    assert(ledger_directory >= 0);
    Hfs9pLedger *ledger = NULL;
    assert(!hfs9p_ledger_new(&ledger, ledger_directory, "transport"));
+   /* controller_cb serves only the terminal 32767 profile (minors <= 3). */
    Hfs9pVerifier verifier = {ledger, fixture_claim_cb, fixture_protect_cb,
-                             primitive_verify, NULL, NULL};
+                             primitive_verify, NULL, NULL, NULL};
    assert(!_construct(&backend, fds, &endpoint, verifier));
    int err;
    while (

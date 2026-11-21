@@ -29,8 +29,10 @@ session = (src/'fs/9p/hfs_session.c').read_text()
 def structure(name):
     start = header.index('struct '+name+' {')
     return header[start:header.index('\n};',start)+3]
+# hfs_terminal_ack sizes the session's terminal_cells array (1h4/terminal).
 parts = [structure(n) for n in ['hfs_enrollment','hfs_provider','hfs_cap','hfs_cred',
-                               'hfs_cell','hfs_candidate','hfs_request','hfs_allocation_waiter','hfs_session']]
+                               'hfs_cell','hfs_candidate','hfs_request','hfs_allocation_waiter',
+                               'hfs_terminal_ack','hfs_session']]
 
 for filename, name in [('hfs_view.h', 'hfs_cache_page'), ('hfs_view.h', 'hfs_dirty'), ('hfs_lease.h', 'hfs_lease')]:
     raw=(src/'fs/9p'/filename).read_text()
