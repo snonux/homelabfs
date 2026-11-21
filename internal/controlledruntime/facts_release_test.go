@@ -229,3 +229,34 @@ func retarget(l *factsLedger, lease guestbridge.ViewLease, change func(*guestbri
 	l.Leases[lease.ID] = factsLease{Lease: lease, Targeted: true}
 	return lease
 }
+
+// TestFactsAdvanceReleaseWithoutRecall: an Advance lease (task xf4,
+// viewcontrol advance.go) is a Targeted DOMAIN READ lease whose release the
+// controller answers without a recall even though the cut moved past its
+// target. The Facts decode the controller's actual ledger row, Advance field
+// included, and certify it like any observation lease: checkRelease never
+// compares the lease target with the current cut, because a DOMAIN lease
+// authorizes no PTE whatever cut it names. Advance alone grants nothing: a
+// row that is not Targeted still needs a recall since its grant.
+func TestFactsAdvanceReleaseWithoutRecall(t *testing.T) {
+	_, older := observationLedger(t)
+	older.Target = guestbridge.ViewTarget{Kind: "CONTROLLED_LOCAL", Cut: &guestbridge.LocalViewCut{JournalEpoch: 1, JournalPosition: 7}}
+	for _, c := range []struct {
+		name string
+		row  map[string]any
+		want error
+	}{
+		{"Targeted Advance lease", map[string]any{"Lease": older, "Targeted": true, "Advance": true}, nil},
+		{"Advance without Targeted", map[string]any{"Lease": older, "Advance": true}, fsapi.WouldBlock},
+	} {
+		raw, err := json.Marshal(map[string]any{"Fences": map[string]uint64{"a": older.Fence}, "Leases": map[string]any{older.ID: c.row}})
+		require(t, err)
+		var l factsLedger
+		require(t, json.Unmarshal(raw, &l))
+		released, err := json.Marshal(map[string]any{"lease": older})
+		require(t, err)
+		if err := l.checkRelease(guestbridge.Context{Session: "a"}, released); !errors.Is(err, c.want) {
+			t.Errorf("%s: got %v, want %v", c.name, err, c.want)
+		}
+	}
+}

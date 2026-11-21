@@ -230,6 +230,13 @@ type ticketState struct {
 // an unshared, untargeted lease's ledger bytes identical to the layout
 // before q84, so schema-2 ledgers open and replay unchanged; a ledger written
 // before je4 has no Targeted lease, so every release there keeps its recall.
+// Advance records that every holder's VIEW_ACQUIRE requested advance (task
+// xf4, advance.go): each is an observation of a cacheless guest view whose
+// next stale observation adopts the current cut by advance rather than by
+// recall, so the last holder's release may skip the recall although the cut
+// moved (observation_release.go). An Advance lease is always Targeted.
+// omitempty keeps every ledger without such a lease byte-identical to the
+// schema-2 layout before xf4; downgrading after advances is unsupported.
 type leaseState struct {
 	ReleaseTicket string
 	ReleaseCredit bool
@@ -237,6 +244,7 @@ type leaseState struct {
 	Active        bool
 	Sharers       int  `json:",omitempty"`
 	Targeted      bool `json:",omitempty"`
+	Advance       bool `json:",omitempty"`
 }
 type reservationState struct {
 	ClosureReply json.RawMessage

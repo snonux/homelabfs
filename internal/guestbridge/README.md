@@ -159,7 +159,12 @@ Ticket/ClaimNumber/DirtyReservation types retain provenance and preowned capacit
 before PTEs, without assigning an ordinary OriginalHash to unknown dirty bytes.
 Only frozen exact bytes bind a final immutable DRAIN_WRITE claim. Bootstrap
 VIEW_ACQUIRE.target:null lets the verified issuer choose a current cut; every
-lease/install target remains nonnull. Controlled local cut identities never
+lease/install target remains nonnull. The optional VIEW_ACQUIRE.advance:true
+(task xf4, `view_advance.go`) is accepted only on a READ DOMAIN acquisition
+with a CONTROLLED_LOCAL expected target (false is refused); only then may a
+GRANTED lease name a different target, and only an AdvanceCompatible one
+(same enrollment, profile, context, journal incarnation, epoch and
+visibility generation, not behind the expected position). Controlled local cut identities never
 populate Result.Publication. Actual token ordering, earmarking, protected
 reply/floor/source lifetimes and physical MM remain k04/vz3 work.
 

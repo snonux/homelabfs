@@ -16,13 +16,16 @@ import (
 )
 
 type request struct {
-	Request        guestbridge.Ticket      `json:"request"`
-	Domain         guestbridge.Capability  `json:"domain"`
-	Access         guestbridge.ViewAccess  `json:"access"`
-	Mode           string                  `json:"mode"`
-	Target         *guestbridge.ViewTarget `json:"target"`
-	Lease          guestbridge.ViewLease   `json:"lease"`
-	Description    guestbridge.Capability  `json:"description"`
+	Request guestbridge.Ticket      `json:"request"`
+	Domain  guestbridge.Capability  `json:"domain"`
+	Access  guestbridge.ViewAccess  `json:"access"`
+	Mode    string                  `json:"mode"`
+	Target  *guestbridge.ViewTarget `json:"target"`
+	// Advance is VIEW_ACQUIRE's optional "advance": true (task xf4,
+	// advance.go); the bridge schema refuses false and every other use.
+	Advance        bool                   `json:"advance"`
+	Lease          guestbridge.ViewLease  `json:"lease"`
+	Description    guestbridge.Capability `json:"description"`
 	Offset, Length uint64
 	Number         guestbridge.ClaimNumber      `json:"claim_number"`
 	Reservation    guestbridge.DirtyReservation `json:"reservation"`
@@ -364,18 +367,24 @@ func (c *Controller) acquire(ctx context.Context, scope guestbridge.Context, r r
 		return nil, err
 	}
 	target := c.target(scope, source)
-	if r.Target != nil && !equal(*r.Target, target) {
+	stale := r.Target != nil && !equal(*r.Target, target)
+	if stale && !c.advanceGrantable(scope, r, t, source, target) {
 		return c.expectedMismatch(ctx, scope, r, t, source)
 	}
 	if err = c.remember(source); err != nil {
 		return c.reply(t, "BLOCKED", nil, nil, nil)
 	}
-	return c.grantLease(scope, r, t, target)
+	reply, err := c.grantLease(scope, r, t, target)
+	if err == nil && stale && status(reply) == "GRANTED" {
+		c.history.advances++ // an advance grant (task xf4), reported in OBSERVE
+	}
+	return reply, err
 }
 
 // expectedMismatch answers an acquisition whose expected target is not the
-// current cut: the first time it starts the recall that installs the current
-// cut and answers PENDING, and once that recall ran it answers BLOCKED for
+// current cut and that advanceGrantable does not grant on the current cut
+// (task xf4, advance.go): the first time it starts the recall that installs
+// the current cut and answers PENDING, and once that recall ran it answers BLOCKED for
 // the old expectation. The recall is scoped to the requesting domain when
 // mismatchRecallScope proves the peers need nothing from it (no open
 // reservation, and every active peer lease Targeted on an observably current
@@ -404,16 +413,23 @@ func (c *Controller) expectedMismatch(ctx context.Context, scope guestbridge.Con
 // one more holder (shareLease, lease_holders.go), or issues the next revision
 // of a new lease on target. Both reserve the new holder's release credit
 // within the identity and control bounds. acquire grants only when r.Target
-// is nil or equals target, so a non-nil r.Target marks the holder as an
-// observation of a view installed at target (leaseState.Targeted, task je4).
+// is nil or equals target, or by advance (task xf4, advance.go), so a
+// non-nil r.Target marks the holder as an observation of a view installed at
+// target (leaseState.Targeted, task je4) or of a cacheless view that adopts
+// target. A Targeted DOMAIN READ holder that requested advance marks an
+// advancing observation; the lease is Advance while every holder is one
+// (leaseState.Advance, ANDed by shareLease). The bridge schema allows
+// advance only on such requests; the check here keeps a direct caller from
+// marking any other lease Advance.
 // A new lineage is BLOCKED once Revisions holds Bounds.Identities lineages
 // (lineageCapacity): reopen refuses a ledger beyond that bound.
 func (c *Controller) grantLease(scope guestbridge.Context, r request, t ticketState, target guestbridge.ViewTarget) (json.RawMessage, error) {
 	lease := guestbridge.ViewLease{Scope: scope, Domain: r.Domain, Access: r.Access, CredentialHash: digest(r.Request.Credentials), Mode: r.Mode, Target: target, Fence: c.fence(scope.Session), Revision: 1}
 	targeted := r.Target != nil
+	advance := r.Advance && targeted && r.Access.Kind == "DOMAIN" && r.Mode == "READ"
 	for id, existing := range c.state.Leases {
 		if existing.Active && sameLineage(existing.Lease, lease) {
-			return c.shareLease(id, existing, t, targeted)
+			return c.shareLease(id, existing, t, targeted, advance)
 		}
 	}
 	if len(c.state.Leases) >= c.config.Authorization.Enrollment.Bounds.Identities || !c.controlCapacity(1) || !c.identityCapacity(1) {
@@ -428,7 +444,7 @@ func (c *Controller) grantLease(scope guestbridge.Context, r request, t ticketSt
 	c.state.Revisions[lineage] = lease.Revision
 	c.state.LineageFences[lineage] = lineageFence{Session: scope.Session, Fence: lease.Fence}
 	lease.ID = objectID(lease)
-	c.state.Leases[lease.ID] = leaseState{Lease: lease, Active: true, ReleaseCredit: true, Targeted: targeted}
+	c.state.Leases[lease.ID] = leaseState{Lease: lease, Active: true, ReleaseCredit: true, Targeted: targeted, Advance: advance}
 	return c.reply(t, "GRANTED", &lease, nil, nil)
 }
 

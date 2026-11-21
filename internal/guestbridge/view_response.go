@@ -197,7 +197,10 @@ func validateViewResponse(c Command, raw json.RawMessage) error {
 			if lease["credential_hash"] != wireHash(cred) {
 				return fsapi.Permission
 			}
-			if c.Op == "VIEW_ACQUIRE" && (!equalWire(lease["domain"], p["domain"]) || !equalWire(lease["access"], p["access"]) || lease["mode"] != p["mode"] || p["target"] != nil && !equalWire(lease["target"], p["target"])) {
+			// An acquire is granted on its expected target, except that an
+			// advance request (task xf4) may be granted on a compatible newer
+			// cut of the same lineage of cuts (advancedLease, view_advance.go).
+			if c.Op == "VIEW_ACQUIRE" && (!equalWire(lease["domain"], p["domain"]) || !equalWire(lease["access"], p["access"]) || lease["mode"] != p["mode"] || p["target"] != nil && !equalWire(lease["target"], p["target"]) && !advancedLease(p, lease["target"])) {
 				return fsapi.Stale
 			}
 			if c.Op == "VIEW_RENEW" {

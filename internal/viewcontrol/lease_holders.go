@@ -89,13 +89,17 @@ import (
 // acquisition ticket, reserving that holder's release credit. targeted says
 // whether this holder named the lease's target as its expected target; one
 // untargeted (discovery) holder clears Targeted for good, so the last
-// holder's release keeps its recall (observation_release.go).
-func (c *Controller) shareLease(id string, existing leaseState, t ticketState, targeted bool) (json.RawMessage, error) {
+// holder's release keeps its recall (observation_release.go). advance says
+// whether this holder requested advance (task xf4); Advance is ANDed the same
+// way, so one holder without it makes the last release keep je4's
+// current-cut condition for good.
+func (c *Controller) shareLease(id string, existing leaseState, t ticketState, targeted, advance bool) (json.RawMessage, error) {
 	if !c.controlCapacity(1) || !c.identityCapacity(1) {
 		return c.reply(t, "BLOCKED", nil, nil, nil)
 	}
 	existing.Sharers++
 	existing.Targeted = existing.Targeted && targeted
+	existing.Advance = existing.Advance && advance
 	c.state.Leases[id] = existing
 	lease := existing.Lease
 	return c.reply(t, "GRANTED", &lease, nil, nil)
