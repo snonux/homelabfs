@@ -59,7 +59,8 @@ import (
 // installed targets). A read-only OPEN of an unpinned non-root object still
 // journals its pin, so a peer's next observation hits the mismatch, exactly
 // as after a pinning LOOKUP; since task e84 that mismatch recalls only the
-// observing domain, because the move is pin-only (mismatch_scope.go). A
+// observing domain while peer leases are observably current or absent
+// (mismatch_scope.go). A
 // mount of a subtree directory would likewise pin on its root OPEN and move
 // the cut, at the cost of those scoped mismatch recalls.
 

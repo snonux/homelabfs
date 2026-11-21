@@ -377,8 +377,9 @@ func (c *Controller) acquire(ctx context.Context, scope guestbridge.Context, r r
 // current cut: the first time it starts the recall that installs the current
 // cut and answers PENDING, and once that recall ran it answers BLOCKED for
 // the old expectation. The recall is scoped to the requesting domain when
-// mismatchRecallScope proves the peers need nothing from it (a pin-only move
-// under observably current peer leases, task e84) and all-domain otherwise.
+// mismatchRecallScope proves the peers need nothing from it (no open
+// reservation, and every active peer lease Targeted on an observably current
+// cut or no peer lease at all; tasks e84 and wf4) and all-domain otherwise.
 // While any recall is in progress no recall can start yet, so it stays
 // PENDING without spending that one recall; its retry reclassifies against
 // the cut it then captures.

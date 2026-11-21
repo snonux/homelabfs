@@ -74,9 +74,11 @@ import (
 // The guest takes each observation lease with expected_target = its installed
 // view. A cut move admitted under peer leases (FORGET, a final
 // DESCRIPTION_RELEASE, a pinning LOOKUP) therefore makes the peer's next
-// observation hit expectedMismatch. Since task e84 that recall is scoped to
-// the requesting domain when the move was pin-only and every active peer
-// lease is on an observably equal cut (mismatch_scope.go); otherwise it is
+// observation hit expectedMismatch, and so does a domain's own next
+// observation after its mutation. Since tasks e84 and wf4 that recall is
+// scoped to the requesting domain when no domain holds an open reservation
+// and every active peer lease is Targeted on a cut observably equal to the
+// current one, however the cut moved (mismatch_scope.go); otherwise it is
 // all-domain.
 //
 // recallState.Domain is omitempty, so all-domain recalls keep their exact

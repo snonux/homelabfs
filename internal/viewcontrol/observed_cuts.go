@@ -7,10 +7,14 @@ import (
 
 // Observable digests of recent cuts (task e84, mismatch_scope.go).
 //
-// An expected-target mismatch can be scoped only when the expected cut is
-// observably equal to the current one, but the expected cut is usually
-// pruned from Sources by then (its leases were released, retired and
-// compacted). The controller keeps the observable digest of the last
+// An expected-target mismatch can be scoped only when every active peer
+// lease is on a cut observably equal to the current one. Until task wf4 the
+// expected cut had to be too, and it is usually pruned from Sources by then
+// (its leases were released, retired and compacted), which is why digests
+// outlive their cuts here. Since wf4 only peer lease cuts are compared;
+// leases pin their cuts, so the cache now only saves recomputing digests
+// (ObservableDigest hashes the whole State and every payload byte). The
+// controller keeps the observable digest of the last
 // observedCutLimit cuts it retained, in memory only and guarded by mu: it is
 // not part of the protected ledger, so no ledger byte, digest or reply
 // changes, and a reopened controller starts empty. A missing digest only
