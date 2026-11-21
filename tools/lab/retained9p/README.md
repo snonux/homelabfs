@@ -101,11 +101,13 @@ both exact `9P2000.L.hfs1.4,cache=mmap,msize=65536` mount IDs. It retains direct
 descriptors and verifies independent `st_dev` domains. Every operation stays in
 a newly exclusively created case directory. JSONL invocation/reply/errno evidence
 leaves through stdout; a controller must preserve it outside the tested volume.
-Every hfs syscall a case issues in the parent (opens, `fchown`, `fchmod`,
-`mkdir`, cross-domain `stat`, `fstat`, `pread`, …) is one recorded
+Every hfs syscall a case body issues in the parent (opens, `fchown`, `fchmod`,
+`mkdir`, cross-domain `stat`, `fstat`, `pread`, `mmap`, …) is one recorded
 `Probe.call`, so a failed case's last `reply` event names the syscall and its
 errno (yf4; zq3-r18's refused chown showed only a bare errno). Actions run in
-a forked child stay plain: their errno comes back in the child's reply.
+a forked child stay plain: their errno comes back in the child's reply. The
+retention inventory (`Retention.inventory`) and `run_directory`'s root `fstat`
+are outside the case bodies and stay plain.
 
 **Successful cases retain their payload** until host correlation is captured.
 (The earlier probe deleted it immediately, so the host could never correlate

@@ -446,7 +446,7 @@ class CaseSyscallNamingTests(TwoRootsTestCase):
         file_calls = ["create-exclusive", "pwrite", "fdatasync", "fsync", "pread"]
         self.assertEqual(self.invoked(self.events("sync")),
                          ["mkdir-exclusive", "open-leaf", *file_calls * 3, "directory-fsync",
-                          "create-exclusive", "ftruncate", "MS_SYNC", "mapped-fsync", "pread"])
+                          "create-exclusive", "ftruncate", "mmap", "MS_SYNC", "mapped-fsync", "pread"])
 
     def test_metadata_records_cross_domain_stat_and_reads(self):
         self.assertEqual(self.invoked(self.events("metadata")),

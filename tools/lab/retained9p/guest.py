@@ -718,8 +718,8 @@ def read_child(directory, name):
         return os.read(fd, 64).decode()
 
 
-# Case bodies. Every hfs syscall the parent issues goes through p.call (or
-# p.owned for an open), so a failure's reply event names the syscall that
+# Case bodies. Every hfs syscall a case body issues in the parent goes through
+# p.call (or p.owned for an open), so a failure's reply event names the syscall that
 # failed (yf4, zq3-r18: chown's EOPNOTSUPP surfaced only as a bare errno).
 # The syscall sequence is the same as before the wrapping; only invoke/reply
 # events were added. Actions that run in a forked child (p.child) stay plain:
@@ -865,9 +865,12 @@ def sync_mapped(p, directory):
         # Slice and readback lengths derive from the receipt itself: a fixed
         # 16-byte slice of this 17-byte receipt raised IndexError locally.
         receipt = b"mmap-receipt-0001"
-        # mmap's internal dup is closed with the mmap object (see ALARM).
-        with mmap.mmap(fd, 4096, flags=mmap.MAP_SHARED,
-                       prot=mmap.PROT_READ | mmap.PROT_WRITE) as view:
+        # mmap's internal dup is closed with the mmap object (see ALARM). The
+        # mmap itself is recorded too (yf4 review): a refused mapping names
+        # itself; on a Deadline the object is never bound and refcount frees it.
+        with p.call("mmap", lambda: mmap.mmap(fd, 4096, flags=mmap.MAP_SHARED,
+                                              prot=mmap.PROT_READ | mmap.PROT_WRITE),
+                    bytes=4096) as view:
             view[:len(receipt)] = receipt
             p.call("MS_SYNC", view.flush, bytes=4096)
             p.call("mapped-fsync", lambda: os.fsync(fd))
@@ -925,9 +928,11 @@ def mapped_pressure(p):
     with p.directory() as (directory, leaf):
         with p.owned("create-exclusive", "full", EXCLUSIVE, 0o600, dir_fd=directory) as fd:
             p.call("ftruncate", lambda: os.ftruncate(fd, PAYLOAD), bytes=PAYLOAD)
-            # mmap's internal dup is closed with the mmap object (see ALARM).
-            with mmap.mmap(fd, PAYLOAD, flags=mmap.MAP_SHARED,
-                           prot=mmap.PROT_READ | mmap.PROT_WRITE) as view:
+            # mmap's internal dup is closed with the mmap object (see ALARM);
+            # the mapping is a recorded call like the one in sync_mapped.
+            with p.call("mmap", lambda: mmap.mmap(fd, PAYLOAD, flags=mmap.MAP_SHARED,
+                                                  prot=mmap.PROT_READ | mmap.PROT_WRITE),
+                        bytes=PAYLOAD) as view:
                 # Deterministic full 4MiB payload; no reduced canary or SIGBUS pass.
                 for offset in range(0, PAYLOAD, 4096):
                     view[offset:offset + 4096] = bytes([offset // 4096 % 251]) * 4096
