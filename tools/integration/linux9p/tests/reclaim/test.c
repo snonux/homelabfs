@@ -67,6 +67,9 @@ struct hfs_cred {
    const char *canonical;
 };
 #include "fixture.h"
+/* hfs_copy_token now calls hfs_received_copy; the non-controlled build
+ * selects the header's real inline parse-copy. */
+#include "hfs_received.h"
 #include "result.inc"
 static const struct hfs_cred *expected_issuer;
 static const struct hfs_json *expected_result;

@@ -53,7 +53,10 @@ def main():
     lines.append('static const char fixture_second_result[] = ' + json.dumps(canonical(fixture['next_result'])) + ';')
     inode = (source / 'fs/9p/hfs_inode.c').read_text()
     inode_parts = []
-    for start, end in [('static void hfs_inode_link_forget(', '\nstruct inode *hfs_inode_get('),
+    # hfs_inode_get_fail (ie4) sits between the link helper and
+    # hfs_inode_get; it needs the VFS inode-seed machinery, so the slice ends
+    # before it and this test keeps exercising only link/forget/evict.
+    for start, end in [('static void hfs_inode_link_forget(', '\nstatic void hfs_inode_get_fail('),
                        ('static void hfs_forget_work(', '\nstatic int hfs_d_revalidate(')]:
         offset = inode.index(start)
         inode_parts.append(inode[offset:inode.index(end, offset)])

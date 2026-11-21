@@ -19,7 +19,9 @@ os.sched_setaffinity(0, sorted(os.sched_getaffinity(0))[:2])
 session=(src/'fs/9p/hfs_session.c').read_text()
 start=session.index('hfs_buf_printf(&command, "{')
 end=session.index('mutex_unlock(&session->lock);',start)
-(out/'builder.inc').write_text('struct builder_session {\n struct { const char *context; u32 context_len; } enrollment;\n u16 bridge_minor;\n};\nstruct builder_slot { bool ack_ready; u64 number; u8 hash[32]; };\nstatic void production_build(struct builder_session *session,\n struct builder_slot *slot,u64 cell,const char *operation,\n struct hfs_buf *payload,struct hfs_buf *out) {\n struct hfs_buf command = *out;\n'+session[start:end]+'\n *out = command;\n}\n')
+# The builder selects its protocol tuple by enrollment.protocol_features; the
+# carrier leaves it 0, which selects each minor's base tuple (never terminal).
+(out/'builder.inc').write_text('struct builder_session {\n struct { const char *context; u32 context_len; u32 protocol_features; } enrollment;\n u16 bridge_minor;\n};\nstruct builder_slot { bool ack_ready; u64 number; u8 hash[32]; };\nstatic void production_build(struct builder_session *session,\n struct builder_slot *slot,u64 cell,const char *operation,\n struct hfs_buf *payload,struct hfs_buf *out) {\n struct hfs_buf command = *out;\n'+session[start:end]+'\n *out = command;\n}\n')
 compat=(here.parent/'codec/compat.h').read_text().replace('typedef uint64_t u64;', 'typedef unsigned long long u64;').replace(
     'hfs_test_last_allocation_size = n;',
     'if (n > hfs_test_last_allocation_size) hfs_test_last_allocation_size = n;').replace(

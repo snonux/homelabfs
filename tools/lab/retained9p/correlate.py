@@ -58,7 +58,8 @@ controller = load_controller()
 Refused = controller.Refused
 EVIDENCE_VERSION = "homelabfs-controlled-evidence/2"  # /2: provider ledgers carry Claims (b84)
 # Optional additive /2 fields (nc4 transport.failure, ce4 controller.recalls,
-# the view controller recall history) are diagnostics this correlator ignores.
+# the view controller recall history, with its optional 2h4 "blocked" reasons)
+# are diagnostics this correlator ignores.
 OBSERVE_FORMAT = "homelabfs-retained9p-host-observe/1"
 LOST_REPLY_VERSION = "homelabfs-retained9p-lost-reply-correlation/1"
 K04_VERSION = "homelabfs-retained9p-k04-after-loss/1"

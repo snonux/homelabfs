@@ -320,9 +320,12 @@ for declaration in ['enum hfs_view_scope {', 'struct hfs_enrollment {']:
     end = declarations.index('\n};', start)+3
     parts.append(declarations[start:end])
 (out/'enrollment_struct.inc').write_text('\n'.join(parts)+'\n')
+# The session embeds an x84 allocation waitqueue and the terminal ack cells
+# (struct hfs_terminal_ack); both are opaque to the provider tests.
 session_parts = ['typedef pthread_mutex_t spinlock_t;',
+                 'typedef int wait_queue_head_t;',
                  'struct list_head { struct list_head *next, *prev; };']
-for declaration in ['struct hfs_cell {', 'struct hfs_session {']:
+for declaration in ['struct hfs_cell {', 'struct hfs_terminal_ack {', 'struct hfs_session {']:
     start = declarations.index(declaration)
     end = declarations.index('\n};', start)+3
     session_parts.append(declarations[start:end])

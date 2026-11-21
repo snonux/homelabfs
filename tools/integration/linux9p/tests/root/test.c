@@ -18,6 +18,9 @@ struct hfs_session {
 	struct { char context[4096]; u32 context_len; } enrollment;
 	const struct hfs_provider *provider;
 };
+/* hfs_copy_token now calls hfs_received_copy; the non-controlled build
+ * selects the header's real inline parse-copy. */
+#include "hfs_received.h"
 #include "result.inc"
 #include "fixture.h"
 
