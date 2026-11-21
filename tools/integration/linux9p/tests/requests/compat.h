@@ -6,6 +6,10 @@
 #include <assert.h>
 #include <pthread.h>
 #include <stdatomic.h>
+/* 1h4: view->retirement_releases (hfs_view.h; hfs_view_retire_wait, hfs_retirement_unlock). */
+typedef atomic_long atomic_long_t;
+#define atomic_long_read(p) atomic_load(p)
+#define atomic_long_inc(p) ((void)atomic_fetch_add((p),1))
 #include <stdio.h>
 #include <unistd.h>
 struct mutex { pthread_mutex_t native; };

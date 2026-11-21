@@ -451,7 +451,7 @@ diff --git a/fs/9p/hfs_view.h b/fs/9p/hfs_view.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.h
-@@ -0,0 +1,294 @@
+@@ -0,0 +1,316 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_VIEW_H
 +#define FS_9P_HFS_VIEW_H
@@ -579,9 +579,28 @@ new file mode 100644
 +	bool retire_blocked;
 +	/* re4 final review: counts floor advances of any hfs_view_retire pass
 +	 * (incremented under session->retirement and session->lock, read with
-+	 * READ_ONCE); a BLOCKED observation retries when it changed.
++	 * READ_ONCE); a BLOCKED observation retries when it changed. 1h4: each
++	 * advance wakes view->wait.
 +	 */
 +	unsigned long retire_progress;
++	/* 1h4 (zq3-r19 R19-1): counts releases of session->retirement by any
++	 * holder: a view retirement round (hfs_view_retire_mode), ordinary
++	 * request retirement (hfs_retire) and session destruction
++	 * (hfs_session_destroy). Every holder releases the mutex through
++	 * hfs_retirement_unlock, which increments this only after the unlock
++	 * and then wakes view->wait (review rounds 1 and 2: a round that
++	 * counted before its unlock, or a holder that did not count at all, let
++	 * a waiter sleep to its 30 s deadline). A BLOCKED observation reads it
++	 * before its hfs_view_retire_try. When that try finds the mutex held,
++	 * the holder has not unlocked, so has not counted yet, and its count
++	 * changes the value the observation waits on (hfs_view_retire_wait),
++	 * provided the holder releases through hfs_retirement_unlock and this
++	 * view is still session->view then. A mutex_unlock of
++	 * session->retirement elsewhere would be missed; the observation's
++	 * bounded wait slice (HFS_RETIRE_BUSY_SLICE_MS, hfs_mmap.c) limits
++	 * that to one slice. Atomic because the counts run outside the mutex.
++	 */
++	atomic_long_t retirement_releases;
 +	/* 2f4 (zq3-r17 R17-1): counts accepted REOPENED ACKs, i.e. raises of
 +	 * the mount's current_fence (hfs_view_reopen_acked, after
 +	 * hfs_controlled_after_ack). Incremented under view->lock, read with
@@ -720,6 +739,9 @@ new file mode 100644
 +void hfs_view_reopen_acked(struct hfs_view *view);
 +int hfs_view_reopen_wait(struct hfs_view *view, unsigned long acks,
 +			 unsigned long deadline);
++void hfs_retirement_unlock(struct hfs_session *session);
++int hfs_view_retire_wait(struct hfs_view *view, long releases,
++			 unsigned long progress, unsigned long deadline);
 +void hfs_view_leave(void *cookie);
 +int hfs_view_stop(struct hfs_view *view, const uuid_t *generation,
 +		  const uuid_t *recall, u64 sequence);
@@ -750,7 +772,7 @@ diff --git a/fs/9p/hfs_view.c b/fs/9p/hfs_view.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.c
-@@ -0,0 +1,1223 @@
+@@ -0,0 +1,1277 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Physical retained-cache admission and all-alias PTE/TLB/MMU quiescence. */
 +#include <linux/mm.h>
@@ -1180,6 +1202,60 @@ new file mode 100644
 +	left = wait_event_killable_timeout(view->wait,
 +		READ_ONCE(view->reopen_acks) != acks || hfs_view_refused(view) ||
 +		READ_ONCE(view->session->transport_failed),
++		deadline - now);
++	if (left < 0)
++		return -EINTR;
++	return left ? 0 : -ETIMEDOUT;
++}
++
++/* 1h4 (zq3-r19 R19-1, review round 2): the only release of
++ * session->retirement. Every holder (hfs_view_retire_mode, hfs_retire,
++ * hfs_session_destroy) ends here: unlock, then count the release on the
++ * session's view, then wake view->wait, so an observation whose trylock
++ * failed against this holder (hfs_view_retire_wait) decides again. Called
++ * without session->lock (hfs_view_get takes it) and with the session alive;
++ * a session without a view has no waiter (a waiter holds a view reference,
++ * and a view leaving session->view is fenced first, which is a stop).
++ */
++void hfs_retirement_unlock(struct hfs_session *session)
++{
++	struct hfs_view *view;
++
++	mutex_unlock(&session->retirement);
++	view = hfs_view_get(session);
++	if (!view)
++		return;
++	atomic_long_inc(&view->retirement_releases);
++	wake_up_all(&view->wait);
++	hfs_view_put(view);
++}
++
++/* 1h4 (zq3-r19 R19-1): parks until the holder of session->retirement that
++ * the caller's hfs_view_retire_try found has released it
++ * (view->retirement_releases is no longer releases, as read by the caller
++ * before that try; hfs_retirement_unlock counts after the unlock), a floor
++ * advanced (view->retire_progress is no longer progress), the view refuses
++ * for good (hfs_view_refused) or the transport failed, or until deadline,
++ * which the caller sets to one bounded slice. Returns 0 for any of those
++ * but the deadline (the caller checks its stops and decides again),
++ * -ETIMEDOUT at the deadline and -EINTR on a fatal signal. Event-driven:
++ * hfs_retirement_unlock and each floor advance wake view->wait, and the
++ * stop/fence paths wake it too. A session block or transport_failed alone
++ * does not wake it (neither path has the view), so those stops are seen at
++ * the next wake-up or at the deadline, as for hfs_view_reopen_wait.
++ */
++int hfs_view_retire_wait(struct hfs_view *view, long releases,
++			 unsigned long progress, unsigned long deadline)
++{
++	unsigned long now = jiffies;
++	long left;
++
++	if (!time_before(now, deadline))
++		return -ETIMEDOUT;
++	left = wait_event_killable_timeout(view->wait,
++		atomic_long_read(&view->retirement_releases) != releases ||
++		READ_ONCE(view->retire_progress) != progress ||
++		hfs_view_refused(view) || READ_ONCE(view->session->transport_failed),
 +		deadline - now);
 +	if (left < 0)
 +		return -EINTR;
@@ -2076,7 +2152,7 @@ new file mode 100644
 +
 +void hfs_view_ticket_put(struct hfs_view_ticket *ticket);
 +int hfs_view_retire(struct hfs_session *session);
-+int hfs_view_retire_try(struct hfs_session *session);
++int hfs_view_retire_try(struct hfs_session *session, bool *ran);
 +bool hfs_view_tickets_busy(struct hfs_session *session);
 +void hfs_view_tickets_destroy(struct hfs_session *session);
 +int hfs_view_target(struct hfs_session *session, const struct hfs_json *json,
@@ -2116,7 +2192,7 @@ diff --git a/fs/9p/hfs_lease.c b/fs/9p/hfs_lease.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.c
-@@ -0,0 +1,1816 @@
+@@ -0,0 +1,1832 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Exact bridge1.1 ticket/lease transport; no physical or source-proof defaults. */
 +#include <linux/slab.h>
@@ -3347,8 +3423,11 @@ new file mode 100644
 +
 +/* try (re4 review): an observation's BLOCKED back-off must not wait behind a
 + * running retirement round (the cleanup worker's), so it skips with -EBUSY.
++ * 1h4 review round 1: *ran (try only) says whether a round ran, so the
++ * caller can tell a held mutex (-EBUSY, !*ran) from a round that ran and
++ * itself returned -EBUSY (a retired ticket still in use).
 + */
-+static int hfs_view_retire_mode(struct hfs_session *session, bool try)
++static int hfs_view_retire_mode(struct hfs_session *session, bool try, bool *ran)
 +{
 +	struct hfs_view_family *family;
 +	struct hfs_view *view;
@@ -3374,6 +3453,8 @@ new file mode 100644
 +		hfs_view_put(view);
 +		return -EBUSY;
 +	}
++	if (ran)
++		*ran = true;
 +	payload = view->retire_payload;
 +	mutex_lock(&session->lock);
 +	list_for_each_entry(family, &session->view_families, list)
@@ -3490,8 +3571,13 @@ new file mode 100644
 +		}
 +		family->floor = through;
 +		advanced = true;
-+		/* re4: progress for BLOCKED observations (hfs_mmap_blocked_backoff). */
++		/* re4: progress for BLOCKED observations (hfs_mmap_blocked_backoff).
++		 * 1h4: an observation waiting behind this round
++		 * (hfs_view_retire_wait) retries at once, without waiting for the
++		 * other families' exchanges.
++		 */
 +		WRITE_ONCE(view->retire_progress, view->retire_progress + 1);
++		wake_up_all(&view->wait);
 +		list_for_each_entry_safe(ticket, next, &session->view_tickets, list) {
 +			if (ticket->family != family || !ticket->number || ticket->number > through)
 +				continue;
@@ -3541,8 +3627,11 @@ new file mode 100644
 +	 */
 +	if (offered || blocked)
 +		WRITE_ONCE(view->retire_blocked, blocked);
-+	/* Payload and snapshot storage were reserved before writable admission. */
-+	mutex_unlock(&session->retirement);
++	/* Payload and snapshot storage were reserved before writable admission.
++	 * 1h4: this round is over, whatever it achieved; an observation whose
++	 * try found it busy (hfs_view_retire_wait) decides again.
++	 */
++	hfs_retirement_unlock(session);
 +	hfs_view_put(view);
 +	return err ?: (advanced ? 0 : -EAGAIN);
 +}
@@ -3552,13 +3641,16 @@ new file mode 100644
 + */
 +int hfs_view_retire(struct hfs_session *session)
 +{
-+	return hfs_view_retire_mode(session, false);
++	return hfs_view_retire_mode(session, false, NULL);
 +}
 +
-+/* As hfs_view_retire, but -EBUSY at once while another round runs. */
-+int hfs_view_retire_try(struct hfs_session *session)
++/* As hfs_view_retire, but -EBUSY at once while another round runs. *ran is
++ * true only when a round ran (1h4): -EBUSY with !*ran is the held mutex.
++ */
++int hfs_view_retire_try(struct hfs_session *session, bool *ran)
 +{
-+	return hfs_view_retire_mode(session, true);
++	*ran = false;
++	return hfs_view_retire_mode(session, true, ran);
 +}
 +
 +/* Outputs remain owned on uncertain errors: their exact ticket and ordinary
@@ -3937,7 +4029,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,2410 @@
+@@ -0,0 +1,2597 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -6045,32 +6137,52 @@ new file mode 100644
 +}
 +
 +/* re4: the first pause after a BLOCKED VIEW_ACQUIRE (doubled per pause), and
-+ * the most pauses one observation takes. Each BLOCKED acquisition still takes
-+ * a host ticket number and an identity until a VIEW_RETIRE passes it (review
-+ * round 1): of the zq3 Tickets bound (16) one syscall spends at most
-+ * HFS_BLOCKED_RETRIES_MAX + 1, and only while retirement makes progress.
-+ * Several threads may retry on one floor advance; each stays within its own
-+ * cap, and the host's ticket admission still bounds them all.
++ * the most retries one observation takes after BLOCKED answers. Each BLOCKED
++ * acquisition still takes a host ticket number and an identity until a
++ * VIEW_RETIRE passes it (review round 1): of the zq3 Tickets bound (16) one
++ * syscall spends at most HFS_BLOCKED_RETRIES_MAX + 1 on BLOCKED answers,
++ * whether they needed retirement progress (attempts->blocked) or were
++ * re-checks after a reinstall (attempts->reinstalled, 1h4). Several threads
++ * may retry on one floor advance; each stays within its own cap, and the
++ * host's ticket admission still bounds them all.
 + */
 +#define HFS_BLOCKED_BACKOFF_MIN_MS 50U
 +#define HFS_BLOCKED_RETRIES_MAX 3U
 +
 +/* One hfs_mmap_begin call's retry state. All retries, after a failed
 + * re-check and after a host BLOCKED, share one HFS_VIEW_ENTER_WAIT_MS
-+ * deadline from the call's start. rechecks counts failed re-checks, blocked
-+ * BLOCKED answers plus pauses repeated behind a busy retirement (both against
-+ * HFS_BLOCKED_RETRIES_MAX); host_blocked is the last acquisition's answer;
++ * deadline from the call's start. rechecks counts failed re-checks (the
++ * reinstalled BLOCKED answers included); blocked counts the host's BLOCKED
++ * answers on an unchanged view, which retry only after retirement progress,
++ * plus this call's own retirement rounds that ran and returned -EBUSY (each
++ * followed by another pause, as in re4); reinstalled counts BLOCKED answers
++ * after the view was reinstalled since the capture (1h4), which retry at
++ * once. blocked + reinstalled bounds the BLOCKED tickets (at most that many),
++ * capped by HFS_BLOCKED_RETRIES_MAX; a local wait behind a retirement mutex
++ * held by another holder counts against neither (1h4: before, it counted as
++ * an attempt). host_blocked is the last acquisition's answer;
 + * backoff_ms is the next pause; progress is view->retire_progress as read
-+ * before the last acquisition.
++ * before the last acquisition, acks view->reopen_acks as read before its
++ * capture.
 + */
 +struct hfs_mmap_attempts {
 +	unsigned long deadline;
 +	unsigned long progress;
++	unsigned long acks;
 +	unsigned int rechecks;
 +	unsigned int blocked;
++	unsigned int reinstalled;
 +	unsigned int backoff_ms;
 +	bool host_blocked;
 +};
++
++/* The attempts counted against the cap; at least the host tickets this
++ * call spent on BLOCKED answers.
++ */
++static unsigned int hfs_mmap_blocked_tickets(const struct hfs_mmap_attempts *attempts)
++{
++	return attempts->blocked + attempts->reinstalled;
++}
 +
 +/* The host's BLOCKED stands: return its -EAGAIN with one rate-limited line. */
 +static int hfs_mmap_blocked_give_up(struct hfs_view *view,
@@ -6078,18 +6190,19 @@ new file mode 100644
 +				    const char *reason)
 +{
 +	pr_warn_ratelimited("9p-hfs: session %pUb observation VIEW_ACQUIRE BLOCKED, %s after %d attempts (-EAGAIN)\n",
-+			    &view->session->enrollment.session, reason, (int)attempts->blocked);
++			    &view->session->enrollment.session, reason,
++			    (int)hfs_mmap_blocked_tickets(attempts));
 +	return -EAGAIN;
 +}
 +
-+/* One pause of the BLOCKED back-off, after the stop checks (oc4:
++/* The stop checks before another BLOCKED retry or wait (oc4:
 + * transport_failed; a refused view, i.e. FENCED or a closing or blocked
-+ * hfs1.4 session; a fatal signal, also during the pause), the deadline and
-+ * the cap.
++ * hfs1.4 session; a fatal signal) and the deadline, which gives the host's
++ * BLOCKED back.
 + */
-+static int hfs_mmap_blocked_pause(struct hfs_view *view, struct hfs_mmap_attempts *attempts)
++static int hfs_mmap_blocked_stop(struct hfs_view *view,
++				 const struct hfs_mmap_attempts *attempts)
 +{
-+	unsigned long pause;
 +	int err;
 +
 +	/* hfs_view_refused reads only READ_ONCE state; no view->lock needed. */
@@ -6097,31 +6210,138 @@ new file mode 100644
 +		hfs_mmap_retry_allowed(view, attempts->deadline);
 +	if (err == -ETIMEDOUT)
 +		return hfs_mmap_blocked_give_up(view, attempts, "deadline exhausted");
++	return err;
++}
++
++/* One pause of the BLOCKED back-off, after the stop checks (a fatal signal
++ * also ends the pause), the deadline and the ticket cap. Only a host BLOCKED
++ * on an unchanged view pauses.
++ */
++static int hfs_mmap_blocked_pause(struct hfs_view *view, struct hfs_mmap_attempts *attempts)
++{
++	unsigned long pause;
++	int err;
++
++	err = hfs_mmap_blocked_stop(view, attempts);
 +	if (err)
 +		return err;
-+	if (attempts->blocked > HFS_BLOCKED_RETRIES_MAX)
++	if (hfs_mmap_blocked_tickets(attempts) > HFS_BLOCKED_RETRIES_MAX)
 +		return hfs_mmap_blocked_give_up(view, attempts, "retry limit reached");
 +	pause = min(msecs_to_jiffies(attempts->backoff_ms), attempts->deadline - jiffies);
 +	pr_info_ratelimited("9p-hfs: session %pUb observation VIEW_ACQUIRE BLOCKED by the host (attempt %d); retiring, then retrying after %d ms if that frees anything\n",
-+			    &view->session->enrollment.session, (int)attempts->blocked,
++			    &view->session->enrollment.session,
++			    (int)hfs_mmap_blocked_tickets(attempts),
 +			    (int)jiffies_to_msecs(pause));
 +	schedule_timeout_killable(pause);
 +	attempts->backoff_ms *= 2;
 +	return fatal_signal_pending(current) ? -EINTR : 0;
 +}
 +
++/* 1h4 review round 2: the longest single wait behind another holder of
++ * session->retirement. Every holder releases through hfs_retirement_unlock,
++ * which wakes the waiter at once, so this bound normally never expires. It
++ * is there so a holder that releases the mutex some other way (none today;
++ * a future path that forgets the helper) costs one slice, not the rest of
++ * the 30 s deadline, which before 1h4 was a 50-200 ms pause. An expired
++ * slice is no answer from the host either: the offer tries again, uncounted.
++ */
++#define HFS_RETIRE_BUSY_SLICE_MS 200U
++
++/* 1h4 (zq3-r19 R19-1): the back-off's retirement try found another holder of
++ * session->retirement (-EBUSY, no round ran; e.g. the round a recall's
++ * REOPENED ACK forces, hfs_mmap_retire_kick, or ordinary request retirement,
++ * hfs_retire). That is no answer from the host, so it neither counts against
++ * the cap nor pauses again: wait (killable) for that holder to release the
++ * mutex or a floor to advance, for at most one HFS_RETIRE_BUSY_SLICE_MS slice
++ * within the deadline. releases is view->retirement_releases as read before
++ * the try. After a wake or an expired slice the stop checks run again
++ * (review round 1), so a refused view or a failed transport ends here with
++ * -ESTALE instead of running another round, and an exhausted deadline gives
++ * the host's -EAGAIN. Its own rate-limited line (first wait of an offer only,
++ * log), apart from the host BLOCKED pause's.
++ */
++static int hfs_mmap_retire_busy(struct hfs_view *view,
++				const struct hfs_mmap_attempts *attempts,
++				long releases, bool log)
++{
++	unsigned long now, end;
++	int err;
++
++	err = hfs_mmap_blocked_stop(view, attempts);
++	if (err)
++		return err;
++	/* The stop check passed the deadline, but jiffies moves on; never
++	 * print a wrapped remainder.
++	 */
++	now = jiffies;
++	if (log)
++		pr_info_ratelimited("9p-hfs: session %pUb observation VIEW_ACQUIRE BLOCKED (attempt %d): local retirement mutex busy; waiting for its holder (up to %d ms)\n",
++				    &view->session->enrollment.session,
++				    (int)hfs_mmap_blocked_tickets(attempts),
++				    time_before(now, attempts->deadline) ?
++				    (int)jiffies_to_msecs(attempts->deadline - now) : 0);
++	end = now + msecs_to_jiffies(HFS_RETIRE_BUSY_SLICE_MS);
++	if (!time_before(end, attempts->deadline))
++		end = attempts->deadline;
++	err = hfs_view_retire_wait(view, releases, attempts->progress, end);
++	if (err && err != -ETIMEDOUT)
++		return err;
++	return hfs_mmap_blocked_stop(view, attempts);
++}
++
++/* One retirement offer of the back-off: try a round without blocking on the
++ * mutex (hfs_view_retire_try) and wait behind another holder of it
++ * (hfs_mmap_retire_busy), as often as holders keep it busy within the
++ * deadline. Returns 1 when the acquisition may be retried (the held release
++ * completed, this round advanced a floor, or any floor advanced since before
++ * the acquisition: view->retire_progress, also seen right after a wake),
++ * 0 when this call's own round ran and returned -EBUSY (a retired ticket
++ * still in use: counted and paused again, as before 1h4), or an error (no
++ * progress after a round that ran: the host's -EAGAIN).
++ */
++static int hfs_mmap_retire_offer(struct hfs_view *view, struct hfs_mmap_attempts *attempts,
++				 bool released)
++{
++	unsigned int waits = 0;
++	bool ran;
++	long releases;
++	int err;
++
++	for (;;) {
++		/* Read before the try: a holder that makes it fail counts its
++		 * release only after unlocking (hfs_retirement_unlock), so that
++		 * release changes this value.
++		 */
++		releases = atomic_long_read(&view->retirement_releases);
++		err = hfs_view_retire_try(view->session, &ran);
++		if (released || !err || READ_ONCE(view->retire_progress) != attempts->progress)
++			return 1;
++		if (err == -EBUSY && ran)
++			return 0;
++		if (err != -EBUSY)
++			return hfs_mmap_blocked_give_up(view, attempts, "no retirement progress");
++		err = hfs_mmap_retire_busy(view, attempts, releases, !waits++);
++		if (err)
++			return err;
++		if (READ_ONCE(view->retire_progress) != attempts->progress)
++			return 1;
++	}
++}
++
 +/* re4 (zq3-r16 R16-1): the host answered BLOCKED to an observation's
-+ * VIEW_ACQUIRE, usually for capacity that only retirement frees. The caller
-+ * has already released the held lease, if any (released: it completed), and
-+ * queued the packets, whose worker retires too. Retry only after progress,
-+ * since every BLOCKED acquisition costs a ticket number until it is retired:
-+ * pause, offer tickets for retirement without waiting for a busy retirement
-+ * mutex (hfs_view_retire_try), and retry if the held release completed or
-+ * any floor advanced since before the acquisition (view->retire_progress,
-+ * by this call or by the cleanup worker during the pause; final review).
-+ * A busy mutex without progress yet pauses again (against the cap). No
-+ * progress, the cap or an exhausted deadline (also when the retirement round
-+ * ran past it) return the host's -EAGAIN with one line.
++ * VIEW_ACQUIRE on a view that did not move since the capture, usually for
++ * capacity that only retirement frees. The caller has already released the
++ * held lease, if any (released: it completed), and queued the packets, whose
++ * worker retires too. Retry only after progress, since every BLOCKED
++ * acquisition costs a ticket number until it is retired: pause, then offer
++ * tickets for retirement (hfs_mmap_retire_offer), and retry if the held
++ * release completed or any floor advanced since before the acquisition (by
++ * this call or by the cleanup worker during the pause; final review). A
++ * round of this call that ran and returned -EBUSY counts as an attempt and
++ * pauses again; 1h4: a mutex held by another holder is waited for instead,
++ * not counted. No progress after a round that ran, the cap or an exhausted
++ * deadline (also when the retirement round ran past it) return the host's
++ * -EAGAIN with one line.
 + */
 +static int hfs_mmap_blocked_backoff(struct hfs_view *view, struct hfs_mmap_attempts *attempts,
 +				    bool released)
@@ -6132,15 +6352,61 @@ new file mode 100644
 +		err = hfs_mmap_blocked_pause(view, attempts);
 +		if (err)
 +			return err;
-+		err = hfs_view_retire_try(view->session);
-+		if (released || !err || READ_ONCE(view->retire_progress) != attempts->progress)
++		err = hfs_mmap_retire_offer(view, attempts, released);
++		if (err < 0)
++			return err;
++		if (err)
 +			break;
-+		if (err != -EBUSY)
-+			return hfs_mmap_blocked_give_up(view, attempts, "no retirement progress");
 +		attempts->blocked++;
 +	}
 +	if (!time_before(jiffies, attempts->deadline))
 +		return hfs_mmap_blocked_give_up(view, attempts, "deadline exhausted");
++	return 0;
++}
++
++/* 1h4 (zq3-r19 R19-1): did the view move since this observation's capture,
++ * i.e. did a REOPENED ACK arrive (view->reopen_acks, read before the capture
++ * into attempts->acks) or the stamp change (a reinstall raises the revision,
++ * so a new target always does)? The host answers BLOCKED to a VIEW_ACQUIRE
++ * whose expected target a recall replaced while it was PENDING
++ * (internal/viewcontrol tickets.go: expectedMismatch, then BLOCKED for the
++ * old expectation on re-admission). An ACK between the read and the capture
++ * only costs one spare re-check, within the ticket cap.
++ */
++static bool hfs_mmap_reinstalled(struct hfs_view *view,
++				 const struct hfs_observation *observation,
++				 const struct hfs_mmap_attempts *attempts)
++{
++	unsigned long flags;
++	bool moved;
++
++	spin_lock_irqsave(&view->lock, flags);
++	moved = view->reopen_acks != attempts->acks ||
++		view->revision != observation->stamp.revision ||
++		!uuid_equal(&view->generation, &observation->stamp.generation);
++	spin_unlock_irqrestore(&view->lock, flags);
++	return moved;
++}
++
++/* 1h4: a BLOCKED for the expectation before a reinstall is a failed
++ * re-check, not a shortage: the view was just reinstalled, so nothing needs
++ * retiring. Acquire again at once at the new target (no pause, no progress
++ * requirement, not counted in attempts->blocked), within the deadline and
++ * the ticket cap.
++ */
++static int hfs_mmap_blocked_recheck(struct hfs_view *view, struct hfs_mmap_attempts *attempts)
++{
++	int err;
++
++	attempts->rechecks++;
++	attempts->reinstalled++;
++	hfs_mmap_recheck_note(view, "VIEW_ACQUIRE BLOCKED for the target before a reinstall",
++			      "acquiring again at once");
++	err = hfs_mmap_blocked_stop(view, attempts);
++	if (err)
++		return err;
++	if (hfs_mmap_blocked_tickets(attempts) > HFS_BLOCKED_RETRIES_MAX)
++		return hfs_mmap_blocked_give_up(view, attempts, "retry limit reached");
 +	return 0;
 +}
 +
@@ -6165,6 +6431,10 @@ new file mode 100644
 +		if (err)
 +			return err;
 +		hfs_view_leave(physical);
++		/* 1h4: a REOPENED ACK after this read marks a BLOCKED answer as
++		 * one for an expectation the recall replaced (hfs_mmap_reinstalled).
++		 */
++		attempts->acks = READ_ONCE(view->reopen_acks);
 +		err = hfs_view_capture(view, &observation->stamp, &observation->target);
 +		if (!err && !mutation) {
 +			err = hfs_lease_acquire_ex(view->session, cred, NULL, NULL, 0, false,
@@ -6172,9 +6442,10 @@ new file mode 100644
 +						   &attempts->host_blocked);
 +			cleanup->lease = observation->lease;
 +			/* -EAGAIN with no lease: the host's BLOCKED
-+			 * (attempts->host_blocked; hfs_mmap_begin backs off and
-+			 * retries, re4) or RETIRED_ID (returned at once). It is
-+			 * no re-check, so it is never retried back to back here.
++			 * (attempts->host_blocked; hfs_mmap_attempt re-checks
++			 * at once after a reinstall, 1h4, else backs off and
++			 * retries, re4) or RETIRED_ID (returned at once). Either
++			 * way it is never retried back to back here.
 +			 * 2f4: -EXDEV with a lease a later recall passed before
 +			 * the view settled (hfs_view_grant_settle): held and
 +			 * acquired again, as for a failed re-check (ie4). A
@@ -6224,7 +6495,9 @@ new file mode 100644
 +/* One attempt of hfs_mmap_begin: 0 (published, *cookie set), 1 (try again)
 + * or an error. *held is the previous attempt's packet with a lease the view
 + * moved past (-EXDEV); it is queued after this attempt's acquisition
-+ * (granted or BLOCKED), and on BLOCKED released before that.
++ * (granted or BLOCKED), and on BLOCKED released before that. A BLOCKED on a
++ * view reinstalled since the capture is retried at once (1h4), any other
++ * after the back-off.
 + */
 +static int hfs_mmap_attempt(struct hfs_view *view, bool mutation, const struct hfs_cred *cred,
 +			    void *native_cookie, struct hfs_mmap_attempts *attempts,
@@ -6232,7 +6505,7 @@ new file mode 100644
 +{
 +	struct hfs_observation *observation;
 +	struct hfs_cache_cleanup *cleanup;
-+	bool blocked, released = false;
++	bool blocked, reinstalled = false, released = false;
 +	int err;
 +
 +	err = hfs_mmap_observation_new(view, native_cookie, &observation);
@@ -6242,8 +6515,10 @@ new file mode 100644
 +	attempts->progress = READ_ONCE(view->retire_progress);
 +	err = hfs_mmap_observe(view, observation, mutation, cred, attempts);
 +	blocked = err == -EAGAIN && attempts->host_blocked;
-+	if (blocked)
++	if (blocked) {
++		reinstalled = hfs_mmap_reinstalled(view, observation, attempts);
 +		released = hfs_mmap_release_held(view, *held);
++	}
 +	hfs_mmap_cleanup_queue(*held);
 +	*held = NULL;
 +	if (!err) {
@@ -6259,6 +6534,8 @@ new file mode 100644
 +	hfs_mmap_cleanup_queue(cleanup);
 +	if (!blocked)
 +		return err;
++	if (reinstalled)
++		return hfs_mmap_blocked_recheck(view, attempts) ?: 1;
 +	attempts->blocked++;
 +	return hfs_mmap_blocked_backoff(view, attempts, released) ?: 1;
 +}
@@ -6266,7 +6543,9 @@ new file mode 100644
 +/* Opens one observation of the view for a VFS operation (hfs_begin). Since
 + * ie4 a failed re-check does not fail the syscall by itself (see
 + * hfs_mmap_publish), and since re4 neither does a host BLOCKED that
-+ * retirement can clear (see hfs_mmap_blocked_backoff): retries share one
++ * retirement can clear (see hfs_mmap_blocked_backoff), nor since 1h4 one for
++ * an expectation a reinstall replaced (hfs_mmap_blocked_recheck): retries
++ * share one
 + * HFS_VIEW_ENTER_WAIT_MS deadline from this call's start. Exhaustion after
 + * failed re-checks is -ETIMEDOUT, a BLOCKED that stands the host's -EAGAIN,
 + * each with one rate-limited line. A RETIRED_ID or local -EAGAIN is returned

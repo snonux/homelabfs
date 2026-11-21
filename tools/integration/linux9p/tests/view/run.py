@@ -13,6 +13,28 @@ import subprocess
 import time
 
 
+def retirement_unlock_guard(source):
+    """1h4 review round 2: every holder of session->retirement (view rounds,
+    hfs_retire, hfs_session_destroy) must release it through
+    hfs_retirement_unlock, which counts the release and wakes a BLOCKED
+    observation waiting for the mutex. The pressure harness runs that helper
+    but not hfs_retire or hfs_session_destroy, so the source is checked: the
+    only mutex_unlock of a ->retirement mutex in fs/9p is the helper's.
+    """
+    unlock = re.compile(r'mutex_unlock\(\s*&[^;]*->retirement\s*\)')
+    found = []
+    for path in sorted((source / 'fs/9p').rglob('*')):
+        if path.suffix not in ('.c', '.h', '.inc') or not path.is_file():
+            continue
+        text = path.read_text(errors='replace')
+        for match in unlock.finditer(text):
+            start = text.rfind('\nvoid hfs_retirement_unlock(', 0, match.start())
+            inside = start >= 0 and text.find('\n}\n', start) > match.start()
+            found.append((path.name, inside))
+    if found != [('hfs_view.c', True)]:
+        raise SystemExit(f'refuse: session->retirement released outside hfs_retirement_unlock: {found}')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, required=True)
@@ -112,6 +134,8 @@ def main():
         start = lease.index('struct hfs_grant_settle {')
         source.append('#define hfs_received_source_ex test_received_source_ex')
         source.append(lease[start:lease.index('\nstatic int hfs_lease_decode(', start)])
+    if args.pressure:
+        retirement_unlock_guard(args.source)
     (args.output / 'production.c').write_text('\n'.join(source) + '\n')
     (args.output / 'test.c').write_bytes(b'#include \"compat.h\"\n' + ((here.parent / 'pressure' if args.pressure else here) / 'test.c').read_bytes())
     (args.output / 'compat.h').write_bytes((here / 'compat.h').read_bytes() + ((here.parent / 'pressure/compat_extra.h').read_bytes() if args.pressure else b''))
