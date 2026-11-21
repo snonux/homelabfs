@@ -32,7 +32,13 @@ def uuid(byte):
 # The view controller's ce4 recall history (an additive optional field of
 # evidence /2). Every fixture carries it, so every correlation test shows the
 # consumers accept it; a completed recall in it is not a recall in the ledger.
-RECALLS = {"capacity": 64, "total": 1, "omitted": 0, "recalls": [{
+# It includes the optional 2h4 "blocked" reasons (absent until the first
+# BLOCKED); test_bootstrap's fixture keeps the older shape without them.
+RECALLS = {"capacity": 64, "total": 1, "advances": 0, "blocked": {
+    "expected_mismatch": 1, "capacity": 0, "omitted": 0, "recent": [{
+        "ticket": "f" * 64 + "/7", "domain": "session0", "opcode": "VIEW_ACQUIRE",
+        "reason": "EXPECTED_MISMATCH", "at_utc": "2026-11-20T01:02:04Z"}]},
+    "omitted": 0, "recalls": [{
     "id": "recall-1", "kind": "RELEASE", "opcode": "VIEW_RELEASE", "domain": "session0", "scope": "DOMAIN",
     "participants": ["session0"], "started_utc": "2026-11-20T01:02:03.000004Z", "end_us": 9000,
     "outcome": "COMPLETED", "phases": [{"phase": "RECALL", "at_us": 0, "issue_us": 40}],

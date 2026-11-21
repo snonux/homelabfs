@@ -11,11 +11,17 @@ import (
 )
 
 // TestControllerEvidenceRecallHistoryRoundTrip: the ce4 recall history is an
-// additive optional field of evidence /2. A record with it round-trips
-// exactly, and a /2 record written before ce4 (no "recalls") still decodes,
-// with Recalls nil, and re-encodes to the same bytes.
+// additive optional field of evidence /2. A record with it, including the
+// 2h4 BLOCKED reasons, round-trips exactly, and a /2 record written before
+// ce4 (no "recalls") still decodes, with Recalls nil, and re-encodes to the
+// same bytes. (A history without BLOCKED reasons omits "blocked", so its
+// encoding is the pre-2h4 one; see viewcontrol's evidence round trip.)
 func TestControllerEvidenceRecallHistoryRoundTrip(t *testing.T) {
-	history := &viewcontrol.RecallHistory{Capacity: viewcontrol.RecallHistoryLimit, Total: 3, Omitted: 1, Recalls: []viewcontrol.RecallRecord{{
+	blocked := &viewcontrol.BlockedHistory{ExpectedMismatch: 1, Capacity: 1, Recent: []viewcontrol.BlockedReply{
+		{Ticket: "f/7", Domain: "s0", Opcode: "VIEW_ACQUIRE", Reason: viewcontrol.BlockedExpectedMismatch, AtUTC: "2026-11-20T01:02:04Z"},
+		{Ticket: "f/8", Domain: "s0", Opcode: "VIEW_ACQUIRE", Reason: viewcontrol.BlockedCapacity, Bound: viewcontrol.BoundSources, AtUTC: "2026-11-20T01:02:05Z"},
+	}}
+	history := &viewcontrol.RecallHistory{Capacity: viewcontrol.RecallHistoryLimit, Total: 3, Blocked: blocked, Omitted: 1, Recalls: []viewcontrol.RecallRecord{{
 		ID: "r", Kind: viewcontrol.TriggerRelease, Opcode: "VIEW_RELEASE", Domain: "s0", Scope: "DOMAIN", Participants: []string{"s0"},
 		StartedUTC: "2026-11-20T01:02:03.000004Z", EndMicros: 9000, Outcome: viewcontrol.RecallCompleted,
 		Phases: []viewcontrol.RecallPhase{{Phase: "RECALL", IssueMicros: 40}, {Phase: "DRAIN", OffsetMicros: 700}},

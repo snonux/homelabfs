@@ -69,6 +69,7 @@ Other host changes:
 - shareLease ANDs Advance together, as it does Targeted;
 - leaseState.Advance is stored omitempty;
 - an advance counter (advance grants on a different target since the controller opened, memory only) is reported in OBSERVE as `controller.recalls.advances`, next to the ce4 recall history;
+- (task 2h4, later) every BLOCKED that still reaches the guest is recorded in OBSERVE's `controller.recalls.blocked` with its reason: `EXPECTED_MISMATCH` (the old expectation after its recall) or `CAPACITY` with the bound condition 6 checks (`SOURCES`, `CONTROL`, `IDENTITY`, `LEASES`, `REVISIONS`, `LINEAGES`), so a guest BLOCKED can be classified without decoding the ledger (see internal/viewcontrol/README.md);
 - guestbridge: view_schema.go accepts the optional field (view_advance.go), and view_response.go allows a different target only when advance was requested and the cuts are AdvanceCompatible;
 - the views.json corpus gains the literal command `read_domain_advance` and its GRANTED reply on an advanced cut (the lib9p owned-inputs digest of views.json is refreshed).
 

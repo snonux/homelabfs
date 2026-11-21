@@ -93,12 +93,16 @@ import (
 // whether this holder requested advance (task xf4); Advance is ANDed the same
 // way, so one holder without it makes the last release keep je4's
 // current-cut condition for good.
-func (c *Controller) shareLease(id string, existing leaseState, t ticketState, targeted, advance bool) (json.RawMessage, error) {
-	// Defensive: grantLease, the only caller, has already passed grantFits,
+func (c *Controller) shareLease(scope guestbridge.Context, id string, existing leaseState, t ticketState, targeted, advance bool) (json.RawMessage, error) {
+	// Defensive: grantLease, the only caller, has already passed grantBound,
 	// which checks these same two credits, so this never fires today. It
-	// stays so that a future caller cannot share past the bounds.
-	if !c.controlCapacity(1) || !c.identityCapacity(1) {
-		return c.reply(t, "BLOCKED", nil, nil, nil)
+	// stays so that a future caller cannot share past the bounds, and records
+	// its capacity BLOCKED like grantLease (task 2h4).
+	if !c.controlCapacity(1) {
+		return c.blocked(scope, t, BlockedCapacity, BoundControl)
+	}
+	if !c.identityCapacity(1) {
+		return c.blocked(scope, t, BlockedCapacity, BoundIdentity)
 	}
 	existing.Sharers++
 	existing.Targeted = existing.Targeted && targeted
