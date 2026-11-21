@@ -272,18 +272,21 @@ func TestExclusiveDomainReadReleaseStaysGlobal(t *testing.T) {
 }
 
 // TestExpectedMismatchRecallStaysGlobal isolates the all-domain barrier with
-// no active lease and no reservation anywhere: m1 installed its view and
+// no conflicting lease and no reservation anywhere: m1 installed its view and
 // released its observation lease (recall-free, je4), then m0 created a file
-// (a namespace mutation, conflicting with no active lease). m1's next
-// observation acquire expects its old target, the cut moved observably, so
-// the expected-target mismatch still starts an all-domain recall (a pin-only
-// move is scoped since e84, mismatch_scope_test.go). m0's root GETATTR
-// conflicts with nothing, yet it waits; its PROCESS_EXIT does not.
+// (a namespace mutation, conflicting with no active lease) and took an
+// untargeted discovery READ lease, which says nothing about m0's installed
+// view. m1's next observation acquire expects its old target, so the
+// expected-target mismatch starts an all-domain recall (with idle peers it
+// would be scoped since wf4, mismatch_scope_test.go). m0's root GETATTR
+// conflicts with nothing (a read and a READ lease), yet it waits; its
+// PROCESS_EXIT does not.
 func TestExpectedMismatchRecallStaysGlobal(t *testing.T) {
 	r := newZQ3Rig(t, 0)
 	installed := r.observeReleased(1)
 	r.observeReleased(0)
 	r.create(0, "mutates", false)
+	r.domainRead(0)
 	if total := r.recallTotal(); total != 0 {
 		t.Fatalf("setup started %d recalls", total)
 	}

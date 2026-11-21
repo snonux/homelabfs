@@ -556,8 +556,8 @@ func (c *Controller) target(scope guestbridge.Context, source fsservice.Controll
 // remember retains a captured cut (deduplicated by sourceKey) within the
 // Sources bound; admissions prune unpinned cuts first (source_pruning.go).
 // A newly retained cut also has its observable digest remembered in memory
-// (observe, task e84), so an expected-target mismatch naming it can still be
-// classified after the cut itself was pruned.
+// (observe, task e84), so the expected-target mismatch scope compares peer
+// lease cuts with the current cut without recomputing their digests.
 func (c *Controller) remember(source fsservice.ControlledViewSource) error {
 	key := sourceKey(source)
 	if _, ok := c.state.Sources[key]; ok {

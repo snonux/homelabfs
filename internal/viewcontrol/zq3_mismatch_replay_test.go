@@ -135,9 +135,11 @@ func (p *pinReplay) run(files []string) (all, scoped int) {
 // recalls); with e84 none does (0 + 12: each mount now reinstalls only its
 // own view, so more recalls but fewer domain stops and no global barrier),
 // and the same observations all succeed. The retirements let pruning drop
-// the expected cuts before their mismatches, so the scoping rests on the
-// remembered digests; without them the replay still needs 6 all-domain
-// recalls.
+// the expected cuts before their mismatches; under e84 the scoping rested on
+// the remembered digests of those cuts. Since wf4 the expected cut is not
+// classified at all, and the replay's peers are idle or hold Targeted leases
+// on observably current cuts, so the scoping no longer depends on the
+// remembered digests.
 func TestZQ3PinningObservationsScopeMismatchRecalls(t *testing.T) {
 	files := []string{"setgid-created", "group", "group-tail"}
 	baseline := newZQ3Rig(t, 0)
