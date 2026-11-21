@@ -499,7 +499,7 @@ int main(void) {
    assert(ledger_directory >= 0);
    Hfs9pLedger *ledger = NULL;
    assert(!hfs9p_ledger_new(&ledger, ledger_directory, "transport"));
-   /* controller_cb serves only the terminal 32767 profile (minors <= 3). */
+   /* controller_cb serves only the minor-4 terminal 32767 profile; this harness runs minors <= 3, so it stays unused. */
    Hfs9pVerifier verifier = {ledger, fixture_claim_cb, fixture_protect_cb,
                              primitive_verify, NULL, NULL, NULL};
    assert(!_construct(&backend, fds, &endpoint, verifier));
