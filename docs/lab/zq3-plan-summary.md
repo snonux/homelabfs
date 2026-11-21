@@ -258,6 +258,21 @@ holds or is opening a view (wf4). Its bytes are new, so they must pass the
 f3 self-check again. The patched bhyve is again reused unchanged; the
 window test files were rebuilt with the daemon.
 
+In zq3-r19 those fixes worked: T1 got further than in any earlier run. It
+then failed its first access check, because the guest kernel gave up too
+early: while the guest itself was busy cleaning up old views, it counted
+that as the host saying "not now", and after a few such counts it answered
+"try again" (EAGAIN) (R19-1, [record](results/20261121-zq3-r19/README.md)).
+That fix is merged (1h4): the guest now waits for its own cleanup instead
+of counting it. T1 also needs the guest to keep looking at files after its
+own changes without a full pause of both mounts (xf4): the host can now
+hand a mount with no cached data the newest view directly (3h4), and the
+guest asks for that and takes it (4h4). The package was rebuilt for zq3-r20
+(`b37bcb06…`, kernel build ID `b4d6cd69…`, daemon `c04c519f…`). The
+daemon's bytes are new, so they must pass the f3 self-check again. The
+patched bhyve is again reused unchanged; the window test files were rebuilt
+with the daemon.
+
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
 written record of every step, not by a fully automatic runner. Right before the

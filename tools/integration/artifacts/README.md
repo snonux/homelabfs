@@ -121,7 +121,12 @@ rebuild for zq3-r19 (candidate `09acd09d…`,
 patch 0003 changed the image (build ID `e3d474df…`), while the five
 modules, `Module.symvers` and `abi-negative.json` came out byte-identical.
 It also rebuilt the daemon (wf4) and again reused the r17 exporter through
-its records.
+its records. The r20 rebuild for zq3-r20 (candidate `b37bcb06…`,
+[evidence](evidence/xz3-20261122-r20/README.md)) kept the config; its 1h4
+and 4h4 patches (0002-0005) changed the image (build ID `b4d6cd69…`) and
+nine hfs export CRCs in `Module.symvers`, while the five modules and
+`abi-negative.json` came out byte-identical. It also rebuilt the daemon
+(3h4) and again reused the r17 exporter through its records.
 
 The ordinary namespace fixture selects a rootful OCI runtime in the initial
 user namespace, VFS image storage and a newly created private network namespace
@@ -295,7 +300,8 @@ found at `3430758`. r17 therefore rebuilt the exporter on f3 under
 reuse it through that build's records, as the r18 rebuild for zq3-r18
 did at `633509e` ([r18 evidence](evidence/xz3-20261121-r18/README.md)) and
 the r19 rebuild for zq3-r19 at `e160370`
-([r19 evidence](evidence/xz3-20261121-r19/README.md)).
+([r19 evidence](evidence/xz3-20261121-r19/README.md)) and the r20 rebuild
+for zq3-r20 at `d71ae02` ([r20 evidence](evidence/xz3-20261122-r20/README.md)).
 Within one sample the walk can still
 miss a file renamed into a directory it has already passed; the guard
 samples repeatedly.
