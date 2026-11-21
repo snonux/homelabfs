@@ -47,10 +47,20 @@ func (m *recallModel) elapsed(w *guestWait) time.Duration {
 // or -race test host from deciding the outcome; up to the cap the measured
 // host work counts as the runtime's own.
 func (m *recallModel) since(start waitStart) time.Duration {
-	observed := time.Duration(m.probes.Load()-start.probe) * m.latency
+	modelled, host := m.split(start)
+	return modelled + max(0, min(host, hostOverheadAllowance))
+}
+
+// split separates the time since start into its deterministic part (the
+// slow observations at the model latency plus the guest's idle retry
+// sleeps) and the measured host work: the wall time less the observations'
+// real sleeps (m.sleep each: the model latency, or none for a virtual
+// observer, newRecallModelVirtual) and the idle sleeps. host is uncapped
+// and may be slightly negative (timer slack).
+func (m *recallModel) split(start waitStart) (modelled, host time.Duration) {
+	probes := time.Duration(m.probes.Load() - start.probe)
 	idle := m.idle - start.idle
-	host := time.Since(start.at) - observed - idle
-	return observed + idle + max(0, min(host, hostOverheadAllowance))
+	return probes*m.latency + idle, time.Since(start.at) - probes*m.sleep - idle
 }
 
 // finish ends w now, recording its modelled and wall latency and the slow
@@ -247,7 +257,10 @@ type dueACK struct {
 // it is resent on a later round (zq3-r11, task y94). Sending every
 // INSTALLED_DRAIN before any DRAINED never produced that early DRAINED.
 // The gate schedules only start scoped recalls (one participant, whose
-// DRAINED is never early). The blocked-domain case (task 0a4,
+// DRAINED is never early); the T1 replay's CALL_CONFLICT recalls
+// (recall_workload_t1_test.go) are all-domain with both mounts live, so
+// there m0's early DRAINED is BLOCKED and resent once m1's INSTALLED_DRAIN
+// was accepted (task 2a4). The blocked-domain case (task 0a4,
 // recall_workload_blocked_test.go) drives an all-domain recall whose silent
 // peer never sends INSTALLED_DRAIN, so there the early DRAINED stays BLOCKED
 // until the peer is fenced; the early DRAINED itself is covered in

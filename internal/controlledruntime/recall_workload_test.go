@@ -158,7 +158,8 @@ type recallModel struct {
 	recalls   map[string]*modelRecall
 	order     []string // recall IDs in first-seen order
 	probes    atomic.Int32
-	latency   time.Duration
+	latency   time.Duration // modelled cost of one slow observation
+	sleep     time.Duration // wall time one observation really sleeps
 	idle      time.Duration // scheduler retry sleeps (guest time)
 	clock     *modelClock   // the admission's reuse clock
 	phase     *modelPhase
@@ -176,14 +177,19 @@ type recallModel struct {
 }
 
 // modelMount is one guest mount: its peer rig, the control-lane chain that
-// reclaims its previous control response, the view state the guest keeps
-// (installed target, per-mount fence and kernel record revision), its
-// cleanup worker (queued jobs, the exchange in flight, failure) and what
-// RETIRE / VIEW_RETIRE retire (request list, ticket families, floors).
+// reclaims its previous control response and the ordinary-lane chain that
+// reclaims its previous ordinary response (ALLOCATE, CALL, VIEW_ACQUIRE: the
+// transport refuses a session's thirteenth unreclaimed ordinary cell with
+// WouldBlock, which the T1 replay's hundreds of claims reached), the view
+// state the guest keeps (installed target, per-mount fence and kernel record
+// revision), its cleanup worker (queued jobs, the exchange in flight,
+// failure) and what RETIRE / VIEW_RETIRE retire (request list, ticket
+// families, floors).
 type modelMount struct {
 	index           int
 	peer            *sourceRig
 	chain           *r5Chain
+	ordinary        *r5Chain
 	root, domain    guestbridge.Capability
 	target          json.RawMessage
 	fence, revision uint64
@@ -386,12 +392,30 @@ func newRecallModel(t *testing.T, values zq3Values, latency time.Duration) *reca
 // can let modelled time pass without the wall time (the blocked-domain
 // case). The other schedules keep the controller on the wall clock.
 func newRecallModelWith(t *testing.T, values zq3Values, latency time.Duration, controllerOnModel bool) *recallModel {
+	return assembleRecallModel(t, values, latency, latency, controllerOnModel)
+}
+
+// newRecallModelVirtual is newRecallModelWith(controllerOnModel) whose
+// observations pay their latency in modelled time only: the probe returns at
+// once, while the model clock, the controller clock and every wait's
+// modelled time still advance by latency per observation. Long replays (the
+// T1 credentials case, recall_workload_t1_test.go, about a hundred slow
+// observations per run) then cost seconds of wall time instead of minutes
+// and their verdicts do not depend on how fast the test host sleeps.
+func newRecallModelVirtual(t *testing.T, values zq3Values, latency time.Duration) *recallModel {
+	return assembleRecallModel(t, values, latency, 0, true)
+}
+
+// assembleRecallModel builds the model: each observation sleeps sleep of
+// wall time (latency, or 0 for a virtual observer) and is accounted at
+// latency.
+func assembleRecallModel(t *testing.T, values zq3Values, latency, sleep time.Duration, controllerOnModel bool) *recallModel {
 	r, c := assemblyFixture(t)
 	values.apply(t, &c)
-	m := &recallModel{t: t, r: r, latency: latency, families: c.Authorization.Enrollment.TicketFamilies, recalls: map[string]*modelRecall{}, round1: -1}
+	m := &recallModel{t: t, r: r, latency: latency, sleep: sleep, families: c.Authorization.Enrollment.TicketFamilies, recalls: map[string]*modelRecall{}, round1: -1}
 	var slow atomic.Bool
 	slow.Store(true)
-	latencyProbe(r.admission, latency, &slow, &m.probes, nil)
+	latencyProbe(r.admission, sleep, &slow, &m.probes, nil)
 	m.clock = installModelClock(r.admission, latency)
 	if controllerOnModel {
 		c.ControllerClock = m.clock.now
@@ -409,7 +433,7 @@ func newRecallModelWith(t *testing.T, values zq3Values, latency time.Duration, c
 	counter := uint64(0)
 	for i, peer := range r.peers {
 		attachAssembly(peer, a, &counter)
-		m.mounts = append(m.mounts, &modelMount{index: i, peer: peer, chain: &r5Chain{peer: peer}, fence: 1, revision: 1, acked: map[string]int{}, familyIndex: map[string]*familyRec{}})
+		m.mounts = append(m.mounts, &modelMount{index: i, peer: peer, chain: &r5Chain{peer: peer}, ordinary: &r5Chain{peer: peer}, fence: 1, revision: 1, acked: map[string]int{}, familyIndex: map[string]*familyRec{}})
 	}
 	t.Logf("guest observation latency %s, guest QUERY window %s, host overhead allowance %s", latency, guestQueryWindow, hostOverheadAllowance)
 	return m
