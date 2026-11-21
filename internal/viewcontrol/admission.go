@@ -66,7 +66,6 @@ func (c *Controller) Admit(ctx context.Context, b guestbridge.Binding) (controll
 // DESCRIPTION_CLOSE) are never held. Authority reductions conflict only with
 // their own domain's open reservations (recall_scope.go).
 func (c *Controller) admissionBarrier(ctx context.Context, b guestbridge.Binding) error {
-	c.seen(b.Context.Session) // a sign of life (participant_fence.go)
 	if _, sealed := c.state.Terminal[b.Context.Session]; sealed {
 		return fsapi.Permission
 	}

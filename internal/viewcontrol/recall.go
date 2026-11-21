@@ -50,11 +50,20 @@ func (c *Controller) Exchange(ctx context.Context, scope guestbridge.Context, op
 	if _, err = guestbridge.DecodeCommandVersion(envelope, uint16(protocol.BridgeMinor)); err != nil {
 		return nil, err
 	}
+	// Only the view worker's own traffic is a sign of life of a recall
+	// participant (participant_fence.go): a guest whose view worker died
+	// still sends cleanup, release and retirement traffic. It is counted
+	// before the TryLock, so a poll that meets contention still counts.
+	if op == "VIEW_POLL" || op == "VIEW_ACK" {
+		c.pulse(scope.Session)
+	}
 	if !c.mu.TryLock() {
 		return nil, fsapi.WouldBlock
 	}
 	defer c.mu.Unlock()
-	c.seen(scope.Session) // a sign of life (participant_fence.go)
+	// Timestamp the caller's pulses now (a contended one waits for the next
+	// absorption, which only makes it look more recently alive).
+	c.absorbPulse(scope.Session)
 	if op == "VIEW_ACK" {
 		return c.acknowledge(ctx, scope, raw)
 	}

@@ -155,9 +155,15 @@ type Controller struct {
 	// phaseClock is the in-memory stall clock of the current recall phase
 	// (participant_fence.go); guarded by mu, never part of the ledger.
 	phaseClock phaseClock
-	// lastSeen is each session's last request under mu (participant_fence.go
-	// seen): a session that talks is never fenced. Memory only.
+	// lastSeen is when mu last noticed a new view-worker request of each
+	// session (participant_fence.go absorbPulse); guarded by mu. pulses
+	// counts those requests as they arrive, before the TryLock, and is
+	// guarded by pulseMu alone; absorbed holds the count lastSeen reflects
+	// (guarded by mu). Memory only.
 	lastSeen map[string]time.Time
+	pulseMu  sync.Mutex
+	pulses   map[string]uint64
+	absorbed map[string]uint64
 	// allDomainMismatch is a test-only ablation that restores the pre-e84
 	// all-domain expected-target recall (mismatch_scope.go), so replays can
 	// count both behaviours; it is always false in production.

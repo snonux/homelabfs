@@ -2,8 +2,12 @@ package viewcontrol
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/snonux/homelabfs/internal/fsapi"
+	"github.com/snonux/homelabfs/internal/guestbridge"
 )
 
 // Liveness of recall participants after 0a4 review round 1: a participant
@@ -189,4 +193,91 @@ func TestValidLedgerSchema(t *testing.T) {
 			t.Errorf("ValidLedgerSchema(%d, %d) = %v", c.schema, c.fenced, got)
 		}
 	}
+}
+
+// TestCleanupTrafficDoesNotKeepViewWorkerAlive (0a4 review round 2): m1's
+// view worker stops after STOPPED, but the session keeps sending ticket and
+// CALL traffic every second, as a guest whose hfs_mmap_fail blocked the view
+// still sends cleanup, release and retirement requests. That traffic is no
+// sign of life of the view worker: m1 is fenced after the bound.
+func TestCleanupTrafficDoesNotKeepViewWorkerAlive(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	advance := r.testClock()
+	open := r.startEarlyDrainRecall()
+	r.ack(0, "INSTALLED_DRAIN", nil)
+	for second := 1; second <= int(StalledParticipantBound/time.Second)+1; second++ {
+		advance(time.Second)
+		r.cleanupTraffic(1)
+		r.poll(0)
+		if second == int(StalledParticipantBound/time.Second)-1 {
+			r.requireNotFenced(1)
+		}
+	}
+	r.requireFenced(1)
+	r.ack(0, "DRAINED", r.emptyManifest())
+	r.finishAfterFence(open)
+}
+
+// cleanupTraffic sends one VIEW_ACQUIRE and one CALL of domain i, whatever
+// their answers: non-view-worker traffic.
+func (r *rig) cleanupTraffic(i int) {
+	r.t.Helper()
+	_, _ = r.execute(i, "VIEW_ACQUIRE", map[string]any{"request": r.ticket(i), "domain": r.domains[i], "access": guestbridge.ViewAccess{Kind: "DOMAIN"}, "mode": "READ", "target": nil})
+	call := r.originalCall(i, "PROCESS_EXIT", map[string]any{"process": r.credentials[i].Process, "exit_sequence": 1})
+	_, _ = r.execute(i, "CALL", call)
+}
+
+// TestContendedPollStillCounts (0a4 review round 2): a poll that meets the
+// controller mutex held (WouldBlock) is still a sign of life, because it is
+// counted before the TryLock.
+func TestContendedPollStillCounts(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	advance := r.testClock()
+	r.startEarlyDrainRecall()
+	r.ack(0, "INSTALLED_DRAIN", nil)
+	advance(StalledParticipantBound - time.Second)
+	raw, err := canonical(map[string]any{"domain": r.domains[1], "after_sequence": 0})
+	must(t, err)
+	r.controller.mu.Lock()
+	_, err = r.controller.Exchange(t.Context(), r.scopes[1], "VIEW_POLL", raw)
+	r.controller.mu.Unlock()
+	if !errors.Is(err, fsapi.WouldBlock) {
+		t.Fatalf("contended poll: %v, want WouldBlock", err)
+	}
+	advance(2 * time.Second)
+	r.poll(0)
+	r.requireNotFenced(1)
+	advance(StalledParticipantBound)
+	r.poll(0)
+	r.requireFenced(1)
+}
+
+// TestEarlyDrainedCappedBehindPollingPeer (0a4 review round 2): m1 keeps
+// polling but never installs, so its fence point keeps moving. m0's early
+// DRAINED waits for it at most StalledParticipantBound past its own first
+// BLOCKED plus BlockedACKBound, then gets the bound's error; m1, which
+// polls, is never fenced.
+func TestEarlyDrainedCappedBehindPollingPeer(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	advance := r.testClock()
+	r.startEarlyDrainRecall()
+	r.ack(0, "INSTALLED_DRAIN", nil)
+	early := r.ackPayload(0, "DRAINED", r.emptyManifest())
+	if got := r.ackStatus(0, early); got != "BLOCKED" {
+		t.Fatalf("early DRAINED %s", got)
+	}
+	limit := int((StalledParticipantBound + BlockedACKBound) / time.Second)
+	for second := 1; second <= limit; second++ {
+		advance(time.Second)
+		r.poll(1)
+		if got := r.ackStatus(0, early); got != "BLOCKED" {
+			t.Fatalf("early DRAINED after %d s: %s, want BLOCKED", second, got)
+		}
+	}
+	advance(time.Second)
+	r.poll(1)
+	if _, err := r.execute(0, "VIEW_ACK", early); !errors.Is(err, ErrACKBlockedTooLong) && !errors.Is(err, fsapi.Unavailable) {
+		t.Fatalf("early DRAINED past the cap: %v, want the bound's error", err)
+	}
+	r.requireNotFenced(1)
 }

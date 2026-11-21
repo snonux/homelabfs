@@ -3,10 +3,12 @@ package viewcontrol
 // LedgerSchema is the layout version of the protected controller ledger
 // (viewcontrol-v1.db) inside the unchanged EnrollmentVersion bucket. Schema 2
 // replaced the single controller-wide Fence with one fence per domain
-// (Fences). A ledger without this exact schema, including every schema-1
-// ledger, is refused on reopen with fsapi.Permission: a controller-wide fence
-// cannot be split into per-domain fences without each guest mount's REOPENED
-// history, so such a ledger is never guessed forward.
+// (Fences). A ledger with another schema, including every schema-1 ledger,
+// is refused on reopen with fsapi.Permission: a controller-wide fence cannot
+// be split into per-domain fences without each guest mount's REOPENED
+// history, so such a ledger is never guessed forward. The one other schema
+// accepted is LedgerSchemaFenced (3), schema 2 with a fenced session
+// (ValidLedgerSchema).
 const LedgerSchema = 2
 
 // LedgerSchemaFenced (3) is schema 2 plus at least one fenced session
@@ -16,8 +18,8 @@ const LedgerSchema = 2
 // without a fence stays at schema 2 byte for byte.
 const LedgerSchemaFenced = 3
 
-// ValidLedgerSchema reports whether schema fits a ledger with fenced
-// fenced sessions: LedgerSchema without a fence, LedgerSchemaFenced with
+// ValidLedgerSchema reports whether schema fits a ledger with the given
+// number of fenced sessions: LedgerSchema without a fence, LedgerSchemaFenced with
 // one. The runtime Facts apply the same rule.
 func ValidLedgerSchema(schema, fenced int) bool {
 	return (schema == LedgerSchema && fenced == 0) || (schema == LedgerSchemaFenced && fenced > 0)

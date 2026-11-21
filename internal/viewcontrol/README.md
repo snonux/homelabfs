@@ -481,9 +481,11 @@ HFS_VIEW_FAMILIES_MAX per session).
 
 Stalled recall participants (`participant_fence.go`, task 0a4 after zq3-r11
 R11-2). A recall waits for the exact ACKs of every participant and had no
-deadline: a guest session that stopped talking (its view worker got STALE
-and stopped, `hfs_mmap_fail` told the host nothing, the guest hung) held the
-recall, and with it every other domain's cut-changing admission, forever.
+deadline: a guest session whose view worker stopped (it got STALE and
+stopped for good, or `hfs_mmap_fail` blocked the view without telling the
+host, while the session may still send cleanup traffic; or the guest hung)
+held the recall, and with it every other domain's cut-changing admission,
+forever.
 
 *When a participant is fenced.* All of these must hold (`fenceable`,
 `silentFor`):
@@ -506,14 +508,24 @@ recall, and with it every other domain's cut-changing admission, forever.
   discards learned ACKs and patch 0004 does not resend an accepted ACK, so an
   archived ACK counts as delivered; otherwise a restart made every live guest
   look stalled (0a4 review round 1);
-- it sent **nothing at all** (no poll, ACK, ticket or CALL; `seen` records
-  every request under the controller mutex, whatever its answer) for
-  `StalledParticipantBound` (60 s, twice the guest's 30 s transport window),
-  counted from the later of its last request and the controller's first
-  sight of the phase. A guest that polls or resends is alive, however slow
-  its install or delayed its event delivery, and is never fenced. The clocks
-  are memory only and restart on reopen, Disconnect and Recover, so a
-  restart can delay a fence but never hasten one.
+- its **view worker** sent nothing, no VIEW_POLL (a VIEW_WAIT leg) and no
+  VIEW_ACK, for `StalledParticipantBound` (60 s, twice the guest's 30 s
+  transport window), counted from the later of its last such request and
+  the controller's first sight of the phase. `pulse` counts each such
+  request at Exchange's entry, before the controller TryLock and under its
+  own small mutex, so a poll that meets contention (WouldBlock) still
+  counts; the time is taken under the controller mutex when the count is
+  absorbed (`absorbPulse`: in the request's own Exchange once it holds the
+  mutex, or for a contended one at the next fence check), which can only
+  make a session look more recently alive. A live view worker reposts VIEW_WAIT every 10 ms after EMPTY
+  (`hfs_mmap_poll`) and resends a BLOCKED ACK every 10 ms, so it is never
+  fenced, however slow its install or delayed its event delivery. Tickets,
+  CALLs, QUERY continuations, releases and retirements do not count: a guest
+  whose view worker died still sends that cleanup traffic (patch 0003
+  `hfs_session_poll_halt`), which would postpone its fence forever (0a4
+  review round 2). The clocks are memory only and restart on reopen,
+  Disconnect and Recover, so a restart can delay a fence but never hasten
+  one.
 
 *Who triggers it.* Every VIEW_POLL and every VIEW_ACK runs the check, never
 fencing its own caller (its request is a sign of life); each live domain
@@ -555,9 +567,11 @@ without one (`ValidLedgerSchema`).
 *Early DRAINED.* A live participant's DRAINED, sent right after its own
 INSTALLED_DRAIN, waits BLOCKED for a peer's INSTALLED_DRAIN. Its bound now
 runs from the later of a peer's BLOCKED wait and a fenceable peer's fence
-point (its last request plus the bound), so it keeps waiting while the peer
-polls and outlives the fence of a silent peer; the first ACK after that
-point fences the peer and the same DRAINED is ACCEPTED.
+point (its last view-worker request plus the bound), capped at
+`StalledParticipantBound` past the DRAINED's own first BLOCKED, so it
+outlives the fence of a silent peer (the first ACK after the fence point
+fences the peer and the same DRAINED is ACCEPTED) and waits for a peer that
+polls without installing for at most 90 s in all before the bound's error.
 
 *A fence is permanent.* There is no unfence path: the fenced enrolled
 session is refused for good, across restarts, and cannot be sealed. Its

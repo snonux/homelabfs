@@ -35,7 +35,9 @@ var ErrACKBlockedTooLong = fmt.Errorf("%w: VIEW_ACK blocked beyond its bound", f
 // first, which would fail the guest's view worker and wedge the recall as in
 // zq3-r11. A peer that may be fenced (task 0a4, participant_fence.go)
 // moves the start to its fence point, so the early DRAINED outlives the
-// fence of a silent peer and keeps waiting for a peer that still polls. A
+// fence of a silent peer and waits for a peer that still polls, but never
+// longer than StalledParticipantBound past its own first BLOCKED (so at
+// most StalledParticipantBound + BlockedACKBound in all, blockedReply). A
 // peer that sends nothing and may not be fenced (its INSTALLED_DRAIN is
 // archived but was discarded from the learned ACKs by a restart) gives no
 // later start, so the DRAINED still ends after the bound.
@@ -157,7 +159,8 @@ func (c *Controller) ackReply(scope guestbridge.Context, raw json.RawMessage, st
 
 // blockedReply answers BLOCKED for raw unless it stayed BLOCKED longer than
 // BlockedACKBound. The bound runs from the ACK's own first BLOCKED, or from
-// peerSince when that is later (an early DRAINED, earlyDrainedSince).
+// peerSince when that is later (an early DRAINED, earlyDrainedSince), capped
+// at StalledParticipantBound past the first BLOCKED: at most 90 s in all.
 func (c *Controller) blockedReply(scope guestbridge.Context, raw json.RawMessage, peerSince time.Time) (json.RawMessage, error) {
 	now := c.clock()
 	if c.blockedACKs == nil {
@@ -169,6 +172,13 @@ func (c *Controller) blockedReply(scope guestbridge.Context, raw json.RawMessage
 	}
 	current.count++
 	c.blockedACKs[scope.Session] = current
+	// A peer can extend the wait (an early DRAINED, earlyDrainedSince), but
+	// by at most StalledParticipantBound past this ACK's own first BLOCKED:
+	// a fenceable peer that keeps polling without installing moves its fence
+	// point on, and the reply must stay BLOCKED only for a bounded time.
+	if limit := current.since.Add(StalledParticipantBound); peerSince.After(limit) {
+		peerSince = limit
+	}
 	start := current.since
 	if peerSince.After(start) {
 		start = peerSince
@@ -186,9 +196,11 @@ func (c *Controller) blockedReply(scope guestbridge.Context, raw json.RawMessage
 // only while that session's latest ACK reply was BLOCKED.
 //
 // A peer that may be fenced (fenceable, task 0a4) also counts from its
-// fence point (fenceAt: its last request plus StalledParticipantBound),
-// whichever is later. While the peer keeps polling, that point moves on and
-// the early DRAINED keeps waiting for it; once the peer is silent for the
+// fence point (fenceAt: its last view-worker request plus
+// StalledParticipantBound), whichever is later. While the peer keeps
+// polling, that point moves on and the early DRAINED waits for it, up to
+// blockedReply's cap (StalledParticipantBound past the DRAINED's own first
+// BLOCKED), after which it gets the bound's error; once the peer is silent for the
 // bound, the first ACK after the fence point fences it (fenceBeforeACK) and
 // the DRAINED is ACCEPTED rather than answered with the bound's error,
 // which would have failed the DRAINED's guest before the fence could

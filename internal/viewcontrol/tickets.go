@@ -55,7 +55,6 @@ func (c *Controller) ExchangeView(ctx context.Context, scope guestbridge.Context
 		return nil, fsapi.WouldBlock
 	}
 	defer c.mu.Unlock()
-	c.seen(scope.Session) // a sign of life (participant_fence.go)
 	if _, sealed := c.state.Terminal[scope.Session]; sealed {
 		return nil, fsapi.Permission
 	}

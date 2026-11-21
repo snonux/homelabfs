@@ -33,7 +33,8 @@ type factsLease struct {
 }
 
 // factsLedger decodes the protected viewcontrol ledger (schema
-// viewcontrol.LedgerSchema). Fences holds per-domain fences; read them only
+// viewcontrol.LedgerSchema, or viewcontrol.LedgerSchemaFenced (3) when it
+// holds a fenced session; viewcontrol.ValidLedgerSchema). Fences holds per-domain fences; read them only
 // through viewcontrol.DomainFence, since a domain without an entry is at 1.
 type factsLedger struct {
 	Recovery bool

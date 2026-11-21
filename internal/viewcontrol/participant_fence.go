@@ -16,8 +16,10 @@ import (
 //
 // A recall waits for the exact ACKs of every participant (allAcked iterates
 // the issued events) and has no deadline of its own. A guest session that
-// stops talking (its view worker got STALE and stopped for good, its
-// hfs_mmap_fail told the host nothing, the guest hung or died) therefore
+// whose view worker stops (it got STALE and stopped for good, or
+// hfs_mmap_fail blocked the view and told the host nothing, while the rest
+// of the session may still send cleanup traffic; or the guest hung or
+// died) therefore
 // held the recall, and with it every other domain's cut-changing admission,
 // forever.
 //
@@ -42,10 +44,16 @@ import (
 //     restart discards learned ACKs, and patch 0004 does not resend an
 //     accepted one, so a learned-only check fenced live guests, review of
 //     0a4 round 1);
-//   - the session sent nothing at all, no poll, ACK, ticket or CALL, for
-//     StalledParticipantBound, counted from the later of its last request
-//     and the controller's first sight of the phase (silentSince). A guest
-//     that polls or resends is alive, however slow, and is never fenced.
+//   - the session's view worker sent nothing, no VIEW_POLL (VIEW_WAIT leg)
+//     and no VIEW_ACK, for StalledParticipantBound, counted from the later
+//     of its last such request and the controller's first sight of the
+//     phase (silentSince). A live view worker reposts VIEW_WAIT every 10 ms
+//     after EMPTY (hfs_mmap_poll) and resends a BLOCKED ACK every 10 ms, so
+//     it is never fenced, however slow its install. Other traffic does not
+//     count: a guest whose view worker died (hfs_mmap_fail blocks the view)
+//     still sends cleanup, release and retirement requests (patch 0003
+//     hfs_session_poll_halt), which would otherwise postpone its fence
+//     forever (0a4 review round 2).
 //
 // The caller of a poll or an ACK is never fenced by its own request, and a
 // fence that would leave the recall without participants requires every one
@@ -63,17 +71,18 @@ import (
 // on its old view. A fence is permanent for that enrolled session; there is
 // no unfence path (see the README).
 //
-// The clocks (phaseClock, lastSeen) are in memory only. They restart on a
+// The clocks (phaseClock, lastSeen, pulses) are in memory only. They restart on a
 // controller reopen, Disconnect and Recover, so a restart only delays a
 // fence, never hastens one.
 
-// StalledParticipantBound is how long a fenceable participant must be
-// completely silent before it is fenced: twice the guest's 30 s transport
-// window (BlockedACKBound). A live guest keeps a VIEW_WAIT posted, whose
-// native VIEW_POLL legs reach the controller, and resends a BLOCKED ACK
-// every 10 ms; a guest that sent nothing for two transport deadlines is not
-// merely waiting for a delayed event delivery or a slow install (both show
-// as polls), it stopped. The value is a liveness choice: the safety of a
+// StalledParticipantBound is how long a fenceable participant's view worker
+// must be silent before it is fenced: twice the guest's 30 s transport
+// window (BlockedACKBound). A live view worker reposts VIEW_WAIT every 10 ms
+// after EMPTY, whose native VIEW_POLL legs reach the controller, and
+// resends a BLOCKED ACK every 10 ms; a view worker that sent nothing for two
+// transport deadlines is not merely waiting for a delayed event delivery or
+// a slow install (both show as polls), it stopped. It also caps how long an
+// early DRAINED may wait for a fenceable peer (blockedReply). The value is a liveness choice: the safety of a
 // fence rests on the conditions above, not on it.
 const StalledParticipantBound = 2 * BlockedACKBound
 
@@ -136,12 +145,38 @@ func (c *Controller) loadFenced() {
 	}
 }
 
-// seen records a sign of life of session: any request of it that reached
-// the controller under c.mu (poll, ACK, ticket, CALL), whatever its answer.
-func (c *Controller) seen(session string) {
+// pulse counts one view-worker request of session (VIEW_POLL, VIEW_ACK)
+// as a sign of life, whatever its answer. It runs at Exchange's entry
+// before the controller TryLock, under pulseMu only, so a request that
+// meets contention still counts. It reads no clock: the time is taken
+// under c.mu when the count is absorbed (absorbPulse), which can only make
+// the session look more recently alive, never less.
+func (c *Controller) pulse(session string) {
+	c.pulseMu.Lock()
+	defer c.pulseMu.Unlock()
+	if c.pulses == nil {
+		c.pulses = map[string]uint64{}
+	}
+	c.pulses[session]++
+}
+
+// absorbPulse turns new pulses of session into lastSeen = now; c.mu is
+// held. Exchange runs it for its caller once it holds c.mu, and silentSince
+// for every session it measures (catching contended requests).
+func (c *Controller) absorbPulse(session string) {
+	c.pulseMu.Lock()
+	count := c.pulses[session]
+	c.pulseMu.Unlock()
+	if count == c.absorbed[session] {
+		return
+	}
+	if c.absorbed == nil {
+		c.absorbed = map[string]uint64{}
+	}
 	if c.lastSeen == nil {
 		c.lastSeen = map[string]time.Time{}
 	}
+	c.absorbed[session] = count
 	c.lastSeen[session] = c.clock()
 }
 
@@ -176,6 +211,7 @@ func (c *Controller) phaseSince() time.Time {
 // silentSince is when session's current silence began: its last request or
 // the controller's first sight of the phase, whichever is later.
 func (c *Controller) silentSince(session string) time.Time {
+	c.absorbPulse(session)
 	since := c.phaseSince()
 	if last := c.lastSeen[session]; last.After(since) {
 		since = last
@@ -267,7 +303,7 @@ func (c *Controller) sessionDrained(ctx context.Context, r *recallState, session
 
 // stalledParticipants returns the participants that may be fenced now,
 // sorted. except (the session whose poll or ACK runs the check) is never
-// returned: a request is a sign of life.
+// returned: its request is a sign of life.
 func (c *Controller) stalledParticipants(ctx context.Context, except string) []string {
 	r := c.state.Recall
 	if r == nil || phaseACKs[r.Phase] == nil {
