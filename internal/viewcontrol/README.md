@@ -108,7 +108,10 @@ view at all: every VFS read first takes its own observation lease on its
 installed view and so hits its own mismatch (and mappings fault under PAGE
 leases; see the je4 section). A peer with an active Targeted observation
 lease (every holder acquired it with expected_target equal to its target)
-has that target installed; if that cut shows the same client-observable
+has that target installed (an advance holder, task xf4, may not have adopted
+it yet, but its view is cacheless and serves nothing under the unadopted
+lease, a guest obligation of xf4 step B, so it shows nothing a reinstall
+could change); if that cut shows the same client-observable
 state as the current cut, reinstalling the current cut changes nothing it
 can see. An untargeted (discovery or renewed) lease says nothing about the
 installed view: in the `hfs_mmap_bootstrap` loop the view can be older than
@@ -221,7 +224,7 @@ scoped recall.
 *Conditions.* The release is RELEASED at once, without a recall and without
 moving the fence, only when: the lease is active, DOMAIN, READ and this is
 its last holder; every holder acquired with expected_target equal to the
-granted target (`leaseState.Targeted`, omitempty; target:null discovery and
+granted target, or by advance (task xf4, below) (`leaseState.Targeted`, omitempty; target:null discovery and
 renewals never qualify, because the `hfs_mmap_bootstrap` loop needs the
 recall to install the current cut when `hfs_view_bind_initial` refuses); no
 renewed sibling of the lineage is active; the domain holds no EXCLUSIVE_DIRTY
@@ -286,8 +289,11 @@ not ahead (at an equal position, the same journal hash); (4)
 `mismatchRecallScope` returns the requester, i.e. wf4 would have answered
 with a DOMAIN recall of the requester alone (clean requester, no open
 reservation anywhere, every peer idle or Targeted on an observably current
-cut); (5) the requester holds no active PAGE or OBJECT lease. Anything else
-takes the unchanged recall path. The grant is the one a matching expected
+cut); (5) the requester holds no active PAGE or OBJECT lease; (6) the grant
+fits every bound (Sources, lease table, control and identity credits,
+Revisions; checked without side effects), since a BLOCKED answer would
+repeat on every retry where the recall's STOP and fence move relieve the
+pressure. Anything else takes the unchanged recall path. The grant is the one a matching expected
 target would get (`grantLease`): Targeted, at the domain's current fence, no
 fence moves, and the peers see exactly what the scoped recall would have
 left them. The guest adopts the target only when its installed target still

@@ -23,7 +23,9 @@ type Facts struct {
 
 // factsLease is one ledger lease revision. Targeted (viewcontrol
 // leaseState, task je4) marks a lease every holder of which acquired it as
-// an observation of a view installed at its target.
+// an observation: of a view installed at its target, or (task xf4) of a
+// cacheless view granted the target by advance, which serves nothing under
+// the lease until it adopts it. Either way the lease owns no PTE.
 type factsLease struct {
 	Lease    guestbridge.ViewLease
 	Active   bool

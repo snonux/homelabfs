@@ -59,6 +59,7 @@ In acquire, before expectedMismatch, grant an ordinary lease on the just-capture
 3. The expected and current targets match on enrollment, profile, context, journal incarnation, epoch and visibility generation, and the expected position is not ahead of the current one; at an equal position the journal hash must match too (`guestbridge.AdvanceCompatible`, shared with the bridge's reply check).
 4. mismatchRecallScope(...) returns the requesting session, i.e. wf4 would have chosen a DOMAIN-scoped recall. That means a clean requester, no open reservation anywhere, and every peer idle or Targeted on an observably current cut.
 5. The requester holds no active PAGE or OBJECT lease.
+6. The grant fits every bound (Sources for the current cut; lease table, control and identity credits and Revisions for the lease; checked without side effects). Otherwise the request takes the recall path: before xf4 that recall's STOP unpinned the requester's leases and moved its fence, relieving the pressure, whereas a BLOCKED answer would repeat on every retry (the R19-1 pattern).
 
 The granted lease is Targeted. A new Advance flag (omitempty) records that every holder requested advance: it is set for any grant to an advance request, also one whose expected target was already current, because such a holder's own pinning LOOKUP moves the cut under it just the same. Releasing an Advance lease may skip the recall even when the cut has moved; je4's own argument covers this, because a DOMAIN lease authorises no PTE. The current-cut condition was only a cost condition: it kept the next observation from paying an expected-target recall, and an advancing guest's next observation is an advance grant instead.
 
@@ -94,7 +95,7 @@ Other host changes:
 
 ## Crash and replay
 
-**Host.** The advance GRANTED is protected like any other grant, and retransmits and VIEW_QUERY return the same bytes. The new fields are omitempty, so schema 2 is unchanged; downgrading after advances is unsupported. After a reopen the digest cache is empty, and an unknown digest falls back to the recall path; a reopened ledger keeps the Advance flag. A PENDING ticket readmitted after a recall that reinstalled the requester's view may be granted by advance; the guest then finds its revision moved and returns the lease unadopted (-EXDEV), which is safe.
+**Host.** The advance GRANTED is protected like any other grant, and retransmits and VIEW_QUERY return the same bytes. The new fields are omitempty, so schema 2 is unchanged; downgrading after advances is unsupported. After a reopen the digest cache is empty, and an unknown digest falls back to the recall path; a reopened ledger keeps the Advance flag. A reopen may keep the journal incarnation, so a pre-reopen expected cut can still be advanced; that is safe because the guest adopts only while its installed target equals the expected one at the captured revision. A PENDING ticket readmitted after a recall that reinstalled the requester's view may be granted by advance; the guest then finds its revision moved and returns the lease unadopted (-EXDEV), which is safe.
 
 **Guest.** A replay after adoption is current. A replay after a further move goes through settle and ends in -EXDEV with an unadopted release. view->transitions serialises a STOP that races an adoption.
 

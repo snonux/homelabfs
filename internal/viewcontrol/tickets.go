@@ -384,14 +384,14 @@ func (c *Controller) acquire(ctx context.Context, scope guestbridge.Context, r r
 // expectedMismatch answers an acquisition whose expected target is not the
 // current cut and that advanceGrantable does not grant on the current cut
 // (task xf4, advance.go): the first time it starts the recall that installs
-// the current cut and answers PENDING, and once that recall ran it answers BLOCKED for
-// the old expectation. The recall is scoped to the requesting domain when
-// mismatchRecallScope proves the peers need nothing from it (no open
-// reservation, and every active peer lease Targeted on an observably current
-// cut or no peer lease at all; tasks e84 and wf4) and all-domain otherwise.
-// While any recall is in progress no recall can start yet, so it stays
-// PENDING without spending that one recall; its retry reclassifies against
-// the cut it then captures.
+// the current cut and answers PENDING, and once that recall ran it answers
+// BLOCKED for the old expectation. The recall is scoped to the requesting
+// domain when mismatchRecallScope proves the peers need nothing from it (no
+// open reservation, and every active peer lease Targeted on an observably
+// current cut or no peer lease at all; tasks e84 and wf4) and all-domain
+// otherwise. While any recall is in progress no recall can start yet, so it
+// stays PENDING without spending that one recall; its retry reclassifies
+// against the cut it then captures.
 func (c *Controller) expectedMismatch(ctx context.Context, scope guestbridge.Context, r request, t ticketState, current fsservice.ControlledViewSource) (json.RawMessage, error) {
 	if t.ExpectedMismatch {
 		return c.reply(t, "BLOCKED", nil, nil, nil)
@@ -424,28 +424,52 @@ func (c *Controller) expectedMismatch(ctx context.Context, scope guestbridge.Con
 // A new lineage is BLOCKED once Revisions holds Bounds.Identities lineages
 // (lineageCapacity): reopen refuses a ledger beyond that bound.
 func (c *Controller) grantLease(scope guestbridge.Context, r request, t ticketState, target guestbridge.ViewTarget) (json.RawMessage, error) {
-	lease := guestbridge.ViewLease{Scope: scope, Domain: r.Domain, Access: r.Access, CredentialHash: digest(r.Request.Credentials), Mode: r.Mode, Target: target, Fence: c.fence(scope.Session), Revision: 1}
+	lease := c.leaseFor(scope, r, target)
 	targeted := r.Target != nil
 	advance := r.Advance && targeted && r.Access.Kind == "DOMAIN" && r.Mode == "READ"
+	if !c.grantFits(lease) {
+		return c.reply(t, "BLOCKED", nil, nil, nil)
+	}
 	for id, existing := range c.state.Leases {
 		if existing.Active && sameLineage(existing.Lease, lease) {
 			return c.shareLease(id, existing, t, targeted, advance)
 		}
 	}
-	if len(c.state.Leases) >= c.config.Authorization.Enrollment.Bounds.Identities || !c.controlCapacity(1) || !c.identityCapacity(1) {
-		return c.reply(t, "BLOCKED", nil, nil, nil)
-	}
 	lineage := lineageID(lease)
-	high, known := c.state.Revisions[lineage]
-	if high == ^uint64(0) || !known && !c.lineageCapacity() {
-		return c.reply(t, "BLOCKED", nil, nil, nil)
-	}
+	high := c.state.Revisions[lineage]
 	lease.Revision = high + 1
 	c.state.Revisions[lineage] = lease.Revision
 	c.state.LineageFences[lineage] = lineageFence{Session: scope.Session, Fence: lease.Fence}
 	lease.ID = objectID(lease)
 	c.state.Leases[lease.ID] = leaseState{Lease: lease, Active: true, ReleaseCredit: true, Targeted: targeted, Advance: advance}
 	return c.reply(t, "GRANTED", &lease, nil, nil)
+}
+
+// leaseFor is the lease (revision 1, no ID yet) that grantLease issues or
+// shares for request r of scope on target.
+func (c *Controller) leaseFor(scope guestbridge.Context, r request, target guestbridge.ViewTarget) guestbridge.ViewLease {
+	return guestbridge.ViewLease{Scope: scope, Domain: r.Domain, Access: r.Access, CredentialHash: digest(r.Request.Credentials), Mode: r.Mode, Target: target, Fence: c.fence(scope.Session), Revision: 1}
+}
+
+// grantFits reports, without side effects, whether grantLease has the
+// capacity to grant lease: one more holder's release credit within the
+// control and identity bounds for a shared active lineage; for a new
+// revision also room in the lease table, an unexhausted revision counter
+// and, for a new lineage, room in Revisions (lineageCapacity). grantLease
+// answers BLOCKED exactly when it does not fit; advanceGrantable consults it
+// first so a full bound sends a stale advance request to the recall path
+// instead (task xf4, advance.go).
+func (c *Controller) grantFits(lease guestbridge.ViewLease) bool {
+	if !c.controlCapacity(1) || !c.identityCapacity(1) {
+		return false
+	}
+	for _, existing := range c.state.Leases {
+		if existing.Active && sameLineage(existing.Lease, lease) {
+			return true
+		}
+	}
+	high, known := c.state.Revisions[lineageID(lease)]
+	return len(c.state.Leases) < c.config.Authorization.Enrollment.Bounds.Identities && high != ^uint64(0) && (known || c.lineageCapacity())
 }
 
 func (c *Controller) changeLease(ctx context.Context, scope guestbridge.Context, op string, r request, t ticketState) (json.RawMessage, error) {

@@ -4,10 +4,11 @@ import (
 	"maps"
 	"testing"
 
+	"github.com/snonux/homelabfs/internal/fsservice"
 	"github.com/snonux/homelabfs/internal/guestbridge"
 )
 
-// One negative per advance condition (task xf4, advance.go). Each breaks
+// Negatives of the advance conditions (task xf4, advance.go). Each breaks
 // exactly one condition of advanceGrantable on an otherwise grantable stale
 // observation; end to end, the request then takes the pre-xf4 path:
 // PENDING, the expected-target recall, BLOCKED for the old view. (Condition
@@ -110,6 +111,25 @@ func TestAdvanceGrantableConditions(t *testing.T) {
 			l.Targeted = false
 			s.Leases[peer.ID] = l
 		}, false},
+		{"requester holds an EXCLUSIVE_DIRTY lease", func(s *ledger, _ *request, _ *ticketState) {
+			s.Leases["write"] = leaseState{Active: true, Lease: guestbridge.ViewLease{ID: "write", Scope: r.scopes[1], Access: guestbridge.ViewAccess{Kind: "PAGE"}, Mode: "EXCLUSIVE_DIRTY"}}
+		}, false},
+		{"open reservation in a peer", func(s *ledger, _ *request, _ *ticketState) {
+			s.Reservations = maps.Clone(s.Reservations)
+			s.Reservations["open"] = reservationState{Reservation: guestbridge.DirtyReservation{ID: "open", Scope: r.scopes[0]}, Status: "RESERVED"}
+		}, false},
+		{"Revisions full", func(s *ledger, _ *request, _ *ticketState) {
+			s.Revisions = maps.Clone(s.Revisions)
+			for k := len(s.Revisions); k < r.controller.config.Authorization.Enrollment.Bounds.Identities; k++ {
+				s.Revisions["filler/"+string(rune('A'+k))] = 1
+			}
+		}, false},
+		{"Sources full without the current cut", func(s *ledger, _ *request, _ *ticketState) {
+			s.Sources = map[string]fsservice.ControlledViewSource{}
+			for k := range r.controller.config.Authorization.Enrollment.Bounds.Sources {
+				s.Sources["filler/"+string(rune('A'+k))] = fsservice.ControlledViewSource{}
+			}
+		}, false},
 		{"requester holds a PAGE lease", func(s *ledger, _ *request, _ *ticketState) {
 			s.Leases["page"] = leaseState{Active: true, Lease: guestbridge.ViewLease{ID: "page", Scope: r.scopes[1], Access: guestbridge.ViewAccess{Kind: "PAGE"}, Mode: "READ"}}
 		}, false},
@@ -137,4 +157,123 @@ func grantableAfter(r *rig, installed guestbridge.ViewTarget, change func(*ledge
 	got := c.advanceGrantable(r.scopes[1], q, ticket, source, c.target(r.scopes[1], source))
 	c.state = saved
 	return got
+}
+
+// TestAdvanceAtLineageCapacityFallsBack (condition 6): with Revisions at
+// Bounds.Identities a new lineage would be BLOCKED. The advance request
+// takes the recall path instead, as before xf4, rather than a BLOCKED answer
+// that every retry would meet again. (The Sources bound is pinned by
+// TestAdvanceGrantableConditions only: with Sources full and the current
+// cut unretained, the fallback recall itself cannot retain its install cut
+// and refuses with NoSpace, exactly as the same request did before xf4.)
+func TestAdvanceAtLineageCapacityFallsBack(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	installed := r.staleView(1, "advance-lineages")
+	r.fillRevisions(r.revisionsRoom())
+	r.requireAdvanceFallback(t, 1, installed, r.scopes[1].Session, 1)
+}
+
+// TestAdvanceDivergentJournalFallsBack (condition 3): an expected cut at the
+// current position with another journal hash is a divergent history, not
+// an older view; the requester's scoped mismatch recall runs.
+func TestAdvanceDivergentJournalFallsBack(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	cut := *r.currentTarget(1).Cut
+	cut.JournalHash = hash([]byte("divergent"))
+	divergent := guestbridge.ViewTarget{Kind: "CONTROLLED_LOCAL", Cut: &cut}
+	r.requireAdvanceFallback(t, 1, divergent, r.scopes[1].Session, 1)
+}
+
+// TestAdvanceOlderPeerCutFallsBack (condition 4): a peer observation lease
+// Targeted on an observably older cut keeps wf4's all-domain recall, and so
+// the advance. A real peer lease gets there only across a Reclaim (see
+// TestOpenUnlinkedFinalReleaseMismatch), so the peer lease's target is set
+// to the retained cut before the requester's view moved.
+func TestAdvanceOlderPeerCutFallsBack(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	older := r.observeReleased(0).Target // retained, digest remembered
+	installed := r.staleView(1, "advance-older-peer")
+	peer := r.observeCurrent(0, guestbridge.ViewAccess{Kind: "DOMAIN"})
+	r.controller.mu.Lock()
+	l := r.controller.state.Leases[peer.ID]
+	l.Lease.Target = older
+	r.controller.state.Leases[peer.ID] = l
+	r.controller.mu.Unlock()
+	r.requireAdvanceFallback(t, 1, installed, "", 0, 1)
+}
+
+// TestAdvanceOpenReservationFallsBack (condition 4): an open reservation in
+// any domain keeps the all-domain recall. A reservation lives under an
+// EXCLUSIVE_DIRTY lease, which a DOMAIN READ acquisition conflicts with
+// before it is classified at all, so it is injected here; the clean test
+// helper cannot complete a recall that owes a drain, so the test stops at
+// the fallback's PENDING and its all-domain recall.
+func TestAdvanceOpenReservationFallsBack(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	installed := r.staleView(1, "advance-reservation")
+	r.controller.mu.Lock()
+	r.controller.state.Reservations["open"] = reservationState{Reservation: guestbridge.DirtyReservation{ID: "open", Scope: r.scopes[0]}, Status: "RESERVED"}
+	r.controller.mu.Unlock()
+	if _, reply := r.advanceAcquire(1, installed); reply.Status != "PENDING" || r.advances() != 0 {
+		t.Fatalf("advance beside an open reservation: %+v, advances %d", reply, r.advances())
+	}
+	r.requireRecallScope(t, "", 1) // all-domain; m0 holds no view, so gets no event
+	records := history(t, r.controller).Recalls
+	if last := records[len(records)-1]; last.Kind != TriggerExpectedTarget {
+		t.Fatalf("history %+v", last)
+	}
+}
+
+// TestAdvanceExclusiveRequesterFallsBack (condition 4): a requester holding
+// an EXCLUSIVE_DIRTY lease is not clean. Its DOMAIN READ acquisition
+// conflicts with that lease and starts the all-domain conflict recall before
+// any classification, so it is never advanced. (A readmit after that recall
+// is classified afresh; an advance grant there would be refused by the
+// guest, whose revision moved, and handed back unadopted.)
+func TestAdvanceExclusiveRequesterFallsBack(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	_, description := r.create(1, "advance-exclusive", false)
+	installed := r.currentTarget(1)
+	r.create(0, "advance-exclusive-move", false)
+	if _, write := r.acquire(1, page(description, 0), "EXCLUSIVE_DIRTY"); write.Status != "GRANTED" {
+		t.Fatalf("EXCLUSIVE_DIRTY lease: %+v", write)
+	}
+	if _, reply := r.advanceAcquire(1, installed); reply.Status != "PENDING" || r.advances() != 0 {
+		t.Fatalf("advance beside an own EXCLUSIVE_DIRTY lease: %+v, advances %d", reply, r.advances())
+	}
+	r.requireRecallScope(t, "", 1) // all-domain; m0 holds no view, so gets no event
+	records := history(t, r.controller).Recalls
+	if last := records[len(records)-1]; last.Kind != TriggerAcquireConflict {
+		t.Fatalf("history %+v", last)
+	}
+	r.completeCleanRecall()
+}
+
+// TestAdvanceLeaseRecalledByPeerCall: right after an advance grant a peer's
+// mutation conflicts with the requester's Advance lease and starts the
+// all-domain CALL_CONFLICT recall, which covers the requester exactly as for
+// any active lease; the lease is closed by its STOPPED and its later release
+// is RELEASED without another recall.
+func TestAdvanceLeaseRecalledByPeerCall(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	_, reply := r.advanceAcquire(1, r.staleView(1, "advance-peer-call"))
+	lease := r.requireAdvanced(t, 1, reply)
+	root := r.call(0, "ROOT", map[string]any{}).Capabilities[0]
+	create, status := r.pendingCall(0, "MKDIR", map[string]any{"parent": root, "name": name("advance-peer-dir"), "mode": 0777, "umask": 0})
+	if status == "TERMINAL" {
+		t.Fatal("peer mutation passed an active Advance lease")
+	}
+	r.requireRecallScope(t, "", 1) // all-domain; m0 holds no view, so gets no event
+	records := history(t, r.controller).Recalls
+	if last := records[len(records)-1]; last.Kind != TriggerCallConflict {
+		t.Fatalf("history %+v", last)
+	}
+	r.completeCleanRecall()
+	if r.leaseActive(lease) || r.queryStatus(0, create) != "TERMINAL" {
+		t.Fatalf("lease active %v after the conflict recall", r.leaseActive(lease))
+	}
+	total := r.recallTotal()
+	if released := r.release(1, lease); released.Status != "RELEASED" || r.recallTotal() != total {
+		t.Fatalf("release after the conflict recall %+v, recalls %d -> %d", released, total, r.recallTotal())
+	}
 }

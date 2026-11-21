@@ -51,7 +51,16 @@ import (
 //     no peer lease at all);
 //  5. the requester holds no active PAGE or OBJECT lease (holdsCacheLease):
 //     those are target-bound cache by definition, and only the recall's STOP
-//     revokes what the guest published under them.
+//     revokes what the guest published under them;
+//  6. the grant fits every bound (sourceFits, grantFits): Sources for the
+//     current cut, and the lease table, control and identity credits and
+//     Revisions for the lease. A grant that would be BLOCKED for capacity
+//     falls back to the recall instead. Before xf4 this request started a
+//     recall whose STOP deactivated the requester's leases and moved its
+//     fence, which relieves exactly that pressure (unpinned cuts, recyclable
+//     lineages); answering BLOCKED would make every retry meet the same
+//     full bound, the zq3-r19 R19-1 loop. The check has no side effects, so
+//     the fallback starts from the unchanged ledger.
 //
 // Safety. Requester: the advance grant is byte for byte the grant a request
 // with a matching expected target would get on this cut (grantLease), given
@@ -78,9 +87,12 @@ import (
 // be granted by advance then; if that recall reinstalled the requester's
 // view, the guest finds its revision moved, refuses the adoption and hands
 // the lease back unadopted (-EXDEV), which is safe, merely one wasted grant
-// (before xf4 that readmit started a further recall). After a controller reopen the expected cut is
-// usually of another journal incarnation (condition 3), so it falls back to
-// the recall path, as an unknown cut always did.
+// (before xf4 that readmit started a further recall). A controller reopen
+// may keep the same journal incarnation, epoch and visibility generation,
+// so an expected cut from before the reopen can still pass condition 3 and
+// be advanced; that is safe for the same reason as every advance: the guest
+// adopts only while its installed target equals the expected target at the
+// captured revision, and otherwise hands the lease back unadopted.
 //
 // Lineages. Each advance grant opens a lease lineage at the domain's current
 // fence (a lineage includes the target). Its release is recall-free while
@@ -90,7 +102,7 @@ import (
 
 // advanceGrantable reports whether acquire may grant request r of ticket t,
 // whose expected target is not the current target captured from current, on
-// that current target by advance: conditions 1-5 above.
+// that current target by advance: conditions 1-6 above.
 func (c *Controller) advanceGrantable(scope guestbridge.Context, r request, t ticketState, current fsservice.ControlledViewSource, target guestbridge.ViewTarget) bool {
 	if !r.Advance || t.ExpectedMismatch || r.Mode != "READ" || r.Access.Kind != "DOMAIN" || r.Target == nil {
 		return false
@@ -98,7 +110,10 @@ func (c *Controller) advanceGrantable(scope guestbridge.Context, r request, t ti
 	if c.state.Recall != nil || !guestbridge.AdvanceCompatible(*r.Target, target) {
 		return false
 	}
-	return c.mismatchRecallScope(scope, r, current) == scope.Session && !c.holdsCacheLease(scope.Session)
+	if c.mismatchRecallScope(scope, r, current) != scope.Session || c.holdsCacheLease(scope.Session) {
+		return false
+	}
+	return c.sourceFits(current) && c.grantFits(c.leaseFor(scope, r, target))
 }
 
 // holdsCacheLease reports whether session holds an active PAGE or OBJECT

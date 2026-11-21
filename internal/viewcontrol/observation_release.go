@@ -60,7 +60,9 @@ import (
 //     holder (Sharers == 0; a non-last holder already returns at once);
 //   - Targeted: every holder acquired with expected_target equal to the
 //     granted target, i.e. each is an observation of a view installed at
-//     this cut. A target:null acquisition is the mount's
+//     this cut, or by advance (task xf4), i.e. an observation of a cacheless
+//     view that adopts this cut and serves nothing under the lease before it
+//     does (advance.go). A target:null acquisition is the mount's
 //     hfs_mmap_bootstrap discovery, whose loop needs the recall: when
 //     hfs_view_bind_initial refuses (-ESTALE, view at another cut), only
 //     the recall installs the current cut before it acquires again. A
