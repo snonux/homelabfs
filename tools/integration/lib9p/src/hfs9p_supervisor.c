@@ -90,8 +90,12 @@ _now(void) {
  * supervisor permanently whenever CPU load preempted the lock holder (tasks
  * 564 and 9h4). Callers therefore repeat the same complete call every 1 ms
  * within BACKEND_CONTENTION_MS of their first attempt; every other error, and
- * EAGAIN after the bound, stays final. 10 s is far beyond any scan or single
- * exchange and stays inside the host's 60 s bootstrap and restart windows. */
+ * EAGAIN after the bound, stays final. The 10 s bound applies per call
+ * (one first-session add, each further add, each claim), not to bootstrap as
+ * a whole; it is far beyond any scan or single exchange, so in practice the
+ * total stays well inside the host's 60 s bootstrap and restart windows. A
+ * recovery pause (recovery_paused, also EAGAIN) arriving during bootstrap is
+ * waited out the same way instead of failing at once (9h4 review). */
 #define BACKEND_CONTENTION_MS 10000
 
 static bool

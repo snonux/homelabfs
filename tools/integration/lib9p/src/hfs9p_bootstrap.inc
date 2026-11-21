@@ -92,10 +92,13 @@ hfs9p_supervisor_bootstrap(void) {
       for (unsigned i = 0; !error && i < count; i++) {
          /* The running wait worker can hold the backend mutex at this
           * instant: bounded contention wait (_backend_contended). */
-         int64_t contention = _now() + BACKEND_CONTENTION_MS;
-         if (i) do error = hfs9p_add_session_tuple(s->backend,
-             scopes[i], lengths[i], 4, 32767);
+         if (i) {
+            int64_t contention = _now() + BACKEND_CONTENTION_MS;
+            do
+               error = hfs9p_add_session_tuple(s->backend,
+                   scopes[i], lengths[i], 4, 32767);
             while (_backend_contended(error, contention));
+         }
          if (error) break;
          memcpy(s->sessions[i], sessions[i], 16);
          const uint8_t *id = sessions[i];
