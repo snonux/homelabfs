@@ -1,4 +1,6 @@
-# xz3 r20 rebuild (2026-11-22): zq3-r19 busy retirement round fix and xf4
+# xz3 r20 rebuild (2026-11-21): zq3-r19 busy retirement round fix and xf4
+
+The candidate was built and admitted on 2026-11-21; the `20261122` in its directory and evidence names was chosen in advance for the planned zq3-r20 run day and is kept because pins and the run plan reference it.
 
 This candidate supersedes the [r19 rebuild](../xz3-20261121-r19/README.md)
 (`09acd09d…`, source `e160370`). In zq3-r19 (R19-1) T1 got further than in
@@ -106,7 +108,8 @@ that changed. The native build facts stay in
   `d9459a2c…`, the `d71ae02` file) built from `d71ae02`. Both builds were
   byte-identical and reproduced the daemon. `controlledruntime.test` changed
   because `controlledruntime` links `internal/viewcontrol` and
-  `internal/guestbridge`. `fdescfs-namespace.c` is unchanged. The helper
+  `internal/guestbridge`, and 3h4 also changed `internal/controlledruntime`
+  comments and tests that are compiled into the test binary. `fdescfs-namespace.c` is unchanged. The helper
   differs from the r19 `d2ca3ab6…` only in DWARF (the new output directory
   as `comp_dir`). After `llvm-objcopy --strip-debug` it is `07c9f5a1…`, as
   before. `docs/lab/zq3-fdescfs-window/pins.json` and `build-record.json`

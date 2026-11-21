@@ -1,6 +1,6 @@
 # xz3 r19 rebuild (2026-11-21): zq3-r18 setattr kill-bit fix
 
-**Superseded on 2026-11-22** by the [r20 rebuild](../xz3-20261122-r20/README.md)
+**Superseded on 2026-11-21** by the [r20 rebuild](../xz3-20261122-r20/README.md)
 (`b37bcb06…`, source `d71ae02`) for zq3-r20. Its vf4 guest kernel
 `e3d474df…` counted a busy local retirement round against the re4 BLOCKED
 retry cap, so a BLOCKED for the expected target gave up with `EAGAIN`

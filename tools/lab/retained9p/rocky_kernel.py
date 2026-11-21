@@ -57,7 +57,7 @@ PHYSICAL_CONTRACT = "homelabfs-stop-adoption/1"
 ADMISSION_PATH = "/etc/homelabfs/installed-admission-v1.json"
 # Same pins as controller.py (this file is staged alone on Rocky, so it
 # cannot import them; a local test asserts they stay equal).
-# r20 rebuild for zq3-r20 (2026-11-22, source d71ae02): the 1h4+4h4 guest
+# r20 rebuild for zq3-r20 (2026-11-21, source d71ae02): the 1h4+4h4 guest
 # kernel (build ID b4d6cd69, c64 recipe,
 # g64+m64+p84+x84+z84+1a4+oc4+ie4+re4+2f4+vf4+1h4+4h4 series), the 3h4 daemon
 # c04c519f and the pc4 exporter 2fd7e32f, reused byte for byte with the r17 f3

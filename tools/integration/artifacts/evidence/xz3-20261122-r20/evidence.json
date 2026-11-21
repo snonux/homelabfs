@@ -341,7 +341,7 @@
     "a working hfs1.4 mount on Rocky (zq3)"
   ],
   "reason": "09acd09d predates 1h4: its guest kernel e3d474df counted a busy local retirement round against the re4 BLOCKED retry cap, so an expected-target BLOCKED gave up with EAGAIN (zq3-r19 R19-1). It also predates xf4 (3h4 host side, 4h4 guest side: recall-free observations after the guest's own changes), which T1 needs to fit its deadline",
-  "recorded": "2026-11-22",
+  "recorded": "2026-11-21",
   "reused": {
     "checked_against_current_source": 24,
     "from_manifest": "09acd09d66934073e0165a60ac0094e280889cc7204d95061df27072d7de70a5",

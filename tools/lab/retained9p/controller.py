@@ -168,7 +168,7 @@ SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
               "b2a4f69e78190591bec038e269a73f93a6b39bc9e9091c7f6d7c1d5ab73ea6d7",
               "09acd09d66934073e0165a60ac0094e280889cc7204d95061df27072d7de70a5"}
 # The only candidate this controller pins: the xz3 r20 rebuild for zq3-r20
-# (2026-11-22, source and repository baseline d71ae02). The guest kernel was
+# (2026-11-21, source and repository baseline d71ae02). The guest kernel was
 # rebuilt for 1h4 (an expected-target BLOCKED after a reinstall is
 # re-checked and a busy retirement round is waited for instead of counted,
 # zq3-r19 R19-1) and 4h4 (xf4 step B: a cacheless observation asks for an
