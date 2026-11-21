@@ -4,6 +4,7 @@ package controlledruntime
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 )
 
@@ -76,4 +77,64 @@ func TestZQ3R9PressureReleaseParksGetattr(t *testing.T) {
 	if err := json.Unmarshal(claimResult(t, getattr), &result); err != nil || result.Code != "OK" {
 		t.Errorf("resumed GETATTR result %s: %v", claimResult(t, getattr), err)
 	}
+}
+
+// TestZQ3R10AdmissionNeedsNoRecall is a regression guard for T1's
+// admission (task 094, zq3-r10 R10-1 and zq3-r11 R11-1;
+// recall_workload_t1_test.go). It replays the admission and R10-1's exit on
+// the assembled runtime, with and without the xf4 view advance, under the
+// late cleanup schedule: each observation's VIEW_RELEASE goes out only once
+// the next syscall's VIEW_ACQUIRE was granted, just before its CALL.
+//
+// In zq3-r10 the lstat GETATTR's observation release recalled the domain
+// (sometimes both), the root OPEN was CALLed while that recall ran, parked
+// (WouldBlock) and was resumed by QUERY to TERMINAL, but the admission took
+// 16.9 s against guest.py's then 10 s alarm; then PROCESS_EXIT and the
+// leaked root's DESCRIPTION_RELEASE went out back to back. In zq3-r11 the
+// root OPEN started an all-domain recall itself. Since je4 an observation
+// release on an unmoved cut needs no recall, and since z94 a read-only OPEN
+// conflicts like a read and (on a root that already has a grant) moves no
+// cut, so with or without advance the admission now starts no recall and
+// no claim is held. Both subtests require exactly that, the admission
+// within guest.py's 150 s alarm (modelled time), every claim TERMINAL
+// within the guest's window and the exit's back-to-back PROCESS_EXIT and
+// DESCRIPTION_RELEASE OK (finish, exit). A recall or held claim here means
+// one of je4/z94 regressed. The WouldBlock -> QUERY resume path this case
+// once took is now exercised only by TestZQ3T1CredentialsReplay's
+// CALL_CONFLICT recalls (and by TestZQ3R9PressureReleaseParksGetattr's
+// constructed release).
+func TestZQ3R10AdmissionNeedsNoRecall(t *testing.T) {
+	if testing.Short() {
+		t.Skip("replays T1's admission twice on the assembled runtime")
+	}
+	t.Parallel()
+	for _, advance := range []bool{false, true} {
+		t.Run(fmt.Sprintf("advance %v", advance), func(t *testing.T) {
+			r := newT1Replay(t, advance, true)
+			r.admission()
+			r.exit()
+			s := r.report(t)
+			r.check(t, s)
+			recalls, held := r.stageSummary("admission")
+			if len(recalls) != 0 || held != 0 || s.stage["admission"] > t1AdmissionAlarm {
+				t.Errorf("admission: recalls %s, %d held claims, %s modelled (alarm %s); want none, none and within", kindsText(recalls), held, s.stage["admission"], t1AdmissionAlarm)
+			}
+		})
+	}
+}
+
+// stageSummary sums the recalls the syscalls of stage started, by kind, and
+// their held claims.
+func (r *t1Replay) stageSummary(stage string) (recalls map[string]int, held int) {
+	recalls = map[string]int{}
+	for _, c := range r.syscalls {
+		if c.stage != stage {
+			continue
+		}
+		held += c.held
+		for kind, n := range c.kinds {
+			recalls[kind] += n
+		}
+	}
+	return recalls, held
 }

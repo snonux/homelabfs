@@ -116,10 +116,26 @@ func (m *recallModel) race() {
 // acquisition ticket's record either way (VIEW_RETIRE retires it only once
 // its lease is released).
 func (m *recallModel) lease(mount *modelMount, p *modelProcess, expected json.RawMessage) (*guestbridge.ViewLease, *ticketRec) {
+	w, rec := m.acquireWait(mount, p, expected, false)
+	if w.status != "GRANTED" {
+		m.t.Errorf("%s: %s (expected target %s)", w.label, w.payload, expected)
+		return nil, rec
+	}
+	return grantedLease(m.t, w), rec
+}
+
+// acquireWait sends one DOMAIN READ VIEW_ACQUIRE expecting expected (nil:
+// target null) and waits for its terminal reply, whatever it is. advance
+// adds "advance": true (task xf4), which the guest sends only from a
+// cacheless view and only together with an expected target.
+func (m *recallModel) acquireWait(mount *modelMount, p *modelProcess, expected json.RawMessage, advance bool) (*guestWait, *ticketRec) {
 	ticket, rec := m.ticket(mount, p, "acquire", m.families[mount.index].Acquisition)
-	var target any
+	request := map[string]any{"request": ticket, "domain": mount.domain, "access": guestbridge.ViewAccess{Kind: "DOMAIN"}, "mode": "READ", "target": nil}
 	if len(expected) > 0 {
-		target = expected
+		request["target"] = expected
+	}
+	if advance {
+		request["advance"] = true
 	}
 	mount.registered = true
 	m.race()
@@ -127,17 +143,17 @@ func (m *recallModel) lease(mount *modelMount, p *modelProcess, expected json.Ra
 	w := m.register(m.viewWait(fmt.Sprintf("m%d %s VIEW_ACQUIRE", mount.index, p.name), mount, ticket))
 	rec.wait, rec.acquire = w, true
 	w.start = m.startWait()
-	reply, _, _, _, err := mount.peer.mappedExecute("VIEW_ACQUIRE", map[string]any{"request": ticket, "domain": mount.domain, "access": guestbridge.ViewAccess{Kind: "DOMAIN"}, "mode": "READ", "target": target})
-	require(m.t, err)
-	m.launch(w, reply)
+	m.launch(w, mount.ordinary.exec(m.t, "VIEW_ACQUIRE", request))
 	m.await(w)
-	if w.status != "GRANTED" {
-		m.t.Errorf("%s: %s (expected target %s)", w.label, w.payload, expected)
-		return nil, rec
-	}
+	return w, rec
+}
+
+// grantedLease decodes the lease of a GRANTED view exchange.
+func grantedLease(t *testing.T, w *guestWait) *guestbridge.ViewLease {
+	t.Helper()
 	var granted struct{ Lease guestbridge.ViewLease }
-	require(m.t, json.Unmarshal(w.payload, &granted))
-	return &granted.Lease, rec
+	require(t, json.Unmarshal(w.payload, &granted))
+	return &granted.Lease
 }
 
 // viewWait builds a view ticket exchange that retries VIEW_QUERY of ticket
@@ -181,9 +197,10 @@ func (m *recallModel) noReply(chain *r5Chain, op string, value any) json.RawMess
 	return payload
 }
 
-// claim runs hfs_request_run's ALLOCATE and CALL on the ordinary lane and
-// tracks the claim's QUERY retries on the control lane until TERMINAL. The
-// claim joins its mount's request list, which RETIRE retires in order.
+// claim runs hfs_request_run's ALLOCATE and CALL on the ordinary lane (each
+// reclaiming the previous ordinary response, modelMount.ordinary) and tracks
+// the claim's QUERY retries on the control lane until TERMINAL. The claim
+// joins its mount's request list, which RETIRE retires in order.
 func (m *recallModel) claim(mount *modelMount, p *modelProcess, op string, args any) *guestWait {
 	peer := mount.peer
 	m.race()
@@ -197,10 +214,8 @@ func (m *recallModel) claim(mount *modelMount, p *modelProcess, op string, args 
 	peer.claims++
 	call := guestbridge.Call{Claim: guestbridge.Claim{Realm: testUUID(100).String(), Subject: "616263", Anchor: testUUID(101).String(), Nonce: testUUID(103).String(), Number: peer.claims, OriginalHash: hashBytes(original)}, Credentials: p.cred, Intent: intent}
 	mount.claims = append(mount.claims, &claimRec{number: peer.claims, cred: p.cred, wait: w})
-	_, _, err = peer.execute("ALLOCATE", call)
-	require(m.t, err)
-	reply, _, err := peer.execute("CALL", call)
-	require(m.t, err)
+	mount.ordinary.exec(m.t, "ALLOCATE", call)
+	reply := mount.ordinary.exec(m.t, "CALL", call)
 	if !bytes.Contains(reply, []byte(`"status":"ADMITTED"`)) {
 		m.t.Fatalf("m%d %s %s CALL: %s", mount.index, p.name, op, reply)
 	}
