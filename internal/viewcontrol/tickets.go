@@ -422,7 +422,9 @@ func (c *Controller) expectedMismatch(ctx context.Context, scope guestbridge.Con
 // advance only on such requests; the check here keeps a direct caller from
 // marking any other lease Advance.
 // A new lineage is BLOCKED once Revisions holds Bounds.Identities lineages
-// (lineageCapacity): reopen refuses a ledger beyond that bound.
+// (lineageCapacity): reopen refuses a ledger beyond that bound. grantFits is
+// the single capacity gate for both paths (advance condition 6 calls it too),
+// so the bounds checked here and by advanceGrantable cannot drift apart.
 func (c *Controller) grantLease(scope guestbridge.Context, r request, t ticketState, target guestbridge.ViewTarget) (json.RawMessage, error) {
 	lease := c.leaseFor(scope, r, target)
 	targeted := r.Target != nil

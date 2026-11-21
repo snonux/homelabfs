@@ -94,6 +94,9 @@ import (
 // way, so one holder without it makes the last release keep je4's
 // current-cut condition for good.
 func (c *Controller) shareLease(id string, existing leaseState, t ticketState, targeted, advance bool) (json.RawMessage, error) {
+	// Defensive: grantLease, the only caller, has already passed grantFits,
+	// which checks these same two credits, so this never fires today. It
+	// stays so that a future caller cannot share past the bounds.
 	if !c.controlCapacity(1) || !c.identityCapacity(1) {
 		return c.reply(t, "BLOCKED", nil, nil, nil)
 	}

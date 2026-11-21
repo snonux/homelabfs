@@ -112,7 +112,9 @@ func TestAdvanceGrantableConditions(t *testing.T) {
 			s.Leases[peer.ID] = l
 		}, false},
 		{"requester holds an EXCLUSIVE_DIRTY lease", func(s *ledger, _ *request, _ *ticketState) {
-			s.Leases["write"] = leaseState{Active: true, Lease: guestbridge.ViewLease{ID: "write", Scope: r.scopes[1], Access: guestbridge.ViewAccess{Kind: "PAGE"}, Mode: "EXCLUSIVE_DIRTY"}}
+			// DOMAIN access, so only condition 4 (a clean requester) breaks;
+			// a PAGE lease would also break condition 5 (round-2 review).
+			s.Leases["write"] = leaseState{Active: true, Lease: guestbridge.ViewLease{ID: "write", Scope: r.scopes[1], Access: guestbridge.ViewAccess{Kind: "DOMAIN"}, Mode: "EXCLUSIVE_DIRTY"}}
 		}, false},
 		{"open reservation in a peer", func(s *ledger, _ *request, _ *ticketState) {
 			s.Reservations = maps.Clone(s.Reservations)
