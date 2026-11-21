@@ -173,11 +173,11 @@ func TestAckRefusalClassification(t *testing.T) {
 	r.controller.mu.Lock()
 	defer r.controller.mu.Unlock()
 	for err, want := range map[error]string{fsapi.Stale: "STALE", ErrNotObserved: "BLOCKED", fsapi.WouldBlock: "BLOCKED", fsapi.Busy: "BLOCKED"} {
-		reply, e := r.controller.ackRefusal(r.scopes[0], raw, err)
+		reply, e := r.controller.ackRefusal(t.Context(), r.scopes[0], raw, err)
 		requireAckStatus(t, reply, e, want)
 	}
 	for _, err := range []error{fsapi.Permission, fsapi.Unavailable, fsapi.IO, fsapi.NoSpace, fsapi.Invalid, fsapi.Unsupported, errors.New("undecodable manifest")} {
-		if reply, e := r.controller.ackRefusal(r.scopes[0], raw, err); e == nil || !errors.Is(e, err) {
+		if reply, e := r.controller.ackRefusal(t.Context(), r.scopes[0], raw, err); e == nil || !errors.Is(e, err) {
 			t.Fatalf("%v answered as a reply %s: %v", err, reply, e)
 		}
 	}

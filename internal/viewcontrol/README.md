@@ -426,7 +426,9 @@ The guest kernel resends BLOCKED every 10 ms without a limit of its own, so one
 exact ACK may stay BLOCKED for at most `BlockedACKBound` (30 s, the guest's
 transport deadline); afterwards it gets an error reply. The bound is per
 session, in memory only, and restarts on different ACK bytes or any other
-reply. An ACCEPTED ACK is protected first; a later progress failure does not
+reply. An early DRAINED counts from a still-BLOCKED peer's wait or from a
+fenceable silent peer's fence point, if later (see "Stalled recall
+participants" below). An ACCEPTED ACK is protected first; a later progress failure does not
 change that reply.
 
 Signed finite bounds cover retained ticket identities, separate live/control
@@ -475,6 +477,88 @@ next VIEW_RETIRE recycles them, and lineages without a recorded fence keep
 their revision. Downgrading after recycling is unsupported. Ticket families
 themselves stay (per full credentials, bounded by the guest's
 HFS_VIEW_FAMILIES_MAX per session).
+
+Stalled recall participants (`participant_fence.go`, task 0a4 after zq3-r11
+R11-2). A recall waits for the exact ACKs of every participant and had no
+deadline: a guest session that stopped acknowledging (its view worker got
+STALE and stopped, `hfs_mmap_fail` told the host nothing, the guest hung)
+held the recall, and with it every other domain's cut-changing admission,
+forever.
+
+*When a participant is fenced.* All of these must hold (`fenceable`):
+
+- the recall is past RECALL: every participant's STOPPED was accepted, which
+  the physical Facts certified (the fixed observer measured the guest
+  stopped), quiesceParticipants deactivated every participant lease, and the
+  session's STOPPED manifest is protected. A participant missing its STOPPED
+  is never fenced: nothing shows that it stopped using its leases;
+- the session holds no active lease of any kind, in particular no PAGE lease
+  that could authorize a PTE;
+- every open reservation of the session is FROZEN in this recall with its
+  drain result protected (`CheckFrozenResult`): it has no undrained entry, so
+  no dirty byte or frozen call is abandoned. A participant with an undrained
+  entry is never fenced;
+- it owes an ACK of the current phase (`phaseACKs`, the allAcked conditions)
+  and its latest ACK is not BLOCKED within `BlockedACKBound` (a guest whose
+  ACK waits for its observation is alive);
+- the phase has waited `StalledParticipantBound` (60 s, twice the guest's
+  30 s window) since the controller first saw it. The stall clock is memory
+  only and restarts on every phase change, reopen, Disconnect and Recover, so
+  a restart can delay a fence but never hasten one.
+
+*What the fence does.* One protected write records `Fenced[session]` (recall,
+phase, last sequence, its unchanged domain fence), removes the session's
+event, learned ACKs and manifest from the recall and, when no participant is
+left, ends the recall (no fence advances), so no ledger holds a recall without
+participants and a crash leaves either nothing or the whole fence. Every VIEW_POLL
+runs the check before progress (each live domain polls, so the peers unwedge
+the recall; the poller itself may be fenced, a poll is no progress), and so
+does every VIEW_ACK except for its sender, whose ACK is its progress; after a
+fence the ACK lets the recall advance before it is checked. The other
+participants then install and REOPEN as usual, and finishRecall closes the
+fenced session's drained reservations with the rest.
+
+*Afterwards.* The fenced session gets `ErrSessionFenced` (fsapi.Unavailable)
+for every request: CheckRequest refuses it lock-free (native commands are
+exempt; they belong to no guest domain) and every locked admission path
+(ExchangeView, Exchange, acknowledge, admissionBarrier, CheckTarget) checks the
+ledger again, so a request that passed the gate just before the fence is
+refused too. The endpoint answers the cell with a transport error and never
+retries it; the shared transport stays up. events() and fenceExhausted skip
+the session for good, so neither the rest of its recall nor any later recall
+issues it an event. Its domain fence never advances: its guest never
+acknowledged REOPEN, so its old leases are never certified released (the
+runtime Facts need the fence advance) and it cannot resume on its stale view.
+The runtime Facts' recall participant check leaves fenced sessions out
+(`controlledruntime/facts.go` `recallParticipantsComplete`). A reopened
+controller reloads the fences (`validFenced` checks them).
+
+*Early DRAINED.* A live participant's DRAINED, sent right after its own
+INSTALLED_DRAIN, waits BLOCKED for a silent peer's INSTALLED_DRAIN. Its bound
+now runs from that peer's fence point when the peer is fenceable, so it stays
+BLOCKED until 30 s after the fence point instead of failing its guest's view
+worker after 30 s, before the fence could help; the first ACK after the fence
+point fences the peer and the same DRAINED is ACCEPTED.
+
+*Costs and limits.* The fenced session's unretired tickets, lineage revisions
+(its fence never moves past them) and families stay charged; it cannot be
+sealed (SESSION_RETIRE is refused like everything else). A recall participant
+that loses its learned ACKs (Disconnect, reopen) and does not resend its
+current-phase ACK within the bound is fenced too; patch 0004 does not resend
+INSTALLED_DRAIN today, which before 0a4 wedged such a recall forever. Live
+peers' claims and view exchanges parked behind a stalled recall still exceed
+the guest's 30 s window before the 60 s fence; the bound is a liveness choice,
+the safety argument above does not depend on its value. `Fenced` is
+omitempty, so a ledger without a fence keeps its schema-2 bytes; downgrading
+after a fence is unsupported (an older binary would serve the session again).
+OBSERVE shows the fence in the recall history (`fenced` rows) and in the
+ledger evidence (`Fenced`).
+
+*Guest follow-up (not needed for safety).* The guest could tell the host at
+once that its view control failed (an explicit abandon from
+`hfs_mmap_fail`) so the host need not wait for the bound, and it could resend
+its current-phase ACK after RESUME. Both only shorten the wait; the host never
+fences on a guest's word alone without the conditions above.
 
 Recall history (`recall_history.go`, task ce4). Because that pruning drops
 everything about finished recalls, zq3-r14..r16 could not reconstruct recall

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/snonux/homelabfs/internal/admission"
 	"github.com/snonux/homelabfs/internal/controlledvalidation"
@@ -39,6 +40,10 @@ type AssemblyConfig struct {
 	ProviderLimits                                          ProviderLimits
 	Capabilities, CapabilityIdentities, CredentialRevisions int
 	Budget                                                  *admission.Budget
+	// ControllerClock is passed to the view controller as its Clock: nil
+	// (time.Now) in production; the recall workload model runs the
+	// controller's in-memory bounds on its modelled time.
+	ControllerClock func() time.Time
 }
 
 // Assembly owns real semantic components, including the durable C8 endpoint.
@@ -95,7 +100,7 @@ func Assemble(ctx context.Context, c AssemblyConfig) (*Assembly, error) {
 	if err = privateAssemblyDirectory(dir); err != nil {
 		return a, err
 	}
-	a.Controller, err = viewcontrol.New(ctx, viewcontrol.Config{Directory: dir, Initialize: true, Service: c.Service, Providers: a.Providers, Operator: c.Operator, Authorization: c.Authorization, Facts: a.Facts})
+	a.Controller, err = viewcontrol.New(ctx, viewcontrol.Config{Directory: dir, Initialize: true, Service: c.Service, Providers: a.Providers, Operator: c.Operator, Authorization: c.Authorization, Facts: a.Facts, Clock: c.ControllerClock})
 	if err != nil {
 		return a, fmt.Errorf("controller: %w", err)
 	}

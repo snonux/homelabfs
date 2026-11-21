@@ -6,7 +6,9 @@ import (
 )
 
 // TestFactsRecallParticipants: an all-domain recall needs an event for every
-// registered domain, a scoped READ recall (task 784) for exactly its domain.
+// registered domain, a scoped READ recall (task 784) for exactly its domain,
+// and neither expects one for a session fenced as a stalled participant
+// (task 0a4), which must not have one either.
 func TestFactsRecallParticipants(t *testing.T) {
 	for _, c := range []struct {
 		name, ledger string
@@ -18,6 +20,9 @@ func TestFactsRecallParticipants(t *testing.T) {
 		{"scoped extra event", `{"Domains":{"a":{},"b":{}},"Recall":{"Domain":"b","Events":{"a":{},"b":{}}}}`, false},
 		{"scoped wrong domain", `{"Domains":{"a":{},"b":{}},"Recall":{"Domain":"b","Events":{"a":{}}}}`, false},
 		{"scoped unregistered", `{"Domains":{"a":{}},"Recall":{"Domain":"b","Events":{}}}`, false},
+		{"all-domain fenced dropped", `{"Domains":{"a":{},"b":{}},"Fenced":{"b":{}},"Recall":{"Events":{"a":{}}}}`, true},
+		{"all-domain fenced still issued", `{"Domains":{"a":{},"b":{}},"Fenced":{"b":{}},"Recall":{"Events":{"a":{},"b":{}}}}`, false},
+		{"all-domain fenced peer missing", `{"Domains":{"a":{},"b":{}},"Fenced":{"b":{}},"Recall":{"Events":{}}}`, false},
 	} {
 		var l factsLedger
 		if err := json.Unmarshal([]byte(c.ledger), &l); err != nil {

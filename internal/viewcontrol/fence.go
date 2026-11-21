@@ -33,11 +33,12 @@ func (c *Controller) fence(session string) uint64 {
 
 // fenceExhausted reports whether a new recall would have to advance a domain
 // fence that is already at its maximum. The recall's participants are exactly
-// the live (unsealed) inventoried domains that events() issues to: all of
-// them, or only scope for a domain-scoped recall (scope != "").
+// the live (unsealed, unfenced) inventoried domains that events() issues to:
+// all of them, or only scope for a domain-scoped recall (scope != "").
+// A fenced domain keeps its fence for good (participant_fence.go).
 func (c *Controller) fenceExhausted(scope string) bool {
 	for session := range c.state.Domains {
-		if _, sealed := c.state.Terminal[session]; sealed || (scope != "" && session != scope) {
+		if _, sealed := c.state.Terminal[session]; sealed || c.isFenced(session) || (scope != "" && session != scope) {
 			continue
 		}
 		if c.fence(session) == ^uint64(0) {

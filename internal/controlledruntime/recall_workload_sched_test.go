@@ -124,6 +124,10 @@ func (m *recallModel) step() {
 	for _, w := range m.pending {
 		switch {
 		case w.done:
+		case m.mounts[w.mount].silent:
+			// A silent guest (task 0a4) sends nothing more: its waits end
+			// unanswered and are dropped.
+			w.done, w.status = true, "SILENT"
 		case w.stuck:
 			m.expireIfDue(w)
 		default:
@@ -242,11 +246,13 @@ type dueACK struct {
 // while the recall still waits in INSTALL_DRAIN for the peer and is BLOCKED;
 // it is resent on a later round (zq3-r11, task y94). Sending every
 // INSTALLED_DRAIN before any DRAINED never produced that early DRAINED.
-// Today's schedules only start scoped recalls (one participant, whose
-// DRAINED is never early), so this order is exercised only once a schedule
-// drives an all-domain recall (task 2a4's credentials-admission replay);
-// the early DRAINED itself is covered in internal/viewcontrol
-// (early_drained_test.go).
+// The gate schedules only start scoped recalls (one participant, whose
+// DRAINED is never early). The blocked-domain case (task 0a4,
+// recall_workload_blocked_test.go) drives an all-domain recall whose silent
+// peer never sends INSTALLED_DRAIN, so there the early DRAINED stays BLOCKED
+// until the peer is fenced; the early DRAINED itself is covered in
+// internal/viewcontrol (early_drained_test.go). A mount whose silentAfter
+// phase was ACCEPTED sends nothing more (nextACK, step, runCleanup).
 func (m *recallModel) eventWorker() bool {
 	if !m.recallActive() {
 		return false
@@ -289,7 +295,7 @@ func (m *recallModel) sendDrained(d dueACK) {
 // nextACK polls mount's current recall event and returns the next ACK it
 // owes, if any.
 func (m *recallModel) nextACK(mount *modelMount) (dueACK, bool) {
-	if !mount.registered {
+	if !mount.registered || mount.silent {
 		return dueACK{}, false
 	}
 	payload := mount.chain.exec(m.t, "VIEW_WAIT", map[string]any{"domain": mount.domain, "after_sequence": 0})
@@ -330,6 +336,9 @@ func (m *recallModel) sendACK(d dueACK) bool {
 	}
 	m.acks++
 	d.mount.acked[d.key]++
+	if d.ack["phase"] == d.mount.silentAfter {
+		d.mount.silent = true // the guest stops here (task 0a4)
+	}
 	if d.ack["phase"] == "STOPPED" {
 		// The recall's STOPPED quiesces every lease of the mount
 		// (quiesceParticipants), so no pending release there can start

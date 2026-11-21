@@ -33,7 +33,10 @@ var ErrACKBlockedTooLong = fmt.Errorf("%w: VIEW_ACK blocked beyond its bound", f
 // (earlyDrainedSince). A peer whose INSTALLED_DRAIN is itself BLOCKED for up
 // to the bound and then ACCEPTED therefore never times the early DRAINED out
 // first, which would fail the guest's view worker and wedge the recall as in
-// zq3-r11. A peer that sends nothing still ends the wait after the bound.
+// zq3-r11. A peer that sends nothing but may be fenced (task 0a4,
+// participant_fence.go) moves the start to its fence point, so the early
+// DRAINED outlives the fence; a silent peer that may not be fenced (it
+// holds an undrained entry) still ends the wait after the bound.
 const BlockedACKBound = 30 * time.Second
 
 // errEarlyDrained marks a DRAINED sent before the recall left INSTALL_DRAIN
@@ -64,11 +67,19 @@ type blockedACK struct {
 //     errEarlyDrained), bounded by BlockedACKBound.
 //   - error: everything else, including recovery (the disconnect discarded
 //     learned ACKs and guest RESUME stays blocked, so it cannot clear for this
-//     session), real authorization refusals, bounds, IO and protocol
-//     violations. The endpoint answers those with an explicit transport error.
+//     session), a session fenced as a stalled recall participant
+//     (ErrSessionFenced, participant_fence.go), real authorization refusals,
+//     bounds, IO and protocol violations. The endpoint answers those with an
+//     explicit transport error.
+//
+// Before the ACK is checked, participants stalled past
+// StalledParticipantBound are fenced (fenceBeforeACK), never its sender.
 func (c *Controller) acknowledge(ctx context.Context, scope guestbridge.Context, raw json.RawMessage) (json.RawMessage, error) {
 	if _, sealed := c.state.Terminal[scope.Session]; sealed {
 		return c.ackReply(scope, raw, "STALE")
+	}
+	if c.isFenced(scope.Session) {
+		return nil, guestbridge.Final(ErrSessionFenced) // participant_fence.go
 	}
 	if c.closed.Load() || c.poisoned.Load() || c.state.Recovery {
 		return nil, fsapi.Unavailable
@@ -77,9 +88,12 @@ func (c *Controller) acknowledge(ctx context.Context, scope guestbridge.Context,
 	if err := json.Unmarshal(raw, &ack); err != nil {
 		return nil, guestbridge.Final(fsapi.Invalid)
 	}
+	if err := c.fenceBeforeACK(ctx, scope); err != nil {
+		return nil, guestbridge.Final(err)
+	}
 	checked := c.clock()
 	if err := c.ack(ctx, scope, ack, raw); err != nil {
-		return c.ackRefusal(scope, raw, err)
+		return c.ackRefusal(ctx, scope, raw, err)
 	}
 	check := c.clock().Sub(checked)
 	// An ACK that passed every check is protected before it is answered. A
@@ -96,13 +110,31 @@ func (c *Controller) acknowledge(ctx context.Context, scope guestbridge.Context,
 	return c.ackReply(scope, raw, "ACCEPTED")
 }
 
+// fenceBeforeACK fences the participants stalled past
+// StalledParticipantBound (participant_fence.go, task 0a4) before an ACK is
+// checked, and then lets the recall advance. The sender is never fenced
+// here: its ACK is its progress. This matters for an early DRAINED, which
+// waits for a silent peer's INSTALLED_DRAIN: once that peer is fenced the
+// recall reaches WAIT_DRAINED and the same DRAINED is ACCEPTED in this very
+// call instead of running into its BLOCKED bound (earlyDrainedSince).
+func (c *Controller) fenceBeforeACK(ctx context.Context, scope guestbridge.Context) error {
+	fenced, err := c.fenceStalled(ctx, scope.Session)
+	if err != nil || !fenced {
+		return err
+	}
+	if err = c.progress(ctx); err != nil && (c.poisoned.Load() || !transientProgress(err)) {
+		return err
+	}
+	return nil
+}
+
 // ackRefusal maps a refused ACK to its spec reply or a definitive error.
-func (c *Controller) ackRefusal(scope guestbridge.Context, raw json.RawMessage, err error) (json.RawMessage, error) {
+func (c *Controller) ackRefusal(ctx context.Context, scope guestbridge.Context, raw json.RawMessage, err error) (json.RawMessage, error) {
 	switch {
 	case errors.Is(err, fsapi.Stale):
 		return c.ackReply(scope, raw, "STALE")
 	case errors.Is(err, errEarlyDrained):
-		return c.blockedReply(scope, raw, c.earlyDrainedSince(scope))
+		return c.blockedReply(scope, raw, c.earlyDrainedSince(ctx, scope))
 	case errors.Is(err, ErrNotObserved), errors.Is(err, fsapi.WouldBlock), errors.Is(err, fsapi.Busy):
 		return c.ackReply(scope, raw, "BLOCKED")
 	default:
@@ -150,7 +182,16 @@ func (c *Controller) blockedReply(scope guestbridge.Context, raw json.RawMessage
 // of scope that still owes its INSTALLED_DRAIN and whose current ACK is
 // BLOCKED, or the zero time if there is none. A blockedACKs entry exists
 // only while that session's latest ACK reply was BLOCKED.
-func (c *Controller) earlyDrainedSince(scope guestbridge.Context) time.Time {
+//
+// A peer that sends nothing but may be fenced (fenceable, task 0a4) counts
+// from the time it becomes fenceable (fenceAt): until then the early
+// DRAINED waits for the fence, and the first ACK after it fences the peer
+// (fenceBeforeACK), so the DRAINED gets ACCEPTED rather than the bound's
+// error. Without this, a peer stalled after its STOPPED would fail the
+// DRAINED's guest after BlockedACKBound, before the fence could unwedge
+// the recall. A silent peer that may not be fenced (it holds an undrained
+// entry) still gives no later start, so the DRAINED ends after the bound.
+func (c *Controller) earlyDrainedSince(ctx context.Context, scope guestbridge.Context) time.Time {
 	var latest time.Time
 	r := c.state.Recall
 	if r == nil {
@@ -161,8 +202,20 @@ func (c *Controller) earlyDrainedSince(scope guestbridge.Context) time.Time {
 		if session == scope.Session || json.Unmarshal(event, &e) != nil || len(r.Acks[session+"/INSTALLED_DRAIN/"+stringNumber(e.Sequence)]) != 0 {
 			continue
 		}
-		if b, ok := c.blockedACKs[session]; ok && b.since.After(latest) {
-			latest = b.since
+		// A peer resending a BLOCKED ACK within its bound is alive and is
+		// never fenced (blockedLive), so its own wait decides.
+		b, blocked := c.blockedACKs[session]
+		since := time.Time{}
+		switch {
+		case blocked && c.blockedLive(session):
+			since = b.since
+		case c.fenceable(ctx, session):
+			since = c.fenceAt()
+		case blocked:
+			since = b.since
+		}
+		if since.After(latest) {
+			latest = since
 		}
 	}
 	return latest

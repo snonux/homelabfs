@@ -112,6 +112,9 @@ func (m *recallModel) dispatchCleanup() {
 // of a release and an expired exchange fail the worker) and sends the next
 // queued job until one is in flight or nothing is left.
 func (m *recallModel) runCleanup(mount *modelMount) {
+	if mount.silent {
+		return // a silent guest's cleanup worker sends nothing (task 0a4)
+	}
 	for {
 		if w := mount.inflight; w != nil {
 			if !w.done {
@@ -135,10 +138,11 @@ func (m *recallModel) runCleanup(mount *modelMount) {
 	}
 }
 
-// cleanupPending reports whether a cleanup worker still has work it can run.
+// cleanupPending reports whether a cleanup worker still has work it can run
+// (a silent mount's worker runs nothing, task 0a4).
 func (m *recallModel) cleanupPending() bool {
 	for _, mount := range m.mounts {
-		if !mount.cleanupFailed && (len(mount.jobs) > 0 || mount.inflight != nil) {
+		if !mount.silent && !mount.cleanupFailed && (len(mount.jobs) > 0 || mount.inflight != nil) {
 			return true
 		}
 	}

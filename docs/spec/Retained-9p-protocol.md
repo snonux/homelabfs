@@ -704,7 +704,8 @@ owner busy, or a DRAINED sent right after the domain's own accepted
 INSTALLED_DRAIN while the recall still waits for a peer's INSTALLED_DRAIN)
 is BLOCKED and is resent unchanged, for a bounded time (the host answers an
 error after 30 s of BLOCKED for the same ACK; for such an early DRAINED the
-30 s run from the latest start of a still-BLOCKED peer INSTALLED_DRAIN, if
+30 s run from the latest start of a still-BLOCKED peer INSTALLED_DRAIN, or
+from the fence point of a silent peer that may be fenced (see below), if
 later). Both are replies. A command the host can never answer, VIEW_POLL included (no
 `{status}` exists for a closed or uncertain owner), gets an explicit transport
 error for its cell, never a cell left without a reply. Manifest is mandatory for STOPPED/DRAINED,
@@ -744,6 +745,28 @@ Kernel/daemon restart additionally needs reconstruction/exclusion under
 [Takeover](Takeover.md), not a fresh UUID or heartbeat timeout. A missing domain,
 drain error, unresolved claim or lost retention gates the closure indefinitely;
 it is not consent to drop a guest, force-stop a VM or narrow to one writer.
+
+One narrow exception keeps a single stalled guest session from holding every
+other domain forever (zq3-r11 R11-2). A participant whose STOPPED was accepted
+(the recall is past RECALL, so its physical quiescence was observed and its
+leases are deactivated), that holds no active lease and no undrained dirty entry
+(every open reservation of it is frozen in this recall with its drain result
+protected), whose latest ACK is not BLOCKED within its 30 s bound, and that owes
+the current phase's ACK for 60 s (twice the guest's 30 s window, measured from
+the host's first sight of the phase; the clock restarts on a controller restart,
+Disconnect and Recover, never hastening a fence) is **fenced**: the host drops
+it from the recall in one protected write, the remaining participants install
+and every later request of that session is refused Unavailable, which the
+endpoint answers with an explicit transport error for that cell (a blocked
+cell: EIO through FUSE, an Rbridge ERROR to the guest), never a reply. Its
+domain fence never advances, so its old leases are never certified released and
+it can never resume on its stale view; the shared transport stays up. A
+participant missing its STOPPED, or with an undrained entry, is never fenced.
+An early DRAINED waiting for a fenceable silent peer stays BLOCKED until 30 s
+after that peer's fence point, and the first ACK after that point fences the
+peer and accepts the DRAINED. A guest must therefore resend its current-phase
+ACK promptly after RESUME. Implementation: `internal/viewcontrol`
+(`participant_fence.go`, task 0a4).
 
 ## Reviewable examples and remaining evidence
 

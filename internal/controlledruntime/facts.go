@@ -64,6 +64,10 @@ type factsLedger struct {
 		ID, Phase, Inventory, Closure, Domain string
 		Events, Acks, Manifests               map[string]json.RawMessage
 	}
+	// Fenced names the sessions the controller fenced as stalled recall
+	// participants (viewcontrol participant_fence.go, task 0a4). They were
+	// dropped from the recall and get no event again.
+	Fenced map[string]json.RawMessage
 }
 
 type physicalACK struct {
@@ -508,10 +512,17 @@ func (f *Facts) ledger(ctx context.Context, raw json.RawMessage) (factsLedger, e
 
 // recallParticipantsComplete requires an event for exactly the recall's
 // participants: every registered domain for an all-domain recall, and only
-// the named registered domain for a scoped one.
+// the named registered domain for a scoped one, minus the fenced sessions
+// (task 0a4): the controller drops a stalled participant only after its
+// observed STOPPED and with nothing undrained, and never issues it an event
+// again. A fenced session's ACKs are refused by the controller before they
+// reach these Facts.
 func (l factsLedger) recallParticipantsComplete() bool {
 	participants := map[string]bool{}
 	for session := range l.Domains {
+		if _, fenced := l.Fenced[session]; fenced {
+			continue
+		}
 		if l.Recall.Domain == "" || session == l.Recall.Domain {
 			participants[session] = true
 		}
