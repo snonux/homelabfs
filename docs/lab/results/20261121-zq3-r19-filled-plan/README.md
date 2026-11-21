@@ -306,3 +306,19 @@ At `f2f6c44` (a clean worktree of main), all passing:
 
 `bash -n` is clean for `build-stage.sh` and `session.sh`; `session.sh`
 loads only in bash and its `hpin` passes. No code was changed.
+
+## Review round 1
+
+A fresh-context review found nothing blocking (all pins, tarball members,
+executable lines, Phase 0b, the sequence rule and the step 6/7 changes
+checked; retained9p 395 OK). Applied to the run sheet:
+- the case-failure OBSERVE takes its sequence from a separate
+  `N=$((L+3))` line (persisted to `vars.env`, edited for other cases)
+  instead of a literal `<next>` placeholder;
+- the T1 `recalls.py` line says it runs only after a passed T1 (the
+  case-failure block runs it after a failure, avoiding an output collision);
+- Phase 0b stops and asks Paul if any iom VM runs or `vm list` fails.
+Not fixed (prose only, no tool reads it): stale wording in `pins.json`
+(`template_derived_from`, the tools note on guest.py, the kernel-plan
+r17 references, the daemon described as je4/ce4/e84); the run record
+corrects it.

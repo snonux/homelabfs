@@ -1256,7 +1256,7 @@ and iom3 are all `Stopped`. Each line on its own:
 
 ```bash
 # ==== BEGIN Phase-0b block 1 (run each line on its own) ====
-f3 'doas -n vm list; swapinfo -k; sysctl -n hw.pagesize vm.stats.vm.v_free_count' | tee $E/p0b-swap-before.txt   # iom1, iom2, iom3 Stopped; the last two lines are pagesize and free pages
+f3 'doas -n vm list; swapinfo -k; sysctl -n hw.pagesize vm.stats.vm.v_free_count' | tee $E/p0b-swap-before.txt   # iom1, iom2, iom3 Stopped (any one running, or vm list failing: stop here and ask Paul); the last two lines are pagesize and free pages
 python3 -I -c 'import sys; l=[x for x in open(sys.argv[1]).read().splitlines() if x.strip()]; page, free = int(l[-2]), int(l[-1]); used = sum(int(x.split()[2]) for x in l if x.startswith("/dev/")); print("swap-used-KiB:", used, "free-bytes:", page * free, "fits:", page * free > used * 1024); sys.exit(not page * free > used * 1024)' $E/p0b-swap-before.txt; echo rc=$?   # fits: True and rc=0 required, else stop and ask Paul
 f3 "doas -n swapoff -a"     # tool timeout >= 300 s; an error: stop (swap stays as it was) and ask Paul
 f3 "doas -n swapon -a"      # always right after swapoff, even if swapoff reported an error
@@ -2475,7 +2475,8 @@ python3 -I -B $D/sh/p10-admission.py $OUT/$CASE/stdout.log | tee $E/p10-admissio
 rocky 'dmesg | grep -E "hfs.*blocked|view control worker stopped|timed out behind a recall" || echo no-hfs-block' | tee $E/t-fail-guest-block.txt
 f3 "doas -n tar -c -f - --exclude control.sock -C $R runtime/owner" > $E/$CASE-owner-live.tar   # live owner snapshot first (holds transport.db)
 f3 "doas -n cat $R/guard/runtime.stderr" > $E/t-fail-runtime-stderr.txt
-tf3 observe <next> "doas -n $C --operation observe --runtime $U --sequence <next>" > $E/obs-$CASE-fail.json   # yf4 direct form, never the obs helper (correlate.py refuses after a failed case). <next> = one above the last accepted OBSERVE sequence: after a T1 that failed after its L+2 baseline use $((L+3)); one higher, $((L+4)), if T1's retained OBSERVE (L+3) was also taken; for T2-T4 one above the last accepted sequence in the Lifecycle-sequences table (for example T2 failing after its baseline L+4: $((L+5))). A refused sequence is not consumed (retry once with the next value); a failing OBSERVE (runtime gone) is recorded, never retried
+N=$((L+3)); echo "$N"; printf '%s=%q\n' N "$N" >> $D/vars.env   # review round 1: the failure OBSERVE sequence, one above the last accepted one. EDIT the expression before running when the failure is not "T1 failed after its L+2 baseline": $((L+4)) if T1's retained OBSERVE (L+3) was also taken; for T2-T4 one above the last accepted sequence in the Lifecycle-sequences table (e.g. T2 failing after its baseline L+4: $((L+5)))
+tf3 observe $N "doas -n $C --operation observe --runtime $U --sequence $N" > $E/obs-$CASE-fail.json   # yf4 direct form, never the obs helper (correlate.py refuses after a failed case). A refused sequence is not consumed (set N one higher and retry once); a failing OBSERVE (runtime gone) is recorded, never retried
 python3 -I -B $D/sh/p11-fence.py $E/t-fail-runtime-stderr.txt $E/$CASE-owner-live.tar $(ls $E/observe-p9*.json $E/obs-*.json) | tee $E/t-fail-fence.json   # nc4 fence record: "fenced" false expected
 python3 -I -B $D/sh/recalls.py $E/recalls-t1.json $(ls -tr $E/observe-p9.json $E/obs-credentials-*.json 2>/dev/null) | tee $E/recalls-t1.txt   # ce4: recall timing after T1 (pass or fail); findings, never a gate   # only when CASE=credentials (T1); other cases: Phase 11 step 1b covers them
 # ==== END Phase-10 block 2 ====
@@ -2543,7 +2544,7 @@ $CTL probe --plan $D/controller/batch-plan.json --sha256 $B --output $OUT | tee 
 obs obs-credentials-baseline obs-credentials-retained
 python3 -I -B $CR case --output $OUT --sha256 $B --case credentials --baseline $E/obs-credentials-baseline.json --baseline-sha256 $(sha $E/obs-credentials-baseline.json) --retained $E/obs-credentials-retained.json --retained-sha256 $(sha $E/obs-credentials-retained.json) --record $E/corr-credentials.json
 $CTL release --output $OUT --sha256 $B --correlation $E/corr-credentials.json --correlation-sha256 $(sha $E/corr-credentials.json) | tee $E/t1-release.json  # tool timeout >= 300 s
-python3 -I -B $D/sh/recalls.py $E/recalls-t1.json $(ls -tr $E/observe-p9.json $E/obs-credentials-*.json 2>/dev/null) | tee $E/recalls-t1.txt   # ce4: recall timing after T1 (pass or fail); findings, never a gate
+python3 -I -B $D/sh/recalls.py $E/recalls-t1.json $(ls -tr $E/observe-p9.json $E/obs-credentials-*.json 2>/dev/null) | tee $E/recalls-t1.txt   # ce4: recall timing, ONLY if T1 passed (after a failure the case-failure block runs this line, after its fresh OBSERVE); findings, never a gate
 # ==== END Phase-10 block 3 ====
 ```
 
