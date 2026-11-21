@@ -1,6 +1,7 @@
 package controlledvalidation
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -25,12 +26,14 @@ import (
 //     Cancel or ResolveGap made a gap, is never touched, so a gap proof (the
 //     hash of the entry) can never change after it was taken;
 //   - no decision reads it: neverPrepared, loadExact, Cancel and ResolveGap
-//     ignore it, and checkPlanCredit leaves it out of a plan's footprint;
+//     ignore it, and every credit measure of an entry (checkPlanCredit,
+//     readdirOwnerFits) uses entryFootprint, which leaves it out;
 //   - it is bounded: a class is a fixed stage plus an errno name, and one
 //     claim carries one trace;
-//   - it is rate-limited: while the class stays the same at most one write a
-//     second (refusalTraceSeconds), so a QUERY loop polling every 10 ms does
-//     not turn into a ledger fsync every 10 ms. A refusal that is not written
+//   - it is rate-limited per claim: at most one write a second
+//     (refusalTraceSeconds) whatever the class, so a QUERY loop polling every
+//     10 ms does not turn into a ledger fsync every 10 ms, even when its
+//     refusals alternate between classes. A refusal that is not written
 //     rolls its transaction back, which writes nothing;
 //   - it is best effort: a failed write is dropped and never changes the
 //     error execute returns. It is written under p.execution after checking
@@ -39,13 +42,15 @@ import (
 
 // The stages execute records a refusal for.
 const (
-	refusalLoad      = "LOAD"      // loadExact refused: another operation's PENDING snapshot holds the scope
+	refusalLoad      = "LOAD"      // loadExact refused: another operation's PENDING snapshot holds the scope, or a ledger read failed
 	refusalAdmission = "ADMISSION" // the Admission controller refused (uncertain), or protecting a definite refusal failed
 	refusalExecution = "EXECUTION" // the serialized worker failed before preparation began
 )
 
-// refusalTraceSeconds is the minimum time between two writes of the same
-// class. A new class is always written.
+// refusalTraceSeconds is the minimum time between two trace writes of one
+// claim, whatever their class. A class change waits for the next slot, and
+// the first refusal after it records the class current then, so the stored
+// class lags the latest refusal by at most this long.
 const refusalTraceSeconds = 1
 
 // refusalTrace is the last uncertain refusal of one never-prepared claim.
@@ -54,6 +59,11 @@ const refusalTraceSeconds = 1
 // class. Count counts the recorded refusals of that class; with the rate
 // limit it is a lower bound of the actual attempts. A new class restarts the
 // trace.
+//
+// The clock is the host's wall clock. When it steps backwards, the next
+// refusal counts as a new slot and Last (and First, when it would be later
+// than Last) moves to the new time, so the limit restarts from there instead
+// of writing nothing until the clock catches up.
 type refusalTrace struct {
 	Class       string
 	Count       uint64
@@ -98,19 +108,31 @@ func (p *Provider) noteRefusal(b guestbridge.Binding, stage string, err error) {
 }
 
 // observeRefusal returns the trace after one refusal of class at now, and
-// whether it changed: a new class starts a fresh trace, the same class adds
-// one to Count once refusalTraceSeconds have passed since Last.
+// whether it changed. Within refusalTraceSeconds after Last nothing changes,
+// whatever the class (a backwards clock step counts as elapsed). After that a
+// new class starts a fresh trace and the same class adds one to Count.
 func observeRefusal(old *refusalTrace, class string, now int64) (*refusalTrace, bool) {
+	if old != nil {
+		if elapsed := now - old.Last; elapsed >= 0 && elapsed < refusalTraceSeconds {
+			return old, false
+		}
+	}
 	if old == nil || old.Class != class {
 		return &refusalTrace{Class: class, Count: 1, First: now, Last: now}, true
-	}
-	if now-old.Last < refusalTraceSeconds {
-		return old, false
 	}
 	next := *old
 	next.Count++
 	next.Last = now
+	next.First = min(next.First, now)
 	return &next, true
+}
+
+// entryFootprint is the encoding every credit measure of an entry uses: the
+// entry without its a84 refusal trace (e is a copy), so the trace never
+// changes a NoSpace answer.
+func entryFootprint(e entry) ([]byte, error) {
+	e.Refusal = nil
+	return json.Marshal(e)
 }
 
 // clock is the refusal trace's time source.

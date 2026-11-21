@@ -44,10 +44,14 @@ func TestUncertainRefusalIsTraced(t *testing.T) {
 		t.Fatalf("admission ran %d times, want one per CALL/QUERY", n)
 	}
 
+	// A class change in the same second waits for the claim's next slot.
 	admission.err = fsapi.NoSpace
 	r.query(b)
-	requireTrace(t, r.entry(b), refusalTrace{Class: "ADMISSION:NoSpace", Count: 1, First: start + 2, Last: start + 2})
-	requireSummaryTrace(t, r.f.provider, b.Call.Claim.Number, "ADMISSION:NoSpace", start+2)
+	requireTrace(t, r.entry(b), refusalTrace{Class: "ADMISSION:WouldBlock", Count: 2, First: start, Last: start + 2})
+	clock.at = clock.at.Add(time.Second)
+	r.query(b)
+	requireTrace(t, r.entry(b), refusalTrace{Class: "ADMISSION:NoSpace", Count: 1, First: start + 3, Last: start + 3})
+	requireSummaryTrace(t, r.f.provider, b.Call.Claim.Number, "ADMISSION:NoSpace", start+3)
 
 	r.f.provider.admission = nil
 	if status := r.query(b); status != "TERMINAL" {
@@ -161,9 +165,21 @@ func TestObserveRefusalRateLimit(t *testing.T) {
 	if !changed || *next != (refusalTrace{Class: "LOAD:WouldBlock", Count: 2, First: 100, Last: 101}) || first.Count != 1 {
 		t.Fatalf("next %+v (old %+v)", next, first)
 	}
-	other, changed := observeRefusal(next, "ADMISSION:WouldBlock", 101)
-	if !changed || *other != (refusalTrace{Class: "ADMISSION:WouldBlock", Count: 1, First: 101, Last: 101}) {
+	// The limit is per claim: alternating classes do not write every round.
+	if same, changed := observeRefusal(next, "ADMISSION:WouldBlock", 101); changed || same != next {
+		t.Fatal("a class change within the same second was written")
+	}
+	other, changed := observeRefusal(next, "ADMISSION:WouldBlock", 102)
+	if !changed || *other != (refusalTrace{Class: "ADMISSION:WouldBlock", Count: 1, First: 102, Last: 102}) {
 		t.Fatalf("new class %+v", other)
+	}
+	// A clock stepping backwards counts as elapsed once, then re-anchors.
+	back, changed := observeRefusal(other, "ADMISSION:WouldBlock", 50)
+	if !changed || *back != (refusalTrace{Class: "ADMISSION:WouldBlock", Count: 2, First: 50, Last: 50}) {
+		t.Fatalf("backwards %+v", back)
+	}
+	if same, changed := observeRefusal(back, "ADMISSION:WouldBlock", 50); changed || same != back {
+		t.Fatal("the re-anchored trace is not rate-limited")
 	}
 	if got := refusalClass(refusalAdmission, fsapi.WouldBlock); got != "ADMISSION:WouldBlock" {
 		t.Fatalf("class %q", got)

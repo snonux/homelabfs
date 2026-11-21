@@ -268,17 +268,26 @@ the claim entry (`controlledvalidation/refusal_trace.go`): a class
 recorded refusal of that class. OBSERVE's provider claim summary (b84) copies
 it into `Refusal`, `Refusals`, `RefusedFirst` and `RefusedLast`. All four are
 omitempty, so an older reader and a never-refused claim see the b84 shape
-unchanged. `tools/lab/retained9p/bootstrap.py` prints the trace with each
+unchanged. To keep OBSERVE bounded they appear only on the four lowest
+`Pending` numbers (the claims a stuck guest waits on), never in `Recent`, and
+every copied string is cut to 24 bytes. One provider's summary then stays
+under `MaxClaimEvidenceBytes` (4.5 KiB), and 16 providers plus the recall
+history leave at least 16 KiB of the 128 KiB lifecycle reply. `tools/lab/retained9p/bootstrap.py` prints the trace with each
 open claim. The trace is a diagnostic only:
 
 * It is written only to the exact never-prepared claim: RESERVED/UNPREPARED,
   no plan, outcome or snapshot, and not a gap. A claim that reached
   PREPARING, PENDING or TERMINAL, or that Cancel or ResolveGap turned into a
   gap, is never rewritten, so a gap proof (the hash of the entry) stays valid.
-* No decision reads it, and a plan's retained-credit check leaves it out.
-* It is bounded to one class per claim, and rate-limited: the same class is
-  written at most once a second. A QUERY loop polling every 10 ms does not
-  cost an fsync each round, and `Refusals` is a lower bound.
+* No decision reads it. Every credit measure of an entry (a plan's
+  retained-credit check, the READDIR cleanup's owner check) measures the entry
+  without it (`entryFootprint`).
+* It is bounded to one class per claim, and rate-limited per claim: at most
+  one write a second, whatever the class. A class change waits for the next
+  slot. A QUERY loop polling every 10 ms does not cost an fsync each round,
+  even when its refusals alternate between classes, and `Refusals` is a lower
+  bound. A wall clock that steps backwards counts as a new slot once and the
+  limit restarts from the new time.
 * It is best effort and written under the provider's execution mutex. A
   failed write is dropped and never changes the answer.
 
