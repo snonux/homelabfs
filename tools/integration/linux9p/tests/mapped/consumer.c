@@ -231,7 +231,9 @@ int main(void) {
    assert(directory >= 0);
    Hfs9pLedger *ledger = NULL;
    assert(!hfs9p_ledger_new(&ledger, directory, "carrier"));
-   Hfs9pVerifier verifier = {ledger,claim_cb,protect_cb,primitive_verify,NULL,NULL};
+   /* controller_cb is required only for the terminal 32767 profile; this
+    * mapped-minor carrier leaves it unset like the begin/end I/O hooks. */
+   Hfs9pVerifier verifier = {ledger,claim_cb,protect_cb,primitive_verify,NULL,NULL,NULL};
    Hfs9p *h = NULL;
    assert(!_construct(&h, fds, &endpoint, verifier));
    /* Deterministic portable scheduling of the same _fetch/_wait_step helpers.
