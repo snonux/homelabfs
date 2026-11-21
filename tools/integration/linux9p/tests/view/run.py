@@ -112,6 +112,11 @@ def main():
         start = lease.index('struct hfs_grant_settle {')
         source.append('#define hfs_received_source_ex test_received_source_ex')
         source.append(lease[start:lease.index('\nstatic int hfs_lease_decode(', start)])
+        # 1h4 review round 1: the actual end of a retirement round (unlock,
+        # then the round count, then the wake-up); the round itself is the
+        # host model in pressure/test.c, which ends every round through it.
+        start = lease.index('static void hfs_view_retire_unlock(')
+        source.append(lease[start:lease.index('\n/* try (re4 review)', start)])
     (args.output / 'production.c').write_text('\n'.join(source) + '\n')
     (args.output / 'test.c').write_bytes(b'#include \"compat.h\"\n' + ((here.parent / 'pressure' if args.pressure else here) / 'test.c').read_bytes())
     (args.output / 'compat.h').write_bytes((here / 'compat.h').read_bytes() + ((here.parent / 'pressure/compat_extra.h').read_bytes() if args.pressure else b''))

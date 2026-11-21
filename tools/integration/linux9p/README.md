@@ -1798,34 +1798,54 @@ Patch 0004:
 - The ticket bound is unchanged: `attempts->blocked + attempts->reinstalled`
   (the BLOCKED tickets of the call) is capped by `HFS_BLOCKED_RETRIES_MAX`,
   so at most 4 host tickets go to BLOCKED answers per syscall.
-- `-EBUSY` from `hfs_view_retire_try` waits instead of counting:
-  `hfs_mmap_retire_busy` calls `hfs_view_retire_wait` (new, `hfs_view.c`).
-  That wait is killable, bounded by the deadline and event-driven on
-  `view->wait`. It ends when `view->retire_rounds` changes (read before the
-  try), when `view->retire_progress` changes, or when the view refuses or
-  the transport fails. Then the back-off decides again: progress retries the
-  acquisition, a round that freed nothing is followed by this call's own
-  try, and a busy mutex waits again. `hfs_view_retire_mode` increments
-  `retire_rounds` at the end of every round that ran (under
-  `session->retirement`) and wakes `view->wait` after the unlock and at each
-  floor advance. Only host BLOCKED answers pause, and a pause happens once
-  per BLOCKED.
+- A retirement mutex held by another round waits instead of counting.
+  `hfs_view_retire_try(session, &ran)` now says whether a round ran:
+  `-EBUSY` with `!ran` is the held mutex. `hfs_mmap_retire_offer` then calls
+  `hfs_mmap_retire_busy`, which calls `hfs_view_retire_wait` (new,
+  `hfs_view.c`). That wait is killable, bounded by the deadline and
+  event-driven on `view->wait`. It ends when `view->retire_rounds` changes
+  (read before the try), when `view->retire_progress` changes, or when the
+  view refuses or the transport fails. A session block or `transport_failed`
+  alone does not wake it; those are seen at the next wake-up or the
+  deadline, as for `hfs_view_reopen_wait`. After a wake the stop checks run
+  first (a refused view or failed transport returns `-ESTALE` without
+  another round), then progress retries the acquisition. Otherwise this
+  call tries again: a round that freed nothing is followed by its own try,
+  and a still-held mutex waits again.
+- Every round ends in `hfs_view_retire_unlock`: `mutex_unlock`, then
+  `atomic_long_inc(&view->retire_rounds)`, then `wake_up_all(&view->wait)`.
+  An observation reads the count before its trylock. A failed trylock means
+  the holder had not unlocked yet, so had not incremented yet, and its
+  increment changes the value the observation waits on; there is no window.
+  The counter is atomic because the increments run outside the mutex, and
+  two rounds ending close together must not lose one. `hfs_view_retire_mode`
+  also wakes `view->wait` at each floor advance.
+- A round of this call that ran and itself returned `-EBUSY` (the hfs1.4
+  in-use check, or the WARN path) is counted and paused again, as in re4.
+  Only a host BLOCKED answer or such a round pauses, and each pauses once.
 - Separate rate-limited lines: `observation VIEW_ACQUIRE BLOCKED by the
   host (attempt N); retiring, then retrying after M ms ...` (host answer),
   `observation VIEW_ACQUIRE BLOCKED (attempt N): local retirement round
   busy; waiting up to M ms for it to finish` (local wait) and `observation
   re-check failed (VIEW_ACQUIRE BLOCKED for the target before a reinstall);
-  acquiring again at once`. The give-up line counts BLOCKED tickets.
+  acquiring again at once`. The give-up line counts the capped attempts.
 - A REOPENED ACK that lands between the read and the capture costs at most
   one spare re-check ticket, within the cap. Without the host's BLOCKED
   reason (2h4), a capacity BLOCKED right after a recall is also re-checked
   once.
 
 Tests (`view --pressure`, `--sanitize`). The fixture's busy retirement is
-now another thread's rounds (`retire_busy`): the try is `-EBUSY` while they
-run, `busy_round_end` (as `view_wait_hook`, one per 100 ms wake-up) ends
-one, and a blocking `hfs_view_retire` waits them out. Every round that runs
-counts in `view->retire_rounds`.
+now another thread's rounds (`retire_busy`, `busy_start`), which hold the
+real `session->retirement` mutex. The try's trylock fails while they run,
+`busy_round_end` (as `view_wait_hook`, one per 100 ms wake-up) ends one,
+and a blocking `hfs_view_retire` waits them out. Every round ends through
+the actual `hfs_view_retire_unlock`, which `view/run.py` extracts from
+`hfs_lease.c`. The rest of `hfs_view_retire_mode` (the exchanges, the `ran`
+flag and the in-use `-EBUSY`) is still the host model (`retire_ran_busy`
+plays the in-use case), so its wiring is compiled by the kernel build and
+controlled_received and reviewed in the source, not executed here. The
+fixture asserts fewer than 1000 retirement calls per case, so a back-off
+that loops on rounds fails instead of spinning.
 
 - `retry_blocked_reinstalled`: R19-1's shape (`HOOK_REINSTALL_BLOCKED`: a
   recall reinstalls another target with its REOPENED ACK, the answer is
@@ -1841,21 +1861,34 @@ counts in `view->retire_rounds`.
   end granted on the second acquisition after one pause (550 ms).
 - `retry_blocked_busy_deadline`: a round that never ends returns `-EAGAIN`
   "deadline exhausted" at the 30 s deadline, after one acquisition.
+- Review round 1: `retire_unlock_order` checks, in the actual
+  `hfs_view_retire_unlock`, that a thread whose trylock fails just before
+  the unlock (`test_mutex_unlocking` probe) read the old count and the count
+  then changes. `retry_blocked_ran_busy`: a round that ran and returned
+  `-EBUSY` pauses 3 times and stops at the retry limit, with no local-busy
+  line. `retry_blocked_busy_stop`: the busy round ends while the transport
+  fails, so the result is `-ESTALE` after one retirement try.
 - Updated: the R16-1 held case (the recall its release starts runs during
   the third acquisition, which is now re-checked: 5 acquisitions, 2 pauses),
   and the worker case's busy try (waited for, 1 pause instead of 2). The old
   "busy mutex pauses three times" assertion became
   `retry_blocked_busy_deadline`.
 
-Each of the four new cases and both updated ones fails on the re4
-`hfs_mmap.c` (run alone, with 1h4's `hfs_view.h` for the new field).
-Mutants each fail a case: always re-check, never re-check, a re-check
-without the ticket cap, `-EBUSY` counted and paused (re4), `-EBUSY` as a
-give-up, and a re-check on the ACK count only. The production
-`hfs_view_retire_mode` counter and wake-ups are replaced in the pressure
-harness by its host model. They are compiled by the kernel build and
-controlled_received and reviewed in the source, not executed against a host
-recall.
+Each of the first four new cases and both updated ones failed on the re4
+`hfs_mmap.c` (run alone, with 1h4's `hfs_view.h` for the new field, before
+review round 1 changed the fixture's signatures). Mutants each fail a case:
+always re-check, never re-check, a re-check without the ticket cap, a held
+mutex counted (re4), a held mutex as a give-up, a re-check on the ACK count
+only, and from review round 1: the count incremented before the unlock, a
+round that ran with `-EBUSY` treated as a held mutex (the round-0 loop), no
+stop check after a wake, and no progress check after a wake.
 
 The series was regenerated with `export.py --task 1h4` (0004: `hfs_view.[ch]`,
-`hfs_lease.c`, `hfs_mmap.c`).
+`hfs_lease.[ch]`, `hfs_mmap.c`). A fresh `prepare.py` tree applies it with
+fuzz zero, and `fs/9p/`, `net/9p/` and `random.o` compile without warnings
+under `kernel.py configure`. transport, policy, cursor, tag, mount_hello,
+view and view --pressure, setattr (`--sanitize`), requests, huge, dirty and
+controlled_received `terminal-smoke`, `cleanup` and `exit-cleanup` pass.
+requests' and controlled_received's `compat.h` gain `atomic_long_t`. reclaim
+still fails at its pre-existing compile errors, as on the unchanged tree. No
+candidate was rebuilt, booted or admitted.

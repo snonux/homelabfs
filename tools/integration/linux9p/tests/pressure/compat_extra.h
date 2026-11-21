@@ -59,6 +59,13 @@ static void hfs_mmap_cleanup(struct work_struct *work);
 static bool test_queue_cleanup(struct delayed_work *work);
 #define INIT_DELAYED_WORK(w,f) ((void)(w),(void)(f))
 #define queue_delayed_work(q,w,d) ((void)(q),(void)(d),test_queue_cleanup(w))
+/* 1h4 review round 1: a probe runs just before each mutex_unlock, while the
+ * mutex is still held (test.c: test_mutex_unlocking), so a case can look at
+ * what a thread whose trylock fails at that moment would read.
+ */
+static void test_mutex_unlocking(struct mutex *m);
+#undef mutex_unlock
+#define mutex_unlock(p) (test_mutex_unlocking(p), assert(pthread_mutex_unlock(&(p)->native) == 0))
 /* re4: hfs_mmap_retire_work's container_of, the BLOCKED back-off's pause
  * (a test sleep only advances jiffies, one jiffy per ms, and is counted) and
  * hfs_view_retire, a host-model fixture in test.c.
