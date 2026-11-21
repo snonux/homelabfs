@@ -106,10 +106,12 @@ type providerEvidence struct {
 // controllerEvidence is the view controller section. Recalls (task ce4) is
 // the controller's bounded in-memory recall history: trigger, scope,
 // participants, wall-clock UTC start, phase starts and accepted ACKs with
-// their observation waits, as microsecond offsets. It is an additive optional
-// field of evidence /2 (like nc4's Transport.Failure): decoders that predate
-// it ignore it, and it is reported even when the ledger read fails, because
-// a closed or poisoned controller still holds its history.
+// their observation waits, as microsecond offsets, and (task 2h4, itself
+// omitempty) the BLOCKED decisions by reason, expected-target mismatch or
+// capacity with the bound, with ticket, domain, opcode and UTC time. It is an
+// additive optional field of evidence /2 (like nc4's Transport.Failure):
+// decoders that predate it ignore it, and it is reported even when the ledger
+// read fails, because a closed or poisoned controller still holds its history.
 type controllerEvidence struct {
 	Error   string                      `json:"error,omitempty"`
 	Ledger  *viewcontrol.LedgerEvidence `json:"ledger,omitempty"`

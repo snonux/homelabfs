@@ -121,14 +121,17 @@ type RecallRecord struct {
 // started since this controller opened), Advances (VIEW_ACQUIREs granted on
 // a newer cut than their expected target by advance since this controller
 // opened, task xf4: each one an expected-target recall that did not run),
+// Blocked (the BLOCKED decisions by reason, task 2h4, blocked_reasons.go;
+// omitted until the first one, so older consumers see the pre-2h4 shape),
 // the newest records oldest first and Omitted, the older ring records left
 // out by RecallEvidenceBytes.
 type RecallHistory struct {
-	Capacity int            `json:"capacity"`
-	Total    uint64         `json:"total"`
-	Advances uint64         `json:"advances"`
-	Omitted  int            `json:"omitted"`
-	Recalls  []RecallRecord `json:"recalls"`
+	Capacity int             `json:"capacity"`
+	Total    uint64          `json:"total"`
+	Advances uint64          `json:"advances"`
+	Blocked  *BlockedHistory `json:"blocked,omitempty"`
+	Omitted  int             `json:"omitted"`
+	Recalls  []RecallRecord  `json:"recalls"`
 }
 
 // recallHistory is the in-memory ring, guarded by Controller.mu. issue holds
@@ -136,10 +139,13 @@ type RecallHistory struct {
 // recorded (issuePhase -> progress). advances counts advance grants (acquire,
 // task xf4); like the ring it is diagnostic memory only, so it counts a grant
 // whose admission later failed to save too, and a reopen starts it at 0.
+// blocked records the BLOCKED decisions by reason (task 2h4) on the same
+// terms.
 type recallHistory struct {
 	records  []*RecallRecord
 	total    uint64
 	advances uint64
+	blocked  blockedHistory
 	issue    time.Duration
 }
 
@@ -232,7 +238,7 @@ func (h *recallHistory) acked(id string, row RecallAck, at time.Time) {
 // ring. It only copies memory, so History can hold the controller mutex for
 // it and encode the copy after releasing it.
 func (h *recallHistory) copyAll() RecallHistory {
-	out := RecallHistory{Capacity: RecallHistoryLimit, Total: h.total, Advances: h.advances, Recalls: make([]RecallRecord, 0, len(h.records))}
+	out := RecallHistory{Capacity: RecallHistoryLimit, Total: h.total, Advances: h.advances, Blocked: h.blocked.view(), Recalls: make([]RecallRecord, 0, len(h.records))}
 	for _, r := range h.records {
 		row := *r
 		row.Participants = append([]string{}, r.Participants...)
@@ -245,17 +251,18 @@ func (h *recallHistory) copyAll() RecallHistory {
 
 // fitEvidence keeps the newest records of h whose complete encoding, wrapper
 // and separators included, fits RecallEvidenceBytes, and counts the others
-// in Omitted. The wrapper is measured with Omitted at its largest possible
-// value, so the actual (never longer) encoding stays within the bound.
+// in Omitted. The wrapper, which includes the bounded BLOCKED reasons
+// (fitBlocked trims them first should they ever not fit), is measured with
+// Omitted at its largest possible value, so the actual (never longer)
+// encoding stays within the bound.
 func fitEvidence(h RecallHistory) RecallHistory {
 	n := len(h.Recalls)
-	wrapper := RecallHistory{Capacity: h.Capacity, Total: h.Total, Advances: h.Advances, Omitted: n, Recalls: []RecallRecord{}}
-	base, err := json.Marshal(wrapper)
+	base, err := fitBlocked(&h, n)
 	if err != nil {
 		h.Omitted, h.Recalls = n, []RecallRecord{}
 		return h
 	}
-	used, first := len(base), n
+	used, first := base, n
 	for first > 0 {
 		raw, err := json.Marshal(h.Recalls[first-1])
 		size := len(raw)

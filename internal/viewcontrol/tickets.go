@@ -372,7 +372,7 @@ func (c *Controller) acquire(ctx context.Context, scope guestbridge.Context, r r
 		return c.expectedMismatch(ctx, scope, r, t, source)
 	}
 	if err = c.remember(source); err != nil {
-		return c.reply(t, "BLOCKED", nil, nil, nil)
+		return c.blocked(scope, t, BlockedCapacity, BoundSources)
 	}
 	reply, err := c.grantLease(scope, r, t, target)
 	if err == nil && stale && status(reply) == "GRANTED" {
@@ -391,10 +391,11 @@ func (c *Controller) acquire(ctx context.Context, scope guestbridge.Context, r r
 // current cut or no peer lease at all; tasks e84 and wf4) and all-domain
 // otherwise. While any recall is in progress no recall can start yet, so it
 // stays PENDING without spending that one recall; its retry reclassifies
-// against the cut it then captures.
+// against the cut it then captures. The BLOCKED is recorded with reason
+// BlockedExpectedMismatch in the recall history (task 2h4).
 func (c *Controller) expectedMismatch(ctx context.Context, scope guestbridge.Context, r request, t ticketState, current fsservice.ControlledViewSource) (json.RawMessage, error) {
 	if t.ExpectedMismatch {
-		return c.reply(t, "BLOCKED", nil, nil, nil)
+		return c.blocked(scope, t, BlockedExpectedMismatch, "")
 	}
 	if c.state.Recall != nil {
 		return c.reply(t, "PENDING", nil, nil, nil)
@@ -425,16 +426,18 @@ func (c *Controller) expectedMismatch(ctx context.Context, scope guestbridge.Con
 // (lineageCapacity): reopen refuses a ledger beyond that bound. grantFits is
 // the single capacity gate for both paths (advance condition 6 calls it too),
 // so the bounds checked here and by advanceGrantable cannot drift apart.
+// A BLOCKED is recorded with reason BlockedCapacity and the bound grantBound
+// names (task 2h4).
 func (c *Controller) grantLease(scope guestbridge.Context, r request, t ticketState, target guestbridge.ViewTarget) (json.RawMessage, error) {
 	lease := c.leaseFor(scope, r, target)
 	targeted := r.Target != nil
 	advance := r.Advance && targeted && r.Access.Kind == "DOMAIN" && r.Mode == "READ"
-	if !c.grantFits(lease) {
-		return c.reply(t, "BLOCKED", nil, nil, nil)
+	if bound := c.grantBound(lease); bound != "" {
+		return c.blocked(scope, t, BlockedCapacity, bound)
 	}
 	for id, existing := range c.state.Leases {
 		if existing.Active && sameLineage(existing.Lease, lease) {
-			return c.shareLease(id, existing, t, targeted, advance)
+			return c.shareLease(scope, id, existing, t, targeted, advance)
 		}
 	}
 	lineage := lineageID(lease)
@@ -461,17 +464,33 @@ func (c *Controller) leaseFor(scope guestbridge.Context, r request, target guest
 // answers BLOCKED exactly when it does not fit; advanceGrantable consults it
 // first so a full bound sends a stale advance request to the recall path
 // instead (task xf4, advance.go).
-func (c *Controller) grantFits(lease guestbridge.ViewLease) bool {
-	if !c.controlCapacity(1) || !c.identityCapacity(1) {
-		return false
+func (c *Controller) grantFits(lease guestbridge.ViewLease) bool { return c.grantBound(lease) == "" }
+
+// grantBound is grantFits naming the first bound that does not fit (Bound*,
+// blocked_reasons.go), or "" when the grant fits; the order of the checks is
+// the order grantFits always had, and it has no side effects.
+func (c *Controller) grantBound(lease guestbridge.ViewLease) string {
+	if !c.controlCapacity(1) {
+		return BoundControl
+	}
+	if !c.identityCapacity(1) {
+		return BoundIdentity
 	}
 	for _, existing := range c.state.Leases {
 		if existing.Active && sameLineage(existing.Lease, lease) {
-			return true
+			return ""
 		}
 	}
 	high, known := c.state.Revisions[lineageID(lease)]
-	return len(c.state.Leases) < c.config.Authorization.Enrollment.Bounds.Identities && high != ^uint64(0) && (known || c.lineageCapacity())
+	switch {
+	case len(c.state.Leases) >= c.config.Authorization.Enrollment.Bounds.Identities:
+		return BoundLeases
+	case high == ^uint64(0):
+		return BoundRevisions
+	case !known && !c.lineageCapacity():
+		return BoundLineages
+	}
+	return ""
 }
 
 func (c *Controller) changeLease(ctx context.Context, scope guestbridge.Context, op string, r request, t ticketState) (json.RawMessage, error) {

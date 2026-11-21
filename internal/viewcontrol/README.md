@@ -498,6 +498,27 @@ grants (task xf4, see above). That bounds only the history's share of a reply; a
 overflow from other sections still takes the documented fallbacks (oversized
 OBSERVE refused, RESTART `EFFECT_UNREPORTABLE`).
 
+BLOCKED reasons (`blocked_reasons.go`, task 2h4). A BLOCKED reply does not say
+why, and zq3-r19 (R19-1) could not tell an expected-target BLOCKED from a
+capacity one without decoding `viewcontrol-v1.db`. The same history therefore
+records each BLOCKED decision of `expectedMismatch` (reason
+`EXPECTED_MISMATCH`: the stale expectation's retry after its recall) and of
+`grantLease`/`shareLease` and acquire's `remember` (reason `CAPACITY`, with
+`bound` one of `SOURCES`, `CONTROL`, `IDENTITY`, `LEASES`, `REVISIONS`,
+`LINEAGES`; `grantBound` names the first failing bound in `grantFits`' check
+order). OBSERVE carries it as `controller.recalls.blocked`:
+`expected_mismatch` and `capacity` counters since the controller opened,
+`omitted`, and `recent`, the newest `BlockedHistoryLimit` (16) decisions
+oldest first, each with `ticket` (the ledger's ticket key, family digest `/`
+number), `domain`, `opcode`, `reason`, `bound` (omitempty) and `at_utc`. It is
+omitempty, so a history without any BLOCKED encodes exactly as before 2h4, and
+consumers that predate it ignore it. Like the rest of the history it is memory
+only (no ledger schema change, no reply or decision change; a replayed saved
+BLOCKED is not a new decision) and is part of the `RecallEvidenceBytes`
+wrapper: about 4 KiB at most, trimmed oldest first before it could crowd out
+the bound. Other BLOCKED replies (renewal, reservation, retirement, ACK
+waits) are not recorded.
+
 Tests use actual temporary OS files, journals, service/planner, controlled claim
 providers and bridge dispatch. Physical/native/enrollment verifiers are explicit
 primitive-boundary shims requiring exact declared observations; they prove no
