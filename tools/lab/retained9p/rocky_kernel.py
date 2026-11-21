@@ -57,11 +57,11 @@ PHYSICAL_CONTRACT = "homelabfs-stop-adoption/1"
 ADMISSION_PATH = "/etc/homelabfs/installed-admission-v1.json"
 # Same pins as controller.py (this file is staged alone on Rocky, so it
 # cannot import them; a local test asserts they stay equal).
-# r18 rebuild for zq3-r18 (2026-11-21, source 633509e): the 2f4 guest kernel
-# (build ID 020acb2e, c64 recipe, g64+m64+p84+x84+z84+1a4+oc4+ie4+re4+2f4
-# series; the five modules are byte-identical to y64's), the je4/ce4/e84
-# daemon 086d7cde and the pc4 exporter 2fd7e32f, reused byte for byte with
-# the r17 f3 build records.
+# r19 rebuild for zq3-r19 (2026-11-21, source e160370): the vf4 guest kernel
+# (build ID e3d474df, c64 recipe, g64+m64+p84+x84+z84+1a4+oc4+ie4+re4+2f4+vf4
+# series; the five modules are byte-identical to y64's), the wf4 daemon
+# bb4ad73c and the pc4 exporter 2fd7e32f, reused byte for byte with the r17
+# f3 build records.
 # Superseded candidates refuse distinctly: e0cca0c cannot arm the d44
 # MKDIR-only lost reply, f44 (defd974) has the pre-r54 guest kernel whose
 # hfs1.4 mounts return EPROTO, r54 (ca920a2) has the pre-w54 guest kernel that
@@ -97,7 +97,10 @@ ADMISSION_PATH = "/etc/homelabfs/installed-admission-v1.json"
 # lease, so m1's re-acquire was refused for control-ticket capacity
 # (zq3-r16 R16-1), and r17 (3430758) has the pre-2f4 guest kernel, which
 # blocked m1's session on a correct GRANTED VIEW_QUERY reply that beat its
-# REOPENED ACK's fence raise (-EKEYREJECTED, zq3-r17 R17-1).
+# REOPENED ACK's fence raise (-EKEYREJECTED, zq3-r17 R17-1), and r18
+# (633509e) has the pre-vf4 guest kernel, whose hfs_setattr refused the
+# ATTR_KILL_* bits, so fchown of a regular file returned EOPNOTSUPP
+# (zq3-r18 R18-1).
 SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
@@ -114,8 +117,9 @@ SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
               "3a7131ddc0bfad96762421122027d63aa5c736ace1ef61f4cb9eff14b5379f6f",
               "ac8020aa0012550d83b4ab15ffd79900a31338330513e2af7d4f5e58b910c1c6",
               "a1af0bd700396a44edbd631087d1303d85a390008771903e13937309a65c2e0d",
-              "f614d52a84b43d455a20f2ee973f9e9346a00e26a25019e33a28ec7b8c14e313"}
-ADMITTED = {"b2a4f69e78190591bec038e269a73f93a6b39bc9e9091c7f6d7c1d5ab73ea6d7"}
+              "f614d52a84b43d455a20f2ee973f9e9346a00e26a25019e33a28ec7b8c14e313",
+              "b2a4f69e78190591bec038e269a73f93a6b39bc9e9091c7f6d7c1d5ab73ea6d7"}
+ADMITTED = {"09acd09d66934073e0165a60ac0094e280889cc7204d95061df27072d7de70a5"}
 QUARANTINED = {"7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b"}
 HASH = re.compile(r"[0-9a-f]{64}\Z")
 BUILD_ID = re.compile(r"[0-9a-f]{16,128}\Z")  # Same bound as probe/installed.py.
@@ -344,7 +348,7 @@ def check_plan_shape(plan):
             not RELEASE.fullmatch(plan["kernel_release"]):
         raise Refused("plan run ID/kernel release")
     if plan["manifest_sha256"] in SUPERSEDED:
-        raise Refused("plan names a superseded xz3 candidate; use the r18 rebuild")
+        raise Refused("plan names a superseded xz3 candidate; use the r19 rebuild")
     if plan["manifest_sha256"] in QUARANTINED or plan["manifest_sha256"] not in ADMITTED:
         raise Refused("plan names a candidate manifest that is not admitted")
     stock = plan["stock_default_kernel"]
@@ -411,7 +415,7 @@ def stock_release(plan):
 
 def read_manifest(package, expected):
     if expected in SUPERSEDED:
-        raise Refused("superseded xz3 candidate manifest; use the r18 rebuild")
+        raise Refused("superseded xz3 candidate manifest; use the r19 rebuild")
     if expected in QUARANTINED or expected not in ADMITTED:
         raise Refused("candidate manifest is not admitted")
     raw = read_bounded(package / "manifest.json", JSON_LIMIT)

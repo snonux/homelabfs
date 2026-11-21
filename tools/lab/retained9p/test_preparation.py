@@ -27,8 +27,8 @@ def module(name):
 controller = module("controller")
 guest = module("guest")
 observer = module("observer")
-# xz3 r18 rebuild for zq3-r18 (2026-11-21); see controller.ADMITTED.
-ADMITTED = "b2a4f69e78190591bec038e269a73f93a6b39bc9e9091c7f6d7c1d5ab73ea6d7"
+# xz3 r19 rebuild for zq3-r19 (2026-11-21); see controller.ADMITTED.
+ADMITTED = "09acd09d66934073e0165a60ac0094e280889cc7204d95061df27072d7de70a5"
 # e0cca0c (no d44 MKDIR-only lost reply), f44 (pre-r54 guest kernel), r54
 # (pre-w54 guest kernel, failed-bind kill_sb oops), w54 (pre-z54 daemon,
 # pre-acquire VIEW_POLL left unanswered), z54 (pre-964 guest kernel, fixed
@@ -50,9 +50,10 @@ ADMITTED = "b2a4f69e78190591bec038e269a73f93a6b39bc9e9091c7f6d7c1d5ab73ea6d7"
 # read-only root OPEN recalled every domain, zq3-r14 R14-1) and r15
 # (pre-ie4 kernel whose observation re-check failed -ESTALE after a recall
 # during VIEW_ACQUIRE, zq3-r15 R15-1), r16 (pre-re4 kernel that returned
-# a host BLOCKED re-acquire at once while holding its lease, zq3-r16 R16-1)
-# and r17 (pre-2f4 kernel that blocked its session on a GRANTED VIEW_QUERY
-# reply racing its fence raise, zq3-r17 R17-1).
+# a host BLOCKED re-acquire at once while holding its lease, zq3-r16 R16-1),
+# r17 (pre-2f4 kernel that blocked its session on a GRANTED VIEW_QUERY
+# reply racing its fence raise, zq3-r17 R17-1) and r18 (pre-vf4 kernel
+# whose hfs_setattr refused the ATTR_KILL_* bits, zq3-r18 R18-1).
 SUPERSEDED = ("3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
@@ -69,7 +70,8 @@ SUPERSEDED = ("3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
               "3a7131ddc0bfad96762421122027d63aa5c736ace1ef61f4cb9eff14b5379f6f",
               "ac8020aa0012550d83b4ab15ffd79900a31338330513e2af7d4f5e58b910c1c6",
               "a1af0bd700396a44edbd631087d1303d85a390008771903e13937309a65c2e0d",
-              "f614d52a84b43d455a20f2ee973f9e9346a00e26a25019e33a28ec7b8c14e313")
+              "f614d52a84b43d455a20f2ee973f9e9346a00e26a25019e33a28ec7b8c14e313",
+              "b2a4f69e78190591bec038e269a73f93a6b39bc9e9091c7f6d7c1d5ab73ea6d7")
 QUARANTINED = "7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b"
 LAB = Path(__file__).resolve().parents[3] / "docs/lab"
 HOST_PIN = (LAB / "f3-host-known_hosts").read_bytes()
@@ -357,7 +359,8 @@ class PreparationTests(unittest.TestCase):
         # always-reply exporter; xd4: the r15 z94 read-only OPEN and
         # pinless volume root; r15: the r16 ie4 observation re-acquire
         # after a recall; r16: the r17 re4 BLOCKED back-off; r17: the r18
-        # 2f4 wait for a not-yet-current grant).
+        # 2f4 wait for a not-yet-current grant; r18: the r19 vf4 setattr
+        # kill bits).
         # They must refuse distinctly from an unknown digest.
         for value in SUPERSEDED:
             with self.subTest(candidate=value), \
