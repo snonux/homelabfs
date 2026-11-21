@@ -2335,7 +2335,7 @@ diff --git a/fs/9p/hfs_lease.c b/fs/9p/hfs_lease.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.c
-@@ -0,0 +1,2002 @@
+@@ -0,0 +1,2024 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Exact bridge1.1 ticket/lease transport; no physical or source-proof defaults. */
 +#include <linux/slab.h>
@@ -3417,18 +3417,18 @@ new file mode 100644
 +			       lease->target_hash);
 +}
 +
-+static int hfs_lease_decode(struct hfs_session *session,
-+			    struct hfs_view_ticket *ticket,
-+			    const struct hfs_json *response,
-+			    const struct hfs_buf *access, bool dirty,
-+			    const struct hfs_buf *expected_target,
-+			    bool unadopted, struct hfs_lease **out)
++/* The GRANTED reply's shape and lease identity: a lease-only GRANTED of
++ * exactly this request's access, domain, scope, mode and credential family,
++ * whose id (in id) is the hash of its other fields. -EPROTO otherwise.
++ */
++static int hfs_lease_decode_check(struct hfs_session *session,
++				  const struct hfs_view_ticket *ticket,
++				  const struct hfs_json *response, int body,
++				  const struct hfs_buf *access, bool dirty, u8 id[32])
 +{
-+	struct hfs_lease *lease;
-+	u8 actual[32], expected[32];
-+	int body = hfs_json_field(response, 0, "lease"), token, err;
++	u8 actual[32];
++	int err;
 +
-+	*out = NULL;
 +	if (!hfs_json_is(response, hfs_json_field(response, 0, "status"), "\"GRANTED\"") ||
 +	    !hfs_json_is(response, hfs_json_field(response, 0, "reservation"), "null") ||
 +	    !hfs_json_is(response, hfs_json_field(response, 0, "entry"), "null") ||
@@ -3444,12 +3444,30 @@ new file mode 100644
 +			 dirty ? "\"EXCLUSIVE_DIRTY\"" : "\"READ\"") ||
 +	    hfs_hex32(response, body, "credential_hash", actual) ||
 +	    memcmp(actual, ticket->family->hash, 32) ||
-+	    hfs_hex32(response, body, "id", expected))
++	    hfs_hex32(response, body, "id", id))
 +		return -EPROTO;
 +	err = hfs_json_hash_fields(response, body,
 +		"access,credential_hash,domain,fence,mode,revision,scope,target", actual);
-+	if (err || memcmp(actual, expected, 32))
++	if (err || memcmp(actual, id, 32))
 +		return err ?: -EPROTO;
++	return 0;
++}
++
++static int hfs_lease_decode(struct hfs_session *session,
++			    struct hfs_view_ticket *ticket,
++			    const struct hfs_json *response,
++			    const struct hfs_buf *access, bool dirty,
++			    const struct hfs_buf *expected_target,
++			    bool unadopted, struct hfs_lease **out)
++{
++	struct hfs_lease *lease;
++	u8 expected[32];
++	int body = hfs_json_field(response, 0, "lease"), token, err;
++
++	*out = NULL;
++	err = hfs_lease_decode_check(session, ticket, response, body, access, dirty, expected);
++	if (err)
++		return err;
 +	lease = kzalloc(sizeof(*lease), GFP_KERNEL);
 +	if (!lease)
 +		return -ENOMEM;
@@ -3521,6 +3539,23 @@ new file mode 100644
 +	else
 +		hfs_buf_literal(payload, "null");
 +	hfs_buf_literal(payload, "}");
++}
++
++/* The release state of a decoded lease: the PAGE description, the issuer's
++ * credentials (immutable, with a native reference) and the preowned control
++ * release ticket and payload. On an error the caller frees the lease.
++ */
++static int hfs_lease_own(struct hfs_session *session, const struct hfs_cred *cred,
++			 const struct hfs_cap *description, struct hfs_lease *lease)
++{
++	if (description)
++		memcpy(lease->description, description->token, 32);
++	lease->issuer = kmemdup(cred, sizeof(*cred), GFP_KERNEL);
++	if (!lease->issuer)
++		return -ENOMEM;
++	lease->issuer->native = get_cred(cred->native);
++	return hfs_buf_init(&lease->release_payload, 32768) ?:
++		hfs_view_ticket_prepare(session, cred, true, &lease->release_ticket);
 +}
 +
 +/* re4 (zq3-r16 R16-1): *blocked (when not NULL) tells the host's terminal
@@ -3601,27 +3636,14 @@ new file mode 100644
 +	/* xf4: a moved target that is no advance candidate, built unadopted. */
 +	if (!err && !result && (*out)->unadopted)
 +		result = -EXDEV;
-+	if (!err && description)
-+		memcpy((*out)->description, description->token, 32);
 +	if (!err) {
-+		(*out)->issuer = kmemdup(cred, sizeof(*cred), GFP_KERNEL);
-+		if (!(*out)->issuer) {
++		err = hfs_lease_own(session, cred, description, *out);
++		if (err) {
++			/* The lease holds the ticket now; freeing it puts both. */
 +			hfs_lease_free(*out);
 +			*out = NULL;
 +			ticket = NULL;
-+			err = -ENOMEM;
-+		} else {
-+			(*out)->issuer->native = get_cred(cred->native);
 +		}
-+	}
-+	if (!err)
-+		err = hfs_buf_init(&(*out)->release_payload, 32768);
-+	if (!err)
-+		err = hfs_view_ticket_prepare(session, cred, true, &(*out)->release_ticket);
-+	if (err && *out) {
-+		hfs_lease_free(*out);
-+		*out = NULL;
-+		ticket = NULL;
 +	}
 +	/* -ESTALE blocks only for the grant itself (decode); the exchange's own
 +	 * failures already blocked there or are stops that must not (review 1).

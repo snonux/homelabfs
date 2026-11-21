@@ -130,10 +130,14 @@ def main():
         # the session block/poll halt, the mount fence and the 0005 source
         # receipt are fixtures (pressure/test.c); the receipt's uncontrolled
         # header stub is redirected to the fixture.
+        # xf4 (4h4): up to hfs_lease_decode_check, so the actual
+        # hfs_view_grant_moved and hfs_lease_decode_target (the advance
+        # classification) are compiled too; hfs_view_advance_target and
+        # hfs_view_advance_supported are fixtures.
         lease = inputs['fs/9p/hfs_lease.c']
         start = lease.index('struct hfs_grant_settle {')
         source.append('#define hfs_received_source_ex test_received_source_ex')
-        source.append(lease[start:lease.index('\nstatic int hfs_lease_decode(', start)])
+        source.append(lease[start:lease.index('\nstatic int hfs_lease_decode_check(', start)])
     if args.pressure:
         retirement_unlock_guard(args.source)
     (args.output / 'production.c').write_text('\n'.join(source) + '\n')

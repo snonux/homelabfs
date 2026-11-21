@@ -96,7 +96,7 @@
     "fs/9p/hfs_enrollment.h": "1865efde72a6c06f4e020b41b8473f8c80e16a6bf1c2e6eb7cf3b18224983889",
     "fs/9p/hfs_file.c": "57cd6187fe085063c04a9fcfe4e417763b76ce20a4d9489bb0a97a0fc184bfc7",
     "fs/9p/hfs_inode.c": "84e85b2a8c6c54c4bd91c2201217253f9da349aeb3818a42b702c114c2321f9b",
-    "fs/9p/hfs_lease.c": "15be98b886e1c934ff26e915fa50b6fad25c45bc4217d1731f6d64c2209b6108",
+    "fs/9p/hfs_lease.c": "56e8eaca962e76257c490850e385af6dba49271b9d4aa21cf408223cc2cfcdbe",
     "fs/9p/hfs_lease.h": "6dc21a7c433960f6e4e2b3bdd0b1588083facd4b54861e89e372795371dbdaa3",
     "fs/9p/hfs_mmap.c": "c736ac6284421e949aabe5aebb5b5cb786668bc848c3faf76b94512874b18e1e",
     "fs/9p/hfs_policy.c": "6b0a8fd5df34f1d943f6a6cd5ff356f54fdcb411868e2e003064a342817d1f37",
@@ -140,9 +140,9 @@
       "sha256": "d4a22cec230b22f682b6858a73c6769c3a8940a7f73776fb1075d95cb850dc81"
     },
     {
-      "bytes": 251368,
+      "bytes": 252340,
       "file": "0004-hfs1-physical-views.patch",
-      "sha256": "e48ad9c1695f0d10335681c6054e830c23cebfb054c586c50134f7164fa9e841"
+      "sha256": "2f0c8b2d1287b4b8b7fb8c2bb50ed6a63c5ec9e14db2e842e207197341fd7b5b"
     },
     {
       "bytes": 354272,
