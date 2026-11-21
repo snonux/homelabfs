@@ -4207,7 +4207,7 @@ diff --git a/fs/9p/hfs_inode.c b/fs/9p/hfs_inode.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_inode.c
-@@ -0,0 +1,1194 @@
+@@ -0,0 +1,1290 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Authoritative retained-9p attributes and namespace VFS operations. */
 +#include <linux/magic.h>
@@ -4679,6 +4679,28 @@ new file mode 100644
 +	.d_release = hfs_d_release,
 +};
 +
++/* Attach a dentry to hfs: its operations and its path grant (cap, or NULL
++ * for a negative lookup). vf4 (G2): the operations are set only once.
++ * hfs_lookup sets them on the negative dentry that CREATE, MKDIR and SYMLINK
++ * later instantiate (and that a CREATE losing to EEXIST looks up again), and
++ * d_set_d_op WARNs (fs/dcache.c) on a dentry that already has them, which
++ * tainted every guest since tz3. A grant this replaces is freed; it is NULL on
++ * those paths, since hfs_d_revalidate makes every walk look up a fresh dentry.
++ * Readers copy the grant under d_lock (hfs_dcap_write).
++ */
++static void hfs_dentry_attach(struct dentry *dentry, struct hfs_cap *cap)
++{
++	struct hfs_cap *previous;
++
++	if (!dentry->d_op)
++		d_set_d_op(dentry, &hfs_dops);
++	spin_lock(&dentry->d_lock);
++	previous = dentry->d_fsdata;
++	dentry->d_fsdata = cap;
++	spin_unlock(&dentry->d_lock);
++	hfs_cap_free(previous);
++}
++
 +static int hfs_refresh_once(struct inode *inode)
 +{
 +	struct hfs_cred *cred;
@@ -4796,8 +4818,7 @@ new file mode 100644
 +	} while (hfs_reissue(HFS_S(dir), &err, deadline, "LOOKUP"));
 +	if (err)
 +		return ERR_PTR(err);
-+	d_set_d_op(dentry, &hfs_dops);
-+	dentry->d_fsdata = cap;
++	hfs_dentry_attach(dentry, cap);
 +	alias = d_splice_alias(inode, dentry);
 +	/* A directory alias carries another ancestry grant; force the caller to
 +	 * rewalk instead of assigning this path's capability to that alias.
@@ -4910,8 +4931,7 @@ new file mode 100644
 +	/* Never call inode_init_owner: returned creator UID, parent GID and all
 +	 * supported special bits are the single authoritative committed result.
 +	 */
-+	d_set_d_op(dentry, &hfs_dops);
-+	dentry->d_fsdata = cap;
++	hfs_dentry_attach(dentry, cap);
 +	cap = NULL;
 +	d_instantiate(dentry, inode);
 +	description->issuer = cred;
@@ -4986,8 +5006,7 @@ new file mode 100644
 +		hfs_session_block(HFS_S(dir), "mismatched object type", opcode, err);
 +		goto free_args;
 +	}
-+	d_set_d_op(dentry, &hfs_dops);
-+	dentry->d_fsdata = cap;
++	hfs_dentry_attach(dentry, cap);
 +	cap = NULL;
 +	d_instantiate(dentry, inode);
 +	hfs_result_adopt(HFS_S(dir), result);
@@ -5147,13 +5166,143 @@ new file mode 100644
 +		       time.tv_nsec, time.tv_sec);
 +}
 +
++/* "atime":T,"atime_now":B or "mtime":T,"mtime_now":B. T is the explicit time
++ * (ATTR_*_SET) or null; B asks the host for its own current time instead.
++ */
 +static void hfs_optional_time(struct hfs_buf *args, struct iattr *attr,
 +			      bool atime)
 +{
-+	if (attr->ia_valid & (atime ? ATTR_ATIME_SET : ATTR_MTIME_SET))
++	unsigned int valid = attr->ia_valid;
++	unsigned int set = atime ? ATTR_ATIME_SET : ATTR_MTIME_SET;
++	bool now = (valid & (atime ? ATTR_ATIME : ATTR_MTIME)) && !(valid & set);
++
++	hfs_buf_literal(args, atime ? "\"atime\":" : "\"mtime\":");
++	if (valid & set)
 +		hfs_time_write(args, atime ? attr->ia_atime : attr->ia_mtime);
 +	else
 +		hfs_buf_literal(args, "null");
++	hfs_buf_printf(args, atime ? ",\"atime_now\":%s" : ",\"mtime_now\":%s",
++		       now ? "true" : "false");
++}
++
++#define HFS_ATTR_KILL (ATTR_KILL_SUID | ATTR_KILL_SGID | ATTR_KILL_PRIV)
++
++/* vf4 (zq3-r18 R18-1): consume the ATTR_KILL_* bits before the support check.
++ * Returns true when nothing is left to send, so the call is a local no-op.
++ *
++ * notify_change (fs/attr.c) has already turned a KILL_SUID/KILL_SGID whose
++ * bit is set into ATTR_MODE, the cached mode without that bit; it BUG()s on a
++ * caller's own MODE next to KILL_S*ID, so MODE beside them is always derived.
++ * KILL_PRIV needs no host work: without xattr handlers
++ * security_inode_need_killpriv is 0 and notify_change drops it anyway. The
++ * three callers that set them:
++ * - chown_common (fs/open.c) for every non-directory: the host clears 06000 on
++ *   any UID or GID change (internal/fsservice/mutation.go attributes), so the
++ *   derived MODE is dropped and only UID/GID is sent. A cached mode would also
++ *   overwrite the host's permission bits. chown(-1, -1) keeps the derived MODE,
++ *   as no host rule clears the bits there;
++ * - do_truncate (fs/open.c) when the caller lacks CAP_FSETID: TRUNCATE clears
++ *   06000 for a non-root caller (mutation.go), so the derived MODE is dropped
++ *   and the support check no longer sees MODE next to SIZE;
++ * - __remove_privs (fs/inode.c, file_remove_privs/file_modified) before a
++ *   write: only ATTR_FORCE and the kill bits (plus the derived MODE), never
++ *   ATTR_CTIME. That is a local no-op: WRITE clears 06000 for a non-root caller
++ *   itself (mutation.go). hfs_write_iter does not call it today. A request
++ *   left with nothing but ATTR_FORCE (notify_change dropped a lone
++ *   ATTR_KILL_PRIV) is the same no-op, where it used to send an empty SETATTR
++ *   that the host refuses as invalid.
++ * The host decides on uid 0 where Linux checks CAP_FSETID, so a root caller
++ * without CAP_FSETID keeps its 06000 bits on the host; the host result is the
++ * mode the inode installs.
++ */
++static bool hfs_setattr_kill(struct iattr *attr)
++{
++	unsigned int valid = attr->ia_valid;
++	bool derived = (valid & (ATTR_KILL_SUID | ATTR_KILL_SGID)) &&
++		(valid & ATTR_MODE);
++
++	if (!(valid & ~(ATTR_FORCE | HFS_ATTR_KILL | (derived ? ATTR_MODE : 0))))
++		return true;
++	if (derived && (valid & (ATTR_UID | ATTR_GID | ATTR_SIZE)))
++		valid &= ~ATTR_MODE;
++	attr->ia_valid = valid & ~HFS_ATTR_KILL;
++	return false;
++}
++
++/* The combinations SETATTR/TRUNCATE can carry; anything else fails before the
++ * CALL. Mode with suid/sgid next to an ownership change stays refused, as the
++ * host refuses it (it clears 06000 on that change).
++ */
++static bool hfs_setattr_supported(const struct iattr *attr)
++{
++	unsigned int valid = attr->ia_valid;
++	bool truncate = valid & ATTR_SIZE;
++
++	if (valid & ~(ATTR_MODE | ATTR_UID | ATTR_GID | ATTR_SIZE | ATTR_ATIME |
++		      ATTR_MTIME | ATTR_CTIME | ATTR_ATIME_SET | ATTR_MTIME_SET |
++		      ATTR_TIMES_SET | ATTR_FILE | ATTR_OPEN | ATTR_FORCE))
++		return false;
++	if (truncate && (valid & (ATTR_MODE | ATTR_UID | ATTR_GID)))
++		return false;
++	if (!truncate && valid & ATTR_CTIME && !(valid &
++	     (ATTR_MODE | ATTR_UID | ATTR_GID | ATTR_ATIME | ATTR_MTIME)))
++		return false;
++	if ((valid & ATTR_MODE) && (attr->ia_mode & ~(S_IFMT | 07777)))
++		return false;
++	return !((valid & ATTR_MODE) && (valid & (ATTR_UID | ATTR_GID)) &&
++		 (attr->ia_mode & (S_ISUID | S_ISGID)));
++}
++
++static void hfs_truncate_args(struct hfs_buf *args, struct dentry *dentry,
++			      struct iattr *attr,
++			      struct hfs_description *description)
++{
++	hfs_buf_literal(args, "{\"description\":");
++	if (description)
++		hfs_cap_write(args, description->cap);
++	else
++		hfs_buf_literal(args, "null");
++	hfs_buf_literal(args, ",\"object\":");
++	hfs_dcap_write(args, dentry);
++	hfs_buf_printf(args, ",\"size\":%lld,\"times\":{", attr->ia_size);
++	hfs_optional_time(args, attr, true);
++	hfs_buf_literal(args, ",\"ctime\":");
++	if (attr->ia_valid & ATTR_CTIME)
++		hfs_time_write(args, attr->ia_ctime);
++	else
++		hfs_buf_literal(args, "null");
++	hfs_buf_literal(args, ",");
++	hfs_optional_time(args, attr, false);
++	hfs_buf_literal(args, "}}");
++}
++
++static void hfs_setattr_args(struct hfs_buf *args, struct dentry *dentry,
++			     struct iattr *attr)
++{
++	unsigned int valid = attr->ia_valid;
++
++	hfs_buf_literal(args, "{\"attributes\":{");
++	hfs_optional_time(args, attr, true);
++	hfs_buf_literal(args, ",\"gid\":");
++	if (valid & ATTR_GID)
++		hfs_buf_printf(args, "%u", from_kgid(&init_user_ns, attr->ia_gid));
++	else
++		hfs_buf_literal(args, "null");
++	hfs_buf_literal(args, ",\"mode\":");
++	if (valid & ATTR_MODE)
++		hfs_buf_printf(args, "%u", attr->ia_mode & 07777);
++	else
++		hfs_buf_literal(args, "null");
++	hfs_buf_literal(args, ",");
++	hfs_optional_time(args, attr, false);
++	hfs_buf_literal(args, ",\"uid\":");
++	if (valid & ATTR_UID)
++		hfs_buf_printf(args, "%u", from_kuid(&init_user_ns, attr->ia_uid));
++	else
++		hfs_buf_literal(args, "null");
++	hfs_buf_literal(args, "},\"object\":");
++	hfs_dcap_write(args, dentry);
++	hfs_buf_literal(args, "}");
 +}
 +
 +static int hfs_setattr(struct user_namespace *ns, struct dentry *dentry,
@@ -5165,28 +5314,20 @@ new file mode 100644
 +	struct hfs_json *result = NULL;
 +	struct hfs_description *description = NULL;
 +	void *cookie;
-+	unsigned int valid = attr->ia_valid;
-+	bool truncate = valid & ATTR_SIZE;
-+	bool atime_now = (valid & ATTR_ATIME) && !(valid & ATTR_ATIME_SET);
-+	bool mtime_now = (valid & ATTR_MTIME) && !(valid & ATTR_MTIME_SET);
++	bool truncate;
 +	int err;
 +
-+	if (valid & ~(ATTR_MODE | ATTR_UID | ATTR_GID | ATTR_SIZE | ATTR_ATIME |
-+		      ATTR_MTIME | ATTR_CTIME | ATTR_ATIME_SET | ATTR_MTIME_SET |
-+		      ATTR_TIMES_SET | ATTR_FILE | ATTR_OPEN | ATTR_FORCE) ||
-+	    (truncate && (valid & (ATTR_MODE | ATTR_UID | ATTR_GID))) ||
-+	    (!truncate && valid & ATTR_CTIME && !(valid &
-+	      (ATTR_MODE | ATTR_UID | ATTR_GID | ATTR_ATIME | ATTR_MTIME))) ||
-+	    ((valid & ATTR_MODE) && (attr->ia_mode & ~(S_IFMT | 07777))) ||
-+	    ((valid & ATTR_MODE) && (valid & (ATTR_UID | ATTR_GID)) &&
-+	     (attr->ia_mode & (S_ISUID | S_ISGID))))
++	if (hfs_setattr_kill(attr))
++		return 0;
++	if (!hfs_setattr_supported(attr))
 +		return -EOPNOTSUPP;
++	truncate = attr->ia_valid & ATTR_SIZE;
 +	err = setattr_prepare(ns, dentry, attr);
 +	if (err)
 +		return err;
 +	if (truncate && attr->ia_size < 0)
 +		return -EINVAL;
-+	if (valid & ATTR_FILE)
++	if (attr->ia_valid & ATTR_FILE)
 +		description = attr->ia_file->private_data;
 +	err = hfs_begin(inode, true, &cred, &cookie);
 +	if (err)
@@ -5194,55 +5335,10 @@ new file mode 100644
 +	err = hfs_args_init(&args);
 +	if (err)
 +		goto out;
-+	if (truncate) {
-+		hfs_buf_literal(&args, "{\"description\":");
-+		if (description)
-+			hfs_cap_write(&args, description->cap);
-+		else
-+			hfs_buf_literal(&args, "null");
-+		hfs_buf_literal(&args, ",\"object\":");
-+		hfs_dcap_write(&args, dentry);
-+		hfs_buf_printf(&args, ",\"size\":%lld,\"times\":{\"atime\":", attr->ia_size);
-+	} else {
-+		hfs_buf_literal(&args, "{\"attributes\":{\"atime\":");
-+	}
-+	hfs_optional_time(&args, attr, true);
-+	hfs_buf_printf(&args, ",\"atime_now\":%s,", atime_now ? "true" : "false");
-+	if (truncate) {
-+		hfs_buf_literal(&args, "\"ctime\":");
-+		if (valid & ATTR_CTIME)
-+			hfs_time_write(&args, attr->ia_ctime);
-+		else
-+			hfs_buf_literal(&args, "null");
-+		hfs_buf_literal(&args, ",");
-+	} else {
-+		hfs_buf_literal(&args, "\"gid\":");
-+		if (valid & ATTR_GID)
-+			hfs_buf_printf(&args, "%u", from_kgid(&init_user_ns, attr->ia_gid));
-+		else
-+			hfs_buf_literal(&args, "null");
-+		hfs_buf_literal(&args, ",\"mode\":");
-+		if (valid & ATTR_MODE)
-+			hfs_buf_printf(&args, "%u", attr->ia_mode & 07777);
-+		else
-+			hfs_buf_literal(&args, "null");
-+		hfs_buf_literal(&args, ",");
-+	}
-+	hfs_buf_literal(&args, "\"mtime\":");
-+	hfs_optional_time(&args, attr, false);
-+	hfs_buf_printf(&args, ",\"mtime_now\":%s", mtime_now ? "true" : "false");
-+	if (truncate) {
-+		hfs_buf_literal(&args, "}}");
-+	} else {
-+		hfs_buf_literal(&args, ",\"uid\":");
-+		if (valid & ATTR_UID)
-+			hfs_buf_printf(&args, "%u", from_kuid(&init_user_ns, attr->ia_uid));
-+		else
-+			hfs_buf_literal(&args, "null");
-+		hfs_buf_literal(&args, "},\"object\":");
-+		hfs_dcap_write(&args, dentry);
-+		hfs_buf_literal(&args, "}");
-+	}
++	if (truncate)
++		hfs_truncate_args(&args, dentry, attr, description);
++	else
++		hfs_setattr_args(&args, dentry, attr);
 +	err = hfs_call(HFS_S(inode), truncate ? "TRUNCATE" : "SETATTR", &args,
 +		       cred, false, &result);
 +	if (!err)

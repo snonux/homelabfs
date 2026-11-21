@@ -92,6 +92,8 @@ evicts or reassigns old positions. The complete outer directory attributes and
 every entry's identity, type and metadata are validated before any entry is emitted.
 Setattr preserves full supported mode
 bits; unsupported combined size/ownership/mode requests fail before CALL.
+The VFS's ATTR_KILL_* bits are consumed first (`vf4`, below): the host clears
+the setuid/setgid bits on ownership changes and non-root writes/truncates.
 The guest does not invent host Unix policy or overwrite committed parent GID.
 
 The Linux VFS already applies guest umask/capability restrictions to creation
@@ -188,6 +190,8 @@ python3 tools/integration/linux9p/tests/cursor/run.py \
   --source /owned/run/linux --output /owned/run/cursor-check --sanitize
 python3 tools/integration/linux9p/tests/transport/run.py \
   --source /owned/run/linux --output /owned/run/transport-check --sanitize
+python3 tools/integration/linux9p/tests/setattr/run.py \
+  --source /owned/run/linux --output /owned/run/setattr-check --sanitize
 ```
 
 Omit `--archive` to fetch only the pinned primary archive. Existing destinations
@@ -1635,3 +1639,90 @@ configure`. transport, policy, cursor, tag, mount_hello, view and view
 --pressure (`--sanitize`), requests, huge, dirty and controlled_received
 `terminal-smoke`, `cleanup`, `exit-cleanup` and `passed-grant` pass. No
 candidate was rebuilt or admitted.
+
+## Setattr kill bits and dentry operations set once (`vf4`)
+
+zq3-r18 R18-1: T1's `fchown(fd, 41002, 42002)` of a fresh regular file failed
+with `EOPNOTSUPP` before any CALL. `chown_common` (`fs/open.c`) adds
+`ATTR_KILL_SUID | ATTR_KILL_PRIV` (and `ATTR_KILL_SGID` when needed) for every
+non-directory, `notify_change` (`fs/attr.c`) passes them down, and
+`hfs_setattr` refused every bit outside its supported set.
+
+Patch 0003 (`hfs_setattr` split into `hfs_setattr_kill`,
+`hfs_setattr_supported`, `hfs_truncate_args` and `hfs_setattr_args`; the
+request bytes are unchanged):
+
+- `hfs_setattr_kill` consumes the kill bits before the support check.
+  `notify_change` has already turned a kill bit whose mode bit is set into
+  `ATTR_MODE` (the cached mode without it), and it BUG()s on a caller's own
+  MODE next to `ATTR_KILL_S*ID`, so that MODE is always derived.
+  `ATTR_KILL_PRIV` needs nothing: hfs has no xattr handlers, so
+  `security_inode_need_killpriv` is 0 and `notify_change` drops it anyway.
+- chown/fchown: the derived MODE is dropped and only UID/GID are sent. The
+  host clears 06000 on any UID or GID change (`attributes`,
+  `internal/fsservice/mutation.go`), and sending the cached mode could
+  overwrite the host's permission bits. `chown(-1, -1)` of a setuid file keeps
+  the derived MODE (no host rule clears it there). An explicit MODE with
+  setuid/setgid next to UID/GID stays refused, as the host refuses it.
+- `do_truncate` by a caller without `CAP_FSETID` (truncate, ftruncate,
+  open with `O_TRUNC`) of a setuid/setgid file: the derived MODE is dropped,
+  since TRUNCATE clears 06000 for a non-root caller (`mutation.go`). An explicit
+  MODE next to SIZE stays refused.
+- `__remove_privs` (`file_remove_privs`, `file_modified`) sends only
+  `ATTR_FORCE` and the kill bits, never `ATTR_CTIME`. It is a local no-op,
+  because WRITE clears 06000 for a non-root caller (`mutation.go`).
+  `hfs_write_iter` does not call it today; this keeps a future caller from
+  failing a write. A request left with only `ATTR_FORCE` is the same no-op.
+- The host checks uid 0 where Linux checks `CAP_FSETID`. A root caller
+  without `CAP_FSETID` therefore keeps its 06000 bits on the host on
+  truncate/write. The host's result is the mode the inode installs.
+- A `chown(-1, -1)` of a file without setid bits is left with only
+  `ATTR_CTIME` and is still unsupported (`EOPNOTSUPP`; there is no ctime-only
+  host SETATTR), as before vf4.
+
+G2 (same rebuild): `hfs_dentry_attach` sets `hfs_dops` only on a dentry
+without operations and replaces its path grant under `d_lock`, freeing any
+grant it replaces. `hfs_lookup`, `hfs_atomic_open` (after CREATE) and
+`hfs_namespace` (after MKDIR/SYMLINK) use it. Before, CREATE/MKDIR/SYMLINK
+set the operations a second time on the negative dentry `hfs_lookup` had
+already set up, and `d_set_d_op` WARNed (`fs/dcache.c:1924/1925`, a `W` taint
+since tz3). The replaced grant is NULL on those paths, because
+`hfs_d_revalidate` makes every walk look up a fresh dentry, so `d_fsdata`
+ownership is unchanged.
+
+Tests (`tests/setattr`, new): the actual setattr functions, `hfs_setattr`,
+`hfs_dentry_attach` with `hfs_dops` and its callbacks, `hfs_dcap_write`,
+`hfs_cap_write`, `hfs_cap_free`, `hfs_args_init` and the kernel's `ATTR_*`
+values, with the real `hfs_protocol.c` buffer and parser. `test.c` models
+`chown_common`, `do_truncate`, `__remove_privs` and `notify_change`'s
+kill-bit conversion; `hfs_call` records the exact request bytes:
+
+- chown/fchown of a 0640 file (R18-1's call; pre-vf4 `EOPNOTSUPP`) and of
+  04755, 02755, 06755, 06740 and 02740 files sends SETATTR with uid/gid and
+  `"mode":null`; a surviving `ATTR_KILL_PRIV` is accepted; chgrp from outside
+  the group of a 02740 file likewise;
+- `chown(-1, -1)`: 04755 sends mode 0755; 0644 stays `EOPNOTSUPP` without
+  `setattr_prepare`;
+- unchanged: directory chown, chmod 04755, utimensat bytes;
+- kept refusals: explicit MODE 04755 with UID, MODE with SIZE;
+- ftruncate of 0644/04755/06755/02750 (with and without `CAP_FSETID`),
+  truncate(path) and open(`O_TRUNC`) send the exact TRUNCATE bytes;
+- `file_remove_privs` of 04755/02755/06755 files, a lone `ATTR_KILL_PRIV` and
+  `ATTR_FORCE` alone: no `setattr_prepare`, no CALL;
+- `hfs_dentry_attach`: one `d_set_d_op` (the substitute fails where the
+  kernel would WARN), each replaced grant freed (ASan leak check);
+- `run.py` requires that `hfs_inode.c` calls `d_set_d_op` only inside
+  `hfs_dentry_attach` and that the three creators attach through it.
+
+Four mutants (keep the derived MODE next to UID/GID/SIZE, no kill handling
+(the pre-vf4 refusal), unconditional `d_set_d_op`, kill bits left in the
+request) each fail a case.
+
+The series was regenerated with `export.py --task vf4` (0003: `hfs_inode.c`).
+A fresh `prepare.py` tree applies it with fuzz zero and `fs/9p/`, `net/9p/`
+and `random.o` compile without warnings under `kernel.py configure`.
+transport, policy, cursor, tag, mount_hello, view and view --pressure,
+setattr (`--sanitize`), requests, huge, dirty and controlled_received
+`terminal-smoke`, `cleanup` and `exit-cleanup` pass. No candidate was
+rebuilt, booted or admitted, so the WARN's absence and T1's fchown are not yet
+observed in a guest (zq3-r19).
