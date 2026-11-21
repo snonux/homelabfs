@@ -74,9 +74,26 @@ func (e *runtimeExit) ended() (bool, error) {
 	}
 }
 
+// C stand-in modes (restart_child.c argv[3]). In runtimeContendedMode every
+// backend-mutex trylock fails on alternate attempts of each thread until the
+// controlled bootstrap settles, so each bootstrap call site meets EAGAIN once
+// (task 9h4).
+const (
+	runtimeMode          = "runtime"
+	runtimeContendedMode = "runtime-contended"
+)
+
+// runtimeDriverFixture is runtimeDriverFixtureMode in the plain runtime mode.
+func runtimeDriverFixture(t *testing.T, binary string, devices int) (*sourceRig, *restartChild, RuntimeConfig, runtimeOS) {
+	t.Helper()
+	return runtimeDriverFixtureMode(t, binary, devices, runtimeMode)
+}
+
 // All semantic/protocol/file/process/C bootstrap owners are real. Only native
 // mount/INIT/fd syscalls and observed guest kernel/physical state are OS seams.
-func runtimeDriverFixture(t *testing.T, binary string, devices int) (*sourceRig, *restartChild, RuntimeConfig, runtimeOS) {
+// mode selects the C stand-in's runtime mode (runtimeMode or
+// runtimeContendedMode).
+func runtimeDriverFixtureMode(t *testing.T, binary string, devices int, mode string) (*sourceRig, *restartChild, RuntimeConfig, runtimeOS) {
 	t.Helper()
 	root, err := os.MkdirTemp(os.Getenv("TMPDIR"), "driver-")
 	require(t, err)
@@ -94,7 +111,7 @@ func runtimeDriverFixture(t *testing.T, binary string, devices int) (*sourceRig,
 	require(t, err)
 	data, err := os.ReadFile(binary)
 	require(t, err)
-	args := []string{filepath.Join(root, "io"), root, "runtime", testUUID(50).String()}
+	args := []string{filepath.Join(root, "io"), root, mode, testUUID(50).String()}
 	if devices == 2 {
 		args = append(args, testUUID(151).String())
 	}

@@ -5,14 +5,18 @@
  * Actual supervised child/backend/ledger/recovery carrier. Only native FUSE
  * fstat/pread/pwrite and guest scheduling are portable IPC primitives. */
 #include <sys/stat.h>
+#include <pthread.h>
 int restart_fstat(int, struct stat *);
+int restart_trylock(pthread_mutex_t *);
 #define fstat restart_fstat
 #define pread restart_pread
 #define pwrite restart_pwrite
+#define pthread_mutex_trylock restart_trylock
 #include "../src/hfs9p.c"
 #undef fstat
 #undef pread
 #undef pwrite
+#undef pthread_mutex_trylock
 #define _get management_get
 #define _put management_put
 #define _now management_now
@@ -69,6 +73,32 @@ rpc(uint8_t method, uint64_t position, void *buffer, uint32_t length,
       assert(size - 4 <= length); memcpy(buffer, reply + 4, size - 4);
    }
    free(reply); pthread_mutex_unlock(&native_mutex); return (error);
+}
+/* runtime-contended mode (task 9h4): until the controlled bootstrap has
+ * settled, every backend trylock (hfs9p.c only) fails with EBUSY on every
+ * other attempt of the same thread, as when a CPU-starved, preempted wait
+ * worker holds the backend mutex at that instant. Each bootstrap call site
+ * (both hfs9p_add_session_tuple calls and hfs9p_connection_new) therefore
+ * deterministically meets EAGAIN on its first attempt and the lock on its
+ * second. The wait worker merely skips alternate scans. */
+static bool CONTENDED;
+static unsigned RUNTIME_COUNT;
+
+static bool
+bootstrap_settled(void) {
+   if (atomic_load(&PENDING_FAILED)) return (true);
+   for (unsigned i = 0; i < RUNTIME_COUNT; i++)
+      if (!atomic_load(&RUNTIME_PENDING[i]->connection)) return (false);
+   return (true);
+}
+int
+restart_trylock(pthread_mutex_t *mutex) {
+   static _Thread_local bool contended;
+   if (CONTENDED && !bootstrap_settled()) {
+      contended = !contended;
+      if (contended) return (EBUSY);
+   }
+   return (pthread_mutex_trylock(mutex));
 }
 int
 restart_fstat(int fd, struct stat *st) {
@@ -144,7 +174,8 @@ runtime_observe(Hfs9pSupervisor *s, uint8_t out[184]) {
 
 int
 main(int argc, char **argv) {
-   RUNTIME_MODE = argc >= 5 && !strcmp(argv[3], "runtime");
+   CONTENDED = argc >= 5 && !strcmp(argv[3], "runtime-contended");
+   RUNTIME_MODE = argc >= 5 && (CONTENDED || !strcmp(argv[3], "runtime"));
    assert(argc == 3 || RUNTIME_MODE);
    if (RUNTIME_MODE) {char log[1024]; (void)snprintf(log,sizeof(log),"%s/runtime-child.stderr",argv[2]); int fd=open(log,O_CREAT|O_WRONLY|O_EXCL,0600); assert(fd>=0); assert(dup2(fd,2)==2);close(fd);}
    int command = connect_local(argv[1], 'C');
@@ -156,6 +187,7 @@ main(int argc, char **argv) {
       NATIVE_PLATFORM = runtime_platform;
       NATIVE_OBSERVE = runtime_observe;
       NATIVE_CONSTRUCT = _construct;
+      RUNTIME_COUNT = (unsigned)(argc - 4);
       for (int i = 4; i < argc; i++)
          assert(!hfs9p_supervisor_prepare(argv[i], &RUNTIME_PENDING[i-4]));
       goto runtime_loop;

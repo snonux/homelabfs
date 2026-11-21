@@ -80,6 +80,30 @@ _now(void) {
    return ((int64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000);
 }
 
+/* The trusted backend management calls used here (hfs9p_add_session_tuple,
+ * hfs9p_connection_new, hfs9p_pause_owned, hfs9p_resume_owned) take the
+ * backend mutex with trylock and report EAGAIN, before changing anything,
+ * whenever another backend thread holds it at that instant: the 4 ms wait
+ * worker's scan (_wait_worker_cb, running from construction on), a guest
+ * FETCH or a SEND. That is momentary contention, not a refusal. Bootstrap and
+ * fd5 recovery are both one-shot, so treating it as final fenced the whole
+ * supervisor permanently whenever CPU load preempted the lock holder (tasks
+ * 564 and 9h4). Callers therefore repeat the same complete call every 1 ms
+ * within BACKEND_CONTENTION_MS of their first attempt; every other error, and
+ * EAGAIN after the bound, stays final. 10 s is far beyond any scan or single
+ * exchange and stays inside the host's 60 s bootstrap and restart windows. */
+#define BACKEND_CONTENTION_MS 10000
+
+static bool
+_backend_contended(int error, int64_t deadline) {
+   if (error != EAGAIN) return (false);
+   int64_t now = _now();
+   if (now < 0 || now >= deadline) return (false);
+   struct timespec delay = {0, 1000000};
+   (void)nanosleep(&delay, NULL);
+   return (true);
+}
+
 static int
 _ready(short events, int64_t deadline) {
    for (;;) {
@@ -503,7 +527,11 @@ hfs9p_supervisor_start_tuple(int parent, const char *name, const uint8_t *scope,
    Hfs9pVerifier verifier = {s, _claim_cb, _protect_cb, _verify_cb,
        _begin_io_cb, _end_io_cb, _controller_cb};
    if (!error) error = NATIVE_CONSTRUCT(&s->backend, s->fd, &s->endpoint, verifier);
-   if (!error) error = hfs9p_add_session_tuple(s->backend, scope, length, minor, features);
+   /* The wait worker started by the constructor may already hold the backend
+    * mutex: bounded contention wait, not a refusal (_backend_contended). */
+   int64_t contention = _now() + BACKEND_CONTENTION_MS;
+   if (!error) do error = hfs9p_add_session_tuple(s->backend, scope, length,
+       minor, features); while (_backend_contended(error, contention));
    if (!error) {
       error = _bootstrap_session(scope, length, s->session);
       strcpy(s->name, name);
@@ -562,8 +590,11 @@ hfs9p_controller_claim(const char *name, Hfs9pConnection **out) {
       s->connected = true;
    }
    pthread_mutex_unlock(&s->mutex);
-   if (granted) error = hfs9p_connection_new(s->backend,
-       s->sessions[index], out);
+   /* Contention on the backend mutex is retried within its bound before the
+    * grant is treated as failed and fenced (_backend_contended). */
+   int64_t contention = _now() + BACKEND_CONTENTION_MS;
+   if (granted) do error = hfs9p_connection_new(s->backend,
+       s->sessions[index], out); while (_backend_contended(error, contention));
    if (error && granted) {
       pthread_mutex_lock(&s->mutex);
       s->fenced = true;

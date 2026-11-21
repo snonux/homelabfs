@@ -64,9 +64,17 @@ type lifecycleReply struct {
 	LostReply    *lostReplyView     `json:"lost_reply"`
 }
 
+// startLifecycleRun is startLifecycleRunMode in the plain runtime mode.
 func startLifecycleRun(t *testing.T, binary string, mutate func(*lifecycleRun, *runtimeOS)) *lifecycleRun {
 	t.Helper()
-	r, d, c, platform := runtimeDriverFixture(t, binary, 2)
+	return startLifecycleRunMode(t, binary, runtimeMode, mutate)
+}
+
+// startLifecycleRunMode starts the runtime over the shared driver fixture with
+// the C stand-in in mode and drives it to READY.
+func startLifecycleRunMode(t *testing.T, binary, mode string, mutate func(*lifecycleRun, *runtimeOS)) *lifecycleRun {
+	t.Helper()
+	r, d, c, platform := runtimeDriverFixtureMode(t, binary, 2, mode)
 	run := &lifecycleRun{t: t, r: r, d: d, c: c}
 	platform.peer = func(conn *net.UnixConn) (admin.Peer, error) {
 		peer, err := admin.PeerCredentials(conn)
@@ -514,4 +522,24 @@ func checkFencedRuntimeExit(t *testing.T, run *lifecycleRun) {
 			t.Fatalf("fenced restart lost owned evidence %s: %v", name, err)
 		}
 	}
+}
+
+// TestLifecycleBootstrapUnderBackendContention pins task 9h4. The C bootstrap
+// adds sessions (hfs9p_add_session_tuple) and opens guest connections
+// (hfs9p_connection_new) through trylock-only backend calls that return EAGAIN
+// while another backend thread holds the mutex. Under CPU load a preempted
+// wait worker made that observable: the one-shot bootstrap fenced itself
+// ("controlled C bootstrap refused: 11") and the runtime ended before READY
+// with "controlled C bootstrap: UNAVAILABLE; management: EOF". The contended
+// stand-in fails the first trylock of every bootstrap call site, so this
+// reaches READY only if the supervisor treats contention as a bounded wait.
+func TestLifecycleBootstrapUnderBackendContention(t *testing.T) {
+	run := startLifecycleRunMode(t, buildRestartChild(t), runtimeContendedMode, nil)
+	op, observed := run.command(LifecycleObserve, 1, run.ready.Runtime, "", 0)
+	if op != LifecycleObserve|0x80 || observed.Evidence == nil || !observed.Evidence.Complete {
+		t.Fatalf("READY after contended bootstrap is not fully observable: %+v", observed)
+	}
+	checkActualEvidence(t, run, observed.Evidence)
+	run.cancel()
+	require(t, run.finish())
 }
