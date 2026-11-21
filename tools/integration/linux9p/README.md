@@ -1926,3 +1926,140 @@ requests compiles `hfs_retire` without `hfs_view.c`, so its `test.c` supplies
 `hfs_retirement_unlock` and asserts that a retirement releases through it. reclaim
 still fails at its pre-existing compile errors, as on the unchanged tree. No
 candidate was rebuilt, booted or admitted.
+
+## Guest-requested view advance (`xf4` step B, `4h4`)
+
+zq3-r18 R18-1 and zq3-r19 R19-1: nearly every guest observation after the
+guest's own mutation or pinning LOOKUP named a stale expected target, so the
+host ran a full EXPECTED_TARGET recall (about 5-7 s scoped, 13-15 s
+all-domain) and T1 ran out of its 240 s deadline. For a view with no
+target-bound state that recall's only guest-side effect is "target :=
+current cut, revision++". Design: `docs/design/xf4-view-advance.md`; the
+host side is task 3h4, which grants a Targeted DOMAIN READ lease on its
+current cut to a request carrying `"advance": true`.
+
+Patch 0002 (codec policy):
+
+- `hfs_view_advance_field`: the optional `advance` field of a VIEW_ACQUIRE
+  payload. Absent means today's bytes; present it must be the literal `true`
+  on a READ DOMAIN request with a CONTROLLED_LOCAL expected target, so
+  `false`, `"true"` or an EXCLUSIVE_DIRTY/null-target request is `-EPROTO`
+  (as guestbridge `validateAdvance`).
+- `hfs_view_advance_compatible`: guestbridge `AdvanceCompatible`. Both
+  targets are CONTROLLED_LOCAL with the same enrollment, profile and context
+  hashes, journal incarnation, epoch and visibility generation; the granted
+  position is not behind; an equal position needs the same journal hash.
+- `hfs_mapped_acquire_original` (split out of `hfs_mapped_source`): a lease
+  target that differs from the expected one is accepted only with advance
+  and only when compatible; without advance it stays `-ESTALE`. A
+  VIEW_QUERY reply has no original request here (and the bridge does not
+  check its target either), so the kernel's own classification below is
+  its only gate.
+
+Patch 0003: `struct hfs_provider` gains `advance_target`. NULL means the
+provider cannot verify an advance, and such a session never requests one.
+
+Patch 0005: `hfs_received_advance` is the receipt gate of an advance
+candidate. The token must be exactly the lease target of a verified SOURCE
+reply that was not current at receipt (`owner->stale`, lease as the source,
+so its target equals the receipt evidence's), on the result channel of this
+session. The lease must be at the mount's current fence, the receipt must
+have captured the LIVE view at its current revision, and the view must
+still be LIVE and installed at exactly the request's expected target, which
+differs from the granted one. It never makes the target current.
+`hfs_controlled_advance_target` adds the enrollment metadata checks
+(`hfs_controlled_target_metadata`).
+
+Patch 0004:
+
+- `hfs_view_capture_ex` returns a cacheless hint under `view->lock`
+  (`hfs_view_cacheless_locked`): no cached page, mapping, dirty page or dirty
+  package (DIRTY_RESERVE reservations), PAGE grant, admitted token, and no
+  published observation. The last is stricter than the design's send
+  condition: an advance with another observation published can never be
+  adopted, so such a capture keeps today's request. `view->reservation` is
+  the view's own memory credit, not a dirty reservation.
+- `hfs_mmap_observe_lease` sends advance only when the capture was
+  cacheless, `hfs_view_advance_supported` holds (hfs1.4 and
+  `provider->advance_target`) and no earlier acquisition of the same
+  `hfs_mmap_begin` refused one (`attempts->no_advance`). A view with mmap
+  pages or mappings never sends it.
+- `hfs_lease_acquire_ex` takes `advance` (only for READ DOMAIN with an
+  expected target, else `-EINVAL`); `hfs_lease_acquire_payload` puts
+  `"advance":true` right after `access`, and never sends `false`. The ticket
+  records it (`ticket->advance`).
+- `hfs_view_exchange_source`: an advance ticket's not-current GRANTED whose
+  lease target differs from the bound payload's expected target
+  (`hfs_view_grant_moved`) is handed out at once, without the 2f4 settle
+  wait (which could only end in `-EPROTO` and a blocked session). Without
+  advance such a reply still settles and fails closed.
+- `hfs_lease_decode_target` (split out of `hfs_lease_decode`) classifies a
+  moved lease target. Without advance it is `-ESTALE`, as before. With
+  advance it is an advance candidate when `hfs_view_advance_target` verifies
+  it (codec, compatibility, `provider->advance_target`):
+  `lease->advance`. Failing that it is an ordinary verified lease when the
+  view already holds exactly that target and the reply is current for it
+  (`hfs_view_target`). That is a replay after the adoption, or annotation
+  (b): a readmitted PENDING ticket whose recall reinstalled the view at the
+  granted cut. The observation's stamp predates that move, so
+  `hfs_mmap_publish` refuses it and it is held and released after the next
+  acquisition, as ie4 does for any grant the view moved past. Otherwise it is
+  built unadopted and `hfs_lease_acquire_ex` returns `-EXDEV`; nothing blocks.
+- `hfs_view_advance` adopts a candidate under `view->transitions`, so no STOP
+  or install runs between check and switch. It verifies the target natively
+  again outside `view->lock` (the provider sleeps). Under `view->lock`,
+  `hfs_view_advance_allowed` re-checks that the view is unrefused and LIVE at
+  the capture's revision and generation, still holds the captured expected
+  target, is cacheless with our observation not yet published, keeps the
+  visibility generation, and that the lease is an unpublished candidate with
+  the verified hash. Then the target switches, `revision++` (no fence or
+  sequence moves), and the observation's stamp and target are re-stamped
+  before `hfs_mmap_publish`. Any refusal marks the lease unadopted and returns
+  `-EXDEV`: the observation holds it, acquires again without advance and then
+  releases it. `hfs_mmap_publish` also refuses a lease still marked
+  `advance`.
+- Annotation (a): nothing is served under an unadopted or not yet adopted
+  lease. It is never published, bound or page-leased, on the `-EXDEV` path
+  too, and the view it leaves behind is the cacheless one it captured.
+
+Tests (each fails on the pre-4h4 tree: the new API does not compile there,
+and a mutation run of 13 guards killed every mutant):
+
+- `view/test.c` `advance_checks` (actual `hfs_view.c`): the adoption
+  (target switch, revision + 1, re-stamp, the old stamp refused at entry);
+  the cacheless hint and the re-check refuse a cached page, a mapping, dirty
+  pages, dirty packages, grants, an admitted token and a published
+  observation; a moved revision, another generation, another expected
+  target, another visibility generation, a refused native check, a hash
+  mismatch, a non-candidate, RECALLING and FENCED are refused with the view
+  untouched and the lease unadopted. Ordering against STOP: an adoption that
+  holds `transitions` first completes before the STOP (the STOP then
+  quiesces the advanced view); a STOP that holds it first (RECALLING,
+  joining an admitted token) parks the adoption, which then refuses.
+- `view --pressure` (actual `hfs_mmap.c` observation path, `hfs_view_exchange`
+  and `hfs_lease_decode_target`): a cacheless view requests advance and
+  adopts it in one acquisition (`retry_advance_adopted`); a readmitted grant
+  after a recall to another target is unadopted, `-EXDEV`, then no advance;
+  after a recall to the same target the stamp check refuses it; after a
+  recall to the granted cut it is a current ordinary lease, held
+  (`retry_advance_refused`). A mapped view, a mapped cached page and an
+  unsupported provider never request advance (`retry_advance_never`; this is
+  the mapped/ case of the design, which the receipt-only mapped/ harness
+  does not compile). Exchange: a moved advance grant is handed out without
+  settle (`xq_advance_moved`), an advance ticket granted its expected target
+  still settles, and a moved target without advance still blocks.
+  `decode_checks`: the classification including a replay after the adoption
+  (accepted) and after a further move (unadopted), and a candidate never
+  published before adoption.
+- `controlled_received/policy_cases.py`: 13 advance codec cases (3 accepted,
+  10 refused).
+- `controlled_received --scenario advance`
+  (`TestControlledReceivedActualViewAdvance`, consumer `ADVANCE`,
+  `ADVANCE_REPLAY`, `ADVANCE_RELEASE`, `ADVANCE_STALE`): with the real 0005
+  provider and the xf4 host (task 3h4) after a CREATE moved the cut, the
+  advance grant is classified and adopted, its VIEW_QUERY replay is an
+  accepted ordinary lease, and after a release (no recall), a further CREATE
+  and a second advance the first stored reply is unadopted (`-EXDEV`) with no
+  block, while the same reply without advance is the `-ESTALE` that blocks.
+  It needs 3h4's host (`--host-tree` and the repository both carrying it);
+  main's bridge refuses the field. `--scenario both` includes it.

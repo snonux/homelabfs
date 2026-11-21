@@ -1476,6 +1476,14 @@ static void decode_checks(void)
  struct hfs_view *view=test_session->view;struct hfs_lease lease,adopted;
  struct hfs_view_stamp stamp;struct hfs_buf target={0};u64 before;
  assert(view->phase==HFS_VIEW_LIVE && view->target.len==2 && !view->nr_mappings);
+ // An advance candidate is never published before its adoption, even at
+ // the view's current stamp and target hash.
+ struct hfs_observation unadopted={.view=view,.lease=&lease};
+ memset(&lease,0,sizeof(lease));lease.advance=true;memcpy(lease.target_hash,view->target_hash,32);
+ INIT_LIST_HEAD(&unadopted.list);assert(!hfs_view_snapshot(view,&unadopted.stamp));
+ assert(hfs_mmap_publish(view,&unadopted)==-EXDEV && !view->nr_observations && !lease.published);
+ lease.advance=false;assert(!hfs_mmap_publish(view,&unadopted) && view->nr_observations==1); // the control
+ list_del_init(&unadopted.list);view->nr_observations--;
  advance_supported=true;advance_capture=view->revision;advance_verifies=0;advance_verify_err=0;
  // A mismatched target without advance is still refused (blocks, -ESTALE).
  assert(decode_case(false,"{}",false,&lease)==-ESTALE && !lease.advance && !lease.unadopted);

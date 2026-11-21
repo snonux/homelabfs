@@ -138,7 +138,9 @@ struct fixture_session {
  struct hfs_cap *root,*description,*created_path;
  struct hfs_description *cleanup_description;struct hfs_forget *cleanup_forget;
  struct hfs_lease *lease;
- struct hfs_lease *advance;struct hfs_buf advance_expected; /* xf4: ADVANCE's adopted lease, its expected target */
+ /* xf4: ADVANCE's adopted lease and its expected target; ADVANCE_RELEASE
+  * moves a released one to the old pair for ADVANCE_STALE. */
+ struct hfs_lease *advance,*advance_old;struct hfs_buf advance_expected,advance_old_expected;
  struct hfs_cache_page *dirty_page;
  struct hfs_dirty *dirty;
  struct folio folio;
@@ -486,15 +488,16 @@ static void source_stale_at_receipt(struct hfs_session *s,struct hfs_lease *leas
  not_current=true;assert(hfs_received_source_ex(s,reply,body,&not_current)==-EKEYREJECTED&&!not_current);
  hfs_json_free(reply);
 }
-/* xf4 (4h4): the actual decode of a VIEW_ACQUIRE reply of f->advance's
- * ticket against its original expected target. The decoded lease borrows the
+/* xf4 (4h4): the actual decode of a VIEW_ACQUIRE reply of lease's ticket
+ * against its original expected target. The decoded lease borrows the
  * ticket and has no release state; it is only inspected and freed.
  */
-static int advance_decode(struct fixture_session *f,const struct hfs_json *response,int result,struct hfs_lease **out)
+static int advance_decode(struct fixture_session *f,struct hfs_lease *lease,const struct hfs_buf *expected,
+                          const struct hfs_json *response,struct hfs_lease **out)
 {
  struct hfs_buf access={0};int err;
  assert(!hfs_buf_init(&access,64));hfs_buf_literal(&access,"{\"kind\":\"DOMAIN\"}");
- err=hfs_lease_decode(f->session,f->advance->ticket,response,&access,false,&f->advance_expected,result!=0,out);
+ err=hfs_lease_decode(f->session,lease->ticket,response,&access,false,expected,false,out);
  hfs_buf_free(&access);return err;
 }
 static void advance_decoded_free(struct hfs_lease *lease)
@@ -536,7 +539,7 @@ static void advance_replay_command(unsigned id,struct fixture_session *f)
  struct hfs_session *s=f->session;struct hfs_view_ticket *ticket=f->advance->ticket;
  struct hfs_json *response=NULL;struct hfs_lease *lease=NULL;int err;
  err=hfs_view_exchange(s,ticket,"VIEW_ACQUIRE",&ticket->payload,&response);
- if(!err)err=advance_decode(f,response,0,&lease);
+ if(!err)err=advance_decode(f,f->advance,&f->advance_expected,response,&lease);
  if(!err){
   assert(!lease->advance && !lease->unadopted && !memcmp(lease->id,f->advance->id,32));
   assert(!memcmp(lease->target_hash,s->view->target_hash,32));
@@ -544,25 +547,36 @@ static void advance_replay_command(unsigned id,struct fixture_session *f)
  assert(!s->blocked);
  advance_decoded_free(lease);hfs_json_free(response);done(id,err,NULL,0);
 }
-/* ADVANCE_STALE: after the advanced lease's release and a further host
- * move, its stored reply again: no candidate (the view no longer holds the
- * expected target at that receipt's revision), not current: built unadopted
- * (-EXDEV upstream), no block. Without advance the same reply is the
- * -ESTALE that blocks (a mismatched target is still refused).
+/* ADVANCE_RELEASE: release the adopted lease (an Advance lease: no recall)
+ * and keep it, with its expected target, as the old pair.
+ */
+static void advance_release_command(unsigned id,struct fixture_session *f)
+{
+ struct hfs_buf swap;int err=hfs_lease_release(f->session,f->advance);
+ assert(!f->session->blocked);
+ if(!err){
+  hfs_lease_free(f->advance_old);f->advance_old=f->advance;f->advance=NULL;
+  swap=f->advance_old_expected;f->advance_old_expected=f->advance_expected;f->advance_expected=swap;
+ }
+ done(id,err,NULL,0);
+}
+/* ADVANCE_STALE: once the view advanced again, the old (released) lease's
+ * stored reply against its own expected target: no candidate (the view no
+ * longer holds that target at that receipt's revision) and not current:
+ * built unadopted (-EXDEV upstream), no block. Without advance the same
+ * reply is the -ESTALE that blocks (a mismatched target is still refused).
  */
 static void advance_stale_command(unsigned id,struct fixture_session *f)
 {
- struct hfs_session *s=f->session;struct hfs_view_ticket *ticket=f->advance->ticket;
- struct hfs_lease *lease=NULL;int err;
- assert(f->advance->released && ticket->response);
- err=advance_decode(f,ticket->response,0,&lease);
+ struct hfs_session *s=f->session;struct hfs_lease *old=f->advance_old,*lease=NULL;int err;
+ assert(old && old->released && old->ticket->response && f->advance);
+ err=advance_decode(f,old,&f->advance_old_expected,old->ticket->response,&lease);
  if(!err){assert(lease->unadopted && !lease->advance && !s->blocked);err=-EXDEV;}
  advance_decoded_free(lease);lease=NULL;
- ticket->advance=false;
- assert(advance_decode(f,ticket->response,0,&lease)==-ESTALE && !lease);
- ticket->advance=true;
+ old->ticket->advance=false;
+ assert(advance_decode(f,old,&f->advance_old_expected,old->ticket->response,&lease)==-ESTALE && !lease);
+ old->ticket->advance=true;
  assert(!s->blocked);
- hfs_lease_free(f->advance);f->advance=NULL;
  done(id,err,NULL,0);
 }
 static void command(char *line) {
@@ -1171,7 +1185,7 @@ static void command(char *line) {
  }
  if(!strcmp(operation,"ADVANCE")){advance_command(id,f);return;}
  if(!strcmp(operation,"ADVANCE_REPLAY")){advance_replay_command(id,f);return;}
- if(!strcmp(operation,"ADVANCE_RELEASE")){int err=hfs_lease_release(f->session,f->advance);assert(!f->session->blocked);done(id,err,NULL,0);return;}
+ if(!strcmp(operation,"ADVANCE_RELEASE")){advance_release_command(id,f);return;}
  if(!strcmp(operation,"ADVANCE_STALE")){advance_stale_command(id,f);return;}
  if(!strcmp(operation,"RELEASE_START")){
   struct hfs_lease *lease=f->lease;assert(lease);struct hfs_view_ticket *ticket=lease->release_ticket;struct hfs_buf *payload=&lease->release_payload;
