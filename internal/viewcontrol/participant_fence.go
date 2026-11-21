@@ -16,7 +16,7 @@ import (
 //
 // A recall waits for the exact ACKs of every participant (allAcked iterates
 // the issued events) and has no deadline of its own. A guest session that
-// stops acknowledging (its view worker got STALE and stopped for good, its
+// stops talking (its view worker got STALE and stopped for good, its
 // hfs_mmap_fail told the host nothing, the guest hung or died) therefore
 // held the recall, and with it every other domain's cut-changing admission,
 // forever.
@@ -24,43 +24,57 @@ import (
 // The controller now fences such a participant: it drops the session from
 // the recall, so the others can install and REOPEN, and refuses every later
 // request of that session with ErrSessionFenced (fsapi.Unavailable). It
-// does so only when all of the following hold (fenceable):
+// does so only when all of the following hold (fenceable, silentFor):
 //
 //   - the recall is past RECALL, i.e. every participant's STOPPED was
 //     accepted, which the physical Facts certified (the fixed observer
 //     measured the guest stopped), and quiesceParticipants deactivated every
-//     participant lease; the session's STOPPED manifest is protected;
+//     participant lease; the session's STOPPED manifest is protected and its
+//     STOPPED of this recall is in the protected AckArchive;
 //   - the session holds no active lease of any kind (no PAGE lease that
 //     could authorize a PTE, no DOMAIN/OBJECT lease);
 //   - every open reservation of the session is FROZEN in this recall and its
 //     drain result is protected (CheckFrozenResult): it has no undrained
 //     entry, so no dirty byte is lost and no frozen call is left without
 //     its result;
-//   - the session owes an ACK of the current phase (it is what the recall
-//     waits for) and its latest ACK is not BLOCKED within BlockedACKBound
-//     (a guest whose ACK waits for its observation is alive);
-//   - the phase has been waiting at least StalledParticipantBound.
+//   - the session owes an ACK of the current phase: neither learned in the
+//     recall nor accepted before in the protected AckArchive (a controller
+//     restart discards learned ACKs, and patch 0004 does not resend an
+//     accepted one, so a learned-only check fenced live guests, review of
+//     0a4 round 1);
+//   - the session sent nothing at all, no poll, ACK, ticket or CALL, for
+//     StalledParticipantBound, counted from the later of its last request
+//     and the controller's first sight of the phase (silentSince). A guest
+//     that polls or resends is alive, however slow, and is never fenced.
 //
-// A participant missing its STOPPED is never fenced: nothing shows that it
-// stopped using its leases. Neither is one with an undrained entry.
+// The caller of a poll or an ACK is never fenced by its own request, and a
+// fence that would leave the recall without participants requires every one
+// of them to be silent for the bound (fenceGuard). A participant missing its
+// STOPPED, or with an undrained entry, is never fenced.
 //
-// Durability. The fence is one protected ledger write (Fenced, the dropped
-// event/ACKs/manifest and, when no participant is left, the end of the
-// recall), so a crash leaves either no trace or the whole fence; a reopened
-// controller reloads Fenced and keeps refusing the session. The fenced
-// session's domain fence does not advance: its guest never acknowledged the
-// REOPEN, so its stale leases can never be certified released (the runtime
-// Facts need the fence advance) and the guest, which fails its view control
-// on the transport error, cannot resume on its old view.
+// Durability. The fence is one protected ledger write (Fenced, the ledger
+// schema LedgerSchemaFenced, the dropped event/ACKs/manifest and, when no
+// participant is left, the end of the recall), so a crash leaves either no
+// trace or the whole fence; a reopened controller reloads Fenced and keeps
+// refusing the session. The fenced session's domain fence does not advance:
+// its guest never acknowledged the REOPEN, so its stale leases can never be
+// certified released (the runtime Facts need the fence advance) and the
+// guest, which fails its view control on the transport error, cannot resume
+// on its old view. A fence is permanent for that enrolled session; there is
+// no unfence path (see the README).
 //
-// The stall clock (phaseClock) is in memory only. It restarts on every phase
-// change, a controller reopen, Disconnect and Recover, so a restart only
-// delays a fence, never hastens one.
+// The clocks (phaseClock, lastSeen) are in memory only. They restart on a
+// controller reopen, Disconnect and Recover, so a restart only delays a
+// fence, never hastens one.
 
-// StalledParticipantBound is how long a recall phase waits for a fenceable
-// participant before that participant is fenced: twice the guest's 30 s
-// transport window (BlockedACKBound). Within it a slow guest has a full
-// BLOCKED window for its ACK plus a full transport deadline to resend it.
+// StalledParticipantBound is how long a fenceable participant must be
+// completely silent before it is fenced: twice the guest's 30 s transport
+// window (BlockedACKBound). A live guest keeps a VIEW_WAIT posted, whose
+// native VIEW_POLL legs reach the controller, and resends a BLOCKED ACK
+// every 10 ms; a guest that sent nothing for two transport deadlines is not
+// merely waiting for a delayed event delivery or a slow install (both show
+// as polls), it stopped. The value is a liveness choice: the safety of a
+// fence rests on the conditions above, not on it.
 const StalledParticipantBound = 2 * BlockedACKBound
 
 // ErrSessionFenced answers every request of a session the controller fenced
@@ -122,12 +136,28 @@ func (c *Controller) loadFenced() {
 	}
 }
 
-// markPhase restarts the stall clock for the current recall phase.
+// seen records a sign of life of session: any request of it that reached
+// the controller under c.mu (poll, ACK, ticket, CALL), whatever its answer.
+func (c *Controller) seen(session string) {
+	if c.lastSeen == nil {
+		c.lastSeen = map[string]time.Time{}
+	}
+	c.lastSeen[session] = c.clock()
+}
+
+// markPhase restarts the phase clock for the current recall phase.
 func (c *Controller) markPhase() {
 	c.phaseClock = phaseClock{}
 	if r := c.state.Recall; r != nil {
 		c.phaseClock = phaseClock{recall: r.ID, phase: r.Phase, since: c.clock()}
 	}
+}
+
+// resetLiveness restarts every in-memory liveness clock (Disconnect,
+// Recover): no participant is fenced for the time recovery took.
+func (c *Controller) resetLiveness() {
+	c.phaseClock = phaseClock{}
+	c.lastSeen = nil
 }
 
 // phaseSince returns when the current phase was first seen, starting the
@@ -143,25 +173,71 @@ func (c *Controller) phaseSince() time.Time {
 	return c.phaseClock.since
 }
 
-// owesACK reports whether session lacks an ACK the current phase waits for.
+// silentSince is when session's current silence began: its last request or
+// the controller's first sight of the phase, whichever is later.
+func (c *Controller) silentSince(session string) time.Time {
+	since := c.phaseSince()
+	if last := c.lastSeen[session]; last.After(since) {
+		since = last
+	}
+	return since
+}
+
+// fenceAt is when session may be fenced if it stays silent.
+func (c *Controller) fenceAt(session string) time.Time {
+	return c.silentSince(session).Add(StalledParticipantBound)
+}
+
+// silentFor reports whether session has been silent for the whole bound.
+func (c *Controller) silentFor(session string) bool {
+	return !c.clock().Before(c.fenceAt(session))
+}
+
+// owesACK reports whether session lacks an ACK the current phase waits for,
+// neither learned in the recall nor archived as accepted before. An
+// archived ACK counts as delivered: the guest saw it ACCEPTED and will not
+// resend it, so a restart's discarded learned ACKs never make a live guest
+// look stalled.
 func (c *Controller) owesACK(r *recallState, session string) bool {
 	sequence, ok := eventSequence(r, session)
 	if !ok {
 		return false
 	}
+	scope := c.state.Domains[session].Domain.Scope
 	for _, phase := range phaseACKs[r.Phase] {
-		if len(r.Acks[session+"/"+phase+"/"+stringNumber(sequence)]) == 0 {
+		learned := len(r.Acks[session+"/"+phase+"/"+stringNumber(sequence)]) != 0
+		archived := c.state.AckArchive[archiveKey(scope, acknowledgement{Recall: r.ID, Phase: phase, Sequence: sequence})] != ""
+		if !learned && !archived {
 			return true
 		}
 	}
 	return false
 }
 
-// fenceable applies every fence condition but the stall time (see the file
+// ArchivedStopped reports whether archive (a ledger's AckArchive) holds an
+// accepted STOPPED of scope for recall. The controller and the runtime Facts
+// both require it of every fenced session (task 0a4): a fence is allowed
+// only after the session's physically certified STOPPED of that recall.
+// The session never acknowledges anything again, so pruneAckArchive never
+// drops these rows.
+func ArchivedStopped(archive map[string]string, scope guestbridge.Context, recall string) bool {
+	prefix := digest(scope) + "/" + recall + "/STOPPED/" // ArchiveKey without the sequence
+	for key, value := range archive {
+		if value != "" && strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// fenceable applies every fence condition but the silence (see the file
 // comment). It never changes state.
 func (c *Controller) fenceable(ctx context.Context, session string) bool {
 	r := c.state.Recall
-	if r == nil || phaseACKs[r.Phase] == nil || len(r.Manifests[session]) == 0 || !c.owesACK(r, session) || c.blockedLive(session) {
+	if r == nil || phaseACKs[r.Phase] == nil || len(r.Manifests[session]) == 0 || !c.owesACK(r, session) {
+		return false
+	}
+	if !ArchivedStopped(c.state.AckArchive, c.state.Domains[session].Domain.Scope, r.ID) {
 		return false
 	}
 	for _, l := range c.state.Leases {
@@ -189,38 +265,45 @@ func (c *Controller) sessionDrained(ctx context.Context, r *recallState, session
 	return true
 }
 
-// blockedLive reports whether session's latest ACK is BLOCKED and still
-// within BlockedACKBound: the guest is resending it, so it is alive. An
-// entry older than the bound belongs to a guest that stopped resending or
-// already got the bound's error reply.
-func (c *Controller) blockedLive(session string) bool {
-	b, ok := c.blockedACKs[session]
-	return ok && c.clock().Sub(b.since) <= BlockedACKBound
-}
-
-// fenceAt is when the current phase's fenceable participants may be fenced.
-func (c *Controller) fenceAt() time.Time {
-	return c.phaseSince().Add(StalledParticipantBound)
-}
-
 // stalledParticipants returns the participants that may be fenced now,
-// sorted, leaving out except (an ACK sender, whose ACK is progress).
+// sorted. except (the session whose poll or ACK runs the check) is never
+// returned: a request is a sign of life.
 func (c *Controller) stalledParticipants(ctx context.Context, except string) []string {
 	r := c.state.Recall
-	if r == nil || phaseACKs[r.Phase] == nil || c.clock().Before(c.fenceAt()) {
+	if r == nil || phaseACKs[r.Phase] == nil {
 		return nil
 	}
 	var stalled []string
 	for session := range r.Events {
-		if session != except && c.fenceable(ctx, session) {
+		if session != except && c.silentFor(session) && c.fenceable(ctx, session) {
 			stalled = append(stalled, session)
 		}
 	}
 	sort.Strings(stalled)
+	if !c.fenceGuard(r, stalled, except) {
+		return nil
+	}
 	return stalled
 }
 
-// fenceStalled fences every stalled participant (except except) in one
+// fenceGuard refuses a fence that would leave the recall without
+// participants unless every participant is provably silent: none is the
+// caller and each has been silent for the whole bound. stalledParticipants
+// already implies this; the guard keeps any later change of its conditions
+// from emptying a recall of live guests.
+func (c *Controller) fenceGuard(r *recallState, stalled []string, except string) bool {
+	if len(stalled) < len(r.Events) {
+		return true
+	}
+	for session := range r.Events {
+		if session == except || !c.silentFor(session) {
+			return false
+		}
+	}
+	return true
+}
+
+// fenceStalled fences every stalled participant (never except) in one
 // protected write and reports whether it fenced any. When no participant
 // is left the recall ends in the same write (finishRecall advances no
 // fence, as no participant reopened), so no ledger ever holds a recall
@@ -257,16 +340,19 @@ func (c *Controller) fenceStalled(ctx context.Context, except string) (bool, err
 }
 
 // dropParticipant records session's fence and removes it from recall r:
-// its event, learned ACKs and manifest. Its leases are already inactive
-// (fenceable), and its drained FROZEN reservations are closed with the
-// recall's others by finishRecall. Its AckArchive rows stay: a replay of an
-// archived ACK is answered from them, and the session is refused anyway.
+// its event, learned ACKs and manifest. The ledger moves to
+// LedgerSchemaFenced, which a binary before 0a4 refuses (it would serve the
+// session again). Its leases are already inactive (fenceable), and its
+// drained FROZEN reservations are closed with the recall's others by
+// finishRecall. Its AckArchive rows stay: they prove its STOPPED
+// (ArchivedStopped), and the session is refused anyway.
 func (c *Controller) dropParticipant(r *recallState, session string) {
 	sequence, _ := eventSequence(r, session)
 	if c.state.Fenced == nil {
 		c.state.Fenced = map[string]fencedSession{}
 	}
 	c.state.Fenced[session] = fencedSession{Recall: r.ID, Phase: r.Phase, Sequence: sequence, Fence: c.fence(session)}
+	c.state.Schema = LedgerSchemaFenced
 	delete(r.Events, session)
 	delete(r.Manifests, session)
 	for key := range r.Acks {
@@ -275,6 +361,7 @@ func (c *Controller) dropParticipant(r *recallState, session string) {
 		}
 	}
 	delete(c.blockedACKs, session)
+	delete(c.lastSeen, session)
 }
 
 // eventSequence returns the sequence of session's current event in r.
@@ -289,10 +376,12 @@ func eventSequence(r *recallState, session string) (uint64, bool) {
 
 // validFenced checks the fences of a reopened ledger: every fenced session
 // is a registered domain, holds no active lease, keeps the fence recorded
-// when it was fenced and receives no event of the current recall.
+// when it was fenced, has its archived STOPPED of the recall it was fenced
+// in and receives no event of the current recall.
 func (s ledger) validFenced() bool {
 	for session, f := range s.Fenced {
-		if _, ok := s.Domains[session]; !ok || DomainFence(s.Fences, session) != f.Fence {
+		d, ok := s.Domains[session]
+		if !ok || DomainFence(s.Fences, session) != f.Fence || !ArchivedStopped(s.AckArchive, d.Domain.Scope, f.Recall) {
 			return false
 		}
 		if s.Recall != nil {

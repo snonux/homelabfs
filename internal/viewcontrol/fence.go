@@ -9,6 +9,20 @@ package viewcontrol
 // history, so such a ledger is never guessed forward.
 const LedgerSchema = 2
 
+// LedgerSchemaFenced (3) is schema 2 plus at least one fenced session
+// (participant_fence.go, task 0a4). The first fence moves the ledger to it,
+// so a binary before 0a4, which accepts only schema 2 and ignores Fenced,
+// refuses the ledger instead of serving a fenced session again. A ledger
+// without a fence stays at schema 2 byte for byte.
+const LedgerSchemaFenced = 3
+
+// ValidLedgerSchema reports whether schema fits a ledger with fenced
+// fenced sessions: LedgerSchema without a fence, LedgerSchemaFenced with
+// one. The runtime Facts apply the same rule.
+func ValidLedgerSchema(schema, fenced int) bool {
+	return (schema == LedgerSchema && fenced == 0) || (schema == LedgerSchemaFenced && fenced > 0)
+}
+
 // DomainFence returns the physical cache-lifetime fence of one domain
 // (session) in a schema-2 ledger's Fences map.
 //
@@ -61,7 +75,7 @@ func (c *Controller) advanceFences(r *recallState) {
 // domain that completed a recall has an entry, so every entry belongs to a
 // registered domain and is at least 2 (an absent entry is fence 1).
 func (s ledger) validFences() bool {
-	if s.Schema != LedgerSchema || s.Fences == nil || len(s.Fences) > len(s.Domains) {
+	if !ValidLedgerSchema(s.Schema, len(s.Fenced)) || s.Fences == nil || len(s.Fences) > len(s.Domains) {
 		return false
 	}
 	for session, fence := range s.Fences {

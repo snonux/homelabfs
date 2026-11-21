@@ -41,10 +41,9 @@ func TestStalledParticipantFencedAfterBound(t *testing.T) {
 }
 
 // TestBlockedACKKeepsParticipantAlive: a participant resending an ACK that
-// stays BLOCKED (its observation has not arrived) is alive and is not
-// fenced while that ACK is within BlockedACKBound, even past
-// StalledParticipantBound. Once its wait is older than the bound (the
-// guest stopped resending, or got the bound's error), it is fenced.
+// stays BLOCKED (its observation has not arrived) is alive: every resend is
+// a request, so it is not fenced past StalledParticipantBound. Only once it
+// has sent nothing at all for the whole bound is it fenced.
 func TestBlockedACKKeepsParticipantAlive(t *testing.T) {
 	r := newZQ3Rig(t, 0)
 	advance := r.testClock()
@@ -55,10 +54,13 @@ func TestBlockedACKKeepsParticipantAlive(t *testing.T) {
 	if got := r.ackStatus(1, installed); got != "BLOCKED" {
 		t.Fatalf("unobserved INSTALLED_DRAIN answered %s, want BLOCKED", got)
 	}
-	advance(2 * time.Second) // past the stall bound, m1's wait 1 s old
+	advance(2 * time.Second) // past the phase's bound, m1 talked 2 s ago
 	r.poll(0)
 	r.requireNotFenced(1)
-	advance(BlockedACKBound) // m1's wait is past its own bound
+	advance(StalledParticipantBound - 3*time.Second) // m1 silent 59 s
+	r.poll(0)
+	r.requireNotFenced(1)
+	advance(time.Second) // m1 silent for the whole bound
 	r.poll(0)
 	r.requireFenced(1)
 	r.ack(0, "DRAINED", r.emptyManifest())
@@ -66,47 +68,47 @@ func TestBlockedACKKeepsParticipantAlive(t *testing.T) {
 }
 
 // TestUndrainedParticipantNeverFenced: m0 froze a dirty reservation and
-// stopped; the recall waits in DRAIN for its DRAIN_WRITE. When the learned
-// ACKs are discarded (as a Disconnect or a controller reopen does), both
-// participants owe their STOPPED again and neither resends it. m1 has
-// nothing undrained and is fenced after the bound; m0 holds an undrained
-// entry and is never fenced, however long it stays silent. When m0 resends
-// its STOPPED and drains, the recall completes with m0 alone and the drained
-// data is in the file.
+// stopped; the recall waits in DRAIN for its DRAIN_WRITE. Both domains stay
+// silent for ten bounds after their learned ACKs were discarded (as a
+// Disconnect or a reopen does): nobody is fenced, because every STOPPED is
+// archived (nobody owes an ACK in DRAIN) and m0 holds an undrained entry,
+// which fenceable refuses on its own. Once the archive counts, an owing
+// participant with an undrained entry cannot arise (DRAIN waits for every
+// drain), so that condition is defence in depth and is checked directly.
+// After the drain the recall completes with both domains.
 func TestUndrainedParticipantNeverFenced(t *testing.T) {
 	r := newRig(t)
 	advance := r.testClock()
 	frozen := r.freezeDirtyRecall()
-	advance(10 * StalledParticipantBound)
-	r.poll(0)
-	r.poll(1)
-	r.requireNotFenced(0)
-	r.requireNotFenced(1) // nobody owes an ACK in DRAIN: only the drain is due
 	r.controller.mu.Lock()
 	r.controller.state.Recall.Acks = map[string]json.RawMessage{}
-	r.controller.phaseClock = phaseClock{} // as Disconnect/Recover/reopen do
+	r.controller.resetLiveness()
 	r.controller.mu.Unlock()
-	r.poll(0) // starts the stall clock again
-	advance(StalledParticipantBound)
-	r.poll(0)
-	r.requireFenced(1)
-	r.requireNotFenced(0)
-	advance(10 * StalledParticipantBound)
-	r.poll(0)
-	r.requireNotFenced(0)
-	r.requirePhase("DRAIN")
-	r.ack(0, "STOPPED", frozen.manifest) // the archived ACK is relearned
-	drained := r.sendCall(0, frozen.drain)
-	if drained.Code != "OK" || drained.Count != 3 {
-		t.Fatalf("drain %+v", drained)
+	for range 10 {
+		advance(StalledParticipantBound)
+		r.controller.mu.Lock()
+		fenced, err := r.controller.fenceStalled(t.Context(), "")
+		r.controller.mu.Unlock()
+		must(t, err)
+		if fenced {
+			t.Fatal("a participant was fenced in DRAIN")
+		}
 	}
-	r.poll(0)
-	r.requirePhase("INSTALL_DRAIN")
-	r.ack(0, "INSTALLED_DRAIN", nil)
-	r.ack(0, "DRAINED", frozen.manifest)
-	r.ack(0, "INSTALLED_FINAL", nil)
-	r.ack(0, "REOPENED", nil)
-	r.requireFences(2, 1)
+	r.controller.mu.Lock()
+	drained := r.controller.sessionDrained(t.Context(), r.controller.state.Recall, r.scopes[0].Session)
+	r.controller.mu.Unlock()
+	if drained {
+		t.Fatal("m0's frozen, undrained entry counts as drained")
+	}
+	r.requirePhase("DRAIN")
+	r.ack(0, "STOPPED", frozen.manifest) // archived: relearned
+	r.ack(1, "STOPPED", r.emptyManifest())
+	written := r.sendCall(0, frozen.drain)
+	if written.Code != "OK" || written.Count != 3 {
+		t.Fatalf("drain %+v", written)
+	}
+	r.completeRecall([]json.RawMessage{frozen.manifest, r.emptyManifest()})
+	r.requireFences(2, 2)
 	read := r.call(0, "READ", map[string]any{"description": frozen.description, "offset": 0, "count": 64})
 	if read.Code != "OK" || read.Data != "58595a64" {
 		t.Fatalf("drained data %+v", read)

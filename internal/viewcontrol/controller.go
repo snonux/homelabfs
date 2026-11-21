@@ -155,6 +155,9 @@ type Controller struct {
 	// phaseClock is the in-memory stall clock of the current recall phase
 	// (participant_fence.go); guarded by mu, never part of the ledger.
 	phaseClock phaseClock
+	// lastSeen is each session's last request under mu (participant_fence.go
+	// seen): a session that talks is never fenced. Memory only.
+	lastSeen map[string]time.Time
 	// allDomainMismatch is a test-only ablation that restores the pre-e84
 	// all-domain expected-target recall (mismatch_scope.go), so replays can
 	// count both behaviours; it is always false in production.
@@ -175,7 +178,8 @@ type ledger struct {
 	Reservations            map[string]reservationState
 	Domains                 map[string]domainState
 	Recall                  *recallState
-	// Schema is LedgerSchema; Fences holds each domain's fence once it has
+	// Schema is LedgerSchema, or LedgerSchemaFenced once a session was
+	// fenced (ValidLedgerSchema); Fences holds each domain's fence once it has
 	// completed a recall (see DomainFence). Neither is optional: a ledger
 	// without them is an older layout and is refused on reopen.
 	Schema int
@@ -198,8 +202,9 @@ type ledger struct {
 	// participant (participant_fence.go, task 0a4): it was dropped from its
 	// recall and every later request of it is refused with
 	// ErrSessionFenced. omitempty keeps a ledger without a fence
-	// byte-identical to the schema-2 layout before 0a4; downgrading after a
-	// fence is unsupported (an older binary would serve the session again).
+	// byte-identical to the schema-2 layout before 0a4. The first fence
+	// moves Schema to LedgerSchemaFenced, which an older binary refuses on
+	// reopen instead of serving the fenced session again.
 	Fenced map[string]fencedSession `json:",omitempty"`
 }
 
@@ -792,7 +797,7 @@ func (c *Controller) loadLedger(tx *bolt.Tx) error {
 	if err = json.Unmarshal(old, &c.state); err != nil {
 		return err
 	}
-	if c.state.Version != version || c.state.Schema != LedgerSchema || c.state.EnrollmentHash != c.enrollmentHash {
+	if c.state.Version != version || !ValidLedgerSchema(c.state.Schema, len(c.state.Fenced)) || c.state.EnrollmentHash != c.enrollmentHash {
 		return fsapi.Permission
 	}
 	// A ledger written before task q64 has no lineage fences. An empty map

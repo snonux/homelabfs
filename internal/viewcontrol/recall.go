@@ -54,6 +54,7 @@ func (c *Controller) Exchange(ctx context.Context, scope guestbridge.Context, op
 		return nil, fsapi.WouldBlock
 	}
 	defer c.mu.Unlock()
+	c.seen(scope.Session) // a sign of life (participant_fence.go)
 	if op == "VIEW_ACK" {
 		return c.acknowledge(ctx, scope, raw)
 	}
@@ -149,16 +150,12 @@ func (c *Controller) pollProgress(ctx context.Context, scope guestbridge.Context
 	// poisons the controller; its memory is then not the protected ledger, so
 	// that is never answered from, whatever the class.
 	//
-	// First a participant stalled past StalledParticipantBound is fenced
+	// First a participant silent past StalledParticipantBound is fenced
 	// (participant_fence.go, task 0a4); every live domain polls, so a
-	// stalled recall is unwedged by its peers' polls. A poll is no progress
-	// of its own, so the polling session may be the one fenced; it then gets
-	// ErrSessionFenced like every later request.
-	if _, err := c.fenceStalled(ctx, ""); err != nil {
+	// stalled recall is unwedged by its peers' polls. The poller itself is
+	// never fenced: its poll is a sign of life (Exchange recorded it).
+	if _, err := c.fenceStalled(ctx, scope.Session); err != nil {
 		return guestbridge.Final(err)
-	}
-	if c.isFenced(scope.Session) {
-		return guestbridge.Final(ErrSessionFenced)
 	}
 	if err := c.progress(ctx); err != nil && (c.poisoned.Load() || !transientProgress(err)) {
 		return guestbridge.Final(err)

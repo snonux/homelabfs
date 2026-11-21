@@ -66,6 +66,7 @@ func (c *Controller) Admit(ctx context.Context, b guestbridge.Binding) (controll
 // DESCRIPTION_CLOSE) are never held. Authority reductions conflict only with
 // their own domain's open reservations (recall_scope.go).
 func (c *Controller) admissionBarrier(ctx context.Context, b guestbridge.Binding) error {
+	c.seen(b.Context.Session) // a sign of life (participant_fence.go)
 	if _, sealed := c.state.Terminal[b.Context.Session]; sealed {
 		return fsapi.Permission
 	}
@@ -259,6 +260,11 @@ func (c *Controller) Disconnect(ctx context.Context, scope guestbridge.Context) 
 		return fsapi.WouldBlock
 	}
 	defer c.mu.Unlock()
+	// A fenced session (participant_fence.go) has no live connection whose
+	// loss could put the whole controller into recovery.
+	if c.isFenced(scope.Session) {
+		return ErrSessionFenced
+	}
 	c.state.Recovery = true
 	if c.state.Recall != nil {
 		c.state.Recall.Acks = map[string]json.RawMessage{}
@@ -268,7 +274,7 @@ func (c *Controller) Disconnect(ctx context.Context, scope guestbridge.Context) 
 	// stall clock restarts as well: the guests resend after RESUME, so no
 	// participant is fenced for the time recovery took (participant_fence.go).
 	c.blockedACKs = nil
-	c.phaseClock = phaseClock{}
+	c.resetLiveness()
 	return c.save()
 }
 
@@ -297,7 +303,7 @@ func (c *Controller) Recover(ctx context.Context) error {
 	// Fresh ACKs follow a reconciled RESUME; no BLOCKED window or stall clock
 	// carries over.
 	c.blockedACKs = nil
-	c.phaseClock = phaseClock{}
+	c.resetLiveness()
 	return c.save()
 }
 

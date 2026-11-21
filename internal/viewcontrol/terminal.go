@@ -41,6 +41,11 @@ func (c *Controller) SealTerminal(ctx context.Context, a *guestbridge.TerminalAt
 	if c.poisoned.Load() || c.closed.Load() || c.state.Recovery {
 		return guestbridge.TerminalSeal{}, fsapi.Unavailable
 	}
+	// A fenced session (participant_fence.go) is refused for good; it is
+	// never sealed (its operator re-enrolls a new session instead).
+	if c.isFenced(scope.Session) {
+		return guestbridge.TerminalSeal{}, ErrSessionFenced
+	}
 	state, err := c.rawState()
 	if err != nil {
 		return guestbridge.TerminalSeal{}, err

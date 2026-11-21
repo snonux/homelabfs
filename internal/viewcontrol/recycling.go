@@ -153,7 +153,15 @@ func (c *Controller) recycleLineages() {
 
 // archiveKey is the AckArchive key of one accepted ACK.
 func archiveKey(scope guestbridge.Context, ack acknowledgement) string {
-	return digest(scope) + "/" + ack.Recall + "/" + ack.Phase + "/" + stringNumber(ack.Sequence)
+	return ArchiveKey(scope, ack.Recall, ack.Phase, ack.Sequence)
+}
+
+// ArchiveKey is the AckArchive key of scope's accepted ACK of phase at
+// sequence in recall: the scope digest, recall, phase and sequence joined
+// by "/". It is exported for the runtime Facts' fence check and its tests
+// (ArchivedStopped, task 0a4); it grants nothing by itself.
+func ArchiveKey(scope guestbridge.Context, recall, phase string, sequence uint64) string {
+	return digest(scope) + "/" + recall + "/" + phase + "/" + stringNumber(sequence)
 }
 
 // archiveParts splits an AckArchive key into its scope digest and recall.
