@@ -84,9 +84,12 @@ type blockedHistory struct {
 
 // add records row, dropping the oldest row once the ring is full.
 func (b *blockedHistory) add(row BlockedReply) {
-	if row.Reason == BlockedExpectedMismatch {
+	// Count each known reason explicitly, so a reason added later cannot be
+	// counted under the wrong name by default (2h4 review).
+	switch row.Reason {
+	case BlockedExpectedMismatch:
 		b.expectedMismatch++
-	} else {
+	case BlockedCapacity:
 		b.capacity++
 	}
 	if len(b.recent) == BlockedHistoryLimit {
