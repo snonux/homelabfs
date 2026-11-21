@@ -180,15 +180,25 @@ def open_registered(register, path, flags, mode=0o777, *, dir_fd=None):
 
 
 @contextlib.contextmanager
-def owned(path, flags, mode=0o777, *, dir_fd=None):
+def owned(path, flags, mode=0o777, *, dir_fd=None, record=None):
     """A descriptor that is closed on every exit, including a Deadline.
 
     The fd is registered in the local list inside the try, under the SIGALRM
     mask, so no alarm can land between the open and the finally that closes it.
+    record, if given, runs the open as record(opening), e.g. through Probe.call
+    (see Probe.owned), so a refused or interrupted open names itself; the fd is
+    still registered before any Deadline leaves the open.
     """
     fds = []
+
+    def opening():
+        return open_registered(fds.append, path, flags, mode, dir_fd=dir_fd)
+
     try:
-        open_registered(fds.append, path, flags, mode, dir_fd=dir_fd)
+        if record is None:
+            opening()
+        else:
+            record(opening)
         yield fds[0]
     finally:
         for fd in fds:
@@ -457,13 +467,24 @@ class Probe:
         return self.call("pwrite", lambda: os.pwrite(fd, data, offset),
                          bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), offset=offset)
 
+    def owned(self, operation, path, flags, mode=0o777, *, dir_fd=None, **args):
+        """owned() whose open is one recorded call (invoke/reply events).
+
+        Only for the parent's hfs opens: a forked child's action must not call
+        it, since the child would emit events and spend a copied sequence.
+        """
+        return owned(path, flags, mode, dir_fd=dir_fd,
+                     record=lambda opening: self.call(operation, opening, name=path, **args))
+
     def leaf_name(self):
         return "zq3-" + self.request["run_id"] + "-" + self.request["case"]
 
     def open_leaf(self):
-        """Context manager owning the case leaf's directory fd (see owned)."""
-        return owned(self.leaf_name(), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                     dir_fd=self.roots[0])
+        """Context manager owning the case leaf's directory fd (see owned).
+
+        The open is a recorded call, so a refused leaf open names itself."""
+        return self.owned("open-leaf", self.leaf_name(),
+                          os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=self.roots[0])
 
     @contextlib.contextmanager
     def directory(self):
@@ -697,11 +718,20 @@ def read_child(directory, name):
         return os.read(fd, 64).decode()
 
 
+# Case bodies. Every hfs syscall the parent issues goes through p.call (or
+# p.owned for an open), so a failure's reply event names the syscall that
+# failed (yf4, zq3-r18: chown's EOPNOTSUPP surfaced only as a bare errno).
+# The syscall sequence is the same as before the wrapping; only invoke/reply
+# events were added. Actions that run in a forked child (p.child) stay plain:
+# their errno already comes back in the child's reply.
+EXCLUSIVE = os.O_CREAT | os.O_EXCL | os.O_RDWR
+
+
 def create_owned_file(p, directory, name, uid, gid, data):
     """Exclusive create with numeric owner, mode 0640 and one recorded write."""
-    with owned(name, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o640, dir_fd=directory) as fd:
-        os.fchown(fd, uid, gid)
-        os.fchmod(fd, 0o640)
+    with p.owned("create-exclusive", name, EXCLUSIVE, 0o640, dir_fd=directory) as fd:
+        p.call("fchown", lambda: os.fchown(fd, uid, gid), name=name, uid=uid, gid=gid)
+        p.call("fchmod", lambda: os.fchmod(fd, 0o640), name=name, mode=0o640)
         p.write(fd, data)
 
 
@@ -711,7 +741,7 @@ def credentials(p):
     Split into ordered stages; the syscall sequence is unchanged.
     """
     with p.directory() as (directory, leaf):
-        os.fchmod(directory, 0o777)
+        p.call("fchmod-leaf", lambda: os.fchmod(directory, 0o777), name=leaf, mode=0o777)
         credentials_groups(p, directory)
         credentials_group_tail(p, directory)
         credentials_setgid(p, directory, leaf)
@@ -751,18 +781,25 @@ def credentials_group_tail(p, directory):
             "removing only the final supplementary group must deny")
 
 
+def make_owned_directory(p, directory, name, mode):
+    """Recorded mkdir of name with mode, then a context manager owning its fd
+    (a recorded open). Callers re-apply the mode with fchmod afterwards, since
+    the umask may have cleared bits at mkdir."""
+    p.call("mkdir", lambda: os.mkdir(name, mode, dir_fd=directory), name=name, mode=mode)
+    return p.owned("open-directory", name, os.O_RDONLY | os.O_DIRECTORY, dir_fd=directory)
+
+
 def credentials_setgid(p, directory, leaf):
     """Atomic create in a setgid directory, then freshness through m1."""
-    os.mkdir("setgid", 0o2777, dir_fd=directory)
-    with owned("setgid", os.O_RDONLY | os.O_DIRECTORY, dir_fd=directory) as sg:
-        os.fchown(sg, 0, 42002)
-        os.fchmod(sg, 0o2777)
+    with make_owned_directory(p, directory, "setgid", 0o2777) as sg:
+        p.call("fchown", lambda: os.fchown(sg, 0, 42002), name="setgid", uid=0, gid=42002)
+        p.call("fchmod", lambda: os.fchmod(sg, 0o2777), name="setgid", mode=0o2777)
 
         def create():
+            # Child action: plain syscalls (see the note above create_owned_file).
             old = os.umask(0o027)
             try:
-                with owned("created", os.O_CREAT | os.O_EXCL | os.O_RDWR,
-                           0o666, dir_fd=sg) as fd:
+                with owned("created", EXCLUSIVE, 0o666, dir_fd=sg) as fd:
                     value = os.fstat(fd)
                     return [value.st_uid, value.st_gid, stat.S_IMODE(value.st_mode)]
             finally:
@@ -772,18 +809,19 @@ def credentials_setgid(p, directory, leaf):
         checked(status == 0 and result["result"] == [41001, 42002, 0o640],
                 "atomic create owner/group/setgid/umask")
     # Record actual numeric ownership and permissions through the second domain.
-    seen = os.stat(leaf + "/setgid/created", dir_fd=p.roots[1], follow_symlinks=False)
+    path = leaf + "/setgid/created"
+    seen = p.call("stat-cross-domain",
+                  lambda: os.stat(path, dir_fd=p.roots[1], follow_symlinks=False), path=path)
     checked((seen.st_uid, seen.st_gid, stat.S_IMODE(seen.st_mode)) ==
             (41001, 42002, 0o640), "cross-domain credential metadata freshness")
 
 
 def credentials_sticky(p, directory):
     """A sticky directory denies unlink of another owner's entry."""
-    os.mkdir("sticky", 0o1777, dir_fd=directory)
-    with owned("sticky", os.O_RDONLY | os.O_DIRECTORY, dir_fd=directory) as sticky:
-        os.fchmod(sticky, 0o1777)
-        with owned("owned", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o666, dir_fd=sticky) as fd:
-            os.fchown(fd, 41002, 42002)
+    with make_owned_directory(p, directory, "sticky", 0o1777) as sticky:
+        p.call("fchmod", lambda: os.fchmod(sticky, 0o1777), name="sticky", mode=0o1777)
+        with p.owned("create-exclusive", "owned", EXCLUSIVE, 0o666, dir_fd=sticky) as fd:
+            p.call("fchown", lambda: os.fchown(fd, 41002, 42002), name="owned", uid=41002, gid=42002)
         denied, status = p.child(lambda: os.unlink("owned", dir_fd=sticky),
                                  41001, 42001, [42001, 42002])
         checked(status != 0 and denied.get("errno") in {errno.EACCES, errno.EPERM},
@@ -792,45 +830,57 @@ def credentials_sticky(p, directory):
 
 def credentials_special_bits(p, directory):
     """Setuid/setgid bits round trip and chown clears them."""
-    with owned("group", os.O_RDWR, dir_fd=directory) as owner:
+    with p.owned("open", "group", os.O_RDWR, dir_fd=directory) as owner:
         p.call("chmod-special-bits", lambda: os.fchmod(owner, 0o6750))
-        checked(stat.S_IMODE(os.fstat(owner).st_mode) == 0o6750, "special bits round trip")
+        mode = stat.S_IMODE(p.call("fstat", lambda: os.fstat(owner), name="group").st_mode)
+        checked(mode == 0o6750, "special bits round trip")
         p.call("chown-clears-special-bits", lambda: os.fchown(owner, 41001, 42001))
-        checked(stat.S_IMODE(os.fstat(owner).st_mode) & 0o6000 == 0,
-                "chown must clear setuid/setgid")
+        mode = stat.S_IMODE(p.call("fstat", lambda: os.fstat(owner), name="group").st_mode)
+        checked(mode & 0o6000 == 0, "chown must clear setuid/setgid")
+
+
+def pread(p, fd, size, offset, name):
+    """One recorded pread (the bytes stay out of the reply event)."""
+    return p.call("pread", lambda: os.pread(fd, size, offset), name=name, bytes=size, offset=offset)
 
 
 def sync(p):
     with p.directory() as (directory, _):
         for name, flag in (("ordinary", 0), ("sync", os.O_SYNC), ("dsync", os.O_DSYNC)):
-            with owned(name, os.O_CREAT | os.O_EXCL | os.O_RDWR | flag, 0o600,
-                       dir_fd=directory) as fd:
+            with p.owned("create-exclusive", name, EXCLUSIVE | flag, 0o600,
+                         dir_fd=directory, open_flags=flag) as fd:
                 checked(p.write(fd, (name + "-receipt").encode()) == len(name) + 8,
                         "short regular write")
                 p.call("fdatasync", lambda: os.fdatasync(fd), file=name, open_flags=flag)
                 p.call("fsync", lambda: os.fsync(fd), file=name, open_flags=flag)
-                checked(os.pread(fd, 64, 0) == (name + "-receipt").encode(), "sync readback")
+                checked(pread(p, fd, 64, 0, name) == (name + "-receipt").encode(), "sync readback")
         p.call("directory-fsync", lambda: os.fsync(directory))
-        with owned("mapped", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600, dir_fd=directory) as fd:
-            os.ftruncate(fd, 4096)
-            # Slice and readback lengths derive from the receipt itself: a fixed
-            # 16-byte slice of this 17-byte receipt raised IndexError locally.
-            receipt = b"mmap-receipt-0001"
-            # mmap's internal dup is closed with the mmap object (see ALARM).
-            with mmap.mmap(fd, 4096, flags=mmap.MAP_SHARED,
-                           prot=mmap.PROT_READ | mmap.PROT_WRITE) as view:
-                view[:len(receipt)] = receipt
-                p.call("MS_SYNC", view.flush, bytes=4096)
-                p.call("mapped-fsync", lambda: os.fsync(fd))
-                checked(os.pread(fd, len(receipt), 0) == receipt, "mapped readback")
+        sync_mapped(p, directory)
+
+
+def sync_mapped(p, directory):
+    """mmap MS_SYNC of a 4 KiB mapped receipt, then fsync and readback."""
+    with p.owned("create-exclusive", "mapped", EXCLUSIVE, 0o600, dir_fd=directory) as fd:
+        p.call("ftruncate", lambda: os.ftruncate(fd, 4096), name="mapped", bytes=4096)
+        # Slice and readback lengths derive from the receipt itself: a fixed
+        # 16-byte slice of this 17-byte receipt raised IndexError locally.
+        receipt = b"mmap-receipt-0001"
+        # mmap's internal dup is closed with the mmap object (see ALARM).
+        with mmap.mmap(fd, 4096, flags=mmap.MAP_SHARED,
+                       prot=mmap.PROT_READ | mmap.PROT_WRITE) as view:
+            view[:len(receipt)] = receipt
+            p.call("MS_SYNC", view.flush, bytes=4096)
+            p.call("mapped-fsync", lambda: os.fsync(fd))
+            checked(pread(p, fd, len(receipt), 0, "mapped") == receipt, "mapped readback")
 
 
 def namespace(p):
     with p.directory() as (directory, _):
-        with owned("namespace", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o666, dir_fd=directory):
+        with p.owned("create-exclusive", "namespace", EXCLUSIVE, 0o666, dir_fd=directory):
             pass
 
         def isolated():
+            # Child action: plain syscalls (see the note above create_owned_file).
             libc = ctypes.CDLL(None, use_errno=True)
             before = os.readlink("/proc/self/ns/user")
             if libc.unshare(0x10000000) != 0:  # CLONE_NEWUSER, Linux ABI
@@ -851,28 +901,29 @@ def namespace(p):
 
 def metadata(p):
     with p.directory() as (directory, leaf):
-        with owned("original", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600,
-                   dir_fd=directory) as fd:
+        with p.owned("create-exclusive", "original", EXCLUSIVE, 0o600, dir_fd=directory) as fd:
             checked(p.write(fd, b"metadata-receipt") == 16, "metadata initial write")
             p.call("rename", lambda: os.rename("original", "renamed",
                                               src_dir_fd=directory, dst_dir_fd=directory))
             p.call("hardlink", lambda: os.link("renamed", "linked",
                                               src_dir_fd=directory, dst_dir_fd=directory))
             p.call("truncate", lambda: os.ftruncate(fd, 8), bytes=8)
-            seen = os.stat(leaf + "/linked", dir_fd=p.roots[1], follow_symlinks=False)
+            path = leaf + "/linked"
+            seen = p.call("stat-cross-domain",
+                          lambda: os.stat(path, dir_fd=p.roots[1], follow_symlinks=False), path=path)
             checked(seen.st_size == 8 and seen.st_nlink == 2, "hardlink/size fresh through other domain")
             p.call("directory-fsync", lambda: os.fsync(directory))
-        with owned("unlinked", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600,
-                   dir_fd=directory) as unlinked:
+        with p.owned("create-exclusive", "unlinked", EXCLUSIVE, 0o600,
+                     dir_fd=directory) as unlinked:
             p.call("unlink-open", lambda: os.unlink("unlinked", dir_fd=directory))
             checked(p.write(unlinked, b"retained") == 8, "open-unlinked write")
             p.call("fsync-open-unlinked", lambda: os.fsync(unlinked))
-            checked(os.pread(unlinked, 8, 0) == b"retained", "open-unlinked read")
+            checked(pread(p, unlinked, 8, 0, "unlinked") == b"retained", "open-unlinked read")
 
 
 def mapped_pressure(p):
     with p.directory() as (directory, leaf):
-        with owned("full", os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600, dir_fd=directory) as fd:
+        with p.owned("create-exclusive", "full", EXCLUSIVE, 0o600, dir_fd=directory) as fd:
             p.call("ftruncate", lambda: os.ftruncate(fd, PAYLOAD), bytes=PAYLOAD)
             # mmap's internal dup is closed with the mmap object (see ALARM).
             with mmap.mmap(fd, PAYLOAD, flags=mmap.MAP_SHARED,
@@ -887,12 +938,17 @@ def mapped_pressure(p):
 
 
 def check_canary(p, leaf, expected):
-    """Read the full canary back through the second domain and compare hashes."""
-    with owned(leaf + "/full", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=p.roots[1]) as other:
+    """Read the full canary back through the second domain and compare hashes.
+
+    64 recorded 64 KiB preads; with the case's other calls that stays far
+    below the 256-operation budget."""
+    path = leaf + "/full"
+    with p.owned("open-cross-domain", path, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=p.roots[1]) as other:
         digest = hashlib.sha256()
         for offset in range(0, PAYLOAD, 65536):
-            data = os.pread(other, min(65536, PAYLOAD - offset), offset)
-            checked(len(data) == min(65536, PAYLOAD - offset), "short cross-domain canary read")
+            size = min(65536, PAYLOAD - offset)
+            data = pread(p, other, size, offset, path)
+            checked(len(data) == size, "short cross-domain canary read")
             digest.update(data)
         checked(digest.hexdigest() == expected, "full canary cross-domain hash")
         emit("canary", bytes=PAYLOAD, sha256=expected)
