@@ -96,9 +96,9 @@
     "fs/9p/hfs_enrollment.h": "1865efde72a6c06f4e020b41b8473f8c80e16a6bf1c2e6eb7cf3b18224983889",
     "fs/9p/hfs_file.c": "57cd6187fe085063c04a9fcfe4e417763b76ce20a4d9489bb0a97a0fc184bfc7",
     "fs/9p/hfs_inode.c": "84e85b2a8c6c54c4bd91c2201217253f9da349aeb3818a42b702c114c2321f9b",
-    "fs/9p/hfs_lease.c": "56e8eaca962e76257c490850e385af6dba49271b9d4aa21cf408223cc2cfcdbe",
+    "fs/9p/hfs_lease.c": "1471257601d9520d939c37cc2dce51b3cb601d7f1106eebcf360b6742a7e6ee4",
     "fs/9p/hfs_lease.h": "6dc21a7c433960f6e4e2b3bdd0b1588083facd4b54861e89e372795371dbdaa3",
-    "fs/9p/hfs_mmap.c": "c736ac6284421e949aabe5aebb5b5cb786668bc848c3faf76b94512874b18e1e",
+    "fs/9p/hfs_mmap.c": "edf202f67dcf1738e3effd062ef4f27a1eb2521ffd4a8512bdbed6f31f953a6d",
     "fs/9p/hfs_policy.c": "6b0a8fd5df34f1d943f6a6cd5ff356f54fdcb411868e2e003064a342817d1f37",
     "fs/9p/hfs_policy.h": "849bf7ee32371ee61ef9da864157228415a4e7fb22cc32db3d53a7904a44e4b6",
     "fs/9p/hfs_protocol.c": "d694f73cdbd22a85e177cfef9a5e6af4c247dc0b295639aac713c59c25eb8e6f",
@@ -106,8 +106,8 @@
     "fs/9p/hfs_received.h": "79fb93d92153a23b3d649836319a018aa235a07d68006b708deede6a2d07ce59",
     "fs/9p/hfs_received.inc": "483f588e92988c1a1f68a46e17c0c5d68bd3f0d25a288fbd416a71aabe523530",
     "fs/9p/hfs_session.c": "188a3da21591b63a9272fdbb15d632b537ebf166a6f08a7ef7baa7be358e7688",
-    "fs/9p/hfs_view.c": "de62f1f71bf0d62ed1176ddb0b725b05c9b077e331d50c501b8aa09cf692ba78",
-    "fs/9p/hfs_view.h": "5021846d023df736658afbe66178cf897859053dd5aece125c5952d4436b7c38",
+    "fs/9p/hfs_view.c": "5e0d60c200fef59f67d1b6fb38ef26cd47eda88af350a26bc0caf81b0088a8a3",
+    "fs/9p/hfs_view.h": "df30858581836d9f06a09e1b0714315f28d9c178831ae5c627ab2899ff2b8720",
     "fs/9p/vfs_super.c": "1c85dd57e9f27b324cbf4b8a35e9b4cbaf9f2259533754602220f2b2e60f449f",
     "include/linux/mm.h": "f78c60340bbe1e527c7bc3652b952577ca1297828d85684b7e22f28d37ab1bc6",
     "include/linux/page-flags.h": "0c8fe49bf4a959eb8669142462afdbcafd90b35ef95cfe1ea801e7069e80558c",
@@ -140,9 +140,9 @@
       "sha256": "d4a22cec230b22f682b6858a73c6769c3a8940a7f73776fb1075d95cb850dc81"
     },
     {
-      "bytes": 252340,
+      "bytes": 257681,
       "file": "0004-hfs1-physical-views.patch",
-      "sha256": "2f0c8b2d1287b4b8b7fb8c2bb50ed6a63c5ec9e14db2e842e207197341fd7b5b"
+      "sha256": "a9bd78b6bc7d2864fc0f428b086d4814735530c96846ef3d4fabf62f198b74f1"
     },
     {
       "bytes": 354272,

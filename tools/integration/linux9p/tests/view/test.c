@@ -206,7 +206,7 @@ static void advance_refused(struct hfs_view *view, struct advance_case *c)
    enum hfs_view_phase phase = view->phase;
    u64 stamped = c->stamp.revision;
 
-   assert(hfs_view_advance(view, &c->lease, &c->stamp, &c->target) == -EXDEV);
+   assert(hfs_view_advance(view, &c->lease, &c->stamp, &c->target, jiffies + 1000) == -EXDEV);
    assert(c->lease.unadopted && !c->lease.advance && !c->lease.published);
    assert(view->revision == c->revision && view->phase == phase);
    assert(view->target.len == sizeof(advance_old) - 1 &&
@@ -301,7 +301,7 @@ static void advance_identity_checks(struct hfs_view *view, struct advance_case *
    view->phase = HFS_VIEW_LIVE;
 }
 
-struct advance_args { struct hfs_view *view; struct advance_case *c; int result; };
+struct advance_args { struct hfs_view *view; struct advance_case *c; int result; unsigned long deadline; };
 struct advance_stop { struct hfs_view *view; uuid_t recall; u64 sequence; int result; };
 static void *advance_stop_thread(void *p)
 {
@@ -314,57 +314,85 @@ static void *advance_thread(void *p)
 {
    struct advance_args *a = p;
 
-   a->result = hfs_view_advance(a->view, &a->c->lease, &a->c->stamp, &a->c->target);
+   a->result = hfs_view_advance(a->view, &a->c->lease, &a->c->stamp, &a->c->target, a->deadline);
    return NULL;
 }
 
-/* view->transitions orders an adoption and a STOP. An adoption that holds it
- * first completes (revision + 1) before the STOP moves the view; a STOP that
- * holds it first (RECALLING, joining an admitted token) makes the adoption
- * wait and then refuses it.
+/* An adoption and a STOP. The native check runs before view->transitions:
+ * a STOP that completes meanwhile leaves the view QUIESCENT and the
+ * adoption is refused. 4h4 review round 1: a STOP that holds transitions
+ * first (RECALLING, joining an admitted token, without a deadline) no
+ * longer holds the adoption until it ends; the adoption sees the view left
+ * LIVE and returns -EXDEV at once, while that STOP still waits. Pre-review
+ * the adoption parked on transitions until the token was released.
  */
 static void advance_stop_order_checks(struct hfs_view *view, struct advance_case *c,
                                       u64 *sequence)
 {
-   struct advance_args a = {view, c, 1};
+   struct advance_args a = {view, c, 1, 0};
    struct advance_stop stop = {view, {{5}}, 0, -1};
    pthread_t adopter, stopper;
    void *cookie;
 
    advance_setup(view, c);
+   a.deadline = jiffies + 1000;
    advance_gate = true;
    assert(!pthread_create(&adopter, NULL, advance_thread, &a));
    while (!atomic_load(&advance_inside)) usleep(100);
    view->sequence = *sequence;
    stop.sequence = ++*sequence;
    assert(!pthread_create(&stopper, NULL, advance_stop_thread, &stop));
-   usleep(20000);
-   assert(READ_ONCE(view->phase) == HFS_VIEW_LIVE && view->revision == c->revision);
+   assert(!pthread_join(stopper, NULL) && stop.result == 0); /* not held by the check */
+   assert(view->phase == HFS_VIEW_QUIESCENT);
    atomic_store(&advance_go, 1);
-   assert(!pthread_join(adopter, NULL) && a.result == 0);
-   assert(!pthread_join(stopper, NULL) && stop.result == 0);
-   assert(view->revision == c->revision + 1 && view->phase == HFS_VIEW_QUIESCENT);
+   assert(!pthread_join(adopter, NULL) && a.result == -EXDEV);
+   assert(c->lease.unadopted && view->revision == c->revision);
    view->phase = HFS_VIEW_LIVE;
    view->quiescent = false;
    /* STOP first: it holds transitions while it joins the token. */
    advance_setup(view, c);
+   a.deadline = jiffies + 1000;
    assert(!hfs_view_enter(view, NULL, false, &cookie));
    view->sequence = *sequence;
    stop.sequence = ++*sequence;
-   stop.result = -1;
+   stop.result = 1;
    assert(!pthread_create(&stopper, NULL, advance_stop_thread, &stop));
    while (READ_ONCE(view->phase) == HFS_VIEW_LIVE) usleep(100);
    a.result = 1;
-   atomic_store(&advance_verifies, 0);
    assert(!pthread_create(&adopter, NULL, advance_thread, &a));
-   usleep(20000);
-   assert(!atomic_load(&advance_verifies) && a.result == 1); /* parked on transitions */
+   assert(!pthread_join(adopter, NULL) && a.result == -EXDEV); /* the STOP still waits */
+   assert(READ_ONCE(stop.result) == 1 && view->phase == HFS_VIEW_RECALLING);
+   assert(c->lease.unadopted && view->revision == c->revision);
    hfs_view_leave(cookie);
-   assert(!pthread_join(stopper, NULL) && stop.result == 0);
-   assert(!pthread_join(adopter, NULL) && a.result == -EXDEV);
-   assert(c->lease.unadopted && view->revision == c->revision && view->phase == HFS_VIEW_QUIESCENT);
+   assert(!pthread_join(stopper, NULL) && stop.result == 0 && view->phase == HFS_VIEW_QUIESCENT);
    view->phase = HFS_VIEW_LIVE;
    view->quiescent = false;
+}
+
+/* 4h4 review round 1: another holder of view->transitions on a LIVE view
+ * (an install, initial bind, REOPEN or ACK check that does not end) is
+ * waited for only until the observation's deadline (-ETIMEDOUT) or a fatal
+ * signal (-EINTR), each leaving the lease unadopted and the view untouched.
+ */
+static void advance_bounded_checks(struct hfs_view *view, struct advance_case *c)
+{
+   unsigned long start;
+
+   advance_setup(view, c);
+   mutex_lock(&view->transitions);
+   start = jiffies;
+   view_wait_step = 1;
+   assert(hfs_view_advance(view, &c->lease, &c->stamp, &c->target, start + 25) == -ETIMEDOUT);
+   assert(jiffies - start == 25 && c->lease.unadopted && !c->lease.advance);
+   assert(view->revision == c->revision && view->phase == HFS_VIEW_LIVE);
+   advance_setup(view, c);
+   view_wait_fatal = true;
+   start = jiffies;
+   assert(hfs_view_advance(view, &c->lease, &c->stamp, &c->target, start + 25) == -EINTR);
+   assert(jiffies == start && c->lease.unadopted && view->revision == c->revision);
+   view_wait_fatal = false;
+   view_wait_step = 0;
+   mutex_unlock(&view->transitions);
 }
 
 /* xf4: hfs_view_capture_ex's cacheless hint and hfs_view_advance on a fresh
@@ -386,7 +414,7 @@ static void advance_checks(struct hfs_session *session)
    advance_setup(view, &c);
    view->sequence = sequence;
    before = view->revision;
-   assert(hfs_view_advance(view, &c.lease, &c.stamp, &c.target) == 0);
+   assert(hfs_view_advance(view, &c.lease, &c.stamp, &c.target, jiffies + 1000) == 0);
    assert(view->revision == before + 1 && c.stamp.revision == view->revision);
    assert(!c.lease.advance && !c.lease.unadopted && uuid_equal(&c.lease.visibility, &generation));
    assert(view->target.len == sizeof(advance_new) - 1 &&
@@ -401,6 +429,7 @@ static void advance_checks(struct hfs_session *session)
    advance_state_checks(session, view, &c);
    advance_identity_checks(view, &c);
    advance_stop_order_checks(view, &c, &sequence);
+   advance_bounded_checks(view, &c);
    hfs_buf_free(&c.target);
    hfs_view_fence(view);
    assert(hfs_view_free(session) == 0);

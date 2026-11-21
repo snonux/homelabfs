@@ -1991,8 +1991,10 @@ Patch 0004:
 - `hfs_view_exchange_source`: an advance ticket's not-current GRANTED whose
   lease target differs from the bound payload's expected target
   (`hfs_view_grant_moved`) is handed out at once, without the 2f4 settle
-  wait (which could only end in `-EPROTO` and a blocked session). Without
-  advance such a reply still settles and fails closed.
+  wait (which could only end in `-EPROTO` and a blocked session). If the
+  bound payload cannot be parsed (memory), it is handed out with `-EXDEV`,
+  built unadopted and released (review round 1: never dropped unreleased).
+  Without advance such a reply still settles and fails closed.
 - `hfs_lease_decode_target` (split out of `hfs_lease_decode`) classifies a
   moved lease target. Without advance it is `-ESTALE`, as before. With
   advance it is an advance candidate when `hfs_view_advance_target` verifies
@@ -2005,9 +2007,16 @@ Patch 0004:
   `hfs_mmap_publish` refuses it and it is held and released after the next
   acquisition, as ie4 does for any grant the view moved past. Otherwise it is
   built unadopted and `hfs_lease_acquire_ex` returns `-EXDEV`; nothing blocks.
-- `hfs_view_advance` adopts a candidate under `view->transitions`, so no STOP
-  or install runs between check and switch. It verifies the target natively
-  again outside `view->lock` (the provider sleeps). Under `view->lock`,
+- `hfs_view_advance` verifies the target natively again first, outside every
+  view lock (the provider sleeps), as `hfs_mmap_install` verifies an event's
+  target. It then takes `view->transitions`, so no STOP or install runs
+  between re-check and switch, but bounded (`hfs_view_transitions_bounded`,
+  review round 1): a view that left LIVE or is refused ends the wait at once
+  with `-EXDEV` (a STOP sets RECALLING before it joins tokens without a
+  deadline), and any other holder is waited for one killable jiffy at a time
+  until the observation's deadline (`-ETIMEDOUT`) or a fatal signal
+  (`-EINTR`); the lease is then unadopted and the cleanup packet releases
+  it. Under `view->lock`,
   `hfs_view_advance_allowed` re-checks that the view is unrefused and LIVE at
   the capture's revision and generation, still holds the captured expected
   target, is cacheless with our observation not yet published, keeps the
@@ -2032,10 +2041,13 @@ and a mutation run of 13 guards killed every mutant):
   observation; a moved revision, another generation, another expected
   target, another visibility generation, a refused native check, a hash
   mismatch, a non-candidate, RECALLING and FENCED are refused with the view
-  untouched and the lease unadopted. Ordering against STOP: an adoption that
-  holds `transitions` first completes before the STOP (the STOP then
-  quiesces the advanced view); a STOP that holds it first (RECALLING,
-  joining an admitted token) parks the adoption, which then refuses.
+  untouched and the lease unadopted. Ordering against STOP: a STOP that
+  completes during the native check refuses the adoption; a STOP that holds
+  `transitions` first (RECALLING, joining an admitted token) makes the
+  adoption return `-EXDEV` at once while the STOP still waits
+  (`advance_stop_order_checks`). Another holder of `transitions` on a LIVE
+  view ends the adoption at its deadline (`-ETIMEDOUT`, exactly 25 jiffies)
+  or at a fatal signal (`-EINTR`) (`advance_bounded_checks`).
 - `view --pressure` (actual `hfs_mmap.c` observation path, `hfs_view_exchange`
   and `hfs_lease_decode_target`): a cacheless view requests advance and
   adopts it in one acquisition (`retry_advance_adopted`); a readmitted grant
@@ -2046,7 +2058,8 @@ and a mutation run of 13 guards killed every mutant):
   unsupported provider never request advance (`retry_advance_never`; this is
   the mapped/ case of the design, which the receipt-only mapped/ harness
   does not compile). Exchange: a moved advance grant is handed out without
-  settle (`xq_advance_moved`), an advance ticket granted its expected target
+  settle (`xq_advance_moved`), an unreadable expected target hands it out
+  with `-EXDEV` (`xq_advance_unreadable`), an advance ticket granted its expected target
   still settles, and a moved target without advance still blocks.
   `decode_checks`: the classification including a replay after the adoption
   (accepted) and after a further move (unadopted), and a candidate never
@@ -2061,5 +2074,11 @@ and a mutation run of 13 guards killed every mutant):
   accepted ordinary lease, and after a release (no recall), a further CREATE
   and a second advance the first stored reply is unadopted (`-EXDEV`) with no
   block, while the same reply without advance is the `-ESTALE` that blocks.
-  It needs 3h4's host (`--host-tree` and the repository both carrying it);
-  main's bridge refuses the field. `--scenario both` includes it.
+  It needs 3h4's host, merged on main. `--scenario both` includes it.
+
+Review round 1 (4h4): no safety finding. The bounded `transitions` wait,
+the unreadable-payload release and the comment fix above, and
+`hfs_lease_acquire_ex` (now `hfs_lease_acquire_valid` and
+`hfs_lease_acquire_grant`) and `hfs_view_target_decode` (now
+`hfs_view_local_target` and `hfs_view_target_journal`) split without a
+behaviour change.

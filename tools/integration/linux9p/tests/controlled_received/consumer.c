@@ -519,7 +519,7 @@ static void advance_command(unsigned id,struct fixture_session *f)
  hfs_buf_add(&target,f->advance_expected.data,f->advance_expected.len);before=view->revision;
  err=hfs_lease_acquire_ex(s,&f->credential,NULL,NULL,0,false,&f->advance_expected,true,&lease,&blocked);
  if(!err && !lease->advance)err=-ENOENT; /* the host granted the expected target: no advance */
- if(!err)err=hfs_view_advance(view,lease,&stamp,&target);
+ if(!err)err=hfs_view_advance(view,lease,&stamp,&target,jiffies+30*HZ);
  if(!err){
   assert(view->revision==before+1 && stamp.revision==view->revision && !lease->advance && !lease->unadopted);
   assert(!memcmp(view->target_hash,lease->target_hash,32) && view->target.len==target.len && !s->blocked);

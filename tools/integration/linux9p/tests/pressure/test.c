@@ -1448,6 +1448,22 @@ static void xq_advance_same_target(void)
  assert(strstr(last_warning,"is not current (mount fence 5, view LIVE); querying again once the view settles"));
  xq_teardown(response);
 }
+/* 4h4 review round 1: when the expected target of the ticket cannot be read
+ * (here an unparseable bound payload; in the kernel a failed allocation) the
+ * moved grant is handed out with -EXDEV, so hfs_lease_acquire_ex builds it
+ * unadopted and the caller releases it: no settle, no block, no leaked host
+ * lease. Pre-review the reply was taken as moved and returned as 0.
+ */
+static void xq_advance_unreadable(void)
+{
+ static const struct xq_step steps[]={{"GRANTED","lease",6,NULL}};
+ struct hfs_json *response=NULL;
+ xq_advance_setup(steps,1,6,true,"{\"t\":2}");xq_never_current=true;
+ xq_ticket.payload.len=0;hfs_buf_literal(&xq_ticket.payload,"{\"target\":");
+ assert(xq_run(&response)==-EXDEV && xq_granted(response) && xq_calls==1 && !view_wait_sleeps);
+ assert(xq_ticket.terminal && !xq_ticket.uncertain && !xq_blocks && !test_session->blocked);
+ xq_teardown(response);
+}
 /* Without advance a moved target still fails closed: settle, re-query,
  * -EPROTO and the session blocked, as before xf4.
  */
@@ -1497,7 +1513,7 @@ static void decode_checks(void)
  adopted=lease;adopted.json=advance_json;
  assert(!hfs_buf_init(&target,HFS_TARGET_MAX) && !hfs_view_capture_ex(view,&stamp,&target,NULL));
  before=view->revision;
- assert(!hfs_view_advance(view,&adopted,&stamp,&target) && view->revision==before+1);
+ assert(!hfs_view_advance(view,&adopted,&stamp,&target,jiffies+1000) && view->revision==before+1);
  advance_capture=view->revision; // the replay's receipt
  assert(!decode_case(true,"{}",false,&lease) && !lease.advance && !lease.unadopted && advance_verifies==3);
  assert(lease.target_hash[0]==3);
@@ -1531,6 +1547,7 @@ static void grant_settle_checks(void)
  xq_unadopted_refused();
  xq_advance_moved();
  xq_advance_same_target();
+ xq_advance_unreadable();
  xq_no_advance_moved();
 }
 int main(void)
