@@ -74,12 +74,12 @@ Other host changes:
 
 ### Guest (step B)
 
-- hfs_view_capture also returns a "cacheless" hint under view->lock: no cached pages, mappings, dirty pages, dirty packages, grants, reservation or active tokens. hfs_mmap_observe sends advance only when the hint is true.
+- hfs_view_capture also returns a "cacheless" hint under view->lock: no cached pages, mappings, dirty pages, dirty packages, grants, active tokens and no published observations. The view's own memory credit (view->reservation) is not counted; dirty reservations show as dirty pages/packages. hfs_mmap_observe sends advance only when the hint is true, at most once per syscall after a refusal.
 - A GRANTED reply whose target differs from the installed one is an advance candidate, not stale, provided it has the same fence, is LIVE at the captured revision, and the installed target equals the request's expected target.
-- A new hfs_view_advance runs under view->transitions and view->lock. It:
-  - re-checks the cacheless condition and that no observations are published;
-  - verifies the new target natively and requires the same generation;
-  - switches the target and bumps the revision;
+- A new hfs_view_advance (as implemented in 4h4):
+  - verifies the new target natively first, outside every view lock (the provider sleeps), as hfs_mmap_install does;
+  - takes view->transitions through a bounded, killable wait (hfs_view_transitions_bounded): -EXDEV at once if the view left LIVE or is refused, otherwise -ETIMEDOUT at the syscall deadline or -EINTR on a fatal signal, never an unbounded wait behind a STOP;
+  - under view->lock (hfs_view_advance_switch) re-checks LIVE, revision, generation, the expected target's bytes, the visibility generation, the verified hash, the cacheless condition and that no observations are published, then switches the target and bumps the revision;
   - re-stamps the observation before hfs_mmap_publish.
 - A failed adoption hands the lease back unadopted with -EXDEV, never -EPROTO.
 
@@ -97,7 +97,7 @@ Other host changes:
 
 **Host.** The advance GRANTED is protected like any other grant, and retransmits and VIEW_QUERY return the same bytes. The new fields are omitempty, so schema 2 is unchanged; downgrading after advances is unsupported. After a reopen the digest cache is empty, and an unknown digest falls back to the recall path; a reopened ledger keeps the Advance flag. A reopen may keep the journal incarnation, so a pre-reopen expected cut can still be advanced; that is safe because the guest adopts only while its installed target equals the expected one at the captured revision. A PENDING ticket readmitted after a recall that reinstalled the requester's view may be granted by advance; the guest then finds its revision moved and returns the lease unadopted (-EXDEV), which is safe.
 
-**Guest.** A replay after adoption is current. A replay after a further move goes through settle and ends in -EXDEV with an unadopted release. view->transitions serialises a STOP that races an adoption.
+**Guest.** A replay after adoption is current (accepted as an ordinary verified lease; publish refuses it because the observation's stamp predates the move, so it is only released). A replay after a further move skips settle (the exchange hands a moved advance grant out) and is built unadopted with -EXDEV and released; it never blocks the session. An unparseable payload is handed out the same way. view->transitions serialises a STOP that races an adoption.
 
 **Lineages.** Each advance opens a new lease lineage at the same fence. Once a domain reaches lineageBudget (16) lineages at its current fence, a release recalls again. Expect 0-1 of these in T1; optional step D removes them.
 
