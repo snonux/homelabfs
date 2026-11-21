@@ -95,7 +95,7 @@
     "fs/9p/hfs_enrollment.c": "6110fe207398e5e80cab9431cc377b61c3ffb5fa5f06aebb179828790e8487b0",
     "fs/9p/hfs_enrollment.h": "1865efde72a6c06f4e020b41b8473f8c80e16a6bf1c2e6eb7cf3b18224983889",
     "fs/9p/hfs_file.c": "57cd6187fe085063c04a9fcfe4e417763b76ce20a4d9489bb0a97a0fc184bfc7",
-    "fs/9p/hfs_inode.c": "935b05e93841219bc3bd8fbbba653efe2bd4741c665bad1187a1cc69d86e08f3",
+    "fs/9p/hfs_inode.c": "84e85b2a8c6c54c4bd91c2201217253f9da349aeb3818a42b702c114c2321f9b",
     "fs/9p/hfs_lease.c": "5c077972ca86de2eef6b3be6f68bd4076cf7184163ee5933054efd2196a15b55",
     "fs/9p/hfs_lease.h": "ac6b0edeaa8fda49d5ff2d5adbd084893172e9629e4ecf1300f2631cab702612",
     "fs/9p/hfs_mmap.c": "51735819a5ef0945f2e6cc748f111b5334f6ab3c16403ffdf88ca3f04514f40c",
@@ -135,9 +135,9 @@
       "sha256": "f88ec9896073f158a844af00c98b01f8081d69de07eabc072cfbc590e88ed051"
     },
     {
-      "bytes": 206939,
+      "bytes": 214740,
       "file": "0003-hfs1-guest-vfs.patch",
-      "sha256": "cceac32f1848cdd6208ab0decff37ebfeb57c07b773a74b01122d94871c1a57c"
+      "sha256": "34452d1f80152685896758ac73aa5a2f84d9d92a3837c12d61932775d02ae251"
     },
     {
       "bytes": 221951,
@@ -150,7 +150,7 @@
       "sha256": "c96c8bdf4fb3c0759e38e79f8c9ac76feee29265bb10849473016ae7692d90de"
     }
   ],
-  "project_task": "2f4",
+  "project_task": "vf4",
   "source_kind": "upstream Linux reference",
   "tag": "v6.1.190",
   "tag_object": "9ad12a4c0c7a36f365c13ea17d88499618440a7b",
