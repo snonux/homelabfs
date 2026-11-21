@@ -248,3 +248,83 @@ it, and the current r20 rebuild (`b37bcb06…`, daemon `c04c519f…` from
 filter. The guest still
 blocks m0 after the dropped MKDIR reply, so T10 is still expected to FENCE;
 the difference is that m1 then shows the committed directory.
+
+## Swallowed refusals and stranded RESERVED claims (a84)
+
+After Reserve, `executeCall` (`service.go`) answers every execution error
+with CALL ADMITTED/OK and nothing else. The claim is already reserved, and
+the bridge must never invent a no-effect. So an uncertain refusal leaves the
+claim RESERVED/UNPREPARED, and every QUERY answers INDETERMINATE and retries
+it. Such refusals are viewcontrol's WouldBlock while a recall is active, a
+full service queue, or another operation's PENDING snapshot. In zq3-r8 two
+such claims stayed stuck until the guest's 30 s QUERY window ran out, and
+nothing in the ledger said why
+([record](../../docs/lab/results/20261114-zq3-r8/README.md)).
+
+**Diagnostics (done).** The private provider now records the last refusal on
+the claim entry (`controlledvalidation/refusal_trace.go`): a class
+`<stage>:<errno>` (stage `LOAD`, `ADMISSION` or `EXECUTION`, errno named by
+`ErrnoName`), a count, and the Unix seconds of the first and the latest
+recorded refusal of that class. OBSERVE's provider claim summary (b84) copies
+it into `Refusal`, `Refusals`, `RefusedFirst` and `RefusedLast`. All four are
+omitempty, so an older reader and a never-refused claim see the b84 shape
+unchanged. To keep OBSERVE bounded they appear only on the four lowest
+`Pending` numbers (the claims a stuck guest waits on), never in `Recent`, and
+every copied string is cut to 24 bytes. One provider's summary then stays
+under `MaxClaimEvidenceBytes` (4.5 KiB) for real (ASCII) values; a damaged
+entry with characters JSON escapes could exceed it, and an oversized reply is
+refused whole, never truncated. 16 providers plus the recall history leave at
+least 16 KiB of the 128 KiB OBSERVE reply. The budget covers OBSERVE only: a
+RESTART reply carries the same evidence inside the 4 KiB smaller
+`lifecycleOutcomeBytes`, so a worst-case RESTART (16 providers with full open
+claims and a full recall history) can fall back to its truthful
+EFFECT_UNREPORTABLE outcome. `tools/lab/retained9p/bootstrap.py` prints the
+trace with each open claim. The trace is a diagnostic only:
+
+* It is written only to the exact never-prepared claim: RESERVED/UNPREPARED,
+  no plan, outcome or snapshot, and not a gap. A claim that reached
+  PREPARING, PENDING or TERMINAL, or that Cancel or ResolveGap turned into a
+  gap, is never rewritten, so a gap proof (the hash of the entry) stays valid.
+* No decision reads it. Every credit measure of an entry (a plan's
+  retained-credit check, the READDIR cleanup's owner check) measures the entry
+  without it (`entryFootprint`).
+* It is bounded to one class per claim, and rate-limited per claim: at most
+  one write a second, whatever the class. A class change waits for the next
+  slot. A QUERY loop polling every 10 ms does not cost an fsync each round,
+  even when its refusals alternate between classes, and `Refusals` is a lower
+  bound. A wall clock that steps backwards counts as a new slot once and the
+  limit restarts from the new time.
+* It is best effort and written under the provider's execution mutex. A
+  failed write is dropped and never changes the answer.
+
+**Releasing stranded claims (open design question, not implemented).** A
+stranded claim keeps its retained and source credit until a guest RETIRE
+recycles its number, and the guest never retires past it. Which claims could
+be released is clear: only the never-prepared ones above. No plan was
+protected for them, so their work was provably never issued and no effect can
+have happened. A claim from PREPARING on may have reached the backend and
+stays for reconciliation. A release would be one ledger transaction: decline
+the claim as a gap (as Cancel does), return its credit, and zero the entry's
+credit so a later recycle returns nothing. Replaying it would change nothing.
+
+What is missing is a trigger the host can prove. None of the candidates is one:
+
+* The guest's session block (`hfs_session_block`) is guest-local. The guest
+  sends nothing to the host. It only stops querying, keeps the uncertain
+  claim retained and pins its own retirement floor.
+* A host timeout would tie the host to the guest's 30 s QUERY deadline, a
+  guest constant, and it does not prove that no QUERY is still on its way. A
+  delayed QUERY can still resume the claim, and the guest takes TERMINAL even
+  after its deadline. A release would turn that into INDETERMINATE and a
+  block.
+* A transport failure is the host's own fence (`transport_ledger.md`). It
+  says nothing about what the guest gave up, and the claims ledger must stay
+  exactly as it was for inspection.
+* SESSION_RETIRE needs every number at or below the floor (`terminalEmpty`).
+  A stranded claim makes it fail, and the provider is sealed after it anyway.
+
+A sound release needs a guest signal. That could be an explicit CANCEL of
+the session's uncertain claims when it blocks (a guest patch change), or a
+session-abandon command the host can bind to the session. With either one,
+the release above can be added safely. Until then, a stranded claim stays
+charged, and its trace shows why.

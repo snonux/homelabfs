@@ -42,6 +42,19 @@ type prepareFunc = func(guestbridge.Captured) (guestbridge.Prepared, error)
 // RESERVED/UNPREPARED for QUERY's resume to retry. A resume under an outer
 // QUERY carries the one-invocation QUERY continuation (query_continuation.go)
 // so that Admit's inner CALL authorization can accept it, for every opcode.
+//
+// The bridge answers every returned error with ADMITTED/OK and nothing else
+// (guestbridge executeCall), so each one that leaves the claim never prepared
+// is recorded on the claim by noteRefusal (a84, refusal_trace.go):
+//   - LOAD for a loadExact error: normally WouldBlock because another
+//     operation's PENDING snapshot holds the scope, but also a bolt read or
+//     decode error of the ledger (Stale for a missing, changed or gap entry
+//     is never written, as such a claim is not never-prepared);
+//   - ADMISSION for an uncertain Admit error, or a failed protection of a
+//     definite refusal;
+//   - EXECUTION for a serialized-worker failure before preparation began,
+//     such as a permit Check that refused the cut. A failure from PREPARING
+//     on is skipped: the claim is no longer never-prepared.
 func (p *Provider) execute(ctx context.Context, b guestbridge.Binding, prepare prepareFunc, protect protectFunc, resume bool) (guestbridge.Outcome, error) {
 	if err := p.Check(ctx, b.Context); err != nil {
 		return guestbridge.Outcome{}, err
@@ -50,6 +63,7 @@ func (p *Provider) execute(ctx context.Context, b guestbridge.Binding, prepare p
 	saved, err := p.loadExact(b, resume)
 	p.execution.Unlock()
 	if err != nil {
+		p.noteRefusal(b, refusalLoad, err)
 		return guestbridge.Outcome{}, err
 	}
 	if saved.Outcome != nil {
@@ -62,13 +76,22 @@ func (p *Provider) execute(ctx context.Context, b guestbridge.Binding, prepare p
 		ctx = p.queryContinuationContext(ctx, b, saved, live)
 	}
 	admission, refusal, refused, err := p.admit(ctx, b, protect)
+	if err != nil {
+		p.noteRefusal(b, refusalAdmission, err)
+	}
 	if refused || err != nil {
 		return refusal, err
 	}
 	if admission != nil {
 		defer admission.Close()
 	}
-	return p.executeAdmitted(ctx, b, admission, prepare, protect, resume)
+	out, err := p.executeAdmitted(ctx, b, admission, prepare, protect, resume)
+	if err != nil {
+		// noteRefusal skips a claim that reached PREPARING: its own
+		// protected path, not this diagnostic, owns what happens next.
+		p.noteRefusal(b, refusalExecution, err)
+	}
+	return out, err
 }
 
 // executeAdmitted reloads the claim under p.execution (closing races with a
@@ -259,8 +282,11 @@ func (p *Provider) protectPlan(b guestbridge.Binding, plan *fsservice.Controlled
 
 // checkPlanCredit bounds a protected plan's ledger footprint by the claim's
 // preowned retained credit and its mutation encoding by the source credit.
+// The a84 refusal trace is left out of the measure (entryFootprint): it is
+// a bounded diagnostic, and leaving it out keeps how often admission was
+// refused from ever changing a plan's NoSpace answer.
 func checkPlanCredit(e entry, plan fsservice.ControlledPlan, predicted guestbridge.Outcome) error {
-	raw, err := json.Marshal(e)
+	raw, err := entryFootprint(e)
 	if err != nil {
 		return err
 	}

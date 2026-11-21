@@ -127,15 +127,8 @@ func (p *Provider) releaseReaddirGrants(tx *bolt.Tx, scope guestbridge.Context, 
 			return err
 		}
 	}
-	// Replacing an already funded snapshot must not grow its owner's entry.
-	encoded, err := json.Marshal(owner)
-	if err != nil {
+	if err = readdirOwnerFits(owner, ownerRaw, updated); err != nil {
 		return err
-	}
-	// A sequence may gain decimal digits; its fixed 64-bit slot was included
-	// in the existing 4096-byte per-entry admission allowance.
-	if len(encoded) > len(ownerRaw)+readdirSnapshotSequenceBytes || uint64(len(encoded)+len(updated)+4096-readdirSnapshotSequenceBytes) > owner.RetainedCredit {
-		return fsapi.NoSpace
 	}
 	if err = p.putClaim(tx, ownerKey, owner); err != nil {
 		return err
@@ -144,6 +137,30 @@ func (p *Provider) releaseReaddirGrants(tx *bolt.Tx, scope guestbridge.Context, 
 		return err
 	}
 	return p.fail("readdir-cleanup-before-commit")
+}
+
+// readdirOwnerFits checks the rewritten snapshot owner against its funding.
+// Replacing an already funded snapshot must not grow the owner's stored
+// entry (ownerRaw, the bytes before the rewrite); a sequence may gain decimal
+// digits, and its fixed 64-bit slot was included in the existing 4096-byte
+// per-entry admission allowance. Both encodings of that growth check carry
+// the same refusal trace, so it cancels out. The absolute check against
+// RetainedCredit measures the entry without its a84 refusal trace
+// (entryFootprint), exactly as checkPlanCredit admitted the plan, so a trace
+// never turns a cleanup into NoSpace.
+func readdirOwnerFits(owner entry, ownerRaw, updated []byte) error {
+	encoded, err := json.Marshal(owner)
+	if err != nil {
+		return err
+	}
+	footprint, err := entryFootprint(owner)
+	if err != nil {
+		return err
+	}
+	if len(encoded) > len(ownerRaw)+readdirSnapshotSequenceBytes || uint64(len(footprint)+len(updated)+4096-readdirSnapshotSequenceBytes) > owner.RetainedCredit {
+		return fsapi.NoSpace
+	}
+	return nil
 }
 
 // keptReaddirReceipt answers a cleanup of a READDIR without an entry: only a

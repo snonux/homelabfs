@@ -294,7 +294,11 @@ func (s *Service) executeCall(ctx context.Context, binding Binding, resume bool)
 	// Never synthesize no-effect after reservation or dispatch uncertainty:
 	// the claim is already reserved, so CALL answers ADMITTED/OK and QUERY
 	// reports what the provider protected. An uncertain error leaves the
-	// claim RESERVED (QUERY reports INDETERMINATE and resumes it). A definite
+	// claim RESERVED (QUERY reports INDETERMINATE and resumes it). Nothing
+	// answers that error here; since a84 the private provider records its
+	// class on the claim while it is still never prepared
+	// (controlledvalidation/refusal_trace.go), so OBSERVE's claim summary
+	// shows why a stuck claim did not move. A definite
 	// admission refusal (controlledvalidation.AdmissionRefusal, task j64) is
 	// not synthesized here either: the private provider has already protected
 	// it as a TERMINAL failed result, with this snapshot, before returning
@@ -461,6 +465,12 @@ func queryPayload(c Claim, s ClaimState, declinedQuery bool) (any, error) {
 	}
 	return map[string]any{"status": status, "claim": c, "result": result}, nil
 }
+
+// ErrnoName is the wire errno name of err ("WouldBlock", "NoSpace", ...), or
+// IO for an error that wraps no known errno, spelled exactly as CALL's
+// REJECTED code. Providers use it to name refusals in diagnostics (a84).
+func ErrnoName(err error) string { return code(err) }
+
 func code(err error) string {
 	for _, v := range []fsapi.Errno{fsapi.Invalid, fsapi.NotFound, fsapi.Exists, fsapi.Permission, fsapi.ReadOnlyFS, fsapi.NotDirectory, fsapi.IsDirectory, fsapi.NotEmpty, fsapi.CrossDevice, fsapi.Unsupported, fsapi.NoSpace, fsapi.Quota, fsapi.IO, fsapi.Unavailable, fsapi.Stale, fsapi.Interrupted, fsapi.Busy, fsapi.WouldBlock, fsapi.TooManyLinks, fsapi.NameTooLong} {
 		if errors.Is(err, v) {

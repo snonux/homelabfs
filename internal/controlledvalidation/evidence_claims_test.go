@@ -35,7 +35,7 @@ func TestLedgerEvidenceListsOpenClaims(t *testing.T) {
 	if len(c.Pending) != 1 || c.Pending[0].Number != 2 || c.Pending[0].Status != "ALLOCATED" {
 		t.Fatalf("pending %+v", c.Pending)
 	}
-	want := []ClaimSummary{{3, "PROCESS_EXIT", "TERMINAL", c.Recent[0].Stage}, c.Pending[0], {1, "ROOT", "TERMINAL", c.Recent[2].Stage}}
+	want := []ClaimSummary{{Number: 3, Opcode: "PROCESS_EXIT", Status: "TERMINAL", Stage: c.Recent[0].Stage}, c.Pending[0], {Number: 1, Opcode: "ROOT", Status: "TERMINAL", Stage: c.Recent[2].Stage}}
 	if len(c.Recent) != 3 || c.Recent[0] != want[0] || c.Recent[1] != want[1] || c.Recent[2] != want[2] {
 		t.Fatalf("recent %+v", c.Recent)
 	}
@@ -75,7 +75,7 @@ func TestLedgerEvidenceReservedClaimAndBounds(t *testing.T) {
 		t.Fatalf("bounds pending %d recent %d", len(c.Pending), len(c.Recent))
 	}
 	first, newest := c.Pending[0], c.Recent[0]
-	if first != (ClaimSummary{1, "GETATTR", "RESERVED", "UNPREPARED"}) || newest.Number != uint64(total) {
+	if first != (ClaimSummary{Number: 1, Opcode: "GETATTR", Status: "RESERVED", Stage: "UNPREPARED"}) || newest.Number != uint64(total) {
 		t.Fatalf("first %+v newest %+v", first, newest)
 	}
 	// The JSON shape is what tools/lab/retained9p/bootstrap.py reads.
