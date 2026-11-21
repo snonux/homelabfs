@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/snonux/homelabfs/internal/fsapi"
@@ -147,8 +148,49 @@ func TestRestoreAcceptsTwoFamilyRowSavedBeforeRetirePrune(t *testing.T) {
 		}
 	}
 	for name, edit := range twoFamilyNegatives(t, g, k, h.original.Claim) {
-		if err := check(editGrants(t, before, edit)); !errors.Is(err, fsapi.Stale) {
+		// A negative whose edit leaves the row unchanged would be accepted
+		// correctly and so fail spuriously (yg4); refuse such a setup.
+		row := editGrants(t, before, edit)
+		if bytes.Equal(row, unedited) {
+			t.Fatalf("%s edit left the row unchanged", name)
+		}
+		if err := check(row); !errors.Is(err, fsapi.Stale) {
 			t.Fatalf("%s restored: %v", name, err)
+		}
+	}
+}
+
+// distinctToken returns token with its first hex digit replaced by a
+// different one, so the result never equals token. A fixed prefix such as
+// "ab"+token[2:] equals token whenever the random token already starts with
+// that prefix (1 in 256), which turned the "extra live grant" negative into
+// a no-op edit that the restore check rightly accepted (yg4).
+func distinctToken(token string) string {
+	first := "1"
+	if token[0] == '1' {
+		first = "2"
+	}
+	return first + token[1:]
+}
+
+// TestTwoFamilyNegativesAlwaysEditTheRow (yg4) pins the "extra live grant"
+// negative against K's prefix: K starting with "ab" made the old fixed-prefix
+// edit a no-op, and K starting with "1" covers distinctToken's fallback digit.
+// Every negative must change a row holding live K and tombstone G.
+func TestTwoFamilyNegativesAlwaysEditTheRow(t *testing.T) {
+	tail := strings.Repeat("0", 62)
+	g := "cd" + tail
+	for _, k := range []string{"ab" + tail, "1" + tail + "0", "2" + tail + "0"} {
+		row, err := json.Marshal(map[string]any{"Grants": map[string]any{
+			g: map[string]any{"Cap": map[string]any{"token": g}, "Handle": 1, "Released": true},
+			k: map[string]any{"Cap": map[string]any{"token": k}, "Handle": 2, "Released": false},
+		}})
+		mustAllocation(t, err)
+		unedited := editGrants(t, row, func(map[string]map[string]any) {})
+		for name, edit := range twoFamilyNegatives(t, g, k, guestbridge.Claim{}) {
+			if bytes.Equal(editGrants(t, row, edit), unedited) {
+				t.Errorf("K=%s...: %s edit left the row unchanged", k[:2], name)
+			}
 		}
 	}
 }
@@ -164,8 +206,8 @@ func twoFamilyNegatives(t *testing.T, g, k string, owner guestbridge.Claim) map[
 			raw, err := json.Marshal(grants[k])
 			mustAllocation(t, err)
 			extra := exactMap(t, raw)
-			extra["Cap"].(map[string]any)["token"] = "ab" + k[2:]
-			grants["ab"+k[2:]] = extra
+			extra["Cap"].(map[string]any)["token"] = distinctToken(k)
+			grants[distinctToken(k)] = extra
 		},
 		"changed live grant": func(grants map[string]map[string]any) { grants[k]["Handle"] = 7 },
 		"live grant released at the floor": func(grants map[string]map[string]any) {
