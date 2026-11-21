@@ -10,7 +10,6 @@ static void expect_call(const char *opcode, const char *args)
 		fprintf(stderr, "got  %s\nwant %s\n", seen.args, args);
 	CHECK(!strcmp(seen.opcode, opcode) && !strcmp(seen.args, args));
 	CHECK(seen.prepare == 1 && seen.begin == 1 && seen.end == 1 && seen.install == 1);
-	CHECK(!(seen.prepared_valid & (ATTR_KILL_SUID | ATTR_KILL_SGID | ATTR_KILL_PRIV)));
 }
 
 #define expect_no_call() CHECK(!seen.opcode[0] && !seen.begin && !seen.end && !seen.install)
@@ -52,8 +51,26 @@ static void test_chown_setid(void)
 		fixture_init(&f, S_IFREG | modes[i]);
 		CHECK(vfs_chown(&f, 41002, 42002, true, false) == 0);
 		expect_call("SETATTR", chown_args);
+		/* setattr_prepare checked the request with its derived MODE
+		 * (02740 with the caller in its group keeps sgid: no MODE).
+		 */
+		CHECK(!!(seen.prepared_valid & ATTR_MODE) == (modes[i] != 02740));
 		fixture_free(&f);
 	}
+	/* Review 1: a non-owner with CAP_CHOWN only (no CAP_FOWNER) gets EPERM
+	 * from the derived MODE's owner check, as in Linux; nothing is sent.
+	 * Without setid bits there is no MODE, and the chown goes through.
+	 */
+	fixture_init(&f, S_IFREG | 04755);
+	seen.not_owner = true;
+	CHECK(vfs_chown(&f, 41002, 42002, true, false) == -EPERM);
+	expect_no_call();
+	fixture_free(&f);
+	fixture_init(&f, S_IFREG | 0755);
+	seen.not_owner = true;
+	CHECK(vfs_chown(&f, 41002, 42002, true, false) == 0);
+	expect_call("SETATTR", chown_args);
+	fixture_free(&f);
 	/* chgrp only, caller outside the group: KILL_SGID derived, dropped. */
 	fixture_init(&f, S_IFREG | 02740);
 	CHECK(vfs_chown(&f, NO_ID, 42002, false, false) == 0);
@@ -62,24 +79,23 @@ static void test_chown_setid(void)
 	fixture_free(&f);
 }
 
-/* chown(-1, -1) of a suid file: no ownership change, so no host rule clears
- * the bit; the derived MODE (0755) is sent. Without a set bit only ATTR_CTIME
- * is left, which stays unsupported (no ctime-only host SETATTR).
+/* chown(-1, -1): the derived MODE of a setuid file is not sent either
+ * (review 1: the cached mode may be stale), so like a plain file only
+ * ATTR_CTIME is left, which stays unsupported (no ctime-only host SETATTR).
  */
 static void test_chown_no_owner(void)
 {
+	static const umode_t modes[] = { 04755, 0644 };
 	struct fixture f;
+	unsigned int i;
 
-	fixture_init(&f, S_IFREG | 04755);
-	CHECK(vfs_chown(&f, NO_ID, NO_ID, true, false) == 0);
-	expect_call("SETATTR", "{\"attributes\":{" NO_TIMES ",\"gid\":null,"
-		    "\"mode\":493," NO_MTIME ",\"uid\":null}" OBJECT);
-	fixture_free(&f);
-	fixture_init(&f, S_IFREG | 0644);
-	CHECK(vfs_chown(&f, NO_ID, NO_ID, true, false) == -EOPNOTSUPP);
-	expect_no_call();
-	CHECK(!seen.prepare);
-	fixture_free(&f);
+	for (i = 0; i < sizeof(modes) / sizeof(modes[0]); i++) {
+		fixture_init(&f, S_IFREG | modes[i]);
+		CHECK(vfs_chown(&f, NO_ID, NO_ID, true, false) == -EOPNOTSUPP);
+		expect_no_call();
+		CHECK(!seen.prepare);
+		fixture_free(&f);
+	}
 }
 
 /* Directories carry no kill bits; explicit requests are unchanged. */
@@ -229,7 +245,10 @@ int main(void)
 	test_truncate();
 	test_remove_privs();
 	test_dentry_attach();
+	test_link_relookup();
+	test_create_exists();
 	printf("PASS: actual hfs_setattr kill bits (chown, truncate, remove_privs), "
-	       "kept refusals, hfs_dentry_attach; no kernel/VM/runtime proof\n");
+	       "kept refusals, hfs_dentry_attach, hfs_link and EEXIST relookup; "
+	       "no kernel/VM/runtime proof\n");
 	return 0;
 }

@@ -15,8 +15,14 @@ substitutes setattr_prepare, hfs_begin/hfs_end, hfs_call and d_set_d_op (which
 fails the test where the kernel would WARN). No kernel, VM or service is used.
 
 G2: the source check below also requires that hfs_inode.c calls d_set_d_op
-only inside hfs_dentry_attach, and that hfs_lookup, hfs_atomic_open and
-hfs_namespace attach through it.
+only inside hfs_dentry_attach, and that hfs_lookup, hfs_create_install (CREATE)
+and hfs_namespace_install (MKDIR/SYMLINK) attach through it.
+
+Review 1: hfs_lookup, hfs_relookup, hfs_link and hfs_create_exists are copied
+as well and run on a dentry an earlier hfs_lookup already hashed;
+d_splice_alias's BUG_ON(!d_unhashed(dentry)) is substituted by a test failure.
+The source check requires that hfs_lookup is called only by hfs_atomic_open
+(for an in-lookup dentry) and by hfs_relookup, which unhashes first.
 """
 import argparse
 import hashlib
@@ -43,17 +49,27 @@ def attr_constants(fs_header):
 
 
 def check_attach_callers(inode):
-    """G2: d_set_d_op only in hfs_dentry_attach; the three creators use it."""
+    """G2: d_set_d_op only in hfs_dentry_attach; the three creators use it.
+
+    Review 1: a second hfs_lookup of a hashed dentry goes through
+    hfs_relookup (d_drop first)."""
     build_function = load('controlled_received_build',
                           Path(__file__).resolve().parent.parent /
                           'controlled_received/build.py').function
     attach = build_function(inode, 'hfs_dentry_attach')
     if inode.count('d_set_d_op(') != 1 or 'd_set_d_op(' not in attach:
         raise SystemExit('FAIL: d_set_d_op outside hfs_dentry_attach (G2)')
-    for name in ('hfs_lookup', 'hfs_atomic_open', 'hfs_namespace'):
+    for name in ('hfs_lookup', 'hfs_create_install', 'hfs_namespace_install'):
         body = build_function(inode, name)
         if 'hfs_dentry_attach(dentry, cap);' not in body or 'dentry->d_fsdata = cap;' in body:
             raise SystemExit(f'FAIL: {name} does not attach through hfs_dentry_attach')
+    relookup = build_function(inode, 'hfs_relookup')
+    atomic_open = build_function(inode, 'hfs_atomic_open')
+    if (inode.count('hfs_lookup(dir, dentry, 0)') != 2 or
+            'd_drop(dentry);\n\treturn hfs_lookup(dir, dentry, 0);' not in relookup or
+            'if (d_in_lookup(dentry)) {\n\t\tstruct dentry *alias = hfs_lookup(dir, dentry, 0);'
+            not in atomic_open):
+        raise SystemExit('FAIL: hfs_lookup called outside the in-lookup open and hfs_relookup')
 
 
 def extract(source, output, build):
@@ -76,9 +92,11 @@ def extract(source, output, build):
     kill = re.search(r'^#define HFS_ATTR_KILL .*$', inode, re.M).group(0)
     (output / 'setattr.inc').write_text(kill + '\n' + ''.join(
         build.function(inode, name) for name in (
-            'hfs_time_write', 'hfs_optional_time', 'hfs_setattr_kill',
+            'hfs_time_write', 'hfs_optional_time', 'hfs_setattr_sent',
             'hfs_setattr_supported', 'hfs_truncate_args', 'hfs_setattr_args',
             'hfs_setattr')))
+    (output / 'lookup.inc').write_text(''.join(build.function(inode, name) for name in (
+        'hfs_lookup', 'hfs_relookup', 'hfs_create_exists', 'hfs_link')))
     return {name: hashlib.sha256(text.encode()).hexdigest() for name, text in texts.items()}
 
 

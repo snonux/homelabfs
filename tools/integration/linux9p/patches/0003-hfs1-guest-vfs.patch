@@ -4207,7 +4207,7 @@ diff --git a/fs/9p/hfs_inode.c b/fs/9p/hfs_inode.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_inode.c
-@@ -0,0 +1,1290 @@
+@@ -0,0 +1,1379 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Authoritative retained-9p attributes and namespace VFS operations. */
 +#include <linux/magic.h>
@@ -4682,11 +4682,13 @@ new file mode 100644
 +/* Attach a dentry to hfs: its operations and its path grant (cap, or NULL
 + * for a negative lookup). vf4 (G2): the operations are set only once.
 + * hfs_lookup sets them on the negative dentry that CREATE, MKDIR and SYMLINK
-+ * later instantiate (and that a CREATE losing to EEXIST looks up again), and
-+ * d_set_d_op WARNs (fs/dcache.c) on a dentry that already has them, which
-+ * tainted every guest since tz3. A grant this replaces is freed; it is NULL on
-+ * those paths, since hfs_d_revalidate makes every walk look up a fresh dentry.
-+ * Readers copy the grant under d_lock (hfs_dcap_write).
++ * later instantiate, and that hfs_relookup looks up again after LINK or a
++ * CREATE that lost to EEXIST; d_set_d_op WARNs (fs/dcache.c) on a dentry that
++ * already has them, which tainted every guest since tz3. Operations other
++ * than hfs_dops are never expected and WARN once. A grant this replaces is
++ * freed; it is NULL on those paths, since the dentry was negative and
++ * hfs_d_revalidate makes every walk look up a fresh dentry. Readers copy the
++ * grant under d_lock (hfs_dcap_write).
 + */
 +static void hfs_dentry_attach(struct dentry *dentry, struct hfs_cap *cap)
 +{
@@ -4694,6 +4696,8 @@ new file mode 100644
 +
 +	if (!dentry->d_op)
 +		d_set_d_op(dentry, &hfs_dops);
++	else
++		WARN_ON_ONCE(dentry->d_op != &hfs_dops);
 +	spin_lock(&dentry->d_lock);
 +	previous = dentry->d_fsdata;
 +	dentry->d_fsdata = cap;
@@ -4839,6 +4843,22 @@ new file mode 100644
 +	return alias;
 +}
 +
++/* vf4 review 1: look a name up again after the host made it (LINK, or a
++ * CREATE that lost to EEXIST). The dentry is the negative one an earlier
++ * hfs_lookup already hashed: filename_create's lookup_one_qstr_excl for
++ * link(2), the in-lookup dentry of hfs_atomic_open (d_splice_alias ->
++ * __d_add hashes both). d_splice_alias BUG()s on a hashed dentry
++ * (fs/dcache.c), so it is unhashed first, as nfs_add_or_obtain does. The
++ * parent's i_rwsem is held exclusively (filename_create, and
++ * open_last_lookups for O_CREAT), so no parallel lookup can add another
++ * dentry for the name meanwhile; on success d_splice_alias hashes it again.
++ */
++static struct dentry *hfs_relookup(struct inode *dir, struct dentry *dentry)
++{
++	d_drop(dentry);
++	return hfs_lookup(dir, dentry, 0);
++}
++
 +void hfs_flags_write(struct hfs_buf *args, unsigned int flags, bool create)
 +{
 +	const char *access = (flags & O_ACCMODE) == O_WRONLY ? "WRITE" :
@@ -4853,19 +4873,12 @@ new file mode 100644
 +		       sync, flags & O_TRUNC ? "true" : "false");
 +}
 +
++static int hfs_create(struct inode *dir, struct dentry *dentry,
++		      struct file *file, unsigned int flags, umode_t mode);
++
 +static int hfs_atomic_open(struct inode *dir, struct dentry *dentry,
 +			   struct file *file, unsigned int flags, umode_t mode)
 +{
-+	struct hfs_cred *cred;
-+	struct hfs_buf args;
-+	struct hfs_json *result = NULL;
-+	struct hfs_description *description = NULL;
-+	struct hfs_cap *cap = NULL;
-+	struct inode *inode;
-+	void *cookie;
-+	bool create = flags & O_CREAT;
-+	int err;
-+
 +	if (d_in_lookup(dentry)) {
 +		struct dentry *alias = hfs_lookup(dir, dentry, 0);
 +
@@ -4876,80 +4889,196 @@ new file mode 100644
 +	}
 +	if (d_really_is_positive(dentry))
 +		return finish_no_open(file, NULL);
-+	if (!create)
++	if (!(flags & O_CREAT))
 +		return -ENOENT;
 +	if ((mode & ~(S_IFMT | 07777)) || (flags & O_TMPFILE) == O_TMPFILE)
 +		return -EOPNOTSUPP;
-+	err = hfs_begin(dir, true, &cred, &cookie);
++	return hfs_create(dir, dentry, file, flags, mode);
++}
++
++/* CREATE arguments: always exclusive, so a fresh negative lookup keeps
++ * native DAC/LSM ordering; an existing name is opened by hfs_create_exists.
++ */
++static int hfs_create_args(struct hfs_buf *args, struct dentry *dentry,
++			   unsigned int flags, umode_t mode)
++{
++	int err = hfs_args_init(args);
++
 +	if (err)
 +		return err;
-+	err = hfs_description_prepare(HFS_S(dir), false, &description);
-+	if (err)
-+		goto out;
-+	err = hfs_args_init(&args);
-+	if (err)
-+		goto out;
-+	hfs_buf_literal(&args, "{\"flags\":");
-+	hfs_flags_write(&args, flags | O_EXCL, true);
-+	hfs_buf_printf(&args, ",\"mode\":%u,\"name\":", mode & 07777);
-+	hfs_buf_hex(&args, dentry->d_name.name, dentry->d_name.len);
-+	hfs_buf_literal(&args, ",\"parent\":");
-+	hfs_dcap_write(&args, dentry->d_parent);
++	hfs_buf_literal(args, "{\"flags\":");
++	hfs_flags_write(args, flags | O_EXCL, true);
++	hfs_buf_printf(args, ",\"mode\":%u,\"name\":", mode & 07777);
++	hfs_buf_hex(args, dentry->d_name.name, dentry->d_name.len);
++	hfs_buf_literal(args, ",\"parent\":");
++	hfs_dcap_write(args, dentry->d_parent);
 +	/* VFS already applied the guest umask/capability restrictions. */
-+	hfs_buf_literal(&args, ",\"umask\":0}");
-+	err = hfs_call(HFS_S(dir), "CREATE", &args, cred, false, &result);
-+	hfs_buf_free(&args);
-+	if (err == -EEXIST && !(flags & O_EXCL)) {
-+		struct dentry *alias;
++	hfs_buf_literal(args, ",\"umask\":0}");
++	return 0;
++}
 +
-+		hfs_json_free(result);
-+		result = NULL;
-+		alias = hfs_lookup(dir, dentry, 0);
-+		err = finish_no_open(file, alias);
-+		goto out;
-+	}
-+	if (err)
-+		goto out;
-+	err = hfs_reply_cap(HFS_S(dir), result, "DESCRIPTION", &description->cap);
++/* A protected Exists result without O_EXCL: open the existing object through
++ * a fresh lookup and the normal VFS open path (finish_no_open passes a
++ * lookup error through).
++ */
++static int hfs_create_exists(struct inode *dir, struct dentry *dentry,
++			     struct file *file)
++{
++	return finish_no_open(file, hfs_relookup(dir, dentry));
++}
++
++/* The committed CREATE's grants and new inode; on failure nothing is kept
++ * but what *capp holds (freed by the caller).
++ */
++static int hfs_create_inode(struct inode *dir, struct hfs_json *result,
++			    struct hfs_description *description,
++			    struct hfs_cred *cred, struct hfs_cap **capp,
++			    struct inode **inodep)
++{
++	struct inode *inode;
++	int err = hfs_reply_cap(HFS_S(dir), result, "DESCRIPTION", &description->cap);
++
 +	if (!err)
-+		err = hfs_reply_cap(HFS_S(dir), result, "PATH", &cap);
++		err = hfs_reply_cap(HFS_S(dir), result, "PATH", capp);
 +	if (err)
-+		goto out;
++		return err;
 +	inode = hfs_inode_get(dir->i_sb, result, "PATH", cred);
-+	if (IS_ERR(inode)) {
-+		err = PTR_ERR(inode);
-+		goto out;
-+	}
++	if (IS_ERR(inode))
++		return PTR_ERR(inode);
 +	if (!S_ISREG(inode->i_mode) ||
 +	    !uuid_equal(&description->cap->home, &HFS_I(inode)->object->home) ||
 +	    !uuid_equal(&description->cap->allocation, &HFS_I(inode)->object->allocation)) {
 +		iput(inode);
-+		err = -EPROTO;
-+		hfs_session_block(HFS_S(dir), "mismatched create result", "CREATE", err);
-+		goto out;
++		hfs_session_block(HFS_S(dir), "mismatched create result", "CREATE", -EPROTO);
++		return -EPROTO;
++	}
++	*inodep = inode;
++	return 0;
++}
++
++/* Install a committed CREATE and open it. The description and the issuing
++ * credentials move to the file only once the inode is instantiated.
++ */
++static int hfs_create_install(struct inode *dir, struct dentry *dentry,
++			      struct file *file, struct hfs_json *result,
++			      struct hfs_description **description,
++			      struct hfs_cred **cred)
++{
++	struct hfs_cap *cap = NULL;
++	struct inode *inode;
++	int err = hfs_create_inode(dir, result, *description, *cred, &cap, &inode);
++
++	if (err) {
++		hfs_cap_free(cap);
++		return err;
 +	}
 +	/* Never call inode_init_owner: returned creator UID, parent GID and all
 +	 * supported special bits are the single authoritative committed result.
 +	 */
 +	hfs_dentry_attach(dentry, cap);
-+	cap = NULL;
 +	d_instantiate(dentry, inode);
-+	description->issuer = cred;
-+	cred = NULL;
-+	file->private_data = description;
-+	description = NULL;
++	(*description)->issuer = *cred;
++	*cred = NULL;
++	file->private_data = *description;
++	*description = NULL;
 +	hfs_result_adopt(HFS_S(dir), result);
 +	file->f_mode |= FMODE_CREATED;
 +	err = finish_open(file, dentry, generic_file_open);
 +	if (err)
 +		hfs_session_block(HFS_S(dir), "local open failure after CREATE", "CREATE", err);
++	return err;
++}
++
++static int hfs_create(struct inode *dir, struct dentry *dentry,
++		      struct file *file, unsigned int flags, umode_t mode)
++{
++	struct hfs_cred *cred;
++	struct hfs_buf args;
++	struct hfs_json *result = NULL;
++	struct hfs_description *description = NULL;
++	void *cookie;
++	int err = hfs_begin(dir, true, &cred, &cookie);
++
++	if (err)
++		return err;
++	err = hfs_description_prepare(HFS_S(dir), false, &description);
++	if (!err)
++		err = hfs_create_args(&args, dentry, flags, mode);
++	if (err)
++		goto out;
++	err = hfs_call(HFS_S(dir), "CREATE", &args, cred, false, &result);
++	hfs_buf_free(&args);
++	if (err == -EEXIST && !(flags & O_EXCL)) {
++		hfs_json_free(result);
++		result = NULL;
++		err = hfs_create_exists(dir, dentry, file);
++	} else if (!err) {
++		err = hfs_create_install(dir, dentry, file, result, &description, &cred);
++	}
 +out:
 +	hfs_description_discard(HFS_S(dir), description);
-+	hfs_cap_free(cap);
 +	hfs_json_free(result);
 +	hfs_leave(dir, cookie);
 +	hfs_cred_free(cred);
 +	return err;
++}
++/* MKDIR/SYMLINK/UNLINK/RMDIR arguments; a too-long symlink target is
++ * refused before the CALL (and the buffer freed).
++ */
++static int hfs_namespace_args(struct hfs_buf *args, struct dentry *dentry,
++			      bool mkdir, umode_t mode, const char *target)
++{
++	int err = hfs_args_init(args);
++
++	if (err)
++		return err;
++	hfs_buf_literal(args, "{");
++	if (mkdir)
++		hfs_buf_printf(args, "\"mode\":%u,", mode & 07777);
++	hfs_buf_literal(args, "\"name\":");
++	hfs_buf_hex(args, dentry->d_name.name, dentry->d_name.len);
++	hfs_buf_literal(args, ",\"parent\":");
++	hfs_dcap_write(args, dentry->d_parent);
++	if (target) {
++		if (strlen(target) > 4096) {
++			hfs_buf_free(args);
++			return -ENAMETOOLONG;
++		}
++		hfs_buf_literal(args, ",\"target\":");
++		hfs_buf_hex(args, target, strlen(target));
++	}
++	if (mkdir)
++		hfs_buf_literal(args, ",\"umask\":0");
++	hfs_buf_literal(args, "}");
++	return 0;
++}
++
++/* Install a committed MKDIR (type S_IFDIR) or SYMLINK (S_IFLNK) result. */
++static int hfs_namespace_install(struct inode *dir, struct dentry *dentry,
++				 const char *opcode, umode_t type,
++				 struct hfs_json *result, struct hfs_cred *cred)
++{
++	struct hfs_cap *cap = NULL;
++	struct inode *inode;
++	int err = hfs_reply_cap(HFS_S(dir), result, "PATH", &cap);
++
++	if (err)
++		return err;
++	inode = hfs_inode_get(dir->i_sb, result, "PATH", cred);
++	if (IS_ERR(inode)) {
++		hfs_cap_free(cap);
++		return PTR_ERR(inode);
++	}
++	if ((inode->i_mode & S_IFMT) != type) {
++		iput(inode);
++		hfs_cap_free(cap);
++		hfs_session_block(HFS_S(dir), "mismatched object type", opcode, -EPROTO);
++		return -EPROTO;
++	}
++	hfs_dentry_attach(dentry, cap);
++	d_instantiate(dentry, inode);
++	hfs_result_adopt(HFS_S(dir), result);
++	return 0;
 +}
 +
 +static int hfs_namespace(struct inode *dir, struct dentry *dentry,
@@ -4958,8 +5087,6 @@ new file mode 100644
 +	struct hfs_cred *cred;
 +	struct hfs_buf args;
 +	struct hfs_json *result = NULL;
-+	struct hfs_cap *cap = NULL;
-+	struct inode *inode;
 +	void *cookie;
 +	bool mkdir = !strcmp(opcode, "MKDIR");
 +	bool symlink = !strcmp(opcode, "SYMLINK");
@@ -4967,58 +5094,19 @@ new file mode 100644
 +
 +	if (err)
 +		return err;
-+	err = hfs_args_init(&args);
++	err = hfs_namespace_args(&args, dentry, mkdir, mode, symlink ? target : NULL);
 +	if (err)
 +		goto out;
-+	hfs_buf_literal(&args, "{");
-+	if (mkdir)
-+		hfs_buf_printf(&args, "\"mode\":%u,", mode & 07777);
-+	hfs_buf_literal(&args, "\"name\":");
-+	hfs_buf_hex(&args, dentry->d_name.name, dentry->d_name.len);
-+	hfs_buf_literal(&args, ",\"parent\":");
-+	hfs_dcap_write(&args, dentry->d_parent);
-+	if (symlink) {
-+		if (strlen(target) > 4096) {
-+			err = -ENAMETOOLONG;
-+			goto free_args;
-+		}
-+		hfs_buf_literal(&args, ",\"target\":");
-+		hfs_buf_hex(&args, target, strlen(target));
-+	}
-+	if (mkdir)
-+		hfs_buf_literal(&args, ",\"umask\":0");
-+	hfs_buf_literal(&args, "}");
 +	err = hfs_call(HFS_S(dir), opcode, &args, cred, false, &result);
-+	if (err || (!mkdir && !symlink))
-+		goto free_args;
-+	err = hfs_reply_cap(HFS_S(dir), result, "PATH", &cap);
-+	if (err)
-+		goto free_args;
-+	inode = hfs_inode_get(dir->i_sb, result, "PATH", cred);
-+	if (IS_ERR(inode)) {
-+		err = PTR_ERR(inode);
-+		goto free_args;
-+	}
-+	if ((mkdir && !S_ISDIR(inode->i_mode)) ||
-+	    (symlink && !S_ISLNK(inode->i_mode))) {
-+		iput(inode);
-+		err = -EPROTO;
-+		hfs_session_block(HFS_S(dir), "mismatched object type", opcode, err);
-+		goto free_args;
-+	}
-+	hfs_dentry_attach(dentry, cap);
-+	cap = NULL;
-+	d_instantiate(dentry, inode);
-+	hfs_result_adopt(HFS_S(dir), result);
-+free_args:
 +	hfs_buf_free(&args);
++	if (!err && (mkdir || symlink))
++		err = hfs_namespace_install(dir, dentry, opcode,
++					    mkdir ? S_IFDIR : S_IFLNK, result, cred);
 +out:
-+	hfs_cap_free(cap);
 +	hfs_json_free(result);
 +	hfs_end(dir, cred, cookie);
 +	return err;
 +}
-+
 +static int hfs_mkdir(struct user_namespace *ns, struct inode *dir,
 +		     struct dentry *dentry, umode_t mode)
 +{
@@ -5070,7 +5158,7 @@ new file mode 100644
 +	hfs_buf_free(&args);
 +	hfs_end(dir, cred, cookie);
 +	if (!err) {
-+		struct dentry *alias = hfs_lookup(dir, dentry, 0);
++		struct dentry *alias = hfs_relookup(dir, dentry);
 +
 +		err = IS_ERR(alias) ? PTR_ERR(alias) : 0;
 +		if (!err && d_inode(alias ?: dentry) != d_inode(old))
@@ -5187,55 +5275,50 @@ new file mode 100644
 +
 +#define HFS_ATTR_KILL (ATTR_KILL_SUID | ATTR_KILL_SGID | ATTR_KILL_PRIV)
 +
-+/* vf4 (zq3-r18 R18-1): consume the ATTR_KILL_* bits before the support check.
-+ * Returns true when nothing is left to send, so the call is a local no-op.
++/* vf4 (zq3-r18 R18-1): the ia_valid hfs_setattr sends, without the
++ * ATTR_KILL_* bits and the MODE notify_change derived from them.
 + *
 + * notify_change (fs/attr.c) has already turned a KILL_SUID/KILL_SGID whose
 + * bit is set into ATTR_MODE, the cached mode without that bit; it BUG()s on a
 + * caller's own MODE next to KILL_S*ID, so MODE beside them is always derived.
-+ * KILL_PRIV needs no host work: without xattr handlers
-+ * security_inode_need_killpriv is 0 and notify_change drops it anyway. The
-+ * three callers that set them:
++ * The derived MODE is never sent: the host clears 06000 itself where Linux
++ * asks for it, and the cached mode may be stale (no refresh precedes fchown),
++ * so sending it could overwrite the host's permission bits. KILL_PRIV needs
++ * no host work: without xattr handlers security_inode_need_killpriv is 0 and
++ * notify_change drops it anyway. The three callers that set them:
 + * - chown_common (fs/open.c) for every non-directory: the host clears 06000 on
-+ *   any UID or GID change (internal/fsservice/mutation.go attributes), so the
-+ *   derived MODE is dropped and only UID/GID is sent. A cached mode would also
-+ *   overwrite the host's permission bits. chown(-1, -1) keeps the derived MODE,
-+ *   as no host rule clears the bits there;
++ *   any UID or GID change (internal/fsservice/mutation.go attributes).
++ *   chown(-1, -1) of a setuid/setgid file is left with only ATTR_CTIME and is
++ *   refused like any chown(-1, -1) (no ctime-only host SETATTR), where Linux
++ *   clears the bits;
 + * - do_truncate (fs/open.c) when the caller lacks CAP_FSETID: TRUNCATE clears
-+ *   06000 for a non-root caller (mutation.go), so the derived MODE is dropped
-+ *   and the support check no longer sees MODE next to SIZE;
++ *   06000 for a non-root caller (mutation.go), and the support check no longer
++ *   sees MODE next to SIZE;
 + * - __remove_privs (fs/inode.c, file_remove_privs/file_modified) before a
-+ *   write: only ATTR_FORCE and the kill bits (plus the derived MODE), never
-+ *   ATTR_CTIME. That is a local no-op: WRITE clears 06000 for a non-root caller
-+ *   itself (mutation.go). hfs_write_iter does not call it today. A request
-+ *   left with nothing but ATTR_FORCE (notify_change dropped a lone
-+ *   ATTR_KILL_PRIV) is the same no-op, where it used to send an empty SETATTR
-+ *   that the host refuses as invalid.
++ *   write: only ATTR_FORCE is left, never ATTR_CTIME, which hfs_setattr
++ *   treats as a local no-op: WRITE clears 06000 for a non-root caller itself
++ *   (mutation.go). hfs_write_iter does not call it today. Before vf4 a lone
++ *   ATTR_FORCE sent an empty SETATTR that the host refuses as invalid.
 + * The host decides on uid 0 where Linux checks CAP_FSETID, so a root caller
 + * without CAP_FSETID keeps its 06000 bits on the host; the host result is the
 + * mode the inode installs.
 + */
-+static bool hfs_setattr_kill(struct iattr *attr)
++static unsigned int hfs_setattr_sent(const struct iattr *attr)
 +{
 +	unsigned int valid = attr->ia_valid;
-+	bool derived = (valid & (ATTR_KILL_SUID | ATTR_KILL_SGID)) &&
-+		(valid & ATTR_MODE);
 +
-+	if (!(valid & ~(ATTR_FORCE | HFS_ATTR_KILL | (derived ? ATTR_MODE : 0))))
-+		return true;
-+	if (derived && (valid & (ATTR_UID | ATTR_GID | ATTR_SIZE)))
++	if (valid & (ATTR_KILL_SUID | ATTR_KILL_SGID))
 +		valid &= ~ATTR_MODE;
-+	attr->ia_valid = valid & ~HFS_ATTR_KILL;
-+	return false;
++	return valid & ~HFS_ATTR_KILL;
 +}
 +
-+/* The combinations SETATTR/TRUNCATE can carry; anything else fails before the
-+ * CALL. Mode with suid/sgid next to an ownership change stays refused, as the
-+ * host refuses it (it clears 06000 on that change).
++/* The combinations SETATTR/TRUNCATE can carry (valid as sent, see
++ * hfs_setattr_sent); anything else fails before the CALL. Mode with
++ * suid/sgid next to an ownership change stays refused, as the host refuses
++ * it (it clears 06000 on that change).
 + */
-+static bool hfs_setattr_supported(const struct iattr *attr)
++static bool hfs_setattr_supported(unsigned int valid, umode_t mode)
 +{
-+	unsigned int valid = attr->ia_valid;
 +	bool truncate = valid & ATTR_SIZE;
 +
 +	if (valid & ~(ATTR_MODE | ATTR_UID | ATTR_GID | ATTR_SIZE | ATTR_ATIME |
@@ -5247,10 +5330,10 @@ new file mode 100644
 +	if (!truncate && valid & ATTR_CTIME && !(valid &
 +	     (ATTR_MODE | ATTR_UID | ATTR_GID | ATTR_ATIME | ATTR_MTIME)))
 +		return false;
-+	if ((valid & ATTR_MODE) && (attr->ia_mode & ~(S_IFMT | 07777)))
++	if ((valid & ATTR_MODE) && (mode & ~(S_IFMT | 07777)))
 +		return false;
 +	return !((valid & ATTR_MODE) && (valid & (ATTR_UID | ATTR_GID)) &&
-+		 (attr->ia_mode & (S_ISUID | S_ISGID)));
++		 (mode & (S_ISUID | S_ISGID)));
 +}
 +
 +static void hfs_truncate_args(struct hfs_buf *args, struct dentry *dentry,
@@ -5305,6 +5388,11 @@ new file mode 100644
 +	hfs_buf_literal(args, "}");
 +}
 +
++/* setattr_prepare checks the request as the VFS built it, derived MODE
++ * included (vf4 review 1), so a chown of a setuid/setgid file still needs
++ * inode_owner_or_capable (CAP_CHOWN alone gives EPERM, as in Linux); only
++ * then is the request reduced to what hfs_setattr_sent keeps.
++ */
 +static int hfs_setattr(struct user_namespace *ns, struct dentry *dentry,
 +		       struct iattr *attr)
 +{
@@ -5314,17 +5402,18 @@ new file mode 100644
 +	struct hfs_json *result = NULL;
 +	struct hfs_description *description = NULL;
 +	void *cookie;
-+	bool truncate;
++	unsigned int sent = hfs_setattr_sent(attr);
++	bool truncate = sent & ATTR_SIZE;
 +	int err;
 +
-+	if (hfs_setattr_kill(attr))
++	if (!(sent & ~ATTR_FORCE))
 +		return 0;
-+	if (!hfs_setattr_supported(attr))
++	if (!hfs_setattr_supported(sent, attr->ia_mode))
 +		return -EOPNOTSUPP;
-+	truncate = attr->ia_valid & ATTR_SIZE;
 +	err = setattr_prepare(ns, dentry, attr);
 +	if (err)
 +		return err;
++	attr->ia_valid = sent;
 +	if (truncate && attr->ia_size < 0)
 +		return -EINVAL;
 +	if (attr->ia_valid & ATTR_FILE)

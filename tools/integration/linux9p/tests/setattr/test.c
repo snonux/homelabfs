@@ -48,11 +48,16 @@ struct dentry_operations {
 	int (*d_revalidate)(struct dentry *, unsigned int);
 	void (*d_release)(struct dentry *);
 };
+struct qstr { const unsigned char *name; u32 len; };
 struct dentry {
 	int d_lock;
 	struct inode *d_inode;
 	void *d_fsdata;
 	const struct dentry_operations *d_op;
+	struct qstr d_name;
+	struct dentry *d_parent;
+	void *d_sb;
+	bool hashed; /* !d_unhashed(): set by d_splice_alias, cleared by d_drop */
 };
 static struct inode *d_inode(const struct dentry *dentry) { return dentry->d_inode; }
 static unsigned int d_set_d_op_calls;
@@ -63,10 +68,15 @@ static void d_set_d_op(struct dentry *dentry, const struct dentry_operations *op
 	d_set_d_op_calls++;
 	dentry->d_op = op;
 }
+/* A foreign d_op would WARN in the kernel; here it fails the test. */
+#define WARN_ON_ONCE(condition) CHECK(!(condition))
 #include "dentry.inc"
 
 struct hfs_description { struct hfs_cap *cap; };
-struct file { void *private_data; };
+struct file {
+	void *private_data;
+	struct { struct dentry *dentry; } f_path;
+};
 struct iattr {
 	unsigned int ia_valid;
 	umode_t ia_mode;
@@ -81,7 +91,8 @@ struct iattr {
 static struct {
 	unsigned int prepare, begin, end, install;
 	unsigned int prepared_valid;
-	int prepare_err, call_err;
+	int call_err;
+	bool not_owner; /* setattr_prepare's inode_owner_or_capable fails */
 	char opcode[16];
 	char args[4096];
 } seen;
@@ -90,7 +101,11 @@ static int setattr_prepare(struct user_namespace *ns, struct dentry *dentry,
 {
 	seen.prepare++;
 	seen.prepared_valid = attr->ia_valid;
-	return seen.prepare_err;
+	/* fs/attr.c: ATTR_MODE needs inode_owner_or_capable unless ATTR_FORCE. */
+	if (seen.not_owner && (attr->ia_valid & ATTR_MODE) &&
+	    !(attr->ia_valid & ATTR_FORCE))
+		return -EPERM;
+	return 0;
 }
 static int hfs_begin(struct inode *inode, bool mutation, struct hfs_cred **cred,
 		     void **cookie)
@@ -130,4 +145,5 @@ static int hfs_attr_install(struct inode *inode, const struct hfs_json *json,
 }
 #include "setattr.inc"
 #include "model.inc"
+#include "links.inc"
 #include "cases.inc"
