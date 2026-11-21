@@ -107,7 +107,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,491 @@
+@@ -0,0 +1,500 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -197,6 +197,15 @@ new file mode 100644
 +	/* Verify the full actual tagged local/normal source, not caller hashes. */
 +	int (*target)(struct hfs_session *session,
 +		      const struct hfs_json *json, int token);
++	/* xf4: verify the actual source of a GRANTED lease target that differs
++	 * from the request's expected target (a guest-requested view advance):
++	 * the receipt binding of target, except that it is not current yet; it
++	 * must be at the mount's fence and captured at the view's revision,
++	 * with the LIVE view installed at exactly expected. NULL: the provider
++	 * cannot verify an advance, so the guest never requests one.
++	 */
++	int (*advance_target)(struct hfs_session *session, const struct hfs_json *json,
++			      int token, const struct hfs_buf *expected);
 +	/* Exact enrolled authority/closure/inventory/session/event provenance.
 +	 * The complete canonical response (including channel/session) is retained
 +	 * in json; token selects its event. No phase/hash-only success default.

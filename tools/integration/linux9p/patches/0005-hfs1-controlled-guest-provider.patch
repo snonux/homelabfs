@@ -252,7 +252,7 @@ diff --git a/fs/9p/hfs_controlled.c b/fs/9p/hfs_controlled.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_controlled.c
-@@ -0,0 +1,1377 @@
+@@ -0,0 +1,1390 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* Registered controlled-only provider and finite retained ownership. */
 +#include "hfs_controlled.h"
@@ -1066,6 +1066,18 @@ new file mode 100644
 +	return err ?: hfs_controlled_target_metadata(session, json, target);
 +}
 +
++/* xf4: an advance candidate's target, with the same enrollment metadata
++ * checks as an installed one (hfs_received_advance: the receipt gate).
++ */
++static int hfs_controlled_advance_target(struct hfs_session *session,
++					 const struct hfs_json *json, int target,
++					 const struct hfs_buf *expected)
++{
++	int err = hfs_received_advance(session, json, target, expected);
++
++	return err ?: hfs_controlled_target_metadata(session, json, target);
++}
++
 +static int hfs_controlled_receipt_context(struct hfs_session *session,
 +					 struct hfs_json **context, u8 key[32])
 +{
@@ -1610,6 +1622,7 @@ new file mode 100644
 +	.leave = hfs_controlled_leave,
 +	.publication = hfs_controlled_publication,
 +	.target = hfs_controlled_target,
++	.advance_target = hfs_controlled_advance_target,
 +	.view_event = hfs_controlled_view_event,
 +	.stop = hfs_controlled_stop,
 +	.reserve = hfs_controlled_reserve,
@@ -4234,7 +4247,7 @@ diff --git a/fs/9p/hfs_received.h b/fs/9p/hfs_received.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_received.h
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,76 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_RECEIVED_H
 +#define FS_9P_HFS_RECEIVED_H
@@ -4260,6 +4273,9 @@ new file mode 100644
 +			   int token, bool *not_current);
 +int hfs_received_target(struct hfs_session *session, const struct hfs_json *json,
 +			 int token);
++/* xf4: the receipt gate of a guest-requested view advance (hfs_received.inc). */
++int hfs_received_advance(struct hfs_session *session, const struct hfs_json *json,
++			 int token, const struct hfs_buf *expected);
 +int hfs_received_publication(struct hfs_session *session, const struct hfs_json *json,
 +			      int token);
 +int hfs_received_event(struct hfs_session *session, const struct hfs_json *json,
@@ -4312,7 +4328,7 @@ diff --git a/fs/9p/hfs_received.inc b/fs/9p/hfs_received.inc
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_received.inc
-@@ -0,0 +1,781 @@
+@@ -0,0 +1,854 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* Included ONLY by hfs_session.c. The factory stays static beside the actual
 + * validated transport completion and is not part of any provider/caller API.
@@ -4570,6 +4586,79 @@ new file mode 100644
 +			 int token)
 +{
 +	return hfs_received_selected(session, json, token, false);
++}
++
++/* xf4: the view state an advance candidate needs, under view->lock: the
++ * receipt captured the LIVE view at its current revision, and the view is
++ * still LIVE and installed at exactly expected, which is not the granted
++ * target (start/span in owner->response).
++ */
++static bool hfs_received_advance_view(const struct hfs_kernel_received *owner,
++				      const struct hfs_buf *expected, u32 start, u32 span)
++{
++	struct hfs_view *view = hfs_view_get(owner->session);
++	unsigned long flags;
++	bool ok;
++
++	if (!view)
++		return false;
++	spin_lock_irqsave(&view->lock, flags);
++	ok = owner->capture.have_view && owner->capture.phase == HFS_VIEW_LIVE &&
++	     view->phase == HFS_VIEW_LIVE && view->revision == owner->capture.revision &&
++	     view->target.len && view->target.len == expected->len &&
++	     !memcmp(view->target.data, expected->data, expected->len) &&
++	     (span != view->target.len ||
++	      memcmp(view->target.data, owner->response->data + start, span));
++	spin_unlock_irqrestore(&view->lock, flags);
++	hfs_view_put(view);
++	return ok;
++}
++
++/* xf4 (guest-requested view advance): the receipt gate for a GRANTED lease
++ * target that is not the installed one. token must be exactly the target of
++ * the lease a verified SOURCE reply carried that was not current at receipt
++ * (owner->stale with the lease as its source, so its target equals the
++ * receipt evidence's, hfs_received_new), on the result channel of this
++ * session. The lease is at the mount's current fence, and the view is as
++ * hfs_received_advance_view requires: nothing moved since the capture of
++ * the request that carried it, and the view still holds expected, the
++ * request's expected target. Unlike hfs_received_target this never makes
++ * the target current; hfs_view_advance installs it. Any other reply, a
++ * passed fence or a moved view is -ESTALE (-EKEYREJECTED: not verified).
++ */
++int hfs_received_advance(struct hfs_session *session, const struct hfs_json *json,
++			 int token, const struct hfs_buf *expected)
++{
++	struct hfs_kernel_received *owner;
++	u32 offset, length, start, span;
++	int target, err = -EKEYREJECTED;
++	u64 fence = 0;
++
++	owner = hfs_received_get(json, &offset, &length);
++	if (!owner)
++		return err;
++	if (owner->session != session || !owner->stale || owner->source < 0 ||
++	    owner->source != hfs_json_field(owner->response,
++					    hfs_json_field(owner->response, 0, "payload"), "lease") ||
++	    owner->channel != HFS_CHANNEL_RESULT || owner->frame_kind != HFS_FRAME_RESULT)
++		goto out;
++	target = hfs_json_field(owner->response, owner->source, "target");
++	err = target < 0 ? -EKEYREJECTED :
++		hfs_received_token_span(owner, json, token, offset, &start, &span);
++	if (!err && (start != owner->response->tokens[target].start ||
++		     span != owner->response->tokens[target].end - start))
++		err = -EKEYREJECTED;
++	if (!err)
++		err = owner->cleanup ? hfs_controlled_control_admissible(session) :
++			hfs_controlled_admissible(session);
++	if (!err && (hfs_json_u64(owner->response,
++				  hfs_json_field(owner->response, owner->source, "fence"), &fence) ||
++		     !fence || fence != hfs_controlled_current_fence(session) ||
++		     !hfs_received_advance_view(owner, expected, start, span)))
++		err = -ESTALE;
++out:
++	hfs_received_put(owner);
++	return err;
 +}
 +
 +int hfs_received_event(struct hfs_session *session, const struct hfs_json *json,

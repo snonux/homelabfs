@@ -7,7 +7,7 @@ diff --git a/fs/9p/hfs_protocol.h b/fs/9p/hfs_protocol.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_protocol.h
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,181 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_PROTOCOL_H
 +#define FS_9P_HFS_PROTOCOL_H
@@ -172,13 +172,28 @@ new file mode 100644
 +int hfs_mapped_source_policy(const struct hfs_json *scope_json, int scope,
 +		const struct hfs_json *original, const struct hfs_json *response,
 +		int payload);
++/* xf4 (guest-requested view advance): the optional "advance" field of the
++ * VIEW_ACQUIRE payload at request. Absent: *advance false. Present it must be
++ * the literal true on a READ DOMAIN acquisition with a CONTROLLED_LOCAL
++ * expected target (false, any other value or another request is -EPROTO), so
++ * every request has one encoding, as guestbridge validateAdvance requires.
++ */
++int hfs_view_advance_field(const struct hfs_json *json, int request, bool *advance);
++/* xf4: 0 when a view installed at the target expected may adopt granted by
++ * advance (guestbridge AdvanceCompatible): both CONTROLLED_LOCAL cuts with
++ * the same enrollment, profile, context, journal incarnation, epoch and
++ * visibility generation, granted not behind expected, and at an equal
++ * position the same journal hash. Otherwise -ESTALE.
++ */
++int hfs_view_advance_compatible(const struct hfs_json *expected_json, int expected,
++				const struct hfs_json *granted_json, int granted);
 +
 +#endif
 diff --git a/fs/9p/hfs_protocol.c b/fs/9p/hfs_protocol.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_protocol.c
-@@ -0,0 +1,1772 @@
+@@ -0,0 +1,1842 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Bounded canonical retained-9p wire codec. Schema validation is the caller's.
 + */
@@ -1064,6 +1079,56 @@ new file mode 100644
 +	return hfs_mapped_hash(j, cut, "context_hash", digest);
 +}
 +
++int hfs_view_advance_field(const struct hfs_json *json, int request, bool *advance)
++{
++	int field = hfs_json_field(json, request, "advance");
++	int access = hfs_json_field(json, request, "access");
++	int target = hfs_json_field(json, request, "target");
++
++	*advance = false;
++	if (field == -ENOENT)
++		return 0;
++	if (!hfs_json_is(json, field, "true") ||
++	    !hfs_json_is(json, hfs_json_field(json, request, "mode"), "\"READ\"") ||
++	    !hfs_json_is(json, hfs_json_field(json, access, "kind"), "\"DOMAIN\"") ||
++	    !hfs_json_is(json, hfs_json_field(json, target, "kind"), "\"CONTROLLED_LOCAL\""))
++		return -EPROTO;
++	*advance = true;
++	return 0;
++}
++
++int hfs_view_advance_compatible(const struct hfs_json *expected_json, int expected,
++				const struct hfs_json *granted_json, int granted)
++{
++	static const char *const same[] = {
++		"context_hash", "enrollment_hash", "journal_epoch", "journal_incarnation",
++		"profile_hash", "visibility_generation",
++	};
++	int old = hfs_json_field(expected_json, expected, "cut");
++	int cut = hfs_json_field(granted_json, granted, "cut");
++	u64 from, to;
++	u32 i;
++
++	if (!hfs_json_is(expected_json, hfs_json_field(expected_json, expected, "kind"),
++			 "\"CONTROLLED_LOCAL\"") ||
++	    !hfs_json_is(granted_json, hfs_json_field(granted_json, granted, "kind"),
++			 "\"CONTROLLED_LOCAL\"") ||
++	    hfs_json_u64(expected_json, hfs_json_field(expected_json, old, "journal_position"),
++			 &from) ||
++	    hfs_json_u64(granted_json, hfs_json_field(granted_json, cut, "journal_position"), &to))
++		return -ESTALE;
++	for (i = 0; i < ARRAY_SIZE(same); i++)
++		if (!hfs_mapped_equal(expected_json, hfs_json_field(expected_json, old, same[i]),
++				      granted_json, hfs_json_field(granted_json, cut, same[i])))
++			return -ESTALE;
++	if (from < to)
++		return 0;
++	return from == to &&
++	       hfs_mapped_equal(expected_json, hfs_json_field(expected_json, old, "journal_hash"),
++				granted_json, hfs_json_field(granted_json, cut, "journal_hash")) ?
++	       0 : -ESTALE;
++}
++
 +static int hfs_mapped_context(const struct hfs_json *j)
 +{
 +	static const char *const uuids[] = { "cluster",
@@ -1420,6 +1485,37 @@ new file mode 100644
 +	return err;
 +}
 +
++/* A VIEW_ACQUIRE's GRANTED lease against its original request: the same
++ * domain, access and mode, and a nonnull expected target equal to the lease
++ * target (-ESTALE otherwise). xf4: an "advance": true request (only literal
++ * true on a READ DOMAIN acquisition, hfs_view_advance_field, else -EPROTO)
++ * may be granted another target, provided it is AdvanceCompatible with the
++ * expected one. A VIEW_QUERY reply has no original request here (the
++ * bridge does not check it either), so the guest kernel's own classification
++ * (hfs_lease_decode) is its only gate.
++ */
++static int hfs_mapped_acquire_original(const struct hfs_json *original, int request,
++				       const struct hfs_json *response, int lease)
++{
++	static const char *const fields[] = { "domain", "access", "mode" };
++	int expected = hfs_json_field(original, request, "target");
++	int granted = hfs_json_field(response, lease, "target");
++	bool advance;
++	u32 i;
++
++	if (hfs_view_advance_field(original, request, &advance))
++		return -EPROTO;
++	for (i = 0; i < ARRAY_SIZE(fields); i++)
++		if (!hfs_mapped_equal(response, hfs_json_field(response, lease, fields[i]),
++				      original, hfs_json_field(original, request, fields[i])))
++			return -ESTALE;
++	if (hfs_json_is(original, expected, "null") ||
++	    hfs_mapped_equal(response, granted, original, expected))
++		return 0;
++	return advance ? hfs_view_advance_compatible(original, expected, response, granted) :
++		-ESTALE;
++}
++
 +static int hfs_mapped_source(const struct hfs_json *original, const struct hfs_json *response,
 +			     int payload, const struct hfs_json *scope_json, int scope)
 +{
@@ -1491,20 +1587,9 @@ new file mode 100644
 +		if (hfs_mapped_hash(response, lease, "credential_hash", digest))
 +			return -ESTALE;
 +		if (hfs_json_is(original, op, "\"VIEW_ACQUIRE\"")) {
-+			static const char *const fields[] = { "domain", "access", "mode" };
-+			u32 i;
-+
-+			for (i = 0; i < ARRAY_SIZE(fields); i++)
-+				if (!hfs_mapped_equal(
-+					    response, hfs_json_field(response, lease, fields[i]),
-+					    original, hfs_json_field(original, request, fields[i])))
-+					return -ESTALE;
-+			if (!hfs_json_is(original, hfs_json_field(original, request, "target"),
-+					 "null") &&
-+			    !hfs_mapped_equal(response, hfs_json_field(response, lease, "target"),
-+					      original,
-+					      hfs_json_field(original, request, "target")))
-+				return -ESTALE;
++			err = hfs_mapped_acquire_original(original, request, response, lease);
++			if (err)
++				return err;
 +		}
 +		if (hfs_json_is(original, op, "\"VIEW_RENEW\"")) {
 +			static const char *const fields[] = {

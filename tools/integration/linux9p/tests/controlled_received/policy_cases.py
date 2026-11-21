@@ -88,6 +88,32 @@ def cases(fixture):
             base=('acquire-target',original,response(original,lease=lease))
         else:base=bases[0]
         response_mutation('acquire-'+field,base,['lease',field],value)
+    # xf4 (guest-requested view advance): "advance": true sorts after access,
+    # only on a READ DOMAIN acquisition with a CONTROLLED_LOCAL expected
+    # target; the lease may then name another, AdvanceCompatible target (same
+    # enrollment, profile, context, journal incarnation, epoch and visibility
+    # generation, not behind; at an equal position the same journal hash).
+    def cut(**changes):
+        return dict(target,cut=dict(target['cut'],**changes))
+    expected=cut(journal_position=1)
+    def advance_case(name,value,granted,accept,mode='READ',expect=expected):
+        original=copy.deepcopy(acquire);original['payload'].update(target=expect,mode=mode)
+        if value is not None:original['payload']['advance']=value
+        granted_lease=identified(dict(lease,target=granted,mode=mode))
+        add('acquire-advance-'+name,original,response(original,lease=granted_lease),accept)
+    advance_case('moved',True,cut(journal_position=2,state_hash=zero),True)
+    advance_case('same-target',True,expected,True)
+    advance_case('same-position',True,cut(journal_position=1,state_hash=zero),True)
+    advance_case('absent-moved',None,cut(journal_position=2,state_hash=zero),False)
+    advance_case('false',False,expected,False)
+    advance_case('string','true',expected,False)
+    advance_case('dirty-mode',True,expected,False,mode='EXCLUSIVE_DIRTY')
+    advance_case('null-target',True,expected,False,expect=None)
+    advance_case('behind',True,cut(journal_position=0),False)
+    advance_case('journal-hash',True,cut(journal_position=1,journal_hash=zero),False)
+    advance_case('generation',True,cut(journal_position=2,visibility_generation=uid(91)),False)
+    advance_case('epoch',True,cut(journal_position=2,journal_epoch=2),False)
+    advance_case('profile',True,cut(journal_position=2,profile_hash=zero),False)
     for field,value in [('domain',dict(cap,token=zero)),('access',dict(kind='OBJECT',object=cap)),('credential_hash',zero),('mode','EXCLUSIVE_DIRTY'),('target',dict(target,cut=dict(target['cut'],state_hash=zero))),('fence',2),('revision',3),('scope',dict(scope,session=uid(90)))]:
         response_mutation('renew-'+field,bases[1],['lease',field],value)
     for field,value in [('description',dict(description,token=zero)),('offset',4096),('length',2048),('claim_number',dict(number,number=2)),('lease_id',zero),('credentials',dict(credentials,fsuid=1002))]:
