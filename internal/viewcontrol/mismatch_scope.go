@@ -27,16 +27,31 @@ import (
 //     its mappings fault under PAGE leases (see observation_release.go for the
 //     guest-side reasons). It needs nothing from this recall.
 //   - A peer WITH an active observation lease (leaseState.Targeted: every
-//     holder acquired it with expected_target equal to its target) has that
-//     target installed as its view. If that cut holds the same
-//     client-observable state as the current cut (same objects, attributes,
-//     names, tombstones, retired allocations and payload bytes; fsservice
+//     holder acquired it with expected_target equal to its target, or by
+//     advance, task xf4) has that target installed as its view, or, for an
+//     advance holder that has not adopted it yet, a cacheless view at an
+//     older cut under which it serves nothing (see below). If that cut
+//     holds the same client-observable state as the current cut (same
+//     objects, attributes, names, tombstones, retired allocations and
+//     payload bytes; fsservice
 //     ControlledViewSource.ObservableDigest), reinstalling the current cut
 //     changes nothing the peer can see, so stopping it buys nothing either.
 //     An untargeted (discovery or renewed) lease says nothing about the
 //     installed view: in the hfs_mmap_bootstrap loop the view can be older
 //     than the lease target. Any such active peer lease keeps the
 //     all-domain recall.
+//
+// An advance grant (task xf4, advance.go) is Targeted although the holder's
+// installed view is still the older expected cut until its guest adopts the
+// granted target. peerLeasesObservablyCurrent treats it as a view at the
+// lease target all the same, and that stays safe only because of guest
+// obligations of xf4 step B: the guest requested advance only for a view
+// without target-bound cache (no pages, mappings, PAGE grants, dirty pages
+// or reservations, checked under view->lock), it serves nothing under a
+// lease it has not adopted, and a failed adoption hands the lease back
+// unadopted (-EXDEV) without serving from it. So whatever that view's cut,
+// the peer has nothing to show that a reinstall could change, just like an
+// idle peer.
 //
 // Only the peers' state matters, not how the cut moved (task wf4, zq3-r18
 // H1). Until wf4 the scope also required the expected target's cut to be
@@ -94,8 +109,11 @@ import (
 // scoped recall then has nothing to freeze or drain, exactly like the scoped
 // release recall of task 784 (recall_scope.go), whose barrier rules apply
 // unchanged: every cut-changing op of every domain still waits for it, so it
-// installs one stable cut. A requester never goes without a recall: its
-// guest needs the INSTALL_FINAL of the current cut to leave the stale view.
+// installs one stable cut. A requester that did not request advance never
+// goes without a recall: its guest needs the INSTALL_FINAL of the current
+// cut to leave the stale view. An advancing requester whose view is
+// cacheless leaves it by adopting the advance grant instead, under exactly
+// the conditions of this scope (advance.go).
 // The expected cut may be of another journal incarnation, epoch or serving
 // generation (e.g. after a controller reopen) or have an unknown digest: that
 // again concerns only the requester's view, which the scoped recall

@@ -228,7 +228,7 @@ func TestRecallHistoryEvidenceRoundTrip(t *testing.T) {
 	var h recallHistory
 	empty, err := json.Marshal(h.snapshot())
 	must(t, err)
-	if string(empty) != `{"capacity":64,"total":0,"omitted":0,"recalls":[]}` {
+	if string(empty) != `{"capacity":64,"total":0,"advances":0,"omitted":0,"recalls":[]}` {
 		t.Fatalf("empty history %s", empty)
 	}
 	start := time.Date(2026, 11, 20, 1, 2, 3, 4000, time.UTC)

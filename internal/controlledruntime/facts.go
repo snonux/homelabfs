@@ -23,7 +23,9 @@ type Facts struct {
 
 // factsLease is one ledger lease revision. Targeted (viewcontrol
 // leaseState, task je4) marks a lease every holder of which acquired it as
-// an observation of a view installed at its target.
+// an observation: of a view installed at its target, or (task xf4) of a
+// cacheless view granted the target by advance, which serves nothing under
+// the lease until it adopts it. Either way the lease owns no PTE.
 type factsLease struct {
 	Lease    guestbridge.ViewLease
 	Active   bool
@@ -282,7 +284,12 @@ func (l factsLedger) checkRetire(scope guestbridge.Context) error {
 // The host already accepts that guest guarantee for every non-last holder of
 // a DOMAIN lease (task q84). An untargeted (target:null discovery) or
 // renewed DOMAIN lease, and every PAGE, OBJECT or EXCLUSIVE_DIRTY lease,
-// still needs the advanced fence.
+// still needs the advanced fence. A lease granted by guest-requested advance
+// (task xf4, viewcontrol advance.go; its ledger row also carries Advance) is
+// such a Targeted DOMAIN READ lease too. The controller releases it without
+// a recall even when the cut moved past its target, and nothing here
+// compares the target with the current cut: the argument above holds for a
+// DOMAIN lease on any cut, so it needs no separate field or check.
 //
 // Newer leases of the same domain are deliberately not consulted (task g84):
 // each holds its own authority, keeps it after this release, and still needs

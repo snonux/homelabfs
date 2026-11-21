@@ -224,12 +224,21 @@ type ticketState struct {
 // preowned release ticket, so a shared lease has 1+Sharers holders, each owns
 // one reserved release credit, and only the last holder's release recalls
 // (lease_holders.go). Targeted records that every holder's VIEW_ACQUIRE named
-// the granted target as its expected target, i.e. every holder is a guest
-// observation of a view installed at exactly this cut and none is a
-// target:null discovery (task je4, observation_release.go). omitempty keeps
+// an expected target: either the granted target, i.e. a guest observation of
+// a view installed at exactly this cut, or (task xf4) an older cut granted
+// here by advance, i.e. a cacheless guest view that adopts this cut and
+// serves nothing under the lease until it has; none is a target:null
+// discovery (task je4, observation_release.go). omitempty keeps
 // an unshared, untargeted lease's ledger bytes identical to the layout
 // before q84, so schema-2 ledgers open and replay unchanged; a ledger written
 // before je4 has no Targeted lease, so every release there keeps its recall.
+// Advance records that every holder's VIEW_ACQUIRE requested advance (task
+// xf4, advance.go): each is an observation of a cacheless guest view whose
+// next stale observation adopts the current cut by advance rather than by
+// recall, so the last holder's release may skip the recall although the cut
+// moved (observation_release.go). An Advance lease is always Targeted.
+// omitempty keeps every ledger without such a lease byte-identical to the
+// schema-2 layout before xf4; downgrading after advances is unsupported.
 type leaseState struct {
 	ReleaseTicket string
 	ReleaseCredit bool
@@ -237,6 +246,7 @@ type leaseState struct {
 	Active        bool
 	Sharers       int  `json:",omitempty"`
 	Targeted      bool `json:",omitempty"`
+	Advance       bool `json:",omitempty"`
 }
 type reservationState struct {
 	ClosureReply json.RawMessage
@@ -563,12 +573,19 @@ func (c *Controller) remember(source fsservice.ControlledViewSource) error {
 	if _, ok := c.state.Sources[key]; ok {
 		return nil
 	}
-	if len(c.state.Sources) >= c.config.Authorization.Enrollment.Bounds.Sources {
+	if !c.sourceFits(source) {
 		return fsapi.NoSpace
 	}
 	c.state.Sources[key] = source
 	c.observe(source)
 	return nil
+}
+
+// sourceFits reports, without side effects, whether remember can retain
+// source: it is retained already or the Sources bound has room.
+func (c *Controller) sourceFits(source fsservice.ControlledViewSource) bool {
+	_, ok := c.state.Sources[sourceKey(source)]
+	return ok || len(c.state.Sources) < c.config.Authorization.Enrollment.Bounds.Sources
 }
 
 func (c *Controller) rawState() (json.RawMessage, error) { return json.Marshal(c.state) }

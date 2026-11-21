@@ -275,6 +275,33 @@ publishes. The guest's mount-time discovery release relies on its DOMAIN
 lease being unshared and untargeted, so that its release starts a recall. Exact initial PENDING replay remains immutable; QUERY reports the
 current protected terminal outcome.
 
+Guest-requested view advance (task xf4, `internal/viewcontrol/advance.go`,
+design `docs/design/xf4-view-advance.md`). A VIEW_ACQUIRE may carry the
+optional field `advance:true`, only with mode READ, DOMAIN access and a
+nonnull CONTROLLED_LOCAL expected target; `advance:false` and any other use
+are invalid, so every request keeps one encoding, and a request without the
+field is byte-identical to the earlier form. It asserts that the guest's view
+at the expected target holds no target-bound cache (no mmap pages or
+mappings, PAGE grants, dirty pages or reservations) and that the guest adopts
+the current cut if the expectation is stale. The issuer then grants, instead
+of the expected-target recall, an ordinary lease on the current cut when no
+recall runs, the ticket has not started its mismatch recall, the expected and
+current cuts share enrollment, profile, context, journal incarnation, epoch
+and visibility generation with the expected position not ahead (equal
+positions need equal journal hashes), the mismatch recall would be scoped to
+the requester alone (above), and the requester holds no active PAGE or
+OBJECT lease; otherwise the recall path is unchanged. The bridge accepts a
+GRANTED lease target different from the expected one only for such a request
+and only under that same cut condition; the returned target still needs the
+full CheckTarget verification. No fence moves and no peer is affected. The
+guest adopts the target only while its installed target equals the expected
+one at the captured revision and otherwise returns the lease unadopted. A
+lease every holder of which requested advance is released without a recall
+also when the cut moved past its target (the DOMAIN-lease argument above
+never depended on the cut), subject to the same lineage, reservation and
+holder conditions. Replays, retransmits and QUERY return the protected
+GRANTED bytes. Downgrading the issuer after advance grants is unsupported.
+
 ## Operation union and protected result union
 
 Existing1.0 operations persist. VIEW_ACK and VIEW_POLL/event bodies retain their
@@ -284,7 +311,7 @@ Publication is accepted as a1.1 install target.
 
 | New operation | Exact payload fields |
 | --- | --- |
-| VIEW_ACQUIRE | request:Ticket, domain:DOMAIN Cap, access:Access, mode:READ\|EXCLUSIVE_DIRTY, target:Target|null |
+| VIEW_ACQUIRE | request:Ticket, domain:DOMAIN Cap, access:Access, mode:READ\|EXCLUSIVE_DIRTY, target:Target|null, optional advance:true |
 | VIEW_RELEASE, VIEW_RENEW | request:Ticket, lease:Lease |
 | VIEW_QUERY, VIEW_CANCEL | request:Ticket |
 | DIRTY_RESERVE | request:Ticket, lease:Lease, description:DESCRIPTION Cap, offset:size, length:4096, claim_number:ClaimNumber |

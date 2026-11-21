@@ -196,6 +196,9 @@ func validateViewPayload(c Context, op string, v any) error {
 	if !ok {
 		return fsapi.Unsupported
 	}
+	if op == "VIEW_ACQUIRE" {
+		keys = acquireKeys(v, keys) // optional "advance" (task xf4, view_advance.go)
+	}
 	o, e := object(v, keys...)
 	if e != nil || validateTicket(o["request"]) != nil {
 		return fsapi.Invalid
@@ -203,16 +206,7 @@ func validateViewPayload(c Context, op string, v any) error {
 	cred := o["request"].(map[string]any)["credentials"]
 	switch op {
 	case "VIEW_ACQUIRE":
-		if validateScopedCap(c, o["domain"], "DOMAIN") != nil || !oneOf(text(o["mode"]), "READ", "EXCLUSIVE_DIRTY") {
-			return fsapi.Invalid
-		}
-		if e = validateAccess(c, o["access"], text(o["mode"])); e != nil {
-			return e
-		}
-		if o["target"] == nil {
-			return nil
-		}
-		return validateViewTarget(c, o["target"])
+		return validateAcquire(c, o)
 	case "VIEW_RELEASE", "VIEW_RENEW", "DIRTY_RESERVE":
 		if e = validateLease(c, o["lease"]); e != nil {
 			return e
@@ -251,6 +245,28 @@ func validateViewPayload(c Context, op string, v any) error {
 		}
 	}
 	return nil
+}
+
+// validateAcquire checks a VIEW_ACQUIRE payload o with its exact field set:
+// a scoped DOMAIN capability, a mode, an access valid for that mode, the
+// optional advance field (task xf4, view_advance.go) and a nonnull expected
+// target (or null for bootstrap discovery).
+func validateAcquire(c Context, o map[string]any) error {
+	if validateScopedCap(c, o["domain"], "DOMAIN") != nil || !oneOf(text(o["mode"]), "READ", "EXCLUSIVE_DIRTY") {
+		return fsapi.Invalid
+	}
+	if e := validateAccess(c, o["access"], text(o["mode"])); e != nil {
+		return e
+	}
+	if _, present := o["advance"]; present {
+		if e := validateAdvance(o); e != nil {
+			return e
+		}
+	}
+	if o["target"] == nil {
+		return nil
+	}
+	return validateViewTarget(c, o["target"])
 }
 func frozenEntry(r map[string]any, recall, data any, claim map[string]any) (map[string]any, map[string]any) {
 	payload, _ := hexBytes(data)

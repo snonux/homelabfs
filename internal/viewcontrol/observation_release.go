@@ -60,7 +60,9 @@ import (
 //     holder (Sharers == 0; a non-last holder already returns at once);
 //   - Targeted: every holder acquired with expected_target equal to the
 //     granted target, i.e. each is an observation of a view installed at
-//     this cut. A target:null acquisition is the mount's
+//     this cut, or by advance (task xf4), i.e. an observation of a cacheless
+//     view that adopts this cut and serves nothing under the lease before it
+//     does (advance.go). A target:null acquisition is the mount's
 //     hfs_mmap_bootstrap discovery, whose loop needs the recall: when
 //     hfs_view_bind_initial refuses (-ESTALE, view at another cut), only
 //     the recall installs the current cut before it acquires again. A
@@ -78,6 +80,18 @@ import (
 //     current now, where skipping it would make the next observation start
 //     an expected-target recall instead (scoped too unless peer leases or
 //     reservations need the all-domain recall, mismatch_scope.go);
+//     Exception (task xf4, advance.go): for an Advance lease (every holder
+//     requested advance) the cut may have moved. The current-cut condition
+//     is no safety condition: je4's argument above never used it, since a
+//     DOMAIN lease authorizes no PTE whatever cut it names. It only avoided
+//     moving the cost to the next observation, which for a guest that does
+//     not advance would start an expected-target recall instead. An advancing
+//     guest's next observation is granted on the current cut by advance when
+//     advanceGrantable holds, and otherwise falls back to that same
+//     expected-target recall, so skipping the release recall loses nothing.
+//     Without this, every pinning LOOKUP observation (which moves the cut
+//     under its own lease) would still end in a RELEASE recall once the
+//     advance removed the mismatch recalls that used to absorb them;
 //   - the domain has lineage headroom (lineageHeadroom). A lease lineage
 //     includes the credentials (with the process UUID) and the target, so
 //     nearly every guest process opens its own lineage, and its revision
@@ -117,6 +131,9 @@ import (
 func (c *Controller) releaseSkipsRecall(ctx context.Context, old leaseState) bool {
 	if !c.observationReleasable(old) {
 		return false
+	}
+	if old.Advance {
+		return true // the cut need not equal the target (task xf4, see above)
 	}
 	source, err := c.capture(ctx)
 	return err == nil && equal(c.target(old.Lease.Scope, source), old.Lease.Target)

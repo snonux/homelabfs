@@ -108,7 +108,10 @@ view at all: every VFS read first takes its own observation lease on its
 installed view and so hits its own mismatch (and mappings fault under PAGE
 leases; see the je4 section). A peer with an active Targeted observation
 lease (every holder acquired it with expected_target equal to its target)
-has that target installed; if that cut shows the same client-observable
+has that target installed (an advance holder, task xf4, may not have adopted
+it yet, but its view is cacheless and serves nothing under the unadopted
+lease, a guest obligation of xf4 step B, so it shows nothing a reinstall
+could change); if that cut shows the same client-observable
 state as the current cut, reinstalling the current cut changes nothing it
 can see. An untargeted (discovery or renewed) lease says nothing about the
 installed view: in the `hfs_mmap_bootstrap` loop the view can be older than
@@ -221,7 +224,7 @@ scoped recall.
 *Conditions.* The release is RELEASED at once, without a recall and without
 moving the fence, only when: the lease is active, DOMAIN, READ and this is
 its last holder; every holder acquired with expected_target equal to the
-granted target (`leaseState.Targeted`, omitempty; target:null discovery and
+granted target, or by advance (task xf4, below) (`leaseState.Targeted`, omitempty; target:null discovery and
 renewals never qualify, because the `hfs_mmap_bootstrap` loop needs the
 recall to install the current cut when `hfs_view_bind_initial` refuses); no
 renewed sibling of the lineage is active; the domain holds no EXCLUSIVE_DIRTY
@@ -255,6 +258,67 @@ credentials admission before je4 and 0 after it.
 DOMAIN leases rather than measuring it. A release that carries the
 revocation, or an observer-measured observation count, would let Facts check
 it instead. No guest change is needed for the host change to be safe.
+
+Guest-requested view advance (`advance.go`, task xf4 step A after zq3-r18
+R18-1 and zq3-r19 R19-1; design `docs/design/xf4-view-advance.md`). Every
+observation after the guest's own mutation or pinning LOOKUP/OPEN expects a
+cut that is no longer current, so each one cost an expected-target recall
+(5-7 s scoped) and a BLOCKED retry; T1 spent most of its time in them. For a
+guest view without target-bound cache (no mmap pages or mappings, PAGE
+grants, dirty pages or reservations) that recall's whole guest-side effect
+is "target := current cut, revision++".
+
+*Protocol.* VIEW_ACQUIRE may carry `"advance": true` (sorted after
+`access`): "my view at the expected target is cacheless; if it is stale,
+grant on the current cut and I adopt it". Absent, the bytes are exactly the
+old ones; `false` and every use outside a READ DOMAIN acquisition with a
+CONTROLLED_LOCAL expected target are refused by the bridge schema
+(`guestbridge/view_advance.go`). The bridge accepts a GRANTED lease on a
+different target only for an advance request and only when
+`guestbridge.AdvanceCompatible` holds. A new daemon serves old and new
+kernels; a new kernel needs this daemon.
+
+*Grant.* In acquire, before `expectedMismatch`, a stale observation is
+granted an ordinary lease on the cut acquire just captured when: (1) it
+requested advance, READ, DOMAIN, and its ticket has not started its mismatch
+recall (after that recall it stays BLOCKED as before); (2) no recall runs
+(else PENDING, and the readmitted QUERY may then be granted by advance);
+(3) expected and current cut share enrollment, profile, context, journal
+incarnation, epoch and visibility generation, and the expected position is
+not ahead (at an equal position, the same journal hash); (4)
+`mismatchRecallScope` returns the requester, i.e. wf4 would have answered
+with a DOMAIN recall of the requester alone (clean requester, no open
+reservation anywhere, every peer idle or Targeted on an observably current
+cut); (5) the requester holds no active PAGE or OBJECT lease; (6) the grant
+fits every bound (Sources, lease table, control and identity credits,
+Revisions; checked without side effects), since a BLOCKED answer would
+repeat on every retry where the recall's STOP and fence move relieve the
+pressure. Anything else takes the unchanged recall path. The grant is the one a matching expected
+target would get (`grantLease`): Targeted, at the domain's current fence, no
+fence moves, and the peers see exactly what the scoped recall would have
+left them. The guest adopts the target only when its installed target still
+equals the expected one at the captured revision, so nothing stale is served
+and no rollback is possible.
+
+*Advance leases.* `leaseState.Advance` (omitempty, so ledgers without such a
+lease keep their schema-2 bytes; downgrading after advances is unsupported)
+records that every holder requested advance; `shareLease` ANDs it like
+Targeted. The last holder's release of an Advance lease is recall-free even
+when the cut moved (`observation_release.go`): the current-cut condition was
+never a safety condition (a DOMAIN lease authorizes no PTE on any cut), it
+only avoided pushing the cost to the next observation, which for an
+advancing guest is an advance grant instead of a recall. Without it every
+pinning LOOKUP observation would still end in a RELEASE recall. The lineage
+budget and every other je4 condition still apply, and the runtime Facts
+certify the release as for any Targeted DOMAIN READ lease.
+
+*Counter and replay.* OBSERVE reports `controller.recalls.advances`, the
+advance grants since the controller opened (memory only, beside the recall
+history). The replay `TestZQ3AdvanceRemovesExpectedTargetRecalls` (T1
+credentials case body, both mounts, dentry eviction FORGETs and pinning
+LOOKUPs, the creating CALLs meeting a still-queued observation release)
+counts 7 CALL_CONFLICT + 28 EXPECTED_TARGET + 9 RELEASE recalls without
+advance and 7 CALL_CONFLICT recalls with 37 advances with it.
 
 Read-only OPEN (`read_open.go`, task z94 after zq3-r11 R11-1/zq3-r14 R14-1).
 An OPEN with access READ and no create/exclusive/truncate/append flag conflicts
@@ -429,7 +493,8 @@ about 320 KiB plus participant lists (about 160 KiB with three domains).
 `Controller.History` copies the ring under the controller mutex and, outside
 it, keeps the newest records whose complete encoding fits
 `RecallEvidenceBytes` (32 KiB), which the controlled runtime's OBSERVE reports
-as `controller.recalls`. That bounds only the history's share of a reply; an
+as `controller.recalls`, together with `advances`, the count of advance
+grants (task xf4, see above). That bounds only the history's share of a reply; an
 overflow from other sections still takes the documented fallbacks (oversized
 OBSERVE refused, RESTART `EFFECT_UNREPORTABLE`).
 

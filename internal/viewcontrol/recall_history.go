@@ -118,22 +118,29 @@ type RecallRecord struct {
 }
 
 // RecallHistory is the OBSERVE view of the ring: Capacity and Total (recalls
-// started since this controller opened), the newest records oldest first and
-// Omitted, the older ring records left out by RecallEvidenceBytes.
+// started since this controller opened), Advances (VIEW_ACQUIREs granted on
+// a newer cut than their expected target by advance since this controller
+// opened, task xf4: each one an expected-target recall that did not run),
+// the newest records oldest first and Omitted, the older ring records left
+// out by RecallEvidenceBytes.
 type RecallHistory struct {
 	Capacity int            `json:"capacity"`
 	Total    uint64         `json:"total"`
+	Advances uint64         `json:"advances"`
 	Omitted  int            `json:"omitted"`
 	Recalls  []RecallRecord `json:"recalls"`
 }
 
 // recallHistory is the in-memory ring, guarded by Controller.mu. issue holds
 // the duration of the last events() issue until the phase it entered is
-// recorded (issuePhase -> progress).
+// recorded (issuePhase -> progress). advances counts advance grants (acquire,
+// task xf4); like the ring it is diagnostic memory only, so it counts a grant
+// whose admission later failed to save too, and a reopen starts it at 0.
 type recallHistory struct {
-	records []*RecallRecord
-	total   uint64
-	issue   time.Duration
+	records  []*RecallRecord
+	total    uint64
+	advances uint64
+	issue    time.Duration
 }
 
 // clock is the controller's time source: the test clock when set.
@@ -225,7 +232,7 @@ func (h *recallHistory) acked(id string, row RecallAck, at time.Time) {
 // ring. It only copies memory, so History can hold the controller mutex for
 // it and encode the copy after releasing it.
 func (h *recallHistory) copyAll() RecallHistory {
-	out := RecallHistory{Capacity: RecallHistoryLimit, Total: h.total, Recalls: make([]RecallRecord, 0, len(h.records))}
+	out := RecallHistory{Capacity: RecallHistoryLimit, Total: h.total, Advances: h.advances, Recalls: make([]RecallRecord, 0, len(h.records))}
 	for _, r := range h.records {
 		row := *r
 		row.Participants = append([]string{}, r.Participants...)
@@ -242,7 +249,7 @@ func (h *recallHistory) copyAll() RecallHistory {
 // value, so the actual (never longer) encoding stays within the bound.
 func fitEvidence(h RecallHistory) RecallHistory {
 	n := len(h.Recalls)
-	wrapper := RecallHistory{Capacity: h.Capacity, Total: h.Total, Omitted: n, Recalls: []RecallRecord{}}
+	wrapper := RecallHistory{Capacity: h.Capacity, Total: h.Total, Advances: h.Advances, Omitted: n, Recalls: []RecallRecord{}}
 	base, err := json.Marshal(wrapper)
 	if err != nil {
 		h.Omitted, h.Recalls = n, []RecallRecord{}
