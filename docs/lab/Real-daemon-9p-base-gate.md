@@ -63,8 +63,10 @@ and again in zq3-r16 ([record](results/20261120-zq3-r16/README.md)). The r17 dae
 `85900893…` (zq3-r17 candidate `f614d52a…`) passed it in zq3-r17
 ([record](results/20261120-zq3-r17/README.md)). The r18 daemon
 `086d7cde…` (zq3-r18 candidate `b2a4f69e…`) passed it in zq3-r18
-([record](results/20261121-zq3-r18/README.md)). The current r19 daemon
-`bb4ad73c…` (zq3-r19 candidate `09acd09d…`) is new bytes and has not been
+([record](results/20261121-zq3-r18/README.md)). The r19 daemon
+`bb4ad73c…` (zq3-r19 candidate `09acd09d…`) passed it in zq3-r19
+([record](results/20261121-zq3-r19/README.md)). The current r20 daemon
+`c04c519f…` (zq3-r20 candidate `b37bcb06…`) is new bytes and has not been
 checked yet; every run repeats the check. f3-host descriptor execution still awaits the
 approved zq3 fdescfs window. The old candidate remains unchanged.
 The local preparation controller refuses the quarantined exact manifest before
@@ -175,12 +177,24 @@ SSH credential is distinct from operator/host/guest Ed25519 receipt signers.
 
 ## Exact installation plan inputs
 
-The current xz3 candidate (r19 rebuild for zq3-r19, 2026-11-21) is retained at
-`/home/paul/tmp/claude/hfs-xz3-20261121-r19/package`, manifest SHA256
-`09acd09d66934073e0165a60ac0094e280889cc7204d95061df27072d7de70a5`, assembled from source checkout
-and repository baseline `e160370`; see its
-[evidence](../../tools/integration/artifacts/evidence/xz3-20261121-r19/README.md).
-The guest kernel was rebuilt for vf4 (`hfs_setattr` accepts the
+The current xz3 candidate (r20 rebuild for zq3-r20, 2026-11-22) is retained at
+`/home/paul/tmp/claude/hfs-xz3-20261122-r20/package`, manifest SHA256
+`b37bcb06171fbfdf9a2b2cd3ba40711724adf07925c9a3ac167f936fa544fdec`, assembled from source checkout
+and repository baseline `d71ae02`; see its
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261122-r20/README.md).
+The guest kernel was rebuilt for 1h4 (a BLOCKED for the expected target is re-checked after a reinstall, and a busy local retirement round is waited for instead of being counted against the re4 retry cap; zq3-r19 R19-1) and 4h4 (xf4 step B: a cacheless observation asks for an advance and adopts the host's current target under a bounded re-check, else releases the grant unadopted, `-EXDEV`): `bzImage` `2b8880a8…`, `vmlinux`
+`3d3a9424…`, GNU build ID `b4d6cd69…`, `System.map` `c726e252…`, `config`
+`28fe4a8e…` unchanged; two builds at the same O path were identical, the
+five modules came out byte-identical, and `Module.symvers` changed only in
+nine hfs export CRCs. The CGO daemon was rebuilt for 3h4 (xf4 step A: a `VIEW_ACQUIRE` with `advance: true` gets a targeted DOMAIN READ lease on the current cut instead of a recall when wf4 would scope the recall to the requester, capacity fits and the requester is clean): `c04c519f…`, GNU
+build ID `42f2732a…`; two forced builds and the window build gave the same
+bytes, and the window artifacts were rebuilt with it
+(`controlledruntime.test` `1b7e68d8…`, `fdescfs-namespace` `edae7dc3…`).
+The pc4 native exporter `2fd7e32f…` and its r17 f3 build records were
+reused byte for byte again. The r19 rebuild for zq3-r19 (`09acd09d…`,
+source and repository baseline `e160370`;
+[evidence](../../tools/integration/artifacts/evidence/xz3-20261121-r19/README.md))
+is now refused as superseded. In r19 the guest kernel was rebuilt for vf4 (`hfs_setattr` accepts the
 `ATTR_KILL_*` bits every chown/fchown of a regular file carries, so fchown
 no longer fails with `EOPNOTSUPP`, zq3-r18 R18-1; dentry ops are set once;
 link and the create EEXIST path `d_drop` before the re-lookup): `bzImage`
@@ -196,7 +210,7 @@ rebuilt with it (`controlledruntime.test` `408cdafd…`, `fdescfs-namespace`
 records were reused byte for byte again. The r18 rebuild for zq3-r18
 (`b2a4f69e…`, source and repository baseline `633509e`;
 [evidence](../../tools/integration/artifacts/evidence/xz3-20261121-r18/README.md))
-is now refused as superseded. In r18 the guest kernel was rebuilt for 2f4 (a verified GRANTED VIEW_QUERY reply
+was refused as superseded then. In r18 the guest kernel was rebuilt for 2f4 (a verified GRANTED VIEW_QUERY reply
 that is not yet current waits for the REOPENED ACK's fence raise and is
 queried again instead of blocking the session; passed grants are decoded
 unadopted and only released; zq3-r17 R17-1): `bzImage` `f04c03e0…`,
@@ -402,7 +416,7 @@ footprints in the independent global preparation budget. Swap is telemetry.
 
 ## Staged critical-window proposal
 
-The concrete phased proposal for one disposable run with candidate `09acd09d…`,
+The concrete phased proposal for one disposable run with candidate `b37bcb06…`,
 including the remaining implementation gaps and Paul's decisions, is
 [zq3-run-plan.md](zq3-run-plan.md) ([plain-language summary](zq3-plan-summary.md)).
 The guest probe now retains each successful payload until an authenticated

@@ -13,12 +13,13 @@ qualified corrected artifacts. Existing offline build proofs remain preserved;
 neither a successful old metadata admission nor a different digest establishes
 native eligibility. These preparation commands never grant deployment eligibility.
 
-**The controller pins exactly one candidate:** the xz3 r19 rebuild for
-zq3-r19 (2026-11-21), manifest `09acd09d66934073e0165a60ac0094e280889cc7204d95061df27072d7de70a5`
-(source and repository baseline `e160370`; see its
-[evidence](../../integration/artifacts/evidence/xz3-20261121-r19/README.md)).
+**The controller pins exactly one candidate:** the xz3 r20 rebuild for
+zq3-r20 (2026-11-22), manifest `b37bcb06171fbfdf9a2b2cd3ba40711724adf07925c9a3ac167f936fa544fdec`
+(source and repository baseline `d71ae02`; see its
+[evidence](../../integration/artifacts/evidence/xz3-20261122-r20/README.md)).
 The kernel and the daemon were rebuilt; the exporter is reused. The kernel
-(build ID `e3d474df…`, c64 recipe, so SELinux is an active LSM) adds vf4
+(build ID `b4d6cd69…`, c64 recipe, so SELinux is an active LSM) adds 1h4 (a BLOCKED for the expected target is re-checked after a reinstall, and a busy local retirement round is waited for instead of being counted against the re4 retry cap; zq3-r19 R19-1) and
+4h4 (xf4 step B: a cacheless observation asks for an advance and adopts the host's current target under a bounded re-check, else releases the grant unadopted, `-EXDEV`) to the r19 kernel `e3d474df…`, which added vf4
 (`hfs_setattr` accepts the `ATTR_KILL_*` bits every chown/fchown of a
 regular file carries; dentry ops set once; link and create-EEXIST `d_drop`
 before the re-lookup; zq3-r18 R18-1) to the r18 kernel `020acb2e…`, which
@@ -27,7 +28,8 @@ verified GRANTED VIEW_QUERY reply that is not yet current waits for the
 REOPENED ACK's fence raise and is queried again instead of blocking the
 session; passed grants are decoded unadopted and only released; zq3-r17
 R17-1) to the r17 kernel `360fbc6d…`, which added re4 (a host BLOCKED observation VIEW_ACQUIRE releases the held lease and retries only after retirement progress, at most 3 retries and 4 tickets per syscall; refused retirements are re-sent; zq3-r16 R16-1) to the r16 kernel `7a5bb8dc…`, which added ie4 (an observation whose view a recall moved during VIEW_ACQUIRE acquires again instead of failing `-ESTALE`; GETATTR and LOOKUP re-issue on a moved target; zq3-r15 R15-1) to the xd4
-kernel `9b167690…`. The daemon `bb4ad73c…` adds wf4 (an expected-target
+kernel `9b167690…`. The daemon `c04c519f…` adds 3h4 (xf4 step A: a `VIEW_ACQUIRE` with `advance: true` gets a targeted DOMAIN READ lease on the current cut instead of a recall when wf4 would scope the recall to the requester, capacity fits and the requester is clean) to the r19 daemon
+`bb4ad73c…`, which added wf4 (an expected-target
 recall is scoped to the requesting domain when no peer holds a lease or an
 open reservation) to the r18 daemon `086d7cde…`, which added je4 (the last holder's
 release of a clean targeted DOMAIN READ observation lease answers RELEASED
@@ -40,7 +42,7 @@ like a read, and the volume root's lifetime journals no pins, so a guest
 root OPEN starts no recall; zq3-r14 R14-1, zq3-r11 R11-1) to the xc4
 daemon; the new daemon bytes still need the f3 observer check. The native
 exporter is the r17 f3 build under the 7e4 guard recipe, which reproduced
-the xd4 build `2fd7e32f…` byte for byte; r18 and r19 reuse it with its records. The xd4 kernel adds oc4 (the guest maps the exporter's ERROR reason to an errno, RETIRED_CELL `-ESTALE` and the new UNAVAILABLE `-EHOSTDOWN`, and logs it; retries and polls stop once the session is blocked or its transport failed, with an explicit teardown exemption; the 9p reply wait is bounded to 30 s, so an unmount after the host is gone waits at most one deadline; zq3-r13 R13-1, zq3-r12 R12-1 guest side) to the 5a4 kernel, which added 1a4
+the xd4 build `2fd7e32f…` byte for byte; r18, r19 and r20 reuse it with its records. The xd4 kernel adds oc4 (the guest maps the exporter's ERROR reason to an errno, RETIRED_CELL `-ESTALE` and the new UNAVAILABLE `-EHOSTDOWN`, and logs it; retries and polls stop once the session is blocked or its transport failed, with an explicit teardown exemption; the 9p reply wait is bounded to 30 s, so an unmount after the host is gone waits at most one deadline; zq3-r13 R13-1, zq3-r12 R12-1 guest side) to the 5a4 kernel, which added 1a4
 (`hfs_view_enter` waits at most 30 s, then fails `-ETIMEDOUT`, so a wedged
 recall no longer holds stat and `umount` in D, zq3-r11 R11-2; final mmap
 faults get SIGBUS; the view-worker stop log names session, phase and status)
@@ -764,7 +766,7 @@ depmod, dracut, systemctl and GRUB's one-shot consumption at boot). Every
 Rocky-side command still needs Paul's explicit A3 approval of the filled plan.
 
 1. Workstation, Phase 0:
-   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 09acd09d… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
+   `python3 -I -B rocky_kernel.py plan --package DIR --manifest-sha256 b37bcb06… --run-id zq3-r1 --stock-default-kernel /boot/vmlinuz-<Phase 1 default> --output /private/new-plan.json`.
    It refuses any manifest other than the pinned candidate, checks every
    Linux file's size and SHA256 against the manifest and the installation
    proposal, requires `modules.order` to name exactly the manifest's modules,

@@ -1,5 +1,15 @@
 # xz3 r19 rebuild (2026-11-21): zq3-r18 setattr kill-bit fix
 
+**Superseded on 2026-11-22** by the [r20 rebuild](../xz3-20261122-r20/README.md)
+(`b37bcb06…`, source `d71ae02`) for zq3-r20. Its vf4 guest kernel
+`e3d474df…` counted a busy local retirement round against the re4 BLOCKED
+retry cap, so a BLOCKED for the expected target gave up with `EAGAIN`
+(zq3-r19 R19-1, fixed by 1h4). r20 rebuilt the kernel (1h4, 4h4) and the
+daemon (3h4) with the window artifacts, and reused the r17 native exporter
+and its f3 records byte for byte again. The tooling refuses this manifest
+as superseded. It still passes `package.py check` and `admit.py` under the
+`d71ae02` tooling.
+
 This candidate supersedes the [r18 rebuild](../xz3-20261121-r18/README.md)
 (`b2a4f69e…`, source `633509e`). In zq3-r18 (R18-1) T1 admitted both mounts
 in 7 s for the first time, then failed on its first directory: every

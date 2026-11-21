@@ -1,0 +1,755 @@
+{
+  "abi_negative_stdout": [
+    "actual module release/CRC/config mismatch controls refused; no runtime claim"
+  ],
+  "compare_kernel_record": {
+    "booted": false,
+    "equal_actual_abi": {
+      "booted": false,
+      "config_sha256": "28fe4a8ec759cfa7ecfdc373753082ec6981ecdffc6a25e074b6fac048906282",
+      "installed": false,
+      "kernel_identity": {
+        "gnu_build_id": "b4d6cd69c788e11a050036b958d5bf04f32d2f64",
+        "go_build_id": null,
+        "machine": 62,
+        "osabi": 0,
+        "type": 2
+      },
+      "modules": {
+        "drivers/net/net_failover.ko": {
+          "depends": "failover",
+          "identity": {
+            "gnu_build_id": "3255e434a34a125cd9251bebddaaf6bdf98c68bb",
+            "go_build_id": null,
+            "machine": 62,
+            "osabi": 0,
+            "type": 1
+          },
+          "imports": {
+            "__dev_kfree_skb_any": "0x455ec2f3",
+            "__dev_queue_xmit": "0xb7d0db47",
+            "__ethtool_get_link_ksettings": "0xcf3193fb",
+            "__local_bh_enable_ip": "0x3c3fce39",
+            "__preempt_count": "0x4629334c",
+            "_dev_err": "0xbd537f2d",
+            "_raw_spin_lock": "0xba8fbd64",
+            "_raw_spin_unlock_bh": "0xe46021ca",
+            "alloc_etherdev_mqs": "0x396e743d",
+            "call_netdevice_notifiers": "0xe8851fbb",
+            "cpu_number": "0x7a2af7b4",
+            "dev_addr_mod": "0x0c21d2e7",
+            "dev_close": "0xfc9d49fd",
+            "dev_get_stats": "0x65ad06e2",
+            "dev_mc_sync_multiple": "0x66508468",
+            "dev_mc_unsync": "0x79dbfb01",
+            "dev_open": "0xbfad6757",
+            "dev_set_mtu": "0x59ab1827",
+            "dev_uc_sync_multiple": "0xe00cb71c",
+            "dev_uc_unsync": "0x6b1fb1ca",
+            "eth_validate_addr": "0x6b3f1eb5",
+            "ethtool_op_get_link": "0xb346de96",
+            "failover_register": "0xfad08269",
+            "failover_slave_unregister": "0x9e2a0199",
+            "failover_unregister": "0x75742b5c",
+            "free_netdev": "0xa477327c",
+            "jiffies": "0x15ba50a6",
+            "module_layout": "0xb1132f08",
+            "netdev_change_features": "0xbf5b90a4",
+            "netdev_core_stats_alloc": "0x689d0e9f",
+            "netdev_err": "0xddbaeb33",
+            "netdev_increment_features": "0x69668826",
+            "netdev_info": "0x5c75b990",
+            "netdev_lower_state_changed": "0xb783d01a",
+            "netdev_pick_tx": "0xf4037ae3",
+            "netif_carrier_off": "0x38937d21",
+            "netif_carrier_on": "0xc54c8a2f",
+            "netif_device_detach": "0x62827bce",
+            "netif_tx_stop_all_queues": "0x94e796b5",
+            "netif_tx_wake_queue": "0x73ae80be",
+            "passthru_features_check": "0x969b0533",
+            "pci_bus_type": "0xc5d58e89",
+            "register_netdev": "0x579d3b64",
+            "rtnl_lock": "0xc7a4fbed",
+            "rtnl_unlock": "0x6e720ff2",
+            "strscpy": "0xdd64e639",
+            "unregister_netdev": "0xdcd98eca",
+            "unregister_netdevice_queue": "0x4471aa42"
+          },
+          "name": "net_failover",
+          "vermagic": "6.1.190-hfs-xz3 SMP mod_unload modversions "
+        },
+        "drivers/net/virtio_net.ko": {
+          "depends": "net_failover",
+          "identity": {
+            "gnu_build_id": "072995182e1a95b83cf3ec794649ce05adf8a59d",
+            "go_build_id": null,
+            "machine": 62,
+            "osabi": 0,
+            "type": 1
+          },
+          "imports": {
+            "__SCK__tp_func_xdp_exception": "0x344ca61b",
+            "__SCT__tp_func_xdp_exception": "0x8fa9d9e8",
+            "__alloc_pages": "0xf011bc79",
+            "__alloc_skb": "0x6a733657",
+            "__cond_resched": "0x0800473f",
+            "__cpu_online_mask": "0x921b07b1",
+            "__cpuhp_remove_state": "0x6cb3c332",
+            "__cpuhp_setup_state": "0xfe37522d",
+            "__cpuhp_state_add_instance": "0xc08f755f",
+            "__cpuhp_state_remove_instance": "0x03c36d72",
+            "__dev_kfree_skb_any": "0x455ec2f3",
+            "__folio_put": "0x05f3b938",
+            "__free_pages": "0x8adddd04",
+            "__kmalloc": "0xeb233a45",
+            "__local_bh_enable_ip": "0x3c3fce39",
+            "__napi_alloc_skb": "0xced7dfc3",
+            "__napi_schedule": "0x9bb8a28e",
+            "__netif_napi_del": "0x58ce2151",
+            "__netif_set_xps_queue": "0x713edaf1",
+            "__num_online_cpus": "0xc60d0620",
+            "__preempt_count": "0x4629334c",
+            "__pskb_pull_tail": "0x373edebc",
+            "__skb_flow_dissect": "0xc5cf553e",
+            "__tracepoint_xdp_exception": "0x6ca3a2d1",
+            "__xdp_rxq_info_reg": "0x3936a3e1",
+            "_dev_err": "0xbd537f2d",
+            "_dev_info": "0xccb8efb7",
+            "_dev_warn": "0xcf43d593",
+            "_find_first_bit": "0x8810754a",
+            "_printk": "0x92997ed8",
+            "_raw_spin_lock": "0xba8fbd64",
+            "_raw_spin_lock_bh": "0x0c3690fc",
+            "_raw_spin_trylock": "0xfef216eb",
+            "_raw_spin_unlock_bh": "0xe46021ca",
+            "alloc_etherdev_mqs": "0x396e743d",
+            "bpf_master_redirect_enabled_key": "0xeee5fe32",
+            "bpf_redirect_info": "0xc1d2dd55",
+            "bpf_stats_enabled_key": "0xf348ff41",
+            "bpf_warn_invalid_xdp_action": "0x525dea38",
+            "build_skb": "0xaf26ee17",
+            "cancel_delayed_work_sync": "0x9fa7184a",
+            "consume_skb": "0xde5d3068",
+            "cpu_number": "0x7a2af7b4",
+            "cpumask_next_wrap": "0x423d4496",
+            "cpus_read_lock": "0xa04f945a",
+            "cpus_read_unlock": "0x18fb2caf",
+            "delayed_work_timer_fn": "0xffeedf6a",
+            "dev_addr_mod": "0x0c21d2e7",
+            "do_trace_netlink_extack": "0xe6d2458e",
+            "dst_release": "0x131fb35f",
+            "eth_commit_mac_addr_change": "0x02c2ea08",
+            "eth_prepare_mac_addr_change": "0x5bd0b45f",
+            "eth_type_trans": "0x81933a8b",
+            "eth_validate_addr": "0x6b3f1eb5",
+            "ethtool_op_get_link": "0xb346de96",
+            "ethtool_op_get_ts_info": "0x35d53e1c",
+            "ethtool_sprintf": "0x5338184f",
+            "ethtool_virtdev_set_link_ksettings": "0x496adacd",
+            "flow_keys_basic_dissector": "0xb3707e6e",
+            "flush_work": "0x2f2c95c4",
+            "free_netdev": "0xa477327c",
+            "get_random_bytes": "0x41ed3709",
+            "init_timer_key": "0xc6f46339",
+            "jiffies": "0x15ba50a6",
+            "jiffies_to_usecs": "0x7f24de73",
+            "kfree": "0x037a0cba",
+            "kmalloc_caches": "0x996332f4",
+            "kmalloc_trace": "0xdab8238c",
+            "kmemdup": "0x66b4cc41",
+            "mem_section": "0x74c5584b",
+            "memcpy": "0x69acdf38",
+            "memset": "0xfb578fc5",
+            "module_layout": "0xb1132f08",
+            "napi_complete_done": "0x26279442",
+            "napi_consume_skb": "0x8a635dfc",
+            "napi_disable": "0x68cc12c9",
+            "napi_enable": "0x5d943326",
+            "napi_gro_receive": "0xa2a8790b",
+            "napi_schedule_prep": "0xa489639a",
+            "net_failover_create": "0x319f90d2",
+            "net_failover_destroy": "0xe68d91a5",
+            "net_ratelimit": "0xf6ebc03b",
+            "netdev_err": "0xddbaeb33",
+            "netdev_notify_peers": "0x1f56a440",
+            "netdev_printk": "0x994a4e83",
+            "netdev_rss_key_fill": "0x467df16d",
+            "netdev_warn": "0x06ba2313",
+            "netif_carrier_off": "0x38937d21",
+            "netif_carrier_on": "0xc54c8a2f",
+            "netif_napi_add_weight": "0x0fc43a61",
+            "netif_set_real_num_rx_queues": "0x3eb77296",
+            "netif_set_real_num_tx_queues": "0xa92bc73b",
+            "netif_tx_stop_all_queues": "0x94e796b5",
+            "netif_tx_wake_queue": "0x73ae80be",
+            "nr_cpu_ids": "0x017de3d5",
+            "page_offset_base": "0x7cd8d75e",
+            "param_ops_bool": "0x2f74595c",
+            "param_ops_int": "0x14d0802d",
+            "passthru_features_check": "0x969b0533",
+            "phys_base": "0x4c9d28b0",
+            "queue_delayed_work_on": "0xb2fcb56d",
+            "queue_work_on": "0xc5b6f236",
+            "register_netdevice": "0x5ec79655",
+            "register_virtio_driver": "0x9c474cae",
+            "rtnl_lock": "0xc7a4fbed",
+            "rtnl_unlock": "0x6e720ff2",
+            "sched_clock": "0x3a26ed11",
+            "sg_init_one": "0xb320cc0e",
+            "sg_init_table": "0xf888ca21",
+            "skb_add_rx_frag": "0x70de6a48",
+            "skb_coalesce_rx_frag": "0x8a029799",
+            "skb_page_frag_refill": "0x5105b99e",
+            "skb_partial_csum_set": "0x0527f711",
+            "skb_put": "0xb2f6534e",
+            "skb_to_sgvec": "0x88449ce6",
+            "skb_tstamp_tx": "0x188bbe49",
+            "snprintf": "0x656e4a6e",
+            "softnet_data": "0xe65d3d5b",
+            "sprintf": "0x3c3ff9fd",
+            "strscpy": "0xdd64e639",
+            "synchronize_net": "0x609f1c7e",
+            "system_wq": "0x2d3385d3",
+            "this_cpu_off": "0x53569707",
+            "unregister_netdev": "0xdcd98eca",
+            "unregister_virtio_driver": "0xd5da43dc",
+            "virtio_check_driver_offered_feature": "0x04b7ff4e",
+            "virtio_reset_device": "0xd192ab26",
+            "virtqueue_add_inbuf": "0xbbc8ce39",
+            "virtqueue_add_inbuf_ctx": "0x71016c21",
+            "virtqueue_add_outbuf": "0x58e8a7d9",
+            "virtqueue_add_sgs": "0x496fa8ff",
+            "virtqueue_detach_unused_buf": "0x891b6fbe",
+            "virtqueue_disable_cb": "0x5ba63935",
+            "virtqueue_enable_cb_delayed": "0x8bec01a8",
+            "virtqueue_enable_cb_prepare": "0x564ed8a7",
+            "virtqueue_get_buf": "0xbdd289cb",
+            "virtqueue_get_buf_ctx": "0xdcedece6",
+            "virtqueue_get_vring_size": "0x4b3c65d3",
+            "virtqueue_is_broken": "0xe48290db",
+            "virtqueue_kick": "0x550c9fcc",
+            "virtqueue_kick_prepare": "0xe252df6e",
+            "virtqueue_notify": "0x8719cc7d",
+            "virtqueue_poll": "0x464287b0",
+            "virtqueue_resize": "0x651ebbc4",
+            "xdp_convert_zc_to_xdp_frame": "0xd9fa9616",
+            "xdp_do_flush": "0xb9681621",
+            "xdp_do_redirect": "0xa4b4d80d",
+            "xdp_master_redirect": "0x10f46d9c",
+            "xdp_return_frame": "0x230b3b5c",
+            "xdp_return_frame_rx_napi": "0x49ed7ae8",
+            "xdp_rxq_info_reg_mem_model": "0x1e53a9c3",
+            "xdp_rxq_info_unreg": "0x902a9e37",
+            "xdp_warn": "0xbb7195a5"
+          },
+          "name": "virtio_net",
+          "vermagic": "6.1.190-hfs-xz3 SMP mod_unload modversions "
+        },
+        "drivers/thermal/intel/x86_pkg_temp_thermal.ko": {
+          "depends": "",
+          "identity": {
+            "gnu_build_id": "da295c7cb8ec345542f4ad350ebe6b4ab30ce306",
+            "go_build_id": null,
+            "machine": 62,
+            "osabi": 0,
+            "type": 1
+          },
+          "imports": {
+            "__cpuhp_remove_state": "0x6cb3c332",
+            "__cpuhp_setup_state": "0xfe37522d",
+            "__kmalloc": "0xeb233a45",
+            "__max_die_per_package": "0x1389619c",
+            "__max_logical_packages": "0x39081193",
+            "__msecs_to_jiffies": "0x7f02188f",
+            "__per_cpu_offset": "0x341dbfa3",
+            "__tracepoint_read_msr": "0x59beac3e",
+            "__tracepoint_write_msr": "0xf56eb5a5",
+            "_find_next_bit": "0x53a1e8d9",
+            "_raw_spin_lock_irq": "0x8427cc7b",
+            "_raw_spin_lock_irqsave": "0x34db050b",
+            "_raw_spin_unlock_irqrestore": "0xd35cce70",
+            "cancel_delayed_work_sync": "0x9fa7184a",
+            "cpu_info": "0x99f6383f",
+            "cpu_number": "0x7a2af7b4",
+            "delayed_work_timer_fn": "0xffeedf6a",
+            "do_trace_read_msr": "0x39e3c030",
+            "do_trace_write_msr": "0x25db1577",
+            "init_timer_key": "0xc6f46339",
+            "kfree": "0x037a0cba",
+            "kmalloc_caches": "0x996332f4",
+            "kmalloc_trace": "0xdab8238c",
+            "module_layout": "0xb1132f08",
+            "mutex_lock": "0x4dfa8d4b",
+            "mutex_unlock": "0x3213f038",
+            "nr_cpu_ids": "0x017de3d5",
+            "param_ops_int": "0x14d0802d",
+            "platform_thermal_package_notify": "0x90de0452",
+            "platform_thermal_package_rate_control": "0x8a7cb9c4",
+            "queue_delayed_work_on": "0xb2fcb56d",
+            "rdmsr_on_cpu": "0x20ba4f3e",
+            "rdmsr_safe_on_cpu": "0xf80be44e",
+            "system_wq": "0x2d3385d3",
+            "thermal_zone_device_enable": "0x0468bf60",
+            "thermal_zone_device_register": "0x80954b79",
+            "thermal_zone_device_unregister": "0x5a84741e",
+            "thermal_zone_device_update": "0xe5b392a5",
+            "wrmsr_on_cpu": "0x023d1b90",
+            "x86_match_cpu": "0x66283031"
+          },
+          "name": "x86_pkg_temp_thermal",
+          "vermagic": "6.1.190-hfs-xz3 SMP mod_unload modversions "
+        },
+        "fs/efivarfs/efivarfs.ko": {
+          "depends": "",
+          "identity": {
+            "gnu_build_id": "c7dca1ae388661db98a1b00f73a39cc2c2d88539",
+            "go_build_id": null,
+            "machine": 62,
+            "osabi": 0,
+            "type": 1
+          },
+          "imports": {
+            "___ratelimit": "0x1d24c881",
+            "__kmalloc": "0xeb233a45",
+            "_copy_from_user": "0x13c49cc2",
+            "_ctype": "0x11089ac7",
+            "_printk": "0x92997ed8",
+            "_raw_spin_lock": "0xba8fbd64",
+            "always_delete_dentry": "0xc27a9b3c",
+            "clear_inode": "0x19bac4ad",
+            "current_time": "0x41f6d88f",
+            "d_add": "0xf2572cc8",
+            "d_alloc": "0x793fe3f1",
+            "d_delete": "0x6c5586bd",
+            "d_instantiate": "0xda4d90fa",
+            "d_make_root": "0xe03892ce",
+            "down_write": "0x57bc19d2",
+            "dput": "0x60378146",
+            "drop_nlink": "0x60581691",
+            "efi": "0x1f1821ae",
+            "efi_status_to_err": "0xdceb5362",
+            "efivar_get_next_variable": "0xa336852c",
+            "efivar_get_variable": "0x5a3c9dbb",
+            "efivar_lock": "0x2303b915",
+            "efivar_query_variable_info": "0xee5240dc",
+            "efivar_reserved_space": "0x1f6cd584",
+            "efivar_set_variable_locked": "0xefc77711",
+            "efivar_supports_writes": "0x18615d35",
+            "efivar_unlock": "0xc961bff7",
+            "efivars_kobject": "0x4b2af9cf",
+            "fileattr_fill_flags": "0x9c86b9ab",
+            "generic_delete_inode": "0xa9515794",
+            "get_next_ino": "0xe953b21f",
+            "get_tree_single": "0xbfbe9dbe",
+            "guid_parse": "0xb89b6e6b",
+            "hex_to_bin": "0xab6d5b3b",
+            "inc_nlink": "0x07ce1443",
+            "inode_set_flags": "0x0982c751",
+            "iput": "0x4db7be9f",
+            "kfree": "0x037a0cba",
+            "kill_litter_super": "0x15cff25d",
+            "kmalloc_caches": "0x996332f4",
+            "kmalloc_trace": "0xdab8238c",
+            "lockref_get": "0xd9b85ef6",
+            "memcmp": "0x449ad0a7",
+            "memcpy": "0x69acdf38",
+            "memdup_user": "0x9291cd3b",
+            "module_layout": "0xb1132f08",
+            "msleep": "0xf9a482f9",
+            "new_inode": "0xf7692a92",
+            "register_filesystem": "0xe8fbe9a6",
+            "simple_dir_operations": "0x94d5009a",
+            "simple_lookup": "0x87aabcdf",
+            "simple_open": "0xbc6a68fe",
+            "simple_read_from_buffer": "0x619cb7dd",
+            "sprintf": "0x3c3ff9fd",
+            "strlen": "0x754d539c",
+            "strncasecmp": "0x96b29254",
+            "strreplace": "0x7410aba2",
+            "ucs2_as_utf8": "0x4336fcca",
+            "ucs2_strnlen": "0x06bd88b5",
+            "ucs2_strsize": "0xd1363cc1",
+            "ucs2_utf8size": "0x465e24ff",
+            "unregister_filesystem": "0x07f402fd",
+            "up_write": "0xce807a25",
+            "uuid_is_valid": "0x8caf9305"
+          },
+          "name": "efivarfs",
+          "vermagic": "6.1.190-hfs-xz3 SMP mod_unload modversions "
+        },
+        "net/core/failover.ko": {
+          "depends": "",
+          "identity": {
+            "gnu_build_id": "3b9f54841993c81600f6794137822622987c4f9d",
+            "go_build_id": null,
+            "machine": 62,
+            "osabi": 0,
+            "type": 1
+          },
+          "imports": {
+            "__warn_printk": "0x56470118",
+            "_raw_spin_lock": "0xba8fbd64",
+            "kfree": "0x037a0cba",
+            "kmalloc_caches": "0x996332f4",
+            "kmalloc_trace": "0xdab8238c",
+            "module_layout": "0xb1132f08",
+            "netdev_err": "0xddbaeb33",
+            "netdev_info": "0x5c75b990",
+            "netdev_master_upper_dev_link": "0xd158266d",
+            "netdev_rx_handler_register": "0xbcad14fa",
+            "netdev_rx_handler_unregister": "0x1bdea215",
+            "netdev_upper_dev_unlink": "0x676b6b73",
+            "register_netdevice_notifier": "0xd2da1048",
+            "rtnl_is_locked": "0x85670f1d",
+            "rtnl_lock": "0xc7a4fbed",
+            "rtnl_unlock": "0x6e720ff2",
+            "unregister_netdevice_notifier": "0x9d0d6206"
+          },
+          "name": "failover",
+          "vermagic": "6.1.190-hfs-xz3 SMP mod_unload modversions "
+        }
+      },
+      "release": "6.1.190-hfs-xz3",
+      "symvers_sha256": "d7df3acbe13a4871f56b1eeafe9f790175c6d01cd28ea5dc43a2ebc01162576f",
+      "version": "homelabfs-kernel-module-abi/1"
+    },
+    "equal_actual_artifacts": {
+      "linux/Module.symvers": "d7df3acbe13a4871f56b1eeafe9f790175c6d01cd28ea5dc43a2ebc01162576f",
+      "linux/System.map": "c726e252f8fa52695f055f83d00f8fd2640a49f4802183585be868e6eaccbcca",
+      "linux/bzImage": "2b8880a8a69be42b938043bff6f02c5c710e41b312ad0523bd81eda962f64205",
+      "linux/config": "28fe4a8ec759cfa7ecfdc373753082ec6981ecdffc6a25e074b6fac048906282",
+      "linux/modules.builtin": "1f33442939e7faf978dc707cb69f99015328b39b3125cea6d6de25715f8bebf1",
+      "linux/modules.builtin.modinfo": "c53973bb5c4498e6fc6e61d0143353782a5628374b2b00624f422ed6f2236cf2",
+      "linux/modules.order": "f820618416411197b17fe7795d067e9687d905c487bffb207589bec3c173019a",
+      "linux/modules/drivers/net/net_failover.ko": "cc9755c71cc1d0776f5efd61198b1ebe99741cff877104879b8658db469f9143",
+      "linux/modules/drivers/net/virtio_net.ko": "39de7e933fa325b2c6b576004213f34bee04085191ea94e141a6c2aeeaf7fef1",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko": "6b98068988086d3b1b5c7a1e3b71f5f0ac4378f2d907c0e3a8c50a22bcde53fa",
+      "linux/modules/fs/efivarfs/efivarfs.ko": "6dd0679c5a026189f4feef51fcdcf4d0542fbc9cba7f3e552cb8a0324e68974f",
+      "linux/modules/net/core/failover.ko": "b1aa98beb495be131c06a02775109cba97de2ecacae227c4932909166b88cf5a",
+      "linux/vmlinux": "3d3a9424b92e4b2abb29d4c4c5094ee1b4dccd5efab36ab33673b683d1b324dd"
+    },
+    "equal_compile_inputs": {
+      "config_sha256": "28fe4a8ec759cfa7ecfdc373753082ec6981ecdffc6a25e074b6fac048906282",
+      "environment": {
+        "HOME": "/home/paul",
+        "KBUILD_BUILD_HOST": "owned-builder",
+        "KBUILD_BUILD_TIMESTAMP": "2026-11-04 00:00:00 UTC",
+        "KBUILD_BUILD_USER": "homelabfs",
+        "KBUILD_BUILD_VERSION": "1",
+        "KCFLAGS": "-fdebug-prefix-map=/home/paul/tmp/claude/hfs-xz3-20261122-r20/linux-source=/usr/src/linux -fdebug-prefix-map=/home/paul/tmp/claude/hfs-xz3-20261122-r20/kernel-build=/usr/src/linux-build -fmacro-prefix-map=/home/paul/tmp/claude/hfs-xz3-20261122-r20/linux-source=/usr/src/linux -fmacro-prefix-map=/home/paul/tmp/claude/hfs-xz3-20261122-r20/kernel-build=/usr/src/linux-build",
+        "KCONFIG_NOTIMESTAMP": "1",
+        "LC_ALL": "C",
+        "PATH": "/usr/bin:/bin",
+        "SOURCE_DATE_EPOCH": "1793750400",
+        "TMPDIR": "/home/paul/tmp/claude",
+        "TZ": "UTC"
+      },
+      "fragment_sha256": "f2d2a203daa49dd454de90b932e04e17f1532a22b9184140da136ff97d468bc7",
+      "maintained_source_manifest_sha256": "4af51b8480e6075c0610c2fb51a9f2c7c3cc18bafccec7e47ca89ede8b9d1fda",
+      "make": [
+        "/usr/bin/make",
+        "-j2",
+        "O=/home/paul/tmp/claude/hfs-xz3-20261122-r20/kernel-build",
+        "ARCH=x86_64",
+        "CC=/usr/bin/gcc",
+        "HOSTCC=/usr/bin/gcc",
+        "LD=/usr/bin/ld",
+        "AR=/usr/bin/ar",
+        "NM=/usr/bin/nm",
+        "OBJCOPY=/usr/bin/objcopy",
+        "OBJDUMP=/usr/bin/objdump",
+        "READELF=/usr/bin/readelf"
+      ],
+      "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+      "recipe_sha256": "0c28913c972730c96f983166eb796d95e28130157556f3adf1af5d00e6bcfbd1",
+      "source_inventory_sha256": "65fd78149c80347385352b2c4609fb78cfa34e1617f1dbec0d3405c3c112e47a",
+      "toolchain": {
+        "/usr/bin/ar": {
+          "bytes": 61616,
+          "sha256": "97910d3148c2a6bbaf899821e6f6c07c602fcd1ef00f081ec7a58a348288b7c5"
+        },
+        "/usr/bin/as": {
+          "bytes": 821696,
+          "sha256": "388a25358e48c00dd0efab716ffc12e1dfac27c2501b85f18d5b36057a43bd2d"
+        },
+        "/usr/bin/bc": {
+          "bytes": 90920,
+          "sha256": "02b76c282fc9ae23a14dde1646c899082ed43d5018e93e7fffa7d942dd35e63d"
+        },
+        "/usr/bin/bison": {
+          "bytes": 510216,
+          "sha256": "93cb8a2d74fece28520f03fdf1297402a9aefe61757b14a4ff9f586a439655bf"
+        },
+        "/usr/bin/flex": {
+          "bytes": 323216,
+          "sha256": "fb7e884a07ea0a1a3e7fbb81069f5f8a5748ad3bb908be5f0be41634428411a2"
+        },
+        "/usr/bin/gcc": {
+          "bytes": 1504328,
+          "sha256": "f71c9b95b020cd56378a766e7f1cbfecc9818a4e12db831579ee0d0a5d148154"
+        },
+        "/usr/bin/ld.bfd": {
+          "bytes": 1598648,
+          "sha256": "eccfdb2b11bcae1ca6e2915a40db609299f46d7def305dab744c0da0aaf54370"
+        },
+        "/usr/bin/make": {
+          "bytes": 287384,
+          "sha256": "25544ed459e6f5c79daf61383d7ef1c83cd9e77f2dfbe2bdbeaa8defec9d0bc9"
+        },
+        "/usr/bin/nm": {
+          "bytes": 50112,
+          "sha256": "2dc5364b80142b8495034049ef3633bbaf76471da35b5d9f1a829b5f0073b70e"
+        },
+        "/usr/bin/objcopy": {
+          "bytes": 193240,
+          "sha256": "d4c9b0d52b21fa8375e082a13e12eac1a8b6fb515a0f034dd085dd5de4011da4"
+        },
+        "/usr/bin/objdump": {
+          "bytes": 469808,
+          "sha256": "b947cc7fae5e951ca6009bbc72889a35d2af7a832416de0489c607c7598472b2"
+        },
+        "/usr/bin/openssl": {
+          "bytes": 999664,
+          "sha256": "b96850e2d8e6fefce8998ff9dc06f1e323f84565110198904a09750943c0a74f"
+        },
+        "/usr/bin/perl": {
+          "bytes": 11400,
+          "sha256": "74558cbd79170f4d6ce0931fd6d59fc7a6450c034ff97b68c3eca7f041cd4c48"
+        },
+        "/usr/bin/pkg-config": {
+          "bytes": 335,
+          "sha256": "b717e9f6d51553f6bb88d0603bcc07dd6ea7c2cf5ab4295b41a28ae6b627a62b"
+        },
+        "/usr/bin/readelf": {
+          "bytes": 853000,
+          "sha256": "20f4971b177980026114be33ed5ce3814aeeac3c12ba8a329b9c2ef3b42cf20f"
+        },
+        "/usr/lib64/ld-linux-x86-64.so.2": {
+          "bytes": 1002600,
+          "sha256": "4e5d39355699e90fa29313d3100e82af4a23290028c58c364d6a249ef6a78e5e"
+        },
+        "/usr/lib64/libbfd-2.46.1-1.fc44.so": {
+          "bytes": 1336848,
+          "sha256": "932a298d87e31322111d1dd1989e12803550befb0a3f4f795e621c602a0de076"
+        },
+        "/usr/lib64/libc.so.6": {
+          "bytes": 2482096,
+          "sha256": "a5c5ad9d59d3c69eda93aa8f82930ba06cc4e893a113e66c85ad6e96243d53c8"
+        },
+        "/usr/lib64/libcom_err.so.2.1": {
+          "bytes": 19872,
+          "sha256": "fd86ff884b7b6b441844d7f89afecbb7f53b7602c7f7515abc4c8bd5b8e83500"
+        },
+        "/usr/lib64/libcrypt.so.2.0.0": {
+          "bytes": 221624,
+          "sha256": "d599ca6de2ff06d1189c47945616fde24cd7816bcafb1c587ca1a51cb0c584e3"
+        },
+        "/usr/lib64/libcrypto.so.3.5.9": {
+          "bytes": 5783496,
+          "sha256": "695648ac8dc5e6a2b70e5e72399940de0f84bf24fddb7dd18949ba40bc575c72"
+        },
+        "/usr/lib64/libctf-nobfd.so.0.0.0": {
+          "bytes": 219904,
+          "sha256": "0ab58cf64ad4ea80660b99598e65d3aa4c33af2d8bbd57f31222b469b056f5fd"
+        },
+        "/usr/lib64/libctf.so.0.0.0": {
+          "bytes": 223936,
+          "sha256": "5d7e28493d315b52847e941a87fd5abe3a374b2c5825928462f448ccda8362aa"
+        },
+        "/usr/lib64/libcurl.so.4.8.0": {
+          "bytes": 773608,
+          "sha256": "3f1855a1ccadd161f5e91b848dba508f437605facc13d7ddf3ead126b37978d7"
+        },
+        "/usr/lib64/libdebuginfod-0.197.so": {
+          "bytes": 56888,
+          "sha256": "db3c721d6971369da2ae8d778c3b4503240db48ca7993740d0d61ce275da3e7e"
+        },
+        "/usr/lib64/libelf-0.197.so": {
+          "bytes": 120160,
+          "sha256": "f707f064e0f055366cb5b99ab4e4b6e4fa7ba586bab890b059eddde1dc5a4129"
+        },
+        "/usr/lib64/libgcc_s-16-20261029.so.1": {
+          "bytes": 186520,
+          "sha256": "5a52ae4a6f1b119aa092aa1483c967e19d9ba036b1b0c2133236a8a2ce826ebf"
+        },
+        "/usr/lib64/libgmp.so.10.5.0": {
+          "bytes": 694648,
+          "sha256": "47e2550d2f19c8c87886d82db6ed4896db9342e3f26f6d992911c4f037b6ef5d"
+        },
+        "/usr/lib64/libgssapi_krb5.so.2.2": {
+          "bytes": 375584,
+          "sha256": "4985d7c137097a00b5b20b09e208ea33514d96e098df37025f39ec4dedf1a65c"
+        },
+        "/usr/lib64/libidn2.so.0.4.0": {
+          "bytes": 327296,
+          "sha256": "d7add4da68cc0f9f9d7436be69fdaecff6a19deaefaff6fcac770c19f0e3524b"
+        },
+        "/usr/lib64/libjansson.so.4.14.0": {
+          "bytes": 66088,
+          "sha256": "d81dc843cb2c2c6079afad172baeb70e65768a67ef90ac580276f70622af4f2a"
+        },
+        "/usr/lib64/libjson-c.so.5.4.0": {
+          "bytes": 79288,
+          "sha256": "6dfe4deb41877c38acbe863485614dfafd54b5eda8e0a9187b0874899c44e7e6"
+        },
+        "/usr/lib64/libk5crypto.so.3.1": {
+          "bytes": 95176,
+          "sha256": "b2ca21d597a72b833d0816116cadc3493b624880d69819a9c7c33de8e93367f6"
+        },
+        "/usr/lib64/libkeyutils.so.1.10": {
+          "bytes": 24192,
+          "sha256": "26ce5c6b6d9d9691437b0476dabe62fbc6e22ad0781b78d3df78906466dea121"
+        },
+        "/usr/lib64/libkrb5.so.3.3": {
+          "bytes": 874144,
+          "sha256": "4256ace2d584f14c5de4d0e045a8ab0258938c0bc9adf16fb49eadbe023c4453"
+        },
+        "/usr/lib64/libkrb5support.so.0.1": {
+          "bytes": 66368,
+          "sha256": "171e649fbbcc92fb05b83929ac15e9b073fb703d796800b02265cf2d2cf8689f"
+        },
+        "/usr/lib64/libm.so.6": {
+          "bytes": 1153848,
+          "sha256": "16a03ce6d24c8a46742206d4a9c1d35bb6577ae2384f153dc6ef4a4b62b5357f"
+        },
+        "/usr/lib64/libmpc.so.3.4.1": {
+          "bytes": 152248,
+          "sha256": "d9b978e355eafe3dae39cacaf57ade0f3fb6b97ac73ea2b5160d0730d0432237"
+        },
+        "/usr/lib64/libmpfr.so.6.2.2": {
+          "bytes": 795784,
+          "sha256": "d9cd83626df4c3962e5ade80d901763a1952ef43a26a0403a28e6cbf27decfb2"
+        },
+        "/usr/lib64/libnghttp2.so.14.29.2": {
+          "bytes": 168912,
+          "sha256": "8fd9e97899df16b29890fa87702d636b0ac4fbfbe58924947874ba265ddab02d"
+        },
+        "/usr/lib64/libopcodes-2.46.1-1.fc44.so": {
+          "bytes": 799064,
+          "sha256": "5217cc1d70f7879b4f684b4b6a87c87232f8f5dea85bd0d4f08fc8aa7416ac8d"
+        },
+        "/usr/lib64/libpcre2-8.so.0.15.0": {
+          "bytes": 724280,
+          "sha256": "473aeb0704abc871886650c553b43bb300395d73fe4088620329459b5ddbf4be"
+        },
+        "/usr/lib64/libperl.so.5.42.3": {
+          "bytes": 3977584,
+          "sha256": "50440fd997dad8fbac42e8ea65b5f993cdb578fb83f54a160644f1ce625ee755"
+        },
+        "/usr/lib64/libreadline.so.8.3": {
+          "bytes": 390408,
+          "sha256": "c269f96b057ad5dd84d94311fe7ddd2a3d640d0af6515c0e43f95ef9af4a9f12"
+        },
+        "/usr/lib64/libresolv.so.2": {
+          "bytes": 69984,
+          "sha256": "7aba4bc66547667af661384fd84c79008445ff5456b27476fe5a6c2f1038233f"
+        },
+        "/usr/lib64/libselinux.so.1": {
+          "bytes": 209040,
+          "sha256": "cc9f8b1691e4f8cc807b2d8fe4a1ce2e0bdb96386285fdc7769849ffab0aaa7e"
+        },
+        "/usr/lib64/libsframe.so.3.0.0": {
+          "bytes": 40760,
+          "sha256": "fc11c66affa329c1eb83c588651371c493ea62f6a07a00d4380d78542527be05"
+        },
+        "/usr/lib64/libssl.so.3.5.9": {
+          "bytes": 1048056,
+          "sha256": "970950c1a999fa48ec8fc8df075ad0b211f3cd0bc35573ba4e788d20c3141796"
+        },
+        "/usr/lib64/libtinfo.so.6.6": {
+          "bytes": 187232,
+          "sha256": "b053da6b12bebc6e239835fbb646d46f26c97942b3098ac7b01604f8ce827679"
+        },
+        "/usr/lib64/libunistring.so.5.0.0": {
+          "bytes": 1764096,
+          "sha256": "5de0c08a98e1bffa31f9e4dc22870a20f903248078602a194398cd7206e2d831"
+        },
+        "/usr/lib64/libz.so.1.3.1.zlib-ng": {
+          "bytes": 169544,
+          "sha256": "bbde8faec092a7c67b8bd76bbba4a826e61b05c171b97004ce6b308c5a090351"
+        },
+        "/usr/lib64/libzstd.so.1.5.7": {
+          "bytes": 959384,
+          "sha256": "70ec54d150f4052f28fb1e8f8a1c6ca35e1a499e4744c6f6d9d783537618f80b"
+        },
+        "/usr/libexec/gcc/x86_64-redhat-linux/16/cc1": {
+          "bytes": 42529488,
+          "sha256": "9fa8cf6a760c6a5e068ac743d6ddad1b439e82db720ab5e3f5728f9ed2181b85"
+        }
+      }
+    },
+    "first_build_record_sha256": "2ffb785d310d5ca956cc69c4d7535a16e32b813d3b4e561238da39d49d9c9cf6",
+    "installed": false,
+    "native_accepted": false,
+    "scope": "full linked kernel/bzImage/all configured in-tree modules/config/symvers",
+    "second_build_record_sha256": "2ffb785d310d5ca956cc69c4d7535a16e32b813d3b4e561238da39d49d9c9cf6",
+    "version": "homelabfs-kernel-clean-repro/1"
+  },
+  "stages": [
+    [
+      "prepare",
+      "0",
+      "44"
+    ],
+    [
+      "first",
+      "configure",
+      "0",
+      "15"
+    ],
+    [
+      "first",
+      "vmlinux",
+      "0",
+      "732"
+    ],
+    [
+      "first",
+      "image-modules",
+      "0",
+      "22"
+    ],
+    [
+      "first",
+      "collect",
+      "0",
+      "9"
+    ],
+    [
+      "repro",
+      "configure",
+      "0",
+      "20"
+    ],
+    [
+      "repro",
+      "vmlinux",
+      "0",
+      "805"
+    ],
+    [
+      "repro",
+      "image-modules",
+      "0",
+      "25"
+    ],
+    [
+      "repro",
+      "collect",
+      "0",
+      "6"
+    ],
+    [
+      "abi-collect both",
+      "0"
+    ],
+    [
+      "compare-repro (same O, after abi collect on both)",
+      "0"
+    ],
+    [
+      "abi-negative",
+      "0"
+    ]
+  ]
+}
