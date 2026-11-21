@@ -30,8 +30,8 @@ import (
 // it spans operator enrollment, Assemble, the C bootstrap and every guest
 // HELLO. The former 3 s was exceeded under full-suite CPU load (6f4): the
 // runtime then gave up with its deadline, closed the transport, and the
-// driver's HELLO FETCH only ever saw EAGAIN. Tests that need the window to
-// expire set expiringBootstrapSeconds explicitly.
+// driver's HELLO FETCH only ever saw EAGAIN. expiringBootstrapSeconds is the
+// short wait used where a fault withholds HELLOs and must not reach READY.
 const (
 	fixtureBootstrapSeconds  = 60
 	expiringBootstrapSeconds = 3
@@ -235,9 +235,11 @@ func TestRuntimeDriverSharedSequenceRealC(t *testing.T) {
 				devices = 1
 			}
 			r, d, c, platform := runtimeDriverFixture(t, binary, devices)
-			if fault == "unbound-guest" || fault == "one-hello" {
-				// These faults withhold a HELLO and fail only when the
-				// bootstrap window expires; keep that wait short.
+			if fault == "unbound-guest" {
+				// This fault sends no HELLO at all and fails only when the
+				// bootstrap window expires; keep that wait short. one-hello
+				// keeps the full window so its first HELLO is answered even
+				// under load, and is stopped later (see the HELLO loop).
 				c.BootstrapSeconds = expiringBootstrapSeconds
 			}
 			if fault == "missing-host-key" {
@@ -311,6 +313,12 @@ func TestRuntimeDriverSharedSequenceRealC(t *testing.T) {
 					}
 					for i := 0; i < count; i++ {
 						d.exchange(i, "HELLO", guestbridge.TerminalProtocol(), nil)
+					}
+					if fault == "one-hello" {
+						// The runtime must still be waiting for the second
+						// HELLO after the short window; stopping it then must
+						// end it without READY (checked below).
+						time.AfterFunc(expiringBootstrapSeconds*time.Second, cancel)
 					}
 				case "READY":
 					ready = true
