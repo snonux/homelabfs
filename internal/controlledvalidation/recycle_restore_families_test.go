@@ -173,9 +173,9 @@ func distinctToken(token string) string {
 	return first + token[1:]
 }
 
-// TestTwoFamilyNegativesAlwaysEditTheRow (yg4) pins the token prefixes that
-// once made the "extra live grant" negative a no-op: K starting with "ab"
-// (the old fixed prefix) and with "1" (distinctToken's own default digit).
+// TestTwoFamilyNegativesAlwaysEditTheRow (yg4) pins the "extra live grant"
+// negative against K's prefix: K starting with "ab" made the old fixed-prefix
+// edit a no-op, and K starting with "1" covers distinctToken's fallback digit.
 // Every negative must change a row holding live K and tombstone G.
 func TestTwoFamilyNegativesAlwaysEditTheRow(t *testing.T) {
 	tail := strings.Repeat("0", 62)
