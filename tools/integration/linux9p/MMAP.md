@@ -228,9 +228,11 @@ replaced while the acquisition was PENDING), it acquires again at once, with
 no pause and no progress requirement. Otherwise it pauses (50 ms, doubling),
 offers released tickets for retirement, and acquires again only if some
 floor advanced since the acquisition (by it or the cleanup worker) or the
-held release completed. A retirement mutex held by another round is no
-answer from the host: the observation waits (killable, within the deadline)
-for that round to end or a floor to advance, checks its stops, then decides.
+held release completed. A retirement mutex held by another holder (a view
+round, request retirement or session destruction) is no answer from the
+host: the observation waits (killable, in slices of at most 200 ms within
+the deadline) for that holder to release it or a floor to advance, checks
+its stops, then decides.
 A round of its own that ran and returned busy (a retired ticket still in
 use) counts and pauses again. At most four
 BLOCKED tickets per syscall, all within the same 30 s deadline (each BLOCKED

@@ -603,7 +603,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,3599 @@
+@@ -0,0 +1,3605 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -4101,12 +4101,18 @@ new file mode 100644
 +unreserve:
 +	if (scratch_credit)
 +		session->provider->unreserve(session, scratch_credit);
-+	mutex_unlock(&session->retirement);
++	/* 1h4: every holder releases through hfs_retirement_unlock, so a BLOCKED
++	 * observation waiting for the mutex (hfs_view_retire_wait) wakes.
++	 */
++	hfs_retirement_unlock(session);
 +	return err;
 +}
 +EXPORT_SYMBOL_GPL(hfs_retire);
 +
 +/* Only a protected recovery/retirement provider can relinquish retained state.
++ * 1h4: each release of session->retirement goes through
++ * hfs_retirement_unlock (the session is alive and session->lock is not held
++ * at each one; after hfs_view_free there is no view, so nothing to wake).
 + */
 +int hfs_session_destroy(struct hfs_session *session)
 +{
@@ -4120,7 +4126,7 @@ new file mode 100644
 +	     (!session->terminal_pending ||
 +	      !hfs_terminal_candidate(session, &session->terminal_payload))) ||
 +	    !list_empty(&session->requests)) {
-+		mutex_unlock(&session->retirement);
++		hfs_retirement_unlock(session);
 +		return -EBUSY;
 +	}
 +	view = hfs_view_get(session);
@@ -4128,7 +4134,7 @@ new file mode 100644
 +		err = hfs_mmap_prepare_retire(view);
 +		hfs_view_put(view);
 +		if (err) {
-+			mutex_unlock(&session->retirement);
++			hfs_retirement_unlock(session);
 +			return err;
 +		}
 +	}
@@ -4139,13 +4145,13 @@ new file mode 100644
 +	     (!session->terminal_pending ||
 +	      !hfs_terminal_candidate(session, &session->terminal_payload))) ||
 +	    !list_empty(&session->requests)) {
-+		mutex_unlock(&session->retirement);
++		hfs_retirement_unlock(session);
 +		return -EBUSY;
 +	}
 +	if (session->enrollment.protocol_features == HFS_TERMINAL_FEATURES &&
 +	    !session->terminal_verified) {
 +		if (session->retirement_cut || hfs_view_tickets_busy(session)) {
-+			mutex_unlock(&session->retirement);
++			hfs_retirement_unlock(session);
 +			return -EBUSY;
 +		}
 +		view = hfs_view_get(session);
@@ -4155,7 +4161,7 @@ new file mode 100644
 +			if (!err)
 +				err = hfs_view_free(session);
 +			if (err) {
-+				mutex_unlock(&session->retirement);
++				hfs_retirement_unlock(session);
 +				return err;
 +			}
 +		}
@@ -4167,7 +4173,7 @@ new file mode 100644
 +		    !list_empty(&session->descriptions) || !list_empty(&session->forgets) ||
 +		    !list_empty(&session->view_tickets) || session->retirement_cut) {
 +			mutex_unlock(&session->lock);
-+			mutex_unlock(&session->retirement);
++			hfs_retirement_unlock(session);
 +			return -EBUSY;
 +		}
 +		struct hfs_cap *domain = session->domain;
@@ -4176,7 +4182,7 @@ new file mode 100644
 +		hfs_cap_free(domain);
 +	}
 +	err = session->provider->retire_session(session);
-+	mutex_unlock(&session->retirement);
++	hfs_retirement_unlock(session);
 +	if (err)
 +		return err;
 +	WRITE_ONCE(session->retired, true);

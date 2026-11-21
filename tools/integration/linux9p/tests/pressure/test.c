@@ -203,9 +203,10 @@ static int provider_leaves;
  * ran); a blocking hfs_view_retire waits them out. busy_round_end, as
  * view_wait_hook, ends one per wake-up (every view_wait_step ms); with
  * busy_round_frees the last one advances a floor. Every round, busy or this
- * call's, ends through the actual hfs_view_retire_unlock (unlock, then
- * view->retire_rounds, then the wake-up; review round 1), extracted from
- * hfs_lease.c; the rest of hfs_view_retire_mode is this host model.
+ * call's, ends through the actual hfs_retirement_unlock (hfs_view.c: unlock,
+ * then view->retirement_releases, then the wake-up; review rounds 1 and 2),
+ * as every production holder does; the rest of hfs_view_retire_mode is this
+ * host model.
  * retire_ran_busy: that many rounds that run return -EBUSY themselves (a
  * retired ticket still in use). retire_jiffies:
  * a round's duration. The cleanup worker (run_cleanups, the retire work) retires
@@ -325,7 +326,7 @@ static void busy_round_end(void)
  if(!retire_busy)return;
  retire_busy--;
  if(!retire_busy && busy_round_frees)host_floor_advance(view);
- hfs_view_retire_unlock(test_session,view);
+ hfs_retirement_unlock(test_session);
  if(retire_busy)mutex_lock(&test_session->retirement);
 }
 /* 1h4: end the other thread's remaining rounds at once, freeing nothing. */
@@ -340,7 +341,7 @@ static void test_mutex_unlocking(struct mutex *m)
 {
  if(!unlock_probe || m!=&test_session->retirement)return;
  assert(!mutex_trylock(m)); // still held: a waiter's try is -EBUSY now
- probed_rounds=atomic_long_read(&test_session->view->retire_rounds);
+ probed_rounds=atomic_long_read(&test_session->view->retirement_releases);
 }
 static int host_retire_round(struct hfs_session *session)
 {
@@ -370,7 +371,7 @@ static int host_retire(struct hfs_session *session,bool *ran)
  }
  if(retire_ran_busy){retire_ran_busy--;err=-EBUSY;}
  else err=host_retire_round(session);
- hfs_view_retire_unlock(session,session->view);return err;
+ hfs_retirement_unlock(session);return err;
 }
 int hfs_view_retire(struct hfs_session *session) { return host_retire(session,NULL); }
 int hfs_view_retire_try(struct hfs_session *session,bool *ran) { *ran=false;return host_retire(session,ran); }
@@ -663,7 +664,7 @@ static void retry_blocked_busy_capacity(struct hfs_view *view,int reserved)
  assert(retry_begin(HOOK_NONE,0,&cookie)==-EAGAIN && !cookie && acquire_calls==1);
  assert(test_sleeps==1 && retire_calls==3 && retire_blocked_calls==1 && !retire_busy && jiffies-start==250);
  assert(strstr(warning_log,"observation VIEW_ACQUIRE BLOCKED by the host (attempt 1); retiring, then retrying after 50 ms if that frees anything"));
- assert(strstr(warning_log,"observation VIEW_ACQUIRE BLOCKED (attempt 1): local retirement round busy; waiting up to 29950 ms for it to finish"));
+ assert(strstr(warning_log,"observation VIEW_ACQUIRE BLOCKED (attempt 1): local retirement mutex busy; waiting for its holder (up to 29950 ms)"));
  assert(strstr(last_warning,"observation VIEW_ACQUIRE BLOCKED, no retirement progress after 1 attempts (-EAGAIN)"));
  assert(!strstr(warning_log,"re-check failed") && view->retire_blocked && nr_queued==1);
  view_wait_step=0;view_wait_hook=NULL;
@@ -681,7 +682,7 @@ static void retry_blocked_busy_rounds(struct hfs_view *view,int reserved)
  host_tickets_full=true;busy_start(5);busy_round_frees=true;view_wait_step=100;view_wait_hook=busy_round_end;
  assert(!retry_begin(HOOK_NONE,0,&cookie));retry_published(view,cookie);
  assert(acquire_calls==2 && test_sleeps==1 && retire_calls==5 && !retire_busy && jiffies-start==550); // progress seen at the wake: no sixth try
- assert(strstr(warning_log,"local retirement round busy") && !strstr(warning_log,"(attempt 2)"));
+ assert(strstr(warning_log,"local retirement mutex busy") && !strstr(warning_log,"(attempt 2)"));
  assert(nr_queued==1 && !queued[0]->lease);
  busy_round_frees=false;view_wait_step=0;view_wait_hook=NULL;
  run_cleanups();retry_end(cookie);retry_no_leaks(reserved);
@@ -695,12 +696,16 @@ static void retry_blocked_busy_deadline(struct hfs_view *view,int reserved)
  void *cookie=(void *)1;unsigned long start=jiffies;
  host_tickets_full=true;busy_start(~0U);view_wait_step=0;view_wait_hook=NULL;
  assert(retry_begin(HOOK_NONE,0,&cookie)==-EAGAIN && !cookie && acquire_calls==1);
- assert(test_sleeps==1 && retire_calls==1 && jiffies-start==HFS_VIEW_ENTER_WAIT_MS);
+ // One try per HFS_RETIRE_BUSY_SLICE_MS slice of the 29950 ms after the
+ // pause (round 2), one local-busy line, none counted.
+ assert(test_sleeps==1 && retire_calls==150 && jiffies-start==HFS_VIEW_ENTER_WAIT_MS);
  assert(strstr(last_warning,"observation VIEW_ACQUIRE BLOCKED, deadline exhausted after 1 attempts (-EAGAIN)"));
+ { const char *first=strstr(warning_log,"local retirement mutex busy");
+   assert(first && !strstr(first+1,"local retirement mutex busy")); }
  busy_stop();run_cleanups();retry_no_leaks(reserved);
 }
-/* 1h4 review round 1: the actual hfs_view_retire_unlock increments the
- * round count only after the unlock. A thread whose trylock fails just
+/* 1h4 review round 1: the actual hfs_retirement_unlock increments the
+ * release count only after the unlock. A thread whose trylock fails just
  * before the unlock read the count while the round still held the mutex, so
  * the count then differs from what it read and its wait ends. Incremented
  * before the unlock (the first 1h4 commit), the thread would read the new
@@ -709,11 +714,11 @@ static void retry_blocked_busy_deadline(struct hfs_view *view,int reserved)
 static void retire_unlock_order(void)
 {
  long before;
- busy_start(2);unlock_probe=true;before=atomic_long_read(&test_session->view->retire_rounds);
+ busy_start(2);unlock_probe=true;before=atomic_long_read(&test_session->view->retirement_releases);
  busy_round_end();
- assert(probed_rounds==before && atomic_long_read(&test_session->view->retire_rounds)==before+1);
+ assert(probed_rounds==before && atomic_long_read(&test_session->view->retirement_releases)==before+1);
  busy_round_end();
- assert(probed_rounds==before+1 && atomic_long_read(&test_session->view->retire_rounds)==before+2);
+ assert(probed_rounds==before+1 && atomic_long_read(&test_session->view->retirement_releases)==before+2);
  unlock_probe=false;assert(!retire_busy && mutex_trylock(&test_session->retirement));
  mutex_unlock(&test_session->retirement);
 }
@@ -729,7 +734,7 @@ static void retry_blocked_ran_busy(int reserved)
  assert(retry_begin(HOOK_NONE,0,&cookie)==-EAGAIN && !cookie && acquire_calls==1);
  assert(test_sleeps==3 && retire_calls==3 && jiffies-start==350);
  assert(strstr(last_warning,"observation VIEW_ACQUIRE BLOCKED, retry limit reached after 4 attempts (-EAGAIN)"));
- assert(!strstr(warning_log,"local retirement round busy"));
+ assert(!strstr(warning_log,"local retirement mutex busy"));
  retire_ran_busy=0;run_cleanups();retry_no_leaks(reserved);
 }
 /* 1h4 review round 1: the busy round ends while the transport fails. The
@@ -747,6 +752,36 @@ static void retry_blocked_busy_stop(int reserved)
  assert(!strstr(warning_log,"no retirement progress"));
  test_session->transport_failed=false;view_wait_step=0;view_wait_hook=NULL;
  host_tickets_full=false;run_cleanups();retry_no_leaks(reserved);
+}
+/* 1h4 review round 2: the holder is no view round but ordinary request
+ * retirement (hfs_retire) or session destruction, which also hold
+ * session->retirement and release it through the actual
+ * hfs_retirement_unlock. The waiter wakes when it releases (100 ms in), not
+ * at the end of its wait slice, and its own round then frees the tickets.
+ * Before round 2 hfs_retire released with a plain mutex_unlock: no count, no
+ * wake-up, and the waiter slept to its 30 s deadline (-EAGAIN).
+ */
+static bool foreign_held;
+static void foreign_release(void)
+{ if(foreign_held){foreign_held=false;hfs_retirement_unlock(test_session);} }
+static void foreign_plain_release(void)
+{ if(foreign_held){foreign_held=false;assert(pthread_mutex_unlock(&test_session->retirement.native)==0);} }
+static void retry_blocked_foreign_holder(struct hfs_view *view,int reserved)
+{
+ void *cookie;unsigned long start=jiffies;
+ host_tickets_full=true;mutex_lock(&test_session->retirement);foreign_held=true;
+ view_wait_step=100;view_wait_hook=foreign_release;
+ assert(!retry_begin(HOOK_NONE,0,&cookie));retry_published(view,cookie);
+ assert(acquire_calls==2 && test_sleeps==1 && retire_calls==2 && !foreign_held && jiffies-start==150);
+ run_cleanups();retry_end(cookie);retry_no_leaks(reserved);
+ // A holder that released without the helper (none in production) costs
+ // one HFS_RETIRE_BUSY_SLICE_MS slice, not the deadline.
+ start=jiffies;host_tickets_full=true;mutex_lock(&test_session->retirement);foreign_held=true;
+ view_wait_hook=foreign_plain_release;
+ assert(!retry_begin(HOOK_NONE,0,&cookie));retry_published(view,cookie);
+ assert(acquire_calls==2 && test_sleeps==1 && retire_calls==2 && jiffies-start==50+HFS_RETIRE_BUSY_SLICE_MS);
+ view_wait_step=0;view_wait_hook=NULL;
+ run_cleanups();retry_end(cookie);retry_no_leaks(reserved);
 }
 /* oc4's stop conditions end the back-off before any pause or retirement: a
  * fatal signal (-EINTR), transport_failed and a blocked hfs1.4 session
@@ -975,6 +1010,7 @@ static void observation_retry_checks(struct hfs_session *session)
  retire_unlock_order();
  retry_blocked_ran_busy(reserved);
  retry_blocked_busy_stop(reserved);
+ retry_blocked_foreign_holder(view,reserved);
  retry_blocked_stops(view,reserved);
  retry_blocked_retire(view,reserved);
  retry_refused(view,reserved);
@@ -1327,5 +1363,5 @@ int main(void)
  view_worker_log_checks(&session);
  hfs_json_free(target_event);hfs_json_free(other_target_event);hfs_view_unregister_inode(&inode.inode);hfs_view_fence(session.view);assert(!hfs_view_free(&session));
  assert(!reservations && !module_refs);
- puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (recall before/after grant re-acquires,no release recall,no self-recall loop,moved target,refusals,deadline,no leak,RETIRED_ID passed through,host BLOCKED retried only after retirement progress (held lease released first,at most 3 retries,ticket budget kept),progress by the cleanup worker during the pause or after a busy try,1h4 BLOCKED after a reinstall re-checked at once (2 tickets),busy retirement waited for not counted (5 busy rounds granted,never ending -EAGAIN at the deadline,capacity BLOCKED still needs progress,round count after the unlock,a round that ran -EBUSY counted,stops checked after a wake),no progress/deadline -EAGAIN at once,BLOCKED retire re-sent after recall/next observation (rate-limited),attr re-stamp/re-issue,moved LOOKUP FORGET balanced,2f4 passed grant re-acquired),2f4 exchange: GRANTED before the fence raise re-queried after the REOPENED ACK,old revision re-queried at once,passed by a later recall -EXDEV,deadline/signal/block/transport stops hand the GRANTED out without a block,unadopted lease never bound or page-leased,unverified/never-current/DIRTY fail closed,source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
+ puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (recall before/after grant re-acquires,no release recall,no self-recall loop,moved target,refusals,deadline,no leak,RETIRED_ID passed through,host BLOCKED retried only after retirement progress (held lease released first,at most 3 retries,ticket budget kept),progress by the cleanup worker during the pause or after a busy try,1h4 BLOCKED after a reinstall re-checked at once (2 tickets),busy retirement waited for not counted (5 busy rounds granted,never ending -EAGAIN at the deadline,capacity BLOCKED still needs progress,release count after the unlock,request-retirement holder wakes the waiter,wait slice bounds an unknown holder,a round that ran -EBUSY counted,stops checked after a wake),no progress/deadline -EAGAIN at once,BLOCKED retire re-sent after recall/next observation (rate-limited),attr re-stamp/re-issue,moved LOOKUP FORGET balanced,2f4 passed grant re-acquired),2f4 exchange: GRANTED before the fence raise re-queried after the REOPENED ACK,old revision re-queried at once,passed by a later recall -EXDEV,deadline/signal/block/transport stops hand the GRANTED out without a block,unadopted lease never bound or page-leased,unverified/never-current/DIRTY fail closed,source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
 }

@@ -109,7 +109,7 @@ struct hfs_session {
    struct { uuid_t session; } enrollment; unsigned long block_reported;
    u16 exporter_error; bool transport_failed;
    struct list_head forgets; void *control;
-   struct mutex retirement; /* 1h4: hfs_view_retire_unlock (pressure) */
+   struct mutex retirement; /* 1h4: hfs_retirement_unlock (hfs_view.c) */
 };
 
 #define HFS_IDENTITIES_MAX 4096U
@@ -129,7 +129,7 @@ struct hfs_session {
 #define mutex_lock(p) assert(pthread_mutex_lock(&(p)->native) == 0)
 #define mutex_unlock(p) assert(pthread_mutex_unlock(&(p)->native) == 0)
 #define mutex_trylock(p) (pthread_mutex_trylock(&(p)->native) == 0)
-/* 1h4: view->retire_rounds. */
+/* 1h4: view->retirement_releases. */
 typedef atomic_long atomic_long_t;
 #define atomic_long_read(p) atomic_load(p)
 #define atomic_long_inc(p) ((void)atomic_fetch_add((p), 1))

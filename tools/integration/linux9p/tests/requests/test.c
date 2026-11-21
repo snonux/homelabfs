@@ -7,6 +7,17 @@ unsigned int hfs_test_alloc_call, hfs_test_alloc_fail;
 size_t hfs_test_last_allocation_size;
 #include "production.c"
 
+/* 1h4 review round 2: hfs_retire releases session->retirement through the
+ * view-side helper (hfs_view.c, not compiled here), which there also counts
+ * the release and wakes a waiting BLOCKED observation. Counted here.
+ */
+static int retirement_unlocks;
+void hfs_retirement_unlock(struct hfs_session *s)
+{
+   mutex_unlock(&s->retirement);
+   retirement_unlocks++;
+}
+
 static int calls, fact_calls, gap_calls, released;
 static int fact_error, response_mode;
 static const char result_id[] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -91,7 +102,9 @@ int main(void)
    hfs_json_free(returned);
    assert(request->users == 0);
    request->held=true;
-   assert(hfs_retire(&session) == -EAGAIN && calls == 0);
+   { int before = retirement_unlocks;
+     assert(hfs_retire(&session) == -EAGAIN && calls == 0);
+     assert(retirement_unlocks == before + 1); }
    request->held=false;
    fact_error=-EACCES;
    assert(hfs_retire(&session) == -EACCES && fact_calls == 1 && !released);
