@@ -19,9 +19,13 @@ import (
 // reached TERMINAL, and nothing that identifies a file, a credential or a
 // process.
 //
-// There is no age: the ledger stores no time, and adding one would change
-// the protected ledger format. A driver that needs an age measures it from
-// its own probe time across successive OBSERVEs.
+// There is no claim age: the ledger stores no reservation time. A driver
+// that needs an age measures it from its own probe time across successive
+// OBSERVEs. The one exception is the a84 refusal trace (refusal_trace.go):
+// a never-prepared claim that an uncertain refusal held back also carries
+// that refusal's class, a count and the Unix seconds of its first and latest
+// recorded refusal, all omitempty, so an older reader and a claim that was
+// never refused see the b84 shape unchanged.
 
 const (
 	// claimEvidencePending bounds the open claims listed by number. MaxClaims
@@ -61,12 +65,27 @@ type ClaimEvidence struct {
 // ClaimSummary is one claim entry without its binding: the public number,
 // the guest intent opcode (empty for an ALLOCATED number whose CALL has not
 // arrived), the raw ledger status and the preparation stage.
+//
+// Refusal, Refusals, RefusedFirst and RefusedLast copy the claim's a84
+// refusal trace (refusal_trace.go) when it has one: the last uncertain
+// refusal class ("ADMISSION:WouldBlock", ...), how many refusals of it were
+// recorded (at most one a second, so a lower bound) and the Unix seconds of
+// the first and the latest. A claim that later moved on keeps the trace of
+// what held it back.
 type ClaimSummary struct {
-	Number uint64
-	Opcode string
-	Status string
-	Stage  string
+	Number       uint64
+	Opcode       string
+	Status       string
+	Stage        string
+	Refusal      string `json:",omitempty"`
+	Refusals     uint64 `json:",omitempty"`
+	RefusedFirst int64  `json:",omitempty"`
+	RefusedLast  int64  `json:",omitempty"`
 }
+
+// claimRefusalBytes bounds the class OBSERVE copies. noteRefusal writes
+// short classes; the bound only keeps a damaged entry from growing OBSERVE.
+const claimRefusalBytes = 64
 
 // claimEvidence reads the principals and claims buckets inside the caller's
 // read transaction. That transaction is the consistency boundary: Allocate,
@@ -128,15 +147,22 @@ func settledClaim(e entry) bool {
 	return e.Status == "TERMINAL" || e.Status == "DECLINED" && e.Gap
 }
 
-// summarizeClaim keeps only the number, opcode, status and stage. The opcode
-// comes from the reserved binding, or from the original binding an
-// AllocateOriginal number carries before its CALL arrives.
+// summarizeClaim keeps only the number, opcode, status, stage and refusal
+// trace. The opcode comes from the reserved binding, or from the original
+// binding an AllocateOriginal number carries before its CALL arrives.
 func summarizeClaim(e entry) ClaimSummary {
 	opcode := e.Binding.Call.Intent.Opcode
 	if opcode == "" && e.Original != nil {
 		opcode = e.Original.Call.Intent.Opcode
 	}
-	return ClaimSummary{Number: e.Claim.Number, Opcode: opcode, Status: e.Status, Stage: e.PreparationStage}
+	s := ClaimSummary{Number: e.Claim.Number, Opcode: opcode, Status: e.Status, Stage: e.PreparationStage}
+	if r := e.Refusal; r != nil {
+		s.Refusal, s.Refusals, s.RefusedFirst, s.RefusedLast = r.Class, r.Count, r.First, r.Last
+		if len(s.Refusal) > claimRefusalBytes {
+			s.Refusal = s.Refusal[:claimRefusalBytes]
+		}
+	}
+	return s
 }
 
 // newestClaims returns up to limit summaries, highest number first.

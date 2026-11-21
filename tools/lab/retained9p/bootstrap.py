@@ -915,8 +915,15 @@ CLAIM_COUNTS = ("Principals", "Allocated", "Retired", "Entries", "Open")
 
 
 def claim_text(claim):
-    return "#{} {} {}/{}".format(claim.get("Number"), claim.get("Opcode") or "(no CALL yet)", claim.get("Status"),
+    """One claim summary as text. A claim an uncertain refusal held back
+    (a84: Refusal, Refusals, RefusedFirst/RefusedLast in Unix seconds) also
+    names that refusal, so a stuck claim explains itself in the run log."""
+    text = "#{} {} {}/{}".format(claim.get("Number"), claim.get("Opcode") or "(no CALL yet)", claim.get("Status"),
                                  claim.get("Stage") or "-")
+    if claim.get("Refusal"):
+        text += " refused {} x{} ({}..{})".format(claim["Refusal"], claim.get("Refusals"),
+                                                  claim.get("RefusedFirst"), claim.get("RefusedLast"))
+    return text
 
 
 def claims_problems(claims, base):

@@ -79,6 +79,9 @@ type Provider struct {
 	closed      atomic.Bool
 	// pending names the claims that may block admission (pending_index.go).
 	pending pendingIndex
+	// now is the refusal trace's clock (refusal_trace.go); nil is time.Now.
+	// Tests set it to step through the per-class rate limit.
+	now func() time.Time
 }
 
 // entry retains original bytes and exact recovery plan before any service effect.
@@ -99,6 +102,10 @@ type entry struct {
 	SnapshotVersion              uint64
 	RetainedCredit, SourceCredit uint64
 	ReaddirClosure               *guestbridge.ReaddirClosure `json:",omitempty"`
+	// Refusal is diagnostics only (a84, refusal_trace.go): the last uncertain
+	// refusal class recorded while the claim was never prepared. No decision
+	// reads it, and checkPlanCredit leaves it out of the footprint.
+	Refusal *refusalTrace `json:",omitempty"`
 }
 
 // principal is one claim family: High is the last allocated number and Floor
