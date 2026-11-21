@@ -271,9 +271,15 @@ omitempty, so an older reader and a never-refused claim see the b84 shape
 unchanged. To keep OBSERVE bounded they appear only on the four lowest
 `Pending` numbers (the claims a stuck guest waits on), never in `Recent`, and
 every copied string is cut to 24 bytes. One provider's summary then stays
-under `MaxClaimEvidenceBytes` (4.5 KiB), and 16 providers plus the recall
-history leave at least 16 KiB of the 128 KiB lifecycle reply. `tools/lab/retained9p/bootstrap.py` prints the trace with each
-open claim. The trace is a diagnostic only:
+under `MaxClaimEvidenceBytes` (4.5 KiB) for real (ASCII) values; a damaged
+entry with characters JSON escapes could exceed it, and an oversized reply is
+refused whole, never truncated. 16 providers plus the recall history leave at
+least 16 KiB of the 128 KiB OBSERVE reply. The budget covers OBSERVE only: a
+RESTART reply carries the same evidence inside the 4 KiB smaller
+`lifecycleOutcomeBytes`, so a worst-case RESTART (16 providers with full open
+claims and a full recall history) can fall back to its truthful
+EFFECT_UNREPORTABLE outcome. `tools/lab/retained9p/bootstrap.py` prints the
+trace with each open claim. The trace is a diagnostic only:
 
 * It is written only to the exact never-prepared claim: RESERVED/UNPREPARED,
   no plan, outcome or snapshot, and not a gap. A claim that reached
