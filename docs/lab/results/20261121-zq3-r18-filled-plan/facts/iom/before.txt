@@ -1,0 +1,10 @@
+NAME       DATASTORE  LOADER     CPU  MEMORY  VNC             AUTO     STATE
+freebsd    default    bhyveload  4    1G      -               No       Stopped
+iom1       default    uefi       2    2G      127.0.0.1:5901  No       Running (32830)
+iom2       default    uefi       2    2G      127.0.0.1:5902  No       Running (32881)
+rocky      default    uefi       4    12G     127.0.0.1:5900  Yes [1]  Running (46196)
+hfs-test0  hfslab     bhyveload  2    2G      -               No       Stopped
+hfs-test1  hfslab     bhyveload  2    2G      -               No       Stopped
+hfs-test2  hfslab     bhyveload  2    2G      -               No       Stopped
+32830 Sat Nov 21 08:34:33 2026 bhyve: iom1 (bhyve)
+32881 Sat Nov 21 08:34:46 2026 bhyve: iom2 (bhyve)
