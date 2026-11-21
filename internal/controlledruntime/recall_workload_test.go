@@ -188,14 +188,19 @@ type modelMount struct {
 	target          json.RawMessage
 	fence, revision uint64
 	registered      bool
-	acked           map[string]int // recall/sequence -> ACKs sent for that event
-	jobs            []cleanupJob
-	inflight        *guestWait
-	cleanupFailed   bool
-	claims          []*claimRec
-	claimFloor      uint64
-	families        []*familyRec
-	familyIndex     map[string]*familyRec
+	// silentAfter names an ACK phase after whose acceptance the mount's
+	// guest stops sending anything (silent): a blocked or dead guest
+	// session (task 0a4). Empty for a live mount.
+	silentAfter   string
+	silent        bool
+	acked         map[string]int // recall/sequence -> ACKs sent for that event
+	jobs          []cleanupJob
+	inflight      *guestWait
+	cleanupFailed bool
+	claims        []*claimRec
+	claimFloor    uint64
+	families      []*familyRec
+	familyIndex   map[string]*familyRec
 }
 
 // modelProcess is one guest process: its own credentials, hence its own
@@ -372,6 +377,15 @@ func runRecallWorkload(t *testing.T, values zq3Values, latency time.Duration, in
 // newRecallModel assembles the runtime at the zq3 values, attaches both
 // peers and installs the slow observer for everything that follows.
 func newRecallModel(t *testing.T, values zq3Values, latency time.Duration) *recallModel {
+	return newRecallModelWith(t, values, latency, false)
+}
+
+// newRecallModelWith is newRecallModel; with controllerOnModel the view
+// controller's in-memory bounds (BlockedACKBound, StalledParticipantBound,
+// task 0a4) and recall history also run on the model clock, so a schedule
+// can let modelled time pass without the wall time (the blocked-domain
+// case). The other schedules keep the controller on the wall clock.
+func newRecallModelWith(t *testing.T, values zq3Values, latency time.Duration, controllerOnModel bool) *recallModel {
 	r, c := assemblyFixture(t)
 	values.apply(t, &c)
 	m := &recallModel{t: t, r: r, latency: latency, families: c.Authorization.Enrollment.TicketFamilies, recalls: map[string]*modelRecall{}, round1: -1}
@@ -379,6 +393,9 @@ func newRecallModel(t *testing.T, values zq3Values, latency time.Duration) *reca
 	slow.Store(true)
 	latencyProbe(r.admission, latency, &slow, &m.probes, nil)
 	m.clock = installModelClock(r.admission, latency)
+	if controllerOnModel {
+		c.ControllerClock = m.clock.now
+	}
 	a, err := Assemble(t.Context(), c)
 	if err != nil {
 		if a != nil {

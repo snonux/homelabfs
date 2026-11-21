@@ -116,6 +116,12 @@ type Config struct {
 	Authorization         Authorization
 	Facts                 Facts
 	Failpoint             func(string) error
+	// Clock is the controller clock behind every in-memory bound (the
+	// BLOCKED ACK bound, the stalled participant bound of
+	// participant_fence.go) and the recall history; nil is time.Now. Only
+	// models set it (the controlled runtime's recall workload model runs
+	// the controller on its modelled time). It never touches the ledger.
+	Clock func() time.Time
 }
 
 // Controller owns durable tickets, sources, reservations and physical recalls.
@@ -142,6 +148,22 @@ type Controller struct {
 	// (observed_cuts.go, task e84); guarded by mu, never part of the
 	// protected ledger.
 	observed map[string]observedCut
+	// fencedSessions mirrors the protected ledger's Fenced sessions for the
+	// lock-free ingress gate in CheckRequest (participant_fence.go, task
+	// 0a4); the locked paths read the ledger itself.
+	fencedSessions sync.Map
+	// phaseClock is the in-memory stall clock of the current recall phase
+	// (participant_fence.go); guarded by mu, never part of the ledger.
+	phaseClock phaseClock
+	// lastSeen is when mu last noticed a new view-worker request of each
+	// session (participant_fence.go absorbPulse); guarded by mu. pulses
+	// counts those requests as they arrive, before the TryLock, and is
+	// guarded by pulseMu alone; absorbed holds the count lastSeen reflects
+	// (guarded by mu). Memory only.
+	lastSeen map[string]time.Time
+	pulseMu  sync.Mutex
+	pulses   map[string]uint64
+	absorbed map[string]uint64
 	// allDomainMismatch is a test-only ablation that restores the pre-e84
 	// all-domain expected-target recall (mismatch_scope.go), so replays can
 	// count both behaviours; it is always false in production.
@@ -162,7 +184,8 @@ type ledger struct {
 	Reservations            map[string]reservationState
 	Domains                 map[string]domainState
 	Recall                  *recallState
-	// Schema is LedgerSchema; Fences holds each domain's fence once it has
+	// Schema is LedgerSchema, or LedgerSchemaFenced once a session was
+	// fenced (ValidLedgerSchema); Fences holds each domain's fence once it has
 	// completed a recall (see DomainFence). Neither is optional: a ledger
 	// without them is an older layout and is refused on reopen.
 	Schema int
@@ -181,6 +204,14 @@ type ledger struct {
 	// without such lineages byte-identical to the schema-2 layout before q64;
 	// a Revisions entry without a LineageFences entry is never recycled.
 	LineageFences map[string]lineageFence `json:",omitempty"`
+	// Fenced names every session the controller fenced as a stalled recall
+	// participant (participant_fence.go, task 0a4): it was dropped from its
+	// recall and every later request of it is refused with
+	// ErrSessionFenced. omitempty keeps a ledger without a fence
+	// byte-identical to the schema-2 layout before 0a4. The first fence
+	// moves Schema to LedgerSchemaFenced, which an older binary refuses on
+	// reopen instead of serving the fenced session again.
+	Fenced map[string]fencedSession `json:",omitempty"`
 }
 
 // family is one ticket family's permanent counters: High is the highest
@@ -359,7 +390,7 @@ func New(ctx context.Context, c Config) (*Controller, error) {
 	if err != nil {
 		return nil, err
 	}
-	controller := &Controller{config: c, db: db, file: actualFile, enrollmentHash: hash(raw), profileHash: digest(struct {
+	controller := &Controller{config: c, db: db, file: actualFile, now: c.Clock, enrollmentHash: hash(raw), profileHash: digest(struct {
 		Domains  []controlledvalidation.Enrollment
 		Bounds   Bounds
 		Families []TicketFamilies
@@ -414,6 +445,8 @@ func New(ctx context.Context, c Config) (*Controller, error) {
 	if err = controller.validateLedger(); err != nil {
 		return nil, err
 	}
+	// A fenced session stays refused across reopen (participant_fence.go).
+	controller.loadFenced()
 	if err = controller.remember(source); err != nil {
 		return nil, err
 	}
@@ -476,6 +509,9 @@ func (c *Controller) CheckTarget(ctx context.Context, scope guestbridge.Context,
 	if _, sealed := c.state.Terminal[scope.Session]; sealed {
 		return fsapi.Permission
 	}
+	if c.isFenced(scope.Session) {
+		return ErrSessionFenced
+	}
 	if target.Kind != "CONTROLLED_LOCAL" || target.Cut == nil {
 		return fsapi.Permission
 	}
@@ -510,8 +546,13 @@ func (c *Controller) CheckTarget(ctx context.Context, scope guestbridge.Context,
 
 // CheckRequest independently authorizes the actual original principal before
 // any response, replay or state exposure, including control/non-view commands.
+// A session fenced as a stalled recall participant gets ErrSessionFenced for
+// every request (participant_fence.go); native commands are not refused.
 func (c *Controller) CheckRequest(ctx context.Context, scope guestbridge.Context, op string, raw json.RawMessage) error {
 	if err := c.terminalIngress(ctx, scope, op); err != nil {
+		return err
+	}
+	if err := c.checkFenced(scope, op); err != nil {
 		return err
 	}
 	if err := c.check(ctx, scope); err != nil {
@@ -762,7 +803,7 @@ func (c *Controller) loadLedger(tx *bolt.Tx) error {
 	if err = json.Unmarshal(old, &c.state); err != nil {
 		return err
 	}
-	if c.state.Version != version || c.state.Schema != LedgerSchema || c.state.EnrollmentHash != c.enrollmentHash {
+	if c.state.Version != version || !ValidLedgerSchema(c.state.Schema, len(c.state.Fenced)) || c.state.EnrollmentHash != c.enrollmentHash {
 		return fsapi.Permission
 	}
 	// A ledger written before task q64 has no lineage fences. An empty map
@@ -780,7 +821,7 @@ func sameSource(a, b fsservice.ControlledViewSource) bool {
 func (c *Controller) validateLedger() error {
 	s := c.state
 	b := c.config.Authorization.Enrollment.Bounds
-	if s.UUIDs == nil || len(s.UUIDs) > 2*b.Identities || s.Revisions == nil || len(s.Revisions) > b.Identities || s.Sources == nil || s.Tickets == nil || s.Families == nil || s.Leases == nil || s.Reservations == nil || s.Domains == nil || s.AckArchive == nil || s.Retirements == nil || len(s.Sources) > b.Sources || len(s.Tickets) > b.Identities || len(s.Reservations) > b.Reservations || len(s.Leases) > b.Identities || len(s.Domains) > len(c.config.Authorization.Enrollment.Domains) || len(s.AckArchive) > b.Identities*8 || s.Identities > b.Identities || !s.validRecycling() || !s.validFences() {
+	if s.UUIDs == nil || len(s.UUIDs) > 2*b.Identities || s.Revisions == nil || len(s.Revisions) > b.Identities || s.Sources == nil || s.Tickets == nil || s.Families == nil || s.Leases == nil || s.Reservations == nil || s.Domains == nil || s.AckArchive == nil || s.Retirements == nil || len(s.Sources) > b.Sources || len(s.Tickets) > b.Identities || len(s.Reservations) > b.Reservations || len(s.Leases) > b.Identities || len(s.Domains) > len(c.config.Authorization.Enrollment.Domains) || len(s.AckArchive) > b.Identities*8 || s.Identities > b.Identities || !s.validRecycling() || !s.validFences() || !s.validFenced() {
 		return fsapi.Stale
 	}
 	for key, source := range s.Sources {

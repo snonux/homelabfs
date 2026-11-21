@@ -33,7 +33,14 @@ var ErrACKBlockedTooLong = fmt.Errorf("%w: VIEW_ACK blocked beyond its bound", f
 // (earlyDrainedSince). A peer whose INSTALLED_DRAIN is itself BLOCKED for up
 // to the bound and then ACCEPTED therefore never times the early DRAINED out
 // first, which would fail the guest's view worker and wedge the recall as in
-// zq3-r11. A peer that sends nothing still ends the wait after the bound.
+// zq3-r11. A peer that may be fenced (task 0a4, participant_fence.go)
+// moves the start to its fence point, so the early DRAINED outlives the
+// fence of a silent peer and waits for a peer that still polls, but never
+// longer than StalledParticipantBound past its own first BLOCKED (so at
+// most StalledParticipantBound + BlockedACKBound in all, blockedReply). A
+// peer that sends nothing and may not be fenced (its INSTALLED_DRAIN is
+// archived but was discarded from the learned ACKs by a restart) gives no
+// later start, so the DRAINED still ends after the bound.
 const BlockedACKBound = 30 * time.Second
 
 // errEarlyDrained marks a DRAINED sent before the recall left INSTALL_DRAIN
@@ -64,11 +71,19 @@ type blockedACK struct {
 //     errEarlyDrained), bounded by BlockedACKBound.
 //   - error: everything else, including recovery (the disconnect discarded
 //     learned ACKs and guest RESUME stays blocked, so it cannot clear for this
-//     session), real authorization refusals, bounds, IO and protocol
-//     violations. The endpoint answers those with an explicit transport error.
+//     session), a session fenced as a stalled recall participant
+//     (ErrSessionFenced, participant_fence.go), real authorization refusals,
+//     bounds, IO and protocol violations. The endpoint answers those with an
+//     explicit transport error.
+//
+// Before the ACK is checked, participants stalled past
+// StalledParticipantBound are fenced (fenceBeforeACK), never its sender.
 func (c *Controller) acknowledge(ctx context.Context, scope guestbridge.Context, raw json.RawMessage) (json.RawMessage, error) {
 	if _, sealed := c.state.Terminal[scope.Session]; sealed {
 		return c.ackReply(scope, raw, "STALE")
+	}
+	if c.isFenced(scope.Session) {
+		return nil, guestbridge.Final(ErrSessionFenced) // participant_fence.go
 	}
 	if c.closed.Load() || c.poisoned.Load() || c.state.Recovery {
 		return nil, fsapi.Unavailable
@@ -77,9 +92,12 @@ func (c *Controller) acknowledge(ctx context.Context, scope guestbridge.Context,
 	if err := json.Unmarshal(raw, &ack); err != nil {
 		return nil, guestbridge.Final(fsapi.Invalid)
 	}
+	if err := c.fenceBeforeACK(ctx, scope); err != nil {
+		return nil, guestbridge.Final(err)
+	}
 	checked := c.clock()
 	if err := c.ack(ctx, scope, ack, raw); err != nil {
-		return c.ackRefusal(scope, raw, err)
+		return c.ackRefusal(ctx, scope, raw, err)
 	}
 	check := c.clock().Sub(checked)
 	// An ACK that passed every check is protected before it is answered. A
@@ -96,13 +114,31 @@ func (c *Controller) acknowledge(ctx context.Context, scope guestbridge.Context,
 	return c.ackReply(scope, raw, "ACCEPTED")
 }
 
+// fenceBeforeACK fences the participants stalled past
+// StalledParticipantBound (participant_fence.go, task 0a4) before an ACK is
+// checked, and then lets the recall advance. The sender is never fenced
+// here: its ACK is its progress. This matters for an early DRAINED, which
+// waits for a silent peer's INSTALLED_DRAIN: once that peer is fenced the
+// recall reaches WAIT_DRAINED and the same DRAINED is ACCEPTED in this very
+// call instead of running into its BLOCKED bound (earlyDrainedSince).
+func (c *Controller) fenceBeforeACK(ctx context.Context, scope guestbridge.Context) error {
+	fenced, err := c.fenceStalled(ctx, scope.Session)
+	if err != nil || !fenced {
+		return err
+	}
+	if err = c.progress(ctx); err != nil && (c.poisoned.Load() || !transientProgress(err)) {
+		return err
+	}
+	return nil
+}
+
 // ackRefusal maps a refused ACK to its spec reply or a definitive error.
-func (c *Controller) ackRefusal(scope guestbridge.Context, raw json.RawMessage, err error) (json.RawMessage, error) {
+func (c *Controller) ackRefusal(ctx context.Context, scope guestbridge.Context, raw json.RawMessage, err error) (json.RawMessage, error) {
 	switch {
 	case errors.Is(err, fsapi.Stale):
 		return c.ackReply(scope, raw, "STALE")
 	case errors.Is(err, errEarlyDrained):
-		return c.blockedReply(scope, raw, c.earlyDrainedSince(scope))
+		return c.blockedReply(scope, raw, c.earlyDrainedSince(ctx, scope))
 	case errors.Is(err, ErrNotObserved), errors.Is(err, fsapi.WouldBlock), errors.Is(err, fsapi.Busy):
 		return c.ackReply(scope, raw, "BLOCKED")
 	default:
@@ -123,7 +159,8 @@ func (c *Controller) ackReply(scope guestbridge.Context, raw json.RawMessage, st
 
 // blockedReply answers BLOCKED for raw unless it stayed BLOCKED longer than
 // BlockedACKBound. The bound runs from the ACK's own first BLOCKED, or from
-// peerSince when that is later (an early DRAINED, earlyDrainedSince).
+// peerSince when that is later (an early DRAINED, earlyDrainedSince), capped
+// at StalledParticipantBound past the first BLOCKED: at most 90 s in all.
 func (c *Controller) blockedReply(scope guestbridge.Context, raw json.RawMessage, peerSince time.Time) (json.RawMessage, error) {
 	now := c.clock()
 	if c.blockedACKs == nil {
@@ -135,6 +172,13 @@ func (c *Controller) blockedReply(scope guestbridge.Context, raw json.RawMessage
 	}
 	current.count++
 	c.blockedACKs[scope.Session] = current
+	// A peer can extend the wait (an early DRAINED, earlyDrainedSince), but
+	// by at most StalledParticipantBound past this ACK's own first BLOCKED:
+	// a fenceable peer that keeps polling without installing moves its fence
+	// point on, and the reply must stay BLOCKED only for a bounded time.
+	if limit := current.since.Add(StalledParticipantBound); peerSince.After(limit) {
+		peerSince = limit
+	}
 	start := current.since
 	if peerSince.After(start) {
 		start = peerSince
@@ -150,7 +194,21 @@ func (c *Controller) blockedReply(scope guestbridge.Context, raw json.RawMessage
 // of scope that still owes its INSTALLED_DRAIN and whose current ACK is
 // BLOCKED, or the zero time if there is none. A blockedACKs entry exists
 // only while that session's latest ACK reply was BLOCKED.
-func (c *Controller) earlyDrainedSince(scope guestbridge.Context) time.Time {
+//
+// A peer that may be fenced (fenceable, task 0a4) also counts from its
+// fence point (fenceAt: its last view-worker request plus
+// StalledParticipantBound), whichever is later. While the peer keeps
+// polling, that point moves on and the early DRAINED waits for it, up to
+// blockedReply's cap (StalledParticipantBound past the DRAINED's own first
+// BLOCKED), after which it gets the bound's error; once the peer is silent for the
+// bound, the first ACK after the fence point fences it (fenceBeforeACK) and
+// the DRAINED is ACCEPTED rather than answered with the bound's error,
+// which would have failed the DRAINED's guest before the fence could
+// unwedge the recall. A peer that may not be fenced is one whose
+// INSTALLED_DRAIN is archived but not relearned after a restart (no peer
+// in INSTALL_DRAIN holds an undrained entry: DRAIN waited for every drain);
+// it gives no fence point, so only its BLOCKED wait, if any, counts.
+func (c *Controller) earlyDrainedSince(ctx context.Context, scope guestbridge.Context) time.Time {
 	var latest time.Time
 	r := c.state.Recall
 	if r == nil {
@@ -161,8 +219,13 @@ func (c *Controller) earlyDrainedSince(scope guestbridge.Context) time.Time {
 		if session == scope.Session || json.Unmarshal(event, &e) != nil || len(r.Acks[session+"/INSTALLED_DRAIN/"+stringNumber(e.Sequence)]) != 0 {
 			continue
 		}
-		if b, ok := c.blockedACKs[session]; ok && b.since.After(latest) {
+		if b, blocked := c.blockedACKs[session]; blocked && b.since.After(latest) {
 			latest = b.since
+		}
+		if c.fenceable(ctx, session) {
+			if at := c.fenceAt(session); at.After(latest) {
+				latest = at
+			}
 		}
 	}
 	return latest

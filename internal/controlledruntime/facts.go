@@ -33,7 +33,8 @@ type factsLease struct {
 }
 
 // factsLedger decodes the protected viewcontrol ledger (schema
-// viewcontrol.LedgerSchema). Fences holds per-domain fences; read them only
+// viewcontrol.LedgerSchema, or viewcontrol.LedgerSchemaFenced (3) when it
+// holds a fenced session; viewcontrol.ValidLedgerSchema). Fences holds per-domain fences; read them only
 // through viewcontrol.DomainFence, since a domain without an entry is at 1.
 type factsLedger struct {
 	Recovery bool
@@ -64,6 +65,17 @@ type factsLedger struct {
 		ID, Phase, Inventory, Closure, Domain string
 		Events, Acks, Manifests               map[string]json.RawMessage
 	}
+	// Fenced names the sessions the controller fenced as stalled recall
+	// participants (viewcontrol participant_fence.go, task 0a4). They were
+	// dropped from the recall and get no event again. validFenced checks
+	// every entry against AckArchive and Fences before the participant
+	// check may leave the session out.
+	Fenced map[string]struct {
+		Recall, Phase string
+		Sequence      uint64
+		Fence         uint64
+	}
+	AckArchive map[string]string
 }
 
 type physicalACK struct {
@@ -479,7 +491,7 @@ func (f *Facts) ledger(ctx context.Context, raw json.RawMessage) (factsLedger, e
 	if err := f.CheckEnrollment(ctx, f.enrollment); err != nil {
 		return l, err
 	}
-	if len(raw) > f.enrollment.Bounds.LedgerBytes || json.Unmarshal(raw, &l) != nil || l.Schema != viewcontrol.LedgerSchema || l.Fences == nil {
+	if len(raw) > f.enrollment.Bounds.LedgerBytes || json.Unmarshal(raw, &l) != nil || !viewcontrol.ValidLedgerSchema(l.Schema, len(l.Fenced)) || l.Fences == nil || !l.validFenced() {
 		return l, fsapi.Invalid
 	}
 	if err := viewcontrol.VerifyRetainedSources(ctx, f.service, raw); err != nil {
@@ -506,12 +518,39 @@ func (f *Facts) ledger(ctx context.Context, raw json.RawMessage) (factsLedger, e
 	return l, nil
 }
 
+// validFenced verifies every fence instead of trusting the entry, so a bad
+// ledger row cannot make these Facts certify a recall that silently leaves
+// out a live domain: the session is registered, its STOPPED of the recall it
+// was fenced in is in the AckArchive (the controller fences only after that
+// physically certified STOPPED), its fence is still the one recorded at the
+// fence (a fenced domain never completes a recall again), and the current
+// recall issued it no event.
+func (l factsLedger) validFenced() bool {
+	for session, f := range l.Fenced {
+		d, ok := l.Domains[session]
+		if !ok || f.Recall == "" || viewcontrol.DomainFence(l.Fences, session) != f.Fence || !viewcontrol.ArchivedStopped(l.AckArchive, d.Domain.Scope, f.Recall) {
+			return false
+		}
+		if l.Recall != nil && len(l.Recall.Events[session]) != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // recallParticipantsComplete requires an event for exactly the recall's
 // participants: every registered domain for an all-domain recall, and only
-// the named registered domain for a scoped one.
+// the named registered domain for a scoped one, minus the fenced sessions
+// (task 0a4): the controller drops a stalled participant only after its
+// observed STOPPED and with nothing undrained, and never issues it an event
+// again. A fenced session's ACKs are refused by the controller before they
+// reach these Facts.
 func (l factsLedger) recallParticipantsComplete() bool {
 	participants := map[string]bool{}
 	for session := range l.Domains {
+		if _, fenced := l.Fenced[session]; fenced {
+			continue
+		}
 		if l.Recall.Domain == "" || session == l.Recall.Domain {
 			participants[session] = true
 		}

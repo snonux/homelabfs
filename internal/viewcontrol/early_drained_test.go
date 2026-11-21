@@ -2,11 +2,9 @@ package viewcontrol
 
 import (
 	"encoding/json"
-	"errors"
 	"testing"
 	"time"
 
-	"github.com/snonux/homelabfs/internal/fsapi"
 	"github.com/snonux/homelabfs/internal/guestbridge"
 )
 
@@ -93,23 +91,30 @@ func TestEarlyDrainedBoundFollowsBlockedPeer(t *testing.T) {
 	r.finishEarlyDrainRecall(early, open)
 }
 
-// TestEarlyDrainedBoundedWithoutPeer: a peer that sends nothing gives the
-// early DRAINED no later start, so it gets the bound's error reply after
-// BlockedACKBound, as any other BLOCKED ACK does.
-func TestEarlyDrainedBoundedWithoutPeer(t *testing.T) {
+// TestEarlyDrainedWaitsForSilentPeerFence: a peer that sends nothing after
+// its STOPPED owes INSTALLED_DRAIN with nothing undrained, so it becomes
+// fenceable StalledParticipantBound after the phase began (task 0a4,
+// participant_fence.go). The early DRAINED waits for that fence instead of
+// failing its guest after BlockedACKBound (before 0a4 it got the bound's
+// error here, and the recall stayed wedged on the silent peer). The first
+// resend after the fence point fences the peer, the recall reaches
+// WAIT_DRAINED and the same DRAINED bytes are ACCEPTED.
+func TestEarlyDrainedWaitsForSilentPeerFence(t *testing.T) {
 	r := newZQ3Rig(t, 0)
 	advance := r.testClock()
 	open := r.startEarlyDrainRecall()
 	r.ack(0, "INSTALLED_DRAIN", nil)
 	early := r.requireEarlyDrainedBlocked(open)
-	advance(BlockedACKBound)
+	advance(BlockedACKBound + time.Millisecond)
 	if got := r.ackStatus(0, early); got != "BLOCKED" {
-		t.Fatalf("early DRAINED at the bound answered %s, want BLOCKED", got)
+		t.Fatalf("early DRAINED past BlockedACKBound behind a fenceable peer answered %s, want BLOCKED", got)
 	}
-	advance(time.Millisecond)
-	if _, err := r.execute(0, "VIEW_ACK", early); !errors.Is(err, fsapi.Unavailable) {
-		t.Fatalf("early DRAINED past the bound with a silent peer: %v, want an error reply", err)
+	advance(StalledParticipantBound - BlockedACKBound)
+	if got := r.ackStatus(0, early); got != "ACCEPTED" {
+		t.Fatalf("early DRAINED after the silent peer's fence point answered %s, want ACCEPTED", got)
 	}
+	r.requireFenced(1)
+	r.finishAfterFence(open)
 }
 
 // testClock installs a controller test clock and returns its advance func.

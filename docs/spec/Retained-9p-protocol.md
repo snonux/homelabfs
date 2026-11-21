@@ -704,8 +704,9 @@ owner busy, or a DRAINED sent right after the domain's own accepted
 INSTALLED_DRAIN while the recall still waits for a peer's INSTALLED_DRAIN)
 is BLOCKED and is resent unchanged, for a bounded time (the host answers an
 error after 30 s of BLOCKED for the same ACK; for such an early DRAINED the
-30 s run from the latest start of a still-BLOCKED peer INSTALLED_DRAIN, if
-later). Both are replies. A command the host can never answer, VIEW_POLL included (no
+30 s run from the latest start of a still-BLOCKED peer INSTALLED_DRAIN, or
+from the fence point of a peer that may be fenced (see below), if
+later, but at most 60 s past the DRAINED's own first BLOCKED). Both are replies. A command the host can never answer, VIEW_POLL included (no
 `{status}` exists for a closed or uncertain owner), gets an explicit transport
 error for its cell, never a cell left without a reply. Manifest is mandatory for STOPPED/DRAINED,
 target for installation/reopen. STOPPED uses null target; DRAINED uses the last
@@ -744,6 +745,39 @@ Kernel/daemon restart additionally needs reconstruction/exclusion under
 [Takeover](Takeover.md), not a fresh UUID or heartbeat timeout. A missing domain,
 drain error, unresolved claim or lost retention gates the closure indefinitely;
 it is not consent to drop a guest, force-stop a VM or narrow to one writer.
+
+One narrow exception keeps a single stalled guest session from holding every
+other domain forever (zq3-r11 R11-2). A participant is **fenced** only when all
+of these hold: its STOPPED of this recall was accepted and is archived (the
+recall is past RECALL, so its physical quiescence was observed and its leases
+are deactivated); it holds no active lease and no undrained dirty entry (every
+open reservation of it is frozen in this recall with its drain result
+protected); it owes the current phase's ACK, neither learned nor previously
+accepted (an accepted ACK counts as delivered, so a host restart that discards
+learned ACKs never makes a live guest look stalled); and its view worker sent
+no VIEW_POLL (VIEW_WAIT leg) and no VIEW_ACK for 60 s (twice the guest's 30 s
+window, from the later of its last such request and the host's first sight of
+the phase; a request counts even when it meets contention; the clocks restart
+on a host restart, Disconnect and Recover, never hastening a fence). Other
+traffic (tickets, CALLs, releases, retirements) does not count, since a guest
+whose view worker died still sends cleanup traffic. A live view worker reposts
+VIEW_WAIT every 10 ms and resends a BLOCKED ACK, so it is never fenced,
+however slow; no request fences its own sender, and a fence empties a recall only when every
+participant is silent. The host drops the fenced session from the recall in one
+protected write (the ledger moves to a schema an older host refuses), the
+remaining participants install and REOPEN, and every later request of that
+session is refused Unavailable, which the endpoint answers with an explicit
+transport error for that cell (a blocked cell: EIO through FUSE, an Rbridge
+ERROR to the guest), never a reply. Its domain fence never advances, so its old
+leases are never certified released and it can never resume on its stale view;
+the shared transport stays up. The fence is permanent for that enrolled
+session: the guest comes back only under a newly enrolled session. A
+participant missing its STOPPED, or with an undrained entry, is never fenced. An
+early DRAINED waits BLOCKED until 30 s after a fenceable peer's fence point
+(which moves on while that peer polls), but at most 60 s past its own first
+BLOCKED plus the 30 s bound; the first ACK after the fence point fences a
+silent peer and accepts the DRAINED. Implementation:
+`internal/viewcontrol` (`participant_fence.go`, task 0a4).
 
 ## Reviewable examples and remaining evidence
 

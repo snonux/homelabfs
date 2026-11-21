@@ -38,8 +38,8 @@ func (c *Controller) SealTerminal(ctx context.Context, a *guestbridge.TerminalAt
 		return guestbridge.TerminalSeal{}, fsapi.WouldBlock
 	}
 	defer c.mu.Unlock()
-	if c.poisoned.Load() || c.closed.Load() || c.state.Recovery {
-		return guestbridge.TerminalSeal{}, fsapi.Unavailable
+	if err = c.sealable(scope); err != nil {
+		return guestbridge.TerminalSeal{}, err
 	}
 	state, err := c.rawState()
 	if err != nil {
@@ -71,6 +71,19 @@ func (c *Controller) SealTerminal(ctx context.Context, a *guestbridge.TerminalAt
 	}
 	c.sealed.Store(scope.Session, seal)
 	return seal, c.fail("terminal-controller-sealed")
+}
+
+// sealable refuses a seal by a poisoned, closed or recovering controller,
+// and of a fenced session (participant_fence.go), which is refused for good
+// and never sealed: its operator enrolls a new session instead. c.mu is held.
+func (c *Controller) sealable(scope guestbridge.Context) error {
+	if c.poisoned.Load() || c.closed.Load() || c.state.Recovery {
+		return fsapi.Unavailable
+	}
+	if c.isFenced(scope.Session) {
+		return ErrSessionFenced
+	}
+	return nil
 }
 
 // VerifyTerminalSeal checks the actual still-live locked owner and protected

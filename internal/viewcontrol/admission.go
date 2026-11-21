@@ -69,6 +69,9 @@ func (c *Controller) admissionBarrier(ctx context.Context, b guestbridge.Binding
 	if _, sealed := c.state.Terminal[b.Context.Session]; sealed {
 		return fsapi.Permission
 	}
+	if c.isFenced(b.Context.Session) {
+		return ErrSessionFenced // participant_fence.go
+	}
 	if c.closed.Load() || c.poisoned.Load() || c.state.Recovery {
 		return fsapi.Unavailable
 	}
@@ -256,13 +259,21 @@ func (c *Controller) Disconnect(ctx context.Context, scope guestbridge.Context) 
 		return fsapi.WouldBlock
 	}
 	defer c.mu.Unlock()
+	// A fenced session (participant_fence.go) has no live connection whose
+	// loss could put the whole controller into recovery.
+	if c.isFenced(scope.Session) {
+		return ErrSessionFenced
+	}
 	c.state.Recovery = true
 	if c.state.Recall != nil {
 		c.state.Recall.Acks = map[string]json.RawMessage{}
 	}
 	// Learned ACKs are invalidated, so the in-memory BLOCKED bound must restart
-	// too: a resent ACK after Recover gets a fresh BlockedACKBound window.
+	// too: a resent ACK after Recover gets a fresh BlockedACKBound window. The
+	// stall clock restarts as well: the guests resend after RESUME, so no
+	// participant is fenced for the time recovery took (participant_fence.go).
 	c.blockedACKs = nil
+	c.resetLiveness()
 	return c.save()
 }
 
@@ -288,8 +299,10 @@ func (c *Controller) Recover(ctx context.Context) error {
 		return err
 	}
 	c.state.Recovery = false
-	// Fresh ACKs follow a reconciled RESUME; no BLOCKED window carries over.
+	// Fresh ACKs follow a reconciled RESUME; no BLOCKED window or stall clock
+	// carries over.
 	c.blockedACKs = nil
+	c.resetLiveness()
 	return c.save()
 }
 

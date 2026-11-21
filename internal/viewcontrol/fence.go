@@ -3,11 +3,27 @@ package viewcontrol
 // LedgerSchema is the layout version of the protected controller ledger
 // (viewcontrol-v1.db) inside the unchanged EnrollmentVersion bucket. Schema 2
 // replaced the single controller-wide Fence with one fence per domain
-// (Fences). A ledger without this exact schema, including every schema-1
-// ledger, is refused on reopen with fsapi.Permission: a controller-wide fence
-// cannot be split into per-domain fences without each guest mount's REOPENED
-// history, so such a ledger is never guessed forward.
+// (Fences). A ledger with another schema, including every schema-1 ledger,
+// is refused on reopen with fsapi.Permission: a controller-wide fence cannot
+// be split into per-domain fences without each guest mount's REOPENED
+// history, so such a ledger is never guessed forward. The one other schema
+// accepted is LedgerSchemaFenced (3), schema 2 with a fenced session
+// (ValidLedgerSchema).
 const LedgerSchema = 2
+
+// LedgerSchemaFenced (3) is schema 2 plus at least one fenced session
+// (participant_fence.go, task 0a4). The first fence moves the ledger to it,
+// so a binary before 0a4, which accepts only schema 2 and ignores Fenced,
+// refuses the ledger instead of serving a fenced session again. A ledger
+// without a fence stays at schema 2 byte for byte.
+const LedgerSchemaFenced = 3
+
+// ValidLedgerSchema reports whether schema fits a ledger with the given
+// number of fenced sessions: LedgerSchema without a fence, LedgerSchemaFenced with
+// one. The runtime Facts apply the same rule.
+func ValidLedgerSchema(schema, fenced int) bool {
+	return (schema == LedgerSchema && fenced == 0) || (schema == LedgerSchemaFenced && fenced > 0)
+}
 
 // DomainFence returns the physical cache-lifetime fence of one domain
 // (session) in a schema-2 ledger's Fences map.
@@ -33,11 +49,12 @@ func (c *Controller) fence(session string) uint64 {
 
 // fenceExhausted reports whether a new recall would have to advance a domain
 // fence that is already at its maximum. The recall's participants are exactly
-// the live (unsealed) inventoried domains that events() issues to: all of
-// them, or only scope for a domain-scoped recall (scope != "").
+// the live (unsealed, unfenced) inventoried domains that events() issues to:
+// all of them, or only scope for a domain-scoped recall (scope != "").
+// A fenced domain keeps its fence for good (participant_fence.go).
 func (c *Controller) fenceExhausted(scope string) bool {
 	for session := range c.state.Domains {
-		if _, sealed := c.state.Terminal[session]; sealed || (scope != "" && session != scope) {
+		if _, sealed := c.state.Terminal[session]; sealed || c.isFenced(session) || (scope != "" && session != scope) {
 			continue
 		}
 		if c.fence(session) == ^uint64(0) {
@@ -60,7 +77,7 @@ func (c *Controller) advanceFences(r *recallState) {
 // domain that completed a recall has an entry, so every entry belongs to a
 // registered domain and is at least 2 (an absent entry is fence 1).
 func (s ledger) validFences() bool {
-	if s.Schema != LedgerSchema || s.Fences == nil || len(s.Fences) > len(s.Domains) {
+	if !ValidLedgerSchema(s.Schema, len(s.Fenced)) || s.Fences == nil || len(s.Fences) > len(s.Domains) {
 		return false
 	}
 	for session, fence := range s.Fences {

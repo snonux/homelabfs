@@ -90,6 +90,16 @@ type RecallAck struct {
 	CheckMicros   int64  `json:"check_us"`
 }
 
+// RecallFence is one participant the controller fenced as stalled (task
+// 0a4, participant_fence.go): its domain session, the phase it was dropped
+// from and when (OffsetMicros after the recall started). A record holds at
+// most one row per participant, since a fenced session gets no event again.
+type RecallFence struct {
+	Domain       string `json:"domain"`
+	Phase        string `json:"phase"`
+	OffsetMicros int64  `json:"at_us"`
+}
+
 // Recall outcomes.
 const (
 	RecallOpen      = "OPEN"      // still running at capture
@@ -113,6 +123,7 @@ type RecallRecord struct {
 	Phases       []RecallPhase `json:"phases"`
 	Acks         []RecallAck   `json:"acks"`
 	AcksDropped  int           `json:"acks_dropped,omitempty"`
+	Fenced       []RecallFence `json:"fenced,omitempty"`
 
 	started time.Time // monotonic origin of every offset
 }
@@ -234,6 +245,15 @@ func (h *recallHistory) acked(id string, row RecallAck, at time.Time) {
 	record.Acks = append(record.Acks, row)
 }
 
+// fenced records that recall id dropped participant session in phase at now.
+func (h *recallHistory) fenced(id, session, phase string, now time.Time) {
+	record := h.current(id)
+	if record == nil {
+		return
+	}
+	record.Fenced = append(record.Fenced, RecallFence{Domain: session, Phase: phase, OffsetMicros: micros(now.Sub(record.started))})
+}
+
 // copyAll copies every ring record, oldest first, sharing no slice with the
 // ring. It only copies memory, so History can hold the controller mutex for
 // it and encode the copy after releasing it.
@@ -244,6 +264,9 @@ func (h *recallHistory) copyAll() RecallHistory {
 		row.Participants = append([]string{}, r.Participants...)
 		row.Phases = append([]RecallPhase{}, r.Phases...)
 		row.Acks = append([]RecallAck{}, r.Acks...)
+		if r.Fenced != nil {
+			row.Fenced = append([]RecallFence{}, r.Fenced...)
+		}
 		out.Recalls = append(out.Recalls, row)
 	}
 	return out

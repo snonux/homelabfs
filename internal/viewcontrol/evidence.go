@@ -22,6 +22,10 @@ type LedgerEvidence struct {
 	Sources, Leases, Reservations, Domains int
 	Tickets, Terminal                      int
 	Recall                                 bool
+	// Fenced counts the sessions fenced as stalled recall participants
+	// (participant_fence.go); omitted when zero, so evidence without a fence
+	// keeps its exact bytes.
+	Fenced int `json:",omitempty"`
 }
 
 // LedgerEvidence captures the protected controller state under the controller
@@ -54,7 +58,7 @@ func (c *Controller) LedgerEvidence(ctx context.Context) (LedgerEvidence, error)
 		return LedgerEvidence{}, err
 	}
 	s := c.state
-	e := LedgerEvidence{Digest: hash(protected), Bytes: len(protected), Matches: bytes.Equal(live, protected), Sources: len(s.Sources), Leases: len(s.Leases), Reservations: len(s.Reservations), Domains: len(s.Domains), Tickets: len(s.Tickets), Terminal: len(s.Terminal), Recall: s.Recall != nil}
+	e := LedgerEvidence{Digest: hash(protected), Bytes: len(protected), Matches: bytes.Equal(live, protected), Sources: len(s.Sources), Leases: len(s.Leases), Reservations: len(s.Reservations), Domains: len(s.Domains), Tickets: len(s.Tickets), Terminal: len(s.Terminal), Recall: s.Recall != nil, Fenced: len(s.Fenced)}
 	if c.file != nil {
 		if st, ok := c.file.Sys().(*syscall.Stat_t); ok {
 			e.Device, e.Inode = uint64(st.Dev), uint64(st.Ino)

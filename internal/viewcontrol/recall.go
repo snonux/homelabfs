@@ -50,15 +50,28 @@ func (c *Controller) Exchange(ctx context.Context, scope guestbridge.Context, op
 	if _, err = guestbridge.DecodeCommandVersion(envelope, uint16(protocol.BridgeMinor)); err != nil {
 		return nil, err
 	}
+	// Only the view worker's own traffic is a sign of life of a recall
+	// participant (participant_fence.go): a guest whose view worker died
+	// still sends cleanup, release and retirement traffic. It is counted
+	// before the TryLock, so a poll that meets contention still counts.
+	if op == "VIEW_POLL" || op == "VIEW_ACK" {
+		c.pulse(scope.Session)
+	}
 	if !c.mu.TryLock() {
 		return nil, fsapi.WouldBlock
 	}
 	defer c.mu.Unlock()
+	// Timestamp the caller's pulses now (a contended one waits for the next
+	// absorption, which only makes it look more recently alive).
+	c.absorbPulse(scope.Session)
 	if op == "VIEW_ACK" {
 		return c.acknowledge(ctx, scope, raw)
 	}
 	if _, sealed := c.state.Terminal[scope.Session]; sealed {
 		return nil, fsapi.Permission
+	}
+	if c.isFenced(scope.Session) {
+		return nil, guestbridge.Final(ErrSessionFenced) // participant_fence.go
 	}
 	// No VIEW_POLL reply exists for a controller that cannot vouch for its
 	// events; the explicit error lets the guest's transport call fail promptly.
@@ -111,19 +124,8 @@ func (c *Controller) poll(ctx context.Context, scope guestbridge.Context, raw js
 	if !equal(domain.Domain, p.Domain) {
 		return nil, fsapi.Permission
 	}
-	// progress only advances an already protected recall. events() builds every
-	// event before committing anything and the phase moves only afterwards, so
-	// a failed step leaves the ledger unchanged. Contention is therefore
-	// answered from the current state and the next poll or ACK retries it:
-	// capture refuses a full service queue with NoSpace (fsservice.Controlled),
-	// lock contention is WouldBlock and a busy provider Busy. Any other failure
-	// has no poll reply and gets a definitive error. (A NoSpace that is really
-	// a permanent bound only stalls the recall; the poll is still answered.)
-	// A failed protected write
-	// poisons the controller; its memory is then not the protected ledger, so
-	// that is never answered from, whatever the class.
-	if err := c.progress(ctx); err != nil && (c.poisoned.Load() || !transientProgress(err)) {
-		return nil, guestbridge.Final(err)
+	if err := c.pollProgress(ctx, scope); err != nil {
+		return nil, err
 	}
 	var event json.RawMessage
 	if c.state.Recall != nil {
@@ -140,6 +142,34 @@ func (c *Controller) poll(ctx context.Context, scope guestbridge.Context, raw js
 		return emptyPoll()
 	}
 	return canonical(map[string]any{"status": "EVENT", "event": event})
+}
+
+// pollProgress fences stalled participants and advances the recall for one
+// poll of scope; an error is the poll's definitive error reply.
+func (c *Controller) pollProgress(ctx context.Context, scope guestbridge.Context) error {
+	// progress only advances an already protected recall. events() builds every
+	// event before committing anything and the phase moves only afterwards, so
+	// a failed step leaves the ledger unchanged. Contention is therefore
+	// answered from the current state and the next poll or ACK retries it:
+	// capture refuses a full service queue with NoSpace (fsservice.Controlled),
+	// lock contention is WouldBlock and a busy provider Busy. Any other failure
+	// has no poll reply and gets a definitive error. (A NoSpace that is really
+	// a permanent bound only stalls the recall; the poll is still answered.)
+	// A failed protected write
+	// poisons the controller; its memory is then not the protected ledger, so
+	// that is never answered from, whatever the class.
+	//
+	// First a participant silent past StalledParticipantBound is fenced
+	// (participant_fence.go, task 0a4); every live domain polls, so a
+	// stalled recall is unwedged by its peers' polls. The poller itself is
+	// never fenced: its poll is a sign of life (Exchange recorded it).
+	if _, err := c.fenceStalled(ctx, scope.Session); err != nil {
+		return guestbridge.Final(err)
+	}
+	if err := c.progress(ctx); err != nil && (c.poisoned.Load() || !transientProgress(err)) {
+		return guestbridge.Final(err)
+	}
+	return nil
 }
 
 // transientProgress reports contention that clears without changing state.
@@ -284,6 +314,7 @@ func (c *Controller) beginRecall(ctx context.Context, scope string, trigger reca
 		return err
 	}
 	c.history.begin(c.state.Recall, trigger, start, issued)
+	c.markPhase() // the stall clock of participant_fence.go
 	return nil
 }
 
@@ -301,8 +332,11 @@ func (c *Controller) events(ctx context.Context, phase string) error {
 	issued := map[string]json.RawMessage{}
 	for session, domain := range c.state.Domains {
 		// A scoped recall issues events to its one domain only; every other
-		// domain keeps its view, leases, sequence and fence untouched.
-		if _, sealed := c.state.Terminal[session]; sealed || !recall.covers(session) {
+		// domain keeps its view, leases, sequence and fence untouched. A
+		// fenced session (participant_fence.go) never receives an event
+		// again: not the later phases of the recall it was dropped from,
+		// nor any later recall.
+		if _, sealed := c.state.Terminal[session]; sealed || c.isFenced(session) || !recall.covers(session) {
 			continue
 		}
 		if domain.Sequence == ^uint64(0) {
@@ -497,7 +531,8 @@ func (c *Controller) earlyDrained(scope guestbridge.Context, ack acknowledgement
 // progress advances the protected recall by at most one phase and saves it.
 // Every phase waits for the exact ACKs of the recall's participants only
 // (allAcked iterates the issued events), so a scoped recall never waits for
-// a domain outside it. A protected transition is then recorded in the
+// a domain outside it, nor for a participant fenceStalled dropped (task
+// 0a4, participant_fence.go). A protected transition is then recorded in the
 // in-memory recall history (task ce4): the new phase, or the recall's end
 // when finishRecall removed it.
 func (c *Controller) progress(ctx context.Context) error {
@@ -513,6 +548,7 @@ func (c *Controller) progress(ctx context.Context) error {
 		return err
 	}
 	c.history.phase(r.ID, r.Phase, c.state.Recall == nil, c.clock())
+	c.markPhase() // a new phase restarts the stall clock (participant_fence.go)
 	return nil
 }
 

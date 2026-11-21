@@ -58,6 +58,9 @@ func (c *Controller) ExchangeView(ctx context.Context, scope guestbridge.Context
 	if _, sealed := c.state.Terminal[scope.Session]; sealed {
 		return nil, fsapi.Permission
 	}
+	if c.isFenced(scope.Session) {
+		return nil, ErrSessionFenced // participant_fence.go
+	}
 	if c.closed.Load() || c.poisoned.Load() || c.state.Recovery {
 		return nil, fsapi.Unavailable
 	}
