@@ -743,8 +743,8 @@ finding too.
   `0dcb0fe0…`, `fill_plan.py` `893350cf…`, `argv.py` `78462c2e…`,
   `runtime-guard.py` `fece96b3…` and the native test guard `576d802a…`.
 - **ce4 recall timing (new evidence step, never a gate):**
-  `sh/recalls.py` extracts `controller.recalls` from the newest OBSERVE
-  that carries it and prints, per recall, the trigger (kind, opcode,
+  `sh/recalls.py` extracts `controller.recalls` from the OBSERVE whose
+  history has the largest total and prints, per recall, the trigger (kind, opcode,
   requesting domain), the scope (`ALL` or `DOMAIN`), the outcome, each
   phase's duration and every ACK wait (BLOCKED count and time). It runs
   after T1 (pass or fail; `$E/recalls-t1.json`) and in Phase 11 step 1
@@ -976,7 +976,7 @@ unrun, never edited around.
 source /home/paul/tmp/claude/hfs-zq3-r18-fill/session.sh
 ```
 
-`session.sh` (`72414d61…`, [pins](pins.json) `fill_helpers`) defines, adapted
+`session.sh` (`d9623792…`, [pins](pins.json) `fill_helpers`) defines, adapted
 from zq3-r17's (a summary, not runnable as written; bash only):
 
 ```text
@@ -992,7 +992,7 @@ f3()    { /usr/bin/ssh $O $F3KH -- paul@10.20.0.133 "$@"; }
 rocky() { /usr/bin/ssh $O $RKKH -oProxyCommand="/usr/bin/ssh $O $F3KH -W 10.20.0.123:22 -- paul@10.20.0.133" -- root@10.20.0.123 "$@"; }
 okpin() { …observer_key.py cd7f38c2… check… }   # before every stdin invocation of observer_key.py
 rockyt(){ …rocky with a local `timeout 270` around the real ssh, </dev/null; exit 124 = bound expired (read it with `; echo rc=${PIPESTATUS[0]}`)… }
-hpin()  { …sha256sum -c of bin/sign_watch.py (4da3282e…), the signer bin/hfs-retained9p-operator (f6d0b8f7…, rebuilt at c9c11f4) and the sixteen sh/* helpers… }
+hpin()  { …sha256sum -c of bin/sign_watch.py (4da3282e…), the signer bin/hfs-retained9p-operator (f6d0b8f7…, rebuilt at c9c11f4) and the seventeen sh/* helpers… }
 rockywait() { …Phase 12/U3: `rocky true` every 10 s until it answers, at most TRIES (default 36) tries; run it in bash that sourced session.sh (the bash-only wrapper is fine), never in a bare bash -c that did not source it… }
 K='/usr/bin/python3.9 -I -B /root/hfs-zq3-zq3-r18-kernel-stage/rocky_kernel.py'
 KP='--plan /root/hfs-zq3-zq3-r18-kernel-stage/rocky-kernel-plan.json --plan-sha256 a5e9d6d0d0f480d35d676255944dd541b8f9c51f7bb586cd58cffa520e6c4772 --state /root/hfs-zq3-zq3-r18-kernel-state'
@@ -1104,7 +1104,7 @@ hpin && okpin && sha256sum -c <<'EOF'
 a5e9d6d0d0f480d35d676255944dd541b8f9c51f7bb586cd58cffa520e6c4772  /home/paul/tmp/claude/hfs-zq3-r18-fill/kernel/rocky-kernel-plan.json
 a6f6f41cce9f31f6c87855326e1d9d75233bd89665f5071575c28500fca2f791  /home/paul/tmp/claude/hfs-zq3-r18-fill/controller/batch-plan.TEMPLATE.json
 734183276a34f51eec0a7ab7b87937c49525a95fc763b5aad3704957bac9ca03  /home/paul/tmp/claude/hfs-zq3-r18-fill/fdescfs-pins/pins.json
-72414d61ea24f25e585e97f4379464510a18bf0cf67e6376e34fe64afdbe01e2  /home/paul/tmp/claude/hfs-zq3-r18-fill/session.sh
+d9623792c2d1b09daf8843192ff93d49e16967e095e3051fdac09e6ca2bbb973  /home/paul/tmp/claude/hfs-zq3-r18-fill/session.sh
 EOF
 cd $D
 ```
@@ -2279,6 +2279,7 @@ python3 -I -B $D/sh/p10-admission.py $OUT/$CASE/stdout.log | tee $E/p10-admissio
 rocky 'dmesg | grep -E "hfs.*blocked|view control worker stopped|timed out behind a recall" || echo no-hfs-block' | tee $E/t-fail-guest-block.txt
 f3 "doas -n tar -c -f - --exclude control.sock -C $R runtime/owner" > $E/$CASE-owner-live.tar   # live owner snapshot first (holds transport.db)
 f3 "doas -n cat $R/guard/runtime.stderr" > $E/t-fail-runtime-stderr.txt
+obs obs-$CASE-baseline obs-$CASE-fail $([[ -e $E/obs-$CASE-retained.json ]] && echo obs-$CASE-retained)   # review round 1: one fresh OBSERVE while the runtime still serves, so the ce4 recall history of the failed case is captured before Phase 11's SIGTERM drops it; a failing obs (runtime gone) is recorded, never retried
 python3 -I -B $D/sh/p11-fence.py $E/t-fail-runtime-stderr.txt $E/$CASE-owner-live.tar $(ls $E/observe-p9*.json $E/obs-*.json) | tee $E/t-fail-fence.json   # nc4 fence record: "fenced" false expected
 python3 -I -B $D/sh/recalls.py $E/recalls-t1.json $(ls -tr $E/observe-p9.json $E/obs-credentials-*.json 2>/dev/null) | tee $E/recalls-t1.txt   # ce4: recall timing after T1 (pass or fail); findings, never a gate   # only when CASE=credentials (T1); other cases: Phase 11 step 1b covers them
 ```
@@ -2342,7 +2343,8 @@ python3 -I -B $D/sh/recalls.py $E/recalls-t1.json $(ls -tr $E/observe-p9.json $E
 
 r18 (ce4): the `recalls.py` line runs once after T1 whether T1 passed or
 failed (after a failure, as the last line of the case-failure block). It
-reads the newest of those OBSERVEs that carries `controller.recalls` and
+reads the one of those OBSERVEs whose `controller.recalls` has the largest
+`total` (after a failure that is the block's fresh `obs-$CASE-fail`) and
 prints one line per recall (trigger kind and opcode, requesting domain,
 scope `ALL`/`DOMAIN`, outcome, phase durations, ACK waits). Record the
 recall count, scopes and the longest phase and ACK wait in the run log next
@@ -2648,7 +2650,7 @@ f3 "doas -n tar -c -f - -C /var/tmp/hfs-fdescfs-windows zq3-r18" > $E/f3-window-
 # 1a. transport fence record (nc4; read-only): runtime stderr, the transport.db failure row (in f3-evidence.tar and the owner snapshots), Transport.Failure in every OBSERVE taken
 f3 "doas -n cat $R/guard/runtime.stderr" > $E/p11-runtime-stderr.txt
 python3 -I -B $D/sh/p11-fence.py $E/p11-runtime-stderr.txt $E/f3-evidence.tar $(ls $E/*owner*.tar $E/observe-p9*.json $E/obs-*.json $E/t9-*.json $E/t10-*.json $D/bootstrap-run/calls/*.json 2>/dev/null) | tee $E/p11-fence.json   # "fenced": false expected
-# 1b. ce4 recall history (r18; read-only, findings only): the newest OBSERVE taken that carries controller.recalls
+# 1b. ce4 recall history (r18; read-only, findings only): the OBSERVE whose controller.recalls has the largest total (review round 1: a RESTARTED T10 starts an empty history)
 python3 -I -B $D/sh/recalls.py $E/recalls-p11.json $(ls -tr $E/observe-p9*.json $E/obs-*.json $E/t9-*.json $E/t10-*.json 2>/dev/null) | tee $E/recalls-p11.txt
 # 2. guest 9p mounts: list, then unmount each listed one on its own line, reading its rc before the next line (block lines captured before and after)
 rocky 'dmesg | grep -E "hfs.*blocked|view control worker stopped|timed out behind a recall" || echo no-hfs-block' | tee $E/p11-block-before-umount.txt
@@ -2839,6 +2841,13 @@ them), so a later run in the same f3 boot meets D1 again.
   already consumed: record it as a finding and continue with `check --expect
   stock`, then U2. A hung test kernel stops here: a forced power-off needs
   Paul's explicit decision.
+- **iom1/iom2 on every stop path (review round 1).** Any abort that does not
+  reach Phase 12 (Phases 1a-4, a Phase 6 refusal through U3, a hung test
+  kernel) still ends with the Phase 12 iom block once Rocky is back (or, if
+  Rocky stays down, at once): `f3 "doas -n vm start iom1"`, then
+  `f3 "doas -n vm start iom2"`, each on its own line, then `f3 'doas -n vm
+  list'` showing both `Running`; never force. Paul's iormesh session waits
+  for them.
 
 ## Run log template
 

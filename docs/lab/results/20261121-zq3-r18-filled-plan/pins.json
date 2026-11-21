@@ -246,9 +246,9 @@
   "dryrun/helpers-dryrun.py": "2550c6a4f4b1c597097de89c0f52a6d6b589fe686af14d0b4a35fc2e1acfac24",
   "dryrun/mkrun.py": "f22aa8fcf65448dafd8b10fd36c1a1ec6c2a6486574915cb8bf8385051e15a2a",
   "dryrun/rockystub.py": "e93575e7ac4a887d2c90dff86bcb77c0d68fbf185d7844530118989f4f7d308a",
-  "make-pins.py": "bf1632d83c540d72835df5fdd3a17a7e623a3d5a9c45d84cb6d41ffd84f5eece",
+  "make-pins.py": "60e9e0717a12d6b83c5389954600fd7a6dfdc867ab651578639275de83b1ee35",
   "make-spec.py": "dccd6123e2303cfd6ff01003ce5e9dbb115da6d12b09b38e2745be342db5e8d7",
-  "session.sh": "72414d61ea24f25e585e97f4379464510a18bf0cf67e6376e34fe64afdbe01e2",
+  "session.sh": "d9623792c2d1b09daf8843192ff93d49e16967e095e3051fdac09e6ca2bbb973",
   "sh/guard-budget.py": "737af7690f9b82fa160d745fbc8176090971f4e559f73e269f7033681be72ecf",
   "sh/n1-gate.py": "3806a422e982f9144951da06eb53d2dc54331fa5e408e7e7c894f2379f71a1a8",
   "sh/p1-f3.sh": "1d553b8c3ca35d77908f4926f7832104ad6dec88e52f1de1f45375b9cc0f07b8",
@@ -265,7 +265,7 @@
   "sh/p9-observe.py": "36ce46fe4aba2b77fadec26855fbfbd69eaf324a71aef2fff7661eb766da4f78",
   "sh/p9-ready.py": "eb06de6be85ecebfbc3adeddc03cf4c30877ffd320d3730dcc0e59ef5822649f",
   "sh/p9-timing.py": "daebe64699ecff3ef199c7caaa3308aee08d56ed4e431fa482a758958607bbde",
-  "sh/recalls.py": "795639bd5b004fe1d0fa479ff7b2e0aa2f237825ab2f1fbc1beab9d5b1781393"
+  "sh/recalls.py": "d5f614df80534c22d0d80b1d8755e29d50611054bb419ace0092cd7a4077df63"
  },
  "filled_utc": "2026-11-21T09:40Z",
  "memory": {
@@ -462,7 +462,7 @@
    "sh/p9-observe.py": "the committed correlator's checks on the Phase 9 OBSERVE (sequence L+1, evidence /2); reports each provider's claim counts without gating",
    "sh/p9-ready.py": "READY binding (runtime/cut/epoch, socket) from the bootstrap run; requires journal /3, one ok usable result and summary observe_sequence_last L >= 2 (equal in the usable result); --observe-last prints L",
    "sh/p9-timing.py": "984 measurement: OBSERVE wall time minus the ssh-noop median from $E/obs-timing.tsv, against the 2.4 s model bound; evidence only",
-   "sh/recalls.py": "new in r18 (ce4): controller.recalls from the newest OBSERVE that carries it (JSON-string decoding as in p11-fence.py); per recall trigger, scope, outcome, phase durations and ACK waits; after T1 (pass or fail) and in Phase 11 step 1b; findings, never a gate (exit 0 also without a history). Tested on synthetic OBSERVEs (direct, JSON-string, pre-ce4) and zq3-r17's real observe-p9.json (history_found false)"
+   "sh/recalls.py": "new in r18 (ce4): controller.recalls from the OBSERVE whose history has the largest total (review round 1: a reopened controller starts empty) (JSON-string decoding as in p11-fence.py); per recall trigger, scope, outcome, phase durations and ACK waits; after T1 (pass or fail) and in Phase 11 step 1b; findings, never a gate (exit 0 also without a history). Tested on synthetic OBSERVEs (direct, JSON-string, pre-ce4) and zq3-r17's real observe-p9.json (history_found false)"
   },
   "measurement_984": "tf3 times three ssh-noop calls, the Phase 9 OBSERVE, the T1 baseline and every obs OBSERVE; a local cat of obs-timing.tsv after the Phase 9 OBSERVE checks the first four lines were captured; p9-timing.py after T4 and before Phase 11; bound 2.4 s per fresh guest observation; evidence only, never a gate. zq3-r10 gave the first samples (ssh-noop median 0.198 s, OBSERVE net 0.605 and 0.434 s), zq3-r11 0.466 and 0.483 s; zq3-r12 none (stopped in Phase 8); zq3-r13 0.651 s, zq3-r14 median 0.493 s (ssh-noop 0.329 s; ssh-noop median 0.21 s; one sample, the matrix went unrun)",
   "oc4_guest_behaviour": "record errnos -112 EHOSTDOWN (ERROR 5) and -116 ESTALE (ERROR 4) where zq3-r12 saw -71 EPROTO, 'exporter ERROR <n>' in block and worker-stop lines, and transport_failed signs ((-112), exporter ERROR 5, or ETIMEDOUT after a 30 s reply wait)",

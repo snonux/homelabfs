@@ -81,14 +81,6 @@ are never committed:
 - the runtime config, which holds host receipt private keys;
 - the staging tarballs that contain it.
 
-The generated inputs live in the private directory
-`/home/paul/tmp/claude/hfs-zq3-r18-fill` (`0700`). This directory holds only
-public hashes, paths, argv and the read-only facts. These stay private and
-are never committed:
-- the per-session keys;
-- the runtime config, which holds host receipt private keys;
-- the staging tarballs that contain it.
-
 ## Inputs
 
 | Input | Value |
@@ -117,8 +109,8 @@ are never committed:
 | 12. N1 gate helper | `sh/n1-gate.py` (docstring only). Retested at fixed times on 2026-11-21: 13:30Z, 21:20Z and 21:25Z GO; 21:30Z, 22:56Z, 23:10Z STOP; the next day with the old Phase 1 STOP, fresh GO; a stale stamp STOP; 01:00Z GO; `phase1` true for the real facts (#65), false for #64 and #66 | `3806a422…` |
 | 13. Fence record helper | `sh/p11-fence.py` (docstring only); zq3-r17's real Phase 11 and case-failure evidence give `fenced` false | `ecea88bc…` |
 | 14. Guard budget helper | `sh/guard-budget.py` (docstring only; be4 budgets unchanged). On **zq3-r17's real journal** (launch 15:34:25Z): its Phase 9 and T1 starts GO, each latest start GO and one second later STOP (all seven steps); malformed journals refused (`rc=2`) | `737af769…` |
-| 15. Recall helper (new, ce4) | `sh/recalls.py`: per recall trigger, scope, outcome, phase durations and ACK waits from `controller.recalls`; tested on synthetic OBSERVEs (direct and JSON-string) and pre-ce4 inputs (`history_found` false, exit 0), an existing output and a missing input (exit 2), and zq3-r17's real `observe-p9.json` (no history) | `795639bd…` |
-| 16. Run sheet | [run-sheet.md](run-sheet.md): Phases 0-12 with the kept rules, the zq3-r17 notes, "New for zq3-r18", iom1/iom2 and swap lines, the recall lines and a run log template. `session.sh` (`72414d61…`, hpin over 19 files) and seventeen helpers; `p10-requests.py` (`72738e2b…`) re-pins the three r18 request templates. The Phase 8-10 lines were dry-run end to end (below) | [pins](pins.json) `fill_helpers` |
+| 15. Recall helper (new, ce4) | `sh/recalls.py`: per recall trigger, scope, outcome, phase durations and ACK waits from `controller.recalls`; tested on synthetic OBSERVEs (direct and JSON-string) and pre-ce4 inputs (`history_found` false, exit 0), an existing output and a missing input (exit 2), and zq3-r17's real `observe-p9.json` (no history) | `d5f614df…` |
+| 16. Run sheet | [run-sheet.md](run-sheet.md): Phases 0-12 with the kept rules, the zq3-r17 notes, "New for zq3-r18", iom1/iom2 and swap lines, the recall lines and a run log template. `session.sh` (`d9623792…`, hpin over 19 files) and seventeen helpers; `p10-requests.py` (`72738e2b…`) re-pins the three r18 request templates. The Phase 8-10 lines were dry-run end to end (below) | [pins](pins.json) `fill_helpers` |
 
 Staging recipe (both tarballs, deterministic):
 `tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=2026-11-21T00:00:00Z --format=gnu`.
@@ -316,15 +308,30 @@ reports `deadline_hit` false and the failure `OSError` errno 129 (R17-1).
   fill, with their hash recorded here.
 - **Q10 the tool timeouts.** At least 300 s for `$CTL` and lock-probe lines,
   420 s for T7's run line.
-- **Q11 iom1/iom2.** Stopped by Claude on Paul's instruction; the sheet
-  restarts them in Phase 12 (after Rocky is back). If the run aborts before
-  Phase 12, they stay stopped until someone starts them: the operator must
-  remember to restore them.
-- **Q12 swap (needs Paul's decision if it persists).** 883,332 KiB of swap
-  was in use at the facts, while the earlier sheets required swap unused in
-  Phase 1 and `runtime-guard.py` admits no swap use. Phase 1 now only
-  records it. If Rocky's stop does not free it, Phase 6 stops (U3) and
-  clearing swap on f3 needs Paul's decision; this fill does not plan it.
+- **Q11 iom1/iom2.** Stopped by Claude on Paul's instruction. Paul's
+  iormesh session restarted them at 08:55:14Z; on 2026-11-21 Paul agreed to
+  pause iormesh so Claude stops them again for this run. The sheet restarts
+  them in Phase 12, and (review round 1) the Recovery section now restarts
+  them on every abort path too.
+- **Q12 swap (decided).** 883,332 KiB of swap was in use at the facts, while
+  `runtime-guard.py` admits no swap use. Paul approved on 2026-11-21
+  clearing it once iom1/iom2 are stopped: before Phase 1, Claude checks that
+  free memory exceeds the swap in use and runs `doas -n swapoff -a` then
+  `doas -n swapon -a` on f3, each on its own line, then records `swapinfo -k`
+  showing 0 used. Phase 6 still requires swap unused.
+
+## Review round 1
+
+A fresh-context review found nothing blocking (all hashes, tarballs, tests
+and AGENTS.md rules checked). Applied:
+- the case-failure block takes one fresh `obs obs-$CASE-baseline
+  obs-$CASE-fail` while the runtime still serves, so a failed case's ce4
+  recall history is captured before Phase 11's SIGTERM drops it;
+- `recalls.py` summarises the history with the largest `total` (a RESTARTED
+  T10 starts an empty history that "newest" would have picked); `recalls.py`
+  is now `d5f614df…` and `session.sh` `d9623792…`;
+- iom1/iom2 restart on every abort path (Recovery);
+- cosmetic: seventeen sh/* helpers, a duplicated README paragraph removed.
 
 No committed tool refused real inputs. The intended refusals all occurred
 (the controller template, the unfilled bootstrap template, the r17
