@@ -1444,7 +1444,8 @@ Patch 0004:
   advance (`hfs_view_retire`, under `session->retirement`) and is read before
   each acquisition; a changed counter is progress, and a busy try without it
   pauses again (against the cap). Several threads may retry on one advance;
-  each stays within its own cap. Review round 1:
+  each stays within its own cap (since 1h4 a busy mutex is waited for
+  instead; see below). Review round 1:
   every BLOCKED acquisition still takes a host ticket number and an identity
   until it is retired, and retirement is refused while a recall runs or the
   same credentials hold an active lease, so a blind 30 s loop could spend
@@ -1767,3 +1768,94 @@ setattr (`--sanitize`), requests, huge, dirty and controlled_received
 `terminal-smoke`, `cleanup` and `exit-cleanup` pass. No candidate was
 rebuilt, booted or admitted, so the WARN's absence, link(2) and T1's fchown
 are not yet observed in a guest (zq3-r19).
+
+## BLOCKED re-check after a reinstall, busy retirement waited for (`1h4`)
+
+zq3-r19 R19-1: T1's `credentials_groups` access child got `EAGAIN` on its
+open of `group`. The host answered BLOCKED as designed: the child's ticket
+carried the target from before the fchown, the host started an
+EXPECTED_TARGET recall and answered PENDING, and after the REOPENED ACK
+re-admission still mismatched the old expectation (`tickets.go`
+`expectedMismatch`; "BLOCKED for the old expectation"). re4's back-off then
+retried only after retirement progress. Its retirement try found
+`session->retirement` held by the round the REOPENED ACK forces
+(`hfs_mmap_retire_kick(view, true)`), counted the `-EBUSY` as an attempt and
+paused again. After 4 local loops in about 0.43 s it returned `-EAGAIN`,
+with no host round trip after the first answer.
+
+Patch 0004:
+
+- `hfs_mmap_observe` reads `view->reopen_acks` into `attempts->acks` just
+  before each capture. On a host BLOCKED, `hfs_mmap_attempt` asks
+  `hfs_mmap_reinstalled` (under `view->lock`) whether an ACK arrived or the
+  stamp moved since then; a reinstall raises the revision, so a new target
+  always counts. If so, `hfs_mmap_blocked_recheck` treats the answer as a
+  failed re-check (`hfs_mmap_recheck_note`, `attempts->rechecks`) and
+  acquires again at once. There is no pause, no retirement try and no
+  progress requirement, and the answer is not counted in
+  `attempts->blocked`. It is bounded by the deadline, the stop checks and
+  the ticket cap. A BLOCKED on an unchanged view keeps re4's progress rule.
+- The ticket bound is unchanged: `attempts->blocked + attempts->reinstalled`
+  (the BLOCKED tickets of the call) is capped by `HFS_BLOCKED_RETRIES_MAX`,
+  so at most 4 host tickets go to BLOCKED answers per syscall.
+- `-EBUSY` from `hfs_view_retire_try` waits instead of counting:
+  `hfs_mmap_retire_busy` calls `hfs_view_retire_wait` (new, `hfs_view.c`).
+  That wait is killable, bounded by the deadline and event-driven on
+  `view->wait`. It ends when `view->retire_rounds` changes (read before the
+  try), when `view->retire_progress` changes, or when the view refuses or
+  the transport fails. Then the back-off decides again: progress retries the
+  acquisition, a round that freed nothing is followed by this call's own
+  try, and a busy mutex waits again. `hfs_view_retire_mode` increments
+  `retire_rounds` at the end of every round that ran (under
+  `session->retirement`) and wakes `view->wait` after the unlock and at each
+  floor advance. Only host BLOCKED answers pause, and a pause happens once
+  per BLOCKED.
+- Separate rate-limited lines: `observation VIEW_ACQUIRE BLOCKED by the
+  host (attempt N); retiring, then retrying after M ms ...` (host answer),
+  `observation VIEW_ACQUIRE BLOCKED (attempt N): local retirement round
+  busy; waiting up to M ms for it to finish` (local wait) and `observation
+  re-check failed (VIEW_ACQUIRE BLOCKED for the target before a reinstall);
+  acquiring again at once`. The give-up line counts BLOCKED tickets.
+- A REOPENED ACK that lands between the read and the capture costs at most
+  one spare re-check ticket, within the cap. Without the host's BLOCKED
+  reason (2h4), a capacity BLOCKED right after a recall is also re-checked
+  once.
+
+Tests (`view --pressure`, `--sanitize`). The fixture's busy retirement is
+now another thread's rounds (`retire_busy`): the try is `-EBUSY` while they
+run, `busy_round_end` (as `view_wait_hook`, one per 100 ms wake-up) ends
+one, and a blocking `hfs_view_retire` waits them out. Every round that runs
+counts in `view->retire_rounds`.
+
+- `retry_blocked_reinstalled`: R19-1's shape (`HOOK_REINSTALL_BLOCKED`: a
+  recall reinstalls another target with its REOPENED ACK, the answer is
+  BLOCKED). Retirement stays busy for 500 ms, yet the call succeeds with
+  exactly 2 host tickets, no pause and no retirement try. A view reinstalled
+  before every answer stops at 4 BLOCKED tickets.
+- `retry_blocked_busy_capacity`: a capacity BLOCKED on an unchanged view
+  still needs progress. Two busy rounds free nothing and the call's own try
+  is refused, so it returns `-EAGAIN` "no retirement progress" after one
+  acquisition and one pause, with the local-busy line apart from the host
+  line and no re-check.
+- `retry_blocked_busy_rounds`: 5 busy rounds, the fifth advancing a floor,
+  end granted on the second acquisition after one pause (550 ms).
+- `retry_blocked_busy_deadline`: a round that never ends returns `-EAGAIN`
+  "deadline exhausted" at the 30 s deadline, after one acquisition.
+- Updated: the R16-1 held case (the recall its release starts runs during
+  the third acquisition, which is now re-checked: 5 acquisitions, 2 pauses),
+  and the worker case's busy try (waited for, 1 pause instead of 2). The old
+  "busy mutex pauses three times" assertion became
+  `retry_blocked_busy_deadline`.
+
+Each of the four new cases and both updated ones fails on the re4
+`hfs_mmap.c` (run alone, with 1h4's `hfs_view.h` for the new field).
+Mutants each fail a case: always re-check, never re-check, a re-check
+without the ticket cap, `-EBUSY` counted and paused (re4), `-EBUSY` as a
+give-up, and a re-check on the ACK count only. The production
+`hfs_view_retire_mode` counter and wake-ups are replaced in the pressure
+harness by its host model. They are compiled by the kernel build and
+controlled_received and reviewed in the source, not executed against a host
+recall.
+
+The series was regenerated with `export.py --task 1h4` (0004: `hfs_view.[ch]`,
+`hfs_lease.c`, `hfs_mmap.c`).

@@ -43,6 +43,8 @@ struct delayed_work { int unused; };
  */
 static char last_warning[512];
 static unsigned int warnings;
+/* 1h4: every line since the case cleared it, for lines before the last. */
+static char warning_log[8192];
 static void pr_warn(const char *f,...);
 #define pr_warn_ratelimited pr_warn
 #define pr_info_ratelimited pr_warn
@@ -122,4 +124,5 @@ static void pr_warn(const char *f,...)
   assert(n<sizeof(last_warning));
  }
  va_end(args);last_warning[n]=0;warnings++;fputs(last_warning,stderr);
+ if(strlen(warning_log)+n<sizeof(warning_log))strcat(warning_log,last_warning);
 }

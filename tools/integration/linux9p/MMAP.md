@@ -221,13 +221,19 @@ request was stamped at; otherwise GETATTR and LOOKUP are re-issued within a
 
 A host BLOCKED answer to an observation's VIEW_ACQUIRE is back-pressure (re4,
 zq3-r16 R16-1: unretired release tickets filled the shared `ControlTickets`
-budget). Observation begin releases a lease it still holds, pauses (50 ms,
-doubling), offers released tickets for retirement without waiting for a busy
-retirement mutex, and acquires again only if some floor advanced since the
-acquisition (by it or the cleanup worker) or the held release completed, at
-most three times within the same 30 s deadline
-(each BLOCKED acquisition itself holds a ticket until retired). Otherwise it
-returns the host's `-EAGAIN` at once. A VIEW_RETIRE the host answered BLOCKED
+budget). Observation begin releases a lease it still holds. If the view was
+reinstalled since the capture (a REOPENED ACK arrived or the stamp moved;
+1h4, zq3-r19 R19-1: the host answers BLOCKED for an expected target a recall
+replaced while the acquisition was PENDING), it acquires again at once, with
+no pause and no progress requirement. Otherwise it pauses (50 ms, doubling),
+offers released tickets for retirement, and acquires again only if some
+floor advanced since the acquisition (by it or the cleanup worker) or the
+held release completed. A retirement mutex held by another round is no
+answer from the host: the observation waits (killable, within the deadline)
+for that round to end or a floor to advance, then decides. At most four
+BLOCKED tickets per syscall, all within the same 30 s deadline (each BLOCKED
+acquisition itself holds a ticket until retired). Otherwise it returns the
+host's `-EAGAIN`. A VIEW_RETIRE the host answered BLOCKED
 (a recall runs, or the family's credentials hold an active lease) is offered
 again after the recall's REOPENED and, at most once a second, at the next
 observation, not only at the next cleanup.
