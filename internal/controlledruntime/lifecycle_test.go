@@ -37,7 +37,7 @@ type lifecycleRun struct {
 	c        RuntimeConfig
 	scanner  *bufio.Scanner
 	reader   *io.PipeReader
-	done     chan error
+	exit     *runtimeExit
 	cancel   context.CancelFunc
 	ready    lifecycleBinding
 	signed   RuntimeEnrollment // the actual signed handoff (runtime ticket families)
@@ -67,7 +67,7 @@ type lifecycleReply struct {
 func startLifecycleRun(t *testing.T, binary string, mutate func(*lifecycleRun, *runtimeOS)) *lifecycleRun {
 	t.Helper()
 	r, d, c, platform := runtimeDriverFixture(t, binary, 2)
-	run := &lifecycleRun{t: t, r: r, d: d, c: c, done: make(chan error, 1)}
+	run := &lifecycleRun{t: t, r: r, d: d, c: c}
 	platform.peer = func(conn *net.UnixConn) (admin.Peer, error) {
 		peer, err := admin.PeerCredentials(conn)
 		if run.foreign.Load() {
@@ -100,7 +100,7 @@ func startLifecycleRun(t *testing.T, binary string, mutate func(*lifecycleRun, *
 	run.cancel = cancel
 	reader, writer := io.Pipe()
 	run.reader = reader
-	go func() { err := runRuntimeWithOS(ctx, c, writer, platform); _ = writer.Close(); run.done <- err }()
+	run.exit = startRuntime(ctx, c, writer, platform, d)
 	run.scanner = bufio.NewScanner(reader)
 	t.Cleanup(func() { cancel(); _ = reader.Close() })
 	run.driveToReady()
@@ -149,7 +149,7 @@ func (run *lifecycleRun) driveToReady() {
 			return
 		}
 	}
-	t.Fatalf("runtime ended before READY: %v", <-run.done)
+	t.Fatalf("runtime ended before READY: %v", run.exit.wait())
 }
 
 // finish drains the remaining output and returns the runtime's result.
@@ -158,8 +158,8 @@ func (run *lifecycleRun) finish() error {
 		run.t.Logf("post-READY output: %s", run.scanner.Bytes())
 	}
 	select {
-	case err := <-run.done:
-		return err
+	case <-run.exit.done:
+		return run.exit.err
 	case <-time.After(30 * time.Second):
 		run.t.Fatal("runtime did not return")
 		return nil

@@ -26,6 +26,54 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// fixtureBootstrapSeconds is the bootstrap window runtimeDriverFixture grants:
+// it spans operator enrollment, Assemble, the C bootstrap and every guest
+// HELLO. The former 3 s was exceeded under full-suite CPU load (6f4): the
+// runtime then gave up with its deadline, closed the transport, and the
+// driver's HELLO FETCH only ever saw EAGAIN. expiringBootstrapSeconds is the
+// short wait used where a fault withholds HELLOs and must not reach READY.
+const (
+	fixtureBootstrapSeconds  = 60
+	expiringBootstrapSeconds = 3
+)
+
+// runtimeExit records the end of one runRuntimeWithOS goroutine so the
+// fixture's guest driver can tell "reply not yet published" (retry) from
+// "nothing will ever answer" (fail with the runtime's error).
+type runtimeExit struct {
+	done chan struct{}
+	err  error
+}
+
+// startRuntime runs the controlled runtime in its own goroutine, closing
+// writer when it returns, and attaches the exit to the guest driver d.
+func startRuntime(ctx context.Context, c RuntimeConfig, writer *io.PipeWriter, platform runtimeOS, d *restartChild) *runtimeExit {
+	exit := &runtimeExit{done: make(chan struct{})}
+	d.runtime = exit
+	go func() {
+		exit.err = runRuntimeWithOS(ctx, c, writer, platform)
+		_ = writer.Close()
+		close(exit.done)
+	}()
+	return exit
+}
+
+// wait blocks until the runtime returned and yields its result.
+func (e *runtimeExit) wait() error {
+	<-e.done
+	return e.err
+}
+
+// ended reports, without blocking, whether the runtime returned and with what.
+func (e *runtimeExit) ended() (bool, error) {
+	select {
+	case <-e.done:
+		return true, e.err
+	default:
+		return false, nil
+	}
+}
+
 // All semantic/protocol/file/process/C bootstrap owners are real. Only native
 // mount/INIT/fd syscalls and observed guest kernel/physical state are OS seams.
 func runtimeDriverFixture(t *testing.T, binary string, devices int) (*sourceRig, *restartChild, RuntimeConfig, runtimeOS) {
@@ -91,7 +139,7 @@ func runtimeDriverFixture(t *testing.T, binary string, devices int) (*sourceRig,
 	s.record.Controller = fsapi.UUID{}
 	s.record.Stage = "mounted"
 	d.rig = r
-	c := RuntimeConfig{Version: "homelabfs-controlled-runtime/1", VolumeConfig: filepath.Join(root, "volume-config"), OwnerDirectory: s.root, EnrollmentFile: filepath.Join(root, "signed-handoff.json"), Exporter: spec, Operator: r.artifactOperator.Public().(ed25519.PublicKey), HostKeys: map[string]ed25519.PrivateKey{}, GuestKeys: map[string]ed25519.PublicKey{}, Views: r.artifactAuthorization.Enrollment.Bounds, Providers: ProviderLimits{Claims: 64, RetainedBytes: 16 << 20, SourceBytes: 8 << 20, ClaimCreditBytes: 1 << 20, SourceCreditBytes: 1 << 20}, Capabilities: 64, CapabilityIdentities: 128, CredentialRevisions: 32, BootstrapSeconds: 3, Service: fsservice.Limits{Queue: 8, IOBytes: 65536, Handles: 64, Lookups: 128, Reservations: 128, Locks: 64, LogicalBytes: 4 << 20}, Budget: RuntimeBudget{HostBytes: 4 << 30, ServiceBytes: 64 << 20, ExporterBytes: 274 << 20, GuestCopyBytes: 16 << 20, GuestBytes: 2 << 30, GuestBaseBytes: 256 << 20, Guest: GuestArtifactBudget{OrdinaryBytes: 64 << 20, ControlBytes: 32 << 20, Reservations: 32, Cookies: 32, Received: 32}}}
+	c := RuntimeConfig{Version: "homelabfs-controlled-runtime/1", VolumeConfig: filepath.Join(root, "volume-config"), OwnerDirectory: s.root, EnrollmentFile: filepath.Join(root, "signed-handoff.json"), Exporter: spec, Operator: r.artifactOperator.Public().(ed25519.PublicKey), HostKeys: map[string]ed25519.PrivateKey{}, GuestKeys: map[string]ed25519.PublicKey{}, Views: r.artifactAuthorization.Enrollment.Bounds, Providers: ProviderLimits{Claims: 64, RetainedBytes: 16 << 20, SourceBytes: 8 << 20, ClaimCreditBytes: 1 << 20, SourceCreditBytes: 1 << 20}, Capabilities: 64, CapabilityIdentities: 128, CredentialRevisions: 32, BootstrapSeconds: fixtureBootstrapSeconds, Service: fsservice.Limits{Queue: 8, IOBytes: 65536, Handles: 64, Lookups: 128, Reservations: 128, Locks: 64, LogicalBytes: 4 << 20}, Budget: RuntimeBudget{HostBytes: 4 << 30, ServiceBytes: 64 << 20, ExporterBytes: 274 << 20, GuestCopyBytes: 16 << 20, GuestBytes: 2 << 30, GuestBaseBytes: 256 << 20, Guest: GuestArtifactBudget{OrdinaryBytes: 64 << 20, ControlBytes: 32 << 20, Reservations: 32, Cookies: 32, Received: 32}}}
 	for _, peer := range r.peers {
 		c.Scopes = append(c.Scopes, peer.scope)
 		c.HostKeys[peer.scope.Session] = peer.key
@@ -187,6 +235,13 @@ func TestRuntimeDriverSharedSequenceRealC(t *testing.T) {
 				devices = 1
 			}
 			r, d, c, platform := runtimeDriverFixture(t, binary, devices)
+			if fault == "unbound-guest" {
+				// This fault sends no HELLO at all and fails only when the
+				// bootstrap window expires; keep that wait short. one-hello
+				// keeps the full window so its first HELLO is answered even
+				// under load, and is stopped later (see the HELLO loop).
+				c.BootstrapSeconds = expiringBootstrapSeconds
+			}
 			if fault == "missing-host-key" {
 				c.HostKeys = nil
 			}
@@ -203,8 +258,7 @@ func TestRuntimeDriverSharedSequenceRealC(t *testing.T) {
 			defer cancel()
 			reader, writer := io.Pipe()
 			defer func() { _ = reader.Close() }()
-			done := make(chan error, 1)
-			go func() { err := runRuntimeWithOS(ctx, c, writer, platform); _ = writer.Close(); done <- err }()
+			exit := startRuntime(ctx, c, writer, platform, d)
 			scanner := bufio.NewScanner(reader)
 			ready := false
 			stages := []string{}
@@ -260,6 +314,12 @@ func TestRuntimeDriverSharedSequenceRealC(t *testing.T) {
 					for i := 0; i < count; i++ {
 						d.exchange(i, "HELLO", guestbridge.TerminalProtocol(), nil)
 					}
+					if fault == "one-hello" {
+						// The runtime must still be waiting for the second
+						// HELLO after the short window; stopping it then must
+						// end it without READY (checked below).
+						time.AfterFunc(expiringBootstrapSeconds*time.Second, cancel)
+					}
 				case "READY":
 					ready = true
 					if event["publication"] != nil || event["domains"] != float64(2) {
@@ -277,7 +337,7 @@ func TestRuntimeDriverSharedSequenceRealC(t *testing.T) {
 					cancel()
 				}
 			}
-			err := <-done
+			err := exit.wait()
 			if len(stages) > 0 && (r.supervisor.runtimeFunding == nil || r.supervisor.runtimeFunding.transport.Usage().Used.Bytes == 0) {
 				t.Fatal("uncertain native owner lost its retained funding")
 			}
