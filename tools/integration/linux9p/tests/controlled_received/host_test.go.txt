@@ -442,6 +442,48 @@ func TestControlledReceivedActualPassedGrant(t *testing.T) {
 	c.action("CHECK", 0, "cookie_balance", 0)
 }
 
+// TestControlledReceivedActualViewAdvance (xf4, task 4h4): the guest side
+// of a guest-requested view advance with the real 0005 provider. It needs
+// the xf4 host (task 3h4): an older host refuses "advance" in the request.
+// After the initial lease's release (its domain recall acknowledged phase by
+// phase) a CREATE moves the host cut; a cacheless
+// observation's VIEW_ACQUIRE with advance is granted on the current cut and
+// adopted (ADVANCE). Its VIEW_QUERY replay is current for the advanced view
+// and accepted as an ordinary lease (ADVANCE_REPLAY). After its release
+// (no recall: an Advance lease) a further CREATE and a second advance move
+// the view on; the first lease's stored reply is then unadopted, -EXDEV
+// (-18), without a block, and the same reply without advance is still
+// refused (ADVANCE_STALE).
+func TestControlledReceivedActualViewAdvance(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	caps := receivedResult(t, c.call(0, "ROOT", map[string]any{}))
+	var domain guestbridge.Capability
+	require(t, json.Unmarshal(c.action("ADOPT_ROOT", 0, "", 0), &domain))
+	c.action("ACQUIRE", 0, "", 0)
+	// The initial (target:null) lease is not Targeted, so its release runs
+	// the domain-scoped release recall; the guest acknowledges each phase.
+	c.action("RELEASE_START", 0, "", 0)
+	for _, phase := range []string{"STOPPED", "INSTALLED_DRAIN", "DRAINED", "INSTALLED_FINAL", "REOPENED"} {
+		c.run(0, true, "VIEW_WAIT", map[string]any{"domain": domain, "after_sequence": 0})
+		c.action("PHASE", 0, phase, 0)
+	}
+	c.action("RELEASE_DONE", 0, "", 0)
+	create := func(name string) {
+		receivedResult(t, c.call(0, "CREATE", map[string]any{"parent": caps[0], "name": name, "mode": 0660, "umask": 0, "flags": map[string]any{"access": "READWRITE", "append": false, "create": true, "exclusive": true, "sync": "ORDINARY", "truncate": false}}))
+	}
+	create("616476616e636531")
+	c.action("ADVANCE", 0, "", 0)
+	c.action("ADVANCE_REPLAY", 0, "", 0)
+	c.action("ADVANCE_RELEASE", 0, "", 0)
+	create("616476616e636532")
+	c.action("ADVANCE", 0, "", 0)
+	c.action("ADVANCE_STALE", 0, "", -18)
+	c.action("ADVANCE_RELEASE", 0, "", 0)
+	c.action("CHECK", 0, "cookie_balance", 0)
+	c.close()
+}
+
 func TestControlledReceivedActualSourceCorruption(t *testing.T) {
 	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
 	c := startReceivedCarrier(t, r)

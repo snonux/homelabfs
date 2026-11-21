@@ -133,6 +133,309 @@ static void bounded_enter_checks(struct hfs_view *view)
    assert(!strcmp(hfs_view_phase_name((enum hfs_view_phase)99), "?"));
 }
 
+
+/* xf4 (guest-requested view advance): hfs_view_advance_target is the native
+ * verification fixture (hfs_lease.c and the provider are not part of this
+ * build). It records its calls, may block (advance_gate: the ordering
+ * checks against STOP) and answers advance_verify_err, else the candidate's
+ * visibility advance_visibility and target hash 0xA1.
+ */
+static atomic_int advance_verifies, advance_inside, advance_go;
+static int advance_verify_err;
+static uuid_t advance_visibility = {{1}};
+static bool advance_gate;
+int hfs_view_advance_target(struct hfs_session *session, const struct hfs_json *json,
+                            int token, const struct hfs_buf *expected, uuid_t *visibility,
+                            u8 target_hash[32])
+{
+   assert(session == test_session && token == hfs_json_field(json, 0, "target"));
+   assert(expected && expected->len);
+   atomic_fetch_add(&advance_verifies, 1);
+   if (advance_gate) {
+      atomic_store(&advance_inside, 1);
+      while (!atomic_load(&advance_go)) usleep(100);
+   }
+   if (advance_verify_err) return advance_verify_err;
+   *visibility = advance_visibility;
+   memset(target_hash, 0, 32);
+   target_hash[0] = 0xA1;
+   return 0;
+}
+
+static const char advance_old[] = "{\"cut\":1}", advance_new[] = "{\"cut\":2}";
+struct advance_case {
+   struct hfs_lease lease;
+   struct hfs_view_stamp stamp;
+   struct hfs_buf target;
+   u64 revision;
+};
+
+/* A LIVE view at advance_old with nothing cached, and a fresh unpublished
+ * advance candidate for advance_new captured from it.
+ */
+static void advance_setup(struct hfs_view *view, struct advance_case *c)
+{
+   bool cacheless = false;
+   static struct hfs_json *json;
+
+   if (!json) assert(!hfs_json_parse("{\"target\":{\"cut\":2}}", 20, &json));
+   view->phase = HFS_VIEW_LIVE;
+   view->target.len = 0;
+   view->target.error = 0;
+   hfs_buf_literal(&view->target, advance_old);
+   memset(view->target_hash, 0, 32);
+   memset(&c->lease, 0, sizeof(c->lease));
+   c->lease.json = json;
+   c->lease.advance = true;
+   c->lease.target_hash[0] = 0xA1;
+   if (!c->target.cap) assert(!hfs_buf_init(&c->target, HFS_TARGET_MAX));
+   assert(!hfs_view_capture_ex(view, &c->stamp, &c->target, &cacheless));
+   assert(cacheless && c->target.len == sizeof(advance_old) - 1);
+   c->revision = view->revision;
+   advance_verify_err = 0;
+   advance_gate = false;
+   atomic_store(&advance_inside, 0);
+   atomic_store(&advance_go, 0);
+}
+
+/* A refused adoption: -EXDEV, the lease unadopted and no longer a candidate,
+ * the view untouched (target, revision, phase).
+ */
+static void advance_refused(struct hfs_view *view, struct advance_case *c)
+{
+   enum hfs_view_phase phase = view->phase;
+   u64 stamped = c->stamp.revision;
+
+   assert(hfs_view_advance(view, &c->lease, &c->stamp, &c->target, jiffies + 1000) == -EXDEV);
+   assert(c->lease.unadopted && !c->lease.advance && !c->lease.published);
+   assert(view->revision == c->revision && view->phase == phase);
+   assert(view->target.len == sizeof(advance_old) - 1 &&
+          !memcmp(view->target.data, advance_old, view->target.len));
+   assert(!view->target_hash[0] && c->stamp.revision == stamped);
+}
+
+/* The cacheless hint and the re-check refuse every kind of target-bound
+ * state: a cached page, a mapping, dirty pages and packages, page grants, an
+ * admitted token and a published observation.
+ */
+static void advance_state_checks(struct hfs_session *session, struct hfs_view *view,
+                                 struct advance_case *c)
+{
+   struct address_space mapping = {.id = 7, .a_ops = &hfs_cache_aops};
+   struct hfs_inode object = {.inode = {&mapping, 1}};
+   struct hfs_observation published = {.view = view};
+   struct hfs_cache_page *cached;
+   struct hfs_view_stamp stamp;
+   bool cacheless = true;
+   void *cookie;
+   u32 *counters[] = {&view->nr_dirty, &view->nr_dirty_packages, &view->nr_grants};
+
+   (void)session;
+   advance_setup(view, c);
+   assert(!hfs_view_snapshot(view, &stamp) && !hfs_view_page_prepare(view, &stamp, &cached));
+   assert(!hfs_view_capture_ex(view, &stamp, &c->target, &cacheless) && !cacheless);
+   advance_refused(view, c);
+   hfs_view_page_put(cached);
+   assert(!view->nr_cached);
+   advance_setup(view, c);
+   INIT_LIST_HEAD(&object.view_list);
+   assert(!hfs_view_register_inode(&object.inode) && view->nr_mappings == 1);
+   assert(!hfs_view_capture_ex(view, &stamp, &c->target, &cacheless) && !cacheless);
+   advance_refused(view, c);
+   hfs_view_unregister_inode(&object.inode);
+   for (unsigned int i = 0; i < ARRAY_SIZE(counters); i++) {
+      advance_setup(view, c);
+      (*counters[i])++;
+      assert(!hfs_view_capture_ex(view, &stamp, &c->target, &cacheless) && !cacheless);
+      advance_refused(view, c);
+      (*counters[i])--;
+   }
+   advance_setup(view, c);
+   assert(!hfs_view_enter(view, NULL, false, &cookie));
+   assert(!hfs_view_capture_ex(view, &stamp, &c->target, &cacheless) && !cacheless);
+   advance_refused(view, c);
+   hfs_view_leave(cookie);
+   advance_setup(view, c);
+   INIT_LIST_HEAD(&published.list);
+   list_add_tail(&published.list, &view->observations);
+   view->nr_observations++;
+   assert(!hfs_view_capture_ex(view, &stamp, &c->target, &cacheless) && !cacheless);
+   advance_refused(view, c);
+   list_del_init(&published.list);
+   view->nr_observations--;
+}
+
+/* Moved or foreign view, generation, target or candidate: refused. */
+static void advance_identity_checks(struct hfs_view *view, struct advance_case *c)
+{
+   uuid_t other = {{9}};
+
+   advance_setup(view, c);
+   c->stamp.revision--;
+   advance_refused(view, c);
+   advance_setup(view, c);
+   c->stamp.generation = other;
+   advance_refused(view, c);
+   advance_setup(view, c);
+   c->target.data[c->target.len - 2] = '9'; /* expected {"cut":9}: not installed */
+   advance_refused(view, c);
+   advance_setup(view, c);
+   advance_visibility = other; /* another visibility generation */
+   advance_refused(view, c);
+   advance_visibility = view->generation;
+   advance_setup(view, c);
+   advance_verify_err = -ESTALE; /* the native check refuses it */
+   advance_refused(view, c);
+   advance_setup(view, c);
+   c->lease.target_hash[0] = 0xA2; /* not the hash that was verified */
+   advance_refused(view, c);
+   advance_setup(view, c);
+   c->lease.advance = false; /* an ordinary lease is no candidate */
+   advance_refused(view, c);
+   advance_setup(view, c);
+   view->phase = HFS_VIEW_RECALLING;
+   advance_refused(view, c);
+   advance_setup(view, c);
+   view->phase = HFS_VIEW_FENCED;
+   advance_refused(view, c);
+   view->phase = HFS_VIEW_LIVE;
+}
+
+struct advance_args { struct hfs_view *view; struct advance_case *c; int result; unsigned long deadline; };
+struct advance_stop { struct hfs_view *view; uuid_t recall; u64 sequence; int result; };
+static void *advance_stop_thread(void *p)
+{
+   struct advance_stop *a = p;
+
+   a->result = hfs_view_stop(a->view, &a->view->generation, &a->recall, a->sequence);
+   return NULL;
+}
+static void *advance_thread(void *p)
+{
+   struct advance_args *a = p;
+
+   a->result = hfs_view_advance(a->view, &a->c->lease, &a->c->stamp, &a->c->target, a->deadline);
+   return NULL;
+}
+
+/* An adoption and a STOP. The native check runs before view->transitions:
+ * a STOP that completes meanwhile leaves the view QUIESCENT and the
+ * adoption is refused. 4h4 review round 1: a STOP that holds transitions
+ * first (RECALLING, joining an admitted token, without a deadline) no
+ * longer holds the adoption until it ends; the adoption sees the view left
+ * LIVE and returns -EXDEV at once, while that STOP still waits. Pre-review
+ * the adoption parked on transitions until the token was released.
+ */
+static void advance_stop_order_checks(struct hfs_view *view, struct advance_case *c,
+                                      u64 *sequence)
+{
+   struct advance_args a = {view, c, 1, 0};
+   struct advance_stop stop = {view, {{5}}, 0, -1};
+   pthread_t adopter, stopper;
+   void *cookie;
+
+   advance_setup(view, c);
+   a.deadline = jiffies + 1000;
+   advance_gate = true;
+   assert(!pthread_create(&adopter, NULL, advance_thread, &a));
+   while (!atomic_load(&advance_inside)) usleep(100);
+   view->sequence = *sequence;
+   stop.sequence = ++*sequence;
+   assert(!pthread_create(&stopper, NULL, advance_stop_thread, &stop));
+   assert(!pthread_join(stopper, NULL) && stop.result == 0); /* not held by the check */
+   assert(view->phase == HFS_VIEW_QUIESCENT);
+   atomic_store(&advance_go, 1);
+   assert(!pthread_join(adopter, NULL) && a.result == -EXDEV);
+   assert(c->lease.unadopted && view->revision == c->revision);
+   view->phase = HFS_VIEW_LIVE;
+   view->quiescent = false;
+   /* STOP first: it holds transitions while it joins the token. */
+   advance_setup(view, c);
+   a.deadline = jiffies + 1000;
+   assert(!hfs_view_enter(view, NULL, false, &cookie));
+   view->sequence = *sequence;
+   stop.sequence = ++*sequence;
+   stop.result = 1;
+   assert(!pthread_create(&stopper, NULL, advance_stop_thread, &stop));
+   while (READ_ONCE(view->phase) == HFS_VIEW_LIVE) usleep(100);
+   a.result = 1;
+   assert(!pthread_create(&adopter, NULL, advance_thread, &a));
+   assert(!pthread_join(adopter, NULL) && a.result == -EXDEV); /* the STOP still waits */
+   assert(READ_ONCE(stop.result) == 1 && view->phase == HFS_VIEW_RECALLING);
+   assert(c->lease.unadopted && view->revision == c->revision);
+   hfs_view_leave(cookie);
+   assert(!pthread_join(stopper, NULL) && stop.result == 0 && view->phase == HFS_VIEW_QUIESCENT);
+   view->phase = HFS_VIEW_LIVE;
+   view->quiescent = false;
+}
+
+/* 4h4 review round 1: another holder of view->transitions on a LIVE view
+ * (an install, initial bind, REOPEN or ACK check that does not end) is
+ * waited for only until the observation's deadline (-ETIMEDOUT) or a fatal
+ * signal (-EINTR), each leaving the lease unadopted and the view untouched.
+ */
+static void advance_bounded_checks(struct hfs_view *view, struct advance_case *c)
+{
+   unsigned long start;
+
+   advance_setup(view, c);
+   mutex_lock(&view->transitions);
+   start = jiffies;
+   view_wait_step = 1;
+   assert(hfs_view_advance(view, &c->lease, &c->stamp, &c->target, start + 25) == -ETIMEDOUT);
+   assert(jiffies - start == 25 && c->lease.unadopted && !c->lease.advance);
+   assert(view->revision == c->revision && view->phase == HFS_VIEW_LIVE);
+   advance_setup(view, c);
+   view_wait_fatal = true;
+   start = jiffies;
+   assert(hfs_view_advance(view, &c->lease, &c->stamp, &c->target, start + 25) == -EINTR);
+   assert(jiffies == start && c->lease.unadopted && view->revision == c->revision);
+   view_wait_fatal = false;
+   view_wait_step = 0;
+   mutex_unlock(&view->transitions);
+}
+
+/* xf4: hfs_view_capture_ex's cacheless hint and hfs_view_advance on a fresh
+ * LIVE view: the adoption (target switch, revision + 1, re-stamp, old stamps
+ * refused), every refusal (target-bound state, moved or foreign identity,
+ * RECALLING, FENCED) and its order against STOP.
+ */
+static void advance_checks(struct hfs_session *session)
+{
+   uuid_t generation = {{1}};
+   struct advance_case c = {0};
+   struct hfs_view *view;
+   u64 sequence = 10, before;
+   void *cookie;
+
+   assert(!hfs_view_new(session, &generation));
+   view = observed_view = session->view;
+   advance_visibility = generation;
+   advance_setup(view, &c);
+   view->sequence = sequence;
+   before = view->revision;
+   assert(hfs_view_advance(view, &c.lease, &c.stamp, &c.target, jiffies + 1000) == 0);
+   assert(view->revision == before + 1 && c.stamp.revision == view->revision);
+   assert(!c.lease.advance && !c.lease.unadopted && uuid_equal(&c.lease.visibility, &generation));
+   assert(view->target.len == sizeof(advance_new) - 1 &&
+          !memcmp(view->target.data, advance_new, view->target.len));
+   assert(c.target.len == view->target.len && !memcmp(c.target.data, advance_new, c.target.len));
+   assert(view->target_hash[0] == 0xA1 && view->phase == HFS_VIEW_LIVE && view->sequence == sequence);
+   struct hfs_view_stamp old = c.stamp;
+   old.revision = before;
+   assert(hfs_view_enter(view, &old, false, &cookie) == -ESTALE); /* stamps before it fail */
+   assert(!hfs_view_enter(view, &c.stamp, false, &cookie));
+   hfs_view_leave(cookie);
+   advance_state_checks(session, view, &c);
+   advance_identity_checks(view, &c);
+   advance_stop_order_checks(view, &c, &sequence);
+   advance_bounded_checks(view, &c);
+   hfs_buf_free(&c.target);
+   hfs_view_fence(view);
+   assert(hfs_view_free(session) == 0);
+   assert(reservations == 0 && module_refs == 0);
+}
+
 int main(void)
 {
    struct hfs_provider provider = {reserve, unreserve, NULL};
@@ -348,6 +651,7 @@ int main(void)
    hfs_view_fence(session.view);
    assert(hfs_view_free(&session) == 0);
    assert(reservations == 0 && module_refs == 0);
+   advance_checks(&session);
    puts("physical admission production-C checks passed; no VFS/PTE execution");
    return 0;
 }

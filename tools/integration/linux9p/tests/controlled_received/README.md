@@ -346,3 +346,24 @@ request or ticket counts; the check is then skipped. On the pre-w54 source a
 features32767 scenario such as `terminal-smoke` reproduces the zq3-r3 oops
 (SEGV at 0xbd in `hfs_completion_reserve` ← `hfs_controlled_begin_close` ←
 `v9fs_hfs_kill_super`), and the provisioning case accepts 32.
+
+## Guest-requested view advance (`4h4`)
+
+`--scenario advance` (`TestControlledReceivedActualViewAdvance`) needs the
+xf4 host (task 3h4, merged on main); an older bridge refuses `"advance"`. After the initial lease's release (its domain recall
+acknowledged phase by phase) a CREATE moves the host cut, then:
+
+* `ADVANCE ID SESSION` captures the cacheless view (`hfs_view_capture_ex`),
+  calls actual `hfs_lease_acquire_ex` with `advance` and actual
+  `hfs_view_advance`. It requires an advance candidate and asserts the target
+  switch, revision + 1, the re-stamp and no block. A grant of the expected
+  target is `-ENOENT`.
+* `ADVANCE_REPLAY` re-sends the adopted lease's ticket (actual
+  `hfs_view_exchange`, a VIEW_QUERY of the GRANTED ticket) and decodes the
+  stored GRANTED against the original expected target with actual
+  `hfs_lease_decode`: an ordinary verified lease of the same host lease.
+* `ADVANCE_RELEASE` releases it with actual `hfs_lease_release` (an Advance
+  lease: no recall) and keeps it for `ADVANCE_STALE`.
+* `ADVANCE_STALE`, after a further CREATE and a second `ADVANCE`, decodes the
+  released lease's stored reply: unadopted (`-EXDEV`), no block. The same
+  reply on a ticket without advance is `-ESTALE`.

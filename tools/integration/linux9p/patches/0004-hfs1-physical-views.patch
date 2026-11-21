@@ -451,7 +451,7 @@ diff --git a/fs/9p/hfs_view.h b/fs/9p/hfs_view.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.h
-@@ -0,0 +1,316 @@
+@@ -0,0 +1,325 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_VIEW_H
 +#define FS_9P_HFS_VIEW_H
@@ -616,6 +616,10 @@ new file mode 100644
 +	void *reservation;
 +	uuid_t generation;
 +	uuid_t recall;
++	/* Raised under view->lock by every target install, REOPEN and (xf4)
++	 * adopted advance (hfs_view_advance), so a stamp taken before any of
++	 * them fails its re-check.
++	 */
 +	u64 revision;
 +	u64 sequence;
 +	u32 active;
@@ -727,6 +731,11 @@ new file mode 100644
 +int hfs_view_bind_initial(struct hfs_view *view, const struct hfs_lease *lease);
 +int hfs_view_capture(struct hfs_view *view, struct hfs_view_stamp *stamp,
 +		     struct hfs_buf *target);
++int hfs_view_capture_ex(struct hfs_view *view, struct hfs_view_stamp *stamp,
++			struct hfs_buf *target, bool *cacheless);
++int hfs_view_advance(struct hfs_view *view, struct hfs_lease *lease,
++		     struct hfs_view_stamp *stamp, struct hfs_buf *target,
++		     unsigned long deadline);
 +int hfs_view_snapshot(struct hfs_view *view, struct hfs_view_stamp *stamp);
 +int hfs_view_snapshot_target(struct hfs_view *view, struct hfs_view_stamp *stamp,
 +			     u8 *target_hash);
@@ -772,7 +781,7 @@ diff --git a/fs/9p/hfs_view.c b/fs/9p/hfs_view.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.c
-@@ -0,0 +1,1277 @@
+@@ -0,0 +1,1447 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Physical retained-cache admission and all-alias PTE/TLB/MMU quiescence. */
 +#include <linux/mm.h>
@@ -1009,12 +1018,37 @@ new file mode 100644
 +	return err;
 +}
 +
-+int hfs_view_capture(struct hfs_view *view, struct hfs_view_stamp *stamp,
-+		     struct hfs_buf *target)
++/* xf4: the view holds no target-bound state, under view->lock: no cached
++ * page (the mmap page cache), no registered mapping, no dirty page or dirty
++ * package (DIRTY_RESERVE reservations), no PAGE grant, no admitted physical
++ * token and no published observation. Such a view can adopt a newer cut
++ * without a recall: a recall's guest-side effect on it is only "target :=
++ * current cut, revision++" (docs/design/xf4-view-advance.md). Attributes and
++ * dentries are not view state (refreshed per permission check; dentries
++ * revalidate through an observation). view->reservation is the view's own
++ * memory credit, not a dirty reservation, so it does not count.
++ */
++static bool hfs_view_cacheless_locked(const struct hfs_view *view)
++{
++	return !view->nr_cached && !view->nr_mappings && !view->nr_dirty &&
++	       !view->nr_dirty_packages && !view->nr_grants && !view->active &&
++	       !view->nr_observations && list_empty(&view->cache) &&
++	       list_empty(&view->dirty) && list_empty(&view->mappings);
++}
++
++/* The stamp and installed target of a LIVE view. xf4: *cacheless (when not
++ * NULL) is hfs_view_cacheless_locked in the same critical section: the hint
++ * hfs_mmap_observe needs to request an advance. It is only a hint;
++ * hfs_view_advance checks it again before adopting.
++ */
++int hfs_view_capture_ex(struct hfs_view *view, struct hfs_view_stamp *stamp,
++			struct hfs_buf *target, bool *cacheless)
 +{
 +	unsigned long flags;
 +	int err = 0;
 +
++	if (cacheless)
++		*cacheless = false;
 +	spin_lock_irqsave(&view->lock, flags);
 +	if (view->phase != HFS_VIEW_LIVE || !view->target.len) {
 +		err = -EAGAIN;
@@ -1027,9 +1061,154 @@ new file mode 100644
 +		stamp->generation = view->generation;
 +		stamp->revision = view->revision;
 +		err = target->error;
++		if (!err && cacheless)
++			*cacheless = hfs_view_cacheless_locked(view);
 +	}
 +	spin_unlock_irqrestore(&view->lock, flags);
 +	return err;
++}
++
++int hfs_view_capture(struct hfs_view *view, struct hfs_view_stamp *stamp,
++		     struct hfs_buf *target)
++{
++	return hfs_view_capture_ex(view, stamp, target, NULL);
++}
++
++/* xf4: may the view adopt lease's target now (view->lock held)? It is still
++ * the LIVE, unrefused view of the capture (stamp: revision and generation;
++ * target: the captured expected target, still installed), holds no
++ * target-bound state (hfs_view_cacheless_locked, our own unpublished
++ * observation not counted), and the candidate keeps the visibility
++ * generation (hash: the target hash hfs_view_advance_target computed).
++ */
++static bool hfs_view_advance_allowed(const struct hfs_view *view, const struct hfs_lease *lease,
++				     const struct hfs_view_stamp *stamp,
++				     const struct hfs_buf *target, const uuid_t *visibility,
++				     const u8 hash[32], u32 len)
++{
++	return !hfs_view_refused(view) && view->phase == HFS_VIEW_LIVE &&
++	       view->revision == stamp->revision && view->revision != U64_MAX &&
++	       uuid_equal(&view->generation, &stamp->generation) &&
++	       uuid_equal(&view->generation, visibility) &&
++	       view->target.len == target->len &&
++	       !memcmp(view->target.data, target->data, target->len) &&
++	       hfs_view_cacheless_locked(view) && len <= view->target.cap &&
++	       lease->advance && !lease->unadopted && !lease->published &&
++	       !memcmp(lease->target_hash, hash, 32);
++}
++
++/* xf4: take view->transitions for an adoption without waiting as long as
++ * its holder (4h4 review round 1). A STOP holds it, without a deadline,
++ * while it joins admitted tokens; an adoption must not inherit that wait,
++ * since before xf4 the observation path only waited for LIVE, within its
++ * deadline. A view that left LIVE (a STOP sets RECALLING before it waits)
++ * or is refused ends the attempt at once with -EXDEV: the adoption would
++ * be refused anyway. Any other holder (an install, initial bind, REOPEN or
++ * ACK check; all short) is waited for one jiffy at a time, killable, until
++ * the observation's deadline: -ETIMEDOUT, or -EINTR on a fatal signal.
++ */
++static int hfs_view_transitions_bounded(struct hfs_view *view, unsigned long deadline)
++{
++	while (!mutex_trylock(&view->transitions)) {
++		if (READ_ONCE(view->phase) != HFS_VIEW_LIVE || hfs_view_refused(view))
++			return -EXDEV;
++		if (!time_before(jiffies, deadline))
++			return -ETIMEDOUT;
++		if (wait_event_killable_timeout(view->wait,
++						READ_ONCE(view->phase) != HFS_VIEW_LIVE ||
++						hfs_view_refused(view), 1) < 0)
++			return -EINTR;
++	}
++	return 0;
++}
++
++/* The switch itself, under view->transitions and view->lock: re-check the
++ * view and the candidate (hfs_view_advance_allowed), then install the
++ * target with revision++ and re-stamp the caller's stamp and target. A
++ * refused re-check marks the lease unadopted.
++ */
++static int hfs_view_advance_switch(struct hfs_view *view, struct hfs_lease *lease,
++				   struct hfs_view_stamp *stamp, struct hfs_buf *target,
++				   int token, const uuid_t *visibility, const u8 hash[32])
++{
++	u32 len = lease->json->tokens[token].end - lease->json->tokens[token].start;
++	unsigned long flags;
++	int err = 0;
++
++	spin_lock_irqsave(&view->lock, flags);
++	if (len > target->cap ||
++	    !hfs_view_advance_allowed(view, lease, stamp, target, visibility, hash, len)) {
++		lease->advance = false;
++		lease->unadopted = true;
++		err = -EXDEV;
++	} else {
++		view->target.len = 0;
++		view->target.error = 0;
++		hfs_buf_token(&view->target, lease->json, token);
++		memcpy(view->target_hash, hash, 32);
++		view->revision++;
++		lease->visibility = *visibility;
++		lease->advance = false;
++		stamp->revision = view->revision;
++		target->len = 0;
++		target->error = 0;
++		hfs_buf_add(target, view->target.data, view->target.len);
++	}
++	spin_unlock_irqrestore(&view->lock, flags);
++	return err;
++}
++
++/* xf4 (guest-requested view advance): adopt an advance candidate (an
++ * unpublished lease with lease->advance from hfs_lease_acquire_ex) for the
++ * observation captured at stamp with expected target target, by its
++ * deadline. The target is verified natively first (hfs_view_advance_target),
++ * outside every view lock, as hfs_mmap_install verifies an event's target:
++ * the provider sleeps. Then view->transitions is taken bounded
++ * (hfs_view_transitions_bounded), so no STOP or install runs between the
++ * re-check and the switch: a STOP that comes first leaves the view
++ * RECALLING or later and the adoption is refused at once; one that comes
++ * after sees the advanced view and handles it like any other. Under
++ * view->lock hfs_view_advance_switch re-checks everything the verification
++ * relied on (LIVE, same revision and generation, expected target still
++ * installed) and switches the target with revision++ (as an install would;
++ * no fence or sequence moves, no event is involved). Every stamp taken
++ * before, a concurrent capture's included, fails its re-check afterwards.
++ * The caller's stamp and target are re-stamped to the advanced view, so the
++ * following hfs_mmap_publish accepts the lease.
++ *
++ * Any refusal marks the lease unadopted (release only, never authority:
++ * hfs_mmap_publish, initial bind and page paths refuse it) and returns
++ * -EXDEV, so the caller holds it, acquires again and then releases it
++ * (hfs_mmap_attempt); a passed deadline or a fatal signal while waiting for
++ * view->transitions returns -ETIMEDOUT or -EINTR, and the caller's cleanup
++ * packet releases the lease. Nothing blocks the session.
++ */
++int hfs_view_advance(struct hfs_view *view, struct hfs_lease *lease,
++		     struct hfs_view_stamp *stamp, struct hfs_buf *target,
++		     unsigned long deadline)
++{
++	int token = hfs_json_field(lease->json, 0, "target");
++	unsigned long flags;
++	uuid_t visibility;
++	u8 hash[32];
++	int err;
++
++	err = token < 0 ? -EPROTO :
++		hfs_view_advance_target(view->session, lease->json, token, target,
++					&visibility, hash);
++	if (!err)
++		err = hfs_view_transitions_bounded(view, deadline);
++	if (!err) {
++		err = hfs_view_advance_switch(view, lease, stamp, target, token,
++					      &visibility, hash);
++		mutex_unlock(&view->transitions);
++		return err;
++	}
++	spin_lock_irqsave(&view->lock, flags);
++	lease->advance = false;
++	lease->unadopted = true;
++	spin_unlock_irqrestore(&view->lock, flags);
++	return err == -ETIMEDOUT || err == -EINTR ? err : -EXDEV;
 +}
 +
 +/* The stamp of a LIVE view and, when target_hash is not NULL, the hash of
@@ -2054,7 +2233,7 @@ diff --git a/fs/9p/hfs_lease.h b/fs/9p/hfs_lease.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.h
-@@ -0,0 +1,133 @@
+@@ -0,0 +1,151 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_LEASE_H
 +#define FS_9P_HFS_LEASE_H
@@ -2121,6 +2300,12 @@ new file mode 100644
 +	bool uncertain;
 +	bool closed;
 +	bool published;
++	/* xf4: this VIEW_ACQUIRE carries "advance": true (set before it is
++	 * bound, never changed after). A GRANTED reply whose lease target
++	 * differs from the expected one then skips the 2f4 settle wait and is
++	 * classified by hfs_lease_decode instead (hfs_view_exchange_source).
++	 */
++	bool advance;
 +};
 +
 +struct hfs_lease {
@@ -2148,6 +2333,14 @@ new file mode 100644
 +	 * initial bind, page lease, page grant or observation publish takes it.
 +	 */
 +	bool unadopted;
++	/* xf4: an advance candidate, granted on a target other than the
++	 * request's expected one and verified for adoption
++	 * (hfs_view_advance_target) but not adopted yet. Like unadopted it is
++	 * no authority: hfs_mmap_publish refuses it until hfs_view_advance
++	 * installs its target and clears this under view->lock; a failed
++	 * adoption marks it unadopted instead, for release only.
++	 */
++	bool advance;
 +};
 +
 +void hfs_view_ticket_put(struct hfs_view_ticket *ticket);
@@ -2157,6 +2350,10 @@ new file mode 100644
 +void hfs_view_tickets_destroy(struct hfs_session *session);
 +int hfs_view_target(struct hfs_session *session, const struct hfs_json *json,
 +		    int token, uuid_t *visibility, u8 target_hash[32]);
++int hfs_view_advance_target(struct hfs_session *session, const struct hfs_json *json,
++			    int token, const struct hfs_buf *expected, uuid_t *visibility,
++			    u8 target_hash[32]);
++bool hfs_view_advance_supported(const struct hfs_session *session);
 +int hfs_json_hash_fields(const struct hfs_json *json, int object,
 +			 const char *fields, u8 digest[32]);
 +int hfs_view_ticket_prepare(struct hfs_session *session, const struct hfs_cred *cred,
@@ -2174,7 +2371,7 @@ new file mode 100644
 +int hfs_lease_acquire_ex(struct hfs_session *session, const struct hfs_cred *cred,
 +			 const struct hfs_cap *object, const struct hfs_cap *description,
 +			 u64 offset, bool dirty, const struct hfs_buf *expected_target,
-+			 struct hfs_lease **out, bool *blocked);
++			 bool advance, struct hfs_lease **out, bool *blocked);
 +int hfs_lease_release(struct hfs_session *session, struct hfs_lease *lease);
 +void hfs_lease_get(struct hfs_lease *lease);
 +void hfs_lease_free(struct hfs_lease *lease);
@@ -2192,7 +2389,7 @@ diff --git a/fs/9p/hfs_lease.c b/fs/9p/hfs_lease.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.c
-@@ -0,0 +1,1832 @@
+@@ -0,0 +1,2084 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Exact bridge1.1 ticket/lease transport; no physical or source-proof defaults. */
 +#include <linux/slab.h>
@@ -2322,75 +2519,144 @@ new file mode 100644
 +	return 0;
 +}
 +
++/* A CONTROLLED_LOCAL target's journal is this Context's origin journal.
++ * Context's original journal is immutable; the epoch is independently
++ * verified by the actual source provider, never guessed from Context.
++ */
++static int hfs_view_target_journal(struct hfs_session *session, const uuid_t *journal)
++{
++	struct hfs_json *context = NULL;
++	uuid_t expected;
++	int err;
++
++	err = hfs_json_parse(session->enrollment.context,
++			     session->enrollment.context_len, &context);
++	if (!err)
++		err = hfs_uuid(context, hfs_json_field(context, 0, "origin_journal"), &expected);
++	hfs_json_free(context);
++	return err || !uuid_equal(journal, &expected) ? -ESTALE : 0;
++}
++
++/* A CONTROLLED_LOCAL target {cut,kind} of this mount's scope: an exact cut
++ * with a nonzero epoch, hex hashes, this Context's hash and origin journal
++ * (its visibility generation in *visibility).
++ */
++static int hfs_view_local_target(struct hfs_session *session,
++				 const struct hfs_json *json, int token, uuid_t *visibility)
++{
++	static const char * const fields[] = {
++		"enrollment_hash", "journal_hash", "profile_hash", "state_hash",
++	};
++	u8 hash[32], context_hash[32];
++	u64 epoch, position;
++	uuid_t journal;
++	int body;
++	u32 i;
++
++	if (session->enrollment.view_scope != HFS_SCOPE_CONTROLLED_LOCAL)
++		return -ESTALE;
++	if (hfs_json_exact(json, token, "cut,kind"))
++		return -EPROTO;
++	body = hfs_json_field(json, token, "cut");
++	if (hfs_json_exact(json, body,
++		"context_hash,enrollment_hash,journal_epoch,journal_hash,"
++		"journal_incarnation,journal_position,profile_hash,state_hash,"
++		"visibility_generation") ||
++	    hfs_u64_field(json, body, "journal_epoch", &epoch) || !epoch ||
++	    hfs_u64_field(json, body, "journal_position", &position) ||
++	    hfs_uuid(json, hfs_json_field(json, body, "journal_incarnation"), &journal) ||
++	    hfs_uuid(json, hfs_json_field(json, body, "visibility_generation"), visibility) ||
++	    hfs_hex32(json, body, "context_hash", context_hash))
++		return -EPROTO;
++	hfs_hash(session->enrollment.context, session->enrollment.context_len, hash);
++	if (memcmp(hash, context_hash, 32))
++		return -ESTALE;
++	for (i = 0; i < ARRAY_SIZE(fields); i++)
++		if (hfs_hex32(json, body, fields[i], hash))
++			return -EPROTO;
++	return hfs_view_target_journal(session, &journal);
++}
++
++/* The codec half of hfs_view_target: a well-formed target of this mount's
++ * scope and Context (its visibility generation in *visibility), either
++ * CONTROLLED_LOCAL (hfs_view_local_target) or NORMAL_PUBLIC. No source
++ * proof: the provider verifies that.
++ */
++static int hfs_view_target_decode(struct hfs_session *session,
++				  const struct hfs_json *json, int token,
++				  uuid_t *visibility)
++{
++	int kind = hfs_json_field(json, token, "kind");
++
++	if (hfs_json_is(json, kind, "\"CONTROLLED_LOCAL\""))
++		return hfs_view_local_target(session, json, token, visibility);
++	if (!hfs_json_is(json, kind, "\"NORMAL_PUBLIC\""))
++		return -EPROTO;
++	if (session->enrollment.view_scope != HFS_SCOPE_NORMAL_PUBLIC)
++		return -ESTALE;
++	if (hfs_json_exact(json, token, "kind,publication") ||
++	    hfs_normal_target(json, hfs_json_field(json, token, "publication"), visibility))
++		return -EPROTO;
++	return 0;
++}
++
 +int hfs_view_target(struct hfs_session *session,
 +			   const struct hfs_json *json, int token,
 +			   uuid_t *visibility, u8 target_hash[32])
 +{
-+	int kind = hfs_json_field(json, token, "kind"), body;
-+	u64 epoch, position;
-+	uuid_t journal, expected;
-+	u8 hash[32], context_hash[32];
-+	int err;
++	int err = hfs_view_target_decode(session, json, token, visibility);
 +
-+	if (hfs_json_is(json, kind, "\"CONTROLLED_LOCAL\"")) {
-+		if (session->enrollment.view_scope != HFS_SCOPE_CONTROLLED_LOCAL)
-+			return -ESTALE;
-+		if (hfs_json_exact(json, token, "cut,kind"))
-+			return -EPROTO;
-+		body = hfs_json_field(json, token, "cut");
-+		if (hfs_json_exact(json, body,
-+			"context_hash,enrollment_hash,journal_epoch,journal_hash,"
-+			"journal_incarnation,journal_position,profile_hash,state_hash,"
-+			"visibility_generation") ||
-+		    hfs_u64_field(json, body, "journal_epoch", &epoch) || !epoch ||
-+		    hfs_u64_field(json, body, "journal_position", &position) ||
-+		    hfs_uuid(json, hfs_json_field(json, body, "journal_incarnation"), &journal) ||
-+		    hfs_uuid(json, hfs_json_field(json, body, "visibility_generation"), visibility) ||
-+		    hfs_hex32(json, body, "context_hash", context_hash))
-+			return -EPROTO;
-+		hfs_hash(session->enrollment.context, session->enrollment.context_len, hash);
-+		if (memcmp(hash, context_hash, 32))
-+			return -ESTALE;
-+		{
-+			static const char * const fields[] = {
-+				"enrollment_hash", "journal_hash", "profile_hash", "state_hash",
-+			};
-+			u32 i;
-+
-+			for (i = 0; i < ARRAY_SIZE(fields); i++)
-+				if (hfs_hex32(json, body, fields[i], hash))
-+					return -EPROTO;
-+		}
-+		/* Context's original journal is immutable; epoch is independently
-+		 * verified by the actual source provider, never guessed from Context.
-+		 */
-+		{
-+			struct hfs_json *context = NULL;
-+
-+			err = hfs_json_parse(session->enrollment.context,
-+					     session->enrollment.context_len, &context);
-+			if (!err)
-+				err = hfs_uuid(context,
-+					hfs_json_field(context, 0, "origin_journal"), &expected);
-+			hfs_json_free(context);
-+			if (err || !uuid_equal(&journal, &expected))
-+				return -ESTALE;
-+		}
-+	} else if (hfs_json_is(json, kind, "\"NORMAL_PUBLIC\"")) {
-+		if (session->enrollment.view_scope != HFS_SCOPE_NORMAL_PUBLIC)
-+			return -ESTALE;
-+		if (hfs_json_exact(json, token, "kind,publication"))
-+			return -EPROTO;
-+		body = hfs_json_field(json, token, "publication");
-+		if (hfs_normal_target(json, body, visibility))
-+			return -EPROTO;
-+	} else {
-+		return -EPROTO;
-+	}
 +	/* No codec-valid cut, empty baseline or callback pointer is source proof.
 +	 * The separately admitted provider must verify the full actual source.
 +	 */
-+	err = session->provider->target(session, json, token);
++	if (!err)
++		err = session->provider->target(session, json, token);
++	if (err)
++		return err;
++	hfs_hash(json->data + json->tokens[token].start,
++		 json->tokens[token].end - json->tokens[token].start, target_hash);
++	return 0;
++}
++
++/* xf4: may this session request a guest-requested view advance? Only an
++ * hfs1.4 session whose provider verifies advance candidates
++ * (provider->advance_target); every other session sends today's bytes.
++ */
++bool hfs_view_advance_supported(const struct hfs_session *session)
++{
++	return session->bridge_minor == 4 && session->provider->advance_target;
++}
++
++/* xf4: verify a GRANTED lease target (token in json) for adoption by a view
++ * installed at expected, the request's expected target: the same codec checks
++ * as hfs_view_target, AdvanceCompatible with expected
++ * (hfs_view_advance_compatible: same enrollment, profile, context, journal
++ * incarnation, epoch and visibility generation, not behind), and the
++ * provider's native advance check (hfs_received_advance: the verified
++ * receipt at the mount's fence, captured at the view's current revision,
++ * with the LIVE view still at expected). It installs nothing; hfs_view_advance
++ * does, after re-checking the view under its lock. Never the target of a
++ * reply that was already current: that is no advance, and
++ * hfs_received_advance refuses it as unverified (-EKEYREJECTED: no stale
++ * SOURCE owner).
++ */
++int hfs_view_advance_target(struct hfs_session *session, const struct hfs_json *json,
++			    int token, const struct hfs_buf *expected, uuid_t *visibility,
++			    u8 target_hash[32])
++{
++	struct hfs_json *old = NULL;
++	int err;
++
++	if (!hfs_view_advance_supported(session))
++		return -EOPNOTSUPP;
++	err = hfs_json_parse(expected->data, expected->len, &old);
++	if (!err)
++		err = hfs_view_advance_compatible(old, 0, json, token);
++	hfs_json_free(old);
++	if (!err)
++		err = hfs_view_target_decode(session, json, token, visibility);
++	if (!err)
++		err = session->provider->advance_target(session, json, token, expected);
 +	if (err)
 +		return err;
 +	hfs_hash(json->data + json->tokens[token].start,
@@ -2912,12 +3178,48 @@ new file mode 100644
 +	return err;
 +}
 +
++/* xf4: does the lease of this GRANTED reply name another target than the
++ * ticket's own VIEW_ACQUIRE expected (a nonnull "target" of the bound
++ * payload)? Only asked for an advance ticket: 1 moved, 0 not, or the
++ * error of parsing the payload (memory). 4h4 review round 1: an error is
++ * not taken as "moved"; the caller hands the reply out to be built
++ * unadopted and released, so the granted host lease never leaks.
++ */
++static int hfs_view_grant_moved(const struct hfs_view_ticket *ticket,
++				const struct hfs_json *reply, int body)
++{
++	int granted = hfs_json_field(reply, hfs_json_field(reply, body, "lease"), "target");
++	struct hfs_json *request = NULL;
++	int expected, moved = 0;
++	int err = hfs_json_parse(ticket->payload.data, ticket->payload.len, &request);
++
++	if (err)
++		return err;
++	expected = hfs_json_field(request, 0, "target");
++	if (expected >= 0 && !hfs_json_is(request, expected, "null"))
++		moved = !hfs_token_equal(reply, granted,
++					 request->data + request->tokens[expected].start,
++					 request->tokens[expected].end -
++					 request->tokens[expected].start);
++	hfs_json_free(request);
++	return moved;
++}
++
 +/* The hfs1.4 source check of a GRANTED/FROZEN reply (0 or older minors: no
 + * check). 2f4: a verified lease GRANTED that is not current goes to
 + * hfs_view_grant_settle (1: query again; -EXDEV and its stops: the GRANTED
 + * is handed out unadopted); every other failure, DIRTY_RESERVE/DIRTY_FREEZE
 + * ones included, stays fatal (*fatal): the exchange blocks the session as
 + * before.
++ *
++ * xf4: an advance ticket's GRANTED on another target than its expected one
++ * is never current at receipt (the view still holds the expected target).
++ * Waiting for the view to settle would only end in -EPROTO, so it is handed
++ * out at once (0, not fatal): hfs_lease_decode classifies it as an advance
++ * candidate (hfs_view_advance_target) or builds it unadopted for release
++ * (-EXDEV). If the comparison itself fails (memory), it is handed out with
++ * -EXDEV, built unadopted and released. Without advance such a reply
++ * settles and fails closed as before.
 + */
 +static int hfs_view_exchange_source(struct hfs_session *session,
 +				    const struct hfs_view_ticket *ticket,
@@ -2925,7 +3227,7 @@ new file mode 100644
 +				    unsigned long deadline,
 +				    struct hfs_grant_settle *settle, bool *fatal)
 +{
-+	int status = hfs_json_field(reply, body, "status"), source, err;
++	int status = hfs_json_field(reply, body, "status"), source, err, moved;
 +	bool not_current;
 +
 +	*fatal = true;
@@ -2941,6 +3243,16 @@ new file mode 100644
 +	err = hfs_received_source_ex(session, reply, source, &not_current);
 +	if (!err || !not_current || !hfs_view_lease_grant(ticket, reply, body))
 +		return err;
++	if (ticket->advance) {
++		moved = hfs_view_grant_moved(ticket, reply, body);
++		if (moved) {
++			/* An error (moved < 0) hands it out for release only:
++			 * hfs_lease_acquire_ex builds it unadopted on -EXDEV.
++			 */
++			*fatal = false;
++			return moved < 0 ? -EXDEV : 0;
++		}
++	}
 +	err = hfs_view_grant_settle(session, reply, body, deadline, settle);
 +	*fatal = err == -EPROTO;
 +	return err;
@@ -3122,18 +3434,75 @@ new file mode 100644
 +	return err;
 +}
 +
-+static int hfs_lease_decode(struct hfs_session *session,
-+			    struct hfs_view_ticket *ticket,
-+			    const struct hfs_json *response,
-+			    const struct hfs_buf *access, bool dirty,
-+			    const struct hfs_buf *expected_target,
-+			    bool unadopted, struct hfs_lease **out)
++/* The target of a decoded GRANTED lease (token in response).
++ * - Equal to the request's expected target (or none expected): verified
++ *   natively (hfs_view_target), as before xf4.
++ * - Another target without advance: -ESTALE, the caller blocks the session.
++ * - xf4, another target on an advance request: an advance candidate when
++ *   hfs_view_advance_target verifies it for the view still installed at the
++ *   expected target (lease->advance; hfs_view_advance adopts it). Failing
++ *   that, an ordinary lease when the view already holds exactly that target
++ *   and the reply is current for it (hfs_view_target: a replay after the
++ *   adoption, or a readmitted PENDING ticket whose recall reinstalled the
++ *   view at the granted cut; host review annotation (b)). The caller's
++ *   stamp predates that move, so hfs_mmap_publish refuses it (-EXDEV) and
++ *   the observation holds it, acquires again and releases it, as for any
++ *   grant the view moved past (ie4); nothing is served under it. Otherwise
++ *   (the view moved elsewhere: a further move after a replay, another cut
++ *   reinstalled, a passed fence) it is built unadopted for release;
++ *   hfs_lease_acquire_ex returns -EXDEV and nothing blocks. The VIEW_QUERY
++ *   reply of a readmitted ticket gets no target check from the bridge or the
++ *   codec policy (no original request there), so this is its only gate.
++ * - 2f4 review 1: an unadopted GRANTED is not current, so the provider's
++ *   target check (hfs_controlled_target -> hfs_received_selected) refuses it
++ *   by design. It is only ever released: keep its bytes and hash, no
++ *   verified visibility, and mark it so no authority path takes it.
++ */
++static int hfs_lease_decode_target(struct hfs_session *session,
++				   const struct hfs_view_ticket *ticket,
++				   const struct hfs_json *response, int token,
++				   const struct hfs_buf *expected_target, bool unadopted,
++				   struct hfs_lease *lease)
 +{
-+	struct hfs_lease *lease;
-+	u8 actual[32], expected[32];
-+	int body = hfs_json_field(response, 0, "lease"), token, err;
++	bool moved = expected_target &&
++		!hfs_token_equal(response, token, expected_target->data, expected_target->len);
 +
-+	*out = NULL;
++	if (moved && !ticket->advance)
++		return -ESTALE;
++	if (moved && !unadopted) {
++		if (!hfs_view_advance_target(session, response, token, expected_target,
++					     &lease->visibility, lease->target_hash)) {
++			lease->advance = true;
++			return 0;
++		}
++		if (!hfs_view_target(session, response, token, &lease->visibility,
++				     lease->target_hash))
++			return 0;
++	}
++	if (moved || unadopted) {
++		lease->unadopted = true;
++		memset(&lease->visibility, 0, sizeof(lease->visibility));
++		hfs_hash(response->data + response->tokens[token].start,
++			 response->tokens[token].end - response->tokens[token].start,
++			 lease->target_hash);
++		return 0;
++	}
++	return hfs_view_target(session, response, token, &lease->visibility,
++			       lease->target_hash);
++}
++
++/* The GRANTED reply's shape and lease identity: a lease-only GRANTED of
++ * exactly this request's access, domain, scope, mode and credential family,
++ * whose id (in id) is the hash of its other fields. -EPROTO otherwise.
++ */
++static int hfs_lease_decode_check(struct hfs_session *session,
++				  const struct hfs_view_ticket *ticket,
++				  const struct hfs_json *response, int body,
++				  const struct hfs_buf *access, bool dirty, u8 id[32])
++{
++	u8 actual[32];
++	int err;
++
 +	if (!hfs_json_is(response, hfs_json_field(response, 0, "status"), "\"GRANTED\"") ||
 +	    !hfs_json_is(response, hfs_json_field(response, 0, "reservation"), "null") ||
 +	    !hfs_json_is(response, hfs_json_field(response, 0, "entry"), "null") ||
@@ -3149,12 +3518,30 @@ new file mode 100644
 +			 dirty ? "\"EXCLUSIVE_DIRTY\"" : "\"READ\"") ||
 +	    hfs_hex32(response, body, "credential_hash", actual) ||
 +	    memcmp(actual, ticket->family->hash, 32) ||
-+	    hfs_hex32(response, body, "id", expected))
++	    hfs_hex32(response, body, "id", id))
 +		return -EPROTO;
 +	err = hfs_json_hash_fields(response, body,
 +		"access,credential_hash,domain,fence,mode,revision,scope,target", actual);
-+	if (err || memcmp(actual, expected, 32))
++	if (err || memcmp(actual, id, 32))
 +		return err ?: -EPROTO;
++	return 0;
++}
++
++static int hfs_lease_decode(struct hfs_session *session,
++			    struct hfs_view_ticket *ticket,
++			    const struct hfs_json *response,
++			    const struct hfs_buf *access, bool dirty,
++			    const struct hfs_buf *expected_target,
++			    bool unadopted, struct hfs_lease **out)
++{
++	struct hfs_lease *lease;
++	u8 expected[32];
++	int body = hfs_json_field(response, 0, "lease"), token, err;
++
++	*out = NULL;
++	err = hfs_lease_decode_check(session, ticket, response, body, access, dirty, expected);
++	if (err)
++		return err;
 +	lease = kzalloc(sizeof(*lease), GFP_KERNEL);
 +	if (!lease)
 +		return -ENOMEM;
@@ -3170,25 +3557,8 @@ new file mode 100644
 +		goto fail;
 +	}
 +	token = hfs_json_field(response, body, "target");
-+	if (expected_target && !hfs_token_equal(response, token,
-+					      expected_target->data, expected_target->len)) {
-+		err = -ESTALE;
-+		goto fail;
-+	}
-+	/* 2f4 review 1: an unadopted GRANTED is not current, so the provider's
-+	 * target check (hfs_controlled_target -> hfs_received_selected) refuses
-+	 * it by design. It is only ever released: keep its bytes and hash, no
-+	 * verified visibility, and mark it so no authority path takes it.
-+	 */
-+	if (unadopted) {
-+		lease->unadopted = true;
-+		hfs_hash(response->data + response->tokens[token].start,
-+			 response->tokens[token].end - response->tokens[token].start,
-+			 lease->target_hash);
-+	} else {
-+		err = hfs_view_target(session, response, token, &lease->visibility,
-+				      lease->target_hash);
-+	}
++	err = hfs_lease_decode_target(session, ticket, response, token, expected_target,
++				      unadopted, lease);
 +	if (!err)
 +		err = hfs_copy_json(response, body, &lease->json);
 +	if (err)
@@ -3198,6 +3568,136 @@ new file mode 100644
 +	return 0;
 +fail:
 +	hfs_lease_free(lease);
++	return err;
++}
++
++/* The access of a lease VIEW_ACQUIRE: a PAGE of description at offset, an
++ * OBJECT, or the DOMAIN.
++ */
++static void hfs_lease_access(struct hfs_buf *access, const struct hfs_cap *object,
++			     const struct hfs_cap *description, u64 offset)
++{
++	if (description) {
++		hfs_buf_literal(access, "{\"description\":");
++		hfs_cap_write(access, description);
++		hfs_buf_printf(access, ",\"kind\":\"PAGE\",\"length\":4096,\"offset\":%llu}", offset);
++	} else if (object) {
++		hfs_buf_literal(access, "{\"kind\":\"OBJECT\",\"object\":");
++		hfs_cap_write(access, object);
++		hfs_buf_literal(access, "}");
++	} else {
++		hfs_buf_literal(access, "{\"kind\":\"DOMAIN\"}");
++	}
++}
++
++/* The canonical VIEW_ACQUIRE payload, keys sorted. xf4: "advance": true
++ * follows "access" only when requested; without it the bytes are exactly the
++ * pre-xf4 ones, and false is never sent (one encoding per request).
++ */
++static void hfs_lease_acquire_payload(struct hfs_buf *payload, struct hfs_session *session,
++				      const struct hfs_view_ticket *ticket,
++				      const struct hfs_buf *access, bool dirty,
++				      const struct hfs_buf *expected_target, bool advance)
++{
++	hfs_buf_literal(payload, "{\"access\":");
++	hfs_buf_add(payload, access->data, access->len);
++	if (advance)
++		hfs_buf_literal(payload, ",\"advance\":true");
++	hfs_buf_literal(payload, ",\"domain\":");
++	hfs_cap_write(payload, session->domain);
++	hfs_buf_printf(payload, ",\"mode\":\"%s\",\"request\":", dirty ? "EXCLUSIVE_DIRTY" : "READ");
++	hfs_buf_add(payload, ticket->request.data, ticket->request.len);
++	hfs_buf_literal(payload, ",\"target\":");
++	if (expected_target)
++		hfs_buf_add(payload, expected_target->data, expected_target->len);
++	else
++		hfs_buf_literal(payload, "null");
++	hfs_buf_literal(payload, "}");
++}
++
++/* The release state of a decoded lease: the PAGE description, the issuer's
++ * credentials (immutable, with a native reference) and the preowned control
++ * release ticket and payload. On an error the caller frees the lease.
++ */
++static int hfs_lease_own(struct hfs_session *session, const struct hfs_cred *cred,
++			 const struct hfs_cap *description, struct hfs_lease *lease)
++{
++	if (description)
++		memcpy(lease->description, description->token, 32);
++	lease->issuer = kmemdup(cred, sizeof(*cred), GFP_KERNEL);
++	if (!lease->issuer)
++		return -ENOMEM;
++	lease->issuer->native = get_cred(cred->native);
++	return hfs_buf_init(&lease->release_payload, 32768) ?:
++		hfs_view_ticket_prepare(session, cred, true, &lease->release_ticket);
++}
++
++/* The arguments of hfs_lease_acquire_ex that its grant needs. */
++struct hfs_lease_want {
++	const struct hfs_cred *cred;
++	const struct hfs_cap *description;
++	const struct hfs_buf *access;
++	const struct hfs_buf *expected;
++	bool dirty;
++};
++
++/* hfs_lease_acquire_ex's argument rules: no OBJECT and PAGE together, a
++ * dirty PAGE needs write rights and a READ one read rights, a page-aligned
++ * offset in range, and xf4's advance only on a READ DOMAIN acquisition with
++ * an expected target.
++ */
++static bool hfs_lease_acquire_valid(const struct hfs_session *session,
++				    const struct hfs_cred *cred,
++				    const struct hfs_cap *object,
++				    const struct hfs_cap *description, u64 offset, bool dirty,
++				    const struct hfs_buf *expected_target, bool advance)
++{
++	return session->domain && cred && !(object && description) &&
++	       !(dirty && (!description || !(description->rights & 2))) &&
++	       !(description && !dirty && !(description->rights & 1)) &&
++	       !(description && (offset & 4095 || offset > S64_MAX - 4096)) &&
++	       !(advance && (object || description || dirty || !expected_target));
++}
++
++/* The lease of a VIEW_ACQUIRE exchange that returned err with response.
++ * 2f4: a GRANTED handed out with an error is still decoded and completed,
++ * unadopted, for its release (*result: that error). xf4: a moved target
++ * that is no advance candidate is built unadopted too (*result -EXDEV).
++ * Once the decoded lease holds the ticket, freeing it puts both, so
++ * *ticket is cleared. -EPROTO (also the exchange's), and -ESTALE for the
++ * grant itself (decode), block the session; the exchange's other failures
++ * already blocked there or are stops that must not (review 1).
++ */
++static int hfs_lease_acquire_grant(struct hfs_session *session,
++				   struct hfs_view_ticket **ticket,
++				   const struct hfs_lease_want *want, int err,
++				   const struct hfs_json *response, struct hfs_lease **out,
++				   int *result)
++{
++	if (err && response &&
++	    hfs_json_is(response, hfs_json_field(response, 0, "status"), "\"GRANTED\"")) {
++		*result = err;
++		err = 0;
++	}
++	if (err) {
++		if (err == -EPROTO) /* as before the split; usually blocked already */
++			hfs_session_block(session, "invalid or stale lease grant", "VIEW_ACQUIRE", err);
++		return err;
++	}
++	err = hfs_lease_decode(session, *ticket, response, want->access, want->dirty,
++			       want->expected, *result != 0, out);
++	if (!err && !*result && (*out)->unadopted)
++		*result = -EXDEV;
++	if (!err) {
++		err = hfs_lease_own(session, want->cred, want->description, *out);
++		if (err) {
++			hfs_lease_free(*out);
++			*out = NULL;
++			*ticket = NULL;
++		}
++	}
++	if (err == -EPROTO || err == -ESTALE)
++		hfs_session_block(session, "invalid or stale lease grant", "VIEW_ACQUIRE", err);
 +	return err;
 +}
 +
@@ -3216,25 +3716,32 @@ new file mode 100644
 + * and must release it; it is unadopted (lease->unadopted) and never
 + * authority. The ie4 observation path (hfs_mmap_observe) holds it and
 + * acquires again on -EXDEV; every other path hands it to its cleanup packet.
++ *
++ * xf4: advance (only a READ DOMAIN acquisition with an expected target, else
++ * -EINVAL) adds "advance": true to the request. A GRANTED on another target
++ * is then an advance candidate (*out with lease->advance, 0), an ordinary
++ * lease already current for the installed view (0), or -EXDEV with an
++ * unadopted *out as above (hfs_lease_decode_target).
 + */
 +int hfs_lease_acquire_ex(struct hfs_session *session, const struct hfs_cred *cred,
 +			 const struct hfs_cap *object, const struct hfs_cap *description,
 +			 u64 offset, bool dirty, const struct hfs_buf *expected_target,
-+			 struct hfs_lease **out, bool *blocked)
++			 bool advance, struct hfs_lease **out, bool *blocked)
 +{
++	struct hfs_lease_want want = {
++		.cred = cred, .description = description, .expected = expected_target,
++		.dirty = dirty,
++	};
 +	struct hfs_view_ticket *ticket;
 +	struct hfs_json *response = NULL;
 +	struct hfs_buf payload = {}, access = {};
-+	bool granted = false;
 +	int err, result = 0;
 +
 +	*out = NULL;
 +	if (blocked)
 +		*blocked = false;
-+	if (!session->domain || !cred || (object && description) ||
-+	    (dirty && (!description || !(description->rights & 2))) ||
-+	    (description && (!dirty && !(description->rights & 1))) ||
-+	    (description && (offset & 4095 || offset > S64_MAX - 4096)))
++	if (!hfs_lease_acquire_valid(session, cred, object, description, offset, dirty,
++				     expected_target, advance))
 +		return -EINVAL;
 +	err = hfs_view_ticket_prepare(session, cred, false, &ticket);
 +	if (err)
@@ -3243,78 +3750,20 @@ new file mode 100644
 +		err = -ENOMEM;
 +		goto free;
 +	}
-+	if (description) {
-+		hfs_buf_literal(&access, "{\"description\":");
-+		hfs_cap_write(&access, description);
-+		hfs_buf_printf(&access, ",\"kind\":\"PAGE\",\"length\":4096,\"offset\":%llu}", offset);
-+	} else if (object) {
-+		hfs_buf_literal(&access, "{\"kind\":\"OBJECT\",\"object\":");
-+		hfs_cap_write(&access, object);
-+		hfs_buf_literal(&access, "}");
-+	} else {
-+		hfs_buf_literal(&access, "{\"kind\":\"DOMAIN\"}");
-+	}
-+	if (access.error || (expected_target && expected_target->error)) {
-+		err = access.error ?: expected_target->error;
-+		goto free;
-+	}
-+	err = hfs_view_ticket_activate(ticket);
++	hfs_lease_access(&access, object, description, offset);
++	err = access.error ?: (expected_target ? expected_target->error : 0);
++	if (!err)
++		err = hfs_view_ticket_activate(ticket);
 +	if (err)
 +		goto free;
-+	hfs_buf_literal(&payload, "{\"access\":");
-+	hfs_buf_add(&payload, access.data, access.len);
-+	hfs_buf_literal(&payload, ",\"domain\":");
-+	hfs_cap_write(&payload, session->domain);
-+	hfs_buf_printf(&payload, ",\"mode\":\"%s\",\"request\":", dirty ? "EXCLUSIVE_DIRTY" : "READ");
-+	hfs_buf_add(&payload, ticket->request.data, ticket->request.len);
-+	hfs_buf_literal(&payload, ",\"target\":");
-+	if (expected_target)
-+		hfs_buf_add(&payload, expected_target->data, expected_target->len);
-+	else
-+		hfs_buf_literal(&payload, "null");
-+	hfs_buf_literal(&payload, "}");
-+	err = access.error ?: hfs_view_exchange(session, ticket, "VIEW_ACQUIRE", &payload, &response);
++	ticket->advance = advance;
++	hfs_lease_acquire_payload(&payload, session, ticket, &access, dirty, expected_target,
++				  advance);
++	err = payload.error ?: hfs_view_exchange(session, ticket, "VIEW_ACQUIRE", &payload, &response);
 +	if (err == -EAGAIN && blocked && ticket->terminal)
 +		*blocked = true;
-+	/* 2f4: a GRANTED handed out with an error is still decoded and
-+	 * completed, unadopted, for its release.
-+	 */
-+	if (err && response &&
-+	    hfs_json_is(response, hfs_json_field(response, 0, "status"), "\"GRANTED\"")) {
-+		result = err;
-+		err = 0;
-+	}
-+	granted = !err;
-+	if (!err)
-+		err = hfs_lease_decode(session, ticket, response, &access, dirty, expected_target,
-+				       result != 0, out);
-+	if (!err && description)
-+		memcpy((*out)->description, description->token, 32);
-+	if (!err) {
-+		(*out)->issuer = kmemdup(cred, sizeof(*cred), GFP_KERNEL);
-+		if (!(*out)->issuer) {
-+			hfs_lease_free(*out);
-+			*out = NULL;
-+			ticket = NULL;
-+			err = -ENOMEM;
-+		} else {
-+			(*out)->issuer->native = get_cred(cred->native);
-+		}
-+	}
-+	if (!err)
-+		err = hfs_buf_init(&(*out)->release_payload, 32768);
-+	if (!err)
-+		err = hfs_view_ticket_prepare(session, cred, true, &(*out)->release_ticket);
-+	if (err && *out) {
-+		hfs_lease_free(*out);
-+		*out = NULL;
-+		ticket = NULL;
-+	}
-+	/* -ESTALE blocks only for the grant itself (decode); the exchange's own
-+	 * failures already blocked there or are stops that must not (review 1).
-+	 */
-+	if (err == -EPROTO || (granted && err == -ESTALE))
-+		hfs_session_block(session, "invalid or stale lease grant", "VIEW_ACQUIRE", err);
++	want.access = &access;
++	err = hfs_lease_acquire_grant(session, &ticket, &want, err, response, out, &result);
 +free:
 +	if (err)
 +		hfs_view_ticket_put(ticket);
@@ -3330,7 +3779,7 @@ new file mode 100644
 +		      struct hfs_lease **out)
 +{
 +	return hfs_lease_acquire_ex(session, cred, object, description, offset, dirty,
-+				    expected_target, out, NULL);
++				    expected_target, false, out, NULL);
 +}
 +
 +static int hfs_lease_release_locked(struct hfs_session *session, struct hfs_lease *lease)
@@ -4029,7 +4478,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,2597 @@
+@@ -0,0 +1,2637 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -6092,6 +6541,10 @@ new file mode 100644
 + *   host's conflict check without a recall;
 + * - without a lease (a mutation) a moved stamp or a view that is not LIVE is
 + *   -EAGAIN, and the caller captures the view again.
++ * xf4: an advance candidate (lease->advance) is published only after
++ * hfs_view_advance adopted it, which re-stamps the observation to the
++ * advanced view and clears the flag; until then, and after a failed
++ * adoption (unadopted), it is -EXDEV like any lease the view moved past.
 + */
 +static int hfs_mmap_publish(struct hfs_view *view, struct hfs_observation *observation)
 +{
@@ -6106,8 +6559,8 @@ new file mode 100644
 +	if (hfs_view_refused(view))
 +		err = -ESTALE;
 +	else if (lease && (moved || view->phase != HFS_VIEW_LIVE || lease->unadopted ||
-+			   memcmp(view->target_hash, lease->target_hash, 32)))
-+		err = -EXDEV; /* 2f4: an unadopted lease is never published */
++			   lease->advance || memcmp(view->target_hash, lease->target_hash, 32)))
++		err = -EXDEV; /* 2f4/xf4: an unadopted lease is never published */
 +	else if (moved || view->phase != HFS_VIEW_LIVE)
 +		err = -EAGAIN;
 +	else if (view->nr_observations == HFS_IDENTITIES_MAX)
@@ -6163,7 +6616,11 @@ new file mode 100644
 + * an attempt). host_blocked is the last acquisition's answer;
 + * backoff_ms is the next pause; progress is view->retire_progress as read
 + * before the last acquisition, acks view->reopen_acks as read before its
-+ * capture.
++ * capture. no_advance (xf4): an acquisition of this call that requested an
++ * advance ended in -EXDEV (not a candidate, or its adoption failed), so the
++ * call's later acquisitions send today's request (no "advance") and a
++ * persistent refusal costs at most one extra round trip, never a loop of
++ * advance grants up to the deadline.
 + */
 +struct hfs_mmap_attempts {
 +	unsigned long deadline;
@@ -6174,6 +6631,7 @@ new file mode 100644
 +	unsigned int reinstalled;
 +	unsigned int backoff_ms;
 +	bool host_blocked;
++	bool no_advance;
 +};
 +
 +/* The attempts counted against the cap; at least the host tickets this
@@ -6410,19 +6868,62 @@ new file mode 100644
 +	return 0;
 +}
 +
++/* The DOMAIN lease of one captured observation (not a mutation). xf4: when
++ * the capture found the view cacheless (hfs_view_capture_ex), the provider
++ * can verify an advance and no earlier acquisition of this call refused one
++ * (attempts->no_advance), the request carries "advance": true, and a GRANTED
++ * advance candidate is adopted at once (hfs_view_advance re-stamps the
++ * observation; a view with mmap pages, mappings or any other target-bound
++ * state never sends it). A refused advance, from the acquisition or the
++ * adoption, is -EXDEV with an unadopted lease and sets attempts->no_advance;
++ * an adoption that waited past the deadline or for a fatal signal returns
++ * -ETIMEDOUT or -EINTR (hfs_view_advance), and the packet releases the
++ * unadopted lease.
++ * -EAGAIN with no lease: the host's BLOCKED (attempts->host_blocked;
++ * hfs_mmap_attempt re-checks at once after a reinstall, 1h4, else backs off
++ * and retries, re4) or RETIRED_ID (returned at once). Either way it is never
++ * retried back to back here. 2f4: -EXDEV with a lease a later recall passed
++ * before the view settled (hfs_view_grant_settle): held and acquired again,
++ * as for a failed re-check (ie4). A settle stop may also carry an unadopted
++ * lease; this packet releases it.
++ */
++static int hfs_mmap_observe_lease(struct hfs_view *view, struct hfs_observation *observation,
++				  const struct hfs_cred *cred, bool cacheless,
++				  struct hfs_mmap_attempts *attempts)
++{
++	struct hfs_cache_cleanup *cleanup = observation->cleanup;
++	bool advance = cacheless && !attempts->no_advance &&
++		hfs_view_advance_supported(view->session);
++	int err;
++
++	err = hfs_lease_acquire_ex(view->session, cred, NULL, NULL, 0, false,
++				   &observation->target, advance, &observation->lease,
++				   &attempts->host_blocked);
++	cleanup->lease = observation->lease;
++	if (!err && observation->lease->advance)
++		err = hfs_view_advance(view, observation->lease, &observation->stamp,
++				       &observation->target, attempts->deadline);
++	if (err == -EXDEV && advance) {
++		attempts->no_advance = true;
++		pr_info_ratelimited("9p-hfs: session %pUb observation VIEW_ACQUIRE advance not adopted (view moved or not a candidate); releasing that lease and acquiring without advance\n",
++				    &view->session->enrollment.session);
++	}
++	return err;
++}
++
 +/* Enter (waiting for a LIVE view), capture, acquire and publish one
 + * observation. A granted lease stays with this observation's cleanup packet
 + * whatever happens. attempts->rechecks counts failed re-checks for
 + * hfs_mmap_begin's exhaustion line. Returns 0 (published), -EXDEV (an
-+ * unpublished lease the view moved past) or another error; for a host
-+ * BLOCKED (-EAGAIN) attempts->host_blocked is set.
++ * unpublished lease the view moved past, or a refused advance) or another
++ * error; for a host BLOCKED (-EAGAIN) attempts->host_blocked is set.
 + */
 +static int hfs_mmap_observe(struct hfs_view *view, struct hfs_observation *observation,
 +			    bool mutation, const struct hfs_cred *cred,
 +			    struct hfs_mmap_attempts *attempts)
 +{
-+	struct hfs_cache_cleanup *cleanup = observation->cleanup;
 +	void *physical = NULL;
++	bool cacheless;
 +	int err;
 +
 +	attempts->host_blocked = false;
@@ -6435,29 +6936,16 @@ new file mode 100644
 +		 * one for an expectation the recall replaced (hfs_mmap_reinstalled).
 +		 */
 +		attempts->acks = READ_ONCE(view->reopen_acks);
-+		err = hfs_view_capture(view, &observation->stamp, &observation->target);
++		err = hfs_view_capture_ex(view, &observation->stamp, &observation->target,
++					  &cacheless);
 +		if (!err && !mutation) {
-+			err = hfs_lease_acquire_ex(view->session, cred, NULL, NULL, 0, false,
-+						   &observation->target, &observation->lease,
-+						   &attempts->host_blocked);
-+			cleanup->lease = observation->lease;
-+			/* -EAGAIN with no lease: the host's BLOCKED
-+			 * (attempts->host_blocked; hfs_mmap_attempt re-checks
-+			 * at once after a reinstall, 1h4, else backs off and
-+			 * retries, re4) or RETIRED_ID (returned at once). Either
-+			 * way it is never retried back to back here.
-+			 * 2f4: -EXDEV with a lease a later recall passed before
-+			 * the view settled (hfs_view_grant_settle): held and
-+			 * acquired again, as for a failed re-check (ie4). A
-+			 * settle stop may also carry an unadopted lease; this
-+			 * packet releases it.
-+			 */
++			err = hfs_mmap_observe_lease(view, observation, cred, cacheless, attempts);
 +			if (err)
 +				return err;
 +		}
 +		if (!err)
 +			err = hfs_mmap_publish(view, observation);
-+		/* -EAGAIN here: hfs_view_capture met a view that left LIVE, or a
++		/* -EAGAIN here: hfs_view_capture_ex met a view that left LIVE, or a
 +		 * mutation's (lease-less) re-check met a moved view. A held lease's
 +		 * failed re-check is -EXDEV instead.
 +		 */
@@ -6494,7 +6982,8 @@ new file mode 100644
 +
 +/* One attempt of hfs_mmap_begin: 0 (published, *cookie set), 1 (try again)
 + * or an error. *held is the previous attempt's packet with a lease the view
-+ * moved past (-EXDEV); it is queued after this attempt's acquisition
++ * moved past or a refused advance left unadopted (-EXDEV, xf4); it is queued
++ * after this attempt's acquisition
 + * (granted or BLOCKED), and on BLOCKED released before that. A BLOCKED on a
 + * view reinstalled since the capture is retried at once (1h4), any other
 + * after the back-off.

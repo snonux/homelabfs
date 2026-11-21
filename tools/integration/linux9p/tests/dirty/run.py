@@ -65,8 +65,10 @@ def main():
     spans=[('int hfs_json_hash_fields(', '\nint hfs_view_target('),
            ('int hfs_view_ticket_activate(', '\nstatic int hfs_ticket_union('),
            ('static int hfs_ticket_union(', '\nint hfs_view_query('),
-           # 2f4: the exchange's grant-settle helpers precede it.
-           ('struct hfs_grant_settle {', '\nstatic int hfs_lease_decode('),
+           # 2f4: the exchange's grant-settle helpers precede it. xf4 (4h4):
+           # so do hfs_view_grant_moved and hfs_lease_decode_target; the
+           # reply check hfs_lease_decode_check needs the full session.
+           ('struct hfs_grant_settle {', '\nstatic int hfs_lease_decode_check('),
            ('int hfs_dirty_freeze(', '\nstatic void hfs_dirty_mapping_error(')]
     # First helper group excludes unrelated target parsing and its callbacks.
     start=source.index('int hfs_json_hash_fields(');end=source.index('\nstatic int hfs_normal_target(',start)

@@ -37,11 +37,41 @@ static int invalidate_inode_pages2(struct address_space *mapping)
  return 0;
 }
 static struct hfs_json *other_target_event; // 1h4: a recall that moves the target
+/* xf4: the advance candidate's lease ({"target":{"t":3}}, hash 3) and the
+ * same cut as a recall's event (advance_event). A lease reply is current
+ * only as hfs_received_selected models it: the view holds that target at the
+ * revision the receipt captured (advance_capture, below).
+ */
+static struct hfs_json *advance_json,*advance_event;
+static u64 advance_capture;
 int hfs_view_target(struct hfs_session *session,const struct hfs_json *event,int token,uuid_t *visibility,u8 hash[32])
 {
- assert(session==test_session && (event==target_event || event==other_target_event) && token==hfs_json_field(event,0,"target"));
+ assert(session==test_session && (event==target_event || event==other_target_event || event==advance_json || event==advance_event) && token==hfs_json_field(event,0,"target"));
  if(invalid_source)return -EACCES;
- *visibility=generation;memset(hash,0,32);hash[0]=event==other_target_event;return 0;
+ if(event==advance_json && (session->view->target_hash[0]!=3 || session->view->revision!=advance_capture))return -ESTALE;
+ *visibility=generation;memset(hash,0,32);hash[0]=event==advance_json || event==advance_event ? 3 : event==other_target_event;return 0;
+}
+/* xf4: hfs_view_advance_supported (hfs_lease.c, not part of this build) is
+ * advance_supported; hfs_view_advance_target is a model of the native check
+ * (hfs_received_advance): refused (advance_verify_err, or -ESTALE) unless
+ * the LIVE view still holds expected at the revision its receipt captured
+ * (advance_capture: the view's revision when the host model answered).
+ */
+static bool advance_supported;
+static int advance_verify_err;
+static unsigned int advance_verifies;
+bool hfs_view_advance_supported(const struct hfs_session *session)
+{ assert(session==test_session);return advance_supported; }
+int hfs_view_advance_target(struct hfs_session *session,const struct hfs_json *json,int token,
+                            const struct hfs_buf *expected,uuid_t *visibility,u8 hash[32])
+{
+ struct hfs_view *view=session->view;
+ assert(session==test_session && json && token==hfs_json_field(json,0,"target"));
+ advance_verifies++;
+ if(advance_verify_err)return advance_verify_err;
+ if(view->phase!=HFS_VIEW_LIVE || view->revision!=advance_capture || view->target.len!=expected->len ||
+    memcmp(view->target.data,expected->data,expected->len))return -ESTALE;
+ *visibility=generation;memset(hash,0,32);hash[0]=3;return 0;
 }
 /* 1a4: hfs_mmap_fail's once-per-session line names the session, the worker
  * step, the host event and ACK phases, the host's reply status, the view
@@ -175,9 +205,19 @@ static void clean_page(struct hfs_view *view,struct address_space *mapping,unsig
  * while a recall reinstalled another target (the mount accepted its
  * REOPENED ACK), and re-admission answers BLOCKED for the old expectation.
  */
-enum retry_hook { HOOK_NONE, HOOK_RECALL_BEFORE, HOOK_RECALL_AFTER, HOOK_FENCE, HOOK_BLOCK, HOOK_STUCK, HOOK_RETIRED_ID, HOOK_PASSED, HOOK_REINSTALL_BLOCKED };
+/* xf4: with host_advances an acquisition that requests advance is granted on
+ * the host's current cut (advance_json), classified by the actual
+ * hfs_lease_decode_target. HOOK_ADVANCE_REINSTALLED: a recall reinstalled
+ * another target before the grant (a readmitted PENDING ticket: the receipt
+ * gate refuses it, -EXDEV unadopted). HOOK_ADVANCE_SAME: it reinstalled the
+ * same target (the receipt gate passes, hfs_view_advance refuses the moved
+ * stamp). HOOK_ADVANCE_CURRENT: it installed the granted cut itself (the
+ * reply is current; accepted as an ordinary lease, never published under the
+ * old stamp).
+ */
+enum retry_hook { HOOK_NONE, HOOK_RECALL_BEFORE, HOOK_RECALL_AFTER, HOOK_FENCE, HOOK_BLOCK, HOOK_STUCK, HOOK_RETIRED_ID, HOOK_PASSED, HOOK_REINSTALL_BLOCKED, HOOK_ADVANCE_REINSTALLED, HOOK_ADVANCE_SAME, HOOK_ADVANCE_CURRENT };
 struct host_lease { u64 fence; u8 target; bool active; int sharers, holders; };
-static struct host_lease host_leases[32];
+static struct host_lease host_leases[64]; // xf4: the advance cases add grants
 static unsigned int nr_host_leases, host_release_recalls;
 static u64 host_fence=1;
 static bool pending_recall;
@@ -272,18 +312,44 @@ static void host_release(struct host_lease *lease)
 /* hfs_lease_acquire_ex's host: -EAGAIN with no lease is BLOCKED (*blocked)
  * or RETIRED_ID (not *blocked).
  */
+static bool host_advances, acquire_advance[64];
+/* xf4: the host's advance grant on its current cut, classified as
+ * hfs_lease_acquire_ex does (the actual hfs_lease_decode_target): a
+ * candidate (lease->advance) or unadopted for release (-EXDEV).
+ */
+static int host_advance_grant(struct hfs_session *session,const struct hfs_buf *expected_target,
+                              struct hfs_lease *lease)
+{
+ static struct hfs_view_ticket advance_ticket={.advance=true};
+ int err;
+ kref_init(&lease->refs);lease->json=advance_json;lease->fence=host_fence;
+ err=hfs_lease_decode_target(session,&advance_ticket,advance_json,hfs_json_field(advance_json,0,"target"),
+                             expected_target,false,lease);
+ assert(!err && !(lease->advance && lease->unadopted) && (lease->unadopted || lease->target_hash[0]==3));
+ lease->id[0]=(u8)host_grant(3);
+ return lease->unadopted ? -EXDEV : 0;
+}
 int hfs_lease_acquire_ex(struct hfs_session *session,const struct hfs_cred *cred,
 			 const struct hfs_cap *object,const struct hfs_cap *description,
 			 u64 offset,bool dirty,const struct hfs_buf *expected_target,
-			 struct hfs_lease **out,bool *blocked)
+			 bool advance,struct hfs_lease **out,bool *blocked)
 {
  struct hfs_view *view=session->view;struct hfs_lease *lease=calloc(1,sizeof(*lease));
  enum retry_hook hook=acquire_calls ? HOOK_NONE : retry_hook;
  assert(session==test_session && cred && !object && !description && !offset && !dirty && blocked);
  assert(expected_target && expected_target->len && lease && acquire_calls<ARRAY_SIZE(granted));
- queued_at_acquire[acquire_calls]=nr_queued;*blocked=false;
+ queued_at_acquire[acquire_calls]=nr_queued;*blocked=false;acquire_advance[acquire_calls]=advance;
  assert(++host_tickets_used<=HOST_TICKETS); // never past the host's ticket budget
  jiffies+=acquire_jiffies;
+ if(advance && host_advances){
+  int err;
+  if(hook==HOOK_ADVANCE_REINSTALLED)target_recall(view,other_target_event);
+  else if(hook==HOOK_ADVANCE_SAME)same_target_recall(view);
+  else if(hook==HOOK_ADVANCE_CURRENT)target_recall(view,advance_event);
+  advance_capture=view->revision; // the receipt's capture
+  err=host_advance_grant(session,expected_target,lease);
+  granted[acquire_calls++]=lease;leases_live++;*out=lease;return err;
+ }
  if(hook==HOOK_BLOCK){session->bridge_minor=4;session->blocked=true;}
  // A recall runs on the host whatever the next acquisition is answered.
  if(pending_recall || hook==HOOK_RECALL_BEFORE){pending_recall=false;same_target_recall(view);}
@@ -987,6 +1053,105 @@ static void retry_reissue(struct hfs_session *session)
  assert(!hfs_reissue(session,&err,deadline,"LOOKUP") && err==-ETIMEDOUT);
  assert(strstr(last_warning,"LOOKUP re-issues exhausted after the view target kept moving (-ETIMEDOUT)"));
 }
+/* xf4: the observation path of a guest-requested view advance. The view is
+ * made cacheless by unregistering the main mapping (test_inode); every case
+ * restores the first target and the mapping.
+ */
+static struct hfs_inode *test_inode;
+static void advance_begin(void)
+{
+ hfs_view_unregister_inode(&test_inode->inode);
+ assert(!test_session->view->nr_mappings);
+ advance_supported=host_advances=true;advance_verify_err=0;advance_verifies=0;
+}
+static void advance_finish(struct hfs_view *view,int reserved)
+{
+ retry_no_leaks(reserved);
+ advance_supported=host_advances=false;
+ if(view->target_hash[0])same_target_recall(view);
+ assert(!view->target_hash[0] && !test_session->blocked);
+ assert(!hfs_view_register_inode(&test_inode->inode) && view->nr_mappings==1);
+}
+/* A cacheless view requests advance and adopts the grant on the host's
+ * current cut in the same syscall: one acquisition, no recall, the target
+ * switched, revision + 1, the observation re-stamped and published.
+ */
+static void retry_advance_adopted(struct hfs_view *view,int reserved)
+{
+ void *cookie;u64 before=view->revision,fence=host_fence;
+ struct hfs_observation *observation;
+ advance_begin();
+ assert(!retry_begin(HOOK_NONE,0,&cookie));retry_published(view,cookie);
+ observation=cookie;
+ assert(acquire_calls==1 && acquire_advance[0] && advance_verifies==2); // decode, adoption
+ assert(view->revision==before+1 && view->target_hash[0]==3 && host_fence==fence && !nr_queued);
+ assert(view->target.len==7 && !memcmp(view->target.data,"{\"t\":3}",7));
+ assert(observation->lease==granted[0] && !granted[0]->advance && !granted[0]->unadopted);
+ assert(observation->target.len==7 && !memcmp(observation->target.data,"{\"t\":3}",7));
+ retry_end(cookie);advance_finish(view,reserved);
+}
+/* Annotation (b) of the host review: a readmitted PENDING advance ticket
+ * granted after a recall. Another target reinstalled: the receipt gate
+ * refuses it (-EXDEV, unadopted, no block). The same target reinstalled:
+ * the receipt gate passes but hfs_view_advance refuses the moved stamp.
+ * Either way the lease is never published, the call acquires again without
+ * advance (no_advance) and then releases it.
+ */
+static void retry_advance_refused(struct hfs_view *view,int reserved,enum retry_hook hook)
+{
+ void *cookie;
+ advance_begin();
+ assert(!retry_begin(hook,0,&cookie));retry_published(view,cookie);
+ assert(acquire_calls==2 && acquire_advance[0]);
+ assert(!granted[0]->advance && !granted[0]->published && ((struct hfs_observation *)cookie)->lease==granted[1]);
+ assert(advance_verifies==(hook==HOOK_ADVANCE_SAME ? 2U : 1U));
+ assert(nr_queued==1 && queued[0]->lease==granted[0] && !test_session->blocked);
+ if(hook==HOOK_ADVANCE_CURRENT){
+  // Current for the view: an ordinary verified lease, held because the
+  // observation's stamp predates the recall; the retry may advance again
+  // and gets its own expected target.
+  assert(!granted[0]->unadopted && acquire_advance[1] && view->target_hash[0]==3);
+  assert(strstr(warning_log,"view moved past the granted lease"));
+ } else {
+  assert(granted[0]->unadopted && !acquire_advance[1]);
+  assert(view->target_hash[0]==(hook==HOOK_ADVANCE_REINSTALLED));
+  assert(strstr(warning_log,"advance not adopted (view moved or not a candidate); releasing that lease and acquiring without advance"));
+ }
+ run_cleanups();retry_end(cookie);advance_finish(view,reserved);
+}
+/* A view with mmap pages, a registered mapping, or a provider that cannot
+ * verify an advance never requests one (today's request bytes).
+ */
+static void retry_advance_never(struct hfs_view *view,int reserved)
+{
+ void *cookie;
+ host_advances=advance_supported=true;advance_verifies=0;
+ assert(!retry_begin(HOOK_NONE,0,&cookie));retry_published(view,cookie); // mapping registered
+ assert(acquire_calls==1 && !acquire_advance[0] && !advance_verifies && !view->target_hash[0]);
+ retry_end(cookie);retry_no_leaks(reserved);
+ // A mapped page of the mmap cache (the cached page alone is view/'s case).
+ clean_page(view,test_inode->inode.i_mapping,0);
+ assert(view->nr_cached==1 && view->nr_mappings==1);
+ assert(!retry_begin(HOOK_NONE,0,&cookie));retry_published(view,cookie);
+ assert(acquire_calls==1 && !acquire_advance[0] && !advance_verifies);
+ retry_end(cookie);retry_no_leaks(reserved);
+ if(view->nr_cached)assert(!hfs_mmap_pressure(view,true)); // a recall may have dropped it
+ assert(!view->nr_cached);
+ hfs_view_unregister_inode(&test_inode->inode);
+ advance_supported=false; // cacheless, but no provider check
+ assert(!retry_begin(HOOK_NONE,0,&cookie));retry_published(view,cookie);
+ assert(acquire_calls==1 && !acquire_advance[0]);
+ retry_end(cookie);
+ advance_finish(view,reserved);
+}
+static void retry_advance_checks(struct hfs_view *view,int reserved)
+{
+ retry_advance_adopted(view,reserved);
+ retry_advance_refused(view,reserved,HOOK_ADVANCE_REINSTALLED);
+ retry_advance_refused(view,reserved,HOOK_ADVANCE_SAME);
+ retry_advance_refused(view,reserved,HOOK_ADVANCE_CURRENT);
+ retry_advance_never(view,reserved);
+}
 static void observation_retry_checks(struct hfs_session *session)
 {
  struct hfs_view *view=session->view;int reserved=atomic_load(&reservations);
@@ -1019,6 +1184,7 @@ static void observation_retry_checks(struct hfs_session *session)
  retry_attr_enter(view);
  retry_lookup_forget();
  retry_reissue(session);
+ retry_advance_checks(view,reserved);
 }
 /* 2f4 (zq3-r17 R17-1): the actual hfs_view_exchange on a GRANTED reply that
  * is verified but not current. The host grants a PENDING VIEW_ACQUIRE lazily
@@ -1035,6 +1201,8 @@ static void observation_retry_checks(struct hfs_session *session)
  * (hfs_view_reopen_acked) while the exchange waits.
  */
 struct xq_step { const char *status; const char *source; u64 fence; void (*hook)(struct hfs_view *); };
+/* xf4: when set, every lease carries this target ({"fence":N,"target":T}). */
+static const char *xq_target;
 static const struct xq_step *xq_steps;
 static unsigned int xq_nr, xq_calls, xq_source_calls, xq_blocks;
 static u64 xq_fence, xq_capture_revision;
@@ -1046,7 +1214,7 @@ static struct hfs_view_family xq_family;
 int hfs_control_flagged(struct hfs_session *session,const char *operation,const struct hfs_buf *payload,
                         bool control,bool after_block,struct hfs_json **out)
 {
- const struct xq_step *step;char text[256],source[32];struct hfs_view *view=session->view;
+ const struct xq_step *step;char text[512],source[96];struct hfs_view *view=session->view;
  assert(session==test_session && xq_calls<xq_nr && !after_block);
  step=&xq_steps[xq_calls];
  if(xq_ticket.admitted)assert(!strcmp(operation,"VIEW_QUERY") && payload==&xq_ticket.query && control);
@@ -1054,7 +1222,8 @@ int hfs_control_flagged(struct hfs_session *session,const char *operation,const 
  xq_capture_revision=view->revision;xq_capture_phase=view->phase; // hfs_received_capture
  if(step->hook)step->hook(view);
  xq_calls++;
- snprintf(source,sizeof(source),"{\"fence\":%llu}",(unsigned long long)step->fence);
+ if(xq_target)snprintf(source,sizeof(source),"{\"fence\":%llu,\"target\":%s}",(unsigned long long)step->fence,xq_target);
+ else snprintf(source,sizeof(source),"{\"fence\":%llu}",(unsigned long long)step->fence);
  snprintf(text,sizeof(text),"{\"payload\":{\"entry\":%s,\"lease\":%s,\"reservation\":%s,\"status\":\"%s\"}}",
           step->source && !strcmp(step->source,"entry")?source:"null",
           step->source && !strcmp(step->source,"lease")?source:"null",
@@ -1108,7 +1277,7 @@ static void xq_setup(const char *operation,bool admitted,const struct xq_step *s
  assert(!hfs_buf_init(&xq_ticket.payload,64) && !hfs_buf_init(&xq_ticket.query,64));
  hfs_buf_literal(&xq_ticket.payload,"{}");hfs_buf_literal(&xq_ticket.query,"{\"request\":1}");
  xq_steps=steps;xq_nr=nr;xq_calls=xq_source_calls=xq_blocks=0;xq_block_err=0;xq_fence=fence;
- xq_unverified=xq_never_current=false;xq_acks_at=0;view_wait_sleeps=0;view_wait_step=10;view_wait_hook=xq_ack_hook;
+ xq_unverified=xq_never_current=false;xq_acks_at=0;xq_target=NULL;view_wait_sleeps=0;view_wait_step=10;view_wait_hook=xq_ack_hook;
  test_session->bridge_minor=4;test_session->blocked=false;warnings=0;
 }
 static int xq_run(struct hfs_json **response)
@@ -1247,6 +1416,125 @@ static void xq_fail_closed(void)
  assert(!xq_run(&response) && response && xq_calls==1 && !xq_blocks && xq_ticket.terminal);
  xq_teardown(response);
 }
+/* xf4: an advance ticket's GRANTED on another target than its expected one
+ * is never current at receipt; the exchange hands it out at once (0, no
+ * settle wait, no re-query, no block) for hfs_lease_decode to classify.
+ * Pre-xf4 the same reply settled, re-queried and blocked (-EPROTO).
+ */
+static void xq_advance_setup(const struct xq_step *steps,unsigned int nr,u64 fence,bool advance,const char *target)
+{
+ xq_setup("VIEW_ACQUIRE",true,steps,nr,fence);xq_ticket.advance=advance;xq_target=target;
+ xq_ticket.payload.len=0;hfs_buf_literal(&xq_ticket.payload,"{\"target\":{\"t\":1}}");
+}
+static void xq_advance_moved(void)
+{
+ static const struct xq_step steps[]={{"GRANTED","lease",6,NULL},{"GRANTED","lease",6,NULL}};
+ struct hfs_json *response=NULL;
+ xq_advance_setup(steps,2,6,true,"{\"t\":2}");xq_never_current=true;
+ assert(!xq_run(&response) && xq_granted(response) && xq_calls==1 && xq_source_calls==1);
+ assert(xq_ticket.terminal && !xq_ticket.uncertain && !xq_blocks && !test_session->blocked);
+ assert(!view_wait_sleeps && !warnings);
+ xq_teardown(response);
+}
+/* An advance ticket granted its own expected target, not current yet (the
+ * mount's fence is behind): no advance at all, it settles as in 2f4.
+ */
+static void xq_advance_same_target(void)
+{
+ static const struct xq_step steps[]={{"GRANTED","lease",6,NULL},{"GRANTED","lease",6,NULL}};
+ struct hfs_json *response=NULL;
+ xq_advance_setup(steps,2,5,true,"{\"t\":1}");xq_acks_at=2;xq_acked_fence=6;
+ assert(!xq_run(&response) && xq_granted(response) && xq_calls==2 && view_wait_sleeps==2 && !xq_blocks);
+ assert(strstr(last_warning,"is not current (mount fence 5, view LIVE); querying again once the view settles"));
+ xq_teardown(response);
+}
+/* 4h4 review round 1: when the expected target of the ticket cannot be read
+ * (here an unparseable bound payload; in the kernel a failed allocation) the
+ * moved grant is handed out with -EXDEV, so hfs_lease_acquire_ex builds it
+ * unadopted and the caller releases it: no settle, no block, no leaked host
+ * lease. Pre-review the reply was taken as moved and returned as 0.
+ */
+static void xq_advance_unreadable(void)
+{
+ static const struct xq_step steps[]={{"GRANTED","lease",6,NULL}};
+ struct hfs_json *response=NULL;
+ xq_advance_setup(steps,1,6,true,"{\"t\":2}");xq_never_current=true;
+ xq_ticket.payload.len=0;hfs_buf_literal(&xq_ticket.payload,"{\"target\":");
+ assert(xq_run(&response)==-EXDEV && xq_granted(response) && xq_calls==1 && !view_wait_sleeps);
+ assert(xq_ticket.terminal && !xq_ticket.uncertain && !xq_blocks && !test_session->blocked);
+ xq_teardown(response);
+}
+/* Without advance a moved target still fails closed: settle, re-query,
+ * -EPROTO and the session blocked, as before xf4.
+ */
+static void xq_no_advance_moved(void)
+{
+ static const struct xq_step steps[]={{"GRANTED","lease",6,NULL},{"GRANTED","lease",6,NULL}};
+ struct hfs_json *response=NULL;
+ xq_advance_setup(steps,2,6,false,"{\"t\":2}");xq_never_current=true;
+ assert(xq_run(&response)==-EPROTO && xq_calls==2 && xq_blocks==1 && xq_ticket.uncertain);
+ xq_teardown(NULL);
+}
+/* xf4: the actual hfs_lease_decode_target classification of a GRANTED lease
+ * target (advance_json: {"t":3}) against the request's expected target.
+ */
+static int decode_case(bool advance,const char *expected,bool unadopted,struct hfs_lease *lease)
+{
+ struct hfs_view_ticket ticket={.advance=advance};struct hfs_buf buf={0};int err;
+ memset(lease,0,sizeof(*lease));
+ if(expected){assert(!hfs_buf_init(&buf,64));hfs_buf_literal(&buf,expected);}
+ err=hfs_lease_decode_target(test_session,&ticket,advance_json,hfs_json_field(advance_json,0,"target"),
+                             expected ? &buf : NULL,unadopted,lease);
+ hfs_buf_free(&buf);return err;
+}
+static void decode_checks(void)
+{
+ struct hfs_view *view=test_session->view;struct hfs_lease lease,adopted;
+ struct hfs_view_stamp stamp;struct hfs_buf target={0};u64 before;
+ assert(view->phase==HFS_VIEW_LIVE && view->target.len==2 && !view->nr_mappings);
+ // An advance candidate is never published before its adoption, even at
+ // the view's current stamp and target hash.
+ struct hfs_observation unadopted={.view=view,.lease=&lease};
+ memset(&lease,0,sizeof(lease));lease.advance=true;memcpy(lease.target_hash,view->target_hash,32);
+ INIT_LIST_HEAD(&unadopted.list);assert(!hfs_view_snapshot(view,&unadopted.stamp));
+ assert(hfs_mmap_publish(view,&unadopted)==-EXDEV && !view->nr_observations && !lease.published);
+ lease.advance=false;assert(!hfs_mmap_publish(view,&unadopted) && view->nr_observations==1); // the control
+ list_del_init(&unadopted.list);view->nr_observations--;
+ advance_supported=true;advance_capture=view->revision;advance_verifies=0;advance_verify_err=0;
+ // A mismatched target without advance is still refused (blocks, -ESTALE).
+ assert(decode_case(false,"{}",false,&lease)==-ESTALE && !lease.advance && !lease.unadopted);
+ // The candidate: the view still holds the expected target at the capture.
+ assert(!decode_case(true,"{}",false,&lease) && lease.advance && !lease.unadopted && lease.target_hash[0]==3);
+ assert(advance_verifies==1);
+ // Its adoption, then a replay of the same reply for the same request
+ // (expected {}): the view now holds {"t":3} and the replay is current for
+ // it, so it is accepted as an ordinary lease, no candidate. A re-captured
+ // expectation ({"t":3}) is an ordinary grant as well.
+ adopted=lease;adopted.json=advance_json;
+ assert(!hfs_buf_init(&target,HFS_TARGET_MAX) && !hfs_view_capture_ex(view,&stamp,&target,NULL));
+ before=view->revision;
+ assert(!hfs_view_advance(view,&adopted,&stamp,&target,jiffies+1000) && view->revision==before+1);
+ advance_capture=view->revision; // the replay's receipt
+ assert(!decode_case(true,"{}",false,&lease) && !lease.advance && !lease.unadopted && advance_verifies==3);
+ assert(lease.target_hash[0]==3);
+ assert(!decode_case(true,"{\"t\":3}",false,&lease) && !lease.advance && !lease.unadopted && advance_verifies==3);
+ // The expected target itself, or none: verified as before (hfs_view_target).
+ assert(!decode_case(false,"{\"t\":3}",false,&lease) && !lease.unadopted && lease.target_hash[0]==3);
+ assert(!decode_case(false,NULL,false,&lease) && !lease.unadopted);
+ // A replay after a further move (a recall back to the first target): no
+ // candidate (its receipt predates the move) and not current: built
+ // unadopted (-EXDEV upstream), never -ESTALE (no block).
+ same_target_recall(view);
+ assert(!decode_case(true,"{}",false,&lease) && lease.unadopted && !lease.advance && advance_verifies==4);
+ // A settle stop's unadopted grant stays unadopted, moved or not.
+ assert(!decode_case(true,"{}",true,&lease) && lease.unadopted && advance_verifies==4);
+ // A refused native check, or no provider support: unadopted.
+ advance_capture=view->revision;advance_verify_err=-EKEYREJECTED;
+ assert(!decode_case(true,"{}",false,&lease) && lease.unadopted);
+ advance_verify_err=0;
+ hfs_buf_free(&target);advance_supported=false;
+ assert(!view->target_hash[0]);
+}
 static void grant_settle_checks(void)
 {
  struct hfs_view *view=test_session->view;
@@ -1257,16 +1545,22 @@ static void grant_settle_checks(void)
  xq_grant_stops();
  xq_fail_closed();
  xq_unadopted_refused();
+ xq_advance_moved();
+ xq_advance_same_target();
+ xq_advance_unreadable();
+ xq_no_advance_moved();
 }
 int main(void)
 {
  struct hfs_provider provider={reserve,unreserve,provider_leave};struct hfs_session session={.provider=&provider};
  struct address_space mapping={.id=1,.a_ops=&hfs_cache_aops};struct hfs_inode inode={.inode={&mapping,1}};
  struct hfs_cap cap={.token={1}};struct hfs_description desc={.cap=&cap};struct file file={&inode.inode,&desc};struct vm_area_struct vma={&file};
- test_vma=&vma;test_session=&session;mutex_init(&session.lock);mutex_init(&session.retirement);INIT_LIST_HEAD(&inode.view_list);
+ test_vma=&vma;test_session=&session;test_inode=&inode;mutex_init(&session.lock);mutex_init(&session.retirement);INIT_LIST_HEAD(&inode.view_list);
  assert(!hfs_view_new(&session,&generation));observed_view=session.view;assert(!hfs_view_register_inode(&inode.inode));
  assert(!hfs_json_parse("{\"target\":{}}",13,&target_event));
  assert(!hfs_json_parse("{\"target\":{\"t\":2}}",18,&other_target_event)); // 1h4
+ assert(!hfs_json_parse("{\"target\":{\"t\":3}}",18,&advance_json)); // xf4
+ assert(!hfs_json_parse("{\"target\":{\"t\":3}}",18,&advance_event));
  // p84 (zq3-r9 R9-1): an in-flight request's published DOMAIN observation
  // lease is never a pressure victim. With no cache lease pressure is a no-op;
  // only hfs_mmap_end's cleanup releases it once the request has ended.
@@ -1320,6 +1614,8 @@ int main(void)
  observation_retry_checks(&session);
  // 2f4: the actual hfs_view_exchange on a verified GRANTED that is not current.
  grant_settle_checks();
+ // xf4: the actual decode classification of an advance grant (cacheless view).
+ hfs_view_unregister_inode(&inode.inode);decode_checks();assert(!hfs_view_register_inode(&inode.inode));
  // A source verifier refusal cannot manufacture DRAINED or reopen.
  clean_page(session.view,&mapping,0);invalid_source=1;
  assert(hfs_mmap_mkwrite(&vmf)==VM_FAULT_SIGBUS && session.view->phase==HFS_VIEW_STOPPED);
@@ -1361,7 +1657,7 @@ int main(void)
   session.view->phase=phase;
  }
  view_worker_log_checks(&session);
- hfs_json_free(target_event);hfs_json_free(other_target_event);hfs_view_unregister_inode(&inode.inode);hfs_view_fence(session.view);assert(!hfs_view_free(&session));
+ hfs_json_free(target_event);hfs_json_free(other_target_event);hfs_json_free(advance_json);hfs_json_free(advance_event);hfs_view_unregister_inode(&inode.inode);hfs_view_fence(session.view);assert(!hfs_view_free(&session));
  assert(!reservations && !module_refs);
- puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (recall before/after grant re-acquires,no release recall,no self-recall loop,moved target,refusals,deadline,no leak,RETIRED_ID passed through,host BLOCKED retried only after retirement progress (held lease released first,at most 3 retries,ticket budget kept),progress by the cleanup worker during the pause or after a busy try,1h4 BLOCKED after a reinstall re-checked at once (2 tickets),busy retirement waited for not counted (5 busy rounds granted,never ending -EAGAIN at the deadline,capacity BLOCKED still needs progress,release count after the unlock,request-retirement holder wakes the waiter,wait slice bounds an unknown holder,a round that ran -EBUSY counted,stops checked after a wake),no progress/deadline -EAGAIN at once,BLOCKED retire re-sent after recall/next observation (rate-limited),attr re-stamp/re-issue,moved LOOKUP FORGET balanced,2f4 passed grant re-acquired),2f4 exchange: GRANTED before the fence raise re-queried after the REOPENED ACK,old revision re-queried at once,passed by a later recall -EXDEV,deadline/signal/block/transport stops hand the GRANTED out without a block,unadopted lease never bound or page-leased,unverified/never-current/DIRTY fail closed,source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
+ puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (recall before/after grant re-acquires,no release recall,no self-recall loop,moved target,refusals,deadline,no leak,RETIRED_ID passed through,host BLOCKED retried only after retirement progress (held lease released first,at most 3 retries,ticket budget kept),progress by the cleanup worker during the pause or after a busy try,1h4 BLOCKED after a reinstall re-checked at once (2 tickets),busy retirement waited for not counted (5 busy rounds granted,never ending -EAGAIN at the deadline,capacity BLOCKED still needs progress,release count after the unlock,request-retirement holder wakes the waiter,wait slice bounds an unknown holder,a round that ran -EBUSY counted,stops checked after a wake),no progress/deadline -EAGAIN at once,BLOCKED retire re-sent after recall/next observation (rate-limited),attr re-stamp/re-issue,moved LOOKUP FORGET balanced,2f4 passed grant re-acquired),2f4 exchange: GRANTED before the fence raise re-queried after the REOPENED ACK,old revision re-queried at once,passed by a later recall -EXDEV,deadline/signal/block/transport stops hand the GRANTED out without a block,unadopted lease never bound or page-leased,unverified/never-current/DIRTY fail closed,xf4 advance (cacheless view requests and adopts in one acquisition,mapped/paged/unsupported view never requests,readmitted grant after a reinstall unadopted -EXDEV then no advance,current moved grant accepted but held,moved advance grant handed out without settle,moved target without advance still blocks,decode classification incl. replay after adoption and after a further move),source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
 }
