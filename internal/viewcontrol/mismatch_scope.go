@@ -70,7 +70,12 @@ import (
 //     freeze and drain, and the all-domain recall drains them before its
 //     install. A reservation is taken under an active lease, so the lease
 //     check normally catches it, but the scope also refuses explicitly while
-//     any domain holds an open reservation (anyReservationOpen).
+//     any domain holds an open reservation (anyReservationOpen). Side
+//     effect: a pin-only mismatch, which e84 scoped regardless of peer
+//     reservations, now also recalls all domains while any domain holds an
+//     open reservation. That only narrows the scoping, so it is safe; it
+//     adds a global barrier only when a peer's reservation is open while
+//     its active leases (if any) would pass the lease check.
 //
 // The lease check needs each active peer lease's observable digest. The
 // guest retires its observation tickets promptly (16 live tickets at the

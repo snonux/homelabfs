@@ -218,7 +218,8 @@ func TestObservedCutEviction(t *testing.T) {
 
 // TestMixedMismatchSequences: with idle peers a pin-only move followed by a
 // mutation is scoped like a pin-only move alone (wf4), and so is a later
-// pin-only move.
+// pin-only move. TestMixedMismatchSequencesPeerLease keeps the all-domain
+// then scoped-again transition under a live peer lease.
 func TestMixedMismatchSequences(t *testing.T) {
 	r := newZQ3Rig(t, 0)
 	pathA, descriptionA := r.create(0, "pin-then", false)
@@ -236,6 +237,80 @@ func TestMixedMismatchSequences(t *testing.T) {
 	ticket = r.staleAcquire(1, installed.Target)
 	r.requireRecallScope(t, r.scopes[1].Session, 1)
 	r.finishMismatch(t, 1, ticket)
+}
+
+// TestMixedMismatchSequencesPeerLease is the pre-wf4 transition with a live
+// peer lease: m0 holds a Targeted observation on the cut before a pin-only
+// move and a mutation, so m1's mismatch recalls all domains (and quiesces
+// m0's lease); once that recall installed the new cut and the peers are idle
+// again, a later pin-only move is scoped. A mutation is admitted only with
+// no active lease, so the live ledger reactivates m0's released observation
+// on its pre-mutation cut after the CREATE, as a Reclaim (an authority
+// reduction admitted under leases) could leave it.
+func TestMixedMismatchSequencesPeerLease(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	pathA, descriptionA := r.create(0, "pin-then", false)
+	older, err := r.controller.capture(t.Context())
+	must(t, err)
+	peer := r.observeReleased(0)
+	installed := r.observeReleased(1)
+	r.dropLifetimes(0, pathA, descriptionA)
+	pathB, descriptionB := r.create(0, "mutation", false)
+	r.reactivateOn(peer, older)
+	ticket := r.staleAcquire(1, installed.Target)
+	r.requireRecallScope(t, "", 0, 1)
+	r.finishMismatch(t, 1, ticket)
+	if r.leaseActive(peer) {
+		t.Fatal("peer lease survived the all-domain mismatch recall")
+	}
+
+	installed = r.observeReleased(1)
+	r.observeReleased(0)
+	r.dropLifetimes(0, pathB, descriptionB)
+	ticket = r.staleAcquire(1, installed.Target)
+	r.requireRecallScope(t, r.scopes[1].Session, 1)
+	r.finishMismatch(t, 1, ticket)
+}
+
+// reactivateOn makes the released lease active again in the live ledger,
+// with its cut source retained, and saves the ledger.
+func (r *rig) reactivateOn(lease *guestbridge.ViewLease, source fsservice.ControlledViewSource) {
+	r.t.Helper()
+	c := r.controller
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !equal(c.target(lease.Scope, source), lease.Target) {
+		r.t.Fatal("lease target is not the given cut")
+	}
+	c.state.Sources[sourceKey(source)] = source
+	l := c.state.Leases[lease.ID]
+	l.Active = true
+	c.state.Leases[lease.ID] = l
+	must(r.t, c.save())
+}
+
+// TestIdlePeerAcquireDuringScopedMismatchRecall: while m0's scoped mismatch
+// recall after its MKDIR runs, the idle m1 observes with its stale view. m1
+// is outside the recall, so its READ acquisition is not held
+// (recallHoldsLease), but its expected target mismatches and no second
+// recall can start: it is PENDING, never granted on the stale view, and the
+// running recall stays scoped to m0. After it, m1's retry starts m1's own
+// scoped recall and then answers BLOCKED for the stale expectation.
+func TestIdlePeerAcquireDuringScopedMismatchRecall(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	peerView := r.observeReleased(1)
+	installed := r.observeReleased(0)
+	r.mkdir(0, "race")
+	ticket := r.staleAcquire(0, installed.Target)
+	r.requireRecallScope(t, r.scopes[0].Session, 0)
+	peerTicket := r.staleAcquire(1, peerView.Target)
+	r.requireRecallScope(t, r.scopes[0].Session, 0)
+	r.finishMismatch(t, 0, ticket)
+	if reply := r.view(1, "VIEW_QUERY", map[string]any{"request": peerTicket}); reply.Status != "PENDING" {
+		t.Fatalf("stale peer retry after the scoped recall: %+v", reply)
+	}
+	r.requireRecallScope(t, r.scopes[1].Session, 1)
+	r.finishMismatch(t, 1, peerTicket)
 }
 
 // mkdir sends domain i's MKDIR of name under its root: an observable
@@ -288,6 +363,9 @@ func TestMutationMismatchPeerLeaseOnOlderCut(t *testing.T) {
 	older, err := r.controller.capture(t.Context())
 	must(t, err)
 	peer := r.observeReleased(0)
+	if !equal(r.controller.target(r.scopes[0], older), peer.Target) {
+		t.Fatal("peer observation is not on the captured pre-MKDIR cut")
+	}
 	installed := r.observeReleased(1)
 	r.mkdir(1, "older-peer")
 	peerOnOlder := func(active bool) func(c *Controller) {

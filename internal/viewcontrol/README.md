@@ -114,7 +114,11 @@ can see. An untargeted (discovery or renewed) lease says nothing about the
 installed view: in the `hfs_mmap_bootstrap` loop the view can be older than
 the lease target, so such an active peer lease keeps the all-domain recall.
 
-*Pin-only moves versus observable changes.* HandlePin/HandleRelease records
+*Pin-only moves versus observable changes (e84 background).* Under e84 the
+scope classified the expected cut against the current one; since wf4 it no
+longer does (see "Idle peers" below), and the classification and digests
+described here are used only to compare active peer leases' cuts with the
+current cut. HandlePin/HandleRelease records
 (a pinning LOOKUP or OPEN of a non-root object, a FORGET or final
 DESCRIPTION_RELEASE that reclaims nothing) change only the catalog's
 position, pins and duplicate-operation receipts; storage validation lets them
