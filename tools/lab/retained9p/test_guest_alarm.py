@@ -7,7 +7,8 @@ T1's root fd leaked until process exit). Here a fake os.open opens a real
 local descriptor and queues SIGALRM before returning, which reproduces that
 ordering without a guest: the descriptor must still reach a cleanup path and
 the Deadline must still end the request. Also covers the admission-step
-progress events. No guest, 9p, SSH or runtime.
+progress events and (yf4) that every parent hfs syscall of a case is a
+recorded call naming itself. No guest, 9p, SSH or runtime.
 """
 import contextlib
 import io
@@ -304,7 +305,7 @@ class DeadlineBoundTests(unittest.TestCase):
         self.assertEqual(armed, [guest.ADMISSION_SECONDS, 0])
 
 
-class CaseDescriptorTests(AlarmTestCase):
+class TwoRootsTestCase(AlarmTestCase):
     """Real local case syscalls; m0 and m1 are two fds on one local export.
 
     Both roots open the same directory, as both 9p domains see one export, so
@@ -318,6 +319,10 @@ class CaseDescriptorTests(AlarmTestCase):
                       for _ in range(2)]
         for fd in self.roots:
             self.addCleanup(os.close, fd)
+
+
+class CaseDescriptorTests(TwoRootsTestCase):
+    """A Deadline on any case open still closes every descriptor."""
 
     def run_case(self, case, trigger):
         fake = AlarmingOpen(trigger=trigger)
@@ -415,6 +420,63 @@ class CaseDescriptorTests(AlarmTestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             row = guest.sync_domain(probe, mount)
         self.assertEqual(row, {"index": 0, "open_errno": 0, "syncfs_errno": 0})
+
+
+class CaseSyscallNamingTests(TwoRootsTestCase):
+    """yf4 (zq3-r18): each parent hfs syscall of a case is one recorded call,
+    so a failure's last reply event names the syscall and its errno."""
+
+    def events(self, case, patches=()):
+        probe = guest.Probe(case_request(case), self.roots)
+        printed = io.StringIO()
+        with contextlib.ExitStack() as stack:
+            for name, effect in patches:
+                stack.enter_context(mock.patch.object(guest.os, name, side_effect=effect))
+            stack.enter_context(contextlib.redirect_stdout(printed))
+            try:
+                guest.CASES[case](probe)
+            except OSError:
+                pass
+        return [json.loads(line) for line in printed.getvalue().splitlines()]
+
+    def invoked(self, events):
+        return [event["operation"] for event in events if event["event"] == "invoke"]
+
+    def test_sync_records_every_parent_syscall_in_order(self):
+        file_calls = ["create-exclusive", "pwrite", "fdatasync", "fsync", "pread"]
+        self.assertEqual(self.invoked(self.events("sync")),
+                         ["mkdir-exclusive", "open-leaf", *file_calls * 3, "directory-fsync",
+                          "create-exclusive", "ftruncate", "mmap", "MS_SYNC", "mapped-fsync", "pread"])
+
+    def test_metadata_records_cross_domain_stat_and_reads(self):
+        self.assertEqual(self.invoked(self.events("metadata")),
+                         ["mkdir-exclusive", "open-leaf", "create-exclusive", "pwrite", "rename",
+                          "hardlink", "truncate", "stat-cross-domain", "directory-fsync",
+                          "create-exclusive", "unlink-open", "pwrite", "fsync-open-unlinked", "pread"])
+
+    def test_refused_fchown_names_itself(self):
+        """The zq3-r18 R18-1 shape: a chown refused with EOPNOTSUPP."""
+        refused = OSError(guest.errno.EOPNOTSUPP, "refused")
+        events = self.events("credentials", [("fchown", refused)])
+        last = events[-1]
+        self.assertEqual((last["event"], last["operation"], last["errno"]),
+                         ("reply", "fchown", guest.errno.EOPNOTSUPP))
+        self.assertEqual(self.invoked(events),
+                         ["mkdir-exclusive", "open-leaf", "fchmod-leaf", "create-exclusive", "fchown"])
+        self.assertEqual(events[-2]["args"], {"name": "group", "uid": 41002, "gid": 42002})
+
+    def test_refused_open_names_itself(self):
+        real = os.open
+
+        def refuse_payload(path, *args, **kwargs):
+            if path == "ordinary":
+                raise OSError(guest.errno.EACCES, "refused")
+            return real(path, *args, **kwargs)
+
+        events = self.events("sync", [("open", refuse_payload)])
+        self.assertEqual((events[-1]["operation"], events[-1]["errno"]),
+                         ("create-exclusive", guest.errno.EACCES))
+        self.assertEqual(events[-2]["args"], {"name": "ordinary", "open_flags": 0})
 
 
 if __name__ == "__main__":

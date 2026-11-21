@@ -813,6 +813,24 @@ can remain, `released-CASE.json` exists and the controller stays at
 root inspects the leaf against the inventory in `released-CASE.json`, keeps the
 leftovers and evidence, marks T1-T5 incomplete, and any repeat uses a new run ID.
 
+Case failure OBSERVE (T1-T4; yf4, zq3-r18): the run sheet's case-failure block
+takes one fresh OBSERVE while the runtime still serves, so the failed case's
+ce4 recall history is captured before Phase 11's SIGTERM drops it. It must be
+the **direct** form, never the `obs` helper (`obs obs-$CASE-baseline
+obs-$CASE-fail`): that helper goes through `correlate.py command`, which
+refuses once the controller recorded an error ("run state differs or recorded
+an error; inspect, never correlate"), i.e. exactly after a failed case. Fill
+the line as
+
+    tf3 observe <next> "doas -n $C --operation observe --runtime $U --sequence <next>" > $E/obs-$CASE-fail.json
+
+where `<next>` is one above the last accepted OBSERVE sequence: `L+3` after a
+T1 that failed after its `L+2` baseline (as in zq3-r18), one more if its
+retained OBSERVE was also taken, and the matching table value for T2-T4. A
+refused sequence is not consumed, so a wrong guess costs one retry; a failing
+OBSERVE (runtime gone) is recorded, never retried. The block's later
+`p11-fence.py` and `recalls.py` lines read `$E/obs-$CASE-fail.json` as before.
+
 T9-T11 guest steps (u34) run only after every planned release (T1-T4 while
 T5 is deferred: the controller's `syscall_batch_success` and the
 `correlate.py` ARM precondition count the plan's cases, and the run state,
