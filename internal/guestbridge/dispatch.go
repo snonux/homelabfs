@@ -322,8 +322,12 @@ func (s *Service) liveGrant(b Binding, cap Capability, rights uint32, descriptio
 //
 // fsservice still checks the operation's own object or immediate parent on
 // every call (UnixPermissions.Check): LOOKUP needs search on its parent,
-// CREATE/MKDIR/UNLINK/RENAME need write+search on their parents, OPEN needs
-// the requested access on the file.
+// MKDIR/SYMLINK/UNLINK/RMDIR/RENAME and creating a new name need write+search
+// on their parents, CREATE of an existing name needs search plus the open
+// access on the file, OPEN needs the requested access on the file. Grants are
+// mount-scoped, not bound to the credential that obtained them, so the
+// trusted guest kernel's walk check is what keeps a process from reaching an
+// object below a directory it cannot search (sj4 review).
 //
 // A recorded path that no longer resolves is Stale too, as the capability
 // re-check rule in Retained-9p-protocol.md requires, whichever way the cut
