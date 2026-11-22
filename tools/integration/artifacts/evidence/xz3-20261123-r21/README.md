@@ -129,7 +129,10 @@ What the files hold:
 9h4 changed three of the eleven owned exporter inputs, so the exporter had
 to be rebuilt. The recipes are unchanged since r17 (`native_guard.py`
 `34ddf37c…`). The coordinator scripts are the r17 ones with the repository
-set to the r21 worktree.
+set to the r21 worktree, the Rocky PID and start time updated, and two real
+changes: `facts-after.sh` now matches every `bhyve: ` process (as the
+before-facts do, so both lists use the same filter), and `native-resume.sh`
+is new (see the deviation below).
 
 - **Build root:** one fresh 0700 root, `/var/tmp/hfs-xz3-20261123-r21-r1`,
   left in place as evidence.
@@ -167,7 +170,9 @@ inspection found the root complete, no leftover run process and Rocky
 unchanged. `native-resume.sh` then ran the remaining steps unchanged on the
 same root, from the first build through native-verify. Both builds still
 started from the one extracted source, as in r17. The reset's cause is
-unknown, and no other SSH failure occurred.
+unknown, and no other SSH failure occurred. The `source-cached` step took
+336 s against r17's 40 s while the extract itself took 37 s, so the session
+hung for about five minutes before the reset.
 
 ## What was reused and what changed
 

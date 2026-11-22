@@ -44,7 +44,7 @@
   "date": "2026-11-22",
   "go_version": "go version go1.26.10-X:nodwarf5 linux/amd64",
   "installed": false,
-  "invocation": "tools/lab/build-fdescfs-window-artifacts.sh window-build 91b9ee1df2b7f26baae0032d3928286743fe4e57",
+  "invocation": "tools/lab/build-fdescfs-window-artifacts.sh /home/paul/tmp/claude/hfs-xz3-20261123-r21/window-build 91b9ee1df2b7f26baae0032d3928286743fe4e57",
   "notes": [
     "The helper keeps the merged gate flags (-std=c11 -Wall -Wextra -Werror -O1 -g); its DWARF records the source directory, so a byte-identical rebuild uses the same out_dir.",
     "Go artifacts use -trimpath and the sysroot -ffile-prefix-map, so their bytes do not depend on out_dir.",
@@ -78,7 +78,7 @@
     "separate_fresh_go_caches": true
   },
   "source_commit": "91b9ee1df2b7f26baae0032d3928286743fe4e57",
-  "source_export": "git archive --format=tar SOURCE_COMMIT | tar -x -C window-build/src",
+  "source_export": "git archive --format=tar SOURCE_COMMIT | tar -x -C /home/paul/tmp/claude/hfs-xz3-20261123-r21/window-build/src",
   "source_file_sha256": {
     "tools/lab/fdescfs-namespace.c": "e59cde412a23ca898e0d95e2f850d08b3595a8a719bb28311c6d3680efe6af86"
   },
