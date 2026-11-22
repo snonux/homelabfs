@@ -24,11 +24,20 @@ func (r *t1Replay) invalidate(i int, dir guestbridge.Capability, n string) {
 	}
 }
 
-// evict FORGETs a dead dentry's grant once no open file pins it.
+// evict FORGETs a dead dentry's grant once no open file pins it; its inode
+// leaves the guest view.
 func (r *t1Replay) evict(i int, e *t1Dentry) {
 	if e.dead && e.pins == 0 {
 		r.do(i, "FORGET", map[string]any{"object": e.cap, "count": 1})
+		r.views[i].Evict(e.cap.Token)
 	}
+}
+
+// instantiate registers the inode a LOOKUP, MKDIR or CREATE result gives
+// mount i in its guest view (hfs_inode_get registers every inode), keyed by
+// its grant, which its FORGET evicts.
+func (r *t1Replay) instantiate(i int, object guestbridge.Capability) {
+	r.views[i].Register(object.Token)
 }
 
 // creating is open(O_CREAT|O_EXCL) or mkdir in dir on m0: GETATTR, LOOKUP
@@ -50,6 +59,7 @@ func (r *t1Replay) creating(op string, dir guestbridge.Capability, n string, arg
 	r.release(0, queued, rec)
 	e := &t1Dentry{cap: res.Capabilities[0]}
 	r.dcache[0][t1Key(dir, n)] = e
+	r.instantiate(0, e.cap)
 	if op == "CREATE" {
 		e.pins = 1
 		r.files[res.Capabilities[1].Token] = e
@@ -103,6 +113,7 @@ func (r *t1Replay) walk(i int, dir guestbridge.Capability, n string) guestbridge
 	r.invalidate(i, dir, n)
 	object := r.observe(i, "LOOKUP", map[string]any{"parent": dir, "name": t1Name(n)}).Capabilities[0]
 	r.dcache[i][t1Key(dir, n)] = &t1Dentry{cap: object}
+	r.instantiate(i, object)
 	r.observe(i, "GETATTR", map[string]any{"object": object})
 	return object
 }

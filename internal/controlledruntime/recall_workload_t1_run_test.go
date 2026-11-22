@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/snonux/homelabfs/internal/guestviewmodel"
 	"github.com/snonux/homelabfs/internal/viewcontrol"
 )
 
@@ -211,39 +212,95 @@ func TestZQ3T1CredentialsReplay(t *testing.T) {
 		for _, schedule := range t1Schedules {
 			t.Run(fmt.Sprintf("advance %v, %s", advance, schedule.name), func(t *testing.T) {
 				r := newT1Replay(t, advance, schedule.late)
-				r.admission()
-				r.stage = "body"
-				r.body()
-				r.exit()
-				s := r.report(t)
-				r.check(t, s)
+				s := runT1(t, r)
 				checkT1Recalls(t, r, s)
 			})
 		}
 	}
 }
 
-// checkT1Recalls holds the run's recall counts and budgets to what xf4
-// promises with advance and requires the baseline to still pay the
-// expected-target recalls without it. Both runs start all-domain
-// CALL_CONFLICT recalls with both mounts live, so m0's DRAINED, sent in
-// guest order right after its own INSTALLED_DRAIN was ACCEPTED, must have
-// met the recall still waiting for m1 at least once (BLOCKED, then resent).
+// checkT1Recalls reports every way the run falls short of t1RecallProblems.
 func checkT1Recalls(t *testing.T, r *t1Replay, s t1Stats) {
+	for _, problem := range t1RecallProblems(r, s) {
+		t.Error(problem)
+	}
+}
+
+// t1RecallProblems holds the run's recall counts and budgets to what xf4
+// promises with advance and requires the baseline to still pay the
+// expected-target recalls without it; none means the run holds. Both runs
+// start all-domain CALL_CONFLICT recalls with both mounts live, so m0's
+// DRAINED, sent in guest order right after its own INSTALLED_DRAIN was
+// ACCEPTED, must have met the recall still waiting for m1 at least once
+// (BLOCKED, then resent). With advance the guest must have asked (sent) as
+// well as been granted: a guest whose views are never cacheless sends
+// nothing, and the run must fail as zq3-r20 did (uj4).
+func t1RecallProblems(r *t1Replay, s t1Stats) []string {
+	var problems []string
 	expected, released := r.kinds[viewcontrol.TriggerExpectedTarget], r.kinds[viewcontrol.TriggerRelease]
 	if r.kinds[viewcontrol.TriggerCallConflict] == 0 || s.blocked == 0 {
-		t.Errorf("CALL_CONFLICT recalls %d, BLOCKED early DRAINEDs %d: the guest-order DRAINED was not exercised", r.kinds[viewcontrol.TriggerCallConflict], s.blocked)
+		problems = append(problems, fmt.Sprintf("CALL_CONFLICT recalls %d, BLOCKED early DRAINEDs %d: the guest-order DRAINED was not exercised", r.kinds[viewcontrol.TriggerCallConflict], s.blocked))
 	}
 	if !r.advance {
 		if expected == 0 {
-			t.Errorf("without advance no EXPECTED_TARGET recall ran: the replay no longer exercises what advance removes")
+			problems = append(problems, "without advance no EXPECTED_TARGET recall ran: the replay no longer exercises what advance removes")
 		}
-		return // its budget verdicts are only logged (report)
+		return problems // its budget verdicts are only logged (report)
 	}
-	if expected != 0 || released > 1 || s.advances == 0 {
-		t.Errorf("with advance: EXPECTED_TARGET %d, RELEASE %d recalls, %d advance grants; want 0, at most 1 and some", expected, released, s.advances)
+	if expected != 0 || released > 1 || s.advances == 0 || r.sent[0]+r.sent[1] == 0 {
+		problems = append(problems, fmt.Sprintf("with advance: EXPECTED_TARGET %d, RELEASE %d recalls, %d advance grants, %v sent; want 0, at most 1, some and some", expected, released, s.advances, r.sent))
 	}
 	if s.stage["admission"] > t1AdmissionAlarm || s.total > t1RequestBudget || s.measured > t1RequestBudget {
-		t.Errorf("with advance: admission %s (alarm %s), total %s modelled, %s measured (budget %s)", s.stage["admission"], t1AdmissionAlarm, s.total, s.measured, t1RequestBudget)
+		problems = append(problems, fmt.Sprintf("with advance: admission %s (alarm %s), total %s modelled, %s measured (budget %s)", s.stage["admission"], t1AdmissionAlarm, s.total, s.measured, t1RequestBudget))
 	}
+	return problems
+}
+
+// TestZQ3T1ReplayDetectsNonCachelessGuest replays T1 (prompt cleanup) with
+// advance support but zq3-r20's cacheless test, which counts every
+// registered inode (guestviewmodel.CachelessR20): with the mount roots, the
+// root fds and the leaf fd registered the views are never cacheless, so the
+// guest must send no advance, none may be granted, the expected-target
+// recalls must come back, and t1RecallProblems must report the run. A
+// second run keeps tj4's rule but mmaps an inode in m0's view first: m0
+// must never ask for advance, while m1 still does.
+func TestZQ3T1ReplayDetectsNonCachelessGuest(t *testing.T) {
+	if testing.Short() {
+		t.Skip("replays T1 twice on the assembled runtime")
+	}
+	t.Parallel()
+	t.Run("r20 rule", func(t *testing.T) {
+		r := newT1Replay(t, true, false)
+		r.rule = guestviewmodel.CachelessR20
+		s := runT1(t, r)
+		if r.sent != [2]int{} || s.advances != 0 || r.kinds[viewcontrol.TriggerExpectedTarget] == 0 {
+			t.Errorf("r20 rule: %v advances sent, %d granted, recalls %s; want none, none and EXPECTED_TARGET", r.sent, s.advances, kindsText(r.kinds))
+		}
+		problems := t1RecallProblems(r, s)
+		if len(problems) == 0 {
+			t.Fatal("t1RecallProblems passed a guest that never sends advance")
+		}
+		t.Logf("detected: %v", problems)
+	})
+	t.Run("m0 mmapped", func(t *testing.T) {
+		r := newT1Replay(t, true, false)
+		r.views[0].Register("m0-mapped-file")
+		r.views[0].Mmap("m0-mapped-file")
+		s := runT1(t, r)
+		if r.sent[0] != 0 || r.sent[1] == 0 {
+			t.Errorf("mmapped m0: advances sent %v (%d granted), want none on m0 and some on m1", r.sent, s.advances)
+		}
+	})
+}
+
+// runT1 runs a prepared replay through admission, body and exit, reports it
+// and checks its waits (not its recall counts).
+func runT1(t *testing.T, r *t1Replay) t1Stats {
+	r.admission()
+	r.stage = "body"
+	r.body()
+	r.exit()
+	s := r.report(t)
+	r.check(t, s)
+	return s
 }

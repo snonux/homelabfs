@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/snonux/homelabfs/internal/guestbridge"
+	"github.com/snonux/homelabfs/internal/guestviewmodel"
 )
 
 // T1 credentials replay in the recall workload model (tasks 094 and 2a4).
@@ -29,8 +30,9 @@ import (
 //   - every read RPC (GETATTR, LOOKUP, READ, and since z94 the read-only root
 //     OPEN) runs under its own DOMAIN READ observation lease expecting the
 //     mount's installed view (hfs_mmap_begin, after hfs_view_enter waits for
-//     LIVE); with advance the acquisition carries "advance": true and a
-//     grant on a newer cut is adopted (target := granted cut, revision++,
+//     LIVE); with advance the acquisition carries "advance": true when
+//     the mount's guest view is cacheless (below) and a grant on a newer
+//     cut is adopted (target := granted cut, revision++,
 //     hfs_view_advance). Its VIEW_RELEASE goes to the mount's cleanup worker
 //     (hfs_mmap_end), which also retires claims and view tickets;
 //   - mutations (MKDIR, CREATE, SETATTR, WRITE, closes, FORGET) are direct
@@ -45,6 +47,18 @@ import (
 //     permission outcomes do not change the view traffic) and chowns are
 //     replayed as chmods (the rig's mount credential is no root), exactly as
 //     the viewcontrol replay does.
+//
+// Guest views (task uj4, guestviewmodel). advance is the guest's support for
+// advance, not a promise it is sent: hfs_mmap_observe_lease asks only when
+// hfs_view_capture_ex found the view cacheless. views model each mount's
+// struct hfs_view: the mount root and every inode a LOOKUP, MKDIR or CREATE
+// instantiated stay registered until their FORGET (guest.py's two root fds
+// and the case leaf fd keep theirs for the whole case, never mmapped), and
+// an observation counts from its grant to its hfs_mmap_end, which runs
+// before the release is queued. rule is the cacheless test, tj4's by
+// default; zq3-r20's guest counted every registered inode
+// (guestviewmodel.CachelessR20), never sent advance, and this replay still
+// reported advances before uj4.
 //
 // Admission (guest.py admit/open_domains) for each root in order: realpath's
 // lstat of the mount point (a GETATTR observation), open(O_RDONLY|
@@ -86,8 +100,11 @@ const t1RequestBudget = 240 * time.Second
 // t1Replay is one run of the T1 replay on a fresh model.
 type t1Replay struct {
 	m        *recallModel
-	p        *modelProcess // guest.py, with its children folded in
-	advance  bool
+	p        *modelProcess       // guest.py, with its children folded in
+	advance  bool                // the guest supports advance
+	rule     guestviewmodel.Rule // the guest's cacheless test
+	views    [2]*guestviewmodel.View
+	sent     [2]int // acquisitions that carried "advance": true, per mount
 	late     bool
 	roots    [2]guestbridge.Capability // the root descriptions admission opened
 	dcache   [2]map[string]*t1Dentry
@@ -135,7 +152,8 @@ type t1Result struct {
 // newT1Replay mounts both domains on a virtual-latency model (each
 // observation costs the model latency in modelled time only, the
 // controller's bounds run on the model clock) and settles, so the replay
-// starts where guest.py's T1 starts.
+// starts where guest.py's T1 starts. Each mount's guest view holds its
+// mount root and asks for advance under tj4's rule; a test may swap rule.
 func newT1Replay(t *testing.T, advance, late bool) *t1Replay {
 	m := newRecallModelVirtual(t, readZQ3Values(t), recallModelLatency(t))
 	m.mount(0)
@@ -143,6 +161,10 @@ func newT1Replay(t *testing.T, advance, late bool) *t1Replay {
 	m.settle()
 	r := &t1Replay{m: m, advance: advance, late: late, files: map[string]*t1Dentry{}, kinds: map[string]int{}}
 	r.dcache = [2]map[string]*t1Dentry{{}, {}}
+	r.rule = guestviewmodel.Cacheless
+	for i := range r.views {
+		r.views[i] = guestviewmodel.New(m.mounts[i].root.Token)
+	}
 	r.p = m.process("guest.py", nil)
 	h, err := m.a.Controller.History(t.Context())
 	require(t, err)
@@ -189,16 +211,19 @@ func (r *t1Replay) follow() {
 // acquire takes mount i's observation lease on its installed view. A
 // BLOCKED expectation (after its expected-target recall reinstalled the
 // view) is retried on the new installed target, at most twice. An advance
-// grant on a newer cut is adopted.
+// is requested only when the guest view is cacheless (sendsAdvance), and an
+// advance grant on a newer cut is adopted. A grant publishes the
+// observation into the view until release ends it.
 func (r *t1Replay) acquire(i int) (*guestbridge.ViewLease, *ticketRec) {
 	m, mount := r.m, r.m.mounts[i]
 	for range 3 {
 		m.enterView(mount)
-		w, rec := m.acquireWait(mount, r.p, mount.target, r.advance)
+		w, rec := m.acquireWait(mount, r.p, mount.target, r.sendsAdvance(i))
 		switch w.status {
 		case "GRANTED":
 			lease := grantedLease(m.t, w)
 			r.adopt(mount, w)
+			r.views[i].Observations++
 			return lease, rec
 		case "BLOCKED":
 			continue
@@ -207,6 +232,17 @@ func (r *t1Replay) acquire(i int) (*guestbridge.ViewLease, *ticketRec) {
 	}
 	m.t.Fatalf("m%d observation: no grant after two retries", i)
 	return nil, nil
+}
+
+// sendsAdvance is the guest's decision for mount i's next acquisition: the
+// advance support and the cacheless rule over its view, sampled before the
+// request as hfs_view_capture_ex does. Sent requests are counted.
+func (r *t1Replay) sendsAdvance(i int) bool {
+	if !r.views[i].Advance(r.rule, r.advance) {
+		return false
+	}
+	r.sent[i]++
+	return true
 }
 
 // adopt installs a granted lease's target when it differs from the mount's
@@ -226,10 +262,12 @@ func (r *t1Replay) adopt(mount *modelMount, w *guestWait) {
 	}
 }
 
-// release hands the lease's VIEW_RELEASE to mount i's cleanup worker, which
-// sends it at once (prompt schedule) or when the next CALL goes out (late).
+// release ends the observation in mount i's guest view (hfs_mmap_end) and
+// hands the lease's VIEW_RELEASE to the mount's cleanup worker, which sends
+// it at once (prompt schedule) or when the next CALL goes out (late).
 func (r *t1Replay) release(i int, lease *guestbridge.ViewLease, acquired *ticketRec) {
 	m, mount := r.m, r.m.mounts[i]
+	r.views[i].Observations--
 	w := m.register(m.releaseWait(mount, r.p, *lease, acquired))
 	mount.jobs = append(mount.jobs, func() *guestWait { m.sendRelease(w); return w })
 	if !r.late {
