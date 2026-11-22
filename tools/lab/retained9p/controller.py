@@ -147,7 +147,14 @@ QUARANTINED = {"7e962627b1ec9aed913a28ee652bd9ed2f110f3369232c684994c709be2dce5b
 #   back-off counted a busy local retirement round against its BLOCKED
 #   retry cap, so an expected-target BLOCKED gave up with EAGAIN (zq3-r19
 #   R19-1, fixed by 1h4); it also predates xf4 (3h4 daemon, 4h4 kernel:
-#   recall-free observations after the guest's own changes).
+#   recall-free observations after the guest's own changes);
+# - b37bcb06 (r20, d71ae02) has the 1h4+4h4 guest kernel b4d6cd69, which
+#   counted every registered inode as cached, so a mount with registered
+#   roots never sent the xf4 advance (zq3-r20, fixed by tj4); its daemon
+#   c04c519f refused a non-owner's walk below the 0700 root because
+#   revalidatePath required search permission on every ancestor (zq3-r20
+#   R20-1, fixed by sj4); its exporter 2fd7e32f fenced its bootstrap on
+#   EAGAIN backend contention (fixed by 9h4).
 SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1",
               "b203799e3f631888b2c2edc24e1d38b913249bea978e0d4d954886f589d04fa2",
               "5eb42c5066792b55e439373db48e8e8e88532efc61ff7b82f64db22a87798f99",
@@ -166,23 +173,22 @@ SUPERSEDED = {"3f770a884978d3a776663a74083e733baf38665b8cba119022dd5432fb3296f1"
               "a1af0bd700396a44edbd631087d1303d85a390008771903e13937309a65c2e0d",
               "f614d52a84b43d455a20f2ee973f9e9346a00e26a25019e33a28ec7b8c14e313",
               "b2a4f69e78190591bec038e269a73f93a6b39bc9e9091c7f6d7c1d5ab73ea6d7",
-              "09acd09d66934073e0165a60ac0094e280889cc7204d95061df27072d7de70a5"}
-# The only candidate this controller pins: the xz3 r20 rebuild for zq3-r20
-# (2026-11-21, source and repository baseline d71ae02). The guest kernel was
-# rebuilt for 1h4 (an expected-target BLOCKED after a reinstall is
-# re-checked and a busy retirement round is waited for instead of counted,
-# zq3-r19 R19-1) and 4h4 (xf4 step B: a cacheless observation asks for an
-# advance and adopts the host's current target under a bounded re-check,
-# else releases it unadopted, -EXDEV; c64 recipe,
-# g64+m64+p84+x84+z84+1a4+oc4+ie4+re4+2f4+vf4+1h4+4h4 patch series, build
-# ID b4d6cd69), the CGO daemon for 3h4 (xf4 step A: VIEW_ACQUIRE
-# advance:true is granted on the current cut instead of a recall when wf4
-# would scope it, capacity fits and the requester is clean; c04c519f) and
-# the window artifacts with it. The pc4 native exporter 2fd7e32f and its r17
-# f3 build records are reused byte for byte. The new daemon bytes still need
-# the f3 observer check.
+              "09acd09d66934073e0165a60ac0094e280889cc7204d95061df27072d7de70a5",
+              "b37bcb06171fbfdf9a2b2cd3ba40711724adf07925c9a3ac167f936fa544fdec"}
+# The only candidate this controller pins: the xz3 r21 rebuild for zq3-r21
+# (built 2026-11-22 for the run planned on 2026-11-23, source and repository
+# baseline 91b9ee1). The guest kernel was rebuilt for tj4 (the cacheless
+# test counts only mmapped inodes, so a mount with registered roots can send
+# the xf4 advance; c64 recipe,
+# g64+m64+p84+x84+z84+1a4+oc4+ie4+re4+2f4+vf4+1h4+4h4+tj4 patch series,
+# build ID f9518177), the CGO daemon for sj4 (revalidatePath keeps the ancestor
+# identity re-walk but drops the per-ancestor search check, zq3-r20 R20-1),
+# 2h4, 0a4, fh4, a84, l64 and nj4 (013515a8) with the window artifacts, and the
+# native exporter on f3 for 9h4 (the controlled bootstrap retries on EAGAIN
+# backend contention; 368a021d, two clean builds equal). The new daemon bytes
+# still need the f3 observer check.
 # Admission here is a dispatch precondition, never deployment eligibility.
-ADMITTED = {"b37bcb06171fbfdf9a2b2cd3ba40711724adf07925c9a3ac167f936fa544fdec"}
+ADMITTED = {"1428d4dbc149f15866ca6ff1dd259642e2ab34bb5b943c8b1cf1e92306ef4fd9"}
 CASES = ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
 # Cases a plan may defer (z64). Only T5 mapped-pressure: its full 4 MiB
 # canary needs more view lifetimes (tickets, UUIDs, revisions, ack archive)
@@ -380,10 +386,11 @@ def require_candidate(manifest_hash):
         # r16 ie4 observation re-acquire after a recall, the r17 re4
         # BLOCKED back-off and te4 journal check, the r18 2f4 wait for a
         # not-yet-current grant and the je4/e84 recall scope, the r19 vf4
-        # setattr kill bits and wf4 recall scope, or the r20 1h4 busy-round
-        # wait and BLOCKED re-check and the xf4 view advance); the comment
-        # at SUPERSEDED says which.
-        raise Refused("superseded xz3 candidate: use the r20 rebuild (d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims, r84 pressure hold/QUERY resume/lease holders, b94 fence wait/unmount stop/exited cleanup, 5a4 bounded view wait/early DRAINED, xc4 retried-cell base without transport fence, xd4 ERROR reasons/bounded reply wait/always-reply exporter, r15 read-only OPEN/pinless root, r16 observation re-acquire after recall, r17 BLOCKED back-off/incremental journal check, r18 not-yet-current grant wait/recall scope, r19 setattr kill bits/unleased recall scope, r20 busy retirement round/view advance)")
+        # setattr kill bits and wf4 recall scope, the r20 1h4 busy-round
+        # wait and BLOCKED re-check and the xf4 view advance, or the r21 tj4
+        # mmapped-only cacheless test, sj4 ancestor walk and 9h4 bootstrap
+        # EAGAIN retry); the comment at SUPERSEDED says which.
+        raise Refused("superseded xz3 candidate: use the r21 rebuild (d44 lost reply, r54 mount HELLO, w54 kill_sb, z54 VIEW_POLL, 964 fixed tag, c64 SELinux, d64 domain fence, y64 kernel/daemon/exporter, l84 recall/OBSERVE claims, r84 pressure hold/QUERY resume/lease holders, b94 fence wait/unmount stop/exited cleanup, 5a4 bounded view wait/early DRAINED, xc4 retried-cell base without transport fence, xd4 ERROR reasons/bounded reply wait/always-reply exporter, r15 read-only OPEN/pinless root, r16 observation re-acquire after recall, r17 BLOCKED back-off/incremental journal check, r18 not-yet-current grant wait/recall scope, r19 setattr kill bits/unleased recall scope, r20 busy retirement round/view advance, r21 mmapped-only cacheless test/ancestor walk/bootstrap EAGAIN retry)")
     if manifest_hash not in ADMITTED:
         # Fail closed: an unknown digest is not a qualified candidate.
         raise Refused("candidate manifest is not the pinned admitted xz3 candidate")

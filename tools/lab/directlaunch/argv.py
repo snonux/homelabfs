@@ -55,14 +55,16 @@ BASELINE = {
                 "-s", FBUF_DEVICE],
     "console": ["-l", "com1,/dev/nmdm-rocky.1A"],
 }
-# Candidate exporter (xz3 xd4 rebuild for zq3-r14): rebuilt natively on f3
-# from the pc4 lib9p sources (a failed result read or endpoint check answers
-# ERROR UNAVAILABLE (5), so every well-formed exchange gets a reply; zq3-r12
-# R12-1, zq3-r13 R13-1) and reproduced in a second clean build. The y64
-# build ef8f17de... (564/e64/p64/w64), which every candidate from y64
-# 867ede36... through xc4 e9c77e5b... carried, lacks pc4; the build before it,
-# 36423b6d..., lacks 564/e64/p64/w64 too.
-EXPORTER_SHA256 = "2fd7e32f5cc8762ae0ff4d5ec6c046d7d49b95c97e4b9150dd17b2ac52c39fd3"
+# Candidate exporter (xz3 r21 rebuild for zq3-r21): rebuilt natively on f3
+# from the 9h4 lib9p sources (the controlled C bootstrap waits out
+# backend-mutex contention, EAGAIN, up to 10 s per call, instead of fencing
+# itself under CPU load) and reproduced in a second clean build. The xd4
+# build 2fd7e32f... (pc4: a failed result read or endpoint check answers
+# ERROR UNAVAILABLE (5); zq3-r12 R12-1, zq3-r13 R13-1), which every
+# candidate from xd4 3a7131dd... through r20 b37bcb06... carried, lacks 9h4;
+# the y64 build ef8f17de... before it lacks pc4, and 36423b6d... before that
+# lacks 564/e64/p64/w64 too.
+EXPORTER_SHA256 = "368a021d2046bf9c2845a4d80345d5665f948bd6136a3a233827505d06a052db"
 STAGING_PARENT = "/var/tmp/hfs-validation-xz3"
 GUEST_MEMORY = "6G"
 SHARES = ("hfs0", "hfs1")

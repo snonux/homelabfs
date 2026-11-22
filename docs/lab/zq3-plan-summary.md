@@ -273,6 +273,22 @@ daemon's bytes are new, so they must pass the f3 self-check again. The
 patched bhyve is again reused unchanged; the window test files were rebuilt
 with the daemon.
 
+In zq3-r20 1h4 worked: the guest waited for its own cleanup and never gave
+up with "try again". T1 then failed its first access check for a new
+reason: a second user may look inside a folder below the private test root,
+but the host also demanded permission to search every folder above it, so it
+answered "permission denied" (EACCES) (R20-1,
+[record](results/20261122-zq3-r20/README.md)). The guest also never asked
+for xf4's shortcut, because it treated every file it had looked at as cached
+data, not only files mapped into memory. Both are fixed: the host now checks
+only that the folders above are still the same ones (sj4), and the guest
+counts only mapped files (tj4). The patched bhyve was rebuilt as well: when
+its backend is briefly busy at startup it now waits instead of shutting
+itself down (9h4). The package was rebuilt for zq3-r21 (`1428d4db…`, kernel build
+ID `f9518177…`, daemon `013515a8…`, bhyve `368a021d…`). The daemon's bytes are new, so they must
+pass the f3 self-check again; the window test files were rebuilt with the
+daemon.
+
 Still true: nothing has been tested on the real f3 or Rocky; the page-table
 pinning checks cannot run at all yet; and the run is driven step by step with a
 written record of every step, not by a fully automatic runner. Right before the

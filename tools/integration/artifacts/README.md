@@ -126,7 +126,13 @@ its records. The r20 rebuild for zq3-r20 (candidate `b37bcb06…`,
 and 4h4 patches (0002-0005) changed the image (build ID `b4d6cd69…`) and
 nine hfs export CRCs in `Module.symvers`, while the five modules and
 `abi-negative.json` came out byte-identical. It also rebuilt the daemon
-(3h4) and again reused the r17 exporter through its records.
+(3h4) and again reused the r17 exporter through its records. The r21
+rebuild for zq3-r21 (candidate `1428d4db…`,
+[evidence](evidence/xz3-20261123-r21/README.md)) kept the config; its tj4
+patches (0003/0004) changed the image (build ID `f9518177…`), while the five
+modules and `abi-negative.json` came out byte-identical (`Module.symvers` changed only in hfs export CRCs). It
+also rebuilt the daemon (sj4 and six more merges) and, for 9h4, the
+exporter on f3 under the same guard recipe (`368a021d…`).
 
 The ordinary namespace fixture selects a rootful OCI runtime in the initial
 user namespace, VFS image storage and a newly created private network namespace
@@ -302,6 +308,9 @@ did at `633509e` ([r18 evidence](evidence/xz3-20261121-r18/README.md)) and
 the r19 rebuild for zq3-r19 at `e160370`
 ([r19 evidence](evidence/xz3-20261121-r19/README.md)) and the r20 rebuild
 for zq3-r20 at `d71ae02` ([r20 evidence](evidence/xz3-20261122-r20/README.md)).
+The r21 rebuild for zq3-r21 at `91b9ee1` rebuilt the exporter on f3 under
+`34ddf37c…` again, because 9h4 changed the owned lib9p sources (`368a021d…`,
+[r21 evidence](evidence/xz3-20261123-r21/README.md)).
 Within one sample the walk can still
 miss a file renamed into a directory it has already passed; the guard
 samples repeatedly.

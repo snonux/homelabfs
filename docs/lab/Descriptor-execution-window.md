@@ -229,13 +229,16 @@ requester-scoped recall for pin-only target mismatches). Later on
 requesting domain when no peer holds a lease or an open reservation). On
 2026-11-22 they were rebuilt from `d71ae02` for the r20 rebuild for zq3-r20
 (`b37bcb06…`, daemon 3h4: a `VIEW_ACQUIRE` with `advance: true` gets a
-lease on the current cut instead of a recall, xf4 step A).
+lease on the current cut instead of a recall, xf4 step A). Later on
+2026-11-22 they were rebuilt from `91b9ee1` for the r21 rebuild for zq3-r21
+(`1428d4db…`, daemon sj4: revalidatePath drops the per-ancestor search check,
+zq3-r20 R20-1, with 2h4, 0a4, fh4, a84, l64 and nj4).
 Nothing used
 SSH, the lab, a VM, a mount or a module. It grants no authority: the window is
 zq3 approval class A5 and still needs Paul's explicit yes at run time.
 
 **Rebuilt artifacts.** [`build-fdescfs-window-artifacts.sh`](../../tools/lab/build-fdescfs-window-artifacts.sh)
-exports the selected commit (now `d71ae02`) as a source archive and builds each artifact twice with
+exports the selected commit (now `91b9ee1`) as a source archive and builds each artifact twice with
 fresh Go caches, using the pinned clang cross wrapper, the captured f3 sysroot
 (`c16fdc1c…`) and the candidate daemon's Go environment. Both builds were
 byte-identical. As a toolchain cross-check the same recipe reproduced the
@@ -244,9 +247,9 @@ ELF closure: [build record](zq3-fdescfs-window/build-record.json).
 
 | Artifact (staged under `/var/tmp/hfs-validation-xz3/zq3-r1/bin/`) | SHA256 | Bytes |
 |---|---|---|
-| `controlledruntime.test` (FreeBSD CGO test binary) | `1b7e68d84ab29bc6cf1da5ce3b2549c3216b2cba04c7d4ab2530434750661cd4` | 14,171,144 |
-| `fdescfs-namespace` (helper, `-std=c11 -Wall -Wextra -Werror -O1 -g`) | `edae7dc3f59392fa46ecc0c7355d87fe860f018d1509a3ed83daaa8b6c683982` | 22,584 |
-| `hfs-controlled-runtime` (inspector, equals the candidate manifest) | `c04c519f8f659daaca45d4fc42fb8e651bdd028eaafa84a184240f5368c2413e` | 11,127,728 |
+| `controlledruntime.test` (FreeBSD CGO test binary) | `88073c2c86a2d5cec64a82d564f19f6f629ff4a44258ae80a6cc9644972c0bb9` | 14,550,608 |
+| `fdescfs-namespace` (helper, `-std=c11 -Wall -Wextra -Werror -O1 -g`) | `c14cc4d21f17f78a88fbe47233dd6123f58be427f3765ab2365ebaddc16edbc9` | 22,584 |
+| `hfs-controlled-runtime` (inspector, equals the candidate manifest) | `013515a8731cde2bad643230a7822221f2ff086a6d72812778eb78d69c761200` | 11,218,992 |
 | `fdescfs-window.py` (controller) | SHA256 of the repository file at the reviewed commit | |
 
 All three binaries load through `/libexec/ld-elf.so.1` and need base
