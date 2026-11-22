@@ -72,7 +72,8 @@ The backend PAUSE and RESUME steps take the backend mutex with a trylock, so
 they see EAGAIN whenever another backend thread (the 4 ms wait worker, a FETCH
 or a SEND) holds it at that instant. That contention changes nothing, so the
 recovery thread retries the same authenticated step every 1 ms within the same
-10 s bound as each frame transfer. Under CPU load, treating it as final failed
+10 s bound as each frame transfer (`_backend_contended`, which the one-shot
+startup also uses since task 9h4). Under CPU load, treating it as final failed
 the one-shot restart, and the host saw EOF on fd5 (task 564).
 
 The C recovery thread has a fixed128KiB stack. Its paused ledger staging uses

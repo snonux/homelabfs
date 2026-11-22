@@ -87,26 +87,11 @@ _recovery_protected(Hfs9pSupervisor *s) {
    free(bytes); return (error);
 }
 
-/* hfs9p_pause_owned/hfs9p_resume_owned take the backend mutex with trylock and
- * report EAGAIN whenever another backend thread holds it at that instant: the
- * 4 ms wait worker's scan (_wait_worker_cb), a guest FETCH or a SEND. That is
- * momentary contention, not a refusal, and nothing changed. fd5 is one-shot,
- * so treating it as final would fail the whole restart permanently; under CPU
- * load a preempted lock holder made that observable (task 564). The same
- * authenticated step is therefore retried every 1 ms within the 10 s bound
- * each fd5 frame transfer already has, which stays inside the host's 60 s
- * restart deadline. Every other error is still final. */
-#define RECOVERY_CONTENTION_MS 10000
-
-static bool
-_recovery_contended(int error, int64_t deadline) {
-   if (error != EAGAIN) return (false);
-   int64_t now = _now();
-   if (now < 0 || now >= deadline) return (false);
-   struct timespec delay = {0, 1000000};
-   (void)nanosleep(&delay, NULL);
-   return (true);
-}
+/* hfs9p_pause_owned/hfs9p_resume_owned see momentary backend-mutex
+ * contention as EAGAIN. fd5 is one-shot, so each authenticated step is retried
+ * within BACKEND_CONTENTION_MS (_backend_contended in hfs9p_supervisor.c),
+ * which is also the 10 s bound each fd5 frame transfer already has and stays
+ * inside the host's 60 s restart deadline (task 564). */
 
 /* Step 1: authenticate the pause request, pause the backend, checkpoint the
  * paused cut and stream it to the host. Returns the cut digest in digest. */
@@ -123,9 +108,9 @@ _recovery_pause(Hfs9pSupervisor *s, const struct stat *original,
       uint8_t zero[16] = {0}; if (!memcmp(barrier, zero, 16)) error = EINVAL;
    }
    uint8_t *bytes = NULL; size_t total = 0;
-   int64_t deadline = _now() + RECOVERY_CONTENTION_MS;
+   int64_t deadline = _now() + BACKEND_CONTENTION_MS;
    if (!error) do error = hfs9p_pause_owned(s->backend, &bytes, &total);
-      while (_recovery_contended(error, deadline));
+      while (_backend_contended(error, deadline));
    /* FETCH coverage can advance after the last ordinary protection. First
     * require the exact last protected file owned by this live backend, then
     * checkpoint the fully paused current cut, without executing any effect. */
@@ -167,9 +152,9 @@ _recovery_bind_resume(Hfs9pSupervisor *s, const uint8_t barrier[16],
    if (!error && (op != 3 || length != 80 || memcmp(payload, barrier, 16) ||
        memcmp(payload + 16, cut, 32) || memcmp(payload + 48, digest, 32))) error = ESTALE;
    if (!error) error = _recovery_protected(s);
-   int64_t deadline = _now() + RECOVERY_CONTENTION_MS;
+   int64_t deadline = _now() + BACKEND_CONTENTION_MS;
    if (!error) do error = hfs9p_resume_owned(s->backend, digest);
-      while (_recovery_contended(error, deadline));
+      while (_backend_contended(error, deadline));
    if (!error) error = _recovery_frame(0x84, 3, payload, 80);
    return (error);
 }

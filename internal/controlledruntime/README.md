@@ -92,6 +92,17 @@ No timeout retires anything. Payload unions:
 | 5 DEVICE (child to host) | endpoint + controller UUID + exact session UUID (72 bytes); one confirmation after actual strong startup and device publication |
 | request opcode OR 0x80 | uint32 status (4 bytes): 0 success, 1 denied, 2 malformed, 3 blocked |
 
+The child's strong startup adds each signed session to the backend
+(`hfs9p_add_session_tuple`) and opens each claimed device's connection
+(`hfs9p_connection_new`). Both take the backend mutex with a trylock and report
+EAGAIN, without changing anything, while the backend's 4 ms wait worker holds
+it. Startup is one-shot, so it repeats exactly that call every 1 ms for at most
+10 s (`_backend_contended`, shared with fd5 recovery) instead of fencing. Under
+CPU load a preempted wait worker otherwise made the child print
+`controlled bootstrap refused: 11` and the runtime end before READY with
+`controlled C bootstrap: UNAVAILABLE; management: EOF` (task 9h4). Every other
+error stays final.
+
 An endpoint is its raw 16-byte nonzero session UUID followed by command/result/
 recall uint64 node IDs. TUPLE sends descriptors in that same order. The child
 receives only the prevalidated real FreeBSD FUSE files; no guest path discovery.
