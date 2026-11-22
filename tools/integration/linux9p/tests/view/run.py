@@ -35,6 +35,24 @@ def retirement_unlock_guard(source):
         raise SystemExit(f'refuse: session->retirement released outside hfs_retirement_unlock: {found}')
 
 
+def mmap_mark_guard(source):
+    """tj4: hfs_mmap_file is not compiled by this harness, so the source is
+    checked: it marks the inode mmapped (hfs_view_mmap_inode, which the view
+    and pressure cases exercise) before it installs hfs_mmap_ops, and
+    hfs_mmap.c never registers through the unmarked hfs_view_register_inode.
+    Otherwise a mapped inode would leave the view cacheless and xf4 advance
+    could adopt a new target under its page cache.
+    """
+    text = (source / 'fs/9p/hfs_mmap.c').read_text()
+    start = text.index('\nint hfs_mmap_file(')
+    body = text[start:text.index('\n}\n', start)]
+    mark = body.find('hfs_view_mmap_inode(inode)')
+    ops = body.find('vma->vm_ops = &hfs_mmap_ops;')
+    if mark < 0 or ops < 0 or mark > ops or 'hfs_view_register_inode' in text:
+        raise SystemExit('refuse: hfs_mmap_file must mark the inode with hfs_view_mmap_inode '
+                         'before installing hfs_mmap_ops')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, required=True)
@@ -140,6 +158,7 @@ def main():
         source.append(lease[start:lease.index('\nstatic int hfs_lease_decode_check(', start)])
     if args.pressure:
         retirement_unlock_guard(args.source)
+        mmap_mark_guard(args.source)
     (args.output / 'production.c').write_text('\n'.join(source) + '\n')
     (args.output / 'test.c').write_bytes(b'#include \"compat.h\"\n' + ((here.parent / 'pressure' if args.pressure else here) / 'test.c').read_bytes())
     (args.output / 'compat.h').write_bytes((here / 'compat.h').read_bytes() + ((here.parent / 'pressure/compat_extra.h').read_bytes() if args.pressure else b''))

@@ -2082,3 +2082,70 @@ the unreadable-payload release and the comment fix above, and
 `hfs_lease_acquire_grant`) and `hfs_view_target_decode` (now
 `hfs_view_local_target` and `hfs_view_target_journal`) split without a
 behaviour change.
+
+## Cacheless means no mmapped inode, not no registered inode (`tj4`)
+
+zq3-r20 (`docs/lab/results/20261122-zq3-r20/README.md`, "xf4's advance never
+fired"): the guest never sent `"advance": true`. `hfs_view_cacheless_locked`
+required `nr_mappings == 0` and an empty `view->mappings`, but
+`hfs_inode_get` registers every inode of a bridge session there
+(`hfs_view_register_inode`), so the mount root alone kept every live view
+non-cacheless.
+
+Patch 0003 (`hfs.h`): `struct hfs_inode` gains `view_mmapped`, set and
+cleared under `view->lock`.
+
+Patch 0004:
+
+- `hfs_view.h`: `view->nr_mmapped` counts registered inodes with
+  `view_mmapped`. `nr_mappings` and `view->mappings` stay the STOP/recall
+  inventory (STOP zap, install invalidation, dirty mapping errors, retire and
+  unmount settle), exactly as before.
+- `hfs_view.c`: `hfs_view_register` (via `hfs_view_link_locked`) registers
+  an inode and, for `hfs_view_mmap_inode`, marks it mmapped once, in the same
+  critical section. `hfs_view_unregister_inode` (eviction, the only path that
+  ends a registration) clears the mark and decrements `nr_mmapped` with
+  `nr_mappings`. The mark is only set on a registered inode, so
+  `nr_mmapped <= nr_mappings` and the count cannot be unbalanced. It is
+  sticky until eviction; a munmap keeps it, which only withholds advance.
+- `hfs_view_cacheless_locked` uses `!nr_mmapped` instead of the
+  `nr_mappings`/`mappings` terms. `hfs_view_advance_allowed` re-checks it
+  under `view->lock`, so it covers `nr_mmapped` too.
+- `hfs_mmap.c`: `hfs_mmap_file` calls `hfs_view_mmap_inode` before it
+  installs `hfs_mmap_ops`.
+
+Safety: a registered, never-mmapped inode holds no state bound to the view
+target. `read_iter`/`write_iter` go over the bridge (`hfs_io`, `hfs_file.c`);
+`hfs_cache_aops` has no `read_folio`, and `hfs_file_fops` has no
+`splice_read`, so no generic path fills its page cache. The only page-cache
+insertion (`add_to_page_cache_lru` in the fault path), every PTE and every
+PAGE grant (`hfs_view_page_grant`) come from `hfs_mmap_ops`, which only
+`hfs_mmap_file` installs, after the mark. Any page that does exist is counted
+in `nr_cached` anyway. An mmap racing an adoption is serialised by
+`view->lock`: either the mark is first, and the adoption's re-check refuses
+(`-EXDEV`, lease unadopted), or the switch is first, and the new VMA's faults
+are stamped with the new revision and target. A live VMA pins its inode, so
+a mapped inode is evicted, and its mark cleared, only once no mapping remains.
+
+Tests:
+
+- `view/test.c` `advance_mapping_checks`: a registered, never-mmapped inode
+  keeps the capture hint cacheless and is adopted (revision + 1); once
+  mmapped (twice: counted once) both the hint and the adoption refuse;
+  unregistering clears the mark and the count; an mmap of an unregistered
+  inode registers and marks it. This replaces the old assertion that a
+  registered inode means "not cacheless".
+- `view --pressure`: the main inode now stays registered, never mmapped,
+  throughout the advance cases (as the mount root does), and
+  `retry_advance_adopted` sends advance and adopts it; `decode_checks` runs
+  with it registered. `retry_advance_never` marks it mmapped
+  (`hfs_view_mmap_inode`), which alone withholds advance, then evicts it.
+- `view/run.py` `mmap_mark_guard`: `hfs_mmap_file` (not compiled by the
+  harness) must call `hfs_view_mmap_inode` before installing `hfs_mmap_ops`,
+  and `hfs_mmap.c` must not call `hfs_view_register_inode`.
+- Mutants, each killed: the old `nr_mappings` term, no mmapped term, no clear
+  at unregister, a double count of a repeated mmap, and `hfs_mmap_file`
+  registering without the mark (refused by the guard).
+
+The series was regenerated with `export.py --task tj4` (0003: `hfs.h`; 0004:
+`hfs_view.[ch]`, `hfs_mmap.c`). No candidate was rebuilt, booted or admitted.

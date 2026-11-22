@@ -107,7 +107,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,500 @@
+@@ -0,0 +1,507 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -479,7 +479,14 @@ new file mode 100644
 +};
 +
 +struct hfs_inode {
++	/* On view->mappings while registered (every hfs_inode_get inode; the
++	 * STOP/recall inventory). tj4: view_mmapped, under view->lock, once
++	 * hfs_mmap_file accepted a mapping of this inode, until it leaves the
++	 * view (eviction): only such an inode can hold target-bound state, so
++	 * only it counts in view->nr_mmapped and keeps the view non-cacheless.
++	 */
 +	struct list_head view_list;
++	bool view_mmapped;
 +	struct inode inode;
 +	struct hfs_cap *object;
 +	struct hfs_forget *forget;
