@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
 	"reflect"
@@ -28,23 +29,32 @@ import (
 // saveFault fails exactly one transport.db save: the first protection whose
 // caller is guestbridge.(*Transport).<site>, at the ledger's before-commit
 // failpoint (nothing of that protection is committed). log stands in for the
-// runtime's stderr, where failLocked reports the fence.
+// runtime's stderr, where failLocked reports the fence. injected is closed
+// when the hook returns the failure; the saving goroutine still holds the
+// transport's lock then and records the fence (failLocked) before it lets
+// go, so a Failure() call after injected sees the record.
 type saveFault struct {
-	site  string
-	err   error
-	log   *syncBuffer
-	fired atomic.Bool
+	site     string
+	err      error
+	log      *syncBuffer
+	fired    atomic.Bool
+	injected chan struct{}
 }
 
 func newSaveFault(site string) *saveFault {
-	return &saveFault{site: site, err: errors.New("injected transport.db save failure"), log: &syncBuffer{}}
+	return &saveFault{site: site, err: errors.New("injected transport.db save failure"), log: &syncBuffer{}, injected: make(chan struct{})}
 }
 
 // hook is the ledger failpoint. It runs with the transport's lock held, on
 // whichever goroutine saves (the writer for commitWrite, a lane worker for
 // publishResponse), so it selects its target by the caller on the stack.
+// It cannot see the cell being saved: injectSaveFailure arms it only when
+// the targeted cell alone can reach the site, and requireFailureRecord
+// checks the recorded cells, so another cell getting there first fails the
+// test instead of passing it.
 func (f *saveFault) hook(name string) error {
 	if name == "before-commit" && onStack("guestbridge.(*Transport)."+f.site) && f.fired.CompareAndSwap(false, true) {
+		close(f.injected)
 		return f.err
 	}
 	return nil
@@ -72,25 +82,39 @@ func onStack(fn string) bool {
 // NewDurableTransportWithFailureHook does, at construction), and this task
 // changes no production code, so the test sets the two unexported fields by
 // reflection under the transport's own lock, which every save and every
-// failLocked holds. A renamed or retyped field fails here, not silently.
+// failLocked holds. A renamed or retyped field fails the test with a message
+// (unexportedField), not with a reflect panic.
 func armTransportFault(t *testing.T, tr *guestbridge.Transport, fault *saveFault) {
 	t.Helper()
 	v := reflect.ValueOf(tr).Elem()
-	mu, ledger, failureLog := v.FieldByName("mu"), v.FieldByName("ledger"), v.FieldByName("failureLog")
-	if mu.Type() != reflect.TypeFor[sync.Mutex]() || ledger.Kind() != reflect.Pointer || ledger.IsNil() || failureLog.Type() != reflect.TypeFor[io.Writer]() {
-		t.Fatal("guestbridge.Transport no longer has mu, a durable ledger and failureLog")
-	}
-	failpoint := ledger.Elem().FieldByName("failpoint")
 	hook := fault.hook
-	if failpoint.Type() != reflect.TypeOf(hook) {
-		t.Fatal("transport ledger failpoint is no longer func(string) error")
+	mu := unexportedField(t, v, "guestbridge.Transport", "mu", reflect.TypeFor[sync.Mutex]())
+	failureLog := unexportedField(t, v, "guestbridge.Transport", "failureLog", reflect.TypeFor[io.Writer]())
+	ledger := v.FieldByName("ledger")
+	if !ledger.IsValid() || ledger.Kind() != reflect.Pointer || ledger.IsNil() {
+		t.Fatal(`guestbridge.Transport has no durable "ledger" (renamed, retyped or a volatile transport): update armTransportFault`)
 	}
+	failpoint := unexportedField(t, ledger.Elem(), "guestbridge.transportLedger", "failpoint", reflect.TypeOf(hook))
 	lock := (*sync.Mutex)(unsafe.Pointer(mu.UnsafeAddr()))
 	lock.Lock()
 	defer lock.Unlock()
 	reflect.NewAt(failpoint.Type(), unsafe.Pointer(failpoint.UnsafeAddr())).Elem().Set(reflect.ValueOf(hook))
 	var log io.Writer = fault.log
 	reflect.NewAt(failureLog.Type(), unsafe.Pointer(failureLog.UnsafeAddr())).Elem().Set(reflect.ValueOf(&log).Elem())
+}
+
+// unexportedField returns v's field name, failing the test with a clear
+// message when it no longer exists or no longer has type want.
+func unexportedField(t *testing.T, v reflect.Value, owner, name string, want reflect.Type) reflect.Value {
+	t.Helper()
+	f := v.FieldByName(name)
+	if !f.IsValid() {
+		t.Fatalf("%s has no field %q any more: update armTransportFault", owner, name)
+	}
+	if f.Type() != want {
+		t.Fatalf("%s.%s is %s, want %s: update armTransportFault", owner, name, f.Type(), want)
+	}
+	return f
 }
 
 // injectSaveFailure arms fault at its site with m1's next VIEW_WAIT leg
@@ -101,13 +125,16 @@ func armTransportFault(t *testing.T, tr *guestbridge.Transport, fault *saveFault
 //     reclaims, zq3-r12's write 170 releasing 168) fails; the writer gets
 //     the error, so the exporter answers that SEND with an ERROR at once;
 //   - publishResponse: the leg's response publication (zq3-r12's leg 169)
-//     fails on its lane worker; the leg stays unanswered.
+//     fails on its lane worker; the leg stays unanswered. While the hook is
+//     armed no other cell can publish: every earlier cell was answered and
+//     fetched (its publication is done) and the STOPPED ACK is still held
+//     in Prepare, before its operation and publication.
 func (r *r12Run) injectSaveFailure(fault *saveFault) (*writtenLeg, []uint64) {
 	if fault.site == "publishResponse" {
 		armTransportFault(r.t, r.m.a.Transport, fault)
 		leg, err := r.wait.write()
 		require(r.t, err)
-		r.awaitFence()
+		r.awaitFence(fault)
 		return leg, []uint64{leg.native.Cell}
 	}
 	leg, err := r.wait.write()
@@ -123,17 +150,16 @@ func (r *r12Run) injectSaveFailure(fault *saveFault) (*writtenLeg, []uint64) {
 	return leg, []uint64{*chain.peer.mappingNativeCell, reclaimed}
 }
 
-// awaitFence waits until a lane worker fenced the transport.
-func (r *r12Run) awaitFence() {
-	deadline := time.Now().Add(answerBound)
-	for {
-		if _, failed := r.m.a.Transport.Failure(); failed {
-			return
-		}
-		if time.Now().After(deadline) {
-			r.t.Fatal("the injected save failure never fenced the transport")
-		}
-		time.Sleep(time.Millisecond)
+// awaitFence waits until a lane worker's save hit fault and fenced the
+// transport (saveFault.injected says why Failure is recorded by then).
+func (r *r12Run) awaitFence(fault *saveFault) {
+	select {
+	case <-fault.injected:
+	case <-time.After(answerBound):
+		r.t.Fatal("the injected save failure was never reached")
+	}
+	if _, failed := r.m.a.Transport.Failure(); !failed {
+		r.t.Fatal("the injected save failure did not fence the transport")
 	}
 }
 
@@ -171,26 +197,32 @@ func (r *r12Run) requireFailureRecord(fault *saveFault, cells []uint64) {
 		t.Fatalf("transport failure %+v (failed %v), want site %s cells %v", failure, failed, fault.site, cells)
 	}
 	lines := strings.Split(strings.TrimSpace(fault.log.String()), "\n")
-	if len(lines) != 1 || !strings.Contains(lines[0], failure.Site) || !strings.Contains(lines[0], fault.err.Error()) || !strings.Contains(lines[0], "recorded in transport.db") {
-		t.Errorf("failure log (runtime stderr) %q", fault.log.String())
+	if len(lines) != 1 || !strings.Contains(lines[0], failureLogFields(failure)) || !strings.Contains(lines[0], "recorded in transport.db") {
+		t.Errorf("failure log (runtime stderr) %q, want one line with %q", fault.log.String(), failureLogFields(failure))
 	}
 	evidence := captureTransport(r.m.a.Transport)
 	raw, err := json.Marshal(evidence)
 	require(t, err)
-	if evidence.Failure == nil || evidence.Failure.Site != failure.Site || !bytes.Contains(raw, []byte(`"failure":{`)) {
-		t.Errorf("OBSERVE transport section %s", raw)
+	if evidence.Failure == nil || !reflect.DeepEqual(*evidence.Failure, failure) || !bytes.Contains(raw, []byte(`"failure":{`)) {
+		t.Errorf("OBSERVE transport section %s, want failure %+v", raw, failure)
 	}
 	r.m.a.Transport.Close()
 	root := filepath.Join(r.m.directory, "transport")
 	state, err := guestbridge.InspectTransport(root, nil)
 	require(t, err)
-	if state.Failure == nil || state.Failure.Site != failure.Site || state.Failure.Error != failure.Error || !slices.Equal(state.Failure.Cells, cells) {
+	if state.Failure == nil || !reflect.DeepEqual(*state.Failure, failure) {
 		t.Errorf("transport.db failure row %+v, want %+v", state.Failure, failure)
 	}
 	if _, err = guestbridge.InspectRestorationEndpoint(root, nil, nil); !errors.Is(err, fsapi.Unavailable) {
 		t.Errorf("fenced transport.db offered for restoration: %v", err)
 	}
 	t.Logf("fence recorded: %s; OBSERVE %s", lines[0], raw)
+}
+
+// failureLogFields is the part of failLocked's log line that carries the
+// whole record: site, cells, class, error and time, in its format.
+func failureLogFields(f guestbridge.TransportFailure) string {
+	return fmt.Sprintf("transport failed at %s cells=%v class=%s error=%q time=%s;", f.Site, f.Cells, f.Class, f.Error, f.Time)
 }
 
 // syncBuffer is a failure log the test reads while a worker may write.

@@ -216,12 +216,20 @@ type r12Run struct {
 // thread (m1's control chain) owns the release and its VIEW_QUERYs; the
 // event worker has its own chain, as in zq3-r12 (VIEW_QUERY 168 reclaimed
 // 163, VIEW_WAIT leg 169 reclaimed leg 167).
+//
+// Cleanups run last-registered first, so the gate's own cleanup
+// (newProbeGate) would run after the model's a.Close(), whose transport
+// Close joins a lane worker parked in the held probe. A failing run would
+// then hang in Close until the probe's 10 s bound and fence the admission.
+// Opening the gate is idempotent, so it is registered again here, after
+// the model, to run before a.Close().
 func newR12Run(t *testing.T) *r12Run {
 	if testing.Short() {
 		t.Skip("assembles the runtime and replays two mounts")
 	}
 	held := newHeldObservation(t)
 	m := assembleRecallModel(t, readZQ3Values(t), recallModelLatency(t), 0, true, held.wrap)
+	t.Cleanup(held.gate.open)
 	m.mount(0)
 	m.settle()
 	r := &r12Run{t: t, m: m, m1: m.mounts[1], held: held, events: &r5Chain{peer: m.mounts[1].peer}}
