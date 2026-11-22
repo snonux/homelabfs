@@ -93,15 +93,18 @@ func (c *Controller) admissionBarrier(ctx context.Context, b guestbridge.Binding
 		}
 		return nil
 	}
-	return c.recallBarrier(ctx, b.Context.Session, b.Call.Intent)
+	return c.recallBarrier(ctx, b.Context, b.Call.Intent)
 }
 
 // recallBarrier is the CALL half of admissionBarrier for every op except
 // DRAIN_WRITE. A conflicting op starts the all-domain recall only when none
 // exists; during a scoped recall it waits for that recall to finish first.
 // Reads and read-only OPENs conflict as reads (readConflict, read_open.go).
-func (c *Controller) recallBarrier(ctx context.Context, session string, intent guestbridge.Intent) error {
-	op := intent.Opcode
+// The requester's own observation leases never conflict with its own CALLs
+// (selfObservation, self_conflict.go, task vj4); a CALL admitted only
+// because of that is counted (noteSelfAdmission).
+func (c *Controller) recallBarrier(ctx context.Context, scope guestbridge.Context, intent guestbridge.Intent) error {
+	op, session := intent.Opcode, scope.Session
 	if c.recallHoldsCall(session, op) {
 		return fsapi.WouldBlock
 	}
@@ -111,7 +114,8 @@ func (c *Controller) recallBarrier(ctx context.Context, session string, intent g
 			return nil
 		}
 		trigger.Kind = TriggerAuthority
-	} else if !c.conflicts(readConflict(intent)) {
+	} else if read := readConflict(intent); !c.conflicts(scope, read) {
+		c.noteSelfAdmission(scope, read)
 		return nil
 	}
 	if err := c.startRecall(ctx, trigger); err != nil {
@@ -190,12 +194,13 @@ func nativeRead(op fsapi.Operation) bool {
 // nativeConflicts: native authority reductions conflict with no lease, as
 // for CALLs, but with any open reservation, because a native command belongs
 // to no guest domain and so no reservation can be shown to be another
-// domain's. Every other native op uses conflicts.
+// domain's. Every other native op uses conflicts with the zero Context, which
+// no lease's Scope equals, so no lease is exempt (selfObservation).
 func (c *Controller) nativeConflicts(op fsapi.Operation, read bool) bool {
 	if op == fsapi.ProcessExit || op == fsapi.DescriptorClose || op == fsapi.Forget || op == fsapi.Release {
 		return c.anyReservationOpen()
 	}
-	return c.conflicts(read)
+	return c.conflicts(guestbridge.Context{}, read)
 }
 
 // nativeAuthorization is the canonical request a native command is
@@ -333,27 +338,25 @@ func (p *permit) CheckDrain(ctx context.Context, command fsapi.Command) error {
 	return ctx.Err()
 }
 
-// conflicts reports whether admitting an op must first recall: a non-read op
-// conflicts with every active lease, whose cached observations it may change;
-// a read (readConflict: a read opcode or a read-only OPEN) conflicts only
-// with an active EXCLUSIVE_DIRTY lease; and every op conflicts with an open
-// reservation. Callers exempt authority reductions
-// (authorityReduction) before asking: they change no observation, at most
-// lifetime state, so a lease's target stays a correct view of the namespace
-// and data even when such an op moves the journal past it. They conflict
-// only with their own domain's open reservations (ownReservationOpen).
-func (c *Controller) conflicts(read bool) bool {
+// conflicts reports whether admitting an op of the requesting context scope
+// must first recall: a non-read op conflicts with every active lease, whose
+// cached observations it may change, except scope's own observation leases
+// (selfObservation, task vj4: they authorize no PTE, so the recall would
+// only wait for a release the guest already queued); a read (readConflict:
+// a read opcode or a read-only OPEN) conflicts only with an active
+// EXCLUSIVE_DIRTY lease; and every op conflicts with an open reservation.
+// Callers exempt authority reductions (authorityReduction) before asking:
+// they change no observation, at most lifetime state, so a lease's target
+// stays a correct view of the namespace and data even when such an op moves
+// the journal past it. They conflict only with their own domain's open
+// reservations (ownReservationOpen).
+func (c *Controller) conflicts(scope guestbridge.Context, read bool) bool {
 	for _, l := range c.state.Leases {
-		if l.Active && (!read || l.Lease.Mode == "EXCLUSIVE_DIRTY") {
+		if l.Active && (!read || l.Lease.Mode == "EXCLUSIVE_DIRTY") && !c.exemptSelf(l, scope) {
 			return true
 		}
 	}
-	for _, r := range c.state.Reservations {
-		if r.Status != "CLOSED" {
-			return true
-		}
-	}
-	return false
+	return c.anyReservationOpen()
 }
 
 func readOperation(op string) bool {

@@ -91,7 +91,12 @@ caller's own; because a pin may move the cut, every recall still holds it
 description or origin. Concurrent READ leases may share a cut. EXCLUSIVE_DIRTY
 conflicts with every overlapping page read/dirty lease across every domain and
 origin. DOMAIN observations may conservatively conflict with all mutations of
-the domain. These rules close stale metadata/EOF bypasses without restricting
+the domain. A controlled controller exempts one case (task vj4): a CALL does
+not conflict with the requesting Context's own active Targeted DOMAIN READ
+observation leases, which authorize no PTE and are revoked by the guest
+before their release is queued; the Context's own PAGE, OBJECT,
+EXCLUSIVE_DIRTY and untargeted leases, every peer lease and every open
+reservation still conflict (docs/design/vj4-self-conflict.md). These rules close stale metadata/EOF bypasses without restricting
 publication to a preferred writer. Authority reductions (PROCESS_EXIT,
 DESCRIPTION_CLOSE, FORGET, DESCRIPTION_RELEASE) are not mutations of any
 observation and conflict with no

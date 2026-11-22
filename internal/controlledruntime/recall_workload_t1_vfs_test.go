@@ -42,21 +42,35 @@ func (r *t1Replay) instantiate(i int, object guestbridge.Capability) {
 
 // creating is open(O_CREAT|O_EXCL) or mkdir in dir on m0: GETATTR, LOOKUP
 // NotFound and GETATTR observations, then the creating CALL while the last
-// observation's release is still queued, which starts the CALL_CONFLICT
-// recall that holds the CALL. The new dentry is cached, pinned by the
-// created file's description.
+// observation's release is still queued. Before vj4 that own lease started
+// the all-domain CALL_CONFLICT recall that held the CALL; since vj4 the
+// requester's own observation lease does not conflict with its own CALL
+// (internal/viewcontrol self_conflict.go), so the CALL is admitted at once.
+// With peer set, m1's observation is in flight across the CALL (acquired
+// before it, released after it): that cross-domain conflict still starts
+// the all-domain recall. The new dentry is cached, pinned by the created
+// file's description.
 func (r *t1Replay) creating(op string, dir guestbridge.Capability, n string, args map[string]any) []guestbridge.Capability {
 	r.observe(0, "GETATTR", map[string]any{"object": dir})
 	r.invalidate(0, dir, n)
 	r.observe(0, "LOOKUP", map[string]any{"parent": dir, "name": t1Name(n)})
 	queued, rec := r.acquire(0)
 	r.do(0, "GETATTR", map[string]any{"object": dir})
+	var peer *guestbridge.ViewLease
+	var peerRec *ticketRec
+	if r.peer {
+		peer, peerRec = r.acquire(1)
+	}
 	args["parent"], args["name"] = dir, t1Name(n)
+	r.creates++
 	res := r.do(0, op, args)
 	if res.Code != "OK" {
 		r.m.t.Fatalf("%s %s: %+v", op, n, res)
 	}
 	r.release(0, queued, rec)
+	if peer != nil {
+		r.release(1, peer, peerRec)
+	}
 	e := &t1Dentry{cap: res.Capabilities[0]}
 	r.dcache[0][t1Key(dir, n)] = e
 	r.instantiate(0, e.cap)

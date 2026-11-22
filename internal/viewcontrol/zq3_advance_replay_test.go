@@ -39,8 +39,13 @@ import (
 // previous observation lease still active because its release is queued
 // behind the guest's cleanup worker (follow-up F). The replay models that
 // for the creating syscalls (MKDIR, CREATE): the last observation before
-// them is released only after the mutation, so the mutation conflicts with
-// it and starts the all-domain recall, in both runs alike.
+// them is released only after the mutation. Before vj4 the mutation
+// conflicted with it and started the all-domain recall; since vj4 the
+// requester's own observation lease does not conflict with its own CALL
+// (self_conflict.go), so that recall runs only under the selfConflicts
+// ablation. With peer set, m1 also holds an observation lease across each
+// creating CALL, a cross-domain conflict that recalls all domains with or
+// without vj4 (zq3_self_conflict_replay_test.go).
 //
 // Dentries are never revalidated (hfs_d_revalidate returns 0): every walk
 // unhashes the cached dentry, whose unpinned inode FORGETs its grant, and
@@ -59,6 +64,7 @@ import (
 type advanceReplay struct {
 	r         *rig
 	advance   bool
+	peer      bool                // m1 holds an observation across each creating CALL
 	rule      guestviewmodel.Rule // the guest's cacheless test; nil is tj4's
 	views     [2]*guestviewmodel.View
 	sent      [2]int // acquisitions that carried "advance": true, per mount
@@ -292,20 +298,29 @@ func (p *advanceReplay) evict(i int, e *replayDentry) {
 
 // creating is open(O_CREAT|O_EXCL) or mkdir in dir: GETATTR, LOOKUP NotFound
 // and GETATTR observations, then the creating CALL while the last
-// observation's release is still queued (a CALL_CONFLICT recall). The new
-// dentry is cached, pinned by the created file's description.
+// observation's release is still queued (a CALL_CONFLICT recall before vj4
+// or under the selfConflicts ablation; with peer, m1's observation in flight
+// across the CALL is one in any case). The new dentry is cached, pinned by
+// the created file's description.
 func (p *advanceReplay) creating(op string, dir guestbridge.Capability, n string, args map[string]any) []guestbridge.Capability {
 	p.observe(0, "GETATTR", map[string]any{"object": dir})
 	p.invalidate(0, dir, n)
 	p.observe(0, "LOOKUP", map[string]any{"parent": dir, "name": name(n)})
 	queued := p.acquire(0)
 	p.do(0, "GETATTR", map[string]any{"object": dir})
+	var peer *guestbridge.ViewLease
+	if p.peer {
+		peer = p.acquire(1) // m1's walk, still in flight across m0's CALL
+	}
 	args["parent"], args["name"] = dir, name(n)
 	res := p.do(0, op, args)
 	if res.Code != "OK" {
 		p.r.t.Fatalf("%s %s: %+v", op, n, res)
 	}
 	p.release(0, queued)
+	if peer != nil {
+		p.release(1, peer)
+	}
 	e := &replayDentry{cap: res.Capabilities[0]}
 	p.dcache[0][dentryKey(dir, n)] = e
 	p.instantiate(0, e.cap)
@@ -475,7 +490,9 @@ func (p *advanceReplay) sticky(leaf guestbridge.Capability) {
 
 // TestZQ3AdvanceRemovesExpectedTargetRecalls replays the T1 credentials case
 // body twice at the zq3 spec bounds: without advance (the guest before xf4
-// step B) and with it, under tj4's cacheless test. Without advance every
+// step B) and with it, under tj4's cacheless test. Both runs use the
+// selfConflicts ablation (the pre-vj4 conflict rule), so this test keeps
+// measuring xf4 alone; zq3_self_conflict_replay_test.go measures vj4. Without advance every
 // observation that follows a mutation or pin recalls its own domain, and
 // every pinning LOOKUP's release recalls it again: 7 CALL_CONFLICT + 28
 // EXPECTED_TARGET + 9 RELEASE recalls (zq3-r19 saw about 10 mismatch recalls
@@ -489,8 +506,8 @@ func (p *advanceReplay) sticky(leaf guestbridge.Capability) {
 // advances also show that tj4's rule lets such a mount ask (uj4).
 func TestZQ3AdvanceRemovesExpectedTargetRecalls(t *testing.T) {
 	t.Parallel()
-	before := (&advanceReplay{r: newZQ3Rig(t, 0)}).run()
-	withAdvance := &advanceReplay{r: newZQ3Rig(t, 0), advance: true}
+	before := (&advanceReplay{r: preVJ4Rig(t)}).run()
+	withAdvance := &advanceReplay{r: preVJ4Rig(t), advance: true}
 	after := withAdvance.run()
 	t.Logf("T1 credentials recalls: without advance %v, with advance %v (%d advances, %v sent)", before, after, withAdvance.r.advances(), withAdvance.sent)
 	for _, problem := range advanceVerdict(before, after, withAdvance.r.advances()) {
@@ -518,7 +535,8 @@ func advanceVerdict(before, after map[string]int, advances uint64) []string {
 }
 
 // TestZQ3AdvanceReplayDetectsNonCachelessGuest replays T1 with advance
-// support against guest views the guest would never call cacheless and
+// support (under the pre-vj4 selfConflicts ablation, as the xf4 test above
+// does) against guest views the guest would never call cacheless and
 // requires that no advance is sent or granted there. zq3-r20's rule (every
 // registered inode counts, guestviewmodel.CachelessR20) never holds with the
 // mount root registered: the replay must then pay the baseline's
@@ -527,8 +545,8 @@ func advanceVerdict(before, after map[string]int, advances uint64) []string {
 // rule either; the other mount still does.
 func TestZQ3AdvanceReplayDetectsNonCachelessGuest(t *testing.T) {
 	t.Parallel()
-	baseline := (&advanceReplay{r: newZQ3Rig(t, 0)}).run()
-	r20 := &advanceReplay{r: newZQ3Rig(t, 0), advance: true, rule: guestviewmodel.CachelessR20}
+	baseline := (&advanceReplay{r: preVJ4Rig(t)}).run()
+	r20 := &advanceReplay{r: preVJ4Rig(t), advance: true, rule: guestviewmodel.CachelessR20}
 	after := r20.run()
 	t.Logf("r20 rule: recalls %v, %d advances, %v sent", after, r20.r.advances(), r20.sent)
 	if r20.sent != [2]int{} || r20.r.advances() != 0 || after[TriggerExpectedTarget] == 0 {

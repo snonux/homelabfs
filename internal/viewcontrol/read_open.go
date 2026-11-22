@@ -34,7 +34,7 @@ import (
 //   - The description capability the bridge issues is the calling domain's
 //     own grant state; no peer can see it.
 //
-// So it conflicts exactly like a read (conflicts(true)): with any active
+// So it conflicts exactly like a read (conflicts(scope, true)): with any active
 // EXCLUSIVE_DIRTY lease, whose dirty overlay may make the returned
 // attributes (size) stale, and with any open dirty reservation, but never
 // with a READ lease of any domain, the caller's own included. The caller's

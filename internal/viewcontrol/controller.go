@@ -168,6 +168,11 @@ type Controller struct {
 	// all-domain expected-target recall (mismatch_scope.go), so replays can
 	// count both behaviours; it is always false in production.
 	allDomainMismatch bool
+	// selfConflicts is a test-only ablation that restores the pre-vj4 rule
+	// under which a CALL conflicts with its own context's observation leases
+	// too (self_conflict.go), so replays can count both behaviours; it is
+	// always false in production.
+	selfConflicts bool
 }
 
 type ledger struct {

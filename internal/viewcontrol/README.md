@@ -68,7 +68,8 @@ Acquisition and ordinary observation/mutation admission run outside shared
 execution locks. Contention returns promptly. A fully acquired permit rechecks
 its exact source cut on the worker immediately before planning/apply, including
 recovery and native lock retries. Same-domain dirty pages are not excluded from
-conflicts. PAGE aliases use physical home/allocation/range; DOMAIN/metadata/EOF/
+conflicts (see "Own observation leases" below for the one same-context
+exemption). PAGE aliases use physical home/allocation/range; DOMAIN/metadata/EOF/
 namespace dependencies conservatively recall all affected enrolled observations.
 Compatible disjoint page grants preserve all existing provenance. Optional
 fresh admissions cannot spend preowned freeze/release/permanent-identity credit.
@@ -319,7 +320,35 @@ history). The replay `TestZQ3AdvanceRemovesExpectedTargetRecalls` (T1
 credentials case body, both mounts, dentry eviction FORGETs and pinning
 LOOKUPs, the creating CALLs meeting a still-queued observation release)
 counts 7 CALL_CONFLICT + 28 EXPECTED_TARGET + 9 RELEASE recalls without
-advance and 7 CALL_CONFLICT recalls with 37 advances with it.
+advance and 7 CALL_CONFLICT recalls with 37 advances with it, under the pre-vj4
+conflict rule (the selfConflicts ablation; vj4 removes the CALL_CONFLICT
+recalls, see "Own observation leases").
+
+Own observation leases (`self_conflict.go`, task vj4, xf4 follow-up F; design
+`docs/design/vj4-self-conflict.md`). A mutating CALL no longer conflicts with
+the requesting Context's own observation leases: active Targeted DOMAIN READ
+leases whose Scope is exactly the CALL's Context. In zq3 T1 such a CALL met the
+mount's own observation lease whose VIEW_RELEASE was still queued behind the
+guest's cleanup worker, and the all-domain CALL_CONFLICT recall waited for it
+(r20 MKDIR 26.6 s, SETATTR 11.6 s; r19 CREATE 14.7 s). A DOMAIN lease authorizes
+no PTE and the guest already revoked it, so the recall only waited for a
+release the guest had committed to. Every peer lease, the requester's own PAGE,
+OBJECT, EXCLUSIVE_DIRTY and untargeted leases, every open reservation, a running
+recall and native commands conflict exactly as before. The skipped lease stays
+active: it keeps pinning its cut and makes peer mutations recall the
+requester; its release is recall-free for an Advance lease and otherwise the
+scoped RELEASE recall of the requester. The requester's later observations
+expect its pre-mutation view and are granted only on the current cut (advance
+or the expected-target recall). OBSERVE reports `controller.recalls.self_admissions`
+(omitted while 0), the CALLs admitted only because of this rule since the
+controller opened (memory only). `Controller.selfConflicts` is a test-only
+ablation restoring the pre-vj4 rule. The T1 replay with advance
+(`TestZQ3SelfConflictRemovesCallConflictRecalls`) goes from 7 CALL_CONFLICT
+(all-domain) recalls to 0, with 7 self admissions and 2 scoped lineage-budget
+RELEASE recalls, which the CALL_CONFLICT recalls' fence moves used to pre-empt;
+with a peer observation in flight across each creating CALL
+(`TestZQ3SelfConflictKeepsPeerConflicts`) both rules start the same 7
+all-domain recalls.
 
 Read-only OPEN (`read_open.go`, task z94 after zq3-r11 R11-1/zq3-r14 R14-1).
 An OPEN with access READ and no create/exclusive/truncate/append flag conflicts

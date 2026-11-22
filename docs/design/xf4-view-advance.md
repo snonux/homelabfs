@@ -138,4 +138,4 @@ About 130-150 s against the 240 s deadline (pessimistic 200 s):
 - **C:** zq3-r20 with A and B, plus 1h4 and 2h4.
 - **Optional D:** recycle lineages whose target is below the current cut without a fence move.
 - **Optional E:** grant on a retained expected target when it is observably equal to the current cut.
-- **Follow-up F:** CALL_CONFLICT against the domain's own observation leases whose release is still pending, e.g. the guest flushes pending releases before a mutation.
+- **Follow-up F:** CALL_CONFLICT against the domain's own observation leases whose release is still pending, e.g. the guest flushes pending releases before a mutation. Done host-side in task vj4 ([vj4-self-conflict.md](vj4-self-conflict.md)): a CALL no longer conflicts with its own Context's observation leases. The Step A replay above now runs under vj4's `selfConflicts` ablation so that it keeps measuring xf4 alone.
