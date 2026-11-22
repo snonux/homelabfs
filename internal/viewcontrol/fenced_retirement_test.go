@@ -2,6 +2,7 @@ package viewcontrol
 
 import (
 	"crypto/ed25519"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync/atomic"
@@ -26,7 +27,7 @@ func TestRetireFencedReleasesChargesAndStaysRefused(t *testing.T) {
 	r := newZQ3Rig(t, 0)
 	r.fenceStalledM1()
 	before := r.sessionRows(1)
-	if before.tickets == 0 || before.families == 0 || before.leases == 0 || before.lineages == 0 || before.archive == 0 {
+	if before.tickets == 0 || before.leases == 0 || before.lineages == 0 || before.archive == 0 {
 		t.Fatalf("fenced m1 holds too little to test a release: %+v", before)
 	}
 	identities := r.identities()
@@ -54,6 +55,31 @@ func TestRetireFencedReleasesChargesAndStaysRefused(t *testing.T) {
 		t.Fatalf("evidence %+v", evidence)
 	}
 	r.requireNoEventAfterFence(1)
+}
+
+// TestRetiredFamiliesKeepNumbersMonotone (review of fh4 round 1): the
+// retirement keeps each of m1's families as {High, Floor = High, Scope}.
+// An old ticket of m1, resent past a cleared lock-free gate, is refused
+// under the controller lock (ErrSessionFenced). Even with the tombstone
+// itself gone from memory, the kept counters answer it with a rights-free
+// RETIRED_ID: no number m1 ever used can be admitted again.
+func TestRetiredFamiliesKeepNumbersMonotone(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	r.fenceStalledM1()
+	op, payload := r.sessionTicket(1, "VIEW_ACQUIRE")
+	must(t, r.retireFenced(1))
+	r.requireMinimalFamilies(1)
+	r.controller.fencedSessions.Delete(r.scopes[1].Session)
+	if _, err := r.controller.ExchangeView(t.Context(), r.scopes[1], op, payload); !errors.Is(err, ErrSessionFenced) {
+		t.Fatalf("old ticket past the gate: %v, want ErrSessionFenced", err)
+	}
+	r.controller.mu.Lock()
+	delete(r.controller.state.Fenced, r.scopes[1].Session)
+	r.controller.mu.Unlock()
+	reply, err := r.controller.ExchangeView(t.Context(), r.scopes[1], op, payload)
+	if err != nil || status(reply) != "RETIRED_ID" {
+		t.Fatalf("old ticket without the tombstone: %s %v, want RETIRED_ID", reply, err)
+	}
 }
 
 // TestRetireFencedRefusals: a retirement is refused while the recall that
@@ -189,6 +215,8 @@ func TestRetiredFenceLedgerValidation(t *testing.T) {
 
 // sessionRows counts the rows one session keeps charged.
 type sessionRows struct {
+	// families counts the session's families that are not yet reduced to
+	// the {High, Floor = High, Scope} row a retirement keeps.
 	tickets, families, leases, reservations, lineages, archive int
 }
 
@@ -216,7 +244,7 @@ func (r *rig) sessionRows(i int) sessionRows {
 		n.tickets += boolCount(t.Scope.Session == session)
 	}
 	for _, f := range s.Families {
-		n.families += boolCount(f.Scope != nil && f.Scope.Session == session)
+		n.families += boolCount(f.Scope != nil && f.Scope.Session == session && (f.Floor != f.High || f.Receipt != ""))
 	}
 	for _, l := range s.Leases {
 		n.leases += boolCount(l.Lease.Scope.Session == session)
@@ -333,5 +361,41 @@ func (r *rig) requireInjectedRefusal(inject func(*Controller) func()) {
 	r.controller.mu.Unlock()
 	if !errors.Is(err, fsapi.WouldBlock) {
 		r.t.Fatalf("retirement with injected state: %v, want WouldBlock", err)
+	}
+}
+
+// sessionTicket returns the operation and payload of one of domain i's
+// ticket rows of op.
+func (r *rig) sessionTicket(i int, op string) (string, json.RawMessage) {
+	r.t.Helper()
+	r.controller.mu.Lock()
+	defer r.controller.mu.Unlock()
+	for _, t := range r.controller.state.Tickets {
+		if t.Scope.Session == r.scopes[i].Session && t.Operation == op {
+			return t.Operation, append(json.RawMessage(nil), t.Payload...)
+		}
+	}
+	r.t.Fatalf("m%d has no %s ticket", i, op)
+	return "", nil
+}
+
+// requireMinimalFamilies requires domain i to own at least one family and
+// every one of them reduced to {High, Floor = High, Scope}.
+func (r *rig) requireMinimalFamilies(i int) {
+	r.t.Helper()
+	r.controller.mu.Lock()
+	defer r.controller.mu.Unlock()
+	owned := 0
+	for _, f := range r.controller.state.Families {
+		if f.Scope == nil || f.Scope.Session != r.scopes[i].Session {
+			continue
+		}
+		owned++
+		if f.Floor != f.High || f.Receipt != "" || f.High == 0 {
+			r.t.Fatalf("m%d family after retirement %+v", i, f)
+		}
+	}
+	if owned == 0 {
+		r.t.Fatalf("m%d kept no family", i)
 	}
 }

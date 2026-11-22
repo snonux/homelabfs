@@ -776,10 +776,13 @@ operator may later retire the fenced session with an Ed25519 statement,
 signed by the enrollment's operator key, that binds the enrollment hash and
 the exact fence row. The host accepts it only while no recall runs, the
 session holds no active lease and every reservation of it is closed, and
-then drops all of the session's tickets, families, lease and reservation rows,
-lineage revisions and archived ACKs from the shared bounds in one protected
-write. The fence row stays as a tombstone, so the session is still refused
-everywhere and the ledger never returns to the pre-fence schema. A crash
+then drops all of the session's tickets, retirement receipts, lease and
+reservation rows, lineage revisions and archived ACKs from the shared bounds in
+one protected write, keeping each of its ticket families only as its counters
+with the floor raised to the highest number it used. The fence row stays as a
+tombstone, so the session is still refused everywhere and the ledger never
+returns to the pre-fence schema; the physical verifier checks the tombstone's
+operator signature and the absence of the released rows itself. A crash
 leaves either the plain fence, which the same statement retires again, or the
 tombstone, for which the statement is an idempotent replay (task fh4). A
 participant missing its STOPPED, or with an undrained entry, is never fenced. An

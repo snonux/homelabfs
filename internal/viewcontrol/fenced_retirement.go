@@ -3,7 +3,7 @@ package viewcontrol
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
+	"encoding/json"
 	"strings"
 
 	"github.com/snonux/homelabfs/internal/fsapi"
@@ -43,8 +43,9 @@ import (
 // retiring a different fence of the same session (none can exist, a
 // fence is permanent, but the binding costs nothing). The signature is
 // kept in the tombstone and verified again on every reopen
-// (validRetiredFences), so a ledger cannot carry a retirement the operator
-// did not sign.
+// (validRetiredFences) and, independently, by the runtime Facts with the
+// same operator key (fenced_retirement_check.go), so a ledger cannot carry
+// a retirement the operator did not sign.
 //
 // Preconditions (fencedRetirable), all under the controller mutex:
 //
@@ -62,16 +63,19 @@ import (
 //
 // What is released (releaseFencedSession), in the same protected write as
 // the tombstone: every ticket row of the session (and its Identities
-// charge), every family it owns with its latest retirement receipt, every
+// charge), the latest retirement receipt of every family it owns, every
 // lease and reservation row of it, the revision high-water of every
 // lineage of those leases or recorded for the session in LineageFences,
 // every AckArchive row of its scope, and then every UUID nothing names any
 // more. Kept: the Domains entry (its scope is what the gate, validFenced
 // and the Facts check the tombstone against; Domains is bounded by the
 // enrollment's domain count, not by a shared bound), its Fences entry (its
-// fence stays the recorded one) and the Fenced row itself. Deleting the
-// families gives up the monotone numbers that make ticket recycling safe;
-// that is sound only because the session is never admitted again.
+// fence stays the recorded one), the Fenced row itself, and each of its
+// families reduced to {High, Floor = High, Scope} (defence in depth,
+// review of fh4 round 1). Families are not a shared bound; keeping their
+// counters keeps ticket numbers monotone even if the tombstone were lost:
+// every number the session ever used is at or below the raised floor and
+// gets only a rights-free RETIRED_ID, and a new one must be High+1.
 //
 // Durability. The release and the tombstone are one protected ledger
 // write. A crash before it leaves the plain fence, and the same signed
@@ -88,33 +92,6 @@ import (
 // would still find the session in Fenced and refuse it. No new schema
 // number is needed for safety.
 
-// FencedRetirementVersion is the version of the operator statement.
-const FencedRetirementVersion = "homelabfs-viewcontrol-retire-fenced/1"
-
-// FencedRetirement is the statement the operator signs to retire one fenced
-// session: this controller's enrollment and the session's exact fence row.
-type FencedRetirement struct {
-	Version        string
-	EnrollmentHash string
-	Session        string
-	Recall, Phase  string
-	Sequence       uint64
-	Fence          uint64
-}
-
-// Message returns the canonical bytes the operator signs.
-func (r FencedRetirement) Message() ([]byte, error) { return canonical(r) }
-
-// SignFencedRetirement signs r with the operator's private key. It is the
-// helper for operator tooling and tests; the controller only verifies.
-func SignFencedRetirement(key ed25519.PrivateKey, r FencedRetirement) ([]byte, error) {
-	msg, err := r.Message()
-	if err != nil {
-		return nil, err
-	}
-	return ed25519.Sign(key, msg), nil
-}
-
 // retiredFence is the tombstone of a retired fenced session: the operator's
 // signature over its FencedRetirement, verified again on every reopen.
 type retiredFence struct {
@@ -123,7 +100,7 @@ type retiredFence struct {
 
 // fencedRetirement is the statement that retires the fence row f of session.
 func (c *Controller) fencedRetirement(session string, f fencedSession) FencedRetirement {
-	return FencedRetirement{Version: FencedRetirementVersion, EnrollmentHash: c.enrollmentHash, Session: session, Recall: f.Recall, Phase: f.Phase, Sequence: f.Sequence, Fence: f.Fence}
+	return NewFencedRetirement(c.enrollmentHash, session, f.Recall, f.Phase, f.Sequence, f.Fence)
 }
 
 // FencedRetirementStatement returns the statement the operator must sign to
@@ -175,26 +152,21 @@ func (c *Controller) RetireFenced(ctx context.Context, r FencedRetirement, signa
 	return c.fail("fenced-retired-protected")
 }
 
-// authorizeFencedRetirement checks the controller state, that r names
-// exactly a fence row of this ledger and enrollment, and the operator's
-// signature over it; c.mu is held. It returns the fence row.
+// authorizeFencedRetirement checks the controller state, that r is signed
+// by the operator for this enrollment and that it names exactly a fence row
+// of this ledger; c.mu is held. The signature is checked before the row,
+// so an unsigned statement learns nothing about the fence row. It returns
+// the fence row.
 func (c *Controller) authorizeFencedRetirement(r FencedRetirement, signature []byte) (fencedSession, error) {
 	if c.poisoned.Load() || c.closed.Load() || c.state.Recovery {
 		return fencedSession{}, fsapi.Unavailable
 	}
 	f, ok := c.state.Fenced[r.Session]
-	if !ok || r.Version != FencedRetirementVersion || r.EnrollmentHash != c.enrollmentHash {
+	if !ok || r.Version != FencedRetirementVersion || r.EnrollmentHash != c.enrollmentHash || !r.Verify(c.config.Operator, signature) {
 		return fencedSession{}, fsapi.Permission
 	}
 	if r != c.fencedRetirement(r.Session, f) {
 		return fencedSession{}, fsapi.Stale
-	}
-	msg, err := r.Message()
-	if err != nil {
-		return fencedSession{}, err
-	}
-	if !ed25519.Verify(c.config.Operator, msg, signature) {
-		return fencedSession{}, fsapi.Permission
 	}
 	return f, nil
 }
@@ -223,7 +195,7 @@ func (c *Controller) fencedRetirable(session string) error {
 // then the UUIDs nothing names any more; c.mu is held and the caller saves.
 func (c *Controller) releaseFencedSession(scope guestbridge.Context) {
 	families := c.dropSessionTickets(scope.Session)
-	c.dropSessionFamilies(scope.Session, families)
+	c.retireSessionFamilies(scope, families)
 	c.dropSessionLeases(scope.Session)
 	for key := range c.state.Reservations {
 		if c.state.Reservations[key].Reservation.Scope.Session == scope.Session {
@@ -255,18 +227,21 @@ func (c *Controller) dropSessionTickets(session string) map[string]bool {
 	return families
 }
 
-// dropSessionFamilies deletes every family session owns (its recorded Scope
-// or one of its tickets) together with the family's latest retirement
-// receipt.
-func (c *Controller) dropSessionFamilies(session string, owned map[string]bool) {
+// retireSessionFamilies reduces every family scope owns (its recorded
+// Scope or one of its tickets) to {High, Floor = High, Scope}: its latest
+// retirement receipt is dropped and its floor raised over every number it
+// ever admitted, whose rows dropSessionTickets just deleted. The owner is
+// recorded so terminalSnapshot of the other sessions still finds it.
+func (c *Controller) retireSessionFamilies(scope guestbridge.Context, owned map[string]bool) {
 	for key, f := range c.state.Families {
-		if !owned[key] && (f.Scope == nil || f.Scope.Session != session) {
+		if !owned[key] && (f.Scope == nil || f.Scope.Session != scope.Session) {
 			continue
 		}
 		if f.Receipt != "" {
 			delete(c.state.Retirements, f.Receipt)
 		}
-		delete(c.state.Families, key)
+		owner := scope
+		c.state.Families[key] = family{High: f.High, Floor: f.High, Scope: &owner}
 	}
 }
 
@@ -291,60 +266,19 @@ func (c *Controller) dropSessionLeases(session string) {
 	}
 }
 
-// ArchivedACKs reports whether archive (a ledger's AckArchive) holds any
-// row of scope. A retired fenced session has none (task fh4); the
-// controller and the runtime Facts both check it.
-func ArchivedACKs(archive map[string]string, scope guestbridge.Context) bool {
-	prefix := digest(scope) + "/"
-	for key := range archive {
-		if strings.HasPrefix(key, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
 // holdsSessionRows reports whether the ledger still holds any row a
-// retirement of scope releases.
+// retirement of scope releases, by the same check the runtime Facts apply
+// (RetiredScopeClean).
 func (s ledger) holdsSessionRows(scope guestbridge.Context) bool {
-	session := scope.Session
-	for _, t := range s.Tickets {
-		if t.Scope.Session == session {
-			return true
-		}
-	}
-	for _, f := range s.Families {
-		if f.Scope != nil && f.Scope.Session == session {
-			return true
-		}
-	}
-	for _, l := range s.Leases {
-		if l.Lease.Scope.Session == session {
-			return true
-		}
-	}
-	for _, r := range s.Reservations {
-		if r.Reservation.Scope.Session == session {
-			return true
-		}
-	}
-	for _, at := range s.LineageFences {
-		if at.Session == session {
-			return true
-		}
-	}
-	return ArchivedACKs(s.AckArchive, scope)
+	raw, err := json.Marshal(s)
+	return err != nil || !RetiredScopeClean(raw, scope)
 }
 
 // validRetiredFences verifies the operator signature of every retirement
 // tombstone of a reopened ledger against this controller's enrollment.
 func (c *Controller) validRetiredFences() bool {
 	for session, f := range c.state.Fenced {
-		if f.Retired == nil {
-			continue
-		}
-		msg, err := c.fencedRetirement(session, f).Message()
-		if err != nil || !ed25519.Verify(c.config.Operator, msg, f.Retired.Signature) {
+		if f.Retired != nil && !c.fencedRetirement(session, f).Verify(c.config.Operator, f.Retired.Signature) {
 			return false
 		}
 	}

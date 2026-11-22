@@ -27,6 +27,7 @@ type Restart struct {
 	mu                    sync.Mutex
 	supervisor            *Supervisor
 	enrollment            viewcontrol.Enrollment
+	operator              ed25519.PublicKey // the enrollment's operator key, for the reopened Facts
 	admissions            []*Admission
 	keys                  map[string]ed25519.PrivateKey
 	predecessor           *guestbridge.Transport
@@ -87,7 +88,7 @@ func (s *Supervisor) SuspendEndpoint(ctx context.Context, p *Producer, t *guestb
 		return nil, fsapi.Permission
 	}
 	s.restartAttempted = true
-	r := &Restart{supervisor: s, enrollment: p.facts.enrollment, admissions: append([]*Admission(nil), p.facts.admissions...), keys: map[string]ed25519.PrivateKey{}, predecessor: t, bridge: c, providers: map[string]*controlledvalidation.Restart{}, expires: restartDeadline(ctx)}
+	r := &Restart{supervisor: s, enrollment: p.facts.enrollment, operator: p.facts.retirement.operator, admissions: append([]*Admission(nil), p.facts.admissions...), keys: map[string]ed25519.PrivateKey{}, predecessor: t, bridge: c, providers: map[string]*controlledvalidation.Restart{}, expires: restartDeadline(ctx)}
 	for id, key := range p.keys {
 		r.keys[id] = append(ed25519.PrivateKey(nil), key...)
 	}
@@ -188,7 +189,7 @@ func (r *Restart) Reopen(ctx context.Context) (*RestoredEndpoint, error) {
 	if err = r.refresh(ctx); err != nil {
 		return a, err
 	}
-	a.Facts, err = NewFacts(ctx, a.Service, r.enrollment, r.admissions)
+	a.Facts, err = NewFacts(ctx, a.Service, r.enrollment, r.operator, r.admissions)
 	if err != nil {
 		return a, err
 	}

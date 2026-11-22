@@ -3,7 +3,9 @@
 package controlledruntime
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"github.com/snonux/homelabfs/internal/controlledvalidation"
 	"github.com/snonux/homelabfs/internal/fsapi"
@@ -14,11 +16,32 @@ import (
 
 // Facts binds installed guest observations, actual native callbacks and complete
 // retained controller/service sources. It supplies no recovery or VM fence.
+//
+// retirement holds the operator public key the enrollment was signed with
+// and the enrollment hash, with which these Facts verify a retired fence's
+// signature themselves (task fh4) instead of trusting the tombstone.
 type Facts struct {
 	service    *fsservice.Service
 	enrollment viewcontrol.Enrollment
 	admissions []*Admission
 	restart    *Restart
+	retirement retirementAuthority
+}
+
+// retirementAuthority verifies retirement tombstones (task fh4).
+type retirementAuthority struct {
+	operator       ed25519.PublicKey
+	enrollmentHash string
+}
+
+// factsFence is one Fenced row. Retired is the tombstone of an operator
+// retirement (viewcontrol fenced_retirement.go, task fh4); a missing or
+// null Retired is an unretired fence, as for the controller.
+type factsFence struct {
+	Recall, Phase string
+	Sequence      uint64
+	Fence         uint64
+	Retired       *struct{ Signature []byte }
 }
 
 // factsLease is one ledger lease revision. Targeted (viewcontrol
@@ -69,16 +92,9 @@ type factsLedger struct {
 	// participants (viewcontrol participant_fence.go, task 0a4). They were
 	// dropped from the recall and get no event again. validFenced checks
 	// every entry against AckArchive and Fences before the participant
-	// check may leave the session out. Retired marks the tombstone of an
-	// operator retirement (viewcontrol fenced_retirement.go, task fh4),
-	// whose operator signature the controller verifies; here it only
-	// changes which rows the entry must (not) leave behind.
-	Fenced map[string]struct {
-		Recall, Phase string
-		Sequence      uint64
-		Fence         uint64
-		Retired       json.RawMessage
-	}
+	// check may leave the session out; a retired entry (factsFence) is
+	// verified against the operator signature and the rows it left.
+	Fenced     map[string]factsFence
 	AckArchive map[string]string
 }
 
@@ -100,8 +116,10 @@ var _ viewcontrol.Facts = (*Facts)(nil)
 
 // NewFacts requires a measured, still-live complete inventory for every domain.
 // No callback or claimed JSON can stand in for ObserveAdmission's private owner.
-func NewFacts(ctx context.Context, service *fsservice.Service, enrollment viewcontrol.Enrollment, admissions []*Admission) (*Facts, error) {
-	if service == nil || len(admissions) == 0 || len(admissions) > 64 || len(enrollment.Domains) == 0 {
+// operator is the public key the enrollment's operator signature verifies
+// with; it is also the only key a fenced-session retirement is accepted from.
+func NewFacts(ctx context.Context, service *fsservice.Service, enrollment viewcontrol.Enrollment, operator ed25519.PublicKey, admissions []*Admission) (*Facts, error) {
+	if service == nil || len(admissions) == 0 || len(admissions) > 64 || len(enrollment.Domains) == 0 || len(operator) != ed25519.PublicKeySize {
 		return nil, fsapi.Invalid
 	}
 	raw, err := json.Marshal(enrollment)
@@ -117,7 +135,7 @@ func NewFacts(ctx context.Context, service *fsservice.Service, enrollment viewco
 			return nil, fsapi.Permission
 		}
 	}
-	f := &Facts{service: service, enrollment: owned, admissions: append([]*Admission(nil), admissions...)}
+	f := &Facts{service: service, enrollment: owned, admissions: append([]*Admission(nil), admissions...), retirement: retirementAuthority{operator: bytes.Clone(operator), enrollmentHash: hashBytes(raw)}}
 	if err = f.CheckEnrollment(ctx, enrollment); err != nil {
 		return nil, err
 	}
@@ -498,7 +516,7 @@ func (f *Facts) ledger(ctx context.Context, raw json.RawMessage) (factsLedger, e
 	if err := f.CheckEnrollment(ctx, f.enrollment); err != nil {
 		return l, err
 	}
-	if len(raw) > f.enrollment.Bounds.LedgerBytes || json.Unmarshal(raw, &l) != nil || !viewcontrol.ValidLedgerSchema(l.Schema, len(l.Fenced)) || l.Fences == nil || !l.validFenced() {
+	if len(raw) > f.enrollment.Bounds.LedgerBytes || json.Unmarshal(raw, &l) != nil || !viewcontrol.ValidLedgerSchema(l.Schema, len(l.Fenced)) || l.Fences == nil || !l.validFenced(raw, f.retirement) {
 		return l, fsapi.Invalid
 	}
 	if err := viewcontrol.VerifyRetainedSources(ctx, f.service, raw); err != nil {
@@ -532,18 +550,19 @@ func (f *Facts) ledger(ctx context.Context, raw json.RawMessage) (factsLedger, e
 // physically certified STOPPED), its fence is still the one recorded at the
 // fence (a fenced domain never completes a recall again), and the current
 // recall issued it no event. A retired fence (task fh4) no longer has its
-// archived STOPPED; it must instead leave no row of its scope behind
-// (retiredClean), so a tombstone can never hide a live session's state.
-func (l factsLedger) validFenced() bool {
+// archived STOPPED; it must instead carry the operator's signature over its
+// exact row for this enrollment and leave no row of its scope behind
+// (validRetired), so a tombstone can never hide a live session's state.
+func (l factsLedger) validFenced(raw json.RawMessage, a retirementAuthority) bool {
 	for session, f := range l.Fenced {
 		d, ok := l.Domains[session]
 		if !ok || f.Recall == "" || viewcontrol.DomainFence(l.Fences, session) != f.Fence {
 			return false
 		}
-		if len(f.Retired) == 0 && !viewcontrol.ArchivedStopped(l.AckArchive, d.Domain.Scope, f.Recall) {
+		if f.Retired == nil && !viewcontrol.ArchivedStopped(l.AckArchive, d.Domain.Scope, f.Recall) {
 			return false
 		}
-		if len(f.Retired) != 0 && !l.retiredClean(d.Domain.Scope) {
+		if f.Retired != nil && !validRetired(raw, session, f, d.Domain.Scope, a) {
 			return false
 		}
 		if l.Recall != nil && len(l.Recall.Events[session]) != 0 {
@@ -551,6 +570,16 @@ func (l factsLedger) validFenced() bool {
 		}
 	}
 	return true
+}
+
+// validRetired verifies a retirement tombstone independently of the
+// controller: the operator's signature over the statement viewcontrol
+// builds for this exact row and enrollment, and the rows it must have
+// released, by the same check the controller applies
+// (viewcontrol.RetiredScopeClean on the same raw ledger).
+func validRetired(raw json.RawMessage, session string, f factsFence, scope guestbridge.Context, a retirementAuthority) bool {
+	statement := viewcontrol.NewFencedRetirement(a.enrollmentHash, session, f.Recall, f.Phase, f.Sequence, f.Fence)
+	return statement.Verify(a.operator, f.Retired.Signature) && viewcontrol.RetiredScopeClean(raw, scope)
 }
 
 // refuseFenced refuses every physical check for a fenced session, retired
@@ -562,27 +591,6 @@ func (l factsLedger) refuseFenced(scope guestbridge.Context) error {
 		return viewcontrol.ErrSessionFenced
 	}
 	return nil
-}
-
-// retiredClean reports whether the ledger holds no ticket, lease,
-// reservation or archived ACK of a retired fenced scope.
-func (l factsLedger) retiredClean(scope guestbridge.Context) bool {
-	for _, t := range l.Tickets {
-		if t.Scope.Session == scope.Session {
-			return false
-		}
-	}
-	for _, lease := range l.Leases {
-		if lease.Lease.Scope.Session == scope.Session {
-			return false
-		}
-	}
-	for _, r := range l.Reservations {
-		if r.Reservation.Scope.Session == scope.Session {
-			return false
-		}
-	}
-	return !viewcontrol.ArchivedACKs(l.AckArchive, scope)
 }
 
 // recallParticipantsComplete requires an event for exactly the recall's

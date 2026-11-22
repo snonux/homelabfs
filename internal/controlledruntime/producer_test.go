@@ -235,7 +235,7 @@ func newSourceRigDomainsOwnedSupervisor(t *testing.T, protocol guestbridge.Proto
 		}
 		return err
 	}))
-	r.facts, err = NewFacts(t.Context(), r.service, e, []*Admission{r.admission})
+	r.facts, err = NewFacts(t.Context(), r.service, e, operator.Public().(ed25519.PublicKey), []*Admission{r.admission})
 	require(t, err)
 	private := func() string { dir := r.temporary(); require(t, os.Chmod(dir, 0700)); return dir }
 	providers := map[string]*controlledvalidation.Provider{}

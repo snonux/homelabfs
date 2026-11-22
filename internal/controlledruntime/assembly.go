@@ -79,7 +79,7 @@ func Assemble(ctx context.Context, c AssemblyConfig) (*Assembly, error) {
 	}
 	a := &Assembly{Providers: map[string]*controlledvalidation.Provider{}}
 	var err error
-	a.Facts, err = NewFacts(ctx, c.Service, e, c.Admissions)
+	a.Facts, err = NewFacts(ctx, c.Service, e, c.Operator, c.Admissions)
 	if err != nil {
 		return a, fmt.Errorf("live Facts: %w", err)
 	}

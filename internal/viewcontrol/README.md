@@ -563,10 +563,15 @@ the current recall. Only then does `recallParticipantsComplete` leave it out,
 so a bad row cannot make the Facts certify a recall that silently excludes a
 live domain. The Facts accept schema 3 only with a fence and schema 2 only
 without one (`ValidLedgerSchema`). A retired fence (task fh4) is accepted
-without its archived STOPPED only if no ticket, lease, reservation or
-archived ACK of its scope is left (`retiredClean`), and every physical
-check of a fenced session, retired or not, is refused with
-`ErrSessionFenced` (`refuseFenced`), independently of the controller.
+without its archived STOPPED only if the Facts themselves verify the
+operator's signature over its exact row and this enrollment, with the
+operator public key the enrollment was signed with (`NewFacts` takes it;
+`validRetired`), and the ledger holds nothing of its scope but minimal
+family rows (`viewcontrol.RetiredScopeClean`, the same check the controller
+applies to the same bytes). Every physical check of a fenced session,
+retired or not, is refused with `ErrSessionFenced` (`refuseFenced`). Neither
+rule trusts the controller: a tombstone the operator did not sign, or one
+that hides rows, makes the whole ledger Invalid.
 
 *Early DRAINED.* A live participant's DRAINED, sent right after its own
 INSTALLED_DRAIN, waits BLOCKED for a peer's INSTALLED_DRAIN. Its bound now
@@ -607,35 +612,52 @@ word:
   never analysed), the session holds no active lease, and every reservation
   of it is CLOSED (its drain result protected; a fence leaves only drained
   FROZEN reservations, which finishRecall closes). A forged, foreign-
-  enrollment or unfenced statement is refused `Permission`, a statement
-  that does not match the fence row `Stale`.
+  enrollment or unfenced statement is refused `Permission`; a correctly
+  signed statement that does not match the fence row `Stale` (the signature
+  is checked first).
 - *What is released*, in one protected write with the tombstone: every
-  ticket row of the session and its Identities charge, every family it owns
-  with its latest retirement receipt, its lease and reservation rows, the
-  revision high-water of every lineage of those leases or recorded for it in
-  LineageFences, every AckArchive row of its scope and then every UUID
-  nothing names any more. Deleting families gives up the monotone numbers
-  that make recycling safe, which is sound only because the session is
-  never admitted again. Kept: its Domains entry (bounded by the
+  ticket row of the session and its Identities charge, the latest
+  retirement receipt of every family it owns, its lease and reservation
+  rows, the revision high-water of every lineage of those leases or recorded
+  for it in LineageFences, every AckArchive row of its scope and then every
+  UUID nothing names any more. Kept: its Domains entry (bounded by the
   enrollment's domain count, and the scope the tombstone is checked
-  against), its Fences entry and the Fenced row.
+  against), its Fences entry, the Fenced row and each of its families
+  reduced to `{High, Floor = High, Scope}`. Families are not a shared bound;
+  keeping their counters means ticket monotonicity does not rest on the
+  tombstone alone: every number the session ever used is at or below the
+  raised floor and gets only a rights-free RETIRED_ID, and a new one would
+  have to be High+1.
 - *The session stays refused.* The Fenced row stays, now with a `Retired`
   tombstone carrying the operator signature, so the ingress gate, every
   locked path, events() and sealable keep refusing it exactly as before. A
   reopened controller verifies the signature against its operator key and
   enrollment (`validRetiredFences`) and requires that no released row of
-  the scope is back (`validFenced`, `holdsSessionRows`); an unretired fence
-  still needs its archived STOPPED.
+  the scope is back (`validFenced`, `holdsSessionRows`, i.e.
+  `RetiredScopeClean`); an unretired fence still needs its archived STOPPED.
+  The statement builder, signature check and leftover check live in
+  `fenced_retirement_check.go` and are shared with the runtime Facts.
 - *Durability.* A crash before the write leaves the plain fence and the same
   signed command retires again; a crash after it leaves the tombstone and
   the command is an idempotent replay (nil). Failpoints `fenced-retire` and
   `fenced-retired-protected` mark both points.
-- *Not covered here.* The per-session provider's own claim ledger
-  (controlledvalidation) is not a shared bound and is untouched. Lineage
-  revisions written before q64 whose leases are already gone cannot be
-  attributed and stay. The command is a host API only: wiring it to the
-  controlled runtime's HSC1 control socket and an operator signing CLI
-  (alongside `hfs-retained9p-operator`) is a follow-up.
+- *Not covered here.*
+  - Provider-side obligations. The per-session provider's own database
+    (controlledvalidation) is not a shared bound and is untouched, so a
+    retirement drops the controller's side of obligations that provider may
+    still hold: a BLOCKED DIRTY_RESERVE ticket's protected `DeclinedGap`
+    whose provider `CloseEarmark` never finished, and any other open
+    earmark of the session. They stay in the provider's database, charged
+    only against that provider's own limits, and are never resumed: the
+    session is never admitted again.
+  - Retirement receipts written before q64 name no family (the family's
+    `Receipt` is empty), so they cannot be attributed to the session and
+    stay in `Retirements`.
+  - Lineage revisions written before q64 whose leases are already gone
+    cannot be attributed and stay.
+  - The command is a host API only: wiring it to the controlled runtime's
+    HSC1 control socket and an operator signing CLI (alongside
+    `hfs-retained9p-operator`) is a follow-up.
 
 OBSERVE's ledger evidence counts retired fences in `RetiredFenced` (included
 in `Fenced`).
