@@ -1734,7 +1734,7 @@ diff --git a/fs/9p/hfs_controlled_lifetime.inc b/fs/9p/hfs_controlled_lifetime.i
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_controlled_lifetime.inc
-@@ -0,0 +1,630 @@
+@@ -0,0 +1,636 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* Included by the owned provider. Local absence never substitutes for a floor.
 + */
@@ -1956,7 +1956,13 @@ new file mode 100644
 +	hfs_buf_literal(&expected, "{\"claim\":");
 +	hfs_buf_add(&expected, request->claim.data, request->claim.len);
 +	hfs_buf_literal(&expected, "}");
-+	err = hfs_control(session, "QUERY", &expected, true, &query);
++	/* dh4: this QUERY serves the GAP_RESOLVE above, so it inherits that
++	 * exemption (after_block): on a blocked session it keeps polling past
++	 * FETCH AGAIN instead of halting, blocking again and leaving another
++	 * uncertain candidate. QUERY itself stays non-exempt by name.
++	 */
++	err = hfs_control_flagged(session, "QUERY", &expected, true,
++				  hfs_after_block_operation("GAP_RESOLVE"), &query);
 +	if (err)
 +		goto out;
 +	err = hfs_received_original(session, query, "QUERY", &expected);

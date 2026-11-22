@@ -2173,23 +2173,43 @@ DIRTY_FREEZE, still halts at its first retry or poll. This is what the
 blocked-session rules above already promise: a lost or uncertain response
 "blocks new ordinary work", while "reserved control work remains available
 for reconciliation and drains"; a bound DRAIN_WRITE is an immutable byte
-obligation (`hfs_request_bind_drain`); and a lost GAP reply "retries that
+obligation (`hfs_request_bind_drain`, the minor >= 2 earmarked drain); and a lost GAP reply "retries that
 original Call in another reserved control cell" on the blocked session
 (`o04`). Admitting them and then killing them at the first poll kept
 neither promise. The exemption covers both forms of DRAIN_WRITE: the legacy
 opcode-classified control CALL and the minor >= 2 earmarked dirty drain
-(`hfs_request_drain`), whose CALL and QUERY polls pass the opcode. Exempt
-traffic is still bounded: it runs to its reply or its 30 s deadline, and
+(`hfs_request_drain`), whose CALL and QUERY polls pass the opcode. The
+byte-obligation argument covers only the earmarked drain; the exemption is
+also safe for the legacy control DRAIN_WRITE because exempting it reissues
+nothing (it only lets the one admitted exchange finish polling), and it has
+no kernel caller apart from the test (`tests/controlled`). Exempt traffic is
+still bounded: it runs to its reply or its 30 s deadline, and
 `transport_failed` (host gone: a deadline or ERROR UNAVAILABLE) halts it at
-its first retry like every exempt exchange (`zq3-r13`).
+its first retry like every exempt exchange (`zq3-r13`). An exempt
+DRAIN_WRITE that reaches its 30 s deadline on a stalled exporter therefore
+sets `transport_failed`, and later retirement traffic on that session halts
+at its first retry, as on a non-blocked session and as before `oc4`.
+
+The QUERY that `hfs_controlled_resolve_gap` (0005,
+`hfs_controlled_lifetime.inc`) sends right after GAP_RESOLVE serves that
+GAP_RESOLVE, so it inherits its exemption at the call site
+(`hfs_control_flagged(..., "QUERY", ..., true,
+hfs_after_block_operation("GAP_RESOLVE"), ...)`), the way other polls
+inherit theirs. QUERY is not exempt by name. Without it the QUERY still
+halted at its first FETCH AGAIN on a blocked session outside teardown, then
+blocked the session again and kept another uncertain candidate; `hfs_retire`
+reaches it outside teardown (from `hfs_call_reserve`'s exhaustion path and from
+`hfs_mmap.c`).
 
 - Patch 0002 (`hfs_policy.c`): `hfs_after_block_operation` lists
   DRAIN_WRITE and GAP_RESOLVE; the `hfs_policy.h` comment says why.
+- Patch 0005 (`hfs_controlled_lifetime.inc`): the gap QUERY passes the
+  GAP_RESOLVE exemption.
 - Patch 0003 (`hfs_session.c`): the `hfs_session_poll_halt` comment names
   the new exemptions. `hfs_terminal_candidate` called `hfs_controlled_owns`
   outside `#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED`, but
   `hfs_controlled.h` declares it only under that option, so a build with
-  the option off failed (implicit declaration, since `s04`). The check moved
+  the option off failed (implicit declaration, since `614` (e199627)). The check moved
   into `hfs_terminal_controlled_mismatch`, which is false without the
   option (no session is controlled then). A header stub was not used: the
   controlled fixtures define their own `hfs_controlled_owns`.
@@ -2203,9 +2223,16 @@ Tests:
   gap=false failed with -112.
 - `controlled_received/build.py` extracts the new helper with
   `hfs_terminal_candidate`.
+- `controlled_received gap` (`TestControlledReceivedActualGapLostReplies`):
+  after the lost GAP reply has blocked the session, the new consumer action
+  `AGAIN GAP_RESOLVE,QUERY 3` answers three local AGAINs to the FETCHes of
+  the retried GAP_RESOLVE and of its QUERY. `RESOLVE_GAP` must succeed,
+  `AGAIN_CHECK` sees all six served with the session still blocked and not
+  `transport_failed`, and the unknown-candidate count stays 2.
 - `fs/9p`, `net/9p` and `random.o` build with 0 warnings with
   `CONFIG_9P_FS_HOMELABFS_CONTROLLED` on and off.
 
 The series was regenerated with `export.py --task dh4` (0002:
-`hfs_policy.[ch]`; 0003: `hfs_session.c`). No candidate was rebuilt, booted
+`hfs_policy.[ch]`; 0003: `hfs_session.c`; 0005:
+`hfs_controlled_lifetime.inc`). No candidate was rebuilt, booted
 or admitted.

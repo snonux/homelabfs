@@ -1045,7 +1045,16 @@ func TestControlledReceivedActualGapLostReplies(t *testing.T) {
 	if floor, requests, unknown := receivedState(t, c, 0); floor != 0 || requests != 2 || unknown != 2 {
 		t.Fatalf("lost GAP destroyed ownership: %d/%d/%d", floor, requests, unknown)
 	}
+	// dh4: the lost GAP reply blocked the session. The retried GAP_RESOLVE
+	// and its QUERY are exempt, so both poll past the host's AGAIN and
+	// complete instead of halting with -EHOSTDOWN and leaving a third
+	// unknown candidate.
+	c.action("AGAIN", 0, "GAP_RESOLVE,QUERY 3", 0)
 	c.action("RESOLVE_GAP", 0, "", 0)
+	c.action("AGAIN_CHECK", 0, "", 0)
+	if floor, requests, unknown := receivedState(t, c, 0); floor != 0 || requests != 2 || unknown != 2 {
+		t.Fatalf("blocked GAP retry lost ownership: %d/%d/%d", floor, requests, unknown)
+	}
 	c.action("GAP_NEGATIVES", 0, "", 0)
 	c.action("FAULT", 0, "RETIRE 2", 0)
 	c.action("RETIRE", 0, "", -5)

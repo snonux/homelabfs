@@ -1046,8 +1046,8 @@ new file mode 100644
 + * the caller (hfs_control_flagged at admission, under session->lock): only
 + * retirement, release and cleanup traffic, plus the reserved drain and
 + * reconciliation work DRAIN_WRITE and GAP_RESOLVE (dh4), may continue on a
-+ * blocked session (hfs_after_block_operation). A clean unmount or a closing (failed, retained) mount is
-+ * teardown and continues too.
++ * blocked session (hfs_after_block_operation). A clean unmount or a closing
++ * (failed, retained) mount is teardown and continues too.
 + *
 + * kill_sb and hfs_mount_fail write unmounting/closing, then smp_wmb(), then
 + * blocked; the smp_rmb() here pairs with that, so a reader that sees blocked
@@ -1369,14 +1369,11 @@ new file mode 100644
 +	return NULL;
 +}
 +
-+/* A HELLO parse has no private Received authority. Its actual candidate
-+ * retains the complete carrier credit until json_free has freed the parse.
-+ */
 +/* A controlled session's terminal candidate must still own its carrier
 + * reservation and the session's terminal completion. hfs_controlled_owns is
 + * declared only with CONFIG_9P_FS_HOMELABFS_CONTROLLED (dh4: calling it
-+ * unguarded broke the build with the option off, since s04); without it no
-+ * session is controlled, so nothing can mismatch.
++ * unguarded broke the build with the option off, since 614 (e199627));
++ * without it no session is controlled, so nothing can mismatch.
 + */
 +static bool hfs_terminal_controlled_mismatch(struct hfs_session *session,
 +					     const struct hfs_candidate *candidate)
@@ -1461,6 +1458,9 @@ new file mode 100644
 +}
 +
 +#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++/* A HELLO parse has no private Received authority. Its actual candidate
++ * retains the complete carrier credit until json_free has freed the parse.
++ */
 +static void hfs_candidate_parse_put(void *opaque)
 +{
 +	struct hfs_candidate *candidate = opaque;

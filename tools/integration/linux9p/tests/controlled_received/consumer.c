@@ -204,6 +204,22 @@ static struct p9_client *busy_client;
 static unsigned busy_remaining, busy_injected;
 static bool busy_retry_pending;
 static unsigned long native_exchanges, busy_mark;
+/* dh4: AGAIN <op,op,...> <n> answers the FETCHes of the next exchange whose
+ * SEND carries each listed op with n local AGAIN replies before the native
+ * FETCH, so a blocked session's exempt exchanges must poll past AGAIN to
+ * complete. A served op is blanked from the list. */
+static char again_operations[64];
+static unsigned again_count, again_ops_left, again_remaining, again_injected, again_expected;
+static u64 again_cell;
+static bool again_armed;
+static bool again_take(const char *operation) {
+ char *at=again_operations;size_t n=strlen(operation);
+ while((at=strstr(at,operation))){
+  if((at==again_operations||at[-1]==',')&&(at[n]==','||!at[n])){memset(at,'.',n);return true;}
+  at+=n;
+ }
+ return false;
+}
 /* x84: observes allocations without failing them (x84_test.inc). */
 static void (*x84_allocation_hook)(size_t);
 bool primitive_allocation_size_failure(size_t length) {
@@ -249,8 +265,18 @@ static int primitive_rpc_exchange(struct p9_client *client,u16 tag,u8 op,u8 chan
    char operation[32];assert(hfs_json_string(original,hfs_json_field(original,0,"op"),operation,sizeof(operation))>=0);hfs_json_free(original);
    if(!strcmp(operation,fault_operation)){unsigned mode=fault_mode;fault_mode=0;if(mode==1)return -EIO;if(mode==2)fault_reply=true;else pending_scratch=!strcmp(operation,"RETIRE")?HFS_BODY_MAX:HFS_VIEW_BODY_MAX;}
   }
+  if(again_ops_left&&!again_armed){
+   const void *body=NULL;u32 total=0,body_len=0;u8 hash[32];struct hfs_json *original=NULL;char operation[32];
+   assert(!hfs_frame_decode_version(4,request,request_len,1,&(*fixtures[index].session).enrollment.session,cell,chunk,&total,hash,&body,&body_len));
+   if(!chunk&&total==body_len&&!hfs_json_parse(body,body_len,&original)){
+    if(hfs_json_string(original,hfs_json_field(original,0,"op"),operation,sizeof(operation))>=0&&again_take(operation)){again_armed=true;again_cell=cell;again_remaining=again_count;again_ops_left--;}
+    hfs_json_free(original);
+   }
+  }
   err=_send(carrier,index,tag,request,request_len);if(err){fprintf(stderr,"actual native SEND error %d tag%u cell%llu\n",err,tag,cell);return -err;}assert(*reply_len>=1);*(u8 *)reply=1;*reply_len=1;return 0;}
- assert(op==2&&*reply_len>1);size_t length=0;err=_fetch(carrier,index,cell,chunk,channel,(u8 *)reply+1,*reply_len-1,&length);
+ assert(op==2&&*reply_len>1);
+ if(again_armed&&cell==again_cell){if(again_remaining){again_remaining--;again_injected++;*(u8 *)reply=2;*reply_len=1;return 0;}again_armed=false;}
+ size_t length=0;err=_fetch(carrier,index,cell,chunk,channel,(u8 *)reply+1,*reply_len-1,&length);
  if(err==EAGAIN){*(u8 *)reply=2;*reply_len=1;return 0;}if(err){fprintf(stderr,"actual native FETCH error %d cell%llu channel%u revoked%d pending%d\n",err,cell,channel,carrier->revoked,carrier->pending);return -err;}if(fault_reply){fault_reply=false;return -EIO;}if(pending_scratch){fault_scratch=pending_scratch;pending_scratch=0;}*(u8 *)reply=3;*reply_len=length+1;return 0;
 }
 /* Actual net9p exchange body, with the native RPC/tag allocator substituted.
@@ -833,6 +859,22 @@ static void command(char *line) {
   struct hfs_session *session=&(*f->session);
   assert(!busy_client&&!busy_retry_pending&&!busy_remaining&&busy_injected);
   assert(!READ_ONCE(session->blocked)&&!session->allocation_uncertain&&list_empty(&session->uncertain));
+  done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"AGAIN")){
+  /* dh4: the premise is a blocked session outside teardown. */
+  struct hfs_session *session=&(*f->session);unsigned count=0;
+  assert(!again_ops_left&&!again_armed&&sscanf(line+consumed,"%63s %u",again_operations,&count)==2&&count);
+  assert(READ_ONCE(session->blocked)&&!session->closing&&!session->unmounting&&!READ_ONCE(session->transport_failed));
+  again_ops_left=1;for(const char *c=again_operations;*c;c++)again_ops_left+=*c==',';
+  again_count=count;again_expected=count*again_ops_left;again_injected=0;done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"AGAIN_CHECK")){
+  /* Every armed AGAIN was answered and polled past; the session stayed
+   * blocked (no reset) and was not marked transport_failed. */
+  struct hfs_session *session=&(*f->session);
+  assert(!again_ops_left&&!again_remaining&&!again_armed&&again_injected==again_expected);
+  assert(READ_ONCE(session->blocked)&&!READ_ONCE(session->transport_failed));
   done(id,0,NULL,0);return;
  }
  if(!strcmp(operation,"ISSUER")){unsigned capture=(unsigned)strtoul(line+consumed,NULL,10);assert(capture<f->nr_captures);f->credential=f->captures[capture];f->credentials=f->capture_bytes[capture];fixture_set_current(f);done(id,0,NULL,0);return;}
