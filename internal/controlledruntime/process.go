@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"syscall"
 
 	"github.com/snonux/homelabfs/internal/fsapi"
 	"golang.org/x/sys/unix"
@@ -191,16 +192,13 @@ func (s *Supervisor) launchObserved(ctx context.Context, spec Executable, observ
 	return result, nil
 }
 
+// pinExecutable copies the admitted exporter into the private owned root,
+// verifies size and SHA-256 of exactly the bytes written, and returns a fresh
+// read-only descriptor on that copy. Start execs the copy as /dev/fd/4, so
+// the executed image is the verified one with no path lookup (no TOCTOU).
 func (s *Supervisor) pinExecutable(spec Executable) (*os.File, error) {
-	if spec.SHA256 == ([32]byte{}) || len(spec.Args) > 64 {
-		return nil, fsapi.Invalid
-	}
-	argumentBytes := 0
-	for _, arg := range spec.Args {
-		argumentBytes += len(arg)
-		if argumentBytes > 65536 {
-			return nil, fsapi.Invalid
-		}
+	if err := checkExecutableSpec(spec); err != nil {
+		return nil, err
 	}
 	fd, err := unix.Open(spec.Path, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
@@ -215,29 +213,61 @@ func (s *Supervisor) pinExecutable(spec Executable) (*os.File, error) {
 	if uint32(st.Mode)&unix.S_IFMT != unix.S_IFREG || st.Mode&0022 != 0 || (st.Uid != 0 && st.Uid != uint32(os.Geteuid())) || st.Size < 1 || st.Size > maxExecutable {
 		return nil, fsapi.Permission
 	}
-	out, err := ownedFile(s.directory, "exporter", unix.O_RDWR|unix.O_CREAT|unix.O_EXCL, 0700)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = out.Close() }()
-	hash := sha256.New()
-	n, err := io.Copy(io.MultiWriter(out, hash), io.LimitReader(source, maxExecutable+1))
-	if err != nil {
-		return nil, err
-	}
-	if n != st.Size || !slices.Equal(hash.Sum(nil), spec.SHA256[:]) {
-		return nil, fmt.Errorf("exporter digest %s: %w", hex.EncodeToString(hash.Sum(nil)), fsapi.Permission)
-	}
-	if err = out.Chmod(0500); err != nil {
-		return nil, err
-	}
-	if err = out.Sync(); err != nil {
+	if err = s.writePinnedCopy(source, st.Size, spec.SHA256); err != nil {
 		return nil, err
 	}
 	if err = s.directory.Sync(); err != nil {
 		return nil, err
 	}
 	return ownedFile(s.directory, "exporter", unix.O_RDONLY, 0)
+}
+
+// checkExecutableSpec bounds the host-policy spec before any file is touched.
+func checkExecutableSpec(spec Executable) error {
+	if spec.SHA256 == ([32]byte{}) || len(spec.Args) > 64 {
+		return fsapi.Invalid
+	}
+	argumentBytes := 0
+	for _, arg := range spec.Args {
+		argumentBytes += len(arg)
+		if argumentBytes > 65536 {
+			return fsapi.Invalid
+		}
+	}
+	return nil
+}
+
+// writePinnedCopy creates, fills, verifies, seals (0500) and closes the
+// private copy while holding syscall.ForkLock for reading (nj4). Every Go
+// fork takes ForkLock for writing, so no fork in this process can happen while
+// the writable descriptor exists. O_CLOEXEC alone is not enough: a child
+// forked by a concurrent goroutine holds a copy of the descriptor until it
+// execs, and while any process holds the copy open for writing the later
+// exec of /dev/fd/4 fails with ETXTBSY (golang/go#22315). Forks wait for at
+// most one bounded (maxExecutable) copy plus fsync; readers do not block each
+// other. Non-Go forks (cgo) would not honour the lock; this package has none.
+func (s *Supervisor) writePinnedCopy(source io.Reader, size int64, digest [32]byte) error {
+	syscall.ForkLock.RLock()
+	defer syscall.ForkLock.RUnlock()
+	out, err := ownedFile(s.directory, "exporter", unix.O_RDWR|unix.O_CREAT|unix.O_EXCL, 0700)
+	if err != nil {
+		return err
+	}
+	// Runs before RUnlock (defers are LIFO): the writer is gone before any
+	// fork can proceed. An error path still closes it under the lock.
+	defer func() { _ = out.Close() }()
+	hash := sha256.New()
+	n, err := io.Copy(io.MultiWriter(out, hash), io.LimitReader(source, maxExecutable+1))
+	if err != nil {
+		return err
+	}
+	if n != size || !slices.Equal(hash.Sum(nil), digest[:]) {
+		return fmt.Errorf("exporter digest %s: %w", hex.EncodeToString(hash.Sum(nil)), fsapi.Permission)
+	}
+	if err = out.Chmod(0500); err != nil {
+		return err
+	}
+	return out.Sync()
 }
 
 func (e *exporter) live() error {
