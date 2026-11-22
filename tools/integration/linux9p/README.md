@@ -2075,14 +2075,18 @@ and a mutation run of 13 guards killed every mutant):
   accepted ordinary lease, and after a release (no recall), a further CREATE
   and a second advance the first stored reply is unadopted (`-EXDEV`) with no
   block, while the same reply without advance is the `-ESTALE` that blocks.
-  It needs 3h4's host, merged on main. `--scenario both` includes it.
+  It needs 3h4's host, merged on main. `--scenario both` selects it too
+  (its pattern is `^TestControlledReceivedActual`), but `both` currently
+  fails on main for other scenarios (task bh4: ProviderProducer,
+  SourceCorruption, FundedDirty and the 180 s run timeout), so run
+  `--scenario advance` on its own.
 
-Review round 1 (4h4): no safety finding. The bounded `transitions` wait,
-the unreadable-payload release and the comment fix above, and
-`hfs_lease_acquire_ex` (now `hfs_lease_acquire_valid` and
-`hfs_lease_acquire_grant`) and `hfs_view_target_decode` (now
-`hfs_view_local_target` and `hfs_view_target_journal`) split without a
-behaviour change.
+Review round 1 (4h4) found no safety issue. It led to the bounded
+`transitions` wait, the unreadable-payload release and the comment fix
+described above. Two functions were split without a behaviour change:
+`hfs_lease_acquire_ex` (now also `hfs_lease_acquire_valid` and
+`hfs_lease_acquire_grant`) and `hfs_view_target_decode` (now also
+`hfs_view_local_target` and `hfs_view_target_journal`).
 
 ## Cacheless means no mmapped inode, not no registered inode (`tj4`)
 
@@ -2236,3 +2240,112 @@ The series was regenerated with `export.py --task dh4` (0002:
 `hfs_policy.[ch]`; 0003: `hfs_session.c`; 0005:
 `hfs_controlled_lifetime.inc`). No candidate was rebuilt, booted
 or admitted.
+
+## Touch, advance error mapping and the mmapped-mark guards (`tg4`, `ch4`, `wj4`)
+
+Three small follow-ups, done together (worktree `kn1`).
+
+`tg4` (vf4 round-2 review), patch 0003 `hfs_inode.c`:
+
+- `hfs_setattr_supported` accepts `ATTR_TOUCH`. `utimensat(NULL)`,
+  `futimens(fd, NULL)` and a pair of `UTIME_NOW` (plain `touch`) all reach
+  `vfs_utimes` as `ATIME|MTIME|CTIME|TOUCH`, which got `EOPNOTSUPP` before any
+  CALL. `ATTR_TOUCH` is only a VFS permission hint, already enforced by
+  `may_setattr` in `notify_change` (owner, or write permission). The request
+  is sent as host-current atime and mtime (`atime_now`/`mtime_now`).
+- The `hfs_relookup` comment now names the two outcomes besides a positive
+  dentry. A directory alias makes `hfs_create_exists`' O_CREAT open fail with
+  `EISDIR`, and `hfs_link` returns `ESTALE` and drops the alias. A negative
+  race (the name is gone again) makes `atomic_open` fail with `ENOENT`, and
+  `hfs_link` returns `ESTALE`.
+- `hfs_atomic_open` moved below `hfs_create`, so the forward declaration is
+  gone. The missing blank lines after `hfs_create` and `hfs_namespace` are
+  back.
+- `tests/setattr`: `model.inc` adds `vfs_utimes` (fs/utimes.c), and
+  `test_touch` covers NULL times, both `UTIME_NOW` (`ATTR_TOUCH`, host-now
+  times) and an explicit pair (unchanged). On the pre-tg4 source the NULL
+  case fails (`vfs_utimes(&f, NULL) == 0`).
+
+`ch4` (4h4 round-2 review), patch 0004 `hfs_view.c`:
+
+- `hfs_view_advance` passes `-ETIMEDOUT`/`-EINTR` through only from
+  `hfs_view_transitions_bounded`. Any failure of the native target check is
+  a refusal (`-EXDEV`), even an `-ETIMEDOUT` or `-EINTR` from the provider.
+  The lease is unadopted either way.
+- The `hfs_view_transitions_bounded` comment lists the actual LIVE-phase
+  holders of `view->transitions`. Each one holds it only for a check under
+  `view->lock`: the REOPENED ACK check (`hfs_controlled_before_ack`, which
+  also takes `hfs_controlled_lock`), a STOP until it sets RECALLING, a seal,
+  `finish_drained` or install that refuses LIVE, the initial bind of a LIVE
+  view, an exact REOPEN replay, and a concurrent adoption's switch.
+- `view/test.c` `advance_release_checks`:
+  - a holder releases `transitions` after 7 jiffies and the adoption then
+    switches the target (revision + 1);
+  - the same with jiffies wrapping during the wait;
+  - a holder that never releases, with the deadline past a jiffies wrap,
+    ends with `-ETIMEDOUT` exactly 25 jiffies later;
+  - the provider check returning `-ETIMEDOUT` or `-EINTR` gives `-EXDEV`.
+    On the pre-ch4 source this case fails.
+- `view --pressure` `xq_advance_unreadable_acquire` runs the unreadable
+  expected target through the actual `hfs_lease_acquire_ex`. The harness now
+  compiles `hfs_lease.c` from `hfs_json_hash_fields` up to
+  `hfs_lease_acquire_ex`, renamed `actual_hfs_lease_acquire_ex` because the
+  observation cases keep the host-model fixture. It also compiles the actual
+  `hfs_cap_write`. `hfs_lease_own` and the ticket prepare/activate are
+  fixtures. The host answers a complete GRANTED lease (its id is the actual
+  `hfs_json_hash_fields`) on another target, and the bound payload is
+  truncated after binding. Result: `-EXDEV` with the lease decoded,
+  unadopted, not a candidate and not verified by the provider, owned for
+  release and holding the terminal ticket; no settle and no block. A mutant
+  that does not pass `unadopted` to `hfs_lease_decode` is killed. The
+  compat `struct hfs_cap` gains `json`/`rights` and `struct hfs_session`
+  gains `domain`/`enrollment.context`.
+- README nits: the `controlled_received/README.md` advance paragraph is
+  rewrapped. The 4h4 section no longer says `--scenario both` simply
+  includes the advance scenario: `both` fails on main (bh4). The review-round
+  sentence is reworded.
+
+`wj4` (tj4 review follow-ups), partly done:
+
+- (2) `hfs_view_release` also warns on `view->nr_mmapped` (a tripwire:
+  `nr_mmapped <= nr_mappings` and both drop together on unregister).
+- (3) `view/run.py` `mmap_mark_guard` now runs with and without
+  `--pressure`. It requires:
+  - in `hfs_mmap_file`, the `if (!err) {` that directly follows the
+    `hfs_view_mmap_inode(inode)` result, with `hfs_mmap_ops` installed once
+    and only inside that block;
+  - exactly one `vm_ops = &hfs_mmap_ops` in `fs/9p`, with `hfs_mmap_ops`
+    static to `hfs_mmap.c`;
+  - `hfs_file_fops`' `.mmap` is `hfs_mmap`, which sends a bridge session to
+    `hfs_mmap_file`.
+
+  Each of these mutants is refused: ops before the mark, ops unconditional,
+  no mark, an extra install in `hfs_file.c`, a route to `generic_file_mmap`,
+  another `.mmap`, and registration without the mark.
+- (4) `hfs_inode_layout_guard` (both modes) compares the members of
+  `tests/view/compat.h`'s hand-copied `struct hfs_inode` with
+  `fs/9p/hfs.h`, by name and order. A swapped pair is refused.
+- (1) Clearing the mark when the last VMA closes and no pages remain is
+  **deferred**. It stands on two points:
+  - A new lock order. A per-inode VMA count means adding `.open` and
+    `.close` to `hfs_mmap_ops`, and `->close` runs under `mmap_write_lock`.
+    To reach the view it would take `session->lock` (`hfs_view_get`) and
+    then `view->lock`, so `mmap_lock -> session->lock` would be new; all 50
+    `session->lock` sites would first need an audit showing that none
+    touches user memory or takes `mmap_lock`. Pinning the view from the VMA
+    instead changes view lifetime across retire and unmount.
+  - The VMA lifecycle is untestable here. The count is only as good as the
+    pairing of `->open` and `->close` on every duplication and removal path
+    (`dup_mmap`, `__split_vma` and its failure path, `copy_vma`,
+    `remove_vma`). Once `->close` exists, `vma_merge` refuses such
+    neighbours, so the merge paths that free a VMA without `->close`
+    (including `__mmap_region`'s post-`->mmap` merge) do not apply. But the
+    harness compiles neither `hfs_mmap_file` nor any VMA lifecycle, and no
+    guest kernel was booted, so none of this can be exercised.
+
+  The sticky mark only withholds advance (it never permits a wrong one), so
+  leaving it is the safe default. wj4 stays open for (1).
+
+The series was regenerated with `export.py --task kn1` (0003:
+`hfs_inode.c`; 0004: `hfs_view.c`). No candidate was rebuilt, booted or
+admitted.

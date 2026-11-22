@@ -144,3 +144,34 @@ static int vfs_remove_privs(struct fixture *f, bool keep_priv)
 		return 0;
 	return notify(f, &attr, keep_priv);
 }
+
+/* tg4: vfs_utimes (fs/utimes.c:20-70). times == NULL (utimensat(NULL),
+ * futimens(fd, NULL), utime(NULL)) and both UTIME_NOW are the same request:
+ * ATTR_CTIME|ATTR_MTIME|ATTR_ATIME|ATTR_TOUCH, no explicit time. futimens
+ * reaches vfs_utimes with the file's path, so one model covers both.
+ */
+static int vfs_utimes(struct fixture *f, const struct timespec64 *times)
+{
+	struct iattr attr = { .ia_valid = ATTR_CTIME | ATTR_MTIME | ATTR_ATIME };
+
+	if (times && times[0].tv_nsec == UTIME_NOW && times[1].tv_nsec == UTIME_NOW)
+		times = NULL;
+	if (times) {
+		if (times[0].tv_nsec == UTIME_OMIT)
+			attr.ia_valid &= ~ATTR_ATIME;
+		else if (times[0].tv_nsec != UTIME_NOW) {
+			attr.ia_atime = times[0];
+			attr.ia_valid |= ATTR_ATIME_SET;
+		}
+		if (times[1].tv_nsec == UTIME_OMIT)
+			attr.ia_valid &= ~ATTR_MTIME;
+		else if (times[1].tv_nsec != UTIME_NOW) {
+			attr.ia_mtime = times[1];
+			attr.ia_valid |= ATTR_MTIME_SET;
+		}
+		attr.ia_valid |= ATTR_TIMES_SET;
+	} else {
+		attr.ia_valid |= ATTR_TOUCH;
+	}
+	return notify(f, &attr, false);
+}

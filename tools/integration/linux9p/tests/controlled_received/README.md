@@ -350,8 +350,9 @@ features32767 scenario such as `terminal-smoke` reproduces the zq3-r3 oops
 ## Guest-requested view advance (`4h4`)
 
 `--scenario advance` (`TestControlledReceivedActualViewAdvance`) needs the
-xf4 host (task 3h4, merged on main); an older bridge refuses `"advance"`. After the initial lease's release (its domain recall
-acknowledged phase by phase) a CREATE moves the host cut, then:
+xf4 host (task 3h4, merged on main); an older bridge refuses `"advance"`.
+After the initial lease's release (its domain recall acknowledged phase by
+phase) a CREATE moves the host cut, then:
 
 * `ADVANCE ID SESSION` captures the cacheless view (`hfs_view_capture_ex`),
   calls actual `hfs_lease_acquire_ex` with `advance` and actual

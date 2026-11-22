@@ -35,6 +35,38 @@ def retirement_unlock_guard(source):
         raise SystemExit(f'refuse: session->retirement released outside hfs_retirement_unlock: {found}')
 
 
+def function_body(text, signature):
+    """The text of the function that starts with signature, up to its end."""
+    start = text.index(signature)
+    return text[start:text.index('\n}\n', start)]
+
+
+def mmap_install_guard(text):
+    """wj4: in hfs_mmap_file, the mark's result is tested by the `if (!err) {`
+    right after it, and hfs_mmap_ops is installed once, inside that block."""
+    body = function_body(text, '\nint hfs_mmap_file(')
+    install = 'vma->vm_ops = &hfs_mmap_ops;'
+    mark = re.search(r'\n\terr = [^;]*hfs_view_mmap_inode\(inode\);\n\tif \(!err\) \{\n', body)
+    if (not mark or 'hfs_view_register_inode' in text or
+            body.count('hfs_view_mmap_inode(') != 1):
+        raise SystemExit('refuse: hfs_mmap_file must mark the inode with hfs_view_mmap_inode, '
+                         'then test its result, before installing hfs_mmap_ops')
+    block = body[mark.end():body.index('\n\t}\n', mark.end())]
+    if body.count(install) != 1 or install not in block:
+        raise SystemExit('refuse: hfs_mmap_ops must be installed only after a successful mark')
+
+
+def mmap_route_guard(files):
+    """wj4: hfs_file_fops' .mmap is hfs_mmap, which sends a bridge session to
+    hfs_mmap_file (the provider's own mmap serves only non-bridge sessions)."""
+    route = function_body(files, '\nstatic int hfs_mmap(struct file *file, struct vm_area_struct *vma)')
+    fops = files[files.index('const struct file_operations hfs_file_fops = {'):]
+    fops = fops[:fops.index('\n};')]
+    if ('return session->bridge_minor ? hfs_mmap_file(file, vma) :' not in route or
+            not re.search(r'\n\t\.mmap = hfs_mmap,\n', fops)):
+        raise SystemExit('refuse: hfs_file_fops must route a bridge session mmap to hfs_mmap_file')
+
+
 def mmap_mark_guard(source):
     """tj4: hfs_mmap_file is not compiled by this harness, so the source is
     checked: it marks the inode mmapped (hfs_view_mmap_inode, which the view
@@ -42,15 +74,51 @@ def mmap_mark_guard(source):
     hfs_mmap.c never registers through the unmarked hfs_view_register_inode.
     Otherwise a mapped inode would leave the view cacheless and xf4 advance
     could adopt a new target under its page cache.
+
+    wj4 (tj4 review): run with and without --pressure, and also require
+    - hfs_mmap_ops installed only inside the `if (!err) {` block that
+      directly follows the mark's result (a failed mark installs nothing);
+    - exactly one `vm_ops = &hfs_mmap_ops` in fs/9p (that one), with
+      hfs_mmap_ops static to hfs_mmap.c and `&hfs_mmap_ops` used nowhere
+      else there (kn1 review 1: no indirect install through a variable);
+    - hfs_file_fops' .mmap is hfs_mmap, which routes bridge sessions to
+      hfs_mmap_file.
     """
     text = (source / 'fs/9p/hfs_mmap.c').read_text()
-    start = text.index('\nint hfs_mmap_file(')
-    body = text[start:text.index('\n}\n', start)]
-    mark = body.find('hfs_view_mmap_inode(inode)')
-    ops = body.find('vma->vm_ops = &hfs_mmap_ops;')
-    if mark < 0 or ops < 0 or mark > ops or 'hfs_view_register_inode' in text:
-        raise SystemExit('refuse: hfs_mmap_file must mark the inode with hfs_view_mmap_inode '
-                         'before installing hfs_mmap_ops')
+    mmap_install_guard(text)
+    installs = []
+    for path in sorted((source / 'fs/9p').rglob('*')):
+        if path.suffix in ('.c', '.h', '.inc') and path.is_file():
+            installs += [path.name] * len(re.findall(
+                r'vm_ops\s*=\s*&\s*hfs_mmap_ops\b', path.read_text(errors='replace')))
+    # kn1 review 1: hfs_mmap_ops is referenced once in hfs_mmap.c (that
+    # install), so an indirect install through a variable is refused too.
+    if installs != ['hfs_mmap.c'] or len(re.findall(r'&\s*hfs_mmap_ops\b', text)) != 1 or \
+            'static const struct vm_operations_struct hfs_mmap_ops = {' not in text:
+        raise SystemExit(f'refuse: hfs_mmap_ops installed outside hfs_mmap_file: {installs}')
+    mmap_route_guard((source / 'fs/9p/hfs_file.c').read_text())
+
+
+def struct_fields(text, name):
+    """The member names of `struct name { ... };` in text, in order, with
+    comments dropped (one name per declaration, as both copies write them)."""
+    start = text.index(f'struct {name} {{')
+    body = text[text.index('{', start) + 1:text.index('};', start)]
+    body = re.sub(r'/\*.*?\*/', '', body, flags=re.S)
+    return [re.search(r'(\w+)\s*(\[[^]]*\])?\s*$', decl).group(1)
+            for decl in body.split(';') if decl.strip()]
+
+
+def hfs_inode_layout_guard(source, compat):
+    """wj4 (tj4 review): compat.h hand-copies struct hfs_inode with
+    userspace member types; its members must stay those of fs/9p/hfs.h, by
+    name and in order, so a new or moved member (as view_mmapped was in tj4)
+    fails here instead of leaving the harness on a stale layout."""
+    actual = struct_fields((source / 'fs/9p/hfs.h').read_text(), 'hfs_inode')
+    copied = struct_fields(compat.read_text(), 'hfs_inode')
+    if actual != copied:
+        raise SystemExit(f'refuse: tests/view/compat.h struct hfs_inode {copied} '
+                         f'differs from fs/9p/hfs.h {actual}')
 
 
 def main():
@@ -103,9 +171,11 @@ def main():
                 ('fs/9p/hfs_mmap.c', 'static bool hfs_mmap_fault_final(', '\nstatic vm_fault_t hfs_mmap_fault('),
                 ('fs/9p/hfs_mmap.c', 'static vm_fault_t hfs_mmap_mkwrite(', '\nstatic const struct vm_operations_struct'),
                 ('fs/9p/hfs_session.c', 'int hfs_result_code(', '\nstatic int hfs_result_validate('),
-                # 2f4: hfs_token_equal too, for hfs_view_exchange.
-                ('fs/9p/hfs_lease.c', 'static int hfs_copy_json(', '\nstatic int hfs_hex32('),
-                ('fs/9p/hfs_lease.c', 'static int hfs_u64_field(', '\nstatic int hfs_normal_target('),
+                # ch4: hfs_cap_write, for hfs_lease_acquire_ex's payload.
+                ('fs/9p/hfs_session.c', 'void hfs_cap_write(', '\nvoid hfs_args_object('),
+                # 2f4: hfs_token_equal too, for hfs_view_exchange. ch4:
+                # hfs_json_hash_fields and hfs_hex32, for hfs_lease_decode_check.
+                ('fs/9p/hfs_lease.c', 'int hfs_json_hash_fields(', '\nstatic int hfs_normal_target('),
                 ('fs/9p/hfs_lease.c', 'int hfs_dirty_drain(', None)):
             start = inputs[filename].index(first)
             source.append(inputs[filename][start:inputs[filename].index(last, start)] if last else inputs[filename][start:])
@@ -152,13 +222,34 @@ def main():
         # hfs_view_grant_moved and hfs_lease_decode_target (the advance
         # classification) are compiled too; hfs_view_advance_target and
         # hfs_view_advance_supported are fixtures.
+        # ch4 (4h4 round-2 review): on to hfs_lease_acquire_ex, so
+        # xq_advance_unreadable runs through the actual acquisition (decode,
+        # unadopted build); hfs_lease_own, the ticket allocation and
+        # activation are fixtures. Its definition is renamed, since the
+        # observation cases keep their host-model hfs_lease_acquire_ex.
         lease = inputs['fs/9p/hfs_lease.c']
         start = lease.index('struct hfs_grant_settle {')
         source.append('#define hfs_received_source_ex test_received_source_ex')
-        source.append(lease[start:lease.index('\nstatic int hfs_lease_decode_check(', start)])
+        # Only hfs_lease_access needs -Wformat off: it prints a u64 with
+        # %llu (the kernel's u64 is unsigned long long, the harness's
+        # uint64_t is unsigned long). kn1 review 1: just that function.
+        access = lease.index('static void hfs_lease_access(', start)
+        source.append(lease[start:access])
+        source.append('#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wformat"')
+        source.append(lease[access:lease.index('\n}\n', access) + 3])
+        source.append('#pragma GCC diagnostic pop')
+        source.append(lease[lease.index('\n}\n', access) + 3:
+                            lease.index('\nstatic int hfs_lease_own(', start)])
+        start = lease.index('/* The arguments of hfs_lease_acquire_ex')
+        source.append('#define hfs_lease_acquire_ex actual_hfs_lease_acquire_ex')
+        source.append(lease[start:lease.index('\nint hfs_lease_acquire(', start)])
+        source.append('#undef hfs_lease_acquire_ex')
+    # wj4: the mmap mark and hfs_inode layout guards run in both modes (they
+    # read only the source and compat.h).
+    mmap_mark_guard(args.source)
+    hfs_inode_layout_guard(args.source, here / 'compat.h')
     if args.pressure:
         retirement_unlock_guard(args.source)
-        mmap_mark_guard(args.source)
     (args.output / 'production.c').write_text('\n'.join(source) + '\n')
     (args.output / 'test.c').write_bytes(b'#include \"compat.h\"\n' + ((here.parent / 'pressure' if args.pressure else here) / 'test.c').read_bytes())
     (args.output / 'compat.h').write_bytes((here / 'compat.h').read_bytes() + ((here.parent / 'pressure/compat_extra.h').read_bytes() if args.pressure else b''))
