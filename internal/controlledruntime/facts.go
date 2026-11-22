@@ -118,6 +118,9 @@ var _ viewcontrol.Facts = (*Facts)(nil)
 // No callback or claimed JSON can stand in for ObserveAdmission's private owner.
 // operator is the public key the enrollment's operator signature verifies
 // with; it is also the only key a fenced-session retirement is accepted from.
+// The caller must pass the same key as viewcontrol.Config.Operator (Assemble
+// and Restart do): NewFacts cannot check it, and a different key fails closed
+// (every physical check after a retirement would refuse the ledger).
 func NewFacts(ctx context.Context, service *fsservice.Service, enrollment viewcontrol.Enrollment, operator ed25519.PublicKey, admissions []*Admission) (*Facts, error) {
 	if service == nil || len(admissions) == 0 || len(admissions) > 64 || len(enrollment.Domains) == 0 || len(operator) != ed25519.PublicKeySize {
 		return nil, fsapi.Invalid
