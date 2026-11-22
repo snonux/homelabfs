@@ -214,9 +214,45 @@ static void advance_refused(struct hfs_view *view, struct advance_case *c)
    assert(!view->target_hash[0] && c->stamp.revision == stamped);
 }
 
+/* tj4: registration alone stays cacheless (capture hint and adoption); an
+ * mmapped inode refuses both, a repeated mmap counts once, and unregistering
+ * (eviction) clears the mark and the count, so the view is cacheless again.
+ */
+static void advance_mapping_checks(struct hfs_view *view, struct advance_case *c,
+                                   struct hfs_inode *object)
+{
+   struct hfs_view_stamp stamp;
+   bool cacheless = false;
+
+   INIT_LIST_HEAD(&object->view_list);
+   assert(!hfs_view_register_inode(&object->inode) && view->nr_mappings == 1);
+   assert(!view->nr_mmapped && !object->view_mmapped);
+   advance_setup(view, c); /* asserts the capture hint is cacheless */
+   assert(!hfs_view_capture_ex(view, &stamp, &c->target, &cacheless) && cacheless);
+   assert(!hfs_view_advance(view, &c->lease, &c->stamp, &c->target, jiffies + 1000));
+   assert(view->revision == c->revision + 1 && view->nr_mappings == 1);
+   advance_setup(view, c);
+   assert(!hfs_view_mmap_inode(&object->inode) && !hfs_view_mmap_inode(&object->inode));
+   assert(view->nr_mappings == 1 && view->nr_mmapped == 1 && object->view_mmapped);
+   assert(!hfs_view_capture_ex(view, &stamp, &c->target, &cacheless) && !cacheless);
+   advance_refused(view, c);
+   hfs_view_unregister_inode(&object->inode);
+   assert(!view->nr_mappings && !view->nr_mmapped && !object->view_mmapped);
+   assert(list_empty(&object->view_list));
+   /* An mmap of a not yet registered inode registers and marks it at once. */
+   assert(!hfs_view_mmap_inode(&object->inode));
+   assert(view->nr_mappings == 1 && view->nr_mmapped == 1 && object->view_mmapped);
+   hfs_view_unregister_inode(&object->inode);
+   assert(!view->nr_mappings && !view->nr_mmapped);
+   advance_setup(view, c);
+}
+
 /* The cacheless hint and the re-check refuse every kind of target-bound
- * state: a cached page, a mapping, dirty pages and packages, page grants, an
- * admitted token and a published observation.
+ * state: a cached page, an mmapped inode, dirty pages and packages, page
+ * grants, an admitted token and a published observation. tj4: a registered
+ * but never-mmapped inode (the mount root, any looked-up inode) is only STOP
+ * inventory and keeps the view cacheless; once it is mmapped it does not,
+ * until it leaves the view, which also takes it out of nr_mmapped.
  */
 static void advance_state_checks(struct hfs_session *session, struct hfs_view *view,
                                  struct advance_case *c)
@@ -237,12 +273,7 @@ static void advance_state_checks(struct hfs_session *session, struct hfs_view *v
    advance_refused(view, c);
    hfs_view_page_put(cached);
    assert(!view->nr_cached);
-   advance_setup(view, c);
-   INIT_LIST_HEAD(&object.view_list);
-   assert(!hfs_view_register_inode(&object.inode) && view->nr_mappings == 1);
-   assert(!hfs_view_capture_ex(view, &stamp, &c->target, &cacheless) && !cacheless);
-   advance_refused(view, c);
-   hfs_view_unregister_inode(&object.inode);
+   advance_mapping_checks(view, c, &object);
    for (unsigned int i = 0; i < ARRAY_SIZE(counters); i++) {
       advance_setup(view, c);
       (*counters[i])++;

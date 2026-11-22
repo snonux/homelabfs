@@ -1053,15 +1053,20 @@ static void retry_reissue(struct hfs_session *session)
  assert(!hfs_reissue(session,&err,deadline,"LOOKUP") && err==-ETIMEDOUT);
  assert(strstr(last_warning,"LOOKUP re-issues exhausted after the view target kept moving (-ETIMEDOUT)"));
 }
-/* xf4: the observation path of a guest-requested view advance. The view is
- * made cacheless by unregistering the main mapping (test_inode); every case
- * restores the first target and the mapping.
+/* xf4: the observation path of a guest-requested view advance. tj4
+ * (zq3-r20): the main inode (test_inode) stays registered throughout, never
+ * mmapped, as the mount root of every live mount is; the view is cacheless
+ * all the same. Every case restores the first target and that registration.
  */
 static struct hfs_inode *test_inode;
+static void advance_registered(struct hfs_view *view)
+{
+ assert(view->nr_mappings==1 && !view->nr_mmapped && !test_inode->view_mmapped);
+ assert(!list_empty(&test_inode->view_list));
+}
 static void advance_begin(void)
 {
- hfs_view_unregister_inode(&test_inode->inode);
- assert(!test_session->view->nr_mappings);
+ advance_registered(test_session->view);
  advance_supported=host_advances=true;advance_verify_err=0;advance_verifies=0;
 }
 static void advance_finish(struct hfs_view *view,int reserved)
@@ -1070,11 +1075,13 @@ static void advance_finish(struct hfs_view *view,int reserved)
  advance_supported=host_advances=false;
  if(view->target_hash[0])same_target_recall(view);
  assert(!view->target_hash[0] && !test_session->blocked);
- assert(!hfs_view_register_inode(&test_inode->inode) && view->nr_mappings==1);
+ assert(!hfs_view_register_inode(&test_inode->inode)); // idempotent, or after an eviction
+ advance_registered(view);
 }
 /* A cacheless view requests advance and adopts the grant on the host's
  * current cut in the same syscall: one acquisition, no recall, the target
- * switched, revision + 1, the observation re-stamped and published.
+ * switched, revision + 1, the observation re-stamped and published. tj4:
+ * with the never-mmapped inode registered before, during and after.
  */
 static void retry_advance_adopted(struct hfs_view *view,int reserved)
 {
@@ -1088,6 +1095,7 @@ static void retry_advance_adopted(struct hfs_view *view,int reserved)
  assert(view->target.len==7 && !memcmp(view->target.data,"{\"t\":3}",7));
  assert(observation->lease==granted[0] && !granted[0]->advance && !granted[0]->unadopted);
  assert(observation->target.len==7 && !memcmp(observation->target.data,"{\"t\":3}",7));
+ advance_registered(view);
  retry_end(cookie);advance_finish(view,reserved);
 }
 /* Annotation (b) of the host review: a readmitted PENDING advance ticket
@@ -1119,14 +1127,17 @@ static void retry_advance_refused(struct hfs_view *view,int reserved,enum retry_
  }
  run_cleanups();retry_end(cookie);advance_finish(view,reserved);
 }
-/* A view with mmap pages, a registered mapping, or a provider that cannot
- * verify an advance never requests one (today's request bytes).
+/* A view with mmap pages, an mmapped inode, or a provider that cannot
+ * verify an advance never requests one (today's request bytes). tj4: the
+ * inode's mmap mark (hfs_view_mmap_inode, as hfs_mmap_file sets it) alone
+ * withholds advance; only its eviction (hfs_evict_inode) clears it.
  */
 static void retry_advance_never(struct hfs_view *view,int reserved)
 {
  void *cookie;
  host_advances=advance_supported=true;advance_verifies=0;
- assert(!retry_begin(HOOK_NONE,0,&cookie));retry_published(view,cookie); // mapping registered
+ assert(!hfs_view_mmap_inode(&test_inode->inode) && view->nr_mmapped==1);
+ assert(!retry_begin(HOOK_NONE,0,&cookie));retry_published(view,cookie); // inode mmapped
  assert(acquire_calls==1 && !acquire_advance[0] && !advance_verifies && !view->target_hash[0]);
  retry_end(cookie);retry_no_leaks(reserved);
  // A mapped page of the mmap cache (the cached page alone is view/'s case).
@@ -1136,8 +1147,10 @@ static void retry_advance_never(struct hfs_view *view,int reserved)
  assert(acquire_calls==1 && !acquire_advance[0] && !advance_verifies);
  retry_end(cookie);retry_no_leaks(reserved);
  if(view->nr_cached)assert(!hfs_mmap_pressure(view,true)); // a recall may have dropped it
- assert(!view->nr_cached);
- hfs_view_unregister_inode(&test_inode->inode);
+ assert(!view->nr_cached && view->nr_mmapped==1);
+ hfs_view_unregister_inode(&test_inode->inode); // its eviction
+ assert(!view->nr_mappings && !view->nr_mmapped && !test_inode->view_mmapped);
+ assert(!hfs_view_register_inode(&test_inode->inode)); // looked up again: unmapped
  advance_supported=false; // cacheless, but no provider check
  assert(!retry_begin(HOOK_NONE,0,&cookie));retry_published(view,cookie);
  assert(acquire_calls==1 && !acquire_advance[0]);
@@ -1491,7 +1504,7 @@ static void decode_checks(void)
 {
  struct hfs_view *view=test_session->view;struct hfs_lease lease,adopted;
  struct hfs_view_stamp stamp;struct hfs_buf target={0};u64 before;
- assert(view->phase==HFS_VIEW_LIVE && view->target.len==2 && !view->nr_mappings);
+ assert(view->phase==HFS_VIEW_LIVE && view->target.len==2 && view->nr_mappings==1 && !view->nr_mmapped);
  // An advance candidate is never published before its adoption, even at
  // the view's current stamp and target hash.
  struct hfs_observation unadopted={.view=view,.lease=&lease};
@@ -1614,8 +1627,9 @@ int main(void)
  observation_retry_checks(&session);
  // 2f4: the actual hfs_view_exchange on a verified GRANTED that is not current.
  grant_settle_checks();
- // xf4: the actual decode classification of an advance grant (cacheless view).
- hfs_view_unregister_inode(&inode.inode);decode_checks();assert(!hfs_view_register_inode(&inode.inode));
+ // xf4: the actual decode classification of an advance grant (cacheless
+ // view; tj4: with the never-mmapped inode still registered).
+ decode_checks();
  // A source verifier refusal cannot manufacture DRAINED or reopen.
  clean_page(session.view,&mapping,0);invalid_source=1;
  assert(hfs_mmap_mkwrite(&vmf)==VM_FAULT_SIGBUS && session.view->phase==HFS_VIEW_STOPPED);

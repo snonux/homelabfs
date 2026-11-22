@@ -451,7 +451,7 @@ diff --git a/fs/9p/hfs_view.h b/fs/9p/hfs_view.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.h
-@@ -0,0 +1,325 @@
+@@ -0,0 +1,333 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_VIEW_H
 +#define FS_9P_HFS_VIEW_H
@@ -623,7 +623,14 @@ new file mode 100644
 +	u64 revision;
 +	u64 sequence;
 +	u32 active;
++	/* Registered inodes (view->mappings): the STOP/recall inventory. */
 +	u32 nr_mappings;
++	/* tj4: those of them that were ever mmapped (hfs_inode.view_mmapped).
++	 * The xf4 cacheless test counts these, not nr_mappings: the mount root
++	 * and every looked-up inode are registered without holding any
++	 * target-bound state (hfs_view_cacheless_locked).
++	 */
++	u32 nr_mmapped;
 +	u32 nr_cached;
 +	bool quiescent;
 +	enum hfs_view_phase phase;
@@ -727,6 +734,7 @@ new file mode 100644
 +int hfs_view_new(struct hfs_session *session, const uuid_t *generation);
 +int hfs_view_free(struct hfs_session *session);
 +int hfs_view_register_inode(struct inode *inode);
++int hfs_view_mmap_inode(struct inode *inode);
 +void hfs_view_unregister_inode(struct inode *inode);
 +int hfs_view_bind_initial(struct hfs_view *view, const struct hfs_lease *lease);
 +int hfs_view_capture(struct hfs_view *view, struct hfs_view_stamp *stamp,
@@ -781,7 +789,7 @@ diff --git a/fs/9p/hfs_view.c b/fs/9p/hfs_view.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.c
-@@ -0,0 +1,1447 @@
+@@ -0,0 +1,1507 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Physical retained-cache admission and all-alias PTE/TLB/MMU quiescence. */
 +#include <linux/mm.h>
@@ -938,41 +946,87 @@ new file mode 100644
 +	return err;
 +}
 +
-+int hfs_view_register_inode(struct inode *inode)
++/* Caller holds view->lock: put object on the STOP/recall inventory
++ * (view->mappings) unless it is already there. A new registration needs a
++ * LIVE view with room; an existing one stays valid in any phase.
++ */
++static int hfs_view_link_locked(struct hfs_view *view, struct hfs_inode *object)
++{
++	if (!list_empty(&object->view_list))
++		return 0;
++	if (view->phase != HFS_VIEW_LIVE)
++		return -EAGAIN;
++	if (view->nr_mappings == HFS_IDENTITIES_MAX)
++		return -ENOSPC;
++	list_add_tail(&object->view_list, &view->mappings);
++	view->nr_mappings++;
++	return 0;
++}
++
++/* Register inode with its session's view. tj4: mmapped also marks it as
++ * mapped (view_mmapped, view->nr_mmapped) in the same critical section, so
++ * a concurrent hfs_view_advance either sees the mark in its re-check and
++ * refuses, or switched the target before this mapping exists. The mark is
++ * only set on a registered inode and only cleared when it leaves the view,
++ * so nr_mmapped <= nr_mappings and no path can unbalance it.
++ */
++static int hfs_view_register(struct inode *inode, bool mmapped)
 +{
 +	struct hfs_view *view = hfs_view_get(HFS_S(inode));
++	struct hfs_inode *object = HFS_I(inode);
 +	unsigned long flags;
-+	int err = 0;
++	int err;
 +
 +	if (!view)
 +		return -ESTALE;
 +	spin_lock_irqsave(&view->lock, flags);
-+	if (!list_empty(&HFS_I(inode)->view_list)) {
-+		err = 0;
-+	} else if (view->phase != HFS_VIEW_LIVE) {
-+		err = -EAGAIN;
-+	} else if (view->nr_mappings == HFS_IDENTITIES_MAX) {
-+		err = -ENOSPC;
-+	} else {
-+		list_add_tail(&HFS_I(inode)->view_list, &view->mappings);
-+		view->nr_mappings++;
++	err = hfs_view_link_locked(view, object);
++	if (!err && mmapped && !object->view_mmapped) {
++		object->view_mmapped = true;
++		view->nr_mmapped++;
 +	}
 +	spin_unlock_irqrestore(&view->lock, flags);
 +	hfs_view_put(view);
 +	return err;
 +}
 +
++/* Every inode of a bridge session (hfs_inode_get): inventory only. */
++int hfs_view_register_inode(struct inode *inode)
++{
++	return hfs_view_register(inode, false);
++}
++
++/* tj4: hfs_mmap_file, before it installs hfs_mmap_ops. Only a mapped inode
++ * can fault pages into the view cache, carry PTEs or take PAGE grants, so
++ * only it makes the view non-cacheless. The mark is sticky until eviction
++ * (a munmap or a later mmap_region failure leaves it set), which only
++ * withholds advance, never permits it wrongly.
++ */
++int hfs_view_mmap_inode(struct inode *inode)
++{
++	return hfs_view_register(inode, true);
++}
++
++/* Eviction: leave the inventory and, if it was mapped, the mmapped count.
++ * A live VMA pins its file and so its inode, so a mapped inode only gets
++ * here once no mapping of it remains.
++ */
 +void hfs_view_unregister_inode(struct inode *inode)
 +{
 +	struct hfs_view *view = hfs_view_get(HFS_S(inode));
++	struct hfs_inode *object = HFS_I(inode);
 +	unsigned long flags;
 +
 +	if (!view)
 +		return;
 +	spin_lock_irqsave(&view->lock, flags);
-+	if (!list_empty(&HFS_I(inode)->view_list)) {
-+		list_del_init(&HFS_I(inode)->view_list);
++	if (!list_empty(&object->view_list)) {
++		list_del_init(&object->view_list);
 +		view->nr_mappings--;
++		if (object->view_mmapped) {
++			object->view_mmapped = false;
++			view->nr_mmapped--;
++		}
 +	}
 +	spin_unlock_irqrestore(&view->lock, flags);
 +	hfs_view_put(view);
@@ -1019,7 +1073,7 @@ new file mode 100644
 +}
 +
 +/* xf4: the view holds no target-bound state, under view->lock: no cached
-+ * page (the mmap page cache), no registered mapping, no dirty page or dirty
++ * page (the mmap page cache), no mmapped inode, no dirty page or dirty
 + * package (DIRTY_RESERVE reservations), no PAGE grant, no admitted physical
 + * token and no published observation. Such a view can adopt a newer cut
 + * without a recall: a recall's guest-side effect on it is only "target :=
@@ -1027,13 +1081,23 @@ new file mode 100644
 + * dentries are not view state (refreshed per permission check; dentries
 + * revalidate through an observation). view->reservation is the view's own
 + * memory credit, not a dirty reservation, so it does not count.
++ *
++ * tj4 (zq3-r20): registered inodes (view->mappings, nr_mappings) are not
++ * counted, only mmapped ones (nr_mmapped). hfs_inode_get registers every
++ * inode, so the mount root alone kept every live view non-cacheless and
++ * advance was never sent. A registered, never-mmapped inode holds nothing
++ * bound to the target: read_iter/write_iter go over the bridge (hfs_io),
++ * hfs_cache_aops has no read_folio, and the only page-cache insertion,
++ * PTE and PAGE grant come from the hfs_mmap_ops fault path, which
++ * hfs_mmap_file installs only after hfs_view_mmap_inode marked the inode.
++ * view->mappings stays the STOP/recall inventory, exactly as before.
 + */
 +static bool hfs_view_cacheless_locked(const struct hfs_view *view)
 +{
-+	return !view->nr_cached && !view->nr_mappings && !view->nr_dirty &&
++	return !view->nr_cached && !view->nr_mmapped && !view->nr_dirty &&
 +	       !view->nr_dirty_packages && !view->nr_grants && !view->active &&
 +	       !view->nr_observations && list_empty(&view->cache) &&
-+	       list_empty(&view->dirty) && list_empty(&view->mappings);
++	       list_empty(&view->dirty);
 +}
 +
 +/* The stamp and installed target of a LIVE view. xf4: *cacheless (when not
@@ -1080,6 +1144,10 @@ new file mode 100644
 + * target-bound state (hfs_view_cacheless_locked, our own unpublished
 + * observation not counted), and the candidate keeps the visibility
 + * generation (hash: the target hash hfs_view_advance_target computed).
++ * tj4: that includes nr_mmapped. hfs_mmap_file marks an inode under this
++ * same lock before it installs hfs_mmap_ops, so an mmap racing the
++ * adoption is either seen here (refused, -EXDEV) or created after the
++ * switch, its faults then stamped with the new revision and target.
 + */
 +static bool hfs_view_advance_allowed(const struct hfs_view *view, const struct hfs_lease *lease,
 +				     const struct hfs_view_stamp *stamp,
@@ -4478,7 +4546,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,2637 @@
+@@ -0,0 +1,2642 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -6277,8 +6345,12 @@ new file mode 100644
 +		hfs_view_put(view);
 +		return -ESTALE;
 +	}
++	/* tj4: mark the inode mmapped (view->nr_mmapped) under view->lock
++	 * before hfs_mmap_ops can fault anything, so the view stops counting as
++	 * cacheless for xf4 advance before it can hold target-bound state.
++	 */
 +	err = READ_ONCE(session->blocked) || READ_ONCE(control->error) ? -EHOSTDOWN :
-+		hfs_view_register_inode(inode);
++		hfs_view_mmap_inode(inode);
 +	if (!err) {
 +		/* The common MM check also refuses THP even if MADV_HUGEPAGE
 +		 * later clears this hint; executable and private COW stay legal.
@@ -6873,8 +6945,9 @@ new file mode 100644
 + * can verify an advance and no earlier acquisition of this call refused one
 + * (attempts->no_advance), the request carries "advance": true, and a GRANTED
 + * advance candidate is adopted at once (hfs_view_advance re-stamps the
-+ * observation; a view with mmap pages, mappings or any other target-bound
-+ * state never sends it). A refused advance, from the acquisition or the
++ * observation; a view with mmap pages, an mmapped inode or any other
++ * target-bound state never sends it, tj4: merely registered inodes such as
++ * the mount root do not count). A refused advance, from the acquisition or the
 + * adoption, is -EXDEV with an unadopted lease and sets attempts->no_advance;
 + * an adoption that waited past the deadline or for a fatal signal returns
 + * -ETIMEDOUT or -EINTR (hfs_view_advance), and the packet releases the

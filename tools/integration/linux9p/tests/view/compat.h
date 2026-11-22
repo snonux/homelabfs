@@ -80,11 +80,12 @@ static inline void folio_detach_private(struct folio *f) {
 }
 /* i_lock, i_state and i_data, and hfs_inode's object and forget, serve the
  * ie4 forget-record checks (hfs_inode_get_fail, hfs_evict_inode; view
- * --pressure). A zeroed spinlock_t is an unlocked glibc mutex.
+ * --pressure). A zeroed spinlock_t is an unlocked glibc mutex. view_mmapped
+ * mirrors hfs.h (tj4: hfs_view_mmap_inode's mark).
  */
 struct inode { struct address_space *i_mapping; int refs; spinlock_t i_lock; unsigned long i_state; struct address_space i_data; };
 struct hfs_forget;
-struct hfs_inode { struct list_head view_list; struct inode inode; struct hfs_cap *object; struct hfs_forget *forget; };
+struct hfs_inode { struct list_head view_list; bool view_mmapped; struct inode inode; struct hfs_cap *object; struct hfs_forget *forget; };
 struct hfs_view;
 /* leave: hfs_mmap_end's provider exit (ie4, view --pressure). */
 struct hfs_provider {

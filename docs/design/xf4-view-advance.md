@@ -75,7 +75,8 @@ Other host changes:
 
 ### Guest (step B)
 
-- hfs_view_capture also returns a "cacheless" hint under view->lock: no cached pages, mappings, dirty pages, dirty packages, grants, active tokens and no published observations. The view's own memory credit (view->reservation) is not counted; dirty reservations show as dirty pages/packages. hfs_mmap_observe sends advance only when the hint is true, at most once per syscall after a refusal.
+- hfs_view_capture also returns a "cacheless" hint under view->lock: no cached pages, mmapped inodes, dirty pages, dirty packages, grants, active tokens and no published observations. The view's own memory credit (view->reservation) is not counted; dirty reservations show as dirty pages/packages.
+  - Mappings means inodes that were mmapped (view->nr_mmapped, task tj4), not every registered inode. Before tj4 the test counted view->mappings, which hfs_inode_get fills with every inode, so the mount root alone kept every live view non-cacheless and zq3-r20 never sent advance. view->mappings stays the STOP/recall inventory. hfs_mmap_observe sends advance only when the hint is true, at most once per syscall after a refusal.
 - A GRANTED reply whose target differs from the installed one is an advance candidate, not stale, provided it has the same fence, is LIVE at the captured revision, and the installed target equals the request's expected target.
 - A new hfs_view_advance (as implemented in 4h4):
   - verifies the new target natively first, outside every view lock (the provider sleeps), as hfs_mmap_install does;
