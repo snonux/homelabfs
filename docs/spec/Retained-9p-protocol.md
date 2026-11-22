@@ -420,10 +420,22 @@ other kinds require null. Object IDs remain home+allocation. Scope must match
 the command context exactly. Alias/view ancestors are a separately retained
 ordered list of `(object ID,object revision,entry revision,raw component)` whose
 canonical hash is ancestors_hash. A root has the empty list. Revalidate cached
-search/path capabilities and current logical metadata at the captured committed
-cut; possession is not timeless pathname permission. Each recorded ancestor must
-stay searchable (else Permission) and each recorded entry must still name the
-same object at the same entry revision, else Stale; a renamed, removed or
+path capabilities and current logical metadata at the captured committed cut;
+possession is not timeless pathname identity. Each recorded entry must still
+name the same object at the same entry revision, else Stale. The service does
+not re-check search permission on recorded ancestors: walk permission is checked
+by the guest VFS on the directories a process actually walks, and, as POSIX
+fd-relative calls do, an operation through an already granted directory never
+re-checks the directories above it. In this profile the trusted guest kernel
+is the adapter that performs that walk check (on freshly refreshed attributes),
+and path capabilities are mount-scoped, not credential-scoped: a grant issued
+to one process may be used by another on the same mount, as a shared guest
+inode is. The service still checks the operation's own object or immediate
+parent on every call (LOOKUP needs search on its parent; MKDIR, SYMLINK,
+UNLINK, RMDIR and RENAME and the creation of a new name need write and search
+on their parents, while CREATE of an existing name needs search on the parent
+and the requested open access on the file; OPEN needs the requested access on
+the file). A renamed, removed or
 reclaimed ancestor or name is likewise Stale, never NotFound, while I/O,
 unavailability and other real failures keep their own code. DESCRIPTION grants retain
 issued rights across chmod/rename/unlink, not across generation/session revocation.

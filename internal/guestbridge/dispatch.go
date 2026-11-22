@@ -171,7 +171,7 @@ func (s *Service) resolveInputs(ctx context.Context, b Binding, a arguments, c *
 			return false, e
 		}
 		if pathAuthority(op, in.key, a.hasDescription()) {
-			if e = s.revalidatePath(ctx, b, g, o); e != nil {
+			if e = s.revalidatePath(ctx, g, o); e != nil {
 				return false, e
 			}
 		}
@@ -303,23 +303,40 @@ func (s *Service) liveGrant(b Binding, cap Capability, rights uint32, descriptio
 }
 
 // revalidatePath re-walks a path grant's recorded ancestry at this cut:
-// every ancestor directory must still be searchable by the caller (else
-// Permission) and every entry must still name the same object at the same
-// entry revision (else Stale). Possession is not timeless path permission.
+// every recorded entry must still name the same object at the same entry
+// revision (else Stale). Possession is not timeless path identity.
+//
+// It deliberately does not require search permission on the ancestors
+// (task sj4, finding R20-1 of zq3-r20). The old per-ancestor search check
+// was stricter than POSIX: a non-owner working through a leaf directory fd
+// below a 0700 volume root got Permission on a plain GETATTR of the leaf, so
+// supplementary-group access was never even consulted. Dropping it is safe:
+//   - the issuance ledger (liveGrant) still limits the guest to objects it
+//     was granted, and this re-walk still refuses a grant whose path was
+//     renamed or removed;
+//   - the guest asserts the credentials, and its VFS checks walk (search)
+//     permission on the directories a process actually walks, so a path
+//     the caller could not walk never yields a grant in the first place;
+//   - POSIX fd-relative operations (openat, fstat, fchmod through a
+//     directory descriptor) never re-check the directories above that fd.
+//
+// fsservice still checks the operation's own object or immediate parent on
+// every call (UnixPermissions.Check): LOOKUP needs search on its parent,
+// MKDIR/SYMLINK/UNLINK/RMDIR/RENAME and creating a new name need write+search
+// on their parents, CREATE of an existing name needs search plus the open
+// access on the file, OPEN needs the requested access on the file. Grants are
+// mount-scoped, not bound to the credential that obtained them, so the
+// trusted guest kernel's walk check is what keeps a process from reaching an
+// object below a directory it cannot search (sj4 review).
 //
 // A recorded path that no longer resolves is Stale too, as the capability
 // re-check rule in Retained-9p-protocol.md requires, whichever way the cut
 // reports it (see pathGone). Every other Stat/Lookup error is a real failure
 // at this cut and passes through unchanged.
-func (s *Service) revalidatePath(ctx context.Context, b Binding, g grant, o Captured) error {
-	cred := guestCred(b.Call.Credentials)
+func (s *Service) revalidatePath(ctx context.Context, g grant, o Captured) error {
 	for _, a := range g.Ancestors {
-		parent, e := o.Stat(ctx, a.Parent)
-		if e != nil {
+		if _, e := o.Stat(ctx, a.Parent); e != nil {
 			return pathGone(e)
-		}
-		if !search(cred, parent.Attr) {
-			return fsapi.Permission
 		}
 		entry, e := o.Lookup(ctx, a.Parent, a.Name)
 		if e != nil {
@@ -387,27 +404,6 @@ func (s *Service) lifetime(b Binding, a arguments, g grant) error {
 		}
 	}
 	return nil
-}
-func search(c fsapi.Cred, a fsapi.Attr) bool {
-	if a.Kind != fsapi.Directory {
-		return false
-	}
-	if c.UID == 0 {
-		return true
-	}
-	mode := a.Mode
-	if c.UID == a.UID {
-		mode >>= 6
-	} else {
-		group := c.GID == a.GID
-		for _, g := range c.Groups {
-			group = group || g == a.GID
-		}
-		if group {
-			mode >>= 3
-		}
-	}
-	return mode&1 != 0
 }
 func capObject(c Capability) fsapi.ObjectID {
 	return fsapi.ObjectID{Home: parseID(c.Home), Allocation: parseID(c.Allocation)}
