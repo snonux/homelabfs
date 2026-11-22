@@ -79,7 +79,8 @@ def mmap_mark_guard(source):
     - hfs_mmap_ops installed only inside the `if (!err) {` block that
       directly follows the mark's result (a failed mark installs nothing);
     - exactly one `vm_ops = &hfs_mmap_ops` in fs/9p (that one), with
-      hfs_mmap_ops static to hfs_mmap.c;
+      hfs_mmap_ops static to hfs_mmap.c and `&hfs_mmap_ops` used nowhere
+      else there (kn1 review 1: no indirect install through a variable);
     - hfs_file_fops' .mmap is hfs_mmap, which routes bridge sessions to
       hfs_mmap_file.
     """
@@ -90,7 +91,9 @@ def mmap_mark_guard(source):
         if path.suffix in ('.c', '.h', '.inc') and path.is_file():
             installs += [path.name] * len(re.findall(
                 r'vm_ops\s*=\s*&\s*hfs_mmap_ops\b', path.read_text(errors='replace')))
-    if installs != ['hfs_mmap.c'] or \
+    # kn1 review 1: hfs_mmap_ops is referenced once in hfs_mmap.c (that
+    # install), so an indirect install through a variable is refused too.
+    if installs != ['hfs_mmap.c'] or len(re.findall(r'&\s*hfs_mmap_ops\b', text)) != 1 or \
             'static const struct vm_operations_struct hfs_mmap_ops = {' not in text:
         raise SystemExit(f'refuse: hfs_mmap_ops installed outside hfs_mmap_file: {installs}')
     mmap_route_guard((source / 'fs/9p/hfs_file.c').read_text())
@@ -227,11 +230,16 @@ def main():
         lease = inputs['fs/9p/hfs_lease.c']
         start = lease.index('struct hfs_grant_settle {')
         source.append('#define hfs_received_source_ex test_received_source_ex')
-        # hfs_lease_access prints a u64 with %llu (the kernel's u64 is
-        # unsigned long long, the harness's uint64_t is unsigned long).
+        # Only hfs_lease_access needs -Wformat off: it prints a u64 with
+        # %llu (the kernel's u64 is unsigned long long, the harness's
+        # uint64_t is unsigned long). kn1 review 1: just that function.
+        access = lease.index('static void hfs_lease_access(', start)
+        source.append(lease[start:access])
         source.append('#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wformat"')
-        source.append(lease[start:lease.index('\nstatic int hfs_lease_own(', start)])
+        source.append(lease[access:lease.index('\n}\n', access) + 3])
         source.append('#pragma GCC diagnostic pop')
+        source.append(lease[lease.index('\n}\n', access) + 3:
+                            lease.index('\nstatic int hfs_lease_own(', start)])
         start = lease.index('/* The arguments of hfs_lease_acquire_ex')
         source.append('#define hfs_lease_acquire_ex actual_hfs_lease_acquire_ex')
         source.append(lease[start:lease.index('\nint hfs_lease_acquire(', start)])

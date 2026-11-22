@@ -2326,29 +2326,22 @@ Three small follow-ups, done together (worktree `kn1`).
   `tests/view/compat.h`'s hand-copied `struct hfs_inode` with
   `fs/9p/hfs.h`, by name and order. A swapped pair is refused.
 - (1) Clearing the mark when the last VMA closes and no pages remain is
-  **deferred**, because it is not clearly safe:
-  - It needs a per-inode VMA count, which means adding `.open` and `.close`
-    to `hfs_mmap_ops`. That changes MM behaviour for every hfs VMA:
-    `is_mergeable_vma` refuses to merge VMAs that have `->close`, and
-    mremap's expand path switches to `vma_adjust`. The count is then only
-    as good as the pairing of `->open` and `->close` on every VMA
-    duplication and removal path in this 6.1.190 tree: `dup_mmap`,
-    `__split_vma` and its failure path, `copy_vma`, `remove_vma`, and
-    `__mmap_region`'s post-`->mmap` merge, which frees the new VMA without
-    `->close`. A missed `->open` would clear the mark while a mapping is
-    still live.
-  - `->close` runs under `mmap_write_lock`. To reach the view it would take
-    `session->lock` (`hfs_view_get`) and then `view->lock`. That makes
-    `mmap_lock -> session->lock` a new lock order, and all 50
+  **deferred**. It stands on two points:
+  - A new lock order. A per-inode VMA count means adding `.open` and
+    `.close` to `hfs_mmap_ops`, and `->close` runs under `mmap_write_lock`.
+    To reach the view it would take `session->lock` (`hfs_view_get`) and
+    then `view->lock`, so `mmap_lock -> session->lock` would be new; all 50
     `session->lock` sites would first need an audit showing that none
     touches user memory or takes `mmap_lock`. Pinning the view from the VMA
     instead changes view lifetime across retire and unmount.
-  - "No pages remain" would be a lockless `mapping->nrpages` read. A
-    detached cache entry or grant without a page would need its own
-    argument, although `nr_cached` and `nr_grants` already keep the view
-    non-cacheless view-wide.
-  - None of this can be exercised here. The harness compiles neither
-    `hfs_mmap_file` nor any VMA lifecycle, and no guest kernel was booted.
+  - The VMA lifecycle is untestable here. The count is only as good as the
+    pairing of `->open` and `->close` on every duplication and removal path
+    (`dup_mmap`, `__split_vma` and its failure path, `copy_vma`,
+    `remove_vma`). Once `->close` exists, `vma_merge` refuses such
+    neighbours, so the merge paths that free a VMA without `->close`
+    (including `__mmap_region`'s post-`->mmap` merge) do not apply. But the
+    harness compiles neither `hfs_mmap_file` nor any VMA lifecycle, and no
+    guest kernel was booted, so none of this can be exercised.
 
   The sticky mark only withholds advance (it never permits a wrong one), so
   leaving it is the safe default. wj4 stays open for (1).
