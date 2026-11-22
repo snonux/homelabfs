@@ -107,7 +107,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,507 @@
+@@ -0,0 +1,519 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -454,6 +454,16 @@ new file mode 100644
 +	 * resumed; a new mount gets a new session.
 +	 */
 +	bool transport_failed;
++	/* 5f4: woken (hfs_session_stop_wake) whenever a stop that
++	 * hfs_view_refused or hfs_session_poll_halt sees is set: blocked
++	 * (hfs_session_mark_blocked), closing or transport_failed. The paths
++	 * that set them have no view (hfs_session_block may even run under
++	 * session->lock, where hfs_view_get would deadlock), so the view waits
++	 * whose condition includes those stops (hfs_view_reopen_wait,
++	 * hfs_view_retire_wait, hfs_view_enter_until) also wait here
++	 * (hfs_view_watch_stops) instead of sleeping to their deadline.
++	 */
++	wait_queue_head_t stop_wait;
 +};
 +
 +/* An hfs_call caller queued for the allocation fence (x84), on its stack. */
@@ -608,6 +618,8 @@ new file mode 100644
 +		       const char *operation);
 +void hfs_session_block(struct hfs_session *session, const char *reason,
 +		       const char *operation, int err);
++void hfs_session_stop_wake(struct hfs_session *session);
++void hfs_session_mark_blocked(struct hfs_session *session);
 +extern const struct inode_operations hfs_dir_iops;
 +extern const struct inode_operations hfs_file_iops;
 +extern const struct inode_operations hfs_symlink_iops;
@@ -619,7 +631,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,3624 @@
+@@ -0,0 +1,3658 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -702,6 +714,28 @@ new file mode 100644
 +	hfs_buf_free(&args);
 +}
 +
++/* 5f4: wake the view waits parked on session->stop_wait after a stop was
++ * set (blocked, closing, transport_failed). The flag is written first; the
++ * wake-up's queue lock orders it before the waiter's next look at its
++ * condition (wait_event re-checks after it set its task state), so the
++ * stop is never missed. Safe in any context, under any lock but
++ * stop_wait's own.
++ */
++void hfs_session_stop_wake(struct hfs_session *session)
++{
++	wake_up_all(&session->stop_wait);
++}
++
++/* 5f4: set session->blocked and wake the view waits that wait for it. Every
++ * writer of blocked goes through here, or wakes after its writes
++ * (hfs_mount_fail, kill_sb).
++ */
++void hfs_session_mark_blocked(struct hfs_session *session)
++{
++	WRITE_ONCE(session->blocked, true);
++	hfs_session_stop_wake(session);
++}
++
 +/* Mark the session blocked and log why, once per session (g64).
 + *
 + * A blocked session refuses every later capture with EACCES and every
@@ -743,7 +777,7 @@ new file mode 100644
 +	u16 code = READ_ONCE(session->exporter_error);
 +	char text[8] = "-";
 +
-+	WRITE_ONCE(session->blocked, true);
++	hfs_session_mark_blocked(session); /* 5f4: wakes hfs_view_reopen_wait */
 +	if (test_and_set_bit(0, &session->block_reported))
 +		return;
 +	if (code)
@@ -763,7 +797,7 @@ new file mode 100644
 +		       const char *operation)
 +{
 +	if (READ_ONCE(session->unmounting)) {
-+		WRITE_ONCE(session->blocked, true);
++		hfs_session_mark_blocked(session);
 +		return;
 +	}
 +	hfs_session_block(session, reason, operation, 0);
@@ -1026,6 +1060,15 @@ new file mode 100644
 +	return 0;
 +}
 +
++/* The host stopped answering (session->transport_failed); 5f4: wakes the
++ * view waits that stop on it (hfs_session_stop_wake).
++ */
++static void hfs_transport_failed(struct hfs_session *session)
++{
++	WRITE_ONCE(session->transport_failed, true);
++	hfs_session_stop_wake(session);
++}
++
 +/* Record a failed exchange's ERROR reason for the block/stop log lines
 + * (oc4): hfs_session_block and hfs_mmap_fail print it, because their errno
 + * alone did not say what the exporter answered (zq3-r12 R12-1 logged -71).
@@ -1037,7 +1080,7 @@ new file mode 100644
 +	if (reason)
 +		WRITE_ONCE(session->exporter_error, reason);
 +	if (reason == HFS_ERROR_UNAVAILABLE)
-+		WRITE_ONCE(session->transport_failed, true);
++		hfs_transport_failed(session);
 +}
 +
 +/* -EHOSTDOWN when a retry or poll loop must stop because the session is
@@ -1085,7 +1128,7 @@ new file mode 100644
 +{
 +	if (time_after_eq(jiffies, deadline)) {
 +		if (!(flags & HFS_TRANSPORT_ALLOCATE))
-+			WRITE_ONCE(session->transport_failed, true);
++			hfs_transport_failed(session);
 +		return -ETIMEDOUT;
 +	}
 +	return hfs_session_poll_halt(session, flags & HFS_TRANSPORT_EXEMPT);
@@ -1115,7 +1158,7 @@ new file mode 100644
 +					     frame_len, packet, &len);
 +		/* No reply within the bounded wait (zq3-r13): the host is gone. */
 +		if (err == -ETIMEDOUT)
-+			WRITE_ONCE(session->transport_failed, true);
++			hfs_transport_failed(session);
 +		/* -EBUSY: a fixed tag stayed held past the exchange's bounded wait
 +		 * and nothing was sent (net/9p p9_client_hfs_exchange). Retry the
 +		 * same frame like a refused packet, under the same deadline. It is
@@ -1167,7 +1210,7 @@ new file mode 100644
 +		err = p9_client_hfs_exchange(session->client, tag, 2, channel, cell, chunk, NULL, 0,
 +					     packet, len);
 +		if (err == -ETIMEDOUT)
-+			WRITE_ONCE(session->transport_failed, true); /* as for SEND */
++			hfs_transport_failed(session); /* as for SEND */
 +		if (err && err != -EBUSY)
 +			return err;
 +		if (!err && (*len != 1 || *(u8 *)packet != 2))
@@ -3621,6 +3664,7 @@ new file mode 100644
 +	INIT_LIST_HEAD(&session->global);
 +	INIT_LIST_HEAD(&session->allocation_waiters);
 +	init_waitqueue_head(&session->allocation_wait);
++	init_waitqueue_head(&session->stop_wait);
 +	session->next_claim = session->next_cell = session->next_inode = 1;
 +	session->next_close = session->next_release = 1;
 +	return session;
@@ -3731,6 +3775,7 @@ new file mode 100644
 +	smp_wmb(); /* closing before blocked: hfs_session_poll_halt (oc4) */
 +	if (hfs_controlled_consumed(session))
 +		WRITE_ONCE(session->blocked, true);
++	hfs_session_stop_wake(session); /* 5f4: closing (and blocked) */
 +	spin_lock_irqsave(&hfs_sessions_lock, irqflags);
 +	list_del_init(&session->global);
 +	spin_unlock_irqrestore(&hfs_sessions_lock, irqflags);
@@ -3829,6 +3874,7 @@ new file mode 100644
 +	 */
 +	WRITE_ONCE(session->closing, true);
 +	WRITE_ONCE(session->blocked, true);
++	hfs_session_stop_wake(session); /* 5f4: view waits see the stop */
 +	/* Queued hfs_call waiters see closing and leave (x84). */
 +	hfs_allocation_wake(session);
 +	spin_lock_irqsave(&hfs_sessions_lock, flags);
@@ -5982,7 +6028,7 @@ new file mode 100644
 +	mutex_lock(&session->lock);
 +	sequence = session->next_close++;
 +	if (!sequence || !session->next_close)
-+		session->blocked = true;
++		hfs_session_mark_blocked(session);
 +	mutex_unlock(&session->lock);
 +	err = hfs_args_init(&args);
 +	if (!err) {
@@ -6011,7 +6057,7 @@ new file mode 100644
 +	mutex_lock(&session->lock);
 +	sequence = session->next_release++;
 +	if (!sequence || !session->next_release)
-+		session->blocked = true;
++		hfs_session_mark_blocked(session);
 +	mutex_unlock(&session->lock);
 +	err = hfs_args_init(&args);
 +	if (!err) {

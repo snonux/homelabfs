@@ -1809,9 +1809,10 @@ Patch 0004:
   the try), when `view->retire_progress` changes, or when the view refuses
   or the transport fails. An expired slice is no host answer either: the
   stops are checked and the offer tries again, uncounted, and only the first
-  wait of an offer logs. A session block or `transport_failed`
-  alone does not wake it; those are seen at the next wake-up or the
-  deadline, as for `hfs_view_reopen_wait`. After a wake the stop checks run
+  wait of an offer logs. Before 5f4 a session block or `transport_failed`
+  alone did not wake it; those were seen at the next wake-up or the
+  deadline, as for `hfs_view_reopen_wait`. Since 5f4 both wake
+  `session->stop_wait`, which this wait watches too. After a wake the stop checks run
   first (a refused view or failed transport returns `-ESTALE` without
   another round), then progress retries the acquisition. Otherwise this
   call tries again: a round that freed nothing is followed by its own try,

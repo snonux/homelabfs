@@ -789,7 +789,7 @@ diff --git a/fs/9p/hfs_view.c b/fs/9p/hfs_view.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.c
-@@ -0,0 +1,1524 @@
+@@ -0,0 +1,1557 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Physical retained-cache admission and all-alias PTE/TLB/MMU quiescence. */
 +#include <linux/mm.h>
@@ -1358,6 +1358,27 @@ new file mode 100644
 +	return 0;
 +}
 +
++/* 5f4: while parked on view->wait, also wait on session->stop_wait, which
++ * hfs_session_mark_blocked, the closing paths and a failed transport wake
++ * (hfs_session_stop_wake): those stops are part of the wait conditions
++ * below (hfs_view_refused, transport_failed), but their writers have no
++ * view to wake. The extra entry wakes this task directly; the
++ * wait_event_*() loop parked on view->wait then re-checks its condition,
++ * and a wake-up that comes before the task sleeps is not lost (the
++ * condition is checked after the task state is set). Removed again before
++ * the waiter returns, so no wake-up reaches a later, unrelated sleep.
++ */
++static void hfs_view_watch_stops(struct hfs_view *view, struct wait_queue_entry *entry)
++{
++	init_waitqueue_entry(entry, current);
++	add_wait_queue(&view->session->stop_wait, entry);
++}
++
++static void hfs_view_unwatch_stops(struct hfs_view *view, struct wait_queue_entry *entry)
++{
++	remove_wait_queue(&view->session->stop_wait, entry);
++}
++
 +/* A parked entrant's wake-up condition: a phase that admits (LIVE) or
 + * refuses for good (FENCED, or a closing/blocked hfs1.4 session).
 + */
@@ -1396,6 +1417,7 @@ new file mode 100644
 +int hfs_view_enter_until(struct hfs_view *view, const struct hfs_view_stamp *stamp,
 +			 bool wait, unsigned long deadline, void **cookie)
 +{
++	struct wait_queue_entry stop;
 +	unsigned long flags, now;
 +	long left;
 +	int err;
@@ -1418,11 +1440,14 @@ new file mode 100644
 +		}
 +		/* A timed-out sleep (0) loops once more: that last try still
 +		 * admits a view that settled at the deadline, then the check
-+		 * above ends the wait.
++		 * above ends the wait. 5f4: a session block or close (a refusal)
++		 * wakes it through session->stop_wait.
 +		 */
++		hfs_view_watch_stops(view, &stop);
 +		left = wait_event_killable_timeout(view->wait,
 +						   hfs_view_enter_settled(view),
 +						   deadline - now);
++		hfs_view_unwatch_stops(view, &stop);
 +		if (left < 0) {
 +			err = left;
 +			break;
@@ -1448,25 +1473,30 @@ new file mode 100644
 +
 +/* 2f4: parks until another REOPENED ACK was accepted (view->reopen_acks is
 + * no longer acks, as read by the caller before it looked at the fence), the
-+ * view refuses for good (hfs_view_refused) or the transport failed. Returns
-+ * 0 for any of those (the caller looks again), -ETIMEDOUT at the deadline
-+ * and -EINTR on a fatal signal. Event-driven: hfs_view_reopen_acked and the
-+ * stop/fence paths wake view->wait. A session block alone does not wake
-+ * it (hfs_session_block has no view), so that stop is seen at the next
-+ * wake-up or at the deadline, as for hfs_view_enter_until.
++ * view refuses for good (hfs_view_refused: FENCED, or a closing or blocked
++ * hfs1.4 session) or the transport failed. Returns 0 for any of those (the
++ * caller looks again), -ETIMEDOUT at the deadline and -EINTR on a fatal
++ * signal. Event-driven: hfs_view_reopen_acked and the stop/fence paths wake
++ * view->wait; 5f4: a session block (hfs_session_block and every other
++ * writer of blocked), a close and a failed transport wake
++ * session->stop_wait, which this wait watches too (hfs_view_watch_stops).
++ * Before 5f4 those stops were seen only at the deadline (up to 30 s).
 + */
 +int hfs_view_reopen_wait(struct hfs_view *view, unsigned long acks,
 +			 unsigned long deadline)
 +{
++	struct wait_queue_entry stop;
 +	unsigned long now = jiffies;
 +	long left;
 +
 +	if (!time_before(now, deadline))
 +		return -ETIMEDOUT;
++	hfs_view_watch_stops(view, &stop);
 +	left = wait_event_killable_timeout(view->wait,
 +		READ_ONCE(view->reopen_acks) != acks || hfs_view_refused(view) ||
 +		READ_ONCE(view->session->transport_failed),
 +		deadline - now);
++	hfs_view_unwatch_stops(view, &stop);
 +	if (left < 0)
 +		return -EINTR;
 +	return left ? 0 : -ETIMEDOUT;
@@ -1504,23 +1534,26 @@ new file mode 100644
 + * but the deadline (the caller checks its stops and decides again),
 + * -ETIMEDOUT at the deadline and -EINTR on a fatal signal. Event-driven:
 + * hfs_retirement_unlock and each floor advance wake view->wait, and the
-+ * stop/fence paths wake it too. A session block or transport_failed alone
-+ * does not wake it (neither path has the view), so those stops are seen at
-+ * the next wake-up or at the deadline, as for hfs_view_reopen_wait.
++ * stop/fence paths wake it too. 5f4: a session block, a close or a failed
++ * transport wakes session->stop_wait, which this wait watches too
++ * (hfs_view_watch_stops), as hfs_view_reopen_wait does.
 + */
 +int hfs_view_retire_wait(struct hfs_view *view, long releases,
 +			 unsigned long progress, unsigned long deadline)
 +{
++	struct wait_queue_entry stop;
 +	unsigned long now = jiffies;
 +	long left;
 +
 +	if (!time_before(now, deadline))
 +		return -ETIMEDOUT;
++	hfs_view_watch_stops(view, &stop);
 +	left = wait_event_killable_timeout(view->wait,
 +		atomic_long_read(&view->retirement_releases) != releases ||
 +		READ_ONCE(view->retire_progress) != progress ||
 +		hfs_view_refused(view) || READ_ONCE(view->session->transport_failed),
 +		deadline - now);
++	hfs_view_unwatch_stops(view, &stop);
 +	if (left < 0)
 +		return -EINTR;
 +	return left ? 0 : -ETIMEDOUT;
@@ -2318,7 +2351,7 @@ diff --git a/fs/9p/hfs_lease.h b/fs/9p/hfs_lease.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.h
-@@ -0,0 +1,151 @@
+@@ -0,0 +1,155 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_LEASE_H
 +#define FS_9P_HFS_LEASE_H
@@ -2413,7 +2446,11 @@ new file mode 100644
 +	bool dirty;
 +	/* 2f4 review 1: a GRANTED handed out only to be released (a later
 +	 * recall passed it, or the exchange stopped before the view settled;
-+	 * hfs_view_grant_settle). Its target was never verified by the
++	 * hfs_view_grant_settle). 5f4: also a GRANTED that hfs_view_exchange
++	 * copied into the caller's response but could not keep as the
++	 * ticket's Current (-ENOMEM; hfs_view_exchange_terminal), and xf4's
++	 * moved target that is no advance candidate (-EXDEV;
++	 * hfs_lease_decode_target). Its target was never verified by the
 +	 * provider (visibility stays zero), so it is never authority: no
 +	 * initial bind, page lease, page grant or observation publish takes it.
 +	 */
@@ -2474,7 +2511,7 @@ diff --git a/fs/9p/hfs_lease.c b/fs/9p/hfs_lease.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.c
-@@ -0,0 +1,2084 @@
+@@ -0,0 +1,2350 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Exact bridge1.1 ticket/lease transport; no physical or source-proof defaults. */
 +#include <linux/slab.h>
@@ -3343,178 +3380,314 @@ new file mode 100644
 +	return err;
 +}
 +
++/* One hfs_view_exchange's wire state: the next request (op, sent, control),
++ * its oc4 poll-halt exemption, the 30 s deadline and the 2f4 settle state.
++ * op is the command itself only until the ticket is admitted; every later
++ * round is a VIEW_QUERY of the ticket (hfs_view_round_query).
++ */
++struct hfs_view_round {
++	const char *op;
++	const struct hfs_buf *sent;
++	bool control;
++	/* oc4: the VIEW_QUERY polls serve the command, so they share its
++	 * exemption from stopping on a blocked session.
++	 */
++	bool after_block;
++	unsigned long deadline;
++	struct hfs_grant_settle settle;
++};
++
++static void hfs_view_round_query(struct hfs_view_round *round,
++				 const struct hfs_view_ticket *ticket)
++{
++	round->op = "VIEW_QUERY";
++	round->sent = &ticket->query;
++	round->control = true;
++}
++
++/* Bind an unbound ticket to operation and payload (the payload's request
++ * must be the ticket's; the hashed original request and the payload are
++ * kept), or check that a bound ticket is re-sent with exactly the
++ * operation and payload it was bound to (-ESTALE otherwise).
++ */
++static int hfs_view_exchange_bind(struct hfs_view_ticket *ticket, const char *operation,
++				  const struct hfs_buf *payload)
++{
++	struct hfs_buf *original = &ticket->original;
++	struct hfs_json request;
++	int err;
++
++	if (ticket->bound) {
++		if (strcmp(ticket->operation, operation) ||
++		    ticket->payload.len != payload->len ||
++		    memcmp(ticket->payload.data, payload->data, payload->len))
++			return -ESTALE;
++		return 0;
++	}
++	err = hfs_json_parse_into(payload->data, payload->len, &request,
++				  ticket->scratch, 4096);
++	if (!err && !hfs_token_equal(&request,
++		hfs_json_field(&request, 0, "request"),
++		ticket->request.data, ticket->request.len))
++		err = -EPROTO;
++	if (err)
++		return err;
++	original->len = 0;
++	original->error = 0;
++	hfs_buf_printf(original, "{\"op\":\"%s\",\"payload\":", operation);
++	hfs_buf_add(original, payload->data, payload->len);
++	hfs_buf_literal(original, "}");
++	err = original->error;
++	if (!err) {
++		hfs_hash(original->data, original->len, ticket->request_hash);
++		hfs_buf_add(&ticket->payload, payload->data, payload->len);
++		err = ticket->payload.error;
++	}
++	if (err)
++		return err;
++	strscpy(ticket->operation, operation, sizeof(ticket->operation));
++	ticket->bound = true;
++	return 0;
++}
++
++/* Send one round and check its reply (*reply, payload object *body).
++ * Initial admissions are serialized per family, but terminal waits do not
++ * own that mutex. Retries after protected initial observation QUERY
++ * Current; they never reinterpret Initial GRANTED as fresh authority.
++ *
++ * Returns the transport error (the ticket is then uncertain and nothing
++ * else happened); *check is the reply check's error (hfs_ticket_reply, or
++ * the copy of an initial response), which the caller blocks on.
++ */
++static int hfs_view_exchange_send(struct hfs_session *session,
++				  struct hfs_view_ticket *ticket,
++				  const struct hfs_view_round *round,
++				  struct hfs_json **reply, int *body, int *check)
++{
++	bool initial = !ticket->admitted;
++	int err;
++
++	*check = 0;
++	if (initial)
++		mutex_lock(&ticket->family->dispatch);
++	err = hfs_control_flagged(session, round->op, round->sent, round->control,
++				  round->after_block, reply);
++	if (err) {
++		if (initial)
++			mutex_unlock(&ticket->family->dispatch);
++		ticket->uncertain = true;
++		return err;
++	}
++	*body = hfs_json_field(*reply, 0, "payload");
++	err = hfs_ticket_reply(ticket, *reply, *body, round->op);
++	if (initial) {
++		if (!err) {
++			ticket->admitted = true;
++			WRITE_ONCE(ticket->family->initial, NULL);
++			wake_up_all(&ticket->family->wait);
++			if (!ticket->initial_response)
++				err = hfs_copy_json(*reply, *body, &ticket->initial_response);
++		}
++		mutex_unlock(&ticket->family->dispatch);
++	}
++	*check = err;
++	return 0;
++}
++
++/* A status that ends the exchange with the reply as its response. */
++static bool hfs_view_terminal_status(const struct hfs_json *reply, int status)
++{
++	return hfs_json_is(reply, status, "\"GRANTED\"") ||
++	       hfs_json_is(reply, status, "\"FROZEN\"") ||
++	       hfs_json_is(reply, status, "\"RELEASED\"") ||
++	       hfs_json_is(reply, status, "\"CANCELLED\"") ||
++	       hfs_json_is(reply, status, "\"BLOCKED\"");
++}
++
++/* A terminal reply: check its source (hfs_view_exchange_source), then hand
++ * it out in *response and keep it as the ticket's Current (ticket->response,
++ * terminal). 1: the view settled, query the ticket again (2f4). Otherwise
++ * the exchange's result: 0, -ECANCELED (CANCELLED), -EAGAIN (the host's
++ * terminal BLOCKED; re4's *blocked in hfs_lease_acquire_ex), the settle
++ * outcome of a verified GRANTED that is handed out unadopted for release
++ * only (2f4), or -ENOMEM when *response was copied but ticket->response
++ * was not (5f4: a GRANTED is then handed out too, with the ticket not
++ * terminal; hfs_lease_acquire_ex builds it unadopted for release).
++ * *invalid: the caller blocks the session on the error.
++ */
++static int hfs_view_exchange_terminal(struct hfs_session *session,
++				      struct hfs_view_ticket *ticket,
++				      const struct hfs_json *reply, int body,
++				      struct hfs_view_round *round,
++				      struct hfs_json **response, bool *invalid)
++{
++	int status = hfs_json_field(reply, body, "status"), result, err;
++	bool fatal;
++
++	*invalid = true;
++	err = hfs_view_exchange_source(session, ticket, reply, body, round->deadline,
++				       &round->settle, &fatal);
++	if (err == 1 || (err && fatal)) {
++		*invalid = err != 1;
++		return err;
++	}
++	result = err;
++	err = hfs_copy_json(reply, body, response);
++	if (err)
++		return err;
++	*invalid = false;
++	hfs_json_free(ticket->response);
++	err = hfs_copy_json(reply, body, &ticket->response);
++	ticket->terminal = !err;
++	if (!err && hfs_json_is(reply, status, "\"CANCELLED\""))
++		err = -ECANCELED;
++	if (!err && hfs_json_is(reply, status, "\"BLOCKED\""))
++		err = -EAGAIN;
++	/* 2f4: the caller gets the lease to release (hfs_lease_acquire_ex),
++	 * with the settle outcome.
++	 */
++	if (!err && result)
++		err = result;
++	return err;
++}
++
++/* A non-terminal reply carries no source. 0: PENDING or INDETERMINATE,
++ * poll again; -EAGAIN: RETIRED_ID (and BLOCKED, which
++ * hfs_view_terminal_status already takes: kept as before the split);
++ * -EPROTO with *invalid for anything else.
++ */
++static int hfs_view_exchange_pending(const struct hfs_json *reply, int body, bool *invalid)
++{
++	int status = hfs_json_field(reply, body, "status");
++
++	*invalid = true;
++	if (!hfs_json_is(reply, hfs_json_field(reply, body, "entry"), "null") ||
++	    !hfs_json_is(reply, hfs_json_field(reply, body, "lease"), "null") ||
++	    !hfs_json_is(reply, hfs_json_field(reply, body, "reservation"), "null"))
++		return -EPROTO;
++	if (hfs_json_is(reply, status, "\"BLOCKED\"") ||
++	    hfs_json_is(reply, status, "\"RETIRED_ID\"")) {
++		*invalid = false;
++		return -EAGAIN;
++	}
++	if (!hfs_json_is(reply, status, "\"PENDING\"") &&
++	    !hfs_json_is(reply, status, "\"INDETERMINATE\""))
++		return -EPROTO;
++	*invalid = false;
++	return 0;
++}
++
++/* Before the next VIEW_QUERY poll: -ETIMEDOUT at the deadline, a short
++ * sleep, then the poll halt; the ticket stays uncertain on either stop.
++ */
++static int hfs_view_exchange_poll(struct hfs_session *session,
++				  struct hfs_view_ticket *ticket,
++				  struct hfs_view_round *round)
++{
++	int err;
++
++	if (time_after_eq(jiffies, round->deadline)) {
++		ticket->uncertain = true;
++		return -ETIMEDOUT;
++	}
++	usleep_range(10000, 12000);
++	/* oc4 (zq3-r12 R12-1): no further VIEW_QUERY round once the session
++	 * is blocked; the ticket stays uncertain, as for a timeout.
++	 */
++	err = hfs_session_poll_halt(session, round->after_block);
++	if (err) {
++		ticket->uncertain = true;
++		return err;
++	}
++	hfs_view_round_query(round, ticket);
++	return 0;
++}
++
++/* One round of hfs_view_exchange: send it, classify its reply
++ * (hfs_view_exchange_terminal or hfs_view_exchange_pending) and prepare the
++ * next one. 1: send the next round (round is set up for it); otherwise the
++ * exchange's result. *invalid: the caller marks the ticket uncertain and
++ * blocks the session on that error, then frees *reply (kept for it);
++ * otherwise *reply is already freed or was never set (a transport error,
++ * which leaves the ticket uncertain without a block).
++ */
++static int hfs_view_exchange_round(struct hfs_session *session,
++				   struct hfs_view_ticket *ticket,
++				   struct hfs_view_round *round, struct hfs_json **response,
++				   struct hfs_json **reply, bool *invalid)
++{
++	bool terminal;
++	int err, body, check;
++
++	*invalid = false;
++	err = hfs_view_exchange_send(session, ticket, round, reply, &body, &check);
++	if (err)
++		return err;
++	*invalid = true;
++	if (check)
++		return check;
++	terminal = hfs_view_terminal_status(*reply, hfs_json_field(*reply, body, "status"));
++	if (terminal)
++		err = hfs_view_exchange_terminal(session, ticket, *reply, body, round,
++						 response, invalid);
++	else
++		err = hfs_view_exchange_pending(*reply, body, invalid);
++	if (*invalid)
++		return err;
++	hfs_json_free(*reply);
++	*reply = NULL;
++	if (err == 1) { /* 2f4: the view settled; query the ticket again. */
++		hfs_view_round_query(round, ticket);
++		return 1;
++	}
++	if (err || terminal)
++		return err;
++	return hfs_view_exchange_poll(session, ticket, round) ?: 1;
++}
++
++/* One view command (not VIEW_QUERY/VIEW_CANCEL) on ticket: bind it, send
++ * it until admitted, then poll it with VIEW_QUERY until a terminal reply,
++ * the deadline or a stop. Split for 5f4 (the 50-line rule) without changes
++ * in order, locking or error paths: hfs_view_exchange_round runs one round
++ * (hfs_view_exchange_send sends it, hfs_view_exchange_terminal and
++ * hfs_view_exchange_pending classify the reply, hfs_view_exchange_poll
++ * waits before the next VIEW_QUERY).
++ */
 +int hfs_view_exchange(struct hfs_session *session, struct hfs_view_ticket *ticket,
 +		      const char *operation, const struct hfs_buf *payload,
 +		      struct hfs_json **response)
 +{
-+	struct hfs_json *reply = NULL, request;
-+	struct hfs_buf *original = &ticket->original;
-+	const struct hfs_buf *sent = payload;
-+	const char *op = operation;
-+	unsigned long deadline = jiffies + 30 * HZ;
-+	bool control = hfs_view_command_control(operation);
-+	/* oc4: the VIEW_QUERY polls serve operation, so they share its
-+	 * exemption from stopping on a blocked session.
-+	 */
-+	bool after_block = hfs_after_block_operation(operation);
-+	struct hfs_grant_settle settle = {};
-+	bool fatal;
-+	int err, body, status, result;
++	struct hfs_json *reply = NULL;
++	struct hfs_view_round round = {
++		.op = operation, .sent = &ticket->payload,
++		.control = hfs_view_command_control(operation),
++		.after_block = hfs_after_block_operation(operation),
++		.deadline = jiffies + 30 * HZ,
++	};
++	bool invalid;
++	int err;
 +
 +	*response = NULL;
 +	if (!ticket->number || !hfs_view_command(operation) || payload->error ||
 +	    hfs_view_command_control_family(operation) != ticket->control ||
 +	    !strcmp(operation, "VIEW_QUERY") || !strcmp(operation, "VIEW_CANCEL"))
 +		return -EINVAL;
-+	if (ticket->bound) {
-+		if (strcmp(ticket->operation, operation) ||
-+		    ticket->payload.len != payload->len ||
-+		    memcmp(ticket->payload.data, payload->data, payload->len))
-+			return -ESTALE;
-+	} else {
-+		err = hfs_json_parse_into(payload->data, payload->len, &request,
-+					  ticket->scratch, 4096);
-+		if (!err && !hfs_token_equal(&request,
-+			hfs_json_field(&request, 0, "request"),
-+			ticket->request.data, ticket->request.len))
-+			err = -EPROTO;
-+		if (err)
-+			return err;
-+		original->len = 0;
-+		original->error = 0;
-+		hfs_buf_printf(original, "{\"op\":\"%s\",\"payload\":", operation);
-+		hfs_buf_add(original, payload->data, payload->len);
-+		hfs_buf_literal(original, "}");
-+		err = original->error;
-+		if (!err) {
-+			hfs_hash(original->data, original->len, ticket->request_hash);
-+			hfs_buf_add(&ticket->payload, payload->data, payload->len);
-+			err = ticket->payload.error;
-+		}
-+		if (err)
-+			return err;
-+		strscpy(ticket->operation, operation, sizeof(ticket->operation));
-+		ticket->bound = true;
-+	}
-+	/* Initial admissions are serialized per family, but terminal waits do
-+	 * not own that mutex. Retries after protected initial observation QUERY
-+	 * Current; they never reinterpret Initial GRANTED as fresh authority.
-+	 */
-+	sent = &ticket->payload;
-+	if (ticket->admitted) {
-+		op = "VIEW_QUERY";
-+		sent = &ticket->query;
-+		control = true;
-+	}
-+	for (;;) {
-+		bool initial = !ticket->admitted;
-+
-+		if (initial)
-+			mutex_lock(&ticket->family->dispatch);
-+		err = hfs_control_flagged(session, op, sent, control, after_block, &reply);
-+		if (err) {
-+			if (initial)
-+				mutex_unlock(&ticket->family->dispatch);
-+			ticket->uncertain = true;
-+			return err;
-+		}
-+		body = hfs_json_field(reply, 0, "payload");
-+		err = hfs_ticket_reply(ticket, reply, body, op);
-+		if (initial) {
-+			if (!err) {
-+				ticket->admitted = true;
-+				WRITE_ONCE(ticket->family->initial, NULL);
-+				wake_up_all(&ticket->family->wait);
-+				if (!ticket->initial_response)
-+					err = hfs_copy_json(reply, body, &ticket->initial_response);
-+			}
-+			mutex_unlock(&ticket->family->dispatch);
-+		}
-+		if (err)
-+			goto invalid;
-+		status = hfs_json_field(reply, body, "status");
-+		if (hfs_json_is(reply, status, "\"GRANTED\"") ||
-+		    hfs_json_is(reply, status, "\"FROZEN\"") ||
-+		    hfs_json_is(reply, status, "\"RELEASED\"") ||
-+		    hfs_json_is(reply, status, "\"CANCELLED\"") ||
-+		    hfs_json_is(reply, status, "\"BLOCKED\"")) {
-+			err = hfs_view_exchange_source(session, ticket, reply, body,
-+						       deadline, &settle, &fatal);
-+			if (err == 1) {
-+				/* 2f4: the view settled; query the ticket again. */
-+				hfs_json_free(reply);
-+				reply = NULL;
-+				op = "VIEW_QUERY";
-+				sent = &ticket->query;
-+				control = true;
-+				continue;
-+			}
-+			if (err && fatal)
-+				goto invalid;
-+			/* 2f4: 0, or the settle outcome of a verified GRANTED
-+			 * that is handed out unadopted, for release only.
-+			 */
-+			result = err;
-+			err = hfs_copy_json(reply, body, response);
-+			if (err)
-+				goto invalid;
-+			hfs_json_free(ticket->response);
-+			err = hfs_copy_json(reply, body, &ticket->response);
-+			ticket->terminal = !err;
-+			if (!err && hfs_json_is(reply, status, "\"CANCELLED\""))
-+				err = -ECANCELED;
-+			if (!err && hfs_json_is(reply, status, "\"BLOCKED\""))
-+				err = -EAGAIN;
-+			/* 2f4: the caller gets the lease to release
-+			 * (hfs_lease_acquire_ex), with the settle outcome.
-+			 */
-+			if (!err && result)
-+				err = result;
-+			hfs_json_free(reply);
-+			return err;
-+		}
-+		if (!hfs_json_is(reply, hfs_json_field(reply, body, "entry"), "null") ||
-+		    !hfs_json_is(reply, hfs_json_field(reply, body, "lease"), "null") ||
-+		    !hfs_json_is(reply, hfs_json_field(reply, body, "reservation"), "null")) {
-+			err = -EPROTO;
-+			goto invalid;
-+		}
-+		if (hfs_json_is(reply, status, "\"BLOCKED\"") ||
-+		    hfs_json_is(reply, status, "\"RETIRED_ID\"")) {
-+			hfs_json_free(reply);
-+			return -EAGAIN;
-+		}
-+		if (!hfs_json_is(reply, status, "\"PENDING\"") &&
-+		    !hfs_json_is(reply, status, "\"INDETERMINATE\"")) {
-+			err = -EPROTO;
-+			goto invalid;
-+		}
-+		hfs_json_free(reply);
-+		reply = NULL;
-+		if (time_after_eq(jiffies, deadline)) {
-+			ticket->uncertain = true;
-+			return -ETIMEDOUT;
-+		}
-+		usleep_range(10000, 12000);
-+		/* oc4 (zq3-r12 R12-1): no further VIEW_QUERY round once the
-+		 * session is blocked; the ticket stays uncertain, as for a
-+		 * timeout.
-+		 */
-+		err = hfs_session_poll_halt(session, after_block);
-+		if (err) {
-+			ticket->uncertain = true;
-+			return err;
-+		}
-+		op = "VIEW_QUERY";
-+		sent = &ticket->query;
-+		control = true;
-+	}
-+invalid:
++	err = hfs_view_exchange_bind(ticket, operation, payload);
++	if (err)
++		return err;
++	if (ticket->admitted)
++		hfs_view_round_query(&round, ticket);
++	do {
++		err = hfs_view_exchange_round(session, ticket, &round, response, &reply,
++					      &invalid);
++	} while (err == 1);
++	if (!invalid)
++		return err;
 +	/* op is VIEW_QUERY once the initial command was admitted (the zq3
 +	 * "VIEW_QUERY uncertain" case), otherwise the command itself.
 +	 */
 +	ticket->uncertain = true;
-+	hfs_session_block(session, "uncertain view ticket", op, err);
++	hfs_session_block(session, "uncertain view ticket", round.op, err);
 +	hfs_json_free(reply);
 +	return err;
 +}
@@ -3744,9 +3917,35 @@ new file mode 100644
 +	       !(advance && (object || description || dirty || !expected_target));
 +}
 +
++/* The ticket and VIEW_ACQUIRE access of one acquisition, up to its payload:
++ * payload and access buffers, the access of object/description at offset,
++ * the activated ticket, marked for xf4 advance. Errors here are
++ * hfs_lease_acquire_ex's early failures: no exchange and no grant handling.
++ */
++static int hfs_lease_acquire_request(struct hfs_view_ticket *ticket,
++				     const struct hfs_cap *object,
++				     const struct hfs_lease_want *want, u64 offset,
++				     bool advance, struct hfs_buf *payload,
++				     struct hfs_buf *access)
++{
++	int err;
++
++	if (hfs_buf_init(payload, HFS_VIEW_BODY_MAX) || hfs_buf_init(access, 16384))
++		return -ENOMEM;
++	hfs_lease_access(access, object, want->description, offset);
++	err = access->error ?: (want->expected ? want->expected->error : 0);
++	if (!err)
++		err = hfs_view_ticket_activate(ticket);
++	if (err)
++		return err;
++	ticket->advance = advance;
++	return 0;
++}
++
 +/* The lease of a VIEW_ACQUIRE exchange that returned err with response.
-+ * 2f4: a GRANTED handed out with an error is still decoded and completed,
-+ * unadopted, for its release (*result: that error). xf4: a moved target
++ * 2f4: a GRANTED handed out with an error (a settle outcome, or 5f4's
++ * -ENOMEM from keeping the ticket's Current) is still decoded and
++ * completed, unadopted, for its release (*result: that error). xf4: a moved target
 + * that is no advance candidate is built unadopted too (*result -EXDEV).
 + * Once the decoded lease holds the ticket, freeing it puts both, so
 + * *ticket is cleared. -EPROTO (also the exchange's), and -ESTALE for the
@@ -3797,7 +3996,10 @@ new file mode 100644
 + * 2f4 (zq3-r17 R17-1): an error with *out set is a verified GRANTED that
 + * was not current and never settled (hfs_view_grant_settle): -EXDEV when a
 + * later recall passed it, or the wait's stop (-ETIMEDOUT, -EINTR,
-+ * -EHOSTDOWN). The host still counts it as active, so the caller owns *out
++ * -EHOSTDOWN). 5f4: or -ENOMEM, when hfs_view_exchange copied the GRANTED
++ * into its response but could not keep it as the ticket's Current
++ * (hfs_view_exchange_terminal; that grant may even be current, but it is
++ * not taken). The host still counts it as active, so the caller owns *out
 + * and must release it; it is unadopted (lease->unadopted) and never
 + * authority. The ie4 observation path (hfs_mmap_observe) holds it and
 + * acquires again on -EXDEV; every other path hands it to its cleanup packet.
@@ -3813,13 +4015,13 @@ new file mode 100644
 +			 u64 offset, bool dirty, const struct hfs_buf *expected_target,
 +			 bool advance, struct hfs_lease **out, bool *blocked)
 +{
++	struct hfs_buf payload = {}, access = {};
 +	struct hfs_lease_want want = {
-+		.cred = cred, .description = description, .expected = expected_target,
-+		.dirty = dirty,
++		.cred = cred, .description = description, .access = &access,
++		.expected = expected_target, .dirty = dirty,
 +	};
 +	struct hfs_view_ticket *ticket;
 +	struct hfs_json *response = NULL;
-+	struct hfs_buf payload = {}, access = {};
 +	int err, result = 0;
 +
 +	*out = NULL;
@@ -3831,23 +4033,16 @@ new file mode 100644
 +	err = hfs_view_ticket_prepare(session, cred, false, &ticket);
 +	if (err)
 +		return err;
-+	if (hfs_buf_init(&payload, HFS_VIEW_BODY_MAX) || hfs_buf_init(&access, 16384)) {
-+		err = -ENOMEM;
-+		goto free;
-+	}
-+	hfs_lease_access(&access, object, description, offset);
-+	err = access.error ?: (expected_target ? expected_target->error : 0);
-+	if (!err)
-+		err = hfs_view_ticket_activate(ticket);
++	err = hfs_lease_acquire_request(ticket, object, &want, offset, advance,
++					&payload, &access);
 +	if (err)
 +		goto free;
-+	ticket->advance = advance;
++	/* A payload error goes through the grant handling, as before 5f4. */
 +	hfs_lease_acquire_payload(&payload, session, ticket, &access, dirty, expected_target,
 +				  advance);
 +	err = payload.error ?: hfs_view_exchange(session, ticket, "VIEW_ACQUIRE", &payload, &response);
 +	if (err == -EAGAIN && blocked && ticket->terminal)
 +		*blocked = true;
-+	want.access = &access;
 +	err = hfs_lease_acquire_grant(session, &ticket, &want, err, response, out, &result);
 +free:
 +	if (err)
@@ -3955,26 +4150,296 @@ new file mode 100644
 +}
 +
 +
++/* One hfs_view_retire_mode round, under session->retirement: the view, the
++ * round's view of view->retire_payload (its storage, reserved before
++ * writable admission; len is reset per family), and what the round saw: a
++ * floor that advanced, and a family whose VIEW_RETIRE was BLOCKED (re4).
++ */
++struct hfs_retire_round {
++	struct hfs_session *session;
++	struct hfs_view *view;
++	struct hfs_buf payload;
++	bool advanced;
++	bool blocked;
++};
++
++/* Snapshot the session's view families into view->retiring. Families are
++ * retained with permanent floors until protected session retirement.
++ */
++static u32 hfs_view_retire_families(struct hfs_session *session, struct hfs_view *view)
++{
++	struct hfs_view_family *family;
++	u32 nr_families = 0;
++
++	mutex_lock(&session->lock);
++	list_for_each_entry(family, &session->view_families, list)
++		view->retiring[nr_families++] = family;
++	mutex_unlock(&session->lock);
++	return nr_families;
++}
++
++/* Build family's VIEW_RETIRE payload: the result hashes of its terminal,
++ * unused tickets numbered contiguously from floor + 1 (at most 1024), with
++ * *through the last of them. Returns how many; 0: nothing to retire (the
++ * payload is then unfinished and unused). Advancing a floor never resets
++ * next or forgets credentials.
++ */
++static u32 hfs_view_retire_payload(struct hfs_session *session,
++				   struct hfs_view_family *family,
++				   struct hfs_buf *payload, u64 *through)
++{
++	struct hfs_view_ticket *ticket;
++	u8 hash[32];
++	u32 count = 0;
++
++	payload->len = 0;
++	payload->error = 0;
++	*through = family->floor;
++	hfs_buf_printf(payload, "{\"anchor\":\"%pUb\",\"credentials\":", &family->anchor);
++	hfs_buf_add(payload, family->credentials.data, family->credentials.len);
++	hfs_buf_printf(payload, ",\"nonce\":\"%pUb\",\"result_hashes\":[", &family->nonce);
++	mutex_lock(&session->lock);
++	list_for_each_entry(ticket, &session->view_tickets, list) {
++		if (ticket->family != family || !ticket->number)
++			continue;
++		if (ticket->users || !ticket->terminal || !ticket->response ||
++		    ticket->number != *through + 1)
++			break;
++		if (hfs_hex32(ticket->response, 0, "id", hash))
++			break;
++		if (count++)
++			hfs_buf_literal(payload, ",");
++		hfs_buf_hex(payload, hash, 32);
++		*through = ticket->number;
++		if (count == 1024)
++			break;
++	}
++	mutex_unlock(&session->lock);
++	if (count)
++		hfs_buf_printf(payload, "],\"through\":%llu}", *through);
++	return count;
++}
++
++/* The VIEW_RETIRE reply of a cut (hfs1.4: a stored reply is reused, a new
++ * one is stored in the cut) or of the plain payload (hfs1.1).
++ */
++static int hfs_view_retire_send(struct hfs_session *session, struct hfs_retirement_cut *cut,
++				const struct hfs_buf *payload, struct hfs_json **reply)
++{
++	int err;
++
++	if (cut && cut->response) {
++		*reply = cut->response;
++		return 0;
++	}
++	err = hfs_control(session, "VIEW_RETIRE", cut ? &cut->payload : payload, true, reply);
++	if (!err && cut)
++		cut->response = *reply;
++	return err;
++}
++
++/* Check a VIEW_RETIRE reply for through. BLOCKED (with a null proof) sets
++ * *refused: re4, the host refuses while any recall runs or while this
++ * family's credentials hold an active lease (retirementBlocked). RETIRED at
++ * exactly through is handed to the provider's view_retirement. -EPROTO for
++ * any other reply.
++ */
++static int hfs_view_retire_verify(struct hfs_session *session,
++				  struct hfs_view_family *family,
++				  struct hfs_json *reply, u64 through, bool *refused)
++{
++	int body = hfs_json_field(reply, 0, "payload");
++	u8 proof[32];
++	u64 floor;
++
++	*refused = false;
++	if (hfs_json_exact(reply, body, "floor,proof_hash,status") ||
++	    hfs_u64_field(reply, body, "floor", &floor))
++		return -EPROTO;
++	if (hfs_json_is(reply, hfs_json_field(reply, body, "status"), "\"BLOCKED\"")) {
++		if (!hfs_json_is(reply, hfs_json_field(reply, body, "proof_hash"), "null"))
++			return -EPROTO;
++		*refused = true;
++		return 0;
++	}
++	if (!hfs_json_is(reply, hfs_json_field(reply, body, "status"), "\"RETIRED\"") ||
++	    floor != through || hfs_hex32(reply, body, "proof_hash", proof))
++		return -EPROTO;
++	return session->provider->view_retirement(session, &family->credentials,
++						  through, proof, reply);
++}
++
++/* Under session->lock: is a hfs1.4 ticket of family through through still
++ * in use, not terminal or without its response?
++ */
++static bool hfs_view_retire_busy(struct hfs_session *session,
++				 const struct hfs_view_family *family, u64 through)
++{
++	struct hfs_view_ticket *ticket;
++
++	if (session->bridge_minor != 4)
++		return false;
++	list_for_each_entry(ticket, &session->view_tickets, list) {
++		if (ticket->family == family && ticket->number && ticket->number <= through &&
++		    (ticket->users || !ticket->terminal || !ticket->response))
++			return true;
++	}
++	return false;
++}
++
++/* Under session->lock: move family's tickets through through from the
++ * session to released, uncharging them. A ticket still in use stops it
++ * with -EBUSY and blocks the session (WARN: hfs_view_retire_busy checked).
++ */
++static int hfs_view_retire_take(struct hfs_session *session,
++				const struct hfs_view_family *family, u64 through,
++				struct list_head *released)
++{
++	struct hfs_view_ticket *ticket, *next;
++
++	list_for_each_entry_safe(ticket, next, &session->view_tickets, list) {
++		if (ticket->family != family || !ticket->number || ticket->number > through)
++			continue;
++		if (WARN_ON_ONCE(ticket->users)) {
++			hfs_session_block(session, "retired view ticket still in use", "VIEW_RETIRE",
++					  -EBUSY);
++			return -EBUSY;
++		}
++		list_move_tail(&ticket->list, released);
++		session->nr_view_tickets--;
++		if (ticket->control)
++			session->nr_view_control_tickets--;
++	}
++	return 0;
++}
++
++/* Free retired tickets (off every list) and return their reservations. */
++static void hfs_view_retire_free(struct hfs_session *session, struct list_head *released)
++{
++	struct hfs_view_ticket *ticket, *next;
++
++	list_for_each_entry_safe(ticket, next, released, list) {
++		void *reservation = ticket->reservation;
++
++		list_del(&ticket->list);
++		hfs_buf_free(&ticket->request);
++		hfs_buf_free(&ticket->payload);
++		hfs_buf_free(&ticket->query);
++		hfs_buf_free(&ticket->original);
++		kvfree(ticket->scratch);
++		hfs_json_free(ticket->response);
++		hfs_json_free(ticket->initial_response);
++		hfs_completion_close(ticket->completion);
++		kfree(ticket);
++		session->provider->unreserve(session, reservation);
++	}
++}
++
++/* Advance family's floor to through after the provider accepted the
++ * retirement, in one session->lock section with the hfs1.4 busy check:
++ * -EBUSY with *keep (the cut stays for a retry) when a ticket is still in
++ * use. Otherwise *keep is false: the floor advanced, the waiters were
++ * woken and the retired tickets freed; -EBUSY only for the WARN case of
++ * hfs_view_retire_take.
++ */
++static int hfs_view_retire_advance(struct hfs_retire_round *round,
++				   struct hfs_view_family *family, u64 through, bool *keep)
++{
++	struct hfs_session *session = round->session;
++	struct hfs_view *view = round->view;
++	LIST_HEAD(released);
++	int err;
++
++	mutex_lock(&session->lock);
++	if (hfs_view_retire_busy(session, family, through)) {
++		mutex_unlock(&session->lock);
++		return -EBUSY;
++	}
++	*keep = false;
++	family->floor = through;
++	round->advanced = true;
++	/* re4: progress for BLOCKED observations (hfs_mmap_blocked_backoff).
++	 * 1h4: an observation waiting behind this round (hfs_view_retire_wait)
++	 * retries at once, without waiting for the other families' exchanges.
++	 */
++	WRITE_ONCE(view->retire_progress, view->retire_progress + 1);
++	wake_up_all(&view->wait);
++	err = hfs_view_retire_take(session, family, through, &released);
++	mutex_unlock(&session->lock);
++	hfs_view_retire_free(session, &released);
++	return err;
++}
++
++/* Offer one family's VIEW_RETIRE (its stored hfs1.4 cut, or a new payload
++ * and cut) and apply the answer. A BLOCKED answer leaves the tickets
++ * charged (an acquisition family's against the ordinary Tickets bound, a
++ * release family's against ControlTickets), so round->blocked asks to offer
++ * them again (hfs_mmap_retire_kick) instead of waiting for the next cleanup
++ * packet. A failure before the floor advanced keeps the cut (and its stored
++ * reply) for a retry; once answered and applied, the cut or reply is freed.
++ */
++static int hfs_view_retire_family(struct hfs_retire_round *round,
++				  struct hfs_view_family *family)
++{
++	struct hfs_session *session = round->session;
++	struct hfs_retirement_cut *cut = session->bridge_minor == 4 ?
++		family->retirement_cut : NULL;
++	struct hfs_json *reply = NULL;
++	bool refused = false, keep = true;
++	u64 through;
++	int err;
++
++	if (cut) {
++		through = cut->through;
++	} else {
++		if (!hfs_view_retire_payload(session, family, &round->payload, &through))
++			return 0;
++		if (session->bridge_minor == 4) {
++			err = hfs_retirement_cut_new(session, "VIEW_RETIRE", &round->payload,
++						     family->floor + 1, through, &cut);
++			if (err)
++				return err;
++			family->retirement_cut = cut;
++		}
++	}
++	err = hfs_view_retire_send(session, cut, &round->payload, &reply);
++	if (!err)
++		err = hfs_view_retire_verify(session, family, reply, through, &refused);
++	if (!err && !refused)
++		err = hfs_view_retire_advance(round, family, through, &keep);
++	if (err && keep) {
++		if (!cut)
++			hfs_json_free(reply);
++		return err;
++	}
++	if (cut) {
++		family->retirement_cut = NULL;
++		hfs_retirement_cut_free(session, cut);
++	} else {
++		hfs_json_free(reply);
++	}
++	if (refused)
++		round->blocked = true;
++	return err;
++}
++
 +/* try (re4 review): an observation's BLOCKED back-off must not wait behind a
 + * running retirement round (the cleanup worker's), so it skips with -EBUSY.
 + * 1h4 review round 1: *ran (try only) says whether a round ran, so the
 + * caller can tell a held mutex (-EBUSY, !*ran) from a round that ran and
 + * itself returned -EBUSY (a retired ticket still in use).
++ *
++ * 5f4: split per the 50-line rule (hfs_view_retire_family offers one
++ * family) without changes in order, locking or error paths. A round that
++ * offered every family returns 0 if some floor advanced, else -EAGAIN; the
++ * first error ends the round and is returned.
 + */
 +static int hfs_view_retire_mode(struct hfs_session *session, bool try, bool *ran)
 +{
-+	struct hfs_view_family *family;
++	struct hfs_retire_round round = { .session = session };
 +	struct hfs_view *view;
-+	struct hfs_view_ticket *ticket, *next;
-+	struct hfs_buf payload = {};
-+	struct hfs_json *reply = NULL;
-+	struct hfs_retirement_cut *cut = NULL;
-+	LIST_HEAD(released);
-+	u8 hash[32], proof[32];
-+	u64 through, floor;
-+	u32 count, nr_families = 0, index;
-+	bool advanced = false, blocked = false, offered = false;
-+	int err = -EAGAIN, body;
++	u32 nr_families, index;
++	int err = 0;
 +
 +	if (session->bridge_minor != 1 && session->bridge_minor != 4)
 +		return -EOPNOTSUPP;
@@ -3989,185 +4454,23 @@ new file mode 100644
 +	}
 +	if (ran)
 +		*ran = true;
-+	payload = view->retire_payload;
-+	mutex_lock(&session->lock);
-+	list_for_each_entry(family, &session->view_families, list)
-+		view->retiring[nr_families++] = family;
-+	mutex_unlock(&session->lock);
-+	/* Families are retained with permanent floors until protected session
-+	 * retirement. Advancing a floor never resets next or forgets credentials.
-+	 */
-+	for (index = 0; index < nr_families; index++) {
-+		family = view->retiring[index];
-+		cut = session->bridge_minor == 4 ? family->retirement_cut : NULL;
-+		if (cut) {
-+			through = cut->through;
-+			goto exchange;
-+		}
-+		payload.len = 0;
-+		payload.error = 0;
-+		count = 0;
-+		through = family->floor;
-+		hfs_buf_printf(&payload, "{\"anchor\":\"%pUb\",\"credentials\":",
-+			       &family->anchor);
-+		hfs_buf_add(&payload, family->credentials.data, family->credentials.len);
-+		hfs_buf_printf(&payload, ",\"nonce\":\"%pUb\",\"result_hashes\":[",
-+			       &family->nonce);
-+		mutex_lock(&session->lock);
-+		list_for_each_entry(ticket, &session->view_tickets, list) {
-+			if (ticket->family != family || !ticket->number)
-+				continue;
-+			if (ticket->users || !ticket->terminal || !ticket->response ||
-+			    ticket->number != through + 1)
-+				break;
-+			if (hfs_hex32(ticket->response, 0, "id", hash))
-+				break;
-+			if (count++)
-+				hfs_buf_literal(&payload, ",");
-+			hfs_buf_hex(&payload, hash, 32);
-+			through = ticket->number;
-+			if (count == 1024)
-+				break;
-+		}
-+		mutex_unlock(&session->lock);
-+		if (!count)
-+			continue;
-+		hfs_buf_printf(&payload, "],\"through\":%llu}", through);
-+		if (session->bridge_minor == 4) {
-+			err = hfs_retirement_cut_new(session, "VIEW_RETIRE", &payload,
-+				family->floor + 1, through, &cut);
-+			if (err)
-+				goto out;
-+			family->retirement_cut = cut;
-+		}
-+exchange:
-+		if (cut && cut->response)
-+			reply = cut->response;
-+		else {
-+			err = hfs_control(session, "VIEW_RETIRE", cut ? &cut->payload : &payload, true, &reply);
-+			if (err)
-+				goto out;
-+			if (cut)
-+				cut->response = reply;
-+		}
-+		body = hfs_json_field(reply, 0, "payload");
-+		if (hfs_json_exact(reply, body, "floor,proof_hash,status") ||
-+		    hfs_u64_field(reply, body, "floor", &floor)) {
-+			err = -EPROTO;
-+			goto out;
-+		}
-+		if (hfs_json_is(reply, hfs_json_field(reply, body, "status"), "\"BLOCKED\"")) {
-+			if (!hfs_json_is(reply, hfs_json_field(reply, body, "proof_hash"), "null")) {
-+				err = -EPROTO;
-+				goto out;
-+			}
-+			if (cut) {
-+				family->retirement_cut = NULL;
-+				hfs_retirement_cut_free(session, cut);
-+				cut = NULL;
-+			} else
-+				hfs_json_free(reply);
-+			reply = NULL;
-+			/* re4: the host refuses while any recall runs or while
-+			 * this family's credentials hold an active lease
-+			 * (retirementBlocked). Its tickets stay charged (an
-+			 * acquisition family's against the ordinary Tickets
-+			 * bound, a release family's against ControlTickets),
-+			 * so remember to offer them again
-+			 * (hfs_mmap_retire_kick) instead of waiting for the
-+			 * next cleanup packet.
-+			 */
-+			blocked = true;
-+			continue;
-+		}
-+		if (!hfs_json_is(reply, hfs_json_field(reply, body, "status"), "\"RETIRED\"") ||
-+		    floor != through || hfs_hex32(reply, body, "proof_hash", proof)) {
-+			err = -EPROTO;
-+			goto out;
-+		}
-+		err = session->provider->view_retirement(session, &family->credentials,
-+						 through, proof, reply);
-+		if (err)
-+			goto out;
-+		mutex_lock(&session->lock);
-+		if (session->bridge_minor == 4) {
-+			list_for_each_entry(ticket, &session->view_tickets, list) {
-+				if (ticket->family == family && ticket->number && ticket->number <= through &&
-+				    (ticket->users || !ticket->terminal || !ticket->response)) {
-+					err = -EBUSY;
-+					break;
-+				}
-+			}
-+			if (err) {
-+				mutex_unlock(&session->lock);
-+				goto out;
-+			}
-+		}
-+		family->floor = through;
-+		advanced = true;
-+		/* re4: progress for BLOCKED observations (hfs_mmap_blocked_backoff).
-+		 * 1h4: an observation waiting behind this round
-+		 * (hfs_view_retire_wait) retries at once, without waiting for the
-+		 * other families' exchanges.
-+		 */
-+		WRITE_ONCE(view->retire_progress, view->retire_progress + 1);
-+		wake_up_all(&view->wait);
-+		list_for_each_entry_safe(ticket, next, &session->view_tickets, list) {
-+			if (ticket->family != family || !ticket->number || ticket->number > through)
-+				continue;
-+			if (WARN_ON_ONCE(ticket->users)) {
-+				err = -EBUSY;
-+				hfs_session_block(session, "retired view ticket still in use", "VIEW_RETIRE", err);
-+				break;
-+			}
-+			list_move_tail(&ticket->list, &released);
-+			session->nr_view_tickets--;
-+			if (ticket->control)
-+				session->nr_view_control_tickets--;
-+		}
-+		mutex_unlock(&session->lock);
-+		list_for_each_entry_safe(ticket, next, &released, list) {
-+			void *reservation = ticket->reservation;
-+
-+			list_del(&ticket->list);
-+			hfs_buf_free(&ticket->request);
-+			hfs_buf_free(&ticket->payload);
-+			hfs_buf_free(&ticket->query);
-+			hfs_buf_free(&ticket->original);
-+			kvfree(ticket->scratch);
-+			hfs_json_free(ticket->response);
-+			hfs_json_free(ticket->initial_response);
-+			hfs_completion_close(ticket->completion);
-+			kfree(ticket);
-+			session->provider->unreserve(session, reservation);
-+		}
-+		if (cut) {
-+			family->retirement_cut = NULL;
-+			hfs_retirement_cut_free(session, cut);
-+			cut = NULL;
-+		} else
-+			hfs_json_free(reply);
-+		reply = NULL;
-+		if (err)
-+			goto out;
-+	}
-+	offered = true;
-+out:
-+	if (!cut)
-+		hfs_json_free(reply);
++	round.view = view;
++	round.payload = view->retire_payload;
++	nr_families = hfs_view_retire_families(session, view);
++	for (index = 0; index < nr_families && !err; index++)
++		err = hfs_view_retire_family(&round, view->retiring[index]);
 +	/* re4: view->retire_blocked says some family's VIEW_RETIRE was BLOCKED
 +	 * and is still owed. A pass that offered every family replaces it; an
 +	 * aborted pass only adds a refusal it saw (a spare retry is harmless).
 +	 */
-+	if (offered || blocked)
-+		WRITE_ONCE(view->retire_blocked, blocked);
-+	/* Payload and snapshot storage were reserved before writable admission.
-+	 * 1h4: this round is over, whatever it achieved; an observation whose
++	if (!err || round.blocked)
++		WRITE_ONCE(view->retire_blocked, round.blocked);
++	/* 1h4: this round is over, whatever it achieved; an observation whose
 +	 * try found it busy (hfs_view_retire_wait) decides again.
 +	 */
 +	hfs_retirement_unlock(session);
 +	hfs_view_put(view);
-+	return err ?: (advanced ? 0 : -EAGAIN);
++	return err ?: (round.advanced ? 0 : -EAGAIN);
 +}
 +
 +/* 0 when some family's floor advanced, else an error (-EAGAIN: nothing
@@ -4563,7 +4866,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,2642 @@
+@@ -0,0 +1,2680 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -5073,7 +5376,7 @@ new file mode 100644
 +	char text[8] = "-";
 +
 +	WRITE_ONCE(control->error, error);
-+	WRITE_ONCE(session->blocked, true);
++	hfs_session_mark_blocked(session); /* 5f4: wakes the view waits */
 +	if (!test_and_set_bit(HFS_REPORTED_VIEW_STOP, &session->block_reported)) {
 +		if (code)
 +			snprintf(text, sizeof(text), "%u", code);
@@ -6179,8 +6482,8 @@ new file mode 100644
 +	}
 +	err = hfs_lease_acquire(session, cred, NULL, description->cap,
 +				offset, write, &entry->target, &lease);
-+	/* 2f4: -EXDEV (a later recall passed it) or a settle stop may still
-+	 * hand out an unadopted lease; the cleanup packet releases it, and the
++	/* 2f4: -EXDEV (a later recall passed it), a settle stop or 5f4's
++	 * -ENOMEM (hfs_lease_acquire_ex) may still hand out an unadopted lease; the cleanup packet releases it, and the
 +	 * fault fails as for any moved view.
 +	 */
 +	cleanup->lease = lease;
@@ -6403,38 +6706,26 @@ new file mode 100644
 +	return writeback ?: err;
 +}
 +
-+int hfs_mmap_bootstrap(struct hfs_session *session, const struct hfs_cred *cred)
++/* hfs_mmap_bootstrap's cleanup packet: allocated with its provider credit,
++ * owning the caller's control reference, and queued on control->cleanup
++ * (not yet scheduled). On an error nothing is allocated or queued and the
++ * caller still owns its control reference.
++ */
++static int hfs_mmap_bootstrap_packet(struct hfs_session *session,
++				     struct hfs_mmap_control *control,
++				     struct hfs_cache_cleanup **out)
 +{
-+	struct hfs_view *view;
-+	struct hfs_mmap_control *control;
 +	struct hfs_cache_cleanup *cleanup;
-+	struct hfs_lease *lease = NULL;
-+	unsigned long flags, deadline = jiffies + 30 * HZ;
++	unsigned long flags;
 +	int err;
 +
-+	err = hfs_view_new_unbound(session);
-+	if (err)
-+		return err;
-+	view = hfs_view_get(session);
-+	if (!view)
-+		return -ESTALE;
-+	err = hfs_mmap_start(view);
-+	if (err)
-+		goto view;
-+	control = hfs_mmap_control_get(view);
-+	if (!control) {
-+		err = -ESTALE;
-+		goto view;
-+	}
 +	cleanup = kzalloc(sizeof(*cleanup), GFP_KERNEL);
-+	if (!cleanup) {
-+		err = -ENOMEM;
-+		goto reference;
-+	}
++	if (!cleanup)
++		return -ENOMEM;
 +	err = session->provider->reserve(session, sizeof(*cleanup), true, &cleanup->credit);
 +	if (err) {
 +		kfree(cleanup);
-+		goto reference;
++		return err;
 +	}
 +	cleanup->control = control;
 +	INIT_LIST_HEAD(&cleanup->list);
@@ -6443,6 +6734,22 @@ new file mode 100644
 +	spin_lock_irqsave(&control->lock, flags);
 +	list_add_tail(&cleanup->list, &control->cleanup);
 +	spin_unlock_irqrestore(&control->lock, flags);
++	*out = cleanup;
++	return 0;
++}
++
++/* Bind the new view's initial cut: acquire a DOMAIN discovery lease, bind
++ * it (hfs_view_bind_initial) and release it, again on -ESTALE/-EAGAIN until
++ * deadline. A lease still held when this returns (a failed release, or a
++ * stop that handed one out) stays in cleanup->lease for the packet.
++ */
++static int hfs_mmap_bootstrap_bind(struct hfs_session *session, const struct hfs_cred *cred,
++				   struct hfs_view *view, struct hfs_cache_cleanup *cleanup,
++				   unsigned long deadline)
++{
++	struct hfs_lease *lease = NULL;
++	int err;
++
 +	for (;;) {
 +		/* The issuer selects/verifies an actual cut. An empty unbound
 +		 * domain is already polling and can close a necessary first recall.
@@ -6450,7 +6757,8 @@ new file mode 100644
 +		err = hfs_lease_acquire(session, cred, NULL, NULL, 0, false, NULL, &lease);
 +		/* 2f4: a lease a later recall passed (-EXDEV) is released below
 +		 * and acquired again, like a discovery lease of a moved view; on
-+		 * a settle stop the packet queued after the loop releases it.
++		 * a settle stop (or 5f4's -ENOMEM, hfs_lease_acquire_ex) the
++		 * packet queued after the loop releases it.
 +		 */
 +		cleanup->lease = lease;
 +		if (err == -EXDEV)
@@ -6474,6 +6782,39 @@ new file mode 100644
 +		if (!err || time_after_eq(jiffies, deadline))
 +			break;
 +	}
++	return err;
++}
++
++/* A new mount's unbound view: create it, start its control worker, then
++ * bind its initial cut (hfs_mmap_bootstrap_bind) within 30 s of entry. Split
++ * for 5f4 (the 50-line rule) without changes in order or error paths.
++ */
++int hfs_mmap_bootstrap(struct hfs_session *session, const struct hfs_cred *cred)
++{
++	struct hfs_view *view;
++	struct hfs_mmap_control *control;
++	struct hfs_cache_cleanup *cleanup;
++	unsigned long deadline = jiffies + 30 * HZ;
++	int err;
++
++	err = hfs_view_new_unbound(session);
++	if (err)
++		return err;
++	view = hfs_view_get(session);
++	if (!view)
++		return -ESTALE;
++	err = hfs_mmap_start(view);
++	if (err)
++		goto view;
++	control = hfs_mmap_control_get(view);
++	if (!control) {
++		err = -ESTALE;
++		goto view;
++	}
++	err = hfs_mmap_bootstrap_packet(session, control, &cleanup);
++	if (err)
++		goto reference;
++	err = hfs_mmap_bootstrap_bind(session, cred, view, cleanup, deadline);
 +	/* The preowned packet retains any uncertain lease/release evidence and
 +	 * its original issuer; no stack pointer or mount caller lifetime escapes.
 +	 */

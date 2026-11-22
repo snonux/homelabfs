@@ -17,7 +17,12 @@
 
 typedef pthread_mutex_t spinlock_t;
 struct mutex { pthread_mutex_t native; };
-typedef struct { int unused; } wait_queue_head_t;
+/* 5f4: a wait queue counts its wake-ups (wake_up_all), so a case can
+ * require that a stop wakes a parked waiter (view_wait_wakes below). An
+ * entry records the queue it was added to (hfs_view_watch_stops).
+ */
+typedef struct { unsigned long wakes; } wait_queue_head_t;
+struct wait_queue_entry { wait_queue_head_t *head; };
 struct list_head { struct list_head *next, *prev; };
 struct kref { atomic_int refcount; };
 struct address_space { int id; bool exiting; const struct address_space_operations *a_ops; };
@@ -120,6 +125,7 @@ struct hfs_session {
    u16 exporter_error; bool transport_failed;
    struct list_head forgets; void *control;
    struct mutex retirement; /* 1h4: hfs_retirement_unlock (hfs_view.c) */
+   wait_queue_head_t stop_wait; /* 5f4: hfs_view_watch_stops (hfs_view.c) */
 };
 
 #define HFS_IDENTITIES_MAX 4096U
@@ -148,8 +154,32 @@ typedef atomic_long atomic_long_t;
 #define spin_lock_init(p) assert(pthread_mutex_init(p, NULL) == 0)
 #define spin_lock_irqsave(p, flags) ((void)(flags), assert(pthread_mutex_lock(p) == 0))
 #define spin_unlock_irqrestore(p, flags) ((void)(flags), assert(pthread_mutex_unlock(p) == 0))
-#define init_waitqueue_head(p) ((void)(p))
-#define wake_up_all(p) ((void)(p))
+#define init_waitqueue_head(p) ((p)->wakes = 0)
+#define wake_up_all(p) ((void)__atomic_fetch_add(&(p)->wakes, 1, __ATOMIC_SEQ_CST))
+/* 5f4: the queues a waiter watches besides the one it parks on
+ * (add_wait_queue; hfs_view_watch_stops), innermost last. The entry must be
+ * removed again before the waiter returns (view_wait_nr_watched back to 0).
+ * current is NULL here, as in pressure/compat_extra.h.
+ */
+#define current NULL
+static wait_queue_head_t *view_wait_watched[4];
+static unsigned int view_wait_nr_watched;
+#define init_waitqueue_entry(e, task) ((void)(task), (e)->head = NULL)
+static inline void add_wait_queue(wait_queue_head_t *q, struct wait_queue_entry *e) {
+   assert(view_wait_nr_watched < 4 && !e->head);
+   e->head = q; view_wait_watched[view_wait_nr_watched++] = q;
+}
+static inline void remove_wait_queue(wait_queue_head_t *q, struct wait_queue_entry *e) {
+   assert(view_wait_nr_watched && e->head == q && view_wait_watched[view_wait_nr_watched - 1] == q);
+   view_wait_nr_watched--; e->head = NULL;
+}
+/* Wake-ups so far of q and of every watched queue. */
+static inline unsigned long view_wait_woken(wait_queue_head_t *q) {
+   unsigned long n = __atomic_load_n(&q->wakes, __ATOMIC_SEQ_CST);
+   for (unsigned int i = 0; i < view_wait_nr_watched; i++)
+      n += __atomic_load_n(&view_wait_watched[i]->wakes, __ATOMIC_SEQ_CST);
+   return n;
+}
 #define wait_event(q, cond) do { (void)(q); while (!(cond)) usleep(100); } while (0)
 /* view_wait_bounded: a case that requires a bounded wait (1a4) fails at once
  * on an untimed sleep instead of spinning until the stage limit.
@@ -171,15 +201,19 @@ static unsigned long jiffies;
  * aborts after 100000 sleeps. The result follows the kernel macro: -ERESTARTSYS, 0 when the
  * condition is still false at the timeout, otherwise the jiffies left (at
  * least 1).
+ *
+ * 5f4: with view_wait_wakes set, a sleep ends early only if its hook woke q
+ * or a watched queue (view_wait_woken), as in the kernel; otherwise it runs
+ * to the timeout whatever the condition says. Without it, every step
+ * re-checks the condition (the pre-5f4 model).
  */
 static unsigned long view_wait_step, view_wait_sleeps;
-static bool view_wait_fatal;
+static bool view_wait_fatal, view_wait_wakes;
 static void (*view_wait_hook)(void);
 #define wait_event_killable_timeout(q, cond, timeout) ({ \
    long __left = (long)(timeout); \
-   (void)(q); \
    while (!(cond)) { \
-      unsigned long __step; \
+      unsigned long __step, __woken = view_wait_woken(&(q)); \
       if (view_wait_fatal) { __left = -ERESTARTSYS; break; } \
       if (__left <= 0) { __left = 0; break; } \
       __step = view_wait_step && view_wait_step < (unsigned long)__left ? \
@@ -187,6 +221,7 @@ static void (*view_wait_hook)(void);
       jiffies += __step; __left -= (long)__step; \
       if (++view_wait_sleeps > 100000) { fprintf(stderr, "unbounded wait\n"); abort(); } \
       if (view_wait_hook) view_wait_hook(); \
+      if (view_wait_wakes && view_wait_woken(&(q)) == __woken) { jiffies += (unsigned long)__left; __left = 0; } \
    } \
    if (__left == 0 && (cond)) __left = 1; \
    __left; })
