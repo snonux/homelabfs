@@ -915,11 +915,18 @@ CLAIM_COUNTS = ("Principals", "Allocated", "Retired", "Entries", "Open")
 
 
 def claim_text(claim):
-    """One claim summary as text. A claim an uncertain refusal held back
-    (a84: Refusal, Refusals, RefusedFirst/RefusedLast in Unix seconds) also
-    names that refusal, so a stuck claim explains itself in the run log."""
+    """One claim summary as text. An open (Pending) claim shows its age (l64:
+    Age, seconds since the runtime allocated the number, at the OBSERVE's own
+    clock; omitted under one second and by runtimes before l64), so a stuck
+    claim shows how long the guest has waited on it. A claim an uncertain
+    refusal held back (a84: Refusal, Refusals, RefusedFirst/RefusedLast in
+    Unix seconds) also names that refusal, so it explains itself in the run
+    log."""
     text = "#{} {} {}/{}".format(claim.get("Number"), claim.get("Opcode") or "(no CALL yet)", claim.get("Status"),
                                  claim.get("Stage") or "-")
+    age = claim.get("Age")
+    if type(age) is int and age > 0:
+        text += " age {}s".format(age)
     if claim.get("Refusal"):
         text += " refused {} x{} ({}..{})".format(claim["Refusal"], claim.get("Refusals"),
                                                   claim.get("RefusedFirst"), claim.get("RefusedLast"))

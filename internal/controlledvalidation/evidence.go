@@ -38,7 +38,7 @@ func (p *Provider) LedgerEvidence(ctx context.Context) (LedgerEvidence, error) {
 	}
 	e := LedgerEvidence{Ledger: p.config.Authorization.Enrollment.Ledger.String()}
 	// One read transaction gives the digest, the size and the claim summary
-	// (b84) of the same snapshot. The bbolt transaction size is the current
+	// (b84, with l64 ages at this clock reading) of the same snapshot. The bbolt transaction size is the current
 	// mapped ledger, not the stale FileInfo captured when this owner opened
 	// its file.
 	if err := p.db.View(func(tx *bolt.Tx) error {
@@ -47,7 +47,7 @@ func (p *Provider) LedgerEvidence(ctx context.Context) (LedgerEvidence, error) {
 			return err
 		}
 		e.Digest, e.Bytes = digest, tx.Size()
-		e.Claims, err = p.claimEvidence(tx)
+		e.Claims, err = p.claimEvidence(tx, p.clock().Unix())
 		return err
 	}); err != nil {
 		return LedgerEvidence{}, err

@@ -10,9 +10,11 @@ import (
 // TestLedgerEvidenceListsOpenClaims drives real ROOT and PROCESS_EXIT CALLs
 // to TERMINAL, leaves one number ALLOCATED and one GETATTR RESERVED (the
 // zq3-r8 shape of a stranded probe claim), and checks the bounded claim
-// summary OBSERVE carries (b84).
+// summary OBSERVE carries (b84). The clock is pinned so the open claim's l64
+// Age is 0 (omitted) and its Pending and Recent summaries compare equal.
 func TestLedgerEvidenceListsOpenClaims(t *testing.T) {
 	h := newAllocationHarness(t)
+	h.f.provider.now = (&steppedClock{at: ageEpoch}).now
 	for _, op := range []string{"ALLOCATE", "CALL"} {
 		_, err := h.send(op, h.original)
 		mustAllocation(t, err)
@@ -56,9 +58,11 @@ func exitCall(t *testing.T, h *allocationHarness, n uint64) guestbridge.Call {
 
 // TestLedgerEvidenceReservedClaimAndBounds checks a RESERVED/UNPREPARED
 // claim is open with its opcode, and that Pending and Recent stay bounded
-// while Open and Entries keep the full counts.
+// while Open and Entries keep the full counts. The pinned clock keeps the l64
+// Age at 0 so the literal summary below compares equal.
 func TestLedgerEvidenceReservedClaimAndBounds(t *testing.T) {
 	f := newFixture(t)
+	f.provider.now = (&steppedClock{at: ageEpoch}).now
 	total := claimEvidencePending + 4
 	for i := 0; i < total; i++ {
 		f.binding("GETATTR", map[string]any{})

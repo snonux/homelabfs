@@ -128,14 +128,14 @@ func observeRefusal(old *refusalTrace, class string, now int64) (*refusalTrace, 
 }
 
 // entryFootprint is the encoding every credit measure of an entry uses: the
-// entry without its a84 refusal trace (e is a copy), so the trace never
-// changes a NoSpace answer.
+// entry without its a84 refusal trace and its l64 Opened time (e is a copy),
+// so neither diagnostic ever changes a NoSpace answer.
 func entryFootprint(e entry) ([]byte, error) {
-	e.Refusal = nil
+	e.Refusal, e.Opened = nil, 0
 	return json.Marshal(e)
 }
 
-// clock is the refusal trace's time source.
+// clock is the time source of the refusal trace, of Opened and of claim ages.
 func (p *Provider) clock() time.Time {
 	if p.now != nil {
 		return p.now()

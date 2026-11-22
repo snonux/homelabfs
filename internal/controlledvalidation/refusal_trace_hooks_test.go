@@ -125,11 +125,15 @@ func TestReaddirCleanupIgnoresRefusalTrace(t *testing.T) {
 }
 
 // TestClaimEvidenceWorstCaseBound fills the summary lists with open claims at
-// the maximum number, oversized strings and maximal traces, and checks one
+// the maximum number, oversized strings, maximal traces and the largest l64
+// Age (Opened 1, the clock at the maximum Unix second), and checks one
 // provider's encoded ClaimEvidence stays within MaxClaimEvidenceBytes, with
-// traces only on the first claimEvidenceTraced Pending summaries.
+// traces only on the first claimEvidenceTraced Pending summaries and ages on
+// Pending only.
 func TestClaimEvidenceWorstCaseBound(t *testing.T) {
 	f := newFixture(t)
+	const maxSecond = 1<<63 - 1
+	f.provider.now = func() time.Time { return time.Unix(maxSecond, 0) }
 	template := f.newBinding("GETATTR", map[string]any{}, false)
 	long := strings.Repeat("Z", 200)
 	mustAllocation(t, f.provider.db.Update(func(tx *bolt.Tx) error {
@@ -147,7 +151,7 @@ func TestClaimEvidenceWorstCaseBound(t *testing.T) {
 			b.Call.Claim.Number = ^uint64(0) - i
 			b.Call.Intent.Opcode = long
 			e := entry{Version: ledgerVersion, Claim: b.Call.Claim, Binding: b, Status: long, PreparationStage: long,
-				Refusal: &refusalTrace{Class: long, Count: ^uint64(0), First: -1 << 63, Last: -1 << 63}}
+				Refusal: &refusalTrace{Class: long, Count: ^uint64(0), First: -1 << 63, Last: -1 << 63}, Opened: 1}
 			if err := f.provider.putClaim(tx, claimKey(b.Call.Claim), e); err != nil {
 				return err
 			}
@@ -170,13 +174,13 @@ func TestClaimEvidenceWorstCaseBound(t *testing.T) {
 		t.Fatalf("lists %d/%d", len(c.Pending), len(c.Recent))
 	}
 	for i, s := range c.Pending {
-		if (s.Refusal != "") != (i < claimEvidenceTraced) || len(s.Refusal) > claimSummaryText || len(s.Opcode) > claimSummaryText {
+		if (s.Refusal != "") != (i < claimEvidenceTraced) || len(s.Refusal) > claimSummaryText || len(s.Opcode) > claimSummaryText || s.Age != maxSecond-1 {
 			t.Fatalf("pending %d %+v", i, s)
 		}
 	}
 	for _, s := range c.Recent {
-		if s.Refusal != "" || s.Refusals != 0 {
-			t.Fatalf("recent carries a trace %+v", s)
+		if s.Refusal != "" || s.Refusals != 0 || s.Age != 0 {
+			t.Fatalf("recent carries a trace or an age %+v", s)
 		}
 	}
 	t.Logf("worst-case claim evidence: %d bytes", len(raw))

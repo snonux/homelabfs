@@ -56,23 +56,35 @@ func (p *Provider) allocate(claim guestbridge.Claim, original *guestbridge.Bindi
 		}
 		e := entry{Version: ledgerVersion, Claim: claim, Status: "ALLOCATED", Original: original}
 		if original != nil {
-			raw, err := json.Marshal(e)
-			if err != nil {
+			if err := p.reserveOriginalCredit(tx, &e); err != nil {
 				return err
 			}
-			if uint64(len(raw)) > p.config.ClaimCreditBytes {
-				return fsapi.NoSpace
-			}
-			if err = p.reserveCredit(tx, "retained-credit", p.config.ClaimCreditBytes, p.config.MaxRetainedBytes); err != nil {
-				return err
-			}
-			if err = p.reserveCredit(tx, "source-credit", p.config.SourceCreditBytes, p.config.MaxSourceBytes); err != nil {
-				return err
-			}
-			e.RetainedCredit, e.SourceCredit = p.config.ClaimCreditBytes, p.config.SourceCreditBytes
 		}
+		// Opened (l64) is set after the credit check, which measures the
+		// entry without it, like entryFootprint.
+		e.Opened = p.clock().Unix()
 		return p.putClaim(tx, k, e)
 	})
+}
+
+// reserveOriginalCredit checks that an AllocateOriginal entry e fits its
+// claim credit and reserves the retained and source credits it carries.
+func (p *Provider) reserveOriginalCredit(tx *bolt.Tx, e *entry) error {
+	raw, err := json.Marshal(e)
+	if err != nil {
+		return err
+	}
+	if uint64(len(raw)) > p.config.ClaimCreditBytes {
+		return fsapi.NoSpace
+	}
+	if err = p.reserveCredit(tx, "retained-credit", p.config.ClaimCreditBytes, p.config.MaxRetainedBytes); err != nil {
+		return err
+	}
+	if err = p.reserveCredit(tx, "source-credit", p.config.SourceCreditBytes, p.config.MaxSourceBytes); err != nil {
+		return err
+	}
+	e.RetainedCredit, e.SourceCredit = p.config.ClaimCreditBytes, p.config.SourceCreditBytes
+	return nil
 }
 
 // Resolve authenticates scope and immutable anchor before exposing old bytes.

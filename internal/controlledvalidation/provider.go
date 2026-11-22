@@ -79,8 +79,10 @@ type Provider struct {
 	closed      atomic.Bool
 	// pending names the claims that may block admission (pending_index.go).
 	pending pendingIndex
-	// now is the refusal trace's clock (refusal_trace.go); nil is time.Now.
-	// Tests set it to step through the per-class rate limit.
+	// now is the clock of the refusal trace (refusal_trace.go), of an
+	// entry's Opened time and of OBSERVE's claim ages (evidence_claims.go);
+	// nil is time.Now. Tests set it to step through the per-class rate limit
+	// and to pin ages.
 	now func() time.Time
 }
 
@@ -106,6 +108,15 @@ type entry struct {
 	// refusal class recorded while the claim was never prepared. No decision
 	// reads it, and checkPlanCredit leaves it out of the footprint.
 	Refusal *refusalTrace `json:",omitempty"`
+	// Opened is diagnostics only (l64, evidence_claims.go): the Unix seconds
+	// at which the number was allocated (Allocate, or an earmark's bind), set
+	// once when the entry is created and never changed, so a gap proof (the
+	// entry's hash) taken later stays valid. OBSERVE derives an open claim's
+	// Age from it. No decision reads it, and entryFootprint leaves it out of
+	// every credit measure. Entries written before l64 have none (0). Because
+	// the entry's hash includes it, a gap proof can no longer be recomputed
+	// from the public claim fields alone; no consumer does that today.
+	Opened int64 `json:",omitempty"`
 }
 
 // principal is one claim family: High is the last allocated number and Floor

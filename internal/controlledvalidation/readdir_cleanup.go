@@ -145,9 +145,9 @@ func (p *Provider) releaseReaddirGrants(tx *bolt.Tx, scope guestbridge.Context, 
 // digits, and its fixed 64-bit slot was included in the existing 4096-byte
 // per-entry admission allowance. Both encodings of that growth check carry
 // the same refusal trace, so it cancels out. The absolute check against
-// RetainedCredit measures the entry without its a84 refusal trace
-// (entryFootprint), exactly as checkPlanCredit admitted the plan, so a trace
-// never turns a cleanup into NoSpace.
+// RetainedCredit measures the entry without its a84 refusal trace and its l64
+// Opened time (entryFootprint), exactly as checkPlanCredit admitted the plan,
+// so neither diagnostic ever turns a cleanup into NoSpace.
 func readdirOwnerFits(owner entry, ownerRaw, updated []byte) error {
 	encoded, err := json.Marshal(owner)
 	if err != nil {
