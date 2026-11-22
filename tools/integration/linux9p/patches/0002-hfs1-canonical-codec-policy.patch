@@ -2040,7 +2040,7 @@ diff --git a/fs/9p/hfs_policy.h b/fs/9p/hfs_policy.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_policy.h
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,101 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_POLICY_H
 +#define FS_9P_HFS_POLICY_H
@@ -2134,7 +2134,9 @@ new file mode 100644
 +
 +/* Operations (control operations or CALL opcodes) that may keep retrying
 + * on a blocked session: retirement, release, cancel and cleanup traffic,
-+ * which a retained session's destroy and close still need.
++ * which a retained session's destroy and close still need, and the reserved
++ * control work for drains and reconciliation, DRAIN_WRITE and GAP_RESOLVE
++ * (dh4). Every other operation halts at its first retry or poll.
 + */
 +bool hfs_after_block_operation(const char *operation);
 +
@@ -2144,7 +2146,7 @@ diff --git a/fs/9p/hfs_policy.c b/fs/9p/hfs_policy.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_policy.c
-@@ -0,0 +1,239 @@
+@@ -0,0 +1,248 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Pure request identity and authoritative metadata validation. */
 +#include "hfs_policy.h"
@@ -2370,12 +2372,21 @@ new file mode 100644
 +	return blocked && !exempt && !teardown ? -EHOSTDOWN : 0;
 +}
 +
++/* dh4: DRAIN_WRITE and GAP_RESOLVE are the reserved control work that a
++ * blocked session admits for drains and reconciliation (hfs_request_admit,
++ * reserved cells). Since oc4 they were admitted and sent but then halted
++ * with -EHOSTDOWN at their first FETCH AGAIN or QUERY poll, so a bound
++ * drain or a retried GAP_RESOLVE failed by timing alone. They now run to
++ * their reply or deadline like retirement traffic; transport_failed still
++ * halts them (hfs_session_poll_halt), so they stay bounded after host loss.
++ */
 +bool hfs_after_block_operation(const char *operation)
 +{
 +	static const char *const exempt[] = {
 +		"RETIRE",	"CANCEL",	     "RELEASE_CELL",	  "SESSION_RETIRE",
 +		"VIEW_RELEASE", "VIEW_CANCEL",	     "VIEW_RETIRE",	  "READDIR_CLEANUP",
 +		"FORGET",	"DESCRIPTION_CLOSE", "DESCRIPTION_RELEASE", "PROCESS_EXIT",
++		"DRAIN_WRITE",	"GAP_RESOLVE",
 +	};
 +	size_t i;
 +

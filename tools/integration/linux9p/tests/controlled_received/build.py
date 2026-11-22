@@ -84,7 +84,7 @@ def main():
                 'hfs_transport_send', 'hfs_transport_fetch', 'hfs_transport_chunk',
                 'hfs_transport_collect', 'hfs_transport',
                 'hfs_result_needs_adoption',
-                'hfs_operation', 'hfs_allocation_candidate', 'hfs_terminal_candidate', 'hfs_candidate_parse_put', 'hfs_control_flagged', 'hfs_control',
+                'hfs_operation', 'hfs_allocation_candidate', 'hfs_terminal_controlled_mismatch', 'hfs_terminal_candidate', 'hfs_candidate_parse_put', 'hfs_control_flagged', 'hfs_control',
                 'hfs_copy_token', 'hfs_result_code', 'hfs_result_validate',
                 'hfs_args_init', 'hfs_cap_write', 'hfs_args_object',
                 'hfs_cap_free', 'hfs_cap_parse', 'hfs_reply_cap',
