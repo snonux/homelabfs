@@ -1579,7 +1579,7 @@ f3 sh -s < $D/sh/p4-libs.sh > $E/p4-python-libs.sha256
 cat $E/p4-python-libs.sha256 >> $E/p4-host.sha256
 f3 "stat -f '%Sp %Su %Sg %N' /usr/local/bin/python3.12 /usr/local/bin /usr/local /usr /" > $E/p4-python-stat.txt
 f3 "doas -n /usr/local/bin/python3.12 -I -B $R/bin/fdescfs-window.py facts --inspector $R/bin/hfs-controlled-runtime; date -u +%s" > $E/p4-facts-and-now.txt
-f3 'sha256 -r /usr/bin/ssh' | diff - $D/facts/f3-usr-bin-ssh-20261121T151444Z.sha256 && echo F1-unchanged
+f3 'sha256 -r /usr/bin/ssh' | diff - $D/facts/f3-usr-bin-ssh-20261122T163703Z.sha256 && echo F1-unchanged
 f3 'env TZ=UTC ps -p 30974 -o lstart=; doas -n ls /dev/vmm; kldstat' > $E/p4-rocky-pin.txt
 # ==== END Phase-4 block 1 ====
 ```
@@ -1788,7 +1788,7 @@ Step 1a, memory pre-estimate (B) and the disk-level reference:
 ```bash
 # ==== BEGIN Phase-5 block 3 (run each line on its own) ====
 f3 'doas -n vm list; swapinfo; zfs list -t snapshot -o name,guid -s creation zroot/bhyve/rocky | tail -1' > $E/p5-prestop.txt
-f3 'sysctl -n hw.pagesize vm.stats.vm.v_free_count vm.stats.vm.v_inactive_count vm.stats.vm.v_active_count vm.stats.vm.v_laundry_count vm.stats.vm.v_wire_count kstat.zfs.misc.arcstats.size kstat.zfs.misc.arcstats.c_min; ps -p 59685 -o rss=' > $E/p5-mem.txt
+f3 'sysctl -n hw.pagesize vm.stats.vm.v_free_count vm.stats.vm.v_inactive_count vm.stats.vm.v_active_count vm.stats.vm.v_laundry_count vm.stats.vm.v_wire_count kstat.zfs.misc.arcstats.size kstat.zfs.misc.arcstats.c_min; ps -p 30974 -o rss=' > $E/p5-mem.txt
 python3 -I -B $D/sh/p5-estimate.py $E/p5-mem.txt | tee $E/p5-estimate.json
 # ==== END Phase-5 block 3 ====
 ```

@@ -325,3 +325,12 @@ At `e2f406a` (a clean worktree of main), all passing:
 `bash -n` is clean for `build-stage.sh` and `session.sh`; `session.sh`
 loads only in bash (zsh refuses) and its `hpin` and `okpin` pass. No code
 was changed.
+
+## Review round 1
+
+A fresh-context review found two r19 leftovers in executable lines, both
+fixed in the run sheet (no hash in pins.json changes): the Phase 4 F1
+recheck now diffs against `facts/f3-usr-bin-ssh-20261122T163703Z.sha256`,
+and the Phase 5 memory pre-estimate reads Rocky PID 30974. Everything else
+checked (all hashes, tarball members, facts, N1 gate GO until 21:25Z, prep at
+e2f406a compatible with daemon c04c519f, AGENTS.md rules).
