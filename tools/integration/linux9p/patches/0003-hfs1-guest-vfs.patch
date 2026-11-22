@@ -4248,7 +4248,7 @@ diff --git a/fs/9p/hfs_inode.c b/fs/9p/hfs_inode.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_inode.c
-@@ -0,0 +1,1379 @@
+@@ -0,0 +1,1396 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Authoritative retained-9p attributes and namespace VFS operations. */
 +#include <linux/magic.h>
@@ -4893,6 +4893,19 @@ new file mode 100644
 + * parent's i_rwsem is held exclusively (filename_create, and
 + * open_last_lookups for O_CREAT), so no parallel lookup can add another
 + * dentry for the name meanwhile; on success d_splice_alias hashes it again.
++ *
++ * tg4: the guest lock does not stop the host, so two outcomes besides a
++ * plain positive dentry reach the callers:
++ * - directory alias: the name is (by now) a directory that already has a
++ *   dentry elsewhere; hfs_lookup returns that alias carrying this path's
++ *   grant and leaves @dentry unused. hfs_create_exists hands it to
++ *   finish_no_open, whose O_CREAT open refuses a directory with EISDIR;
++ *   hfs_link finds a different inode, returns ESTALE and drops the alias
++ *   (vfs_link never links a directory, so only a host race gets here).
++ * - negative race: the name was removed again before LOOKUP; hfs_lookup
++ *   returns NULL with @dentry rehashed negative. atomic_open in fs/namei.c
++ *   then fails the open with ENOENT; hfs_link sees no inode and returns
++ *   ESTALE.
 + */
 +static struct dentry *hfs_relookup(struct inode *dir, struct dentry *dentry)
 +{
@@ -4912,29 +4925,6 @@ new file mode 100644
 +		       access, flags & O_APPEND ? "true" : "false",
 +		       create ? "true" : "false", flags & O_EXCL ? "true" : "false",
 +		       sync, flags & O_TRUNC ? "true" : "false");
-+}
-+
-+static int hfs_create(struct inode *dir, struct dentry *dentry,
-+		      struct file *file, unsigned int flags, umode_t mode);
-+
-+static int hfs_atomic_open(struct inode *dir, struct dentry *dentry,
-+			   struct file *file, unsigned int flags, umode_t mode)
-+{
-+	if (d_in_lookup(dentry)) {
-+		struct dentry *alias = hfs_lookup(dir, dentry, 0);
-+
-+		if (IS_ERR(alias))
-+			return PTR_ERR(alias);
-+		if (alias)
-+			return finish_no_open(file, alias);
-+	}
-+	if (d_really_is_positive(dentry))
-+		return finish_no_open(file, NULL);
-+	if (!(flags & O_CREAT))
-+		return -ENOENT;
-+	if ((mode & ~(S_IFMT | 07777)) || (flags & O_TMPFILE) == O_TMPFILE)
-+		return -EOPNOTSUPP;
-+	return hfs_create(dir, dentry, file, flags, mode);
 +}
 +
 +/* CREATE arguments: always exclusive, so a fresh negative lookup keeps
@@ -5063,6 +5053,27 @@ new file mode 100644
 +	hfs_cred_free(cred);
 +	return err;
 +}
++
++static int hfs_atomic_open(struct inode *dir, struct dentry *dentry,
++			   struct file *file, unsigned int flags, umode_t mode)
++{
++	if (d_in_lookup(dentry)) {
++		struct dentry *alias = hfs_lookup(dir, dentry, 0);
++
++		if (IS_ERR(alias))
++			return PTR_ERR(alias);
++		if (alias)
++			return finish_no_open(file, alias);
++	}
++	if (d_really_is_positive(dentry))
++		return finish_no_open(file, NULL);
++	if (!(flags & O_CREAT))
++		return -ENOENT;
++	if ((mode & ~(S_IFMT | 07777)) || (flags & O_TMPFILE) == O_TMPFILE)
++		return -EOPNOTSUPP;
++	return hfs_create(dir, dentry, file, flags, mode);
++}
++
 +/* MKDIR/SYMLINK/UNLINK/RMDIR arguments; a too-long symlink target is
 + * refused before the CALL (and the buffer freed).
 + */
@@ -5148,6 +5159,7 @@ new file mode 100644
 +	hfs_end(dir, cred, cookie);
 +	return err;
 +}
++
 +static int hfs_mkdir(struct user_namespace *ns, struct inode *dir,
 +		     struct dentry *dentry, umode_t mode)
 +{
@@ -5357,6 +5369,10 @@ new file mode 100644
 + * hfs_setattr_sent); anything else fails before the CALL. Mode with
 + * suid/sgid next to an ownership change stays refused, as the host refuses
 + * it (it clears 06000 on that change).
++ * tg4: ATTR_TOUCH (utimensat(NULL), futimens(fd, NULL), both UTIME_NOW) is
++ * a VFS permission hint, already enforced by may_setattr in notify_change
++ * (owner, or write permission); the request it marks is ATIME|MTIME|CTIME
++ * without *_SET, which hfs_optional_time sends as host-current times.
 + */
 +static bool hfs_setattr_supported(unsigned int valid, umode_t mode)
 +{
@@ -5364,7 +5380,8 @@ new file mode 100644
 +
 +	if (valid & ~(ATTR_MODE | ATTR_UID | ATTR_GID | ATTR_SIZE | ATTR_ATIME |
 +		      ATTR_MTIME | ATTR_CTIME | ATTR_ATIME_SET | ATTR_MTIME_SET |
-+		      ATTR_TIMES_SET | ATTR_FILE | ATTR_OPEN | ATTR_FORCE))
++		      ATTR_TIMES_SET | ATTR_TOUCH | ATTR_FILE | ATTR_OPEN |
++		      ATTR_FORCE))
 +		return false;
 +	if (truncate && (valid & (ATTR_MODE | ATTR_UID | ATTR_GID)))
 +		return false;

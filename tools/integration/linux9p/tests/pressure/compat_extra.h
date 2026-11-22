@@ -109,6 +109,14 @@ u64 hfs_controlled_current_fence(struct hfs_session *);
 int hfs_session_poll_halt(struct hfs_session *,bool);
 void hfs_session_block(struct hfs_session *,const char *,const char *,int);
 static int test_received_source_ex(struct hfs_session *,const struct hfs_json *,int,bool *);
+/* ch4: the actual hfs_lease_acquire_ex (renamed actual_hfs_lease_acquire_ex)
+ * runs with its release state (hfs_lease_own) as a test.c fixture.
+ */
+struct hfs_lease;
+static int hfs_lease_own(struct hfs_session *,const struct hfs_cred *,const struct hfs_cap *,struct hfs_lease *);
+int actual_hfs_lease_acquire_ex(struct hfs_session *,const struct hfs_cred *,const struct hfs_cap *,
+                                const struct hfs_cap *,u64,bool,const struct hfs_buf *,bool,
+                                struct hfs_lease **,bool *);
 static inline long strscpy(char *d,const char *s,size_t n)
 { size_t len=strlen(s);assert(n);size_t copy=len<n?len:n-1;memcpy(d,s,copy);d[copy]=0;return len<n?(long)len:-7; }
 static inline const char *strnstr(const char *s,const char *find,size_t len)

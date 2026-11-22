@@ -23,6 +23,10 @@ as well and run on a dentry an earlier hfs_lookup already hashed;
 d_splice_alias's BUG_ON(!d_unhashed(dentry)) is substituted by a test failure.
 The source check requires that hfs_lookup is called only by hfs_atomic_open
 (for an in-lookup dentry) and by hfs_relookup, which unhashes first.
+
+tg4: model.inc adds vfs_utimes (fs/utimes.c); utimensat(NULL),
+futimens(fd, NULL) and both UTIME_NOW carry ATTR_TOUCH, which
+hfs_setattr_supported refused before any CALL until tg4.
 """
 import argparse
 import hashlib

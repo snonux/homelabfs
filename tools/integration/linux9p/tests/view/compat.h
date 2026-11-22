@@ -25,7 +25,11 @@ typedef int gfp_t;
 struct page { bool locked, compound, anon, marker, uptodate, mapped, writeback, pinned, dirty; void *private; int refs; };
 struct folio { struct page page; struct address_space *mapping; };
 struct file { struct inode *inode; void *private_data; };
-struct hfs_cap { u8 token[32]; };
+/* json and rights (as in hfs.h) serve hfs_cap_write and
+ * hfs_lease_acquire_valid in view --pressure (ch4).
+ */
+struct hfs_json;
+struct hfs_cap { struct hfs_json *json; u32 rights; u8 token[32]; };
 struct hfs_description { struct hfs_cap *cap; };
 struct vm_area_struct { struct file *vm_file; };
 enum migrate_mode { MIGRATE_ASYNC };
@@ -81,7 +85,9 @@ static inline void folio_detach_private(struct folio *f) {
 /* i_lock, i_state and i_data, and hfs_inode's object and forget, serve the
  * ie4 forget-record checks (hfs_inode_get_fail, hfs_evict_inode; view
  * --pressure). A zeroed spinlock_t is an unlocked glibc mutex. view_mmapped
- * mirrors hfs.h (tj4: hfs_view_mmap_inode's mark).
+ * mirrors hfs.h (tj4: hfs_view_mmap_inode's mark). wj4: run.py's
+ * hfs_inode_layout_guard refuses a struct hfs_inode whose members differ
+ * from fs/9p/hfs.h by name or order.
  */
 struct inode { struct address_space *i_mapping; int refs; spinlock_t i_lock; unsigned long i_state; struct address_space i_data; };
 struct hfs_forget;
@@ -102,12 +108,15 @@ struct hfs_provider {
  * exporter ERROR reason (oc4). transport_failed (oc4) ends hfs_mmap_begin's
  * re-check retries (ie4, view --pressure); the ie4 cases set bridge_minor 4
  * only for their blocked-session check. forgets and control (the FORGET
- * queue) serve the ie4 forget-record checks.
+ * queue) serve the ie4 forget-record checks. domain and
+ * enrollment.context (ch4) serve the actual hfs_lease_acquire_ex.
  */
 struct hfs_session {
    struct hfs_view *view; struct hfs_provider *provider; struct mutex lock;
    u16 bridge_minor; bool closing; bool blocked;
-   struct { uuid_t session; } enrollment; unsigned long block_reported;
+   struct hfs_cap *domain;
+   struct { uuid_t session; char context[64]; u32 context_len; } enrollment;
+   unsigned long block_reported;
    u16 exporter_error; bool transport_failed;
    struct list_head forgets; void *control;
    struct mutex retirement; /* 1h4: hfs_retirement_unlock (hfs_view.c) */

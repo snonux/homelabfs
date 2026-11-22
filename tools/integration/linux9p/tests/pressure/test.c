@@ -1224,10 +1224,34 @@ static bool xq_unverified, xq_never_current;
 static int xq_block_err;
 static struct hfs_view_ticket xq_ticket;
 static struct hfs_view_family xq_family;
+/* ch4: with xq_full_lease the lease is a complete GRANTED lease of
+ * xq_domain/xq_scope for a READ DOMAIN acquisition, target xq_target, whose
+ * id is the actual hfs_json_hash_fields of its other fields, as
+ * hfs_lease_decode_check requires.
+ */
+static bool xq_full_lease;
+static struct hfs_json *xq_domain_json;
+static struct hfs_cap xq_domain;
+static const char xq_scope[]="{\"scope\":1}";
+#define XQ_LEASE_FIELDS "access,credential_hash,domain,fence,mode,revision,scope,target"
+static void xq_full_lease_text(char *out,size_t size,u64 fence)
+{
+ static const char zero[]="0000000000000000000000000000000000000000000000000000000000000000";
+ char head[512],hex[65];struct hfs_json *json;u8 id[32];unsigned int i;
+ snprintf(head,sizeof(head),"{\"access\":{\"kind\":\"DOMAIN\"},\"credential_hash\":\"%s\",\"domain\":%.*s,"
+          "\"fence\":%llu",zero,(int)xq_domain_json->len,xq_domain_json->data,(unsigned long long)fence);
+ assert(snprintf(out,size,"%s,\"mode\":\"READ\",\"revision\":1,\"scope\":%s,\"target\":%s}",
+                 head,xq_scope,xq_target)<(int)size);
+ assert(!hfs_json_parse(out,strlen(out),&json) && !hfs_json_hash_fields(json,0,XQ_LEASE_FIELDS,id));
+ hfs_json_free(json);
+ for(i=0;i<32;i++)snprintf(hex+2*i,3,"%02x",id[i]);
+ assert(snprintf(out,size,"%s,\"id\":\"%s\",\"mode\":\"READ\",\"revision\":1,\"scope\":%s,\"target\":%s}",
+                 head,hex,xq_scope,xq_target)<(int)size);
+}
 int hfs_control_flagged(struct hfs_session *session,const char *operation,const struct hfs_buf *payload,
                         bool control,bool after_block,struct hfs_json **out)
 {
- const struct xq_step *step;char text[512],source[96];struct hfs_view *view=session->view;
+ const struct xq_step *step;char text[1024],source[640];struct hfs_view *view=session->view;
  assert(session==test_session && xq_calls<xq_nr && !after_block);
  step=&xq_steps[xq_calls];
  if(xq_ticket.admitted)assert(!strcmp(operation,"VIEW_QUERY") && payload==&xq_ticket.query && control);
@@ -1235,12 +1259,13 @@ int hfs_control_flagged(struct hfs_session *session,const char *operation,const 
  xq_capture_revision=view->revision;xq_capture_phase=view->phase; // hfs_received_capture
  if(step->hook)step->hook(view);
  xq_calls++;
- if(xq_target)snprintf(source,sizeof(source),"{\"fence\":%llu,\"target\":%s}",(unsigned long long)step->fence,xq_target);
+ if(xq_full_lease)xq_full_lease_text(source,sizeof(source),step->fence);
+ else if(xq_target)snprintf(source,sizeof(source),"{\"fence\":%llu,\"target\":%s}",(unsigned long long)step->fence,xq_target);
  else snprintf(source,sizeof(source),"{\"fence\":%llu}",(unsigned long long)step->fence);
- snprintf(text,sizeof(text),"{\"payload\":{\"entry\":%s,\"lease\":%s,\"reservation\":%s,\"status\":\"%s\"}}",
+ assert(snprintf(text,sizeof(text),"{\"payload\":{\"entry\":%s,\"lease\":%s,\"reservation\":%s,\"status\":\"%s\"}}",
           step->source && !strcmp(step->source,"entry")?source:"null",
           step->source && !strcmp(step->source,"lease")?source:"null",
-          step->source && !strcmp(step->source,"reservation")?source:"null",step->status);
+          step->source && !strcmp(step->source,"reservation")?source:"null",step->status)<(int)sizeof(text));
  return hfs_json_parse(text,strlen(text),out);
 }
 static int hfs_ticket_reply(struct hfs_view_ticket *ticket,const struct hfs_json *json,int payload,const char *wire_operation)
@@ -1477,6 +1502,64 @@ static void xq_advance_unreadable(void)
  assert(xq_ticket.terminal && !xq_ticket.uncertain && !xq_blocks && !test_session->blocked);
  xq_teardown(response);
 }
+/* ch4 (4h4 round-2 review): the same unreadable expected target through
+ * the actual hfs_lease_acquire_ex (actual_hfs_lease_acquire_ex). Fixtures:
+ * the ticket it prepares is xq_ticket, fresh and unbound (the actual
+ * exchange binds the actual payload); the host's reply is a full GRANTED
+ * lease on another target; after the bind, the step hook truncates the
+ * bound payload (in the kernel hfs_view_grant_moved's parse fails on
+ * memory). hfs_lease_own records the release state it would own. Expected:
+ * -EXDEV with the lease decoded and built unadopted (no candidate, no
+ * provider check), owned for release, holding the terminal ticket; no
+ * settle, no block.
+ */
+static unsigned int xq_owns;
+static struct hfs_view_ticket xq_release_credit={.control=true};
+static int hfs_lease_own(struct hfs_session *session,const struct hfs_cred *cred,
+                         const struct hfs_cap *description,struct hfs_lease *lease)
+{
+ assert(session==test_session && cred && !description);
+ xq_owns++;lease->release_ticket=&xq_release_credit;return 0;
+}
+int hfs_view_ticket_prepare(struct hfs_session *session,const struct hfs_cred *cred,bool control,
+                            struct hfs_view_ticket **ticket)
+{ assert(session==test_session && cred && !control);*ticket=&xq_ticket;return 0; }
+int hfs_view_ticket_activate(struct hfs_view_ticket *ticket) { assert(ticket==&xq_ticket);return 0; }
+static void xq_unbind_ticket(void)
+{
+ static struct hfs_token scratch[4096];
+ xq_ticket.bound=xq_ticket.admitted=false;xq_ticket.operation[0]=0;xq_ticket.scratch=scratch;
+ hfs_buf_free(&xq_ticket.payload);
+ assert(!hfs_buf_init(&xq_ticket.payload,4096) && !hfs_buf_init(&xq_ticket.original,4096));
+ assert(!hfs_buf_init(&xq_ticket.request,64));hfs_buf_literal(&xq_ticket.request,"{\"r\":7}");
+}
+static void xq_truncate_payload(struct hfs_view *view)
+{ assert(xq_ticket.bound && xq_ticket.payload.len>10);xq_ticket.payload.len=10; }
+static void xq_advance_unreadable_acquire(void)
+{
+ static const struct xq_step steps[]={{"GRANTED","lease",6,xq_truncate_payload}};
+ static const char domain[]="{\"domain\":1}";
+ struct hfs_buf expected={0};struct hfs_lease *lease=NULL;bool blocked=true;u8 hash[32];
+ unsigned int verifies=advance_verifies;int err;
+ xq_advance_setup(steps,1,6,true,"{\"t\":2}");xq_never_current=true;xq_unbind_ticket();
+ assert(!hfs_json_parse(domain,strlen(domain),&xq_domain_json));xq_domain.json=xq_domain_json;
+ test_session->domain=&xq_domain;xq_full_lease=true;xq_owns=0;
+ memcpy(test_session->enrollment.context,xq_scope,strlen(xq_scope));test_session->enrollment.context_len=strlen(xq_scope);
+ assert(!hfs_buf_init(&expected,64));hfs_buf_literal(&expected,"{\"t\":1}");
+ err=actual_hfs_lease_acquire_ex(test_session,(const struct hfs_cred *)(void *)&xq_owns,NULL,NULL,0,false,
+                                 &expected,true,&lease,&blocked);
+ assert(err==-EXDEV && lease && !blocked && xq_calls==1 && !view_wait_sleeps && xq_owns==1);
+ assert(lease->unadopted && !lease->advance && uuid_is_null(&lease->visibility) && advance_verifies==verifies);
+ hfs_hash((const u8 *)"{\"t\":2}",7,hash);
+ assert(!memcmp(lease->target_hash,hash,32) && lease->fence==6 && lease->revision==1);
+ assert(lease->ticket==&xq_ticket && lease->release_ticket==&xq_release_credit);
+ assert(xq_ticket.terminal && !xq_ticket.uncertain && xq_ticket.advance && !xq_blocks && !test_session->blocked);
+ hfs_json_free(lease->json);free(lease);hfs_buf_free(&expected);
+ hfs_buf_free(&xq_ticket.request);hfs_buf_free(&xq_ticket.original);
+ hfs_json_free(xq_domain_json);test_session->domain=NULL;xq_full_lease=false;
+ test_session->enrollment.context_len=0;
+ xq_teardown(NULL);
+}
 /* Without advance a moved target still fails closed: settle, re-query,
  * -EPROTO and the session blocked, as before xf4.
  */
@@ -1561,6 +1644,7 @@ static void grant_settle_checks(void)
  xq_advance_moved();
  xq_advance_same_target();
  xq_advance_unreadable();
+ xq_advance_unreadable_acquire();
  xq_no_advance_moved();
 }
 int main(void)
@@ -1673,5 +1757,5 @@ int main(void)
  view_worker_log_checks(&session);
  hfs_json_free(target_event);hfs_json_free(other_target_event);hfs_json_free(advance_json);hfs_json_free(advance_event);hfs_view_unregister_inode(&inode.inode);hfs_view_fence(session.view);assert(!hfs_view_free(&session));
  assert(!reservations && !module_refs);
- puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (recall before/after grant re-acquires,no release recall,no self-recall loop,moved target,refusals,deadline,no leak,RETIRED_ID passed through,host BLOCKED retried only after retirement progress (held lease released first,at most 3 retries,ticket budget kept),progress by the cleanup worker during the pause or after a busy try,1h4 BLOCKED after a reinstall re-checked at once (2 tickets),busy retirement waited for not counted (5 busy rounds granted,never ending -EAGAIN at the deadline,capacity BLOCKED still needs progress,release count after the unlock,request-retirement holder wakes the waiter,wait slice bounds an unknown holder,a round that ran -EBUSY counted,stops checked after a wake),no progress/deadline -EAGAIN at once,BLOCKED retire re-sent after recall/next observation (rate-limited),attr re-stamp/re-issue,moved LOOKUP FORGET balanced,2f4 passed grant re-acquired),2f4 exchange: GRANTED before the fence raise re-queried after the REOPENED ACK,old revision re-queried at once,passed by a later recall -EXDEV,deadline/signal/block/transport stops hand the GRANTED out without a block,unadopted lease never bound or page-leased,unverified/never-current/DIRTY fail closed,xf4 advance (cacheless view requests and adopts in one acquisition,mapped/paged/unsupported view never requests,readmitted grant after a reinstall unadopted -EXDEV then no advance,current moved grant accepted but held,moved advance grant handed out without settle,moved target without advance still blocks,decode classification incl. replay after adoption and after a further move),source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
+ puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (recall before/after grant re-acquires,no release recall,no self-recall loop,moved target,refusals,deadline,no leak,RETIRED_ID passed through,host BLOCKED retried only after retirement progress (held lease released first,at most 3 retries,ticket budget kept),progress by the cleanup worker during the pause or after a busy try,1h4 BLOCKED after a reinstall re-checked at once (2 tickets),busy retirement waited for not counted (5 busy rounds granted,never ending -EAGAIN at the deadline,capacity BLOCKED still needs progress,release count after the unlock,request-retirement holder wakes the waiter,wait slice bounds an unknown holder,a round that ran -EBUSY counted,stops checked after a wake),no progress/deadline -EAGAIN at once,BLOCKED retire re-sent after recall/next observation (rate-limited),attr re-stamp/re-issue,moved LOOKUP FORGET balanced,2f4 passed grant re-acquired),2f4 exchange: GRANTED before the fence raise re-queried after the REOPENED ACK,old revision re-queried at once,passed by a later recall -EXDEV,deadline/signal/block/transport stops hand the GRANTED out without a block,unadopted lease never bound or page-leased,unverified/never-current/DIRTY fail closed,xf4 advance (cacheless view requests and adopts in one acquisition,mapped/paged/unsupported view never requests,readmitted grant after a reinstall unadopted -EXDEV then no advance,current moved grant accepted but held,moved advance grant handed out without settle,unreadable expected target -EXDEV unadopted through hfs_lease_acquire_ex,moved target without advance still blocks,decode classification incl. replay after adoption and after a further move),source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
 }

@@ -789,7 +789,7 @@ diff --git a/fs/9p/hfs_view.c b/fs/9p/hfs_view.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_view.c
-@@ -0,0 +1,1507 @@
+@@ -0,0 +1,1524 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Physical retained-cache admission and all-alias PTE/TLB/MMU quiescence. */
 +#include <linux/mm.h>
@@ -801,13 +801,18 @@ new file mode 100644
 +#include "hfs.h"
 +#include "hfs_view.h"
 +
++/* The last reference: nothing may still count against the view. wj4:
++ * nr_mmapped too, as a tripwire; it is bounded by nr_mappings (both drop in
++ * hfs_view_unregister_inode), so it can only fire with that count broken.
++ */
 +static void hfs_view_release(struct kref *refs)
 +{
 +	struct hfs_view *view = container_of(refs, struct hfs_view, refs);
 +
 +	WARN_ON_ONCE(view->control || view->active || view->nr_mappings ||
-+		     view->nr_cached || view->nr_dirty || view->nr_dirty_packages ||
-+		     view->nr_grants || view->nr_observations);
++		     view->nr_mmapped || view->nr_cached || view->nr_dirty ||
++		     view->nr_dirty_packages || view->nr_grants ||
++		     view->nr_observations);
 +	hfs_buf_free(&view->target);
 +	hfs_buf_free(&view->manifest);
 +	hfs_buf_free(&view->retire_payload);
@@ -1171,9 +1176,16 @@ new file mode 100644
 + * since before xf4 the observation path only waited for LIVE, within its
 + * deadline. A view that left LIVE (a STOP sets RECALLING before it waits)
 + * or is refused ends the attempt at once with -EXDEV: the adoption would
-+ * be refused anyway. Any other holder (an install, initial bind, REOPEN or
-+ * ACK check; all short) is waited for one jiffy at a time, killable, until
-+ * the observation's deadline: -ETIMEDOUT, or -EINTR on a fatal signal.
++ * be refused anyway. While the view is LIVE every other holder keeps it
++ * only for a check under view->lock (ch4: the actual LIVE-phase holders):
++ * the REOPENED ACK check (hfs_controlled_before_ack, which also takes
++ * hfs_controlled_lock), a STOP until it sets RECALLING, a seal or
++ * finish_drained that finds LIVE and refuses it, an install that refuses a
++ * non-install phase, the initial bind of an already LIVE view, an exact
++ * REOPEN replay, and a concurrent adoption's switch. Those are waited for
++ * one jiffy at a time, killable, until the observation's deadline
++ * (time_before, so a jiffies wrap between capture and wait is harmless):
++ * -ETIMEDOUT, or -EINTR on a fatal signal.
 + */
 +static int hfs_view_transitions_bounded(struct hfs_view *view, unsigned long deadline)
 +{
@@ -1249,7 +1261,10 @@ new file mode 100644
 + * -EXDEV, so the caller holds it, acquires again and then releases it
 + * (hfs_mmap_attempt); a passed deadline or a fatal signal while waiting for
 + * view->transitions returns -ETIMEDOUT or -EINTR, and the caller's cleanup
-+ * packet releases the lease. Nothing blocks the session.
++ * packet releases the lease. ch4: only hfs_view_transitions_bounded's
++ * results pass through; every verification failure is a refusal (-EXDEV),
++ * even an -ETIMEDOUT or -EINTR the provider returned. Nothing blocks the
++ * session.
 + */
 +int hfs_view_advance(struct hfs_view *view, struct hfs_lease *lease,
 +		     struct hfs_view_stamp *stamp, struct hfs_buf *target,
@@ -1261,22 +1276,24 @@ new file mode 100644
 +	u8 hash[32];
 +	int err;
 +
-+	err = token < 0 ? -EPROTO :
-+		hfs_view_advance_target(view->session, lease->json, token, target,
-+					&visibility, hash);
-+	if (!err)
++	if (token < 0 || hfs_view_advance_target(view->session, lease->json, token,
++						 target, &visibility, hash)) {
++		err = -EXDEV;
++	} else {
++		/* -EXDEV, -ETIMEDOUT or -EINTR, or 0 with transitions held. */
 +		err = hfs_view_transitions_bounded(view, deadline);
-+	if (!err) {
-+		err = hfs_view_advance_switch(view, lease, stamp, target, token,
-+					      &visibility, hash);
-+		mutex_unlock(&view->transitions);
-+		return err;
++		if (!err) {
++			err = hfs_view_advance_switch(view, lease, stamp, target, token,
++						      &visibility, hash);
++			mutex_unlock(&view->transitions);
++			return err;
++		}
 +	}
 +	spin_lock_irqsave(&view->lock, flags);
 +	lease->advance = false;
 +	lease->unadopted = true;
 +	spin_unlock_irqrestore(&view->lock, flags);
-+	return err == -ETIMEDOUT || err == -EINTR ? err : -EXDEV;
++	return err;
 +}
 +
 +/* The stamp of a LIVE view and, when target_hash is not NULL, the hash of

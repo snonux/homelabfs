@@ -401,9 +401,13 @@ static void advance_stop_order_checks(struct hfs_view *view, struct advance_case
 }
 
 /* 4h4 review round 1: another holder of view->transitions on a LIVE view
- * (an install, initial bind, REOPEN or ACK check that does not end) is
- * waited for only until the observation's deadline (-ETIMEDOUT) or a fatal
- * signal (-EINTR), each leaving the lease unadopted and the view untouched.
+ * (ch4: in the kernel a REOPENED ACK check, a STOP before it sets
+ * RECALLING, a seal, finish_drained or install refusing LIVE, an initial
+ * bind, an exact REOPEN replay; here one that does not end) is waited for
+ * only until the observation's deadline (-ETIMEDOUT) or a fatal signal
+ * (-EINTR), each leaving the lease unadopted and the view untouched.
+ * ch4: a holder that releases transitions mid-wait lets the adoption
+ * proceed (advance_release_checks).
  */
 static void advance_bounded_checks(struct hfs_view *view, struct advance_case *c)
 {
@@ -424,6 +428,80 @@ static void advance_bounded_checks(struct hfs_view *view, struct advance_case *c
    view_wait_fatal = false;
    view_wait_step = 0;
    mutex_unlock(&view->transitions);
+}
+
+/* ch4: the transitions holder of advance_release_checks; it releases the
+ * mutex at the advance_release_at-th simulated sleep of the bounded wait.
+ */
+static struct hfs_view *advance_holder_view;
+static unsigned long advance_release_at;
+static void advance_release_hook(void)
+{
+   if (view_wait_sleeps == advance_release_at)
+      mutex_unlock(&advance_holder_view->transitions);
+}
+
+/* One adoption waiting for a holder that releases transitions after
+ * `after` one-jiffy sleeps, with the deadline `span` jiffies away.
+ */
+static void advance_after_release(struct hfs_view *view, struct advance_case *c,
+                                  unsigned long after, unsigned long span)
+{
+   unsigned long start = jiffies;
+
+   advance_setup(view, c);
+   mutex_lock(&view->transitions);
+   advance_holder_view = view;
+   advance_release_at = after;
+   view_wait_sleeps = 0;
+   view_wait_step = 1;
+   view_wait_hook = advance_release_hook;
+   assert(!hfs_view_advance(view, &c->lease, &c->stamp, &c->target, start + span));
+   assert(jiffies - start == after && view_wait_sleeps == after);
+   assert(view->revision == c->revision + 1 && c->stamp.revision == view->revision);
+   assert(!c->lease.advance && !c->lease.unadopted);
+   assert(view->target.len == sizeof(advance_new) - 1 &&
+          !memcmp(view->target.data, advance_new, view->target.len));
+   assert(mutex_trylock(&view->transitions)); /* released by the adoption */
+   mutex_unlock(&view->transitions);
+   view_wait_hook = NULL;
+   view_wait_step = 0;
+}
+
+/* ch4 (4h4 round-2 review):
+ * - a holder that releases transitions mid-wait: the adoption then takes it
+ *   and switches the target (pre-4h4 it waited untimed; a loop that gave up
+ *   on the first failed trylock would return -ETIMEDOUT or -EXDEV here);
+ * - the same, and a holder that never releases, with jiffies wrapping
+ *   between the capture of the deadline and its expiry: the wait still ends
+ *   exactly at the deadline (time_before), not at once and not never;
+ * - a provider check that itself returns -ETIMEDOUT or -EINTR is a refusal
+ *   (-EXDEV); only the bounded transitions wait passes those through.
+ */
+static void advance_release_checks(struct hfs_view *view, struct advance_case *c)
+{
+   unsigned long start;
+
+   advance_after_release(view, c, 7, 25);
+   jiffies = ULONG_MAX - 3; /* wraps after 4 of the 7 sleeps */
+   advance_after_release(view, c, 7, 25);
+   jiffies = ULONG_MAX - 10;
+   advance_setup(view, c);
+   mutex_lock(&view->transitions);
+   start = jiffies;
+   view_wait_step = 1;
+   assert(hfs_view_advance(view, &c->lease, &c->stamp, &c->target, start + 25) == -ETIMEDOUT);
+   assert(jiffies - start == 25 && jiffies < start && c->lease.unadopted);
+   assert(view->revision == c->revision && view->phase == HFS_VIEW_LIVE);
+   view_wait_step = 0;
+   mutex_unlock(&view->transitions);
+   advance_setup(view, c);
+   advance_verify_err = -ETIMEDOUT;
+   advance_refused(view, c);
+   advance_setup(view, c);
+   advance_verify_err = -EINTR;
+   advance_refused(view, c);
+   advance_verify_err = 0;
 }
 
 /* xf4: hfs_view_capture_ex's cacheless hint and hfs_view_advance on a fresh
@@ -461,6 +539,7 @@ static void advance_checks(struct hfs_session *session)
    advance_identity_checks(view, &c);
    advance_stop_order_checks(view, &c, &sequence);
    advance_bounded_checks(view, &c);
+   advance_release_checks(view, &c);
    hfs_buf_free(&c.target);
    hfs_view_fence(view);
    assert(hfs_view_free(session) == 0);

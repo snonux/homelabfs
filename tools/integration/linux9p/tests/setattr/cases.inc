@@ -126,6 +126,40 @@ static void test_unchanged_requests(void)
 	fixture_free(&f);
 }
 
+/* tg4: utimensat(NULL)/futimens(fd, NULL) and both UTIME_NOW carry
+ * ATTR_TOUCH; before tg4 hfs_setattr_supported refused it with EOPNOTSUPP
+ * before any CALL. Both now send host-current atime and mtime; an explicit
+ * pair (ATTR_TIMES_SET, no ATTR_TOUCH) is sent unchanged.
+ */
+static void test_touch(void)
+{
+	static const char now_args[] = "{\"attributes\":{\"atime\":null,"
+		"\"atime_now\":true,\"gid\":null,\"mode\":null,\"mtime\":null,"
+		"\"mtime_now\":true,\"uid\":null}" OBJECT;
+	const struct timespec64 both_now[2] = { { 0, UTIME_NOW }, { 0, UTIME_NOW } };
+	const struct timespec64 explicit[2] = { { 100, 7 }, { 200, 9 } };
+	struct fixture f;
+
+	fixture_init(&f, S_IFREG | 0644);
+	CHECK(vfs_utimes(&f, NULL) == 0);
+	CHECK(seen.prepared_valid & ATTR_TOUCH);
+	expect_call("SETATTR", now_args);
+	fixture_free(&f);
+	fixture_init(&f, S_IFREG | 0644);
+	CHECK(vfs_utimes(&f, both_now) == 0);
+	CHECK(seen.prepared_valid & ATTR_TOUCH);
+	expect_call("SETATTR", now_args);
+	fixture_free(&f);
+	fixture_init(&f, S_IFREG | 0644);
+	CHECK(vfs_utimes(&f, explicit) == 0);
+	CHECK(!(seen.prepared_valid & ATTR_TOUCH));
+	expect_call("SETATTR", "{\"attributes\":{\"atime\":{\"nanos\":7,\"seconds\":100},"
+		    "\"atime_now\":false,\"gid\":null,\"mode\":null,"
+		    "\"mtime\":{\"nanos\":9,\"seconds\":200},\"mtime_now\":false,"
+		    "\"uid\":null}" OBJECT);
+	fixture_free(&f);
+}
+
 /* The refusals vf4 keeps: an explicit MODE with suid/sgid next to UID/GID,
  * and MODE next to SIZE, both without kill bits.
  */
@@ -241,6 +275,7 @@ int main(void)
 	test_chown_setid();
 	test_chown_no_owner();
 	test_unchanged_requests();
+	test_touch();
 	test_kept_refusals();
 	test_truncate();
 	test_remove_privs();
@@ -248,7 +283,7 @@ int main(void)
 	test_link_relookup();
 	test_create_exists();
 	printf("PASS: actual hfs_setattr kill bits (chown, truncate, remove_privs), "
-	       "kept refusals, hfs_dentry_attach, hfs_link and EEXIST relookup; "
+	       "utimensat(NULL)/UTIME_NOW touch, kept refusals, hfs_dentry_attach, hfs_link and EEXIST relookup; "
 	       "no kernel/VM/runtime proof\n");
 	return 0;
 }
