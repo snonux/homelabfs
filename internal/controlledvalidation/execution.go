@@ -282,9 +282,10 @@ func (p *Provider) protectPlan(b guestbridge.Binding, plan *fsservice.Controlled
 
 // checkPlanCredit bounds a protected plan's ledger footprint by the claim's
 // preowned retained credit and its mutation encoding by the source credit.
-// The a84 refusal trace is left out of the measure (entryFootprint): it is
-// a bounded diagnostic, and leaving it out keeps how often admission was
-// refused from ever changing a plan's NoSpace answer.
+// The a84 refusal trace and the l64 Opened time are left out of the measure
+// (entryFootprint): both are bounded diagnostics, and leaving them out keeps
+// how often admission was refused, or when the number was allocated, from
+// ever changing a plan's NoSpace answer.
 func checkPlanCredit(e entry, plan fsservice.ControlledPlan, predicted guestbridge.Outcome) error {
 	raw, err := entryFootprint(e)
 	if err != nil {

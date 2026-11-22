@@ -113,7 +113,9 @@ type entry struct {
 	// once when the entry is created and never changed, so a gap proof (the
 	// entry's hash) taken later stays valid. OBSERVE derives an open claim's
 	// Age from it. No decision reads it, and entryFootprint leaves it out of
-	// every credit measure. Entries written before l64 have none (0).
+	// every credit measure. Entries written before l64 have none (0). Because
+	// the entry's hash includes it, a gap proof can no longer be recomputed
+	// from the public claim fields alone; no consumer does that today.
 	Opened int64 `json:",omitempty"`
 }
 

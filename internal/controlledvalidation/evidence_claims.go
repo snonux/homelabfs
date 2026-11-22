@@ -24,8 +24,10 @@ import (
 // clock reading this OBSERVE took, so a stuck claim shows how long the guest
 // has been waiting on it without the driver tracking first-seen times. It is
 // a pure function of the stored entry and the OBSERVE's own time, so a
-// replay with a pinned clock (Provider.now) yields the same ages. Recent
-// never carries it: a settled claim's allocation age says nothing.
+// replay with a pinned clock (Provider.now) yields the same ages. It is
+// wall-clock based: a backward step omits it, a forward (NTP) jump inflates
+// it, which is acceptable for a diagnostic. Recent never carries it: a
+// settled claim's allocation age says nothing.
 //
 // Claims listed among the lowest claimEvidenceTraced Pending numbers also
 // carry the a84 refusal trace (refusal_trace.go) of an uncertain refusal
