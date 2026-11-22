@@ -1,0 +1,24 @@
+** WARNING: connection is not using a post-quantum key exchange algorithm.
+** This session may be vulnerable to "store now, decrypt later" attacks.
+** The server may need to be upgraded. See https://openssh.com/pq.html
+== timedatectl
+               Local time: Sun 2026-11-22 18:37:07 EET
+           Universal time: Sun 2026-11-22 16:37:07 UTC
+                 RTC time: Sun 2026-11-22 16:37:06
+                Time zone: Europe/Sofia (EET, +0200)
+System clock synchronized: yes
+              NTP service: active
+          RTC in local TZ: no
+== timer
+Sun 2026-11-22 18:46:11 EET 9min left     Sun 2026-11-22 17:55:00 EET 42min ago unattended-upgrade-rocky.timer unattended-upgrade-rocky.service
+== stamp
+-rw-------. 1 root root 11 2026-11-22 00:59:10.098262920 +0200 /var/lib/unattended-upgrade/last-daily
+2026-11-22
+== last-upgrade-journal
+-- No entries --
+== dnf-history
+ID     | Command line             | Date and time    | Action(s)      | Altered
+-------------------------------------------------------------------------------
+    66 | -y upgrade --disablerepo | 2026-11-22 00:55 | C, E, I, U     |   33   
+    65 | -y upgrade --disablerepo | 2026-11-20 00:55 | Upgrade        |    1   
+    64 | -y upgrade --disablerepo | 2026-11-18 00:55 | Upgrade        |    5   
