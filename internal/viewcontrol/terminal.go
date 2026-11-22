@@ -75,7 +75,9 @@ func (c *Controller) SealTerminal(ctx context.Context, a *guestbridge.TerminalAt
 
 // sealable refuses a seal by a poisoned, closed or recovering controller,
 // and of a fenced session (participant_fence.go), which is refused for good
-// and never sealed: its operator enrolls a new session instead. c.mu is held.
+// and never sealed, not even after an operator retired it
+// (fenced_retirement.go): its operator enrolls a new session instead. c.mu
+// is held.
 func (c *Controller) sealable(scope guestbridge.Context) error {
 	if c.poisoned.Load() || c.closed.Load() || c.state.Recovery {
 		return fsapi.Unavailable

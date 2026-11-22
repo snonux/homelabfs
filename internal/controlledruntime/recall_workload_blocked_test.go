@@ -4,6 +4,8 @@ package controlledruntime
 
 import (
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -25,7 +27,9 @@ import (
 // INSTALLED_DRAIN as the guest does, stays BLOCKED waiting for the fence
 // instead of failing its view worker after BlockedACKBound. Afterwards m1's
 // VIEW_WAIT gets an error reply, only m0's fence advanced, and an m0 lstat
-// probe completes within the guest window.
+// probe completes within the guest window. Then the operator retires m1
+// (task fh4): m1 stays refused and a second m0 lstat probe, whose release
+// and retirements pass the real Facts with the retired ledger, completes.
 //
 // The run is assembled with the real runtime Facts, whose recall
 // participant check must leave the fenced session out, and it runs the
@@ -68,6 +72,41 @@ func TestZQ3BlockedDomainFencedPeerReopens(t *testing.T) {
 		if w.expired || !w.done {
 			t.Errorf("after the fence: %s", describe(w))
 		}
+	}
+	m.retireFenced(m1)
+	m.begin("m0 lstat after the retirement")
+	m.usableProbe(0)
+	m.settle()
+	for _, w := range m.phase.waits {
+		if w.expired || !w.done {
+			t.Errorf("after the retirement: %s", describe(w))
+		}
+	}
+}
+
+// retireFenced is the operator retiring mount's fenced session (task fh4,
+// viewcontrol fenced_retirement.go) with the enrollment's operator key.
+// The retired session stays refused at the controller's ingress gate; the
+// survivor's later VIEW_RELEASE, RETIRE and VIEW_RETIRE pass the real
+// runtime Facts with the resulting ledger, which must accept the tombstone.
+// (A second VIEW_WAIT of the fenced mount is not sent: the model's chain
+// does not survive the first refused one.)
+func (m *recallModel) retireFenced(mount *modelMount) {
+	session := mount.peer.scope.Session
+	defer func() {
+		if err := m.a.Controller.CheckRequest(m.t.Context(), mount.peer.scope, "VIEW_POLL", json.RawMessage(`{}`)); !errors.Is(err, viewcontrol.ErrSessionFenced) {
+			m.t.Errorf("retired m%d request: %v, want ErrSessionFenced", mount.index, err)
+		}
+	}()
+	statement, err := m.a.Controller.FencedRetirementStatement(session)
+	require(m.t, err)
+	signature, err := viewcontrol.SignFencedRetirement(m.r.artifactOperator, statement)
+	require(m.t, err)
+	require(m.t, m.a.Controller.RetireFenced(m.t.Context(), statement, signature))
+	evidence, err := m.a.Controller.LedgerEvidence(m.t.Context())
+	require(m.t, err)
+	if evidence.Fenced != 1 || evidence.RetiredFenced != 1 {
+		m.t.Errorf("ledger evidence after the retirement %+v", evidence)
 	}
 }
 

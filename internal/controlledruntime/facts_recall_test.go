@@ -68,7 +68,7 @@ func TestFactsVerifyFencedEntries(t *testing.T) {
 		l.Domains["b"] = d
 		l.AckArchive = c.archive
 		c.mutate(&l)
-		if got := l.validFenced(); got != c.want {
+		if got := l.validFenced(nil, retirementAuthority{}); got != c.want {
 			t.Errorf("%s: got %v", c.name, got)
 		}
 	}

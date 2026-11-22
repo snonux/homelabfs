@@ -771,7 +771,20 @@ transport error for that cell (a blocked cell: EIO through FUSE, an Rbridge
 ERROR to the guest), never a reply. Its domain fence never advances, so its old
 leases are never certified released and it can never resume on its stale view;
 the shared transport stays up. The fence is permanent for that enrolled
-session: the guest comes back only under a newly enrolled session. A
+session: the guest comes back only under a newly enrolled session. The
+operator may later retire the fenced session with an Ed25519 statement,
+signed by the enrollment's operator key, that binds the enrollment hash and
+the exact fence row. The host accepts it only while no recall runs, the
+session holds no active lease and every reservation of it is closed, and
+then drops all of the session's tickets, retirement receipts, lease and
+reservation rows, lineage revisions and archived ACKs from the shared bounds in
+one protected write, keeping each of its ticket families only as its counters
+with the floor raised to the highest number it used. The fence row stays as a
+tombstone, so the session is still refused everywhere and the ledger never
+returns to the pre-fence schema; the physical verifier checks the tombstone's
+operator signature and the absence of the released rows itself. A crash
+leaves either the plain fence, which the same statement retires again, or the
+tombstone, for which the statement is an idempotent replay (task fh4). A
 participant missing its STOPPED, or with an undrained entry, is never fenced. An
 early DRAINED waits BLOCKED until 30 s after a fenceable peer's fence point
 (which moves on while that peer polls), but at most 60 s past its own first

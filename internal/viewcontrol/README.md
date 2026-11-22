@@ -562,7 +562,16 @@ the recall the row names, its fence still the recorded one and no event of
 the current recall. Only then does `recallParticipantsComplete` leave it out,
 so a bad row cannot make the Facts certify a recall that silently excludes a
 live domain. The Facts accept schema 3 only with a fence and schema 2 only
-without one (`ValidLedgerSchema`).
+without one (`ValidLedgerSchema`). A retired fence (task fh4) is accepted
+without its archived STOPPED only if the Facts themselves verify the
+operator's signature over its exact row and this enrollment, with the
+operator public key the enrollment was signed with (`NewFacts` takes it;
+`validRetired`), and the ledger holds nothing of its scope but minimal
+family rows (`viewcontrol.RetiredScopeClean`, the same check the controller
+applies to the same bytes). Every physical check of a fenced session,
+retired or not, is refused with `ErrSessionFenced` (`refuseFenced`). Neither
+rule trusts the controller: a tombstone the operator did not sign, or one
+that hides rows, makes the whole ledger Invalid.
 
 *Early DRAINED.* A live participant's DRAINED, sent right after its own
 INSTALLED_DRAIN, waits BLOCKED for a peer's INSTALLED_DRAIN. Its bound now
@@ -574,18 +583,94 @@ fences the peer and the same DRAINED is ACCEPTED) and waits for a peer that
 polls without installing for at most 90 s in all before the bound's error.
 
 *A fence is permanent.* There is no unfence path: the fenced enrolled
-session is refused for good, across restarts, and cannot be sealed. Its
-unretired tickets, lineage revisions (its fence never moves past them) and
-families stay charged against the bounds. To bring that guest back the
-operator must enroll a new session for it (a new signed enrollment with a
-fresh session scope, i.e. a new controller assembly for the lab profile);
-the old session's rows stay in the old ledger. An operator unfence path is a
-follow-up.
+session is refused for good, across restarts, and cannot be sealed. To bring
+that guest back the operator must enroll a new session for it (a new signed
+enrollment with a fresh session scope, i.e. a new controller assembly and a
+new ledger for the lab profile): the domain inventory is part of the signed
+enrollment and the ledger is pinned to its hash, so a re-enrolled guest can
+never meet the old ledger.
+
+*Retiring a fenced session* (`fenced_retirement.go`, task fh4). Until
+then the fenced session's tickets, families, lineage revisions (its fence
+never moves past them), lease and reservation rows and AckArchive rows
+stayed charged against the bounds the surviving domains share for the rest
+of the enrollment. `RetireFenced` releases them on the operator's signed
+word:
+
+- *Authorisation.* The operator signs a `FencedRetirement` (version, this
+  controller's EnrollmentHash and the session's exact fence row: recall,
+  phase, sequence, fence) with the same Ed25519 key that signs the
+  Enrollment (`Config.Operator`); `FencedRetirementStatement` returns the
+  statement to sign and `SignFencedRetirement` signs it. An operator command
+  was chosen over automatic retirement on re-enrollment because a
+  re-enrollment never reaches this ledger (see above), so there is no
+  in-ledger event to retire on; only the operator who signed the enrollment
+  may give the survivors that capacity back.
+- *Preconditions*, under the controller mutex, else `WouldBlock`: no recall
+  runs at all (no in-flight recall participation, and the same coarse clause
+  VIEW_RETIRE keeps, since dropping lease and lineage rows mid-recall was
+  never analysed), the session holds no active lease, and every reservation
+  of it is CLOSED (its drain result protected; a fence leaves only drained
+  FROZEN reservations, which finishRecall closes). A forged, foreign-
+  enrollment or unfenced statement is refused `Permission`; a correctly
+  signed statement that does not match the fence row `Stale` (the signature
+  is checked first).
+- *What is released*, in one protected write with the tombstone: every
+  ticket row of the session and its Identities charge, the latest
+  retirement receipt of every family it owns, its lease and reservation
+  rows, the revision high-water of every lineage of those leases or recorded
+  for it in LineageFences, every AckArchive row of its scope and then every
+  UUID nothing names any more. Kept: its Domains entry (bounded by the
+  enrollment's domain count, and the scope the tombstone is checked
+  against), its Fences entry, the Fenced row and each of its families
+  reduced to `{High, Floor = High, Scope}`. Families are not a shared bound;
+  keeping their counters means ticket monotonicity does not rest on the
+  tombstone alone: every number the session ever used is at or below the
+  raised floor and gets only a rights-free RETIRED_ID, and a new one would
+  have to be High+1.
+- *The session stays refused.* The Fenced row stays, now with a `Retired`
+  tombstone carrying the operator signature, so the ingress gate, every
+  locked path, events() and sealable keep refusing it exactly as before. A
+  reopened controller verifies the signature against its operator key and
+  enrollment (`validRetiredFences`) and requires that no released row of
+  the scope is back (`validFenced`, `holdsSessionRows`, i.e.
+  `RetiredScopeClean`); an unretired fence still needs its archived STOPPED.
+  The statement builder, signature check and leftover check live in
+  `fenced_retirement_check.go` and are shared with the runtime Facts.
+- *Durability.* A crash before the write leaves the plain fence and the same
+  signed command retires again; a crash after it leaves the tombstone and
+  the command is an idempotent replay (nil). Failpoints `fenced-retire` and
+  `fenced-retired-protected` mark both points.
+- *Not covered here.*
+  - Provider-side obligations. The per-session provider's own database
+    (controlledvalidation) is not a shared bound and is untouched, so a
+    retirement drops the controller's side of obligations that provider may
+    still hold: a BLOCKED DIRTY_RESERVE ticket's protected `DeclinedGap`
+    whose provider `CloseEarmark` never finished, and any other open
+    earmark of the session. They stay in the provider's database, charged
+    only against that provider's own limits, and are never resumed: the
+    session is never admitted again.
+  - Retirement receipts written before q64 name no family (the family's
+    `Receipt` is empty), so they cannot be attributed to the session and
+    stay in `Retirements`.
+  - Lineage revisions written before q64 whose leases are already gone
+    cannot be attributed and stay.
+  - The command is a host API only: wiring it to the controlled runtime's
+    HSC1 control socket and an operator signing CLI (alongside
+    `hfs-retained9p-operator`) is a follow-up.
+
+OBSERVE's ledger evidence counts retired fences in `RetiredFenced` (included
+in `Fenced`).
 
 *Downgrade.* `Fenced` is omitempty and a ledger without a fence keeps its
 schema-2 bytes. The first fence moves the ledger to schema 3, which a binary
 before 0a4 (it accepts only schema 2) refuses on reopen instead of serving
-the fenced session again.
+the fenced session again. A retirement keeps the Fenced row as its
+tombstone, so the ledger stays at schema 3 for good and never silently
+returns to schema 2. No new schema number is needed: a 0a4 binary refuses a
+retired ledger anyway (its validFenced needs the archived STOPPED the
+retirement dropped), and any binary that accepted it would still find the
+session in Fenced and refuse it.
 
 *Limits.* Live peers' claims and view exchanges parked behind a stalled
 recall still exceed the guest's 30 s window before the 60 s fence; the bound
