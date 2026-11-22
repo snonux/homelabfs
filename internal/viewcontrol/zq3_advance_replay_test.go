@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/snonux/homelabfs/internal/guestbridge"
+	"github.com/snonux/homelabfs/internal/guestviewmodel"
 )
 
 // advanceReplay replays the T1 (guest.py credentials()) case body of
@@ -21,6 +23,17 @@ import (
 // advance it is granted on the current cut and the guest adopts that target.
 // installed follows every recall's participants (follow) and every adopted
 // advance grant.
+//
+// The advance flag is the guest's support for advance, not a promise that it
+// is sent: like hfs_mmap_observe_lease, an acquisition carries "advance":
+// true only when the mount's guest view is cacheless under rule (task uj4,
+// guestviewmodel). views model each mount's struct hfs_view: the mount root
+// and every inode a LOOKUP, MKDIR or CREATE instantiated stay registered
+// until their FORGET (the root fds and the case leaf fd keep theirs for the
+// whole case), and the published observation counts while its lease is
+// held. zq3-r20's guest counted every registered inode
+// (guestviewmodel.CachelessR20), so it never sent advance while this replay
+// still reported 37 advances.
 //
 // CALL_CONFLICT recalls: in the lab a mutation often finds the mount's own
 // previous observation lease still active because its release is queued
@@ -46,6 +59,9 @@ import (
 type advanceReplay struct {
 	r         *rig
 	advance   bool
+	rule      guestviewmodel.Rule // the guest's cacheless test; nil is tj4's
+	views     [2]*guestviewmodel.View
+	sent      [2]int // acquisitions that carried "advance": true, per mount
 	installed [2]guestbridge.ViewTarget
 	seen      uint64         // recalls followed (RecallHistory.Total)
 	kinds     map[string]int // followed recalls by trigger kind
@@ -102,8 +118,9 @@ func (p *advanceReplay) acquire(i int) *guestbridge.ViewLease {
 	for range 3 {
 		ticket := r.ticket(i)
 		payload := map[string]any{"request": ticket, "domain": r.domains[i], "access": guestbridge.ViewAccess{Kind: "DOMAIN"}, "mode": "READ", "target": p.installed[i]}
-		if p.advance {
+		if p.sendsAdvance(i) {
 			payload["advance"] = true
+			p.sent[i]++
 		}
 		reply := r.view(i, "VIEW_ACQUIRE", payload)
 		if reply.Status == "PENDING" {
@@ -121,6 +138,7 @@ func (p *advanceReplay) acquire(i int) *guestbridge.ViewLease {
 		}
 		p.acquired[i] = append(p.acquired[i], reply.ID)
 		p.installed[i] = reply.Lease.Target // adopted (equal unless advanced)
+		p.views[i].Observations++           // published until its release
 		return reply.Lease
 	}
 	r.t.Fatalf("m%d: no grant after two recalls", i)
@@ -132,6 +150,7 @@ func (p *advanceReplay) acquire(i int) *guestbridge.ViewLease {
 func (p *advanceReplay) release(i int, lease *guestbridge.ViewLease) {
 	r := p.r
 	r.t.Helper()
+	p.views[i].Observations-- // hfs_mmap_end, before the release goes out
 	released := r.release(i, lease)
 	if released.Status != "RELEASED" {
 		r.t.Fatalf("m%d release: %+v", i, released)
@@ -154,6 +173,24 @@ func (p *advanceReplay) retire(i int) {
 		r.t.Fatalf("m%d acquisition retirement: %s", i, receipt)
 	}
 	p.floors[i] = [2]int{len(acq), len(ctl)}
+}
+
+// sendsAdvance is the guest's decision for mount i's next acquisition: the
+// advance flag (support) and the cacheless rule over its view, sampled
+// before the request as hfs_view_capture_ex does.
+func (p *advanceReplay) sendsAdvance(i int) bool {
+	rule := p.rule
+	if rule == nil {
+		rule = guestviewmodel.Cacheless
+	}
+	return p.views[i].Advance(rule, p.advance)
+}
+
+// instantiate registers the inode a LOOKUP, MKDIR or CREATE result gives
+// mount i (hfs_inode_get registers every inode), keyed by its grant, which
+// its FORGET evicts.
+func (p *advanceReplay) instantiate(i int, object guestbridge.Capability) {
+	p.views[i].Register(object.Token)
 }
 
 // observe runs one read RPC under its own observation lease.
@@ -249,6 +286,7 @@ func (p *advanceReplay) invalidate(i int, dir guestbridge.Capability, n string) 
 func (p *advanceReplay) evict(i int, e *replayDentry) {
 	if e.dead && e.pins == 0 {
 		p.do(i, "FORGET", map[string]any{"object": e.cap, "count": 1})
+		p.views[i].Evict(e.cap.Token)
 	}
 }
 
@@ -270,6 +308,7 @@ func (p *advanceReplay) creating(op string, dir guestbridge.Capability, n string
 	p.release(0, queued)
 	e := &replayDentry{cap: res.Capabilities[0]}
 	p.dcache[0][dentryKey(dir, n)] = e
+	p.instantiate(0, e.cap)
 	if op == "CREATE" {
 		e.pins = 1
 		p.files[res.Capabilities[1].Token] = e
@@ -307,6 +346,7 @@ func (p *advanceReplay) stat(i int, dir guestbridge.Capability, n string) guestb
 	p.invalidate(i, dir, n)
 	object := p.observe(i, "LOOKUP", map[string]any{"parent": dir, "name": name(n)}).Capabilities[0]
 	p.dcache[i][dentryKey(dir, n)] = &replayDentry{cap: object}
+	p.instantiate(i, object)
 	p.observe(i, "GETATTR", map[string]any{"object": object})
 	return object
 }
@@ -357,6 +397,7 @@ func (p *advanceReplay) run() map[string]int {
 	p.kinds = map[string]int{}
 	p.dcache = [2]map[string]*replayDentry{{}, {}}
 	p.files = map[string]*replayDentry{}
+	p.initViews()
 	var roots [2]guestbridge.Capability
 	for i := range r.roots {
 		if r.next[i] != 1 {
@@ -395,6 +436,17 @@ func (p *advanceReplay) run() map[string]int {
 	return p.kinds
 }
 
+// initViews gives each mount a fresh guest view holding only its mount root
+// (registered as long as the mount lives, never mmapped), unless the test
+// prepared the views already.
+func (p *advanceReplay) initViews() {
+	for i := range p.views {
+		if p.views[i] == nil {
+			p.views[i] = guestviewmodel.New(p.r.roots[i].Token)
+		}
+	}
+}
+
 // setgid is setgidCreate of T1: mkdir, open, chown and chmod, the child's
 // create and fstat, close.
 func (p *advanceReplay) setgid(leaf guestbridge.Capability) {
@@ -423,31 +475,78 @@ func (p *advanceReplay) sticky(leaf guestbridge.Capability) {
 
 // TestZQ3AdvanceRemovesExpectedTargetRecalls replays the T1 credentials case
 // body twice at the zq3 spec bounds: without advance (the guest before xf4
-// step B) and with it. Without advance every observation that follows a
-// mutation or pin recalls its own domain, and every pinning LOOKUP's release
-// recalls it again: 7 CALL_CONFLICT + 28 EXPECTED_TARGET + 9 RELEASE recalls
-// (zq3-r19 saw about 10 mismatch recalls in the part of T1 it reached).
-// With advance: 7 CALL_CONFLICT recalls only, which advance does not touch,
-// and 37 advance grants. The RELEASE recalls go because an Advance lease's
-// release skips the recall although its LOOKUP moved the cut (without that
-// relaxation the advance run still shows the 9 RELEASE recalls), and the
-// lineage budget is not reached between the CALL_CONFLICT recalls that move
-// both fences.
+// step B) and with it, under tj4's cacheless test. Without advance every
+// observation that follows a mutation or pin recalls its own domain, and
+// every pinning LOOKUP's release recalls it again: 7 CALL_CONFLICT + 28
+// EXPECTED_TARGET + 9 RELEASE recalls (zq3-r19 saw about 10 mismatch recalls
+// in the part of T1 it reached). With advance: 7 CALL_CONFLICT recalls only,
+// which advance does not touch, and 37 advance grants. The RELEASE recalls go
+// because an Advance lease's release skips the recall although its LOOKUP
+// moved the cut (without that relaxation the advance run still shows the 9
+// RELEASE recalls), and the lineage budget is not reached between the
+// CALL_CONFLICT recalls that move both fences. The guest views keep the
+// mount roots, the root fds and the leaf fd registered throughout, so the
+// advances also show that tj4's rule lets such a mount ask (uj4).
 func TestZQ3AdvanceRemovesExpectedTargetRecalls(t *testing.T) {
+	t.Parallel()
 	before := (&advanceReplay{r: newZQ3Rig(t, 0)}).run()
 	withAdvance := &advanceReplay{r: newZQ3Rig(t, 0), advance: true}
 	after := withAdvance.run()
-	t.Logf("T1 credentials recalls: without advance %v, with advance %v (%d advances)", before, after, withAdvance.r.advances())
+	t.Logf("T1 credentials recalls: without advance %v, with advance %v (%d advances, %v sent)", before, after, withAdvance.r.advances(), withAdvance.sent)
+	for _, problem := range advanceVerdict(before, after, withAdvance.r.advances()) {
+		t.Error(problem)
+	}
+}
+
+// advanceVerdict lists how a run with advance falls short of what xf4
+// promises against the baseline run without it; none means it holds.
+func advanceVerdict(before, after map[string]int, advances uint64) []string {
+	var problems []string
 	if before[TriggerExpectedTarget] < 10 {
-		t.Fatalf("baseline EXPECTED_TARGET recalls %d, want >= 10", before[TriggerExpectedTarget])
+		problems = append(problems, fmt.Sprintf("baseline EXPECTED_TARGET recalls %d, want >= 10", before[TriggerExpectedTarget]))
 	}
 	if after[TriggerExpectedTarget] != 0 || after[TriggerRelease] != 0 {
-		t.Fatalf("with advance: EXPECTED_TARGET %d, RELEASE %d, want 0 and 0", after[TriggerExpectedTarget], after[TriggerRelease])
+		problems = append(problems, fmt.Sprintf("with advance: EXPECTED_TARGET %d, RELEASE %d, want 0 and 0", after[TriggerExpectedTarget], after[TriggerRelease]))
 	}
 	if before[TriggerCallConflict] == 0 || after[TriggerCallConflict] != before[TriggerCallConflict] {
-		t.Fatalf("CALL_CONFLICT recalls: without advance %d, with advance %d", before[TriggerCallConflict], after[TriggerCallConflict])
+		problems = append(problems, fmt.Sprintf("CALL_CONFLICT recalls: without advance %d, with advance %d", before[TriggerCallConflict], after[TriggerCallConflict]))
 	}
-	if withAdvance.r.advances() < uint64(before[TriggerExpectedTarget]) {
-		t.Fatalf("advances %d below the %d mismatch recalls they replace", withAdvance.r.advances(), before[TriggerExpectedTarget])
+	if advances < uint64(before[TriggerExpectedTarget]) {
+		problems = append(problems, fmt.Sprintf("advances %d below the %d mismatch recalls they replace", advances, before[TriggerExpectedTarget]))
+	}
+	return problems
+}
+
+// TestZQ3AdvanceReplayDetectsNonCachelessGuest replays T1 with advance
+// support against guest views the guest would never call cacheless and
+// requires that no advance is sent or granted there. zq3-r20's rule (every
+// registered inode counts, guestviewmodel.CachelessR20) never holds with the
+// mount root registered: the replay must then pay the baseline's
+// EXPECTED_TARGET recalls and advanceVerdict must fail, as the lab run did.
+// A mount whose view holds an mmapped inode never sends advance under tj4's
+// rule either; the other mount still does.
+func TestZQ3AdvanceReplayDetectsNonCachelessGuest(t *testing.T) {
+	t.Parallel()
+	baseline := (&advanceReplay{r: newZQ3Rig(t, 0)}).run()
+	r20 := &advanceReplay{r: newZQ3Rig(t, 0), advance: true, rule: guestviewmodel.CachelessR20}
+	after := r20.run()
+	t.Logf("r20 rule: recalls %v, %d advances, %v sent", after, r20.r.advances(), r20.sent)
+	if r20.sent != [2]int{} || r20.r.advances() != 0 || after[TriggerExpectedTarget] == 0 {
+		t.Errorf("r20 rule: %v advances sent, %d granted, %d EXPECTED_TARGET recalls; want none, none and some", r20.sent, r20.r.advances(), after[TriggerExpectedTarget])
+	}
+	if problems := advanceVerdict(baseline, after, r20.r.advances()); len(problems) == 0 {
+		t.Error("advanceVerdict passed a guest that never sends advance")
+	} else {
+		t.Logf("detected: %v", problems)
+	}
+
+	mapped := &advanceReplay{r: newZQ3Rig(t, 0), advance: true}
+	mapped.initViews()
+	mapped.views[0].Register("m0-mapped-file")
+	mapped.views[0].Mmap("m0-mapped-file")
+	mapped.run()
+	t.Logf("m0 with an mmapped inode: %v advances sent, %d granted", mapped.sent, mapped.r.advances())
+	if mapped.sent[0] != 0 || mapped.sent[1] == 0 {
+		t.Errorf("mmapped m0: advances sent %v, want none on m0 and some on m1", mapped.sent)
 	}
 }
