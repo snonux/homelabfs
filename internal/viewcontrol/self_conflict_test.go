@@ -182,14 +182,18 @@ func TestOwnNonObservationLeasesStillRecall(t *testing.T) {
 // TestSelfObservationPredicate pins selfObservation field by field: only an
 // active, Targeted DOMAIN READ lease whose Scope is the requesting Context
 // exactly is skipped; another session, another field of the same session's
-// Context (a different guest mount, say), an inactive, untargeted, PAGE or
-// EXCLUSIVE_DIRTY lease is not.
+// Context (guest mount, generation, FUSE session), an inactive, untargeted,
+// PAGE, OBJECT or EXCLUSIVE_DIRTY lease is not.
 func TestSelfObservationPredicate(t *testing.T) {
 	r := newZQ3Rig(t, 0)
 	scope := r.scopes[0]
 	base := leaseState{Active: true, Targeted: true, Lease: guestbridge.ViewLease{Scope: scope, Access: guestbridge.ViewAccess{Kind: "DOMAIN"}, Mode: "READ"}}
 	otherMount := scope
 	otherMount.GuestMount = "another-mount"
+	otherGeneration := scope
+	otherGeneration.Generation = "another-generation"
+	otherFuse := scope
+	otherFuse.FuseSession = "another-fuse-session"
 	cases := []struct {
 		name   string
 		mutate func(*leaseState)
@@ -198,6 +202,9 @@ func TestSelfObservationPredicate(t *testing.T) {
 		{"own observation", func(*leaseState) {}, true},
 		{"peer session", func(l *leaseState) { l.Lease.Scope = r.scopes[1] }, false},
 		{"same session, other mount", func(l *leaseState) { l.Lease.Scope = otherMount }, false},
+		{"same session, other generation", func(l *leaseState) { l.Lease.Scope = otherGeneration }, false},
+		{"same session, other FUSE session", func(l *leaseState) { l.Lease.Scope = otherFuse }, false},
+		{"OBJECT", func(l *leaseState) { l.Lease.Access.Kind = "OBJECT" }, false},
 		{"inactive", func(l *leaseState) { l.Active = false }, false},
 		{"untargeted", func(l *leaseState) { l.Targeted = false }, false},
 		{"PAGE", func(l *leaseState) { l.Lease.Access.Kind = "PAGE" }, false},
@@ -234,5 +241,30 @@ func TestSelfAdmissionsObserveShape(t *testing.T) {
 	}
 	if !strings.Contains(encode(), `"self_admissions":1`) {
 		t.Fatalf("history after one self admission: %s", encode())
+	}
+}
+
+// TestPeerMutationRecallsSelfAdmittedLease: m0's MKDIR is self-admitted past
+// its own observation lease, which stays active on the pre-MKDIR cut; m1's
+// mutation then conflicts with that stale lease exactly as before vj4, so it
+// starts the all-domain CALL_CONFLICT recall, whose completion deactivates
+// m0's lease.
+func TestPeerMutationRecallsSelfAdmittedLease(t *testing.T) {
+	r := newZQ3Rig(t, 0)
+	stale := r.observeCurrent(0, guestbridge.ViewAccess{Kind: "DOMAIN"})
+	if status := r.mkdirStatus(0, "vj4-self"); status != "TERMINAL" || r.selfAdmissions() != 1 {
+		t.Fatalf("own MKDIR: %s, %d self admissions", status, r.selfAdmissions())
+	}
+	if status := r.mkdirStatus(1, "vj4-peer"); status == "TERMINAL" {
+		t.Fatal("peer MKDIR was not held by m0's stale lease")
+	}
+	scope, participants, _ := r.recallSnapshot()
+	if scope != "" || len(participants) == 0 || participants[0] != 0 {
+		t.Fatalf("recall scope %q participants %v, want all-domain with m0", scope, participants)
+	}
+	r.requireCallConflict(t, 1, scope, participants...)
+	r.completeCleanRecall()
+	if r.leaseActive(stale) || r.selfAdmissions() != 1 {
+		t.Fatalf("stale lease active %v, %d self admissions", r.leaseActive(stale), r.selfAdmissions())
 	}
 }

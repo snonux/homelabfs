@@ -93,11 +93,18 @@ conflicts with every overlapping page read/dirty lease across every domain and
 origin. DOMAIN observations may conservatively conflict with all mutations of
 the domain. A controlled controller exempts one case (task vj4): a CALL does
 not conflict with the requesting Context's own active Targeted DOMAIN READ
-observation leases, which authorize no PTE and are revoked by the guest
-before their release is queued; the Context's own PAGE, OBJECT,
-EXCLUSIVE_DIRTY and untargeted leases, every peer lease and every open
-reservation still conflict (docs/design/vj4-self-conflict.md). These rules close stale metadata/EOF bypasses without restricting
-publication to a preferred writer. Authority reductions (PROCESS_EXIT,
+observation leases, which authorize no PTE. An ended observation's lease was
+revoked by the guest before its release was queued. An own observation
+still in flight is exempt on purpose: it is concurrent with the mutation, so
+either order is linearizable, and an attribute install it makes after the
+mutation's own reply is refused by the guest's per-object revision check
+(hfs_attr_install installs only when attr.revision >= the inode's iversion).
+An observation is not a multi-object snapshot: each object's attributes
+are ordered by that object's revision alone. The Context's own PAGE,
+OBJECT, EXCLUSIVE_DIRTY and untargeted leases, every peer lease and every
+open reservation still conflict (docs/design/vj4-self-conflict.md). These
+rules close stale metadata/EOF bypasses without restricting publication to
+a preferred writer. Authority reductions (PROCESS_EXIT,
 DESCRIPTION_CLOSE, FORGET, DESCRIPTION_RELEASE) are not mutations of any
 observation and conflict with no
 lease, so a peer's lease never makes them start a recall; only an open dirty

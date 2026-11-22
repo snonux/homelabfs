@@ -85,11 +85,13 @@ Everything else conflicts exactly as before:
   - Its later observations expect its installed view, which is the pre-mutation cut, because the guest never moves its view on its own mutation.
   - acquire therefore finds `expectedMismatch` and grants only on the freshly captured current cut, either by advance or after the expected-target recall.
   - No grant names the pre-mutation cut again. The still-active old lease is never shared with a new request, because `grantLease` shares only a lease of the same lineage, and a lineage includes the target.
-  - The guest's stamp check (revision and generation in `hfs_mmap_publish`) refuses to publish under a lease its view moved past.
+  - A self admission does not move the guest's view (no revision bump, no target switch), so the view stamp check in `hfs_mmap_publish` plays no part here. The view moves only later, by advance or recall, at the next observation.
 - *Own observations still in flight are concurrent with the mutation.* So either order is linearizable.
   - The only thing they could leave behind is attributes installed after the mutation's own reply.
-  - Attributes are never served without a refresh, as shown above.
-  - The guest already accepts this for two of its own concurrent mutations: both are lease-less, so the host has always admitted them in either order with no recall between them, and their attribute installs race the same way.
+  - The real guard is the guest's per-object revision check: `hfs_attr_install` (patch 0003, ~line 4415) installs attributes only when `attr.revision >= inode_peek_iversion_raw(inode)` and then stores that revision. A reply carrying the object's pre-mutation revision that arrives after the mutation's reply installed the newer one is dropped, so no object's cached attributes go backwards.
+  - An observation is not a multi-object snapshot: each object's attributes are ordered by that object's own revision alone, and two objects read in one observation can straddle the mutation. That was already true of the guest's own lease-less reads and mutations.
+  - On top of that, attributes are refreshed by RPC on every permission check, as shown above.
+  - The guest already accepts this for two of its own concurrent mutations: both are lease-less, so the host has always admitted them in either order with no recall between them, and the same revision check orders their attribute installs.
   - Before vj4, the recall's STOP made the mutation wait for the own observation. That ordered two concurrent operations of one client, which linearizability does not require.
 
 **Peers: cross-domain behaviour is unchanged.**

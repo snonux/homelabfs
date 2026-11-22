@@ -23,8 +23,13 @@ import "github.com/snonux/homelabfs/internal/guestbridge"
 // permission check and never become timeless pathname permission, and
 // cached dentries revalidate through an RPC (hfs_d_revalidate returns 0;
 // observation_release.go has the full guest-side argument, which je4's
-// recall-free release already relies on). Whatever the own observation saw,
-// it is the requester's own concurrent operation: the guest already lets
+// recall-free release already relies on). An own observation still in
+// flight is concurrent with the mutation, and an attribute install it makes
+// after the mutation's reply is refused by the guest's per-object revision
+// check (hfs_attr_install installs only when attr.revision >= the inode's
+// iversion, patch 0003); an observation is no multi-object snapshot anyway.
+// Whatever the own observation saw, it is the requester's own concurrent
+// operation: the guest already lets
 // two of its own concurrent mutations (both lease-less) reach the host in
 // either order with no recall between them, so ordering its own in-flight
 // read against its own write buys no guarantee the guest does not already
