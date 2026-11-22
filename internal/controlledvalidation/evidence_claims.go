@@ -8,7 +8,7 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
-// Claim evidence (task b84, the l64 daemon feature).
+// Claim evidence (task b84, and its l64 follow-up for claim ages).
 //
 // zq3-r8's post-READY usability gate passed a mount root whose lstat had
 // returned while the probe child's PROCESS_EXIT claim stayed
@@ -19,14 +19,20 @@ import (
 // reached TERMINAL, and nothing that identifies a file, a credential or a
 // process.
 //
-// There is no claim age: the ledger stores no reservation time. A driver
-// that needs an age measures it from its own probe time across successive
-// OBSERVEs. The one exception is the a84 refusal trace (refusal_trace.go):
-// a claim that an uncertain refusal held back, listed among the lowest
-// claimEvidenceTraced Pending numbers, also carries that refusal's class, a
-// count and the Unix seconds of its first and latest recorded refusal, all
-// omitempty, so an older reader and a claim that was never refused see the
-// b84 shape unchanged.
+// Each Pending (open) summary also carries its Age (l64): whole seconds from
+// the entry's Opened time, stored once when the number was allocated, to the
+// clock reading this OBSERVE took, so a stuck claim shows how long the guest
+// has been waiting on it without the driver tracking first-seen times. It is
+// a pure function of the stored entry and the OBSERVE's own time, so a
+// replay with a pinned clock (Provider.now) yields the same ages. Recent
+// never carries it: a settled claim's allocation age says nothing.
+//
+// Claims listed among the lowest claimEvidenceTraced Pending numbers also
+// carry the a84 refusal trace (refusal_trace.go) of an uncertain refusal
+// that held them back: its class, a count and the Unix seconds of its first
+// and latest recorded refusal. Age and the trace are omitempty, so an older
+// reader, a claim that was never refused and an entry written before l64
+// (no Opened) see the b84 shape unchanged.
 
 const (
 	// claimEvidencePending bounds the open claims listed by number. MaxClaims
@@ -67,6 +73,11 @@ type ClaimEvidence struct {
 // the guest intent opcode (empty for an ALLOCATED number whose CALL has not
 // arrived), the raw ledger status and the preparation stage.
 //
+// Age is set only on Pending summaries: the seconds since the number was
+// allocated, at the OBSERVE's own clock reading (claimAge). It is omitted
+// when under one second, when the entry predates l64 (no Opened time) and
+// when the clock reads earlier than Opened (a backwards step).
+//
 // Refusal, Refusals, RefusedFirst and RefusedLast copy the claim's a84
 // refusal trace (refusal_trace.go): the last uncertain refusal class
 // ("ADMISSION:WouldBlock", ...), how many refusals of it were recorded (at
@@ -84,6 +95,7 @@ type ClaimSummary struct {
 	Refusals     uint64 `json:",omitempty"`
 	RefusedFirst int64  `json:",omitempty"`
 	RefusedLast  int64  `json:",omitempty"`
+	Age          int64  `json:",omitempty"`
 }
 
 const (
@@ -98,7 +110,8 @@ const (
 	claimSummaryText = 24
 	// MaxClaimEvidenceBytes bounds the JSON encoding of one provider's
 	// ClaimEvidence at the list bounds above, with every number and string
-	// at its maximum (TestClaimEvidenceWorstCaseBound). The lifecycle reply
+	// at its maximum, Age included on every Pending summary
+	// (TestClaimEvidenceWorstCaseBound). The lifecycle reply
 	// budget (controlledruntime TestObserveClaimEvidenceFitsReply) counts it
 	// once per provider.
 	MaxClaimEvidenceBytes = 4608
@@ -108,7 +121,8 @@ const (
 // read transaction. That transaction is the consistency boundary: Allocate,
 // Reserve and Retire do not take the execution mutex the caller holds, but
 // each commits atomically, so the snapshot never shows half a transition.
-func (p *Provider) claimEvidence(tx *bolt.Tx) (ClaimEvidence, error) {
+// now is the OBSERVE's clock reading (Unix seconds) the Pending ages count to.
+func (p *Provider) claimEvidence(tx *bolt.Tx, now int64) (ClaimEvidence, error) {
 	// Empty, not nil, lists: a settled ledger encodes "Pending":[] so a
 	// reader can tell "nothing open" from a missing field.
 	e := ClaimEvidence{Pending: []ClaimSummary{}}
@@ -124,7 +138,7 @@ func (p *Provider) claimEvidence(tx *bolt.Tx) (ClaimEvidence, error) {
 	}); err != nil {
 		return ClaimEvidence{}, err
 	}
-	present, err := p.claimSummaries(tx, &e)
+	present, err := p.claimSummaries(tx, &e, now)
 	if err != nil {
 		return ClaimEvidence{}, err
 	}
@@ -133,8 +147,9 @@ func (p *Provider) claimEvidence(tx *bolt.Tx) (ClaimEvidence, error) {
 }
 
 // claimSummaries walks every present claim entry, counting it into e and
-// listing the first open ones; it returns all summaries for newestClaims.
-func (p *Provider) claimSummaries(tx *bolt.Tx, e *ClaimEvidence) ([]ClaimSummary, error) {
+// listing the first open ones with their age at now; it returns all
+// summaries, without ages, for newestClaims.
+func (p *Provider) claimSummaries(tx *bolt.Tx, e *ClaimEvidence, now int64) ([]ClaimSummary, error) {
 	present := []ClaimSummary{}
 	err := p.bucket(tx, "claims").ForEach(func(_, raw []byte) error {
 		var stored entry
@@ -149,6 +164,7 @@ func (p *Provider) claimSummaries(tx *bolt.Tx, e *ClaimEvidence) ([]ClaimSummary
 		}
 		e.Open++
 		if len(e.Pending) < claimEvidencePending {
+			summary.Age = claimAge(stored.Opened, now)
 			e.Pending = append(e.Pending, summary)
 		}
 		return nil
@@ -167,6 +183,15 @@ func (p *Provider) claimSummaries(tx *bolt.Tx, e *ClaimEvidence) ([]ClaimSummary
 func untraced(s ClaimSummary) ClaimSummary {
 	s.Refusal, s.Refusals, s.RefusedFirst, s.RefusedLast = "", 0, 0, 0
 	return s
+}
+
+// claimAge is the whole seconds from opened to now, or 0 (omitted) when the
+// entry has no Opened time or the clock reads earlier than it.
+func claimAge(opened, now int64) int64 {
+	if opened <= 0 || now < opened {
+		return 0
+	}
+	return now - opened
 }
 
 // boundedText cuts s to claimSummaryText bytes.

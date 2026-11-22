@@ -171,7 +171,8 @@ func (p *Provider) BindFrozen(ctx context.Context, scope guestbridge.Context, re
 		if err := p.bucket(tx, earmarkCreditBucket).Delete(claimKey(call.Claim)); err != nil {
 			return err
 		}
-		return p.putClaim(tx, claimKey(call.Claim), entry{Version: ledgerVersion, Claim: call.Claim, Status: "ALLOCATED", RetainedCredit: p.config.ClaimCreditBytes, SourceCredit: p.config.SourceCreditBytes})
+		return p.putClaim(tx, claimKey(call.Claim), entry{Version: ledgerVersion, Claim: call.Claim, Status: "ALLOCATED",
+			RetainedCredit: p.config.ClaimCreditBytes, SourceCredit: p.config.SourceCreditBytes, Opened: p.clock().Unix()})
 	})
 }
 

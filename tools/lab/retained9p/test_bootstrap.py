@@ -833,6 +833,19 @@ class ClaimProblemTests(unittest.TestCase):
         plain = {"Number": 6, "Opcode": "GETATTR", "Status": "RESERVED", "Stage": "UNPREPARED"}
         self.assertEqual(bootstrap.claim_text(plain), "#6 GETATTR RESERVED/UNPREPARED")
 
+    def test_open_claim_shows_its_age(self):
+        """l64: an open claim's Age (seconds since allocation) is printed
+        before any refusal; a missing, zero or non-integer Age prints
+        nothing, so an older runtime's summary reads as before."""
+        stuck = {"Number": 6, "Opcode": "PROCESS_EXIT", "Status": "RESERVED", "Stage": "UNPREPARED", "Age": 31,
+                 "Refusal": "ADMISSION:WouldBlock", "Refusals": 2, "RefusedFirst": 100, "RefusedLast": 129}
+        problems = bootstrap.claims_problems({"hfs0": self.ledger(6, [stuck], open_claims=[stuck])}, None)
+        self.assertEqual(problems, ["hfs0: 1 claim(s) not TERMINAL: #6 PROCESS_EXIT RESERVED/UNPREPARED age 31s "
+                                    "refused ADMISSION:WouldBlock x2 (100..129)"])
+        for age in (None, 0, "31", True):
+            claim = {"Number": 6, "Opcode": "GETATTR", "Status": "RESERVED", "Stage": "UNPREPARED", "Age": age}
+            self.assertEqual(bootstrap.claim_text(claim), "#6 GETATTR RESERVED/UNPREPARED")
+
     def test_retired_numbers_count_as_terminal(self):
         self.assertEqual(bootstrap.claims_problems({"hfs0": self.ledger(6, [], retired=6)}, self.BASE), [])
 
