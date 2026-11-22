@@ -69,6 +69,14 @@ type ClaimEvidence struct {
 	// first, whatever their status.
 	Pending []ClaimSummary
 	Recent  []ClaimSummary
+	// Abandoned and AbandonedCredit are lifetime counters of the guest's
+	// session ABANDON (hh4, abandon.go): how many claims it declined as
+	// gaps and how many retained plus source credit bytes that returned to
+	// the budgets (both saturate). They live in the ledger, so they survive
+	// a restart, and only grow. omitempty keeps the b84 shape for a ledger
+	// that never abandoned anything.
+	Abandoned       uint64 `json:",omitempty"`
+	AbandonedCredit uint64 `json:",omitempty"`
 }
 
 // ClaimSummary is one claim entry without its binding: the public number,
@@ -112,14 +120,15 @@ const (
 	claimSummaryText = 24
 	// MaxClaimEvidenceBytes bounds the JSON encoding of one provider's
 	// ClaimEvidence at the list bounds above, with every number and string
-	// at its maximum, Age included on every Pending summary
-	// (TestClaimEvidenceWorstCaseBound). The lifecycle reply
+	// at its maximum, Age included on every Pending summary and the hh4
+	// abandon counters at their maximum (TestClaimEvidenceWorstCaseBound). The lifecycle reply
 	// budget (controlledruntime TestObserveClaimEvidenceFitsReply) counts it
 	// once per provider.
 	MaxClaimEvidenceBytes = 4608
 )
 
-// claimEvidence reads the principals and claims buckets inside the caller's
+// claimEvidence reads the principals and claims buckets (and the hh4
+// abandon counters) inside the caller's
 // read transaction. That transaction is the consistency boundary: Allocate,
 // Reserve and Retire do not take the execution mutex the caller holds, but
 // each commits atomically, so the snapshot never shows half a transition.
@@ -144,6 +153,11 @@ func (p *Provider) claimEvidence(tx *bolt.Tx, now int64) (ClaimEvidence, error) 
 	if err != nil {
 		return ClaimEvidence{}, err
 	}
+	abandoned, err := p.abandonedTotals(tx)
+	if err != nil {
+		return ClaimEvidence{}, err
+	}
+	e.Abandoned, e.AbandonedCredit = abandoned.Claims, abandoned.Credit
 	e.Recent = newestClaims(present, claimEvidenceRecent)
 	return e, nil
 }

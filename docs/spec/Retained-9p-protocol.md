@@ -853,7 +853,12 @@ token engine, physical guest barrier, recovery activation or runtime serving.
 The separately selected controlled-only successor is specified in
 [Retained-9p-controlled.md](Retained-9p-controlled.md). Its minor2/schema3
 allocation/gap operations and response verification union do not extend either
-closed1.0 or1.1 schema and supply no normal publication authority.
+closed1.0 or1.1 schema and supply no normal publication authority. The
+controlled tuples (1.2, 1.3 and 1.4) also accept ABANDON, with which a blocked
+guest session gives up on an exact list of its own uncertain claims; the host
+declines the provably never-prepared ones as gaps and returns their credit
+([hh4](Retained-9p-controlled.md#session-abandon-of-stranded-claims-hh4)).
+Closed1.0 and1.1 keep refusing it.
 
 The separately selected controlled-only1.3 parent-funded READDIR cleanup tuple
 is specified in [Retained-9p-cleanup.md](Retained-9p-cleanup.md). It preserves the

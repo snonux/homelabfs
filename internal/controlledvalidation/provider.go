@@ -117,6 +117,12 @@ type entry struct {
 	// the entry's hash includes it, a gap proof can no longer be recomputed
 	// from the public claim fields alone; no consumer does that today.
 	Opened int64 `json:",omitempty"`
+	// Abandoned marks a gap declined by the guest's session ABANDON (hh4,
+	// abandon.go), set in the same write that made the entry a gap and
+	// zeroed its credits, so the gap proof (the entry's hash) includes it
+	// and never changes afterwards. No decision reads it; it tells an
+	// inspector why a claim that was CALLed ended as a gap.
+	Abandoned bool `json:",omitempty"`
 }
 
 // principal is one claim family: High is the last allocated number and Floor

@@ -29,6 +29,7 @@ var _ guestbridge.ValidationExecution = (*ProviderRouter)(nil)
 var _ guestbridge.ValidationContinuation = (*ProviderRouter)(nil)
 var _ guestbridge.ControlledAllocation = (*ProviderRouter)(nil)
 var _ guestbridge.ControlledRetirement = (*ProviderRouter)(nil)
+var _ guestbridge.ControlledAbandon = (*ProviderRouter)(nil)
 var _ guestbridge.ReaddirCleanupStore = (*ProviderRouter)(nil)
 
 // NewProviderRouter freezes actual providers sharing one local service, endpoint,
@@ -210,6 +211,18 @@ func (r *ProviderRouter) RetireOriginal(ctx context.Context, scope guestbridge.C
 		return nil, err
 	}
 	return p.RetireOriginal(ctx, scope, raw)
+}
+
+// AbandonOriginal forwards unchanged arguments to the exact enrolled provider
+// (hh4). The route is the session binding: each session has its own
+// provider and ledger, so another session's ABANDON reaches only its own
+// claims, and a scope that is not exactly enrolled is refused here.
+func (r *ProviderRouter) AbandonOriginal(ctx context.Context, scope guestbridge.Context, raw json.RawMessage) (json.RawMessage, error) {
+	p, err := r.route(scope)
+	if err != nil {
+		return nil, err
+	}
+	return p.AbandonOriginal(ctx, scope, raw)
 }
 
 // CleanupReaddir forwards unchanged arguments to the exact enrolled provider.

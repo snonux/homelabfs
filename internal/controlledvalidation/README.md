@@ -62,6 +62,16 @@ its own snapshot by the same rule at every family's floor (read from its own
 session restores too. Any live-grant difference stays Stale. The `processes` bucket of
 lock-owner tokens stays a lifetime count bounded by `MaxClaims`.
 
+A blocked guest session can give its stranded claims back with ABANDON (task
+hh4, `abandon.go`, [design](../../docs/design/hh4-abandon.md)). In one
+transaction under the execution mutex, each listed claim that is provably
+never prepared (allocated but not reserved by its CALL, or RESERVED/UNPREPARED)
+becomes a protected gap marked `Abandoned`. Its retained and source credit
+return at once and the entry's credit is zeroed, so the later recycle returns
+nothing. A prepared, pending or terminal claim, or one bound to an open dirty
+earmark, is kept. The lifetime totals are in the root key `abandoned`, and
+OBSERVE reports them.
+
 The sealed service worker serializes capture and append with every other local
 origin. WRITE resolves the actual append offset before selecting its `max_end`
 prefix. Before filesystem effects, a separate versioned private ledger protects

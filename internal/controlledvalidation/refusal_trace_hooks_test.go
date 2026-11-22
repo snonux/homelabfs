@@ -126,7 +126,8 @@ func TestReaddirCleanupIgnoresRefusalTrace(t *testing.T) {
 
 // TestClaimEvidenceWorstCaseBound fills the summary lists with open claims at
 // the maximum number, oversized strings, maximal traces and the largest l64
-// Age (Opened 1, the clock at the maximum Unix second), and checks one
+// Age (Opened 1, the clock at the maximum Unix second) and the hh4 abandon
+// counters at their maximum, and checks one
 // provider's encoded ClaimEvidence stays within MaxClaimEvidenceBytes, with
 // traces only on the first claimEvidenceTraced Pending summaries and ages on
 // Pending only.
@@ -144,6 +145,9 @@ func TestClaimEvidenceWorstCaseBound(t *testing.T) {
 			return err
 		}
 		if err := f.provider.putPrincipal(tx, top, principal{High: ^uint64(0), Floor: ^uint64(0)}); err != nil {
+			return err
+		}
+		if err := put(tx.Bucket([]byte(ledgerVersion)), []byte(abandonedCounters), abandonTotals{Claims: ^uint64(0), Credit: ^uint64(0)}); err != nil {
 			return err
 		}
 		for i := uint64(0); i < claimEvidencePending+claimEvidenceRecent; i++ {
@@ -170,6 +174,9 @@ func TestClaimEvidenceWorstCaseBound(t *testing.T) {
 		t.Fatalf("claim evidence %d bytes > %d", len(raw), MaxClaimEvidenceBytes)
 	}
 	c := evidence.Claims
+	if c.Abandoned != ^uint64(0) || c.AbandonedCredit != ^uint64(0) {
+		t.Fatalf("abandon counters %d/%d", c.Abandoned, c.AbandonedCredit)
+	}
 	if len(c.Pending) != claimEvidencePending || len(c.Recent) != claimEvidenceRecent {
 		t.Fatalf("lists %d/%d", len(c.Pending), len(c.Recent))
 	}
