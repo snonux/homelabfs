@@ -619,7 +619,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,3605 @@
+@@ -0,0 +1,3624 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -1044,9 +1044,10 @@ new file mode 100644
 + * blocked (oc4, zq3-r12 R12-1: mount-1 kept retrying its mount-time
 + * VIEW_QUERY for 30 s after its session was blocked). exempt is decided by
 + * the caller (hfs_control_flagged at admission, under session->lock): only
-+ * retirement, release and cleanup traffic may continue on a blocked
-+ * session. A clean unmount or a closing (failed, retained) mount is
-+ * teardown and continues too.
++ * retirement, release and cleanup traffic, plus the reserved drain and
++ * reconciliation work DRAIN_WRITE and GAP_RESOLVE (dh4), may continue on a
++ * blocked session (hfs_after_block_operation). A clean unmount or a closing
++ * (failed, retained) mount is teardown and continues too.
 + *
 + * kill_sb and hfs_mount_fail write unmounting/closing, then smp_wmb(), then
 + * blocked; the smp_rmb() here pairs with that, so a reader that sees blocked
@@ -1368,9 +1369,26 @@ new file mode 100644
 +	return NULL;
 +}
 +
-+/* A HELLO parse has no private Received authority. Its actual candidate
-+ * retains the complete carrier credit until json_free has freed the parse.
++/* A controlled session's terminal candidate must still own its carrier
++ * reservation and the session's terminal completion. hfs_controlled_owns is
++ * declared only with CONFIG_9P_FS_HOMELABFS_CONTROLLED (dh4: calling it
++ * unguarded broke the build with the option off, since 614 (e199627));
++ * without it no session is controlled, so nothing can mismatch.
 + */
++static bool hfs_terminal_controlled_mismatch(struct hfs_session *session,
++					     const struct hfs_candidate *candidate)
++{
++#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++	return hfs_controlled_owns(session) &&
++	       (!candidate->reservation ||
++		candidate->completion != session->terminal_completion);
++#else
++	(void)session;
++	(void)candidate;
++	return false;
++#endif
++}
++
 +/* Exact typed terminal retry. No reconstructed payload can select a different
 + * candidate, and unrelated uncertain commands continue to block destruction. */
 +static struct hfs_candidate *hfs_terminal_candidate(struct hfs_session *session,
@@ -1396,9 +1414,7 @@ new file mode 100644
 +		    candidate->response.channel != expected.channel ||
 +		    candidate->response.kind != expected.kind ||
 +		    candidate->response.max_body != expected.max_body ||
-+		    (hfs_controlled_owns(session) &&
-+		     (!candidate->reservation ||
-+		      candidate->completion != session->terminal_completion)) ||
++		    hfs_terminal_controlled_mismatch(session, candidate) ||
 +		    hfs_json_parse(candidate->command.data, candidate->command.len, &json))
 +			return NULL;
 +		token = hfs_json_field(json, 0, "payload");
@@ -1442,6 +1458,9 @@ new file mode 100644
 +}
 +
 +#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
++/* A HELLO parse has no private Received authority. Its actual candidate
++ * retains the complete carrier credit until json_free has freed the parse.
++ */
 +static void hfs_candidate_parse_put(void *opaque)
 +{
 +	struct hfs_candidate *candidate = opaque;

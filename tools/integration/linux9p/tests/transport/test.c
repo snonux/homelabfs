@@ -281,7 +281,8 @@ static void fetch_error_cases(void)
 /* oc4 (zq3-r12 R12-1): once the session is blocked, neither retry loop
  * sends again; the exchange fails -EHOSTDOWN long before the 30 s deadline,
  * also when it was blocked before the exchange started (review round 1).
- * Exempt traffic (retirement, release, cleanup: hfs_after_block_operation)
+ * Exempt traffic (retirement, release, cleanup and the reserved DRAIN_WRITE
+ * and GAP_RESOLVE: hfs_after_block_operation)
  * and a session in teardown (unmounting, or closing after a failed mount)
  * keep retrying.
  */
@@ -415,6 +416,13 @@ static void blocked_cases(void)
 	CHECK(!hfs_after_block_operation("VIEW_QUERY") && !hfs_after_block_operation("VIEW_WAIT") &&
 	      !hfs_after_block_operation("QUERY") && !hfs_after_block_operation("CALL") &&
 	      !hfs_after_block_operation("DIRTY_FREEZE"));
+	/* dh4: reserved drain and reconciliation work keeps running on a
+	 * blocked session; ordinary CALL opcodes and ALLOCATE still halt.
+	 */
+	CHECK(hfs_after_block_operation("DRAIN_WRITE") &&
+	      hfs_after_block_operation("GAP_RESOLVE"));
+	CHECK(!hfs_after_block_operation("ROOT") && !hfs_after_block_operation("WRITE") &&
+	      !hfs_after_block_operation("ALLOCATE"));
 }
 
 int main(void)
