@@ -67,8 +67,12 @@ The bridge validates domain/session/scope and closed response unions; this
 package does not implement guest PTE/TLB/MMU barriers.
 
 Path grants are issuance-ledger entries with retained raw alias ancestors.
-Current requests recheck ancestor search and Unix authorization under their
-captured credentials; `credential_hash` describes issuance, not a fixed-user
+Current requests re-walk that ancestry for identity (a renamed or removed
+ancestor is Stale) and recheck Unix authorization on the operation's object or
+immediate parent under their captured credentials. Ancestor search is not
+rechecked: the guest VFS checks it on the directories a process walks, and
+POSIX fd-relative calls never re-check above the fd (task sj4, R20-1);
+`credential_hash` describes issuance, not a fixed-user
 attach restriction. Description grants retain issued access through chmod,
 unlink and trusted transfers. Sequenced process exit and final description
 release are distinct from native fh close. Retained capability, revision and

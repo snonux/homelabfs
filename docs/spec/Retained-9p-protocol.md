@@ -420,10 +420,16 @@ other kinds require null. Object IDs remain home+allocation. Scope must match
 the command context exactly. Alias/view ancestors are a separately retained
 ordered list of `(object ID,object revision,entry revision,raw component)` whose
 canonical hash is ancestors_hash. A root has the empty list. Revalidate cached
-search/path capabilities and current logical metadata at the captured committed
-cut; possession is not timeless pathname permission. Each recorded ancestor must
-stay searchable (else Permission) and each recorded entry must still name the
-same object at the same entry revision, else Stale; a renamed, removed or
+path capabilities and current logical metadata at the captured committed cut;
+possession is not timeless pathname identity. Each recorded entry must still
+name the same object at the same entry revision, else Stale. The service does
+not re-check search permission on recorded ancestors: walk permission is checked
+by the guest VFS on the directories a process actually walks, and, as POSIX
+fd-relative calls do, an operation through an already granted directory never
+re-checks the directories above it. The service still checks the operation's
+own object or immediate parent on every call (LOOKUP needs search on its parent;
+CREATE, MKDIR, SYMLINK, UNLINK, RMDIR and RENAME need write and search on their
+parents; OPEN needs the requested access on the file). A renamed, removed or
 reclaimed ancestor or name is likewise Stale, never NotFound, while I/O,
 unavailability and other real failures keep their own code. DESCRIPTION grants retain
 issued rights across chmod/rename/unlink, not across generation/session revocation.
