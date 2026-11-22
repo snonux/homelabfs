@@ -2120,8 +2120,10 @@ target. `read_iter`/`write_iter` go over the bridge (`hfs_io`, `hfs_file.c`);
 `splice_read`, so no generic path fills its page cache. The only page-cache
 insertion (`add_to_page_cache_lru` in the fault path), every PTE and every
 PAGE grant (`hfs_view_page_grant`) come from `hfs_mmap_ops`, which only
-`hfs_mmap_file` installs, after the mark. Any page that does exist is counted
-in `nr_cached` anyway. An mmap racing an adoption is serialised by
+`hfs_mmap_file` installs, after the mark. No generic path can put a page into
+an hfs inode's page cache (no `read_folio`, readahead, splice,
+`copy_file_range` or `direct_IO`), so the fault path is the only source of
+cached pages. An mmap racing an adoption is serialised by
 `view->lock`: either the mark is first, and the adoption's re-check refuses
 (`-EXDEV`, lease unadopted), or the switch is first, and the new VMA's faults
 are stamped with the new revision and target. A live VMA pins its inode, so
