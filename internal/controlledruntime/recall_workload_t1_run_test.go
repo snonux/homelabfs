@@ -82,13 +82,14 @@ type t1Stats struct {
 	heldWorst time.Duration
 	worst     *t1Syscall // the syscall with the longest exchange
 	advances  uint64
+	self      uint64 // CALLs admitted past their own observation leases (vj4)
 	// acks and blocked count the run's VIEW_ACKs and the BLOCKED answers
 	// among them: an early DRAINED sent in guest order (eventWorker).
 	acks, blocked int
 }
 
 // stats sums the run's syscalls and VIEW_ACKs and reads the controller's
-// advance counter.
+// advance and self-admission counters.
 func (r *t1Replay) stats() t1Stats {
 	s := t1Stats{stage: map[string]time.Duration{}}
 	for _, c := range r.syscalls {
@@ -110,6 +111,7 @@ func (r *t1Replay) stats() t1Stats {
 	h, err := r.m.a.Controller.History(r.m.t.Context())
 	require(r.m.t, err)
 	s.advances = h.Advances
+	s.self = h.SelfAdmissions
 	return s
 }
 
@@ -133,8 +135,8 @@ func (r *t1Replay) report(t *testing.T) t1Stats {
 		s.stage["body"].Round(time.Millisecond), s.stage["exit"].Round(time.Millisecond), s.total.Round(time.Millisecond), t1RequestBudget, verdict(s.total <= t1RequestBudget))
 	t.Logf("measured: modelled %s + this host's work %s = %s of T1's %s budget, %s",
 		s.total.Round(time.Millisecond), s.host.Round(time.Millisecond), s.measured.Round(time.Millisecond), t1RequestBudget, verdict(s.measured <= t1RequestBudget))
-	t.Logf("%d syscalls, %d slow observations at %s; recalls %s; %d VIEW_ACKs (%d BLOCKED early DRAINED); %d advance grants; %d held claims (longest %s); longest exchange %s in %q (window %s)",
-		len(r.syscalls), s.obs, r.m.latency, kindsText(r.kinds), s.acks, s.blocked, s.advances, s.held, s.heldWorst.Round(time.Millisecond), s.worst.worst.Round(time.Millisecond), s.worst.name, guestQueryWindow)
+	t.Logf("%d syscalls, %d slow observations at %s; recalls %s; %d VIEW_ACKs (%d BLOCKED early DRAINED); %d advance grants; %d self admissions; %d held claims (longest %s); longest exchange %s in %q (window %s)",
+		len(r.syscalls), s.obs, r.m.latency, kindsText(r.kinds), s.acks, s.blocked, s.advances, s.self, s.held, s.heldWorst.Round(time.Millisecond), s.worst.worst.Round(time.Millisecond), s.worst.name, guestQueryWindow)
 	return s
 }
 
@@ -195,14 +197,17 @@ var t1Schedules = []struct {
 // body, R10-1's exit) on the assembled runtime with and without the xf4
 // view advance, under both cleanup schedules, and logs each syscall's
 // modelled time and recalls. Every wait must end within the guest's window
-// and every claim TERMINAL. With advance no expected-target recall may run,
-// at most one release recall (a lineage budget, xf4 design "Lineages"), the
-// admission must fit guest.py's admission alarm and the whole case T1's
-// 240 s budget, both modelled and measured (modelled plus this host's
-// work, about 80-120 s here, so the measured check has about 30-70 s of
-// slack on this laptop and may fail on a much slower or -race host);
-// without advance the expected-target recalls must show (the model still
-// exercises what advance removes), and the budget is only logged.
+// and every claim TERMINAL. In every run no CALL_CONFLICT recall may run
+// (vj4: each creating CALL meets only m0's own queued observation lease and
+// is a self admission instead). With advance no expected-target recall may
+// run, at most two release recalls (lineage budget recalls, which the
+// CALL_CONFLICT recalls' fence moves used to pre-empt; xf4 design
+// "Lineages"), the admission must fit guest.py's admission alarm and the
+// whole case T1's 240 s budget, both modelled and measured (modelled plus
+// this host's work, about 80-120 s here, so the measured check has slack on
+// this laptop and may fail on a much slower or -race host); without advance
+// the expected-target recalls must show (the model still exercises what
+// advance removes), and the budget is only logged.
 func TestZQ3T1CredentialsReplay(t *testing.T) {
 	if testing.Short() {
 		t.Skip("replays T1 four times on the assembled runtime")
@@ -219,6 +224,35 @@ func TestZQ3T1CredentialsReplay(t *testing.T) {
 	}
 }
 
+// TestZQ3T1PeerConflictReplay replays T1 with advance (prompt cleanup) while
+// m1's observation is in flight across each of m0's creating CALLs: vj4
+// must leave that cross-domain conflict alone, so every creating CALL still
+// starts an all-domain CALL_CONFLICT recall (nothing else in T1 does), and
+// m0's DRAINED, sent in guest order right after its own INSTALLED_DRAIN was
+// ACCEPTED, must have met such a recall still waiting for m1 at least once
+// (BLOCKED, then resent): the guest-order path the T1 replay exercised
+// through the self conflicts before vj4. No self admission may be counted,
+// because m1's lease conflicts with every one of those CALLs.
+func TestZQ3T1PeerConflictReplay(t *testing.T) {
+	if testing.Short() {
+		t.Skip("replays T1 on the assembled runtime")
+	}
+	t.Parallel()
+	r := newT1Replay(t, true, false)
+	r.peer = true
+	s := runT1(t, r)
+	if conflicts := r.kinds[viewcontrol.TriggerCallConflict]; conflicts != r.creates || s.blocked == 0 || s.self != 0 {
+		t.Errorf("peer conflicts: %d CALL_CONFLICT recalls for %d creating CALLs, %d BLOCKED early DRAINEDs, %d self admissions; want equal, some and none", conflicts, r.creates, s.blocked, s.self)
+	}
+	h, err := r.m.a.Controller.History(t.Context())
+	require(t, err)
+	for _, record := range h.Recalls {
+		if record.Kind == viewcontrol.TriggerCallConflict && (record.Scope != "ALL" || len(record.Participants) != 2) {
+			t.Errorf("cross-domain CALL_CONFLICT recall %s: scope %s participants %v, want ALL with both mounts", record.Opcode, record.Scope, record.Participants)
+		}
+	}
+}
+
 // checkT1Recalls reports every way the run falls short of t1RecallProblems.
 func checkT1Recalls(t *testing.T, r *t1Replay, s t1Stats) {
 	for _, problem := range t1RecallProblems(r, s) {
@@ -227,19 +261,17 @@ func checkT1Recalls(t *testing.T, r *t1Replay, s t1Stats) {
 }
 
 // t1RecallProblems holds the run's recall counts and budgets to what xf4
-// promises with advance and requires the baseline to still pay the
-// expected-target recalls without it; none means the run holds. Both runs
-// start all-domain CALL_CONFLICT recalls with both mounts live, so m0's
-// DRAINED, sent in guest order right after its own INSTALLED_DRAIN was
-// ACCEPTED, must have met the recall still waiting for m1 at least once
-// (BLOCKED, then resent). With advance the guest must have asked (sent) as
-// well as been granted: a guest whose views are never cacheless sends
-// nothing, and the run must fail as zq3-r20 did (uj4).
+// and vj4 promise and requires the baseline without advance to still pay
+// the expected-target recalls; none means the run holds. vj4: no
+// CALL_CONFLICT recall, and at least one self admission per creating CALL
+// (each met m0's own queued observation lease). With advance the guest must
+// have asked (sent) as well as been granted: a guest whose views are never
+// cacheless sends nothing, and the run must fail as zq3-r20 did (uj4).
 func t1RecallProblems(r *t1Replay, s t1Stats) []string {
 	var problems []string
 	expected, released := r.kinds[viewcontrol.TriggerExpectedTarget], r.kinds[viewcontrol.TriggerRelease]
-	if r.kinds[viewcontrol.TriggerCallConflict] == 0 || s.blocked == 0 {
-		problems = append(problems, fmt.Sprintf("CALL_CONFLICT recalls %d, BLOCKED early DRAINEDs %d: the guest-order DRAINED was not exercised", r.kinds[viewcontrol.TriggerCallConflict], s.blocked))
+	if conflicts := r.kinds[viewcontrol.TriggerCallConflict]; conflicts != 0 || r.creates == 0 || s.self < uint64(r.creates) {
+		problems = append(problems, fmt.Sprintf("vj4: %d CALL_CONFLICT recalls, %d self admissions for %d creating CALLs; want none and at least one each", conflicts, s.self, r.creates))
 	}
 	if !r.advance {
 		if expected == 0 {
@@ -247,8 +279,8 @@ func t1RecallProblems(r *t1Replay, s t1Stats) []string {
 		}
 		return problems // its budget verdicts are only logged (report)
 	}
-	if expected != 0 || released > 1 || s.advances == 0 || r.sent[0]+r.sent[1] == 0 {
-		problems = append(problems, fmt.Sprintf("with advance: EXPECTED_TARGET %d, RELEASE %d recalls, %d advance grants, %v sent; want 0, at most 1, some and some", expected, released, s.advances, r.sent))
+	if expected != 0 || released > 2 || s.advances == 0 || r.sent[0]+r.sent[1] == 0 {
+		problems = append(problems, fmt.Sprintf("with advance: EXPECTED_TARGET %d, RELEASE %d recalls, %d advance grants, %v sent; want 0, at most 2, some and some", expected, released, s.advances, r.sent))
 	}
 	if s.stage["admission"] > t1AdmissionAlarm || s.total > t1RequestBudget || s.measured > t1RequestBudget {
 		problems = append(problems, fmt.Sprintf("with advance: admission %s (alarm %s), total %s modelled, %s measured (budget %s)", s.stage["admission"], t1AdmissionAlarm, s.total, s.measured, t1RequestBudget))

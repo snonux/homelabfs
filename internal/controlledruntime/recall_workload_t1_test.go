@@ -38,8 +38,13 @@ import (
 //   - mutations (MKDIR, CREATE, SETATTR, WRITE, closes, FORGET) are direct
 //     CALLs. A creating syscall meets the mount's previous observation lease
 //     still active (its release queued behind the cleanup worker, follow-up
-//     F of xf4), which starts the all-domain CALL_CONFLICT recall that holds
-//     the CALL until REOPEN;
+//     F of xf4). Before vj4 that started the all-domain CALL_CONFLICT recall
+//     that held the CALL until REOPEN; since vj4 the requester's own
+//     observation lease does not conflict with its own CALL, so the CALL is
+//     admitted at once (a self admission, OBSERVE's
+//     controller.recalls.self_admissions). The peer variant keeps m1's
+//     observation in flight across each creating CALL, a cross-domain
+//     conflict that still recalls all domains;
 //   - dentries never revalidate, so every walk FORGETs the unpinned cached
 //     dentry and LOOKUPs again; a LOOKUP of a name without grants journals a
 //     handle pin and moves the cut under its own observation lease;
@@ -102,6 +107,8 @@ type t1Replay struct {
 	m        *recallModel
 	p        *modelProcess       // guest.py, with its children folded in
 	advance  bool                // the guest supports advance
+	peer     bool                // m1 holds an observation across each creating CALL
+	creates  int                 // creating CALLs sent under m0's queued own lease
 	rule     guestviewmodel.Rule // the guest's cacheless test
 	views    [2]*guestviewmodel.View
 	sent     [2]int // acquisitions that carried "advance": true, per mount
