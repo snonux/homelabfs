@@ -174,6 +174,9 @@ type recallModel struct {
 	// round1 is the modelled time from mount-1's end until round 1 of the
 	// gate was quiet (no wait, cleanup or recall left); -1 when not measured.
 	round1 time.Duration
+	// directory is the assembly directory; its "transport" child is the
+	// durable transport ledger (transport.db) that inspection reads.
+	directory string
 }
 
 // modelMount is one guest mount: its peer rig, the control-lane chain that
@@ -397,7 +400,7 @@ func newRecallModel(t *testing.T, values zq3Values, latency time.Duration) *reca
 // can let modelled time pass without the wall time (the blocked-domain
 // case). The other schedules keep the controller on the wall clock.
 func newRecallModelWith(t *testing.T, values zq3Values, latency time.Duration, controllerOnModel bool) *recallModel {
-	return assembleRecallModel(t, values, latency, latency, controllerOnModel)
+	return assembleRecallModel(t, values, latency, latency, controllerOnModel, nil)
 }
 
 // newRecallModelVirtual is newRecallModelWith(controllerOnModel) whose
@@ -408,20 +411,25 @@ func newRecallModelWith(t *testing.T, values zq3Values, latency time.Duration, c
 // observations per run) then cost seconds of wall time instead of minutes
 // and their verdicts do not depend on how fast the test host sleeps.
 func newRecallModelVirtual(t *testing.T, values zq3Values, latency time.Duration) *recallModel {
-	return assembleRecallModel(t, values, latency, 0, true)
+	return assembleRecallModel(t, values, latency, 0, true, nil)
 }
 
 // assembleRecallModel builds the model: each observation sleeps sleep of
 // wall time (latency, or 0 for a virtual observer) and is accounted at
-// latency.
-func assembleRecallModel(t *testing.T, values zq3Values, latency, sleep time.Duration, controllerOnModel bool) *recallModel {
+// latency. wrapProbe, when not nil, wraps the admission's probe once the
+// model clock is installed and before Assemble starts any worker that could
+// call it (the held observation of recall_workload_r12_test.go).
+func assembleRecallModel(t *testing.T, values zq3Values, latency, sleep time.Duration, controllerOnModel bool, wrapProbe func(*Admission)) *recallModel {
 	r, c := assemblyFixture(t)
 	values.apply(t, &c)
-	m := &recallModel{t: t, r: r, latency: latency, sleep: sleep, families: c.Authorization.Enrollment.TicketFamilies, recalls: map[string]*modelRecall{}, round1: -1}
+	m := &recallModel{t: t, r: r, latency: latency, sleep: sleep, families: c.Authorization.Enrollment.TicketFamilies, recalls: map[string]*modelRecall{}, round1: -1, directory: c.Directory}
 	var slow atomic.Bool
 	slow.Store(true)
 	latencyProbe(r.admission, sleep, &slow, &m.probes, nil)
 	m.clock = installModelClock(r.admission, latency)
+	if wrapProbe != nil {
+		wrapProbe(r.admission)
+	}
 	if controllerOnModel {
 		c.ControllerClock = m.clock.now
 	}
