@@ -69,11 +69,15 @@ type factsLedger struct {
 	// participants (viewcontrol participant_fence.go, task 0a4). They were
 	// dropped from the recall and get no event again. validFenced checks
 	// every entry against AckArchive and Fences before the participant
-	// check may leave the session out.
+	// check may leave the session out. Retired marks the tombstone of an
+	// operator retirement (viewcontrol fenced_retirement.go, task fh4),
+	// whose operator signature the controller verifies; here it only
+	// changes which rows the entry must (not) leave behind.
 	Fenced map[string]struct {
 		Recall, Phase string
 		Sequence      uint64
 		Fence         uint64
+		Retired       json.RawMessage
 	}
 	AckArchive map[string]string
 }
@@ -230,6 +234,9 @@ func (f *Facts) CheckPhysical(ctx context.Context, scope guestbridge.Context, op
 	}
 	l, err := f.ledger(ctx, ledger)
 	if err != nil {
+		return err
+	}
+	if err = l.refuseFenced(scope); err != nil {
 		return err
 	}
 	if op == "VIEW_ACK" {
@@ -524,11 +531,19 @@ func (f *Facts) ledger(ctx context.Context, raw json.RawMessage) (factsLedger, e
 // was fenced in is in the AckArchive (the controller fences only after that
 // physically certified STOPPED), its fence is still the one recorded at the
 // fence (a fenced domain never completes a recall again), and the current
-// recall issued it no event.
+// recall issued it no event. A retired fence (task fh4) no longer has its
+// archived STOPPED; it must instead leave no row of its scope behind
+// (retiredClean), so a tombstone can never hide a live session's state.
 func (l factsLedger) validFenced() bool {
 	for session, f := range l.Fenced {
 		d, ok := l.Domains[session]
-		if !ok || f.Recall == "" || viewcontrol.DomainFence(l.Fences, session) != f.Fence || !viewcontrol.ArchivedStopped(l.AckArchive, d.Domain.Scope, f.Recall) {
+		if !ok || f.Recall == "" || viewcontrol.DomainFence(l.Fences, session) != f.Fence {
+			return false
+		}
+		if len(f.Retired) == 0 && !viewcontrol.ArchivedStopped(l.AckArchive, d.Domain.Scope, f.Recall) {
+			return false
+		}
+		if len(f.Retired) != 0 && !l.retiredClean(d.Domain.Scope) {
 			return false
 		}
 		if l.Recall != nil && len(l.Recall.Events[session]) != 0 {
@@ -536,6 +551,38 @@ func (l factsLedger) validFenced() bool {
 		}
 	}
 	return true
+}
+
+// refuseFenced refuses every physical check for a fenced session, retired
+// (task fh4) or not. The controller refuses such a session before it gets
+// here (viewcontrol participant_fence.go); these Facts refuse it on their
+// own too, so nothing of a fenced scope is ever certified again.
+func (l factsLedger) refuseFenced(scope guestbridge.Context) error {
+	if _, fenced := l.Fenced[scope.Session]; fenced {
+		return viewcontrol.ErrSessionFenced
+	}
+	return nil
+}
+
+// retiredClean reports whether the ledger holds no ticket, lease,
+// reservation or archived ACK of a retired fenced scope.
+func (l factsLedger) retiredClean(scope guestbridge.Context) bool {
+	for _, t := range l.Tickets {
+		if t.Scope.Session == scope.Session {
+			return false
+		}
+	}
+	for _, lease := range l.Leases {
+		if lease.Lease.Scope.Session == scope.Session {
+			return false
+		}
+	}
+	for _, r := range l.Reservations {
+		if r.Reservation.Scope.Session == scope.Session {
+			return false
+		}
+	}
+	return !viewcontrol.ArchivedACKs(l.AckArchive, scope)
 }
 
 // recallParticipantsComplete requires an event for exactly the recall's

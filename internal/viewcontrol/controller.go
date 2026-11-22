@@ -210,7 +210,9 @@ type ledger struct {
 	// ErrSessionFenced. omitempty keeps a ledger without a fence
 	// byte-identical to the schema-2 layout before 0a4. The first fence
 	// moves Schema to LedgerSchemaFenced, which an older binary refuses on
-	// reopen instead of serving the fenced session again.
+	// reopen instead of serving the fenced session again. An operator
+	// retirement (fenced_retirement.go, task fh4) keeps the row as a
+	// tombstone, so the ledger stays at that schema for good.
 	Fenced map[string]fencedSession `json:",omitempty"`
 }
 
@@ -821,7 +823,7 @@ func sameSource(a, b fsservice.ControlledViewSource) bool {
 func (c *Controller) validateLedger() error {
 	s := c.state
 	b := c.config.Authorization.Enrollment.Bounds
-	if s.UUIDs == nil || len(s.UUIDs) > 2*b.Identities || s.Revisions == nil || len(s.Revisions) > b.Identities || s.Sources == nil || s.Tickets == nil || s.Families == nil || s.Leases == nil || s.Reservations == nil || s.Domains == nil || s.AckArchive == nil || s.Retirements == nil || len(s.Sources) > b.Sources || len(s.Tickets) > b.Identities || len(s.Reservations) > b.Reservations || len(s.Leases) > b.Identities || len(s.Domains) > len(c.config.Authorization.Enrollment.Domains) || len(s.AckArchive) > b.Identities*8 || s.Identities > b.Identities || !s.validRecycling() || !s.validFences() || !s.validFenced() {
+	if s.UUIDs == nil || len(s.UUIDs) > 2*b.Identities || s.Revisions == nil || len(s.Revisions) > b.Identities || s.Sources == nil || s.Tickets == nil || s.Families == nil || s.Leases == nil || s.Reservations == nil || s.Domains == nil || s.AckArchive == nil || s.Retirements == nil || len(s.Sources) > b.Sources || len(s.Tickets) > b.Identities || len(s.Reservations) > b.Reservations || len(s.Leases) > b.Identities || len(s.Domains) > len(c.config.Authorization.Enrollment.Domains) || len(s.AckArchive) > b.Identities*8 || s.Identities > b.Identities || !s.validRecycling() || !s.validFences() || !s.validFenced() || !c.validRetiredFences() {
 		return fsapi.Stale
 	}
 	for key, source := range s.Sources {

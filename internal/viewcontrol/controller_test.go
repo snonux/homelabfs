@@ -86,6 +86,9 @@ type rig struct {
 	facts                *primitiveFacts
 	// processes holds the extra guest process credentials of a workload model.
 	processes *processRegistry
+	// operator is the enrollment's operator key, which also signs fenced
+	// session retirements (fenced_retirement.go).
+	operator ed25519.PrivateKey
 }
 type result struct {
 	// ID is the result's self id, which a RETIRE names as its result hash.
@@ -297,6 +300,7 @@ func newRigWith(t *testing.T, limits *rigLimits, overrides ...func(*Config)) *ri
 	profile := &fsservice.ValidationProfile{Disposable: true, Name: "viewcontrol-real-local"}
 	r.startService(object, profile)
 	k := rigKeys{operator: keys(t), hosts: []ed25519.PrivateKey{keys(t), keys(t)}, guests: []ed25519.PrivateKey{keys(t), keys(t)}}
+	r.operator = k.operator
 	r.enrollProviders(profile, k, limits)
 	r.signEnrollment(profile, k, overrides)
 	// Native and provider effects are closed before the mandatory controller binds.

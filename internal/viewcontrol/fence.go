@@ -15,7 +15,9 @@ const LedgerSchema = 2
 // (participant_fence.go, task 0a4). The first fence moves the ledger to it,
 // so a binary before 0a4, which accepts only schema 2 and ignores Fenced,
 // refuses the ledger instead of serving a fenced session again. A ledger
-// without a fence stays at schema 2 byte for byte.
+// without a fence stays at schema 2 byte for byte. An operator retirement
+// of a fenced session (fenced_retirement.go, task fh4) keeps its row as a
+// tombstone, so a ledger never returns from schema 3 to schema 2.
 const LedgerSchemaFenced = 3
 
 // ValidLedgerSchema reports whether schema fits a ledger with the given

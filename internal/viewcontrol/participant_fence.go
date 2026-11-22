@@ -69,7 +69,9 @@ import (
 // certified released (the runtime Facts need the fence advance) and the
 // guest, which fails its view control on the transport error, cannot resume
 // on its old view. A fence is permanent for that enrolled session; there is
-// no unfence path (see the README).
+// no unfence path. An operator may later retire the fenced session
+// (fenced_retirement.go, task fh4), which releases the rows it kept charged
+// but keeps the fence row as a tombstone, so the session stays refused.
 //
 // The clocks (phaseClock, lastSeen, pulses) are in memory only. They restart on a
 // controller reopen, Disconnect and Recover, so a restart only delays a
@@ -93,11 +95,14 @@ var ErrSessionFenced = fmt.Errorf("%w: session fenced as a stalled recall partic
 
 // fencedSession is the protected record of one fence: the recall and phase
 // it was dropped from, its last event sequence and its domain fence then
-// (which stays its fence for good).
+// (which stays its fence for good). Retired is the tombstone of an operator
+// retirement (fenced_retirement.go, task fh4); omitempty keeps an unretired
+// fence row byte-identical to the 0a4 layout.
 type fencedSession struct {
 	Recall, Phase string
 	Sequence      uint64
 	Fence         uint64
+	Retired       *retiredFence `json:",omitempty"`
 }
 
 // phaseClock remembers when the current recall phase was first seen by
@@ -255,7 +260,8 @@ func (c *Controller) owesACK(r *recallState, session string) bool {
 // both require it of every fenced session (task 0a4): a fence is allowed
 // only after the session's physically certified STOPPED of that recall.
 // The session never acknowledges anything again, so pruneAckArchive never
-// drops these rows.
+// drops these rows; only an operator's retirement of the fenced session
+// does (fenced_retirement.go), and a retired fence is checked without them.
 func ArchivedStopped(archive map[string]string, scope guestbridge.Context, recall string) bool {
 	prefix := digest(scope) + "/" + recall + "/STOPPED/" // ArchiveKey without the sequence
 	for key, value := range archive {
@@ -381,7 +387,8 @@ func (c *Controller) fenceStalled(ctx context.Context, except string) (bool, err
 // session again). Its leases are already inactive (fenceable), and its
 // drained FROZEN reservations are closed with the recall's others by
 // finishRecall. Its AckArchive rows stay: they prove its STOPPED
-// (ArchivedStopped), and the session is refused anyway.
+// (ArchivedStopped), and the session is refused anyway. An operator
+// retirement (fenced_retirement.go) releases them and its other rows later.
 func (c *Controller) dropParticipant(r *recallState, session string) {
 	sequence, _ := eventSequence(r, session)
 	if c.state.Fenced == nil {
@@ -412,12 +419,21 @@ func eventSequence(r *recallState, session string) (uint64, bool) {
 
 // validFenced checks the fences of a reopened ledger: every fenced session
 // is a registered domain, holds no active lease, keeps the fence recorded
-// when it was fenced, has its archived STOPPED of the recall it was fenced
-// in and receives no event of the current recall.
+// when it was fenced and receives no event of the current recall. An
+// unretired fence has its archived STOPPED of the recall it was fenced in;
+// a retired one (task fh4) instead holds no row its retirement released
+// (holdsSessionRows), its operator signature being checked by
+// validRetiredFences, which needs the controller's operator key.
 func (s ledger) validFenced() bool {
 	for session, f := range s.Fenced {
 		d, ok := s.Domains[session]
-		if !ok || DomainFence(s.Fences, session) != f.Fence || !ArchivedStopped(s.AckArchive, d.Domain.Scope, f.Recall) {
+		if !ok || DomainFence(s.Fences, session) != f.Fence {
+			return false
+		}
+		if f.Retired == nil && !ArchivedStopped(s.AckArchive, d.Domain.Scope, f.Recall) {
+			return false
+		}
+		if f.Retired != nil && s.holdsSessionRows(d.Domain.Scope) {
 			return false
 		}
 		if s.Recall != nil {
