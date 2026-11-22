@@ -1,5 +1,15 @@
 # xz3 r20 rebuild (2026-11-21): zq3-r19 busy retirement round fix and xf4
 
+**Superseded on 2026-11-22** by the [r21 rebuild](../xz3-20261123-r21/README.md)
+(`1428d4db…`, source `91b9ee1`) for zq3-r21. In zq3-r20 its 1h4+4h4 guest kernel
+`b4d6cd69…` never sent the xf4 advance, because it counted every registered
+inode as cached (fixed by tj4), and its daemon `c04c519f…` refused a
+non-owner's walk below the 0700 root (R20-1, fixed by sj4). r21 rebuilt the
+kernel (tj4), the daemon (sj4, 2h4, 0a4, fh4, a84, l64, nj4) with the window
+artifacts, and the exporter on f3 (9h4). The tooling refuses this manifest
+as superseded. It still passes `package.py check` and `admit.py` under the
+`91b9ee1` tooling.
+
 The candidate was built and admitted on 2026-11-21; the `20261122` in its directory and evidence names was chosen in advance for the planned zq3-r20 run day and is kept because pins and the run plan reference it.
 
 This candidate supersedes the [r19 rebuild](../xz3-20261121-r19/README.md)

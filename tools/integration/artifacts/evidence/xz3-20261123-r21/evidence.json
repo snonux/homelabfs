@@ -1,0 +1,387 @@
+{
+  "candidate": {
+    "admission": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "assembled_from": "the r21 worktree at 91b9ee1 (/home/paul/git/homelabfs/.claude/worktrees/xz3-r21; no edits before assembly, HEAD equal to main). The daemon was rebuilt there, so the repository baseline is 91b9ee1 and there is no inputs/repository-changes.patch. The daemon builder bindings name this worktree; the three native proof records are this run's f3 build's, written by native/collect-native.py; every other binding is a hash",
+    "files": 194,
+    "independent_admit": {
+      "booted": false,
+      "container_verified": true,
+      "full_components_verified": true,
+      "installed": false,
+      "native_accepted": false,
+      "publication": null
+    },
+    "manifest_sha256": "1428d4dbc149f15866ca6ff1dd259642e2ab34bb5b943c8b1cf1e92306ef4fd9",
+    "operator_public": "2f6d909c8bfa020c43dd460dcc03fd9d1fd78e03cdb61f51aa693f77de89a635",
+    "path": "package",
+    "repository_baseline": "91b9ee1df2b7f26baae0032d3928286743fe4e57",
+    "repository_changes_patch_sha256": null,
+    "source_checkout": "91b9ee1df2b7f26baae0032d3928286743fe4e57"
+  },
+  "controls": {
+    "all_refused": true,
+    "case_names": [
+      "external operator mismatch",
+      "external repository mismatch",
+      "old negotiated features",
+      "old source revision",
+      "different packaged Linux patch",
+      "different native owned source",
+      "wrong actual bundled source with consistent container hashes",
+      "daemon ELF labelled as full exporter",
+      "native helper ELF lacks production controllers",
+      "invented stock shared9p runtime",
+      "installed success claim",
+      "missing actual Go build version",
+      "real CGO_ENABLED=0 daemon with nocgo observer stub",
+      "record claims CGO0 build",
+      "nocgo stub in recorded source closure",
+      "renamed cgo process observer symbols",
+      "foreign dynamic loader",
+      "extra recorded DT_NEEDED",
+      "missing recorded DT_NEEDED",
+      "sysroot library hash differs from recorded closure",
+      "unlinked sysroot capture",
+      "unrecorded clang resource headers",
+      "unrecorded clang shared-library closure",
+      "foreign cgo compiler wrapper",
+      "installation authority claim",
+      "false forced rebuild witness"
+    ],
+    "cases": 26,
+    "cgo0_control_sha256": "480713c27e2d11cff95fc8049473630ae492f7c66b9b97256f27599d99f62c99",
+    "original_passed_after": true,
+    "restored_passed": true
+  },
+  "daemon": {
+    "builds": {
+      "clean_repro": {
+        "both_forced_rebuilds": true,
+        "equal": true,
+        "first_sha256": "013515a8731cde2bad643230a7822221f2ff086a6d72812778eb78d69c761200",
+        "repository": "91b9ee1df2b7f26baae0032d3928286743fe4e57",
+        "second_sha256": "013515a8731cde2bad643230a7822221f2ff086a6d72812778eb78d69c761200",
+        "version": "homelabfs-daemon-clean-repro/1"
+      },
+      "first_output": "daemon-first",
+      "second_output": "daemon-repro",
+      "steps": [
+        [
+          "prepare",
+          "0",
+          "4"
+        ],
+        [
+          "build-first",
+          "0",
+          "389"
+        ],
+        [
+          "build-second",
+          "0",
+          "47"
+        ]
+      ],
+      "window_cross_check": {
+        "artifact": "hfs-controlled-runtime",
+        "candidate_manifest_sha256": "013515a8731cde2bad643230a7822221f2ff086a6d72812778eb78d69c761200",
+        "equal": true,
+        "rebuilt_sha256": "013515a8731cde2bad643230a7822221f2ff086a6d72812778eb78d69c761200"
+      }
+    },
+    "bytes": 11218992,
+    "changes": "sj4 (internal/guestbridge revalidatePath keeps the ancestor identity re-walk but drops the per-ancestor search check, zq3-r20 R20-1), 2h4 (OBSERVE reports per-ticket BLOCKED reasons), 0a4 (a recall participant whose view worker is silent 60 s after STOPPED is fenced so the others REOPEN), fh4 (operator-signed retirement of a fenced session releases its shared charges), a84 part 1 (swallowed admission/execution refusals are traced on the claim), l64 (open claims carry their age) and nj4 (the pinned exporter copy is written under syscall.ForkLock), on top of the 3h4 daemon c04c519f",
+    "gnu_build_id": "0366a6fbd9065ac5dcaa04bd460cc054df294149",
+    "module_cache": "seeded from the r20 daemon cache (go.mod/go.sum unchanged since b7d107b); nothing downloaded",
+    "native_qualification": "new bytes: not checked on f3 yet; the zq3-r21 Phase 4 step 1a (--check-process-observer under the bounded host guard) must qualify them (c04c519f passed it in zq3-r20)",
+    "repository": "91b9ee1df2b7f26baae0032d3928286743fe4e57",
+    "sha256": "013515a8731cde2bad643230a7822221f2ff086a6d72812778eb78d69c761200",
+    "superseded_sha256": "c04c519f8f659daaca45d4fc42fb8e651bdd028eaafa84a184240f5368c2413e"
+  },
+  "init_helper": {
+    "kept": "8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80 from e0cca0c",
+    "reason": "not in the package; of the packages cmd/homelabfs links (go list -deps), only internal/guestbridge changed since d71ae02 (non-test files dispatch.go for sj4 and service.go for a84), reached only through fuseadapter on the mount path; node-init/volume-init never mount"
+  },
+  "kernel": {
+    "abi_negative_controls": [
+      "different-kernel-module-layout-crc",
+      "different-operator-config-identity",
+      "missing-kernel-module-layout-crc",
+      "stock-kernel-release"
+    ],
+    "artifacts": {
+      "linux/Module.symvers": "28ec9854f826b6f1191f1c56805dcc9fe1fd776b9212430900aced99f3f821a5",
+      "linux/System.map": "35111e72305eed9d1bb246de765451a6d50179d4af7fd28304c7fb68b1e52bdc",
+      "linux/abi-negative.json": "f7c4aa9efbe87a6e18eae268097b01c7cb333b1b72ceefbfa93448d6e7417da0",
+      "linux/abi.json": "402dcbf75f3f639da6f97360dd1b9ba02a8d4c0ec968c794048bb65b50803069",
+      "linux/build.json": "80de4d596fdb483038d998fbfdd90eae0f4e228846e0a2c8f6857400e7e574fc",
+      "linux/bzImage": "b3f2f72b8ed28a6b6889acbd300674efde9a9ff9b20cbaa622aecefd7802c047",
+      "linux/clean-repro.json": "4151c38df6304da001ef8807b13bca03527b1ae8a406a327c1657ecbbab33be3",
+      "linux/config": "28fe4a8ec759cfa7ecfdc373753082ec6981ecdffc6a25e074b6fac048906282",
+      "linux/kernel.release": "50bb45b1af138cf586adddcde600f85e256a19336c861654e6ce76c20eb034e3",
+      "linux/modules.builtin": "1f33442939e7faf978dc707cb69f99015328b39b3125cea6d6de25715f8bebf1",
+      "linux/modules.builtin.modinfo": "c53973bb5c4498e6fc6e61d0143353782a5628374b2b00624f422ed6f2236cf2",
+      "linux/modules.order": "f820618416411197b17fe7795d067e9687d905c487bffb207589bec3c173019a",
+      "linux/modules/drivers/net/net_failover.ko": "cc9755c71cc1d0776f5efd61198b1ebe99741cff877104879b8658db469f9143",
+      "linux/modules/drivers/net/virtio_net.ko": "39de7e933fa325b2c6b576004213f34bee04085191ea94e141a6c2aeeaf7fef1",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko": "6b98068988086d3b1b5c7a1e3b71f5f0ac4378f2d907c0e3a8c50a22bcde53fa",
+      "linux/modules/fs/efivarfs/efivarfs.ko": "6dd0679c5a026189f4feef51fcdcf4d0542fbc9cba7f3e552cb8a0324e68974f",
+      "linux/modules/net/core/failover.ko": "b1aa98beb495be131c06a02775109cba97de2ecacae227c4932909166b88cf5a",
+      "linux/vmlinux": "796da1c9936a35e0ca756db486442b6acc4e391a905ee1b851b8b8ac6a709a03"
+    },
+    "changed_from_r20": [
+      "linux/Module.symvers",
+      "linux/System.map",
+      "linux/abi.json",
+      "linux/build.json",
+      "linux/bzImage",
+      "linux/clean-repro.json",
+      "linux/vmlinux"
+    ],
+    "changes": "tj4 (patches 0003/0004 and source.json: the guest's cacheless test counts only mmapped inodes (hfs_mmap_file marks the inode with hfs_view_mmap_inode before installing hfs_mmap_ops) instead of every registered inode, so a mount with registered roots can send the xf4 VIEW_ACQUIRE advance; in zq3-r20 the advance was never sent), on top of the 1h4+4h4 kernel b4d6cd69",
+    "clean_repro_equal_artifacts": 13,
+    "clean_repro_modules": 5,
+    "clean_repro_record_sha256": "4151c38df6304da001ef8807b13bca03527b1ae8a406a327c1657ecbbab33be3",
+    "config_equals_r20": true,
+    "gnu_build_id": "f951817780097db10b5f7d68bbe01c80abc225a6",
+    "initramfs": "none built or packaged; the recipe builds bzImage and modules",
+    "module_build_ids": {
+      "drivers/net/net_failover.ko": "3255e434a34a125cd9251bebddaaf6bdf98c68bb",
+      "drivers/net/virtio_net.ko": "072995182e1a95b83cf3ec794649ce05adf8a59d",
+      "drivers/thermal/intel/x86_pkg_temp_thermal.ko": "da295c7cb8ec345542f4ad350ebe6b4ab30ce306",
+      "fs/efivarfs/efivarfs.ko": "c7dca1ae388661db98a1b00f73a39cc2c2d88539",
+      "net/core/failover.ko": "3b9f54841993c81600f6794137822622987c4f9d"
+    },
+    "module_symvers": {
+      "added": [],
+      "changed_crc": [
+        "hfs_call",
+        "hfs_control",
+        "hfs_control_flagged",
+        "hfs_request_allocate",
+        "hfs_request_resolve_gap",
+        "hfs_retire",
+        "hfs_session_destroy",
+        "v9fs_hfs_register_provider",
+        "v9fs_hfs_unregister_provider"
+      ],
+      "imported_by_packaged_modules": [],
+      "removed": []
+    },
+    "note": "both builds used the same canonical O path (first tree moved to kernel-build-first before the repeat); abi.py collect ran on both packages before compare_kernel",
+    "release": "6.1.190-hfs-xz3",
+    "resolved_config_lsm": "lockdown,yama,integrity,selinux,bpf,landlock",
+    "source": {
+      "archive_path": "/home/paul/tmp/claude/c64-config/linux-pinned.tar.gz (link to the cached archive, not downloaded)",
+      "archive_sha256": "4f3c00db43ece26e00b83da8cee938e544ba89e10dc10aecc45209ab03554a17",
+      "kernel_config_fragment_sha256": "f2d2a203daa49dd454de90b932e04e17f1532a22b9184140da136ff97d468bc7",
+      "prepared": "linux-source",
+      "prepared_from_commit": "91b9ee1 (main after the tj4, sj4, 9h4 and daemon merges and the zq3-r20 records)",
+      "source_inventory_sha256": "b1b843c74cf30795506f6a860a572fc5d9f0a48d85a85fa34442927a9c2aef83"
+    },
+    "source_suites": {
+      "commands": "the r20 set: transport, mount_hello, view and view --pressure (tj4 mmapped-inode cacheless cases; --pressure also runs the tj4 hfs_mmap_file source guard) and setattr with --sanitize; controlled_received --scenario passed-grant, terminal-smoke and advance, the tj4 guest against the 91b9ee1 host (budget root suites/, host tree the r21 worktree); run alongside the first kernel build",
+      "results": [
+        [
+          "transport",
+          "0",
+          "6"
+        ],
+        [
+          "mount_hello",
+          "0",
+          "7"
+        ],
+        [
+          "view",
+          "0",
+          "10"
+        ],
+        [
+          "view-pressure",
+          "0",
+          "16"
+        ],
+        [
+          "setattr",
+          "0",
+          "5"
+        ],
+        [
+          "cr-passed-grant",
+          "0",
+          "395"
+        ],
+        [
+          "cr-terminal-smoke",
+          "0",
+          "51"
+        ],
+        [
+          "cr-advance",
+          "0",
+          "60"
+        ]
+      ],
+      "source": "linux-source"
+    },
+    "stage_seconds": [
+      [
+        "prepare",
+        "0",
+        "70"
+      ],
+      [
+        "first",
+        "configure",
+        "0",
+        "31"
+      ],
+      [
+        "first",
+        "vmlinux",
+        "0",
+        "1114"
+      ],
+      [
+        "first",
+        "image-modules",
+        "0",
+        "59"
+      ],
+      [
+        "first",
+        "collect",
+        "0",
+        "7"
+      ],
+      [
+        "repro",
+        "configure",
+        "0",
+        "15"
+      ],
+      [
+        "repro",
+        "vmlinux",
+        "0",
+        "868"
+      ],
+      [
+        "repro",
+        "image-modules",
+        "0",
+        "28"
+      ],
+      [
+        "repro",
+        "collect",
+        "0",
+        "6"
+      ],
+      [
+        "abi-collect both",
+        "0"
+      ],
+      [
+        "compare-repro (same O, after abi collect on both)",
+        "0"
+      ],
+      [
+        "abi-negative",
+        "0"
+      ]
+    ],
+    "superseded_gnu_build_id": "b4d6cd69c788e11a050036b958d5bf04f32d2f64",
+    "timeouts_and_resumes": "kernel.py bounds every make at 1190 s. No stage reached it: the first vmlinux took 1114 s and the repro vmlinux 868 s, so no stage was resumed. The driver would have waited until no process used the O path and resumed a timed-out stage on the same O tree (at most twice); that path never ran. Every stage ran under a user systemd scope with the r17 40-minute bound",
+    "unchanged_from_r20": [
+      "linux/abi-negative.json",
+      "linux/config",
+      "linux/kernel.release",
+      "linux/modules.builtin",
+      "linux/modules.builtin.modinfo",
+      "linux/modules.order",
+      "linux/modules/drivers/net/net_failover.ko",
+      "linux/modules/drivers/net/virtio_net.ko",
+      "linux/modules/drivers/thermal/intel/x86_pkg_temp_thermal.ko",
+      "linux/modules/fs/efivarfs/efivarfs.ko",
+      "linux/modules/net/core/failover.ko"
+    ]
+  },
+  "native_exporter": {
+    "changes": "9h4 (hfs9p_bootstrap.inc, hfs9p_recovery.inc, hfs9p_supervisor.c: the controlled C bootstrap waits out backend-mutex contention, EAGAIN, up to 10 s per call, instead of fencing itself under CPU load)",
+    "differs_from_r20": [
+      "freebsd/bhyve",
+      "freebsd/build.json",
+      "freebsd/lib9p.a",
+      "freebsd/lib9p_pie.a",
+      "inputs/freebsd-selected-source.tar.gz",
+      "inputs/freebsd-source-bundle.json",
+      "inputs/freebsd-source-inventory.json"
+    ],
+    "exporter_sha256": "368a021d2046bf9c2845a4d80345d5665f948bd6136a3a233827505d06a052db",
+    "files": 88,
+    "guard_recipe_sha256": "34ddf37c98e4f634ada902fed708ec9dc3ec49baa3ec1f764017d0140d49b2ea",
+    "method": "r17 native method on f3: two clean builds in one fresh 0700 root under native_guard.py (1 CPU, 512 MiB, 20 min per stage, 8 GiB disk, pinned to the running Rocky incarnation), compare, source bundle, lib9p native-verify.sh under the guard; collected read-only with cat/tar against the remote seal and bundle records",
+    "proof_records_sha256": {
+      "native-bundle-helper-transfer.json": "1f9352e688d0378d3c8705d1be98ef557a693be11f90ad86e567559ac76f07f1",
+      "native-clean-repro-evidence.json": "f9aaca8f9e34bd95b8aa438ade066b7850f31fdeb2dca2d26fd5b10a612aa92d",
+      "native-final-source-and-first-seal.json": "95f80d5adea6c25d466e978e60719dabbdab7dc39960a46179c1fbc71109a187"
+    },
+    "rebuilt": true,
+    "records": "native-build-records.json (this run's f3 build: facts, guard receipts, comparison, native-verify)",
+    "selected_archive_sha256": "5baa86216d137620cc1be60748b93e76a78a82802d41d4ee74cb08352f05e9d0",
+    "source_files": 8670,
+    "source_inventory_sha256": "19239259424c2cf40f33835178dc8cc9e151175ca299e7beb5540c28c113b43c",
+    "superseded_exporter_sha256": "2fd7e32f5cc8762ae0ff4d5ec6c046d7d49b95c97e4b9150dd17b2ac52c39fd3"
+  },
+  "not_claimed": [
+    "installed",
+    "booted",
+    "native acceptance",
+    "exporter execution",
+    "VM execution",
+    "SELinux enforcing on the booted guest",
+    "normal publication",
+    "f3 observer qualification of the new daemon",
+    "a working hfs1.4 mount on Rocky (zq3)"
+  ],
+  "planned_run_day": "2026-11-23 (the 20261123 in the directory and evidence names)",
+  "reason": "b37bcb06 predates tj4: its guest kernel b4d6cd69 treated a mount with registered roots as cached, so the xf4 advance was never sent in zq3-r20. It also predates sj4 (zq3-r20 R20-1: revalidatePath refused an ancestor without search permission), the 0a4/fh4/2h4/a84/l64/nj4 daemon changes, and 9h4 (the exporter bootstrap fenced itself on EAGAIN backend contention under CPU load)",
+  "recorded": "2026-11-22",
+  "reused": {
+    "checked_against_current_source": 26,
+    "from_manifest": "b37bcb06171fbfdf9a2b2cd3ba40711724adf07925c9a3ac167f936fa544fdec",
+    "linux_files": 26,
+    "list": "reused-files.json",
+    "native_files": 0,
+    "previous_still_admits": "package.py check and a full admit.py of b37bcb06 pass under the 91b9ee1 tooling (receipts r20-container, r20-readmit)"
+  },
+  "runtimeprep_spec": "internal/runtimeprep/testdata/zq3-spec.json is not package content and is unchanged since r20",
+  "superseded_candidate": {
+    "manifest_sha256": "b37bcb06171fbfdf9a2b2cd3ba40711724adf07925c9a3ac167f936fa544fdec",
+    "status": "refused as superseded (pre-tj4 guest kernel b4d6cd69, pre-sj4 daemon c04c519f, pre-9h4 exporter 2fd7e32f; zq3-r20 R20-1 and the never-sent advance)"
+  },
+  "task": "r21: xz3 rebuild for zq3-r21 (tj4 guest kernel, 91b9ee1 CGO daemon and window artifacts, 9h4 native exporter rebuilt on f3)",
+  "version": "homelabfs-xz3-evidence/2",
+  "window_artifacts": {
+    "artifacts": {
+      "controlledruntime.test": "88073c2c86a2d5cec64a82d564f19f6f629ff4a44258ae80a6cc9644972c0bb9",
+      "fdescfs-namespace": "c14cc4d21f17f78a88fbe47233dd6123f58be427f3765ab2365ebaddc16edbc9",
+      "hfs-controlled-runtime": "013515a8731cde2bad643230a7822221f2ff086a6d72812778eb78d69c761200"
+    },
+    "helper_stripped_sha256": "07c9f5a19fb38031bfbfda438b3f659a8fdc03ecc656f8f20791d120f9364a96",
+    "recipe_sha256": "97644ea30ffb99d1323358bac748fd3012bb6be3a722f27d4fb6c378ad1afb81",
+    "reused": false,
+    "source": "91b9ee1df2b7f26baae0032d3928286743fe4e57",
+    "why": "the window test and inspector bytes follow the daemon source; both window builds were byte-identical and reproduced the candidate daemon. fdescfs-namespace.c is unchanged; the helper differs from the d71ae02 (r20) build only in DWARF (comp_dir), and with llvm-objcopy --strip-debug it is 07c9f5a1..."
+  },
+  "workstation_tools": "hfs-runtime-prep and the signer hfs-retained9p-operator link internal/viewcontrol, internal/guestbridge, internal/controlledruntime and internal/controlledvalidation (go list -deps), so the daemon merges change their inputs; they are not package content and the zq3-r21 fill must rebuild both"
+}
