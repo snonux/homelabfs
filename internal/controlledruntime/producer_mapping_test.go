@@ -40,16 +40,37 @@ func (r *sourceRig) mappedWaitContinuation(guestCell, index uint64, value any, e
 // command at guestCell, reads its native response and translates it back.
 // r.mappingLastNative names the exact native response for a later reclaim.
 func (r *sourceRig) mappedLeg(guestCell, pollIndex uint64, op string, value any, guestAck, nativeAck *guestbridge.Ack, donorControl *bool) (json.RawMessage, *guestbridge.VerificationReceiptV2, []byte, []byte, error) {
+	leg, err := r.writeLeg(guestCell, pollIndex, op, value, guestAck, nativeAck, donorControl)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	return leg.finish()
+}
+
+// writtenLeg is one native leg whose command is written but whose response
+// the exporter has not fetched yet (finish fetches it). A test can keep it
+// in flight while other cells are written, as the 9p exporter does with an
+// outstanding VIEW_WAIT leg (zq3-r12 R12-1, recall_workload_r12_test.go).
+type writtenLeg struct {
+	rig              *sourceRig
+	original, native guestbridge.Command
+	guestRaw         []byte
+}
+
+// writeLeg is mappedLeg's first half: it numbers and writes the native
+// command and returns before anything is read. A failed write still used
+// its native cell number (*r.mappingNativeCell), as the exporter's did.
+func (r *sourceRig) writeLeg(guestCell, pollIndex uint64, op string, value any, guestAck, nativeAck *guestbridge.Ack, donorControl *bool) (*writtenLeg, error) {
 	*r.mappingNativeCell++
 	p := r.installed.Admission.Protocols[r.scope.Session]
 	payload, err := canonicalJSON(value)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, err
 	}
 	original := guestbridge.Command{Cell: guestCell, Context: r.scope, Protocol: &p, Op: op, Payload: payload, Reclaim: guestAck}
 	guestRaw, err := canonicalJSON(original)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, err
 	}
 	native := original
 	if op == "VIEW_WAIT" {
@@ -62,14 +83,20 @@ func (r *sourceRig) mappedLeg(guestCell, pollIndex uint64, op string, value any,
 	}
 	native.Delegation = &guestbridge.Delegation{Version: guestbridge.DelegationVersion, GuestCell: original.Cell, GuestOp: op, GuestReclaim: guestAck, PollIndex: pollIndex}
 	if err = r.mappedWriteNative(native, mappedFlags(op, nativeAck, donorControl)); err != nil {
-		return nil, nil, nil, nil, err
+		return nil, err
 	}
-	raw, err := r.mappedReadNative(native)
+	return &writtenLeg{rig: r, original: original, native: native, guestRaw: guestRaw}, nil
+}
+
+// finish is mappedLeg's second half: it reads the leg's native response,
+// records it in r.mappingLastNative and translates it back.
+func (l *writtenLeg) finish() (json.RawMessage, *guestbridge.VerificationReceiptV2, []byte, []byte, error) {
+	raw, err := l.rig.mappedReadNative(l.native)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	r.mappingLastNative = &guestbridge.Ack{Cell: native.Cell, ResponseHash: hashBytes(raw)}
-	return r.mappedTranslate(original, guestRaw, raw)
+	l.rig.mappingLastNative = &guestbridge.Ack{Cell: l.native.Cell, ResponseHash: hashBytes(raw)}
+	return l.rig.mappedTranslate(l.original, l.guestRaw, raw)
 }
 
 // mappedFlags selects the native lane: acquisition/ordinary commands use the
