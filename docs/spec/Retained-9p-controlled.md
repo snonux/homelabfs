@@ -106,21 +106,35 @@ provider answers each number:
   zero; or it already was such a gap (GAP_RESOLVE or an earlier ABANDON),
   which is never rewritten. `proof_hash` is the gap proof RETIRE coverage
   requires for that number;
-* KEPT: preparation began, a plan is protected, the claim is TERMINAL, or it
-  is bound to an open dirty earmark. It may have had an effect and stays
-  retained for the guest's normal reconciliation;
+* KEPT: preparation began, a plan is protected, the claim is TERMINAL, it
+  is bound to an open dirty earmark, or the number holds only a dirty earmark
+  (allocated by the earmark, holding earmark credit, closed only by the
+  controller's CANCELLED-ticket path). It may have had an effect or carries
+  an obligation, and stays retained for the guest's normal reconciliation;
 * RETIRED_ID: the number is at or below the floor;
-* UNKNOWN: the number was never allocated; nothing is charged for it.
+* UNKNOWN: the number has neither a claim entry nor an earmark: it was never
+  allocated and nothing is charged for it.
 
-A claim whose protected original names another session scope, or a wrong
-original hash, refuses the whole command (Permission, Stale) with no ledger
-change. An exact replay changes nothing and returns the same outcomes and
-proofs. After ABANDONED, a delayed or replayed CALL executes nothing, a QUERY
-answers without effect (INDETERMINATE, or the protected DECLINED of a mapped
-QUERY), a replayed ALLOCATE writes nothing and GAP_RESOLVE returns the same
-proof. An older host refuses ABANDON as an unsupported operation, and the
-guest keeps its claims retained exactly as before. The design and safety
-argument are in [hh4-abandon.md](../design/hh4-abandon.md).
+For a number with a claim entry, the entry's identity is checked first: a
+protected original that names another session scope, or a wrong original
+hash, refuses the whole command (Permission, Stale) with no ledger change. A
+retired number (whose entry may be recycled) and an earmark-only number have
+no entry to check and answer RETIRED_ID and KEPT. An exact replay changes
+nothing and returns the same outcomes and proofs. After ABANDONED, a delayed
+or replayed CALL executes nothing, a QUERY answers without effect
+(INDETERMINATE, or the protected DECLINED of a mapped QUERY), a replayed
+ALLOCATE writes nothing and GAP_RESOLVE returns the same proof.
+
+A forwarder or host without ABANDON refuses it before any host state is
+touched. The first refusal is the lib9p exporter's command classifier
+(`_command` in `tools/integration/lib9p/src/hfs9p.c`): it answers EINVAL for
+an operation it does not know when the guest's last chunk completes the
+cell, so the guest's send fails with EINVAL and nothing is forwarded to the
+host. This branch's forwarder still lacks ABANDON, so that is also what a
+guest meets here until the forwarder change ships. A Go host reached
+directly refuses it in its closed schema. Either way the guest keeps its
+claims retained exactly as before. The design and safety argument are in
+[hh4-abandon.md](../design/hh4-abandon.md).
 
 ## Response verification union
 

@@ -193,9 +193,15 @@ func TestAbandonReturnsCreditOfNeverPreparedClaims(t *testing.T) {
 	if allocationPayload(t, raw)["status"] != "RETIRED" {
 		t.Fatalf("abandon proofs did not retire: %s", raw)
 	}
-	afterRetained, afterSource := credit(t, r.f.provider)
-	if afterRetained > retained || afterSource > source || retained-afterRetained > perClaim || source-afterSource > perSource {
-		t.Fatalf("recycle released %d/%d past the abandon (at most the ROOT's own)", retained-afterRetained, source-afterSource)
+	// The recycle returns exactly the ROOT's credit when it recycled the
+	// ROOT (it may stay as the session's snapshot owner) and nothing for the
+	// abandoned numbers: any double release, even one, breaks the equality.
+	wantRetained, wantSource := retained, source
+	if rawClaim(t, r.f.provider, r.original.Claim) == nil {
+		wantRetained, wantSource = retained-perClaim, source-perSource
+	}
+	if a, b := credit(t, r.f.provider); a != wantRetained || b != wantSource {
+		t.Fatalf("after recycle credit %d/%d, want %d/%d", a, b, wantRetained, wantSource)
 	}
 }
 
@@ -211,22 +217,24 @@ func TestAbandonedClaimRefusesLaterCallQueryAndGap(t *testing.T) {
 	_, proof, err := r.abandon(reserved, allocated)
 	mustAllocation(t, err)
 	gap2, gap3 := rawClaim(t, r.f.provider, reserved.Claim), rawClaim(t, r.f.provider, allocated.Claim)
-	if raw, err := r.send("QUERY", map[string]any{"claim": reserved.Claim}); err == nil && allocationPayload(t, raw)["status"] == "TERMINAL" {
-		t.Fatalf("delayed QUERY resumed an abandoned claim: %s", raw)
-	}
-	if raw, err := r.send("CALL", reserved); err == nil && allocationPayload(t, raw)["status"] == "ADMITTED" {
-		if e, _ := r.stored(reserved); e.Status != "DECLINED" {
-			t.Fatalf("replayed CALL executed an abandoned claim: %s", raw)
+	// Each later request must answer (an unexpected error fails the test)
+	// with exactly the no-effect reply below.
+	expect := func(op string, payload any, key, want string) {
+		t.Helper()
+		raw, err := r.send(op, payload)
+		mustAllocation(t, err)
+		if got := allocationPayload(t, raw)[key]; got != want {
+			t.Fatalf("%s %s=%v, want %s", op, key, got, want)
 		}
 	}
+	// The delayed QUERY sees the gap as INDETERMINATE (1.2) and never resumes.
+	expect("QUERY", map[string]any{"claim": reserved.Claim}, "status", "INDETERMINATE")
+	// The replayed CALL repeats its earlier ownership acknowledgement only.
+	expect("CALL", reserved, "status", "ADMITTED")
 	// A replayed ALLOCATE answers its protected acknowledgement again (as
 	// after GAP_RESOLVE) and writes nothing; the CALL behind it is refused.
-	if raw, err := r.send("ALLOCATE", allocated); err == nil && allocationPayload(t, raw)["status"] != "ALLOCATED" {
-		t.Fatalf("replayed ALLOCATE %s", raw)
-	}
-	if raw, err := r.send("CALL", allocated); err == nil && allocationPayload(t, raw)["status"] == "ADMITTED" {
-		t.Fatalf("delayed CALL reserved an abandoned number: %s", raw)
-	}
+	expect("ALLOCATE", allocated, "status", "ALLOCATED")
+	expect("CALL", allocated, "status", "REJECTED")
 	if !bytes.Equal(gap2, rawClaim(t, r.f.provider, reserved.Claim)) || !bytes.Equal(gap3, rawClaim(t, r.f.provider, allocated.Claim)) {
 		t.Fatal("a later request rewrote an abandoned gap")
 	}

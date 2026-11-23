@@ -28,13 +28,19 @@ import (
 //     Its credit returns at recycle, as before;
 //   - everything else is KEPT: PREPARING (the preparer may have run),
 //     PENDING, TERMINAL (including a definite admission refusal), a claim
-//     bound to an open dirty earmark (a DRAIN_WRITE byte obligation);
-//   - a number at or below the floor is RETIRED_ID and an unallocated number
-//     UNKNOWN; neither has anything to release.
+//     bound to an open dirty earmark (a DRAIN_WRITE byte obligation), and a
+//     number that has only a dirty earmark and no claim entry (allocated by
+//     EarmarkNumber, holding earmark credit; its closure is the controller's
+//     CANCELLED-ticket path, never ABANDON);
+//   - a number at or below the floor is RETIRED_ID and a number with neither
+//     an entry nor an earmark UNKNOWN; neither has anything to release.
 //
-// A claim not bound to this exact session scope, or named with a different
-// original hash, refuses the whole command (Permission or Stale) and the
-// transaction writes nothing, so a forged or stale list cannot partly apply.
+// For a number with a claim entry, the identity checks come first: an entry
+// not bound to this exact session scope, or named with a different original
+// hash, refuses the whole command (Permission or Stale) and the transaction
+// writes nothing, so a forged or stale list cannot partly apply. A retired
+// number (its entry may be recycled) and an earmark-only number have no
+// entry to check and are answered RETIRED_ID and KEPT.
 //
 // Linearizability. Every writer that moves a never-prepared claim on holds
 // p.execution and rechecks the claim inside its own transaction:
@@ -153,15 +159,14 @@ func (p *Provider) abandonOne(tx *bolt.Tx, scope guestbridge.Context, claim gues
 		outcome.Status = "RETIRED_ID"
 		return outcome, err
 	}
-	if open, err := p.openEarmark(tx, claim); err != nil || open {
-		return outcome, err
-	}
 	e, ok, err := p.load(tx, claim)
 	if err != nil {
 		return outcome, err
 	}
 	if !ok {
-		outcome.Status = "UNKNOWN"
+		if p.bucket(tx, "earmarks").Get(claimKey(claim)) == nil {
+			outcome.Status = "UNKNOWN"
+		}
 		return outcome, nil
 	}
 	if e.Claim != claim {
@@ -169,6 +174,9 @@ func (p *Provider) abandonOne(tx *bolt.Tx, scope guestbridge.Context, claim gues
 	}
 	if owner := claimOwner(e); owner.Context != scope {
 		return outcome, fsapi.Permission
+	}
+	if open, err := p.openEarmark(tx, claim); err != nil || open {
+		return outcome, err
 	}
 	switch {
 	case provenGap(e):
@@ -230,9 +238,14 @@ func claimOwner(e entry) guestbridge.Binding {
 	return e.Binding
 }
 
-// provenGap is a declined gap with nothing planned, applied or answered.
+// provenGap is a declined gap with nothing planned, applied or answered
+// whose preparation never began: the never-prepared state abandonable
+// requires, so ABANDONED always means provably never prepared. Cancel
+// refuses a PREPARING original, but a legacy Cancel can still decline a
+// non-original PREPARING claim; such a gap is KEPT here, whoever owns it.
 func provenGap(e entry) bool {
-	return e.Gap && e.Status == "DECLINED" && e.Plan == nil && e.Outcome == nil && len(e.Result) == 0
+	unprepared := e.PreparationStage == "" || e.PreparationStage == "UNPREPARED"
+	return e.Gap && e.Status == "DECLINED" && e.Plan == nil && e.Outcome == nil && len(e.Result) == 0 && unprepared
 }
 
 // abandonable is a claim no preparer can have touched: an AllocateOriginal

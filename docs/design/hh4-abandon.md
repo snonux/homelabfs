@@ -74,8 +74,14 @@ gives a gap proof for every one it declined.
    guest needs no follow-up exchange. A blocked session should send as few
    exchanges as possible: each one can hit the 30 s deadline and set
    `transport_failed`.
-3. It fails safe on an old host. An older host refuses ABANDON as an
-   unsupported operation (the closed schema), and the guest keeps its claims
+3. It fails safe on an old host. The first refusal is not the Go closed
+   schema but the lib9p exporter: its command classifier (`_command`,
+   `tools/integration/lib9p/src/hfs9p.c`, the final `else` that returns
+   EINVAL for an unknown op) refuses the cell when the guest's last chunk
+   completes it, so the guest's send fails with EINVAL and nothing reaches
+   the host. On this branch that is also what every guest meets until the
+   forwarder change (step 7 below) ships. A Go host reached directly refuses
+   ABANDON in its closed schema. Either way the guest keeps its claims
    retained, exactly as today. With option A the guest could not tell
    whether the release had happened.
 4. It is bound to the session and the claim: the session's own provider
@@ -119,14 +125,22 @@ named number, in order:
 
 | State | Answer | Ledger |
 | --- | --- | --- |
-| number <= floor | RETIRED_ID | none |
-| bound to an open dirty earmark | KEPT | none (a DRAIN_WRITE byte obligation, dh4) |
-| no entry | UNKNOWN | none |
+| number <= floor (its entry may be recycled) | RETIRED_ID | none |
+| no entry, only a dirty earmark (allocated by EarmarkNumber, earmark credit) | KEPT | none (closed by the controller's CANCELLED-ticket path) |
+| neither entry nor earmark | UNKNOWN | none |
 | entry claim differs (original hash) | whole command Stale | rolled back |
 | protected original context is not this scope | whole command Permission | rolled back |
-| proven gap (GAP_RESOLVE, Cancel, an earlier ABANDON) | ABANDONED, current proof | none, never rewritten |
+| entry bound to an open dirty earmark | KEPT | none (a DRAIN_WRITE byte obligation, dh4) |
+| proven gap (GAP_RESOLVE, Cancel, an earlier ABANDON): DECLINED, nothing planned, applied or answered, stage empty or UNPREPARED | ABANDONED, current proof | none, never rewritten |
 | `abandonable` | ABANDONED, new proof | Gap, DECLINED, Abandoned; both credits released and zeroed |
-| anything else (PREPARING, PENDING, TERMINAL, ADMISSION_REFUSED) | KEPT | none |
+| anything else (PREPARING, PENDING, TERMINAL, ADMISSION_REFUSED, a gap whose preparation began) | KEPT | none |
+
+The rows run in this order. For a number with an entry, its identity (exact
+original hash, then the owning scope) is checked before any state is read,
+so a wrong or foreign claim refuses the whole command even when it would
+otherwise be KEPT. The stage check on a proven gap makes ABANDONED always
+mean "provably never prepared": a legacy Cancel can decline a non-original
+claim in stage PREPARING, and such a gap is KEPT.
 
 Two states are `abandonable`:
 
@@ -307,21 +321,60 @@ with `CONFIG_9P_FS_HOMELABFS_CONTROLLED` on and off.
      &session->abandon_work);`. `hfs_session_fence` reaches the same code
      when not unmounting;
    - `kill_sb` calls `flush_work(&session->abandon_work)` before its final
-     `hfs_retire` and SESSION_RETIRE, and queues the work itself if the
-     session blocked silently (unmounting).
+     `hfs_retire` and SESSION_RETIRE (its existing
+     `flush_workqueue(session->control)` after `kill_anon_super` already
+     does that), and queues the work itself if the session blocked silently
+     (unmounting);
+   - the work is queued once per session, so a request skipped at block
+     time (`held`, or `users > 0` because its caller was still inside it) is
+     never revisited by it. `kill_sb` therefore runs **one final collection
+     pass** after that flush, synchronously and without the once-bit: by
+     then every caller has returned (`kill_anon_super` evicted the inodes),
+     so the requests skipped earlier qualify. The pass is the same worker
+     body (step 4), called directly; it skips every request already
+     `abandoning`.
 4. **0003, the worker `hfs_session_abandon_work`:**
    - under `session->lock`, collect at most 64 requests from
      `session->requests` in ascending claim number with all of these: `!terminal`,
-     `!gap`, `allocated` (the ALLOCATE was acknowledged), `!earmarked` (a
-     drain is never abandoned), `!control`, `!held` and `users == 0` (no
-     caller still waits on it);
-   - set `request->abandoning = true` on each, still under the lock;
+     `!gap`, `!abandoning`, `allocated` (the ALLOCATE was acknowledged),
+     `!earmarked` (a drain is never abandoned), `!control`, `!held` and
+     `users == 0` (no caller still waits on it);
+   - still under the lock, set `request->abandoning = true` on each and
+     **copy** its claim number and original hash into the worker's own
+     payload buffer. The worker keeps no `struct hfs_request` pointer
+     across the unlocked send;
    - build `{anchor, claims:[{number, original_hash}], nonce, realm,
-     subject}` from `session->enrollment` and each request's claim bytes;
+     subject}` from `session->enrollment` and those copies, then drop the
+     lock;
    - send it with `hfs_control_flagged(session, "ABANDON", &payload, true,
      hfs_after_block_operation("ABANDON"), &reply)`;
+   - after the send, take `session->lock` again and look each outcome's
+     request up **by claim number** in `session->requests`. A request that
+     is gone meanwhile (retired or freed) is skipped. A request that turned
+     TERMINAL meanwhile is left as it is (see the in-flight CALL below);
    - repeat until no request is left. A request that is still `abandoning`
      is never listed again in this session.
+   - **The send needs no `session->control` slot.** I checked the patches:
+     `hfs_control_flagged` runs the exchange synchronously in the calling
+     thread (its FETCH/poll loop and waits), the same way
+     `hfs_process_exit_work` and the FORGET work already call `hfs_call`
+     from items on that queue. Nothing in the exchange path queues work on
+     `session->control`; the only items queued there are the PROCESS_EXIT
+     and FORGET works (0003). So the worker cannot wait on an item queued
+     behind itself. It holds one of the queue's two slots (`max_active` 2)
+     for at most one exchange deadline (30 s) per batch, which can delay a
+     queued FORGET or PROCESS_EXIT by that much; on a blocked session those
+     are exempt cleanup that tolerates the delay.
+   - **A CALL already in flight can still finish.** A request may be listed
+     while its own CALL or QUERY exchange is still on the wire (for example a
+     reply in flight when the session blocked; `users == 0` does not rule
+     out a worker-owned exchange). The host serializes the two: if that
+     CALL's preparation began first, the host answers the claim KEPT, and
+     the in-flight exchange may then deliver TERMINAL. The guest accepts that
+     TERMINAL as usual (the request becomes terminal and is retired with its
+     result). `abandoning` only forbids **new** CALL or QUERY sends (step 6);
+     it never discards a reply. If the ABANDON won, the in-flight exchange
+     can only get the no-effect answers listed above.
 5. **0003, the outcomes, under `session->lock`:**
    - **ABANDONED**: set `request->gap = true`. `hfs_retire` then takes its
      existing `!terminal && gap` path (`provider->resolve_gap`). Its
@@ -354,7 +407,13 @@ Tests to add with the guest change:
 - `controlled_received`: a blocked session with one stranded claim sends one
   ABANDON, maps ABANDONED to `gap`, and then retires the number.
 - `controlled`: an old host's refusal keeps the claim retained and the
-  session blocked, with no `transport_failed`.
+  session blocked, with no `transport_failed`. The refusal must come through
+  the real first refusal path: the exporter's `_command` answering EINVAL
+  for the unknown op on the guest's completing chunk (an unpatched
+  `hfs9p.c`), not a host-side Go schema error.
+- `controlled_received`: a request skipped at block time (`users > 0`) is
+  abandoned by `kill_sb`'s final pass; a request whose in-flight CALL
+  delivers TERMINAL after a KEPT answer is retired with its result.
 
 ## Tests (host side)
 
@@ -372,6 +431,16 @@ Tests to add with the guest change:
     original hash, refuses the whole command with nothing written;
   - `TestAbandonCrashReplay`: an aborted transaction leaves nothing; reopen,
     commit and replay are idempotent.
+- `internal/controlledvalidation/abandon_states_test.go`:
+  - `TestAbandonBetweenAdmissionAndPreparation`: an ABANDON run inside
+    Admit, between execute's first `loadExact` and `executeAdmitted`'s
+    locked reload, declines the claim; no preparer runs and no file exists;
+  - `TestAbandonKeepsEarmarkedAndRefusedClaims`: a claim bound to an open
+    earmark, an earmark-only number and a definite admission refusal
+    (TERMINAL) are KEPT with nothing written;
+  - `TestAbandonExistingGapAndRetired`: a GAP_RESOLVE gap answers ABANDONED
+    with its own proof and no credit or counter change; retired numbers
+    answer RETIRED_ID.
 - `internal/guestbridge/abandon_test.go`: the closed codec (minor 2/3/4
   only, list bounds and order, extra fields) and the reply shape check.
 - `internal/controlledruntime/abandon_test.go`: the real runtime path (the

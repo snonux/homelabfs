@@ -20,8 +20,9 @@ import (
 // then declines every listed claim that was provably never prepared as a
 // protected gap and returns its credit, in one ledger transaction, and
 // answers each number with ABANDONED (and the gap proof the guest retires
-// it with), KEPT (it may have had an effect; it stays retained), RETIRED_ID
-// or UNKNOWN (never allocated; nothing to release). The design and the
+// it with), KEPT (it may have had an effect, or holds a dirty earmark; it
+// stays retained), RETIRED_ID or UNKNOWN (neither a claim entry nor an
+// earmark: never allocated, nothing to release). The design and the
 // safety argument are in docs/design/hh4-abandon.md; the wire schema in
 // docs/spec/Retained-9p-controlled.md.
 //
