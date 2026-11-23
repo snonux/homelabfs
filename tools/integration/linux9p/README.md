@@ -2350,3 +2350,94 @@ Three small follow-ups, done together (worktree `kn1`).
 The series was regenerated with `export.py --task kn1` (0003:
 `hfs_inode.c`; 0004: `hfs_view.c`). No candidate was rebuilt, booted or
 admitted.
+
+## Split view/lease functions and stop wake-ups (`5f4`)
+
+Follow-ups from the 2f4 and 1h4 reviews (worktree `5f4`).
+
+The comments on `hfs_lease_acquire_ex`, `hfs_lease_acquire_grant`,
+`lease->unadopted` (`hfs_lease.h`) and the two mmap callers name one more
+case of an error with `*out` set. `hfs_view_exchange` can copy a GRANTED into
+the caller's response and then fail to keep it as the ticket's Current
+(`-ENOMEM`; the ticket is then not terminal). `hfs_lease_acquire_grant`
+already built that lease unadopted for release; only the comments missed it.
+
+Functions split per the 50-line rule, without behaviour changes (same lock
+order, error paths, unlocks and frees; the original control flow is kept
+call for call):
+
+| Before | After (lines) |
+| --- | --- |
+| `hfs_view_exchange` (174) | `hfs_view_exchange` (38), `hfs_view_round_query` (7), `hfs_view_exchange_bind` (39), `hfs_view_exchange_send` (34), `hfs_view_terminal_status` (8), `hfs_view_exchange_terminal` (35), `hfs_view_exchange_pending` (20), `hfs_view_exchange_poll` (22), `hfs_view_exchange_round` (33); state in `struct hfs_view_round` |
+| `hfs_lease_acquire_ex` (49; 105 before ch4) | `hfs_lease_acquire_ex` (42), `hfs_lease_acquire_request` (19) |
+| `hfs_mmap_bootstrap` (83) | `hfs_mmap_bootstrap` (38), `hfs_mmap_bootstrap_packet` (26), `hfs_mmap_bootstrap_bind` (41) |
+| `hfs_view_retire_mode` (208, the 1h4 round-2 note) | `hfs_view_retire_mode` (38), `hfs_view_retire_families` (11), `hfs_view_retire_payload` (35), `hfs_view_retire_send` (14), `hfs_view_retire_verify` (24), `hfs_view_retire_busy` (14), `hfs_view_retire_take` (21), `hfs_view_retire_free` (20), `hfs_view_retire_advance` (27), `hfs_view_retire_family` (44); state in `struct hfs_retire_round` |
+
+`view/run.py --pressure` keeps its ranges: the exchange helpers sit between
+`struct hfs_grant_settle` and `hfs_lease_own`, and
+`hfs_lease_acquire_request` between the `hfs_lease_acquire_ex` arguments and
+`hfs_lease_acquire`, so both extractions compile them unchanged.
+
+Stop wake-ups (patches 0003 and 0004):
+
+- `hfs_view_reopen_wait` sleeps on `view->wait` until a REOPENED ACK, a
+  refused view (`hfs_view_refused`: FENCED, or a closing or blocked hfs1.4
+  session) or a failed transport. Only the ACK and the view's own stop and
+  fence paths woke `view->wait`. A session block, a close or a failed
+  transport is set by code that has no view, so the settle wait slept on to
+  the exchange's 30 s deadline.
+- `hfs_session_block` cannot take the view itself: it runs under
+  `session->lock` (`hfs_view_retire_take`'s WARN path), and `hfs_view_get`
+  takes that mutex.
+- `struct hfs_session` gains `stop_wait`. Every write of `blocked`,
+  `closing` or `transport_failed` is followed by `hfs_session_stop_wake`:
+  `hfs_session_mark_blocked` (`hfs_session_block`, the silent
+  `hfs_session_fence`, `hfs_mmap_fail`, the close/release sequence guards),
+  `hfs_transport_failed` (all four transport sites), and explicit wakes in
+  `hfs_mount_fail` and kill_sb. `wake_up_all` is safe under any lock but
+  the queue's own.
+- `hfs_view_watch_stops` adds a wait entry for the current task to
+  `session->stop_wait` around the `wait_event_killable_timeout` on
+  `view->wait`. A stop wakes the task; the `wait_event` loop re-checks its
+  condition and returns. The entry is removed before the waiter returns.
+  `hfs_view_retire_wait` and `hfs_view_enter_until` have the same stops in
+  their conditions and now watch the queue too (the 1h4 section said a
+  block did not wake the retire wait).
+- Conditions checked: the reopen wait's ACK count is woken by
+  `hfs_view_reopen_acked`; FENCED by the view's fence path on `view->wait`;
+  blocked, closing and transport_failed by `stop_wait`. The settle look
+  (`hfs_view_grant_look`) stops on exactly those (refused, then the poll
+  halt), so a wake-up cannot spin: a block during teardown is still a
+  refusal.
+
+Tests (`view`, `view --pressure`, with and without `--sanitize`):
+
+- `view/compat.h` counts wake-ups per queue and models watched queues
+  (`add_wait_queue`). With `view_wait_wakes` set, a simulated sleep that
+  no hook woke runs to its timeout, as in the kernel. Without it, each
+  step re-checks the condition, as before.
+- `xq_stop_wakes`: an admitted VIEW_ACQUIRE gets a GRANTED at fence 6
+  while the mount is at 5 and parks in the settle wait. During the first
+  sleep another path blocks the session through the actual
+  `hfs_session_block` (compiled from `hfs_session.c` as
+  `actual_hfs_session_block`, with `hfs_session_mark_blocked` and
+  `hfs_session_stop_wake`). The wait ends after that one 10-jiffy step, and
+  the GRANTED is handed out with `-EHOSTDOWN`, the ticket terminal, no block
+  by the exchange and no watch left behind. A failed transport wakes it
+  the same way. A silent write of `blocked` (no wake-up) sleeps to the
+  30 s deadline, so the model catches a missing wake-up. A blocked session
+  also wakes a parked `hfs_view_enter_until` (`-ESTALE`) and
+  `hfs_view_retire_wait`.
+- Mutants killed: a `hfs_view_watch_stops` that adds no entry fails
+  `xq_stop_wake_case` (`jiffies-start==10`). A `hfs_session_block` that only
+  writes `blocked` is refused by the new `stop_wake_guard`, which runs in
+  both modes: every write of true to `session->blocked`, `->closing` or
+  `->transport_failed` in `fs/9p` must be followed by
+  `hfs_session_stop_wake` within four lines.
+
+`hfs_view_query` (60 lines) and other long functions outside this task's
+list are unchanged.
+
+The series was regenerated with `export.py --task 5f4` (0003: `hfs.h`,
+`hfs_session.c`, `hfs_file.c`; 0004: `hfs_lease.h`, `hfs_lease.c`,
+`hfs_view.c`, `hfs_mmap.c`). No candidate was rebuilt, booted or admitted.
