@@ -35,6 +35,32 @@ def retirement_unlock_guard(source):
         raise SystemExit(f'refuse: session->retirement released outside hfs_retirement_unlock: {found}')
 
 
+def stop_wake_guard(source):
+    """5f4: hfs_view_reopen_wait (and hfs_view_retire_wait,
+    hfs_view_enter_until) wait for the session stops blocked, closing and
+    transport_failed, whose writers have no view; they wake
+    session->stop_wait instead (hfs_session_stop_wake). The harness models
+    the wake-up (view_wait_wakes) but compiles only some writers, so the
+    source is checked: every write of true to one of those session flags in
+    fs/9p is followed by hfs_session_stop_wake within four lines. Any
+    pointer name matches (5f4 review 1: `s->blocked = true` too), so the
+    flags' names must stay unique to struct hfs_session in fs/9p.
+    """
+    write = re.compile(r'WRITE_ONCE\(\s*[^;]*->(blocked|closing|transport_failed)\s*,'
+                       r'\s*true\s*\)|->(blocked|closing|transport_failed)\s*=\s*true\b')
+    found = []
+    for path in sorted((source / 'fs/9p').rglob('*')):
+        if path.suffix not in ('.c', '.h', '.inc') or not path.is_file():
+            continue
+        text = path.read_text(errors='replace')
+        for match in write.finditer(text):
+            after = text[match.end():].split('\n', 5)[:5]
+            if not any('hfs_session_stop_wake(' in line for line in after):
+                found.append((path.name, text.count('\n', 0, match.start()) + 1))
+    if found:
+        raise SystemExit(f'refuse: session stop set without hfs_session_stop_wake: {found}')
+
+
 def function_body(text, signature):
     """The text of the function that starts with signature, up to its end."""
     start = text.index(signature)
@@ -214,9 +240,10 @@ def main():
             start = inode.index(first)
             source.append(inode[start:inode.index(last, start)])
         # 2f4 (zq3-r17 R17-1): the actual hfs_view_exchange with its
-        # lease-grant settle helpers. The transport, the ticket reply check,
-        # the session block/poll halt, the mount fence and the 0005 source
-        # receipt are fixtures (pressure/test.c); the receipt's uncontrolled
+        # lease-grant settle helpers (since 5f4 also its round, bind,
+        # send, terminal/pending and poll helpers, all in this range). The
+        # transport, the ticket reply check, the session block/poll halt,
+        # the mount fence and the 0005 source receipt are fixtures (pressure/test.c); the receipt's uncontrolled
         # header stub is redirected to the fixture.
         # xf4 (4h4): up to hfs_lease_decode_check, so the actual
         # hfs_view_grant_moved and hfs_lease_decode_target (the advance
@@ -227,6 +254,7 @@ def main():
         # unadopted build); hfs_lease_own, the ticket allocation and
         # activation are fixtures. Its definition is renamed, since the
         # observation cases keep their host-model hfs_lease_acquire_ex.
+        # 5f4: its helper hfs_lease_acquire_request lies in this range too.
         lease = inputs['fs/9p/hfs_lease.c']
         start = lease.index('struct hfs_grant_settle {')
         source.append('#define hfs_received_source_ex test_received_source_ex')
@@ -244,10 +272,20 @@ def main():
         source.append('#define hfs_lease_acquire_ex actual_hfs_lease_acquire_ex')
         source.append(lease[start:lease.index('\nint hfs_lease_acquire(', start)])
         source.append('#undef hfs_lease_acquire_ex')
+        # 5f4: the actual stop wake-up (hfs_session_stop_wake), blocked
+        # setter (hfs_session_mark_blocked) and hfs_session_block, renamed
+        # actual_hfs_session_block as the exchange cases keep their
+        # counting fixture; the stop-wake cases block through it.
+        session_c = inputs['fs/9p/hfs_session.c']
+        start = session_c.index('void hfs_session_stop_wake(')
+        source.append('#define hfs_session_block actual_hfs_session_block')
+        source.append(session_c[start:session_c.index('\n/* A provider stop/retain fence.', start)])
+        source.append('#undef hfs_session_block')
     # wj4: the mmap mark and hfs_inode layout guards run in both modes (they
-    # read only the source and compat.h).
+    # read only the source and compat.h); 5f4's stop wake-up guard too.
     mmap_mark_guard(args.source)
     hfs_inode_layout_guard(args.source, here / 'compat.h')
+    stop_wake_guard(args.source)
     if args.pressure:
         retirement_unlock_guard(args.source)
     (args.output / 'production.c').write_text('\n'.join(source) + '\n')

@@ -366,7 +366,7 @@ static void session_init(unsigned i) {
  mutex_init(&s->lock);mutex_init(&s->writer);mutex_init(&s->retirement);spin_lock_init(&s->processes_lock);
  INIT_LIST_HEAD(&s->global);INIT_LIST_HEAD(&s->descriptions);INIT_LIST_HEAD(&s->processes);INIT_LIST_HEAD(&s->forgets);INIT_LIST_HEAD(&s->object_numbers);
  INIT_LIST_HEAD(&s->uncertain);INIT_LIST_HEAD(&s->requests);INIT_LIST_HEAD(&s->view_tickets);INIT_LIST_HEAD(&s->view_families);
- INIT_LIST_HEAD(&s->allocation_waiters);init_waitqueue_head(&s->allocation_wait);
+ INIT_LIST_HEAD(&s->allocation_waiters);init_waitqueue_head(&s->allocation_wait);init_waitqueue_head(&s->stop_wait);
  assert(!s->provider->enroll(mount->device_tag,&s->enrollment));
  assert(!hfs_enrollment_validate(&s->enrollment));
  assert(!hfs_enrollment_lanes(&s->enrollment,s->bridge_minor));

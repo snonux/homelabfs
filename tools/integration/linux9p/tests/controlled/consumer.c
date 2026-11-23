@@ -165,14 +165,21 @@ static int hfs_view_snapshot_target(struct hfs_view *v,
    (void)target;
    return hfs_view_snapshot(v, s);
 }
+/* 5f4: hfs_transport_failed (in the hfs_reply_scope span) wakes the view
+ * waits; no view waits here and wake_up_all is a no-op, as in production
+ * only a wake of session->stop_wait. */
+static void hfs_session_stop_wake(struct hfs_session *session) {
+   wake_up_all(&session->stop_wait);
+}
 /* The real hfs_session_block also logs once per session; this fixture keeps
- * only its observable effect, the blocked flag. */
+ * only its observable effects, the blocked flag and (5f4) the stop wake. */
 static void hfs_session_block(struct hfs_session *session, const char *reason,
                               const char *operation, int err) {
    (void)reason;
    (void)operation;
    (void)err;
    WRITE_ONCE(session->blocked, true);
+   hfs_session_stop_wake(session);
 }
 /* No fixture session uses the controlled-local provider (the real test is
  * session->provider == &hfs_controlled_provider); hfs_controlled.h declares

@@ -26,6 +26,8 @@ struct hfs_session {
 	bool closing;
 	bool transport_failed;
 	u16 exporter_error;
+	/* 5f4: woken through hfs_session_stop_wake (a counting fixture). */
+	int stop_wait;
 };
 static unsigned long jiffies;
 static u16 transport_minor;
@@ -85,6 +87,16 @@ static void usleep_range(unsigned int low, unsigned int high)
 	if (block_at_yield && yields == block_at_yield)
 		active->blocked = true;
 	jiffies += expire_sleep ? 30 * HZ : 1;
+}
+
+/* 5f4: the actual hfs_transport_failed wakes the view waits through
+ * hfs_session_stop_wake (hfs_session.c); counted per exchange.
+ */
+static u32 stop_wakes;
+static void hfs_session_stop_wake(struct hfs_session *session)
+{
+	CHECK(session == active);
+	stop_wakes++;
 }
 
 static void hfs_mmap_progress(struct hfs_session *session)
@@ -183,7 +195,7 @@ static int exchange(u32 chunk, bool *held)
 	command = &body;
 	refused_chunk = chunk;
 	sends = fetches = yields = retries = next_chunk = saved_len = 0;
-	pending_fetches = progress_signals = busy_fetched = 0;
+	pending_fetches = progress_signals = busy_fetched = stop_wakes = 0;
 	refused = false;
 	/* Exercise wrap-safe kernel deadline comparisons as well. */
 	jiffies = ULONG_MAX - 100;
@@ -198,6 +210,8 @@ static int exchange(u32 chunk, bool *held)
 		CHECK(reply_len == sizeof(result) - 1 && !memcmp(reply, result, reply_len));
 	last_exporter_error = session.exporter_error;
 	last_transport_failed = session.transport_failed;
+	/* 5f4: an exchange that set transport_failed woke the view waits. */
+	CHECK(start_failed || session.transport_failed == (stop_wakes != 0));
 	free(reply);
 	free(body.data);
 	return error;

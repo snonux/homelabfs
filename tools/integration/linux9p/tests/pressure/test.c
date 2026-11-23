@@ -1413,6 +1413,62 @@ static void xq_grant_stops(void)
  xq_stop_case(-EHOSTDOWN,false); // blocked session: a refused view
  xq_stop_case(-EHOSTDOWN,true);  // failed transport: the poll halt
 }
+/* 5f4: a session stop set while the settle wait is parked wakes it at once
+ * (session->stop_wait, which hfs_view_reopen_wait watches through
+ * hfs_view_watch_stops) instead of at the exchange's 30 s deadline.
+ * view_wait_wakes makes a sleep that nothing woke run to its timeout, as in
+ * the kernel. The block comes from another path of the mount, during the
+ * first sleep: the actual hfs_session_block (actual_hfs_session_block), or
+ * a failed transport's hfs_session_stop_wake. A silent write of blocked (no
+ * wake-up, the pre-5f4 state of every writer) shows what the model catches:
+ * that wait sleeps to the deadline. Either way the GRANTED is handed out
+ * with -EHOSTDOWN, unblocked by the exchange, and the watch entry is gone.
+ */
+static void xq_block_hook(void)
+{ if(view_wait_sleeps==1)actual_hfs_session_block(test_session,"test block","READ",-EIO); }
+static void xq_silent_block_hook(void)
+{ if(view_wait_sleeps==1)test_session->blocked=true; }
+static void xq_transport_hook(void)
+{ if(view_wait_sleeps==1){test_session->transport_failed=true;hfs_session_stop_wake(test_session);} }
+static void xq_stop_wake_case(void (*hook)(void),bool woken)
+{
+ static const struct xq_step steps[]={{"GRANTED","lease",6,NULL}};
+ struct hfs_json *response=NULL;unsigned long start=jiffies;
+ xq_setup("VIEW_ACQUIRE",true,steps,1,5);view_wait_hook=hook;view_wait_wakes=true;
+ assert(xq_run(&response)==-EHOSTDOWN && xq_granted(response) && xq_calls==1 && !xq_blocks);
+ assert(xq_ticket.terminal && !xq_ticket.uncertain && view_wait_sleeps==1 && !view_wait_nr_watched);
+ if(woken)assert(jiffies-start==10);
+ else assert(jiffies-start==30*HZ);
+ if(hook==xq_block_hook)assert(strstr(last_warning,"blocked by test block on READ (-5)") && test_session->block_reported==1);
+ view_wait_wakes=false;test_session->block_reported=0;xq_teardown(response);
+}
+/* 5f4: the other two view waits that stop on a refused view watch
+ * session->stop_wait too: a parked hfs_view_enter_until (RECALLING view)
+ * returns -ESTALE, and hfs_view_retire_wait returns 0 for its caller to
+ * check the stop, both after the one sleep the block ended.
+ */
+static void xq_stop_wake_others(void)
+{
+ struct hfs_view *view=test_session->view;void *cookie=NULL;unsigned long start;
+ test_session->bridge_minor=4;view_wait_wakes=true;view_wait_step=10;
+ view->phase=HFS_VIEW_RECALLING;view_wait_sleeps=0;view_wait_hook=xq_block_hook;start=jiffies;
+ assert(hfs_view_enter_until(view,NULL,true,jiffies+30*HZ,&cookie)==-ESTALE && !cookie);
+ assert(jiffies-start==10 && view_wait_sleeps==1 && !view_wait_nr_watched);
+ test_session->blocked=false;test_session->block_reported=0;view->phase=HFS_VIEW_LIVE;
+ view_wait_sleeps=0;start=jiffies;
+ assert(!hfs_view_retire_wait(view,atomic_long_read(&view->retirement_releases),
+                              view->retire_progress,jiffies+30*HZ));
+ assert(jiffies-start==10 && view_wait_sleeps==1 && !view_wait_nr_watched && test_session->blocked);
+ test_session->blocked=false;test_session->block_reported=0;test_session->bridge_minor=0;
+ view_wait_wakes=false;view_wait_step=0;view_wait_hook=NULL;
+}
+static void xq_stop_wakes(void)
+{
+ xq_stop_wake_case(xq_block_hook,true);
+ xq_stop_wake_case(xq_transport_hook,true);
+ xq_stop_wake_case(xq_silent_block_hook,false);
+ xq_stop_wake_others();
+}
 /* 2f4 review 1: an unadopted lease (handed out only for release) is no
  * authority: no initial bind and no page lease take it.
  */
@@ -1639,6 +1695,7 @@ static void grant_settle_checks(void)
  xq_grant_old_revision();
  xq_grant_passed();
  xq_grant_stops();
+ xq_stop_wakes();
  xq_fail_closed();
  xq_unadopted_refused();
  xq_advance_moved();
@@ -1757,5 +1814,5 @@ int main(void)
  view_worker_log_checks(&session);
  hfs_json_free(target_event);hfs_json_free(other_target_event);hfs_json_free(advance_json);hfs_json_free(advance_event);hfs_view_unregister_inode(&inode.inode);hfs_view_fence(session.view);assert(!hfs_view_free(&session));
  assert(!reservations && !module_refs);
- puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (recall before/after grant re-acquires,no release recall,no self-recall loop,moved target,refusals,deadline,no leak,RETIRED_ID passed through,host BLOCKED retried only after retirement progress (held lease released first,at most 3 retries,ticket budget kept),progress by the cleanup worker during the pause or after a busy try,1h4 BLOCKED after a reinstall re-checked at once (2 tickets),busy retirement waited for not counted (5 busy rounds granted,never ending -EAGAIN at the deadline,capacity BLOCKED still needs progress,release count after the unlock,request-retirement holder wakes the waiter,wait slice bounds an unknown holder,a round that ran -EBUSY counted,stops checked after a wake),no progress/deadline -EAGAIN at once,BLOCKED retire re-sent after recall/next observation (rate-limited),attr re-stamp/re-issue,moved LOOKUP FORGET balanced,2f4 passed grant re-acquired),2f4 exchange: GRANTED before the fence raise re-queried after the REOPENED ACK,old revision re-queried at once,passed by a later recall -EXDEV,deadline/signal/block/transport stops hand the GRANTED out without a block,unadopted lease never bound or page-leased,unverified/never-current/DIRTY fail closed,xf4 advance (cacheless view requests and adopts in one acquisition,mapped/paged/unsupported view never requests,readmitted grant after a reinstall unadopted -EXDEV then no advance,current moved grant accepted but held,moved advance grant handed out without settle,unreadable expected target -EXDEV unadopted through hfs_lease_acquire_ex,moved target without advance still blocks,decode classification incl. replay after adoption and after a further move),source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
+ puts("PASS: actual128-clean pressure/129th admission,mkwrite release/stop/install/reopen,in-flight observation lease never released,background pass held (bounded) while observing,observation re-check retry (recall before/after grant re-acquires,no release recall,no self-recall loop,moved target,refusals,deadline,no leak,RETIRED_ID passed through,host BLOCKED retried only after retirement progress (held lease released first,at most 3 retries,ticket budget kept),progress by the cleanup worker during the pause or after a busy try,1h4 BLOCKED after a reinstall re-checked at once (2 tickets),busy retirement waited for not counted (5 busy rounds granted,never ending -EAGAIN at the deadline,capacity BLOCKED still needs progress,release count after the unlock,request-retirement holder wakes the waiter,wait slice bounds an unknown holder,a round that ran -EBUSY counted,stops checked after a wake),no progress/deadline -EAGAIN at once,BLOCKED retire re-sent after recall/next observation (rate-limited),attr re-stamp/re-issue,moved LOOKUP FORGET balanced,2f4 passed grant re-acquired),2f4 exchange: GRANTED before the fence raise re-queried after the REOPENED ACK,old revision re-queried at once,passed by a later recall -EXDEV,deadline/signal/block/transport stops hand the GRANTED out without a block,5f4 a block or failed transport wakes the settle wait (and enter/retire waits) at once instead of at the deadline,unadopted lease never bound or page-leased,unverified/never-current/DIRTY fail closed,xf4 advance (cacheless view requests and adopts in one acquisition,mapped/paged/unsupported view never requests,readmitted grant after a reinstall unadopted -EXDEV then no advance,current moved grant accepted but held,moved advance grant handed out without settle,unreadable expected target -EXDEV unadopted through hfs_lease_acquire_ex,moved target without advance still blocks,decode classification incl. replay after adoption and after a further move),source denial,short/error neverDRAINED; primitive VFS/PTE/source boundaries only");return 0;
 }

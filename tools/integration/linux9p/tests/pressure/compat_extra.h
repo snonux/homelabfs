@@ -28,6 +28,7 @@ static void hfs_dirty_mapping_error(struct hfs_view *,struct hfs_dirty *,int);
  */
 /* A pending fatal signal for hfs_mmap_fault_final (1a4 review). */
 static bool test_fatal_signal;
+/* current: also in view/compat.h (5f4), with the identical definition. */
 #define current NULL
 #define fatal_signal_pending(t) ((void)(t),test_fatal_signal)
 /* hfs_mmap_fail and its control struct (1a4): workqueue items are opaque. */
@@ -108,6 +109,13 @@ bool hfs_after_block_operation(const char *);
 u64 hfs_controlled_current_fence(struct hfs_session *);
 int hfs_session_poll_halt(struct hfs_session *,bool);
 void hfs_session_block(struct hfs_session *,const char *,const char *,int);
+/* 5f4: the actual stop wake-up, blocked setter and hfs_session_block
+ * (renamed actual_hfs_session_block; the exchange cases keep the counting
+ * fixture above).
+ */
+void hfs_session_stop_wake(struct hfs_session *);
+void hfs_session_mark_blocked(struct hfs_session *);
+void actual_hfs_session_block(struct hfs_session *,const char *,const char *,int);
 static int test_received_source_ex(struct hfs_session *,const struct hfs_json *,int,bool *);
 /* ch4: the actual hfs_lease_acquire_ex (renamed actual_hfs_lease_acquire_ex)
  * runs with its release state (hfs_lease_own) as a test.c fixture.
