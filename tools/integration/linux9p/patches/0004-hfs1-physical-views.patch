@@ -2351,7 +2351,7 @@ diff --git a/fs/9p/hfs_lease.h b/fs/9p/hfs_lease.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.h
-@@ -0,0 +1,155 @@
+@@ -0,0 +1,156 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_LEASE_H
 +#define FS_9P_HFS_LEASE_H
@@ -2446,10 +2446,11 @@ new file mode 100644
 +	bool dirty;
 +	/* 2f4 review 1: a GRANTED handed out only to be released (a later
 +	 * recall passed it, or the exchange stopped before the view settled;
-+	 * hfs_view_grant_settle). 5f4: also a GRANTED that hfs_view_exchange
++	 * hfs_view_grant_settle). Also, as the code has done since 2f4 and
++	 * xf4 (documented here since 5f4): a GRANTED that hfs_view_exchange
 +	 * copied into the caller's response but could not keep as the
-+	 * ticket's Current (-ENOMEM; hfs_view_exchange_terminal), and xf4's
-+	 * moved target that is no advance candidate (-EXDEV;
++	 * ticket's Current (-ENOMEM; hfs_view_exchange_terminal), and a moved
++	 * target that is no advance candidate (-EXDEV;
 +	 * hfs_lease_decode_target). Its target was never verified by the
 +	 * provider (visibility stays zero), so it is never authority: no
 +	 * initial bind, page lease, page grant or observation publish takes it.
@@ -2511,7 +2512,7 @@ diff --git a/fs/9p/hfs_lease.c b/fs/9p/hfs_lease.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_lease.c
-@@ -0,0 +1,2350 @@
+@@ -0,0 +1,2355 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Exact bridge1.1 ticket/lease transport; no physical or source-proof defaults. */
 +#include <linux/slab.h>
@@ -3511,8 +3512,9 @@ new file mode 100644
 + * terminal BLOCKED; re4's *blocked in hfs_lease_acquire_ex), the settle
 + * outcome of a verified GRANTED that is handed out unadopted for release
 + * only (2f4), or -ENOMEM when *response was copied but ticket->response
-+ * was not (5f4: a GRANTED is then handed out too, with the ticket not
-+ * terminal; hfs_lease_acquire_ex builds it unadopted for release).
++ * was not (a GRANTED is then handed out too, with the ticket not
++ * terminal; hfs_lease_acquire_ex builds it unadopted for release; this
++ * predates 5f4, which only documents it).
 + * *invalid: the caller blocks the session on the error.
 + */
 +static int hfs_view_exchange_terminal(struct hfs_session *session,
@@ -3943,10 +3945,11 @@ new file mode 100644
 +}
 +
 +/* The lease of a VIEW_ACQUIRE exchange that returned err with response.
-+ * 2f4: a GRANTED handed out with an error (a settle outcome, or 5f4's
-+ * -ENOMEM from keeping the ticket's Current) is still decoded and
-+ * completed, unadopted, for its release (*result: that error). xf4: a moved target
-+ * that is no advance candidate is built unadopted too (*result -EXDEV).
++ * 2f4: a GRANTED handed out with an error (a settle outcome, or -ENOMEM
++ * from keeping the ticket's Current; pre-existing, documented since 5f4)
++ * is still decoded and completed, unadopted, for its release (*result:
++ * that error). xf4: a moved target that is no advance candidate is built
++ * unadopted too (*result -EXDEV).
 + * Once the decoded lease holds the ticket, freeing it puts both, so
 + * *ticket is cleared. -EPROTO (also the exchange's), and -ESTALE for the
 + * grant itself (decode), block the session; the exchange's other failures
@@ -3996,13 +3999,14 @@ new file mode 100644
 + * 2f4 (zq3-r17 R17-1): an error with *out set is a verified GRANTED that
 + * was not current and never settled (hfs_view_grant_settle): -EXDEV when a
 + * later recall passed it, or the wait's stop (-ETIMEDOUT, -EINTR,
-+ * -EHOSTDOWN). 5f4: or -ENOMEM, when hfs_view_exchange copied the GRANTED
-+ * into its response but could not keep it as the ticket's Current
-+ * (hfs_view_exchange_terminal; that grant may even be current, but it is
-+ * not taken). The host still counts it as active, so the caller owns *out
-+ * and must release it; it is unadopted (lease->unadopted) and never
-+ * authority. The ie4 observation path (hfs_mmap_observe) holds it and
-+ * acquires again on -EXDEV; every other path hands it to its cleanup packet.
++ * -EHOSTDOWN). Or -ENOMEM (pre-existing; documented since 5f4), when
++ * hfs_view_exchange copied the GRANTED into its response but could not
++ * keep it as the ticket's Current (hfs_view_exchange_terminal; that grant
++ * may even be current, but it is not taken). The host still counts it as
++ * active, so the caller owns *out and must release it; it is unadopted
++ * (lease->unadopted) and never authority. The ie4 observation path
++ * (hfs_mmap_observe) holds it and acquires again on -EXDEV; every other
++ * path hands it to its cleanup packet.
 + *
 + * xf4: advance (only a READ DOMAIN acquisition with an expected target, else
 + * -EINVAL) adds "advance": true to the request. A GRANTED on another target
@@ -4153,14 +4157,16 @@ new file mode 100644
 +/* One hfs_view_retire_mode round, under session->retirement: the view, the
 + * round's view of view->retire_payload (its storage, reserved before
 + * writable admission; len is reset per family), and what the round saw: a
-+ * floor that advanced, and a family whose VIEW_RETIRE was BLOCKED (re4).
++ * floor that advanced, and a family whose VIEW_RETIRE the host answered
++ * BLOCKED (re4; host_blocked, not "blocked", which stop_wake_guard in
++ * tests/view/run.py reserves for the session flag).
 + */
 +struct hfs_retire_round {
 +	struct hfs_session *session;
 +	struct hfs_view *view;
 +	struct hfs_buf payload;
 +	bool advanced;
-+	bool blocked;
++	bool host_blocked;
 +};
 +
 +/* Snapshot the session's view families into view->retiring. Families are
@@ -4373,9 +4379,9 @@ new file mode 100644
 +/* Offer one family's VIEW_RETIRE (its stored hfs1.4 cut, or a new payload
 + * and cut) and apply the answer. A BLOCKED answer leaves the tickets
 + * charged (an acquisition family's against the ordinary Tickets bound, a
-+ * release family's against ControlTickets), so round->blocked asks to offer
-+ * them again (hfs_mmap_retire_kick) instead of waiting for the next cleanup
-+ * packet. A failure before the floor advanced keeps the cut (and its stored
++ * release family's against ControlTickets), so round->host_blocked asks
++ * to offer them again (hfs_mmap_retire_kick) instead of waiting for the
++ * next cleanup packet. A failure before the floor advanced keeps the cut (and its stored
 + * reply) for a retry; once answered and applied, the cut or reply is freed.
 + */
 +static int hfs_view_retire_family(struct hfs_retire_round *round,
@@ -4419,7 +4425,7 @@ new file mode 100644
 +		hfs_json_free(reply);
 +	}
 +	if (refused)
-+		round->blocked = true;
++		round->host_blocked = true;
 +	return err;
 +}
 +
@@ -4463,8 +4469,8 @@ new file mode 100644
 +	 * and is still owed. A pass that offered every family replaces it; an
 +	 * aborted pass only adds a refusal it saw (a spare retry is harmless).
 +	 */
-+	if (!err || round.blocked)
-+		WRITE_ONCE(view->retire_blocked, round.blocked);
++	if (!err || round.host_blocked)
++		WRITE_ONCE(view->retire_blocked, round.host_blocked);
 +	/* 1h4: this round is over, whatever it achieved; an observation whose
 +	 * try found it busy (hfs_view_retire_wait) decides again.
 +	 */
@@ -4866,7 +4872,7 @@ diff --git a/fs/9p/hfs_mmap.c b/fs/9p/hfs_mmap.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_mmap.c
-@@ -0,0 +1,2680 @@
+@@ -0,0 +1,2682 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Retained file mappings: physical stopped installation and reserved drains. */
 +#include <linux/mm.h>
@@ -6482,9 +6488,10 @@ new file mode 100644
 +	}
 +	err = hfs_lease_acquire(session, cred, NULL, description->cap,
 +				offset, write, &entry->target, &lease);
-+	/* 2f4: -EXDEV (a later recall passed it), a settle stop or 5f4's
-+	 * -ENOMEM (hfs_lease_acquire_ex) may still hand out an unadopted lease; the cleanup packet releases it, and the
-+	 * fault fails as for any moved view.
++	/* 2f4: -EXDEV (a later recall passed it), a settle stop or -ENOMEM
++	 * (hfs_lease_acquire_ex; pre-existing, documented since 5f4) may
++	 * still hand out an unadopted lease; the cleanup packet releases it,
++	 * and the fault fails as for any moved view.
 +	 */
 +	cleanup->lease = lease;
 +	if (err == -EXDEV)
@@ -6757,8 +6764,9 @@ new file mode 100644
 +		err = hfs_lease_acquire(session, cred, NULL, NULL, 0, false, NULL, &lease);
 +		/* 2f4: a lease a later recall passed (-EXDEV) is released below
 +		 * and acquired again, like a discovery lease of a moved view; on
-+		 * a settle stop (or 5f4's -ENOMEM, hfs_lease_acquire_ex) the
-+		 * packet queued after the loop releases it.
++		 * a settle stop (or -ENOMEM, hfs_lease_acquire_ex; pre-existing,
++		 * documented since 5f4) the packet queued after the loop
++		 * releases it.
 +		 */
 +		cleanup->lease = lease;
 +		if (err == -EXDEV)

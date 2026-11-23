@@ -42,10 +42,12 @@ def stop_wake_guard(source):
     session->stop_wait instead (hfs_session_stop_wake). The harness models
     the wake-up (view_wait_wakes) but compiles only some writers, so the
     source is checked: every write of true to one of those session flags in
-    fs/9p is followed by hfs_session_stop_wake within four lines.
+    fs/9p is followed by hfs_session_stop_wake within four lines. Any
+    pointer name matches (5f4 review 1: `s->blocked = true` too), so the
+    flags' names must stay unique to struct hfs_session in fs/9p.
     """
-    write = re.compile(r'WRITE_ONCE\(\s*(?:\w+->)*session->(blocked|closing|transport_failed)\s*,'
-                       r'\s*true\s*\)|session->(blocked|closing|transport_failed)\s*=\s*true\b')
+    write = re.compile(r'WRITE_ONCE\(\s*[^;]*->(blocked|closing|transport_failed)\s*,'
+                       r'\s*true\s*\)|->(blocked|closing|transport_failed)\s*=\s*true\b')
     found = []
     for path in sorted((source / 'fs/9p').rglob('*')):
         if path.suffix not in ('.c', '.h', '.inc') or not path.is_file():
@@ -239,9 +241,9 @@ def main():
             source.append(inode[start:inode.index(last, start)])
         # 2f4 (zq3-r17 R17-1): the actual hfs_view_exchange with its
         # lease-grant settle helpers (since 5f4 also its round, bind,
-        # send, terminal/pending and poll helpers, all in this range). The transport, the ticket reply check,
-        # the session block/poll halt, the mount fence and the 0005 source
-        # receipt are fixtures (pressure/test.c); the receipt's uncontrolled
+        # send, terminal/pending and poll helpers, all in this range). The
+        # transport, the ticket reply check, the session block/poll halt,
+        # the mount fence and the 0005 source receipt are fixtures (pressure/test.c); the receipt's uncontrolled
         # header stub is redirected to the fixture.
         # xf4 (4h4): up to hfs_lease_decode_check, so the actual
         # hfs_view_grant_moved and hfs_lease_decode_target (the advance

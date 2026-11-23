@@ -631,7 +631,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,3658 @@
+@@ -0,0 +1,3662 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -715,11 +715,15 @@ new file mode 100644
 +}
 +
 +/* 5f4: wake the view waits parked on session->stop_wait after a stop was
-+ * set (blocked, closing, transport_failed). The flag is written first; the
-+ * wake-up's queue lock orders it before the waiter's next look at its
-+ * condition (wait_event re-checks after it set its task state), so the
-+ * stop is never missed. Safe in any context, under any lock but
-+ * stop_wait's own.
++ * set (blocked, closing, transport_failed). The flag is written first. The
++ * waiter never takes the stop_wait lock to check its condition, so that
++ * lock does not order anything here: the wake-up (try_to_wake_up) has a
++ * full barrier before it reads the waiter's task state, which pairs with
++ * the barrier in the waiter's set_current_state (wait_event sets its task
++ * state, then checks the condition). Either the waiter sees the flag, or
++ * the wake-up sees it sleeping and wakes it, so the stop is never missed.
++ * Safe in any context and under any lock except stop_wait's own and the
++ * scheduler's (pi_lock, rq lock), which try_to_wake_up takes.
 + */
 +void hfs_session_stop_wake(struct hfs_session *session)
 +{

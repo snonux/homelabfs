@@ -2431,9 +2431,10 @@ Tests (`view`, `view --pressure`, with and without `--sanitize`):
 - Mutants killed: a `hfs_view_watch_stops` that adds no entry fails
   `xq_stop_wake_case` (`jiffies-start==10`). A `hfs_session_block` that only
   writes `blocked` is refused by the new `stop_wake_guard`, which runs in
-  both modes: every write of true to `session->blocked`, `->closing` or
-  `->transport_failed` in `fs/9p` must be followed by
-  `hfs_session_stop_wake` within four lines.
+  both modes: every write of true to `->blocked`, `->closing` or
+  `->transport_failed` in `fs/9p`, through any pointer name (review 1), must
+  be followed by `hfs_session_stop_wake` within four lines. The retire
+  round's own flag is therefore `host_blocked`.
 
 Other harnesses that compile slices of the changed files follow the new
 helpers:
