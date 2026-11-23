@@ -180,6 +180,9 @@ func DecodeCommandVersion(b []byte, minor uint16) (Command, error) {
 		}
 	} else if minor >= 2 && c.Op == "RETIRE" {
 		err = validateControlledRetirement(o["payload"])
+	} else if minor >= 2 && c.Op == "ABANDON" {
+		// Session abandon of stranded never-prepared claims (hh4, abandon.go).
+		err = validateAbandon(o["payload"])
 	} else if minor >= 3 && c.Op == "READDIR_CLEANUP" {
 		err = validateReaddirCleanup(o["payload"])
 	} else if isViewExtension(c.Op) {

@@ -94,7 +94,10 @@ func (s *Service) checkExecution(ctx context.Context, c Command) error {
 	if missing(s.config.Verification) && c.Protocol != nil && IsControlledProtocol(*c.Protocol) && (isViewExtension(c.Op) || c.Op == "VIEW_POLL" || c.Op == "VIEW_ACK") {
 		return fsapi.Unsupported
 	}
-	if c.Protocol != nil && c.Op != "HELLO" && !isAllocation(c.Op) && c.Op != "READDIR_CLEANUP" {
+	// ALLOCATE/GAP_RESOLVE, READDIR_CLEANUP and ABANDON (hh4, abandon.go)
+	// are claim-ledger control work, not view operations: the claims provider
+	// authenticates them against the exact original bindings itself.
+	if c.Protocol != nil && c.Op != "HELLO" && !isAllocation(c.Op) && c.Op != "READDIR_CLEANUP" && c.Op != "ABANDON" {
 		if err := s.config.ViewProtocol.CheckRequest(ctx, c.Context, c.Op, bytes.Clone(c.Payload)); err != nil {
 			return err
 		}
@@ -130,6 +133,8 @@ func (s *Service) dispatchOperation(ctx context.Context, c Command) (any, error)
 		return s.retire(ctx, c)
 	case "SESSION_RETIRE":
 		return s.retireSession(ctx, c)
+	case "ABANDON":
+		return s.abandon(ctx, c)
 	case "RELEASE_CELL":
 		return map[string]any{"status": "RELEASED"}, nil
 	case "RESUME":

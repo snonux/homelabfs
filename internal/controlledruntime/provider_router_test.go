@@ -169,6 +169,7 @@ func TestProviderRouterConstructionAndBinding(t *testing.T) {
 			"allocate":           func() error { err := router.AllocateOriginal(t.Context(), scope, guestbridge.Call{}); return err },
 			"gap":                func() error { _, err := router.ResolveOriginalGap(t.Context(), scope, guestbridge.Call{}); return err },
 			"retire-original":    func() error { _, err := router.RetireOriginal(t.Context(), scope, nil); return err },
+			"abandon":            func() error { _, err := router.AbandonOriginal(t.Context(), scope, nil); return err },
 			"cleanup":            func() error { _, err := router.CleanupReaddir(t.Context(), scope, nil); return err },
 			"protocol":           func() error { err := router.CheckBridgeProtocol(t.Context(), scope, nil); return err },
 		} {

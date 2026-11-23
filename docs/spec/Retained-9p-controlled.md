@@ -77,6 +77,65 @@ result/gap coverage, bounded1024 numbers and durable idempotent floor receipt;
 no missing/intermediate number can be skipped. Component retirement remains
 available without claiming a signed guest floor-verification receipt.
 
+## Session abandon of stranded claims (hh4)
+
+ABANDON is an additive controlled operation, accepted under every controlled
+tuple (frame minor 2, 3 and 4) and refused by closed1.0 and1.1. It is the
+guest's explicit signal that a **blocked** session gives up on an exact list
+of its own uncertain claims: after sending it the guest sends no further
+CALL, QUERY or GAP_RESOLVE for any listed claim. The payload is exactly
+`{realm:uuid,subject:bytes(1024),anchor:uuid,nonce:uuid,
+claims:[{number:n64,original_hash:hash}]}` with 1..64 claims in strictly
+ascending number order, all of the one named family. The response payload is
+exactly `{claims:[{number:n64,status:ABANDONED|KEPT|RETIRED_ID|UNKNOWN,
+proof_hash:hash|null}]}`, one outcome per requested number in request order,
+`proof_hash` non-null exactly on ABANDONED. `verification` is null: ABANDON
+grants no source, event or floor authority.
+
+The host authenticates the actual native callback, enrolled exact scope and
+version, completed HELLO and the live controlled profile and endpoint, as for
+RETIRE. It is reserved control work (the STOP/drain lane), like GAP_RESOLVE,
+and like GAP_RESOLVE it is not a view operation. In one private ledger
+transaction, serialized with every preparation of a never-prepared claim, the
+provider answers each number:
+
+* ABANDONED: the claim was provably never prepared (an allocated original
+  whose CALL has not reserved it, or RESERVED with no preparation begun, no
+  plan, outcome, result or snapshot). It is now a protected no-effect gap,
+  its retained and source credit returned to the budgets and its entry credit
+  zero; or it already was such a gap (GAP_RESOLVE or an earlier ABANDON),
+  which is never rewritten. `proof_hash` is the gap proof RETIRE coverage
+  requires for that number;
+* KEPT: preparation began, a plan is protected, the claim is TERMINAL, it
+  is bound to an open dirty earmark, or the number holds only a dirty earmark
+  (allocated by the earmark, holding earmark credit, closed only by the
+  controller's CANCELLED-ticket path). It may have had an effect or carries
+  an obligation, and stays retained for the guest's normal reconciliation;
+* RETIRED_ID: the number is at or below the floor;
+* UNKNOWN: the number has neither a claim entry nor an earmark: it was never
+  allocated and nothing is charged for it.
+
+For a number with a claim entry, the entry's identity is checked first: a
+protected original that names another session scope, or a wrong original
+hash, refuses the whole command (Permission, Stale) with no ledger change. A
+retired number (whose entry may be recycled) and an earmark-only number have
+no entry to check and answer RETIRED_ID and KEPT. An exact replay changes
+nothing and returns the same outcomes and proofs. After ABANDONED, a delayed
+or replayed CALL executes nothing, a QUERY answers without effect
+(INDETERMINATE, or the protected DECLINED of a mapped QUERY), a replayed
+ALLOCATE writes nothing and GAP_RESOLVE returns the same proof.
+
+A forwarder or host without ABANDON refuses it before any host state is
+touched. The first refusal is the lib9p exporter's command classifier
+(`_command` in `tools/integration/lib9p/src/hfs9p.c`): it answers EINVAL for
+an operation it does not know when the guest's last chunk completes the
+cell, so the guest's send fails with EINVAL and nothing is forwarded to the
+host. This branch's forwarder still lacks ABANDON, so that is also what a
+guest meets here until the forwarder change ships. A Go host reached
+directly refuses it in its closed schema. Either way the guest keeps its
+claims retained exactly as before. The design and safety argument are in
+[hh4-abandon.md](../design/hh4-abandon.md).
+
 ## Response verification union
 
 Every1.2 response is exactly

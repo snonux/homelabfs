@@ -302,34 +302,32 @@ trace with each open claim. The trace is a diagnostic only:
 * It is best effort and written under the provider's execution mutex. A
   failed write is dropped and never changes the answer.
 
-**Releasing stranded claims (open design question, not implemented).** A
+**Releasing stranded claims (hh4: host side done, guest side pending).** A
 stranded claim keeps its retained and source credit until a guest RETIRE
-recycles its number, and the guest never retires past it. Which claims could
-be released is clear: only the never-prepared ones above. No plan was
-protected for them, so their work was provably never issued and no effect can
-have happened. A claim from PREPARING on may have reached the backend and
-stays for reconciliation. A release would be one ledger transaction: decline
-the claim as a gap (as Cancel does), return its credit, and zero the entry's
-credit so a later recycle returns nothing. Replaying it would change nothing.
+recycles its number, and the guest never retires past it. Only the
+never-prepared claims above can be released: no plan was protected for them,
+so their work was provably never issued and no effect can have happened. A
+claim from PREPARING on may have reached the backend and stays for
+reconciliation.
 
-What is missing is a trigger the host can prove. None of the candidates is one:
+No host-observable event proves that the guest gave up: `hfs_session_block`
+is guest-local, a host timeout cannot rule out a delayed QUERY, a transport
+failure is the host's own fence, and SESSION_RETIRE needs `terminalEmpty`.
+So the release needs a guest signal. hh4 adds it as a new controlled
+operation, ABANDON (`abandon.go`; design and safety argument in
+[docs/design/hh4-abandon.md](../../docs/design/hh4-abandon.md)). A blocked
+session names the exact claims it gives up on and promises never to query
+them again. In one ledger transaction, serialized with every preparation
+under the provider's execution mutex (`controlledvalidation/abandon.go`), the
+provider declines each provably never-prepared claim as a gap, returns its
+credit and zeroes the entry's credit, and answers ABANDONED with the gap
+proof RETIRE needs. Everything else is KEPT. OBSERVE counts the releases
+(`ClaimEvidence.Abandoned`, `AbandonedCredit`). A delayed QUERY, CALL or
+preparation after the abandon finds the gap and is refused or has no effect.
 
-* The guest's session block (`hfs_session_block`) is guest-local. The guest
-  sends nothing to the host. It only stops querying, keeps the uncertain
-  claim retained and pins its own retirement floor.
-* A host timeout would tie the host to the guest's 30 s QUERY deadline, a
-  guest constant, and it does not prove that no QUERY is still on its way. A
-  delayed QUERY can still resume the claim, and the guest takes TERMINAL even
-  after its deadline. A release would turn that into INDETERMINATE and a
-  block.
-* A transport failure is the host's own fence (`transport_ledger.md`). It
-  says nothing about what the guest gave up, and the claims ledger must stay
-  exactly as it was for inspection.
-* SESSION_RETIRE needs every number at or below the floor (`terminalEmpty`).
-  A stranded claim makes it fail, and the provider is sealed after it anyway.
-
-A sound release needs a guest signal. That could be an explicit CANCEL of
-the session's uncertain claims when it blocks (a guest patch change), or a
-session-abandon command the host can bind to the session. With either one,
-the release above can be added safely. Until then, a stranded claim stays
+ABANDON is claim-ledger control work like GAP_RESOLVE. It skips the view
+provider's request check, so a 0a4-fenced session can still abandon. The
+guest kernel change that sends it from `hfs_session_block`, exempted from
+the blocked-session halt as dh4 exempted GAP_RESOLVE, is specified in the
+design doc but not built yet. Until it ships, a stranded claim stays
 charged, and its trace shows why.
