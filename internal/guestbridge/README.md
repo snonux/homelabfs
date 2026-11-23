@@ -74,8 +74,14 @@ rechecked: the guest VFS checks it on the directories a process walks, and
 POSIX fd-relative calls never re-check above the fd (task sj4, R20-1);
 `credential_hash` describes issuance, not a fixed-user
 attach restriction. Description grants retain issued access through chmod,
-unlink and trusted transfers. Sequenced process exit and final description
-release are distinct from native fh close. Retained capability, revision and
+unlink and trusted transfers. TRUNCATE and SYNC with a description, and
+GETATTR and SETATTR in their described shape (task s64,
+[design](../../docs/design/s64-fd-attr.md)), take the open description as
+the object's authority instead of the path re-walk, so fstat, fchmod,
+fchown, futimens, ftruncate and fsync work on a renamed or unlinked open
+file; Unix owner rules still apply to the object's current attributes.
+Sequenced process exit and final description release are distinct from
+native fh close. Retained capability, revision and
 close-sequence maps have finite limits and never evict unresolved identities.
 `MaxCapabilities` bounds live grants; `MaxCapabilityIdentities` separately bounds
 all nonreused issuance rows (default 65536), including released tombstones. A
