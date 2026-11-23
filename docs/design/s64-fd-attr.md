@@ -219,36 +219,83 @@ for both fd and name callers:
    borrowed description (below). The path form would be Stale anyway.
 3. Otherwise send the path form. If it fails with -ESTALE from a host
    `Stale` result (not `session->transport_failed` and not a blocked
-   session), and `session->fd_attr` is set, retry once with a borrowed
-   description. If no description of this object is open, return -ESTALE as
+   session), and `session->fd_attr` is set, retry with borrowed descriptions
+   (below). If no description of this object is open, return -ESTALE as
    today.
 
-Step 3 is also correct for a name-based stat(2) or chmod(2). Their LOOKUP
-resolved the name to this object before the concurrent rename or unlink, and
-a local filesystem would also complete the call on the inode it resolved.
-The retry is a new claim with a new intent, never a replay of the refused
-one. The refused call is a normal terminal Stale with no effect.
+**Invariant that makes step 3 safe.** `hfs_d_revalidate` returns 0 outside
+RCU walk (patch 0003, `hfs_d_revalidate`). The guest therefore keeps no
+dentry across walks: every name walk does a fresh LOOKUP, and the path
+capability that GETATTR or SETATTR sends was issued inside the same syscall.
+A host Stale on the path form means one of two things. Either the caller
+reached the inode through an fd (or cwd) whose dentry predates a rename or
+unlink, which is exactly the fstat/fchmod case. Or a rename or unlink raced
+with this one syscall, between its LOOKUP and its GETATTR/SETATTR. In both
+cases, completing the call on the object the walk resolved is what a local
+filesystem does: notify_change and vfs_getattr act on the resolved inode,
+whatever happens to its name later. The retry is a new claim with a new
+intent, never a replay of the refused one, and the refused call is a normal
+terminal Stale with no effect.
+
+If hfs ever keeps dentries (a `d_revalidate` that returns 1, or any dentry
+or attribute cache), this no longer holds. A name walk could then reuse a
+dentry whose name was renamed away long before the syscall. The fallback
+would hide that real staleness and act on an object the caller can no longer
+name, where the VFS would have relooked up the name after ESTALE
+(LOOKUP_REVAL). When the guest change is built, the comment on
+`hfs_d_revalidate` must state this dependency: "s64: the Stale fallback in
+hfs_getattr/hfs_setattr relies on this returning 0 (no dentry outlives a
+walk); caching dentries requires limiting that fallback to fd callers
+first." A test that keeps an fd open, renames the file from another client
+and then runs `stat(old name)` (expected ENOENT, never the old file's
+attributes) guards it in the guest suite.
 
 ### Borrowing a description
 
 `session->descriptions` (under `session->lock`) lists every open
 description. Its `cap` is set once OPEN returned (`hfs_description_bind`),
 and `hfs_description_discard` unlinks the entry under `session->lock` before
-it frees the cap. Copying the cap's bytes under that lock is therefore safe:
+it frees the cap. Copying the cap's bytes under that lock is therefore safe.
+
+An fd caller's own description cannot leave the list during its call:
+`fstat`, `fchmod`, `fchown` and `futimens` hold the file through `fdget`,
+and `hfs_release` runs only on the final `fput`. Another process's
+description of the same object can be released at any moment, though. The
+host then answers Permission (released grant) or Stale (handle gone). So
+the guest tries matching descriptions one at a time. It skips every
+description already refused in this syscall, so a closing description is
+never retried, and the walk always reaches the caller's own live one.
 
 ```c
-/* s64: append ,"description":<cap> for an open description of inode's
- * object. Returns 0, or -ENOENT when none is open. The cap bytes are copied
- * under session->lock: hfs_description_discard unlinks the description
- * there before it frees description->cap, so a listed cap is live. */
+/* s64: kernel-internal "no open description of this object is left to try"
+ * (never returned to userspace; distinct from a host NotFound, -ENOENT).
+ * Above the kernel's internal 512-530, like HFS_ETARGET_MOVED. */
+#define HFS_ENODESC 601
+/* s64: borrowed descriptions tried per syscall; bounds the walk. */
+#define HFS_FD_ATTR_TRIES 8
+
+struct hfs_borrow {
+	u8 tried[HFS_FD_ATTR_TRIES][32];	/* tokens refused in this syscall */
+	u32 count;
+};
+
+/* s64: append "description":<cap>, for an open description of inode's
+ * object that this syscall has not tried yet, and remember its token.
+ * Returns 0 or -HFS_ENODESC. The cap bytes are copied under session->lock:
+ * hfs_description_discard unlinks the description there before it frees
+ * description->cap, so a listed cap is live while the lock is held. */
 static int hfs_args_borrowed_description(struct hfs_buf *args,
-					 struct inode *inode)
+					 struct inode *inode,
+					 struct hfs_borrow *borrow)
 {
 	struct hfs_session *session = HFS_S(inode);
 	const struct hfs_cap *object = HFS_I(inode)->object;
 	struct hfs_description *description;
-	int err = -ENOENT;
+	int err = -HFS_ENODESC;
+	u32 i;
 
+	if (borrow->count == HFS_FD_ATTR_TRIES)
+		return err;
 	mutex_lock(&session->lock);
 	list_for_each_entry(description, &session->descriptions, list) {
 		const struct hfs_cap *cap = description->cap;
@@ -256,6 +303,12 @@ static int hfs_args_borrowed_description(struct hfs_buf *args,
 		if (!cap || !uuid_equal(&cap->home, &object->home) ||
 		    !uuid_equal(&cap->allocation, &object->allocation))
 			continue;
+		for (i = 0; i < borrow->count; i++)
+			if (!memcmp(borrow->tried[i], cap->token, 32))
+				break;
+		if (i < borrow->count)
+			continue;
+		memcpy(borrow->tried[borrow->count++], cap->token, 32);
 		hfs_buf_literal(args, "\"description\":");
 		hfs_cap_write(args, cap);
 		hfs_buf_literal(args, ",");
@@ -267,19 +320,13 @@ static int hfs_args_borrowed_description(struct hfs_buf *args,
 }
 ```
 
-A borrowed description can be released by its own `hfs_release` while the
-call is in flight. The host then answers Permission with no effect. The
-helper's caller maps a described call's Permission or Stale back to the
-original path error (-ESTALE). The borrowed description never turns the
-result into EACCES.
-
 ### hfs_getattr
 
 ```c
-/* s64: GETATTR through the path, or, when described, through an open
+/* s64: GETATTR through the path (borrow == NULL) or through an untried open
  * description of the same object (fstat after rename/unlink). Key order is
  * canonical: "description" < "object". */
-static int hfs_getattr_send(const struct path *path, bool described)
+static int hfs_getattr_send(const struct path *path, struct hfs_borrow *borrow)
 {
 	struct inode *inode = d_inode(path->dentry);
 	struct hfs_cred *cred;
@@ -293,8 +340,8 @@ static int hfs_getattr_send(const struct path *path, bool described)
 	err = hfs_args_init(&args);
 	if (!err) {
 		hfs_buf_literal(&args, "{");
-		if (described)
-			err = hfs_args_borrowed_description(&args, inode);
+		if (borrow)
+			err = hfs_args_borrowed_description(&args, inode, borrow);
 		hfs_buf_literal(&args, "\"object\":");
 		hfs_dcap_write(&args, path->dentry);
 		hfs_buf_literal(&args, "}");
@@ -310,55 +357,125 @@ static int hfs_getattr_send(const struct path *path, bool described)
 	return err;
 }
 
+/* s64: try untried descriptions until one answers. A described GETATTR
+ * has no owner rule, so -EACCES (released grant) and -ESTALE (gone or
+ * mismatched handle) only mean "this description is dead": try the next. */
+static int hfs_getattr_borrowed(const struct path *path, int fallback)
+{
+	struct hfs_session *session = HFS_S(d_inode(path->dentry));
+	struct hfs_borrow borrow = {};
+	int err;
+
+	do {
+		err = hfs_getattr_send(path, &borrow);
+	} while (err == -EACCES || err == -ESTALE);
+	return hfs_fd_attr_result(session, err, fallback);
+}
+
 static int hfs_getattr_once(const struct path *path)
 {
 	struct inode *inode = d_inode(path->dentry);
 	struct hfs_session *session = HFS_S(inode);
 	bool fd_attr = READ_ONCE(session->fd_attr);
-	int err, described;
+	int err;
 
-	if (fd_attr && !inode->i_nlink) {
-		described = hfs_getattr_send(path, true);
-		if (described != -ENOENT)
-			return hfs_fd_attr_result(session, described, -ESTALE);
-	}
-	err = hfs_getattr_send(path, false);
+	if (fd_attr && !inode->i_nlink)
+		return hfs_getattr_borrowed(path, -ESTALE);
+	err = hfs_getattr_send(path, NULL);
 	if (err != -ESTALE || !fd_attr || READ_ONCE(session->transport_failed) ||
 	    READ_ONCE(session->blocked))
 		return err;
-	described = hfs_getattr_send(path, true);
-	return described == -ENOENT ? err : hfs_fd_attr_result(session, described, err);
+	return hfs_getattr_borrowed(path, err);
 }
 ```
 
-`hfs_fd_attr_result(session, described, fallback)` returns `described` on
-success or on a real failure (EINTR, EHOSTDOWN, ETIMEDOUT, ...). It returns
-`fallback` for -EACCES/-EPERM (a released borrowed description) and for
--ESTALE (a mismatched or gone handle). For -EPROTO or -EINVAL on a session
-with `bridge_minor < 2` it also clears `session->fd_attr` (old forwarder or
-host, see negotiation) and returns `fallback`. `hfs_getattr` keeps its
-`hfs_reissue` loop around `hfs_getattr_once`.
+`hfs_fd_attr_result(session, err, fallback)` turns the end of a borrowed
+walk into the syscall's answer:
 
-The SETATTR args writer emits `"attributes":{...},` then, when described,
-`"description":<cap>,`, then `"object":<dcap>`. That order is canonical.
+- `0` and real failures (EINTR, EHOSTDOWN, ETIMEDOUT, EIO, a host
+  NotFound's -ENOENT, ...) are returned as they are;
+- `-HFS_ENODESC` (nothing open is left to try) returns `fallback`, the path
+  form's -ESTALE;
+- `-EPROTO` or `-EINVAL` on a session with `bridge_minor < 2` clears
+  `session->fd_attr` (old forwarder or host, see negotiation) and returns
+  `fallback`; on a controlled session it is returned as it is.
+
+`hfs_getattr` keeps its `hfs_reissue` loop around `hfs_getattr_once`.
 
 ### hfs_setattr
 
 Split the CALL part of today's `hfs_setattr` out as
-`hfs_setattr_send(dentry, attr, description_mode)`. The mode is PATH,
-FILE (`attr->ia_file`'s own description, today only TRUNCATE) or BORROWED
-(`hfs_args_borrowed_description`). `hfs_setattr` then:
+`hfs_setattr_send(dentry, attr, mode, borrow)`. The mode is PATH, FILE
+(`attr->ia_file`'s own description, today only TRUNCATE) or BORROWED
+(`hfs_args_borrowed_description`). The SETATTR args writer emits
+`"attributes":{...},`, then, when described, `"description":<cap>,`, then
+`"object":<dcap>`. That order is canonical. `hfs_setattr` then:
 
 - runs `hfs_setattr_sent`, `hfs_setattr_supported` and `setattr_prepare`
-  exactly as now (so the guest's owner and capability checks still run
-  first);
+  exactly as now, so the guest's owner and capability checks still run first
+  on the cached attributes;
 - for `ATTR_SIZE` (TRUNCATE) keeps today's behaviour: FILE when `ATTR_FILE`
   is set, else a null description;
-- for SETATTR follows steps 1 to 3 above with the same
-  `hfs_fd_attr_result` mapping. If `ATTR_FILE` is ever set without
-  `ATTR_SIZE`, its own description is used.
+- for SETATTR follows steps 1 to 3 above, with the borrowed walk below. If
+  `ATTR_FILE` is ever set without `ATTR_SIZE`, its own description is used
+  (FILE), and its Permission is a real refusal: the caller holds that file.
 
-Both helpers stay under 50 lines, as the existing ones do.
+**Keeping a real refusal real.** For a described SETATTR, a host Permission
+(-EACCES) has two causes: the borrowed description was released, or
+fsservice's owner rule refused the change (a non-owner chmod or chown, or
+"now" times without write access). A dead description must lead to the next
+one, while an owner refusal must reach the caller, never -ESTALE. The
+borrowed walk tells them apart with a described GETATTR through the **same**
+description, which has no owner rule:
+
+```c
+/* s64: SETATTR through untried descriptions. After -EACCES, a GETATTR
+ * through the same description (same borrow slot, so not re-borrowed)
+ * tells a dead description (-EACCES/-ESTALE: try the next) from an owner
+ * refusal (OK: return the refusal). That GETATTR also installs fresh
+ * attributes. */
+static int hfs_setattr_borrowed(struct dentry *dentry, struct iattr *attr,
+				int fallback)
+{
+	struct hfs_session *session = HFS_S(d_inode(dentry));
+	struct hfs_borrow borrow = {};
+	int err, probe;
+
+	for (;;) {
+		err = hfs_setattr_send(dentry, attr, HFS_SETATTR_BORROWED, &borrow);
+		if (err == -ESTALE)
+			continue;
+		if (err != -EACCES)
+			break;
+		probe = hfs_getattr_send_last(dentry, &borrow);
+		if (!probe)
+			return hfs_setattr_refusal(d_inode(dentry), attr, err);
+		if (probe != -EACCES && probe != -ESTALE)
+			return probe;
+	}
+	return hfs_fd_attr_result(session, err, fallback);
+}
+```
+
+- `hfs_getattr_send_last` sends a described GETATTR with
+  `borrow->tried[borrow->count - 1]`, the description the SETATTR just used.
+  It looks the token up again under `session->lock` and fails with
+  -HFS_ENODESC if that description has left the list (dead, so the walk
+  goes on). The walk stays bounded by `HFS_FD_ATTR_TRIES`.
+- `hfs_setattr_refusal(inode, attr, err)` returns what the path form would
+  have returned for the same refusal: the host code's errno (-EACCES, today's
+  mapping of `Permission` for any SETATTR). With the fresh attributes the
+  probe installed, it returns -EPERM where Linux's `setattr_prepare` would:
+  mode, uid, gid or explicit times by a caller that is not the owner (and
+  lacks the capability). That is the errno chmod(2) and chown(2) give on a
+  local filesystem.
+- A race where an owner-refused description is released between the SETATTR
+  and the probe only moves the walk to the next description. That
+  description gives the same owner refusal, and the fd caller's own
+  description is always live (above), so an fd caller always gets its real
+  refusal.
+
+Every helper stays under 50 lines, as the existing ones do.
 
 ### Mount option
 
@@ -437,13 +554,31 @@ READLINK and a SETATTR missing `attributes` are EINVAL.
 - `TestDescribedAttrDecodesUnderControlledAllocation`: a controlled ALLOCATE
   (minor 2) with the described GETATTR decodes, and its null variant is
   Invalid.
-- `TestPathAuthorityExemptsOnlyDescribedTruncateSync` (updated): exactly
+- `TestPathAuthorityExemptsOnlyDescribedFourOpcodes` (updated): exactly
   TRUNCATE, SYNC, GETATTR and SETATTR are exempt when described.
 
 `internal/controlledvalidation/fd_attr_test.go` (durable controlled provider,
 ControlledCut, journaled SETATTR):
-`TestBridgeDescribedAttrCallsAfterRenameUnlink` covers the path forms (Stale),
-described fchmod and fstat (mode, nlink 0 after unlink), and a released
-description (Permission).
+
+- `TestBridgeDescribedAttrCallsAfterRenameUnlink`: the path forms are Stale;
+  described fchmod and fstat work (mode, nlink 0 after unlink); a released
+  description is Permission.
+- `TestBridgeDescribedSetattrOwnerRulesMismatchAndForeignScope`: on an
+  unlinked open file, a non-owner with the owner's description or its own
+  read-only one may fstat but gets Permission for chmod and chown. Another
+  file's description is Stale. A description re-scoped to another session,
+  or with an altered token, is Permission.
+- `TestBridgeDescribedCallReplayAfterRelease`: resending a described CALL
+  with its original claim after DESCRIPTION_RELEASE returns the recorded
+  terminal result, byte for byte.
+- `TestBridgeDescribedSetattrUnlinkedRestartReplay`: a described SETATTR on
+  an nlink-0 object crashes after its journaled effect and before its
+  outcome. After a provider and service restart, `RecoverOutcome` gives its
+  exact protected result, and the replayed object keeps mode 0604 and
+  nlink 0.
+- `TestBridgeDescribedAttrStaleWhenServiceHandleIsGone`: the description
+  grant is still live in the bridge, but its fsservice handle was released
+  directly through the controlled cut. Described GETATTR and SETATTR are
+  Stale.
 
 Not covered here: the guest and forwarder changes, and a lab run.
