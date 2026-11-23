@@ -25,8 +25,9 @@ def main():
     session = (source / 'fs/9p/hfs_session.c').read_text()
     # Compile the complete production functions verbatim, never a modeled
     # loop: since oc4 hfs_transport's SEND/FETCH loops are the helpers from
-    # hfs_transport_note up to hfs_transport itself.
-    transport = session[session.index('static void hfs_transport_note('):session.index('\nstatic bool hfs_result_needs_adoption(')]
+    # hfs_transport_note up to hfs_transport itself. 5f4: from
+    # hfs_transport_failed, which every transport_failed write goes through.
+    transport = session[session.index('static void hfs_transport_failed('):session.index('\nstatic bool hfs_result_needs_adoption(')]
     (output / 'transport.inc').write_text(transport)
     log = output / 'transport.log'
     log.write_text('hfs_session_sha256=' + hashlib.sha256(session.encode()).hexdigest() + '\n')

@@ -101,6 +101,8 @@ def extract(source, output):
     # The complete mount with every helper it calls (g64 split it), not only
     # its failure tail (compare controlled_received).
     (output / 'mount.inc').write_text(''.join(build.function(session, name) for name in (
+        # 5f4: the stop wake-up and blocked setter hfs_session_block uses.
+        'hfs_session_stop_wake', 'hfs_session_mark_blocked',
         'hfs_session_block', 'hfs_session_fence', 'hfs_cache_option', 'hfs_session_new', 'hfs_mount_enroll', 'hfs_trace_register',
         'hfs_mount_client', 'hfs_mount_hello', 'hfs_mount_fail', 'v9fs_hfs_mount')))
     # g64: the mountinfo super options of an hfs superblock.

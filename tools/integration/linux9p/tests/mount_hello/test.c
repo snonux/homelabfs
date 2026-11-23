@@ -149,6 +149,8 @@ struct hfs_session {
 	bool closing, unmounting, blocked, retained, terminal_pending;
 	unsigned long block_reported;
 	u16 exporter_error; /* oc4: printed by hfs_session_block */
+	/* 5f4: counts its wake-ups (hfs_session_stop_wake); see wake_up_all. */
+	int stop_wait;
 };
 struct hfs_controlled_mount {
 	struct super_block *super;
@@ -173,8 +175,11 @@ struct hfs_view {
 	bool quiescent;
 	enum hfs_view_phase phase;
 };
-#define wake_up_all(w) ((void)(w))
-#define init_waitqueue_head(w) ((void)(w))
+/* 5f4: a wait queue is a wake-up counter, so the cases can check that a
+ * block, kill_sb and a failed mount woke session->stop_wait.
+ */
+#define wake_up_all(w) ((void)++*(w))
+#define init_waitqueue_head(w) ((void)(*(w) = 0))
 #define WARN_ON_ONCE(p) ((p) ? (fprintf(stderr, "unexpected WARN %s\n", #p), abort(), 1) : 0)
 
 /* Per-case fixture state; each case is a fresh forked child. */
@@ -589,7 +594,7 @@ static void run_block_case(void)
 
 	CHECK(first && second);
 	hfs_session_block(first, "QUERY timeout", "GETATTR", -ETIMEDOUT);
-	CHECK(first->blocked && warnings == 1);
+	CHECK(first->blocked && warnings == 1 && first->stop_wait == 1);
 	CHECK(strstr(last_warning, "blocked by QUERY timeout on GETATTR (-110), exporter ERROR -; later"));
 	hfs_session_block(first, "process-exit failure", "PROCESS_EXIT", -EHOSTDOWN);
 	CHECK(first->blocked && warnings == 1);
@@ -598,7 +603,8 @@ static void run_block_case(void)
 	CHECK(second->blocked && warnings == 2 &&
 	      strstr(last_warning, "blocked by uncertain control result on VIEW_WAIT (-112), exporter ERROR 5; later"));
 	hfs_session_block(second, "uncertain claim result", NULL, -EPROTO);
-	CHECK(warnings == 2);
+	/* 5f4: every block wakes the view waits, logged or not. */
+	CHECK(warnings == 2 && second->stop_wait == 2);
 	free(first);
 	free(second);
 }
@@ -634,6 +640,7 @@ static struct hfs_session *unmount(int close_err, int stop_err)
 	unmount_stop_err = stop_err;
 	v9fs_hfs_kill_super(&sb);
 	CHECK(session->blocked && session->closing && session->retained);
+	CHECK(session->stop_wait >= 1); /* 5f4: kill_sb woke the view waits */
 	CHECK(controlled_mount.stopping && !sb.s_fs_info);
 	CHECK(unmount_stop_after_flush); /* z84: stop follows teardown and flush */
 	return session;

@@ -2435,6 +2435,20 @@ Tests (`view`, `view --pressure`, with and without `--sanitize`):
   `->transport_failed` in `fs/9p` must be followed by
   `hfs_session_stop_wake` within four lines.
 
+Other harnesses that compile slices of the changed files follow the new
+helpers:
+
+- `transport` starts its slice at `hfs_transport_failed`, and a counting
+  `hfs_session_stop_wake` fixture checks that every exchange that set
+  `transport_failed` woke the queue.
+- `mount_hello` compiles the actual `hfs_session_stop_wake` and
+  `hfs_session_mark_blocked`. Its wait queues count wake-ups: every
+  `hfs_session_block` (logged or not) and kill_sb wake `stop_wait`.
+- `controlled_received` selects the new `hfs_session.c` helpers. Its
+  `release_prepare.inc` prefix of `hfs_view_exchange` now ends before the
+  first round (`if (ticket->admitted)`). It initializes `stop_wait` and has
+  inert `add_wait_queue`/`remove_wait_queue`, since its waits poll.
+
 `hfs_view_query` (60 lines) and other long functions outside this task's
 list are unchanged.
 

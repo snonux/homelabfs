@@ -78,9 +78,10 @@ def main():
     (out/'controlled_compat.h').write_text(admin)
     session = read('fs/9p/hfs_session.c')
     selected = ['hfs_field_u64', 'hfs_uuid', 'hfs_cred_write', 'hfs_cred_free',
-                'hfs_process_exit_work', 'hfs_session_block', 'hfs_session_fence', 'hfs_cred_equal', 'hfs_process_find',
+                'hfs_process_exit_work', 'hfs_session_stop_wake', 'hfs_session_mark_blocked',
+                'hfs_session_block', 'hfs_session_fence', 'hfs_cred_equal', 'hfs_process_find',
                 'hfs_capture_owned', 'hfs_capture', 'hfs_capture_terminal',
-                'hfs_reply_scope', 'hfs_transport_note', 'hfs_session_poll_halt', 'hfs_transport_stop',
+                'hfs_reply_scope', 'hfs_transport_failed', 'hfs_transport_note', 'hfs_session_poll_halt', 'hfs_transport_stop',
                 'hfs_transport_send', 'hfs_transport_fetch', 'hfs_transport_chunk',
                 'hfs_transport_collect', 'hfs_transport',
                 'hfs_result_needs_adoption',
@@ -116,8 +117,10 @@ def main():
     (out/'lease.inc').write_text(portable(lease))
     exchange = function(lease, 'hfs_view_exchange')
     # 2f4: the prefix declares the grant-settle state too (voided below).
-    bound = exchange.index('\n\t/* Initial admissions')
-    (out/'release_prepare.inc').write_text(exchange[:bound].replace('int hfs_view_exchange(', 'static int fixture_prepare_exchange(') + '\n\t(void)after_block;(void)reply;(void)sent;(void)op;(void)deadline;(void)control;(void)body;(void)status;(void)settle;(void)fatal;(void)result;return 0;\n}\n')
+    # 5f4: that state is struct hfs_view_round; the prefix (validation and
+    # hfs_view_exchange_bind) ends before the first round.
+    bound = exchange.index('\n\tif (ticket->admitted)\n')
+    (out/'release_prepare.inc').write_text(exchange[:bound].replace('int hfs_view_exchange(', 'static int fixture_prepare_exchange(') + '\n\t(void)reply;(void)round;(void)invalid;return 0;\n}\n')
     mmap = read('fs/9p/hfs_mmap.c')
     first = mmap.index('static int hfs_mmap_invalidate_stopped(')
     last = mmap.index('/* Independent poll,', first)

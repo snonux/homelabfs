@@ -145,6 +145,13 @@ static inline void kref_put(struct kref *k,void (*release)(struct kref *)) { if(
 #define refcount_read(p) atomic_load(p)
 #define init_waitqueue_head(q) ((void)(q))
 #define wake_up_all(q) ((void)(q))
+/* 5f4: hfs_view_watch_stops' extra entry on session->stop_wait. Wake-ups are
+ * no-ops and the waits below poll their condition, so the entry is inert.
+ */
+struct wait_queue_entry { void *private; };
+#define init_waitqueue_entry(e,task) ((e)->private=(void *)(task))
+#define add_wait_queue(q,e) ((void)(q),(void)(e))
+#define remove_wait_queue(q,e) ((void)(q),(void)(e))
 #define wait_event(q,p) do { (void)(q);while(!(p))usleep(100); } while(0)
 #define wait_event_killable(q,p) ({wait_event(q,p);0;})
 /* x84: hfs_call's fence wait. wake_up_all is a no-op here, so poll the
