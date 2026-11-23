@@ -2448,6 +2448,9 @@ helpers:
   `release_prepare.inc` prefix of `hfs_view_exchange` now ends before the
   first round (`if (ticket->admitted)`). It initializes `stop_wait` and has
   inert `add_wait_queue`/`remove_wait_queue`, since its waits poll.
+- `controlled` compiles `hfs_transport_failed` (inside its
+  `hfs_reply_scope` span) and gains an `hfs_session_stop_wake` fixture,
+  which its `hfs_session_block` fixture also calls.
 
 `hfs_view_query` (60 lines) and other long functions outside this task's
 list are unchanged.
