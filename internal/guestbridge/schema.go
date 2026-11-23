@@ -86,17 +86,43 @@ func validatePayload(op string, v, reclaim any) error {
 	}
 	return nil
 }
-func validateArgs(op string, v any) error {
-	fields := map[string]string{
-		"ROOT": "", "LOOKUP": "parent name", "GETATTR": "object", "READLINK": "object", "CREATE": "parent name mode umask flags", "MKDIR": "parent name mode umask", "SYMLINK": "parent name target", "OPEN": "object flags", "READ": "description offset count", "WRITE": "description offset data max_end", "TRUNCATE": "object description size times", "SETATTR": "object attributes", "RENAME": "source_parent source_name destination_parent destination_name no_replace", "LINK": "object parent name", "UNLINK": "parent name", "RMDIR": "parent name", "READDIR": "object after revision limit", "STATFS": "root", "SYNC": "object description scope", "DESCRIPTION_CLOSE": "description process close_sequence", "DESCRIPTION_RELEASE": "description release_sequence", "FORGET": "object count", "PROCESS_EXIT": "process exit_sequence", "DRAIN_WRITE": "description offset data recall dirty_entry reservation",
+
+// argFields is the closed Args field set of every CALL opcode (argKeys adds
+// the described GETATTR/SETATTR shape).
+var argFields = map[string]string{
+	"ROOT": "", "LOOKUP": "parent name", "GETATTR": "object", "READLINK": "object", "CREATE": "parent name mode umask flags", "MKDIR": "parent name mode umask", "SYMLINK": "parent name target", "OPEN": "object flags", "READ": "description offset count", "WRITE": "description offset data max_end", "TRUNCATE": "object description size times", "SETATTR": "object attributes", "RENAME": "source_parent source_name destination_parent destination_name no_replace", "LINK": "object parent name", "UNLINK": "parent name", "RMDIR": "parent name", "READDIR": "object after revision limit", "STATFS": "root", "SYNC": "object description scope", "DESCRIPTION_CLOSE": "description process close_sequence", "DESCRIPTION_RELEASE": "description release_sequence", "FORGET": "object count", "PROCESS_EXIT": "process exit_sequence", "DRAIN_WRITE": "description offset data recall dirty_entry reservation",
+}
+
+// argKeys returns the exact Args keys an opcode's arguments must have, or
+// false for an unknown opcode.
+//
+// GETATTR and SETATTR have two closed shapes (task s64,
+// docs/design/s64-fd-attr.md). The original one, without a description key,
+// keeps its exact bytes and its path authority. The described one adds a
+// mandatory non-null `description` (fstat, fchmod, fchown or futimens on an
+// open file description); validateArgs refuses a null there, so each meaning
+// has exactly one encoding. A pre-s64 host refuses the described shape as
+// Invalid (an unknown key) before admission, so it has no effect there.
+func argKeys(op string, v any) ([]string, bool) {
+	names, ok := argFields[op]
+	if !ok {
+		return nil, false
 	}
-	names, ok := fields[op]
+	if o, isObject := v.(map[string]any); isObject && oneOf(op, "GETATTR", "SETATTR") {
+		if _, described := o["description"]; described {
+			names += " description"
+		}
+	}
+	if names == "" {
+		return nil, true
+	}
+	return strings.Split(names, " "), true
+}
+
+func validateArgs(op string, v any) error {
+	keys, ok := argKeys(op, v)
 	if !ok {
 		return fsapi.Unsupported
-	}
-	var keys []string
-	if names != "" {
-		keys = strings.Split(names, " ")
 	}
 	o, e := object(v, keys...)
 	if e != nil {
@@ -105,6 +131,8 @@ func validateArgs(op string, v any) error {
 	for k, x := range o {
 		switch k {
 		case "object", "parent", "source_parent", "destination_parent", "root", "description":
+			// Only TRUNCATE and SYNC have a nullable description; a
+			// described GETATTR/SETATTR needs a real one (argKeys).
 			if x == nil && (op == "TRUNCATE" || op == "SYNC") && k == "description" {
 				continue
 			}

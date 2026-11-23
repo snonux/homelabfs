@@ -200,28 +200,30 @@ func (s *Service) resolveInputs(ctx context.Context, b Binding, a arguments, c *
 //   - FORGET closes the exact issued token; it releases a reference and
 //     grants no access, so it must work after rename/unlink too.
 //   - The object argument of a CALL that also carries a non-null description.
-//     Only TRUNCATE (ftruncate) and SYNC (fsync/fdatasync) have both an object
-//     and an (optional) description argument; READ, WRITE, DRAIN_WRITE,
-//     DESCRIPTION_CLOSE and DESCRIPTION_RELEASE carry a description but no
-//     path capability, so they never reach this check. The open description
-//     is the authority: DESCRIPTION grants retain issued rights across
-//     chmod/rename/unlink (Retained-9p-protocol.md), and attachDescription
-//     requires the object to be the description's own object. The object
-//     must still be a live, unforged grant in this scope (liveGrant).
+//     TRUNCATE (ftruncate) and SYNC (fsync/fdatasync) have both an object and
+//     a nullable description argument; GETATTR (fstat) and SETATTR (fchmod,
+//     fchown, futimens) have both in their described shape (task s64,
+//     validateArgs/argKeys). READ, WRITE, DRAIN_WRITE, DESCRIPTION_CLOSE and
+//     DESCRIPTION_RELEASE carry a description but no path capability, so
+//     they never reach this check. The open description is the authority:
+//     DESCRIPTION grants retain issued rights across chmod/rename/unlink
+//     (Retained-9p-protocol.md), and attachDescription requires the object
+//     to be the description's own object. The object must still be a live,
+//     unforged grant in this scope (liveGrant).
 //
-// A null description keeps the path re-check: truncate(2) or a path-based
-// sync names the file through its current path.
+// Without a description the path re-check stays: truncate(2), stat(2),
+// chmod(2) or a path-based sync names the file through its current path.
 //
-// The description exemption is limited to TRUNCATE and SYNC by name, not
+// The description exemption is limited to these four opcodes by name, not
 // inferred from the argument shape: today only validateArgs' exact field
-// sets stop OPEN, SETATTR or LINK from carrying a description, and a later
+// sets stop OPEN, LINK or READDIR from carrying a description, and a later
 // schema change must not silently turn their object into possession
 // authority (defence in depth).
 func pathAuthority(op, key string, described bool) bool {
 	if op == "FORGET" {
 		return false
 	}
-	return !(key == "object" && described && oneOf(op, "TRUNCATE", "SYNC"))
+	return !(key == "object" && described && oneOf(op, "TRUNCATE", "SYNC", "GETATTR", "SETATTR"))
 }
 
 // checkNameDepth bounds the ancestry a new entry name would extend.
@@ -240,6 +242,14 @@ func checkNameDepth(name string, g grant) error {
 // must be a live DESCRIPTION grant with the rights the operation needs, and
 // any object argument already resolved must be that description's object
 // (otherwise Stale). Descriptions are never path re-checked.
+//
+// READ needs a readable and WRITE/TRUNCATE a writable description. A
+// described GETATTR or SETATTR (s64) needs no particular rights: the
+// description only proves the open file, as fstat/fchmod/fchown need. fsservice
+// still applies the Unix rules to the object's current attributes (owner for
+// chmod/chown and explicit times, owner or write permission for "now" times,
+// UnixPermissions.Check); an open description never stands in for them, as
+// in POSIX. SETATTR never changes the size, so no write description is due.
 func (s *Service) attachDescription(ctx context.Context, b Binding, a arguments, c *fsapi.Command, o Captured) error {
 	if !a.hasDescription() {
 		return nil

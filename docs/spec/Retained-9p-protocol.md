@@ -439,14 +439,22 @@ the file). A renamed, removed or
 reclaimed ancestor or name is likewise Stale, never NotFound, while I/O,
 unavailability and other real failures keep their own code. DESCRIPTION grants retain
 issued rights across chmod/rename/unlink, not across generation/session revocation.
-TRUNCATE and SYNC are the only opcodes carrying both `object` and an optional
-`description`. With a nonnull description the description is the authority:
-`object` must be a live issued grant (token, scope, rights) naming the
-description's own object (else Stale), and its recorded ancestry is not
-re-walked, so ftruncate after rename and fsync of an open unlinked file
-succeed. With a null description `object` is path authority and is
-revalidated as above. FORGET likewise closes its exact live token without a
-path re-check.
+TRUNCATE and SYNC carry both `object` and a nullable `description`; GETATTR
+and SETATTR carry both in their described shape (task s64, below). These four
+are the only opcodes with both. With a nonnull description the description is
+the authority: `object` must be a live issued grant (token, scope, rights)
+naming the description's own object (else Stale), and its recorded ancestry is
+not re-walked, so ftruncate after rename, fstat/fchmod/fchown/futimens of an
+open renamed or unlinked file (nlink 0) and fsync of an open unlinked file
+succeed. A released, unknown, altered or foreign-scope description is
+Permission. TRUNCATE needs a writable description; GETATTR, SETATTR and SYNC
+need no particular description rights. The description replaces only the path
+identity check: SETATTR still applies the Unix rules to the object's current
+attributes (owner or root for mode, ownership and explicit times; owner, root
+or write permission for current times), never the description's access mode.
+With a null description, or the GETATTR/SETATTR shape without one, `object`
+is path authority and is revalidated as above. FORGET likewise closes its
+exact live token without a path re-check.
 dup/fork/transfer retain the description; final reference retirement closes it.
 Delayed mapped writes retain that exact grant and per-page provenance, never a
 root writeback fid's rights. Process-exit/close are sequenced kernel assertions,
@@ -515,7 +523,8 @@ DIRECTORY or SYMLINK, separate from mode bits. Flags is
 | --- | --- |
 | ROOT | (empty Args object); issue this enrolled volume's root identity capability |
 | LOOKUP | parent:Cap, name:bytes(255) |
-| GETATTR, READLINK | object:Cap |
+| GETATTR | object:Cap, or (s64) object:Cap, description:Cap |
+| READLINK | object:Cap |
 | CREATE | parent:Cap, name:bytes(255), mode:u32, umask:u32, flags:Flags |
 | MKDIR | parent:Cap, name:bytes(255), mode:u32, umask:u32 |
 | SYMLINK | parent:Cap, name:bytes(255), target:bytes(4096) |
@@ -523,7 +532,7 @@ DIRECTORY or SYMLINK, separate from mode bits. Flags is
 | READ | description:Cap, offset:size, count:u32 (<=65536) |
 | WRITE | description:Cap, offset:size, data:bytes(65536), max_end:size |
 | TRUNCATE | object:Cap, description:Cap|null, size:size, times:Times |
-| SETATTR | object:Cap, attributes:Attributes |
+| SETATTR | object:Cap, attributes:Attributes, or (s64) object:Cap, attributes:Attributes, description:Cap |
 | RENAME | source_parent:Cap, source_name:bytes(255), destination_parent:Cap, destination_name:bytes(255), no_replace:bool |
 | LINK | object:Cap, parent:Cap, name:bytes(255) |
 | UNLINK, RMDIR | parent:Cap, name:bytes(255) |
@@ -535,6 +544,18 @@ DIRECTORY or SYMLINK, separate from mode bits. Flags is
 | FORGET | object:Cap, count:n64 |
 | PROCESS_EXIT | process:uuid, exit_sequence:n64 |
 | DRAIN_WRITE | description:Cap, offset:size, data:bytes(65536), recall:uuid, dirty_entry:hash, reservation:hash |
+
+The described GETATTR/SETATTR shape ([s64](../design/s64-fd-attr.md)) is an
+additive member of this one Args union, the same under every tuple. Its
+description is mandatory and nonnull (a null is Invalid), so the original
+shape keeps its exact bytes and remains the only path-authority encoding. A
+host or lib9p forwarder older than s64 refuses the described shape at its
+closed schema, before claim admission or allocation, with no effect. That
+refusal is not a negotiation: on a controlled session it fails the ALLOCATE
+and keeps the guest's allocation fence. A guest therefore sends the described
+shape only on a mount explicitly configured for it (the s64 design's
+`hfs_fdattr` option, set only with an s64 host and forwarder) and otherwise
+keeps the path form.
 
 WRITE captures `max_end` in 0..S64MAX as the minimum of the submitting
 process's RLIMIT_FSIZE, its non-LFS bound and the filesystem bound, before any

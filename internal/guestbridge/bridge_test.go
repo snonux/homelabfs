@@ -897,15 +897,16 @@ func TestDescriptionBackedCallsRefuseWeakOrDeadDescriptions(t *testing.T) {
 }
 
 // TestPathAuthorityExemptsOnlyDescribedTruncateSync pins the defence in
-// depth: even if the schema let OPEN, SETATTR or LINK carry a description,
-// their object would still be path-revalidated.
+// depth: only described TRUNCATE, SYNC and (s64) GETATTR and SETATTR skip
+// the path re-check; even if the schema let OPEN, LINK or READDIR carry a
+// description, their object would still be path-revalidated.
 func TestPathAuthorityExemptsOnlyDescribedTruncateSync(t *testing.T) {
-	for _, op := range []string{"TRUNCATE", "SYNC"} {
+	for _, op := range []string{"TRUNCATE", "SYNC", "GETATTR", "SETATTR"} {
 		if pathAuthority(op, "object", true) || !pathAuthority(op, "object", false) {
 			t.Fatal(op)
 		}
 	}
-	for _, op := range []string{"OPEN", "SETATTR", "LINK", "GETATTR", "READDIR"} {
+	for _, op := range []string{"OPEN", "LINK", "READDIR", "READLINK"} {
 		if !pathAuthority(op, "object", true) {
 			t.Fatal(op, "skipped the path re-check")
 		}
