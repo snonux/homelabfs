@@ -1,0 +1,389 @@
+=== RUN   TestControlledReceivedActualTerminalKernel80
+panic: test timed out after 10m0s
+	running tests:
+		TestControlledReceivedActualTerminalKernel80 (10m0s)
+
+goroutine 68 [running]:
+testing.(*M).startAlarm.func1()
+	/usr/lib/golang/src/testing/testing.go:2802 +0x605
+created by time.goFunc
+	/usr/lib/golang/src/time/sleep.go:215 +0x45
+
+goroutine 1 [chan receive, 10 minutes]:
+testing.(*T).Run(0xc00017a008, {0xda7513, 0x2c}, 0xdb4320)
+	/usr/lib/golang/src/testing/testing.go:2109 +0xb3e
+testing.runTests.func1(0xc00017a008)
+	/usr/lib/golang/src/testing/testing.go:2585 +0x85
+testing.tRunner(0xc00017a008, 0xc00012bad0)
+	/usr/lib/golang/src/testing/testing.go:2036 +0x21d
+testing.runTests({0xd9a718, 0x1b}, {0xdac5e5, 0x36}, 0xc0000160a8, {0x1240ac0, 0x9e, 0x9e}, {0xc2b97e99bb609dcc, 0x8bb2ed5210, ...})
+	/usr/lib/golang/src/testing/testing.go:2583 +0x9ea
+testing.(*M).Run(0xc00010a3c0)
+	/usr/lib/golang/src/testing/testing.go:2443 +0xf4c
+main.main()
+	_testmain.go:360 +0x165
+
+goroutine 8 [runnable]:
+syscall.Syscall(0x0, 0x1f, 0xc00145b174, 0xae8c)
+	/usr/lib/golang/src/syscall/syscall_linux.go:74 +0x2b
+syscall.read(0x1f, {0xc00145b174, 0xae8c, 0x0?})
+	/usr/lib/golang/src/syscall/zsyscall_linux_amd64.go:736 +0x57
+syscall.Read(0x1f, {0xc00145b174, 0xae8c, 0xae8c})
+	/usr/lib/golang/src/syscall/syscall_unix.go:183 +0x49
+internal/poll.ignoringEINTRIO(...)
+	/usr/lib/golang/src/internal/poll/fd_unix.go:738
+internal/poll.(*FD).Read(0xc001118ae0, {0xc00145b174, 0xae8c, 0xae8c})
+	/usr/lib/golang/src/internal/poll/fd_unix.go:161 +0x3af
+os.(*File).read(...)
+	/usr/lib/golang/src/os/file_posix.go:30
+os.(*File).Read(0xc000006300, {0xc00145b174, 0xae8c, 0xae8c})
+	/usr/lib/golang/src/os/file.go:144 +0xad
+bufio.(*Scanner).Scan(0xc001133480)
+	/usr/lib/golang/src/bufio/scan.go:219 +0xbeb
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x77, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:141 +0x90
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc0000b0000, 0x1c8d}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x76, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc00046e000, 0x1c8d}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x75, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc000336000, 0x1c8d}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x74, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc000418000, 0x1c8d}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x73, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc000538000, 0x1c8d}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x72, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc000456000, 0x1c8d}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x71, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc0004f2000, 0x1c8d}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x70, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc0004e0000, 0x1c8d}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x6f, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc00043c000, 0x1c8d}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x6e, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc00021c000, 0x1c8d}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x6d, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc000552000, 0x1c8d}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x6c, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc0001e4000, 0x1c8d}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x6b, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc000472000, 0x1c8d}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x6a, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc0004fa000, 0x1c8d}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+...149 frames elided...
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x37, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc00025a000, 0xe95}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x36, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc00029e000, 0xe95}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x35, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc000311000, 0xe95}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x34, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc000310000, 0xe95}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x33, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc0000da000, 0xe95}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x32, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc0002ec000, 0xe95}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x31, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc0000d1000, 0xe95}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x30, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc000293000, 0xe95}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x2f, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc00027e000, 0xe95}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x2e, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc00034d000, 0xe95}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x2d, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc0000bc000, 0xe95}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x2c, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc0000e0000, 0xe95}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x2b, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc0000e1000, 0xe95}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x2a, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc000278000, 0xe95}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x29, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc0001b8000, 0xe95}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80.func3(0xc0014100b0?)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2023 +0x41e
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).readUntil(0xc0014100b0, 0x28, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:179 +0x612
+github.com/snonux/homelabfs/internal/controlledruntime.(*receivedCarrier).action(0xc0014100b0, {0xd914df, 0xe}, 0x0, {0xc000207000, 0xe95}, 0x0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:289 +0x26c
+github.com/snonux/homelabfs/internal/controlledruntime.TestControlledReceivedActualTerminalKernel80(0xc00017a248)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/c6_actual_received_test.go:2034 +0x13c9
+testing.tRunner(0xc00017a248, 0xdb4320)
+	/usr/lib/golang/src/testing/testing.go:2036 +0x21d
+created by testing.(*T).Run in goroutine 1
+	/usr/lib/golang/src/testing/testing.go:2101 +0xb13
+
+goroutine 18 [IO wait, 10 minutes]:
+internal/poll.runtime_pollWait(0x7ff9b951da00, 0x72)
+	/usr/lib/golang/src/runtime/netpoll.go:351 +0x85
+internal/poll.(*pollDesc).wait(0xc0000805c0, 0x72, 0x1)
+	/usr/lib/golang/src/internal/poll/fd_poll_runtime.go:84 +0xb1
+internal/poll.(*pollDesc).waitRead(...)
+	/usr/lib/golang/src/internal/poll/fd_poll_runtime.go:89
+internal/poll.(*FD).Read(0xc0000805a0, {0xc0001a8000, 0x8000, 0x8000})
+	/usr/lib/golang/src/internal/poll/fd_unix.go:165 +0x499
+os.(*File).read(...)
+	/usr/lib/golang/src/os/file_posix.go:30
+os.(*File).Read(0xc00008c090, {0xc0001a8000, 0x8000, 0x8000})
+	/usr/lib/golang/src/os/file.go:144 +0xad
+io.copyBuffer({0xdbcae0, 0xc000111170}, {0xdbcb00, 0xc0001a6010}, {0xc0001a8000, 0x8000, 0x8000})
+	/usr/lib/golang/src/io/io.go:429 +0x271
+io.CopyBuffer({0xdbcae0, 0xc000111170}, {0xdbcb00, 0xc0001a6010}, {0xc0001a8000, 0x8000, 0x8000})
+	/usr/lib/golang/src/io/io.go:402 +0x90
+github.com/snonux/homelabfs/internal/controlledruntime.(*exporterLog).drain(0xc000111170)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/process_logs.go:200 +0xd8
+created by github.com/snonux/homelabfs/internal/controlledruntime.(*exporterLogs).start in goroutine 8
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/process_logs.go:194 +0x95
+
+goroutine 19 [IO wait, 10 minutes]:
+internal/poll.runtime_pollWait(0x7ff9b951d600, 0x72)
+	/usr/lib/golang/src/runtime/netpoll.go:351 +0x85
+internal/poll.(*pollDesc).wait(0xc0000806e0, 0x72, 0x1)
+	/usr/lib/golang/src/internal/poll/fd_poll_runtime.go:84 +0xb1
+internal/poll.(*pollDesc).waitRead(...)
+	/usr/lib/golang/src/internal/poll/fd_poll_runtime.go:89
+internal/poll.(*FD).Read(0xc0000806c0, {0xc00019e000, 0x8000, 0x8000})
+	/usr/lib/golang/src/internal/poll/fd_unix.go:165 +0x499
+os.(*File).read(...)
+	/usr/lib/golang/src/os/file_posix.go:30
+os.(*File).Read(0xc00008c0a8, {0xc00019e000, 0x8000, 0x8000})
+	/usr/lib/golang/src/os/file.go:144 +0xad
+io.copyBuffer({0xdbcae0, 0xc000111440}, {0xdbcb00, 0xc0001a6000}, {0xc00019e000, 0x8000, 0x8000})
+	/usr/lib/golang/src/io/io.go:429 +0x271
+io.CopyBuffer({0xdbcae0, 0xc000111440}, {0xdbcb00, 0xc0001a6000}, {0xc00019e000, 0x8000, 0x8000})
+	/usr/lib/golang/src/io/io.go:402 +0x90
+github.com/snonux/homelabfs/internal/controlledruntime.(*exporterLog).drain(0xc000111440)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/process_logs.go:200 +0xd8
+created by github.com/snonux/homelabfs/internal/controlledruntime.(*exporterLogs).start in goroutine 8
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/process_logs.go:194 +0x95
+
+goroutine 20 [syscall, 10 minutes]:
+syscall.Syscall6(0xf7, 0x3, 0x17, 0xc00005fd70, 0x4, 0xc00002a3f0, 0x0)
+	/usr/lib/golang/src/syscall/syscall_linux.go:96 +0x45
+internal/syscall/unix.Waitid(0x3, 0x17, 0xc00005fd70, 0x4, 0xc00002a3f0)
+	/usr/lib/golang/src/internal/syscall/unix/waitid_linux.go:18 +0x70
+os.(*Process).pidfdWait.func1(...)
+	/usr/lib/golang/src/os/pidfd_linux.go:108
+os.ignoringEINTR(...)
+	/usr/lib/golang/src/os/file_posix.go:263
+os.(*Process).pidfdWait(0xc000074a00)
+	/usr/lib/golang/src/os/pidfd_linux.go:107 +0x365
+os.(*Process).wait(0xc000074a00)
+	/usr/lib/golang/src/os/exec_unix.go:25 +0x47
+os.(*Process).Wait(...)
+	/usr/lib/golang/src/os/exec.go:346
+os/exec.(*Cmd).Wait(0xc000156340)
+	/usr/lib/golang/src/os/exec/exec.go:930 +0xb0
+github.com/snonux/homelabfs/internal/controlledruntime.(*Supervisor).launchObserved.func4()
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/process.go:170 +0x45
+created by github.com/snonux/homelabfs/internal/controlledruntime.(*Supervisor).launchObserved in goroutine 8
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/controlledruntime/process.go:170 +0x137d
+
+goroutine 21 [chan receive, 8 minutes]:
+github.com/snonux/homelabfs/internal/fsservice.(*Service).run(0xc0000f4008)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/fsservice/service.go:192 +0x148
+created by github.com/snonux/homelabfs/internal/fsservice.New in goroutine 8
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/fsservice/service.go:97 +0x1e3d
+
+goroutine 27 [select]:
+github.com/snonux/homelabfs/internal/guestbridge.(*retryRing).next(_, _)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/worker.go:66 +0x525
+github.com/snonux/homelabfs/internal/guestbridge.(*Transport).worker(0xc001326780, 0xc0010cd180)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/worker.go:99 +0x237
+created by github.com/snonux/homelabfs/internal/guestbridge.(*Transport).startWorkers in goroutine 8
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/endpoint.go:310 +0x185
+
+goroutine 26 [select]:
+github.com/snonux/homelabfs/internal/guestbridge.(*retryRing).next(_, _)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/worker.go:66 +0x525
+github.com/snonux/homelabfs/internal/guestbridge.(*Transport).worker(0xc001326780, 0xc0010cd110)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/worker.go:99 +0x237
+created by github.com/snonux/homelabfs/internal/guestbridge.(*Transport).startWorkers in goroutine 8
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/endpoint.go:310 +0x185
+
+goroutine 25 [select]:
+github.com/snonux/homelabfs/internal/guestbridge.(*retryRing).next(_, _)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/worker.go:66 +0x525
+github.com/snonux/homelabfs/internal/guestbridge.(*Transport).worker(0xc001326780, 0xc0010cd0a0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/worker.go:99 +0x237
+created by github.com/snonux/homelabfs/internal/guestbridge.(*Transport).startWorkers in goroutine 8
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/endpoint.go:310 +0x185
+
+goroutine 28 [runnable]:
+github.com/snonux/homelabfs/internal/guestbridge.(*retryRing).next(_, _)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/worker.go:66 +0x525
+github.com/snonux/homelabfs/internal/guestbridge.(*Transport).worker(0xc001326780, 0xc0010cd1f0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/worker.go:99 +0x237
+created by github.com/snonux/homelabfs/internal/guestbridge.(*Transport).startWorkers in goroutine 8
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/endpoint.go:310 +0x185
+
+goroutine 29 [runnable]:
+github.com/snonux/homelabfs/internal/guestbridge.(*retryRing).next(_, _)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/worker.go:66 +0x525
+github.com/snonux/homelabfs/internal/guestbridge.(*Transport).worker(0xc001326780, 0xc0010cd260)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/worker.go:99 +0x237
+created by github.com/snonux/homelabfs/internal/guestbridge.(*Transport).startWorkers in goroutine 8
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/endpoint.go:310 +0x185
+
+goroutine 30 [select]:
+github.com/snonux/homelabfs/internal/guestbridge.(*retryRing).next(_, _)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/worker.go:66 +0x525
+github.com/snonux/homelabfs/internal/guestbridge.(*Transport).worker(0xc001326780, 0xc0010cd2d0)
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/worker.go:99 +0x237
+created by github.com/snonux/homelabfs/internal/guestbridge.(*Transport).startWorkers in goroutine 8
+	/home/paul/git/homelabfs/.claude/worktrees/agent-a45137774f9c26503/internal/guestbridge/endpoint.go:310 +0x185
+
+goroutine 13 [IO wait, 8 minutes]:
+internal/poll.runtime_pollWait(0x7ff9b8bc5000, 0x72)
+	/usr/lib/golang/src/runtime/netpoll.go:351 +0x85
+internal/poll.(*pollDesc).wait(0xc001118bc0, 0x72, 0x1)
+	/usr/lib/golang/src/internal/poll/fd_poll_runtime.go:84 +0xb1
+internal/poll.(*pollDesc).waitRead(...)
+	/usr/lib/golang/src/internal/poll/fd_poll_runtime.go:89
+internal/poll.(*FD).Read(0xc001118ba0, {0xc0013c6000, 0x8000, 0x8000})
+	/usr/lib/golang/src/internal/poll/fd_unix.go:165 +0x499
+os.(*File).read(...)
+	/usr/lib/golang/src/os/file_posix.go:30
+os.(*File).Read(0xc000006310, {0xc0013c6000, 0x8000, 0x8000})
+	/usr/lib/golang/src/os/file.go:144 +0xad
+io.copyBuffer({0xdbca00, 0xc0014100e0}, {0xdbc680, 0xc000006310}, {0x0, 0x0, 0x0})
+	/usr/lib/golang/src/io/io.go:429 +0x271
+io.Copy(...)
+	/usr/lib/golang/src/io/io.go:388
+os.genericWriteTo(0xc000006310, {0xdbca00, 0xc0014100e0})
+	/usr/lib/golang/src/os/file.go:295 +0x4a
+os.(*File).WriteTo(0xc000006310, {0xdbca00, 0xc0014100e0})
+	/usr/lib/golang/src/os/file.go:273 +0xd5
+io.copyBuffer({0xdbca00, 0xc0014100e0}, {0xdbc700, 0xc000006310}, {0x0, 0x0, 0x0})
+	/usr/lib/golang/src/io/io.go:411 +0xd4
+io.Copy(...)
+	/usr/lib/golang/src/io/io.go:388
+os/exec.(*Cmd).writerDescriptor.func1()
+	/usr/lib/golang/src/os/exec/exec.go:602 +0x5b
+os/exec.(*Cmd).Start.func2(0xc001296260)
+	/usr/lib/golang/src/os/exec/exec.go:757 +0x3d
+created by os/exec.(*Cmd).Start in goroutine 8
+	/usr/lib/golang/src/os/exec/exec.go:756 +0x10f2
+
+goroutine 14 [select, 10 minutes]:
+os/exec.(*Cmd).watchCtx(0xc001102820, 0xc0000de1c0)
+	/usr/lib/golang/src/os/exec/exec.go:797 +0x10a
+created by os/exec.(*Cmd).Start in goroutine 8
+	/usr/lib/golang/src/os/exec/exec.go:783 +0x109d
+FAIL	github.com/snonux/homelabfs/internal/controlledruntime	600.032s
+FAIL

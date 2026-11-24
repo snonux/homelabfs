@@ -2827,4 +2827,45 @@ Results (`--scenario terminal-kernel80`, one run at a time, another worker
 building a kernel): three final runs pass in 113.8 s, 136.5 s and 92.7 s;
 their fills took 32.7 s, 42.4 s and 34.2 s of wall time, so each would
 have failed under the old deadline. `--scenario allocate` passes (49.0 s)
-with the changed `compat.h`. `both` was not rerun.
+with the changed `compat.h`. `both` was not rerun. ml4 (below) replaced
+the hold.
+
+## Nested fill time charged per request (`ml4`)
+
+k84's `CLOCK_HOLD` froze `jiffies` for the whole kernel80 fill, so it also
+froze every other bounded wait during it: each nested request's own 30 s
+deadline, `wait_event_timeout` and the rest. A real stall in the fill
+became a 600 s go test timeout instead of a clear error. The
+controlled_received `compat.h` now takes `jiffies` as `CLOCK_MONOTONIC`
+minus a nested-time offset. Between the consumer's `CLOCK_SPLIT_BEGIN` and
+`CLOCK_SPLIT_END`, the scheduling-yield loop adds each nested command's
+real service time to that offset once the command returns. The yielding
+request's clock then resumes where it stood, and each nested request is
+charged only its own time. Every deadline stays live. The trade-off is that
+a stamp a nested request leaves in shared state (`retire_after`,
+`pressure_after`) can lie up to its service time in the yielding request's
+future. The series compares those stamps with signed
+`time_before`/`time_after_eq`, so this only delays a rate-limited kick.
+Outside the split the offset is 0.
+
+Main at 3a86ab9 no longer compiled the consumer, because wj4 added
+`view_vmas` atomics and `address_space.nrpages` to `hfs_view.c` but only
+updated `tests/view/compat.h`. ml4 adds the same shims to controlled_received.
+
+Proof (owned `prepare.py` tree, one run at a time; temporary test changes
+not committed; `evidence/ml4`):
+
+* Forced stall (native responses held after the 80th replay). With
+  `CLOCK_HOLD` the test hung until `panic: test timed out after 10m0s`
+  (603 s). With the split it fails in 84.6 s with
+  `REPLAY_CONTROL ... VIEW_RELEASE = -110` (`uncertain control result on
+  VIEW_RELEASE (-110)`), which names the stalled request.
+* k84's 400 ms delay per nested replay passes with a 43.7 s fill. Without
+  the hold or the split, k84's run with the same delay failed with `-110`.
+* Final runs: `terminal-kernel80` passes twice (55.1 s and 42.5 s; fills
+  18.3 s and 12.7 s), and `--scenario allocate` passes (36.7 s). `both` was
+  not rerun.
+
+`evidence/k84` now also records `error`, `peakdisk` (null, because run.py
+does not record it) and `source_changes` per run, plus the committed
+`allocate-1` receipt.

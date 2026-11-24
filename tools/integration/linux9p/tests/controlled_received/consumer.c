@@ -194,8 +194,10 @@ static Hfs9p *carrier;
 static uuid_t primitive_supervised_controller;
 static u64 primitive_native_nodes[3];
 static unsigned current_command;
-/* Declared in compat.h; zero means jiffies follows CLOCK_MONOTONIC. */
-unsigned long primitive_held_milliseconds;
+/* Declared in compat.h: nested service time subtracted from CLOCK_MONOTONIC
+ * for jiffies; stays 0 unless clock_split (CLOCK_SPLIT_BEGIN, ml4). */
+unsigned long primitive_nested_milliseconds;
+static bool clock_split;
 static char fault_operation[32];
 static unsigned fault_mode;
 static bool fault_reply;
@@ -331,9 +333,20 @@ static int p9_client_hfs_tag_idle(struct p9_client *client,u16 tag) {
 }
 #include "client_exchange.inc"
 static void command(char *line);
+/* Runs one host command nested in the current request's scheduling yield.
+ * Under CLOCK_SPLIT (ml4, compat.h) its whole real service time, including
+ * anything nested deeper, is then added to the offset as it stood before
+ * the command: the yielding request's jiffies resumes where it stood and
+ * the nested request alone was charged that time. */
+static void nested_command(char *line) {
+ unsigned saved=current_command;
+ unsigned long offset=__atomic_load_n(&primitive_nested_milliseconds,__ATOMIC_RELAXED),start=primitive_monotonic_milliseconds();
+ command(line);current_command=saved;
+ if(clock_split)__atomic_store_n(&primitive_nested_milliseconds,offset+(primitive_monotonic_milliseconds()-start),__ATOMIC_RELAXED);
+}
 void primitive_sleep(unsigned long lower,unsigned long upper) {
  (void)upper;printf("Y %u\n",current_command);fflush(stdout);
- for(;;){char *line=read_line();if(!strcmp(line,"CONTINUE")){free(line);break;}unsigned saved=current_command;command(line);current_command=saved;free(line);}
+ for(;;){char *line=read_line();if(!strcmp(line,"CONTINUE")){free(line);break;}nested_command(line);free(line);}
  usleep(lower);
 }
 /* The portable fixture has no background controller. Actual helper progress is
@@ -713,15 +726,15 @@ static void command(char *line) {
   int n=snprintf(state,sizeof(state),"{\"ordinary\":%u,\"control\":%u,\"reserved\":%u,\"unknown\":%u,\"links\":%u,\"ordinary_credits\":%u,\"control_credits\":%u,\"ordinary_received\":%u,\"control_received\":%u,\"captured_ordinary\":%u,\"captured_control\":%u,\"verified\":%s,\"pending\":%s,\"module_puts\":%u,\"client_destroys\":%u,\"fault_module_puts\":%u,\"fault_clients\":%u,\"active\":%u,\"progress_parents\":%s}",ordinary,control,reserved,unknown,links,m->ordinary_credits,m->control_credits,m->ordinary_received,m->control_received,old_ordinary,old_control,s->terminal_verified?"true":"false",s->terminal_pending?"true":"false",module_put_count,client_destroy_count,post_fault_puts,post_fault_clients,atomic_read(&hfs_active_sessions),s->control_completion||s->retirement_completion||s->terminal_completion?"true":"false");
   done(id,0,state,n);return;
  }
- /* k84: freeze jiffies across terminal-kernel80's nested 80-request fill
-  * (see compat.h). Release lets the clock jump forward to real time, as
-  * after a long deschedule; it never runs backwards. */
- if(!strcmp(operation,"CLOCK_HOLD")){
-  assert(!primitive_held_milliseconds);unsigned long now=jiffies;assert(now);
-  __atomic_store_n(&primitive_held_milliseconds,now,__ATOMIC_RELAXED);done(id,0,NULL,0);return;
+ /* ml4: charge nested service time per request across terminal-kernel80's
+  * nested 80-request fill (see compat.h). Both are sent at top level, with
+  * no request in flight. END drops the offset, so jiffies jumps forward to
+  * real time, as after a long deschedule; it never runs backwards there. */
+ if(!strcmp(operation,"CLOCK_SPLIT_BEGIN")){
+  assert(!clock_split&&!primitive_nested_milliseconds);clock_split=true;done(id,0,NULL,0);return;
  }
- if(!strcmp(operation,"CLOCK_RELEASE")){
-  assert(primitive_held_milliseconds);__atomic_store_n(&primitive_held_milliseconds,0,__ATOMIC_RELAXED);done(id,0,NULL,0);return;
+ if(!strcmp(operation,"CLOCK_SPLIT_END")){
+  assert(clock_split);clock_split=false;__atomic_store_n(&primitive_nested_milliseconds,0,__ATOMIC_RELAXED);done(id,0,NULL,0);return;
  }
  if(!strcmp(operation,"REPLAY_CONTROL")){
   unsigned reserved;char op[32];int used=0;assert(sscanf(line+consumed,"%u %31s %n",&reserved,op,&used)==2&&reserved<=1);

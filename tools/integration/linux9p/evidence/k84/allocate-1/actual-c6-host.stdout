@@ -1,0 +1,6 @@
+=== RUN   TestControlledReceivedActualAllocateRetryProfile
+    c6_actual_received_test.go:1098: rpc returned error-5 method1 cell2
+    c6_actual_received_test.go:1098: rpc returned error-5 method2 cell2
+--- PASS: TestControlledReceivedActualAllocateRetryProfile (45.20s)
+PASS
+ok  	github.com/snonux/homelabfs/internal/controlledruntime	46.233s
