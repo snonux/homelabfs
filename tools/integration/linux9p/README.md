@@ -2483,9 +2483,14 @@ rather than from a guest patch. The series is unchanged.
   nested in that WAIT took 0.3-0.7 s under `-race`/ASan load. The test fails
   even at `ff866c5`, where it passed on 2026-11-09 on an idle host. By 784's
   rule (from the code; not run on its own), the nested release of session 1's
-  lease could not produce session 0's event after that merge anyway. The nested release is now session 0's own lease, and a WAIT
-  that misses the window is retried with a fresh lease (at most four
-  attempts). Session 1's recall runs afterwards and involves session 1 only.
+  lease could not produce session 0's event after that merge anyway. The
+  nested release is now session 0's own lease. A WAIT that misses the window
+  finishes its recall, releases the lease, runs `VIEW_RETIRE` and acquires
+  a fresh lease, then retries, at most four attempts in all. Review 1 found
+  that without the retirement the fourth ACQUIRE failed with `-ENOSPC`.
+  The harness has no background retirement, so released tickets kept
+  holding capacity. Six forced misses in a row now still pass. Session 1's
+  recall runs afterwards and involves session 1 only.
 - `run.py --scenario both` runs one stage per scenario (19 stages that
   together select every test once), each under its own Go timeout. The
   default timeout is now 600 s; `cleanup` and `exit-cleanup` keep 900 s.

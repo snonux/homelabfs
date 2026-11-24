@@ -41,7 +41,8 @@ type receivedCarrier struct {
 	backendOnly         bool
 	yields              func(uint64)
 	nativeAgain         int
-	nativeErrors        int // definitive native read errors answered ERROR (bh4)
+	nativeErrors        int  // definitive native read errors answered ERROR (bh4)
+	passReadErrors      bool // answer a native read's fsapi.IO with ERROR (bh4)
 }
 
 type receivedDiagnostics struct {
@@ -263,10 +264,11 @@ func (c *receivedCarrier) nativeRead(fields []string) {
 		c.write("AGAIN")
 		return
 	}
-	if errors.Is(err, fsapi.IO) {
+	if c.passReadErrors && errors.Is(err, fsapi.IO) {
 		// Since z54 a cell the host will never answer (blocked) reads as
 		// a definitive EIO instead of WouldBlock until the guest's
-		// deadline; pass it on like FUSE does (bh4).
+		// deadline; pass it on like FUSE does (bh4). Only tests that
+		// expect such a cell opt in; anywhere else IO stays fatal.
 		c.nativeErrors++
 		c.write("ERROR")
 		return
@@ -397,8 +399,18 @@ const receivedMultipollAttempts = 4
 // (hfs9p.c _wait_step); under -race, ASan and a loaded host the nested
 // release alone has taken 0.3-0.7 s, so the event can miss that window and
 // the WAIT legitimately ends EMPTY (bh4). Such an attempt finishes its
-// recall, takes a fresh lease and tries again; only the multipoll EVENT
-// itself is verified, never an EMPTY.
+// recall, releases the lease, retires the view and takes a fresh lease, then
+// tries again. Only the multipoll EVENT itself is verified, never an EMPTY.
+//
+// VIEW_RETIRE is required: a released lease's tickets still hold mount
+// capacity until the view retirement retires them (observed behaviour; the
+// exact charge was not isolated). A mounted guest retires them in the
+// background; this harness has no background controller. Without the
+// retirement the fourth ACQUIRE of a session failed with -ENOSPC (bh4
+// review 1). With it, six forced misses in a row (a 1.2 s sleep before the
+// nested release) still ended in a verified EVENT on the seventh attempt.
+// The bound stays at four attempts; it only caps how long a host too loaded
+// for the 1 s window is retried.
 func receivedMultipollEvent(t *testing.T, c *receivedCarrier, domain guestbridge.Capability) {
 	t.Helper()
 	for attempt := 1; ; attempt++ {
@@ -417,6 +429,7 @@ func receivedMultipollEvent(t *testing.T, c *receivedCarrier, domain guestbridge
 		t.Logf("attempt %d: the nested release's EVENT missed the 1 s WAIT window; finishing that recall and retrying", attempt)
 		receivedRecallPhases(c, 0, domain, true)
 		c.action("RELEASE_DONE", 0, "", 0)
+		c.action("VIEW_RETIRE", 0, "", 0)
 		c.action("ACQUIRE", 0, "", 0)
 	}
 }
@@ -578,7 +591,9 @@ func TestControlledReceivedActualSourceCorruption(t *testing.T) {
 	// EIO (lib9p: Rbridge ERROR INVALID), so the actual exchange fails at once
 	// with -EPROTO instead of reaching its -ETIMEDOUT deadline (bh4).
 	errorsBefore := c.nativeErrors
+	c.passReadErrors = true
 	c.action("ACQUIRE", 0, "", -71)
+	c.passReadErrors = false
 	if c.nativeErrors == errorsBefore {
 		t.Fatal("damaged source was not refused with a definitive native read error")
 	}
@@ -1278,6 +1293,10 @@ func TestControlledReceivedActualMixedIssuerFloors(t *testing.T) {
 func TestControlledReceivedActualEffectedGapRefusal(t *testing.T) {
 	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
 	c := startReceivedCarrier(t, r)
+	// The lost CALL leaves cells the host never answers; since z54 their
+	// reads are a definitive IO (bh4). This test still fails since oc4
+	// (task fl4).
+	c.passReadErrors = true
 	root := c.action("REQUEST", 0, "ROOT "+hex.EncodeToString(mustRuntimeJSON(t, map[string]any{})), 0)
 	caps := receivedResult(t, root)
 	c.action("ADOPT_ROOT_PREPARE", 0, "", 0)

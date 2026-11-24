@@ -283,8 +283,9 @@ static int primitive_rpc_exchange(struct p9_client *client,u16 tag,u8 op,u8 chan
  if(err==EAGAIN){*(u8 *)reply=2;*reply_len=1;return 0;}
  /* bh4: a FETCH of a cell the host will never answer (EIO, z54) is the
   * Rbridge ERROR the real lib9p encoder sends (hfs9p_exchange), so the
-  * actual guest hfs_transport_fetch maps its reason. Other FETCH errors keep
-  * returning the errno directly. */
+  * actual guest hfs_transport_fetch maps its reason. Only EIO is encoded,
+  * deliberately: other FETCH errors (ESTALE, EACCES, ...) keep returning the
+  * errno directly, as before bh4. */
  if(err==EIO){*(u8 *)reply=4;_put((u8 *)reply+1,_error_reason(err),2);*reply_len=3;return 0;}
  if(err){fprintf(stderr,"actual native FETCH error %d cell%llu channel%u revoked%d pending%d\n",err,cell,channel,carrier->revoked,carrier->pending);return -err;}if(fault_reply){fault_reply=false;return -EIO;}if(pending_scratch){fault_scratch=pending_scratch;pending_scratch=0;}*(u8 *)reply=3;*reply_len=length+1;return 0;
 }
@@ -1160,7 +1161,14 @@ static void command(char *line) {
  if(!strcmp(operation,"RUN")) {
   unsigned reserved;char op[32];int used=0;assert(sscanf(line+consumed,"%u %31s %n",&reserved,op,&used)==2&&reserved<=1);
   struct hfs_buf payload={0};assert(!hfs_buf_init(&payload,HFS_BODY_MAX));payload.len=decode_hex(line+consumed+used,payload.data,HFS_BODY_MAX);
-  hfs_json_free(f->latest);f->latest=NULL;int err=hfs_control(&(*f->session),op,&payload,reserved,&f->latest);hfs_buf_free(&payload);
+  /* bh4: receive into a local and replace f->latest only afterwards. A
+   * command nested in this RUN's scheduling yields (RELEASE_START of the
+   * same session) stores its own reply in f->latest meanwhile; writing the
+   * RUN reply straight into f->latest leaked that reply (review 1; this
+   * leak was not the cause of the retry's -ENOSPC, see VIEW_RETIRE in
+   * receivedMultipollEvent). */
+  hfs_json_free(f->latest);f->latest=NULL;struct hfs_json *reply=NULL;int err=hfs_control(&(*f->session),op,&payload,reserved,&reply);hfs_buf_free(&payload);
+  hfs_json_free(f->latest);f->latest=reply;
   done(id,err,f->latest?f->latest->data:NULL,f->latest?f->latest->len:0);return;
  }
  if(!strcmp(operation,"CHECK")){done(id,fixture_check(f,line+consumed),NULL,0);return;}

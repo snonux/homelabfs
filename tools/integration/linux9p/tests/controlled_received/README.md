@@ -97,8 +97,11 @@ own domain, so another session's release no longer gives session 0 an event.
 Session 1's lease is released afterwards and only session 1 acknowledges that
 recall. lib9p ends one WAIT after 1 s (`_wait_step`); when the nested release
 is too slow for that window under load the WAIT legitimately ends EMPTY, and
-the test finishes that recall, acquires a fresh lease and retries (at most
-four attempts). `--scenario dirty` releases session 0's EXCLUSIVE_DIRTY lease
+the test finishes that recall, releases the lease, retires the view
+(`VIEW_RETIRE`) and acquires a fresh lease, then retries, at most four
+attempts in all. Without the retirement a released lease kept holding
+capacity and the fourth ACQUIRE failed with `-ENOSPC`. With it, six forced
+misses in a row still ended in a verified EVENT (review 1). `--scenario dirty` releases session 0's EXCLUSIVE_DIRTY lease
 through the complete production `hfs_lease_release` (`RELEASE_DONE`); that
 recall stays all-domain, so both sessions still take part. Once the release
 ticket is admitted (`RELEASE_READY`) the recall, `CLOSE_PENDING` and the drain
