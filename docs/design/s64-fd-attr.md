@@ -248,7 +248,8 @@ hfs_getattr/hfs_setattr relies on this returning 0 (no dentry outlives a
 walk); caching dentries requires limiting that fallback to fd callers
 first." A test that keeps an fd open, renames the file from another client
 and then runs `stat(old name)` (expected ENOENT, never the old file's
-attributes) guards it in the guest suite.
+attributes) should guard it. That test needs a guest VM and is not written
+yet (see the tests section below).
 
 ### Borrowing a description
 
