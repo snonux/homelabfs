@@ -2592,22 +2592,27 @@ built" notes list where the build differs from the specification):
   block and requests the worker missed are covered.
 - **Pass** (`hfs_session_abandon`): batches of at most 64 eligible requests
   (allocated; not terminal, gap, abandoning, earmarked, control or held; no
-  users), marked `abandoning` and copied under `session->lock`, sent as one
-  reserved ABANDON each (`hfs_abandon_exchange`: one resend only for an
+  users and no exchange in flight), marked `abandoning` and copied under
+  `session->lock`, sent as one reserved ABANDON each (`hfs_abandon_exchange`: one resend only for an
   uncertain failure). The closed reply is checked (`hfs_abandon_check`):
   verification null, one outcome per number in order, a proof exactly on
   ABANDONED. ABANDONED makes the request a gap, which `hfs_retire` retires
   through GAP_RESOLVE; KEPT, RETIRED_ID and UNKNOWN keep it retained.
-- **Promise**: `hfs_request_run` sends no CALL or QUERY for an abandoning
-  request (`hfs_request_abandon_halt`), and `hfs_request_resolve_gap`
-  refuses one the host kept.
+- **Promise**: `hfs_request_run` sends its CALL and QUERYs through
+  `hfs_control_request` (`hfs_control_flagged` with the request), which
+  refuses an abandoning request at admission under `session->lock` and
+  counts admitted exchanges in `request->exchanges`; the pass never lists a
+  request with one in flight. `hfs_request_resolve_gap` refuses one the host
+  kept.
 - **Policy** (0002): ABANDON is exempt from the blocked-session halt, like
   GAP_RESOLVE (dh4). **0005**: it is cleanup for the controlled pre-send
   gate, because kill_sb sends it on a closing session.
 
 Tests: `transport` (exempt; red first), `mount_hello`
-(`session-block-abandon`, the kill_sb pass), `controlled` modes `abandon`
-and `abandon-old` (the latter against the exporter without ABANDON, built
+(`session-block-abandon`, the kill_sb pass), `controlled` modes `abandon`,
+`abandon-query` (a request listed at its QUERY's admission after its
+admitted CALL ended: no QUERY; red first in review 1) and `abandon-old` (the
+latter against the exporter without ABANDON, built
 with `build.py --old-exporter`), and `controlled_received --scenario
 abandon` (`TestControlledReceivedActualAbandon`). The design doc lists what
 each case checks. `view/compat.h` stubs `hfs_session_abandon_queue` for the

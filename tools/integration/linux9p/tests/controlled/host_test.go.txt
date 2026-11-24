@@ -24,7 +24,7 @@ func TestControlledProductionGuestBackendHost(t *testing.T) {
 	if consumer == "" {
 		t.Fatal("explicit production C consumer required")
 	}
-	for _, mode := range []string{"gap=false", "gap=true", "legacy0", "legacy1", "legacy0-control", "legacy1-control", "abandon", "abandon-old"} {
+	for _, mode := range []string{"gap=false", "gap=true", "legacy0", "legacy1", "legacy0-control", "legacy1-control", "abandon", "abandon-old", "abandon-query"} {
 		t.Run(mode, func(t *testing.T) {
 			gap := mode == "gap=true"
 			legacy := strings.HasPrefix(mode, "legacy")
@@ -66,9 +66,9 @@ func TestControlledProductionGuestBackendHost(t *testing.T) {
 				cmd.Env = append(cmd.Env, "HFS_CONTROLLED_GAP=1")
 			}
 			if abandon {
-				cmd.Env = append(cmd.Env, "HFS_CONTROLLED_ABANDON="+map[bool]string{true: "old", false: "new"}[mode == "abandon-old"])
+				cmd.Env = append(cmd.Env, "HFS_CONTROLLED_ABANDON="+map[string]string{"abandon": "new", "abandon-old": "old", "abandon-query": "query"}[mode])
 			}
-			abandons := 0
+			abandons, queries := 0, 0
 			input, err := cmd.StdinPipe()
 			mustAllocation(t, err)
 			output, err := cmd.StdoutPipe()
@@ -133,6 +133,9 @@ func TestControlledProductionGuestBackendHost(t *testing.T) {
 						if (decoded.Flags&1 != 0) != control {
 							t.Fatalf("incorrect native class: %s flags=%d", command.Op, decoded.Flags)
 						}
+					}
+					if command.Op == "QUERY" {
+						queries++
 					}
 					if command.Op == "ABANDON" {
 						abandons++
@@ -213,7 +216,7 @@ func TestControlledProductionGuestBackendHost(t *testing.T) {
 				return
 			}
 			if abandon {
-				checkProductionAbandon(t, h, mode == "abandon-old", abandons, calls, originalAllocation != nil)
+				checkProductionAbandon(t, h, mode, abandons, calls, queries, originalAllocation != nil)
 				t.Log(diagnostics.String())
 				return
 			}
@@ -264,14 +267,23 @@ func newLegacyProductionHarness(t *testing.T, view bool) *allocationHarness {
 // exactly one ABANDON (the guest checked the bytes above), which declines the
 // never-called claim as a gap and zeroes its credit; the guest then retires
 // nothing more and sends no CALL. The old exporter refuses the ABANDON before
-// this host sees it: the claim stays ALLOCATED and charged.
-func checkProductionAbandon(t *testing.T, h *allocationHarness, old bool, abandons, calls int, allocated bool) {
+// this host sees it: the claim stays ALLOCATED and charged. abandon-query
+// lists the claim after its CALL was admitted: the guest sends no QUERY, and
+// the host keeps the claim whose CALL ran (no gap, not abandoned).
+func checkProductionAbandon(t *testing.T, h *allocationHarness, mode string, abandons, calls, queries int, allocated bool) {
 	t.Helper()
 	e, exists := h.stored(h.original)
-	if !exists || !allocated || calls != 0 {
+	query := mode == "abandon-query"
+	if !exists || !allocated || calls != map[bool]int{true: 1}[query] {
 		t.Fatalf("abandon fixture: exists=%v allocated=%v calls=%d", exists, allocated, calls)
 	}
-	if old {
+	if query {
+		if abandons != 1 || queries != 0 || e.Gap || e.Abandoned || e.Status == "ALLOCATED" || e.Status == "DECLINED" {
+			t.Fatalf("abandon-query: abandons=%d queries=%d status=%s gap=%v abandoned=%v", abandons, queries, e.Status, e.Gap, e.Abandoned)
+		}
+		return
+	}
+	if mode == "abandon-old" {
 		if abandons != 0 || e.Gap || e.Abandoned || e.Status != "ALLOCATED" {
 			t.Fatalf("old exporter forwarded ABANDON: abandons=%d status=%s gap=%v", abandons, e.Status, e.Gap)
 		}

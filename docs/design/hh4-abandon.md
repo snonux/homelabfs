@@ -448,9 +448,18 @@ Tests to add with the guest change:
   which only a mapped 1.4 session gets (the host answers INDETERMINATE on
   1.2/1.3), so on 1.2/1.3 the gap is not retired by `hfs_retire`. That is
   unchanged from every other gap on those minors.
-- The promise (step 6): `hfs_request_run` checks `abandoning` (gap or not)
-  before its CALL and before each QUERY (`hfs_request_abandon_halt`,
-  `-EHOSTDOWN`); `hfs_request_resolve_gap` refuses `abandoning && !gap`.
+- The promise (step 6) is enforced at admission, not by a check before the
+  send: `hfs_request_run` sends its CALL and every QUERY through
+  `hfs_control_request` with the request, which refuses an `abandoning`
+  request with `-EHOSTDOWN` under `session->lock` before a cell is numbered.
+  An admitted exchange counts in `request->exchanges` until it ends, and the
+  collection skips such a request. Both happen under `session->lock`, so
+  once a request is listed no CALL or QUERY for it is admitted, and none
+  admitted earlier is still being sent or retried. (The writer alone would
+  not order them: `hfs_transport_send` yields it between CAPACITY retries.)
+  This replaces design step 4's "A CALL already in flight can still finish":
+  a request is never listed while one is in flight; it is left to a later
+  pass (kill_sb's). `hfs_request_resolve_gap` refuses `abandoning && !gap`.
 - Patch 0005: ABANDON is a cleanup operation for the controlled pre-send
   gate (`hfs_controlled_cleanup_operation`), because kill_sb's pass runs on a
   closing session.
@@ -462,10 +471,13 @@ Tests to add with the guest change:
   already terminal. A request the worker misses is more often one that
   became eligible after the worker ran (an exchange in flight at block time
   that failed later); kill_sb's pass lists it.
-- In-flight TERMINAL after KEPT: `hfs_abandon_apply` leaves a request that
-  turned terminal meanwhile alone. The harnesses cannot interleave an
-  in-flight exchange of the same session with the ABANDON (the writer mutex
-  is held across the exchange), so this rule is source-reviewed only.
+- In-flight TERMINAL after KEPT cannot happen (no listed request has an
+  exchange in flight). `hfs_abandon_apply` still leaves a request that is
+  terminal alone, as a defensive check; that branch is source-reviewed only.
+- Resend after `-EPROTO`: the guest cannot tell an exporter ERROR INVALID
+  from a malformed host reply by errno (both are `-EPROTO`, and
+  `exporter_error` is sticky), so neither is resent. After a malformed
+  reply the listed requests stay `abandoning` and retained, like KEPT ones.
 
 Tests as built (all local, no guest boot):
 
@@ -486,15 +498,22 @@ Tests as built (all local, no guest boot):
   --old-exporter` removes the classifier branch): the exporter refuses the
   SEND, nothing reaches the host (claim still ALLOCATED), the guest gets
   `-EPROTO`, does not resend, logs once, keeps the claim and stays blocked
-  without `transport_failed`.
+  without `transport_failed`. `abandon-query` runs the actual collection
+  at two points of one `hfs_request_run` on an unblocked session: while the
+  admitted CALL's reply is fetched it lists nothing (in flight), and at the
+  QUERY's admission it lists the request; no QUERY is sent, and the ABANDON
+  then gets KEPT. It failed with the QUERY-side check removed (review 1,
+  red first), and kills the mutants "no admission check" and "no in-flight
+  check".
 - `controlled_received --scenario abandon`
   (`TestControlledReceivedActualAbandon`, mapped 1.4, real
   Producer/runtime): the block queues the worker once; the worker skips a
   request a caller holds and sends nothing; the final pass sends one ABANDON
   with the exact bytes; ABANDONED becomes `gap`; RETIRE moves the floor to 2
   and the GAP_RESOLVE proof equals the ABANDON proof; a further pass sends
-  nothing. A claim whose CALL ran (reply lost) is answered KEPT, stays
-  retained, and the guest sends no further QUERY for it.
+  nothing. A claim whose CALL ran (reply lost) is answered KEPT and stays
+  retained; a rerun sends nothing for it (its CALL is refused at admission,
+  so this does not exercise the QUERY side; `abandon-query` does).
 - lib9p `backend_test`: `_abandon` accepts the closed shape (1 and 64
   claims) and refuses no claim, 65 claims, unordered or duplicate numbers,
   number 0, missing or short hashes, extra fields, an empty or odd subject,

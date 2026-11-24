@@ -1275,8 +1275,11 @@ func receivedAbandonOutcome(t *testing.T, raw []byte) (number uint64, status, pr
 // the exact claim, the host answers ABANDONED, the request becomes a gap and
 // RETIRE passes it with the same proof GAP_RESOLVE returns. A further pass
 // sends nothing. Session 1: the CALL of claim 2 reached the host and ran (its
-// reply lost, FAULT CALL 2): ABANDON answers KEPT, the request stays retained
-// and the guest sends no further QUERY for it (the promise).
+// reply lost, FAULT CALL 2): ABANDON answers KEPT and the request stays
+// retained. Rerunning it (REQUEST_CONTINUE restarts hfs_request_run at its
+// CALL) sends nothing for it; on this blocked session the CALL is refused at
+// admission anyway. The QUERY side of the promise (a request listed after its
+// CALL was admitted) is tests/controlled mode abandon-query.
 func TestControlledReceivedActualAbandon(t *testing.T) {
 	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
 	c := startReceivedCarrier(t, r)
@@ -1357,7 +1360,9 @@ func TestControlledReceivedActualAbandon(t *testing.T) {
 	for _, command := range c.commands {
 		queries += map[bool]int{true: 1}[command.Op == "QUERY" && command.Context.Session == r.peers[1].scope.Session]
 	}
-	// The promise: no QUERY (nor CALL) for a listed request.
+	// A rerun sends nothing for the listed request (the CALL is refused at
+	// admission, before any QUERY); see the test comment for what this does
+	// not cover.
 	c.action("REQUEST_CONTINUE", 1, "", -112)
 	after := 0
 	for _, command := range c.commands {

@@ -86,12 +86,11 @@ def main():
                 'hfs_transport_send', 'hfs_transport_fetch', 'hfs_transport_chunk',
                 'hfs_transport_collect', 'hfs_transport',
                 'hfs_result_needs_adoption',
-                'hfs_operation', 'hfs_allocation_candidate', 'hfs_terminal_controlled_mismatch', 'hfs_terminal_candidate', 'hfs_candidate_parse_put', 'hfs_control_flagged', 'hfs_control',
+                'hfs_operation', 'hfs_allocation_candidate', 'hfs_terminal_controlled_mismatch', 'hfs_terminal_candidate', 'hfs_candidate_parse_put', 'hfs_control_owner_done', 'hfs_control_request', 'hfs_control_flagged', 'hfs_control',
                 'hfs_copy_token', 'hfs_result_code', 'hfs_result_validate',
                 'hfs_args_init', 'hfs_cap_write', 'hfs_args_object',
                 'hfs_cap_free', 'hfs_cap_parse', 'hfs_reply_cap',
                 'hfs_request_unhold', 'hfs_request_result_put', 'hfs_request_payload',
-                'hfs_request_abandon_halt',
                 'hfs_allocation_changed_locked', 'hfs_allocation_wake',
                 'hfs_request_allocate', 'hfs_request_resolve_gap',
                 # hh4: the abandon pass and its worker.

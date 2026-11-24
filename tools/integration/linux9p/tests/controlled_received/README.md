@@ -429,4 +429,6 @@ pass sends one ABANDON with the exact bytes. ABANDONED becomes `gap`,
 RETIRE moves the floor to 2 and the GAP_RESOLVE proof equals the ABANDON
 proof; a further pass sends nothing. Session 1 loses the reply of a CALL
 that ran (`FAULT CALL 2`): the claim is KEPT, stays retained, and the
-guest sends no further QUERY for it.
+rerun sends nothing for it (its CALL is refused at admission). The QUERY
+side of the promise is covered by the `tests/controlled` mode
+`abandon-query`.

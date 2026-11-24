@@ -98,7 +98,9 @@ static void list_del(struct list_head *p) {
    p->next->prev = p->prev;
 }
 #define mutex_init(p) assert(!pthread_mutex_init(&(p)->native, NULL))
-#define mutex_lock(p) assert(!pthread_mutex_lock(&(p)->native))
+/* hh4 abandon-query: a scheduling point before every mutex_lock. */
+static void fixture_lock_hook(struct mutex *m);
+#define mutex_lock(p) (fixture_lock_hook(p), assert(!pthread_mutex_lock(&(p)->native)))
 #define mutex_unlock(p) assert(!pthread_mutex_unlock(&(p)->native))
 enum hfs_view_scope {
    HFS_SCOPE_NORMAL_PUBLIC = 1,
@@ -120,7 +122,35 @@ static bool lose_allocation = true, lose_gap = true;
 static char active_op[32];
 static unsigned allocations, calls;
 /* hh4: ABANDON SENDs the guest tried, and those the exporter refused. */
-static unsigned abandon_sends, abandon_refusals, warnings;
+static unsigned abandon_sends, abandon_refusals, warnings, queries;
+/* hh4 abandon-query: the worker's actual collection (hfs_abandon_collect_locked)
+ * runs at two scheduling points of one hfs_request_run: while the CALL's
+ * reply is fetched (the exchange is in flight, so nothing may be listed) and
+ * when the run next takes session->writer after the CALL ended, i.e. at the
+ * QUERY's admission (the request is listed there). The batch is sent after. */
+static struct hfs_session *list_session;
+static struct hfs_request *list_request;
+static int listed_in_flight = -1;
+static struct hfs_buf listed_payload;
+static u64 listed_numbers[HFS_ABANDON_MAX];
+static u32 listed_count;
+static u32 hfs_abandon_collect_locked(struct hfs_session *, struct hfs_buf *, u64 *);
+static u32 fixture_collect(void) {
+   struct hfs_session *session = list_session;
+   list_session = NULL; /* the hook's own lock below is not a point */
+   mutex_lock(&session->lock);
+   u32 count = hfs_abandon_collect_locked(session, &listed_payload, listed_numbers);
+   mutex_unlock(&session->lock);
+   list_session = session;
+   return count;
+}
+static void fixture_lock_hook(struct mutex *m) {
+   if (!list_session || listed_in_flight < 0 || m != &list_session->writer ||
+       list_request->exchanges)
+      return;
+   listed_count = fixture_collect();
+   list_session = NULL;
+}
 static char last_warning[256];
 /* hfs_session_abandon logs a failed ABANDON (pr_warn), kernel format. */
 static __attribute__((format(printf, 1, 2))) void fixture_warn(const char *format, ...) {
@@ -288,7 +318,12 @@ static int p9_client_hfs_exchange(struct p9_client *client, u16 tag, u8 method,
       }
       if (!strcmp(active_op, "CALL"))
          calls++;
+      queries += !strcmp(active_op, "QUERY");
    }
+   /* hh4 abandon-query: the CALL's complete reply, its exchange in flight. */
+   if (method == 2 && *(u8 *)packet == 3 && list_session && listed_in_flight < 0 &&
+       !strcmp(active_op, "CALL"))
+      listed_in_flight = (int)fixture_collect();
    if (method == 2 && *(u8 *)packet == 3 &&
        ((!strcmp(active_op, "ALLOCATE") && lose_allocation) ||
         (!strcmp(active_op, "GAP_RESOLVE") && lose_gap))) {
@@ -504,8 +539,9 @@ static void abandon_case(struct hfs_session *session, struct hfs_request *reques
    }
    /* The promise: no CALL for a listed request, whatever its answer. The
     * blocked flag alone already refuses an ordinary CALL, so it is lifted
-    * here: the reserved QUERY after an admitted CALL passes a blocked
-    * session, and only request->abandoning stops it then. */
+    * for the second run: then only request->abandoning stops the CALL. The
+    * QUERY side (a request listed after its CALL was admitted) is
+    * abandon_query_case. */
    assert(hfs_request_run(session, request, "ROOT", payload, &result) == -EHOSTDOWN &&
           !calls && !result);
    session->blocked = false;
@@ -515,6 +551,41 @@ static void abandon_case(struct hfs_session *session, struct hfs_request *reques
    assert(abandon_sends == 1 && !calls && allocations == 2);
    fprintf(stderr, "PASS: hh4 %s exporter ABANDON of a blocked session's stranded "
            "claim; no CALL after the promise, no second ABANDON\n", old ? "old" : "new");
+}
+
+/* hh4 HFS_CONTROLLED_ABANDON=query: the worker's actual collection runs
+ * inside one hfs_request_run. While the admitted CALL is in flight it lists
+ * nothing (request->exchanges). After the CALL ended, at the QUERY's
+ * admission (session->writer), it lists the request. The session is not even
+ * blocked, so only the abandoning check at admission (hfs_control_request)
+ * stops the reserved QUERY: no QUERY is sent. The collected ABANDON then
+ * reaches the host, which keeps the claim (its CALL ran): KEPT, the request
+ * stays retained and is not a gap.
+ */
+static void abandon_query_case(struct hfs_session *session, struct hfs_request *request,
+                               struct hfs_buf *payload) {
+   struct hfs_json *result = NULL, *reply = NULL;
+   bool abandoned[HFS_ABANDON_MAX];
+   assert(!hfs_buf_init(&listed_payload, HFS_ABANDON_PAYLOAD));
+   list_request = request;
+   list_session = session;
+   int err = hfs_request_run(session, request, "ROOT", payload, &result);
+   fprintf(stderr, "ABANDON query err=%d calls=%u queries=%u in_flight=%d listed=%u\n",
+           err, calls, queries, listed_in_flight, listed_count);
+   assert(err == -EHOSTDOWN && !result && calls == 1 && !queries &&
+          listed_in_flight == 0 && listed_count == 1 &&
+          listed_numbers[0] == request->number && request->abandoning &&
+          !request->terminal && !request->exchanges && !list_session);
+   assert(!listed_payload.error &&
+          !hfs_abandon_exchange(session, &listed_payload, &reply) &&
+          !hfs_abandon_check(reply, listed_numbers, listed_count, abandoned) &&
+          !abandoned[0]);
+   hfs_abandon_apply(session, listed_numbers, abandoned, listed_count);
+   assert(abandon_sends == 1 && !queries && !request->gap && request->abandoning);
+   hfs_json_free(reply);
+   hfs_buf_free(&listed_payload);
+   fprintf(stderr, "PASS: hh4 request listed after its admitted CALL sends no QUERY; "
+           "the host keeps it (KEPT)\n");
 }
 
 int main(void) {
@@ -677,7 +748,11 @@ int main(void) {
 #ifdef HFS_CONTROLLED_OLD_EXPORTER
       assert(!strcmp(abandon, "old"));
 #else
-      assert(!strcmp(abandon, "new"));
+      assert(!strcmp(abandon, "new") || !strcmp(abandon, "query"));
+      if (!strcmp(abandon, "query")) {
+         abandon_query_case(&session, request, &payload);
+         return 0;
+      }
 #endif
       abandon_case(&session, request, &payload, !strcmp(abandon, "old"));
       return 0;
