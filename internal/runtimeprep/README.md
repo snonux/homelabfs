@@ -264,6 +264,10 @@ independent caches, and requires identical bytes. A rebuild with hostile
 reproduced SHA256
 `8c02b98fca3781cba6d64e9e5ba6caa0bb70b461298f85805bef2e77dd2c6e80` (Go
 `go1.26.10-X:nodwarf5`; the same go.mod/go.sum hashes as the candidate daemon).
+The helper is kept at that hash: the candidate daemon is built with
+`go1.27.4-X:nodwarf5` since the 2026-11-24 Fedora 45 re-pin, but the helper
+is not package content and is not rebuilt for it (each candidate's evidence
+says why it still applies).
 It is only ever used for these three commands, never as a daemon; it is not the
 quarantined CGO-disabled runtime.
 

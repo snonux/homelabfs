@@ -78,10 +78,19 @@ def package_closure(value, goroot):
             'licenses': licenses}
 
 
+# The one Go release the daemon is built with. Re-pinned on 2026-11-24 from
+# go1.26.10 to go1.27.4 when the build host moved from Fedora 44 to
+# Fedora 45 (Paul's decision; the old toolchain is no longer installed).
+# Every candidate before the 2026-11-25 zq3-r21 rebuild was built with
+# go1.26.10; admit.py checks the binary against the version its own build
+# record names, so those candidates still verify.
+GO_RELEASE = 'go1.27.4'
+
+
 def compiler_binding(environment):
     version = subprocess.check_output(['/usr/bin/go', 'version'], env=environment, text=True).strip()
-    if version.split()[2].partition('-X:')[0] != 'go1.26.10':
-        raise ValueError('explicit selected Go1.26.10 toolchain required')
+    if version.split()[2].partition('-X:')[0] != GO_RELEASE:
+        raise ValueError('explicit selected ' + GO_RELEASE + ' toolchain required')
     actual = json.loads(subprocess.check_output(['/usr/bin/go', 'env', '-json',
         'GOROOT', 'GOTOOLDIR', 'GOVERSION', 'GOENV', 'GOWORK', 'CC',
         'CGO_ENABLED', 'CGO_CFLAGS', 'CGO_CPPFLAGS', 'CGO_LDFLAGS'], env=environment, text=True))

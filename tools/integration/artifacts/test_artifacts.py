@@ -276,7 +276,8 @@ class NativeSourceBundleTests(unittest.TestCase):
 
 CGO_SYMBOLS = ('x_cgo_init', '_cgo_2c83f6d6b052_Cfunc_hfs_process',
                'github.com/snonux/homelabfs/internal/controlledruntime._Cfunc_hfs_process.abi0')
-GO_VERSION = 'go1.26.10-X:nodwarf5'
+# The Fedora 45 toolchain the daemon is pinned to (daemon.GO_RELEASE).
+GO_VERSION = 'go1.27.4-X:nodwarf5'
 CGO_SETTINGS = {'-buildmode': 'exe', '-compiler': 'gc', '-trimpath': 'true',
                 'CGO_ENABLED': '1', 'GOARCH': 'amd64', 'GOOS': 'freebsd'}
 
@@ -418,7 +419,8 @@ class DaemonCgoTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, reason):
                     self.cgo.check_cgo(self.facts(settings, symbols), GO_VERSION)
         with self.assertRaisesRegex(ValueError, 'build information'):
-            self.cgo.check_cgo(self.facts(), 'go1.26.9')
+            # The previous pin (go1.26.10) must not pass for a go1.27.4 binary.
+            self.cgo.check_cgo(self.facts(), 'go1.26.10')
 
     def test_stripped_or_unidentified_binary_refuses(self):
         self.binary.write_bytes(synthetic_elf(['libc.so.7'], symbols=None,
