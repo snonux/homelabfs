@@ -194,6 +194,8 @@ static Hfs9p *carrier;
 static uuid_t primitive_supervised_controller;
 static u64 primitive_native_nodes[3];
 static unsigned current_command;
+/* Declared in compat.h; zero means jiffies follows CLOCK_MONOTONIC. */
+unsigned long primitive_held_milliseconds;
 static char fault_operation[32];
 static unsigned fault_mode;
 static bool fault_reply;
@@ -710,6 +712,16 @@ static void command(char *line) {
   struct hfs_controlled_mount *m=hfs_controlled_mount(s);char state[768];
   int n=snprintf(state,sizeof(state),"{\"ordinary\":%u,\"control\":%u,\"reserved\":%u,\"unknown\":%u,\"links\":%u,\"ordinary_credits\":%u,\"control_credits\":%u,\"ordinary_received\":%u,\"control_received\":%u,\"captured_ordinary\":%u,\"captured_control\":%u,\"verified\":%s,\"pending\":%s,\"module_puts\":%u,\"client_destroys\":%u,\"fault_module_puts\":%u,\"fault_clients\":%u,\"active\":%u,\"progress_parents\":%s}",ordinary,control,reserved,unknown,links,m->ordinary_credits,m->control_credits,m->ordinary_received,m->control_received,old_ordinary,old_control,s->terminal_verified?"true":"false",s->terminal_pending?"true":"false",module_put_count,client_destroy_count,post_fault_puts,post_fault_clients,atomic_read(&hfs_active_sessions),s->control_completion||s->retirement_completion||s->terminal_completion?"true":"false");
   done(id,0,state,n);return;
+ }
+ /* k84: freeze jiffies across terminal-kernel80's nested 80-request fill
+  * (see compat.h). Release lets the clock jump forward to real time, as
+  * after a long deschedule; it never runs backwards. */
+ if(!strcmp(operation,"CLOCK_HOLD")){
+  assert(!primitive_held_milliseconds);unsigned long now=jiffies;assert(now);
+  __atomic_store_n(&primitive_held_milliseconds,now,__ATOMIC_RELAXED);done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"CLOCK_RELEASE")){
+  assert(primitive_held_milliseconds);__atomic_store_n(&primitive_held_milliseconds,0,__ATOMIC_RELAXED);done(id,0,NULL,0);return;
  }
  if(!strcmp(operation,"REPLAY_CONTROL")){
   unsigned reserved;char op[32];int used=0;assert(sscanf(line+consumed,"%u %31s %n",&reserved,op,&used)==2&&reserved<=1);
