@@ -223,7 +223,10 @@ def run_evidence(run_dir, plan_sha256):
         mounts.append({"path": mount["mountpoint"], "tag": tag, "session": session,
                        "mount_id": mount_id(details["mount-{}".format(index)], mount)})
     require(mounts[0]["mount_id"] != mounts[1]["mount_id"], "m0 and m1 report the same mount ID")
-    return dict(facts, run_id=plan["run_id"], mounts=mounts, fd_attr=mounted_fd_attr(details))
+    # fd_attr_candidate: the s64 candidate the bootstrap plan named, which
+    # bootstrap.load_plan bound to its pinned kernel plan before launch (nl4).
+    return dict(facts, run_id=plan["run_id"], mounts=mounts, fd_attr=mounted_fd_attr(details),
+                fd_attr_candidate=plan.get("fd_attr_candidate_sha256"))
 
 
 def mounted_fd_attr(details):
@@ -247,11 +250,7 @@ def fill_batch(template, facts):
     """
     plan = copy.deepcopy(template)
     require(plan.get("run_id") == facts["run_id"], "template run ID differs from the bootstrap run")
-    # bl4: the batch expects hfs_fdattr (template `fd_attr`) exactly when the
-    # bootstrap mounted with it, or guest.py would refuse every case later.
-    require(("fd_attr" in plan) is facts["fd_attr"],
-            "template fd_attr {} but the bootstrap mounts {} hfs_fdattr".format(
-                "set" if "fd_attr" in plan else "absent", "show" if facts["fd_attr"] else "do not show"))
+    check_fd_attr(plan, facts)
     put(plan, "installed_manifest_sha256", MANIFEST, facts["manifest_sha256"], "plan")
     requests = plan.get("requests")
     require(isinstance(requests, list) and requests, "template holds no requests")
@@ -268,6 +267,30 @@ def fill_batch(template, facts):
                     "{}.mounts[{}] path/tag/session differ from the bootstrap run".format(where, index))
             put(mount, "mount_id", MOUNT_IDS[index], measured["mount_id"], "{}.mounts[{}]".format(where, index))
     return plan
+
+
+def check_fd_attr(plan, facts):
+    """bl4/nl4: the bootstrap plan, its mounts and the batch template agree.
+
+    The bootstrap plan names an fd_attr candidate exactly when its mounts
+    show hfs_fdattr; the batch expects the option (template `fd_attr`)
+    exactly when they do, or guest.py would refuse every case later; and an
+    fd_attr batch runs the very candidate the bootstrap installed, so a
+    template naming another s64 candidate (`candidate_manifest_sha256`)
+    cannot pass on the strength of the bootstrap's.
+    """
+    named = facts["fd_attr_candidate"]
+    require((named is not None) is facts["fd_attr"],
+            "bootstrap plan names {} but its mounts {} hfs_fdattr".format(
+                "fd_attr candidate " + named if named else "no fd_attr candidate",
+                "do not show" if named else "show"))
+    require(("fd_attr" in plan) is facts["fd_attr"],
+            "template fd_attr {} but the bootstrap mounts {} hfs_fdattr".format(
+                "set" if "fd_attr" in plan else "absent", "show" if facts["fd_attr"] else "do not show"))
+    if named:
+        require(plan.get("candidate_manifest_sha256") == named,
+                "template candidate_manifest_sha256 {!r} is not the bootstrap plan's fd_attr candidate {}".format(
+                    plan.get("candidate_manifest_sha256"), named))
 
 
 def ssh_fact(path, ssh_path):
