@@ -1130,7 +1130,9 @@ static void retry_advance_refused(struct hfs_view *view,int reserved,enum retry_
 /* A view with mmap pages, an mmapped inode, or a provider that cannot
  * verify an advance never requests one (today's request bytes). tj4: the
  * inode's mmap mark (hfs_view_mmap_inode, as hfs_mmap_file sets it) alone
- * withholds advance; only its eviction (hfs_evict_inode) clears it.
+ * withholds advance while its VMA lives; here its eviction (hfs_evict_inode)
+ * clears it, after the VMA closed (wj4: a cacheless test with no VMA and no
+ * page left drops it too, view/'s advance_unmark_checks).
  */
 static void retry_advance_never(struct hfs_view *view,int reserved)
 {
@@ -1148,7 +1150,8 @@ static void retry_advance_never(struct hfs_view *view,int reserved)
  retry_end(cookie);retry_no_leaks(reserved);
  if(view->nr_cached)assert(!hfs_mmap_pressure(view,true)); // a recall may have dropped it
  assert(!view->nr_cached && view->nr_mmapped==1);
- hfs_view_unregister_inode(&test_inode->inode); // its eviction
+ hfs_view_vma_close(&test_inode->inode); // munmap, then its eviction
+ hfs_view_unregister_inode(&test_inode->inode);
  assert(!view->nr_mappings && !view->nr_mmapped && !test_inode->view_mmapped);
  assert(!hfs_view_register_inode(&test_inode->inode)); // looked up again: unmapped
  advance_supported=false; // cacheless, but no provider check
