@@ -105,13 +105,14 @@ class Case(unittest.TestCase):
 
 
 class BatchCase(Case):
-    def bootstrap_run(self, mount_ids=(90, 91), world_change=None):
-        """A real bootstrap.run output directory from the simulated world."""
+    def bootstrap_run(self, mount_ids=(90, 91), world_change=None, plan_change=None):
+        """A real bootstrap.run output directory from the simulated world;
+        `plan_change` edits the bootstrap plan (plan_fixture's `change`)."""
         world = world_fixtures.World(self.root)
         world.overrides["guest-mount"] = mountinfo(world, mount_ids)
         if world_change:
             world_change(world)
-        plan, plan_sha256 = world_fixtures.plan_fixture(self.root)
+        plan, plan_sha256 = world_fixtures.plan_fixture(self.root, plan_change)
         self.run_dir = self.root / "bootstrap-run"
         code = world_fixtures.bootstrap.run(plan, plan_sha256, self.run_dir, boundaries=world.boundaries)
         return code, plan_sha256

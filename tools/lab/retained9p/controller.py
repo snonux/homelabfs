@@ -203,7 +203,7 @@ ADMITTED = {"1428d4dbc149f15866ca6ff1dd259642e2ab34bb5b943c8b1cf1e92306ef4fd9"}
 # 91b9ee1) and every superseded one predate s64 (guest and lib9p 1258f5d).
 # The next candidate built from main goes here together with ADMITTED.
 FD_ATTR = frozenset()
-CASES =["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
+CASES = ["credentials", "sync", "metadata", "namespace", "mapped-pressure"]
 # Cases a plan may defer (z64). Only T5 mapped-pressure: its full 4 MiB
 # canary needs more view lifetimes (tickets, UUIDs, revisions, ack archive)
 # than the 4 GiB host budget funds until q64 recycles view tickets, so it is
@@ -424,7 +424,11 @@ def require_fd_attr(manifest_hash):
 
     Shared by the batch plan's `fd_attr` and the bootstrap plan's
     `fd_attr_candidate_sha256` (bootstrap.py), so both refuse an older
-    candidate the same way before anything is mounted or dispatched.
+    candidate the same way before anything is mounted or dispatched. This
+    only says the named digest carries s64; that the run's guest kernel,
+    daemon and exporter are that candidate's is bootstrap.py's
+    check_fd_attr_candidate, and that the batch names the same one is
+    fill_plan.py's (nl4).
     """
     require_candidate(manifest_hash)
     if manifest_hash not in FD_ATTR:
@@ -1126,8 +1130,8 @@ def main():
         raw, plan, _ = plan_snapshot(args.plan)
         # fd_attr (bl4): whether the batch expects hfs_fdattr mounts.
         print(json.dumps({"plan_sha256": digest(raw), **deferral_record(plan),
-                          "fd_attr": plan.get("fd_attr", False), "execution_authorized": False, "deployment_eligible": False,
-                          "acceptance": False}))
+                          "fd_attr": plan.get("fd_attr", False), "execution_authorized": False,
+                          "deployment_eligible": False, "acceptance": False}))
         return 0
     if args.action == "status":
         print(json.dumps(load(str(Path(args.output) / "state.json")), sort_keys=True))

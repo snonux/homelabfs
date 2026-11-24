@@ -249,7 +249,31 @@ an older plan cannot turn it on, and an `fd_attr` plan for an older candidate
 refuses before any contact:
 
 - bootstrap plan: optional `fd_attr_candidate_sha256`, which must pass
-  `require_fd_attr` (admitted and in `FD_ATTR`). `mount-0`/`mount-1` then pass
+  `require_fd_attr` (admitted and in `FD_ATTR`), together with
+  `fd_attr_candidate_manifest` and `fd_attr_kernel_plan` (a partial set
+  refuses; a bl4-era plan with only `fd_attr_candidate_sha256` now fails the
+  closed-key check, which costs nothing while `FD_ATTR` is empty). Before
+  launch `load_plan` ties all three s64 parts to the named candidate (nl4,
+  `check_fd_attr_candidate`):
+  - guest kernel: `fd_attr_kernel_plan` is the workstation copy of the G5
+    kernel plan Phase 0 wrote (`rocky_kernel.py plan`). It is a different
+    path from Rocky's staged `kernel.plan`; the two are tied by the shared
+    `kernel.plan_sha256`, which `load_plan` reads the copy under and the
+    admission step passes to `rocky_kernel.py`. Its version, `run_id`,
+    `kernel_release` and `manifest_sha256` (= `fd_attr_candidate_sha256`)
+    must match. The admission manifest cannot bind the kernel: it lists the
+    loaded kernel and modules, not the candidate package.
+  - daemon and exporter: `fd_attr_candidate_manifest` is the candidate
+    package's `manifest.json`, read under `fd_attr_candidate_sha256`. Its
+    `freebsd/hfs-controlled-runtime` (kind `daemon`) must be `runtime.sha256`,
+    the pin host preflight checks the f3 executable against, and its
+    `freebsd/bhyve` (kind `exporter`) must be the workstation runtime
+    config's `Exporter.SHA256` (`prep.config`), which the runtime checks
+    bhyve against before exec. The f3 `runtime.config` is the staged copy of
+    that bundle file; the bootstrap does not re-hash it on f3, as before nl4.
+
+  So a plan that names an s64 candidate for a run with a pre-s64 kernel,
+  daemon or exporter refuses. `mount-0`/`mount-1` then pass
   `--fd-attr on` and mount with
   `trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,hfs_fdattr,msize=65536`.
   `bootstrap_remote.py guest-mount` requires the mountinfo row to show
@@ -261,10 +285,13 @@ refuses before any contact:
   requires both mounts to show the option exactly when the request carries
   it. `check` reports `fd_attr`.
 - `fill_plan.py batch` refuses unless the bootstrap's two mountinfo rows
-  both show `hfs_fdattr` or both do not, and the template's `fd_attr`
-  matches; its report adds `fd_attr`.
+  both show `hfs_fdattr` or both do not, the bootstrap plan names an
+  `fd_attr_candidate_sha256` exactly when they do, and the template's
+  `fd_attr` matches; with the option the template's
+  `candidate_manifest_sha256` must equal the bootstrap plan's
+  `fd_attr_candidate_sha256` (nl4). Its report adds `fd_attr`.
 
-Without either field every plan keeps its pre-bl4 bytes and mounts and checks
+Without these fields every plan keeps its pre-bl4 bytes and mounts and checks
 exactly as before. `pod_fixture.py` keeps its subset check on m0, which
 accepts the option either way.
 
@@ -937,7 +964,11 @@ also holds are neither kept nor logged),
 the observer fields of `ObserverInput` except the manifest hash, and the two
 mounts, which must be `hfsN` on `/var/tmp/hfs-zq3-RUN/mN` (what
 `observer_key.py stage` creates). The optional `fd_attr_candidate_sha256`
-(bl4) asks for `hfs_fdattr` mounts and must name an s64 candidate (see
+(bl4) asks for `hfs_fdattr` mounts and must name an s64 candidate; it comes
+with `fd_attr_candidate_manifest` (the package manifest under that digest,
+whose daemon and exporter must be `runtime.sha256` and the runtime config's
+`Exporter.SHA256`) and `fd_attr_kernel_plan`, the local kernel plan copy
+pinned by `kernel.plan_sha256` that must install that same candidate (nl4, see
 [`hfs_fdattr`](#hfs_fdattr-mounts-bl4-s64)). Every value that reaches a remote command
 line is a plain path, hash or token (`[A-Za-z0-9_./=:,+-]`), so no shell
 quoting is involved. `check` and `run` verify every local pin before any

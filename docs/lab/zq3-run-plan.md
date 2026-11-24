@@ -702,10 +702,18 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
      HELLOs; runtime prints READY with the control binding [`ready`].
      With an s64 candidate (bl4: `controller.py` `FD_ATTR`, empty until the
      next candidate built from main is admitted) the bootstrap plan names it
-     in `fd_attr_candidate_sha256` and both mounts add `hfs_fdattr`
+     in `fd_attr_candidate_sha256`, with `fd_attr_kernel_plan` pointing at
+     the Phase 0 workstation copy of the G5 kernel plan (its bytes pinned by
+     `kernel.plan_sha256`, its `manifest_sha256` that same candidate) and
+     `fd_attr_candidate_manifest` at the candidate package's `manifest.json`
+     (its daemon must be `runtime.sha256`, its `freebsd/bhyve` the runtime
+     config's `Exporter.SHA256`); nl4 refuses before launch otherwise. Both
+     mounts add `hfs_fdattr`
      (`trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,hfs_fdattr,msize=65536`);
      each mountinfo row must then show `,cache=mmap,hfs_fdattr`, and the batch
-     plan and every request carry `"fd_attr": true`. A plan without these
+     plan and every request carry `"fd_attr": true`; `fill_plan.py batch`
+     requires the batch's `candidate_manifest_sha256` to be the bootstrap
+     plan's `fd_attr_candidate_sha256`. A plan without these
      fields mounts and checks exactly as before; a pre-s64 candidate refuses.
   6. After READY, under its own bound rather than the 120 s: the usability
      gate (k64) [`usable`]. zq3-r6 and r7 reached READY with every step `ok`,
