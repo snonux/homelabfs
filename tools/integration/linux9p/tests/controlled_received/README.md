@@ -100,8 +100,10 @@ is too slow for that window under load the WAIT legitimately ends EMPTY, and
 the test finishes that recall, releases the lease, retires the view
 (`VIEW_RETIRE`) and acquires a fresh lease, then retries, at most four
 attempts in all. Without the retirement a released lease kept holding
-capacity and the fourth ACQUIRE failed with `-ENOSPC`. With it, six forced
-misses in a row still ended in a verified EVENT (review 1). `--scenario dirty` releases session 0's EXCLUSIVE_DIRTY lease
+capacity and the fourth ACQUIRE failed with `-ENOSPC`. With it, and the bound temporarily
+raised to eight for the check, six forced misses in a row still ended in a
+verified EVENT (review 1). With the committed bound of four, up to three
+misses are tolerated; a fourth fails with "receipt missing after 4 attempts". `--scenario dirty` releases session 0's EXCLUSIVE_DIRTY lease
 through the complete production `hfs_lease_release` (`RELEASE_DONE`); that
 recall stays all-domain, so both sessions still take part. Once the release
 ticket is admitted (`RELEASE_READY`) the recall, `CLOSE_PENDING` and the drain

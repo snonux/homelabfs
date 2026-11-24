@@ -407,9 +407,10 @@ const receivedMultipollAttempts = 4
 // exact charge was not isolated). A mounted guest retires them in the
 // background; this harness has no background controller. Without the
 // retirement the fourth ACQUIRE of a session failed with -ENOSPC (bh4
-// review 1). With it, six forced misses in a row (a 1.2 s sleep before the
-// nested release) still ended in a verified EVENT on the seventh attempt.
-// The bound stays at four attempts; it only caps how long a host too loaded
+// review 1). With it, and the bound temporarily raised to eight for the
+// check, six forced misses in a row (a 1.2 s sleep before the nested
+// release) still ended in a verified EVENT on the seventh attempt. The
+// committed bound is four attempts, so up to three misses are tolerated; it only caps how long a host too loaded
 // for the 1 s window is retried.
 func receivedMultipollEvent(t *testing.T, c *receivedCarrier, domain guestbridge.Capability) {
 	t.Helper()

@@ -2489,7 +2489,8 @@ rather than from a guest patch. The series is unchanged.
   a fresh lease, then retries, at most four attempts in all. Review 1 found
   that without the retirement the fourth ACQUIRE failed with `-ENOSPC`.
   The harness has no background retirement, so released tickets kept
-  holding capacity. Six forced misses in a row now still pass. Session 1's
+  holding capacity. Up to three misses are now tolerated with the committed bound of
+  four (six forced misses passed with the bound temporarily raised to eight). Session 1's
   recall runs afterwards and involves session 1 only.
 - `run.py --scenario both` runs one stage per scenario (19 stages that
   together select every test once), each under its own Go timeout. The
