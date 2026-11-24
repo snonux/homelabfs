@@ -71,7 +71,11 @@ All later host commands have an integer ID. Responses are
 
 Native I/O is the existing mapped-test protocol: `W OFFSET FRAMEHEX` requests a
 real host Transport write and receives `OK N` or `ERROR`; `R FD OFFSET COUNT`
-receives `DATA HEX` or `AGAIN`. FD11 selects result, FD12 recall.
+receives `DATA HEX`, `AGAIN`, or `ERROR` when the host Transport.Read fails
+definitively with `fsapi.IO` (since z54 a blocked cell the host never answers).
+The consumer turns a FETCH that read `ERROR` into the Rbridge ERROR (reason
+INVALID) the real lib9p encoder sends, so the actual guest returns `-EPROTO`.
+FD11 selects result, FD12 recall.
 
 Before native I/O the consumer emits `S ADMISSIONHEX` from the actual C snapshot
 serializer. The host replaces only the existing observer fixture's complete
@@ -79,13 +83,28 @@ Admission record with those bytes, preserving its independently measured static
 artifact fields. It never calls `sourceRig.observeACK` or synthesizes observations.
 
 When actual transport waits on a real backend EAGAIN, its OS sleep primitive
-emits `Y OUTER_ID`. The host replies `CONTINUE`, or issues nested commands for the
-other session before CONTINUE. The backend has returned and released locks
-before this scheduling boundary. Nested responses use their own IDs. This permits
-real RELEASE/physical progress during a pending WAIT without fabricated results.
+emits `Y OUTER_ID`. The host replies `CONTINUE`, or issues nested commands
+before CONTINUE. The backend has returned and released locks before this
+scheduling boundary. Nested responses use their own IDs. This permits real
+RELEASE/physical progress during a pending WAIT without fabricated results.
 An initial WAIT can let the actual backend deadline elapse and return EMPTY; the
 next WAIT reclaims that real control reply, retaining its nonnull original Ack
 across actual internal polls until the real controller EVENT arrives.
+
+`--scenario provider` nests the RELEASE_START of session 0's own lease in
+session 0's WAIT: since task 784 a clean DOMAIN READ release recalls only its
+own domain, so another session's release no longer gives session 0 an event.
+Session 1's lease is released afterwards and only session 1 acknowledges that
+recall. lib9p ends one WAIT after 1 s (`_wait_step`); when the nested release
+is too slow for that window under load the WAIT legitimately ends EMPTY, and
+the test finishes that recall, acquires a fresh lease and retries (at most
+four attempts). `--scenario dirty` releases session 0's EXCLUSIVE_DIRTY lease
+through the complete production `hfs_lease_release` (`RELEASE_DONE`); that
+recall stays all-domain, so both sessions still take part. Once the release
+ticket is admitted (`RELEASE_READY`) the recall, `CLOSE_PENDING` and the drain
+run nested in the release's scheduling yields. The abbreviated `RELEASE_START`
+never admits its initial ticket, so session 0's freeze ticket (same family)
+would wait for it forever (bh4).
 
 The startup also exercises exact control-budget boundary arithmetic through the
 actual reserve/unreserve callbacks: the permanently charged admission base cannot
@@ -176,8 +195,9 @@ R1 completion-ownership regressions
 `--scenario allocate` uses the existing one-shot ALLOCATE SEND and fetched-reply
 loss primitives, then actual same-request/same-cell allocation retry. It checks
 saved channel/kind/body profile and unchanged local cell/claim counts before real
-CALL/QUERY/adoption/floor completion. `--scenario dirty` runs both the original
-cross-session scenario and retained-result pressure: real ordinary result borrowers
+CALL/QUERY/adoption/floor completion. `--scenario dirty` runs both the
+two-session funded dirty scenario (an all-domain recall of session 0's dirty
+lease, see above) and retained-result pressure: real ordinary result borrowers
 and ordinary VIEW_QUERY descendants saturate actual ordinary capacity without
 control-class growth. Four separately transported/private EVENT owners per session
 model the actual pending[3]+last-event lifetimes. Actual production reservation and
@@ -310,7 +330,21 @@ request's pending ALLOCATE (an earmark for FORGET and PROCESS_EXIT), cleared
 by a thread after 30 ms: every production caller must wait and the host must
 still see exactly one CALL each. run.py gives `cleanup` and `exit-cleanup`
 a 900 s Go test timeout (two subtests of about 35-80 s each plus setup on a
-two-CPU race build); the other scenarios keep 180 s.
+two-CPU race build); the other scenarios get 600 s (bh4: one test has taken
+up to 85 s on a loaded host, and `dirty` runs two).
+
+`--scenario both` (bh4) runs every `TestControlledReceivedActual*` test once,
+as one stage per scenario (`provider`, `passed-grant`, `advance`,
+`corruption`, `dirty`, `interleaving`, `allocate`, `gap`, `mixed`,
+`effected`, `readdir`, the six `terminal-*` groups, `cleanup`,
+`exit-cleanup`), each with its own Go timeout and the runner's 1200 s stage
+bound. It used to be one Go run of `^TestControlledReceivedActual` under
+180 s, which timed out after three or four tests because each test builds
+its own consumer. A failed stage no longer stops the others; the runner
+fails at the end and names the failed scenarios. Stage outputs are
+`actual-c6-host-SCENARIO.stdout`. Expect roughly 30-40 minutes on a loaded
+two-CPU race build. `effected` still fails on main (since oc4; see the bh4
+section in `../../README.md`).
 
 `--scenario exit-cleanup` (`TestControlledReceivedActualExitThenCleanup`)
 runs the production PROCESS_EXIT worker first and then the same process's

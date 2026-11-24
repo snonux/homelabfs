@@ -2076,11 +2076,9 @@ and a mutation run of 13 guards killed every mutant):
   accepted ordinary lease, and after a release (no recall), a further CREATE
   and a second advance the first stored reply is unadopted (`-EXDEV`) with no
   block, while the same reply without advance is the `-ESTALE` that blocks.
-  It needs 3h4's host, merged on main. `--scenario both` selects it too
-  (its pattern is `^TestControlledReceivedActual`), but `both` currently
-  fails on main for other scenarios (task bh4: ProviderProducer,
-  SourceCorruption, FundedDirty and the 180 s run timeout), so run
-  `--scenario advance` on its own.
+  It needs 3h4's host, merged on main. `--scenario both` runs it too, as
+  one of its per-scenario stages (bh4, see
+  `tests/controlled_received/README.md`).
 
 Review round 1 (4h4) found no safety issue. It led to the bounded
 `transitions` wait, the unreadable-payload release and the comment fix
@@ -2459,3 +2457,49 @@ list are unchanged.
 The series was regenerated with `export.py --task 5f4` (0003: `hfs.h`,
 `hfs_session.c`, `hfs_file.c`; 0004: `hfs_lease.h`, `hfs_lease.c`,
 `hfs_view.c`, `hfs_mmap.c`). No candidate was rebuilt, booted or admitted.
+
+## `controlled_received --scenario both`: three scenarios fixed, timeout split (`bh4`)
+
+Three scenarios had failed on main since mid-November, and `both` hit its
+180 s Go timeout. After this change, 18 of the 19 stages pass; `effected`
+still fails (see the end of this section). Each failure came from a host merge, or from timing,
+rather than from a guest patch. The series is unchanged.
+
+- SourceCorruption: z54 (merge `a20aca1`, commit `e968a64`) answers a read
+  of a blocked cell with `fsapi.IO` instead of WouldBlock. The harness
+  treated any read error other than WouldBlock as fatal (`IO`). It now
+  answers `ERROR`. The consumer turns a FETCH that got EIO into the Rbridge
+  ERROR (reason INVALID) that lib9p sends, so the actual guest returns
+  `-EPROTO` at once (it used to wait out its `-ETIMEDOUT` deadline).
+  Last passing first-parent commit: `8f2a860`.
+- FundedDirty and RetainedResultPressure: 784 (merge `2843e1c`; its tests
+  first compile again at `dc672e7`) scopes a clean READ release's recall to
+  the releasing domain. Session 1's PAGE READ release no longer gives
+  session 0, which holds the dirty page, an event (`PHASE STOPPED = -129`, no
+  receipt). The scenario now releases session 0's EXCLUSIVE_DIRTY lease
+  through the production `hfs_lease_release`; that recall stays all-domain.
+  Last passing: `d5093ed`.
+- ProviderProducer: lib9p ends one VIEW_WAIT after 1 s, and the release
+  nested in that WAIT took 0.3-0.7 s under `-race`/ASan load. The test fails
+  even at `ff866c5`, where it passed on 2026-11-09 on an idle host. By 784's
+  rule (from the code; not run on its own), the nested release of session 1's
+  lease could not produce session 0's event after that merge anyway. The nested release is now session 0's own lease, and a WAIT
+  that misses the window is retried with a fresh lease (at most four
+  attempts). Session 1's recall runs afterwards and involves session 1 only.
+- `run.py --scenario both` runs one stage per scenario (19 stages that
+  together select every test once), each under its own Go timeout. The
+  default timeout is now 600 s; `cleanup` and `exit-cleanup` keep 900 s.
+  It keeps going after a failed stage and names every failed scenario.
+
+Still failing, and outside this change: `effected`
+(`TestControlledReceivedActualEffectedGapRefusal`). The old `both` run
+never reached it because of the timeout. It broke twice. z54 (`a20aca1`)
+turned its read into a fatal `IO`; the harness now passes that read on as
+ERROR. Then oc4+pc4 (merge `942614a`, guest patch) stopped non-exempt
+polls on a blocked session. The lost CREATE reply retains and blocks the
+session, so the test's plain QUERY of the effected claim halts with
+`-EHOSTDOWN` (-112) at its first AGAIN. Evidence: it fails at `afe34fb`
+(`IO`) and with -112 at `942614a` and at `157a132`; it last passed at
+w54 (2026-11-09). Whether a blocked session may QUERY a retained,
+non-exempt claim is a guest-protocol decision. The fix is either a
+guest exemption or a different way for the test to observe the effect.

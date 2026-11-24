@@ -235,9 +235,12 @@ ssize_t primitive_pwrite(int fd,const void *bytes,size_t length,off_t offset) {
  assert(fd==10);emit_snapshot();printf("W %llu ",(unsigned long long)offset);emit_hex(bytes,length);puts("");fflush(stdout);
  char *line=read_line();ssize_t result=-1;if(!strncmp(line,"OK ",3))result=strtoll(line+3,NULL,10);else errno=EIO;free(line);return result;
 }
+/* The host answers DATA, AGAIN, or (bh4) ERROR for a definitive read error:
+ * since z54 a never-answerable (blocked) cell's Transport.Read is fsapi.IO,
+ * which FUSE returns as EIO. */
 ssize_t primitive_pread(int fd,void *bytes,size_t length,off_t offset) {
  assert(fd==11||fd==12);emit_snapshot();printf("R %d %llu %zu\n",fd,(unsigned long long)offset,length);fflush(stdout);
- char *line=read_line();ssize_t result=-1;if(!strncmp(line,"DATA ",5))result=decode_hex(line+5,bytes,length);else errno=EAGAIN;free(line);return result;
+ char *line=read_line();ssize_t result=-1;if(!strncmp(line,"DATA ",5))result=decode_hex(line+5,bytes,length);else errno=strcmp(line,"ERROR")?EAGAIN:EIO;free(line);return result;
 }
 static int native_identity(void *opaque,const Hfs9pEndpoint *endpoint,const int fd[3]) {
  (void)opaque;struct stat st;for(unsigned i=0;i<3;i++){if(fd[i]!=(int)(10+i)||primitive_fstat(fd[i],&st)||!S_ISREG(st.st_mode)||st.st_size!=HFS9P_VSIZE||st.st_ino!=(ino_t)endpoint->node[i])return EACCES;}return 0;
@@ -277,7 +280,13 @@ static int primitive_rpc_exchange(struct p9_client *client,u16 tag,u8 op,u8 chan
  assert(op==2&&*reply_len>1);
  if(again_armed&&cell==again_cell){if(again_remaining){again_remaining--;again_injected++;*(u8 *)reply=2;*reply_len=1;return 0;}again_armed=false;}
  size_t length=0;err=_fetch(carrier,index,cell,chunk,channel,(u8 *)reply+1,*reply_len-1,&length);
- if(err==EAGAIN){*(u8 *)reply=2;*reply_len=1;return 0;}if(err){fprintf(stderr,"actual native FETCH error %d cell%llu channel%u revoked%d pending%d\n",err,cell,channel,carrier->revoked,carrier->pending);return -err;}if(fault_reply){fault_reply=false;return -EIO;}if(pending_scratch){fault_scratch=pending_scratch;pending_scratch=0;}*(u8 *)reply=3;*reply_len=length+1;return 0;
+ if(err==EAGAIN){*(u8 *)reply=2;*reply_len=1;return 0;}
+ /* bh4: a FETCH of a cell the host will never answer (EIO, z54) is the
+  * Rbridge ERROR the real lib9p encoder sends (hfs9p_exchange), so the
+  * actual guest hfs_transport_fetch maps its reason. Other FETCH errors keep
+  * returning the errno directly. */
+ if(err==EIO){*(u8 *)reply=4;_put((u8 *)reply+1,_error_reason(err),2);*reply_len=3;return 0;}
+ if(err){fprintf(stderr,"actual native FETCH error %d cell%llu channel%u revoked%d pending%d\n",err,cell,channel,carrier->revoked,carrier->pending);return -err;}if(fault_reply){fault_reply=false;return -EIO;}if(pending_scratch){fault_scratch=pending_scratch;pending_scratch=0;}*(u8 *)reply=3;*reply_len=length+1;return 0;
 }
 /* Actual net9p exchange body, with the native RPC/tag allocator substituted.
  * P9_NOTAG is a request for an allocated ordinary tag, never a wire tag.
