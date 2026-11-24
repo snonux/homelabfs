@@ -8,6 +8,7 @@ scripted; only the lstat program itself also runs for real against the
 temporary root. Root ownership is substituted by the test user's UID.
 Nothing touches the real system, a VM or the network.
 """
+import contextlib
 import hashlib
 import importlib.util
 import io
@@ -118,18 +119,56 @@ class HostTests(RemoteCase):
         self.assertEqual(result["stdout"], '{"stage":"AWAITING_OPERATOR_ENROLLMENT"}\n')
         self.assertEqual((result["files"]["receipt.json"], result["files"]["breach.json"]), ('{"refused":"limits"}', None))
 
-    def test_preflight_requires_pins_and_fresh_targets(self):
+    CONFIG = "/run/runtime/runtime-config.json"
+
+    def preflight_argv(self, config=b'{"BootstrapSeconds":120}'):
+        """Staged guard, runtime and runtime config on the fake f3; the
+        argv pins all three to the staged bytes."""
         self.put("/run/bin/runtime-guard.py", b"guard", 0o500)
         self.put("/run/bin/hfs-controlled-runtime", b"runtime", 0o500)
+        self.put(self.CONFIG, config, 0o600)
         self.handoff_directory()
-        argv = ["host-preflight", "--guard-script", "/run/bin/runtime-guard.py", "--guard-sha256", sha(b"guard"),
+        return ["host-preflight", "--guard-script", "/run/bin/runtime-guard.py", "--guard-sha256", sha(b"guard"),
                 "--runtime", "/run/bin/hfs-controlled-runtime", "--runtime-sha256", sha(b"runtime"),
+                "--config", self.CONFIG, "--config-sha256", sha(config),
                 "--guard-dir", "/run/guard", "--owner-dir", "/run/owner", "--enrollment-file", self.ENROLL]
-        self.assertEqual(self.act(argv)[0], 0)
+
+    def test_preflight_requires_pins_and_fresh_targets(self):
+        argv = self.preflight_argv()
+        code, result = self.act(argv)
+        self.assertEqual((code, result["config_sha256"]), (0, sha(b'{"BootstrapSeconds":120}')))
         self.put("/run/owner/x", "left over")
         self.assertIn("already exists", self.act(argv)[1]["error"])
         argv[4] = "0" * 64
         self.assertIn("pinned file bytes differ", self.act(argv)[1]["error"])
+
+    def test_preflight_checks_the_staged_runtime_config(self):
+        """ol4: the f3 runtime.config the daemon launches with must be the
+        pinned bytes (prep.config_sha256), and private as the runtime
+        requires; a copy that differs refuses with exit 2, nothing changed."""
+        argv = self.preflight_argv()
+        config = self.root / self.CONFIG.lstrip("/")
+        config.write_bytes(b'{"BootstrapSeconds":120,"Exporter":{}}')
+        code, result = self.act(argv)
+        self.assertEqual((code, result["changed"]), (2, False))
+        self.assertIn("pinned file bytes differ: " + self.CONFIG, result["error"])
+        config.write_bytes(b'{"BootstrapSeconds":120}')
+        self.assertEqual(self.act(argv)[0], 0)
+        for mode, text in [(0o440, "insecure mode"), (0o404, "insecure mode")]:
+            config.chmod(mode)
+            self.assertIn(text, self.act(argv)[1]["error"])
+        config.chmod(0o600)
+        os.link(config, self.root / "run/runtime/second-link")
+        self.assertIn("pinned file shape", self.act(argv)[1]["error"])
+        os.unlink(self.root / "run/runtime/second-link")
+        config.unlink()
+        self.assertEqual(self.act(argv)[0], 2)
+
+    def test_preflight_requires_the_config_pin(self):
+        argv = self.preflight_argv()
+        index = argv.index("--config")
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            self.act(argv[:index] + argv[index + 4:])
 
     def test_proposal_must_be_private(self):
         self.put("/run/owner/proposal.json", b'{"Domains":[]}', 0o644)

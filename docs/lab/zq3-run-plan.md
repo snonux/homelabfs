@@ -627,8 +627,10 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
   It runs every step below in this order, each with a durable intent and
   result in `<new dir>/journal.jsonl`, refuses out-of-order steps, stops at
   the first failed or uncertain step and never replays one (no resume, no
-  reused output directory). It first checks on f3 that the guard script and
-  runtime match their pins and that the guard run directory, OwnerDirectory
+  reused output directory). It first checks on f3 that the guard script,
+  runtime and staged runtime config match their pins (the config: the
+  bundle's `prep.config_sha256`, root-private, one link; ol4) and that the
+  guard run directory, OwnerDirectory
   and EnrollmentFile do not exist yet, while the EnrollmentFile's parent
   directory does (root, `0700`; Phase 7 must create it).
 - Action: in the foreground of one f3 SSH session that the driver starts
@@ -707,7 +709,12 @@ f3): [`tools/lab/directlaunch`](../../tools/lab/directlaunch/README.md).
      `kernel.plan_sha256`, its `manifest_sha256` that same candidate) and
      `fd_attr_candidate_manifest` at the candidate package's `manifest.json`
      (its daemon must be `runtime.sha256`, its `freebsd/bhyve` the runtime
-     config's `Exporter.SHA256`); nl4 refuses before launch otherwise. Both
+     config's `Exporter.SHA256`); nl4 refuses before launch otherwise. The
+     exporter is read from the workstation bundle copy (`prep.config`, under
+     `prep.config_sha256`) before any contact; the f3 `runtime.config` the
+     runtime launches with is the Phase 7 staged copy of it, and
+     `host-preflight` re-hashes that copy on f3 against the same
+     `prep.config_sha256` before launch, on every run (ol4). Both
      mounts add `hfs_fdattr`
      (`trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,hfs_fdattr,msize=65536`);
      each mountinfo row must then show `,cache=mmap,hfs_fdattr`, and the batch

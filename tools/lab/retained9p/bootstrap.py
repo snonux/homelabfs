@@ -388,7 +388,9 @@ def check_fd_attr_binaries(plan, config):
     before exec). Neither pin names a candidate, so an r21 daemon or
     exporter under an s64 name would pass. `fd_attr_candidate_manifest` is
     the package's manifest.json, read under `fd_attr_candidate_sha256`; its
-    daemon and exporter entries must be exactly those two pins.
+    daemon and exporter entries must be exactly those two pins. `config` is
+    the workstation copy; the f3 copy the runtime reads is tied to it by
+    prep.config_sha256 in step_host_preflight (ol4).
     """
     manifest = fd_attr_input(plan, "fd_attr_candidate_manifest", plan["fd_attr_candidate_sha256"],
                              CANDIDATE_MANIFEST_LIMIT, "fd_attr_candidate_sha256")
@@ -1332,11 +1334,21 @@ class Bootstrap:
     # -- the steps, in STEPS order
 
     def step_host_preflight(self):
+        """f3 before launch: guard, daemon and the staged runtime.config
+        (ol4) are the pinned bytes; guard/owner/handoff targets are fresh.
+
+        The staged `runtime.config` is the copy of the bundle's
+        runtime-config.json that Phase 7 stages unchanged, so it is pinned
+        by the same `prep.config_sha256` that load_plan checked the
+        workstation copy (and on an fd_attr plan its exporter) under. No
+        new plan field: every plan, fd_attr or not, gets the check.
+        """
         g, r = self.plan["guard"], self.plan["runtime"]
         return self.read_once("host", "host-preflight", [
             "--guard-script", g["script"], "--guard-sha256", g["script_sha256"], "--runtime", r["executable"],
-            "--runtime-sha256", r["sha256"], "--guard-dir", g["run_dir"], "--owner-dir", r["owner_directory"],
-            "--enrollment-file", r["enrollment_file"]])
+            "--runtime-sha256", r["sha256"], "--config", r["config"],
+            "--config-sha256", self.plan["prep"]["config_sha256"], "--guard-dir", g["run_dir"],
+            "--owner-dir", r["owner_directory"], "--enrollment-file", r["enrollment_file"]])
 
     def step_launch(self):
         try:

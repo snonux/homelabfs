@@ -157,6 +157,7 @@ class World:
         # settles, as zq3-r8's probe PROCESS_EXIT).
         self.ledgers, self.strand, self.observes, self.sequences = {"hfs0": [], "hfs1": []}, {}, 0, []
         self.evidence_change = None
+        self.f3_config = None  # staged f3 runtime.config bytes; None: the workstation copy
 
     # -- Boundaries factory (bootstrap.run calls it with the run's inputs)
 
@@ -188,7 +189,17 @@ class World:
         return reply(dict(result, ok=True, action=action))
 
     def on_host_preflight(self, options, payload):
-        return {"guard_sha256": options["--guard-sha256"], "runtime_sha256": options["--runtime-sha256"]}
+        """ol4: f3's staged runtime.config is the workstation copy unless a
+        test stages other bytes (`f3_config`); differing bytes refuse with
+        the remote's exit 2, as bootstrap_remote.py's preflight does."""
+        staged = self.f3_config
+        if staged is None:
+            staged = Path(self.plan["prep"]["config"]).read_bytes()
+        if options["--config"] != self.plan["runtime"]["config"] or sha(staged) != options["--config-sha256"]:
+            error = "pinned file bytes differ: " + options["--config"]
+            return reply({"ok": False, "changed": False, "error": error}, 2)
+        return {"guard_sha256": options["--guard-sha256"], "runtime_sha256": options["--runtime-sha256"],
+                "config_sha256": options["--config-sha256"]}
 
     def on_host_poll(self, options, payload):
         if not self.launched:
@@ -434,8 +445,27 @@ class SequenceTests(Case):
             "--skip-path", RUN + "/volume/mnt", "--", RUN + "/bin/hfs-controlled-runtime",
             "--config", RUN + "/runtime/runtime-config.json", "--disposable-validation"]))
 
+    def test_host_preflight_pins_the_staged_runtime_config(self):
+        """ol4: the runtime.config the guard argv launches is checked on f3
+        against prep.config_sha256 (the bundle file it is a staged copy of)."""
+        self.assertEqual(self.run_plan(), 0)
+        plan = json.loads((self.root / "plan.json").read_bytes())
+        options = [options for _, action, options, _ in self.world.calls if action == "host-preflight"]
+        self.assertEqual([(o["--config"], o["--config-sha256"]) for o in options],
+                         [(RUN + "/runtime/runtime-config.json", plan["prep"]["config_sha256"])])
+
 
 class FailureTests(Case):
+    def test_staged_runtime_config_that_differs_stops_before_launch(self):
+        """ol4: a staged f3 runtime.config other than the pinned bundle file
+        fails host-preflight; the guard (and with it the runtime) never starts."""
+        self.world.f3_config = b'{"BootstrapSeconds":120,"Exporter":"other"}'
+        self.assertEqual(self.run_plan(), 1)
+        self.assert_stopped("host-preflight", "failed",
+                            "pinned file bytes differ: " + RUN + "/runtime/runtime-config.json")
+        self.assertEqual(self.world.actions(), ["host-preflight"])
+        self.assertFalse(self.world.launched)
+
     def test_guard_refusal_stops_before_any_guest_contact(self):
         def refuse(options, payload):
             self.world.guard_code = 1
