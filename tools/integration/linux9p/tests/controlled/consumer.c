@@ -6,7 +6,13 @@ int primitive_fstat(int, struct stat *);
 #define fstat primitive_fstat
 #define pread primitive_pread
 #define pwrite primitive_pwrite
+#ifdef HFS_CONTROLLED_OLD_EXPORTER
+/* hh4: build.py --old-exporter: hfs9p.c with its ABANDON classifier branch
+ * removed, i.e. the pre-hh4 exporter, whose _command refuses the op. */
+#include "old_hfs9p.c"
+#else
 #include "tools/integration/lib9p/src/hfs9p.c"
+#endif
 #undef fstat
 #undef pread
 #undef pwrite
@@ -52,6 +58,10 @@ struct hfs_view_ticket {
 };
 struct p9_client {
    int unused;
+};
+/* hh4: session->abandon_work; this fixture runs hfs_session_abandon itself. */
+struct work_struct {
+   void (*func)(struct work_struct *);
 };
 #define HFS_CONTEXT_MAX 4096U
 #define HFS_CAP_MAX 8192U
@@ -109,6 +119,19 @@ static Hfs9pConnection *connection;
 static bool lose_allocation = true, lose_gap = true;
 static char active_op[32];
 static unsigned allocations, calls;
+/* hh4: ABANDON SENDs the guest tried, and those the exporter refused. */
+static unsigned abandon_sends, abandon_refusals, warnings;
+static char last_warning[256];
+/* hfs_session_abandon logs a failed ABANDON (pr_warn), kernel format. */
+static __attribute__((format(printf, 1, 2))) void fixture_warn(const char *format, ...) {
+   va_list args;
+   va_start(args, format);
+   vsnprintf(last_warning, sizeof(last_warning), format, args);
+   va_end(args);
+   fputs(last_warning, stderr);
+   warnings++;
+}
+#define pr_warn fixture_warn
 static u8 allocation_frame[HFS_HEADER_SIZE + HFS_CHUNK_MAX];
 static u32 allocation_frame_len;
 static void usleep_range(unsigned int a, unsigned int b) {
@@ -218,6 +241,12 @@ static int p9_client_hfs_exchange(struct p9_client *client, u16 tag, u8 method,
    _put(request + 17, chunk, 4);
    if (frame_len)
       memcpy(request + 21, frame, frame_len);
+   /* hh4: every selected command fits one chunk (see below); an ABANDON
+    * SEND is counted whether or not the exporter accepts it. */
+   bool abandon = method == 1 && frame_len > HFS_HEADER_SIZE &&
+       memmem((const u8 *)frame + HFS_HEADER_SIZE, frame_len - HFS_HEADER_SIZE,
+              "\"op\":\"ABANDON\"", 14);
+   abandon_sends += abandon;
    int error = hfs9p_exchange(connection, request, 21 + frame_len, reply,
                               sizeof(reply), &n);
    if (error) {
@@ -227,6 +256,7 @@ static int p9_client_hfs_exchange(struct p9_client *client, u16 tag, u8 method,
    }
    assert(n >= 8 && *len >= n - 7);
    memcpy(packet, reply + 7, n - 7);
+   abandon_refusals += abandon && *(u8 *)packet != 1;
    if (method == 1 && *(u8 *)packet != 1) {
       fprintf(stderr,"backend SEND refusal minor=%u tag=%u cell=%llu packet=",
               backend->sessions[0].minor, tag, (unsigned long long)cell);
@@ -441,6 +471,52 @@ static void check_dirty_decoder(void) {
            "literal/physical primitives only\n");
 }
 
+/* hh4: the actual hfs_session_abandon of a blocked session whose one
+ * acknowledged claim never reached a CALL (an abandonable ALLOCATED claim).
+ * HFS_CONTROLLED_ABANDON=new: the patched exporter forwards one ABANDON, the
+ * real host answers ABANDONED, the request becomes a gap and its GAP_RESOLVE
+ * succeeds; the promise holds (hfs_request_run sends no CALL) and a second
+ * pass sends nothing. =old: the exporter without ABANDON (build.py
+ * --old-exporter) refuses the SEND in _command, so nothing reaches the host:
+ * the claim stays retained, the session blocked but not transport_failed,
+ * and the definite refusal is not resent.
+ */
+static void abandon_case(struct hfs_session *session, struct hfs_request *request,
+                         struct hfs_buf *payload, bool old) {
+   struct hfs_json *result = NULL;
+   hfs_session_abandon(session); /* not blocked yet: nothing listed */
+   assert(!abandon_sends && !request->abandoning);
+   hfs_session_block(session, "QUERY timeout", "ROOT", -ETIMEDOUT);
+   hfs_session_abandon(session);
+   fprintf(stderr, "ABANDON old=%d sends=%u refusals=%u gap=%d warnings=%u\n", old,
+           abandon_sends, abandon_refusals, request->gap, warnings);
+   assert(abandon_sends == 1 && request->abandoning && session->blocked &&
+          !session->transport_failed && !request->terminal);
+   if (old) {
+      assert(abandon_refusals == 1 && !request->gap && warnings == 1 &&
+             strstr(last_warning, "ABANDON of 1 claims failed (-71)"));
+      /* A kept request gets no GAP_RESOLVE either: the guest promised. */
+      assert(hfs_request_resolve_gap(session, request) == -EINVAL);
+   } else {
+      assert(!abandon_refusals && request->gap && !warnings);
+      assert(hfs_request_resolve_gap(session, request) == -EIO);
+      assert(!hfs_request_resolve_gap(session, request) && request->gap_response);
+   }
+   /* The promise: no CALL for a listed request, whatever its answer. The
+    * blocked flag alone already refuses an ordinary CALL, so it is lifted
+    * here: the reserved QUERY after an admitted CALL passes a blocked
+    * session, and only request->abandoning stops it then. */
+   assert(hfs_request_run(session, request, "ROOT", payload, &result) == -EHOSTDOWN &&
+          !calls && !result);
+   session->blocked = false;
+   assert(hfs_request_run(session, request, "ROOT", payload, &result) == -EHOSTDOWN &&
+          !calls && !result && session->blocked);
+   hfs_session_abandon(session); /* nothing uncertain is left to list */
+   assert(abandon_sends == 1 && !calls && allocations == 2);
+   fprintf(stderr, "PASS: hh4 %s exporter ABANDON of a blocked session's stranded "
+           "claim; no CALL after the promise, no second ABANDON\n", old ? "old" : "new");
+}
+
 int main(void) {
    const char *legacy = getenv("HFS_CONTROLLED_LEGACY");
    unsigned minor = legacy ? (unsigned)strtoul(legacy, NULL, 10) : 3;
@@ -596,6 +672,16 @@ int main(void) {
    assert(request->allocated && request->allocation_receipt &&
           !session.allocation_pending && !session.allocation_uncertain &&
           allocations == 2 && !calls);
+   const char *abandon = getenv("HFS_CONTROLLED_ABANDON");
+   if (abandon) {
+#ifdef HFS_CONTROLLED_OLD_EXPORTER
+      assert(!strcmp(abandon, "old"));
+#else
+      assert(!strcmp(abandon, "new"));
+#endif
+      abandon_case(&session, request, &payload, !strcmp(abandon, "old"));
+      return 0;
+   }
    if (getenv("HFS_CONTROLLED_GAP")) {
       assert(hfs_request_resolve_gap(&session, request) == -EIO);
       assert(!hfs_request_resolve_gap(&session, request));

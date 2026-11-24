@@ -69,11 +69,11 @@
     "drivers/char/random.c": "27c47ba7886b54b5b6a021c165238de0d5d5f9ea29d22888e3d4cca48f4edfe8",
     "fs/9p/Kconfig": "b775679a976451178fb663b2c9b70cbd040bea8be6b061a69b930a67a77087d3",
     "fs/9p/Makefile": "8e952a6cc9a66bbcc3bd9c39a49f3b5c5a1bae8f71a5345ba31b080e8f5c605f",
-    "fs/9p/hfs.h": "64c0e9ef95e9cf64f8d49b79b46f97e3ea4236c67f2321a16d6a2d1f454e9a1e",
+    "fs/9p/hfs.h": "f6e4b2c246ce3720de9a4eba8d5fdfba7c7e9c176ccd233b1274ddf584047ea1",
     "fs/9p/hfs_admission.c": "a608e6c8f9bf3b3b36eccfac65ae967e2d72972a88488ed9728d34441b80151f",
     "fs/9p/hfs_admission.h": "52365264648d9b2087bafb036b3495f0523a0778533322398405c802da13df7c",
     "fs/9p/hfs_completion.inc": "7f60863b2eb93bd69902b609c1c4ec188d12fac27f3c3f04a38751ca0cdde09b",
-    "fs/9p/hfs_controlled.c": "c556ec2456e0a54ffcf2e4803970269c9b71f185fc19df4b87d8a3e49d31ace5",
+    "fs/9p/hfs_controlled.c": "2682a4ddc902d027285fdbaf706f4235a2965d65c7e0c7c8158f61198de7493c",
     "fs/9p/hfs_controlled.h": "7fc36a479300375318269de5565e157bea7cf8f7eb09fda2f7b771842557be44",
     "fs/9p/hfs_controlled_artifacts.c": "0442d53994626fe776b59304608b3d39a2f049d3bdf2ffe37b9da34f263ec149",
     "fs/9p/hfs_controlled_internal.h": "af9505f7b577069c9ef81c598b80ced65b6a454d29471243bd8c43247a33bbf1",
@@ -99,13 +99,13 @@
     "fs/9p/hfs_lease.c": "16f0a2565305a3e449e3cd2cf758a96889f870a6182a497d0077e493914f073f",
     "fs/9p/hfs_lease.h": "583d0e97132fa9c3a66073e9b66832b650b8a631c89bc3e19f8826415ed6d271",
     "fs/9p/hfs_mmap.c": "ee5b3424b227fd3d6520e1ac6d74652a4222208d0f53c8880eec5390921bb77e",
-    "fs/9p/hfs_policy.c": "8da7b008a9cd885c0c9dd5bdf9628f97212322d9efbe28d21fbd4805f67c61c1",
-    "fs/9p/hfs_policy.h": "782eb94e85bca3fc16fa9761a7f783b4800846b5452aee7856e5ada59ef71681",
+    "fs/9p/hfs_policy.c": "9a16bbe38bf3bc109a8cb724949e25077b92b441fe91379b3f0aded384ba3df0",
+    "fs/9p/hfs_policy.h": "d06677b71f785dc98395aaf37d4a3079a98a41ecb9bb0b567e313149cf4ce7f2",
     "fs/9p/hfs_protocol.c": "d694f73cdbd22a85e177cfef9a5e6af4c247dc0b295639aac713c59c25eb8e6f",
     "fs/9p/hfs_protocol.h": "37fede9544bc08cc048b24989f4150bbc062e2105197a628fae849070c272d8f",
     "fs/9p/hfs_received.h": "79fb93d92153a23b3d649836319a018aa235a07d68006b708deede6a2d07ce59",
     "fs/9p/hfs_received.inc": "483f588e92988c1a1f68a46e17c0c5d68bd3f0d25a288fbd416a71aabe523530",
-    "fs/9p/hfs_session.c": "91cbe835cd0c091fdc215a9d5a5e3571fc174d69ef6dbb7261890ad4f3d07bbc",
+    "fs/9p/hfs_session.c": "c337e461fd103441da61402b2f1c8b05bdaa3ab39529fbf56945656092d75b68",
     "fs/9p/hfs_view.c": "ec7e8f9b31e1709d5efd09cbdae7e0639e680db58ddf92bf905f7ca880a0248c",
     "fs/9p/hfs_view.h": "13ab1330a51ffb2523ff80f9253145141180d89937273623ed0a8dfdfb95256b",
     "fs/9p/vfs_super.c": "dd56d86dc97e5eeeaead54e4b065eb830da277ec4a887088a83226e3641d031f",
@@ -130,14 +130,14 @@
       "sha256": "2e9dd92420fd90975556c0e95525be320d0a83da95a38f462566ac86bd154049"
     },
     {
-      "bytes": 87059,
+      "bytes": 87583,
       "file": "0002-hfs1-canonical-codec-policy.patch",
-      "sha256": "ef9b25044000d1a2b97eadc387d438a97440ad7dc493e6f14580e765f94a5268"
+      "sha256": "a506f2897ef6ea0e340369feaeefa48f08c2b251a3ba1936743aff06dadb749a"
     },
     {
-      "bytes": 235486,
+      "bytes": 248280,
       "file": "0003-hfs1-guest-vfs.patch",
-      "sha256": "8865847d3e88edf4f5e774ef55fc4c7fcf8ff4938bb43b9fbd5f1340ce81be39"
+      "sha256": "3db4d9ee935db2afbae44b3309d0c5c31474f610bd01d5400e774af88171b9d4"
     },
     {
       "bytes": 276517,
@@ -145,12 +145,12 @@
       "sha256": "032044d799549cc88c6706be5aebe8d65b17f1df8b10a6596c21ad64f16c1c6c"
     },
     {
-      "bytes": 354616,
+      "bytes": 354802,
       "file": "0005-hfs1-controlled-guest-provider.patch",
-      "sha256": "c69311c2111de8e5247e95d76b728efac21de0549b3e3616730b657bf1a2dbc1"
+      "sha256": "a1f27b8a04e85c702a8d19d96dff5da55f6585e54b8005947ecf6c522593b39b"
     }
   ],
-  "project_task": "s64",
+  "project_task": "hh4",
   "source_kind": "upstream Linux reference",
   "tag": "v6.1.190",
   "tag_object": "9ad12a4c0c7a36f365c13ea17d88499618440a7b",

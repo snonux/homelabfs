@@ -726,6 +726,20 @@ _body_version(Hfs9p *h, const uint8_t *bytes, uint32_t length,
    return (_body_version_tuple(h, bytes, length, minor, 0, response));
 }
 
+/* A claim subject: 1..1024 bytes as lowercase hex. */
+static int
+_subject(const Hfs9pJson *j, uint32_t token) {
+   Hfs9pToken t = j->tokens[token];
+   if (t.type != '"' || t.end - t.start < 4 ||
+       t.end - t.start > 2050 || (t.end - t.start) % 2)
+      return (EINVAL);
+   for (uint32_t i = t.start + 1; i < t.end - 1; i++) {
+      if (_hex_digit(j->bytes[i]) < 0)
+         return (EINVAL);
+   }
+   return (0);
+}
+
 static int
 _claim(const Hfs9pJson *j, uint32_t obj) {
    const char *const names[] = { "anchor", "nonce", "number",
@@ -740,13 +754,35 @@ _claim(const Hfs9pJson *j, uint32_t obj) {
        _hex(j, v[3], bytes, 32, false) ||
        _hex(j, v[4], bytes, 16, true))
       return (EINVAL);
-   Hfs9pToken t = j->tokens[v[5]];
-   if (t.type != '"' || t.end - t.start < 4 ||
-       t.end - t.start > 2050 || (t.end - t.start) % 2)
+   return (_subject(j, v[5]));
+}
+
+/* hh4: the closed ABANDON payload {anchor, claims, nonce, realm, subject}
+ * with 1..64 claims {number, original_hash} in strictly ascending number
+ * order (guestbridge validateAbandon). The forwarder only routes: the host
+ * binds the claims to the session and refuses a foreign or changed one. */
+static int
+_abandon(const Hfs9pJson *j, uint32_t payload) {
+   const char *const names[] = { "anchor", "claims", "nonce", "realm",
+      "subject" };
+   const char *const claim_names[] = { "number", "original_hash" };
+   uint32_t v[5], c[2];
+   uint8_t bytes[32];
+   uint64_t number, last = 0;
+   if (_fields(j, payload, names, 5, v) ||
+       _hex(j, v[0], bytes, 16, true) || _hex(j, v[2], bytes, 16, true) ||
+       _hex(j, v[3], bytes, 16, true) || _subject(j, v[4]) ||
+       j->tokens[v[1]].type != '[' || j->tokens[v[1]].count == 0 ||
+       j->tokens[v[1]].count > 64)
       return (EINVAL);
-   for (uint32_t i = t.start + 1; i < t.end - 1; i++) {
-      if (_hex_digit(j->bytes[i]) < 0)
+   uint32_t i = v[1] + 1;
+   for (unsigned n = 0; n < j->tokens[v[1]].count; n++) {
+      if (_fields(j, i, claim_names, 2, c) ||
+          hfs9p_json_u64(j, c[0], &number) || number <= last ||
+          _hex(j, c[1], bytes, 32, false))
          return (EINVAL);
+      last = number;
+      i = j->tokens[i].next;
    }
    return (0);
 }
@@ -1170,6 +1206,14 @@ _command(Hfs9p *h, Hfs9pEntry *e) {
       if (_fields(&j, v[3], keys, 4, cleanup) ||
           j.tokens[cleanup[0]].type != '[' || _claim(&j, cleanup[1]) ||
           _credentials(&j, cleanup[2]) || _hex(&j, cleanup[3], hash, 32, false))
+         return (EINVAL);
+      e->control = true;
+   } else if (minor >= 2 && hfs9p_json_equal(&j, v[2], "ABANDON")) {
+      /* hh4: a blocked session gives up its stranded claims. Reserved
+       * control work (the drain lane), like GAP_RESOLVE. Before hh4 this
+       * classifier refused the op (the final else), so an older exporter
+       * still refuses it before any host state. */
+      if (_abandon(&j, v[3]))
          return (EINVAL);
       e->control = true;
    } else if (hfs9p_json_equal(&j, v[2], "SESSION_RETIRE")) {

@@ -437,6 +437,10 @@ static void blocked_cases(void)
 	      hfs_after_block_operation("GAP_RESOLVE"));
 	CHECK(!hfs_after_block_operation("ROOT") && !hfs_after_block_operation("WRITE") &&
 	      !hfs_after_block_operation("ALLOCATE"));
+	/* hh4: ABANDON is the blocked session's own reconciliation of its
+	 * stranded claims; it must not die at its first FETCH AGAIN.
+	 */
+	CHECK(hfs_after_block_operation("ABANDON"));
 }
 
 int main(void)

@@ -2573,3 +2573,46 @@ session, so the test's plain QUERY of the effected claim halts with
 w54 (2026-11-09). Whether a blocked session may QUERY a retained,
 non-exempt claim is a guest-protocol decision. The fix is either a
 guest exemption or a different way for the test to observe the effect.
+
+## Abandon of stranded claims (`hh4`)
+
+A blocked session keeps a claim the host left RESERVED/UNPREPARED (or
+ALLOCATED and never called) retained, and the host keeps it charged: nothing
+it sees proves the guest gave up. The host (33a7dfa) accepts ABANDON, a
+session-bound list of claims the guest gives up on; patches 0002, 0003 and
+0005 now send it, following
+[docs/design/hh4-abandon.md](../../../docs/design/hh4-abandon.md) (its "As
+built" notes list where the build differs from the specification):
+
+- **Trigger** (`hfs_session_abandon_queue`): the first `hfs_session_block`
+  of a minor >= 2 session that has its control queue queues
+  `session->abandon_work` once (`HFS_ABANDON_QUEUED` in `block_reported`).
+  Nothing is sent from `hfs_session_block` itself. kill_sb runs one more
+  pass synchronously after `flush_workqueue(session->control)`, so a silent
+  block and requests the worker missed are covered.
+- **Pass** (`hfs_session_abandon`): batches of at most 64 eligible requests
+  (allocated; not terminal, gap, abandoning, earmarked, control or held; no
+  users), marked `abandoning` and copied under `session->lock`, sent as one
+  reserved ABANDON each (`hfs_abandon_exchange`: one resend only for an
+  uncertain failure). The closed reply is checked (`hfs_abandon_check`):
+  verification null, one outcome per number in order, a proof exactly on
+  ABANDONED. ABANDONED makes the request a gap, which `hfs_retire` retires
+  through GAP_RESOLVE; KEPT, RETIRED_ID and UNKNOWN keep it retained.
+- **Promise**: `hfs_request_run` sends no CALL or QUERY for an abandoning
+  request (`hfs_request_abandon_halt`), and `hfs_request_resolve_gap`
+  refuses one the host kept.
+- **Policy** (0002): ABANDON is exempt from the blocked-session halt, like
+  GAP_RESOLVE (dh4). **0005**: it is cleanup for the controlled pre-send
+  gate, because kill_sb sends it on a closing session.
+
+Tests: `transport` (exempt; red first), `mount_hello`
+(`session-block-abandon`, the kill_sb pass), `controlled` modes `abandon`
+and `abandon-old` (the latter against the exporter without ABANDON, built
+with `build.py --old-exporter`), and `controlled_received --scenario
+abandon` (`TestControlledReceivedActualAbandon`). The design doc lists what
+each case checks. `view/compat.h` stubs `hfs_session_abandon_queue` for the
+actual `hfs_session_block` of `view --pressure`.
+
+The series was regenerated with `export.py --task hh4` (0002:
+`hfs_policy.[ch]`; 0003: `hfs.h`, `hfs_session.c`; 0005: `hfs_controlled.c`).
+No candidate was rebuilt, booted or admitted.

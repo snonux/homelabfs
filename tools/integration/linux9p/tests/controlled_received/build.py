@@ -78,7 +78,8 @@ def main():
     (out/'controlled_compat.h').write_text(admin)
     session = read('fs/9p/hfs_session.c')
     selected = ['hfs_field_u64', 'hfs_uuid', 'hfs_cred_write', 'hfs_cred_free',
-                'hfs_process_exit_work', 'hfs_session_stop_wake', 'hfs_session_mark_blocked',
+                'hfs_process_exit_work', 'hfs_session_abandon_queue',
+                'hfs_session_stop_wake', 'hfs_session_mark_blocked',
                 'hfs_session_block', 'hfs_session_fence', 'hfs_cred_equal', 'hfs_process_find',
                 'hfs_capture_owned', 'hfs_capture', 'hfs_capture_terminal',
                 'hfs_reply_scope', 'hfs_transport_failed', 'hfs_transport_note', 'hfs_session_poll_halt', 'hfs_transport_stop',
@@ -90,8 +91,14 @@ def main():
                 'hfs_args_init', 'hfs_cap_write', 'hfs_args_object',
                 'hfs_cap_free', 'hfs_cap_parse', 'hfs_reply_cap',
                 'hfs_request_unhold', 'hfs_request_result_put', 'hfs_request_payload',
+                'hfs_request_abandon_halt',
                 'hfs_allocation_changed_locked', 'hfs_allocation_wake',
-                'hfs_request_allocate', 'hfs_request_resolve_gap', 'hfs_request_result_borrow', 'hfs_request_run',
+                'hfs_request_allocate', 'hfs_request_resolve_gap',
+                # hh4: the abandon pass and its worker.
+                'hfs_abandon_eligible', 'hfs_abandon_collect_locked', 'hfs_abandon_outcome',
+                'hfs_abandon_check', 'hfs_abandon_exchange', 'hfs_abandon_apply',
+                'hfs_session_abandon', 'hfs_session_abandon_work',
+                'hfs_request_result_borrow', 'hfs_request_run',
                 'hfs_request_earmark', 'hfs_request_cancel_earmark', 'hfs_request_earmark_admitted',
                 'hfs_request_bind_drain', 'hfs_request_drain', 'hfs_cleanup_opcode', 'hfs_call_control_bytes',
                 'hfs_call_admit_locked', 'hfs_call_dequeue', 'hfs_call_woken', 'hfs_call_sleep',

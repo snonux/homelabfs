@@ -4,9 +4,11 @@ This is part 2 of a84. Part 1 added the refusal trace. Both are described in
 [internal/guestbridge/README.md](../../internal/guestbridge/README.md),
 section "Swallowed refusals and stranded RESERVED claims (a84)".
 
-Status: the host side is implemented (Go, this task). The guest side is
-specified below but not built: it needs a local kernel build, and the
-patches under `tools/integration/linux9p/patches` were not edited.
+Status: both sides are implemented. The host side (Go) came first; the guest
+kernel patches (0002, 0003, 0005 under `tools/integration/linux9p/patches`)
+and the lib9p forwarder followed, as described in "The guest change" below.
+No guest kernel was booted: the guest side is proven by a local object build
+and the component harnesses only.
 
 ## Problem
 
@@ -78,9 +80,9 @@ gives a gap proof for every one it declined.
    schema but the lib9p exporter: its command classifier (`_command`,
    `tools/integration/lib9p/src/hfs9p.c`, the final `else` that returns
    EINVAL for an unknown op) refuses the cell when the guest's last chunk
-   completes it, so the guest's send fails with EINVAL and nothing reaches
-   the host. On this branch that is also what every guest meets until the
-   forwarder change (step 7 below) ships. A Go host reached directly refuses
+   completes it, so the guest's send fails (ERROR INVALID, -EPROTO in the
+   guest) and nothing reaches the host. That is what a guest meets behind a
+   forwarder older than step 7 below. A Go host reached directly refuses
    ABANDON in its closed schema. Either way the guest keeps its claims
    retained, exactly as today. With option A the guest could not tell
    whether the release had happened.
@@ -295,11 +297,13 @@ AGAIN, by timing alone (the s54 failure mode). Its other properties:
 claims can still hold `terminalEmpty` back. That is correct: they may have
 had effects.
 
-## The guest change still needed (not built)
+## The guest change
 
 All of it is in the patch series under `tools/integration/linux9p/patches`,
-regenerated with `export.py --task hh4`. Then rebuild `fs/9p` and `net/9p`
-with `CONFIG_9P_FS_HOMELABFS_CONTROLLED` on and off.
+regenerated with `export.py --task hh4`; `fs/9p` and `net/9p` build without
+warnings with `CONFIG_9P_FS_HOMELABFS_CONTROLLED` on and off. The steps below
+are the specification; where the build differs, the difference is noted at
+the end of this section ("As built").
 
 1. **0002 `hfs_policy.c`**: add `"ABANDON"` to `hfs_after_block_operation`'s
    exempt list, next to DRAIN_WRITE and GAP_RESOLVE. Extend the dh4 comment
@@ -414,6 +418,88 @@ Tests to add with the guest change:
 - `controlled_received`: a request skipped at block time (`users > 0`) is
   abandoned by `kill_sb`'s final pass; a request whose in-flight CALL
   delivers TERMINAL after a KEPT answer is retired with its result.
+
+### As built
+
+- `hfs_session_abandon_queue` (called first thing after
+  `hfs_session_mark_blocked` in `hfs_session_block`) also requires
+  `session->control`: a session blocked before `v9fs_hfs_mount` allocated
+  the queue queues nothing, and kill_sb's pass still runs.
+- `kill_sb` does not queue the work for a silent block; it calls the pass
+  (`hfs_session_abandon`) directly after `flush_workqueue(session->control)`,
+  which covers a silent block, a request skipped by the worker and a request
+  that became eligible after the worker ran. The pass needs
+  `session->blocked` (kill_sb sets it) and minor >= 2.
+- The original hash in the payload is the hash of the request's intent,
+  which is how `hfs_call_prepare` made the claim's `original_hash`.
+- Resend (step 5): one resend of the identical payload only for an
+  uncertain failure. A definite refusal is not resent: `-EPROTO` (an
+  exporter ERROR INVALID/SCOPE, which is how an exporter without ABANDON
+  refuses it, or a malformed reply), `-ESTALE`, and the local refusals
+  `-EOPNOTSUPP`, `-EINVAL`, `-EACCES`. Resending those would only park a
+  second control cell in `session->uncertain`. A failed batch ends the pass
+  with one `pr_warn` line ("ABANDON of N claims failed (err); they stay
+  retained").
+- The reply check also requires `verification` null. A malformed reply
+  applies nothing.
+- The abandon_proof shortcut (step 5, optional) is not built: an ABANDONED
+  request becomes `gap` and `hfs_retire` resolves it with GAP_RESOLVE and
+  its gap QUERY, which return the same proof. That QUERY expects DECLINED,
+  which only a mapped 1.4 session gets (the host answers INDETERMINATE on
+  1.2/1.3), so on 1.2/1.3 the gap is not retired by `hfs_retire`. That is
+  unchanged from every other gap on those minors.
+- The promise (step 6): `hfs_request_run` checks `abandoning` (gap or not)
+  before its CALL and before each QUERY (`hfs_request_abandon_halt`,
+  `-EHOSTDOWN`); `hfs_request_resolve_gap` refuses `abandoning && !gap`.
+- Patch 0005: ABANDON is a cleanup operation for the controlled pre-send
+  gate (`hfs_controlled_cleanup_operation`), because kill_sb's pass runs on a
+  closing session.
+- Eligibility keeps the design's `!control`: a cleanup request (FORGET,
+  DESCRIPTION_RELEASE/CLOSE, PROCESS_EXIT, all sent with `control` true) that
+  strands is not abandoned. The host predicate would allow it; widening the
+  guest filter is a possible follow-up.
+- `users > 0` is in practice only a result borrower, and such a request is
+  already terminal. A request the worker misses is more often one that
+  became eligible after the worker ran (an exchange in flight at block time
+  that failed later); kill_sb's pass lists it.
+- In-flight TERMINAL after KEPT: `hfs_abandon_apply` leaves a request that
+  turned terminal meanwhile alone. The harnesses cannot interleave an
+  in-flight exchange of the same session with the ABANDON (the writer mutex
+  is held across the exchange), so this rule is source-reviewed only.
+
+Tests as built (all local, no guest boot):
+
+- `transport`: `hfs_after_block_operation("ABANDON")`; red on the
+  unpatched series.
+- `mount_hello`: the first block of a minor-4 session with a control queue
+  queues `abandon_work` once (`HFS_ABANDON_QUEUED`); a second block, a
+  minor-1 session and a session without the queue do not; `hfs_session_new`
+  prepares the item; every kill_sb runs exactly one pass, after the control
+  flush and before the settle and stop.
+- `controlled` (real host Transport/Service/provider): `abandon` blocks a
+  session whose one claim is ALLOCATED and never called, and the pass sends
+  exactly the expected bytes once (control class), the host stores the
+  claim DECLINED/Gap/Abandoned with zero credit, the request becomes a gap,
+  its GAP_RESOLVE succeeds, `hfs_request_run` sends no CALL even with the
+  blocked flag lifted, and a second pass sends nothing. `abandon-old` runs
+  the same guest against the exporter without ABANDON (`build.py
+  --old-exporter` removes the classifier branch): the exporter refuses the
+  SEND, nothing reaches the host (claim still ALLOCATED), the guest gets
+  `-EPROTO`, does not resend, logs once, keeps the claim and stays blocked
+  without `transport_failed`.
+- `controlled_received --scenario abandon`
+  (`TestControlledReceivedActualAbandon`, mapped 1.4, real
+  Producer/runtime): the block queues the worker once; the worker skips a
+  request a caller holds and sends nothing; the final pass sends one ABANDON
+  with the exact bytes; ABANDONED becomes `gap`; RETIRE moves the floor to 2
+  and the GAP_RESOLVE proof equals the ABANDON proof; a further pass sends
+  nothing. A claim whose CALL ran (reply lost) is answered KEPT, stays
+  retained, and the guest sends no further QUERY for it.
+- lib9p `backend_test`: `_abandon` accepts the closed shape (1 and 64
+  claims) and refuses no claim, 65 claims, unordered or duplicate numbers,
+  number 0, missing or short hashes, extra fields, an empty or odd subject,
+  a missing field and a non-array `claims`; `_command` routes ABANDON on
+  minor 2 and 3 as control work.
 
 ## Tests (host side)
 

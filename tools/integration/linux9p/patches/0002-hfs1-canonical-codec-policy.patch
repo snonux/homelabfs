@@ -2040,7 +2040,7 @@ diff --git a/fs/9p/hfs_policy.h b/fs/9p/hfs_policy.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_policy.h
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,103 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_POLICY_H
 +#define FS_9P_HFS_POLICY_H
@@ -2136,7 +2136,9 @@ new file mode 100644
 + * on a blocked session: retirement, release, cancel and cleanup traffic,
 + * which a retained session's destroy and close still need, and the reserved
 + * control work for drains and reconciliation, DRAIN_WRITE and GAP_RESOLVE
-+ * (dh4). Every other operation halts at its first retry or poll.
++ * (dh4), and ABANDON (hh4), the blocked session's own reconciliation of its
++ * stranded claims, bounded by its deadline and transport_failed. Every other
++ * operation halts at its first retry or poll.
 + */
 +bool hfs_after_block_operation(const char *operation);
 +
@@ -2146,7 +2148,7 @@ diff --git a/fs/9p/hfs_policy.c b/fs/9p/hfs_policy.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_policy.c
-@@ -0,0 +1,248 @@
+@@ -0,0 +1,254 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Pure request identity and authoritative metadata validation. */
 +#include "hfs_policy.h"
@@ -2379,6 +2381,12 @@ new file mode 100644
 + * drain or a retried GAP_RESOLVE failed by timing alone. They now run to
 + * their reply or deadline like retirement traffic; transport_failed still
 + * halts them (hfs_session_poll_halt), so they stay bounded after host loss.
++ *
++ * hh4: ABANDON is exempt the same way. Only a blocked session sends it
++ * (hfs_session_abandon), to give up its stranded never-prepared claims, so
++ * halting it at its first FETCH AGAIN would make it fail by timing alone.
++ * It is reserved control work too: it runs to its reply or its 30 s
++ * deadline, and transport_failed still halts it at its first retry.
 + */
 +bool hfs_after_block_operation(const char *operation)
 +{
@@ -2386,7 +2394,7 @@ new file mode 100644
 +		"RETIRE",	"CANCEL",	     "RELEASE_CELL",	  "SESSION_RETIRE",
 +		"VIEW_RELEASE", "VIEW_CANCEL",	     "VIEW_RETIRE",	  "READDIR_CLEANUP",
 +		"FORGET",	"DESCRIPTION_CLOSE", "DESCRIPTION_RELEASE", "PROCESS_EXIT",
-+		"DRAIN_WRITE",	"GAP_RESOLVE",
++		"DRAIN_WRITE",	"GAP_RESOLVE",	     "ABANDON",
 +	};
 +	size_t i;
 +

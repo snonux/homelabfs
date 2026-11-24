@@ -11,12 +11,16 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--source', type=Path, required=True)
 p.add_argument('--output', type=Path, required=True)
 p.add_argument('--sanitize', action='store_true')
+# hh4: build against the exporter as it was before ABANDON (its _command
+# branch removed), for the old-host refusal case (HFS_CONTROLLED_ABANDON=old).
+p.add_argument('--old-exporter', action='store_true')
 a = p.parse_args()
 os.sched_setaffinity(0, sorted(os.sched_getaffinity(0))[:2])
 here = Path(__file__).resolve().parent
@@ -38,7 +42,20 @@ for filename, name in [('hfs_view.h', 'hfs_cache_page'), ('hfs_view.h', 'hfs_dir
     raw=(src/'fs/9p'/filename).read_text()
     start=raw.index('struct '+name+' {')
     parts.append(raw[start:raw.index('\n};',start)+3])
-(out/'types.inc').write_text('\n'.join(parts))
+# hh4: hfs_session_abandon's batch and payload bounds, from hfs.h.
+for macro in ('HFS_ABANDON_MAX', 'HFS_ABANDON_PAYLOAD'):
+    parts.append(re.search(r'^#define ' + macro + ' .*$', header, re.M).group(0))
+(out/'types.inc').write_text('\n'.join(parts)+'\n')
+if a.old_exporter:
+    exporter = (repo/'tools/integration/lib9p/src/hfs9p.c').read_text()
+    first = exporter.index('   } else if (minor >= 2 && hfs9p_json_equal(&j, v[2], "ABANDON")) {\n')
+    last = exporter.index('   } else if (hfs9p_json_equal(&j, v[2], "SESSION_RETIRE")) {\n', first)
+    if exporter.count('"ABANDON"') != 1:
+        raise SystemExit('refuse: expected exactly one ABANDON classifier branch')
+    exporter = exporter[:first] + exporter[last:]
+    # The copy's quoted includes must still find lib9p's own headers.
+    exporter = exporter.replace('#include "', '#include "tools/integration/lib9p/src/')
+    (out/'old_hfs9p.c').write_text(exporter)
 spans = [('static int hfs_field_u64(', '\nvoid hfs_cred_write('),
          ('void hfs_cred_write(', '\nvoid hfs_cred_free('),
          ('static int hfs_reply_scope(', '\nstatic int hfs_copy_token('),
@@ -109,6 +126,8 @@ command=['cc','-std=gnu11','-O1','-g','-Wall','-Wextra','-Werror','-Wno-sign-com
          '-o',str(out/'consumer')]
 if a.sanitize:
     command[1:1]=['-fsanitize=address,undefined','-fno-omit-frame-pointer','-fno-pie','-no-pie']
+if a.old_exporter:
+    command[1:1]=['-DHFS_CONTROLLED_OLD_EXPORTER']
 with (out/'build.log').open('w') as log:
     subprocess.run(command,stdout=log,stderr=subprocess.STDOUT,check=True,timeout=60)
 (out/'bindings.json').write_text(json.dumps({'source':str(src), 'session_sha256':hashlib.sha256(session.encode()).hexdigest(),

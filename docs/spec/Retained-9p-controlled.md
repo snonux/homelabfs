@@ -127,13 +127,14 @@ ALLOCATE writes nothing and GAP_RESOLVE returns the same proof.
 
 A forwarder or host without ABANDON refuses it before any host state is
 touched. The first refusal is the lib9p exporter's command classifier
-(`_command` in `tools/integration/lib9p/src/hfs9p.c`): it answers EINVAL for
-an operation it does not know when the guest's last chunk completes the
-cell, so the guest's send fails with EINVAL and nothing is forwarded to the
-host. This branch's forwarder still lacks ABANDON, so that is also what a
-guest meets here until the forwarder change ships. A Go host reached
-directly refuses it in its closed schema. Either way the guest keeps its
-claims retained exactly as before. The design and safety argument are in
+(`_command` in `tools/integration/lib9p/src/hfs9p.c`): an exporter older
+than hh4 answers EINVAL for an operation it does not know when the guest's
+last chunk completes the cell, so the guest's send fails (ERROR INVALID) and
+nothing is forwarded to the host. Since hh4 the exporter routes ABANDON on
+minor 2, 3 and 4 as reserved control work, after checking the closed payload
+shape above. A Go host reached directly without ABANDON refuses it in its
+closed schema. Either way the guest keeps its claims retained exactly as
+before and does not resend the refusal. The design and safety argument are in
 [hh4-abandon.md](../design/hh4-abandon.md).
 
 ## Response verification union

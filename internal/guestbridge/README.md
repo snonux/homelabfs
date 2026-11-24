@@ -308,7 +308,7 @@ trace with each open claim. The trace is a diagnostic only:
 * It is best effort and written under the provider's execution mutex. A
   failed write is dropped and never changes the answer.
 
-**Releasing stranded claims (hh4: host side done, guest side pending).** A
+**Releasing stranded claims (hh4).** A
 stranded claim keeps its retained and source credit until a guest RETIRE
 recycles its number, and the guest never retires past it. Only the
 never-prepared claims above can be released: no plan was protected for them,
@@ -333,7 +333,9 @@ preparation after the abandon finds the gap and is refused or has no effect.
 
 ABANDON is claim-ledger control work like GAP_RESOLVE. It skips the view
 provider's request check, so a 0a4-fenced session can still abandon. The
-guest kernel change that sends it from `hfs_session_block`, exempted from
-the blocked-session halt as dh4 exempted GAP_RESOLVE, is specified in the
-design doc but not built yet. Until it ships, a stranded claim stays
-charged, and its trace shows why.
+guest kernel (patches 0002, 0003, 0005) queues it once from
+`hfs_session_block` and runs a final pass in kill_sb, exempted from the
+blocked-session halt as dh4 exempted GAP_RESOLVE; the lib9p forwarder routes
+it as control work. A guest behind an older forwarder gets the exporter's
+refusal and keeps its claims charged, as before; their trace shows why. No
+guest kernel with this change has been booted yet.

@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1219,6 +1220,154 @@ func TestControlledReceivedActualGapLostReplies(t *testing.T) {
 	}
 	if len(proofs) != 2 || proofs[0] == "" || proofs[0] != proofs[1] {
 		t.Fatalf("GAP retry changed protected proof: %v", proofs)
+	}
+	c.action("RETAIN_VERIFY", 0, "", 0)
+	c.close()
+}
+
+// receivedAbandons returns the actual ABANDON commands of one session with
+// their responses, in cell order.
+func receivedAbandons(t *testing.T, c *receivedCarrier, session int) (payloads, responses [][]byte) {
+	t.Helper()
+	cells := []uint64{}
+	for cell, command := range c.commands {
+		if command.Op == "ABANDON" && command.Context.Session == c.rig.peers[session].scope.Session {
+			cells = append(cells, cell)
+		}
+	}
+	slices.Sort(cells)
+	for _, cell := range cells {
+		payloads = append(payloads, c.commands[cell].Payload)
+		responses = append(responses, c.responses[cell])
+	}
+	return payloads, responses
+}
+
+// receivedAbandonOutcome decodes the single outcome of an ABANDON response.
+func receivedAbandonOutcome(t *testing.T, raw []byte) (number uint64, status, proof string) {
+	t.Helper()
+	var reply struct {
+		Payload struct {
+			Claims []struct {
+				Number uint64  `json:"number"`
+				Status string  `json:"status"`
+				Proof  *string `json:"proof_hash"`
+			} `json:"claims"`
+		}
+		Verification json.RawMessage
+	}
+	require(t, json.Unmarshal(raw, &reply))
+	if len(reply.Payload.Claims) != 1 || string(reply.Verification) != "null" {
+		t.Fatalf("ABANDON reply shape: %s", raw)
+	}
+	outcome := reply.Payload.Claims[0]
+	if outcome.Proof != nil {
+		proof = *outcome.Proof
+	}
+	return outcome.Number, outcome.Status, proof
+}
+
+// hh4: a blocked session abandons its stranded never-prepared claim.
+// Session 0: the CALL of claim 2 never reaches the host (FAULT CALL 1), so
+// the host holds it ALLOCATED and charged. The block queues abandon_work; the
+// worker skips the request while a caller still holds it (users) and is not
+// queued again; the final pass (kill_sb's) then sends exactly one ABANDON with
+// the exact claim, the host answers ABANDONED, the request becomes a gap and
+// RETIRE passes it with the same proof GAP_RESOLVE returns. A further pass
+// sends nothing. Session 1: the CALL of claim 2 reached the host and ran (its
+// reply lost, FAULT CALL 2): ABANDON answers KEPT, the request stays retained
+// and the guest sends no further QUERY for it (the promise).
+func TestControlledReceivedActualAbandon(t *testing.T) {
+	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
+	c := startReceivedCarrier(t, r)
+	args := "ROOT " + hex.EncodeToString(mustRuntimeJSON(t, map[string]any{}))
+	intent := guestbridge.Intent{Opcode: "ROOT", Args: json.RawMessage(`{}`)}
+	originalHash := hashBytes(mustRuntimeJSON(t, intent))
+	for session := range 2 {
+		c.action("REQUEST", session, args, 0)
+		c.action("ADOPT_ROOT_PREPARE", session, "", 0)
+		c.action("ABANDON_ARM", session, "", 0)
+	}
+	c.action("FAULT", 0, "CALL 1", 0)
+	c.action("REQUEST", 0, args, -5)
+	if floor, requests, unknown := receivedState(t, c, 0); floor != 0 || requests != 2 || unknown != 1 {
+		t.Fatalf("stranded claim lost: %d/%d/%d", floor, requests, unknown)
+	}
+	c.action("ABANDON_USERS", 0, "1", 0)
+	if ran := string(c.action("ABANDON_STEP", 0, "", 0)); ran != "true" {
+		t.Fatalf("block did not queue abandon_work: %s", ran)
+	}
+	if payloads, _ := receivedAbandons(t, c, 0); len(payloads) != 0 {
+		t.Fatalf("worker abandoned a request a caller still holds: %s", payloads)
+	}
+	c.action("ABANDON_USERS", 0, "-1", 0)
+	if ran := string(c.action("ABANDON_STEP", 0, "", 0)); ran != "false" {
+		t.Fatal("abandon_work queued twice")
+	}
+	c.action("ABANDON_PASS", 0, "", 0)
+	payloads, responses := receivedAbandons(t, c, 0)
+	want := mustRuntimeJSON(t, map[string]any{"anchor": testUUID(101).String(), "nonce": testUUID(103).String(), "realm": testUUID(100).String(), "subject": "616263",
+		"claims": []map[string]any{{"number": 2, "original_hash": originalHash}}})
+	if len(payloads) != 1 || !bytes.Equal(payloads[0], want) {
+		t.Fatalf("ABANDON bytes %s want %s", payloads, want)
+	}
+	number, status, abandonProof := receivedAbandonOutcome(t, responses[0])
+	if number != 2 || status != "ABANDONED" || len(abandonProof) != 64 {
+		t.Fatalf("ABANDON outcome %d %s %q", number, status, abandonProof)
+	}
+	if flags := string(c.action("ABANDON_FLAGS", 0, "", 0)); flags != `{"abandoning":true,"gap":true,"terminal":false}` {
+		t.Fatalf("ABANDONED not mapped to gap: %s", flags)
+	}
+	c.action("ABANDON_PASS", 0, "", 0)
+	if payloads, _ := receivedAbandons(t, c, 0); len(payloads) != 1 {
+		t.Fatalf("second pass sent ABANDON again: %d", len(payloads))
+	}
+	c.action("RETIRE", 0, "", 0)
+	if floor, requests, _ := receivedState(t, c, 0); floor != 2 || requests != 0 {
+		t.Fatalf("abandoned claim not retired: floor %d requests %d", floor, requests)
+	}
+	for cell, command := range c.commands {
+		if command.Op != "GAP_RESOLVE" || command.Context.Session != r.peers[0].scope.Session {
+			continue
+		}
+		var reply struct {
+			Payload struct {
+				Proof string `json:"proof_hash"`
+			}
+		}
+		require(t, json.Unmarshal(c.responses[cell], &reply))
+		if reply.Payload.Proof != abandonProof {
+			t.Fatalf("GAP_RESOLVE proof %s differs from ABANDON proof %s", reply.Payload.Proof, abandonProof)
+		}
+	}
+
+	c.action("FAULT", 1, "CALL 2", 0)
+	c.action("REQUEST", 1, args, -5)
+	if ran := string(c.action("ABANDON_STEP", 1, "", 0)); ran != "true" {
+		t.Fatalf("block did not queue abandon_work: %s", ran)
+	}
+	payloads, responses = receivedAbandons(t, c, 1)
+	if len(payloads) != 1 {
+		t.Fatalf("session 1 ABANDONs %d", len(payloads))
+	}
+	if number, status, proof := receivedAbandonOutcome(t, responses[0]); number != 2 || status != "KEPT" || proof != "" {
+		t.Fatalf("prepared claim not KEPT: %d %s %q", number, status, proof)
+	}
+	queries := 0
+	for _, command := range c.commands {
+		queries += map[bool]int{true: 1}[command.Op == "QUERY" && command.Context.Session == r.peers[1].scope.Session]
+	}
+	// The promise: no QUERY (nor CALL) for a listed request.
+	c.action("REQUEST_CONTINUE", 1, "", -112)
+	after := 0
+	for _, command := range c.commands {
+		after += map[bool]int{true: 1}[command.Op == "QUERY" && command.Context.Session == r.peers[1].scope.Session]
+	}
+	if after != queries {
+		t.Fatalf("QUERY sent for an abandoning request: %d -> %d", queries, after)
+	}
+	if flags := string(c.action("ABANDON_FLAGS", 1, "", 0)); flags != `{"abandoning":true,"gap":false,"terminal":false}` {
+		t.Fatalf("KEPT request changed: %s", flags)
 	}
 	c.action("RETAIN_VERIFY", 0, "", 0)
 	c.close()

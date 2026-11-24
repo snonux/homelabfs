@@ -252,7 +252,7 @@ diff --git a/fs/9p/hfs_controlled.c b/fs/9p/hfs_controlled.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_controlled.c
-@@ -0,0 +1,1390 @@
+@@ -0,0 +1,1394 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* Registered controlled-only provider and finite retained ownership. */
 +#include "hfs_controlled.h"
@@ -369,9 +369,13 @@ new file mode 100644
 +	return hfs_controlled_identity(mount, !READ_ONCE(mount->session->closing));
 +}
 +
++/* hh4: ABANDON is cleanup too: kill_sb sends its final pass while the
++ * session is already closing (hfs_controlled_cleanup_live, not _live).
++ */
 +static bool hfs_controlled_cleanup_operation(const char *operation)
 +{
 +	return !strcmp(operation, "QUERY") || !strcmp(operation, "GAP_RESOLVE") ||
++		!strcmp(operation, "ABANDON") ||
 +		!strcmp(operation, "RETIRE") || !strcmp(operation, "RELEASE_CELL") ||
 +		!strcmp(operation, "VIEW_RELEASE") || !strcmp(operation, "VIEW_QUERY") ||
 +		!strcmp(operation, "VIEW_CANCEL") || !strcmp(operation, "VIEW_RETIRE") ||

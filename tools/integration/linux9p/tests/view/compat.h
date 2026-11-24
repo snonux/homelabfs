@@ -127,6 +127,12 @@ struct hfs_session {
    struct mutex retirement; /* 1h4: hfs_retirement_unlock (hfs_view.c) */
    wait_queue_head_t stop_wait; /* 5f4: hfs_view_watch_stops (hfs_view.c) */
 };
+/* hh4: the actual hfs_session_block (view --pressure) queues the abandon of
+ * the session's stranded claims. These fixtures hold no claims, so nothing
+ * is queued; mount_hello and controlled_received compile the real
+ * hfs_session_abandon_queue.
+ */
+static inline void hfs_session_abandon_queue(struct hfs_session *session) { (void)session; }
 
 #define HFS_IDENTITIES_MAX 4096U
 #define THIS_MODULE NULL
