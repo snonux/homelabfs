@@ -4725,7 +4725,7 @@ diff --git a/fs/9p/hfs_inode.c b/fs/9p/hfs_inode.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_inode.c
-@@ -0,0 +1,1692 @@
+@@ -0,0 +1,1708 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Authoritative retained-9p attributes and namespace VFS operations. */
 +#include <linux/magic.h>
@@ -5790,10 +5790,12 @@ new file mode 100644
 +/* s64: append "description":<cap>, for a listed description of inode's
 + * object: with last, the one borrow used last; otherwise one this syscall
 + * has not tried yet, whose token is remembered. Returns 0 or -HFS_ENODESC.
-+ * The cap bytes are copied under session->lock: hfs_description_bind
-+ * publishes description->cap there and hfs_description_discard unlinks the
-+ * description there before it frees the cap, so a listed cap is live while
-+ * the lock is held. args is preallocated (hfs_args_init): no allocation.
++ * The cap bytes are copied under session->lock: hfs_description_publish
++ * (hfs_file.c; called by hfs_description_bind for OPEN and by
++ * hfs_create_inode for CREATE) sets description->cap there, and
++ * hfs_description_discard unlinks the description there before it frees
++ * the cap, so a listed cap is live while the lock is held. args is
++ * preallocated (hfs_args_init): no allocation.
 + */
 +static int hfs_args_listed_description(struct hfs_buf *args, struct inode *inode,
 +				       struct hfs_borrow *borrow, bool last)
@@ -5877,6 +5879,20 @@ new file mode 100644
 + * session means an old forwarder or host refused the shape (no ALLOCATE, so
 + * nothing was admitted): hfs_fdattr is cleared for the session and the path
 + * error returned. On a controlled session the error is returned as it is.
++ *
++ * Accepted edges of the minor-0/1 rule (bl4), on the direct nlink-0 path
++ * (hfs_getattr_once/hfs_setattr_attributes with i_nlink 0, which send no
++ * path form first and pass fallback -ESTALE):
++ * - -EINVAL is also how a current host's Invalid result arrives, so a real
++ *   Invalid answer to a described call clears fd_attr as if an old peer had
++ *   refused the shape, and the syscall returns -ESTALE, not -EINVAL. Later
++ *   calls on the session use the path form only.
++ * - A described call still carries the object's PATH capability. If that
++ *   grant is not live, the host refuses every described try with -EACCES,
++ *   hfs_fd_attr_dead takes each as a dead description, the walk runs out
++ *   (-HFS_ENODESC) and the syscall returns -ESTALE where the path form would
++ *   have returned -EACCES. Not minor-specific.
++ * Both only change which error a call that fails anyway returns.
 + */
 +static int hfs_fd_attr_result(struct hfs_session *session, int err, int fallback)
 +{

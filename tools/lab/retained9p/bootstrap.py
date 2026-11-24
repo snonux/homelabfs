@@ -87,6 +87,9 @@ EVIDENCE_VERSION = "homelabfs-controlled-evidence/2"  # OBSERVE with provider Cl
 OBSERVER_VERSION = "homelabfs-runtime-observer-input/1"  # internal/runtimeprep
 REMOTE = HERE / "bootstrap_remote.py"
 MOUNT_OPTIONS = "trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,msize=65536"
+# bl4 (s64): the options of a plan with `fd_attr_candidate_sha256` (see
+# validate_plan); bootstrap_remote.py's copy is pinned equal by a test.
+MOUNT_OPTIONS_FD_ATTR = "trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,hfs_fdattr,msize=65536"
 STAGES = ("AWAITING_OPERATOR_ENROLLMENT", "AWAITING_GUEST_BIND", "READY")
 BOOTSTRAP_LIMIT = 120          # base gate: launch to READY
 POLL_SECONDS = 1.0             # host/guest polls (one SSH round trip each)
@@ -265,10 +268,24 @@ PLAN_SHAPE = {
 
 
 def validate_plan(plan):
-    """Closed schema; every remote token is a safe path, hash or fixed name."""
+    """Closed schema; every remote token is a safe path, hash or fixed name.
+
+    bl4: the optional `fd_attr_candidate_sha256` names the candidate the run
+    installs; only a candidate whose guest kernel, lib9p exporter and daemon
+    carry s64 (controller.FD_ATTR) may be named, and the mounts then add
+    hfs_fdattr. Absent, the plan keeps its pre-bl4 bytes and mounts without
+    the option, so an older candidate is never mounted with it.
+    """
+    optional = ["fd_attr_candidate_sha256"] if isinstance(plan, dict) and "fd_attr_candidate_sha256" in plan else []
     closed(plan, ["version", "run_id", "bootstrap_seconds", "signer", "mounts", "remote_sha256"] +
-           list(PLAN_SHAPE), "plan")
+           list(PLAN_SHAPE) + optional, "plan")
     safe_hash(plan["remote_sha256"], "remote_sha256")
+    if optional:
+        safe_hash(plan["fd_attr_candidate_sha256"], "fd_attr_candidate_sha256")
+        try:
+            controller.require_fd_attr(plan["fd_attr_candidate_sha256"])
+        except controller.Refused as failure:
+            raise Refused("fd_attr_candidate_sha256: " + str(failure)) from None
     require(plan["version"] == VERSION and isinstance(plan["run_id"], str) and
             RUN_ID.match(plan["run_id"]) is not None, "plan version/run ID")
     seconds = plan["bootstrap_seconds"]
@@ -1337,9 +1354,12 @@ class Bootstrap:
 
     def mount(self, index):
         mount, seconds = self.plan["mounts"][index], self.seconds(self.cap)
+        # bl4: only a plan naming an s64 candidate asks for hfs_fdattr; the
+        # remote then also requires the option in the mountinfo row.
+        fd_attr = ["--fd-attr", "on"] if "fd_attr_candidate_sha256" in self.plan else []
         result = self.remote("guest", "guest-mount", ["--tag", mount["tag"], "--mountpoint", mount["mountpoint"],
                                                       "--boot-id", self.facts["boot_id"],
-                                                      "--seconds", remote_seconds(seconds)],
+                                                      "--seconds", remote_seconds(seconds)] + fd_attr,
                              mutating=True, seconds=seconds)
         if result.get("tag") != mount["tag"] or result.get("mountpoint") != mount["mountpoint"]:
             raise StepUncertain("guest mount report differs from the requested mount")

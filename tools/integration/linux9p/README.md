@@ -2520,13 +2520,27 @@ Tests:
 - `tests/mount_hello` adds the `fdattr*` mount cases and
   `stock-fdattr-refused`.
 
-The lab tooling (`tools/lab/retained9p` `MOUNT_OPTIONS` and the mountinfo
-check) does not set `hfs_fdattr` yet. It must only once the guest, lib9p
-and host inputs are all s64. No guest run covers this yet.
+The lab tooling (`tools/lab/retained9p`, bl4) sets `hfs_fdattr` only for a
+candidate in `controller.py` `FD_ATTR`, whose guest, lib9p and host inputs
+are all s64; that set is empty until such a candidate is admitted. No guest
+run covers this yet.
 
 The series was regenerated with `export.py --task s64` (0003: `vfs_super.c`,
 `hfs.h`, `hfs_session.c`, `hfs_inode.c`, `hfs_file.c`). No candidate was
 rebuilt, booted or admitted.
+
+bl4 (comments only, 0003 `hfs_inode.c`): `hfs_args_listed_description` now
+names `hfs_description_publish` (called by `hfs_description_bind` and
+`hfs_create_inode`) as the code that sets `description->cap` under
+`session->lock`. `hfs_fd_attr_result` records two accepted edges of the
+direct nlink-0 path, which sends no path form first: on a minor-0/1
+session a real host Invalid (-EINVAL) also clears `fd_attr` and the call
+returns -ESTALE; and if the object's PATH grant is not live, every
+described try gets -EACCES, the walk runs out and the call returns -ESTALE
+where the path form would return -EACCES. Regenerated with `export.py
+--task bl4`; a fresh `prepare.py` tree applied it with fuzz zero, `make -j2
+fs/9p/ net/9p/` (`build.py --module-objects`) compiled and `tests/setattr
+--sanitize` passed.
 
 ## `controlled_received --scenario both`: three scenarios fixed, timeout split (`bh4`)
 

@@ -6,7 +6,9 @@ checks and dispatch in `internal/guestbridge`, and the spec text in
 no change. The guest kernel (patch 0003) and lib9p forwarder changes are
 implemented as specified below and compiled, with local harness tests
 (see "Guest and forwarder tests" at the end). They have not run in a guest
-or the lab, and the lab tooling does not set `hfs_fdattr` yet.
+or the lab. The lab tooling (bl4) sets `hfs_fdattr` only for a candidate
+listed in `controller.py` `FD_ATTR`, which stays empty until a candidate
+with all three s64 parts is admitted (see "Lab tooling" at the end).
 
 ## Problem
 
@@ -176,9 +178,9 @@ sets `allocation_failed` (x84), so later ordinary issuance on that session
 stops. That fails closed but costs the session. Therefore:
 
 - **Negotiation is explicit configuration**, a new guest mount option
-  `hfs_fdattr`. The lab tooling (`tools/lab/retained9p`, `MOUNT_OPTIONS`)
-  sets it only when the pinned owned inputs include an s64 host and an s64
-  lib9p forwarder. Without it the guest keeps the path form. That is the
+  `hfs_fdattr`. The lab tooling (`tools/lab/retained9p`, bl4) sets it only
+  when the plan names a candidate whose guest kernel, lib9p forwarder and
+  host all carry s64 (`controller.py` `FD_ATTR`). Without it the guest keeps the path form. That is the
   fallback.
 - On a minor-0 or minor-1 session (no ALLOCATE), a described call refused
   with -EPROTO/-EINVAL at SEND clears the session's `fd_attr` flag and
@@ -248,8 +250,8 @@ hfs_getattr/hfs_setattr relies on this returning 0 (no dentry outlives a
 walk); caching dentries requires limiting that fallback to fd callers
 first." A test that keeps an fd open, renames the file from another client
 and then runs `stat(old name)` (expected ENOENT, never the old file's
-attributes) should guard it. That test needs a guest VM and is not written
-yet (see the tests section below).
+attributes) should guard it. That test needs a guest VM; bl4 added it to the
+lab's T3 `metadata` case for `fd_attr` runs (see "Lab tooling" below).
 
 ### Borrowing a description
 
@@ -482,8 +484,10 @@ Every helper stays under 50 lines, as the existing ones do.
 
 `hfs_fdattr` is parsed next to `cache=mmap` (`hfs_cache_option`'s loop) into
 `session->fd_attr` (a `bool`, read with `READ_ONCE`). `hfs_show_options`
-prints it, and the lab's mountinfo check (`tools/lab/retained9p/guest.py`,
-`pod_fixture.py` `MOUNT_OPTIONS`) adds it to the expected set when set. The
+prints it, and the lab's mountinfo checks (`tools/lab/retained9p/guest.py`
+and `bootstrap_remote.py`, bl4) require `,cache=mmap,hfs_fdattr` exactly
+when the plan asks for the option (`pod_fixture.py`'s subset check on m0
+accepts it either way). The
 option is refused (EINVAL) together with a non-hfs selector, like
 `cache=mmap`.
 
@@ -623,6 +627,26 @@ Local tests (no kernel, VM or lab):
   route. A description on READLINK or OPEN, a described SETATTR without
   `attributes`, a GETATTR without `object`, and extra keys are EINVAL.
 
-Not covered: a guest run, the lab tooling's `MOUNT_OPTIONS`/mountinfo
-check for `hfs_fdattr`, and the guest-suite `stat(old name)` ENOENT guard
-described above.
+Not covered: a guest run.
+
+## Lab tooling (bl4)
+
+`tools/lab/retained9p` (README section "`hfs_fdattr` mounts"): the
+bootstrap plan's optional `fd_attr_candidate_sha256` and the batch plan's
+optional `"fd_attr": true` must name a candidate in `controller.py`
+`FD_ATTR`; the mounts then add `hfs_fdattr`, `bootstrap_remote.py` and
+`guest.py` require `,cache=mmap,hfs_fdattr` in mountinfo (and refuse it on a
+plan without the field), and `fill_plan.py` refuses a template that
+disagrees with the bootstrap's mounts. Plans without the fields keep their
+bytes and behaviour. On an `fd_attr` request the T3 `metadata` case keeps
+an fd open on m0, renames the file through m1, and requires `stat(old name)`
+through m0 to be ENOENT and `fstat(fd)` to describe the same file. Its local
+test runs the case on one directory opened twice; the fallback it guards is
+only exercised in a guest.
+
+bl4 also corrected two comments in patch 0003: the cap publisher named by
+`hfs_args_listed_description` is `hfs_description_publish`, and
+`hfs_fd_attr_result` records two accepted edges of the direct nlink-0 path
+(a real host Invalid on a minor-0/1 session clears `fd_attr` and returns
+-ESTALE; a dead object PATH grant makes every described try -EACCES, so the
+walk ends in -ESTALE where the path form gives -EACCES).

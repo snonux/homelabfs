@@ -108,7 +108,9 @@ dispatch precondition only; installed/booted/native acceptance remains zq3.
 
 `guest.py` runs real Linux syscalls only after matching the actual boot/provider,
 complete two-domain inventory, installed manifest digest, SELinux enforcing and
-both exact `9P2000.L.hfs1.4,cache=mmap,msize=65536` mount IDs. It retains directory
+both exact `9P2000.L.hfs1.4,cache=mmap,msize=65536` mount IDs (bl4: plus
+`hfs_fdattr` right after `cache=mmap` exactly when the request carries
+`"fd_attr": true`, see [`hfs_fdattr`](#hfs_fdattr-mounts-bl4-s64)). It retains directory
 descriptors and verifies independent `st_dev` domains. Every operation stays in
 a newly exclusively created case directory. JSONL invocation/reply/errno evidence
 leaves through stdout; a controller must preserve it outside the tested volume.
@@ -227,6 +229,54 @@ digest; `check` prints `cases_planned` and `deferred`, the run state (and so
 case in `missing`, and `zq3_acceptance_complete` stays false. A plan without
 the key is the five-case batch, byte-identical to a pre-z64 plan, so its digest
 does not change.
+
+### `hfs_fdattr` mounts (bl4, s64)
+
+s64 lets the guest send GETATTR and SETATTR through an open file
+description, so `fstat`, `fchmod`, `fchown` and `futimens` work after a
+rename or unlink ([design](../../../docs/design/s64-fd-attr.md)). The guest
+uses it only on a mount with the `hfs_fdattr` option, and only a candidate
+whose guest kernel, lib9p exporter and daemon all carry s64 may mount with
+it: with a pre-s64 exporter or daemon a described call on the controlled
+session is a failed ALLOCATE that costs the session. `controller.py`
+`FD_ATTR` lists those candidates (a subset of `ADMITTED`); it is empty
+because the r21 candidate and every superseded one predate s64. The next
+candidate built from main goes into both sets.
+
+The option is never implied by the tooling version. A plan asks for it and
+the candidate pin decides whether that is allowed, so replaying or reusing
+an older plan cannot turn it on, and an `fd_attr` plan for an older candidate
+refuses before any contact:
+
+- bootstrap plan: optional `fd_attr_candidate_sha256`, which must pass
+  `require_fd_attr` (admitted and in `FD_ATTR`). `mount-0`/`mount-1` then pass
+  `--fd-attr on` and mount with
+  `trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,hfs_fdattr,msize=65536`.
+  `bootstrap_remote.py guest-mount` requires the mountinfo row to show
+  `hfs_fdattr` once, right after `cache=mmap`, exactly when asked (and to
+  show none otherwise); a mismatch exits 2 with `changed`, the mount kept.
+- batch plan: optional `"fd_attr": true` (also needs the candidate in
+  `FD_ATTR`), and then every request carries `"fd_attr": true`; release and
+  step requests copy it. `guest.py` admission (cases, releases, steps)
+  requires both mounts to show the option exactly when the request carries
+  it. `check` reports `fd_attr`.
+- `fill_plan.py batch` refuses unless the bootstrap's two mountinfo rows
+  both show `hfs_fdattr` or both do not, and the template's `fd_attr`
+  matches; its report adds `fd_attr`.
+
+Without either field every plan keeps its pre-bl4 bytes and mounts and checks
+exactly as before. `pod_fixture.py` keeps its subset check on m0, which
+accepts the option either way.
+
+On an `fd_attr` request the `metadata` case (T3) adds the VM-only guard of
+the s64 rename fallback: it keeps `peer-original` open on m0, renames it to
+`peer-renamed` through m1 (the other session), then requires `stat` of the
+old name through m0 to fail ENOENT (never the renamed file's attributes)
+and `fstat` of the fd to describe the same file, and the new name to be it.
+`peer-renamed` is retained as payload and released with the rest.
+`test_fd_attr.py` runs this case on one local directory opened twice, which
+checks the case's logic and payload bookkeeping only; the fallback itself
+exists only in a guest.
 
 `status --output ABS` reads retained state. Refusals before a dispatch change no
 state; a failed or uncertain dispatch records `error`, after which every later
@@ -861,7 +911,7 @@ primitives, and keeps the Go tools (`hfs-runtime-prep`,
 | `bind-request` | local | `hfs-runtime-prep bind-request` (recomputes the provision hash) |
 | `signed-bind` | read | prints the `hfs-retained9p-operator bind` command and waits |
 | `bind` | remote | one write of `bind.json` to `/sys/kernel/homelabfs/bind_v1` |
-| `mount-0`, `mount-1` | remote | `mount -t 9p -o trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,msize=65536 hfsN /var/tmp/hfs-zq3-RUN/mN`, checked in `/proc/self/mountinfo` |
+| `mount-0`, `mount-1` | remote | `mount -t 9p -o trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,msize=65536 hfsN /var/tmp/hfs-zq3-RUN/mN` (with `fd_attr_candidate_sha256`: `cache=mmap,hfs_fdattr`, bl4), checked in `/proc/self/mountinfo` |
 | `ready` | read | third record `READY`, `CONTROLLED_LOCAL`, two domains, control binding |
 | `usable` | read | post-READY usability gate (k64, b84): `guest-stat` lstats both mount roots as root right away and again once 40 s have passed since `mount-1` ended (the guest's 30 s QUERY timeout plus 10 s), with a host poll and a `host-observe` baseline (no open provider claim) in between; both roots must answer every time, and `host-observe` polls (every 5 s, at most 30 s) until a GETATTR and a PROCESS_EXIT numbered after the baseline are TERMINAL on both providers. Writes nothing into the mounts, but each lstat adds GETATTR and PROCESS_EXIT claims to the provider ledgers and each OBSERVE consumes a lifecycle sequence |
 
@@ -886,7 +936,9 @@ state/test kernel release, `hfs-runtime-prep` and the bundle's
 also holds are neither kept nor logged),
 the observer fields of `ObserverInput` except the manifest hash, and the two
 mounts, which must be `hfsN` on `/var/tmp/hfs-zq3-RUN/mN` (what
-`observer_key.py stage` creates). Every value that reaches a remote command
+`observer_key.py stage` creates). The optional `fd_attr_candidate_sha256`
+(bl4) asks for `hfs_fdattr` mounts and must name an s64 candidate (see
+[`hfs_fdattr`](#hfs_fdattr-mounts-bl4-s64)). Every value that reaches a remote command
 line is a plain path, hash or token (`[A-Za-z0-9_./=:,+-]`), so no shell
 quoting is involved. `check` and `run` verify every local pin before any
 contact: SSH, both host-key files, `hfs-runtime-prep`, the template and the

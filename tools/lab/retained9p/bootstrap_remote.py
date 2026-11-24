@@ -34,6 +34,10 @@ import subprocess
 import sys
 
 MOUNT_OPTIONS = "trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,msize=65536"
+# bl4 (s64): `guest-mount --fd-attr on` adds hfs_fdattr, which the s64 guest
+# kernel shows right after cache=mmap. bootstrap.py asks for it only when its
+# plan names an s64 candidate (controller.FD_ATTR); the default is off.
+MOUNT_OPTIONS_FD_ATTR = "trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,hfs_fdattr,msize=65536"
 ADMISSION_PATH = "/etc/homelabfs/installed-admission-v1.json"
 SYSFS_TARGETS = {"provision": "/sys/kernel/homelabfs/provision_v1",
                  "bind": "/sys/kernel/homelabfs/bind_v1"}
@@ -367,12 +371,20 @@ def mounted(system, mountpoint):
 
 
 def guest_mount(system, args, payload):
-    """mount -t 9p with the fixed controlled options, verified in mountinfo."""
+    """mount -t 9p with the fixed controlled options, verified in mountinfo.
+
+    bl4: the row must show hfs_fdattr (once, right after cache=mmap) exactly
+    when `--fd-attr on` asked for it. A mismatch is a known state, a mount
+    with the wrong attribute authority: exit 2 with `changed`, the mount left
+    for inspection (the orchestrator never unmounts).
+    """
     require(system.boot_id() == args.boot_id, "guest boot changed")
     info = trusted(system, args.mountpoint, private=True)
     require(stat.S_ISDIR(info.st_mode), "mountpoint must be a private directory")
     require(not mounted(system, args.mountpoint), "mountpoint already mounted")
-    code, out, err = system.run([MOUNT, "-t", "9p", "-o", MOUNT_OPTIONS, args.tag,
+    fd_attr = args.fd_attr == "on"
+    options = MOUNT_OPTIONS_FD_ATTR if fd_attr else MOUNT_OPTIONS
+    code, out, err = system.run([MOUNT, "-t", "9p", "-o", options, args.tag,
                                  args.mountpoint], args.seconds)
     rows = mounted(system, args.mountpoint)
     if code is None:
@@ -381,7 +393,23 @@ def guest_mount(system, args, payload):
         raise Refused("mount failed: " + err.decode("utf-8", "replace")[-2000:])
     if code != 0 or len(rows) != 1 or rows[0]["fstype"] != "9p" or rows[0]["source"] != args.tag:
         raise Uncertain("mount outcome differs from one 9p mount of " + args.tag)
+    require(fd_attr_shown(rows[0]["line"]) is fd_attr,
+            "mountinfo must show hfs_fdattr once after cache=mmap exactly when --fd-attr on: " +
+            rows[0]["line"], changed=True)
     return {"tag": args.tag, "mountpoint": args.mountpoint, "mountinfo": rows[0]["line"]}
+
+
+def fd_attr_shown(line):
+    """True for one hfs_fdattr directly after cache=mmap in the row's super
+    options, False for none, None for a repeated or misplaced one (the same
+    rule as guest.py's fd_attr_shown)."""
+    tail = line.partition(" - ")[2].split(" ")
+    options = tail[2].split(",") if len(tail) > 2 else []
+    count = options.count("hfs_fdattr")
+    if not count:
+        return False
+    index = options.index("hfs_fdattr")
+    return True if count == 1 and index and options[index - 1] == "cache=mmap" else None
 
 
 def guest_stat(system, args, payload):
@@ -459,6 +487,9 @@ def parser():
         for name in names:
             kind = int if name in ("size", "seconds", "sequence") else str
             command.add_argument("--" + name, required=True, type=kind)
+        if action == "guest-mount":
+            # bl4: optional, so the pre-bl4 argv (no flag) still means off.
+            command.add_argument("--fd-attr", choices=("off", "on"), default="off")
     return result
 
 
