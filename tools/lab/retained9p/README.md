@@ -271,7 +271,8 @@ refuses before any contact:
     config's `Exporter.SHA256` (`prep.config`), which the runtime checks
     bhyve against before exec.
   - the config copy the daemon runs with: the f3 `runtime.config` is the
-    staged, byte-identical copy of that bundle file (Phase 7). The
+    staged, byte-identical copy of that bundle file (the run sheet stages it
+    in Phase 2 via the f3 staging tar; Phase 7 describes it). The
     `host-preflight` step re-hashes it on f3 against the same
     `prep.config_sha256` (ol4, every plan, not only fd_attr ones), so the
     Exporter.SHA256 checked on the workstation is the one the runtime reads.
@@ -970,8 +971,8 @@ state/test kernel release, `hfs-runtime-prep` and the bundle's
 on an fd_attr plan; the host receipt keys it also holds are neither kept nor
 logged; `prep.config_sha256` also pins the staged f3 copy `runtime.config`,
 which `host-preflight` re-hashes (ol4). Reusing that pin rather than adding a
-plan field keeps the plan schema, and every plan gets the check: Phase 7
-stages the bundle file unchanged, and a plan made before ol4 pins the old
+plan field keeps the plan schema, and every plan gets the check: the run
+sheet stages the bundle file unchanged (Phase 2 staging tar), and a plan made before ol4 pins the old
 `bootstrap_remote.py` in `remote_sha256`, so it needs refilling anyway),
 the observer fields of `ObserverInput` except the manifest hash, and the two
 mounts, which must be `hfsN` on `/var/tmp/hfs-zq3-RUN/mN` (what
