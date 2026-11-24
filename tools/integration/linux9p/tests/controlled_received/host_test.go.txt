@@ -41,6 +41,8 @@ type receivedCarrier struct {
 	backendOnly         bool
 	yields              func(uint64)
 	nativeAgain         int
+	nativeErrors        int  // definitive native read errors answered ERROR (bh4)
+	passReadErrors      bool // answer a native read's fsapi.IO with ERROR (bh4)
 }
 
 type receivedDiagnostics struct {
@@ -262,6 +264,15 @@ func (c *receivedCarrier) nativeRead(fields []string) {
 		c.write("AGAIN")
 		return
 	}
+	if c.passReadErrors && errors.Is(err, fsapi.IO) {
+		// Since z54 a cell the host will never answer (blocked) reads as
+		// a definitive EIO instead of WouldBlock until the guest's
+		// deadline; pass it on like FUSE does (bh4). Only tests that
+		// expect such a cell opt in; anywhere else IO stays fatal.
+		c.nativeErrors++
+		c.write("ERROR")
+		return
+	}
 	require(c.t, err)
 	if offset%guestbridge.CellStride == guestbridge.HeaderBytes {
 		c.responses[offset/guestbridge.CellStride] = bytes.Clone(raw)
@@ -309,9 +320,39 @@ func (c *receivedCarrier) close() {
 	require(c.t, c.cmd.Wait())
 }
 
+// TestControlledReceivedActualProviderProducer drives the actual provider
+// checks, a multipoll VIEW_WAIT EVENT receipt and a recall of each domain.
+//
+// Since task 784 a clean DOMAIN READ release recalls only the releasing
+// domain, so the release nested in session 0's WAIT is session 0's own
+// lease (it used to be session 1's, whose all-domain recall also reached
+// session 0). Session 1's lease is released afterwards and only session 1
+// takes part in that recall (bh4).
 func TestControlledReceivedActualProviderProducer(t *testing.T) {
 	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
 	c := startReceivedCarrier(t, r)
+	domains := receivedProviderSetup(t, c)
+	receivedMultipollEvent(t, c, domains[0])
+	c.action("CHECK", 0, "event", 0)
+	c.action("CHECK", 0, "forged_event", 0)
+	c.action("CHECK", 0, "wrong_channel", 0)
+	// The WAIT above already received session 0's STOPPED event.
+	receivedRecallPhases(c, 0, domains[0], false)
+	c.action("RELEASE_START", 1, "", 0)
+	receivedRecallPhases(c, 1, domains[1], true)
+	for i := range 2 {
+		c.action("CHECK", i, "stale_target", 0)
+		c.action("CHECK", i, "cap", 0)
+		c.action("CHECK", i, "cookie_balance", 0)
+	}
+	c.close()
+}
+
+// receivedProviderSetup adopts each session's ROOT/DOMAIN and a created
+// file's DESCRIPTION, acquires a DOMAIN READ lease and runs the provider's
+// stored-object checks. It returns the DOMAIN capabilities.
+func receivedProviderSetup(t *testing.T, c *receivedCarrier) []guestbridge.Capability {
+	t.Helper()
 	for i := range 2 {
 		c.action("RELEASE_NEGATIVES", i, "", 0)
 	}
@@ -333,56 +374,104 @@ func TestControlledReceivedActualProviderProducer(t *testing.T) {
 			c.action("CHECK", i, check, 0)
 		}
 	}
-	empty := c.run(0, true, "VIEW_WAIT", map[string]any{"domain": domains[0], "after_sequence": 0})
-	var initial struct{ Payload struct{ Status string } }
-	require(t, json.Unmarshal(empty, &initial))
-	if initial.Payload.Status != "EMPTY" {
-		t.Fatalf("initial actual WAIT must expire EMPTY: %s", empty)
+	return domains
+}
+
+// receivedRecallPhases acknowledges every phase of a recall of one session's
+// domain, each after the actual VIEW_WAIT that receives its event; with
+// waitFirst false the STOPPED event was already received.
+func receivedRecallPhases(c *receivedCarrier, session int, domain guestbridge.Capability, waitFirst bool) {
+	c.t.Helper()
+	for _, phase := range []string{"STOPPED", "INSTALLED_DRAIN", "DRAINED", "INSTALLED_FINAL", "REOPENED"} {
+		if waitFirst || phase != "STOPPED" {
+			c.run(session, true, "VIEW_WAIT", map[string]any{"domain": domain, "after_sequence": 0})
+		}
+		c.action("PHASE", session, phase, 0)
 	}
+}
+
+// receivedMultipollAttempts bounds receivedMultipollEvent's retries.
+const receivedMultipollAttempts = 4
+
+// receivedMultipollEvent proves that session 0's WAIT retains the exact
+// prior EMPTY Ack across actual internal polls until the recall EVENT of a
+// release nested in that WAIT arrives. lib9p bounds one WAIT to 1 s
+// (hfs9p.c _wait_step); under -race, ASan and a loaded host the nested
+// release alone has taken 0.3-0.7 s, so the event can miss that window and
+// the WAIT legitimately ends EMPTY (bh4). Such an attempt finishes its
+// recall, releases the lease, retires the view and takes a fresh lease, then
+// tries again. Only the multipoll EVENT itself is verified, never an EMPTY.
+//
+// VIEW_RETIRE is required: a released lease's tickets still hold mount
+// capacity until the view retirement retires them (observed behaviour; the
+// exact charge was not isolated). A mounted guest retires them in the
+// background; this harness has no background controller. Without the
+// retirement the fourth ACQUIRE of a session failed with -ENOSPC (bh4
+// review 1). With it, and the bound temporarily raised to eight for the
+// check, six forced misses in a row (a 1.2 s sleep before the nested
+// release) still ended in a verified EVENT on the seventh attempt. The
+// committed bound is four attempts, so up to three misses are tolerated; it only caps how long a host too loaded
+// for the 1 s window is retried.
+func receivedMultipollEvent(t *testing.T, c *receivedCarrier, domain guestbridge.Capability) {
+	t.Helper()
+	for attempt := 1; ; attempt++ {
+		empty := c.run(0, true, "VIEW_WAIT", map[string]any{"domain": domain, "after_sequence": 0})
+		if receivedWaitStatus(t, empty) != "EMPTY" {
+			t.Fatalf("initial actual WAIT must expire EMPTY: %s", empty)
+		}
+		event := receivedNestedReleaseWait(t, c, domain)
+		if receivedWaitStatus(t, event) == "EVENT" {
+			verifyReceivedWait(t, c, 0, empty, event)
+			return
+		}
+		if attempt == receivedMultipollAttempts {
+			t.Fatalf("actual multipoll EVENT receipt missing after %d attempts: %s", attempt, event)
+		}
+		t.Logf("attempt %d: the nested release's EVENT missed the 1 s WAIT window; finishing that recall and retrying", attempt)
+		receivedRecallPhases(c, 0, domain, true)
+		c.action("RELEASE_DONE", 0, "", 0)
+		c.action("VIEW_RETIRE", 0, "", 0)
+		c.action("ACQUIRE", 0, "", 0)
+	}
+}
+
+// receivedNestedReleaseWait runs session 0's WAIT and, at its first
+// scheduling yield after a continuation poll was sent (the reclaim poll was
+// answered EMPTY), releases session 0's lease through the actual control
+// path. It returns the WAIT's response.
+func receivedNestedReleaseWait(t *testing.T, c *receivedCarrier, domain guestbridge.Capability) []byte {
+	t.Helper()
 	before := c.nativeAgain
 	waitBase := uint64(0)
 	for cell := range c.commands {
-		if cell > waitBase {
-			waitBase = cell
-		}
+		waitBase = max(waitBase, cell)
 	}
 	nested := false
 	c.yields = func(_ uint64) {
-		continuation := false
 		for cell, command := range c.commands {
-			if cell > waitBase && command.Context == r.scope && command.Delegation.GuestOp == "VIEW_WAIT" && command.Delegation.PollIndex >= 1 {
-				continuation = true
+			if cell > waitBase && command.Context == c.rig.scope && command.Delegation.GuestOp == "VIEW_WAIT" && command.Delegation.PollIndex >= 1 {
+				nested = true
+				break
 			}
 		}
-		if !nested && continuation {
-			nested = true
+		if nested {
 			c.yields = nil
-			c.action("RELEASE_START", 1, "", 0)
+			c.action("RELEASE_START", 0, "", 0)
 		}
 	}
-	event := c.run(0, true, "VIEW_WAIT", map[string]any{"domain": domains[0], "after_sequence": 0})
+	event := c.run(0, true, "VIEW_WAIT", map[string]any{"domain": domain, "after_sequence": 0})
 	c.yields = nil
 	if !nested || c.nativeAgain <= before {
 		t.Fatal("WAIT did not yield after actual backend EAGAIN")
 	}
-	verifyReceivedWait(t, c, 0, empty, event)
-	c.action("CHECK", 0, "event", 0)
-	c.action("CHECK", 0, "forged_event", 0)
-	c.action("CHECK", 0, "wrong_channel", 0)
-	for _, phase := range []string{"STOPPED", "INSTALLED_DRAIN", "DRAINED", "INSTALLED_FINAL", "REOPENED"} {
-		for i := range 2 {
-			if i != 0 || phase != "STOPPED" {
-				c.run(i, true, "VIEW_WAIT", map[string]any{"domain": domains[i], "after_sequence": 0})
-			}
-			c.action("PHASE", i, phase, 0)
-		}
-	}
-	for i := range 2 {
-		c.action("CHECK", i, "stale_target", 0)
-		c.action("CHECK", i, "cap", 0)
-		c.action("CHECK", i, "cookie_balance", 0)
-	}
-	c.close()
+	return event
+}
+
+func receivedWaitStatus(t *testing.T, response []byte) string {
+	t.Helper()
+	var reply struct{ Payload struct{ Status string } }
+	require(t, json.Unmarshal(response, &reply))
+	return reply.Payload.Status
 }
 func verifyReceivedWait(t *testing.T, c *receivedCarrier, session int, previous, response []byte) {
 	t.Helper()
@@ -499,8 +588,16 @@ func TestControlledReceivedActualSourceCorruption(t *testing.T) {
 	}
 	corruptReceivedJournal(t, r)
 	// The real Producer withholds the damaged SOURCE: the actual native worker
-	// publishes no response, and the actual C exchange reaches its own deadline.
-	c.action("ACQUIRE", 0, "", -110)
+	// publishes no response. Since z54 that blocked cell reads as a definitive
+	// EIO (lib9p: Rbridge ERROR INVALID), so the actual exchange fails at once
+	// with -EPROTO instead of reaching its -ETIMEDOUT deadline (bh4).
+	errorsBefore := c.nativeErrors
+	c.passReadErrors = true
+	c.action("ACQUIRE", 0, "", -71)
+	c.passReadErrors = false
+	if c.nativeErrors == errorsBefore {
+		t.Fatal("damaged source was not refused with a definitive native read error")
+	}
 	attempts := 0
 	for cell, command := range c.commands {
 		if cell <= before {
@@ -628,39 +725,13 @@ func runControlledReceivedFundedDirty(t *testing.T, retainedPressure bool) {
 	}
 	c.action("ORDINARY_REFUSES", 0, "", 0)
 	c.action("ORDINARY_REFUSES", 1, "", 0)
-	c.action("CLOSE_PENDING", 0, "", 0)
-	c.action("RELEASE_START", 1, "", 0)
-	for i := range 2 {
-		if retainedPressure {
-			for event := 0; event < 4; event++ {
-				c.run(i, true, "VIEW_WAIT", map[string]any{"domain": domains[i], "after_sequence": 0})
-				c.action("EVENT_HOLD", i, "", 0)
-			}
-			c.action("EVENT_RESTORE", i, "", 0)
-			c.action("ACTOR_HOLD", i, "", 0)
-		} else {
-			c.run(i, true, "VIEW_WAIT", map[string]any{"domain": domains[i], "after_sequence": 0})
-		}
-		if i == 0 {
-			c.action("PIN", i, "1", 0)
-			c.action("PHASE", i, "STOPPED", -16)
-			c.action("PIN", i, "0", 0)
-		}
-		c.action("PHASE", i, "STOPPED", 0)
-	}
-	c.action("DRAIN", 0, "", 0)
-	for _, phase := range []string{"INSTALLED_DRAIN", "DRAINED", "INSTALLED_FINAL", "REOPENED"} {
-		for i := range 2 {
-			c.run(i, true, "VIEW_WAIT", map[string]any{"domain": domains[i], "after_sequence": 0})
-			c.action("PHASE", i, phase, 0)
-		}
-	}
+	receivedDirtyRelease(t, c, domains, retainedPressure)
 	if retainedPressure {
 		for i := range 2 {
-			c.action("FLOOR_UNHOLD", i, "", 0)
-		}
-		for i := range 2 {
-			c.action("RELEASE_DONE", i, "", 0)
+			// Session 0's lease was released by receivedDirtyRelease.
+			if i == 1 {
+				c.action("RELEASE_DONE", i, "", 0)
+			}
 			c.action("RETIRE", i, "", -11)
 			c.action("VIEW_RETIRE", i, "", 0)
 		}
@@ -673,12 +744,14 @@ func runControlledReceivedFundedDirty(t *testing.T, retainedPressure bool) {
 		}
 	}
 	for i := 0; !retainedPressure && i < 2; i++ {
-		c.action("RELEASE_DONE", i, "", 0)
-		c.action("RETIRE", i, "", 0)
 		if i == 0 {
+			// Session 0's lease was released by receivedDirtyRelease.
+			c.action("RETIRE", i, "", 0)
 			c.action("VIEW_RETIRE", i, "", 0)
 			continue
 		}
+		c.action("RELEASE_DONE", i, "", 0)
+		c.action("RETIRE", i, "", 0)
 		// The real host commits the old view floor before its guest-side
 		// comparison allocation fails. A later acquisition cannot replace it.
 		c.action("FAULT", i, "VIEW_RETIRE 3", 0)
@@ -688,13 +761,10 @@ func runControlledReceivedFundedDirty(t *testing.T, retainedPressure bool) {
 		c.action("ACQUIRE_PAGE", i, "", 0)
 		c.action("VIEW_RETIRE", i, "", 0)
 		requireReceivedCut(t, c, i, 0, 0, 0)
+		// A clean PAGE READ release: since task 784 only its own domain is
+		// recalled (bh4).
 		c.action("RELEASE_START", i, "", 0)
-		for _, phase := range []string{"STOPPED", "INSTALLED_DRAIN", "DRAINED", "INSTALLED_FINAL", "REOPENED"} {
-			for j := range 2 {
-				c.run(j, true, "VIEW_WAIT", map[string]any{"domain": domains[j], "after_sequence": 0})
-				c.action("PHASE", j, phase, 0)
-			}
-		}
+		receivedRecallPhases(c, i, domains[i], true)
 		c.action("RELEASE_DONE", i, "", 0)
 		c.action("VIEW_RETIRE", i, "", 0)
 	}
@@ -730,6 +800,75 @@ func runControlledReceivedFundedDirty(t *testing.T, retainedPressure bool) {
 		t.Fatalf("actual DRAIN_WRITE count %d", drains)
 	}
 	c.close()
+}
+
+// receivedDirtyRelease releases session 0's EXCLUSIVE_DIRTY lease through
+// the complete production hfs_lease_release (RELEASE_DONE). That recall stays
+// all-domain, so both sessions take part and session 0 freezes and drains its
+// page. Session 1's clean PAGE READ release (RELEASE_START 1) used to start
+// this recall; since task 784 such a recall is scoped to domain 1 and session
+// 0 never gets an event (bh4). The abbreviated RELEASE_START cannot be used
+// for session 0: it never admits its initial ticket, so the freeze ticket of
+// the same family would wait for it forever. As in the terminal dirty
+// scenario, the recall runs nested in the release's own scheduling yields once
+// its ticket is admitted (RELEASE_READY), and CLOSE_PENDING follows that
+// admission: a closing session sends only its exempt release/drain work.
+func receivedDirtyRelease(t *testing.T, c *receivedCarrier, domains []guestbridge.Capability, retainedPressure bool) {
+	t.Helper()
+	recalled := false
+	c.yields = func(_ uint64) {
+		var ready bool
+		require(t, json.Unmarshal(c.action("RELEASE_READY", 0, "", 0), &ready))
+		if !ready {
+			return
+		}
+		c.yields = nil
+		c.action("CLOSE_PENDING", 0, "", 0)
+		receivedDirtyRecall(t, c, domains, retainedPressure)
+		recalled = true
+	}
+	c.action("RELEASE_DONE", 0, "", 0)
+	c.yields = nil
+	if !recalled {
+		t.Fatal("dirty lease release never yielded after its ticket admission")
+	}
+}
+
+// receivedDirtyRecall acknowledges every phase of the all-domain recall in
+// both sessions: session 0's STOPPED first refuses while a page is pinned,
+// then freezes the dirty page, which DRAIN writes before DRAINED. With
+// retained pressure each session holds four EVENT owners and its actors'
+// control quota first, and both release their floors at the end.
+func receivedDirtyRecall(t *testing.T, c *receivedCarrier, domains []guestbridge.Capability, retainedPressure bool) {
+	t.Helper()
+	for i := range 2 {
+		if retainedPressure {
+			for event := 0; event < 4; event++ {
+				c.run(i, true, "VIEW_WAIT", map[string]any{"domain": domains[i], "after_sequence": 0})
+				c.action("EVENT_HOLD", i, "", 0)
+			}
+			c.action("EVENT_RESTORE", i, "", 0)
+			c.action("ACTOR_HOLD", i, "", 0)
+		} else {
+			c.run(i, true, "VIEW_WAIT", map[string]any{"domain": domains[i], "after_sequence": 0})
+		}
+		if i == 0 {
+			c.action("PIN", i, "1", 0)
+			c.action("PHASE", i, "STOPPED", -16)
+			c.action("PIN", i, "0", 0)
+		}
+		c.action("PHASE", i, "STOPPED", 0)
+	}
+	c.action("DRAIN", 0, "", 0)
+	for _, phase := range []string{"INSTALLED_DRAIN", "DRAINED", "INSTALLED_FINAL", "REOPENED"} {
+		for i := range 2 {
+			c.run(i, true, "VIEW_WAIT", map[string]any{"domain": domains[i], "after_sequence": 0})
+			c.action("PHASE", i, phase, 0)
+		}
+	}
+	for i := 0; retainedPressure && i < 2; i++ {
+		c.action("FLOOR_UNHOLD", i, "", 0)
+	}
 }
 
 // Reconstruct only the documented scalar translation of the recorded actual
@@ -1155,6 +1294,10 @@ func TestControlledReceivedActualMixedIssuerFloors(t *testing.T) {
 func TestControlledReceivedActualEffectedGapRefusal(t *testing.T) {
 	r := newSourceRigDomainsUnstarted(t, guestbridge.MappedProtocol(), 2, receivedInitialIDMap)
 	c := startReceivedCarrier(t, r)
+	// The lost CALL leaves cells the host never answers; since z54 their
+	// reads are a definitive IO (bh4). This test still fails since oc4
+	// (task fl4).
+	c.passReadErrors = true
 	root := c.action("REQUEST", 0, "ROOT "+hex.EncodeToString(mustRuntimeJSON(t, map[string]any{})), 0)
 	caps := receivedResult(t, root)
 	c.action("ADOPT_ROOT_PREPARE", 0, "", 0)

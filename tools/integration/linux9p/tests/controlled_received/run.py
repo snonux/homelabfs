@@ -63,7 +63,10 @@ def resources():
     if disk>8<<30:raise RuntimeError('owned disk over8GiB')
     return int(next(x.split()[1] for x in Path('/proc/vmstat').read_text().splitlines() if x.startswith('pswpout ')))
 rows=[]
-def run(name,argv):
+# run() executes one bounded stage. A failed stage normally ends the runner;
+# with keep_going=True ('both', bh4) it returns False so later stages still
+# run and the receipt lists every failure. Changed inputs always end it.
+def run(name,argv,keep_going=False):
     before=resources();observations=[before]
     start=time.monotonic();peak=0;reason=None
     with (out/(name+'.stdout')).open('wb') as stdout,(out/(name+'.stderr')).open('wb') as stderr:
@@ -98,7 +101,8 @@ def run(name,argv):
     after={path:digest(Path(path)) for path in frozen_binding}
     (out/'source-binding-after.json').write_text(json.dumps(after,indent=2)+'\n')
     if after!=frozen_binding:raise SystemExit('consumed inputs changed during stage')
-    if code or reason:raise SystemExit('failed stage preserved: '+str(out))
+    if (code or reason) and not keep_going:raise SystemExit('failed stage preserved: '+str(out))
+    return not (code or reason)
 host_tree=a.host_tree.resolve(strict=True)
 frozen=out/'frozen-host'
 frozen.mkdir(mode=0o700)
@@ -124,14 +128,36 @@ inputs=[here.parent/'common/runner_process.py',here/'build.py',here/'consumer.c'
 frozen_binding={str(path):digest(path) for path in inputs if path.is_file()}
 (out/'source-binding.json').write_text(json.dumps(frozen_binding,indent=2)+'\n')
 env.update(HFS_C6_BUILD=str(here/'build.py'),HFS_C6_SOURCE=str(source),GOFLAGS='-p=1 -overlay='+str(overlay))
-pattern={'cleanup':'^TestControlledReceivedActualCleanupByteFunding$','exit-cleanup':'^TestControlledReceivedActualExitThenCleanup$','provider':'^TestControlledReceivedActualProviderProducer$','corruption':'^TestControlledReceivedActualSourceCorruption$','passed-grant':'^TestControlledReceivedActualPassedGrant$','advance':'^TestControlledReceivedActualViewAdvance$','dirty':'^TestControlledReceivedActual(FundedDirty|RetainedResultPressure)$','gap':'^TestControlledReceivedActual(ProtectedGapQuery|GapLostReplies)$','mixed':'^TestControlledReceivedActualMixedIssuerFloors$','effected':'^TestControlledReceivedActualEffectedGapRefusal$','readdir':'^TestControlledReceivedActualClosingReaddir$','interleaving':'^TestControlledReceivedActual(RetirementInterleaving|LateBorrowRetirement)$','allocate':'^TestControlledReceivedActualAllocateRetryProfile$','terminal':'^TestControlledReceivedActualTerminal','terminal-handoff':'^TestControlledReceivedActualTerminalHandoffIdempotent$','terminal-smoke':'^TestControlledReceivedActualTerminalClean$','terminal-clean':'^TestControlledReceivedActualTerminal(Clean|DomainAlias|ExactRetry)$','terminal-dirty':'^TestControlledReceivedActualTerminalDirtyActor$','terminal-owners':'^TestControlledReceivedActualTerminal(ReservationOwner|HandoffIdempotent)$','terminal-backend':'^TestControlledReceivedActualTerminalBackend80$','terminal-kernel80':'^TestControlledReceivedActualTerminalKernel80$','terminal-exhaustion':'^TestControlledReceivedActualTerminalPermanentExhaustion$','both':'^TestControlledReceivedActual'}[a.scenario]
+patterns={'cleanup':'^TestControlledReceivedActualCleanupByteFunding$','exit-cleanup':'^TestControlledReceivedActualExitThenCleanup$','provider':'^TestControlledReceivedActualProviderProducer$','corruption':'^TestControlledReceivedActualSourceCorruption$','passed-grant':'^TestControlledReceivedActualPassedGrant$','advance':'^TestControlledReceivedActualViewAdvance$','dirty':'^TestControlledReceivedActual(FundedDirty|RetainedResultPressure)$','gap':'^TestControlledReceivedActual(ProtectedGapQuery|GapLostReplies)$','mixed':'^TestControlledReceivedActualMixedIssuerFloors$','effected':'^TestControlledReceivedActualEffectedGapRefusal$','readdir':'^TestControlledReceivedActualClosingReaddir$','interleaving':'^TestControlledReceivedActual(RetirementInterleaving|LateBorrowRetirement)$','allocate':'^TestControlledReceivedActualAllocateRetryProfile$','terminal':'^TestControlledReceivedActualTerminal','terminal-handoff':'^TestControlledReceivedActualTerminalHandoffIdempotent$','terminal-smoke':'^TestControlledReceivedActualTerminalClean$','terminal-clean':'^TestControlledReceivedActualTerminal(Clean|DomainAlias|ExactRetry)$','terminal-dirty':'^TestControlledReceivedActualTerminalDirtyActor$','terminal-owners':'^TestControlledReceivedActualTerminal(ReservationOwner|HandoffIdempotent)$','terminal-backend':'^TestControlledReceivedActualTerminalBackend80$','terminal-kernel80':'^TestControlledReceivedActualTerminalKernel80$','terminal-exhaustion':'^TestControlledReceivedActualTerminalPermanentExhaustion$'}
+# 'both' (bh4) used to be one go test of ^TestControlledReceivedActual under
+# -timeout=180s. Every test builds its own consumer (the operator key is
+# compiled in), so a test takes 25-85 s and that run timed out after three or
+# four tests. 'both' now runs these scenarios, which together select every
+# TestControlledReceivedActual* test exactly once, as separate stages: each
+# has its own go timeout and the 1200 s stage bound, a failure names its
+# scenario, and the remaining stages still run.
+both=['provider','passed-grant','advance','corruption','dirty','interleaving','allocate','gap','mixed','effected','readdir',
+      'terminal-clean','terminal-dirty','terminal-owners','terminal-backend','terminal-kernel80','terminal-exhaustion','cleanup','exit-cleanup']
+# Go timeouts per stage: a single test has taken up to 85 s on a loaded
+# laptop and 'dirty' runs two, so 180 s was too tight; 600 s stays well
+# inside the 1200 s stage bound.
+def go_timeout(scenario):return {'cleanup':'900s','exit-cleanup':'900s'}.get(scenario,'600s')
+def host_stage(name,scenario,keep_going=False):
+    return run(name,['go','test','-race','-overlay',str(overlay),'-p','1','-run',patterns[scenario],'-count=1','-timeout='+go_timeout(scenario),'-v','./internal/controlledruntime'],keep_going)
 if a.receipt_tests:
     run('view-floor-policy',['go','test','-p','1','-run','^Test(MappedViewFloorBinding|ProtectedGapQueryEncoding)$','-count=1','./internal/guestbridge'])
     run('release-query-continuation',['go','test','-race','-p','1','-run','^TestPhysicalReleaseQueryContinuation$','-count=1','./internal/viewcontrol'])
-run('actual-c6-host',['go','test','-race','-overlay',str(overlay),'-p','1','-run',pattern,'-count=1','-timeout='+{'cleanup':'900s','exit-cleanup':'900s'}.get(a.scenario,'180s'),'-v','./internal/controlledruntime'])
+if a.scenario=='both':
+    # Stage names keep actual-c6-host as prefix; single scenarios keep the
+    # plain actual-c6-host name that other runners read.
+    failed=[s for s in both if not host_stage('actual-c6-host-'+s,s,keep_going=True)]
+    for s in both:print((out/('actual-c6-host-'+s+'.stdout')).read_text())
+    if failed:raise SystemExit('failed scenarios '+' '.join(failed)+'; stages preserved: '+str(out))
+else:
+    host_stage('actual-c6-host',a.scenario)
 if a.final_focus:
     run('old-producer-fixtures',['go','test','-race','-p','1','-run','^TestRealControlledProducer','-count=1','-timeout=180s','./internal/controlledruntime'])
     run('vet',['go','vet','./internal/controlledruntime'])
     run('errcheck',['errcheck','./internal/controlledruntime'])
     run('lint',['golangci-lint','run','./internal/controlledruntime'])
-print((out/'actual-c6-host.stdout').read_text())
+if a.scenario!='both':print((out/'actual-c6-host.stdout').read_text())
