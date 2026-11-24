@@ -272,8 +272,10 @@ refuses before any contact:
     bhyve against before exec. The f3 `runtime.config` is the staged copy of
     that bundle file; the bootstrap does not re-hash it on f3, as before nl4.
 
-  So a plan that names an s64 candidate for a run with a pre-s64 kernel,
-  daemon or exporter refuses. `mount-0`/`mount-1` then pass
+  So a plan that names an s64 candidate for a run with a pre-s64 kernel or
+  daemon, or with a workstation runtime config naming a pre-s64 exporter,
+  refuses. A staged f3 `runtime.config` that differs from the workstation
+  copy is not caught (task ol4). `mount-0`/`mount-1` then pass
   `--fd-attr on` and mount with
   `trans=virtio,version=9P2000.L.hfs1.4,cache=mmap,hfs_fdattr,msize=65536`.
   `bootstrap_remote.py guest-mount` requires the mountinfo row to show
