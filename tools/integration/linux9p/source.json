@@ -105,7 +105,7 @@
     "fs/9p/hfs_protocol.h": "37fede9544bc08cc048b24989f4150bbc062e2105197a628fae849070c272d8f",
     "fs/9p/hfs_received.h": "79fb93d92153a23b3d649836319a018aa235a07d68006b708deede6a2d07ce59",
     "fs/9p/hfs_received.inc": "483f588e92988c1a1f68a46e17c0c5d68bd3f0d25a288fbd416a71aabe523530",
-    "fs/9p/hfs_session.c": "04839d1816968baba42d0fc450bc27958fddb4909f00f5617107a708150d15dc",
+    "fs/9p/hfs_session.c": "7f9e208c7a5c9e3f7bbdf47828d1ae862a83775baa2a61b6e515adae6348d03c",
     "fs/9p/hfs_view.c": "ec7e8f9b31e1709d5efd09cbdae7e0639e680db58ddf92bf905f7ca880a0248c",
     "fs/9p/hfs_view.h": "13ab1330a51ffb2523ff80f9253145141180d89937273623ed0a8dfdfb95256b",
     "fs/9p/vfs_super.c": "dd56d86dc97e5eeeaead54e4b065eb830da277ec4a887088a83226e3641d031f",
@@ -135,9 +135,9 @@
       "sha256": "a506f2897ef6ea0e340369feaeefa48f08c2b251a3ba1936743aff06dadb749a"
     },
     {
-      "bytes": 250177,
+      "bytes": 250557,
       "file": "0003-hfs1-guest-vfs.patch",
-      "sha256": "8765f43252639e3ccb24f9ed40e5e9f80fc2b86fb4f8617a1bba980fe5a06330"
+      "sha256": "3e38bbf56d9f050122149c5d796891b47d21492379974363f1c2351b118acac6"
     },
     {
       "bytes": 276517,

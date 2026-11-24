@@ -459,7 +459,10 @@ Tests to add with the guest change:
   not order them: `hfs_transport_send` yields it between CAPACITY retries.)
   This replaces design step 4's "A CALL already in flight can still finish":
   a request is never listed while one is in flight; it is left to a later
-  pass (kill_sb's). `hfs_request_resolve_gap` refuses `abandoning && !gap`.
+  pass (kill_sb's). A TERMINAL that already arrived is still kept (see
+  "TERMINAL after KEPT" below). `hfs_request_resolve_gap` refuses `abandoning && !gap`.
+  The REJECTED-CALL path now sets `gap` under `session->lock`, which the
+  collection reads it under.
 - Patch 0005: ABANDON is a cleanup operation for the controlled pre-send
   gate (`hfs_controlled_cleanup_operation`), because kill_sb's pass runs on a
   closing session.
@@ -471,9 +474,14 @@ Tests to add with the guest change:
   already terminal. A request the worker misses is more often one that
   became eligible after the worker ran (an exchange in flight at block time
   that failed later); kill_sb's pass lists it.
-- In-flight TERMINAL after KEPT cannot happen (no listed request has an
-  exchange in flight). `hfs_abandon_apply` still leaves a request that is
-  terminal alone, as a defensive check; that branch is source-reviewed only.
+- TERMINAL after KEPT: no listed request has an exchange in flight, but a
+  request whose last QUERY already returned TERMINAL can still be listed
+  before `hfs_request_run` records it (the exchange has ended; `terminal`
+  and `users` are set only afterwards), when another exchange's failure
+  blocked the session in that window. The host then answers KEPT and the
+  guest keeps the result: `hfs_abandon_apply` never makes a terminal request
+  a gap. That window is not exercised by a harness; the branch is
+  source-reviewed.
 - Resend after `-EPROTO`: the guest cannot tell an exporter ERROR INVALID
   from a malformed host reply by errno (both are `-EPROTO`, and
   `exporter_error` is sticky), so neither is resent. After a malformed

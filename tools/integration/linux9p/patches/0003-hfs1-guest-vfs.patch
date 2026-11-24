@@ -685,7 +685,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,4019 @@
+@@ -0,0 +1,4027 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -2536,9 +2536,11 @@ new file mode 100644
 + * number (both lists ascend): one that is gone was retired meanwhile. Only
 + * ABANDONED changes anything: the request becomes a gap, retired later by
 + * hfs_retire's GAP_RESOLVE path. A listed request has no exchange in flight
-+ * and gets none (hfs_control_request), so none can turn terminal meanwhile;
-+ * a terminal one is still left alone, defensively. Every listed request
-+ * stays abandoning.
++ * and gets none (hfs_control_request), but one whose last QUERY already
++ * returned TERMINAL can still be listed before hfs_request_run records it
++ * (the exchange ended, terminal and users are set only after). The host then
++ * answers KEPT, and the request keeps its result: a terminal request is
++ * never made a gap here. Every listed request stays abandoning.
 + */
 +static void hfs_abandon_apply(struct hfs_session *session, const u64 *numbers,
 +			      const bool *abandoned, u32 count)
@@ -2672,8 +2674,13 @@ new file mode 100644
 +			goto retained;
 +		err = hfs_result_code(result);
 +		hfs_json_free(result);
++		/* hh4: under session->lock, which hfs_abandon_collect_locked
++		 * reads gap under.
++		 */
++		mutex_lock(&session->lock);
 +		request->refusal = reply;
 +		request->gap = true;
++		mutex_unlock(&session->lock);
 +		return err ?: -EPROTO;
 +	}
 +	if (!hfs_json_is(reply, hfs_json_field(reply, token, "code"), "\"OK\"")) {
@@ -4293,7 +4300,8 @@ new file mode 100644
 +	flush_workqueue(session->control);
 +	/* hh4: the final abandon pass, after the flush ran any queued
 +	 * abandon_work. Every caller has returned now (kill_anon_super evicted
-+	 * the inodes), so a request the worker skipped (users, held) qualifies,
++	 * the inodes), so a request the worker skipped (users, held, exchanges
++	 * in flight) qualifies,
 +	 * and a session that blocked silently (a fence while unmounting, or
 +	 * kill_sb's own block above) never queued the work at all.
 +	 */
