@@ -2683,9 +2683,10 @@ Design (patches 0003 `hfs.h`, `hfs_inode.c`; 0004 `hfs_view.[ch]`,
     each copy of a live VMA: `dup_mmap` (fork), `__split_vma` and
     `copy_vma` (mremap).
   - The new `->close` (`hfs_mmap_close` -> `hfs_view_vma_close`) subtracts
-    1 in `remove_vma` (munmap, exit, the old range of a mremap) and on the
-    failure paths of `__split_vma`. In 6.1 `vma_close` calls it at most
-    once per VMA.
+    1 in `remove_vma` (munmap, exit, the old range of a mremap), on the
+    failure paths of `__split_vma`, and in `copy_vma`'s `out_vma_link`
+    (its `vma_link` failed). Each failure path balances that copy's own
+    `->open`. In 6.1 `vma_close` calls it at most once per VMA.
 
   A copy always comes from a live VMA, so the only 0 -> 1 step is
   `hfs_view_mmap_inode`, under `view->lock`.
@@ -2738,17 +2739,17 @@ Design (patches 0003 `hfs.h`, `hfs_inode.c`; 0004 `hfs_view.[ch]`,
 Tests:
 
 - `view/test.c`:
-  - `advance_unmark_checks`:
-    - The last `->close` with no page drops the mark at the next cacheless
-      test; the still registered inode keeps the view cacheless, and
-      advance is adopted.
-    - A second VMA (`->open`: fork, split, mremap) keeps the mark until it
-      closes too.
-    - A page left after munmap (`nrpages = 1`) keeps it until `nrpages`
-      is 0.
-    - An mmap after the drop marks the inode again.
-    - Of two marked inodes only the idle one is dropped, and eviction of
-      a marked inode clears it.
+  - `advance_unmark_checks`, one helper per scenario:
+    - `unmark_last_close`: the last `->close` with no page drops the mark
+      at the next cacheless test; the still registered inode keeps the
+      view cacheless, and advance is adopted.
+    - `unmark_second_vma`: a second VMA (`->open`: fork, split, mremap)
+      keeps the mark until it closes too; the mmap after the earlier drop
+      marks the inode again.
+    - `unmark_page_left`: a page left after munmap (`nrpages = 1`) keeps
+      it until `nrpages` is 0.
+    - `unmark_two_inodes`: of two marked inodes only the idle one is
+      dropped, and eviction of a marked inode clears it.
   - `advance_unmark_race`: a mapper thread runs 2000 mmap/`->open`/
     `->close` rounds, checking under `view->lock` that its mark is set and
     `view->revision` did not move while its VMA lived. Meanwhile the main

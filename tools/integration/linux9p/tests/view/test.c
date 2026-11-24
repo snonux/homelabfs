@@ -274,27 +274,13 @@ static void advance_expect_mark(struct hfs_view *view, struct advance_case *c,
    assert(view->revision == c->revision + 1);
 }
 
-/* wj4: the mmapped mark lasts while its inode has a VMA or a page-cache
- * page, not until eviction:
- * - the last munmap (->close) with no page left drops it at the next
- *   cacheless test, and the still registered inode keeps the view
- *   cacheless (advance adopted);
- * - a second VMA (fork's dup_mmap, a split or mremap's copy_vma: ->open)
- *   keeps it until that one closes too;
- * - a page left in the page cache after munmap keeps it until it leaves;
- * - an mmap after the drop marks the inode again (and counts it once);
- * - of two marked inodes only the idle one is dropped, and eviction of a
- *   marked inode clears its mark as before.
+/* wj4: the last munmap (->close) with no page left drops the mark at the
+ * next cacheless test; the still registered inode keeps the view
+ * cacheless (advance adopted).
  */
-static void advance_unmark_checks(struct hfs_view *view, struct advance_case *c,
-                                  struct hfs_inode *object)
+static void unmark_last_close(struct hfs_view *view, struct advance_case *c,
+                              struct hfs_inode *object)
 {
-   struct address_space other_mapping = {.id = 8, .a_ops = &hfs_cache_aops};
-   struct hfs_inode other = {.inode = {&other_mapping, 1}};
-   bool cacheless = true;
-
-   INIT_LIST_HEAD(&object->view_mmap_list);
-   assert(!hfs_view_register_inode(&object->inode));
    advance_setup(view, c);
    assert(!hfs_view_mmap_inode(&object->inode) && atomic_read(&object->view_vmas) == 1);
    assert(view->nr_mmapped == 1 && !list_empty(&view->mmapped));
@@ -304,7 +290,15 @@ static void advance_unmark_checks(struct hfs_view *view, struct advance_case *c,
    advance_setup(view, c); /* the hint drops the mark: asserts cacheless */
    assert(!object->view_mmapped && !view->nr_mmapped);
    advance_expect_mark(view, c, object, false);
-   /* fork (or a split, mremap): a second VMA keeps the mark. */
+}
+
+/* wj4: a second VMA (fork's dup_mmap, a split or mremap's copy_vma:
+ * ->open) keeps the mark until it closes too; the mmap after the earlier
+ * drop marked the inode again and counted it once.
+ */
+static void unmark_second_vma(struct hfs_view *view, struct advance_case *c,
+                              struct hfs_inode *object)
+{
    advance_setup(view, c);
    assert(!hfs_view_mmap_inode(&object->inode) && object->view_mmapped);
    hfs_view_vma_open(&object->inode);
@@ -314,7 +308,14 @@ static void advance_unmark_checks(struct hfs_view *view, struct advance_case *c,
    hfs_view_vma_close(&object->inode);
    advance_setup(view, c);
    advance_expect_mark(view, c, object, false);
-   /* A page left in the page cache after the last munmap keeps it. */
+}
+
+/* wj4: a page left in the page cache after the last munmap keeps the mark
+ * until it leaves (truncate, reclaim).
+ */
+static void unmark_page_left(struct hfs_view *view, struct advance_case *c,
+                             struct hfs_inode *object)
+{
    advance_setup(view, c);
    assert(!hfs_view_mmap_inode(&object->inode));
    object->inode.i_mapping->nrpages = 1;
@@ -323,7 +324,18 @@ static void advance_unmark_checks(struct hfs_view *view, struct advance_case *c,
    object->inode.i_mapping->nrpages = 0; /* truncated or reclaimed */
    advance_setup(view, c);
    advance_expect_mark(view, c, object, false);
-   /* Two marked inodes: only the idle one is dropped. */
+}
+
+/* wj4: of two marked inodes only the idle one is dropped, and eviction of
+ * a marked inode clears its mark as before.
+ */
+static void unmark_two_inodes(struct hfs_view *view, struct advance_case *c,
+                              struct hfs_inode *object)
+{
+   struct address_space other_mapping = {.id = 8, .a_ops = &hfs_cache_aops};
+   struct hfs_inode other = {.inode = {&other_mapping, 1}};
+   bool cacheless = true;
+
    INIT_LIST_HEAD(&other.view_list);
    INIT_LIST_HEAD(&other.view_mmap_list);
    advance_setup(view, c);
@@ -337,6 +349,21 @@ static void advance_unmark_checks(struct hfs_view *view, struct advance_case *c,
    hfs_view_unregister_inode(&other.inode); /* eviction, still marked */
    assert(!other.view_mmapped && !view->nr_mmapped && view->nr_mappings == 1);
    assert(list_empty(&view->mmapped) && list_empty(&other.view_mmap_list));
+}
+
+/* wj4: the mmapped mark lasts while its inode has a VMA or a page-cache
+ * page, not until eviction; one helper per scenario, in this order (each
+ * starts and ends with the inode registered and unmarked).
+ */
+static void advance_unmark_checks(struct hfs_view *view, struct advance_case *c,
+                                  struct hfs_inode *object)
+{
+   INIT_LIST_HEAD(&object->view_mmap_list);
+   assert(!hfs_view_register_inode(&object->inode));
+   unmark_last_close(view, c, object);
+   unmark_second_vma(view, c, object);
+   unmark_page_left(view, c, object);
+   unmark_two_inodes(view, c, object);
    hfs_view_unregister_inode(&object->inode);
    assert(!view->nr_mappings && !view->nr_mmapped);
    advance_setup(view, c);
