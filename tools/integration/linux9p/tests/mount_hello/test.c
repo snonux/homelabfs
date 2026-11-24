@@ -31,6 +31,9 @@ struct file_system_type { int unused; };
 struct super_block { void *s_fs_info; };
 struct dentry { struct super_block *d_sb; };
 struct workqueue_struct { int unused; };
+/* hh4: abandon_work; queue_work below records the queued item. */
+struct work_struct { void (*func)(struct work_struct *); unsigned int queued; };
+#define INIT_WORK(w, f) ((w)->func = (f), (w)->queued = 0)
 struct tracepoint { int unused; };
 struct mutex { int held; };
 typedef int spinlock_t;
@@ -144,6 +147,7 @@ struct hfs_session {
 	u64 next_claim, next_cell, next_inode, next_close, next_release;
 	u32 nr_requests;
 	struct workqueue_struct *control;
+	struct work_struct abandon_work; /* hh4 */
 	struct p9_client *client;
 	void *control_completion, *retirement_completion;
 	bool closing, unmounting, blocked, retained, terminal_pending;
@@ -220,6 +224,25 @@ static struct workqueue_struct *alloc_workqueue(const char *name, int flags, int
 {
 	return &workqueue;
 }
+/* hh4: hfs_session_abandon_queue's queue_work; nothing runs it here. */
+static bool queue_work(struct workqueue_struct *wq, struct work_struct *work)
+{
+	CHECK(wq == &workqueue);
+	return !work->queued++;
+}
+/* hh4: the abandon pass itself (hfs_session_abandon) needs the transport and
+ * is covered by controlled_received; here only who runs it, and when.
+ */
+static unsigned int abandon_passes, abandon_flushes_before, abandon_settles_before;
+static unsigned int unmount_flushes, unmount_settles;
+static void hfs_session_abandon(struct hfs_session *session)
+{
+	abandon_passes++;
+	abandon_flushes_before = unmount_flushes;
+	abandon_settles_before = unmount_settles;
+}
+static void hfs_session_abandon_work(struct work_struct *work) { abort(); }
+#include "abandon_macros.inc"
 static void hfs_process_exit(void *data, void *task) { }
 static void check_trace_callback_type_sched_process_exit(void (*fn)(void *, void *)) { }
 static void hfs_find_exit_tracepoint(struct tracepoint *tp, void *priv) { }
@@ -404,7 +427,7 @@ static void hfs_view_put(struct hfs_view *view) { CHECK(view == &stop_view); }
  * whether the teardown and the control flush already ran.
  */
 static int unmount_close_err, unmount_stop_err;
-static unsigned int unmount_retains, unmount_kills, unmount_flushes;
+static unsigned int unmount_retains, unmount_kills; /* unmount_flushes: hh4, above */
 static u32 unmount_kill_releases;
 static bool unmount_stop_after_flush;
 static int hfs_controlled_begin_close(struct hfs_session *session) { return unmount_close_err; }
@@ -413,8 +436,9 @@ static void fixture_kill_anon_super(struct super_block *sb)
 	unmount_kills++;
 	stop_view.nr_cached -= unmount_kill_releases;
 }
-/* x84 waiter wake-up and z84 view settle: no waiter or view here. */
-static unsigned int unmount_settles;
+/* x84 waiter wake-up and z84 view settle: no waiter or view here.
+ * unmount_settles is declared with the hh4 abandon fixture above.
+ */
 static void hfs_allocation_wake(struct hfs_session *session) { }
 static void hfs_mmap_settle(struct hfs_session *session) { unmount_settles++; }
 static int unmount_stop(struct hfs_session *session)
@@ -640,6 +664,40 @@ static void run_block_case(void)
 	free(second);
 }
 
+/* hh4: the first block of a controlled (minor >= 2) session with a control
+ * queue queues its abandon_work once; a later block, a minor-0/1 session
+ * and a session without its queue (a mount before alloc_workqueue) never
+ * queue. hfs_session_new prepares the item.
+ */
+static void run_block_abandon_case(void)
+{
+	static const struct hfs_provider mapped = { .features = HFS_MAPPED_FEATURES };
+	struct hfs_session *session = hfs_session_new(&mapped);
+	struct hfs_session *legacy = calloc(1, sizeof(*legacy));
+	struct hfs_session *unqueued = calloc(1, sizeof(*unqueued));
+
+	CHECK(session && legacy && unqueued && session->bridge_minor == 4);
+	CHECK(session->abandon_work.func == hfs_session_abandon_work &&
+	      !session->abandon_work.queued);
+	session->control = &workqueue;
+	hfs_session_block(session, "QUERY timeout", "GETATTR", -ETIMEDOUT);
+	CHECK(session->abandon_work.queued == 1 &&
+	      (session->block_reported & (1UL << HFS_ABANDON_QUEUED)));
+	hfs_session_block(session, "uncertain claim result", "GETATTR", -EPROTO);
+	CHECK(session->abandon_work.queued == 1 && warnings == 1);
+	legacy->bridge_minor = 1;
+	legacy->control = &workqueue;
+	hfs_session_block(legacy, "QUERY timeout", "GETATTR", -ETIMEDOUT);
+	CHECK(!legacy->abandon_work.queued && legacy->block_reported == 1);
+	unqueued->bridge_minor = 4;
+	hfs_session_block(unqueued, "QUERY timeout", "GETATTR", -ETIMEDOUT);
+	CHECK(!unqueued->abandon_work.queued && unqueued->block_reported == 1);
+	CHECK(!abandon_passes); /* queueing sends nothing itself */
+	free(session);
+	free(legacy);
+	free(unqueued);
+}
+
 /* m64: the once-per-session line survives a ratelimit burst. The pre-m64
  * pr_warn_ratelimited dropped it here and the once bit then hid it for good.
  */
@@ -662,6 +720,7 @@ static struct hfs_session *unmount(int close_err, int stop_err)
 {
 	struct hfs_session *session = calloc(1, sizeof(*session));
 	struct super_block sb = { session };
+	unsigned int passes = abandon_passes;
 
 	CHECK(session);
 	session->provider = &unmount_provider;
@@ -670,6 +729,11 @@ static struct hfs_session *unmount(int close_err, int stop_err)
 	unmount_close_err = close_err;
 	unmount_stop_err = stop_err;
 	v9fs_hfs_kill_super(&sb);
+	/* hh4: exactly one final abandon pass, after the control flush (which
+	 * ran any queued abandon_work) and before the settle and the stop.
+	 */
+	CHECK(abandon_passes == passes + 1 && abandon_flushes_before == unmount_flushes &&
+	      abandon_settles_before + 1 == unmount_settles);
 	CHECK(session->blocked && session->closing && session->retained);
 	CHECK(session->stop_wait >= 1); /* 5f4: kill_sb woke the view waits */
 	CHECK(controlled_mount.stopping && !sb.s_fs_info);
@@ -866,9 +930,10 @@ int main(void)
 	failures += !run_child("stock-fdattr-refused", NULL, run_stock_fdattr_case);
 	failures += !run_child("session-block-once", NULL, run_block_case);
 	failures += !run_child("session-block-ratelimit", NULL, run_block_ratelimit_case);
+	failures += !run_child("session-block-abandon", NULL, run_block_abandon_case);
 	failures += !run_child("unmount-fence-log", NULL, run_stop_block_case);
 	failures += !run_child("unmount-reopened-view", NULL, run_reopened_stop_case);
 	failures += !run_child("enrollment-sources-floor", NULL, run_bounds_case);
-	printf("mount_hello cases=%zu failures=%u\n", ARRAY_SIZE(cases) + 7, failures);
+	printf("mount_hello cases=%zu failures=%u\n", ARRAY_SIZE(cases) + 8, failures);
 	return failures ? 1 : 0;
 }

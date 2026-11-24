@@ -759,6 +759,68 @@ described_attr_args_test(void) {
       assert(route_args(refused[i]) == EINVAL);
 }
 
+/* hh4: the ABANDON payload check on one document. Every refused shape is
+ * one the host's closed schema (guestbridge validateAbandon) refuses too. */
+static int
+route_abandon(const char *payload) {
+   Hfs9pToken tokens[HFS9P_TOKENS];
+   Hfs9pJson j = {(const uint8_t *)payload, strlen(payload), tokens, 0};
+   assert(!hfs9p_json_parse(&j));
+   return (_abandon(&j, 0));
+}
+
+#define ABANDON_ID "00000000-0000-0000-0000-00000000000"
+#define ABANDON_HASH "\"7c408f002ecd813bbe28c0e9ca6123ffa8e3904fa7bd77b9b9bf8f436147cba6\""
+#define ABANDON_CLAIM(n) "{\"number\":" #n ",\"original_hash\":" ABANDON_HASH "}"
+#define ABANDON_BODY(claims, subject) "{\"anchor\":\"" ABANDON_ID "7\",\"claims\":[" \
+   claims "],\"nonce\":\"" ABANDON_ID "8\",\"realm\":\"" ABANDON_ID "1\"," \
+   "\"subject\":" subject "}"
+
+static void
+abandon_payload_test(void) {
+   const char *const accepted[] = {
+      ABANDON_BODY(ABANDON_CLAIM(1), "\"616263\""),
+      ABANDON_BODY(ABANDON_CLAIM(1) "," ABANDON_CLAIM(2) "," ABANDON_CLAIM(9),
+                   "\"61\""),
+   };
+   const char *const refused[] = {
+      ABANDON_BODY("", "\"616263\""),                         /* no claim */
+      ABANDON_BODY(ABANDON_CLAIM(2) "," ABANDON_CLAIM(1), "\"61\""), /* order */
+      ABANDON_BODY(ABANDON_CLAIM(2) "," ABANDON_CLAIM(2), "\"61\""), /* dup */
+      ABANDON_BODY(ABANDON_CLAIM(0), "\"61\""),               /* number 0 */
+      ABANDON_BODY("{\"number\":1}", "\"61\""),               /* no hash */
+      ABANDON_BODY("{\"number\":1,\"original_hash\":\"ab\"}", "\"61\""),
+      ABANDON_BODY("{\"extra\":1,\"number\":1,\"original_hash\":" ABANDON_HASH
+                   "}", "\"61\""),
+      ABANDON_BODY(ABANDON_CLAIM(1), "\"\""),                 /* empty subject */
+      ABANDON_BODY(ABANDON_CLAIM(1), "\"6\""),                /* odd subject */
+      "{\"anchor\":\"" ABANDON_ID "7\",\"claims\":[" ABANDON_CLAIM(1) "],"
+         "\"nonce\":\"" ABANDON_ID "8\",\"realm\":\"" ABANDON_ID "1\"}",
+      "{\"anchor\":\"" ABANDON_ID "7\",\"claims\":{},"
+         "\"nonce\":\"" ABANDON_ID "8\",\"realm\":\"" ABANDON_ID "1\","
+         "\"subject\":\"61\"}",
+   };
+   for (unsigned i = 0; i < sizeof(accepted) / sizeof(accepted[0]); i++)
+      assert(route_abandon(accepted[i]) == 0);
+   for (unsigned i = 0; i < sizeof(refused) / sizeof(refused[0]); i++)
+      assert(route_abandon(refused[i]) == EINVAL);
+   /* 64 claims is the bound; 65 is refused. */
+   char claims[65 * 128] = "", body[sizeof(claims) + 256];
+   size_t used = 0;
+   for (unsigned n = 1; n <= 65; n++) {
+      int written = snprintf(claims + used, sizeof(claims) - used,
+          "%s{\"number\":%u,\"original_hash\":%s}", n > 1 ? "," : "", n,
+          ABANDON_HASH);
+      assert(written > 0 && (size_t)written < sizeof(claims) - used);
+      used += (size_t)written;
+      if (n < 64)
+         continue;
+      written = snprintf(body, sizeof(body), ABANDON_BODY("%s", "\"61\""), claims);
+      assert(written > 0 && (size_t)written < sizeof(body));
+      assert(route_abandon(body) == (n == 64 ? 0 : EINVAL));
+   }
+}
+
 static char *
 rewrite_body(const char *body, uint64_t number, const char *reclaim) {
    Hfs9pToken tokens[HFS9P_TOKENS];
@@ -1595,9 +1657,12 @@ controlled_protocol_tests(void) {
        * cannot authenticate minor3. This forwarder never grants that authority. */
 
       pthread_mutex_lock(&h->mutex);
+      /* hh4: ABANDON routes on every controlled minor, as reserved
+       * control work (the GAP_RESOLVE lane). */
       const char *inputs[] = {controlled_allocate, controlled_gap_resolve,
-          cleanup_cleanup_empty};
-      for (unsigned k = 0; k < 3; k++) {
+          cleanup_cleanup_empty,
+          minor == 2 ? controlled_abandon : controlled_abandon3};
+      for (unsigned k = 0; k < 4; k++) {
          Hfs9pJson command = {(const uint8_t *)inputs[k], strlen(inputs[k]), h->tokens, 0};
          uint32_t cell;
          uint64_t number;
@@ -1605,7 +1670,7 @@ controlled_protocol_tests(void) {
              !hfs9p_json_u64(&command, cell, &number));
          Hfs9pEntry candidate = {.session=0, .minor=minor, .guest_cell=number,
              .guest=(uint8_t *)inputs[k], .total=(uint32_t)strlen(inputs[k])};
-         bool selected = k == 2 ? minor == 3 : minor == 2;
+         bool selected = k == 3 || (k == 2 ? minor == 3 : minor == 2);
          int error = _command(h, &candidate);
          assert((error == 0) == selected);
          if (selected)
@@ -2467,6 +2532,7 @@ main(int argc, char **argv) {
    core_tests();
    routing_cases();
    described_attr_args_test();
+   abandon_payload_test();
    wait_tests();
    capacity_tests();
    unavailable_tests();

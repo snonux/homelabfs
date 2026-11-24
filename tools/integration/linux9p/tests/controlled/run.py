@@ -104,9 +104,12 @@ def run(name,argv):
     if after!=frozen_binding:raise SystemExit('consumed inputs changed during stage')
     if code or reason: raise SystemExit('FAIL: '+str(out/(name+'.log')))
 run('build',['python3',str(here/'build.py'),'--source',str(a.source.resolve()),'--output',str(out/'consumer'),'--sanitize'])
+# hh4: the same guest against the exporter before ABANDON (abandon-old mode).
+run('build-old',['python3',str(here/'build.py'),'--source',str(a.source.resolve()),'--output',str(out/'consumer-old'),'--sanitize','--old-exporter'])
 overlay=out/'overlay.json'
 overlay.write_text(json.dumps({'Replace':{str(repo/'internal/controlledvalidation/o04_production_guest_test.go'):str(here/'host_test.go.txt')}}))
 env['HFS_CONTROLLED_CONSUMER']=str(out/'consumer/consumer')
+env['HFS_CONTROLLED_OLD_CONSUMER']=str(out/'consumer-old/consumer')
 run('host',['go','test','-overlay',str(overlay),'-p','1','-run',a.run,'-count=1','-timeout=90s','-v','./internal/controlledvalidation'])
 (out/'receipt.json').write_text(json.dumps({'legacy_issuance':'minor0/1 ROOT claim explicitly issued through real legacy Provider.Allocate with nil enrollment Protocol; not guest pre-send allocation or native/source/publication authority','scope':'production guest issuance/framing and owned lib9p -> real host Transport/Service/provider/journal; kernel/native fd/resource observations and publication refusal are explicit primitives; no native/source/runtime acceptance','short_tmp':str(short_tmp),'affinity':affinity,'memory_before':memory,'source':{str(path.relative_to(repo)):digest(path) for path in [here/'consumer.c',here/'host_test.go.txt',repo/'tools/integration/lib9p/src/hfs9p.c']},'stages':stages},indent=2)+'\n')
 print((out/'host.log').read_text())

@@ -112,7 +112,7 @@ diff --git a/fs/9p/hfs.h b/fs/9p/hfs.h
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs.h
-@@ -0,0 +1,537 @@
+@@ -0,0 +1,568 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef FS_9P_HFS_H
 +#define FS_9P_HFS_H
@@ -155,6 +155,19 @@ new file mode 100644
 +#define HFS_UNMOUNT_SETTLE_MS 2000U
 +/* session->block_reported bit of hfs_mmap_fail's once-per-session line (1a4). */
 +#define HFS_REPORTED_VIEW_STOP 1
++/* session->block_reported bit: hfs_session_block already queued the
++ * session's abandon_work (hh4). Set once; never cleared within a session.
++ */
++#define HFS_ABANDON_QUEUED 2
++/* At most this many claims per ABANDON command (guestbridge
++ * MaxAbandonClaims); hfs_session_abandon sends longer lists in batches.
++ */
++#define HFS_ABANDON_MAX 64U
++/* The ABANDON payload buffer: three UUID fields, 64 claims of at most 115
++ * bytes ({"number":<20 digits>,"original_hash":"<64 hex>"} and a comma) and
++ * a subject of at most 1024 bytes (2048 hex digits) stay under 10 KiB.
++ */
++#define HFS_ABANDON_PAYLOAD 16384U
 +
 +struct hfs_controlled_mount;
 +struct hfs_session;
@@ -327,6 +340,18 @@ new file mode 100644
 +	 */
 +	bool allocation_failed;
 +	bool gap;
++	/* hh4: listed in an ABANDON (set under session->lock by
++	 * hfs_session_abandon, never cleared). The guest promised the host
++	 * never to send another CALL or QUERY for it (hfs_control_request
++	 * refuses them at admission), nor a GAP_RESOLVE unless the host answered
++	 * ABANDONED (then gap is set too).
++	 */
++	bool abandoning;
++	/* hh4: CALL/QUERY exchanges of this request admitted by
++	 * hfs_control_request and not yet ended (under session->lock). A request
++	 * with one in flight is never listed in an ABANDON.
++	 */
++	u32 exchanges;
 +	bool earmarked;
 +	bool view_stamped;
 +	bool cache_observation;
@@ -409,6 +434,11 @@ new file mode 100644
 +	u32 nr_view_families;
 +	struct list_head global;
 +	struct workqueue_struct *control;
++	/* hh4: hfs_session_abandon_work, queued on control at most once per
++	 * session by hfs_session_block (HFS_ABANDON_QUEUED). kill_sb flushes
++	 * control and then runs one final hfs_session_abandon pass itself.
++	 */
++	struct work_struct abandon_work;
 +	/* Non-NULL until the exact protected ALLOCATE acknowledgement. */
 +	struct hfs_request *allocation_pending;
 +	/* x84: hfs_call callers waiting for the fence, FIFO (struct
@@ -444,7 +474,8 @@ new file mode 100644
 +	/* Bit 0: hfs_session_block already logged why this session blocked.
 +	 * Bit HFS_REPORTED_VIEW_STOP: hfs_mmap_fail logged the view control
 +	 * worker stop (1a4). The bits are independent: a later block still
-+	 * logs its own line.
++	 * logs its own line. Bit HFS_ABANDON_QUEUED: hfs_session_block queued
++	 * abandon_work (hh4).
 +	 */
 +	unsigned long block_reported;
 +	/* The raw reason of the last ERROR reply an exchange of this session
@@ -654,7 +685,7 @@ diff --git a/fs/9p/hfs_session.c b/fs/9p/hfs_session.c
 new file mode 100644
 --- /dev/null
 +++ b/fs/9p/hfs_session.c
-@@ -0,0 +1,3710 @@
+@@ -0,0 +1,4027 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Owned retained-9p guest session, request and credential lifetimes. */
 +#include "hfs.h"
@@ -737,6 +768,25 @@ new file mode 100644
 +	hfs_buf_free(&args);
 +}
 +
++/* hh4: queue the session's abandon_work, at most once per session. Only a
++ * controlled-capable session (minor >= 2, the hosts that know ABANDON or
++ * refuse it before any host state) with its control queue queues it.
++ * Nothing is sent here: hfs_session_block runs with locks held and from
++ * inside exchanges, and queue_work is safe there. A request that is skipped
++ * by the worker (a caller still uses it, or one of its exchanges is in
++ * flight) is picked up by kill_sb's final pass, not by a second queueing.
++ * A block after kill_sb (a retained session) may still queue the work once;
++ * it then finds nothing eligible (kill_sb's pass listed everything), and
++ * destroy_workqueue in hfs_session_free drains it.
++ */
++static void hfs_session_abandon_queue(struct hfs_session *session)
++{
++	if (session->bridge_minor < 2 || !session->control ||
++	    test_and_set_bit(HFS_ABANDON_QUEUED, &session->block_reported))
++		return;
++	queue_work(session->control, &session->abandon_work);
++}
++
 +/* 5f4: wake the view waits parked on session->stop_wait after a stop was
 + * set (blocked, closing, transport_failed). The flag is written first. The
 + * waiter never takes the stop_wait lock to check its condition, so that
@@ -797,6 +847,11 @@ new file mode 100644
 + * none): zq3-r12 R12-1's "(-71)" did not show that the exporter had
 + * answered ERROR because the host transport was down. It is the session's
 + * latest ERROR, which is normally the exchange that caused the block.
++ *
++ * Since hh4 the first block also queues the ABANDON of the session's
++ * stranded never-prepared claims (hfs_session_abandon_queue), so the host
++ * can return their credit. A clean unmount blocks silently through
++ * hfs_session_fence and does not get here; kill_sb runs that pass itself.
 + */
 +void hfs_session_block(struct hfs_session *session, const char *reason,
 +		       const char *operation, int err)
@@ -805,6 +860,7 @@ new file mode 100644
 +	char text[8] = "-";
 +
 +	hfs_session_mark_blocked(session); /* 5f4: wakes hfs_view_reopen_wait */
++	hfs_session_abandon_queue(session);
 +	if (test_and_set_bit(0, &session->block_reported))
 +		return;
 +	if (code)
@@ -1115,8 +1171,8 @@ new file mode 100644
 + * VIEW_QUERY for 30 s after its session was blocked). exempt is decided by
 + * the caller (hfs_control_flagged at admission, under session->lock): only
 + * retirement, release and cleanup traffic, plus the reserved drain and
-+ * reconciliation work DRAIN_WRITE and GAP_RESOLVE (dh4), may continue on a
-+ * blocked session (hfs_after_block_operation). A clean unmount or a closing
++ * reconciliation work DRAIN_WRITE and GAP_RESOLVE (dh4) and ABANDON (hh4),
++ * may continue on a blocked session (hfs_after_block_operation). A clean unmount or a closing
 + * (failed, retained) mount is teardown and continues too.
 + *
 + * kill_sb and hfs_mount_fail write unmounting/closing, then smp_wmb(), then
@@ -1375,7 +1431,7 @@ new file mode 100644
 +		"RELEASE_CELL",	  "RESUME",	  "VIEW_WAIT",	     "VIEW_ACK",    "VIEW_ACQUIRE",
 +		"VIEW_RELEASE",	  "VIEW_RENEW",	  "VIEW_QUERY",	     "VIEW_CANCEL", "VIEW_RETIRE",
 +		"DIRTY_RESERVE",  "DIRTY_FREEZE", "READDIR_CLEANUP", "ALLOCATE",    "GAP_RESOLVE",
-+		"SESSION_RETIRE",
++		"SESSION_RETIRE", "ABANDON",
 +	};
 +	static const char *const opcodes[] = {
 +		"ROOT",
@@ -1543,10 +1599,38 @@ new file mode 100644
 +
 +#endif
 +
-+int hfs_control_flagged(struct hfs_session *session, const char *operation,
-+			const struct hfs_buf *payload, bool reserved, bool after_block,
-+			struct hfs_json **out)
++/* hh4: the owner's exchange admitted by hfs_control_request has ended
++ * (reply, failure or fault). Idempotent through *counted.
++ */
++static void hfs_control_owner_done(struct hfs_session *session, struct hfs_request *owner,
++				   bool *counted)
 +{
++	if (!*counted)
++		return;
++	*counted = false;
++	mutex_lock(&session->lock);
++	owner->exchanges--;
++	mutex_unlock(&session->lock);
++}
++
++/* hfs_control_flagged with the request (owner) the exchange serves, or NULL.
++ *
++ * hh4: under session->lock, at admission, an owner listed in an ABANDON
++ * (owner->abandoning) is refused with -EHOSTDOWN before a cell is numbered,
++ * like a non-reserved send on a blocked session; an admitted one counts as
++ * in flight (owner->exchanges) until its exchange ends. hfs_session_abandon
++ * marks requests abandoning under the same lock and never lists one with an
++ * exchange in flight. So the two are serialized: once a request is listed,
++ * no CALL or QUERY for it is admitted, and none admitted earlier is still
++ * being sent or retried (hfs_transport_send yields the writer between
++ * CAPACITY retries, so the writer alone would not order them). That is the
++ * guest's promise, independent of timing.
++ */
++static int hfs_control_request(struct hfs_session *session, const char *operation,
++			       const struct hfs_buf *payload, bool reserved, bool after_block,
++			       struct hfs_request *owner, struct hfs_json **out)
++{
++	bool counted = false;
 +	struct hfs_response_profile response = hfs_response_profile(operation);
 +#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
 +	struct hfs_received_capture received_capture;
@@ -1583,11 +1667,16 @@ new file mode 100644
 +		return -EACCES;
 +	if (!hfs_operation(operation, false))
 +		return -EOPNOTSUPP;
-+	if ((!strcmp(operation, "ALLOCATE") || !strcmp(operation, "GAP_RESOLVE")) &&
++	/* hh4: ABANDON, like GAP_RESOLVE, is reserved claim-ledger work of a
++	 * controlled (minor >= 2) session.
++	 */
++	if ((!strcmp(operation, "ALLOCATE") || !strcmp(operation, "GAP_RESOLVE") ||
++	     !strcmp(operation, "ABANDON")) &&
 +	    session->bridge_minor < 2)
 +		return -EOPNOTSUPP;
 +	if ((!strcmp(operation, "ALLOCATE") && reserved) ||
-+	    ((!strcmp(operation, "GAP_RESOLVE") || !strcmp(operation, "READDIR_CLEANUP")) &&
++	    ((!strcmp(operation, "GAP_RESOLVE") || !strcmp(operation, "READDIR_CLEANUP") ||
++	      !strcmp(operation, "ABANDON")) &&
 +	     !reserved))
 +		return -EINVAL;
 +	if (!strcmp(operation, "READDIR_CLEANUP") && session->bridge_minor < 3)
@@ -1753,6 +1842,7 @@ new file mode 100644
 +	mutex_lock(&session->writer);
 +	mutex_lock(&session->lock);
 +	if (((session->blocked || session->allocation_uncertain) && !reserved) ||
++	    (owner && owner->abandoning) || /* hh4: see above */
 +	    session->next_cell > HFS_CELL_MAX) {
 +		err = -EHOSTDOWN;
 +		goto unlock;
@@ -1792,6 +1882,13 @@ new file mode 100644
 +	if (!slot) {
 +		err = -EAGAIN;
 +		goto unlock;
++	}
++	if (owner) {
++		/* hh4: admitted, still under session->lock: in flight until
++		 * hfs_control_owner_done.
++		 */
++		owner->exchanges++;
++		counted = true;
 +	}
 +	cell = session->next_cell++;
 +	if (terminal) {
@@ -1848,6 +1945,7 @@ new file mode 100644
 +			    (exempt ? HFS_TRANSPORT_EXEMPT : 0) |
 +				    (allocate ? HFS_TRANSPORT_ALLOCATE : 0),
 +			    &reply, &reply_len, &writer_held);
++	hfs_control_owner_done(session, owner, &counted); /* hh4 */
 +	/* oc4 review: RETIRED_CELL keeps -EPROTO for ALLOCATE. Its session is
 +	 * not blocked (allocation_uncertain instead), so a VFS caller seeing
 +	 * -ESTALE could retry the lookup once and replay the uncertain
@@ -1914,6 +2012,7 @@ new file mode 100644
 +	*out = json;
 +	return 0;
 +fault:
++	hfs_control_owner_done(session, owner, &counted); /* hh4: no-op after transport */
 +#ifdef CONFIG_9P_FS_HOMELABFS_CONTROLLED
 +	hfs_controlled_received_release(session, response_credit);
 +	hfs_completion_uncertain(completion);
@@ -1956,6 +2055,14 @@ new file mode 100644
 +	hfs_completion_put(completion);
 +#endif
 +	return err;
++}
++
++int hfs_control_flagged(struct hfs_session *session, const char *operation,
++			const struct hfs_buf *payload, bool reserved, bool after_block,
++			struct hfs_json **out)
++{
++	return hfs_control_request(session, operation, payload, reserved, after_block, NULL,
++				   out);
 +}
 +EXPORT_SYMBOL_GPL(hfs_control_flagged);
 +
@@ -2230,8 +2337,13 @@ new file mode 100644
 +	u32 len = sizeof(digest);
 +	int err, token, claim;
 +
++	/* hh4: a request listed in an ABANDON gets a GAP_RESOLVE only when the
++	 * host answered ABANDONED (gap is then set; the GAP_RESOLVE returns the
++	 * same proof). One it kept stays retained, as promised.
++	 */
 +	if (session->bridge_minor < 2 || request->earmarked || !request->allocated ||
-+	    request->terminal || request->users || request->held)
++	    request->terminal || request->users || request->held ||
++	    (request->abandoning && !request->gap))
 +		return -EINVAL;
 +	err = hfs_buf_init(&payload, HFS_BODY_MAX);
 +	if (!err)
@@ -2273,6 +2385,225 @@ new file mode 100644
 +	return err;
 +}
 +EXPORT_SYMBOL_GPL(hfs_request_resolve_gap);
++
++/* hh4: a blocked session abandons its stranded claims.
++ *
++ * After hfs_request_run gives up on a claim (QUERY timeout, lost reply), the
++ * claim stays retained and the session blocked. If the host never prepared
++ * it (RESERVED/UNPREPARED, or ALLOCATED and never called), it still holds
++ * credit that the host cannot return on its own: nothing it sees proves the
++ * guest gave up. ABANDON is that proof (docs/design/hh4-abandon.md): the
++ * guest names its uncertain claims and promises never to send another CALL
++ * or QUERY for them (request->abandoning). The host answers each one:
++ * ABANDONED (now a protected gap with its proof; credit returned), KEPT (it
++ * may have had an effect), RETIRED_ID or UNKNOWN. Only ABANDONED changes
++ * guest state: the request becomes a gap, which hfs_retire resolves and
++ * retires through the existing GAP_RESOLVE path.
++ *
++ * A host or exporter without ABANDON refuses it before any host state is
++ * touched, so the claims simply stay retained, as before hh4.
++ */
++
++/* A request the session may give up on: its ALLOCATE was acknowledged (the
++ * host knows the claim), it has no terminal result or gap proof, it was
++ * never listed before, no drain (earmarked, held, control) and no caller
++ * (users) owns it, and none of its CALL/QUERY exchanges is in flight
++ * (exchanges; see hfs_control_request). A request skipped for one of the
++ * last three is left to kill_sb's final pass.
++ */
++static bool hfs_abandon_eligible(const struct hfs_request *request)
++{
++	return request->allocated && !request->terminal && !request->gap &&
++	       !request->abandoning && !request->earmarked && !request->control &&
++	       !request->held && !request->users && !request->exchanges;
++}
++
++/* Caller holds session->lock. Mark at most HFS_ABANDON_MAX eligible requests
++ * abandoning, in ascending claim order, and write the closed ABANDON payload
++ * {anchor, claims:[{number, original_hash}], nonce, realm, subject} from
++ * copies; numbers receives their claim numbers. No request pointer outlives
++ * the lock. The original hash is the claim's own: the hash of the request's
++ * intent (hfs_call_prepare). Returns the number listed, 0 when none is left.
++ */
++static u32 hfs_abandon_collect_locked(struct hfs_session *session, struct hfs_buf *payload,
++				      u64 *numbers)
++{
++	struct hfs_request *request;
++	u8 digest[32];
++	u32 count = 0;
++
++	payload->len = 0;
++	payload->error = 0;
++	hfs_buf_printf(payload, "{\"anchor\":\"%pUb\",\"claims\":[", &session->enrollment.anchor);
++	list_for_each_entry(request, &session->requests, list) {
++		if (count == HFS_ABANDON_MAX)
++			break;
++		if (!hfs_abandon_eligible(request) ||
++		    (count && request->number <= numbers[count - 1]))
++			continue;
++		hfs_hash(request->intent.data, request->intent.len, digest);
++		hfs_buf_printf(payload, "%s{\"number\":%llu,\"original_hash\":", count ? "," : "",
++			       request->number);
++		hfs_buf_hex(payload, digest, sizeof(digest));
++		hfs_buf_literal(payload, "}");
++		request->abandoning = true;
++		numbers[count++] = request->number;
++	}
++	hfs_buf_printf(payload, "],\"nonce\":\"%pUb\",\"realm\":\"%pUb\",\"subject\":",
++		       &session->enrollment.nonce, &session->enrollment.realm);
++	hfs_buf_hex(payload, session->enrollment.subject, session->enrollment.subject_len);
++	hfs_buf_literal(payload, "}");
++	return count;
++}
++
++/* One ABANDON outcome {number, proof_hash, status}: the listed number, and a
++ * 32-byte proof exactly on ABANDONED (null otherwise).
++ */
++static int hfs_abandon_outcome(const struct hfs_json *reply, int outcome, u64 number,
++			       bool *abandoned)
++{
++	int status = hfs_json_field(reply, outcome, "status");
++	int proof = hfs_json_field(reply, outcome, "proof_hash");
++	u8 hash[32];
++	u32 length = sizeof(hash);
++	u64 value;
++
++	if (hfs_json_exact(reply, outcome, "number,proof_hash,status") ||
++	    hfs_json_u64(reply, hfs_json_field(reply, outcome, "number"), &value) ||
++	    value != number)
++		return -EPROTO;
++	*abandoned = hfs_json_is(reply, status, "\"ABANDONED\"");
++	if (*abandoned)
++		return hfs_json_hex(reply, proof, hash, &length) || length != sizeof(hash) ?
++			       -EPROTO : 0;
++	if (!hfs_json_is(reply, proof, "null") ||
++	    (!hfs_json_is(reply, status, "\"KEPT\"") &&
++	     !hfs_json_is(reply, status, "\"RETIRED_ID\"") &&
++	     !hfs_json_is(reply, status, "\"UNKNOWN\"")))
++		return -EPROTO;
++	return 0;
++}
++
++/* The exact closed reply: verification null (ABANDON grants no source,
++ * event or floor authority) and {claims:[...]} with one outcome per listed
++ * number, in request order. Anything else applies nothing.
++ */
++static int hfs_abandon_check(const struct hfs_json *reply, const u64 *numbers, u32 count,
++			     bool *abandoned)
++{
++	int payload = hfs_json_field(reply, 0, "payload");
++	int claims = hfs_json_field(reply, payload, "claims");
++	u32 i, n = 0;
++	int err;
++
++	if (!hfs_json_is(reply, hfs_json_field(reply, 0, "verification"), "null") ||
++	    hfs_json_exact(reply, payload, "claims") || claims < 0 ||
++	    reply->tokens[claims].kind != HFS_ARRAY)
++		return -EPROTO;
++	for (i = claims + 1; i < reply->count; i++) {
++		if (reply->tokens[i].parent != claims)
++			continue;
++		if (n == count)
++			return -EPROTO;
++		err = hfs_abandon_outcome(reply, i, numbers[n], &abandoned[n]);
++		if (err)
++			return err;
++		n++;
++	}
++	return n == count ? 0 : -EPROTO;
++}
++
++/* Send one ABANDON. A lost or uncertain exchange is resent once with the
++ * identical payload (the host answers a replay from the same ledger state)
++ * unless the host stopped answering (transport_failed) or the refusal is
++ * definite: -EPROTO is an exporter ERROR INVALID/SCOPE (an exporter without
++ * ABANDON refuses it so) or a malformed reply, -ESTALE a retired cell, and
++ * the rest are local refusals before any send. Resending those would only
++ * park another control cell. Never falls back to QUERY.
++ */
++static int hfs_abandon_exchange(struct hfs_session *session, const struct hfs_buf *payload,
++				struct hfs_json **reply)
++{
++	int err = hfs_control(session, "ABANDON", payload, true, reply);
++
++	if (err && err != -EPROTO && err != -ESTALE && err != -EOPNOTSUPP && err != -EINVAL &&
++	    err != -EACCES && !READ_ONCE(session->transport_failed))
++		err = hfs_control(session, "ABANDON", payload, true, reply);
++	return err;
++}
++
++/* Apply a checked reply under session->lock. Requests are looked up by
++ * number (both lists ascend): one that is gone was retired meanwhile. Only
++ * ABANDONED changes anything: the request becomes a gap, retired later by
++ * hfs_retire's GAP_RESOLVE path. A listed request has no exchange in flight
++ * and gets none (hfs_control_request), but one whose last QUERY already
++ * returned TERMINAL can still be listed before hfs_request_run records it
++ * (the exchange ended, terminal and users are set only after). The host then
++ * answers KEPT, and the request keeps its result: a terminal request is
++ * never made a gap here. Every listed request stays abandoning.
++ */
++static void hfs_abandon_apply(struct hfs_session *session, const u64 *numbers,
++			      const bool *abandoned, u32 count)
++{
++	struct hfs_request *request;
++	u32 i = 0;
++
++	mutex_lock(&session->lock);
++	list_for_each_entry(request, &session->requests, list) {
++		while (i < count && numbers[i] < request->number)
++			i++;
++		if (i == count)
++			break;
++		if (numbers[i] == request->number && abandoned[i] && !request->terminal)
++			request->gap = true;
++	}
++	mutex_unlock(&session->lock);
++}
++
++/* hh4: one abandon pass of a blocked controlled session: ABANDON batches of
++ * its eligible requests until none is left or an exchange fails. Each
++ * request is listed at most once per session, so the pass ends. Runs from
++ * abandon_work and once more, synchronously, from kill_sb. It needs no slot
++ * of session->control: the exchange runs in the calling thread.
++ */
++static void hfs_session_abandon(struct hfs_session *session)
++{
++	u64 numbers[HFS_ABANDON_MAX];
++	bool abandoned[HFS_ABANDON_MAX];
++	struct hfs_json *reply;
++	struct hfs_buf payload;
++	u32 count;
++	int err = 0;
++
++	if (session->bridge_minor < 2 || !READ_ONCE(session->blocked) ||
++	    hfs_buf_init(&payload, HFS_ABANDON_PAYLOAD))
++		return;
++	for (;;) {
++		mutex_lock(&session->lock);
++		count = hfs_abandon_collect_locked(session, &payload, numbers);
++		mutex_unlock(&session->lock);
++		if (!count)
++			break;
++		reply = NULL;
++		err = payload.error ?: hfs_abandon_exchange(session, &payload, &reply);
++		if (!err)
++			err = hfs_abandon_check(reply, numbers, count, abandoned);
++		if (!err)
++			hfs_abandon_apply(session, numbers, abandoned, count);
++		hfs_json_free(reply);
++		if (err)
++			break;
++	}
++	if (err)
++		pr_warn("9p-hfs: session %pUb ABANDON of %u claims failed (%d); they stay retained\n",
++			&session->enrollment.session, count, err);
++	hfs_buf_free(&payload);
++}
++
++static void hfs_session_abandon_work(struct work_struct *work)
++{
++	hfs_session_abandon(container_of(work, struct hfs_session, abandon_work));
++}
 +
 +/* Caller owns the request lifetime while copying its immutable result. */
 +static int hfs_request_result_borrow(struct hfs_request *request, struct hfs_json **out)
@@ -2316,8 +2647,8 @@ new file mode 100644
 +	err = hfs_request_payload(request, payload);
 +	if (err)
 +		goto retained;
-+	err = hfs_control_flagged(session, "CALL", payload, control,
-+				  hfs_after_block_operation(opcode), &reply);
++	err = hfs_control_request(session, "CALL", payload, control,
++				  hfs_after_block_operation(opcode), request, &reply);
 +	if (err)
 +		goto retained;
 +	token = hfs_json_field(reply, 0, "payload");
@@ -2343,8 +2674,13 @@ new file mode 100644
 +			goto retained;
 +		err = hfs_result_code(result);
 +		hfs_json_free(result);
++		/* hh4: under session->lock, which hfs_abandon_collect_locked
++		 * reads gap under.
++		 */
++		mutex_lock(&session->lock);
 +		request->refusal = reply;
 +		request->gap = true;
++		mutex_unlock(&session->lock);
 +		return err ?: -EPROTO;
 +	}
 +	if (!hfs_json_is(reply, hfs_json_field(reply, token, "code"), "\"OK\"")) {
@@ -2358,8 +2694,11 @@ new file mode 100644
 +	hfs_buf_add(payload, request->claim.data, request->claim.len);
 +	hfs_buf_literal(payload, "}");
 +	for (;;) {
-+		err = hfs_control_flagged(session, "QUERY", payload, true,
-+					  hfs_after_block_operation(opcode), &reply);
++		/* hh4: passing the request refuses the QUERY at admission once it
++		 * is listed in an ABANDON (hfs_control_request).
++		 */
++		err = hfs_control_request(session, "QUERY", payload, true,
++					  hfs_after_block_operation(opcode), request, &reply);
 +		if (err)
 +			goto retained;
 +		token = hfs_json_field(reply, 0, "payload");
@@ -3740,6 +4079,7 @@ new file mode 100644
 +	INIT_LIST_HEAD(&session->allocation_waiters);
 +	init_waitqueue_head(&session->allocation_wait);
 +	init_waitqueue_head(&session->stop_wait);
++	INIT_WORK(&session->abandon_work, hfs_session_abandon_work); /* hh4 */
 +	session->next_claim = session->next_cell = session->next_inode = 1;
 +	session->next_close = session->next_release = 1;
 +	return session;
@@ -3958,6 +4298,14 @@ new file mode 100644
 +	tracepoint_synchronize_unregister();
 +	kill_anon_super(sb);
 +	flush_workqueue(session->control);
++	/* hh4: the final abandon pass, after the flush ran any queued
++	 * abandon_work. Every caller has returned now (kill_anon_super evicted
++	 * the inodes), so a request the worker skipped (users, held, exchanges
++	 * in flight) qualifies,
++	 * and a session that blocked silently (a fence while unmounting, or
++	 * kill_sb's own block above) never queued the work at all.
++	 */
++	hfs_session_abandon(session);
 +	hfs_mmap_settle(session);
 +	/* z84 (zq3-r10 R10-2): stop only after eviction, truncation, the
 +	 * queued FORGET/PROCESS_EXIT work and a bounded settle of the view's

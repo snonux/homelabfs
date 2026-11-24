@@ -623,6 +623,24 @@ only with the `hfs_fdattr` mount option. `described_attr_args_test` in
 `backend_test.c` covers both directions. A native rebuild must pick this
 source up before any lab run can show it.
 
+## ABANDON (`hh4`)
+
+A blocked guest session gives up its stranded never-prepared claims with
+ABANDON ([design](../../../docs/design/hh4-abandon.md)). `_command` accepts
+it on minor 2, 3 and 4 as reserved control work (`e->control`, the
+GAP_RESOLVE lane) after `_abandon` checks the closed payload
+`{anchor, claims, nonce, realm, subject}`: 1..64 claims
+`{number, original_hash}` in strictly ascending order, UUIDs, a 32-byte
+hash and a 1..1024-byte hex subject (`_subject`, shared with `_claim`). The
+forwarder only routes: the host binds the claims to the session. A pre-hh4
+forwarder refuses ABANDON in its final `else` (ERROR INVALID) before
+anything reaches the host; the guest then keeps its claims retained and does
+not resend. `abandon_payload_test` and `controlled_protocol_tests` in
+`backend_test.c` cover the shape and the routing; the linux9p
+`tests/controlled` `abandon-old` mode runs the guest against the exporter
+with this branch removed. A native rebuild must pick this source up before
+any lab run can show it.
+
 ## Controlled terminal owner (`614`)
 
 Explicit features32767 adds SESSION_RETIRE and preserves the exact16383 and

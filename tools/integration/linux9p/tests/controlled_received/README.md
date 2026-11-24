@@ -407,3 +407,28 @@ phase) a CREATE moves the host cut, then:
 * `ADVANCE_STALE`, after a further CREATE and a second `ADVANCE`, decodes the
   released lease's stored reply: unadopted (`-EXDEV`), no block. The same
   reply on a ticket without advance is `-ESTALE`.
+
+## Abandon of stranded claims (`hh4`)
+
+`--scenario abandon` (`TestControlledReceivedActualAbandon`) runs the
+actual `hfs_session_abandon_queue`, `hfs_session_abandon` and its helpers
+(extracted by `build.py`) against the real mapped host. Its commands:
+
+* `ABANDON_ARM ID SESSION` gives the fixture session the control queue and
+  `abandon_work` that `v9fs_hfs_mount` and `hfs_session_new` give a real
+  one. Other scenarios keep `session->control` NULL, so their blocks queue
+  nothing and they are unchanged.
+* `ABANDON_STEP` runs the queued worker if any (`true`/`false`);
+  `ABANDON_PASS` calls `hfs_session_abandon` directly, as kill_sb does.
+* `ABANDON_USERS +1/-1` models a caller still inside the last request;
+  `ABANDON_FLAGS` reports its `abandoning`, `gap` and `terminal` flags.
+
+Session 0 strands an ALLOCATED, never-called claim (`FAULT CALL 1`): the
+worker skips it while a caller holds it, is not queued again, and the final
+pass sends one ABANDON with the exact bytes. ABANDONED becomes `gap`,
+RETIRE moves the floor to 2 and the GAP_RESOLVE proof equals the ABANDON
+proof; a further pass sends nothing. Session 1 loses the reply of a CALL
+that ran (`FAULT CALL 2`): the claim is KEPT, stays retained, and the
+rerun sends nothing for it (its CALL is refused at admission). The QUERY
+side of the promise is covered by the `tests/controlled` mode
+`abandon-query`.

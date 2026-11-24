@@ -57,5 +57,20 @@ with Path(sys.argv[1]).open("w") as out:
     allocate3 = copy.deepcopy(next(c["body"] for c in controlled["commands"] if c["name"] == "allocate"))
     allocate3["protocol"] = cleanup["protocol"]
     emit("controlled_allocate3", allocate3)
+    # hh4: ABANDON of the gap_resolve fixture's claim (and of a second,
+    # higher number) with its enrolled anchor/nonce/realm/subject; the
+    # payload shape is guestbridge validateAbandon's.
+    gap = next(c["body"] for c in controlled["commands"] if c["name"] == "gap_resolve")
+    claim = gap["payload"]["claim"]
+    abandon = copy.deepcopy(gap)
+    abandon["op"] = "ABANDON"
+    abandon["payload"] = {key: claim[key] for key in ("anchor", "nonce", "realm", "subject")}
+    abandon["payload"]["claims"] = [
+        {"number": claim["number"], "original_hash": claim["original_hash"]},
+        {"number": claim["number"] + 1, "original_hash": claim["original_hash"]}]
+    emit("controlled_abandon", abandon)
+    abandon3 = copy.deepcopy(abandon)
+    abandon3["protocol"] = cleanup["protocol"]
+    emit("controlled_abandon3", abandon3)
     receipt = controlled["receipts"][0]
     out.write("static const char controlled_receipt[] = " + json.dumps(json.dumps(receipt,sort_keys=True,separators=(",", ":"))) + ";\n")

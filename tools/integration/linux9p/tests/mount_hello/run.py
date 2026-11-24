@@ -21,6 +21,10 @@ closed admission and no remaining owner stops silently.
 
 Since s64 it copies the hfs_fdattr option parsing (hfs_fdattr_token,
 hfs_mount_options) and v9fs_hfs_only_option, the stock-mount refusal.
+
+Since hh4 it copies hfs_session_abandon_queue: the first block of a
+controlled session queues its abandon_work once, and kill_sb runs one final
+abandon pass after the control flush (the pass itself is a fixture here).
 """
 import argparse
 import hashlib
@@ -97,6 +101,9 @@ def extract(source, output):
                           'fs/9p/hfs_inode.c', 'fs/9p/hfs_enrollment.c', 'net/9p/client.c')}
     session = texts['fs/9p/hfs_session.c']
     (output / 'enrollment_struct.inc').write_text(enrollment_struct(texts['fs/9p/hfs.h']))
+    # hh4: the block_reported bit of the queued abandon_work, from hfs.h.
+    (output / 'abandon_macros.inc').write_text(
+        re.search(r'^#define HFS_ABANDON_QUEUED .*$', texts['fs/9p/hfs.h'], re.M).group(0) + '\n')
     (output / 'validate.inc').write_text(''.join(build.function(session, name) for name in (
         'hfs_uuid', 'hfs_enrollment_validate', 'hfs_enrollment_lanes')))
     (output / 'before_send.inc').write_text(
@@ -107,7 +114,8 @@ def extract(source, output):
         # 5f4: the stop wake-up and blocked setter hfs_session_block uses.
         'hfs_session_stop_wake', 'hfs_session_mark_blocked',
         # s64: hfs_fdattr parsing and the stock-mount refusal helper.
-        'hfs_session_block', 'hfs_session_fence', 'hfs_fdattr_token', 'v9fs_hfs_only_option',
+        # hh4: the abandon_work queueing hfs_session_block calls.
+        'hfs_session_abandon_queue', 'hfs_session_block', 'hfs_session_fence', 'hfs_fdattr_token', 'v9fs_hfs_only_option',
         'hfs_cache_option', 'hfs_mount_options', 'hfs_session_new', 'hfs_mount_enroll',
         'hfs_trace_register',
         'hfs_mount_client', 'hfs_mount_hello', 'hfs_mount_fail', 'v9fs_hfs_mount')))

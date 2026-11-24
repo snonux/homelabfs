@@ -887,6 +887,31 @@ static void command(char *line) {
   assert(READ_ONCE(session->blocked)&&!READ_ONCE(session->transport_failed));
   done(id,0,NULL,0);return;
  }
+ /* hh4: the abandon of a blocked session's stranded claims. ABANDON_ARM gives
+  * this fixture session the control queue and abandon_work that
+  * v9fs_hfs_mount and hfs_session_new give a real one (other scenarios keep
+  * control NULL, so their blocks queue nothing). ABANDON_STEP runs the queued
+  * worker if any ("true"/"false"); ABANDON_PASS runs hfs_session_abandon
+  * directly, as kill_sb's final pass does. ABANDON_USERS +1/-1 models a
+  * caller still inside the last request. ABANDON_FLAGS reports that
+  * request's abandoning/gap/terminal flags. */
+ if(!strcmp(operation,"ABANDON_ARM")){
+  struct hfs_session *session=&(*f->session);assert(!session->control&&!READ_ONCE(session->blocked));
+  session->control=calloc(1,sizeof(*session->control));assert(session->control);
+  INIT_WORK(&session->abandon_work,hfs_session_abandon_work);done(id,0,NULL,0);return;
+ }
+ if(!strcmp(operation,"ABANDON_STEP")){
+  bool ran=primitive_step_queue((*f->session).control);done(id,0,ran?"true":"false",ran?4:5);return;
+ }
+ if(!strcmp(operation,"ABANDON_PASS")){hfs_session_abandon(&(*f->session));done(id,0,NULL,0);return;}
+ if(!strcmp(operation,"ABANDON_USERS")||!strcmp(operation,"ABANDON_FLAGS")){
+  struct hfs_session *session=&(*f->session);assert(!list_empty(&session->requests));
+  struct hfs_request *request=container_of(session->requests.prev,struct hfs_request,list);
+  mutex_lock(&session->lock);
+  if(!strcmp(operation,"ABANDON_USERS")){int delta=atoi(line+consumed);assert(!request->terminal&&(delta==1||(delta==-1&&request->users)));request->users+=delta;}
+  char flags[96];int n=snprintf(flags,sizeof(flags),"{\"abandoning\":%s,\"gap\":%s,\"terminal\":%s}",request->abandoning?"true":"false",request->gap?"true":"false",request->terminal?"true":"false");
+  mutex_unlock(&session->lock);done(id,0,flags,n);return;
+ }
  if(!strcmp(operation,"ISSUER")){unsigned capture=(unsigned)strtoul(line+consumed,NULL,10);assert(capture<f->nr_captures);f->credential=f->captures[capture];f->credentials=f->capture_bytes[capture];fixture_set_current(f);done(id,0,NULL,0);return;}
  if(!strcmp(operation,"FAULT")){assert(!fault_mode&&!fault_reply&&!fault_scratch&&!pending_scratch);assert(sscanf(line+consumed,"%31s %u",fault_operation,&fault_mode)==2&&fault_mode>=1&&fault_mode<=3);if(fault_mode==3)assert(!strcmp(fault_operation,"RETIRE")||!strcmp(fault_operation,"VIEW_RETIRE"));done(id,0,NULL,0);return;}
  if(!strcmp(operation,"STATE")){

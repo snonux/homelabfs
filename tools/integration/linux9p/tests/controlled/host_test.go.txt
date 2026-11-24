@@ -24,10 +24,20 @@ func TestControlledProductionGuestBackendHost(t *testing.T) {
 	if consumer == "" {
 		t.Fatal("explicit production C consumer required")
 	}
-	for _, mode := range []string{"gap=false", "gap=true", "legacy0", "legacy1", "legacy0-control", "legacy1-control"} {
+	for _, mode := range []string{"gap=false", "gap=true", "legacy0", "legacy1", "legacy0-control", "legacy1-control", "abandon", "abandon-old", "abandon-query"} {
 		t.Run(mode, func(t *testing.T) {
 			gap := mode == "gap=true"
 			legacy := strings.HasPrefix(mode, "legacy")
+			// hh4: a blocked guest abandons its acknowledged, never-called
+			// claim. abandon-old runs the guest against the exporter before
+			// ABANDON, which refuses it before anything reaches this host.
+			abandon := strings.HasPrefix(mode, "abandon")
+			consumer := consumer
+			if mode == "abandon-old" {
+				if consumer = os.Getenv("HFS_CONTROLLED_OLD_CONSUMER"); consumer == "" {
+					t.Fatal("explicit old-exporter C consumer required")
+				}
+			}
 			var h *allocationHarness
 			if legacy {
 				h = newLegacyProductionHarness(t, mode[6] == '1')
@@ -55,6 +65,10 @@ func TestControlledProductionGuestBackendHost(t *testing.T) {
 			if gap {
 				cmd.Env = append(cmd.Env, "HFS_CONTROLLED_GAP=1")
 			}
+			if abandon {
+				cmd.Env = append(cmd.Env, "HFS_CONTROLLED_ABANDON="+map[string]string{"abandon": "new", "abandon-old": "old", "abandon-query": "query"}[mode])
+			}
+			abandons, queries := 0, 0
 			input, err := cmd.StdinPipe()
 			mustAllocation(t, err)
 			output, err := cmd.StdoutPipe()
@@ -118,6 +132,21 @@ func TestControlledProductionGuestBackendHost(t *testing.T) {
 						}
 						if (decoded.Flags&1 != 0) != control {
 							t.Fatalf("incorrect native class: %s flags=%d", command.Op, decoded.Flags)
+						}
+					}
+					if command.Op == "QUERY" {
+						queries++
+					}
+					if command.Op == "ABANDON" {
+						abandons++
+						expected, err := canonicalJSON(map[string]any{
+							"anchor": h.original.Claim.Anchor, "nonce": h.original.Claim.Nonce,
+							"realm": h.original.Claim.Realm, "subject": h.original.Claim.Subject,
+							"claims": []map[string]any{{"number": h.original.Claim.Number, "original_hash": h.original.Claim.OriginalHash}},
+						})
+						mustAllocation(t, err)
+						if !bytes.Equal(command.Payload, expected) || (decoded.Flags&1) == 0 {
+							t.Fatalf("guest ABANDON bytes/class: %s flags=%d", command.Payload, decoded.Flags)
 						}
 					}
 					if command.Op == "CALL" {
@@ -186,6 +215,11 @@ func TestControlledProductionGuestBackendHost(t *testing.T) {
 				t.Log(diagnostics.String())
 				return
 			}
+			if abandon {
+				checkProductionAbandon(t, h, mode, abandons, calls, queries, originalAllocation != nil)
+				t.Log(diagnostics.String())
+				return
+			}
 			if originalAllocation == nil || writes < 3 || (!gap && calls != 1) || (gap && calls != 0) {
 				t.Fatalf("missing real path allocations=%v writes=%d calls=%d", originalAllocation != nil, writes, calls)
 			}
@@ -227,4 +261,35 @@ func newLegacyProductionHarness(t *testing.T, view bool) *allocationHarness {
 	bridge, err := guestbridge.New(t.Context(), config)
 	mustAllocation(t, err)
 	return &allocationHarness{f: f, bridge: bridge, config: config, native: native, original: call}
+}
+
+// hh4: the host side of the guest abandon modes. A patched exporter forwards
+// exactly one ABANDON (the guest checked the bytes above), which declines the
+// never-called claim as a gap and zeroes its credit; the guest then retires
+// nothing more and sends no CALL. The old exporter refuses the ABANDON before
+// this host sees it: the claim stays ALLOCATED and charged. abandon-query
+// lists the claim after its CALL was admitted: the guest sends no QUERY, and
+// the host keeps the claim whose CALL ran (no gap, not abandoned).
+func checkProductionAbandon(t *testing.T, h *allocationHarness, mode string, abandons, calls, queries int, allocated bool) {
+	t.Helper()
+	e, exists := h.stored(h.original)
+	query := mode == "abandon-query"
+	if !exists || !allocated || calls != map[bool]int{true: 1}[query] {
+		t.Fatalf("abandon fixture: exists=%v allocated=%v calls=%d", exists, allocated, calls)
+	}
+	if query {
+		if abandons != 1 || queries != 0 || e.Gap || e.Abandoned || e.Status == "ALLOCATED" || e.Status == "DECLINED" {
+			t.Fatalf("abandon-query: abandons=%d queries=%d status=%s gap=%v abandoned=%v", abandons, queries, e.Status, e.Gap, e.Abandoned)
+		}
+		return
+	}
+	if mode == "abandon-old" {
+		if abandons != 0 || e.Gap || e.Abandoned || e.Status != "ALLOCATED" {
+			t.Fatalf("old exporter forwarded ABANDON: abandons=%d status=%s gap=%v", abandons, e.Status, e.Gap)
+		}
+		return
+	}
+	if abandons != 1 || !e.Gap || !e.Abandoned || e.Status != "DECLINED" || e.RetainedCredit != 0 || e.SourceCredit != 0 {
+		t.Fatalf("abandon: abandons=%d status=%s gap=%v abandoned=%v credit=%d/%d", abandons, e.Status, e.Gap, e.Abandoned, e.RetainedCredit, e.SourceCredit)
+	}
 }
