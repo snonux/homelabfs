@@ -2022,7 +2022,18 @@ func TestControlledReceivedActualTerminalKernel80(t *testing.T) {
 		issued++
 		c.action("REPLAY_CONTROL", 0, fmt.Sprintf("%d %s %s", reserved, op, hex.EncodeToString(payload)), 0)
 	}
+	// The single-threaded consumer issues the other 79 replays nested in
+	// the first one's scheduling yields, so all 80 sends and their unwinding
+	// ran inside the first request's 30 s hfs_transport deadline. That took
+	// 18.8 s at load 4 and exceeded 30 s (-110) next to a kernel build
+	// (k84). A kernel would run them on separate threads, so CLOCK_HOLD
+	// freezes the consumer's jiffies for the fill only; the log records the
+	// real wall time it took.
+	fillStart := time.Now()
+	c.action("CLOCK_HOLD", 0, "", 0)
 	c.action("REPLAY_CONTROL", 0, "0 VIEW_ACQUIRE "+hex.EncodeToString(acquire), 0)
+	c.action("CLOCK_RELEASE", 0, "", 0)
+	t.Logf("kernel80 fill: %d nested control replays in %s wall time (jiffies held)", issued, time.Since(fillStart).Round(time.Millisecond))
 	c.yields = nil
 	c.holdNativeResponses = false
 	full := stats()

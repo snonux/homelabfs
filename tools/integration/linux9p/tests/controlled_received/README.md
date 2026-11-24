@@ -263,9 +263,15 @@ RETIRED_ID replies to the original VIEW_ACQUIRE and VIEW_RELEASE fill64
 ordinary and16 control slots through actual hfs_control (since task q64 the
 controller recycles retired rows and refuses a VIEW_QUERY of them, so the
 control lane replays the release admission); a declared scheduling hook delays
-native delivery while the requests enter. The kernel80 evidence recorded
-before q64 (VIEW_QUERY control fillers) must be re-recorded on the next
-guest-harness run. Normal freeing returns transient carrier/Received charges to
+native delivery while the requests enter. The single-threaded consumer issues
+the other 79 replays nested in the first request's scheduling yield, so they
+all ran inside that request's 30 s deadline (18.8 s at load 4, over 30 s with
+`-110` next to a kernel build). A kernel would run them on separate threads,
+so the test brackets the fill with `CLOCK_HOLD`/`CLOCK_RELEASE`, a declared
+substitution that freezes the consumer's jiffies for the fill only and logs
+its real wall time (k84). The evidence recorded by 614/814 predates q64
+(VIEW_QUERY control fillers); `evidence/k84` re-records it for the current
+harness. Normal freeing returns transient carrier/Received charges to
 baseline. Actual terminal capture enumerates all80, clears the transport and
 completion parents, and retains the tombstone through a forced post-proof
 teardown failure and normal retry. Its dedicated signed stress enrollment uses

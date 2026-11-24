@@ -2661,7 +2661,8 @@ Results (owned prepared tree, this host, another kernel build running):
 19 pass, including `effected` (50 s); `terminal-kernel80` failed once
 with `REPLAY_CONTROL ... VIEW_ACQUIRE = -110` (an uncertain control
 deadline under load) and passed when rerun alone (88 s). That test does
-not touch the changed code; its flakiness is not investigated here.
+not touch the changed code; its flakiness is not investigated here (see
+k84 below).
 
 ## The mmapped mark ends with the last VMA (`wj4`)
 
@@ -2789,3 +2790,27 @@ and `tests/controlled` (10 PASS) pass. controlled_received was not run. The
 series was regenerated with `export.py --task wj4` (0003: `hfs.h`,
 `hfs_inode.c`; 0004: `hfs_view.[ch]`, `hfs_mmap.c`). No candidate was
 rebuilt, booted or admitted.
+
+## `terminal-kernel80` re-recorded; its fill deadline (`k84`)
+
+The kernel80 evidence in `evidence/614` and `evidence/814` predates q64
+(VIEW_QUERY control fillers). `evidence/k84` re-records it on the current
+harness (after q64, bh4, hh4, fl4), from an owned `prepare.py` tree.
+
+The fl4 `-110` was a harness deadline. The single-threaded consumer issues
+replays 2..80 nested in the first `REPLAY_CONTROL`'s scheduling yield, so
+all 80 ran inside that request's 30 s `hfs_transport` deadline, which the
+fixture's `jiffies` takes from the wall clock. That used 18.8 s at load 4.
+With a temporary 400 ms delay per nested replay the test failed with the
+fl4 signature (`uncertain control result on VIEW_ACQUIRE (-110)`). The test
+now brackets the fill with `CLOCK_HOLD`/`CLOCK_RELEASE`, a declared
+substitution that freezes the consumer's `jiffies` for the fill only (a
+kernel would run the requests on separate threads), and logs the fill's
+real wall time. With the delay it then passes (53 s fill). No product code
+or patch series changed.
+
+Results (`--scenario terminal-kernel80`, one run at a time, another worker
+building a kernel): three final runs pass in 113.8 s, 136.5 s and 92.7 s;
+their fills took 32.7 s, 42.4 s and 34.2 s of wall time, so each would
+have failed under the old deadline. `--scenario allocate` passes (49.0 s)
+with the changed `compat.h`. `both` was not rerun.

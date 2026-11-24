@@ -1,0 +1,110 @@
+{
+  "task": "k84",
+  "base": "303dd4b",
+  "status": "terminal-kernel80 re-recorded on the current harness (after q64, bh4, hh4, fl4): 3/3 final runs PASS. The fl4 -110 flake is a harness deadline, fixed with a declared jiffies hold for the nested fill.",
+  "supersedes": [
+    "614 checks.merged_component-terminal-kernel80 (pre-q64 VIEW_QUERY control fillers)",
+    "814 checks.regression-terminal-kernel80 (pre-q64 VIEW_QUERY control fillers)"
+  ],
+  "source": {
+    "prepared_tree": "/home/paul/tmp/claude/k84/linux (prepare.py, deleted after the runs)",
+    "archive_sha256": "4f3c00db43ece26e00b83da8cee938e544ba89e10dc10aecc45209ab03554a17",
+    "fs/9p/hfs_session.c": "7f9e208c7a5c9e3f7bbdf47828d1ae862a83775baa2a61b6e515adae6348d03c"
+  },
+  "final_inputs_sha256": {
+    "tools/integration/linux9p/tests/controlled_received/host_test.go.txt": "4041667b544aedd00056cb69bd01e48da9c69c1d45c10ad0cb8952aa6bc4d011",
+    "internal/controlledruntime/producer_test.go": "d1ffd62b4fe93093e45e1b5839a2b68aa74c090bf32a27727b73a2bff1359675",
+    "tools/integration/linux9p/tests/controlled_received/consumer.c": "98836201469f272ddb89da130629ac0632ff98d146f0164211d094b34f5d046d",
+    "tools/integration/linux9p/tests/controlled_received/compat.h": "b9ccc88e81c66405ae427a9b65c2d885c1e69fc8ca4d3cce59dafd7801fe06d2",
+    "tools/integration/linux9p/tests/controlled_received/README.md": "cb9bd6a703da42bbe2f0b28ffe3a0fa5041c28aebb6e2bc653ea0ac37dca5d44",
+    "tools/integration/linux9p/tests/controlled_received/run.py": "982a75b433368ffbf2b79f99cd9e07600f1be36a6482f551aaeeee5d3f99b4b4",
+    "tools/integration/linux9p/tests/controlled_received/build.py": "a62bcf500b085592cc7a0ff362fcf13b7f633ed2ef62ea9f7032339347ec3848",
+    "full_binding": "final-1/source-binding.json (all 361 bound inputs)"
+  },
+  "argv": [
+    "python3",
+    "tools/integration/linux9p/tests/controlled_received/run.py",
+    "--source",
+    "/home/paul/tmp/claude/k84/linux",
+    "--output",
+    "/home/paul/tmp/claude/k84/<run>",
+    "--budget-root",
+    "/home/paul/tmp/claude/k84",
+    "--host-tree",
+    "<worktree>",
+    "--scenario",
+    "terminal-kernel80"
+  ],
+  "checks": {
+    "final-1": {
+      "receipt": "final-1/receipt.json",
+      "sha256": "140f97440b0cd9c14742592f3ac9d51cc18e914afd293f9ae2b27cc7fcbcc571",
+      "exit": 0,
+      "seconds": 113.77,
+      "test_seconds": 97.34,
+      "fill_wall_seconds": 32.708,
+      "peak_group_rss": 612175872
+    },
+    "final-2": {
+      "receipt": "final-2/receipt.json",
+      "sha256": "127733bc23184f924073c7b8d278993e6c4a673d6f17d5d99ccf0bba3b12c5dd",
+      "exit": 0,
+      "seconds": 136.48,
+      "test_seconds": 130.87,
+      "fill_wall_seconds": 42.406,
+      "peak_group_rss": 612659200
+    },
+    "final-3": {
+      "receipt": "final-3/receipt.json",
+      "sha256": "161509e50844580a099aa1e78b1061838eea49149bf6e62ad215cbfa8b55335f",
+      "exit": 0,
+      "seconds": 92.73,
+      "test_seconds": 86.70,
+      "fill_wall_seconds": 34.184,
+      "peak_group_rss": 612651008
+    }
+  },
+  "deadline_investigation": {
+    "symptom": "fl4 both-1: REPLAY_CONTROL session0 0 VIEW_ACQUIRE = -110, 'blocked by uncertain control result on VIEW_ACQUIRE (-110)'; passed alone",
+    "cause": "The single-threaded consumer issues replays 2..80 nested in the first REPLAY_CONTROL's scheduling yield (primitive_sleep). hfs_transport gives each exchange one 30 s deadline from jiffies, which compat.h maps to CLOCK_MONOTONIC, so the serialized service time of all 79 nested requests counted against the first request's deadline. A kernel would run them on separate threads.",
+    "fix": "Test-only declared substitution: CLOCK_HOLD/CLOCK_RELEASE consumer actions freeze the consumer's jiffies for the fill only; the test logs the fill's real wall time. No product (fs/9p, patch series) change.",
+    "pre_fix_1": {
+      "receipt": "pre-fix-1/receipt.json",
+      "sha256": "34af296334be4815fd4ec9b630ed80f7a0e637cdc8eef8d2f7a85b9869f23b74",
+      "exit": 0,
+      "seconds": 99.1,
+      "note": "Unmodified 303dd4b harness, load ~4."
+    },
+    "pre_fix_2": {
+      "receipt": "pre-fix-2/receipt.json",
+      "sha256": "221a686cbb64fbb9ffafe20e85ff497ff03418036afafd669816b03f4c7d9293",
+      "exit": 0,
+      "seconds": 85.82,
+      "fill_wall_seconds": 18.821,
+      "note": "303dd4b harness plus the duration log only: 18.8 s of the 30 s deadline used at load ~4."
+    },
+    "red_delay_nohold": {
+      "receipt": "red-delay-nohold/receipt.json",
+      "sha256": "a6ff40181a35ac39d816de0e6caedddff9fab4eeca2439a497950620813db1b6",
+      "exit": 1,
+      "seconds": 77.16,
+      "note": "Temporary 400 ms sleep per nested replay, no hold: failed with the fl4 signature (VIEW_ACQUIRE -110). Kept as failed-run evidence."
+    },
+    "green_delay_hold": {
+      "receipt": "green-delay-hold/receipt.json",
+      "sha256": "d5916d344c91329f6193fa875b06311d7740beafd60d3d8a99f3f68fdc207bc5",
+      "exit": 0,
+      "seconds": 106.34,
+      "fill_wall_seconds": 53.005,
+      "note": "Same temporary delay with CLOCK_HOLD: PASS."
+    },
+    "final_runs_note": "Under the load during the final runs (another worker building a kernel, load average up to 10.6) every fill took 32.7-42.4 s and would have exceeded the old 30 s deadline."
+  },
+  "limits": "One run at a time; run.py bounds (2 CPUs, GOMAXPROCS 2, GOMEMLIMIT 256MiB, RSS 2GiB, owned disk 8GiB, 1200 s/stage).",
+  "limitations": [
+    "Component harness only, with the declared OS/native/MM substitutions of controlled_received; no installed kernel, boot or Linux80-cell physical claim.",
+    "No SSH, VM, lab, mount, production or sink operations.",
+    "Besides terminal-kernel80 only --scenario allocate was rerun with the new compat.h (PASS, 48.98 s, receipt /home/paul/tmp/claude/k84/allocate-1/receipt.json sha256 b75bb1423fd6814e00c8853ca0830763ed38f90f04be890735e2069f096adcfb); the 'both' set was not rerun. The hold is zero unless CLOCK_HOLD is sent.",
+    "Receipts name absolute paths under /home/paul/tmp/claude/k84; the prepared tree was deleted afterwards."
+  ]
+}

@@ -126,7 +126,18 @@ void primitive_module_put(void *);
 #define time_after_eq(a,b) ((long)((a)-(b))>=0)
 /* p84: the bounded background pressure hold in hfs_mmap_pressure. */
 #define time_before(a,b) ((long)((a)-(b))<0)
-static inline unsigned long primitive_milliseconds(void) { struct timespec t;assert(!clock_gettime(CLOCK_MONOTONIC,&t));return t.tv_sec*1000UL+t.tv_nsec/1000000; }
+/* k84: nonzero while consumer.c's CLOCK_HOLD freezes jiffies at that value.
+ * The single-threaded consumer services nested requests inside one request's
+ * scheduling yield; a kernel would run them on other threads, so their
+ * serialized service time must not be charged to the outer 30 s deadline.
+ * Only terminal-kernel80's 80-request fill uses it.
+ */
+extern unsigned long primitive_held_milliseconds;
+static inline unsigned long primitive_milliseconds(void) {
+ unsigned long held=__atomic_load_n(&primitive_held_milliseconds,__ATOMIC_RELAXED);
+ if(held)return held;
+ struct timespec t;assert(!clock_gettime(CLOCK_MONOTONIC,&t));return t.tv_sec*1000UL+t.tv_nsec/1000000;
+}
 #define jiffies primitive_milliseconds()
 void primitive_sleep(unsigned long,unsigned long);
 #define usleep_range(a,b) primitive_sleep(a,b)
